@@ -12,13 +12,14 @@
 		</div>
 		<div class="user-info">
 			<div class="user-name">{{ user.displayName }}</div>
-			<div class="user-id" v-if="user.steamId">SteamID: {{ user.steamId }}</div>
+			<div class="user-id" v-if="user.steamId">{{ t('steam.steamId', { id: user.steamId }) }}</div>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
 import type { DwebPlatformUser } from '../../platformBridge/types'
+import { useI18n } from '../../i18n'
 import SteamStatusBadge from './SteamStatusBadge.vue'
 
 interface Props {
@@ -29,6 +30,8 @@ interface Props {
 withDefaults(defineProps<Props>(), {
 	status: 'online',
 })
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

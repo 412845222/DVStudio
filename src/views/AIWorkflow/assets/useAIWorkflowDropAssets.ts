@@ -1,4 +1,5 @@
 import { getErrorMessage } from '../../../types/utils'
+import { t } from '../../../i18n'
 
 export type AIWorkflowDraggedResourceItem = {
 	resourceId: string
@@ -80,7 +81,7 @@ export const useAIWorkflowDropAssets = (options: {
 		kind: 'image' | 'video',
 		url: string,
 		name: string,
-		opts?: { posterUrl?: string; sourcePath?: string }
+		opts?: { posterUrl?: string; sourcePath?: string; projectRelativePath?: string }
 	) => void
 	resolveDropWorldFromEvent: (event: DragEvent) => { worldX: number; worldY: number } | null
 	createBatchMediaNodesFromFiles: (payload: {
@@ -93,6 +94,18 @@ export const useAIWorkflowDropAssets = (options: {
 		worldX: number
 		worldY: number
 	}) => boolean | void
+	persistBlobUrlToProject?: (inputUrl: string, kind: 'image' | 'video', prefix?: string) => Promise<{
+		url: string
+		sourcePath?: string
+		projectRelativePath?: string
+		fileName?: string
+	} | null>
+	fetchUrlAsArrayBuffer?: (url: string) => Promise<{
+		ok: boolean
+		buffer?: Uint8Array
+		mime?: string
+		error?: string
+	} | null>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
 	const getDraggedNanoPreviewUrl = (e: DragEvent): string | null => {
@@ -367,21 +380,64 @@ export const useAIWorkflowDropAssets = (options: {
 		return files.map((f) => ({ file: f, relativePath: String(f?.name ?? '') }))
 	}
 
-	const snapshotRemoteImageToObjectUrl = async (inputUrl: string, resourceId: string) => {
+	const snapshotRemoteMediaToProjectOrObjectUrl = async (inputUrl: string, resourceId: string, kind: 'image' | 'video') => {
 		const url = String(inputUrl || '').trim()
-		if (!url) return ''
-		if (url.startsWith('blob:') || url.startsWith('data:')) return url
-		try {
-			const resp = await fetch(url, { cache: 'no-store' })
-			if (!resp.ok) return url
-			const blob = await resp.blob()
-			const objectUrl = URL.createObjectURL(blob)
-			const rid = String(resourceId || '').trim()
-			if (rid) options.setObjectUrl(rid, objectUrl)
-			return objectUrl
-		} catch {
-			return url
+		if (!url) return { url: '', fileName: '' }
+
+		const isRemote = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')
+		const isDweb = url.toLowerCase().startsWith('dweb://')
+
+		if (isDweb) {
+			return { url, fileName: '' }
 		}
+
+		if (isRemote) {
+			if (options.persistBlobUrlToProject) {
+				try {
+					const persisted = await options.persistBlobUrlToProject(url, kind, 'dragdrop')
+					if (persisted && persisted.url) {
+						return {
+							url: persisted.url,
+							fileName: persisted.fileName || '',
+							sourcePath: persisted.sourcePath,
+							projectRelativePath: persisted.projectRelativePath
+						}
+					}
+				} catch {
+					// 持久化失败则尝试主进程 fetch 获取 object URL
+				}
+			}
+			if (url.startsWith('http://') || url.startsWith('https://')) {
+				if (options.fetchUrlAsArrayBuffer) {
+					try {
+						const result = await options.fetchUrlAsArrayBuffer(url)
+						if (result?.ok && result.buffer) {
+							const mime = result.mime || (kind === 'video' ? 'video/mp4' : 'image/png')
+							const blob = new Blob([result.buffer], { type: mime })
+							const objectUrl = URL.createObjectURL(blob)
+							if (resourceId) options.setObjectUrl(resourceId, objectUrl)
+							return { url: objectUrl, fileName: '' }
+						}
+					} catch {
+						// 回退到渲染进程 fetch（可能 CORS 失败）
+					}
+				}
+			}
+			try {
+				const resp = await fetch(url)
+				if (resp.ok) {
+					const blob = await resp.blob()
+					const objectUrl = URL.createObjectURL(blob)
+					if (resourceId) options.setObjectUrl(resourceId, objectUrl)
+					return { url: objectUrl, fileName: '' }
+				}
+			} catch {
+				//
+			}
+			return { url, fileName: '' }
+		}
+
+		return { url, fileName: '' }
 	}
 
 	const createNodeFromDraggedResource = (payload: {
@@ -395,7 +451,7 @@ export const useAIWorkflowDropAssets = (options: {
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: payload.item.kind === 'image' ? '图片' : '视频'
+			title: payload.item.kind === 'image' ? t('common.image') : t('common.video')
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -413,7 +469,7 @@ export const useAIWorkflowDropAssets = (options: {
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(payload.item.kind === 'image' ? '图片资源' : '视频资源')
+					(payload.item.kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -433,36 +489,59 @@ export const useAIWorkflowDropAssets = (options: {
 		worldX: number
 		worldY: number
 	}) => {
-		const rawUrl = String(payload.meta?.url || payload.fallbackUrl || '').trim()
-		if (!rawUrl) return false
-
 		const kind: 'image' | 'video' = payload.meta?.kind === 'video' ? 'video' : 'image'
-		const url =
-			kind === 'video'
-				? options.resolveBackendUrl(String(payload.meta?.localUrl || '').trim())
-				: options.resolveBackendUrl(rawUrl)
-		if (kind === 'video' && (!payload.meta?.localReady || !url)) {
-			const statusText = String(payload.meta?.downloadStatus || '').trim()
-			options.pushToast(
-				statusText === 'failed'
-					? '视频本地化失败，当前不能拖入蓝图，请先重试下载。'
-					: '视频仍在下载到项目资源目录，完成后才能拖入蓝图。',
-				'warn'
-			)
-			return false
+
+		let effectiveUrl = String(payload.fallbackUrl || '').trim()
+		let metaSourcePath = ''
+		if (kind === 'video') {
+			const localUrl = String(payload.meta?.localUrl || '').trim()
+			if (!payload.meta?.localReady || !localUrl) {
+				const statusText = String(payload.meta?.downloadStatus || '').trim()
+				options.pushToast(
+					statusText === 'failed'
+						? t('aiworkflow.toast.videoLocalizationFailed')
+						: t('aiworkflow.toast.videoStillDownloading'),
+					'warn'
+				)
+				return false
+			}
+			effectiveUrl = localUrl
+			metaSourcePath = String(payload.meta?.sourcePath || '').trim()
+		} else {
+			const metaUrl = String(payload.meta?.url || '').trim()
+			if (metaUrl) effectiveUrl = metaUrl
+			metaSourcePath = String(payload.meta?.sourcePath || '').trim()
 		}
-		if (!url) return false
+
+		if (!effectiveUrl) return false
+
+		const isRemoteUrl = effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://') || effectiveUrl.startsWith('blob:') || effectiveUrl.startsWith('data:')
+
 		const resourceId = `wf-res-nanobanana-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-		let storedUrl = url
-		if (kind === 'image') {
-			const frozenUrl = await snapshotRemoteImageToObjectUrl(url, resourceId)
-			storedUrl = frozenUrl || url
+		let storedUrl = effectiveUrl
+		let storedSourcePath: string | undefined
+		let storedRelPath: string | undefined
+		let storedFileName = ''
+
+		if (isRemoteUrl) {
+			const snap = await snapshotRemoteMediaToProjectOrObjectUrl(effectiveUrl, resourceId, kind)
+			storedUrl = snap.url || effectiveUrl
+			storedSourcePath = snap.sourcePath
+			storedRelPath = snap.projectRelativePath
+			storedFileName = snap.fileName || ''
 		}
+
+		const defaultFileName = kind === 'video'
+			? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
+			: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
+
+		const finalUrl = options.resolveBackendUrl(storedUrl)
+		const displayName = storedFileName || defaultFileName
 
 		options.store.commit('addNodeAt', {
 			worldX: payload.worldX,
 			worldY: payload.worldY,
-			title: kind === 'video' ? '视频' : '图片'
+			title: kind === 'video' ? t('common.video') : t('common.image')
 		})
 		const nodeId = options.store.state.selectedNodeId
 		if (!nodeId) return true
@@ -471,15 +550,14 @@ export const useAIWorkflowDropAssets = (options: {
 		options.bindMediaResourceToNode(
 			nodeId,
 			kind,
-			storedUrl,
-			kind === 'video'
-				? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
-				: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`,
+			finalUrl,
+			displayName,
 			{
-				sourcePath: String(payload.meta?.sourcePath || '').trim() || undefined
+				sourcePath: storedSourcePath || metaSourcePath || undefined,
+				projectRelativePath: storedRelPath
 			}
 		)
-		options.autoSizeMediaNode(nodeId, storedUrl, kind)
+		options.autoSizeMediaNode(nodeId, finalUrl, kind)
 		return true
 	}
 
@@ -536,12 +614,12 @@ export const useAIWorkflowDropAssets = (options: {
 		if (draggedArkTask) {
 			const apiType = String(draggedArkTask.apiType || '').trim().toLowerCase()
 			const kind: 'image' | 'video' = apiType === 'seedance' ? 'video' : 'image'
-			const title = apiType === 'seedance' ? '视频' : (apiType === 'seedream' ? '图片' : 'ARK')
+			const title = apiType === 'seedance' ? t('common.video') : (apiType === 'seedream' ? t('common.image') : 'ARK')
 			const prompt = String(draggedArkTask.prompt || '').trim()
 			const resultUrls = Array.isArray(draggedArkTask.resultUrls) ? draggedArkTask.resultUrls : []
 			const firstUrl = resultUrls[0] || ''
 			const thumbnailUrl = String(draggedArkTask.thumbnailUrl || '').trim()
-			const displayUrl = firstUrl || thumbnailUrl
+			const rawDisplayUrl = firstUrl || thumbnailUrl
 			const isCompleted = String(draggedArkTask.status || '').trim().toLowerCase() === 'succeeded'
 
 			options.store.commit('addNodeAt', {
@@ -554,18 +632,124 @@ export const useAIWorkflowDropAssets = (options: {
 
 			options.store.commit('setNodeType', { nodeId, type: kind })
 
-			if (displayUrl && isCompleted) {
-				const fileName = kind === 'video'
+			if (rawDisplayUrl && isCompleted) {
+				const defaultFileName = kind === 'video'
 					? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
 					: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
-				options.bindMediaResourceToNode(nodeId, kind, displayUrl, fileName)
-				options.autoSizeMediaNode(nodeId, displayUrl, kind)
+				const resourceId = `wf-res-ark-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+				const isRemoteUrl = rawDisplayUrl.startsWith('http://') || rawDisplayUrl.startsWith('https://') || rawDisplayUrl.startsWith('blob:') || rawDisplayUrl.startsWith('data:')
+				let finalUrl = rawDisplayUrl
+				let finalSourcePath: string | undefined
+				let finalRelPath: string | undefined
+				let finalFileName = defaultFileName
+
+				if (isRemoteUrl) {
+					const snap = await snapshotRemoteMediaToProjectOrObjectUrl(rawDisplayUrl, resourceId, kind)
+					finalUrl = snap.url || rawDisplayUrl
+					finalSourcePath = snap.sourcePath
+					finalRelPath = snap.projectRelativePath
+					finalFileName = snap.fileName || defaultFileName
+				}
+
+				const resolvedUrl = options.resolveBackendUrl(finalUrl)
+
+				options.bindMediaResourceToNode(nodeId, kind, resolvedUrl, finalFileName, {
+					sourcePath: finalSourcePath,
+					projectRelativePath: finalRelPath
+				})
+				options.autoSizeMediaNode(nodeId, resolvedUrl, kind)
 			} else if (!isCompleted) {
-				options.pushToast('任务尚未完成，已创建空节点，完成后可重新拖拽或下载产物。', 'info')
+				options.pushToast(t('aiworkflow.toast.taskNotCompleteEmptyNode'), 'info')
 			} else {
-				options.pushToast('该任务暂无可用产物，已创建空节点。', 'warn')
+				options.pushToast(t('aiworkflow.toast.taskNoOutput'), 'warn')
 			}
 			return
+		}
+
+		// 优先处理 dataTransfer 中的 File 对象（浏览器拖拽图片/文件系统文件时最可靠）
+		// 这一步必须在 URL 处理之前，因为从浏览器拖拽图片时 dataTransfer 中既有 blob URL 也有 File
+		if (dt) {
+			try {
+				const dropped = await collectDroppedFiles(dt)
+				const mediaFiles = dropped.filter((x) => !!inferMediaKindFromFile(x.file))
+				if (mediaFiles.length > 0) {
+					// 区分本地文件系统文件和网页拖拽文件
+					type FileWithPath = File & { path?: string }
+					const localFiles: AIWorkflowDroppedFile[] = []
+					const remoteFiles: Array<{ file: File; kind: 'image' | 'video' }> = []
+
+					for (const item of mediaFiles) {
+						const hasLocalPath = typeof (item.file as FileWithPath)?.path === 'string' &&
+							String((item.file as FileWithPath).path).trim().length > 0
+						const hasFsHandle = !!item.fsHandle
+
+						if (hasLocalPath || hasFsHandle) {
+							localFiles.push(item)
+						} else {
+							const kind = inferMediaKindFromFile(item.file)
+							if (kind) {
+								remoteFiles.push({ file: item.file, kind })
+							}
+						}
+					}
+
+					// 处理本地文件（走批量导入流程）
+					if (localFiles.length > 0) {
+						await options.createBatchMediaNodesFromFiles({
+							files: localFiles,
+							worldX: world.worldX,
+							worldY: world.worldY
+						})
+					}
+
+					// 处理网页拖拽的远程文件（立即持久化到项目）
+					if (remoteFiles.length > 0) {
+						let offset = 0
+						for (const { file, kind } of remoteFiles) {
+							const resourceId = `wf-res-drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+							const blobUrl = URL.createObjectURL(file)
+							options.setObjectUrl(resourceId, blobUrl)
+
+							const snap = await snapshotRemoteMediaToProjectOrObjectUrl(blobUrl, resourceId, kind)
+							const storedUrl = snap.url || blobUrl
+							const storedSourcePath = snap.sourcePath
+							const storedRelPath = snap.projectRelativePath
+							const storedFileName = snap.fileName || (kind === 'image' ? 'image.png' : 'video.mp4')
+
+							const finalUrl = options.resolveBackendUrl(storedUrl)
+
+							options.store.commit('addNodeAt', {
+								worldX: world.worldX + offset,
+								worldY: world.worldY + offset,
+								title: kind === 'image' ? t('common.image') : t('common.video')
+							})
+							const nodeId = options.store.state.selectedNodeId
+							if (nodeId) {
+								options.store.commit('setNodeType', { nodeId, type: kind })
+								options.bindMediaResourceToNode(
+									nodeId,
+									kind,
+									finalUrl,
+									storedFileName,
+									{
+										sourcePath: storedSourcePath,
+										projectRelativePath: storedRelPath
+									}
+								)
+								options.autoSizeMediaNode(nodeId, finalUrl, kind)
+							}
+							offset += 40
+						}
+					}
+
+					if (localFiles.length > 0 || remoteFiles.length > 0) {
+						return
+					}
+				}
+			} catch (err: unknown) {
+				options.pushToast(t('aiworkflow.toast.dragImportFailed', { error: getErrorMessage(err) }), 'warn')
+			}
 		}
 
 		if (urlRaw) {
@@ -576,24 +760,6 @@ export const useAIWorkflowDropAssets = (options: {
 				worldY: world.worldY
 			})
 			return
-		}
-
-		if (dt) {
-			try {
-				const dropped = await collectDroppedFiles(dt)
-				const hasMedia = dropped.some((x) => !!inferMediaKindFromFile(x.file))
-				if (hasMedia) {
-					await options.createBatchMediaNodesFromFiles({
-						files: dropped,
-						worldX: world.worldX,
-						worldY: world.worldY
-					})
-					return
-				}
-			} catch (err: unknown) {
-				options.pushToast('拖拽导入失败：' + getErrorMessage(err), 'warn')
-				// fall through to image-gen URL if present
-			}
 		}
 	}
 

@@ -18,10 +18,10 @@
 				>
 					<div v-if="label" class="wf-anchor-tooltip__label">{{ label }}</div>
 					<div v-if="hasAcceptedTypes" class="wf-anchor-tooltip__accepted-types">
-						<div class="wf-anchor-tooltip__accepted-title">接受类型:</div>
+						<div class="wf-anchor-tooltip__accepted-title">{{ acceptedTypesTitle }}</div>
 						<div class="wf-anchor-tooltip__accepted-list">
-							<span v-for="t in acceptedTypes" :key="t" class="wf-anchor-tooltip__accepted-tag">
-								{{ t }}
+							<span v-for="type in acceptedTypes" :key="type" class="wf-anchor-tooltip__accepted-tag">
+								{{ type }}
 							</span>
 						</div>
 					</div>
@@ -34,7 +34,7 @@
 							{{ compatible ? '✅' : '❌' }}
 						</span>
 						<span class="wf-anchor-tooltip__compatible-text">
-							{{ compatible ? '兼容' : '不兼容' }}
+							{{ compatibleText }}
 						</span>
 					</div>
 				</div>
@@ -45,6 +45,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	visible: boolean
@@ -81,6 +84,8 @@ const typeNameMap: Record<string, string> = {
 const typeIcon = computed(() => typeIconMap[props.type] || '📌')
 const typeName = computed(() => typeNameMap[props.type] || props.type)
 const hasAcceptedTypes = computed(() => props.acceptedTypes && props.acceptedTypes.length > 0)
+const acceptedTypesTitle = computed(() => t('aichat.dock.acceptedTypes'))
+const compatibleText = computed(() => props.compatible ? t('aichat.dock.compatible') : t('aichat.dock.incompatible'))
 
 const tooltipStyle = computed(() => {
 	return {

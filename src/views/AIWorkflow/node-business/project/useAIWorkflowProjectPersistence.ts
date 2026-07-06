@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { blueprintLog } from '../../blueprint-core/blueprintLog'
 import { getErrorMessage, isNumber, isRecord, isString } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 type AssetRecord = {
 	url?: unknown
@@ -390,7 +391,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		}
 
 		if (failed > 0 && !opts?.silent) {
-			payload.pushToast(`部分项目资源自动修复失败（${failed} 项）。`, 'warn')
+			payload.pushToast(t('aiworkflow.toast.resourceAutoFixFailed', { count: failed }), 'warn')
 		}
 		return { changed: patches.length, failed }
 	}
@@ -444,8 +445,8 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 					}
 				})
 			} catch {
-				payload.pushToast(`删除无效资源：${item.name}`, 'info')
-				blueprintLog.append(`删除无效资源：${item.name}`, {
+				payload.pushToast(t('aiworkflow.toast.invalidResourceDeleted', { name: item.name }), 'info')
+				blueprintLog.append(t('aiworkflow.toast.invalidResourceDeleted', { name: item.name }), {
 					category: 'operation',
 					level: 'INFO',
 					tag: 'project-save',
@@ -466,9 +467,9 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		const res = await payload.blueprintProjectService.loadProject(projectId)
 		if (!res.ok) {
 			if (!opts?.suppressErrorToast) {
-				payload.pushToast('加载项目失败：' + String(res.error || 'unknown'), 'error')
+				payload.pushToast(t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }), 'error')
 			}
-			blueprintLog.append(`加载项目失败：${String(res.error || 'unknown')}`, {
+			blueprintLog.append(t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }), {
 				category: 'operation',
 				level: 'ERROR',
 				tag: 'project-load',
@@ -477,8 +478,8 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			return false
 		}
 		if (!payload.isValidBlueprintSnapshot(res.snapshot)) {
-			payload.pushToast('加载项目失败：项目文件数据结构无效。', 'error')
-			blueprintLog.append('加载项目失败：项目文件数据结构无效。', {
+			payload.pushToast(t('aiworkflow.runtime.loadProjectInvalidStructure'), 'error')
+			blueprintLog.append(t('aiworkflow.runtime.loadProjectInvalidStructure'), {
 				category: 'operation',
 				level: 'ERROR',
 				tag: 'project-load',
@@ -519,7 +520,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 				// keep load flow resilient if static asset canonicalization fails
 			}
 		}
-		if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '加载项目')) return false
+		if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.loadProjectSource'))) return false
 		payload.resetCurrentUnrealExportNodeRuntimeState()
 
 		const recoverySessionId = payload.startRecoverySessionFromCurrentState({
@@ -556,7 +557,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			const st = await payload.recoverLocalResourcesFromHandles({ silent: Boolean(opts?.silent) })
 			if (opts?.silent && st && (st.missingHandle || st.permissionDenied)) {
 				payload.pushToast(
-					`有本地资源需要重新授权/绑定：缺少句柄 ${st.missingHandle}，未授权 ${st.permissionDenied}。可手动"加载项目"再选择文件夹绑定。`,
+					t('aiworkflow.runtime.localResourcesNeedAuth', { missingHandle: String(st.missingHandle), permissionDenied: String(st.permissionDenied) }),
 					'warn'
 				)
 			}
@@ -602,10 +603,10 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 
 		if (!opts?.silent)
 			payload.pushToast(
-				`已加载项目：${payload.currentProjectName.value || `#${projectId}`}`,
+				t('aiworkflow.runtime.loadProjectSuccess', { name: payload.currentProjectName.value || `#${projectId}` }),
 				'info'
 			)
-		blueprintLog.append(`已加载项目：${payload.currentProjectName.value || `#${projectId}`}`, {
+		blueprintLog.append(t('aiworkflow.runtime.loadProjectSuccess', { name: payload.currentProjectName.value || `#${projectId}` }), {
 			category: 'operation',
 			level: 'INFO',
 			tag: 'project-load',
@@ -619,18 +620,18 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		const wasUnsavedProject = !payload.currentProjectId.value
 
 		if (wasUnsavedProject) {
-			if (!silent) payload.pushToast('请先通过"新建项目"选择项目文件夹后再保存。', 'warn')
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.saveProjectFirst'), 'warn')
 			return false
 		}
 
 		const nextName = String(nameInput ?? payload.currentProjectName.value ?? '').trim()
 		if (!nextName) {
-			if (!silent) payload.pushToast('请先输入项目名称。', 'warn')
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.enterProjectName'), 'warn')
 			return false
 		}
 
 		if (payload.activeRecoverySession.value) {
-			if (!silent) payload.pushToast('资源恢复中，请等待加载完成后再保存。', 'warn')
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.recoveryInProgress'), 'warn')
 			return false
 		}
 
@@ -643,7 +644,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		try {
 			snapshot = await payload.buildPersistableSnapshotWithOptions({ uploadLocalResources })
 		} catch (err: unknown) {
-			if (!silent) payload.pushToast('保存项目失败：' + getErrorMessage(err), 'error')
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.saveProjectFailed', { error: getErrorMessage(err) }), 'error')
 			return false
 		}
 		const res = await payload.blueprintProjectService.saveProject({
@@ -652,8 +653,8 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			projectId: payload.currentProjectId.value ?? undefined
 		})
 		if (!res.ok) {
-			if (!silent) payload.pushToast('保存项目失败：' + String(res.error || 'unknown'), 'error')
-			blueprintLog.append(`保存项目失败：${String(res.error || 'unknown')}`, {
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }), 'error')
+			blueprintLog.append(t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }), {
 				category: 'operation',
 				level: 'ERROR',
 				tag: 'project-save',
@@ -691,8 +692,8 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 						projectId
 					})
 					if (!second.ok && !silent) {
-						payload.pushToast('迁移后回写项目失败：' + String(second.error || 'unknown'), 'warn')
-						blueprintLog.append('迁移后回写项目失败：' + String(second.error || 'unknown'), {
+						payload.pushToast(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: String(second.error || 'unknown') }), 'warn')
+						blueprintLog.append(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: String(second.error || 'unknown') }), {
 							category: 'operation',
 							level: 'WARN',
 							tag: 'project-save',
@@ -701,15 +702,15 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 					}
 				} catch (err: unknown) {
 					if (!silent) {
-						payload.pushToast('迁移后回写项目失败：' + getErrorMessage(err), 'warn')
+						payload.pushToast(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: getErrorMessage(err) }), 'warn')
 					}
 				}
 			}
 		}
 
 		await payload.refreshProjectList()
-		if (!silent) payload.pushToast(`项目已保存：${payload.currentProjectName.value}`, 'info')
-		blueprintLog.append(`项目已保存：${payload.currentProjectName.value || nextName}`, {
+		if (!silent) payload.pushToast(t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value }), 'info')
+		blueprintLog.append(t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value || nextName }), {
 			category: 'operation',
 			level: 'INFO',
 			tag: 'project-save',
@@ -768,15 +769,15 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		const silent = Boolean(opts?.silent)
 		const pid = Number(payload.currentProjectId.value || 0)
 		if (!Number.isFinite(pid) || pid <= 0) {
-			if (!silent) payload.pushToast('请先加载或创建项目后再执行资源修复。', 'warn')
+			if (!silent) payload.pushToast(t('aiworkflow.runtime.repairAssetsFirst'), 'warn')
 			return { ok: false as const, changed: 0, failed: 0 }
 		}
 		const result = await resolveOrRepairProjectScopedResources(pid, { silent })
 		if (!silent) {
 			if (result.changed > 0) {
-				payload.pushToast(`项目资源修复完成：已更新 ${result.changed} 项。`, 'info')
+				payload.pushToast(t('aiworkflow.toast.resourceFixComplete', { count: result.changed }), 'info')
 			} else {
-				payload.pushToast('项目资源检查完成：未发现需要修复的项。', 'info')
+				payload.pushToast(t('aiworkflow.runtime.resourceCheckComplete'), 'info')
 			}
 		}
 		return { ok: true as const, ...result }

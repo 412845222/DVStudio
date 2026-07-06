@@ -1,0 +1,22 @@
+{
+  "aichat.errors.noSelectedNodes": "当前没有选中节点",
+  "aichat.errors.nodeNotFound": "未找到节点：{nodeId}",
+  "aichat.errors.backendError": "后端错误：{code} {message}",
+  "aichat.errors.requestFailed": "请求失败：{message}",
+  "aichat.errors.animationNoNodes": "动画生成失败：未找到本次生成的节点。",
+  "aichat.errors.animationMultiLayer": "动画生成失败：本次生成的节点分布在多个图层，暂不支持一键编译。",
+  "aichat.errors.animationTimelineExists": "动画生成失败：目标图层已有时间轴数据，为避免覆盖现有关键帧，本次仅保留场景计划 JSON。",
+  "aichat.errors.animationNoLayer": "动画生成失败：找不到目标图层。",
+  "aichat.errors.animationNoTarget": "动画生成失败：未找到可匹配的动画目标节点。",
+  "aichat.errors.saveNoNodes": "保存失败：未找到本次生成的节点。",
+  "aichat.errors.saveMultiLayer": "保存失败：本次生成的节点跨多个图层，暂不支持一键保存。",
+  "aichat.errors.saveNoLayer": "保存失败：找不到目标图层。",
+  "aichat.errors.nodeInsertFailed": "节点插入失败：{error}",
+  "aichat.errors.nodeModifyFailed": "节点修改失败：{error}",
+  "aichat.errors.nodeDeleteFailed": "节点删除失败：{error}",
+  "aichat.errors.filterFailed": "滤镜应用失败：{error}",
+  "aichat.errors.saveFailed": "保存失败：{error}",
+  "aichat.errors.jsonCopyFailed": "场景计划 JSON 复制失败，请检查浏览器剪贴板权限。",
+  "aichat.errors.selfCheckFailed": "自检失败：{code} {message}",
+  "aichat.errors.templateInsertFailed": "模板插入失败：{error}"
+}

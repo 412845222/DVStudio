@@ -52,13 +52,13 @@
 				</div>
 
 				<div v-else class="wf-media-empty">
-					<div class="wf-media-hint">未上传图片资源</div>
-					<div class="wf-media-sub">点击按钮选择文件</div>
+					<div class="wf-media-hint">{{ t('nodes.image.emptyHint') }}</div>
+					<div class="wf-media-sub">{{ t('nodes.image.emptySub') }}</div>
 				</div>
 
 				<div class="wf-media-actions" @pointerdown.stop>
 					<button class="wf-media-btn" type="button" @click.stop="onUploadClick">
-						{{ resourceUrl ? '更换资源' : '上传资源' }}
+						{{ resourceUrl ? t('nodes.image.replaceResource') : t('nodes.image.uploadResource') }}
 					</button>
 					<button
 						v-if="resourceUrl"
@@ -66,7 +66,7 @@
 						type="button"
 						@click.stop="emit('clear-resource')"
 					>
-						清空
+						{{ t('nodes.image.clear') }}
 					</button>
 				</div>
 
@@ -88,7 +88,7 @@
 						type="button"
 						:disabled="!resourceUrl"
 						@click.stop="onPreviewClick"
-						title="原图预览：在 Electron 新窗口查看原图，支持缩放、旋转、红色画笔标记、截图并导出为新节点"
+						:title="t('nodes.image.previewTooltip')"
 					>
 						<svg class="wf-icon" viewBox="0 0 24 24" aria-hidden="true">
 							<path
@@ -101,7 +101,7 @@
 							/>
 							<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
 						</svg>
-						<span>原图</span>
+						<span>{{ t('nodes.image.originalImage') }}</span>
 					</button>
 
 					<div class="wf-res">
@@ -136,6 +136,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { exportWorkflowImageOutputPng } from '../../../aiworkflow/imageOutput'
 import { useAIWorkflowResourceCache } from '../../../views/AIWorkflow/assets/useAIWorkflowResourceCache'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string

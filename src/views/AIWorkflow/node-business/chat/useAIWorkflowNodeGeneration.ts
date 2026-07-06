@@ -2,10 +2,12 @@ import type { Store } from 'vuex'
 import type {
 	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeGenerationTask,
+	WorkflowNode,
 	WorkflowState
 } from '../../../../aiworkflow/types'
 import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../network/ComfyUIBridgeService'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 export type NodeGenerationApiDeps = {
 	store: Store<WorkflowState>
@@ -14,6 +16,9 @@ export type NodeGenerationApiDeps = {
 	resolveBackendFetchUrl?: (raw: string) => string
 	getProjectId?: () => number | null
 	pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	nodeResourceUrl?: (node: any) => string | null
+	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
 	/** Bind produced asset url to the originating node, e.g. as its resource. */
 	bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
 	bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
@@ -49,6 +54,21 @@ export type NodeGenerationApiDepsAny = NodeGenerationApiDeps
 
 const makeTaskId = () =>
 	`node-gen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+class FatalTaskError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'FatalTaskError'
+	}
+}
+
+const throwFatal = (message: string): never => {
+	throw new FatalTaskError(message)
+}
+
+const isFatalError = (err: unknown): boolean => {
+	return err instanceof FatalTaskError
+}
 
 const getComfyService = (deps: NodeGenerationApiDeps) => {
 	if (deps.comfyService) return deps.comfyService
@@ -95,10 +115,104 @@ const appendResult = (
  * The resolved url is also run through `deps.resolveBackendUrl` to ensure
  * any relative / project-internal URLs are resolved correctly.
  */
+const isImageInputAnchor = (anchorId: string): boolean => {
+	const id = String(anchorId || '').trim()
+	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+}
+
+const getNodeEffectiveImageUrl = (
+	node: Record<string, unknown>,
+	state: {
+		resourcesById: Record<string, Record<string, unknown>>
+	},
+	nodeResourceUrl?: (n: any) => string | null
+): string => {
+	const resourceRid = String(node.resourceId ?? '').trim()
+	if (resourceRid) {
+		const res = state.resourcesById[resourceRid]
+		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+		if (resUrl) {
+			console.log('[collectReferenceImages] 从resourceId获取URL:', resUrl)
+			return resUrl
+		}
+	}
+	const imageSettings =
+		typeof node.imageSettings === 'object' && node.imageSettings
+			? (node.imageSettings as Record<string, unknown>)
+			: {}
+	const lastGenerated =
+		typeof imageSettings?.lastGeneratedImageUrl === 'string'
+			? String(imageSettings.lastGeneratedImageUrl).trim()
+			: ''
+	if (lastGenerated) {
+		console.log('[collectReferenceImages] 从lastGeneratedImageUrl获取URL:', lastGenerated)
+		return lastGenerated
+	}
+	const meshySettings =
+		typeof imageSettings.meshyImageSettings === 'object' && imageSettings.meshyImageSettings
+			? (imageSettings.meshyImageSettings as Record<string, unknown>)
+			: undefined
+	if (meshySettings) {
+		const outputSummary =
+			typeof meshySettings.outputSummary === 'object' && meshySettings.outputSummary
+				? (meshySettings.outputSummary as Record<string, unknown>)
+				: {}
+		const preferredUrl = typeof outputSummary.preferredUrl === 'string' ? String(outputSummary.preferredUrl).trim() : ''
+		if (preferredUrl) {
+			console.log('[collectReferenceImages] 从meshyOutputSummary获取URL:', preferredUrl)
+			return preferredUrl
+		}
+	}
+	if (typeof nodeResourceUrl === 'function') {
+		const standardUrl = nodeResourceUrl(node)
+		if (standardUrl) {
+			console.log('[collectReferenceImages] 从nodeResourceUrl获取URL:', standardUrl)
+			return standardUrl
+		}
+	}
+	return ''
+}
+
+const downloadImageAsBlob = async (
+	deps: NodeGenerationApiDeps,
+	candidateUrl: string
+): Promise<Blob | null> => {
+	const fetchUrl =
+		typeof deps.resolveBackendFetchUrl === 'function'
+			? deps.resolveBackendFetchUrl(candidateUrl)
+			: deps.resolveBackendUrl(candidateUrl)
+
+	console.log('[downloadImageAsBlob] 准备下载, candidateUrl:', candidateUrl, 'fetchUrl:', fetchUrl)
+
+	try {
+		let blob: Blob | null = null
+		if (typeof deps.downloadUrlAsBlob === 'function') {
+			console.log('[downloadImageAsBlob] 使用downloadUrlAsBlob下载')
+			blob = await deps.downloadUrlAsBlob(fetchUrl)
+			console.log('[downloadImageAsBlob] downloadUrlAsBlob结果:', blob ? `size=${blob.size}, type=${blob.type}` : 'null')
+		}
+		if (!blob) {
+			console.log('[downloadImageAsBlob] 使用fetch下载')
+			const resp = await fetch(fetchUrl)
+			console.log('[downloadImageAsBlob] fetch响应:', resp.ok, resp.status)
+			if (!resp.ok) return null
+			blob = await resp.blob()
+		}
+		if (!blob || blob.size === 0) {
+			console.warn('[downloadImageAsBlob] blob为空或大小为0')
+			return null
+		}
+		return blob
+	} catch (e) {
+		console.error('[downloadImageAsBlob] 下载图片失败:', e)
+		return null
+	}
+}
+
 const collectReferenceImages = async (
 	deps: NodeGenerationApiDeps,
 	nodeId: string,
-	maxRefs: number = 4
+	maxRefs: number = 5
 ): Promise<Array<{ name: string; blob: Blob }>> => {
 	const state = deps.store.state as {
 		nodesById: Record<string, Record<string, unknown>>
@@ -107,63 +221,72 @@ const collectReferenceImages = async (
 		resourcesById: Record<string, Record<string, unknown>>
 	}
 	const node = state.nodesById[nodeId]
-	if (!node) return []
+	if (!node) {
+		console.warn('[collectReferenceImages] 节点不存在:', nodeId)
+		return []
+	}
 
+	console.log('[collectReferenceImages] 开始收集参考图, nodeId:', nodeId, '总边数:', state.edgeOrder.length)
+
+	const refs: Array<{ name: string; blob: Blob }> = []
+
+	// Step 1: If the current node has its own image, add it as the first reference
+	const selfUrl = getNodeEffectiveImageUrl(node, state, deps.nodeResourceUrl)
+	if (selfUrl && refs.length < maxRefs) {
+		console.log('[collectReferenceImages] 节点自身图片URL:', selfUrl)
+		const blob = await downloadImageAsBlob(deps, selfUrl)
+		if (blob) {
+			const name = `ref-self-${nodeId}-${Date.now()}.png`
+			refs.push({ name, blob })
+			console.log('[collectReferenceImages] 成功添加节点自身参考图:', name, 'size:', blob.size)
+		}
+	}
+
+	// Step 2: Collect images from connected input edges
 	const incoming: Array<Record<string, unknown>> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
-		if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+		const toNodeId = String(edge.toNodeId ?? '')
+		if (toNodeId !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		const isImageAnchor = isImageInputAnchor(toAnchorId)
+		console.log('[collectReferenceImages] 找到入边:', {
+			edgeId,
+			fromNodeId: String(edge.fromNodeId ?? ''),
+			toNodeId,
+			toAnchorId,
+			isImageAnchor
+		})
+		if (!isImageAnchor) continue
+		incoming.push(edge)
 	}
 
-	const refs: Array<{ name: string; blob: Blob }> = []
+	console.log('[collectReferenceImages] 匹配到的图片输入边数量:', incoming.length)
+
 	for (const edge of incoming) {
 		if (refs.length >= maxRefs) break
 		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
-		if (!sourceNode) continue
-
-		const resourceRid = String(sourceNode.resourceId ?? '').trim()
-		let candidateUrl: string = ''
-		if (resourceRid) {
-			const res = state.resourcesById[resourceRid]
-			candidateUrl = typeof res?.url === 'string' ? String(res.url) : ''
-		}
-		if (!candidateUrl) {
-			const imageSettings =
-				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
-					? (sourceNode.imageSettings as Record<string, unknown>)
-					: {}
-			const lastGenerated =
-				typeof imageSettings?.lastGeneratedImageUrl === 'string'
-					? String(imageSettings.lastGeneratedImageUrl)
-					: ''
-			candidateUrl = lastGenerated
-		}
-		if (!candidateUrl) continue
-
-		const fetchUrl =
-			typeof deps.resolveBackendFetchUrl === 'function'
-				? deps.resolveBackendFetchUrl(candidateUrl)
-				: deps.resolveBackendUrl(candidateUrl)
-		try {
-			// In Electron, prefer the main-process download (bypasses CORS).
-			// In the browser, fall back to direct fetch().
-			let blob: Blob | null = null
-			if (typeof deps.downloadUrlAsBlob === 'function') {
-				blob = await deps.downloadUrlAsBlob(fetchUrl)
-			}
-			if (!blob) {
-				const resp = await fetch(fetchUrl)
-				if (!resp.ok) continue
-				blob = await resp.blob()
-			}
-			if (!blob || blob.size === 0) continue
-			const name = `ref-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
-			refs.push({ name, blob })
-		} catch {
+		if (!sourceNode) {
+			console.warn('[collectReferenceImages] 源节点不存在:', String(edge.fromNodeId ?? ''))
 			continue
 		}
+
+		const sourceUrl = getNodeEffectiveImageUrl(sourceNode, state, deps.nodeResourceUrl)
+		if (!sourceUrl) {
+			console.warn('[collectReferenceImages] 无法获取源节点图片URL, fromNodeId:', String(edge.fromNodeId ?? ''))
+			continue
+		}
+
+		const blob = await downloadImageAsBlob(deps, sourceUrl)
+		if (!blob) continue
+
+		const name = `ref-connected-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
+		refs.push({ name, blob })
+		console.log('[collectReferenceImages] 成功添加连接参考图:', name, 'size:', blob.size)
 	}
+
+	console.log('[collectReferenceImages] 最终收集到参考图数量:', refs.length)
 	return refs
 }
 
@@ -185,7 +308,10 @@ const collectReferenceImagesWithUrl = async (
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
-		if (String(edge.toNodeId ?? '') === String(nodeId)) incoming.push(edge)
+		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!isImageInputAnchor(toAnchorId)) continue
+		incoming.push(edge)
 	}
 
 	const refs: Array<{ name: string; blob: Blob; url: string; fromNodeId: string }> = []
@@ -214,16 +340,23 @@ const collectReferenceImagesWithUrl = async (
 		}
 		if (!candidateUrl) {
 			const meshySettings =
-				typeof sourceNode.meshySettings === 'object' && sourceNode.meshySettings
-					? (sourceNode.meshySettings as Record<string, unknown>)
-					: {}
-			const outputSummary =
-				typeof meshySettings?.meshyOutputSummary === 'object' && meshySettings.meshyOutputSummary
-					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
-					: {}
-			const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
-			const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
-			candidateUrl = preferredUrl || thumbnailUrl
+				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
+					? ((sourceNode.imageSettings as Record<string, unknown>).meshyImageSettings as Record<string, unknown> | undefined)
+					: undefined
+			if (meshySettings) {
+				const outputSummary =
+					typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+						? (meshySettings.outputSummary as Record<string, unknown>)
+						: {}
+				const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
+				const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
+				candidateUrl = preferredUrl || thumbnailUrl
+			}
+		}
+		// 优先级4: nodeResourceUrl (标准方法)
+		if (!candidateUrl && typeof deps.nodeResourceUrl === 'function') {
+			const standardUrl = deps.nodeResourceUrl(sourceNode as Record<string, unknown>)
+			if (standardUrl) candidateUrl = standardUrl
 		}
 		if (!candidateUrl) continue
 
@@ -253,13 +386,22 @@ const collectReferenceImagesWithUrl = async (
 
 const normalizeImageModel = (params: Record<string, unknown>) => {
 	const rawModel = String(params?.imageModel ?? params?.model ?? '').trim()
+	// Gemini/NanoBanana 图片生成模型（统一使用Gemini官方API）
+	if (rawModel === 'gemini' || rawModel === 'nanobanana') {
+		const geminiModelVersion = String(
+			params?.geminiImageModelVersion || 
+			params?.nanobananaModelVersion || 
+			'gemini-3.1-flash-image'
+		).trim()
+		return { kind: 'gemini', model: geminiModelVersion }
+	}
+	if (rawModel.startsWith('gemini')) return { kind: 'gemini', model: rawModel }
 	// Meshy 图片生成模型
 	if (rawModel === 'meshy') {
 		const meshyAiModel = String(params?.meshyImageAiModel || 'nano-banana').trim()
 		return { kind: 'meshy', model: meshyAiModel }
 	}
 	if (rawModel.startsWith('jimeng')) return { kind: 'jimeng', model: rawModel }
-	if (rawModel.startsWith('nanobanana')) return { kind: 'nanobanana', model: rawModel }
 	// When user picks 'seedream' as the interface, the actual model ID is in seedreamModelVersion.
 	if (rawModel === 'seedream') {
 		const seedreamVersion = String(params?.seedreamModelVersion ?? '').trim()
@@ -306,8 +448,32 @@ const handleMeshySuccess = async (
 	_taskType: string,
 	taskRes: Extract<MeshyTaskResponse, { ok: true }>
 ) => {
-	const imageUrls = taskRes.imageUrls || []
-	const preferredUrl = taskRes.preferredImageUrl || imageUrls[0] || ''
+	const imageUrls = Array.isArray(taskRes.imageUrls) ? taskRes.imageUrls : []
+	const preferredUrl = String(taskRes.preferredImageUrl || '').trim()
+
+	console.log('[Meshy Poll] 收到任务结果:', {
+		taskId,
+		imageUrlsCount: imageUrls.length,
+		imageUrls: imageUrls,
+		preferredImageUrl: preferredUrl,
+		rawResult: taskRes
+	})
+
+	const urlSet = new Set<string>()
+	const allUrls: string[] = []
+	if (preferredUrl) {
+		urlSet.add(preferredUrl)
+		allUrls.push(preferredUrl)
+	}
+	for (const u of imageUrls) {
+		const us = String(u || '').trim()
+		if (us && !urlSet.has(us)) {
+			urlSet.add(us)
+			allUrls.push(us)
+		}
+	}
+
+	console.log('[Meshy Poll] 去重后allUrls数量:', allUrls.length, 'urls:', allUrls)
 
 	const outputSummary: MeshyOutputSummary = {
 		preferredUrl: '',
@@ -315,55 +481,158 @@ const handleMeshySuccess = async (
 		thumbnailUrl: ''
 	}
 
-	if (preferredUrl) {
-		const resolved = deps.resolveBackendUrl(preferredUrl)
+	let targetNodeId = nodeId
+	let nodeCreated = false
+	let createdNodes: string[] = []
+
+	const state = deps.store.state as {
+		nodesById: Record<string, Record<string, unknown>>
+	}
+	let currentNode = state.nodesById[targetNodeId]
+
+	if (!currentNode && typeof deps.createImageNodeAtCenter === 'function') {
+		const newNodeId = deps.createImageNodeAtCenter(preferredUrl, t('aiworkflow.runtime.meshyResultNodeName'))
+		if (newNodeId) {
+			targetNodeId = newNodeId
+			nodeCreated = true
+			createdNodes.push(newNodeId)
+			currentNode = state.nodesById[targetNodeId]
+			console.log('[Meshy Poll] 目标节点不存在，已在视口中心创建新节点:', newNodeId)
+		}
+	}
+
+	if (!currentNode) {
+		console.error('[Meshy Poll] 无法找到或创建目标节点，任务结果丢失')
+		updateTask(deps, generationTaskId, {
+			status: 'error',
+			statusText: t('aiworkflow.runtime.meshyCannotCreateNode'),
+			progress: 100,
+			finishedAt: Date.now()
+		})
+		return
+	}
+
+	const currentWorldX = Number(currentNode.worldX ?? 0)
+	const currentWorldY = Number(currentNode.worldY ?? 0)
+	const NODE_SPACING = 350
+
+	const currentImgSettings =
+		typeof currentNode.imageSettings === 'object' && currentNode.imageSettings
+			? (currentNode.imageSettings as Record<string, unknown>)
+			: {}
+	const currentMeshySettings =
+		typeof currentImgSettings.meshyImageSettings === 'object' && currentImgSettings.meshyImageSettings
+			? (currentImgSettings.meshyImageSettings as Record<string, unknown>)
+			: {}
+
+	const persistedUrls: string[] = []
+
+	for (let i = 0; i < allUrls.length; i++) {
+		const url = allUrls[i]
+		if (!url) continue
+
+		const resolved = deps.resolveBackendUrl(url)
+		let finalUrl = resolved
 
 		if (typeof deps.persistExternalAssetToProject === 'function') {
-			const fileName = `meshy_${taskId}${String(preferredUrl).match(/\.[^.]+$/)?.[0] || '.png'}`
+			const ext = String(url).match(/\.[^.]+$/)?.[0] || '.png'
+			const fileName = `meshy_${taskId}_${i}${ext}`
 			const persisted = await deps.persistExternalAssetToProject({
 				kind: 'image',
 				name: fileName,
 				sourceUrl: resolved
 			})
 			if (persisted) {
-				outputSummary.preferredUrl = String(persisted.url || resolved)
-				outputSummary.imageUrls = imageUrls.map((u: string) => deps.resolveBackendUrl(u))
+				finalUrl = String(persisted.url || resolved)
 				console.log('[Meshy Poll] 资产已持久化:', {
 					taskId,
-					originalUrl: preferredUrl,
-					persistedUrl: persisted.url,
-					absolutePath: persisted.absolutePath
+					index: i,
+					originalUrl: url,
+					persistedUrl: persisted.url
 				})
 			} else {
-				console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', preferredUrl)
+				console.warn('[Meshy Poll] 资产持久化失败，使用原始URL:', url)
 			}
 		}
 
-		let bound = true
-		if (typeof deps.bindImageResultToNode === 'function') {
-			const bindRet = await deps.bindImageResultToNode(
-				nodeId,
-				outputSummary.preferredUrl || resolved
-			)
-			bound = bindRet !== false
+		persistedUrls.push(finalUrl)
+
+		let bindNodeId = targetNodeId
+		let isNewNode = false
+
+		if (i > 0) {
+			if (typeof deps.createImageNodeAt === 'function') {
+				const newX = currentWorldX + NODE_SPACING * i
+				const newY = currentWorldY
+				const newNodeId = deps.createImageNodeAt(newX, newY, finalUrl, t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) }))
+				if (newNodeId) {
+					bindNodeId = newNodeId
+					isNewNode = true
+					createdNodes.push(newNodeId)
+					console.log('[Meshy Poll] 为额外图片创建新节点:', { index: i, nodeId: newNodeId, x: newX, y: newY })
+				}
+			} else if (typeof deps.createImageNodeAtCenter === 'function') {
+				const newNodeId = deps.createImageNodeAtCenter(finalUrl, t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) }))
+				if (newNodeId) {
+					bindNodeId = newNodeId
+					isNewNode = true
+					createdNodes.push(newNodeId)
+					console.log('[Meshy Poll] 为额外图片在中心创建新节点:', { index: i, nodeId: newNodeId })
+				}
+			}
 		}
-		if (bound) {
-			appendResult(deps, generationTaskId, {
-				kind: 'image',
-				url: outputSummary.preferredUrl || resolved,
-				label: 'Meshy 图片'
-			})
+
+		if (bindNodeId && typeof deps.bindImageResultToNode === 'function') {
+			const bindRet = await deps.bindImageResultToNode(bindNodeId, finalUrl)
+			const bound = bindRet !== false
+			if (bound) {
+				appendResult(deps, generationTaskId, {
+					kind: 'image',
+					url: finalUrl,
+					label: i === 0 ? t('aiworkflow.runtime.meshyImageLabel') : t('aiworkflow.runtime.meshyImageLabelIndexed', { index: String(i + 1) })
+				})
+
+				if (isNewNode) {
+					const newNodeState = state.nodesById[bindNodeId]
+					if (newNodeState) {
+						deps.store.commit('setNodeImageSettings', {
+							nodeId: bindNodeId,
+							imageSettings: {
+								meshyImageSettings: {
+									taskId,
+									taskStatus: 'succeeded',
+									progress: 100,
+									statusText: t('aiworkflow.runtime.meshyImageComplete'),
+									outputSummary: {
+										preferredUrl: finalUrl,
+										imageUrls: [finalUrl],
+										thumbnailUrl: ''
+									}
+								}
+							}
+						})
+					}
+				}
+			}
 		}
 	}
 
+	if (persistedUrls.length > 0) {
+		outputSummary.preferredUrl = persistedUrls[0]
+		outputSummary.imageUrls = persistedUrls
+	}
+
 	deps.store.commit('setNodeImageSettings', {
-		nodeId,
+		nodeId: targetNodeId,
 		imageSettings: {
 			meshyImageSettings: {
+				...currentMeshySettings,
 				taskId,
 				taskStatus: 'succeeded',
 				progress: 100,
-				statusText: 'Meshy 图片生成完成',
+				statusText: nodeCreated || createdNodes.length > 0
+					? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', { count: String(allUrls.length), nodes: String(createdNodes.length) })
+					: t('aiworkflow.runtime.meshyImageComplete'),
 				outputSummary
 			}
 		}
@@ -371,7 +640,9 @@ const handleMeshySuccess = async (
 
 	updateTask(deps, generationTaskId, {
 		status: 'completed',
-		statusText: `Meshy 图片生成完成（共 ${imageUrls.length} 张）`,
+		statusText: nodeCreated || createdNodes.length > 0
+			? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', { count: String(allUrls.length), nodes: String(createdNodes.length) })
+			: t('aiworkflow.runtime.meshyImageCompleteCount', { count: String(allUrls.length) }),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -395,13 +666,13 @@ const handleMeshyTaskStatus = async (
 		appendDetail(
 			deps,
 			generationTaskId,
-			`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
+			t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
 		)
 		console.warn('[Meshy Poll] 轮询失败:', errorDetails)
 
 		if (taskRes.status === 502) {
-			appendDetail(deps, generationTaskId, `502 Bad Gateway - 后端服务可能暂时不可用，将重试`)
-			pushToast(deps, 'Meshy 服务暂时不可用，正在重试...', 'warn')
+			appendDetail(deps, generationTaskId, t('aiworkflow.runtime.poll502Retry'))
+			pushToast(deps, t('aiworkflow.toast.meshyRetryUnavailable'), 'warn')
 		}
 		return PollingAction.CONTINUE
 	}
@@ -413,7 +684,7 @@ const handleMeshyTaskStatus = async (
 	const progressPct = Math.min(95, Math.max(20, progress))
 
 	updateTask(deps, generationTaskId, {
-		statusText: `Meshy ${taskType} ${status}（${progress}%）`,
+		statusText: t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) }),
 		progress: progressPct
 	})
 
@@ -423,12 +694,12 @@ const handleMeshyTaskStatus = async (
 			return PollingAction.STOP
 
 		case 'FAILED': {
-			const errorMsg = String(taskRes.errorMessage || '未知错误')
-			throw new Error(`Meshy 任务失败：${errorMsg}`)
+			const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+			return throwFatal(t('aiworkflow.runtime.meshyTaskFailed', { error: errorMsg }))
 		}
 
 		case 'CANCELED':
-			throw new Error('Meshy 任务已取消')
+			return throwFatal(t('aiworkflow.runtime.meshyTaskCanceled'))
 
 		default:
 			return PollingAction.CONTINUE
@@ -460,7 +731,7 @@ const createPollingController = async <T>(
 			}
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			if (errMsg.includes('失败') || errMsg.includes('取消')) {
+			if (isFatalError(err)) {
 				throw err
 			}
 
@@ -477,14 +748,14 @@ const createPollingController = async <T>(
 			appendDetail(
 				deps,
 				generationTaskId,
-				`轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`
+				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
 			)
 			console.error('[Meshy Poll] 轮询异常:', errorDetails)
 
 			if (consecutiveErrors >= 5) {
 				pushToast(
 					deps,
-					`Meshy 轮询连续失败${consecutiveErrors}次，请检查网络连接或后端服务状态。`,
+					t('aiworkflow.runtime.meshyPollConsecutiveFailures', { count: String(consecutiveErrors) }),
 					'warn'
 				)
 			}
@@ -495,7 +766,7 @@ const createPollingController = async <T>(
 		}
 	}
 
-	throw new Error('Meshy 任务超时')
+	throwFatal(t('aiworkflow.runtime.meshyTaskTimeout'))
 }
 
 /**
@@ -531,7 +802,7 @@ const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerat
 	nodeId: payload.nodeId,
 	nodeType: payload.nodeType,
 	status: 'submitting',
-	statusText: '正在提交任务…',
+	statusText: t('aiworkflow.runtime.submittingTask'),
 	progress: 5,
 	startedAt: Date.now(),
 	results: [],
@@ -552,12 +823,12 @@ export const runNodeGenerationTask = async (
 ): Promise<NodeGenerationResult> => {
 	const node = deps.store.state.nodesById[payload.nodeId]
 	if (!node) {
-		pushToast(deps, '未找到对应节点，无法发起生成任务。', 'error')
-		return { ok: false, error: '未找到对应节点' }
+		pushToast(deps, t('aiworkflow.toast.nodeNotFound'), 'error')
+		return { ok: false, error: t('aiworkflow.runtime.nodeNotFound') }
 	}
 	if (!payload.prompt.trim() && payload.nodeType !== 'model3d') {
-		pushToast(deps, '请先填写提示词再发起生成。', 'warn')
-		return { ok: false, error: '提示词为空' }
+		pushToast(deps, t('aiworkflow.toast.promptRequired'), 'warn')
+		return { ok: false, error: t('aiworkflow.runtime.promptEmpty') }
 	}
 
 	const task = createTask(payload)
@@ -590,13 +861,12 @@ export const runNodeGenerationTask = async (
 				}
 			} else {
 				runModel3dStub(deps, task, payload)
-				return { ok: false, error: '不支持的 3D 生成提供商' }
+				return { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
 			}
 		}
 		return { ok: true, taskType: 'other' }
 	} catch (err: unknown) {
 		const raw = getErrorMessage(err)
-		// 典型的浏览器网络错误（后端未启、CORS 被拒、或断网）给出更明确的中文提示。
 		const looksLikeNetworkError =
 			/Failed to fetch/i.test(raw) ||
 			/NetworkError/i.test(raw) ||
@@ -605,27 +875,27 @@ export const runNodeGenerationTask = async (
 			/Failed to connect/i.test(raw) ||
 			/ECONNREFUSED/i.test(raw)
 		const message = looksLikeNetworkError
-			? `后端不可达（${raw}）。Electron 环境下请使用 IPC 调用，无需 HTTP 后端。`
+			? t('aiworkflow.runtime.backendUnreachable', { error: raw })
 			: raw
 		appendDetail(deps, task.id, message)
 		updateTask(deps, task.id, {
 			status: 'error',
-			statusText: `失败：${message}`,
+			statusText: t('aiworkflow.runtime.failedStatus', { message }),
 			errorMessage: message,
 			finishedAt: Date.now()
 		})
-		pushToast(deps, `${labelForType(payload.nodeType)}生成失败：${message}`, 'error')
+		pushToast(deps, t('aiworkflow.toast.generationFailed', { type: labelForType(payload.nodeType), message }), 'error')
 		return { ok: false, error: message }
 	} finally {
 		deps.store.commit('setNodeChatSubmitting', { submitting: false })
 	}
 }
 
-const labelForType = (t: WorkflowNodeGenerationTask['nodeType']) => {
-	if (t === 'text') return '文本'
-	if (t === 'image') return '图片'
-	if (t === 'video') return '视频'
-	return '3D 模型'
+const labelForType = (nodeType: WorkflowNodeGenerationTask['nodeType']) => {
+	if (nodeType === 'text') return t('aiworkflow.toast.nodeTypeText')
+	if (nodeType === 'image') return t('aiworkflow.toast.nodeTypeImage')
+	if (nodeType === 'video') return t('aiworkflow.toast.nodeTypeVideo')
+	return t('aiworkflow.toast.nodeTypeModel3d')
 }
 
 const runTextTask = async (
@@ -636,10 +906,10 @@ const runTextTask = async (
 	const svc = getComfyService(deps)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: '正在调用文本模型（字节方舟 Doubao）…',
+		statusText: t('aiworkflow.runtime.callingTextModel'),
 		progress: 15
 	})
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	// Default provider is "bytedance" (Doubao). User params may override to "deepseek".
 	const params = payload.params ?? {}
@@ -665,7 +935,7 @@ const runTextTask = async (
 		}
 	}
 	if (refImages.length > 0) {
-		appendDetail(deps, task.id, `参考图数量：${refImages.length}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
 	}
 
 	let accumulated = ''
@@ -691,7 +961,7 @@ const runTextTask = async (
 				if (delta) accumulated += delta
 				updateTask(deps, task.id, {
 					progress: Math.min(75, task.progress + 2),
-					statusText: '文本模型正在生成内容…'
+					statusText: t('aiworkflow.runtime.textModelGenerating')
 				})
 				continue
 			}
@@ -708,8 +978,8 @@ const runTextTask = async (
 	} catch (err: unknown) {
 		// Fallback: attempt simple non-streaming endpoint to keep the node task observable.
 		const fallbackMsg = getErrorMessage(err)
-		appendDetail(deps, task.id, `流式调用失败：${fallbackMsg}`)
-		updateTask(deps, task.id, { status: 'running', statusText: '尝试失败回退…' })
+		appendDetail(deps, task.id, t('aiworkflow.runtime.streamCallFailed', { error: fallbackMsg }))
+		updateTask(deps, task.id, { status: 'running', statusText: t('aiworkflow.runtime.fallbackAttempt') })
 		try {
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
 				content: String(body.content ?? ''),
@@ -724,19 +994,19 @@ const runTextTask = async (
 					: ''
 			if (text) accumulated = text
 		} catch (fallbackErr: unknown) {
-			appendDetail(deps, task.id, `兜底请求失败：${getErrorMessage(fallbackErr)}`)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.fallbackRequestFailed', { error: getErrorMessage(fallbackErr) }))
 			throw err
 		}
 	}
 
 	const finalText = accumulated.trim()
-	if (!finalText) throw new Error('文本模型返回为空')
+	if (!finalText) throw new Error(t('aiworkflow.runtime.textModelEmpty'))
 	appendResult(deps, task.id, { kind: 'text', url: '', label: finalText.slice(0, 80) })
 	if (typeof deps.bindTextResultToNode === 'function')
 		deps.bindTextResultToNode(payload.nodeId, finalText)
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: '文本生成完成',
+		statusText: t('aiworkflow.runtime.textGenerationComplete'),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -752,11 +1022,11 @@ const runImageTask = async (
 	const { kind, model } = normalizeImageModel(params)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在调用图片模型（${kind}）…`,
+		statusText: t('aiworkflow.runtime.callingImageModel', { kind }),
 		progress: 15
 	})
-	appendDetail(deps, task.id, `模型：${model}`)
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -785,8 +1055,8 @@ const runImageTask = async (
 		if (seedreamNegativePrompt) form.set('negativePrompt', seedreamNegativePrompt)
 		if (Number.isFinite(seedreamSeed) && seedreamSeed >= 0) form.set('seed', String(Math.floor(seedreamSeed)))
 
-		appendDetail(deps, task.id, `Seedream 型号：${seedreamModelVersion}`)
-		appendDetail(deps, task.id, `分辨率：${seedreamSize}，宽高比：${seedreamAspectRatio}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeedreamModel', { model: seedreamModelVersion }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: seedreamSize, ratio: seedreamAspectRatio }))
 	} else {
 		if (typeof params.aspectRatio === 'string' && params.aspectRatio)
 			form.set('aspectRatio', params.aspectRatio)
@@ -808,107 +1078,401 @@ const runImageTask = async (
 		const meshyPoseMode = String(params?.meshyPoseMode || '').trim()
 		const meshyGenerateMultiView = Boolean(params?.meshyGenerateMultiView)
 		const meshyNegativePrompt = String(params?.meshyNegativePrompt || '').trim()
-		const meshySeed = Number(params?.meshySeed ?? 0)
-		const meshyQuantity = Number(params?.meshyOutputImageCount ?? 1)
+		const meshyOutputImageCount = Number(params?.meshyOutputImageCount ?? 1)
+		const meshySeed = Number(params?.meshySeed ?? -1)
 		const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
 
-		appendDetail(deps, task.id, `Meshy 模式：${taskType}`)
-		appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
+		console.log('[Meshy Image - Node Chat] 原始参数:', {
+			paramsMeshyImageAiModel: params?.meshyImageAiModel,
+			paramsMeshyAspectRatio: params?.meshyAspectRatio,
+			paramsAspectRatio: params?.aspectRatio,
+			paramsMeshyNegativePrompt: params?.meshyNegativePrompt,
+			paramsMeshyOutputImageCount: params?.meshyOutputImageCount,
+			paramsMeshySeed: params?.meshySeed,
+			meshyAiModel,
+			meshyAspectRatio,
+			meshyPoseMode,
+			meshyGenerateMultiView,
+			meshyNegativePrompt,
+			meshyOutputImageCount,
+			meshySeed,
+			hasRefImages,
+			refCount: refs.length,
+			taskType,
+			nodeId: payload.nodeId
+		})
+
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailMeshyMode', { mode: taskType }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: meshyGenerateMultiView ? 'Multi-View (1:1)' : meshyAspectRatio }))
+		if (meshyPoseMode) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
+		if (meshyGenerateMultiView) appendDetail(deps, task.id, t('aiworkflow.runtime.multiViewEnabled'))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(meshyOutputImageCount) }))
+		if (meshyNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: meshyNegativePrompt.slice(0, 80) }))
+		if (Number.isFinite(meshySeed) && meshySeed >= 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
+		if (hasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) }))
 
 		try {
-			// 构建 Meshy API 请求体
+			// 构建 Meshy API 请求体 - 严格按照官方文档
+			// 官方文档：https://docs.meshy.ai/zh/api/text-to-image
+			// 官方文档：https://docs.meshy.ai/zh/api/image-to-image
 			const meshyPayload: Record<string, unknown> = {
 				mode: taskType,
 				ai_model: meshyAiModel,
-				prompt: payload.prompt,
-				negative_prompt: meshyNegativePrompt,
-				output_image_count: Math.min(4, Math.max(1, Math.floor(meshyQuantity)))
+				prompt: payload.prompt
 			}
 
-			if (!hasRefImages) {
-				// text-to-image 参数
-				if (meshyAspectRatio) meshyPayload.aspect_ratio = meshyAspectRatio
-				if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
-				if (meshyGenerateMultiView) meshyPayload.generate_multi_view = true
-			}
-
-			if (Number.isFinite(meshySeed) && meshySeed > 0) {
-				meshyPayload.seed = meshySeed
-			}
-
-			updateTask(deps, task.id, { statusText: `正在创建 Meshy ${taskType} 任务…`, progress: 20 })
-
-			// 如果有参考图，需要先上传或转换为 URL
-			if (hasRefImages) {
-				const refForm = new FormData()
-				for (const key of Object.keys(meshyPayload)) {
-					refForm.set(key, String(meshyPayload[key]))
-				}
-				for (const ref of refs) {
-					refForm.append('refImages', ref.blob, ref.name)
-				}
-				const createRes = await svc.meshyGenerateImage(refForm)
-				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
-				}
-				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
-
-				// 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						imageGenerationSource: 'meshy',
-						meshyImageSettings: {
-							taskId,
-							taskStatus: 'pending',
-							taskFamily: taskType,
-							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
-						}
-					}
-				})
-
-				// 轮询任务状态
-				await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
+			// 根据模式和参数互斥规则传递参数
+			// text-to-image 和 image-to-image 都支持：aspect_ratio, generate_multi_view, pose_mode, negative_prompt, output_image_count, seed
+			//   注意：generate_multi_view 为 true 时不能设置 aspect_ratio，且强制返回4张图片
+			if (meshyPoseMode) meshyPayload.pose_mode = meshyPoseMode
+			if (meshyGenerateMultiView) {
+				meshyPayload.generate_multi_view = true
+				meshyPayload.output_image_count = 4
 			} else {
-				const createRes = await svc.meshyGenerate(meshyPayload)
-				if (!createRes.ok) {
-					throw new Error(String(createRes.error || 'Meshy 任务创建失败'))
+				meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
+				console.log(`[Meshy Image - Node Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
+				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
 				}
-				const taskId = String(createRes.taskId || '').trim()
-				if (!taskId) throw new Error('Meshy 返回空任务 ID')
-				appendDetail(deps, task.id, `任务已创建：${taskId}`)
-
-				// 标记图片节点的 imageGenerationSource 为 meshy
-				deps.store.commit('setNodeImageSettings', {
-					nodeId: payload.nodeId,
-					imageSettings: {
-						imageGenerationSource: 'meshy',
-						meshyImageSettings: {
-							taskId,
-							taskStatus: 'pending',
-							taskFamily: taskType,
-							progress: 20,
-							statusText: `Meshy ${taskType} 任务已创建`
-						}
-					}
-				})
-
-				// 轮询任务状态
-				await pollMeshyTaskStatus(deps, svc, taskId, task.id, payload.nodeId, taskType)
 			}
+
+			// 通用参数（两种模式都支持）
+			if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
+			if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+				meshyPayload.seed = Math.floor(meshySeed)
+			}
+
+			console.log('[Meshy Image] 提交参数:', JSON.stringify(meshyPayload, null, 2))
+
+			// 记录完整提交参数（用于任务面板显示，不发送给API）
+			const submittedParams = {
+				model: meshyAiModel,
+				mode: taskType,
+				aspectRatio: meshyGenerateMultiView ? '1:1 (Multi-View)' : meshyAspectRatio,
+				poseMode: meshyPoseMode || 'None',
+				generateMultiView: meshyGenerateMultiView,
+				negativePrompt: meshyNegativePrompt || 'None',
+				outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
+				seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
+				referenceImageCount: hasRefImages ? refs.length : 0,
+				submittedAt: new Date().toISOString()
+			}
+
+			// 将submittedParams添加到请求payload中，确保后端能记录
+			meshyPayload.submittedParams = submittedParams
+
+			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.creatingMeshyTask', { taskType }), progress: 20 })
+
+			// 关键修复：统一使用FormData + meshyGenerateImage路径处理所有情况（文生图/图生图）
+			// 确保参数类型转换一致（布尔值、数字、JSON对象都经过正确处理）
+			const form = new FormData()
+			for (const key of Object.keys(meshyPayload)) {
+				const value = meshyPayload[key]
+				if (typeof value === 'object' && value !== null) {
+					form.set(key, JSON.stringify(value))
+				} else if (typeof value === 'boolean') {
+					form.set(key, value ? 'true' : 'false')
+				} else if (typeof value === 'number') {
+					form.set(key, String(value))
+				} else {
+					form.set(key, String(value))
+				}
+			}
+			for (const ref of refs) {
+				form.append('refImages', ref.blob, ref.name)
+			}
+
+			console.log('[Meshy Image - Node Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refs.length)
+			const createRes = await svc.meshyGenerateImage(form)
+			if (!createRes.ok) {
+				throw new Error(String(createRes.error || t('aiworkflow.runtime.meshyTaskCreateFailed')))
+			}
+			const newTaskId = String(createRes.taskId || '').trim()
+			if (!newTaskId) throw new Error(t('aiworkflow.runtime.meshyEmptyTaskId'))
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId: newTaskId }))
+
+			// 标记图片节点的 imageGenerationSource 为 meshy，使任务面板能找到该节点
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'meshy',
+					meshyImageSettings: {
+						taskId: newTaskId,
+						taskStatus: 'pending',
+						taskFamily: taskType,
+						progress: 20,
+						statusText: t('aiworkflow.runtime.meshyTaskCreatedStatus', { taskType }),
+						submittedParams
+					}
+				}
+			})
+
+			// 轮询任务状态
+			await pollMeshyTaskStatus(deps, svc, newTaskId, task.id, payload.nodeId, taskType)
 
 			return
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			pushToast(deps, `Meshy 生成失败：${errMsg}`, 'error')
+			pushToast(deps, t('aiworkflow.toast.meshyGenerateFailed', { error: errMsg }), 'error')
 			updateTask(deps, task.id, {
 				status: 'error',
-				statusText: `失败：${errMsg}`,
+				statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
 				progress: 0,
 				finishedAt: Date.now()
+			})
+			throw err
+		}
+	}
+
+	// Gemini/NanoBanana 图片生成任务（流式SSE，使用官方API）
+	if (kind === 'gemini') {
+		const geminiModelVersion = model
+		const geminiImageSize = String(params?.geminiImageSize || params?.imageSize || '2K').trim()
+		const geminiAspectRatio = String(
+			params?.geminiAspectRatio || 
+			params?.aspectRatio || 
+			'1:1'
+		).trim()
+		const geminiQuantity = Math.max(1, Math.min(4, Number(params?.geminiQuantity ?? params?.quantity ?? 1)))
+		const geminiThinkingLevel = String(params?.geminiThinkingLevel || params?.thinkingLevel || 'minimal').trim()
+		const geminiNegativePrompt = String(params?.geminiNegativePrompt || params?.negativePrompt || '').trim()
+
+		console.log('[Gemini Image - Node Chat] 原始参数:', {
+			geminiModelVersion,
+			geminiImageSize,
+			geminiAspectRatio,
+			geminiQuantity,
+			geminiThinkingLevel,
+			geminiNegativePrompt,
+			hasRefImages,
+			refCount: refs.length,
+			nodeId: payload.nodeId,
+			projectId: imgProjectId
+		})
+
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: geminiImageSize, ratio: geminiAspectRatio }))
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(geminiQuantity) }))
+		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
+		if (hasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) }))
+
+		try {
+			// 将参考图片转换为base64 data URI
+			const refImages: string[] = []
+			for (const ref of refs) {
+				try {
+					const dataUri = await blobToBase64DataUri(ref.blob)
+					if (dataUri) refImages.push(dataUri)
+				} catch (refErr) {
+					console.warn('[Gemini Image] 参考图片转换失败:', refErr)
+				}
+			}
+
+			// 构造提交给后端的参数
+			const geminiPayload: Record<string, unknown> = {
+				prompt: payload.prompt,
+				model: geminiModelVersion,
+				modelId: geminiModelVersion,
+				imageSize: geminiImageSize,
+				image_size: geminiImageSize,
+				aspectRatio: geminiAspectRatio,
+				aspect_ratio: geminiAspectRatio,
+				numImages: geminiQuantity,
+				num_images: geminiQuantity,
+				quantity: geminiQuantity,
+				thinkingLevel: geminiThinkingLevel,
+				thinking_level: geminiThinkingLevel,
+				negativePrompt: geminiNegativePrompt,
+				negative_prompt: geminiNegativePrompt,
+				refImages: refImages,
+				reference_images: refImages,
+				projectId: imgProjectId,
+				nodeId: payload.nodeId
+			}
+
+			// 记录完整提交参数（用于任务面板显示）
+			const submittedParams = {
+				model: geminiModelVersion,
+				imageSize: geminiImageSize,
+				aspectRatio: geminiAspectRatio,
+				numImages: geminiQuantity,
+				thinkingLevel: geminiThinkingLevel,
+				negativePrompt: geminiNegativePrompt || 'None',
+				referenceImageCount: refImages.length,
+				submittedAt: new Date().toISOString()
+			}
+
+			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.callingGeminiApi'), progress: 20 })
+
+			// 标记图片节点的 imageGenerationSource 为 gemini
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'gemini',
+					geminiImageSettings: {
+						taskStatus: 'submitting',
+						progress: 20,
+						statusText: t('aiworkflow.runtime.geminiTaskSubmitting'),
+						submittedParams
+					}
+				}
+			})
+
+			// 调用Gemini图片生成流式接口
+			const state = deps.store.state as {
+				nodesById: Record<string, Record<string, unknown>>
+			}
+			const sourceNode = state.nodesById[payload.nodeId]
+			const sourceWorldX = Number(sourceNode?.worldX ?? 0)
+			const sourceWorldY = Number(sourceNode?.worldY ?? 0)
+			const NODE_SPACING = 350
+
+			let produced = 0
+			let targetNodeId = payload.nodeId
+			const createdNodes: string[] = []
+
+			for await (const ev of svc.geminiImageGenerateStream(geminiPayload)) {
+				if (ev.type === 'done') break
+				if (ev.type === 'error') {
+					const message = String(ev.error?.message ?? 'unknown')
+					throw new Error(message)
+				}
+				const message = ev.message as Record<string, unknown>
+				if (message?.type === 'agentToUi/chatMessage') {
+					const msgPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const obj: Record<string, unknown> | null = (() => {
+						try {
+							const raw = String(msgPayload.content ?? '')
+							return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+						} catch {
+							return null
+						}
+					})()
+					if (obj) {
+						// 优先使用dwebUrl，其次是imageUrl
+						let sourceUrl = String(obj.dwebUrl || obj.imageUrl || '').trim()
+						if (!sourceUrl) continue
+
+						let bindNodeId = targetNodeId
+						let isNewNode = false
+
+						if (produced > 0) {
+							if (typeof deps.createImageNodeAt === 'function') {
+								const newX = sourceWorldX + NODE_SPACING * produced
+								const newY = sourceWorldY
+								const newNodeId = deps.createImageNodeAt(newX, newY, sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
+							} else if (typeof deps.createImageNodeAtCenter === 'function') {
+								const newNodeId = deps.createImageNodeAtCenter(sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
+							}
+						}
+
+						let bound = true
+						if (typeof deps.bindImageResultToNode === 'function') {
+							const bindRet = await deps.bindImageResultToNode(bindNodeId, sourceUrl)
+							bound = bindRet !== false
+						}
+						if (!bound) {
+							appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+							continue
+						}
+						const resolved = deps.resolveBackendUrl(sourceUrl)
+						appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+						
+						if (isNewNode) {
+							deps.store.commit('setNodeImageSettings', {
+								nodeId: bindNodeId,
+								imageSettings: {
+									imageGenerationSource: 'gemini',
+									geminiImageSettings: {
+										taskStatus: 'completed',
+										progress: 100,
+										statusText: t('tasks.gemini.statusCompleted'),
+										imageUrls: [sourceUrl],
+										thumbnailUrl: sourceUrl
+									}
+								}
+							})
+						}
+
+						produced += 1
+						updateTask(deps, task.id, {
+							status: 'running',
+							statusText: t('aiworkflow.runtime.imagesReceived', { count: String(produced) }),
+							progress: Math.min(95, 40 + produced * 12)
+						})
+					}
+					continue
+				}
+				if (message?.type === 'agentToUi/taskStatus') {
+					const statusPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const line = String(statusPayload.message ?? statusPayload.phase ?? '')
+					if (line) {
+						appendDetail(deps, task.id, line)
+						updateTask(deps, task.id, {
+							statusText: line,
+							progress: Number(statusPayload.progress) || task.progress
+						})
+					}
+					continue
+				}
+				if (message?.type === 'agentToUi/error') {
+					const errPayload =
+						typeof message.payload === 'object' && message.payload
+							? (message.payload as Record<string, unknown>)
+							: {}
+					const line = String(errPayload.message ?? 'unknown')
+					throw new Error(line)
+				}
+			}
+
+			if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
+			updateTask(deps, task.id, {
+				status: 'completed',
+				statusText: createdNodes.length > 0
+					? t('aiworkflow.runtime.geminiImageCompleteWithNewNodes', { count: String(produced), nodes: String(createdNodes.length) })
+					: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
+				progress: 100,
+				finishedAt: Date.now()
+			})
+
+			return
+		} catch (err: unknown) {
+			const errMsg = getErrorMessage(err)
+			pushToast(deps, t('aiworkflow.toast.geminiGenerateFailed', { error: errMsg }), 'error')
+			updateTask(deps, task.id, {
+				status: 'error',
+				statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
+				progress: 0,
+				finishedAt: Date.now()
+			})
+			deps.store.commit('setNodeImageSettings', {
+				nodeId: payload.nodeId,
+				imageSettings: {
+					imageGenerationSource: 'gemini',
+					geminiImageSettings: {
+						taskStatus: 'failed',
+						progress: 0,
+						statusText: errMsg,
+						errorMessage: errMsg
+					}
+				}
 			})
 			throw err
 		}
@@ -956,15 +1520,15 @@ const runImageTask = async (
 					bound = bindRet !== false
 				}
 				if (!bound) {
-					appendDetail(deps, task.id, '图片结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+					appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
 					continue
 				}
 				const resolved = deps.resolveBackendUrl(sourceUrl)
-				appendResult(deps, task.id, { kind: 'image', url: resolved, label: `图 ${produced + 1}` })
+				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 				produced += 1
 				updateTask(deps, task.id, {
 					status: 'running',
-					statusText: `已接收图片 ${produced} 张`,
+					statusText: t('aiworkflow.runtime.imagesReceived', { count: String(produced) }),
 					progress: Math.min(95, 40 + produced * 12)
 				})
 			}
@@ -989,10 +1553,10 @@ const runImageTask = async (
 		}
 	}
 
-	if (produced === 0) throw new Error('未接收到图片结果，请检查 API 配置与提示词')
+	if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: `图片生成完成（共 ${produced} 张）`,
+		statusText: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -1008,11 +1572,11 @@ const runVideoTask = async (
 	const { kind, model } = normalizeVideoModel(params)
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在调用视频模型（${kind}）…`,
+		statusText: t('aiworkflow.runtime.callingVideoModel', { kind }),
 		progress: 20
 	})
-	appendDetail(deps, task.id, `模型：${model}`)
-	appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -1088,15 +1652,15 @@ const runVideoTask = async (
 						bound = bindRet !== false
 					}
 					if (!bound) {
-						appendDetail(deps, task.id, '视频结果已返回，但导入本地资产失败，已跳过远程地址渲染。')
+						appendDetail(deps, task.id, t('aiworkflow.runtime.videoImportFailed'))
 						continue
 					}
-					appendResult(deps, task.id, { kind: 'video', url, label: '视频结果' })
+					appendResult(deps, task.id, { kind: 'video', url, label: t('aiworkflow.runtime.videoResultLabel') })
 					produced += 1
 				}
 				updateTask(deps, task.id, {
 					status: produced > 0 ? 'completed' : 'running',
-					statusText: downloadStatus || (produced > 0 ? '视频结果已就绪' : '任务处理中…'),
+					statusText: downloadStatus || (produced > 0 ? t('aiworkflow.runtime.videoResultReady') : t('aiworkflow.runtime.taskProcessing')),
 					progress,
 					...(produced > 0 ? { finishedAt: Date.now() } : {})
 				})
@@ -1129,10 +1693,10 @@ const runVideoTask = async (
 		}
 	}
 
-	if (produced === 0) throw new Error('未接收到视频结果，请检查 API 配置与提示词')
+	if (produced === 0) throw new Error(t('aiworkflow.runtime.noVideosReceived'))
 	updateTask(deps, task.id, {
 		status: 'completed',
-		statusText: '视频生成完成',
+		statusText: t('aiworkflow.runtime.videoGenerationComplete'),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -1163,7 +1727,7 @@ const pollMeshy3DTaskStatus = async (
 				appendDetail(
 					deps,
 					generationTaskId,
-					`轮询失败（状态码: ${taskRes.status}）：${taskRes.error}`
+					t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
 				)
 				console.warn('[Meshy 3D Poll] 轮询失败:', {
 					status: taskRes.status,
@@ -1180,7 +1744,7 @@ const pollMeshy3DTaskStatus = async (
 			const progress = Number(taskRes.progress ?? 0)
 			const progressPct = status === 'SUCCEEDED' ? 100 : Math.min(99, Math.max(10, progress))
 
-			const statusText = `Meshy 3D ${taskMode} ${status}（${progress}%）`
+			const statusText = t('aiworkflow.runtime.meshy3dTaskStatus', { taskMode, status, progress: String(progress) })
 
 			updateTask(deps, generationTaskId, {
 				statusText,
@@ -1238,7 +1802,7 @@ const pollMeshy3DTaskStatus = async (
 				}
 
 				if (!finalModelUrl) {
-					throw new Error('Meshy 任务成功但未返回模型 URL')
+					return throwFatal(t('aiworkflow.runtime.meshyNoModelUrl'))
 				}
 
 				const resolvedUrl = deps.resolveBackendUrl(finalModelUrl)
@@ -1285,7 +1849,7 @@ const pollMeshy3DTaskStatus = async (
 					appendResult(deps, generationTaskId, {
 						kind: 'model3d',
 						url: persistedUrl,
-						label: `Meshy 3D 模型 (${finalFormat})`
+						label: t('aiworkflow.runtime.meshy3dModelLabel', { format: finalFormat })
 					})
 				}
 
@@ -1294,7 +1858,7 @@ const pollMeshy3DTaskStatus = async (
 					appendResult(deps, generationTaskId, {
 						kind: 'image',
 						url: resolvedThumb,
-						label: '模型预览图'
+						label: t('aiworkflow.runtime.modelPreviewLabel')
 					})
 				}
 
@@ -1314,11 +1878,11 @@ const pollMeshy3DTaskStatus = async (
 							taskFamily: taskMode,
 							progress: 100,
 							statusText: fetchSucceeded
-								? 'Meshy 3D 模型生成完成'
-								: 'Meshy 3D 模型生成完成，但拉取失败',
+								? t('aiworkflow.runtime.meshy3dComplete')
+								: t('aiworkflow.runtime.meshy3dCompleteFetchFailed'),
 							errorMessage: fetchSucceeded
 								? ''
-								: '模型文件拉取失败，请点击重试或在任务面板中手动拉取',
+								: t('aiworkflow.runtime.meshy3dFetchFailedMessage'),
 							outputSummary: {
 								preferredUrl: persistedUrl,
 								assetUrl: persistedUrl,
@@ -1332,8 +1896,8 @@ const pollMeshy3DTaskStatus = async (
 				updateTask(deps, generationTaskId, {
 					status: fetchSucceeded ? 'completed' : 'completed',
 					statusText: fetchSucceeded
-						? `Meshy 3D 模型生成完成`
-						: `Meshy 3D 模型生成完成，但拉取失败`,
+						? t('aiworkflow.runtime.meshy3dComplete')
+						: t('aiworkflow.runtime.meshy3dCompleteFetchFailed'),
 					progress: 100,
 					finishedAt: Date.now()
 				})
@@ -1341,16 +1905,16 @@ const pollMeshy3DTaskStatus = async (
 			}
 
 			if (status === 'FAILED') {
-				const errorMsg = String(taskRes.errorMessage || '未知错误')
-				throw new Error(`Meshy 3D 任务失败：${errorMsg}`)
+				const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
+				return throwFatal(t('aiworkflow.runtime.meshy3dTaskFailed', { error: errorMsg }))
 			}
 
 			if (status === 'CANCELED') {
-				throw new Error('Meshy 3D 任务已取消')
+				return throwFatal(t('aiworkflow.runtime.meshy3dTaskCanceled'))
 			}
 		} catch (err: unknown) {
 			const errMsg = getErrorMessage(err)
-			if (errMsg.includes('失败') || errMsg.includes('取消') || errMsg.includes('未返回模型 URL')) {
+			if (isFatalError(err)) {
 				throw err
 			}
 
@@ -1358,7 +1922,7 @@ const pollMeshy3DTaskStatus = async (
 			appendDetail(
 				deps,
 				generationTaskId,
-				`轮询异常（第${i + 1}次，连续${consecutiveErrors}次）：${errMsg}`
+				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
 			)
 			console.error('[Meshy 3D Poll] 轮询异常:', {
 				message: errMsg,
@@ -1369,12 +1933,12 @@ const pollMeshy3DTaskStatus = async (
 			})
 
 			if (consecutiveErrors >= 10) {
-				throw new Error(`Meshy 3D 任务轮询连续失败 ${consecutiveErrors} 次，任务中止`)
+				return throwFatal(t('aiworkflow.runtime.meshy3dConsecutiveFailures', { count: String(consecutiveErrors) }))
 			}
 		}
 	}
 
-	throw new Error('Meshy 3D 任务超时（超过最大轮询次数）')
+	return throwFatal(t('aiworkflow.runtime.meshy3dTaskTimeout'))
 }
 
 const blobToBase64DataUri = async (blob: Blob): Promise<string> => {
@@ -1545,13 +2109,13 @@ const runModel3dMeshyTask = async (
 
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: `正在创建 Meshy 3D 任务（${meshyMode}）…`,
+		statusText: t('aiworkflow.runtime.creatingMeshy3dTask', { mode: meshyMode }),
 		progress: 10
 	})
-	appendDetail(deps, task.id, `模式：${meshyMode}`)
-	if (!isPostProcessMode) appendDetail(deps, task.id, `AI 模型：${meshyAiModel}`)
-	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, `输出格式：${meshyOutputFormat}`)
-	if (payload.prompt) appendDetail(deps, task.id, `提示词：${payload.prompt.slice(0, 120)}`)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailMode', { mode: meshyMode }))
+	if (!isPostProcessMode) appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
+	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputFormat', { format: meshyOutputFormat }))
+	if (payload.prompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
 	try {
 		const meshyPayload: Record<string, unknown> = {
@@ -1600,14 +2164,14 @@ const runModel3dMeshyTask = async (
 			refImages = await collectReferenceImages(deps, payload.nodeId, maxRefs)
 
 			if (refImages.length === 0 && meshyMode === 'image-to-3d') {
-				throw new Error('图生3D 模式需要连接至少一张图片输入')
+				throw new Error(t('aiworkflow.runtime.imageTo3dNeedImage'))
 			}
 
 			if (refImages.length === 0 && meshyMode === 'multi-image-to-3d') {
-				throw new Error('多图生3D 模式需要连接图片输入（1-4 张）')
+				throw new Error(t('aiworkflow.runtime.multiImageTo3dNeedImages'))
 			}
 
-			appendDetail(deps, task.id, `参考图片数量：${refImages.length}`)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
 
 			for (const ref of refImages) {
 				try {
@@ -1619,7 +2183,7 @@ const runModel3dMeshyTask = async (
 			}
 
 			if (imageDataUris.length === 0) {
-				throw new Error('参考图片读取失败，请检查图片是否有效')
+				throw new Error(t('aiworkflow.runtime.refImageReadFailed'))
 			}
 
 			if (meshyMode === 'image-to-3d') {
@@ -1645,7 +2209,10 @@ const runModel3dMeshyTask = async (
 					const dataUri = await blobToBase64DataUri(selectedRef.blob)
 					if (dataUri) {
 						meshyPayload.image_style_url = dataUri
-						appendDetail(deps, task.id, `已使用${selectedNodeId ? '选择的' : '连接的'}图片作为纹理风格参考`)
+						appendDetail(deps, task.id, selectedNodeId
+							? t('aiworkflow.runtime.usingSelectedImageStyle')
+							: t('aiworkflow.runtime.usingConnectedImageStyle')
+						)
 					}
 				} catch {
 					// skip
@@ -1657,27 +2224,32 @@ const runModel3dMeshyTask = async (
 			const modelInput = await resolveModel3DInput(deps, payload.nodeId)
 			if (modelInput?.inputTaskId) {
 				meshyPayload.input_task_id = modelInput.inputTaskId
-				appendDetail(deps, task.id, `上游任务ID：${modelInput.inputTaskId}`)
+				appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
 			} else if (modelInput?.modelUrl) {
 				meshyPayload.model_url = modelInput.modelUrl
-				appendDetail(deps, task.id, `输入模型URL已就绪`)
+				appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 			} else {
-				throw new Error(`${meshyMode === 'remesh' ? '重建网格' : meshyMode === 'retexture' ? '重新纹理' : 'UV Unwrap'} 需要连接上游 3D 模型输入或已有模型数据`)
+				const modeLabel = meshyMode === 'remesh'
+					? t('aiworkflow.runtime.modeRemesh')
+					: meshyMode === 'retexture'
+						? t('aiworkflow.runtime.modeRetexture')
+						: t('aiworkflow.runtime.modeUvUnwrap')
+				throw new Error(t('aiworkflow.runtime.postProcessNeedInput', { mode: modeLabel }))
 			}
 		}
 
-		updateTask(deps, task.id, { statusText: `正在提交 Meshy 3D 任务…`, progress: 15 })
+		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingMeshy3dTask'), progress: 15 })
 
 		const createRes = await svc.meshyGenerate(meshyPayload)
 
 		if (!createRes.ok) {
-			throw new Error(String(createRes.error || 'Meshy 3D 任务创建失败'))
+			throw new Error(String(createRes.error || t('aiworkflow.runtime.meshy3dTaskCreateFailed')))
 		}
 
 		const meshyTaskId = String(createRes.taskId || '').trim()
-		if (!meshyTaskId) throw new Error('Meshy 返回空任务 ID')
+		if (!meshyTaskId) throw new Error(t('aiworkflow.runtime.meshyEmptyTaskId'))
 
-		appendDetail(deps, task.id, `任务已创建：${meshyTaskId}`)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId: meshyTaskId }))
 
 		deps.store.commit('setNodeModel3DSettings', {
 			nodeId: payload.nodeId,
@@ -1688,7 +2260,7 @@ const runModel3dMeshyTask = async (
 					taskStatus: 'pending',
 					taskFamily: meshyMode,
 					progress: 15,
-					statusText: `Meshy 3D ${meshyMode} 任务已创建`,
+					statusText: t('aiworkflow.runtime.meshy3dTaskCreatedStatus', { mode: meshyMode }),
 					imageCount: refImages.length,
 					imageUrls: imageDataUris,
 					prompt: payload.prompt
@@ -1698,7 +2270,7 @@ const runModel3dMeshyTask = async (
 
 		updateTask(deps, task.id, {
 			status: 'running',
-			statusText: `Meshy 3D 任务已提交，等待处理…`,
+			statusText: t('aiworkflow.runtime.meshy3dTaskSubmitted'),
 			progress: 15
 		})
 
@@ -1716,10 +2288,10 @@ const runModel3dMeshyTask = async (
 		return { ok: true, taskId: meshyTaskId, mode: meshyMode }
 	} catch (err: unknown) {
 		const errMsg = getErrorMessage(err)
-		pushToast(deps, `Meshy 3D 生成失败：${errMsg}`, 'error')
+		pushToast(deps, t('aiworkflow.runtime.meshy3dGenerateFailed', { error: errMsg }), 'error')
 		updateTask(deps, task.id, {
 			status: 'error',
-			statusText: `失败：${errMsg}`,
+			statusText: t('aiworkflow.runtime.failedStatus', { message: errMsg }),
 			progress: 0,
 			finishedAt: Date.now()
 		})
@@ -1735,15 +2307,15 @@ const runModel3dStub = (
 	appendDetail(
 		deps,
 		task.id,
-		'3D 模型节点暂不直接调用字节方舟接口，请使用 Meshy 节点或本地 ComfyUI 流程。'
+		t('aiworkflow.runtime.model3dStubDetail')
 	)
 	updateTask(deps, task.id, {
 		status: 'error',
-		statusText: '当前节点类型尚未支持直接提交',
-		errorMessage: '3D 生成请使用 Meshy 节点',
+		statusText: t('aiworkflow.runtime.model3dStubStatus'),
+		errorMessage: t('aiworkflow.runtime.model3dStubError'),
 		finishedAt: Date.now()
 	})
-	pushToast(deps, `节点「${labelForType(payload.nodeType)}」尚未在此环境中接入`, 'warn')
+	pushToast(deps, t('aiworkflow.runtime.nodeNotAvailable', { type: labelForType(payload.nodeType) }), 'warn')
 }
 
 export const getLatestTaskForNode = (

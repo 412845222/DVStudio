@@ -2,7 +2,9 @@
 import ModalDialog from './ModalDialog.vue'
 import { getAppInfo, openHomepage, openRepoUrl } from '../../network/appInfo'
 import { useAboutDialog } from './aboutDialogStore'
+import { useI18n } from '../../i18n'
 
+const { t } = useI18n()
 const { aboutOpen, closeAboutDialog } = useAboutDialog()
 const info = getAppInfo()
 
@@ -18,9 +20,9 @@ function onClose() {
 <template>
 	<ModalDialog
 		:open="aboutOpen"
-		:title="`关于 ${info.appName}`"
-		:confirm-text="'确定'"
-		:close-text="'关闭'"
+		:title="t('about.title', { appName: info.appName })"
+		:confirm-text="t('about.confirm')"
+		:close-text="t('about.close')"
 		@confirm="handleConfirm"
 		@close="onClose"
 	>
@@ -29,27 +31,27 @@ function onClose() {
 				<img class="about-logo" src="/favicon.ico" alt="" aria-hidden="true" />
 				<div class="about-title-wrap">
 					<div class="about-app-name">{{ info.appName }}</div>
-					<div class="about-version">版本 {{ info.appVersion }}</div>
+					<div class="about-version">{{ t('about.version', { version: info.appVersion }) }}</div>
 				</div>
 			</div>
 
 			<div class="about-info-section">
 				<div class="about-info-row">
-					<span class="about-info-label">许可证</span>
+					<span class="about-info-label">{{ t('about.license') }}</span>
 					<span class="about-license-badge">{{ info.license }}</span>
 				</div>
 				<div class="about-info-row">
-					<span class="about-info-label">版权</span>
+					<span class="about-info-label">{{ t('about.copyright') }}</span>
 					<span class="about-info-value">{{ info.copyright }}</span>
 				</div>
 			</div>
 
 			<div class="about-links">
 				<button class="about-link-btn" type="button" @click="openHomepage()">
-					官方网站
+					{{ t('about.officialWebsite') }}
 				</button>
 				<button class="about-link-btn" type="button" @click="openRepoUrl()">
-					GitHub 仓库
+					{{ t('about.githubRepo') }}
 				</button>
 			</div>
 		</div>

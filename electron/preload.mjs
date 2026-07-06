@@ -287,6 +287,13 @@ contextBridge.exposeInMainWorld('dweb', {
 				getPlaintext: (payload) => invoke('dweb:localdb:apiKeys:getPlaintext', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
 			},
+			templates: {
+				list: () => invoke('dweb:localdb:aiworkflowTemplates:list'),
+				getBlob: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getBlob', payload || {}),
+				getCover: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getCover', payload || {}),
+				save: (payload) => invoke('dweb:localdb:aiworkflowTemplates:save', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:aiworkflowTemplates:remove', payload || {}),
+			},
 		},
 		projectAssets: {
 			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {}),
@@ -410,6 +417,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			refCache: (payload) => invoke('dweb:third-party:seedream:ref-cache', payload || {}),
 			generateStream: (payload) => createIpcStreamGenerator('dweb:third-party:seedream:generate', payload || {}),
 		},
+		gemini: {
+			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:gemini:image:generate', payload || {}),
+		},
 		jimeng: {
 			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:image:generate', payload || {}),
 			videoGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:video:generate', payload || {}),
@@ -429,6 +439,16 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
+	},
+	// ===== Gemini 图片生成任务 =====
+	gemini: {
+		health: () => invoke('dweb:gemini:health'),
+		getTask: (payload) => invoke('dweb:gemini:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:gemini:list-tasks', payload || {}),
+		cancel: (payload) => invoke('dweb:gemini:cancel', payload || {}),
+		deleteTask: (payload) => invoke('dweb:gemini:delete', payload || {}),
+		clearCompleted: (payload) => invoke('dweb:gemini:clear-completed', payload || {}),
+		getImagePath: (payload) => invoke('dweb:gemini:get-image-path', payload || {}),
 	},
 	// ===== Seedance 视频生成 =====
 	seedance: {

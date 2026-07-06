@@ -14,8 +14,8 @@
 				@dblclick="onHeaderDoubleClick"
 			>
 				<div class="wf-meshy-panel-title-wrap">
-					<div class="wf-meshy-panel-title">Meshy 任务中心</div>
-					<div class="wf-meshy-panel-subtitle">后端镜像优先 · 失败时回退本地节点状态</div>
+					<div class="wf-meshy-panel-title">{{ t('tasks.meshy.title') }}</div>
+					<div class="wf-meshy-panel-subtitle">{{ t('tasks.meshy.subtitle') }}</div>
 				</div>
 				<div
 					v-if="balanceText"
@@ -23,7 +23,7 @@
 					:class="`is-${balanceTone}`"
 					:title="balanceDetail || balanceText"
 				>
-					<span class="wf-meshy-panel-balance-label">余额</span>
+					<span class="wf-meshy-panel-balance-label">{{ t('tasks.meshy.balance') }}</span>
 					<span class="wf-meshy-panel-balance-value">{{ balanceText }}</span>
 				</div>
 				<div class="wf-meshy-panel-actions" @pointerdown.stop>
@@ -32,10 +32,10 @@
 						type="button"
 						:title="
 							targetFilter === 'all'
-								? '筛选：全部'
+								? t('tasks.meshy.filterAll')
 								: targetFilter === '3d'
-									? '筛选：3D'
-									: '筛选：图像'
+									? t('tasks.meshy.filter3d')
+									: t('tasks.meshy.filterImage')
 						"
 						@click="cycleTargetFilter"
 					>
@@ -82,7 +82,7 @@
 						v-model.trim="searchText"
 						class="wf-meshy-search"
 						type="text"
-						placeholder="按任务族 / 提示词 / 节点标题搜索"
+						:placeholder="t('tasks.meshy.searchPlaceholder')"
 					/>
 					<button
 						class="wf-meshy-panel-btn"
@@ -90,13 +90,13 @@
 						:disabled="refreshBusy"
 						@click="emit('refresh')"
 					>
-						{{ refreshBusy ? '同步中...' : '同步后端' }}
+						{{ refreshBusy ? t('tasks.meshy.syncing') : t('tasks.meshy.syncBackend') }}
 					</button>
-					<div class="wf-meshy-panel-stats">共 {{ visibleTaskCount }} 条</div>
+					<div class="wf-meshy-panel-stats">{{ t('tasks.meshy.totalCount', { count: visibleTaskCount }) }}</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-meshy-panel-empty">
-					暂无 Meshy 任务。先在蓝图里创建或运行 Meshy 节点。
+					{{ t('tasks.meshy.empty') }}
 				</div>
 
 				<div v-else class="wf-meshy-task-list">
@@ -109,7 +109,7 @@
 							<div class="wf-meshy-task-card-top">
 								<div class="wf-meshy-task-chip-row">
 									<span class="wf-meshy-task-chip">
-										{{ task.target === 'image' ? '图像' : '3D' }}
+										{{ task.target === 'image' ? t('tasks.meshy.typeImage') : t('tasks.meshy.type3d') }}
 									</span>
 									<span class="wf-meshy-task-chip subtle">{{ task.familyLabel }}</span>
 									<span v-if="relationLabelForTask(task)" class="wf-meshy-task-chip subtle">
@@ -132,13 +132,13 @@
 										class="wf-meshy-task-related-row"
 									>
 										<span v-if="task.hasTextureChild" class="wf-meshy-task-related-chip">
-											已贴图
+											{{ t('tasks.meshy.hasTexture') }}
 										</span>
 										<span v-if="task.hasRiggingChild" class="wf-meshy-task-related-chip">
-											已绑骨
+											{{ t('tasks.meshy.hasRigging') }}
 										</span>
 										<span v-if="task.hasAnimationChild" class="wf-meshy-task-related-chip">
-											已动作
+											{{ t('tasks.meshy.hasAnimation') }}
 										</span>
 									</div>
 								</div>
@@ -171,7 +171,7 @@
 										type="button"
 										@click="onPreviewTask(task.id)"
 									>
-										查看详情
+										{{ t('tasks.meshy.viewDetails') }}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn"
@@ -179,7 +179,7 @@
 										:disabled="isBusy(task, 'refresh')"
 										@click="onTaskAction(task, 'refresh')"
 									>
-										{{ isBusy(task, 'refresh') ? '刷新中...' : '刷新状态' }}
+										{{ isBusy(task, 'refresh') ? t('tasks.meshy.refreshing') : t('tasks.meshy.refreshStatus') }}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn"
@@ -187,7 +187,7 @@
 										:disabled="isBusy(task, 'import-output')"
 										@click="onTaskAction(task, 'import-output')"
 									>
-										{{ isBusy(task, 'import-output') ? '拉取中...' : '拉取产物' }}
+										{{ isBusy(task, 'import-output') ? t('tasks.meshy.pulling') : t('tasks.meshy.pullArtifacts') }}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn"
@@ -195,7 +195,7 @@
 										:disabled="isBusy(task, 'stop')"
 										@click="onTaskAction(task, 'stop')"
 									>
-										{{ isBusy(task, 'stop') ? '停止中...' : '停止任务' }}
+										{{ isBusy(task, 'stop') ? t('tasks.meshy.stopping') : t('tasks.meshy.stopTask') }}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn danger"
@@ -203,7 +203,7 @@
 										:disabled="isBusy(task, 'delete')"
 										@click="onTaskAction(task, 'delete')"
 									>
-										{{ isBusy(task, 'delete') ? '删除中...' : '删除任务' }}
+										{{ isBusy(task, 'delete') ? t('tasks.meshy.deleting') : t('tasks.meshy.deleteTask') }}
 									</button>
 								</div>
 							</div>
@@ -244,7 +244,7 @@
 												type="button"
 												@click="onPreviewTask(child.id)"
 											>
-												详情
+												{{ t('tasks.meshy.details') }}
 											</button>
 											<button
 												class="wf-meshy-task-preview-btn"
@@ -252,7 +252,7 @@
 												:disabled="isBusy(child, 'refresh')"
 												@click="onTaskAction(child, 'refresh')"
 											>
-												刷新
+												{{ t('tasks.meshy.refresh') }}
 											</button>
 											<button
 												class="wf-meshy-task-preview-btn"
@@ -260,7 +260,7 @@
 												:disabled="isBusy(child, 'import-output')"
 												@click="onTaskAction(child, 'import-output')"
 											>
-												拉取
+												{{ t('tasks.meshy.pull') }}
 											</button>
 											<button
 												class="wf-meshy-task-preview-btn"
@@ -268,7 +268,7 @@
 												:disabled="isBusy(child, 'stop')"
 												@click="onTaskAction(child, 'stop')"
 											>
-												停止
+												{{ t('tasks.meshy.stop') }}
 											</button>
 											<button
 												class="wf-meshy-task-preview-btn danger"
@@ -276,7 +276,7 @@
 												:disabled="isBusy(child, 'delete')"
 												@click="onTaskAction(child, 'delete')"
 											>
-												删除
+												{{ t('tasks.meshy.delete') }}
 											</button>
 										</div>
 									</div>
@@ -300,11 +300,11 @@
 						<div class="wf-meshy-task-detail-header">
 							<div class="wf-meshy-task-detail-title-wrap">
 								<div class="wf-meshy-task-detail-title">
-									{{ detailTask?.title || 'Meshy 任务详情' }}
+									{{ detailTask?.title || t('tasks.meshy.detailTitle') }}
 								</div>
 								<div class="wf-meshy-task-detail-subtitle">
-									{{ detailTask?.familyLabel || 'Meshy 任务' }} ·
-									{{ detailTask?.statusLabel || '读取中' }}
+									{{ detailTask?.familyLabel || t('tasks.meshy.detailSubtitle') }} ·
+									{{ detailTask?.statusLabel || t('tasks.meshy.loading') }}
 								</div>
 							</div>
 							<div class="wf-meshy-task-action-row">
@@ -314,7 +314,7 @@
 									:disabled="!detailTask?.taskId || detailLoading"
 									@click="onDetailAction('refresh')"
 								>
-									刷新状态
+									{{ t('tasks.meshy.refreshStatus') }}
 								</button>
 								<button
 									class="wf-meshy-task-preview-btn"
@@ -322,7 +322,7 @@
 									:disabled="!detailTask?.taskId"
 									@click="onDetailAction('import-output')"
 								>
-									拉取产物
+									{{ t('tasks.meshy.pullArtifacts') }}
 								</button>
 								<button
 									class="wf-meshy-task-preview-btn"
@@ -330,7 +330,7 @@
 									:disabled="!detailTask?.taskId"
 									@click="onDetailAction('stop')"
 								>
-									停止任务
+									{{ t('tasks.meshy.stopTask') }}
 								</button>
 								<button
 									class="wf-meshy-task-preview-btn danger"
@@ -338,71 +338,107 @@
 									:disabled="!detailTask?.taskId"
 									@click="onDetailAction('delete')"
 								>
-									删除任务
+									{{ t('tasks.meshy.deleteTask') }}
 								</button>
 								<button class="wf-meshy-panel-btn danger" type="button" @click="closeDetail">
-									关闭
+									{{ t('common.close') }}
 								</button>
 							</div>
 						</div>
 
-						<div v-if="detailLoading" class="wf-meshy-task-detail-loading">正在读取任务详情...</div>
+						<div v-if="detailLoading" class="wf-meshy-task-detail-loading">{{ t('tasks.meshy.loadingDetails') }}</div>
 						<div v-else-if="detailTask" class="wf-meshy-task-detail-body">
 							<div class="wf-meshy-task-detail-grid">
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">任务 ID</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.taskId') }}</div>
 									<div class="wf-meshy-task-detail-value monospace">
-										{{ detailTask.taskId || '未写入' }}
+										{{ detailTask.taskId || t('tasks.meshy.notWritten') }}
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">来源</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.source') }}</div>
 									<div class="wf-meshy-task-detail-value">
-										{{ detailTask.sourceLabel || '本地节点' }}
+										{{ detailTask.sourceLabel || t('tasks.meshy.localNode') }}
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">链路</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.chain') }}</div>
 									<div class="wf-meshy-task-detail-value">
 										{{ detailTask.targetLabel }}
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">图片输入数</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.imageInputCount') }}</div>
 									<div class="wf-meshy-task-detail-value">
 										{{ detailTask.imageCount ?? 0 }}
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">创建时间</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.createdAt') }}</div>
 									<div class="wf-meshy-task-detail-value">
 										{{ detailTask.createdAtLabel || '-' }}
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">更新时间</div>
+									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.updatedAt') }}</div>
 									<div class="wf-meshy-task-detail-value">
 										{{ detailTask.updatedAtLabel || '-' }}
+									</div>
+								</div>
+								<div v-if="detailTask.aiModel" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">AI 模型</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										{{ detailTask.aiModel }}
+									</div>
+								</div>
+								<div v-if="detailTask.aspectRatio" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">宽高比</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										{{ detailTask.aspectRatio }}
+									</div>
+								</div>
+								<div v-if="detailTask.outputCount" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">输出数量</div>
+									<div class="wf-meshy-task-detail-value">
+										{{ detailTask.outputCount }} 张
+									</div>
+								</div>
+								<div v-if="detailTask.poseMode" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">姿态模式</div>
+									<div class="wf-meshy-task-detail-value">
+										{{ detailTask.poseMode }}
+									</div>
+								</div>
+								<div v-if="detailTask.generateMultiView" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">多视图</div>
+									<div class="wf-meshy-task-detail-value highlight">
+										已启用
+									</div>
+								</div>
+								<div v-if="detailTask.seed != null" class="wf-meshy-task-detail-card">
+									<div class="wf-meshy-task-detail-label">随机种子</div>
+									<div class="wf-meshy-task-detail-value monospace">
+										{{ detailTask.seed }}
 									</div>
 								</div>
 							</div>
 
 							<div v-if="detailTask.prompt" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">提示词</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.prompt') }}</div>
 								<div class="wf-meshy-task-detail-block">{{ detailTask.prompt }}</div>
 							</div>
 							<div v-if="detailTask.negativePrompt" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">负向提示词</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.negativePrompt') }}</div>
 								<div class="wf-meshy-task-detail-block">
 									{{ detailTask.negativePrompt }}
 								</div>
 							</div>
 							<div v-if="detailTask.statusText" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">状态说明</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.statusDesc') }}</div>
 								<div class="wf-meshy-task-detail-block">{{ detailTask.statusText }}</div>
 							</div>
 							<div v-if="detailTask.errorMessage" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">错误信息</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.errorMessage') }}</div>
 								<div class="wf-meshy-task-detail-block error">
 									{{ detailTask.errorMessage }}
 								</div>
@@ -411,32 +447,32 @@
 								v-if="detailTask.preferredModelUrl || detailTask.assetUrl || detailTask.assetPath"
 								class="wf-meshy-task-detail-section"
 							>
-								<div class="wf-meshy-task-detail-label">产物</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.artifacts') }}</div>
 								<div class="wf-meshy-task-detail-links">
 									<div
 										v-if="detailTask.preferredModelUrl"
 										class="wf-meshy-task-detail-block monospace"
 									>
-										远端优选：{{ detailTask.preferredModelUrl }}
+										{{ t('tasks.meshy.remotePreferred') }}{{ detailTask.preferredModelUrl }}
 									</div>
 									<div v-if="detailTask.assetUrl" class="wf-meshy-task-detail-block monospace">
-										本地镜像 URL：{{ detailTask.assetUrl }}
+										{{ t('tasks.meshy.localMirrorUrl') }}{{ detailTask.assetUrl }}
 									</div>
 									<div v-if="detailTask.assetPath" class="wf-meshy-task-detail-block monospace">
-										本地镜像路径：{{ detailTask.assetPath }}
+										{{ t('tasks.meshy.localMirrorPath') }}{{ detailTask.assetPath }}
 									</div>
 								</div>
 							</div>
 							<div v-if="detailRequestJson" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">请求载荷</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.requestPayload') }}</div>
 								<pre class="wf-meshy-task-detail-code">{{ detailRequestJson }}</pre>
 							</div>
 							<div v-if="detailResponseJson" class="wf-meshy-task-detail-section">
-								<div class="wf-meshy-task-detail-label">响应载荷</div>
+								<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.responsePayload') }}</div>
 								<pre class="wf-meshy-task-detail-code">{{ detailResponseJson }}</pre>
 							</div>
 						</div>
-						<div v-else class="wf-meshy-task-detail-empty">当前任务暂无可展示的详情。</div>
+						<div v-else class="wf-meshy-task-detail-empty">{{ t('tasks.meshy.noDetails') }}</div>
 					</div>
 				</div>
 			</div>
@@ -479,6 +515,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 export type MeshyTaskPanelItem = {
 	id: string
@@ -534,6 +573,12 @@ export type MeshyTaskPanelDetail = {
 	sourceLabel?: string
 	requestPayload?: Record<string, unknown>
 	responsePayload?: Record<string, unknown>
+	aiModel?: string
+	aspectRatio?: string
+	outputCount?: number
+	poseMode?: string
+	generateMultiView?: boolean
+	seed?: number | string
 }
 
 export type MeshyTaskPanelAction = 'refresh' | 'stop' | 'delete' | 'import-output'
@@ -728,7 +773,7 @@ const visibleTaskCount = computed(() =>
 )
 
 const sortModeTitle = computed(() =>
-	sortMode.value === 'date-desc' ? '排序：日期（新→旧）' : '排序：日期（旧→新）'
+	sortMode.value === 'date-desc' ? t('tasks.meshy.sortDesc') : t('tasks.meshy.sortAsc')
 )
 const detailTask = computed(() => props.detailTask ?? null)
 const detailVisible = computed(() => !!openedDetailTaskId.value)
@@ -754,21 +799,21 @@ const detailResponseJson = computed(() => {
 
 const relationLabelForTask = (task: MeshyTaskPanelItem) => {
 	const value = String(task.effectiveRelationKind ?? task.relationKind ?? '').trim()
-	if (value === 'texture') return '贴图任务'
-	if (value === 'rigging') return '绑骨任务'
-	if (value === 'animation') return '动作任务'
-	if (value === 'remesh') return '重拓扑任务'
-	if (value === 'uv-unwrap') return 'UV展开任务'
-	if (value === 'model') return '主模型'
+	if (value === 'texture') return t('tasks.meshy.relation.texture')
+	if (value === 'rigging') return t('tasks.meshy.relation.rigging')
+	if (value === 'animation') return t('tasks.meshy.relation.animation')
+	if (value === 'remesh') return t('tasks.meshy.relation.remesh')
+	if (value === 'uv-unwrap') return t('tasks.meshy.relation.uvUnwrap')
+	if (value === 'model') return t('tasks.meshy.relation.model')
 	return ''
 }
 
 const rootFootnoteForTask = (task: MeshyTaskPanelItem) => {
 	const effective = String(task.effectiveRelationKind ?? task.relationKind ?? 'model').trim()
-	if (effective === 'texture') return '拖拽到蓝图会创建带贴图状态的 Meshy 节点'
-	if (effective === 'rigging') return '拖拽到蓝图会创建带绑骨状态的 Meshy 节点'
-	if (effective === 'animation') return '拖拽到蓝图会创建带动作状态的 Meshy 节点'
-	return '拖拽到蓝图可创建带完整状态的 Meshy 节点'
+	if (effective === 'texture') return t('tasks.meshy.footnote.texture')
+	if (effective === 'rigging') return t('tasks.meshy.footnote.rigging')
+	if (effective === 'animation') return t('tasks.meshy.footnote.animation')
+	return t('tasks.meshy.footnote.model')
 }
 
 const cycleSortMode = () => {
@@ -1605,6 +1650,11 @@ onBeforeUnmount(() => {
 .wf-meshy-task-detail-block.monospace,
 .wf-meshy-task-detail-code {
 	font-family: Consolas, 'Courier New', monospace;
+}
+
+.wf-meshy-task-detail-value.highlight {
+	color: #9ed2ff;
+	font-weight: 500;
 }
 
 .wf-meshy-task-detail-section {

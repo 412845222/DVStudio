@@ -1,4 +1,5 @@
 import type { WorkflowNode, WorkflowSceneDecomposeOutput, WorkflowEdge, WorkflowState, WorkflowAnchorSpec } from '../../../../aiworkflow/types'
+import { t } from '../../../../i18n'
 
 export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 	store: { commit: (mutation: string, payload?: unknown) => void; state: WorkflowState }
@@ -154,9 +155,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				sceneLayoutNodeId = createNode({
 					worldX: targetX,
 					worldY: targetY,
-					title: '场景布局预览',
+					title: t('aiworkflow.runtime.sceneLayoutPreviewTitle'),
 					type: 'scene-layout',
-					alias: '场景布局预览'
+					alias: t('aiworkflow.runtime.sceneLayoutPreviewTitle')
 				})
 				created = !!sceneLayoutNodeId
 				if (sceneLayoutNodeId) createdNodeIds.push(sceneLayoutNodeId)
@@ -192,7 +193,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				options.store.commit('setNodeSceneLayoutSettings', {
 					nodeId: sceneLayoutNodeId,
 					sceneLayoutSettings: {
-						message: '等待场景 JSON 输入。'
+						message: t('aiworkflow.runtime.waitingForSceneJson')
 					}
 				})
 			}
@@ -340,9 +341,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const imageNodeId = createNode({
 				worldX: columnCenterX(0),
 				worldY: currentY,
-				title: buildNodeTitle(output, '拆解图片'),
+				title: buildNodeTitle(output, t('aiworkflow.runtime.decomposeImageTitle')),
 				type: 'image',
-				alias: buildNodeAlias(output, '拆解图')
+				alias: buildNodeAlias(output, t('aiworkflow.runtime.decomposeImageAlias'))
 			})
 			if (!imageNodeId) continue
 			// 输出锚点已归一化：所有下游节点统一从场景拆解节点的 out-main 锚点连出
@@ -360,9 +361,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const imagePromptNodeId = createNode({
 				worldX: columnCenterX(1),
 				worldY: currentY,
-				title: buildNodeTitle(output, '图像 Prompt'),
+				title: buildNodeTitle(output, t('aiworkflow.runtime.imagePromptTitle')),
 				type: 'text',
-				alias: buildNodeAlias(output, '图像Prompt')
+				alias: buildNodeAlias(output, t('aiworkflow.runtime.imagePromptAlias'))
 			})
 			if (!imagePromptNodeId) continue
 			options.store.commit('upsertNode', {
@@ -378,9 +379,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const generatedImageNodeId = createNode({
 				worldX: columnCenterX(2),
 				worldY: currentY,
-				title: buildNodeTitle(output, '生成图像'),
+				title: buildNodeTitle(output, t('aiworkflow.runtime.generatedImageTitle')),
 				type: 'image',
-				alias: buildNodeAlias(output, '生成图像')
+				alias: buildNodeAlias(output, t('aiworkflow.runtime.generatedImageAlias'))
 			})
 			if (!generatedImageNodeId) continue
 			// 连接图像Prompt输出到生成图像节点
@@ -411,9 +412,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const modelPromptNodeId = createNode({
 				worldX: columnCenterX(3),
 				worldY: currentY,
-				title: buildNodeTitle(output, '3D Prompt'),
+				title: buildNodeTitle(output, t('aiworkflow.runtime.modelPromptTitle')),
 				type: 'text',
-				alias: buildNodeAlias(output, '3DPrompt')
+				alias: buildNodeAlias(output, t('aiworkflow.runtime.modelPromptAlias'))
 			})
 			if (!modelPromptNodeId) continue
 			options.store.commit('upsertNode', {
@@ -429,9 +430,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			const model3dNodeId = createNode({
 				worldX: columnCenterX(4),
 				worldY: currentY,
-				title: buildNodeTitle(output, '3D 模型'),
+				title: buildNodeTitle(output, t('aiworkflow.runtime.model3dTitle')),
 				type: 'model3d',
-				alias: buildNodeAlias(output, '3D模型')
+				alias: buildNodeAlias(output, t('aiworkflow.runtime.model3dAlias'))
 			})
 			if (!model3dNodeId) continue
 			// 配置3D模型节点为Meshy模式

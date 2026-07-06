@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 
 type ReuseRecordConfirmState = {
 	nodeId: string
@@ -100,9 +101,9 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	const reuseRecordConfirm = ref<ReuseRecordConfirmState | null>(null)
 
 	const formatReuseRecordTime = (value?: number) => {
-		const t = Number(value)
-		if (!Number.isFinite(t) || t <= 0) return '未知'
-		return new Date(t).toLocaleString()
+		const ts = Number(value)
+		if (!Number.isFinite(ts) || ts <= 0) return t('aiworkflow.runtime.unknown')
+		return new Date(ts).toLocaleString()
 	}
 
 	const stopComfyUIPoll = (nodeId: string) => {
@@ -134,13 +135,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	const deriveRunStateFromJob = (job: JobStatus): RunState => {
 		const status = String(job?.status ?? '').toLowerCase()
 		if (status === 'not_found' || status === 'missing')
-			return { runStatus: 'idle', progress: 0, text: '任务不存在' }
-		if (status === 'pending') return { runStatus: 'running', progress: 10, text: '排队中…' }
-		if (status === 'in_progress') return { runStatus: 'running', progress: 50, text: '执行中…' }
-		if (status === 'completed') return { runStatus: 'completed', progress: 100, text: '已完成' }
-		if (status === 'failed') return { runStatus: 'failed', progress: 100, text: '失败' }
-		if (status === 'cancelled') return { runStatus: 'cancelled', progress: 100, text: '已取消' }
-		return { runStatus: 'running', progress: 30, text: '运行中…' }
+			return { runStatus: 'idle', progress: 0, text: t('nodes.comfyui.jobNotFound') }
+		if (status === 'pending') return { runStatus: 'running', progress: 10, text: t('nodes.comfyui.pending') }
+		if (status === 'in_progress') return { runStatus: 'running', progress: 50, text: t('nodes.comfyui.inProgress') }
+		if (status === 'completed') return { runStatus: 'completed', progress: 100, text: t('nodes.comfyui.completed') }
+		if (status === 'failed') return { runStatus: 'failed', progress: 100, text: t('nodes.comfyui.failed') }
+		if (status === 'cancelled') return { runStatus: 'cancelled', progress: 100, text: t('nodes.comfyui.cancelled') }
+		return { runStatus: 'running', progress: 30, text: t('nodes.comfyui.running') }
 	}
 
 	const resetComfyNodeToIdle = (
@@ -185,7 +186,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				const jr = await payload.comfyService.job(baseUrl, promptId)
 				if (!jr.ok) {
 					if (isLikelyJobMissing(jr)) {
-						resetComfyNodeToIdle(nodeId, 'ComfyUI 任务不存在（可能已重启），已停止轮询。', 'warn')
+						resetComfyNodeToIdle(nodeId, t('nodes.comfyui.jobMissingRestarted'), 'warn')
 						return
 					}
 					const nextCount = Number(comfyPollErrorCounts.get(nodeId) ?? 0) + 1
@@ -193,7 +194,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					if (nextCount >= 4) {
 						resetComfyNodeToIdle(
 							nodeId,
-							'ComfyUI 状态连续获取失败，已停止轮询，请重新运行。',
+							t('nodes.comfyui.pollingStopped'),
 							'warn'
 						)
 						return
@@ -202,7 +203,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						nodeId,
 						comfyuiSettings: {
 							runStatus: 'running',
-							statusText: '状态获取失败',
+							statusText: t('nodes.comfyui.statusFetchFailed'),
 							lastUpdateAt: Date.now()
 						}
 					})
@@ -212,13 +213,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				comfyPollErrorCounts.delete(nodeId)
 				const job = normalizeJobFromResult(jr.result, promptId)
 				if (!job) {
-					resetComfyNodeToIdle(nodeId, 'ComfyUI 未找到该任务，已停止轮询。', 'warn')
+					resetComfyNodeToIdle(nodeId, t('nodes.comfyui.jobNotFoundStopped'), 'warn')
 					return
 				}
 
 				const next = deriveRunStateFromJob(job)
 				if (next.runStatus === 'idle') {
-					resetComfyNodeToIdle(nodeId, 'ComfyUI 任务已不存在，状态已重置。', 'warn')
+					resetComfyNodeToIdle(nodeId, t('nodes.comfyui.jobGoneReset'), 'warn')
 					return
 				}
 
@@ -226,7 +227,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					? Number(job.outputs_count)
 					: null
 				const suffix =
-					outputsCount != null && next.runStatus === 'completed' ? `（产物 ${outputsCount}）` : ''
+					outputsCount != null && next.runStatus === 'completed' ? t('nodes.comfyui.outputsCount', { count: String(outputsCount) }) : ''
 				payload.store.commit('setNodeComfyUISettings', {
 					nodeId,
 					comfyuiSettings: {
@@ -250,10 +251,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							const localizedOutputs = Array.isArray(dispatchRes?.outputs)
 								? dispatchRes.outputs
 								: []
-							const runningText =
-								next.runStatus === 'running'
-									? `${next.text}（已入库 ${localizedOutputs.length}/${media.length}）`
-									: `已完成（已入库 ${localizedOutputs.length}/${media.length}）`
+							const runningText = t('nodes.comfyui.importProgress', {
+									status: next.text,
+									imported: String(localizedOutputs.length),
+									total: String(media.length)
+								})
 							payload.store.commit('setNodeComfyUISettings', {
 								nodeId,
 								comfyuiSettings: {
@@ -275,7 +277,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 									comfyuiSettings: {
 										runStatus: 'completed',
 										progress: 100,
-										statusText: `已完成（产物 ${media.length}）`,
+										statusText: t('nodes.comfyui.completedWithOutputs', { count: String(media.length) }),
 										lastUpdateAt: Date.now()
 									}
 								})
@@ -300,14 +302,14 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						if (derivedTerminalStatus === 'completed') {
 							if (terminalAlerts.length) {
 								payload.pushToast(
-									`任务完成，但有 ${terminalAlerts.length} 条输出分发警告。`,
+									t('nodes.comfyui.completedWithWarnings', { count: String(terminalAlerts.length) }),
 									'warn'
 								)
 							}
 						} else if (derivedTerminalStatus === 'failed') {
-							payload.pushToast('任务失败，请检查 ComfyUI 日志或工作流配置。', 'warn')
+							payload.pushToast(t('aiworkflow.toast.comfyTaskFailed'), 'warn')
 						} else if (derivedTerminalStatus === 'cancelled') {
-							payload.pushToast('任务已取消。', 'warn')
+							payload.pushToast(t('aiworkflow.toast.comfyTaskCancelled'), 'warn')
 						}
 					}
 					stopComfyUIPoll(nodeId)
@@ -344,7 +346,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			const resource = resourceRecord as ComfyResource | undefined
 			if (!resource) continue
 			if (resource.kind !== 'image') {
-				payload.pushToast('当前仅支持图片输入资源', 'warn')
+				payload.pushToast(t('aiworkflow.toast.comfyImageOnly'), 'warn')
 				continue
 			}
 			const url = String(resource.url ?? '').trim()
@@ -366,7 +368,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			comfyuiSettings: {
 				runStatus: 'idle',
 				progress: 0,
-				statusText: '已取消复用 Django 记录',
+				statusText: t('nodes.comfyui.reuseRecordCancelled'),
 				lastUpdateAt: Date.now()
 			}
 		})
@@ -392,11 +394,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 		if (!node || node.type !== 'comfyui') return
 		if (!baseUrl) {
-			payload.pushToast('请先填写 ComfyUI 地址', 'warn')
+			payload.pushToast(t('aiworkflow.toast.comfyAddressRequired'), 'warn')
 			return
 		}
 		if (!workflowPath) {
-			payload.pushToast('请先选择工作流', 'warn')
+			payload.pushToast(t('aiworkflow.toast.comfyWorkflowRequired'), 'warn')
 			return
 		}
 
@@ -408,7 +410,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			comfyuiSettings: {
 				runStatus: 'running',
 				progress: 5,
-				statusText: '正在提交…',
+				statusText: t('nodes.comfyui.submitting'),
 				outputs: [],
 				lastUpdateAt: Date.now()
 			}
@@ -436,12 +438,12 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						comfyuiSettings: {
 							runStatus: 'idle',
 							progress: 0,
-							statusText: '等待确认：复用 Django 记录',
+							statusText: t('nodes.comfyui.waitingReuseConfirm'),
 							lastUpdateAt: Date.now()
 						}
 					})
 					payload.pushToast(
-						'ComfyUI history 不可用，检测到 Django 记录。请在右下角确认后继续。',
+						t('nodes.comfyui.historyUnavailable'),
 						'warn'
 					)
 					return
@@ -458,11 +460,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					comfyuiSettings: {
 						runStatus: 'failed',
 						progress: 100,
-						statusText: '提交失败',
+						statusText: t('nodes.comfyui.submitFailed'),
 						lastUpdateAt: Date.now()
 					}
 				})
-				payload.pushToast('运行失败：' + (rr.error || 'unknown'), 'error')
+				payload.pushToast(t('aiworkflow.toast.comfyRunFailed', { error: String(rr.error || 'unknown') }), 'error')
 				return
 			}
 
@@ -473,7 +475,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					runStatus: 'running',
 					promptId: pid,
 					progress: 10,
-					statusText: pid ? '已提交' : '已提交（无 promptId）',
+					statusText: pid ? t('nodes.comfyui.submitted') : t('nodes.comfyui.submittedNoPromptId'),
 					lastUpdateAt: Date.now()
 				}
 			})
@@ -490,11 +492,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				comfyuiSettings: {
 					runStatus: 'failed',
 					progress: 100,
-					statusText: '提交异常',
+					statusText: t('nodes.comfyui.submitException'),
 					lastUpdateAt: Date.now()
 				}
 			})
-			payload.pushToast('运行异常：' + getErrorMessage(err), 'error')
+			payload.pushToast(t('aiworkflow.toast.comfyRunException', { error: getErrorMessage(err) }), 'error')
 		}
 	}
 
@@ -518,7 +520,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			nodeId,
 			comfyuiSettings: {
 				runStatus: 'canceling',
-				statusText: '取消中…',
+				statusText: t('nodes.comfyui.canceling'),
 				lastUpdateAt: Date.now()
 			}
 		})
@@ -526,7 +528,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		try {
 			const res = await payload.comfyService.cancel(baseUrl, promptId)
 			if (!res.ok && isLikelyJobMissing(res)) {
-				resetComfyNodeToIdle(nodeId, '任务已不存在，已重置为可运行状态。', 'info')
+				resetComfyNodeToIdle(nodeId, t('nodes.comfyui.jobGoneRunnable'), 'info')
 				return
 			}
 
@@ -538,7 +540,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						runStatus: 'cancelled',
 						promptId: '',
 						progress: 100,
-						statusText: '已取消',
+						statusText: t('nodes.comfyui.cancelled'),
 						lastUpdateAt: Date.now()
 					}
 				})
@@ -548,7 +550,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 			startComfyUIPoll(nodeId, baseUrl, promptId)
 		} catch (err: unknown) {
-			resetComfyNodeToIdle(nodeId, '取消失败：ComfyUI 状态未知，已停止轮询。', 'warn')
+			resetComfyNodeToIdle(nodeId, t('nodes.comfyui.cancelFailed'), 'warn')
 		}
 	}
 
@@ -581,13 +583,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							runStatus: 'idle',
 							promptId: '',
 							progress: 0,
-							statusText: '检测到任务已失效（可能后端已重启）',
+							statusText: t('nodes.comfyui.taskInvalidated'),
 							lastUpdateAt: Date.now()
 						}
 					})
 					stopComfyUIPoll(nodeId)
 					if (!opts?.silent)
-						payload.pushToast(`节点「${node.alias || node.title}」任务已失效，已重置。`, 'warn')
+						payload.pushToast(t('aiworkflow.toast.nodeTaskReset', { name: String(node.alias || node.title || nodeId) }), 'warn')
 					continue
 				}
 
@@ -599,7 +601,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							runStatus: 'idle',
 							promptId: '',
 							progress: 0,
-							statusText: '检测到任务不存在，已重置。',
+							statusText: t('nodes.comfyui.taskNotFoundReset'),
 							lastUpdateAt: Date.now()
 						}
 					})

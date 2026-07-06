@@ -33,7 +33,7 @@
 				<div v-if="meshyFetchFailed" class="wf-model3d-fetch-error" @pointerdown.stop>
 					<div class="wf-model3d-fetch-error-icon">!</div>
 					<div class="wf-model3d-fetch-error-body">
-						<div class="wf-model3d-fetch-error-title">模型文件拉取失败</div>
+						<div class="wf-model3d-fetch-error-title">{{ t('nodes.model3d.fetchErrorTitle') }}</div>
 						<div class="wf-model3d-fetch-error-text">{{ meshyFetchErrorText }}</div>
 						<div class="wf-model3d-fetch-error-actions">
 							<button
@@ -41,14 +41,14 @@
 								type="button"
 								@click.stop="emit('retry-meshy-fetch')"
 							>
-								重试拉取
+								{{ t('nodes.model3d.retryFetch') }}
 							</button>
 							<button
 								class="wf-model3d-fetch-error-btn"
 								type="button"
 								@click.stop="emit('open-meshy-task-panel')"
 							>
-								打开任务面板
+								{{ t('nodes.model3d.openTaskPanel') }}
 							</button>
 						</div>
 					</div>
@@ -65,10 +65,10 @@
 						:state="threePreviewState"
 						:snapshotUrl="snapshotUrl"
 						:empty="!effectiveModelUrl"
-						emptyTitle="3D 模型预览"
-						emptyText="可上传本地 GLB / GLTF，也可以从 Meshy 节点输入模型结果。"
-						maskedTitle="实时渲染已卸载"
-						maskedText="重新选中当前节点后，将自动恢复上一次的渲染视角。"
+						:emptyTitle="t('nodes.model3d.previewTitle')"
+						:emptyText="t('nodes.model3d.previewEmptyText')"
+						:maskedTitle="t('nodes.model3d.previewMaskedTitle')"
+						:maskedText="t('nodes.model3d.previewMaskedText')"
 						@start="emit('start-three-preview')"
 					>
 						<canvas
@@ -79,7 +79,7 @@
 						/>
 						<template #overlay>
 							<div v-if="effectiveModelUrl && viewerLive && !errorMessage" class="wf-model3d-gesture-tip">
-								拖拽旋转 · 滚轮拉近/拉远
+								{{ t('nodes.model3d.interactionHint') }}
 							</div>
 							<div v-if="errorMessage" class="wf-model3d-overlay error">{{ errorMessage }}</div>
 						</template>
@@ -93,7 +93,7 @@
 					</div>
 					<div class="wf-model3d-action-buttons">
 						<button class="wf-model3d-btn" type="button" @click.stop="onUploadClick">
-							{{ effectiveModelUrl ? '更换模型' : '上传模型' }}
+							{{ effectiveModelUrl ? t('nodes.model3d.replaceResource') : t('nodes.model3d.uploadResource') }}
 						</button>
 						<button
 							v-if="effectiveModelUrl"
@@ -101,7 +101,7 @@
 							type="button"
 							@click.stop="emit('clear-resource')"
 						>
-							清空
+							{{ t('nodes.model3d.clear') }}
 						</button>
 					</div>
 					<input
@@ -120,17 +120,17 @@
 				<div class="wf-model3d-grid">
 					<div class="wf-model3d-info-card wf-model3d-field-wide">
 						<div class="wf-model3d-info-row">
-							<span class="wf-model3d-label">项目资产</span>
+							<span class="wf-model3d-label">{{ t('nodes.model3d.projectAsset') }}</span>
 							<span class="wf-model3d-info-value">{{ assetStatusDisplay }}</span>
 						</div>
 						<div class="wf-model3d-info-row">
-							<span class="wf-model3d-label">上游输入</span>
+							<span class="wf-model3d-label">{{ t('nodes.model3d.upstreamInput') }}</span>
 							<span class="wf-model3d-info-value">{{ upstreamStatusDisplay }}</span>
 						</div>
 					</div>
 
 					<label class="wf-model3d-field">
-						<span class="wf-model3d-label">背景色</span>
+						<span class="wf-model3d-label">{{ t('nodes.model3d.backgroundColor') }}</span>
 						<input
 							class="wf-model3d-input wf-model3d-input-color"
 							type="color"
@@ -140,7 +140,7 @@
 					</label>
 
 					<label class="wf-model3d-field">
-						<span class="wf-model3d-label">灯光强度</span>
+						<span class="wf-model3d-label">{{ t('nodes.model3d.lightIntensity') }}</span>
 						<input
 							class="wf-model3d-input"
 							type="number"
@@ -153,7 +153,7 @@
 					</label>
 
 					<label class="wf-model3d-field">
-						<span class="wf-model3d-label">渲染宽度</span>
+						<span class="wf-model3d-label">{{ t('nodes.model3d.renderWidth') }}</span>
 						<input
 							class="wf-model3d-input"
 							type="number"
@@ -164,7 +164,7 @@
 					</label>
 
 					<label class="wf-model3d-field">
-						<span class="wf-model3d-label">渲染高度</span>
+						<span class="wf-model3d-label">{{ t('nodes.model3d.renderHeight') }}</span>
 						<input
 							class="wf-model3d-input"
 							type="number"
@@ -176,15 +176,15 @@
 
 					<label class="wf-model3d-check">
 						<input type="checkbox" :checked="gridVisible" @change="onGridToggle" />
-						<span>显示地面网格</span>
+						<span>{{ t('nodes.model3d.showGroundGrid') }}</span>
 					</label>
 					<label class="wf-model3d-check">
 						<input type="checkbox" :checked="axesVisible" @change="onAxesToggle" />
-						<span>显示 XYZ 轴</span>
+						<span>{{ t('nodes.model3d.showXYZAxes') }}</span>
 					</label>
 					<label class="wf-model3d-check wf-model3d-field-wide">
 						<input type="checkbox" :checked="autoRotate" @change="onAutoRotateToggle" />
-						<span>自动旋转</span>
+						<span>{{ t('nodes.model3d.autoRotate') }}</span>
 					</label>
 				</div>
 			</div>
@@ -205,6 +205,9 @@ import type {
 	WorkflowThreePreviewProgressPayload,
 	WorkflowThreePreviewState
 } from './three-preview/types'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -368,26 +371,26 @@ const autoRotate = computed(() => settings.value?.autoRotate === true)
 const renderWidth = computed(() => Number(settings.value?.renderWidth ?? 1024))
 const renderHeight = computed(() => Number(settings.value?.renderHeight ?? 1024))
 const sourceNameDisplay = computed(
-	() => String(settings.value?.modelSourceName ?? '').trim() || '未绑定模型'
+	() => String(settings.value?.modelSourceName ?? '').trim() || t('nodes.model3d.noModelBound')
 )
 const sourceHintDisplay = computed(() => {
 	const format = String(settings.value?.modelFormat ?? '')
 		.trim()
 		.toUpperCase()
 	if (settings.value?.lastInputNodeId)
-		return `来自上游节点 ${settings.value.lastInputNodeId}${format ? ` · ${format}` : ''}`
+		return t('nodes.model3d.fromUpstreamNode', { nodeId: settings.value.lastInputNodeId }) + (format ? ` · ${format}` : '')
 	if (settings.value?.modelSourcePath) return settings.value.modelSourcePath
-	return format ? `${format} 预览` : '支持 GLB / GLTF'
+	return format ? t('nodes.model3d.formatPreview', { format }) : t('nodes.model3d.supportedFormats')
 })
 const assetStatusDisplay = computed(() => {
 	const assetPath = String(settings.value?.modelAssetPath ?? '').trim()
-	if (assetPath) return '已写入项目资产'
-	return '未持久化'
+	if (assetPath) return t('nodes.model3d.writtenToAssets')
+	return t('nodes.model3d.notPersisted')
 })
 const upstreamStatusDisplay = computed(() => {
 	const source = String(settings.value?.lastInputSourceName ?? '').trim()
 	if (source) return source
-	return '当前未连接上游模型输出'
+	return t('nodes.model3d.noUpstreamModel')
 })
 
 const meshySettings = computed(() => settings.value?.meshyModelSettings ?? null)
@@ -397,7 +400,7 @@ const meshyFetchFailed = computed(() => {
 })
 const meshyFetchErrorText = computed(() => {
 	return String(
-		meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? '拉取失败'
+		meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? t('nodes.model3d.fetchFailed')
 	).trim()
 })
 
@@ -503,7 +506,7 @@ const createViewerNow = () => {
 		viewer = null
 		viewerInitCooldownUntil = Date.now() + 400
 		errorMessage.value =
-			(err instanceof Error ? err.message : String(err ?? 'unknown')) || '预览器初始化失败'
+			(err instanceof Error ? err.message : String(err ?? 'unknown')) || t('nodes.model3d.modelLoadFailed')
 	}
 }
 
@@ -576,7 +579,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		cameraUserControlled = false
 		initialSyncDone = false
 		if (requestId != null && requestId === activePreviewRequestId) {
-			errorMessage.value = '未绑定模型。'
+			errorMessage.value = t('nodes.model3d.noModelBound2')
 			emit('three-preview-error')
 		}
 		return false
@@ -594,19 +597,19 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		initialSyncDone = false
 	}
 	applyViewerOptions()
-	if (requestId != null) emitPreviewProgress(0.2, '加载模型资源')
+	if (requestId != null) emitPreviewProgress(0.2, t('nodes.model3d.progressLoadResource'))
 	try {
 		await viewer.loadModel(url, (payload) => {
 			if (requestId == null) return
 			if (requestId !== activePreviewRequestId) return
 			const ratio = Number(payload?.ratio ?? 0)
-			emitPreviewProgress(0.2 + Math.max(0, Math.min(1, ratio)) * 0.72, '加载模型资源')
+			emitPreviewProgress(0.2 + Math.max(0, Math.min(1, ratio)) * 0.72, t('nodes.model3d.progressLoadModel'))
 		}, cachedView)
 		cachedModelSignature = currentSignature
 		initialSyncDone = true
 		return true
 	} catch (err: unknown) {
-		errorMessage.value = getErrorMessage(err) || '模型加载失败'
+		errorMessage.value = getErrorMessage(err) || t('nodes.model3d.modelLoadFailed')
 		viewer.clearModel()
 		cachedModelSignature = ''
 		cameraUserControlled = false
@@ -617,21 +620,21 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		if (repairResult.success && repairResult.newUrl) {
 			errorMessage.value = ''
 			if (requestId != null && requestId === activePreviewRequestId) {
-				emitPreviewProgress(0.3, '修复资源引用')
+				emitPreviewProgress(0.3, t('nodes.model3d.progressFixRefs'))
 			}
 			try {
 				await viewer.loadModel(repairResult.newUrl, (payload) => {
 					if (requestId == null) return
 					if (requestId !== activePreviewRequestId) return
 					const ratio = Number(payload?.ratio ?? 0)
-					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, '加载模型资源')
+					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, t('nodes.model3d.progressLoadTextures'))
 				}, null)
 				cachedModelSignature = modelSignature.value
 				cameraUserControlled = false
 				initialSyncDone = true
 				return true
 			} catch {
-				errorMessage.value = '模型加载失败'
+				errorMessage.value = t('nodes.model3d.modelLoadFailed')
 				viewer.clearModel()
 				cachedModelSignature = ''
 				cameraUserControlled = false
@@ -674,21 +677,21 @@ const attemptRepairModelUrl = async (url: string, requestId?: number): Promise<{
 const startPreviewLoad = async (requestId: number) => {
 	activePreviewRequestId = requestId
 	errorMessage.value = ''
-	emitPreviewProgress(0.12, '初始化渲染器')
+	emitPreviewProgress(0.12, t('nodes.model3d.progressInitRenderer'))
 	const ready = await waitForViewerReady()
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
-		errorMessage.value = '预览器初始化超时，请重试。'
+		errorMessage.value = t('nodes.model3d.previewerInitTimeout')
 		emit('three-preview-error')
 		return
 	}
 	viewer.setRenderSuspended(false)
 	applyViewerOptions()
 	if (activePreviewRequestId !== requestId) return
-	emitPreviewProgress(0.3, '准备模型资源')
+	emitPreviewProgress(0.3, t('nodes.model3d.progressPrepareModel'))
 	const url = effectiveModelUrl.value
 	if (!url) {
-		errorMessage.value = '未绑定模型。'
+		errorMessage.value = t('nodes.model3d.noModelBound2')
 		viewer.clearModel()
 		cachedModelSignature = ''
 		emit('three-preview-error')
@@ -701,7 +704,7 @@ const startPreviewLoad = async (requestId: number) => {
 		if (activePreviewRequestId !== requestId || !viewer) return
 		saveViewState()
 		captureSnapshot()
-		emitPreviewProgress(0.98, '同步交互状态')
+		emitPreviewProgress(0.98, t('nodes.model3d.progressSyncInteraction'))
 		emit('three-preview-ready')
 	}
 }

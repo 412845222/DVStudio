@@ -295,7 +295,7 @@ export async function* streamAgentMessage(ctx, payload) {
   const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
 
   // 检测是否为 CLI 模式
-  const cliMode = p.cliMode === true || ['claude', 'codex', 'copilot'].includes(apiSource);
+  const cliMode = p.cliMode === true || ['codex', 'copilot'].includes(apiSource);
 
   if (!content) {
     yield { type: 'error', message: 'content is required' };
@@ -317,7 +317,7 @@ export async function* streamAgentMessage(ctx, payload) {
  */
 async function* streamViaCLI(ctx, payload) {
   const p = payload || {};
-  const cliAdapter = String(p.cliAdapter || p.apiSource || 'claude').toLowerCase();
+  const cliAdapter = String(p.cliAdapter || p.apiSource || 'codex').toLowerCase();
   const content = p.content || '';
   const context = p.context || null;
   const cliConfig = p.cliConfig || {};

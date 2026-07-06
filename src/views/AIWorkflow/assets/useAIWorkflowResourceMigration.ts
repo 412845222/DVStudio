@@ -1,5 +1,6 @@
 import type { WorkflowSceneLayoutManualModelBinding } from '../../../aiworkflow/types'
 import type { BlueprintAssetKind } from '../../../network/BlueprintProjectService'
+import { t } from '../../../i18n'
 
 type ImportAssetIntoProjectScopePayload = {
 	kind: BlueprintAssetKind
@@ -417,10 +418,10 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 		}
 
 		if (!opts?.silent && changed > 0) {
-			options.pushToast(`已迁移 ${changed} 条资源到项目专属目录。`, 'info')
+			options.pushToast(t('aiworkflow.toast.resourceMigrated', { count: changed }), 'info')
 		}
 		if (!opts?.silent && failed > 0) {
-			options.pushToast(`有 ${failed} 条资源迁移失败，已保留原路径。`, 'warn')
+			options.pushToast(t('aiworkflow.toast.resourceMigrationFailed', { count: failed }), 'warn')
 		}
 		return { changed, failed }
 	}

@@ -32,15 +32,15 @@
 		<Transition name="tool-call-body">
 			<div v-show="expanded" class="tool-call-card__body">
 				<div v-if="hasArgs" class="tool-call-card__section">
-					<div class="tool-call-card__section-title">参数</div>
+					<div class="tool-call-card__section-title">{{ t('aichat.tools.params') }}</div>
 					<pre class="tool-call-card__code">{{ formattedArgs }}</pre>
 				</div>
 				<div v-if="status === 'completed' && result !== undefined" class="tool-call-card__section">
-					<div class="tool-call-card__section-title">结果</div>
+					<div class="tool-call-card__section-title">{{ t('aichat.tools.result') }}</div>
 					<pre class="tool-call-card__code tool-call-card__code--result">{{ formattedResult }}</pre>
 				</div>
 				<div v-if="status === 'error' && error" class="tool-call-card__section">
-					<div class="tool-call-card__section-title">错误</div>
+					<div class="tool-call-card__section-title">{{ t('aichat.tools.errorInfo') }}</div>
 					<pre class="tool-call-card__code tool-call-card__code--error">{{ error }}</pre>
 				</div>
 			</div>
@@ -50,6 +50,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 type ToolCallStatus = 'pending' | 'running' | 'completed' | 'error'
 
@@ -92,10 +95,10 @@ const displayToolName = computed(() => {
 
 const statusLabel = computed(() => {
 	switch (props.status) {
-		case 'pending': return '等待中'
-		case 'running': return '执行中'
-		case 'completed': return '已完成'
-		case 'error': return '出错'
+		case 'pending': return t('aichat.tools.status.pending')
+		case 'running': return t('aichat.tools.status.running')
+		case 'completed': return t('aichat.tools.status.completed')
+		case 'error': return t('aichat.tools.status.failed')
 		default: return props.status
 	}
 })
@@ -107,24 +110,24 @@ const executionDescription = computed(() => {
 		create_node: (args) => {
 			const type = String(args.type || '')
 			const title = String(args.title || '')
-			return title ? `创建「${title}」` : `创建 ${type.replace(/_/g, ' ')}`
+			return title ? t('aichat.tools.action.createNode', { title }) : t('aichat.tools.action.createNodeByType', { type: type.replace(/_/g, ' ') })
 		},
 		update_node_config: (args) => {
 			const nodeId = String(args.nodeId || '')
-			return `更新节点配置 ${nodeId.slice(-8)}`
+			return t('aichat.tools.action.updateNode', { nodeId: nodeId.slice(-8) })
 		},
 		delete_node: (args) => {
 			const nodeId = String(args.nodeId || '')
-			return `删除节点 ${nodeId.slice(-8)}`
+			return t('aichat.tools.action.deleteNode', { nodeId: nodeId.slice(-8) })
 		},
 		connect_nodes: (args) => {
 			const from = String(args.fromNodeId || '')
 			const to = String(args.toNodeId || '')
-			return `连接 ${from.slice(-8)} → ${to.slice(-8)}`
+			return t('aichat.tools.action.connectNodes', { from: from.slice(-8), to: to.slice(-8) })
 		},
-		list_node_types: () => '获取节点类型列表',
-		get_blueprint_state: () => '获取蓝图状态',
-		get_project_info: () => '获取项目信息',
+		list_node_types: () => t('aichat.tools.action.listNodeTypes'),
+		get_blueprint_state: () => t('aichat.tools.action.getBlueprintState'),
+		get_project_info: () => t('aichat.tools.action.getProjectInfo'),
 	}
 	
 	const descFn = toolDescMap[props.toolName]

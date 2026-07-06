@@ -7,15 +7,18 @@ import {
 import type { ScreenshotCacheEntry } from '@/views/AIWorkflow/node-screenshot/useNodeScreenshotPool'
 import type { CanvasScreenshotPool } from '@/views/AIWorkflow/node-screenshot/canvasScreenshotPool'
 
-const createMockEntry = (nodeId: string, width = 200, height = 100): ScreenshotCacheEntry => ({
+const createMockEntry = (nodeId: string, width = 200, height = 100, theme: 'dark' | 'light' = 'dark'): ScreenshotCacheEntry => ({
 	nodeId,
-	version: 'v1',
+	version: `theme:${theme}|v1`,
+	theme,
 	dataUrl: `data:image/png;base64,test-${nodeId}`,
 	width,
 	height,
 	padding: 20,
 	capturedAt: Date.now()
 })
+
+const makeKey = (nodeId: string, theme: 'dark' | 'light' = 'dark') => `${nodeId}::${theme}`
 
 const createMockCanvasPool = (options: {
 	hasBitmapSet?: Set<string>
@@ -24,18 +27,24 @@ const createMockCanvasPool = (options: {
 } = {}): CanvasScreenshotPool => {
 	const { hasBitmapSet = new Set(), loadResult = true, loadDelay = 0 } = options
 	return {
-		hasBitmap: vi.fn((nodeId: string) => hasBitmapSet.has(nodeId)),
+		hasBitmap: vi.fn((nodeId: string, theme?: 'dark' | 'light') => {
+			const t = theme ?? 'dark'
+			return hasBitmapSet.has(makeKey(nodeId, t)) || hasBitmapSet.has(nodeId)
+		}),
 		loadFromCache: vi.fn(async (_entry: ScreenshotCacheEntry) => {
 			if (loadDelay > 0) {
 				await new Promise((resolve) => setTimeout(resolve, loadDelay))
 			}
-			return loadResult
+			return loadResult ? { nodeId: _entry.nodeId, bitmap: {} as any, width: _entry.width, height: _entry.height, worldX: 0, worldY: 0 } : null
 		}),
 		getBitmap: vi.fn(),
 		setBitmap: vi.fn(),
 		clearBitmap: vi.fn(),
 		clearAll: vi.fn(),
-		getStats: vi.fn()
+		invalidate: vi.fn(),
+		setActiveTheme: vi.fn(),
+		getStats: vi.fn(() => ({ readyCount: 0, loadingCount: 0, totalMemoryMB: 0 })),
+		dispose: vi.fn()
 	} as unknown as CanvasScreenshotPool
 }
 
@@ -141,7 +150,7 @@ describe('CanvasWarmupCoordinator', () => {
 			expect(status.pending).toBe(1)
 		})
 
-		it('should skip duplicate node IDs', () => {
+		it('should skip duplicate node IDs for same theme', () => {
 			const coordinator = new CanvasWarmupCoordinator(mockPool)
 			coordinator.addTask('node1', createMockEntry('node1'))
 			coordinator.addTask('node1', createMockEntry('node1'))
@@ -149,9 +158,17 @@ describe('CanvasWarmupCoordinator', () => {
 			expect(status.total).toBe(1)
 		})
 
+		it('should allow same node ID for different themes', () => {
+			const coordinator = new CanvasWarmupCoordinator(mockPool)
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'dark'))
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'light'))
+			const status = coordinator.getStatus()
+			expect(status.total).toBe(2)
+		})
+
 		it('should skip nodes that already have bitmaps', () => {
 			const poolWithBitmap = createMockCanvasPool({
-				hasBitmapSet: new Set(['node1'])
+				hasBitmapSet: new Set([makeKey('node1')])
 			})
 			const coordinator = new CanvasWarmupCoordinator(poolWithBitmap)
 			coordinator.addTask('node1', createMockEntry('node1'))
@@ -189,7 +206,7 @@ describe('CanvasWarmupCoordinator', () => {
 			})
 			poolWithOrder.loadFromCache = vi.fn(async (entry: ScreenshotCacheEntry) => {
 				loadOrder.push(entry.nodeId)
-				return true
+				return { nodeId: entry.nodeId, bitmap: {} as any, width: entry.width, height: entry.height, worldX: 0, worldY: 0 }
 			})
 
 			const coordinator = new CanvasWarmupCoordinator(poolWithOrder, { concurrency: 1 })
@@ -348,7 +365,10 @@ describe('CanvasWarmupCoordinator', () => {
 			const flakyPool = createMockCanvasPool()
 			flakyPool.loadFromCache = vi.fn(async () => {
 				callCount++
-				return callCount > 1
+				if (callCount > 1) {
+					return { nodeId: 'node1', bitmap: {} as any, width: 200, height: 100, worldX: 0, worldY: 0 }
+				}
+				throw new Error('First attempt fails')
 			})
 
 			const coordinator = new CanvasWarmupCoordinator(flakyPool)
@@ -368,6 +388,7 @@ describe('CanvasWarmupCoordinator', () => {
 	describe('getFailedNodeIds', () => {
 		it('should return failed node IDs', async () => {
 			const errorPool = createMockCanvasPool({ loadResult: false })
+			errorPool.loadFromCache = vi.fn(async () => null)
 			const coordinator = new CanvasWarmupCoordinator(errorPool)
 			coordinator.addTask('node1', createMockEntry('node1'))
 			coordinator.addTask('node2', createMockEntry('node2'))
@@ -420,6 +441,34 @@ describe('CanvasWarmupCoordinator', () => {
 
 			const status = coordinator.getStatus()
 			expect(status.total).toBe(0)
+		})
+	})
+
+	describe('dual-theme support', () => {
+		it('should track dark and light themes independently', async () => {
+			const coordinator = new CanvasWarmupCoordinator(mockPool)
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'dark'))
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'light'))
+			coordinator.addTask('node2', createMockEntry('node2', 200, 100, 'dark'))
+
+			const status = coordinator.getStatus()
+			expect(status.total).toBe(3)
+
+			await coordinator.warmup()
+			expect((mockPool.loadFromCache as any)).toHaveBeenCalledTimes(3)
+		})
+
+		it('should cancel tasks for a specific theme', () => {
+			const coordinator = new CanvasWarmupCoordinator(mockPool)
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'dark'))
+			coordinator.addTask('node1', createMockEntry('node1', 200, 100, 'light'))
+			coordinator.addTask('node2', createMockEntry('node2', 200, 100, 'dark'))
+
+			coordinator.cancelTheme('light')
+
+			const status = coordinator.getStatus()
+			expect(status.total).toBe(2)
+			expect(status.pending).toBe(2)
 		})
 	})
 })

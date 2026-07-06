@@ -28,8 +28,8 @@
 				<div v-else class="menu-header mock-header">
 					<UserAvatar size="lg" status="offline" />
 					<div class="menu-user-info">
-						<div class="menu-user-name">未连接</div>
-						<div class="menu-user-id">开发模式 (Mock)</div>
+						<div class="menu-user-name">{{ t('userMenu.notConnected') }}</div>
+						<div class="menu-user-id">{{ t('userMenu.developmentMode') }}</div>
 					</div>
 				</div>
 
@@ -48,7 +48,7 @@
 								<path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.8" />
 							</svg>
 						</span>
-						<span class="menu-item-label">打开 Steam 面板</span>
+						<span class="menu-item-label">{{ t('userMenu.openSteamPanel') }}</span>
 						<span class="menu-item-hint">Shift+Tab</span>
 					</button>
 
@@ -66,7 +66,7 @@
 								<path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 							</svg>
 						</span>
-						<span class="menu-item-label">好友列表</span>
+						<span class="menu-item-label">{{ t('userMenu.friendsList') }}</span>
 					</button>
 
 					<button
@@ -80,8 +80,8 @@
 								<path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 							</svg>
 						</span>
-						<span class="menu-item-label">成就</span>
-						<span class="menu-item-hint">即将推出</span>
+						<span class="menu-item-label">{{ t('userMenu.achievements') }}</span>
+						<span class="menu-item-hint">{{ t('userMenu.comingSoon') }}</span>
 					</button>
 
 					<div class="menu-divider"></div>
@@ -97,8 +97,8 @@
 								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 							</svg>
 						</span>
-						<span class="menu-item-label">Steam 设置</span>
-						<span class="menu-item-hint">即将推出</span>
+						<span class="menu-item-label">{{ t('userMenu.steamSettings') }}</span>
+						<span class="menu-item-hint">{{ t('userMenu.comingSoon') }}</span>
 					</button>
 				</div>
 			</div>
@@ -111,6 +111,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type { DwebPlatformUser } from '../../platformBridge/types'
 import { UserAvatar } from './index'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 interface Props {
 	visible: boolean

@@ -1,10 +1,12 @@
 import { ref, computed } from 'vue'
-import type { WorkflowNode } from '../../../../aiworkflow/types'
+import type { WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
+import { t } from '../../../../i18n'
 import { useAIWorkflowMeshyRuntime } from './useAIWorkflowMeshyRuntime'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 import type {
 	MeshyComfyService,
 	MeshyGeneratePayload,
+	MeshyGenerateResponse,
 	MeshyStoreLike,
 	PersistExternalAssetPayload,
 	PersistExternalAssetResult
@@ -14,16 +16,64 @@ const normalizeText = (value: unknown) => String(value ?? '').trim()
 
 type MeshyImageNodeSettings = Record<string, unknown>
 
+const isImageInputAnchor = (anchorId: string): boolean => {
+	const id = String(anchorId || '').trim()
+	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+}
+
+const getEffectiveImageUrl = (
+	node: WorkflowNode,
+	store: MeshyStoreLike,
+	nodeResourceUrl?: (node: WorkflowNode) => string | null
+): string | null => {
+	const resourceRid = String((node as Record<string, unknown>).resourceId ?? '').trim()
+	if (resourceRid) {
+		const resourcesById = (store.state as Record<string, unknown>).resourcesById as Record<string, Record<string, unknown>> | undefined
+		const res = resourcesById?.[resourceRid]
+		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+		if (resUrl) return resUrl
+	}
+	const imgSettings = typeof (node as Record<string, unknown>).imageSettings === 'object' && (node as Record<string, unknown>).imageSettings
+		? ((node as Record<string, unknown>).imageSettings as Record<string, unknown>)
+		: {}
+	const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
+		? String(imgSettings.lastGeneratedImageUrl).trim()
+		: ''
+	if (lastGenUrl) return lastGenUrl
+	const meshySettings = typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
+		? (imgSettings.meshyImageSettings as Record<string, unknown>)
+		: {}
+	const meshySummary = typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+		? (meshySettings.outputSummary as Record<string, unknown>)
+		: {}
+	const meshyUrl = typeof meshySummary?.preferredUrl === 'string'
+		? String(meshySummary.preferredUrl).trim()
+		: ''
+	if (meshyUrl) return meshyUrl
+	if (typeof nodeResourceUrl === 'function') {
+		const standardUrl = nodeResourceUrl(node)
+		if (standardUrl) return standardUrl
+	}
+	return null
+}
+
 export const useAIWorkflowImageNodeMeshy = (options: {
 	nodeId: string
 	getNode: () => WorkflowNode | null
 	updateNodeSettings: (patch: Record<string, unknown>) => void
-	getComfyService: () => MeshyComfyService
+	getComfyService: () => MeshyComfyService & {
+		meshyGenerateImage?: (form: FormData) => Promise<MeshyGenerateResponse>
+	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	store: MeshyStoreLike
 	persistExternalAssetToProject: (
 		payload: PersistExternalAssetPayload
 	) => Promise<PersistExternalAssetResult>
+	getIncomingEdges?: (nodeId: string) => WorkflowEdge[]
+	downloadUrlAsBlob?: (url: string) => Promise<Blob | null>
+	nodeResourceUrl?: (node: WorkflowNode) => string | null
+	resolveBackendUrl?: (url: string) => string
+	resolveBackendFetchUrl?: (url: string) => string
 }) => {
 	const { stopMeshyPoll, startMeshyPoll, applyMeshyTaskResult } = useAIWorkflowMeshyRuntime({
 		store: options.store,
@@ -80,9 +130,58 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		})
 	}
 
-	const buildMeshyImageRequestPayload = () => {
+	const collectReferenceImages = async (): Promise<Array<{ name: string; blob: Blob }>> => {
 		const node = options.getNode()
-		if (!node) return { ok: false as const, error: '节点不存在' }
+		if (!node || !options.getIncomingEdges) return []
+
+		const incoming = options.getIncomingEdges(options.nodeId).filter((e) =>
+			isImageInputAnchor(String(e.toAnchorId ?? ''))
+		)
+
+		const state = options.store.state as {
+			nodesById: Record<string, WorkflowNode>
+			resourcesById: Record<string, Record<string, unknown>>
+		}
+
+		const refs: Array<{ name: string; blob: Blob }> = []
+		for (const edge of incoming) {
+			if (refs.length >= 4) break
+			const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
+			if (!sourceNode) continue
+
+			const candidateUrl = getEffectiveImageUrl(sourceNode, options.store, options.nodeResourceUrl)
+			if (!candidateUrl) continue
+
+			const fetchUrl =
+				typeof options.resolveBackendFetchUrl === 'function'
+					? options.resolveBackendFetchUrl(candidateUrl)
+					: typeof options.resolveBackendUrl === 'function'
+						? options.resolveBackendUrl(candidateUrl)
+						: candidateUrl
+
+			try {
+				let blob: Blob | null = null
+				if (typeof options.downloadUrlAsBlob === 'function') {
+					blob = await options.downloadUrlAsBlob(fetchUrl)
+				}
+				if (!blob) {
+					const resp = await fetch(fetchUrl)
+					if (!resp.ok) continue
+					blob = await resp.blob()
+				}
+				if (!blob || blob.size === 0) continue
+				const name = `ref-${String(sourceNode.type || 'image')}-${String(edge.fromNodeId)}-${Date.now()}.png`
+				refs.push({ name, blob })
+			} catch {
+				continue
+			}
+		}
+		return refs
+	}
+
+	const buildMeshyImageRequestPayload = async () => {
+		const node = options.getNode()
+		if (!node) return { ok: false as const, error: t('tasks.meshy.nodeNotExist') }
 
 		const chatParams = isRecord(node.nodeChatParams) ? node.nodeChatParams : {}
 		const imgSettings = isRecord(node.imageSettings) ? node.imageSettings : {}
@@ -92,7 +191,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 		const prompt = String(chatParams.prompt ?? meshyImageSettings.prompt ?? '').trim()
 		if (!prompt) {
-			return { ok: false as const, error: '请先填写提示词' }
+			return { ok: false as const, error: t('tasks.meshy.promptRequired') }
 		}
 
 		const meshyAiModel = String(
@@ -113,51 +212,90 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const meshyNegativePrompt = String(
 			chatParams.meshyNegativePrompt ?? meshyImageSettings.negativePrompt ?? ''
 		).trim()
-		const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? 0)
 		const meshyOutputImageCount = Number(
-			chatParams.meshyOutputImageCount ??
-				chatParams.quantity ??
-				meshyImageSettings.outputImageCount ??
-				1
+			chatParams.meshyOutputImageCount ?? meshyImageSettings.outputCount ?? 1
+		)
+		const meshySeed = Number(
+			chatParams.meshySeed ?? meshyImageSettings.seed ?? -1
 		)
 
+		const refs = await collectReferenceImages()
+		const hasRefImages = refs.length > 0
+		const taskType = hasRefImages ? 'image-to-image' : 'text-to-image'
+
+		console.log('[Meshy Image Node] 原始参数:', {
+			meshyAiModel,
+			meshyAspectRatio,
+			meshyPoseMode,
+			meshyGenerateMultiView,
+			meshyNegativePrompt,
+			meshyOutputImageCount,
+			meshySeed,
+			hasRefImages,
+			refCount: refs.length,
+			taskType,
+			nodeId: options.nodeId
+		})
+
 		const payload: MeshyGeneratePayload = {
-			target: 'image',
-			family: 'text-to-image',
-			mode: 'text-to-image',
-			stage: 'preview',
-			prompt,
-			negative_prompt: meshyNegativePrompt,
-			output_image_count: meshyOutputImageCount,
-			ai_model: meshyAiModel
+			mode: taskType,
+			ai_model: meshyAiModel,
+			prompt
 		}
 
-		if (meshyPoseMode) payload.pose_mode = meshyPoseMode
 		if (meshyGenerateMultiView) {
 			payload.generate_multi_view = true
+			payload.output_image_count = 4
 		} else {
 			payload.aspect_ratio = meshyAspectRatio
+			console.log(`[Meshy Image Node] ${taskType}: EXPLICITLY setting aspect_ratio=${payload.aspect_ratio}, model=${meshyAiModel}`)
+			if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+				payload.output_image_count = Math.floor(meshyOutputImageCount)
+			}
 		}
-		if (Number.isFinite(meshySeed) && meshySeed > 0) payload.seed = meshySeed
+		if (meshyPoseMode) payload.pose_mode = meshyPoseMode
+
+		if (meshyNegativePrompt) payload.negative_prompt = meshyNegativePrompt
+		if (Number.isFinite(meshySeed) && meshySeed >= 0) {
+			payload.seed = Math.floor(meshySeed)
+		}
+
+		const submittedParams = {
+			model: meshyAiModel,
+			mode: taskType,
+			aspectRatio: meshyGenerateMultiView ? '1:1 (Multi-View)' : meshyAspectRatio,
+			poseMode: meshyPoseMode || 'None',
+			generateMultiView: meshyGenerateMultiView,
+			negativePrompt: meshyNegativePrompt || 'None',
+			outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
+			seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
+			referenceImageCount: hasRefImages ? refs.length : 0,
+			submittedAt: new Date().toISOString()
+		}
+		payload.submittedParams = submittedParams
+
+		console.log(`[Meshy Image Node] 构建${taskType}请求 payload:`, JSON.stringify(payload, null, 2))
 
 		return {
 			ok: true as const,
 			payload,
 			promptText: prompt,
 			promptSource: 'manual' as const,
-			imageCount: 0
+			imageCount: refs.length,
+			refs,
+			submittedParams
 		}
 	}
 
 	const startGeneration = async () => {
 		const node = options.getNode()
-		if (!node) return { ok: false, error: '节点不存在' }
+		if (!node) return { ok: false, error: t('tasks.meshy.nodeNotExist') }
 
 		isLoading.value = true
 		errorMessage.value = null
 
 		try {
-			const result = buildMeshyImageRequestPayload()
+			const result = await buildMeshyImageRequestPayload()
 			if (!result.ok) {
 				errorMessage.value = result.error
 				updateMeshyImageSettings({
@@ -170,17 +308,45 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 			stopMeshyPoll(options.nodeId)
 
+			const taskType = result.submittedParams.mode as string
 			updateMeshyImageSettings({
 				taskStatus: 'pending',
+				taskFamily: taskType,
 				progress: 0,
 				errorMessage: '',
-				statusText: 'Meshy：正在创建任务…'
+				statusText: t('tasks.meshy.creatingTask'),
+				submittedParams: result.submittedParams
 			})
 
 			try {
-				const res = await options.getComfyService().meshyGenerate(result.payload)
+				console.log('[Meshy Image Node] 发送请求 payload:', JSON.stringify(result.payload, null, 2))
+
+				let res: MeshyGenerateResponse
+				if (result.refs.length > 0 && typeof options.getComfyService().meshyGenerateImage === 'function') {
+					const form = new FormData()
+					for (const key of Object.keys(result.payload)) {
+						const value = (result.payload as Record<string, unknown>)[key]
+						if (typeof value === 'object' && value !== null) {
+							form.set(key, JSON.stringify(value))
+						} else if (typeof value === 'boolean') {
+							form.set(key, value ? 'true' : 'false')
+						} else if (typeof value === 'number') {
+							form.set(key, String(value))
+						} else {
+							form.set(key, String(value))
+						}
+					}
+					for (const ref of result.refs) {
+						form.append('refImages', ref.blob, ref.name)
+					}
+					console.log('[Meshy Image Node] 使用meshyGenerateImage（FormData路径），refCount:', result.refs.length)
+					res = await options.getComfyService().meshyGenerateImage!(form)
+				} else {
+					res = await options.getComfyService().meshyGenerate(result.payload)
+				}
+
 				if (!res.ok) {
-					const msg = String(res.error ?? 'Meshy 创建任务失败')
+					const msg = String(res.error ?? t('tasks.meshy.createTaskFailed'))
 					errorMessage.value = msg
 					updateMeshyImageSettings({
 						taskStatus: 'failed',
@@ -192,25 +358,27 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 
 				const normalizedStatus = String(res.status ?? 'idle').trim()
 				const newTaskId = String(res.taskId ?? '').trim()
-				const mode = String(res.mode ?? result.payload.mode ?? 'text-to-image').trim()
+				const mode = String(res.mode ?? result.payload.mode ?? taskType).trim()
 
 				updateMeshyImageSettings({
 					taskId: newTaskId,
 					taskStatus: normalizedStatus === 'idle' ? 'pending' : normalizedStatus,
+					taskFamily: mode,
 					progress: normalizedStatus === 'running' ? 5 : 0,
-					statusText: 'Meshy：任务已创建，开始轮询状态…'
+					statusText: t('tasks.meshy.taskCreatedPolling'),
+					submittedParams: result.submittedParams
 				})
 
 				if (!newTaskId) {
-					options.pushToast('Meshy 返回缺少任务 ID。', 'warn')
-					return { ok: false, error: 'Meshy 返回缺少任务 ID' }
+					options.pushToast(t('tasks.meshy.missingTaskIdToast'), 'warn')
+					return { ok: false, error: t('tasks.meshy.missingTaskId') }
 				}
 
 				startMeshyPoll(options.nodeId, newTaskId, mode)
 
 				return { ok: true, taskId: newTaskId }
 			} catch (err: unknown) {
-				const msg = 'Meshy 创建任务异常：' + getErrorMessage(err)
+				const msg = t('tasks.meshy.createTaskException', { error: getErrorMessage(err) })
 				errorMessage.value = msg
 				updateMeshyImageSettings({
 					taskStatus: 'failed',
@@ -231,17 +399,17 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const node = options.getNode()
 		if (!node) return
 
-		const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
 		try {
 			const res = await options.getComfyService().meshyTask(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('刷新 Meshy 状态失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.refreshStatusFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			await applyMeshyTaskResult(options.nodeId, res)
-			options.pushToast('Meshy 任务状态已刷新。', 'info')
+			options.pushToast(t('tasks.meshy.statusRefreshed'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('刷新 Meshy 状态异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.refreshStatusException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -249,22 +417,22 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const currentTaskId = taskId.value
 		if (!currentTaskId) return
 
-		const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
 		try {
 			const res = await options.getComfyService().meshyStop(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('停止 Meshy 任务失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.stopTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			stopMeshyPoll(options.nodeId)
 			updateMeshyImageSettings({
 				taskStatus: 'canceled',
-				statusText: 'Meshy：任务已停止',
+				statusText: t('tasks.meshy.taskStopped'),
 				errorMessage: ''
 			})
-			options.pushToast('已停止 Meshy 任务。', 'info')
+			options.pushToast(t('tasks.meshy.taskStoppedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('停止 Meshy 任务异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.stopTaskException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 
@@ -272,11 +440,11 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const currentTaskId = taskId.value
 		if (!currentTaskId) return
 
-		const mode = String(meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
 		try {
 			const res = await options.getComfyService().meshyDelete(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast('删除 Meshy 任务失败：' + String(res.error ?? 'unknown'), 'warn')
+				options.pushToast(t('tasks.meshy.deleteTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
 				return
 			}
 			stopMeshyPoll(options.nodeId)
@@ -284,12 +452,12 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				taskId: '',
 				taskStatus: 'idle',
 				progress: 0,
-				statusText: 'Meshy：任务已删除',
+				statusText: t('tasks.meshy.taskDeleted'),
 				errorMessage: ''
 			})
-			options.pushToast('已删除 Meshy 任务。', 'info')
+			options.pushToast(t('tasks.meshy.taskDeletedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast('删除 Meshy 任务异常：' + getErrorMessage(err), 'warn')
+			options.pushToast(t('tasks.meshy.deleteTaskException', { error: getErrorMessage(err) }), 'warn')
 		}
 	}
 

@@ -1,0 +1,14 @@
+{
+  "nodes.rotateImage.cubeLabel": "Orientation Cube",
+  "nodes.rotateImage.backFace": "-Z (Back)",
+  "nodes.rotateImage.frontFace": "+Z (Front)",
+  "nodes.rotateImage.resetToFront": "Reset to Front",
+  "nodes.rotateImage.reset": "Reset",
+  "nodes.rotateImage.rotateHint": "Hold and drag to rotate the image 360° (pseudo 3D perspective).",
+  "nodes.rotateImage.left": "L",
+  "nodes.rotateImage.right": "R",
+  "nodes.rotateImage.top": "T",
+  "nodes.rotateImage.bottom": "B",
+  "nodes.rotateImage.placeholderText": "Sample image (no input connected)",
+  "nodes.rotateImage.placeholderSubText": "rotate-image node preview"
+}

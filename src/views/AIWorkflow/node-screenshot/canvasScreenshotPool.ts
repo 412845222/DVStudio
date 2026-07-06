@@ -2,7 +2,7 @@
  * Canvas Screenshot Pool - Canvas2D截图纹理池
  * 
  * 功能:
- * 1. 管理截图的Canvas/ImageBitmap对象
+ * 1. 管理截图的Canvas/ImageBitmap对象（双主题缓存）
  * 2. 提供纹理的生命周期管理
  * 3. 支持动态加载和卸载
  * 4. 与IndexedDB缓存协同工作
@@ -11,12 +11,14 @@
  * - ImageBitmap比HTMLCanvasElement性能更好
  * - 支持OffscreenCanvas (可选)
  * - 内存管理: 限制Bitmap数量和内存占用
+ * - 双主题(dark/light)独立缓存，主题切换时可无缝过渡
  */
 
 import type { ScreenshotCacheEntry } from './useNodeScreenshotPool'
 
 export interface CanvasScreenshotEntry {
 	nodeId: string
+	theme: 'dark' | 'light'
 	version: string
 	bitmap: ImageBitmap | HTMLCanvasElement
 	width: number
@@ -40,11 +42,19 @@ export interface CanvasScreenshotPoolOptions {
 const DEFAULT_MAX_BITMAP_COUNT = 500
 const DEFAULT_MAX_MEMORY_MB = 200
 
+const extractThemeFromVersion = (version: string): 'dark' | 'light' => {
+	const m = version.match(/^theme:(dark|light)/)
+	return m ? (m[1] as 'dark' | 'light') : 'dark'
+}
+
+const makeKey = (nodeId: string, theme: 'dark' | 'light') => `${nodeId}::${theme}`
+
 export class CanvasScreenshotPool {
 	private entries = new Map<string, CanvasScreenshotEntry>()
 	private loadingPromises = new Map<string, Promise<CanvasScreenshotEntry | null>>()
 	private options: Required<CanvasScreenshotPoolOptions>
 	private disposed = false
+	private activeTheme: 'dark' | 'light' = 'dark'
 
 	constructor(options: CanvasScreenshotPoolOptions = {}) {
 		this.options = {
@@ -54,47 +64,66 @@ export class CanvasScreenshotPool {
 		}
 	}
 
+	setActiveTheme(theme: 'dark' | 'light'): void {
+		this.activeTheme = theme
+	}
+
+	getActiveTheme(): 'dark' | 'light' {
+		return this.activeTheme
+	}
+
+	private getKey(nodeId: string, theme?: 'dark' | 'light'): string {
+		return makeKey(nodeId, theme ?? this.activeTheme)
+	}
+
 	/**
 	 * 从截图缓存异步加载ImageBitmap
 	 */
 	async loadFromCache(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry | null> {
 		if (this.disposed) return null
 
-		const existing = this.entries.get(entry.nodeId)
+		const theme = entry.theme || extractThemeFromVersion(entry.version)
+		const key = this.getKey(entry.nodeId, theme)
+
+		const existing = this.entries.get(key)
 		if (existing && existing.version === entry.version && existing.status === 'ready') {
 			return existing
 		}
 
 		// 检查是否正在加载
-		const loading = this.loadingPromises.get(entry.nodeId)
+		const loading = this.loadingPromises.get(key)
 		if (loading) {
 			return loading
 		}
 
 		// 创建加载Promise
-		const loadPromise = this.doLoad(entry)
-		this.loadingPromises.set(entry.nodeId, loadPromise)
+		const loadPromise = this.doLoad(entry, theme, key)
+		this.loadingPromises.set(key, loadPromise)
 
 		try {
 			const result = await loadPromise
 			return result
 		} finally {
-			this.loadingPromises.delete(entry.nodeId)
+			this.loadingPromises.delete(key)
 		}
 	}
 
-	private async doLoad(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry | null> {
+	private async doLoad(
+		entry: ScreenshotCacheEntry,
+		theme: 'dark' | 'light',
+		key: string
+	): Promise<CanvasScreenshotEntry | null> {
 		try {
 			// 尝试使用ImageBitmap (推荐，性能更好)
 			if (this.options.preferImageBitmap) {
 				try {
-					return await this.loadWithImageBitmap(entry)
+					return await this.loadWithImageBitmap(entry, theme, key)
 				} catch (error) {
 					console.warn(`[CanvasScreenshotPool] createImageBitmap failed, fallback to canvas:`, error)
-					return await this.loadWithCanvas(entry)
+					return await this.loadWithCanvas(entry, theme, key)
 				}
 			} else {
-				return await this.loadWithCanvas(entry)
+				return await this.loadWithCanvas(entry, theme, key)
 			}
 		} catch (error) {
 			console.warn(`[CanvasScreenshotPool] Failed to load bitmap for node: ${entry.nodeId}`, error)
@@ -105,7 +134,11 @@ export class CanvasScreenshotPool {
 	/**
 	 * 使用createImageBitmap加载
 	 */
-	private async loadWithImageBitmap(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry> {
+	private async loadWithImageBitmap(
+		entry: ScreenshotCacheEntry,
+		theme: 'dark' | 'light',
+		key: string
+	): Promise<CanvasScreenshotEntry> {
 		if (typeof createImageBitmap !== 'function') {
 			throw new Error('createImageBitmap not supported')
 		}
@@ -132,6 +165,7 @@ export class CanvasScreenshotPool {
 
 		const canvasEntry: CanvasScreenshotEntry = {
 			nodeId: entry.nodeId,
+			theme,
 			version: entry.version,
 			bitmap,
 			width: entry.width || img.naturalWidth,
@@ -143,14 +177,18 @@ export class CanvasScreenshotPool {
 			capturedAt: Date.now()
 		}
 
-		this.entries.set(entry.nodeId, canvasEntry)
+		this.entries.set(key, canvasEntry)
 		return canvasEntry
 	}
 
 	/**
 	 * 回退方案: 使用HTMLCanvasElement加载
 	 */
-	private loadWithCanvas(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry | null> {
+	private loadWithCanvas(
+		entry: ScreenshotCacheEntry,
+		theme: 'dark' | 'light',
+		key: string
+	): Promise<CanvasScreenshotEntry | null> {
 		return new Promise((resolve) => {
 			const img = new Image()
 
@@ -167,6 +205,7 @@ export class CanvasScreenshotPool {
 			const finishLoading = (status: 'ready' | 'error') => {
 				const canvasEntry: CanvasScreenshotEntry = {
 					nodeId: entry.nodeId,
+					theme,
 					version: entry.version,
 					bitmap: canvas,
 					width: entry.width,
@@ -177,7 +216,7 @@ export class CanvasScreenshotPool {
 					status,
 					capturedAt: Date.now()
 				}
-				this.entries.set(entry.nodeId, canvasEntry)
+				this.entries.set(key, canvasEntry)
 				this.pruneIfNeeded()
 				resolve(status === 'ready' ? canvasEntry : null)
 			}
@@ -237,26 +276,53 @@ export class CanvasScreenshotPool {
 	}
 
 	/**
-	 * 获取Bitmap
+	 * 获取Bitmap（当前激活主题）
 	 */
-	getBitmap(nodeId: string): ImageBitmap | HTMLCanvasElement | null {
-		const entry = this.entries.get(nodeId)
+	getBitmap(nodeId: string, theme?: 'dark' | 'light'): ImageBitmap | HTMLCanvasElement | null {
+		const targetTheme = theme ?? this.activeTheme
+		const entry = this.entries.get(this.getKey(nodeId, targetTheme))
 		return entry?.status === 'ready' ? entry.bitmap : null
 	}
 
 	/**
-	 * 获取缓存条目
+	 * 获取Bitmap（指定主题）
 	 */
-	getEntry(nodeId: string): CanvasScreenshotEntry | null {
-		const entry = this.entries.get(nodeId)
+	getBitmapForTheme(nodeId: string, theme: 'dark' | 'light'): ImageBitmap | HTMLCanvasElement | null {
+		const entry = this.entries.get(this.getKey(nodeId, theme))
+		return entry?.status === 'ready' ? entry.bitmap : null
+	}
+
+	/**
+	 * 获取缓存条目（指定主题或当前激活主题）
+	 */
+	getEntry(nodeId: string, theme?: 'dark' | 'light'): CanvasScreenshotEntry | null {
+		const targetTheme = theme ?? this.activeTheme
+		const entry = this.entries.get(this.getKey(nodeId, targetTheme))
 		return entry?.status === 'ready' ? entry : null
 	}
 
 	/**
-	 * 检查是否有Bitmap
+	 * 获取缓存条目（指定主题）
 	 */
-	hasBitmap(nodeId: string): boolean {
-		const entry = this.entries.get(nodeId)
+	getEntryForTheme(nodeId: string, theme: 'dark' | 'light'): CanvasScreenshotEntry | null {
+		return this.getEntry(nodeId, theme)
+	}
+
+	/**
+	 * 检查是否有Bitmap（当前主题）
+	 */
+	hasBitmap(nodeId: string, theme?: 'dark' | 'light'): boolean {
+		const targetTheme = theme ?? this.activeTheme
+		const entry = this.entries.get(this.getKey(nodeId, targetTheme))
+		return entry?.status === 'ready' || entry?.status === 'loading'
+	}
+
+	/**
+	 * 检查指定主题是否有Bitmap
+	 */
+	hasBitmapForTheme(nodeId: string, theme: 'dark' | 'light'): boolean {
+		const key = this.getKey(nodeId, theme)
+		const entry = this.entries.get(key)
 		return entry?.status === 'ready' || entry?.status === 'loading'
 	}
 
@@ -264,7 +330,15 @@ export class CanvasScreenshotPool {
 	 * 检查Bitmap是否完全就绪
 	 */
 	isBitmapReady(nodeId: string): boolean {
-		const entry = this.entries.get(nodeId)
+		const entry = this.entries.get(this.getKey(nodeId))
+		return entry?.status === 'ready'
+	}
+
+	/**
+	 * 检查指定主题Bitmap是否完全就绪
+	 */
+	isBitmapReadyForTheme(nodeId: string, theme: 'dark' | 'light'): boolean {
+		const entry = this.entries.get(this.getKey(nodeId, theme))
 		return entry?.status === 'ready'
 	}
 
@@ -272,10 +346,12 @@ export class CanvasScreenshotPool {
 	 * 更新节点位置
 	 */
 	updatePosition(nodeId: string, worldX: number, worldY: number): void {
-		const entry = this.entries.get(nodeId)
-		if (entry) {
-			entry.worldX = worldX
-			entry.worldY = worldY
+		for (const theme of ['dark', 'light'] as const) {
+			const entry = this.entries.get(this.getKey(nodeId, theme))
+			if (entry) {
+				entry.worldX = worldX
+				entry.worldY = worldY
+			}
 		}
 	}
 
@@ -292,10 +368,12 @@ export class CanvasScreenshotPool {
 	 * 更新节点尺寸
 	 */
 	updateSize(nodeId: string, width: number, height: number): void {
-		const entry = this.entries.get(nodeId)
-		if (entry) {
-			entry.width = width
-			entry.height = height
+		for (const theme of ['dark', 'light'] as const) {
+			const entry = this.entries.get(this.getKey(nodeId, theme))
+			if (entry) {
+				entry.width = width
+				entry.height = height
+			}
 		}
 	}
 
@@ -303,20 +381,43 @@ export class CanvasScreenshotPool {
 	 * 更新圆角半径
 	 */
 	updateRadius(nodeId: string, radius: number): void {
-		const entry = this.entries.get(nodeId)
-		if (entry) {
-			entry.radius = radius
+		for (const theme of ['dark', 'light'] as const) {
+			const entry = this.entries.get(this.getKey(nodeId, theme))
+			if (entry) {
+				entry.radius = radius
+			}
 		}
 	}
 
 	/**
-	 * 使缓存失效
+	 * 使缓存失效，可指定主题；不指定则两个主题都失效
 	 */
-	invalidate(nodeId: string): void {
-		const entry = this.entries.get(nodeId)
-		if (entry) {
-			this.disposeBitmap(entry.bitmap)
-			this.entries.delete(nodeId)
+	invalidate(nodeId: string, theme?: 'dark' | 'light'): void {
+		const themes: ('dark' | 'light')[] = theme ? [theme] : ['dark', 'light']
+		for (const t of themes) {
+			const key = this.getKey(nodeId, t)
+			const entry = this.entries.get(key)
+			if (entry) {
+				this.disposeBitmap(entry.bitmap)
+				this.entries.delete(key)
+			}
+		}
+	}
+
+	/**
+	 * 使指定主题的缓存失效
+	 */
+	invalidateTheme(theme: 'dark' | 'light'): void {
+		for (const [key, entry] of this.entries) {
+			if (key.endsWith(`::${theme}`)) {
+				this.disposeBitmap(entry.bitmap)
+				this.entries.delete(key)
+			}
+		}
+		for (const [key] of this.loadingPromises) {
+			if (key.endsWith(`::${theme}`)) {
+				this.loadingPromises.delete(key)
+			}
 		}
 	}
 
@@ -330,12 +431,26 @@ export class CanvasScreenshotPool {
 	}
 
 	/**
+	 * 清空所有缓存
+	 */
+	clear(): void {
+		for (const entry of this.entries.values()) {
+			this.disposeBitmap(entry.bitmap)
+		}
+		this.entries.clear()
+		this.loadingPromises.clear()
+	}
+
+	/**
 	 * 裁剪到有效节点
 	 */
 	pruneToValidNodes(validNodeIds: Set<string>): void {
-		for (const nodeId of Array.from(this.entries.keys())) {
+		for (const key of Array.from(this.entries.keys())) {
+			const nodeId = key.split('::')[0]
 			if (!validNodeIds.has(nodeId)) {
-				this.invalidate(nodeId)
+				const entry = this.entries.get(key)
+				if (entry) this.disposeBitmap(entry.bitmap)
+				this.entries.delete(key)
 			}
 		}
 	}
@@ -369,7 +484,7 @@ export class CanvasScreenshotPool {
 	}
 
 	/**
-	 * 卸载最旧的N个条目
+	 * 卸载最旧的N个条目（按主题均匀裁剪）
 	 */
 	private pruneOldest(count: number): void {
 		const entries = Array.from(this.entries.values())
@@ -378,7 +493,7 @@ export class CanvasScreenshotPool {
 		const toRemove = entries.slice(0, count)
 		for (const entry of toRemove) {
 			this.disposeBitmap(entry.bitmap)
-			this.entries.delete(entry.nodeId)
+			this.entries.delete(this.getKey(entry.nodeId, entry.theme))
 		}
 	}
 
@@ -395,7 +510,7 @@ export class CanvasScreenshotPool {
 
 			const entryMB = (entry.width * entry.height * 4) / 1024 / 1024
 			this.disposeBitmap(entry.bitmap)
-			this.entries.delete(entry.nodeId)
+			this.entries.delete(this.getKey(entry.nodeId, entry.theme))
 			currentMB -= entryMB
 		}
 	}
@@ -415,14 +530,15 @@ export class CanvasScreenshotPool {
 	}
 
 	/**
-	 * 获取所有可视节点
+	 * 获取所有可视节点（当前主题）
 	 */
 	getAllVisibleEntries(): CanvasScreenshotEntry[] {
-		return Array.from(this.entries.values()).filter(e => e.status === 'ready')
+		return Array.from(this.entries.values())
+			.filter(e => e.status === 'ready' && e.theme === this.activeTheme)
 	}
 
 	/**
-	 * 获取指定视口内的节点
+	 * 获取指定视口内的节点（当前主题）
 	 */
 	getEntriesInViewport(
 		viewportRect: { x0: number; y0: number; x1: number; y1: number },
@@ -439,7 +555,6 @@ export class CanvasScreenshotPool {
 			const halfW = entry.width / 2
 			const halfH = entry.height / 2
 
-			// 节点矩形
 			const nodeRect = {
 				x0: entry.worldX - halfW,
 				y0: entry.worldY - halfH,
@@ -447,7 +562,6 @@ export class CanvasScreenshotPool {
 				y1: entry.worldY + halfH
 			}
 
-			// 检测相交
 			return !(
 				nodeRect.x1 < rect.x0 ||
 				nodeRect.x0 > rect.x1 ||
@@ -467,11 +581,15 @@ export class CanvasScreenshotPool {
 		loadingCount: number
 		readyCount: number
 		errorCount: number
+		readyDark: number
+		readyLight: number
 	} {
 		let memoryEstimate = 0
 		let loadingCount = 0
 		let readyCount = 0
 		let errorCount = 0
+		let readyDark = 0
+		let readyLight = 0
 
 		for (const entry of this.entries.values()) {
 			memoryEstimate += entry.width * entry.height * 4 // RGBA
@@ -482,6 +600,8 @@ export class CanvasScreenshotPool {
 					break
 				case 'ready':
 					readyCount++
+					if (entry.theme === 'dark') readyDark++
+					else readyLight++
 					break
 				case 'error':
 					errorCount++
@@ -495,7 +615,9 @@ export class CanvasScreenshotPool {
 			memoryEstimateMB: (memoryEstimate / 1024 / 1024).toFixed(2),
 			loadingCount,
 			readyCount,
-			errorCount
+			errorCount,
+			readyDark,
+			readyLight
 		}
 	}
 
@@ -513,6 +635,17 @@ export class CanvasScreenshotPool {
 	setMaxMemoryMB(mb: number): void {
 		this.options.maxMemoryMB = Math.max(1, mb)
 		this.pruneIfNeeded()
+	}
+
+	/**
+	 * 获取指定主题已就绪的节点数量
+	 */
+	getReadyCountForTheme(theme: 'dark' | 'light'): number {
+		let count = 0
+		for (const entry of this.entries.values()) {
+			if (entry.theme === theme && entry.status === 'ready') count++
+		}
+		return count
 	}
 
 	/**

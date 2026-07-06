@@ -6,10 +6,12 @@
  * 2. 控制批量预加载并发
  * 3. 同步预热进度
  * 4. 与现有截图系统无缝集成
+ * 5. 支持双主题(dark/light)独立预热，使用 nodeId::theme 作为任务键
  */
 
 import type { CanvasScreenshotPool } from './canvasScreenshotPool'
 import type { ScreenshotCacheEntry } from './useNodeScreenshotPool'
+import { t } from '../../../i18n'
 
 export interface WarmupOptions {
 	/** 并发数，默认4 */
@@ -23,7 +25,9 @@ export interface WarmupOptions {
 }
 
 export interface WarmupTask {
+	taskKey: string
 	nodeId: string
+	theme: 'dark' | 'light'
 	screenshotEntry: ScreenshotCacheEntry
 	priority: 'high' | 'normal' | 'low'
 	status: 'pending' | 'loading' | 'ready' | 'error'
@@ -40,9 +44,14 @@ export interface WarmupStatus {
 }
 
 const DEFAULT_CONCURRENCY = 4
-const HIGH_PRIORITY_FRAME_TIME_MS = 16
-const NORMAL_PRIORITY_FRAME_TIME_MS = 8
-const LOW_PRIORITY_FRAME_TIME_MS = 5
+
+const makeTaskKey = (nodeId: string, theme: 'dark' | 'light'): string => `${nodeId}::${theme}`
+
+const extractThemeFromEntry = (entry: ScreenshotCacheEntry): 'dark' | 'light' => {
+	if (entry.theme) return entry.theme
+	const m = entry.version.match(/^theme:(dark|light)/)
+	return m ? (m[1] as 'dark' | 'light') : 'dark'
+}
 
 /**
  * 智能并发控制
@@ -53,31 +62,15 @@ const getOptimalConcurrency = (): number => {
 		const memory = (performance as any).memory?.jsHeapSizeLimit || 0
 		const memoryGB = memory / 1024 / 1024 / 1024
 
-		// 内存充足时增加并发
 		if (memoryGB > 4) {
 			return Math.min(8, cores)
 		}
 
-		// 内存紧张时减少并发
 		return Math.min(4, Math.max(2, cores - 1))
 	} catch {
 		return DEFAULT_CONCURRENCY
 	}
 }
-
-/**
- * 优先级调度策略
- */
-const getPriorityRules = () => ({
-	// 视口内节点 → 高优先级
-	visible: 'high' as const,
-	// 选中节点附近 → 高优先级
-	nearSelected: 'high' as const,
-	// 普通节点 → 普通优先级
-	normal: 'normal' as const,
-	// 视口外远处节点 → 低优先级
-	farHidden: 'low' as const
-})
 
 /**
  * Canvas2D预热协调器
@@ -148,11 +141,20 @@ export class CanvasWarmupCoordinator {
 	 * 清理已完成/错误的任务记录，使下一次warmup可以重新添加这些节点
 	 */
 	reset(): void {
-		for (const [nodeId, task] of this.tasks) {
-			if (task.status === 'ready') {
-				this.tasks.delete(nodeId)
-			} else if (task.status === 'error') {
-				this.tasks.delete(nodeId)
+		for (const [taskKey, task] of this.tasks) {
+			if (task.status === 'ready' || task.status === 'error') {
+				this.tasks.delete(taskKey)
+			}
+		}
+	}
+
+	/**
+	 * 取消指定主题的待处理预热任务
+	 */
+	cancelTheme(theme: 'dark' | 'light'): void {
+		for (const [taskKey, task] of this.tasks) {
+			if (task.theme === theme && task.status === 'pending') {
+				this.tasks.delete(taskKey)
 			}
 		}
 	}
@@ -167,18 +169,21 @@ export class CanvasWarmupCoordinator {
 	): void {
 		if (this.disposed) return
 
-		// 跳过已有任务
-		if (this.tasks.has(nodeId)) {
+		const theme = extractThemeFromEntry(screenshotEntry)
+		const taskKey = makeTaskKey(nodeId, theme)
+
+		if (this.tasks.has(taskKey)) {
 			return
 		}
 
-		// 跳过已有Bitmap的任务
-		if (this.canvasPool.hasBitmap(nodeId)) {
+		if (this.canvasPool.hasBitmap(nodeId, theme)) {
 			return
 		}
 
-		this.tasks.set(nodeId, {
+		this.tasks.set(taskKey, {
+			taskKey,
 			nodeId,
+			theme,
 			screenshotEntry,
 			priority,
 			status: 'pending'
@@ -195,7 +200,6 @@ export class CanvasWarmupCoordinator {
 			priority?: 'high' | 'normal' | 'low'
 		}>
 	): void {
-		// 高优先级排序
 		const priorityOrder = { high: 0, normal: 1, low: 2 }
 		const sorted = entries.sort((a, b) => {
 			return priorityOrder[a.priority ?? 'normal'] - priorityOrder[b.priority ?? 'normal']
@@ -225,7 +229,7 @@ export class CanvasWarmupCoordinator {
 			const isInViewport = this.isNodeInViewport(item, viewportRect)
 			const isNearViewport = this.isNodeNearViewport(item, viewportRect, visibleThreshold)
 
-			let priority: 'high' | 'normal' | 'low' = 'normal'
+			let priority: 'high' | 'normal' | 'low'
 			if (isInViewport) {
 				priority = 'high'
 			} else if (isNearViewport) {
@@ -289,18 +293,18 @@ export class CanvasWarmupCoordinator {
 	async warmup(): Promise<void> {
 		if (this.disposed) return
 
-		const pendingTasks = Array.from(this.tasks.values()).filter(t => t.status === 'pending')
+		const pendingTasks = Array.from(this.tasks.values()).filter(task => task.status === 'pending')
 		const total = pendingTasks.length
 
 		if (total === 0) {
 			this.phase = 'complete'
-			this.options.onProgress?.(1, '没有需要预热的节点')
+			this.options.onProgress?.(1, t('aiworkflow.runtime.noNodesToWarmup'))
 			this.options.onComplete?.()
 			return
 		}
 
 		this.phase = 'running'
-		this.options.onProgress?.(0, `准备预热 ${total} 个节点...`)
+		this.options.onProgress?.(0, t('aiworkflow.runtime.preparingWarmup', { count: String(total) }))
 
 		let completed = 0
 		let nextIndex = 0
@@ -315,7 +319,7 @@ export class CanvasWarmupCoordinator {
 				await this.loadTask(task)
 				completed++
 				const progress = total > 0 ? completed / total : 1
-				this.options.onProgress?.(progress, `预热中 ${completed}/${total}...`)
+				this.options.onProgress?.(progress, t('aiworkflow.runtime.warmingUp', { completed: String(completed), total: String(total) }))
 			}
 		}
 
@@ -330,9 +334,9 @@ export class CanvasWarmupCoordinator {
 		this.phase = status.error > 0 ? 'error' : 'complete'
 
 		if (status.error > 0) {
-			this.options.onProgress?.(1, `预热完成，${status.ready} 成功，${status.error} 失败`)
+			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupCompleteWithErrors', { ready: String(status.ready), error: String(status.error) }))
 		} else {
-			this.options.onProgress?.(1, `预热完成，共 ${total} 个节点`)
+			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupComplete', { count: String(total) }))
 		}
 
 		this.options.onComplete?.()
@@ -406,6 +410,22 @@ export class CanvasWarmupCoordinator {
 	}
 
 	/**
+	 * 获取指定主题的预热状态
+	 */
+	getThemeStatus(theme: 'dark' | 'light'): { total: number; ready: number; pending: number; progress: number } {
+		const themeTasks = Array.from(this.tasks.values()).filter(t => t.theme === theme)
+		const total = themeTasks.length
+		const ready = themeTasks.filter(t => t.status === 'ready').length
+		const pending = themeTasks.filter(t => t.status === 'pending' || t.status === 'loading').length
+		return {
+			total,
+			ready,
+			pending,
+			progress: total > 0 ? ready / total : 1
+		}
+	}
+
+	/**
 	 * 获取失败的任务节点ID
 	 */
 	getFailedNodeIds(): string[] {
@@ -415,12 +435,15 @@ export class CanvasWarmupCoordinator {
 	}
 
 	/**
-	 * 取消指定节点的预热
+	 * 取消指定节点的预热（两个主题都取消）
 	 */
 	cancelTask(nodeId: string): void {
-		const task = this.tasks.get(nodeId)
-		if (task && task.status === 'pending') {
-			this.tasks.delete(nodeId)
+		for (const theme of ['dark', 'light'] as const) {
+			const taskKey = makeTaskKey(nodeId, theme)
+			const task = this.tasks.get(taskKey)
+			if (task && task.status === 'pending') {
+				this.tasks.delete(taskKey)
+			}
 		}
 	}
 
@@ -428,9 +451,9 @@ export class CanvasWarmupCoordinator {
 	 * 取消所有待处理的预热
 	 */
 	cancelAllPending(): void {
-		for (const [nodeId, task] of this.tasks) {
+		for (const [taskKey, task] of this.tasks) {
 			if (task.status === 'pending') {
-				this.tasks.delete(nodeId)
+				this.tasks.delete(taskKey)
 			}
 		}
 	}
@@ -460,6 +483,15 @@ export class CanvasWarmupCoordinator {
 	 */
 	hasPendingTasks(): boolean {
 		return Array.from(this.tasks.values()).some(t => t.status === 'pending' || t.status === 'loading')
+	}
+
+	/**
+	 * 获取指定主题是否有待处理任务
+	 */
+	hasPendingTasksForTheme(theme: 'dark' | 'light'): boolean {
+		return Array.from(this.tasks.values()).some(
+			t => t.theme === theme && (t.status === 'pending' || t.status === 'loading')
+		)
 	}
 
 	/**
@@ -510,10 +542,10 @@ export const formatWarmupDetail = (
 ): string => {
 	switch (phase) {
 		case 'dom-screenshot':
-			return `生成截图 ${domCompleted}/${domTotal}...`
+			return t('aiworkflow.runtime.domScreenshotProgress', { completed: String(domCompleted), total: String(domTotal) })
 		case 'canvas-texture':
-			return `加载纹理 ${canvasCompleted}/${canvasTotal}...`
+			return t('aiworkflow.runtime.canvasTextureProgress', { completed: String(canvasCompleted), total: String(canvasTotal) })
 		case 'complete':
-			return `预热完成 (截图${domTotal} + 纹理${canvasTotal})`
+			return t('aiworkflow.runtime.warmupFinalProgress', { domTotal: String(domTotal), canvasTotal: String(canvasTotal) })
 	}
 }

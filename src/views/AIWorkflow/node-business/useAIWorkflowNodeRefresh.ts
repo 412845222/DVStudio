@@ -1,6 +1,7 @@
 import { isRecord, isString } from '../../../types/utils'
 import type { WorkflowNode, WorkflowEdge } from '../../../aiworkflow/types'
 import type { ComfyLocalizedOutput } from './comfy/comfyOutputResolver'
+import { t } from '../../../i18n'
 
 type NodeRefreshStore = {
 	state: {
@@ -67,12 +68,12 @@ export const useAIWorkflowNodeRefresh = (payload: {
 		const nodeType = node.type
 		if (nodeType === 'video' && String(node.resourceId ?? '').trim()) {
 			payload.forceRefreshCurrentMediaNode(nodeId)
-			payload.pushToast('已重置当前视频节点并重新装载资源。', 'info')
+			payload.pushToast(t('aiworkflow.runtime.videoNodeRefreshed'), 'info')
 			return
 		}
 		if (nodeType === 'scene-understanding') {
 			payload.resetSceneUnderstandingNodeState(nodeId)
-			payload.pushToast('场景理解节点状态已重置。', 'info')
+			payload.pushToast(t('aiworkflow.runtime.sceneUnderstandingReset'), 'info')
 			return
 		}
 		if (nodeType === 'scene-layout') {
@@ -124,32 +125,32 @@ export const useAIWorkflowNodeRefresh = (payload: {
 					})
 				}
 				await payload.onNodeRunSceneLayout(nodeId)
-				payload.pushToast('场景布局已从上游输入刷新并重绘。', 'info')
+				payload.pushToast(t('aiworkflow.runtime.sceneLayoutRefreshed'), 'info')
 				return
 			}
 
-			payload.pushToast('场景布局刷新失败：缺少上游 JSON 输入。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.sceneLayoutRefreshFailed'), 'warn')
 			return
 		}
 		if (nodeType === 'unreal-export') {
 			await payload.syncUnrealExportNodes({ silent: false, nodeId })
-			payload.pushToast('已刷新 Unreal 插件连接状态。', 'info')
+			payload.pushToast(t('aiworkflow.runtime.unrealConnectionRefreshed'), 'info')
 			return
 		}
 		if (nodeType === 'model3d') {
 			const synced = await payload.syncModel3DInputFromUpstream(nodeId, { warn: true })
-			if (synced) payload.pushToast('已从上游模型输出刷新 3D 节点。', 'info')
+			if (synced) payload.pushToast(t('aiworkflow.runtime.model3dRefreshed'), 'info')
 			return
 		}
 		if (nodeType !== 'image' && nodeType !== 'video') {
-			payload.pushToast('手动刷新仅支持场景理解、图片/视频/3D模型节点。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.manualRefreshUnsupported'), 'warn')
 			return
 		}
 
 		const expectedKind = nodeType === 'image' ? 'image' : 'video'
 		const incoming = payload.getIncomingEdges(nodeId)
 		if (!incoming.length) {
-			payload.pushToast('未找到输入连线，无法刷新资源。', 'warn')
+			payload.pushToast(t('aiworkflow.runtime.noInputConnections'), 'warn')
 			return
 		}
 
@@ -174,7 +175,7 @@ export const useAIWorkflowNodeRefresh = (payload: {
 								sourcePath: sourcePath || undefined
 							})
 							payload.autoSizeMediaNode(nodeId, url, 'image')
-							payload.pushToast('已从输入锚点引用图片资源。', 'info')
+							payload.pushToast(t('aiworkflow.runtime.imageResourceReferenced'), 'info')
 							return
 						}
 
@@ -185,7 +186,7 @@ export const useAIWorkflowNodeRefresh = (payload: {
 									sourceName.replace(/\.[^.]+$/, '') || 'image'
 								)
 								payload.onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
-								payload.pushToast('已从输入锚点刷新图片资源。', 'info')
+								payload.pushToast(t('aiworkflow.runtime.imageResourceRefreshed'), 'info')
 								return
 							} catch {
 								// fallback below
@@ -197,7 +198,7 @@ export const useAIWorkflowNodeRefresh = (payload: {
 								sourcePath: sourcePath || undefined
 							})
 							payload.autoSizeMediaNode(nodeId, url, 'image')
-							payload.pushToast('已从输入锚点引用图片资源。', 'info')
+							payload.pushToast(t('aiworkflow.runtime.imageResourceReferenced'), 'info')
 							return
 						}
 					}
@@ -208,14 +209,15 @@ export const useAIWorkflowNodeRefresh = (payload: {
 						resourcePath: sourcePath || undefined
 					})
 					if (url) payload.autoSizeMediaNode(nodeId, url, expectedKind)
+					const kindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
 					payload.pushToast(
-						`已从输入锚点刷新${expectedKind === 'image' ? '图片' : '视频'}资源。`,
+						t('aiworkflow.runtime.mediaResourceRefreshed', { kind: kindLabel }),
 						'info'
 					)
 					return
 				}
 				if (isRecord(r) && rKind !== expectedKind) {
-					reasons.push(`上游资源类型为 ${rKind}，与目标 ${expectedKind} 不匹配`)
+					reasons.push(t('aiworkflow.runtime.upstreamTypeMismatch', { sourceKind: rKind, targetKind: expectedKind }))
 				}
 			}
 
@@ -238,14 +240,16 @@ export const useAIWorkflowNodeRefresh = (payload: {
 							sourcePath: String(media.sourcePath || '').trim() || undefined
 						}
 					)
-					const anchorLabel = String(e.fromAnchorId || '输出锚点')
+					const anchorLabel = String(e.fromAnchorId || t('aiworkflow.runtime.outputAnchor'))
+					const mediaKindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
 					payload.pushToast(
-						`已从 ComfyUI 锚点 ${anchorLabel} 刷新${expectedKind === 'image' ? '图片' : '视频'}资源。`,
+						t('aiworkflow.runtime.comfyMediaRefreshed', { anchor: anchorLabel, kind: mediaKindLabel }),
 						'info'
 					)
 					return
 				}
-				reasons.push(`ComfyUI 上游暂无可用${expectedKind === 'image' ? '图片' : '视频'}产出`)
+				const noOutputKindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
+				reasons.push(t('aiworkflow.runtime.comfyNoOutput', { kind: noOutputKindLabel }))
 			}
 
 			if (expectedKind === 'image' && fromNodeType === 'scene-decompose') {
@@ -254,7 +258,7 @@ export const useAIWorkflowNodeRefresh = (payload: {
 					payload.connectedImageOutputUrl(fromNode, fromAnchorId) ?? ''
 				).trim()
 				if (!outputUrl) {
-					reasons.push('场景分解上游暂无可用图片输出')
+					reasons.push(t('aiworkflow.runtime.sceneDecomposeNoImage'))
 					continue
 				}
 				try {
@@ -263,17 +267,17 @@ export const useAIWorkflowNodeRefresh = (payload: {
 						'decompose'
 					const cloned = await payload.fileFromUrl(outputUrl, fromNodeAlias)
 					payload.onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
-					payload.pushToast('已从场景分解输出刷新图片资源。', 'info')
+					payload.pushToast(t('aiworkflow.runtime.sceneDecomposeImageRefreshed'), 'info')
 					return
 				} catch {
-					reasons.push('场景分解输出图片无法克隆到当前节点')
+					reasons.push(t('aiworkflow.runtime.sceneDecomposeCloneFailed'))
 					continue
 				}
 			}
 		}
 
 		payload.pushToast(
-			reasons.length ? `刷新失败：${reasons[0]}` : '刷新失败：未找到匹配的输入资源来源。',
+			reasons.length ? t('aiworkflow.runtime.refreshFailed', { reason: reasons[0] }) : t('aiworkflow.runtime.refreshFailedNoMatch'),
 			'warn'
 		)
 	}

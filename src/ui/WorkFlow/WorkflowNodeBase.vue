@@ -23,7 +23,7 @@
 			<button
 				class="wf-node-btn"
 				type="button"
-				title="切换节点类型"
+				:title="t('aiworkflow.nodeBase.switchNodeType')"
 				@click.stop="onOpenNodeLibrary"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
@@ -39,7 +39,7 @@
 				<span class="wf-node-type-label">{{ typeLabel }}</span>
 				<span class="wf-node-type-caret">▾</span>
 			</button>
-			<button class="wf-node-btn" type="button" title="清空节点内容" @click="emit('clear-node')">
+			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.clearNodeContent')" @click="emit('clear-node')">
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M4 5h8l-.8 8.2H4.8L4 5Z"
@@ -56,9 +56,9 @@
 					/>
 					<path d="M6.2 8.2h3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
 				</svg>
-				<span class="wf-node-btn-label">清空</span>
+				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.clear') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" title="复制节点" @click="emit('copy')">
+			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.copyNode')" @click="emit('copy')">
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<rect
 						x="5"
@@ -81,9 +81,9 @@
 						stroke-width="1.2"
 					/>
 				</svg>
-				<span class="wf-node-btn-label">复制节点</span>
+				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.copyNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" title="刷新节点" @click="emit('refresh')">
+			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.refreshNode')" @click="emit('refresh')">
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M13.5 8a5.5 5.5 0 1 1-1.2-3.4"
@@ -101,19 +101,19 @@
 						stroke-linejoin="round"
 					/>
 				</svg>
-				<span class="wf-node-btn-label">刷新节点</span>
+				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.refreshNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" title="删除节点" @click="emit('delete')">
+			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.deleteNode')" @click="emit('delete')">
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path d="M4 5h8l-1 9H5z" fill="none" stroke="currentColor" stroke-width="1.2" />
 					<path d="M3 5h10" stroke="currentColor" stroke-width="1.2" />
 					<path d="M6 5V3h4v2" fill="none" stroke="currentColor" stroke-width="1.2" />
 				</svg>
-				<span class="wf-node-btn-label">删除节点</span>
+				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.deleteNode') }}</span>
 			</button>
 		</div>
 		<div class="wf-node-header">
-			<div class="wf-node-title">{{ alias || title }}</div>
+			<div class="wf-node-title">{{ displayTitle }}</div>
 			<div class="wf-node-type">{{ nodeType }}</div>
 			<div
 				v-if="nodeGenerationTask && nodeGenerationTask.status !== 'idle'"
@@ -144,15 +144,15 @@
 					v-if="nodeGenerationTask.results && nodeGenerationTask.results.length"
 					class="wf-node-generation-results"
 				>
-					<span>已生成 {{ nodeGenerationTask.results.length }} 项</span>
+					<span>{{ t('aiworkflow.nodeBase.resultsGenerated', { count: nodeGenerationTask.results.length }) }}</span>
 				</div>
 			</div>
 		</div>
 		<div class="wf-node-body">
-			<slot name="body">内容占位</slot>
+			<slot name="body">{{ t('aiworkflow.nodeBase.bodyPlaceholder') }}</slot>
 		</div>
 		<div class="wf-node-footer">
-			<slot name="footer">底部占位</slot>
+			<slot name="footer">{{ t('aiworkflow.nodeBase.footerPlaceholder') }}</slot>
 		</div>
 
 		<NodeChatDialog
@@ -208,7 +208,7 @@
 			:isOutputHover="isOutputHover"
 		/>
 		<template v-else>
-			<div class="wf-anchors wf-anchors-in" aria-label="入口锚点">
+			<div class="wf-anchors wf-anchors-in" :aria-label="t('aiworkflow.nodeBase.inputAnchors')">
 				<div
 					v-for="a in inputAnchors"
 					:key="a.id"
@@ -221,7 +221,7 @@
 							incompatible: isAnchorIncompatible(a.id, 'in')
 						}
 					]"
-					:title="a.label || '入口'"
+					:title="a.label || t('aiworkflow.nodeBase.inputAnchor')"
 					:style="anchorStyle(a)"
 					:data-wf-node-id="nodeId"
 					:data-wf-anchor-id="a.id"
@@ -233,7 +233,7 @@
 					@pointerup="onInputAnchorPointerUp(a.id, a.index, $event)"
 				/>
 			</div>
-			<div class="wf-anchors wf-anchors-out" aria-label="出口锚点">
+			<div class="wf-anchors wf-anchors-out" :aria-label="t('aiworkflow.nodeBase.outputAnchors')">
 				<div
 					v-for="a in outputAnchors"
 					:key="a.id"
@@ -246,7 +246,7 @@
 							incompatible: isAnchorIncompatible(a.id, 'out')
 						}
 					]"
-					:title="a.label || '出口'"
+					:title="a.label || t('aiworkflow.nodeBase.outputAnchor')"
 					:style="anchorStyle(a)"
 					:data-wf-node-id="nodeId"
 					:data-wf-anchor-id="a.id"
@@ -264,6 +264,7 @@
 
 <script setup lang="ts">
 import { computed, useSlots, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
@@ -271,6 +272,8 @@ import type {
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
 import { NodeChatDialog, type InputParamPreviewRef } from '../BluePrint/node-dialog'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -447,29 +450,93 @@ const nodeChatVisibleResolved = computed(() => {
 })
 
 const typeLabel = computed(() => {
-	if (props.nodeType === 'text') return '文本'
-	if (props.nodeType === 'text-merge') return '文本整合'
-	if (props.nodeType === 'image') return '图片'
-	if (props.nodeType === 'rotate-image') return '旋转图片'
-	if (props.nodeType === 'video') return '视频'
-	if (props.nodeType === 'scene-understanding') return '场景理解'
-	if (props.nodeType === 'scene-decompose') return '场景分解'
-	if (props.nodeType === 'scene-layout') return '场景布局'
-	if (props.nodeType === 'unreal-export') return '虚幻导出'
-	if (props.nodeType === 'story') return '剧情'
-	if (props.nodeType === 'comfyui') return 'ComfyUI'
-	if (props.nodeType === 'model3d') return '3D模型'
-	if (props.nodeType === 'meshy') return 'Meshy模型生成'
-	return '基础'
+	if (props.nodeType === 'text') return t('nodes.type.text')
+	if (props.nodeType === 'text-merge') return t('nodes.type.textMerge')
+	if (props.nodeType === 'image') return t('nodes.type.image')
+	if (props.nodeType === 'rotate-image') return t('nodes.type.rotateImage')
+	if (props.nodeType === 'video') return t('nodes.type.video')
+	if (props.nodeType === 'scene-understanding') return t('nodes.type.sceneUnderstanding')
+	if (props.nodeType === 'scene-decompose') return t('nodes.type.sceneDecompose')
+	if (props.nodeType === 'scene-layout') return t('nodes.type.sceneLayout')
+	if (props.nodeType === 'unreal-export') return t('nodes.type.unrealExport')
+	if (props.nodeType === 'story') return t('nodes.type.story')
+	if (props.nodeType === 'comfyui') return t('nodes.type.comfyui')
+	if (props.nodeType === 'model3d') return t('nodes.type.model3d')
+	if (props.nodeType === 'meshy') return t('nodes.type.meshy')
+	return t('nodes.type.base')
+})
+
+const NODE_TYPE_TO_ACTION_ID: Record<string, string> = {
+	'text': 'text-generation',
+	'image': 'image-generation',
+	'rotate-image': 'rotate-image',
+	'video': 'video-generation',
+	'scene-understanding': 'scene-understanding',
+	'scene-layout': 'scene-layout',
+	'scene-decompose': 'scene-decompose',
+	'comfyui': 'comfyui',
+	'model3d': 'model3d',
+	'meshy': 'meshy',
+	'unreal-export': 'unreal-export',
+	'text-merge': 'text-merge',
+	'story': 'story',
+	'base': 'base'
+}
+
+const DEFAULT_ALIASES_ZH = new Set([
+	'文本节点',
+	'图片节点',
+	'旋转图片节点',
+	'视频节点',
+	'场景理解节点',
+	'场景布局节点',
+	'场景分解节点',
+	'虚幻导出节点',
+	'剧情节点',
+	'ComfyUI 节点',
+	'3D模型节点',
+	'Meshy模型生成节点',
+	'文本整合节点',
+	'工作流节点'
+])
+
+const resolvedTitle = computed(() => {
+	const actionId = NODE_TYPE_TO_ACTION_ID[props.nodeType]
+	if (actionId) {
+		const key = `aiworkflow.nodeLibrary.nodes.${actionId}.label`
+		const translated = t(key)
+		if (translated !== key) return translated
+	}
+	return props.title
+})
+
+const isDefaultAlias = computed(() => {
+	const alias = String(props.alias ?? '').trim()
+	if (!alias) return true
+	return DEFAULT_ALIASES_ZH.has(alias)
+})
+
+const displayTitle = computed(() => {
+	if (isDefaultAlias.value) {
+		return resolvedTitle.value
+	}
+	return props.alias || resolvedTitle.value
+})
+
+const displaySubtitle = computed(() => {
+	const key = 'aiworkflow.nodeLibrary.defaultSubtitle'
+	const translated = t(key)
+	if (translated !== key) return translated
+	return props.subtitle
 })
 
 const generationStatusLabel = computed(() => {
 	const status = props.nodeGenerationTask?.status
-	if (status === 'submitting') return '任务提交中'
-	if (status === 'running') return '生成中'
-	if (status === 'completed') return '已完成'
-	if (status === 'error') return '生成失败'
-	return '空闲'
+	if (status === 'submitting') return t('aiworkflow.nodeBase.taskSubmitting')
+	if (status === 'running') return t('aiworkflow.nodeBase.taskRunning')
+	if (status === 'completed') return t('aiworkflow.nodeBase.taskCompleted')
+	if (status === 'error') return t('aiworkflow.nodeBase.taskError')
+	return t('aiworkflow.nodeBase.taskIdle')
 })
 
 const onOpenNodeLibrary = () => {

@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence/blueprintSnapshot'
 import { getErrorMessage } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type {
 	AIWorkflowProjectPackageAssetTarget,
 	AIWorkflowProjectPackageV1
@@ -44,12 +45,14 @@ export const useAIWorkflowProjectTransfer = (payload: {
 		projectId: number,
 		buffer: ArrayBuffer,
 		fileName: string,
-		mimeType?: string
-	) => Promise<{ url: string; relativePath: string } | null>
+		mimeType?: string,
+		subPath?: string,
+		bucket?: string
+	) => Promise<{ url: string; relativePath: string; absolutePath?: string } | null>
 	sanitizeFileNamePart: (value: string) => string
 	recoverComfyUIRunStates: (opts?: { silent?: boolean }) => Promise<void>
 }) => {
-	const onRequestImportProjectPackage = async (request: { file: File }) => {
+	const onRequestImportProjectPackage = async (request: { file: File; templateCode?: string; subPath?: string }) => {
 		const file = request?.file
 		if (!file) return
 
@@ -57,18 +60,18 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			const zip = await JSZip.loadAsync(await file.arrayBuffer())
 			const packageFile = zip.file(payload.AIWF_PROJECT_PACKAGE_ENTRY)
 			if (!packageFile) {
-				payload.pushToast('导入失败：ZIP 内未找到 aiwf-project-package.json。', 'error')
+				payload.pushToast(t('aiworkflow.runtime.importPackageMissingEntry'), 'error')
 				return
 			}
 
 			const raw = await packageFile.async('text')
 			const parsed = JSON.parse(raw) as AIWorkflowProjectPackageV1
 			if (!parsed || parsed.schemaVersion !== 1 || parsed.kind !== 'aiwf-project-package') {
-				payload.pushToast('导入失败：项目包格式不兼容。', 'error')
+				payload.pushToast(t('aiworkflow.runtime.importPackageIncompatible'), 'error')
 				return
 			}
 			if (!payload.isValidBlueprintSnapshot(parsed.snapshot)) {
-				payload.pushToast('导入失败：项目包中的蓝图数据无效。', 'error')
+				payload.pushToast(t('aiworkflow.runtime.importPackageInvalidSnapshot'), 'error')
 				return
 			}
 
@@ -88,6 +91,9 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			const nextSnapshot = payload.stripUnrealExportRuntimeFromSnapshot(parsed.snapshot)
 			const missingAssets: string[] = []
 			const assetList = Array.isArray(parsed.assets) ? parsed.assets : []
+
+			const resolvedSubPath = request.subPath || (parsed.templateCode ? `template/${parsed.templateCode}` : undefined)
+			const resolvedBucket = 'assets'
 
 			for (const asset of assetList) {
 				const rid = String(asset?.resourceId || '').trim()
@@ -119,12 +125,14 @@ export const useAIWorkflowProjectTransfer = (payload: {
 				if (shouldPersistAsset) {
 					// ── 落盘路径：写入项目文件夹并通过 IPC 注册 dweb:// URL ──
 					const arrayBuffer = await blob.arrayBuffer()
-					const assetFileName = `${rid}-${target}.${guessExtFromBlob(blob, target)}`
+					const assetFileName = filePath.startsWith('assets/') ? filePath.slice(7) : `${rid}-${target}.${guessExtFromBlob(blob, target)}`
 					const imported = await payload.importAssetFromBuffer!(
 						activeProjectId!,
 						arrayBuffer,
 						assetFileName,
-						blob.type
+						blob.type,
+						resolvedSubPath,
+						resolvedBucket
 					)
 
 					if (target === 'snapshotField') {
@@ -160,9 +168,12 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						payload.setObjectUrl(objectKey, resolvedUrl)
 						if (resource) {
 							resource[target] = resolvedUrl
-							resource.sourcePath = imported?.relativePath ?? undefined
-							resource.projectRelativePath = imported?.relativePath ?? undefined
-							resource.posterSourcePath = undefined
+							if (target === 'url') {
+								resource.sourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
+								resource.projectRelativePath = imported?.relativePath ?? undefined
+							} else if (target === 'posterUrl') {
+								resource.posterSourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
+							}
 							resource.localFileKey = undefined
 						}
 					}
@@ -254,18 +265,18 @@ export const useAIWorkflowProjectTransfer = (payload: {
 
 			// 此时 currentProjectId 已是最终值 → 运行时清洗能构建正确的 dweb:// URL
 			const runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(nextSnapshot)
-			if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, '导入项目包')) return
+			if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.importProjectPackageSource'))) return
 			payload.resetCurrentUnrealExportNodeRuntimeState()
 
 			await payload.recoverComfyUIRunStates({ silent: true })
 
 			if (missingAssets.length > 0) {
-				payload.pushToast(`项目包导入完成，但缺少 ${missingAssets.length} 个资源文件。`, 'warn')
+				payload.pushToast(t('aiworkflow.toast.projectImportIncomplete', { count: missingAssets.length }), 'warn')
 			} else {
-				payload.pushToast('项目包导入成功。', 'info')
+				payload.pushToast(t('aiworkflow.runtime.projectPackageImportSuccess'), 'info')
 			}
 		} catch (err: unknown) {
-			payload.pushToast('导入项目包失败：' + getErrorMessage(err), 'error')
+			payload.pushToast(t('aiworkflow.runtime.projectPackageImportFailed', { error: getErrorMessage(err) }), 'error')
 		}
 	}
 
@@ -287,9 +298,9 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			a.click()
 			a.remove()
 			URL.revokeObjectURL(url)
-			payload.pushToast('已导出蓝图 JSON 文件。', 'info')
+			payload.pushToast(t('aiworkflow.runtime.blueprintJsonExported'), 'info')
 		} catch (err: unknown) {
-			payload.pushToast('导出失败：' + getErrorMessage(err), 'error')
+			payload.pushToast(t('aiworkflow.runtime.exportFailedWithError', { error: getErrorMessage(err) }), 'error')
 		}
 	}
 

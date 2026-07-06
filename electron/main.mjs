@@ -3,7 +3,11 @@ import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import https from 'node:https'
 import http from 'node:http'
+import dns from 'node:dns'
+import os from 'node:os'
 import { spawn } from 'node:child_process'
+
+dns.setDefaultResultOrder('ipv4first')
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
 
@@ -59,16 +63,35 @@ try {
 
 function earlySetupSteamEnv() {
 	try {
-		let appId = 480
+		if (process.env.SteamAppId && process.env.SteamGameId) {
+			console.log('[platform:steam] Steam environment already set by Steam client:', process.env.SteamAppId)
+			return
+		}
+		let appId = 0
 		const cwdAppIdPath = path.join(process.cwd(), 'steam_appid.txt')
 		if (fs.existsSync(cwdAppIdPath)) {
 			const content = fs.readFileSync(cwdAppIdPath, 'utf8').trim()
 			const parsed = parseInt(content, 10)
 			if (!isNaN(parsed) && parsed > 0) appId = parsed
 		}
-		process.env.SteamAppId = String(appId)
-		process.env.SteamGameId = String(appId)
-		console.log('[platform:steam] Early SteamAppId set:', appId)
+		if (!appId) {
+			const exeDirAppIdPath = path.join(path.dirname(process.execPath), 'steam_appid.txt')
+			if (fs.existsSync(exeDirAppIdPath)) {
+				const content = fs.readFileSync(exeDirAppIdPath, 'utf8').trim()
+				const parsed = parseInt(content, 10)
+				if (!isNaN(parsed) && parsed > 0) appId = parsed
+			}
+		}
+		if (!appId) {
+			appId = parseInt(process.env.STEAM_APP_ID || '0', 10) || 0
+		}
+		if (appId > 0) {
+			process.env.SteamAppId = String(appId)
+			process.env.SteamGameId = String(appId)
+			console.log('[platform:steam] Early SteamAppId set:', appId)
+		} else {
+			console.log('[platform:steam] No Steam AppID configured, Steam integration will use Mock mode')
+		}
 	} catch (err) {
 		console.warn('[platform:steam] Early Steam env setup failed:', err.message)
 	}
@@ -531,6 +554,15 @@ function getDefaultClientSettings() {
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		githubToken: '',
+		ui: {
+			locale: '',
+		},
+		apiKeySecurityAgreement: {
+			accepted: false,
+			acceptedAt: 0,
+			acceptedVersion: '',
+		},
 	}
 }
 
@@ -544,13 +576,31 @@ function ensureClientResourceLayout() {
 	return { resourceDir: getDvsResourceDir(), settingsDir: getUserSettingsDir(), settingsFile: filePath }
 }
 
+function deepMergeSettings(target, source) {
+	if (!source || typeof source !== 'object') return target
+	const result = { ...target }
+	for (const key of Object.keys(source)) {
+		const sourceVal = source[key]
+		const targetVal = result[key]
+		if (
+			sourceVal && typeof sourceVal === 'object' && !Array.isArray(sourceVal) &&
+			targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)
+		) {
+			result[key] = deepMergeSettings(targetVal, sourceVal)
+		} else {
+			result[key] = sourceVal
+		}
+	}
+	return result
+}
+
 function loadClientSettings() {
 	const layout = ensureClientResourceLayout()
 	const defaults = getDefaultClientSettings()
 	try {
 		const raw = fs.readFileSync(layout.settingsFile, 'utf-8')
 		const parsed = JSON.parse(raw)
-		clientSettings = { ...defaults, ...(parsed || {}) }
+		clientSettings = deepMergeSettings(defaults, parsed || {})
 	} catch {
 		clientSettings = defaults
 		fs.writeFileSync(layout.settingsFile, JSON.stringify(clientSettings, null, 2), 'utf-8')
@@ -561,7 +611,7 @@ function loadClientSettings() {
 function saveClientSettings(next) {
 	const layout = ensureClientResourceLayout()
 	const defaults = getDefaultClientSettings()
-	clientSettings = { ...defaults, ...(clientSettings || {}), ...(next || {}) }
+	clientSettings = deepMergeSettings(deepMergeSettings(defaults, clientSettings || {}), next || {})
 	fs.writeFileSync(layout.settingsFile, JSON.stringify(clientSettings, null, 2), 'utf-8')
 	return { ...clientSettings }
 }
@@ -1369,7 +1419,7 @@ function registerIpc() {
 				title: `${APP_NAME} · ${name}`,
 				icon: getWindowIconPath(),
 				backgroundColor: '#181818',
-				frame: true,
+				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
 					preload: path.resolve(here, 'preload.mjs'),
@@ -1381,6 +1431,13 @@ function registerIpc() {
 			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
 			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
 			try { imageMarkupWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 40
+				const offsetY = 40
+				imageMarkupWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
 
 			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
@@ -1455,7 +1512,7 @@ function registerIpc() {
 				title: `${APP_NAME} · ${title}`,
 				icon: getWindowIconPath(),
 				backgroundColor: '#181818',
-				frame: true,
+				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
 					preload: path.resolve(here, 'preload.mjs'),
@@ -1467,6 +1524,13 @@ function registerIpc() {
 
 			try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
 			try { resourceManagerWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 60
+				const offsetY = 60
+				resourceManagerWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
 
 			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)

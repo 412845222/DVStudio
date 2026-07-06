@@ -1,0 +1,17 @@
+{
+  "aiworkflow.canvas.inputAnchors": "Input Anchors",
+  "aiworkflow.canvas.outputAnchors": "Output Anchors",
+  "aiworkflow.canvas.inputAnchor": "Input",
+  "aiworkflow.canvas.outputAnchor": "Output",
+  "aiworkflow.canvas.nodesSelected": "{count} nodes",
+  "aiworkflow.canvas.editLabel": "Edit",
+  "aiworkflow.canvas.editTag": "Edit Tag",
+  "aiworkflow.canvas.cancelSelection": "Cancel Selection",
+  "aiworkflow.canvas.enterTagName": "Enter tag name...",
+  "aiworkflow.canvas.save": "Save",
+  "aiworkflow.canvas.cancel": "Cancel",
+  "aiworkflow.canvas.minimap": "Minimap",
+  "aiworkflow.canvas.minimapFitAll": "Fit all nodes",
+  "aiworkflow.canvas.minimapCollapse": "Collapse",
+  "aiworkflow.canvas.minimapExpand": "Expand minimap"
+}

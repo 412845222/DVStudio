@@ -40,7 +40,7 @@
 							>
 								<img
 									:src="safePreviewImageUrl"
-									alt="剧情预览"
+									:alt="t('nodes.story.previewAlt')"
 									:style="previewImgStyle"
 									@error="onPreviewImageError"
 								/>
@@ -58,17 +58,17 @@
 								@play="onPreviewVideoPlay"
 							/>
 							<div v-else class="wf-story-placeholder">
-								<div class="wf-story-placeholder-title">暂无画面预览</div>
-								<div class="wf-story-placeholder-sub">连接图片或视频输入节点</div>
+								<div class="wf-story-placeholder-title">{{ t('nodes.story.noPreview') }}</div>
+								<div class="wf-story-placeholder-sub">{{ t('nodes.story.noPreviewSub') }}</div>
 							</div>
 						</div>
 					</div>
 				</div>
 
 				<div class="wf-story-preview-settings" @pointerdown.stop>
-					<div class="wf-story-preview-settings-title">画面预览</div>
+					<div class="wf-story-preview-settings-title">{{ t('nodes.story.previewTitle') }}</div>
 					<label class="wf-story-preview-field">
-						<span class="wf-story-preview-label">宽</span>
+						<span class="wf-story-preview-label">{{ t('nodes.story.width') }}</span>
 						<input
 							class="wf-story-preview-input"
 							type="number"
@@ -79,7 +79,7 @@
 						/>
 					</label>
 					<label class="wf-story-preview-field">
-						<span class="wf-story-preview-label">高</span>
+						<span class="wf-story-preview-label">{{ t('nodes.story.height') }}</span>
 						<input
 							class="wf-story-preview-input"
 							type="number"
@@ -113,9 +113,9 @@
 		<template #footer>
 			<div class="wf-story-branches" @pointerdown.stop>
 				<div class="wf-story-branches-header">
-					<div class="wf-story-branches-title">剧情分支</div>
+					<div class="wf-story-branches-title">{{ t('nodes.story.branchesTitle') }}</div>
 					<button class="wf-story-branches-add" type="button" @click="emit('add-branch')">
-						新增分支
+						{{ t('nodes.story.addBranch') }}
 					</button>
 				</div>
 				<div v-for="(branch, idx) in branches" :key="branch.id" class="wf-story-branch">
@@ -124,10 +124,10 @@
 						class="wf-story-input"
 						type="text"
 						:value="branch.text"
-						placeholder="剧情分支描述"
+						:placeholder="t('nodes.story.branchPlaceholder')"
 						@input="onBranchInput(branch.id, $event)"
 					/>
-					<button class="wf-story-action" type="button" title="设置">
+					<button class="wf-story-action" type="button" :title="t('nodes.story.settings')">
 						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-story-icon">
 							<path
 								d="M7 1h2l.4 1.5 1.6.7 1.3-.8 1.4 1.4-.8 1.3.7 1.6L15 7v2l-1.5.4-.7 1.6.8 1.3-1.4 1.4-1.3-.8-1.6.7L9 15H7l-.4-1.5-1.6-.7-1.3.8-1.4-1.4.8-1.3-.7-1.6L1 9V7l1.5-.4.7-1.6-.8-1.3L3.8 2.3l1.3.8 1.6-.7L7 1z"
@@ -141,10 +141,10 @@
 					<button
 						class="wf-story-action danger"
 						type="button"
-						title="删除"
+						:title="t('nodes.story.delete')"
 						@click="emit('remove-branch', branch.id)"
 					>
-						删除
+						{{ t('nodes.story.delete') }}
 					</button>
 				</div>
 			</div>
@@ -204,6 +204,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import VideoController from '../../UIComponent/VideoController.vue'
 import type { WorkflowStoryBranch } from '../../../aiworkflow/types'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string

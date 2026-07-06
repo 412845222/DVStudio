@@ -15,10 +15,12 @@ interface Props {
 	nodes: VisibleNodeEntry[]
 	screenshotPoolProvider: ScreenshotPoolProvider
 	motionActive?: boolean
+	theme?: 'dark' | 'light'
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	motionActive: false
+	motionActive: false,
+	theme: 'dark'
 })
 
 const emit = defineEmits<{
@@ -48,6 +50,13 @@ const scheduleRender = () => {
 const markDirty = () => {
 	dirty = true
 	scheduleRender()
+}
+
+const setTheme = (theme: 'dark' | 'light') => {
+	if (renderer) {
+		renderer.setTheme(theme)
+		markDirty()
+	}
 }
 
 const handleResize = () => {
@@ -117,6 +126,14 @@ watch(
 		}
 	}
 )
+watch(
+	() => props.theme,
+	(newTheme) => {
+		if (newTheme === 'dark' || newTheme === 'light') {
+			setTheme(newTheme)
+		}
+	}
+)
 
 onMounted(() => {
 	if (!canvasRef.value) return
@@ -125,6 +142,9 @@ onMounted(() => {
 		canvasRef.value,
 		props.screenshotPoolProvider
 	)
+
+	const initialTheme = props.theme
+	renderer.setTheme(initialTheme)
 
 	resizeObserver = new ResizeObserver(handleResize)
 	resizeObserver.observe(canvasRef.value)
@@ -154,11 +174,15 @@ onBeforeUnmount(() => {
 		parentEl = null
 	}
 	resizeObserver = null
-	renderer = null
+	if (renderer) {
+		renderer.dispose()
+		renderer = null
+	}
 })
 
 defineExpose({
-	markDirty
+	markDirty,
+	setTheme
 })
 </script>
 

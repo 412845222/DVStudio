@@ -1,41 +1,45 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
 import type { ClientSettings } from '../electronBridge/types'
-import { fetchUserAgreementMarkdown } from '../network/LegalDocService'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
 import ModalDialog from '../ui/UIComponent/ModalDialog.vue'
-import MarkdownViewer from '../ui/UIComponent/MarkdownViewer.vue'
 import { usePlatform } from '../platformBridge'
+import { useI18n } from '../i18n'
+
+const { t, locale } = useI18n()
 
 const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
+const API_KEY_AGREEMENT_VERSION = '1.0'
 
 type ClientSettingsKey = keyof ClientSettings
+type ApiKeyFieldKey = 'deepseekApiKey' | 'geminiApiKey' | 'bytedanceApiKey' | 'meshyApiKey' | 'githubToken'
 
 type ProviderConfig = {
 	key: string
 	name: string
-	desc: string
+	descKey: string
 	accent: string
 	icon: string
-	fields: Array<{ key: ClientSettingsKey; label: string; placeholder: string; mask: boolean }>
+	fields: Array<{ key: ApiKeyFieldKey; label: string; placeholder: string; mask: boolean }>
 	docsUrl: string
-	formKey: ClientSettingsKey
+	formKey: ApiKeyFieldKey
 	formValue: (s: ClientSettings) => string
 }
 
 const loading = ref(false)
 const saving = ref(false)
 const saveMsg = ref('')
+const saveMsgTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const repoUrl = String(window.__DWEB_REPO_URL__ ?? '').trim()
 
-const agreementOpen = ref(false)
-const agreementChecked = ref(false)
-const agreementLoading = ref(false)
-const agreementMarkdown = ref('')
-const agreementError = ref('')
+const securityAgreementOpen = ref(false)
+const securityAgreementChecked = ref(false)
+const pendingProviderKey = ref<string | null>(null)
+const pendingFieldKey = ref<ApiKeyFieldKey | null>(null)
+const pendingFieldValue = ref('')
 
 const clearOpen = ref(false)
 const clearing = ref(false)
@@ -47,93 +51,138 @@ const form = reactive<ClientSettings>({
 	deepseekModel: FIXED_DEEPSEEK_MODEL,
 	geminiApiKey: '',
 	geminiModel: FIXED_GEMINI_MODEL,
+	geminiBaseUrl: '',
+	httpProxy: '',
 	bytedanceApiKey: '',
 	meshyApiKey: '',
 	githubToken: '',
-	anthropicApiKey: '',
+	ui: {
+		locale: '',
+	},
+	apiKeySecurityAgreement: {
+		accepted: false,
+		acceptedAt: 0,
+		acceptedVersion: '',
+	},
 })
 
-// 模态框状态
 const activeProvider = ref<string | null>(null)
-const pendingForm = reactive<Partial<Record<ClientSettingsKey, string>>>({})
+const pendingForm = reactive<Partial<Record<ApiKeyFieldKey, string>>>({})
 
-const providers: ProviderConfig[] = [
+const hasAcceptedAgreement = computed(() => {
+	return Boolean(form.apiKeySecurityAgreement?.accepted)
+})
+
+const providers = computed<ProviderConfig[]>(() => [
 	{
 		key: 'deepseek',
-		name: 'DeepSeek',
-		desc: '中文大模型对话服务',
+		name: t('settings.providers.deepseek.name'),
+		descKey: 'settings.providers.deepseek.desc',
 		accent: '#4d6bfe',
-		icon: 'DS',
-		fields: [{ key: 'deepseekApiKey', label: 'API Key', placeholder: 'sk-...', mask: true }],
+		icon: t('settings.providers.deepseek.icon'),
+		fields: [{ key: 'deepseekApiKey', label: t('settings.fields.apiKey'), placeholder: 'sk-...', mask: true }],
 		docsUrl: 'https://platform.deepseek.com/api_keys',
 		formKey: 'deepseekApiKey',
 		formValue: (s: ClientSettings) => s.deepseekApiKey,
 	},
 	{
 		key: 'gemini',
-		name: 'Gemini',
-		desc: 'Google 多模态大模型',
+		name: t('settings.providers.gemini.name'),
+		descKey: 'settings.providers.gemini.desc',
 		accent: '#22a06b',
-		icon: 'GM',
-		fields: [{ key: 'geminiApiKey', label: 'API Key', placeholder: 'AIza...', mask: true }],
+		icon: t('settings.providers.gemini.icon'),
+		fields: [{ key: 'geminiApiKey', label: t('settings.fields.apiKey'), placeholder: 'AIza...', mask: true }],
 		docsUrl: 'https://aistudio.google.com/apikey',
 		formKey: 'geminiApiKey',
 		formValue: (s: ClientSettings) => s.geminiApiKey,
 	},
 	{
 		key: 'bytedance',
-		name: '字节方舟',
-		desc: '火山引擎大模型服务',
+		name: t('settings.providers.bytedance.name'),
+		descKey: 'settings.providers.bytedance.desc',
 		accent: '#1677ff',
-		icon: '方舟',
-		fields: [{ key: 'bytedanceApiKey', label: 'API Key', placeholder: 'ark_...', mask: true }],
+		icon: t('settings.providers.bytedance.icon'),
+		fields: [{ key: 'bytedanceApiKey', label: t('settings.fields.apiKey'), placeholder: 'ark_...', mask: true }],
 		docsUrl: 'https://console.volcengine.com/ark/',
 		formKey: 'bytedanceApiKey',
 		formValue: (s: ClientSettings) => s.bytedanceApiKey,
 	},
 	{
 		key: 'meshy',
-		name: 'Meshy',
-		desc: 'AI 3D 内容生成',
+		name: t('settings.providers.meshy.name'),
+		descKey: 'settings.providers.meshy.desc',
 		accent: '#a855f7',
-		icon: '3D',
-		fields: [{ key: 'meshyApiKey', label: 'API Key', placeholder: 'mshy_...', mask: true }],
+		icon: t('settings.providers.meshy.icon'),
+		fields: [{ key: 'meshyApiKey', label: t('settings.fields.apiKey'), placeholder: 'mshy_...', mask: true }],
 		docsUrl: 'https://docs.meshy.ai/reference/api-key',
 		formKey: 'meshyApiKey',
 		formValue: (s: ClientSettings) => s.meshyApiKey,
 	},
 	{
 		key: 'github',
-		name: 'GitHub',
-		desc: 'Copilot CLI 等 GitHub 相关服务',
+		name: t('settings.providers.github.name'),
+		descKey: 'settings.providers.github.desc',
 		accent: '#24292e',
-		icon: 'GH',
-		fields: [{ key: 'githubToken', label: 'Personal Access Token', placeholder: 'ghp_...', mask: true }],
+		icon: t('settings.providers.github.icon'),
+		fields: [{ key: 'githubToken', label: t('settings.fields.personalAccessToken'), placeholder: 'ghp_...', mask: true }],
 		docsUrl: 'https://github.com/settings/tokens',
 		formKey: 'githubToken',
 		formValue: (s: ClientSettings) => s.githubToken,
 	},
-	{
-		key: 'anthropic',
-		name: 'Anthropic',
-		desc: 'Claude CLI / Claude 大模型',
-		accent: '#cc785c',
-		icon: 'AN',
-		fields: [{ key: 'anthropicApiKey', label: 'API Key', placeholder: 'sk-ant-...', mask: true }],
-		docsUrl: 'https://console.anthropic.com/keys',
-		formKey: 'anthropicApiKey',
-		formValue: (s: ClientSettings) => s.anthropicApiKey,
-	},
-]
+])
+
+function showSaveMessage(msg: string, duration = 3000) {
+	saveMsg.value = msg
+	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
+	saveMsgTimer.value = setTimeout(() => {
+		saveMsg.value = ''
+	}, duration)
+}
+
+function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettings {
+	const payload: ClientSettings = {
+		defaultResolution: form.defaultResolution,
+		deepseekApiKey: form.deepseekApiKey,
+		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
+		deepseekModel: FIXED_DEEPSEEK_MODEL,
+		geminiApiKey: form.geminiApiKey,
+		geminiModel: FIXED_GEMINI_MODEL,
+		geminiBaseUrl: String(form.geminiBaseUrl || '').trim(),
+		httpProxy: String(form.httpProxy || '').trim(),
+		bytedanceApiKey: form.bytedanceApiKey,
+		meshyApiKey: form.meshyApiKey,
+		githubToken: form.githubToken,
+		ui: {
+			locale: form.ui?.locale || '',
+		},
+		apiKeySecurityAgreement: form.apiKeySecurityAgreement
+			? {
+					accepted: form.apiKeySecurityAgreement.accepted,
+					acceptedAt: form.apiKeySecurityAgreement.acceptedAt,
+					acceptedVersion: form.apiKeySecurityAgreement.acceptedVersion,
+				}
+			: {
+					accepted: false,
+					acceptedAt: 0,
+					acceptedVersion: '',
+				},
+		...overrides,
+	}
+	return payload
+}
+
+function getProvider(key: string | null) {
+	return providers.value.find((p) => p.key === key) || null
+}
 
 const hasPendingKey = (key: string) => {
-	const prov = providers.find((p) => p.key === key)
+	const prov = providers.value.find((p) => p.key === key)
 	if (!prov) return false
 	return prov.fields.some((f) => String(pendingForm[f.key] || '').trim())
 }
 
 function openProvider(key: string) {
-	const prov = providers.find((p) => p.key === key)
+	const prov = providers.value.find((p) => p.key === key)
 	if (!prov) return
 	for (const f of prov.fields) pendingForm[f.key] = form[f.key] || ''
 	activeProvider.value = key
@@ -141,18 +190,86 @@ function openProvider(key: string) {
 
 function closeProvider() {
 	activeProvider.value = null
-	for (const k of Object.keys(pendingForm) as ClientSettingsKey[]) delete pendingForm[k]
+	for (const k of Object.keys(pendingForm) as ApiKeyFieldKey[]) delete pendingForm[k]
 }
 
-function saveProvider() {
-	const key = activeProvider.value
-	const prov = providers.find((p) => p.key === key)
-	if (!prov) return
-	for (const f of prov.fields) {
-		form[f.key] = (pendingForm[f.key] || '') as ClientSettings[typeof f.key]
+function handleFieldInput(fieldKey: ApiKeyFieldKey) {
+	const value = String(pendingForm[fieldKey] || '')
+	if (!hasAcceptedAgreement.value && value.trim()) {
+		pendingProviderKey.value = activeProvider.value
+		pendingFieldKey.value = fieldKey
+		pendingFieldValue.value = value
+		securityAgreementOpen.value = true
+		securityAgreementChecked.value = false
+		return
 	}
-	saveMsg.value = '请点击右上角“保存全部”以将凭证加密写入后端。'
-	closeProvider()
+}
+
+async function saveProviderConfig() {
+	if (!activeProvider.value || saving.value) return
+	const prov = getProvider(activeProvider.value)
+	if (!prov) return
+
+	saving.value = true
+	try {
+		const keyPayload: Record<string, string> = {
+			deepseekApiKey: String(form.deepseekApiKey || ''),
+			geminiApiKey: String(form.geminiApiKey || ''),
+			bytedanceApiKey: String(form.bytedanceApiKey || ''),
+			meshyApiKey: String(form.meshyApiKey || ''),
+			githubToken: String(form.githubToken || ''),
+		}
+
+		for (const f of prov.fields) {
+			const val = String(pendingForm[f.key] || '').trim()
+			keyPayload[String(f.key)] = val
+			form[f.key] = val as ClientSettings[typeof f.key]
+		}
+
+		const keyRes = await saveEncryptedAICredentials(keyPayload as any)
+		if (!keyRes.ok) {
+			showSaveMessage(t('settings.saveFailed', { msg: keyRes.error || t('common.error') }))
+			return
+		}
+
+		await saveClientSettings(buildSavePayload())
+		showSaveMessage(t('settings.saveSuccess'))
+		closeProvider()
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
+async function saveResolution() {
+	if (saving.value) return
+	saving.value = true
+	try {
+		const r = await saveClientSettings(buildSavePayload())
+		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
+}
+
+function handleResolutionChange() {
+	saveResolution()
+}
+
+async function saveNetworkSettings() {
+	if (saving.value) return
+	saving.value = true
+	try {
+		const r = await saveClientSettings(buildSavePayload())
+		if (r?.ok) showSaveMessage(t('settings.saveSuccess'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }))
+	} finally {
+		saving.value = false
+	}
 }
 
 function openSource() {
@@ -162,7 +279,7 @@ function openSource() {
 
 function openDocsForProvider(key: string | null) {
 	if (!key) return
-	const prov = providers.find((p) => p.key === key)
+	const prov = providers.value.find((p) => p.key === key)
 	if (!prov || !prov.docsUrl) return
 	void openExternalUrl(prov.docsUrl)
 }
@@ -174,93 +291,51 @@ async function load() {
 	form.deepseekBaseUrl = FIXED_DEEPSEEK_BASE_URL
 	form.deepseekModel = FIXED_DEEPSEEK_MODEL
 	form.geminiModel = FIXED_GEMINI_MODEL
-	// Keep API keys from loaded settings - do NOT clear them
-	// Keys are stored in client settings alongside encrypted backend storage
-	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken', 'anthropicApiKey'] as const) {
+	form.geminiBaseUrl = String(form.geminiBaseUrl || '')
+	form.httpProxy = String(form.httpProxy || '')
+	for (const key of ['deepseekApiKey', 'geminiApiKey', 'bytedanceApiKey', 'meshyApiKey', 'githubToken'] as const) {
 		if (!(key in form) || typeof form[key] !== 'string') form[key] = ''
+	}
+	if (!form.ui) form.ui = { locale: '' }
+	if (!form.apiKeySecurityAgreement) {
+		form.apiKeySecurityAgreement = {
+			accepted: false,
+			acceptedAt: 0,
+			acceptedVersion: '',
+		}
 	}
 	loading.value = false
 }
 
-function needsAgreement() {
-	return Boolean(
-		String(form.deepseekApiKey || '').trim() ||
-			String(form.geminiApiKey || '').trim() ||
-			String(form.bytedanceApiKey || '').trim() ||
-			String(form.meshyApiKey || '').trim() ||
-			String(form.githubToken || '').trim() ||
-			String(form.anthropicApiKey || '').trim()
-	)
-}
+async function acceptSecurityAgreement() {
+	if (!securityAgreementChecked.value) return
 
-async function doSubmit() {
-	saving.value = true
-	saveMsg.value = ''
-
-	// Always include all key fields in saveEncryptedAICredentials.
-	// This ensures that clearing a key in the form also clears the encrypted storage.
-	const keyPayload: {
-		deepseekApiKey: string
-		geminiApiKey: string
-		bytedanceApiKey: string
-		meshyApiKey: string
-		githubToken: string
-		anthropicApiKey: string
-	} = {
-		deepseekApiKey: String(form.deepseekApiKey || '').trim(),
-		geminiApiKey: String(form.geminiApiKey || '').trim(),
-		bytedanceApiKey: String(form.bytedanceApiKey || '').trim(),
-		meshyApiKey: String(form.meshyApiKey || '').trim(),
-		githubToken: String(form.githubToken || '').trim(),
-		anthropicApiKey: String(form.anthropicApiKey || '').trim(),
-	}
-	const keyRes = await saveEncryptedAICredentials(keyPayload)
-	if (!keyRes.ok) {
-		saveMsg.value = `保存失败：${keyRes.error || '后端写入失败'}`
-		saving.value = false
-		return
+	form.apiKeySecurityAgreement = {
+		accepted: true,
+		acceptedAt: Date.now(),
+		acceptedVersion: API_KEY_AGREEMENT_VERSION,
 	}
 
-	const r = await saveClientSettings({
-		...form,
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
-		geminiModel: FIXED_GEMINI_MODEL,
-	})
+	await saveClientSettings(buildSavePayload())
 
-	if (r?.ok) saveMsg.value = '保存成功'
-	else if (r === null) saveMsg.value = '保存成功（本地设置已在浏览器中保存）'
-	else saveMsg.value = `保存失败：${r?.error || '未知错误'}`
+	securityAgreementOpen.value = false
 
-	saving.value = false
-}
-
-async function ensureAgreementMarkdownLoaded() {
-	if (agreementMarkdown.value || agreementLoading.value) return
-	agreementLoading.value = true
-	agreementError.value = ''
-	const r = await fetchUserAgreementMarkdown()
-	if (r.ok && typeof r.markdown === 'string') agreementMarkdown.value = r.markdown
-	else agreementError.value = r.error || '协议内容加载失败'
-	agreementLoading.value = false
-}
-
-async function submit() {
-	if (saving.value) return
-	saveMsg.value = ''
-	if (needsAgreement()) {
-		agreementChecked.value = false
-		agreementOpen.value = true
-		await ensureAgreementMarkdownLoaded()
-		return
+	if (pendingFieldKey.value && pendingFieldValue.value !== undefined) {
+		pendingForm[pendingFieldKey.value] = pendingFieldValue.value
+		pendingFieldKey.value = null
+		pendingFieldValue.value = ''
+		pendingProviderKey.value = null
 	}
-	await doSubmit()
 }
 
-async function confirmAgreementAndSave() {
-	if (!agreementChecked.value) return
-	agreementOpen.value = false
-	await doSubmit()
+function cancelSecurityAgreement() {
+	securityAgreementOpen.value = false
+	if (pendingFieldKey.value) {
+		pendingForm[pendingFieldKey.value] = form[pendingFieldKey.value] || ''
+	}
+	pendingFieldKey.value = null
+	pendingFieldValue.value = ''
+	pendingProviderKey.value = null
 }
 
 async function confirmClearCredentials() {
@@ -272,20 +347,33 @@ async function confirmClearCredentials() {
 		geminiApiKey: '',
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		githubToken: '',
 	})
-	if (!r.ok) saveMsg.value = `清空失败：${r.error || '后端写入失败'}`
-	else saveMsg.value = '已清空已保存的 API Key'
+	if (!r.ok) showSaveMessage(t('settings.clearFailed', { msg: r.error || t('common.error') }))
+	else {
+		form.deepseekApiKey = ''
+		form.geminiApiKey = ''
+		form.bytedanceApiKey = ''
+		form.meshyApiKey = ''
+		form.githubToken = ''
 
-	form.deepseekApiKey = ''
-	form.geminiApiKey = ''
-	form.bytedanceApiKey = ''
-	form.meshyApiKey = ''
+		await saveClientSettings(buildSavePayload())
+
+		showSaveMessage(t('settings.clearedSuccess'))
+	}
 	clearing.value = false
 	clearOpen.value = false
 }
 
 onMounted(() => {
 	load()
+})
+
+onUnmounted(() => {
+	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
+})
+
+watch(locale, () => {
 })
 
 const {
@@ -299,6 +387,12 @@ const {
 	overlayActivate,
 } = usePlatform()
 
+const agreementItemKeys = ['storage', 'risk', 'permission', 'transmission', 'disclaimer'] as const
+
+function getAgreementItemKey(itemKey: string, field: 'title' | 'desc') {
+	return `settings.securityAgreement.items.${itemKey}.${field}` as const
+}
+
 const platformStatusClass = computed(() => {
 	const s = platformStatus.value
 	if (!s) return 'unknown'
@@ -309,28 +403,30 @@ const platformStatusClass = computed(() => {
 
 const platformStatusText = computed(() => {
 	const s = platformStatus.value
-	if (!s) return '检测中...'
+	if (!s) return t('settings.platform.detecting')
 	if (platformIsSteam.value) {
-		return s.user?.displayName ? `Steam: ${s.user.displayName}` : 'Steam'
+		return s.user?.displayName ? t('settings.platform.steamUser', { name: s.user.displayName }) : 'Steam'
 	}
 	if (platformIsReal.value) return platformDisplayName.value
-	return '开发模式 (Mock)'
+	return t('settings.platform.mockMode')
 })
 
 const platformHintText = computed(() => {
 	const s = platformStatus.value
 	if (!s) return ''
 	if (platformIsMock.value) {
-		return '当前使用开发模式运行，Steam功能未启用。如需Steam联调，请运行 npm run setup:steam 链接本地DwebSteamJS包。'
+		return t('settings.platform.mockHint')
 	}
 	if (platformIsSteam.value && !s.loggedIn) {
-		return 'Steam已连接，但用户未登录。请检查Steam客户端是否已登录。'
+		return t('settings.platform.steamNotLoggedIn')
 	}
 	if (platformIsSteam.value && s.loggedIn) {
-		return `已通过Steam登录，用户: ${s.user?.displayName || '未知'}`
+		return t('settings.platform.steamLoggedIn', { name: s.user?.displayName || t('settings.platform.steamUserUnknown') })
 	}
 	return ''
 })
+
+const activeProviderConfig = computed(() => getProvider(activeProvider.value))
 
 async function handleOpenOverlayStore() {
 	if (!platformOverlayEnabled.value) return
@@ -349,8 +445,8 @@ async function handleOpenOverlayCommunity() {
 		<header class="settings-header">
 			<div class="settings-header-inner">
 				<div class="settings-header-text">
-					<h1 class="settings-title">设置</h1>
-					<p class="settings-sub">在此管理各供应商的 API 凭证与默认输出分辨率。</p>
+					<h1 class="settings-title">{{ t('settings.title') }}</h1>
+					<p class="settings-sub">{{ t('settings.subtitle') }}</p>
 				</div>
 				<div class="settings-header-actions">
 					<button v-if="repoUrl" class="btn btn-ghost" type="button" @click="openSource">
@@ -360,7 +456,7 @@ async function handleOpenOverlayCommunity() {
 								d="M12 2C6.477 2 2 6.486 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.071 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.026 2.747-1.026.546 1.378.202 2.397.1 2.65.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.486 17.522 2 12 2Z"
 							/>
 						</svg>
-						查看源码
+						{{ t('settings.viewSource') }}
 					</button>
 					<button
 						class="btn btn-ghost"
@@ -368,10 +464,7 @@ async function handleOpenOverlayCommunity() {
 						:disabled="saving || clearing"
 						@click="clearOpen = true"
 					>
-						清空所有凭证
-					</button>
-					<button class="btn btn-primary" type="button" :disabled="saving" @click="submit">
-						{{ saving ? '保存中...' : '保存全部' }}
+						{{ t('settings.clearAllCredentials') }}
 					</button>
 				</div>
 			</div>
@@ -380,17 +473,17 @@ async function handleOpenOverlayCommunity() {
 
 		<section class="settings-section">
 			<div class="section-head">
-				<h2 class="section-title">默认输出</h2>
-				<p class="section-desc">保存到本地 settings.json</p>
+				<h2 class="section-title">{{ t('settings.defaultOutput') }}</h2>
+				<p class="section-desc">{{ t('settings.defaultOutputDesc') }}</p>
 			</div>
 			<div class="resolution-card">
 				<div class="resolution-row">
-					<label class="resolution-label">默认分辨率</label>
-					<select v-model="form.defaultResolution" class="resolution-select">
-						<option value="1920x1080">1920 × 1080</option>
-						<option value="1280x720">1280 × 720</option>
-						<option value="1080x1920">1080 × 1920</option>
-						<option value="3840x2160">3840 × 2160</option>
+					<label class="resolution-label">{{ t('settings.defaultResolution') }}</label>
+					<select v-model="form.defaultResolution" class="resolution-select" @change="handleResolutionChange">
+						<option value="1920x1080">{{ t('settings.resolutions.1080p') }}</option>
+						<option value="1280x720">{{ t('settings.resolutions.720p') }}</option>
+						<option value="1080x1920">{{ t('settings.resolutions.portrait') }}</option>
+						<option value="3840x2160">{{ t('settings.resolutions.4k') }}</option>
 					</select>
 				</div>
 			</div>
@@ -398,8 +491,8 @@ async function handleOpenOverlayCommunity() {
 
 		<section class="settings-section">
 			<div class="section-head">
-				<h2 class="section-title">平台集成</h2>
-				<p class="section-desc">Steam、Epic Games Store 等平台的连接状态与功能</p>
+				<h2 class="section-title">{{ t('settings.platformIntegration') }}</h2>
+				<p class="section-desc">{{ t('settings.platformDesc') }}</p>
 			</div>
 			<div class="platform-card">
 				<div class="platform-header">
@@ -409,9 +502,9 @@ async function handleOpenOverlayCommunity() {
 							<span class="platform-name">{{ platformStatusText }}</span>
 						</div>
 						<div v-if="platformStatus" class="platform-meta">
-							<span v-if="platformStatus.available">平台可用</span>
-							<span v-if="platformStatus.initialized">已初始化</span>
-							<span v-if="platformStatus.loggedIn">用户已登录</span>
+							<span v-if="platformStatus.available">{{ t('settings.platformAvailable') }}</span>
+							<span v-if="platformStatus.initialized">{{ t('settings.platformInitialized') }}</span>
+							<span v-if="platformStatus.loggedIn">{{ t('settings.platformLoggedIn') }}</span>
 						</div>
 					</div>
 				</div>
@@ -431,7 +524,7 @@ async function handleOpenOverlayCommunity() {
 				</div>
 
 				<div v-if="platformStatus?.installedDlcs?.length" class="platform-dlcs">
-					<div class="platform-dlcs-label">已安装 DLC</div>
+					<div class="platform-dlcs-label">{{ t('settings.installedDlcs') }}</div>
 					<div class="platform-dlc-tags">
 						<span v-for="dlc in platformStatus.installedDlcs" :key="dlc.appId" class="platform-dlc-tag">
 							{{ dlc.name }}
@@ -442,14 +535,14 @@ async function handleOpenOverlayCommunity() {
 				<div v-if="platformOverlayEnabled" class="platform-overlay">
 					<div class="platform-overlay-status">
 						<span class="overlay-dot" :class="{ active: platformOverlayActive }" />
-						Steam Overlay {{ platformOverlayActive ? '已激活' : '可用' }}
+						Steam Overlay {{ platformOverlayActive ? t('settings.overlayActive') : t('settings.overlayAvailable') }}
 					</div>
 					<div class="platform-overlay-actions">
 						<button class="btn btn-sm" type="button" @click="handleOpenOverlayStore">
-							打开商店
+							{{ t('settings.openStore') }}
 						</button>
 						<button class="btn btn-sm" type="button" @click="handleOpenOverlayCommunity">
-							打开社区
+							{{ t('settings.openCommunity') }}
 						</button>
 					</div>
 				</div>
@@ -458,9 +551,55 @@ async function handleOpenOverlayCommunity() {
 
 		<section class="settings-section">
 			<div class="section-head">
-				<h2 class="section-title">供应商凭证</h2>
+				<h2 class="section-title">{{ t('settings.network.title') }}</h2>
+				<p class="section-desc">{{ t('settings.network.desc') }}</p>
+			</div>
+			<div class="network-card">
+				<div class="network-row">
+					<label class="network-label">
+						<span>{{ t('settings.network.httpProxyLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.httpProxyHint') }}</small>
+					</label>
+					<input
+						v-model="form.httpProxy"
+						class="network-input"
+						type="text"
+						placeholder="http://127.0.0.1:7890"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-row">
+					<label class="network-label">
+						<span>{{ t('settings.network.geminiBaseUrlLabel') }}</span>
+						<small style="color: var(--vscode-fg-muted); font-size: 11px;">{{ t('settings.network.geminiBaseUrlHint') }}</small>
+					</label>
+					<input
+						v-model="form.geminiBaseUrl"
+						class="network-input"
+						type="text"
+						placeholder="https://generativelanguage.googleapis.com/v1beta"
+						autocomplete="off"
+						spellcheck="false"
+						@blur="saveNetworkSettings"
+					/>
+				</div>
+				<div class="network-tip" style="margin-top: 12px; padding: 12px; background: rgba(34,160,107,0.08); border-radius: 6px; font-size: 12px; color: var(--vscode-fg-muted); line-height: 1.6;">
+					<div style="font-weight: 600; color: #22a06b; margin-bottom: 6px;">{{ t('settings.network.proxyGuideTitle') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep1') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep2') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep3') }}</div>
+					<div>{{ t('settings.network.proxyGuideStep4') }}</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">{{ t('settings.aiServices') }}</h2>
 				<p class="section-desc">
-					API Key 属于你的私有资产。为降低泄露风险，本软件会在本地后端数据库中加密保存；但无法保证在电脑被入侵等极端情况下的绝对安全。
+					{{ t('settings.aiServicesDesc') }}
 				</p>
 			</div>
 
@@ -477,10 +616,10 @@ async function handleOpenOverlayCommunity() {
 					</div>
 					<div class="provider-body">
 						<div class="provider-name">{{ prov.name }}</div>
-						<div class="provider-desc">{{ prov.desc }}</div>
+						<div class="provider-desc">{{ t(prov.descKey) }}</div>
 						<div class="provider-status">
 							<span class="status-dot" :class="{ configured: !!prov.formValue(form) }"></span>
-							<span class="status-text">{{ prov.formValue(form) ? '已配置' : '未配置' }}</span>
+							<span class="status-text">{{ prov.formValue(form) ? t('settings.configured') : t('settings.notConfigured') }}</span>
 						</div>
 					</div>
 					<div class="provider-chev" aria-hidden="true">
@@ -493,39 +632,39 @@ async function handleOpenOverlayCommunity() {
 		</section>
 	</div>
 
-	<!-- 供应商配置弹窗 -->
 	<ModalDialog
 		v-if="activeProvider"
 		:open="activeProvider !== null"
-		:title="providers.find((p) => p.key === activeProvider)?.name + ' · 配置凭证'"
-		confirm-text="保存配置"
-		close-text="取消"
+		:title="(activeProviderConfig?.name || '') + ' · ' + t('settings.configCredentials')"
+		:show-confirm="true"
+		:confirm-text="t('settings.save')"
+		:close-text="t('common.cancel')"
 		:disable-confirm="saving"
 		@close="closeProvider"
-		@confirm="saveProvider"
+		@confirm="saveProviderConfig"
 	>
-		<template v-if="providers.find((p) => p.key === activeProvider)">
+		<template v-if="activeProviderConfig">
 			<div class="provider-modal-body">
 				<div
 					class="provider-modal-head"
-					:style="{ '--accent': providers.find((p) => p.key === activeProvider)!.accent }"
+					:style="{ '--accent': activeProviderConfig.accent }"
 				>
 					<div class="provider-badge-lg">
-						<span>{{ providers.find((p) => p.key === activeProvider)!.icon }}</span>
+						<span>{{ activeProviderConfig.icon }}</span>
 					</div>
 					<div>
 						<div class="provider-modal-name">
-							{{ providers.find((p) => p.key === activeProvider)!.name }}
+							{{ activeProviderConfig.name }}
 						</div>
 						<div class="provider-modal-desc">
-							{{ providers.find((p) => p.key === activeProvider)!.desc }}
+							{{ t(activeProviderConfig.descKey) }}
 						</div>
 					</div>
 				</div>
 
 				<div class="provider-modal-fields">
 					<label
-						v-for="f in providers.find((p) => p.key === activeProvider)!.fields"
+						v-for="f in activeProviderConfig.fields"
 						:key="f.key"
 						class="field-row"
 					>
@@ -537,57 +676,65 @@ async function handleOpenOverlayCommunity() {
 							:placeholder="f.placeholder"
 							autocomplete="off"
 							spellcheck="false"
+							@input="handleFieldInput(f.key)"
 						/>
 					</label>
 				</div>
 
 				<div class="provider-modal-tip">
-				<span>未获取到 API Key？</span>
+				<span>{{ t('settings.noApiKey') }}</span>
 				<button
 					type="button"
 					class="provider-modal-link"
 					@click="openDocsForProvider(activeProvider)"
-				>前往官方控制台获取 →</button>
+				>{{ t('settings.getFromConsole') }}</button>
 			</div>
 			</div>
 		</template>
 	</ModalDialog>
 
-	<!-- 用户协议弹窗 -->
 	<ModalDialog
-		:open="agreementOpen"
-		title="用户协议与安全声明"
-		confirm-text="同意并保存"
-		close-text="取消"
-		:disable-confirm="saving || !agreementChecked"
-		@close="agreementOpen = false"
-		@confirm="confirmAgreementAndSave"
+		:open="securityAgreementOpen"
+		:title="t('settings.securityAgreement.title')"
+		:confirm-text="t('settings.securityAgreement.agree')"
+		:close-text="t('common.cancel')"
+		:disable-confirm="!securityAgreementChecked"
+		@close="cancelSecurityAgreement"
+		@confirm="acceptSecurityAgreement"
 	>
 		<div class="agreement-body">
-			<div v-if="agreementLoading" class="agreement-loading">协议加载中...</div>
-			<div v-else-if="agreementError" class="agreement-error">{{ agreementError }}</div>
-			<MarkdownViewer v-else :markdown="agreementMarkdown" />
+			<div class="agreement-content">
+				<div class="agreement-section">
+					<h3 class="agreement-h3">🔒 {{ t('settings.securityAgreement.title') }}</h3>
+					<p class="agreement-p">{{ t('settings.securityAgreement.intro') }}</p>
+					<ol class="agreement-list">
+						<li v-for="key in agreementItemKeys" :key="key">
+							<strong>{{ t(getAgreementItemKey(key, 'title')) }}</strong>{{ t(getAgreementItemKey(key, 'desc')) }}
+						</li>
+					</ol>
+					<p class="agreement-p">{{ t('settings.securityAgreement.conclusion') }}</p>
+				</div>
+			</div>
 
 			<label class="agreement-check">
-				<input v-model="agreementChecked" type="checkbox" class="agreement-checkbox" />
-				<span>我已阅读并同意以上协议与安全声明</span>
+				<input v-model="securityAgreementChecked" type="checkbox" class="agreement-checkbox" />
+				<span>{{ t('settings.securityAgreement.readAndAgree') }}</span>
 			</label>
 		</div>
 	</ModalDialog>
 
-	<!-- 清空确认弹窗 -->
 	<ModalDialog
 		:open="clearOpen"
-		title="清空已保存的 API Key"
-		confirm-text="确认清空"
-		close-text="取消"
+		:title="t('settings.clearCredentialsTitle')"
+		:confirm-text="t('settings.confirmClear')"
+		:close-text="t('common.cancel')"
 		:disable-confirm="clearing || saving"
 		@close="clearOpen = false"
 		@confirm="confirmClearCredentials"
 	>
 		<div class="agreement-body">
 			<div class="agreement-loading">
-				该操作会清空本机后端数据库中加密保存的 DeepSeek / Gemini / 字节方舟 / Meshy API 凭证。清空后，相关 AI 功能将无法使用，直到你重新保存 Key。
+				{{ t('settings.clearCredentialsWarning') }}
 			</div>
 		</div>
 	</ModalDialog>
@@ -666,7 +813,7 @@ async function handleOpenOverlayCommunity() {
 .settings-flash {
 	margin: 12px 0 0;
 	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	color: #22a06b;
 }
 
 .btn {
@@ -778,6 +925,51 @@ async function handleOpenOverlayCommunity() {
 	border-color: var(--vscode-border-accent);
 }
 
+.network-card {
+	background: var(--dweb-defualt);
+	border: 1px solid var(--vscode-border);
+	border-radius: 10px;
+	padding: 20px;
+	max-width: 600px;
+}
+
+.network-row {
+	margin-bottom: 16px;
+}
+
+.network-row:last-child {
+	margin-bottom: 0;
+}
+
+.network-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 8px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-fg);
+}
+
+.network-input {
+	width: 100%;
+	box-sizing: border-box;
+	appearance: none;
+	-webkit-appearance: none;
+	border: 1px solid var(--vscode-border);
+	background: var(--vscode-input-bg, var(--dweb-defualt-dark));
+	color: var(--vscode-fg);
+	font-size: 13px;
+	padding: 10px 12px;
+	border-radius: 6px;
+	outline: none;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.network-input:focus {
+	border-color: var(--vscode-border-accent);
+}
+
 .provider-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -885,7 +1077,6 @@ async function handleOpenOverlayCommunity() {
 	color: var(--vscode-fg);
 }
 
-/* Modal overrides */
 .provider-modal-body {
 	display: flex;
 	flex-direction: column;
@@ -992,11 +1183,55 @@ async function handleOpenOverlayCommunity() {
 .agreement-body {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 16px;
 }
 
-.agreement-loading,
-.agreement-error {
+.agreement-content {
+	max-height: 400px;
+	overflow-y: auto;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	padding: 16px;
+	font-size: 13px;
+	line-height: 1.7;
+	color: var(--vscode-fg);
+}
+
+.agreement-section {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.agreement-h3 {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 600;
+	color: var(--theme-accent);
+}
+
+.agreement-p {
+	margin: 0;
+	color: var(--vscode-fg);
+}
+
+.agreement-list {
+	margin: 0;
+	padding-left: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.agreement-list li {
+	color: var(--vscode-fg-muted);
+}
+
+.agreement-list li strong {
+	color: var(--vscode-fg);
+}
+
+.agreement-loading {
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);
 	color: var(--vscode-fg-muted);
@@ -1007,15 +1242,20 @@ async function handleOpenOverlayCommunity() {
 
 .agreement-check {
 	display: flex;
-	align-items: center;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 10px;
 	color: var(--vscode-fg);
-	font-size: 12.5px;
+	font-size: 13px;
+	cursor: pointer;
+	user-select: none;
 }
 
 .agreement-checkbox {
-	width: 14px;
-	height: 14px;
+	width: 16px;
+	height: 16px;
+	margin-top: 2px;
+	flex-shrink: 0;
+	cursor: pointer;
 }
 
 @media (max-width: 720px) {

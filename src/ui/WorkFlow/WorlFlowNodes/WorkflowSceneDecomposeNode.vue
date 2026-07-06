@@ -40,37 +40,37 @@
 						:disabled="running || !canRun"
 						@click.stop="emit('run-scene-decompose')"
 					>
-						{{ running ? '拆解中…' : '拆解并展开' }}
+						{{ running ? t('nodes.sceneDecompose.processing') : t('nodes.sceneDecompose.runDecompose') }}
 					</button>
 				</div>
 
 				<div class="wf-scene-decompose-grid">
 					<div class="wf-scene-decompose-card">
-						<div class="wf-scene-decompose-card-title">输入图片</div>
+						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.inputImage') }}</div>
 						<div class="wf-scene-decompose-card-value">
-							{{ linkedImageCount > 0 ? `已连接 ${linkedImageCount} 张` : '未连接' }}
+							{{ linkedImageCount > 0 ? t('nodes.sceneDecompose.connected') : t('nodes.sceneDecompose.notConnected') }}
 						</div>
 						<div class="wf-scene-decompose-card-copy">{{ linkedImageHint }}</div>
 					</div>
 					<div class="wf-scene-decompose-card">
-						<div class="wf-scene-decompose-card-title">输入 JSON</div>
+						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.inputLayoutJson') }}</div>
 						<div class="wf-scene-decompose-card-value">
-							{{ hasJsonInput ? '已连接' : '未连接' }}
+							{{ hasJsonInput ? t('nodes.sceneDecompose.connected') : t('nodes.sceneDecompose.notConnected') }}
 						</div>
 						<div class="wf-scene-decompose-card-copy">{{ jsonHint }}</div>
 					</div>
 					<div class="wf-scene-decompose-card accent">
-						<div class="wf-scene-decompose-card-title">输出对象</div>
-						<div class="wf-scene-decompose-card-value">{{ outputCount }}</div>
+						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.outputItems') }}</div>
+						<div class="wf-scene-decompose-card-value">{{ t('nodes.sceneDecompose.itemCount', { count: outputCount }) }}</div>
 						<div class="wf-scene-decompose-card-copy">
-							裁切 {{ croppedCount }} 个，整图回退 {{ fallbackCount }} 个
+							{{ t('nodes.sceneDecompose.cropCount', { cropped: croppedCount, fallback: fallbackCount }) }}
 						</div>
 					</div>
 				</div>
 
 				<div class="wf-scene-decompose-progress-shell">
 					<div class="wf-scene-decompose-output-head">
-						<div class="wf-scene-decompose-label">自动裁剪进度</div>
+						<div class="wf-scene-decompose-label">{{ t('nodes.sceneDecompose.autoCropProgress') }}</div>
 						<div class="wf-scene-decompose-meta">{{ progressText }}</div>
 					</div>
 					<div class="wf-scene-decompose-progress-bar">
@@ -81,7 +81,7 @@
 
 				<div class="wf-scene-decompose-output-shell">
 					<div class="wf-scene-decompose-output-head">
-						<div class="wf-scene-decompose-label">输出预览</div>
+						<div class="wf-scene-decompose-label">{{ t('nodes.sceneDecompose.outputPreview') }}</div>
 						<div class="wf-scene-decompose-meta">{{ outputMeta }}</div>
 					</div>
 					<div
@@ -96,19 +96,19 @@
 							class="wf-scene-decompose-preview-item"
 						>
 							<div class="wf-scene-decompose-preview-top">
-								<span class="wf-scene-decompose-preview-name">{{ item.name || '未命名对象' }}</span>
+								<span class="wf-scene-decompose-preview-name">{{ item.name || t('nodes.sceneDecompose.defaultObject') }}</span>
 								<span class="wf-scene-decompose-preview-tag">
-									图 {{ item.sourceImageIndex }} ·
-									{{ item.cropMode === 'fallback' ? '整图' : '裁切' }}
+									{{ t('nodes.sceneDecompose.imageNum', { index: item.sourceImageIndex }) }} ·
+									{{ item.cropMode === 'fallback' ? t('nodes.sceneDecompose.fullImage') : t('nodes.sceneDecompose.crop') }}
 								</span>
 							</div>
 							<div class="wf-scene-decompose-preview-copy">
-								{{ item.description || '无描述文本。' }}
+								{{ item.description || t('nodes.sceneDecompose.noDescription') }}
 							</div>
 						</div>
 					</div>
 					<div v-else class="wf-scene-decompose-empty">
-						连接 4 张参考图和上游 JSON 后，点击“拆解并展开”生成图像与文本节点。
+						{{ t('nodes.sceneDecompose.noItems') }}
 					</div>
 				</div>
 			</div>
@@ -116,7 +116,7 @@
 
 		<template #footer>
 			<div class="wf-scene-decompose-footer" @pointerdown.stop>
-				<div class="wf-scene-decompose-footer-title">运行摘要</div>
+				<div class="wf-scene-decompose-footer-title">{{ t('nodes.sceneDecompose.runSummary') }}</div>
 				<div class="wf-scene-decompose-footer-copy">{{ messageText }}</div>
 			</div>
 		</template>
@@ -126,10 +126,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
 import type {
 	WorkflowSceneDecomposeNodeSettings,
 	WorkflowSceneDecomposeOutput
 } from '../../../aiworkflow/types'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -227,31 +230,31 @@ const linkedImageCount = computed(() =>
 const hasJsonInput = computed(() => !!String(props.linkedJsonText ?? '').trim())
 const canRun = computed(() => linkedImageCount.value > 0 && hasJsonInput.value)
 const linkedImageHint = computed(() => {
-	if (!linkedImageCount.value) return '需要按顺序接入参考图 1-4。'
+	if (!linkedImageCount.value) return t('nodes.sceneDecompose.errorNeedImages')
 	return linkedImageCount.value >= 4
-		? '会按 JSON 的 sourceImageIndex 对应截图。'
-		: '当前可用参考图少于 4 张。'
+		? t('nodes.sceneDecompose.hintByJson')
+		: t('nodes.sceneDecompose.hintFewImages')
 })
 const jsonHint = computed(() => {
-	if (!hasJsonInput.value) return '需要连接上游场景理解 JSON。'
-	return '将读取 objects[].sourceImageIndex / imageRect / imageRectPixels。'
+	if (!hasJsonInput.value) return t('nodes.sceneDecompose.errorNeedJson')
+	return t('nodes.sceneDecompose.hintJsonFields')
 })
 const statusLabel = computed(() => {
-	if (status.value === 'running') return '正在拆解'
-	if (status.value === 'completed') return '拆解完成'
-	if (status.value === 'error') return '拆解失败'
-	return '待拆解'
+	if (status.value === 'running') return t('nodes.sceneDecompose.statusRunning')
+	if (status.value === 'completed') return t('nodes.sceneDecompose.statusCompleted')
+	if (status.value === 'error') return t('nodes.sceneDecompose.statusError')
+	return t('nodes.sceneDecompose.statusIdle')
 })
 const outputMeta = computed(() => {
-	if (!outputCount.value) return '尚未生成对象输出'
-	return `已生成 ${outputCount.value} 组图像/文本输出`
+	if (!outputCount.value) return t('nodes.sceneDecompose.noOutputYet')
+	return t('nodes.sceneDecompose.outputGenerated', { count: outputCount.value })
 })
-const messageText = computed(() => String(settings.value?.message ?? '等待场景分解运行。'))
+const messageText = computed(() => String(settings.value?.message ?? t('nodes.sceneDecompose.waiting')))
 const progressValue = computed(() =>
 	Math.max(0, Math.min(100, Number(settings.value?.progress ?? 0)))
 )
 const currentStepText = computed(() =>
-	String(settings.value?.currentStep ?? '等待开始自动裁切任务。')
+	String(settings.value?.currentStep ?? t('nodes.sceneDecompose.waitingAutoCrop'))
 )
 const totalTasks = computed(() => Math.max(0, Number(settings.value?.totalTasks ?? 0)))
 const completedTasks = computed(() => Math.max(0, Number(settings.value?.completedTasks ?? 0)))

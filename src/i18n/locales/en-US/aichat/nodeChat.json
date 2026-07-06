@@ -1,0 +1,18 @@
+{
+  "aichat.nodeChat.disconnectUpstream": "Disconnect upstream parameter",
+  "aichat.nodeChat.promptLibrary": "Prompt Library",
+  "aichat.nodeChat.enhancePrompt": "Enhance Prompt",
+  "aichat.nodeChat.collapseParams": "Collapse Params",
+  "aichat.nodeChat.paramSettings": "Parameter Settings",
+  "aichat.nodeChat.generating": "Generating...",
+  "aichat.nodeChat.send": "Send",
+  "aichat.nodeChat.placeholder": "Enter a prompt...",
+  "aichat.nodeChat.textLabel": "Text {index}",
+  "aichat.nodeChat.imageLabel": "Image {index}",
+  "aichat.nodeChat.videoLabel": "Video {index}",
+  "aichat.nodeChat.model3dLabel": "3D Model {index}",
+  "aichat.nodeChat.refImage": "Img",
+  "aichat.nodeChat.refVideo": "Vid",
+  "aichat.nodeChat.sendShortcut": "Send",
+  "aichat.nodeChat.newlineShortcut": "New line"
+}

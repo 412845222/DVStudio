@@ -95,10 +95,19 @@ export type ClientSettings = {
 	deepseekModel: string
 	geminiApiKey: string
 	geminiModel: string
+	geminiBaseUrl?: string
+	httpProxy?: string
 	bytedanceApiKey: string
 	meshyApiKey: string
 	githubToken: string
-	anthropicApiKey: string
+	ui?: {
+		locale?: string
+	}
+	apiKeySecurityAgreement?: {
+		accepted: boolean
+		acceptedAt?: number
+		acceptedVersion?: string
+	}
 }
 
 export type ClientSettingsResult = {

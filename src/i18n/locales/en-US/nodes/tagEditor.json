@@ -1,0 +1,5 @@
+{
+  "nodes.tagEditor.placeholder": "Enter tag name...",
+  "nodes.tagEditor.save": "Save",
+  "nodes.tagEditor.hint": "Enter to confirm · Esc to cancel"
+}

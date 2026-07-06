@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
 import type { Store } from 'vuex'
+import { useI18n } from '../../../../i18n'
 import type { WorkflowAction } from '../../../../aiworkflow/actions'
 import type { WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
 import type { ContextMenuSection } from '../../../../ui/UIComponent/ContextMenu.vue'
@@ -36,6 +37,7 @@ export const useAIWorkflowContextMenu = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	openFolderForPath: (path: string) => Promise<{ ok?: boolean; error?: string } | null | void>
 }) => {
+	const { t } = useI18n()
 	const contextMenu = ref<ContextMenuState>({ open: false, x: 0, y: 0, worldX: 0, worldY: 0 })
 	const inspectorOpen = ref(false)
 	let cleanupContext: (() => void) | null = null
@@ -112,17 +114,17 @@ export const useAIWorkflowContextMenu = (payload: {
 			const node = payload.store.state.nodesById[payload.selectedNodeId.value]
 			topItems.push({
 				id: 'node-info',
-				label: node ? `节点：${node.title}` : '节点：未找到',
+				label: node ? t('aiworkflow.contextMenu.nodeInfo', { name: node.title }) : t('aiworkflow.contextMenu.nodeNotFound'),
 				disabled: true
 			})
 		} else if (payload.selectedEdgeId.value) {
 			topItems.push({
 				id: 'edge-info',
-				label: `连线：${payload.selectedEdgeId.value}`,
+				label: t('aiworkflow.contextMenu.edgeInfo', { id: payload.selectedEdgeId.value }),
 				disabled: true
 			})
 		} else {
-			topItems.push({ id: 'none', label: '未选中节点/连线', disabled: true })
+			topItems.push({ id: 'none', label: t('aiworkflow.contextMenu.noSelection'), disabled: true })
 		}
 
 		const actionItems: { id: string; label: string; disabled?: boolean }[] = []
@@ -134,22 +136,22 @@ export const useAIWorkflowContextMenu = (payload: {
 			const url = payload.nodeResourceUrl(selectedNode)
 			actionItems.push({
 				id: selectedNode.type === 'image' ? 'save-image-resource' : 'save-video-resource',
-				label: selectedNode.type === 'image' ? '图片另存为' : '视频另存为',
+				label: selectedNode.type === 'image' ? t('aiworkflow.contextMenu.saveImageAs') : t('aiworkflow.contextMenu.saveVideoAs'),
 				disabled: !String(url ?? '').trim()
 			})
 			actionItems.push({
 				id: 'open-image-folder',
-				label: '在文件夹中显示',
+				label: t('aiworkflow.contextMenu.revealInFolder'),
 				disabled: !payload.canOpenSelectedNodeFolder.value
 			})
 		}
 
 		if (selectedNode && selectedNode.type === 'model3d') {
 			const url = String(selectedNode.model3dSettings?.modelUrl ?? '').trim()
-			actionItems.push({ id: 'save-model-resource', label: '模型另存为', disabled: !url })
+			actionItems.push({ id: 'save-model-resource', label: t('aiworkflow.contextMenu.saveModelAs'), disabled: !url })
 			actionItems.push({
 				id: 'open-image-folder',
-				label: '在文件夹中显示',
+				label: t('aiworkflow.contextMenu.revealInFolder'),
 				disabled: !payload.canOpenSelectedNodeFolder.value
 			})
 		}
@@ -166,35 +168,35 @@ export const useAIWorkflowContextMenu = (payload: {
 		const canSetType = !!payload.selectedNodeId.value
 
 		return [
-			{ title: '当前选择', items: topItems },
-			...(actionItems.length ? [{ title: '选中操作', items: actionItems }] : []),
+			{ title: t('aiworkflow.contextMenu.currentSelection'), items: topItems },
+			...(actionItems.length ? [{ title: t('aiworkflow.contextMenu.selectionActions'), items: actionItems }] : []),
 			{
-				title: '常规功能',
+				title: t('aiworkflow.contextMenu.general'),
 				items: [
-					{ id: 'add-node', label: '添加节点' },
-					{ id: 'reset-viewport', label: '重置视口' },
-					{ id: 'copy-node', label: '复制', disabled: !canCopy },
-					{ id: 'paste-node', label: '粘贴', disabled: !canPaste }
+					{ id: 'add-node', label: t('aiworkflow.contextMenu.addNode') },
+					{ id: 'reset-viewport', label: t('aiworkflow.contextMenu.resetViewport') },
+					{ id: 'copy-node', label: t('aiworkflow.contextMenu.copy'), disabled: !canCopy },
+					{ id: 'paste-node', label: t('aiworkflow.contextMenu.paste'), disabled: !canPaste }
 				]
 			},
 			{
-				title: '节点设置',
+				title: t('aiworkflow.contextMenu.nodeSettings'),
 				items: [
 					{
 						id: 'set-type',
-						label: '设置类型',
+						label: t('aiworkflow.contextMenu.setType'),
 						disabled: !canSetType,
 						children: [
-							{ id: 'set-type:base', label: '基础' },
-							{ id: 'set-type:text', label: '文本' },
-							{ id: 'set-type:text-merge', label: '文本整合' },
-							{ id: 'set-type:image', label: '图片' },
-							{ id: 'set-type:rotate-image', label: '旋转图片' },
-							{ id: 'set-type:video', label: '视频' },
-							{ id: 'set-type:story', label: '剧情' },
-							{ id: 'set-type:comfyui', label: 'ComfyUI' },
-							{ id: 'set-type:model3d', label: '3D模型' },
-							{ id: 'set-type:meshy', label: 'Meshy模型生成' }
+							{ id: 'set-type:base', label: t('nodes.type.base') },
+							{ id: 'set-type:text', label: t('nodes.type.text') },
+							{ id: 'set-type:text-merge', label: t('nodes.type.textMerge') },
+							{ id: 'set-type:image', label: t('nodes.type.image') },
+							{ id: 'set-type:rotate-image', label: t('nodes.type.rotateImage') },
+							{ id: 'set-type:video', label: t('nodes.type.video') },
+							{ id: 'set-type:story', label: t('nodes.type.story') },
+							{ id: 'set-type:comfyui', label: t('nodes.type.comfyui') },
+							{ id: 'set-type:model3d', label: t('nodes.type.model3d') },
+							{ id: 'set-type:meshy', label: t('nodes.type.meshy') }
 						]
 					}
 				]
@@ -221,10 +223,10 @@ export const useAIWorkflowContextMenu = (payload: {
 				const filename = payload.inferSelectedResourceFilename(selectedNode)
 				payload
 					.downloadUrlAsBlob(url, filename)
-					.then(() => payload.pushToast('已开始下载。', 'info'))
+					.then(() => payload.pushToast(t('aiworkflow.contextMenu.downloadStarted'), 'info'))
 					.catch((err: unknown) => {
 						const errMsg = err instanceof Error ? err.message : String(err ?? 'unknown')
-						payload.pushToast('下载失败：' + errMsg, 'error')
+						payload.pushToast(t('aiworkflow.contextMenu.downloadFailed', { error: errMsg }), 'error')
 					})
 			}
 		}
@@ -243,12 +245,12 @@ export const useAIWorkflowContextMenu = (payload: {
 							}
 							if (/No handler registered/i.test(message)) {
 								payload.pushToast(
-									'打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。',
+									t('aiworkflow.contextMenu.folderOpenFailedIpc'),
 									'warn'
 								)
 								return
 							}
-							payload.pushToast('打开文件夹失败：' + message, 'warn')
+							payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailed', { error: message }), 'warn')
 						}
 					})
 					.catch((err: unknown) => {
@@ -263,12 +265,12 @@ export const useAIWorkflowContextMenu = (payload: {
 						}
 						if (/No handler registered/i.test(message)) {
 							payload.pushToast(
-								'打开文件夹失败：Electron 主进程未加载新 IPC，请重启桌面端后重试。',
+								t('aiworkflow.contextMenu.folderOpenFailedIpc'),
 								'warn'
 							)
 							return
 						}
-						payload.pushToast('打开文件夹失败：' + message, 'warn')
+						payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailed', { error: message }), 'warn')
 					})
 			}
 		}

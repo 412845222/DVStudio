@@ -34,6 +34,9 @@
 import { computed } from 'vue'
 import type { DwebPlatformUser } from '../../platformBridge/types'
 import UserAvatar from './UserAvatar.vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 interface Props {
 	collapsed?: boolean
@@ -62,24 +65,24 @@ const avatarStatus = computed<'online' | 'offline' | 'connecting' | undefined>((
 })
 
 const displayName = computed(() => {
-	if (!props.isRealPlatform) return '未连接'
-	if (props.isConnecting) return '连接中'
+	if (!props.isRealPlatform) return t('steam.userButton.notConnected')
+	if (props.isConnecting) return t('steam.userButton.connecting')
 	if (props.isLoggedIn && props.user) return props.user.displayName
-	return '未登录'
+	return t('steam.userButton.notLoggedIn')
 })
 
 const statusText = computed(() => {
-	if (!props.isRealPlatform) return 'Mock 模式'
+	if (!props.isRealPlatform) return t('steam.userButton.mockMode')
 	if (props.isConnecting) return 'Steam'
-	if (props.isLoggedIn) return 'Steam 在线'
-	return 'Steam 离线'
+	if (props.isLoggedIn) return t('steam.userButton.online')
+	return t('steam.userButton.offline')
 })
 
 const buttonTitle = computed(() => {
-	if (!props.isRealPlatform) return '平台未连接 - Mock模式'
-	if (props.isConnecting) return '正在连接 Steam...'
-	if (props.isLoggedIn && props.user) return `${props.user.displayName} - 点击打开菜单`
-	return '点击打开菜单'
+	if (!props.isRealPlatform) return t('steam.userButton.titleNotConnected')
+	if (props.isConnecting) return t('steam.userButton.titleConnecting')
+	if (props.isLoggedIn && props.user) return t('steam.userButton.titleLoggedIn', { name: props.user.displayName })
+	return t('steam.userButton.titleOpenMenu')
 })
 
 function handleClick(e: MouseEvent) {

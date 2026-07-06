@@ -7,17 +7,20 @@ import {
 	type NavigationGuardNext
 } from 'vue-router'
 import { ThemeStore } from '../../store/theme'
+import { useI18n } from '../../i18n'
 
 const props = defineProps<{
 	disabled?: boolean
 }>()
+
+const { t } = useI18n()
 
 // —— 动画状态 ——
 // 遮罩是否可见（进入动画、粒子下落阶段、退出动画三个阶段共用）
 const visible = ref(false)
 // 进度条百分比（0 → 100，带停顿与冲刺）
 const progress = ref(0)
-// 当前目标页面的中文名称
+// 当前目标页面的名称
 const currentLabel = ref('')
 
 // —— 粒子（与项目主题色一致的翡翠/青绿配色，深浅色各一套）——
@@ -107,12 +110,15 @@ function sleep(ms: number): Promise<void> {
 const route = useRoute()
 const router = useRouter()
 
-const NAV_LABELS: Record<string, string> = {
-	ProjectList: '项目列表',
-	Welcome: '欢迎',
-	AIWorkflow: 'AI 素材工作流',
-	VideoStudio: '动画编辑器',
-	Settings: '设置'
+function getNavLabel(routeName: string): string {
+	const labelMap: Record<string, string> = {
+		ProjectList: t('menu.projects'),
+		Welcome: t('menu.welcome'),
+		AIWorkflow: t('menu.workflow'),
+		VideoStudio: t('menu.studio'),
+		Settings: t('menu.settings')
+	}
+	return labelMap[routeName] || t('menu.switching')
 }
 
 const isDisabled = computed(() => Boolean(props.disabled))
@@ -147,7 +153,7 @@ const beforeHook = async (
 
 	// —— 阶段 A：显示遮罩 + 粒子，进度条从 0% → 60% ——
 	particles.value = buildParticles()
-	currentLabel.value = NAV_LABELS[String(to.name)] || '切换中'
+	currentLabel.value = getNavLabel(String(to.name))
 	progress.value = 0
 	visible.value = true
 

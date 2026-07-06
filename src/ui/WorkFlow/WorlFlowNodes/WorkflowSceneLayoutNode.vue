@@ -41,14 +41,14 @@
 							:disabled="running || !hasRunnableJson"
 							@click.stop="emit('refresh')"
 						>
-							刷新
+							{{ t('common.refresh') }}
 						</button>
 						<button
 							class="wf-scene-layout-btn ghost"
 							type="button"
 							@click.stop="emit('update-preview-mode', !previewMode)"
 						>
-							{{ previewMode ? '关闭预览模式' : '开启预览模式' }}
+							{{ previewMode ? t('nodes.sceneLayout.closePreview') : t('nodes.sceneLayout.openPreview') }}
 						</button>
 						<button class="wf-scene-layout-btn ghost" type="button" @click.stop="toggleCubeMode">
 							{{ cubeModeLabel }}
@@ -67,7 +67,7 @@
 							:disabled="running || !hasRunnableJson"
 							@click.stop="emit('run-scene-layout')"
 						>
-							{{ running ? '生成中…' : '生成布局' }}
+							{{ running ? t('nodes.sceneLayout.processing') : t('nodes.sceneLayout.runLayout') }}
 						</button>
 					</div>
 				</div>
@@ -89,10 +89,10 @@
 						:state="threePreviewState"
 						:snapshotUrl="snapshotUrl"
 						:empty="!layoutItems.length"
-						emptyTitle="3D 占位预览"
-						emptyText="连接 JSON 文本后点击“生成布局”，这里会显示彩色立方体占位。"
-						maskedTitle="实时场景预览已卸载"
-						maskedText="重新选中当前节点后，点击按钮再进入交互式 three.js 预览。"
+						:emptyTitle="t('nodes.sceneLayout.previewTitle')"
+						:emptyText="t('nodes.sceneLayout.previewEmptyText')"
+						:maskedTitle="t('nodes.sceneLayout.previewMaskedTitle')"
+						:maskedText="t('nodes.sceneLayout.previewMaskedText')"
 						@start="emit('start-three-preview')"
 					>
 						<canvas
@@ -113,14 +113,14 @@
 									type="button"
 									@click.stop="togglePlaceholderVisibility"
 								>
-									{{ hidePlaceholderCubes ? '显示立方体' : '隐藏立方体' }}
+									{{ hidePlaceholderCubes ? t('nodes.sceneLayout.showCubes') : t('nodes.sceneLayout.hideCubes') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
 									@click.stop="toggleLightingPreview"
 								>
-									{{ lightingPreviewEnabled ? '灯光预览开启' : '灯光预览' }}
+									{{ lightingPreviewEnabled ? t('nodes.sceneLayout.lightingPreviewOn') : t('nodes.sceneLayout.lightingPreview') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -128,7 +128,7 @@
 									:disabled="!lightingPreviewEnabled"
 									@click.stop="toggleLightingDebug"
 								>
-									{{ lightingDebugEnabled ? '灯光辅助开启' : '灯光辅助' }}
+									{{ lightingDebugEnabled ? t('nodes.sceneLayout.lightingDebugOn') : t('nodes.sceneLayout.lightingDebug') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -136,7 +136,7 @@
 									:disabled="!canOutputSelectedPlaceholder"
 									@click.stop="outputSelectedPlaceholder"
 								>
-									传递立方体
+									{{ t('nodes.sceneLayout.passCubes') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -144,7 +144,7 @@
 									:disabled="!canImportSelectedPlaceholder"
 									@click.stop="openSceneLayoutModelPicker"
 								>
-									导入模型
+									{{ t('nodes.sceneLayout.importModel') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -152,7 +152,7 @@
 									:disabled="!canClearSelectedManualModel"
 									@click.stop="clearSelectedManualModel"
 								>
-									清除模型
+									{{ t('nodes.sceneLayout.clearModel') }}
 								</button>
 								<div class="wf-scene-layout-orientation-group">
 									<button
@@ -160,7 +160,7 @@
 										type="button"
 										@click.stop="adjustSelectedOrientation"
 									>
-										调整朝向
+										{{ t('nodes.sceneLayout.adjustRotation') }}
 									</button>
 									<button
 										class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn wf-scene-layout-orientation-caret"
@@ -182,7 +182,7 @@
 											<span class="wf-scene-layout-dropdown-check">
 												{{ currentRotationAxis === 'x' ? '✓' : '' }}
 											</span>
-											<span>沿 X 轴旋转</span>
+											<span>{{ t('nodes.sceneLayout.rotateX') }}</span>
 										</div>
 										<div
 											class="wf-scene-layout-dropdown-item"
@@ -192,7 +192,7 @@
 											<span class="wf-scene-layout-dropdown-check">
 												{{ currentRotationAxis === 'y' ? '✓' : '' }}
 											</span>
-											<span>沿 Y 轴旋转</span>
+											<span>{{ t('nodes.sceneLayout.rotateY') }}</span>
 										</div>
 										<div
 											class="wf-scene-layout-dropdown-item"
@@ -202,7 +202,7 @@
 											<span class="wf-scene-layout-dropdown-check">
 												{{ currentRotationAxis === 'z' ? '✓' : '' }}
 											</span>
-											<span>沿 Z 轴旋转</span>
+											<span>{{ t('nodes.sceneLayout.rotateZ') }}</span>
 										</div>
 										<div class="wf-scene-layout-dropdown-divider"></div>
 										<div
@@ -210,7 +210,7 @@
 											@click.stop="resetOrientation"
 										>
 											<span class="wf-scene-layout-dropdown-check"></span>
-											<span>撤销旋转</span>
+											<span>{{ t('nodes.sceneLayout.undoRotation') }}</span>
 										</div>
 									</div>
 								</div>
@@ -226,7 +226,7 @@
 									type="button"
 									@click.stop="forceFitSelectedModel"
 								>
-									强制适配
+									{{ t('nodes.sceneLayout.forceFit') }}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -242,7 +242,7 @@
 									type="button"
 									@click.stop="confirmHolePunch"
 								>
-									确认打洞
+									{{ t('nodes.sceneLayout.confirmHolePunch') }}
 								</button>
 							</div>
 							<div
@@ -255,7 +255,7 @@
 									type="button"
 									@click.stop="lightingPanelCollapsed = !lightingPanelCollapsed"
 								>
-									{{ lightingPanelCollapsed ? '灯光总控' : '收起灯光总控' }}
+									{{ lightingPanelCollapsed ? t('nodes.sceneLayout.lightControlPanel') : t('nodes.sceneLayout.collapseLightControl') }}
 								</button>
 							</div>
 							<div
@@ -269,13 +269,13 @@
 								@pointerdown.stop
 							>
 								<div class="wf-scene-layout-lighting-controls-header">
-									<div>灯光全局总控</div>
+									<div>{{ t('nodes.sceneLayout.lightGlobalControl') }}</div>
 									<button
 										class="wf-scene-layout-btn ghost wf-scene-layout-lighting-reset"
 										type="button"
 										@click.stop="resetLightingControls"
 									>
-										重置
+										{{ t('common.reset') }}
 									</button>
 								</div>
 								<div class="wf-scene-layout-lighting-grid">
@@ -311,28 +311,28 @@
 									type="button"
 									@click.stop="perfPanelCollapsed = !perfPanelCollapsed"
 								>
-									{{ perfPanelCollapsed ? '性能面板' : '收起性能' }}
+									{{ perfPanelCollapsed ? t('nodes.sceneLayout.perfPanel') : t('nodes.sceneLayout.collapsePerf') }}
 								</button>
 								<div v-if="!perfPanelCollapsed" class="wf-scene-layout-perf-card">
-									<div class="wf-scene-layout-perf-title">Three.js 性能</div>
+									<div class="wf-scene-layout-perf-title">{{ t('nodes.sceneLayout.threePerf') }}</div>
 									<div class="wf-scene-layout-perf-grid">
 										<div>FPS</div>
 										<div>{{ perfFpsText }}</div>
-										<div>帧时</div>
+										<div>{{ t('nodes.sceneLayout.frameTime') }}</div>
 										<div>{{ perfFrameText }}</div>
-										<div>均帧</div>
+										<div>{{ t('nodes.sceneLayout.avgFps') }}</div>
 										<div>{{ perfAvgFrameText }}</div>
-										<div>渲染</div>
+										<div>{{ t('nodes.sceneLayout.render') }}</div>
 										<div>{{ perfRenderText }}</div>
-										<div>均渲染</div>
+										<div>{{ t('nodes.sceneLayout.avgRender') }}</div>
 										<div>{{ perfAvgRenderText }}</div>
 										<div>Draw Calls</div>
 										<div>{{ perfDrawCallsText }}</div>
 										<div>Triangles</div>
 										<div>{{ perfTrianglesText }}</div>
-										<div>几何体</div>
+										<div>{{ t('nodes.sceneLayout.geometry') }}</div>
 										<div>{{ perfGeometriesText }}</div>
-										<div>纹理</div>
+										<div>{{ t('nodes.sceneLayout.textures') }}</div>
 										<div>{{ perfTexturesText }}</div>
 									</div>
 								</div>
@@ -346,19 +346,19 @@
 		<template #footer>
 			<div class="wf-scene-layout-footer" @pointerdown.stop>
 				<div class="wf-scene-layout-kv">
-					<div>预览模式</div>
-					<div>{{ previewMode ? '已开启' : '未开启' }}</div>
-					<div>输入 JSON</div>
-					<div>{{ hasInputJson ? '已连接' : '未连接' }}</div>
-					<div>占位元素</div>
+					<div>{{ t('nodes.sceneLayout.previewMode') }}</div>
+					<div>{{ previewMode ? t('common.enabled') : t('common.disabled') }}</div>
+					<div>{{ t('nodes.sceneLayout.inputJson') }}</div>
+					<div>{{ hasInputJson ? t('nodes.sceneLayout.connected') : t('nodes.sceneLayout.notConnected') }}</div>
+					<div>{{ t('nodes.sceneLayout.placeholderElements') }}</div>
 					<div>{{ layoutItems.length }}</div>
-					<div>真实模型</div>
+					<div>{{ t('nodes.sceneLayout.realModels') }}</div>
 					<div>{{ connectedModelCount }}</div>
-					<div>待接模型</div>
+					<div>{{ t('nodes.sceneLayout.pendingModels') }}</div>
 					<div>{{ pendingModelCount }}</div>
-					<div>关系连线</div>
+					<div>{{ t('nodes.sceneLayout.relationLines') }}</div>
 					<div>{{ relationCount }}</div>
-					<div>推断支撑</div>
+					<div>{{ t('nodes.sceneLayout.inferredSupport') }}</div>
 					<div>{{ inferredCount }}</div>
 				</div>
 				<div class="wf-scene-layout-copy">{{ messageText }}</div>
@@ -394,6 +394,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import { useI18n } from '../../../i18n'
 import {
 	SceneLayoutPreviewViewer,
 	type SceneLayoutPreviewPerfSnapshot,
@@ -413,6 +414,8 @@ import type {
 } from './three-preview/types'
 import { isObject, isString } from '../../../types/utils'
 import { diagnoseDwebAsset } from '../../../electronBridge'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -628,10 +631,10 @@ const holePunchTargetId = ref('')
 const holePunchToolId = ref('')
 const holePunchCanConfirm = computed(() => !!holePunchTargetId.value && !!holePunchToolId.value)
 const holePunchButtonLabel = computed(() => {
-	if (!holePunchMode.value) return '打洞'
-	if (holePunchStep.value === 'select-target') return '选择被打洞的占位体'
-	if (holePunchStep.value === 'select-tool') return '选择用来打洞的占位体'
-	return '打洞'
+	if (!holePunchMode.value) return t('nodes.sceneLayout.holePunch')
+	if (holePunchStep.value === 'select-target') return t('nodes.sceneLayout.holePunchSelectTarget')
+	if (holePunchStep.value === 'select-tool') return t('nodes.sceneLayout.holePunchSelectTool')
+	return t('nodes.sceneLayout.holePunch')
 })
 const layoutItems = computed(
 	() =>
@@ -651,8 +654,8 @@ const sceneLayoutModelBindings = computed(
 			? props.sceneLayoutModelBindings
 			: []) as WorkflowSceneLayoutModelBinding[]
 )
-const messageText = computed(() => String(settings.value?.message ?? '等待 JSON 输入。'))
-const cubeModeLabel = computed(() => (renderTransparent.value ? '半透明' : '不透明'))
+const messageText = computed(() => String(settings.value?.message ?? t('nodes.sceneLayout.waitingJson')))
+const cubeModeLabel = computed(() => (renderTransparent.value ? t('nodes.sceneLayout.translucent') : t('nodes.sceneLayout.opaque')))
 const connectedModelCount = computed(
 	() =>
 		sceneLayoutModelBindings.value.filter(
@@ -692,8 +695,8 @@ const selectedScaleMode = computed(() => {
 	return selectedPreviewItem.value.previewScaleMode === 'model' ? 'model' : 'placeholder'
 })
 const selectedScaleModeLabel = computed(() => {
-	if (!selectedPreviewItem.value) return '占位比例'
-	return selectedScaleMode.value === 'model' ? '模型比例' : '占位比例'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.placeholderScale')
+	return selectedScaleMode.value === 'model' ? t('nodes.sceneLayout.modelScale') : t('nodes.sceneLayout.placeholderScale')
 })
 const canOutputSelectedPlaceholder = computed(
 	() => previewMode.value && !hidePlaceholderCubes.value && !!selectedPreviewItem.value
@@ -710,35 +713,35 @@ const canClearSelectedManualModel = computed(
 )
 const selectedPlaceholderStatusText = computed(() => {
 	const selected =
-		selectedPreviewItem.value?.name || selectedPreviewItem.value?.id || '未选中占位体'
+		selectedPreviewItem.value?.name || selectedPreviewItem.value?.id || t('nodes.sceneLayout.noPlaceholderSelected')
 	const output =
-		selectedPlaceholderOutputItem.value?.name || selectedPlaceholderOutputItem.value?.id || '未指定'
-	return `当前选中：${selected} · 当前输出：${output}`
+		selectedPlaceholderOutputItem.value?.name || selectedPlaceholderOutputItem.value?.id || t('nodes.sceneLayout.notSpecified')
+	return t('nodes.sceneLayout.currentSelected', { selected, output })
 })
 const selectedPlaceholderModelStatusText = computed(() => {
 	const binding = selectedPreviewBinding.value
-	if (!selectedPreviewItem.value) return '当前模型：未选中占位体'
-	if (!binding || !binding.connected) return '当前模型：未绑定'
-	if (binding.sourceNodeType === 'manual') return '当前模型：手动导入'
-	if (binding.sourceNodeType === 'model3d') return '当前模型：来自 3D 模型节点'
-	if (binding.sourceNodeType === 'meshy') return '当前模型：来自 Meshy 节点'
-	return '当前模型：已绑定'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.modelNoPlaceholder')
+	if (!binding || !binding.connected) return t('nodes.sceneLayout.modelNotBound')
+	if (binding.sourceNodeType === 'manual') return t('nodes.sceneLayout.modelManualImport')
+	if (binding.sourceNodeType === 'model3d') return t('nodes.sceneLayout.modelFromModel3D')
+	if (binding.sourceNodeType === 'meshy') return t('nodes.sceneLayout.modelFromMeshy')
+	return t('nodes.sceneLayout.modelBound')
 })
 const selectedPlaceholderOrientationText = computed(() => {
-	if (!selectedPreviewItem.value) return '朝向状态：未选中占位体'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.orientationNoPlaceholder')
 	const fix = selectedPreviewItem.value.orientationFix
-	if (!fix) return '朝向状态：待校正'
-	const modeText = fix.mode === 'manual' ? '人工修正' : '自动修正'
-	const confidenceText = fix.confidence === 'high' ? '高置信' : '低置信'
+	if (!fix) return t('nodes.sceneLayout.orientationPending')
+	const modeText = fix.mode === 'manual' ? t('nodes.sceneLayout.orientationManual') : t('nodes.sceneLayout.orientationAuto')
+	const confidenceText = fix.confidence === 'high' ? t('nodes.sceneLayout.confidenceHigh') : t('nodes.sceneLayout.confidenceLow')
 	const yaw = Number.isFinite(Number(fix.yaw)) ? Number(fix.yaw).toFixed(1) : '0.0'
 	const pitch = Number.isFinite(Number(fix.pitch)) ? Number(fix.pitch).toFixed(1) : '0.0'
 	const roll = Number.isFinite(Number(fix.roll)) ? Number(fix.roll).toFixed(1) : '0.0'
-	return `朝向状态：${modeText} · ${confidenceText} · offset(${yaw}, ${pitch}, ${roll})`
+	return t('nodes.sceneLayout.orientationStatus', { mode: modeText, confidence: confidenceText, yaw, pitch, roll })
 })
 const selectedPlaceholderFillText = computed(() => {
-	if (!selectedPreviewItem.value) return '循环填充：未选中占位体'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.fillNoPlaceholder')
 	const mode = String(selectedPreviewItem.value.fillMode ?? '').trim()
-	if (!mode) return '循环填充：未启用'
+	if (!mode) return t('nodes.sceneLayout.fillNotEnabled')
 	const axis = mode === 'fill-x' ? 'X' : mode === 'fill-y' ? 'Y' : 'Z'
 	const count = Number.isFinite(Number(selectedPreviewItem.value.fillCount))
 		? Math.max(1, Math.floor(Number(selectedPreviewItem.value.fillCount)))
@@ -746,34 +749,34 @@ const selectedPlaceholderFillText = computed(() => {
 	const axisScale = Number.isFinite(Number(selectedPreviewItem.value.fillAxisScale))
 		? Number(selectedPreviewItem.value.fillAxisScale).toFixed(2)
 		: '1.00'
-	return `循环填充：沿 ${axis} 轴 × ${count}，单轴微调 ${axisScale}`
+	return t('nodes.sceneLayout.fillStatus', { axis, count, scale: axisScale })
 })
 const cycleFillButtonLabel = computed(() => {
-	if (!selectedPreviewItem.value) return '循环填充'
-	return String(selectedPreviewItem.value.fillMode ?? '').trim() ? '取消循环' : '循环填充'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.cycleFill')
+	return String(selectedPreviewItem.value.fillMode ?? '').trim() ? t('nodes.sceneLayout.cancelCycle') : t('nodes.sceneLayout.cycleFill')
 })
 const selectedPlaceholderFitText = computed(() => {
-	if (!selectedPreviewItem.value) return '适配状态：未选中占位体'
+	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.fitNoPlaceholder')
 	const fitMode = String(selectedPreviewItem.value.fitMode ?? '').trim()
 	const fitMessage = String(selectedPreviewItem.value.fitMessage ?? '').trim()
 	if (!fitMode && !fitMessage) {
-		return '适配状态：可直接尝试调整朝向、循环填充或强制适配'
+		return t('nodes.sceneLayout.fitTryHint')
 	}
 	const fitModeLabel =
 		fitMode === 'forced'
-			? '强制适配'
+			? t('nodes.sceneLayout.fitForced')
 			: fitMode === 'filled'
-				? '循环填充'
+				? t('nodes.sceneLayout.fitFilled')
 				: fitMode === 'oriented'
-					? '朝向修正'
-					: '普通预览'
-	return `适配状态：${fitModeLabel} · ${fitMessage || '已更新'}`
+					? t('nodes.sceneLayout.fitOriented')
+					: t('nodes.sceneLayout.fitNormal')
+	return t('nodes.sceneLayout.fitStatus', { mode: fitModeLabel, message: fitMessage || t('nodes.sceneLayout.fitUpdated') })
 })
 const actionFeedbackText = computed(() => {
 	const text = String(lastActionMessage.value ?? '').trim()
 	return text
-		? `操作反馈：${text}`
-		: '操作反馈：点击 调整朝向 -> 循环填充 -> 强制适配 可以逐步修正模型。'
+		? t('nodes.sceneLayout.actionFeedback', { text })
+		: t('nodes.sceneLayout.actionFeedbackHint')
 })
 const lightingPreviewMeta = computed(() => {
 	const raw = String(props.linkedLightingJsonText ?? '').trim()
@@ -803,18 +806,18 @@ const lightingPreviewMeta = computed(() => {
 	}
 })
 const lightingPreviewText = computed(() => {
-	if (!previewMode.value) return '灯光预览：预览模式未开启'
-	if (!lightingPreviewEnabled.value) return '灯光预览：未开启'
+	if (!previewMode.value) return t('nodes.sceneLayout.lightingPreviewOff')
+	if (!lightingPreviewEnabled.value) return t('nodes.sceneLayout.lightingNotEnabled')
 	const raw = String(props.linkedLightingJsonText ?? '').trim()
-	if (!raw) return '灯光预览：已开启，等待灯光 JSON 输入'
+	if (!raw) return t('nodes.sceneLayout.lightingWaitingJson')
 	const meta = lightingPreviewMeta.value
-	if (!meta?.valid) return '灯光预览：已接入灯光 JSON，但当前内容暂不可解析'
+	if (!meta?.valid) return t('nodes.sceneLayout.lightingJsonInvalid')
 	const detailParts = [
-		meta.lightsCount > 0 ? `${meta.lightsCount} 盏局部灯` : '仅全局灯',
-		meta.preset || meta.style || '未标注风格'
+		meta.lightsCount > 0 ? t('nodes.sceneLayout.lightingLocalLights', { count: meta.lightsCount }) : t('nodes.sceneLayout.lightingGlobalOnly'),
+		meta.preset || meta.style || t('nodes.sceneLayout.lightingNoStyle')
 	].filter(Boolean)
 	const summaryText = meta.summary ? ` · ${meta.summary}` : ''
-	return `灯光预览：已接入 ${detailParts.join(' · ')}${summaryText}`
+	return t('nodes.sceneLayout.lightingConnected', { details: detailParts.join(' · '), summary: summaryText })
 })
 const lightingControlItems = computed(() => {
 	const controls = lightingControls.value
@@ -825,31 +828,31 @@ const lightingControlItems = computed(() => {
 		displayValue: `${Math.round((controls[key] ?? 1) * 100)}%`
 	})
 	return [
-		buildItem('masterIntensity', '整体亮度'),
-		buildItem('exposure', '曝光'),
-		buildItem('ambient', '环境光'),
-		buildItem('hemisphere', '半球光'),
-		buildItem('directional', '方向光'),
-		buildItem('rectArea', '面光'),
-		buildItem('spot', '聚光'),
-		buildItem('point', '点光')
+		buildItem('masterIntensity', t('nodes.sceneLayout.lightMaster')),
+		buildItem('exposure', t('nodes.sceneLayout.lightExposure')),
+		buildItem('ambient', t('nodes.sceneLayout.lightAmbient')),
+		buildItem('hemisphere', t('nodes.sceneLayout.lightHemisphere')),
+		buildItem('directional', t('nodes.sceneLayout.lightDirectional')),
+		buildItem('rectArea', t('nodes.sceneLayout.lightRectArea')),
+		buildItem('spot', t('nodes.sceneLayout.lightSpot')),
+		buildItem('point', t('nodes.sceneLayout.lightPoint'))
 	]
 })
 const recommendedFlowText = computed(() => {
 	if (!selectedPreviewItem.value) {
-		return '建议流程：先选中占位体，再依次尝试 调整朝向 -> 循环填充 -> 强制适配。'
+		return t('nodes.sceneLayout.suggestionSelect')
 	}
 	const fitMode = String(selectedPreviewItem.value.fitMode ?? '').trim()
 	if (fitMode === 'forced') {
-		return '建议流程：当前已强制适配；若想恢复观察差异，可切换 占位比例/模型比例 并重新尝试。'
+		return t('nodes.sceneLayout.suggestionForced')
 	}
 	if (fitMode === 'filled') {
-		return '建议流程：当前已做循环填充；若仍不合适，可继续调整朝向或直接强制适配。'
+		return t('nodes.sceneLayout.suggestionFilled')
 	}
 	if (fitMode === 'oriented') {
-		return '建议流程：当前已调整朝向；若只剩单一尺寸方向不合适，优先尝试循环填充。'
+		return t('nodes.sceneLayout.suggestionOriented')
 	}
-	return '建议流程：先切换 占位比例/模型比例 观察差异，再尝试 调整朝向 -> 循环填充 -> 强制适配。'
+	return t('nodes.sceneLayout.suggestionDefault')
 })
 const relationCount = computed(
 	() => layoutItems.value.filter((item) => !!String(item.parentId ?? '').trim()).length
@@ -926,10 +929,10 @@ const staticPreviewFrameCount = computed(() =>
 const staticPreviewFps = computed(() => (previewMode.value ? 18 : 14))
 
 const statusLabel = computed(() => {
-	if (status.value === 'running') return '正在布局'
-	if (status.value === 'completed') return '布局已生成'
-	if (status.value === 'error') return '布局失败'
-	return '待生成'
+	if (status.value === 'running') return t('nodes.sceneLayout.statusRunning')
+	if (status.value === 'completed') return t('nodes.sceneLayout.statusCompleted')
+	if (status.value === 'error') return t('nodes.sceneLayout.statusError')
+	return t('nodes.sceneLayout.statusIdle')
 })
 
 watch(
@@ -996,7 +999,7 @@ const toggleSelectedScaleMode = () => {
 		}
 		return nextItem
 	})
-	lastActionMessage.value = '已切换观察比例；如果之前启用了强制适配，当前已自动清除。'
+	lastActionMessage.value = t('nodes.sceneLayout.msgScaleSwitched')
 	emit('update-layout-items', nextItems)
 }
 
@@ -1045,12 +1048,12 @@ const clearSelectedManualModel = () => {
 	const objectId = String(selectedPreviewItemId.value ?? '').trim()
 	if (!objectId) return
 	emit('clear-scene-layout-model-binding', { objectId })
-	lastActionMessage.value = '已清除当前手动导入模型。'
+	lastActionMessage.value = t('nodes.sceneLayout.msgModelCleared')
 }
 
 const adjustSelectedOrientation = async () => {
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.rotateSelectedModelByAxis(currentRotationAxis.value)
@@ -1074,7 +1077,7 @@ const rotateByAxis = async (axis: 'x' | 'y' | 'z') => {
 	currentRotationAxis.value = axis
 	orientationDropdownOpen.value = false
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.rotateSelectedModelByAxis(axis)
@@ -1084,7 +1087,7 @@ const rotateByAxis = async (axis: 'x' | 'y' | 'z') => {
 const resetOrientation = async () => {
 	orientationDropdownOpen.value = false
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.resetSelectedModelOrientation()
@@ -1093,7 +1096,7 @@ const resetOrientation = async () => {
 
 const cycleFillSelectedModel = async () => {
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.cycleFillSelectedModel()
@@ -1102,7 +1105,7 @@ const cycleFillSelectedModel = async () => {
 
 const forceFitSelectedModel = async () => {
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.forceFitSelectedModel()
@@ -1111,7 +1114,7 @@ const forceFitSelectedModel = async () => {
 
 const toggleHolePunchMode = () => {
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	if (holePunchMode.value) {
@@ -1123,7 +1126,7 @@ const toggleHolePunchMode = () => {
 
 const confirmHolePunch = async () => {
 	if (!viewer) {
-		lastActionMessage.value = '预览器尚未准备完成。'
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerNotReady')
 		return
 	}
 	const result = await viewer.confirmHolePunch()
@@ -1201,7 +1204,7 @@ const onSceneLayoutModelFileChange = (event: Event) => {
 		file,
 		objectId: String(selectedPreviewItemId.value ?? '').trim() || undefined
 	})
-	lastActionMessage.value = `已选择模型文件 ${file.name}，正在导入。`
+	lastActionMessage.value = t('nodes.sceneLayout.msgModelSelected', { name: file.name })
 	input.value = ''
 }
 
@@ -1247,7 +1250,7 @@ const createViewerNow = () => {
 		viewerInitCooldownUntil = Date.now() + 400
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
-		lastActionMessage.value = `预览器初始化失败：${errMessage}`
+		lastActionMessage.value = t('nodes.sceneLayout.msgViewerInitFailed', { error: errMessage })
 	}
 }
 
@@ -1328,23 +1331,23 @@ const attemptRepairSceneLayoutModelUrl = async (url: string, itemId: string): Pr
 
 const startPreviewLoad = async (requestId: number) => {
 	activePreviewRequestId = requestId
-	emitPreviewProgress(0.12, '初始化渲染器')
+	emitPreviewProgress(0.12, t('nodes.sceneLayout.progressInitRenderer'))
 	const ready = await waitForViewerReady()
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
 		emit('three-preview-error')
 		return
 	}
-	emitPreviewProgress(0.46, '应用布局与相机')
+	emitPreviewProgress(0.46, t('nodes.sceneLayout.progressApplyLayout'))
 	syncViewerState()
-	emitPreviewProgress(0.78, previewMode.value ? '同步模型绑定与灯光' : '生成静态预览帧')
+	emitPreviewProgress(0.78, previewMode.value ? t('nodes.sceneLayout.progressSyncModels') : t('nodes.sceneLayout.progressGenerateFrame'))
 	await viewer.awaitPendingBindingSync(previewMode.value ? 4000 : 800)
 	if (activePreviewRequestId !== requestId || !viewer) return
 	viewer.requestStaticFrames()
 	await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 	if (activePreviewRequestId !== requestId || !viewer) return
 	captureSnapshot()
-	emitPreviewProgress(0.98, '进入交互前状态')
+	emitPreviewProgress(0.98, t('nodes.sceneLayout.progressReady'))
 	emit('three-preview-ready')
 }
 
@@ -1440,7 +1443,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 > => {
 	if (!canvasRef.value) {
-		return { ok: false, error: '场景布局预览画布尚未挂载。' }
+		return { ok: false, error: t('nodes.sceneLayout.errorCanvasNotMounted') }
 	}
 	ensureViewer()
 	if (!viewer) {
@@ -1450,7 +1453,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 	}
 	if (!viewer) {
-		return { ok: false, error: '场景布局预览器尚未准备完成。' }
+		return { ok: false, error: t('nodes.sceneLayout.errorViewerNotReady') }
 	}
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
@@ -1476,14 +1479,14 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	try {
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
 		if (!exportData.slots.length) {
-			const warningText = exportData.warnings[0] ?? '当前没有可导出的真实模型结果。'
+			const warningText = exportData.warnings[0] ?? t('nodes.sceneLayout.errorNoModelsToExport')
 			return { ok: false, error: warningText }
 		}
 		return { ok: true, exportData }
 	} catch (err) {
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
-		return { ok: false, error: `场景布局导出失败：${errMessage}` }
+		return { ok: false, error: t('nodes.sceneLayout.errorExportFailed', { error: errMessage }) }
 	} finally {
 		if (!previewActive.value) {
 			disposeViewer()
@@ -1494,14 +1497,14 @@ const getResolvedLayoutForUnreal = async (): Promise<
 const exportSelectedPlaceholderGLB = async (): Promise<
 	{ ok: true; glbData: ArrayBuffer; name: string } | { ok: false; error: string }
 > => {
-	lastActionMessage.value = '正在准备导出带洞几何体...'
+	lastActionMessage.value = t('nodes.sceneLayout.exportPreparing')
 	if (!canvasRef.value) {
-		lastActionMessage.value = '导出失败：场景布局预览画布尚未挂载。'
-		return { ok: false, error: '场景布局预览画布尚未挂载。' }
+		lastActionMessage.value = t('nodes.sceneLayout.exportCanvasError')
+		return { ok: false, error: t('nodes.sceneLayout.errorCanvasNotMounted') }
 	}
 	if (!previewActive.value) {
-		lastActionMessage.value = '导出失败：请先进入预览模式并完成打洞操作。'
-		return { ok: false, error: '请先进入预览模式并选择要导出的带洞占位体。' }
+		lastActionMessage.value = t('nodes.sceneLayout.exportPreviewError')
+		return { ok: false, error: t('nodes.sceneLayout.errorNeedPreviewMode') }
 	}
 	ensureViewer()
 	if (!viewer) {
@@ -1511,44 +1514,44 @@ const exportSelectedPlaceholderGLB = async (): Promise<
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 	}
 	if (!viewer) {
-		lastActionMessage.value = '导出失败：场景布局预览器尚未准备完成。'
-		return { ok: false, error: '场景布局预览器尚未准备完成。' }
+		lastActionMessage.value = t('nodes.sceneLayout.exportViewerError')
+		return { ok: false, error: t('nodes.sceneLayout.errorViewerNotReady') }
 	}
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
 	const itemId = selectedPreviewItemId.value
 	if (!itemId) {
-		lastActionMessage.value = '导出失败：请先在预览中选择一个打洞后的占位体。'
-		return { ok: false, error: '请先在预览中选择一个占位体。' }
+		lastActionMessage.value = t('nodes.sceneLayout.exportSelectError')
+		return { ok: false, error: t('nodes.sceneLayout.errorSelectPlaceholder') }
 	}
 	viewer.setSelectedItem(itemId)
 
 	const setViewerLog = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
 	if (setViewerLog) {
 		setViewerLog.call(viewer, (msg: string) => {
-			lastActionMessage.value = `[导出] ${msg}`
+			lastActionMessage.value = t('nodes.sceneLayout.exportLog', { msg })
 		})
 	}
 
-	lastActionMessage.value = '正在导出带洞几何体为GLB...'
+	lastActionMessage.value = t('nodes.sceneLayout.exportingGLB')
 	try {
 		const selectedItem = layoutItems.value.find((item) => item.id === itemId)
 		const itemName = selectedItem?.name || selectedItem?.id || itemId
 		const glbData = await viewer.exportPlaceholderGLB(itemId, itemName)
 		if (setViewerLog) setViewerLog.call(viewer, null)
 		if (!glbData) {
-			lastActionMessage.value = '导出失败：未能获取几何体数据。'
-			return { ok: false, error: '导出占位体GLB失败，未能获取几何体数据。' }
+			lastActionMessage.value = t('nodes.sceneLayout.exportNoData')
+			return { ok: false, error: t('nodes.sceneLayout.errorNoGeometry') }
 		}
-		lastActionMessage.value = `导出成功：${itemName}（带洞几何体）`
+		lastActionMessage.value = t('nodes.sceneLayout.exportSuccess', { name: itemName })
 		return { ok: true, glbData, name: itemName }
 	} catch (err) {
 		const setViewerLogCleanup = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
 		if (setViewerLogCleanup) setViewerLogCleanup.call(viewer, null)
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
-		lastActionMessage.value = `导出失败：${errMessage}`
-		return { ok: false, error: `导出占位体GLB失败：${errMessage}` }
+		lastActionMessage.value = t('nodes.sceneLayout.exportFailed', { error: errMessage })
+		return { ok: false, error: t('nodes.sceneLayout.errorGLBExportFailed', { error: errMessage }) }
 	}
 }
 

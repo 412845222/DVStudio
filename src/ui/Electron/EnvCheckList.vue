@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
 type Item = {
 	key: string
 	label: string
@@ -9,6 +11,8 @@ type Item = {
 	canRetry?: boolean
 }
 
+const { t } = useI18n()
+
 defineProps<{ title?: string; items: Item[] }>()
 
 const emit = defineEmits<{
@@ -18,7 +22,7 @@ const emit = defineEmits<{
 
 <template>
 	<div class="panel">
-		<div class="header">{{ title || '环境检查' }}</div>
+		<div class="header">{{ title || t('envCheck.defaultTitle') }}</div>
 		<div class="list">
 			<div v-for="it in items" :key="it.key" class="rowItem">
 				<div class="left">
@@ -35,7 +39,7 @@ const emit = defineEmits<{
 				</div>
 				<div class="rightActions">
 					<div class="badge" :data-status="it.status">
-						{{ it.status }}
+						{{ t(`envCheck.status.${it.status}`) }}
 					</div>
 					<button
 						v-if="it.status === 'error' && it.canRetry"
@@ -56,7 +60,7 @@ const emit = defineEmits<{
 							/>
 							<path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2" />
 						</svg>
-						<span>{{ it.retrying ? '重试中' : '重试' }}</span>
+						<span>{{ it.retrying ? t('envCheck.retrying') : t('envCheck.retry') }}</span>
 					</button>
 				</div>
 			</div>

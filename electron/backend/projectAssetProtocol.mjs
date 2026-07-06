@@ -1690,23 +1690,32 @@ function buildAssetPayload(projectId, absolutePath, root, { kind, name, contentT
 	}
 }
 
-function resolveAssetTargetDir(projectId, bucket) {
+function resolveAssetTargetDir(projectId, bucket, subPath) {
 	const root = projectRootById.get(projectId)
 	if (!root) return null
 	const safeBucket = String(bucket || 'assets')
 		.trim()
 		.toLowerCase()
+	const safeSubPath = String(subPath || '')
+		.trim()
+		.split(/[\\/]+/)
+		.filter(Boolean)
+		.map((seg) => sanitizeFilename(seg))
+		.join(path.sep)
 	if (safeBucket === 'thumbnails') {
-		const p = path.resolve(root, 'Content', 'Media', 'thumbnails')
+		const base = path.resolve(root, 'Content', 'Media', 'thumbnails')
+		const p = safeSubPath ? path.resolve(base, safeSubPath) : base
 		fs.mkdirSync(p, { recursive: true })
 		return { root, kind: 'image', targetDir: p }
 	}
 	if (safeBucket === 'cache') {
-		const p = path.resolve(root, CACHE_DIR, 'bin')
+		const base = path.resolve(root, CACHE_DIR, 'bin')
+		const p = safeSubPath ? path.resolve(base, safeSubPath) : base
 		fs.mkdirSync(p, { recursive: true })
 		return { root, kind: 'file', targetDir: p }
 	}
-	const p = path.resolve(root, 'Content', 'Media')
+	const base = path.resolve(root, 'Content', 'Media')
+	const p = safeSubPath ? path.resolve(base, safeSubPath) : base
 	fs.mkdirSync(p, { recursive: true })
 	return { root, kind: 'file', targetDir: p }
 }
@@ -1720,7 +1729,7 @@ function makeUniqueFilename(targetDir, baseName, ext) {
 	return path.resolve(targetDir, `${cleanBase}_${stamp}_${rand}${ext}`)
 }
 
-export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, contentType, bucket }) {
+export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, contentType, bucket, subPath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
 	if (
@@ -1735,7 +1744,7 @@ export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, content
 	const safeName = sanitizeFilename(String(name || 'file'))
 	const extension = path.extname(safeName) || '.bin'
 	const effectiveBucket = bucket || (extension === '.bin' ? 'cache' : undefined)
-	const target = resolveAssetTargetDir(id, effectiveBucket)
+	const target = resolveAssetTargetDir(id, effectiveBucket, subPath)
 	if (!target) return { ok: false, error: 'project root not registered' }
 
 	const base = path.basename(safeName, extension) || 'asset'
@@ -1756,7 +1765,7 @@ export function uploadProjectAsset({ projectId, kind, name, arrayBuffer, content
 	return { ok: true, asset }
 }
 
-export async function importProjectAsset({ projectId, kind, name, sourcePath, sourceUrl, bucket }) {
+export async function importProjectAsset({ projectId, kind, name, sourcePath, sourceUrl, bucket, subPath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
 
@@ -1775,7 +1784,10 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 			const srcName = path.basename(src)
 			const safeName = sanitizeFilename(String(name || srcName))
 
-			if (isPathInsideProject(root, resolvedSrc)) {
+			const ext = path.extname(safeName) || '.bin'
+			const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
+
+			if (isPathInsideProject(root, resolvedSrc) && !subPath) {
 				const asset = buildAssetPayload(id, resolvedSrc, root, {
 					kind: kind || 'file',
 					name: safeName,
@@ -1786,9 +1798,7 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 				return { ok: true, asset }
 			}
 
-			const ext = path.extname(safeName) || '.bin'
-			const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
-			const target = resolveAssetTargetDir(id, effectiveBucket)
+			const target = resolveAssetTargetDir(id, effectiveBucket, subPath)
 			if (!target) return { ok: false, error: 'project root not registered' }
 			const base = path.basename(safeName, ext) || 'asset'
 			const finalPath = makeUniqueFilename(target.targetDir, base, ext)
@@ -1814,7 +1824,7 @@ export async function importProjectAsset({ projectId, kind, name, sourcePath, so
 			const safeName = sanitizeFilename(nameHint)
 			const ext = path.extname(safeName) || inferExtension(safeName, rawSourceUrl) || '.bin'
 			const effectiveBucket = bucket || (ext === '.bin' ? 'cache' : undefined)
-			const target = resolveAssetTargetDir(id, effectiveBucket)
+			const target = resolveAssetTargetDir(id, effectiveBucket, subPath)
 			if (!target) return { ok: false, error: 'project root not registered' }
 			const base = path.basename(safeName, ext) || 'asset'
 			const finalPath = makeUniqueFilename(target.targetDir, base, ext)

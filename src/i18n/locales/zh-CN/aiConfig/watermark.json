@@ -1,0 +1,14 @@
+{
+  "aiConfig.watermark.enabled": "水印开关",
+  "aiConfig.watermark.text": "水印文字",
+  "aiConfig.watermark.opacity": "不透明度",
+  "aiConfig.watermark.position": "水印位置",
+  "aiConfig.watermark.positionTopLeft": "左上角",
+  "aiConfig.watermark.positionTopRight": "右上角",
+  "aiConfig.watermark.positionBottomLeft": "左下角",
+  "aiConfig.watermark.positionBottomRight": "右下角",
+  "aiConfig.watermark.positionCenter": "居中",
+  "aiConfig.watermark.fontSize": "字体大小",
+  "aiConfig.watermark.color": "颜色",
+  "aiConfig.watermark.preview": "水印预览"
+}

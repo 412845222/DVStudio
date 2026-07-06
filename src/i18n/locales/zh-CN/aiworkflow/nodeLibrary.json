@@ -1,0 +1,85 @@
+{
+  "aiworkflow.nodeLibrary.categories.basic.label": "基础",
+  "aiworkflow.nodeLibrary.categories.basic.description": "文本、图片、视频、音频和3D流程的通用入口节点。",
+  "aiworkflow.nodeLibrary.categories.image2d.label": "2D图片",
+  "aiworkflow.nodeLibrary.categories.image2d.description": "图片生成、图库、标注、分割和风格节点。",
+  "aiworkflow.nodeLibrary.categories.video.label": "视频",
+  "aiworkflow.nodeLibrary.categories.video.description": "视频生成、动作理解和MetaHuman解算节点。",
+  "aiworkflow.nodeLibrary.categories.audio.label": "音频",
+  "aiworkflow.nodeLibrary.categories.audio.description": "音频资源创建、上传和预览节点。",
+  "aiworkflow.nodeLibrary.categories.model3d.label": "3D",
+  "aiworkflow.nodeLibrary.categories.model3d.description": "3D生成、重拓扑、DCC工具和运行时集成节点。",
+
+  "aiworkflow.nodeLibrary.topCategories.inputs.label": "基础",
+  "aiworkflow.nodeLibrary.topCategories.inputs.description": "文本输入、画布、便签和基础工作流节点。",
+  "aiworkflow.nodeLibrary.topCategories.text.label": "文本",
+  "aiworkflow.nodeLibrary.topCategories.text.description": "文本生成、合并、对话和脚本节点。",
+  "aiworkflow.nodeLibrary.topCategories.image.label": "图片",
+  "aiworkflow.nodeLibrary.topCategories.image.description": "图片生成、图库、分解、爆炸和遮罩节点。",
+  "aiworkflow.nodeLibrary.topCategories.video.label": "视频",
+  "aiworkflow.nodeLibrary.topCategories.video.description": "视频生成、动作理解、MetaHuman动画和SP启动。",
+  "aiworkflow.nodeLibrary.topCategories.scene.label": "场景",
+  "aiworkflow.nodeLibrary.topCategories.scene.description": "场景理解、布局、提取链和高斯场景节点。",
+  "aiworkflow.nodeLibrary.topCategories.model3d.label": "3D",
+  "aiworkflow.nodeLibrary.topCategories.model3d.description": "3D生成、重拓扑、Blender工具和Unreal导入节点。",
+  "aiworkflow.nodeLibrary.topCategories.plugin.label": "插件",
+  "aiworkflow.nodeLibrary.topCategories.plugin.description": "第三方平台集成节点。",
+
+  "aiworkflow.nodeLibrary.defaultSubtitle": "输入参数 / 输出结果",
+
+  "aiworkflow.nodeLibrary.nodes.text-generation.label": "文本节点",
+  "aiworkflow.nodeLibrary.nodes.text-generation.description": "用于输入、编辑和输出提示词或说明文本。支持多语言输入，可作为其他节点的文本来源。",
+  "aiworkflow.nodeLibrary.nodes.text-generation.searchAliases": ["文本", "prompt", "llm"],
+
+  "aiworkflow.nodeLibrary.nodes.image-generation.label": "图片节点",
+  "aiworkflow.nodeLibrary.nodes.image-generation.description": "导入或生成图片资源，支持裁剪、缩放和格式转换。",
+  "aiworkflow.nodeLibrary.nodes.image-generation.searchAliases": ["图片节点", "四视图", "image"],
+
+  "aiworkflow.nodeLibrary.nodes.rotate-image.label": "旋转图片节点",
+  "aiworkflow.nodeLibrary.nodes.rotate-image.description": "对图片进行角度旋转，生成指定视角的新图片。",
+  "aiworkflow.nodeLibrary.nodes.rotate-image.searchAliases": ["旋转图片", "rotate"],
+
+  "aiworkflow.nodeLibrary.nodes.video-generation.label": "视频节点",
+  "aiworkflow.nodeLibrary.nodes.video-generation.description": "导入或生成视频资源，支持预览和关键帧提取。",
+  "aiworkflow.nodeLibrary.nodes.video-generation.searchAliases": ["视频", "video"],
+
+  "aiworkflow.nodeLibrary.nodes.scene-understanding.label": "场景理解节点",
+  "aiworkflow.nodeLibrary.nodes.scene-understanding.description": "对图片或文本中的场景信息进行结构化分析，提取场景布局或灯光配置。",
+  "aiworkflow.nodeLibrary.nodes.scene-understanding.searchAliases": ["场景理解", "scene"],
+
+  "aiworkflow.nodeLibrary.nodes.scene-layout.label": "场景布局节点",
+  "aiworkflow.nodeLibrary.nodes.scene-layout.description": "生成或编辑可导向3D场景的布局信息，输出占位物体和相机参数。",
+  "aiworkflow.nodeLibrary.nodes.scene-layout.searchAliases": ["场景布局", "layout"],
+
+  "aiworkflow.nodeLibrary.nodes.scene-decompose.label": "场景拆解节点",
+  "aiworkflow.nodeLibrary.nodes.scene-decompose.description": "将场景图片拆解为独立的视觉元素和结构化数据。",
+  "aiworkflow.nodeLibrary.nodes.scene-decompose.searchAliases": ["场景拆解", "decompose"],
+
+  "aiworkflow.nodeLibrary.nodes.comfyui.label": "ComfyUI节点",
+  "aiworkflow.nodeLibrary.nodes.comfyui.description": "集成 ComfyUI 工作流进行高级图像生成和处理。",
+  "aiworkflow.nodeLibrary.nodes.comfyui.searchAliases": ["ComfyUI", "工作流"],
+
+  "aiworkflow.nodeLibrary.nodes.model3d.label": "3D模型节点",
+  "aiworkflow.nodeLibrary.nodes.model3d.description": "预览、承接和输出3D模型资源，支持多种格式。",
+  "aiworkflow.nodeLibrary.nodes.model3d.searchAliases": ["3D模型", "模型预览", "model"],
+
+  "aiworkflow.nodeLibrary.nodes.meshy.label": "Meshy模型生成",
+  "aiworkflow.nodeLibrary.nodes.meshy.description": "通过 Meshy API 将图片转换为高质量3D模型。",
+  "aiworkflow.nodeLibrary.nodes.meshy.searchAliases": ["Meshy", "3D生成", "图生3D"],
+
+  "aiworkflow.nodeLibrary.nodes.unreal-export.label": "Unreal导出节点",
+  "aiworkflow.nodeLibrary.nodes.unreal-export.description": "将场景布局和灯光设置导出到 Unreal Engine 项目中。",
+  "aiworkflow.nodeLibrary.nodes.unreal-export.searchAliases": ["Unreal", "UE", "导出", "unreal"],
+
+  "aiworkflow.nodeLibrary.nodes.text-merge.label": "文本整合节点",
+  "aiworkflow.nodeLibrary.nodes.text-merge.description": "将多个文本输入合并为一个输出。",
+  "aiworkflow.nodeLibrary.nodes.text-merge.searchAliases": ["文本整合", "合并", "merge"],
+
+  "aiworkflow.nodeLibrary.nodes.story.label": "剧情节点",
+  "aiworkflow.nodeLibrary.nodes.story.description": "用于创建和管理剧情内容。",
+  "aiworkflow.nodeLibrary.nodes.story.searchAliases": ["剧情", "story"],
+
+  "aiworkflow.nodeLibrary.nodes.base.label": "工作流节点",
+  "aiworkflow.nodeLibrary.nodes.base.description": "基础工作流节点。",
+  "aiworkflow.nodeLibrary.nodes.base.searchAliases": ["基础", "base"]
+}

@@ -5,6 +5,7 @@ import type {
 	WorkflowSceneLayoutManualModelBinding
 } from '../../../aiworkflow/types'
 import type { BlueprintProjectService } from '../../../network/BlueprintProjectService'
+import { t } from '../../../i18n'
 
 export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 	store: {
@@ -33,7 +34,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 			preferredObjectId ?? node.sceneLayoutSettings?.selectedLayoutItemId ?? ''
 		).trim()
 		if (!selectedLayoutItemId) {
-			payload.pushToast('请先选中占位体，再导入模型。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.selectPlaceholderFirst'), 'warn')
 			return
 		}
 
@@ -41,7 +42,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		const SUPPORTED_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
 		const isSupported = SUPPORTED_EXTS.some(ext => lowerName.endsWith(ext))
 		if (!isSupported) {
-			payload.pushToast('导入模型支持 .glb / .gltf / .fbx / .obj / .stl / .dae 格式。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.modelImportFormats'), 'warn')
 			return
 		}
 
@@ -52,7 +53,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 			(item: WorkflowSceneLayoutItem) => String(item?.id ?? '').trim() === selectedLayoutItemId
 		)
 		if (!selectedLayoutItem) {
-			payload.pushToast('当前占位体不存在，请重新选择后再试。', 'warn')
+			payload.pushToast(t('aiworkflow.toast.placeholderNotExist'), 'warn')
 			return
 		}
 
@@ -135,7 +136,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		const displayName =
 			String(selectedLayoutItem.name ?? selectedLayoutItem.id ?? selectedLayoutItemId).trim() ||
 			selectedLayoutItemId
-		payload.pushToast(`已为占位体“${displayName}”导入模型。`, 'info')
+		payload.pushToast(t('aiworkflow.toast.modelImported', { name: displayName }), 'info')
 	}
 
 	const onNodeClearSceneLayoutModelBinding = (nodeId: string, objectIdRaw: string) => {
@@ -194,7 +195,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 		)
 		const displayName =
 			String(selectedLayoutItem?.name ?? selectedLayoutItem?.id ?? objectId).trim() || objectId
-		payload.pushToast(`已清除占位体“${displayName}”的手动导入模型。`, 'info')
+		payload.pushToast(t('aiworkflow.toast.modelCleared', { name: displayName }), 'info')
 	}
 
 	return {

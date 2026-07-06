@@ -15,7 +15,7 @@
 
 			<div class="fsprog-actions">
 				<button v-if="cancellable" class="fsprog-cancel" type="button" @click.stop="emit('cancel')">
-					取消
+					{{ cancelButtonText }}
 				</button>
 			</div>
 		</div>
@@ -24,16 +24,24 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../i18n'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	open: boolean
 	title: string
 	progress: number
 	detail?: string
 	cancellable?: boolean
-}>()
+	cancelText?: string
+}>(), {
+	cancellable: false,
+})
 
 const emit = defineEmits<{ (e: 'cancel'): void }>()
+
+const { t } = useI18n()
+
+const cancelButtonText = computed(() => props.cancelText || t('dialog.cancel'))
 
 const clampedProgress = computed(() => {
 	const p = Number(props.progress)

@@ -32,6 +32,21 @@ export type ResourceManagerEventPayload = {
 }
 
 declare global {
+	const __DWEB_REPO_URL__: string
+	const __DWEB_APP_VERSION__: string
+	const __DWEB_APP_NAME__: string
+	const __DWEB_APP_COPYRIGHT__: string
+
+	type DwebAppInfo = {
+		appName: string
+		appId?: string
+		appVersion: string
+		copyright: string
+		license: string
+		homepage: string
+		repoUrl: string
+	}
+
 	type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
 
 	interface PlatformEventPayload {
@@ -72,13 +87,28 @@ declare global {
 	}
 
 	interface Window {
-		/** Electron preload 注入：后端 baseUrl（优先级最高） */
+		__DWEB_REPO_URL__?: string
+		__DWEB_APP_VERSION__?: string
+		__DWEB_APP_NAME__?: string
+		__DWEB_APP_COPYRIGHT__?: string
 		__DWEB_BACKEND_BASE_URL?: string
-		/** 运行环境标记：Electron preload 注入；Web 模式在 main.ts 注入 */
-		__DWEB_RUNTIME__?: { platform: 'electron' | 'web'; isElectron: boolean }
+		__DWEB_BACKEND_BASE_URL__?: string
+		__DWEB_BACKEND_MODE__?: 'normal' | 'migration'
+		__DWEB_RUNTIME__?: {
+			platform?: 'electron' | 'web'
+			isElectron?: boolean
+			appName?: string
+			appVersion?: string
+		}
 		__DWEB_CLIENT_SETTINGS?: ClientSettings | null
+		__DWEB_AIWF_AUTO_HELLO?: string
+		__DWEB_AIWF_AUTO_HELLO_TEXT?: string
+		__DWEB_LOCAL_EXEC_BASE_PATH?: string
+		__DWEB_LOCAL_EXEC_STREAM_MODE?: string
+		process?: { versions?: { electron?: string } }
 		dweb?: {
 			common: {
+				getAppInfo?(): DwebAppInfo
 				getBackendBaseUrl(): Promise<string>
 				getBackendRuntimeState(): Promise<BackendRuntimeState>
 				onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): number
@@ -102,6 +132,11 @@ declare global {
 				openFolderForPath(payload: { path: string }): Promise<OpenFolderResult>
 				runBootstrapInstaller(): Promise<BootstrapInstallResult>
 				openExternalUrl(payload: { url: string }): Promise<{ ok: boolean; error?: string }> | undefined
+				health?(): Promise<{ ok: boolean; value?: { status: string; timestamp: number; localdb: boolean; db: boolean }; error?: string }>
+				echo?(payload: unknown): Promise<{ ok: boolean; value?: { echo: unknown; timestamp: number }; error?: string }>
+				getUserAgreement?(): Promise<{ ok: boolean; value?: { content: string }; error?: string }>
+				getMigrationStatus?(): Promise<unknown>
+				invokeStream?<T = unknown>(baseChannel: string, payload?: Record<string, unknown>): AsyncGenerator<T, void, void>
 			}
 			window: {
 				minimize(): Promise<{ ok: boolean; error?: string }>
@@ -160,6 +195,7 @@ declare global {
 					arrayBuffer: ArrayBuffer
 					contentType?: string
 					bucket?: string
+					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
 				importProjectAsset(payload: {
 					projectId: number
@@ -168,6 +204,7 @@ declare global {
 					sourcePath?: string
 					sourceUrl?: string
 					bucket?: string
+					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
 				projectAssets: {
 					repairAll(payload: {
@@ -180,6 +217,47 @@ declare global {
 						changed?: number
 						error?: string
 					}>
+				}
+				db?: {
+					_initState?(): Promise<{ ok?: boolean; error?: string; dbFilePath?: string }>
+					_ensureInitialized?(payload?: Record<string, unknown>): Promise<{ ok?: boolean; error?: string }>
+					projects?: {
+						list?(): Promise<unknown>
+						openFolder?(payload: { rootPath: string; name: string; create: boolean }): Promise<{
+							ok?: boolean
+							project?: { id: number }
+							error?: string
+						}>
+						delete?(payload: { id: number }): Promise<unknown>
+					}
+					templates?: {
+						list?(): Promise<{ ok?: boolean; value?: Array<{
+							id: string
+							name: string
+							description: string
+							category: string
+							tags: string[]
+							nodeCount: number
+							source: string
+							filePath: string
+							coverPath: string
+							createdAt: number
+							updatedAt: number
+						}>; error?: string }>
+						getBlob?(payload: { id: string }): Promise<{ ok?: boolean; buffer?: ArrayBuffer; error?: string }>
+						getCover?(payload: { id: string }): Promise<{ ok?: boolean; buffer?: ArrayBuffer; mimeType?: string; error?: string }>
+						save?(payload: {
+							id?: string
+							name: string
+							description?: string
+							category?: string
+							tags?: string[]
+							nodeCount?: number
+							zipBuffer: ArrayBuffer | Uint8Array
+							coverBuffer?: ArrayBuffer | Uint8Array | null
+						}): Promise<{ ok?: boolean; template?: unknown; error?: string }>
+						remove?(payload: { id: string }): Promise<{ ok?: boolean; error?: string }>
+					}
 				}
 				diagnoseAsset(payload: {
 					projectId?: number
@@ -295,6 +373,17 @@ declare global {
 				onEvent(handler: (payload: PlatformEventPayload) => void): number
 				offEvent(listenerId: number): { ok: boolean }
 			}
+			meshy?: any
+			seedance?: any
+			chat?: any
+			export?: any
+			editor?: any
+			comfyui?: any
+			thirdParty?: any
+			agentSkills?: any
+			codex?: any
+			projects?: any
+			projectAssets?: any
 		}
 	}
 }

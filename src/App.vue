@@ -8,7 +8,8 @@
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
-		<GlobalTitleBar v-if="isElectronRuntime &amp;&amp; !isPreviewWindow" class="app-titlebar" />
+		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
+		<DialogTitleBar v-if="isElectronRuntime && isPreviewWindow" class="app-titlebar" :title="dialogTitle" />
 		<GlobalSideNav
 			v-if="!isPreviewWindow"
 			class="app-side-nav"
@@ -59,8 +60,10 @@ import { VideoStudioKey, VideoStudioStore } from './store/videostudio'
 import { TimelineKey, TimelineStore } from './store/timeline'
 import { AIWorkflowKey, AIWorkflowStore } from './store/aiworkflow'
 import { ThemeKey, ThemeStore } from './store/theme'
+import { I18nStoreKey, I18nStore } from './store/i18n'
 import GlobalSideNav from './ui/UIComponent/GlobalSideNav.vue'
 import GlobalTitleBar from './ui/UIComponent/GlobalTitleBar.vue'
+import DialogTitleBar from './ui/UIComponent/DialogTitleBar.vue'
 import StartupProgressBar from './ui/UIComponent/StartupProgressBar.vue'
 import PageTransitionOverlay from './ui/UIComponent/PageTransitionOverlay.vue'
 import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
@@ -75,6 +78,7 @@ provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
 provide(AIWorkflowKey, AIWorkflowStore)
 provide(ThemeKey, ThemeStore)
+provide(I18nStoreKey, I18nStore)
 
 const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
@@ -91,6 +95,21 @@ const isResourceManagerWindow = computed(() => {
 	return String(route.path || '').startsWith('/resource-manager')
 })
 
+const isImageMarkupWindow = computed(() => {
+	return String(route.path || '').startsWith('/image-markup-preview')
+})
+
+const dialogTitle = computed(() => {
+	const query = route.query as Record<string, string>
+	if (isResourceManagerWindow.value) {
+		return String(query.title || '资源管理器')
+	}
+	if (isImageMarkupWindow.value) {
+		return String(query.name || '图片预览')
+	}
+	return ''
+})
+
 const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() => {
 	const path = String(route.path || '')
 	const name = String((route.name as string) || '')
@@ -104,7 +123,7 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
-const { isRealPlatform, user: platformUser } = usePlatform()
+const { isRealPlatform, user: platformUser, overlayActivate } = usePlatform()
 const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
 
 const {
@@ -129,12 +148,25 @@ function openExternalUrl(url: string) {
 function handleSteamPanelAction(actionId: string) {
 	switch (actionId) {
 		case 'store':
-			openExternalUrl('https://store.steampowered.com/')
+			overlayActivate('Steam').catch(() => {
+				openExternalUrl('https://store.steampowered.com/')
+			})
 			break
 		case 'community':
-			openExternalUrl('https://steamcommunity.com/')
+			overlayActivate('Community').catch(() => {
+				openExternalUrl('https://steamcommunity.com/')
+			})
 			break
 		case 'friends':
+			overlayActivate('Friends').catch(() => {
+				openExternalUrl('steam://open/friends')
+			})
+			break
+		case 'achievements':
+			overlayActivate('Achievements').catch(() => {
+				openExternalUrl('https://steamcommunity.com/my/stats/2475710/?tab=achievements')
+			})
+			break
 		case 'open-panel':
 		default:
 			break
@@ -149,8 +181,30 @@ function onNavCollapsedChange(collapsed: boolean) {
 	navCollapsed.value = collapsed
 }
 
+function onStorageChange(e: StorageEvent) {
+	if (e.key === 'dweb-theme-mode' && e.newValue) {
+		if (e.newValue === 'dark' || e.newValue === 'light') {
+			if (ThemeStore.state.mode !== e.newValue) {
+				ThemeStore.commit('SET_THEME_MODE', e.newValue)
+			}
+		}
+	}
+	if (e.key === 'dweb-locale' && e.newValue) {
+		const supported = ['zh-CN', 'en-US']
+		if (supported.includes(e.newValue) && I18nStore.state.locale !== e.newValue) {
+			I18nStore.commit('SET_LOCALE', e.newValue as any)
+		}
+	}
+}
+
 onMounted(() => {
 	ThemeStore.dispatch('initTheme')
+	void I18nStore.dispatch('initLocale')
+	window.addEventListener('storage', onStorageChange)
+})
+
+onBeforeUnmount(() => {
+	window.removeEventListener('storage', onStorageChange)
 })
 </script>
 
@@ -166,7 +220,7 @@ onMounted(() => {
 }
 
 .app-shell.is-preview-window {
-	--titlebar-height: 0px;
+	--titlebar-height: 36px;
 }
 
 .app-titlebar {
@@ -187,22 +241,6 @@ onMounted(() => {
 	z-index: 10;
 	overflow: hidden;
 	background: transparent;
-}
-
-.app-shell.is-preview-window .app-content {
-	top: 0;
-	bottom: 0;
-	width: 100vw;
-	height: 100vh;
-	background: #1a1a1a;
-}
-
-.app-shell.is-resource-manager-window .app-content {
-	top: 0;
-	bottom: 0;
-	width: 100vw;
-	height: 100vh;
-	background: #1a1a1a;
 }
 
 .page-fade-enter-active,

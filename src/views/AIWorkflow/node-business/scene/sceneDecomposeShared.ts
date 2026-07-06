@@ -1,4 +1,5 @@
 import type { WorkflowImageCrop, WorkflowPixelRect } from '../../../../aiworkflow/types'
+import { t } from '../../../../i18n'
 
 export interface SceneDecomposeInputItem {
 	id?: unknown
@@ -37,113 +38,128 @@ export const slugSceneDecomposeId = (value: unknown, index: number) => {
 	return slug || `object-${index + 1}`
 }
 
-const KEY_ELEMENT_LABEL_MAP: Record<string, string> = {
-	window: '窗户',
-	door: '门',
-	column: '柱子',
-	floor: '地面',
-	wall: '墙面',
-	ceiling: '天花板',
-	roof: '屋顶',
-	opening: '洞口',
-	'builtin-fixture': '固定设施',
-	'fixed-installation': '固定装置'
+const getKeyElementLabel = (key: string): string => {
+	const keyMap: Record<string, string> = {
+		window: 'window',
+		door: 'door',
+		column: 'column',
+		floor: 'floor',
+		wall: 'wall',
+		ceiling: 'ceiling',
+		roof: 'roof',
+		opening: 'opening',
+		'builtin-fixture': 'builtinFixture',
+		'fixed-installation': 'fixedInstallation'
+	}
+	const i18nKey = keyMap[key]
+	return i18nKey ? t(`aiConfig.sceneElements.keyElement.${i18nKey}`) : ''
 }
 
-const SEMANTIC_ROLE_LABEL_MAP: Record<string, string> = {
-	structure: '结构',
-	'architectural-opening': '建筑洞口',
-	'architectural-fixed': '建筑固定件',
-	'built-in-fixture': '嵌入式装置',
-	'wall-fixture': '墙面装置',
-	'ceiling-fixture': '顶面装置',
-	'floor-object': '地面摆件',
-	'support-object': '支撑物',
-	furniture: '家具',
-	prop: '道具'
+const getSemanticRoleLabel = (key: string): string => {
+	const keyMap: Record<string, string> = {
+		structure: 'structure',
+		'architectural-opening': 'architecturalOpening',
+		'architectural-fixed': 'architecturalFixed',
+		'built-in-fixture': 'builtInFixture',
+		'wall-fixture': 'wallFixture',
+		'ceiling-fixture': 'ceilingFixture',
+		'floor-object': 'floorObject',
+		'support-object': 'supportObject',
+		furniture: 'furniture',
+		prop: 'prop'
+	}
+	const i18nKey = keyMap[key]
+	return i18nKey ? t(`aiConfig.sceneElements.semanticRole.${i18nKey}`) : ''
 }
 
-const MOUNT_TYPE_LABEL_MAP: Record<string, string> = {
-	floor: '落地',
-	wall: '壁挂',
-	'embedded-wall': '嵌入墙体',
-	ceiling: '吊顶',
-	'support-top': '台面摆放',
-	free: '独立摆放'
+const getMountTypeLabel = (key: string): string => {
+	const keyMap: Record<string, string> = {
+		floor: 'floor',
+		wall: 'wall',
+		'embedded-wall': 'embeddedWall',
+		ceiling: 'ceiling',
+		'support-top': 'supportTop',
+		free: 'free'
+	}
+	const i18nKey = keyMap[key]
+	return i18nKey ? t(`aiConfig.sceneElements.mountType.${i18nKey}`) : ''
 }
 
-const WALL_ROLE_LABEL_MAP: Record<string, string> = {
-	left: '左墙',
-	right: '右墙',
-	front: '前墙',
-	back: '后墙'
+const getWallRoleLabel = (key: string): string => {
+	const keyMap: Record<string, string> = {
+		left: 'left',
+		right: 'right',
+		front: 'front',
+		back: 'back'
+	}
+	const i18nKey = keyMap[key]
+	return i18nKey ? t(`aiConfig.sceneElements.wallRole.${i18nKey}`) : ''
 }
 
-const ID_KEYWORD_NAME_MAP: Array<{ pattern: RegExp; label: string }> = [
-	{ pattern: /window|win-/i, label: '窗户' },
-	{ pattern: /door/i, label: '门' },
-	{ pattern: /desk|table/i, label: '桌子' },
-	{ pattern: /chair/i, label: '椅子' },
-	{ pattern: /sofa|couch/i, label: '沙发' },
-	{ pattern: /bed/i, label: '床' },
-	{ pattern: /bookshelf|shelf|book-case/i, label: '书架' },
-	{ pattern: /cabinet|cupboard|wardrobe/i, label: '柜子' },
-	{ pattern: /lamp|light/i, label: '灯具' },
-	{ pattern: /plant|flower/i, label: '植物' },
-	{ pattern: /tv|monitor|screen/i, label: '屏幕' },
-	{ pattern: /mirror/i, label: '镜子' },
-	{ pattern: /picture|painting|art/i, label: '挂画' },
-	{ pattern: /rug|carpet/i, label: '地毯' },
-	{ pattern: /curtain/i, label: '窗帘' },
-	{ pattern: /pillow|cushion/i, label: '靠垫' },
-	{ pattern: /vase/i, label: '花瓶' },
-	{ pattern: /clock/i, label: '时钟' },
-	{ pattern: /computer/i, label: '电脑' },
-	{ pattern: /keyboard/i, label: '键盘' },
-	{ pattern: /book/i, label: '书籍' },
-	{ pattern: /bottle|cup|glass/i, label: '杯具' }
+const ID_KEYWORD_NAME_MAP: Array<{ pattern: RegExp; labelKey: string }> = [
+	{ pattern: /window|win-/i, labelKey: 'aiConfig.sceneElements.keyElement.window' },
+	{ pattern: /door/i, labelKey: 'aiConfig.sceneElements.keyElement.door' },
+	{ pattern: /desk|table/i, labelKey: 'aiConfig.sceneElements.furniture.table' },
+	{ pattern: /chair/i, labelKey: 'aiConfig.sceneElements.furniture.chair' },
+	{ pattern: /sofa|couch/i, labelKey: 'aiConfig.sceneElements.furniture.sofa' },
+	{ pattern: /bed/i, labelKey: 'aiConfig.sceneElements.furniture.bed' },
+	{ pattern: /bookshelf|shelf|book-case/i, labelKey: 'aiConfig.sceneElements.furniture.bookshelf' },
+	{ pattern: /cabinet|cupboard|wardrobe/i, labelKey: 'aiConfig.sceneElements.furniture.cabinet' },
+	{ pattern: /lamp|light/i, labelKey: 'aiConfig.sceneElements.furniture.lamp' },
+	{ pattern: /plant|flower/i, labelKey: 'aiConfig.sceneElements.decor.plant' },
+	{ pattern: /tv|monitor|screen/i, labelKey: 'aiConfig.sceneElements.decor.screen' },
+	{ pattern: /mirror/i, labelKey: 'aiConfig.sceneElements.decor.mirror' },
+	{ pattern: /picture|painting|art/i, labelKey: 'aiConfig.sceneElements.decor.painting' },
+	{ pattern: /rug|carpet/i, labelKey: 'aiConfig.sceneElements.decor.rug' },
+	{ pattern: /curtain/i, labelKey: 'aiConfig.sceneElements.decor.curtain' },
+	{ pattern: /pillow|cushion/i, labelKey: 'aiConfig.sceneElements.decor.pillow' },
+	{ pattern: /vase/i, labelKey: 'aiConfig.sceneElements.decor.vase' },
+	{ pattern: /clock/i, labelKey: 'aiConfig.sceneElements.decor.clock' },
+	{ pattern: /computer/i, labelKey: 'aiConfig.sceneElements.decor.computer' },
+	{ pattern: /keyboard/i, labelKey: 'aiConfig.sceneElements.decor.keyboard' },
+	{ pattern: /book/i, labelKey: 'aiConfig.sceneElements.decor.book' },
+	{ pattern: /bottle|cup|glass/i, labelKey: 'aiConfig.sceneElements.decor.cup' }
 ]
 
 const CATEGORY_HINT_MAP: Record<string, string> = {
-	'窗': '窗户', '窗户': '窗户', 'window': '窗户',
-	'门': '门', 'door': '门',
-	'桌': '桌子', '桌子': '桌子', '书桌': '书桌', 'desk': '书桌', 'table': '桌子',
-	'椅': '椅子', '椅子': '椅子', 'chair': '椅子',
-	'柜': '柜子', '书架': '书架', '书柜': '书柜', '柜架': '柜架', 'shelf': '架', 'bookshelf': '书架', 'cabinet': '柜子',
-	'灯': '灯具', '灯具': '灯具', 'lamp': '灯具', 'light': '灯具', 'lighting': '灯具',
-	'沙发': '沙发', 'sofa': '沙发', 'couch': '沙发',
-	'床': '床', 'bed': '床',
-	'装饰': '装饰', '植物': '植物', 'plant': '植物', '花': '花卉',
-	'屏幕': '屏幕', '显示器': '显示器', 'monitor': '显示器', 'tv': '电视', '电视': '电视',
-	'镜子': '镜子', 'mirror': '镜子',
-	'挂画': '挂画', '画': '画作'
+	'窗': 'aiConfig.sceneElements.keyElement.window', '窗户': 'aiConfig.sceneElements.keyElement.window', 'window': 'aiConfig.sceneElements.keyElement.window',
+	'门': 'aiConfig.sceneElements.keyElement.door', 'door': 'aiConfig.sceneElements.keyElement.door',
+	'桌': 'aiConfig.sceneElements.furniture.table', '桌子': 'aiConfig.sceneElements.furniture.table', '书桌': 'aiConfig.sceneElements.furniture.deskWriting', 'desk': 'aiConfig.sceneElements.furniture.deskWriting', 'table': 'aiConfig.sceneElements.furniture.table',
+	'椅': 'aiConfig.sceneElements.furniture.chair', '椅子': 'aiConfig.sceneElements.furniture.chair', 'chair': 'aiConfig.sceneElements.furniture.chair',
+	'柜': 'aiConfig.sceneElements.furniture.cabinet', '书架': 'aiConfig.sceneElements.furniture.bookshelf', '书柜': 'aiConfig.sceneElements.furniture.bookcase', '柜架': 'aiConfig.sceneElements.furniture.shelfCabinet', 'shelf': 'aiConfig.sceneElements.furniture.shelf', 'bookshelf': 'aiConfig.sceneElements.furniture.bookshelf', 'cabinet': 'aiConfig.sceneElements.furniture.cabinet',
+	'灯': 'aiConfig.sceneElements.furniture.lamp', '灯具': 'aiConfig.sceneElements.furniture.lamp', 'lamp': 'aiConfig.sceneElements.furniture.lamp', 'light': 'aiConfig.sceneElements.furniture.lamp', 'lighting': 'aiConfig.sceneElements.furniture.lamp',
+	'沙发': 'aiConfig.sceneElements.furniture.sofa', 'sofa': 'aiConfig.sceneElements.furniture.sofa', 'couch': 'aiConfig.sceneElements.furniture.sofa',
+	'床': 'aiConfig.sceneElements.furniture.bed', 'bed': 'aiConfig.sceneElements.furniture.bed',
+	'装饰': 'aiConfig.sceneElements.decor.decoration', '植物': 'aiConfig.sceneElements.decor.plant', 'plant': 'aiConfig.sceneElements.decor.plant', '花': 'aiConfig.sceneElements.decor.flower',
+	'屏幕': 'aiConfig.sceneElements.decor.screen', '显示器': 'aiConfig.sceneElements.decor.monitor', 'monitor': 'aiConfig.sceneElements.decor.monitor', 'tv': 'aiConfig.sceneElements.decor.tv', '电视': 'aiConfig.sceneElements.decor.tv',
+	'镜子': 'aiConfig.sceneElements.decor.mirror', 'mirror': 'aiConfig.sceneElements.decor.mirror',
+	'挂画': 'aiConfig.sceneElements.decor.painting', '画': 'aiConfig.sceneElements.decor.art'
 }
 
 const extractMaterialHint = (material: string) => {
 	if (!material) return ''
-	const hints: string[] = []
-	if (/木|wood|oak|pine|maple|walnut/i.test(material)) hints.push('木质')
-	if (/金属|metal|steel|iron|brass|aluminum/i.test(material)) hints.push('金属')
-	if (/玻璃|glass/i.test(material)) hints.push('玻璃')
-	if (/布|fabric|cloth|textile|linen|cotton/i.test(material)) hints.push('布艺')
-	if (/皮|leather/i.test(material)) hints.push('皮革')
-	if (/陶瓷|ceramic|porcelain/i.test(material)) hints.push('陶瓷')
-	if (/塑料|plastic|pvc/i.test(material)) hints.push('塑料')
-	if (/石|marble|stone|granite/i.test(material)) hints.push('石材')
-	return hints[0] || ''
+	if (/木|wood|oak|pine|maple|walnut/i.test(material)) return t('aiConfig.sceneElements.material.wood')
+	if (/金属|metal|steel|iron|brass|aluminum/i.test(material)) return t('aiConfig.sceneElements.material.metal')
+	if (/玻璃|glass/i.test(material)) return t('aiConfig.sceneElements.material.glass')
+	if (/布|fabric|cloth|textile|linen|cotton/i.test(material)) return t('aiConfig.sceneElements.material.fabric')
+	if (/皮|leather/i.test(material)) return t('aiConfig.sceneElements.material.leather')
+	if (/陶瓷|ceramic|porcelain/i.test(material)) return t('aiConfig.sceneElements.material.ceramic')
+	if (/塑料|plastic|pvc/i.test(material)) return t('aiConfig.sceneElements.material.plastic')
+	if (/石|marble|stone|granite/i.test(material)) return t('aiConfig.sceneElements.material.stone')
+	return ''
 }
 
 const extractColorHint = (color: string, material: string) => {
 	const text = `${color || ''} ${material || ''}`
-	const colorKeywords = [
-		['白色|白', '白色'], ['黑色|黑', '黑色'], ['灰色|灰', '灰色'],
-		['红色|红', '红色'], ['蓝色|蓝', '蓝色'], ['绿色|绿', '绿色'],
-		['黄色|黄', '黄色'], ['棕色|棕|木色', '棕色'], ['米色|米', '米色'],
-		['金色|金', '金色'], ['银色|银', '银色'], ['深色|dark', '深色'], ['浅色|light', '浅色'],
-		['暖', '暖色调']
+	const colorKeywords: Array<[string, string]> = [
+		['白色|白', 'white'], ['黑色|黑', 'black'], ['灰色|灰', 'gray'],
+		['红色|红', 'red'], ['蓝色|蓝', 'blue'], ['绿色|绿', 'green'],
+		['黄色|黄', 'yellow'], ['棕色|棕|木色', 'brown'], ['米色|米', 'beige'],
+		['金色|金', 'gold'], ['银色|银', 'silver'], ['深色|dark', 'dark'], ['浅色|light', 'light'],
+		['暖', 'warm']
 	]
-	for (const [pat, label] of colorKeywords) {
-		if (new RegExp(pat, 'i').test(text)) return label
+	for (const [pat, key] of colorKeywords) {
+		if (new RegExp(pat, 'i').test(text)) return t(`aiConfig.sceneElements.color.${key}`)
 	}
 	return ''
 }
@@ -153,8 +169,8 @@ export const inferSceneDecomposeCategory = (item: SceneDecomposeInputItem): stri
 		.map(v => String(v ?? '').trim())
 		.filter(Boolean)[0]
 	if (direct) {
-		for (const [key, label] of Object.entries(CATEGORY_HINT_MAP)) {
-			if (direct.includes(key)) return label
+		for (const [key, labelKey] of Object.entries(CATEGORY_HINT_MAP)) {
+			if (direct.includes(key)) return t(labelKey)
 		}
 		return direct
 	}
@@ -164,20 +180,21 @@ export const inferSceneDecomposeCategory = (item: SceneDecomposeInputItem): stri
 	const semanticRole = String(item?.semanticRole ?? '').toLowerCase()
 	const material = String(item?.material ?? '')
 
-	if (KEY_ELEMENT_LABEL_MAP[keyElementType]) return KEY_ELEMENT_LABEL_MAP[keyElementType]
-	for (const { pattern, label } of ID_KEYWORD_NAME_MAP) {
-		if (pattern.test(id)) return label
+	const keyElementLabel = getKeyElementLabel(keyElementType)
+	if (keyElementLabel) return keyElementLabel
+	for (const { pattern, labelKey } of ID_KEYWORD_NAME_MAP) {
+		if (pattern.test(id)) return t(labelKey)
 	}
-	if (semanticRole === 'furniture') return '家具'
-	if (semanticRole === 'prop') return '摆件'
-	if (semanticRole === 'wall-fixture') return '墙面装置'
-	if (semanticRole === 'ceiling-fixture') return '顶面装置'
-	if (semanticRole === 'floor-object') return '地面物件'
-	if (semanticRole === 'support-object') return '支撑物'
-	if (semanticRole === 'built-in-fixture') return '嵌入式装置'
+	if (semanticRole === 'furniture') return t('aiConfig.sceneElements.default.furniture')
+	if (semanticRole === 'prop') return t('aiConfig.sceneElements.default.prop')
+	if (semanticRole === 'wall-fixture') return t('aiConfig.sceneElements.default.wallFixture')
+	if (semanticRole === 'ceiling-fixture') return t('aiConfig.sceneElements.default.ceilingFixture')
+	if (semanticRole === 'floor-object') return t('aiConfig.sceneElements.default.floorObject')
+	if (semanticRole === 'support-object') return t('aiConfig.sceneElements.default.supportObject')
+	if (semanticRole === 'built-in-fixture') return t('aiConfig.sceneElements.default.builtInFixture')
 
 	const materialHint = extractMaterialHint(material)
-	return materialHint ? `${materialHint}物件` : '物体'
+	return materialHint ? t('aiConfig.sceneElements.default.materialObject', { material: materialHint }) : t('aiConfig.sceneElements.default.object')
 }
 
 export const inferSceneDecomposeObjectName = (item: SceneDecomposeInputItem, index: number): string => {
@@ -191,7 +208,7 @@ export const inferSceneDecomposeObjectName = (item: SceneDecomposeInputItem, ind
 	const category = inferSceneDecomposeCategory(item)
 	const material = String(item?.material ?? '')
 	const color = String(item?.color ?? '')
-	const wallRole = WALL_ROLE_LABEL_MAP[String(item?.wallRole ?? '').toLowerCase()] || ''
+	const wallRole = getWallRoleLabel(String(item?.wallRole ?? '').toLowerCase())
 	const keyElementType = String(item?.keyElementType ?? '').toLowerCase()
 	const id = String(item?.id ?? '').toLowerCase()
 
@@ -211,13 +228,14 @@ export const inferSceneDecomposeObjectName = (item: SceneDecomposeInputItem, ind
 
 	const matched = ID_KEYWORD_NAME_MAP.find(({ pattern }) => pattern.test(id))
 	if (matched) {
-		return prefix ? `${prefix}${matched.label}` : matched.label
+		const matchedLabel = t(matched.labelKey)
+		return prefix ? `${prefix}${matchedLabel}` : matchedLabel
 	}
 
 	if (direct && direct.length > 0) return direct
 
 	const fallback = prefix ? `${prefix}${category}` : category
-	return fallback || `对象${index + 1}`
+	return fallback || t('aiConfig.sceneElements.default.objectFallback', { index: index + 1 })
 }
 
 export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fallbackName: string) => {
@@ -230,7 +248,7 @@ export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fa
 	const semanticRole = String(item?.semanticRole ?? '').trim()
 	const keyElementType = String(item?.keyElementType ?? '').trim()
 	const mountType = String(item?.mountType ?? '').trim()
-	const wallRole = WALL_ROLE_LABEL_MAP[String(item?.wallRole ?? '').toLowerCase()] || ''
+	const wallRole = getWallRoleLabel(String(item?.wallRole ?? '').toLowerCase())
 	const groundReason = String(item?.groundReason ?? '').trim()
 	const placement = String(item?.placement ?? '').trim()
 	const observedImageIndices = item?.observedImageIndices
@@ -242,25 +260,25 @@ export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fa
 
 	lines.push(name)
 	if (category && !name.includes(category)) {
-		lines.push(`类别：${category}`)
+		lines.push(t('nodes.sceneDecompose.categoryLabel', { category }))
 	}
 	const attrParts: string[] = []
 	if (wallRole) attrParts.push(wallRole)
-	const mountLabel = MOUNT_TYPE_LABEL_MAP[mountType.toLowerCase()]
+	const mountLabel = getMountTypeLabel(mountType.toLowerCase())
 	if (mountLabel) attrParts.push(mountLabel)
 	if (placement) attrParts.push(placement.replace(/-/g, ''))
-	if (attrParts.length) lines.push(`位置：${attrParts.join(' · ')}`)
+	if (attrParts.length) lines.push(t('nodes.sceneDecompose.positionLabel', { position: attrParts.join(' · ') }))
 	const visualParts: string[] = []
 	if (color) visualParts.push(color)
 	if (material) visualParts.push(material)
-	if (visualParts.length) lines.push(`外观：${visualParts.join('，')}`)
+	if (visualParts.length) lines.push(t('nodes.sceneDecompose.appearanceLabel', { appearance: visualParts.join('，') }))
 	if (directDesc && directDesc !== name) {
 		lines.push(directDesc)
 	}
 	if (groundReason && !lines.some(l => l.includes(groundReason.slice(0, 6)))) {
 		lines.push(groundReason)
 	}
-	if (observed.length) lines.push(`观测参考图：${observed.join('、')}`)
+	if (observed.length) lines.push(t('nodes.sceneDecompose.observedImagesLabel', { indices: observed.join('、') }))
 	return lines.join('\n').trim() || fallbackName
 }
 
@@ -271,10 +289,10 @@ export const buildSceneDecomposePromptVisualDetails = (item: SceneDecomposeInput
 	const material = String(item?.material ?? '').trim()
 	const color = String(item?.color ?? '').trim()
 	const keyElementType = String(item?.keyElementType ?? '').trim().toLowerCase()
-	const wallRole = WALL_ROLE_LABEL_MAP[String(item?.wallRole ?? '').toLowerCase()] || ''
+	const wallRole = getWallRoleLabel(String(item?.wallRole ?? '').toLowerCase())
 	const groundReason = String(item?.groundReason ?? '').trim()
 
-	const subject = name || category || '物体'
+	const subject = name || category || t('aiConfig.sceneElements.default.object')
 	parts.push(subject)
 
 	const attrs: string[] = []

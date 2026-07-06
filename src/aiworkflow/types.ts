@@ -48,6 +48,8 @@ export type WorkflowImageNodeSettings = {
 	/** desired output resolution in pixels */
 	outputWidth?: number
 	outputHeight?: number
+	/** output format */
+	outputFormat?: 'png' | 'jpeg' | 'webp'
 	/** source image natural size in pixels (used for aspect-safe crop constraints) */
 	naturalWidth?: number
 	naturalHeight?: number
@@ -56,16 +58,19 @@ export type WorkflowImageNodeSettings = {
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
 	/** image generation source */
-	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy'
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini'
+	/** last generated image URL */
+	lastGeneratedImageUrl?: string
 	/** Meshy image generation settings */
 	meshyImageSettings?: {
 		prompt?: string
 		negativePrompt?: string
 		seed?: number
-		aiModel?: 'nano-banana' | 'nano-banana-pro'
+		aiModel?: 'nano-banana' | 'nano-banana-2' | 'nano-banana-pro' | 'gpt-image-2'
 		generateMultiView?: boolean
 		aspectRatio?: string
 		outputImageCount?: number
+		outputCount?: number
 		poseMode?: '' | 'a-pose' | 't-pose'
 		taskId?: string
 		taskFamily?: 'text-to-image' | 'image-to-image'
@@ -74,6 +79,7 @@ export type WorkflowImageNodeSettings = {
 		progress?: number
 		statusText?: string
 		errorMessage?: string
+		submittedParams?: Record<string, unknown>
 		outputSummary?: {
 			preferredUrl?: string
 			imageUrls?: string[]
@@ -81,6 +87,24 @@ export type WorkflowImageNodeSettings = {
 			assetPath?: string
 			thumbnailUrl?: string
 		}
+	}
+	/** Gemini image generation settings */
+	geminiImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		model?: string
+		modelLabel?: string
+		aspectRatio?: string
+		numImages?: number
+		outputCount?: number
+		taskId?: string
+		taskStatus?: 'idle' | 'submitting' | 'processing' | 'completed' | 'failed' | 'cancelled'
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		imageUrls?: string[]
+		thumbnailUrl?: string
+		submittedParams?: Record<string, unknown>
 	}
 }
 
@@ -848,6 +872,7 @@ export type WorkflowNodeChatTextParams = {
 	modelId?: string
 	model?: string
 	textModelVersion?: string
+	geminiTextModelVersion?: string
 	speed?: 'fast' | 'normal' | 'slow'
 	thinking?: string
 	responseFormat?: string
@@ -858,6 +883,14 @@ export type WorkflowNodeChatImageParams = {
 	modelId?: string
 	model?: string
 	nanobananaModelVersion?: string
+	geminiImageModelVersion?: string
+	geminiImageSize?: string
+	geminiAspectRatio?: string
+	geminiQuantity?: number
+	geminiThinkingLevel?: string
+	geminiNegativePrompt?: string
+	imageSize?: string
+	thinkingLevel?: string
 	seedreamModelVersion?: string
 	seedreamSize?: string
 	seedreamAspectRatio?: string
@@ -866,6 +899,7 @@ export type WorkflowNodeChatImageParams = {
 	seedreamWatermark?: boolean
 	seedreamSeed?: number
 	seedreamNegativePrompt?: string
+	negativePrompt?: string
 	resolution?: string
 	aspectRatio?: string
 	quantity?: number

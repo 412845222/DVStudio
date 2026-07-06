@@ -1,0 +1,16 @@
+{
+  "nodes.type.base": "基础",
+  "nodes.type.text": "文本",
+  "nodes.type.textMerge": "文本整合",
+  "nodes.type.image": "图片",
+  "nodes.type.rotateImage": "旋转图片",
+  "nodes.type.video": "视频",
+  "nodes.type.sceneUnderstanding": "场景理解",
+  "nodes.type.sceneDecompose": "场景分解",
+  "nodes.type.sceneLayout": "场景布局",
+  "nodes.type.unrealExport": "虚幻导出",
+  "nodes.type.story": "剧情",
+  "nodes.type.comfyui": "ComfyUI",
+  "nodes.type.model3d": "3D模型",
+  "nodes.type.meshy": "Meshy模型生成"
+}

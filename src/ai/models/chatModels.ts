@@ -106,22 +106,6 @@ const COPILOT_CLI_MODELS: ChatModelCatalogItem[] = [
 		vendor: 'Copilot CLI'
 	},
 	{
-		id: 'claude-sonnet-4.6',
-		label: 'Claude Sonnet 4.6',
-		needType: 'text',
-		apiSource: 'local-exec',
-		legacyModelKey: 'codex',
-		vendor: 'Copilot CLI'
-	},
-	{
-		id: 'claude-opus-4.6',
-		label: 'Claude Opus 4.6',
-		needType: 'text',
-		apiSource: 'local-exec',
-		legacyModelKey: 'codex',
-		vendor: 'Copilot CLI'
-	},
-	{
 		id: 'gemini-3-pro-preview',
 		label: 'Gemini 3 Pro Preview',
 		needType: 'text',
@@ -443,6 +427,77 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 		recommended: true
 	},
 	{
+		id: 'gemini-3.5-flash',
+		label: 'Gemini 3.5 Flash (最新推荐) ⭐',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		recommended: true,
+		supportsVision: true
+	},
+	{
+		id: 'gemini-3.1-flash-lite',
+		label: 'Gemini 3.1 Flash-Lite (高效低成本)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-2.5-flash',
+		label: 'Gemini 2.5 Flash (长上下文)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-2.5-pro',
+		label: 'Gemini 2.5 Pro (深度推理)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-2.5-flash-lite',
+		label: 'Gemini 2.5 Flash Lite (最快最省)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-3.1-pro-preview',
+		label: 'Gemini 3.1 Pro (预览版)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-3-flash-preview',
+		label: 'Gemini 3 Flash (预览版)',
+		needType: 'text',
+		apiSource: 'gemini',
+		legacyModelKey: 'deepseek',
+		vendor: 'Google',
+		supportsVision: true
+	},
+	{
+		id: 'gemini-3.1-flash-lite-image',
+		label: 'Nano Banana Lite（Gemini 3.1 Flash-Lite Image）',
+		needType: 'image',
+		apiSource: 'gemini',
+		legacyModelKey: 'nanobanana'
+	},
+	{
 		id: 'gemini-2.5-flash-image',
 		label: 'NanoBanana（Gemini 2.5 Flash Image）',
 		needType: 'image',
@@ -451,17 +506,20 @@ export const CHAT_MODEL_CATALOG: ChatModelCatalogItem[] = [
 	},
 	{
 		id: 'gemini-3.1-flash-image-preview',
-		label: 'NanoBanana 2（Gemini 3.1 Flash Image 预览版）',
+		label: 'Nano Banana 2（Gemini 3.1 Flash Image）[推荐] 🍌🍌',
 		needType: 'image',
 		apiSource: 'gemini',
-		legacyModelKey: 'nanobanana'
+		legacyModelKey: 'nanobanana',
+		vendor: 'Google',
+		recommended: true
 	},
 	{
 		id: 'gemini-3-pro-image-preview',
-		label: 'NanoBanana Pro（Gemini 3 Pro Image 预览版）',
+		label: 'Nano Banana Pro（Gemini 3 Pro Image）',
 		needType: 'image',
 		apiSource: 'gemini',
-		legacyModelKey: 'nanobanana'
+		legacyModelKey: 'nanobanana',
+		vendor: 'Google'
 	},
 	{
 		id: 'doubao-seedream-4-5-251128',

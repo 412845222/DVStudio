@@ -3,6 +3,7 @@ import type {
 	MeshyTaskPanelItem
 } from '../../../../ui/WorkFlow/MeshyTaskPanel.vue'
 import { isRecord } from '../../../../types/utils'
+import { t } from '../../../../i18n'
 import type { MeshyCapability, MeshyRelationKind, MeshyTaskStatus } from './types'
 import { sanitizeMeshyPreviewUrl } from './useAIWorkflowMeshyAssets'
 
@@ -68,17 +69,17 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		if (value === 'remesh') return 'Remesh'
 		if (value === 'text-to-image') return 'Text to Image'
 		if (value === 'image-to-image') return 'Image to Image'
-		return value || '未命名任务'
+		return value || t('tasks.meshy.unnamedTask')
 	}
 
 	const statusLabelForMeshy = (status: string) => {
 		const value = String(status || '').trim()
-		if (value === 'running') return '执行中'
-		if (value === 'pending') return '排队中'
-		if (value === 'succeeded') return '已完成'
-		if (value === 'failed') return '失败'
-		if (value === 'canceled') return '已取消'
-		return '未启动'
+		if (value === 'running') return t('tasks.meshy.statusRunning')
+		if (value === 'pending') return t('tasks.meshy.statusPending')
+		if (value === 'succeeded') return t('tasks.meshy.statusSucceeded')
+		if (value === 'failed') return t('tasks.meshy.statusFailed')
+		if (value === 'canceled') return t('tasks.meshy.statusCanceled')
+		return t('tasks.meshy.statusIdle')
 	}
 
 	/**
@@ -119,7 +120,6 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			item.payload?.meshySettings && typeof item.payload.meshySettings === 'object'
 				? (item.payload.meshySettings as Record<string, unknown>)
 				: {}
-		const targetLabel = item.target === 'image' ? '图像链路' : '3D链路'
 
 		// 从 settings 中读取 outputSummary 和 relationSummary（兼容两种 key 格式）
 		const outputSummary = (settings.meshyOutputSummary ?? settings.outputSummary ?? {}) as Record<
@@ -131,27 +131,50 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			unknown
 		>
 		const inputSummary = (settings.meshyInputSummary ?? {}) as Record<string, unknown>
+		const submittedParams = (settings.submittedParams ?? {}) as Record<string, unknown>
+		const requestBody = (settings._requestBody ?? {}) as Record<string, unknown>
 
-		// imageCount: 优先从 meshyInputSummary 读取，其次从 settings 的 outputImageCount / imageCount
+		// imageCount: 优先从 meshyInputSummary 读取，其次从 submittedParams，再从 settings 的 outputImageCount / imageCount
 		const imageCount =
-			Number(inputSummary.imageCount ?? 0) > 0
-				? Number(inputSummary.imageCount ?? 0)
+			Number(inputSummary.imageCount ?? submittedParams.referenceImageCount ?? 0) > 0
+				? Number(inputSummary.imageCount ?? submittedParams.referenceImageCount ?? 0)
 				: getSettingsNumber(settings, 'meshyOutputImageCount', 'outputImageCount') > 0
 					? getSettingsNumber(settings, 'meshyOutputImageCount', 'outputImageCount')
 					: getSettingsNumber(settings, 'meshyImageCount', 'imageCount')
 
+		const resolvedTargetLabel = item.target === 'image' ? t('tasks.meshy.imageChain') : t('tasks.meshy.model3dChain')
+		const resolvedSourceLabel = options.isRemoteLoaded() ? t('tasks.meshy.backendMirrorList') : t('tasks.meshy.localNodeState')
+
+		// 从 submittedParams 或 requestBody 中提取提交参数
+		const aiModel = String(
+			submittedParams.model ?? requestBody.ai_model ?? settings.meshyAiModel ?? settings.aiModel ?? ''
+		).trim()
+		const aspectRatio = String(
+			submittedParams.aspectRatio ?? requestBody.aspect_ratio ?? settings.meshyAspectRatio ?? settings.aspectRatio ?? ''
+		).trim()
+		const outputCount = Number(
+			submittedParams.outputCount ?? requestBody.output_image_count ?? settings.meshyOutputImageCount ?? settings.outputImageCount ?? 1
+		)
+		const poseMode = String(
+			submittedParams.poseMode ?? requestBody.pose_mode ?? settings.meshyPoseMode ?? settings.poseMode ?? ''
+		).trim()
+		const generateMultiView = Boolean(
+			submittedParams.generateMultiView ?? requestBody.generate_multi_view ?? settings.meshyGenerateMultiView ?? settings.generateMultiView
+		)
+		const seed = submittedParams.seed ?? requestBody.seed ?? settings.meshySeed ?? settings.seed
+		const submittedAt = String(submittedParams.submittedAt ?? settings.submittedAt ?? '').trim()
 		return {
 			id: item.id,
 			title: item.title,
 			taskId: item.taskId,
 			nodeId: item.nodeId || String(item.payload?.nodeId ?? '').trim() || undefined,
-			targetLabel,
+			targetLabel: resolvedTargetLabel,
 			familyLabel: item.familyLabel,
 			status: item.status,
 			statusLabel: item.statusLabel,
 			progress: item.progress,
 			prompt: item.promptPreview,
-			negativePrompt: getSettingsValue(settings, 'meshyNegativePrompt', 'negativePrompt') || undefined,
+			negativePrompt: getSettingsValue(settings, 'meshyNegativePrompt', 'negativePrompt') || String(submittedParams.negativePrompt ?? requestBody.negative_prompt ?? '').trim() || undefined,
 			statusText: getSettingsValue(settings, 'meshyStatusText', 'statusText') || undefined,
 			errorMessage: getSettingsValue(settings, 'meshyErrorMessage', 'errorMessage') || undefined,
 			preferredModelUrl:
@@ -177,17 +200,34 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 				).trim() || undefined,
 			thumbnailUrl: options.getMeshyDisplayThumbnailUrl(settings) || undefined,
 			imageCount,
-			createdAtLabel: formatMeshyDetailTime(item.createdAt),
+			createdAtLabel: formatMeshyDetailTime(submittedAt || item.createdAt),
 			updatedAtLabel: formatMeshyDetailTime(item.createdAt),
-			sourceLabel: options.isRemoteLoaded() ? '后端镜像列表' : '本地节点状态',
-			requestPayload: undefined,
-			responsePayload: undefined
+			sourceLabel: resolvedSourceLabel,
+			requestPayload: {
+				...(Object.keys(submittedParams).length > 0 ? { submittedParams } : {}),
+				...(Object.keys(requestBody).length > 0 ? { _actualRequestBody: requestBody } : {})
+			},
+			responsePayload: undefined,
+			// 额外的提交参数字段，用于在UI中显示
+			...(aiModel ? { aiModel } : {}),
+			...(aspectRatio || generateMultiView ? { aspectRatio: generateMultiView ? '1:1 (Multi-View)' : aspectRatio } : {}),
+			...(outputCount ? { outputCount } : {}),
+			...(poseMode ? { poseMode } : {}),
+			...(generateMultiView ? { generateMultiView: true } : {}),
+			...(seed != null && seed !== 'Random' ? { seed } : {})
+		} as MeshyTaskPanelDetail & {
+			aiModel?: string
+			aspectRatio?: string
+			outputCount?: number
+			poseMode?: string
+			generateMultiView?: boolean
+			seed?: number | string
 		}
 	}
 
 	const mapMeshyMirrorItemToDetail = (
 		item: Record<string, unknown>,
-		sourceLabel = '后端镜像详情'
+		sourceLabel = t('tasks.meshy.backendMirrorDetail')
 	): MeshyTaskPanelDetail => {
 		const target = String(item.target ?? '3d').trim() === 'image' ? 'image' : '3d'
 		const family = String(
@@ -195,6 +235,31 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		).trim()
 		const status = String(item.status ?? 'idle').trim()
 		const requestPayload = isRecord(item.requestPayload) ? item.requestPayload : {}
+		const resolvedTargetLabel = target === 'image' ? t('tasks.meshy.imageChain') : t('tasks.meshy.model3dChain')
+
+		// 从 requestPayload 中提取提交参数
+		const actualRequestBody = isRecord(requestPayload._requestBody) ? requestPayload._requestBody : requestPayload
+		const submittedParams = isRecord(requestPayload.submittedParams) ? requestPayload.submittedParams : {}
+		const aiModel = String(
+			submittedParams.model ?? actualRequestBody.ai_model ?? ''
+		).trim()
+		const aspectRatio = String(
+			submittedParams.aspectRatio ?? actualRequestBody.aspect_ratio ?? ''
+		).trim()
+		const outputCount = Number(
+			submittedParams.outputCount ?? actualRequestBody.output_image_count ?? 0
+		)
+		const poseMode = String(
+			submittedParams.poseMode ?? actualRequestBody.pose_mode ?? ''
+		).trim()
+		const generateMultiView = Boolean(
+			submittedParams.generateMultiView ?? actualRequestBody.generate_multi_view
+		)
+		const seed = submittedParams.seed ?? actualRequestBody.seed
+		const negativePrompt = String(
+			submittedParams.negativePrompt ?? actualRequestBody.negative_prompt ?? item.negativePrompt ?? ''
+		).trim()
+		const imageCount = Number(item.imageCount ?? submittedParams.referenceImageCount ?? 0)
 		return {
 			id: `detail:${String(item.taskId ?? item.id ?? '')}`,
 			title:
@@ -203,13 +268,13 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 				).trim() || familyLabelForMeshy(family),
 			taskId: String(item.taskId ?? '').trim() || undefined,
 			nodeId: String(item.lastNodeId ?? '').trim() || undefined,
-			targetLabel: target === 'image' ? '图像链路' : '3D链路',
+			targetLabel: resolvedTargetLabel,
 			familyLabel: familyLabelForMeshy(family),
 			status,
 			statusLabel: statusLabelForMeshy(status),
 			progress: Math.max(0, Math.min(100, Number(item.progress ?? 0))),
 			prompt: String(item.prompt ?? '').trim() || undefined,
-			negativePrompt: String(item.negativePrompt ?? '').trim() || undefined,
+			negativePrompt: negativePrompt || undefined,
 			statusText: String(item.statusText ?? '').trim() || undefined,
 			errorMessage: String(item.errorMessage ?? '').trim() || undefined,
 			preferredModelUrl:
@@ -226,12 +291,26 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 				sanitizeMeshyPreviewUrl(
 					String(item.effectiveThumbnailUrl ?? item.thumbnailUrl ?? '').trim()
 				) || undefined,
-			imageCount: Math.max(0, Number(item.imageCount ?? 0)),
+			imageCount: Math.max(0, imageCount),
 			createdAtLabel: formatMeshyDetailTime(item.remoteCreatedAt ?? item.createdAt),
 			updatedAtLabel: formatMeshyDetailTime(item.updatedAt ?? item.remoteFinishedAt),
 			sourceLabel,
 			requestPayload: isRecord(item.requestPayload) ? item.requestPayload : undefined,
-			responsePayload: isRecord(item.responsePayload) ? item.responsePayload : undefined
+			responsePayload: isRecord(item.responsePayload) ? item.responsePayload : undefined,
+			// 额外的提交参数字段，用于在UI中显示
+			...(aiModel ? { aiModel } : {}),
+			...(aspectRatio || generateMultiView ? { aspectRatio: generateMultiView ? '1:1 (Multi-View)' : aspectRatio } : {}),
+			...(outputCount ? { outputCount } : {}),
+			...(poseMode ? { poseMode } : {}),
+			...(generateMultiView ? { generateMultiView: true } : {}),
+			...(seed != null && seed !== 'Random' ? { seed } : {})
+		} as MeshyTaskPanelDetail & {
+			aiModel?: string
+			aspectRatio?: string
+			outputCount?: number
+			poseMode?: string
+			generateMultiView?: boolean
+			seed?: number | string
 		}
 	}
 
@@ -351,6 +430,39 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 		const title =
 			String(requestPayload.title ?? requestPayload.alias ?? familyLabelForMeshy(family)).trim() ||
 			familyLabelForMeshy(family)
+
+		// 从 requestPayload 中提取提交参数用于 metaText 显示
+		const actualRequestBody = isRecord(requestPayload._requestBody) ? requestPayload._requestBody : requestPayload
+		const submittedParams = isRecord(requestPayload.submittedParams) ? requestPayload.submittedParams : {}
+		const aiModel = String(
+			submittedParams.model ?? actualRequestBody.ai_model ?? ''
+		).trim()
+		const aspectRatio = String(
+			submittedParams.aspectRatio ?? actualRequestBody.aspect_ratio ?? ''
+		).trim()
+		const outputCount = Number(
+			submittedParams.outputCount ?? actualRequestBody.output_image_count ?? 0
+		)
+		const generateMultiView = Boolean(
+			submittedParams.generateMultiView ?? actualRequestBody.generate_multi_view
+		)
+		const imageCount = Number(item.imageCount ?? submittedParams.referenceImageCount ?? 0)
+
+		// 构建 metaText，显示关键参数
+		const metaParts: string[] = []
+		if (target === 'image') metaParts.push(t('tasks.meshy.imageChain'))
+		else metaParts.push(t('tasks.meshy.model3dChain'))
+		if (aiModel) metaParts.push(aiModel)
+		if (generateMultiView) {
+			metaParts.push(t('tasks.meshy.multiView'))
+		} else if (aspectRatio) {
+			metaParts.push(aspectRatio)
+		}
+		if (outputCount > 1) metaParts.push(t('tasks.meshy.outputCountN', { count: String(outputCount) }))
+		if (imageCount > 0) metaParts.push(t('tasks.meshy.referenceImagesCount', { count: String(imageCount) }))
+		const statusMsg = String(item.statusText ?? item.errorMessage ?? '').trim() || t('tasks.meshy.syncedToLocalMirror')
+		metaParts.push(statusMsg)
+
 		const children = Array.isArray(item.children)
 			? item.children.map((child) =>
 					mapMeshyRemoteTaskToPanelItem(child as Record<string, unknown>)
@@ -367,8 +479,8 @@ export const useAIWorkflowMeshyTaskPanelMapping = (options: {
 			status: status as MeshyTaskPanelItem['status'],
 			statusLabel: statusLabelForMeshy(status),
 			progress: Math.max(0, Math.min(100, Number(item.progress ?? 0))),
-			promptPreview: prompt || '未填写提示词',
-			metaText: `${target === 'image' ? '图像链路' : '3D链路'} · ${Number(item.imageCount ?? 0)} 张图片输入 · ${String(item.statusText ?? item.errorMessage ?? '').trim() || '已同步到本地镜像'}`,
+			promptPreview: prompt || t('tasks.meshy.promptNotFilled'),
+			metaText: metaParts.join(' · '),
 			relationKind: normalizeMeshyRelationKind(item.relationKind),
 			rootTaskId: String(item.rootTaskId ?? item.taskId ?? '').trim() || undefined,
 			parentTaskId: String(item.parentTaskId ?? '').trim() || undefined,

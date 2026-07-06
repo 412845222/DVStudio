@@ -6,6 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '../../i18n'
 
 type SteamStatus = 'online' | 'away' | 'busy' | 'snooze' | 'looking-to-trade' | 'looking-to-play' | 'offline' | 'in-game'
 
@@ -17,20 +18,22 @@ const props = withDefaults(defineProps<Props>(), {
 	status: 'offline',
 })
 
+const { t } = useI18n()
+
 const statusClass = computed(() => `status-${props.status}`)
 
 const statusLabel = computed(() => {
 	const labels: Record<SteamStatus, string> = {
-		'online': '在线',
-		'away': '离开',
-		'busy': '忙碌',
-		'snooze': '打盹',
-		'looking-to-trade': '想交易',
-		'looking-to-play': '想玩游戏',
-		'offline': '离线',
-		'in-game': '游戏中',
+		'online': t('steam.friendStatus.online'),
+		'away': t('steam.friendStatus.away'),
+		'busy': t('steam.friendStatus.busy'),
+		'snooze': t('steam.friendStatus.snooze'),
+		'looking-to-trade': t('steam.friendStatus.lookingToTrade'),
+		'looking-to-play': t('steam.friendStatus.lookingToPlay'),
+		'offline': t('steam.friendStatus.offline'),
+		'in-game': t('steam.friendStatus.inGame'),
 	}
-	return labels[props.status] || '未知'
+	return labels[props.status] || t('steam.status.unknown')
 })
 </script>
 

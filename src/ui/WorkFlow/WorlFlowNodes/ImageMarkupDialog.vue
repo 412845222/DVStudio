@@ -1,9 +1,9 @@
 <template>
 	<div v-if="visible" class="imd-mask" @mousedown.self="onClose">
-		<div class="imd-dialog" role="dialog" aria-label="图片预览与标记">
+		<div class="imd-dialog" role="dialog" :aria-label="t('nodes.imageMarkup.title')">
 			<div class="imd-toolbar">
 				<div class="imd-toolbar-left">
-					<span class="imd-title">图片预览与标记</span>
+					<span class="imd-title">{{ t('nodes.imageMarkup.title') }}</span>
 				</div>
 				<div class="imd-toolbar-right">
 					<button
@@ -11,36 +11,36 @@
 						type="button"
 						:class="{ active: mode === 'view' }"
 						@click="setMode('view')"
-						title="浏览模式：拖拽移动"
+						:title="t('nodes.imageMarkup.browseMode')"
 					>
-						浏览
+						{{ t('nodes.imageMarkup.browse') }}
 					</button>
 					<button
 						class="imd-btn"
 						type="button"
 						:class="{ active: mode === 'brush' }"
 						@click="setMode('brush')"
-						title="画笔模式：红色画笔标记"
+						:title="t('nodes.imageMarkup.brushMode')"
 					>
-						画笔
+						{{ t('nodes.imageMarkup.brush') }}
 					</button>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="zoomBy(1.2)" title="放大">放大</button>
-					<button class="imd-btn" type="button" @click="zoomBy(1 / 1.2)" title="缩小">缩小</button>
-					<button class="imd-btn" type="button" @click="resetTransform" title="重置为原始大小">
-						重置
+					<button class="imd-btn" type="button" @click="zoomBy(1.2)" :title="t('nodes.imageMarkup.zoomIn')">{{ t('nodes.imageMarkup.zoomIn') }}</button>
+					<button class="imd-btn" type="button" @click="zoomBy(1 / 1.2)" :title="t('nodes.imageMarkup.zoomOut')">{{ t('nodes.imageMarkup.zoomOut') }}</button>
+					<button class="imd-btn" type="button" @click="resetTransform" :title="t('nodes.imageMarkup.resetTransform')">
+						{{ t('nodes.imageMarkup.reset') }}
 					</button>
-					<button class="imd-btn" type="button" @click="fitToView" title="适应窗口">适应</button>
+					<button class="imd-btn" type="button" @click="fitToView" :title="t('nodes.imageMarkup.fitToView')">{{ t('nodes.imageMarkup.fitToView') }}</button>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="rotateBy(-90)" title="向左旋转 90°">
-						左旋
+					<button class="imd-btn" type="button" @click="rotateBy(-90)" :title="t('nodes.imageMarkup.rotateLeft')">
+						{{ t('nodes.imageMarkup.rotateLeftShort') }}
 					</button>
-					<button class="imd-btn" type="button" @click="rotateBy(90)" title="向右旋转 90°">
-						右旋
+					<button class="imd-btn" type="button" @click="rotateBy(90)" :title="t('nodes.imageMarkup.rotateRight')">
+						{{ t('nodes.imageMarkup.rotateRightShort') }}
 					</button>
 					<span class="imd-sep"></span>
 					<label class="imd-brush-label">
-						画笔粗细：
+						{{ t('nodes.imageMarkup.brushSize') }}
 						<input
 							type="range"
 							min="1"
@@ -52,18 +52,18 @@
 						<span class="imd-brush-size">{{ brushSize }}px</span>
 					</label>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="clearBrush" title="清除所有画笔标记">
-						清除标记
+					<button class="imd-btn" type="button" @click="clearBrush" :title="t('nodes.imageMarkup.clearBrush')">
+						{{ t('nodes.imageMarkup.clearMarkup') }}
 					</button>
 					<button
 						class="imd-btn imd-btn-primary"
 						type="button"
 						@click="onExportMarkup"
-						title="将带有画笔标记的图像导出为新的图片节点，并自动连接当前图片节点"
+						:title="t('nodes.imageMarkup.exportMarkupTooltip')"
 					>
-						导出标记
+						{{ t('nodes.imageMarkup.exportMarkup') }}
 					</button>
-					<button class="imd-btn" type="button" @click="onClose" title="关闭">关闭</button>
+					<button class="imd-btn" type="button" @click="onClose" :title="t('nodes.imageMarkup.close')">{{ t('nodes.imageMarkup.close') }}</button>
 				</div>
 			</div>
 
@@ -80,11 +80,11 @@
 				<canvas ref="canvasRef" class="imd-canvas" :style="canvasStyle"></canvas>
 				<canvas ref="overlayRef" class="imd-overlay" :style="canvasStyle"></canvas>
 				<div v-if="!imageLoaded" class="imd-loading">
-					<div class="imd-loading-text">图片加载中…</div>
+					<div class="imd-loading-text">{{ t('nodes.imageMarkup.loading') }}</div>
 				</div>
 				<div v-if="imageLoaded && naturalWidth" class="imd-info">
-					原始尺寸：{{ naturalWidth }} × {{ naturalHeight }} | 缩放：{{ Math.round(zoom * 100) }}% |
-					旋转：{{ rotation }}°
+					{{ t('nodes.imageMarkup.originalSize') }}：{{ naturalWidth }} × {{ naturalHeight }} | {{ t('nodes.imageMarkup.zoom') }}：{{ Math.round(zoom * 100) }}% |
+					{{ t('nodes.imageMarkup.rotation') }}：{{ rotation }}°
 				</div>
 			</div>
 		</div>
@@ -93,6 +93,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	visible: boolean

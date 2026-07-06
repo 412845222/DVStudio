@@ -12,12 +12,12 @@
 					ref="inputRef"
 					v-model="draft"
 					class="wf-tag-input"
-					placeholder="输入标签名称..."
+					:placeholder="t('nodes.tagEditor.placeholder')"
 					@keydown.enter="commit"
 					@keydown.esc="cancel"
 				/>
-				<button class="wf-tag-save-btn" @click.stop="commit">保存</button>
-				<div class="wf-tag-editor-hint">Enter 确认 · Esc 取消</div>
+				<button class="wf-tag-save-btn" @click.stop="commit">{{ t('nodes.tagEditor.save') }}</button>
+				<div class="wf-tag-editor-hint">{{ t('nodes.tagEditor.hint') }}</div>
 			</div>
 		</div>
 	</Teleport>
@@ -25,6 +25,9 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	visible: boolean

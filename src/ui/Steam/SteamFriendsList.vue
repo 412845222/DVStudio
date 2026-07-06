@@ -84,13 +84,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	friends: () => [
-		{ id: '1', name: 'Gaben', status: 'in-game' as FriendStatus, gameName: 'SpaceWar' },
-		{ id: '2', name: 'Steam用户_A7x3K', status: 'online' as FriendStatus },
-		{ id: '3', name: 'DwebStudio', status: 'away' as FriendStatus },
-		{ id: '4', name: 'Player_8821', status: 'offline' as FriendStatus },
-		{ id: '5', name: 'GamerPro99', status: 'offline' as FriendStatus },
-	],
+	friends: () => [],
 })
 
 const onlineFriends = computed(() => props.friends.filter(f => f.status !== 'offline'))

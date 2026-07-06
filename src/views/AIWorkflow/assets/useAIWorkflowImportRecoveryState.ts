@@ -1,4 +1,5 @@
 import { ref, shallowRef } from 'vue'
+import { t } from '../../../i18n'
 
 export type AIWorkflowImportResourceState = {
 	kind: 'image' | 'video'
@@ -36,13 +37,13 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
 	const importOverlayOpen = ref(false)
-	const importOverlayTitle = ref('正在导入资源…')
+	const importOverlayTitle = ref(t('aiworkflow.toast.importing'))
 	const importOverlayDetail = ref('')
 	const importOverlayProgress = ref(0)
 	const activeImportSession = shallowRef<ActiveImportSession | null>(null)
 
 	const recoveryOverlayOpen = ref(false)
-	const recoveryOverlayTitle = ref('正在恢复资源…')
+	const recoveryOverlayTitle = ref(t('aiworkflow.toast.recovering'))
 	const recoveryOverlayDetail = ref('')
 	const recoveryOverlayProgress = ref(0)
 	const activeRecoverySession = shallowRef<ActiveRecoverySession | null>(null)
@@ -81,7 +82,7 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			processed: Number(session.processed ?? 0)
 		}
 		if (session.total > 0) {
-			importOverlayTitle.value = String(session.title ?? '正在导入资源…')
+			importOverlayTitle.value = String(session.title ?? t('aiworkflow.toast.importing'))
 			importOverlayOpen.value = true
 			importOverlayProgress.value = 0
 			importOverlayDetail.value = `0 / ${session.total}`
@@ -171,7 +172,7 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			session.total > 0 ? Math.max(0, Math.min(1, session.processed / session.total)) : 0
 		recoveryOverlayDetail.value = `${Math.min(session.processed, session.total)} / ${session.total}`
 		if (missingUrl > 0) {
-			recoveryOverlayDetail.value = `${Math.min(session.processed, session.total)} / ${session.total}（缺失 ${missingUrl}）`
+			recoveryOverlayDetail.value = `${Math.min(session.processed, session.total)} / ${session.total}${t('aiworkflow.toast.recoveryDetailMissing', { count: String(missingUrl) })}`
 		}
 		if (session.processed >= session.total) {
 			recoveryOverlayProgress.value = 1
@@ -179,7 +180,7 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			activeRecoverySession.value = null
 			if (missingUrl > 0) {
 				payload.pushToast(
-					`有 ${missingUrl} 个本地资源无法自动恢复（缺失 URL）。可在“加载项目”时选择文件夹重新绑定/授权。`,
+					t('aiworkflow.toast.recoveryMissingUrl', { count: missingUrl }),
 					'warn'
 				)
 			}
@@ -226,7 +227,7 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			total,
 			processed: 0
 		}
-		recoveryOverlayTitle.value = String(payload.title ?? '正在恢复资源…')
+		recoveryOverlayTitle.value = String(payload.title ?? t('aiworkflow.toast.recovering'))
 		recoveryOverlayOpen.value = true
 		recoveryOverlayProgress.value = 0
 		recoveryOverlayDetail.value = `0 / ${total}`

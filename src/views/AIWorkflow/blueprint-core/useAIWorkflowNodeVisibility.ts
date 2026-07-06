@@ -1,8 +1,10 @@
 import { computed, type Ref } from 'vue'
 import type { WorkflowNode } from '../../../aiworkflow/types'
+import { t } from '../../../i18n'
 
 const GRID_CELL_SIZE = 1000
 const SPATIAL_INDEX_THRESHOLD = 80
+const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
 
 interface GridCell {
 	nodeIds: string[]
@@ -19,6 +21,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	viewportMotionActive?: Ref<boolean>
 	motionRecomputeMinIntervalMs?: number
 	forceRenderNodeIds?: Ref<Set<string>>
+	invalidateTick?: Ref<number>
 }) => {
 	const hiddenNodeIdSet = new Set(
 		(payload.hiddenNodeIds ?? []).map((id) => String(id || '').trim()).filter(Boolean)
@@ -51,6 +54,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	let lastSelectedCount = -1
 	let lastComputeAt = 0
 	let lastResultWasCapped = false
+	let lastInvalidateTick = -1
 
 	const gridIndex = new Map<string, GridCell>()
 	let lastGridHash = -1
@@ -144,19 +148,19 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	)
 
 	const compactNodeTypeLabel = (nodeType: string) => {
-		if (nodeType === 'text') return '文本'
-		if (nodeType === 'text-merge') return '拼接'
-		if (nodeType === 'image') return '图片'
-		if (nodeType === 'rotate-image') return '旋图'
-		if (nodeType === 'video') return '视频'
-		if (nodeType === 'scene-understanding') return '理解'
-		if (nodeType === 'scene-decompose') return '分解'
-		if (nodeType === 'scene-layout') return '布局'
-		if (nodeType === 'story') return '剧情'
+		if (nodeType === 'text') return t('aiworkflow.toast.nodeVisibilityText')
+		if (nodeType === 'text-merge') return t('aiworkflow.toast.nodeVisibilityMerge')
+		if (nodeType === 'image') return t('aiworkflow.toast.nodeVisibilityImage')
+		if (nodeType === 'rotate-image') return t('aiworkflow.toast.nodeVisibilityRotate')
+		if (nodeType === 'video') return t('aiworkflow.toast.nodeVisibilityVideo')
+		if (nodeType === 'scene-understanding') return t('aiworkflow.toast.nodeVisibilityUnderstanding')
+		if (nodeType === 'scene-decompose') return t('aiworkflow.toast.nodeVisibilityDecompose')
+		if (nodeType === 'scene-layout') return t('aiworkflow.toast.nodeVisibilityLayout')
+		if (nodeType === 'story') return t('aiworkflow.toast.nodeVisibilityStory')
 		if (nodeType === 'comfyui') return 'Comfy'
 		if (nodeType === 'model3d') return '3D'
 		if (nodeType === 'meshy') return 'Meshy'
-		return '节点'
+		return t('aiworkflow.toast.nodeVisibilityDefault')
 	}
 
 	const compactNodeDisplayName = (node: WorkflowNode) =>
@@ -166,18 +170,18 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	const compactNodeMeta = (node: WorkflowNode) => {
 		const inputCount = Array.isArray(node.inputs) ? node.inputs.length : 0
 		const outputCount = Array.isArray(node.outputs) ? node.outputs.length : 0
-		if (node.type === 'model3d' || node.type === 'scene-layout') return '重预览已折叠'
+		if (node.type === 'model3d' || node.type === 'scene-layout') return t('aiworkflow.toast.heavyPreviewCollapsed')
 		if (node.type === 'image' || node.type === 'video')
-			return `${inputCount} 入 / ${outputCount} 出`
+			return t('aiworkflow.toast.nodeAnchorsInOut', { input: inputCount, output: outputCount })
 		if (node.type === 'scene-understanding' || node.type === 'scene-decompose')
-			return `${outputCount} 输出锚点`
-		return `${inputCount} 入 / ${outputCount} 出`
+			return t('aiworkflow.toast.nodeOutputAnchors', { count: outputCount })
+		return t('aiworkflow.toast.nodeAnchorsInOut', { input: inputCount, output: outputCount })
 	}
 
 	const compactNodeTooltip = (node: WorkflowNode) => {
 		const name = compactNodeDisplayName(node)
 		const meta = compactNodeMeta(node)
-		return `${name} · ${meta} · 当前缩放过小，已切换为轻量占位`
+		return t('aiworkflow.toast.nodeCompactLabel', { name, meta })
 	}
 
 	const compactNodeClass = (node: WorkflowNode) => ({
@@ -200,6 +204,53 @@ export const useAIWorkflowNodeVisibility = (payload: {
 
 	const candidateIdBuf: string[] = []
 
+	const isNodeInViewport = (
+		node: WorkflowNode,
+		viewLeft: number,
+		viewTop: number,
+		viewRight: number,
+		viewBottom: number
+	) => {
+		const halfWidth = Math.max(0, Number(node.width) || 0) / 2
+		const halfHeight = Math.max(0, Number(node.height) || 0) / 2
+		const left = node.worldX - halfWidth
+		const right = node.worldX + halfWidth
+		const top = node.worldY - halfHeight
+		const bottom = node.worldY + halfHeight
+		return right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom
+	}
+
+	const addSelectedNodes = (
+		selectedIds: Set<string>,
+		nodesById: Map<string, WorkflowNode>,
+		viewLeft: number,
+		viewTop: number,
+		viewRight: number,
+		viewBottom: number,
+		out: string[]
+	) => {
+		const selectedCount = selectedIds.size
+		if (selectedCount <= MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+			selectedIds.forEach((id) => {
+				out.push(id)
+			})
+			return
+		}
+
+		let addedSelected = 0
+		const selectedInViewport: string[] = []
+		selectedIds.forEach((id) => {
+			const node = nodesById.get(id)
+			if (node && isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
+				selectedInViewport.push(id)
+			}
+		})
+		for (let i = 0; i < selectedInViewport.length && addedSelected < MAX_SELECTED_NODES_FOR_FULL_RENDER; i++) {
+			out.push(selectedInViewport[i])
+			addedSelected++
+		}
+	}
+
 	const computeVisibleNodeIds = (
 		nodesForRender: WorkflowNode[],
 		viewLeft: number,
@@ -211,29 +262,27 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	) => {
 		out.length = 0
 
-		selectedIds.forEach((id) => {
-			out.push(id)
-		})
-
 		const nodeCount = nodesForRender.length
 
 		if (nodeCount <= SPATIAL_INDEX_THRESHOLD) {
+			const nodesById = new Map<string, WorkflowNode>()
+			for (let i = 0; i < nodeCount; i++) {
+				nodesById.set(nodesForRender[i].id, nodesForRender[i])
+			}
+			addSelectedNodes(selectedIds, nodesById, viewLeft, viewTop, viewRight, viewBottom, out)
+
 			for (let i = 0; i < nodeCount; i++) {
 				const node = nodesForRender[i]
 				const id = node.id
 				if (selectedIds.has(id)) continue
-				const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-				const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-				const left = node.worldX - halfWidth
-				const right = node.worldX + halfWidth
-				const top = node.worldY - halfHeight
-				const bottom = node.worldY + halfHeight
-				if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+				if (isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
 					out.push(id)
 				}
 			}
 		} else {
 			const nodesById = buildGridIndex(nodesForRender)
+			addSelectedNodes(selectedIds, nodesById, viewLeft, viewTop, viewRight, viewBottom, out)
+
 			candidateIdBuf.length = 0
 			queryGridIndex(viewLeft, viewTop, viewRight, viewBottom, candidateIdBuf)
 
@@ -242,13 +291,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 				if (selectedIds.has(id)) continue
 				const node = nodesById.get(id)
 				if (!node) continue
-				const halfWidth = Math.max(0, Number(node.width) || 0) / 2
-				const halfHeight = Math.max(0, Number(node.height) || 0) / 2
-				const left = node.worldX - halfWidth
-				const right = node.worldX + halfWidth
-				const top = node.worldY - halfHeight
-				const bottom = node.worldY + halfHeight
-				if (right >= viewLeft && left <= viewRight && bottom >= viewTop && top <= viewBottom) {
+				if (isNodeInViewport(node, viewLeft, viewTop, viewRight, viewBottom)) {
 					out.push(id)
 				}
 			}
@@ -302,6 +345,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 		const viewRight = (viewportWidth - centerX - payload.viewport.value.panX) / zoom + worldMargin
 		const viewTop = (-centerY - payload.viewport.value.panY) / zoom - worldMargin
 		const viewBottom = (viewportHeight - centerY - payload.viewport.value.panY) / zoom + worldMargin
+		const currentInvalidateTick = payload.invalidateTick?.value ?? -1
 
 		const viewUnchanged =
 			lastVisibleIdArr.length > 0 &&
@@ -311,7 +355,8 @@ export const useAIWorkflowNodeVisibility = (payload: {
 			lastViewLeft === viewLeft &&
 			lastViewTop === viewTop &&
 			lastViewRight === viewRight &&
-			lastViewBottom === viewBottom
+			lastViewBottom === viewBottom &&
+			lastInvalidateTick === currentInvalidateTick
 
 		if (viewUnchanged) {
 			return lastVisibleIdSet
@@ -323,6 +368,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 			lastNodeCount === nodeCount &&
 			lastSelectedCount === selectedCount &&
 			Math.abs(lastZoom - zoom) < 0.001 &&
+			lastInvalidateTick === currentInvalidateTick &&
 			now - lastComputeAt < motionRecomputeMinIntervalMs
 		) {
 			return lastVisibleIdSet
@@ -357,6 +403,7 @@ export const useAIWorkflowNodeVisibility = (payload: {
 		lastViewRight = viewRight
 		lastViewBottom = viewBottom
 		lastComputeAt = now
+		lastInvalidateTick = currentInvalidateTick
 
 		return new Set(lastVisibleIdSet)
 	})

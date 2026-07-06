@@ -1,0 +1,8 @@
+{
+  "ui.preview.notReadyTitle": "Preview not ready",
+  "ui.preview.notReadyText": "Current node has no renderable content.",
+  "ui.preview.startRender": "Start Rendering",
+  "ui.preview.preparingTitle": "Preparing rendering",
+  "ui.preview.pausedTitle": "Preview paused",
+  "ui.preview.pausedText": "Select this node to manually enable real-time rendering."
+}

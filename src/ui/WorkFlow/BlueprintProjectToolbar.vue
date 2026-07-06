@@ -5,7 +5,7 @@
 		data-bp-ui-overlay="true"
 		@pointerdown.stop
 	>
-		<nav class="aiwf-floating-rail" aria-label="AI 工作流统一工具栏">
+		<nav class="aiwf-floating-rail" :aria-label="t('aiworkflow.toolbar.ariaLabel')">
 			<!-- Sci-fi L corner brackets -->
 			<span class="rail-bracket rail-bracket-tl" aria-hidden="true"></span>
 			<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
@@ -24,15 +24,28 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'project' }"
 				type="button"
-				title="项目"
+				:title="t('aiworkflow.toolbar.project')"
 				@click.stop="togglePanel('project')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 4.2h3.6l1.2 1.3H13v6.3H3z" />
 					<path d="M4.6 8.6h6.8" />
 				</svg>
-				<span class="aiwf-floating-rail__label">项目</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.project') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
+			</button>
+
+			<button
+				class="aiwf-floating-rail__btn is-primary"
+				type="button"
+				:title="t('aiworkflow.toolbar.templateCenter')"
+				@click.stop="$emit('open-template-center')"
+			>
+				<svg viewBox="0 0 16 16" aria-hidden="true">
+					<path d="M2 3h5v5H2zM9 3h5v5H9zM2 10h5v3H2zM9 8h5v5H9z" />
+					<path d="M4.5 5.5h0M11.5 5.5h0" />
+				</svg>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.templateCenter') }}</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
@@ -41,13 +54,13 @@
 				class="aiwf-floating-rail__btn is-primary"
 				:class="{ active: nodeLibraryOpen }"
 				type="button"
-				title="节点库"
+				:title="t('aiworkflow.toolbar.nodeLibrary')"
 				@click.stop="$emit('toggle-node-library')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 3.5h4v4H3zM9 3.5h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" />
 				</svg>
-				<span class="aiwf-floating-rail__label">节点库</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.nodeLibrary') }}</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
@@ -56,14 +69,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'resources' }"
 				type="button"
-				title="资源"
+				:title="t('aiworkflow.toolbar.resources')"
 				@click.stop="togglePanel('resources')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M2.6 5h4l1.2 1.3h5.6v6.2H2.6z" />
 					<path d="M4.6 9h2.8" />
 				</svg>
-				<span class="aiwf-floating-rail__label">资源</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.resources') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 
@@ -71,14 +84,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: backendLogOpen }"
 				type="button"
-				title="日志"
+				:title="t('aiworkflow.toolbar.log')"
 				@click.stop="$emit('toggle-backend-log')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 3h10v10H3z" />
 					<path d="M5 6h6M5 8.5h4M5 11h3" />
 				</svg>
-				<span class="aiwf-floating-rail__label">日志</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.log') }}</span>
 			</button>
 
 			<span class="aiwf-floating-rail__sep" aria-hidden="true"></span>
@@ -87,14 +100,14 @@
 				class="aiwf-floating-rail__btn"
 				:class="{ active: activePanel === 'tasks' }"
 				type="button"
-				title="任务"
+				:title="t('aiworkflow.toolbar.tasks')"
 				@click.stop="togglePanel('tasks')"
 			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
 					<path d="M3 4h10v8H3z" />
 					<path d="M5 7h6M5 9h4" />
 				</svg>
-				<span class="aiwf-floating-rail__label">任务</span>
+				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.tasks') }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 		</nav>
@@ -103,10 +116,10 @@
 			<section v-if="activePanel" class="aiwf-floating-rail-popover" :class="`is-${activePanel}`">
 				<template v-if="activePanel === 'project'">
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="handleSaveProject">
-						保存项目
+						{{ t('aiworkflow.toolbar.saveProject') }}
 					</button>
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="openLoadDialog">
-						加载项目
+						{{ t('aiworkflow.toolbar.loadProject') }}
 					</button>
 					<div
 						v-if="showRepairAssets"
@@ -119,32 +132,32 @@
 						type="button"
 						@click="emitThenClose('request-repair-assets')"
 					>
-						修复项目资源
+						{{ t('aiworkflow.toolbar.repairAssets') }}
 					</button>
 					<div class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
 					<button class="aiwf-floating-rail-popover__item" type="button" @click="openImportFile">
-						导入 JSON
+						{{ t('aiworkflow.toolbar.importJson') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="openImportPackageFile"
 					>
-						导入项目 ZIP
+						{{ t('aiworkflow.toolbar.importZip') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('request-export')"
 					>
-						导出 JSON
+						{{ t('aiworkflow.toolbar.exportJson') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('request-export-package')"
 					>
-						导出项目 ZIP
+						{{ t('aiworkflow.toolbar.exportZip') }}
 					</button>
 					<div class="aiwf-floating-rail-popover__sep" aria-hidden="true"></div>
 					<button
@@ -152,7 +165,7 @@
 						type="button"
 						@click="emitThenClose('request-toggle-performance-priority')"
 					>
-						{{ performancePriorityMode ? '性能优先：开' : '性能优先：关' }}
+						{{ performancePriorityMode ? t('aiworkflow.toolbar.performancePriorityOn') : t('aiworkflow.toolbar.performancePriorityOff') }}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -173,17 +186,17 @@
 						type="button"
 						@click="emitThenClose('request-export-performance-diagnostics')"
 					>
-						导出性能诊断
+						{{ t('aiworkflow.toolbar.exportPerfDiagnostics') }}
 					</button>
 				</template>
 
 				<template v-else-if="activePanel === 'resources'">
 					<div class="aiwf-floating-rail-popover__head">
-						<span>当前蓝图资源</span>
-						<small>{{ resourceList.length }}（已引用 {{ usedResourceCount }}）</small>
+						<span>{{ t('aiworkflow.toolbar.currentBlueprintResources') }}</span>
+						<small>{{ t('aiworkflow.toolbar.resourceCount', { total: resourceList.length, used: usedResourceCount }) }}</small>
 					</div>
 					<div v-if="!enrichedResources.length" class="aiwf-floating-rail-popover__empty">
-						暂无资源
+						{{ t('aiworkflow.toolbar.noResources') }}
 					</div>
 					<div
 						v-else
@@ -200,7 +213,7 @@
 							<button
 								class="aiwf-resource-item__cover"
 								type="button"
-								:title="r.usageCount > 0 ? '点击定位到引用节点' : '该资源未被任何节点引用'"
+								:title="r.usageCount > 0 ? t('aiworkflow.toolbar.locateReferencingNode') : t('aiworkflow.toolbar.resourceNotReferenced')"
 								:disabled="r.usageCount === 0"
 								@click.stop="onResourceCoverClick(r)"
 							>
@@ -231,7 +244,7 @@
 							</button>
 							<div class="aiwf-resource-item__info">
 								<div class="aiwf-resource-item__name" :title="r.name || ''">
-									{{ r.name || '未命名资源' }}
+									{{ r.name || t('aiworkflow.toolbar.unnamedResource') }}
 								</div>
 								<div class="aiwf-resource-item__meta">
 									<span class="aiwf-resource-item__kind" :data-kind="r.kind">
@@ -243,7 +256,7 @@
 											<button
 												class="aiwf-resource-item__node-link"
 												type="button"
-												:title="`定位到节点：${r.usedBy[0].nodeTitle || r.usedBy[0].nodeId}`"
+												:title="t('aiworkflow.toolbar.locateNode', { name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId })"
 												@click.stop="onResourceNodeClick(r.usedBy[0].nodeId)"
 											>
 												{{ r.usedBy[0].nodeTitle || r.usedBy[0].nodeId }}
@@ -253,18 +266,18 @@
 											</span>
 										</template>
 									</span>
-									<span v-else class="aiwf-resource-item__unused-label">未引用</span>
+									<span v-else class="aiwf-resource-item__unused-label">{{ t('aiworkflow.toolbar.unusedResource') }}</span>
 								</div>
 							</div>
 						</div>
 						<div v-if="hasMoreResources" class="aiwf-resource-list__footer">
-							向下滚动加载更多...
+							{{ t('aiworkflow.toolbar.scrollLoadMore') }}
 						</div>
 						<div
 							v-else-if="enrichedResources.length > RESOURCE_PAGE_SIZE"
 							class="aiwf-resource-list__footer"
 						>
-							已加载全部 {{ enrichedResources.length }} 个资源
+							{{ t('aiworkflow.toolbar.allResourcesLoaded', { count: enrichedResources.length }) }}
 						</div>
 					</div>
 					<button
@@ -272,13 +285,13 @@
 						type="button"
 						@click="emitThenClose('open-resource-manager')"
 					>
-						打开完整资源管理器
+						{{ t('aiworkflow.toolbar.openResourceManager') }}
 					</button>
 				</template>
 
 				<template v-else-if="activePanel === 'tasks'">
 					<div class="aiwf-floating-rail-popover__head">
-						<span>任务管理</span>
+						<span>{{ t('aiworkflow.toolbar.taskManagement') }}</span>
 					</div>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -290,8 +303,6 @@
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
-						disabled
-						title="Gemini 任务面板尚未实现"
 						@click="emitThenClose('open-gemini-task-panel')"
 					>
 						<span>Gemini</span>
@@ -301,7 +312,7 @@
 						type="button"
 						@click="emitThenClose('open-ark-task-panel')"
 					>
-						<span>字节方舟</span>
+						<span>{{ t('tasks.ark.volcArk') }}</span>
 					</button>
 				</template>
 			</section>
@@ -345,7 +356,7 @@
 					<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
-					<div class="aiwf-rail-dialog__title">加载蓝图项目</div>
+					<div class="aiwf-rail-dialog__title">{{ t('aiworkflow.toolbar.loadBlueprintProject') }}</div>
 
 					<!-- 搜索框 -->
 					<div class="aiwf-rail-search-wrap">
@@ -353,7 +364,7 @@
 							v-model="searchKeyword"
 							class="aiwf-rail-search-input"
 							type="text"
-							placeholder="搜索项目..."
+							:placeholder="t('aiworkflow.toolbar.searchProject')"
 						/>
 					</div>
 
@@ -389,16 +400,16 @@
 								type="button"
 								@click.stop="onDeleteProject(item.id, item.name)"
 							>
-								删除
+								{{ t('aiworkflow.toolbar.deleteProject') }}
 							</button>
 						</div>
 						<div v-if="!filteredProjects.length" class="aiwf-rail-empty">
-							{{ searchKeyword ? '未找到匹配的项目' : '暂无项目' }}
+							{{ searchKeyword ? t('aiworkflow.toolbar.noMatchingProjects') : t('aiworkflow.toolbar.noProjects') }}
 						</div>
 					</div>
 					<div class="aiwf-rail-dialog__actions">
 						<button class="aiwf-rail-dialog-btn" type="button" @click="loadDialogOpen = false">
-							取消
+							{{ t('common.cancel') }}
 						</button>
 						<button
 							class="aiwf-rail-dialog-btn is-primary"
@@ -406,7 +417,7 @@
 							@click="confirmLoad"
 							:disabled="selectedProjectId == null"
 						>
-							加载
+							{{ t('aiworkflow.toolbar.load') }}
 						</button>
 					</div>
 				</div>
@@ -417,10 +428,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
 import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import type { WorkflowNode } from '../../aiworkflow/types'
+
+const { t } = useI18n()
 
 export type BlueprintProjectListItem = {
 	id: number
@@ -458,6 +472,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'quick-add', event: MouseEvent): void
+	(e: 'open-template-center'): void
 	(e: 'toggle-node-library'): void
 	(e: 'toggle-backend-log'): void
 	(e: 'open-resource-manager'): void
@@ -495,10 +510,10 @@ const backendLogOpen = computed(() => props.backendLogOpen === true)
 const showRepairAssets = computed(() => props.showRepairAssets === true)
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
-const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || '未保存项目')
+const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject'))
 const statusTitle = computed(() => {
-	if (!hasProjectName.value) return '当前蓝图项目尚未保存'
-	return `当前项目: ${projectTitle.value}`
+	if (!hasProjectName.value) return t('aiworkflow.toolbar.projectNotSaved')
+	return t('aiworkflow.toolbar.currentProject', { name: projectTitle.value })
 })
 
 watch(
@@ -545,10 +560,10 @@ const emitThenClose = (
 }
 
 const anchorsToggleLabel = computed(() =>
-	props.screenshotAnchorsEnabled === false ? '截图节点锚点：关' : '截图节点锚点：开'
+	props.screenshotAnchorsEnabled === false ? t('aiworkflow.toolbar.anchorsOff') : t('aiworkflow.toolbar.anchorsOn')
 )
 const particlesToggleLabel = computed(() =>
-	props.screenshotParticlesEnabled === false ? '矩形粒子效果：关' : '矩形粒子效果：开'
+	props.screenshotParticlesEnabled === false ? t('aiworkflow.toolbar.particlesOff') : t('aiworkflow.toolbar.particlesOn')
 )
 
 const handleSaveProject = () => {
@@ -569,7 +584,7 @@ const confirmLoad = () => {
 }
 
 const onDeleteProject = (projectId: number, projectName: string) => {
-	const ok = window.confirm(`确定删除项目「${projectName || `#${projectId}`}」吗？此操作不可撤销。`)
+	const ok = window.confirm(t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` }))
 	if (!ok) return
 	emit('request-delete-project', { projectId })
 }
@@ -607,17 +622,17 @@ const filteredProjects = computed(() => {
 })
 
 const formatRelativeTime = (ts?: number | null) => {
-	if (!Number.isFinite(Number(ts))) return '更新时间未知'
+	if (!Number.isFinite(Number(ts))) return t('aiworkflow.toolbar.unknownUpdateTime')
 	const now = Date.now()
 	const diff = now - Number(ts)
 	const minutes = Math.floor(diff / 60000)
 	const hours = Math.floor(diff / 3600000)
 	const days = Math.floor(diff / 86400000)
 
-	if (minutes < 1) return '刚刚'
-	if (minutes < 60) return `${minutes}分钟前`
-	if (hours < 24) return `${hours}小时前`
-	if (days < 7) return `${days}天前`
+	if (minutes < 1) return t('aiworkflow.toolbar.justNow')
+	if (minutes < 60) return t('aiworkflow.toolbar.minutesAgo', { count: minutes })
+	if (hours < 24) return t('aiworkflow.toolbar.hoursAgo', { count: hours })
+	if (days < 7) return t('aiworkflow.toolbar.daysAgo', { count: days })
 	return new Date(Number(ts)).toLocaleDateString()
 }
 
@@ -712,10 +727,10 @@ const resourceThumbUrl = (r: ToolbarResourceItem): string => {
 
 const resourceKindLabel = (kind: string): string => {
 	const k = String(kind || '').toLowerCase()
-	if (k === 'image') return '图片'
-	if (k === 'video') return '视频'
-	if (k === 'model3d') return '3D模型'
-	return kind || '资源'
+	if (k === 'image') return t('aiworkflow.toolbar.resourceImage')
+	if (k === 'video') return t('aiworkflow.toolbar.resourceVideo')
+	if (k === 'model3d') return t('aiworkflow.toolbar.resourceModel3d')
+	return kind || t('aiworkflow.toolbar.resource')
 }
 
 const resourceKindIconPath = (kind: string): string => {
@@ -846,11 +861,11 @@ onBeforeUnmount(() => {
 	padding: 4px 6px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 35%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 88%, transparent);
+	background: color-mix(in srgb, var(--theme-bg-primary, #181818) 88%, transparent);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 10%, transparent),
 		0 0 16px color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent),
-		0 8px 24px rgba(0, 0, 0, 0.4);
+		var(--theme-shadow-elevated, 0 8px 24px rgba(0, 0, 0, 0.4));
 	backdrop-filter: blur(16px) saturate(140%);
 	-webkit-backdrop-filter: blur(16px) saturate(140%);
 	max-width: calc(100vw - 80px);
@@ -866,7 +881,7 @@ onBeforeUnmount(() => {
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent),
 		0 0 24px color-mix(in srgb, var(--theme-accent, #1f9d84) 22%, transparent),
-		0 10px 28px rgba(0, 0, 0, 0.45);
+		var(--theme-shadow-elevated, 0 10px 28px rgba(0, 0, 0, 0.45));
 }
 
 /* ── Identity / project title ── */
@@ -1026,12 +1041,12 @@ onBeforeUnmount(() => {
 	padding: 6px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 38%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 94%, transparent);
+	background: color-mix(in srgb, var(--theme-bg-primary, #181818) 94%, transparent);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 12%, transparent),
 		0 0 20px color-mix(in srgb, var(--theme-accent, #1f9d84) 16%, transparent),
-		0 12px 32px rgba(0, 0, 0, 0.45);
-	color: var(--theme-text-primary, #edf2f4);
+		var(--theme-shadow-elevated, 0 12px 32px rgba(0, 0, 0, 0.45));
+	color: var(--theme-text-primary, #d4d4d4);
 	backdrop-filter: blur(16px) saturate(140%);
 	-webkit-backdrop-filter: blur(16px) saturate(140%);
 	will-change: transform, opacity;
@@ -1160,7 +1175,7 @@ onBeforeUnmount(() => {
 	height: 48px;
 	border-radius: 3px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 80%, transparent);
+	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
 	overflow: hidden;
 	cursor: pointer;
 	padding: 0;
@@ -1363,12 +1378,13 @@ onBeforeUnmount(() => {
 			color-mix(in srgb, var(--theme-accent, #1f9d84) 8%, transparent) 0%,
 			transparent 60%
 		),
-		rgba(0, 0, 0, 0.55);
+		var(--theme-bg-overlay, rgba(0, 0, 0, 0.55));
 	backdrop-filter: blur(4px);
 	-webkit-backdrop-filter: blur(4px);
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	pointer-events: auto;
 }
 
 /* ── Dialog box ── */
@@ -1379,22 +1395,23 @@ onBeforeUnmount(() => {
 	background:
 		linear-gradient(
 			180deg,
-			color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 98%, transparent),
-			color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 90%, transparent)
+			color-mix(in srgb, var(--theme-bg-primary, #181818) 98%, transparent),
+			color-mix(in srgb, var(--theme-bg-primary, #181818) 90%, transparent)
 		),
-		var(--wf-surface-raised, rgba(22, 26, 30, 0.92));
+		var(--wf-surface-raised, color-mix(in srgb, var(--theme-bg-elevated, #2a2e35) 92%, transparent));
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--theme-accent, #1f9d84) 14%, transparent),
 		0 0 28px color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent),
-		0 20px 60px rgba(0, 0, 0, 0.5);
+		var(--theme-shadow-elevated, 0 20px 60px rgba(0, 0, 0, 0.5));
 	border-radius: 2px;
 	padding: 14px;
-	color: var(--theme-text-primary, #edf2f4);
+	color: var(--theme-text-primary, #d4d4d4);
 	backdrop-filter: blur(16px) saturate(140%);
 	-webkit-backdrop-filter: blur(16px) saturate(140%);
 	transition:
 		border-color 200ms ease,
 		box-shadow 200ms ease;
+	pointer-events: auto;
 }
 
 .aiwf-rail-dialog:hover .rail-bracket {
@@ -1421,8 +1438,8 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
-	color: var(--theme-text-primary, #edf2f4);
+	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px;
 	font-size: 12px;
 	transition:
@@ -1450,8 +1467,8 @@ onBeforeUnmount(() => {
 	padding: 6px 12px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
-	color: var(--theme-text-primary, #edf2f4);
+	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	color: var(--theme-text-primary, #d4d4d4);
 	font-size: 12px;
 	cursor: pointer;
 	transition:
@@ -1500,8 +1517,8 @@ onBeforeUnmount(() => {
 .aiwf-rail-project-item {
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 80%, transparent);
-	color: var(--theme-text-primary, #edf2f4);
+	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
+	color: var(--theme-text-primary, #d4d4d4);
 	padding: 6px;
 	display: flex;
 	align-items: center;
@@ -1587,8 +1604,8 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--theme-bg-primary, #0f0f0f) 85%, transparent);
-	color: var(--theme-text-primary, #edf2f4);
+	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px 10px;
 	font-size: 12px;
 	transition:
@@ -1696,5 +1713,287 @@ onBeforeUnmount(() => {
 	font-size: 11px;
 	color: var(--theme-text-muted, #aeb8bd);
 	opacity: 0.7;
+}
+</style>
+
+<style>
+/* ============================================================
+   BlueprintProjectToolbar — Light Theme Overrides
+   ============================================================ */
+[data-theme='light'] .aiwf-floating-rail {
+	background: rgba(255, 255, 255, 0.88) !important;
+	border-color: rgba(31, 157, 132, 0.28) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.08),
+		0 0 14px rgba(31, 157, 132, 0.1),
+		0 6px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail:hover {
+	border-color: rgba(31, 157, 132, 0.45) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.14),
+		0 0 20px rgba(31, 157, 132, 0.16),
+		0 8px 24px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__identity {
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__sep {
+	background: rgba(31, 157, 132, 0.2) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__btn {
+	color: #4a5058 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__btn:hover,
+[data-theme='light'] .aiwf-floating-rail__btn:focus-visible {
+	border-color: rgba(31, 157, 132, 0.5) !important;
+	background: rgba(31, 157, 132, 0.08) !important;
+	color: #17806d !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.15) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__btn.active {
+	border-color: rgba(31, 157, 132, 0.55) !important;
+	background: rgba(31, 157, 132, 0.12) !important;
+	color: #17806d !important;
+	box-shadow: 0 0 10px rgba(31, 157, 132, 0.18) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__btn.is-primary {
+	border-color: rgba(31, 157, 132, 0.45) !important;
+	background: rgba(31, 157, 132, 0.12) !important;
+	color: #17806d !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.18) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__btn.is-primary:hover,
+[data-theme='light'] .aiwf-floating-rail__btn.is-primary:focus-visible {
+	border-color: #1f9d84 !important;
+	background: #1f9d84 !important;
+	color: #fff !important;
+	box-shadow: 0 0 14px rgba(31, 157, 132, 0.3) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__caret {
+	opacity: 0.5;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover {
+	background: rgba(255, 255, 255, 0.96) !important;
+	border-color: rgba(31, 157, 132, 0.28) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.08),
+		0 0 16px rgba(31, 157, 132, 0.1),
+		0 10px 28px rgba(0, 0, 0, 0.1) !important;
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__head {
+	border-color: rgba(31, 157, 132, 0.15) !important;
+	color: #6b7280 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__item {
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__item:hover,
+[data-theme='light'] .aiwf-floating-rail-popover__item:focus-visible {
+	border-color: rgba(31, 157, 132, 0.4) !important;
+	background: rgba(31, 157, 132, 0.08) !important;
+	color: #17806d !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__sep {
+	background: rgba(31, 157, 132, 0.15) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__item.is-footer {
+	border-color: rgba(31, 157, 132, 0.2) !important;
+	color: #17806d !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail-popover__empty {
+	color: #8a9099 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item:hover {
+	background: rgba(31, 157, 132, 0.06) !important;
+	border-color: rgba(31, 157, 132, 0.2) !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__cover {
+	background: rgba(248, 250, 252, 0.9) !important;
+	border-color: rgba(31, 157, 132, 0.2) !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__cover-badge {
+	background: linear-gradient(135deg, rgba(31, 157, 132, 0.9), rgba(23, 128, 109, 0.9)) !important;
+	color: #fff !important;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__name {
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__kind[data-kind='image'] {
+	background: rgba(96, 165, 250, 0.15) !important;
+	color: #2563eb !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__kind[data-kind='video'] {
+	background: rgba(244, 114, 182, 0.15) !important;
+	color: #db2777 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__kind[data-kind='model3d'] {
+	background: rgba(251, 191, 36, 0.15) !important;
+	color: #b45309 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__usage {
+	color: #6b7280 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__more {
+	color: #8a9099 !important;
+}
+
+[data-theme='light'] .aiwf-resource-item__unused-label {
+	color: #9ca3af !important;
+}
+
+[data-theme='light'] .aiwf-resource-list__footer {
+	color: #8a9099 !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog-mask {
+	background:
+		radial-gradient(
+			ellipse at 50% 40%,
+			rgba(31, 157, 132, 0.05) 0%,
+			transparent 60%
+		),
+		rgba(180, 190, 200, 0.4) !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog {
+	background:
+		linear-gradient(
+			180deg,
+			rgba(255, 255, 255, 0.98),
+			rgba(245, 248, 250, 0.96)
+		),
+		rgba(255, 255, 255, 0.98) !important;
+	border-color: rgba(31, 157, 132, 0.35) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.1),
+		0 0 24px rgba(31, 157, 132, 0.14),
+		0 16px 48px rgba(0, 0, 0, 0.12) !important;
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog__title {
+	color: #1a1d21 !important;
+	text-shadow: 0 0 8px rgba(31, 157, 132, 0.15) !important;
+}
+
+[data-theme='light'] .aiwf-rail-input,
+[data-theme='light'] .aiwf-rail-search-input {
+	background: rgba(255, 255, 255, 0.9) !important;
+	border-color: rgba(31, 157, 132, 0.25) !important;
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-rail-input::placeholder,
+[data-theme='light'] .aiwf-rail-search-input::placeholder {
+	color: #9ca3af !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog-btn {
+	background: rgba(255, 255, 255, 0.8) !important;
+	border-color: rgba(31, 157, 132, 0.25) !important;
+	color: #4a5058 !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog-btn:hover,
+[data-theme='light'] .aiwf-rail-dialog-btn:focus-visible {
+	border-color: #1f9d84 !important;
+	background: rgba(31, 157, 132, 0.08) !important;
+	color: #17806d !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog-btn.is-primary {
+	border-color: rgba(31, 157, 132, 0.55) !important;
+	background: rgba(31, 157, 132, 0.12) !important;
+	color: #17806d !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.15) !important;
+}
+
+[data-theme='light'] .aiwf-rail-dialog-btn.is-primary:hover,
+[data-theme='light'] .aiwf-rail-dialog-btn.is-primary:focus-visible {
+	border-color: #1f9d84 !important;
+	background: #1f9d84 !important;
+	color: #fff !important;
+	box-shadow: 0 0 12px rgba(31, 157, 132, 0.28) !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-list {
+	border-color: rgba(31, 157, 132, 0.2) !important;
+	background: rgba(248, 250, 252, 0.5) !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-item {
+	background: rgba(255, 255, 255, 0.7) !important;
+	border-color: rgba(31, 157, 132, 0.15) !important;
+	color: #1a1d21 !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-item:hover {
+	border-color: rgba(31, 157, 132, 0.38) !important;
+	background: rgba(31, 157, 132, 0.06) !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-item.active {
+	border-color: rgba(31, 157, 132, 0.55) !important;
+	background: rgba(31, 157, 132, 0.1) !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.14) !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-item small {
+	color: #6b7280 !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-del {
+	border-color: rgba(207, 90, 70, 0.25) !important;
+	color: rgba(207, 90, 70, 0.7) !important;
+}
+
+[data-theme='light'] .aiwf-rail-project-del:hover {
+	border-color: #cf5a46 !important;
+	color: #cf5a46 !important;
+	background: rgba(207, 90, 70, 0.08) !important;
+}
+
+[data-theme='light'] .aiwf-rail-empty {
+	color: #8a9099 !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__status-dot {
+	box-shadow:
+		0 0 0 3px rgba(110, 231, 183, 0.12),
+		0 0 6px rgba(110, 231, 183, 0.6) !important;
+}
+
+[data-theme='light'] .aiwf-floating-rail__identity.unsaved .aiwf-floating-rail__status-dot {
+	box-shadow:
+		0 0 0 3px rgba(229, 181, 103, 0.12),
+		0 0 6px rgba(229, 181, 103, 0.6) !important;
 }
 </style>

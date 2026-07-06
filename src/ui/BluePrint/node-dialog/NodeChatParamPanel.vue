@@ -1,7 +1,7 @@
 <template>
 	<div class="bp-node-chat-param-panel" :class="{ 'is-collapsed': collapsed }">
 		<div class="bp-node-chat-param-header" @click="toggleCollapse">
-			<span class="bp-node-chat-param-title">参数设置</span>
+			<span class="bp-node-chat-param-title">{{ t('aichat.nodeChatParams.title') }}</span>
 			<span class="bp-node-chat-param-toggle">
 				<svg
 					class="bp-node-chat-chevron"
@@ -20,7 +20,7 @@
 		<div v-show="!collapsed" class="bp-node-chat-param-body">
 			<template v-if="nodeType === 'text'">
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">模型接口</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelApi') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textModelOptions"
@@ -31,12 +31,28 @@
 							:disabled="disabled"
 							@click="updateParam('model', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in geminiTextModelVersionOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiTextModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('geminiTextModelVersion', opt.value)"
+						>
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">Seed 版本</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.seedVersion') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in seedModelVersionOptions"
@@ -47,12 +63,12 @@
 							:disabled="disabled"
 							@click="updateParam('textModelVersion', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">生成速度</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.speed') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textSpeedOptions"
@@ -63,12 +79,12 @@
 							:disabled="disabled"
 							@click="updateParam('speed', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">深度思考</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.deepThinking') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textThinkingOptions"
@@ -79,12 +95,12 @@
 							:disabled="disabled"
 							@click="updateParam('thinking', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">输出格式</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textResponseFormatOptions"
@@ -95,12 +111,12 @@
 							:disabled="disabled"
 							@click="updateParam('responseFormat', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">最大输出</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.maxOutput') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textMaxTokensOptions"
@@ -111,7 +127,7 @@
 							:disabled="disabled"
 							@click="updateParam('maxTokens', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
@@ -119,7 +135,7 @@
 
 			<template v-else-if="nodeType === 'image'">
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">模型接口</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelApi') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in imageModelOptions"
@@ -130,12 +146,47 @@
 							:disabled="disabled"
 							@click="updateParam('model', opt.value)"
 						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in geminiImageModelVersionOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiImageModelVersion === opt.value || params.nanobananaModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('geminiImageModelVersion', opt.value)"
+							:title="opt.description"
+						>
+							{{ opt.label?.includes('Banana') ? opt.label.split(' (')[0] : translateOpt(opt) }}
+							<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ opt.badge }}</span>
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}（清晰度）</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiImageSizeOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiImageSize === opt.value }"
+							:disabled="disabled"
+							:title="opt.description"
+							@click="updateParam('geminiImageSize', opt.value)"
+						>
 							{{ opt.label }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">型号</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in seedreamModelVersionOptions"
@@ -146,28 +197,12 @@
 							:disabled="disabled"
 							@click="updateParam('seedreamModelVersion', opt.value)"
 						>
-							{{ opt.label }}
-						</button>
-					</div>
-				</div>
-				<div v-if="params.model === 'nanobanana'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">型号</span>
-					<div class="bp-node-chat-param-options">
-						<button
-							v-for="opt in nanobananaModelVersionOptions"
-							:key="opt.value"
-							type="button"
-							class="bp-node-chat-param-btn"
-							:class="{ 'is-active': params.nanobananaModelVersion === opt.value }"
-							:disabled="disabled"
-							@click="updateParam('nanobananaModelVersion', opt.value)"
-						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">型号</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in meshyImageAiModelOptions"
@@ -178,12 +213,12 @@
 							:disabled="disabled"
 							@click="updateParam('meshyImageAiModel', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">姿态模式</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.poseMode') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in meshyPoseModeOptions"
@@ -194,12 +229,12 @@
 							:disabled="disabled"
 							@click="updateParam('meshyPoseMode', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">多视图</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.multiView') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							type="button"
@@ -208,7 +243,7 @@
 							:disabled="disabled"
 							@click="updateParam('meshyGenerateMultiView', false)"
 						>
-							关闭
+							{{ t('aichat.nodeChatParams.off') }}
 						</button>
 						<button
 							type="button"
@@ -217,13 +252,12 @@
 							:disabled="disabled"
 							@click="updateParam('meshyGenerateMultiView', true)"
 						>
-							开启
+							{{ t('aichat.nodeChatParams.on') }}
 						</button>
 					</div>
 				</div>
-				<!-- Seedream 专属参数 -->
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">分辨率</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentSeedreamResolutionOptions"
@@ -234,12 +268,12 @@
 							:disabled="disabled"
 							@click="updateParam('seedreamSize', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">宽高比</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in aspectRatioOptions"
@@ -250,12 +284,12 @@
 							:disabled="disabled"
 							@click="updateParam('seedreamAspectRatio', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">生成数量</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="n in seedreamQuantityOptions"
@@ -271,7 +305,7 @@
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream' && showSeedreamOutputFormat" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">输出格式</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentSeedreamOutputFormatOptions"
@@ -282,12 +316,12 @@
 							:disabled="disabled"
 							@click="updateParam('seedreamOutputFormat', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">高级设置</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
 					<div class="bp-node-chat-param-advanced">
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -296,15 +330,15 @@
 								:disabled="disabled"
 								@change="updateParam('seedreamWatermark', ($event.target as HTMLInputElement).checked)"
 							/>
-							<span>添加水印</span>
+							<span>{{ t('aichat.nodeChatParams.addWatermark') }}</span>
 						</label>
 						<div class="bp-node-chat-param-seed">
-							<label>种子</label>
+							<label>{{ t('aichat.nodeChatParams.seed') }}</label>
 							<input
 								type="number"
 								:value="params.seedreamSeed"
 								:disabled="disabled"
-								placeholder="-1 随机"
+								:placeholder="t('aichat.nodeChatParams.seedRandom')"
 								@input="
 									updateParam('seedreamSeed', parseInt(($event.target as HTMLInputElement).value) || -1)
 								"
@@ -313,20 +347,19 @@
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">负向提示</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
 							:value="params.seedreamNegativePrompt"
 							:disabled="disabled"
-							placeholder="输入不想要的内容..."
+							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
 							@input="updateParam('seedreamNegativePrompt', ($event.target as HTMLInputElement).value)"
 						/>
 					</div>
 				</div>
-				<!-- 通用参数（非 meshy/非 seedream 使用） -->
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">尺寸</span>
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'gemini' && params.model !== 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.size') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in resolutionOptions"
@@ -337,15 +370,32 @@
 							:disabled="disabled"
 							@click="updateParam('resolution', opt.value)"
 						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiAspectRatioOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiAspectRatio === opt.value }"
+							:disabled="disabled"
+							:title="opt.labelZh"
+							@click="updateParam('geminiAspectRatio', opt.value)"
+						>
 							{{ opt.label }}
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">宽高比</span>
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
-							v-for="opt in aspectRatioOptions"
+							v-for="opt in currentAspectRatioOptions"
 							:key="opt.value"
 							type="button"
 							class="bp-node-chat-param-btn"
@@ -353,12 +403,12 @@
 							:disabled="disabled"
 							@click="updateParam('aspectRatio', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">宽高比</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentMeshyAspectRatioOptions"
@@ -369,15 +419,15 @@
 							:disabled="disabled || params.meshyGenerateMultiView"
 							@click="updateParam('meshyAspectRatio', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 						<span v-if="params.meshyGenerateMultiView" class="bp-node-chat-param-hint">
-							多视图模式下固定为1:1
+							{{ t('aichat.nodeChatParams.multiViewFixedRatio') }}
 						</span>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">输出数量</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputCount') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="n in meshyImageOutputCountOptions"
@@ -392,11 +442,27 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">生成数量</span>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
-							v-for="n in quantityOptions"
+							v-for="n in geminiQuantityOptions"
+							:key="n"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiQuantity === n }"
+							:disabled="disabled"
+							@click="updateParam('geminiQuantity', n)"
+						>
+							{{ n }}x
+						</button>
+					</div>
+				</div>
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="n in currentQuantityOptions"
 							:key="n"
 							type="button"
 							class="bp-node-chat-param-btn"
@@ -408,26 +474,55 @@
 						</button>
 					</div>
 				</div>
+				<div v-if="(params.model === 'gemini' || params.model === 'nanobanana') && showGeminiThinkingLevel" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.thinkingLevel') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in currentGeminiThinkingLevelOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiThinkingLevel === opt.value }"
+							:disabled="disabled"
+							:title="opt.description"
+							@click="updateParam('geminiThinkingLevel', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+					<div class="bp-node-chat-param-input">
+						<input
+							type="text"
+							:value="params.geminiNegativePrompt"
+							:disabled="disabled"
+							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
+							@input="updateParam('geminiNegativePrompt', ($event.target as HTMLInputElement).value)"
+						/>
+					</div>
+				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">负向提示</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
 							:value="params.meshyNegativePrompt"
 							:disabled="disabled"
-							placeholder="输入不想要的内容..."
+							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
 							@input="updateParam('meshyNegativePrompt', ($event.target as HTMLInputElement).value)"
 						/>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">随机种子</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.randomSeed') }}</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="number"
 							:value="params.meshySeed"
 							:disabled="disabled"
-							placeholder="-1 随机"
+							:placeholder="t('aichat.nodeChatParams.seedRandom')"
 							@input="
 								updateParam('meshySeed', parseInt(($event.target as HTMLInputElement).value) || -1)
 							"
@@ -438,7 +533,7 @@
 
 			<template v-else-if="nodeType === 'video'">
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">模型接口</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelApi') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in videoModelOptions"
@@ -449,12 +544,12 @@
 							:disabled="disabled"
 							@click="updateParam('model', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">型号</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in seedanceModelVersionOptions"
@@ -465,12 +560,12 @@
 							:disabled="disabled"
 							@click="updateParam('seedanceModelVersion', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">视频模式</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.videoMode') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in videoModeOptions"
@@ -481,12 +576,12 @@
 							:disabled="disabled"
 							@click="updateParam('mode', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">分辨率</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in videoResolutionOptions"
@@ -497,12 +592,12 @@
 							:disabled="disabled"
 							@click="updateParam('resolution', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">宽高比</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in videoRatioOptions"
@@ -513,12 +608,12 @@
 							:disabled="disabled"
 							@click="updateParam('ratio', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">时长</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.duration') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in videoDurationOptions"
@@ -529,12 +624,12 @@
 							:disabled="disabled"
 							@click="updateParam('duration', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateDurationOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">高级设置</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
 					<div class="bp-node-chat-param-advanced">
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -543,7 +638,7 @@
 								:disabled="disabled"
 								@change="updateParam('generateAudio', ($event.target as HTMLInputElement).checked)"
 							/>
-							<span>生成音频</span>
+							<span>{{ t('aichat.nodeChatParams.generateAudio') }}</span>
 						</label>
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -552,7 +647,7 @@
 								:disabled="disabled"
 								@change="updateParam('watermark', ($event.target as HTMLInputElement).checked)"
 							/>
-							<span>添加水印</span>
+							<span>{{ t('aichat.nodeChatParams.addWatermark') }}</span>
 						</label>
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -561,7 +656,7 @@
 								:disabled="disabled"
 								@change="updateParam('cameraFixed', ($event.target as HTMLInputElement).checked)"
 							/>
-							<span>固定镜头</span>
+							<span>{{ t('aichat.nodeChatParams.fixedCamera') }}</span>
 						</label>
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -572,15 +667,15 @@
 									updateParam('returnLastFrame', ($event.target as HTMLInputElement).checked)
 								"
 							/>
-							<span>返回尾帧</span>
+							<span>{{ t('aichat.nodeChatParams.returnLastFrame') }}</span>
 						</label>
 						<div class="bp-node-chat-param-seed">
-							<label>种子</label>
+							<label>{{ t('aichat.nodeChatParams.seed') }}</label>
 							<input
 								type="number"
 								:value="params.seed"
 								:disabled="disabled"
-								placeholder="-1 随机"
+								:placeholder="t('aichat.nodeChatParams.seedRandom')"
 								@input="
 									updateParam('seed', parseInt(($event.target as HTMLInputElement).value) || -1)
 								"
@@ -592,7 +687,7 @@
 
 			<template v-else-if="nodeType === 'model3d'">
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">模型接口</span>
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelApi') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in model3dProviderOptions"
@@ -603,13 +698,13 @@
 							:disabled="disabled"
 							@click="updateParam('provider', opt.value)"
 						>
-							{{ opt.label }}
+							{{ translateOpt(opt) }}
 						</button>
 					</div>
 				</div>
 				<template v-if="params.provider === 'meshy'">
 					<div class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">生成模式</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.genMode') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyModeOptions"
@@ -620,12 +715,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyMode', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">AI模型</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aiModel') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyAiModelOptions"
@@ -636,12 +731,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyAiModel', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">模型类型</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelType') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyModelTypeOptions"
@@ -652,12 +747,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyModelType', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="showMeshyTopology" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">拓扑结构</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.topology') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyTopologyOptions"
@@ -668,12 +763,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyTopology', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">对称模式</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.symmetryMode') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshySymmetryModeOptions"
@@ -684,12 +779,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshySymmetryMode', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode || params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">原点位置</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.originPosition') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyOriginAtOptions"
@@ -700,12 +795,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyOriginAt', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">姿态模式</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.poseMode') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyPoseModeOptions"
@@ -716,12 +811,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyPoseMode', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="params.meshyMode !== 'uv-unwrap'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">输出格式</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyOutputFormatOptions"
@@ -732,12 +827,12 @@
 								:disabled="disabled"
 								@click="updateParam('meshyOutputFormat', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">目标面数</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.targetPolycount') }}</span>
 						<div class="bp-node-chat-param-input">
 							<input
 								type="number"
@@ -756,7 +851,7 @@
 						</div>
 					</div>
 					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">精简模式</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.decimationMode') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyDecimationModeOptions"
@@ -767,13 +862,13 @@
 								:disabled="disabled"
 								@click="updateParam('meshyDecimationMode', opt.value)"
 							>
-								{{ opt.label }}
+								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<template v-if="params.meshyMode === 'retexture'">
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">风格模式</span>
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.styleMode') }}</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									type="button"
@@ -782,7 +877,7 @@
 									:disabled="disabled"
 									@click="updateParam('meshyStyleSource', 'text')"
 								>
-									文本描述
+									{{ t('aichat.nodeChatParams.textDescription') }}
 								</button>
 								<button
 									type="button"
@@ -791,12 +886,12 @@
 									:disabled="disabled"
 									@click="updateParam('meshyStyleSource', 'image')"
 								>
-									参考图
+									{{ t('aichat.nodeChatParams.referenceImage') }}
 								</button>
 							</div>
 						</div>
 						<div v-if="params.meshyStyleSource === 'image'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">参考图</span>
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.referenceImage') }}</span>
 							<div v-if="retextureConnectedImages.length > 0" class="bp-node-chat-param-thumb-list">
 								<button
 									v-for="img in retextureConnectedImages"
@@ -810,10 +905,10 @@
 									<img :src="img.thumb || img.url" :alt="img.name" />
 								</button>
 							</div>
-							<span v-else class="bp-node-chat-param-hint">请连接图片节点</span>
+							<span v-else class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.connectImageNode') }}</span>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">AI模型</span>
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aiModel') }}</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in meshyAiModelOptions"
@@ -824,12 +919,12 @@
 									:disabled="disabled"
 									@click="updateParam('meshyAiModel', opt.value)"
 								>
-									{{ opt.label }}
+									{{ translateOpt(opt) }}
 								</button>
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">UV与网格</span>
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.uvAndMesh') }}</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -840,12 +935,12 @@
 											updateParam('meshyEnableOriginalUv', ($event.target as HTMLInputElement).checked)
 										"
 									/>
-									<span>保留原始UV（推荐）</span>
+									<span>{{ t('aichat.nodeChatParams.keepOriginalUV') }}</span>
 								</label>
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">贴图选项</span>
+							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureOptions') }}</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -856,7 +951,7 @@
 											updateParam('meshyEnablePbr', ($event.target as HTMLInputElement).checked)
 										"
 									/>
-									<span>生成PBR贴图</span>
+									<span>{{ t('aichat.nodeChatParams.generatePbr') }}</span>
 								</label>
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -867,7 +962,7 @@
 											updateParam('meshyHdTexture', ($event.target as HTMLInputElement).checked)
 										"
 									/>
-									<span>4K基础色</span>
+									<span>{{ t('aichat.nodeChatParams.hdBaseColor') }}</span>
 								</label>
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -878,7 +973,7 @@
 											updateParam('meshyRemoveLighting', ($event.target as HTMLInputElement).checked)
 										"
 									/>
-									<span>去除光照（推荐）</span>
+									<span>{{ t('aichat.nodeChatParams.removeLighting') }}</span>
 								</label>
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -889,13 +984,13 @@
 											updateParam('meshyAlphaThumbnail', ($event.target as HTMLInputElement).checked)
 										"
 									/>
-									<span>透明背景预览</span>
+									<span>{{ t('aichat.nodeChatParams.transparentPreview') }}</span>
 								</label>
 							</div>
 						</div>
 					</template>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">高级设置</span>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
 						<div class="bp-node-chat-param-advanced">
 							<label class="bp-node-chat-param-toggle">
 								<input
@@ -906,15 +1001,15 @@
 										updateParam('meshyMultiView', ($event.target as HTMLInputElement).checked)
 									"
 								/>
-								<span>多视图</span>
+								<span>{{ t('aichat.nodeChatParams.multiView') }}</span>
 							</label>
 							<div class="bp-node-chat-param-seed">
-								<label>种子</label>
+								<label>{{ t('aichat.nodeChatParams.seed') }}</label>
 								<input
 									type="number"
 									:value="params.meshySeed"
 									:disabled="disabled"
-									placeholder="-1 随机"
+									:placeholder="t('aichat.nodeChatParams.seedRandom')"
 									@input="
 										updateParam(
 											'meshySeed',
@@ -933,6 +1028,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
 import {
@@ -953,6 +1049,8 @@ import {
 	NODE_CHAT_MODEL3D_PROVIDER_OPTIONS,
 	NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS,
+	NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS,
+	NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS,
 	NODE_CHAT_SEED_MODEL_VERSION_OPTIONS,
@@ -967,11 +1065,19 @@ import {
 	NODE_CHAT_MESHY_POSE_MODE_OPTIONS,
 	NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS,
 	NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS,
+	GEMINI_QUANTITY_OPTIONS,
+	getGeminiImageSizeOptions,
+	getGeminiAspectRatioOptions,
+	getGeminiThinkingLevelOptions,
+	getDefaultGeminiImageSize,
+	supportsGeminiThinkingLevel,
 	getMeshyImageAspectRatioOptions,
 	getSeedreamResolutionOptions,
 	getSeedreamOutputFormatOptions,
 	supportsSeedreamOutputFormat
 } from './nodeChatConfig'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	nodeType: WorkflowNodeChatType
@@ -994,6 +1100,55 @@ const toggleCollapse = () => {
 const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value: WorkflowNodeChatParamRecord[K]) => {
 	const next: WorkflowNodeChatParamRecord = { ...props.params, [key]: value }
 
+	if (key === 'model') {
+		if (value === 'gemini' || value === 'nanobanana') {
+			if (props.nodeType === 'text' && !next.geminiTextModelVersion) {
+				next.geminiTextModelVersion = 'gemini-3.5-flash'
+			}
+			if (props.nodeType === 'image') {
+				const defaultModel = 'gemini-3.1-flash-image'
+				if (!next.geminiImageModelVersion || !String(next.geminiImageModelVersion).startsWith('gemini-')) {
+					next.geminiImageModelVersion = defaultModel
+				}
+				next.nanobananaModelVersion = next.geminiImageModelVersion
+				const modelVer = String(next.geminiImageModelVersion)
+				const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+				if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
+					next.geminiAspectRatio = '1:1'
+				}
+				const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+				if (!allowedSizes.includes(String(next.geminiImageSize))) {
+					next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
+				}
+				if (!GEMINI_QUANTITY_OPTIONS.includes(Number(next.geminiQuantity))) {
+					next.geminiQuantity = 1
+				}
+				if (!supportsGeminiThinkingLevel(modelVer)) {
+					next.geminiThinkingLevel = 'minimal'
+				}
+				next.aspectRatio = next.geminiAspectRatio
+				next.quantity = next.geminiQuantity
+			}
+		}
+	}
+
+	if (key === 'geminiImageModelVersion' && typeof value === 'string') {
+		next.nanobananaModelVersion = value
+		const modelVer = value
+		const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+		if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
+			next.geminiAspectRatio = '1:1'
+		}
+		const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+		if (!allowedSizes.includes(String(next.geminiImageSize))) {
+			next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
+		}
+		if (!supportsGeminiThinkingLevel(modelVer)) {
+			next.geminiThinkingLevel = 'minimal'
+		}
+		next.aspectRatio = next.geminiAspectRatio
+	}
+
 	if (key === 'seedreamModelVersion' && typeof value === 'string') {
 		const modelVer = value
 		const allowedResolutions = getSeedreamResolutionOptions(modelVer).map(o => o.value)
@@ -1007,6 +1162,13 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 			if (!allowedFormats.includes(String(next.seedreamOutputFormat))) {
 				next.seedreamOutputFormat = allowedFormats[0]
 			}
+		}
+	}
+
+	if (key === 'meshyImageAiModel' && typeof value === 'string') {
+		const allowedAspectRatios = getMeshyImageAspectRatioOptions(value).map(o => o.value)
+		if (!allowedAspectRatios.includes(String(next.meshyAspectRatio))) {
+			next.meshyAspectRatio = allowedAspectRatios[0] || '1:1'
 		}
 	}
 
@@ -1050,10 +1212,57 @@ const meshyPoseModeOptions = NODE_CHAT_MESHY_POSE_MODE_OPTIONS
 const meshyOutputFormatOptions = NODE_CHAT_MESHY_OUTPUT_FORMAT_OPTIONS
 const meshyDecimationModeOptions = NODE_CHAT_MESHY_DECIMATION_MODE_OPTIONS
 const seedreamModelVersionOptions = NODE_CHAT_SEEDREAM_MODEL_VERSION_OPTIONS
+const geminiTextModelVersionOptions = NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS
+const geminiImageModelVersionOptions = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
 const nanobananaModelVersionOptions = NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS
 const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
 const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
+const geminiQuantityOptions = GEMINI_QUANTITY_OPTIONS
+
+const geminiModelVersion = computed(() => {
+	return typeof props.params.geminiImageModelVersion === 'string'
+		? props.params.geminiImageModelVersion
+		: 'gemini-3.1-flash-image'
+})
+
+const currentGeminiImageSizeOptions = computed(() => {
+	return getGeminiImageSizeOptions(geminiModelVersion.value)
+})
+
+const currentGeminiAspectRatioOptions = computed(() => {
+	return getGeminiAspectRatioOptions(geminiModelVersion.value)
+})
+
+const currentGeminiThinkingLevelOptions = computed(() => {
+	return getGeminiThinkingLevelOptions(geminiModelVersion.value)
+})
+
+const showGeminiThinkingLevel = computed(() => {
+	return supportsGeminiThinkingLevel(geminiModelVersion.value)
+})
+
+const I18N_KEY_PREFIXES = ['aiConfig.', 'aichat.', 'common.']
+const isI18nKey = (label: string): boolean => I18N_KEY_PREFIXES.some(prefix => label.startsWith(prefix))
+
+const translateOpt = (opt: { label: string; value: unknown; tokens?: number }) => {
+	if (!isI18nKey(opt.label)) return opt.label
+	if (opt.tokens !== undefined) {
+		return t(opt.label, { n: opt.tokens })
+	}
+	return t(opt.label)
+}
+
+const translateDurationOpt = (opt: { label: string; value: number; isAuto?: boolean; seconds?: number }) => {
+	if (!isI18nKey(opt.label)) return opt.label
+	if (opt.isAuto) {
+		return t(opt.label)
+	}
+	if (opt.seconds !== undefined) {
+		return t(opt.label, { n: opt.seconds })
+	}
+	return t(opt.label)
+}
 
 const currentMeshyAspectRatioOptions = computed(() => {
 	const modelVal =
@@ -1061,6 +1270,18 @@ const currentMeshyAspectRatioOptions = computed(() => {
 			? props.params.meshyImageAiModel
 			: 'nano-banana'
 	return getMeshyImageAspectRatioOptions(modelVal)
+})
+
+const isGeminiModel = computed(() => {
+	return props.params.model === 'gemini' || props.params.model === 'nanobanana'
+})
+
+const currentAspectRatioOptions = computed(() => {
+	return NODE_CHAT_ASPECT_RATIO_OPTIONS
+})
+
+const currentQuantityOptions = computed(() => {
+	return NODE_CHAT_QUANTITY_OPTIONS
 })
 
 const seedreamVersion = computed(() => {
@@ -1113,7 +1334,7 @@ const retextureConnectedImages = computed<ConnectedImageInfo[]>(() => {
 		results.push({
 			url,
 			thumb: url,
-			name: ref.label || ref.name || `图片-${results.length + 1}`,
+			name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
 			nodeId: fromNodeId
 		})
 	}
@@ -1213,6 +1434,18 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 	border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 65%, transparent);
 	color: var(--wf-primary, #1f9d84);
 	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+}
+
+.bp-node-chat-param-badge {
+	display: inline-block;
+	margin-left: 4px;
+	padding: 1px 5px;
+	font-size: 9px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+	border-radius: 2px;
+	color: var(--wf-primary, #1f9d84);
+	font-weight: 600;
+	letter-spacing: 0.5px;
 }
 
 .bp-node-chat-param-btn:disabled {

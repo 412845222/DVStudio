@@ -1,0 +1,6 @@
+{
+  "startup.errorOccurred": "An error occurred during startup",
+  "startup.checkComplete": "Startup checks complete",
+  "startup.checking": "Checking startup…",
+  "startup.close": "Close"
+}

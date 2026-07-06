@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { WorkflowNode, WorkflowEdge } from '../../../../aiworkflow/types'
 import { NEWUI2_NODE_CATALOG } from '../../../../aiworkflow/nodeLibrary'
+import { t } from '../../../../i18n'
 
 type ToolCallPayload = {
   requestId: string
@@ -236,7 +237,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
 
     const nodeId = String(payload.store.state.selectedNodeId ?? '').trim()
     if (!nodeId) {
-      payload.pushToast(`创建 ${label} 节点失败：未获取到节点ID`, 'warn')
+      payload.pushToast(t('aiworkflow.toast.agentCreateNodeFailed', { label }), 'warn')
       return {
         ok: false,
         error: 'Failed to get node ID after creation'
@@ -265,7 +266,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }, 50)
     }
 
-    payload.pushToast(`已在蓝图视口中心创建 ${label} 节点`, 'info')
+    payload.pushToast(t('aiworkflow.toast.agentNodeCreated', { label }), 'info')
     return {
       ok: true,
       nodeId,
@@ -279,7 +280,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const nodeId = String(args.nodeId || '')
     if (!nodeId) throw new Error('nodeId is required')
 
-    payload.pushToast(`Agent 请求删除节点 ${nodeId}，请在蓝图中手动操作`, 'warn')
+    payload.pushToast(t('aiworkflow.toast.agentDeleteRequest', { id: nodeId }), 'warn')
     return {
       ok: true,
       note: 'Node deletion requires user approval. The user has been notified.',
@@ -304,7 +305,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
         })
       })
       const configKeys = Object.keys(config).join(', ')
-      payload.pushToast(`已更新节点 ${nodeId} 配置：${configKeys}`, 'info')
+      payload.pushToast(t('aiworkflow.toast.agentNodeUpdated', { id: nodeId, keys: configKeys }), 'info')
       return {
         ok: true,
         nodeId,
@@ -312,7 +313,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
     }
 
-    payload.pushToast(`Agent 请求更新节点 ${nodeId} 配置，但未提供配置数据`, 'info')
+    payload.pushToast(t('aiworkflow.toast.agentUpdateNoData', { id: nodeId }), 'info')
     return {
       ok: true,
       note: 'No config data provided for update.',
@@ -324,7 +325,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const fromNode = String(args.fromNode || '')
     const toNode = String(args.toNode || '')
 
-    payload.pushToast(`Agent 请求连接节点，请在蓝图中手动操作`, 'info')
+    payload.pushToast(t('aiworkflow.toast.agentConnectRequest'), 'info')
     return {
       ok: true,
       note: 'Node connection requires manual operation. The user has been notified.',
@@ -338,7 +339,7 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const edgeId = String(args.edgeId || '')
     if (!edgeId) throw new Error('edgeId is required')
 
-    payload.pushToast(`Agent 请求断开连接 ${edgeId}，请在蓝图中手动操作`, 'warn')
+    payload.pushToast(t('aiworkflow.toast.agentDisconnectRequest', { id: edgeId }), 'warn')
     return {
       ok: true,
       note: 'Disconnection requires user approval. The user has been notified.',

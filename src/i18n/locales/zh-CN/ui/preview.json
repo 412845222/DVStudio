@@ -1,0 +1,8 @@
+{
+  "ui.preview.notReadyTitle": "预览未就绪",
+  "ui.preview.notReadyText": "当前节点还没有可渲染内容。",
+  "ui.preview.startRender": "开启渲染",
+  "ui.preview.preparingTitle": "正在准备渲染",
+  "ui.preview.pausedTitle": "预览已暂停",
+  "ui.preview.pausedText": "选中当前节点后，可手动开启实时渲染。"
+}

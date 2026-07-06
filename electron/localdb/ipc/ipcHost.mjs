@@ -107,7 +107,56 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 		'dweb:localdb:apiKeys:getPlaintext': safe((payload) =>
 			getRepos().apiKeys.getPlaintext(payload?.provider)
 		),
-		'dweb:localdb:apiKeys:remove': safe((payload) => getRepos().apiKeys.remove(payload?.provider))
+		'dweb:localdb:apiKeys:remove': safe((payload) => getRepos().apiKeys.remove(payload?.provider)),
+		// ---- aiworkflow templates ----
+		'dweb:localdb:aiworkflowTemplates:list': safe(() => getRepos().aiworkflowTemplates.list()),
+		'dweb:localdb:aiworkflowTemplates:getBlob': safe((payload) => {
+			const r = getRepos().aiworkflowTemplates.getBlob(payload?.id)
+			if (!r.ok) return r
+			const buf = r.buffer
+			return { ok: true, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) }
+		}),
+		'dweb:localdb:aiworkflowTemplates:getCover': safe((payload) => {
+			const r = getRepos().aiworkflowTemplates.getCoverBlob(payload?.id)
+			if (!r.ok) return r
+			const buf = r.buffer
+			return { ok: true, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), mimeType: r.mimeType }
+		}),
+		'dweb:localdb:aiworkflowTemplates:save': safe((payload) => {
+			let zipBuf = payload?.zipBuffer
+			if (zipBuf) {
+				if (zipBuf instanceof ArrayBuffer) {
+					zipBuf = Buffer.from(zipBuf)
+				} else if (ArrayBuffer.isView(zipBuf)) {
+					zipBuf = Buffer.from(zipBuf.buffer, zipBuf.byteOffset, zipBuf.byteLength)
+				} else if (Array.isArray(zipBuf)) {
+					zipBuf = Buffer.from(zipBuf)
+				}
+			}
+			let coverBuf = payload?.coverBuffer
+			if (coverBuf) {
+				if (coverBuf instanceof ArrayBuffer) {
+					coverBuf = Buffer.from(coverBuf)
+				} else if (ArrayBuffer.isView(coverBuf)) {
+					coverBuf = Buffer.from(coverBuf.buffer, coverBuf.byteOffset, coverBuf.byteLength)
+				} else if (Array.isArray(coverBuf)) {
+					coverBuf = Buffer.from(coverBuf)
+				}
+			}
+			return getRepos().aiworkflowTemplates.save({
+				id: payload?.id,
+				name: payload?.name,
+				description: payload?.description,
+				category: payload?.category,
+				tags: payload?.tags,
+				nodeCount: payload?.nodeCount,
+				zipBuffer: zipBuf,
+				coverBuffer: coverBuf
+			})
+		}),
+		'dweb:localdb:aiworkflowTemplates:remove': safe((payload) =>
+			getRepos().aiworkflowTemplates.remove(payload?.id)
+		)
 	}
 
 	for (const [channel, handler] of Object.entries(handlers)) {

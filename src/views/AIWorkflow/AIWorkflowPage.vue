@@ -2,12 +2,12 @@
 	<div class="aiwf-page">
 		<div v-if="noProjectSelected" class="no-project-guide">
 			<div class="no-project-card">
-				<h2>请先选择或新建项目</h2>
-				<p>从左侧「项目列表」选择已有项目，或点击「新建项目」创建一个新项目。</p>
+				<h2>{{ t('aiworkflow.page.noProject.title') }}</h2>
+				<p>{{ t('aiworkflow.page.noProject.description') }}</p>
 				<button
 				@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
 			>
-					去项目列表
+					{{ t('aiworkflow.page.noProject.goToList') }}
 				</button>
 			</div>
 		</div>
@@ -36,6 +36,7 @@
 				@drop.prevent="onCanvasDrop"
 				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
 				@selection-frame-delete="onDeleteSelectionFrame"
+				@selection-frame-save-template="onSaveSelectionAsTemplate"
 				@selection-frame-drag-start="onSelectionFrameDragStart"
 				@selection-frame-drag="onSelectionFrameDrag"
 				@selection-frame-drag-end="onSelectionFrameDragEnd"
@@ -49,6 +50,7 @@
 					:viewport="viewport"
 					:motion-active="viewportMotionActive"
 					:screenshot-pool-provider="canvasScreenshotPoolProvider"
+					:theme="themeStore.state.mode"
 					@node-click="onCanvasNodeClick"
 				/>
 
@@ -77,9 +79,9 @@
 					v-for="node in safeVisibleRenderNodes"
 					:key="node.id"
 					class="aiwf-node-host"
-					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots }"
+					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id)) }"
 					:ref="
-						(el: Element | null) => {
+						(el: any) => {
 							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
 							else nodeHostRefs.delete(node.id)
 						}
@@ -202,6 +204,7 @@
 						@retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
 						@open-meshy-task-panel="onOpenMeshyTaskPanel"
 						@open-ark-task-panel="onOpenArkTaskPanel"
+						@open-gemini-task-panel="onOpenGeminiTaskPanel"
 						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
 						@three-preview-ready="onNodeThreePreviewReady(node.id)"
 						@three-preview-error="onNodeThreePreviewError(node.id)"
@@ -252,10 +255,10 @@
 
 				<DwebCanvasNodeSearchMenu
 					:visible="nodeSearchMenuVisible"
-					:items="NEWUI2_NODE_CATALOG"
-					:categories="NEWUI2_NODE_CATALOG_CATEGORIES"
-					:top-categories="NEWUI2_NODE_TOP_CATEGORIES"
-					:special-groups="NEWUI2_NODE_SPECIAL_GROUPS"
+					:items="i18nCatalogItems"
+					:categories="i18nCategories"
+					:top-categories="i18nTopCategories"
+					:special-groups="i18nSpecialGroups"
 					@select="onNodeSearchMenuSelect"
 					@upload-file="onNodeSearchMenuUploadFile"
 					@close="closeNodeSearchMenu"
@@ -381,70 +384,89 @@
 					@request-export-package="onRequestExportProjectPackage"
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
-					@open-gemini-task-panel="() => {}"
+				@open-gemini-task-panel="onOpenGeminiTaskPanel"
+					@open-template-center="onOpenTemplateCenter"
+				/>
+
+				<TemplateCenterDialog
+					v-model:open="templateCenterOpen"
+					@apply-template="onTemplateSelectForApply"
+					@delete-template="onDeleteTemplate"
+					@save-template="onSaveTemplateFromCenter"
+				/>
+
+				<TemplateApplyDialog
+					v-model:open="templateApplyDialogOpen"
+					:template="selectedTemplateForApply"
+					@confirm="onConfirmApplyTemplate"
+				/>
+
+				<SaveTemplateDialog
+					v-model:open="saveTemplateDialogOpen"
+					:scope="saveTemplateScope"
+					:node-ids="saveTemplateNodeIds"
+					:prefill-name="saveTemplatePrefillName"
+					:auto-cover-blob="saveTemplateAutoCoverBlob"
+					:saving="saveTemplateSaving"
+					:progress="saveTemplateProgress"
+					@confirm="onConfirmSaveTemplate"
 				/>
 
 				<div v-if="performancePriorityMode" class="aiwf-perf-stats-panel">
-					<div class="aiwf-perf-stats-title">性能监控</div>
+					<div class="aiwf-perf-stats-title">{{ t('aiworkflow.page.perf.title') }}</div>
 					<div class="aiwf-perf-stats-row">
 						<span class="aiwf-perf-stats-label">FPS</span>
 						<span class="aiwf-perf-stats-value">{{ perfFpsText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">帧耗时</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.frameTime') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">平均帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.avgFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfAvgFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">最差帧</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.worstFrame') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfWorstFrameText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">边计算</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.edgeCompute') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeComputeText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">输入边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.inputEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeInputCountText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">渲染边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.renderedEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeRenderedText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪边</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.culledEdges') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCulledText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">裁剪率</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.cullRate') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfEdgeCullHitRateText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row aiwf-perf-stats-sep">
-						<span class="aiwf-perf-stats-label">节点</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.nodes') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfNodeSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">长任务</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.longTasks') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfLongTaskSummary }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">缩放</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.zoom') }}</span>
 						<span class="aiwf-perf-stats-value">{{ perfZoomText }}</span>
 					</div>
 					<div class="aiwf-perf-stats-row">
-						<span class="aiwf-perf-stats-label">状态</span>
+						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.status') }}</span>
 						<span
 							class="aiwf-perf-stats-value"
-							:class="
-								perfHealthLabel === '稳定'
-									? 'is-good'
-									: perfHealthLabel === '轻微掉帧'
-										? 'is-warn'
-										: 'is-bad'
-							"
+							:class="perfHealthClass"
 						>
 							{{ perfHealthLabel }}
 						</span>
@@ -459,7 +481,7 @@
 					@pointerdown.stop
 					@click.stop="toggleInspector"
 				>
-					属性
+					{{ t('aiworkflow.page.inspector.toggle') }}
 				</button>
 			</div>
 
@@ -533,12 +555,38 @@
 					@task-action="onArkTaskPanelAction"
 				/>
 
+				<GeminiTaskPanel
+					:open="geminiTaskDialogOpen"
+					:tasks="geminiTaskItems"
+					:configured="geminiConfigured"
+					:refresh-busy="geminiTaskLoading"
+					:detail-task-id="geminiTaskDetailTaskId"
+					:detail-task="geminiTaskDetail"
+					:detail-loading="geminiTaskDetailLoading"
+					:action-busy-task-id="geminiTaskActionBusyTaskId"
+					:action-busy-type="geminiTaskActionBusyType"
+					:data-status-text="geminiTaskPanelStatusText"
+					@close="closeGeminiTaskDialog"
+					@refresh="onRefreshGeminiTaskPanel"
+					@preview-task="onPreviewGeminiTask"
+					@task-action="onGeminiTaskPanelAction"
+				/>
+
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
+			</div>
+
+			<div class="aiwf-overlay-bottom-left">
+				<WorkflowMinimap
+					:nodes-by-id="store.state.nodesById"
+					:viewport="viewport"
+					:canvas-size="canvasViewportSize"
+					@update:viewport="onViewportUpdate"
+				/>
 			</div>
 
 			<div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
 				<div v-if="importLimitAlertMessage" class="aiwf-import-limit-alert" @pointerdown.stop>
-					<div class="aiwf-import-limit-alert-title">批量导入超限</div>
+					<div class="aiwf-import-limit-alert-title">{{ t('aiworkflow.page.importLimit.title') }}</div>
 					<div class="aiwf-import-limit-alert-body">{{ importLimitAlertMessage }}</div>
 					<div class="aiwf-import-limit-alert-actions">
 						<button
@@ -546,49 +594,49 @@
 							type="button"
 							@click="onConfirmImportLimitAlert"
 						>
-							确认
+							{{ t('aiworkflow.page.importLimit.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">检测到 Django 记录可复用</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.reuseRecord.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						模板：{{ reuseRecordConfirm.workflowName || '未知模板' }}
+						{{ t('aiworkflow.page.reuseRecord.template', { name: reuseRecordConfirm.workflowName || t('aiworkflow.page.reuseRecord.unknownTemplate') }) }}
 						<br />
-						记录时间：{{ formatReuseRecordTime(reuseRecordConfirm.savedAt) }}
+						{{ t('aiworkflow.page.reuseRecord.savedAt', { time: formatReuseRecordTime(reuseRecordConfirm.savedAt) }) }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="onConfirmReuseRecord"
 						>
-							确认复用并运行
+							{{ t('aiworkflow.page.reuseRecord.confirm') }}
 						</button>
 					</div>
 				</div>
 
 				<div v-if="meshyTextureConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">生成贴图前确认</div>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.meshyTexture.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
-						当前未检测到新的贴图提示词或贴图参考图。
+						{{ t('aiworkflow.page.meshyTexture.noNewPrompt') }}
 						<br />
-						若继续提交，将复用当前主模型已有提示词和任务结果来发起贴图。
+						{{ t('aiworkflow.page.meshyTexture.willReuse') }}
 					</div>
 					<div class="aiwf-reuse-alert-actions">
 						<button class="aiwf-reuse-alert-btn" type="button" @click="cancelMeshyTextureConfirm">
-							取消
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
 						</button>
 						<button
 							class="aiwf-reuse-alert-btn primary"
 							type="button"
 							@click="confirmMeshyTextureFollowup"
 						>
-							确认复用并贴图
+							{{ t('aiworkflow.page.meshyTexture.confirm') }}
 						</button>
 					</div>
 				</div>
@@ -613,10 +661,17 @@
 
 			<FullscreenProgressOverlay
 				:open="screenshotWarmupOpen"
-				title="正在生成节点预览缓存"
-				:detail="screenshotWarmupDetail || '请稍候，正在为所有节点生成截图缓存以提升蓝图流畅度...'"
+				:title="t('aiworkflow.page.screenshotWarmup.title')"
+				:detail="screenshotWarmupDetail || t('aiworkflow.page.screenshotWarmup.detail')"
 				:progress="screenshotWarmupProgress"
 				:cancellable="false"
+			/>
+
+			<ThemeWarmupProgress
+				:visible="themeWarmupOpen"
+				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
+				:detail="themeWarmupDetail"
+				:progress="themeWarmupProgress"
 			/>
 		</div>
 		<BlueprintLogPanel v-model:open="blueprintLogPanelOpen" />
@@ -633,20 +688,20 @@
 
 		<ModalDialog
 			:open="warmupConfirmDialogOpen"
-			title="蓝图节点预热"
-			confirmText="是，重新预热"
-			closeText="否，使用缓存"
+			:title="t('aiworkflow.page.warmupConfirm.title')"
+			:confirmText="t('aiworkflow.page.warmupConfirm.confirmText')"
+			:closeText="t('aiworkflow.page.warmupConfirm.closeText')"
 			:zIndex="10000"
 			@confirm="onConfirmForceWarmup"
 			@close="onCancelUseCache"
 		>
 			<div class="aiwf-warmup-confirm-dialog">
 				<p style="margin-top: 0">
-					是否重新预热蓝图节点？
+					{{ t('aiworkflow.page.warmupConfirm.question') }}
 				</p>
 				<p style="margin-bottom: 0; color: var(--text-secondary, #666); font-size: 13px;">
-					选择"是"将清空所有缓存，重新渲染并截图所有节点（较慢）。<br/>
-					选择"否"将加载已有缓存并直接使用Canvas渲染（较快）。
+					{{ t('aiworkflow.page.warmupConfirm.yesDesc') }}<br/>
+					{{ t('aiworkflow.page.warmupConfirm.noDesc') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -654,32 +709,32 @@
 		<!-- 缺失资产确认对话框 -->
 		<ModalDialog
 			:open="missingAssetDialogOpen"
-			title="资源缺失：文件不存在"
-			confirmText="移除失效引用"
-			closeText="暂不处理"
+			:title="t('aiworkflow.page.missingAsset.title')"
+			:confirmText="t('aiworkflow.page.missingAsset.confirmText')"
+			:closeText="t('aiworkflow.page.missingAsset.closeText')"
 			@confirm="onConfirmRemoveMissingAsset"
 			@close="onCancelMissingAssetDialog"
 		>
 			<div v-if="missingAssetDialogPending" class="aiwf-missing-asset-dialog">
 				<p style="margin-top: 0">
-					系统检测到以下静态资源在磁盘上已不存在，但项目数据中仍存在对它的引用。
-					这可能是由于文件被手动移动或删除，或从其他设备迁移项目时文件未同步。
+					{{ t('aiworkflow.page.missingAsset.description1') }}
+					{{ t('aiworkflow.page.missingAsset.description2') }}
 				</p>
 				<div class="aiwf-missing-asset-info">
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">资产名称：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.assetName') }}</span>
 						<span class="aiwf-missing-asset-value">
 							<strong>{{ missingAssetDialogPending.assetName }}</strong>
 						</span>
 					</div>
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">请求路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.requestedPath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono">
 							{{ missingAssetDialogPending.requestedPath }}
 						</span>
 					</div>
 					<div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">磁盘路径：</span>
+						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.absolutePath') }}</span>
 						<span class="aiwf-missing-asset-value aiewf-mono" style="word-break: break-all">
 							{{ missingAssetDialogPending.absolutePath }}
 						</span>
@@ -691,22 +746,22 @@
 					class="aiwf-missing-asset-sources"
 				>
 					<div class="aiwf-missing-asset-sources-title">
-						错误调用来源（{{ missingAssetDialogPending.sources.length }} 处引用）：
+						{{ t('aiworkflow.page.missingAsset.sourcesTitle', { count: String(missingAssetDialogPending.sources.length) }) }}
 					</div>
 					<ul class="aiwf-missing-asset-source-list">
 						<li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
 							<span class="aiwf-source-tag">{{ sourceTypeLabel(s.type) }}</span>
 							<span v-if="s.nodeId">
-								节点
+								{{ t('aiworkflow.page.missingAsset.node') }}
 								<code>{{ s.nodeId }}</code>
 								<span v-if="s.nodeType">（{{ s.nodeType }}）</span>
 							</span>
 							<span v-if="s.resourceId">
-								资源
+								{{ t('aiworkflow.page.missingAsset.resource') }}
 								<code>{{ s.resourceId }}</code>
 							</span>
 							<span v-if="s.field">
-								字段
+								{{ t('aiworkflow.page.missingAsset.field') }}
 								<code>{{ s.field }}</code>
 							</span>
 							<span v-if="s.detail" class="aiwf-source-detail">— {{ s.detail }}</span>
@@ -715,8 +770,8 @@
 				</div>
 
 				<p class="aiwf-missing-asset-tip">
-					点击「移除失效引用」将从项目数据中清除上述引用（不会删除磁盘上的其他文件），操作可撤销。
-					点击「暂不处理」将保留引用，稍后您可以通过右键菜单或重新导入来修复。
+					{{ t('aiworkflow.page.missingAsset.tipRemove') }}
+					{{ t('aiworkflow.page.missingAsset.tipLater') }}
 				</p>
 			</div>
 		</ModalDialog>
@@ -728,12 +783,13 @@
 			class="aiwf-undo-remove-btn"
 			@click="onUndoLastRemove"
 		>
-			↶ 撤销最近一次移除
+			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
 import {
 	getErrorMessage,
 	isRecord,
@@ -754,11 +810,32 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
+import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
 import CanvasAnchorLayer from './components/CanvasAnchorLayer.vue'
+import WorkflowMinimap from './components/WorkflowMinimap.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
 	type BlueprintProjectListItem
 } from '../../ui/WorkFlow/BlueprintProjectToolbar.vue'
+import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
+import TemplateApplyDialog from '../../ui/WorkFlow/TemplateApplyDialog.vue'
+import SaveTemplateDialog from '../../ui/WorkFlow/SaveTemplateDialog.vue'
+import type { SaveTemplateConfirmPayload } from '../../ui/WorkFlow/SaveTemplateDialog.vue'
+import type { TemplateItem, TemplateApplyOptions } from '../../aiworkflow/template/types'
+import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
+import {
+	buildSnapshotFromSelection,
+	buildFullSnapshot,
+	mergeTemplateSnapshot,
+	createTemplatePackageZip,
+	parseTemplatePackageBlob,
+	getViewportCenterInWorld,
+	calculateTemplatePlacement,
+	calculateNodeBounds,
+	captureNodesAsCoverBlob,
+	importTemplateAssetsToProject,
+	remapTemplateAssetUrls
+} from '../../aiworkflow/template/useTemplateMerge'
 import MeshyTaskPanel, {
 	type MeshyTaskPanelAction,
 	type MeshyTaskPanelDetail,
@@ -769,6 +846,11 @@ import ArkTaskPanel, {
 	type ArkTaskPanelDetail,
 	type ArkTaskPanelItem
 } from '../../ui/WorkFlow/ArkTaskPanel.vue'
+import GeminiTaskPanel, {
+	type GeminiTaskPanelAction,
+	type GeminiTaskPanelDetail,
+	type GeminiTaskPanelItem
+} from '../../ui/WorkFlow/GeminiTaskPanel.vue'
 import WorkflowInspectorPanel from '../../ui/UIComponent/WorkflowInspectorPanel.vue'
 import BottomChatDock, {
 	type BottomChatMessage,
@@ -814,6 +896,8 @@ import {
 import type { AIWorkflowDraftSnapshot } from '../../aiworkflow/persistence/blueprintSnapshot'
 import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
+import { ThemeKey } from '../../store/theme'
+import type { ThemeMode } from '../../store/theme'
 import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
 import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
@@ -878,6 +962,7 @@ import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLink
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
 import {
 	createNodeScreenshotPool,
+	invalidateDocumentStyleCache,
 	SCREENSHOT_PADDING,
 	type ScreenshotCacheEntry,
 	type ScreenshotPriority,
@@ -888,7 +973,8 @@ import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCan
 import {
 	loadAllScreenshotsForBlueprint,
 	saveScreenshotToDisk,
-	cleanupOldScreenshots
+	cleanupOldScreenshots,
+	makeDiskCacheKey
 } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
@@ -932,6 +1018,7 @@ import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/use
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
 import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
+import { useAIWorkflowGeminiTaskPanelController } from './node-business/gemini/useAIWorkflowGeminiTaskPanelController'
 import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
@@ -953,7 +1040,7 @@ import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useA
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
-import { NEWUI2_NODE_CATALOG, NEWUI2_NODE_CATALOG_CATEGORIES, NEWUI2_NODE_TOP_CATEGORIES, NEWUI2_NODE_SPECIAL_GROUPS } from '../../aiworkflow/nodeLibrary'
+import { useNodeLibraryI18n } from '../../aiworkflow/useNodeLibraryI18n'
 import {
 	comfyOutputForAnchor,
 	type ComfyLocalizedOutput
@@ -1116,6 +1203,14 @@ const route = useRoute()
 const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
+const { t } = useI18n()
+const {
+	categories: i18nCategories,
+	topCategories: i18nTopCategories,
+	specialGroups: i18nSpecialGroups,
+	catalogItems: i18nCatalogItems,
+} = useNodeLibraryI18n()
+const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
@@ -1236,7 +1331,7 @@ const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
 const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
 	const raw = direction === 'in' ? node.inputs : node.outputs
 	const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
-	const fallbackLabel = direction === 'in' ? '入口' : '出口'
+	const fallbackLabel = direction === 'in' ? t('aiworkflow.page.anchor.input') : t('aiworkflow.page.anchor.output')
 	const list =
 		Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
 	return list.map((a, index) => {
@@ -1312,15 +1407,15 @@ const ensureNanoAnchorNode = () => {
 	const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
 	const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
 		id: `ref-${i + 1}`,
-		label: `参考图 ${i + 1}`,
+		label: t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(i + 1) }),
 		mediaType: 'image'
 	}))
 	const node: WorkflowNode = {
 		id: NANO_ANCHOR_NODE_ID,
 		type: existing?.type || 'base',
-		title: 'NanoBanana 参考图输入',
+		title: t('aiworkflow.page.nanoAnchor.title'),
 		alias: existing?.alias,
-		subtitle: '仅用于对话面板参考图锚点（不在画布显示）',
+		subtitle: t('aiworkflow.page.nanoAnchor.subtitle'),
 		worldX: existing?.worldX ?? 0,
 		worldY: existing?.worldY ?? 0,
 		width: existing?.width ?? 240,
@@ -1354,11 +1449,23 @@ const nearDragNodeIds = ref<Set<string>>(new Set())
 const panningFullRenderSnapshot = ref<Set<string> | null>(null)
 const selectionFrameDragging = ref(false)
 const selectionFrameDragNodeIds = ref<Set<string>>(new Set())
+const selectionDragFullRenderIds = ref<Set<string>>(new Set())
+const selectionDragMoveTick = ref(0)
 const stableLinkHoverNodeId = ref<string>('')
 let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
 const LINK_HOVER_STABLE_DELAY_MS = 400
+const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
 
 const warmupConfirmDialogOpen = ref(false)
+
+const themeWarmupOpen = ref(false)
+const themeWarmupProgress = ref(0)
+const themeWarmupDetail = ref('')
+const themeWarmupTargetTheme = ref<'dark' | 'light'>('dark')
+const themeWarmupThemeLabel = computed(() =>
+	t(themeWarmupTargetTheme.value === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+)
+let themeWarmupAbortController: AbortController | null = null
 
 const autoWireInProgress = ref(false)
 const autoWireSourceNodeId = ref<string | null>(null)
@@ -1370,13 +1477,13 @@ const onAutoWireStart = (sourceNodeId: string) => {
 	autoWireCreatedNodeIds.value = []
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在生成下游节点，请稍候...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.generating')
 }
 
 const onAutoWireNodeCreated = (nodeId: string) => {
 	autoWireCreatedNodeIds.value.push(nodeId)
 	const count = autoWireCreatedNodeIds.value.length
-	screenshotWarmupDetail.value = `正在生成下游节点... 已创建 ${count} 个节点`
+	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.progress', { count: String(count) })
 }
 
 const onAutoWireEnd = async () => {
@@ -1408,7 +1515,8 @@ const {
 	compactZoomThreshold: compactThreshold,
 	screenMargin: 360,
 	motionRecomputeMinIntervalMs: 90,
-	forceRenderNodeIds: warmupForceRenderNodeIds
+	forceRenderNodeIds: warmupForceRenderNodeIds,
+	invalidateTick: selectionDragMoveTick
 })
 
 const safeVisibleSeenSet = new Set<string>()
@@ -1445,8 +1553,11 @@ const {
 	getBitmap,
 	getEntry: getCanvasEntry,
 	invalidate: invalidateCanvasScreenshot,
+	clearAll: clearAllCanvasScreenshots,
+	cancelPending: cancelCanvasWarmup,
 	loadScreenshot: loadScreenshotToCanvas,
-	dispose: disposeCanvasScreenshot
+	dispose: disposeCanvasScreenshot,
+	setActiveTheme: setCanvasActiveTheme
 } = useAIWorkflowCanvasScreenshot({
 	maxBitmapCount: 500,
 	maxMemoryMB: 200,
@@ -1466,24 +1577,33 @@ const nodeCanvasLayerRef = ref<InstanceType<typeof NodeCanvasLayer> | null>(null
 // Canvas截图池引用 (用于传递给NodeCanvasLayer)
 // 注意：始终有值，不会为null
 const canvasScreenshotPool = shallowRef<{
-	getEntry: (nodeId: string) => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
+	getEntry: (nodeId: string, theme?: 'dark' | 'light') => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
+	setActiveTheme: (theme: 'dark' | 'light') => void
 }>({
-	getEntry: () => null
+	getEntry: () => null,
+	setActiveTheme: () => {}
 })
 
 const canvasScreenshotPoolProvider = () => canvasScreenshotPool.value
 
 // 初始化Canvas截图池引用
 const initCanvasScreenshotPool = () => {
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
 	canvasScreenshotPool.value = {
-		getEntry: (nodeId: string) => {
-			const entry = getCanvasEntry(nodeId)
+		getEntry: (nodeId: string, theme?: 'dark' | 'light') => {
+			const entry = getCanvasEntry(nodeId, theme)
 			if (!entry) return null
 			return {
 				bitmap: entry.bitmap,
 				width: entry.width,
 				height: entry.height
 			}
+		},
+		setActiveTheme: (theme: 'dark' | 'light') => {
+			screenshotPool.setActiveTheme(theme)
+			setCanvasActiveTheme(theme)
 		}
 	}
 }
@@ -1504,11 +1624,13 @@ let lastCanvasEntriesSignature = ''
 
 const buildCanvasNodeEntriesSignature = () => {
 	const fullRenderIds = Array.from(effectiveFullRenderNodeIds.value).sort().join('|')
-	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}`
+	const dragIds = Array.from(selectionFrameDragNodeIds.value).sort().join('|')
+	return `${canvasScreenshotRefreshTick.value}:${fullRenderIds}:${renderNodes.value.length}:${canvasScreenshotEnabled.value}:${selectionDragMoveTick.value}:${dragIds}:${selectionFrameDragging.value ? '1' : '0'}`
 }
 
 const canvasNodeEntries = computed(() => {
 	void canvasScreenshotRefreshTick.value
+	void selectionDragMoveTick.value
 	if (!canvasScreenshotEnabled.value) return []
 
 	const signature = buildCanvasNodeEntriesSignature()
@@ -1518,12 +1640,39 @@ const canvasNodeEntries = computed(() => {
 
 	const allNodes = renderNodes.value
 	const fullRenderSet = effectiveFullRenderNodeIds.value
+	const dragNodeIds = selectionFrameDragNodeIds.value
+	const isDragging = selectionFrameDragging.value && dragNodeIds.size > 0
 	const result: typeof cachedCanvasNodeEntries = []
+
+	const vp = viewport.value
+	const vpWidth = canvasViewportSize.value.width
+	const vpHeight = canvasViewportSize.value.height
+	const zoom = Math.max(0.01, Number(vp.zoom) || 1)
+	const centerX = vpWidth / 2
+	const centerY = vpHeight / 2
+	const viewLeft = (-centerX - vp.panX) / zoom - 50 / zoom
+	const viewRight = (vpWidth - centerX - vp.panX) / zoom + 50 / zoom
+	const viewTop = (-centerY - vp.panY) / zoom - 50 / zoom
+	const viewBottom = (vpHeight - centerY - vp.panY) / zoom + 50 / zoom
+
+	const isInViewport = (node: WorkflowNode) => {
+		const halfW = Math.max(0, Number(node.width) || 240) / 2
+		const halfH = Math.max(0, Number(node.height) || 160) / 2
+		const nl = node.worldX - halfW
+		const nr = node.worldX + halfW
+		const nt = node.worldY - halfH
+		const nb = node.worldY + halfH
+		return nr >= viewLeft && nl <= viewRight && nb >= viewTop && nt <= viewBottom
+	}
 
 	for (const node of allNodes) {
 		const nodeId = String(node.id ?? '').trim()
 		if (!nodeId) continue
-		if (fullRenderSet.has(nodeId)) continue
+
+		const isDraggedNode = isDragging && dragNodeIds.has(nodeId)
+		const draggedNodeInViewport = isDraggedNode && isInViewport(node)
+
+		if (fullRenderSet.has(nodeId) && !draggedNodeInViewport) continue
 
 		result.push({
 			id: nodeId,
@@ -1719,9 +1868,24 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 			const nid = String(id ?? '').trim()
 			if (nid) snapshotWithPending.add(nid)
 		}
+		const nodesByIdForPan = store.state.nodesById as Record<string, WorkflowNode | undefined>
+		let selectedAddedForPan = 0
 		for (const id of selectedNodeIds.value) {
 			const nid = String(id ?? '').trim()
-			if (nid) snapshotWithPending.add(nid)
+			if (!nid) continue
+			if (snapshotWithPending.has(nid)) {
+				continue
+			}
+			if (selectedNodeIds.value.length > MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+				const node = nodesByIdForPan[nid]
+				if (!node || !isNodeInViewport(node)) {
+					continue
+				}
+			}
+			if (selectedAddedForPan < MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+				snapshotWithPending.add(nid)
+				selectedAddedForPan++
+			}
 		}
 		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
 			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
@@ -1732,13 +1896,29 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 
 	// ==========================================
 	// Step 1: 核心激活节点（用户直接交互的节点）+ 预热强制渲染节点 + 待截图节点
-	// 这些节点无论是否在视口内，都必须完整渲染
+	// 选中节点超过40个时，仅激活视口内的节点且不超过40个，避免性能问题
 	// ==========================================
 	const coreIds = new Set<string>()
+	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
 
-	for (const id of selectedNodeIds.value) {
-		const nid = String(id ?? '').trim()
-		if (nid) coreIds.add(nid)
+	if (selectedNodeIds.value.length <= MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (nid) coreIds.add(nid)
+		}
+	} else {
+		let selectedAdded = 0
+		for (const id of selectedNodeIds.value) {
+			const nid = String(id ?? '').trim()
+			if (!nid) continue
+			const node = nodesById[nid]
+			if (node && isNodeInViewport(node)) {
+				if (selectedAdded < MAX_SELECTED_NODES_FOR_FULL_RENDER) {
+					coreIds.add(nid)
+					selectedAdded++
+				}
+			}
+		}
 	}
 
 	for (const id of warmupForceRenderNodeIds.value) {
@@ -1771,7 +1951,6 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	// Step 2: 直接邻居节点（仅一层，绝不传递）
 	// ==========================================
 	const result = new Set<string>(coreIds)
-	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
 
 	for (const edge of edges.value) {
 		const fromId = String(edge?.fromNodeId ?? '').trim()
@@ -1798,6 +1977,8 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 // 节点拖拽优化：多选框拖拽时，将被拖拽节点切换为canvas轻量绘制模式
 const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 	const baseIds = fullRenderNodeIds.value
+	const dragFullIds = selectionDragFullRenderIds.value
+
 	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
 		return baseIds
 	}
@@ -1805,24 +1986,30 @@ const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 	// 拖拽期间，排除被拖拽的节点，但保留：
 	// - 有聊天对话框打开的节点
 	// - 待截图的节点
+	// - 视口内没有截图缓存需要临时完整渲染的节点
 	const chatNodeId = nodeChatDialog.value.visible ? String(nodeChatDialog.value.nodeId).trim() : ''
 	const pendingIds = pendingScreenshotNodeIds.value
 
 	const result = new Set<string>()
 	for (const id of baseIds) {
 		if (selectionFrameDragNodeIds.value.has(id)) {
-			if (id === chatNodeId || pendingIds.has(id)) {
+			if (id === chatNodeId || pendingIds.has(id) || dragFullIds.has(id)) {
 				result.add(id)
 			}
 		} else {
 			result.add(id)
 		}
 	}
+	for (const id of dragFullIds) {
+		result.add(id)
+	}
 	return result
 })
 
-const getNodeScreenshotVersion = (node: WorkflowNode): string => {
+const getNodeScreenshotVersion = (node: WorkflowNode, theme?: 'dark' | 'light'): string => {
+	const targetTheme = theme ?? (themeStore.state.mode as 'dark' | 'light')
 	const parts: string[] = []
+	parts.push(`theme:${targetTheme}`)
 	parts.push(`t:${node.title || ''}`)
 	parts.push(`a:${node.alias || ''}`)
 	parts.push(`w:${node.width || 240}`)
@@ -1985,7 +2172,8 @@ const scheduleNodeScreenshot = async (
 			const newMap = new Map(nodeScreenshotMap.value)
 			newMap.set(nodeId, entry)
 			nodeScreenshotMap.value = newMap
-			invalidateCanvasScreenshot(nodeId)
+			const activeTheme = themeStore.state.mode as 'dark' | 'light'
+			invalidateCanvasScreenshot(nodeId, activeTheme)
 			try {
 				await loadScreenshotToCanvas(entry)
 			} catch {}
@@ -2038,8 +2226,9 @@ const scheduleVisibleNodeScreenshots = () => {
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.set(nodeId, cached)
 				nodeScreenshotMap.value = newMap
-				if (!hasBitmap(nodeId)) {
-					invalidateCanvasScreenshot(nodeId)
+				const activeTheme = themeStore.state.mode as 'dark' | 'light'
+				if (!hasBitmap(nodeId, activeTheme)) {
+					invalidateCanvasScreenshot(nodeId, activeTheme)
 					const loadPromise = (async () => {
 						try {
 							await loadScreenshotToCanvas(cached)
@@ -2079,12 +2268,16 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	console.log('[Screenshot Warmup] warmupAllNodeScreenshots called, forceRecapture:', forceRecapture, 'allNodes count:', allNodes.length, 'selectedNodeIds:', selectedNodeIds.value)
 	if (allNodes.length === 0) return
 
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
+
 	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
 	screenshotPool.pruneToValidNodes(validNodeIds)
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = forceRecapture ? '准备重新生成所有节点预览...' : '准备中...'
+	screenshotWarmupDetail.value = forceRecapture ? t('aiworkflow.page.warmup.prepareRecapture') : t('aiworkflow.page.warmup.preparing')
 
 	const cacheCtx = getScreenshotCacheContext()
 	void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
@@ -2098,40 +2291,47 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	let diskLoadedCount = 0
 	if (!forceRecapture) {
 		screenshotWarmupProgress.value = 0.03
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		try {
 			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 			const totalNodes = allNodes.length
+			const currentTheme = themeStore.state.mode as 'dark' | 'light'
+			const otherTheme: 'dark' | 'light' = currentTheme === 'dark' ? 'light' : 'dark'
 			for (let i = 0; i < totalNodes; i++) {
 				const node = allNodes[i]
 				const nodeId = node.id
-				const version = getNodeScreenshotVersion(node)
-				const diskEntry = diskCache.get(nodeId)
-				if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
-					const screenshotEntry: ScreenshotCacheEntry = {
-						nodeId,
-						version,
-						dataUrl: diskEntry.dataUrl,
-						width: diskEntry.width,
-						height: diskEntry.height,
-						padding: SCREENSHOT_PADDING,
-						capturedAt: Date.now()
+				for (const theme of ['dark', 'light'] as const) {
+					const version = getNodeScreenshotVersion(node, theme)
+					const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
+					if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
+						screenshotPool.prefillCache(
+							nodeId,
+							version,
+							diskEntry.dataUrl,
+							diskEntry.width,
+							diskEntry.height,
+							SCREENSHOT_PADDING
+						)
+						if (theme === currentTheme) {
+							const screenshotEntry: ScreenshotCacheEntry = {
+								nodeId,
+								version,
+								theme,
+								dataUrl: diskEntry.dataUrl,
+								width: diskEntry.width,
+								height: diskEntry.height,
+								padding: SCREENSHOT_PADDING,
+								capturedAt: Date.now()
+							}
+							newMap.set(nodeId, screenshotEntry)
+						}
+						diskLoadedCount++
 					}
-					newMap.set(nodeId, screenshotEntry)
-					screenshotPool.prefillCache(
-						nodeId,
-						version,
-						diskEntry.dataUrl,
-						diskEntry.width,
-						diskEntry.height,
-						SCREENSHOT_PADDING
-					)
-					diskLoadedCount++
 				}
 				if (i % 10 === 0 || i === totalNodes - 1) {
 					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+					screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', { loaded: String(diskLoadedCount), totalNodes: String(totalNodes * 2) })
 					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 				}
 			}
@@ -2185,7 +2385,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		await nextTick()
 		await waitForFrames(1)
 		screenshotWarmupProgress.value = 0.1
-		screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 		await warmupCanvasAll(
 			newMap,
 			undefined,
@@ -2197,7 +2397,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		initCanvasScreenshotPool()
 		refreshCanvasNodeLayer()
 		screenshotWarmupProgress.value = 0.99
-		screenshotWarmupDetail.value = '完成'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 		await waitForFrames(1)
 		screenshotWarmupOpen.value = false
 		screenshotWarmupDetail.value = ''
@@ -2214,9 +2414,9 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	screenshotWarmupProgress.value = 0.1
 	if (forceRecapture) {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，强制重新截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.forceRecapture', { nodeCount: String(allNodes.length) })
 	} else {
-		screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，${cachedCount} 个已缓存（磁盘${diskLoadedCount}），准备截图...`
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readyToCapture', { nodeCount: String(allNodes.length), cached: String(cachedCount), diskLoaded: String(diskLoadedCount) })
 	}
 
 	let screenshotStarted = 0
@@ -2282,7 +2482,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 			screenshotCompleted++
 			const ratio = screenshotCompleted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturing', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2311,7 +2511,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 		if (screenshotStarted > 0) {
 			const ratio = screenshotStarted / total
 			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
-			screenshotWarmupDetail.value = `共 ${allNodes.length} 个节点，正在截图 ${screenshotCompleted}/${total}（渲染就绪 ${screenshotStarted}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturingWithReady', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total), started: String(screenshotStarted) })
 		}
 	}
 
@@ -2337,7 +2537,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 
 	// === Canvas截图预热：加载所有截图到内存 ===
 	screenshotWarmupProgress.value = 0.88
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 	await waitForFrames(1)
 
 	await warmupCanvasAll(
@@ -2353,7 +2553,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.99
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -2372,7 +2572,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	isWarmingUpScreenshots.value = true
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = `正在渲染 ${newNodes.length} 个新节点...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.renderingNewNodes', { count: String(newNodes.length) })
 
 	warmupForceRenderNodeIds.value = new Set(newNodeIds)
 
@@ -2417,7 +2617,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	screenshotPool.setBurstMode(true)
 
 	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = `正在生成新节点预览 0/${total}...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
 
 	let screenshotStarted = 0
 	let screenshotCompleted = 0
@@ -2480,7 +2680,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 			screenshotCompleted++
 			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewProgress', { completed: String(screenshotCompleted), total: String(total) })
 		})()
 		promises.push(promise)
 	}
@@ -2508,12 +2708,12 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 
 		if (screenshotStarted === 0) {
 			screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = `正在等待节点渲染...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
 		} else {
 			const pending = screenshotStarted - screenshotCompleted
 			screenshotWarmupProgress.value =
 				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = `正在生成新节点预览 ${screenshotCompleted}/${total}（渲染中 ${pending}）...`
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
 		}
 	}
 
@@ -2536,7 +2736,7 @@ const warmupAutoWireNodes = async (): Promise<void> => {
 	warmupForceRenderNodeIds.value = new Set()
 	await nextTick()
 	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = `新节点预热完成，共 ${newNodes.length} 个节点，正在加载Canvas截图...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
 	if (newMap.size > 0) {
 		await warmupCanvasAll(newMap)
 		initCanvasScreenshotPool()
@@ -2556,6 +2756,250 @@ const waitForFrames = (count = 2): Promise<void> => {
 		}
 		requestAnimationFrame(tick)
 	})
+}
+
+function easeOutCubic(t: number): number {
+	return 1 - Math.pow(1 - t, 3)
+}
+
+let viewportAnimationRaf: number | null = null
+
+function animateViewportTo(
+	target: { panX?: number; panY?: number; zoom?: number },
+	duration = 350
+): Promise<void> {
+	return new Promise((resolve) => {
+		if (viewportAnimationRaf !== null) {
+			cancelAnimationFrame(viewportAnimationRaf)
+			viewportAnimationRaf = null
+		}
+
+		const startPanX = viewport.value.panX
+		const startPanY = viewport.value.panY
+		const startZoom = viewport.value.zoom
+		const endPanX = target.panX ?? startPanX
+		const endPanY = target.panY ?? startPanY
+		const endZoom = target.zoom ?? startZoom
+
+		const hasChange = Math.abs(endPanX - startPanX) > 0.5 ||
+			Math.abs(endPanY - startPanY) > 0.5 ||
+			Math.abs(endZoom - startZoom) > 0.001
+
+		if (!hasChange) {
+			resolve()
+			return
+		}
+
+		markViewportMotion()
+		const startTime = performance.now()
+
+		const step = (now: number) => {
+			const elapsed = now - startTime
+			const rawT = Math.min(1, elapsed / duration)
+			const t = easeOutCubic(rawT)
+
+			const curPanX = startPanX + (endPanX - startPanX) * t
+			const curPanY = startPanY + (endPanY - startPanY) * t
+			const curZoom = startZoom + (endZoom - startZoom) * t
+
+			onViewportUpdate({ panX: curPanX, panY: curPanY, zoom: curZoom })
+
+			if (rawT < 1) {
+				viewportAnimationRaf = requestAnimationFrame(step)
+			} else {
+				viewportAnimationRaf = null
+				forceEndViewportMotion()
+				resolve()
+			}
+		}
+
+		viewportAnimationRaf = requestAnimationFrame(step)
+	})
+}
+
+const warmupNewTemplateNodes = async (newNodeIds: string[]): Promise<void> => {
+	if (!newNodeIds || newNodeIds.length === 0) return
+
+	const newNodes = newNodeIds
+		.map((id) => store.state.nodesById[id])
+		.filter(Boolean) as WorkflowNode[]
+	if (newNodes.length === 0) return
+
+	isWarmingUpScreenshots.value = true
+	screenshotWarmupOpen.value = true
+	screenshotWarmupProgress.value = 0
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodes', { count: String(newNodes.length) })
+
+	warmupForceRenderNodeIds.value = new Set(newNodeIds)
+
+	await waitForFrames(2)
+
+	const newMap = new Map(nodeScreenshotMap.value)
+	const nodesNeedingCapture: WorkflowNode[] = []
+
+	for (const node of newNodes) {
+		const nodeId = String(node.id ?? '').trim()
+		if (!nodeId) continue
+		const version = getNodeScreenshotVersion(node)
+		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
+			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+			if (cached) newMap.set(nodeId, cached)
+			continue
+		}
+		nodesNeedingCapture.push(node)
+	}
+
+	const total = nodesNeedingCapture.length
+	if (total === 0) {
+		nodeScreenshotMap.value = newMap
+		isWarmingUpScreenshots.value = false
+		warmupExitingFullRender.value = true
+		warmupForceRenderNodeIds.value = new Set()
+		await nextTick()
+		warmupExitingFullRender.value = false
+		await waitForFrames(1)
+		if (newMap.size > 0) {
+			await warmupCanvasAll(newMap)
+			initCanvasScreenshotPool()
+			refreshCanvasNodeLayer()
+		}
+		screenshotWarmupOpen.value = false
+		screenshotWarmupDetail.value = ''
+		return
+	}
+
+	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+	screenshotPool.setBurstMode(true)
+
+	screenshotWarmupProgress.value = 0.02
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
+
+	let screenshotStarted = 0
+	let screenshotCompleted = 0
+	const nodeElMap = new Map<string, HTMLElement>()
+	const startedSet = new Set<string>()
+	const promises: Promise<void>[] = []
+
+	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId)) return
+		startedSet.add(nodeId)
+		screenshotStarted++
+
+		const promise = (async () => {
+			let entry: ScreenshotCacheEntry | null = null
+			try {
+				const version = getNodeScreenshotVersion(node)
+				let el: HTMLElement | null = nodeEl
+				if (!el) {
+					let retries = 0
+					while (retries < 8 && !el) {
+						await nextTick()
+						await waitForFrames(2)
+						const hostEl = nodeHostRefs.get(nodeId)
+						if (hostEl) {
+							el = findNodeElementForScreenshot(hostEl)
+						}
+						retries++
+					}
+				}
+				if (el) {
+					const width = Math.max(80, Math.round(node.width) || 240)
+					const height = Math.max(80, Math.round(node.height) || 160)
+					entry = await screenshotPool.queueScreenshot(
+						nodeId,
+						el,
+						version,
+						width,
+						height,
+						SCREENSHOT_PADDING,
+						'high'
+					)
+					if (entry?.dataUrl) {
+						newMap.set(nodeId, entry)
+						const cacheCtx = getScreenshotCacheContext()
+						void saveScreenshotToDisk(
+							cacheCtx.projectId,
+							cacheCtx.blueprintId,
+							nodeId,
+							version,
+							entry.dataUrl,
+							entry.width,
+							entry.height
+						)
+					}
+				}
+			} catch (err) {
+				console.warn('[Template Warmup] failed for node:', nodeId, err)
+			}
+
+			screenshotCompleted++
+			screenshotWarmupProgress.value = screenshotCompleted / total
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodesProgress', { completed: String(screenshotCompleted), total: String(total) })
+		})()
+		promises.push(promise)
+	}
+
+	let waitFramesCount = 0
+	const MAX_WAIT_FRAMES = 30
+	while (screenshotStarted < total && waitFramesCount < MAX_WAIT_FRAMES) {
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+		waitFramesCount++
+
+		for (const node of nodesNeedingCapture) {
+			const nodeId = String(node.id ?? '').trim()
+			if (startedSet.has(nodeId)) continue
+			const hostEl = nodeHostRefs.get(nodeId)
+			if (hostEl) {
+				const nodeEl = findNodeElementForScreenshot(hostEl)
+				if (nodeEl) {
+					nodeElMap.set(nodeId, nodeEl)
+					startScreenshot(node, nodeEl)
+				}
+			}
+		}
+
+		if (screenshotCompleted === total) break
+
+		if (screenshotStarted === 0) {
+			screenshotWarmupProgress.value = 0.02 + (waitFramesCount / MAX_WAIT_FRAMES) * 0.08
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
+		} else {
+			const pending = screenshotStarted - screenshotCompleted
+			screenshotWarmupProgress.value =
+				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
+			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
+		}
+	}
+
+	for (const node of nodesNeedingCapture) {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId)) continue
+		const hostEl = nodeHostRefs.get(nodeId)
+		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
+		startScreenshot(node, nodeEl as HTMLElement)
+	}
+
+	await Promise.all(promises)
+
+	screenshotPool.setBurstMode(false)
+	screenshotPool.resetConcurrency()
+
+	nodeScreenshotMap.value = newMap
+	isWarmingUpScreenshots.value = false
+	warmupExitingFullRender.value = true
+	warmupForceRenderNodeIds.value = new Set()
+	await nextTick()
+	warmupExitingFullRender.value = false
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
+	if (newMap.size > 0) {
+		await warmupCanvasAll(newMap)
+		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
+	}
+	await waitForFrames(2)
+	screenshotWarmupOpen.value = false
+	screenshotWarmupDetail.value = ''
 }
 
 watch(
@@ -2593,6 +3037,180 @@ watch(
 	{ flush: 'post' }
 )
 
+watch(
+	() => themeStore.state.mode,
+	(newTheme, oldTheme) => {
+		invalidateDocumentStyleCache()
+
+		if (themeWarmupAbortController) {
+			themeWarmupAbortController.abort()
+			themeWarmupAbortController = null
+		}
+
+		const fromTheme: 'dark' | 'light' = (oldTheme === 'light' ? 'light' : 'dark')
+		const toTheme: 'dark' | 'light' = (newTheme === 'light' ? 'light' : 'dark')
+
+		if (fromTheme === toTheme) return
+
+		screenshotPool.setActiveTheme(toTheme)
+		setCanvasActiveTheme(toTheme)
+
+		nextTick(() => {
+			nodeCanvasLayerRef.value?.setTheme(toTheme)
+			refreshCanvasNodeLayer()
+			void startThemeWarmup(toTheme, fromTheme)
+		})
+	},
+	{ flush: 'post' }
+)
+
+const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 'light') => {
+	const allNodes = nodes.value.filter((n) => {
+		const nid = String(n?.id ?? '').trim()
+		return nid && !selectedNodeIds.value.includes(nid)
+	})
+
+	const nodesNeedingCapture: WorkflowNode[] = []
+	const versionMap = new Map<string, string>()
+	for (const node of allNodes) {
+		const nid = String(node.id)
+		const version = getNodeScreenshotVersion(node, toTheme)
+		versionMap.set(nid, version)
+		if (!screenshotPool.hasCachedScreenshot(nid, version)) {
+			nodesNeedingCapture.push(node)
+		}
+	}
+
+	if (nodesNeedingCapture.length === 0) {
+		const newMap = new Map(nodeScreenshotMap.value)
+		for (const node of allNodes) {
+			const nid = String(node.id)
+			const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
+			if (cachedEntry) {
+				newMap.set(nid, cachedEntry)
+			}
+			if (!hasBitmap(nid, toTheme) && cachedEntry) {
+				try {
+					await loadScreenshotToCanvas(cachedEntry)
+				} catch {}
+			}
+		}
+		nodeScreenshotMap.value = newMap
+		initCanvasScreenshotPool()
+		refreshCanvasNodeLayer()
+		return
+	}
+
+	themeWarmupAbortController = new AbortController()
+	const signal = themeWarmupAbortController.signal
+
+	themeWarmupTargetTheme.value = toTheme
+	themeWarmupOpen.value = true
+	themeWarmupProgress.value = 0
+	const twLabel = t(toTheme === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.preparing', { theme: twLabel })
+
+	const warmupNodeIds = new Set(nodesNeedingCapture.map((n) => String(n.id)))
+	warmupForceRenderNodeIds.value = warmupNodeIds
+
+	await nextTick()
+	await waitForFrames(2)
+
+	const total = nodesNeedingCapture.length
+	let screenshotCompleted = 0
+	const newMap = new Map(nodeScreenshotMap.value)
+	const startedSet = new Set<string>()
+	const promises: Promise<void>[] = []
+
+	const startCapture = async (node: WorkflowNode) => {
+		const nodeId = String(node.id ?? '').trim()
+		if (startedSet.has(nodeId) || signal.aborted) return
+		startedSet.add(nodeId)
+
+		try {
+			let nodeEl: HTMLElement | null = null
+			let retries = 0
+			while (retries < 8 && !nodeEl && !signal.aborted) {
+				await nextTick()
+				await waitForFrames(1)
+				const hostEl = nodeHostRefs.get(nodeId)
+				if (hostEl) {
+					nodeEl = findNodeElementForScreenshot(hostEl)
+				}
+				retries++
+			}
+
+			if (nodeEl && !signal.aborted) {
+				const version = getNodeScreenshotVersion(node, toTheme)
+				const width = Math.max(80, Math.round(node.width) || 240)
+				const height = Math.max(80, Math.round(node.height) || 160)
+				const entry = await screenshotPool.queueScreenshot(
+					nodeId,
+					nodeEl,
+					version,
+					width,
+					height,
+					SCREENSHOT_PADDING,
+					'normal'
+				)
+				if (entry?.dataUrl && !signal.aborted) {
+					newMap.set(nodeId, entry)
+					invalidateCanvasScreenshot(nodeId, toTheme)
+					try {
+						await loadScreenshotToCanvas(entry)
+					} catch {}
+				}
+			}
+		} catch (err) {
+			console.warn('[Theme Warmup] failed for node:', nodeId, err)
+		}
+
+		screenshotCompleted++
+		if (!signal.aborted) {
+			const ratio = screenshotCompleted / total
+			themeWarmupProgress.value = ratio
+			themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.progress', { theme: twLabel, completed: String(screenshotCompleted), total: String(total) })
+			refreshCanvasNodeLayer()
+		}
+	}
+
+	const CONCURRENCY = 4
+	for (let i = 0; i < nodesNeedingCapture.length; i += CONCURRENCY) {
+		if (signal.aborted) break
+		const batch = nodesNeedingCapture.slice(i, i + CONCURRENCY)
+		const batchPromises = batch.map((n) => startCapture(n))
+		promises.push(...batchPromises)
+		await Promise.all(batchPromises)
+	}
+
+	await Promise.all(promises)
+
+	if (signal.aborted) {
+		warmupForceRenderNodeIds.value = new Set()
+		themeWarmupAbortController = null
+		return
+	}
+
+	nodeScreenshotMap.value = newMap
+	warmupExitingFullRender.value = true
+	warmupForceRenderNodeIds.value = new Set()
+	await nextTick()
+	warmupExitingFullRender.value = false
+
+	themeWarmupProgress.value = 1
+	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.done', { theme: twLabel })
+	initCanvasScreenshotPool()
+	refreshCanvasNodeLayer()
+
+	setTimeout(() => {
+		if (themeWarmupTargetTheme.value === toTheme) {
+			themeWarmupOpen.value = false
+		}
+	}, 800)
+
+	themeWarmupAbortController = null
+}
+
 const previousNodeSizes = new Map<string, { w: number; h: number }>()
 const nodesNeedingScreenshotRefresh = new Set<string>()
 watch(
@@ -2609,8 +3227,9 @@ watch(
 			if (prev && (Math.abs(prev.w - w) >= 1 || Math.abs(prev.h - h) >= 1)) {
 				const node = nodes.value.find((n) => String(n.id) === nodeId)
 				if (node) {
-					screenshotPool.invalidateScreenshot(nodeId)
-					invalidateCanvasScreenshot(nodeId)
+					const activeTheme = themeStore.state.mode as 'dark' | 'light'
+					screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+					invalidateCanvasScreenshot(nodeId, activeTheme)
 					if (currentFullRenderIds.has(nodeId)) {
 						nodesNeedingScreenshotRefresh.add(nodeId)
 						if (selectedNodeIds.value.includes(nodeId)) {
@@ -2685,7 +3304,7 @@ const onConfirmForceWarmup = () => {
 	nodeScreenshotMap.value = new Map()
 	disposeCanvasScreenshot()
 	initCanvasScreenshot()
-	canvasScreenshotPool.value = { getEntry: () => null }
+	canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
 	initCanvasScreenshotPool()
 	warmupAllNodeScreenshots(true).catch((err) => {
 		console.warn('[Screenshot Warmup] force warmup failed:', err)
@@ -2729,12 +3348,16 @@ const loadCachedScreenshotsToCanvas = async () => {
 		return
 	}
 
+	const currentTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.setActiveTheme(currentTheme)
+	setCanvasActiveTheme(currentTheme)
+
 	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
 	screenshotPool.pruneToValidNodes(validNodeIds)
 
 	screenshotWarmupOpen.value = true
 	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = '正在加载磁盘缓存...'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingDiskCache')
 
 	const cacheCtx = getScreenshotCacheContext()
 
@@ -2746,39 +3369,48 @@ const loadCachedScreenshotsToCanvas = async () => {
 	let diskLoadedCount = 0
 	try {
 		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = '正在读取磁盘缓存...'
+		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
 		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
 		const totalNodes = allNodes.length
+		const currentTheme = themeStore.state.mode as 'dark' | 'light'
 		for (let i = 0; i < totalNodes; i++) {
 			const node = allNodes[i]
 			const nodeId = node.id
-			const version = getNodeScreenshotVersion(node)
-			const diskEntry = diskCache.get(nodeId)
-			if (diskEntry && diskEntry.dataUrl) {
-				const screenshotEntry: ScreenshotCacheEntry = {
-					nodeId,
-					version: diskEntry.version || version,
-					dataUrl: diskEntry.dataUrl,
-					width: diskEntry.width,
-					height: diskEntry.height,
-					padding: SCREENSHOT_PADDING,
-					capturedAt: Date.now()
+			for (const theme of ['dark', 'light'] as const) {
+				const version = getNodeScreenshotVersion(node, theme)
+				const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
+				if (diskEntry && diskEntry.dataUrl && diskEntry.version === version) {
+					screenshotPool.prefillCache(
+						nodeId,
+						version,
+						diskEntry.dataUrl,
+						diskEntry.width,
+						diskEntry.height,
+						SCREENSHOT_PADDING
+					)
+					if (theme === currentTheme) {
+						const screenshotEntry: ScreenshotCacheEntry = {
+							nodeId,
+							version,
+							theme,
+							dataUrl: diskEntry.dataUrl,
+							width: diskEntry.width,
+							height: diskEntry.height,
+							padding: SCREENSHOT_PADDING,
+							capturedAt: Date.now()
+						}
+						newMap.set(nodeId, screenshotEntry)
+					}
+					diskLoadedCount++
 				}
-				newMap.set(nodeId, screenshotEntry)
-				screenshotPool.prefillCache(
-					nodeId,
-					diskEntry.version || version,
-					diskEntry.dataUrl,
-					diskEntry.width,
-					diskEntry.height,
-					SCREENSHOT_PADDING
-				)
-				diskLoadedCount++
 			}
 			if (i % 10 === 0 || i === totalNodes - 1) {
 				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
 				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = `磁盘缓存加载中 ${diskLoadedCount}/${totalNodes}...`
+				screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', {
+					loaded: String(diskLoadedCount),
+					totalNodes: String(totalNodes * 2)
+				})
 				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
 			}
 		}
@@ -2789,7 +3421,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	nodeScreenshotMap.value = newMap
 
 	screenshotWarmupProgress.value = 0.28
-	screenshotWarmupDetail.value = `正在加载 ${newMap.size} 个Canvas截图到内存（并发解码）...`
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
 
 	await warmupCanvasAll(
 		newMap,
@@ -2803,7 +3435,7 @@ const loadCachedScreenshotsToCanvas = async () => {
 	refreshCanvasNodeLayer()
 
 	screenshotWarmupProgress.value = 0.98
-	screenshotWarmupDetail.value = '完成'
+	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
 	await waitForFrames(1)
 
 	screenshotWarmupOpen.value = false
@@ -2901,8 +3533,8 @@ const compactNodeStateClass = (node: WorkflowNode) => {
 
 const compactNodeStateLabel = (node: WorkflowNode) => {
 	const state = resolveNodeRuntimeVisualState(node)
-	if (state === 'running') return '运行中'
-	if (state === 'error') return '异常'
+	if (state === 'running') return t('aiworkflow.page.runtimeState.running')
+	if (state === 'error') return t('aiworkflow.page.runtimeState.error')
 	return ''
 }
 
@@ -3103,6 +3735,59 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 	return rootPath
 }
 
+const createImageNodeAtCenter = (url: string, name?: string): string | null => {
+	try {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
+		return newNodeId
+	} catch (e) {
+		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
+		return null
+	}
+}
+
+const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
+	try {
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: name || t('aiworkflow.page.defaultImageNodeTitle')
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		if (url) {
+			store.commit('setNodeImageSettings', {
+				nodeId: newNodeId,
+				imageSettings: {
+					imageUrl: url,
+					imageGenerationSource: 'gemini'
+				}
+			})
+		}
+		return newNodeId
+	} catch (e) {
+		console.error('[createImageNodeAt] 创建节点失败:', e)
+		return null
+	}
+}
+
 const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 	// 当 draft 为空时，尝试从连接的文本节点获取 prompt
 	let resolvedPrompt = payload.prompt
@@ -3114,7 +3799,6 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 		}
 	}
 	const finalPayload = { ...payload, prompt: resolvedPrompt }
-	store.dispatch('submitNodeChat', finalPayload)
 	const { runNodeGenerationTask } = await import('./node-business/chat/useAIWorkflowNodeGeneration')
 	const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
 	const result = await runNodeGenerationTask(
@@ -3124,6 +3808,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			resolveBackendUrl,
 			resolveBackendFetchUrl,
 			getProjectId: () => currentProjectId.value,
+			nodeResourceUrl,
 			pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 				chatMessages.value = [
 					...chatMessages.value,
@@ -3174,7 +3859,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						!isStrictLocalRenderableUrl(base.url) ||
 						!isWorkflowLocalAssetUrl(base.url)
 					) {
-						pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3183,12 +3868,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('图片生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.image') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('图片导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3246,7 +3931,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('图片资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3267,12 +3952,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				const pid = Number(currentProjectId.value ?? 0)
 				const sourceUrl = String(url || '').trim()
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('视频生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('视频导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3328,7 +4013,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3364,7 +4049,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
 					if (!base.url) {
-						pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 						return false
 					}
 					store.commit('addResource', base)
@@ -3373,12 +4058,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast('3D 模型生成结果未导入到当前项目，本次不允许远程地址渲染。', 'warn')
+					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'warn')
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast('3D 模型导入失败：当前项目根目录未绑定，已阻止写入错误目录。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3427,7 +4112,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				finalizeGeneratedResourceLocalUrl(base, pid)
 				base.url = String(base.url || '').trim()
 				if (!base.url) {
-					pushToast('3D 模型资源导入失败：未得到有效的本地资产地址。', 'error')
+					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
 					return false
 				}
 				store.commit('addResource', base)
@@ -3463,6 +4148,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 
 				return null
 			},
+			createImageNodeAtCenter,
+			createImageNodeAt,
 			persistExternalAssetToProject
 		},
 		castPayload
@@ -3705,7 +4392,7 @@ const nanoRefDockAnchors = computed(() => {
 		const fromTitle = fromNode ? String(fromNode.alias || fromNode.title || fromNode.id) : ''
 		return {
 			id: a.id,
-			label: a.label || `参考图 ${idx + 1}`,
+			label: a.label || t('aiworkflow.page.nanoAnchor.refImageLabel', { index: String(idx + 1) }),
 			connected: !!edge,
 			connectedFrom: fromTitle
 		}
@@ -3715,9 +4402,9 @@ const nanoRefDockAnchors = computed(() => {
 const chatTaskStatusText = ref('')
 const chatTaskStatus = computed(() => {
 	if (chatTaskStatusText.value) return chatTaskStatusText.value
-	if (chatRunState.value === 'stopping') return 'AI 任务：正在停止…'
-	if (chatRunState.value === 'error') return 'AI 任务：错误'
-	return chatSending.value ? 'AI 任务：生成中…' : 'AI 任务：空闲'
+	if (chatRunState.value === 'stopping') return t('aiworkflow.page.chatTask.stopping')
+	if (chatRunState.value === 'error') return t('aiworkflow.page.chatTask.error')
+	return chatSending.value ? t('aiworkflow.page.chatTask.generating') : t('aiworkflow.page.chatTask.idle')
 })
 
 const isElectronRuntime =
@@ -3753,13 +4440,13 @@ const resolveAutoHelloText = () => {
 		(window as Window & DwebRuntimeWindow)?.__DWEB_AIWF_AUTO_HELLO_TEXT || ''
 	).trim()
 	if (winText) return winText
-	return '你好'
+	return t('aiworkflow.page.chat.hello')
 }
 let autoHelloSent = false
 
 const mapCodexSession = (row: CodexSessionRow): LocalExecSessionItem => ({
 	id: String(row?.id || '').trim(),
-	title: String(row?.title || 'Copilot CLI 会话').trim() || 'Copilot CLI 会话',
+	title: String(row?.title || t('aiworkflow.page.chat.defaultSessionTitle')).trim() || t('aiworkflow.page.chat.defaultSessionTitle'),
 	status: String(row?.status || 'active').trim() || 'active',
 	modelName: String(row?.model_name || '').trim(),
 	source: 'copilot-cli'
@@ -3796,7 +4483,7 @@ const loadCodexSessions = async () => {
 		const conversations = Array.isArray(res.conversations) ? res.conversations : []
 		codexSessions.value = conversations.map((c) => ({
 			id: c.id,
-			title: c.title || '新对话',
+			title: c.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: c.model || '',
 			status: 'active'
 		}))
@@ -3812,19 +4499,19 @@ const loadCodexSessions = async () => {
 const onCodexCreateSession = async () => {
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const res = await agentCreateConversation('新对话', chatModelId.value, projectPath)
+		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
 		if (!res?.ok) {
-			pushToast('创建会话失败：' + String(res?.error || '未知错误'), 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 			return
 		}
 		const conversation = res.conversation as { id: string; title: string; model: string } | undefined
 		if (!conversation?.id) {
-			pushToast('创建会话失败：返回会话ID为空', 'warn')
+			pushToast(t('aiworkflow.page.chat.createSessionFailedEmptyId'), 'warn')
 			return
 		}
 		const item = {
 			id: conversation.id,
-			title: conversation.title || '新对话',
+			title: conversation.title || t('aiworkflow.page.chat.newConversation'),
 			modelName: conversation.model || '',
 			status: 'active'
 		}
@@ -3832,7 +4519,7 @@ const onCodexCreateSession = async () => {
 		codexActiveSessionId.value = item.id
 		chatMessages.value = []
 	} catch (err: unknown) {
-		pushToast('创建会话失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -3864,12 +4551,12 @@ const onCodexApproval = async (payloadValue: {
 }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法提交审批：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.submitApprovalFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(codexActiveSessionId.value || '').trim()
 	if (!sid) {
-		pushToast('请先选择 Copilot CLI 会话。', 'warn')
+		pushToast(t('aiworkflow.page.chat.selectSessionFirst'), 'warn')
 		return
 	}
 	try {
@@ -3880,23 +4567,23 @@ const onCodexApproval = async (payloadValue: {
 			projectId
 		})) as LocalExecListResult
 		if (result?.error) {
-			pushToast('审批提交失败：' + String(result.error), 'warn')
+			pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: String(result.error) }), 'warn')
 			return
 		}
-		pushToast('审批已提交。', 'info')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitted'), 'info')
 	} catch (err: unknown) {
-		pushToast('审批提交失败：' + getErrorMessage(err), 'warn')
+		pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
 const onCodexDeleteSession = async (sessionId: string) => {
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm('确认删除该会话吗？')
+	const ok = window.confirm(t('aiworkflow.page.chat.confirmDeleteSession'))
 	if (!ok) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
-		pushToast('删除会话失败：' + String(res?.error || '未知错误'), 'warn')
+		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
@@ -3914,7 +4601,7 @@ const onCodexDeleteSession = async (sessionId: string) => {
 const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
-		pushToast('无法重命名会话：自动保存项目失败。', 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailedAutoSave'), 'warn')
 		return
 	}
 	const sid = String(payloadValue.sessionId || '').trim()
@@ -3926,7 +4613,7 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
 		title
 	})) as LocalExecListResult
 	if (result?.error) {
-		pushToast('会话改名失败：' + String(result.error), 'warn')
+		pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(result.error) }), 'warn')
 		return
 	}
 	codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
@@ -4053,7 +4740,7 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	if (!clipboardData) return false
 	const projectId = Number(currentProjectId.value ?? 0)
 	if (!(projectId > 0)) {
-		pushToast('请先保存项目后，再粘贴媒体资源到蓝图。', 'warn')
+		pushToast(t('aiworkflow.page.media.pasteNeedSaveProject'), 'warn')
 		return false
 	}
 
@@ -4071,114 +4758,116 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	}
 
 	const items = Array.from(clipboardData.items ?? [])
-	const files: Array<{ file: ElectronFile; sourcePath: string }> = []
-
+	const files: File[] = []
 	for (const item of items) {
 		if (item.kind !== 'file') continue
-		const file = item.getAsFile() as ElectronFile | null
-		if (!file) continue
-		const sourcePath = typeof file.path === 'string' ? String(file.path).trim() : ''
-		files.push({ file, sourcePath })
+		const file = item.getAsFile()
+		if (file) files.push(file)
 	}
 
-	if (files.length > 0) {
-		const mediaFiles = files.filter((f) => {
-			const mime = String(f.file.type || '').toLowerCase()
-			if (mime.startsWith('image/') || mime.startsWith('video/')) return true
-			return !!inferMediaKindFromFileLocal(f.file)
-		})
+	const mediaFiles = files.filter((f) => {
+		const mime = String(f.type || '').toLowerCase()
+		if (mime.startsWith('image/') || mime.startsWith('video/')) return true
+		return !!inferMediaKindFromFileLocal(f)
+	})
 
-		if (mediaFiles.length > 0) {
-			const { worldX, worldY } = getCanvasCenterWorld()
-			const createdNodeIds: string[] = []
-			let offset = 0
+	if (mediaFiles.length > 0) {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		const createdNodeIds: string[] = []
+		let offset = 0
 
-			for (const { file, sourcePath } of mediaFiles) {
-				const mime = String(file.type || '').toLowerCase()
-				let kind: 'image' | 'video' | null = null
-				if (mime.startsWith('image/')) kind = 'image'
-				if (mime.startsWith('video/')) kind = 'video'
-				if (!kind) kind = inferMediaKindFromFileLocal(file)
-				if (!kind) continue
+		for (const file of mediaFiles) {
+			const mime = String(file.type || '').toLowerCase()
+			let kind: 'image' | 'video' | null = null
+			if (mime.startsWith('image/')) kind = 'image'
+			if (mime.startsWith('video/')) kind = 'video'
+			if (!kind) kind = inferMediaKindFromFileLocal(file)
+			if (!kind) continue
 
-				const fileName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+			let assetUrl = ''
+			let assetAbsPath = ''
+			let assetRelPath = ''
+			let displayName = ''
 
-				let created = false
-				let assetUrl = ''
-				let assetRelPath = ''
-				let assetAbsPath = ''
-
-				if (sourcePath && isElectron()) {
-					try {
-						const result = await copyFileToProjectRoot(projectId, sourcePath, fileName)
-						if (result && result.ok) {
-							assetRelPath = String(result.relativePath || '').trim()
-							assetAbsPath = String(result.absolutePath || '').trim()
-							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-							created = true
-						}
-					} catch {
-						// 失败则回退
-					}
-				}
-
-				if (!created && isElectron()) {
-					try {
-						const arrayBuffer = await file.arrayBuffer()
-						const uploaded = await uploadProjectAsset({
-							projectId,
-							kind,
-							name: fileName,
-							arrayBuffer,
-							contentType: file.type || (kind === 'image' ? 'image/png' : 'video/mp4')
-						})
-
-						if (uploaded && uploaded.ok && uploaded.asset) {
-							const asset = uploaded.asset
-							assetRelPath = String(asset.projectRelativePath || asset.relativePath || '').trim()
-							assetAbsPath = String(asset.absolutePath || '').trim()
-							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-							created = true
-						}
-					} catch {
-						// 上传失败
-					}
-				}
-
-				if (!created) {
-					assetUrl = URL.createObjectURL(file)
-					assetAbsPath = sourcePath
-				}
-
-				const finalDisplayUrl =
-					assetUrl && assetUrl.toLowerCase().startsWith('dweb://')
-						? resolveBackendUrl(assetUrl)
-						: assetUrl
-				store.commit('addNodeAt', {
-					worldX: worldX + offset,
-					worldY: worldY + offset,
-					title: kind === 'image' ? '图片' : '视频'
-				})
-				const nodeId = store.state.selectedNodeId
-				if (nodeId) {
-					store.commit('setNodeType', { nodeId, type: kind })
-					bindMediaResourceToNode(nodeId, kind, finalDisplayUrl || assetUrl, fileName, {
-						sourcePath: assetAbsPath || undefined,
-						projectRelativePath: assetRelPath || undefined
+			try {
+				const fileBuffer = await file.arrayBuffer()
+				if (kind === 'image') {
+					const pngBuffer = await transcodeImageToPng(fileBuffer)
+					const finalBuffer = pngBuffer || fileBuffer
+					const finalFileName = generateUniqueMediaFileName('paste', 'png')
+					displayName = finalFileName
+					const uploaded = await uploadProjectAsset({
+						projectId,
+						kind: 'image',
+						name: finalFileName,
+						arrayBuffer: finalBuffer,
+						contentType: 'image/png'
 					})
-					autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, kind)
-					createdNodeIds.push(nodeId)
+					if (uploaded && uploaded.ok && uploaded.asset) {
+						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+					}
+				} else {
+					const videoMime = mime.startsWith('video/') ? mime : 'video/mp4'
+					let videoExt = 'mp4'
+					if (videoMime === 'video/webm') videoExt = 'webm'
+					else if (videoMime === 'video/quicktime') videoExt = 'mov'
+					else if (videoMime.startsWith('video/')) {
+						const extFromMime = videoMime.split('/')[1]
+						if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) videoExt = extFromMime
+					}
+					const finalFileName = generateUniqueMediaFileName('paste', videoExt)
+					displayName = finalFileName
+					const uploaded = await uploadProjectAsset({
+						projectId,
+						kind: 'video',
+						name: finalFileName,
+						arrayBuffer: fileBuffer,
+						contentType: videoMime
+					})
+					if (uploaded && uploaded.ok && uploaded.asset) {
+						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+					}
 				}
-				offset += 40
+			} catch {
+				// upload failed, fall through to object url
 			}
 
-			if (createdNodeIds.length > 0) {
-				store.commit('setSelectedNodes', {
-					nodeIds: createdNodeIds,
-					primaryNodeId: createdNodeIds[0]
-				})
-				return true
+			let finalUrl: string
+			if (assetUrl) {
+				finalUrl = resolveBackendUrl(assetUrl)
+			} else {
+				finalUrl = URL.createObjectURL(file)
+				displayName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
 			}
+
+			store.commit('addNodeAt', {
+				worldX: worldX + offset,
+				worldY: worldY + offset,
+				title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+			})
+			const nodeId = store.state.selectedNodeId
+			if (nodeId) {
+				store.commit('setNodeType', { nodeId, type: kind })
+				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
+					sourcePath: assetAbsPath || undefined,
+					projectRelativePath: assetRelPath || undefined
+				})
+				autoSizeMediaNode(nodeId, finalUrl, kind)
+				createdNodeIds.push(nodeId)
+			}
+			offset += 40
+		}
+
+		if (createdNodeIds.length > 0) {
+			store.commit('setSelectedNodes', {
+				nodeIds: createdNodeIds,
+				primaryNodeId: createdNodeIds[0]
+			})
+			return true
 		}
 	}
 
@@ -4187,50 +4876,47 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 		clipboardData.getData('text/plain') ||
 		''
 	).trim()
-	if (urlText && /^https?:\/\//i.test(urlText)) {
-		const urlKind = inferMediaKindFromUrlOrName(urlText)
-		if (urlKind) {
+
+	if (urlText) {
+		const isRemote = urlText.startsWith('http://') || urlText.startsWith('https://') || urlText.startsWith('blob:') || urlText.startsWith('data:')
+		if (isRemote) {
+			const urlKind = urlText.startsWith('data:video/') || /\.(mp4|webm|mov|m4v|mkv|avi|flv|wmv)(\?|$)/i.test(urlText)
+				? 'video'
+				: 'image'
 			const center = getCanvasCenterWorld()
-			const fileName = `paste-${Date.now()}`
-			const pid = Number(currentProjectId.value ?? 0)
 
-			try {
-				const result = await downloadUrlToProjectRoot(pid, urlText, fileName)
-				if (result && result.ok) {
-					const relPath = String(result.relativePath || '').trim()
-					const absPath = String(result.absolutePath || '').trim()
-					const assetUrl = buildProjectAssetUrl(pid, relPath)
-					const finalDisplayUrl = assetUrl ? resolveBackendUrl(assetUrl) : ''
+			let assetUrl = urlText
+			let assetAbsPath = ''
+			let assetRelPath = ''
+			let displayName = ''
 
-					store.commit('addNodeAt', {
-						worldX: center.worldX,
-						worldY: center.worldY,
-						title: urlKind === 'image' ? '图片' : '视频'
-					})
-					const nodeId = store.state.selectedNodeId
-					if (nodeId) {
-						store.commit('setNodeType', { nodeId, type: urlKind })
-						bindMediaResourceToNode(nodeId, urlKind, finalDisplayUrl || assetUrl, fileName, {
-							sourcePath: absPath || undefined,
-							projectRelativePath: relPath || undefined
-						})
-						autoSizeMediaNode(nodeId, finalDisplayUrl || assetUrl, urlKind)
-						return true
-					}
-				}
-			} catch {
-				store.commit('addNodeAt', {
-					worldX: center.worldX,
-					worldY: center.worldY,
-					title: urlKind === 'image' ? '图片' : '视频'
+			const persisted = await persistBlobUrlToProject(urlText, urlKind as 'image' | 'video', 'paste')
+			if (persisted && persisted.url) {
+				assetUrl = persisted.url
+				assetAbsPath = persisted.sourcePath || ''
+				assetRelPath = persisted.projectRelativePath || ''
+				displayName = persisted.fileName || ''
+			}
+
+			const finalUrl = resolveBackendUrl(assetUrl)
+			const defaultName = urlKind === 'video'
+				? generateUniqueMediaFileName('paste', 'mp4')
+				: generateUniqueMediaFileName('paste', 'png')
+
+			store.commit('addNodeAt', {
+				worldX: center.worldX,
+				worldY: center.worldY,
+				title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+			})
+			const nodeId = store.state.selectedNodeId
+			if (nodeId) {
+				store.commit('setNodeType', { nodeId, type: urlKind })
+				bindMediaResourceToNode(nodeId, urlKind as 'image' | 'video', finalUrl, displayName || defaultName, {
+					sourcePath: assetAbsPath || undefined,
+					projectRelativePath: assetRelPath || undefined
 				})
-				const nodeId = store.state.selectedNodeId
-				if (nodeId) {
-					store.commit('setNodeType', { nodeId, type: urlKind })
-					bindMediaResourceToNode(nodeId, urlKind, urlText, fileName)
-					autoSizeMediaNode(nodeId, urlText, urlKind)
-					return true
-				}
+				autoSizeMediaNode(nodeId, finalUrl, urlKind as 'image' | 'video')
+				return true
 			}
 		}
 	}
@@ -4483,7 +5169,7 @@ const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
 
 const onCancelImportOverlay = () => {
 	cancelActiveImportSession({ cleanupUnresolved: true })
-	pushToast('已取消导入：保留已完成的节点/资源，清理未完成项。', 'info')
+	pushToast(t('aiworkflow.page.media.importCancelled'), 'info')
 }
 
 const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
@@ -4787,18 +5473,18 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
 
-	pushToast('正在导出带洞几何体...', 'info')
+	pushToast(t('aiworkflow.page.placeholder.exporting'), 'info')
 
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
-		const errorMsg = viewerExportResult.ok ? '未能获取GLB数据' : viewerExportResult.error
-		pushToast(`导出带洞几何体失败：${errorMsg}`, 'error')
-		throw new Error(`导出带洞占位体失败：${errorMsg}`)
+		const errorMsg = viewerExportResult.ok ? t('aiworkflow.page.placeholder.failedGetGlb') : viewerExportResult.error
+		pushToast(t('aiworkflow.page.placeholder.exportFailed', { error: String(errorMsg) }), 'error')
+		throw new Error(t('aiworkflow.page.placeholder.exportPlaceholderFailed', { error: String(errorMsg) }))
 	}
 
 	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
 	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
-	pushToast(`成功导出带洞几何体：${viewerExportResult.name || placeholderName}`, 'info')
+	pushToast(t('aiworkflow.page.placeholder.exportSuccess', { name: String(viewerExportResult.name || placeholderName) }), 'info')
 	return {
 		file,
 		signature,
@@ -5084,7 +5770,7 @@ const syncModel3DInputFromUpstream = async (
 					lastInputNodeId: fromNode.id,
 					lastInputSourceUrl: transfer.transferUrl,
 					lastInputSourcePath: String(transfer.assetPath || '').trim() || undefined,
-					lastInputSourceName: `占位体 ${generated.placeholderName}`,
+					lastInputSourceName: `${t('aiworkflow.page.placeholder.term')} ${generated.placeholderName}`,
 					lastInputPlaceholderId: generated.placeholderId || undefined,
 					lastInputPlaceholderJson: generated.placeholderJson || undefined
 				}
@@ -5093,7 +5779,7 @@ const syncModel3DInputFromUpstream = async (
 		}
 	}
 
-	if (opts?.warn) pushToast('未找到可用的上游模型输出。', 'warn')
+	if (opts?.warn) pushToast(t('aiworkflow.page.meshy.noUpstreamOutput'), 'warn')
 	return false
 }
 
@@ -5243,7 +5929,8 @@ const onNodeMediaReady = (nodeId: string) => {
 
 			const version = getNodeScreenshotVersion(node)
 			if (!screenshotPool.hasCachedScreenshot(nodeId, version)) {
-				screenshotPool.invalidateScreenshot(nodeId)
+				const activeTheme = themeStore.state.mode as 'dark' | 'light'
+				screenshotPool.invalidateScreenshot(nodeId, activeTheme)
 				const newMap = new Map(nodeScreenshotMap.value)
 				newMap.delete(nodeId)
 				nodeScreenshotMap.value = newMap
@@ -5256,7 +5943,9 @@ const onNodeMediaReady = (nodeId: string) => {
 const onNodeInvalidateScreenshot = (nodeId: string) => {
 	if (selectedNodeIds.value.includes(nodeId)) return
 	if (fullRenderNodeIds.value.has(nodeId)) return
-	screenshotPool.invalidateScreenshot(nodeId)
+	const activeTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
@@ -5536,7 +6225,9 @@ const onNodeThreePreviewProgress = (
 
 const onNodeThreePreviewReady = (nodeId: string) => {
 	completePreviewSession(nodeId)
-	screenshotPool.invalidateScreenshot(nodeId)
+	const activeTheme = themeStore.state.mode as 'dark' | 'light'
+	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
+	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
@@ -5615,8 +6306,8 @@ const buildResetUnrealExportSettings = (settings?: Record<string, unknown> | nul
 	const autoPollVal = settings?.autoPoll
 	return {
 		connectionStatus: 'idle' as const,
-		statusText: '未建立连接',
-		message: '已清除旧项目中的 Unreal 会话与任务状态，请重新点击“等待连接”。',
+		statusText: t('aiworkflow.page.runtimeState.notConnected'),
+		message: t('aiworkflow.page.unreal.resetCleared'),
 		targetSessionId: undefined,
 		connectedSession: null,
 		lastHeartbeatAt: undefined,
@@ -5672,7 +6363,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 	try {
 		const res = await unrealExportService.listSessions()
 		if (!res.ok) {
-			if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${res.error || 'unknown'}`, 'warn')
+			if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return { ok: false, hasRunningJob: false, skipped: false }
 		}
 		const sessions: UnrealExportSessionInfo[] = Array.isArray(res.sessions) ? res.sessions : []
@@ -5751,19 +6442,19 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 								? 'exporting'
 								: 'connected',
 						statusText: hasFailedJob
-							? '导出任务执行失败'
+							? t('aiworkflow.page.unreal.exportFailed')
 							: nodeHasRunningJob
-								? '虚幻插件正在执行导出任务'
-								: `已连接 ${String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId}`,
+								? t('aiworkflow.page.unreal.exporting')
+								: t('aiworkflow.page.unreal.connected', { projectName: String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId }),
 						targetSessionId: String(matchedSession.sessionId ?? '').trim(),
 						connectedSession: matchedSession,
 						lastHeartbeatAt: Number(matchedSession.lastSeenAt ?? 0) || undefined,
 						message: latestJobMissing
-							? '旧导出任务已不存在，已清理历史轮询状态。'
+							? t('aiworkflow.page.unreal.oldJobMissing')
 							: latestJobMessage ||
 								(nodeHasRunningJob
-									? '虚幻插件已拉取任务，正在生成场景。'
-									: '虚幻插件已在线，可直接发送导出任务。'),
+									? t('aiworkflow.page.unreal.jobPickedGenerating')
+									: t('aiworkflow.page.unreal.pluginOnline')),
 						lastExportMode: latestJobMissing
 							? undefined
 							: String(latestJob?.exportPayload?.exportMode ?? '').trim() === 'lighting-only'
@@ -5847,9 +6538,9 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 					nodeId: node.id,
 					unrealExportSettings: {
 						connectionStatus: 'waiting',
-						statusText: '等待虚幻插件连接',
+						statusText: t('aiworkflow.page.unreal.waitingForConnection'),
 						connectedSession: null,
-						message: '请在 Unreal 插件面板点击“连接工作流”。',
+						message: t('aiworkflow.page.unreal.clickConnectInPlugin'),
 						targetSessionId: undefined,
 						lastHeartbeatAt: undefined,
 						lastExportJobId: undefined,
@@ -5866,7 +6557,7 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 		}
 		return { ok: true, hasRunningJob, skipped: false }
 	} catch (err: unknown) {
-		if (!opts?.silent) pushToast(`读取虚幻连接列表失败：${getErrorMessage(err)}`, 'warn')
+		if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: getErrorMessage(err) }), 'warn')
 		return { ok: false, hasRunningJob: false, skipped: false }
 	} finally {
 		unrealExportSyncRunning = false
@@ -5932,8 +6623,8 @@ const onNodeAwaitUnrealConnection = async (nodeId: string) => {
 		nodeId,
 		unrealExportSettings: {
 			connectionStatus: 'waiting',
-			statusText: '等待虚幻插件连接',
-			message: '请在 Unreal 编辑器中打开 DwebWorkflowBridge 插件并点击“连接工作流”。',
+			statusText: t('aiworkflow.page.unreal.waitingForConnection'),
+			message: t('aiworkflow.page.unreal.clickConnectInEditor'),
 			autoPoll: true
 		}
 	})
@@ -5969,11 +6660,11 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.getResolvedLayoutForUnreal !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开并完成预览加载。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstance') }
 	}
 	try {
 		return await instance.getResolvedLayoutForUnreal()
@@ -5985,11 +6676,11 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
 	if (!normalizedNodeId) {
-		return { ok: false as const, error: '缺少 scene-layout 节点 ID。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
-		return { ok: false as const, error: '未找到场景布局预览实例，请先打开预览并选择要传递的占位体。' }
+		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstanceSelectPlaceholder') }
 	}
 	try {
 		return await instance.exportSelectedPlaceholderGLB()
@@ -6012,6 +6703,410 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates } = useTemplateCenter()
+const templateCenterOpen = ref(false)
+const templateApplyDialogOpen = ref(false)
+const selectedTemplateForApply = ref<TemplateItem | null>(null)
+const saveTemplateDialogOpen = ref(false)
+const saveTemplateFromCenter = ref(false)
+const saveTemplateScope = ref<'full' | 'selection'>('full')
+const saveTemplateNodeIds = ref<string[]>([])
+const saveTemplatePrefillName = ref('')
+const saveTemplateAutoCoverBlob = ref<Blob | null>(null)
+const saveTemplateSaving = ref(false)
+const saveTemplateProgress = ref(0)
+let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
+
+function onOpenTemplateCenter() {
+	void loadTemplates()
+	templateCenterOpen.value = true
+}
+
+function onTemplateSelectForApply(template: TemplateItem) {
+	selectedTemplateForApply.value = template
+	templateCenterOpen.value = false
+	templateApplyDialogOpen.value = true
+}
+
+async function onDeleteTemplate(template: TemplateItem) {
+	const confirmed = window.confirm(t('aiworkflow.templateCenter.deleteConfirm', { name: template.name }))
+	if (!confirmed) return
+	const ok = await deleteTemplate(template)
+	if (ok) {
+		pushToast(t('aiworkflow.templateCenter.templateDeleted'), 'info')
+	}
+}
+
+async function generateAutoCoverForNodes(nodeIds: string[]): Promise<Blob | null> {
+	try {
+		const currentTheme = themeStore.state.mode as 'dark' | 'light'
+		const cachedScreenshots = screenshotPool.getAllCachedForTheme(currentTheme)
+		const screenshotMap = new Map<string, { nodeId: string; dataUrl: string; width: number; height: number; padding?: number }>()
+		for (const [nid, entry] of cachedScreenshots) {
+			if (nodeIds.includes(nid)) {
+				screenshotMap.set(nid, entry)
+			}
+		}
+		if (screenshotMap.size === 0) return null
+		const bgColor = currentTheme === 'dark' ? '#0f0f0f' : '#f5f5f5'
+		return await captureNodesAsCoverBlob(nodeIds, store.state.nodesById, screenshotMap, bgColor)
+	} catch {
+		return null
+	}
+}
+
+async function onSaveTemplateFromCenter(options: { scope: 'full' | 'selection' }) {
+	saveTemplateScope.value = options.scope
+	saveTemplateNodeIds.value = []
+	saveTemplatePrefillName.value = currentProjectName.value || ''
+	saveTemplateFromCenter.value = true
+	saveTemplateAutoCoverBlob.value = null
+	const allNodeIds = Object.keys(store.state.nodesById)
+	saveTemplatePendingCoverGen = { nodeIds: allNodeIds }
+	saveTemplateDialogOpen.value = true
+}
+
+async function onSaveSelectionAsTemplate() {
+	if (selectedNodeIds.value.length === 0) return
+	saveTemplateScope.value = 'selection'
+	saveTemplateNodeIds.value = [...selectedNodeIds.value]
+	saveTemplatePrefillName.value = ''
+	saveTemplateFromCenter.value = false
+	saveTemplateAutoCoverBlob.value = null
+	saveTemplatePendingCoverGen = { nodeIds: [...selectedNodeIds.value] }
+	saveTemplateDialogOpen.value = true
+}
+
+watch(saveTemplateDialogOpen, async (isOpen) => {
+	if (!isOpen) {
+		saveTemplatePendingCoverGen = null
+		saveTemplateAutoCoverBlob.value = null
+		if (saveTemplateFromCenter.value) {
+			saveTemplateFromCenter.value = false
+			await waitForFrames(2)
+			templateCenterOpen.value = true
+		}
+		return
+	}
+	if (!saveTemplatePendingCoverGen) return
+	const pendingIds = saveTemplatePendingCoverGen.nodeIds
+	saveTemplatePendingCoverGen = null
+	await waitForFrames(20)
+	const blob = await generateAutoCoverForNodes(pendingIds)
+	if (saveTemplateDialogOpen.value) {
+		saveTemplateAutoCoverBlob.value = blob
+	}
+})
+
+async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
+	saveTemplateSaving.value = true
+	saveTemplateProgress.value = 0
+	try {
+		let snapshot: AIWorkflowDraftSnapshot
+		let nodeIdsForCover: string[]
+		if (options.scope === 'selection' && options.nodeIds && options.nodeIds.length > 0) {
+			snapshot = buildSnapshotFromSelection(store.state, options.nodeIds)
+			nodeIdsForCover = options.nodeIds
+		} else {
+			snapshot = buildFullSnapshot(store.state)
+			nodeIdsForCover = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+		}
+
+		const nodeCount = snapshot.nodeOrder.length
+		let coverBlob = options.coverBlob
+		if (!coverBlob) {
+			saveTemplateProgress.value = 5
+			coverBlob = await generateAutoCoverForNodes(nodeIdsForCover)
+		}
+		saveTemplateProgress.value = 10
+		const blob = await createTemplatePackageZip(snapshot, options.name, coverBlob, undefined, (progress) => {
+			saveTemplateProgress.value = 10 + progress.percent * 0.85
+		})
+		saveTemplateProgress.value = 95
+		const saved = await saveUserTemplateFromBlob({
+			name: options.name,
+			description: options.description,
+			category: options.category || 'other',
+			tags: options.tags,
+			blob,
+			nodeCount,
+			coverBlob
+		})
+
+		saveTemplateProgress.value = 100
+		await waitForFrames(2)
+
+		if (saved) {
+			pushToast(t('aiworkflow.templateCenter.templateSaved'), 'info')
+			store.commit('clearSelection')
+			if (saveTemplateFromCenter.value) {
+				void loadTemplates()
+			}
+		} else {
+			pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+		}
+		saveTemplateDialogOpen.value = false
+	} catch (err) {
+		console.error('[Template] Save failed:', err)
+		pushToast(t('aiworkflow.templateCenter.templateSaveFailed'), 'error')
+	} finally {
+		saveTemplateSaving.value = false
+		saveTemplateProgress.value = 0
+	}
+}
+
+async function applyTemplateToCurrent(template: TemplateItem) {
+	const blob = await loadTemplatePackage(template)
+	if (!blob) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const parsed = await parseTemplatePackageBlob(blob)
+	const snapshot = parsed.snapshot
+	if (!snapshot) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const templateNodeIds = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+	const templateBounds = calculateNodeBounds(templateNodeIds, snapshot.nodesById)
+	if (!templateBounds) {
+		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+		return
+	}
+
+	const activeProjectId = currentProjectId.value
+	if (isElectron() && activeProjectId && parsed.assets.length > 0 && parsed.zip) {
+		try {
+			const importResult = await importTemplateAssetsToProject(
+				parsed,
+				activeProjectId,
+				async (pid, buffer, fileName, mimeType, subPath, bucket) => {
+					const res = await uploadProjectAsset({
+						projectId: pid,
+						kind: mimeType?.startsWith('image')
+							? 'image'
+							: mimeType?.startsWith('video')
+								? 'video'
+								: 'file',
+						name: fileName,
+						arrayBuffer: buffer,
+						contentType: mimeType,
+						subPath,
+						bucket
+					})
+					return res?.ok && res?.asset
+						? {
+							url: res.asset.url,
+							relativePath: res.asset.relativePath || '',
+							absolutePath: res.asset.absolutePath || res.asset.sourcePath || ''
+						}
+						: null
+				}
+			)
+			remapTemplateAssetUrls(snapshot, parsed.assets, importResult.fileUrlMap, importResult.filePathMap, importResult.fileAbsPathMap)
+		} catch (err) {
+			console.error('[AIWF] Failed to import template assets:', err)
+		}
+	}
+
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const viewportCenter = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+	const offsetX = viewportCenter.x - templateBounds.centerX
+	const offsetY = viewportCenter.y - templateBounds.centerY
+
+	const existingNodeIds = new Set(Object.keys(store.state.nodesById))
+	const existingResourceIds = new Set(Object.keys(store.state.resourcesById))
+
+	const result = mergeTemplateSnapshot(snapshot, {
+		viewportCenter,
+		existingNodeIds,
+		existingResourceIds,
+		placementOffset: { x: offsetX, y: offsetY }
+	})
+
+	store.commit('mergeTemplateContent', {
+		nodes: result.nodes,
+		edges: result.edges,
+		resources: result.resources
+	})
+
+	const newNodeIds = result.nodes.map(n => n.id)
+	store.commit('setSelectedNodes', { nodeIds: newNodeIds })
+
+	await nextTick()
+	await waitForFrames(2)
+
+	const newBounds = calculateNodeBounds(newNodeIds, store.state.nodesById)
+	if (newBounds) {
+		const curZoom = store.state.viewport.zoom
+		const curPanX = store.state.viewport.panX
+		const curPanY = store.state.viewport.panY
+		const animCanvasW = canvasViewportSize.value?.width ?? window.innerWidth
+		const animCanvasH = canvasViewportSize.value?.height ?? window.innerHeight
+		const margin = 100
+		const scaleX = (animCanvasW - margin * 2) / newBounds.width
+		const scaleY = (animCanvasH - margin * 2) / newBounds.height
+		const fitZoom = Math.min(scaleX, scaleY) * curZoom
+		const maxZoom = curZoom > 1.5 ? curZoom : 1.5
+		let finalZoom: number
+		let needsZoomOut: boolean
+		if (fitZoom < curZoom * 0.9) {
+			finalZoom = Math.max(0.15, fitZoom)
+			needsZoomOut = true
+		} else {
+			finalZoom = curZoom
+			needsZoomOut = false
+		}
+		finalZoom = Math.min(finalZoom, maxZoom)
+		const targetPanX = -newBounds.centerX * finalZoom
+		const targetPanY = -newBounds.centerY * finalZoom
+		const panChanged = Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
+		if (needsZoomOut) {
+			await animateViewportTo({ zoom: finalZoom, panX: targetPanX, panY: targetPanY }, 400)
+		} else if (panChanged) {
+			await animateViewportTo({ panX: targetPanX, panY: targetPanY }, 350)
+		}
+		await waitForFrames(2)
+	}
+
+	void warmupNewTemplateNodes(newNodeIds)
+
+	pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
+}
+
+async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
+	templateApplyDialogOpen.value = false
+	const template = options.template
+	selectedTemplateForApply.value = null
+
+	if (options.target === 'current') {
+		await applyTemplateToCurrent(template)
+		return
+	}
+
+	if (options.target === 'new-project') {
+		const projectName = (options.newProjectName || template.name || 'template').trim()
+		const rootPath = (options.newProjectPath || '').trim()
+
+		if (!projectName) {
+			pushToast(t('aiworkflow.templateCenter.nameRequired'), 'error')
+			return
+		}
+		if (!rootPath) {
+			pushToast(t('aiworkflow.templateCenter.pathRequired'), 'error')
+			return
+		}
+
+		const blob = await loadTemplatePackage(template)
+		if (!blob) {
+			pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
+			return
+		}
+
+		const parsed = await parseTemplatePackageBlob(blob)
+		const templateCode = parsed.templateCode || ''
+		const subDir = templateCode ? `template/${templateCode}` : undefined
+
+		try {
+			cancelActiveRecoverySession()
+			store.commit('hydrateDraft', { snapshot: buildSnapshotFromState(createDefaultAIWorkflowState()) })
+			setUnsavedProject('')
+			reuseRecordConfirm.value = null
+			disposeComfyRuntime()
+			comfyAnchorAssignments.clear()
+			comfyAnchorLocalizedOutputs.clear()
+
+			const opened = await blueprintProjectService.openProjectFolder({
+				rootPath,
+				name: projectName,
+				create: true
+			}) as { ok: boolean; error?: string; project?: { id?: number; name?: string; rootPath?: string } }
+
+			if (!opened?.ok) {
+				pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
+				return
+			}
+
+			const newProjectId = Number(opened.project?.id || 0)
+			if (!Number.isFinite(newProjectId) || newProjectId <= 0) {
+				pushToast(t('aiworkflow.runtime.newProjectInvalidId'), 'error')
+				return
+			}
+
+			await setSavedProject({
+				id: newProjectId,
+				name: opened.project?.name || projectName,
+				rootPath: opened.project?.rootPath || rootPath
+			}, projectName)
+
+			await recoverComfyUIRunStates({ silent: true })
+			await refreshProjectList()
+
+			const fileName = `${projectName}.zip`
+			const file = new File([blob], fileName, { type: 'application/zip' })
+			await onRequestImportProjectPackage({ file, templateCode, subPath: subDir })
+
+			await nextTick()
+			await waitForFrames(3)
+
+			const allNodeIds = store.state.nodeOrder.slice()
+			if (allNodeIds.length > 0) {
+				const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+				const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+				const newBounds = calculateNodeBounds(allNodeIds, store.state.nodesById)
+				if (newBounds) {
+					store.commit('setSelectedNodes', { nodeIds: allNodeIds })
+					const curZoom = store.state.viewport.zoom
+					const curPanX = store.state.viewport.panX
+					const curPanY = store.state.viewport.panY
+					const margin = 100
+					const scaleX = (canvasW - margin * 2) / newBounds.width
+					const scaleY = (canvasH - margin * 2) / newBounds.height
+					const fitZoom = Math.min(scaleX, scaleY) * curZoom
+					let finalZoom: number
+					let needsZoomOut: boolean
+					if (fitZoom < curZoom * 0.9) {
+						finalZoom = Math.max(0.15, fitZoom)
+						needsZoomOut = true
+					} else {
+						finalZoom = curZoom
+						needsZoomOut = false
+					}
+					finalZoom = Math.min(finalZoom, 1.5)
+					const targetPanX = canvasW / 2 - newBounds.centerX * finalZoom
+					const targetPanY = canvasH / 2 - newBounds.centerY * finalZoom
+					const panChanged = Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
+					if (needsZoomOut) {
+						await animateViewportTo({ zoom: finalZoom, panX: targetPanX, panY: targetPanY }, 400)
+					} else if (panChanged) {
+						await animateViewportTo({ panX: targetPanX, panY: targetPanY }, 350)
+					}
+				}
+			}
+
+			pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
+		} catch (err: unknown) {
+			pushToast(t('aiworkflow.toast.projectCreateFailed', { error: getErrorMessage(err) || 'unknown' }), 'error')
+		}
+	}
+}
+
+function onCopySelectedNodes() {
+	const ids = selectedNodeIds.value
+	if (ids.length === 0) return
+	store.commit('copyNode', { nodeId: ids[0] })
+}
+
+function onPasteSelectedNodes() {
+	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
+	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
+	const center = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
+	store.commit('pasteNode', { worldX: center.x, worldY: center.y })
+}
+
 const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
@@ -6052,7 +7147,7 @@ watch(
 				disposeCanvasScreenshot()
 				initCanvasScreenshot()
 			}
-			canvasScreenshotPool.value = { getEntry: () => null }
+			canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
 			initCanvasScreenshotPool()
 			if (warmupDebounceTimer) {
 				clearTimeout(warmupDebounceTimer)
@@ -6570,7 +7665,7 @@ const {
 			}
 			// 通知节点刷新（触发重新渲染）
 			void nextTick(() => {
-				blueprintLog.append(`资源自动恢复成功：${assetName}`, {
+				blueprintLog.append(t('aiworkflow.page.resourceRecover.success', { assetName }), {
 					category: 'system',
 					level: 'INFO',
 					tag: 'asset-recovery'
@@ -6632,19 +7727,19 @@ const onUndoLastRemove = () => {
 function sourceTypeLabel(type: string): string {
 	switch (type) {
 		case 'resource':
-			return '[资源记录]'
+			return t('aiworkflow.page.sourceType.resourceRecord')
 		case 'node_input':
-			return '[节点输入]'
+			return t('aiworkflow.page.sourceType.nodeInput')
 		case 'node_output':
-			return '[节点输出]'
+			return t('aiworkflow.page.sourceType.nodeOutput')
 		case 'node_param':
-			return '[节点参数]'
+			return t('aiworkflow.page.sourceType.nodeParam')
 		case 'preview':
-			return '[预览图]'
+			return t('aiworkflow.page.sourceType.preview')
 		case 'poster':
-			return '[封面图]'
+			return t('aiworkflow.page.sourceType.poster')
 		case 'unknown':
-			return '[未知位置]'
+			return t('aiworkflow.page.sourceType.unknown')
 		default:
 			return `[${type}]`
 	}
@@ -6768,6 +7863,171 @@ const onNodeUpdateSceneLayoutModelBindings = (nodeId: string, bindings: Workflow
 	})
 }
 
+const generateUniqueMediaFileName = (prefix: string, ext: string): string => {
+	const rand = Math.random().toString(36).slice(2, 8)
+	const ts = Date.now().toString(36)
+	return `${prefix}_${ts}_${rand}.${ext}`
+}
+
+const arrayBufferFromBlobUrl = async (url: string): Promise<ArrayBuffer | null> => {
+	try {
+		const resp = await fetch(url)
+		if (resp.ok) {
+			const blob = await resp.blob()
+			return await blob.arrayBuffer()
+		}
+	} catch {
+		// ignore
+	}
+	return null
+}
+
+const transcodeImageToPng = async (sourceBuffer: ArrayBuffer): Promise<ArrayBuffer | null> => {
+	try {
+		const blob = new Blob([sourceBuffer], { type: 'image/*' })
+		const objectUrl = URL.createObjectURL(blob)
+		const pngBuffer = await new Promise<ArrayBuffer | null>((resolve) => {
+			const img = new Image()
+			img.onload = () => {
+				try {
+					const canvas = document.createElement('canvas')
+					canvas.width = img.naturalWidth || img.width
+					canvas.height = img.naturalHeight || img.height
+					const ctx = canvas.getContext('2d')
+					if (!ctx) {
+						resolve(null)
+						return
+					}
+					ctx.drawImage(img, 0, 0)
+					canvas.toBlob((pngBlob) => {
+						if (!pngBlob) {
+							resolve(null)
+							return
+						}
+						pngBlob.arrayBuffer().then((buf) => resolve(buf)).catch(() => resolve(null))
+					}, 'image/png')
+				} catch {
+					resolve(null)
+				}
+			}
+			img.onerror = () => resolve(null)
+			img.src = objectUrl
+		})
+		URL.revokeObjectURL(objectUrl)
+		return pngBuffer
+	} catch {
+		return null
+	}
+}
+
+const persistBlobUrlToProject = async (inputUrl: string, kind: 'image' | 'video', prefix = 'dragdrop'): Promise<{
+	url: string
+	sourcePath?: string
+	projectRelativePath?: string
+	fileName?: string
+} | null> => {
+	const url = String(inputUrl || '').trim()
+	if (!url) return null
+	const pid = Number(currentProjectId.value ?? 0)
+	if (!(pid > 0) || !isElectron()) return null
+
+	if (url.toLowerCase().startsWith('dweb://project-assets')) {
+		return null
+	}
+
+	let arrayBuffer: ArrayBuffer | null = null
+	let contentType = kind === 'video' ? 'video/mp4' : 'image/png'
+	let detectedMime = ''
+
+	try {
+		const isHttp = url.startsWith('http://') || url.startsWith('https://')
+		const isBlobOrData = url.startsWith('blob:') || url.startsWith('data:')
+
+		if (isHttp) {
+			const result = await fetchAsArrayBuffer(url)
+			if (result?.ok && result.buffer) {
+				arrayBuffer = result.buffer.buffer.slice(
+					result.buffer.byteOffset,
+					result.buffer.byteOffset + result.buffer.byteLength
+				) as ArrayBuffer
+				detectedMime = String(result.mime || '').toLowerCase()
+			}
+		} else if (isBlobOrData) {
+			arrayBuffer = await arrayBufferFromBlobUrl(url)
+			if (arrayBuffer) {
+				try {
+					const resp = await fetch(url)
+					if (resp.ok) {
+						const blob = await resp.blob()
+						detectedMime = String(blob.type || '').toLowerCase()
+					}
+				} catch {
+					// ignore mime detection failure
+				}
+			}
+		}
+
+		if (!arrayBuffer) return null
+
+		let finalExt = 'png'
+		if (kind === 'video') {
+			const videoMime = detectedMime && detectedMime.startsWith('video/') ? detectedMime : ''
+			if (videoMime === 'video/webm') finalExt = 'webm'
+			else if (videoMime === 'video/quicktime') finalExt = 'mov'
+			else if (videoMime) {
+				const extFromMime = videoMime.split('/')[1]
+				if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) finalExt = extFromMime
+				else finalExt = 'mp4'
+			} else {
+				finalExt = 'mp4'
+			}
+			contentType = `video/${finalExt}`
+		} else {
+			finalExt = 'png'
+			contentType = 'image/png'
+			const pngBuffer = await transcodeImageToPng(arrayBuffer)
+			if (pngBuffer) {
+				arrayBuffer = pngBuffer
+			}
+		}
+
+		const finalFileName = generateUniqueMediaFileName(prefix, finalExt)
+
+		const uploaded = await uploadProjectAsset({
+			projectId: pid,
+			kind,
+			name: finalFileName,
+			arrayBuffer,
+			contentType
+		})
+		if (uploaded && uploaded.ok && uploaded.asset) {
+			const relPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+			const absPath = String(uploaded.asset.absolutePath || '').trim()
+			const dwebUrl = buildProjectAssetUrl(pid, relPath)
+			if (dwebUrl) {
+				return {
+					url: dwebUrl,
+					sourcePath: absPath || undefined,
+					projectRelativePath: relPath || undefined,
+					fileName: finalFileName
+				}
+			}
+		}
+	} catch {
+		return null
+	}
+	return null
+}
+
+const fetchRemoteUrlAsArrayBuffer = async (url: string) => {
+	if (!isElectron()) return null
+	try {
+		return await fetchAsArrayBuffer(String(url || '').trim())
+	} catch {
+		return null
+	}
+}
+
 const {
 	createNodeFromDraggedResource,
 	createNodeFromNanoPreview,
@@ -6801,6 +8061,8 @@ const {
 	},
 	createBatchMediaNodesFromFiles: (payload) => createBatchMediaNodesFromFiles(payload),
 	createNodeFromDraggedMeshyTask: (payload) => createNodeFromDraggedMeshyTask(payload),
+	persistBlobUrlToProject,
+	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
@@ -6902,7 +8164,7 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
 		scheduleVideoMetadataRead,
 		autoSizeImageNodeFromDims,
 		onLimitExceeded: (count, limit) => {
-			importLimitAlertMessage.value = `本次检测到 ${count} 个媒体文件，超过批量导入上限 ${limit} 个。请减少后再导入。`
+			importLimitAlertMessage.value = t('aiworkflow.page.importLimit.message', { count: String(count), limit: String(limit) })
 		},
 		getProjectId: () => Number(currentProjectId.value ?? 0) || null,
 		copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
@@ -7051,7 +8313,7 @@ const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupA
 	getAllEdges: () => renderEdges.value,
 	getNodeTypes: (category) => {
 		const cat = String(category || '').trim().toLowerCase()
-		return NEWUI2_NODE_CATALOG
+		return i18nCatalogItems.value
 			.filter((item) => {
 				if (!cat) return true
 				if (item.topCategoryId === cat) return true
@@ -7237,7 +8499,7 @@ const onPreviewResource = async (resourceId: string) => {
 			? String(r.url || '').trim() || String(r.posterUrl || '').trim()
 			: String(r.url || '').trim()
 	if (!url) {
-		pushToast('资源预览失败：URL 为空。', 'warn')
+		pushToast(t('aiworkflow.page.resourcePreview.failedEmptyUrl'), 'warn')
 		return
 	}
 	try {
@@ -7292,7 +8554,7 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 			return null
 		}
 	},
-	importAssetFromBuffer: async (projectId, buffer, fileName, mimeType) => {
+	importAssetFromBuffer: async (projectId, buffer, fileName, mimeType, subPath, bucket) => {
 		if (!isElectron()) return null
 		try {
 			const result = await uploadProjectAsset({
@@ -7304,10 +8566,16 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 						: 'file',
 				name: fileName,
 				arrayBuffer: buffer,
-				contentType: mimeType
+				contentType: mimeType,
+				subPath,
+				bucket
 			})
 			return result?.ok && result?.asset
-				? { url: result.asset.url, relativePath: result.asset.relativePath }
+				? {
+					url: result.asset.url,
+					relativePath: result.asset.relativePath || '',
+					absolutePath: result.asset.absolutePath || result.asset.sourcePath || ''
+				}
 				: null
 		} catch (err) {
 			console.error('[AIWF] importAssetFromBuffer failed:', err)
@@ -7368,6 +8636,9 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	copySelectedNodes: (primaryNodeId) => {
 		store.commit('copyNode', { nodeId: primaryNodeId })
 	},
+	hasClipboardNodes: () => {
+		return !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
+	},
 	undo: () => {
 		aiWorkflowHistory.undo()
 	},
@@ -7400,8 +8671,8 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 				id: 'delete',
 				label:
 					selectedNodeIds.value.length > 1
-						? `删除所选节点（${selectedNodeIds.value.length}）`
-						: '删除',
+						? t('aiworkflow.contextMenu.deleteSelectedNodes', { count: selectedNodeIds.value.length })
+						: t('aiworkflow.contextMenu.delete'),
 				target: { kind: 'none' }
 			}
 		]
@@ -7410,7 +8681,11 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 		? { kind: 'edge', id: selectedEdgeId.value }
 		: { kind: 'none' }
 	const del = buildDeleteAction(target)
-	return del ? [del] : []
+	if (del) {
+		del.label = t('aiworkflow.contextMenu.delete')
+		return [del]
+	}
+	return []
 })
 
 const {
@@ -7686,6 +8961,7 @@ const {
 	perfEdgeCullHitRateText,
 	perfZoomText,
 	perfHealthLabel,
+	perfHealthClass,
 	buildPerfDiagnosticPayload
 } = useAIWorkflowPerfMonitor({
 	nodesCount: computed(() => nodes.value.length),
@@ -7714,9 +8990,9 @@ const onExportPerfDiagnostics = () => {
 		setTimeout(() => {
 			URL.revokeObjectURL(url)
 		}, 0)
-		pushToast('已导出性能诊断日志。', 'info')
+		pushToast(t('aiworkflow.page.perf.exportedLog'), 'info')
 	} catch (err: unknown) {
-		pushToast(`导出性能诊断日志失败：${getErrorMessage(err)}`, 'warn')
+		pushToast(t('aiworkflow.page.perf.exportLogFailed', { error: getErrorMessage(err) }), 'warn')
 	}
 }
 
@@ -7742,7 +9018,7 @@ const onNodeImagePreviewRequestInline = (nodeId: string, ev: unknown) => {
 const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 	console.log('[AIWorkflowPage] onNodeImagePreviewRequest → nodeId:', nodeId, 'imageUrl:', imageUrl)
 	if (!imageUrl) {
-		pushToast('该图片节点暂无图像资源可预览。', 'warn')
+		pushToast(t('aiworkflow.page.preview.noImageResource'), 'warn')
 		return
 	}
 	imageMarkupContext.value = { nodeId, url: imageUrl, name: null }
@@ -7770,10 +9046,10 @@ const onNodeImagePreviewRequest = (nodeId: string, imageUrl: string) => {
 			openPreview({ url: imageUrl, name: nodeId })
 			return
 		}
-		pushToast('当前环境未提供图片预览原生窗口，请在 DVStudio Electron 客户端中使用。', 'warn')
+		pushToast(t('aiworkflow.page.preview.needElectron'), 'warn')
 	} catch (err) {
 		console.warn('[AIWorkflowPage] openImageMarkupPreview failed', err)
-		pushToast('打开图片预览窗口失败。', 'warn')
+		pushToast(t('aiworkflow.page.preview.openFailed'), 'warn')
 	}
 }
 
@@ -7800,8 +9076,9 @@ const warmupCropCreatedNode = async (nodeId: string) => {
 		await waitForFrames(2)
 
 		// 失效可能存在的旧缓存（例如此前在图片未加载时捕获的空白截图）
-		screenshotPool.invalidateScreenshot(nid)
-		invalidateCanvasScreenshot(nid)
+		const activeTheme = themeStore.state.mode as 'dark' | 'light'
+		screenshotPool.invalidateScreenshot(nid, activeTheme)
+		invalidateCanvasScreenshot(nid, activeTheme)
 		const clearedMap = new Map(nodeScreenshotMap.value)
 		clearedMap.delete(nid)
 		nodeScreenshotMap.value = clearedMap
@@ -7830,7 +9107,7 @@ const handleImageMarkupExported = (payload: {
 	const fromNodeId = imageMarkupContext.value.nodeId
 	const exportType = payload.exportType || 'markup'
 	const isScreenshot = exportType === 'screenshot'
-	const typeLabel = isScreenshot ? '截图' : '标记图像'
+	const typeLabel = isScreenshot ? t('aiworkflow.page.mediaType.screenshot') : t('aiworkflow.page.mediaType.markedImage')
 	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
@@ -7838,7 +9115,7 @@ const handleImageMarkupExported = (payload: {
 		(isScreenshot ? 'screenshot.png' : 'marked-image.png')
 	).replace(/\.[^.]+$/, '')
 	if (!fromNodeId) {
-		pushToast(`找不到源图片节点，无法生成${typeLabel}节点。`, 'warn')
+		pushToast(t('aiworkflow.page.markup.sourceNodeNotFound', { typeLabel }), 'warn')
 		return
 	}
 	try {
@@ -7852,7 +9129,7 @@ const handleImageMarkupExported = (payload: {
 		store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
 		const newNodeId = String(store.state.selectedNodeId || '').trim()
 		if (!newNodeId || !store.state.nodesById[newNodeId]) {
-			pushToast(`创建${typeLabel}节点失败。`, 'error')
+			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
 
@@ -7898,13 +9175,13 @@ const handleImageMarkupExported = (payload: {
 		}
 
 		closeImageMarkupDialog()
-		pushToast(`已在当前图片节点右侧生成新的${typeLabel}节点，并自动连接原节点。`, 'info')
+		pushToast(t('aiworkflow.page.markup.nodeCreated', { typeLabel }), 'info')
 
 		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
 		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
 		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
-		pushToast(`生成${typeLabel}节点失败。`, 'error')
+		pushToast(t('aiworkflow.page.markup.generateNodeFailed', { typeLabel }), 'error')
 	}
 }
 
@@ -7956,7 +9233,8 @@ const {
 	getMeshyDisplayThumbnailUrl,
 	pickMeshyEffectiveOutput,
 	applyMeshyTaskResult,
-	stopMeshyPoll
+	stopMeshyPoll,
+	createImageNodeAtCenter
 })
 
 const onOpenMeshyTaskPanel = () => {
@@ -7974,23 +9252,23 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
 	const taskId = String(settings?.taskId ?? '').trim()
 	const mode = String(settings?.taskFamily ?? 'text-to-3d').trim()
 	if (!taskId) {
-		pushToast('当前节点没有可重试的 Meshy 任务 ID。', 'warn')
+		pushToast(t('aiworkflow.page.meshy.noRetryTaskId'), 'warn')
 		return
 	}
 	try {
 		const res = await comfyService.meshyTask(taskId, mode)
 		if (!res?.ok) {
-			pushToast('拉取失败：' + String(res?.error ?? 'unknown'), 'error')
+			pushToast(t('aiworkflow.page.meshy.pullFailed', { error: String(res?.error ?? 'unknown') }), 'error')
 			return
 		}
 		const finalStatus = await applyMeshyTaskResult(nodeId, res as unknown)
 		if (finalStatus === 'succeeded') {
-			pushToast('模型文件拉取成功。', 'info')
+			pushToast(t('aiworkflow.page.meshy.pullSuccess'), 'info')
 		} else {
-			pushToast('任务尚未完成，当前状态：' + finalStatus, 'warn')
+			pushToast(t('aiworkflow.page.meshy.taskNotComplete', { status: finalStatus }), 'warn')
 		}
 	} catch (e: unknown) {
-		pushToast('拉取异常：' + getErrorMessage(e), 'error')
+		pushToast(t('aiworkflow.page.meshy.pullException', { error: getErrorMessage(e) }), 'error')
 	}
 }
 
@@ -8052,13 +9330,13 @@ const {
 		}
 		const pid = Number(currentProjectId.value ?? 0)
 		if (!(pid > 0)) {
-			pushToast('当前项目未激活，无法导入视频。', 'warn')
+			pushToast(t('aiworkflow.page.media.videoProjectNotActive'), 'warn')
 			return false
 		}
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast('视频资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
 			return false
 		}
 		store.commit('addResource', base)
@@ -8082,7 +9360,7 @@ const {
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast((kind === 'image' ? '图片' : '视频') + '资源导入失败：未得到可渲染的本地资产地址。', 'error')
+			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }), 'error')
 			return ''
 		}
 		const vp = store.state.viewport
@@ -8095,7 +9373,7 @@ const {
 		const nodeH = 160
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
-		const titleLabel = kind === 'image' ? '图片' : '视频'
+		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
 		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
 		const nodeId = store.state.selectedNodeId
 		if (!nodeId) return ''
@@ -8106,6 +9384,89 @@ const {
 		return nodeId
 	}
 })
+
+// ===== Google Gemini 图片任务面板 =====
+const getGeminiService = () => {
+	const dweb = (window as unknown as Record<string, unknown>).dweb
+	if (!isRecord(dweb) || !isRecord(dweb.gemini)) return null
+	return dweb.gemini as unknown as {
+		health: () => Promise<{ ok: boolean; configured?: boolean }>
+		getTask: (payload: { taskId: string }) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
+		listTasks: (payload?: { limit?: number; status?: string }) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
+		cancel: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
+		deleteTask: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
+		clearCompleted: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
+		getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{ ok: boolean; path?: string; filename?: string; mimeType?: string; error?: string }>
+	}
+}
+
+const {
+	geminiTaskDialogOpen,
+	geminiTaskItems,
+	geminiTaskPanelStatusText,
+	geminiConfigured,
+	geminiTaskLoaded,
+	geminiTaskLoading,
+	geminiTaskDetail,
+	geminiTaskDetailTaskId,
+	geminiTaskDetailLoading,
+	geminiTaskActionBusyTaskId,
+	geminiTaskActionBusyType,
+	openGeminiTaskDialog,
+	closeGeminiTaskDialog,
+	onRefreshGeminiTaskPanel,
+	onGeminiTaskPanelAction,
+	onPreviewGeminiTask,
+	refreshGeminiTasks,
+	checkGeminiHealth,
+	onGeminiTaskDialogOpenChanged
+} = useAIWorkflowGeminiTaskPanelController({
+	store,
+	renderNodes,
+	geminiService: {
+		health: async () => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.health()
+		},
+		getTask: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.getTask(payload)
+		},
+		listTasks: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.listTasks(payload)
+		},
+		cancel: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.cancel(payload)
+		},
+		deleteTask: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.deleteTask(payload)
+		},
+		clearCompleted: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.clearCompleted(payload)
+		},
+		getImagePath: async (payload) => {
+			const svc = getGeminiService()
+			if (!svc) return { ok: false, error: 'Gemini service not available' }
+			return svc.getImagePath(payload)
+		}
+	},
+	pushToast: (message, tone) => pushToast(message, tone),
+	createImageNodeAtCenter
+})
+
+const onOpenGeminiTaskPanel = () => {
+	openGeminiTaskDialog()
+}
 
 async function onSeedanceTaskObserved(taskId: string, stage: 'created' | 'completed') {
 	const nextTaskId = String(taskId || '').trim()
@@ -8204,7 +9565,7 @@ const onResourceDraggedToBlueprint = (
 ) => {
 	const resource = store.state.resourcesById?.[String(resourceId)]
 	if (!resource) {
-		pushToast('未找到该资源记录。', 'warn')
+		pushToast(t('aiworkflow.page.resourceNode.notFound'), 'warn')
 		return
 	}
 	// 计算世界坐标
@@ -8214,11 +9575,11 @@ const onResourceDraggedToBlueprint = (
 	const worldX = (screenX - vp.panX) / vp.zoom
 	const worldY = (screenY - vp.panY) / vp.zoom
 
-	const title = String(resource.name || resourceId || '资源节点').slice(0, 200)
+	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
 	store.commit('addNodeAt', { worldX, worldY, title })
 	const newNodeId = String(store.state.selectedNodeId || '').trim()
 	if (!newNodeId || !store.state.nodesById[newNodeId]) {
-		pushToast('创建资源节点失败。', 'error')
+		pushToast(t('aiworkflow.page.resourceNode.createFailed'), 'error')
 		return
 	}
 	// 将资源绑定到新节点
@@ -8227,7 +9588,7 @@ const onResourceDraggedToBlueprint = (
 		field: 'image',
 		value: resource.url || ''
 	})
-	pushToast(`已将「${title}」添加到蓝图。`, 'info')
+	pushToast(t('aiworkflow.page.resourceNode.addedToBlueprint', { title }), 'info')
 }
 
 const onVideoTaskPanelMediaError = (taskId: string) => {
@@ -8282,8 +9643,10 @@ const onNodeOpenLibrary = (nodeId: string) => {
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
 		const z = viewport.value.zoom
-		const screenX = node.worldX * z + viewport.value.panX + rect.left
-		const screenY = node.worldY * z + viewport.value.panY + rect.top
+		const cX = rect.width / 2
+		const cY = rect.height / 2
+		const screenX = cX + viewport.value.panX + node.worldX * z + rect.left
+		const screenY = cY + viewport.value.panY + node.worldY * z + rect.top
 		openNodeSearchMenu({
 			clientX: screenX,
 			clientY: screenY,
@@ -8354,7 +9717,7 @@ const onToolbarFocusNode = (p: unknown) => {
 	if (!nodeId) return
 	const ok = tryFocusNodeById(nodeId)
 	if (!ok) {
-		pushSystemToast('引用节点已删除，无法定位。', 'warn')
+		pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 	}
 }
 
@@ -8399,7 +9762,7 @@ const onResourceManagerWindowEvent = (payload: { event: string; data: unknown })
 			if (dataRec.nodeId) {
 				const ok = tryFocusNodeById(String(dataRec.nodeId))
 				if (!ok) {
-					pushSystemToast('引用节点已删除，无法定位。', 'warn')
+					pushSystemToast(t('aiworkflow.page.resourceManager.toastNodeDeleted'), 'warn')
 				}
 			}
 			break
@@ -8432,7 +9795,7 @@ const openResourceDialog = async () => {
 	if (isElectronRuntime && typeof openManager === 'function') {
 		try {
 			const projectId = currentProjectId.value
-			const title = currentProjectName.value || '资源管理器'
+			const title = currentProjectName.value || t('aiworkflow.page.resourceManager.defaultTitle')
 			const result = await (
 				openManager as (args: {
 					projectId: number | null
@@ -8471,7 +9834,7 @@ const openResourceDialog = async () => {
 	}
 	// Web 环境或 Electron 降级：显示提示
 	// 资源管理器需要 Electron 原生窗口，Web 模式暂不支持
-	pushToast('资源管理器仅在 Electron 客户端中可用', 'warn')
+	pushToast(t('aiworkflow.page.resourceManager.onlyElectron'), 'warn')
 }
 
 watch(meshyTaskDialogOpen, (open) => {
@@ -8891,23 +10254,78 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 	}
 }
 
+const MAX_DRAG_FULL_RENDER_NODES = 40
+let updateDragFullRenderRafId: number | null = null
+
+const updateSelectionDragFullRender = () => {
+	updateDragFullRenderRafId = null
+	if (!selectionFrameDragging.value || selectionFrameDragNodeIds.value.size === 0) {
+		if (selectionDragFullRenderIds.value.size > 0) {
+			selectionDragFullRenderIds.value = new Set()
+		}
+		return
+	}
+
+	const nextFullRender = new Set<string>()
+	let added = 0
+	const nodesById = store.state.nodesById as Record<string, WorkflowNode | undefined>
+
+	for (const id of selectionFrameDragNodeIds.value) {
+		if (added >= MAX_DRAG_FULL_RENDER_NODES) break
+		const node = nodesById[id]
+		if (!node) continue
+
+		if (!isNodeInViewport(node)) continue
+
+		const version = getNodeScreenshotVersion(node)
+		const hasCachedScreenshot = screenshotPool.getCachedScreenshot(id, version) != null
+		const hasBitmapScreenshot = hasBitmap(id)
+
+		if (!hasCachedScreenshot || !hasBitmapScreenshot) {
+			nextFullRender.add(id)
+			added++
+		}
+	}
+
+	selectionDragFullRenderIds.value = nextFullRender
+	refreshCanvasNodeLayer()
+}
+
+const scheduleUpdateDragFullRender = () => {
+	if (updateDragFullRenderRafId !== null) return
+	updateDragFullRenderRafId = requestAnimationFrame(() => {
+		updateSelectionDragFullRender()
+	})
+}
+
 const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = true
 	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
+	selectionDragFullRenderIds.value = new Set()
+	selectionDragMoveTick.value = 0
 	markViewportMotion()
+	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
 	store.dispatch('moveNodesBy', payload)
+	selectionDragMoveTick.value++
 	markViewportMotion()
 	scheduleAsyncEdgeRender()
+	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = false
 	selectionFrameDragNodeIds.value = new Set()
+	selectionDragFullRenderIds.value = new Set()
+	selectionDragMoveTick.value++
+	if (updateDragFullRenderRafId !== null) {
+		cancelAnimationFrame(updateDragFullRenderRafId)
+		updateDragFullRenderRafId = null
+	}
 	forceEndViewportMotion()
 	refreshCanvasNodeLayer()
 	scheduleVisibleNodeScreenshots()
@@ -8978,7 +10396,7 @@ onMounted(() => {
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
 	void refreshProjectList()
-	blueprintLog.append('蓝图页面已加载，日志面板就绪', {
+	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',
 		level: 'INFO',
 		tag: 'init'
@@ -9043,8 +10461,8 @@ async function runProjectEnterSequence(
 	request: { kind: 'open'; projectId: number } | { kind: 'new'; rootPath: string }
 ) {
 	if (isElectron()) {
-		startupProgress.show('进入蓝图项目', 2500)
-		startupProgress.reset('进入蓝图项目')
+		startupProgress.show(t('aiworkflow.page.startup.enterBlueprint'), 2500)
+		startupProgress.reset(t('aiworkflow.page.startup.enterBlueprint'))
 	}
 
 	// Step 1. 读取本地项目数据
@@ -9052,10 +10470,10 @@ async function runProjectEnterSequence(
 	if (request.kind === 'open') {
 		await startupProgress.runStep(
 			'project.load',
-			'读取项目数据',
+			t('aiworkflow.page.startup.loadProjectData'),
 			async () => {
 				const ok = await loadProjectById(request.projectId)
-				if (!ok) throw new Error('项目数据加载失败')
+				if (!ok) throw new Error(t('aiworkflow.page.startup.projectLoadFailed'))
 				projectReady = true
 				return true
 			},
@@ -9064,7 +10482,7 @@ async function runProjectEnterSequence(
 	} else {
 		await startupProgress.runStep(
 			'project.new',
-			'初始化项目',
+			t('aiworkflow.page.startup.initProject'),
 			async () => {
 				await onRequestNewProjectFromPath(request.rootPath)
 				projectReady = true
@@ -9078,7 +10496,7 @@ async function runProjectEnterSequence(
 	if (projectReady) {
 		await startupProgress.runStep(
 			'project.assets',
-			'加载静态资产',
+			t('aiworkflow.page.startup.loadAssets'),
 			async () => {
 				try {
 					await recoverComfyUIRunStates({ silent: true })
@@ -9222,6 +10640,7 @@ if (import.meta.env.DEV) {
 .aiwf-overlay-top-left,
 .aiwf-overlay-top-right,
 .aiwf-overlay-floating,
+.aiwf-overlay-bottom-left,
 .aiwf-overlay-alerts {
 	position: absolute;
 	inset: 0;
@@ -9244,6 +10663,10 @@ if (import.meta.env.DEV) {
 	z-index: var(--aiwf-overlay-utility-z-index, 80);
 }
 
+.aiwf-overlay-bottom-left {
+	z-index: var(--aiwf-chrome-z-index, 30);
+}
+
 .aiwf-overlay-alerts {
 	z-index: var(--aiwf-alert-z-index, 130);
 }
@@ -9251,8 +10674,16 @@ if (import.meta.env.DEV) {
 .aiwf-overlay-top-left > *,
 .aiwf-overlay-top-right > *,
 .aiwf-overlay-floating > *,
+.aiwf-overlay-bottom-left > *,
 .aiwf-overlay-alerts > * {
 	pointer-events: auto;
+}
+
+.aiwf-overlay-bottom-left {
+	display: flex;
+	align-items: flex-end;
+	justify-content: flex-start;
+	padding: 0 0 16px 16px;
 }
 
 .aiwf-chat-dock {

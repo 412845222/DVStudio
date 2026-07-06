@@ -18,10 +18,13 @@ import {
 } from "../electronBridge";
 
 import { usePlatform } from "../platformBridge";
+import { useI18n } from "../i18n";
 
 import EnvCheckList from "../ui/Electron/EnvCheckList.vue";
 import CommandConsole from "../ui/Electron/CommandConsole.vue";
 import type { SetupState, SetupStep } from "../electronBridge/types";
+
+const { t } = useI18n();
 
 type EnvItem = {
   key: string;
@@ -83,25 +86,25 @@ const platformStatusClass = computed(() => {
 
 const platformStatusText = computed(() => {
   const s = platformStatus.value;
-  if (!s) return "检测中...";
+  if (!s) return t("welcome.platformDetecting");
   if (platformIsSteam.value) {
     return s.user?.displayName ? `Steam: ${s.user.displayName}` : "Steam";
   }
   if (platformIsReal.value) return platformDisplayName.value;
-  return "开发模式 (Mock)";
+  return t("welcome.platformMockMode");
 });
 
 const platformHintText = computed(() => {
   const s = platformStatus.value;
   if (!s) return "";
   if (platformIsMock.value) {
-    return "当前使用开发模式运行，Steam功能未启用。如需Steam联调，请运行 npm run setup:steam 链接本地DwebSteamJS包。";
+    return t("welcome.platformMockHint");
   }
   if (platformIsSteam.value && !s.loggedIn) {
-    return "Steam已连接，但用户未登录。请检查Steam客户端是否已登录。";
+    return t("welcome.platformSteamNotLoggedIn");
   }
   if (platformIsSteam.value && s.loggedIn) {
-    return `已通过Steam登录，用户: ${s.user?.displayName || "未知"}`;
+    return t("welcome.platformSteamLoggedIn", { name: s.user?.displayName || t("welcome.platformSteamUserUnknown") });
   }
   return "";
 });
@@ -120,24 +123,24 @@ const envItems = computed<EnvItem[]>(() => {
 });
 
 const backendStatusText = computed(() => {
-  if (backendRunning.value) return `运行中（端口 ${backendPort.value ?? "-"}）`;
-  if (backendLastError.value) return `未运行：${backendLastError.value}`;
-  return "未运行";
+  if (backendRunning.value) return t("welcome.runningOnPort", { port: backendPort.value ?? "-" });
+  if (backendLastError.value) return t("welcome.notRunningWithError", { error: backendLastError.value });
+  return t("welcome.notRunning");
 });
 
 const setupProgressText = computed(() => {
-  if (setupState.value.running) return "环境准备中...";
+  if (setupState.value.running) return t("welcome.preparingEnv");
   const hasError = setupState.value.steps.some((s) => s.status === "error");
-  if (hasError) return "存在失败项，可在左侧逐项重试";
-  return "环境流程完成";
+  if (hasError) return t("welcome.someItemsFailed");
+  return t("welcome.envSetupComplete");
 });
 
 const startupSetupHintText = computed(() => {
   if (setupState.value.running) {
-    return "应用启动后正在自动准备本地 DVSResource 运行环境，并同步 Django 源码到运行时目录。";
+    return t("welcome.startupPreparing");
   }
   if (startupSetupCompletedHintVisible.value) {
-    return "应用启动时已自动检查本地运行环境；如需重建运行态，可手动再次执行环境流程。";
+    return t("welcome.startupAlreadyChecked");
   }
   return "";
 });
@@ -147,8 +150,8 @@ const isReadyToEnter = computed(() => backendRunning.value && pingOk.value === "
 const logStatusText = computed(() => {
   const shown = logLines.value.length;
   const queue = logQueueSize.value;
-  if (queue > 0) return `显示 ${shown} 行，缓冲 ${queue} 行…`;
-  return `显示 ${shown} 行`;
+  if (queue > 0) return t("welcome.showingLinesBuffered", { shown, queue });
+  return t("welcome.showingLines", { shown });
 });
 
 async function refreshBaseUrl() {
@@ -310,7 +313,7 @@ async function runSetup(reason: string, retryKey = "") {
   const result = await runSetupWorkflow({ reason, retryKey });
   if (result?.state) setupState.value = result.state;
   if (result?.ok === false) {
-    appendLocalLog(`环境流程失败：${result.error || "未知错误"}`);
+    appendLocalLog(t("welcome.setupFailed", { error: result.error || "Unknown error" }));
   }
   await refreshBackendStatus();
   await refreshPing();
@@ -319,15 +322,15 @@ async function runSetup(reason: string, retryKey = "") {
 function getRetrySuggestion(stepKey: string): string {
   switch (stepKey) {
     case "python":
-      return "建议优先使用 winget 自动安装 Python；若本机无 winget，请手动安装 Python 3.11+ 并确认 python/py 命令可用后重试。";
+      return t("welcome.retrySuggestion.python");
     case "venv":
-      return "建议检查 DVSResource 目录权限和磁盘空间，再重试创建虚拟环境。";
+      return t("welcome.retrySuggestion.venv");
     case "django":
-      return "建议检查端口占用、数据库权限和 Django 配置；可先点“重启后端”。";
+      return t("welcome.retrySuggestion.django");
     case "dependencyInstall":
-      return "建议检查网络或 pip 镜像源配置后重试依赖安装。";
+      return t("welcome.retrySuggestion.dependencyInstall");
     default:
-      return "建议查看右侧命令行详细日志并按提示修复后重试。";
+      return t("welcome.retrySuggestion.default");
   }
 }
 
@@ -339,7 +342,7 @@ async function handleRetryStep(stepKey: string) {
     (s) => s.key === stepKey && s.status === "error"
   );
   if (failed) {
-    appendLocalLog(`重试失败：${failed.label}。${getRetrySuggestion(stepKey)}`);
+    appendLocalLog(t("welcome.retryFailed", { label: failed.label, suggestion: getRetrySuggestion(stepKey) }));
   }
   retryingStepKey.value = "";
 }
@@ -351,17 +354,17 @@ async function handleRunSetupWorkflow() {
 
 async function handleCleanupOldProject() {
   const ok = window.confirm(
-    "将删除 DVSResource 下旧后端运行数据：.venv、django-app、BackendData。\nUserSettings 会保留。\n\n是否继续？"
+    t("welcome.cleanupConfirmMessage")
   );
   if (!ok) return;
 
   const r = await cleanupOldProject();
   if (r?.ok) {
     appendLocalLog(
-      "清理旧项目完成：已删除 .venv / django-app / BackendData（存在则删除）。"
+      t("welcome.cleanupSuccess")
     );
   } else {
-    appendLocalLog(`清理旧项目失败：${r?.error || "未知错误"}`);
+    appendLocalLog(t("welcome.cleanupFailed", { error: r?.error || "Unknown error" }));
   }
 
   logLines.value = [];
@@ -432,11 +435,11 @@ onBeforeUnmount(() => {
   <div class="root bg-vscode">
     <div class="layout row">
       <div class="col left">
-        <EnvCheckList :items="envItems" title="环境流程检查" @retry="handleRetryStep" />
+        <EnvCheckList :items="envItems" :title="t('welcome.envCheckTitle')" @retry="handleRetryStep" />
       </div>
       <div class="col right">
         <div class="rightTop">
-          <div class="topTitle">后端控制</div>
+          <div class="topTitle">{{ t('welcome.backendControl') }}</div>
           <div class="topSub">{{ backendStatusText }} ｜ {{ setupProgressText }}</div>
           <div
             v-if="startupSetupHintVisible || startupSetupCompletedHintVisible"
@@ -447,10 +450,10 @@ onBeforeUnmount(() => {
           </div>
           <div class="buttons">
             <button class="btn" type="button" @click="handleRunSetupWorkflow">
-              执行环境流程
+              {{ t('welcome.runSetup') }}
             </button>
             <button class="btn" type="button" @click="handleCleanupOldProject">
-              清理旧项目
+              {{ t('welcome.cleanupOldProject') }}
             </button>
             <button
               class="btn"
@@ -458,7 +461,7 @@ onBeforeUnmount(() => {
               :disabled="!!backendActionBusy"
               @click="handleStartBackend"
             >
-              {{ backendActionBusy === "start" ? "启动中..." : "手动启动后端" }}
+              {{ backendActionBusy === "start" ? t('welcome.starting') : t('welcome.startBackend') }}
             </button>
             <button
               class="btn"
@@ -466,7 +469,7 @@ onBeforeUnmount(() => {
               :disabled="!!backendActionBusy"
               @click="handleRestartBackend"
             >
-              {{ backendActionBusy === "restart" ? "重启中..." : "重启后端" }}
+              {{ backendActionBusy === "restart" ? t('welcome.restarting') : t('welcome.restartBackend') }}
             </button>
             <button
               class="btn"
@@ -474,17 +477,17 @@ onBeforeUnmount(() => {
               :disabled="!isReadyToEnter"
               @click="handleEnterProject"
             >
-              进入项目
+              {{ t('welcome.enterProject') }}
             </button>
             <button class="btn" type="button" @click="handleRevealUserDataDir">
-              打开数据目录
+              {{ t('welcome.revealDataDir') }}
             </button>
           </div>
         </div>
 
         <div class="platformCard">
           <div class="platformCardHeader">
-            <div class="platformCardTitle">平台状态</div>
+            <div class="platformCardTitle">{{ t('welcome.platformStatus') }}</div>
             <div class="platformStatusBadge" :class="platformStatusClass">
               <span class="platformStatusDot" />
               <span>{{ platformStatusText }}</span>
@@ -494,7 +497,7 @@ onBeforeUnmount(() => {
             {{ platformHintText }}
           </div>
           <div v-if="platformStatus?.installedDlcs?.length" class="platformDlcs">
-            <span class="platformDlcsLabel">已安装DLC:</span>
+            <span class="platformDlcsLabel">{{ t('welcome.installedDlcs') }}</span>
             <span
               v-for="dlc in platformStatus.installedDlcs"
               :key="dlc.appId"
@@ -502,12 +505,12 @@ onBeforeUnmount(() => {
             >{{ dlc.name }}</span>
           </div>
           <div v-if="platformOverlayEnabled" class="platformOverlayInfo">
-            Steam Overlay {{ platformStatus?.overlayActive ? "已激活" : "可用" }}
+            Steam Overlay {{ platformStatus?.overlayActive ? t('welcome.steamOverlayActive') : t('welcome.steamOverlayAvailable') }}
           </div>
         </div>
         <div class="rightBottom">
           <CommandConsole
-            title="命令行输出（Django）"
+            :title="t('welcome.consoleTitle')"
             :status-text="logStatusText"
             :lines="logLines"
             @copy="handleCopyLogs"

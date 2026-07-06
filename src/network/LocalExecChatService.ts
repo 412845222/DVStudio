@@ -125,6 +125,9 @@ export type LocalExecChatService = {
 	seedreamGenerateStream: (
 		form: FormData
 	) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
+	geminiImageGenerateStream: (
+		payload: Record<string, unknown>
+	) => AsyncGenerator<NanoBananaGenerateStreamEvent, void, void>
 	jimengImageGenerateStream: (
 		form: FormData
 	) => AsyncGenerator<JimengGenerateStreamEvent, void, void>
@@ -209,6 +212,7 @@ export const createLocalExecChatService = (bridge: ComfyUIBridgeService): LocalE
 		seedreamCacheRefImages: (form) => bridge.seedreamCacheRefImages(form),
 		nanoBananaGenerateStream: (form) => bridge.nanoBananaGenerateStream(form),
 		seedreamGenerateStream: (form) => bridge.seedreamGenerateStream(form),
+		geminiImageGenerateStream: (payload) => bridge.geminiImageGenerateStream(payload),
 		jimengImageGenerateStream: (form) => bridge.jimengImageGenerateStream(form),
 		jimengVideoGenerateStream: (form) => bridge.jimengVideoGenerateStream(form),
 		seedanceGenerateStream: (form) => bridge.seedanceGenerateStream(form),

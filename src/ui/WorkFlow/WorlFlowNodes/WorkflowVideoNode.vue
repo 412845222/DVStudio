@@ -45,12 +45,12 @@
 					/>
 				</div>
 				<div v-else class="wf-media-empty">
-					<div class="wf-media-hint">未上传视频资源</div>
-					<div class="wf-media-sub">点击按钮选择文件</div>
+					<div class="wf-media-hint">{{ t('nodes.video.emptyHint') }}</div>
+					<div class="wf-media-sub">{{ t('nodes.video.emptySub') }}</div>
 				</div>
 				<div class="wf-media-actions" @pointerdown.stop>
 					<button class="wf-media-btn" type="button" @click.stop="onUploadClick">
-						{{ resourceUrl ? '更换资源' : '上传资源' }}
+						{{ resourceUrl ? t('nodes.video.replaceResource') : t('nodes.video.uploadResource') }}
 					</button>
 					<button
 						v-if="resourceUrl"
@@ -58,7 +58,7 @@
 						type="button"
 						@click.stop="emit('clear-resource')"
 					>
-						清空
+						{{ t('nodes.video.clear') }}
 					</button>
 				</div>
 				<input
@@ -93,9 +93,9 @@
 							type="button"
 							:disabled="!resourceUrl || !screenshotEnabled"
 							@click.stop="onScreenshot"
-							:title="screenshotEnabled ? '截图' : '仅当视频输出连接到图片节点输入时可用'"
+							:title="screenshotEnabled ? t('nodes.video.screenshot') : t('nodes.video.screenshotDisabled')"
 						>
-							截图
+							{{ t('nodes.video.screenshot') }}
 						</button>
 					</div>
 
@@ -141,6 +141,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import VideoController from '../../UIComponent/VideoController.vue'
 import { DwebCanvasGL } from '../../../engine/webgl/canvas/DwebCanvasGL'
+import { useI18n } from '../../../i18n'
+
+const { t } = useI18n()
 
 type AnchorSpec = {
 	id: string
@@ -746,13 +749,13 @@ const drawTimeline = () => {
 	if (!d || !effectiveResourceUrl.value) {
 		ctx.fillStyle = muted
 		ctx.font = '12px sans-serif'
-		ctx.fillText('时间轴', 8, Math.floor(h / 2) + 4)
+		ctx.fillText(t('nodes.video.timeline'), 8, Math.floor(h / 2) + 4)
 		return
 	}
 
 	const { start, end, len } = getTimelineWindow()
-	const t = clamp(seekValue.value, 0, d)
-	const x = len > 0 ? ((t - start) / len) * w : 0
+	const seekT = clamp(seekValue.value, 0, d)
+	const x = len > 0 ? ((seekT - start) / len) * w : 0
 
 	// pointer line
 	ctx.strokeStyle = accent
@@ -775,7 +778,7 @@ const drawTimeline = () => {
 	const secPerPx = len > 0 ? len / Math.max(1, w) : 0
 	const precisionLabel =
 		secPerPx >= 1 ? `${secPerPx.toFixed(2)}s/px` : `${Math.max(0, secPerPx * 1000).toFixed(0)}ms/px`
-	const info = `范围 ${len.toFixed(2)}s  缩放×${z}  精度 ${precisionLabel}`
+	const info = t('nodes.video.rangeInfo', { duration: len.toFixed(2), zoom: z, precision: precisionLabel })
 	ctx.fillStyle = muted
 	ctx.font = '11px sans-serif'
 	ctx.fillText(info, 8, h - 8)

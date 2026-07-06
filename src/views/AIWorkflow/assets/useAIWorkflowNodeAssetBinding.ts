@@ -1,5 +1,6 @@
 import type { BlueprintProjectService } from '../../../network/BlueprintProjectService'
 import type { WorkflowResource, WorkflowNode } from '../../../aiworkflow/types'
+import { t } from '../../../i18n'
 
 type UploadedAsset = {
 	url?: string
@@ -235,7 +236,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		options.store.commit('addResource', {
 			id: resourceId,
 			kind,
-			name: file.name || `${kind}资源`,
+			name: file.name || t(`aiworkflow.runtime.${kind}Resource`),
 			url: finalUrl,
 			...(assetAbsPath ? { sourcePath: assetAbsPath } : sourcePath ? { sourcePath } : {}),
 			...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),

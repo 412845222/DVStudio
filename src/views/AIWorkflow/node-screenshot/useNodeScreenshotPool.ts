@@ -10,6 +10,7 @@
  * 锚点通过真实DOM渲染在截图外侧，不需要包含在截图中。
  *
  * 新增：优先级队列 + 时间分片执行，避免阻塞主线程
+ * 新增：双主题缓存(dark/light)，主题切换时保留两套截图，支持无缝过渡
  */
 
 import { ref } from 'vue'
@@ -17,6 +18,7 @@ import { ref } from 'vue'
 export interface ScreenshotCacheEntry {
 	nodeId: string
 	version: string
+	theme: 'dark' | 'light'
 	dataUrl: string
 	width: number
 	height: number
@@ -64,6 +66,7 @@ interface ScreenshotSlot {
 
 interface ScreenshotTask {
 	nodeId: string
+	theme: 'dark' | 'light'
 	element: HTMLElement
 	version: string
 	width: number
@@ -204,6 +207,17 @@ const getDocumentStyles = (): string => {
 	return cachedDocumentStyles
 }
 
+export const invalidateDocumentStyleCache = (): void => {
+	cachedDocumentStyles = null
+}
+
+const extractThemeFromVersion = (version: string): 'dark' | 'light' => {
+	const m = version.match(/^theme:(dark|light)/)
+	return m ? (m[1] as 'dark' | 'light') : 'dark'
+}
+
+const makeCacheKey = (nodeId: string, theme: 'dark' | 'light') => `${nodeId}::${theme}`
+
 const inlineAllStyles = (source: Element, clone: Element) => {
 	const sw = document.createTreeWalker(source, NodeFilter.SHOW_ELEMENT)
 	const cw = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT)
@@ -251,8 +265,6 @@ const inlineAllStyles = (source: Element, clone: Element) => {
 			}
 
 			cEl.setAttribute('style', props.join('; '))
-			// 保留class和id，因为我们注入了完整的样式表
-			// 不remove class/id，让选择器可以正常工作
 		}
 
 		if (cEl instanceof HTMLImageElement) {
@@ -341,6 +353,12 @@ const scheduleWork = (fn: () => void, priority: ScreenshotPriority) => {
 	}
 }
 
+export interface WarmupProgressInfo {
+	completed: number
+	total: number
+	theme: 'dark' | 'light'
+}
+
 export const createNodeScreenshotPool = () => {
 	const maxConcurrency = ref<number>(getIdealConcurrency())
 	const cache = new Map<string, ScreenshotCacheEntry>()
@@ -355,20 +373,84 @@ export const createNodeScreenshotPool = () => {
 	let processing = false
 	let active = 0
 	let burstMode = false
+	let activeTheme: 'dark' | 'light' = 'dark'
+	let onWarmupProgress: ((info: WarmupProgressInfo) => void) | null = null
+
+	const getCacheKey = (nodeId: string, theme: 'dark' | 'light') => makeCacheKey(nodeId, theme)
 
 	const getCached = (nodeId: string, version: string) => {
-		const e = cache.get(nodeId)
+		const theme = extractThemeFromVersion(version)
+		const key = getCacheKey(nodeId, theme)
+		const e = cache.get(key)
 		return e && e.version === version ? e : null
 	}
 	const hasCached = (nodeId: string, version: string) => !!getCached(nodeId, version)
-	const invalidate = (nodeId: string) => cache.delete(nodeId)
 
-	const pruneToValidNodes = (validNodeIds: Set<string>) => {
-		for (const cachedId of Array.from(cache.keys())) {
-			if (!validNodeIds.has(cachedId)) {
-				cache.delete(cachedId)
+	const hasCachedForTheme = (nodeId: string, theme: 'dark' | 'light'): boolean => {
+		const key = getCacheKey(nodeId, theme)
+		return cache.has(key)
+	}
+
+	const getCachedForTheme = (nodeId: string, theme: 'dark' | 'light'): ScreenshotCacheEntry | null => {
+		const key = getCacheKey(nodeId, theme)
+		return cache.get(key) || null
+	}
+
+	const getAllCachedForTheme = (theme: 'dark' | 'light'): Map<string, ScreenshotCacheEntry> => {
+		const result = new Map<string, ScreenshotCacheEntry>()
+		for (const [key, entry] of cache) {
+			if (key.endsWith(`::${theme}`)) {
+				result.set(entry.nodeId, entry)
 			}
 		}
+		return result
+	}
+
+	const invalidate = (nodeId: string, theme?: 'dark' | 'light') => {
+		if (theme) {
+			cache.delete(getCacheKey(nodeId, theme))
+		} else {
+			cache.delete(getCacheKey(nodeId, 'dark'))
+			cache.delete(getCacheKey(nodeId, 'light'))
+		}
+	}
+
+	const invalidateTheme = (theme: 'dark' | 'light') => {
+		for (const key of Array.from(cache.keys())) {
+			if (key.endsWith(`::${theme}`)) {
+				cache.delete(key)
+			}
+		}
+	}
+
+	const pruneToValidNodes = (validNodeIds: Set<string>) => {
+		for (const key of Array.from(cache.keys())) {
+			const nodeId = key.split('::')[0]
+			if (!validNodeIds.has(nodeId)) {
+				cache.delete(key)
+			}
+		}
+	}
+
+	const setActiveTheme = (theme: 'dark' | 'light') => {
+		activeTheme = theme
+	}
+
+	const getActiveTheme = (): 'dark' | 'light' => activeTheme
+
+	const setWarmupProgressCallback = (cb: ((info: WarmupProgressInfo) => void) | null) => {
+		onWarmupProgress = cb
+	}
+
+	const countPendingForTheme = (theme: 'dark' | 'light'): number => {
+		let count = 0
+		for (const t of highPriorityQueue) if (t.theme === theme) count++
+		for (const t of normalPriorityQueue) if (t.theme === theme) count++
+		for (const t of lowPriorityQueue) if (t.theme === theme) count++
+		for (const [, v] of inFlight) {
+			if (extractThemeFromVersion(v.version) === theme) count++
+		}
+		return count
 	}
 
 	const capture = async (
@@ -376,9 +458,11 @@ export const createNodeScreenshotPool = () => {
 		sourceEl: HTMLElement,
 		width: number,
 		height: number,
-		padding: number
+		padding: number,
+		captureTheme: 'dark' | 'light'
 	): Promise<HTMLCanvasElement | null> => {
 		const host = slot.host
+		host.setAttribute('data-theme', captureTheme)
 		while (host.firstChild) {
 			host.removeChild(host.firstChild)
 		}
@@ -388,6 +472,7 @@ export const createNodeScreenshotPool = () => {
 
 		const wrapper = document.createElement('div')
 		wrapper.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
+		wrapper.setAttribute('data-theme', captureTheme)
 		wrapper.style.position = 'absolute'
 		wrapper.style.left = '0'
 		wrapper.style.top = '0'
@@ -399,6 +484,10 @@ export const createNodeScreenshotPool = () => {
 		wrapper.style.transform = 'none'
 		wrapper.style.background = 'transparent'
 		wrapper.style.backgroundColor = 'transparent'
+
+		// 临时设置文档主题以确保getComputedStyle获取正确的值（仅当host不在正确主题上下文中时）
+		// 注意：host在body下，会继承html[data-theme]，但为了安全显式设置
+		// 不修改html主题，因为host已设置data-theme且CSS变量是继承的
 
 		const clone = sourceEl.cloneNode(true) as HTMLElement
 
@@ -510,6 +599,7 @@ export const createNodeScreenshotPool = () => {
 		try {
 			const serializedWrapper = document.createElement('div')
 			serializedWrapper.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml')
+			serializedWrapper.setAttribute('data-theme', captureTheme)
 			serializedWrapper.style.width = `${totalW}px`
 			serializedWrapper.style.height = `${totalH}px`
 			serializedWrapper.style.overflow = 'visible'
@@ -559,6 +649,20 @@ export const createNodeScreenshotPool = () => {
 	const getQueueLength = () =>
 		highPriorityQueue.length + normalPriorityQueue.length + lowPriorityQueue.length
 
+	let completedTaskCount = 0
+	let totalWarmupTaskCount = 0
+	let currentWarmupTheme: 'dark' | 'light' = 'dark'
+
+	const reportWarmupProgress = () => {
+		if (onWarmupProgress) {
+			onWarmupProgress({
+				completed: completedTaskCount,
+				total: totalWarmupTaskCount,
+				theme: currentWarmupTheme
+			})
+		}
+	}
+
 	const processNext = () => {
 		if (getQueueLength() === 0 || active >= maxConcurrency.value) {
 			return
@@ -575,8 +679,9 @@ export const createNodeScreenshotPool = () => {
 
 		active++
 
+		const inflightKey = `${task.nodeId}::${task.theme}`
 		const inflightResolves: Array<(e: ScreenshotCacheEntry | null) => void> = []
-		inFlight.set(task.nodeId, { version: task.version, resolves: inflightResolves })
+		inFlight.set(inflightKey, { version: task.version, resolves: inflightResolves })
 		inflightResolves.push(task.resolve)
 		;(async () => {
 			const startTime = performance.now()
@@ -584,14 +689,18 @@ export const createNodeScreenshotPool = () => {
 				const cached = getCached(task.nodeId, task.version)
 				if (cached) {
 					releaseSlot(slot)
+					completedTaskCount++
+					reportWarmupProgress()
 					for (const r of inflightResolves) r(cached)
 					return
 				}
 
-				const canvas = await capture(slot, task.element, task.width, task.height, task.padding)
+				const canvas = await capture(slot, task.element, task.width, task.height, task.padding, task.theme)
 				releaseSlot(slot)
 
 				if (!canvas) {
+					completedTaskCount++
+					reportWarmupProgress()
 					for (const r of inflightResolves) r(null)
 					return
 				}
@@ -599,20 +708,25 @@ export const createNodeScreenshotPool = () => {
 				const entry: ScreenshotCacheEntry = {
 					nodeId: task.nodeId,
 					version: task.version,
+					theme: task.theme,
 					dataUrl: canvas.toDataURL('image/png'),
 					width: canvas.width,
 					height: canvas.height,
 					padding: task.padding,
 					capturedAt: Date.now()
 				}
-				cache.set(task.nodeId, entry)
+				cache.set(getCacheKey(task.nodeId, task.theme), entry)
+				completedTaskCount++
+				reportWarmupProgress()
 				for (const r of inflightResolves) r(entry)
 			} catch (err) {
 				console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
 				releaseSlot(slot)
+				completedTaskCount++
+				reportWarmupProgress()
 				for (const r of inflightResolves) r(null)
 			} finally {
-				inFlight.delete(task.nodeId)
+				inFlight.delete(inflightKey)
 				active--
 				if (burstMode) {
 					processNext()
@@ -667,20 +781,22 @@ export const createNodeScreenshotPool = () => {
 		priority: ScreenshotPriority = 'normal'
 	): Promise<ScreenshotCacheEntry | null> => {
 		return new Promise((resolve) => {
+			const theme = extractThemeFromVersion(version)
 			const cached = getCached(nodeId, version)
 			if (cached) {
 				resolve(cached)
 				return
 			}
 
-			const inflight = inFlight.get(nodeId)
+			const inflightKey = `${nodeId}::${theme}`
+			const inflight = inFlight.get(inflightKey)
 			if (inflight && inflight.version === version) {
 				inflight.resolves.push(resolve)
 				return
 			}
 
 			const existingTask = [...highPriorityQueue, ...normalPriorityQueue, ...lowPriorityQueue].find(
-				(x) => x.nodeId === nodeId
+				(x) => x.nodeId === nodeId && x.theme === theme
 			)
 
 			if (existingTask) {
@@ -710,6 +826,7 @@ export const createNodeScreenshotPool = () => {
 
 			const task: ScreenshotTask = {
 				nodeId,
+				theme,
 				element,
 				version,
 				width,
@@ -761,11 +878,14 @@ export const createNodeScreenshotPool = () => {
 		height: number = 0,
 		padding: number = SCREENSHOT_PADDING
 	) => {
-		const existing = cache.get(nodeId)
+		const theme = extractThemeFromVersion(version)
+		const key = getCacheKey(nodeId, theme)
+		const existing = cache.get(key)
 		if (existing && existing.version === version) return
-		cache.set(nodeId, {
+		cache.set(key, {
 			nodeId,
 			version,
+			theme,
 			dataUrl,
 			width,
 			height,
@@ -801,6 +921,42 @@ export const createNodeScreenshotPool = () => {
 		}
 	}
 
+	const beginWarmupTracking = (theme: 'dark' | 'light') => {
+		currentWarmupTheme = theme
+		completedTaskCount = 0
+		totalWarmupTaskCount = countPendingForTheme(theme)
+		reportWarmupProgress()
+	}
+
+	const invalidateAll = () => {
+		cache.clear()
+		highPriorityQueue.length = 0
+		normalPriorityQueue.length = 0
+		lowPriorityQueue.length = 0
+		inFlight.clear()
+	}
+
+	const cancelPending = () => {
+		highPriorityQueue.length = 0
+		normalPriorityQueue.length = 0
+		lowPriorityQueue.length = 0
+		inFlight.clear()
+	}
+
+	const cancelPendingForTheme = (theme: 'dark' | 'light') => {
+		const filterByTheme = (arr: ScreenshotTask[]) => {
+			for (let i = arr.length - 1; i >= 0; i--) {
+				if (arr[i].theme === theme) arr.splice(i, 1)
+			}
+		}
+		filterByTheme(highPriorityQueue)
+		filterByTheme(normalPriorityQueue)
+		filterByTheme(lowPriorityQueue)
+		for (const [key] of inFlight) {
+			if (key.endsWith(`::${theme}`)) inFlight.delete(key)
+		}
+	}
+
 	const cleanup = () => {
 		clearAllSlots()
 		cleanupSlots()
@@ -812,12 +968,20 @@ export const createNodeScreenshotPool = () => {
 		processing = false
 		active = 0
 		burstMode = false
+		onWarmupProgress = null
 	}
 
 	return {
 		getCachedScreenshot: getCached,
 		hasCachedScreenshot: hasCached,
+		hasCachedForTheme,
+		getCachedForTheme,
+		getAllCachedForTheme,
 		invalidateScreenshot: invalidate,
+		invalidateTheme,
+		invalidateAll,
+		cancelPending,
+		cancelPendingForTheme,
 		pruneToValidNodes,
 		prefillCache,
 		queueScreenshot,
@@ -826,6 +990,10 @@ export const createNodeScreenshotPool = () => {
 		resetConcurrency,
 		setBurstMode,
 		getWarmupConcurrency,
+		setActiveTheme,
+		getActiveTheme,
+		setWarmupProgressCallback,
+		beginWarmupTracking,
 		getStats: () => ({
 			cacheSize: cache.size,
 			queueHigh: highPriorityQueue.length,
