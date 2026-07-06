@@ -63,8 +63,8 @@ declare global {
 		license: string
 		homepage: string
 		repoUrl: string
-		bilibiliUrl?: string
-		issuesUrl?: string
+		bilibiliUrl: string
+		issuesUrl: string
 	}
 
 	type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
@@ -133,7 +133,7 @@ declare global {
 			common: {
 				getAppInfo?(): DwebAppInfo
 				checkForUpdate?(): Promise<DwebUpdateCheckResult>
-				isSteamVersion?(): Promise<{ isSteam: boolean }>
+				isSteamVersion?(): Promise<{ ok: boolean; isSteam: boolean }>
 				getBackendBaseUrl(): Promise<string>
 				getBackendRuntimeState(): Promise<BackendRuntimeState>
 				onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): number

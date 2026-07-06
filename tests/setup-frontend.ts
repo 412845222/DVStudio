@@ -101,6 +101,14 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   vi.stubGlobal('__DWEB_BACKEND_BASE_URL__', 'http://127.0.0.1:5800')
   vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'web', isElectron: false })
 
+  vi.stubGlobal('__DWEB_REPO_URL__', 'https://github.com/412845222/DVStudio')
+  vi.stubGlobal('__DWEB_APP_VERSION__', '0.1.3')
+  vi.stubGlobal('__DWEB_APP_NAME__', 'DVStudio')
+  vi.stubGlobal('__DWEB_APP_COPYRIGHT__', 'Copyright (c) 2026 DwebStudio')
+  vi.stubGlobal('__DWEB_HOMEPAGE_URL__', 'https://www.dweb.club/')
+  vi.stubGlobal('__DWEB_BILIBILI_URL__', 'https://space.bilibili.com/22690066')
+  vi.stubGlobal('__DWEB_ISSUES_URL__', 'https://github.com/412845222/DVStudio/issues')
+
   // 2. 空 fetch 桩：由各 Service 测试自行覆盖实现
   vi.stubGlobal('fetch', vi.fn())
 
