@@ -22,6 +22,27 @@ if (typeof HTMLCanvasElement !== 'undefined') {
       openExternalUrl: vi.fn().mockResolvedValue({ ok: true }),
       openFolderForPath: vi.fn().mockResolvedValue({ ok: true }),
       runBootstrapInstaller: vi.fn().mockResolvedValue({ ok: true }),
+      getAppInfo: vi.fn().mockResolvedValue({
+        appName: 'DVStudio',
+        appId: 'com.dwebstudio.dvstudio',
+        appVersion: '0.1.0',
+        copyright: 'Copyright (c) 2026 DwebStudio',
+        license: 'MIT',
+        homepage: 'https://www.dweb.club/',
+        repoUrl: 'https://github.com/412845222/DVStudio',
+        bilibiliUrl: 'https://space.bilibili.com/22690066',
+        issuesUrl: 'https://github.com/412845222/DVStudio/issues',
+      }),
+      checkForUpdate: vi.fn().mockResolvedValue({
+        ok: true,
+        hasUpdate: false,
+        currentVersion: '0.1.0',
+        latestVersion: '0.1.0',
+      }),
+      isSteamVersion: vi.fn().mockResolvedValue({
+        ok: true,
+        isSteam: false,
+      }),
     },
     window: {
       minimize: vi.fn(),
