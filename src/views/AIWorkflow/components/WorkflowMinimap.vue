@@ -1,6 +1,6 @@
 <template>
 	<div class="wf-minimap" :class="{ 'wf-minimap--light': isLight }">
-		<Transition name="wf-minimap-toggle-anim">
+		<Transition name="wf-minimap-toggle-anim" appear>
 			<button
 				v-if="collapsed"
 				key="toggle"
@@ -18,7 +18,7 @@
 				</svg>
 			</button>
 		</Transition>
-		<Transition name="wf-minimap-panel-anim" @after-enter="onPanelAfterEnter">
+		<Transition name="wf-minimap-panel-anim" appear @after-enter="onPanelAfterEnter">
 			<div v-if="!collapsed" key="panel" class="wf-minimap-panel" @wheel.stop.prevent>
 				<div class="wf-minimap-scanline" />
 				<div class="wf-minimap-header">
@@ -497,8 +497,8 @@ onBeforeUnmount(() => {
 	-webkit-mask-composite: xor;
 	mask-composite: exclude;
 	pointer-events: none;
-	opacity: 0;
-	animation: wf-minimap-border-fade 0.4s ease-out 0.1s forwards;
+	opacity: 0.8;
+	animation: wf-minimap-border-pulse 3s ease-in-out infinite;
 }
 
 .wf-minimap--light .wf-minimap-border-glow {
@@ -525,8 +525,6 @@ onBeforeUnmount(() => {
 	color: #6ee7b7;
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
-	opacity: 0;
-	animation: wf-minimap-fade-in 0.3s ease-out 0.15s forwards;
 }
 
 .wf-minimap--light .wf-minimap-title {
@@ -536,8 +534,6 @@ onBeforeUnmount(() => {
 .wf-minimap-actions {
 	display: flex;
 	gap: 4px;
-	opacity: 0;
-	animation: wf-minimap-fade-in 0.3s ease-out 0.2s forwards;
 }
 
 .wf-minimap-fit-btn,
@@ -577,23 +573,15 @@ onBeforeUnmount(() => {
 	display: block;
 	cursor: crosshair;
 	touch-action: none;
-	opacity: 0;
-	animation: wf-minimap-fade-in 0.35s ease-out 0.1s forwards;
 }
 
 .wf-minimap-corner {
 	position: absolute;
 	width: 8px;
 	height: 8px;
-	border-color: rgba(31, 157, 132, 0);
 	border-style: solid;
 	border-width: 0;
-	transition: border-color 0.2s ease;
-}
-
-.wf-minimap-panel[data-v-xxx] .wf-minimap-corner,
-.wf-minimap-corner {
-	animation: wf-minimap-corner-appear 0.3s ease-out forwards;
+	border-color: rgba(31, 157, 132, 0.8);
 }
 
 .wf-minimap-corner--tl {
@@ -601,7 +589,6 @@ onBeforeUnmount(() => {
 	left: -1px;
 	border-top-width: 2px;
 	border-left-width: 2px;
-	animation-delay: 0.05s;
 }
 
 .wf-minimap-corner--tr {
@@ -609,7 +596,6 @@ onBeforeUnmount(() => {
 	right: -1px;
 	border-top-width: 2px;
 	border-right-width: 2px;
-	animation-delay: 0.1s;
 }
 
 .wf-minimap-corner--bl {
@@ -617,7 +603,6 @@ onBeforeUnmount(() => {
 	left: -1px;
 	border-bottom-width: 2px;
 	border-left-width: 2px;
-	animation-delay: 0.15s;
 }
 
 .wf-minimap-corner--br {
@@ -625,12 +610,10 @@ onBeforeUnmount(() => {
 	right: -1px;
 	border-bottom-width: 2px;
 	border-right-width: 2px;
-	animation-delay: 0.2s;
 }
 
 .wf-minimap--light .wf-minimap-corner {
-	border-color: rgba(15, 118, 110, 0);
-	animation-name: wf-minimap-corner-appear-light;
+	border-color: rgba(15, 118, 110, 0.8);
 }
 
 /* Toggle button transition */
@@ -672,30 +655,15 @@ onBeforeUnmount(() => {
 	50% { opacity: 1; }
 }
 
+@keyframes wf-minimap-border-pulse {
+	0%, 100% { opacity: 0.5; }
+	50% { opacity: 0.9; }
+}
+
 @keyframes wf-minimap-scan {
 	0% { transform: translateY(0); opacity: 0; }
 	10% { opacity: 0.6; }
 	90% { opacity: 0.6; }
 	100% { transform: translateY(173px); opacity: 0; }
-}
-
-@keyframes wf-minimap-fade-in {
-	from { opacity: 0; }
-	to { opacity: 1; }
-}
-
-@keyframes wf-minimap-border-fade {
-	from { opacity: 0; }
-	to { opacity: 1; }
-}
-
-@keyframes wf-minimap-corner-appear {
-	from { border-color: rgba(31, 157, 132, 0); }
-	to { border-color: rgba(31, 157, 132, 0.8); }
-}
-
-@keyframes wf-minimap-corner-appear-light {
-	from { border-color: rgba(15, 118, 110, 0); }
-	to { border-color: rgba(15, 118, 110, 0.8); }
 }
 </style>
