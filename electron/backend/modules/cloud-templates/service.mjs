@@ -1,5 +1,5 @@
 import { getActiveCloudAdapter } from './adapters/factory.mjs'
-import { getManager } from '../../platform/manager.mjs'
+import { getManager } from '../../../platform/manager.mjs'
 
 const TEMPLATE_PATH_PREFIX = 'usertemplates/'
 const INDEX_FILE = `${TEMPLATE_PATH_PREFIX}index.json`
@@ -7,12 +7,19 @@ const INDEX_FILE = `${TEMPLATE_PATH_PREFIX}index.json`
 export class CloudTemplatesService {
     constructor() {
         this._adapter = null
-        this._platformManager = getManager()
-        this._initAdapter()
+        this._platformManager = null
+    }
+
+    _ensureManager() {
+        if (!this._platformManager) {
+            this._platformManager = getManager()
+        }
+        return this._platformManager
     }
 
     _initAdapter() {
-        this._adapter = getActiveCloudAdapter(this._platformManager, {
+        const mgr = this._ensureManager()
+        this._adapter = getActiveCloudAdapter(mgr, {
             pathPrefix: TEMPLATE_PATH_PREFIX,
         })
     }
