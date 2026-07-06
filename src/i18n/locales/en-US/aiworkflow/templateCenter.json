@@ -1,6 +1,10 @@
 {
   "aiworkflow.templateCenter.title": "Template Center",
   "aiworkflow.templateCenter.subtitle": "Manage and reuse workflow templates",
+  "aiworkflow.templateCenter.tabBuiltin": "Built-in",
+  "aiworkflow.templateCenter.tabUser": "My Templates",
+  "aiworkflow.templateCenter.tabCloud": "My Cloud",
+  "aiworkflow.templateCenter.tabWorkshop": "Workshop",
   "aiworkflow.templateCenter.searchPlaceholder": "Search templates...",
   "aiworkflow.templateCenter.allCategories": "All Categories",
   "aiworkflow.templateCenter.allSources": "All Sources",
@@ -70,5 +74,11 @@
   "aiworkflow.templateCenter.savingFull": "Saving {count} nodes",
   "aiworkflow.templateCenter.packingTemplate": "Packing template assets...",
   "aiworkflow.toolbar.templateCenter": "Templates",
-  "aiworkflow.toolbar.saveAsTemplate": "Save as Template"
+  "aiworkflow.toolbar.saveAsTemplate": "Save as Template",
+  "aiworkflow.templateCenter.noBuiltinTemplates": "No built-in templates",
+  "aiworkflow.templateCenter.noUserTemplates": "No personal templates yet, click the button above to create your first template",
+  "aiworkflow.templateCenter.noCloudTemplates": "No cloud templates",
+  "aiworkflow.templateCenter.workshopTitle": "Official Template Workshop",
+  "aiworkflow.templateCenter.workshopDesc": "Browse and download curated workflow templates provided by DVStudio official team, get premium content from professional creators",
+  "aiworkflow.templateCenter.steamRequired": "Requires Steam client running and logged in"
 }

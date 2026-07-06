@@ -236,6 +236,36 @@ function wrapNativeModule(native) {
                 try { return nativeClient.isDlcInstalled(id) } catch { return false }
             }
 
+            client.cloud = {
+                getQuota: () => {
+                    try { return nativeClient.cloudGetQuota() } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                fileWrite: (fileName, buffer) => {
+                    try { return nativeClient.cloudFileWrite(fileName, buffer) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                fileRead: (fileName) => {
+                    try { return nativeClient.cloudFileRead(fileName) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                fileDelete: (fileName) => {
+                    try { return nativeClient.cloudFileDelete(fileName) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                fileExists: (fileName) => {
+                    try { return nativeClient.cloudFileExists(fileName) } catch (err) { return { ok: false, exists: false, errMsg: err.message } }
+                },
+                getFileSize: (fileName) => {
+                    try { return nativeClient.cloudGetFileSize(fileName) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                getFileTimestamp: (fileName) => {
+                    try { return nativeClient.cloudGetFileTimestamp(fileName) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+                getFileCount: () => {
+                    try { return nativeClient.cloudGetFileCount() } catch { return 0 }
+                },
+                getFileNameAndSize: (index) => {
+                    try { return nativeClient.cloudGetFileNameAndSize(index) } catch (err) { return { ok: false, errMsg: err.message } }
+                },
+            }
+
             return client
         }
     }
@@ -586,6 +616,24 @@ class SteamPlatformProvider extends EventEmitter {
         } catch {
             return []
         }
+    }
+
+    get cloud() {
+        const notInitialized = {
+            getQuota: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            fileWrite: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            fileRead: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            fileDelete: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            fileExists: () => ({ ok: false, exists: false, errMsg: 'Steam not initialized' }),
+            getFileSize: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            getFileTimestamp: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+            getFileCount: () => 0,
+            getFileNameAndSize: () => ({ ok: false, errMsg: 'Steam not initialized' }),
+        }
+        if (!this._initialized || !this._client || !this._client.cloud) {
+            return notInitialized
+        }
+        return this._client.cloud
     }
 }
 

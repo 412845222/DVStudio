@@ -50,6 +50,25 @@
 					</div>
 				</div>
 
+				<div class="tc-tabs">
+					<button
+						v-for="tab in tabs"
+						:key="tab.id"
+						class="tc-tab"
+						:class="{ active: activeTab === tab.id }"
+						type="button"
+						@click="switchTab(tab.id)"
+					>
+						<svg v-if="tab.icon" :viewBox="tab.icon.viewBox" width="14" height="14" aria-hidden="true">
+							<path :d="tab.icon.d" fill="currentColor" />
+						</svg>
+						<span>{{ tab.label }}</span>
+						<span v-if="cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge">
+							{{ cloudPlatform?.platformName || 'Cloud' }}
+						</span>
+					</button>
+				</div>
+
 				<div class="tc-toolbar">
 					<div class="tc-search-wrap">
 						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -65,12 +84,6 @@
 					</div>
 
 					<div class="tc-filters">
-						<select v-model="selectedSource" class="tc-select">
-							<option value="all">{{ t('aiworkflow.templateCenter.allSources') }}</option>
-							<option value="builtin">{{ t('aiworkflow.templateCenter.sourceBuiltin') }}</option>
-							<option value="user">{{ t('aiworkflow.templateCenter.sourceUser') }}</option>
-						</select>
-
 						<select v-model="selectedCategory" class="tc-select">
 							<option value="all">{{ t('aiworkflow.templateCenter.allCategories') }}</option>
 							<option value="basic">{{ t('aiworkflow.templateCategory.basic') }}</option>
@@ -142,33 +155,56 @@
 				</div>
 
 				<div class="tc-content">
-					<div v-if="loading" class="tc-loading">
-						<div class="tc-spinner"></div>
+					<div v-if="activeTab === 'workshop'" class="tc-workshop-placeholder">
+						<div class="tc-workshop-icon">
+							<svg viewBox="0 0 64 64" width="80" height="80" aria-hidden="true">
+								<rect x="8" y="8" width="48" height="48" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+								<path d="M24 28v-8a8 8 0 1 1 16 0v8" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<rect x="16" y="28" width="32" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<circle cx="32" cy="40" r="4" fill="currentColor" opacity="0.5" />
+							</svg>
+						</div>
+						<h3>{{ t('aiworkflow.templateCenter.workshopTitle') }}</h3>
+						<p>{{ t('aiworkflow.templateCenter.workshopDesc') }}</p>
+						<div v-if="!cloudAvailable" class="tc-workshop-hint">
+							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
+							</svg>
+							<span>{{ t('aiworkflow.templateCenter.steamRequired') }}</span>
+						</div>
 					</div>
 
-					<div v-else-if="filteredTemplates.length === 0" class="tc-empty">
-						<svg viewBox="0 0 48 48" width="64" height="64" aria-hidden="true">
-							<rect x="8" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="26" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="8" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-							<rect x="26" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-						</svg>
-						<p>{{ t('aiworkflow.templateCenter.noTemplates') }}</p>
-					</div>
+					<template v-else>
+						<div v-if="loading" class="tc-loading">
+							<div class="tc-spinner"></div>
+						</div>
 
-					<div v-else class="tc-grid" :class="`tc-grid--${viewMode}`">
-						<TemplateCard
-							v-for="template in filteredTemplates"
-							:key="template.id"
-							:template="template"
-							:selected="selectedTemplate?.id === template.id"
-							:size="cardSize"
-							@select="selectTemplate"
-							@preview="handlePreview"
-							@apply="handleApply"
-							@delete="handleDelete"
-						/>
-					</div>
+						<div v-else-if="displayTemplates.length === 0" class="tc-empty">
+							<svg viewBox="0 0 48 48" width="64" height="64" aria-hidden="true">
+								<rect x="8" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+								<rect x="26" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+								<rect x="8" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+								<rect x="26" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+							</svg>
+							<p>{{ currentTabEmptyText }}</p>
+						</div>
+
+						<div v-else class="tc-grid" :class="`tc-grid--${viewMode}`">
+							<TemplateCard
+								v-for="template in displayTemplates"
+								:key="template.id"
+								:template="template"
+								:selected="selectedTemplate?.id === template.id"
+								:size="cardSize"
+								@select="selectTemplate"
+								@preview="handlePreview"
+								@apply="handleApply"
+								@delete="handleDelete"
+								@upload="handleUpload"
+								@download="handleDownload"
+							/>
+						</div>
+					</template>
 				</div>
 			</div>
 		</div>
@@ -176,12 +212,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import TemplateCard from './TemplateCard.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
-import type { TemplateItem, SaveTemplateOptions } from '../../aiworkflow/template/types'
+import type { TemplateItem, SaveTemplateOptions, TemplateSource } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
+
+type TabId = 'builtin' | 'user' | 'cloud' | 'workshop'
 
 const props = defineProps<{
 	open: boolean
@@ -193,6 +231,8 @@ const emit = defineEmits<{
 	(e: 'preview-template', template: TemplateItem): void
 	(e: 'delete-template', template: TemplateItem): void
 	(e: 'save-template', options: Pick<SaveTemplateOptions, 'scope'>): void
+	(e: 'upload-template', template: TemplateItem): void
+	(e: 'download-template', template: TemplateItem): void
 }>()
 
 const { t } = useI18n()
@@ -201,15 +241,103 @@ const {
 	loading,
 	searchKeyword,
 	selectedCategory,
-	selectedSource,
 	sortBy,
 	viewMode,
 	selectedTemplate,
-	filteredTemplates,
+	templates,
+	cloudAvailable,
+	cloudPlatform,
+	uploadingTemplateId,
+	downloadingTemplateId,
 	loadTemplates,
 	selectTemplate,
 	setViewMode,
+	uploadToCloud,
+	downloadFromCloud,
 } = useTemplateCenter()
+
+const activeTab = ref<TabId>('builtin')
+
+const tabs = computed(() => [
+	{
+		id: 'builtin' as TabId,
+		label: t('aiworkflow.templateCenter.tabBuiltin'),
+		icon: { viewBox: '0 0 16 16', d: 'M2 2h5v5H2V2zm7 0h5v5H9V2zM2 9h5v5H2V9zm7 0h5v5H9V9z' },
+	},
+	{
+		id: 'user' as TabId,
+		label: t('aiworkflow.templateCenter.tabUser'),
+		icon: { viewBox: '0 0 16 16', d: 'M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 14s1-4 5-4 5 4 5 4H3z' },
+	},
+	{
+		id: 'cloud' as TabId,
+		label: t('aiworkflow.templateCenter.tabCloud'),
+		icon: { viewBox: '0 0 16 16', d: 'M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z' },
+	},
+	{
+		id: 'workshop' as TabId,
+		label: t('aiworkflow.templateCenter.tabWorkshop'),
+		icon: { viewBox: '0 0 16 16', d: 'M8 1l2 5h5l-4 3.5L12.5 15 8 11.5 3.5 15 5 9.5 1 6h5L8 1z' },
+	},
+])
+
+const tabSourceMap: Record<TabId, TemplateSource | null> = {
+	builtin: 'builtin',
+	user: 'user',
+	cloud: 'steam-user',
+	workshop: null,
+}
+
+const displayTemplates = computed(() => {
+	let result = [...templates.value]
+
+	const targetSource = tabSourceMap[activeTab.value]
+	if (targetSource) {
+		result = result.filter((t) => t.source === targetSource)
+	}
+
+	if (searchKeyword.value.trim()) {
+		const keyword = searchKeyword.value.toLowerCase().trim()
+		result = result.filter(
+			(t) =>
+				t.name.toLowerCase().includes(keyword) ||
+				t.description.toLowerCase().includes(keyword) ||
+				t.tags?.some((tag) => tag.toLowerCase().includes(keyword))
+		)
+	}
+
+	if (selectedCategory.value !== 'all') {
+		result = result.filter((t) => t.category === selectedCategory.value)
+	}
+
+	if (sortBy.value === 'name') {
+		result.sort((a, b) => a.name.localeCompare(b.name))
+	} else {
+		result.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+	}
+
+	return result
+})
+
+const currentTabEmptyText = computed(() => {
+	switch (activeTab.value) {
+		case 'builtin':
+			return t('aiworkflow.templateCenter.noBuiltinTemplates')
+		case 'user':
+			return t('aiworkflow.templateCenter.noUserTemplates')
+		case 'cloud':
+			return cloudAvailable.value
+				? t('aiworkflow.templateCenter.noCloudTemplates')
+				: t('aiworkflow.templateCenter.steamRequired')
+		default:
+			return t('aiworkflow.templateCenter.noTemplates')
+	}
+})
+
+function switchTab(tabId: TabId) {
+	activeTab.value = tabId
+	selectTemplate(null)
+}
 
 const particles = buildSquareParticles({ count: 12, seed: 999, baseOpacity: 0.35 })
 
@@ -239,6 +367,14 @@ function handleApply(template: TemplateItem) {
 
 function handleDelete(template: TemplateItem) {
 	emit('delete-template', template)
+}
+
+async function handleUpload(template: TemplateItem) {
+	await uploadToCloud(template)
+}
+
+async function handleDownload(template: TemplateItem) {
+	await downloadFromCloud(template)
 }
 </script>
 
@@ -520,6 +656,103 @@ function handleDelete(template: TemplateItem) {
 
 .tc-btn-close:hover {
 	color: var(--tc-accent);
+}
+
+/* Tabs */
+.tc-tabs {
+	position: relative;
+	z-index: 5;
+	display: flex;
+	gap: 0;
+	padding: 0 24px;
+	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 12%, transparent);
+	background: color-mix(in srgb, var(--tc-bg-1) 60%, transparent);
+}
+
+.tc-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 18px;
+	border: none;
+	background: transparent;
+	color: var(--tc-fg-soft);
+	font-size: 13px;
+	letter-spacing: 0.03em;
+	cursor: pointer;
+	border-bottom: 2px solid transparent;
+	transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+	font-family: inherit;
+	position: relative;
+}
+
+.tc-tab:hover {
+	color: var(--tc-fg);
+	background: color-mix(in srgb, var(--tc-accent) 5%, transparent);
+}
+
+.tc-tab.active {
+	color: var(--tc-glow);
+	border-bottom-color: var(--tc-accent);
+	background: color-mix(in srgb, var(--tc-accent) 8%, transparent);
+}
+
+.tc-tab-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 8px;
+	font-size: 10px;
+	background: color-mix(in srgb, var(--tc-accent) 20%, transparent);
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 40%, transparent);
+	border-radius: 2px;
+	color: var(--tc-glow);
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+}
+
+/* Workshop placeholder */
+.tc-workshop-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 48px;
+	text-align: center;
+	color: var(--tc-fg-soft);
+}
+
+.tc-workshop-icon {
+	color: var(--tc-accent);
+	opacity: 0.4;
+	margin-bottom: 24px;
+}
+
+.tc-workshop-placeholder h3 {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--tc-fg);
+	margin: 0 0 12px;
+	letter-spacing: 0.02em;
+}
+
+.tc-workshop-placeholder p {
+	font-size: 13px;
+	max-width: 400px;
+	line-height: 1.6;
+	margin: 0 0 20px;
+}
+
+.tc-workshop-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 16px;
+	background: color-mix(in srgb, var(--tc-warm) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--tc-warm) 30%, transparent);
+	border-radius: 2px;
+	color: var(--tc-warm);
+	font-size: 12px;
 }
 
 /* Toolbar */
