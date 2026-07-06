@@ -582,20 +582,21 @@ const loading = ref(true)
 <style scoped>
 .rmw-root {
 	width: 100%;
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
-	background: #1a1a1a;
+	background: var(--theme-bg-primary);
 	overflow: hidden;
+	position: relative;
 }
 
 .rmw-loading-mask {
-	position: fixed;
+	position: absolute;
 	inset: 0;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: #1a1a1a;
+	background: var(--theme-bg-primary);
 	z-index: 100;
 }
 
@@ -607,7 +608,6 @@ const loading = ref(true)
 	overflow: hidden;
 }
 
-/* 资源面板填满整个窗口 */
 .rmw-content :deep(.wf-resource-panel) {
 	position: relative;
 	top: auto;
@@ -619,11 +619,10 @@ const loading = ref(true)
 	border-radius: 0;
 }
 
-/* ============ 删除确认对话框 ============ */
 .rmw-confirm-mask {
-	position: fixed;
+	position: absolute;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.55);
+	background: color-mix(in srgb, black 55%, transparent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -635,8 +634,8 @@ const loading = ref(true)
 	width: 420px;
 	max-width: 90vw;
 	max-height: 80vh;
-	background: #2a2d33;
-	border: 1px solid #4a4d53;
+	background: var(--theme-bg-secondary);
+	border: 1px solid var(--theme-border);
 	border-radius: 8px;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	display: flex;
@@ -647,27 +646,27 @@ const loading = ref(true)
 
 .rmw-confirm-header {
 	padding: 14px 18px;
-	border-bottom: 1px solid #3a3d43;
+	border-bottom: 1px solid var(--theme-border);
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	background: rgba(180, 80, 80, 0.15);
+	background: color-mix(in srgb, var(--theme-error) 15%, var(--theme-bg-secondary));
 }
 
 .rmw-confirm-icon {
 	font-size: 18px;
-	color: #ffb84d;
+	color: var(--theme-warning, #f0ad4e);
 }
 
 .rmw-confirm-title-text {
 	font-size: 14px;
-	color: #f0f0f0;
+	color: var(--theme-text-primary);
 	font-weight: 500;
 }
 
 .rmw-confirm-body {
 	padding: 16px 18px;
-	color: #e0e0e0;
+	color: var(--theme-text-primary);
 	font-size: 13px;
 	line-height: 1.6;
 	overflow-y: auto;
@@ -680,7 +679,7 @@ const loading = ref(true)
 }
 
 .rmw-confirm-body strong {
-	color: #ffb84d;
+	color: var(--theme-warning, #f0ad4e);
 }
 
 .rmw-confirm-list {
@@ -694,78 +693,77 @@ const loading = ref(true)
 .rmw-confirm-list li {
 	margin: 4px 0;
 	font-size: 12px;
-	color: #c8c8c8;
+	color: var(--theme-text-secondary);
 }
 
 .rmw-confirm-node-type {
-	color: #7fb3d5;
+	color: var(--theme-accent);
 	margin-right: 6px;
 }
 
 .rmw-confirm-node-title {
-	color: #e8e8e8;
+	color: var(--theme-text-primary);
 }
 
 .rmw-confirm-node-desc {
-	color: #9a9a9a;
+	color: var(--theme-text-secondary);
 	margin-left: 4px;
 }
 
 .rmw-confirm-more {
-	color: #8a8a8a;
+	color: var(--theme-text-secondary);
 	font-size: 11px;
 }
 
 .rmw-confirm-hint {
 	margin-top: 10px;
 	padding-top: 10px;
-	border-top: 1px dashed #3a3d43;
-	color: #b0b0b0;
+	border-top: 1px dashed var(--theme-border);
+	color: var(--theme-text-secondary);
 	font-size: 12px;
 	text-align: center;
 }
 
 .rmw-confirm-footer {
 	padding: 12px 18px;
-	border-top: 1px solid #3a3d43;
+	border-top: 1px solid var(--theme-border);
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
-	background: #22252b;
+	background: var(--theme-bg-tertiary);
 }
 
 .rmw-confirm-btn {
 	padding: 6px 14px;
 	font-size: 12px;
-	color: #e8e8e8;
+	color: var(--theme-text-primary);
 	border-radius: 4px;
 	cursor: pointer;
-	border: 1px solid #4a4d53;
-	background: #3a3d43;
+	border: 1px solid var(--theme-border);
+	background: var(--theme-bg-tertiary);
 	transition: all 120ms ease;
 }
 
 .rmw-confirm-btn:hover {
-	background: #4a4d53;
-	border-color: #5a5d63;
+	background: var(--theme-hover-bg);
+	border-color: var(--theme-hover-border);
 }
 
 .rmw-confirm-cancel {
-	background: #33363c;
+	background: var(--theme-bg-secondary);
 }
 
 .rmw-confirm-danger {
-	background: #9a3a3a;
-	border-color: #b04a4a;
+	background: var(--theme-error);
+	border-color: var(--theme-error);
 	color: #fff;
 }
 
 .rmw-confirm-danger:hover {
-	background: #b04040;
-	border-color: #c05050;
+	background: color-mix(in srgb, var(--theme-error) 85%, white);
+	border-color: color-mix(in srgb, var(--theme-error) 85%, white);
 }
 
-/* ============ Toast 提示 ============ */
 .rmw-toast {
 	position: fixed;
 	top: 18px;
@@ -780,17 +778,17 @@ const loading = ref(true)
 }
 
 .rmw-toast-info {
-	background: rgba(60, 80, 120);
+	background: color-mix(in srgb, var(--theme-accent) 80%, var(--theme-bg-tertiary));
 	color: #fff;
 }
 
 .rmw-toast-warn {
-	background: #8a6a2a;
+	background: var(--theme-warning, #8a6a2a);
 	color: #fff;
 }
 
 .rmw-toast-error {
-	background: #9a3a3a;
+	background: var(--theme-error);
 	color: #fff;
 }
 

@@ -1420,7 +1420,7 @@ function registerIpc() {
 				title: `${APP_NAME} · ${name}`,
 				icon: getWindowIconPath(),
 				backgroundColor: '#181818',
-				frame: true,
+				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
 					preload: path.resolve(here, 'preload.mjs'),
@@ -1432,6 +1432,13 @@ function registerIpc() {
 			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
 			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
 			try { imageMarkupWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 40
+				const offsetY = 40
+				imageMarkupWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
 
 			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
@@ -1506,7 +1513,7 @@ function registerIpc() {
 				title: `${APP_NAME} · ${title}`,
 				icon: getWindowIconPath(),
 				backgroundColor: '#181818',
-				frame: true,
+				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
 					preload: path.resolve(here, 'preload.mjs'),
@@ -1518,6 +1525,13 @@ function registerIpc() {
 
 			try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
 			try { resourceManagerWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 60
+				const offsetY = 60
+				resourceManagerWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
 
 			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
