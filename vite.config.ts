@@ -13,6 +13,9 @@ const REPO_URL = normalizeRepoUrl((pkg as any)?.repository?.url ?? (pkg as any)?
 const APP_VERSION = String((pkg as any)?.version ?? '0.0.0')
 const APP_NAME = String((pkg as any)?.build?.productName ?? (pkg as any)?.productName ?? 'DVStudio')
 const APP_COPYRIGHT = String((pkg as any)?.copyright ?? 'Copyright (c) 2026 DwebStudio')
+const BILIBILI_URL = String((pkg as any)?.funding?.url ?? 'https://space.bilibili.com/22690066')
+const ISSUES_URL = REPO_URL ? `${REPO_URL}/issues` : 'https://github.com/412845222/DVStudio/issues'
+const HOMEPAGE_URL = String((pkg as any)?.homepage ?? 'https://www.dweb.club/')
 
 const VITE_BACKEND_BASE_URL = process.env.VITE_BACKEND_BASE_URL || 'http://127.0.0.1:5800'
 
@@ -30,6 +33,9 @@ export default defineConfig(({ mode }) => {
       __DWEB_APP_VERSION__: JSON.stringify(APP_VERSION),
       __DWEB_APP_NAME__: JSON.stringify(APP_NAME),
       __DWEB_APP_COPYRIGHT__: JSON.stringify(APP_COPYRIGHT),
+      __DWEB_HOMEPAGE_URL__: JSON.stringify(HOMEPAGE_URL),
+      __DWEB_BILIBILI_URL__: JSON.stringify(BILIBILI_URL),
+      __DWEB_ISSUES_URL__: JSON.stringify(ISSUES_URL),
     },
     server: {
       host: '0.0.0.0',
@@ -100,7 +106,6 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-
     plugins: [
       vue(),
       {

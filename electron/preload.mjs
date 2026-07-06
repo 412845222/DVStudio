@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL } from './config.mjs'
+import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL, APP_BILIBILI_URL, APP_ISSUES_URL } from './config.mjs'
 
 function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
@@ -182,7 +182,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			license: APP_LICENSE,
 			homepage: APP_HOMEPAGE,
 			repoUrl: APP_REPO_URL,
+			bilibiliUrl: APP_BILIBILI_URL,
+			issuesUrl: APP_ISSUES_URL,
 		}),
+		checkForUpdate: () => invoke('dweb:system:check-update'),
+		isSteamVersion: () => invoke('dweb:system:is-steam'),
 		getBackendBaseUrl: () => invoke('dweb:getBackendBaseUrl'),
 		getBackendRuntimeState: () => invoke('dweb:backendRuntime:getState'),
 		onBackendRuntimeStateChanged: (handler) => {
