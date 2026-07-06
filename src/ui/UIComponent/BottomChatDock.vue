@@ -324,30 +324,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
-import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
-import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
-import ToolCallCard from '../AIChat/ToolCallCard.vue'
-import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
-import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
-import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
-import {
-	CHAT_API_SOURCE_OPTIONS,
-	CHAT_MODEL_CATALOG,
-	getChatModelOptions,
-	legacyModelFromNeedType,
-	needTypeFromLegacyModel,
-	type ChatApiSource,
-	type ChatLegacyModelKey,
-	type ChatModelCatalogItem,
-	type ChatNeedType
-} from '../../ai/models/chatModels'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type ToolCallInfo = {
 	id: string
 	name: string
@@ -426,6 +403,31 @@ export type LocalExecFlowEvent = {
 
 export type CodexSessionItem = LocalExecSessionItem
 export type CodexFlowEvent = LocalExecFlowEvent
+</script>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
+import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
+import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
+import ToolCallCard from '../AIChat/ToolCallCard.vue'
+import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
+import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
+import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
+import {
+	CHAT_API_SOURCE_OPTIONS,
+	CHAT_MODEL_CATALOG,
+	getChatModelOptions,
+	legacyModelFromNeedType,
+	needTypeFromLegacyModel,
+	type ChatApiSource,
+	type ChatLegacyModelKey,
+	type ChatModelCatalogItem,
+	type ChatNeedType
+} from '../../ai/models/chatModels'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 		modelValue: string
