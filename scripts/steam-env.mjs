@@ -6,7 +6,31 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 
+function loadSteamConfigJson() {
+	const candidates = [
+		path.join(repoRoot, 'steam.config.json'),
+		path.join(repoRoot, 'electron', 'steam.config.json'),
+	]
+	for (const configPath of candidates) {
+		try {
+			if (fs.existsSync(configPath)) {
+				const raw = fs.readFileSync(configPath, 'utf8')
+				return JSON.parse(raw)
+			}
+		} catch { /* ignore */ }
+	}
+	return null
+}
+
 export function loadSteamEnv() {
+	const steamConfig = loadSteamConfigJson()
+	if (steamConfig?.appId && !process.env.STEAM_APP_ID) {
+		process.env.STEAM_APP_ID = String(steamConfig.appId)
+	}
+	if (steamConfig?.webApiKey && !process.env.STEAM_WEB_API_KEY) {
+		process.env.STEAM_WEB_API_KEY = steamConfig.webApiKey
+	}
+
 	const envPath = path.join(repoRoot, 'steam-pipe', '.env')
 	if (!fs.existsSync(envPath)) return
 	const content = fs.readFileSync(envPath, 'utf8')

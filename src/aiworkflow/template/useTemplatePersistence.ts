@@ -62,6 +62,7 @@ export function useTemplatePersistence() {
 	}
 
 	async function saveUserTemplate(options: {
+		id?: string
 		name: string
 		description?: string
 		category: TemplateCategory
@@ -80,6 +81,7 @@ export function useTemplatePersistence() {
 				coverArrayBuffer = await options.coverBlob.arrayBuffer()
 			}
 			const result = await db.save({
+				id: options.id,
 				name: options.name,
 				description: options.description,
 				category: options.category,

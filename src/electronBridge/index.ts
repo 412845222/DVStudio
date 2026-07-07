@@ -14,7 +14,16 @@ import type {
 	SetupState,
 	CleanupOldProjectResult,
 	DirectoryPickResult,
-	UploadedProjectAsset
+	UploadedProjectAsset,
+	CloudTemplatesPlatformResult,
+	CloudTemplatesQuotaResult,
+	CloudTemplatesListResult,
+	CloudTemplatesUploadPayload,
+	CloudTemplatesUploadResult,
+	CloudTemplatesDownloadPayload,
+	CloudTemplatesDownloadResult,
+	CloudTemplatesDeletePayload,
+	CloudTemplatesDeleteResult
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -535,5 +544,65 @@ export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; e
 		return (await window.dweb.window.openDevTools()) || { ok: true }
 	} catch (e: unknown) {
 		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function getCloudTemplatesPlatform(): Promise<CloudTemplatesPlatformResult | null> {
+	if (!window?.dweb?.cloudTemplates?.getPlatform) return null
+	try {
+		return await window.dweb.cloudTemplates.getPlatform()
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function getCloudTemplatesQuota(): Promise<CloudTemplatesQuotaResult | null> {
+	if (!window?.dweb?.cloudTemplates?.getQuota) return null
+	try {
+		return await window.dweb.cloudTemplates.getQuota()
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function listCloudTemplates(options: { forceRefresh?: boolean } = {}): Promise<CloudTemplatesListResult | null> {
+	if (!window?.dweb?.cloudTemplates?.list) return null
+	try {
+		return await window.dweb.cloudTemplates.list(options)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), items: [] }
+	}
+}
+
+export async function uploadCloudTemplate(
+	payload: CloudTemplatesUploadPayload
+): Promise<CloudTemplatesUploadResult | null> {
+	if (!window?.dweb?.cloudTemplates?.upload) return null
+	try {
+		return await window.dweb.cloudTemplates.upload(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function downloadCloudTemplate(
+	payload: CloudTemplatesDownloadPayload
+): Promise<CloudTemplatesDownloadResult | null> {
+	if (!window?.dweb?.cloudTemplates?.download) return null
+	try {
+		return await window.dweb.cloudTemplates.download(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function deleteCloudTemplate(
+	payload: CloudTemplatesDeletePayload
+): Promise<CloudTemplatesDeleteResult | null> {
+	if (!window?.dweb?.cloudTemplates?.delete) return null
+	try {
+		return await window.dweb.cloudTemplates.delete(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
 	}
 }

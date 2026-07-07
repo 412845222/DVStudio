@@ -222,15 +222,24 @@ function validate(): boolean {
 }
 
 function handleConfirm() {
-	if (!props.template) return
-	if (!validate()) return
+	console.log('[TemplateApplyDialog] handleConfirm called, template:', props.template?.id, props.template?.name, 'target:', applyTarget.value)
+	if (!props.template) {
+		console.warn('[TemplateApplyDialog] handleConfirm: no template, returning')
+		return
+	}
+	if (!validate()) {
+		console.warn('[TemplateApplyDialog] handleConfirm: validation failed')
+		return
+	}
 
-	emit('confirm', {
+	const options = {
 		template: props.template,
 		target: applyTarget.value,
 		newProjectName: applyTarget.value === 'new-project' ? newProjectName.value.trim() : undefined,
 		newProjectPath: applyTarget.value === 'new-project' ? newProjectPath.value.trim() || undefined : undefined,
-	})
+	}
+	console.log('[TemplateApplyDialog] emitting confirm with options:', { ...options, template: { id: options.template.id, name: options.template.name } })
+	emit('confirm', options)
 	emit('update:open', false)
 }
 </script>

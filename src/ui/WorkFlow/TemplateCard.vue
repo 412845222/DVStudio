@@ -1,7 +1,12 @@
 <template>
 	<div
 		class="tcard"
-		:class="[`tcard--${size}`, { 'tcard--selected': selected }, { 'tcard--builtin': template.source === 'builtin' }]"
+		:class="[
+			`tcard--${size}`,
+			{ 'tcard--selected': selected },
+			{ 'tcard--uploading': uploading },
+			{ 'tcard--downloading': downloading },
+		]"
 		@click="$emit('select', template)"
 	>
 		<div v-if="size !== 'list'" class="tcard-cover-wrap">
@@ -14,16 +19,24 @@
 						<circle cx="19" cy="19" r="3.5" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.35" />
 					</svg>
 				</div>
-				<div v-if="coverLoading" class="tcard-cover-loading">
+				<div v-if="coverLoading || uploading || downloading" class="tcard-cover-loading">
 					<div class="tcard-spinner"></div>
 				</div>
 			</div>
-			<span v-if="template.source === 'builtin'" class="tcard-badge tcard-badge--builtin">
+
+			<span v-if="isSynced" class="tcard-badge tcard-badge--synced" :title="t('aiworkflow.templateCenter.syncedTooltip')">
 				<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
-					<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+					<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+					<path d="M10 2v3h-3M6 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
-				{{ t('aiworkflow.templateCenter.builtinTag') }}
 			</span>
+
+			<span v-if="template.source === 'steam-user'" class="tcard-badge tcard-badge--cloud">
+				<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+					<path d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z" fill="currentColor"/>
+				</svg>
+			</span>
+
 			<div class="tcard-cover-overlay">
 				<button class="tcard-action-btn tcard-action-btn--apply" type="button" @click.stop="$emit('apply', template)">
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
@@ -34,6 +47,32 @@
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
 						<path d="M2 8s2.5-4.5 6-4.5S14 8 14 8s-2.5 4.5-6 4.5S2 8 2 8z" fill="none" stroke="currentColor" stroke-width="1.3" />
 						<circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
+					</svg>
+				</button>
+				<button
+					v-if="template.source === 'user' && !isSynced"
+					class="tcard-action-btn tcard-action-btn--upload"
+					type="button"
+					:disabled="uploading"
+					@click.stop="$emit('upload', template)"
+					:title="t('aiworkflow.templateCenter.uploadToCloud')"
+				>
+					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+						<path d="M8 11V3M8 3l-3 3M8 3l3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M2 12v1h12v-1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+					</svg>
+				</button>
+				<button
+					v-if="template.source === 'steam-user'"
+					class="tcard-action-btn tcard-action-btn--download"
+					type="button"
+					:disabled="downloading"
+					@click.stop="$emit('download', template)"
+					:title="t('aiworkflow.templateCenter.downloadToLocal')"
+				>
+					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+						<path d="M8 5v8M8 13l-3-3M8 13l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M2 4V3h12v1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
 					</svg>
 				</button>
 				<button
@@ -63,8 +102,16 @@
 				<div class="tcard-list-info">
 					<div class="tcard-title-row">
 						<div class="tcard-title">{{ template.name }}</div>
-						<span v-if="template.source === 'builtin'" class="tcard-badge tcard-badge--builtin tcard-badge--small">
-							{{ t('aiworkflow.templateCenter.builtinTag') }}
+						<span v-if="isSynced" class="tcard-badge tcard-badge--synced tcard-badge--small" :title="t('aiworkflow.templateCenter.syncedTooltip')">
+							<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+								<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+							</svg>
+							{{ t('aiworkflow.templateCenter.syncedTag') }}
+						</span>
+						<span v-if="template.source === 'steam-user'" class="tcard-badge tcard-badge--cloud tcard-badge--small">
+							<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+								<path d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z" fill="currentColor"/>
+							</svg>
 						</span>
 					</div>
 					<div v-if="template.description" class="tcard-desc">{{ template.description }}</div>
@@ -89,6 +136,34 @@
 						{{ t('aiworkflow.templateCenter.preview') }}
 					</button>
 					<button
+						v-if="template.source === 'user' && !isSynced"
+						class="tcard-list-btn tcard-list-btn--upload"
+						type="button"
+						:disabled="uploading"
+						@click.stop="$emit('upload', template)"
+					>
+						<svg v-if="!uploading" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+							<path d="M8 11V3M8 3l-3 3M8 3l3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+							<path d="M2 12v1h12v-1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+						</svg>
+						<span v-if="uploading" class="tcard-mini-spinner"></span>
+						{{ uploading ? t('aiworkflow.templateCenter.uploading') : t('aiworkflow.templateCenter.uploadToCloud') }}
+					</button>
+					<button
+						v-if="template.source === 'steam-user'"
+						class="tcard-list-btn tcard-list-btn--download"
+						type="button"
+						:disabled="downloading"
+						@click.stop="$emit('download', template)"
+					>
+						<svg v-if="!downloading" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+							<path d="M8 5v8M8 13l-3-3M8 13l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+							<path d="M2 4V3h12v1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+						</svg>
+						<span v-if="downloading" class="tcard-mini-spinner"></span>
+						{{ downloading ? t('aiworkflow.templateCenter.downloading') : t('aiworkflow.templateCenter.downloadToLocal') }}
+					</button>
+					<button
 						v-if="template.source !== 'builtin'"
 						class="tcard-list-btn tcard-list-btn--danger"
 						type="button"
@@ -110,6 +185,13 @@
 					<span class="tcard-meta-item">{{ getCategoryLabel(template.category) }}</span>
 					<span class="tcard-meta-dot"></span>
 					<span class="tcard-meta-item">{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}</span>
+					<span v-if="isSynced" class="tcard-meta-dot"></span>
+					<span v-if="isSynced" class="tcard-meta-item tcard-meta-synced">
+						<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+							<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+						</svg>
+						{{ t('aiworkflow.templateCenter.syncedTag') }}
+					</span>
 				</div>
 				<div v-if="template.tags && template.tags.length > 0" class="tcard-tags">
 					<span v-for="tag in template.tags.slice(0, 3)" :key="tag" class="tcard-tag">{{ tag }}</span>
@@ -121,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import type { TemplateItem, TemplateCategory } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
@@ -130,6 +212,8 @@ const props = defineProps<{
 	template: TemplateItem
 	selected?: boolean
 	size: 'large' | 'small' | 'list'
+	uploading?: boolean
+	downloading?: boolean
 }>()
 
 defineEmits<{
@@ -137,10 +221,16 @@ defineEmits<{
 	(e: 'apply', template: TemplateItem): void
 	(e: 'preview', template: TemplateItem): void
 	(e: 'delete', template: TemplateItem): void
+	(e: 'upload', template: TemplateItem): void
+	(e: 'download', template: TemplateItem): void
 }>()
 
 const { t } = useI18n()
 const { loadTemplateCover, revokeTemplateCover } = useTemplateCenter()
+
+const isSynced = computed(() => {
+	return props.template.cloudSyncStatus === 'synced'
+})
 
 function getCategoryLabel(category: TemplateCategory): string {
 	return t(`aiworkflow.templateCategory.${category}`)
@@ -188,6 +278,7 @@ onUnmounted(() => {
 <style scoped>
 .tcard {
 	--tcard-accent: var(--theme-accent, #1f9d84);
+	--tcard-cloud: #5b9bd5;
 	--tcard-fg: var(--theme-text-primary, #eaf2f5);
 	--tcard-fg-soft: var(--theme-text-secondary, #9aa0a6);
 	--tcard-bg: color-mix(in srgb, var(--tcard-fg) 3%, transparent);
@@ -264,6 +355,12 @@ onUnmounted(() => {
 	width: 100%;
 }
 
+.tcard--uploading,
+.tcard--downloading {
+	pointer-events: none;
+	opacity: 0.7;
+}
+
 /* Cover */
 .tcard-cover-wrap {
 	position: relative;
@@ -324,6 +421,16 @@ onUnmounted(() => {
 	to { transform: rotate(360deg); }
 }
 
+.tcard-mini-spinner {
+	display: inline-block;
+	width: 11px;
+	height: 11px;
+	border: 1.5px solid color-mix(in srgb, var(--tcard-accent) 25%, transparent);
+	border-top-color: var(--tcard-accent);
+	border-radius: 50%;
+	animation: tcard-spin-anim 0.7s linear infinite;
+}
+
 .tcard-badge {
 	position: absolute;
 	top: 8px;
@@ -343,10 +450,26 @@ onUnmounted(() => {
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.tcard-badge--cloud {
+	top: 8px;
+	right: 8px;
+	left: auto;
+	background: color-mix(in srgb, var(--tcard-cloud) 70%, #0a0e14);
+	padding: 4px;
+}
+
+.tcard-badge--synced {
+	background: color-mix(in srgb, var(--tcard-accent) 75%, #0a0e14);
+}
+
 .tcard-badge--small {
 	position: static;
-	font-size: 10px;
+	font-size: 9px;
 	padding: 2px 6px;
+}
+
+.tcard-badge--cloud.tcard-badge--small {
+	padding: 2px 5px;
 }
 
 .tcard-cover-overlay {
@@ -381,14 +504,31 @@ onUnmounted(() => {
 	backdrop-filter: blur(6px);
 }
 
-.tcard-action-btn:hover {
+.tcard-action-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.tcard-action-btn:hover:not(:disabled) {
 	border-color: var(--tcard-accent);
 	background: var(--tcard-accent);
 	color: #fff;
 	box-shadow: 0 0 12px color-mix(in srgb, var(--tcard-accent) 35%, transparent);
 }
 
-.tcard-action-btn--delete:hover {
+.tcard-action-btn--upload:hover:not(:disabled) {
+	border-color: var(--tcard-cloud);
+	background: var(--tcard-cloud);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--tcard-cloud) 35%, transparent);
+}
+
+.tcard-action-btn--download:hover:not(:disabled) {
+	border-color: var(--tcard-cloud);
+	background: var(--tcard-cloud);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--tcard-cloud) 35%, transparent);
+}
+
+.tcard-action-btn--delete:hover:not(:disabled) {
 	border-color: #d94b4b;
 	background: #d94b4b;
 	box-shadow: 0 0 12px rgba(217, 75, 75, 0.35);
@@ -438,6 +578,17 @@ onUnmounted(() => {
 	color: var(--tcard-fg-soft);
 	margin-top: 2px;
 	flex-wrap: wrap;
+}
+
+.tcard-meta-synced {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	color: var(--tcard-accent);
+}
+
+.tcard-meta-synced svg {
+	opacity: 0.8;
 }
 
 .tcard-meta-dot {
@@ -581,7 +732,12 @@ onUnmounted(() => {
 	white-space: nowrap;
 }
 
-.tcard-list-btn:hover {
+.tcard-list-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.tcard-list-btn:hover:not(:disabled) {
 	border-color: color-mix(in srgb, var(--tcard-accent) 50%, transparent);
 	color: var(--tcard-fg);
 	background: color-mix(in srgb, var(--tcard-accent) 8%, transparent);
@@ -594,14 +750,36 @@ onUnmounted(() => {
 	font-weight: 500;
 }
 
-.tcard-list-btn--apply:hover {
+.tcard-list-btn--apply:hover:not(:disabled) {
 	background: var(--tcard-accent);
 	border-color: var(--tcard-accent);
 	color: #fff;
 	box-shadow: 0 0 12px color-mix(in srgb, var(--tcard-accent) 25%, transparent);
 }
 
-.tcard-list-btn--danger:hover {
+.tcard-list-btn--upload {
+	border-color: color-mix(in srgb, var(--tcard-cloud) 30%, transparent);
+	color: var(--tcard-cloud);
+}
+
+.tcard-list-btn--upload:hover:not(:disabled) {
+	border-color: var(--tcard-cloud);
+	background: color-mix(in srgb, var(--tcard-cloud) 12%, transparent);
+	color: var(--tcard-cloud);
+}
+
+.tcard-list-btn--download {
+	border-color: color-mix(in srgb, var(--tcard-cloud) 30%, transparent);
+	color: var(--tcard-cloud);
+}
+
+.tcard-list-btn--download:hover:not(:disabled) {
+	border-color: var(--tcard-cloud);
+	background: color-mix(in srgb, var(--tcard-cloud) 12%, transparent);
+	color: var(--tcard-cloud);
+}
+
+.tcard-list-btn--danger:hover:not(:disabled) {
 	border-color: #d94b4b;
 	background: color-mix(in srgb, #d94b4b 12%, transparent);
 	color: #d94b4b;
@@ -639,7 +817,7 @@ onUnmounted(() => {
 	.tcard-list-btn {
 		transition: none !important;
 	}
-	.tcard-spinner { animation: none !important; }
+	.tcard-spinner, .tcard-mini-spinner { animation: none !important; }
 	.tcard:hover { transform: none; }
 }
 </style>
@@ -649,6 +827,7 @@ onUnmounted(() => {
 [data-theme='light'] .tcard {
 	--tcard-bg: rgba(255, 255, 255, 0.7) !important;
 	--tcard-border: rgba(31, 157, 132, 0.2) !important;
+	--tcard-cloud: #4a89c7;
 	border-color: rgba(31, 157, 132, 0.2) !important;
 	background: rgba(255, 255, 255, 0.7) !important;
 }
@@ -682,9 +861,15 @@ onUnmounted(() => {
 	background: rgba(200, 210, 220, 0.6) !important;
 }
 [data-theme='light'] .tcard-badge {
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+}
+[data-theme='light'] .tcard-badge--synced {
 	background: #1f9d84 !important;
 	color: #fff !important;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+}
+[data-theme='light'] .tcard-badge--cloud {
+	background: #4a89c7 !important;
+	color: #fff !important;
 }
 [data-theme='light'] .tcard-cover-overlay {
 	background: linear-gradient(180deg, transparent 30%, rgba(0, 0, 0, 0.25) 100%) !important;
@@ -693,9 +878,15 @@ onUnmounted(() => {
 	border-color: rgba(255, 255, 255, 0.5) !important;
 	background: rgba(30, 40, 50, 0.4) !important;
 }
-[data-theme='light'] .tcard-action-btn:hover {
+[data-theme='light'] .tcard-action-btn:hover:not(:disabled) {
 	background: #1f9d84 !important;
 	border-color: #1f9d84 !important;
+}
+[data-theme='light'] .tcard-action-btn--upload:hover:not(:disabled),
+[data-theme='light'] .tcard-action-btn--download:hover:not(:disabled) {
+	background: #4a89c7 !important;
+	border-color: #4a89c7 !important;
+	box-shadow: 0 0 10px rgba(74, 137, 199, 0.3) !important;
 }
 [data-theme='light'] .tcard-title {
 	color: #1a1d21 !important;
@@ -703,6 +894,9 @@ onUnmounted(() => {
 [data-theme='light'] .tcard-desc,
 [data-theme='light'] .tcard-meta {
 	color: #4a5058 !important;
+}
+[data-theme='light'] .tcard-meta-synced {
+	color: #17806d !important;
 }
 [data-theme='light'] .tcard-meta-dot {
 	background: rgba(31, 157, 132, 0.4) !important;
@@ -720,7 +914,7 @@ onUnmounted(() => {
 	color: #4a5058 !important;
 	background: rgba(255, 255, 255, 0.5) !important;
 }
-[data-theme='light'] .tcard-list-btn:hover {
+[data-theme='light'] .tcard-list-btn:hover:not(:disabled) {
 	border-color: rgba(31, 157, 132, 0.45) !important;
 	color: #1a1d21 !important;
 	background: rgba(31, 157, 132, 0.07) !important;
@@ -730,18 +924,30 @@ onUnmounted(() => {
 	border-color: rgba(31, 157, 132, 0.45) !important;
 	color: #17806d !important;
 }
-[data-theme='light'] .tcard-list-btn--apply:hover {
+[data-theme='light'] .tcard-list-btn--apply:hover:not(:disabled) {
 	background: #1f9d84 !important;
 	border-color: #1f9d84 !important;
 	color: #fff !important;
 	box-shadow: 0 0 10px rgba(31, 157, 132, 0.2) !important;
 }
-[data-theme='light'] .tcard-list-btn--danger:hover {
+[data-theme='light'] .tcard-list-btn--upload,
+[data-theme='light'] .tcard-list-btn--download {
+	border-color: rgba(74, 137, 199, 0.3) !important;
+	color: #4a89c7 !important;
+}
+[data-theme='light'] .tcard-list-btn--upload:hover:not(:disabled),
+[data-theme='light'] .tcard-list-btn--download:hover:not(:disabled) {
+	border-color: #4a89c7 !important;
+	background: rgba(74, 137, 199, 0.1) !important;
+	color: #4a89c7 !important;
+}
+[data-theme='light'] .tcard-list-btn--danger:hover:not(:disabled) {
 	border-color: #d63030 !important;
 	background: rgba(214, 48, 48, 0.08) !important;
 	color: #d63030 !important;
 }
-[data-theme='light'] .tcard-spinner {
+[data-theme='light'] .tcard-spinner,
+[data-theme='light'] .tcard-mini-spinner {
 	border-color: rgba(31, 157, 132, 0.18) !important;
 	border-top-color: #1f9d84 !important;
 }

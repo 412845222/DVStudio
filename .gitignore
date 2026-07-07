@@ -105,6 +105,8 @@ ehthumbs.db
 test_*.*
 temp-*.*
 temp_*.*
+debug-*.*
+scripts/debug-*.*
 count_lines.py
 
 # External code folders (Claw-code, etc.)
@@ -146,9 +148,11 @@ steam-pipe/
 # ============================================================
 # Steam local configuration & private implementation
 # ============================================================
-# steam.config.json contains the real Steam AppID (do NOT commit).
-# Use steam.config.example.json as a template.
+# steam.config.json contains the real Steam AppID (do NOT commit anywhere).
+# Example template is in electron/platform/steam.config.example.json.
+# Root directory must NOT contain steam config files.
 steam.config.json
+/steam.config.example.json
 
 # Private platform/provider implementations (*.local.cjs / *.local.mjs)
 # contain sensitive integration details that must not be pushed to public repos.
