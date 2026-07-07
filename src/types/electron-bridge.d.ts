@@ -40,6 +40,11 @@ export type ResourceManagerEventPayload = {
 	data?: unknown
 }
 
+export type TemplateCenterEventPayload = {
+	event: string
+	data?: unknown
+}
+
 declare global {
 	const __DWEB_REPO_URL__: string
 	const __DWEB_APP_VERSION__: string
@@ -388,6 +393,21 @@ declare global {
 				offResourceManagerNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
 				onResourceManagerData(handler: (payload: ResourceManagerDataPayload) => void): number
 				offResourceManagerData(listenerId: number): Promise<{ ok: boolean; error?: string }>
+
+				openTemplateCenter(payload: { projectId?: number; title?: string }): Promise<{ ok: boolean; error?: string }>
+				closeTemplateCenter(): Promise<{ ok: boolean; error?: string }>
+				focusTemplateCenter(): Promise<{ ok: boolean; error?: string }>
+				sendTemplateCenterData(payload: unknown): Promise<{ ok: boolean; error?: string }>
+				broadcastTemplateCenterEvent(payload: TemplateCenterEventPayload): Promise<{ ok: boolean; error?: string }>
+				notifyTemplateCenterEvent(payload: TemplateCenterEventPayload): Promise<{ ok: boolean; error?: string }>
+				getTemplateCenterData(): unknown
+				requestTemplateCenterData(): Promise<{ ok: boolean; data?: unknown; error?: string }>
+				onTemplateCenterEvent(handler: (payload: TemplateCenterEventPayload) => void): number
+				offTemplateCenterEvent(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onTemplateCenterNotify(handler: (payload: TemplateCenterEventPayload) => void): number
+				offTemplateCenterNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onTemplateCenterData(handler: (payload: unknown) => void): number
+				offTemplateCenterData(listenerId: number): Promise<{ ok: boolean; error?: string }>
 			}
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>

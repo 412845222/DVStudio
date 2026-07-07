@@ -6704,7 +6704,7 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
-const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates } = useTemplateCenter()
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates, refreshCloud } = useTemplateCenter()
 const templateCenterOpen = ref(false)
 const templateApplyDialogOpen = ref(false)
 const selectedTemplateForApply = ref<TemplateItem | null>(null)
@@ -6720,7 +6720,16 @@ let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
 
 function onOpenTemplateCenter() {
 	void loadTemplates()
-	templateCenterOpen.value = true
+	try {
+		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.openTemplateCenter === 'function') {
+			window.dweb.aiworkflow.openTemplateCenter({
+				title: t('aiworkflow.templateCenter.title'),
+			})
+		}
+	} catch (err) {
+		console.warn('[AIWorkflowPage] Failed to open template center window:', err)
+		templateCenterOpen.value = true
+	}
 }
 
 function onTemplateSelectForApply(template: TemplateItem) {
@@ -9564,6 +9573,17 @@ onBeforeUnmount(() => {
 		}
 		resourceManagerEventListenerId = null
 	}
+	// 清理模板中心窗口事件监听
+	if (templateCenterEventListenerId !== null) {
+		const w = window as unknown as Record<string, unknown>
+		const dweb = safeGetRecord(w, 'dweb')
+		const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+		const offEvent = dwebAiworkflow?.offTemplateCenterEvent
+		if (typeof offEvent === 'function') {
+			;(offEvent as (id: number) => void)(templateCenterEventListenerId)
+		}
+		templateCenterEventListenerId = null
+	}
 })
 
 // ============ 资源管理器窗口 → 蓝图节点拖放 ============
@@ -9693,6 +9713,9 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
 // 主窗口监听来自资源管理器独立窗口的事件广播
 let resourceManagerEventListenerId: number | null = null
 
+// ============ 模板中心窗口事件监听 ============
+let templateCenterEventListenerId: number | null = null
+
 const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
 	chatMessages.value = [
 		...chatMessages.value,
@@ -9790,6 +9813,53 @@ const registerResourceManagerEventListener = () => {
 	resourceManagerEventListenerId = (
 		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
 	)(onResourceManagerWindowEvent)
+}
+
+const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) => {
+	const { event, data } = payload || {}
+	if (!event) return
+	switch (String(event)) {
+		case 'apply-template':
+			if (data && typeof data === 'object' && 'id' in data) {
+				const template = data as TemplateItem
+				onTemplateSelectForApply(template)
+			}
+			break
+		case 'delete-template':
+			if (data && typeof data === 'object' && 'id' in data) {
+				const template = data as TemplateItem
+				void onDeleteTemplate(template)
+			}
+			break
+		case 'save-template':
+			if (data && typeof data === 'object' && 'scope' in data) {
+				const scope = (data as { scope: 'full' | 'selection' }).scope
+				void onSaveTemplateFromCenter({ scope })
+			}
+			break
+		case 'refresh-cloud':
+			void refreshCloud()
+			break
+		case 'upload-to-cloud':
+		case 'download-from-cloud':
+			void loadTemplates({ forceCloudRefresh: true })
+			break
+		default:
+			console.log('[AIWorkflowPage][template-center] unknown event:', event, data)
+	}
+}
+
+const registerTemplateCenterEventListener = () => {
+	const w = window as unknown as Record<string, unknown>
+	const runtime = safeGetRecord(w, '__DWEB_RUNTIME__')
+	const isElectronRuntime = runtime?.isElectron === true
+	const dweb = safeGetRecord(w, 'dweb')
+	const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+	const onEvent = dwebAiworkflow?.onTemplateCenterEvent
+	if (!isElectronRuntime || typeof onEvent !== 'function') return
+	templateCenterEventListenerId = (
+		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
+	)(onTemplateCenterWindowEvent)
 }
 
 const openResourceDialog = async () => {
@@ -10403,6 +10473,7 @@ onMounted(() => {
 	uninstallGlobal404Handlers = installGlobalErrorHandlers()
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
+	registerTemplateCenterEventListener()
 	void refreshProjectList()
 	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',

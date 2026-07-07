@@ -72,34 +72,34 @@
 				<div v-if="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-wrap">
 					<div class="tc-quota-bar-header">
 						<div class="tc-quota-label">
-							<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+							<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
 								<path d="M2 8a6 6 0 0111.5-2.5A3.5 3.5 0 0113 12H3a3 3 0 01-.5-6z" fill="none" stroke="currentColor" stroke-width="1.2"/>
 							</svg>
 							<span>{{ t('aiworkflow.templateCenter.cloudStorage') }}</span>
 						</div>
-						<div class="tc-quota-right">
-							<div class="tc-quota-text">{{ cloudQuotaText }}</div>
-							<button
-								class="tc-refresh-btn"
-								type="button"
-								:disabled="cloudSyncing"
-								@click="handleRefreshCloud"
-								:title="t('aiworkflow.templateCenter.refresh')"
-							>
-								<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
-									<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-									<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-								</svg>
-							</button>
-						</div>
+						<button
+							class="tc-refresh-btn"
+							type="button"
+							:disabled="cloudSyncing"
+							@click="handleRefreshCloud"
+							:title="t('aiworkflow.templateCenter.refresh')"
+						>
+							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
+								<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+								<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+						</button>
 					</div>
 					<div class="tc-quota-bar">
 						<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
 						<div v-else class="tc-quota-bar-loading"></div>
+						<div class="tc-quota-bar-text">
+							<span v-if="cloudQuota">{{ cloudQuotaText }}</span>
+							<span v-else class="tc-quota-loading-text">{{ t('aiworkflow.templateCenter.syncing') }}</span>
+						</div>
 					</div>
 					<div v-if="cloudSyncing" class="tc-sync-hint">
 						<div class="tc-spinner-mini"></div>
-						<span>{{ t('aiworkflow.templateCenter.syncing') }}</span>
 					</div>
 				</div>
 
@@ -301,8 +301,8 @@ const activeTab = ref<TabId>('user')
 function formatBytes(bytes: number): string {
 	if (!bytes || bytes <= 0) return '0 B'
 	const units = ['B', 'KB', 'MB', 'GB', 'TB']
-	const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-	const val = bytes / Math.pow(1024, i)
+	const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1000)), units.length - 1)
+	const val = bytes / Math.pow(1000, i)
 	return val.toFixed(i > 0 ? (val < 10 ? 2 : val < 100 ? 1 : 0) : 0) + ' ' + units[i]
 }
 
@@ -794,9 +794,10 @@ async function handleDownload(template: TemplateItem) {
 }
 
 .tc-quota-bar-wrap {
-	padding: 10px 24px;
-	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 10%, transparent);
-	background: color-mix(in srgb, var(--tc-bg-1) 40%, transparent);
+	padding: 10px 24px 8px;
+	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 15%, transparent);
+	background: color-mix(in srgb, var(--tc-bg-1) 30%, transparent);
+	flex-shrink: 0;
 }
 
 .tc-quota-bar-header {
@@ -815,36 +816,79 @@ async function handleDownload(template: TemplateItem) {
 	letter-spacing: 0.03em;
 }
 
-.tc-quota-text {
-	font-size: 11px;
-	color: var(--tc-glow);
-	font-family: monospace;
-}
-
 .tc-quota-bar {
-	height: 4px;
-	background: color-mix(in srgb, var(--tc-fg) 5%, transparent);
-	border-radius: 2px;
+	height: 22px;
+	background: color-mix(in srgb, var(--tc-fg) 6%, var(--tc-bg-0));
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 25%, transparent);
+	border-radius: 3px;
 	overflow: hidden;
 	position: relative;
+	box-shadow: inset 0 1px 3px rgba(0,0,0,0.3), 0 0 6px color-mix(in srgb, var(--tc-accent) 8%, transparent);
 }
 
 .tc-quota-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, var(--tc-accent), var(--tc-cold));
+	background: linear-gradient(90deg, 
+		color-mix(in srgb, var(--tc-accent) 70%, transparent),
+		var(--tc-accent),
+		color-mix(in srgb, var(--tc-cold) 80%, var(--tc-accent))
+	);
 	border-radius: 2px;
-	transition: width 300ms ease;
-	box-shadow: 0 0 8px color-mix(in srgb, var(--tc-accent) 40%, transparent);
+	transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
+	box-shadow: 
+		0 0 12px color-mix(in srgb, var(--tc-accent) 50%, transparent),
+		inset 0 1px 0 rgba(255,255,255,0.15);
+	position: relative;
+}
+
+.tc-quota-bar-fill::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 20px;
+	background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12));
+	border-radius: 0 2px 2px 0;
+}
+
+.tc-quota-bar-text {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	padding: 0 8px;
+	font-size: 10px;
+	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: #fff;
+	text-shadow: 0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.4);
+	z-index: 2;
+	pointer-events: none;
+	white-space: nowrap;
+}
+
+.tc-quota-loading-text {
+	opacity: 0.7;
 }
 
 .tc-quota-bar-loading {
 	height: 100%;
 	width: 30%;
-	background: linear-gradient(90deg, transparent, var(--tc-accent), transparent);
+	background: linear-gradient(90deg, 
+		transparent,
+		color-mix(in srgb, var(--tc-accent) 40%, transparent),
+		var(--tc-accent),
+		color-mix(in srgb, var(--tc-accent) 40%, transparent),
+		transparent
+	);
 	background-size: 200% 100%;
 	border-radius: 2px;
-	animation: tc-quota-loading 1.2s ease-in-out infinite;
-	opacity: 0.6;
+	animation: tc-quota-loading 1.4s ease-in-out infinite;
+	opacity: 0.5;
 }
 
 @keyframes tc-quota-loading {
@@ -852,21 +896,15 @@ async function handleDownload(template: TemplateItem) {
 	100% { background-position: -200% 0; }
 }
 
-.tc-quota-right {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-}
-
 .tc-refresh-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 22px;
-	height: 22px;
+	width: 20px;
+	height: 20px;
 	padding: 0;
-	border: 1px solid color-mix(in srgb, var(--tc-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--tc-accent) 8%, transparent);
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--tc-accent) 6%, transparent);
 	color: var(--tc-glow);
 	border-radius: 2px;
 	cursor: pointer;
@@ -1322,20 +1360,29 @@ async function handleDownload(template: TemplateItem) {
 	color: #6b7280 !important;
 }
 [data-theme='light'] .tc-quota-bar-wrap {
-	background: rgba(255, 255, 255, 0.4) !important;
-	border-bottom-color: rgba(31, 157, 132, 0.1) !important;
+	background: rgba(255, 255, 255, 0.5) !important;
+	border-bottom-color: rgba(31, 157, 132, 0.12) !important;
 }
 [data-theme='light'] .tc-quota-label {
 	color: #4a5058 !important;
 }
-[data-theme='light'] .tc-quota-text {
-	color: #17806d !important;
-}
 [data-theme='light'] .tc-quota-bar {
-	background: rgba(0, 0, 0, 0.06) !important;
+	background: rgba(0, 0, 0, 0.04) !important;
+	border-color: rgba(31, 157, 132, 0.25) !important;
+	box-shadow: inset 0 1px 2px rgba(0,0,0,0.06), 0 0 4px rgba(31, 157, 132, 0.06) !important;
 }
 [data-theme='light'] .tc-quota-bar-fill {
-	box-shadow: 0 0 6px rgba(31, 157, 132, 0.3) !important;
+	background: linear-gradient(90deg, rgba(31, 157, 132, 0.8), #1f9d84, rgba(59, 130, 246, 0.7)) !important;
+	box-shadow: 0 0 8px rgba(31, 157, 132, 0.35), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+}
+[data-theme='light'] .tc-quota-bar-text {
+	color: #fff !important;
+	text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+}
+[data-theme='light'] .tc-refresh-btn {
+	border-color: rgba(31, 157, 132, 0.25) !important;
+	background: rgba(31, 157, 132, 0.05) !important;
+	color: #17806d !important;
 }
 [data-theme='light'] .tc-spinner {
 	border-color: rgba(31, 157, 132, 0.15) !important;

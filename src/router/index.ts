@@ -41,6 +41,11 @@ const routes: RouteRecordRaw[] = [
 		path: '/resource-manager',
 		name: 'ResourceManager',
 		component: () => import('../views/AIWorkflow/ResourceManagerWindow.vue')
+	},
+	{
+		path: '/template-center',
+		name: 'TemplateCenter',
+		component: () => import('../views/AIWorkflow/TemplateCenterWindow.vue')
 	}
 ]
 

@@ -53,12 +53,40 @@ export class CloudTemplatesService {
         const adapter = this.getAdapter()
         
         try {
+            // First, list all files in cloud to see what's actually there
+            console.log('[cloud-templates] Listing all files in cloud storage...')
+            const allFilesResult = await adapter.listFiles('')
+            if (allFilesResult.ok && allFilesResult.items) {
+                console.log('[cloud-templates] Total files in cloud:', allFilesResult.items.length)
+                for (const f of allFilesResult.items) {
+                    console.log('[cloud-templates]  -', f.name, f.size, 'bytes')
+                }
+            } else {
+                console.log('[cloud-templates] Could not list files:', allFilesResult.errMsg || 'unknown error')
+            }
+
+            // Also list files with our prefix
+            const prefixFilesResult = await adapter.listFiles(TEMPLATE_PATH_PREFIX)
+            if (prefixFilesResult.ok && prefixFilesResult.items) {
+                console.log('[cloud-templates] Files under usertemplates/:', prefixFilesResult.items.length)
+                for (const f of prefixFilesResult.items) {
+                    console.log('[cloud-templates]  -', f.name, f.size, 'bytes')
+                }
+            }
+
             const existsResult = await adapter.fileExists(INDEX_FILE)
-            console.log('[cloud-templates] Index file exists check:', JSON.stringify(existsResult))
+            console.log('[cloud-templates] Index file exists check for', INDEX_FILE, ':', JSON.stringify(existsResult))
             
             const fileExists = existsResult.ok && existsResult.exists
             if (!fileExists) {
                 console.log('[cloud-templates] Index file does not exist in cloud, returning empty index')
+                
+                // If index doesn't exist but we have template files, log a warning
+                if (prefixFilesResult.ok && prefixFilesResult.items && prefixFilesResult.items.length > 0) {
+                    console.warn('[cloud-templates] WARNING: Template files exist but index.json is missing! Files:', 
+                        prefixFilesResult.items.map(f => f.name).join(', '))
+                }
+                
                 return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
             }
 
@@ -66,46 +94,65 @@ export class CloudTemplatesService {
             const result = await adapter.fileRead(INDEX_FILE)
             console.log('[cloud-templates] fileRead result:', result.ok ? `buffer size: ${result.buffer?.length || 0}` : `error: ${result.errMsg}`)
             
-            if (!result.ok || !result.buffer) {
-                console.log('[cloud-templates] Failed to read index file:', result.errMsg)
-                return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
+            if (!result.ok) {
+                console.error('[cloud-templates] Failed to read index file - result not ok:', result.errMsg)
+                return { ok: true, index: null, fromCloud: false, error: result.errMsg }
+            }
+            
+            if (!result.buffer || result.buffer.length === 0) {
+                console.error('[cloud-templates] Failed to read index file - buffer is empty or null')
+                return { ok: true, index: null, fromCloud: false, error: 'Empty buffer returned' }
             }
 
             const content = result.buffer.toString('utf8')
-            console.log('[cloud-templates] Index content length:', content.length, 'first 200 chars:', content.substring(0, 200))
+            console.log('[cloud-templates] Index content length:', content.length, 'first 500 chars:', content.substring(0, 500))
             
             if (!content.trim()) {
                 console.warn('[cloud-templates] Index file is empty')
-                return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
+                return { ok: true, index: null, fromCloud: false, error: 'Empty file content' }
             }
 
-            const index = JSON.parse(content)
+            let index
+            try {
+                index = JSON.parse(content)
+            } catch (parseErr) {
+                console.error('[cloud-templates] Failed to parse index JSON:', parseErr.message)
+                return { ok: true, index: null, fromCloud: false, error: 'JSON parse error: ' + parseErr.message }
+            }
+            
             if (!index || !Array.isArray(index.templates)) {
                 console.warn('[cloud-templates] Invalid index structure, resetting. templates field:', typeof index?.templates)
-                return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
+                return { ok: true, index: null, fromCloud: false, error: 'Invalid index structure' }
             }
             
             console.log('[cloud-templates] Parsed index from cloud, templates count:', index.templates.length)
             for (const t of index.templates) {
-                console.log('[cloud-templates]  - cloud template:', t.id, t.name)
+                console.log('[cloud-templates]  - cloud template:', t.id, t.name, 'package:', t.packageFileName)
             }
             return { ok: true, index, fromCloud: true }
         } catch (err) {
             console.error('[cloud-templates] Error loading index from cloud:', err.message, err.stack)
-            return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
+            return { ok: true, index: null, fromCloud: false, error: err.message }
         }
     }
 
-    async _getIndex() {
-        if (this._cachedIndex && this._indexLoaded) {
+    async _getIndex(options = {}) {
+        const { forceRefresh = false } = options
+        
+        if (this._cachedIndex && this._indexLoaded && !forceRefresh) {
             console.log('[cloud-templates] Using cached index, templates:', this._cachedIndex.templates.length)
             return { ok: true, index: this._cachedIndex }
         }
 
         const result = await this._loadIndexFromCloud()
-        this._cachedIndex = result.index
-        this._indexLoaded = true
-        return { ok: true, index: this._cachedIndex }
+        if (result.fromCloud && result.index) {
+            console.log('[cloud-templates] Caching index from cloud, templates:', result.index.templates.length)
+            this._cachedIndex = result.index
+            this._indexLoaded = true
+        } else {
+            console.log('[cloud-templates] Not caching index - failed to load from cloud:', result.error)
+        }
+        return { ok: true, index: result.index || this._cachedIndex || this._createEmptyIndex() }
     }
 
     _createEmptyIndex() {
@@ -134,15 +181,15 @@ export class CloudTemplatesService {
             
             if (verifyExists.ok && verifyExists.exists) {
                 const readBack = await adapter.fileRead(INDEX_FILE)
-                if (readBack.ok && readBack.buffer) {
+                if (readBack.ok && readBack.buffer && readBack.buffer.length > 0) {
                     try {
                         const verified = JSON.parse(readBack.buffer.toString('utf8'))
                         console.log('[cloud-templates] Index verified after write, templates:', verified.templates?.length || 0)
                     } catch (e) {
-                        console.error('[cloud-templates] Index verification failed - parse error:', e.message)
+                        console.error('[cloud-templates] Index verification failed - parse error:', e.message, 'content length:', readBack.buffer.length)
                     }
                 } else {
-                    console.error('[cloud-templates] Index verification failed - could not read back:', readBack.errMsg)
+                    console.error('[cloud-templates] Index verification failed - could not read back:', readBack.errMsg, 'buffer:', readBack.buffer?.length || 0)
                 }
             } else {
                 console.error('[cloud-templates] Index verification failed - file does not exist after write!')
@@ -243,8 +290,8 @@ export class CloudTemplatesService {
 
         console.log('[cloud-templates] Reading package:', meta.packageFileName)
         const packageResult = await adapter.fileRead(meta.packageFileName)
-        if (!packageResult.ok || !packageResult.buffer) {
-            console.error('[cloud-templates] Failed to read package:', packageResult.errMsg)
+        if (!packageResult.ok || !packageResult.buffer || packageResult.buffer.length === 0) {
+            console.error('[cloud-templates] Failed to read package:', packageResult.errMsg, 'buffer size:', packageResult.buffer?.length || 0)
             return { ok: false, errMsg: 'Failed to read template package' }
         }
         console.log('[cloud-templates] Package read, size:', packageResult.buffer.length)
@@ -252,7 +299,7 @@ export class CloudTemplatesService {
         let coverBuffer = null
         if (meta.coverFileName) {
             const coverResult = await adapter.fileRead(meta.coverFileName)
-            if (coverResult.ok && coverResult.buffer) {
+            if (coverResult.ok && coverResult.buffer && coverResult.buffer.length > 0) {
                 coverBuffer = coverResult.buffer
                 console.log('[cloud-templates] Cover read, size:', coverBuffer.length)
             } else {

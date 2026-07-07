@@ -145,6 +145,24 @@ ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 	}
 })
 
+// ===== 模板中心窗口：预注册监听器 + 数据缓存 =====
+const TEMPLATE_CENTER_DATA_CHANNEL = 'dweb:template-center:data'
+let templateCenterLatestData = null
+const templateCenterDataHandlers = new Map()
+let templateCenterDataListenerSeed = 0
+
+ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
+	try {
+		console.log(`[preload:template-center] received data:`, JSON.stringify(payload))
+		templateCenterLatestData = payload
+		for (const handler of templateCenterDataHandlers.values()) {
+			try { handler(payload) } catch (err) { console.warn('[preload:template-center] handler error:', err) }
+		}
+	} catch (err) {
+		console.warn('[preload:template-center] failed to process data:', err)
+	}
+})
+
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
 // 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
@@ -415,6 +433,78 @@ contextBridge.exposeInMainWorld('dweb', {
 			const id = Number(listenerId || 0)
 			if (!resourceManagerDataHandlers.has(id)) return { ok: false }
 			resourceManagerDataHandlers.delete(id)
+			return { ok: true }
+		},
+
+		// ===== 模板中心原生窗口 =====
+		openTemplateCenter: (payload) => {
+			return invoke('dweb:template-center:open', payload || {})
+		},
+		closeTemplateCenter: () => invoke('dweb:template-center:close'),
+		focusTemplateCenter: () => invoke('dweb:template-center:focus'),
+		sendTemplateCenterData: (payload) => {
+			return invoke('dweb:template-center:send-data', payload || {})
+		},
+		broadcastTemplateCenterEvent: (payload) => invoke('dweb:template-center:broadcast', payload || {}),
+		notifyTemplateCenterEvent: (payload) => invoke('dweb:template-center:notify', payload || {}),
+		getTemplateCenterData: () => templateCenterLatestData,
+		requestTemplateCenterData: () => invoke('dweb:template-center:request-data', {}),
+
+		onTemplateCenterEvent: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:template-center:event'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch { /* ignore */ }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offTemplateCenterEvent: (listenerId) => {
+			const CHANNEL = 'dweb:template-center:event'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+
+		onTemplateCenterNotify: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:template-center:notify'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch { /* ignore */ }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offTemplateCenterNotify: (listenerId) => {
+			const CHANNEL = 'dweb:template-center:notify'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+
+		onTemplateCenterData: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++templateCenterDataListenerSeed
+			templateCenterDataHandlers.set(id, handler)
+			if (templateCenterLatestData !== null) {
+				try { handler(templateCenterLatestData) } catch { /* ignore */ }
+			}
+			return id
+		},
+		offTemplateCenterData: (listenerId) => {
+			const id = Number(listenerId || 0)
+			if (!templateCenterDataHandlers.has(id)) return { ok: false }
+			templateCenterDataHandlers.delete(id)
 			return { ok: true }
 		},
 	},
