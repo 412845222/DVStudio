@@ -43,6 +43,7 @@
   "aiworkflow.templateCenter.templateSaved": "Template saved successfully",
   "aiworkflow.templateCenter.templateSaveFailed": "Failed to save template",
   "aiworkflow.templateCenter.templateDeleted": "Template deleted",
+  "aiworkflow.templateCenter.deleteFailed": "Delete failed, please retry",
   "aiworkflow.templateCenter.deleteConfirm": "Are you sure you want to delete template \"{name}\"?",
   "aiworkflow.templateCenter.deleteConfirmTitle": "Delete \"{name}\"",
   "aiworkflow.templateCenter.deleteConfirmMessage": "This action cannot be undone. Are you sure you want to delete this template?",
@@ -98,5 +99,6 @@
   "aiworkflow.templateCenter.storageFree": "Free",
   "aiworkflow.templateCenter.refresh": "Refresh Cloud",
   "aiworkflow.templateCenter.syncing": "Syncing cloud data...",
-  "aiworkflow.templateCenter.loading": "Loading..."
+  "aiworkflow.templateCenter.loading": "Loading...",
+  "aiworkflow.templateCenter.featureComingSoon": "Feature coming soon, stay tuned"
 }

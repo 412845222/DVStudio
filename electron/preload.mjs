@@ -455,7 +455,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:template-center:event'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch { /* ignore */ }
+				try { handler(payload) } catch (err) { console.error('[preload][template-center:event] handler error:', err) }
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -476,7 +476,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:template-center:notify'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch { /* ignore */ }
+				try { handler(payload) } catch (err) { console.error('[preload][template-center:notify] handler error:', err) }
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -497,7 +497,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			const id = ++templateCenterDataListenerSeed
 			templateCenterDataHandlers.set(id, handler)
 			if (templateCenterLatestData !== null) {
-				try { handler(templateCenterLatestData) } catch { /* ignore */ }
+				try { handler(templateCenterLatestData) } catch (err) { console.error('[preload][template-center:data] handler error:', err) }
 			}
 			return id
 		},

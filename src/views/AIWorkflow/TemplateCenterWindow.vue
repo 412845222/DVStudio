@@ -5,7 +5,7 @@
 				:open="dialogOpen"
 				@update:open="handleClose"
 				@save-template="handleSaveTemplate"
-				@apply-template="handleApplyTemplate"
+				@apply-template-confirm="handleApplyTemplateConfirm"
 				@delete-template="handleDeleteTemplate"
 				@upload-template="handleUploadToCloud"
 				@download-template="handleDownloadFromCloud"
@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, toRaw } from 'vue'
 import { useI18n } from '../../i18n'
 import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
 
@@ -44,12 +44,16 @@ const pushToast = (text: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 }
 
 const broadcastToMainWindow = async (event: string, data?: unknown) => {
+	console.log('[TemplateCenterWindow] broadcastToMainWindow, event:', event, 'has dweb.aiworkflow:', !!window.dweb?.aiworkflow, 'has broadcast:', typeof window.dweb?.aiworkflow?.broadcastTemplateCenterEvent)
 	try {
 		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.broadcastTemplateCenterEvent === 'function') {
-			await window.dweb.aiworkflow.broadcastTemplateCenterEvent({ event, data })
+			const result = await window.dweb.aiworkflow.broadcastTemplateCenterEvent({ event, data })
+			console.log('[TemplateCenterWindow] broadcast result:', result)
+		} else {
+			console.error('[TemplateCenterWindow] broadcastTemplateCenterEvent not available on window.dweb.aiworkflow')
 		}
 	} catch (err) {
-		console.warn('[TemplateCenterWindow] broadcast failed:', err)
+		console.error('[TemplateCenterWindow] broadcast failed:', err)
 	}
 }
 
@@ -67,12 +71,55 @@ const handleClose = async () => {
 	}
 }
 
-const handleSaveTemplate = (payload: unknown) => {
-	broadcastToMainWindow('save-template', payload)
+const handleSaveTemplate = async (payload: unknown) => {
+	await broadcastToMainWindow('save-template', payload)
+	handleClose()
 }
 
-const handleApplyTemplate = (payload: unknown) => {
-	broadcastToMainWindow('apply-template', payload)
+const handleApplyTemplateConfirm = async (payload: unknown) => {
+	console.log('[TemplateCenterWindow] handleApplyTemplateConfirm received, payload type:', typeof payload)
+	if (!payload || typeof payload !== 'object') {
+		console.error('[TemplateCenterWindow] handleApplyTemplateConfirm: invalid payload')
+		return
+	}
+	const p = payload as Record<string, unknown>
+	const template = p.template as Record<string, unknown> | undefined
+	if (!template || typeof template !== 'object') {
+		console.error('[TemplateCenterWindow] handleApplyTemplateConfirm: missing template in payload')
+		return
+	}
+	const plainTemplate = {
+		id: String(template.id || ''),
+		name: String(template.name || ''),
+		description: String(template.description || ''),
+		category: template.category as string,
+		source: template.source as string,
+		thumbnail: template.thumbnail as string | undefined,
+		coverPath: template.coverPath as string | undefined,
+		packagePath: template.packagePath as string | undefined,
+		filePath: template.filePath as string | undefined,
+		createdAt: template.createdAt as number | undefined,
+		updatedAt: template.updatedAt as number | undefined,
+		author: template.author as string | undefined,
+		version: template.version as string | undefined,
+		tags: Array.isArray(template.tags) ? [...template.tags] as string[] : undefined,
+		nodeCount: template.nodeCount as number | undefined,
+		resourceCount: template.resourceCount as number | undefined,
+		steamFileId: template.steamFileId as string | undefined,
+		cloudSyncStatus: template.cloudSyncStatus as string | undefined,
+		lastSyncAt: template.lastSyncAt as number | undefined,
+		workshopItemId: template.workshopItemId as string | undefined,
+		subscribed: template.subscribed as boolean | undefined,
+	}
+	console.log('[TemplateCenterWindow] safe plain template:', { id: plainTemplate.id, name: plainTemplate.name, source: plainTemplate.source, packagePath: plainTemplate.packagePath })
+	const safePayload = {
+		template: plainTemplate,
+		target: p.target as string,
+		newProjectName: p.newProjectName as string | undefined,
+		newProjectPath: p.newProjectPath as string | undefined,
+	}
+	console.log('[TemplateCenterWindow] broadcasting apply-template-confirm with safe payload:', { target: safePayload.target, templateId: safePayload.template.id })
+	await broadcastToMainWindow('apply-template-confirm', safePayload)
 }
 
 const handleDeleteTemplate = (payload: unknown) => {
@@ -87,8 +134,8 @@ const handleDownloadFromCloud = (payload: unknown) => {
 	broadcastToMainWindow('download-from-cloud', payload)
 }
 
-const handlePreviewTemplate = (payload: unknown) => {
-	broadcastToMainWindow('preview-template', payload)
+const handlePreviewTemplate = async (_payload: unknown) => {
+	pushToast(t('aiworkflow.templateCenter.featureComingSoon'), 'info')
 }
 
 onMounted(() => {

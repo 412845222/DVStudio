@@ -1686,8 +1686,10 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:template-center:broadcast', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
+		console.log('[main][template-center:broadcast] event:', event, 'data keys:', payload?.data ? Object.keys(payload.data) : 'null')
 		if (!event) return { ok: false, error: 'missing event name' }
 		if (!mainWindow || mainWindow.isDestroyed()) {
+			console.error('[main][template-center:broadcast] mainWindow not available!')
 			return { ok: false, error: 'main window not available' }
 		}
 		try {
@@ -1695,8 +1697,10 @@ function registerIpc() {
 				event,
 				data: payload?.data ?? null,
 			})
+			console.log('[main][template-center:broadcast] sent to mainWindow successfully')
 			return { ok: true }
 		} catch (err) {
+			console.error('[main][template-center:broadcast] error:', err)
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})

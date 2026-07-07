@@ -390,8 +390,8 @@
 
 				<TemplateCenterDialog
 					v-model:open="templateCenterOpen"
-					@apply-template="onTemplateSelectForApply"
-					@delete-template="onDeleteTemplate"
+					@apply-template-confirm="onConfirmApplyTemplate"
+					@delete-template="() => loadTemplates({ forceCloudRefresh: true })"
 					@save-template="onSaveTemplateFromCenter"
 				/>
 
@@ -6704,7 +6704,7 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
-const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates, refreshCloud } = useTemplateCenter()
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates, refreshCloud, templates: templateCenterTemplates } = useTemplateCenter()
 const templateCenterOpen = ref(false)
 const templateApplyDialogOpen = ref(false)
 const selectedTemplateForApply = ref<TemplateItem | null>(null)
@@ -6873,7 +6873,9 @@ async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
 }
 
 async function applyTemplateToCurrent(template: TemplateItem) {
+	console.log('[AIWorkflowPage] applyTemplateToCurrent started, template:', template?.id, template?.name, 'packageData:', !!template?.packageData, 'packagePath:', template?.packagePath)
 	const blob = await loadTemplatePackage(template)
+	console.log('[AIWorkflowPage] loadTemplatePackage result:', blob ? `Blob size=${blob.size} type=${blob.type}` : 'null/undefined')
 	if (!blob) {
 		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
 		return
@@ -6995,11 +6997,13 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 }
 
 async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
+	console.log('[AIWorkflowPage] onConfirmApplyTemplate called, target:', options.target, 'template:', options.template?.id, options.template?.name)
 	templateApplyDialogOpen.value = false
 	const template = options.template
 	selectedTemplateForApply.value = null
 
 	if (options.target === 'current') {
+		console.log('[AIWorkflowPage] applying to current blueprint...')
 		await applyTemplateToCurrent(template)
 		return
 	}
@@ -9817,8 +9821,22 @@ const registerResourceManagerEventListener = () => {
 
 const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) => {
 	const { event, data } = payload || {}
+	console.log('[AIWorkflowPage][template-center] received event:', event, data ? 'has data' : 'no data')
 	if (!event) return
 	switch (String(event)) {
+		case 'apply-template-confirm':
+			console.log('[AIWorkflowPage][template-center] apply-template-confirm, data:', data)
+			if (data && typeof data === 'object' && 'template' in data && 'target' in data) {
+				const options = data as TemplateApplyOptions
+				const remoteTemplate = options.template
+				console.log('[AIWorkflowPage][template-center] looking up local template for id:', remoteTemplate?.id, 'local templates count:', templateCenterTemplates.value.length)
+				const localTemplate = templateCenterTemplates.value.find(t => t.id === remoteTemplate.id) || remoteTemplate
+				console.log('[AIWorkflowPage][template-center] found localTemplate:', !!localTemplate, 'packageData:', !!(localTemplate as TemplateItem)?.packageData)
+				void onConfirmApplyTemplate({ ...options, template: localTemplate })
+			} else {
+				console.error('[AIWorkflowPage][template-center] apply-template-confirm: invalid data format, missing template or target')
+			}
+			break
 		case 'apply-template':
 			if (data && typeof data === 'object' && 'id' in data) {
 				const template = data as TemplateItem
@@ -9826,10 +9844,7 @@ const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) 
 			}
 			break
 		case 'delete-template':
-			if (data && typeof data === 'object' && 'id' in data) {
-				const template = data as TemplateItem
-				void onDeleteTemplate(template)
-			}
+			void loadTemplates({ forceCloudRefresh: true })
 			break
 		case 'save-template':
 			if (data && typeof data === 'object' && 'scope' in data) {
@@ -9862,10 +9877,13 @@ const registerTemplateCenterEventListener = () => {
 	const dweb = safeGetRecord(w, 'dweb')
 	const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
 	const onEvent = dwebAiworkflow?.onTemplateCenterEvent
+	console.log('[AIWorkflowPage] registerTemplateCenterEventListener: isElectron=', isElectronRuntime, 'hasOnEvent=', typeof onEvent)
 	if (!isElectronRuntime || typeof onEvent !== 'function') return
 	templateCenterEventListenerId = (
 		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
 	)(onTemplateCenterWindowEvent)
+	console.log('[AIWorkflowPage] template center event listener registered, id:', templateCenterEventListenerId)
+	void loadTemplates({ forceCloudRefresh: false })
 }
 
 const openResourceDialog = async () => {

@@ -178,6 +178,13 @@
 							</svg>
 						</button>
 					</div>
+
+					<button class="tc-btn tc-btn-primary tc-new-template-btn" type="button" @click="$emit('save-template', { scope: 'full' })">
+						<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+							<path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						</svg>
+						{{ t('aiworkflow.templateCenter.newTemplate') }}
+					</button>
 				</div>
 
 				<div class="tc-content">
@@ -237,16 +244,23 @@
 			</div>
 		</div>
 	</Transition>
+
+	<TemplateApplyDialog
+		v-model:open="applyDialogOpen"
+		:template="templateForApply"
+		@confirm="handleApplyConfirm"
+	/>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import TemplateCard from './TemplateCard.vue'
+import TemplateApplyDialog from './TemplateApplyDialog.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
-import type { TemplateItem, SaveTemplateOptions, TemplateSource } from '../../aiworkflow/template/types'
+import type { TemplateItem, SaveTemplateOptions, TemplateSource, TemplateApplyOptions } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
-import { toastSuccess, toastError } from '../UIComponent/useGlobalFeedback'
+import { toastSuccess, toastError, toastInfo, confirmDelete } from '../UIComponent/useGlobalFeedback'
 
 type TabId = 'user' | 'cloud' | 'workshop'
 
@@ -257,6 +271,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void
 	(e: 'apply-template', template: TemplateItem): void
+	(e: 'apply-template-confirm', options: TemplateApplyOptions): void
 	(e: 'preview-template', template: TemplateItem): void
 	(e: 'delete-template', template: TemplateItem): void
 	(e: 'save-template', options: Pick<SaveTemplateOptions, 'scope'>): void
@@ -283,6 +298,7 @@ const {
 	loadTemplates,
 	selectTemplate,
 	setViewMode,
+	deleteTemplate,
 	uploadToCloud,
 	downloadFromCloud,
 	refreshCloud,
@@ -418,16 +434,43 @@ watch(
 	}
 )
 
-function handlePreview(template: TemplateItem) {
-	emit('preview-template', template)
+function handlePreview(_template: TemplateItem) {
+	toastInfo(t('aiworkflow.templateCenter.featureComingSoon'))
 }
+
+const applyDialogOpen = ref(false)
+const templateForApply = ref<TemplateItem | null>(null)
 
 function handleApply(template: TemplateItem) {
-	emit('apply-template', template)
+	templateForApply.value = template
+	applyDialogOpen.value = true
 }
 
-function handleDelete(template: TemplateItem) {
-	emit('delete-template', template)
+function handleApplyConfirm(options: TemplateApplyOptions) {
+	console.log('[TemplateCenterDialog] handleApplyConfirm, options:', { target: options.target, templateId: options.template?.id, templateName: options.template?.name })
+	applyDialogOpen.value = false
+	templateForApply.value = null
+	console.log('[TemplateCenterDialog] emitting apply-template-confirm')
+	emit('apply-template-confirm', options)
+}
+
+async function handleDelete(template: TemplateItem) {
+	const confirmed = await confirmDelete(
+		t('aiworkflow.templateCenter.deleteConfirmTitle', { name: template.name }),
+		t('aiworkflow.templateCenter.deleteConfirmMessage'),
+		{
+			confirmText: t('aiworkflow.templateCenter.delete'),
+			cancelText: t('aiworkflow.templateCenter.cancel'),
+		}
+	)
+	if (!confirmed) return
+	const ok = await deleteTemplate(template)
+	if (ok) {
+		toastInfo(t('aiworkflow.templateCenter.templateDeleted'))
+		emit('delete-template', template)
+	} else {
+		toastError(t('aiworkflow.templateCenter.deleteFailed'))
+	}
 }
 
 async function handleUpload(template: TemplateItem) {
@@ -436,6 +479,7 @@ async function handleUpload(template: TemplateItem) {
 	console.log('[template-center-dialog] upload result:', result)
 	if (result?.ok) {
 		toastSuccess(t('aiworkflow.templateCenter.uploadSuccess'))
+		emit('upload-template', template)
 	} else {
 		toastError(result?.errMsg || t('aiworkflow.templateCenter.uploadFailed'))
 	}
@@ -447,6 +491,7 @@ async function handleDownload(template: TemplateItem) {
 	console.log('[template-center-dialog] download result:', result ? 'success' : 'failed')
 	if (result) {
 		toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
+		emit('download-template', template)
 	} else {
 		toastError(t('aiworkflow.templateCenter.downloadFailed'))
 	}
@@ -1100,6 +1145,14 @@ async function handleDownload(template: TemplateItem) {
 	background: var(--tc-accent);
 	color: #fff;
 	box-shadow: 0 0 10px color-mix(in srgb, var(--tc-accent) 30%, transparent);
+}
+
+.tc-new-template-btn {
+	height: 34px;
+	padding: 0 14px;
+	gap: 6px;
+	font-size: 12px;
+	flex-shrink: 0;
 }
 
 /* Content */

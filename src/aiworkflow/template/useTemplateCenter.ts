@@ -143,41 +143,58 @@ export function useTemplateCenter() {
 		loadingPackageState.value = true
 		try {
 			if (template.source === 'user') {
+				console.log('[loadTemplatePackage] loading user template blob, id:', template.id)
 				const blob = await persistence.loadTemplateBlob(template.id)
 				if (blob) {
 					template.packageData = blob
+					console.log('[loadTemplatePackage] user template blob loaded, size:', blob.size)
+				} else {
+					console.error('[loadTemplatePackage] user template blob is null, id:', template.id)
 				}
 				return blob
 			}
 
 			if (template.source === 'steam-user') {
+				console.log('[loadTemplatePackage] downloading cloud template, id:', template.id)
 				const result = await cloudPersistence.downloadTemplateFromCloud(template.id)
 				if (result) {
 					template.packageData = result.zipBlob
+					console.log('[loadTemplatePackage] cloud template downloaded, size:', result.zipBlob?.size)
+				} else {
+					console.error('[loadTemplatePackage] cloud template download returned null, id:', template.id)
 				}
 				return result?.zipBlob || null
 			}
 
 			if (template.packagePath?.startsWith('builtin:')) {
+				console.log('[loadTemplatePackage] generating builtin template blob, path:', template.packagePath)
 				const blob = await generateBuiltinTemplateBlob(template.packagePath)
 				if (blob) {
 					template.packageData = blob
+					console.log('[loadTemplatePackage] builtin template blob generated, size:', blob.size)
+				} else {
+					console.error('[loadTemplatePackage] builtin template blob generation failed, path:', template.packagePath)
 				}
 				return blob
 			}
 
 			if (!template.packagePath) {
+				console.error('[loadTemplatePackage] no packagePath for template:', template.id, template.name)
 				return null
 			}
 
+			console.log('[loadTemplatePackage] fetching template from path:', template.packagePath)
 			const response = await fetch(template.packagePath)
 			if (!response.ok) {
+				console.error('[loadTemplatePackage] fetch failed, status:', response.status, 'path:', template.packagePath)
 				return null
 			}
 			const blob = await response.blob()
 			template.packageData = blob
+			console.log('[loadTemplatePackage] template fetched, size:', blob.size)
 			return blob
-		} catch {
+		} catch (err) {
+			console.error('[loadTemplatePackage] error loading template package, id:', template.id, 'name:', template.name, 'source:', template.source, 'error:', err)
 			return null
 		} finally {
 			loadingPackageState.value = false
