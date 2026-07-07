@@ -14,7 +14,9 @@ import type {
 	SetupState,
 	CleanupOldProjectResult,
 	DirectoryPickResult,
-	UploadedProjectAsset
+	UploadedProjectAsset,
+	Open3DEditorPayload,
+	Open3DEditorResult
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -533,6 +535,18 @@ export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; e
 	if (!window?.dweb?.window?.openDevTools) return { ok: false, error: 'Not running in Electron.' }
 	try {
 		return (await window.dweb.window.openDevTools()) || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult> {
+	if (!window?.dweb?.window?.open3dEditor) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.open3dEditor(payload)
+		return result || { ok: true }
 	} catch (e: unknown) {
 		return { ok: false, error: getErrorMessage(e) }
 	}

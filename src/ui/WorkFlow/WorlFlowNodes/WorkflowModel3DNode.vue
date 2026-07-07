@@ -117,6 +117,22 @@
 
 		<template #footer>
 			<div class="wf-model3d-footer" @pointerdown.stop>
+				<div class="wf-model3d-toolbar">
+					<button
+						class="wf-model3d-editor-btn"
+						type="button"
+						:disabled="!effectiveModelUrl"
+						@click.stop="onOpenEditor"
+						:title="t('nodes.model3d.open3DEditor')"
+					>
+						<svg class="wf-model3d-editor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+							<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+							<line x1="12" y1="22.08" x2="12" y2="12"/>
+						</svg>
+						<span>{{ t('nodes.model3d.open3DEditor') }}</span>
+					</button>
+				</div>
 				<div class="wf-model3d-grid">
 					<div class="wf-model3d-info-card wf-model3d-field-wide">
 						<div class="wf-model3d-info-row">
@@ -206,8 +222,10 @@ import type {
 	WorkflowThreePreviewState
 } from './three-preview/types'
 import { useI18n } from '../../../i18n'
+import { useModel3DEditor } from '../../../composables/useModel3DEditor'
 
 const { t } = useI18n()
+const { open: open3DEditor } = useModel3DEditor()
 
 type AnchorSpec = {
 	id: string
@@ -737,6 +755,16 @@ const onAxesToggle = (e: Event) =>
 const onAutoRotateToggle = (e: Event) =>
 	updateSettings({ autoRotate: (e.target as HTMLInputElement).checked })
 
+const onOpenEditor = async () => {
+	const url = effectiveModelUrl.value
+	if (!url) return
+	await open3DEditor({
+		nodeId: props.nodeId,
+		modelUrl: url,
+		modelName: sourceNameDisplay.value,
+	})
+}
+
 watch(modelSignature, () => {
 	if (!viewer) return
 	if (previewPhase.value === 'masked') return
@@ -996,6 +1024,55 @@ onBeforeUnmount(() => {
 .wf-model3d-footer {
 	display: grid;
 	gap: 10px;
+}
+
+.wf-model3d-toolbar {
+	display: flex;
+	align-items: center;
+}
+
+.wf-model3d-editor-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 7px 12px;
+	border: 1px solid rgb(34 197 94 / 0.5);
+	background: linear-gradient(
+		180deg,
+		rgb(34 197 94 / 0.18),
+		rgb(34 197 94 / 0.08)
+	);
+	color: rgb(134 239 172);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	backdrop-filter: blur(8px);
+	box-shadow:
+		0 0 0 1px rgb(34 197 94 / 0.1),
+		0 0 16px rgb(34 197 94 / 0.12);
+}
+
+.wf-model3d-editor-btn:hover:not(:disabled) {
+	border-color: rgb(34 197 94 / 0.8);
+	background: linear-gradient(
+		180deg,
+		rgb(34 197 94 / 0.28),
+		rgb(34 197 94 / 0.14)
+	);
+	box-shadow:
+		0 0 0 1px rgb(34 197 94 / 0.2),
+		0 0 24px rgb(34 197 94 / 0.2);
+}
+
+.wf-model3d-editor-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.wf-model3d-editor-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
 }
 
 .wf-model3d-grid {

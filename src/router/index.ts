@@ -41,6 +41,11 @@ const routes: RouteRecordRaw[] = [
 		path: '/resource-manager',
 		name: 'ResourceManager',
 		component: () => import('../views/AIWorkflow/ResourceManagerWindow.vue')
+	},
+	{
+		path: '/3d-editor',
+		name: 'Model3DEditor',
+		component: () => import('../views/Model3DEditorPage.vue')
 	}
 ]
 
