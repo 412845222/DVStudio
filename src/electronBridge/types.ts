@@ -336,3 +336,79 @@ export type Open3DEditorResult = {
 	error?: string
 	focused?: boolean
 }
+
+export type CloudQuotaInfo = {
+	totalBytes: number
+	availableBytes: number
+}
+
+export type CloudTemplateMeta = {
+	id: string
+	name: string
+	description: string
+	category: string
+	tags: string[]
+	createdAt: number
+	updatedAt: number
+	nodeCount: number
+	packageFileName: string
+	coverFileName: string
+}
+
+export type CloudTemplatesPlatformResult = {
+	ok: boolean
+	platformId?: string
+	platformName?: string
+	errMsg?: string
+}
+
+export type CloudTemplatesQuotaResult = {
+	ok: boolean
+	quota?: CloudQuotaInfo
+	errMsg?: string
+}
+
+export type CloudTemplatesListResult = {
+	ok: boolean
+	items?: CloudTemplateMeta[]
+	lastSyncedAt?: number
+	quota?: CloudQuotaInfo | null
+	errMsg?: string
+}
+
+export type CloudTemplatesUploadPayload = {
+	id: string
+	name: string
+	description?: string
+	category?: string
+	tags?: string[]
+	nodeCount?: number
+	zipData: ArrayBuffer
+	coverData?: ArrayBuffer | null
+}
+
+export type CloudTemplatesUploadResult = {
+	ok: boolean
+	errMsg?: string
+}
+
+export type CloudTemplatesDownloadPayload = {
+	id: string
+}
+
+export type CloudTemplatesDownloadResult = {
+	ok: boolean
+	meta?: CloudTemplateMeta
+	zipData?: ArrayBuffer
+	coverData?: ArrayBuffer | null
+	errMsg?: string
+}
+
+export type CloudTemplatesDeletePayload = {
+	id: string
+}
+
+export type CloudTemplatesDeleteResult = {
+	ok: boolean
+	errMsg?: string
+}

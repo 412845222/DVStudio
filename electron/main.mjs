@@ -1673,6 +1673,159 @@ function registerIpc() {
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
+
+	let templateCenterWindow = null
+	let templateCenterLatestData = null
+
+	ipcMain.handle('dweb:template-center:open', async (_e, payload) => {
+		console.log('[main] dweb:template-center:open payload:', JSON.stringify(payload))
+		try {
+			const projectId = payload?.projectId ?? null
+			const title = String(payload?.title || '模板中心').slice(0, 200)
+
+			if (templateCenterWindow && !templateCenterWindow.isDestroyed()) {
+				templateCenterWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParams = new URLSearchParams()
+			if (projectId != null) queryParams.set('projectId', String(projectId))
+			if (title) queryParams.set('title', title)
+			const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/template-center${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/template-center${queryStr}`
+
+			console.log('[main][template-center] targetUrl:', targetUrl)
+
+			templateCenterWindow = new BrowserWindow({
+				width: 1080,
+				height: 760,
+				minWidth: 720,
+				minHeight: 500,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { templateCenterWindow.setMenuBarVisibility(false) } catch {}
+			try { templateCenterWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 80
+				const offsetY = 80
+				templateCenterWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[template-center:${level}] ${message} (${sourceId}:${line})`)
+			})
+			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			templateCenterWindow.on('closed', () => {
+				templateCenterWindow = null
+			})
+
+			await templateCenterWindow.loadURL(targetUrl)
+			console.log('[main][template-center] loadURL done, URL:', templateCenterWindow.webContents.getURL())
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][template-center] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:close', async () => {
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: true }
+		}
+		try {
+			templateCenterWindow.close()
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:focus', async () => {
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: false, error: 'window not available' }
+		}
+		templateCenterWindow.focus()
+		return { ok: true }
+	})
+
+	ipcMain.handle('dweb:template-center:broadcast', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		console.log('[main][template-center:broadcast] event:', event, 'data keys:', payload?.data ? Object.keys(payload.data) : 'null')
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			console.error('[main][template-center:broadcast] mainWindow not available!')
+			return { ok: false, error: 'main window not available' }
+		}
+		try {
+			mainWindow.webContents.send('dweb:template-center:event', {
+				event,
+				data: payload?.data ?? null,
+			})
+			console.log('[main][template-center:broadcast] sent to mainWindow successfully')
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][template-center:broadcast] error:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:notify', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: false, skipped: true }
+		}
+		try {
+			templateCenterWindow.webContents.send('dweb:template-center:notify', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:send-data', async (_e, payload) => {
+		templateCenterLatestData = payload
+
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: true, buffered: true }
+		}
+		try {
+			templateCenterWindow.webContents.send('dweb:template-center:data', payload)
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:request-data', async () => {
+		const payload = templateCenterLatestData
+		return { ok: true, data: payload }
+	})
 }
 
 async function stopBackend() {

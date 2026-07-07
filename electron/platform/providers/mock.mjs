@@ -14,6 +14,35 @@ class MockPlatformProvider extends EventEmitter {
 			{ appId: 481, name: 'Mock DLC 1', installed: true },
 			{ appId: 482, name: 'Mock DLC 2', installed: false },
 		]
+		this.cloud = {
+			getQuota: () => ({
+				ok: true,
+				totalBytes: 1024 * 1024 * 100,
+				availableBytes: 1024 * 1024 * 90,
+			}),
+			fileWrite: (_fileName, _buffer) => {
+				return { ok: true }
+			},
+			fileRead: (_fileName) => {
+				return { ok: false, errMsg: 'Mock: no file data' }
+			},
+			fileDelete: (_fileName) => {
+				return { ok: true }
+			},
+			fileExists: (_fileName) => {
+				return { ok: true, exists: false }
+			},
+			getFileSize: (_fileName) => {
+				return { ok: true, size: 0 }
+			},
+			getFileTimestamp: (_fileName) => {
+				return { ok: true, timestamp: Date.now() }
+			},
+			getFileCount: () => 0,
+			getFileNameAndSize: (_index) => {
+				return { name: '', size: 0 }
+			},
+		}
 	}
 
 	get id() { return 'mock' }

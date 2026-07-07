@@ -496,6 +496,65 @@ export interface TemplatePackProgress {
 	detail?: string
 }
 
+function stripCloudAssetReferences(snapshot: AIWorkflowDraftSnapshot) {
+	for (const rid of Object.keys(snapshot.resourcesById || {})) {
+		const resource = snapshot.resourcesById[rid]
+		if (!resource) continue
+		resource.url = ''
+		resource.posterUrl = ''
+		resource.sourcePath = undefined
+		resource.posterSourcePath = undefined
+		resource.localFileKey = undefined
+		if ('projectRelativePath' in resource) {
+			;(resource as unknown as Record<string, unknown>).projectRelativePath = undefined
+		}
+	}
+
+	const deepSnapshotAssetCandidates = collectPackageNodeAssetCandidates(snapshot)
+	for (const item of deepSnapshotAssetCandidates) {
+		setValueByJsonPointer(
+			snapshot as unknown as Record<string, unknown>,
+			item.pointer,
+			''
+		)
+	}
+}
+
+function buildPackageBase(snapshot: AIWorkflowDraftSnapshot, templateName: string, templateCode?: string, forCloud = false): {
+	pkg: AIWorkflowProjectPackageV1
+	cleanedSnapshot: AIWorkflowDraftSnapshot
+} {
+	const cleanedSnapshot = cloneBlueprintSnapshotForPackaging(snapshot)
+	const code = templateCode || generateTemplateCode()
+
+	if (forCloud) {
+		stripCloudAssetReferences(cleanedSnapshot)
+	} else {
+		for (const rid of Object.keys(cleanedSnapshot.resourcesById || {})) {
+			const resource = cleanedSnapshot.resourcesById[rid]
+			if (!resource) continue
+			resource.sourcePath = undefined
+			resource.posterSourcePath = undefined
+			resource.localFileKey = undefined
+			if ('projectRelativePath' in resource) {
+				;(resource as unknown as Record<string, unknown>).projectRelativePath = undefined
+			}
+		}
+	}
+
+	const pkg: AIWorkflowProjectPackageV1 = {
+		schemaVersion: 1,
+		kind: 'aiwf-project-package',
+		exportedAt: Date.now(),
+		projectName: templateName,
+		snapshot: cleanedSnapshot,
+		assets: [],
+		templateCode: code
+	}
+
+	return { pkg, cleanedSnapshot }
+}
+
 export async function createTemplatePackageZip(
 	snapshot: AIWorkflowDraftSnapshot,
 	templateName: string,
@@ -510,13 +569,11 @@ export async function createTemplatePackageZip(
 	}
 
 	reportProgress(2, 'collecting')
-	const cleanedSnapshot = cloneBlueprintSnapshotForPackaging(snapshot)
-	const code = templateCode || generateTemplateCode()
-
-	const zip = new JSZip()
+	const { pkg, cleanedSnapshot } = buildPackageBase(snapshot, templateName, templateCode)
 	const assets: AIWorkflowProjectPackageAssetEntry[] = []
 	let skipped = 0
 
+	const zip = new JSZip()
 	const referencedResourceIds = Array.from(collectPackageReferencedResourceIds(cleanedSnapshot))
 	const deepSnapshotAssetCandidates = collectPackageNodeAssetCandidates(cleanedSnapshot)
 	const cachedByUrl = new Map<
@@ -581,13 +638,6 @@ export async function createTemplatePackageZip(
 				reportProgress(8 + (processedAssets / totalAssets) * 65, 'fetching')
 			}
 		}
-
-		resource.sourcePath = undefined
-		resource.posterSourcePath = undefined
-		resource.localFileKey = undefined
-		if ('projectRelativePath' in resource) {
-			;(resource as unknown as Record<string, unknown>).projectRelativePath = undefined
-		}
 	}
 
 	let snapshotAssetIndex = 0
@@ -647,17 +697,9 @@ export async function createTemplatePackageZip(
 		}
 	}
 
-	reportProgress(78, 'packaging')
-	const pkg: AIWorkflowProjectPackageV1 = {
-		schemaVersion: 1,
-		kind: 'aiwf-project-package',
-		exportedAt: Date.now(),
-		projectName: templateName,
-		snapshot: cleanedSnapshot,
-		assets,
-		templateCode: code
-	}
+	pkg.assets = assets
 
+	reportProgress(78, 'packaging')
 	zip.file(AIWF_PROJECT_PACKAGE_ENTRY, JSON.stringify(pkg, null, 2))
 	if (coverBlob) {
 		zip.file(AIWF_TEMPLATE_COVER_ENTRY, await coverBlob.arrayBuffer())
@@ -673,6 +715,27 @@ export async function createTemplatePackageZip(
 			const zipPercent = metadata.percent || 0
 			reportProgress(85 + zipPercent * 0.15, 'compressing')
 		}
+	})
+}
+
+export async function createCloudTemplatePackageZip(
+	snapshot: AIWorkflowDraftSnapshot,
+	templateName: string,
+	coverBlob?: Blob | null,
+	templateCode?: string
+): Promise<Blob> {
+	const { pkg } = buildPackageBase(snapshot, templateName, templateCode, true)
+	const zip = new JSZip()
+
+	zip.file(AIWF_PROJECT_PACKAGE_ENTRY, JSON.stringify(pkg, null, 2))
+	if (coverBlob) {
+		zip.file(AIWF_TEMPLATE_COVER_ENTRY, await coverBlob.arrayBuffer())
+	}
+
+	return zip.generateAsync({
+		type: 'blob',
+		compression: 'DEFLATE',
+		compressionOptions: { level: 9 }
 	})
 }
 

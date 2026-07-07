@@ -48,6 +48,130 @@
  */
 
 /**
+ * @typedef {Object} PlatformCloudFileInfo
+ * @property {string} name
+ * @property {number} size
+ */
+
+/**
+ * @typedef {Object} PlatformCloudQuota
+ * @property {number} totalBytes
+ * @property {number} availableBytes
+ */
+
+/**
+ * @typedef {Object} PlatformCloudResult
+ * @property {boolean} ok
+ * @property {string} [errMsg]
+ */
+
+/**
+ * @typedef {Object} PlatformCloudReadResult
+ * @property {boolean} ok
+ * @property {Buffer} [buffer]
+ * @property {string} [errMsg]
+ */
+
+/**
+ * @typedef {Object} PlatformCloudQuotaResult
+ * @property {boolean} ok
+ * @property {number} [totalBytes]
+ * @property {number} [availableBytes]
+ */
+
+/**
+ * @typedef {Object} PlatformCloudExistsResult
+ * @property {boolean} ok
+ * @property {boolean} exists
+ */
+
+/**
+ * @typedef {Object} PlatformCloudSizeResult
+ * @property {boolean} ok
+ * @property {number} size
+ */
+
+/**
+ * @typedef {Object} PlatformCloudTimestampResult
+ * @property {boolean} ok
+ * @property {number} timestamp
+ */
+
+/**
+ * @typedef {Object} PlatformCloudFileEntry
+ * @property {string} name
+ * @property {number} size
+ */
+
+/**
+ * @interface PlatformCloud
+ * @description 平台云存储能力接口
+ */
+export const PlatformCloud = {
+	/**
+	 * 获取配额信息
+	 * @returns {PlatformCloudQuotaResult}
+	 */
+	getQuota() { return { ok: false } },
+
+	/**
+	 * 写入文件
+	 * @param {string} fileName
+	 * @param {Buffer} buffer
+	 * @returns {PlatformCloudResult}
+	 */
+	fileWrite(fileName, buffer) { return { ok: false, errMsg: 'Not supported' } },
+
+	/**
+	 * 读取文件
+	 * @param {string} fileName
+	 * @returns {PlatformCloudReadResult}
+	 */
+	fileRead(fileName) { return { ok: false } },
+
+	/**
+	 * 删除文件
+	 * @param {string} fileName
+	 * @returns {PlatformCloudResult}
+	 */
+	fileDelete(fileName) { return { ok: false } },
+
+	/**
+	 * 检查文件是否存在
+	 * @param {string} fileName
+	 * @returns {PlatformCloudExistsResult}
+	 */
+	fileExists(fileName) { return { ok: false, exists: false } },
+
+	/**
+	 * 获取文件大小
+	 * @param {string} fileName
+	 * @returns {PlatformCloudSizeResult}
+	 */
+	getFileSize(fileName) { return { ok: false, size: 0 } },
+
+	/**
+	 * 获取文件时间戳
+	 * @param {string} fileName
+	 * @returns {PlatformCloudTimestampResult}
+	 */
+	getFileTimestamp(fileName) { return { ok: false, timestamp: 0 } },
+
+	/**
+	 * 获取文件数量
+	 * @returns {number}
+	 */
+	getFileCount() { return 0 },
+
+	/**
+	 * 获取文件名和大小
+	 * @param {number} index
+	 * @returns {PlatformCloudFileEntry}
+	 */
+	getFileNameAndSize(index) { return { name: '', size: 0 } },
+}
+
+/**
  * @interface PlatformProvider
  * @description 所有平台Provider必须实现的统一接口
  */
@@ -63,6 +187,12 @@ export const PlatformProvider = {
 	 * @type {string}
 	 */
 	displayName: '',
+
+	/**
+	 * 云存储能力
+	 * @type {PlatformCloud|null}
+	 */
+	cloud: null,
 
 	/**
 	 * 预启动检查 - 在app.whenReady前调用

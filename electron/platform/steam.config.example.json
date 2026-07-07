@@ -1,0 +1,6 @@
+{
+  "appId": 0,
+  "webApiKey": "",
+  "environment": "production",
+  "_comment": "Copy this file to electron/steam.config.json and fill in your Steam AppID. steam.config.json is gitignored and must NOT be committed anywhere in the repository."
+}

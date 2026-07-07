@@ -110,26 +110,26 @@ describe('steam upload: renderAppBuildVdf', () => {
 
 	it('replaces all placeholders correctly', () => {
 		const result = renderAppBuildVdf(template, {
-			appId: 2475710,
+			appId: 480,
 			version: '0.1.2',
 			buildOutput: 'G:\\\\output',
 			contentRoot: 'G:\\\\content',
 			branch: 'beta',
-			depotEntries: '\t\t"2475711" "G:\\\\depot.vdf"',
+			depotEntries: '\t\t"481" "G:\\\\depot.vdf"',
 			description: 'test build',
 			setLive: false
 		})
-		expect(result).toContain('"AppID" "2475710"')
+		expect(result).toContain('"AppID" "480"')
 		expect(result).toContain('"Desc" "test build"')
 		expect(result).toContain('"BuildOutput" "G:\\\\output"')
 		expect(result).toContain('"ContentRoot" "G:\\\\content"')
-		expect(result).toContain('"2475711" "G:\\\\depot.vdf"')
+		expect(result).toContain('"481" "G:\\\\depot.vdf"')
 		expect(result).not.toContain('SetLive')
 	})
 
 	it('generates default description from version when not provided', () => {
 		const result = renderAppBuildVdf(template, {
-			appId: 2475710,
+			appId: 480,
 			version: '0.1.2',
 			buildOutput: 'out',
 			contentRoot: 'root',
@@ -143,7 +143,7 @@ describe('steam upload: renderAppBuildVdf', () => {
 
 	it('adds SetLive block when setLive is true', () => {
 		const result = renderAppBuildVdf(template, {
-			appId: 2475710,
+			appId: 480,
 			version: '0.1.2',
 			buildOutput: 'out',
 			contentRoot: 'root',
@@ -157,7 +157,7 @@ describe('steam upload: renderAppBuildVdf', () => {
 
 	it('does not add SetLive when setLive is false', () => {
 		const result = renderAppBuildVdf(template, {
-			appId: 2475710,
+			appId: 480,
 			version: '0.1.2',
 			buildOutput: 'out',
 			contentRoot: 'root',
@@ -179,7 +179,7 @@ describe('steam upload: renderAppBuildVdf', () => {
 	"BuildOutput" "out/{{VERSION}}"
 }`
 		const result = renderAppBuildVdf(multiVersionTemplate, {
-			appId: 2475710,
+			appId: 480,
 			version: '1.0.0',
 			buildOutput: '',
 			contentRoot: '',
