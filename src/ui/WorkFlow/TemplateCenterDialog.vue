@@ -69,6 +69,19 @@
 					</button>
 				</div>
 
+				<div class="tc-quota-bar-wrap">
+					<div v-show="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-inner">
+						<div class="tc-quota-bar">
+							<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
+							<div v-else class="tc-quota-bar-loading"></div>
+							<div class="tc-quota-bar-text">
+								<span v-if="cloudQuota">{{ cloudQuotaText }}</span>
+								<span v-else class="tc-quota-loading-text">{{ t('aiworkflow.templateCenter.syncing') }}</span>
+							</div>
+						</div>
+					</div>
+				</div>
+
 				<div class="tc-toolbar">
 					<div class="tc-search-wrap">
 						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -773,26 +786,12 @@ async function handleDownload(template: TemplateItem) {
 }
 
 .tc-quota-bar-wrap {
-	padding: 10px 24px 8px;
-	border-bottom: 1px solid color-mix(in srgb, var(--tc-accent) 15%, transparent);
-	background: color-mix(in srgb, var(--tc-bg-1) 30%, transparent);
+	padding: 8px 24px 6px;
 	flex-shrink: 0;
 }
 
-.tc-quota-bar-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 6px;
-}
-
-.tc-quota-label {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 11px;
-	color: var(--tc-fg-soft);
-	letter-spacing: 0.03em;
+.tc-quota-bar-inner {
+	height: 22px;
 }
 
 .tc-quota-bar {
