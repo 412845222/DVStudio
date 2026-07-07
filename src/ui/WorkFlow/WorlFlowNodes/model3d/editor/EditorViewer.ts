@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
@@ -60,34 +61,34 @@ interface EditorViewerOptions {
 	transformVisible?: boolean
 	wireframeOverlay?: boolean
 	onLoadProgress?: (progress: EditorLoadProgress) => void
-	onSelectionChange?: (objects: THREE.Object3D[]) => void
-	onSelectionTransform?: (objects: THREE.Object3D[]) => void
+	onSelectionChange?: (objects: any[]) => void
+	onSelectionTransform?: (objects: any[]) => void
 }
 
 export class EditorViewer {
-	private renderer: THREE.WebGLRenderer
-	private scene: THREE.Scene
-	private camera: THREE.PerspectiveCamera
-	private controls: OrbitControls
-	private transformControls: TransformControls
-	private transformHelper: THREE.Object3D
-	private composer: EffectComposer
-	private renderPass: RenderPass
-	private bloomPass: UnrealBloomPass
-	private fxaaPass: ShaderPass
-	private pmremGenerator: THREE.PMREMGenerator
-	private environmentTexture: THREE.Texture | null = null
-	private gltfLoader: GLTFLoader
-	private objLoader: OBJLoader
-	private dracoLoader: DRACOLoader
-	private ambientLight: THREE.HemisphereLight
-	private mainLight: THREE.DirectionalLight
-	private fillLight: THREE.DirectionalLight
-	private rimLight: THREE.PointLight
-	private gridHelper: THREE.GridHelper
-	private axesHelper: THREE.AxesHelper
-	private groundMesh: THREE.Mesh
-	private bgMesh: THREE.Mesh | null = null
+	private renderer: any
+	private scene: any
+	private camera: any
+	private controls: any
+	private transformControls: any
+	private transformHelper: any
+	private composer: any
+	private renderPass: any
+	private bloomPass: any
+	private fxaaPass: any
+	private pmremGenerator: any
+	private environmentTexture: any | null = null
+	private gltfLoader: any
+	private objLoader: any
+	private dracoLoader: any
+	private ambientLight: any
+	private mainLight: any
+	private fillLight: any
+	private rimLight: any
+	private gridHelper: any
+	private axesHelper: any
+	private groundMesh: any
+	private bgMesh: any | null = null
 	private models: Map<string, LoadedEditorModel> = new Map()
 	private currentRenderMode: RenderMode = 'pbr'
 	private currentLightingPreset: LightingPreset = 'studio'
@@ -109,12 +110,12 @@ export class EditorViewer {
 	private renderSuspended = false
 	private canvas: HTMLCanvasElement
 	private onLoadProgress?: (progress: EditorLoadProgress) => void
-	private onSelectionChange?: (objects: THREE.Object3D[]) => void
-	private onSelectionTransform?: (objects: THREE.Object3D[]) => void
-	private raycaster: THREE.Raycaster = new THREE.Raycaster()
-	private pointer: THREE.Vector2 = new THREE.Vector2()
-	private selectedObject: THREE.Object3D | null = null
-	private selectedObjects: THREE.Object3D[] = []
+	private onSelectionChange?: (objects: any[]) => void
+	private onSelectionTransform?: (objects: any[]) => void
+	private raycaster: any = new THREE.Raycaster()
+	private pointer: any = new THREE.Vector2()
+	private selectedObject: any | null = null
+	private selectedObjects: any[] = []
 	private handlePointerDown: (e: PointerEvent) => void
 	private handlePointerUp: (e: PointerEvent) => void
 	private handleWheel: (e: WheelEvent) => void
@@ -212,9 +213,9 @@ export class EditorViewer {
 		this.transformControls.showX = true
 		this.transformControls.showY = true
 		this.transformControls.showZ = true
-		this.transformHelper = typeof (this.transformControls as unknown as { getHelper?: () => THREE.Object3D }).getHelper === 'function'
-			? (this.transformControls as unknown as { getHelper: () => THREE.Object3D }).getHelper()
-			: this.transformControls as unknown as THREE.Object3D
+		this.transformHelper = typeof (this.transformControls as unknown as { getHelper?: () => any }).getHelper === 'function'
+			? (this.transformControls as unknown as { getHelper: () => any }).getHelper()
+			: this.transformControls as unknown as any
 		this.transformHelper.visible = false
 
 		this.handleTransformDraggingChanged = (event: { value: boolean }) => {
@@ -290,9 +291,9 @@ export class EditorViewer {
 		this.scene.add(this.rimLight)
 
 		this.axesHelper = new THREE.AxesHelper(2)
-		const axesMat = this.axesHelper.material as THREE.Material | THREE.Material[]
+		const axesMat = this.axesHelper.material as any
 		if (Array.isArray(axesMat)) {
-			axesMat.forEach(m => { m.depthWrite = false })
+			axesMat.forEach((m: any) => { m.depthWrite = false })
 		} else {
 			axesMat.depthWrite = false
 		}
@@ -300,9 +301,9 @@ export class EditorViewer {
 		this.scene.add(this.axesHelper)
 
 		this.gridHelper = new THREE.GridHelper(20, 40, 0x3a4048, 0x323840)
-		const gridMat = this.gridHelper.material as THREE.Material
+		const gridMat = this.gridHelper.material as any
 		if (Array.isArray(gridMat)) {
-			gridMat.forEach(m => {
+			gridMat.forEach((m: any) => {
 				m.opacity = 0.35
 				m.transparent = true
 				m.depthWrite = false
@@ -328,7 +329,7 @@ export class EditorViewer {
 		this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/')
 		this.gltfLoader = new GLTFLoader()
 		this.gltfLoader.setDRACOLoader(this.dracoLoader)
-		this.objLoader = OBJLoader ? new OBJLoader() : ({} as OBJLoader)
+		this.objLoader = OBJLoader ? new OBJLoader() : ({} as any)
 
 		this.handlePointerDown = (e: PointerEvent) => {
 			if (e.button !== 0) return
@@ -350,9 +351,9 @@ export class EditorViewer {
 				}
 			}
 
-			const allMeshes: THREE.Object3D[] = []
-			this.models.forEach((model) => {
-				model.group.traverse((child) => {
+			const allMeshes: any[] = []
+			this.models.forEach((model: any) => {
+				model.group.traverse((child: any) => {
 					if (child instanceof THREE.Mesh) {
 						allMeshes.push(child)
 					}
@@ -388,9 +389,9 @@ export class EditorViewer {
 				}
 			}
 
-			const allMeshes: THREE.Object3D[] = []
-			this.models.forEach((model) => {
-				model.group.traverse((child) => {
+			const allMeshes: any[] = []
+			this.models.forEach((model: any) => {
+				model.group.traverse((child: any) => {
 					if (child instanceof THREE.Mesh) {
 						allMeshes.push(child)
 					}
@@ -450,7 +451,7 @@ export class EditorViewer {
 		if (this.bgMesh) {
 			this.scene.remove(this.bgMesh)
 			this.bgMesh.geometry.dispose()
-			;(this.bgMesh.material as THREE.Material).dispose()
+			;(this.bgMesh.material as any).dispose()
 		}
 
 		const bgColor = new THREE.Color(0x21262b)
@@ -574,11 +575,11 @@ export class EditorViewer {
 		this.requestRenderBurst(2, 30)
 	}
 
-	private findRootGroup(obj: THREE.Object3D): THREE.Object3D | null {
-		let current: THREE.Object3D | null = obj
+	private findRootGroup(obj: any): any | null {
+		let current: any | null = obj
 		while (current) {
 			let isRoot = false
-			this.models.forEach((m) => {
+			this.models.forEach((m: any) => {
 				if (m.group === current) isRoot = true
 			})
 			if (isRoot) return current
@@ -587,7 +588,7 @@ export class EditorViewer {
 		return null
 	}
 
-	selectObject(obj: THREE.Object3D | null) {
+	selectObject(obj: any | null) {
 		if (obj) {
 			const rootGroup = this.findRootGroup(obj)
 			if (rootGroup && rootGroup !== obj) {
@@ -624,7 +625,7 @@ export class EditorViewer {
 		this.requestRenderBurst(10, 30)
 	}
 
-	getSelectedObjects(): THREE.Object3D[] {
+	getSelectedObjects(): any[] {
 		return [...this.selectedObjects]
 	}
 
@@ -660,7 +661,7 @@ export class EditorViewer {
 
 	buildOutlinerTree(): OutlinerNode[] {
 		const nodes: OutlinerNode[] = []
-		this.models.forEach((model, id) => {
+		this.models.forEach((model: any, id: any) => {
 			const modelNode: OutlinerNode = {
 				id: `model-${id}`,
 				name: model.name || `Model ${id}`,
@@ -670,7 +671,7 @@ export class EditorViewer {
 				children: [],
 				object3D: model.group
 			}
-			model.group.traverse((child) => {
+			model.group.traverse((child: any) => {
 				if (child === model.group) return
 				if (child instanceof THREE.Mesh) {
 					modelNode.children.push({
@@ -709,8 +710,8 @@ export class EditorViewer {
 
 	private disposeCurrentRenderModeMaterials() {
 		if (this.currentRenderMode === 'pbr') return
-		this.models.forEach((model) => {
-			model.group.traverse((child) => {
+		this.models.forEach((model: any) => {
+			model.group.traverse((child: any) => {
 				if (child instanceof THREE.Mesh) {
 					const originalMat = model.originalMaterials.get(child)
 					if (originalMat && child.material !== originalMat) {
@@ -722,8 +723,8 @@ export class EditorViewer {
 	}
 
 	private applyRenderMode() {
-		this.models.forEach((model) => {
-			model.group.traverse((child) => {
+		this.models.forEach((model: any) => {
+			model.group.traverse((child: any) => {
 				if (!(child instanceof THREE.Mesh)) return
 				const originalMat = model.originalMaterials.get(child)
 				if (!originalMat) return
@@ -776,11 +777,11 @@ export class EditorViewer {
 						})
 						if (Array.isArray(originalMat)) {
 							const maps = originalMat
-								.map((m) => (m as THREE.MeshStandardMaterial).map)
-								.filter(Boolean) as THREE.Texture[]
+								.map((m: any) => (m as any).map)
+								.filter(Boolean) as any[]
 							if (maps.length > 0) unlitMat.map = maps[0]
-						} else if ((originalMat as THREE.MeshStandardMaterial).map) {
-							unlitMat.map = (originalMat as THREE.MeshStandardMaterial).map
+						} else if ((originalMat as any).map) {
+							unlitMat.map = (originalMat as any).map
 						}
 						child.material = unlitMat
 						break
@@ -805,8 +806,8 @@ export class EditorViewer {
 
 	setWireframeOverlay(enabled: boolean) {
 		this.wireframeOverlayEnabled = enabled
-		this.models.forEach((model) => {
-			model.wireframeHelpers.forEach((wireframe) => {
+		this.models.forEach((model: any) => {
+			model.wireframeHelpers.forEach((wireframe: any) => {
 				wireframe.visible = enabled
 			})
 		})
@@ -877,8 +878,8 @@ export class EditorViewer {
 		this.shadowsEnabled = enabled
 		this.renderer.shadowMap.enabled = enabled
 		this.mainLight.castShadow = enabled
-		this.models.forEach((m) => {
-			m.group.traverse((child) => {
+		this.models.forEach((m: any) => {
+			m.group.traverse((child: any) => {
 				if (child instanceof THREE.Mesh) {
 					child.castShadow = enabled
 					child.receiveShadow = enabled
@@ -920,8 +921,8 @@ export class EditorViewer {
 		const parts = nodeId.split('-')
 		const type = parts[0]
 		const uuid = parts.slice(1).join('-')
-		this.models.forEach((model) => {
-			model.group.traverse((child) => {
+		this.models.forEach((model: any) => {
+			model.group.traverse((child: any) => {
 				if (child.uuid === uuid || (type === 'model' && model.id === parts.slice(1).join('-'))) {
 					child.visible = visible
 				}
@@ -968,7 +969,7 @@ export class EditorViewer {
 			wireframeHelpers: new Map()
 		}
 
-		group.traverse((child) => {
+		group.traverse((child: any) => {
 			if (child instanceof THREE.Mesh) {
 				child.castShadow = this.shadowsEnabled
 				child.receiveShadow = this.shadowsEnabled
@@ -1013,22 +1014,22 @@ export class EditorViewer {
 		return model
 	}
 
-	private loadModelFile(url: string, onProgress?: (loaded: number, total: number) => void): Promise<THREE.Group> {
+	private loadModelFile(url: string, onProgress?: (loaded: number, total: number) => void): Promise<any> {
 		return new Promise((resolve, reject) => {
 			const ext = url.split('.').pop()?.toLowerCase().split('?')[0] || ''
 			if (ext === 'obj' && this.objLoader.load) {
 				this.objLoader.load(
 					url,
-					(obj) => resolve(obj as unknown as THREE.Group),
-					(e) => onProgress?.(e.loaded, e.total),
-					(err) => reject(err)
+					(obj: any) => resolve(obj as unknown as any),
+					(e: any) => onProgress?.(e.loaded, e.total),
+					(err: any) => reject(err)
 				)
 			} else {
 				this.gltfLoader.load(
 					url,
-					(gltf) => resolve(gltf.scene),
-					(e) => onProgress?.(e.loaded, e.total),
-					(err) => reject(err)
+					(gltf: any) => resolve(gltf.scene),
+					(e: any) => onProgress?.(e.loaded, e.total),
+					(err: any) => reject(err)
 				)
 			}
 		})
@@ -1040,7 +1041,7 @@ export class EditorViewer {
 		if (this.selectedObject) {
 			let isSelectedOrChild = this.selectedObject === model.group
 			if (!isSelectedOrChild) {
-				this.selectedObject.traverseAncestors?.((a) => {
+				this.selectedObject.traverseAncestors?.((a: any) => {
 					if (a === model.group) isSelectedOrChild = true
 				})
 			}
@@ -1048,14 +1049,14 @@ export class EditorViewer {
 				this.clearSelection()
 			}
 		}
-		model.wireframeHelpers.forEach((wireframe, mesh) => {
+		model.wireframeHelpers.forEach((wireframe: any, mesh: any) => {
 			mesh.remove(wireframe)
 			wireframe.geometry.dispose()
-			;(wireframe.material as THREE.Material).dispose()
+			;(wireframe.material as any).dispose()
 		})
 		model.wireframeHelpers.clear()
 		this.scene.remove(model.group)
-		model.group.traverse((child) => {
+		model.group.traverse((child: any) => {
 			if (child instanceof THREE.Mesh) {
 				child.geometry?.dispose()
 				const mat = child.material
@@ -1073,14 +1074,14 @@ export class EditorViewer {
 	private frameAllModels() {
 		if (this.models.size === 0) return
 		const box = new THREE.Box3()
-		this.models.forEach((m) => {
+		this.models.forEach((m: any) => {
 			box.expandByObject(m.group)
 		})
 		if (box.isEmpty()) return
 		this.applyCameraFrame(box)
 	}
 
-	private applyCameraFrame(box: THREE.Box3) {
+	private applyCameraFrame(box: any) {
 		const size = new THREE.Vector3()
 		const center = new THREE.Vector3()
 		box.getSize(size)
@@ -1105,9 +1106,9 @@ export class EditorViewer {
 		disposeMaterial(oldGridMat as MaterialLike | MaterialLike[])
 		this.scene.remove(this.gridHelper)
 		this.gridHelper = new THREE.GridHelper(gridSize, Math.min(40, gridSize), 0x3a4048, 0x323840)
-		const gridMat = this.gridHelper.material as THREE.Material
+		const gridMat = this.gridHelper.material as any
 		if (Array.isArray(gridMat)) {
-			gridMat.forEach(m => {
+			gridMat.forEach((m: any) => {
 				m.opacity = 0.35
 				m.transparent = true
 				m.depthWrite = false
@@ -1169,8 +1170,8 @@ export class EditorViewer {
 
 	getVertexCount(): number {
 		let count = 0
-		this.models.forEach((m) => {
-			m.group.traverse((child) => {
+		this.models.forEach((m: any) => {
+			m.group.traverse((child: any) => {
 				if (child instanceof THREE.Mesh && child.geometry) {
 					const pos = child.geometry.attributes.position
 					if (pos) count += pos.count
@@ -1182,8 +1183,8 @@ export class EditorViewer {
 
 	getTriangleCount(): number {
 		let count = 0
-		this.models.forEach((m) => {
-			m.group.traverse((child) => {
+		this.models.forEach((m: any) => {
+			m.group.traverse((child: any) => {
 				if (child instanceof THREE.Mesh && child.geometry) {
 					const geo = child.geometry
 					if (geo.index) count += geo.index.count / 3
@@ -1219,15 +1220,15 @@ export class EditorViewer {
 		this.scene.remove(this.transformHelper)
 		this.transformControls.dispose()
 		this.disposeCurrentRenderModeMaterials()
-		this.models.forEach((model) => {
-			model.wireframeHelpers.forEach((wireframe, mesh) => {
+		this.models.forEach((model: any) => {
+			model.wireframeHelpers.forEach((wireframe: any, mesh: any) => {
 				mesh.remove(wireframe)
 				wireframe.geometry.dispose()
-				;(wireframe.material as THREE.Material).dispose()
+				;(wireframe.material as any).dispose()
 			})
 			model.wireframeHelpers.clear()
 			this.scene.remove(model.group)
-			model.group.traverse((child) => {
+			model.group.traverse((child: any) => {
 				if (child instanceof THREE.Mesh) {
 					child.geometry?.dispose()
 					const mat = model.originalMaterials.get(child)
@@ -1239,7 +1240,7 @@ export class EditorViewer {
 		if (this.bgMesh) {
 			this.scene.remove(this.bgMesh)
 			this.bgMesh.geometry.dispose()
-			;(this.bgMesh.material as THREE.Material).dispose()
+			;(this.bgMesh.material as any).dispose()
 		}
 		this.dracoLoader.dispose()
 		if (this.environmentTexture) this.environmentTexture.dispose()

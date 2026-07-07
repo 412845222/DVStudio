@@ -26,6 +26,8 @@ import type {
 	CloudTemplatesDownloadResult,
 	CloudTemplatesDeletePayload,
 	CloudTemplatesDeleteResult,
+	Open3DEditorPayload,
+	Open3DEditorResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -184,6 +186,7 @@ declare global {
 				reload(): Promise<{ ok: boolean; error?: string }>
 				openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }>
 				close(): Promise<{ ok: boolean; error?: string }>
+				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>

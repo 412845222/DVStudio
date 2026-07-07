@@ -252,7 +252,7 @@ function refreshOutliner() {
 				}
 			} else {
 				let parentNode: OutlinerNode | null = null
-				let searchObj: THREE.Object3D | null = obj
+				let searchObj: any | null = obj
 				while (searchObj && !parentNode) {
 					parentNode = findOutlinerNodeByObject(searchObj)
 					if (!parentNode) searchObj = searchObj.parent
@@ -321,7 +321,7 @@ function findOutlinerNodeById(id: string | null): OutlinerNode | null {
 	return search(outlinerNodes.value)
 }
 
-function findOutlinerNodeByObject(obj: THREE.Object3D | null): OutlinerNode | null {
+function findOutlinerNodeByObject(obj: any | null): OutlinerNode | null {
 	if (!obj) return null
 	const search = (nodes: OutlinerNode[]): OutlinerNode | null => {
 		for (const node of nodes) {

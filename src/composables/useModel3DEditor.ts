@@ -23,7 +23,7 @@ export function useModel3DEditor() {
 		if (options.modelUrl) {
 			models.push({
 				id: `model-${options.nodeId || 'default'}`,
-				name: options.modelName || t('nodes.model3d.defaultModelName', 'Model'),
+				name: options.modelName || (t as any)('nodes.model3d.defaultModelName', 'Model'),
 				url: options.modelUrl,
 			})
 		}
@@ -34,7 +34,7 @@ export function useModel3DEditor() {
 				if (m?.url) {
 					models.push({
 						id: m.id || `model-${options.nodeId || 'default'}-${i}`,
-						name: m.name || `${t('nodes.model3d.model', 'Model')} ${i + 1}`,
+						name: m.name || `${(t as any)('nodes.model3d.model', 'Model')} ${i + 1}`,
 						url: m.url,
 					})
 				}

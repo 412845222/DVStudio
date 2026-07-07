@@ -160,7 +160,7 @@
               <button
                 class="m3de-toggle-btn"
                 :class="{ active: isVisible }"
-                @click="$emit('toggleVisibility', selectedObject.id)"
+                @click="$emit('toggleVisibility', (selectedObject as any).id)"
               >
                 <span class="m3de-toggle-track">
                   <span class="m3de-toggle-thumb" />
@@ -287,7 +287,7 @@ const wireframeLabel = computed(() => t('nodes.model3d.wireframeMat'))
 const noSelectionLabel = computed(() => t('nodes.model3d.noSelection'))
 const noMaterialLabel = computed(() => t('nodes.model3d.noMaterial'))
 
-const targetObject = computed<THREE.Object3D | null>(() => {
+const targetObject = computed<any | null>(() => {
   return props.selectedObject?.object3D ?? null
 })
 
@@ -340,7 +340,7 @@ function stopSyncLoop() {
   }
 }
 
-const targetMaterial = computed<THREE.Material | null>(() => {
+const targetMaterial = computed<any | null>(() => {
   const obj = targetObject.value
   if (obj instanceof THREE.Mesh && obj.material) {
     return Array.isArray(obj.material) ? obj.material[0] : obj.material
@@ -363,20 +363,20 @@ const matWireframe = ref(false)
 function readMaterial() {
   const mat = targetMaterial.value
   if (!mat) return
-  if ('color' in mat && (mat as THREE.MeshStandardMaterial).color) {
-    matColor.value = '#' + (mat as THREE.MeshStandardMaterial).color.getHexString()
+  if ('color' in mat && (mat as any).color) {
+    matColor.value = '#' + (mat as any).color.getHexString()
   }
   if ('metalness' in mat) {
-    matMetalness.value = Number.isFinite((mat as THREE.MeshStandardMaterial).metalness) ? (mat as THREE.MeshStandardMaterial).metalness : 0
+    matMetalness.value = Number.isFinite((mat as any).metalness) ? (mat as any).metalness : 0
   }
   if ('roughness' in mat) {
-    matRoughness.value = Number.isFinite((mat as THREE.MeshStandardMaterial).roughness) ? (mat as THREE.MeshStandardMaterial).roughness : 1
+    matRoughness.value = Number.isFinite((mat as any).roughness) ? (mat as any).roughness : 1
   }
   if ('opacity' in mat) {
-    matOpacity.value = Number.isFinite((mat as THREE.MeshStandardMaterial).opacity) ? (mat as THREE.MeshStandardMaterial).opacity : 1
+    matOpacity.value = Number.isFinite((mat as any).opacity) ? (mat as any).opacity : 1
   }
   if ('wireframe' in mat) {
-    matWireframe.value = (mat as THREE.MeshStandardMaterial).wireframe ?? false
+    matWireframe.value = (mat as any).wireframe ?? false
   }
 }
 
@@ -429,8 +429,8 @@ const onColorChange = (e: Event) => {
   const val = (e.target as HTMLInputElement).value
   matColor.value = val
   const mat = targetMaterial.value
-  if (mat && 'color' in mat && (mat as THREE.MeshStandardMaterial).color) {
-    ;(mat as THREE.MeshStandardMaterial).color.set(val)
+  if (mat && 'color' in mat && (mat as any).color) {
+    ;(mat as any).color.set(val)
     mat.needsUpdate = true
   }
 }
@@ -438,7 +438,7 @@ const onMetalnessChange = (e: Event) => {
   matMetalness.value = parseFloat((e.target as HTMLInputElement).value)
   const mat = targetMaterial.value
   if (mat && 'metalness' in mat) {
-    ;(mat as THREE.MeshStandardMaterial).metalness = matMetalness.value
+    ;(mat as any).metalness = matMetalness.value
     mat.needsUpdate = true
   }
 }
@@ -446,7 +446,7 @@ const onRoughnessChange = (e: Event) => {
   matRoughness.value = parseFloat((e.target as HTMLInputElement).value)
   const mat = targetMaterial.value
   if (mat && 'roughness' in mat) {
-    ;(mat as THREE.MeshStandardMaterial).roughness = matRoughness.value
+    ;(mat as any).roughness = matRoughness.value
     mat.needsUpdate = true
   }
 }
@@ -454,8 +454,8 @@ const onOpacityChange = (e: Event) => {
   matOpacity.value = parseFloat((e.target as HTMLInputElement).value)
   const mat = targetMaterial.value
   if (mat && 'opacity' in mat) {
-    ;(mat as THREE.MeshStandardMaterial).opacity = matOpacity.value
-    ;(mat as THREE.MeshStandardMaterial).transparent = matOpacity.value < 1
+    ;(mat as any).opacity = matOpacity.value
+    ;(mat as any).transparent = matOpacity.value < 1
     mat.needsUpdate = true
   }
 }
@@ -463,7 +463,7 @@ const onWireframeToggle = () => {
   matWireframe.value = !matWireframe.value
   const mat = targetMaterial.value
   if (mat && 'wireframe' in mat) {
-    ;(mat as THREE.MeshStandardMaterial).wireframe = matWireframe.value
+    ;(mat as any).wireframe = matWireframe.value
     mat.needsUpdate = true
   }
 }

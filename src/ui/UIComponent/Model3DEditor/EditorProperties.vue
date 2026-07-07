@@ -111,7 +111,7 @@ interface MaterialInfo {
 }
 
 const props = defineProps<{
-	selectedObject: THREE.Object3D | null
+	selectedObject: any | null
 	position: { x: number; y: number; z: number }
 	rotation: { x: number; y: number; z: number }
 	scale: { x: number; y: number; z: number }

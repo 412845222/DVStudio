@@ -620,3 +620,8 @@ export async function deleteCloudTemplate(
 		return { ok: false, errMsg: getErrorMessage(e) }
 	}
 }
+
+export type {
+	Open3DEditorPayload,
+	Open3DEditorResult
+}
