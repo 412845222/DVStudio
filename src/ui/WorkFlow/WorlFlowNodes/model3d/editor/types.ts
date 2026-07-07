@@ -2,7 +2,6 @@ import * as THREE from 'three'
 
 export type RenderMode = 
   | 'pbr'
-  | 'wireframe'
   | 'solid-white'
   | 'normal'
   | 'unlit'
@@ -40,6 +39,7 @@ export interface LoadedEditorModel {
   url: string
   group: THREE.Group
   originalMaterials: Map<THREE.Mesh, THREE.Material | THREE.Material[]>
+  wireframeHelpers: Map<THREE.Mesh, THREE.LineSegments>
 }
 
 export interface OutlinerNode {

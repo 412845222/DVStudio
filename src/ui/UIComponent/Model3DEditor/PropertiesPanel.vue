@@ -34,7 +34,7 @@
 
     <div class="m3de-properties-content">
       <template v-if="activeTab === 'properties'">
-        <div v-if="selectedObject" class="m3de-prop-sections">
+        <div v-if="targetObject" class="m3de-prop-sections">
           <div class="m3de-prop-section">
             <span class="m3de-prop-section-title">
               <span class="m3de-prop-section-dot" />
@@ -42,65 +42,37 @@
             </span>
 
             <div class="m3de-prop-row">
-              <label class="m3de-prop-label">X</label>
-              <div class="m3de-vector-input">
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="positionX"
-                  @input="onPositionXChange"
-                />
-              </div>
-              <label class="m3de-prop-label">Y</label>
-              <div class="m3de-vector-input">
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="positionY"
-                  @input="onPositionYChange"
-                />
-              </div>
-              <label class="m3de-prop-label">Z</label>
-              <div class="m3de-vector-input">
-                <input
-                  type="number"
-                  step="0.1"
-                  :value="positionZ"
-                  @input="onPositionZChange"
-                />
-              </div>
-            </div>
-
-            <div class="m3de-prop-row">
               <span class="m3de-vector-label">{{ positionLabel }}</span>
             </div>
-
             <div class="m3de-prop-row">
-              <label class="m3de-prop-label">X</label>
+              <label class="m3de-prop-label axis-x">X</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="1"
-                  :value="rotationX"
-                  @input="onRotationXChange"
+                  step="0.1"
+                  :value="posX"
+                  @input="onPosXInput"
+                  @change="applyTransform"
                 />
               </div>
-              <label class="m3de-prop-label">Y</label>
+              <label class="m3de-prop-label axis-y">Y</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="1"
-                  :value="rotationY"
-                  @input="onRotationYChange"
+                  step="0.1"
+                  :value="posY"
+                  @input="onPosYInput"
+                  @change="applyTransform"
                 />
               </div>
-              <label class="m3de-prop-label">Z</label>
+              <label class="m3de-prop-label axis-z">Z</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="1"
-                  :value="rotationZ"
-                  @input="onRotationZChange"
+                  step="0.1"
+                  :value="posZ"
+                  @input="onPosZInput"
+                  @change="applyTransform"
                 />
               </div>
             </div>
@@ -108,39 +80,73 @@
             <div class="m3de-prop-row">
               <span class="m3de-vector-label">{{ rotationLabel }}</span>
             </div>
-
             <div class="m3de-prop-row">
-              <label class="m3de-prop-label">X</label>
+              <label class="m3de-prop-label axis-x">X</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="0.1"
-                  :value="scaleX"
-                  @input="onScaleXChange"
+                  step="1"
+                  :value="rotX"
+                  @input="onRotXInput"
+                  @change="applyTransform"
                 />
               </div>
-              <label class="m3de-prop-label">Y</label>
+              <label class="m3de-prop-label axis-y">Y</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="0.1"
-                  :value="scaleY"
-                  @input="onScaleYChange"
+                  step="1"
+                  :value="rotY"
+                  @input="onRotYInput"
+                  @change="applyTransform"
                 />
               </div>
-              <label class="m3de-prop-label">Z</label>
+              <label class="m3de-prop-label axis-z">Z</label>
               <div class="m3de-vector-input">
                 <input
                   type="number"
-                  step="0.1"
-                  :value="scaleZ"
-                  @input="onScaleZChange"
+                  step="1"
+                  :value="rotZ"
+                  @input="onRotZInput"
+                  @change="applyTransform"
                 />
               </div>
             </div>
 
             <div class="m3de-prop-row">
               <span class="m3de-vector-label">{{ scaleLabel }}</span>
+            </div>
+            <div class="m3de-prop-row">
+              <label class="m3de-prop-label axis-x">X</label>
+              <div class="m3de-vector-input">
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="sclX"
+                  @input="onSclXInput"
+                  @change="applyTransform"
+                />
+              </div>
+              <label class="m3de-prop-label axis-y">Y</label>
+              <div class="m3de-vector-input">
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="sclY"
+                  @input="onSclYInput"
+                  @change="applyTransform"
+                />
+              </div>
+              <label class="m3de-prop-label axis-z">Z</label>
+              <div class="m3de-vector-input">
+                <input
+                  type="number"
+                  step="0.1"
+                  :value="sclZ"
+                  @input="onSclZInput"
+                  @change="applyTransform"
+                />
+              </div>
             </div>
           </div>
 
@@ -174,44 +180,44 @@
       </template>
 
       <template v-else>
-        <div v-if="selectedMaterial" class="m3de-prop-sections">
+        <div v-if="targetMaterial" class="m3de-prop-sections">
           <div class="m3de-prop-section">
             <span class="m3de-prop-section-title">
               <span class="m3de-prop-section-dot" />
               {{ materialLabel }}
             </span>
             <div class="m3de-prop-row">
-              <span class="m3de-material-name">{{ selectedMaterial.name || materialLabel }}</span>
+              <span class="m3de-material-name">{{ materialNameText }}</span>
             </div>
 
-            <div v-if="'color' in selectedMaterial" class="m3de-prop-row">
+            <div v-if="'color' in targetMaterial" class="m3de-prop-row">
               <label class="m3de-prop-row-label">{{ colorLabel }}</label>
-              <input type="color" :value="materialColor" @input="onColorChange" class="m3de-color-input" />
+              <input type="color" :value="matColor" @input="onColorChange" class="m3de-color-input" />
             </div>
 
-            <div v-if="'metalness' in selectedMaterial" class="m3de-prop-row">
+            <div v-if="'metalness' in targetMaterial" class="m3de-prop-row">
               <label class="m3de-prop-row-label">{{ metalnessLabel }}</label>
-              <input type="range" min="0" max="1" step="0.01" :value="materialMetalness" @input="onMetalnessChange" class="m3de-slider" />
-              <span class="m3de-slider-value">{{ materialMetalness.toFixed(2) }}</span>
+              <input type="range" min="0" max="1" step="0.01" :value="matMetalness" @input="onMetalnessChange" class="m3de-slider" />
+              <span class="m3de-slider-value">{{ matMetalness.toFixed(2) }}</span>
             </div>
 
-            <div v-if="'roughness' in selectedMaterial" class="m3de-prop-row">
+            <div v-if="'roughness' in targetMaterial" class="m3de-prop-row">
               <label class="m3de-prop-row-label">{{ roughnessLabel }}</label>
-              <input type="range" min="0" max="1" step="0.01" :value="materialRoughness" @input="onRoughnessChange" class="m3de-slider" />
-              <span class="m3de-slider-value">{{ materialRoughness.toFixed(2) }}</span>
+              <input type="range" min="0" max="1" step="0.01" :value="matRoughness" @input="onRoughnessChange" class="m3de-slider" />
+              <span class="m3de-slider-value">{{ matRoughness.toFixed(2) }}</span>
             </div>
 
-            <div v-if="'opacity' in selectedMaterial" class="m3de-prop-row">
+            <div v-if="'opacity' in targetMaterial" class="m3de-prop-row">
               <label class="m3de-prop-row-label">{{ opacityLabel }}</label>
-              <input type="range" min="0" max="1" step="0.01" :value="materialOpacity" @input="onOpacityChange" class="m3de-slider" />
-              <span class="m3de-slider-value">{{ materialOpacity.toFixed(2) }}</span>
+              <input type="range" min="0" max="1" step="0.01" :value="matOpacity" @input="onOpacityChange" class="m3de-slider" />
+              <span class="m3de-slider-value">{{ matOpacity.toFixed(2) }}</span>
             </div>
 
-            <div v-if="'wireframe' in selectedMaterial" class="m3de-prop-row">
+            <div v-if="'wireframe' in targetMaterial" class="m3de-prop-row">
               <label class="m3de-prop-row-label">{{ wireframeLabel }}</label>
               <button
                 class="m3de-toggle-btn"
-                :class="{ active: materialWireframe }"
+                :class="{ active: matWireframe }"
                 @click="onWireframeToggle"
               >
                 <span class="m3de-toggle-track">
@@ -235,7 +241,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { useI18n } from '../../../i18n'
 import { useSquareParticles } from '../../../composables/useSquareParticles'
@@ -281,114 +287,184 @@ const wireframeLabel = computed(() => t('nodes.model3d.wireframeMat'))
 const noSelectionLabel = computed(() => t('nodes.model3d.noSelection'))
 const noMaterialLabel = computed(() => t('nodes.model3d.noMaterial'))
 
-const obj = computed(() => props.selectedObject?.object3D as THREE.Object3D | undefined)
-const positionX = ref(0)
-const positionY = ref(0)
-const positionZ = ref(0)
-const rotationX = ref(0)
-const rotationY = ref(0)
-const rotationZ = ref(0)
-const scaleX = ref(1)
-const scaleY = ref(1)
-const scaleZ = ref(1)
+const targetObject = computed<THREE.Object3D | null>(() => {
+  return props.selectedObject?.object3D ?? null
+})
+
+const safeNum = (v: number, fallback = 0): number => {
+  return Number.isFinite(v) ? Math.round(v * 1000) / 1000 : fallback
+}
+
+const posX = ref(0)
+const posY = ref(0)
+const posZ = ref(0)
+const rotX = ref(0)
+const rotY = ref(0)
+const rotZ = ref(0)
+const sclX = ref(1)
+const sclY = ref(1)
+const sclZ = ref(1)
 const isVisible = ref(true)
 
-const selectedMaterial = computed<THREE.MeshStandardMaterial | null>(() => {
-  if (!obj.value) return null
-  if (obj.value instanceof THREE.Mesh && obj.value.material instanceof THREE.MeshStandardMaterial) {
-    return obj.value.material
+let syncTimer: ReturnType<typeof requestAnimationFrame> | null = null
+
+function readFromObject() {
+  const obj = targetObject.value
+  if (!obj) return
+  posX.value = safeNum(obj.position.x, 0)
+  posY.value = safeNum(obj.position.y, 0)
+  posZ.value = safeNum(obj.position.z, 0)
+  rotX.value = safeNum(THREE.MathUtils.radToDeg(obj.rotation.x), 0)
+  rotY.value = safeNum(THREE.MathUtils.radToDeg(obj.rotation.y), 0)
+  rotZ.value = safeNum(THREE.MathUtils.radToDeg(obj.rotation.z), 0)
+  sclX.value = safeNum(obj.scale.x, 1)
+  sclY.value = safeNum(obj.scale.y, 1)
+  sclZ.value = safeNum(obj.scale.z, 1)
+  isVisible.value = obj.visible
+}
+
+function startSyncLoop() {
+  stopSyncLoop()
+  const tick = () => {
+    readFromObject()
+    readMaterial()
+    syncTimer = requestAnimationFrame(tick)
+  }
+  syncTimer = requestAnimationFrame(tick)
+}
+
+function stopSyncLoop() {
+  if (syncTimer !== null) {
+    cancelAnimationFrame(syncTimer)
+    syncTimer = null
+  }
+}
+
+const targetMaterial = computed<THREE.Material | null>(() => {
+  const obj = targetObject.value
+  if (obj instanceof THREE.Mesh && obj.material) {
+    return Array.isArray(obj.material) ? obj.material[0] : obj.material
   }
   return null
 })
 
-const materialColor = ref('#ffffff')
-const materialMetalness = ref(0)
-const materialRoughness = ref(1)
-const materialOpacity = ref(1)
-const materialWireframe = ref(false)
+const materialNameText = computed(() => {
+  const mat = targetMaterial.value
+  if (!mat) return materialLabel.value
+  return mat.name || mat.type || materialLabel.value
+})
 
-watch(() => props.selectedObject, () => {
-  if (!obj.value) return
-  positionX.value = round(obj.value.position.x)
-  positionY.value = round(obj.value.position.y)
-  positionZ.value = round(obj.value.position.z)
-  rotationX.value = round(THREE.MathUtils.radToDeg(obj.value.rotation.x))
-  rotationY.value = round(THREE.MathUtils.radToDeg(obj.value.rotation.y))
-  rotationZ.value = round(THREE.MathUtils.radToDeg(obj.value.rotation.z))
-  scaleX.value = round(obj.value.scale.x)
-  scaleY.value = round(obj.value.scale.y)
-  scaleZ.value = round(obj.value.scale.z)
-  isVisible.value = obj.value.visible
+const matColor = ref('#ffffff')
+const matMetalness = ref(0)
+const matRoughness = ref(1)
+const matOpacity = ref(1)
+const matWireframe = ref(false)
 
-  if (selectedMaterial.value) {
-    const mat = selectedMaterial.value
-    materialColor.value = '#' + mat.color.getHexString()
-    materialMetalness.value = mat.metalness ?? 0
-    materialRoughness.value = mat.roughness ?? 1
-    materialOpacity.value = mat.opacity ?? 1
-    materialWireframe.value = mat.wireframe ?? false
+function readMaterial() {
+  const mat = targetMaterial.value
+  if (!mat) return
+  if ('color' in mat && (mat as THREE.MeshStandardMaterial).color) {
+    matColor.value = '#' + (mat as THREE.MeshStandardMaterial).color.getHexString()
   }
+  if ('metalness' in mat) {
+    matMetalness.value = Number.isFinite((mat as THREE.MeshStandardMaterial).metalness) ? (mat as THREE.MeshStandardMaterial).metalness : 0
+  }
+  if ('roughness' in mat) {
+    matRoughness.value = Number.isFinite((mat as THREE.MeshStandardMaterial).roughness) ? (mat as THREE.MeshStandardMaterial).roughness : 1
+  }
+  if ('opacity' in mat) {
+    matOpacity.value = Number.isFinite((mat as THREE.MeshStandardMaterial).opacity) ? (mat as THREE.MeshStandardMaterial).opacity : 1
+  }
+  if ('wireframe' in mat) {
+    matWireframe.value = (mat as THREE.MeshStandardMaterial).wireframe ?? false
+  }
+}
+
+watch(targetObject, () => {
+  readFromObject()
+  readMaterial()
 }, { immediate: true })
 
-function round(n: number) { return Math.round(n * 1000) / 1000 }
+watch(() => props.selectedObject, () => {
+  readFromObject()
+  readMaterial()
+}, { immediate: true })
+
+onMounted(() => {
+  startSyncLoop()
+})
+
+onBeforeUnmount(() => {
+  stopSyncLoop()
+})
+
+const onPosXInput = (e: Event) => { posX.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onPosYInput = (e: Event) => { posY.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onPosZInput = (e: Event) => { posZ.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onRotXInput = (e: Event) => { rotX.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onRotYInput = (e: Event) => { rotY.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onRotZInput = (e: Event) => { rotZ.value = parseFloat((e.target as HTMLInputElement).value) || 0 }
+const onSclXInput = (e: Event) => { sclX.value = parseFloat((e.target as HTMLInputElement).value) || 1 }
+const onSclYInput = (e: Event) => { sclY.value = parseFloat((e.target as HTMLInputElement).value) || 1 }
+const onSclZInput = (e: Event) => { sclZ.value = parseFloat((e.target as HTMLInputElement).value) || 1 }
 
 function applyTransform() {
-  if (!obj.value) return
-  obj.value.position.set(positionX.value, positionY.value, positionZ.value)
-  obj.value.rotation.set(
-    THREE.MathUtils.degToRad(rotationX.value),
-    THREE.MathUtils.degToRad(rotationY.value),
-    THREE.MathUtils.degToRad(rotationZ.value)
+  const obj = targetObject.value
+  if (!obj) return
+  if (sclX.value === 0) sclX.value = 0.001
+  if (sclY.value === 0) sclY.value = 0.001
+  if (sclZ.value === 0) sclZ.value = 0.001
+  obj.position.set(posX.value, posY.value, posZ.value)
+  obj.rotation.set(
+    THREE.MathUtils.degToRad(rotX.value),
+    THREE.MathUtils.degToRad(rotY.value),
+    THREE.MathUtils.degToRad(rotZ.value)
   )
-  obj.value.scale.set(scaleX.value, scaleY.value, scaleZ.value)
+  obj.scale.set(sclX.value, sclY.value, sclZ.value)
+  obj.updateMatrixWorld(true)
   emit('transform', props.selectedObject)
 }
 
-const onPositionXChange = (e: Event) => { positionX.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onPositionYChange = (e: Event) => { positionY.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onPositionZChange = (e: Event) => { positionZ.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onRotationXChange = (e: Event) => { rotationX.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onRotationYChange = (e: Event) => { rotationY.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onRotationZChange = (e: Event) => { rotationZ.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onScaleXChange = (e: Event) => { scaleX.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onScaleYChange = (e: Event) => { scaleY.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-const onScaleZChange = (e: Event) => { scaleZ.value = parseFloat((e.target as HTMLInputElement).value); applyTransform() }
-
 const onColorChange = (e: Event) => {
   const val = (e.target as HTMLInputElement).value
-  materialColor.value = val
-  if (selectedMaterial.value) {
-    selectedMaterial.value.color.set(val)
-    selectedMaterial.value.needsUpdate = true
+  matColor.value = val
+  const mat = targetMaterial.value
+  if (mat && 'color' in mat && (mat as THREE.MeshStandardMaterial).color) {
+    ;(mat as THREE.MeshStandardMaterial).color.set(val)
+    mat.needsUpdate = true
   }
 }
 const onMetalnessChange = (e: Event) => {
-  materialMetalness.value = parseFloat((e.target as HTMLInputElement).value)
-  if (selectedMaterial.value) {
-    selectedMaterial.value.metalness = materialMetalness.value
-    selectedMaterial.value.needsUpdate = true
+  matMetalness.value = parseFloat((e.target as HTMLInputElement).value)
+  const mat = targetMaterial.value
+  if (mat && 'metalness' in mat) {
+    ;(mat as THREE.MeshStandardMaterial).metalness = matMetalness.value
+    mat.needsUpdate = true
   }
 }
 const onRoughnessChange = (e: Event) => {
-  materialRoughness.value = parseFloat((e.target as HTMLInputElement).value)
-  if (selectedMaterial.value) {
-    selectedMaterial.value.roughness = materialRoughness.value
-    selectedMaterial.value.needsUpdate = true
+  matRoughness.value = parseFloat((e.target as HTMLInputElement).value)
+  const mat = targetMaterial.value
+  if (mat && 'roughness' in mat) {
+    ;(mat as THREE.MeshStandardMaterial).roughness = matRoughness.value
+    mat.needsUpdate = true
   }
 }
 const onOpacityChange = (e: Event) => {
-  materialOpacity.value = parseFloat((e.target as HTMLInputElement).value)
-  if (selectedMaterial.value) {
-    selectedMaterial.value.opacity = materialOpacity.value
-    selectedMaterial.value.transparent = materialOpacity.value < 1
-    selectedMaterial.value.needsUpdate = true
+  matOpacity.value = parseFloat((e.target as HTMLInputElement).value)
+  const mat = targetMaterial.value
+  if (mat && 'opacity' in mat) {
+    ;(mat as THREE.MeshStandardMaterial).opacity = matOpacity.value
+    ;(mat as THREE.MeshStandardMaterial).transparent = matOpacity.value < 1
+    mat.needsUpdate = true
   }
 }
 const onWireframeToggle = () => {
-  materialWireframe.value = !materialWireframe.value
-  if (selectedMaterial.value) {
-    selectedMaterial.value.wireframe = materialWireframe.value
-    selectedMaterial.value.needsUpdate = true
+  matWireframe.value = !matWireframe.value
+  const mat = targetMaterial.value
+  if (mat && 'wireframe' in mat) {
+    ;(mat as THREE.MeshStandardMaterial).wireframe = matWireframe.value
+    mat.needsUpdate = true
   }
 }
 </script>
@@ -539,11 +615,15 @@ const onWireframeToggle = () => {
 
 .m3de-prop-label {
   font-size: 10px;
-  color: var(--wf-text-muted);
-  width: 10px;
+  width: 12px;
   text-align: center;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Consolas', 'Monaco', monospace;
 }
+
+.m3de-prop-label.axis-x { color: #ff5555; text-shadow: 0 0 4px #ff555566; }
+.m3de-prop-label.axis-y { color: #55ff55; text-shadow: 0 0 4px #55ff5566; }
+.m3de-prop-label.axis-z { color: #5588ff; text-shadow: 0 0 4px #5588ff66; }
 
 .m3de-vector-label {
   font-size: 9px;

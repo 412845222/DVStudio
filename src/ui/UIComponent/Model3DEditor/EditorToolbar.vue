@@ -81,6 +81,11 @@
           <span class="m3de-checkbox-indicator" />
           <span>{{ bloomLabel }}</span>
         </label>
+        <label class="m3de-toolbar-checkbox">
+          <input type="checkbox" :checked="wireframeOverlay" @change="$emit('update:wireframeOverlay', ($event.target as HTMLInputElement).checked)" />
+          <span class="m3de-checkbox-indicator" />
+          <span>{{ wireframeLabel }}</span>
+        </label>
       </div>
     </div>
 
@@ -127,6 +132,7 @@ interface Props {
   gridVisible: boolean
   axesVisible: boolean
   bloomEnabled: boolean
+  wireframeOverlay: boolean
 }
 
 const props = defineProps<Props>()
@@ -139,13 +145,13 @@ defineEmits<{
   'update:gridVisible': [visible: boolean]
   'update:axesVisible': [visible: boolean]
   'update:bloomEnabled': [enabled: boolean]
+  'update:wireframeOverlay': [enabled: boolean]
   'resetCamera': []
   'screenshot': []
 }>()
 
 const renderModes = computed(() => [
   { value: 'pbr' as RenderMode, label: t('nodes.model3d.renderPBR') },
-  { value: 'wireframe' as RenderMode, label: t('nodes.model3d.renderWireframe') },
   { value: 'solid-white' as RenderMode, label: t('nodes.model3d.renderWhite') },
   { value: 'normal' as RenderMode, label: t('nodes.model3d.renderNormal') },
   { value: 'unlit' as RenderMode, label: t('nodes.model3d.renderUnlit') }
@@ -172,6 +178,7 @@ const shadowsLabel = computed(() => t('nodes.model3d.shadows'))
 const gridLabel = computed(() => t('nodes.model3d.grid'))
 const axesLabel = computed(() => t('nodes.model3d.axes'))
 const bloomLabel = computed(() => t('nodes.model3d.bloom'))
+const wireframeLabel = computed(() => t('nodes.model3d.wireframe'))
 const resetCameraLabel = computed(() => t('nodes.model3d.resetCamera'))
 const screenshotLabel = computed(() => t('nodes.model3d.screenshot'))
 </script>

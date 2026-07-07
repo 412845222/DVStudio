@@ -1664,6 +1664,9 @@ function registerIpc() {
 
 			await model3dEditorWindow.loadURL(targetUrl)
 			console.log('[main][model3d-editor] loadURL done, URL:', model3dEditorWindow.webContents.getURL())
+			if (isDev) {
+				model3dEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
 			return { ok: true, focused: false }
 		} catch (err) {
 			console.error('[main][model3d-editor] open failed', err)

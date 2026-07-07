@@ -12,6 +12,43 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { RenderMode, LightingPreset, EditorLoadProgress, LoadedEditorModel, OutlinerNode, TransformMode } from './types'
 
+type Disposable = { dispose(): void }
+type TextureLike = Disposable & {
+	map?: TextureLike | null
+	normalMap?: TextureLike | null
+	roughnessMap?: TextureLike | null
+	metalnessMap?: TextureLike | null
+	emissiveMap?: TextureLike | null
+	aoMap?: TextureLike | null
+	alphaMap?: TextureLike | null
+}
+type MaterialLike = Disposable & TextureLike
+
+const isDisposable = (value: unknown): value is Disposable => {
+	return typeof value === 'object' && value !== null && typeof (value as { dispose?: unknown }).dispose === 'function'
+}
+
+const disposeMaterial = (material: MaterialLike | MaterialLike[]) => {
+	const list = Array.isArray(material) ? material : [material]
+	for (const item of list) {
+		if (!item || typeof item.dispose !== 'function') continue
+		const mapKeys = [
+			'map',
+			'normalMap',
+			'roughnessMap',
+			'metalnessMap',
+			'emissiveMap',
+			'aoMap',
+			'alphaMap'
+		] as const
+		for (const key of mapKeys) {
+			const value = item[key]
+			if (isDisposable(value)) value.dispose()
+		}
+		item.dispose()
+	}
+}
+
 interface EditorViewerOptions {
 	backgroundColor?: string
 	initialRenderMode?: RenderMode
@@ -21,6 +58,7 @@ interface EditorViewerOptions {
 	gridVisible?: boolean
 	axesVisible?: boolean
 	transformVisible?: boolean
+	wireframeOverlay?: boolean
 	onLoadProgress?: (progress: EditorLoadProgress) => void
 	onSelectionChange?: (objects: THREE.Object3D[]) => void
 	onSelectionTransform?: (objects: THREE.Object3D[]) => void
@@ -32,6 +70,7 @@ export class EditorViewer {
 	private camera: THREE.PerspectiveCamera
 	private controls: OrbitControls
 	private transformControls: TransformControls
+	private transformHelper: THREE.Object3D
 	private composer: EffectComposer
 	private renderPass: RenderPass
 	private bloomPass: UnrealBloomPass
@@ -47,6 +86,7 @@ export class EditorViewer {
 	private rimLight: THREE.PointLight
 	private gridHelper: THREE.GridHelper
 	private axesHelper: THREE.AxesHelper
+	private groundMesh: THREE.Mesh
 	private bgMesh: THREE.Mesh | null = null
 	private models: Map<string, LoadedEditorModel> = new Map()
 	private currentRenderMode: RenderMode = 'pbr'
@@ -58,30 +98,41 @@ export class EditorViewer {
 	private gridVisible = true
 	private axesVisible = true
 	private transformVisible = true
+	private wireframeOverlayEnabled = false
 	private resizeObserver: ResizeObserver | null = null
 	private disposed = false
 	private rafId = 0
 	private burstFrames = 0
 	private burstFps = 30
 	private lastRenderTime = 0
+	private lastMoveBurstTs = 0
+	private renderSuspended = false
 	private canvas: HTMLCanvasElement
 	private onLoadProgress?: (progress: EditorLoadProgress) => void
 	private onSelectionChange?: (objects: THREE.Object3D[]) => void
 	private onSelectionTransform?: (objects: THREE.Object3D[]) => void
 	private raycaster: THREE.Raycaster = new THREE.Raycaster()
 	private pointer: THREE.Vector2 = new THREE.Vector2()
+	private selectedObject: THREE.Object3D | null = null
 	private selectedObjects: THREE.Object3D[] = []
-	private originalMaterialsBackup: WeakMap<THREE.Mesh, THREE.Material | THREE.Material[]> = new WeakMap()
-	private handleClick: (e: MouseEvent) => void
-	private handlePointerDown: () => void
-	private handlePointerMove: () => void
-	private handleWheel: () => void
+	private handlePointerDown: (e: PointerEvent) => void
+	private handlePointerUp: (e: PointerEvent) => void
+	private handleWheel: (e: WheelEvent) => void
 	private handleKeyDown: (e: KeyboardEvent) => void
+	private handleControlsChange: () => void
+	private handleControlsStart: () => void
+	private handleControlsEnd: () => void
+	private handleTransformDraggingChanged: (event: { value: boolean }) => void
+	private handleTransformChange: () => void
+	private handleTransformMouseUp: () => void
 	private orbiting = false
-	private transforming = false
+	private transformDragging = false
+	private pointerDownPos = { x: 0, y: 0 }
+	private didPointerDownOnGizmo = false
+	private didPointerDownOnObject = false
 	private fps = 0
-	private fpsFrameCount = 0
-	private fpsLastTime = 0
+	private fpsFrames = 0
+	private fpsLastUpdate = 0
 
 	constructor(canvas: HTMLCanvasElement, options?: EditorViewerOptions) {
 		this.canvas = canvas
@@ -95,6 +146,7 @@ export class EditorViewer {
 		this.gridVisible = options?.gridVisible !== false
 		this.axesVisible = options?.axesVisible !== false
 		this.transformVisible = options?.transformVisible !== false
+		this.wireframeOverlayEnabled = options?.wireframeOverlay === true
 
 		this.scene = new THREE.Scene()
 
@@ -114,7 +166,7 @@ export class EditorViewer {
 		this.renderer.toneMapping = THREE.ACESFilmicToneMapping
 		this.renderer.toneMappingExposure = 1.2
 		this.renderer.shadowMap.enabled = this.shadowsEnabled
-		this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+		this.renderer.shadowMap.type = THREE.PCFShadowMap
 		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
 		this.renderer.setClearColor(0x0a0f14, 1)
 
@@ -124,49 +176,89 @@ export class EditorViewer {
 
 		this.controls = new OrbitControls(this.camera, canvas)
 		this.controls.enableDamping = true
-		this.controls.dampingFactor = 0.06
+		this.controls.dampingFactor = 0.08
 		this.controls.minDistance = 0.2
 		this.controls.maxDistance = 200
 		this.controls.target.set(0, 1, 0)
-		this.controls.addEventListener('start', () => this.handleOrbitStart())
-		this.controls.addEventListener('end', () => this.handleOrbitEnd())
-		this.controls.addEventListener('change', () => this.requestRenderBurst(2, 30))
+		this.controls.enabled = true
+
+		this.handleControlsChange = () => {
+			if (!this.orbiting) {
+				this.requestRenderBurst(2, 30, true)
+				return
+			}
+			const now = performance.now()
+			if (now - this.lastMoveBurstTs < 33) return
+			this.lastMoveBurstTs = now
+			this.requestRenderBurst(2, 60, true)
+		}
+		this.handleControlsStart = () => {
+			this.orbiting = true
+			this.lastMoveBurstTs = 0
+			this.requestRenderBurst(30, 60, true)
+		}
+		this.handleControlsEnd = () => {
+			this.orbiting = false
+			this.requestRenderBurst(20, 60, true)
+		}
+		this.controls.addEventListener('change', this.handleControlsChange)
+		this.controls.addEventListener('start', this.handleControlsStart)
+		this.controls.addEventListener('end', this.handleControlsEnd)
 
 		this.transformControls = new TransformControls(this.camera, canvas)
 		this.transformControls.enabled = this.transformVisible
-		this.transformControls.visible = this.transformVisible
-		this.transformControls.addEventListener('dragging-changed', (event: { value: boolean }) => {
+		this.transformControls.setSize(0.8)
+		this.transformControls.setSpace('world')
+		this.transformControls.showX = true
+		this.transformControls.showY = true
+		this.transformControls.showZ = true
+		this.transformHelper = typeof (this.transformControls as unknown as { getHelper?: () => THREE.Object3D }).getHelper === 'function'
+			? (this.transformControls as unknown as { getHelper: () => THREE.Object3D }).getHelper()
+			: this.transformControls as unknown as THREE.Object3D
+		this.transformHelper.visible = false
+
+		this.handleTransformDraggingChanged = (event: { value: boolean }) => {
+			this.transformDragging = event.value
 			this.controls.enabled = !event.value
-			this.transforming = event.value
 			if (event.value) {
-				this.requestRenderBurst(30, 60, true)
+				this.requestRenderBurst(120, 60, true)
 			} else {
-				this.requestRenderBurst(10, 30)
+				this.requestRenderBurst(30, 60, true)
 				this.onSelectionTransform?.(this.selectedObjects)
 			}
-		})
-		this.transformControls.addEventListener('objectChange', () => {
-			this.requestRenderBurst(1, 60, true)
-		})
-		this.scene.add(this.transformControls)
+		}
+		this.handleTransformChange = () => {
+			this.requestRenderBurst(2, 60, false)
+		}
+		this.handleTransformMouseUp = () => {
+			if (this.transformDragging) {
+				this.onSelectionTransform?.(this.selectedObjects)
+			}
+		}
+		this.transformControls.addEventListener('dragging-changed', this.handleTransformDraggingChanged)
+		this.transformControls.addEventListener('objectChange', this.handleTransformChange)
+		this.transformControls.addEventListener('change', this.handleTransformChange)
+		this.transformControls.addEventListener('mouseUp', this.handleTransformMouseUp)
+		this.scene.add(this.transformHelper)
 
 		this.composer = new EffectComposer(this.renderer)
 		this.renderPass = new RenderPass(this.scene, this.camera)
 		this.composer.addPass(this.renderPass)
 
 		this.bloomPass = new UnrealBloomPass(
-			new THREE.Vector2(canvas.clientWidth, canvas.clientHeight),
-			0.15,
+			new THREE.Vector2(canvas.clientWidth || 800, canvas.clientHeight || 600),
+			0.08,
 			0.6,
-			0.85
+			0.92
 		)
 		this.bloomPass.enabled = this.bloomEnabled
 		this.composer.addPass(this.bloomPass)
 
 		this.fxaaPass = new ShaderPass(FXAAShader)
+		const pixelRatio = this.renderer.getPixelRatio()
 		this.fxaaPass.uniforms['resolution'].value.set(
-			1 / (canvas.clientWidth * this.renderer.getPixelRatio()),
-			1 / (canvas.clientHeight * this.renderer.getPixelRatio())
+			1 / ((canvas.clientWidth || 800) * pixelRatio),
+			1 / ((canvas.clientHeight || 600) * pixelRatio)
 		)
 		this.fxaaPass.enabled = this.antialiasEnabled
 		this.composer.addPass(this.fxaaPass)
@@ -198,31 +290,39 @@ export class EditorViewer {
 		this.scene.add(this.rimLight)
 
 		this.axesHelper = new THREE.AxesHelper(2)
+		const axesMat = this.axesHelper.material as THREE.Material | THREE.Material[]
+		if (Array.isArray(axesMat)) {
+			axesMat.forEach(m => { m.depthWrite = false })
+		} else {
+			axesMat.depthWrite = false
+		}
 		this.axesHelper.visible = this.axesVisible
 		this.scene.add(this.axesHelper)
 
-		this.gridHelper = new THREE.GridHelper(20, 40, 0x1f9d84, 0x1a2535)
+		this.gridHelper = new THREE.GridHelper(20, 40, 0x3a4048, 0x323840)
 		const gridMat = this.gridHelper.material as THREE.Material
 		if (Array.isArray(gridMat)) {
 			gridMat.forEach(m => {
 				m.opacity = 0.35
 				m.transparent = true
+				m.depthWrite = false
 			})
 		} else {
 			gridMat.opacity = 0.35
 			gridMat.transparent = true
+			gridMat.depthWrite = false
 		}
 		this.gridHelper.position.y = 0
 		this.gridHelper.visible = this.gridVisible
 		this.scene.add(this.gridHelper)
 
-		const groundGeo = new THREE.PlaneGeometry(50, 50)
-		const groundMat = new THREE.ShadowMaterial({ opacity: 0.15 })
-		const ground = new THREE.Mesh(groundGeo, groundMat)
-		ground.rotation.x = -Math.PI / 2
-		ground.position.y = -0.001
-		ground.receiveShadow = true
-		this.scene.add(ground)
+		const groundGeo = new THREE.PlaneGeometry(500, 500)
+		const groundMat = new THREE.ShadowMaterial({ opacity: 0.1, depthWrite: false })
+		this.groundMesh = new THREE.Mesh(groundGeo, groundMat)
+		this.groundMesh.rotation.x = -Math.PI / 2
+		this.groundMesh.position.y = -0.001
+		this.groundMesh.receiveShadow = true
+		this.scene.add(this.groundMesh)
 
 		this.dracoLoader = new DRACOLoader()
 		this.dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/')
@@ -230,20 +330,97 @@ export class EditorViewer {
 		this.gltfLoader.setDRACOLoader(this.dracoLoader)
 		this.objLoader = OBJLoader ? new OBJLoader() : ({} as OBJLoader)
 
-		this.handleClick = (e: MouseEvent) => this.onCanvasClick(e)
-		this.handlePointerDown = () => this.requestRenderBurst(6, 30, true)
-		this.handlePointerMove = () => {
-			if (this.orbiting || this.transforming) {
-				const now = performance.now()
-				if (now - this.lastRenderTime > 33) this.requestRenderBurst(2, 30, true)
+		this.handlePointerDown = (e: PointerEvent) => {
+			if (e.button !== 0) return
+			if (this.transformDragging) return
+			this.pointerDownPos = { x: e.clientX, y: e.clientY }
+			this.didPointerDownOnGizmo = false
+			this.didPointerDownOnObject = false
+
+			const rect = this.canvas.getBoundingClientRect()
+			this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+			this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+			this.raycaster.setFromCamera(this.pointer, this.camera)
+
+			if (this.transformHelper.visible && this.transformControls.object) {
+				const gizmoIntersects = this.raycaster.intersectObject(this.transformHelper, true)
+				if (gizmoIntersects.length > 0) {
+					this.didPointerDownOnGizmo = true
+					return
+				}
+			}
+
+			const allMeshes: THREE.Object3D[] = []
+			this.models.forEach((model) => {
+				model.group.traverse((child) => {
+					if (child instanceof THREE.Mesh) {
+						allMeshes.push(child)
+					}
+				})
+			})
+
+			const intersects = this.raycaster.intersectObjects(allMeshes, false)
+			if (intersects.length > 0) {
+				this.didPointerDownOnObject = true
 			}
 		}
-		this.handleWheel = () => this.requestRenderBurst(6, 30, true)
+
+		this.handlePointerUp = (e: PointerEvent) => {
+			if (e.button !== 0) return
+			if (this.transformDragging) return
+
+			const dx = e.clientX - this.pointerDownPos.x
+			const dy = e.clientY - this.pointerDownPos.y
+			const dist = Math.sqrt(dx * dx + dy * dy)
+			if (dist > 5) return
+
+			if (this.didPointerDownOnGizmo) return
+
+			const rect = this.canvas.getBoundingClientRect()
+			this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+			this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+			this.raycaster.setFromCamera(this.pointer, this.camera)
+
+			if (this.transformHelper.visible && this.transformControls.object) {
+				const gizmoIntersects = this.raycaster.intersectObject(this.transformHelper, true)
+				if (gizmoIntersects.length > 0) {
+					return
+				}
+			}
+
+			const allMeshes: THREE.Object3D[] = []
+			this.models.forEach((model) => {
+				model.group.traverse((child) => {
+					if (child instanceof THREE.Mesh) {
+						allMeshes.push(child)
+					}
+				})
+			})
+
+			const intersects = this.raycaster.intersectObjects(allMeshes, false)
+
+			if (intersects.length > 0) {
+				const hitObj = intersects[0].object
+				const rootGroup = this.findRootGroup(hitObj)
+				if (rootGroup) {
+					this.selectObject(rootGroup)
+				} else {
+					this.selectObject(hitObj)
+				}
+			} else {
+				if (this.selectedObject && !this.didPointerDownOnObject) {
+					this.clearSelection()
+				}
+			}
+		}
+
+		this.handleWheel = () => {
+			this.requestRenderBurst(10, 60, true)
+		}
 		this.handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e)
 
-		canvas.addEventListener('click', this.handleClick)
-		canvas.addEventListener('pointerdown', this.handlePointerDown, { passive: true })
-		canvas.addEventListener('pointermove', this.handlePointerMove, { passive: true })
+		canvas.addEventListener('pointerdown', this.handlePointerDown)
+		canvas.addEventListener('pointerup', this.handlePointerUp)
 		canvas.addEventListener('wheel', this.handleWheel, { passive: true })
 		window.addEventListener('keydown', this.handleKeyDown)
 
@@ -252,55 +429,50 @@ export class EditorViewer {
 
 		this.resize()
 		this.applyLightingPreset('studio')
-		this.applyTransformModeColors()
-		this.requestRenderBurst(4, 30)
+		this.requestRenderBurst(30, 60, true)
+
+		requestAnimationFrame(() => {
+			if (!this.disposed) {
+				this.resize()
+				this.requestRenderBurst(30, 60, true)
+			}
+		})
+		setTimeout(() => {
+			if (!this.disposed) {
+				this.resize()
+				this.requestRenderBurst(60, 60, true)
+				this.camera.lookAt(this.controls.target)
+			}
+		}, 100)
 	}
 
-	private createGradientBackground() {
+	private createGradientBackground(isDark = true) {
 		if (this.bgMesh) {
 			this.scene.remove(this.bgMesh)
 			this.bgMesh.geometry.dispose()
 			;(this.bgMesh.material as THREE.Material).dispose()
 		}
 
-		const bgGeometry = new THREE.SphereGeometry(100, 32, 32)
+		const bgColor = new THREE.Color(0x21262b)
+
+		const bgGeometry = new THREE.SphereGeometry(800, 32, 32)
 		const bgMaterial = new THREE.ShaderMaterial({
 			uniforms: {
-				topColor: { value: new THREE.Color(0x0f1a22) },
-				midColor: { value: new THREE.Color(0x0a0f14) },
-				bottomColor: { value: new THREE.Color(0x080c10) },
-				accentColor1: { value: new THREE.Color(0x1f9d84) },
-				accentColor2: { value: new THREE.Color(0x3aa8b4) },
-				offset: { value: 10 },
-				exponent: { value: 0.6 }
+				bgColor: { value: bgColor }
 			},
 			vertexShader: `
-				varying vec3 vWorldPosition;
+				varying vec3 vWorldDir;
 				void main() {
 					vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-					vWorldPosition = worldPosition.xyz;
+					vWorldDir = normalize(worldPosition.xyz - cameraPosition);
 					gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 				}
 			`,
 			fragmentShader: `
-				uniform vec3 topColor;
-				uniform vec3 midColor;
-				uniform vec3 bottomColor;
-				uniform vec3 accentColor1;
-				uniform vec3 accentColor2;
-				uniform float offset;
-				uniform float exponent;
-				varying vec3 vWorldPosition;
+				uniform vec3 bgColor;
+				varying vec3 vWorldDir;
 				void main() {
-					float h = normalize(vWorldPosition + offset).y;
-					float t = max(pow(max(h, 0.0), exponent), 0.0);
-					vec3 baseGrad = mix(bottomColor, midColor, smoothstep(-0.2, 0.3, h));
-					baseGrad = mix(baseGrad, topColor, smoothstep(0.2, 0.8, h));
-					float glow1 = smoothstep(0.0, 0.5, 1.0 - length(vWorldPosition.xz - vec2(-20.0, 10.0)) / 60.0) * 0.12;
-					float glow2 = smoothstep(0.0, 0.5, 1.0 - length(vWorldPosition.xz - vec2(25.0, -15.0)) / 50.0) * 0.08;
-					baseGrad += accentColor1 * glow1 * max(h + 0.1, 0.0);
-					baseGrad += accentColor2 * glow2 * max(-h + 0.3, 0.0);
-					gl_FragColor = vec4(baseGrad, 1.0);
+					gl_FragColor = vec4(bgColor, 1.0);
 				}
 			`,
 			side: THREE.BackSide,
@@ -312,13 +484,7 @@ export class EditorViewer {
 		this.scene.add(this.bgMesh)
 	}
 
-	private applyTransformModeColors() {
-		if (!this.transformControls) return
-		const modeColors: Record<TransformMode, { x: number; y: number; z: number }> = {
-			translate: { x: 0xff4444, y: 0x44ff44, z: 0x4488ff },
-			rotate: { x: 0xff4444, y: 0x44ff44, z: 0x4488ff },
-			scale: { x: 0xffaa44, y: 0xffaa44, z: 0xffaa44 }
-		}
+	private updateBackgroundUniforms() {
 	}
 
 	private onKeyDown(e: KeyboardEvent) {
@@ -335,6 +501,9 @@ export class EditorViewer {
 					this.setTransformMode('scale')
 				}
 				break
+			case 'escape':
+				this.clearSelection()
+				break
 		}
 	}
 
@@ -345,21 +514,14 @@ export class EditorViewer {
 		this.scene.environment = this.environmentTexture
 	}
 
-	private handleOrbitStart() {
-		this.orbiting = true
-		this.requestRenderBurst(20, 40, true)
-	}
-
-	private handleOrbitEnd() {
-		this.orbiting = false
-		this.requestRenderBurst(10, 30, true)
-	}
-
 	private requestRenderBurst(frames = 1, fps = 30, replace = false) {
-		if (this.disposed) return
+		if (this.disposed || this.renderSuspended) return
 		const f = Math.max(1, Math.floor(frames))
-		if (replace) this.burstFrames = f
-		else this.burstFrames = Math.max(this.burstFrames, f)
+		if (replace) {
+			this.burstFrames = f
+		} else {
+			this.burstFrames = Math.max(this.burstFrames, f)
+		}
 		this.burstFps = Math.max(10, Math.min(60, fps))
 		if (!this.rafId) {
 			this.rafId = requestAnimationFrame(() => this.renderFrame())
@@ -368,25 +530,33 @@ export class EditorViewer {
 
 	private renderFrame() {
 		this.rafId = 0
-		if (this.disposed) return
-		const now = performance.now()
-		if (!this.fpsLastTime) this.fpsLastTime = now
-		this.fpsFrameCount++
-		if (now - this.fpsLastTime >= 1000) {
-			this.fps = Math.round((this.fpsFrameCount * 1000) / (now - this.fpsLastTime))
-			this.fpsFrameCount = 0
-			this.fpsLastTime = now
-		}
-		const minInterval = 1000 / this.burstFps
-		if (this.lastRenderTime > 0 && now - this.lastRenderTime < minInterval) {
-			this.rafId = requestAnimationFrame(() => this.renderFrame())
-			return
-		}
-		this.lastRenderTime = now
-		this.controls.update()
-		this.composer.render()
-		if (this.burstFrames > 0) this.burstFrames--
-		if (this.burstFrames > 0 || this.transforming) {
+		if (this.disposed || this.renderSuspended) return
+		try {
+			const now = performance.now()
+			const minInterval = 1000 / this.burstFps
+			if (this.lastRenderTime > 0 && now - this.lastRenderTime < minInterval) {
+				this.rafId = requestAnimationFrame(() => this.renderFrame())
+				return
+			}
+			this.lastRenderTime = now
+			if (!this.fpsLastUpdate) this.fpsLastUpdate = now
+			this.fpsFrames++
+			if (now - this.fpsLastUpdate >= 500) {
+				this.fps = Math.min(144, Math.round((this.fpsFrames * 1000) / (now - this.fpsLastUpdate)))
+				this.fpsFrames = 0
+				this.fpsLastUpdate = now
+			}
+			this.controls.update()
+			this.updateBackgroundUniforms()
+			this.composer.render()
+			if (this.burstFrames > 0) this.burstFrames--
+			const needsContinousRender = this.burstFrames > 0 || this.orbiting || this.transformDragging
+			if (needsContinousRender) {
+				this.rafId = requestAnimationFrame(() => this.renderFrame())
+			}
+		} catch (e) {
+			console.error('[EditorViewer] Render error:', e)
+			if (this.burstFrames > 0) this.burstFrames--
 			this.rafId = requestAnimationFrame(() => this.renderFrame())
 		}
 	}
@@ -404,43 +574,54 @@ export class EditorViewer {
 		this.requestRenderBurst(2, 30)
 	}
 
-	private onCanvasClick(event: MouseEvent) {
-		if (this.transforming) return
-		const rect = this.canvas.getBoundingClientRect()
-		this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-		this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-		this.raycaster.setFromCamera(this.pointer, this.camera)
-		const meshes: THREE.Mesh[] = []
-		this.models.forEach((model) => {
-			model.group.traverse((child) => {
-				if (child instanceof THREE.Mesh) meshes.push(child)
+	private findRootGroup(obj: THREE.Object3D): THREE.Object3D | null {
+		let current: THREE.Object3D | null = obj
+		while (current) {
+			let isRoot = false
+			this.models.forEach((m) => {
+				if (m.group === current) isRoot = true
 			})
-		})
-		const intersects = this.raycaster.intersectObjects(meshes, false)
-		if (intersects.length > 0) {
-			const obj = intersects[0].object
-			this.selectObject(obj)
-		} else {
-			this.clearSelection()
+			if (isRoot) return current
+			current = current.parent
 		}
+		return null
 	}
 
 	selectObject(obj: THREE.Object3D | null) {
+		if (obj) {
+			const rootGroup = this.findRootGroup(obj)
+			if (rootGroup && rootGroup !== obj) {
+				obj = rootGroup
+			}
+		}
+		const changed = this.selectedObject !== obj
+		this.selectedObject = obj
 		this.selectedObjects = obj ? [obj] : []
 		if (obj && this.transformVisible) {
+			obj.updateMatrixWorld(true)
+			if (obj.scale.x === 0) obj.scale.x = 1
+			if (obj.scale.y === 0) obj.scale.y = 1
+			if (obj.scale.z === 0) obj.scale.z = 1
 			this.transformControls.attach(obj)
+			this.transformHelper.visible = true
+			this.transformControls.enabled = true
 		} else {
 			this.transformControls.detach()
+			this.transformHelper.visible = false
 		}
-		this.onSelectionChange?.(this.selectedObjects)
-		this.requestRenderBurst(4, 30)
+		if (changed) {
+			this.onSelectionChange?.(this.selectedObjects)
+		}
+		this.requestRenderBurst(60, 60, true)
 	}
 
 	clearSelection() {
+		this.selectedObject = null
 		this.selectedObjects = []
 		this.transformControls.detach()
+		this.transformHelper.visible = false
 		this.onSelectionChange?.([])
-		this.requestRenderBurst(2, 30)
+		this.requestRenderBurst(10, 30)
 	}
 
 	getSelectedObjects(): THREE.Object3D[] {
@@ -450,8 +631,7 @@ export class EditorViewer {
 	setTransformMode(mode: TransformMode) {
 		this.currentTransformMode = mode
 		this.transformControls.setMode(mode)
-		this.applyTransformModeColors()
-		this.requestRenderBurst(2, 30)
+		this.requestRenderBurst(10, 60)
 	}
 
 	getTransformMode(): TransformMode {
@@ -466,14 +646,16 @@ export class EditorViewer {
 
 	setTransformVisible(visible: boolean) {
 		this.transformVisible = visible
-		this.transformControls.visible = visible
 		this.transformControls.enabled = visible
 		if (!visible) {
 			this.transformControls.detach()
-		} else if (this.selectedObjects.length > 0) {
-			this.transformControls.attach(this.selectedObjects[0])
+			this.transformHelper.visible = false
+		} else if (this.selectedObject) {
+			this.selectedObject.updateMatrixWorld(true)
+			this.transformControls.attach(this.selectedObject)
+			this.transformHelper.visible = true
 		}
-		this.requestRenderBurst(2, 30)
+		this.requestRenderBurst(30, 60)
 	}
 
 	buildOutlinerTree(): OutlinerNode[] {
@@ -518,56 +700,73 @@ export class EditorViewer {
 	}
 
 	setRenderMode(mode: RenderMode) {
+		if (this.currentRenderMode === mode) return
+		this.disposeCurrentRenderModeMaterials()
 		this.currentRenderMode = mode
 		this.applyRenderMode()
-		this.requestRenderBurst(4, 30)
+		this.requestRenderBurst(10, 60, true)
+	}
+
+	private disposeCurrentRenderModeMaterials() {
+		if (this.currentRenderMode === 'pbr') return
+		this.models.forEach((model) => {
+			model.group.traverse((child) => {
+				if (child instanceof THREE.Mesh) {
+					const originalMat = model.originalMaterials.get(child)
+					if (originalMat && child.material !== originalMat) {
+						disposeMaterial(child.material as MaterialLike | MaterialLike[])
+					}
+				}
+			})
+		})
 	}
 
 	private applyRenderMode() {
 		this.models.forEach((model) => {
 			model.group.traverse((child) => {
 				if (!(child instanceof THREE.Mesh)) return
-				let originalMat = this.originalMaterialsBackup.get(child)
-				if (!originalMat) {
-					originalMat = child.material
-					this.originalMaterialsBackup.set(child, originalMat)
-				}
+				const originalMat = model.originalMaterials.get(child)
+				if (!originalMat) return
 				switch (this.currentRenderMode) {
 					case 'pbr':
-						child.material = Array.isArray(originalMat)
-							? originalMat.map((m) => m.clone())
-							: (originalMat as THREE.Material).clone()
-						(child.material as THREE.Material).needsUpdate = true
+						child.material = originalMat
+						child.material.needsUpdate = true
 						break
-					case 'wireframe': {
-						const wireMat = new THREE.MeshBasicMaterial({
-							color: 0x27b99c,
-							wireframe: true,
-							transparent: true,
-							opacity: 0.9,
-							depthTest: true,
-							depthWrite: true,
-							polygonOffset: true,
-							polygonOffsetFactor: 1,
-							polygonOffsetUnits: 1
-						})
-						wireMat.needsUpdate = true
-						child.material = wireMat
-						break
-					}
 					case 'solid-white': {
-						const whiteMat = new THREE.MeshStandardMaterial({
-							color: 0xe8edf5,
-							roughness: 0.7,
-							metalness: 0.05
+						const clayMat = new THREE.ShaderMaterial({
+							uniforms: {
+								baseColor: { value: new THREE.Color(0xb0b5ba) }
+							},
+							vertexShader: `
+								varying vec3 vNormalW;
+								void main() {
+									vec4 worldPos = modelMatrix * vec4(position, 1.0);
+				    				vNormalW = normalize(mat3(modelMatrix) * normal);
+				    				gl_Position = projectionMatrix * viewMatrix * worldPos;
+								}
+							`,
+							fragmentShader: `
+								uniform vec3 baseColor;
+								varying vec3 vNormalW;
+								void main() {
+									vec3 N = normalize(vNormalW);
+									if (!gl_FrontFacing) N = -N;
+									vec3 L = normalize(vec3(0.5, 0.9, 0.6));
+									float ndl = max(dot(N, L), 0.0);
+									float wrap = (dot(N, L) + 0.4) / 1.4;
+									float light = 0.35 + wrap * 0.65;
+									gl_FragColor = vec4(baseColor * light, 1.0);
+								}
+							`,
+							side: THREE.DoubleSide
 						})
-						whiteMat.needsUpdate = true
-						child.material = whiteMat
+						child.material = clayMat
 						break
 					}
 					case 'normal': {
-						const normalMat = new THREE.MeshNormalMaterial()
-						normalMat.needsUpdate = true
+						const normalMat = new THREE.MeshNormalMaterial({
+							side: THREE.DoubleSide
+						})
 						child.material = normalMat
 						break
 					}
@@ -583,7 +782,6 @@ export class EditorViewer {
 						} else if ((originalMat as THREE.MeshStandardMaterial).map) {
 							unlitMat.map = (originalMat as THREE.MeshStandardMaterial).map
 						}
-						unlitMat.needsUpdate = true
 						child.material = unlitMat
 						break
 					}
@@ -591,20 +789,32 @@ export class EditorViewer {
 						const matcapMat = new THREE.MeshPhongMaterial({
 							color: 0xffffff,
 							shininess: 80,
-							specular: 0x666666
+							specular: new THREE.Color(0x666666),
+							side: THREE.DoubleSide
 						})
-						matcapMat.needsUpdate = true
 						child.material = matcapMat
 						break
 					}
 					default:
-						child.material = Array.isArray(originalMat)
-							? originalMat.map((m) => m.clone())
-							: (originalMat as THREE.Material).clone()
-						(child.material as THREE.Material).needsUpdate = true
+						child.material = originalMat
+						child.material.needsUpdate = true
 				}
 			})
 		})
+	}
+
+	setWireframeOverlay(enabled: boolean) {
+		this.wireframeOverlayEnabled = enabled
+		this.models.forEach((model) => {
+			model.wireframeHelpers.forEach((wireframe) => {
+				wireframe.visible = enabled
+			})
+		})
+		this.requestRenderBurst(10, 60, true)
+	}
+
+	getWireframeOverlay(): boolean {
+		return this.wireframeOverlayEnabled
 	}
 
 	setLightingPreset(preset: LightingPreset) {
@@ -658,6 +868,9 @@ export class EditorViewer {
 			default:
 				break
 		}
+		if (preset !== 'no-light' && !this.scene.environment) {
+			this.scene.environment = this.environmentTexture
+		}
 	}
 
 	setShadowsEnabled(enabled: boolean) {
@@ -679,6 +892,16 @@ export class EditorViewer {
 		this.bloomEnabled = enabled
 		this.bloomPass.enabled = enabled
 		this.requestRenderBurst(2, 30)
+	}
+
+	setTheme(isDark: boolean) {
+		this.createGradientBackground(isDark)
+		if (isDark) {
+			this.renderer.setClearColor(0x0a0f14, 1)
+		} else {
+			this.renderer.setClearColor(0xe8eef5, 1)
+		}
+		this.requestRenderBurst(10, 60, true)
 	}
 
 	setAntialiasEnabled(enabled: boolean) {
@@ -707,6 +930,18 @@ export class EditorViewer {
 		this.requestRenderBurst(2, 30)
 	}
 
+	setRenderSuspended(suspended: boolean) {
+		this.renderSuspended = suspended === true
+		if (this.renderSuspended) {
+			if (this.rafId) cancelAnimationFrame(this.rafId)
+			this.rafId = 0
+			this.burstFrames = 0
+			this.lastMoveBurstTs = 0
+			return
+		}
+		this.requestRenderBurst(2, 30)
+	}
+
 	async loadModel(url: string, modelId?: string, name?: string): Promise<LoadedEditorModel> {
 		const id = modelId || `model-${Date.now()}`
 		const modelName = name || `Model ${this.models.size + 1}`
@@ -729,7 +964,8 @@ export class EditorViewer {
 			name: modelName,
 			url,
 			group,
-			originalMaterials: new Map()
+			originalMaterials: new Map(),
+			wireframeHelpers: new Map()
 		}
 
 		group.traverse((child) => {
@@ -740,11 +976,29 @@ export class EditorViewer {
 				if (child.geometry && !child.geometry.attributes.normal) {
 					child.geometry.computeVertexNormals()
 				}
+				const wireGeo = new THREE.WireframeGeometry(child.geometry)
+				const lineMat = new THREE.LineBasicMaterial({
+					color: 0x1c2228,
+					transparent: true,
+					opacity: 0.85,
+					depthTest: true,
+					depthWrite: false,
+					polygonOffset: true,
+					polygonOffsetFactor: -4,
+					polygonOffsetUnits: -4
+				})
+				const wireframe = new THREE.LineSegments(wireGeo, lineMat)
+				wireframe.renderOrder = 999
+				wireframe.scale.setScalar(1.0005)
+				wireframe.visible = this.wireframeOverlayEnabled
+				child.add(wireframe)
+				model.wireframeHelpers.set(child, wireframe)
 			}
 		})
 
 		this.models.set(id, model)
 		this.scene.add(group)
+		group.updateMatrixWorld(true)
 
 		this.reportProgress({ stage: 'building', progress: 0.9, message: 'Framing camera...' })
 		this.frameAllModels()
@@ -783,20 +1037,35 @@ export class EditorViewer {
 	unloadModel(id: string) {
 		const model = this.models.get(id)
 		if (!model) return
+		if (this.selectedObject) {
+			let isSelectedOrChild = this.selectedObject === model.group
+			if (!isSelectedOrChild) {
+				this.selectedObject.traverseAncestors?.((a) => {
+					if (a === model.group) isSelectedOrChild = true
+				})
+			}
+			if (isSelectedOrChild) {
+				this.clearSelection()
+			}
+		}
+		model.wireframeHelpers.forEach((wireframe, mesh) => {
+			mesh.remove(wireframe)
+			wireframe.geometry.dispose()
+			;(wireframe.material as THREE.Material).dispose()
+		})
+		model.wireframeHelpers.clear()
 		this.scene.remove(model.group)
 		model.group.traverse((child) => {
 			if (child instanceof THREE.Mesh) {
 				child.geometry?.dispose()
 				const mat = child.material
-				if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
-				else mat?.dispose()
+				const originalMat = model.originalMaterials.get(child)
+				if (mat !== originalMat) {
+					disposeMaterial(mat as MaterialLike | MaterialLike[])
+				}
 			}
 		})
 		this.models.delete(id)
-		this.originalMaterialsBackup = new WeakMap()
-		if (this.selectedObjects.length > 0) {
-			this.clearSelection()
-		}
 		if (this.currentRenderMode !== 'pbr') this.applyRenderMode()
 		this.requestRenderBurst(4, 30)
 	}
@@ -808,35 +1077,50 @@ export class EditorViewer {
 			box.expandByObject(m.group)
 		})
 		if (box.isEmpty()) return
+		this.applyCameraFrame(box)
+	}
+
+	private applyCameraFrame(box: THREE.Box3) {
 		const size = new THREE.Vector3()
 		const center = new THREE.Vector3()
 		box.getSize(size)
 		box.getCenter(center)
 		const maxDim = Math.max(size.x, size.y, size.z, 0.5)
+		const horizontalRadius = Math.max(size.x, size.z) * 0.5
 		this.controls.target.copy(center)
 		const fov = (this.camera.fov * Math.PI) / 180
-		const distance = (maxDim * 1.8) / (2 * Math.tan(fov / 2))
-		this.camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(distance))
-		this.camera.near = Math.max(0.01, distance / 500)
-		this.camera.far = Math.max(distance * 20, maxDim * 50)
+		const distance = (maxDim * 1.5) / (2 * Math.tan(fov / 2))
+		const camDist = Math.max(distance, maxDim * 2.2, horizontalRadius * 2.8)
+		this.camera.near = Math.max(0.001, camDist / 1000)
+		this.camera.far = Math.max(camDist * 20, maxDim * 100, 1000)
+		this.controls.minDistance = Math.max(0.05, maxDim * 0.2)
+		this.controls.maxDistance = Math.max(camDist * 8, maxDim * 30)
+		const dir = new THREE.Vector3(1.2, 0.9, 1.2).normalize()
+		this.camera.position.copy(center).add(dir.multiplyScalar(camDist))
 		this.camera.updateProjectionMatrix()
 		this.controls.update()
 		const gridSize = Math.max(10, Math.ceil(maxDim * 3))
 		this.gridHelper.geometry.dispose()
-		;(this.gridHelper.material as THREE.Material).dispose()
+		const oldGridMat = this.gridHelper.material
+		disposeMaterial(oldGridMat as MaterialLike | MaterialLike[])
 		this.scene.remove(this.gridHelper)
-		this.gridHelper = new THREE.GridHelper(gridSize, Math.min(40, gridSize), 0x1f9d84, 0x1a2535)
+		this.gridHelper = new THREE.GridHelper(gridSize, Math.min(40, gridSize), 0x3a4048, 0x323840)
 		const gridMat = this.gridHelper.material as THREE.Material
 		if (Array.isArray(gridMat)) {
 			gridMat.forEach(m => {
 				m.opacity = 0.35
 				m.transparent = true
+				m.depthWrite = false
 			})
 		} else {
 			gridMat.opacity = 0.35
 			gridMat.transparent = true
+			gridMat.depthWrite = false
 		}
 		this.gridHelper.position.y = box.min.y
+		this.groundMesh.position.y = box.min.y - 0.001
+		this.groundMesh.geometry.dispose()
+		this.groundMesh.geometry = new THREE.PlaneGeometry(gridSize, gridSize)
 		this.gridHelper.visible = this.gridVisible
 		this.scene.add(this.gridHelper)
 		this.axesHelper.scale.setScalar(Math.max(1, maxDim * 0.3))
@@ -854,17 +1138,7 @@ export class EditorViewer {
 			const model = this.models.get(id)!
 			const box = new THREE.Box3().setFromObject(model.group)
 			if (box.isEmpty()) return
-			const size = new THREE.Vector3()
-			const center = new THREE.Vector3()
-			box.getSize(size)
-			box.getCenter(center)
-			const maxDim = Math.max(size.x, size.y, size.z, 0.5)
-			this.controls.target.copy(center)
-			const fov = (this.camera.fov * Math.PI) / 180
-			const distance = (maxDim * 1.8) / (2 * Math.tan(fov / 2))
-			this.camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(distance))
-			this.camera.updateProjectionMatrix()
-			this.controls.update()
+			this.applyCameraFrame(box)
 			this.requestRenderBurst(10, 30)
 		} else {
 			this.frameAllModels()
@@ -877,7 +1151,8 @@ export class EditorViewer {
 
 	getScreenshot(): string {
 		try {
-			this.renderer.render(this.scene, this.camera)
+			this.controls.update()
+			this.composer.render()
 			return this.canvas.toDataURL('image/png')
 		} catch {
 			return ''
@@ -926,16 +1201,40 @@ export class EditorViewer {
 	dispose() {
 		if (this.disposed) return
 		this.disposed = true
+		this.renderSuspended = true
 		if (this.rafId) cancelAnimationFrame(this.rafId)
 		window.removeEventListener('keydown', this.handleKeyDown)
-		this.canvas.removeEventListener('click', this.handleClick)
 		this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
-		this.canvas.removeEventListener('pointermove', this.handlePointerMove)
+		this.canvas.removeEventListener('pointerup', this.handlePointerUp)
 		this.canvas.removeEventListener('wheel', this.handleWheel)
 		this.resizeObserver?.disconnect()
+		this.controls.removeEventListener('change', this.handleControlsChange)
+		this.controls.removeEventListener('start', this.handleControlsStart)
+		this.controls.removeEventListener('end', this.handleControlsEnd)
+		this.transformControls.removeEventListener('dragging-changed', this.handleTransformDraggingChanged)
+		this.transformControls.removeEventListener('objectChange', this.handleTransformChange)
+		this.transformControls.removeEventListener('change', this.handleTransformChange)
+		this.transformControls.removeEventListener('mouseUp', this.handleTransformMouseUp)
 		this.transformControls.detach()
+		this.scene.remove(this.transformHelper)
 		this.transformControls.dispose()
-		this.models.forEach((_, id) => this.unloadModel(id))
+		this.disposeCurrentRenderModeMaterials()
+		this.models.forEach((model) => {
+			model.wireframeHelpers.forEach((wireframe, mesh) => {
+				mesh.remove(wireframe)
+				wireframe.geometry.dispose()
+				;(wireframe.material as THREE.Material).dispose()
+			})
+			model.wireframeHelpers.clear()
+			this.scene.remove(model.group)
+			model.group.traverse((child) => {
+				if (child instanceof THREE.Mesh) {
+					child.geometry?.dispose()
+					const mat = model.originalMaterials.get(child)
+					if (mat) disposeMaterial(mat as MaterialLike | MaterialLike[])
+				}
+			})
+		})
 		this.models.clear()
 		if (this.bgMesh) {
 			this.scene.remove(this.bgMesh)

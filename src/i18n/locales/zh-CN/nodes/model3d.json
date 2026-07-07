@@ -64,6 +64,7 @@
   "nodes.model3d.grid": "网格",
   "nodes.model3d.axes": "坐标轴",
   "nodes.model3d.bloom": "泛光",
+  "nodes.model3d.wireframe": "线框",
   "nodes.model3d.resetCamera": "重置视角",
   "nodes.model3d.screenshot": "截图",
   "nodes.model3d.outliner": "场景大纲",

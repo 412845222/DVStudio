@@ -8,6 +8,7 @@
 			:gridVisible="gridVisible"
 			:axesVisible="axesVisible"
 			:bloomEnabled="bloomEnabled"
+			:wireframeOverlay="wireframeOverlay"
 			@update:renderMode="onSetRenderMode"
 			@update:lighting="onSetLighting"
 			@update:transformMode="onSetTransformMode"
@@ -15,6 +16,7 @@
 			@update:gridVisible="onToggleGrid"
 			@update:axesVisible="onToggleAxes"
 			@update:bloomEnabled="onToggleBloom"
+			@update:wireframeOverlay="onToggleWireframeOverlay"
 			@resetCamera="onResetCamera"
 			@screenshot="onTakeScreenshot"
 		/>
@@ -34,8 +36,6 @@
 				<div class="viewport-corner viewport-corner-tr" />
 				<div class="viewport-corner viewport-corner-bl" />
 				<div class="viewport-corner viewport-corner-br" />
-
-				<div class="viewport-scanline" />
 
 				<canvas ref="canvasRef" class="editor-canvas"></canvas>
 
@@ -106,6 +106,7 @@ const viewportRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 let viewer: EditorViewer | null = null
 let fpsInterval: ReturnType<typeof setInterval> | null = null
+let syncRafId: number | null = null
 
 const currentRenderMode = ref<RenderMode>('pbr')
 const currentLighting = ref<LightingPreset>('studio')
@@ -114,6 +115,7 @@ const shadowsEnabled = ref(true)
 const gridVisible = ref(true)
 const axesVisible = ref(true)
 const bloomEnabled = ref(false)
+const wireframeOverlay = ref(false)
 
 const isLoading = ref(false)
 const loadingTitle = ref('加载中')
@@ -129,7 +131,6 @@ const selectedIds = computed(() => {
 	return s
 })
 const expandedIds = ref<Set<string>>(new Set())
-const selectedObject3D = ref<THREE.Object3D | null>(null)
 const selectedOutlinerNode = ref<OutlinerNode | null>(null)
 const selectedName = computed(() => selectedOutlinerNode.value?.name || '')
 
@@ -217,12 +218,79 @@ function onLoadProgress(progress: EditorLoadProgress) {
 }
 
 function refreshOutliner() {
-	if (!viewer) return
-	outlinerNodes.value = viewer.buildOutlinerTree()
-	if (outlinerNodes.value.length > 0 && !expandedIds.value.has(outlinerNodes.value[0].id)) {
-		const ids = new Set(expandedIds.value)
-		ids.add(outlinerNodes.value[0].id)
-		expandedIds.value = ids
+		if (!viewer) return
+		outlinerNodes.value = viewer.buildOutlinerTree()
+		if (outlinerNodes.value.length > 0 && !expandedIds.value.has(outlinerNodes.value[0].id)) {
+			const ids = new Set(expandedIds.value)
+			ids.add(outlinerNodes.value[0].id)
+			expandedIds.value = ids
+		}
+	}
+
+	function syncSelectionFromViewer() {
+		if (!viewer) return
+		if (outlinerNodes.value.length === 0) {
+			refreshOutliner()
+		}
+		const selected = viewer.getSelectedObjects()
+		if (selected.length > 0) {
+			const obj = selected[0]
+			let targetObj = obj
+			const foundNode = findOutlinerNodeByObject(targetObj)
+			if (foundNode) {
+				if (selectedNodeId.value !== foundNode.id) {
+					selectedNodeId.value = foundNode.id
+				}
+				if (selectedOutlinerNode.value !== foundNode) {
+					selectedOutlinerNode.value = foundNode
+				}
+				const parentId = foundNode.id.split('-').slice(0, 2).join('-')
+				if (parentId && !expandedIds.value.has(parentId)) {
+					const ids = new Set(expandedIds.value)
+					ids.add(parentId)
+					expandedIds.value = ids
+				}
+			} else {
+				let parentNode: OutlinerNode | null = null
+				let searchObj: THREE.Object3D | null = obj
+				while (searchObj && !parentNode) {
+					parentNode = findOutlinerNodeByObject(searchObj)
+					if (!parentNode) searchObj = searchObj.parent
+				}
+				if (parentNode) {
+					if (selectedNodeId.value !== parentNode.id) {
+						selectedNodeId.value = parentNode.id
+					}
+					if (selectedOutlinerNode.value !== parentNode) {
+						selectedOutlinerNode.value = parentNode
+					}
+					const parentId = parentNode.id.split('-').slice(0, 2).join('-')
+					if (parentId && !expandedIds.value.has(parentId)) {
+						const ids = new Set(expandedIds.value)
+						ids.add(parentId)
+						expandedIds.value = ids
+					}
+				}
+			}
+		} else {
+			if (selectedNodeId.value !== null) selectedNodeId.value = null
+			if (selectedOutlinerNode.value !== null) selectedOutlinerNode.value = null
+		}
+	}
+
+function startSyncLoop() {
+	if (syncRafId !== null) return
+	const tick = () => {
+		syncSelectionFromViewer()
+		syncRafId = requestAnimationFrame(tick)
+	}
+	syncRafId = requestAnimationFrame(tick)
+}
+
+function stopSyncLoop() {
+	if (syncRafId !== null) {
+		cancelAnimationFrame(syncRafId)
+		syncRafId = null
 	}
 }
 
@@ -243,6 +311,21 @@ function findOutlinerNodeById(id: string | null): OutlinerNode | null {
 	const search = (nodes: OutlinerNode[]): OutlinerNode | null => {
 		for (const node of nodes) {
 			if (node.id === id) return node
+			if (node.children) {
+				const found = search(node.children)
+				if (found) return found
+			}
+		}
+		return null
+	}
+	return search(outlinerNodes.value)
+}
+
+function findOutlinerNodeByObject(obj: THREE.Object3D | null): OutlinerNode | null {
+	if (!obj) return null
+	const search = (nodes: OutlinerNode[]): OutlinerNode | null => {
+		for (const node of nodes) {
+			if (node.object3D === obj) return node
 			if (node.children) {
 				const found = search(node.children)
 				if (found) return found
@@ -288,6 +371,11 @@ function onToggleBloom(enabled: boolean) {
 	viewer?.setBloomEnabled(enabled)
 }
 
+function onToggleWireframeOverlay(enabled: boolean) {
+	wireframeOverlay.value = enabled
+	viewer?.setWireframeOverlay(enabled)
+}
+
 function onResetCamera() {
 	viewer?.resetCamera()
 }
@@ -303,26 +391,28 @@ function onTakeScreenshot() {
 }
 
 function onSelectNode(nodeId: string) {
-	selectedNodeId.value = nodeId
-	selectedOutlinerNode.value = findOutlinerNodeById(nodeId)
-	if (!selectedOutlinerNode.value) {
-		selectedObject3D.value = null
-		return
+	if (!viewer) return
+	if (nodeId) {
+		const node = findOutlinerNodeById(nodeId)
+		if (node) {
+			selectedNodeId.value = nodeId
+			selectedOutlinerNode.value = node
+			viewer.selectObject(node.object3D)
+			return
+		}
 	}
-	const obj = selectedOutlinerNode.value.object3D
-	selectedObject3D.value = obj
-	if (viewer) {
-		viewer.selectObject(obj)
-	}
+	selectedNodeId.value = null
+	selectedOutlinerNode.value = null
+	viewer.clearSelection()
 }
 
 function onToggleNodeVisibility(nodeId: string) {
 	const node = findOutlinerNodeById(nodeId)
 	if (!node) return
 	const newVisible = !node.visible
-	node.object3D.visible = newVisible
 	node.visible = newVisible
-	refreshOutliner()
+	node.object3D.visible = newVisible
+	viewer?.setNodeVisibility(nodeId, newVisible)
 }
 
 function onToggleNodeLock(nodeId: string) {
@@ -347,69 +437,56 @@ function onNodeTransform() {
 
 async function initEditor() {
 	await nextTick()
+	await new Promise(resolve => requestAnimationFrame(resolve))
 	if (!canvasRef.value || !viewportRef.value) {
 		console.error('[Model3DEditor] Canvas or viewport not found')
 		return
 	}
+	const canvasW = canvasRef.value.clientWidth
+	const canvasH = canvasRef.value.clientHeight
+	const viewportW = viewportRef.value.clientWidth
+	const viewportH = viewportRef.value.clientHeight
+	console.log('[Model3DEditor] Initial sizes:', { canvasW, canvasH, viewportW, viewportH })
+
 	isLoading.value = true
 	loadingProgress.value = 0
 	loadingMessage.value = '初始化渲染器...'
-	viewer = new EditorViewer(canvasRef.value, {
-		initialRenderMode: currentRenderMode.value,
-		shadowsEnabled: shadowsEnabled.value,
-		bloomEnabled: bloomEnabled.value,
-		gridVisible: gridVisible.value,
-		axesVisible: axesVisible.value,
-		transformVisible: true,
-		onLoadProgress,
-		onSelectionChange: (objects) => {
-			if (objects.length > 0) {
-				selectedObject3D.value = objects[0]
-				const findNodeByObject = (nodes: OutlinerNode[], obj: THREE.Object3D): OutlinerNode | null => {
-					for (const node of nodes) {
-						if (node.object3D === obj) return node
-						if (node.children) {
-							const found = findNodeByObject(node.children, obj)
-							if (found) return found
-						}
-					}
-					return null
-				}
-				const foundNode = findNodeByObject(outlinerNodes.value, objects[0])
-				if (foundNode) {
-					selectedNodeId.value = foundNode.id
-					selectedOutlinerNode.value = foundNode
-					const ids = new Set(expandedIds.value)
-					let parent: OutlinerNode | null = null
-					const findParent = (nodes: OutlinerNode[], targetId: string, p: OutlinerNode | null = null): OutlinerNode | null => {
-						for (const n of nodes) {
-							if (n.id === targetId) return p
-							if (n.children) {
-								const r = findParent(n.children, targetId, n)
-								if (r !== undefined) return r
-							}
-						}
-						return null
-					}
-					parent = findParent(outlinerNodes.value, foundNode.id)
-					if (parent) ids.add(parent.id)
-					expandedIds.value = ids
-				}
-			} else {
-				selectedObject3D.value = null
-				selectedNodeId.value = null
-				selectedOutlinerNode.value = null
+
+	try {
+		viewer = new EditorViewer(canvasRef.value, {
+			initialRenderMode: currentRenderMode.value,
+			shadowsEnabled: shadowsEnabled.value,
+			bloomEnabled: bloomEnabled.value,
+			gridVisible: gridVisible.value,
+			axesVisible: axesVisible.value,
+			transformVisible: true,
+			wireframeOverlay: wireframeOverlay.value,
+			onLoadProgress,
+			onSelectionChange: (selected) => {
+				refreshOutliner()
+				syncSelectionFromViewer()
+			},
+			onSelectionTransform: () => {
+				updateStats()
 			}
-		},
-		onSelectionTransform: () => {
-			selectedOutlinerNode.value = findOutlinerNodeById(selectedNodeId.value)
-		}
-	})
-	viewer.setTransformMode(currentTransformMode.value)
+		})
+		viewer.setTransformMode(currentTransformMode.value)
+	} catch (err) {
+		console.error('[Model3DEditor] Failed to create viewer:', err)
+		isLoading.value = false
+		errorMessage.value = '渲染器初始化失败: ' + String(err)
+		return
+	}
+
+	fpsInterval = setInterval(updateFPS, 1000)
+	startSyncLoop()
+	refreshOutliner()
+	updateStats()
+
 	const models = parseModelsFromQuery()
 	if (models.length === 0) {
 		isLoading.value = false
-		errorMessage.value = '未找到模型'
+		errorMessage.value = '未找到模型数据，请从工作流中打开模型'
 		return
 	}
 	try {
@@ -419,7 +496,6 @@ async function initEditor() {
 		}
 		refreshOutliner()
 		updateStats()
-		fpsInterval = setInterval(updateFPS, 1000)
 	} catch (err) {
 		console.error('[Model3DEditor] Failed to load model:', err)
 		isLoading.value = false
@@ -432,6 +508,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	stopSyncLoop()
 	if (fpsInterval) {
 		clearInterval(fpsInterval)
 		fpsInterval = null
@@ -448,11 +525,13 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	height: 100vh;
+	height: 100%;
 	overflow: hidden;
 	background: #0a0f14;
 	color: var(--wf-text, #c5d4e3);
 	font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+	position: absolute;
+	inset: 0;
 }
 
 .editor-main {
@@ -474,6 +553,8 @@ onBeforeUnmount(() => {
 	display: block;
 	width: 100%;
 	height: 100%;
+	position: absolute;
+	inset: 0;
 }
 
 .viewport-particles {
@@ -519,31 +600,6 @@ onBeforeUnmount(() => {
 	right: 12px;
 	border-left: none;
 	border-top: none;
-}
-
-.viewport-scanline {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: 1px;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		color-mix(in srgb, var(--wf-primary, #27b99c) 30%, transparent) 20%,
-		color-mix(in srgb, var(--wf-primary, #27b99c) 20%, transparent) 80%,
-		transparent
-	);
-	pointer-events: none;
-	z-index: 2;
-	animation: vp-scanline 6s ease-in-out infinite;
-}
-
-@keyframes vp-scanline {
-	0%, 100% { opacity: 0; transform: translateY(0); }
-	10% { opacity: 0.6; }
-	90% { opacity: 0.6; }
-	100% { opacity: 0; transform: translateY(100vh); }
 }
 
 .viewport-hud {
