@@ -362,7 +362,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		if (!apiKeysRepo?.getPlaintext) return {}
 
 		const providerAliases: Record<string, string[]> = {
-			deepseek: ['deepseek', 'deepseek_api', 'deepseek-chat'],
 			openai: ['openai', 'openai_api'],
 			bytedance: ['bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine'],
 			gemini: ['gemini', 'google_gemini', 'gemini_api']
@@ -780,7 +779,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 			if (backend === 'dvsagent') {
 				const modelInfo = getChatModelById(payload.chatModelId.value)
-				let apiSource = modelInfo?.apiSource || 'deepseek'
+				let apiSource = modelInfo?.apiSource || 'bytedance'
 				let apiKeys: Record<string, string> = {}
 				try {
 					apiKeys = await getDwebApiKeys()

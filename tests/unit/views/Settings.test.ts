@@ -1,21 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ClientSettings } from '@/electronBridge/types'
 
-const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
-const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
 function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSettings> = {}): ClientSettings {
 	const payload: ClientSettings = {
 		defaultResolution: form.defaultResolution,
-		deepseekApiKey: form.deepseekApiKey,
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: form.geminiApiKey,
 		geminiModel: FIXED_GEMINI_MODEL,
+		geminiBaseUrl: form.geminiBaseUrl,
+		httpProxy: form.httpProxy,
 		bytedanceApiKey: form.bytedanceApiKey,
 		meshyApiKey: form.meshyApiKey,
+		tripo3dApiKey: form.tripo3dApiKey,
 		githubToken: form.githubToken,
 		ui: {
 			locale: form.ui?.locale || '',
@@ -31,6 +29,7 @@ function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSetting
 					acceptedAt: 0,
 					acceptedVersion: '',
 			  },
+		cliAdapters: form.cliAdapters || {},
 		...overrides,
 	}
 	return payload
@@ -39,13 +38,13 @@ function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSetting
 function createDefaultForm(): ClientSettings {
 	return {
 		defaultResolution: '1920x1080',
-		deepseekApiKey: '',
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: '',
 		geminiModel: FIXED_GEMINI_MODEL,
+		geminiBaseUrl: '',
+		httpProxy: '',
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		tripo3dApiKey: '',
 		githubToken: '',
 		ui: {
 			locale: '',
@@ -55,6 +54,7 @@ function createDefaultForm(): ClientSettings {
 			acceptedAt: 0,
 			acceptedVersion: '',
 		},
+		cliAdapters: {},
 	}
 }
 
@@ -65,20 +65,18 @@ describe('Settings', () => {
 			const payload = buildSavePayload(form)
 
 			expect(payload.defaultResolution).toBe('1920x1080')
-			expect(payload.deepseekBaseUrl).toBe(FIXED_DEEPSEEK_BASE_URL)
-			expect(payload.deepseekModel).toBe(FIXED_DEEPSEEK_MODEL)
 			expect(payload.geminiModel).toBe(FIXED_GEMINI_MODEL)
 			expect(payload.apiKeySecurityAgreement?.accepted).toBe(false)
 		})
 
 		it('includes API keys when set', () => {
 			const form = createDefaultForm()
-			form.deepseekApiKey = 'sk-test-123'
+			form.bytedanceApiKey = 'ark-test-123'
 			form.geminiApiKey = 'AIza-test-456'
 
 			const payload = buildSavePayload(form)
 
-			expect(payload.deepseekApiKey).toBe('sk-test-123')
+			expect(payload.bytedanceApiKey).toBe('ark-test-123')
 			expect(payload.geminiApiKey).toBe('AIza-test-456')
 		})
 
@@ -115,11 +113,11 @@ describe('Settings', () => {
 
 			const payload = buildSavePayload(form, {
 				defaultResolution: '3840x2160',
-				deepseekApiKey: 'sk-override',
+				bytedanceApiKey: 'ark-override',
 			})
 
 			expect(payload.defaultResolution).toBe('3840x2160')
-			expect(payload.deepseekApiKey).toBe('sk-override')
+			expect(payload.bytedanceApiKey).toBe('ark-override')
 		})
 	})
 
@@ -163,16 +161,16 @@ describe('Settings', () => {
 	describe('API Key Field Input Handling', () => {
 		it('should trigger security agreement when user inputs API key without accepting', () => {
 			const hasAcceptedAgreement = false
-			const inputValue = 'sk-new-api-key'
-			const pendingFieldKey = { value: null }
+			const inputValue = 'ark-new-api-key'
+			const pendingFieldKey = { value: null as string | null }
 			const pendingFieldValue = { value: '' }
-			const pendingProviderKey = { value: null }
+			const pendingProviderKey = { value: null as string | null }
 			const securityAgreementOpen = { value: false }
 			const securityAgreementChecked = { value: true }
 
 			if (!hasAcceptedAgreement && inputValue.trim()) {
-				pendingProviderKey.value = 'deepseek'
-				pendingFieldKey.value = 'deepseekApiKey'
+				pendingProviderKey.value = 'bytedance'
+				pendingFieldKey.value = 'bytedanceApiKey'
 				pendingFieldValue.value = inputValue
 				securityAgreementOpen.value = true
 				securityAgreementChecked.value = false
@@ -180,13 +178,13 @@ describe('Settings', () => {
 
 			expect(securityAgreementOpen.value).toBe(true)
 			expect(securityAgreementChecked.value).toBe(false)
-			expect(pendingFieldKey.value).toBe('deepseekApiKey')
-			expect(pendingFieldValue.value).toBe('sk-new-api-key')
+			expect(pendingFieldKey.value).toBe('bytedanceApiKey')
+			expect(pendingFieldValue.value).toBe('ark-new-api-key')
 		})
 
 		it('should not trigger security agreement when user has already accepted', () => {
 			const hasAcceptedAgreement = true
-			const inputValue = 'sk-new-api-key'
+			const inputValue = 'ark-new-api-key'
 			const securityAgreementOpen = { value: false }
 
 			if (!hasAcceptedAgreement && inputValue.trim()) {
@@ -212,9 +210,9 @@ describe('Settings', () => {
 	describe('Security Agreement Accept/Cancel', () => {
 		it('acceptSecurityAgreement updates form and clears pending values', () => {
 			const form = createDefaultForm()
-			const pendingFieldKey = { value: 'deepseekApiKey' as const }
-			const pendingFieldValue = { value: 'sk-pending-key' }
-			const pendingProviderKey = { value: 'deepseek' }
+			const pendingFieldKey = { value: 'bytedanceApiKey' as const }
+			const pendingFieldValue = { value: 'ark-pending-key' }
+			const pendingProviderKey = { value: 'bytedance' }
 			const securityAgreementOpen = { value: true }
 			const pendingForm: Record<string, string> = {}
 
@@ -236,16 +234,16 @@ describe('Settings', () => {
 			expect(form.apiKeySecurityAgreement?.accepted).toBe(true)
 			expect(form.apiKeySecurityAgreement?.acceptedVersion).toBe(API_KEY_AGREEMENT_VERSION)
 			expect(securityAgreementOpen.value).toBe(false)
-			expect(pendingForm['deepseekApiKey']).toBe('sk-pending-key')
+			expect(pendingForm['bytedanceApiKey']).toBe('ark-pending-key')
 			expect(pendingFieldKey.value).toBe(null)
 		})
 
 		it('cancelSecurityAgreement restores original value and clears pending', () => {
 			const form = createDefaultForm()
-			form.deepseekApiKey = 'sk-original'
-			const pendingFieldKey = { value: 'deepseekApiKey' as const }
-			const pendingFieldValue = { value: 'sk-pending-key' }
-			const pendingProviderKey = { value: 'deepseek' }
+			form.bytedanceApiKey = 'ark-original'
+			const pendingFieldKey = { value: 'bytedanceApiKey' as const }
+			const pendingFieldValue = { value: 'ark-pending-key' }
+			const pendingProviderKey = { value: 'bytedance' }
 			const securityAgreementOpen = { value: true }
 			const pendingForm: Record<string, string> = {}
 
@@ -260,7 +258,7 @@ describe('Settings', () => {
 			pendingProviderKey.value = null
 
 			expect(securityAgreementOpen.value).toBe(false)
-			expect(pendingForm['deepseekApiKey']).toBe('sk-original')
+			expect(pendingForm['bytedanceApiKey']).toBe('ark-original')
 			expect(pendingFieldKey.value).toBe(null)
 		})
 	})

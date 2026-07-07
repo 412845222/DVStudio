@@ -55,12 +55,12 @@ export class AgentRuntime {
 
     const content = String(p.content ?? p.prompt ?? '').trim();
     const attachments = Array.isArray(p.attachments) ? p.attachments : [];
-    const model = String(p.model || p.modelId || 'deepseek-chat').trim();
+    const model = String(p.model || p.modelId || 'doubao-seed-evolving').trim();
     const backend = String(p.backend || 'dvsagent').toLowerCase();
     const context = p.context || null;
     const history = Array.isArray(p.history) ? p.history.filter(m => m.role !== 'system') : [];
     const apiKeys = p.apiKeys || {};
-    const apiSource = String(p.apiSource || 'deepseek').toLowerCase();
+    const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
     const providedTools = Array.isArray(p.tools) ? p.tools : [];
 

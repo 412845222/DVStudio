@@ -22,10 +22,23 @@ export type CLISessionInfo = {
 
 export type CLIStreamChunk =
   | { type: 'text'; content: string }
+  | { type: 'thinking'; content: string }
   | { type: 'tool_call'; tool: string; input?: unknown }
   | { type: 'tool_result'; tool: string; output?: unknown }
   | { type: 'error'; message: string }
   | { type: 'done' }
+
+export type AuthStreamChunk =
+  | { type: 'starting'; message: string }
+  | { type: 'spawned'; message: string }
+  | { type: 'raw_output'; text: string }
+  | { type: 'fallback_manual'; message: string; defaultUri: string; rawOutput: string }
+  | { type: 'code_ready'; verificationUri: string; userCode: string; expiresIn?: number; message: string }
+  | { type: 'browser_opened'; message: string }
+  | { type: 'browser_open_failed'; message: string; verificationUri: string }
+  | { type: 'waiting'; message: string }
+  | { type: 'success'; message: string }
+  | { type: 'error'; message: string }
 
 export type CLISendOptions = {
   sessionId?: string
@@ -52,7 +65,10 @@ type CLIIpcBridge = {
       listModels?: (payload: unknown) => Promise<unknown>
       getConfig?: (payload: unknown) => Promise<unknown>
       saveConfig?: (payload: unknown) => Promise<unknown>
+      resetConfig?: (payload: unknown) => Promise<unknown>
       runFix?: (payload: unknown) => Promise<unknown>
+      startAuthStream?: (payload: unknown) => AsyncGenerator<unknown>
+      cancelAuth?: (payload: unknown) => Promise<unknown>
     }
   }
 }
@@ -207,6 +223,19 @@ export async function cliSaveAdapterConfig(
   )
 }
 
+export async function cliResetAdapterConfig(adapter: string): Promise<IpcResult<{ ok: boolean; adapter: string }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.cli?.resetConfig?.({ adapter }) as Promise<IpcResult<{ ok: boolean; adapter: string }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/cli/reset/${adapter}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      return res.json()
+    }
+  )
+}
+
 export async function cliRunFixCommand(
   adapter: string,
   checkKey: string
@@ -300,25 +329,123 @@ function normalizeCLIChunk(raw: unknown): CLIStreamChunk | null {
   }
   if (!isRecord(raw)) return null
   const type = String(raw.type || raw.event || '')
-  if (type === 'text_delta' || type === 'textDelta' || type === 'thinking_delta' || type === 'thinkingDelta') {
+  if (type === 'text_delta' || type === 'textDelta') {
     const content = String(raw.content || raw.text || raw.delta || '')
     return content ? { type: 'text', content } : null
+  }
+  if (type === 'thinking_delta' || type === 'thinkingDelta' || type === 'thinking') {
+    const content = String(raw.content || raw.text || raw.thinking || '')
+    return content ? { type: 'thinking', content } : null
   }
   if (type === 'text' || type === 'content' || type === 'output') {
     const content = String(raw.content || raw.text || raw.delta || raw.output || '')
     return content ? { type: 'text', content } : null
   }
-  if (type === 'tool_call' || type === 'tool-call') {
+  if (type === 'tool_call_start' || type === 'tool_call' || type === 'tool-call' || type === 'tool_use') {
     return { type: 'tool_call', tool: String(raw.tool || raw.name || ''), input: raw.input || raw.arguments }
   }
-  if (type === 'tool_result' || type === 'tool-result') {
+  if (type === 'tool_call_end' || type === 'tool_result' || type === 'tool-result') {
     return { type: 'tool_result', tool: String(raw.tool || raw.name || ''), output: raw.output || raw.result }
   }
   if (type === 'error') {
     return { type: 'error', message: String(raw.message || raw.error || 'Unknown error') }
   }
-  if (type === 'done' || type === 'end') {
+  if (type === 'done' || type === 'end' || type === 'session_end') {
     return { type: 'done' }
   }
+  if (type === 'session_start') {
+    return null
+  }
   return null
+}
+
+export async function cliCancelAuth(adapter: string): Promise<IpcResult<{ ok: boolean }>> {
+  const bridge = getIpcBridge()
+  if (hasIpcApi() && bridge.dweb?.cli?.cancelAuth) {
+    try {
+      const result = await bridge.dweb.cli.cancelAuth({ adapter }) as IpcResult<{ ok: boolean }>
+      return result || { ok: true, value: { ok: true } }
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+  return { ok: false, error: 'IPC API not available' }
+}
+
+export async function* cliStartAuthFlow(adapter: string): AsyncGenerator<AuthStreamChunk> {
+  const bridge = getIpcBridge()
+
+  if (!hasIpcApi() || !bridge.dweb?.cli?.startAuthStream) {
+    yield { type: 'error', message: '认证功能不可用（IPC通道未就绪）' }
+    return
+  }
+
+  try {
+    const gen = bridge.dweb.cli.startAuthStream({ adapter })
+    if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
+      yield { type: 'error', message: '认证流式通道不可用' }
+      return
+    }
+
+    for await (const raw of gen) {
+      const chunk = normalizeAuthChunk(raw)
+      if (chunk) {
+        yield chunk
+        if (chunk.type === 'success' || chunk.type === 'error') {
+          return
+        }
+      }
+    }
+  } catch (err: unknown) {
+    const msg = err && typeof err === 'object' && 'message' in err
+      ? String((err as { message: unknown }).message)
+      : String(err)
+    yield { type: 'error', message: msg }
+  }
+}
+
+function normalizeAuthChunk(raw: unknown): AuthStreamChunk | null {
+  if (!raw) return null
+  if (!isRecord(raw)) return null
+  const type = String(raw.type || '')
+
+  switch (type) {
+    case 'starting':
+      return { type: 'starting', message: String(raw.message || '正在启动认证...') }
+    case 'spawned':
+      return { type: 'spawned', message: String(raw.message || '认证进程已启动...') }
+    case 'raw_output':
+      return { type: 'raw_output', text: String(raw.text || '') }
+    case 'fallback_manual':
+      return {
+        type: 'fallback_manual',
+        message: String(raw.message || '请手动打开认证页面'),
+        defaultUri: String(raw.defaultUri || 'https://auth.openai.com/codex/device'),
+        rawOutput: String(raw.rawOutput || '')
+      }
+    case 'code_ready':
+      return {
+        type: 'code_ready',
+        verificationUri: String(raw.verificationUri || ''),
+        userCode: String(raw.userCode || ''),
+        expiresIn: Number(raw.expiresIn) || 900,
+        message: String(raw.message || '已获取认证信息')
+      }
+    case 'browser_opened':
+      return { type: 'browser_opened', message: String(raw.message || '已打开浏览器') }
+    case 'browser_open_failed':
+      return {
+        type: 'browser_open_failed',
+        message: String(raw.message || '无法自动打开浏览器'),
+        verificationUri: String(raw.verificationUri || '')
+      }
+    case 'waiting':
+      return { type: 'waiting', message: String(raw.message || '等待登录...') }
+    case 'success':
+      return { type: 'success', message: String(raw.message || '认证成功') }
+    case 'error':
+      return { type: 'error', message: String(raw.message || raw.error || '认证失败') }
+    default:
+      return null
+  }
 }

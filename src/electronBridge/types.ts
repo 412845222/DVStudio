@@ -275,9 +275,6 @@ export interface Tripo3DTaskDetailResult {
 
 export type ClientSettings = {
 	defaultResolution: string
-	deepseekApiKey: string
-	deepseekBaseUrl: string
-	deepseekModel: string
 	geminiApiKey: string
 	geminiModel: string
 	geminiBaseUrl?: string

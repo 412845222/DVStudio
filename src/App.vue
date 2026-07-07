@@ -73,7 +73,7 @@ import AboutDialog from './ui/UIComponent/AboutDialog.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
-import { initCopilotConfig } from './ai/models/chatModels'
+import { initCopilotConfig, initCodexConfig } from './ai/models/chatModels'
 
 provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
@@ -202,6 +202,7 @@ onMounted(() => {
 	ThemeStore.dispatch('initTheme')
 	void I18nStore.dispatch('initLocale')
 	void initCopilotConfig()
+	void initCodexConfig()
 	window.addEventListener('storage', onStorageChange)
 })
 

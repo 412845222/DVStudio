@@ -245,8 +245,10 @@
 								:disabled="sending || !modelOptions.length"
 								@change="onAgentModelSelectionChange"
 							>
-								<option v-if="!modelOptions.length" value="">{{ t('aichat.dock.noModelAvailable') }}</option>
-								<template v-if="agentBackend === 'dvsagent'">
+								<template v-if="!modelOptions.length">
+									<option value="">{{ t('aichat.dock.noModelAvailable') }}</option>
+								</template>
+								<template v-else-if="agentBackend === 'dvsagent'">
 									<optgroup
 										v-for="group in dvsAgentModelGroups"
 										:key="group.label"
@@ -420,6 +422,9 @@ import {
 	getChatModelCatalog,
 	getChatModelOptions,
 	isCopilotEnabled,
+	isCodexEnabled,
+	isCodexModel,
+	initCodexConfig,
 	legacyModelFromNeedType,
 	needTypeFromLegacyModel,
 	type ChatApiSource,
@@ -584,7 +589,7 @@ const visibleApiSourceOptions = computed(() =>
 	apiSourceOptions.value.filter((item) => item.value === 'local-exec')
 )
 
-const modelKey = computed(() => (props.modelKey ?? 'deepseek') as ChatLegacyModelKey)
+const modelKey = computed(() => (props.modelKey ?? 'text') as ChatLegacyModelKey)
 
 const isAgentMode = computed(() => true)
 const isRegularMode = computed(() => false)
@@ -709,30 +714,28 @@ const onMeshyImageConfigChange = (nextConfig: MeshyImageConfig) => {
 const textModel = ref('auto')
 
 const modelOptions = computed(() => {
-	if (props.agentBackend === 'dvsagent') {
+	if (agentBackend.value === 'dvsagent') {
 		const allTextModels = getChatModelCatalog().filter(
-			(m) => m.needType === 'text' && m.apiSource !== 'local-exec'
+			(m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot' && m.apiSource !== 'codex'
 		)
 		return allTextModels
 	}
-	if (props.agentBackend === 'copilot') {
+	if (agentBackend.value === 'copilot') {
 		return getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
 	}
-	return getChatModelOptions('text', 'local-exec')
+	if (agentBackend.value === 'codex') {
+		return getChatModelOptions('text', 'codex').filter(m => m.apiSource === 'codex')
+	}
+	return []
 })
 
 const dvsAgentModelGroups = computed(() => {
 	const groups: Array<{ label: string; models: ChatModelCatalogItem[] }> = []
 	const sourceToLabel: Record<string, string> = {
-		deepseek: t('aichat.dock.sourceDeepSeek'),
 		bytedance: t('aichat.dock.sourceByteDance'),
-		gemini: t('aichat.dock.sourceGemini'),
-		copilot: t('aichat.dock.sourceCopilotCli')
+		gemini: t('aichat.dock.sourceGemini')
 	}
-	const sources: Array<'deepseek' | 'bytedance' | 'gemini' | 'copilot'> = ['deepseek', 'bytedance', 'gemini']
-	if (isCopilotEnabled()) {
-		sources.push('copilot')
-	}
+	const sources: Array<'bytedance' | 'gemini'> = ['bytedance', 'gemini']
 	for (const src of sources) {
 		const models = modelOptions.value.filter((m) => m.apiSource === src)
 		if (models.length) {
@@ -797,6 +800,14 @@ const getDefaultModelId = () => {
 		const recommended = list.find((m) => m.recommended && m.apiSource === 'bytedance')
 		if (recommended) return recommended.id
 	}
+	if (agentBackend.value === 'copilot') {
+		const autoModel = list.find((m) => m.id === 'auto')
+		if (autoModel) return autoModel.id
+	}
+	if (agentBackend.value === 'codex') {
+		const codexMini = list.find((m) => m.id === 'codex-mini')
+		if (codexMini) return codexMini.id
+	}
 	return list[0].id
 }
 
@@ -804,7 +815,17 @@ watch(
 	() => agentBackend.value,
 	() => {
 		const list = modelOptions.value
-		if (!list.length) return
+		if (agentBackend.value === 'copilot') {
+			emit('update:modelKey', 'codex')
+		} else if (agentBackend.value === 'codex') {
+			emit('update:modelKey', 'codex')
+		} else if (agentBackend.value === 'dvsagent') {
+			emit('update:modelKey', 'text')
+		}
+		if (!list.length) {
+			textModel.value = ''
+			return
+		}
 		if (!list.some((m) => m.id === activeModelId.value)) {
 			textModel.value = getDefaultModelId()
 		}
@@ -820,8 +841,13 @@ const applyModelSelection = (modelId: string) => {
 
 const normalizeModelSelection = () => {
 	needType.value = 'text'
-	const expectedSource = props.agentBackend === 'copilot' ? 'copilot' : 'local-exec'
-	if (apiSource.value !== expectedSource) apiSource.value = expectedSource
+	if (agentBackend.value === 'copilot') {
+		apiSource.value = 'copilot'
+	} else if (agentBackend.value === 'codex') {
+		apiSource.value = 'codex'
+	} else if (agentBackend.value === 'dvsagent') {
+		apiSource.value = 'all'
+	}
 	const list = modelOptions.value
 	if (!list.length) return
 	if (!list.some((m) => m.id === activeModelId.value)) {
@@ -1076,13 +1102,11 @@ const onApiSourceChange = (e: Event) => {
 	if (!isRegularMode.value) return
 	const v = String((e.target as HTMLSelectElement).value || 'all')
 	apiSource.value =
-		v === 'deepseek'
-			? 'deepseek'
-			: v === 'gemini'
-				? 'gemini'
-				: v === 'bytedance'
-					? 'bytedance'
-					: 'all'
+		v === 'gemini'
+			? 'gemini'
+			: v === 'bytedance'
+				? 'bytedance'
+				: 'all'
 	normalizeModelSelection()
 }
 
@@ -1101,7 +1125,12 @@ const onAgentModelSelectionChange = (e: Event) => {
 	const id = String((e.target as HTMLSelectElement).value || '').trim()
 	if (!id) return
 	textModel.value = id
-	emit('update:modelKey', 'codex')
+	const selected = modelOptions.value.find((m) => m.id === id)
+	if (selected) {
+		emit('update:modelKey', selected.legacyModelKey)
+	} else {
+		emit('update:modelKey', agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text')
+	}
 }
 
 const onAgentBackendChange = (e: Event) => {
@@ -1510,6 +1539,7 @@ const onWindowResize = () => {
 onMounted(() => {
 	window.addEventListener('resize', onWindowResize, { passive: true })
 	emitLayoutChanged()
+	void initCodexConfig()
 })
 
 onBeforeUnmount(() => {
@@ -1531,7 +1561,7 @@ onBeforeUnmount(() => {
 watch(
 	() => [props.sending, props.modelKey] as const,
 	([sending, mk], [prevSending]) => {
-		const isNano = (mk ?? 'deepseek') === 'nanobanana' || (mk ?? 'deepseek') === 'seedance'
+		const isNano = (mk ?? 'text') === 'nanobanana' || (mk ?? 'text') === 'seedance'
 		if (!isNano) return
 		if (sending && !prevSending) {
 			nanoStartAt.value = Date.now()

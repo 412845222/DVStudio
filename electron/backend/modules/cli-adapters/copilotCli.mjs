@@ -422,8 +422,9 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
         NO_COLOR: '1',
       },
       cwd: options.cwd || process.cwd(),
-      shell: false,
+      shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(copilotBin),
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     session.proc = proc;
