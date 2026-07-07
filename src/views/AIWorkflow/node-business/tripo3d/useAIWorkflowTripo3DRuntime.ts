@@ -1,10 +1,13 @@
+import type { ExternalAssetProgress } from '../../assets/useAIWorkflowAssetPersistence'
 import { isNumber, isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import type {
 	Tripo3DComfyService,
 	Tripo3DStoreLike,
 	PersistExternalAssetPayload,
-	PersistExternalAssetResult
+	PersistExternalAssetResult,
+	Tripo3DPersistArtifactsResult,
+	Tripo3DImportArtifactsPayload
 } from './types'
 import { extractTripo3DTaskResultFields } from './types'
 
@@ -64,6 +67,126 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 		return isRecord(n.tripo3dSettings) ? n.tripo3dSettings as Record<string, unknown> : {}
 	}
 
+	const commitTripo3DDownloadProgress = (
+		nodeId: string,
+		node: WorkflowNodeLike,
+		info: {
+			stage: 'idle' | 'downloading' | 'done' | 'failed'
+			progress?: number
+			loaded?: number
+			total?: number
+			speed?: number
+			error?: string
+		}
+	) => {
+		const patch: Record<string, unknown> = {
+			tripo3dDownloadStage: info.stage
+		}
+		if (info.progress != null) patch.tripo3dDownloadProgress = info.progress
+		if (info.loaded != null) patch.tripo3dDownloadLoadedBytes = info.loaded
+		if (info.total != null) patch.tripo3dDownloadTotalBytes = info.total
+		if (info.speed != null) patch.tripo3dDownloadSpeedBytesPerSec = info.speed
+		if (info.error != null) patch.tripo3dDownloadError = info.error
+
+		if (node.type === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: { tripo3dModelSettings: patch }
+			})
+		} else {
+			options.store.commit('setNodeTripo3DSettings', { nodeId, tripo3dSettings: patch })
+		}
+	}
+
+	const persistTripo3DArtifactsToProject = async (
+		payload: Tripo3DImportArtifactsPayload & {
+			onProgress?: (info: ExternalAssetProgress) => void
+		}
+	): Promise<Tripo3DPersistArtifactsResult> => {
+		const taskId = String(payload.taskId ?? '').trim()
+		const modelUrl = String(payload.modelUrl ?? '').trim()
+		const thumbnailUrl = String(payload.thumbnailUrl ?? '').trim()
+		const mode = String(payload.mode ?? 'text_to_model').trim()
+
+		if (!modelUrl) {
+			return { ok: false, error: 'modelUrl is required' }
+		}
+
+		try {
+			const fileName = `tripo3d_${taskId || Date.now()}.glb`
+			const persisted = await options.persistExternalAssetToProject({
+				kind: 'file',
+				name: fileName,
+				sourceUrl: modelUrl,
+				onProgress: payload.onProgress
+			})
+
+			let localAssetUrl = modelUrl
+			let localAssetPath = ''
+			let projectRelativePath: string | undefined
+			if (persisted?.url) {
+				localAssetUrl = String(persisted.url)
+				localAssetPath = String(persisted.absolutePath || '').trim()
+				projectRelativePath = String(persisted.projectRelativePath || '').trim() || undefined
+			}
+
+			let localThumbUrl = thumbnailUrl
+			if (thumbnailUrl) {
+				try {
+					const thumbName = `tripo3d_${taskId || Date.now()}_preview.png`
+					const persistedThumb = await options.persistExternalAssetToProject({
+						kind: 'image',
+						name: thumbName,
+						sourceUrl: thumbnailUrl
+					})
+					if (persistedThumb?.url) {
+						localThumbUrl = String(persistedThumb.url)
+					}
+				} catch {
+				}
+			}
+
+			const resourceId = `tripo3d-model-${taskId || Date.now()}-${Date.now()}`
+			const resourceName = `Tripo3D_${mode}_${taskId.slice(-8) || Date.now()}`
+
+			const resourceBase = {
+				id: resourceId,
+				kind: 'model3d',
+				name: resourceName,
+				url: localAssetUrl,
+				sourcePath: localAssetPath || undefined,
+				projectRelativePath,
+				posterUrl: localThumbUrl || undefined,
+				createdAt: Date.now()
+			}
+
+			const state = options.store.state as unknown as Record<string, unknown>
+			const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
+			const existingResource =
+				resourcesById[resourceId] ||
+				(Array.isArray(state.resources) &&
+					(state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
+			if (!existingResource) {
+				options.store.commit('addResource', resourceBase)
+			}
+
+			return {
+				ok: true,
+				assetUrl: localAssetUrl,
+				assetPath: localAssetPath || undefined,
+				projectRelativePath,
+				resourceId,
+				thumbnailUrl: localThumbUrl || undefined
+			}
+		} catch (e: unknown) {
+			console.error('[Tripo3D Runtime] 产物持久化失败:', e)
+			return {
+				ok: false,
+				error: e instanceof Error ? e.message : String(e)
+			}
+		}
+	}
+
 	const applyTripo3DTaskResult = async (nodeId: string, taskRaw: unknown) => {
 		const task = extractTripo3DTaskResultFields(taskRaw)
 		const normalized = options.normalizeTripo3DTaskStatus(task.status)
@@ -113,79 +236,104 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 		}
 
 		if (normalized === 'succeeded' && modelUrl) {
+			commitTripo3DDownloadProgress(nodeId, node, {
+				stage: 'downloading',
+				progress: 0,
+				loaded: 0,
+				total: 0,
+				speed: 0,
+				error: ''
+			})
 			try {
-				const fileName = `tripo3d_${task.taskId || nodeId}.glb`
-				const persisted = await options.persistExternalAssetToProject({
-					kind: 'file',
-					name: fileName,
-					sourceUrl: modelUrl
+				const persisted = await persistTripo3DArtifactsToProject({
+					taskId: task.taskId,
+					mode: task.mode,
+					modelUrl,
+					thumbnailUrl,
+					onProgress: (info) => {
+						commitTripo3DDownloadProgress(nodeId, node, {
+							stage: 'downloading',
+							progress: info.percentage,
+							loaded: info.loaded,
+							total: info.total,
+							speed: info.speed
+						})
+					}
 				})
-				patch.tripo3dOutputAssetUrl = String(persisted?.url || modelUrl)
-				patch.tripo3dOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
 
-				if (!thumbnailUrl) {
-					try {
-						const thumbName = `tripo3d_${task.taskId || nodeId}_preview.png`
-						if (thumbnailUrl) {
-							const persistedThumb = await options.persistExternalAssetToProject({
-								kind: 'image',
-								name: thumbName,
-								sourceUrl: thumbnailUrl
-							})
-							const localThumb = String(persistedThumb?.url || '').trim()
-							if (localThumb) {
-								patch.tripo3dThumbnailUrl = localThumb
-							}
-						}
-					} catch {
+				if (persisted.ok && persisted.assetUrl) {
+					patch.tripo3dOutputAssetUrl = persisted.assetUrl
+					patch.tripo3dOutputAssetPath = persisted.assetPath
+					patch.tripo3dThumbnailUrl = persisted.thumbnailUrl || thumbnailUrl || undefined
+
+					patch.tripo3dOutputSummary = {
+						...(isRecord(patch.tripo3dOutputSummary) ? patch.tripo3dOutputSummary as Record<string, unknown> : {}),
+						outputKind: '3d-model',
+						preferredUrl: modelUrl,
+						assetUrl: persisted.assetUrl,
+						assetPath: persisted.assetPath,
+						thumbnailUrl: patch.tripo3dThumbnailUrl,
+						format: 'glb'
 					}
-				}
-
-				patch.tripo3dOutputSummary = {
-					...(isRecord(patch.tripo3dOutputSummary) ? patch.tripo3dOutputSummary as Record<string, unknown> : {}),
-					outputKind: '3d-model',
-					preferredUrl: modelUrl,
-					assetUrl: String(persisted?.url || modelUrl),
-					assetPath: String(persisted?.absolutePath || '').trim() || undefined,
-					thumbnailUrl: patch.tripo3dThumbnailUrl || undefined,
-					format: 'glb'
-				}
-				patch.tripo3dRelationSummary = {
-					...(isRecord(patch.tripo3dRelationSummary) ? patch.tripo3dRelationSummary as Record<string, unknown> : {}),
-					effectiveLocalAssetUrl: String(persisted?.url || modelUrl),
-					effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-					effectiveThumbnailUrl: patch.tripo3dThumbnailUrl || undefined
-				}
-
-				if (node.type === 'model3d' && persisted?.url) {
-					const resourceId = `tripo3d-model-${task.taskId || nodeId}-${Date.now()}`
-					const resourceName = `tripo3d_model_${resourceId.slice(-8)}`
-
-					const resourceBase = {
-						id: resourceId,
-						kind: 'model3d',
-						name: resourceName,
-						url: String(persisted.url || modelUrl),
-						sourcePath: String(persisted.absolutePath || '').trim() || undefined,
-						projectRelativePath: String(persisted.projectRelativePath || '').trim() || undefined,
-						posterUrl: patch.tripo3dThumbnailUrl as string | undefined,
-						createdAt: Date.now()
+					patch.tripo3dRelationSummary = {
+						...(isRecord(patch.tripo3dRelationSummary) ? patch.tripo3dRelationSummary as Record<string, unknown> : {}),
+						effectiveLocalAssetUrl: persisted.assetUrl,
+						effectiveLocalAssetPath: persisted.assetPath,
+						effectiveThumbnailUrl: patch.tripo3dThumbnailUrl
 					}
 
-					const state = options.store.state as unknown as Record<string, unknown>
-					const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
-					const existingResource =
-						resourcesById[resourceId] ||
-						(Array.isArray(state.resources) &&
-							(state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
-					if (!existingResource) {
-						options.store.commit('addResource', resourceBase)
+					if (node.type === 'model3d' && persisted.resourceId) {
+						options.store.commit('setNodeResource', { nodeId, resourceId: persisted.resourceId })
 					}
 
-					options.store.commit('setNodeResource', { nodeId, resourceId })
+					const fileName = `tripo3d_${task.taskId || nodeId}.glb`
+					if (node.type === 'model3d') {
+						patch.modelUrl = persisted.assetUrl
+						patch.modelFormat = 'glb'
+						patch.modelSourceName = fileName
+						patch.modelSourcePath = persisted.assetPath || undefined
+						patch.modelProjectRelativePath = persisted.projectRelativePath || undefined
+						patch.modelAssetUrl = persisted.assetUrl
+						patch.modelAssetPath = persisted.assetPath || undefined
+						patch.modelAssetProjectRelativePath = persisted.projectRelativePath || undefined
+						patch.lastInputSignature = `tripo3d:${String(task.taskId || nodeId)}:${modelUrl}`
+						patch.lastInputNodeId = nodeId
+						patch.lastInputSourceUrl = modelUrl
+						patch.lastInputSourcePath = persisted.assetPath || undefined
+						patch.lastInputSourceName = fileName
+					}
+				} else {
+					patch.tripo3dOutputAssetUrl = modelUrl
+					patch.tripo3dOutputSummary = {
+						...(isRecord(patch.tripo3dOutputSummary) ? patch.tripo3dOutputSummary as Record<string, unknown> : {}),
+						outputKind: '3d-model',
+						preferredUrl: modelUrl,
+						assetUrl: modelUrl,
+						thumbnailUrl: patch.tripo3dThumbnailUrl || undefined,
+						format: 'glb'
+					}
+					patch.tripo3dRelationSummary = {
+						...(isRecord(patch.tripo3dRelationSummary) ? patch.tripo3dRelationSummary as Record<string, unknown> : {}),
+						effectiveLocalAssetUrl: modelUrl,
+						effectiveThumbnailUrl: patch.tripo3dThumbnailUrl || undefined
+					}
+
+					const fileName = `tripo3d_${task.taskId || nodeId}.glb`
+					if (node.type === 'model3d') {
+						patch.modelUrl = modelUrl
+						patch.modelFormat = 'glb'
+						patch.modelSourceName = fileName
+						patch.lastInputSignature = `tripo3d:${String(task.taskId || nodeId)}:${modelUrl}`
+						patch.lastInputNodeId = nodeId
+						patch.lastInputSourceUrl = modelUrl
+						patch.lastInputSourceName = fileName
+					}
 				}
+				commitTripo3DDownloadProgress(nodeId, node, { stage: 'done', progress: 100 })
 			} catch (e: unknown) {
+				const errMsg = e instanceof Error ? e.message : String(e)
 				console.error('[Tripo3D Runtime] 产物下载/绑定失败，状态仍标记为成功:', e)
+				commitTripo3DDownloadProgress(nodeId, node, { stage: 'failed', error: errMsg })
 				if (!patch.tripo3dOutputAssetUrl) {
 					patch.tripo3dOutputAssetUrl = modelUrl
 					patch.tripo3dOutputSummary = {
@@ -210,7 +358,12 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 			options.store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
-					tripo3dModelSettings: patch
+					...Object.fromEntries(
+						Object.entries(patch).filter(([key]) => !key.startsWith('tripo3d'))
+					),
+					tripo3dModelSettings: Object.fromEntries(
+						Object.entries(patch).filter(([key]) => key.startsWith('tripo3d'))
+					)
 				}
 			})
 		} else {
@@ -412,6 +565,7 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 	return {
 		stopTripo3DPoll,
 		applyTripo3DTaskResult,
+		persistTripo3DArtifactsToProject,
 		startTripo3DPoll,
 		recoverTripo3DTaskStates,
 		clearTripo3DRuntime

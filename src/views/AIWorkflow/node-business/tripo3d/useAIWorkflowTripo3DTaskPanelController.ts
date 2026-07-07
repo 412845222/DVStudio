@@ -7,7 +7,8 @@ import type {
 	Tripo3DComfyService,
 	Tripo3DEffectiveOutput,
 	Tripo3DStoreLike,
-	Tripo3DTaskStatus
+	Tripo3DTaskStatus,
+	CreateModel3DNodeAtCenterFn
 } from './types'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
 import { t } from '../../../../i18n'
@@ -54,6 +55,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 	applyTripo3DTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopTripo3DPoll: (nodeId: string) => void
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createModel3DNodeAtCenter?: CreateModel3DNodeAtCenterFn
 }) => {
 	const tripo3dTaskDialogOpen = ref(false)
 	const tripo3dTaskRemoteItems = ref<Tripo3DTaskPanelItem[]>([])
@@ -475,7 +477,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 	}) => {
 		const taskId = String(payload?.taskId ?? '').trim()
 		if (!taskId) return
-		const nodeId = String(payload?.nodeId ?? '').trim() || findTripo3DNodeIdByTaskId(taskId)
+		let nodeId = String(payload?.nodeId ?? '').trim() || findTripo3DNodeIdByTaskId(taskId)
 		tripo3dTaskActionBusyTaskId.value = taskId
 		tripo3dTaskActionBusyType.value = payload.action
 		try {
@@ -494,6 +496,48 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 				}
 			} else if (payload.action === 'import-output') {
 				let targetNodeId = nodeId
+				let isNewNode = false
+				const mode = String(payload?.mode ?? 'text_to_model').trim()
+
+				if (!targetNodeId && typeof options.createModel3DNodeAtCenter === 'function') {
+					try {
+						const res = await options.comfyService.tripo3dTask(taskId)
+						if (res.ok) {
+							const taskData = isRecord(res) ? res as Record<string, unknown> : {}
+							const taskStatus = normalizeStatusForPanel(taskData.status)
+							if (taskStatus !== 'succeeded') {
+								options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
+								return
+							}
+							const newNodeId = options.createModel3DNodeAtCenter({
+								name: t('tasks.tripo3d.model3dTaskNodeName'),
+								taskId,
+								mode
+							})
+							if (newNodeId) {
+								targetNodeId = newNodeId
+								isNewNode = true
+
+								options.store.commit('setNodeModel3DSettings', {
+									nodeId: newNodeId,
+									model3dSettings: {
+										modelGenerationSource: 'tripo3d',
+										tripo3dModelSettings: {
+											tripo3dTaskId: taskId,
+											tripo3dTaskFamily: mode,
+											tripo3dTaskStatus: 'pending',
+											tripo3dProgress: 0,
+											tripo3dStatusText: t('tasks.tripo3d.pullingModelArtifacts')
+										}
+									}
+								})
+								options.pushToast(t('tasks.tripo3d.nodeCreatedPullingArtifacts'), 'info')
+							}
+						}
+					} catch (e) {
+						console.error('[Tripo3D Task Panel] 创建节点失败:', e)
+					}
+				}
 
 				if (!targetNodeId) {
 					options.pushToast(t('tasks.tripo3d.noReceivingNodeFound'), 'warn')
@@ -504,7 +548,10 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 					} else if (refreshed.finalStatus !== 'success' && refreshed.finalStatus !== 'succeeded') {
 						options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
 					} else {
-						options.pushToast(t('tasks.tripo3d.model3dDownloadedBoundGeneric'), 'info')
+						options.pushToast(
+							isNewNode ? t('tasks.tripo3d.model3dPulledBoundToNewNode') : t('tasks.tripo3d.model3dDownloadedBoundGeneric'),
+							'info'
+						)
 					}
 				}
 			} else if (payload.action === 'stop') {

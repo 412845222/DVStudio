@@ -9,6 +9,7 @@ import type {
 	WorkflowTripo3DRelationSummary
 } from '../../../../aiworkflow/types'
 import { isArray, isBoolean, isNumber, isRecord, isString } from '../../../../types/utils'
+import type { ExternalAssetProgress } from '../../assets/useAIWorkflowAssetPersistence'
 
 export type Tripo3DTaskStatus = WorkflowTripo3DTaskStatus
 export type Tripo3DMode = WorkflowTripo3DMode
@@ -192,21 +193,50 @@ export type Tripo3DStoreLike = {
 		nodeOrder: string[]
 		resourcesById?: Record<string, unknown>
 		resources?: Array<{ id: string }>
+		selectedNodeId?: string | null
 	}
 	commit: (mutation: string, payload?: Record<string, unknown>) => void
 }
+
+export type Tripo3DPersistArtifactsResult = {
+	ok: boolean
+	assetUrl?: string
+	assetPath?: string
+	projectRelativePath?: string
+	resourceId?: string
+	thumbnailUrl?: string
+	error?: string
+}
+
+export type Tripo3DImportArtifactsPayload = {
+	taskId: string
+	mode: string
+	modelUrl: string
+	thumbnailUrl?: string
+	prompt?: string
+	modelVersion?: string
+}
+
+export type CreateModel3DNodeAtCenterFn = (opts?: {
+	modelUrl?: string
+	name?: string
+	taskId?: string
+	mode?: string
+}) => string | null
 
 export type PersistExternalAssetPayload = {
 	kind: 'image' | 'file'
 	name: string
 	sourceUrl?: string
 	sourcePath?: string
+	onProgress?: (info: ExternalAssetProgress) => void
 }
 
 export type PersistExternalAssetResult = {
 	url: string
 	absolutePath: string
 	projectRelativePath?: string
+	size?: number
 } | null
 
 export type ConnectedTripo3DImageInput = {
@@ -215,7 +245,7 @@ export type ConnectedTripo3DImageInput = {
 	url: string
 }
 
-export type BuildTripo3DRequestPayloadFn = (node: WorkflowNode) => Promise<BuildTripo3DRequestResult>
+export type BuildTripo3DRequestPayloadFn = (node: WorkflowNode, meta?: { nodeId?: string; projectId?: number | string }) => Promise<BuildTripo3DRequestResult>
 
 export type Tripo3DNodeSettingsLike =
 	| WorkflowTripo3DModelSettings

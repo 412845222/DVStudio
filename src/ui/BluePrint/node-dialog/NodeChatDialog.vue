@@ -266,11 +266,7 @@ const handleRemoveParamRef = (item: InputParamPreviewRef) => {
 }
 
 const dialogPositionStyle = computed(() => {
-	const width = props.nodeWidth || 280
-	return {
-		width: `${Math.max(width, 380)}px`,
-		minWidth: '380px'
-	}
+	return {}
 })
 
 const handleClose = () => {
@@ -354,6 +350,7 @@ onBeforeUnmount(() => {
 	top: 100%;
 	z-index: 1000;
 	margin-top: 16px;
+	width: calc(100% + 20px);
 	max-width: min(520px, calc(100vw - 40px));
 	min-width: 380px;
 	transform: translateX(-50%);

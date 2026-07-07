@@ -81,6 +81,8 @@
 					<div v-for="task in filteredTasks" :key="task.id" class="wf-tripo3d-task-tree">
 						<div
 							class="wf-tripo3d-task-card wf-tripo3d-task-card-root"
+							:draggable="task.status === 'succeeded'"
+							@dragstart="onTaskDragStart($event, task)"
 						>
 							<div class="wf-tripo3d-task-card-top">
 								<div class="wf-tripo3d-task-chip-row">
@@ -378,6 +380,7 @@ import type {
 	Tripo3DTaskPanelDetail,
 	Tripo3DTaskPanelItem
 } from '../../views/AIWorkflow/node-business/tripo3d/types'
+import { buildTripo3DDragDataTransfer, TRI_PO3D_TASK_DRAG_MIME } from '../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DDrop'
 
 const { t } = useI18n()
 
@@ -635,6 +638,18 @@ const onTaskAction = (task: Tripo3DTaskPanelItem, action: Tripo3DTaskPanelAction
 		action,
 		nodeId: String(task.nodeId ?? '').trim() || undefined
 	})
+}
+
+const onTaskDragStart = (event: DragEvent, task: Tripo3DTaskPanelItem) => {
+	const dt = event.dataTransfer
+	if (!dt) return
+	try {
+		dt.effectAllowed = 'copy'
+		dt.setData(TRI_PO3D_TASK_DRAG_MIME, buildTripo3DDragDataTransfer(task))
+		dt.setData('text/plain', task.promptPreview || task.title || 'Tripo3D Task')
+	} catch {
+		// ignore
+	}
 }
 
 const onDetailAction = (action: Tripo3DTaskPanelAction) => {
