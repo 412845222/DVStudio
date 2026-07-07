@@ -35,8 +35,8 @@ export function useCloudTemplatePersistence() {
 			console.log('[cloud-templates] Checking cloud platform availability...')
 			const platform = await getCloudTemplatesPlatform()
 			console.log('[cloud-templates] Platform result:', platform)
-			if (!platform?.ok) {
-				console.warn('[cloud-templates] Cloud platform not available:', platform?.errMsg || 'unknown error')
+			if (!platform?.ok || platform.platformId !== 'steam') {
+				console.warn('[cloud-templates] Cloud platform not available:', platform?.errMsg || `unsupported platform: ${platform?.platformId}`)
 				cloudPlatformState.value = null
 				return false
 			}
@@ -107,7 +107,7 @@ export function useCloudTemplatePersistence() {
 				steamFileId: meta.packageFileName,
 				cloudSyncStatus: 'synced' as CloudSyncStatus,
 				lastSyncAt: meta.updatedAt,
-				author: cloudPlatformState.value?.platformName || 'Steam Cloud',
+				author: '云端',
 			}))
 
 			cloudTemplates.value = items
@@ -196,7 +196,7 @@ export function useCloudTemplatePersistence() {
 				steamFileId: result.meta.packageFileName,
 				cloudSyncStatus: 'synced',
 				lastSyncAt: result.meta.updatedAt,
-				author: cloudPlatformState.value?.platformName || 'Steam Cloud',
+				author: '云端',
 			}
 
 			return { meta, zipBlob, coverBlob }

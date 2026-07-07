@@ -83,7 +83,7 @@
   "aiworkflow.templateCenter.noCloudTemplates": "No cloud templates",
   "aiworkflow.templateCenter.workshopTitle": "Official Template Workshop",
   "aiworkflow.templateCenter.workshopDesc": "Browse and download curated workflow templates provided by DVStudio official team, get premium content from professional creators",
-  "aiworkflow.templateCenter.steamRequired": "Requires Steam client running and logged in",
+  "aiworkflow.templateCenter.steamRequired": "Please connect to cloud service first",
   "aiworkflow.templateCenter.uploadToCloud": "Upload to Cloud",
   "aiworkflow.templateCenter.downloadToLocal": "Download to Local",
   "aiworkflow.templateCenter.uploading": "Uploading...",
@@ -91,9 +91,9 @@
   "aiworkflow.templateCenter.syncedTag": "Synced",
   "aiworkflow.templateCenter.syncedTooltip": "This template is synced with cloud",
   "aiworkflow.templateCenter.uploadSuccess": "Template uploaded to cloud",
-  "aiworkflow.templateCenter.uploadFailed": "Upload failed, please check Steam connection and retry",
+  "aiworkflow.templateCenter.uploadFailed": "Upload failed, please check cloud connection and retry",
   "aiworkflow.templateCenter.downloadSuccess": "Template downloaded to local",
-  "aiworkflow.templateCenter.downloadFailed": "Download failed, please check Steam connection and retry",
+  "aiworkflow.templateCenter.downloadFailed": "Download failed, please check cloud connection and retry",
   "aiworkflow.templateCenter.cloudStorage": "Cloud Storage",
   "aiworkflow.templateCenter.storageUsed": "Used",
   "aiworkflow.templateCenter.storageFree": "Free",
@@ -102,6 +102,7 @@
   "aiworkflow.templateCenter.loading": "Loading...",
   "aiworkflow.templateCenter.featureComingSoon": "Feature coming soon, stay tuned",
   "aiworkflow.templateCenter.noCloudConnection": "No Connection",
+  "aiworkflow.templateCenter.cloudConnected": "Connected",
   "aiworkflow.templateCenter.noCloudAccess": "No Cloud Access",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud features are currently unavailable. Cloud template upload, download, and sync are not supported at this time"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud service is not connected. Cloud template upload, download, and sync are unavailable"
 }

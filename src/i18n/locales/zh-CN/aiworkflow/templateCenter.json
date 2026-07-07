@@ -83,7 +83,7 @@
   "aiworkflow.templateCenter.noCloudTemplates": "云端暂无模板",
   "aiworkflow.templateCenter.workshopTitle": "官方模板市场",
   "aiworkflow.templateCenter.workshopDesc": "浏览和下载由 DVStudio 官方提供的精选工作流模板，获取专业创作者的优质内容",
-  "aiworkflow.templateCenter.steamRequired": "需要启动 Steam 客户端并登录后使用",
+  "aiworkflow.templateCenter.steamRequired": "请先连接云端服务后使用",
   "aiworkflow.templateCenter.uploadToCloud": "上传到云端",
   "aiworkflow.templateCenter.downloadToLocal": "下载到本地",
   "aiworkflow.templateCenter.uploading": "上传中...",
@@ -91,9 +91,9 @@
   "aiworkflow.templateCenter.syncedTag": "已同步",
   "aiworkflow.templateCenter.syncedTooltip": "此模板已与云端同步",
   "aiworkflow.templateCenter.uploadSuccess": "模板已上传到云端",
-  "aiworkflow.templateCenter.uploadFailed": "上传失败，请检查 Steam 连接后重试",
+  "aiworkflow.templateCenter.uploadFailed": "上传失败，请检查云端连接后重试",
   "aiworkflow.templateCenter.downloadSuccess": "模板已下载到本地",
-  "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查 Steam 连接后重试",
+  "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查云端连接后重试",
   "aiworkflow.templateCenter.cloudStorage": "云存储空间",
   "aiworkflow.templateCenter.storageUsed": "已用",
   "aiworkflow.templateCenter.storageFree": "剩余",
@@ -102,6 +102,7 @@
   "aiworkflow.templateCenter.loading": "加载中...",
   "aiworkflow.templateCenter.featureComingSoon": "功能开发中，敬请期待",
   "aiworkflow.templateCenter.noCloudConnection": "无连接",
+  "aiworkflow.templateCenter.cloudConnected": "已连接",
   "aiworkflow.templateCenter.noCloudAccess": "无云端接入",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "云端功能当前未接入，暂不支持云端模板的上传、下载和同步"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "云端服务未连接，暂不支持云端模板的上传、下载和同步"
 }

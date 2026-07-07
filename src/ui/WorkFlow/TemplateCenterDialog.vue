@@ -64,7 +64,7 @@
 						</svg>
 						<span>{{ tab.label }}</span>
 						<span v-if="cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge">
-							{{ cloudPlatform?.platformName || 'Cloud' }}
+							{{ t('aiworkflow.templateCenter.cloudConnected') }}
 						</span>
 						<span v-else-if="!cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge tc-tab-badge-offline">
 							{{ t('aiworkflow.templateCenter.noCloudConnection') }}
@@ -225,12 +225,6 @@
 						</div>
 						<h3>{{ t('aiworkflow.templateCenter.noCloudAccess') }}</h3>
 						<p>{{ t('aiworkflow.templateCenter.noCloudAccessDesc') }}</p>
-						<div class="tc-workshop-hint">
-							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
-							</svg>
-							<span>{{ t('aiworkflow.templateCenter.steamRequired') }}</span>
-						</div>
 					</div>
 
 					<template v-else>

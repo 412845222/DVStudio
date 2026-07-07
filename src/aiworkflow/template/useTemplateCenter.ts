@@ -61,13 +61,14 @@ export function useTemplateCenter() {
 
 	const cloudAvailable = computed(() => {
 		return cloudPersistence.cloudPlatform.value?.ok === true
+			&& cloudPersistence.cloudPlatform.value?.platformId === 'steam'
 	})
 
 	const cloudSources = computed(() => {
 		if (!cloudAvailable.value) return allSources
 		return [
 			...allSources,
-			{ value: 'steam-user' as TemplateSource, label: cloudPersistence.cloudPlatform.value?.platformName || '云端' },
+			{ value: 'steam-user' as TemplateSource, label: '云端' },
 		]
 	})
 
