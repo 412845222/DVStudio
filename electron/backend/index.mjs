@@ -23,7 +23,7 @@ import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-ski
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
 import { registerBuiltinTools } from './modules/mcp/builtinTools.mjs'
-import { mcpServerManager } from './modules/mcp/client.mjs'
+import { initMCPModule } from './modules/mcp/routes.mjs'
 
 function restoreProjectRoots() {
   try {
@@ -98,7 +98,8 @@ export function initBackend(mainWindow, deps = {}) {
 
   restoreProjectRoots()
 
-  registerBuiltinTools(mcpServerManager)
+  registerBuiltinTools()
+  initMCPModule()
 
   startUnrealHttpServer().then(result => {
     if (result.ok) {

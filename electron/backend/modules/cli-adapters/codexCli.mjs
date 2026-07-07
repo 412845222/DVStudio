@@ -944,7 +944,21 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       '--skip-git-repo-check',
       '--ephemeral',
       '--color', 'never',
-      '--sandbox', 'workspace-write',
+      '--sandbox', 'read-only',
+      '--disable', 'shell_tool',
+      '--disable', 'computer_use',
+      '--disable', 'browser_use',
+      '--disable', 'browser_use_external',
+      '--disable', 'browser_use_full_cdp_access',
+      '--disable', 'in_app_browser',
+      '--disable', 'image_generation',
+      '--disable', 'web_search_cached',
+      '--disable', 'web_search_request',
+      '--disable', 'search_tool',
+      '--disable', 'hooks',
+      '--disable', 'multi_agent',
+      '--disable', 'apps',
+      '--disable', 'plugins',
       '-C', session.cwd,
     ];
 
@@ -952,7 +966,6 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       args.push('-m', model);
     }
 
-    args.push('--');
     args.push(content);
 
     logger.info(`[CodexCLI] Running: codex ${args.join(' ')}`);
@@ -1036,6 +1049,69 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       logger.debug(`[CodexCLI] JSON type=${obj.type || 'unknown'}: ${JSON.stringify(obj).substring(0, 300)}`);
 
       switch (obj.type) {
+        case 'thread.started': {
+          if (obj.thread_id) {
+            session.threadId = obj.thread_id;
+          }
+          break;
+        }
+
+        case 'turn.started': {
+          break;
+        }
+
+        case 'item.started': {
+          const item = obj.item;
+          if (!item) break;
+
+          if (item.type === 'command_execution') {
+            const cmd = item.command || '';
+            logger.debug(`[CodexCLI] Command execution started (should be disabled): ${cmd.substring(0, 200)}`);
+          }
+          break;
+        }
+
+        case 'item.completed': {
+          const item = obj.item;
+          if (!item) break;
+
+          if (item.type === 'agent_message') {
+            const text = item.text || item.content || '';
+            if (text) {
+              queueChunk({ type: CLIEventType.TEXT_DELTA, content: text });
+            }
+          } else if (item.type === 'error') {
+            const errMsg = item.message || '';
+            if (errMsg && !errMsg.includes('Skill descriptions were shortened')) {
+              logger.warn(`[CodexCLI] Item error: ${errMsg}`);
+            }
+          } else if (item.type === 'tool_use' || item.type === 'tool_call') {
+            if (toolCall) {
+              queueChunk({ type: CLIEventType.TOOL_CALL_END, id: toolCall.id });
+            }
+            toolCall = {
+              id: item.id || `tool_${Date.now()}`,
+              name: item.name || item.tool || '',
+              input: item.input || item.arguments || {},
+            };
+            queueChunk({
+              type: CLIEventType.TOOL_CALL_START,
+              id: toolCall.id,
+              name: toolCall.name,
+              arguments: JSON.stringify(toolCall.input),
+            });
+          } else if (item.type === 'command_execution') {
+            const cmd = item.command || '';
+            const output = item.aggregated_output || '';
+            logger.debug(`[CodexCLI] Command execution completed: ${cmd.substring(0, 150)}, exit_code=${item.exit_code}`);
+          }
+          break;
+        }
+
+        case 'turn.completed': {
+          break;
+        }
+
         case 'assistant': {
           const content = obj.content || obj.message?.content;
           if (typeof content === 'string' && content) {
@@ -1140,6 +1216,8 @@ export class CodexCliAdapter extends BaseCLIAdapter {
         default:
           if (obj.content && typeof obj.content === 'string') {
             queueChunk({ type: CLIEventType.TEXT_DELTA, content: obj.content });
+          } else if (obj.text && typeof obj.text === 'string') {
+            queueChunk({ type: CLIEventType.TEXT_DELTA, content: obj.text });
           }
           break;
       }

@@ -590,8 +590,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			builtinToolListenerMap.delete(id)
 			return { ok: true }
 		},
-		respondBuiltinTool: (requestId, result) => {
-			ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+		respondBuiltinTool: (requestId, result, error) => {
+			if (error) {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { error })
+			} else {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+			}
 		},
 	},
 	// ===== CLI 适配器 =====

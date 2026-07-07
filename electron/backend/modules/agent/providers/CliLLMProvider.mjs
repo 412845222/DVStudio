@@ -10,6 +10,7 @@
  */
 
 import { ILLMProvider, ProviderEventType } from './ILLMProvider.mjs';
+import { CLIEventType } from '../../cli-adapters/base.mjs';
 import { parseToolCallsFromText } from './toolOutputParser.mjs';
 import { cliAdapterManager } from '../../cli-adapters/manager.mjs';
 import logger from '../../../core/logger.mjs';
@@ -121,17 +122,35 @@ export class CliLLMProvider extends ILLMProvider {
         }
 
         if (parsedEvent && typeof parsedEvent === 'object') {
-          if (parsedEvent.type === 'text_delta') {
+          const eventType = parsedEvent.type;
+
+          if (eventType === CLIEventType.TEXT_DELTA || eventType === 'text_delta') {
             const content = parsedEvent.content || '';
             accumulatedText += content;
             yield { type: ProviderEventType.TEXT_DELTA, content };
-          } else if (parsedEvent.type === 'thinking_delta' || parsedEvent.type === 'thinking') {
+          } else if (eventType === CLIEventType.THINKING_DELTA || eventType === 'thinking_delta' || eventType === CLIEventType.THINKING) {
             const content = parsedEvent.content || '';
             accumulatedThinking += content;
             yield { type: ProviderEventType.THINKING_DELTA, content };
-          } else if (parsedEvent.type === 'error') {
+          } else if (eventType === CLIEventType.TOOL_CALL_START || eventType === 'tool_call_start') {
+            yield {
+              type: ProviderEventType.TOOL_CALL,
+              id: parsedEvent.id,
+              name: parsedEvent.name,
+              arguments: parsedEvent.arguments || parsedEvent.input || {},
+            };
+          } else if (eventType === CLIEventType.TOOL_CALL_END || eventType === 'tool_call_end') {
+            // Tool call end is handled by AgentRuntime
+          } else if (eventType === CLIEventType.ERROR || eventType === 'error') {
             yield { type: ProviderEventType.ERROR, message: parsedEvent.error || parsedEvent.message || 'Unknown CLI error' };
             return;
+          } else if (eventType === CLIEventType.DONE || eventType === 'done') {
+            if (parsedEvent.content) {
+              accumulatedText = parsedEvent.content;
+            }
+            if (parsedEvent.thinking) {
+              accumulatedThinking = parsedEvent.thinking;
+            }
           }
         }
       }
