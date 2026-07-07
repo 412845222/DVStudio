@@ -4,7 +4,8 @@
 		:class="{
 			electron: isElectronRuntime,
 			'is-preview-window': isPreviewWindow,
-			'is-resource-manager-window': isResourceManagerWindow
+			'is-resource-manager-window': isResourceManagerWindow,
+			'is-template-center-window': isTemplateCenterWindow
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
@@ -90,11 +91,15 @@ const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/template-center')
 })
 
 const isResourceManagerWindow = computed(() => {
 	return String(route.path || '').startsWith('/resource-manager')
+})
+
+const isTemplateCenterWindow = computed(() => {
+	return String(route.path || '').startsWith('/template-center')
 })
 
 const isImageMarkupWindow = computed(() => {
@@ -108,6 +113,9 @@ const dialogTitle = computed(() => {
 	}
 	if (isImageMarkupWindow.value) {
 		return String(query.name || '图片预览')
+	}
+	if (isTemplateCenterWindow.value) {
+		return String(query.title || '模板中心')
 	}
 	return ''
 })

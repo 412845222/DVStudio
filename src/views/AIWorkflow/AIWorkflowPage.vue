@@ -9837,6 +9837,12 @@ const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) 
 				void onSaveTemplateFromCenter({ scope })
 			}
 			break
+		case 'preview-template':
+			if (data && typeof data === 'object' && 'id' in data) {
+				const template = data as TemplateItem
+				console.log('[AIWorkflowPage] preview template:', template.name)
+			}
+			break
 		case 'refresh-cloud':
 			void refreshCloud()
 			break

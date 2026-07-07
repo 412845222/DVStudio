@@ -69,40 +69,6 @@
 					</button>
 				</div>
 
-				<div v-if="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-wrap">
-					<div class="tc-quota-bar-header">
-						<div class="tc-quota-label">
-							<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-								<path d="M2 8a6 6 0 0111.5-2.5A3.5 3.5 0 0113 12H3a3 3 0 01-.5-6z" fill="none" stroke="currentColor" stroke-width="1.2"/>
-							</svg>
-							<span>{{ t('aiworkflow.templateCenter.cloudStorage') }}</span>
-						</div>
-						<button
-							class="tc-refresh-btn"
-							type="button"
-							:disabled="cloudSyncing"
-							@click="handleRefreshCloud"
-							:title="t('aiworkflow.templateCenter.refresh')"
-						>
-							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
-								<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-								<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-					<div class="tc-quota-bar">
-						<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
-						<div v-else class="tc-quota-bar-loading"></div>
-						<div class="tc-quota-bar-text">
-							<span v-if="cloudQuota">{{ cloudQuotaText }}</span>
-							<span v-else class="tc-quota-loading-text">{{ t('aiworkflow.templateCenter.syncing') }}</span>
-						</div>
-					</div>
-					<div v-if="cloudSyncing" class="tc-sync-hint">
-						<div class="tc-spinner-mini"></div>
-					</div>
-				</div>
-
 				<div class="tc-toolbar">
 					<div class="tc-search-wrap">
 						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
@@ -115,6 +81,19 @@
 							type="text"
 							:placeholder="t('aiworkflow.templateCenter.searchPlaceholder')"
 						/>
+						<button
+							v-if="cloudAvailable && activeTab === 'cloud'"
+							class="tc-refresh-btn"
+							type="button"
+							:disabled="cloudSyncing"
+							@click="handleRefreshCloud"
+							:title="t('aiworkflow.templateCenter.refresh')"
+						>
+							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
+								<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+								<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+						</button>
 					</div>
 
 					<div class="tc-filters">
@@ -1015,6 +994,9 @@ async function handleDownload(template: TemplateItem) {
 	position: relative;
 	flex: 1;
 	min-width: 180px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 
 .tc-search-icon {
@@ -1027,7 +1009,7 @@ async function handleDownload(template: TemplateItem) {
 }
 
 .tc-search-input {
-	width: 100%;
+	flex: 1;
 	height: 34px;
 	padding: 0 12px 0 32px;
 	border: 1px solid color-mix(in srgb, var(--tc-accent) 28%, transparent);

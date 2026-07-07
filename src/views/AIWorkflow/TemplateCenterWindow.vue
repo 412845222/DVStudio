@@ -1,42 +1,15 @@
 <template>
 	<div class="tcw-root">
-		<div class="tcw-title-bar">
-			<div class="tcw-title-left">
-				<span class="tcw-title">{{ t('aiworkflow.templateCenter.title') }}</span>
-				<span class="tcw-title-sub">{{ t('aiworkflow.templateCenter.subtitle') }}</span>
-			</div>
-			<div class="tcw-title-actions">
-				<button class="tcw-title-btn" type="button" @click="handleMinimize">
-					<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-						<line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-					</svg>
-				</button>
-				<button class="tcw-title-btn" type="button" @click="handleMaximize">
-					<svg v-if="!isMaximized" viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-						<rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" rx="1" />
-					</svg>
-					<svg v-else viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-						<path d="M2 2h6v6H2zm4 4h4v4H6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-					</svg>
-				</button>
-				<button class="tcw-title-btn tcw-title-close" type="button" @click="handleClose">
-					<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-						<path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-					</svg>
-				</button>
-			</div>
-		</div>
-
 		<div class="tcw-content">
 			<TemplateCenterDialog
-				:open="true"
+				:open="dialogOpen"
 				@update:open="handleClose"
 				@save-template="handleSaveTemplate"
 				@apply-template="handleApplyTemplate"
 				@delete-template="handleDeleteTemplate"
-				@upload-to-cloud="handleUploadToCloud"
-				@download-from-cloud="handleDownloadFromCloud"
-				@refresh-cloud="handleRefreshCloud"
+				@upload-template="handleUploadToCloud"
+				@download-template="handleDownloadFromCloud"
+				@preview-template="handlePreviewTemplate"
 			/>
 		</div>
 
@@ -53,7 +26,7 @@ import TemplateCenterDialog from '../../ui/WorkFlow/TemplateCenterDialog.vue'
 
 const { t } = useI18n()
 
-const isMaximized = ref(false)
+const dialogOpen = ref(false)
 
 const toastMessage = ref<{ text: string; tone: 'info' | 'warn' | 'error' } | null>(null)
 let toastTimer: number | null = null
@@ -94,25 +67,6 @@ const handleClose = async () => {
 	}
 }
 
-const handleMinimize = () => {
-	try {
-		if (window.dweb?.window && typeof window.dweb.window.minimize === 'function') {
-			window.dweb.window.minimize()
-		}
-	} catch {
-	}
-}
-
-const handleMaximize = () => {
-	isMaximized.value = !isMaximized.value
-	try {
-		if (window.dweb?.window && typeof window.dweb.window.toggleMaximize === 'function') {
-			window.dweb.window.toggleMaximize()
-		}
-	} catch {
-	}
-}
-
 const handleSaveTemplate = (payload: unknown) => {
 	broadcastToMainWindow('save-template', payload)
 }
@@ -133,12 +87,15 @@ const handleDownloadFromCloud = (payload: unknown) => {
 	broadcastToMainWindow('download-from-cloud', payload)
 }
 
-const handleRefreshCloud = () => {
-	broadcastToMainWindow('refresh-cloud')
+const handlePreviewTemplate = (payload: unknown) => {
+	broadcastToMainWindow('preview-template', payload)
 }
 
 onMounted(() => {
 	document.title = `DVStudio · ${t('aiworkflow.templateCenter.title')}`
+	requestAnimationFrame(() => {
+		dialogOpen.value = true
+	})
 })
 
 onBeforeUnmount(() => {
@@ -152,75 +109,12 @@ onBeforeUnmount(() => {
 <style scoped>
 .tcw-root {
 	width: 100%;
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 	background: var(--theme-bg-primary);
 	overflow: hidden;
 	position: relative;
-	user-select: none;
-}
-
-.tcw-title-bar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	height: 34px;
-	padding: 0 10px 0 14px;
-	background: var(--theme-bg-secondary);
-	border-bottom: 1px solid var(--theme-border);
-	-webkit-app-region: drag;
-	flex-shrink: 0;
-}
-
-.tcw-title-left {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.tcw-title {
-	font-size: 13px;
-	font-weight: 600;
-	color: var(--theme-fg-primary);
-	letter-spacing: 0.02em;
-}
-
-.tcw-title-sub {
-	font-size: 11px;
-	color: var(--theme-fg-tertiary);
-	opacity: 0.7;
-}
-
-.tcw-title-actions {
-	display: flex;
-	align-items: center;
-	gap: 0;
-	-webkit-app-region: no-drag;
-}
-
-.tcw-title-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 46px;
-	height: 34px;
-	padding: 0;
-	border: none;
-	background: transparent;
-	color: var(--theme-fg-secondary);
-	cursor: pointer;
-	transition: background-color 0.12s ease, color 0.12s ease;
-}
-
-.tcw-title-btn:hover {
-	background: var(--theme-bg-tertiary);
-	color: var(--theme-fg-primary);
-}
-
-.tcw-title-close:hover {
-	background: #e81123;
-	color: #fff;
 }
 
 .tcw-content {
@@ -229,26 +123,91 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	min-height: 0;
 	overflow: hidden;
-}
-
-.tcw-content :deep(.tc-dialog) {
 	position: relative;
-	top: auto;
-	left: auto;
-	width: 100%;
-	height: 100%;
-	margin: 0;
-	border-radius: 0;
-	box-shadow: none;
-}
-
-.tcw-content :deep(.tc-header) {
-	display: none;
 }
 
 .tcw-content :deep(.tc-mask) {
-	background: transparent;
-	position: relative;
+	position: relative !important;
+	top: auto !important;
+	left: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	inset: auto !important;
+	width: 100% !important;
+	height: 100% !important;
+	display: flex !important;
+	align-items: stretch !important;
+	justify-content: stretch !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	background: transparent !important;
+	backdrop-filter: none !important;
+	z-index: 1 !important;
+	box-sizing: border-box !important;
+}
+
+.tcw-content :deep(.tc-dialog) {
+	position: relative !important;
+	top: auto !important;
+	left: auto !important;
+	width: 100% !important;
+	height: 100% !important;
+	max-width: none !important;
+	max-height: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	border: none !important;
+	display: flex !important;
+	flex-direction: column !important;
+	overflow: hidden !important;
+}
+
+.tcw-content :deep(.tc-header) {
+	display: none !important;
+}
+
+.tcw-content :deep(.tc-bg-layer),
+.tcw-content :deep(.tc-scanline),
+.tcw-content :deep(.tc-particles),
+.tcw-content :deep(.tc-corner) {
+	display: none !important;
+}
+
+.tcw-content :deep(.tc-tabs) {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	flex-shrink: 0;
+}
+
+.tcw-content :deep(.tc-quota-bar-wrap) {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	flex-shrink: 0;
+}
+
+.tcw-content :deep(.tc-toolbar) {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	flex-shrink: 0;
+}
+
+.tcw-content :deep(.tc-content) {
+	padding: 0 !important;
+	flex: 1 !important;
+	overflow-y: auto !important;
+	min-height: 0 !important;
+}
+
+.tcw-content :deep(.tc-grid) {
+	padding: 8px !important;
+	min-height: 0 !important;
+}
+
+.tcw-content :deep(.tc-loading),
+.tcw-content :deep(.tc-empty) {
+	padding: 16px !important;
 }
 
 .tcw-toast {
@@ -291,32 +250,5 @@ onBeforeUnmount(() => {
 @keyframes tcw-toast-out {
 	from { opacity: 1; transform: translateX(-50%) translateY(0); }
 	to { opacity: 0; transform: translateX(-50%) translateY(10px); }
-}
-
-[data-theme='light'] .tcw-title-bar {
-	background: #f3f4f6;
-	border-bottom-color: #e5e7eb;
-}
-
-[data-theme='light'] .tcw-title {
-	color: #1f2937;
-}
-
-[data-theme='light'] .tcw-title-sub {
-	color: #9ca3af;
-}
-
-[data-theme='light'] .tcw-title-btn {
-	color: #6b7280;
-}
-
-[data-theme='light'] .tcw-title-btn:hover {
-	background: #e5e7eb;
-	color: #1f2937;
-}
-
-[data-theme='light'] .tcw-title-close:hover {
-	background: #e81123;
-	color: #fff;
 }
 </style>
