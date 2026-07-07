@@ -767,3 +767,17 @@ export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null
 	}
 	return null
 }
+
+export const DIALOG_MIN_WIDTH = 380
+export const DIALOG_MAX_WIDTH = 520
+export const DIALOG_DEFAULT_NODE_WIDTH = 280
+
+export const calcNodeDialogPosition = (nodeWidth?: number): { left: string; width: string } => {
+	const width = nodeWidth || DIALOG_DEFAULT_NODE_WIDTH
+	const dialogWidth = Math.min(DIALOG_MAX_WIDTH, Math.max(DIALOG_MIN_WIDTH, width))
+	const leftPx = (width - dialogWidth) / 2
+	return {
+		left: `${leftPx}px`,
+		width: `${dialogWidth}px`
+	}
+}
