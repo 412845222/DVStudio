@@ -53,36 +53,45 @@ export class CloudTemplatesService {
         const adapter = this.getAdapter()
         
         try {
-            const exists = await adapter.fileExists(INDEX_FILE)
-            console.log('[cloud-templates] Index file exists in cloud:', exists)
+            const existsResult = await adapter.fileExists(INDEX_FILE)
+            console.log('[cloud-templates] Index file exists check:', JSON.stringify(existsResult))
             
-            if (!exists) {
+            const fileExists = existsResult.ok && existsResult.exists
+            if (!fileExists) {
+                console.log('[cloud-templates] Index file does not exist in cloud, returning empty index')
                 return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
             }
 
+            console.log('[cloud-templates] Index file exists, reading...')
             const result = await adapter.fileRead(INDEX_FILE)
+            console.log('[cloud-templates] fileRead result:', result.ok ? `buffer size: ${result.buffer?.length || 0}` : `error: ${result.errMsg}`)
+            
             if (!result.ok || !result.buffer) {
                 console.log('[cloud-templates] Failed to read index file:', result.errMsg)
                 return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
             }
 
             const content = result.buffer.toString('utf8')
-            console.log('[cloud-templates] Index content length:', content.length)
+            console.log('[cloud-templates] Index content length:', content.length, 'first 200 chars:', content.substring(0, 200))
             
             if (!content.trim()) {
+                console.warn('[cloud-templates] Index file is empty')
                 return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
             }
 
             const index = JSON.parse(content)
             if (!index || !Array.isArray(index.templates)) {
-                console.warn('[cloud-templates] Invalid index structure, resetting')
+                console.warn('[cloud-templates] Invalid index structure, resetting. templates field:', typeof index?.templates)
                 return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
             }
             
             console.log('[cloud-templates] Parsed index from cloud, templates count:', index.templates.length)
+            for (const t of index.templates) {
+                console.log('[cloud-templates]  - cloud template:', t.id, t.name)
+            }
             return { ok: true, index, fromCloud: true }
         } catch (err) {
-            console.error('[cloud-templates] Error loading index from cloud:', err.message)
+            console.error('[cloud-templates] Error loading index from cloud:', err.message, err.stack)
             return { ok: true, index: this._createEmptyIndex(), fromCloud: false }
         }
     }
@@ -120,10 +129,10 @@ export class CloudTemplatesService {
             this._indexLoaded = true
             console.log('[cloud-templates] Index saved successfully')
             
-            const verifyResult = await adapter.fileExists(INDEX_FILE)
-            console.log('[cloud-templates] Index file exists after write:', verifyResult)
+            const verifyExists = await adapter.fileExists(INDEX_FILE)
+            console.log('[cloud-templates] Index file exists after write:', JSON.stringify(verifyExists))
             
-            if (verifyResult) {
+            if (verifyExists.ok && verifyExists.exists) {
                 const readBack = await adapter.fileRead(INDEX_FILE)
                 if (readBack.ok && readBack.buffer) {
                     try {
@@ -132,7 +141,11 @@ export class CloudTemplatesService {
                     } catch (e) {
                         console.error('[cloud-templates] Index verification failed - parse error:', e.message)
                     }
+                } else {
+                    console.error('[cloud-templates] Index verification failed - could not read back:', readBack.errMsg)
                 }
+            } else {
+                console.error('[cloud-templates] Index verification failed - file does not exist after write!')
             }
         } else {
             console.error('[cloud-templates] Failed to save index:', result.errMsg)

@@ -564,10 +564,10 @@ export async function getCloudTemplatesQuota(): Promise<CloudTemplatesQuotaResul
 	}
 }
 
-export async function listCloudTemplates(): Promise<CloudTemplatesListResult | null> {
+export async function listCloudTemplates(options: { forceRefresh?: boolean } = {}): Promise<CloudTemplatesListResult | null> {
 	if (!window?.dweb?.cloudTemplates?.list) return null
 	try {
-		return await window.dweb.cloudTemplates.list()
+		return await window.dweb.cloudTemplates.list(options)
 	} catch (e: unknown) {
 		return { ok: false, errMsg: getErrorMessage(e), items: [] }
 	}

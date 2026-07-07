@@ -95,5 +95,8 @@
   "aiworkflow.templateCenter.downloadFailed": "下载失败，请检查 Steam 连接后重试",
   "aiworkflow.templateCenter.cloudStorage": "云存储空间",
   "aiworkflow.templateCenter.storageUsed": "已用",
-  "aiworkflow.templateCenter.storageFree": "剩余"
+  "aiworkflow.templateCenter.storageFree": "剩余",
+  "aiworkflow.templateCenter.refresh": "刷新云端",
+  "aiworkflow.templateCenter.syncing": "正在同步云端数据...",
+  "aiworkflow.templateCenter.loading": "加载中..."
 }

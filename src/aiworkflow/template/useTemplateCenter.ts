@@ -71,10 +71,12 @@ export function useTemplateCenter() {
 		]
 	})
 
-	async function loadTemplates() {
+	async function loadTemplates(options: { forceCloudRefresh?: boolean } = {}) {
+		const { forceCloudRefresh = false } = options
+		
 		if (initialized && templatesState.value.length > 0) {
 			const userTemplates = await persistence.loadUserTemplates()
-			const cloudTemplates = await cloudPersistence.loadCloudTemplates()
+			const cloudTemplates = await cloudPersistence.loadCloudTemplates({ forceRefresh: forceCloudRefresh })
 			const builtinOnly = templatesState.value.filter((t) => t.source === 'builtin')
 			templatesState.value = [...builtinOnly, ...userTemplates, ...cloudTemplates]
 			markSyncStatus()
@@ -101,7 +103,7 @@ export function useTemplateCenter() {
 			}))
 
 			const userTemplates = await persistence.loadUserTemplates()
-			const cloudTemplates = await cloudPersistence.loadCloudTemplates()
+			const cloudTemplates = await cloudPersistence.loadCloudTemplates({ forceRefresh: true })
 			templatesState.value = [...builtinTemplates, ...userTemplates, ...cloudTemplates]
 			markSyncStatus()
 			initialized = true
@@ -368,7 +370,10 @@ export function useTemplateCenter() {
 
 	async function refreshCloud() {
 		await cloudPersistence.refreshCloudSync()
-		await loadTemplates()
+		const userTemplates = await persistence.loadUserTemplates()
+		const builtinOnly = templatesState.value.filter((t) => t.source === 'builtin')
+		templatesState.value = [...builtinOnly, ...userTemplates, ...cloudPersistence.cloudTemplates.value]
+		markSyncStatus()
 	}
 
 	return {

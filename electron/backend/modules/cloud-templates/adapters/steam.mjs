@@ -71,11 +71,16 @@ export class SteamCloudAdapter extends CloudAdapter {
 	async fileRead(fileName) {
 		const cloud = this._getCloud()
 		if (!cloud) {
+			console.error('[cloud-templates:steam] fileRead failed: cloud not available')
 			return { ok: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			return cloud.fileRead(fileName)
+			console.log('[cloud-templates:steam] fileRead:', fileName)
+			const result = cloud.fileRead(fileName)
+			console.log('[cloud-templates:steam] fileRead result for', fileName, ':', result.ok ? `ok, buffer length: ${result.buffer?.length || 0}` : `failed: ${result.errMsg}`)
+			return result
 		} catch (err) {
+			console.error('[cloud-templates:steam] fileRead error for', fileName, ':', err.message)
 			return { ok: false, errMsg: err.message }
 		}
 	}
@@ -86,8 +91,12 @@ export class SteamCloudAdapter extends CloudAdapter {
 			return { ok: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			return cloud.fileDelete(fileName)
+			console.log('[cloud-templates:steam] fileDelete:', fileName)
+			const result = cloud.fileDelete(fileName)
+			console.log('[cloud-templates:steam] fileDelete result:', result)
+			return result
 		} catch (err) {
+			console.error('[cloud-templates:steam] fileDelete error:', err.message)
 			return { ok: false, errMsg: err.message }
 		}
 	}
@@ -95,12 +104,15 @@ export class SteamCloudAdapter extends CloudAdapter {
 	async fileExists(fileName) {
 		const cloud = this._getCloud()
 		if (!cloud) {
-			return { ok: false, exists: false }
+			return { ok: false, exists: false, errMsg: 'Steam Cloud not available' }
 		}
 		try {
-			return cloud.fileExists(fileName)
-		} catch {
-			return { ok: true, exists: false }
+			const result = cloud.fileExists(fileName)
+			console.log('[cloud-templates:steam] fileExists:', fileName, '->', result)
+			return result
+		} catch (err) {
+			console.error('[cloud-templates:steam] fileExists error for', fileName, ':', err.message)
+			return { ok: false, exists: false, errMsg: err.message }
 		}
 	}
 

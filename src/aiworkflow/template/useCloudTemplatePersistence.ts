@@ -22,13 +22,14 @@ const cloudQuotaState = ref<{
 
 const cloudSyncingState = ref(false)
 const cloudLastSyncedAt = ref<number | null>(null)
+const cloudTemplates = ref<TemplateItem[]>([])
+const loadingCloudTemplates = ref(false)
+const uploadingTemplateId = ref<string | null>(null)
+const downloadingTemplateId = ref<string | null>(null)
+
+let _cloudInitialized = false
 
 export function useCloudTemplatePersistence() {
-	const cloudTemplates = ref<TemplateItem[]>([])
-	const loadingCloudTemplates = ref(false)
-	const uploadingTemplateId = ref<string | null>(null)
-	const downloadingTemplateId = ref<string | null>(null)
-
 	async function ensureCloudAvailable(): Promise<boolean> {
 		try {
 			console.log('[cloud-templates] Checking cloud platform availability...')
@@ -36,6 +37,7 @@ export function useCloudTemplatePersistence() {
 			console.log('[cloud-templates] Platform result:', platform)
 			if (!platform?.ok) {
 				console.warn('[cloud-templates] Cloud platform not available:', platform?.errMsg || 'unknown error')
+				cloudPlatformState.value = null
 				return false
 			}
 			cloudPlatformState.value = platform
@@ -43,6 +45,7 @@ export function useCloudTemplatePersistence() {
 			return true
 		} catch (err) {
 			console.error('[cloud-templates] ensureCloudAvailable error:', err)
+			cloudPlatformState.value = null
 			return false
 		}
 	}
@@ -65,20 +68,27 @@ export function useCloudTemplatePersistence() {
 		}
 	}
 
-	async function loadCloudTemplates(): Promise<TemplateItem[]> {
+	async function loadCloudTemplates(options: { forceRefresh?: boolean } = {}): Promise<TemplateItem[]> {
+		const { forceRefresh = true } = options
 		loadingCloudTemplates.value = true
 		try {
 			const available = await ensureCloudAvailable()
 			if (!available) {
 				cloudTemplates.value = []
+				_cloudInitialized = true
 				return []
 			}
 
 			await loadCloudQuota()
 
-			const result = await listCloudTemplates()
+			console.log('[cloud-templates] Calling listCloudTemplates with forceRefresh:', forceRefresh)
+			const result = await listCloudTemplates({ forceRefresh })
+			console.log('[cloud-templates] listCloudTemplates result:', result?.ok ? `${result.items?.length || 0} items` : `error: ${result?.errMsg || 'null result'}`)
+			
 			if (!result?.ok || !result.items) {
+				console.warn('[cloud-templates] listCloudTemplates failed:', result?.errMsg || 'null result')
 				cloudTemplates.value = []
+				_cloudInitialized = true
 				return []
 			}
 
@@ -97,13 +107,17 @@ export function useCloudTemplatePersistence() {
 				steamFileId: meta.packageFileName,
 				cloudSyncStatus: 'synced' as CloudSyncStatus,
 				lastSyncAt: meta.updatedAt,
-				author: cloudPlatformState.value?.platformName || 'Cloud',
+				author: cloudPlatformState.value?.platformName || 'Steam Cloud',
 			}))
 
 			cloudTemplates.value = items
+			_cloudInitialized = true
+			console.log('[cloud-templates] Cloud templates loaded:', items.length)
 			return items
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] loadCloudTemplates error:', err)
 			cloudTemplates.value = []
+			_cloudInitialized = true
 			return []
 		} finally {
 			loadingCloudTemplates.value = false
@@ -145,7 +159,7 @@ export function useCloudTemplatePersistence() {
 				return false
 			}
 
-			await loadCloudTemplates()
+			await loadCloudTemplates({ forceRefresh: true })
 			console.log('[cloud-templates] Upload complete, templates reloaded')
 			return true
 		} catch (err) {
@@ -182,11 +196,12 @@ export function useCloudTemplatePersistence() {
 				steamFileId: result.meta.packageFileName,
 				cloudSyncStatus: 'synced',
 				lastSyncAt: result.meta.updatedAt,
-				author: cloudPlatformState.value?.platformName || 'Cloud',
+				author: cloudPlatformState.value?.platformName || 'Steam Cloud',
 			}
 
 			return { meta, zipBlob, coverBlob }
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] downloadTemplateFromCloud error:', err)
 			return null
 		} finally {
 			downloadingTemplateId.value = null
@@ -198,8 +213,10 @@ export function useCloudTemplatePersistence() {
 			const result = await deleteCloudTemplateApi({ id: templateId })
 			if (!result?.ok) return false
 			cloudTemplates.value = cloudTemplates.value.filter((t) => t.id !== templateId)
+			await loadCloudQuota()
 			return true
-		} catch {
+		} catch (err) {
+			console.error('[cloud-templates] deleteCloudTemplate error:', err)
 			return false
 		}
 	}
@@ -207,8 +224,7 @@ export function useCloudTemplatePersistence() {
 	async function refreshCloudSync() {
 		cloudSyncingState.value = true
 		try {
-			await loadCloudTemplates()
-			await loadCloudQuota()
+			await loadCloudTemplates({ forceRefresh: true })
 		} finally {
 			cloudSyncingState.value = false
 		}
@@ -223,6 +239,7 @@ export function useCloudTemplatePersistence() {
 		cloudQuota: cloudQuotaState,
 		cloudSyncing: cloudSyncingState,
 		cloudLastSyncedAt,
+		cloudInitialized: _cloudInitialized,
 		ensureCloudAvailable,
 		loadCloudQuota,
 		loadCloudTemplates,

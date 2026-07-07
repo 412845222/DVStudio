@@ -410,7 +410,7 @@ declare global {
 			cloudTemplates: {
 				getPlatform(): Promise<CloudTemplatesPlatformResult>
 				getQuota(): Promise<CloudTemplatesQuotaResult>
-				list(): Promise<CloudTemplatesListResult>
+				list(options?: { forceRefresh?: boolean }): Promise<CloudTemplatesListResult>
 				upload(payload: CloudTemplatesUploadPayload): Promise<CloudTemplatesUploadResult>
 				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
 				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>

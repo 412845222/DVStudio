@@ -29,10 +29,11 @@ export async function getQuota() {
 	}
 }
 
-export async function listTemplates() {
+export async function listTemplates(_ctx, options = {}) {
 	try {
 		const service = getCloudTemplatesService()
-		const result = await service.listTemplates()
+		console.log('[cloud-templates] listTemplates called with options:', options)
+		const result = await service.listTemplates(options)
 		console.log('[cloud-templates] listTemplates:', result.ok ? `${result.items?.length || 0} items` : result.errMsg)
 		return result
 	} catch (err) {

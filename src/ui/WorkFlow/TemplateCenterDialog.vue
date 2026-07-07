@@ -77,11 +77,29 @@
 							</svg>
 							<span>{{ t('aiworkflow.templateCenter.cloudStorage') }}</span>
 						</div>
-						<div class="tc-quota-text">{{ cloudQuota ? cloudQuotaText : '...' }}</div>
+						<div class="tc-quota-right">
+							<div class="tc-quota-text">{{ cloudQuotaText }}</div>
+							<button
+								class="tc-refresh-btn"
+								type="button"
+								:disabled="cloudSyncing"
+								@click="handleRefreshCloud"
+								:title="t('aiworkflow.templateCenter.refresh')"
+							>
+								<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
+									<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+									<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+							</button>
+						</div>
 					</div>
 					<div class="tc-quota-bar">
 						<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
 						<div v-else class="tc-quota-bar-loading"></div>
+					</div>
+					<div v-if="cloudSyncing" class="tc-sync-hint">
+						<div class="tc-spinner-mini"></div>
+						<span>{{ t('aiworkflow.templateCenter.syncing') }}</span>
 					</div>
 				</div>
 
@@ -290,11 +308,13 @@ function formatBytes(bytes: number): string {
 
 const cloudQuotaText = computed(() => {
 	if (!cloudAvailable.value) return ''
-	if (!cloudQuota.value) return '...'
 	const q = cloudQuota.value
+	if (!q) return t('aiworkflow.templateCenter.loading')
 	const used = q.totalBytes - q.availableBytes
 	const available = q.availableBytes
-	return `${t('aiworkflow.templateCenter.storageUsed')} ${formatBytes(used)} / ${formatBytes(q.totalBytes)} (${t('aiworkflow.templateCenter.storageFree')} ${formatBytes(available)})`
+	const total = q.totalBytes
+	const usedPct = total > 0 ? ((used / total) * 100).toFixed(2) : '0'
+	return `${formatBytes(used)} / ${formatBytes(total)} (${t('aiworkflow.templateCenter.storageFree')} ${formatBytes(available)}, ${usedPct}% ${t('aiworkflow.templateCenter.storageUsed')})`
 })
 
 const cloudQuotaPercent = computed(() => {
@@ -376,8 +396,15 @@ function switchTab(tabId: TabId) {
 	activeTab.value = tabId
 	selectTemplate(null)
 	if (tabId === 'cloud' && cloudAvailable.value) {
+		console.log('[template-center] Switching to cloud tab, refreshing...')
 		refreshCloud()
 	}
+}
+
+async function handleRefreshCloud() {
+	if (cloudSyncing.value) return
+	console.log('[template-center] Manual refresh triggered')
+	await refreshCloud()
 }
 
 const particles = buildSquareParticles({ count: 12, seed: 999, baseOpacity: 0.35 })
@@ -390,9 +417,10 @@ const cardSize = computed(() => {
 
 watch(
 	() => props.open,
-	(val) => {
+	async (val) => {
 		if (val) {
-			loadTemplates()
+			console.log('[template-center] Dialog opened, loading templates...')
+			await loadTemplates({ forceCloudRefresh: true })
 			selectTemplate(null)
 		}
 	}
@@ -822,6 +850,70 @@ async function handleDownload(template: TemplateItem) {
 @keyframes tc-quota-loading {
 	0% { background-position: 200% 0; }
 	100% { background-position: -200% 0; }
+}
+
+.tc-quota-right {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tc-refresh-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--tc-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--tc-accent) 8%, transparent);
+	color: var(--tc-glow);
+	border-radius: 2px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.tc-refresh-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--tc-accent) 20%, transparent);
+	border-color: color-mix(in srgb, var(--tc-accent) 50%, transparent);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--tc-accent) 20%, transparent);
+}
+
+.tc-refresh-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.tc-refresh-spin {
+	animation: tc-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes tc-refresh-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+.tc-sync-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: 11px;
+	color: var(--tc-cold);
+}
+
+.tc-spinner-mini {
+	width: 12px;
+	height: 12px;
+	border: 1.5px solid color-mix(in srgb, var(--tc-cold) 20%, transparent);
+	border-top-color: var(--tc-cold);
+	border-radius: 50%;
+	animation: tc-spin 0.7s linear infinite;
+}
+
+@keyframes tc-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 
 /* Workshop placeholder */
