@@ -16,6 +16,7 @@ export const useAIWorkflowTripo3DCommands = (options: {
 	normalizeTripo3DTaskStatus: (status: unknown) => string
 	refreshTripo3DTaskItems: (opts?: { silent?: boolean }) => Promise<unknown> | void
 	shouldRefreshTripo3DTaskItems: () => boolean
+	getProjectId?: () => number | string | null | undefined
 }) => {
 	const onNodeGenerateTripo3D = async (nodeId: string) => {
 		const node = options.store.state.nodesById[nodeId]
@@ -47,7 +48,14 @@ export const useAIWorkflowTripo3DCommands = (options: {
 		})
 
 		try {
-			const res = await options.getComfyService().tripo3dGenerate(prepared.payload)
+			const currentProjectId = typeof options.getProjectId === 'function' ? options.getProjectId() : null
+			const requestPayload = {
+				...prepared.payload,
+				nodeId,
+				projectId: currentProjectId ?? undefined
+			}
+
+			const res = await options.getComfyService().tripo3dGenerate(requestPayload)
 			if (!res.ok) {
 				const msg = String(res.error ?? t('tasks.tripo3d.createTaskFailed'))
 				options.store.commit('setNodeTripo3DSettings', {

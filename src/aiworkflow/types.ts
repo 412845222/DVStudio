@@ -663,6 +663,12 @@ export type WorkflowMeshyModelSettings = {
 	rootTaskId?: string
 	parentTaskId?: string
 	previewTaskId?: string
+	downloadStage?: 'idle' | 'downloading' | 'done' | 'failed'
+	downloadProgress?: number
+	downloadLoadedBytes?: number
+	downloadTotalBytes?: number
+	downloadSpeedBytesPerSec?: number
+	downloadError?: string
 }
 
 export type WorkflowTripo3DTaskStatus = 'idle' | 'pending' | 'queued' | 'running' | 'success' | 'succeeded' | 'failed' | 'cancelled' | 'canceled'
@@ -765,6 +771,12 @@ export type WorkflowTripo3DModelSettings = {
 	tripo3dRequestPayload?: Record<string, unknown>
 	tripo3dResponsePayload?: Record<string, unknown>
 	tripo3dMode?: WorkflowTripo3DMode
+	tripo3dDownloadStage?: 'idle' | 'downloading' | 'done' | 'failed'
+	tripo3dDownloadProgress?: number
+	tripo3dDownloadLoadedBytes?: number
+	tripo3dDownloadTotalBytes?: number
+	tripo3dDownloadSpeedBytesPerSec?: number
+	tripo3dDownloadError?: string
 }
 
 export type WorkflowModel3DNodeSettings = {

@@ -1061,6 +1061,7 @@ import { useAIWorkflowTripo3DCommands } from './node-business/tripo3d/useAIWorkf
 import { useAIWorkflowTripo3DRuntime } from './node-business/tripo3d/useAIWorkflowTripo3DRuntime'
 import { useAIWorkflowTripo3DRequest } from './node-business/tripo3d/useAIWorkflowTripo3DRequest'
 import { useAIWorkflowTripo3DInputResolver } from './node-business/tripo3d/useAIWorkflowTripo3DInputResolver'
+import { useAIWorkflowTripo3DDrop } from './node-business/tripo3d/useAIWorkflowTripo3DDrop'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
 import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
 import { useAIWorkflowGeminiTaskPanelController } from './node-business/gemini/useAIWorkflowGeminiTaskPanelController'
@@ -3804,6 +3805,29 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
+		return null
+	}
+}
+
+const createModel3DNodeAtCenter = (opts?: {
+	modelUrl?: string
+	name?: string
+	taskId?: string
+	mode?: string
+}): string | null => {
+	try {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'model3d' })
+		return newNodeId
+	} catch (e) {
+		console.error('[createModel3DNodeAtCenter] 创建节点失败:', e)
 		return null
 	}
 }
@@ -8199,6 +8223,7 @@ const {
 	},
 	createBatchMediaNodesFromFiles: (payload) => createBatchMediaNodesFromFiles(payload),
 	createNodeFromDraggedMeshyTask: (payload) => createNodeFromDraggedMeshyTask(payload),
+	createNodeFromDraggedTripo3DTask: (payload) => createNodeFromDraggedTripo3DTask(payload),
 	persistBlobUrlToProject,
 	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
@@ -8284,7 +8309,8 @@ const {
 	buildTripo3DRequestPayload,
 	normalizeTripo3DTaskStatus,
 	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
-	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
+	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value,
+	getProjectId: () => currentProjectId.value
 })
 
 const importLimitAlertMessage = ref('')
@@ -9431,7 +9457,8 @@ const {
 	onNodeStopTripo3DTask,
 	onNodeDeleteTripo3DTask,
 	refreshTripo3DTaskItems,
-	refreshTripo3DBalance
+	refreshTripo3DBalance,
+	refreshTripo3DTaskToNode
 } = useAIWorkflowTripo3DTaskPanelController({
 	store,
 	renderNodes,
@@ -9441,12 +9468,19 @@ const {
 	pickTripo3DEffectiveOutput,
 	applyTripo3DTaskResult,
 	stopTripo3DPoll,
-	createImageNodeAtCenter
+	createImageNodeAtCenter,
+	createModel3DNodeAtCenter
 })
 
 const onOpenTripo3DTaskPanel = () => {
 	openTripo3DTaskDialog()
 }
+
+const { createNodeFromDraggedTripo3DTask } = useAIWorkflowTripo3DDrop({
+	store,
+	pushToast: (message, tone) => pushToast(message, tone),
+	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId)
+})
 
 const onOpenArkTaskPanel = () => {
 	openArkTaskDialog()

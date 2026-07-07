@@ -39,13 +39,9 @@
 
 .bp-node-chat-dialog {
 	position: absolute;
-	left: 50%;
 	top: 100%;
 	z-index: 100;
 	margin-top: 16px;
-	max-width: min(420px, calc(100vw - 40px));
-	min-width: 320px;
-	transform: translateX(-50%);
 	pointer-events: auto;
 }
 
@@ -53,8 +49,7 @@
 	border-radius: 12px;
 	overflow: hidden;
 	min-width: 280px;
-	max-width: 420px;
-	animation: bp-node-chat-dialog-in 0.2s ease-out;
+	width: 100%;
 }
 
 .bp-node-chat-header {

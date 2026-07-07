@@ -5,6 +5,7 @@ import type {
 	WorkflowState
 } from '../../../../aiworkflow/types'
 import { isArray, isBoolean, isNumber, isRecord, isString } from '../../../../types/utils'
+import type { ExternalAssetProgress } from '../../assets/useAIWorkflowAssetPersistence'
 
 export type MeshyTaskStatus = 'idle' | 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled'
 
@@ -460,12 +461,14 @@ export type PersistExternalAssetPayload = {
 	name: string
 	sourceUrl?: string
 	sourcePath?: string
+	onProgress?: (info: ExternalAssetProgress) => void
 }
 
 export type PersistExternalAssetResult = {
 	url: string
 	absolutePath: string
 	projectRelativePath?: string
+	size?: number
 } | null
 
 export type ConnectedMeshyImageInput = {
