@@ -90,7 +90,7 @@ try {
 	console.log('[setup-steam-dev] SUCCESS! dweb-steamjs is linked.')
 	console.log('')
 	console.log('Next steps:')
-	console.log('  1. Configure your Steam AppID in steam.config.json (copy from steam.config.example.json)')
+	console.log('  1. Configure your Steam AppID in electron/steam.config.json (copy template from electron/platform/steam.config.example.json)')
 	console.log('  2. Start Steam client and log in')
 	console.log('  3. Run "npm run dev:electron" to start the app')
 	console.log('  4. Check console for "[platform:steam] initialized" message')
