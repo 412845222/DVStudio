@@ -66,11 +66,14 @@
 						<span v-if="cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge">
 							{{ cloudPlatform?.platformName || 'Cloud' }}
 						</span>
+						<span v-else-if="!cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge tc-tab-badge-offline">
+							{{ t('aiworkflow.templateCenter.noCloudConnection') }}
+						</span>
 					</button>
 				</div>
 
 				<div class="tc-quota-bar-wrap">
-					<div v-show="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-inner">
+					<div v-if="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-inner">
 						<div class="tc-quota-bar">
 							<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
 							<div v-else class="tc-quota-bar-loading"></div>
@@ -79,6 +82,12 @@
 								<span v-else class="tc-quota-loading-text">{{ t('aiworkflow.templateCenter.syncing') }}</span>
 							</div>
 						</div>
+					</div>
+					<div v-else-if="activeTab === 'cloud'" class="tc-quota-bar-inner tc-quota-offline">
+						<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+							<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
+						</svg>
+						<span>{{ t('aiworkflow.templateCenter.noCloudConnection') }}</span>
 					</div>
 				</div>
 
@@ -200,6 +209,23 @@
 						<h3>{{ t('aiworkflow.templateCenter.workshopTitle') }}</h3>
 						<p>{{ t('aiworkflow.templateCenter.workshopDesc') }}</p>
 						<div v-if="!cloudAvailable" class="tc-workshop-hint">
+							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
+							</svg>
+							<span>{{ t('aiworkflow.templateCenter.steamRequired') }}</span>
+						</div>
+					</div>
+
+					<div v-else-if="activeTab === 'cloud' && !cloudAvailable" class="tc-workshop-placeholder tc-cloud-offline">
+						<div class="tc-workshop-icon">
+							<svg viewBox="0 0 64 64" width="80" height="80" aria-hidden="true">
+								<path d="M20 42a10 10 0 0 1-1.3-19.9A14 14 0 0 1 46 22h.1A10 10 0 0 1 44 42H20z" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3" />
+								<path d="M22 52l20-20M42 52L22 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+							</svg>
+						</div>
+						<h3>{{ t('aiworkflow.templateCenter.noCloudAccess') }}</h3>
+						<p>{{ t('aiworkflow.templateCenter.noCloudAccessDesc') }}</p>
+						<div class="tc-workshop-hint">
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
 								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
 							</svg>
@@ -917,6 +943,35 @@ async function handleDownload(template: TemplateItem) {
 @keyframes tc-quota-loading {
 	0% { background-position: 200% 0; }
 	100% { background-position: -200% 0; }
+}
+
+.tc-tab-badge-offline {
+	background: color-mix(in srgb, #e8912a 20%, transparent);
+	border-color: color-mix(in srgb, #e8912a 40%, transparent);
+	color: #f0a850;
+}
+
+.tc-quota-offline {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 22px;
+	border: 1px dashed color-mix(in srgb, #e8912a 35%, transparent);
+	border-radius: 3px;
+	background: color-mix(in srgb, #e8912a 8%, transparent);
+	color: #e8a65a;
+	font-size: 11px;
+	letter-spacing: 0.03em;
+}
+
+.tc-cloud-offline .tc-workshop-icon svg path:first-child {
+	opacity: 0.2;
+}
+
+.tc-cloud-offline .tc-workshop-icon svg path:nth-child(2) {
+	stroke: #e8912a;
+	opacity: 0.8;
 }
 
 .tc-refresh-btn {

@@ -100,5 +100,8 @@
   "aiworkflow.templateCenter.refresh": "刷新云端",
   "aiworkflow.templateCenter.syncing": "正在同步云端数据...",
   "aiworkflow.templateCenter.loading": "加载中...",
-  "aiworkflow.templateCenter.featureComingSoon": "功能开发中，敬请期待"
+  "aiworkflow.templateCenter.featureComingSoon": "功能开发中，敬请期待",
+  "aiworkflow.templateCenter.noCloudConnection": "无连接",
+  "aiworkflow.templateCenter.noCloudAccess": "无云端接入",
+  "aiworkflow.templateCenter.noCloudAccessDesc": "云端功能当前未接入，暂不支持云端模板的上传、下载和同步"
 }

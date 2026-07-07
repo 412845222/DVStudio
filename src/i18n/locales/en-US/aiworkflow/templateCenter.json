@@ -100,5 +100,8 @@
   "aiworkflow.templateCenter.refresh": "Refresh Cloud",
   "aiworkflow.templateCenter.syncing": "Syncing cloud data...",
   "aiworkflow.templateCenter.loading": "Loading...",
-  "aiworkflow.templateCenter.featureComingSoon": "Feature coming soon, stay tuned"
+  "aiworkflow.templateCenter.featureComingSoon": "Feature coming soon, stay tuned",
+  "aiworkflow.templateCenter.noCloudConnection": "No Connection",
+  "aiworkflow.templateCenter.noCloudAccess": "No Cloud Access",
+  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud features are currently unavailable. Cloud template upload, download, and sync are not supported at this time"
 }
