@@ -1,5 +1,6 @@
 import { getErrorMessage } from '../../../types/utils'
 import { t } from '../../../i18n'
+import { TRI_PO3D_TASK_DRAG_MIME } from '../node-business/tripo3d/useAIWorkflowTripo3DDrop'
 
 export type AIWorkflowDraggedResourceItem = {
 	resourceId: string
@@ -58,6 +59,17 @@ type MeshyTaskItem = {
 	[key: string]: unknown
 }
 
+type Tripo3DTaskItem = {
+	taskId?: string
+	title?: string
+	mode?: string
+	prompt?: string
+	thumbnailUrl?: string
+	modelUrl?: string
+	status?: string
+	[key: string]: unknown
+}
+
 type AIWorkflowStoreState = {
 	resourcesById?: Record<string, { url?: string; name?: string; sourcePath?: string; posterUrl?: string }>
 	selectedNodeId?: string | null
@@ -91,6 +103,11 @@ export const useAIWorkflowDropAssets = (options: {
 	}) => Promise<void>
 	createNodeFromDraggedMeshyTask: (payload: {
 		item: MeshyTaskItem
+		worldX: number
+		worldY: number
+	}) => boolean | void
+	createNodeFromDraggedTripo3DTask: (payload: {
+		item: Tripo3DTaskItem
 		worldX: number
 		worldY: number
 	}) => boolean | void
@@ -191,6 +208,22 @@ export const useAIWorkflowDropAssets = (options: {
 			if (!taskId && !nodeId) return null
 			if (!settings || typeof settings !== 'object') return null
 			return parsed as MeshyTaskItem
+		} catch {
+			return null
+		}
+	}
+
+	const getDraggedTripo3DTaskItem = (e: DragEvent): Tripo3DTaskItem | null => {
+		const dt = e.dataTransfer
+		if (!dt) return null
+		const raw = dt.getData(TRI_PO3D_TASK_DRAG_MIME)
+		if (!raw) return null
+		try {
+			const parsed = JSON.parse(raw) as Record<string, unknown>
+			if (!parsed || typeof parsed !== 'object') return null
+			const taskId = String(parsed?.taskId ?? '').trim()
+			if (!taskId) return null
+			return parsed as Tripo3DTaskItem
 		} catch {
 			return null
 		}
@@ -569,10 +602,11 @@ export const useAIWorkflowDropAssets = (options: {
 				(dt.files && dt.files.length > 0))
 		const resourceItem = getDraggedResourceItem(e)
 		const meshyTaskItem = getDraggedMeshyTaskItem(e)
+		const tripo3dTaskItem = getDraggedTripo3DTaskItem(e)
 		const arkTaskItem = getDraggedArkTaskItem(e)
 		const nanoMeta = getDraggedNanoPreviewMeta(e)
 		const url = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
-		if (!hasFiles && !url && !resourceItem && !meshyTaskItem && !arkTaskItem) return
+		if (!hasFiles && !url && !resourceItem && !meshyTaskItem && !tripo3dTaskItem && !arkTaskItem) return
 		try {
 			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
 		} catch {
@@ -587,6 +621,7 @@ export const useAIWorkflowDropAssets = (options: {
 		const dt = e.dataTransfer
 		const draggedResource = getDraggedResourceItem(e)
 		const draggedMeshyTask = getDraggedMeshyTaskItem(e)
+		const draggedTripo3DTask = getDraggedTripo3DTaskItem(e)
 		const draggedArkTask = getDraggedArkTaskItem(e)
 		const nanoMeta = getDraggedNanoPreviewMeta(e)
 		const urlRaw = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
@@ -605,6 +640,15 @@ export const useAIWorkflowDropAssets = (options: {
 		if (draggedMeshyTask) {
 			options.createNodeFromDraggedMeshyTask({
 				item: draggedMeshyTask,
+				worldX: world.worldX,
+				worldY: world.worldY
+			})
+			return
+		}
+
+		if (draggedTripo3DTask) {
+			options.createNodeFromDraggedTripo3DTask({
+				item: draggedTripo3DTask,
 				worldX: world.worldX,
 				worldY: world.worldY
 			})

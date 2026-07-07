@@ -127,5 +127,12 @@
   "tasks.tripo3d.pollStatusFailedConsecutiveToast": "Tripo3D task status polling failed consecutively, polling stopped",
   "tasks.tripo3d.pollStatusException": "Status polling exception",
   "tasks.tripo3d.pollStatusExceptionToast": "Tripo3D task status polling exception, polling stopped",
-  "tasks.tripo3d.taskIdLostCannotRecover": "Task ID lost, cannot recover task state"
+  "tasks.tripo3d.taskIdLostCannotRecover": "Task ID lost, cannot recover task state",
+  "tasks.tripo3d.model3dTaskNodeName": "Tripo3D 3D Model",
+  "tasks.tripo3d.nodeCreatedPullingArtifacts": "Created new 3D model node, pulling artifacts...",
+  "tasks.tripo3d.taskNotCompletedNoModel": "Task is not completed or model URL not available, cannot create node.",
+  "tasks.tripo3d.pullingModelArtifacts": "Tripo3D: Pulling model artifacts...",
+  "tasks.tripo3d.model3dPulledBoundToNewNode": "Tripo3D 3D model pulled and bound to newly created model node.",
+  "tasks.tripo3d.artifactsSyncedToNodeGeneric": "Tripo3D artifacts synced to node.",
+  "tasks.tripo3d.nodeCreatedFromTaskCenter": "Node created from Tripo3D Task Center."
 }

@@ -2805,7 +2805,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const modelGenerationSource =
 				next.modelGenerationSource === 'upload' ||
 				next.modelGenerationSource === 'comfyui' ||
-				next.modelGenerationSource === 'meshy'
+				next.modelGenerationSource === 'meshy' ||
+				next.modelGenerationSource === 'tripo3d'
 					? next.modelGenerationSource
 					: undefined
 
@@ -2998,7 +2999,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						}
 					: undefined
 
-			const patch: Partial<WorkflowModel3DNodeSettings & { meshyModelSettings?: unknown }> = {
+			const patch: Partial<WorkflowModel3DNodeSettings & { meshyModelSettings?: unknown; tripo3dModelSettings?: unknown }> = {
 				...next
 			}
 			if (patch.lightIntensity != null)
@@ -3008,6 +3009,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (patch.renderHeight != null)
 				patch.renderHeight = Math.max(1, Math.floor(Number(patch.renderHeight) || 1))
 			delete patch.meshyModelSettings
+			delete patch.tripo3dModelSettings
 
 			const existingMeshy = n.model3dSettings?.meshyModelSettings ?? {}
 			const mergedMeshy = meshyModelSettings
@@ -3018,11 +3020,25 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					)
 				: undefined
 
+			const tripo3dModelSettingsRaw = next.tripo3dModelSettings
+			const existingTripo3d = n.model3dSettings?.tripo3dModelSettings ?? {}
+			const mergedTripo3d =
+				tripo3dModelSettingsRaw && typeof tripo3dModelSettingsRaw === 'object'
+					? Object.fromEntries(
+							Object.entries({ ...existingTripo3d, ...tripo3dModelSettingsRaw }).filter(
+								([, v]) => v !== undefined
+							)
+						)
+					: undefined
+
 			n.model3dSettings = {
 				...(n.model3dSettings ?? {}),
 				...(modelGenerationSource != null ? { modelGenerationSource } : {}),
 				...(mergedMeshy
 					? { meshyModelSettings: mergedMeshy as WorkflowModel3DNodeSettings['meshyModelSettings'] }
+					: {}),
+				...(mergedTripo3d
+					? { tripo3dModelSettings: mergedTripo3d as WorkflowModel3DNodeSettings['tripo3dModelSettings'] }
 					: {}),
 				...patch
 			}

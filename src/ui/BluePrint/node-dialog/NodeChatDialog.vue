@@ -11,6 +11,7 @@
 			@click.stop
 			@contextmenu.stop
 		>
+			<div class="bp-node-chat-dialog-inner">
 			<div class="bp-node-chat-surface glass-surface">
 				<span class="bp-dialog-bracket bp-dialog-bracket-tl" aria-hidden="true"></span>
 				<span class="bp-dialog-bracket bp-dialog-bracket-tr" aria-hidden="true"></span>
@@ -146,6 +147,7 @@
 			/>
 		</Transition>
 		</div>
+		</div>
 	</Transition>
 </template>
 
@@ -158,7 +160,8 @@ import {
 	NODE_CHAT_TYPE_ICONS,
 	NODE_CHAT_PLACEHOLDERS,
 	NODE_CHAT_TYPE_DESCRIPTIONS,
-	getDefaultParamsForType
+	getDefaultParamsForType,
+	calcNodeDialogPosition
 } from './nodeChatConfig'
 import NodeChatInput from './NodeChatInput.vue'
 import NodeChatParamPanel from './NodeChatParamPanel.vue'
@@ -265,13 +268,7 @@ const handleRemoveParamRef = (item: InputParamPreviewRef) => {
 	emit('remove-param-ref', item)
 }
 
-const dialogPositionStyle = computed(() => {
-	const width = props.nodeWidth || 280
-	return {
-		width: `${Math.max(width, 380)}px`,
-		minWidth: '380px'
-	}
-})
+const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidth))
 
 const handleClose = () => {
 	if (props.submitting) return
@@ -350,14 +347,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .bp-node-chat-dialog {
 	position: absolute;
-	left: 50%;
 	top: 100%;
 	z-index: 1000;
 	margin-top: 16px;
-	max-width: min(520px, calc(100vw - 40px));
-	min-width: 380px;
-	transform: translateX(-50%);
 	pointer-events: auto;
+}
+
+.bp-node-chat-dialog-inner {
+	position: relative;
 	animation: bp-dialog-slide-in 0.2s ease-out;
 }
 
@@ -820,11 +817,11 @@ onBeforeUnmount(() => {
 @keyframes bp-dialog-slide-in {
 	from {
 		opacity: 0;
-		transform: translateX(-50%) translateY(-8px);
+		transform: translateY(-8px);
 	}
 	to {
 		opacity: 1;
-		transform: translateX(-50%) translateY(0);
+		transform: translateY(0);
 	}
 }
 

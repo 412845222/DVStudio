@@ -202,6 +202,7 @@ export const useAIWorkflowTripo3DRequest = (options: {
 			texture_seed: Number.isFinite(textureSeed) && textureSeed >= 0 ? Math.floor(textureSeed) : undefined
 		}
 
+		let imageCount = 0
 		if (mode === 'text_to_model') {
 			if (!payload.prompt) return { ok: false, error: t('tasks.tripo3d.promptRequired') }
 		} else if (mode === 'image_to_model') {
@@ -234,9 +235,9 @@ export const useAIWorkflowTripo3DRequest = (options: {
 			}
 			payload.file = { type: 'png', url: selectedImageUrl }
 			payload.image_url = selectedImageUrl
+			imageCount = 1
 		} else if (mode === 'multiview_to_model') {
-			const viewOrder = ['front', 'left', 'back', 'right']
-			const files: Tripo3DGenerateFile[] = []
+			const viewOrder = ['front', 'left', 'back', 'right'] as const
 			const selectedByView = new Map<string, string>()
 
 			const sortedSelected = [...selectedImages]
@@ -250,18 +251,26 @@ export const useAIWorkflowTripo3DRequest = (options: {
 				}
 			}
 
-			for (const view of viewOrder) {
-				const imgUrl = selectedByView.get(view)
-				if (imgUrl) {
-					files.push({ type: 'png', url: imgUrl, view })
-				}
-			}
-
-			if (files.length < 2 || !selectedByView.has('front')) {
+			if (!selectedByView.has('front') || selectedByView.size < 2) {
 				return { ok: false, error: t('tasks.tripo3d.multiviewRequiresFrontAndMore') }
 			}
 
-			payload.files = files
+			const multiviewImageCount = selectedByView.size
+			const viewKeyInputs: Array<Record<string, string>> = []
+			for (const view of viewOrder) {
+				const imgUrl = selectedByView.get(view)
+				if (imgUrl) {
+					viewKeyInputs.push({ [view]: imgUrl })
+				}
+			}
+
+			imageCount = multiviewImageCount
+			payload.inputs = viewKeyInputs
+			payload.selectedImages = sortedSelected.map(s => ({
+				nodeId: s.nodeId,
+				view: s.view,
+				order: s.order
+			}))
 		} else if (mode === 'texture') {
 			const modelTaskId = getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(linkedModelInput?.modelUrl ?? '').trim()
@@ -287,9 +296,7 @@ export const useAIWorkflowTripo3DRequest = (options: {
 				: getStr('prompt', 'tripo3dPrompt')
 					? 'manual'
 					: 'none',
-			imageCount: mode === 'multiview_to_model'
-				? (payload.files?.length ?? 0)
-				: (payload.image_url || (payload.file && payload.file.url) ? 1 : 0)
+			imageCount
 		}
 	}
 

@@ -86,6 +86,42 @@
 					</WorkflowThreePreviewShell>
 				</div>
 
+				<div v-if="activeDownloadState" class="wf-model3d-download-progress" @pointerdown.stop>
+					<div class="wf-model3d-download-header">
+						<div class="wf-model3d-download-title">
+							<span v-if="activeDownloadIsActive" class="wf-model3d-download-spinner"></span>
+							<span v-else-if="activeDownloadIsDone" class="wf-model3d-download-icon done">✓</span>
+							<span v-else-if="activeDownloadIsFailed" class="wf-model3d-download-icon failed">!</span>
+							{{ activeDownloadIsFailed ? t('nodes.model3d.downloadFailed') : activeDownloadIsDone ? t('nodes.model3d.downloadComplete') : t('nodes.model3d.downloadingModel', { source: activeDownloadState.source }) }}
+						</div>
+						<div class="wf-model3d-download-speed" v-if="activeDownloadIsActive && activeDownloadState.speed > 0">
+							{{ formatSpeed(activeDownloadState.speed) }}
+						</div>
+					</div>
+					<div class="wf-model3d-download-bar-container">
+						<div
+							class="wf-model3d-download-bar-fill"
+							:class="{
+								active: activeDownloadIsActive,
+								done: activeDownloadIsDone,
+								failed: activeDownloadIsFailed
+							}"
+							:style="{ width: `${activeDownloadState.progress}%` }"
+						></div>
+					</div>
+					<div class="wf-model3d-download-meta" v-if="activeDownloadState.total > 0">
+						<span>{{ formatBytes(activeDownloadState.loaded) }} / {{ formatBytes(activeDownloadState.total) }}</span>
+						<span>{{ activeDownloadState.progress }}%</span>
+					</div>
+					<div class="wf-model3d-download-meta" v-else-if="activeDownloadIsActive">
+						<span>{{ formatBytes(activeDownloadState.loaded) }}</span>
+						<span>{{ activeDownloadState.progress }}%</span>
+					</div>
+					<div class="wf-model3d-download-error" v-if="activeDownloadIsFailed && activeDownloadState.error">
+						{{ activeDownloadState.error }}
+					</div>
+				</div>
+
 				<div class="wf-model3d-actions" @pointerdown.stop>
 					<div class="wf-model3d-filemeta">
 						<div class="wf-model3d-filename">{{ sourceNameDisplay }}</div>
@@ -206,6 +242,7 @@ import type {
 	WorkflowThreePreviewState
 } from './three-preview/types'
 import { useI18n } from '../../../i18n'
+import { formatBytes, formatSpeed } from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
 
 const { t } = useI18n()
 
@@ -394,6 +431,8 @@ const upstreamStatusDisplay = computed(() => {
 })
 
 const meshySettings = computed(() => settings.value?.meshyModelSettings ?? null)
+const tripo3dSettings = computed(() => settings.value?.tripo3dModelSettings ?? null)
+
 const meshyFetchFailed = computed(() => {
 	const status = String(meshySettings.value?.taskStatus ?? '').trim()
 	return status === 'fetch-failed'
@@ -402,6 +441,53 @@ const meshyFetchErrorText = computed(() => {
 	return String(
 		meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? t('nodes.model3d.fetchFailed')
 	).trim()
+})
+
+const meshyDownloadState = computed(() => {
+	const stage = meshySettings.value?.downloadStage
+	if (!stage || stage === 'idle') return null
+	return {
+		stage,
+		progress: meshySettings.value?.downloadProgress ?? 0,
+		loaded: meshySettings.value?.downloadLoadedBytes ?? 0,
+		total: meshySettings.value?.downloadTotalBytes ?? 0,
+		speed: meshySettings.value?.downloadSpeedBytesPerSec ?? 0,
+		error: meshySettings.value?.downloadError ?? ''
+	}
+})
+
+const tripo3dDownloadState = computed(() => {
+	const stage = tripo3dSettings.value?.tripo3dDownloadStage
+	if (!stage || stage === 'idle') return null
+	return {
+		stage,
+		progress: tripo3dSettings.value?.tripo3dDownloadProgress ?? 0,
+		loaded: tripo3dSettings.value?.tripo3dDownloadLoadedBytes ?? 0,
+		total: tripo3dSettings.value?.tripo3dDownloadTotalBytes ?? 0,
+		speed: tripo3dSettings.value?.tripo3dDownloadSpeedBytesPerSec ?? 0,
+		error: tripo3dSettings.value?.tripo3dDownloadError ?? ''
+	}
+})
+
+const activeDownloadState = computed(() => {
+	if (tripo3dDownloadState.value) return { ...tripo3dDownloadState.value, source: 'Tripo3D' }
+	if (meshyDownloadState.value) return { ...meshyDownloadState.value, source: 'Meshy' }
+	return null
+})
+
+const activeDownloadIsActive = computed(() => {
+	const state = activeDownloadState.value
+	return state?.stage === 'downloading'
+})
+
+const activeDownloadIsDone = computed(() => {
+	const state = activeDownloadState.value
+	return state?.stage === 'done'
+})
+
+const activeDownloadIsFailed = computed(() => {
+	const state = activeDownloadState.value
+	return state?.stage === 'failed'
 })
 
 const threePreviewState = computed(() => rawThreePreviewState.value)
@@ -885,6 +971,121 @@ onBeforeUnmount(() => {
 	border-radius: 0;
 	background: #0f1720;
 	overflow: hidden;
+}
+
+.wf-model3d-download-progress {
+	display: grid;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
+	background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
+	border-radius: 0;
+}
+
+.wf-model3d-download-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 10px;
+}
+
+.wf-model3d-download-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--vscode-fg);
+	font-weight: 500;
+}
+
+.wf-model3d-download-spinner {
+	width: 14px;
+	height: 14px;
+	border: 2px solid rgb(59 130 246 / 0.3);
+	border-top-color: #3b82f6;
+	border-radius: 50%;
+	animation: wf-model3d-spin 0.8s linear infinite;
+	flex-shrink: 0;
+}
+
+@keyframes wf-model3d-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.wf-model3d-download-icon {
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 11px;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+
+.wf-model3d-download-icon.done {
+	background: rgb(34 197 94 / 0.85);
+	color: #fff;
+}
+
+.wf-model3d-download-icon.failed {
+	background: rgb(239 68 68 / 0.85);
+	color: #fff;
+}
+
+.wf-model3d-download-speed {
+	font-size: 11px;
+	color: #60a5fa;
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+
+.wf-model3d-download-bar-container {
+	width: 100%;
+	height: 6px;
+	background: rgb(255 255 255 / 0.08);
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.wf-model3d-download-bar-fill {
+	height: 100%;
+	width: 0%;
+	border-radius: 3px;
+	transition: width 0.2s ease;
+}
+
+.wf-model3d-download-bar-fill.active {
+	background: linear-gradient(90deg, #2563eb, #3b82f6);
+	box-shadow: 0 0 8px rgb(59 130 246 / 0.5);
+}
+
+.wf-model3d-download-bar-fill.done {
+	background: linear-gradient(90deg, #16a34a, #22c55e);
+	box-shadow: 0 0 8px rgb(34 197 94 / 0.5);
+}
+
+.wf-model3d-download-bar-fill.failed {
+	background: linear-gradient(90deg, #dc2626, #ef4444);
+	box-shadow: 0 0 8px rgb(239 68 68 / 0.5);
+}
+
+.wf-model3d-download-meta {
+	display: flex;
+	justify-content: space-between;
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.wf-model3d-download-error {
+	font-size: 11px;
+	color: #fca5a5;
+	padding-top: 2px;
+	word-break: break-all;
 }
 
 .wf-model3d-gesture-tip {

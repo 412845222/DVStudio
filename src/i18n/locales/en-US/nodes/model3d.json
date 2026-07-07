@@ -40,5 +40,8 @@
   "nodes.model3d.progressInitRenderer": "Initializing renderer",
   "nodes.model3d.progressPrepareModel": "Preparing model resources",
   "nodes.model3d.progressSyncInteraction": "Syncing interaction state",
-  "nodes.model3d.fetchFailed": "Fetch failed"
+  "nodes.model3d.fetchFailed": "Fetch failed",
+  "nodes.model3d.downloadingModel": "Downloading {source} model",
+  "nodes.model3d.downloadComplete": "Download complete",
+  "nodes.model3d.downloadFailed": "Download failed"
 }

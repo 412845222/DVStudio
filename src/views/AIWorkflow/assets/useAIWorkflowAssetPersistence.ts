@@ -2,11 +2,20 @@ import type {
 	BlueprintAssetKind,
 	BlueprintProjectService
 } from '../../../network/BlueprintProjectService'
+import { uploadProjectAsset } from '../../../electronBridge'
 
 type PersistedAssetReference = {
 	url: string
 	absolutePath: string
 	projectRelativePath?: string
+	size?: number
+}
+
+export type ExternalAssetProgress = {
+	loaded: number
+	total: number
+	speed: number
+	percentage: number
 }
 
 type ImportAssetIntoProjectScopePayload = {
@@ -26,6 +35,7 @@ type UploadAssetResult = {
 		absolutePath?: string
 		projectRelativePath?: string
 		relativePath?: string
+		size?: number
 	}
 }
 
@@ -35,6 +45,7 @@ type ImportAssetResult = {
 	absolutePath?: string
 	projectRelativePath?: string
 	relativePath?: string
+	size?: number
 }
 
 type UseAIWorkflowAssetPersistenceOptions = {
@@ -43,6 +54,87 @@ type UseAIWorkflowAssetPersistenceOptions = {
 	resolveBackendUrl: (value: string) => string
 	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
 	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportAssetResult | null | undefined>
+}
+
+export function formatBytes(bytes: number): string {
+	if (!bytes || bytes <= 0) return '0 B'
+	if (bytes < 1024) return `${bytes} B`
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+	return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+export function formatSpeed(bytesPerSec: number): string {
+	if (!bytesPerSec || bytesPerSec <= 0) return '0 B/s'
+	if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`
+	if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`
+	if (bytesPerSec < 1024 * 1024 * 1024) return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`
+	return `${(bytesPerSec / (1024 * 1024 * 1024)).toFixed(2)} GB/s`
+}
+
+async function downloadUrlWithProgress(
+	url: string,
+	onProgress?: (info: ExternalAssetProgress) => void,
+	signal?: AbortSignal
+): Promise<{ buffer: ArrayBuffer; contentType: string; totalBytes: number }> {
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest()
+		xhr.open('GET', url, true)
+		xhr.responseType = 'arraybuffer'
+		xhr.timeout = 0
+
+		let startTime = Date.now()
+		let lastLoaded = 0
+		let lastTime = startTime
+		let speed = 0
+		let totalBytes = 0
+
+		const updateSpeed = (loaded: number, now: number) => {
+			const elapsed = (now - lastTime) / 1000
+			if (elapsed >= 0.3) {
+				const delta = loaded - lastLoaded
+				speed = delta / elapsed
+				lastLoaded = loaded
+				lastTime = now
+			}
+		}
+
+		xhr.onprogress = (event) => {
+			if (!onProgress) return
+			const loaded = event.loaded
+			totalBytes = event.lengthComputable ? event.total : 0
+			const now = Date.now()
+			updateSpeed(loaded, now)
+			const percentage = totalBytes > 0 ? Math.min(99, Math.round((loaded / totalBytes) * 100)) : 0
+			onProgress({ loaded, total: totalBytes, speed, percentage })
+		}
+
+		xhr.onload = () => {
+			if (xhr.status >= 200 && xhr.status < 300) {
+				const buffer = xhr.response as ArrayBuffer
+				const total = buffer.byteLength
+				const now = Date.now()
+				speed = total / Math.max(0.001, (now - startTime) / 1000)
+				onProgress?.({ loaded: total, total, speed, percentage: 100 })
+				resolve({
+					buffer,
+					contentType: xhr.getResponseHeader('Content-Type') || 'application/octet-stream',
+					totalBytes: total
+				})
+			} else {
+				reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`))
+			}
+		}
+
+		xhr.onerror = () => reject(new Error('Network error'))
+		xhr.onabort = () => reject(new Error('Download aborted'))
+
+		if (signal) {
+			signal.addEventListener('abort', () => xhr.abort())
+		}
+
+		xhr.send(null)
+	})
 }
 
 export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersistenceOptions) => {
@@ -84,7 +176,8 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			url: options.resolveBackendUrl(String(asset.url || '')),
 			absolutePath: String(asset.absolutePath || ''),
 			projectRelativePath:
-				String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined
+				String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined,
+			size: Number(asset.size || 0) || undefined
 		}
 		if (!next.url) throw new Error('empty uploaded asset url')
 		localUrlUploadedAssetCache.set(cacheKey, next)
@@ -96,6 +189,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		name: string
 		sourceUrl?: string
 		sourcePath?: string
+		onProgress?: (info: ExternalAssetProgress) => void
 	}) => {
 		const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
 		const projectId =
@@ -125,7 +219,41 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			return {
 				url: uploaded.url,
 				absolutePath: uploaded.absolutePath,
-				projectRelativePath: uploaded.projectRelativePath
+				projectRelativePath: uploaded.projectRelativePath,
+				size: uploaded.size
+			}
+		}
+
+		const isExternalHttp = /^https?:\/\//i.test(sourceUrl)
+		const shouldUseProgressDownload = isExternalHttp && payload.kind === 'file' && projectId > 0 && typeof payload.onProgress === 'function'
+
+		if (shouldUseProgressDownload) {
+			try {
+				const { buffer, contentType, totalBytes } = await downloadUrlWithProgress(
+					sourceUrl,
+					payload.onProgress
+				)
+				const ext = safeName.includes('.') ? '' : '.glb'
+				const uploadName = safeName + ext
+				const uploaded = await uploadProjectAsset({
+					projectId,
+					kind: 'file',
+					name: uploadName,
+					arrayBuffer: buffer,
+					contentType,
+					bucket: 'assets'
+				})
+				if (uploaded?.ok && uploaded.asset) {
+					const asset = uploaded.asset
+					return {
+						url: options.resolveBackendUrl(String(asset.url || '')),
+						absolutePath: String(asset.absolutePath || ''),
+						projectRelativePath: String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined,
+						size: totalBytes
+					}
+				}
+			} catch (e) {
+				console.warn('[AssetPersistence] Progress download failed, falling back to IPC:', e)
 			}
 		}
 
@@ -147,7 +275,8 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 					projectRelativePath:
 						String(
 							imported.projectRelativePath || imported.relativePath || ''
-						).trim() || undefined
+						).trim() || undefined,
+					size: Number(imported.size || 0) || undefined
 				}
 			}
 		}
@@ -160,14 +289,13 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 				return {
 					url: uploaded.url,
 					absolutePath: uploaded.absolutePath || sourcePath,
-					projectRelativePath: uploaded.projectRelativePath
+					projectRelativePath: uploaded.projectRelativePath,
+					size: uploaded.size
 				}
 			} catch {
-				// Keep original sourceUrl below if fetch/import fails.
 			}
 		}
 
-		// 图片/视频节点不允许远程地址直渲，导入失败时直接返回空。
 		if (payload.kind === 'image' || payload.kind === 'video') return null
 
 		return sourceUrl

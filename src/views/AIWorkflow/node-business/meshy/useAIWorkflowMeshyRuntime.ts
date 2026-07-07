@@ -1,3 +1,4 @@
+import type { ExternalAssetProgress } from '../../assets/useAIWorkflowAssetPersistence'
 import { isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import type {
@@ -88,6 +89,42 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			return isRecord(m3dSettings.meshyModelSettings) ? m3dSettings.meshyModelSettings : {}
 		}
 		return isRecord(n.meshySettings) ? n.meshySettings : {}
+	}
+
+	const commitMeshyDownloadProgress = (
+		nodeId: string,
+		node: WorkflowNodeLike,
+		info: {
+			stage: 'idle' | 'downloading' | 'done' | 'failed'
+			progress?: number
+			loaded?: number
+			total?: number
+			speed?: number
+			error?: string
+		}
+	) => {
+		const patch: Record<string, unknown> = {
+			downloadStage: info.stage
+		}
+		if (info.progress != null) patch.downloadProgress = info.progress
+		if (info.loaded != null) patch.downloadLoadedBytes = info.loaded
+		if (info.total != null) patch.downloadTotalBytes = info.total
+		if (info.speed != null) patch.downloadSpeedBytesPerSec = info.speed
+		if (info.error != null) patch.downloadError = info.error
+
+		if (node.type === 'image') {
+			options.store.commit('setNodeImageSettings', {
+				nodeId,
+				imageSettings: { meshyImageSettings: patch }
+			})
+		} else if (node.type === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: { meshyModelSettings: patch }
+			})
+		} else {
+			options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
+		}
 	}
 
 	const applyMeshyTaskResult = async (nodeId: string, taskRaw: unknown) => {
@@ -246,12 +283,29 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						}
 					}
 				} else if (preferredModelUrl) {
+					commitMeshyDownloadProgress(nodeId, node, {
+						stage: 'downloading',
+						progress: 0,
+						loaded: 0,
+						total: 0,
+						speed: 0,
+						error: ''
+					})
 					const fileName = `meshy_${task.taskId || nodeId}.${format}`
 					const persisted = await options.persistExternalAssetToProject({
 						kind: 'file',
 						name: fileName,
 						sourceUrl: preferredModelUrl,
-						sourcePath: task.sourceModelUrl || undefined
+						sourcePath: task.sourceModelUrl || undefined,
+						onProgress: (info: ExternalAssetProgress) => {
+							commitMeshyDownloadProgress(nodeId, node, {
+								stage: 'downloading',
+								progress: info.percentage,
+								loaded: info.loaded,
+								total: info.total,
+								speed: info.speed
+							})
+						}
 					})
 					patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
 					patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
@@ -318,9 +372,14 @@ export const useAIWorkflowMeshyRuntime = (options: {
 
 						options.store.commit('setNodeResource', { nodeId, resourceId })
 					}
+					commitMeshyDownloadProgress(nodeId, node, { stage: 'done', progress: 100 })
 				}
 			} catch (e: unknown) {
+				const errMsg = e instanceof Error ? e.message : String(e)
 				console.error('[Meshy Runtime] 产物下载/绑定失败，状态仍标记为成功:', e)
+				if (!isImageTarget && preferredModelUrl) {
+					commitMeshyDownloadProgress(nodeId, node, { stage: 'failed', error: errMsg })
+				}
 				if (!patch.meshyOutputAssetUrl) {
 					if (isImageTarget) {
 						const imageSource = preferredImageUrl || preferredModelUrl

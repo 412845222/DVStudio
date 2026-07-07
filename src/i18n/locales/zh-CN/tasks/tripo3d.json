@@ -127,5 +127,12 @@
   "tasks.tripo3d.pollStatusFailedConsecutiveToast": "Tripo3D 任务状态轮询连续失败，已停止轮询",
   "tasks.tripo3d.pollStatusException": "轮询状态异常",
   "tasks.tripo3d.pollStatusExceptionToast": "Tripo3D 任务状态轮询异常，已停止轮询",
-  "tasks.tripo3d.taskIdLostCannotRecover": "任务 ID 丢失，无法恢复任务状态"
+  "tasks.tripo3d.taskIdLostCannotRecover": "任务 ID 丢失，无法恢复任务状态",
+  "tasks.tripo3d.model3dTaskNodeName": "Tripo3D 3D模型",
+  "tasks.tripo3d.nodeCreatedPullingArtifacts": "已创建新的3D模型节点，正在拉取产物...",
+  "tasks.tripo3d.taskNotCompletedNoModel": "任务尚未完成或未生成模型URL，无法创建节点。",
+  "tasks.tripo3d.pullingModelArtifacts": "Tripo3D：正在拉取模型产物...",
+  "tasks.tripo3d.model3dPulledBoundToNewNode": "Tripo3D 3D 模型已拉取并绑定到新创建的模型节点。",
+  "tasks.tripo3d.artifactsSyncedToNodeGeneric": "Tripo3D 产物已同步到节点。",
+  "tasks.tripo3d.nodeCreatedFromTaskCenter": "已从 Tripo3D 任务中心创建节点。"
 }
