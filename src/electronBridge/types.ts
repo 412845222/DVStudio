@@ -318,6 +318,25 @@ export type UploadedProjectAsset = {
 	sourcePath?: string
 }
 
+export type EditorModelInfo = {
+	id: string
+	name: string
+	url: string
+	assetUrl?: string
+}
+
+export type Open3DEditorPayload = {
+	nodeId: string
+	projectId?: number
+	models: EditorModelInfo[]
+}
+
+export type Open3DEditorResult = {
+	ok: boolean
+	error?: string
+	focused?: boolean
+}
+
 export type CloudQuotaInfo = {
 	totalBytes: number
 	availableBytes: number

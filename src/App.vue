@@ -5,7 +5,8 @@
 			electron: isElectronRuntime,
 			'is-preview-window': isPreviewWindow,
 			'is-resource-manager-window': isResourceManagerWindow,
-			'is-template-center-window': isTemplateCenterWindow
+			'is-template-center-window': isTemplateCenterWindow,
+			'is-3d-editor-window': is3DEditorWindow
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
@@ -92,7 +93,7 @@ const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/template-center')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/template-center')
 })
 
 const isResourceManagerWindow = computed(() => {
@@ -107,6 +108,10 @@ const isImageMarkupWindow = computed(() => {
 	return String(route.path || '').startsWith('/image-markup-preview')
 })
 
+const is3DEditorWindow = computed(() => {
+	return String(route.path || '').startsWith('/3d-editor')
+})
+
 const dialogTitle = computed(() => {
 	const query = route.query as Record<string, string>
 	if (isResourceManagerWindow.value) {
@@ -114,6 +119,9 @@ const dialogTitle = computed(() => {
 	}
 	if (isImageMarkupWindow.value) {
 		return String(query.name || '图片预览')
+	}
+	if (is3DEditorWindow.value) {
+		return String(query.title || '3D 模型编辑器')
 	}
 	if (isTemplateCenterWindow.value) {
 		return String(query.title || '模板中心')

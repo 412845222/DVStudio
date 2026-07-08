@@ -265,6 +265,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		reload: () => invoke('dweb:window:reload'),
 		openDevTools: () => invoke('dweb:window:openDevTools'),
 		close: () => invoke('dweb:window:close'),
+		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 	},
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),

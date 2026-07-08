@@ -5,17 +5,86 @@ declare module 'three' {
 }
 
 declare module 'three/examples/jsm/controls/OrbitControls.js' {
-  export const OrbitControls: any
+  export class OrbitControls {
+    constructor(...args: any[])
+    [key: string]: any
+  }
 }
 
 declare module 'three/examples/jsm/controls/TransformControls.js' {
-  export const TransformControls: any
+  export class TransformControls {
+    constructor(...args: any[])
+    [key: string]: any
+  }
 }
 
 declare module 'three/examples/jsm/loaders/GLTFLoader.js' {
-  export const GLTFLoader: any
+  export class GLTFLoader {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/loaders/DRACOLoader.js' {
+  export class DRACOLoader {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/loaders/OBJLoader.js' {
+  export class OBJLoader {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/postprocessing/EffectComposer.js' {
+  export class EffectComposer {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/postprocessing/RenderPass.js' {
+  export class RenderPass {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/postprocessing/UnrealBloomPass.js' {
+  export class UnrealBloomPass {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/postprocessing/ShaderPass.js' {
+  export class ShaderPass {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/shaders/FXAAShader.js' {
+  export const FXAAShader: any
+}
+
+declare module 'three/examples/jsm/environments/RoomEnvironment.js' {
+  export class RoomEnvironment {
+    constructor(...args: any[])
+    [key: string]: any
+  }
 }
 
 declare module 'three/examples/jsm/exporters/GLTFExporter.js' {
-  export const GLTFExporter: any
+  export class GLTFExporter {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/lights/RectAreaLightUniformsLib.js' {
+  export const RectAreaLightUniformsLib: any
 }

@@ -15,6 +15,8 @@ import type {
 	CleanupOldProjectResult,
 	DirectoryPickResult,
 	UploadedProjectAsset,
+	Open3DEditorPayload,
+	Open3DEditorResult,
 	CloudTemplatesPlatformResult,
 	CloudTemplatesQuotaResult,
 	CloudTemplatesListResult,
@@ -547,6 +549,18 @@ export async function openDevTools(): Promise<{ ok: boolean; opened?: boolean; e
 	}
 }
 
+export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult> {
+	if (!window?.dweb?.window?.open3dEditor) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.open3dEditor(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
 export async function getCloudTemplatesPlatform(): Promise<CloudTemplatesPlatformResult | null> {
 	if (!window?.dweb?.cloudTemplates?.getPlatform) return null
 	try {
@@ -605,4 +619,9 @@ export async function deleteCloudTemplate(
 	} catch (e: unknown) {
 		return { ok: false, errMsg: getErrorMessage(e) }
 	}
+}
+
+export type {
+	Open3DEditorPayload,
+	Open3DEditorResult
 }

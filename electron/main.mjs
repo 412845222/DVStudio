@@ -1588,6 +1588,92 @@ function registerIpc() {
 		return { ok: true, data: payload }
 	})
 
+	let model3dEditorWindow = null
+	ipcMain.handle('dweb:model3d-editor:open', async (_e, payload) => {
+		console.log('[main] dweb:model3d-editor:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const title = String(payload?.title || '3D 模型编辑器').slice(0, 200)
+			const models = Array.isArray(payload?.models) ? payload.models : []
+
+			if (!nodeId && models.length === 0) {
+				return { ok: false, error: 'missing nodeId or models' }
+			}
+
+			if (model3dEditorWindow && !model3dEditorWindow.isDestroyed()) {
+				model3dEditorWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
+			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			if (models.length > 0) {
+				queryParts.push(`models=${encodeURIComponent(JSON.stringify(models))}`)
+			}
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/3d-editor${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/3d-editor${queryStr}`
+
+			console.log('[main][model3d-editor] targetUrl:', targetUrl)
+
+			model3dEditorWindow = new BrowserWindow({
+				width: 1400,
+				height: 900,
+				minWidth: 1024,
+				minHeight: 700,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { model3dEditorWindow.setMenuBarVisibility(false) } catch {}
+			try { model3dEditorWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 80
+				const offsetY = 80
+				model3dEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			model3dEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[model3d-editor:${level}] ${message} (${sourceId}:${line})`)
+			})
+			model3dEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[model3d-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			model3dEditorWindow.on('closed', () => {
+				model3dEditorWindow = null
+			})
+
+			await model3dEditorWindow.loadURL(targetUrl)
+			console.log('[main][model3d-editor] loadURL done, URL:', model3dEditorWindow.webContents.getURL())
+			if (isDev) {
+				model3dEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][model3d-editor] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	let templateCenterWindow = null
 	let templateCenterLatestData = null
 
