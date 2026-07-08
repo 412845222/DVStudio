@@ -17,6 +17,17 @@ import type {
 	CleanupOldProjectResult,
 	DirectoryPickResult,
 	UploadedProjectAsset,
+	CloudTemplatesPlatformResult,
+	CloudTemplatesQuotaResult,
+	CloudTemplatesListResult,
+	CloudTemplatesUploadPayload,
+	CloudTemplatesUploadResult,
+	CloudTemplatesDownloadPayload,
+	CloudTemplatesDownloadResult,
+	CloudTemplatesDeletePayload,
+	CloudTemplatesDeleteResult,
+	Open3DEditorPayload,
+	Open3DEditorResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -31,11 +42,34 @@ export type ResourceManagerEventPayload = {
 	data?: unknown
 }
 
+export type TemplateCenterEventPayload = {
+	event: string
+	data?: unknown
+}
+
 declare global {
 	const __DWEB_REPO_URL__: string
 	const __DWEB_APP_VERSION__: string
 	const __DWEB_APP_NAME__: string
 	const __DWEB_APP_COPYRIGHT__: string
+	const __DWEB_HOMEPAGE_URL__: string
+	const __DWEB_BILIBILI_URL__: string
+	const __DWEB_ISSUES_URL__: string
+
+	type DwebUpdateCheckResult = {
+		ok: boolean
+		skipped?: boolean
+		reason?: string
+		hasUpdate?: boolean
+		currentVersion: string
+		latestVersion?: string
+		releaseUrl?: string
+		releaseNotes?: string
+		publishedAt?: string
+		isPrerelease?: boolean
+		isDraft?: boolean
+		error?: string
+	}
 
 	type DwebAppInfo = {
 		appName: string
@@ -45,6 +79,8 @@ declare global {
 		license: string
 		homepage: string
 		repoUrl: string
+		bilibiliUrl: string
+		issuesUrl: string
 	}
 
 	type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
@@ -91,6 +127,9 @@ declare global {
 		__DWEB_APP_VERSION__?: string
 		__DWEB_APP_NAME__?: string
 		__DWEB_APP_COPYRIGHT__?: string
+		__DWEB_HOMEPAGE_URL__?: string
+		__DWEB_BILIBILI_URL__?: string
+		__DWEB_ISSUES_URL__?: string
 		__DWEB_BACKEND_BASE_URL?: string
 		__DWEB_BACKEND_BASE_URL__?: string
 		__DWEB_BACKEND_MODE__?: 'normal' | 'migration'
@@ -109,6 +148,8 @@ declare global {
 		dweb?: {
 			common: {
 				getAppInfo?(): DwebAppInfo
+				checkForUpdate?(): Promise<DwebUpdateCheckResult>
+				isSteamVersion?(): Promise<{ ok: boolean; isSteam: boolean }>
 				getBackendBaseUrl(): Promise<string>
 				getBackendRuntimeState(): Promise<BackendRuntimeState>
 				onBackendRuntimeStateChanged(handler: (state: BackendRuntimeState) => void): number
@@ -145,6 +186,7 @@ declare global {
 				reload(): Promise<{ ok: boolean; error?: string }>
 				openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }>
 				close(): Promise<{ ok: boolean; error?: string }>
+				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -354,6 +396,21 @@ declare global {
 				offResourceManagerNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
 				onResourceManagerData(handler: (payload: ResourceManagerDataPayload) => void): number
 				offResourceManagerData(listenerId: number): Promise<{ ok: boolean; error?: string }>
+
+				openTemplateCenter(payload: { projectId?: number; title?: string }): Promise<{ ok: boolean; error?: string }>
+				closeTemplateCenter(): Promise<{ ok: boolean; error?: string }>
+				focusTemplateCenter(): Promise<{ ok: boolean; error?: string }>
+				sendTemplateCenterData(payload: unknown): Promise<{ ok: boolean; error?: string }>
+				broadcastTemplateCenterEvent(payload: TemplateCenterEventPayload): Promise<{ ok: boolean; error?: string }>
+				notifyTemplateCenterEvent(payload: TemplateCenterEventPayload): Promise<{ ok: boolean; error?: string }>
+				getTemplateCenterData(): unknown
+				requestTemplateCenterData(): Promise<{ ok: boolean; data?: unknown; error?: string }>
+				onTemplateCenterEvent(handler: (payload: TemplateCenterEventPayload) => void): number
+				offTemplateCenterEvent(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onTemplateCenterNotify(handler: (payload: TemplateCenterEventPayload) => void): number
+				offTemplateCenterNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
+				onTemplateCenterData(handler: (payload: unknown) => void): number
+				offTemplateCenterData(listenerId: number): Promise<{ ok: boolean; error?: string }>
 			}
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>
@@ -372,6 +429,14 @@ declare global {
 				dlcGetInstalled(): Promise<DwebPlatformDlcInfo[]>
 				onEvent(handler: (payload: PlatformEventPayload) => void): number
 				offEvent(listenerId: number): { ok: boolean }
+			}
+			cloudTemplates: {
+				getPlatform(): Promise<CloudTemplatesPlatformResult>
+				getQuota(): Promise<CloudTemplatesQuotaResult>
+				list(options?: { forceRefresh?: boolean }): Promise<CloudTemplatesListResult>
+				upload(payload: CloudTemplatesUploadPayload): Promise<CloudTemplatesUploadResult>
+				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
+				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>
 			}
 			meshy?: any
 			seedance?: any

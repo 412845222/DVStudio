@@ -44,12 +44,7 @@
 	</Teleport>
 </template>
 
-<script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type ToastActionItem = {
 	label: string
 	onClick?: () => void
@@ -62,6 +57,13 @@ export type ToastItem = {
 	persistent?: boolean
 	actions?: ToastActionItem[]
 }
+</script>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	items: ToastItem[]

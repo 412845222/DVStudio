@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL } from './config.mjs'
+import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL, APP_BILIBILI_URL, APP_ISSUES_URL } from './config.mjs'
 
 function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
@@ -145,12 +145,42 @@ ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 	}
 })
 
-// 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
-const BACKEND_BASE_URL = await invoke('dweb:getBackendBaseUrl')
-contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', BACKEND_BASE_URL)
+// ===== 模板中心窗口：预注册监听器 + 数据缓存 =====
+const TEMPLATE_CENTER_DATA_CHANNEL = 'dweb:template-center:data'
+let templateCenterLatestData = null
+const templateCenterDataHandlers = new Map()
+let templateCenterDataListenerSeed = 0
 
-const CLIENT_SETTINGS = await invoke('dweb:settings:get')
-contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', CLIENT_SETTINGS?.ok ? CLIENT_SETTINGS.data : null)
+ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
+	try {
+		console.log(`[preload:template-center] received data:`, JSON.stringify(payload))
+		templateCenterLatestData = payload
+		for (const handler of templateCenterDataHandlers.values()) {
+			try { handler(payload) } catch (err) { console.warn('[preload:template-center] handler error:', err) }
+		}
+	} catch (err) {
+		console.warn('[preload:template-center] failed to process data:', err)
+	}
+})
+
+// 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
+// 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
+contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL__', '')
+
+// Client settings: 不阻塞 preload，先设置 null，异步加载后更新
+contextBridge.exposeInMainWorld('__DWEB_CLIENT_SETTINGS', null)
+invoke('dweb:settings:get')
+	.then((result) => {
+		if (result?.ok && result.data) {
+			try {
+				const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
+				const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+				if (canAssign) window.__DWEB_CLIENT_SETTINGS = result.data
+			} catch {}
+		}
+	})
+	.catch(() => {})
 
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')
@@ -182,7 +212,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			license: APP_LICENSE,
 			homepage: APP_HOMEPAGE,
 			repoUrl: APP_REPO_URL,
+			bilibiliUrl: APP_BILIBILI_URL,
+			issuesUrl: APP_ISSUES_URL,
 		}),
+		checkForUpdate: () => invoke('dweb:system:check-update'),
+		isSteamVersion: () => invoke('dweb:system:is-steam'),
 		getBackendBaseUrl: () => invoke('dweb:getBackendBaseUrl'),
 		getBackendRuntimeState: () => invoke('dweb:backendRuntime:getState'),
 		onBackendRuntimeStateChanged: (handler) => {
@@ -231,6 +265,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		reload: () => invoke('dweb:window:reload'),
 		openDevTools: () => invoke('dweb:window:openDevTools'),
 		close: () => invoke('dweb:window:close'),
+		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 	},
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),
@@ -279,6 +314,12 @@ contextBridge.exposeInMainWorld('dweb', {
 				get: (payload) => invoke('dweb:localdb:video:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
 				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
+			},
+			tripo3d: {
+				list: (payload) => invoke('dweb:localdb:tripo3d:list', payload || {}),
+				get: (payload) => invoke('dweb:localdb:tripo3d:get', payload || {}),
+				upsert: (payload) => invoke('dweb:localdb:tripo3d:upsert', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:tripo3d:remove', payload || {}),
 			},
 			apiKeys: {
 				list: () => invoke('dweb:localdb:apiKeys:list'),
@@ -401,6 +442,78 @@ contextBridge.exposeInMainWorld('dweb', {
 			resourceManagerDataHandlers.delete(id)
 			return { ok: true }
 		},
+
+		// ===== 模板中心原生窗口 =====
+		openTemplateCenter: (payload) => {
+			return invoke('dweb:template-center:open', payload || {})
+		},
+		closeTemplateCenter: () => invoke('dweb:template-center:close'),
+		focusTemplateCenter: () => invoke('dweb:template-center:focus'),
+		sendTemplateCenterData: (payload) => {
+			return invoke('dweb:template-center:send-data', payload || {})
+		},
+		broadcastTemplateCenterEvent: (payload) => invoke('dweb:template-center:broadcast', payload || {}),
+		notifyTemplateCenterEvent: (payload) => invoke('dweb:template-center:notify', payload || {}),
+		getTemplateCenterData: () => templateCenterLatestData,
+		requestTemplateCenterData: () => invoke('dweb:template-center:request-data', {}),
+
+		onTemplateCenterEvent: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:template-center:event'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.error('[preload][template-center:event] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offTemplateCenterEvent: (listenerId) => {
+			const CHANNEL = 'dweb:template-center:event'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+
+		onTemplateCenterNotify: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const CHANNEL = 'dweb:template-center:notify'
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.error('[preload][template-center:notify] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on(CHANNEL, wrapped)
+			return id
+		},
+		offTemplateCenterNotify: (listenerId) => {
+			const CHANNEL = 'dweb:template-center:notify'
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener(CHANNEL, wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+
+		onTemplateCenterData: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++templateCenterDataListenerSeed
+			templateCenterDataHandlers.set(id, handler)
+			if (templateCenterLatestData !== null) {
+				try { handler(templateCenterLatestData) } catch (err) { console.error('[preload][template-center:data] handler error:', err) }
+			}
+			return id
+		},
+		offTemplateCenterData: (listenerId) => {
+			const id = Number(listenerId || 0)
+			if (!templateCenterDataHandlers.has(id)) return { ok: false }
+			templateCenterDataHandlers.delete(id)
+			return { ok: true }
+		},
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
@@ -439,6 +552,18 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
+	},
+	// ===== Tripo3D 3D 模型生成 =====
+	tripo3d: {
+		health: () => invoke('dweb:tripo3d:health'),
+		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
+		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
+		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
+		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),
+		stop: (payload) => invoke('dweb:tripo3d:stop', payload || {}),
+		deleteTask: (payload) => invoke('dweb:tripo3d:delete', payload || {}),
+		balance: () => invoke('dweb:tripo3d:balance'),
+		uploadFile: (payload) => invoke('dweb:tripo3d:upload-file', payload || {}),
 	},
 	// ===== Gemini 图片生成任务 =====
 	gemini: {
@@ -570,6 +695,11 @@ contextBridge.exposeInMainWorld('dweb', {
 		cancel: (payload) => invoke('dweb:cli:cancel', payload || {}),
 		getSession: (payload) => invoke('dweb:cli:get-session', payload || {}),
 		listSessions: () => invoke('dweb:cli:list-sessions'),
+		checkEnvironment: (payload) => invoke('dweb:cli:check-environment', payload || {}),
+		listModels: (payload) => invoke('dweb:cli:list-models', payload || {}),
+		getConfig: (payload) => invoke('dweb:cli:get-config', payload || {}),
+		saveConfig: (payload) => invoke('dweb:cli:save-config', payload || {}),
+		runFix: (payload) => invoke('dweb:cli:run-fix', payload || {}),
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),
@@ -601,5 +731,13 @@ contextBridge.exposeInMainWorld('dweb', {
 			platformListenerMap.delete(id)
 			return { ok: true }
 		},
+	},
+	cloudTemplates: {
+		getPlatform: () => invoke('dweb:cloud-templates:get-platform'),
+		getQuota: () => invoke('dweb:cloud-templates:get-quota'),
+		list: (options) => invoke('dweb:cloud-templates:list', options || {}),
+		upload: (payload) => invoke('dweb:cloud-templates:upload', payload || {}),
+		download: (payload) => invoke('dweb:cloud-templates:download', payload || {}),
+		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {}),
 	},
 })

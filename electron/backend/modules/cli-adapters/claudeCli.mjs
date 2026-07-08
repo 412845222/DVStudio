@@ -6,7 +6,7 @@
  */
 
 import { spawn } from 'child_process';
-import { BaseCLIAdapter, CLIEventType, commandExists, findCommandPath } from './base.mjs';
+import { BaseCLIAdapter, CLIEventType, commandExists, findCommandPath, getProxyEnvVars } from './base.mjs';
 import logger from '../../core/logger.mjs';
 
 /**
@@ -15,9 +15,15 @@ import logger from '../../core/logger.mjs';
 export class ClaudeCliAdapter extends BaseCLIAdapter {
   constructor(cliConfig = {}) {
     super(cliConfig);
-    this.commandName = 'claude';
-    this.displayName = 'Claude Code';
     this.processes = new Map(); // sessionId -> { proc, stdin }
+  }
+
+  get commandName() {
+    return 'claude';
+  }
+
+  get displayName() {
+    return 'Claude Code';
   }
 
   /**
@@ -95,9 +101,10 @@ export class ClaudeCliAdapter extends BaseCLIAdapter {
 
     // 使用 --print 模式进行初始连接测试
     const testArgs = [...args, '--print', '--', 'test'];
+    const proxyEnv = getProxyEnvVars();
     
     const proc = spawn(this.commandName, testArgs, {
-      env: { ...process.env, ...this.cliConfig.env, NO_COLOR: '1' },
+      env: { ...process.env, ...proxyEnv, ...this.cliConfig.env, NO_COLOR: '1' },
       cwd: options.cwd || process.cwd(),
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -166,8 +173,9 @@ export class ClaudeCliAdapter extends BaseCLIAdapter {
     try { proc.kill(); } catch {}
 
     // 启动新进程发送消息
+    const msgProxyEnv = getProxyEnvVars();
     const newProc = spawn(this.commandName, messageArgs, {
-      env: { ...process.env, ...this.cliConfig.env, NO_COLOR: '1' },
+      env: { ...process.env, ...msgProxyEnv, ...this.cliConfig.env, NO_COLOR: '1' },
       cwd: options.cwd || process.cwd(),
       shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],

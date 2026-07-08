@@ -411,6 +411,92 @@ export type MeshyBalanceResponse =
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
 
+type Tripo3DGenerateResponse =
+	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DTaskResponse =
+	| {
+			ok: true
+			mode: string
+			taskId: string
+			status: string
+			progress: number
+			thumbnailUrl: string
+			modelUrl: string
+			statusText?: string
+			errorMessage?: string
+			raw?: unknown
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DTaskMirrorItem = {
+	id: number
+	taskId: string
+	mode: string
+	status: string
+	progress: number
+	prompt: string
+	negativePrompt: string
+	modelVersion: string
+	faceLimit: number
+	texture: boolean
+	pbr: boolean
+	thumbnailUrl?: string
+	modelUrl?: string
+	localAssetUrl?: string
+	localAssetPath?: string
+	errorMessage?: string
+	statusText?: string
+	nodeId?: string
+	projectId?: number | null
+	createdAt: string
+	updatedAt: string
+	requestPayload?: Record<string, unknown>
+	responsePayload?: Record<string, unknown>
+}
+
+type Tripo3DTasksListResponse =
+	| {
+			ok: true
+			items: Tripo3DTaskMirrorItem[]
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DTaskDetailResponse =
+	| {
+			ok: true
+			item: Tripo3DTaskMirrorItem
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DTaskActionResponse =
+	| {
+			ok: true
+			taskId: string
+			status?: string
+			deleted?: boolean
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DBalanceResponse =
+	| {
+			ok: true
+			available: boolean
+			configured: boolean
+			displayText: string
+			detail?: string
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
+type Tripo3DUploadFileResponse =
+	| {
+			ok: true
+			fileToken: string
+			raw?: Record<string, unknown>
+	  }
+	| { ok: false; error: string; status?: number; baseUrl?: string }
+
 type JobResponse =
 	| {
 			ok: true
@@ -487,7 +573,7 @@ const extractBodyError = (
 }
 
 function isIpcAvailable(): boolean {
-	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.meshy && !!(window as any).dweb?.seedance
+	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.meshy && !!(window as any).dweb?.seedance && !!(window as any).dweb?.tripo3d
 }
 
 function isThirdPartyIpcAvailable(): boolean {
@@ -2816,6 +2902,301 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return (await res.json()) as MeshyBalanceResponse
+	}
+
+	async tripo3dGenerate(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.generate(payload)
+				if (ipcResult && typeof ipcResult === 'object' && 'ok' in ipcResult) {
+					return ipcResult as Tripo3DGenerateResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DGenerateResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/generate failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/generate failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DGenerateResponse
+	}
+
+	async tripo3dTask(taskId: string): Promise<Tripo3DTaskResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.getTask({ taskId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/task failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DTaskResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DTaskResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/task failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/task failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DTaskResponse
+	}
+
+	async tripo3dTasks(query?: {
+		status?: string
+		limit?: number
+	}): Promise<Tripo3DTasksListResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.listTasks(query || {})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/tasks failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DTasksListResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DTasksListResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/tasks failed via IPC'
+				}
+			}
+		}
+		const params = new URLSearchParams()
+		if (query?.status) params.set('status', query.status)
+		if (query?.limit) params.set('limit', String(query.limit))
+		const qs = params.toString()
+		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/tasks${qs ? `?${qs}` : ''}`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/tasks failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DTasksListResponse
+	}
+
+	async tripo3dTaskDetail(taskId: string): Promise<Tripo3DTaskDetailResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.taskDetail({ taskId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/task-detail failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DTaskDetailResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DTaskDetailResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/task-detail failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/detail`), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/task-detail failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DTaskDetailResponse
+	}
+
+	async tripo3dStop(taskId: string): Promise<Tripo3DTaskActionResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.stop({ taskId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/stop failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DTaskActionResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DTaskActionResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/stop failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/stop`), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken)
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/stop failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DTaskActionResponse
+	}
+
+	async tripo3dDelete(taskId: string): Promise<Tripo3DTaskActionResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.deleteTask({ taskId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/delete failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DTaskActionResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DTaskActionResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/delete failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`), {
+			method: 'DELETE',
+			headers: jsonHeaders(this.devToken)
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/delete failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DTaskActionResponse
+	}
+
+	async tripo3dBalance(): Promise<Tripo3DBalanceResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.balance()
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/balance failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DBalanceResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DBalanceResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/balance failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/balance'), {
+			method: 'GET',
+			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/balance failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DBalanceResponse
+	}
+
+	async tripo3dUploadFile(payload: {
+		fileData: string
+		fileName?: string
+		fileType?: string
+	}): Promise<Tripo3DUploadFileResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.uploadFile(payload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return {
+							ok: false,
+							error: ipcResult.error || 'tripo3d/upload-file failed via IPC'
+						}
+					}
+					return ipcResult as Tripo3DUploadFileResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DUploadFileResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/upload-file failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/upload-file'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/upload-file failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DUploadFileResponse
 	}
 
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {

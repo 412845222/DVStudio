@@ -102,15 +102,11 @@ ehthumbs.db
 .cache/
 
 # Temporary and test files in root directory
-test_*.js
-test_*.mjs
-test_*.ts
-test_*.py
-temp-*.ts
-temp-*.js
-temp-*.py
-*.tmp
-*.temp
+test_*.*
+temp-*.*
+temp_*.*
+debug-*.*
+scripts/debug-*.*
 count_lines.py
 
 # External code folders (Claw-code, etc.)
@@ -148,6 +144,22 @@ electron/platform/native/*/
 # The entire steam-pipe/ directory is local-only (build outputs, credentials, logs).
 # VDF templates are inlined in scripts/upload-steam.mjs; do not track any files here.
 steam-pipe/
+
+# ============================================================
+# Steam local configuration & private implementation
+# ============================================================
+# steam.config.json contains the real Steam AppID (do NOT commit anywhere).
+# Example template is in electron/platform/steam.config.example.json.
+# Root directory must NOT contain steam config files.
+steam.config.json
+/steam.config.example.json
+
+# Private platform/provider implementations (*.local.cjs / *.local.mjs)
+# contain sensitive integration details that must not be pushed to public repos.
+# The public stubs (e.g. steam.mjs) will gracefully fall back to disabled state
+# when the local implementation file is absent.
+*.local.cjs
+*.local.mjs
 
 # ============================================================
 # Admin Publisher Tool (NEVER commit this directory)

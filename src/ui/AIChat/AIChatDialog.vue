@@ -166,11 +166,14 @@ import {
 	type VideoScenePlan
 } from '../../core/agentToUI/videoScenePlan'
 import {
-	CHAT_API_SOURCE_OPTIONS,
+	getChatApiSourceOptions,
 	getChatModelById,
 	getChatModelOptions,
+	initCopilotConfig,
+	isCopilotEnabled,
 	type ChatApiSource
 } from '../../ai/models/chatModels'
+import { cliSendMessage, cliStartSession } from '../../network/CLIChatService'
 import { componentTemplateApi, type ComponentTemplate } from '../../core/components'
 import { ComponentLibraryService } from '../../network/ComponentLibraryService'
 import {
@@ -418,7 +421,8 @@ const loadModelPrefs = () => {
 			savedSource === 'all' ||
 			savedSource === 'deepseek' ||
 			savedSource === 'gemini' ||
-			savedSource === 'bytedance'
+			savedSource === 'bytedance' ||
+			savedSource === 'copilot'
 		) {
 			modelApiSource.value = savedSource
 		}
@@ -438,20 +442,21 @@ const persistModelPrefs = () => {
 	}
 }
 
-const textApiSourceOptions = CHAT_API_SOURCE_OPTIONS.filter(
-	(item) => item.value === 'all' || item.value === 'deepseek' || item.value === 'bytedance'
-)
+const textApiSourceOptions = computed(() => getChatApiSourceOptions())
 
 const textModelOptions = computed(() =>
-	getChatModelOptions('text', modelApiSource.value).filter(
-		(item) => item.apiSource === 'deepseek' || item.apiSource === 'bytedance'
-	)
+	getChatModelOptions('text', modelApiSource.value)
 )
 
 const activeTextModel = computed(() => getChatModelById(textModelId.value))
-const activeProvider = computed(() =>
-	activeTextModel.value?.apiSource === 'bytedance' ? 'bytedance' : 'deepseek'
-)
+const activeProvider = computed(() => {
+	const src = activeTextModel.value?.apiSource
+	if (src === 'copilot' || src === 'local-exec') return 'copilot'
+	if (src === 'bytedance') return 'bytedance'
+	if (src === 'gemini') return 'gemini'
+	return 'deepseek'
+})
+const isCopilotActive = computed(() => activeProvider.value === 'copilot')
 
 const normalizeTextModelSelection = () => {
 	let list = textModelOptions.value
@@ -485,9 +490,22 @@ watch(textModelId, () => {
 })
 
 const conversationId = ref<string | null>(null)
+const copilotSessionId = ref<string | null>(null)
+const copilotReady = ref(false)
 const sending = ref(false)
 let aborter: AbortController | null = null
 const stoppedByUser = ref(false)
+
+const loadCopilotConfig = async () => {
+	try {
+		await initCopilotConfig()
+		copilotReady.value = isCopilotEnabled()
+	} catch {
+		copilotReady.value = false
+	}
+}
+
+loadCopilotConfig()
 
 const pinnedToBottom = ref(true)
 
@@ -1205,6 +1223,44 @@ const sendText = async (text: string) => {
 	await scrollToBottom({ force: true })
 
 	try {
+		if (isCopilotActive.value) {
+			if (!copilotReady.value) {
+				throw new Error(t('copilot.notConfigured'))
+			}
+			taskPhase.value = 'streaming'
+			if (!copilotSessionId.value) {
+				const startResult = await cliStartSession('copilot')
+				const startData = (startResult as any)?.value || (startResult as any)?.data
+				const sid = startData?.sessionId || (startResult as any)?.sessionId
+				if (!sid) throw new Error('Failed to start Copilot CLI session')
+				copilotSessionId.value = sid
+			}
+
+			let currentText = ''
+			for await (const chunk of cliSendMessage({
+				sessionId: copilotSessionId.value!,
+				content: text,
+				model: textModelId.value !== 'auto' ? textModelId.value : undefined
+			})) {
+				if (chunk.type === 'text') {
+					taskPhase.value = 'writing'
+					currentText += chunk.content
+					const idx = messages.value.findIndex((x) => x.id === assistantId)
+					if (idx >= 0) {
+						messages.value[idx].text = currentText
+					}
+					void scrollToBottom()
+				} else if (chunk.type === 'error') {
+					throw new Error(chunk.message)
+				} else if (chunk.type === 'done') {
+					break
+				}
+			}
+			const idx = messages.value.findIndex((x) => x.id === assistantId)
+			if (idx >= 0 && !messages.value[idx].text) {
+				messages.value[idx].text = currentText || t('aichat.errors.emptyResponse')
+			}
+		} else {
 		if (!conversationId.value) {
 			const conv = await aiChatService.createConversation()
 			conversationId.value = conv.id
@@ -1849,6 +1905,7 @@ const sendText = async (text: string) => {
 				}
 				selfCheckActive.value = false
 			}
+		}
 		}
 	} catch (e) {
 		if (stoppedByUser.value || isAbortError(e)) {

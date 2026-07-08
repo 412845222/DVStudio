@@ -308,13 +308,20 @@
 						<span>Gemini</span>
 					</button>
 					<button
-						class="aiwf-floating-rail-popover__item"
-						type="button"
-						@click="emitThenClose('open-ark-task-panel')"
-					>
-						<span>{{ t('tasks.ark.volcArk') }}</span>
-					</button>
-				</template>
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-ark-task-panel')"
+				>
+					<span>{{ t('tasks.ark.volcArk') }}</span>
+				</button>
+				<button
+					class="aiwf-floating-rail-popover__item"
+					type="button"
+					@click="emitThenClose('open-tripo3d-task-panel')"
+				>
+					<span>Tripo3D</span>
+				</button>
+			</template>
 			</section>
 		</Transition>
 
@@ -426,16 +433,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
-import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
-import type { WorkflowResource } from '../../aiworkflow/resource/types'
-import type { WorkflowNode } from '../../aiworkflow/types'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type BlueprintProjectListItem = {
 	id: number
 	name: string
@@ -451,6 +449,17 @@ export type ToolbarResourceItem = WorkflowResource & {
 	usageCount?: number
 	usedBy?: Array<{ nodeId: string; nodeTitle: string; nodeType: string }>
 }
+</script>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
+import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
+import type { WorkflowResource } from '../../aiworkflow/resource/types'
+import type { WorkflowNode } from '../../aiworkflow/types'
+
+const { t } = useI18n()
 
 type FloatingPanel = '' | 'project' | 'resources' | 'tasks'
 
@@ -493,6 +502,7 @@ const emit = defineEmits<{
 	(e: 'open-meshy-task-panel'): void
 	(e: 'open-gemini-task-panel'): void
 	(e: 'open-ark-task-panel'): void
+	(e: 'open-tripo3d-task-panel'): void
 }>()
 
 const toolbarWrapRef = ref<HTMLElement | null>(null)
@@ -554,6 +564,7 @@ const emitThenClose = (
 		| 'open-meshy-task-panel'
 		| 'open-gemini-task-panel'
 		| 'open-ark-task-panel'
+		| 'open-tripo3d-task-panel'
 ) => {
 	;(emit as (event: typeof eventName) => void)(eventName)
 	activePanel.value = ''

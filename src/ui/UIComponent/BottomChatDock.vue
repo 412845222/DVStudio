@@ -324,30 +324,7 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
-import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
-import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
-import ToolCallCard from '../AIChat/ToolCallCard.vue'
-import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
-import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
-import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
-import {
-	CHAT_API_SOURCE_OPTIONS,
-	CHAT_MODEL_CATALOG,
-	getChatModelOptions,
-	legacyModelFromNeedType,
-	needTypeFromLegacyModel,
-	type ChatApiSource,
-	type ChatLegacyModelKey,
-	type ChatModelCatalogItem,
-	type ChatNeedType
-} from '../../ai/models/chatModels'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type ToolCallInfo = {
 	id: string
 	name: string
@@ -399,7 +376,7 @@ export type NanoBananaRefAnchor = {
 	connectedFrom?: string
 }
 
-export type LocalExecSource = 'copilot-cli' | 'legacy-codex'
+export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent'
 
 export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
@@ -426,6 +403,32 @@ export type LocalExecFlowEvent = {
 
 export type CodexSessionItem = LocalExecSessionItem
 export type CodexFlowEvent = LocalExecFlowEvent
+</script>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+import SeedanceVideoForm, { type SeedanceVideoFormConfig } from './SeedanceVideoForm.vue'
+import MeshyImageForm, { type MeshyImageConfig } from './MeshyImageForm.vue'
+import ThinkingBlock from '../AIChat/ThinkingBlock.vue'
+import ToolCallCard from '../AIChat/ToolCallCard.vue'
+import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
+import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
+import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
+import {
+	getChatApiSourceOptions,
+	getChatModelCatalog,
+	getChatModelOptions,
+	isCopilotEnabled,
+	legacyModelFromNeedType,
+	needTypeFromLegacyModel,
+	type ChatApiSource,
+	type ChatLegacyModelKey,
+	type ChatModelCatalogItem,
+	type ChatNeedType
+} from '../../ai/models/chatModels'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 		modelValue: string
@@ -548,8 +551,7 @@ const dockStyle = computed(() => {
 	} as Record<string, string>
 })
 
-const MODEL_CATALOG = CHAT_MODEL_CATALOG
-const apiSourceOptions = CHAT_API_SOURCE_OPTIONS
+const apiSourceOptions = computed(() => getChatApiSourceOptions())
 
 let layoutRaf = 0
 const emitLayoutChanged = () => {
@@ -579,7 +581,7 @@ const emitLayoutChanged = () => {
 }
 
 const visibleApiSourceOptions = computed(() =>
-	apiSourceOptions.filter((item) => item.value === 'local-exec')
+	apiSourceOptions.value.filter((item) => item.value === 'local-exec')
 )
 
 const modelKey = computed(() => (props.modelKey ?? 'deepseek') as ChatLegacyModelKey)
@@ -708,10 +710,13 @@ const textModel = ref('auto')
 
 const modelOptions = computed(() => {
 	if (props.agentBackend === 'dvsagent') {
-		const allTextModels = CHAT_MODEL_CATALOG.filter(
+		const allTextModels = getChatModelCatalog().filter(
 			(m) => m.needType === 'text' && m.apiSource !== 'local-exec'
 		)
 		return allTextModels
+	}
+	if (props.agentBackend === 'copilot') {
+		return getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
 	}
 	return getChatModelOptions('text', 'local-exec')
 })
@@ -722,9 +727,12 @@ const dvsAgentModelGroups = computed(() => {
 		deepseek: t('aichat.dock.sourceDeepSeek'),
 		bytedance: t('aichat.dock.sourceByteDance'),
 		gemini: t('aichat.dock.sourceGemini'),
-		'local-exec': t('aichat.dock.sourceCopilotCli')
+		copilot: t('aichat.dock.sourceCopilotCli')
 	}
-	const sources = ['deepseek', 'bytedance', 'gemini']
+	const sources: Array<'deepseek' | 'bytedance' | 'gemini' | 'copilot'> = ['deepseek', 'bytedance', 'gemini']
+	if (isCopilotEnabled()) {
+		sources.push('copilot')
+	}
 	for (const src of sources) {
 		const models = modelOptions.value.filter((m) => m.apiSource === src)
 		if (models.length) {
@@ -812,7 +820,8 @@ const applyModelSelection = (modelId: string) => {
 
 const normalizeModelSelection = () => {
 	needType.value = 'text'
-	if (apiSource.value !== 'local-exec') apiSource.value = 'local-exec'
+	const expectedSource = props.agentBackend === 'copilot' ? 'copilot' : 'local-exec'
+	if (apiSource.value !== expectedSource) apiSource.value = expectedSource
 	const list = modelOptions.value
 	if (!list.length) return
 	if (!list.some((m) => m.id === activeModelId.value)) {

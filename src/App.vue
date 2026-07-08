@@ -4,7 +4,9 @@
 		:class="{
 			electron: isElectronRuntime,
 			'is-preview-window': isPreviewWindow,
-			'is-resource-manager-window': isResourceManagerWindow
+			'is-resource-manager-window': isResourceManagerWindow,
+			'is-template-center-window': isTemplateCenterWindow,
+			'is-3d-editor-window': is3DEditorWindow
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
@@ -50,6 +52,7 @@
 			@action="handleSteamPanelAction"
 		/>
 		<AboutDialog />
+		<SciFiFeedback />
 	</div>
 </template>
 
@@ -70,9 +73,11 @@ import GlobalPageBackground from './ui/UIComponent/GlobalPageBackground.vue'
 import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
 import SteamPanel from './ui/Steam/SteamPanel.vue'
 import AboutDialog from './ui/UIComponent/AboutDialog.vue'
+import SciFiFeedback from './ui/UIComponent/SciFiFeedback.vue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
+import { initCopilotConfig } from './ai/models/chatModels'
 
 provide(VideoStudioKey, VideoStudioStore)
 provide(TimelineKey, TimelineStore)
@@ -88,15 +93,23 @@ const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/template-center')
 })
 
 const isResourceManagerWindow = computed(() => {
 	return String(route.path || '').startsWith('/resource-manager')
 })
 
+const isTemplateCenterWindow = computed(() => {
+	return String(route.path || '').startsWith('/template-center')
+})
+
 const isImageMarkupWindow = computed(() => {
 	return String(route.path || '').startsWith('/image-markup-preview')
+})
+
+const is3DEditorWindow = computed(() => {
+	return String(route.path || '').startsWith('/3d-editor')
 })
 
 const dialogTitle = computed(() => {
@@ -106,6 +119,12 @@ const dialogTitle = computed(() => {
 	}
 	if (isImageMarkupWindow.value) {
 		return String(query.name || '图片预览')
+	}
+	if (is3DEditorWindow.value) {
+		return String(query.title || '3D 模型编辑器')
+	}
+	if (isTemplateCenterWindow.value) {
+		return String(query.title || '模板中心')
 	}
 	return ''
 })
@@ -164,7 +183,7 @@ function handleSteamPanelAction(actionId: string) {
 			break
 		case 'achievements':
 			overlayActivate('Achievements').catch(() => {
-				openExternalUrl('https://steamcommunity.com/my/stats/2475710/?tab=achievements')
+				openExternalUrl('https://steamcommunity.com/my/')
 			})
 			break
 		case 'open-panel':
@@ -200,6 +219,7 @@ function onStorageChange(e: StorageEvent) {
 onMounted(() => {
 	ThemeStore.dispatch('initTheme')
 	void I18nStore.dispatch('initLocale')
+	void initCopilotConfig()
 	window.addEventListener('storage', onStorageChange)
 })
 

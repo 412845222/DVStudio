@@ -144,6 +144,8 @@
   "aiworkflow.toast.nodeTaskReset": "节点「{name}」任务已失效，已重置。",
   "aiworkflow.toast.meshyQueryFailed": "节点「{name}」Meshy任务查询失败",
   "aiworkflow.toast.meshyResumeFailed": "节点「{name}」Meshy任务恢复失败",
+  "aiworkflow.toast.tripo3dQueryFailed": "节点「{name}」Tripo3D任务查询失败",
+  "aiworkflow.toast.tripo3dResumeFailed": "节点「{name}」Tripo3D任务恢复失败",
   "aiworkflow.toast.meshyRequestBuildFailed": "Meshy 请求构建失败",
   "aiworkflow.toast.projectExportDone": "项目包导出完成，{count} 个资源未能打包（保留原始 URL）。",
   "aiworkflow.toast.resourceAutoFixFailed": "部分项目资源自动修复失败（{count} 项）。",

@@ -1,4 +1,6 @@
-export type TemplateSource = 'builtin' | 'user'
+export type TemplateSource = 'builtin' | 'user' | 'steam-user' | 'steam-workshop'
+
+export type CloudSyncStatus = 'synced' | 'syncing' | 'local-only' | 'cloud-only' | 'error'
 
 export type TemplateCategory =
 	| 'video-generation'
@@ -32,6 +34,11 @@ export interface TemplateItem {
 	tags?: string[]
 	nodeCount?: number
 	resourceCount?: number
+	steamFileId?: string
+	cloudSyncStatus?: CloudSyncStatus
+	lastSyncAt?: number
+	workshopItemId?: string
+	subscribed?: boolean
 }
 
 export interface BuiltinTemplateConfig {

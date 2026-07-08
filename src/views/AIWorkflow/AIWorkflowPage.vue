@@ -205,6 +205,12 @@
 						@open-meshy-task-panel="onOpenMeshyTaskPanel"
 						@open-ark-task-panel="onOpenArkTaskPanel"
 						@open-gemini-task-panel="onOpenGeminiTaskPanel"
+						@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
+						@generate-tripo3d="onNodeGenerateTripo3D(node.id)"
+						@refresh-tripo3d-task="onNodeRefreshTripo3DTask(node.id)"
+						@pull-tripo3d-output="onNodePullTripo3DOutput(node.id)"
+						@stop-tripo3d-task="onNodeStopTripo3DTask(node.id)"
+						@delete-tripo3d-task="onNodeDeleteTripo3DTask(node.id)"
 						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
 						@three-preview-ready="onNodeThreePreviewReady(node.id)"
 						@three-preview-error="onNodeThreePreviewError(node.id)"
@@ -385,13 +391,14 @@
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
 				@open-gemini-task-panel="onOpenGeminiTaskPanel"
+					@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
 					@open-template-center="onOpenTemplateCenter"
 				/>
 
 				<TemplateCenterDialog
 					v-model:open="templateCenterOpen"
-					@apply-template="onTemplateSelectForApply"
-					@delete-template="onDeleteTemplate"
+					@apply-template-confirm="onConfirmApplyTemplate"
+					@delete-template="() => loadTemplates({ forceCloudRefresh: true })"
 					@save-template="onSaveTemplateFromCenter"
 				/>
 
@@ -522,6 +529,25 @@
 					@refresh="onRefreshMeshyTaskPanel"
 					@preview-task="onPreviewMeshyTask"
 					@task-action="onMeshyTaskPanelAction"
+				/>
+
+				<Tripo3DTaskPanel
+					:open="tripo3dTaskDialogOpen"
+					:tasks="tripo3dTaskItems"
+					:data-status-text="tripo3dTaskPanelStatusText"
+					:balance-text="tripo3dBalanceText"
+					:balance-detail="tripo3dBalanceDetail"
+					:balance-tone="tripo3dBalanceTone"
+					:refresh-busy="tripo3dTaskRemoteLoading"
+					:detail-task-id="tripo3dTaskDetailTaskId"
+					:detail-task="tripo3dTaskDetail"
+					:detail-loading="tripo3dTaskDetailLoading"
+					:action-busy-task-id="tripo3dTaskActionBusyTaskId"
+					:action-busy-type="tripo3dTaskActionBusyType"
+					@close="closeTripo3DTaskDialog"
+					@refresh="onRefreshTripo3DTaskPanel"
+					@preview-task="onPreviewTripo3DTask"
+					@task-action="onTripo3DTaskPanelAction"
 				/>
 
 				<VideoTaskPanel
@@ -841,6 +867,12 @@ import MeshyTaskPanel, {
 	type MeshyTaskPanelDetail,
 	type MeshyTaskPanelItem
 } from '../../ui/WorkFlow/MeshyTaskPanel.vue'
+import Tripo3DTaskPanel from '../../ui/WorkFlow/Tripo3DTaskPanel.vue'
+import type {
+	Tripo3DTaskPanelAction,
+	Tripo3DTaskPanelDetail,
+	Tripo3DTaskPanelItem
+} from './node-business/tripo3d/types'
 import VideoTaskPanel from '../../ui/WorkFlow/VideoTaskPanel.vue'
 import ArkTaskPanel, {
 	type ArkTaskPanelDetail,
@@ -983,6 +1015,7 @@ import { useAIWorkflowPerfMonitor } from './blueprint-core/useAIWorkflowPerfMoni
 import { useAIWorkflowSelectionState } from './blueprint-core/useAIWorkflowSelectionState'
 import { useAIWorkflowThreejsLifecycleManager } from './blueprint-core/useAIWorkflowThreejsLifecycleManager'
 import { useAIWorkflowToastState } from './bridge/feedback/useAIWorkflowToastState'
+import { confirmDelete as sciFiConfirmDelete } from '../../ui/UIComponent/useGlobalFeedback'
 import { useAIWorkflowViewport } from './blueprint-core/useAIWorkflowViewport'
 import { useAIWorkflowContextMenu } from './bridge/component-events/useAIWorkflowContextMenu'
 import { useAIWorkflowKeyboardAndResize } from './bridge/component-events/useAIWorkflowKeyboardAndResize'
@@ -1010,12 +1043,26 @@ import {
 	pickMeshyPreferredImageUrl,
 	pickMeshyPreferredModelUrl
 } from './node-business/meshy/useAIWorkflowMeshyAssets'
+import {
+	buildTripo3DNodePresentationSettings,
+	getTripo3DDisplayThumbnailUrl,
+	getTripo3DEffectiveModelSource,
+	isTripo3DRemoteUrl,
+	pickTripo3DEffectiveOutput,
+	pickTripo3DPreferredModelUrl
+} from './node-business/tripo3d/useAIWorkflowTripo3DAssets'
 import { useAIWorkflowMeshyDrop } from './node-business/meshy/useAIWorkflowMeshyDrop'
 import { useAIWorkflowMeshyCommands } from './node-business/meshy/useAIWorkflowMeshyCommands'
 import { useAIWorkflowMeshyInputResolver } from './node-business/meshy/useAIWorkflowMeshyInputResolver'
 import { useAIWorkflowMeshyRequest } from './node-business/meshy/useAIWorkflowMeshyRequest'
 import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/useAIWorkflowMeshyTaskPanelController'
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
+import { useAIWorkflowTripo3DTaskPanelController } from './node-business/tripo3d/useAIWorkflowTripo3DTaskPanelController'
+import { useAIWorkflowTripo3DCommands } from './node-business/tripo3d/useAIWorkflowTripo3DCommands'
+import { useAIWorkflowTripo3DRuntime } from './node-business/tripo3d/useAIWorkflowTripo3DRuntime'
+import { useAIWorkflowTripo3DRequest } from './node-business/tripo3d/useAIWorkflowTripo3DRequest'
+import { useAIWorkflowTripo3DInputResolver } from './node-business/tripo3d/useAIWorkflowTripo3DInputResolver'
+import { useAIWorkflowTripo3DDrop } from './node-business/tripo3d/useAIWorkflowTripo3DDrop'
 import { useAIWorkflowVideoTaskPanelController } from './node-business/chat/useAIWorkflowVideoTaskPanelController'
 import { useAIWorkflowArkTaskPanel } from './node-business/ark/useAIWorkflowArkTaskPanel'
 import { useAIWorkflowGeminiTaskPanelController } from './node-business/gemini/useAIWorkflowGeminiTaskPanelController'
@@ -1023,6 +1070,7 @@ import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
 } from './node-business/meshy/meshyRuntimeUtils'
+import { normalizeTripo3DTaskStatus, fileExtensionFromUrl as tripo3dFileExtensionFromUrl } from './node-business/tripo3d/tripo3dRuntimeUtils'
 import {
 	AIWF_PROJECT_PACKAGE_ENTRY,
 	sanitizeFileNamePart,
@@ -3762,6 +3810,29 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 	}
 }
 
+const createModel3DNodeAtCenter = (opts?: {
+	modelUrl?: string
+	name?: string
+	taskId?: string
+	mode?: string
+}): string | null => {
+	try {
+		const { worldX, worldY } = getCanvasCenterWorld()
+		store.commit('addNodeAt', {
+			worldX,
+			worldY,
+			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
+		})
+		const newNodeId = store.state.selectedNodeId
+		if (!newNodeId) return null
+		store.commit('setNodeType', { nodeId: newNodeId, type: 'model3d' })
+		return newNodeId
+	} catch (e) {
+		console.error('[createModel3DNodeAtCenter] 创建节点失败:', e)
+		return null
+	}
+}
+
 const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
 	try {
 		store.commit('addNodeAt', {
@@ -5622,6 +5693,38 @@ const { buildMeshyRequestPayload } = useAIWorkflowMeshyRequest({
 	meshyImageOutputCount
 })
 
+const {
+	connectedTripo3DPrompt,
+	connectedTripo3DImageUrls,
+	connectedTripo3DImageInputs,
+	normalizeTripo3DImageInputValue,
+	buildTripo3DImageInputFromNode,
+	buildTripo3DModelInputFromNode,
+	connectedTripo3DModelInput,
+	hasConnectedTripo3DConsumer
+} = useAIWorkflowTripo3DInputResolver({
+	store,
+	getFirstIncomingEdge,
+	getIncomingEdges,
+	getOutgoingEdges,
+	hasOutgoingEdge,
+	getTextOutputForNode: (nodeId) => getTextOutputForNode(nodeId),
+	nodeResourceUrl,
+	getTripo3DEffectiveModelSource,
+	getTripo3DDisplayThumbnailUrl,
+	blobToDataUrl,
+	resolveBackendUrl
+})
+
+const { buildTripo3DRequestPayload } = useAIWorkflowTripo3DRequest({
+	connectedTripo3DPrompt,
+	connectedTripo3DImageInputs,
+	connectedTripo3DModelInput,
+	buildTripo3DImageInputFromNode,
+	normalizeTripo3DImageInputValue,
+	hasConnectedTripo3DConsumer
+})
+
 const syncModel3DInputFromUpstream = async (
 	nodeId: string,
 	opts?: { warn?: boolean; forceSceneLayoutExport?: boolean }
@@ -5672,6 +5775,54 @@ const syncModel3DInputFromUpstream = async (
 					modelAssetProjectRelativePath:
 						String(persisted?.projectRelativePath || '').trim() || undefined,
 					lastInputSignature: `${fromNode.id}:${String(settings.meshyTaskId ?? '')}:${sourceUrl}`,
+					lastInputNodeId: fromNode.id,
+					lastInputSourceUrl: sourceUrl,
+					lastInputSourcePath: effective.assetPath || undefined,
+					lastInputSourceName: name
+				}
+			})
+			return true
+		}
+
+		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings) && fromNode.model3dSettings.modelGenerationSource === 'tripo3d') {
+			const tripo3dSettings = fromNode.model3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const effective = getTripo3DEffectiveModelSource(settings)
+			const sourceUrl = effective.preferredUrl || effective.assetUrl
+			if (!sourceUrl) continue
+			const format = effective.format
+			const taskIdVal = String(settings.taskId ?? settings.tripo3dTaskId ?? fromNode.id).trim() || fromNode.id
+			const name = `tripo3d_${taskIdVal}.${format}`
+			const persisted = (await persistExternalAssetToProject({
+				kind: 'file',
+				name,
+				sourceUrl,
+				sourcePath: effective.assetPath || undefined
+			})) as PersistedAsset | null
+			revokeNodeModel3DObjectUrl(nodeId)
+			const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
+			if (isTripo3DRemoteUrl(finalModelUrl)) {
+				console.warn(
+					'[DVS:syncModel3D] tripo3d asset not yet localized, skipping commit — node:',
+					nodeId
+				)
+				continue
+			}
+			store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					modelUrl: finalModelUrl,
+					modelFormat: format,
+					modelSourceName: name,
+					modelSourcePath:
+						String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+					modelProjectRelativePath:
+						String(persisted?.projectRelativePath || '').trim() || undefined,
+					modelAssetUrl: String(persisted?.url || ''),
+					modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+					modelAssetProjectRelativePath:
+						String(persisted?.projectRelativePath || '').trim() || undefined,
+					lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
 					lastInputNodeId: fromNode.id,
 					lastInputSourceUrl: sourceUrl,
 					lastInputSourcePath: effective.assetPath || undefined,
@@ -6275,6 +6426,18 @@ const comfyService = new ComfyUIBridgeService({
 	baseUrl: getRuntimePlatform() === 'web' ? '' : getBackendBaseUrl()
 })
 const localExecChatService = createLocalExecChatService(comfyService)
+const mediaService = {
+	nanoBananaCacheRefImages: (form: FormData) => comfyService.nanoBananaCacheRefImages(form),
+	seedreamCacheRefImages: (form: FormData) => comfyService.seedreamCacheRefImages(form),
+	nanoBananaGenerateStream: (form: FormData) => comfyService.nanoBananaGenerateStream(form),
+	seedreamGenerateStream: (form: FormData) => comfyService.seedreamGenerateStream(form),
+	jimengImageGenerateStream: (form: FormData) => comfyService.jimengImageGenerateStream(form),
+	jimengVideoGenerateStream: (form: FormData) => comfyService.jimengVideoGenerateStream(form),
+	seedanceGenerateStream: (form: FormData) => comfyService.seedanceGenerateStream(form),
+	meshyGenerate: (payload: Record<string, unknown>) => comfyService.meshyGenerate(payload),
+	meshyGenerateImage: (form: FormData) => comfyService.meshyGenerateImage(form),
+	meshyTask: (taskId: string, mode: string) => comfyService.meshyTask(taskId, mode),
+}
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
 localExecChatService.setLocalExecStreamMode(localExecStreamMode.value)
 watch(
@@ -6703,7 +6866,7 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
-const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates } = useTemplateCenter()
+const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates, refreshCloud, templates: templateCenterTemplates } = useTemplateCenter()
 const templateCenterOpen = ref(false)
 const templateApplyDialogOpen = ref(false)
 const selectedTemplateForApply = ref<TemplateItem | null>(null)
@@ -6719,7 +6882,16 @@ let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
 
 function onOpenTemplateCenter() {
 	void loadTemplates()
-	templateCenterOpen.value = true
+	try {
+		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.openTemplateCenter === 'function') {
+			window.dweb.aiworkflow.openTemplateCenter({
+				title: t('aiworkflow.templateCenter.title'),
+			})
+		}
+	} catch (err) {
+		console.warn('[AIWorkflowPage] Failed to open template center window:', err)
+		templateCenterOpen.value = true
+	}
 }
 
 function onTemplateSelectForApply(template: TemplateItem) {
@@ -6729,7 +6901,14 @@ function onTemplateSelectForApply(template: TemplateItem) {
 }
 
 async function onDeleteTemplate(template: TemplateItem) {
-	const confirmed = window.confirm(t('aiworkflow.templateCenter.deleteConfirm', { name: template.name }))
+	const confirmed = await sciFiConfirmDelete(
+		t('aiworkflow.templateCenter.deleteConfirmTitle', { name: template.name }),
+		t('aiworkflow.templateCenter.deleteConfirmMessage'),
+		{
+			confirmText: t('aiworkflow.templateCenter.delete'),
+			cancelText: t('aiworkflow.templateCenter.cancel'),
+		}
+	)
 	if (!confirmed) return
 	const ok = await deleteTemplate(template)
 	if (ok) {
@@ -6856,7 +7035,9 @@ async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
 }
 
 async function applyTemplateToCurrent(template: TemplateItem) {
+	console.log('[AIWorkflowPage] applyTemplateToCurrent started, template:', template?.id, template?.name, 'packageData:', !!template?.packageData, 'packagePath:', template?.packagePath)
 	const blob = await loadTemplatePackage(template)
+	console.log('[AIWorkflowPage] loadTemplatePackage result:', blob ? `Blob size=${blob.size} type=${blob.type}` : 'null/undefined')
 	if (!blob) {
 		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
 		return
@@ -6978,11 +7159,13 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 }
 
 async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
+	console.log('[AIWorkflowPage] onConfirmApplyTemplate called, target:', options.target, 'template:', options.template?.id, options.template?.name)
 	templateApplyDialogOpen.value = false
 	const template = options.template
 	selectedTemplateForApply.value = null
 
 	if (options.target === 'current') {
+		console.log('[AIWorkflowPage] applying to current blueprint...')
 		await applyTemplateToCurrent(template)
 		return
 	}
@@ -8061,6 +8244,7 @@ const {
 	},
 	createBatchMediaNodesFromFiles: (payload) => createBatchMediaNodesFromFiles(payload),
 	createNodeFromDraggedMeshyTask: (payload) => createNodeFromDraggedMeshyTask(payload),
+	createNodeFromDraggedTripo3DTask: (payload) => createNodeFromDraggedTripo3DTask(payload),
 	persistBlobUrlToProject,
 	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
@@ -8118,6 +8302,36 @@ const {
 	normalizeMeshyTaskStatus,
 	refreshMeshyTaskItems: (opts) => refreshMeshyTaskItems(opts),
 	shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value
+})
+
+const { stopTripo3DPoll, applyTripo3DTaskResult, startTripo3DPoll, recoverTripo3DTaskStates, clearTripo3DRuntime } =
+	useAIWorkflowTripo3DRuntime({
+		store,
+		getComfyService: () => comfyService,
+		pushToast: (message, tone) => pushToast(message, tone),
+		normalizeTripo3DTaskStatus,
+		pickTripo3DPreferredModelUrl,
+		fileExtensionFromUrl: tripo3dFileExtensionFromUrl,
+		persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
+		syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
+		refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
+		shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
+	})
+
+const {
+	onNodeGenerateTripo3D,
+	onNodeRestartTripo3DTask
+} = useAIWorkflowTripo3DCommands({
+	store,
+	getComfyService: () => comfyService,
+	pushToast: (message, tone) => pushToast(message, tone),
+	stopTripo3DPoll,
+	startTripo3DPoll,
+	buildTripo3DRequestPayload,
+	normalizeTripo3DTaskStatus,
+	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
+	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value,
+	getProjectId: () => currentProjectId.value
 })
 
 const importLimitAlertMessage = ref('')
@@ -8297,7 +8511,7 @@ const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate, handleUserChoi
 	fileFromUrl,
 	uploadLocalResourceAndGetUrl,
 	resolveBackendUrl,
-	getChatService: () => localExecChatService,
+	getMediaService: () => mediaService,
 	onSeedanceTaskObserved,
 	getSelectedNode: () => selectedNode.value,
 	getAllNodes: () => nodes.value,
@@ -9241,6 +9455,54 @@ const onOpenMeshyTaskPanel = () => {
 	openMeshyTaskDialog()
 }
 
+const {
+	tripo3dTaskDialogOpen,
+	tripo3dTaskItems,
+	tripo3dTaskPanelStatusText,
+	tripo3dBalanceText,
+	tripo3dBalanceDetail,
+	tripo3dBalanceTone,
+	tripo3dTaskRemoteLoading,
+	tripo3dTaskDetail,
+	tripo3dTaskDetailTaskId,
+	tripo3dTaskDetailLoading,
+	tripo3dTaskActionBusyTaskId,
+	tripo3dTaskActionBusyType,
+	openTripo3DTaskDialog,
+	closeTripo3DTaskDialog,
+	onRefreshTripo3DTaskPanel,
+	onPreviewTripo3DTask,
+	onTripo3DTaskPanelAction,
+	onNodeRefreshTripo3DTask,
+	onNodePullTripo3DOutput,
+	onNodeStopTripo3DTask,
+	onNodeDeleteTripo3DTask,
+	refreshTripo3DTaskItems,
+	refreshTripo3DBalance,
+	refreshTripo3DTaskToNode
+} = useAIWorkflowTripo3DTaskPanelController({
+	store,
+	renderNodes,
+	comfyService,
+	pushToast,
+	getTripo3DDisplayThumbnailUrl,
+	pickTripo3DEffectiveOutput,
+	applyTripo3DTaskResult,
+	stopTripo3DPoll,
+	createImageNodeAtCenter,
+	createModel3DNodeAtCenter
+})
+
+const onOpenTripo3DTaskPanel = () => {
+	openTripo3DTaskDialog()
+}
+
+const { createNodeFromDraggedTripo3DTask } = useAIWorkflowTripo3DDrop({
+	store,
+	pushToast: (message, tone) => pushToast(message, tone),
+	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId)
+})
+
 const onOpenArkTaskPanel = () => {
 	openArkTaskDialog()
 }
@@ -9556,6 +9818,17 @@ onBeforeUnmount(() => {
 		}
 		resourceManagerEventListenerId = null
 	}
+	// 清理模板中心窗口事件监听
+	if (templateCenterEventListenerId !== null) {
+		const w = window as unknown as Record<string, unknown>
+		const dweb = safeGetRecord(w, 'dweb')
+		const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+		const offEvent = dwebAiworkflow?.offTemplateCenterEvent
+		if (typeof offEvent === 'function') {
+			;(offEvent as (id: number) => void)(templateCenterEventListenerId)
+		}
+		templateCenterEventListenerId = null
+	}
 })
 
 // ============ 资源管理器窗口 → 蓝图节点拖放 ============
@@ -9685,6 +9958,9 @@ const { onNodeRefresh } = useAIWorkflowNodeRefresh({
 // 主窗口监听来自资源管理器独立窗口的事件广播
 let resourceManagerEventListenerId: number | null = null
 
+// ============ 模板中心窗口事件监听 ============
+let templateCenterEventListenerId: number | null = null
+
 const pushSystemToast = (message: string, tone: 'info' | 'warn' | 'error' = 'warn') => {
 	chatMessages.value = [
 		...chatMessages.value,
@@ -9782,6 +10058,73 @@ const registerResourceManagerEventListener = () => {
 	resourceManagerEventListenerId = (
 		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
 	)(onResourceManagerWindowEvent)
+}
+
+const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) => {
+	const { event, data } = payload || {}
+	console.log('[AIWorkflowPage][template-center] received event:', event, data ? 'has data' : 'no data')
+	if (!event) return
+	switch (String(event)) {
+		case 'apply-template-confirm':
+			console.log('[AIWorkflowPage][template-center] apply-template-confirm, data:', data)
+			if (data && typeof data === 'object' && 'template' in data && 'target' in data) {
+				const options = data as TemplateApplyOptions
+				const remoteTemplate = options.template
+				console.log('[AIWorkflowPage][template-center] looking up local template for id:', remoteTemplate?.id, 'local templates count:', templateCenterTemplates.value.length)
+				const localTemplate = templateCenterTemplates.value.find(t => t.id === remoteTemplate.id) || remoteTemplate
+				console.log('[AIWorkflowPage][template-center] found localTemplate:', !!localTemplate, 'packageData:', !!(localTemplate as TemplateItem)?.packageData)
+				void onConfirmApplyTemplate({ ...options, template: localTemplate })
+			} else {
+				console.error('[AIWorkflowPage][template-center] apply-template-confirm: invalid data format, missing template or target')
+			}
+			break
+		case 'apply-template':
+			if (data && typeof data === 'object' && 'id' in data) {
+				const template = data as TemplateItem
+				onTemplateSelectForApply(template)
+			}
+			break
+		case 'delete-template':
+			void loadTemplates({ forceCloudRefresh: true })
+			break
+		case 'save-template':
+			if (data && typeof data === 'object' && 'scope' in data) {
+				const scope = (data as { scope: 'full' | 'selection' }).scope
+				void onSaveTemplateFromCenter({ scope })
+			}
+			break
+		case 'preview-template':
+			if (data && typeof data === 'object' && 'id' in data) {
+				const template = data as TemplateItem
+				console.log('[AIWorkflowPage] preview template:', template.name)
+			}
+			break
+		case 'refresh-cloud':
+			void refreshCloud()
+			break
+		case 'upload-to-cloud':
+		case 'download-from-cloud':
+			void loadTemplates({ forceCloudRefresh: true })
+			break
+		default:
+			console.log('[AIWorkflowPage][template-center] unknown event:', event, data)
+	}
+}
+
+const registerTemplateCenterEventListener = () => {
+	const w = window as unknown as Record<string, unknown>
+	const runtime = safeGetRecord(w, '__DWEB_RUNTIME__')
+	const isElectronRuntime = runtime?.isElectron === true
+	const dweb = safeGetRecord(w, 'dweb')
+	const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
+	const onEvent = dwebAiworkflow?.onTemplateCenterEvent
+	console.log('[AIWorkflowPage] registerTemplateCenterEventListener: isElectron=', isElectronRuntime, 'hasOnEvent=', typeof onEvent)
+	if (!isElectronRuntime || typeof onEvent !== 'function') return
+	templateCenterEventListenerId = (
+		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
+	)(onTemplateCenterWindowEvent)
+	console.log('[AIWorkflowPage] template center event listener registered, id:', templateCenterEventListenerId)
+	void loadTemplates({ forceCloudRefresh: false })
 }
 
 const openResourceDialog = async () => {
@@ -10395,6 +10738,7 @@ onMounted(() => {
 	uninstallGlobal404Handlers = installGlobalErrorHandlers()
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
+	registerTemplateCenterEventListener()
 	void refreshProjectList()
 	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',

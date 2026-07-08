@@ -13,7 +13,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'elec
 
 import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getRepoRoot, getWindowIconPath } from './config.mjs'
 import { collectDiagnostics } from './backend/diagnostics.mjs'
-import { detectPythonInfo } from './backend/python.mjs'
+import { detectPythonInfo, setPythonDetectCacheDir } from './backend/python.mjs'
 import { cleanupOldRuntimeProject } from './backend/runtimeCleanup.mjs'
 import {
 	registerDwebProjectAssetProtocol,
@@ -628,6 +628,58 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 	const resourceDir = getDvsResourceDir()
 	const backendDataDir = getBackendDataDir()
 
+	let _ffmpegDetected = null
+	async function detectFfmpegAsync() {
+		if (_ffmpegDetected !== null) return _ffmpegDetected
+		return new Promise((resolve) => {
+			let settled = false
+			const done = (result) => {
+				if (settled) return
+				settled = true
+				_ffmpegDetected = result
+				if (result.ok) {
+					setStep('ffmpeg', { status: 'ok', progress: 100, detail: result.detail })
+				} else {
+					setStep('ffmpeg', {
+						status: 'warn',
+						progress: 100,
+						detail: '未检测到 ffmpeg（仅影响动画编辑器导出视频，不阻断流程）。',
+					})
+				}
+				resolve(result)
+			}
+			try {
+				const proc = spawn('ffmpeg', ['-version'], {
+					windowsHide: true,
+					stdio: ['ignore', 'pipe', 'pipe']
+				})
+				let stdout = ''
+				let stderr = ''
+				const timeoutId = setTimeout(() => {
+					try { proc.kill() } catch {}
+					done({ ok: false })
+				}, 8000)
+				proc.stdout?.on('data', (d) => { stdout += String(d) })
+				proc.stderr?.on('data', (d) => { stderr += String(d) })
+				proc.on('error', () => {
+					clearTimeout(timeoutId)
+					done({ ok: false })
+				})
+				proc.on('exit', (code) => {
+					clearTimeout(timeoutId)
+					if (code === 0) {
+						const line = splitLines(stdout || stderr)[0] || 'ffmpeg detected'
+						done({ ok: true, detail: line })
+					} else {
+						done({ ok: false })
+					}
+				})
+			} catch {
+				done({ ok: false })
+			}
+		})
+	}
+
 	try {
 		setStep('python', { status: 'running', progress: 25, detail: '正在检测 Python 版本...' })
 		pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
@@ -648,7 +700,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 
 			const autoInstall = await tryInstallPythonOnWindows()
 			if (autoInstall.ok) {
-				pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11 })
+				pyInfo = detectPythonInfo({ minMajor: 3, minMinor: 11, useCache: false })
 			}
 		}
 		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
@@ -666,10 +718,10 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			status: 'ok',
 			progress: 100,
 			detail: pyInfo.isBundled
-				? `${pyInfo.detail}（开箱即用，无需安装）`
+				? `${pyInfo.detail}（开箱即用，无需安装）${pyInfo.fromCache ? ' [cached]' : ''}`
 				: (pyInfo.recommended
-					? `${pyInfo.detail}（推荐版本）`
-					: `${pyInfo.detail}（可用，推荐 3.11）`),
+					? `${pyInfo.detail}（推荐版本）${pyInfo.fromCache ? ' [cached]' : ''}`
+					: `${pyInfo.detail}（可用，推荐 3.11）${pyInfo.fromCache ? ' [cached]' : ''}`),
 		})
 
 		setStep('resource', { status: 'running', progress: 40, detail: '正在创建 DVSResource...' })
@@ -730,19 +782,8 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			return { ok: false, state: getSetupState(), error: 'node-backend-init-failed' }
 		}
 
-		setStep('ffmpeg', { status: 'running', progress: 90, detail: '检测 ffmpeg（可选）...' })
-		const ff = await runSyncWithLogs('ffmpeg', ['-version'], { label: '检测 ffmpeg（可选）', timeoutMs: 8000 })
-		if (ff.ok) {
-			const line = splitLines(ff.stdout || ff.stderr)[0] || 'ffmpeg detected'
-			setStep('ffmpeg', { status: 'ok', progress: 100, detail: line })
-		} else {
-			setStep('ffmpeg', {
-				status: 'warn',
-				progress: 100,
-				detail: '未检测到 ffmpeg（仅影响动画编辑器导出视频，不阻断流程）。',
-			})
-			pushBackendLog('[提醒] 未检测到 ffmpeg：不阻断流程，但动画编辑器无法导出视频。')
-		}
+		setStep('ffmpeg', { status: 'running', progress: 90, detail: 'ffmpeg 后台检测中（可选）...' })
+		detectFfmpegAsync()
 
 		pushBackendLog('[setup] 环境准备完成。')
 		return { ok: true, state: getSetupState() }
@@ -765,89 +806,6 @@ async function withBackendOpLock(task) {
 	} finally {
 		release?.()
 	}
-}
-
-async function createWindow() {
-	const here = path.dirname(fileURLToPath(import.meta.url))
-	const repoRoot = path.resolve(here, '..')
-
-	mainWindow = new BrowserWindow({
-		width: 1280,
-		height: 800,
-		title: APP_NAME,
-		icon: getWindowIconPath(),
-		backgroundColor: '#181818',
-		frame: false,
-		autoHideMenuBar: true,
-		webPreferences: {
-			preload: path.resolve(here, 'preload.mjs'),
-			contextIsolation: true,
-			nodeIntegration: false,
-			sandbox: false,
-		},
-	})
-
-	setMainWindowForPlatform(mainWindow)
-
-	try {
-		Menu.setApplicationMenu(null)
-	} catch {
-	}
-	mainWindow.setMenuBarVisibility(false)
-	mainWindow.removeMenu()
-
-	mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-		appendRuntimeLog(`[did-fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-	})
-	mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-		appendRuntimeLog(`[renderer:${level}] ${message} (${sourceId}:${line})`)
-	})
-	mainWindow.webContents.on('render-process-gone', (_event, details) => {
-		appendRuntimeLog(`[window-render-gone] reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`)
-	})
-	mainWindow.webContents.on('did-finish-load', () => {
-		appendRuntimeLog(`[did-finish-load] url=${mainWindow?.webContents?.getURL?.() || ''}`)
-	})
-	mainWindow.webContents.on('did-navigate', (_event, url) => {
-		appendRuntimeLog(`[did-navigate] ${url}`)
-	})
-
-	const normalizeDevRendererUrl = (raw) => {
-		const fallback = 'http://localhost:5173/#/'
-		const input = String(raw || '').trim()
-		if (!input) return fallback
-		try {
-			const u = new URL(input)
-			u.pathname = '/'
-			if (String(u.hash || '').trim()) return u.toString()
-			u.hash = '#/'
-			return u.toString()
-		} catch {
-			return fallback
-		}
-	}
-	const devUrl = normalizeDevRendererUrl(process.env.ELECTRON_RENDERER_URL)
-	const prodIndex = path.resolve(repoRoot, 'dist', 'index.html')
-	appendRuntimeLog(`[renderer] mode=${isDev ? 'dev' : 'prod'} repoRoot=${repoRoot}`)
-	appendRuntimeLog(`[renderer] devUrl=${devUrl}`)
-	appendRuntimeLog(`[renderer] prodIndex=${prodIndex} exists=${fs.existsSync(prodIndex)}`)
-	if (isDev) {
-		await mainWindow.loadURL(devUrl)
-	} else {
-		await mainWindow.loadFile(prodIndex)
-	}
-
-	if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' })
-
-	mainWindow.on('closed', () => {
-		mainWindow = null
-	})
-
-	mainWindow.on('maximize', () => {
-	})
-
-	mainWindow.on('unmaximize', () => {
-	})
 }
 
 let windowAnimating = false
@@ -1629,6 +1587,245 @@ function registerIpc() {
 		const payload = resourceManagerLatestData
 		return { ok: true, data: payload }
 	})
+
+	let model3dEditorWindow = null
+	ipcMain.handle('dweb:model3d-editor:open', async (_e, payload) => {
+		console.log('[main] dweb:model3d-editor:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const title = String(payload?.title || '3D 模型编辑器').slice(0, 200)
+			const models = Array.isArray(payload?.models) ? payload.models : []
+
+			if (!nodeId && models.length === 0) {
+				return { ok: false, error: 'missing nodeId or models' }
+			}
+
+			if (model3dEditorWindow && !model3dEditorWindow.isDestroyed()) {
+				model3dEditorWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
+			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			if (models.length > 0) {
+				queryParts.push(`models=${encodeURIComponent(JSON.stringify(models))}`)
+			}
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/3d-editor${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/3d-editor${queryStr}`
+
+			console.log('[main][model3d-editor] targetUrl:', targetUrl)
+
+			model3dEditorWindow = new BrowserWindow({
+				width: 1400,
+				height: 900,
+				minWidth: 1024,
+				minHeight: 700,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { model3dEditorWindow.setMenuBarVisibility(false) } catch {}
+			try { model3dEditorWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 80
+				const offsetY = 80
+				model3dEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			model3dEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[model3d-editor:${level}] ${message} (${sourceId}:${line})`)
+			})
+			model3dEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[model3d-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			model3dEditorWindow.on('closed', () => {
+				model3dEditorWindow = null
+			})
+
+			await model3dEditorWindow.loadURL(targetUrl)
+			console.log('[main][model3d-editor] loadURL done, URL:', model3dEditorWindow.webContents.getURL())
+			if (isDev) {
+				model3dEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][model3d-editor] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	let templateCenterWindow = null
+	let templateCenterLatestData = null
+
+	ipcMain.handle('dweb:template-center:open', async (_e, payload) => {
+		console.log('[main] dweb:template-center:open payload:', JSON.stringify(payload))
+		try {
+			const projectId = payload?.projectId ?? null
+			const title = String(payload?.title || '模板中心').slice(0, 200)
+
+			if (templateCenterWindow && !templateCenterWindow.isDestroyed()) {
+				templateCenterWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParams = new URLSearchParams()
+			if (projectId != null) queryParams.set('projectId', String(projectId))
+			if (title) queryParams.set('title', title)
+			const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/template-center${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/template-center${queryStr}`
+
+			console.log('[main][template-center] targetUrl:', targetUrl)
+
+			templateCenterWindow = new BrowserWindow({
+				width: 1080,
+				height: 760,
+				minWidth: 720,
+				minHeight: 500,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+				},
+			})
+
+			try { templateCenterWindow.setMenuBarVisibility(false) } catch {}
+			try { templateCenterWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 80
+				const offsetY = 80
+				templateCenterWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				appendRuntimeLog(`[template-center:${level}] ${message} (${sourceId}:${line})`)
+			})
+			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			templateCenterWindow.on('closed', () => {
+				templateCenterWindow = null
+			})
+
+			await templateCenterWindow.loadURL(targetUrl)
+			console.log('[main][template-center] loadURL done, URL:', templateCenterWindow.webContents.getURL())
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][template-center] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:close', async () => {
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: true }
+		}
+		try {
+			templateCenterWindow.close()
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:focus', async () => {
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: false, error: 'window not available' }
+		}
+		templateCenterWindow.focus()
+		return { ok: true }
+	})
+
+	ipcMain.handle('dweb:template-center:broadcast', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		console.log('[main][template-center:broadcast] event:', event, 'data keys:', payload?.data ? Object.keys(payload.data) : 'null')
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			console.error('[main][template-center:broadcast] mainWindow not available!')
+			return { ok: false, error: 'main window not available' }
+		}
+		try {
+			mainWindow.webContents.send('dweb:template-center:event', {
+				event,
+				data: payload?.data ?? null,
+			})
+			console.log('[main][template-center:broadcast] sent to mainWindow successfully')
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][template-center:broadcast] error:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:notify', async (_e, payload) => {
+		const event = String(payload?.event || '').trim()
+		if (!event) return { ok: false, error: 'missing event name' }
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: false, skipped: true }
+		}
+		try {
+			templateCenterWindow.webContents.send('dweb:template-center:notify', {
+				event,
+				data: payload?.data ?? null,
+			})
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:send-data', async (_e, payload) => {
+		templateCenterLatestData = payload
+
+		if (!templateCenterWindow || templateCenterWindow.isDestroyed()) {
+			return { ok: true, buffered: true }
+		}
+		try {
+			templateCenterWindow.webContents.send('dweb:template-center:data', payload)
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:template-center:request-data', async () => {
+		const payload = templateCenterLatestData
+		return { ok: true, data: payload }
+	})
 }
 
 async function stopBackend() {
@@ -1648,6 +1845,15 @@ async function stopBackend() {
 }
 
 async function main() {
+	const _perfStart = Date.now()
+	const _perfMark = (label) => {
+		const elapsed = Date.now() - _perfStart
+		const msg = `[PERF] +${elapsed}ms ${label}`
+		appendRuntimeLog(msg)
+		console.log(msg)
+	}
+	_perfMark('main() start')
+
 	app.setName(APP_NAME)
 	app.setAboutPanelOptions({
 		applicationName: APP_NAME,
@@ -1662,6 +1868,7 @@ async function main() {
 	registerDwebProjectAssetProtocol()
 	ensureClientResourceLayout()
 	loadClientSettings()
+	_perfMark('basic setup done (logger, protocol, settings)')
 
 	if (_portableWarnOnReady && app.isPackaged) {
 		dialog.showMessageBox({
@@ -1681,6 +1888,7 @@ async function main() {
 		const backendDir = getBackendDataDir() || userDir
 		const dirOk = typeof userDir === 'string' && userDir.trim().length > 0
 		appendRuntimeLog(`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`)
+		setPythonDetectCacheDir(backendDir)
 		initLocalDb({ backendDataDir: backendDir, userDataDir: userDir, appSecret: backendDir })
 		const repos = getRepos()
 		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`)
@@ -1696,36 +1904,153 @@ async function main() {
 			appendRuntimeLog(`[app] localdb fallback OK: ${r.ok ? r.repos.dbFilePath : 'unknown'}`)
 		}
 	}
+	_perfMark('localdb initialized')
 
 	registerIpc()
+	_perfMark('IPC handlers registered')
 
-	const platStatus = await platformInit()
-	registerPlatformIpc()
-	if (platStatus?.available) {
-		appendRuntimeLog(`[platform] ${platStatus.activeDisplayName} connected. User: ${platStatus.user?.displayName || 'unknown'}`)
-	} else {
-		appendRuntimeLog(`[platform] Running in ${platStatus?.activeDisplayName || 'Mock'} mode`)
+	// ===== 性能优化：先创建窗口，立即初始化后端，然后再加载页面和平台 =====
+	// 这样窗口能最快显示，页面加载时 IPC 路由已全部就绪
+	appendRuntimeLog('[app] Creating main window...')
+	const here = path.dirname(fileURLToPath(import.meta.url))
+	const repoRoot = path.resolve(here, '..')
+
+	mainWindow = new BrowserWindow({
+		width: 1280,
+		height: 800,
+		title: APP_NAME,
+		icon: getWindowIconPath(),
+		backgroundColor: '#181818',
+		frame: false,
+		autoHideMenuBar: true,
+		show: false, // 先不显示，等 ready-to-show 再显示避免白屏闪烁
+		webPreferences: {
+			preload: path.resolve(here, 'preload.mjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false,
+		},
+	})
+	_perfMark('BrowserWindow created')
+
+	setMainWindowForPlatform(mainWindow)
+
+	try {
+		Menu.setApplicationMenu(null)
+	} catch {
 	}
+	mainWindow.setMenuBarVisibility(false)
+	mainWindow.removeMenu()
+
+	mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+		appendRuntimeLog(`[did-fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+	})
+	mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+		appendRuntimeLog(`[renderer:${level}] ${message} (${sourceId}:${line})`)
+	})
+	mainWindow.webContents.on('render-process-gone', (_event, details) => {
+		appendRuntimeLog(`[window-render-gone] reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`)
+	})
+	mainWindow.webContents.on('did-finish-load', () => {
+		appendRuntimeLog(`[did-finish-load] url=${mainWindow?.webContents?.getURL?.() || ''}`)
+		_perfMark('Page did-finish-load')
+	})
+	mainWindow.webContents.on('did-navigate', (_event, url) => {
+		appendRuntimeLog(`[did-navigate] ${url}`)
+	})
+
+	// ready-to-show 时再显示窗口，避免黑屏/白屏闪烁
+	mainWindow.once('ready-to-show', () => {
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.show()
+			_perfMark('Window SHOWN (ready-to-show)')
+		}
+	})
+
+	mainWindow.on('closed', () => {
+		mainWindow = null
+	})
+
+	// ===== 性能优化关键：在 loadURL 之前先初始化后端 IPC =====
+	// 这样页面加载时所有 IPC 路由已注册，项目列表查询无需等待
+	appendRuntimeLog('[app] Initializing backend IPC before page load...')
+	try {
+		initBackend(mainWindow)
+		updateBackendRuntimeState({
+			running: true,
+			healthy: true,
+			baseUrl: '',
+			port: 0,
+			lastError: '',
+			mode: 'ipc',
+		})
+		appendRuntimeLog('[app] Backend IPC initialized (mode=ipc)')
+	} catch (err) {
+		appendRuntimeLog(`[app] Backend init error (non-fatal): ${String(err?.message || err)}`)
+	}
+	_perfMark('Backend IPC initialized')
+
+	// 开始加载页面（异步，不阻塞后续初始化）
+	const normalizeDevRendererUrl = (raw) => {
+		const fallback = 'http://localhost:5173/#/'
+		const input = String(raw || '').trim()
+		if (!input) return fallback
+		try {
+			const u = new URL(input)
+			u.pathname = '/'
+			if (String(u.hash || '').trim()) return u.toString()
+			u.hash = '#/'
+			return u.toString()
+		} catch {
+			return fallback
+		}
+	}
+	const devUrl = normalizeDevRendererUrl(process.env.ELECTRON_RENDERER_URL)
+	const prodIndex = path.resolve(repoRoot, 'dist', 'index.html')
+	appendRuntimeLog(`[renderer] mode=${isDev ? 'dev' : 'prod'} repoRoot=${repoRoot}`)
+	appendRuntimeLog(`[renderer] devUrl=${devUrl}`)
+	appendRuntimeLog(`[renderer] prodIndex=${prodIndex} exists=${fs.existsSync(prodIndex)}`)
+
+	// 异步加载页面，不阻塞后续初始化
+	_perfMark('About to loadURL...')
+	const pageLoadPromise = isDev
+		? mainWindow.loadURL(devUrl)
+		: mainWindow.loadFile(prodIndex)
+	pageLoadPromise.then(() => {
+		_perfMark('loadURL promise resolved')
+	}).catch((err) => {
+		appendRuntimeLog(`[renderer] loadURL error: ${String(err?.message || err)}`)
+	})
+
+	// 平台初始化（Steam）完全异步，与页面加载并行，不阻塞主流程
+	platformInit().then((platStatus) => {
+		registerPlatformIpc()
+		if (platStatus?.available) {
+			appendRuntimeLog(`[platform] ${platStatus.activeDisplayName} connected. User: ${platStatus.user?.displayName || 'unknown'}`)
+		} else {
+			appendRuntimeLog(`[platform] Running in ${platStatus?.activeDisplayName || 'Mock'} mode`)
+		}
+	}).catch((err) => {
+		appendRuntimeLog(`[platform] init error (non-fatal): ${String(err?.message || err)}`)
+	})
 
 	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
 
-	await createWindow()
-
-	updateBackendRuntimeState({
-		running: true,
-		healthy: true,
-		baseUrl: '',
-		port: 0,
-		lastError: '',
-		mode: 'ipc',
-	})
-	appendRuntimeLog('[app] Node.js IPC backend active (mode=ipc)')
-
-	try {
-		await runSetupWorkflow({ reason: 'init' })
-	} catch (err) {
-		appendRuntimeLog(`[app] setup workflow failed: ${String(err?.message || err)}`)
+	if (isDev && mainWindow && !mainWindow.isDestroyed()) {
+		mainWindow.webContents.openDevTools({ mode: 'detach' })
 	}
+
+	// ===== 非关键初始化：异步后台执行，不阻塞窗口显示和页面交互 =====
+	// Python 检测、ffmpeg 检测等放到页面完全加载渲染后异步执行，避免 spawnSync 阻塞主线程
+	// 开发模式下 Vite 加载较慢，延迟更久；生产模式延迟较短
+	const setupDelay = isDev ? 4000 : 1500
+	setTimeout(() => {
+		runSetupWorkflow({ reason: 'init' }).catch((err) => {
+			appendRuntimeLog(`[app] setup workflow error: ${String(err?.message || err)}`)
+		})
+	}, setupDelay)
+
+	_perfMark('main() function complete - all async tasks launched')
 }
 
 app.on('window-all-closed', () => {

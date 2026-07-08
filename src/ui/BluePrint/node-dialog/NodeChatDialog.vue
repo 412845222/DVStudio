@@ -11,6 +11,7 @@
 			@click.stop
 			@contextmenu.stop
 		>
+			<div class="bp-node-chat-dialog-inner">
 			<div class="bp-node-chat-surface glass-surface">
 				<span class="bp-dialog-bracket bp-dialog-bracket-tl" aria-hidden="true"></span>
 				<span class="bp-dialog-bracket bp-dialog-bracket-tr" aria-hidden="true"></span>
@@ -131,10 +132,12 @@
 				</div>
 			</div>
 
+		<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
 			<NodeChatParamPanel
 				v-if="showParams"
 				:key="`param-panel-${JSON.stringify(currentParams)}`"
 				class="bp-node-chat-param-popover"
+				:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
 				:node-type="nodeType"
 				:node-id="nodeId"
 				:params="currentParams"
@@ -142,6 +145,8 @@
 				:input-param-preview-refs="inputParamPreviewRefsResolved"
 				@update:params="onParamsUpdate"
 			/>
+		</Transition>
+		</div>
 		</div>
 	</Transition>
 </template>
@@ -155,7 +160,8 @@ import {
 	NODE_CHAT_TYPE_ICONS,
 	NODE_CHAT_PLACEHOLDERS,
 	NODE_CHAT_TYPE_DESCRIPTIONS,
-	getDefaultParamsForType
+	getDefaultParamsForType,
+	calcNodeDialogPosition
 } from './nodeChatConfig'
 import NodeChatInput from './NodeChatInput.vue'
 import NodeChatParamPanel from './NodeChatParamPanel.vue'
@@ -217,6 +223,12 @@ const showInputParamRefs = computed(() => {
 	return type === 'image' || type === 'text' || type === 'video' || type === 'model3d'
 })
 
+const isTripo3D = computed(() => {
+	if (!props.nodeType || props.nodeType !== 'model3d') return false
+	const model3dParams = (props.params.model3d ?? {}) as any
+	return model3dParams.model === 'tripo3d'
+})
+
 const inputParamPreviewRefsResolved = computed(() => {
 	return props.inputParamPreviewRefs ?? []
 })
@@ -256,13 +268,7 @@ const handleRemoveParamRef = (item: InputParamPreviewRef) => {
 	emit('remove-param-ref', item)
 }
 
-const dialogPositionStyle = computed(() => {
-	const width = props.nodeWidth || 280
-	return {
-		width: `${Math.max(width, 380)}px`,
-		minWidth: '380px'
-	}
-})
+const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidth))
 
 const handleClose = () => {
 	if (props.submitting) return
@@ -341,14 +347,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .bp-node-chat-dialog {
 	position: absolute;
-	left: 50%;
 	top: 100%;
 	z-index: 1000;
 	margin-top: 16px;
-	max-width: min(520px, calc(100vw - 40px));
-	min-width: 380px;
-	transform: translateX(-50%);
 	pointer-events: auto;
+}
+
+.bp-node-chat-dialog-inner {
+	position: relative;
 	animation: bp-dialog-slide-in 0.2s ease-out;
 }
 
@@ -641,6 +647,81 @@ onBeforeUnmount(() => {
 		0 18px 40px rgba(0, 0, 0, 0.42);
 }
 
+.bp-node-chat-param-popover.is-horizontal {
+	left: calc(100% + 12px);
+	top: 0;
+	transform: none;
+	width: min(340px, calc(100vw - 48px));
+	max-height: none !important;
+	overflow: visible !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal :deep(.bp-node-chat-param-panel) {
+	overflow: visible !important;
+	max-height: none !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal :deep(.bp-node-chat-param-body) {
+	overflow: visible !important;
+	max-height: none !important;
+}
+
+.bp-node-chat-param-popover.is-horizontal::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 2px;
+	background: linear-gradient(
+		to bottom,
+		transparent,
+		var(--wf-primary, #1f9d84) 20%,
+		var(--wf-primary, #1f9d84) 80%,
+		transparent
+	);
+	box-shadow: 0 0 12px var(--wf-primary, #1f9d84);
+	pointer-events: none;
+}
+
+.bp-param-slide-h-enter-active,
+.bp-param-slide-h-leave-active {
+	transition:
+		opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		filter 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+		box-shadow 0.28s ease;
+	transform-origin: left center;
+}
+
+.bp-param-slide-h-enter-active .bp-node-chat-param-panel {
+	animation: bp-param-glow-pulse 0.5s ease-out;
+}
+
+.bp-param-slide-h-enter-from {
+	opacity: 0;
+	transform: translateX(-12px) scaleX(0.92);
+	filter: blur(4px) brightness(1.5);
+}
+
+.bp-param-slide-h-leave-to {
+	opacity: 0;
+	transform: translateX(-8px) scaleX(0.95);
+	filter: blur(3px) brightness(1.2);
+}
+
+@keyframes bp-param-glow-pulse {
+	0% {
+		filter: brightness(1.2);
+	}
+	50% {
+		filter: brightness(1.4);
+	}
+	100% {
+		filter: brightness(1);
+	}
+}
+
 .bp-node-chat-btn {
 	padding: 7px 14px;
 	font-size: 12px;
@@ -736,11 +817,11 @@ onBeforeUnmount(() => {
 @keyframes bp-dialog-slide-in {
 	from {
 		opacity: 0;
-		transform: translateX(-50%) translateY(-8px);
+		transform: translateY(-8px);
 	}
 	to {
 		opacity: 1;
-		transform: translateX(-50%) translateY(0);
+		transform: translateY(0);
 	}
 }
 

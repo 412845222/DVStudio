@@ -513,12 +513,7 @@
 	</teleport>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type MeshyTaskPanelItem = {
 	id: string
 	nodeId: string
@@ -582,6 +577,13 @@ export type MeshyTaskPanelDetail = {
 }
 
 export type MeshyTaskPanelAction = 'refresh' | 'stop' | 'delete' | 'import-output'
+</script>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open: boolean

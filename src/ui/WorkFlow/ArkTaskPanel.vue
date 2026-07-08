@@ -371,12 +371,7 @@
 	</teleport>
 </template>
 
-<script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useI18n } from '../../i18n'
-
-const { t } = useI18n()
-
+<script lang="ts">
 export type ArkTaskPanelItem = {
 	id: string
 	taskId: string
@@ -424,6 +419,13 @@ export type ArkTaskPanelDetail = {
 	resourceAvailable?: boolean
 	resourceUnavailableReason?: string
 }
+</script>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
 	open: boolean

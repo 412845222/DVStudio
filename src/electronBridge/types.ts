@@ -88,6 +88,191 @@ export type CleanupOldProjectResult = {
 	}>
 }
 
+export type CheckStatus = 'pending' | 'pass' | 'fail' | 'warn' | 'skipped'
+
+export type EnvironmentCheckItem = {
+	key: string
+	label: string
+	status: CheckStatus
+	message?: string
+	helpUrl?: string
+	action?: {
+		label: string
+		command?: string
+	}
+}
+
+export type CliModelInfo = {
+	id: string
+	label: string
+	vendor?: string
+	description?: string
+	capabilities?: string[]
+	recommended?: boolean
+}
+
+export type EnvironmentCheckResult = {
+	adapter: string
+	checkedAt: string
+	allPassed: boolean
+	checks: EnvironmentCheckItem[]
+	models?: CliModelInfo[]
+	version?: string
+	error?: string
+}
+
+export type CliAdapterSavedConfig = {
+	enabled: boolean
+	configuredAt?: string
+	lastCheckedAt?: string
+	version?: string
+	models?: CliModelInfo[]
+}
+
+export type CliFixResult = {
+	ok: boolean
+	adapter: string
+	checkKey: string
+	output?: string
+	interactive?: boolean
+	message: string
+	command?: string
+}
+
+export type Tripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine'
+
+export type Tripo3DTaskStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled' | 'canceled'
+
+export interface Tripo3DGenerateParams {
+	mode: Tripo3DMode
+	prompt?: string
+	negativePrompt?: string
+	negative_prompt?: string
+	imageUrl?: string
+	image_url?: string
+	modelSeries?: 'h' | 'p'
+	modelVersion?: string
+	model_version?: string
+	forceSingleImage?: boolean
+	selectedImages?: Array<{ nodeId: string; view: 'front' | 'left' | 'back' | 'right'; order: number }>
+	enableImageAutofix?: boolean
+	textureAlignment?: 'original_image' | 'geometry'
+	orientation?: 'default' | 'align_image'
+	textureQuality?: 'standard' | 'detailed' | 'extreme'
+	geometryQuality?: 'standard' | 'detailed'
+	autoSize?: boolean
+	quad?: boolean
+	smartLowPoly?: boolean
+	generateParts?: boolean
+	compress?: boolean
+	exportUv?: boolean
+	faceLimit?: number
+	face_limit?: number
+	texture?: boolean
+	pbr?: boolean
+	modelSeed?: number
+	model_seed?: number
+	textureSeed?: number
+	texture_seed?: number
+	file?: { type: string; data: string; url?: string }
+	files?: Array<{ type: string; data: string }>
+	projectId?: number | string
+	project_id?: number | string
+	nodeId?: string
+	node_id?: string
+}
+
+export interface Tripo3DTask {
+	id: number
+	taskId: string
+	task_id: string
+	mode: Tripo3DMode
+	status: Tripo3DTaskStatus
+	progress: number
+	prompt: string
+	negativePrompt: string
+	negative_prompt: string
+	modelVersion: string
+	model_version: string
+	faceLimit: number
+	face_limit: number
+	texture: boolean
+	pbr: boolean
+	thumbnailUrl: string
+	thumbnail_url: string
+	modelUrl: string
+	model_url: string
+	localAssetUrl: string
+	localAssetPath: string
+	errorMessage: string
+	error_message: string
+	statusText: string
+	status_text: string
+	nodeId: string
+	node_id: string
+	projectId: number | null
+	project_id: number | null
+	createdAt: string
+	updatedAt: string
+	startedAt: string
+	completedAt: string
+	requestPayload?: Record<string, any>
+	responsePayload?: Record<string, any>
+}
+
+export interface Tripo3DBalance {
+	balance?: number
+	credits?: number
+}
+
+export interface Tripo3DBalanceResult {
+	ok: boolean
+	available: boolean
+	configured: boolean
+	displayText: string
+	detail?: Tripo3DBalance | any
+}
+
+export interface Tripo3DGenerateResult {
+	ok: boolean
+	mode: Tripo3DMode
+	taskId: string
+	task_id: string
+	status: string
+	raw?: any
+	error?: string
+}
+
+export interface Tripo3DTaskResult {
+	ok: boolean
+	taskId: string
+	task_id: string
+	mode: Tripo3DMode
+	status: Tripo3DTaskStatus
+	progress: number
+	prompt: string
+	negativePrompt: string
+	modelVersion: string
+	thumbnailUrl: string
+	modelUrl: string
+	statusText: string
+	errorMessage: string
+	raw?: any
+	error?: string
+}
+
+export interface Tripo3DListTasksResult {
+	ok: boolean
+	items: Tripo3DTask[]
+	error?: string
+}
+
+export interface Tripo3DTaskDetailResult {
+	ok: boolean
+	item: Tripo3DTask & { selectedTaskId?: string }
+	error?: string
+}
+
 export type ClientSettings = {
 	defaultResolution: string
 	deepseekApiKey: string
@@ -99,7 +284,8 @@ export type ClientSettings = {
 	httpProxy?: string
 	bytedanceApiKey: string
 	meshyApiKey: string
-	githubToken: string
+	tripo3dApiKey?: string
+	githubToken?: string
 	ui?: {
 		locale?: string
 	}
@@ -107,6 +293,9 @@ export type ClientSettings = {
 		accepted: boolean
 		acceptedAt?: number
 		acceptedVersion?: string
+	}
+	cliAdapters?: {
+		[adapterName: string]: CliAdapterSavedConfig
 	}
 }
 
@@ -127,4 +316,99 @@ export type UploadedProjectAsset = {
 	absolutePath: string
 	url: string
 	sourcePath?: string
+}
+
+export type EditorModelInfo = {
+	id: string
+	name: string
+	url: string
+	assetUrl?: string
+}
+
+export type Open3DEditorPayload = {
+	nodeId: string
+	projectId?: number
+	models: EditorModelInfo[]
+}
+
+export type Open3DEditorResult = {
+	ok: boolean
+	error?: string
+	focused?: boolean
+}
+
+export type CloudQuotaInfo = {
+	totalBytes: number
+	availableBytes: number
+}
+
+export type CloudTemplateMeta = {
+	id: string
+	name: string
+	description: string
+	category: string
+	tags: string[]
+	createdAt: number
+	updatedAt: number
+	nodeCount: number
+	packageFileName: string
+	coverFileName: string
+}
+
+export type CloudTemplatesPlatformResult = {
+	ok: boolean
+	platformId?: string
+	platformName?: string
+	errMsg?: string
+}
+
+export type CloudTemplatesQuotaResult = {
+	ok: boolean
+	quota?: CloudQuotaInfo
+	errMsg?: string
+}
+
+export type CloudTemplatesListResult = {
+	ok: boolean
+	items?: CloudTemplateMeta[]
+	lastSyncedAt?: number
+	quota?: CloudQuotaInfo | null
+	errMsg?: string
+}
+
+export type CloudTemplatesUploadPayload = {
+	id: string
+	name: string
+	description?: string
+	category?: string
+	tags?: string[]
+	nodeCount?: number
+	zipData: ArrayBuffer
+	coverData?: ArrayBuffer | null
+}
+
+export type CloudTemplatesUploadResult = {
+	ok: boolean
+	errMsg?: string
+}
+
+export type CloudTemplatesDownloadPayload = {
+	id: string
+}
+
+export type CloudTemplatesDownloadResult = {
+	ok: boolean
+	meta?: CloudTemplateMeta
+	zipData?: ArrayBuffer
+	coverData?: ArrayBuffer | null
+	errMsg?: string
+}
+
+export type CloudTemplatesDeletePayload = {
+	id: string
+}
+
+export type CloudTemplatesDeleteResult = {
+	ok: boolean
+	errMsg?: string
 }

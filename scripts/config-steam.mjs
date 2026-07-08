@@ -2,12 +2,30 @@ import readline from 'node:readline'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { loadSteamEnv } from './steam-env.mjs'
+
+loadSteamEnv()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 const steamPipeDir = path.join(repoRoot, 'steam-pipe')
 const envPath = path.join(steamPipeDir, '.env')
+
+function readSteamConfigJson() {
+	const candidates = [
+		path.join(repoRoot, 'steam.config.json'),
+		path.join(repoRoot, 'electron', 'steam.config.json'),
+	]
+	for (const p of candidates) {
+		try {
+			if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'))
+		} catch { /* ignore */ }
+	}
+	return {}
+}
+
+const steamConfig = readSteamConfigJson()
 
 const ENV_EXAMPLE_CONTENT = `# ============================================================
 # Steam 构建与上传环境配置
@@ -47,18 +65,18 @@ const ENV_EXAMPLE_CONTENT = `# =================================================
 #   --branch=xxx     目标分支名（默认 beta）
 #   --set-live       上传后自动发布到指定分支（不指定则仅上传不发布）
 #   --desc="xxx"     构建描述文字
-#   --appid=xxx      AppID（默认 2475710）
+#   --appid=xxx      AppID（从 steam.config.json 读取或手动输入）
 #   --dry-run        试运行模式，不实际上传
 #
 # ============================================================
 # 环境变量（也可以写在 .env 文件中）：
 # ============================================================
 
-# Steam App ID（必填）
-STEAM_APP_ID=2475710
+# Steam App ID（必填，在 Steamworks 后台获取）
+STEAM_APP_ID=
 
 # Depot ID（上传时必填，在 Steamworks 后台创建）
-STEAM_DEPOT_ID_WIN=2475711
+STEAM_DEPOT_ID_WIN=
 STEAM_DEPOT_ID_MAC=
 STEAM_DEPOT_ID_LINUX=
 
@@ -186,8 +204,10 @@ async function main() {
 	const exampleConfig = parseEnvContent(ENV_EXAMPLE_CONTENT)
 	const defaults = { ...exampleConfig, ...existingConfig }
 
-	const steamAppId = await question('Steam App ID', defaults.STEAM_APP_ID || '2475710')
-	const steamDepotIdWin = await question('Windows Depot ID', defaults.STEAM_DEPOT_ID_WIN || '2475711')
+	const configAppId = steamConfig.appId ? String(steamConfig.appId) : process.env.STEAM_APP_ID || ''
+	const defaultAppId = defaults.STEAM_APP_ID || configAppId || ''
+	const steamAppId = await question('Steam App ID', defaultAppId)
+	const steamDepotIdWin = await question('Windows Depot ID', defaults.STEAM_DEPOT_ID_WIN || '')
 	const steamDepotIdMac = await question('Mac Depot ID (不发布 Mac 可留空)', defaults.STEAM_DEPOT_ID_MAC || '')
 	const steamDepotIdLinux = await question('Linux Depot ID (不发布 Linux 可留空)', defaults.STEAM_DEPOT_ID_LINUX || '')
 	const steamBranch = await question('发布分支 (beta=测试, 空=正式)', defaults.STEAM_BRANCH || 'beta')
