@@ -59,7 +59,10 @@
 					data-wf-node-drag-ignore="true"
 					@pointerdown.stop
 					@wheel.stop="onPreviewWheel"
-					@contextmenu.stop.prevent="onPreviewContextMenu"
+					@pointerdown="onPreviewPointerDown"
+				@pointermove="onPreviewPointerMove"
+				@pointerup="onPreviewPointerUp"
+				@contextmenu.prevent
 				>
 					<WorkflowThreePreviewShell
 						:state="threePreviewState"
@@ -824,8 +827,43 @@ const onFileChange = (e: Event) => {
 const onPreviewWheel = (e: WheelEvent) => {
 	e.stopPropagation()
 }
-const onPreviewContextMenu = (e: MouseEvent) =>
-	emit('preview-contextmenu', { clientX: e.clientX, clientY: e.clientY })
+let contextMenuTimer: ReturnType<typeof setTimeout> | null = null
+let contextMenuStartPos = { x: 0, y: 0 }
+let isClickIntent = false
+const CLICK_THRESHOLD = 200
+const MOVE_THRESHOLD = 5
+const onPreviewPointerDown = (e: PointerEvent) => {
+	if (e.button !== 2) return
+	isClickIntent = false
+	contextMenuStartPos = { x: e.clientX, y: e.clientY }
+	contextMenuTimer = setTimeout(() => {
+		isClickIntent = true
+	}, CLICK_THRESHOLD)
+}
+const onPreviewPointerMove = (e: PointerEvent) => {
+	if (!contextMenuTimer) return
+	const dx = e.clientX - contextMenuStartPos.x
+	const dy = e.clientY - contextMenuStartPos.y
+	const dist = Math.sqrt(dx * dx + dy * dy)
+	if (dist >= MOVE_THRESHOLD) {
+		isClickIntent = false
+		if (contextMenuTimer) {
+			clearTimeout(contextMenuTimer)
+			contextMenuTimer = null
+		}
+	}
+}
+const onPreviewPointerUp = (e: PointerEvent) => {
+	if (e.button !== 2) return
+	if (contextMenuTimer) {
+		clearTimeout(contextMenuTimer)
+		contextMenuTimer = null
+	}
+	if (isClickIntent) {
+		emit('preview-contextmenu', { clientX: e.clientX, clientY: e.clientY })
+	}
+	isClickIntent = false
+}
 const onBackgroundInput = (e: Event) =>
 	updateSettings({ backgroundColor: String((e.target as HTMLInputElement).value || '#0f1720') })
 const onLightIntensityChange = (e: Event) =>
