@@ -150,6 +150,189 @@
 						</button>
 					</div>
 				</div>
+				<div v-if="params.model === 'tripo3d'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_MODEL_OPTIONS"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.tripo3dImageModel === opt.value }"
+							:disabled="disabled"
+							:title="opt.description ? t(opt.description) : undefined"
+							@click="updateTripo3DParam('tripo3dImageModel', opt.value)"
+						>
+							{{ t(opt.label) }}
+							<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'tripo3d'" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.genMode') }}</span>
+					<div class="bp-node-chat-param-auto-mode">
+						<span class="bp-node-chat-param-auto-mode-badge">{{ tripo3dImageDetectedModeLabel }}</span>
+						<span class="bp-node-chat-param-auto-mode-hint">{{ tripo3dImageDetectedModeHint }}</span>
+					</div>
+				</div>
+				<div v-if="params.model === 'tripo3d' && showTripo3DForceSingleImage" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label"></span>
+					<div class="bp-node-chat-param-advanced">
+						<label class="bp-node-chat-param-toggle">
+							<input
+								type="checkbox"
+								:checked="params.tripo3dImageForceSingleImage === true"
+								:disabled="disabled"
+								@change="updateTripo3DParam('tripo3dImageForceSingleImage', ($event.target as HTMLInputElement).checked)"
+							/>
+							<span>{{ t('aichat.nodeChatParams.forceSingleImage') }}</span>
+						</label>
+					</div>
+				</div>
+				<template v-if="params.model === 'tripo3d' && showTripo3DSizeOptions">
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.size') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in currentTripo3DImageSizeOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageSize === opt.value }"
+								:disabled="disabled"
+								:title="opt.description ? (opt.description.startsWith('aiConfig.') ? t(opt.description) : opt.description) : undefined"
+								@click="updateTripo3DParam('tripo3dImageSize', opt.value)"
+							>
+								{{ opt.label }}
+							</button>
+						</div>
+					</div>
+					<div v-if="showTripo3DAspectRatio" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_ASPECT_RATIO_OPTIONS"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageAspectRatio === opt.value }"
+								:disabled="disabled"
+								@click="updateTripo3DParam('tripo3dImageAspectRatio', opt.value)"
+							>
+								{{ opt.label }}
+							</button>
+						</div>
+					</div>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_OUTPUT_FORMAT_OPTIONS"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageOutputFormat === opt.value }"
+								:disabled="disabled"
+								@click="updateTripo3DParam('tripo3dImageOutputFormat', opt.value)"
+							>
+								{{ opt.label }}
+							</button>
+						</div>
+					</div>
+					<div v-if="showTripo3DWatermark" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.watermark') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_WATERMARK_OPTIONS"
+								:key="String(opt.value)"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageWatermark === opt.value }"
+								:disabled="disabled"
+								@click="updateTripo3DParam('tripo3dImageWatermark', opt.value)"
+							>
+								{{ t(opt.label) }}
+							</button>
+						</div>
+					</div>
+					<div v-if="showTripo3DTemplate && currentTripo3DTemplateOptions.length > 0" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.template') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in currentTripo3DTemplateOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageTemplate === opt.value }"
+								:disabled="disabled"
+								@click="updateTripo3DParam('tripo3dImageTemplate', opt.value)"
+							>
+								{{ t(opt.label) }}
+							</button>
+						</div>
+					</div>
+					<div class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="n in [1, 2, 4]"
+								:key="n"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.tripo3dImageNumOutputs === n }"
+								:disabled="disabled"
+								@click="updateTripo3DParam('tripo3dImageNumOutputs', n)"
+							>
+								{{ n }}x
+							</button>
+						</div>
+					</div>
+				</template>
+				<div v-if="params.model === 'tripo3d' && showTripo3DStrength" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.strength') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_STRENGTH_OPTIONS"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.tripo3dImageStrength === opt.value }"
+							:disabled="disabled"
+							@click="updateTripo3DParam('tripo3dImageStrength', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.model === 'tripo3d' && showTripo3DNegativePrompt" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+					<div class="bp-node-chat-param-input">
+						<input
+							type="text"
+							:value="params.tripo3dImageNegativePrompt"
+							:disabled="disabled"
+							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
+							@input="updateTripo3DParam('tripo3dImageNegativePrompt', ($event.target as HTMLInputElement).value)"
+						/>
+					</div>
+				</div>
+				<div v-if="params.model === 'tripo3d' && showTripo3DAdvanced" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
+					<div class="bp-node-chat-param-advanced">
+						<div class="bp-node-chat-param-seed">
+							<label>{{ t('aichat.nodeChatParams.seed') }}</label>
+							<input
+								type="number"
+								:value="params.tripo3dImageSeed"
+								:disabled="disabled"
+								:placeholder="t('aichat.nodeChatParams.seedRandom')"
+								@input="
+									updateTripo3DParam('tripo3dImageSeed', parseInt(($event.target as HTMLInputElement).value) || -1)
+								"
+							/>
+						</div>
+					</div>
+				</div>
 				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
@@ -358,7 +541,7 @@
 						/>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'gemini' && params.model !== 'nanobanana'" class="bp-node-chat-param-row">
+				<div v-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'gemini' && params.model !== 'nanobanana' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.size') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -391,7 +574,7 @@
 						</button>
 					</div>
 				</div>
-				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -458,7 +641,7 @@
 						</button>
 					</div>
 				</div>
-				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream'" class="bp-node-chat-param-row">
+				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -1512,7 +1695,19 @@ import {
 	getMeshyImageAspectRatioOptions,
 	getSeedreamResolutionOptions,
 	getSeedreamOutputFormatOptions,
-	supportsSeedreamOutputFormat
+	supportsSeedreamOutputFormat,
+	NODE_CHAT_TRIPO3D_IMAGE_MODE_OPTIONS,
+	NODE_CHAT_TRIPO3D_IMAGE_MODEL_OPTIONS,
+	NODE_CHAT_TRIPO3D_IMAGE_ASPECT_RATIO_OPTIONS,
+	NODE_CHAT_TRIPO3D_IMAGE_OUTPUT_FORMAT_OPTIONS,
+	NODE_CHAT_TRIPO3D_IMAGE_WATERMARK_OPTIONS,
+	NODE_CHAT_TRIPO3D_IMAGE_STRENGTH_OPTIONS,
+	getTripo3DImageSizeOptions,
+	getTripo3DImageDefaultSize,
+	getTripo3DImageTemplateOptions,
+	supportsTripo3DAspectRatio,
+	supportsTripo3DWatermark,
+	isTripo3DBananaModel
 } from './nodeChatConfig'
 
 const { t } = useI18n()
@@ -1638,6 +1833,30 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 		}
 		if (!supportsSeedreamOutputFormat(ver)) {
 			next.seedreamOutputFormat = 'jpeg'
+		}
+	}
+
+	if (key === 'model' && value === 'tripo3d') {
+		if (!next.tripo3dImageMode) {
+			next.tripo3dImageMode = 'text_to_image'
+		}
+		if (!next.tripo3dImageModel) {
+			next.tripo3dImageModel = 'tripo-image-1.0'
+		}
+		if (!next.tripo3dImageSize) {
+			next.tripo3dImageSize = '1024x1024'
+		}
+		if (!next.tripo3dImageNumOutputs) {
+			next.tripo3dImageNumOutputs = 1
+		}
+		if (!next.tripo3dImageNegativePrompt) {
+			next.tripo3dImageNegativePrompt = ''
+		}
+		if (!next.tripo3dImageStrength) {
+			next.tripo3dImageStrength = 0.7
+		}
+		if (!next.tripo3dImageSeed) {
+			next.tripo3dImageSeed = -1
 		}
 	}
 
@@ -1983,6 +2202,127 @@ const retextureConnectedImages = computed<ConnectedImageInfo[]>(() => {
 })
 
 const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
+
+const tripo3dImageModel = computed(() => {
+	return String(props.params.tripo3dImageModel || 'seedream_v4')
+})
+
+const tripo3dImageConnectedImages = computed<ConnectedImageInfo[]>(() => {
+	if (props.nodeType !== 'image' || props.params.model !== 'tripo3d') return []
+	const refs = props.inputParamPreviewRefs ?? []
+	const results: ConnectedImageInfo[] = []
+	const seenNodeIds = new Set<string>()
+	for (const ref of refs) {
+		if (ref.kind !== 'image') continue
+		const fromNodeId = ref.fromNodeId || ''
+		if (!fromNodeId || seenNodeIds.has(fromNodeId)) continue
+		seenNodeIds.add(fromNodeId)
+		const url = ref.previewUrl || ''
+		if (url) {
+			results.push({
+				url,
+				thumb: url,
+				name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
+				nodeId: fromNodeId
+			})
+		}
+	}
+	return results
+})
+
+const tripo3dImageConnectedCount = computed(() => {
+	if (props.nodeType !== 'image' || props.params.model !== 'tripo3d') return 0
+	const refs = props.inputParamPreviewRefs ?? []
+	const seenNodeIds = new Set<string>()
+	for (const ref of refs) {
+		if (ref.kind !== 'image') continue
+		const fromNodeId = ref.fromNodeId || ''
+		if (fromNodeId && !seenNodeIds.has(fromNodeId)) {
+			seenNodeIds.add(fromNodeId)
+		}
+	}
+	return seenNodeIds.size
+})
+
+const tripo3dImageForceSingle = computed(() => props.params.tripo3dImageForceSingleImage === true)
+
+const tripo3dImageDetectedMode = computed<'text_to_image' | 'image_to_image' | 'image_to_multiview'>(() => {
+	const count = tripo3dImageConnectedCount.value
+	if (count === 0) return 'text_to_image'
+	if (count === 1 || tripo3dImageForceSingle.value) return 'image_to_image'
+	return 'image_to_multiview'
+})
+
+const tripo3dImageDetectedModeLabel = computed(() => {
+	switch (tripo3dImageDetectedMode.value) {
+		case 'text_to_image': return t('aiConfig.tripo3dImageMode.textToImage')
+		case 'image_to_image': return t('aiConfig.tripo3dImageMode.imageToImage')
+		case 'image_to_multiview': return t('aiConfig.tripo3dImageMode.imageToMultiview')
+		default: return ''
+	}
+})
+
+const tripo3dImageDetectedModeHint = computed(() => {
+	const count = tripo3dImageConnectedCount.value
+	const forceSingle = tripo3dImageForceSingle.value
+	if (count === 0) return t('aichat.nodeChatParams.modeHintNoImage')
+	if (count >= 2 && forceSingle) return t('aichat.nodeChatParams.modeHintForceSingle', { count })
+	if (count === 1) return t('aichat.nodeChatParams.modeHintSingleImage')
+	if (count >= 2) return t('aichat.nodeChatParams.modeHintMultiImage', { count })
+	return ''
+})
+
+const showTripo3DForceSingleImage = computed(() => {
+	return tripo3dImageConnectedCount.value >= 2
+})
+
+const tripo3dImageMode = computed(() => {
+	return tripo3dImageDetectedMode.value
+})
+
+const currentTripo3DImageSizeOptions = computed(() => {
+	return getTripo3DImageSizeOptions(tripo3dImageModel.value)
+})
+
+const showTripo3DAspectRatio = computed(() => {
+	return supportsTripo3DAspectRatio(tripo3dImageModel.value)
+})
+
+const showTripo3DWatermark = computed(() => {
+	return supportsTripo3DWatermark(tripo3dImageModel.value)
+})
+
+const currentTripo3DTemplateOptions = computed(() => {
+	return getTripo3DImageTemplateOptions(tripo3dImageMode.value)
+})
+
+const showTripo3DSizeOptions = computed(() => {
+	return true
+})
+
+const showTripo3DOutputFormat = computed(() => {
+	return true
+})
+
+const showTripo3DTemplate = computed(() => {
+	return true
+})
+
+const showTripo3DNegativePrompt = computed(() => {
+	return true
+})
+
+const showTripo3DStrength = computed(() => {
+	return tripo3dImageMode.value === 'image_to_image' || tripo3dImageMode.value === 'image_to_multiview'
+})
+
+const showTripo3DAdvanced = computed(() => {
+	return true
+})
+
+const updateTripo3DParam = (key: string, value: unknown) => {
+	updateParam(key as any, value as any)
+}
 </script>
 
 <style scoped>
@@ -2051,6 +2391,30 @@ const seedreamQuantityOptions = NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
+}
+
+.bp-node-chat-param-auto-mode {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.bp-node-chat-param-auto-mode-badge {
+	padding: 4px 10px;
+	font-size: 12px;
+	font-weight: 600;
+	border: 1px solid var(--wf-primary, #1f9d84);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
+	color: var(--wf-primary, #1f9d84);
+	letter-spacing: 0.3px;
+}
+
+.bp-node-chat-param-auto-mode-hint {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 55%, transparent);
+	line-height: 1.4;
 }
 
 .bp-node-chat-param-btn {

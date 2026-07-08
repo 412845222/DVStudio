@@ -86,8 +86,8 @@
 						>
 							<div class="wf-tripo3d-task-card-top">
 								<div class="wf-tripo3d-task-chip-row">
-									<span class="wf-tripo3d-task-chip">
-										{{ t('tasks.tripo3d.type3d') }}
+									<span class="wf-tripo3d-task-chip" :class="{ 'is-image': task.taskType === 'image' }">
+										{{ task.typeLabel }}
 									</span>
 									<span class="wf-tripo3d-task-chip subtle">{{ task.modeLabel }}</span>
 									<span class="wf-tripo3d-task-chip status" :class="`is-${task.status}`">
@@ -303,13 +303,23 @@
 								</div>
 							</div>
 							<div
-								v-if="detailTask.modelUrl || detailTask.assetUrl || detailTask.assetPath"
+								v-if="detailTask.modelUrl || detailTask.imageUrls?.length || detailTask.assetUrl || detailTask.assetPath"
 								class="wf-tripo3d-task-detail-section"
 							>
 								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.artifacts') }}</div>
 								<div class="wf-tripo3d-task-detail-links">
+									<template v-if="detailTask.imageUrls && detailTask.imageUrls.length > 0">
+										<div
+											v-for="(imgUrl, imgIdx) in detailTask.imageUrls"
+											:key="imgIdx"
+											class="wf-tripo3d-task-detail-block"
+										>
+											<img :src="imgUrl" :alt="`Generated image ${imgIdx + 1}`" style="max-width: 100%; height: auto;" />
+											<div class="monospace" style="margin-top: 6px; word-break: break-all;">{{ imgUrl }}</div>
+										</div>
+									</template>
 									<div
-										v-if="detailTask.modelUrl"
+										v-if="detailTask.modelUrl && detailTask.taskType !== 'image'"
 										class="wf-tripo3d-task-detail-block monospace"
 									>
 										{{ t('tasks.tripo3d.remotePreferred') }}{{ detailTask.modelUrl }}
@@ -429,6 +439,9 @@ const taskThumbSrc = (task: Tripo3DTaskPanelItem) => {
 	const id = String(task?.id ?? '').trim()
 	if (!id) return ''
 	if (failedTaskThumbIds.value.has(id)) return ''
+	if (task?.taskType === 'image' && Array.isArray(task.imageUrls) && task.imageUrls.length > 0) {
+		return String(task.imageUrls[0] ?? '').trim()
+	}
 	return String(task?.thumbnailUrl ?? '').trim()
 }
 
@@ -1104,6 +1117,11 @@ onBeforeUnmount(() => {
 	border: 1px solid rgb(90 180 255 / 0.48);
 	color: #9ed2ff;
 	font-size: 11px;
+}
+
+.wf-tripo3d-task-chip.is-image {
+	border-color: rgb(56 189 140 / 0.55);
+	color: #bbf7d0;
 }
 
 .wf-tripo3d-task-chip.subtle {

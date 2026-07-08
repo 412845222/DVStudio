@@ -128,6 +128,7 @@
   "aiworkflow.toast.generationFailed": "{type} generation failed: {message}",
   "aiworkflow.toast.meshyGenerateFailed": "Meshy generation failed: {error}",
   "aiworkflow.toast.geminiGenerateFailed": "Gemini generation failed: {error}",
+  "aiworkflow.toast.tripo3dGenerateFailed": "Tripo3D generation failed: {error}",
   "aiworkflow.toast.nodeTypeModel3d": "3D Model",
   "aiworkflow.toast.imageGenFailed": "Image {no} generation failed: {error}",
   "aiworkflow.toast.imageGenerationFailed": "Image generation failed: {error}",

@@ -188,16 +188,15 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(fromNode, 160)) ||
 					sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(fromNode)) ||
 					''
-				if (!previewUrl) continue
-				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:image:${previewUrl}`
+				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:image:${previewUrl || 'pending'}`
 				if (seen.has(dedupeKey)) continue
 				seen.add(dedupeKey)
 				refs.push({
 					...base,
 					kind: 'image',
-					previewUrl,
+					previewUrl: previewUrl || undefined,
 					label: base.name || t('aiworkflow.runtime.imageInput'),
-					meta: t('aiworkflow.runtime.imageResource')
+					meta: previewUrl ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.pending')
 				})
 				continue
 			}

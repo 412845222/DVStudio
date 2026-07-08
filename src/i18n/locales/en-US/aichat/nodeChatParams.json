@@ -4,6 +4,7 @@
   "aichat.nodeChatParams.seedVersion": "Seed Version",
   "aichat.nodeChatParams.speed": "Generation Speed",
   "aichat.nodeChatParams.deepThinking": "Deep Thinking",
+  "aichat.nodeChatParams.thinkingLevel": "Thinking Level",
   "aichat.nodeChatParams.outputFormat": "Output Format",
   "aichat.nodeChatParams.maxOutput": "Max Output",
   "aichat.nodeChatParams.model": "Model",
@@ -16,6 +17,9 @@
   "aichat.nodeChatParams.quantity": "Quantity",
   "aichat.nodeChatParams.advancedSettings": "Advanced Settings",
   "aichat.nodeChatParams.addWatermark": "Add Watermark",
+  "aichat.nodeChatParams.watermark": "Watermark",
+  "aichat.nodeChatParams.template": "Template",
+  "aichat.nodeChatParams.strength": "Reference Strength",
   "aichat.nodeChatParams.seed": "Seed",
   "aichat.nodeChatParams.seedRandom": "-1 Random",
   "aichat.nodeChatParams.negativePrompt": "Negative Prompt",
@@ -81,5 +85,9 @@
   "aichat.nodeChatParams.orientation": "Orientation Alignment",
   "aichat.nodeChatParams.prompt": "Prompt",
   "aichat.nodeChatParams.promptPlaceholder": "Describe the 3D model you want to generate...",
-  "aichat.nodeChatParams.advancedCollapsed": "Advanced Parameters"
+  "aichat.nodeChatParams.advancedCollapsed": "Advanced Parameters",
+  "aichat.nodeChatParams.modeHintNoImage": "No reference image connected, using text-to-image mode",
+  "aichat.nodeChatParams.modeHintSingleImage": "Single reference image detected, using image-to-image mode",
+  "aichat.nodeChatParams.modeHintMultiImage": "{count} reference images detected, using multiview mode",
+  "aichat.nodeChatParams.modeHintForceSingle": "Force single image mode enabled ({count} reference images)"
 }

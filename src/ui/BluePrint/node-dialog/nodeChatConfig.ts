@@ -187,7 +187,8 @@ export const NODE_CHAT_TEXT_MAX_TOKENS_OPTIONS = [
 export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
 	{ value: 'gemini', label: 'aiConfig.imageModel.gemini' },
 	{ value: 'seedream', label: 'aiConfig.imageModel.seedream' },
-	{ value: 'meshy', label: 'aiConfig.imageModel.meshy' }
+	{ value: 'meshy', label: 'aiConfig.imageModel.meshy' },
+	{ value: 'tripo3d', label: 'aiConfig.imageModel.tripo3d' }
 ]
 
 export const NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS = [
@@ -687,6 +688,17 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				seedreamWatermark: false,
 				seedreamSeed: -1,
 				seedreamNegativePrompt: '',
+				tripo3dImageMode: 'text_to_image',
+				tripo3dImageModel: 'seedream_v4',
+				tripo3dImageSize: '2K',
+				tripo3dImageAspectRatio: '',
+				tripo3dImageOutputFormat: 'png',
+				tripo3dImageWatermark: false,
+				tripo3dImageTemplate: '',
+				tripo3dImageNumOutputs: 1,
+				tripo3dImageNegativePrompt: '',
+				tripo3dImageStrength: 0.7,
+				tripo3dImageSeed: -1,
 				resolution: '1024x1024',
 				aspectRatio: '1:1',
 				quantity: 1
@@ -758,6 +770,162 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 
 export const isNodeChatTypeSupported = (type: string): boolean => {
 	return type === 'text' || type === 'image' || type === 'video' || type === 'model3d'
+}
+
+export const NODE_CHAT_TRIPO3D_IMAGE_MODE_OPTIONS = [
+	{ value: 'text_to_image', label: 'aiConfig.tripo3dImageMode.textToImage' },
+	{ value: 'image_to_image', label: 'aiConfig.tripo3dImageMode.imageToImage' },
+	{ value: 'image_to_multiview', label: 'aiConfig.tripo3dImageMode.imageToMultiview' },
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_MODEL_OPTIONS = [
+	{ value: 'seedream_v5', label: 'aiConfig.tripo3dImageModel.seedreamV5', badge: 'aiConfig.common.latest', description: 'aiConfig.tripo3dImageModel.seedreamV5Desc' },
+	{ value: 'seedream_v4', label: 'aiConfig.tripo3dImageModel.seedreamV4', description: 'aiConfig.tripo3dImageModel.seedreamV4Desc' },
+	{ value: 'banana', label: 'aiConfig.tripo3dImageModel.banana', description: 'aiConfig.tripo3dImageModel.bananaDesc' },
+	{ value: 'banana_pro', label: 'aiConfig.tripo3dImageModel.bananaPro', description: 'aiConfig.tripo3dImageModel.bananaProDesc' },
+	{ value: 'banana2', label: 'aiConfig.tripo3dImageModel.banana2', description: 'aiConfig.tripo3dImageModel.banana2Desc' },
+	{ value: 'chat_image_1', label: 'aiConfig.tripo3dImageModel.chatImage1', description: 'aiConfig.tripo3dImageModel.chatImage1Desc' },
+	{ value: 'chat_image_1.5', label: 'aiConfig.tripo3dImageModel.chatImage15', description: 'aiConfig.tripo3dImageModel.chatImage15Desc' },
+	{ value: 'chat_image_2', label: 'aiConfig.tripo3dImageModel.chatImage2', badge: 'aiConfig.common.best', description: 'aiConfig.tripo3dImageModel.chatImage2Desc' },
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value: string; label: string; description?: string }>> = {
+	seedream_v5: [
+		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.seedreamV5.2k' },
+		{ value: '3K', label: '3K', description: 'aiConfig.tripo3dImageSize.seedreamV5.3k' },
+		{ value: '2048x2048', label: '2048×2048', description: '1:1' },
+		{ value: '2048x1152', label: '2048×1152', description: '16:9' },
+		{ value: '1152x2048', label: '1152×2048', description: '9:16' }
+	],
+	seedream_v4: [
+		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.seedreamV4.2k' },
+		{ value: '4K', label: '4K', description: 'aiConfig.tripo3dImageSize.seedreamV4.4k' },
+		{ value: '2048x2048', label: '2048×2048', description: '1:1' },
+		{ value: '2048x1152', label: '2048×1152', description: '16:9' },
+		{ value: '1152x2048', label: '1152×2048', description: '9:16' }
+	],
+	banana: [
+		{ value: '1K', label: '1K', description: 'aiConfig.tripo3dImageSize.banana.1k' },
+		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.banana.2k' },
+		{ value: '4K', label: '4K', description: 'aiConfig.tripo3dImageSize.banana.4k' }
+	],
+	banana_pro: [
+		{ value: '1K', label: '1K', description: 'aiConfig.tripo3dImageSize.banana.1k' },
+		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.banana.2k' },
+		{ value: '4K', label: '4K', description: 'aiConfig.tripo3dImageSize.banana.4k' }
+	],
+	banana2: [
+		{ value: '512', label: '512', description: 'aiConfig.tripo3dImageSize.banana2.512' },
+		{ value: '1K', label: '1K', description: 'aiConfig.tripo3dImageSize.banana.1k' },
+		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.banana.2k' },
+		{ value: '4K', label: '4K', description: 'aiConfig.tripo3dImageSize.banana.4k' }
+	],
+	'chat_image_1': [
+		{ value: '1024x1024', label: '1024×1024', description: '1:1' },
+		{ value: '1024x1536', label: '1024×1536', description: '2:3' },
+		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
+		{ value: 'auto', label: 'Auto', description: 'aiConfig.tripo3dImageSize.chatImage.auto' }
+	],
+	'chat_image_1.5': [
+		{ value: '1024x1024', label: '1024×1024', description: '1:1' },
+		{ value: '1024x1536', label: '1024×1536', description: '2:3' },
+		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
+		{ value: 'auto', label: 'Auto', description: 'aiConfig.tripo3dImageSize.chatImage.auto' }
+	],
+	'chat_image_2': [
+		{ value: '1024x1024', label: '1024×1024', description: '1:1' },
+		{ value: '1024x1536', label: '1024×1536', description: '2:3' },
+		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
+		{ value: '1024x1792', label: '1024×1792', description: '9:16' },
+		{ value: '1792x1024', label: '1792×1024', description: '16:9' },
+		{ value: '2048x2048', label: '2048×2048', description: '1:1 HD' },
+		{ value: '2560x1440', label: '2560×1440', description: '16:9 2K' },
+		{ value: '1440x2560', label: '1440×2560', description: '9:16 2K' }
+	]
+}
+
+export const NODE_CHAT_TRIPO3D_IMAGE_ASPECT_RATIO_OPTIONS = [
+	{ value: '1:1', label: '1:1' },
+	{ value: '2:3', label: '2:3' },
+	{ value: '3:2', label: '3:2' },
+	{ value: '3:4', label: '3:4' },
+	{ value: '4:3', label: '4:3' },
+	{ value: '4:5', label: '4:5' },
+	{ value: '5:4', label: '5:4' },
+	{ value: '9:16', label: '9:16' },
+	{ value: '16:9', label: '16:9' },
+	{ value: '21:9', label: '21:9' }
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_OUTPUT_FORMAT_OPTIONS = [
+	{ value: 'png', label: 'PNG' },
+	{ value: 'jpeg', label: 'JPEG' }
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_WATERMARK_OPTIONS = [
+	{ value: false, label: 'aiConfig.common.off' },
+	{ value: true, label: 'aiConfig.common.on' }
+]
+
+export const NODE_CHAT_TRIPO3D_TEXT_TO_IMAGE_TEMPLATE_OPTIONS = [
+	{ value: '', label: 'aiConfig.common.none' },
+	{ value: 'asset_extraction', label: 'aiConfig.tripo3dImageTemplate.assetExtraction' },
+	{ value: 'character_completion', label: 'aiConfig.tripo3dImageTemplate.characterCompletion' },
+	{ value: 't_pose', label: 'aiConfig.tripo3dImageTemplate.tPose' },
+	{ value: 'variants', label: 'aiConfig.tripo3dImageTemplate.variants' },
+	{ value: 'figure', label: 'aiConfig.tripo3dImageTemplate.figure' }
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_TO_IMAGE_TEMPLATE_OPTIONS = [
+	{ value: '', label: 'aiConfig.common.none' },
+	{ value: 't_pose', label: 'aiConfig.tripo3dImageTemplate.tPose' },
+	{ value: 'character_completion', label: 'aiConfig.tripo3dImageTemplate.characterCompletion' },
+	{ value: '3d_enhance', label: 'aiConfig.tripo3dImageTemplate.3dEnhance' },
+	{ value: 'variants', label: 'aiConfig.tripo3dImageTemplate.variants' },
+	{ value: 'figure', label: 'aiConfig.tripo3dImageTemplate.figure' }
+]
+
+export const NODE_CHAT_TRIPO3D_IMAGE_STRENGTH_OPTIONS = [
+	{ value: 0.3, label: '0.3' },
+	{ value: 0.5, label: '0.5' },
+	{ value: 0.7, label: '0.7' },
+	{ value: 0.9, label: '0.9' }
+]
+
+export const isTripo3DBananaModel = (model: string): boolean => {
+	return model === 'banana' || model === 'banana_pro' || model === 'banana2'
+}
+
+export const isTripo3DSeedreamModel = (model: string): boolean => {
+	return model === 'seedream_v4' || model === 'seedream_v5'
+}
+
+export const isTripo3DChatImageModel = (model: string): boolean => {
+	return model === 'chat_image_1' || model === 'chat_image_1.5' || model === 'chat_image_2'
+}
+
+export const supportsTripo3DAspectRatio = (model: string): boolean => {
+	return isTripo3DBananaModel(model)
+}
+
+export const supportsTripo3DWatermark = (model: string): boolean => {
+	return isTripo3DSeedreamModel(model)
+}
+
+export const getTripo3DImageSizeOptions = (model: string) => {
+	return NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS[model] || NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS.seedream_v4
+}
+
+export const getTripo3DImageDefaultSize = (model: string): string => {
+	const options = getTripo3DImageSizeOptions(model)
+	return options[0]?.value || '2K'
+}
+
+export const getTripo3DImageTemplateOptions = (mode: string) => {
+	if (mode === 'image_to_image' || mode === 'image_to_multiview') {
+		return NODE_CHAT_TRIPO3D_IMAGE_TO_IMAGE_TEMPLATE_OPTIONS
+	}
+	return NODE_CHAT_TRIPO3D_TEXT_TO_IMAGE_TEMPLATE_OPTIONS
 }
 
 export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null => {

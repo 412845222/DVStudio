@@ -424,6 +424,7 @@ type Tripo3DTaskResponse =
 			progress: number
 			thumbnailUrl: string
 			modelUrl: string
+			imageUrls?: string[]
 			statusText?: string
 			errorMessage?: string
 			raw?: unknown
@@ -444,6 +445,7 @@ type Tripo3DTaskMirrorItem = {
 	pbr: boolean
 	thumbnailUrl?: string
 	modelUrl?: string
+	imageUrls?: string[]
 	localAssetUrl?: string
 	localAssetPath?: string
 	errorMessage?: string
@@ -2930,6 +2932,99 @@ export class ComfyUIBridgeService {
 				ok: false,
 				status: res.status,
 				error: extractBodyError(body, `tripo3d/generate failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DGenerateResponse
+	}
+
+	async tripo3dGenerateTextToImage(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.generateTextToImage(payload)
+				if (ipcResult && typeof ipcResult === 'object' && 'ok' in ipcResult) {
+					return ipcResult as Tripo3DGenerateResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DGenerateResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/generateTextToImage failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/text-to-image'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/text-to-image failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DGenerateResponse
+	}
+
+	async tripo3dGenerateImageToImage(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.generateImageToImage(payload)
+				if (ipcResult && typeof ipcResult === 'object' && 'ok' in ipcResult) {
+					return ipcResult as Tripo3DGenerateResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DGenerateResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/generateImageToImage failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/image-to-image'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/image-to-image failed: ${res.status}`)
+			}
+		}
+		return (await res.json()) as Tripo3DGenerateResponse
+	}
+
+	async tripo3dGenerateImageToMultiview(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+		if (isIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.tripo3d.generateImageToMultiview(payload)
+				if (ipcResult && typeof ipcResult === 'object' && 'ok' in ipcResult) {
+					return ipcResult as Tripo3DGenerateResponse
+				}
+				return { ok: true, ...ipcResult } as Tripo3DGenerateResponse
+			} catch (err: unknown) {
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'tripo3d/generateImageToMultiview failed via IPC'
+				}
+			}
+		}
+		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/image-to-multiview'), {
+			method: 'POST',
+			headers: jsonHeaders(this.devToken),
+			body: JSON.stringify(payload || {})
+		})
+		if (!res.ok) {
+			const body = await safeJson(res)
+			return {
+				ok: false,
+				status: res.status,
+				error: extractBodyError(body, `tripo3d/image-to-multiview failed: ${res.status}`)
 			}
 		}
 		return (await res.json()) as Tripo3DGenerateResponse
