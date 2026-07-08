@@ -55,6 +55,7 @@
   "nodes.model3d.renderUnlit": "无光照",
   "nodes.model3d.lighting": "光照",
   "nodes.model3d.lightStudio": "工作室",
+  "nodes.model3d.lightSoftStudio": "柔光工作室",
   "nodes.model3d.lightOutdoor": "户外",
   "nodes.model3d.lightDark": "暗调",
   "nodes.model3d.lightNone": "无灯光",
@@ -67,6 +68,9 @@
   "nodes.model3d.grid": "网格",
   "nodes.model3d.axes": "坐标轴",
   "nodes.model3d.bloom": "泛光",
+  "nodes.model3d.bloomStrength": "泛光强度",
+  "nodes.model3d.bloomRadius": "泛光半径",
+  "nodes.model3d.bloomThreshold": "泛光阈值",
   "nodes.model3d.wireframe": "线框",
   "nodes.model3d.resetCamera": "重置视角",
   "nodes.model3d.screenshot": "截图",
@@ -89,5 +93,14 @@
   "nodes.model3d.ready": "就绪",
   "nodes.model3d.vertices": "顶点",
   "nodes.model3d.triangles": "三角面",
-  "nodes.model3d.selected": "已选中"
+  "nodes.model3d.selected": "已选中",
+  "nodes.model3d.lightAdjust": "光照调节",
+  "nodes.model3d.ambientLight": "环境光",
+  "nodes.model3d.mainLight": "主光",
+  "nodes.model3d.fillLight": "补光",
+  "nodes.model3d.rimLight": "轮廓光",
+  "nodes.model3d.exposure": "曝光",
+  "nodes.model3d.lightAzimuth": "方位角",
+  "nodes.model3d.lightElevation": "高度角",
+  "nodes.model3d.resetPreset": "重置为预设"
 }

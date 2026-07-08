@@ -1,0 +1,30 @@
+{
+  "dark": {
+    "studio": {
+      "topColor": "#7a8a9a",
+      "bottomColor": "#4a5a6a",
+      "offset": 0.2,
+      "exponent": 0.4
+    },
+    "deep": {
+      "topColor": "#3a4a5a",
+      "bottomColor": "#1a2535",
+      "offset": 0.4,
+      "exponent": 0.6
+    }
+  },
+  "light": {
+    "studio": {
+      "topColor": "#f5f8fc",
+      "bottomColor": "#e8ecf2",
+      "offset": 0.2,
+      "exponent": 0.4
+    },
+    "bright": {
+      "topColor": "#ffffff",
+      "bottomColor": "#f0f4f8",
+      "offset": 0.3,
+      "exponent": 0.5
+    }
+  }
+}

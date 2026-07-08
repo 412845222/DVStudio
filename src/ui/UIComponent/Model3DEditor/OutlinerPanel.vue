@@ -76,14 +76,10 @@ const outlinerLabel = t('nodes.model3d.outliner')
   position: relative;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--wf-primary) 3%, rgba(21, 24, 28, 0.92)) 0%,
-    rgba(18, 21, 25, 0.96) 100%
-  );
+  background: var(--wf-surface-glass, linear-gradient(180deg, color-mix(in srgb, var(--wf-primary) 3%, rgba(21, 24, 28, 0.92)) 0%, rgba(18, 21, 25, 0.96) 100%));
   backdrop-filter: blur(10px) saturate(130%);
   -webkit-backdrop-filter: blur(10px) saturate(130%);
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, rgba(255, 255, 255, 0.04));
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, var(--wf-border-subtle, rgba(255, 255, 255, 0.04)));
   overflow: hidden;
 }
 
@@ -118,10 +114,10 @@ const outlinerLabel = t('nodes.model3d.outliner')
   padding: 8px 10px;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--wf-primary) 8%, rgba(0, 0, 0, 0.3)),
+    color-mix(in srgb, var(--wf-primary) 8%, var(--wf-control-bg, rgba(0, 0, 0, 0.3))),
     color-mix(in srgb, var(--wf-primary) 2%, transparent)
   );
-  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 18%, rgba(255, 255, 255, 0.04));
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 18%, var(--wf-border-subtle, rgba(255, 255, 255, 0.04)));
 }
 
 .m3de-panel-header-title {
@@ -147,8 +143,8 @@ const outlinerLabel = t('nodes.model3d.outliner')
   font-size: 10px;
   color: var(--wf-text-muted);
   padding: 1px 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 25%, transparent);
+  background: var(--wf-control-bg, rgba(0, 0, 0, 0.3));
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 25%, var(--wf-control-border, transparent));
 }
 
 .m3de-outliner {

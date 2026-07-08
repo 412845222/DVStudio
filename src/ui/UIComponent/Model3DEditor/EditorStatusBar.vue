@@ -97,12 +97,8 @@ const selectedLabel = computed(() => t('nodes.model3d.selected'))
   padding: 4px 12px;
   font-size: 10px;
   color: var(--wf-text-muted);
-  background: linear-gradient(
-    0deg,
-    color-mix(in srgb, var(--wf-primary) 3%, rgba(18, 21, 25, 0.95)),
-    rgba(15, 18, 22, 0.92)
-  );
-  border-top: 1px solid color-mix(in srgb, var(--wf-primary) 18%, rgba(255, 255, 255, 0.04));
+  background: var(--wf-surface-glass, linear-gradient(0deg, color-mix(in srgb, var(--wf-primary) 3%, rgba(18, 21, 25, 0.95)), rgba(15, 18, 22, 0.92)));
+  border-top: 1px solid color-mix(in srgb, var(--wf-primary) 18%, var(--wf-border-subtle, rgba(255, 255, 255, 0.04)));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   gap: 8px;
@@ -192,8 +188,8 @@ const selectedLabel = computed(() => t('nodes.model3d.selected'))
   align-items: center;
   gap: 3px;
   padding: 1px 6px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid transparent;
+  background: var(--wf-control-bg, rgba(0, 0, 0, 0.3));
+  border: 1px solid var(--wf-border-subtle, transparent);
 }
 
 .m3de-fps.m3de-fps-ok {

@@ -36,8 +36,9 @@ defineProps<{
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(8, 12, 16, 0.85);
+	background: var(--wf-overlay-bg, rgba(8, 12, 16, 0.85));
 	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
 	z-index: 100;
 }
 
@@ -45,9 +46,11 @@ defineProps<{
 	width: 320px;
 	padding: 28px 32px;
 	position: relative;
-	background: linear-gradient(135deg, color-mix(in srgb, var(--wf-primary, #27b99c) 4%, rgba(21,24,28,0.9)), rgba(21,24,28,0.95));
-	border: 1px solid color-mix(in srgb, var(--wf-primary, #27b99c) 25%, transparent);
+	background: var(--wf-surface-glass, linear-gradient(135deg, color-mix(in srgb, var(--wf-primary, #27b99c) 4%, rgba(21,24,28,0.9)), rgba(21,24,28,0.95)));
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #27b99c) 25%, var(--wf-border-subtle, transparent));
 	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	box-shadow: var(--wf-panel-shadow-strong, 0 12px 36px rgba(0, 0, 0, 0.18));
 }
 
 .progress-glow {

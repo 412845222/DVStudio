@@ -844,10 +844,13 @@ const onAutoRotateToggle = (e: Event) =>
 const onOpenEditor = async () => {
 	const url = effectiveModelUrl.value
 	if (!url) return
+	const modelName = String(settings.value?.modelSourceName ?? '').trim() 
+		|| props.nodeId 
+		|| t('nodes.model3d.defaultModelName')
 	await open3DEditor({
 		nodeId: props.nodeId,
 		modelUrl: url,
-		modelName: sourceNameDisplay.value,
+		modelName,
 	})
 }
 
