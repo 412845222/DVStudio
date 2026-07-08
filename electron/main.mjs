@@ -1424,8 +1424,10 @@ function registerIpc() {
 				sourceName: String(payload?.sourceName || ''),
 				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : 'markup',
 			})
-			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
-				try { imageMarkupWindow.close() } catch {}
+			if (payload?.exportType !== 'screenshot') {
+				if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+					try { imageMarkupWindow.close() } catch {}
+				}
 			}
 			return { ok: true }
 		} catch (err) {

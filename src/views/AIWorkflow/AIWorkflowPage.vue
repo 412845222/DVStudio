@@ -899,6 +899,7 @@ import ImageMarkupDialog from '../../ui/WorkFlow/WorlFlowNodes/ImageMarkupDialog
 import DwebCanvasNodeSearchMenu from '../../ui/UIComponent/DwebCanvasNodeSearchMenu.vue'
 import { buildDeleteAction, type WorkflowAction } from '../../aiworkflow/actions'
 import { exportWorkflowImageOutputPng } from '../../aiworkflow/imageOutput'
+import { findNextNodePositionFromSource } from '../../aiworkflow/nodePositionUtils'
 import {
 	exportWorkflowImageEnforcedPng,
 	uvCropToPixelRect,
@@ -4396,7 +4397,7 @@ onMounted(() => {
 					return isRecord(p) && isString(p.dataUrl) && isNumber(p.width) && isNumber(p.height)
 				}
 				if (isMarkupPayload(payload)) {
-					handleImageMarkupExported(payload)
+					void handleImageMarkupExported(payload)
 				}
 			})
 			imageMarkupExportListenerId = Number(id || 0) || null
@@ -9311,7 +9312,7 @@ const warmupCropCreatedNode = async (nodeId: string) => {
 	}
 }
 
-const handleImageMarkupExported = (payload: {
+const handleImageMarkupExported = async (payload: {
 	dataUrl: string
 	width: number
 	height: number
@@ -9336,11 +9337,10 @@ const handleImageMarkupExported = (payload: {
 		const fromNode = store.state.nodesById[fromNodeId]
 		if (!fromNode) return
 
-		const baseX = Number(fromNode.worldX || 0)
-		const baseY = Number(fromNode.worldY || 0)
+		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
 		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
-		store.commit('addNodeAt', { worldX: baseX + 400, worldY: baseY, title })
+		store.commit('addNodeAt', { worldX: nextPosition.worldX, worldY: nextPosition.worldY, title })
 		const newNodeId = String(store.state.selectedNodeId || '').trim()
 		if (!newNodeId || !store.state.nodesById[newNodeId]) {
 			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
@@ -9349,12 +9349,24 @@ const handleImageMarkupExported = (payload: {
 
 		const resourceId = `res-${typeSuffix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 		const resourceName = `${baseName}-${typeSuffix}-${Date.now()}.png`.slice(0, 200)
+
+		let resourceUrl = payload.dataUrl
+		let projectRelativePath = ''
+
+		if (isScreenshot && currentProjectId.value && isElectron()) {
+			const dl = await downloadUrlToProjectRoot(currentProjectId.value, payload.dataUrl, resourceName)
+			if (dl?.ok && dl.relativePath) {
+				resourceUrl = `dweb://project-assets?projectId=${currentProjectId.value}&path=${encodeURIComponent(dl.relativePath)}`
+				projectRelativePath = dl.relativePath
+			}
+		}
+
 		const newResource: WorkflowResource = {
 			id: resourceId,
 			kind: 'image',
 			name: resourceName,
-			url: payload.dataUrl,
-			localFileKey: `${typeSuffix}:${newNodeId}`,
+			url: resourceUrl,
+			projectRelativePath: projectRelativePath || undefined,
 			createdAt: Date.now()
 		}
 		store.commit('addResource', newResource)
@@ -9388,8 +9400,14 @@ const handleImageMarkupExported = (payload: {
 			})
 		}
 
-		closeImageMarkupDialog()
+		if (exportType !== 'screenshot') {
+			closeImageMarkupDialog()
+		}
 		pushToast(t('aiworkflow.page.markup.nodeCreated', { typeLabel }), 'info')
+
+		if (isScreenshot && currentProjectId.value && currentProjectName.value) {
+			void saveProjectToBackend(currentProjectName.value, { silent: true })
+		}
 
 		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
 		void warmupCropCreatedNode(newNodeId)
@@ -9405,7 +9423,7 @@ const onNodeExportMarkupImage = (payload: {
 	width: number
 	height: number
 }) => {
-	handleImageMarkupExported({
+	void handleImageMarkupExported({
 		dataUrl: payload.dataUrl,
 		width: payload.width,
 		height: payload.height
