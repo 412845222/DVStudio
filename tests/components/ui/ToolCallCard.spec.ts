@@ -315,4 +315,63 @@ describe('ToolCallCard', () => {
       })
     })
   })
+
+  describe('execution description', () => {
+    it('does not show description when status is not completed', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'set_node_text', status: 'running', args: { nodeId: 'abc123' } },
+      })
+      expect(wrapper.find('.tool-call-card__description').exists()).toBe(false)
+    })
+
+    it('does not show description when tool is unknown', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'unknown_tool', status: 'completed', args: { key: 'val' } },
+      })
+      expect(wrapper.find('.tool-call-card__description').exists()).toBe(false)
+    })
+
+    it('does not show description when args is missing', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'set_node_text', status: 'completed' },
+      })
+      expect(wrapper.find('.tool-call-card__description').exists()).toBe(false)
+    })
+
+    it('shows set_node_text action description', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'set_node_text', status: 'completed', args: { nodeId: 'abc123def456' } },
+      })
+      const desc = wrapper.find('.tool-call-card__description')
+      expect(desc.exists()).toBe(true)
+      expect(desc.text()).toContain('设置节点文本')
+    })
+
+    it('shows create_node description with title', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'create_node', status: 'completed', args: { type: 'text', title: 'My Title' } },
+      })
+      const desc = wrapper.find('.tool-call-card__description')
+      expect(desc.exists()).toBe(true)
+      expect(desc.text()).toContain('My Title')
+    })
+
+    it('shows connect_nodes description with truncated ids', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'connect_nodes', status: 'completed', args: { fromNodeId: '1234567890abcdef', toNodeId: 'abcdef1234567890' } },
+      })
+      const desc = wrapper.find('.tool-call-card__description')
+      expect(desc.exists()).toBe(true)
+      expect(desc.text()).toContain('→')
+    })
+
+    it('shows list_node_types description', () => {
+      const wrapper = mount(ToolCallCard, {
+        props: { toolName: 'list_node_types', status: 'completed', args: {} },
+      })
+      const desc = wrapper.find('.tool-call-card__description')
+      expect(desc.exists()).toBe(true)
+      expect(desc.text()).toContain('获取节点类型列表')
+    })
+  })
 })

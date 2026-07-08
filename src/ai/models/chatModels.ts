@@ -1,9 +1,9 @@
 import { ref, computed } from 'vue'
 import type { CliModelInfo } from '../../electronBridge/types'
 
-export type ChatLegacyModelKey = 'deepseek' | 'nanobanana' | 'seedance' | 'codex' | 'meshy'
+export type ChatLegacyModelKey = 'text' | 'nanobanana' | 'seedance' | 'copilot' | 'codex' | 'meshy'
 export type ChatNeedType = 'text' | 'image' | 'video'
-export type ChatApiSource = 'all' | 'deepseek' | 'gemini' | 'bytedance' | 'local-exec' | 'copilot'
+export type ChatApiSource = 'all' | 'gemini' | 'bytedance' | 'local-exec' | 'copilot' | 'codex'
 
 export type ChatModelCatalogItem = {
 	id: string
@@ -23,7 +23,7 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		label: 'Auto (推荐)',
 		needType: 'text',
 		apiSource: 'copilot',
-		legacyModelKey: 'codex',
+		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot',
 		recommended: true
 	},
@@ -32,7 +32,7 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		label: 'GPT-5.4 Mini',
 		needType: 'text',
 		apiSource: 'copilot',
-		legacyModelKey: 'codex',
+		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot',
 	},
 	{
@@ -40,7 +40,7 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		label: 'GPT-5.4',
 		needType: 'text',
 		apiSource: 'copilot',
-		legacyModelKey: 'codex',
+		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot',
 		supportsVision: true
 	},
@@ -49,7 +49,7 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		label: 'Claude Sonnet 4.5',
 		needType: 'text',
 		apiSource: 'copilot',
-		legacyModelKey: 'codex',
+		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot'
 	},
 	{
@@ -57,8 +57,52 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		label: 'o4-mini',
 		needType: 'text',
 		apiSource: 'copilot',
-		legacyModelKey: 'codex',
+		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot'
+	}
+]
+
+const DEFAULT_CODEX_MODELS: ChatModelCatalogItem[] = [
+	{
+		id: 'codex-mini',
+		label: 'Codex Mini (推荐)',
+		needType: 'text',
+		apiSource: 'codex',
+		legacyModelKey: 'codex',
+		vendor: 'OpenAI Codex',
+		recommended: true
+	},
+	{
+		id: 'gpt-5',
+		label: 'GPT-5',
+		needType: 'text',
+		apiSource: 'codex',
+		legacyModelKey: 'codex',
+		vendor: 'OpenAI Codex',
+	},
+	{
+		id: 'gpt-5-mini',
+		label: 'GPT-5 Mini',
+		needType: 'text',
+		apiSource: 'codex',
+		legacyModelKey: 'codex',
+		vendor: 'OpenAI Codex',
+	},
+	{
+		id: 'gpt-5-nano',
+		label: 'GPT-5 Nano',
+		needType: 'text',
+		apiSource: 'codex',
+		legacyModelKey: 'codex',
+		vendor: 'OpenAI Codex',
+	},
+	{
+		id: 'o4-mini',
+		label: 'o4-mini',
+		needType: 'text',
+		apiSource: 'codex',
+		legacyModelKey: 'codex',
+		vendor: 'OpenAI Codex',
 	}
 ]
 
@@ -66,14 +110,20 @@ const dynamicCopilotModels = ref<ChatModelCatalogItem[]>([])
 const copilotEnabled = ref(false)
 const copilotModelsLoaded = ref(false)
 
-export function convertCliModelsToCatalog(cliModels: CliModelInfo[]): ChatModelCatalogItem[] {
+const dynamicCodexModels = ref<ChatModelCatalogItem[]>([])
+const codexEnabled = ref(false)
+const codexModelsLoaded = ref(false)
+
+export function convertCliModelsToCatalog(cliModels: CliModelInfo[], apiSource: 'copilot' | 'codex' = 'copilot'): ChatModelCatalogItem[] {
+	const legacyKey: ChatLegacyModelKey = apiSource === 'codex' ? 'codex' : 'copilot'
+	const vendor = apiSource === 'codex' ? 'OpenAI Codex' : 'GitHub Copilot'
 	return cliModels.map(m => ({
 		id: m.id,
 		label: m.label || m.id,
 		needType: 'text' as const,
-		apiSource: 'copilot' as const,
-		legacyModelKey: 'codex' as ChatLegacyModelKey,
-		vendor: m.vendor || 'GitHub Copilot',
+		apiSource,
+		legacyModelKey: legacyKey,
+		vendor: m.vendor || vendor,
 		description: m.description,
 		recommended: m.recommended
 	}))
@@ -99,6 +149,26 @@ export function getCopilotModels(): ChatModelCatalogItem[] {
 	return DEFAULT_COPILOT_MODELS
 }
 
+export function setDynamicCodexModels(models: ChatModelCatalogItem[]) {
+	dynamicCodexModels.value = models
+	codexModelsLoaded.value = true
+}
+
+export function setCodexEnabled(enabled: boolean) {
+	codexEnabled.value = enabled
+}
+
+export function isCodexEnabled(): boolean {
+	return codexEnabled.value
+}
+
+export function getCodexModels(): ChatModelCatalogItem[] {
+	if (codexModelsLoaded.value && dynamicCodexModels.value.length > 0) {
+		return dynamicCodexModels.value
+	}
+	return DEFAULT_CODEX_MODELS
+}
+
 function buildCatalog(): ChatModelCatalogItem[] {
 	const models: ChatModelCatalogItem[] = []
 	if (copilotEnabled.value) {
@@ -107,22 +177,19 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			: DEFAULT_COPILOT_MODELS
 		models.push(...copilotModels)
 	}
+	if (codexEnabled.value) {
+		const codexModels = codexModelsLoaded.value && dynamicCodexModels.value.length > 0
+			? dynamicCodexModels.value
+			: DEFAULT_CODEX_MODELS
+		models.push(...codexModels)
+	}
 	models.push(
-		{
-			id: 'deepseek-chat',
-			label: 'DeepSeek Chat',
-			needType: 'text',
-			apiSource: 'deepseek',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
 		{
 			id: 'doubao-seed-evolving',
 			label: '豆包 Seed 快速迭代版',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -133,7 +200,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.1 Pro',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -144,7 +211,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.1 Turbo',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -155,7 +222,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 角色版',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			supportsVision: true
 		},
@@ -164,7 +231,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Pro',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -175,7 +242,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Lite 新版',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			supportsVision: true
 		},
@@ -184,7 +251,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Mini 新版',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			supportsVision: true
 		},
@@ -193,7 +260,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Lite',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -204,7 +271,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Mini',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -215,7 +282,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 2.0 Code Preview',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -226,7 +293,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 1.8',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -237,7 +304,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed Code Preview',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true
 		},
@@ -246,7 +313,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 1.6 Lite',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsVision: true
@@ -256,7 +323,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 1.6 Flash',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -267,7 +334,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed 1.6 Vision',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true,
 			supportsStructuredOutput: true,
@@ -278,7 +345,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: '豆包 Seed Translation',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '字节方舟',
 			recommended: true
 		},
@@ -287,7 +354,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'GLM 4.7',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '智谱 AI',
 			recommended: true
 		},
@@ -296,71 +363,8 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'GLM 4.5 Air',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '智谱 AI',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v4-pro-260425',
-			label: 'DeepSeek V4 Pro',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v4-flash-260425',
-			label: 'DeepSeek V4 Flash',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v3-2-251201',
-			label: 'DeepSeek V3.2',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v3-1-terminus',
-			label: 'DeepSeek V3.1 Terminus',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v3-1-250821',
-			label: 'DeepSeek V3.1 250821',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-v3-250324',
-			label: 'DeepSeek V3 250324',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
-			recommended: true
-		},
-		{
-			id: 'deepseek-r1-250528',
-			label: 'DeepSeek R1 250528',
-			needType: 'text',
-			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
-			vendor: 'DeepSeek',
 			recommended: true
 		},
 		{
@@ -368,7 +372,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Kimi K2 250905',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '月之暗面',
 			recommended: true
 		},
@@ -377,7 +381,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Qwen3 32B',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '通义千问',
 			recommended: true
 		},
@@ -386,7 +390,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Qwen3 14B',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '通义千问',
 			recommended: true
 		},
@@ -395,7 +399,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Qwen3 8B',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '通义千问',
 			recommended: true
 		},
@@ -404,7 +408,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Qwen3 0.6B',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '通义千问',
 			recommended: true
 		},
@@ -413,7 +417,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Qwen 2.5 72B',
 			needType: 'text',
 			apiSource: 'bytedance',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: '通义千问',
 			recommended: true
 		},
@@ -422,7 +426,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 3.5 Flash (最新推荐) ⭐',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			recommended: true,
 			supportsVision: true
@@ -432,7 +436,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 3.1 Flash-Lite (高效低成本)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -441,7 +445,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 2.5 Flash (长上下文)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -450,7 +454,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 2.5 Pro (深度推理)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -459,7 +463,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 2.5 Flash Lite (最快最省)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -468,7 +472,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 3.1 Pro (预览版)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -477,7 +481,7 @@ function buildCatalog(): ChatModelCatalogItem[] {
 			label: 'Gemini 3 Flash (预览版)',
 			needType: 'text',
 			apiSource: 'gemini',
-			legacyModelKey: 'deepseek',
+			legacyModelKey: 'text',
 			vendor: 'Google',
 			supportsVision: true
 		},
@@ -641,7 +645,6 @@ export function refreshChatModelCatalog() {
 
 const CHAT_API_SOURCE_OPTIONS_BASE: Array<{ value: ChatApiSource; label: string }> = [
 	{ value: 'all', label: '所有' },
-	{ value: 'deepseek', label: 'DeepSeek' },
 	{ value: 'gemini', label: 'Gemini' },
 	{ value: 'bytedance', label: '火山方舟' }
 ]
@@ -650,6 +653,9 @@ export const CHAT_API_SOURCE_OPTIONS = computed<Array<{ value: ChatApiSource; la
 	const options = [...CHAT_API_SOURCE_OPTIONS_BASE]
 	if (copilotEnabled.value) {
 		options.push({ value: 'copilot', label: 'GitHub Copilot' })
+	}
+	if (codexEnabled.value) {
+		options.push({ value: 'codex', label: 'OpenAI Codex' })
 	}
 	return options
 })
@@ -661,6 +667,7 @@ export function getChatApiSourceOptions(): Array<{ value: ChatApiSource; label: 
 export const needTypeFromLegacyModel = (mk: ChatLegacyModelKey): ChatNeedType => {
 	if (mk === 'nanobanana') return 'image'
 	if (mk === 'seedance') return 'video'
+	if (mk === 'copilot') return 'text'
 	if (mk === 'codex') return 'text'
 	if (mk === 'meshy') return 'image'
 	return 'text'
@@ -669,7 +676,7 @@ export const needTypeFromLegacyModel = (mk: ChatLegacyModelKey): ChatNeedType =>
 export const legacyModelFromNeedType = (need: ChatNeedType): ChatLegacyModelKey => {
 	if (need === 'image') return 'nanobanana'
 	if (need === 'video') return 'seedance'
-	return 'deepseek'
+	return 'text'
 }
 
 export const getChatModelOptions = (needType: ChatNeedType, apiSource: ChatApiSource) => {
@@ -679,6 +686,9 @@ export const getChatModelOptions = (needType: ChatNeedType, apiSource: ChatApiSo
 		if (apiSource === 'all') return true
 		if (apiSource === 'copilot') {
 			return model.apiSource === 'copilot' || model.apiSource === 'local-exec'
+		}
+		if (apiSource === 'codex') {
+			return model.apiSource === 'codex'
 		}
 		if (apiSource === 'local-exec') {
 			return model.apiSource === 'local-exec'
@@ -697,6 +707,12 @@ export const isCopilotModel = (modelId: string) => {
 	const catalog = buildCatalog()
 	const model = catalog.find((item) => item.id === modelId)
 	return model?.apiSource === 'copilot' || model?.apiSource === 'local-exec'
+}
+
+export const isCodexModel = (modelId: string) => {
+	const catalog = buildCatalog()
+	const model = catalog.find((item) => item.id === modelId)
+	return model?.apiSource === 'codex'
 }
 
 export const getChatModelById = (modelId: string) => {
@@ -727,7 +743,7 @@ export async function initCopilotConfig(): Promise<void> {
 					}
 				}
 				if (models?.length) {
-					const catalogModels = convertCliModelsToCatalog(models)
+					const catalogModels = convertCliModelsToCatalog(models, 'copilot')
 					setDynamicCopilotModels(catalogModels)
 				}
 				refreshChatModelCatalog()
@@ -740,4 +756,42 @@ export async function initCopilotConfig(): Promise<void> {
 	})()
 
 	return copilotInitPromise
+}
+
+let codexInitPromise: Promise<void> | null = null
+
+export async function initCodexConfig(): Promise<void> {
+	if (codexInitPromise) return codexInitPromise
+
+	codexInitPromise = (async () => {
+		try {
+			const { cliGetAdapterConfig, cliListModels } = await import('../../network/CLIChatService')
+			const result = await cliGetAdapterConfig('codex')
+			const resultData = (result as any)?.value || (result as any)?.data
+			if (result?.ok && resultData?.config?.enabled) {
+				setCodexEnabled(true)
+				let models = resultData.config.models
+				if (!models || !models.length) {
+					try {
+						const modelsResult = await cliListModels('codex', false)
+						const modelsData = (modelsResult as any)?.value || (modelsResult as any)?.data
+						models = modelsData?.models
+					} catch {
+						// keep default models
+					}
+				}
+				if (models?.length) {
+					const catalogModels = convertCliModelsToCatalog(models, 'codex')
+					setDynamicCodexModels(catalogModels)
+				}
+				refreshChatModelCatalog()
+			} else {
+				setCodexEnabled(false)
+			}
+		} catch {
+			setCodexEnabled(false)
+		}
+	})()
+
+	return codexInitPromise
 }

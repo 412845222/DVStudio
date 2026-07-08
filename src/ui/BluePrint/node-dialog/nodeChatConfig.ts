@@ -155,7 +155,6 @@ export const NODE_CHAT_TEXT_SPEED_OPTIONS = [
 ]
 
 export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
-	{ value: 'deepseek', label: 'aiConfig.textModel.deepseek' },
 	{ value: 'bytedance', label: 'aiConfig.textModel.bytedance' },
 	{ value: 'gemini', label: 'aiConfig.textModel.gemini' }
 ]

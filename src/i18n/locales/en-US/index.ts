@@ -8,6 +8,7 @@ import consoleNs from './console.json'
 import startup from './startup.json'
 import settings from './settings.json'
 import copilot from './copilot.json'
+import codex from './codex.json'
 import about from './about.json'
 import welcome from './welcome.json'
 import projectList from './projectList.json'
@@ -75,6 +76,7 @@ const messages = {
 	...startup,
 	...settings,
 	...copilot,
+	...codex,
 	...about,
 	...welcome,
 	...projectList,

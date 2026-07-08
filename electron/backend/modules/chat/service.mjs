@@ -1,7 +1,7 @@
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 
 // 适配器
-import { DeepSeekAdapter } from './adapters/deepseek.mjs';
+import { OpenAICompatibleAdapter } from './adapters/openai-compatible.mjs';
 import { BytedanceAdapter } from './adapters/bytedance.mjs';
 import { GeminiAdapter } from './adapters/gemini.mjs';
 
@@ -13,17 +13,14 @@ import { GeminiAdapter } from './adapters/gemini.mjs';
  */
 function getAdapter(apiSource, config = {}) {
   switch (apiSource) {
-    case 'deepseek':
-      return new DeepSeekAdapter(config);
     case 'bytedance':
       return new BytedanceAdapter(config);
     case 'gemini':
       return new GeminiAdapter(config);
     case 'openai':
-      // OpenAI 兼容 DeepSeek 格式
-      return new DeepSeekAdapter({ ...config, baseUrl: 'https://api.openai.com/v1' });
+      return new OpenAICompatibleAdapter({ ...config, baseUrl: 'https://api.openai.com/v1' });
     default:
-      return new DeepSeekAdapter(config);
+      return new BytedanceAdapter(config);
   }
 }
 
@@ -40,7 +37,7 @@ function getApiKeyRepo(ctx) {
 }
 
 function getProviderConfig(provider, apiKey) {
-	const p = String(provider || 'deepseek').trim().toLowerCase()
+	const p = String(provider || 'bytedance').trim().toLowerCase()
 	if (p === 'openai') {
 		return {
 			baseUrl: 'https://api.openai.com/v1',
@@ -55,23 +52,16 @@ function getProviderConfig(provider, apiKey) {
 			apiKey: String(apiKey || '').trim()
 		}
 	}
-	if (p === 'bytedance') {
-		return {
-			baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-			model: 'doubao-seed-2-0-pro-260215',
-			apiKey: String(apiKey || '').trim()
-		}
-	}
 	return {
-		baseUrl: 'https://api.deepseek.com/v1',
-		model: 'deepseek-chat',
+		baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+		model: 'doubao-seed-evolving',
 		apiKey: String(apiKey || '').trim()
 	}
 }
 
 function resolveProviderAndKey(ctx, requestedModel) {
 	const keyRepo = getApiKeyRepo(ctx)
-	let provider = 'deepseek'
+	let provider = 'bytedance'
 	let apiKey = ''
 
 	const modelStr = String(requestedModel || '').trim().toLowerCase()
@@ -79,7 +69,7 @@ function resolveProviderAndKey(ctx, requestedModel) {
 	else if (modelStr.startsWith('gemini-')) provider = 'gemini'
 	else if (modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) provider = 'bytedance'
 
-	const providers = ['gemini', 'bytedance', 'deepseek', 'openai']
+	const providers = ['gemini', 'bytedance', 'openai']
 	for (const prov of providers) {
 		const result = keyRepo.getPlaintext(prov)
 		if (result.ok && result.plaintext && String(result.plaintext).trim()) {
@@ -89,9 +79,8 @@ function resolveProviderAndKey(ctx, requestedModel) {
 				if (modelStr.startsWith('gpt-') && prov === 'openai') break
 				if (modelStr.startsWith('gemini-') && prov === 'gemini') break
 				if ((modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) && prov === 'bytedance') break
-				if (modelStr.startsWith('deepseek-') && prov === 'deepseek') break
 			}
-			if (!modelStr && prov === 'deepseek') break
+			if (!modelStr && prov === 'bytedance') break
 		}
 	}
 	return { provider, apiKey }
@@ -319,7 +308,7 @@ export async function* streamMessageWithTools(ctx, payload) {
 	const conversationId = String(p.conversationId || '').trim()
 	const content = String(p.content || '').trim()
 	const model = String(p.model || '').trim()
-	const apiSource = String(p.apiSource || 'deepseek').toLowerCase()
+	const apiSource = String(p.apiSource || 'bytedance').toLowerCase()
 	const tools = p.tools || []
 
 	if (!conversationId) {
@@ -406,7 +395,7 @@ export async function sendMessageWithTools(ctx, payload) {
 	const conversationId = String(p.conversationId || '').trim()
 	const content = String(p.content || '').trim()
 	const model = String(p.model || '').trim()
-	const apiSource = String(p.apiSource || 'deepseek').toLowerCase()
+	const apiSource = String(p.apiSource || 'bytedance').toLowerCase()
 	const tools = p.tools || []
 
 	if (!conversationId) throw invalidParamsError('conversationId is required')
@@ -459,17 +448,20 @@ export async function sendMessageWithTools(ctx, payload) {
  */
 export function getModelsWithTools(ctx) {
 	return {
-		deepseek: ['deepseek-chat', 'deepseek-v3'],
 		bytedance: [
 			'doubao-seed-2-0-pro-260215',
 			'doubao-seed-2-0-lite-260215',
+			'doubao-seed-evolving',
 			'glm-4-7-251222',
 			'glm-4-5-air',
+			'deepseek-v4-pro-260425',
+			'deepseek-v4-flash-260425',
 			'deepseek-v3-2-251201',
+			'deepseek-r1-250528',
 			'kimi-k2-250905',
 			'qwen3-32b',
 			'qwen3-14b'
 		],
-		gemini: [] // Gemini 暂不支持
+		gemini: []
 	}
 }

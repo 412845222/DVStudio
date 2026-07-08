@@ -50,14 +50,19 @@ export function getProxyEnvVars() {
     if (fs.existsSync(settingsPath)) {
       const raw = fs.readFileSync(settingsPath, 'utf-8');
       const settings = JSON.parse(raw);
-      const httpProxy = String(settings.httpProxy || '').trim();
+      let httpProxy = String(settings.httpProxy || '').trim();
       if (httpProxy) {
+        if (!/^https?:\/\//i.test(httpProxy)) {
+          httpProxy = 'http://' + httpProxy;
+        }
         logger.info(`[CLIAdapter] Using HTTP proxy from settings: ${httpProxy}`);
         return {
           HTTP_PROXY: httpProxy,
           HTTPS_PROXY: httpProxy,
           http_proxy: httpProxy,
           https_proxy: httpProxy,
+          NO_PROXY: 'localhost,127.0.0.1',
+          no_proxy: 'localhost,127.0.0.1',
         };
       }
     }

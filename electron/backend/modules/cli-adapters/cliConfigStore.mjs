@@ -74,6 +74,15 @@ class CliConfigStore {
     const config = this.getAdapterConfig(adapterName);
     return config?.enabled === true;
   }
+
+  resetAdapterConfig(adapterName) {
+    if (this.store.adapters?.[adapterName]) {
+      delete this.store.adapters[adapterName];
+      saveStore(this.store);
+      return true;
+    }
+    return false;
+  }
 }
 
 export const cliConfigStore = new CliConfigStore();

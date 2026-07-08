@@ -39,7 +39,6 @@
   "aichat.dock.thinkingHigh": "详细",
   "aichat.dock.noModelAvailable": "暂无可用模型",
   "aichat.dock.uploadFile": "上传文件",
-  "aichat.dock.sourceDeepSeek": "DeepSeek",
   "aichat.dock.sourceByteDance": "火山方舟",
   "aichat.dock.sourceGemini": "Gemini",
   "aichat.dock.sourceCopilotCli": "Copilot CLI",

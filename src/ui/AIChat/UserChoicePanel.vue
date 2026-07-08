@@ -63,9 +63,9 @@ const onSelect = (index: number) => {
 .user-choice-panel {
 	margin: 8px 0;
 	padding: 10px 12px;
-	border: 1px solid rgba(148, 163, 184, 0.2);
+	border: 1px solid var(--wf-border-subtle);
 	border-radius: 6px;
-	background: rgba(30, 41, 59, 0.3);
+	background: var(--wf-chat-message-assistant-bg);
 }
 
 .user-choice-panel.is-disabled {
@@ -76,7 +76,7 @@ const onSelect = (index: number) => {
 .user-choice-panel__title {
 	font-size: 12px;
 	font-weight: 500;
-	color: var(--wf-text-primary, #e5e7eb);
+	color: var(--wf-text);
 	margin-bottom: 8px;
 }
 
@@ -91,10 +91,10 @@ const onSelect = (index: number) => {
 	align-items: center;
 	gap: 10px;
 	padding: 8px 12px;
-	border: 1px solid rgba(148, 163, 184, 0.25);
+	border: 1px solid var(--wf-border);
 	border-radius: 4px;
-	background: rgba(15, 23, 42, 0.5);
-	color: var(--wf-text-secondary, #d1d5db);
+	background: color-mix(in srgb, var(--wf-surface-base) 80%, transparent);
+	color: var(--wf-text);
 	font-size: 13px;
 	text-align: left;
 	cursor: pointer;
@@ -102,15 +102,15 @@ const onSelect = (index: number) => {
 }
 
 .user-choice-panel__option-btn:hover:not(:disabled) {
-	border-color: var(--wf-primary, #1f9d84);
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
-	color: var(--wf-text-primary, #e5e7eb);
+	border-color: var(--wf-primary);
+	background: var(--wf-primary-soft);
+	color: var(--wf-text);
 }
 
 .user-choice-panel__option-btn.is-selected {
-	border-color: var(--wf-primary, #1f9d84);
-	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
-	color: var(--wf-text-primary, #e5e7eb);
+	border-color: var(--wf-primary);
+	background: var(--wf-state-selected-bg);
+	color: var(--wf-text);
 }
 
 .user-choice-panel__option-btn:disabled {
@@ -124,8 +124,8 @@ const onSelect = (index: number) => {
 	width: 20px;
 	height: 20px;
 	border-radius: 50%;
-	background: rgba(148, 163, 184, 0.15);
-	color: var(--wf-text-muted, #9ca3af);
+	background: color-mix(in srgb, var(--wf-text-muted) 20%, transparent);
+	color: var(--wf-text-muted);
 	font-size: 11px;
 	font-weight: 600;
 	flex-shrink: 0;
@@ -133,7 +133,7 @@ const onSelect = (index: number) => {
 
 .user-choice-panel__option-btn:hover:not(:disabled) .user-choice-panel__option-index,
 .user-choice-panel__option-btn.is-selected .user-choice-panel__option-index {
-	background: var(--wf-primary, #1f9d84);
+	background: var(--wf-primary);
 	color: #fff;
 }
 
@@ -147,17 +147,17 @@ const onSelect = (index: number) => {
 .user-choice-panel__selected {
 	margin-top: 8px;
 	padding-top: 8px;
-	border-top: 1px solid rgba(148, 163, 184, 0.1);
+	border-top: 1px solid var(--wf-border-subtle);
 	font-size: 12px;
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 }
 
 .user-choice-panel__selected-label {
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 }
 
 .user-choice-panel__selected-text {
-	color: var(--wf-primary, #1f9d84);
+	color: var(--wf-primary);
 	font-weight: 500;
 }
 </style>

@@ -329,7 +329,7 @@
 					(v: unknown) => {
 						if (
 							typeof v === 'string' &&
-							['deepseek', 'nanobanana', 'seedance', 'codex'].includes(v)
+							['text', 'nanobanana', 'seedance', 'codex'].includes(v)
 						)
 							chatModelKey = v as typeof chatModelKey
 					}
@@ -1289,7 +1289,7 @@ const compactThreshold = computed(() => {
 const shouldCollapseChatDrawerByViewport = () => true
 
 // NOTE: must be declared before any watch/computed that references it.
-const chatModelKey = ref<'deepseek' | 'nanobanana' | 'seedance' | 'codex'>('codex')
+const chatModelKey = ref<'text' | 'nanobanana' | 'seedance' | 'codex'>('codex')
 const chatModelId = ref<string>('auto')
 const chatThinkingEffort = ref<'disabled' | 'low' | 'medium' | 'high'>('medium')
 const chatContextUsage = ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>(null)

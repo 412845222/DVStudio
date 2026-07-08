@@ -51,7 +51,6 @@
   "aiConfig.textSpeed.fast": "快速",
   "aiConfig.textSpeed.normal": "标准",
   "aiConfig.textSpeed.slow": "精细",
-  "aiConfig.textModel.deepseek": "DeepSeek",
   "aiConfig.textModel.bytedance": "字节火山方舟",
   "aiConfig.textModel.gemini": "Google Gemini",
   "aiConfig.seedVersion.pro": "Seed 2.0 Pro（深度思考）",

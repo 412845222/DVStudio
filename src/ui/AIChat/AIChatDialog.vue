@@ -411,7 +411,7 @@ const toggleDeepMode = () => {
 loadDeepMode()
 
 const modelApiSource = ref<ChatApiSource>('all')
-const textModelId = ref('deepseek-chat')
+const textModelId = ref('doubao-seed-evolving')
 
 const loadModelPrefs = () => {
 	try {
@@ -419,7 +419,6 @@ const loadModelPrefs = () => {
 		const savedModel = window.localStorage.getItem('dvs.aiChat.textModelId')
 		if (
 			savedSource === 'all' ||
-			savedSource === 'deepseek' ||
 			savedSource === 'gemini' ||
 			savedSource === 'bytedance' ||
 			savedSource === 'copilot'
@@ -429,7 +428,7 @@ const loadModelPrefs = () => {
 		if (typeof savedModel === 'string' && savedModel.trim()) textModelId.value = savedModel.trim()
 	} catch {
 		modelApiSource.value = 'all'
-		textModelId.value = 'deepseek-chat'
+		textModelId.value = 'doubao-seed-evolving'
 	}
 }
 
@@ -454,7 +453,7 @@ const activeProvider = computed(() => {
 	if (src === 'copilot' || src === 'local-exec') return 'copilot'
 	if (src === 'bytedance') return 'bytedance'
 	if (src === 'gemini') return 'gemini'
-	return 'deepseek'
+	return 'bytedance'
 })
 const isCopilotActive = computed(() => activeProvider.value === 'copilot')
 

@@ -14,6 +14,7 @@
   "aichat.tools.action.listNodeTypes": "List Node Types",
   "aichat.tools.action.getBlueprintState": "Get Blueprint State",
   "aichat.tools.action.getProjectInfo": "Get Project Info",
+  "aichat.tools.action.setNodeText": "Set Node Text",
   "aichat.toolsPanel.title": "Tools",
   "aichat.toolsPanel.empty": "No tool calls yet",
   "aichat.thinking.thinking": "Thinking…",

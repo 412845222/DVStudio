@@ -3,7 +3,6 @@ import { resolveBackendUrl } from './backendConfig'
 import { isMigrationMode, hasIpcApi, normalizeTimestamp } from './ipcClient'
 
 export type CredentialProvidersStatus = {
-	deepseek: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	gemini: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	bytedance: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
 	meshy: { hasKey: boolean; fingerprint: string; updatedAt: string | null }
@@ -12,7 +11,6 @@ export type CredentialProvidersStatus = {
 }
 
 export type SaveCredentialRequest = {
-	deepseekApiKey?: string
 	geminiApiKey?: string
 	bytedanceApiKey?: string
 	meshyApiKey?: string
@@ -47,7 +45,6 @@ type LocalDbBridge = {
 }
 
 const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: string; statusKey: keyof CredentialProvidersStatus }> = [
-	{ field: 'deepseekApiKey', provider: 'deepseek', statusKey: 'deepseek' },
 	{ field: 'geminiApiKey', provider: 'gemini', statusKey: 'gemini' },
 	{ field: 'bytedanceApiKey', provider: 'bytedance', statusKey: 'bytedance' },
 	{ field: 'meshyApiKey', provider: 'meshy', statusKey: 'meshy' },
@@ -57,7 +54,6 @@ const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: str
 
 function emptyStatus(): CredentialProvidersStatus {
 	return {
-		deepseek: { hasKey: false, fingerprint: '', updatedAt: null },
 		gemini: { hasKey: false, fingerprint: '', updatedAt: null },
 		bytedance: { hasKey: false, fingerprint: '', updatedAt: null },
 		meshy: { hasKey: false, fingerprint: '', updatedAt: null },

@@ -51,7 +51,6 @@
   "aiConfig.textSpeed.fast": "Fast",
   "aiConfig.textSpeed.normal": "Standard",
   "aiConfig.textSpeed.slow": "Precise",
-  "aiConfig.textModel.deepseek": "DeepSeek",
   "aiConfig.textModel.bytedance": "ByteDance Volcano Ark",
   "aiConfig.textModel.gemini": "Google Gemini",
   "aiConfig.seedVersion.pro": "Seed 2.0 Pro (Deep Thinking)",

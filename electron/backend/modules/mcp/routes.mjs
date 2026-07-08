@@ -12,4 +12,8 @@ export const routes = [
   { channel: 'dweb:mcp:register-builtin', handler: handlers.mcpRegisterBuiltin },
   { channel: 'dweb:mcp:get-status', handler: handlers.mcpGetStatus },
   { channel: 'dweb:mcp:list-servers', handler: handlers.mcpListServers },
+  { channel: 'dweb:mcp:get-bridge-status', handler: handlers.mcpGetBridgeStatus },
+  { channel: 'dweb:mcp:get-bridge-script', handler: handlers.mcpGetBridgeScriptPath },
 ];
+
+export { initMCPModule } from './handlers.mjs';

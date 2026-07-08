@@ -169,5 +169,7 @@
   "aiworkflow.toast.unrealEditorNotRunning": "未检测到正在运行的虚幻编辑器，请先启动编辑器并打开项目。",
   "aiworkflow.toast.unrealPluginInstalled": "插件安装成功！请重启虚幻编辑器，然后重新点击导出按钮。",
   "aiworkflow.toast.projectExportSuccess": "项目包导出成功。",
-  "aiworkflow.toast.projectExportFailed": "导出项目包失败：{error}"
+  "aiworkflow.toast.projectExportFailed": "导出项目包失败：{error}",
+  "aiworkflow.toast.agentNodesConnected": "已连接节点",
+  "aiworkflow.toast.agentNodeTextSet": "已设置节点 {id} 文本"
 }

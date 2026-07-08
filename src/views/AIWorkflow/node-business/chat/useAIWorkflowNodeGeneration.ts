@@ -920,12 +920,12 @@ const runTextTask = async (
 	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
-	// Default provider is "bytedance" (Doubao). User params may override to "deepseek".
+	// Default provider is "bytedance" (Doubao).
 	const params = payload.params ?? {}
 	const provider = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
 	const modelId =
 		String(params.modelId ?? params.textModelVersion ?? '').trim() ||
-		(provider === 'deepseek' ? 'deepseek-chat' : 'doubao-seed-2-0-pro-260215')
+		'doubao-seed-2-0-pro-260215'
 	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
 	if (params.thinking) body.thinking = params.thinking

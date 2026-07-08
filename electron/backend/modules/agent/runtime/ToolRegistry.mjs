@@ -5,6 +5,7 @@
  * 为 Agent Runtime 提供一致的工具列表获取、格式化、执行接口。
  */
 
+import { getToolExecutor } from '../../mcp/toolExecutor.mjs';
 import { mcpServerManager } from '../../mcp/client.mjs';
 import logger from '../../../core/logger.mjs';
 
@@ -21,8 +22,9 @@ export class ToolRegistry {
     const allTools = [];
 
     try {
-      const builtinResult = await mcpServerManager.listTools(null);
-      for (const tool of builtinResult.tools || []) {
+      const executor = getToolExecutor();
+      const builtinTools = executor.getMCPTools();
+      for (const tool of builtinTools) {
         allTools.push(this.toOpenAITool(tool, 'builtin'));
       }
     } catch (err) {
@@ -56,6 +58,12 @@ export class ToolRegistry {
    * @returns {Promise<object>}
    */
   async callTool(toolName, args, requestId) {
+    const executor = getToolExecutor();
+
+    if (executor.hasTool(toolName)) {
+      return await executor.callTool(toolName, args, { requestId });
+    }
+
     const tools = await this.listTools();
     const tool = tools.find(t => t.function.name === toolName);
     if (!tool) {

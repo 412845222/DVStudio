@@ -1,18 +1,9 @@
 /**
  * DVSAgent Provider
  *
- * 基于 OpenAI 兼容 API 的多模型 Provider，支持 DeepSeek/豆包/Gemini/OpenAI 等。
- * 继承 ApiLLMProvider，设置基础标识。
+ * 重新导出自研增强版 DVSAgentEnhancedProvider。
+ * 增强版使用专用 LLMClient，完整支持原生 function calling，
+ * 为工作流操作提供完整 Agent 能力。
  */
 
-import { ApiLLMProvider } from './ApiLLMProvider.mjs';
-
-export class DVSAgentProvider extends ApiLLMProvider {
-  constructor(ctx) {
-    super(ctx);
-  }
-
-  get id() { return 'dvsagent'; }
-
-  get displayName() { return 'DVS Agent'; }
-}
+export { DVSAgentEnhancedProvider as DVSAgentProvider } from '../dvsagent/DVSAgentEnhancedProvider.mjs';

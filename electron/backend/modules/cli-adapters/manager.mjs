@@ -111,6 +111,25 @@ class CLIAdapterManager {
     });
   }
 
+  async resetAdapterConfig(adapterName) {
+    const adapter = this.adapters.get(adapterName);
+    if (adapter?.adapter?.dispose) {
+      try {
+        for (const [sessionId, name] of this.sessions) {
+          if (name === adapterName) {
+            adapter.adapter.cancel(sessionId);
+            this.sessions.delete(sessionId);
+          }
+        }
+      } catch (err) {
+        logger.warn(`Failed to clean up sessions for ${adapterName}: ${err.message}`);
+      }
+    }
+    this.adapters.delete(adapterName);
+    cliConfigStore.resetAdapterConfig(adapterName);
+    return { ok: true };
+  }
+
   isAdapterEnabled(adapterName) {
     return cliConfigStore.isAdapterEnabled(adapterName);
   }
@@ -168,6 +187,22 @@ class CLIAdapterManager {
     const adapter = this.getAdapter(adapterName);
     adapter.cancel(sessionId);
     this.sessions.delete(sessionId);
+  }
+
+  async *startAuthFlow(adapterName) {
+    const adapter = this.getAdapter(adapterName);
+    if (typeof adapter.startAuthFlow !== 'function') {
+      yield { type: 'error', message: `Adapter ${adapterName} does not support auth flow` };
+      return;
+    }
+    yield* adapter.startAuthFlow();
+  }
+
+  cancelAuth(adapterName) {
+    const adapter = this.getAdapter(adapterName);
+    if (typeof adapter.cancelAuth === 'function') {
+      adapter.cancelAuth();
+    }
   }
 
   getSessionInfo(sessionId) {

@@ -681,8 +681,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			builtinToolListenerMap.delete(id)
 			return { ok: true }
 		},
-		respondBuiltinTool: (requestId, result) => {
-			ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+		respondBuiltinTool: (requestId, result, error) => {
+			if (error) {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { error })
+			} else {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+			}
 		},
 	},
 	// ===== CLI 适配器 =====
@@ -699,7 +703,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		listModels: (payload) => invoke('dweb:cli:list-models', payload || {}),
 		getConfig: (payload) => invoke('dweb:cli:get-config', payload || {}),
 		saveConfig: (payload) => invoke('dweb:cli:save-config', payload || {}),
+		resetConfig: (payload) => invoke('dweb:cli:reset-config', payload || {}),
 		runFix: (payload) => invoke('dweb:cli:run-fix', payload || {}),
+		cliStartSession: (payload) => invoke('dweb:cli:start-session', payload || {}),
+		cliStopSession: (payload) => invoke('dweb:cli:stop-session', payload || {}),
+		cliSendMessageStream: (payload) => createIpcStreamGenerator('dweb:cli:send-message', payload || {}),
+		startAuthStream: (payload) => createIpcStreamGenerator('dweb:cli:start-auth', payload || {}),
+		cancelAuth: (payload) => invoke('dweb:cli:cancel-auth', payload || {}),
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),

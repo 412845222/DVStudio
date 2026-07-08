@@ -43,7 +43,7 @@ export async function* streamAgentMessage(ctx, payload) {
 
   let backend = p.backend ? String(p.backend).toLowerCase() : null;
   if (!backend) {
-    const apiSource = String(p.apiSource || 'deepseek').toLowerCase();
+    const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const cliMode = p.cliMode === true || ['codex', 'copilot'].includes(apiSource);
     backend = cliMode ? apiSource : 'dvsagent';
   }
@@ -64,9 +64,9 @@ export async function* streamAgentMessage(ctx, payload) {
     yield* runtime.streamMessage({
       ...p,
       content,
-      model: String(p.model || p.modelId || 'deepseek-chat').trim(),
+      model: String(p.model || p.modelId || 'doubao-seed-evolving').trim(),
       backend,
-      apiSource: String(p.apiSource || 'deepseek').toLowerCase(),
+      apiSource: String(p.apiSource || 'bytedance').toLowerCase(),
       context: p.context || null,
       apiKeys: p.apiKeys || {},
       thinkingEffort: String(p.thinkingEffort || 'medium').toLowerCase(),
