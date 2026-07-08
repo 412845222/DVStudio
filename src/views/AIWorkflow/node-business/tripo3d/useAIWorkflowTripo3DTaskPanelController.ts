@@ -8,9 +8,12 @@ import type {
 	Tripo3DEffectiveOutput,
 	Tripo3DStoreLike,
 	Tripo3DTaskStatus,
-	CreateModel3DNodeAtCenterFn
+	Tripo3DTaskKind,
+	CreateModel3DNodeAtCenterFn,
+	CreateImageNodeAtCenterFn
 } from './types'
-import { getErrorMessage, isRecord } from '../../../../types/utils'
+import { isTripo3DImageMode as isTripo3DImageModeFn, getTripo3DTaskKind, isTripo3DImageMode } from './types'
+import { getErrorMessage, isRecord, isArray } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 
 type Tripo3DNodeSettingsLike = Record<string, unknown>
@@ -20,7 +23,10 @@ const modeLabelMap: Record<string, string> = {
 	'image_to_model': t('tasks.tripo3d.modeImageToModel'),
 	'multiview_to_model': t('tasks.tripo3d.modeMultiviewToModel'),
 	'texture': t('tasks.tripo3d.modeTexture'),
-	'refine': t('tasks.tripo3d.modeRefine')
+	'refine': t('tasks.tripo3d.modeRefine'),
+	'text_to_image': t('aiConfig.tripo3dImageMode.textToImage'),
+	'image_to_image': t('aiConfig.tripo3dImageMode.imageToImage'),
+	'image_to_multiview': t('aiConfig.tripo3dImageMode.imageToMultiview')
 }
 
 const statusLabelMap: Record<string, string> = {
@@ -45,6 +51,32 @@ const normalizeStatusForPanel = (raw: unknown): Tripo3DTaskPanelItem['status'] =
 	return 'idle'
 }
 
+const extractImageUrlsFromSettings = (settings: Record<string, unknown>): string[] => {
+	const outputImages = settings.tripo3dOutputImages ?? settings.outputImages
+	if (isArray(outputImages)) {
+		const urls = outputImages.filter((u): u is string => typeof u === 'string' && !!u.trim())
+		if (urls.length > 0) return urls.map(u => u.trim())
+	}
+	const outputSummary = isRecord(settings.tripo3dOutputSummary)
+		? settings.tripo3dOutputSummary
+		: isRecord(settings.outputSummary)
+			? settings.outputSummary
+			: {}
+	const summaryImageUrls = outputSummary.imageUrls
+	if (isArray(summaryImageUrls)) {
+		const urls = summaryImageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim())
+		if (urls.length > 0) return urls.map(u => u.trim())
+	}
+	const singleImage = String(
+		settings.tripo3dOutputImageUrl ??
+		settings.outputImageUrl ??
+		outputSummary.preferredUrl ??
+		settings.imageUrl ??
+		''
+	).trim()
+	return singleImage ? [singleImage] : []
+}
+
 export const useAIWorkflowTripo3DTaskPanelController = (options: {
 	store: Tripo3DStoreLike
 	renderNodes: { value: WorkflowNode[] }
@@ -54,7 +86,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 	pickTripo3DEffectiveOutput: (item: Record<string, unknown>) => Tripo3DEffectiveOutput
 	applyTripo3DTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopTripo3DPoll: (nodeId: string) => void
-	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createImageNodeAtCenter?: CreateImageNodeAtCenterFn
 	createModel3DNodeAtCenter?: CreateModel3DNodeAtCenterFn
 }) => {
 	const tripo3dTaskDialogOpen = ref(false)
@@ -78,6 +110,21 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 				return tripo3dModelSettings
 			}
 		}
+		if (node.type === 'image' && isRecord(node.imageSettings)) {
+			const tripo3dImageSettings = node.imageSettings.tripo3dImageSettings
+			const imgSettingsRec = tripo3dImageSettings as Record<string, unknown> | undefined
+			if (isRecord(tripo3dImageSettings) && (tripo3dImageSettings.taskId || (imgSettingsRec && imgSettingsRec.tripo3dTaskId))) {
+				const normalized: Record<string, unknown> = {}
+				for (const [key, value] of Object.entries(tripo3dImageSettings)) {
+					if (key.startsWith('tripo3d')) {
+						normalized[key] = value
+					} else {
+						normalized[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
+					}
+				}
+				return normalized
+			}
+		}
 		return undefined
 	}
 
@@ -88,7 +135,20 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			const tripo3dModelSettings = node.model3dSettings.tripo3dModelSettings
 			if (isRecord(tripo3dModelSettings) && tripo3dModelSettings.tripo3dTaskId) return true
 		}
+		if (node.type === 'image' && isRecord(node.imageSettings)) {
+			const imageSource = node.imageSettings.imageGenerationSource
+			if (imageSource === 'tripo3d') return true
+			const tripo3dImageSettings = node.imageSettings.tripo3dImageSettings
+			const imgSettingsRec = tripo3dImageSettings as Record<string, unknown> | undefined
+			if (isRecord(tripo3dImageSettings) && (tripo3dImageSettings.taskId || (imgSettingsRec && imgSettingsRec.tripo3dTaskId))) return true
+		}
 		return false
+	}
+
+	const getNodeTaskType = (node: WorkflowNode, settings: Record<string, unknown>): Tripo3DTaskKind => {
+		if (node.type === 'image') return 'image'
+		const mode = String(settings.tripo3dTaskFamily ?? settings.tripo3dMode ?? '').trim()
+		return getTripo3DTaskKind(mode)
 	}
 
 	const mapModeLabel = (mode: string) => modeLabelMap[mode] || mode
@@ -99,13 +159,18 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			.filter((node) => isTripo3DNode(node))
 			.map((node) => {
 				const settings = getTripo3DSettingsForNode(node) ?? {}
-				const mode = String(settings.tripo3dTaskFamily ?? settings.tripo3dMode ?? 'text_to_model').trim()
+				const isImageNode = node.type === 'image'
+				const defaultMode = isImageNode ? 'text_to_image' : 'text_to_model'
+				const mode = String(settings.tripo3dTaskFamily ?? settings.tripo3dMode ?? defaultMode).trim()
+				const taskType = getNodeTaskType(node, settings)
+				const typeLabel = taskType === 'image' ? t('tasks.tripo3d.typeImage') : t('tasks.tripo3d.type3d')
 				const taskStatusRaw = String(settings.tripo3dTaskStatus ?? 'idle').trim()
 				const taskStatus = normalizeStatusForPanel(taskStatusRaw)
 				const prompt = String(settings.tripo3dPrompt ?? '').trim()
 				const progress = Math.max(0, Math.min(100, Number(settings.tripo3dProgress ?? 0)))
 				const statusFallback = String(settings.tripo3dStatusText ?? settings.tripo3dErrorMessage ?? '').trim() || t('tasks.tripo3d.pendingExecution')
 				const output = options.pickTripo3DEffectiveOutput(settings)
+				const imageUrls = taskType === 'image' ? extractImageUrlsFromSettings(settings) : []
 				return {
 					id: `${node.id}:${String(settings.tripo3dTaskId ?? mode)}`,
 					nodeId: node.id,
@@ -113,14 +178,17 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 					taskId: String(settings.tripo3dTaskId ?? '').trim() || undefined,
 					mode,
 					modeLabel: mapModeLabel(mode),
+					taskType,
+					typeLabel,
 					status: taskStatus,
 					statusLabel: mapStatusLabel(taskStatus),
 					progress,
 					promptPreview: prompt || t('tasks.tripo3d.promptNotFilled'),
-					metaText: `${t('tasks.tripo3d.type3d')} · ${statusFallback}`,
+					metaText: `${typeLabel} · ${statusFallback}`,
 					footnote: statusFallback,
-					thumbnailUrl: options.getTripo3DDisplayThumbnailUrl(settings) || undefined,
+					thumbnailUrl: options.getTripo3DDisplayThumbnailUrl(settings) || output.thumbnailUrl || undefined,
 					modelUrl: output.modelUrl || undefined,
+					imageUrls,
 					localAssetUrl: output.localAssetUrl || undefined,
 					localAssetPath: output.localAssetPath || undefined,
 					createdAt: Number(node.createdAt ?? Date.now()),
@@ -155,6 +223,41 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 		return t('tasks.tripo3d.localStateDisplayed')
 	})
 
+	const extractImageUrlsFromRemoteItem = (item: Record<string, unknown>): string[] => {
+		if (isArray(item.imageUrls)) {
+			return item.imageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+		}
+		const output = item.output ?? item.result ?? item.data
+		if (isRecord(output)) {
+			const outputObj = output as Record<string, unknown>
+			const imageUrls: string[] = []
+			const collectUrl = (val: unknown) => {
+				if (!val) return
+				if (typeof val === 'string') {
+					const s = val.trim()
+					if (s && s.startsWith('http')) imageUrls.push(s)
+				} else if (typeof val === 'object' && val !== null) {
+					const obj = val as Record<string, unknown>
+					const u = String(obj.url ?? obj.image_url ?? obj.src ?? '').trim()
+					if (u && u.startsWith('http')) imageUrls.push(u)
+				}
+			}
+			if (isArray(outputObj.images)) {
+				for (const img of outputObj.images) collectUrl(img)
+			}
+			if (isArray(outputObj.image_urls)) {
+				for (const u of outputObj.image_urls) collectUrl(u)
+			}
+			if (isArray(outputObj.results)) {
+				for (const r of outputObj.results) collectUrl(r)
+			}
+			if (outputObj.image) collectUrl(outputObj.image)
+			if (outputObj.image_url) collectUrl(outputObj.image_url)
+			if (imageUrls.length > 0) return imageUrls
+		}
+		return []
+	}
+
 	const refreshTripo3DTaskItems = async (opts?: { silent?: boolean }) => {
 		if (tripo3dTaskRemoteLoading.value) return
 		tripo3dTaskRemoteLoading.value = true
@@ -170,10 +273,13 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 				? res.items.map((item: any) => {
 					const settings = isRecord(item) ? item : {}
 					const mode = String(settings.mode ?? 'text_to_model').trim()
+					const taskType = getTripo3DTaskKind(mode)
+					const typeLabel = taskType === 'image' ? t('tasks.tripo3d.typeImage') : t('tasks.tripo3d.type3d')
 					const taskStatus = normalizeStatusForPanel(settings.status)
 					const prompt = String(settings.prompt ?? '').trim()
 					const progress = Math.max(0, Math.min(100, Number(settings.progress ?? 0)))
 					const output = options.pickTripo3DEffectiveOutput(settings)
+					const imageUrls = taskType === 'image' ? extractImageUrlsFromRemoteItem(settings) : []
 					return {
 						id: String(settings.id ?? settings.taskId ?? Math.random().toString()),
 						nodeId: String(settings.nodeId ?? '').trim() || undefined,
@@ -181,14 +287,17 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 						taskId: String(settings.taskId ?? '').trim() || undefined,
 						mode,
 						modeLabel: mapModeLabel(mode),
+						taskType,
+						typeLabel,
 						status: taskStatus,
 						statusLabel: mapStatusLabel(taskStatus),
 						progress,
 						promptPreview: prompt || t('tasks.tripo3d.promptNotFilled'),
-						metaText: `${t('tasks.tripo3d.type3d')}`,
+						metaText: `${typeLabel} · ${String(settings.statusText ?? settings.status_text ?? '').trim() || mapStatusLabel(taskStatus)}`,
 						footnote: String(settings.statusText ?? settings.status_text ?? '').trim(),
-						thumbnailUrl: output.thumbnailUrl || undefined,
+						thumbnailUrl: output.thumbnailUrl || (imageUrls.length > 0 ? imageUrls[0] : undefined),
 						modelUrl: output.modelUrl || undefined,
+						imageUrls,
 						localAssetUrl: output.localAssetUrl || undefined,
 						localAssetPath: output.localAssetPath || undefined,
 						createdAt: Number(settings.createdAt ?? Date.now()),
@@ -290,6 +399,8 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			taskId: item.taskId,
 			nodeId: item.nodeId,
 			modeLabel: item.modeLabel,
+			taskType: item.taskType,
+			typeLabel: item.typeLabel,
 			statusLabel: item.statusLabel,
 			progress: item.progress,
 			prompt: item.promptPreview,
@@ -297,6 +408,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			statusText: item.statusText,
 			errorMessage: item.errorMessage,
 			modelUrl: item.modelUrl,
+			imageUrls: item.imageUrls,
 			assetUrl: item.localAssetUrl,
 			assetPath: item.localAssetPath,
 			thumbnailUrl: item.thumbnailUrl,
@@ -314,14 +426,19 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 	const mapRemoteTaskToDetail = (item: Record<string, unknown>): Tripo3DTaskPanelDetail => {
 		const settings = item
 		const mode = String(settings.mode ?? 'text_to_model').trim()
+		const taskType = getTripo3DTaskKind(mode)
+		const typeLabel = taskType === 'image' ? t('tasks.tripo3d.typeImage') : t('tasks.tripo3d.type3d')
 		const taskStatus = normalizeStatusForPanel(settings.status)
 		const output = options.pickTripo3DEffectiveOutput(settings)
+		const imageUrls = taskType === 'image' ? extractImageUrlsFromRemoteItem(settings) : []
 		return {
 			id: String(settings.id ?? settings.taskId ?? ''),
 			title: String(settings.title ?? t('tasks.tripo3d.taskNodeTitle')),
 			taskId: String(settings.taskId ?? '').trim() || undefined,
 			nodeId: String(settings.nodeId ?? '').trim() || undefined,
 			modeLabel: mapModeLabel(mode),
+			taskType,
+			typeLabel,
 			statusLabel: mapStatusLabel(taskStatus),
 			progress: Math.max(0, Math.min(100, Number(settings.progress ?? 0))),
 			prompt: String(settings.prompt ?? '').trim(),
@@ -329,9 +446,10 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			statusText: String(settings.statusText ?? settings.status_text ?? '').trim() || undefined,
 			errorMessage: String(settings.errorMessage ?? settings.error_message ?? '').trim() || undefined,
 			modelUrl: output.modelUrl || undefined,
+			imageUrls,
 			assetUrl: output.localAssetUrl || undefined,
 			assetPath: output.localAssetPath || undefined,
-			thumbnailUrl: output.thumbnailUrl || undefined,
+			thumbnailUrl: output.thumbnailUrl || (imageUrls.length > 0 ? imageUrls[0] : undefined),
 			createdAtLabel: settings.createdAt ? new Date(Number(settings.createdAt)).toLocaleString() : undefined,
 			updatedAtLabel: settings.updatedAt ? new Date(Number(settings.updatedAt)).toLocaleString() : undefined,
 			sourceLabel: t('tasks.tripo3d.remoteTask'),
@@ -406,7 +524,89 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
 			return
 		}
-		options.pushToast(t('tasks.tripo3d.model3dDownloadedBound'), 'info')
+		const isImageNode = node.type === 'image' || isTripo3DImageMode(String(settings.tripo3dTaskFamily ?? ''))
+		options.pushToast(
+			isImageNode ? t('tasks.tripo3d.imageDownloadedBound') : t('tasks.tripo3d.model3dDownloadedBound'),
+			'info'
+		)
+	}
+
+	const commitTaskStopToNode = (nodeId: string, nodeType: string) => {
+		options.stopTripo3DPoll(nodeId)
+		if (nodeType === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					tripo3dModelSettings: {
+						tripo3dTaskStatus: 'cancelled' as const,
+						tripo3dStatusText: t('tasks.tripo3d.taskStopped'),
+						tripo3dErrorMessage: ''
+					}
+				}
+			})
+		} else if (nodeType === 'image') {
+			options.store.commit('setNodeImageSettings', {
+				nodeId,
+				imageSettings: {
+					tripo3dImageSettings: {
+						taskStatus: 'cancelled',
+						statusText: t('tasks.tripo3d.taskStopped'),
+						errorMessage: ''
+					}
+				}
+			})
+		} else {
+			options.store.commit('setNodeTripo3DSettings', {
+				nodeId,
+				tripo3dSettings: {
+					tripo3dTaskStatus: 'cancelled' as const,
+					tripo3dStatusText: t('tasks.tripo3d.taskStopped'),
+					tripo3dErrorMessage: ''
+				}
+			})
+		}
+	}
+
+	const commitTaskDeleteToNode = (nodeId: string, nodeType: string) => {
+		options.stopTripo3DPoll(nodeId)
+		if (nodeType === 'model3d') {
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					tripo3dModelSettings: {
+						tripo3dTaskId: undefined,
+						tripo3dTaskStatus: 'idle' as const,
+						tripo3dProgress: 0,
+						tripo3dStatusText: t('tasks.tripo3d.taskDeleted'),
+						tripo3dErrorMessage: ''
+					}
+				}
+			})
+		} else if (nodeType === 'image') {
+			options.store.commit('setNodeImageSettings', {
+				nodeId,
+				imageSettings: {
+					tripo3dImageSettings: {
+						taskId: undefined,
+						taskStatus: 'idle',
+						progress: 0,
+						statusText: t('tasks.tripo3d.taskDeleted'),
+						errorMessage: ''
+					}
+				}
+			})
+		} else {
+			options.store.commit('setNodeTripo3DSettings', {
+				nodeId,
+				tripo3dSettings: {
+					tripo3dTaskId: undefined,
+					tripo3dTaskStatus: 'idle' as const,
+					tripo3dProgress: 0,
+					tripo3dStatusText: t('tasks.tripo3d.taskDeleted'),
+					tripo3dErrorMessage: ''
+				}
+			})
+		}
 	}
 
 	const onNodeStopTripo3DTask = async (nodeId: string) => {
@@ -423,16 +623,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			options.pushToast(t('tasks.tripo3d.stopTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return
 		}
-		options.stopTripo3DPoll(nodeId)
-		const patch = {
-			tripo3dTaskStatus: 'cancelled' as const,
-			tripo3dStatusText: t('tasks.tripo3d.taskStopped'),
-			tripo3dErrorMessage: ''
-		}
-		options.store.commit('setNodeModel3DSettings', {
-			nodeId,
-			model3dSettings: { tripo3dModelSettings: patch }
-		})
+		commitTaskStopToNode(nodeId, node.type)
 		options.pushToast(t('tasks.tripo3d.taskStoppedToast'), 'info')
 		if (tripo3dTaskDialogOpen.value || tripo3dTaskRemoteLoaded.value)
 			void refreshTripo3DTaskItems({ silent: true })
@@ -452,18 +643,7 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			options.pushToast(t('tasks.tripo3d.deleteTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
 			return
 		}
-		options.stopTripo3DPoll(nodeId)
-		const patch = {
-			tripo3dTaskId: undefined,
-			tripo3dTaskStatus: 'idle' as const,
-			tripo3dProgress: 0,
-			tripo3dStatusText: t('tasks.tripo3d.taskDeleted'),
-			tripo3dErrorMessage: ''
-		}
-		options.store.commit('setNodeModel3DSettings', {
-			nodeId,
-			model3dSettings: { tripo3dModelSettings: patch }
-		})
+		commitTaskDeleteToNode(nodeId, node.type)
 		options.pushToast(t('tasks.tripo3d.taskDeletedToast'), 'info')
 		if (tripo3dTaskDialogOpen.value || tripo3dTaskRemoteLoaded.value)
 			void refreshTripo3DTaskItems({ silent: true })
@@ -478,6 +658,8 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 		const taskId = String(payload?.taskId ?? '').trim()
 		if (!taskId) return
 		let nodeId = String(payload?.nodeId ?? '').trim() || findTripo3DNodeIdByTaskId(taskId)
+		const mode = String(payload?.mode ?? 'text_to_model').trim()
+		const taskType = getTripo3DTaskKind(mode)
 		tripo3dTaskActionBusyTaskId.value = taskId
 		tripo3dTaskActionBusyType.value = payload.action
 		try {
@@ -497,18 +679,62 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 			} else if (payload.action === 'import-output') {
 				let targetNodeId = nodeId
 				let isNewNode = false
-				const mode = String(payload?.mode ?? 'text_to_model').trim()
 
-				if (!targetNodeId && typeof options.createModel3DNodeAtCenter === 'function') {
-					try {
-						const res = await options.comfyService.tripo3dTask(taskId)
-						if (res.ok) {
-							const taskData = isRecord(res) ? res as Record<string, unknown> : {}
-							const taskStatus = normalizeStatusForPanel(taskData.status)
-							if (taskStatus !== 'succeeded') {
-								options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
-								return
+				const res = await options.comfyService.tripo3dTask(taskId)
+				if (!res.ok) {
+					options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: String(res.error || 'unknown') }), 'warn')
+					return
+				}
+
+				const taskData = isRecord(res) ? res as Record<string, unknown> : {}
+				const taskStatus = normalizeStatusForPanel(taskData.status)
+				if (taskStatus !== 'succeeded') {
+					options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
+					return
+				}
+
+				const remoteImageUrls = (() => {
+					if (isArray(res.imageUrls) && res.imageUrls.length > 0) {
+						return res.imageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+					}
+					return []
+				})()
+
+				if (!targetNodeId) {
+					if (taskType === 'image') {
+						if (typeof options.createImageNodeAtCenter === 'function') {
+							const primaryImageUrl = remoteImageUrls.length > 0 ? remoteImageUrls[0] : String(res.thumbnailUrl ?? '').trim()
+							const newNodeId = options.createImageNodeAtCenter(
+								primaryImageUrl,
+								t('tasks.tripo3d.imageTaskNodeName'),
+								{
+									taskId,
+									mode,
+									imageGenerationSource: 'tripo3d',
+									imageUrls: remoteImageUrls
+								}
+							)
+							if (newNodeId) {
+								targetNodeId = newNodeId
+								isNewNode = true
+								options.store.commit('setNodeImageSettings', {
+									nodeId: newNodeId,
+									imageSettings: {
+										imageGenerationSource: 'tripo3d',
+										tripo3dImageSettings: {
+											taskId,
+											taskFamily: mode,
+											taskStatus: 'pending',
+											progress: 0,
+											statusText: t('tasks.tripo3d.pullingImageArtifacts')
+										}
+									}
+								})
+								options.pushToast(t('tasks.tripo3d.nodeCreatedPullingArtifacts'), 'info')
 							}
+						}
+					} else {
+						if (typeof options.createModel3DNodeAtCenter === 'function') {
 							const newNodeId = options.createModel3DNodeAtCenter({
 								name: t('tasks.tripo3d.model3dTaskNodeName'),
 								taskId,
@@ -517,7 +743,6 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 							if (newNodeId) {
 								targetNodeId = newNodeId
 								isNewNode = true
-
 								options.store.commit('setNodeModel3DSettings', {
 									nodeId: newNodeId,
 									model3dSettings: {
@@ -534,8 +759,6 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 								options.pushToast(t('tasks.tripo3d.nodeCreatedPullingArtifacts'), 'info')
 							}
 						}
-					} catch (e) {
-						console.error('[Tripo3D Task Panel] 创建节点失败:', e)
 					}
 				}
 
@@ -548,10 +771,17 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 					} else if (refreshed.finalStatus !== 'success' && refreshed.finalStatus !== 'succeeded') {
 						options.pushToast(t('tasks.tripo3d.taskNotCompletedCannotPull'), 'warn')
 					} else {
-						options.pushToast(
-							isNewNode ? t('tasks.tripo3d.model3dPulledBoundToNewNode') : t('tasks.tripo3d.model3dDownloadedBoundGeneric'),
-							'info'
-						)
+						if (taskType === 'image') {
+							options.pushToast(
+								isNewNode ? t('tasks.tripo3d.imagePulledBoundToNewNode') : t('tasks.tripo3d.imageDownloadedBound'),
+								'info'
+							)
+						} else {
+							options.pushToast(
+								isNewNode ? t('tasks.tripo3d.model3dPulledBoundToNewNode') : t('tasks.tripo3d.model3dDownloadedBoundGeneric'),
+								'info'
+							)
+						}
 					}
 				}
 			} else if (payload.action === 'stop') {
@@ -560,17 +790,8 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 					options.pushToast(t('tasks.tripo3d.taskActionFailed', { action: t('tasks.tripo3d.stop'), error: String(res.error || 'unknown') }), 'warn')
 				} else {
 					if (nodeId) {
-						options.stopTripo3DPoll(nodeId)
-						options.store.commit('setNodeModel3DSettings', {
-							nodeId,
-							model3dSettings: {
-								tripo3dModelSettings: {
-									tripo3dTaskStatus: 'cancelled' as const,
-									tripo3dStatusText: t('tasks.tripo3d.taskStopped'),
-									tripo3dErrorMessage: ''
-								}
-							}
-						})
+						const node = options.store.state.nodesById[nodeId]
+						commitTaskStopToNode(nodeId, node?.type || 'model3d')
 					}
 					options.pushToast(t('tasks.tripo3d.taskActionPerformed', { action: t('tasks.tripo3d.stop') }), 'info')
 				}
@@ -580,19 +801,8 @@ export const useAIWorkflowTripo3DTaskPanelController = (options: {
 					options.pushToast(t('tasks.tripo3d.taskActionFailed', { action: t('tasks.tripo3d.delete'), error: String(res.error || 'unknown') }), 'warn')
 				} else {
 					if (nodeId) {
-						options.stopTripo3DPoll(nodeId)
-						options.store.commit('setNodeModel3DSettings', {
-							nodeId,
-							model3dSettings: {
-								tripo3dModelSettings: {
-									tripo3dTaskId: undefined,
-									tripo3dTaskStatus: 'idle' as const,
-									tripo3dProgress: 0,
-									tripo3dStatusText: t('tasks.tripo3d.taskDeleted'),
-									tripo3dErrorMessage: ''
-								}
-							}
-						})
+						const node = options.store.state.nodesById[nodeId]
+						commitTaskDeleteToNode(nodeId, node?.type || 'model3d')
 					}
 					options.pushToast(t('tasks.tripo3d.taskActionPerformed', { action: t('tasks.tripo3d.delete') }), 'info')
 				}

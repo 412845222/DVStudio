@@ -58,7 +58,7 @@ export type WorkflowImageNodeSettings = {
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
 	/** image generation source */
-	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini'
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini' | 'tripo3d'
 	/** last generated image URL */
 	lastGeneratedImageUrl?: string
 	/** Meshy image generation settings */
@@ -105,6 +105,38 @@ export type WorkflowImageNodeSettings = {
 		imageUrls?: string[]
 		thumbnailUrl?: string
 		submittedParams?: Record<string, unknown>
+	}
+	/** Tripo3D image generation settings */
+	tripo3dImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		taskId?: string
+		taskStatus?: WorkflowTripo3DTaskStatus
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		taskFamily?: WorkflowTripo3DMode
+		taskMode?: string
+		mode?: 'text_to_image' | 'image_to_image' | 'image_to_multiview'
+		model?: string
+		size?: string
+		numOutputs?: number
+		seed?: number
+		strength?: number
+		inputUrl?: string
+		submittedParams?: Record<string, unknown>
+		outputSummary?: {
+			preferredUrl?: string
+			imageUrls?: string[]
+			assetUrl?: string
+			assetPath?: string
+			thumbnailUrl?: string
+		}
+		thumbnailUrl?: string
+		outputImageUrl?: string
+		outputImages?: string[]
+		requestPayload?: Record<string, unknown>
+		responsePayload?: Record<string, unknown>
 	}
 }
 
@@ -673,7 +705,7 @@ export type WorkflowMeshyModelSettings = {
 
 export type WorkflowTripo3DTaskStatus = 'idle' | 'pending' | 'queued' | 'running' | 'success' | 'succeeded' | 'failed' | 'cancelled' | 'canceled'
 
-export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine'
+export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine' | 'text_to_image' | 'image_to_image' | 'image_to_multiview'
 
 export type WorkflowTripo3DModelSeries = 'h' | 'p'
 
@@ -1026,6 +1058,18 @@ export type WorkflowNodeChatImageParams = {
 	meshyGenerateMultiView?: boolean
 	meshySeed?: number
 	meshyOutputImageCount?: number
+	tripo3dImageMode?: 'text_to_image' | 'image_to_image' | 'image_to_multiview'
+	tripo3dImageModel?: string
+	tripo3dImageSize?: string
+	tripo3dImageAspectRatio?: string
+	tripo3dImageOutputFormat?: 'png' | 'jpeg'
+	tripo3dImageWatermark?: boolean
+	tripo3dImageTemplate?: string
+	tripo3dImageNumOutputs?: number
+	tripo3dImageNegativePrompt?: string
+	tripo3dImageStrength?: number
+	tripo3dImageSeed?: number
+	tripo3dImageForceSingleImage?: boolean
 }
 
 export type WorkflowNodeChatVideoParams = {

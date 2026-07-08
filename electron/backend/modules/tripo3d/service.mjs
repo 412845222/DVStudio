@@ -44,7 +44,7 @@ function tryGetApiKey(ctx) {
 
 function normalizeTask(taskId, obj) {
   if (!obj || typeof obj !== 'object') {
-    return { ok: true, taskId, status: 'unknown', progress: 0, thumbnailUrl: '', modelUrl: '', statusText: 'invalid response', errorMessage: '' }
+    return { ok: true, taskId, status: 'unknown', progress: 0, thumbnailUrl: '', modelUrl: '', imageUrls: [], statusText: 'invalid response', errorMessage: '' }
   }
 
   const rawStatus = String(obj.status || '').trim().toLowerCase()
@@ -59,22 +59,108 @@ function normalizeTask(taskId, obj) {
   const inputObj = obj.input && typeof obj.input === 'object' ? obj.input : {}
   const outputObj = obj.output && typeof obj.output === 'object' ? obj.output : {}
 
-  const thumbnailUrl = String(outputObj.thumbnail || outputObj.thumbnail_url || outputObj.rendered_image_url || obj.thumbnail_url || '').trim()
-  let modelUrl = ''
-  if (outputObj.model && typeof outputObj.model === 'object') {
-    modelUrl = String(outputObj.model.url || outputObj.model.glb || '').trim()
-  }
-  if (!modelUrl) {
-    modelUrl = String(outputObj.model_url || outputObj.pbr_model_url || '').trim()
-  }
-  if (!modelUrl && Array.isArray(outputObj.model_urls) && outputObj.model_urls.length > 0) {
-    modelUrl = String(outputObj.model_urls[0] || '').trim()
-  }
-
   const prompt = String(inputObj.prompt || obj.prompt || '').trim()
   const negativePrompt = String(inputObj.negative_prompt || obj.negative_prompt || '').trim()
   const mode = String(obj.type || inputObj.type || 'text_to_model').trim()
   const modelVersion = String(inputObj.model || inputObj.model_version || '').trim()
+  const isImageMode = mode === 'text_to_image' || mode === 'image_to_image' || mode === 'image_to_multiview'
+
+  let thumbnailUrl = String(
+    outputObj.thumbnail ||
+    outputObj.thumbnail_url ||
+    outputObj.rendered_image_url ||
+    outputObj.preview_url ||
+    obj.thumbnail_url ||
+    ''
+  ).trim()
+
+  let modelUrl = ''
+  if (!isImageMode) {
+    if (outputObj.model && typeof outputObj.model === 'object') {
+      modelUrl = String(outputObj.model.url || outputObj.model.glb || '').trim()
+    }
+    if (!modelUrl) {
+      modelUrl = String(outputObj.model_url || outputObj.pbr_model_url || '').trim()
+    }
+    if (!modelUrl && Array.isArray(outputObj.model_urls) && outputObj.model_urls.length > 0) {
+      modelUrl = String(outputObj.model_urls[0] || '').trim()
+    }
+  }
+
+  let imageUrls = []
+  const isImageUrl = (s) => {
+    if (!s || typeof s !== 'string') return false
+    const str = s.trim().toLowerCase()
+    if (!str) return false
+    if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/')) {
+      if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(str)) return true
+      if (str.includes('/generation/') || str.includes('/image/') || str.includes('tripo')) return true
+    }
+    return false
+  }
+
+  const collectImageUrl = (val) => {
+    if (!val) return
+    if (typeof val === 'string') {
+      const s = val.trim()
+      if (s && isImageUrl(s)) imageUrls.push(s)
+    } else if (typeof val === 'object') {
+      const u = String(val.url || val.image_url || val.src || val.image || val.uri || '').trim()
+      if (u && isImageUrl(u)) imageUrls.push(u)
+    }
+  }
+
+  const collectFromObject = (target, depth = 0) => {
+    if (!target || typeof target !== 'object' || depth > 5) return
+    if (Array.isArray(target)) {
+      for (const item of target) {
+        collectFromObject(item, depth + 1)
+      }
+      return
+    }
+    for (const [key, value] of Object.entries(target)) {
+      const keyLower = key.toLowerCase()
+      if (keyLower === 'images' || keyLower === 'image_urls' || keyLower === 'results' ||
+          keyLower === 'image' || keyLower === 'image_url' || keyLower === 'output_images' ||
+          keyLower === 'generated_images' || keyLower === 'result') {
+        if (Array.isArray(value)) {
+          for (const item of value) collectImageUrl(item)
+        } else {
+          collectImageUrl(value)
+        }
+      }
+      if (typeof value === 'string' && isImageUrl(value)) {
+        imageUrls.push(value.trim())
+      } else if (typeof value === 'object' && value !== null) {
+        collectFromObject(value, depth + 1)
+      }
+    }
+  }
+
+  collectFromObject(outputObj)
+  if (isImageMode) {
+    collectFromObject(obj)
+  }
+
+  if (outputObj.url && isImageMode) {
+    collectImageUrl(outputObj.url)
+  }
+  if (obj.url && isImageMode) {
+    collectImageUrl(obj.url)
+  }
+
+  imageUrls = [...new Set(imageUrls)]
+
+  if (!thumbnailUrl && imageUrls.length > 0) {
+    thumbnailUrl = imageUrls[0]
+  }
+
+  if (isImageMode) {
+    console.log(`[Tripo3D Backend] normalizeTask image mode=${mode} status=${status} imageUrls count=${imageUrls.length} thumbnail=${thumbnailUrl ? 'yes' : 'no'}`)
+    if (imageUrls.length === 0 && (status === 'success' || status === 'succeeded' || status === 'completed')) {
+      console.log(`[Tripo3D Backend] normalizeTask - Task success but no images found. Full response:`, JSON.stringify(obj, null, 2).slice(0, 5000))
+    }
+  }
 
   const errorMessage = String(obj.error || obj.error_message || outputObj.error || '').trim()
 
@@ -82,7 +168,7 @@ function normalizeTask(taskId, obj) {
   if (!statusText) {
     if (status === 'queued') statusText = 'Tripo3D：任务排队中'
     else if (status === 'running') statusText = `Tripo3D：生成中 ${progress}%`
-    else if (status === 'success' || status === 'succeeded' || status === 'completed') statusText = 'Tripo3D：生成完成'
+    else if (status === 'success' || status === 'succeeded' || status === 'completed') statusText = isImageMode ? 'Tripo3D：图片生成完成' : 'Tripo3D：生成完成'
     else if (status === 'failed' || status === 'error') statusText = errorMessage || 'Tripo3D：生成失败'
     else if (status === 'cancelled' || status === 'canceled') statusText = 'Tripo3D：任务已取消'
   }
@@ -98,6 +184,7 @@ function normalizeTask(taskId, obj) {
     modelVersion,
     thumbnailUrl,
     modelUrl,
+    imageUrls,
     statusText,
     errorMessage,
     raw: obj,
@@ -120,6 +207,7 @@ function serializeRepoTask(row) {
     pbr: Boolean(row.pbr),
     thumbnailUrl: row.thumbnailUrl || '',
     modelUrl: row.modelUrl || '',
+    imageUrls: Array.isArray(row.imageUrls) ? row.imageUrls : [],
     localAssetUrl: row.localAssetUrl || '',
     localAssetPath: row.localAssetPath || '',
     errorMessage: row.errorMessage || '',
@@ -446,6 +534,7 @@ export async function getTask(ctx, payload) {
     modelVersion: normalized.modelVersion,
     thumbnailUrl: normalized.thumbnailUrl,
     modelUrl: normalized.modelUrl,
+    imageUrls: normalized.imageUrls || [],
     errorMessage: normalized.errorMessage,
     statusText: normalized.statusText,
     responsePayload: res.body,
@@ -712,6 +801,286 @@ export async function uploadFile(ctx, payload) {
     req.write(multipartBody)
     req.end()
   })
+}
+
+function buildImageCreatePayload(payload, mode) {
+  const model = String(payload.model || payload.model_version || 'seedream_v4').trim()
+  const isBananaModel = model.startsWith('banana')
+  const isSeedreamModel = model.startsWith('seedream')
+
+  const body = {
+    model,
+  }
+
+  const prompt = String(payload.prompt || '').trim()
+  const negativePrompt = String(payload.negative_prompt || payload.negativePrompt || '').trim()
+  const size = String(payload.size || '').trim()
+  const aspectRatio = String(payload.aspect_ratio || payload.aspectRatio || '').trim()
+  const outputFormat = String(payload.output_format || payload.outputFormat || 'png').trim()
+  const watermark = payload.watermark === true
+  const template = String(payload.template || '').trim()
+  const numOutputs = Number(payload.num_outputs || payload.numOutputs || 1)
+  const seed = typeof payload.seed === 'number' && payload.seed >= 0 ? Math.floor(payload.seed) : undefined
+  const input = String(payload.input || payload.image_url || payload.input_url || '').trim()
+  const strength = typeof payload.strength === 'number' && payload.strength >= 0 && payload.strength <= 1
+    ? payload.strength
+    : 0.7
+
+  if (mode !== 'image_to_multiview') {
+    if (prompt) body.prompt = prompt
+    if (negativePrompt) body.negative_prompt = negativePrompt
+
+    if (isBananaModel && aspectRatio) {
+      body.aspect_ratio = aspectRatio
+    } else if (size) {
+      body.size = size
+    }
+
+    body.output_format = outputFormat === 'jpeg' ? 'jpeg' : 'png'
+    body.num_outputs = numOutputs >= 1 && numOutputs <= 4 ? numOutputs : 1
+
+    if (isSeedreamModel) {
+      body.watermark = watermark
+    }
+
+    if (template && (mode === 'text_to_image' || mode === 'image_to_image')) {
+      body.template = template
+    }
+
+    if (seed !== undefined) {
+      body.seed = seed
+    }
+  }
+
+  if (mode === 'image_to_image' || mode === 'image_to_multiview') {
+    body.input = input
+    if (mode === 'image_to_image') {
+      body.strength = strength
+    }
+  }
+
+  return body
+}
+
+export async function generateTextToImage(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.tripo3dTasks
+  if (!repo) throw internalError('tripo3dTasks repo not available')
+
+  const mode = 'text_to_image'
+  const prompt = String(payload.prompt || '').trim()
+
+  if (!prompt) throw invalidParamsError('prompt is required for text_to_image mode')
+
+  const body = buildImageCreatePayload(payload, mode)
+
+  const endpoint = '/generation/text-to-image'
+  const url = `${TRIPO3D_API_BASE}${endpoint}`
+
+  console.log('[Tripo3D Backend] text-to-image body:', JSON.stringify(body, null, 2))
+
+  const res = await client.post(url, body, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    timeout: 60000,
+  })
+
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`
+    if (typeof res.body === 'object' && res.body) {
+      errMsg = res.body.message || res.body.error || res.body.msg || errMsg
+    }
+    throw upstreamError(`tripo3d text-to-image failed: ${errMsg}`)
+  }
+
+  const responseData = res.body
+  let taskId = ''
+  if (responseData && typeof responseData === 'object') {
+    if (responseData.code === 0 && responseData.data && typeof responseData.data === 'object') {
+      taskId = String(responseData.data.task_id || '').trim()
+    } else {
+      taskId = String(responseData.task_id || responseData.id || '').trim()
+    }
+  }
+
+  if (!taskId) throw upstreamError('tripo3d text-to-image failed: no task_id in response')
+
+  repo.upsert({
+    taskId,
+    mode,
+    status: 'queued',
+    progress: 0,
+    prompt,
+    negativePrompt: body.negative_prompt || '',
+    modelVersion: body.model,
+    thumbnailUrl: '',
+    modelUrl: '',
+    imageUrls: [],
+    errorMessage: '',
+    statusText: 'Tripo3D：图片生成任务已创建',
+    requestPayload: {
+      ...(payload || {}),
+      _requestBody: body,
+      _requestUrl: url,
+      _submittedAt: new Date().toISOString()
+    },
+    responsePayload: res.body,
+    projectId: payload?.projectId || payload?.project_id,
+    nodeId: payload?.nodeId || payload?.node_id || '',
+    startedAt: new Date().toISOString(),
+  })
+
+  return { ok: true, mode, taskId, status: 'queued', raw: res.body }
+}
+
+export async function generateImageToImage(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.tripo3dTasks
+  if (!repo) throw internalError('tripo3dTasks repo not available')
+
+  const mode = 'image_to_image'
+  const input = String(payload.input || payload.image_url || payload.input_url || '').trim()
+
+  if (!input) throw invalidParamsError('input is required for image_to_image mode')
+
+  const body = buildImageCreatePayload(payload, mode)
+
+  if (!body.input) {
+    throw invalidParamsError('input is required for image_to_image mode')
+  }
+
+  const endpoint = '/generation/image-to-image'
+  const url = `${TRIPO3D_API_BASE}${endpoint}`
+
+  console.log('[Tripo3D Backend] image-to-image body:', JSON.stringify(body, null, 2))
+
+  const res = await client.post(url, body, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    timeout: 60000,
+  })
+
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`
+    if (typeof res.body === 'object' && res.body) {
+      errMsg = res.body.message || res.body.error || res.body.msg || errMsg
+    }
+    throw upstreamError(`tripo3d image-to-image failed: ${errMsg}`)
+  }
+
+  const responseData = res.body
+  let taskId = ''
+  if (responseData && typeof responseData === 'object') {
+    if (responseData.code === 0 && responseData.data && typeof responseData.data === 'object') {
+      taskId = String(responseData.data.task_id || '').trim()
+    } else {
+      taskId = String(responseData.task_id || responseData.id || '').trim()
+    }
+  }
+
+  if (!taskId) throw upstreamError('tripo3d image-to-image failed: no task_id in response')
+
+  repo.upsert({
+    taskId,
+    mode,
+    status: 'queued',
+    progress: 0,
+    prompt: body.prompt || '',
+    negativePrompt: body.negative_prompt || '',
+    modelVersion: body.model,
+    thumbnailUrl: '',
+    modelUrl: '',
+    imageUrls: [],
+    errorMessage: '',
+    statusText: 'Tripo3D：图生图任务已创建',
+    requestPayload: {
+      ...(payload || {}),
+      _requestBody: body,
+      _requestUrl: url,
+      _submittedAt: new Date().toISOString()
+    },
+    responsePayload: res.body,
+    projectId: payload?.projectId || payload?.project_id,
+    nodeId: payload?.nodeId || payload?.node_id || '',
+    startedAt: new Date().toISOString(),
+  })
+
+  return { ok: true, mode, taskId, status: 'queued', raw: res.body }
+}
+
+export async function generateImageToMultiview(ctx, payload) {
+  const apiKey = getApiKey(ctx)
+  const client = getHttpClient()
+  const repo = ctx.localdb?.tripo3dTasks
+  if (!repo) throw internalError('tripo3dTasks repo not available')
+
+  const mode = 'image_to_multiview'
+  const input = String(payload.input || payload.image_url || payload.input_url || '').trim()
+
+  if (!input) throw invalidParamsError('input is required for image_to_multiview mode')
+
+  const body = buildImageCreatePayload(payload, mode)
+
+  if (!body.input) {
+    throw invalidParamsError('input is required for image_to_multiview mode')
+  }
+
+  const endpoint = '/generation/image-to-multiview'
+  const url = `${TRIPO3D_API_BASE}${endpoint}`
+
+  console.log('[Tripo3D Backend] image-to-multiview body:', JSON.stringify(body, null, 2))
+
+  const res = await client.post(url, body, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    timeout: 60000,
+  })
+
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`
+    if (typeof res.body === 'object' && res.body) {
+      errMsg = res.body.message || res.body.error || res.body.msg || errMsg
+    }
+    throw upstreamError(`tripo3d image-to-multiview failed: ${errMsg}`)
+  }
+
+  const responseData = res.body
+  let taskId = ''
+  if (responseData && typeof responseData === 'object') {
+    if (responseData.code === 0 && responseData.data && typeof responseData.data === 'object') {
+      taskId = String(responseData.data.task_id || '').trim()
+    } else {
+      taskId = String(responseData.task_id || responseData.id || '').trim()
+    }
+  }
+
+  if (!taskId) throw upstreamError('tripo3d image-to-multiview failed: no task_id in response')
+
+  repo.upsert({
+    taskId,
+    mode,
+    status: 'queued',
+    progress: 0,
+    prompt: '',
+    negativePrompt: '',
+    modelVersion: body.model,
+    thumbnailUrl: '',
+    modelUrl: '',
+    imageUrls: [],
+    errorMessage: '',
+    statusText: 'Tripo3D：多视图生图任务已创建',
+    requestPayload: {
+      ...(payload || {}),
+      _requestBody: body,
+      _requestUrl: url,
+      _submittedAt: new Date().toISOString()
+    },
+    responsePayload: res.body,
+    projectId: payload?.projectId || payload?.project_id,
+    nodeId: payload?.nodeId || payload?.node_id || '',
+    startedAt: new Date().toISOString(),
+  })
+
+  return { ok: true, mode, taskId, status: 'queued', raw: res.body }
 }
 
 export async function health(ctx) {

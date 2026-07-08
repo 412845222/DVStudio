@@ -553,10 +553,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
 	},
-	// ===== Tripo3D 3D 模型生成 =====
+	// ===== Tripo3D 3D 模型生成 & 图片生成 =====
 	tripo3d: {
 		health: () => invoke('dweb:tripo3d:health'),
 		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
+		generateTextToImage: (payload) => invoke('dweb:tripo3d:generate:text-to-image', payload || {}),
+		generateImageToImage: (payload) => invoke('dweb:tripo3d:generate:image-to-image', payload || {}),
+		generateImageToMultiview: (payload) => invoke('dweb:tripo3d:generate:image-to-multiview', payload || {}),
 		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
 		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
 		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),

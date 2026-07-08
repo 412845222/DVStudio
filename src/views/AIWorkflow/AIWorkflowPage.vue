@@ -3784,7 +3784,12 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 	return rootPath
 }
 
-const createImageNodeAtCenter = (url: string, name?: string): string | null => {
+const createImageNodeAtCenter = (url: string, name?: string, opts?: {
+	taskId?: string
+	mode?: string
+	imageGenerationSource?: string
+	imageUrls?: string[]
+}): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
 		store.commit('addNodeAt', {
@@ -3795,13 +3800,25 @@ const createImageNodeAtCenter = (url: string, name?: string): string | null => {
 		const newNodeId = store.state.selectedNodeId
 		if (!newNodeId) return null
 		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
+		const imageSource = opts?.imageGenerationSource || 'gemini'
+		const imageSettings: Record<string, unknown> = {
+			imageUrl: url,
+			imageGenerationSource: imageSource
+		}
+		if (imageSource === 'tripo3d' && opts?.taskId) {
+			imageSettings.tripo3dImageSettings = {
+				taskId: opts.taskId,
+				taskFamily: opts.mode || 'text_to_image',
+				taskStatus: 'pending',
+				progress: 0,
+				statusText: t('tasks.tripo3d.pullingImageArtifacts'),
+				outputImages: opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : (url ? [url] : [])
+			}
+		}
 		if (url) {
 			store.commit('setNodeImageSettings', {
 				nodeId: newNodeId,
-				imageSettings: {
-					imageUrl: url,
-					imageGenerationSource: 'gemini'
-				}
+				imageSettings
 			})
 		}
 		return newNodeId
@@ -3861,9 +3878,8 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 }
 
 const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
-	// 当 draft 为空时，尝试从连接的文本节点获取 prompt
 	let resolvedPrompt = payload.prompt
-	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
+	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
 		const refs = getInputParamPreviewRefs(payload.nodeId)
 		const textRef = refs.find((r) => r.kind === 'text' && r.text)
 		if (textRef && textRef.text) {
@@ -9518,7 +9534,9 @@ const onOpenTripo3DTaskPanel = () => {
 const { createNodeFromDraggedTripo3DTask } = useAIWorkflowTripo3DDrop({
 	store,
 	pushToast: (message, tone) => pushToast(message, tone),
-	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId)
+	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId),
+	createImageNodeAtCenter: (url, name, opts) => createImageNodeAtCenter(url, name, opts),
+	createModel3DNodeAtCenter: (opts) => createModel3DNodeAtCenter(opts)
 })
 
 const onOpenArkTaskPanel = () => {

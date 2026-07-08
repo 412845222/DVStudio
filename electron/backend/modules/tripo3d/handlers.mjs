@@ -8,6 +8,18 @@ export async function generate(ctx, payload) {
   return service.generateModel(ctx, payload)
 }
 
+export async function generateTextToImage(ctx, payload) {
+  return service.generateTextToImage(ctx, payload)
+}
+
+export async function generateImageToImage(ctx, payload) {
+  return service.generateImageToImage(ctx, payload)
+}
+
+export async function generateImageToMultiview(ctx, payload) {
+  return service.generateImageToMultiview(ctx, payload)
+}
+
 export async function getTask(ctx, payload) {
   return service.getTask(ctx, payload)
 }
