@@ -169,5 +169,7 @@
   "aiworkflow.toast.unrealEditorNotRunning": "No running Unreal Editor detected, please start the editor and open the project first.",
   "aiworkflow.toast.unrealPluginInstalled": "Plugin installed successfully! Please restart Unreal Editor, then click the export button again.",
   "aiworkflow.toast.projectExportSuccess": "Project package exported successfully.",
-  "aiworkflow.toast.projectExportFailed": "Failed to export project package: {error}"
+  "aiworkflow.toast.projectExportFailed": "Failed to export project package: {error}",
+  "aiworkflow.toast.agentNodesConnected": "Nodes connected",
+  "aiworkflow.toast.agentNodeTextSet": "Set node {id} text"
 }

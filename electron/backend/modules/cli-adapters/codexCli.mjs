@@ -13,9 +13,14 @@ import { spawn, exec } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { shell } from 'electron';
 import { BaseCLIAdapter, CLIEventType, CheckStatus, commandExists, findCommandPath, getProxyEnvVars } from './base.mjs';
 import logger from '../../core/logger.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const STDIO_BRIDGE_PATH = path.join(__dirname, '..', 'mcp', 'server', 'stdioBridge.mjs');
 
 const CODEX_FALLBACK_MODELS = [
   { id: 'codex-mini', label: 'Codex Mini (推荐)', vendor: 'OpenAI Codex', capabilities: ['chat', 'code'], recommended: true },
@@ -35,6 +40,62 @@ function getCodexAuthFilePath() {
 
 function getCodexConfigFilePath() {
   return path.join(getCodexHomeDir(), 'config.toml');
+}
+
+function ensureDvstudioMcpProfile() {
+  try {
+    const codexHome = getCodexHomeDir();
+    if (!fs.existsSync(codexHome)) {
+      fs.mkdirSync(codexHome, { recursive: true });
+    }
+
+    const configPath = getCodexConfigFilePath();
+    const bridgePath = STDIO_BRIDGE_PATH.replace(/\\/g, '/');
+    const mcpServerConfig = `\n[mcp_servers.dvstudio]
+command = "node"
+args = ["${bridgePath}"]
+startup_timeout_sec = 30
+`;
+
+    let configContent = '';
+    try {
+      configContent = fs.readFileSync(configPath, 'utf8');
+    } catch {
+      configContent = '';
+    }
+
+    const lines = configContent.split('\n');
+    const newLines = [];
+    let inDvstudioSection = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '[mcp_servers.dvstudio]') {
+        inDvstudioSection = true;
+        continue;
+      }
+      if (inDvstudioSection) {
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+          inDvstudioSection = false;
+          newLines.push(line);
+        }
+        continue;
+      }
+      newLines.push(line);
+    }
+
+    let finalContent = newLines.join('\n').trimEnd() + mcpServerConfig;
+
+    if (finalContent !== configContent) {
+      fs.writeFileSync(configPath, finalContent + '\n', 'utf8');
+      logger.info(`[CodexCLI] DVStudio MCP server config updated in ${configPath}`);
+    }
+
+    return true;
+  } catch (err) {
+    logger.warn(`[CodexCLI] Failed to update MCP config: ${err.message}`);
+    return false;
+  }
 }
 
 function getNpmGlobalBinDir() {
@@ -938,13 +999,30 @@ export class CodexCliAdapter extends BaseCLIAdapter {
     const proxyEnv = getProxyEnvVars();
     const isWinCmd = process.platform === 'win32' && /\.(cmd|bat)$/i.test(codexBin);
 
+    ensureDvstudioMcpProfile();
+
+    const mcpInstruction = `你是DVStudio的AI工作流助手。DVStudio是一个AI工作流蓝图编辑器，提供了名为"dvstudio"的MCP工具服务器。
+
+# 重要规则
+1. 必须使用dvstudio MCP工具操作工作流蓝图，绝对不要读取/修改文件系统代码，也不要执行shell命令
+2. 创建节点前，先调用 get_blueprint_state 了解当前蓝图状态（返回值包含viewport视口信息：zoom/panX/panY/centerWorldX/centerWorldY）
+3. 创建节点时，如果不确定正确的节点类型ID，先调用 list_node_types 获取所有可用类型，然后再调用 create_node
+4. create_node的type参数必须使用list_node_types返回的type值（actionId，如image-generation表示图片节点，text-generation表示文本节点）
+5. **绝对不要给create_node传入position、x、y参数**。系统会自动将新节点放置在用户当前蓝图视口中心，并自动避开已有节点。传入错误坐标会导致节点创建到视口外，用户看不到节点！
+6. 不要试图分析项目源代码，直接通过MCP工具完成所有操作
+7. get_blueprint_state返回的viewport.centerWorldX/centerWorldY是用户当前视口中心的世界坐标，仅供你了解用户视角，创建节点时系统自动使用
+
+`;
+    const enhancedContent = mcpInstruction + content;
+
     const args = [
       'exec',
       '--json',
       '--skip-git-repo-check',
       '--ephemeral',
       '--color', 'never',
-      '--sandbox', 'read-only',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '-c', 'web_search="disabled"',
       '--disable', 'shell_tool',
       '--disable', 'computer_use',
       '--disable', 'browser_use',
@@ -952,13 +1030,9 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       '--disable', 'browser_use_full_cdp_access',
       '--disable', 'in_app_browser',
       '--disable', 'image_generation',
-      '--disable', 'web_search_cached',
-      '--disable', 'web_search_request',
-      '--disable', 'search_tool',
       '--disable', 'hooks',
       '--disable', 'multi_agent',
       '--disable', 'apps',
-      '--disable', 'plugins',
       '-C', session.cwd,
     ];
 
@@ -966,7 +1040,7 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       args.push('-m', model);
     }
 
-    args.push(content);
+    args.push(enhancedContent);
 
     logger.info(`[CodexCLI] Running: codex ${args.join(' ')}`);
 
@@ -1064,9 +1138,37 @@ export class CodexCliAdapter extends BaseCLIAdapter {
           const item = obj.item;
           if (!item) break;
 
-          if (item.type === 'command_execution') {
+          const itemType = String(item.type || '');
+          logger.debug(`[CodexCLI] item.started type=${itemType}: ${JSON.stringify(item).substring(0, 400)}`);
+
+          if (itemType === 'command_execution') {
             const cmd = item.command || '';
             logger.debug(`[CodexCLI] Command execution started (should be disabled): ${cmd.substring(0, 200)}`);
+          } else if (itemType === 'mcp_tool_call' || itemType === 'tool_call' || itemType === 'tool_use' || item.tool || item.name) {
+            const toolName = item.tool || item.name || '';
+            if (toolName) {
+              if (toolCall) {
+                queueChunk({
+                  type: CLIEventType.TOOL_CALL_END,
+                  toolCallId: toolCall.id,
+                  tool: toolCall.name,
+                  output: 'Interrupted by new tool call'
+                });
+              }
+              toolCall = {
+                id: item.id || `tool_${Date.now()}`,
+                name: toolName,
+                server: item.server || '',
+                input: item.arguments || item.input || item.parameters || {},
+              };
+              logger.info(`[CodexCLI] Tool call started: ${toolName} (${toolCall.id})`);
+              queueChunk({
+                type: CLIEventType.TOOL_CALL_START,
+                toolCallId: toolCall.id,
+                tool: toolCall.name,
+                input: toolCall.input,
+              });
+            }
           }
           break;
         }
@@ -1075,35 +1177,69 @@ export class CodexCliAdapter extends BaseCLIAdapter {
           const item = obj.item;
           if (!item) break;
 
-          if (item.type === 'agent_message') {
+          const itemType = String(item.type || '');
+          logger.debug(`[CodexCLI] item.completed type=${itemType}: ${JSON.stringify(item).substring(0, 400)}`);
+
+          if (itemType === 'agent_message' || itemType === 'message') {
             const text = item.text || item.content || '';
             if (text) {
               queueChunk({ type: CLIEventType.TEXT_DELTA, content: text });
             }
-          } else if (item.type === 'error') {
+          } else if (itemType === 'error') {
             const errMsg = item.message || '';
             if (errMsg && !errMsg.includes('Skill descriptions were shortened')) {
               logger.warn(`[CodexCLI] Item error: ${errMsg}`);
             }
-          } else if (item.type === 'tool_use' || item.type === 'tool_call') {
-            if (toolCall) {
-              queueChunk({ type: CLIEventType.TOOL_CALL_END, id: toolCall.id });
+          } else if (itemType === 'mcp_tool_call' || itemType === 'tool_call' || itemType === 'tool_use' || item.tool || item.name) {
+            const toolName = item.tool || item.name || (toolCall ? toolCall.name : '');
+            const tcId = item.id || (toolCall ? toolCall.id : `tool_${Date.now()}`);
+            if (toolCall || toolName) {
+              if (item.error) {
+                const errMsg = typeof item.error === 'string' ? item.error : (item.error.message || JSON.stringify(item.error));
+                logger.warn(`[CodexCLI] Tool call error: ${toolName} - ${errMsg}`);
+                queueChunk({
+                  type: CLIEventType.TOOL_CALL_ERROR,
+                  toolCallId: tcId,
+                  tool: toolName,
+                  error: errMsg,
+                });
+              } else {
+                let result;
+                if (item.result !== null && item.result !== undefined) {
+                  result = (typeof item.result === 'string') ? (() => {
+                    const trimmed = item.result.trim();
+                    if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+                      try { return JSON.parse(trimmed); } catch { return item.result; }
+                    }
+                    return item.result;
+                  })() : item.result;
+                } else if (item.output !== null && item.output !== undefined) {
+                  result = (typeof item.output === 'string') ? (() => {
+                    const trimmed = item.output.trim();
+                    if ((trimmed.startsWith('{') || trimmed.startsWith('['))) {
+                      try { return JSON.parse(trimmed); } catch { return item.output; }
+                    }
+                    return item.output;
+                  })() : item.output;
+                } else {
+                  result = item.status === 'failed' ? 'Tool call failed' : 'Success';
+                }
+                logger.info(`[CodexCLI] Tool call completed: ${toolName}`);
+                queueChunk({
+                  type: CLIEventType.TOOL_CALL_END,
+                  toolCallId: tcId,
+                  tool: toolName,
+                  output: result,
+                });
+              }
+              toolCall = null;
             }
-            toolCall = {
-              id: item.id || `tool_${Date.now()}`,
-              name: item.name || item.tool || '',
-              input: item.input || item.arguments || {},
-            };
-            queueChunk({
-              type: CLIEventType.TOOL_CALL_START,
-              id: toolCall.id,
-              name: toolCall.name,
-              arguments: JSON.stringify(toolCall.input),
-            });
-          } else if (item.type === 'command_execution') {
+          } else if (itemType === 'command_execution') {
             const cmd = item.command || '';
             const output = item.aggregated_output || '';
             logger.debug(`[CodexCLI] Command execution completed: ${cmd.substring(0, 150)}, exit_code=${item.exit_code}`);
+          } else {
+            logger.debug(`[CodexCLI] Unhandled item.completed type: ${itemType}`);
           }
           break;
         }
@@ -1122,7 +1258,12 @@ export class CodexCliAdapter extends BaseCLIAdapter {
                 queueChunk({ type: CLIEventType.TEXT_DELTA, content: block.text });
               } else if (block.type === 'tool_use' || block.type === 'tool_call') {
                 if (toolCall) {
-                  queueChunk({ type: CLIEventType.TOOL_CALL_END, id: toolCall.id });
+                  queueChunk({
+                    type: CLIEventType.TOOL_CALL_END,
+                    toolCallId: toolCall.id,
+                    tool: toolCall.name,
+                    output: 'Interrupted by new tool call'
+                  });
                 }
                 toolCall = {
                   id: block.id || `tool_${Date.now()}`,
@@ -1131,9 +1272,9 @@ export class CodexCliAdapter extends BaseCLIAdapter {
                 };
                 queueChunk({
                   type: CLIEventType.TOOL_CALL_START,
-                  id: toolCall.id,
-                  name: toolCall.name,
-                  arguments: JSON.stringify(toolCall.input),
+                  toolCallId: toolCall.id,
+                  tool: toolCall.name,
+                  input: toolCall.input,
                 });
               }
             }
@@ -1152,7 +1293,12 @@ export class CodexCliAdapter extends BaseCLIAdapter {
         case 'tool_call':
         case 'tool_use': {
           if (toolCall) {
-            queueChunk({ type: CLIEventType.TOOL_CALL_END, id: toolCall.id });
+            queueChunk({
+              type: CLIEventType.TOOL_CALL_END,
+              toolCallId: toolCall.id,
+              tool: toolCall.name,
+              output: 'Interrupted by new tool call'
+            });
           }
           toolCall = {
             id: obj.id || `tool_${Date.now()}`,
@@ -1161,20 +1307,28 @@ export class CodexCliAdapter extends BaseCLIAdapter {
           };
           queueChunk({
             type: CLIEventType.TOOL_CALL_START,
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: JSON.stringify(toolCall.input),
+            toolCallId: toolCall.id,
+            tool: toolCall.name,
+            input: toolCall.input,
           });
           break;
         }
 
         case 'tool_result': {
           if (toolCall) {
-            const result = obj.result || obj.content || obj.output || '';
+            const rawResult = obj.result || obj.content || obj.output || '';
+            let parsedResult = rawResult;
+            if (typeof rawResult === 'string') {
+              const trimmed = rawResult.trim();
+              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                try { parsedResult = JSON.parse(trimmed); } catch { parsedResult = rawResult; }
+              }
+            }
             queueChunk({
               type: CLIEventType.TOOL_CALL_END,
-              id: toolCall.id,
-              result: typeof result === 'string' ? result : JSON.stringify(result),
+              toolCallId: toolCall.id,
+              tool: toolCall.name,
+              output: parsedResult,
             });
             toolCall = null;
           }
@@ -1260,7 +1414,7 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       }
 
       if (toolCall) {
-        queueChunk({ type: CLIEventType.TOOL_CALL_END, id: toolCall.id });
+        queueChunk({ type: CLIEventType.TOOL_CALL_END, toolCallId: toolCall.id, tool: toolCall.name, output: 'Process exited' });
         toolCall = null;
       }
 

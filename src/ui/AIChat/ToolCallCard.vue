@@ -125,6 +125,7 @@ const executionDescription = computed(() => {
 			const to = String(args.toNodeId || '')
 			return t('aichat.tools.action.connectNodes', { from: from.slice(-8), to: to.slice(-8) })
 		},
+		set_node_text: () => t('aichat.tools.action.setNodeText'),
 		list_node_types: () => t('aichat.tools.action.listNodeTypes'),
 		get_blueprint_state: () => t('aichat.tools.action.getBlueprintState'),
 		get_project_info: () => t('aichat.tools.action.getProjectInfo'),
@@ -165,36 +166,36 @@ const formattedResult = computed(() => {
 
 <style scoped>
 .tool-call-card {
-	border: 1px solid var(--tool-border, rgba(148, 163, 184, 0.15));
+	border: 1px solid var(--tool-border, var(--wf-border-subtle));
 	border-radius: 3px;
-	background: var(--tool-bg, rgba(30, 41, 59, 0.2));
+	background: var(--tool-bg, var(--wf-chat-message-assistant-bg));
 	overflow: hidden;
 	transition: border-color 200ms ease;
 	margin-bottom: 4px;
 }
 
 .tool-call-card.status-pending {
-	--tool-border: rgba(148, 163, 184, 0.2);
-	--tool-bg: rgba(30, 41, 59, 0.15);
-	--tool-accent: #94a3b8;
+	--tool-border: var(--wf-border);
+	--tool-bg: var(--wf-surface-muted);
+	--tool-accent: var(--wf-text-muted);
 }
 
 .tool-call-card.status-running {
-	--tool-border: rgba(59, 130, 246, 0.3);
-	--tool-bg: rgba(30, 58, 138, 0.1);
-	--tool-accent: #3b82f6;
+	--tool-border: var(--wf-state-running-border);
+	--tool-bg: var(--wf-state-running-bg);
+	--tool-accent: var(--wf-info);
 }
 
 .tool-call-card.status-completed {
-	--tool-border: rgba(16, 185, 129, 0.2);
-	--tool-bg: rgba(6, 78, 59, 0.08);
-	--tool-accent: #10b981;
+	--tool-border: var(--wf-success-soft);
+	--tool-bg: var(--wf-success-soft);
+	--tool-accent: var(--wf-success);
 }
 
 .tool-call-card.status-error {
-	--tool-border: rgba(239, 68, 68, 0.3);
-	--tool-bg: rgba(127, 29, 29, 0.1);
-	--tool-accent: #ef4444;
+	--tool-border: var(--wf-state-error-border);
+	--tool-bg: var(--wf-state-error-bg);
+	--tool-accent: var(--wf-danger);
 }
 
 .tool-call-card__header {
@@ -256,14 +257,14 @@ const formattedResult = computed(() => {
 .tool-call-card__name {
 	flex: 1;
 	font-weight: 500;
-	color: var(--wf-text-primary, #e5e7eb);
+	color: var(--wf-text);
 	text-transform: capitalize;
 	font-size: 11px;
 }
 
 .tool-call-card__description {
 	font-size: 10px;
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 	flex-shrink: 0;
 	margin-left: 6px;
 	white-space: nowrap;
@@ -285,7 +286,7 @@ const formattedResult = computed(() => {
 	justify-content: center;
 	width: 12px;
 	height: 12px;
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 	opacity: 0.6;
 	flex-shrink: 0;
 }
@@ -312,7 +313,7 @@ const formattedResult = computed(() => {
 .tool-call-card__section-title {
 	font-size: 9px;
 	font-weight: 500;
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	margin-bottom: 3px;
@@ -322,11 +323,11 @@ const formattedResult = computed(() => {
 	margin: 0;
 	padding: 4px 6px;
 	border-radius: 2px;
-	background: rgba(0, 0, 0, 0.2);
+	background: color-mix(in srgb, var(--wf-text) 6%, transparent);
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	font-size: 10px;
 	line-height: 1.4;
-	color: var(--wf-text-secondary, #d1d5db);
+	color: var(--wf-text);
 	white-space: pre-wrap;
 	word-break: break-all;
 	max-height: 100px;
@@ -334,11 +335,11 @@ const formattedResult = computed(() => {
 }
 
 .tool-call-card__code--result {
-	color: var(--wf-text-primary, #e5e7eb);
+	color: var(--wf-text);
 }
 
 .tool-call-card__code--error {
-	color: #fca5a5;
+	color: var(--wf-danger);
 }
 
 .tool-call-body-enter-active,

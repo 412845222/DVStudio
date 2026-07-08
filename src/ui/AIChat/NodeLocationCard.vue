@@ -43,8 +43,8 @@ defineEmits<{
 	gap: 8px;
 	padding: 6px 10px;
 	border-radius: 4px;
-	background: rgba(59, 130, 246, 0.1);
-	border: 1px solid rgba(59, 130, 246, 0.2);
+	background: var(--wf-info-soft);
+	border: 1px solid color-mix(in srgb, var(--wf-info) 30%, transparent);
 	margin-top: 6px;
 }
 
@@ -54,7 +54,7 @@ defineEmits<{
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: #3b82f6;
+	color: var(--wf-info);
 	flex-shrink: 0;
 }
 
@@ -71,7 +71,7 @@ defineEmits<{
 .node-location-card__title {
 	font-size: 12px;
 	font-weight: 500;
-	color: var(--wf-text-primary, #e5e7eb);
+	color: var(--wf-text);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -79,7 +79,7 @@ defineEmits<{
 
 .node-location-card__type {
 	font-size: 10px;
-	color: var(--wf-text-muted, #9ca3af);
+	color: var(--wf-text-muted);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -91,9 +91,9 @@ defineEmits<{
 	gap: 4px;
 	padding: 3px 8px;
 	border-radius: 3px;
-	background: rgba(59, 130, 246, 0.15);
-	border: 1px solid rgba(59, 130, 246, 0.3);
-	color: #3b82f6;
+	background: color-mix(in srgb, var(--wf-info) 18%, transparent);
+	border: 1px solid color-mix(in srgb, var(--wf-info) 35%, transparent);
+	color: var(--wf-info);
 	font-size: 11px;
 	cursor: pointer;
 	transition: background-color 150ms ease;
@@ -101,7 +101,7 @@ defineEmits<{
 }
 
 .node-location-card__action:hover {
-	background: rgba(59, 130, 246, 0.25);
+	background: color-mix(in srgb, var(--wf-info) 28%, transparent);
 }
 
 .node-location-card__action-text {

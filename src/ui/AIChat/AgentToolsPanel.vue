@@ -149,8 +149,8 @@ const formatJson = (data: unknown) => {
 <style scoped>
 .agent-tools-panel {
 	border-radius: 12px;
-	background: rgba(15, 23, 42, 0.85);
-	border: 1px solid rgba(148, 163, 184, 0.1);
+	background: var(--wf-surface-base);
+	border: 1px solid var(--wf-border-subtle);
 	backdrop-filter: blur(12px);
 	overflow: hidden;
 }
@@ -160,8 +160,8 @@ const formatJson = (data: unknown) => {
 	align-items: center;
 	gap: 8px;
 	padding: 12px 14px;
-	border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-	background: rgba(0, 0, 0, 0.2);
+	border-bottom: 1px solid var(--wf-border-subtle);
+	background: color-mix(in srgb, var(--wf-text) 4%, transparent);
 }
 
 .agent-tools-icon {
@@ -170,7 +170,7 @@ const formatJson = (data: unknown) => {
 	justify-content: center;
 	width: 20px;
 	height: 20px;
-	color: #60a5fa;
+	color: var(--wf-info);
 	flex-shrink: 0;
 }
 
@@ -182,14 +182,14 @@ const formatJson = (data: unknown) => {
 .agent-tools-title {
 	font-size: 13px;
 	font-weight: 600;
-	color: #e5e7eb;
+	color: var(--wf-text);
 }
 
 .agent-tools-count {
 	font-size: 11px;
 	font-weight: 500;
-	color: #6b7280;
-	background: rgba(107, 114, 128, 0.15);
+	color: var(--wf-text-muted);
+	background: color-mix(in srgb, var(--wf-text-muted) 15%, transparent);
 	padding: 2px 6px;
 	border-radius: 10px;
 }
@@ -211,26 +211,26 @@ const formatJson = (data: unknown) => {
 }
 
 .agent-tool-item:hover {
-	background: rgba(59, 130, 246, 0.08);
+	background: color-mix(in srgb, var(--wf-info) 8%, transparent);
 }
 
 .agent-tool-item.status-pending {
-	--tool-color: #9ca3af;
+	--tool-color: var(--wf-text-muted);
 }
 
 .agent-tool-item.status-running {
-	--tool-color: #60a5fa;
-	background: rgba(59, 130, 246, 0.06);
+	--tool-color: var(--wf-info);
+	background: var(--wf-state-running-bg);
 }
 
 .agent-tool-item.status-completed {
-	--tool-color: #34d399;
-	background: rgba(16, 185, 129, 0.06);
+	--tool-color: var(--wf-success);
+	background: var(--wf-success-soft);
 }
 
 .agent-tool-item.status-error {
-	--tool-color: #f87171;
-	background: rgba(239, 68, 68, 0.06);
+	--tool-color: var(--wf-danger);
+	background: var(--wf-danger-soft);
 }
 
 .agent-tool-icon {
@@ -265,7 +265,7 @@ const formatJson = (data: unknown) => {
 .agent-tool-name {
 	font-size: 13px;
 	font-weight: 500;
-	color: #e5e7eb;
+	color: var(--wf-text);
 	text-transform: capitalize;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -286,7 +286,7 @@ const formatJson = (data: unknown) => {
 	height: 24px;
 	border: none;
 	background: transparent;
-	color: #6b7280;
+	color: var(--wf-text-muted);
 	cursor: pointer;
 	border-radius: 4px;
 	transition: all 150ms ease;
@@ -294,8 +294,8 @@ const formatJson = (data: unknown) => {
 }
 
 .agent-tool-toggle:hover {
-	background: rgba(107, 114, 128, 0.15);
-	color: #9ca3af;
+	background: color-mix(in srgb, var(--wf-text-muted) 15%, transparent);
+	color: var(--wf-text);
 }
 
 .agent-tool-toggle svg {
@@ -314,7 +314,7 @@ const formatJson = (data: unknown) => {
 	align-items: center;
 	gap: 8px;
 	padding: 24px;
-	color: #6b7280;
+	color: var(--wf-text-muted);
 }
 
 .agent-tools-empty svg {
@@ -329,14 +329,14 @@ const formatJson = (data: unknown) => {
 
 .agent-tools-details {
 	padding: 0 8px 8px;
-	border-top: 1px solid rgba(148, 163, 184, 0.08);
+	border-top: 1px solid var(--wf-border-subtle);
 }
 
 .agent-tool-detail {
 	margin-top: 8px;
 	border-radius: 8px;
-	background: rgba(0, 0, 0, 0.2);
-	border: 1px solid rgba(148, 163, 184, 0.08);
+	background: color-mix(in srgb, var(--wf-text) 4%, transparent);
+	border: 1px solid var(--wf-border-subtle);
 	overflow: hidden;
 }
 
@@ -345,14 +345,14 @@ const formatJson = (data: unknown) => {
 	align-items: center;
 	justify-content: space-between;
 	padding: 10px 12px;
-	background: rgba(59, 130, 246, 0.06);
-	border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+	background: color-mix(in srgb, var(--wf-info) 6%, transparent);
+	border-bottom: 1px solid var(--wf-border-subtle);
 }
 
 .agent-tool-detail-title {
 	font-size: 12px;
 	font-weight: 500;
-	color: #60a5fa;
+	color: var(--wf-info);
 	text-transform: capitalize;
 }
 
@@ -364,15 +364,15 @@ const formatJson = (data: unknown) => {
 	height: 20px;
 	border: none;
 	background: transparent;
-	color: #6b7280;
+	color: var(--wf-text-muted);
 	cursor: pointer;
 	border-radius: 4px;
 	transition: all 150ms ease;
 }
 
 .agent-tool-detail-close:hover {
-	background: rgba(107, 114, 128, 0.15);
-	color: #9ca3af;
+	background: color-mix(in srgb, var(--wf-text-muted) 15%, transparent);
+	color: var(--wf-text);
 }
 
 .agent-tool-detail-close svg {
@@ -387,7 +387,7 @@ const formatJson = (data: unknown) => {
 .agent-tool-detail-label {
 	font-size: 11px;
 	font-weight: 500;
-	color: #6b7280;
+	color: var(--wf-text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 	margin-bottom: 6px;
@@ -397,11 +397,11 @@ const formatJson = (data: unknown) => {
 	margin: 0;
 	padding: 8px 10px;
 	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.3);
+	background: color-mix(in srgb, var(--wf-text) 6%, transparent);
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	font-size: 11px;
 	line-height: 1.5;
-	color: #d1d5db;
+	color: var(--wf-text);
 	white-space: pre-wrap;
 	word-break: break-all;
 	max-height: 200px;
@@ -409,10 +409,10 @@ const formatJson = (data: unknown) => {
 }
 
 .agent-tool-detail-code--result {
-	color: #e5e7eb;
+	color: var(--wf-text);
 }
 
 .agent-tool-detail-code--error {
-	color: #fca5a5;
+	color: var(--wf-danger);
 }
 </style>

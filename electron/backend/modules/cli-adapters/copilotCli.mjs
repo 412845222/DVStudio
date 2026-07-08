@@ -4,15 +4,22 @@
  * 适配新版 GitHub Copilot CLI (v1.0+)：
  * - gh 内置 copilot 命令，自动下载 copilot 二进制到 %LOCALAPPDATA%\GitHub CLI\copilot\
  * - 使用 `copilot.exe -p <prompt> --output-format json --stream on` 进行流式对话
- * - 事件类型: assistant.message_delta (deltaContent), assistant.message (完整内容), result (结束)
+ * - 支持 MCP (Model Context Protocol) 工具调用，配置通过 ~/.copilot/mcp-config.json
+ * - 事件类型: assistant.message_delta (deltaContent), assistant.message (完整内容), result (结束),
+ *             tool_call (工具调用), tool_result (工具结果)
  */
 
 import { spawn, exec } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { BaseCLIAdapter, CLIEventType, CheckStatus, commandExists, findCommandPath, getProxyEnvVars } from './base.mjs';
 import logger from '../../core/logger.mjs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const STDIO_BRIDGE_PATH = path.join(__dirname, '..', 'mcp', 'server', 'stdioBridge.mjs');
 
 function getBuiltinCopilotPath() {
   if (process.platform === 'win32') {
@@ -22,6 +29,73 @@ function getBuiltinCopilotPath() {
     return path.join(os.homedir(), 'Library', 'Application Support', 'GitHub CLI', 'copilot', 'copilot');
   }
   return path.join(os.homedir(), '.local', 'share', 'gh', 'copilot', 'copilot');
+}
+
+function getCopilotHomeDir() {
+  return path.join(os.homedir(), '.copilot');
+}
+
+function getCopilotMcpConfigPath() {
+  return path.join(getCopilotHomeDir(), 'mcp-config.json');
+}
+
+function stripAnsi(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
+    .replace(/\x1B\][^\x07\x1B]*[\x07\x1B\\]/g, '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\u009b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+    .replace(/\r/g, '');
+}
+
+function ensureDvstudioMcpConfig() {
+  try {
+    const copilotHome = getCopilotHomeDir();
+    if (!fs.existsSync(copilotHome)) {
+      fs.mkdirSync(copilotHome, { recursive: true });
+    }
+
+    const configPath = getCopilotMcpConfigPath();
+    const bridgePath = STDIO_BRIDGE_PATH.replace(/\\/g, '/');
+
+    let config = { mcpServers: {} };
+    try {
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, 'utf8');
+        config = JSON.parse(raw);
+        if (!config.mcpServers) {
+          config.mcpServers = {};
+        }
+      }
+    } catch {
+      config = { mcpServers: {} };
+    }
+
+    const dvstudioConfig = {
+      command: 'node',
+      args: [bridgePath],
+      timeout: 30000
+    };
+
+    const existingConfig = config.mcpServers.dvstudio;
+    const configChanged = !existingConfig ||
+      existingConfig.command !== dvstudioConfig.command ||
+      JSON.stringify(existingConfig.args) !== JSON.stringify(dvstudioConfig.args);
+
+    if (configChanged) {
+      config.mcpServers.dvstudio = dvstudioConfig;
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+      logger.info(`[CopilotCLI] DVStudio MCP server config updated in ${configPath}`);
+    }
+
+    return true;
+  } catch (err) {
+    logger.warn(`[CopilotCLI] Failed to update MCP config: ${err.message}`);
+    return false;
+  }
 }
 
 const FALLBACK_MODELS = [
@@ -404,12 +478,33 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
     const proxyEnv = getProxyEnvVars();
     const copilotBin = session.copilotBin;
 
+    ensureDvstudioMcpConfig();
+
+    const mcpInstruction = `你是DVStudio的AI工作流助手。DVStudio是一个AI工作流蓝图编辑器，提供了名为"dvstudio"的MCP工具服务器。
+
+# 重要规则
+1. 必须使用dvstudio MCP工具操作工作流蓝图，绝对不要读取/修改文件系统代码，也不要执行shell命令
+2. 创建节点前，先调用 get_blueprint_state 了解当前蓝图状态（返回值包含viewport视口信息：zoom/panX/panY/centerWorldX/centerWorldY）
+3. 创建节点时，如果不确定正确的节点类型ID，先调用 list_node_types 获取所有可用类型，然后再调用 create_node
+4. create_node的type参数必须使用list_node_types返回的type值（actionId，如image-generation表示图片节点，text-generation表示文本节点）
+5. **绝对不要给create_node传入position、x、y参数**。系统会自动将新节点放置在用户当前蓝图视口中心，并自动避开已有节点。传入错误坐标会导致节点创建到视口外，用户看不到节点！
+6. 不要试图分析项目源代码，直接通过MCP工具完成所有操作
+7. get_blueprint_state返回的viewport.centerWorldX/centerWorldY是用户当前视口中心的世界坐标，仅供你了解用户视角，创建节点时系统自动使用
+
+`;
+    const enhancedContent = mcpInstruction + content;
+
     const args = [
-      '-p', content,
+      '-p', enhancedContent,
       '--output-format', 'json',
       '--stream', 'on',
       '--model', model,
       '-s',
+      '--allow-all-mcp-server-instructions',
+      '--allow-all-tools',
+      '--allow-all-paths',
+      '--no-ask-user',
+      '--disable-mcp-server', 'github-mcp-server',
     ];
 
     yield { type: CLIEventType.THINKING_DELTA, content: '正在连接 Copilot...' };
@@ -420,6 +515,8 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
         ...proxyEnv,
         ...this.cliConfig.env,
         NO_COLOR: '1',
+        TERM: 'dumb',
+        COPILOT_DISABLE_TELEMETRY: '1',
       },
       cwd: options.cwd || process.cwd(),
       shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(copilotBin),
@@ -432,6 +529,8 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
     session.error = null;
     session.chunkQueue = [];
     session.receivedDeltas = false;
+    session.pendingToolDeltas = {};
+    session.activeToolCalls = new Map();
 
     let stdoutBuf = '';
     let stderrBuf = '';
@@ -439,8 +538,39 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
     let rejecter = null;
     let fullText = '';
 
+    const getActiveToolCall = (toolCallId) => {
+      if (toolCallId) {
+        return session.activeToolCalls.get(toolCallId) || null;
+      }
+      const entries = Array.from(session.activeToolCalls.values());
+      return entries.length > 0 ? entries[entries.length - 1] : null;
+    };
+    const setActiveToolCall = (tc) => {
+      if (tc && tc.id) {
+        session.activeToolCalls.set(tc.id, tc);
+      }
+    };
+    const deleteActiveToolCall = (toolCallId) => {
+      if (toolCallId) {
+        session.activeToolCalls.delete(toolCallId);
+      }
+    };
+
+    const normalizeToolName = (name) => {
+      if (!name) return name;
+      if (name.startsWith('dvstudio-')) {
+        return name.substring('dvstudio-'.length);
+      }
+      if (name.startsWith('dvstudio_')) {
+        return name.substring('dvstudio_'.length);
+      }
+      return name;
+    };
+
     const queueChunk = (chunk) => {
-      fullText += chunk.content || '';
+      if (chunk.type === CLIEventType.TEXT_DELTA) {
+        fullText += chunk.content || '';
+      }
       session.chunkQueue.push(chunk);
       if (resolver) {
         resolver();
@@ -465,50 +595,87 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
       }
     };
 
-    const handleLine = (line) => {
-      if (!line.trim()) return;
+    const parseJsonLine = (line) => {
       try {
-        const event = JSON.parse(line);
-        this.processStreamEvent(event, session.receivedDeltas, queueChunk, signalDone, signalError);
-        if (event.type === 'assistant.message_delta' && event.data?.deltaContent) {
-          session.receivedDeltas = true;
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    };
+
+    const processLine = (line) => {
+      const event = parseJsonLine(line);
+      if (!event) {
+        if (line.trim()) {
+          logger.debug(`[CopilotCLI] Non-JSON line: ${line.substring(0, 200)}`);
         }
-      } catch (e) {
-        logger.debug(`[CopilotCLI] Failed to parse JSON line: ${line.substring(0, 200)}`);
+        return;
+      }
+
+      this.processStreamEvent(
+        event,
+        session.receivedDeltas,
+        queueChunk,
+        signalDone,
+        signalError,
+        setActiveToolCall,
+        getActiveToolCall,
+        deleteActiveToolCall,
+        normalizeToolName,
+        session.pendingToolDeltas
+      );
+      if (event.type === 'assistant.message_delta' && event.data?.deltaContent) {
+        session.receivedDeltas = true;
       }
     };
 
     const onData = (data) => {
-      stdoutBuf += data.toString();
-      const lines = stdoutBuf.split('\n');
-      stdoutBuf = lines.pop() || '';
-      for (const line of lines) {
-        handleLine(line);
+      const text = data.toString();
+      stdoutBuf += text;
+      let idx;
+      while ((idx = stdoutBuf.indexOf('\n')) !== -1) {
+        const line = stdoutBuf.substring(0, idx).trim();
+        stdoutBuf = stdoutBuf.substring(idx + 1);
+        if (line) {
+          processLine(line);
+        }
       }
     };
 
     const onErr = (data) => {
-      stderrBuf += data.toString();
-      const text = data.toString().trim();
-      if (text) {
-        logger.debug(`[CopilotCLI] stderr: ${text.substring(0, 200)}`);
+      const text = data.toString();
+      stderrBuf += text;
+      const cleaned = stripAnsi(text);
+      if (cleaned.trim()) {
+        logger.debug(`[CopilotCLI][stderr]: ${cleaned.substring(0, 300)}`);
       }
     };
 
     const onClose = (code) => {
       if (stdoutBuf.trim()) {
-        handleLine(stdoutBuf.trim());
+        processLine(stdoutBuf.trim());
       }
 
-      if (code !== 0 && !session.done && !session.error) {
-        const errMsg = stderrBuf.trim() || `Process exited with code ${code}`;
+      for (const [tcId, tc] of session.activeToolCalls) {
+        queueChunk({
+          type: CLIEventType.TOOL_CALL_END,
+          toolCallId: tcId,
+          tool: tc.name,
+          output: 'Process exited'
+        });
+      }
+      session.activeToolCalls.clear();
+
+      if (code !== 0 && !session.done && !session.error && fullText.length === 0) {
+        const errMsg = stderrBuf.trim() || `Copilot 进程退出 (code=${code})`;
         session.error = new Error(errMsg);
-        session.chunkQueue.push({ type: CLIEventType.ERROR, error: errMsg });
+        queueChunk({ type: CLIEventType.ERROR, error: errMsg });
       }
       signalDone();
     };
 
     const onError = (err) => {
+      logger.error(`[CopilotCLI] Process error: ${err.message}`);
       signalError(err);
     };
 
@@ -542,14 +709,180 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
     }
   }
 
-  processStreamEvent(event, hasDeltas, onDelta, onDone, onError) {
+  processStreamEvent(event, hasDeltas, onDelta, onDone, onError, setToolCall, getToolCall, deleteToolCall, normalizeToolName, pendingToolDeltas) {
     const { type, data } = event;
+
+    const extractToolInfo = (item) => {
+      if (!item) return null;
+      const itemType = String(item.type || '');
+      
+      if (itemType === 'mcp_tool_call' || itemType === 'tool_call' || itemType === 'tool_use' || item.tool || item.name || item.function) {
+        let toolName = item.tool || item.name || item.function?.name || '';
+        if (normalizeToolName) {
+          toolName = normalizeToolName(toolName);
+        }
+        const toolInput = item.arguments || item.input || item.parameters || item.function?.arguments || {};
+        const parsedInput = typeof toolInput === 'string' ? (() => { try { return JSON.parse(toolInput); } catch { return {}; } })() : toolInput;
+        const serverName = item.server || item.mcpServerName || '';
+        
+        if (toolName) {
+          return {
+            id: item.id || item.toolCallId || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            name: toolName,
+            server: serverName,
+            input: parsedInput,
+          };
+        }
+      }
+      return null;
+    };
 
     switch (type) {
       case 'assistant.message_delta': {
         const delta = data?.deltaContent || '';
         if (delta) {
           onDelta({ type: CLIEventType.TEXT_DELTA, content: delta });
+        }
+        break;
+      }
+      case 'assistant.reasoning_delta': {
+        const delta = data?.deltaContent || '';
+        if (delta) {
+          onDelta({ type: CLIEventType.THINKING_DELTA, content: delta });
+        }
+        break;
+      }
+      case 'assistant.tool_call_delta': {
+        if (!data) break;
+        const toolCallId = data.toolCallId;
+        const toolName = data.toolName ? (normalizeToolName ? normalizeToolName(data.toolName) : data.toolName) : '';
+        const inputDelta = data.inputDelta || '';
+        
+        if (toolCallId && inputDelta) {
+          if (!pendingToolDeltas[toolCallId]) {
+            pendingToolDeltas[toolCallId] = {
+              id: toolCallId,
+              name: toolName,
+              inputDelta: '',
+            };
+          }
+          pendingToolDeltas[toolCallId].inputDelta += inputDelta;
+          if (toolName && !pendingToolDeltas[toolCallId].name) {
+            pendingToolDeltas[toolCallId].name = toolName;
+          }
+        }
+        break;
+      }
+      case 'tool.execution_start': {
+        if (!data) break;
+        const toolCallId = data.toolCallId;
+        let toolName = data.mcpToolName || data.toolName || '';
+        if (normalizeToolName) {
+          toolName = normalizeToolName(toolName);
+        }
+        if (!toolName) {
+          if (toolCallId && pendingToolDeltas[toolCallId]?.name) {
+            toolName = pendingToolDeltas[toolCallId].name;
+          }
+        }
+        if (!toolName) {
+          logger.debug(`[CopilotCLI] Tool call start without tool name, skipping: ${JSON.stringify(data).substring(0, 200)}`);
+          break;
+        }
+        const toolInput = data.arguments || {};
+        
+        let parsedInput = toolInput;
+        if (toolCallId && pendingToolDeltas[toolCallId] && typeof toolInput === 'object') {
+          try {
+            const deltaStr = pendingToolDeltas[toolCallId].inputDelta;
+            if (deltaStr) {
+              parsedInput = JSON.parse(deltaStr);
+            }
+          } catch {}
+        }
+        
+        const tc = {
+          id: toolCallId || `tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: toolName,
+          input: parsedInput,
+        };
+        
+        if (setToolCall) setToolCall(tc);
+        if (toolCallId) delete pendingToolDeltas[toolCallId];
+        
+        logger.info(`[CopilotCLI] Tool call started: ${tc.name} (${tc.id})`);
+        onDelta({
+          type: CLIEventType.TOOL_CALL_START,
+          toolCallId: tc.id,
+          tool: tc.name,
+          input: tc.input,
+        });
+        break;
+      }
+      case 'tool.execution_complete': {
+        if (!data) break;
+        const toolCallId = data.toolCallId;
+        const success = data.success !== false;
+        
+        let activeTc = toolCallId ? getToolCall(toolCallId) : null;
+        if (!activeTc && toolCallId && pendingToolDeltas[toolCallId]?.name) {
+          activeTc = {
+            id: toolCallId,
+            name: pendingToolDeltas[toolCallId].name,
+          };
+        }
+        if (!activeTc || !activeTc.name) {
+          logger.debug(`[CopilotCLI] Tool call complete without active tool, skipping: ${JSON.stringify(data).substring(0, 200)}`);
+          if (toolCallId) {
+            deleteToolCall(toolCallId);
+            delete pendingToolDeltas[toolCallId];
+          }
+          break;
+        }
+        
+        if (!success || data.error) {
+          const errMsg = data.error || 'Tool execution failed';
+          logger.warn(`[CopilotCLI] Tool call error: ${activeTc.name} - ${errMsg}`);
+          onDelta({
+            type: CLIEventType.TOOL_CALL_ERROR,
+            toolCallId: activeTc.id,
+            tool: activeTc.name,
+            error: typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg),
+          });
+        } else {
+          let resultOutput = 'Success';
+          const result = data.result;
+          if (result !== undefined && result !== null) {
+            if (typeof result === 'string') {
+              const trimmed = result.trim();
+              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                try { resultOutput = JSON.parse(trimmed); } catch { resultOutput = result; }
+              } else {
+                resultOutput = result;
+              }
+            } else if (result.content !== undefined && result.content !== null) {
+              resultOutput = (typeof result.content === 'string') ? (() => {
+                const trimmed = result.content.trim();
+                if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                  try { return JSON.parse(trimmed); } catch { return result.content; }
+                }
+                return result.content;
+              })() : result.content;
+            } else {
+              resultOutput = result;
+            }
+          }
+          logger.info(`[CopilotCLI] Tool call completed: ${activeTc.name}`);
+          onDelta({
+            type: CLIEventType.TOOL_CALL_END,
+            toolCallId: activeTc.id,
+            tool: activeTc.name,
+            output: resultOutput,
+          });
+        }
+        if (toolCallId) {
+          deleteToolCall(toolCallId);
+          delete pendingToolDeltas[toolCallId];
         }
         break;
       }
@@ -560,6 +893,17 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
           for (const item of content) {
             if (item.type === 'text' && item.text) {
               onDelta({ type: CLIEventType.TEXT_DELTA, content: item.text });
+            } else if (item.type === 'tool_use' || item.type === 'tool_call') {
+              const tc = extractToolInfo(item);
+              if (tc) {
+                if (setToolCall) setToolCall(tc);
+                onDelta({
+                  type: CLIEventType.TOOL_CALL_START,
+                  toolCallId: tc.id,
+                  tool: tc.name,
+                  input: tc.input,
+                });
+              }
             }
           }
         } else if (typeof content === 'string' && content) {
@@ -567,19 +911,162 @@ export class CopilotCliAdapter extends BaseCLIAdapter {
         }
         break;
       }
-      case 'assistant.reasoning': {
+      case 'assistant.reasoning':
+      case 'thinking': {
+        const thinking = event.thinking || event.content || data?.thinking || data?.content || '';
+        if (thinking) {
+          onDelta({ type: CLIEventType.THINKING_DELTA, content: thinking });
+        }
+        break;
+      }
+      case 'item.started': {
+        const item = event.item;
+        const tc = extractToolInfo(item);
+        if (tc) {
+          if (setToolCall) setToolCall(tc);
+          logger.info(`[CopilotCLI] Tool call started: ${tc.name} (${tc.id})`);
+          onDelta({
+            type: CLIEventType.TOOL_CALL_START,
+            toolCallId: tc.id,
+            tool: tc.name,
+            input: tc.input,
+          });
+        }
+        break;
+      }
+      case 'item.completed': {
+        const item = event.item;
+        if (!item) break;
+        
+        const itemId = item.id || item.toolCallId;
+        const itemType = String(item.type || '');
+        
+        if (itemType === 'agent_message' || itemType === 'message') {
+          const text = item.text || item.content || '';
+          if (text) {
+            onDelta({ type: CLIEventType.TEXT_DELTA, content: text });
+          }
+        } else if (itemType === 'error') {
+          const errMsg = item.message || '';
+          if (errMsg && !errMsg.includes('Skill descriptions were shortened')) {
+            logger.warn(`[CopilotCLI] Item error: ${errMsg}`);
+          }
+        } else {
+          const activeTc = itemId ? getToolCall(itemId) : null;
+          if (activeTc && activeTc.name) {
+            if (item.error) {
+              const errMsg = typeof item.error === 'string' ? item.error : (item.error.message || JSON.stringify(item.error));
+              logger.warn(`[CopilotCLI] Tool call error: ${activeTc.name} - ${errMsg}`);
+              onDelta({
+                type: CLIEventType.TOOL_CALL_ERROR,
+                toolCallId: activeTc.id,
+                tool: activeTc.name,
+                error: errMsg,
+              });
+            } else {
+              const result = item.result !== null && item.result !== undefined
+                ? (typeof item.result === 'string' ? item.result : JSON.stringify(item.result, null, 2))
+                : (item.output !== null && item.output !== undefined
+                  ? (typeof item.output === 'string' ? item.output : JSON.stringify(item.output, null, 2))
+                  : (item.status === 'failed' ? 'Tool call failed' : 'Success'));
+              logger.info(`[CopilotCLI] Tool call completed: ${activeTc.name}`);
+              onDelta({
+                type: CLIEventType.TOOL_CALL_END,
+                toolCallId: activeTc.id,
+                tool: activeTc.name,
+                output: result,
+              });
+            }
+            if (itemId) {
+              deleteToolCall(itemId);
+            }
+          }
+        }
+        break;
+      }
+      case 'tool_call':
+      case 'tool_use': {
+        const tc = extractToolInfo(event);
+        if (tc) {
+          if (setToolCall) setToolCall(tc);
+          onDelta({
+            type: CLIEventType.TOOL_CALL_START,
+            toolCallId: tc.id,
+            tool: tc.name,
+            input: tc.input,
+          });
+        }
+        break;
+      }
+      case 'tool_result': {
+        const resultTcId = event.toolCallId || event.id;
+        const activeTc = resultTcId ? getToolCall(resultTcId) : getToolCall();
+        if (activeTc && activeTc.name) {
+          const rawResult = event.result || event.content || event.output || '';
+          let parsedResult = rawResult;
+          if (typeof rawResult === 'string') {
+            try {
+              const trimmed = rawResult.trim();
+              if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                parsedResult = JSON.parse(trimmed);
+              }
+            } catch {
+              parsedResult = rawResult;
+            }
+          }
+          onDelta({
+            type: CLIEventType.TOOL_CALL_END,
+            toolCallId: activeTc.id,
+            tool: activeTc.name,
+            output: parsedResult,
+          });
+          if (resultTcId) {
+            deleteToolCall(resultTcId);
+          }
+        }
+        break;
+      }
+      case 'delta': {
+        if (event.delta?.type === 'text_delta') {
+          const text = event.delta?.text || event.text || '';
+          if (text) {
+            onDelta({ type: CLIEventType.TEXT_DELTA, content: text });
+          }
+        } else if (event.delta?.type === 'thinking_delta') {
+          const thinking = event.delta?.thinking || event.thinking || '';
+          if (thinking) {
+            onDelta({ type: CLIEventType.THINKING_DELTA, content: thinking });
+          }
+        } else if (event.text) {
+          onDelta({ type: CLIEventType.TEXT_DELTA, content: event.text });
+        }
         break;
       }
       case 'result': {
+        if (event.result?.status === 'error') {
+          const errMsg = event.result.message || event.result.error || 'Copilot execution failed';
+          if (onError) onError(new Error(errMsg));
+        } else {
+          onDone();
+        }
+        break;
+      }
+      case 'session.completed': {
         onDone();
         break;
       }
-      case 'assistant.turn_end':
-      case 'assistant.idle': {
+      case 'error': {
+        const errMsg = event.message || event.error || JSON.stringify(event);
+        if (onError) onError(new Error(errMsg));
         break;
       }
       default:
-        logger.debug(`[CopilotCLI] unhandled event: ${type}`);
+        logger.debug(`[CopilotCLI] unhandled event: ${type}`, JSON.stringify(event).substring(0, 300));
+        if (event.content && typeof event.content === 'string') {
+          onDelta({ type: CLIEventType.TEXT_DELTA, content: event.content });
+        } else if (event.text && typeof event.text === 'string') {
+          onDelta({ type: CLIEventType.TEXT_DELTA, content: event.text });
+        }
     }
   }
 

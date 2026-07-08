@@ -38,11 +38,12 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 		return content ? { type: 'text_delta', content } : null
 	}
 	if (type === 'thinking_delta' || type === 'reasoning_delta') {
-		const content = String(raw.content || raw.text || raw.delta || '')
+		const content = String(raw.content || raw.text || raw.delta || raw.thinking || '')
 		return content ? { type: 'thinking_delta', content } : null
 	}
-	if (type === 'thought' || type === 'reasoning') {
-		return { type: 'thought', content: String(raw.content || raw.text || '') }
+	if (type === 'thought' || type === 'reasoning' || type === 'thinking') {
+		const content = String(raw.content || raw.text || raw.thinking || '')
+		return content ? { type: 'thinking_delta', content } : null
 	}
 	if (type === 'tool_call_start') {
 		return {
@@ -71,7 +72,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 	if (type === 'error') {
 		return { type: 'error', message: String(raw.message || raw.error || 'Unknown error') }
 	}
-	if (type === 'done' || type === 'end') {
+	if (type === 'done' || type === 'end' || type === 'turn.completed' || type === 'thread.completed') {
 		return { type: 'done' }
 	}
 	if (type === 'context_usage') {
@@ -233,44 +234,11 @@ export class CodexChatService implements IChatService {
 					return
 				}
 
-				if (raw && typeof raw === 'object' && 'type' in raw) {
-					const chunkType = (raw as { type: string }).type
-					if (chunkType === 'text' || chunkType === 'text_delta') {
-						const content = String((raw as { content?: string; delta?: string; text?: string }).content
-							|| (raw as { delta?: string }).delta
-							|| (raw as { text?: string }).text
-							|| '')
-						if (content) {
-							yield { type: 'text_delta', content }
-						}
-						continue
-					}
-					if (chunkType === 'thinking_delta' || chunkType === 'reasoning_delta') {
-						const content = String((raw as { content?: string; delta?: string; text?: string }).content
-							|| (raw as { delta?: string }).delta
-							|| (raw as { text?: string }).text
-							|| '')
-						if (content) {
-							yield { type: 'thinking_delta', content }
-						}
-						continue
-					}
-					if (chunkType === 'error') {
-						yield { type: 'error', message: String((raw as { message?: string; error?: string }).message
-							|| (raw as { error?: string }).error
-							|| 'Unknown error') }
-						return
-					}
-					if (chunkType === 'done' || chunkType === 'end') {
-						yield { type: 'done' }
-						return
-					}
-				}
-
 				const ev = normalizeToChatEvent(raw)
 				if (ev) {
 					yield ev
 					if (ev.type === 'done') return
+					if (ev.type === 'error') return
 				}
 			}
 			yield { type: 'done' }

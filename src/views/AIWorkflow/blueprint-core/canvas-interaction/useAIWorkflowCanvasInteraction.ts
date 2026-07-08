@@ -5,8 +5,6 @@ import type { WorkflowState } from '../../../../aiworkflow/types'
 
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
-const DEFAULT_NODE_WIDTH = 240
-const DEFAULT_NODE_HEIGHT = 160
 const FOCUS_ANIMATION_DURATION = 300
 
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
@@ -262,9 +260,6 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 
 		const vp = payload.store.state.viewport
 		const zoom = Math.max(0.01, Number(vp.zoom) || 1)
-
-		const nodeWidth = Number.isFinite(node.width) ? (node.width as number) : DEFAULT_NODE_WIDTH
-		const nodeHeight = Number.isFinite(node.height) ? (node.height as number) : DEFAULT_NODE_HEIGHT
 
 		const nodeCenterX = node.worldX as number
 		const nodeCenterY = node.worldY as number

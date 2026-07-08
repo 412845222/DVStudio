@@ -32,6 +32,10 @@ export class CliLLMProvider extends ILLMProvider {
     return false;
   }
 
+  get executesOwnTools() {
+    return true;
+  }
+
   async checkAvailable(config = {}) {
     try {
       const result = await cliAdapterManager.checkAvailability(this.adapterName, config);
@@ -135,12 +139,26 @@ export class CliLLMProvider extends ILLMProvider {
           } else if (eventType === CLIEventType.TOOL_CALL_START || eventType === 'tool_call_start') {
             yield {
               type: ProviderEventType.TOOL_CALL,
-              id: parsedEvent.id,
-              name: parsedEvent.name,
-              arguments: parsedEvent.arguments || parsedEvent.input || {},
+              id: parsedEvent.toolCallId,
+              name: parsedEvent.tool,
+              arguments: parsedEvent.input || {},
             };
           } else if (eventType === CLIEventType.TOOL_CALL_END || eventType === 'tool_call_end') {
-            // Tool call end is handled by AgentRuntime
+            yield {
+              type: ProviderEventType.TOOL_RESULT,
+              id: parsedEvent.toolCallId,
+              name: parsedEvent.tool,
+              result: parsedEvent.output || parsedEvent.result || {},
+              isError: false,
+            };
+          } else if (eventType === CLIEventType.TOOL_CALL_ERROR || eventType === 'tool_call_error') {
+            yield {
+              type: ProviderEventType.TOOL_RESULT,
+              id: parsedEvent.toolCallId,
+              name: parsedEvent.tool,
+              result: { error: parsedEvent.error || parsedEvent.message || 'Tool error' },
+              isError: true,
+            };
           } else if (eventType === CLIEventType.ERROR || eventType === 'error') {
             yield { type: ProviderEventType.ERROR, message: parsedEvent.error || parsedEvent.message || 'Unknown CLI error' };
             return;

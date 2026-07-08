@@ -16,7 +16,7 @@ export function registerBuiltinTools() {
   // ========== get_blueprint_state ==========
   executor.registerTool(
     'get_blueprint_state',
-    '获取当前工作流蓝图的状态，包括节点列表、连接关系、选中节点等信息',
+    '获取当前工作流蓝图的状态，包括节点列表、连接关系、选中节点，以及viewport（视口位置与缩放信息）。在创建节点之前建议先调用此工具了解当前蓝图状态。',
     {
       type: 'object',
       properties: {
@@ -50,30 +50,26 @@ export function registerBuiltinTools() {
   // ========== create_node ==========
   executor.registerTool(
     'create_node',
-    '在工作流蓝图中创建新节点',
+    '在工作流蓝图中创建新节点。重要提示：新节点会自动放置在用户当前蓝图视口中心（自动避开已有节点），你不需要也不应该传入position/x/y参数。创建前建议先调用 list_node_types 获取正确的节点类型ID。',
     {
       type: 'object',
       required: ['type'],
       properties: {
         type: {
           type: 'string',
-          description: '节点类型，如 image-generate、video-generate、comfyui-custom 等',
+          description: '节点类型ID，必须是list_node_types返回的有效type值。常用类型：text-generation(文本节点), image-generation(图片节点), video-generation(视频节点), scene-understanding(场景理解), scene-layout(场景布局), scene-decompose(场景拆解), comfyui(ComfyUI), model3d(3D模型), rotate-image(旋转图片), unreal-export(Unreal导出)',
         },
         title: {
           type: 'string',
-          description: '节点名称/标题，可选',
+          description: '节点显示名称/标题，可选。不指定则使用节点类型默认名称',
         },
-        position: {
-          type: 'object',
-          description: '节点位置坐标',
-          properties: {
-            x: { type: 'number' },
-            y: { type: 'number' },
-          },
+        alias: {
+          type: 'string',
+          description: '节点别名，可选',
         },
         config: {
           type: 'object',
-          description: '节点初始配置，可选',
+          description: '节点初始配置参数，可选',
         },
       },
     }
@@ -252,10 +248,15 @@ export function registerBuiltinTools() {
   // ========== auto_layout ==========
   executor.registerTool(
     'auto_layout',
-    '自动排列当前蓝图中的节点，使其布局更整齐',
+    '【仅在用户明确要求时使用】自动排列指定的节点。注意：不要在创建节点后自动调用此工具，节点创建时已自动放置在合适位置。',
     {
       type: 'object',
       properties: {
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要排列的节点ID列表。如果不提供，将只排列本次会话中新创建的节点，不会影响已有节点。',
+        },
         direction: {
           type: 'string',
           enum: ['horizontal', 'vertical'],

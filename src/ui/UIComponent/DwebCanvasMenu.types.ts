@@ -7,7 +7,6 @@ export type DwebCanvasMenuNodeActionId =
 	| 'scene-decompose'
 	| 'comfyui'
 	| 'model3d'
-	| 'meshy'
 	| 'rotate-image'
 	| 'unreal-export'
 

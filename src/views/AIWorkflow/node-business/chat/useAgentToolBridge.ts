@@ -49,6 +49,12 @@ type AgentToolBridgePayload = {
 
 const DANGEROUS_TOOLS = new Set(['delete_node', 'disconnect_nodes', 'execute_node'])
 
+const NODE_DEFAULT_WIDTH = 240
+const NODE_DEFAULT_HEIGHT = 160
+const NODE_SPACING = 40
+const GRID_STEP_X = NODE_DEFAULT_WIDTH + NODE_SPACING
+const GRID_STEP_Y = NODE_DEFAULT_HEIGHT + NODE_SPACING
+
 type MCPIpcBridge = {
   dweb?: {
     mcp?: {
@@ -70,6 +76,7 @@ function hasIpc(): boolean {
 
 export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
   let listenerId = -1
+  const sessionCreatedNodeIds: string[] = []
 
   const respondTool = (requestId: string, result: unknown, error?: string) => {
     const bridge = getMcpBridge()
@@ -179,6 +186,11 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       nodeTypeStats[t] = (nodeTypeStats[t] || 0) + 1
     }
 
+    const vp = payload.viewport?.value
+    const zoom = Math.max(0.01, Number(vp?.zoom) || 1)
+    const panX = Number(vp?.panX) || 0
+    const panY = Number(vp?.panY) || 0
+
     return {
       ok: true,
       blueprint: {
@@ -195,6 +207,13 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
                 selectedNode.type,
             }
           : null,
+        viewport: {
+          zoom,
+          panX,
+          panY,
+          centerWorldX: -panX / zoom,
+          centerWorldY: -panY / zoom,
+        },
         nodes: includeNodes
           ? nodes.slice(0, 100).map((n) => ({
               id: n.id,
@@ -243,19 +262,113 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const panX = Number(payload.viewport?.value?.panX) || 0
     const panY = Number(payload.viewport?.value?.panY) || 0
 
+    const isPositionFree = (testX: number, testY: number, excludeNodeId?: string): boolean => {
+      const currentNodes = payload.store.state.nodesById
+      return !Object.values(currentNodes).some((n) => {
+        if (excludeNodeId && n.id === excludeNodeId) return false
+        const nw = n.width || NODE_DEFAULT_WIDTH
+        const nh = n.height || NODE_DEFAULT_HEIGHT
+        const dx = Math.abs(testX - (n.worldX || 0))
+        const dy = Math.abs(testY - (n.worldY || 0))
+        return dx < (nw + NODE_SPACING) && dy < (nh + NODE_SPACING)
+      })
+    }
+
     let worldX: number
     let worldY: number
-    if (args.position && typeof args.position === 'object') {
-      const pos = args.position as { x?: number; y?: number }
-      worldX = Number(pos.x)
-      worldY = Number(pos.y)
-      if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
-        worldX = -panX / zoom
-        worldY = -panY / zoom
+
+    const findPositionNear = (anchorX: number, anchorY: number): { x: number; y: number } | null => {
+      if (isPositionFree(anchorX, anchorY)) {
+        return { x: anchorX, y: anchorY }
+      }
+      const directions = [
+        { dx: GRID_STEP_X, dy: 0 },
+        { dx: 0, dy: GRID_STEP_Y },
+        { dx: -GRID_STEP_X, dy: 0 },
+        { dx: 0, dy: -GRID_STEP_Y },
+      ]
+      for (let ring = 1; ring <= 6; ring++) {
+        for (let side = 0; side < 4; side++) {
+          const steps = ring * 2
+          for (let step = 0; step < steps; step++) {
+            let tx = anchorX
+            let ty = anchorY
+            switch (side) {
+              case 0:
+                tx = anchorX + ring * GRID_STEP_X
+                ty = anchorY - ring * GRID_STEP_Y + step * GRID_STEP_Y
+                break
+              case 1:
+                tx = anchorX + ring * GRID_STEP_X - step * GRID_STEP_X
+                ty = anchorY + ring * GRID_STEP_Y
+                break
+              case 2:
+                tx = anchorX - ring * GRID_STEP_X
+                ty = anchorY + ring * GRID_STEP_Y - step * GRID_STEP_Y
+                break
+              case 3:
+                tx = anchorX - ring * GRID_STEP_X + step * GRID_STEP_X
+                ty = anchorY - ring * GRID_STEP_Y
+                break
+            }
+            if (isPositionFree(tx, ty)) {
+              return { x: tx, y: ty }
+            }
+          }
+        }
+      }
+      for (const dir of directions) {
+        for (let dist = 1; dist <= 10; dist++) {
+          const tx = anchorX + dir.dx * dist
+          const ty = anchorY + dir.dy * dist
+          if (isPositionFree(tx, ty)) {
+            return { x: tx, y: ty }
+          }
+        }
+      }
+      return null
+    }
+
+    const lastSessionNodeId = sessionCreatedNodeIds.length > 0
+      ? sessionCreatedNodeIds[sessionCreatedNodeIds.length - 1]
+      : null
+    const lastSessionNode = lastSessionNodeId
+      ? payload.store.state.nodesById[lastSessionNodeId]
+      : null
+
+    if (lastSessionNode) {
+      const anchorX = (lastSessionNode.worldX || 0) + ((lastSessionNode.width || NODE_DEFAULT_WIDTH) + NODE_SPACING)
+      const anchorY = lastSessionNode.worldY || 0
+      const pos = findPositionNear(anchorX, anchorY)
+      if (pos) {
+        worldX = pos.x
+        worldY = pos.y
+      } else {
+        const viewportCenterWorldX = -panX / zoom
+        const viewportCenterWorldY = -panY / zoom
+        worldX = viewportCenterWorldX - NODE_DEFAULT_WIDTH / 2
+        worldY = viewportCenterWorldY - NODE_DEFAULT_HEIGHT / 2
+        const centerPos = findPositionNear(worldX, worldY)
+        if (centerPos) {
+          worldX = centerPos.x
+          worldY = centerPos.y
+        }
       }
     } else {
-      worldX = -panX / zoom
-      worldY = -panY / zoom
+      const viewportCenterWorldX = -panX / zoom
+      const viewportCenterWorldY = -panY / zoom
+      worldX = viewportCenterWorldX - NODE_DEFAULT_WIDTH / 2
+      worldY = viewportCenterWorldY - NODE_DEFAULT_HEIGHT / 2
+      const pos = findPositionNear(worldX, worldY)
+      if (pos) {
+        worldX = pos.x
+        worldY = pos.y
+      }
+    }
+
+    if (typeof worldX !== 'number' || typeof worldY !== 'number' || Number.isNaN(worldX) || Number.isNaN(worldY)) {
+      worldX = -panX / zoom - NODE_DEFAULT_WIDTH / 2
+      worldY = -panY / zoom - NODE_DEFAULT_HEIGHT / 2
     }
 
     payload.store.commit('addNodeAt', {
@@ -273,7 +386,9 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
     }
 
-    const validNodeTypes = ['base', 'text', 'text-merge', 'image', 'rotate-image', 'video', 'scene-understanding', 'scene-decompose', 'scene-layout', 'unreal-export', 'story', 'comfyui', 'model3d', 'meshy'] as const
+    sessionCreatedNodeIds.push(nodeId)
+
+    const validNodeTypes = ['base', 'text', 'text-merge', 'image', 'rotate-image', 'video', 'scene-understanding', 'scene-decompose', 'scene-layout', 'unreal-export', 'story', 'comfyui', 'model3d'] as const
     if (validNodeTypes.includes(nodeType as typeof validNodeTypes[number])) {
       payload.store.commit('setNodeType', { nodeId, type: nodeType as typeof validNodeTypes[number] })
     }
@@ -291,14 +406,13 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       })
     }
 
+    payload.pushToast(t('aiworkflow.toast.agentNodeCreated', { label }), 'info')
+
     const focusNodeFn = payload.focusNode
     if (typeof focusNodeFn === 'function') {
-      setTimeout(() => {
-        focusNodeFn(nodeId)
-      }, 50)
+      setTimeout(() => focusNodeFn(nodeId), 150)
     }
 
-    payload.pushToast(t('aiworkflow.toast.agentNodeCreated', { label }), 'info')
     return {
       ok: true,
       nodeId,
@@ -542,12 +656,26 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const direction = String(args.direction || 'horizontal') as 'horizontal' | 'vertical'
     const spacing = Math.max(100, Number(args.spacing) || 200)
 
-    const nodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
-    if (nodes.length === 0) {
-      return { ok: true, note: 'No nodes to layout' }
+    let targetNodeIds: string[] = []
+    if (Array.isArray(args.nodeIds) && args.nodeIds.length > 0) {
+      targetNodeIds = args.nodeIds.map((id) => String(id)).filter((id) => !!payload.store.state.nodesById[id])
+    } else {
+      targetNodeIds = sessionCreatedNodeIds.filter((id) => !!payload.store.state.nodesById[id])
     }
 
-    const sortedNodes = [...nodes].sort((a, b) => {
+    if (targetNodeIds.length === 0) {
+      return { ok: true, note: 'No nodes to layout (provide nodeIds or create nodes first)' }
+    }
+
+    const allNodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
+    const nodesById = new Map(allNodes.map((n) => [n.id, n]))
+    const nodesToLayout = targetNodeIds.map((id) => nodesById.get(id)).filter((n): n is WorkflowNode => !!n)
+
+    if (nodesToLayout.length === 0) {
+      return { ok: true, note: 'Specified nodes not found' }
+    }
+
+    const sortedNodes = [...nodesToLayout].sort((a, b) => {
       if (direction === 'horizontal') {
         return (a.worldX || 0) - (b.worldX || 0)
       }
@@ -573,10 +701,10 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
     })
 
-    payload.pushToast(t('aiworkflow.toast.agentAutoLayout', { count: nodes.length }), 'info')
+    payload.pushToast(t('aiworkflow.toast.agentAutoLayout', { count: nodesToLayout.length }), 'info')
     return {
       ok: true,
-      arrangedNodes: nodes.length,
+      arrangedNodes: nodesToLayout.length,
       direction,
       spacing
     }

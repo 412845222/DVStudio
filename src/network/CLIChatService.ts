@@ -23,8 +23,9 @@ export type CLISessionInfo = {
 export type CLIStreamChunk =
   | { type: 'text'; content: string }
   | { type: 'thinking'; content: string }
-  | { type: 'tool_call'; tool: string; input?: unknown }
-  | { type: 'tool_result'; tool: string; output?: unknown }
+  | { type: 'tool_call'; toolCallId: string; tool: string; input?: unknown }
+  | { type: 'tool_result'; toolCallId: string; tool: string; output?: unknown }
+  | { type: 'tool_error'; toolCallId: string; tool: string; error: string }
   | { type: 'error'; message: string }
   | { type: 'done' }
 
@@ -342,10 +343,34 @@ function normalizeCLIChunk(raw: unknown): CLIStreamChunk | null {
     return content ? { type: 'text', content } : null
   }
   if (type === 'tool_call_start' || type === 'tool_call' || type === 'tool-call' || type === 'tool_use') {
-    return { type: 'tool_call', tool: String(raw.tool || raw.name || ''), input: raw.input || raw.arguments }
+    const tool = String(raw.tool || raw.name || '')
+    if (!tool) return null
+    return {
+      type: 'tool_call',
+      toolCallId: String(raw.toolCallId || raw.id || `tool_${Date.now()}`),
+      tool,
+      input: raw.input || raw.arguments
+    }
   }
   if (type === 'tool_call_end' || type === 'tool_result' || type === 'tool-result') {
-    return { type: 'tool_result', tool: String(raw.tool || raw.name || ''), output: raw.output || raw.result }
+    const tool = String(raw.tool || raw.name || '')
+    if (!tool) return null
+    return {
+      type: 'tool_result',
+      toolCallId: String(raw.toolCallId || raw.id || ''),
+      tool,
+      output: raw.output || raw.result
+    }
+  }
+  if (type === 'tool_call_error' || type === 'tool_error') {
+    const tool = String(raw.tool || raw.name || '')
+    if (!tool) return null
+    return {
+      type: 'tool_error',
+      toolCallId: String(raw.toolCallId || raw.id || ''),
+      tool,
+      error: String(raw.error || raw.message || 'Tool call failed')
+    }
   }
   if (type === 'error') {
     return { type: 'error', message: String(raw.message || raw.error || 'Unknown error') }

@@ -378,7 +378,7 @@ export type NanoBananaRefAnchor = {
 	connectedFrom?: string
 }
 
-export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent'
+export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent' | 'codex-cli'
 
 export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
@@ -1971,8 +1971,8 @@ watch(
 }
 
 .codex-flow-item.failed {
-	border-color: color-mix(in srgb, #b34a4a 65%, transparent);
-	box-shadow: 0 0 10px color-mix(in srgb, #b34a4a 35%, transparent);
+	border-color: color-mix(in srgb, var(--wf-danger) 65%, transparent);
+	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-danger) 35%, transparent);
 }
 
 .codex-flow-title {
@@ -2008,14 +2008,14 @@ watch(
 }
 
 .codex-mini-btn.danger {
-	border-color: color-mix(in srgb, #b34a4a 55%, transparent);
-	color: color-mix(in srgb, #e88a8a 90%, transparent);
+	border-color: color-mix(in srgb, var(--wf-danger) 55%, transparent);
+	color: var(--wf-danger);
 }
 
 .codex-mini-btn.danger:hover {
-	border-color: #b34a4a;
-	color: #e88a8a;
-	box-shadow: 0 0 8px color-mix(in srgb, #b34a4a 40%, transparent);
+	border-color: var(--wf-danger);
+	color: var(--wf-danger);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-danger) 40%, transparent);
 }
 
 .codex-empty {
@@ -2543,7 +2543,7 @@ watch(
 	display: flex;
 	flex-direction: column;
 	padding: 8px;
-	border-right: 1px solid rgba(148, 163, 184, 0.08);
+	border-right: 1px solid var(--wf-border-subtle);
 }
 
 .agent-side-panel {
@@ -2711,8 +2711,8 @@ watch(
 }
 
 .agent-skill-card.failed {
-	border-color: #e57373;
-	box-shadow: 0 0 8px color-mix(in srgb, #e57373 30%, transparent);
+	border-color: var(--wf-danger);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-danger) 30%, transparent);
 }
 
 .agent-skill-title {
@@ -3052,10 +3052,10 @@ watch(
 }
 
 .chat-dock-send.stopping {
-	border-color: #e57373;
-	background: color-mix(in srgb, #e57373 14%, transparent);
-	color: #e57373;
-	text-shadow: 0 0 4px color-mix(in srgb, #e57373 30%, transparent);
+	border-color: var(--wf-danger);
+	background: color-mix(in srgb, var(--wf-danger) 14%, transparent);
+	color: var(--wf-danger);
+	text-shadow: 0 0 4px color-mix(in srgb, var(--wf-danger) 30%, transparent);
 }
 
 .chat-dock-send:hover {
