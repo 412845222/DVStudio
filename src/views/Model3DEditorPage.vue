@@ -198,8 +198,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
-import * as THREE from 'three'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { EditorViewer } from '../ui/WorkFlow/WorlFlowNodes/model3d/editor/EditorViewer'
 import type { RenderMode, LightingPreset, OutlinerNode, EditorLoadProgress, TransformMode } from '../ui/WorkFlow/WorlFlowNodes/model3d/editor/types'
 import EditorToolbar from '../ui/UIComponent/Model3DEditor/EditorToolbar.vue'
@@ -497,6 +496,13 @@ function onResetLighting() {
 	viewer.setLightingPreset(preset)
 	currentLighting.value = preset
 	syncLightingParamsFromViewer()
+	const defaultStrength = 1.0
+	const defaultRadius = 0.7
+	const defaultThreshold = 0.5
+	bloomParams.value = { strength: defaultStrength, radius: defaultRadius, threshold: defaultThreshold }
+	viewer.setBloomStrength(defaultStrength)
+	viewer.setBloomRadius(defaultRadius)
+	viewer.setBloomThreshold(defaultThreshold)
 }
 
 function syncBloomParamsFromViewer() {
@@ -516,19 +522,6 @@ function onUpdateBloomParam(key: 'strength' | 'radius' | 'threshold', value: num
 	if (key === 'strength') viewer.setBloomStrength(value)
 	else if (key === 'radius') viewer.setBloomRadius(value)
 	else if (key === 'threshold') viewer.setBloomThreshold(value)
-}
-
-function onResetBloom() {
-	if (!viewer) return
-	const defaultStrength = 1.0
-	const defaultRadius = 0.7
-	const defaultThreshold = 0.5
-	bloomParams.value = { strength: defaultStrength, radius: defaultRadius, threshold: defaultThreshold }
-	viewer.setBloomStrength(defaultStrength)
-	viewer.setBloomRadius(defaultRadius)
-	viewer.setBloomThreshold(defaultThreshold)
-	viewer.setBloomEnabled(true)
-	bloomEnabled.value = true
 }
 
 function onSetTransformMode(mode: TransformMode) {
@@ -633,7 +626,6 @@ async function initEditor() {
 	const canvasH = canvasRef.value.clientHeight
 	const viewportW = viewportRef.value.clientWidth
 	const viewportH = viewportRef.value.clientHeight
-	console.log('[Model3DEditor] Initial sizes:', { canvasW, canvasH, viewportW, viewportH })
 
 	isLoading.value = true
 	loadingProgress.value = 0
