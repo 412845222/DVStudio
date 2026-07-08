@@ -9,9 +9,13 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js'
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js'
+import { ColorCorrectionShader } from 'three/examples/jsm/shaders/ColorCorrectionShader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import type { RenderMode, LightingPreset, EditorLoadProgress, LoadedEditorModel, OutlinerNode, TransformMode } from './types'
+import type { RenderMode, LightingPreset, EditorLoadProgress, LoadedEditorModel, OutlinerNode, TransformMode, ManualLightingParams } from './types'
 
 type Disposable = { dispose(): void }
 type TextureLike = Disposable & {
@@ -55,6 +59,9 @@ interface EditorViewerOptions {
 	initialRenderMode?: RenderMode
 	shadowsEnabled?: boolean
 	bloomEnabled?: boolean
+	bloomStrength?: number
+	bloomRadius?: number
+	bloomThreshold?: number
 	antialiasEnabled?: boolean
 	gridVisible?: boolean
 	axesVisible?: boolean
@@ -74,8 +81,12 @@ export class EditorViewer {
 	private transformHelper: any
 	private composer: any
 	private renderPass: any
+	private ssaoPass: any = null
 	private bloomPass: any
+	private gammaCorrectionPass: any
+	private colorCorrectionPass: any
 	private fxaaPass: any
+	private groundPlane: any
 	private pmremGenerator: any
 	private environmentTexture: any | null = null
 	private gltfLoader: any
@@ -93,8 +104,13 @@ export class EditorViewer {
 	private currentRenderMode: RenderMode = 'pbr'
 	private currentLightingPreset: LightingPreset = 'studio'
 	private currentTransformMode: TransformMode = 'translate'
+	private manualLightingParams: ManualLightingParams = {}
+	private mainLightRadius = 12
 	private shadowsEnabled = true
 	private bloomEnabled = true
+	private bloomStrength = 1.0
+	private bloomRadius = 0.7
+	private bloomThreshold = 0.5
 	private antialiasEnabled = true
 	private gridVisible = true
 	private axesVisible = true
@@ -143,6 +159,9 @@ export class EditorViewer {
 		this.currentRenderMode = options?.initialRenderMode || 'pbr'
 		this.shadowsEnabled = options?.shadowsEnabled !== false
 		this.bloomEnabled = options?.bloomEnabled !== false
+		if (options?.bloomStrength !== undefined) this.bloomStrength = options.bloomStrength
+		if (options?.bloomRadius !== undefined) this.bloomRadius = options.bloomRadius
+		if (options?.bloomThreshold !== undefined) this.bloomThreshold = options.bloomThreshold
 		this.antialiasEnabled = options?.antialiasEnabled !== false
 		this.gridVisible = options?.gridVisible !== false
 		this.axesVisible = options?.axesVisible !== false
@@ -150,8 +169,6 @@ export class EditorViewer {
 		this.wireframeOverlayEnabled = options?.wireframeOverlay === true
 
 		this.scene = new THREE.Scene()
-
-		this.createGradientBackground()
 
 		this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 2000)
 		this.camera.position.set(5, 4, 5)
@@ -165,11 +182,12 @@ export class EditorViewer {
 		})
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace
 		this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-		this.renderer.toneMappingExposure = 1.2
+		this.renderer.toneMappingExposure = 1.0
 		this.renderer.shadowMap.enabled = this.shadowsEnabled
 		this.renderer.shadowMap.type = THREE.PCFShadowMap
 		this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-		this.renderer.setClearColor(0x0a0f14, 1)
+		this.renderer.setClearColor(0x484848, 1)
+		this.scene.background = new THREE.Color(0x484848)
 
 		this.pmremGenerator = new THREE.PMREMGenerator(this.renderer)
 		this.pmremGenerator.compileEquirectangularShader()
@@ -242,29 +260,50 @@ export class EditorViewer {
 		this.transformControls.addEventListener('mouseUp', this.handleTransformMouseUp)
 		this.scene.add(this.transformHelper)
 
-		this.composer = new EffectComposer(this.renderer)
+		const renderTargetParams = {
+			minFilter: THREE.LinearFilter,
+			magFilter: THREE.LinearFilter,
+			format: THREE.RGBAFormat,
+			type: THREE.HalfFloatType
+		}
+		const initialWidth = canvas.clientWidth || 800
+		const initialHeight = canvas.clientHeight || 600
+		this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(initialWidth, initialHeight, renderTargetParams))
+
 		this.renderPass = new RenderPass(this.scene, this.camera)
+		this.renderPass.clear = true
+		this.renderPass.clearColor = new THREE.Color(0x484848)
+		this.renderPass.clearAlpha = 1
 		this.composer.addPass(this.renderPass)
+		this.createGradientBackground()
 
 		this.bloomPass = new UnrealBloomPass(
-			new THREE.Vector2(canvas.clientWidth || 800, canvas.clientHeight || 600),
-			0.08,
-			0.6,
-			0.92
+			new THREE.Vector2(initialWidth, initialHeight),
+			this.bloomStrength,
+			this.bloomRadius,
+			this.bloomThreshold
 		)
 		this.bloomPass.enabled = this.bloomEnabled
 		this.composer.addPass(this.bloomPass)
 
+		this.colorCorrectionPass = new ShaderPass(ColorCorrectionShader)
+		this.colorCorrectionPass.uniforms['powRGB'].value = new THREE.Vector3(1.1, 1.1, 1.12)
+		this.colorCorrectionPass.uniforms['mulRGB'].value = new THREE.Vector3(1.0, 1.0, 1.02)
+		this.composer.addPass(this.colorCorrectionPass)
+
 		this.fxaaPass = new ShaderPass(FXAAShader)
 		const pixelRatio = this.renderer.getPixelRatio()
 		this.fxaaPass.uniforms['resolution'].value.set(
-			1 / ((canvas.clientWidth || 800) * pixelRatio),
-			1 / ((canvas.clientHeight || 600) * pixelRatio)
+			1 / (initialWidth * pixelRatio),
+			1 / (initialHeight * pixelRatio)
 		)
 		this.fxaaPass.enabled = this.antialiasEnabled
 		this.composer.addPass(this.fxaaPass)
 
-		this.ambientLight = new THREE.HemisphereLight('#ffffff', '#445566', 0.6)
+		const outputPass = new OutputPass()
+		this.composer.addPass(outputPass)
+
+		this.ambientLight = new THREE.HemisphereLight('#ffffff', '#556677', 0.8)
 		this.scene.add(this.ambientLight)
 
 		this.mainLight = new THREE.DirectionalLight('#ffffff', 2.0)
@@ -278,7 +317,8 @@ export class EditorViewer {
 		this.mainLight.shadow.camera.right = 15
 		this.mainLight.shadow.camera.top = 15
 		this.mainLight.shadow.camera.bottom = -15
-		this.mainLight.shadow.bias = -0.0001
+		this.mainLight.shadow.bias = -0.0002
+		this.mainLight.shadow.radius = 4
 		this.scene.add(this.mainLight)
 		this.scene.add(this.mainLight.target)
 
@@ -420,9 +460,9 @@ export class EditorViewer {
 		}
 		this.handleKeyDown = (e: KeyboardEvent) => this.onKeyDown(e)
 
-		canvas.addEventListener('pointerdown', this.handlePointerDown)
-		canvas.addEventListener('pointerup', this.handlePointerUp)
-		canvas.addEventListener('wheel', this.handleWheel, { passive: true })
+		canvas.addEventListener('pointerdown', this.handlePointerDown, true)
+		canvas.addEventListener('pointerup', this.handlePointerUp, true)
+		canvas.addEventListener('wheel', this.handleWheel, { passive: true, capture: true })
 		window.addEventListener('keydown', this.handleKeyDown)
 
 		this.resizeObserver = new ResizeObserver(() => this.resize())
@@ -447,41 +487,25 @@ export class EditorViewer {
 		}, 100)
 	}
 
-	private createGradientBackground(isDark = true) {
+	private createGradientBackground() {
 		if (this.bgMesh) {
 			this.scene.remove(this.bgMesh)
 			this.bgMesh.geometry.dispose()
 			;(this.bgMesh.material as any).dispose()
+			this.bgMesh = null
 		}
+		const bgColor = 0x484848
+		this.scene.background = new THREE.Color(bgColor)
+		this.renderer.setClearColor(bgColor, 1)
 
-		const bgColor = new THREE.Color(0x21262b)
-
-		const bgGeometry = new THREE.SphereGeometry(800, 32, 32)
-		const bgMaterial = new THREE.ShaderMaterial({
-			uniforms: {
-				bgColor: { value: bgColor }
-			},
-			vertexShader: `
-				varying vec3 vWorldDir;
-				void main() {
-					vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-					vWorldDir = normalize(worldPosition.xyz - cameraPosition);
-					gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-				}
-			`,
-			fragmentShader: `
-				uniform vec3 bgColor;
-				varying vec3 vWorldDir;
-				void main() {
-					gl_FragColor = vec4(bgColor, 1.0);
-				}
-			`,
+		const bgGeo = new THREE.SphereGeometry(500, 32, 32)
+		const bgMat = new THREE.MeshBasicMaterial({
+			color: bgColor,
 			side: THREE.BackSide,
-			depthWrite: false,
-			depthTest: false
+			depthWrite: false
 		})
-		this.bgMesh = new THREE.Mesh(bgGeometry, bgMaterial)
-		this.bgMesh.renderOrder = -1
+		this.bgMesh = new THREE.Mesh(bgGeo, bgMat)
+		this.bgMesh.renderOrder = -1000
 		this.scene.add(this.bgMesh)
 	}
 
@@ -510,9 +534,12 @@ export class EditorViewer {
 
 	private setupEnvironment() {
 		const env = new RoomEnvironment()
-		this.environmentTexture = this.pmremGenerator.fromScene(env).texture
+		this.environmentTexture = this.pmremGenerator.fromScene(env, 0.04).texture
 		env.dispose()
 		this.scene.environment = this.environmentTexture
+		if ('environmentIntensity' in this.scene) {
+			;(this.scene as any).environmentIntensity = 0.5
+		}
 	}
 
 	private requestRenderBurst(frames = 1, fps = 30, replace = false) {
@@ -571,6 +598,12 @@ export class EditorViewer {
 		this.camera.updateProjectionMatrix()
 		const pixelRatio = this.renderer.getPixelRatio()
 		this.fxaaPass.uniforms['resolution'].value.set(1 / (width * pixelRatio), 1 / (height * pixelRatio))
+		if (this.bloomPass) {
+			this.bloomPass.resolution.set(width, height)
+		}
+		if (this.ssaoPass) {
+			this.ssaoPass.setSize(width, height)
+		}
 		this.mainLight.shadow.camera.updateProjectionMatrix()
 		this.requestRenderBurst(2, 30)
 	}
@@ -589,12 +622,6 @@ export class EditorViewer {
 	}
 
 	selectObject(obj: any | null) {
-		if (obj) {
-			const rootGroup = this.findRootGroup(obj)
-			if (rootGroup && rootGroup !== obj) {
-				obj = rootGroup
-			}
-		}
 		const changed = this.selectedObject !== obj
 		this.selectedObject = obj
 		this.selectedObjects = obj ? [obj] : []
@@ -669,19 +696,21 @@ export class EditorViewer {
 				visible: model.group.visible,
 				locked: false,
 				children: [],
-				object3D: model.group
+				object3D: model.group,
+				objectUuid: model.group.uuid
 			}
 			model.group.traverse((child: any) => {
 				if (child === model.group) return
 				if (child instanceof THREE.Mesh) {
 					modelNode.children.push({
 						id: `mesh-${child.uuid}`,
-						name: child.name || 'Mesh',
+						name: child.name || child.userData?.name || 'Mesh',
 						type: 'mesh',
 						visible: child.visible,
 						locked: false,
 						children: [],
-						object3D: child
+						object3D: child,
+						objectUuid: child.uuid
 					})
 				} else if (child instanceof THREE.Light) {
 					modelNode.children.push({
@@ -691,7 +720,8 @@ export class EditorViewer {
 						visible: child.visible,
 						locked: false,
 						children: [],
-						object3D: child
+						object3D: child,
+						objectUuid: child.uuid
 					})
 				}
 			})
@@ -772,8 +802,12 @@ export class EditorViewer {
 						break
 					}
 					case 'unlit': {
+						const originalColor = (originalMat as any).color
+						const hasVertexColors = (originalMat as any).vertexColors
 						const unlitMat = new THREE.MeshBasicMaterial({
-							color: 0xffffff
+							color: originalColor ? originalColor.clone() : 0xffffff,
+							vertexColors: hasVertexColors === true,
+							side: THREE.DoubleSide
 						})
 						if (Array.isArray(originalMat)) {
 							const maps = originalMat
@@ -783,6 +817,11 @@ export class EditorViewer {
 						} else if ((originalMat as any).map) {
 							unlitMat.map = (originalMat as any).map
 						}
+						if ((originalMat as any).alphaMap) {
+							unlitMat.alphaMap = (originalMat as any).alphaMap
+							unlitMat.transparent = true
+						}
+						unlitMat.needsUpdate = true
 						child.material = unlitMat
 						break
 					}
@@ -825,52 +864,138 @@ export class EditorViewer {
 	}
 
 	private applyLightingPreset(preset: LightingPreset) {
+		this.manualLightingParams = {}
 		this.mainLight.color.setHex(0xffffff)
 		this.fillLight.color.setHex(0xaaccff)
 		this.rimLight.color.setHex(0x88ccff)
 
 		switch (preset) {
 			case 'studio':
-				this.ambientLight.intensity = 0.6
-				this.mainLight.intensity = 2.0
-				this.mainLight.position.set(8, 12, 8)
-				this.fillLight.intensity = 0.5
-				this.rimLight.intensity = 0.8
+				this.ambientLight.intensity = 0.5
+				this.mainLight.intensity = 1.2
+				this.setMainLightDirection(45, 55)
+				this.fillLight.intensity = 0.4
+				this.rimLight.intensity = 0.5
 				this.scene.environment = this.environmentTexture
-				this.renderer.toneMappingExposure = 1.2
+				if ('environmentIntensity' in this.scene) {
+					;(this.scene as any).environmentIntensity = 0.5
+				}
+				this.renderer.toneMappingExposure = 1.0
+				break
+			case 'soft-studio':
+				this.ambientLight.intensity = 0.6
+				this.mainLight.intensity = 1.0
+				this.setMainLightDirection(60, 45)
+				this.mainLight.color.setHex(0xffffff)
+				this.mainLight.shadow.bias = -0.0002
+				this.fillLight.intensity = 0.5
+				this.fillLight.color.setHex(0xaabbdd)
+				this.rimLight.intensity = 0.4
+				this.rimLight.color.setHex(0x7799bb)
+				this.scene.environment = this.environmentTexture
+				if ('environmentIntensity' in this.scene) {
+					;(this.scene as any).environmentIntensity = 0.5
+				}
+				this.renderer.toneMappingExposure = 1.0
 				break
 			case 'outdoor':
-				this.ambientLight.intensity = 0.4
-				this.mainLight.intensity = 3.0
-				this.mainLight.position.set(10, 15, 5)
+				this.ambientLight.intensity = 0.6
+				this.mainLight.intensity = 1.5
+				this.setMainLightDirection(135, 65)
 				this.mainLight.color.setHex(0xfff5e6)
 				this.fillLight.intensity = 0.3
 				this.fillLight.color.setHex(0x88bbff)
 				this.rimLight.intensity = 0.3
-				this.renderer.toneMappingExposure = 1.4
+				if ('environmentIntensity' in this.scene) {
+					;(this.scene as any).environmentIntensity = 0.6
+				}
+				this.renderer.toneMappingExposure = 1.0
 				break
 			case 'dark':
-				this.ambientLight.intensity = 0.15
+				this.ambientLight.intensity = 0.3
 				this.mainLight.intensity = 0.8
-				this.mainLight.position.set(5, 8, 5)
-				this.fillLight.intensity = 0.1
-				this.rimLight.intensity = 1.5
+				this.setMainLightDirection(45, 40)
+				this.fillLight.intensity = 0.2
+				this.rimLight.intensity = 0.8
 				this.rimLight.color.setHex(0x4488ff)
 				this.renderer.toneMappingExposure = 0.9
 				break
 			case 'no-light':
 				this.ambientLight.intensity = 1.0
-				this.mainLight.intensity = 0
-				this.fillLight.intensity = 0
-				this.rimLight.intensity = 0
-				this.scene.environment = null
-				this.renderer.toneMappingExposure = 1.0
+				this.mainLight.intensity = 0.3
+				this.setMainLightDirection(45, 60)
+				this.fillLight.intensity = 0.2
+				this.rimLight.intensity = 0.2
+				this.scene.environment = this.environmentTexture
+				if ('environmentIntensity' in this.scene) {
+					;(this.scene as any).environmentIntensity = 0.5
+				}
+				this.renderer.toneMappingExposure = 1.1
 				break
 			default:
 				break
 		}
 		if (preset !== 'no-light' && !this.scene.environment) {
 			this.scene.environment = this.environmentTexture
+		}
+	}
+
+	setMainLightDirection(azimuthDeg: number, elevationDeg: number) {
+		const azimuth = (azimuthDeg * Math.PI) / 180
+		const elevation = (elevationDeg * Math.PI) / 180
+		const radius = this.mainLightRadius
+		const x = radius * Math.sin(azimuth) * Math.cos(elevation)
+		const y = radius * Math.sin(elevation)
+		const z = radius * Math.cos(azimuth) * Math.cos(elevation)
+		this.mainLight.position.set(x, y, z)
+		this.mainLight.target.position.set(0, 0, 0)
+	}
+
+	setManualLighting(params: ManualLightingParams) {
+		this.currentLightingPreset = 'custom'
+		this.manualLightingParams = { ...this.manualLightingParams, ...params }
+
+		if (params.ambientIntensity !== undefined) {
+			this.ambientLight.intensity = params.ambientIntensity
+		}
+		if (params.mainLightIntensity !== undefined) {
+			this.mainLight.intensity = params.mainLightIntensity
+		}
+		if (params.fillLightIntensity !== undefined) {
+			this.fillLight.intensity = params.fillLightIntensity
+		}
+		if (params.rimLightIntensity !== undefined) {
+			this.rimLight.intensity = params.rimLightIntensity
+		}
+		if (params.exposure !== undefined) {
+			this.renderer.toneMappingExposure = params.exposure
+		}
+		if (params.lightAzimuth !== undefined || params.lightElevation !== undefined) {
+			const currentAzimuth = params.lightAzimuth ?? this.manualLightingParams.lightAzimuth ?? 45
+			const currentElevation = params.lightElevation ?? this.manualLightingParams.lightElevation ?? 55
+			this.setMainLightDirection(currentAzimuth, currentElevation)
+		}
+
+		this.requestRenderBurst(4, 30)
+	}
+
+	getManualLightingParams(): ManualLightingParams {
+		return { ...this.manualLightingParams }
+	}
+
+	getCurrentLightingValues() {
+		const pos = this.mainLight.position
+		const radius = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1
+		const elevation = Math.asin(Math.max(-1, Math.min(1, pos.y / radius))) * (180 / Math.PI)
+		const azimuth = Math.atan2(pos.x, pos.z) * (180 / Math.PI)
+		return {
+			ambientIntensity: this.ambientLight.intensity,
+			mainLightIntensity: this.mainLight.intensity,
+			fillLightIntensity: this.fillLight.intensity,
+			rimLightIntensity: this.rimLight.intensity,
+			exposure: this.renderer.toneMappingExposure,
+			lightAzimuth: azimuth,
+			lightElevation: elevation
 		}
 	}
 
@@ -895,13 +1020,42 @@ export class EditorViewer {
 		this.requestRenderBurst(2, 30)
 	}
 
-	setTheme(isDark: boolean) {
-		this.createGradientBackground(isDark)
-		if (isDark) {
-			this.renderer.setClearColor(0x0a0f14, 1)
-		} else {
-			this.renderer.setClearColor(0xe8eef5, 1)
+	getBloomParams() {
+		return {
+			strength: this.bloomStrength,
+			radius: this.bloomRadius,
+			threshold: this.bloomThreshold,
+			enabled: this.bloomEnabled
 		}
+	}
+
+	setBloomStrength(strength: number) {
+		this.bloomStrength = strength
+		if (this.bloomPass) {
+			this.bloomPass.strength = strength
+		}
+		this.requestRenderBurst(2, 30)
+	}
+
+	setBloomRadius(radius: number) {
+		this.bloomRadius = radius
+		if (this.bloomPass) {
+			this.bloomPass.radius = radius
+		}
+		this.requestRenderBurst(2, 30)
+	}
+
+	setBloomThreshold(threshold: number) {
+		this.bloomThreshold = threshold
+		if (this.bloomPass) {
+			this.bloomPass.threshold = threshold
+		}
+		this.requestRenderBurst(2, 30)
+	}
+
+	setTheme(_isDark: boolean) {
+		this.createGradientBackground()
+		this.renderer.setClearColor(0x484848, 1)
 		this.requestRenderBurst(10, 60, true)
 	}
 
@@ -1205,9 +1359,9 @@ export class EditorViewer {
 		this.renderSuspended = true
 		if (this.rafId) cancelAnimationFrame(this.rafId)
 		window.removeEventListener('keydown', this.handleKeyDown)
-		this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
-		this.canvas.removeEventListener('pointerup', this.handlePointerUp)
-		this.canvas.removeEventListener('wheel', this.handleWheel)
+		this.canvas.removeEventListener('pointerdown', this.handlePointerDown, true)
+		this.canvas.removeEventListener('pointerup', this.handlePointerUp, true)
+		this.canvas.removeEventListener('wheel', this.handleWheel, { capture: true } as any)
 		this.resizeObserver?.disconnect()
 		this.controls.removeEventListener('change', this.handleControlsChange)
 		this.controls.removeEventListener('start', this.handleControlsStart)
@@ -1245,7 +1399,9 @@ export class EditorViewer {
 		this.dracoLoader.dispose()
 		if (this.environmentTexture) this.environmentTexture.dispose()
 		this.pmremGenerator.dispose()
+		if (this.ssaoPass) this.ssaoPass.dispose()
 		this.bloomPass.dispose()
+		this.colorCorrectionPass.dispose()
 		this.fxaaPass.dispose()
 		this.composer.dispose()
 		this.controls.dispose()

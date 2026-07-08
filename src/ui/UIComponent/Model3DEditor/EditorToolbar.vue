@@ -135,7 +135,7 @@ interface Props {
   wireframeOverlay: boolean
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 defineEmits<{
   'update:renderMode': [mode: RenderMode]
@@ -159,9 +159,11 @@ const renderModes = computed(() => [
 
 const lightingPresets = computed(() => [
   { value: 'studio' as LightingPreset, label: t('nodes.model3d.lightStudio') },
+  { value: 'soft-studio' as LightingPreset, label: t('nodes.model3d.lightSoftStudio') },
   { value: 'outdoor' as LightingPreset, label: t('nodes.model3d.lightOutdoor') },
   { value: 'dark' as LightingPreset, label: t('nodes.model3d.lightDark') },
-  { value: 'no-light' as LightingPreset, label: t('nodes.model3d.lightNone') }
+  { value: 'no-light' as LightingPreset, label: t('nodes.model3d.lightNone') },
+  { value: 'custom' as LightingPreset, label: '自定义' }
 ])
 
 const transformModes = computed(() => [
@@ -191,17 +193,13 @@ const screenshotLabel = computed(() => t('nodes.model3d.screenshot'))
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--wf-primary) 4%, rgba(21, 24, 28, 0.9)) 0%,
-    rgba(21, 24, 28, 0.95) 100%
-  );
+  background: var(--wf-surface-glass, linear-gradient(135deg, rgba(29, 34, 39, 0.9), rgba(21, 24, 28, 0.95)));
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
-  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 25%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 25%, var(--wf-border-subtle, transparent));
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 15%, transparent),
-    0 1px 12px rgba(0, 0, 0, 0.3);
+    inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent),
+    0 1px 12px color-mix(in srgb, var(--wf-shadow, rgba(0,0,0,0.3)) 50%, transparent);
   overflow: hidden;
 }
 
@@ -367,8 +365,8 @@ const screenshotLabel = computed(() => t('nodes.model3d.screenshot'))
 .m3de-checkbox-indicator {
   width: 14px;
   height: 14px;
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 40%, transparent);
-  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 40%, var(--wf-control-border, transparent));
+  background: var(--wf-control-bg, rgba(0, 0, 0, 0.3));
   position: relative;
   transition: all 160ms ease;
   flex-shrink: 0;

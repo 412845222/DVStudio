@@ -127,18 +127,20 @@ const isExpanded = computed(() => props.expandedIds.has(props.node.id))
   transition: all 120ms ease;
   border-left: 2px solid transparent;
   user-select: none;
+  position: relative;
 }
 
 .m3de-tree-item:hover {
-  background: color-mix(in srgb, var(--wf-primary) 5%, transparent);
+  background: color-mix(in srgb, var(--wf-primary) 5%, var(--wf-hover-bg, transparent));
   color: var(--wf-text);
 }
 
 .m3de-tree-item.selected {
-  background: color-mix(in srgb, var(--wf-primary) 10%, transparent);
+  background: var(--wf-state-selected-bg, color-mix(in srgb, var(--wf-primary) 12%, transparent));
   color: var(--wf-primary);
   border-left-color: var(--wf-primary);
   text-shadow: 0 0 4px color-mix(in srgb, var(--wf-primary) 30%, transparent);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--wf-primary) 6%, transparent);
 }
 
 .m3de-tree-expand-btn {

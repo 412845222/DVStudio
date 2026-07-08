@@ -67,8 +67,30 @@ declare module 'three/examples/jsm/postprocessing/ShaderPass.js' {
   }
 }
 
+declare module 'three/examples/jsm/postprocessing/SSAOPass.js' {
+  export class SSAOPass {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
+declare module 'three/examples/jsm/postprocessing/OutputPass.js' {
+  export class OutputPass {
+    constructor(...args: any[])
+    [key: string]: any
+  }
+}
+
 declare module 'three/examples/jsm/shaders/FXAAShader.js' {
   export const FXAAShader: any
+}
+
+declare module 'three/examples/jsm/shaders/GammaCorrectionShader.js' {
+  export const GammaCorrectionShader: any
+}
+
+declare module 'three/examples/jsm/shaders/ColorCorrectionShader.js' {
+  export const ColorCorrectionShader: any
 }
 
 declare module 'three/examples/jsm/environments/RoomEnvironment.js' {
