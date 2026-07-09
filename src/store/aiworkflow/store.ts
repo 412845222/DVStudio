@@ -1594,6 +1594,9 @@ const normalizeVideoSettings = (raw: unknown): WorkflowVideoNodeSettings | undef
 			: undefined,
 		naturalHeight: Number.isFinite(Number(raw.naturalHeight))
 			? Math.max(1, Math.floor(Number(raw.naturalHeight)))
+			: undefined,
+		currentTime: Number.isFinite(Number(raw.currentTime))
+			? Math.max(0, Number(raw.currentTime))
 			: undefined
 	}
 }
@@ -3154,6 +3157,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					outputHeight?: number
 					naturalWidth?: number
 					naturalHeight?: number
+					currentTime?: number
 				}
 			}
 		) {
@@ -3179,12 +3183,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				next.naturalHeight != null
 					? Math.max(1, Math.floor(Number(next.naturalHeight) || 1))
 					: undefined
+			const curTime =
+				next.currentTime != null && Number.isFinite(Number(next.currentTime))
+					? Math.max(0, Number(next.currentTime))
+					: undefined
 			n.videoSettings = {
 				...(n.videoSettings ?? {}),
 				...(outW != null ? { outputWidth: outW } : {}),
 				...(outH != null ? { outputHeight: outH } : {}),
 				...(natW != null ? { naturalWidth: natW } : {}),
-				...(natH != null ? { naturalHeight: natH } : {})
+				...(natH != null ? { naturalHeight: natH } : {}),
+				...(curTime != null ? { currentTime: curTime } : {})
 			}
 		},
 		setNodeStorySettings(

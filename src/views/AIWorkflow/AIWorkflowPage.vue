@@ -104,6 +104,7 @@
 						:anchor-compatibility="anchorCompatibility"
 						:is-linking="isLinking"
 						:inputs="node.inputs"
+						:isWarmupRender="isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))"
 						:nodeId="node.id"
 						:nodeType="node.type"
 						:outputs="node.outputs"
@@ -191,6 +192,7 @@
 						@run-scene-layout="onNodeRunSceneLayout(node.id)"
 						@run-scene-understanding="onNodeRunSceneUnderstanding(node.id)"
 						@screenshot="onVideoScreenshot(node.id, $event)"
+						@capture-preview="onVideoCapturePreview(node.id, $event)"
 						@select="onSelectNode"
 						@select-workflow="onComfyUISelectWorkflow(node.id, $event)"
 						@set-selected-placeholder-output="
@@ -6381,7 +6383,6 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
 	nodeImagePreviewVersion,
 	nodeResourceUrl,
 	nodeResourceName,
-	connectedImageTargetsFromVideo: (videoNodeId) => connectedImageTargetsFromVideo(videoNodeId),
 	rotateImagePreviewUrl,
 	connectedSceneUnderstandImageInputs,
 	connectedImageInputUrl,
@@ -8520,16 +8521,281 @@ const { onRotateImageOutput } = useAIWorkflowRotateImageOutput({
 	}
 })
 
-const { connectedImageTargetsFromVideo, onVideoScreenshot } = useAIWorkflowVideoScreenshot({
+const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	getNode: (nodeId) => store.state.nodesById[nodeId],
-	getEdges: () => edges.value,
+	getAllNodes: () =>
+		store.state.nodeOrder
+			.map((id) => store.state.nodesById[id])
+			.filter(Boolean) as WorkflowNode[],
 	dataUrlToBlob,
 	onNodeUploadResource,
 	autoSizeMediaNode,
 	commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
 		store.commit('setNodeImageSettings', { nodeId, imageSettings })
-	}
+	},
+	commitAddNodeAt: ({ worldX, worldY, title }) => {
+		store.commit('addNodeAt', { worldX, worldY, title })
+		return store.state.selectedNodeId || null
+	},
+	commitSetNodeType: ({ nodeId, type }) => {
+		store.commit('setNodeType', { nodeId, type })
+	},
+	videoScreenshotNodeTitle: t('aiworkflow.page.videoScreenshotNodeTitle')
 })
+
+const onVideoCapturePreview = (
+	nodeId: string,
+	payload: { dataUrl: string; width: number; height: number; time: number }
+) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'video' || !node.resourceId) return
+
+	const rid = String(node.resourceId)
+	const blob = dataUrlToBlob(payload.dataUrl)
+	const file = new File([blob], `preview_${rid}.png`, { type: 'image/png' })
+
+	;(async () => {
+		try {
+			const uploaded = await blueprintProjectService.uploadAsset(file, 'image', {
+				projectId: currentProjectId.value,
+				bucket: 'thumbnails'
+			})
+
+			if (uploaded.ok && uploaded.asset) {
+				const nextPosterUrl = resolveBackendUrl(String(uploaded.asset?.url || ''))
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:')) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: {
+						posterUrl: nextPosterUrl,
+						posterSourcePath: String(uploaded.asset?.absolutePath || '').trim() || undefined
+					}
+				})
+			}
+		} catch {
+			try {
+				const nextPosterUrl = URL.createObjectURL(blob)
+				setObjectUrl(`wf-poster:${rid}`, nextPosterUrl)
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: { posterUrl: nextPosterUrl }
+				})
+			} catch {
+				// ignore
+			}
+		}
+	})()
+
+	;(async () => {
+		const nid = String(nodeId).trim()
+		if (!nid) return
+
+		const pendingSet = new Set(pendingScreenshotNodeIds.value)
+		pendingSet.add(nid)
+		pendingScreenshotNodeIds.value = pendingSet
+
+		try {
+			await nextTick()
+			await waitForFrames(2)
+
+			const activeTheme = themeStore.state.mode as 'dark' | 'light'
+			screenshotPool.invalidateScreenshot(nid, activeTheme)
+			invalidateCanvasScreenshot(nid, activeTheme)
+			const clearedMap = new Map(nodeScreenshotMap.value)
+			clearedMap.delete(nid)
+			nodeScreenshotMap.value = clearedMap
+
+			await scheduleNodeScreenshot(node, 0, 'high', true)
+		} catch (err) {
+			console.warn('[Video Preview Screenshot] failed for node:', nid, err)
+		} finally {
+			const releaseSet = new Set(pendingScreenshotNodeIds.value)
+			releaseSet.delete(nid)
+			pendingScreenshotNodeIds.value = releaseSet
+			refreshCanvasNodeLayer()
+		}
+	})()
+}
+
+const videoCoverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number) => {
+	const sW = Math.max(1, srcW)
+	const sH = Math.max(1, srcH)
+	const dW = Math.max(1, dstW)
+	const dH = Math.max(1, dstH)
+	const scale = Math.max(dW / sW, dH / sH)
+	const drawW = dW / scale
+	const drawH = dH / scale
+	const sx = (sW - drawW) / 2
+	const sy = (sH - drawH) / 2
+	return { sx, sy, sw: drawW, sh: drawH }
+}
+
+const updateVideoPosterFromCapture = async (
+	nodeId: string,
+	payload: { dataUrl: string; width: number; height: number; time: number }
+) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'video' || !node.resourceId) return
+
+	const nid = String(nodeId).trim()
+	const rid = String(node.resourceId)
+	const blob = dataUrlToBlob(payload.dataUrl)
+	const file = new File([blob], `preview_${rid}.png`, { type: 'image/png' })
+
+	try {
+		try {
+			const uploaded = await blueprintProjectService.uploadAsset(file, 'image', {
+				projectId: currentProjectId.value,
+				bucket: 'thumbnails'
+			})
+
+			if (uploaded.ok && uploaded.asset) {
+				const nextPosterUrl = resolveBackendUrl(String(uploaded.asset?.url || ''))
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:')) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: {
+						posterUrl: nextPosterUrl,
+						posterSourcePath: String(uploaded.asset?.absolutePath || '').trim() || undefined
+					}
+				})
+			} else {
+				throw new Error('Upload failed')
+			}
+		} catch {
+			const nextPosterUrl = URL.createObjectURL(blob)
+			setObjectUrl(`wf-poster:${rid}`, nextPosterUrl)
+			const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+			if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
+				try {
+					URL.revokeObjectURL(prevPoster)
+				} catch {
+					// ignore
+				}
+			}
+			store.commit('patchResource', {
+				resourceId: rid,
+				patch: { posterUrl: nextPosterUrl }
+			})
+		}
+
+		await nextTick()
+
+		const activeTheme = themeStore.state.mode as 'dark' | 'light'
+		screenshotPool.invalidateScreenshot(nid, activeTheme)
+		invalidateCanvasScreenshot(nid, activeTheme)
+		const clearedMap = new Map(nodeScreenshotMap.value)
+		clearedMap.delete(nid)
+		nodeScreenshotMap.value = clearedMap
+
+		await scheduleNodeScreenshot(node, 0, 'high', true)
+	} catch (err) {
+		console.warn('[Video Deselect Screenshot] failed for node:', nid, err)
+	} finally {
+		const releaseSet = new Set(pendingScreenshotNodeIds.value)
+		releaseSet.delete(nid)
+		pendingScreenshotNodeIds.value = releaseSet
+		refreshCanvasNodeLayer()
+	}
+}
+
+watch(
+	() => [...selectedNodeIds.value],
+	(newIds, oldIds) => {
+		if (!oldIds || oldIds.length === 0) return
+		const newIdSet = new Set(newIds)
+		const captures: Array<{ nid: string; dataUrl: string; width: number; height: number; time: number }> = []
+
+		for (const id of oldIds) {
+			if (newIdSet.has(id)) continue
+			const nid = String(id ?? '').trim()
+			if (!nid) continue
+			const node = store.state.nodesById[nid]
+			if (node?.type !== 'video') continue
+
+			const hostEl = nodeHostRefs.get(nid)
+			if (!hostEl) {
+				console.warn('[Video Deselect] host element not found for node:', nid)
+				continue
+			}
+
+			const videoEl = hostEl.querySelector('video') as HTMLVideoElement | null
+			if (!videoEl) {
+				console.warn('[Video Deselect] video element not found for node:', nid)
+				continue
+			}
+
+			if (videoEl.readyState < 2 || !(videoEl.videoWidth > 0)) {
+				console.warn('[Video Deselect] video not ready for capture, readyState=', videoEl.readyState, 'videoWidth=', videoEl.videoWidth)
+				continue
+			}
+
+			const curTime = Number(videoEl.currentTime) || 0
+			if (curTime <= 0.1) {
+				console.warn('[Video Deselect] video curTime too small:', curTime)
+				continue
+			}
+
+			const videoSettings = (node as any).videoSettings as { outputWidth?: number; outputHeight?: number } | undefined
+			const ow = Math.max(1, Math.floor(Number(videoSettings?.outputWidth ?? (videoEl.videoWidth || 1))))
+			const oh = Math.max(1, Math.floor(Number(videoSettings?.outputHeight ?? (videoEl.videoHeight || 1))))
+
+			try {
+				const canvas = document.createElement('canvas')
+				canvas.width = ow
+				canvas.height = oh
+				const ctx = canvas.getContext('2d')
+				if (!ctx) continue
+
+				const srcW = Math.max(1, Math.floor(videoEl.videoWidth || 1))
+				const srcH = Math.max(1, Math.floor(videoEl.videoHeight || 1))
+				const { sx, sy, sw, sh } = videoCoverDrawParams(srcW, srcH, canvas.width, canvas.height)
+				ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+				const dataUrl = canvas.toDataURL('image/png')
+				console.log('[Video Deselect] captured frame for node:', nid, 'time=', curTime, 'size=', ow, 'x', oh)
+
+				captures.push({ nid, dataUrl, width: ow, height: oh, time: curTime })
+			} catch (err) {
+				console.warn('[Video Deselect] canvas capture failed for node:', nid, err)
+			}
+		}
+
+		if (captures.length === 0) return
+
+		const pendingSet = new Set(pendingScreenshotNodeIds.value)
+		for (const cap of captures) {
+			pendingSet.add(cap.nid)
+		}
+		pendingScreenshotNodeIds.value = pendingSet
+
+		for (const cap of captures) {
+			updateVideoPosterFromCapture(cap.nid, { dataUrl: cap.dataUrl, width: cap.width, height: cap.height, time: cap.time })
+		}
+	},
+	{ flush: 'pre' }
+)
 
 const { uploadLocalResourceAndGetUrl, persistExternalAssetToProject } =
 	useAIWorkflowAssetPersistence({
