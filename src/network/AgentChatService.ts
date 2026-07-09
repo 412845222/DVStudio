@@ -63,6 +63,7 @@ type AgentIpcBridge = {
       listConversations?: (payload: unknown) => Promise<unknown>
       createConversation?: (payload: unknown) => Promise<unknown>
       deleteConversation?: (payload: unknown) => Promise<unknown>
+      renameConversation?: (payload: unknown) => Promise<unknown>
       getConversationMessages?: (payload: unknown) => Promise<unknown>
       addConversationMessage?: (payload: unknown) => Promise<unknown>
     }
@@ -135,6 +136,20 @@ export async function agentDeleteConversation(id: string): Promise<IpcResult<{ o
     async () => {
       const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${id}`, {
         method: 'DELETE',
+      })
+      return res.json()
+    }
+  )
+}
+
+export async function agentRenameConversation(id: string, title: string): Promise<IpcResult<{ ok: boolean }>> {
+  return ipcOrHttp(
+    () => getIpcBridge().dweb?.agent?.renameConversation?.({ id, title }) as Promise<IpcResult<{ ok: boolean }>>,
+    async () => {
+      const res = await fetch(`${getBackendBaseUrl()}/api/agent/conversations/${id}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
       })
       return res.json()
     }

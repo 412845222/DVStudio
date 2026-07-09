@@ -2,6 +2,7 @@
   "aichat.dock.handleLabel": "Agent对话",
   "aichat.dock.newSession": "新对话",
   "aichat.dock.newSessionTitle": "新建会话",
+  "aichat.dock.renameSessionTitle": "重命名会话",
   "aichat.dock.deleteSessionTitle": "删除会话",
   "aichat.dock.close": "关闭",
   "aichat.dock.emptyMessage": "开始一段新的 Agent 对话。",

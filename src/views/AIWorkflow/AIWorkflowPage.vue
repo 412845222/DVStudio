@@ -965,6 +965,7 @@ import {
 	agentListConversations,
 	agentCreateConversation,
 	agentDeleteConversation,
+	agentRenameConversation,
 	agentGetConversationMessages
 } from '../../network/AgentChatService'
 import {
@@ -4286,6 +4287,7 @@ const chatRunState = ref<'idle' | 'sending' | 'stopping' | 'error'>('idle')
 const codexSessions = ref<LocalExecSessionItem[]>([])
 const codexActiveSessionId = ref<string>('')
 const codexFlowEvents = ref<LocalExecFlowEvent[]>([])
+let agentSessionsLoading = false
 const toolApprovalQueue = ref<ToolApprovalItem[]>([])
 
 const nanoPreviewUrl = ref<string>('')
@@ -4559,10 +4561,12 @@ function ensureProjectForLocalExec(opts?: { silent?: boolean }): Promise<number 
 	})
 }
 
-const loadCodexSessions = async () => {
+const loadAgentSessions = async () => {
 	const projectPath = String(currentProjectRootPath.value || '').trim()
+	if (!projectPath) return
 	try {
 		const res = await agentListConversations(projectPath)
+		if (String(currentProjectRootPath.value || '').trim() !== projectPath) return
 		if (!res?.ok) {
 			codexSessions.value = []
 			codexActiveSessionId.value = ''
@@ -4579,12 +4583,24 @@ const loadCodexSessions = async () => {
 			codexActiveSessionId.value = codexSessions.value[0].id
 			void onCodexSelectSession(codexActiveSessionId.value)
 		}
+		if (codexSessions.value.length === 0) {
+			await onCodexCreateSession()
+		}
 	} catch {
-		codexSessions.value = []
+		if (String(currentProjectRootPath.value || '').trim() === projectPath) {
+			codexSessions.value = []
+		}
 	}
 }
 
+const loadCodexSessions = loadAgentSessions
+const loadDVSAgentSessions = loadAgentSessions
+
 const onCodexCreateSession = async () => {
+	// 如果当前已有空会话（没有消息内容），且列表中还有其他会话，直接切换到该会话，不创建新会话
+	if (codexActiveSessionId.value && chatMessages.value.length === 0 && codexSessions.value.length > 0) {
+		return
+	}
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
 		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
@@ -4667,34 +4683,48 @@ const onCodexApproval = async (payloadValue: {
 const onCodexDeleteSession = async (sessionId: string) => {
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm(t('aiworkflow.page.chat.confirmDeleteSession'))
-	if (!ok) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
 		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 		return
 	}
+	pushToast(t('aiworkflow.page.chat.deleteSessionSuccess'), 'info')
+	const wasActive = codexActiveSessionId.value === sid
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
-	if (codexActiveSessionId.value === sid) {
-		codexActiveSessionId.value = codexSessions.value[0]?.id || ''
-		if (codexActiveSessionId.value) {
+	if (wasActive) {
+		if (codexSessions.value.length > 0) {
+			codexActiveSessionId.value = codexSessions.value[0].id
 			void onCodexSelectSession(codexActiveSessionId.value)
 		} else {
-			chatMessages.value = []
-			codexFlowEvents.value = []
+			await onCodexCreateSession()
 		}
 	}
 }
 
 const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
+	const sid = String(payloadValue.sessionId || '').trim()
+	const title = String(payloadValue.title || '').trim()
+	if (!sid || !title) return
+
+	if (agentBackend.value === 'dvsagent') {
+		try {
+			const res = await agentRenameConversation(sid, title)
+			if (!res?.ok) {
+				pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
+				return
+			}
+			codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
+		} catch (err: unknown) {
+			pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: getErrorMessage(err) }), 'warn')
+		}
+		return
+	}
+
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
 		pushToast(t('aiworkflow.page.chat.renameSessionFailedAutoSave'), 'warn')
 		return
 	}
-	const sid = String(payloadValue.sessionId || '').trim()
-	const title = String(payloadValue.title || '').trim()
-	if (!sid || !title) return
 	const result = (await localExecChatService.localExecUpdateSession({
 		sessionId: sid,
 		projectId,
@@ -7331,6 +7361,17 @@ watch(
 )
 
 watch(
+	() => agentBackend.value,
+	(v) => {
+		if (v === 'dvsagent') {
+			void loadDVSAgentSessions()
+		} else if (v === 'codex') {
+			void loadCodexSessions()
+		}
+	}
+)
+
+watch(
 	() => currentProjectId.value,
 	(newId, oldId) => {
 		void loadCodexSessions()
@@ -7358,6 +7399,19 @@ watch(
 					triggerWarmupIfNeeded()
 				}
 			}, 500)
+		}
+	}
+)
+
+watch(
+	() => currentProjectRootPath.value,
+	(prev, next) => {
+		if (prev !== next && next && agentBackend.value === 'dvsagent') {
+			codexSessions.value = []
+			codexActiveSessionId.value = ''
+			chatMessages.value = []
+			codexFlowEvents.value = []
+			void loadDVSAgentSessions()
 		}
 	}
 )

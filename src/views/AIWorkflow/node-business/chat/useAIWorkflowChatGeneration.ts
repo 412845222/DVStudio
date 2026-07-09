@@ -797,15 +797,55 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				}
 				const context = collectBlueprintContext()
 
+				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 				const chatBridge = getAgentChatBridge()
-				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
-				const session = await chatBridge.createSession('dvsagent', {
-					title: content.slice(0, 24),
-					model: payload.chatModelId.value,
-					cwd: undefined,
-					projectId: payload.currentProjectId.value
-				})
-				await handleChatStream('dvsagent', content, session.id, assistantMsg.id, {
+				const isNewSession = !sessionId
+
+				if (!sessionId) {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+					const session = await chatBridge.createSession('dvsagent', {
+						title: content.slice(0, 24),
+						model: payload.chatModelId.value,
+						cwd: undefined,
+						projectId: payload.currentProjectId.value
+					})
+					sessionId = session.id
+					payload.codexActiveSessionId.value = sessionId
+					payload.codexSessions.value = [
+						{
+							id: sessionId,
+							title: session.title || t('aiworkflow.page.chat.newConversation'),
+							modelName: session.model || payload.chatModelId.value || '',
+							status: 'active'
+						},
+						...payload.codexSessions.value.filter((s) => s.id !== sessionId)
+					]
+				} else {
+					const existingSession = payload.codexSessions.value.find((s) => s.id === sessionId)
+					if (existingSession && (existingSession.title === t('aiworkflow.page.chat.newConversation') || existingSession.title === '新对话')) {
+						const newTitle = content.slice(0, 24)
+						existingSession.title = newTitle
+						try {
+							const dvsagentService = chatBridge.getService('dvsagent') as any
+							if (dvsagentService && typeof dvsagentService.renameSession === 'function') {
+								await dvsagentService.renameSession(sessionId, newTitle)
+							}
+						} catch {
+							// ignore rename failure
+						}
+					}
+				}
+
+				try {
+					const dvsagentService = chatBridge.getService('dvsagent') as any
+					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
+						await dvsagentService.addSessionMessage(sessionId, 'user', content, payload.chatModelId.value)
+					}
+				} catch {
+					// ignore message persistence failure
+				}
+
+				await handleChatStream('dvsagent', content, sessionId, assistantMsg.id, {
 					history,
 					apiKeys,
 					apiSource,
@@ -813,6 +853,19 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					thinkingEffort: payload.chatThinkingEffort.value,
 					context,
 				})
+
+				try {
+					const dvsagentService = chatBridge.getService('dvsagent') as any
+					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
+						const assistantMsgContent = payload.chatMessages.value.find((m) => m.id === assistantMsg.id)?.content || ''
+						if (assistantMsgContent.trim()) {
+							await dvsagentService.addSessionMessage(sessionId, 'assistant', assistantMsgContent, payload.chatModelId.value)
+						}
+					}
+				} catch {
+					// ignore message persistence failure
+				}
+
 				return
 			}
 

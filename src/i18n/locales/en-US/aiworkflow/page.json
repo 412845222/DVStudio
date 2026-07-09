@@ -162,6 +162,7 @@
   "aiworkflow.page.chat.selectSessionFirst": "Please select a Copilot CLI session first.",
   "aiworkflow.page.chat.approvalSubmitFailed": "Approval submission failed: {error}",
   "aiworkflow.page.chat.approvalSubmitted": "Approval submitted.",
+  "aiworkflow.page.chat.deleteSessionSuccess": "Session deleted",
   "aiworkflow.page.chat.deleteSessionFailed": "Failed to delete session: {error}",
   "aiworkflow.page.chat.renameSessionFailedAutoSave": "Unable to rename session: Failed to auto-save project.",
   "aiworkflow.page.chat.renameSessionFailed": "Failed to rename session: {error}",

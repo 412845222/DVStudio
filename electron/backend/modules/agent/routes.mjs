@@ -11,6 +11,7 @@ export const routes = [
 	{ channel: 'dweb:agent:list-conversations', handler: handlers.agentListConversations },
 	{ channel: 'dweb:agent:create-conversation', handler: handlers.agentCreateConversation },
 	{ channel: 'dweb:agent:delete-conversation', handler: handlers.agentDeleteConversation },
+	{ channel: 'dweb:agent:rename-conversation', handler: handlers.agentRenameConversation },
 	{ channel: 'dweb:agent:get-conversation-messages', handler: handlers.agentGetConversationMessages },
 	{ channel: 'dweb:agent:add-conversation-message', handler: handlers.agentAddConversationMessage },
 ];

@@ -162,6 +162,7 @@
   "aiworkflow.page.chat.selectSessionFirst": "请先选择 Copilot CLI 会话。",
   "aiworkflow.page.chat.approvalSubmitFailed": "审批提交失败：{error}",
   "aiworkflow.page.chat.approvalSubmitted": "审批已提交。",
+  "aiworkflow.page.chat.deleteSessionSuccess": "会话已删除",
   "aiworkflow.page.chat.deleteSessionFailed": "删除会话失败：{error}",
   "aiworkflow.page.chat.renameSessionFailedAutoSave": "无法重命名会话：自动保存项目失败。",
   "aiworkflow.page.chat.renameSessionFailed": "会话改名失败：{error}",
