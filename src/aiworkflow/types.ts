@@ -146,6 +146,8 @@ export type WorkflowVideoNodeSettings = {
 	outputHeight?: number
 	/** source video natural size in pixels */
 	naturalWidth?: number
+	/** current playback time position in seconds */
+	currentTime?: number
 	naturalHeight?: number
 }
 

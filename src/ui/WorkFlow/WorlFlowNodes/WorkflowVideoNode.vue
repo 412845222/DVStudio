@@ -36,12 +36,19 @@
 					:style="previewWrapStyle"
 					@contextmenu.stop.prevent="onPreviewContextMenu"
 				>
+					<img
+						v-if="isWarmupRender || !selected"
+						class="wf-media-poster-img"
+						:src="localPosterUrl || props.posterUrl || undefined"
+						alt=""
+					/>
 					<video
+						v-else
 						ref="videoEl"
 						class="wf-media-video"
 						playsinline
 						preload="metadata"
-						:poster="props.posterUrl || undefined"
+						:poster="localPosterUrl || props.posterUrl || undefined"
 					/>
 				</div>
 				<div v-else class="wf-media-empty">
@@ -145,6 +152,8 @@ import { useI18n } from '../../../i18n'
 
 const { t } = useI18n()
 
+const videoNodeLastTime = new Map<string, number>()
+
 type AnchorSpec = {
 	id: string
 	label?: string
@@ -167,6 +176,7 @@ const props = defineProps<{
 		outputHeight?: number
 		naturalWidth?: number
 		naturalHeight?: number
+		currentTime?: number
 	} | null
 	screenshotEnabled?: boolean
 	reloadToken?: number | null
@@ -180,6 +190,7 @@ const props = defineProps<{
 	selected?: boolean
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
+	isWarmupRender?: boolean
 }>()
 
 const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
@@ -236,11 +247,13 @@ const emit = defineEmits<{
 			outputHeight?: number
 			naturalWidth?: number
 			naturalHeight?: number
+			currentTime?: number
 		}
 	): void
 	(e: 'screenshot', payload: { dataUrl: string; width: number; height: number; time: number }): void
 	(e: 'media-ready'): void
 	(e: 'invalidate-screenshot'): void
+	(e: 'capture-preview', payload: { dataUrl: string; width: number; height: number; time: number }): void
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -270,7 +283,9 @@ let pendingSeekRequestedAt = 0
 let noCrossOriginFallbackSrc = ''
 let localMediaRetryTimer: number | null = null
 let localMediaRetryCount = 0
+let hasActiveVideo = false
 const resourceFallbackUrl = ref('')
+const localPosterUrl = ref<string | null>(null)
 const effectiveResourceUrl = computed(() =>
 	String(resourceFallbackUrl.value || props.resourceUrl || '').trim()
 )
@@ -297,8 +312,7 @@ const resetMediaRuntimeState = () => {
 	playing.value = false
 	stopRaf()
 	duration.value = 0
-	seekTime.value = 0
-	pendingSeekTime = null
+	seekTime.value = pendingSeekTime ?? 0
 	pendingSeekRetryCount = 0
 	pendingSeekRequestedAt = 0
 	clearLocalMediaRetry()
@@ -556,16 +570,24 @@ const onLoadedMetadata = () => {
 			outputHeight: nextOutputH
 		})
 	}
+	if (pendingSeekTime == null) {
+		const savedTime = props.videoSettings?.currentTime
+		if (savedTime != null && Number.isFinite(savedTime) && savedTime > 0.05) {
+			pendingSeekTime = Number(savedTime)
+			pendingSeekRetryCount = 0
+			seekTime.value = pendingSeekTime
+		}
+	}
+	console.log('[WorkflowVideoNode] onLoadedMetadata: duration=', duration.value, 'pendingSeekTime=', pendingSeekTime, 'currentTime=', v.currentTime, 'readyState=', v.readyState)
 	if (pendingSeekTime != null) {
 		const target = clamp(pendingSeekTime, 0, duration.value || 0)
 		seekTime.value = target
 		try {
 			v.currentTime = target
-		} catch {
-			// ignore
+			console.log('[WorkflowVideoNode] onLoadedMetadata: seek to', target, 'video.currentTime=', v.currentTime)
+		} catch (e) {
+			console.warn('[WorkflowVideoNode] onLoadedMetadata: seek failed', e)
 		}
-	} else {
-		seekTime.value = Math.min(seekValue.value, duration.value || seekValue.value)
 	}
 	drawTimeline()
 }
@@ -630,23 +652,31 @@ const retryPendingSeek = (v: HTMLVideoElement, opts?: { force?: boolean }) => {
 	if ((v.readyState || 0) < 1 || !(Number(v.duration) > 0)) return false
 	const target = clamp(pendingSeekTime, 0, duration.value || 0)
 	const cur = Number(v.currentTime) || 0
+	console.log('[WorkflowVideoNode] retryPendingSeek: target=', target, 'cur=', cur, 'readyState=', v.readyState, 'force=', opts?.force, 'retryCount=', pendingSeekRetryCount)
 	if (Math.abs(cur - target) <= 0.08) {
 		pendingSeekTime = null
 		pendingSeekRetryCount = 0
 		pendingSeekRequestedAt = 0
 		seekTime.value = cur
+		console.log('[WorkflowVideoNode] retryPendingSeek: already at target, done')
 		return true
 	}
 	if (!opts?.force && cur <= 0.001 && target > 0.12) {
+		console.log('[WorkflowVideoNode] retryPendingSeek: skip (cur=0 and not force)')
 		return false
 	}
-	if (pendingSeekRetryCount >= 2) return false
+	if (pendingSeekRetryCount >= 2) {
+		console.log('[WorkflowVideoNode] retryPendingSeek: max retries reached, give up')
+		return false
+	}
 	pendingSeekRetryCount += 1
 	try {
 		v.currentTime = target
 		pendingSeekRequestedAt = nowMs()
+		console.log('[WorkflowVideoNode] retryPendingSeek: seek to', target, 'video.currentTime=', v.currentTime)
 		return true
-	} catch {
+	} catch (e) {
+		console.warn('[WorkflowVideoNode] retryPendingSeek: seek failed', e)
 		return false
 	}
 }
@@ -954,10 +984,14 @@ const onFileChange = (e: Event) => {
 }
 
 watch(
-	() => props.resourceUrl,
-	async (nextValue, prevValue) => {
-		const next = String(nextValue ?? '').trim()
-		const prev = String(prevValue ?? '').trim()
+	() => [props.resourceUrl, props.selected, props.isWarmupRender],
+	async (current, previous) => {
+		const nextUrl = current?.[0]
+		const isSelected = current?.[1]
+		const isWarmup = current?.[2]
+		const prevUrl = previous?.[0]
+		const next = String(nextUrl ?? '').trim()
+		const prev = String(prevUrl ?? '').trim()
 		if (next !== prev) resourceFallbackUrl.value = ''
 		const runId = ++srcWatchRunId
 		try {
@@ -966,23 +1000,49 @@ watch(
 
 			if (!effectiveResourceUrl.value) {
 				resetMediaRuntimeState()
+				hasActiveVideo = false
 				return
 			}
 
-			// Reset ready marker when src changes.
+			if (isWarmup || !isSelected) {
+				if (isWarmup) {
+					console.log('[WorkflowVideoNode] resource watcher: warmup mode, skip video loading')
+				} else if (!isSelected) {
+					console.log('[WorkflowVideoNode] resource watcher: non-selected mode, skip video loading')
+				}
+				resetMediaRuntimeState()
+				hasActiveVideo = false
+				return
+			}
+
 			resetMediaRuntimeState()
+			hasActiveVideo = true
+			localPosterUrl.value = null
+
+			let savedTime = videoNodeLastTime.get(props.nodeId)
+			if (savedTime == null || !Number.isFinite(savedTime) || savedTime < 0) {
+				savedTime = props.videoSettings?.currentTime
+			}
+			console.log('[WorkflowVideoNode] resource watcher: videoSettings=', JSON.stringify(props.videoSettings), 'savedTime=', savedTime, 'fromMap=', videoNodeLastTime.get(props.nodeId), 'isSelected=', isSelected)
+			if (savedTime != null && Number.isFinite(savedTime) && savedTime > 0.05) {
+				pendingSeekTime = Number(savedTime)
+				pendingSeekRetryCount = 0
+				seekTime.value = pendingSeekTime
+				console.log('[WorkflowVideoNode] resource watcher: set pendingSeekTime=', pendingSeekTime)
+			} else {
+				console.log('[WorkflowVideoNode] resource watcher: no valid savedTime, skip')
+			}
+
 			await applyVideoSrc()
 			if (runId !== srcWatchRunId) return
+
 			await ensureMetadata()
 			if (runId !== srcWatchRunId) return
 			applyVolume()
 			applyLoop()
 			drawTimeline()
-			// Metadata ready doesn't guarantee a visible frame; try to emit when data is available.
 			tryEmitMediaReady()
 		} catch (err) {
-			// Never let async watcher errors bubble to global app error handler.
-			// Resource might be missing / permission denied during recovery.
 			console.warn('[WorkflowVideoNode] resource watcher failed', err)
 		}
 	},
@@ -990,10 +1050,112 @@ watch(
 )
 
 watch(
+	() => props.videoSettings?.currentTime,
+	(newTime) => {
+		// 预热渲染模式下不处理 seek
+		if (props.isWarmupRender) return
+		if (newTime == null || !Number.isFinite(newTime) || newTime <= 0) return
+		const v = videoEl.value
+		if (!v) {
+			// 视频元素还没就绪，设置 pendingSeekTime 等待后续恢复
+			if (pendingSeekTime !== newTime) {
+				pendingSeekTime = Number(newTime)
+				pendingSeekRetryCount = 0
+				console.log('[WorkflowVideoNode] currentTime watch (no videoEl): set pendingSeekTime=', pendingSeekTime)
+			}
+			return
+		}
+		const cur = Number(v.currentTime) || 0
+		const target = Math.max(0, Number(newTime))
+		if (Math.abs(cur - target) < 0.1) return
+		console.log('[WorkflowVideoNode] currentTime watch: seek from', cur, 'to', target, 'readyState=', v.readyState)
+		if ((v.readyState || 0) >= 1 && Number(v.duration) > 0) {
+			try {
+				v.currentTime = target
+				seekTime.value = clamp(target, 0, duration.value || target)
+				drawTimeline()
+			} catch (e) {
+				console.warn('[WorkflowVideoNode] currentTime watch: seek failed', e)
+				pendingSeekTime = target
+				pendingSeekRetryCount = 0
+			}
+		} else {
+			pendingSeekTime = target
+			pendingSeekRetryCount = 0
+		}
+	}
+)
+
+watch(
 	() => volume.value,
 	() => {
 		applyVolume()
 	}
+)
+
+watch(
+	() => props.posterUrl,
+	(newPoster) => {
+		if (newPoster && localPosterUrl.value) {
+			localPosterUrl.value = null
+		}
+	}
+)
+
+const captureCurrentFrame = (): { dataUrl: string; width: number; height: number; time: number } | null => {
+	const v = videoEl.value
+	if (!v || v.readyState < 2) return null
+	const ow = outputWidth.value ?? Math.max(1, Math.floor(v.videoWidth || 1))
+	const oh = outputHeight.value ?? Math.max(1, Math.floor(v.videoHeight || 1))
+	const canvas = document.createElement('canvas')
+	canvas.width = Math.max(1, Math.floor(ow))
+	canvas.height = Math.max(1, Math.floor(oh))
+
+	const ctx = canvas.getContext('2d')
+	if (!ctx) return null
+
+	const srcW = Math.max(1, Math.floor(v.videoWidth || 1))
+	const srcH = Math.max(1, Math.floor(v.videoHeight || 1))
+	const { sx, sy, sw, sh } = coverDrawParams(srcW, srcH, canvas.width, canvas.height)
+
+	ctx.drawImage(v, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+	const dataUrl = canvas.toDataURL('image/png')
+	return {
+		dataUrl,
+		width: canvas.width,
+		height: canvas.height,
+		time: v.currentTime || 0
+	}
+}
+
+watch(
+	() => props.selected,
+	async (isSelected, wasSelected) => {
+		console.log('[WorkflowVideoNode] selected watcher: isSelected=', isSelected, 'wasSelected=', wasSelected, 'nodeId=', props.nodeId)
+		if (wasSelected && !isSelected) {
+			const v = videoEl.value
+			if (!v) return
+
+			if (playing.value) {
+				try {
+					v.pause()
+				} catch {
+					// ignore
+				}
+			}
+
+			const curTime = Number(v.currentTime) || 0
+			if (curTime > 0.1) {
+				videoNodeLastTime.set(props.nodeId, curTime)
+				emit('update-video-settings', { currentTime: curTime })
+			}
+		}
+
+		if (isSelected && !wasSelected) {
+			localPosterUrl.value = null
+		}
+	},
+	{ flush: 'pre' }
 )
 
 watch(
@@ -1021,128 +1183,167 @@ watch(
 )
 
 onMounted(() => {
-	if (videoEl.value) {
-		applyLoop()
-		applyVolume()
-		videoEl.value.addEventListener('loadedmetadata', onLoadedMetadata)
-		videoEl.value.addEventListener('loadeddata', () => {
-			const v = videoEl.value
-			if (v) retryPendingSeek(v, { force: true })
-			clearLocalMediaRetry()
-			tryEmitMediaReady()
-		})
-		videoEl.value.addEventListener('canplay', () => {
-			const v = videoEl.value
-			if (v) retryPendingSeek(v, { force: true })
-			clearLocalMediaRetry()
-			tryEmitMediaReady()
-		})
-		videoEl.value.addEventListener('error', () => {
-			const v = videoEl.value
-			const src = effectiveResourceUrl.value
-			if (!v || !src) return
-			if (!resourceFallbackUrl.value && normalizedResourceSourcePath.value) {
-				const fileUrl = toFileUrl(normalizedResourceSourcePath.value)
-				if (fileUrl) {
-					resourceFallbackUrl.value = fileUrl
-					resetMediaRuntimeState()
-					void applyVideoSrc({ reload: true })
-					return
-				}
-			}
-			if (isLikelyLocalMediaUrl(src)) {
-				if (shouldUseAnonymousCrossOrigin(src) && noCrossOriginFallbackSrc !== src) {
-					noCrossOriginFallbackSrc = src
-					void applyVideoSrc({ forceNoCrossOrigin: true, reload: true })
-				}
-				if (scheduleLocalMediaRetry(src)) return
-			}
-			if (!shouldUseAnonymousCrossOrigin(src)) return
-			noCrossOriginFallbackSrc = src
-			void applyVideoSrc({ forceNoCrossOrigin: true, reload: true })
-		})
-		videoEl.value.addEventListener('timeupdate', () => {
-			const v = videoEl.value
-			if (!v) return
-			const cur = Number(v.currentTime) || 0
-			if (pendingSeekTime != null) {
-				const target = pendingSeekTime
-				if (Math.abs(cur - target) <= 0.08) {
-					pendingSeekTime = null
-					pendingSeekRetryCount = 0
-					pendingSeekRequestedAt = 0
-					seekTime.value = cur
-					drawTimeline()
-					return
-				}
-				if (cur <= 0.001 && target > 0.12) {
-					retryPendingSeek(v, { force: true })
-					drawTimeline()
-					return
-				}
-				if (nowMs() - pendingSeekRequestedAt <= 1500) {
-					if (pendingSeekRetryCount < 2) retryPendingSeek(v, { force: true })
-					drawTimeline()
-					return
-				}
-				pendingSeekTime = null
-				pendingSeekRetryCount = 0
-				pendingSeekRequestedAt = 0
-			}
-			seekTime.value = cur
-			drawTimeline()
-		})
-		videoEl.value.addEventListener('seeked', () => {
-			const v = videoEl.value
-			if (!v) return
-			const cur = Number(v.currentTime) || 0
-			if (pendingSeekTime != null) {
-				const target = pendingSeekTime
-				if (Math.abs(cur - target) > 0.12) {
-					if (retryPendingSeek(v, { force: true })) {
-						return
-					}
-				}
-				pendingSeekTime = null
-				pendingSeekRetryCount = 0
-				pendingSeekRequestedAt = 0
-			}
-			seekTime.value = cur
-			drawTimeline()
-			if (!playing.value) scheduleInvalidateScreenshot()
-		})
-		videoEl.value.addEventListener('pause', () => {
-			playing.value = false
-			stopRaf()
-			drawTimeline()
-			scheduleInvalidateScreenshot()
-		})
-		videoEl.value.addEventListener('play', () => {
-			playing.value = true
-			tick()
-		})
-	}
-	if (effectiveResourceUrl.value && videoEl.value) {
-		void (async () => {
-			try {
-				await applyVideoSrc()
-				await ensureMetadata()
-				applyVolume()
-				applyLoop()
-				drawTimeline()
-				tryEmitMediaReady()
-			} catch (err) {
-				console.warn('[WorkflowVideoNode] mounted resource init failed', err)
-			}
-		})()
-	}
-	// In case resourceUrl was already set and metadata arrived before listeners attached.
-	void ensureMetadata()
+	console.log('[WorkflowVideoNode] onMounted: nodeId=', props.nodeId, 'isWarmupRender=', props.isWarmupRender, 'selected=', props.selected, 'videoSettings=', JSON.stringify(props.videoSettings))
+
+	hasActiveVideo = false
+
 	if (timelineCanvas.value) {
 		resizeTimelineCanvas()
 		tlRo = new ResizeObserver(() => resizeTimelineCanvas())
 		tlRo.observe(timelineCanvas.value)
 	}
+
+	if (props.isWarmupRender || !props.selected) {
+		if (props.isWarmupRender) {
+			console.log('[WorkflowVideoNode] onMounted: warmup mode, skip video initialization')
+		} else if (!props.selected) {
+			console.log('[WorkflowVideoNode] onMounted: non-selected mode, skip video initialization')
+		}
+		return
+	}
+
+	if (!videoEl.value) {
+		console.log('[WorkflowVideoNode] onMounted: no videoEl (should not happen when selected)')
+		return
+	}
+
+	hasActiveVideo = true
+	localPosterUrl.value = null
+
+	let savedTime = videoNodeLastTime.get(props.nodeId)
+	if (savedTime == null || !Number.isFinite(savedTime) || savedTime < 0) {
+		savedTime = props.videoSettings?.currentTime
+	}
+	console.log('[WorkflowVideoNode] onMounted: initial savedTime=', savedTime, 'fromMap=', videoNodeLastTime.get(props.nodeId))
+	if (savedTime != null && Number.isFinite(savedTime) && savedTime > 0.05) {
+		pendingSeekTime = Number(savedTime)
+		pendingSeekRetryCount = 0
+		seekTime.value = pendingSeekTime
+		console.log('[WorkflowVideoNode] onMounted: set pendingSeekTime=', pendingSeekTime)
+	}
+
+	applyLoop()
+	applyVolume()
+	videoEl.value.addEventListener('loadedmetadata', onLoadedMetadata)
+	videoEl.value.addEventListener('loadeddata', () => {
+		const v = videoEl.value
+		console.log('[WorkflowVideoNode] loadeddata event: readyState=', v?.readyState, 'currentTime=', v?.currentTime, 'pendingSeekTime=', pendingSeekTime)
+		if (v) retryPendingSeek(v, { force: true })
+		clearLocalMediaRetry()
+		tryEmitMediaReady()
+	})
+	videoEl.value.addEventListener('canplay', () => {
+		const v = videoEl.value
+		console.log('[WorkflowVideoNode] canplay event: readyState=', v?.readyState, 'currentTime=', v?.currentTime, 'pendingSeekTime=', pendingSeekTime)
+		if (v) retryPendingSeek(v, { force: true })
+		clearLocalMediaRetry()
+		tryEmitMediaReady()
+	})
+	videoEl.value.addEventListener('error', () => {
+		const v = videoEl.value
+		const src = effectiveResourceUrl.value
+		if (!v || !src) return
+		if (!resourceFallbackUrl.value && normalizedResourceSourcePath.value) {
+			const fileUrl = toFileUrl(normalizedResourceSourcePath.value)
+			if (fileUrl) {
+				resourceFallbackUrl.value = fileUrl
+				resetMediaRuntimeState()
+				void applyVideoSrc({ reload: true })
+				return
+			}
+		}
+		if (isLikelyLocalMediaUrl(src)) {
+			if (shouldUseAnonymousCrossOrigin(src) && noCrossOriginFallbackSrc !== src) {
+				noCrossOriginFallbackSrc = src
+				void applyVideoSrc({ forceNoCrossOrigin: true, reload: true })
+			}
+			if (scheduleLocalMediaRetry(src)) return
+		}
+		if (!shouldUseAnonymousCrossOrigin(src)) return
+		noCrossOriginFallbackSrc = src
+		void applyVideoSrc({ forceNoCrossOrigin: true, reload: true })
+	})
+	let lastTimeSync = 0
+	let lastStoreSync = 0
+	videoEl.value.addEventListener('timeupdate', () => {
+		const v = videoEl.value
+		if (!v) return
+		const cur = Number(v.currentTime) || 0
+		const now = nowMs()
+		if (now - lastTimeSync > 500) {
+			lastTimeSync = now
+			videoNodeLastTime.set(props.nodeId, cur)
+		}
+		if (now - lastStoreSync > 1000 && cur > 0.1) {
+			lastStoreSync = now
+			emit('update-video-settings', { currentTime: cur })
+		}
+		if (pendingSeekTime != null) {
+			const target = pendingSeekTime
+			if (Math.abs(cur - target) <= 0.08) {
+				pendingSeekTime = null
+				pendingSeekRetryCount = 0
+				pendingSeekRequestedAt = 0
+				seekTime.value = cur
+				drawTimeline()
+				return
+			}
+			if (cur <= 0.001 && target > 0.12) {
+				retryPendingSeek(v, { force: true })
+				drawTimeline()
+				return
+			}
+			if (nowMs() - pendingSeekRequestedAt <= 1500) {
+				if (pendingSeekRetryCount < 2) retryPendingSeek(v, { force: true })
+				drawTimeline()
+				return
+			}
+			pendingSeekTime = null
+			pendingSeekRetryCount = 0
+			pendingSeekRequestedAt = 0
+		}
+		seekTime.value = cur
+		drawTimeline()
+	})
+	videoEl.value.addEventListener('seeked', () => {
+		const v = videoEl.value
+		if (!v) return
+		const cur = Number(v.currentTime) || 0
+		if (pendingSeekTime != null) {
+			const target = pendingSeekTime
+			if (Math.abs(cur - target) > 0.12) {
+				if (retryPendingSeek(v, { force: true })) {
+					return
+				}
+			}
+			pendingSeekTime = null
+			pendingSeekRetryCount = 0
+			pendingSeekRequestedAt = 0
+		}
+		seekTime.value = cur
+		drawTimeline()
+		videoNodeLastTime.set(props.nodeId, cur)
+		if (cur > 0.1) {
+			emit('update-video-settings', { currentTime: cur })
+		}
+	})
+	videoEl.value.addEventListener('pause', () => {
+		playing.value = false
+		stopRaf()
+		drawTimeline()
+		const v = videoEl.value
+		if (v) {
+			const cur = Number(v.currentTime) || 0
+			videoNodeLastTime.set(props.nodeId, cur)
+			if (cur > 0.1) {
+				emit('update-video-settings', { currentTime: cur })
+			}
+		}
+	})
+	videoEl.value.addEventListener('play', () => {
+		playing.value = true
+		tick()
+	})
 })
 
 onBeforeUnmount(() => {
@@ -1153,20 +1354,34 @@ onBeforeUnmount(() => {
 		invalidateScreenshotTimer = null
 	}
 	try {
-		if (videoEl.value) {
-			videoEl.value.removeEventListener('loadeddata', tryEmitMediaReady)
-			videoEl.value.removeEventListener('canplay', tryEmitMediaReady)
-		}
-	} catch {
-		// ignore
-	}
-	try {
 		tlRo?.disconnect()
 	} catch {
 		// ignore
 	}
 	tlRo = null
 	tlCtx = null
+
+	if (!hasActiveVideo) {
+		console.log('[WorkflowVideoNode] onBeforeUnmount: no active video, skip save')
+		return
+	}
+
+	const v = videoEl.value
+	if (v) {
+		const curTime = Number(v.currentTime) || 0
+		console.log('[WorkflowVideoNode] onBeforeUnmount: curTime=', curTime, 'readyState=', v.readyState)
+
+		if (curTime > 0.1) {
+			videoNodeLastTime.set(props.nodeId, curTime)
+			emit('update-video-settings', { currentTime: curTime })
+		}
+
+		try {
+			v.removeEventListener('loadedmetadata', onLoadedMetadata)
+		} catch {
+			// ignore
+		}
+	}
 })
 </script>
 
@@ -1191,6 +1406,13 @@ onBeforeUnmount(() => {
 }
 
 .wf-media-video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.wf-media-poster-img {
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
