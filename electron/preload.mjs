@@ -698,6 +698,22 @@ contextBridge.exposeInMainWorld('dweb', {
 			}
 		},
 	},
+	blender: {
+		checkStatus: (payload) => invoke('dweb:blender:status:check', payload || {}),
+		mcpConnect: (payload) => invoke('dweb:blender:mcp:connect', payload || {}),
+		mcpDisconnect: (payload) => invoke('dweb:blender:mcp:disconnect', payload || {}),
+		mcpStatus: (payload) => invoke('dweb:blender:mcp:status', payload || {}),
+		mcpCallTool: (payload) => invoke('dweb:blender:mcp:call-tool', payload || {}),
+		importModel: (payload) => invoke('dweb:blender:import:model', payload || {}),
+		mcpListTools: (payload) => invoke('dweb:mcp:list-tools', { ...(payload || {}), serverId: payload?.serverId || 'blender' }),
+		onMcpStatusChanged: (callback) => {
+			const listener = (_event, payload) => {
+				try { callback(payload) } catch { /* consumer error */ }
+			}
+			ipcRenderer.on('dweb:blender:mcp:status-changed', listener)
+			return () => ipcRenderer.removeListener('dweb:blender:mcp:status-changed', listener)
+		},
+	},
 	// ===== CLI 适配器 =====
 	cli: {
 		checkAvailability: (payload) => invoke('dweb:cli:check-availability', payload || {}),

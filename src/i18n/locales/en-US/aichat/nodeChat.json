@@ -6,6 +6,7 @@
   "aichat.nodeChat.paramSettings": "Parameter Settings",
   "aichat.nodeChat.generating": "Generating...",
   "aichat.nodeChat.send": "Send",
+  "aichat.nodeChat.stop": "Stop",
   "aichat.nodeChat.placeholder": "Enter a prompt...",
   "aichat.nodeChat.textLabel": "Text {index}",
   "aichat.nodeChat.imageLabel": "Image {index}",

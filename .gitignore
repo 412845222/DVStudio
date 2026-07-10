@@ -102,12 +102,15 @@ ehthumbs.db
 .cache/
 
 # Temporary and test files in root directory
-test_*.*
-temp-*.*
-temp_*.*
-debug-*.*
-scripts/debug-*.*
-count_lines.py
+/test_*.*
+/test-*.*
+/*-test.*
+/*.test.mjs
+/temp-*.*
+/temp_*.*
+/debug-*.*
+/scripts/debug-*.*
+/count_lines.py
 
 # External code folders (Claw-code, etc.)
 Claw-code/

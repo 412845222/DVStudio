@@ -105,19 +105,20 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			const node = payload.store.state.nodesById[nodeId]
 			if (node) {
 				const nodeType = node.type
+			if (
+				nodeType === 'text' ||
+				nodeType === 'image' ||
+				nodeType === 'video' ||
+				nodeType === 'model3d' ||
+				nodeType === 'blender'
+			) {
 				if (
-					nodeType === 'text' ||
-					nodeType === 'image' ||
-					nodeType === 'video' ||
-					nodeType === 'model3d'
+					!payload.store.state.nodeChatDialog.visible ||
+					payload.store.state.nodeChatDialog.nodeId !== nodeId
 				) {
-					if (
-						!payload.store.state.nodeChatDialog.visible ||
-						payload.store.state.nodeChatDialog.nodeId !== nodeId
-					) {
-						payload.store.dispatch('openNodeChatDialog', { nodeId })
-					}
+					payload.store.dispatch('openNodeChatDialog', { nodeId })
 				}
+			}
 			}
 			return
 		}
@@ -140,7 +141,8 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				nodeType === 'text' ||
 				nodeType === 'image' ||
 				nodeType === 'video' ||
-				nodeType === 'model3d'
+				nodeType === 'model3d' ||
+				nodeType === 'blender'
 			) {
 				payload.store.dispatch('openNodeChatDialog', { nodeId })
 			} else {

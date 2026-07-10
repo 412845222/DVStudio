@@ -67,6 +67,10 @@
   "aiworkflow.nodeLibrary.nodes.meshy.description": "Convert images to high-quality 3D models via the Meshy API.",
   "aiworkflow.nodeLibrary.nodes.meshy.searchAliases": ["Meshy", "3d generation", "image to 3d"],
 
+  "aiworkflow.nodeLibrary.nodes.blender.label": "Blender Node",
+  "aiworkflow.nodeLibrary.nodes.blender.description": "Connect to local Blender via the official Blender MCP Server, execute AI-generated Python scripts, supporting 3D model import and scene operations.",
+  "aiworkflow.nodeLibrary.nodes.blender.searchAliases": ["Blender", "MCP", "3D", "modeling"],
+
   "aiworkflow.nodeLibrary.nodes.unreal-export.label": "Unreal Export Node",
   "aiworkflow.nodeLibrary.nodes.unreal-export.description": "Export scene layouts and lighting settings to Unreal Engine projects.",
   "aiworkflow.nodeLibrary.nodes.unreal-export.searchAliases": ["Unreal", "UE", "export", "Unreal Engine"],

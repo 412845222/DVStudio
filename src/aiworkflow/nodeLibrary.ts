@@ -188,7 +188,14 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'UE',
 		'导出',
 		'unreal'
-	])
+	]),
+	blender: catalogMetadata(
+		'model3d',
+		'model3d',
+		[],
+		'通过官方 Blender MCP Server 连接本机 Blender，执行 AI 生成的 Python 脚本，支持 3D 模型导入与场景操作。',
+		['Blender', 'MCP', '3D', '建模']
+	)
 }
 
 const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
@@ -271,6 +278,14 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		inputKinds: ['text', 'text'],
 		outputKinds: [],
 		order: 70
+	},
+	{
+		actionId: 'blender',
+		nodeType: 'blender',
+		label: 'Blender节点',
+		inputKinds: ['resource', 'image', 'text'],
+		outputKinds: ['resource', 'image', 'text'],
+		order: 45
 	}
 ]
 

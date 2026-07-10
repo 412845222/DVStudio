@@ -121,13 +121,22 @@
 							{{ showParams ? t('aichat.nodeChat.collapseParams') : t('aichat.nodeChat.paramSettings') }}
 						</button>
 						<button
+							v-if="!submitting"
 							class="bp-node-chat-btn bp-node-chat-btn-primary"
 							type="button"
 							:disabled="submitDisabled"
 							@click="handleSubmit"
 						>
-							<span v-if="submitting" class="bp-node-chat-loading"></span>
-							{{ submitting ? t('aichat.nodeChat.generating') : t('aichat.nodeChat.send') }}
+							{{ t('aichat.nodeChat.send') }}
+						</button>
+						<button
+							v-else
+							class="bp-node-chat-btn bp-node-chat-btn-stop"
+							type="button"
+							@click="handleStop"
+						>
+							<span class="bp-node-chat-stop-icon"></span>
+							{{ t('aichat.nodeChat.stop') }}
 						</button>
 					</div>
 				</div>
@@ -186,6 +195,7 @@ const emit = defineEmits<{
 	(e: 'update:draft', value: string): void
 	(e: 'update:params', params: WorkflowNodeChatParams): void
 	(e: 'submit', payload: WorkflowNodeChatSubmitPayload): void
+	(e: 'stop'): void
 	(e: 'remove-param-ref', item: InputParamPreviewRef): void
 }>()
 
@@ -221,7 +231,7 @@ const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
 
 const showInputParamRefs = computed(() => {
 	const type = props.nodeType
-	return type === 'image' || type === 'text' || type === 'video' || type === 'model3d'
+	return type === 'image' || type === 'text' || type === 'video' || type === 'model3d' || type === 'blender'
 })
 
 const isTripo3D = computed(() => {
@@ -292,6 +302,10 @@ const handleSubmit = () => {
 		params: currentParams.value
 	}
 	emit('submit', payload)
+}
+
+const handleStop = () => {
+	emit('stop')
 }
 
 const onParamsUpdate = (nextParams: WorkflowNodeChatParamRecord) => {
@@ -767,6 +781,28 @@ onBeforeUnmount(() => {
 	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 42%, transparent);
 	box-shadow: 0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 	border-color: var(--wf-primary, #1f9d84);
+}
+
+.bp-node-chat-btn-stop {
+	background: color-mix(in srgb, #e74c3c 25%, transparent);
+	color: #f87171;
+	border: 1px solid color-mix(in srgb, #e74c3c 60%, transparent);
+	box-shadow: 0 0 10px color-mix(in srgb, #e74c3c 30%, transparent);
+}
+
+.bp-node-chat-btn-stop:hover {
+	background: color-mix(in srgb, #e74c3c 38%, transparent);
+	box-shadow: 0 0 16px color-mix(in srgb, #e74c3c 45%, transparent);
+	border-color: #e74c3c;
+}
+
+.bp-node-chat-stop-icon {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	background: #f87171;
+	border-radius: 1px;
+	flex-shrink: 0;
 }
 
 .bp-node-chat-btn:disabled {

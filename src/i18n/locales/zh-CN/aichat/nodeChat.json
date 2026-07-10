@@ -6,6 +6,7 @@
   "aichat.nodeChat.paramSettings": "参数设置",
   "aichat.nodeChat.generating": "生成中...",
   "aichat.nodeChat.send": "发送",
+  "aichat.nodeChat.stop": "停止",
   "aichat.nodeChat.placeholder": "输入提示词...",
   "aichat.nodeChat.textLabel": "文本 {index}",
   "aichat.nodeChat.imageLabel": "图片 {index}",
