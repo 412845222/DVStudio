@@ -128,6 +128,8 @@
   "tasks.tripo3d.multiviewRequiresFrontAndMore": "多视图生3D需要选择正面视图和至少一个其他方位视图",
   "tasks.tripo3d.textureRequiresModel": "纹理模式需要提供模型任务ID或模型URL",
   "tasks.tripo3d.refineRequiresModel": "精修模式需要提供模型任务ID或模型URL",
+  "tasks.tripo3d.postProcessRequiresModel": "后处理模式需要连接上游3D模型节点",
+  "tasks.tripo3d.meshCompleteRequiresSegment": "网格补全需要连接上游网格分割任务",
   "tasks.tripo3d.pbr": "PBR",
   "tasks.tripo3d.missingTaskIdToast": "Tripo3D 返回缺少任务 ID",
   "tasks.tripo3d.pollStatusFailedConsecutive": "连续多次轮询状态失败",

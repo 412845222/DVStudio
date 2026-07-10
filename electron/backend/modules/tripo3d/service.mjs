@@ -225,7 +225,10 @@ function serializeRepoTask(row) {
 
 function buildCreatePayload(payload) {
   const mode = String(payload.mode || 'text_to_model').trim().toLowerCase()
-  const validModes = ['text_to_model', 'image_to_model', 'multiview_to_model', 'texture', 'refine']
+  const validModes = [
+    'text_to_model', 'image_to_model', 'multiview_to_model', 'texture', 'refine',
+    'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert'
+  ]
   if (!validModes.includes(mode)) {
     return [null, null, `invalid mode: ${mode}, valid modes: ${validModes.join(', ')}`]
   }
@@ -236,7 +239,14 @@ function buildCreatePayload(payload) {
 
   const prompt = String(payload.prompt || '').trim()
   const negativePrompt = String(payload.negative_prompt || payload.negativePrompt || '').trim()
-  const modelVersion = String(payload.model_version || payload.model || payload.modelVersion || 'v3.1-20260211').trim()
+  const postProcessModes = ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+  const isPostProcess = postProcessModes.includes(mode)
+  const defaultModelVersion = isPostProcess
+    ? (mode === 'texture' ? 'v3.0-20250812' : '')
+    : 'v3.1-20260211'
+  const modelVersion = String(
+    payload.model || payload.model_version || payload.modelVersion || defaultModelVersion
+  ).trim()
 
   let faceLimit = Number(payload.face_limit || payload.faceLimit || 0)
   let texture = payload.texture !== false
@@ -346,62 +356,167 @@ function buildCreatePayload(payload) {
     }
     if (prompt) body.prompt = prompt
   } else if (mode === 'texture') {
-    const modelTaskId = String(payload.model_task_id || payload.original_model_task_id || '').trim()
-    const modelUrl = String(payload.model_url || '').trim()
-    if (!modelTaskId && !modelUrl) {
-      return [null, null, 'model_task_id or model_url is required for texture mode']
+    const input = String(payload.input || payload.model_task_id || payload.original_model_task_id || payload.model_url || '').trim()
+    if (!input) {
+      return [null, null, 'input is required for texture mode']
     }
-    if (modelTaskId) body.original_model_task_id = modelTaskId
-    if (modelUrl) body.model_url = modelUrl
-    if (prompt) body.texture_prompt = prompt
+    body.input = input
+    if (payload.model) body.model = String(payload.model)
+    if (payload.texture_prompt && typeof payload.texture_prompt === 'object') {
+      body.texture_prompt = payload.texture_prompt
+    } else if (prompt) {
+      body.texture_prompt = { text: prompt }
+    }
+    if (typeof payload.pbr === 'boolean') body.pbr = payload.pbr
+    if (typeof payload.bake === 'boolean') body.bake = payload.bake
+    if (payload.texture_seed && Number.isFinite(Number(payload.texture_seed)) && Number(payload.texture_seed) > 0) {
+      body.texture_seed = Math.floor(Number(payload.texture_seed))
+    }
+    if (payload.texture_alignment) body.texture_alignment = String(payload.texture_alignment)
+    if (payload.texture_quality) body.texture_quality = String(payload.texture_quality)
+    if (payload.compress) body.compress = String(payload.compress)
+    if (Array.isArray(payload.part_names) && payload.part_names.length) {
+      body.part_names = payload.part_names.map(String)
+    }
   } else if (mode === 'refine') {
-    const modelTaskId = String(payload.model_task_id || '').trim()
-    if (!modelTaskId) return [null, null, 'model_task_id is required for refine mode']
-    body.model_task_id = modelTaskId
+    const input = String(payload.input || payload.model_task_id || '').trim()
+    if (!input) return [null, null, 'input is required for refine mode']
+    body.input = input
     if (prompt) body.prompt = prompt
-  }
-
-  if (negativePrompt) body.negative_prompt = negativePrompt
-  if (modelVersion) body.model_version = modelVersion
-
-  if (Number.isFinite(faceLimit) && faceLimit > 0) {
-    let minLimit = 1000
-    let maxLimit = 2000000
-    if (isPSeries) {
-      minLimit = 50
-      maxLimit = quad ? 10000 : 20000
-    } else if (smartLowPoly) {
-      minLimit = 500
-      maxLimit = quad ? 10000 : 20000
-    } else if (quad) {
-      minLimit = 1000
-      maxLimit = 150000
-    } else if (isV25) {
-      minLimit = 1000
-      maxLimit = 500000
+  } else if (mode === 'mesh_segment') {
+    const input = String(payload.input || payload.model_task_id || payload.model_url || '').trim()
+    if (!input) return [null, null, 'input is required for mesh_segment mode']
+    body.input = input
+    if (payload.model) body.model = String(payload.model)
+  } else if (mode === 'mesh_smartsegment') {
+    const segType = String(payload.seg_type || '').trim()
+    if (!segType) return [null, null, 'seg_type is required for mesh_smartsegment mode']
+    body.seg_type = segType
+    const input = String(payload.input || '').trim()
+    if (!input) return [null, null, 'input is required for mesh_smartsegment mode']
+    body.input = input
+    if (payload.model) body.model = String(payload.model)
+    if (payload.granularity) body.granularity = String(payload.granularity)
+    if (payload.hint) body.hint = String(payload.hint)
+    if (segType === 'model') {
+      const transform = payload.transform
+      if (!Array.isArray(transform) || transform.length !== 16) {
+        return [null, null, 'transform is required (16 floats) when seg_type=model']
+      }
+      body.transform = transform.map(Number)
     }
-    body.face_limit = Math.max(minLimit, Math.min(maxLimit, Math.floor(faceLimit)))
+  } else if (mode === 'mesh_complete') {
+    const input = String(payload.input || payload.model_task_id || '').trim()
+    if (!input) return [null, null, 'input (mesh/segment task_id) is required for mesh_complete mode']
+    body.input = input
+    if (payload.model) body.model = String(payload.model)
+    if (Array.isArray(payload.part_names) && payload.part_names.length) {
+      body.part_names = payload.part_names.map(String)
+    }
+  } else if (mode === 'mesh_decimate') {
+    const input = String(payload.input || payload.model_task_id || payload.model_url || '').trim()
+    if (!input) return [null, null, 'input is required for mesh_decimate mode']
+    body.input = input
+    const model = String(payload.model || 'v2.0').trim()
+    if (!['v1.0', 'v2.0'].includes(model)) {
+      return [null, null, 'model must be v1.0 or v2.0']
+    }
+    body.model = model
+    const decimateFaceLimit = Number(payload.face_limit || 0)
+    if (model === 'v1.0' && !(decimateFaceLimit > 0)) {
+      return [null, null, 'face_limit is required for v1.0 decimate']
+    }
+    if (decimateFaceLimit > 0) body.face_limit = Math.floor(decimateFaceLimit)
+    if (payload.quad === true) body.quad = true
+    if (model === 'v2.0' && payload.bake !== false) body.bake = true
+    if (model === 'v2.0' && Array.isArray(payload.part_names) && payload.part_names.length) {
+      body.part_names = payload.part_names.map(String)
+    }
+  } else if (mode === 'models_convert') {
+    const input = String(payload.input || payload.model_task_id || payload.model_url || '').trim()
+    if (!input) return [null, null, 'input is required for models_convert mode']
+    body.input = input
+    const format = String(payload.format || '').trim()
+    if (!['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'].includes(format)) {
+      return [null, null, 'format must be one of GLTF, FBX, USDZ, OBJ, STL, 3MF']
+    }
+    const convertQuad = payload.quad === true
+    if (convertQuad) body.format = 'FBX'
+    else body.format = format
+    if (convertQuad && payload.force_symmetry === true) body.force_symmetry = true
+    const convertFaceLimit = Number(payload.face_limit || 0)
+    if (convertFaceLimit > 0) body.face_limit = Math.floor(convertFaceLimit)
+    if (payload.flatten_bottom === true) {
+      body.flatten_bottom = true
+      if (typeof payload.flatten_bottom_threshold === 'number') {
+        body.flatten_bottom_threshold = payload.flatten_bottom_threshold
+      }
+    }
+    if (payload.texture_size) body.texture_size = Math.floor(Number(payload.texture_size))
+    if (payload.texture_format) body.texture_format = String(payload.texture_format)
+    if (payload.bake === false) body.bake = false
+    if (payload.pack_uv === true) body.pack_uv = true
+    if (payload.export_vertex_colors === true) body.export_vertex_colors = true
+    if (payload.pivot_to_center_bottom === true) body.pivot_to_center_bottom = true
+    if (typeof payload.scale_factor === 'number') body.scale_factor = payload.scale_factor
+    if (payload.with_animation === false) body.with_animation = false
+    if (payload.animate_in_place === true) body.animate_in_place = true
+    if (Array.isArray(payload.part_names) && payload.part_names.length) {
+      body.part_names = payload.part_names.map(String)
+    }
+    if (payload.export_orientation) body.export_orientation = String(payload.export_orientation)
+    if (format === 'FBX' && payload.fbx_preset) {
+      body.fbx_preset = String(payload.fbx_preset)
+    }
   }
 
-  body.texture = texture
-  body.pbr = pbr
-  if (enableImageAutofix) body.enable_image_autofix = true
-  if (textureAlignment) body.texture_alignment = textureAlignment
-  if (orientation && texture) body.orientation = orientation
-  if (textureQuality) body.texture_quality = textureQuality
-  if (isV3OrLater && geometryQuality) body.geometry_quality = geometryQuality
-  if (isV3OrLater && autoSize) body.auto_size = true
-  if (supportsAdvancedFeatures && !generateParts && !smartLowPoly && quad) body.quad = true
-  if (isV3OrLater && !isPSeries && smartLowPoly) body.smart_low_poly = true
-  if (isV3OrLater && generateParts) body.generate_parts = true
-  if (isV3OrLater && compress) body.compress = compress
-  if (exportUv) body.export_uv = true
+  if (!isPostProcess) {
+    if (negativePrompt) body.negative_prompt = negativePrompt
+    if (modelVersion) body.model_version = modelVersion
 
-  if (typeof payload.model_seed === 'number' && Number.isFinite(payload.model_seed) && payload.model_seed >= 0) {
-    body.model_seed = Math.floor(payload.model_seed)
+    if (Number.isFinite(faceLimit) && faceLimit > 0) {
+      let minLimit = 1000
+      let maxLimit = 2000000
+      if (isPSeries) {
+        minLimit = 50
+        maxLimit = quad ? 10000 : 20000
+      } else if (smartLowPoly) {
+        minLimit = 500
+        maxLimit = quad ? 10000 : 20000
+      } else if (quad) {
+        minLimit = 1000
+        maxLimit = 150000
+      } else if (isV25) {
+        minLimit = 1000
+        maxLimit = 500000
+      }
+      body.face_limit = Math.max(minLimit, Math.min(maxLimit, Math.floor(faceLimit)))
+    }
+
+    body.texture = texture
+    if (enableImageAutofix) body.enable_image_autofix = true
+    if (orientation && texture) body.orientation = orientation
+    if (isV3OrLater && geometryQuality) body.geometry_quality = geometryQuality
+    if (isV3OrLater && autoSize) body.auto_size = true
+    if (supportsAdvancedFeatures && !generateParts && !smartLowPoly && quad) body.quad = true
+    if (isV3OrLater && !isPSeries && smartLowPoly) body.smart_low_poly = true
+    if (isV3OrLater && generateParts) body.generate_parts = true
+    if (exportUv) body.export_uv = true
+
+    if (typeof payload.model_seed === 'number' && Number.isFinite(payload.model_seed) && payload.model_seed >= 0) {
+      body.model_seed = Math.floor(payload.model_seed)
+    }
   }
-  if (typeof payload.texture_seed === 'number' && Number.isFinite(payload.texture_seed) && payload.texture_seed >= 0) {
-    body.texture_seed = Math.floor(payload.texture_seed)
+
+  if (!isPostProcess) {
+    body.pbr = pbr
+    if (textureAlignment) body.texture_alignment = textureAlignment
+    if (textureQuality) body.texture_quality = textureQuality
+    if (isV3OrLater && compress) body.compress = compress
+
+    if (typeof payload.texture_seed === 'number' && Number.isFinite(payload.texture_seed) && payload.texture_seed >= 0) {
+      body.texture_seed = Math.floor(payload.texture_seed)
+    }
   }
 
   return [mode, body, null]
@@ -429,8 +544,13 @@ export async function generateModel(ctx, payload) {
     text_to_model: '/generation/text-to-model',
     image_to_model: '/generation/image-to-model',
     multiview_to_model: '/generation/multiview-to-model',
-    texture: '/generation/texture',
-    refine: '/generation/refine',
+    texture: '/models/texture',
+    refine: '/models/refine',
+    mesh_segment: '/mesh/segment',
+    mesh_smartsegment: '/mesh/smartsegment',
+    mesh_complete: '/mesh/complete',
+    mesh_decimate: '/mesh/decimate',
+    models_convert: '/models/convert',
   }
   const endpoint = endpointMap[mode] || '/generation/text-to-model'
   const url = `${TRIPO3D_API_BASE}${endpoint}`
