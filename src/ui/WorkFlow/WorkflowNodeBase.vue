@@ -1313,6 +1313,39 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
+.wf-node.wf-node-text .wf-node-body,
+.wf-node.wf-node-text-merge .wf-node-body {
+	overflow: hidden;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.wf-node-text .wf-node-footer {
+	display: none;
+}
+
+.wf-node.wf-node-text .wf-text,
+.wf-node.wf-node-text-merge .wf-merge {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.wf-node-text .wf-textarea,
+.wf-node.wf-node-text-merge .wf-merge-output {
+	width: 100%;
+	box-sizing: border-box;
+	flex: 1;
+	min-height: 0;
+}
+
 .wf-anchors {
 	position: absolute;
 	top: 0;
