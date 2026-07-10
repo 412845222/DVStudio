@@ -183,11 +183,6 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		['3D模型', '模型预览', 'model'],
 		40
 	),
-	meshy: catalogMetadata('model3d', 'model3d', [], '通过 Meshy API 将图片转换为高质量3D模型。', [
-		'Meshy',
-		'3D生成',
-		'图生3D'
-	]),
 	'unreal-export': catalogMetadata('plugin', 'model3d', [], '将场景布局和灯光设置导出到 Unreal Engine 项目中。', [
 		'Unreal',
 		'UE',
@@ -268,14 +263,6 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		inputKinds: ['resource', 'text', 'image', 'image', 'image', 'image'],
 		outputKinds: ['resource', 'image'],
 		order: 40
-	},
-	{
-		actionId: 'meshy',
-		nodeType: 'meshy',
-		label: 'Meshy模型生成',
-		inputKinds: ['text', 'image'],
-		outputKinds: ['resource'],
-		order: 41
 	},
 	{
 		actionId: 'unreal-export',

@@ -15,6 +15,12 @@ type DVSAgentIpcBridge = {
 		agent?: {
 			stream?: (payload: unknown) => AsyncGenerator<unknown>
 			abort?: (payload: unknown) => Promise<unknown>
+			listConversations?: (payload: unknown) => Promise<unknown>
+			createConversation?: (payload: unknown) => Promise<unknown>
+			deleteConversation?: (payload: unknown) => Promise<unknown>
+			renameConversation?: (payload: unknown) => Promise<unknown>
+			getConversationMessages?: (payload: unknown) => Promise<unknown>
+			addConversationMessage?: (payload: unknown) => Promise<unknown>
 		}
 	}
 }
@@ -37,31 +43,195 @@ export class DVSAgentChatService implements IChatService {
 	}
 
 	async createSession(options?: CreateSessionOptions): Promise<ChatSession> {
-		const sessionId = `dvsagent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-		const session: ChatSession = {
-			id: sessionId,
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.createConversation) {
+			const sessionId = `dvsagent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+			const session: ChatSession = {
+				id: sessionId,
+				title: options?.title || 'DVS Agent 对话',
+				backend: 'dvsagent',
+				model: options?.model,
+				status: 'active',
+				createdAt: new Date().toISOString(),
+				projectId: options?.projectId,
+			}
+			this.activeSessions.set(sessionId, session)
+			return session
+		}
+
+		const result = await bridge.dweb.agent.createConversation({
 			title: options?.title || 'DVS Agent 对话',
+			model: options?.model || '',
+			projectPath: String(options?.projectId || ''),
+		})
+
+		const typedResult = result as { ok?: boolean; conversation?: Record<string, unknown> } | null | undefined
+
+		if (!typedResult || !typedResult.ok || !typedResult.conversation) {
+			const sessionId = `dvsagent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+			const session: ChatSession = {
+				id: sessionId,
+				title: options?.title || 'DVS Agent 对话',
+				backend: 'dvsagent',
+				model: options?.model,
+				status: 'active',
+				createdAt: new Date().toISOString(),
+				projectId: options?.projectId,
+			}
+			this.activeSessions.set(sessionId, session)
+			return session
+		}
+
+		const conv = typedResult.conversation
+		const projectPath = String(conv.projectPath || '')
+		const projectId = projectPath ? Number(projectPath) : options?.projectId
+		const session: ChatSession = {
+			id: String(conv.id || ''),
+			title: String(conv.title || 'DVS Agent 对话'),
 			backend: 'dvsagent',
-			model: options?.model,
+			model: String(conv.model || options?.model || ''),
 			status: 'active',
-			createdAt: new Date().toISOString(),
-			projectId: options?.projectId,
+			createdAt: conv.createdAt ? new Date(Number(conv.createdAt)).toISOString() : new Date().toISOString(),
+			projectId: Number.isFinite(projectId) ? projectId : options?.projectId,
+		}
+		this.activeSessions.set(session.id, session)
+		return session
+	}
+
+	async listSessions(projectId?: number | null): Promise<ChatSession[]> {
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.listConversations) {
+			return Array.from(this.activeSessions.values())
+		}
+
+		const result = await bridge.dweb.agent.listConversations({
+			projectPath: String(projectId || ''),
+		})
+
+		const typedResult = result as { ok?: boolean; conversations?: unknown[] } | null | undefined
+
+		if (!typedResult || !typedResult.ok || !Array.isArray(typedResult.conversations)) {
+			return Array.from(this.activeSessions.values())
+		}
+
+		return typedResult.conversations.map((conv: unknown) => {
+			const c = conv as Record<string, unknown>
+			const projectPath = String(c.projectPath || '')
+			const pid = projectPath ? Number(projectPath) : undefined
+			return {
+				id: String(c.id || ''),
+				title: String(c.title || 'DVS Agent 对话'),
+				backend: 'dvsagent',
+				model: String(c.model || ''),
+				status: 'active',
+				createdAt: c.createdAt ? new Date(Number(c.createdAt)).toISOString() : new Date().toISOString(),
+				projectId: Number.isFinite(pid) ? pid : projectId,
+			}
+		})
+	}
+
+	async getSession(sessionId: string): Promise<ChatSession | null> {
+		const cached = this.activeSessions.get(sessionId)
+		if (cached) return cached
+
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.listConversations) {
+			return null
+		}
+
+		const result = await bridge.dweb.agent.listConversations({})
+		const typedResult = result as { ok?: boolean; conversations?: unknown[] } | null | undefined
+
+		if (!typedResult || !typedResult.ok || !Array.isArray(typedResult.conversations)) {
+			return null
+		}
+
+		const conv = typedResult.conversations.find((c: unknown) => String((c as Record<string, unknown>).id) === sessionId)
+		if (!conv) return null
+
+		const c = conv as Record<string, unknown>
+		const projectPath = String(c.projectPath || '')
+		const pid = projectPath ? Number(projectPath) : undefined
+		const session: ChatSession = {
+			id: String(c.id || ''),
+			title: String(c.title || 'DVS Agent 对话'),
+			backend: 'dvsagent',
+			model: String(c.model || ''),
+			status: 'active',
+			createdAt: c.createdAt ? new Date(Number(c.createdAt)).toISOString() : new Date().toISOString(),
+			projectId: Number.isFinite(pid) ? pid : null,
 		}
 		this.activeSessions.set(sessionId, session)
 		return session
 	}
 
-	async listSessions(_projectId?: number | null): Promise<ChatSession[]> {
-		return Array.from(this.activeSessions.values())
-	}
-
-	async getSession(sessionId: string): Promise<ChatSession | null> {
-		return this.activeSessions.get(sessionId) || null
-	}
-
 	async deleteSession(sessionId: string, _projectId?: number | null): Promise<{ ok: boolean }> {
 		this.activeSessions.delete(sessionId)
-		return { ok: true }
+
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.deleteConversation) {
+			return { ok: true }
+		}
+
+		const result = await bridge.dweb.agent.deleteConversation({ id: sessionId })
+		const typedResult = result as { ok?: boolean } | null | undefined
+		return typedResult && typedResult.ok ? { ok: true } : { ok: false }
+	}
+
+	async renameSession(sessionId: string, title: string): Promise<{ ok: boolean }> {
+		const cached = this.activeSessions.get(sessionId)
+		if (cached) {
+			cached.title = title
+			this.activeSessions.set(sessionId, cached)
+		}
+
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.renameConversation) {
+			return { ok: true }
+		}
+
+		const result = await bridge.dweb.agent.renameConversation({ id: sessionId, title })
+		const typedResult = result as { ok?: boolean } | null | undefined
+		return typedResult && typedResult.ok ? { ok: true } : { ok: false }
+	}
+
+	async getSessionMessages(sessionId: string): Promise<Array<{ role: string; content: string; model?: string }>> {
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.getConversationMessages) {
+			return []
+		}
+
+		const result = await bridge.dweb.agent.getConversationMessages({ conversationId: sessionId })
+		const typedResult = result as { ok?: boolean; messages?: unknown[] } | null | undefined
+
+		if (!typedResult || !typedResult.ok || !Array.isArray(typedResult.messages)) {
+			return []
+		}
+
+		return typedResult.messages.map((msg: unknown) => {
+			const m = msg as Record<string, unknown>
+			return {
+				role: String(m.role || 'user'),
+				content: String(m.content || ''),
+				model: String(m.model || ''),
+			}
+		})
+	}
+
+	async addSessionMessage(sessionId: string, role: string, content: string, model?: string): Promise<{ ok: boolean }> {
+		const bridge = getIpcBridge()
+		if (!hasIpcApi() || !bridge.dweb?.agent?.addConversationMessage) {
+			return { ok: true }
+		}
+
+		const result = await bridge.dweb.agent.addConversationMessage({
+			conversationId: sessionId,
+			role,
+			content,
+			model: model || '',
+		})
+		const typedResult = result as { ok?: boolean } | null | undefined
+		return typedResult && typedResult.ok ? { ok: true } : { ok: false }
 	}
 
 	async *sendMessage(
@@ -81,11 +251,11 @@ export class DVSAgentChatService implements IChatService {
 			backend: 'dvsagent',
 			prompt: options.content,
 			content: options.content,
-			model: options.model || session?.model || 'deepseek-chat',
+			model: options.model || session?.model || 'doubao-seed-evolving',
 			context: options.context,
 			history: options.history,
 			apiKeys: options.apiKeys || {},
-			apiSource: options.apiSource || 'deepseek',
+			apiSource: options.apiSource || 'bytedance',
 			thinkingEffort: options.thinkingEffort || 'medium',
 			sessionId,
 		})

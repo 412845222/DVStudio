@@ -1320,19 +1320,165 @@ const normalizeMeshyTargetFormats = (
 	return next.length ? (next as WorkflowMeshyNodeSettings['meshyTargetFormats']) : undefined
 }
 
+const normalizeTripo3DModelSettings = (rawInput: unknown): Record<string, unknown> | undefined => {
+	if (!rawInput || !isRecord(rawInput)) return undefined
+	const raw: Record<string, unknown> = { ...rawInput }
+	const result: Record<string, unknown> = {}
+	// 字段映射：旧无前缀字段名 -> 新带tripo3d前缀字段名
+	const legacyFieldMap: Record<string, string> = {
+		'taskId': 'tripo3dTaskId',
+		'taskStatus': 'tripo3dTaskStatus',
+		'taskFamily': 'tripo3dTaskFamily',
+		'taskMode': 'tripo3dTaskMode',
+		'statusText': 'tripo3dStatusText',
+		'errorMessage': 'tripo3dErrorMessage',
+		'prompt': 'tripo3dPrompt',
+		'negativePrompt': 'tripo3dNegativePrompt',
+		'imageUrl': 'tripo3dImageUrl',
+		'modelSeries': 'tripo3dModelSeries',
+		'modelVersion': 'tripo3dModelVersion',
+		'textureAlignment': 'tripo3dTextureAlignment',
+		'orientation': 'tripo3dOrientation',
+		'textureQuality': 'tripo3dTextureQuality',
+		'geometryQuality': 'tripo3dGeometryQuality',
+		'modelTaskId': 'tripo3dModelTaskId',
+		'rootTaskId': 'tripo3dRootTaskId',
+		'parentTaskId': 'tripo3dParentTaskId',
+		'thumbnailUrl': 'tripo3dThumbnailUrl',
+		'outputAssetUrl': 'tripo3dOutputAssetUrl',
+		'outputAssetPath': 'tripo3dOutputAssetPath',
+		'modelUrl': 'tripo3dModelUrl',
+		'mode': 'tripo3dMode',
+		'downloadStage': 'tripo3dDownloadStage',
+		'downloadError': 'tripo3dDownloadError',
+		'upstreamTaskId': 'tripo3dUpstreamTaskId',
+		'upstreamTaskFamily': 'tripo3dUpstreamTaskFamily',
+		'upstreamTaskStatus': 'tripo3dUpstreamTaskStatus',
+		'progress': 'tripo3dProgress',
+		'faceLimit': 'tripo3dFaceLimit',
+		'modelSeed': 'tripo3dModelSeed',
+		'textureSeed': 'tripo3dTextureSeed',
+		'downloadProgress': 'tripo3dDownloadProgress',
+		'downloadLoadedBytes': 'tripo3dDownloadLoadedBytes',
+		'downloadTotalBytes': 'tripo3dDownloadTotalBytes',
+		'downloadSpeedBytesPerSec': 'tripo3dDownloadSpeedBytesPerSec',
+		'imageCount': 'tripo3dImageCount',
+		'enabled': 'tripo3dEnabled',
+		'forceSingleImage': 'tripo3dForceSingleImage',
+		'texture': 'tripo3dTexture',
+		'pbr': 'tripo3dPbr',
+		'enableImageAutofix': 'tripo3dEnableImageAutofix',
+		'autoSize': 'tripo3dAutoSize',
+		'quad': 'tripo3dQuad',
+		'smartLowPoly': 'tripo3dSmartLowPoly',
+		'generateParts': 'tripo3dGenerateParts',
+		'compress': 'tripo3dCompress',
+		'exportUv': 'tripo3dExportUv'
+	}
+	// 先读取旧无前缀字段
+	for (const [legacyKey, newKey] of Object.entries(legacyFieldMap)) {
+		if (legacyKey in raw && !(newKey in raw)) {
+			const val = raw[legacyKey]
+			if (val !== undefined && val !== null) {
+				raw[newKey] = val
+			}
+		}
+	}
+	const stringFields = [
+		'tripo3dTaskFamily', 'tripo3dTaskId', 'tripo3dTaskStatus', 'tripo3dStatusText',
+		'tripo3dErrorMessage', 'tripo3dPrompt', 'tripo3dNegativePrompt', 'tripo3dImageUrl',
+		'tripo3dModelSeries', 'tripo3dModelVersion', 'tripo3dTextureAlignment', 'tripo3dOrientation',
+		'tripo3dTextureQuality', 'tripo3dGeometryQuality', 'tripo3dModelTaskId', 'tripo3dRootTaskId',
+		'tripo3dParentTaskId', 'tripo3dThumbnailUrl', 'tripo3dOutputAssetUrl', 'tripo3dOutputAssetPath',
+		'tripo3dModelUrl', 'tripo3dMode', 'tripo3dDownloadStage', 'tripo3dDownloadError',
+		'tripo3dUpstreamTaskId', 'tripo3dUpstreamTaskFamily', 'tripo3dUpstreamTaskStatus', 'tripo3dTaskMode'
+	]
+	for (const key of stringFields) {
+		const val = raw[key]
+		if (isString(val)) result[key] = String(val)
+	}
+	const numberFields = [
+		'tripo3dProgress', 'tripo3dFaceLimit', 'tripo3dModelSeed', 'tripo3dTextureSeed',
+		'tripo3dDownloadProgress', 'tripo3dDownloadLoadedBytes', 'tripo3dDownloadTotalBytes',
+		'tripo3dDownloadSpeedBytesPerSec', 'tripo3dImageCount'
+	]
+	for (const key of numberFields) {
+		const val = raw[key]
+		if (Number.isFinite(Number(val))) result[key] = Number(val)
+	}
+	const boolFields = [
+		'tripo3dEnabled', 'tripo3dForceSingleImage', 'tripo3dTexture', 'tripo3dPbr',
+		'tripo3dEnableImageAutofix', 'tripo3dAutoSize', 'tripo3dQuad', 'tripo3dSmartLowPoly',
+		'tripo3dGenerateParts', 'tripo3dCompress', 'tripo3dExportUv'
+	]
+	for (const key of boolFields) {
+		const val = raw[key]
+		if (typeof val === 'boolean') result[key] = val
+	}
+	if (isArray(raw.tripo3dSelectedImages)) {
+		result.tripo3dSelectedImages = raw.tripo3dSelectedImages.filter((item): item is Record<string, unknown> =>
+			item != null && typeof item === 'object'
+		).map((item) => {
+			const normalized: Record<string, unknown> = {}
+			if (isString(item.url)) normalized.url = String(item.url)
+			if (isString(item.direction)) normalized.direction = String(item.direction)
+			if (isString(item.label)) normalized.label = String(item.label)
+			if (isString(item.nodeId)) normalized.nodeId = String(item.nodeId)
+			return normalized
+		})
+	}
+	if (isArray(raw.tripo3dImageUrls)) {
+		result.tripo3dImageUrls = raw.tripo3dImageUrls
+			.map((x: unknown) => isString(x) ? String(x).trim() : '')
+			.filter((x: string) => !!x)
+	}
+	const recordFields = ['tripo3dRelationKind', 'tripo3dRelationSummary', 'tripo3dOutputSummary', 'tripo3dInputSummary', 'tripo3dRequestPayload', 'tripo3dResponsePayload']
+	for (const key of recordFields) {
+		const val = raw[key]
+		if (isRecord(val)) result[key] = { ...val }
+	}
+	// 兼容success状态：映射到succeeded
+	if (result.tripo3dTaskStatus === 'success') {
+		result.tripo3dTaskStatus = 'succeeded'
+	}
+	if (result.tripo3dUpstreamTaskStatus === 'success') {
+		result.tripo3dUpstreamTaskStatus = 'succeeded'
+	}
+	// 兼容done状态：映射到succeeded
+	if (result.tripo3dTaskStatus === 'done') {
+		result.tripo3dTaskStatus = 'succeeded'
+	}
+	if (result.tripo3dUpstreamTaskStatus === 'done') {
+		result.tripo3dUpstreamTaskStatus = 'succeeded'
+	}
+	return Object.keys(result).length > 0 ? result : undefined
+}
+
 const normalizeModel3DSettings = (
 	rawSettings: unknown
 ): WorkflowModel3DNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
+	const genSource = String(raw.modelGenerationSource ?? '').trim()
+	const modelGenerationSource: WorkflowModel3DNodeSettings['modelGenerationSource'] =
+		genSource === 'upload' || genSource === 'comfyui' || genSource === 'meshy' || genSource === 'tripo3d'
+			? genSource
+			: undefined
+	const tripo3dModelSettings = normalizeTripo3DModelSettings(raw.tripo3dModelSettings)
+	const meshyModelSettingsRaw = isRecord(raw.meshyModelSettings) ? raw.meshyModelSettings : undefined
 	return {
+		modelGenerationSource,
+		tripo3dModelSettings: tripo3dModelSettings as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
+		meshyModelSettings: meshyModelSettingsRaw ? ({ ...meshyModelSettingsRaw } as WorkflowModel3DNodeSettings['meshyModelSettings']) : undefined,
 		modelUrl: isString(raw.modelUrl) ? String(raw.modelUrl) : undefined,
+		modelProjectRelativePath: isString(raw.modelProjectRelativePath) ? String(raw.modelProjectRelativePath) : undefined,
 		modelFormat:
 			raw.modelFormat === 'gltf' ? 'gltf' : raw.modelFormat === 'glb' ? 'glb' : undefined,
 		modelSourceName: isString(raw.modelSourceName) ? String(raw.modelSourceName) : undefined,
 		modelSourcePath: isString(raw.modelSourcePath) ? String(raw.modelSourcePath) : undefined,
 		modelAssetUrl: isString(raw.modelAssetUrl) ? String(raw.modelAssetUrl) : undefined,
 		modelAssetPath: isString(raw.modelAssetPath) ? String(raw.modelAssetPath) : undefined,
+		modelAssetProjectRelativePath: isString(raw.modelAssetProjectRelativePath) ? String(raw.modelAssetProjectRelativePath) : undefined,
 		backgroundColor: isString(raw.backgroundColor) ? String(raw.backgroundColor) : undefined,
 		lightIntensity: Number.isFinite(Number(raw.lightIntensity))
 			? Math.max(0, Math.min(10, Number(raw.lightIntensity)))
@@ -1548,9 +1694,68 @@ const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings
 	}
 }
 
+const normalizeTripo3DImageSettings = (raw: unknown): Record<string, unknown> | undefined => {
+	if (!raw || !isRecord(raw)) return undefined
+	const result: Record<string, unknown> = {}
+	const stringFields = ['prompt', 'negativePrompt', 'taskId', 'taskStatus', 'statusText', 'errorMessage', 'taskFamily', 'taskMode', 'mode', 'model', 'size', 'inputUrl', 'thumbnailUrl', 'outputImageUrl']
+	for (const key of stringFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (isString(val)) result[key] = String(val)
+	}
+	const numberFields = ['progress', 'numOutputs', 'seed', 'strength']
+	for (const key of numberFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (Number.isFinite(Number(val))) result[key] = Number(val)
+	}
+	if (isArray((raw as Record<string, unknown>).outputImages)) {
+		result.outputImages = ((raw as Record<string, unknown>).outputImages as unknown[])
+			.map((x: unknown) => isString(x) ? String(x).trim() : '')
+			.filter((x: string) => !!x)
+	}
+	const recordFields = ['submittedParams', 'outputSummary', 'requestPayload', 'responsePayload']
+	for (const key of recordFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (isRecord(val)) result[key] = { ...val }
+	}
+	return Object.keys(result).length > 0 ? result : undefined
+}
+
+const normalizeMeshyImageSettings = (raw: unknown): Record<string, unknown> | undefined => {
+	if (!raw || !isRecord(raw)) return undefined
+	const result: Record<string, unknown> = {}
+	const stringFields = ['prompt', 'negativePrompt', 'aiModel', 'aspectRatio', 'poseMode', 'taskId', 'taskFamily', 'mode', 'taskStatus', 'statusText', 'errorMessage']
+	for (const key of stringFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (isString(val)) result[key] = String(val)
+	}
+	const numberFields = ['seed', 'outputImageCount', 'outputCount', 'progress']
+	for (const key of numberFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (Number.isFinite(Number(val))) result[key] = Number(val)
+	}
+	const boolFields = ['generateMultiView']
+	for (const key of boolFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (typeof val === 'boolean') result[key] = val
+	}
+	const recordFields = ['submittedParams', 'outputSummary']
+	for (const key of recordFields) {
+		const val = (raw as Record<string, unknown>)[key]
+		if (isRecord(val)) result[key] = { ...val }
+	}
+	return Object.keys(result).length > 0 ? result : undefined
+}
+
 const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const cropObj = isRecord(raw.crop) ? raw.crop : undefined
+	const genSource = String(raw.imageGenerationSource ?? '').trim()
+	const imageGenerationSource: WorkflowImageNodeSettings['imageGenerationSource'] =
+		genSource === 'upload' || genSource === 'comfyui' || genSource === 'meshy' || genSource === 'gemini' || genSource === 'tripo3d'
+			? genSource
+			: undefined
+	const tripo3dImageSettings = normalizeTripo3DImageSettings(raw.tripo3dImageSettings)
+	const meshyImageSettings = normalizeMeshyImageSettings(raw.meshyImageSettings)
 	return {
 		outputWidth: Number.isFinite(Number(raw.outputWidth))
 			? Math.max(1, Math.floor(Number(raw.outputWidth)))
@@ -1558,6 +1763,8 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 		outputHeight: Number.isFinite(Number(raw.outputHeight))
 			? Math.max(1, Math.floor(Number(raw.outputHeight)))
 			: undefined,
+		outputFormat:
+			raw.outputFormat === 'png' ? 'png' : raw.outputFormat === 'jpeg' ? 'jpeg' : raw.outputFormat === 'webp' ? 'webp' : undefined,
 		naturalWidth: Number.isFinite(Number(raw.naturalWidth))
 			? Math.max(1, Math.floor(Number(raw.naturalWidth)))
 			: undefined,
@@ -1576,7 +1783,11 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 						? Math.max(0, Math.min(1, Number(cropObj.height)))
 						: 1
 				}
-			: undefined
+			: undefined,
+		imageGenerationSource,
+		lastGeneratedImageUrl: isString(raw.lastGeneratedImageUrl) ? String(raw.lastGeneratedImageUrl) : undefined,
+		meshyImageSettings: meshyImageSettings as WorkflowImageNodeSettings['meshyImageSettings'],
+		tripo3dImageSettings: tripo3dImageSettings as WorkflowImageNodeSettings['tripo3dImageSettings']
 	}
 }
 
@@ -1594,6 +1805,9 @@ const normalizeVideoSettings = (raw: unknown): WorkflowVideoNodeSettings | undef
 			: undefined,
 		naturalHeight: Number.isFinite(Number(raw.naturalHeight))
 			? Math.max(1, Math.floor(Number(raw.naturalHeight)))
+			: undefined,
+		currentTime: Number.isFinite(Number(raw.currentTime))
+			? Math.max(0, Number(raw.currentTime))
 			: undefined
 	}
 }
@@ -1775,8 +1989,27 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (!alias.trim()) alias = defaultAliasForType(type)
 				const imageSettings = normalizeImageSettings(n.imageSettings)
 				const videoSettings = normalizeVideoSettings(n.videoSettings)
-				const model3dSettings = normalizeModel3DSettings(n.model3dSettings)
+				let model3dSettings = normalizeModel3DSettings(n.model3dSettings)
 				const meshySettings = normalizeMeshySettings(n.meshySettings ?? n.model3dSettings)
+				const rootTripo3dSettings = normalizeTripo3DModelSettings(n.tripo3dSettings)
+				// 数据迁移：从model3dSettings根下的tripo3d*字段和根级别tripo3dSettings合并数据
+				if (type === 'model3d') {
+					const rawModel3d = isRecord(n.model3dSettings) ? n.model3dSettings : {}
+					const legacyTripoInModel3d = normalizeTripo3DModelSettings(rawModel3d)
+					const mergedTripo: Record<string, unknown> = {
+						...(legacyTripoInModel3d || {}),
+						...(rootTripo3dSettings || {}),
+						...((model3dSettings as Record<string, unknown>)?.tripo3dModelSettings || {})
+					}
+					if (Object.keys(mergedTripo).length > 0) {
+						model3dSettings = {
+							...(model3dSettings || {}),
+							tripo3dModelSettings: mergedTripo as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
+							modelGenerationSource: (model3dSettings as Record<string, unknown>)?.modelGenerationSource || (mergedTripo.tripo3dTaskId ? 'tripo3d' : undefined)
+						} as WorkflowModel3DNodeSettings
+					}
+				}
+				const tripo3dSettings = type === 'model3d' ? (model3dSettings as Record<string, unknown>)?.tripo3dModelSettings : rootTripo3dSettings
 				nextNodesById[nodeId] = {
 					id: nodeId,
 					type,
@@ -1788,6 +2021,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					videoSettings,
 					model3dSettings,
 					meshySettings,
+					tripo3dSettings: tripo3dSettings as WorkflowNode['tripo3dSettings'],
 					storySettings: normalizeStorySettings(n.storySettings),
 					worldX: Number.isFinite(Number(n.worldX)) ? Number(n.worldX) : 0,
 					worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : 0,
@@ -3043,6 +3277,25 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...patch
 			}
 		},
+		setNodeTripo3DSettings(
+			state,
+			payload: { nodeId: string; tripo3dSettings: Partial<Record<string, unknown>> }
+		) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n) return
+			if (n.type === 'model3d' || n.type === 'image') return
+			const next = payload?.tripo3dSettings
+			if (!next || typeof next !== 'object') return
+			const existing = isRecord((n as unknown as Record<string, unknown>).tripo3dSettings)
+				? ((n as unknown as Record<string, unknown>).tripo3dSettings as Record<string, unknown>)
+				: {}
+			const merged = Object.fromEntries(
+				Object.entries({ ...existing, ...next }).filter(([, v]) => v !== undefined)
+			)
+			;(n as unknown as Record<string, unknown>).tripo3dSettings = merged
+		},
 		setNodeMeshySettings(
 			state,
 			payload: { nodeId: string; meshySettings: Partial<WorkflowMeshyNodeSettings> }
@@ -3154,6 +3407,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					outputHeight?: number
 					naturalWidth?: number
 					naturalHeight?: number
+					currentTime?: number
 				}
 			}
 		) {
@@ -3179,12 +3433,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				next.naturalHeight != null
 					? Math.max(1, Math.floor(Number(next.naturalHeight) || 1))
 					: undefined
+			const curTime =
+				next.currentTime != null && Number.isFinite(Number(next.currentTime))
+					? Math.max(0, Number(next.currentTime))
+					: undefined
 			n.videoSettings = {
 				...(n.videoSettings ?? {}),
 				...(outW != null ? { outputWidth: outW } : {}),
 				...(outH != null ? { outputHeight: outH } : {}),
 				...(natW != null ? { naturalWidth: natW } : {}),
-				...(natH != null ? { naturalHeight: natH } : {})
+				...(natH != null ? { naturalHeight: natH } : {}),
+				...(curTime != null ? { currentTime: curTime } : {})
 			}
 		},
 		setNodeStorySettings(

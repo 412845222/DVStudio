@@ -12,6 +12,7 @@ type VideoDimensionSettings = {
 	outputHeight?: number
 	naturalWidth?: number
 	naturalHeight?: number
+	currentTime?: number
 }
 
 type ImageSettingsUpdate = VideoDimensionSettings & {
@@ -68,18 +69,19 @@ export const useAIWorkflowNodeSettings = (payload: {
 		if (!isRecord(node)) return
 		const prev: Record<string, unknown> = isRecord(node.videoSettings) ? node.videoSettings : {}
 		const next: Record<string, unknown> = isRecord(input) ? input : {}
-		const keys: Array<'outputWidth' | 'outputHeight' | 'naturalWidth' | 'naturalHeight'> = [
+		const keys: Array<'outputWidth' | 'outputHeight' | 'naturalWidth' | 'naturalHeight' | 'currentTime'> = [
 			'outputWidth',
 			'outputHeight',
 			'naturalWidth',
-			'naturalHeight'
+			'naturalHeight',
+			'currentTime'
 		]
 		let changed = false
 		for (const key of keys) {
 			if (!Object.prototype.hasOwnProperty.call(next, key)) continue
 			const a = Number(prev[key])
 			const b = Number(next[key])
-			if (!Number.isFinite(a) || !Number.isFinite(b) || a !== b) {
+			if (!Number.isFinite(a) || !Number.isFinite(b) || Math.abs(a - b) > 0.001) {
 				changed = true
 				break
 			}

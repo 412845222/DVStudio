@@ -43,6 +43,7 @@ const props = withDefaults(
 		minRows?: number
 		maxRows?: number
 		autoResize?: boolean
+		canSubmitEmpty?: boolean
 	}>(),
 	{
 		placeholder: undefined,
@@ -50,7 +51,8 @@ const props = withDefaults(
 		maxLength: 2000,
 		minRows: 2,
 		maxRows: 8,
-		autoResize: true
+		autoResize: true,
+		canSubmitEmpty: false
 	}
 )
 
@@ -101,7 +103,8 @@ const adjustHeight = () => {
 const onKeydown = (e: KeyboardEvent) => {
 	if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 		e.preventDefault()
-		if (props.modelValue.trim() && !props.disabled) {
+		const canSubmit = props.canSubmitEmpty ? !props.disabled : (props.modelValue.trim() && !props.disabled)
+		if (canSubmit) {
 			emit('submit')
 		}
 	}

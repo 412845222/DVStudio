@@ -32,7 +32,11 @@ export class AgentRuntime {
       if (!ProviderClass) {
         throw new Error(`Unknown provider: ${providerId}`);
       }
-      this.providers.set(providerId, new ProviderClass(this.ctx));
+      if (providerId === 'dvsagent') {
+        this.providers.set(providerId, new ProviderClass(this.ctx, this.toolRegistry));
+      } else {
+        this.providers.set(providerId, new ProviderClass(this.ctx));
+      }
     }
     return this.providers.get(providerId);
   }
@@ -55,12 +59,12 @@ export class AgentRuntime {
 
     const content = String(p.content ?? p.prompt ?? '').trim();
     const attachments = Array.isArray(p.attachments) ? p.attachments : [];
-    const model = String(p.model || p.modelId || 'deepseek-chat').trim();
+    const model = String(p.model || p.modelId || 'doubao-seed-evolving').trim();
     const backend = String(p.backend || 'dvsagent').toLowerCase();
     const context = p.context || null;
     const history = Array.isArray(p.history) ? p.history.filter(m => m.role !== 'system') : [];
     const apiKeys = p.apiKeys || {};
-    const apiSource = String(p.apiSource || 'deepseek').toLowerCase();
+    const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
     const providedTools = Array.isArray(p.tools) ? p.tools : [];
 
@@ -173,11 +177,40 @@ export class AgentRuntime {
                 break;
 
               case ProviderEventType.TOOL_CALL:
-                nativeToolCalls.push({
-                  id: event.id || `call_${Date.now()}_${nativeToolCalls.length}`,
-                  name: event.name,
-                  arguments: event.arguments,
-                });
+                if (provider.executesOwnTools) {
+                  yield {
+                    type: 'tool_call_start',
+                    toolCallId: event.id || `tool_${Date.now()}`,
+                    tool: event.name,
+                    input: event.arguments,
+                  };
+                } else {
+                  nativeToolCalls.push({
+                    id: event.id || `call_${Date.now()}_${nativeToolCalls.length}`,
+                    name: event.name,
+                    arguments: event.arguments,
+                  });
+                }
+                break;
+
+              case ProviderEventType.TOOL_RESULT:
+                if (provider.executesOwnTools) {
+                  if (event.isError) {
+                    yield {
+                      type: 'tool_call_error',
+                      toolCallId: event.id,
+                      tool: event.name,
+                      error: (event.result && event.result.error) || 'Tool error',
+                    };
+                  } else {
+                    yield {
+                      type: 'tool_call_end',
+                      toolCallId: event.id,
+                      tool: event.name,
+                      output: event.result,
+                    };
+                  }
+                }
                 break;
 
               case ProviderEventType.ERROR:
@@ -204,6 +237,10 @@ export class AgentRuntime {
 
         if (!provider.supportsNativeToolCalls && nativeToolCalls.length === 0) {
           toolCallsToExecute = provider.parseToolCallsFromText(accumulatedText);
+        }
+
+        if (provider.executesOwnTools) {
+          toolCallsToExecute = [];
         }
 
         if (toolCallsToExecute.length === 0) {

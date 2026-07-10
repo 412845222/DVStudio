@@ -1,22 +1,23 @@
 /**
- * DeepSeek API 适配器
+ * OpenAI 兼容 API 适配器
  * 
- * 支持 DeepSeek Chat、DeepSeek V3、DeepSeek R1 等模型。
+ * 通用 OpenAI 兼容格式适配器，可用于任何遵循 OpenAI Chat Completions API 格式的服务。
  */
 
 import { BaseAdapter } from './base.mjs';
 import { upstreamError } from '../../../core/errors.mjs';
 
-const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
-
 /**
- * DeepSeek 适配器
+ * OpenAI 兼容适配器
  */
-export class DeepSeekAdapter extends BaseAdapter {
+export class OpenAICompatibleAdapter extends BaseAdapter {
   constructor(config = {}) {
     super(config);
-    this.baseUrl = config.baseUrl || DEEPSEEK_BASE_URL;
+    this.baseUrl = config.baseUrl;
     this.apiKey = config.apiKey || '';
+    if (!this.baseUrl) {
+      throw new Error('baseUrl is required for OpenAICompatibleAdapter');
+    }
   }
 
   getBaseUrl() {
@@ -27,21 +28,16 @@ export class DeepSeekAdapter extends BaseAdapter {
     return this.apiKey;
   }
 
-  supportsTools(modelId) {
-    // DeepSeek Chat 和 V3 支持工具调用
-    // DeepSeek R1 主要用于推理，但也可以配置工具
-    const toolCallingModels = ['deepseek-chat', 'deepseek-v3'];
-    return toolCallingModels.some(m => modelId.toLowerCase().includes(m));
-  }
-
-  supportsVision(modelId) {
-    // DeepSeek 目前不支持视觉
+  supportsTools(/* modelId */) {
     return false;
   }
 
-  parseThinking(response) {
-    // DeepSeek R1 返回 reasoning_content 字段
-    return response.reasoning_content || null;
+  supportsVision(/* modelId */) {
+    return false;
+  }
+
+  parseThinking(/* response */) {
+    return null;
   }
 
   /**
@@ -55,7 +51,6 @@ export class DeepSeekAdapter extends BaseAdapter {
 
     const streamTools = tools.length > 0 && this.supportsTools(modelId);
 
-    // 构建请求体
     const body = {
       model: modelId,
       messages: this._buildMessages(messages),
@@ -64,11 +59,6 @@ export class DeepSeekAdapter extends BaseAdapter {
 
     if (streamTools) {
       body.tools = this._buildToolsSchema(tools);
-    }
-
-    // 如果模型支持思考过程，启用它
-    if (modelId.toLowerCase().includes('r1')) {
-      body.reasoning = true;
     }
 
     let accumulatedContent = '';
@@ -97,19 +87,16 @@ export class DeepSeekAdapter extends BaseAdapter {
           const delta = parsed?.choices?.[0]?.delta;
 
           if (delta) {
-            // 文本增量
             if (delta.content) {
               accumulatedContent += delta.content;
               yield { type: 'text_delta', delta: delta.content };
             }
 
-            // 思考过程 (reasoning_content)
             if (delta.reasoning_content) {
               thinking += delta.reasoning_content;
               yield { type: 'thinking_delta', delta: delta.reasoning_content };
             }
 
-            // 工具调用
             if (delta.tool_calls) {
               for (const tc of delta.tool_calls) {
                 const index = tc.index || 0;
@@ -126,11 +113,10 @@ export class DeepSeekAdapter extends BaseAdapter {
             }
           }
         } catch (e) {
-          // 忽略解析错误
+          // ignore parse errors
         }
       }
 
-      // 解析完整的工具调用参数
       const parsedToolCalls = toolCalls
         .filter(tc => tc && tc.name)
         .map(tc => ({
@@ -139,7 +125,6 @@ export class DeepSeekAdapter extends BaseAdapter {
           arguments: this._parseArguments(tc.arguments)
         }));
 
-      // 如果有工具调用，先返回工具调用事件
       for (const tc of parsedToolCalls) {
         yield { type: 'tool_call', id: tc.id, name: tc.name, arguments: tc.arguments };
       }
@@ -147,7 +132,7 @@ export class DeepSeekAdapter extends BaseAdapter {
       yield { type: 'done', content: accumulatedContent, thinking };
 
     } catch (err) {
-      throw upstreamError(`DeepSeek API error: ${err.message}`);
+      throw upstreamError(`OpenAI compatible API error: ${err.message}`);
     }
   }
 
@@ -179,10 +164,6 @@ export class DeepSeekAdapter extends BaseAdapter {
       body.tools = this._buildToolsSchema(tools);
     }
 
-    if (modelId.toLowerCase().includes('r1')) {
-      body.reasoning = true;
-    }
-
     try {
       const res = await client.post(`${this.baseUrl}/chat/completions`, {
         headers: {
@@ -195,7 +176,7 @@ export class DeepSeekAdapter extends BaseAdapter {
 
       if (!res.ok) {
         const errMsg = res.body?.error?.message || `HTTP ${res.status}`;
-        throw upstreamError(`DeepSeek API error: ${errMsg}`);
+        throw upstreamError(`OpenAI compatible API error: ${errMsg}`);
       }
 
       const choice = res.body?.choices?.[0];
@@ -205,7 +186,7 @@ export class DeepSeekAdapter extends BaseAdapter {
       return { content, reasoning, raw: res.body };
 
     } catch (err) {
-      throw upstreamError(`DeepSeek API error: ${err.message}`);
+      throw upstreamError(`OpenAI compatible API error: ${err.message}`);
     }
   }
 

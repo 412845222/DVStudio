@@ -176,7 +176,7 @@ let screenshotDrag: {
 	startRect: { x: number; y: number; w: number; h: number }
 } | null = null
 
-const HANDLE_SIZE = 8
+const HANDLE_SIZE = 14
 
 const canvasStyle = computed(() => {
 	const w = naturalWidth.value || 1
@@ -490,38 +490,41 @@ const drawStroke = (
 }
 
 const drawScreenshotOverlay = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-	const rect = screenshotRect.value
-	if (!rect) return
+		const rect = screenshotRect.value
+		if (!rect) return
 
-	ctx.save()
-	ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-	ctx.fillRect(0, 0, w, rect.y)
-	ctx.fillRect(0, rect.y + rect.h, w, h - rect.y - rect.h)
-	ctx.fillRect(0, rect.y, rect.x, rect.h)
-	ctx.fillRect(rect.x + rect.w, rect.y, w - rect.x - rect.w, rect.h)
+		ctx.save()
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+		ctx.fillRect(0, 0, w, rect.y)
+		ctx.fillRect(0, rect.y + rect.h, w, h - rect.y - rect.h)
+		ctx.fillRect(0, rect.y, rect.x, rect.h)
+		ctx.fillRect(rect.x + rect.w, rect.y, w - rect.x - rect.w, rect.h)
 
-	ctx.strokeStyle = 'var(--theme-accent, #4c9aff)'
-	ctx.lineWidth = 2
-	ctx.setLineDash([6, 4])
-	ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
-	ctx.setLineDash([])
+		ctx.strokeStyle = '#22d3ee'
+		ctx.lineWidth = 3
+		ctx.setLineDash([8, 4])
+		ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
+		ctx.setLineDash([])
 
-	ctx.fillStyle = 'var(--theme-accent, #4c9aff)'
-	const handles: Array<[number, number]> = [
-		[rect.x, rect.y],
-		[rect.x + rect.w / 2, rect.y],
-		[rect.x + rect.w, rect.y],
-		[rect.x + rect.w, rect.y + rect.h / 2],
-		[rect.x + rect.w, rect.y + rect.h],
-		[rect.x + rect.w / 2, rect.y + rect.h],
-		[rect.x, rect.y + rect.h],
-		[rect.x, rect.y + rect.h / 2]
-	]
-	for (const [hx, hy] of handles) {
-		ctx.fillRect(hx - HANDLE_SIZE / 2, hy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE)
+		ctx.fillStyle = '#22d3ee'
+		ctx.strokeStyle = '#ffffff'
+		ctx.lineWidth = 2
+		const handles: Array<[number, number]> = [
+			[rect.x, rect.y],
+			[rect.x + rect.w / 2, rect.y],
+			[rect.x + rect.w, rect.y],
+			[rect.x + rect.w, rect.y + rect.h / 2],
+			[rect.x + rect.w, rect.y + rect.h],
+			[rect.x + rect.w / 2, rect.y + rect.h],
+			[rect.x, rect.y + rect.h],
+			[rect.x, rect.y + rect.h / 2]
+		]
+		for (const [hx, hy] of handles) {
+			ctx.fillRect(hx - HANDLE_SIZE / 2, hy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE)
+			ctx.strokeRect(hx - HANDLE_SIZE / 2, hy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE)
+		}
+		ctx.restore()
 	}
-	ctx.restore()
-}
 
 const redrawOverlay = () => {
 	const overlay = overlayRef.value

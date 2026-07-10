@@ -59,3 +59,10 @@ export async function agentGetConversationMessages(ctx, payload) {
 export async function agentAddConversationMessage(ctx, payload) {
 	return service.addAgentConversationMessage(ctx, payload);
 }
+
+/**
+ * 重命名 Agent 会话
+ */
+export async function agentRenameConversation(ctx, payload) {
+	return service.renameAgentConversation(ctx, payload);
+}

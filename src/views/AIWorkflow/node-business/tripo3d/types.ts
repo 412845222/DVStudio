@@ -25,6 +25,25 @@ export type Tripo3DTaskFamily =
 	| 'multiview_to_model'
 	| 'texture'
 	| 'refine'
+	| 'text_to_image'
+	| 'image_to_image'
+	| 'image_to_multiview'
+	| 'mesh_segment'
+	| 'mesh_smartsegment'
+	| 'mesh_complete'
+	| 'mesh_decimate'
+	| 'models_convert'
+
+export type Tripo3DTaskKind = 'model' | 'image'
+
+export function isTripo3DImageMode(mode: string | undefined | null): boolean {
+	const m = String(mode || '').trim()
+	return m === 'text_to_image' || m === 'image_to_image' || m === 'image_to_multiview'
+}
+
+export function getTripo3DTaskKind(mode: string | undefined | null): Tripo3DTaskKind {
+	return isTripo3DImageMode(mode) ? 'image' : 'model'
+}
 
 export type Tripo3DGenerateResponse =
 	| { ok: true; mode: string; taskId: string; status: string; raw?: unknown }
@@ -39,6 +58,7 @@ export type Tripo3DTaskResponse =
 			progress: number
 			thumbnailUrl: string
 			modelUrl: string
+			imageUrls?: string[]
 			statusText?: string
 			errorMessage?: string
 			raw?: unknown
@@ -75,6 +95,7 @@ export type Tripo3DTaskMirrorItem = {
 	pbr: boolean
 	thumbnailUrl?: string
 	modelUrl?: string
+	imageUrls?: string[]
 	localAssetUrl?: string
 	localAssetPath?: string
 	errorMessage?: string
@@ -127,9 +148,42 @@ export type Tripo3DGeneratePayload = {
 	model_task_id?: string
 	original_model_task_id?: string
 	model_url?: string
-	texture_prompt?: string
+	texture_prompt?: string | {
+		text?: string
+		image?: { file_token: string }
+		images?: Record<string, { file_token: string }>
+	}
+	seg_type?: 'image' | 'model'
+	granularity?: 'coarse' | 'medium' | 'fine'
+	hint?: string
+	transform?: number[]
+	part_names?: string[]
+	format?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+	bake?: boolean
+	flatten_bottom?: boolean
+	flatten_bottom_threshold?: number
+	texture_size?: number
+	texture_format?: string
+	pack_uv?: boolean
+	export_vertex_colors?: boolean
+	pivot_to_center_bottom?: boolean
+	scale_factor?: number
+	with_animation?: boolean
+	animate_in_place?: boolean
+	export_orientation?: '+x' | '-x' | '-y' | '+y'
+	fbx_preset?: 'blender' | '3dsmax' | 'mixamo'
+	force_symmetry?: boolean
+	size?: string
+	aspect_ratio?: string
+	output_format?: 'png' | 'jpeg'
+	watermark?: boolean
+	template?: string
+	num_outputs?: number
+	seed?: number
+	strength?: number
 	projectId?: number | string
 	nodeId?: string
+	submittedParams?: Record<string, unknown>
 	[key: string]: unknown
 }
 
@@ -159,6 +213,15 @@ export type Tripo3DComfyService = {
 	tripo3dGenerate: (
 		payload: Tripo3DGeneratePayload | Record<string, unknown>
 	) => Promise<Tripo3DGenerateResponse>
+	tripo3dGenerateTextToImage: (
+		payload: Record<string, unknown>
+	) => Promise<Tripo3DGenerateResponse>
+	tripo3dGenerateImageToImage: (
+		payload: Record<string, unknown>
+	) => Promise<Tripo3DGenerateResponse>
+	tripo3dGenerateImageToMultiview: (
+		payload: Record<string, unknown>
+	) => Promise<Tripo3DGenerateResponse>
 	tripo3dTask: (taskId: string) => Promise<Tripo3DTaskResponse>
 	tripo3dTasks: (query?: {
 		status?: string
@@ -173,6 +236,7 @@ export type Tripo3DComfyService = {
 export type Tripo3DEffectiveOutput = {
 	thumbnailUrl: string
 	modelUrl: string
+	imageUrls: string[]
 	localAssetUrl: string
 	localAssetPath: string
 }
@@ -211,7 +275,8 @@ export type Tripo3DPersistArtifactsResult = {
 export type Tripo3DImportArtifactsPayload = {
 	taskId: string
 	mode: string
-	modelUrl: string
+	modelUrl?: string
+	imageUrls?: string[]
 	thumbnailUrl?: string
 	prompt?: string
 	modelVersion?: string
@@ -222,6 +287,13 @@ export type CreateModel3DNodeAtCenterFn = (opts?: {
 	name?: string
 	taskId?: string
 	mode?: string
+}) => string | null
+
+export type CreateImageNodeAtCenterFn = (url: string, name?: string, opts?: {
+	taskId?: string
+	mode?: string
+	imageGenerationSource?: string
+	imageUrls?: string[]
 }) => string | null
 
 export type PersistExternalAssetPayload = {
@@ -290,6 +362,8 @@ export type Tripo3DTaskPanelItem = {
 	taskId?: string
 	mode: string
 	modeLabel: string
+	taskType: Tripo3DTaskKind
+	typeLabel: string
 	status: 'idle' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 	statusLabel: string
 	progress: number
@@ -298,6 +372,7 @@ export type Tripo3DTaskPanelItem = {
 	footnote: string
 	thumbnailUrl?: string
 	modelUrl?: string
+	imageUrls?: string[]
 	localAssetUrl?: string
 	localAssetPath?: string
 	createdAt: number
@@ -318,6 +393,8 @@ export type Tripo3DTaskPanelDetail = {
 	taskId?: string
 	nodeId?: string
 	modeLabel: string
+	taskType: Tripo3DTaskKind
+	typeLabel: string
 	statusLabel: string
 	progress: number
 	prompt?: string
@@ -325,6 +402,7 @@ export type Tripo3DTaskPanelDetail = {
 	statusText?: string
 	errorMessage?: string
 	modelUrl?: string
+	imageUrls?: string[]
 	assetUrl?: string
 	assetPath?: string
 	thumbnailUrl?: string
@@ -353,20 +431,108 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 	progress: number
 	thumbnailUrl: string
 	modelUrl: string
+	imageUrls: string[]
 	statusText: string
 	errorMessage: string
 } {
 	const record: Record<string, unknown> = isRecord(raw) ? raw : {}
+	const inputObj = isRecord(record.input) ? record.input : {}
+	const outputObj = isRecord(record.output) ? record.output : {}
+
+	const getStr = (...keys: string[]): string => {
+		for (const key of keys) {
+			const val = record[key] ?? inputObj[key] ?? outputObj[key]
+			if (isString(val) && val.trim()) return val.trim()
+		}
+		return ''
+	}
+
+	const getNum = (key: string, defaultValue = 0): number => {
+		const val = Number(record[key] ?? defaultValue)
+		return Number.isFinite(val) ? val : defaultValue
+	}
+
+	let thumbnailUrl = getStr('thumbnailUrl', 'thumbnail_url', 'thumbnail', 'rendered_image_url', 'preview_url')
+	if (!thumbnailUrl && isRecord(outputObj.thumbnail)) {
+		thumbnailUrl = String(outputObj.thumbnail.url ?? '').trim()
+	}
+
+	let modelUrl = ''
+	if (isRecord(outputObj.model)) {
+		modelUrl = String(outputObj.model.url ?? outputObj.model.glb ?? '').trim()
+	}
+	if (!modelUrl) {
+		modelUrl = getStr('modelUrl', 'model_url', 'pbr_model_url')
+	}
+	if (!modelUrl && isArray(outputObj.model_urls) && outputObj.model_urls.length > 0) {
+		const firstUrl = outputObj.model_urls[0]
+		if (isString(firstUrl)) modelUrl = firstUrl.trim()
+	}
+
+	const isImageUrl = (s: unknown): boolean => {
+		if (!isString(s)) return false
+		const str = s.trim().toLowerCase()
+		if (!str) return false
+		if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/')) {
+			if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(str)) return true
+			if (str.includes('/generation/') || str.includes('/image/') || str.includes('tripo')) return true
+		}
+		return false
+	}
+
+	const imageUrls: string[] = []
+	const collectImageUrl = (val: unknown) => {
+		if (!val) return
+		if (isString(val)) {
+			if (isImageUrl(val)) imageUrls.push(val.trim())
+		} else if (isRecord(val)) {
+			const u = String(val.url ?? val.image_url ?? val.src ?? val.image ?? val.uri ?? '').trim()
+			if (u && isImageUrl(u)) imageUrls.push(u)
+		}
+	}
+
+	const collectFromObject = (target: unknown, depth = 0) => {
+		if (!target || typeof target !== 'object' || depth > 5) return
+		if (isArray(target)) {
+			for (const item of target) collectFromObject(item, depth + 1)
+			return
+		}
+		const obj = target as Record<string, unknown>
+		for (const [key, value] of Object.entries(obj)) {
+			const keyLower = key.toLowerCase()
+			if (['images', 'image_urls', 'results', 'image', 'image_url', 'output_images', 'generated_images', 'result'].includes(keyLower)) {
+				if (isArray(value)) {
+					for (const item of value) collectImageUrl(item)
+				} else {
+					collectImageUrl(value)
+				}
+			}
+			if (isString(value) && isImageUrl(value)) {
+				imageUrls.push(value.trim())
+			} else if (typeof value === 'object' && value !== null) {
+				collectFromObject(value, depth + 1)
+			}
+		}
+	}
+
+	collectFromObject(outputObj)
+
+	const mode = getStr('mode', 'type')
+	const isImageMode = mode === 'text_to_image' || mode === 'image_to_image' || mode === 'image_to_multiview'
+	if (isImageMode) {
+		collectFromObject(record)
+	}
 
 	return {
-		taskId: isString(record.taskId) ? record.taskId.trim() : '',
-		mode: isString(record.mode) ? record.mode.trim() : '',
-		status: isString(record.status) ? record.status.trim() : '',
-		progress: isNumber(record.progress) ? record.progress : 0,
-		thumbnailUrl: isString(record.thumbnailUrl) ? record.thumbnailUrl.trim() : '',
-		modelUrl: isString(record.modelUrl) ? record.modelUrl.trim() : '',
-		statusText: isString(record.statusText) ? record.statusText.trim() : '',
-		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : ''
+		taskId: getStr('taskId', 'task_id', 'id'),
+		mode,
+		status: getStr('status'),
+		progress: getNum('progress'),
+		thumbnailUrl,
+		modelUrl,
+		imageUrls: [...new Set(imageUrls)],
+		statusText: getStr('statusText', 'status_text'),
+		errorMessage: getStr('errorMessage', 'error_message', 'error')
 	}
 }
 

@@ -140,8 +140,6 @@ let mainWindow = null
 let backendLastError = ''
 let clientSettings = null
 
-const FIXED_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
-const FIXED_DEEPSEEK_MODEL = 'deepseek-chat'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 
 function fetchRawBuffer(rawUrl) {
@@ -547,13 +545,11 @@ function getUserSettingsFilePath() {
 function getDefaultClientSettings() {
 	return {
 		defaultResolution: '1920x1080',
-		deepseekApiKey: '',
-		deepseekBaseUrl: FIXED_DEEPSEEK_BASE_URL,
-		deepseekModel: FIXED_DEEPSEEK_MODEL,
 		geminiApiKey: '',
 		geminiModel: FIXED_GEMINI_MODEL,
 		bytedanceApiKey: '',
 		meshyApiKey: '',
+		tripo3dApiKey: '',
 		githubToken: '',
 		ui: {
 			locale: '',
@@ -1424,8 +1420,10 @@ function registerIpc() {
 				sourceName: String(payload?.sourceName || ''),
 				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : 'markup',
 			})
-			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
-				try { imageMarkupWindow.close() } catch {}
+			if (payload?.exportType !== 'screenshot') {
+				if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
+					try { imageMarkupWindow.close() } catch {}
+				}
 			}
 			return { ok: true }
 		} catch (err) {

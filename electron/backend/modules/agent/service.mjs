@@ -43,7 +43,7 @@ export async function* streamAgentMessage(ctx, payload) {
 
   let backend = p.backend ? String(p.backend).toLowerCase() : null;
   if (!backend) {
-    const apiSource = String(p.apiSource || 'deepseek').toLowerCase();
+    const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const cliMode = p.cliMode === true || ['codex', 'copilot'].includes(apiSource);
     backend = cliMode ? apiSource : 'dvsagent';
   }
@@ -64,9 +64,9 @@ export async function* streamAgentMessage(ctx, payload) {
     yield* runtime.streamMessage({
       ...p,
       content,
-      model: String(p.model || p.modelId || 'deepseek-chat').trim(),
+      model: String(p.model || p.modelId || 'doubao-seed-evolving').trim(),
       backend,
-      apiSource: String(p.apiSource || 'deepseek').toLowerCase(),
+      apiSource: String(p.apiSource || 'bytedance').toLowerCase(),
       context: p.context || null,
       apiKeys: p.apiKeys || {},
       thinkingEffort: String(p.thinkingEffort || 'medium').toLowerCase(),
@@ -221,6 +221,31 @@ export function addAgentConversationMessage(ctx, payload) {
     return result;
   } catch (err) {
     logger.error(`Add agent conversation message error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * 重命名 Agent 会话
+ */
+export function renameAgentConversation(ctx, payload) {
+  const id = String(payload?.id || '').trim();
+  const title = String(payload?.title || '').trim();
+  if (!id) {
+    return { ok: false, error: 'id is required' };
+  }
+  if (!title) {
+    return { ok: false, error: 'title is required' };
+  }
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.updateTitle !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const result = repo.updateTitle(id, title);
+    return result;
+  } catch (err) {
+    logger.error(`Rename agent conversation error: ${err.message}`);
     return { ok: false, error: err.message };
   }
 }

@@ -58,7 +58,7 @@ export type WorkflowImageNodeSettings = {
 	/** crop rect in normalized source space */
 	crop?: WorkflowImageCrop
 	/** image generation source */
-	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini'
+	imageGenerationSource?: 'upload' | 'comfyui' | 'meshy' | 'gemini' | 'tripo3d'
 	/** last generated image URL */
 	lastGeneratedImageUrl?: string
 	/** Meshy image generation settings */
@@ -106,6 +106,38 @@ export type WorkflowImageNodeSettings = {
 		thumbnailUrl?: string
 		submittedParams?: Record<string, unknown>
 	}
+	/** Tripo3D image generation settings */
+	tripo3dImageSettings?: {
+		prompt?: string
+		negativePrompt?: string
+		taskId?: string
+		taskStatus?: WorkflowTripo3DTaskStatus
+		progress?: number
+		statusText?: string
+		errorMessage?: string
+		taskFamily?: WorkflowTripo3DMode
+		taskMode?: string
+		mode?: 'text_to_image' | 'image_to_image' | 'image_to_multiview'
+		model?: string
+		size?: string
+		numOutputs?: number
+		seed?: number
+		strength?: number
+		inputUrl?: string
+		submittedParams?: Record<string, unknown>
+		outputSummary?: {
+			preferredUrl?: string
+			imageUrls?: string[]
+			assetUrl?: string
+			assetPath?: string
+			thumbnailUrl?: string
+		}
+		thumbnailUrl?: string
+		outputImageUrl?: string
+		outputImages?: string[]
+		requestPayload?: Record<string, unknown>
+		responsePayload?: Record<string, unknown>
+	}
 }
 
 export type WorkflowVideoNodeSettings = {
@@ -114,6 +146,8 @@ export type WorkflowVideoNodeSettings = {
 	outputHeight?: number
 	/** source video natural size in pixels */
 	naturalWidth?: number
+	/** current playback time position in seconds */
+	currentTime?: number
 	naturalHeight?: number
 }
 
@@ -673,7 +707,7 @@ export type WorkflowMeshyModelSettings = {
 
 export type WorkflowTripo3DTaskStatus = 'idle' | 'pending' | 'queued' | 'running' | 'success' | 'succeeded' | 'failed' | 'cancelled' | 'canceled'
 
-export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine'
+export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine' | 'text_to_image' | 'image_to_image' | 'image_to_multiview' | 'mesh_segment' | 'mesh_smartsegment' | 'mesh_complete' | 'mesh_decimate' | 'models_convert'
 
 export type WorkflowTripo3DModelSeries = 'h' | 'p'
 
@@ -693,7 +727,7 @@ export type WorkflowTripo3DTextureAlignment = 'original_image' | 'geometry'
 
 export type WorkflowTripo3DOrientation = 'default' | 'align_image'
 
-export type WorkflowTripo3DRelationKind = 'model' | 'texture' | 'refine'
+export type WorkflowTripo3DRelationKind = 'model' | 'texture' | 'refine' | 'mesh_segment' | 'mesh_smartsegment' | 'mesh_complete' | 'mesh_decimate' | 'models_convert'
 
 export type WorkflowTripo3DInputSummary = {
 	promptSource?: 'linked' | 'manual' | 'none'
@@ -777,6 +811,12 @@ export type WorkflowTripo3DModelSettings = {
 	tripo3dDownloadTotalBytes?: number
 	tripo3dDownloadSpeedBytesPerSec?: number
 	tripo3dDownloadError?: string
+	tripo3dImageCount?: number
+	tripo3dImageUrls?: string[]
+	tripo3dUpstreamTaskId?: string
+	tripo3dUpstreamTaskFamily?: string
+	tripo3dUpstreamTaskStatus?: string
+	tripo3dTaskMode?: string
 }
 
 export type WorkflowModel3DNodeSettings = {
@@ -1026,6 +1066,18 @@ export type WorkflowNodeChatImageParams = {
 	meshyGenerateMultiView?: boolean
 	meshySeed?: number
 	meshyOutputImageCount?: number
+	tripo3dImageMode?: 'text_to_image' | 'image_to_image' | 'image_to_multiview'
+	tripo3dImageModel?: string
+	tripo3dImageSize?: string
+	tripo3dImageAspectRatio?: string
+	tripo3dImageOutputFormat?: 'png' | 'jpeg'
+	tripo3dImageWatermark?: boolean
+	tripo3dImageTemplate?: string
+	tripo3dImageNumOutputs?: number
+	tripo3dImageNegativePrompt?: string
+	tripo3dImageStrength?: number
+	tripo3dImageSeed?: number
+	tripo3dImageForceSingleImage?: boolean
 }
 
 export type WorkflowNodeChatVideoParams = {
@@ -1072,6 +1124,22 @@ export type WorkflowNodeChatModel3DParams = {
 	tripo3dExportUv?: boolean
 	tripo3dModelSeed?: number
 	tripo3dTextureSeed?: number
+	tripo3dTaskMode?: WorkflowTripo3DMode
+	tripo3dTextureModelVersion?: 'v2.5-20250123' | 'v3.0-20250812'
+	tripo3dTextureBake?: boolean
+	tripo3dTextureForceSingleImage?: boolean
+	tripo3dTextureSelectedImages?: WorkflowTripo3DSelectedImage[]
+	tripo3dSegType?: 'image' | 'model'
+	tripo3dGranularity?: 'coarse' | 'medium' | 'fine'
+	tripo3dDecimateModel?: 'v1.0' | 'v2.0'
+	tripo3dConvertFormat?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+	tripo3dConvertQuad?: boolean
+	tripo3dConvertFlattenBottom?: boolean
+	tripo3dConvertFaceLimit?: number
+	tripo3dConvertTextureSize?: number
+	tripo3dPartNames?: string[]
+	tripo3dHint?: string
+	tripo3dTransform?: number[]
 	meshyMode?: string
 	meshyAiModel?: string
 	meshyModelType?: string

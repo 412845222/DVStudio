@@ -1374,8 +1374,7 @@ export async function* blueprintChatStream(ctx, payload) {
 	const geminiBaseUrl = getGeminiBaseUrl()
 	const providerConfigs = [
 		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: geminiBaseUrl, model: 'gemini-3.5-flash', isNative: true },
-		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
-		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-evolving' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
 	]
 
@@ -1410,7 +1409,7 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	if (!cfg || !apiKey) {
-		yield wrapStreamError('No LLM API key configured (gemini/bytedance/deepseek/openai)')
+		yield wrapStreamError('No LLM API key configured (gemini/bytedance/openai)')
 		return
 	}
 
@@ -1604,8 +1603,7 @@ export async function blueprintChat(ctx, payload) {
 	const geminiBaseUrl = getGeminiBaseUrl()
 	const providerConfigs = [
 		{ prov: 'gemini', names: ['gemini', 'GeminiApiKey', 'gemini_api_key'], baseUrl: geminiBaseUrl, model: 'gemini-3.5-flash', isNative: true },
-		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-2-0-pro-260215' },
-		{ prov: 'deepseek', names: ['deepseek', 'deepseekApiKey'], baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+		{ prov: 'bytedance', names: ['bytedance_text', 'bytedance', 'doubao', 'seedream', 'bytedanceApiKey'], baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-seed-evolving' },
 		{ prov: 'openai', names: ['openai'], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
 	]
 
@@ -1633,7 +1631,7 @@ export async function blueprintChat(ctx, payload) {
 			if (cfg) break
 		}
 	}
-	if (!cfg) return { ok: false, error: 'No LLM API key configured (gemini/bytedance/deepseek/openai)' }
+	if (!cfg) return { ok: false, error: 'No LLM API key configured (gemini/bytedance/openai)' }
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
 	const chatMessages = [{ role: 'system', content: systemPrompt }]

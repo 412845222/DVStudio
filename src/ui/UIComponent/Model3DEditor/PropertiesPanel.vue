@@ -12,6 +12,21 @@
     <div class="m3de-corner m3de-corner-br" />
 
     <div class="m3de-panel-header">
+      <div v-if="selectedObject" class="m3de-selected-name">
+        <span class="m3de-selected-icon" :class="selectedObject.type">
+          <svg v-if="selectedObject.type === 'model'" viewBox="0 0 16 16" width="12" height="12">
+            <path d="M8 1L15 5v6l-7 4-7-4V5l7-4z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M8 1v7M1 5l7 3 7-3" fill="none" stroke="currentColor" stroke-width="1"/>
+          </svg>
+          <svg v-else-if="selectedObject.type === 'mesh'" viewBox="0 0 16 16" width="12" height="12">
+            <polygon points="8,2 14,7 12,14 4,14 2,7" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+          <svg v-else viewBox="0 0 16 16" width="12" height="12">
+            <path d="M3 3h10v10H3z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+        </span>
+        <span class="m3de-selected-name-text" :title="selectedObject.name">{{ selectedObject.name }}</span>
+      </div>
       <div class="m3de-tabs">
         <button
           class="m3de-tab"
@@ -474,14 +489,10 @@ const onWireframeToggle = () => {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--wf-primary) 3%, rgba(21, 24, 28, 0.92)) 0%,
-    rgba(18, 21, 25, 0.96) 100%
-  );
+  background: var(--wf-surface-glass, linear-gradient(180deg, color-mix(in srgb, var(--wf-primary) 3%, rgba(21, 24, 28, 0.92)) 0%, rgba(18, 21, 25, 0.96) 100%));
   backdrop-filter: blur(10px) saturate(130%);
   -webkit-backdrop-filter: blur(10px) saturate(130%);
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, rgba(255, 255, 255, 0.04));
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, var(--wf-border-subtle, rgba(255, 255, 255, 0.04)));
   overflow: hidden;
 }
 
@@ -500,13 +511,43 @@ const onWireframeToggle = () => {
 
 .m3de-panel-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--wf-primary) 8%, rgba(0, 0, 0, 0.3)),
+    color-mix(in srgb, var(--wf-primary) 8%, var(--wf-control-bg, rgba(0, 0, 0, 0.3))),
     color-mix(in srgb, var(--wf-primary) 2%, transparent)
   );
-  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 18%, rgba(255, 255, 255, 0.04));
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 18%, var(--wf-border-subtle, rgba(255, 255, 255, 0.04)));
+}
+
+.m3de-selected-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-primary) 10%, var(--wf-border-subtle, transparent));
+}
+
+.m3de-selected-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wf-primary);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--wf-primary) 40%, transparent));
+}
+
+.m3de-selected-icon.model { color: var(--wf-primary); }
+.m3de-selected-icon.mesh { color: #6ea8d8; }
+.m3de-selected-icon.group { color: var(--wf-text-muted); }
+
+.m3de-selected-name-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wf-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary) 20%, transparent);
 }
 
 .m3de-tabs {
@@ -641,8 +682,8 @@ const onWireframeToggle = () => {
 .m3de-vector-input input {
   width: 100%;
   padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, rgba(255, 255, 255, 0.08));
+  background: var(--wf-input-bg, rgba(0, 0, 0, 0.35));
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 20%, var(--wf-input-border, rgba(255, 255, 255, 0.08)));
   color: var(--wf-text);
   font-size: 11px;
   font-family: 'Consolas', 'Monaco', monospace;
@@ -651,7 +692,7 @@ const onWireframeToggle = () => {
 }
 
 .m3de-vector-input input:focus {
-  border-color: color-mix(in srgb, var(--wf-primary) 50%, transparent);
+  border-color: color-mix(in srgb, var(--wf-primary) 50%, var(--wf-input-focus-border, transparent));
   box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary) 15%, transparent);
 }
 
@@ -681,7 +722,7 @@ const onWireframeToggle = () => {
   -webkit-appearance: none;
   appearance: none;
   height: 3px;
-  background: color-mix(in srgb, var(--wf-primary) 15%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--wf-primary) 15%, var(--wf-border-subtle, rgba(255, 255, 255, 0.08)));
   outline: none;
   cursor: pointer;
 }
@@ -716,8 +757,8 @@ const onWireframeToggle = () => {
   display: inline-block;
   width: 32px;
   height: 16px;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid color-mix(in srgb, var(--wf-primary) 25%, rgba(255, 255, 255, 0.1));
+  background: var(--wf-control-bg, rgba(0, 0, 0, 0.4));
+  border: 1px solid color-mix(in srgb, var(--wf-primary) 25%, var(--wf-border-subtle, rgba(255, 255, 255, 0.1)));
   position: relative;
   transition: all 160ms ease;
 }

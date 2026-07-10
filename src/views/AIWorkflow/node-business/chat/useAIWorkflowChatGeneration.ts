@@ -279,6 +279,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		}
 	}
 
+	const getSourceLabel = (backend: AgentBackendType): 'dvsagent' | 'copilot-cli' | 'codex-cli' => {
+		if (backend === 'copilot') return 'copilot-cli'
+		if (backend === 'codex') return 'codex-cli'
+		return 'dvsagent'
+	}
+
 	const collectBlueprintContext = () => {
 		const nodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
 		const edges = typeof payload.getAllEdges === 'function' ? payload.getAllEdges() : []
@@ -362,7 +368,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		if (!apiKeysRepo?.getPlaintext) return {}
 
 		const providerAliases: Record<string, string[]> = {
-			deepseek: ['deepseek', 'deepseek_api', 'deepseek-chat'],
 			openai: ['openai', 'openai_api'],
 			bytedance: ['bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine'],
 			gemini: ['gemini', 'google_gemini', 'gemini_api']
@@ -435,21 +440,23 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					receivedError = true
 					payload.chatRunState.value = 'error'
 					setTaskStatus(t('aiworkflow.toast.aiTaskError'))
-					const errorKey = backend === 'copilot' ? 'aiworkflow.toast.copilotCliFailed' : 'aiworkflow.toast.agentChatFailed'
+					const isCli = backend === 'copilot' || backend === 'codex'
+					const errorKey = isCli ? 'aiworkflow.toast.copilotCliFailed' : 'aiworkflow.toast.agentChatFailed'
 					payload.pushToast(t(errorKey, { error: ev.message }), 'warn')
 					pushLocalExecFlow({
 						kind: 'error',
 						title: t('aiworkflow.toast.streamErrorTitle'),
 						detail: ev.message,
 						status: 'failed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					break
 				}
 				if (ev.type === 'text_delta') {
 					updateAssistantMessageContent(assistantMsgId, (prev) => prev + ev.content)
 					receivedAnyContent = true
-					setTaskStatus(backend === 'copilot'
+					const isCli = backend === 'copilot' || backend === 'codex'
+					setTaskStatus(isCli
 						? t('aiworkflow.toast.aiTaskCliGenerating')
 						: t('aiworkflow.toast.aiTaskGenerating'))
 					continue
@@ -482,7 +489,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolCalling'),
 						status: 'pending',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+						source: getSourceLabel(backend),
 					})
 					continue
 				}
@@ -498,7 +505,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolComplete'),
 						status: 'completed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+						source: getSourceLabel(backend),
 					})
 					continue
 				}
@@ -514,7 +521,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolFailed'),
 						status: 'failed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent',
+						source: getSourceLabel(backend),
 					})
 					continue
 				}
@@ -524,7 +531,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: t('aiworkflow.toast.planUpdateTitle'),
 						detail: ev.explanation,
 						status: 'completed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -535,7 +542,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Skill · ${skillName}`,
 						detail: ev.description || '',
 						status: String(ev.status || 'completed').toLowerCase() === 'failed' ? 'failed' : 'completed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -546,7 +553,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: t('aiworkflow.runtime.runtimeContextTitle'),
 						detail: `skills ${ev.skills.length} · mcp ${ev.mcpServers.length}`,
 						status: 'completed',
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -558,7 +565,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						detail: Array.isArray(ev.command) ? ev.command.join(' ') : String(ev.command || ''),
 						status: 'pending',
 						messageId: ev.messageId,
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -570,7 +577,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						detail: ev.status || 'completed',
 						status: String(ev.status || 'completed').toLowerCase() === 'completed' ? 'completed' : 'failed',
 						messageId: ev.messageId,
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -581,7 +588,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: ev.changes.length }),
 						status: 'pending',
 						messageId: ev.messageId,
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -592,7 +599,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						detail: t('aiworkflow.toast.aiTaskFileChangeCount', { count: ev.changes.length }),
 						status: 'completed',
 						messageId: ev.messageId,
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -604,7 +611,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						status: 'pending',
 						messageId: ev.messageId,
 						approvalRequestId: ev.requestId,
-						source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -628,14 +635,15 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				title: t('aiworkflow.toast.execErrorTitle'),
 				detail: errMsg,
 				status: 'failed',
-				source: backend === 'copilot' ? 'copilot-cli' : 'dvsagent'
+				source: getSourceLabel(backend)
 			})
 		}
 
 		const finalText =
 			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
 		if (!String(finalText).trim() && !receivedError && !receivedAnyContent) {
-			const emptyKey = backend === 'copilot' ? 'aiworkflow.toast.copilotCliEmpty' : 'aiworkflow.toast.aiTaskEmptyResponse'
+			const isCli = backend === 'copilot' || backend === 'codex'
+			const emptyKey = isCli ? 'aiworkflow.toast.copilotCliEmpty' : 'aiworkflow.toast.aiTaskEmptyResponse'
 			payload.pushToast(t(emptyKey), 'warn')
 		}
 		if (finalText) {
@@ -780,7 +788,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 			if (backend === 'dvsagent') {
 				const modelInfo = getChatModelById(payload.chatModelId.value)
-				let apiSource = modelInfo?.apiSource || 'deepseek'
+				let apiSource = modelInfo?.apiSource || 'bytedance'
 				let apiKeys: Record<string, string> = {}
 				try {
 					apiKeys = await getDwebApiKeys()
@@ -789,15 +797,55 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				}
 				const context = collectBlueprintContext()
 
+				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 				const chatBridge = getAgentChatBridge()
-				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
-				const session = await chatBridge.createSession('dvsagent', {
-					title: content.slice(0, 24),
-					model: payload.chatModelId.value,
-					cwd: undefined,
-					projectId: payload.currentProjectId.value
-				})
-				await handleChatStream('dvsagent', content, session.id, assistantMsg.id, {
+				const isNewSession = !sessionId
+
+				if (!sessionId) {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+					const session = await chatBridge.createSession('dvsagent', {
+						title: content.slice(0, 24),
+						model: payload.chatModelId.value,
+						cwd: undefined,
+						projectId: payload.currentProjectId.value
+					})
+					sessionId = session.id
+					payload.codexActiveSessionId.value = sessionId
+					payload.codexSessions.value = [
+						{
+							id: sessionId,
+							title: session.title || t('aiworkflow.page.chat.newConversation'),
+							modelName: session.model || payload.chatModelId.value || '',
+							status: 'active'
+						},
+						...payload.codexSessions.value.filter((s) => s.id !== sessionId)
+					]
+				} else {
+					const existingSession = payload.codexSessions.value.find((s) => s.id === sessionId)
+					if (existingSession && (existingSession.title === t('aiworkflow.page.chat.newConversation') || existingSession.title === '新对话')) {
+						const newTitle = content.slice(0, 24)
+						existingSession.title = newTitle
+						try {
+							const dvsagentService = chatBridge.getService('dvsagent') as any
+							if (dvsagentService && typeof dvsagentService.renameSession === 'function') {
+								await dvsagentService.renameSession(sessionId, newTitle)
+							}
+						} catch {
+							// ignore rename failure
+						}
+					}
+				}
+
+				try {
+					const dvsagentService = chatBridge.getService('dvsagent') as any
+					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
+						await dvsagentService.addSessionMessage(sessionId, 'user', content, payload.chatModelId.value)
+					}
+				} catch {
+					// ignore message persistence failure
+				}
+
+				await handleChatStream('dvsagent', content, sessionId, assistantMsg.id, {
 					history,
 					apiKeys,
 					apiSource,
@@ -805,6 +853,19 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					thinkingEffort: payload.chatThinkingEffort.value,
 					context,
 				})
+
+				try {
+					const dvsagentService = chatBridge.getService('dvsagent') as any
+					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
+						const assistantMsgContent = payload.chatMessages.value.find((m) => m.id === assistantMsg.id)?.content || ''
+						if (assistantMsgContent.trim()) {
+							await dvsagentService.addSessionMessage(sessionId, 'assistant', assistantMsgContent, payload.chatModelId.value)
+						}
+					}
+				} catch {
+					// ignore message persistence failure
+				}
+
 				return
 			}
 

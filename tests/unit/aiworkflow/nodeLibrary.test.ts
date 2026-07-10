@@ -10,7 +10,6 @@ describe('nodeLibrary', () => {
 			expect(actionIds).toContain('image-generation')
 			expect(actionIds).toContain('video-generation')
 			expect(actionIds).toContain('model3d')
-			expect(actionIds).toContain('meshy')
 			expect(actionIds).toContain('unreal-export')
 			expect(actionIds).toContain('scene-understanding')
 			expect(actionIds).toContain('scene-layout')
@@ -26,6 +25,7 @@ describe('nodeLibrary', () => {
 			expect(actionIds).not.toContain('text-merge')
 			expect(actionIds).not.toContain('story')
 			expect(actionIds).not.toContain('base')
+			expect(actionIds).not.toContain('meshy')
 		})
 
 		it('每个节点应该有唯一的actionId', () => {
@@ -96,8 +96,8 @@ describe('nodeLibrary', () => {
 	})
 
 	describe('Basic分类节点', () => {
-		it('总共应该有11个节点', () => {
-			expect(NEWUI2_NODE_CATALOG).toHaveLength(11)
+		it('总共应该有10个节点', () => {
+			expect(NEWUI2_NODE_CATALOG).toHaveLength(10)
 		})
 
 		it('文本节点应该存在', () => {
@@ -157,11 +157,11 @@ describe('nodeLibrary', () => {
 			expect(sceneNodes).toHaveLength(3)
 		})
 
-		it('3D相关节点应该有2个', () => {
+		it('3D相关节点应该有1个', () => {
 			const model3dNodes = NEWUI2_NODE_CATALOG.filter((n) =>
-				['model3d', 'meshy'].includes(n.nodeType)
+				['model3d'].includes(n.nodeType)
 			)
-			expect(model3dNodes).toHaveLength(2)
+			expect(model3dNodes).toHaveLength(1)
 		})
 
 		it('Unreal导出节点应该有1个', () => {

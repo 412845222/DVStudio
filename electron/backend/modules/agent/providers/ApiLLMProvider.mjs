@@ -2,24 +2,22 @@
  * API 类 LLM Provider 基类
  *
  * 封装 OpenAI 兼容 API 的通用逻辑：API Key 解析、BaseURL 选择、适配器创建、流式调用。
- * 支持通过 config.apiSource 动态选择 API 来源（deepseek/bytedance/gemini/openai）。
+ * 支持通过 config.apiSource 动态选择 API 来源（bytedance/gemini/openai）。
  */
 
 import { ILLMProvider, ProviderEventType } from './ILLMProvider.mjs';
-import { DeepSeekAdapter } from '../../chat/adapters/deepseek.mjs';
+import { OpenAICompatibleAdapter } from '../../chat/adapters/openai-compatible.mjs';
 import { BytedanceAdapter } from '../../chat/adapters/bytedance.mjs';
 import { GeminiAdapter } from '../../chat/adapters/gemini.mjs';
 import logger from '../../../core/logger.mjs';
 
 const BASE_URLS = {
-  deepseek: 'https://api.deepseek.com/v1',
   openai: 'https://api.openai.com/v1',
   bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 };
 
 const VENDOR_LABELS = {
-  deepseek: 'DeepSeek',
   bytedance: '火山方舟',
   gemini: 'Gemini',
   openai: 'OpenAI',
@@ -43,8 +41,6 @@ function resolveApiKey(ctx, apiSource) {
   switch (apiSource) {
     case 'bytedance':
       return tryGetApiKey(ctx, 'bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine');
-    case 'deepseek':
-      return tryGetApiKey(ctx, 'deepseek', 'deepseek_api', 'deepseek-chat');
     case 'gemini':
       return tryGetApiKey(ctx, 'gemini', 'google_gemini', 'gemini_api');
     case 'openai':
@@ -56,15 +52,14 @@ function resolveApiKey(ctx, apiSource) {
 
 function getAdapterClass(apiSource) {
   switch (apiSource) {
-    case 'deepseek':
     case 'openai':
-      return DeepSeekAdapter;
+      return OpenAICompatibleAdapter;
     case 'bytedance':
       return BytedanceAdapter;
     case 'gemini':
       return GeminiAdapter;
     default:
-      return DeepSeekAdapter;
+      return BytedanceAdapter;
   }
 }
 
@@ -79,11 +74,11 @@ export class ApiLLMProvider extends ILLMProvider {
   }
 
   getDefaultApiSource() {
-    return 'deepseek';
+    return 'bytedance';
   }
 
   getBaseUrl(apiSource) {
-    return BASE_URLS[apiSource] || BASE_URLS.deepseek;
+    return BASE_URLS[apiSource] || BASE_URLS.bytedance;
   }
 
   getVendorLabel(apiSource) {

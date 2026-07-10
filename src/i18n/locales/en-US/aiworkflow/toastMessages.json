@@ -128,6 +128,7 @@
   "aiworkflow.toast.generationFailed": "{type} generation failed: {message}",
   "aiworkflow.toast.meshyGenerateFailed": "Meshy generation failed: {error}",
   "aiworkflow.toast.geminiGenerateFailed": "Gemini generation failed: {error}",
+  "aiworkflow.toast.tripo3dGenerateFailed": "Tripo3D generation failed: {error}",
   "aiworkflow.toast.nodeTypeModel3d": "3D Model",
   "aiworkflow.toast.imageGenFailed": "Image {no} generation failed: {error}",
   "aiworkflow.toast.imageGenerationFailed": "Image generation failed: {error}",
@@ -169,5 +170,7 @@
   "aiworkflow.toast.unrealEditorNotRunning": "No running Unreal Editor detected, please start the editor and open the project first.",
   "aiworkflow.toast.unrealPluginInstalled": "Plugin installed successfully! Please restart Unreal Editor, then click the export button again.",
   "aiworkflow.toast.projectExportSuccess": "Project package exported successfully.",
-  "aiworkflow.toast.projectExportFailed": "Failed to export project package: {error}"
+  "aiworkflow.toast.projectExportFailed": "Failed to export project package: {error}",
+  "aiworkflow.toast.agentNodesConnected": "Nodes connected",
+  "aiworkflow.toast.agentNodeTextSet": "Set node {id} text"
 }

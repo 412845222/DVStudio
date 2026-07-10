@@ -69,6 +69,15 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 		if (node.type === 'model3d' && isRecord(node.model3dSettings)) {
 			return isRecord(node.model3dSettings.tripo3dModelSettings) ? node.model3dSettings.tripo3dModelSettings : {}
 		}
+		if (node.type === 'image' && isRecord((node as unknown as Record<string, unknown>).imageSettings)) {
+			const imgSettings = (node as unknown as Record<string, unknown>).imageSettings as Record<string, unknown>
+			const rawImgTripo = isRecord(imgSettings.tripo3dImageSettings) ? imgSettings.tripo3dImageSettings : {}
+			const normalized: Record<string, unknown> = {}
+			for (const [key, value] of Object.entries(rawImgTripo)) {
+				normalized[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
+			}
+			return normalized
+		}
 		const settings = (node as unknown as Record<string, unknown>).tripo3dSettings
 		return settings && typeof settings === 'object'
 			? (settings as unknown as Record<string, unknown>)
@@ -77,10 +86,12 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 
 	const connectedImageOutputUrl = (fromNode: WorkflowNode, fromAnchorId: string) => {
 		if (fromNode.type === 'image') return String(options.nodeResourceUrl(fromNode) ?? '').trim()
-		if (fromNode.type === 'tripo3d') {
-			const settings = getNodeTripo3DSettings(fromNode)
-			const effective = options.getTripo3DEffectiveModelSource(settings)
-			return String(effective.assetUrl || effective.preferredUrl || '').trim()
+		if (fromNode.type === 'model3d') {
+			if (String(fromAnchorId ?? '').trim() === 'out-image') {
+				const settings = getNodeTripo3DSettings(fromNode)
+				return String(settings.tripo3dThumbnailUrl ?? '').trim()
+			}
+			return ''
 		}
 		return ''
 	}
@@ -261,27 +272,65 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 	}
 
 	const buildTripo3DModelInputFromNode = async (fromNode: WorkflowNode) => {
-		if (fromNode.type === 'tripo3d') {
-			const settings = getNodeTripo3DSettings(fromNode)
-			const effective = options.getTripo3DEffectiveModelSource(settings)
-			const sourceUrl = String(effective.assetUrl || effective.preferredUrl || '').trim()
-			return {
-				modelUrl: sourceUrl || '',
-				sourceName: `tripo3d_${fromNode.id}.${effective.format}`
-			}
-		}
-
 		if (fromNode.type === 'model3d') {
 			const nodeSettings = fromNode as unknown as Record<string, unknown>
 			const modelSettings = isRecord(nodeSettings.model3dSettings)
 				? nodeSettings.model3dSettings
 				: {}
+			const tripo3dSettings = isRecord(modelSettings.tripo3dModelSettings)
+				? modelSettings.tripo3dModelSettings
+				: {}
+			const meshySettings = isRecord(modelSettings.meshyModelSettings)
+				? modelSettings.meshyModelSettings
+				: {}
+			const isTripo3DSource = modelSettings.modelGenerationSource === 'tripo3d'
+			const isMeshySource = modelSettings.modelGenerationSource === 'meshy'
 			const rawSource = String(modelSettings.modelAssetUrl ?? modelSettings.modelUrl ?? '').trim()
 			const format = modelSettings.modelFormat === 'gltf' ? 'gltf' : 'glb'
+			const tripo3dTaskId = String(tripo3dSettings.tripo3dTaskId ?? tripo3dSettings.tripo3dUpstreamTaskId ?? '').trim()
+			const meshyTaskId = String(meshySettings.meshyTaskId ?? '').trim()
+			const inputTaskId = tripo3dTaskId || meshyTaskId || undefined
 			return {
 				modelUrl: rawSource || '',
 				sourceName:
-					String(modelSettings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`
+					String(modelSettings.modelSourceName ?? '').trim() || `model_${fromNode.id}.${format}`,
+				inputTaskId,
+				isTripo3DGenerated: !!tripo3dTaskId || isTripo3DSource,
+				isMeshyGenerated: !!meshyTaskId || isMeshySource
+			}
+		}
+
+		if (fromNode.type === 'meshy') {
+			const nodeSettings = fromNode as unknown as Record<string, unknown>
+			const meshySettings = isRecord(nodeSettings.meshySettings) ? nodeSettings.meshySettings : {}
+			const meshyTaskId = String(meshySettings.meshyTaskId ?? '').trim()
+			return {
+				modelUrl: '',
+				sourceName: `meshy_${fromNode.id}.glb`,
+				inputTaskId: meshyTaskId || undefined,
+				isTripo3DGenerated: false,
+				isMeshyGenerated: !!meshyTaskId
+			}
+		}
+
+		if (fromNode.type === 'image' || fromNode.type === 'tripo3d') {
+			const nodeSettings = getNodeTripo3DSettings(fromNode)
+			const tripo3dTaskId = String(nodeSettings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(nodeSettings.tripo3dTaskFamily ?? nodeSettings.tripo3dTaskMode ?? '').trim()
+			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
+				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
+				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
+				|| tripo3dTaskFamily === 'models_convert'
+			const effective = options.getTripo3DEffectiveModelSource(nodeSettings as Tripo3DNodeSettingsLike)
+			const outputSummary = isRecord(nodeSettings.tripo3dOutputSummary) ? nodeSettings.tripo3dOutputSummary as Record<string, unknown> : {}
+			const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+			const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+			return {
+				modelUrl: sourceUrl || '',
+				sourceName: `tripo3d_${tripo3dTaskId || fromNode.id}.${effective.format || 'glb'}`,
+				inputTaskId: tripo3dTaskId && isModelTask ? tripo3dTaskId : undefined,
+				isTripo3DGenerated: !!(tripo3dTaskId && isModelTask),
+				isMeshyGenerated: false
 			}
 		}
 
@@ -289,18 +338,21 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 	}
 
 	const connectedTripo3DModelInput = async (nodeId: string) => {
-		const edge = options.getFirstIncomingEdge(nodeId, 'in-model')
+		let edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
+		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-model')
 		if (!edge) return null
 		const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) return null
 		return buildTripo3DModelInputFromNode(fromNode)
 	}
 
-	const isModelOutEdge = (e: WorkflowEdge) =>
-		String(e.fromAnchorId ?? '').trim() === 'out-model'
+	const isModelOutEdge = (e: WorkflowEdge) => {
+		const fromAnchorId = String(e.fromAnchorId ?? '').trim()
+		return fromAnchorId === 'out-0' || fromAnchorId === 'out-model'
+	}
 
 	const hasConnectedTripo3DConsumer = (node: WorkflowNode) => {
-		return options.hasOutgoingEdge(node.id, 'out-model')
+		return options.getOutgoingEdges(node.id).some(isModelOutEdge)
 	}
 
 	return {

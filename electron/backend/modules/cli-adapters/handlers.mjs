@@ -73,8 +73,11 @@ export async function cliStopSession(ctx, payload) {
 export async function cliSendMessage(ctx, payload) {
   const p = payload || {};
   const sessionId = String(p.sessionId || '').trim();
-  const content = String(p.content || '').trim();
-  const options = p.options || {};
+  const content = String(p.content || p.message || '').trim();
+  const options = {
+    model: p.model,
+    ...(p.options || {}),
+  };
 
   if (!sessionId) {
     throw invalidParamsError('sessionId is required');
@@ -202,6 +205,25 @@ export async function cliSaveConfig(ctx, payload) {
 }
 
 /**
+ * 重置适配器配置（清除缓存和登录状态）
+ */
+export async function cliResetConfig(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  try {
+    const result = await cliAdapterManager.resetAdapterConfig(adapterName);
+    return { ok: true, adapter: adapterName, ...result };
+  } catch (err) {
+    throw internalError(`Failed to reset config: ${err.message}`);
+  }
+}
+
+/**
  * 执行环境检查修复操作
  */
 export async function cliRunFix(ctx, payload) {
@@ -231,4 +253,33 @@ export async function cliRunFix(ctx, payload) {
   } catch (err) {
     throw internalError(`Fix action failed: ${err.message}`);
   }
+}
+
+/**
+ * 启动认证流程（流式）
+ */
+export async function cliStartAuth(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  return cliAdapterManager.startAuthFlow(adapterName);
+}
+
+/**
+ * 取消认证流程
+ */
+export async function cliCancelAuth(ctx, payload) {
+  const p = payload || {};
+  const adapterName = String(p.adapter || '').trim();
+
+  if (!adapterName) {
+    throw invalidParamsError('adapter is required');
+  }
+
+  cliAdapterManager.cancelAuth(adapterName);
+  return { ok: true };
 }

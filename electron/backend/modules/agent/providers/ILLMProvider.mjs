@@ -8,6 +8,7 @@ export const ProviderEventType = {
   TEXT_DELTA: 'text_delta',
   THINKING_DELTA: 'thinking_delta',
   TOOL_CALL: 'tool_call',
+  TOOL_RESULT: 'tool_result',
   DONE: 'done',
   ERROR: 'error',
 };
@@ -32,6 +33,14 @@ export class ILLMProvider {
    * @type {boolean}
    */
   get supportsNativeToolCalls() { throw new Error('supportsNativeToolCalls must be implemented by subclass'); }
+
+  /**
+   * 是否自行管理工具调用循环
+   * - true (CLI类): Provider/CLI 进程自行通过 MCP 执行工具，Runtime 仅透传 UI 事件，不调用 ToolRegistry
+   * - false (API类): Runtime 管理工具调用循环，调用 ToolRegistry 执行工具并将结果回传 LLM
+   * @type {boolean}
+   */
+  get executesOwnTools() { return false; }
 
   /**
    * 检查 Provider 是否可用

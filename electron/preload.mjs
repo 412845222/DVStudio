@@ -553,10 +553,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
 	},
-	// ===== Tripo3D 3D 模型生成 =====
+	// ===== Tripo3D 3D 模型生成 & 图片生成 =====
 	tripo3d: {
 		health: () => invoke('dweb:tripo3d:health'),
 		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
+		generateTextToImage: (payload) => invoke('dweb:tripo3d:generate:text-to-image', payload || {}),
+		generateImageToImage: (payload) => invoke('dweb:tripo3d:generate:image-to-image', payload || {}),
+		generateImageToMultiview: (payload) => invoke('dweb:tripo3d:generate:image-to-multiview', payload || {}),
 		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
 		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
 		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),
@@ -624,6 +627,12 @@ contextBridge.exposeInMainWorld('dweb', {
 		stream: (payload) => createIpcStreamGenerator('dweb:agent', payload || {}),
 		getContext: (payload) => invoke('dweb:agent:context', payload || {}),
 		abort: (payload) => invoke('dweb:agent:abort', payload || {}),
+		listConversations: (payload) => invoke('dweb:agent:list-conversations', payload || {}),
+		createConversation: (payload) => invoke('dweb:agent:create-conversation', payload || {}),
+		deleteConversation: (payload) => invoke('dweb:agent:delete-conversation', payload || {}),
+		renameConversation: (payload) => invoke('dweb:agent:rename-conversation', payload || {}),
+		getConversationMessages: (payload) => invoke('dweb:agent:get-conversation-messages', payload || {}),
+		addConversationMessage: (payload) => invoke('dweb:agent:add-conversation-message', payload || {}),
 	},
 	// ===== Agent Skills =====
 	agentSkills: {
@@ -681,8 +690,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			builtinToolListenerMap.delete(id)
 			return { ok: true }
 		},
-		respondBuiltinTool: (requestId, result) => {
-			ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+		respondBuiltinTool: (requestId, result, error) => {
+			if (error) {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { error })
+			} else {
+				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
+			}
 		},
 	},
 	// ===== CLI 适配器 =====
@@ -699,7 +712,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		listModels: (payload) => invoke('dweb:cli:list-models', payload || {}),
 		getConfig: (payload) => invoke('dweb:cli:get-config', payload || {}),
 		saveConfig: (payload) => invoke('dweb:cli:save-config', payload || {}),
+		resetConfig: (payload) => invoke('dweb:cli:reset-config', payload || {}),
 		runFix: (payload) => invoke('dweb:cli:run-fix', payload || {}),
+		cliStartSession: (payload) => invoke('dweb:cli:start-session', payload || {}),
+		cliStopSession: (payload) => invoke('dweb:cli:stop-session', payload || {}),
+		cliSendMessageStream: (payload) => createIpcStreamGenerator('dweb:cli:send-message', payload || {}),
+		startAuthStream: (payload) => createIpcStreamGenerator('dweb:cli:start-auth', payload || {}),
+		cancelAuth: (payload) => invoke('dweb:cli:cancel-auth', payload || {}),
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),

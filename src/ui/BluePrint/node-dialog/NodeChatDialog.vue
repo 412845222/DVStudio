@@ -86,6 +86,7 @@
 						:modelValue="draft"
 						:placeholder="placeholder"
 						:disabled="submitting"
+						:can-submit-empty="canSubmitEmpty"
 						@update:model-value="onDraftUpdate"
 						@submit="handleSubmit"
 					/>
@@ -233,9 +234,12 @@ const inputParamPreviewRefsResolved = computed(() => {
 	return props.inputParamPreviewRefs ?? []
 })
 
+const hasConnectedParams = computed(() => inputParamPreviewRefsResolved.value.length > 0)
+
+const canSubmitEmpty = computed(() => hasConnectedParams.value)
+
 const submitDisabled = computed(() => {
-	const hasConnectedParams = inputParamPreviewRefsResolved.value.length > 0
-	return props.submitting || (!props.draft.trim() && !hasConnectedParams)
+	return props.submitting || (!props.draft.trim() && !hasConnectedParams.value)
 })
 
 const fallbackParamLabel = (item: InputParamPreviewRef, index: number) => {

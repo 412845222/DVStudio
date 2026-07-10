@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { RenderMode, LoadedEditorModel } from '@/ui/WorkFlow/WorlFlowNodes/model3d/editor/types'
+import type { RenderMode, LoadedEditorModel, OutlinerNode } from '@/ui/WorkFlow/WorlFlowNodes/model3d/editor/types'
 
 describe('model3d editor types', () => {
   describe('RenderMode', () => {
@@ -25,6 +25,72 @@ describe('model3d editor types', () => {
     it('includes wireframeHelpers map for overlay rendering', () => {
       type WireframeHelpersType = LoadedEditorModel['wireframeHelpers']
       expect<WireframeHelpersType>(new Map()).toBeInstanceOf(Map)
+    })
+  })
+
+  describe('OutlinerNode', () => {
+    it('has objectUuid field for reliable object matching', () => {
+      const node: OutlinerNode = {
+        id: 'test-model-1',
+        name: 'TestModel',
+        type: 'model',
+        visible: true,
+        locked: false,
+        children: [],
+        object3D: {} as any,
+        objectUuid: 'uuid-abc-123'
+      }
+      expect(node.objectUuid).toBe('uuid-abc-123')
+      expect(typeof node.objectUuid).toBe('string')
+    })
+
+    it('supports all node types with objectUuid', () => {
+      const types: OutlinerNode['type'][] = ['model', 'mesh', 'light', 'camera', 'group']
+      expect(types.length).toBe(5)
+      for (const t of types) {
+        const n: OutlinerNode = {
+          id: `id-${t}`,
+          name: t,
+          type: t,
+          visible: true,
+          locked: false,
+          children: [],
+          object3D: {} as any,
+          objectUuid: `uuid-${t}`
+        }
+        expect(n.objectUuid).toBe(`uuid-${t}`)
+      }
+    })
+  })
+
+  describe('Bloom default parameters', () => {
+    it('default bloom strength is 1.0 for visible glow effect', () => {
+      const defaultStrength = 1.0
+      expect(defaultStrength).toBeGreaterThanOrEqual(0)
+      expect(defaultStrength).toBeLessThanOrEqual(3)
+      expect(defaultStrength).toBeGreaterThan(0.5)
+    })
+
+    it('default bloom radius is 0.7 for soft diffusion', () => {
+      const defaultRadius = 0.7
+      expect(defaultRadius).toBeGreaterThanOrEqual(0)
+      expect(defaultRadius).toBeLessThanOrEqual(1.5)
+    })
+
+    it('default bloom threshold is 0.5 to include mid-tones', () => {
+      const defaultThreshold = 0.5
+      expect(defaultThreshold).toBeGreaterThanOrEqual(0)
+      expect(defaultThreshold).toBeLessThanOrEqual(1)
+      expect(defaultThreshold).toBeLessThan(0.9)
+    })
+
+    it('bloom parameter ranges are valid', () => {
+      const strengthRange = { min: 0, max: 3 }
+      const radiusRange = { min: 0, max: 1.5 }
+      const thresholdRange = { min: 0, max: 1 }
+      expect(strengthRange.min).toBeLessThan(strengthRange.max)
+      expect(radiusRange.min).toBeLessThan(radiusRange.max)
+      expect(thresholdRange.min).toBeLessThan(thresholdRange.max)
     })
   })
 

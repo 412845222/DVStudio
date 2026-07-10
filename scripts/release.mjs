@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const ROOT = path.resolve(__dirname, '..')
 const PKG_PATH = path.resolve(ROOT, 'package.json')
+const ELECTRON_CONFIG_PATH = path.resolve(ROOT, 'electron', 'config.mjs')
 
 const COLOR_RED = '\x1b[0;31m'
 const COLOR_GREEN = '\x1b[0;32m'
@@ -214,12 +215,22 @@ function main() {
 	fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
 	success('package.json updated.')
 
+	log('')
+	log(`Updating electron/config.mjs version to ${newVersion}...`)
+	const electronConfig = fs.readFileSync(ELECTRON_CONFIG_PATH, 'utf8')
+	const updatedElectronConfig = electronConfig.replace(
+		/export const APP_VERSION = '[\d.]+'/,
+		`export const APP_VERSION = '${newVersion}'`
+	)
+	fs.writeFileSync(ELECTRON_CONFIG_PATH, updatedElectronConfig, 'utf8')
+	success('electron/config.mjs updated.')
+
 	const tagName = `v${newVersion}`
 	const releaseBranch = `release/${tagName}`
 
 	log('')
 	log('Committing version bump...')
-	runGit(['add', 'package.json'])
+	runGit(['add', 'package.json', 'electron/config.mjs'])
 	runGit(['commit', '-m', `chore: release ${newVersion}`, '--no-verify'])
 	success('Committed version bump.')
 

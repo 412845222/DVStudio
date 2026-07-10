@@ -23,7 +23,6 @@
 							:value="codexActiveSessionId"
 							@change="onAgentSessionChange"
 						>
-							<option value="">{{ t('aichat.dock.newSession') }}</option>
 							<option v-for="s in codexSessions" :key="s.id" :value="s.id">
 								{{ s.title || t('aichat.dock.newSession') }}
 							</option>
@@ -45,11 +44,51 @@
 								/>
 							</svg>
 						</button>
+						<template v-if="isRenamingSession && renamingSessionId === codexActiveSessionId">
+							<input
+								class="chat-history-rename-input"
+								type="text"
+								v-model="renamingSessionTitle"
+								:placeholder="t('aichat.dock.defaultSessionName')"
+								@keydown.enter="onConfirmRenameSession"
+								@keydown.escape="onCancelRenameSession"
+								@blur="onConfirmRenameSession"
+								ref="renameInputRef"
+							/>
+						</template>
+						<button
+							v-else
+							class="chat-history-rename-btn"
+							type="button"
+							:title="t('aichat.dock.renameSessionTitle')"
+							:disabled="!codexActiveSessionId"
+							@pointerdown.stop
+							@click.stop="onRenameActiveAgentSession"
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									fill="none"
+								/>
+								<path
+									d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									fill="none"
+								/>
+							</svg>
+						</button>
 						<button
 							class="chat-history-delete-btn"
 							type="button"
 							:title="t('aichat.dock.deleteSessionTitle')"
-							:disabled="!codexActiveSessionId || codexSessions?.length <= 1"
+							:disabled="!codexActiveSessionId"
 							@pointerdown.stop
 							@click.stop="emit('codex-delete-session', codexActiveSessionId)"
 						>
@@ -245,8 +284,10 @@
 								:disabled="sending || !modelOptions.length"
 								@change="onAgentModelSelectionChange"
 							>
-								<option v-if="!modelOptions.length" value="">{{ t('aichat.dock.noModelAvailable') }}</option>
-								<template v-if="agentBackend === 'dvsagent'">
+								<template v-if="!modelOptions.length">
+									<option value="">{{ t('aichat.dock.noModelAvailable') }}</option>
+								</template>
+								<template v-else-if="agentBackend === 'dvsagent'">
 									<optgroup
 										v-for="group in dvsAgentModelGroups"
 										:key="group.label"
@@ -376,7 +417,7 @@ export type NanoBananaRefAnchor = {
 	connectedFrom?: string
 }
 
-export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent'
+export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent' | 'codex-cli'
 
 export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
@@ -420,6 +461,9 @@ import {
 	getChatModelCatalog,
 	getChatModelOptions,
 	isCopilotEnabled,
+	isCodexEnabled,
+	isCodexModel,
+	initCodexConfig,
 	legacyModelFromNeedType,
 	needTypeFromLegacyModel,
 	type ChatApiSource,
@@ -584,7 +628,7 @@ const visibleApiSourceOptions = computed(() =>
 	apiSourceOptions.value.filter((item) => item.value === 'local-exec')
 )
 
-const modelKey = computed(() => (props.modelKey ?? 'deepseek') as ChatLegacyModelKey)
+const modelKey = computed(() => (props.modelKey ?? 'text') as ChatLegacyModelKey)
 
 const isAgentMode = computed(() => true)
 const isRegularMode = computed(() => false)
@@ -709,30 +753,28 @@ const onMeshyImageConfigChange = (nextConfig: MeshyImageConfig) => {
 const textModel = ref('auto')
 
 const modelOptions = computed(() => {
-	if (props.agentBackend === 'dvsagent') {
+	if (agentBackend.value === 'dvsagent') {
 		const allTextModels = getChatModelCatalog().filter(
-			(m) => m.needType === 'text' && m.apiSource !== 'local-exec'
+			(m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot' && m.apiSource !== 'codex'
 		)
 		return allTextModels
 	}
-	if (props.agentBackend === 'copilot') {
+	if (agentBackend.value === 'copilot') {
 		return getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
 	}
-	return getChatModelOptions('text', 'local-exec')
+	if (agentBackend.value === 'codex') {
+		return getChatModelOptions('text', 'codex').filter(m => m.apiSource === 'codex')
+	}
+	return []
 })
 
 const dvsAgentModelGroups = computed(() => {
 	const groups: Array<{ label: string; models: ChatModelCatalogItem[] }> = []
 	const sourceToLabel: Record<string, string> = {
-		deepseek: t('aichat.dock.sourceDeepSeek'),
 		bytedance: t('aichat.dock.sourceByteDance'),
-		gemini: t('aichat.dock.sourceGemini'),
-		copilot: t('aichat.dock.sourceCopilotCli')
+		gemini: t('aichat.dock.sourceGemini')
 	}
-	const sources: Array<'deepseek' | 'bytedance' | 'gemini' | 'copilot'> = ['deepseek', 'bytedance', 'gemini']
-	if (isCopilotEnabled()) {
-		sources.push('copilot')
-	}
+	const sources: Array<'bytedance' | 'gemini'> = ['bytedance', 'gemini']
 	for (const src of sources) {
 		const models = modelOptions.value.filter((m) => m.apiSource === src)
 		if (models.length) {
@@ -797,6 +839,14 @@ const getDefaultModelId = () => {
 		const recommended = list.find((m) => m.recommended && m.apiSource === 'bytedance')
 		if (recommended) return recommended.id
 	}
+	if (agentBackend.value === 'copilot') {
+		const autoModel = list.find((m) => m.id === 'auto')
+		if (autoModel) return autoModel.id
+	}
+	if (agentBackend.value === 'codex') {
+		const codexMini = list.find((m) => m.id === 'codex-mini')
+		if (codexMini) return codexMini.id
+	}
 	return list[0].id
 }
 
@@ -804,7 +854,17 @@ watch(
 	() => agentBackend.value,
 	() => {
 		const list = modelOptions.value
-		if (!list.length) return
+		if (agentBackend.value === 'copilot') {
+			emit('update:modelKey', 'codex')
+		} else if (agentBackend.value === 'codex') {
+			emit('update:modelKey', 'codex')
+		} else if (agentBackend.value === 'dvsagent') {
+			emit('update:modelKey', 'text')
+		}
+		if (!list.length) {
+			textModel.value = ''
+			return
+		}
 		if (!list.some((m) => m.id === activeModelId.value)) {
 			textModel.value = getDefaultModelId()
 		}
@@ -820,8 +880,13 @@ const applyModelSelection = (modelId: string) => {
 
 const normalizeModelSelection = () => {
 	needType.value = 'text'
-	const expectedSource = props.agentBackend === 'copilot' ? 'copilot' : 'local-exec'
-	if (apiSource.value !== expectedSource) apiSource.value = expectedSource
+	if (agentBackend.value === 'copilot') {
+		apiSource.value = 'copilot'
+	} else if (agentBackend.value === 'codex') {
+		apiSource.value = 'codex'
+	} else if (agentBackend.value === 'dvsagent') {
+		apiSource.value = 'all'
+	}
 	const list = modelOptions.value
 	if (!list.length) return
 	if (!list.some((m) => m.id === activeModelId.value)) {
@@ -1076,13 +1141,11 @@ const onApiSourceChange = (e: Event) => {
 	if (!isRegularMode.value) return
 	const v = String((e.target as HTMLSelectElement).value || 'all')
 	apiSource.value =
-		v === 'deepseek'
-			? 'deepseek'
-			: v === 'gemini'
-				? 'gemini'
-				: v === 'bytedance'
-					? 'bytedance'
-					: 'all'
+		v === 'gemini'
+			? 'gemini'
+			: v === 'bytedance'
+				? 'bytedance'
+				: 'all'
 	normalizeModelSelection()
 }
 
@@ -1101,7 +1164,12 @@ const onAgentModelSelectionChange = (e: Event) => {
 	const id = String((e.target as HTMLSelectElement).value || '').trim()
 	if (!id) return
 	textModel.value = id
-	emit('update:modelKey', 'codex')
+	const selected = modelOptions.value.find((m) => m.id === id)
+	if (selected) {
+		emit('update:modelKey', selected.legacyModelKey)
+	} else {
+		emit('update:modelKey', agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text')
+	}
 }
 
 const onAgentBackendChange = (e: Event) => {
@@ -1430,6 +1498,11 @@ const agentFlowDetail = (ev: CodexFlowEvent) => {
 }
 const codexActiveSessionId = computed(() => String(props.codexActiveSessionId || '').trim())
 
+const isRenamingSession = ref(false)
+const renamingSessionId = ref('')
+const renamingSessionTitle = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
 const onSelectCodexSession = (sessionId: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
@@ -1445,14 +1518,25 @@ const onAgentSessionChange = (e: Event) => {
 const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
-	const next = window.prompt(
-		t('aichat.dock.renamePrompt'),
-		String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
-	)
-	if (next == null) return
-	const title = String(next || '').trim()
-	if (!title) return
+	renamingSessionId.value = id
+	renamingSessionTitle.value = String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
+	isRenamingSession.value = true
+	nextTick(() => {
+		renameInputRef.value?.focus()
+		renameInputRef.value?.select()
+	})
+}
+
+const onConfirmRenameSession = () => {
+	const id = renamingSessionId.value
+	const title = String(renamingSessionTitle.value || '').trim()
+	isRenamingSession.value = false
+	if (!id || !title) return
 	emit('codex-rename-session', { sessionId: id, title })
+}
+
+const onCancelRenameSession = () => {
+	isRenamingSession.value = false
 }
 
 const onCodexApproval = (messageId: string, decision: 'accept' | 'decline') => {
@@ -1510,6 +1594,7 @@ const onWindowResize = () => {
 onMounted(() => {
 	window.addEventListener('resize', onWindowResize, { passive: true })
 	emitLayoutChanged()
+	void initCodexConfig()
 })
 
 onBeforeUnmount(() => {
@@ -1531,7 +1616,7 @@ onBeforeUnmount(() => {
 watch(
 	() => [props.sending, props.modelKey] as const,
 	([sending, mk], [prevSending]) => {
-		const isNano = (mk ?? 'deepseek') === 'nanobanana' || (mk ?? 'deepseek') === 'seedance'
+		const isNano = (mk ?? 'text') === 'nanobanana' || (mk ?? 'text') === 'seedance'
 		if (!isNano) return
 		if (sending && !prevSending) {
 			nanoStartAt.value = Date.now()
@@ -1941,8 +2026,8 @@ watch(
 }
 
 .codex-flow-item.failed {
-	border-color: color-mix(in srgb, #b34a4a 65%, transparent);
-	box-shadow: 0 0 10px color-mix(in srgb, #b34a4a 35%, transparent);
+	border-color: color-mix(in srgb, var(--wf-danger) 65%, transparent);
+	box-shadow: 0 0 10px color-mix(in srgb, var(--wf-danger) 35%, transparent);
 }
 
 .codex-flow-title {
@@ -1978,14 +2063,14 @@ watch(
 }
 
 .codex-mini-btn.danger {
-	border-color: color-mix(in srgb, #b34a4a 55%, transparent);
-	color: color-mix(in srgb, #e88a8a 90%, transparent);
+	border-color: color-mix(in srgb, var(--wf-danger) 55%, transparent);
+	color: var(--wf-danger);
 }
 
 .codex-mini-btn.danger:hover {
-	border-color: #b34a4a;
-	color: #e88a8a;
-	box-shadow: 0 0 8px color-mix(in srgb, #b34a4a 40%, transparent);
+	border-color: var(--wf-danger);
+	color: var(--wf-danger);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-danger) 40%, transparent);
 }
 
 .codex-empty {
@@ -2358,6 +2443,56 @@ watch(
 	height: 16px;
 }
 
+.chat-history-rename-btn {
+	width: 28px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	border-radius: 6px;
+	background: transparent;
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, var(--wf-text, #e2e8f0));
+	cursor: pointer;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+}
+
+.chat-history-rename-btn:hover:not(:disabled) {
+	border-color: var(--wf-primary, #1f9d84);
+	color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+}
+
+.chat-history-rename-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.chat-history-rename-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.chat-history-rename-input {
+	height: 28px;
+	min-width: 120px;
+	max-width: 200px;
+	padding: 0 8px;
+	border: 1px solid var(--wf-primary, #1f9d84);
+	border-radius: 6px;
+	background: var(--wf-bg-secondary, #1e293b);
+	color: var(--wf-text, #e2e8f0);
+	font-size: 12px;
+	outline: none;
+	transition: all 0.2s ease;
+}
+
+.chat-history-rename-input:focus {
+	border-color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+}
+
 .chat-history-delete-btn {
 	width: 28px;
 	height: 28px;
@@ -2513,7 +2648,7 @@ watch(
 	display: flex;
 	flex-direction: column;
 	padding: 8px;
-	border-right: 1px solid rgba(148, 163, 184, 0.08);
+	border-right: 1px solid var(--wf-border-subtle);
 }
 
 .agent-side-panel {
@@ -2681,8 +2816,8 @@ watch(
 }
 
 .agent-skill-card.failed {
-	border-color: #e57373;
-	box-shadow: 0 0 8px color-mix(in srgb, #e57373 30%, transparent);
+	border-color: var(--wf-danger);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-danger) 30%, transparent);
 }
 
 .agent-skill-title {
@@ -3022,10 +3157,10 @@ watch(
 }
 
 .chat-dock-send.stopping {
-	border-color: #e57373;
-	background: color-mix(in srgb, #e57373 14%, transparent);
-	color: #e57373;
-	text-shadow: 0 0 4px color-mix(in srgb, #e57373 30%, transparent);
+	border-color: var(--wf-danger);
+	background: color-mix(in srgb, var(--wf-danger) 14%, transparent);
+	color: var(--wf-danger);
+	text-shadow: 0 0 4px color-mix(in srgb, var(--wf-danger) 30%, transparent);
 }
 
 .chat-dock-send:hover {

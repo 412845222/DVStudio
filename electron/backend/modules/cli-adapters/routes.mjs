@@ -17,5 +17,8 @@ export const routes = [
 	{ channel: 'dweb:cli:list-models', handler: handlers.cliListModels },
 	{ channel: 'dweb:cli:get-config', handler: handlers.cliGetConfig },
 	{ channel: 'dweb:cli:save-config', handler: handlers.cliSaveConfig },
+	{ channel: 'dweb:cli:reset-config', handler: handlers.cliResetConfig },
 	{ channel: 'dweb:cli:run-fix', handler: handlers.cliRunFix },
+	{ channel: 'dweb:cli:start-auth:stream', handler: handlers.cliStartAuth, stream: true },
+	{ channel: 'dweb:cli:cancel-auth', handler: handlers.cliCancelAuth },
 ];

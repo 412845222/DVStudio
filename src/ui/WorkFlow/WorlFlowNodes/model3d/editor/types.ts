@@ -15,10 +15,31 @@ export type RenderMode =
 
 export type LightingPreset = 
   | 'studio'
+  | 'soft-studio'
   | 'outdoor'
   | 'dark'
   | 'no-light'
   | 'custom'
+
+export interface ManualLightingParams {
+  ambientIntensity?: number
+  mainLightIntensity?: number
+  fillLightIntensity?: number
+  rimLightIntensity?: number
+  exposure?: number
+  lightAzimuth?: number
+  lightElevation?: number
+}
+
+export interface RenderingQualityOptions {
+  ssaoEnabled: boolean
+  colorCorrectionEnabled: boolean
+  bloomStrength: number
+  bloomRadius: number
+  bloomThreshold: number
+  toneMappingExposure: number
+  environmentIntensity: number
+}
 
 export type TransformMode =
   | 'translate'
@@ -55,6 +76,7 @@ export interface OutlinerNode {
   locked: boolean
   children: OutlinerNode[]
   object3D: ThreeObject
+  objectUuid: string
 }
 
 export interface EditorLoadProgress {
