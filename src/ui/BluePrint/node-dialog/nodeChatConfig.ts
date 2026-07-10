@@ -4,35 +4,40 @@ export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.nodeType.text',
 	image: 'aiConfig.nodeType.image',
 	video: 'aiConfig.nodeType.video',
-	model3d: 'aiConfig.nodeType.model3d'
+	model3d: 'aiConfig.nodeType.model3d',
+	blender: 'aiConfig.nodeType.blender'
 }
 
 export const NODE_CHAT_TYPE_COLORS: Record<WorkflowNodeChatType, string> = {
 	text: '#f59e0b',
 	image: '#3b82f6',
 	video: '#22c55e',
-	model3d: '#a855f7'
+	model3d: '#a855f7',
+	blender: '#e87d0d'
 }
 
 export const NODE_CHAT_TYPE_ICONS: Record<WorkflowNodeChatType, string> = {
 	text: '📝',
 	image: '🖼️',
 	video: '🎬',
-	model3d: '🧊'
+	model3d: '🧊',
+	blender: '🟠'
 }
 
 export const NODE_CHAT_PLACEHOLDERS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.placeholder.text',
 	image: 'aiConfig.placeholder.image',
 	video: 'aiConfig.placeholder.video',
-	model3d: 'aiConfig.placeholder.model3d'
+	model3d: 'aiConfig.placeholder.model3d',
+	blender: 'aiConfig.placeholder.blender'
 }
 
 export const NODE_CHAT_TYPE_DESCRIPTIONS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.nodeTypeDesc.text',
 	image: 'aiConfig.nodeTypeDesc.image',
 	video: 'aiConfig.nodeTypeDesc.video',
-	model3d: 'aiConfig.nodeTypeDesc.model3d'
+	model3d: 'aiConfig.nodeTypeDesc.model3d',
+	blender: 'aiConfig.nodeTypeDesc.blender'
 }
 
 export const NODE_CHAT_ASPECT_RATIO_OPTIONS = [
@@ -160,6 +165,10 @@ export const NODE_CHAT_TEXT_MODEL_OPTIONS = [
 ]
 
 export const NODE_CHAT_SEED_MODEL_VERSION_OPTIONS = [
+	{ value: 'doubao-seed-evolving', label: 'aiConfig.seedVersion.evolving' },
+	{ value: 'doubao-seed-2-1-pro-260628', label: 'aiConfig.seedVersion.pro21' },
+	{ value: 'doubao-seed-2-1-turbo-260628', label: 'aiConfig.seedVersion.turbo21' },
+	{ value: 'doubao-seed-character-260628', label: 'aiConfig.seedVersion.character' },
 	{ value: 'doubao-seed-2-0-pro-260215', label: 'aiConfig.seedVersion.pro' },
 	{ value: 'doubao-seed-2-0-lite-260428', label: 'aiConfig.seedVersion.lite' },
 	{ value: 'doubao-seed-2-0-mini-260428', label: 'aiConfig.seedVersion.mini' },
@@ -851,13 +860,22 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				tripo3dHint: '',
 				tripo3dTransform: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
 			}
+		case 'blender':
+			return {
+				agentBackend: 'dvsagent',
+				model: 'bytedance',
+				modelId: 'doubao-seed-evolving',
+				textModelVersion: 'doubao-seed-evolving',
+				geminiTextModelVersion: 'gemini-3.5-flash',
+				thinkingEffort: 'disabled'
+			}
 		default:
 			return {}
 	}
 }
 
 export const isNodeChatTypeSupported = (type: string): boolean => {
-	return type === 'text' || type === 'image' || type === 'video' || type === 'model3d'
+	return type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender'
 }
 
 export const NODE_CHAT_TRIPO3D_IMAGE_MODE_OPTIONS = [
@@ -1016,6 +1034,19 @@ export const getTripo3DImageTemplateOptions = (mode: string) => {
 	return NODE_CHAT_TRIPO3D_TEXT_TO_IMAGE_TEMPLATE_OPTIONS
 }
 
+export const NODE_CHAT_BLENDER_AGENT_OPTIONS = [
+	{ value: 'dvsagent', label: 'aiConfig.blender.agentDvsagent' },
+	{ value: 'codex', label: 'aiConfig.blender.agentCodex' },
+	{ value: 'copilot', label: 'aiConfig.blender.agentCopilot' }
+] as const
+
+export const NODE_CHAT_BLENDER_THINKING_OPTIONS = [
+	{ value: 'disabled', label: 'aiConfig.blender.thinkingDisabled' },
+	{ value: 'low', label: 'aiConfig.blender.thinkingLow' },
+	{ value: 'medium', label: 'aiConfig.blender.thinkingMedium' },
+	{ value: 'high', label: 'aiConfig.blender.thinkingHigh' }
+] as const
+
 export const NODE_CHAT_TRIPO3D_TASK_MODE_OPTIONS = [
 	{ value: 'text_to_model', label: 'aiConfig.tripo3dTaskMode.textToModel' },
 	{ value: 'image_to_model', label: 'aiConfig.tripo3dTaskMode.imageToModel' },
@@ -1063,8 +1094,8 @@ export const isTripo3DGenerateMode = (mode: string): boolean => {
 }
 
 export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null => {
-	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d') {
-		return type
+	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') {
+		return type as WorkflowNodeChatType
 	}
 	return null
 }

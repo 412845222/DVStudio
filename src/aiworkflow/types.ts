@@ -970,6 +970,69 @@ export type WorkflowMeshyNodeSettings = {
 	meshyRelationSummary?: WorkflowMeshyRelationSummary
 }
 
+export type WorkflowBlenderChatMessage = {
+	id: string
+	role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result' | 'tool'
+	content: string
+	timestamp: number
+	toolName?: string
+	toolArgs?: Record<string, unknown>
+	toolResult?: unknown
+	toolError?: string
+	toolCallId?: string
+	status?: 'running' | 'completed' | 'error'
+	isStreaming?: boolean
+	isThinking?: boolean
+	isError?: boolean
+	collapsed?: boolean
+}
+
+export type WorkflowBlenderNodeSettings = {
+	mcpServerId?: string
+	mcpHost?: string
+	mcpPort?: number
+	mcpStatus?:
+		| 'unchecked'
+		| 'checking'
+		| 'no-blender'
+		| 'no-addon'
+		| 'blender-not-running'
+		| 'addon-not-started'
+		| 'disconnected'
+		| 'connecting'
+		| 'connected'
+		| 'error'
+	mcpError?: string | null
+	blenderPath?: string | null
+	blenderVersion?: string | null
+	hasBlender?: boolean
+	hasAddon?: boolean
+	blenderRunning?: boolean
+	addonListening?: boolean
+	importStatus?: 'idle' | 'downloading' | 'importing' | 'completed' | 'error'
+	importProgress?: number
+	importError?: string | null
+	chatMessages?: WorkflowBlenderChatMessage[]
+	isResponding?: boolean
+	agentBackend?: string
+	agentSessionId?: string
+	model?: string
+	modelId?: string
+	geminiTextModelVersion?: string
+	textModelVersion?: string
+	thinkingEffort?: string
+	/** 上一轮 Agent 会话的产物（供 out-0 下游取数，设计文档 §4.5） */
+	lastOutputs?: {
+		/** Agent 最终回复/场景信息文本 */
+		text?: string
+		/** 视口截图（data URL 或 dweb:// 资产 URL） */
+		imageUrl?: string
+		/** 导出模型文件路径（二期） */
+		modelPath?: string
+		updatedAt?: number
+	}
+}
+
 export type WorkflowNode = {
 	id: string
 	type: string
@@ -994,6 +1057,7 @@ export type WorkflowNode = {
 	comfyuiSettings?: WorkflowComfyUINodeSettings
 	model3dSettings?: WorkflowModel3DNodeSettings
 	meshySettings?: WorkflowMeshyNodeSettings
+	blenderSettings?: WorkflowBlenderNodeSettings
 	tripo3dSettings?: WorkflowTripo3DModelSettings
 	/** For chat dialog: user-entered draft text */
 	nodeChatDraft?: string
@@ -1022,7 +1086,7 @@ export type WorkflowEdge = {
 	createdAt: number
 }
 
-export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d'
+export type WorkflowNodeChatType = 'text' | 'image' | 'video' | 'model3d' | 'blender'
 
 export type WorkflowNodeChatTextParams = {
 	modelId?: string
@@ -1162,17 +1226,25 @@ export type WorkflowNodeChatModel3DParams = {
 	meshyTextureImageNodeId?: string
 }
 
+export type WorkflowNodeChatBlenderParams = {
+	agentBackend?: 'dvsagent' | 'codex' | 'copilot'
+	modelId?: string
+	thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+}
+
 export type WorkflowNodeChatParamRecord =
 	& Partial<WorkflowNodeChatTextParams>
 	& Partial<WorkflowNodeChatImageParams>
 	& Partial<WorkflowNodeChatVideoParams>
 	& Partial<WorkflowNodeChatModel3DParams>
+	& Partial<WorkflowNodeChatBlenderParams>
 
 export type WorkflowNodeChatParams = {
 	text?: WorkflowNodeChatParamRecord
 	image?: WorkflowNodeChatParamRecord
 	video?: WorkflowNodeChatParamRecord
 	model3d?: WorkflowNodeChatParamRecord
+	blender?: WorkflowNodeChatParamRecord
 }
 
 export type WorkflowNodeChatSubmitPayload = {

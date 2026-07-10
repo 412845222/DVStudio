@@ -12,5 +12,6 @@
   "nodes.type.story": "剧情",
   "nodes.type.comfyui": "ComfyUI",
   "nodes.type.model3d": "3D模型",
-  "nodes.type.meshy": "Meshy模型生成"
+  "nodes.type.meshy": "Meshy模型生成",
+  "nodes.type.blender": "Blender"
 }

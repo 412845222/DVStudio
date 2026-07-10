@@ -41,10 +41,18 @@ export interface CreateSessionOptions {
 	projectId?: number | null
 }
 
+export interface ChatAttachment {
+	type?: string
+	name?: string
+	url?: string
+	data?: string
+}
+
 export interface SendMessageOptions {
 	content: string
 	model?: string
 	references?: Array<{ path: string; kind?: string; name?: string }>
+	attachments?: ChatAttachment[]
 	skillHints?: string[]
 	executionHints?: string[]
 	agentMode?: 'agent' | 'ask' | 'plan'
@@ -54,6 +62,8 @@ export interface SendMessageOptions {
 	context?: unknown
 	apiKeys?: Record<string, string>
 	apiSource?: string
+	systemPrompt?: string
+	tools?: string[]
 }
 
 export interface ChatModelInfo {

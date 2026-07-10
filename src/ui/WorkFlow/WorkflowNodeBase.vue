@@ -170,6 +170,7 @@
 			@update:params="(value) => emit('node-chat-update-params', value)"
 			@close="emit('node-chat-close')"
 			@submit="(payload) => emit('node-chat-submit', payload)"
+			@stop="emit('node-chat-stop')"
 			@remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 		/>
 
@@ -356,6 +357,7 @@ const emit = defineEmits<{
 			| 'comfyui'
 			| 'model3d'
 			| 'meshy'
+			| 'blender'
 	): void
 	(e: 'open-node-library'): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
@@ -363,6 +365,7 @@ const emit = defineEmits<{
 	(e: 'node-chat-update-params', value: Record<string, unknown>): void
 	(e: 'node-chat-close'): void
 	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
+	(e: 'node-chat-stop'): void
 	(e: 'node-chat-remove-param-ref', item: InputParamPreviewRef): void
 	(e: 'auto-resize', height: number): void
 }>()
@@ -436,7 +439,7 @@ const nodeChatParams = computed(() => props.nodeChatParams ?? {})
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
-	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d') return type
+	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') return type
 	return null
 })
 
@@ -463,6 +466,7 @@ const typeLabel = computed(() => {
 	if (props.nodeType === 'comfyui') return t('nodes.type.comfyui')
 	if (props.nodeType === 'model3d') return t('nodes.type.model3d')
 	if (props.nodeType === 'meshy') return t('nodes.type.meshy')
+	if (props.nodeType === 'blender') return t('nodes.type.blender')
 	return t('nodes.type.base')
 })
 
@@ -477,6 +481,7 @@ const NODE_TYPE_TO_ACTION_ID: Record<string, string> = {
 	'comfyui': 'comfyui',
 	'model3d': 'model3d',
 	'meshy': 'meshy',
+	'blender': 'blender',
 	'unreal-export': 'unreal-export',
 	'text-merge': 'text-merge',
 	'story': 'story',
@@ -1311,6 +1316,50 @@ onBeforeUnmount(() => {
 
 .wf-node.is-auto-height .wf-node-footer {
 	overflow: visible;
+}
+
+.wf-node.wf-node-text .wf-node-body,
+.wf-node.wf-node-text-merge .wf-node-body,
+.wf-node.wf-node-blender .wf-node-body {
+	overflow: hidden;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.wf-node-text .wf-node-footer {
+	display: none;
+}
+
+.wf-node.wf-node-blender .wf-node-body {
+	padding: 0;
+}
+
+.wf-node.wf-node-blender .wf-node-footer {
+	overflow: visible;
+	flex-shrink: 0;
+	padding: 0;
+}
+
+.wf-node.wf-node-text .wf-text,
+.wf-node.wf-node-text-merge .wf-merge {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.wf-node-text .wf-textarea,
+.wf-node.wf-node-text-merge .wf-merge-output {
+	width: 100%;
+	box-sizing: border-box;
+	flex: 1;
+	min-height: 0;
 }
 
 .wf-anchors {

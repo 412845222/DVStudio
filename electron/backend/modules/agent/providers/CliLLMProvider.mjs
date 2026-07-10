@@ -68,10 +68,13 @@ export class CliLLMProvider extends ILLMProvider {
     const parts = [];
     for (const msg of messages) {
       if (msg.role === 'system') {
-        parts.push(msg.content);
+        parts.push(typeof msg.content === 'string' ? msg.content : this.extractTextFromParts(msg.content));
         parts.push('');
       } else if (msg.role === 'user') {
-        parts.push(`\n\nHuman: ${typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)}`);
+        const text = typeof msg.content === 'string'
+          ? msg.content
+          : this.extractTextFromParts(msg.content);
+        parts.push(`\n\nHuman: ${text}`);
       } else if (msg.role === 'assistant') {
         const content = typeof msg.content === 'string' ? msg.content : '';
         parts.push(`\n\nAssistant: ${content}`);
@@ -81,6 +84,17 @@ export class CliLLMProvider extends ILLMProvider {
     }
     parts.push('\n\nAssistant:');
     return parts.join('');
+  }
+
+  extractTextFromParts(content) {
+    if (!content || typeof content !== 'object') return String(content || '');
+    if (Array.isArray(content)) {
+      return content
+        .filter(p => p && typeof p === 'object' && p.type === 'text')
+        .map(p => p.text || '')
+        .join('');
+    }
+    return JSON.stringify(content);
   }
 
   async *streamGenerate(sessionId, input) {

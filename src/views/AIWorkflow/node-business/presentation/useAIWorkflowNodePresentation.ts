@@ -15,6 +15,7 @@ import WorkflowSceneUnderstandingNode from '../../../../ui/WorkFlow/WorlFlowNode
 import WorkflowSceneDecomposeNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowSceneDecomposeNode.vue'
 import WorkflowSceneLayoutNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowSceneLayoutNode.vue'
 import WorkflowUnrealExportNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowUnrealExportNode.vue'
+import WorkflowBlenderNode from '../../../../ui/WorkFlow/WorlFlowNodes/WorkflowBlenderNode.vue'
 import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { isWorkflowLocalAssetUrl, resolveBackendUrl } from '../../../../network/backendConfig'
 import { t } from '../../../../i18n'
@@ -84,7 +85,8 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 			story: t('aiworkflow.runtime.nodeTypeStory'),
 			comfyui: 'ComfyUI',
 			model3d: t('aiworkflow.runtime.nodeTypeModel3d'),
-			meshy: 'Meshy'
+			meshy: 'Meshy',
+			blender: 'Blender'
 		}
 		return labels[node.type] || t('aiworkflow.runtime.nodeTypeDefault')
 	}
@@ -110,7 +112,8 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 			story: 'STORY',
 			comfyui: 'COMFY',
 			model3d: '3D',
-			meshy: 'MESH'
+			meshy: 'MESH',
+			blender: 'BLEND'
 		}
 		return codes[node.type] || 'NODE'
 	}
@@ -147,6 +150,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 		if (node.type === 'comfyui') return WorkflowComfyUINode
 		if (node.type === 'model3d') return WorkflowModel3DNode
 		if (node.type === 'meshy') return WorkflowMeshyModelNode
+		if (node.type === 'blender') return WorkflowBlenderNode
 		return WorkflowNodeBase
 	}
 
@@ -282,6 +286,7 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 			comfyui: '#0ea5e9',
 			model3d: '#3b82f6',
 			meshy: '#0ea5e9',
+			blender: '#e87d0d',
 			base: '#1f9d84'
 		}
 		return typeColors[node.type] || '#1f9d84'

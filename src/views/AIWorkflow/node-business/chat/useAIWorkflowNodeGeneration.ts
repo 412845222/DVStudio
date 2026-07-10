@@ -149,6 +149,19 @@ const getNodeEffectiveImageUrl = (
 		console.log('[collectReferenceImages] 从lastGeneratedImageUrl获取URL:', lastGenerated)
 		return lastGenerated
 	}
+	// Blender 节点：上一轮 Agent 会话的视口截图产物（设计文档 §4.5）
+	const blenderSettings =
+		typeof node.blenderSettings === 'object' && node.blenderSettings
+			? (node.blenderSettings as Record<string, unknown>)
+			: undefined
+	if (blenderSettings) {
+		const lastOutputs =
+			typeof blenderSettings.lastOutputs === 'object' && blenderSettings.lastOutputs
+				? (blenderSettings.lastOutputs as Record<string, unknown>)
+				: {}
+		const blenderImage = typeof lastOutputs.imageUrl === 'string' ? String(lastOutputs.imageUrl).trim() : ''
+		if (blenderImage) return blenderImage
+	}
 	const meshySettings =
 		typeof imageSettings.meshyImageSettings === 'object' && imageSettings.meshyImageSettings
 			? (imageSettings.meshyImageSettings as Record<string, unknown>)

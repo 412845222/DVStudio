@@ -11,7 +11,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { internalError, invalidParamsError } from '../../core/errors.mjs';
 import logger from '../../core/logger.mjs';
 
-const MAX_TOOL_CALLS = 10; // 工具调用循环保护
+const MAX_TOOL_CALLS = 35; // 工具调用循环保护
 
 /**
  * MCP Server 管理器
@@ -26,6 +26,18 @@ class MCPServerManager {
     
     /** @type {Map<string, AbortController>} */
     this.activeStreams = new Map();
+    
+    /** @type {Map<string, Function>} 服务器意外关闭时的回调 */
+    this.closeListeners = new Map();
+  }
+
+  /**
+   * 注册服务器意外关闭监听器（主动 disconnect 不触发）
+   * @param {string} serverId - 服务器 ID
+   * @param {Function} listener - 回调函数
+   */
+  onServerClosed(serverId, listener) {
+    this.closeListeners.set(serverId, listener);
   }
 
   /**
@@ -60,7 +72,22 @@ class MCPServerManager {
 
     try {
       await client.connect(transport);
-      this.servers.set(serverId, { client, config: { type: 'stdio', command, args, env, cwd }, transport });
+      const entry = { client, config: { type: 'stdio', command, args, env, cwd }, transport, closing: false };
+      this.servers.set(serverId, entry);
+      // 监听子进程/传输层意外关闭（如 Python 进程崩溃退出）
+      client.onclose = () => {
+        if (entry.closing) return; // 主动断开，忽略
+        logger.warn(`MCP Server ${serverId} transport closed unexpectedly (child process may have crashed)`);
+        if (this.servers.get(serverId) === entry) {
+          this.servers.delete(serverId);
+        }
+        const listener = this.closeListeners.get(serverId);
+        if (listener) {
+          try { listener({ serverId, reason: 'transport-closed' }); } catch (err) {
+            logger.error(`MCP close listener for ${serverId} failed: ${err.message}`);
+          }
+        }
+      };
       logger.info(`MCP Server ${serverId} connected via STDIO`);
       return { ok: true, serverId };
     } catch (err) {
@@ -212,7 +239,9 @@ class MCPServerManager {
       return { ok: true, serverId };
     }
 
-    const { client, transport } = this.servers.get(serverId);
+    const entry = this.servers.get(serverId);
+    entry.closing = true;
+    const { client, transport } = entry;
     
     try {
       if (transport && typeof transport.close === 'function') {

@@ -1999,6 +1999,113 @@
 					</template>
 				</template>
 			</template>
+			<template v-else-if="nodeType === 'blender'">
+				<div class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.agentBackend') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderAgentOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.agentBackend === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('agentBackend', opt.value)"
+						>
+							{{ t(opt.label) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.agentBackend === 'dvsagent'" class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.model') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderModelApiSourceOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.model === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('model', opt.value)"
+						>
+							{{ t(opt.label) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.agentBackend === 'dvsagent' && params.model === 'gemini'" class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.modelVersion') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderDvsModelOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.geminiTextModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('geminiTextModelVersion', opt.value)"
+						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.agentBackend === 'dvsagent' && params.model === 'bytedance'" class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.modelVersion') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderDvsModelOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.textModelVersion === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('textModelVersion', opt.value)"
+						>
+							{{ translateOpt(opt) }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.agentBackend === 'codex'" class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.model') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderCodexModelOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.modelId === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('modelId', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div v-if="params.agentBackend === 'copilot'" class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.model') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderCopilotModelOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.modelId === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('modelId', opt.value)"
+						>
+							{{ opt.label }}
+						</button>
+					</div>
+				</div>
+				<div class="bp-node-chat-param-row">
+					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.thinkingEffort') }}</label>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in blenderThinkingOptions"
+							:key="opt.value"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.thinkingEffort === opt.value }"
+							:disabled="disabled"
+							@click="updateParam('thinkingEffort', opt.value)"
+						>
+							{{ t(opt.label) }}
+						</button>
+					</div>
+				</div>
+			</template>
 		</div>
 	</div>
 </template>
@@ -2078,6 +2185,8 @@ import {
 	supportsTripo3DAspectRatio,
 	supportsTripo3DWatermark,
 	isTripo3DBananaModel,
+	NODE_CHAT_BLENDER_AGENT_OPTIONS,
+	NODE_CHAT_BLENDER_THINKING_OPTIONS,
 	NODE_CHAT_TRIPO3D_TASK_MODE_OPTIONS,
 	NODE_CHAT_TRIPO3D_SEG_TYPE_OPTIONS,
 	NODE_CHAT_TRIPO3D_GRANULARITY_OPTIONS,
@@ -2087,6 +2196,7 @@ import {
 	isTripo3DPostProcessMode,
 	isTripo3DGenerateMode
 } from './nodeChatConfig'
+import { getChatModelCatalog, getChatModelOptions } from '../../../ai/models/chatModels'
 
 const { t } = useI18n()
 
@@ -2261,6 +2371,48 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 		Object.assign(next, normalized)
 	}
 
+	if (props.nodeType === 'blender') {
+		if (key === 'agentBackend') {
+			next.model = undefined
+			next.modelId = undefined
+			next.geminiTextModelVersion = undefined
+			next.textModelVersion = undefined
+			if (value === 'dvsagent') {
+				next.model = 'bytedance'
+				next.textModelVersion = 'doubao-seed-evolving'
+				next.modelId = 'doubao-seed-evolving'
+				next.geminiTextModelVersion = 'gemini-3.5-flash'
+				next.thinkingEffort = 'disabled'
+			} else if (value === 'codex') {
+				const codexModels = getChatModelOptions('text', 'codex')
+				if (codexModels.length) {
+					next.modelId = codexModels[0].id
+				}
+			} else if (value === 'copilot') {
+				const copilotModels = getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
+				if (copilotModels.length) {
+					next.modelId = copilotModels[0].id
+				}
+			}
+		}
+		if (key === 'model' && props.params.agentBackend === 'dvsagent') {
+			next.modelId = undefined
+			if (value === 'gemini') {
+				next.geminiTextModelVersion = 'gemini-3.5-flash'
+				next.modelId = 'gemini-3.5-flash'
+			} else if (value === 'bytedance') {
+				next.textModelVersion = 'doubao-seed-evolving'
+				next.modelId = 'doubao-seed-evolving'
+			}
+		}
+		if ((key === 'geminiTextModelVersion' || key === 'textModelVersion') && typeof value === 'string') {
+			next.modelId = value
+		}
+		if (!next.thinkingEffort) {
+			next.thinkingEffort = 'disabled'
+		}
+	}
+
 	emit('update:params', next)
 }
 
@@ -2305,6 +2457,40 @@ const meshyImageAiModelOptions = NODE_CHAT_MESHY_IMAGE_OPTIONS.aiModel
 const meshyImageOutputCountOptions = NODE_CHAT_MESHY_IMAGE_OUTPUT_COUNT_OPTIONS
 const seedanceModelVersionOptions = NODE_CHAT_SEEDANCE_MODEL_VERSION_OPTIONS
 const geminiQuantityOptions = GEMINI_QUANTITY_OPTIONS
+
+const blenderAgentOptions = NODE_CHAT_BLENDER_AGENT_OPTIONS
+const blenderThinkingOptions = NODE_CHAT_BLENDER_THINKING_OPTIONS
+
+const blenderModelApiSourceOptions = computed(() => {
+	if (props.params.agentBackend === 'dvsagent') {
+		return NODE_CHAT_TEXT_MODEL_OPTIONS
+	}
+	return []
+})
+
+const blenderDvsModelOptions = computed(() => {
+	const src = props.params.model
+	if (props.params.agentBackend !== 'dvsagent') return []
+	if (src === 'gemini') {
+		return NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS.map(o => ({ value: o.value, label: o.label }))
+	}
+	if (src === 'bytedance') {
+		return NODE_CHAT_SEED_MODEL_VERSION_OPTIONS.map(o => ({ value: o.value, label: o.label }))
+	}
+	return []
+})
+
+const blenderCodexModelOptions = computed(() => {
+	if (props.params.agentBackend !== 'codex') return []
+	return getChatModelOptions('text', 'codex').map(m => ({ value: m.id, label: m.label }))
+})
+
+const blenderCopilotModelOptions = computed(() => {
+	if (props.params.agentBackend !== 'copilot') return []
+	return getChatModelOptions('text', 'copilot')
+		.filter(m => m.apiSource === 'copilot')
+		.map(m => ({ value: m.id, label: m.label }))
+})
 
 const advancedCollapsed = ref(true)
 
