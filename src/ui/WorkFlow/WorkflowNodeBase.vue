@@ -1306,21 +1306,6 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
-.wf-node.wf-node-blender .wf-node-body {
-	overflow: hidden;
-	align-items: stretch;
-	justify-content: flex-start;
-	flex: 1;
-	min-height: 0;
-	padding: 0;
-}
-
-.wf-node.wf-node-blender .wf-node-footer {
-	overflow: visible;
-	flex-shrink: 0;
-	padding: 0;
-}
-
 .wf-node.is-auto-height .wf-node-body {
 	overflow: visible;
 	align-items: stretch;
@@ -1334,7 +1319,8 @@ onBeforeUnmount(() => {
 }
 
 .wf-node.wf-node-text .wf-node-body,
-.wf-node.wf-node-text-merge .wf-node-body {
+.wf-node.wf-node-text-merge .wf-node-body,
+.wf-node.wf-node-blender .wf-node-body {
 	overflow: hidden;
 	align-items: stretch;
 	justify-content: flex-start;
@@ -1345,6 +1331,16 @@ onBeforeUnmount(() => {
 
 .wf-node.wf-node-text .wf-node-footer {
 	display: none;
+}
+
+.wf-node.wf-node-blender .wf-node-body {
+	padding: 0;
+}
+
+.wf-node.wf-node-blender .wf-node-footer {
+	overflow: visible;
+	flex-shrink: 0;
+	padding: 0;
 }
 
 .wf-node.wf-node-text .wf-text,
