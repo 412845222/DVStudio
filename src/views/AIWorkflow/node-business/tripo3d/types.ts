@@ -28,6 +28,11 @@ export type Tripo3DTaskFamily =
 	| 'text_to_image'
 	| 'image_to_image'
 	| 'image_to_multiview'
+	| 'mesh_segment'
+	| 'mesh_smartsegment'
+	| 'mesh_complete'
+	| 'mesh_decimate'
+	| 'models_convert'
 
 export type Tripo3DTaskKind = 'model' | 'image'
 
@@ -143,7 +148,31 @@ export type Tripo3DGeneratePayload = {
 	model_task_id?: string
 	original_model_task_id?: string
 	model_url?: string
-	texture_prompt?: string
+	texture_prompt?: string | {
+		text?: string
+		image?: { file_token: string }
+		images?: Record<string, { file_token: string }>
+	}
+	seg_type?: 'image' | 'model'
+	granularity?: 'coarse' | 'medium' | 'fine'
+	hint?: string
+	transform?: number[]
+	part_names?: string[]
+	format?: 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+	bake?: boolean
+	flatten_bottom?: boolean
+	flatten_bottom_threshold?: number
+	texture_size?: number
+	texture_format?: string
+	pack_uv?: boolean
+	export_vertex_colors?: boolean
+	pivot_to_center_bottom?: boolean
+	scale_factor?: number
+	with_animation?: boolean
+	animate_in_place?: boolean
+	export_orientation?: '+x' | '-x' | '-y' | '+y'
+	fbx_preset?: 'blender' | '3dsmax' | 'mixamo'
+	force_symmetry?: boolean
 	size?: string
 	aspect_ratio?: string
 	output_format?: 'png' | 'jpeg'
@@ -407,17 +436,103 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 	errorMessage: string
 } {
 	const record: Record<string, unknown> = isRecord(raw) ? raw : {}
+	const inputObj = isRecord(record.input) ? record.input : {}
+	const outputObj = isRecord(record.output) ? record.output : {}
+
+	const getStr = (...keys: string[]): string => {
+		for (const key of keys) {
+			const val = record[key] ?? inputObj[key] ?? outputObj[key]
+			if (isString(val) && val.trim()) return val.trim()
+		}
+		return ''
+	}
+
+	const getNum = (key: string, defaultValue = 0): number => {
+		const val = Number(record[key] ?? defaultValue)
+		return Number.isFinite(val) ? val : defaultValue
+	}
+
+	let thumbnailUrl = getStr('thumbnailUrl', 'thumbnail_url', 'thumbnail', 'rendered_image_url', 'preview_url')
+	if (!thumbnailUrl && isRecord(outputObj.thumbnail)) {
+		thumbnailUrl = String(outputObj.thumbnail.url ?? '').trim()
+	}
+
+	let modelUrl = ''
+	if (isRecord(outputObj.model)) {
+		modelUrl = String(outputObj.model.url ?? outputObj.model.glb ?? '').trim()
+	}
+	if (!modelUrl) {
+		modelUrl = getStr('modelUrl', 'model_url', 'pbr_model_url')
+	}
+	if (!modelUrl && isArray(outputObj.model_urls) && outputObj.model_urls.length > 0) {
+		const firstUrl = outputObj.model_urls[0]
+		if (isString(firstUrl)) modelUrl = firstUrl.trim()
+	}
+
+	const isImageUrl = (s: unknown): boolean => {
+		if (!isString(s)) return false
+		const str = s.trim().toLowerCase()
+		if (!str) return false
+		if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/')) {
+			if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(str)) return true
+			if (str.includes('/generation/') || str.includes('/image/') || str.includes('tripo')) return true
+		}
+		return false
+	}
+
+	const imageUrls: string[] = []
+	const collectImageUrl = (val: unknown) => {
+		if (!val) return
+		if (isString(val)) {
+			if (isImageUrl(val)) imageUrls.push(val.trim())
+		} else if (isRecord(val)) {
+			const u = String(val.url ?? val.image_url ?? val.src ?? val.image ?? val.uri ?? '').trim()
+			if (u && isImageUrl(u)) imageUrls.push(u)
+		}
+	}
+
+	const collectFromObject = (target: unknown, depth = 0) => {
+		if (!target || typeof target !== 'object' || depth > 5) return
+		if (isArray(target)) {
+			for (const item of target) collectFromObject(item, depth + 1)
+			return
+		}
+		const obj = target as Record<string, unknown>
+		for (const [key, value] of Object.entries(obj)) {
+			const keyLower = key.toLowerCase()
+			if (['images', 'image_urls', 'results', 'image', 'image_url', 'output_images', 'generated_images', 'result'].includes(keyLower)) {
+				if (isArray(value)) {
+					for (const item of value) collectImageUrl(item)
+				} else {
+					collectImageUrl(value)
+				}
+			}
+			if (isString(value) && isImageUrl(value)) {
+				imageUrls.push(value.trim())
+			} else if (typeof value === 'object' && value !== null) {
+				collectFromObject(value, depth + 1)
+			}
+		}
+	}
+
+	collectFromObject(outputObj)
+
+	const mode = getStr('mode', 'type')
+	const isImageMode = mode === 'text_to_image' || mode === 'image_to_image' || mode === 'image_to_multiview'
+	if (isImageMode) {
+		collectFromObject(record)
+	}
 
 	return {
-		taskId: isString(record.taskId) ? record.taskId.trim() : '',
-		mode: isString(record.mode) ? record.mode.trim() : '',
-		status: isString(record.status) ? record.status.trim() : '',
-		progress: isNumber(record.progress) ? record.progress : 0,
-		thumbnailUrl: isString(record.thumbnailUrl) ? record.thumbnailUrl.trim() : '',
-		modelUrl: isString(record.modelUrl) ? record.modelUrl.trim() : '',
-		imageUrls: isArray(record.imageUrls) ? record.imageUrls.filter((url): url is string => isString(url)) : [],
-		statusText: isString(record.statusText) ? record.statusText.trim() : '',
-		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : ''
+		taskId: getStr('taskId', 'task_id', 'id'),
+		mode,
+		status: getStr('status'),
+		progress: getNum('progress'),
+		thumbnailUrl,
+		modelUrl,
+		imageUrls: [...new Set(imageUrls)],
+		statusText: getStr('statusText', 'status_text'),
+		errorMessage: getStr('errorMessage', 'error_message', 'error')
 	}
 }
 

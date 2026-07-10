@@ -5833,52 +5833,331 @@ const syncModel3DInputFromUpstream = async (
 			return true
 		}
 
-		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings) && fromNode.model3dSettings.modelGenerationSource === 'tripo3d') {
-			const tripo3dSettings = fromNode.model3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
-			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
-			const effective = getTripo3DEffectiveModelSource(settings)
-			const sourceUrl = effective.preferredUrl || effective.assetUrl
-			if (!sourceUrl) continue
-			const format = effective.format
-			const taskIdVal = String(settings.taskId ?? settings.tripo3dTaskId ?? fromNode.id).trim() || fromNode.id
-			const name = `tripo3d_${taskIdVal}.${format}`
-			const persisted = (await persistExternalAssetToProject({
-				kind: 'file',
-				name,
-				sourceUrl,
-				sourcePath: effective.assetPath || undefined
-			})) as PersistedAsset | null
-			revokeNodeModel3DObjectUrl(nodeId)
-			const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
-			if (isTripo3DRemoteUrl(finalModelUrl)) {
-				console.warn(
-					'[DVS:syncModel3D] tripo3d asset not yet localized, skipping commit — node:',
-					nodeId
-				)
-				continue
+		if (fromNode.type === 'image') {
+			const imgSettings = (fromNode as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
+			const rawImgTripo = imgSettings && typeof imgSettings.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings !== null
+				? imgSettings.tripo3dImageSettings as Record<string, unknown>
+				: {}
+			const directTripoSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown> | undefined
+			const settings: Record<string, unknown> = {}
+			for (const [key, value] of Object.entries(rawImgTripo)) {
+				settings[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
 			}
-			store.commit('setNodeModel3DSettings', {
-				nodeId,
-				model3dSettings: {
-					modelUrl: finalModelUrl,
-					modelFormat: format,
-					modelSourceName: name,
-					modelSourcePath:
-						String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
-					modelProjectRelativePath:
-						String(persisted?.projectRelativePath || '').trim() || undefined,
-					modelAssetUrl: String(persisted?.url || ''),
-					modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-					modelAssetProjectRelativePath:
-						String(persisted?.projectRelativePath || '').trim() || undefined,
-					lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
-					lastInputNodeId: fromNode.id,
-					lastInputSourceUrl: sourceUrl,
-					lastInputSourcePath: effective.assetPath || undefined,
-					lastInputSourceName: name
+			if (isRecord(directTripoSettings)) {
+				for (const [key, value] of Object.entries(directTripoSettings)) {
+					if (!(key in settings)) settings[key] = value
 				}
-			})
-			return true
+			}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
+				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
+				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
+				|| tripo3dTaskFamily === 'models_convert'
+			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
+
+			if (isTripo3DModelSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
+				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || 'glb'
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
+		}
+
+		if (fromNode.type === 'tripo3d' && isRecord((fromNode as Record<string, unknown>).tripo3dSettings)) {
+			const tripo3dSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown>
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
+				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
+				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
+				|| tripo3dTaskFamily === 'models_convert'
+			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
+
+			if (isTripo3DModelSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
+				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || 'glb'
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
+		}
+
+		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings)) {
+			const fromM3dSettings = fromNode.model3dSettings
+			const tripo3dSettings = fromM3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isTripo3DSource = fromM3dSettings.modelGenerationSource === 'tripo3d' || !!tripo3dTaskId
+
+			if (isTripo3DSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const fallbackUrl = String(fromM3dSettings.modelAssetUrl ?? fromM3dSettings.modelUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || String(settings.taskId ?? fromNode.id).trim() || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || (fromM3dSettings.modelFormat === 'gltf' ? 'gltf' : 'glb')
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? fromM3dSettings.modelSourcePath ?? '').trim() || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					console.warn(
+						'[DVS:syncModel3D] tripo3d asset not yet localized, but upstream taskId synced — node:',
+						nodeId
+					)
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || fromM3dSettings.modelAssetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? '').trim() || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
 		}
 
 		if (fromNode.type === 'model3d') {
@@ -8403,7 +8682,8 @@ const {
 	normalizeTripo3DTaskStatus,
 	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
 	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value,
-	getProjectId: () => currentProjectId.value
+	getProjectId: () => currentProjectId.value,
+	syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId)
 })
 
 const importLimitAlertMessage = ref('')

@@ -32,7 +32,7 @@ export function useEnhancedModel3DEditor(
   const shadowsEnabled = ref(options.shadowsEnabled ?? true)
   const gridVisible = ref(options.gridVisible ?? true)
   const axesVisible = ref(options.axesVisible ?? true)
-  const bloomEnabled = ref(options.bloomEnabled ?? true)
+  const bloomEnabled = ref(options.bloomEnabled ?? false)
   const wireframeOverlay = ref(options.wireframeOverlay ?? false)
 
   const isLoading = ref(true)

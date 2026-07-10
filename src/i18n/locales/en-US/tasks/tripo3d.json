@@ -128,6 +128,8 @@
   "tasks.tripo3d.multiviewRequiresFrontAndMore": "Multiview to 3D requires selecting front view and at least one other view",
   "tasks.tripo3d.textureRequiresModel": "Texture mode requires model task ID or model URL",
   "tasks.tripo3d.refineRequiresModel": "Refine mode requires model task ID or model URL",
+  "tasks.tripo3d.postProcessRequiresModel": "Post-processing mode requires connecting upstream 3D model node",
+  "tasks.tripo3d.meshCompleteRequiresSegment": "Mesh complete requires connecting upstream mesh segment task",
   "tasks.tripo3d.pbr": "PBR",
   "tasks.tripo3d.missingTaskIdToast": "Tripo3D response missing task ID",
   "tasks.tripo3d.pollStatusFailedConsecutive": "Consecutive status polling failures",

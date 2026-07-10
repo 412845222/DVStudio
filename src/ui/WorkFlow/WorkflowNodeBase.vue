@@ -1302,8 +1302,15 @@ onBeforeUnmount(() => {
 }
 
 .wf-node.is-auto-height .wf-node-body {
+	overflow: visible;
 	align-items: stretch;
 	justify-content: flex-start;
+	flex: 0 0 auto;
+	min-height: auto;
+}
+
+.wf-node.is-auto-height .wf-node-footer {
+	overflow: visible;
 }
 
 .wf-anchors {

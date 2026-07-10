@@ -315,6 +315,8 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 
 		const patch: Record<string, unknown> = {
 			tripo3dTaskId: task.taskId,
+			tripo3dTaskFamily: task.mode || undefined,
+			tripo3dTaskMode: task.mode || undefined,
 			tripo3dRelationKind: String(existingSettings.tripo3dRelationKind ?? (isImageMode ? 'image' : 'model')).trim() || (isImageMode ? 'image' : 'model'),
 			tripo3dRootTaskId: String(existingSettings.tripo3dRootTaskId ?? task.taskId ?? '').trim() || undefined,
 			tripo3dParentTaskId: String(existingSettings.tripo3dParentTaskId ?? '').trim() || undefined,
@@ -488,15 +490,21 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 
 		const targetNode = getNodeFromStore(nodeId)
 		if (targetNode?.type === 'model3d') {
+			const existingM3d = isRecord(targetNode.model3dSettings) ? targetNode.model3dSettings as Record<string, unknown> : {}
+			const existingTripo = isRecord(existingM3d.tripo3dModelSettings) ? existingM3d.tripo3dModelSettings as Record<string, unknown> : {}
 			options.store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
+					modelGenerationSource: 'tripo3d',
 					...Object.fromEntries(
 						Object.entries(patch).filter(([key]) => !key.startsWith('tripo3d'))
 					),
-					tripo3dModelSettings: Object.fromEntries(
-						Object.entries(patch).filter(([key]) => key.startsWith('tripo3d'))
-					)
+					tripo3dModelSettings: {
+						...existingTripo,
+						...Object.fromEntries(
+							Object.entries(patch).filter(([key]) => key.startsWith('tripo3d'))
+						)
+					}
 				}
 			})
 		} else if (targetNode?.type === 'image') {
