@@ -218,6 +218,7 @@
 						@node-chat-update-params="onNodeChatParamsUpdate"
 						@node-chat-close="onNodeChatClose"
 						@node-chat-submit="onNodeChatSubmit"
+						@node-chat-stop="onNodeChatStop"
 						@node-chat-remove-param-ref="onNodeChatRemoveParamRef"
 						@update-branch="onStoryBranchUpdate(node.id, $event)"
 						@update-comfyui-settings="onComfyUISettingsUpdate(node.id, $event)"
@@ -248,6 +249,12 @@
 						@upload-scene-layout-model-file="
 							onNodeUploadSceneLayoutModelFile(node.id, $event.file, $event.objectId)
 						"
+						@blender-connect="onBlenderConnect(node.id, $event)"
+						@blender-disconnect="onBlenderDisconnect(node.id)"
+						@blender-status-click="onBlenderStatusCheck(node.id, $event)"
+						@blender-clear-chat="onBlenderClearChat(node.id)"
+						@blender-import="onBlenderImport(node.id)"
+						@update-blender-settings="onBlenderSettingsUpdate(node.id, $event)"
 					/>
 				</div>
 
@@ -3660,6 +3667,18 @@ const onNodeChatClose = () => {
 	store.dispatch('closeNodeChatDialog')
 }
 
+const onNodeChatStop = () => {
+	const nodeId = store.state.nodeChatDialog.nodeId
+	if (nodeId) {
+		const abortFn = blenderAbortFns.get(nodeId)
+		if (abortFn) {
+			abortFn()
+			blenderAbortFns.delete(nodeId)
+		}
+	}
+	store.commit('setNodeChatSubmitting', { submitting: false })
+}
+
 const toFileUrlFromSourcePath = (): string => {
 	return ''
 }
@@ -3877,7 +3896,47 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 	}
 }
 
+const blenderAbortFns = new Map<string, () => void>()
+
 const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
+	if (payload.nodeType === 'blender') {
+		store.commit('setNodeChatSubmitting', { submitting: true })
+		const node = store.state.nodesById[payload.nodeId]
+		if (node && payload.params) {
+			node.blenderSettings = node.blenderSettings ?? {}
+			Object.assign(node.blenderSettings, payload.params)
+		}
+		try {
+			const { runBlenderAgentChat } = await import('./node-business/blender/useBlenderAgentChat')
+			await runBlenderAgentChat(
+				{
+					store,
+					pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
+						const sysMsgId = `blender-sys-${Date.now()}`
+						store.commit('appendBlenderChatMessage', {
+							nodeId: payload.nodeId,
+							message: {
+								id: sysMsgId,
+								role: 'system',
+								content: message,
+								timestamp: Date.now(),
+								isError: tone === 'error'
+							}
+						})
+					},
+					onAbortReady: (abortFn: () => void) => {
+						blenderAbortFns.set(payload.nodeId, abortFn)
+					}
+				},
+				payload.nodeId,
+				payload.prompt
+			)
+		} finally {
+			blenderAbortFns.delete(payload.nodeId)
+			store.commit('setNodeChatSubmitting', { submitting: false })
+		}
+		return
+	}
 	let resolvedPrompt = payload.prompt
 	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
 		const refs = getInputParamPreviewRefs(payload.nodeId)
@@ -4274,7 +4333,7 @@ watch(
 		}
 		const node = store.state.nodesById[chatNodeId]
 		const type = node?.type
-		if (type !== 'text' && type !== 'image' && type !== 'video' && type !== 'model3d') {
+		if (type !== 'text' && type !== 'image' && type !== 'video' && type !== 'model3d' && type !== 'blender') {
 			store.dispatch('closeNodeChatDialog')
 		}
 	}
@@ -4430,9 +4489,37 @@ onMounted(() => {
 			console.warn('[AIWorkflowPage] DVSAgent IPC 不可用，已回退到 Copilot CLI')
 		}
 	}
+	// 订阅后端 Blender MCP 状态推送（如 blender-mcp 子进程意外退出），同步到所有 blender 节点
+	try {
+		const unsub = window.dweb?.blender?.onMcpStatusChanged?.((payload: any) => {
+			const status = payload?.status
+			if (!status || status === 'disconnecting') return
+			const mapped =
+				status === 'connected' || status === 'connecting' || status === 'disconnected' || status === 'error'
+					? status
+					: 'disconnected'
+			for (const node of Object.values(store.state.nodesById)) {
+				if (node?.type !== 'blender') continue
+				store.commit('setBlenderMcpStatus', {
+					nodeId: node.id,
+					status: mapped,
+					error: payload?.error ?? null,
+					host: payload?.host ?? undefined,
+					port: payload?.port ?? undefined
+				})
+			}
+		})
+		if (typeof unsub === 'function') blenderMcpStatusUnsub = unsub
+	} catch (err) {
+		console.warn('[AIWorkflowPage] subscribe blender mcp status failed', err)
+	}
 })
 
 onBeforeUnmount(() => {
+	if (blenderMcpStatusUnsub) {
+		try { blenderMcpStatusUnsub() } catch { /* ignore */ }
+		blenderMcpStatusUnsub = null
+	}
 	window.removeEventListener('resize', syncGlobalSafeAreaCssVars)
 	const fallbackTop = resolveAppShellTitlebarHeight()
 	document.documentElement.style.setProperty('--aiwf-safe-top', `${Math.round(fallbackTop)}px`)
@@ -5340,6 +5427,347 @@ const onNodeClear = (nodeId: string) => {
 		onNodeClearResource(nodeId)
 	}
 }
+
+const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; port?: number }) => {
+	const node = store.state.nodesById[nodeId]
+	const configuredHost = node?.blenderSettings?.mcpHost
+	const configuredPort = node?.blenderSettings?.mcpPort
+	const host = payload?.host ?? configuredHost ?? 'localhost'
+	const port = payload?.port ?? configuredPort ?? 9876
+
+	const checkingPayload: Record<string, unknown> = { nodeId, status: 'checking' }
+	if (payload?.host != null || configuredHost != null) checkingPayload.host = host
+	if (payload?.port != null || configuredPort != null) checkingPayload.port = port
+	store.commit('setBlenderMcpStatus', checkingPayload)
+	try {
+		const result = await window.dweb?.blender?.checkStatus?.({ host, port })
+		const hasHost = payload?.host != null || configuredHost != null
+		const hasPort = payload?.port != null || configuredPort != null
+		const withHostPort = (obj: Record<string, unknown>) => {
+			if (hasHost) obj.host = host
+			if (hasPort) obj.port = port
+			return obj
+		}
+		if (!result) {
+			store.commit('setBlenderMcpStatus', withHostPort({
+				nodeId,
+				status: 'error',
+				error: 'Blender API not available'
+			}))
+			return
+		}
+		if (result && result.ok !== false) {
+			const statusInfo = result.value ?? result
+			const isConnected = statusInfo.status === 'connected'
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: statusInfo.status || 'disconnected',
+				error: statusInfo.error || null,
+				serverId: statusInfo.serverId || null,
+				blenderRunning: statusInfo.blenderRunning ?? false,
+				addonListening: statusInfo.addonListening ?? false,
+				hasBlender: statusInfo.hasBlender ?? false,
+				hasAddon: statusInfo.hasAddon ?? false,
+				blenderPath: statusInfo.blenderPath || null,
+				blenderVersion: statusInfo.blenderVersion || null,
+				host: isConnected ? (statusInfo.host || host) : (hasHost ? host : undefined),
+				port: isConnected ? (statusInfo.port || port) : (hasPort ? port : undefined)
+			})
+		} else {
+			store.commit('setBlenderMcpStatus', withHostPort({
+				nodeId,
+				status: result?.status || 'error',
+				error: result?.error || 'Status check failed',
+				addonListening: false
+			}))
+		}
+	} catch (err: any) {
+		const hasHost = payload?.host != null || configuredHost != null
+		const hasPort = payload?.port != null || configuredPort != null
+		const errPayload: Record<string, unknown> = {
+			nodeId,
+			status: 'error',
+			error: err?.message || String(err)
+		}
+		if (hasHost) errPayload.host = host
+		if (hasPort) errPayload.port = port
+		store.commit('setBlenderMcpStatus', errPayload)
+	}
+}
+
+const onBlenderConnect = async (nodeId: string, payload?: { host?: string; port?: number }) => {
+	const node = store.state.nodesById[nodeId]
+	const host = payload?.host ?? node?.blenderSettings?.mcpHost ?? 'localhost'
+	const port = payload?.port ?? node?.blenderSettings?.mcpPort ?? 9876
+	const currentStatus = node?.blenderSettings?.mcpStatus
+	if (currentStatus === 'connected' || currentStatus === 'connecting' || currentStatus === 'checking') {
+		return
+	}
+	store.commit('setBlenderMcpStatus', { nodeId, status: 'connecting', host, port })
+	try {
+		const result = await window.dweb?.blender?.mcpConnect?.({ host, port })
+		if (!result) {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: 'error',
+				error: 'Blender API not available',
+				host,
+				port
+			})
+			setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+			return
+		}
+		if (result?.ok) {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: 'connected',
+				error: null,
+				serverId: 'blender',
+				host: result.host || host,
+				port: result.port || port
+			})
+		} else {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: 'error',
+				error: result?.error || 'Connection failed',
+				host,
+				port
+			})
+			setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+		}
+	} catch (err: any) {
+		store.commit('setBlenderMcpStatus', {
+			nodeId,
+			status: 'error',
+			error: err?.message || String(err),
+			host,
+			port
+		})
+		setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+	}
+}
+
+const onBlenderDisconnect = async (nodeId: string) => {
+	const abortFn = blenderAbortFns.get(nodeId)
+	if (abortFn) {
+		abortFn()
+		blenderAbortFns.delete(nodeId)
+	}
+	store.commit('setNodeChatSubmitting', { submitting: false })
+	try {
+		await window.dweb?.blender?.mcpDisconnect?.()
+	} catch {
+		// ignore disconnect errors
+	}
+	store.commit('setBlenderMcpStatus', {
+		nodeId,
+		status: 'disconnected',
+		error: null
+	})
+	const sysMsgId = `blender-sys-${Date.now()}`
+	store.commit('appendBlenderChatMessage', {
+		nodeId,
+		message: {
+			id: sysMsgId,
+			role: 'system',
+			content: '⚠️ Blender已断开连接，当前会话已中断',
+			timestamp: Date.now(),
+			isError: true
+		}
+	})
+}
+
+const onBlenderClearChat = (nodeId: string) => {
+	store.commit('clearBlenderChatMessages', { nodeId })
+	const node = store.state.nodesById[nodeId]
+	if (node?.blenderSettings) {
+		node.blenderSettings.agentSessionId = undefined
+	}
+}
+
+const onBlenderSettingsUpdate = (nodeId: string, patch: Record<string, any>) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+	node.blenderSettings = node.blenderSettings ?? {}
+	Object.assign(node.blenderSettings, patch)
+}
+
+const onBlenderImport = async (nodeId: string) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+
+	const blenderSettings = node.blenderSettings ?? {}
+	if (blenderSettings.mcpStatus !== 'connected') {
+		store.commit('setBlenderImportStatus', {
+			nodeId,
+			status: 'error',
+			progress: 0,
+			error: '请先连接Blender'
+		})
+		setTimeout(() => {
+			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
+		}, 3000)
+		return
+	}
+
+	store.commit('setBlenderImportStatus', {
+		nodeId,
+		status: 'importing',
+		progress: 10,
+		error: null
+	})
+
+	try {
+		const inEdge = getFirstIncomingEdge(nodeId, 'in-model')
+		if (!inEdge) {
+			throw new Error('请连接上游3D模型节点到Blender节点的"3D模型"输入锚点')
+		}
+
+		const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
+		if (!fromNode) {
+			throw new Error('上游节点不存在')
+		}
+
+		const supportedModelTypes = ['model3d', 'meshy', 'scene-layout']
+		if (!supportedModelTypes.includes(fromNode.type)) {
+			throw new Error(`上游节点类型"${fromNode.type}"不是3D模型节点，仅支持model3d/meshy类型`)
+		}
+
+		let filePath = ''
+
+		const resolveProjectPath = (relPath: string): string => {
+			const projectRoot = store.state.projectRootPath
+			if (!projectRoot) return ''
+			const normalizedRoot = projectRoot.replace(/[/\\]+$/, '')
+			const normalizedRel = relPath.replace(/^[/\\]+/, '')
+			return `${normalizedRoot}/${normalizedRel}`
+		}
+
+		if (fromNode.type === 'model3d') {
+			const settings = (fromNode.model3dSettings ?? {}) as Record<string, unknown>
+			const directCandidates = [
+				String(settings.modelSourcePath ?? ''),
+				String(settings.modelAssetPath ?? ''),
+				String((settings as any).persistedModelPath ?? ''),
+				String((settings as any).localPath ?? '')
+			]
+			for (const candidate of directCandidates) {
+				if (candidate && candidate.trim()) {
+					filePath = candidate.trim()
+					break
+				}
+			}
+
+			if (!filePath && fromNode.resourceId) {
+				const resource = store.state.resourcesById[fromNode.resourceId]
+				if (resource) {
+					filePath = String(resource.sourcePath ?? '').trim()
+					if (!filePath && resource.projectRelativePath) {
+						filePath = resolveProjectPath(String(resource.projectRelativePath))
+					}
+				}
+			}
+
+			if (!filePath && fromNode.resourceId) {
+				const fromRes = store.state.resourcesById[fromNode.resourceId]
+				const resUrl = String(fromRes?.url ?? '')
+				if (resUrl.startsWith('dweb://project-assets')) {
+					try {
+						const u = new URL(resUrl)
+						const p = u.searchParams.get('path')
+						if (p) filePath = resolveProjectPath(decodeURIComponent(p))
+					} catch { /* ignore */ }
+				}
+			}
+		} else if (fromNode.type === 'meshy') {
+			const settings = (fromNode.meshySettings ?? {}) as Record<string, unknown>
+			const directCandidates = [
+				String((settings as any).modelAssetPath ?? ''),
+				String((settings as any).persistedModelPath ?? ''),
+				String((settings as any).modelSourcePath ?? ''),
+				String((settings as any).localPath ?? '')
+			]
+			for (const candidate of directCandidates) {
+				if (candidate && candidate.trim()) {
+					filePath = candidate.trim()
+					break
+				}
+			}
+
+			if (!filePath && fromNode.resourceId) {
+				const resource = store.state.resourcesById[fromNode.resourceId]
+				if (resource) {
+					filePath = String(resource.sourcePath ?? '').trim()
+					if (!filePath && resource.projectRelativePath) {
+						filePath = resolveProjectPath(String(resource.projectRelativePath))
+					}
+				}
+			}
+		}
+
+		if (!filePath) {
+			throw new Error('无法获取上游3D模型的本地文件路径，请确保上游节点已生成或上传模型文件')
+		}
+
+		const lowerPath = filePath.toLowerCase()
+		const supportedFormats = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+		if (!supportedFormats.some(ext => lowerPath.endsWith(ext))) {
+			throw new Error(`不支持的模型格式：${filePath}，仅支持 ${supportedFormats.join('/')}`)
+		}
+
+		store.commit('setBlenderImportStatus', {
+			nodeId,
+			status: 'importing',
+			progress: 40,
+			error: null
+		})
+
+		const dwebBlender = window.dweb?.blender
+		if (!dwebBlender) {
+			throw new Error('Blender API不可用')
+		}
+
+		const result = await dwebBlender.importModel({ filePath })
+		if (!result?.ok) {
+			throw new Error(result?.error || '导入失败')
+		}
+
+		store.commit('setBlenderImportStatus', {
+			nodeId,
+			status: 'completed',
+			progress: 100,
+			error: null
+		})
+
+		setTimeout(() => {
+			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
+		}, 2000)
+	} catch (err: any) {
+		store.commit('setBlenderImportStatus', {
+			nodeId,
+			status: 'error',
+			progress: 0,
+			error: err?.message || String(err)
+		})
+		setTimeout(() => {
+			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
+		}, 4000)
+	}
+}
+
+watch(
+	() => selectedNodeId.value,
+	(nodeId) => {
+		if (!nodeId) return
+		const node = store.state.nodesById[nodeId]
+		if (node?.type !== 'blender') return
+		const status = node.blenderSettings?.mcpStatus
+		if (!status || status === 'unchecked') {
+			onBlenderStatusCheck(nodeId)
+		}
+	}
+)
 
 const revokeNodeModel3DObjectUrl = (nodeId: string) => {
 	const objectKey = `model3d:${nodeId}`
@@ -9239,6 +9667,7 @@ const imageMarkupContext = ref<{ nodeId: string | null; url: string | null; name
 })
 
 let imageMarkupExportListenerId: number | null = null
+let blenderMcpStatusUnsub: (() => void) | null = null
 
 const onNodeImagePreviewRequestInline = (nodeId: string, ev: unknown) => {
 	const evRec = isRecord(ev) ? ev : {}

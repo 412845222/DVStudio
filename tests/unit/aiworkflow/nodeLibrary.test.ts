@@ -96,8 +96,8 @@ describe('nodeLibrary', () => {
 	})
 
 	describe('Basic分类节点', () => {
-		it('总共应该有10个节点', () => {
-			expect(NEWUI2_NODE_CATALOG).toHaveLength(10)
+		it('总共应该有11个节点', () => {
+			expect(NEWUI2_NODE_CATALOG).toHaveLength(11)
 		})
 
 		it('文本节点应该存在', () => {
@@ -128,6 +128,11 @@ describe('nodeLibrary', () => {
 			const unrealNode = NEWUI2_NODE_CATALOG.find((n) => n.actionId === 'unreal-export')
 			expect(unrealNode).toBeDefined()
 			expect(unrealNode!.label).toBe('Unreal导出节点')
+		})
+
+		it('Blender节点应该存在', () => {
+			const blenderNode = NEWUI2_NODE_CATALOG.find((n) => n.nodeType === 'blender')
+			expect(blenderNode).toBeDefined()
 		})
 	})
 

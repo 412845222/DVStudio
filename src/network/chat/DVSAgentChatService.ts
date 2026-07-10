@@ -81,12 +81,15 @@ export class DVSAgentChatService implements IChatService {
 			backend: 'dvsagent',
 			prompt: options.content,
 			content: options.content,
+			attachments: options.attachments,
 			model: options.model || session?.model || 'doubao-seed-evolving',
 			context: options.context,
 			history: options.history,
 			apiKeys: options.apiKeys || {},
 			apiSource: options.apiSource || 'bytedance',
 			thinkingEffort: options.thinkingEffort || 'medium',
+			systemPrompt: options.systemPrompt,
+			tools: options.tools,
 			sessionId,
 		})
 

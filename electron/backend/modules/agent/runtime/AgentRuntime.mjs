@@ -14,7 +14,7 @@ import { getProviderById } from '../providers/index.mjs';
 import { ProviderEventType } from '../providers/ILLMProvider.mjs';
 import logger from '../../../core/logger.mjs';
 
-const MAX_TOOL_CALLS = 10;
+const MAX_TOOL_CALLS = 35;
 
 export class AgentRuntime {
   constructor(ctx) {
@@ -67,8 +67,20 @@ export class AgentRuntime {
     const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
     const providedTools = Array.isArray(p.tools) ? p.tools : [];
+    const customSystemPrompt = typeof p.systemPrompt === 'string' ? p.systemPrompt.trim() : '';
+    const useCustomSystemPromptOnly = customSystemPrompt && providedTools.length > 0;
 
-    const providerId = backend === 'dvsagent' ? 'dvsagent' : backend;
+    const providerId = (backend === 'dvsagent' || useCustomSystemPromptOnly) ? 'dvsagent' : backend;
+    const forcedDvsAgentForTools = useCustomSystemPromptOnly && backend !== 'dvsagent';
+    if (forcedDvsAgentForTools) {
+      logger.info(`AgentRuntime: BLENDER MODE - forcing dvsagent provider (native tool calls required), requested backend was: ${backend}, model was: ${model}`);
+    }
+    const effectiveModel = forcedDvsAgentForTools
+      ? 'doubao-seed-evolving'
+      : model;
+    const effectiveApiSource = forcedDvsAgentForTools
+      ? 'bytedance'
+      : apiSource;
     let provider;
     try {
       provider = this.getProvider(providerId);
@@ -80,7 +92,7 @@ export class AgentRuntime {
     let sessionId = p.sessionId;
     if (!sessionId) {
       try {
-        const sess = await provider.createSession({ model, cwd: p.cwd });
+        const sess = await provider.createSession({ model: effectiveModel, cwd: p.cwd });
         sessionId = sess.sessionId;
       } catch (err) {
         yield { type: 'error', message: `Failed to create session: ${err.message}` };
@@ -94,47 +106,100 @@ export class AgentRuntime {
     this._abortControllers.set(sessionId, abortController);
 
     try {
-      const tools = providedTools.length > 0
-        ? providedTools.map(t => this.toolRegistry.toOpenAITool(t, 'input'))
-        : await this.toolRegistry.listTools();
+      let tools;
+      if (providedTools.length > 0) {
+        const allTools = await this.toolRegistry.listTools();
+        const allowedNames = new Set(providedTools.map(t => String(t)));
+        tools = allTools.filter(t => allowedNames.has(t.function.name));
+        logger.info(`AgentRuntime: BLENDER MODE - requested tools: ${Array.from(allowedNames).join(', ')}`);
+        logger.info(`AgentRuntime: BLENDER MODE - found ${allTools.length} total tools, ${tools.length} matched: ${tools.map(t => t.function.name).join(', ')}`);
+        if (tools.length === 0) {
+          const allNames = allTools.map(t => t.function.name).join(', ');
+          logger.warn(`AgentRuntime: BLENDER MODE - no matching tools found! Available tool names: ${allNames}`);
+          yield { type: 'error', message: `Blender工具不可用：找不到 ${Array.from(allowedNames).join(', ')}。请确认Blender已连接。当前可用工具：${allNames}` };
+          return;
+        }
+      } else {
+        tools = await this.toolRegistry.listTools();
+        logger.info(`AgentRuntime: ${tools.length} tools available: ${tools.map(t => t.function.name).join(', ')}`);
+      }
 
       const toolPromptText = provider.supportsNativeToolCalls
         ? null
         : this.toolRegistry.toCliToolPrompt(tools);
 
-      const systemPrompt = this.contextBuilder.buildSystemPrompt(context, {
-        includeToolInstructions: !provider.supportsNativeToolCalls,
-        toolPromptText,
-      });
+      let systemPrompt;
+      let currentMessages;
+      if (useCustomSystemPromptOnly) {
+        const cliToolInstructions = !provider.supportsNativeToolCalls
+          ? '\n\n' + this.toolRegistry.toCliToolPrompt(tools)
+          : '';
+        systemPrompt = customSystemPrompt + cliToolInstructions;
+        logger.info(`AgentRuntime: BLENDER MODE - using custom system prompt only (no blueprint context), cliToolInstructions appended: ${!provider.supportsNativeToolCalls}`);
+        const userContent = attachments.length > 0
+          ? (() => {
+              const parts = [{ type: 'text', text: content }];
+              for (const att of attachments) {
+                if (att.type === 'image_url' || String(att.name || '').match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                  parts.push({
+                    type: 'image_url',
+                    image_url: { url: att.data || att.url, detail: 'auto' },
+                  });
+                }
+              }
+              return parts;
+            })()
+          : content;
+        currentMessages = [
+          { role: 'system', content: systemPrompt },
+          ...history.filter(m => m.role === 'user' || m.role === 'assistant'),
+          { role: 'user', content: userContent }
+        ];
+        yield {
+          type: 'context_usage',
+          tokenCount: 0,
+          budget: 0,
+          usage: 0,
+          truncated: false,
+        };
+      } else {
+        const baseSystemPrompt = this.contextBuilder.buildSystemPrompt(context, {
+          includeToolInstructions: !provider.supportsNativeToolCalls && !customSystemPrompt,
+          toolPromptText,
+        });
+        systemPrompt = customSystemPrompt
+          ? customSystemPrompt + '\n\n' + baseSystemPrompt
+          : baseSystemPrompt;
 
-      const buildResult = this.contextBuilder.buildMessagesWithTruncation(
-        content,
-        attachments,
-        history,
-        model
-      );
+        const buildResult = this.contextBuilder.buildMessagesWithTruncation(
+          content,
+          attachments,
+          history,
+          effectiveModel
+        );
 
-      let currentMessages = [
-        { role: 'system', content: systemPrompt },
-        ...buildResult.messages,
-      ];
+        currentMessages = [
+          { role: 'system', content: systemPrompt },
+          ...buildResult.messages,
+        ];
 
-      yield {
-        type: 'context_usage',
-        tokenCount: buildResult.tokenCount,
-        budget: buildResult.budget,
-        usage: buildResult.usage,
-        truncated: buildResult.truncated,
-      };
+        yield {
+          type: 'context_usage',
+          tokenCount: buildResult.tokenCount,
+          budget: buildResult.budget,
+          usage: buildResult.usage,
+          truncated: buildResult.truncated,
+        };
+      }
 
       const providerConfig = {
         thinkingEffort,
         apiKeys,
-        apiSource,
+        apiSource: effectiveApiSource,
       };
 
       const openaiTools = provider.supportsNativeToolCalls
-        ? this.toolRegistry.toOpenAITools(tools)
+        ? tools
         : undefined;
 
       let toolCallCount = 0;
@@ -150,7 +215,7 @@ export class AgentRuntime {
 
         const stream = provider.streamGenerate(sessionId, {
           messages: currentMessages,
-          model,
+          model: effectiveModel,
           tools: openaiTools,
           config: providerConfig,
         });
@@ -239,7 +304,7 @@ export class AgentRuntime {
           toolCallsToExecute = provider.parseToolCallsFromText(accumulatedText);
         }
 
-        if (provider.executesOwnTools) {
+        if (provider.executesOwnTools && !useCustomSystemPromptOnly) {
           toolCallsToExecute = [];
         }
 
@@ -345,10 +410,10 @@ export class AgentRuntime {
       }
 
       if (toolCallCount >= MAX_TOOL_CALLS) {
-        yield {
-          type: 'error',
-          message: `Max tool call iterations (${MAX_TOOL_CALLS}) reached`,
-        };
+        const limitMsg = `\n\n⚠️ 已达到最大工具调用次数（${MAX_TOOL_CALLS}次），当前轮次暂停。您可以继续发送消息让我基于已有结果继续完成任务。`;
+        finalContent += limitMsg;
+        yield { type: 'text_delta', content: limitMsg };
+        logger.warn(`AgentRuntime: Max tool call iterations (${MAX_TOOL_CALLS}) reached, yielding warning and completing`);
       }
 
       yield {

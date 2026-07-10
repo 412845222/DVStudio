@@ -122,6 +122,17 @@ export const canLinkAnchors = (
 	if (!fromKind || !toKind) return false
 	if (canLinkBasicMediaNodes(fromNode, toNode)) return true
 	if (shouldRejectBasicMediaNodes(fromNode, toNode)) return false
+	// Blender 节点：单锚点兼容 text/image/model3d（generic 锚点默认接受 image/model3d，此处补充放行 text）
+	if (normalizeNodeType(toNode) === 'blender' && toAnchorId === 'in-0' && fromKind === 'text') {
+		return true
+	}
+	if (
+		normalizeNodeType(fromNode) === 'blender' &&
+		fromAnchorId === 'out-0' &&
+		(toKind === 'text' || toKind === 'image' || toKind === 'model3d')
+	) {
+		return true
+	}
 	if (fromKind === toKind) return true
 	if (
 		toKind === 'resource' &&

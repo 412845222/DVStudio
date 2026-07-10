@@ -55,6 +55,7 @@ import nodesUnreal from './nodes/unreal.json'
 import nodesRotateImage from './nodes/rotateImage.json'
 import nodesImageMarkup from './nodes/imageMarkup.json'
 import nodesTagEditor from './nodes/tagEditor.json'
+import nodesBlender from './nodes/blender.json'
 import uiPreview from './ui/preview.json'
 import aiworkflowPerfMonitor from './aiworkflow/perfMonitor.json'
 import aiworkflowToastMessages from './aiworkflow/toastMessages.json'
@@ -123,6 +124,7 @@ const messages = {
 	...nodesRotateImage,
 	...nodesImageMarkup,
 	...nodesTagEditor,
+	...nodesBlender,
 	...uiPreview,
 	...aiworkflowPerfMonitor,
 	...aiworkflowToastMessages,

@@ -304,6 +304,12 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				sourcePreviewLabel: sourcePreview.label
 			}
 		}
+		if (node.type === 'blender') {
+			return {
+				blenderSettings: node.blenderSettings ?? null,
+				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
+			}
+		}
 		return {}
 	}
 

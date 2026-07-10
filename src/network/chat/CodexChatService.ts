@@ -15,15 +15,21 @@ type CLIIpcBridge = {
 			cancel?: (payload: unknown) => Promise<unknown>
 			listModels?: (payload: unknown) => Promise<unknown>
 			checkAvailability?: (payload: unknown) => Promise<unknown>
-			cliStartSession?: (payload: unknown) => Promise<unknown>
-			cliSendMessageStream?: (payload: unknown) => AsyncGenerator<unknown>
-			cliStopSession?: (payload: unknown) => Promise<unknown>
+		}
+		agent?: {
+			stream?: (payload: unknown) => AsyncGenerator<unknown>
+			abort?: (payload: unknown) => Promise<unknown>
 		}
 	}
 }
 
 function getIpcBridge(): CLIIpcBridge {
 	return window as unknown as CLIIpcBridge
+}
+
+function toPlain<T>(value: T): T {
+	if (value === null || value === undefined) return value
+	return JSON.parse(JSON.stringify(value)) as T
 }
 
 const ADAPTER_NAME = 'codex'
@@ -93,7 +99,6 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 export class CodexChatService implements IChatService {
 	readonly backend = 'codex' as const
 	private activeSessions = new Map<string, ChatSession>()
-	private cliSessionMap = new Map<string, string>()
 
 	async isAvailable(): Promise<boolean> {
 		try {
@@ -112,36 +117,17 @@ export class CodexChatService implements IChatService {
 
 	async createSession(options?: CreateSessionOptions): Promise<ChatSession> {
 		const sessionId = `codex_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-		const model = options?.model || DEFAULT_MODEL
-		const bridge = getIpcBridge()
-
-		let cliSessionId: string | null = null
-		if (hasIpcApi() && bridge.dweb?.cli?.cliStartSession) {
-			try {
-				const result = await ipcCall(
-					() => bridge.dweb!.cli!.cliStartSession!({ adapter: ADAPTER_NAME }) as Promise<IpcResult>
-				)
-				const resultData = isRecord(result) ? result as Record<string, unknown> : {}
-				cliSessionId = String(resultData.sessionId || '') || null
-			} catch (err) {
-				console.warn('Failed to start Codex CLI session:', err)
-			}
-		}
-
 		const session: ChatSession = {
 			id: sessionId,
 			title: options?.title || 'Codex 对话',
 			backend: 'codex',
-			model,
+			model: options?.model || DEFAULT_MODEL,
 			status: 'active',
 			createdAt: new Date().toISOString(),
 			projectId: options?.projectId,
 			source: 'codex-cli'
 		}
 		this.activeSessions.set(sessionId, session)
-		if (cliSessionId) {
-			this.cliSessionMap.set(sessionId, cliSessionId)
-		}
 		return session
 	}
 
@@ -155,16 +141,7 @@ export class CodexChatService implements IChatService {
 
 	async deleteSession(sessionId: string, _projectId?: number | null): Promise<{ ok: boolean }> {
 		this.activeSessions.delete(sessionId)
-		const cliSessionId = this.cliSessionMap.get(sessionId)
 		const bridge = getIpcBridge()
-		if (cliSessionId) {
-			if (hasIpcApi() && bridge.dweb?.cli?.cliStopSession) {
-				try {
-					await bridge.dweb.cli.cliStopSession({ sessionId: cliSessionId })
-				} catch {}
-			}
-			this.cliSessionMap.delete(sessionId)
-		}
 		if (hasIpcApi() && bridge.dweb?.cli?.cancel) {
 			try {
 				await bridge.dweb.cli.cancel({ sessionId })
@@ -179,52 +156,42 @@ export class CodexChatService implements IChatService {
 		signal?: AbortSignal
 	): AsyncGenerator<ChatStreamEvent, void, void> {
 		const session = this.activeSessions.get(sessionId)
-		const model = options.model || session?.model || DEFAULT_MODEL
 		const bridge = getIpcBridge()
-		let cliSessionId: string | null = this.cliSessionMap.get(sessionId) || null
 
-		if (!cliSessionId && hasIpcApi() && bridge.dweb?.cli?.cliStartSession) {
-			try {
-				const result = await ipcCall(
-					() => bridge.dweb!.cli!.cliStartSession!({ adapter: ADAPTER_NAME }) as Promise<IpcResult>
-				)
-				const resultData = isRecord(result) ? result as Record<string, unknown> : {}
-				cliSessionId = String(resultData.sessionId || '') || null
-				if (cliSessionId) {
-					this.cliSessionMap.set(sessionId, cliSessionId)
-				}
-			} catch (err: unknown) {
-				yield { type: 'error', message: `Codex CLI 会话启动失败: ${err instanceof Error ? err.message : String(err)}` }
-				return
-			}
-		}
-
-		if (!hasIpcApi() || !bridge.dweb?.cli?.cliSendMessageStream) {
-			yield { type: 'error', message: 'Codex CLI IPC 通道不可用' }
+		if (!hasIpcApi() || !bridge.dweb?.agent?.stream) {
+			yield { type: 'error', message: 'Agent IPC 通道不可用' }
 			return
 		}
 
-		if (!cliSessionId) {
-			yield { type: 'error', message: 'Codex CLI 会话不可用' }
-			return
-		}
-
-		const payload = {
-			sessionId: cliSessionId,
+		const payload = toPlain({
+			backend: 'codex',
+			prompt: options.content,
 			content: options.content,
-			message: options.content,
-			model,
-		}
+			attachments: options.attachments,
+			model: options.model || session?.model || DEFAULT_MODEL,
+			context: options.context,
+			history: options.history,
+			apiKeys: options.apiKeys || {},
+			thinkingEffort: options.thinkingEffort || 'medium',
+			systemPrompt: options.systemPrompt,
+			tools: options.tools,
+			sessionId,
+		})
 
 		const onAbort = () => {
-			this.abort(sessionId).catch(() => {})
+			if (bridge.dweb?.agent?.abort) {
+				bridge.dweb.agent.abort({ sessionId }).catch(() => {})
+			}
+			if (bridge.dweb?.cli?.cancel) {
+				bridge.dweb.cli.cancel({ sessionId }).catch(() => {})
+			}
 		}
 		signal?.addEventListener('abort', onAbort)
 
 		try {
-			const gen = bridge.dweb.cli.cliSendMessageStream(payload)
+			const gen = bridge.dweb.agent.stream(payload)
 			if (!gen || typeof gen[Symbol.asyncIterator] !== 'function') {
-				yield { type: 'error', message: 'Codex CLI 流式通道不可用' }
+				yield { type: 'error', message: 'Agent 流式通道不可用' }
 				return
 			}
 
@@ -233,12 +200,10 @@ export class CodexChatService implements IChatService {
 					yield { type: 'error', message: '请求已取消' }
 					return
 				}
-
 				const ev = normalizeToChatEvent(raw)
 				if (ev) {
 					yield ev
 					if (ev.type === 'done') return
-					if (ev.type === 'error') return
 				}
 			}
 			yield { type: 'done' }
@@ -289,11 +254,10 @@ export class CodexChatService implements IChatService {
 
 	async abort(sessionId?: string): Promise<void> {
 		if (!sessionId) return
-		const cliSessionId = this.cliSessionMap.get(sessionId)
 		const bridge = getIpcBridge()
-		if (cliSessionId && hasIpcApi() && bridge.dweb?.cli?.cliStopSession) {
+		if (hasIpcApi() && bridge.dweb?.agent?.abort) {
 			try {
-				await bridge.dweb.cli.cliStopSession({ sessionId: cliSessionId })
+				await bridge.dweb.agent.abort({ sessionId })
 			} catch {
 			}
 		}

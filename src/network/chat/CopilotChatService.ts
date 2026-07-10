@@ -165,11 +165,14 @@ export class CopilotChatService implements IChatService {
 			backend: 'copilot',
 			prompt: options.content,
 			content: options.content,
+			attachments: options.attachments,
 			model: options.model || session?.model || 'auto',
 			context: options.context,
 			history: options.history,
 			apiKeys: options.apiKeys || {},
 			thinkingEffort: options.thinkingEffort || 'medium',
+			systemPrompt: options.systemPrompt,
+			tools: options.tools,
 			sessionId,
 		})
 

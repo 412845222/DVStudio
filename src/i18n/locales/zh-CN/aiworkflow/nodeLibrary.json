@@ -67,6 +67,10 @@
   "aiworkflow.nodeLibrary.nodes.meshy.description": "通过 Meshy API 将图片转换为高质量3D模型。",
   "aiworkflow.nodeLibrary.nodes.meshy.searchAliases": ["Meshy", "3D生成", "图生3D"],
 
+  "aiworkflow.nodeLibrary.nodes.blender.label": "Blender节点",
+  "aiworkflow.nodeLibrary.nodes.blender.description": "通过官方 Blender MCP Server 连接本机 Blender，执行 AI 生成的 Python 脚本，支持 3D 模型导入与场景操作。",
+  "aiworkflow.nodeLibrary.nodes.blender.searchAliases": ["Blender", "MCP", "3D", "建模"],
+
   "aiworkflow.nodeLibrary.nodes.unreal-export.label": "Unreal导出节点",
   "aiworkflow.nodeLibrary.nodes.unreal-export.description": "将场景布局和灯光设置导出到 Unreal Engine 项目中。",
   "aiworkflow.nodeLibrary.nodes.unreal-export.searchAliases": ["Unreal", "UE", "导出", "unreal"],

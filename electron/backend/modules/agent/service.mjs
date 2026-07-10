@@ -73,6 +73,7 @@ export async function* streamAgentMessage(ctx, payload) {
       history: Array.isArray(p.history) ? p.history : [],
       attachments: Array.isArray(p.attachments) ? p.attachments : [],
       tools: Array.isArray(p.tools) ? p.tools : [],
+      systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
     });
   } catch (err) {
     logger.error(`Runtime stream failed for backend=${backend}: ${err.message}`);

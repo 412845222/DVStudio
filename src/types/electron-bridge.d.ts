@@ -449,6 +449,19 @@ declare global {
 			codex?: any
 			projects?: any
 			projectAssets?: any
+			blender?: {
+				checkStatus(payload?: any): Promise<any>
+				mcpConnect(payload?: any): Promise<any>
+				mcpDisconnect(payload?: any): Promise<any>
+				mcpStatus(payload?: any): Promise<any>
+				mcpCallTool(payload?: any): Promise<any>
+				importModel(payload?: any): Promise<any>
+				mcpListTools(payload?: any): Promise<any>
+				onMcpStatusChanged?(callback: (payload: any) => void): () => void
+			}
+			gemini?: {
+				chat?(payload: any): Promise<any>
+			}
 		}
 	}
 }
