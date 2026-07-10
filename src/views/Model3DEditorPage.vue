@@ -224,7 +224,7 @@ const currentTransformMode = ref<TransformMode>('translate')
 const shadowsEnabled = ref(true)
 const gridVisible = ref(true)
 const axesVisible = ref(true)
-const bloomEnabled = ref(true)
+const bloomEnabled = ref(false)
 const wireframeOverlay = ref(false)
 const showLightingPanel = ref(true)
 

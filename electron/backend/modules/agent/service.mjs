@@ -225,3 +225,28 @@ export function addAgentConversationMessage(ctx, payload) {
     return { ok: false, error: err.message };
   }
 }
+
+/**
+ * 重命名 Agent 会话
+ */
+export function renameAgentConversation(ctx, payload) {
+  const id = String(payload?.id || '').trim();
+  const title = String(payload?.title || '').trim();
+  if (!id) {
+    return { ok: false, error: 'id is required' };
+  }
+  if (!title) {
+    return { ok: false, error: 'title is required' };
+  }
+  const repo = ctx.localdb?.chatConversations;
+  if (!repo || typeof repo.updateTitle !== 'function') {
+    return { ok: false, error: 'chatConversations repo not available' };
+  }
+  try {
+    const result = repo.updateTitle(id, title);
+    return result;
+  } catch (err) {
+    logger.error(`Rename agent conversation error: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}

@@ -23,7 +23,6 @@
 							:value="codexActiveSessionId"
 							@change="onAgentSessionChange"
 						>
-							<option value="">{{ t('aichat.dock.newSession') }}</option>
 							<option v-for="s in codexSessions" :key="s.id" :value="s.id">
 								{{ s.title || t('aichat.dock.newSession') }}
 							</option>
@@ -45,11 +44,51 @@
 								/>
 							</svg>
 						</button>
+						<template v-if="isRenamingSession && renamingSessionId === codexActiveSessionId">
+							<input
+								class="chat-history-rename-input"
+								type="text"
+								v-model="renamingSessionTitle"
+								:placeholder="t('aichat.dock.defaultSessionName')"
+								@keydown.enter="onConfirmRenameSession"
+								@keydown.escape="onCancelRenameSession"
+								@blur="onConfirmRenameSession"
+								ref="renameInputRef"
+							/>
+						</template>
+						<button
+							v-else
+							class="chat-history-rename-btn"
+							type="button"
+							:title="t('aichat.dock.renameSessionTitle')"
+							:disabled="!codexActiveSessionId"
+							@pointerdown.stop
+							@click.stop="onRenameActiveAgentSession"
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									fill="none"
+								/>
+								<path
+									d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									fill="none"
+								/>
+							</svg>
+						</button>
 						<button
 							class="chat-history-delete-btn"
 							type="button"
 							:title="t('aichat.dock.deleteSessionTitle')"
-							:disabled="!codexActiveSessionId || codexSessions?.length <= 1"
+							:disabled="!codexActiveSessionId"
 							@pointerdown.stop
 							@click.stop="emit('codex-delete-session', codexActiveSessionId)"
 						>
@@ -1459,6 +1498,11 @@ const agentFlowDetail = (ev: CodexFlowEvent) => {
 }
 const codexActiveSessionId = computed(() => String(props.codexActiveSessionId || '').trim())
 
+const isRenamingSession = ref(false)
+const renamingSessionId = ref('')
+const renamingSessionTitle = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+
 const onSelectCodexSession = (sessionId: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
@@ -1474,14 +1518,25 @@ const onAgentSessionChange = (e: Event) => {
 const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
-	const next = window.prompt(
-		t('aichat.dock.renamePrompt'),
-		String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
-	)
-	if (next == null) return
-	const title = String(next || '').trim()
-	if (!title) return
+	renamingSessionId.value = id
+	renamingSessionTitle.value = String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
+	isRenamingSession.value = true
+	nextTick(() => {
+		renameInputRef.value?.focus()
+		renameInputRef.value?.select()
+	})
+}
+
+const onConfirmRenameSession = () => {
+	const id = renamingSessionId.value
+	const title = String(renamingSessionTitle.value || '').trim()
+	isRenamingSession.value = false
+	if (!id || !title) return
 	emit('codex-rename-session', { sessionId: id, title })
+}
+
+const onCancelRenameSession = () => {
+	isRenamingSession.value = false
 }
 
 const onCodexApproval = (messageId: string, decision: 'accept' | 'decline') => {
@@ -2386,6 +2441,56 @@ watch(
 .chat-history-new-btn svg {
 	width: 16px;
 	height: 16px;
+}
+
+.chat-history-rename-btn {
+	width: 28px;
+	height: 28px;
+	display: grid;
+	place-items: center;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
+	border-radius: 6px;
+	background: transparent;
+	color: color-mix(in srgb, var(--wf-primary, #1f9d84) 70%, var(--wf-text, #e2e8f0));
+	cursor: pointer;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+}
+
+.chat-history-rename-btn:hover:not(:disabled) {
+	border-color: var(--wf-primary, #1f9d84);
+	color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+}
+
+.chat-history-rename-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.chat-history-rename-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.chat-history-rename-input {
+	height: 28px;
+	min-width: 120px;
+	max-width: 200px;
+	padding: 0 8px;
+	border: 1px solid var(--wf-primary, #1f9d84);
+	border-radius: 6px;
+	background: var(--wf-bg-secondary, #1e293b);
+	color: var(--wf-text, #e2e8f0);
+	font-size: 12px;
+	outline: none;
+	transition: all 0.2s ease;
+}
+
+.chat-history-rename-input:focus {
+	border-color: var(--wf-primary, #1f9d84);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
 .chat-history-delete-btn {

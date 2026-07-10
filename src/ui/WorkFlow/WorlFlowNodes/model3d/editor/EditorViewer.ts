@@ -107,7 +107,7 @@ export class EditorViewer {
 	private manualLightingParams: ManualLightingParams = {}
 	private mainLightRadius = 12
 	private shadowsEnabled = true
-	private bloomEnabled = true
+	private bloomEnabled = false
 	private bloomStrength = 1.0
 	private bloomRadius = 0.7
 	private bloomThreshold = 0.5
@@ -158,7 +158,7 @@ export class EditorViewer {
 		this.onSelectionTransform = options?.onSelectionTransform
 		this.currentRenderMode = options?.initialRenderMode || 'pbr'
 		this.shadowsEnabled = options?.shadowsEnabled !== false
-		this.bloomEnabled = options?.bloomEnabled !== false
+		this.bloomEnabled = options?.bloomEnabled === true
 		if (options?.bloomStrength !== undefined) this.bloomStrength = options.bloomStrength
 		if (options?.bloomRadius !== undefined) this.bloomRadius = options.bloomRadius
 		if (options?.bloomThreshold !== undefined) this.bloomThreshold = options.bloomThreshold

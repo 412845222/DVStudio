@@ -171,6 +171,18 @@
 						</svg>
 						<span>{{ t('nodes.model3d.open3DEditor') }}</span>
 					</button>
+					<div
+						v-if="tripo3dPostProcessAvailable"
+						class="wf-model3d-tripo3d-badge"
+						:title="t('nodes.model3d.tripo3dPostProcessAvailable')"
+					>
+						<svg class="wf-model3d-tripo3d-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M12 2L2 7l10 5 10-5-10-5z"/>
+							<path d="M2 17l10 5 10-5"/>
+							<path d="M2 12l10 5 10-5"/>
+						</svg>
+						<span>{{ t('nodes.model3d.tripo3dPostProcessBadge') }}</span>
+					</div>
 				</div>
 				<div class="wf-model3d-grid">
 					<div class="wf-model3d-info-card wf-model3d-field-wide">
@@ -454,6 +466,28 @@ const upstreamStatusDisplay = computed(() => {
 
 const meshySettings = computed(() => settings.value?.meshyModelSettings ?? null)
 const tripo3dSettings = computed(() => settings.value?.tripo3dModelSettings ?? null)
+
+const tripo3dPostProcessAvailable = computed(() => {
+	const tripo = tripo3dSettings.value
+	const modelSource = String(settings.value?.modelGenerationSource ?? '').trim()
+	const taskId = String(tripo?.tripo3dTaskId ?? tripo?.tripo3dUpstreamTaskId ?? '').trim()
+	const status = String(tripo?.tripo3dTaskStatus ?? tripo?.tripo3dUpstreamTaskStatus ?? '').trim()
+	const family = String(tripo?.tripo3dTaskFamily ?? tripo?.tripo3dUpstreamTaskFamily ?? '').trim()
+	const modelAssetUrl = String(settings.value?.modelAssetUrl ?? '').trim()
+	const modelUrl = String(settings.value?.modelUrl ?? '').trim()
+	const hasModel = !!(modelAssetUrl || modelUrl)
+	const successStatuses = ['success', 'succeeded', 'done']
+	const generationModes = ['text_to_model', 'image_to_model', 'multiview_to_model']
+	const postProcessModes = ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+	const validFamily = generationModes.includes(family) || postProcessModes.includes(family)
+	// 条件1：标准条件 - 有任务ID、成功状态、有效任务类型
+	if (taskId && successStatuses.includes(status) && validFamily) return true
+	// 条件2：回退条件 - 模型来源是tripo3d，有任务ID，且已有模型文件（白模已下载）
+	if (modelSource === 'tripo3d' && taskId && hasModel) return true
+	// 条件3：回退条件 - 有任务ID且family字段表明是tripo3d任务（即使status缺失）
+	if (taskId && validFamily) return true
+	return false
+})
 
 const meshyFetchFailed = computed(() => {
 	const status = String(meshySettings.value?.taskStatus ?? '').trim()
@@ -1315,6 +1349,33 @@ onBeforeUnmount(() => {
 .wf-model3d-editor-icon {
 	width: 16px;
 	height: 16px;
+	flex-shrink: 0;
+}
+
+.wf-model3d-tripo3d-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 10px;
+	padding: 6px 10px;
+	border: 1px solid rgb(59 130 246 / 0.5);
+	background: linear-gradient(
+		180deg,
+		rgb(59 130 246 / 0.15),
+		rgb(59 130 246 / 0.06)
+	);
+	color: rgb(147 197 253);
+	font-size: 11px;
+	letter-spacing: 0.3px;
+	backdrop-filter: blur(8px);
+	box-shadow:
+		0 0 0 1px rgb(59 130 246 / 0.08),
+		0 0 12px rgb(59 130 246 / 0.1);
+}
+
+.wf-model3d-tripo3d-badge-icon {
+	width: 14px;
+	height: 14px;
 	flex-shrink: 0;
 }
 

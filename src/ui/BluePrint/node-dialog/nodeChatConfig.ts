@@ -1,4 +1,4 @@
-import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord, WorkflowTripo3DMode } from '../../../aiworkflow/types'
 
 export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.nodeType.text',
@@ -501,6 +501,11 @@ export const NODE_CHAT_TRIPO3D_TEXTURE_ALIGNMENT_OPTIONS = [
 	{ value: 'geometry', label: 'aiConfig.tripo3dTextureAlignment.geometry' }
 ]
 
+export const NODE_CHAT_TRIPO3D_TEXTURE_MODEL_VERSION_OPTIONS = [
+	{ value: 'v3.0-20250812', label: 'aiConfig.tripo3dTextureModelVersion.v30' },
+	{ value: 'v2.5-20250123', label: 'aiConfig.tripo3dTextureModelVersion.v25' }
+]
+
 export const NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS = [
 	{ value: 'default', label: 'aiConfig.tripo3dOrientation.default' },
 	{ value: 'align_image', label: 'aiConfig.tripo3dOrientation.alignImage' }
@@ -644,6 +649,75 @@ export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
 		next.tripo3dSelectedImages = []
 	}
 
+	const taskMode = String(next.tripo3dTaskMode || 'image_to_model')
+	const validTaskModes = ['text_to_model', 'image_to_model', 'multiview_to_model', 'texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+	if (!validTaskModes.includes(taskMode)) {
+		next.tripo3dTaskMode = 'image_to_model'
+	} else {
+		next.tripo3dTaskMode = taskMode as WorkflowTripo3DMode
+	}
+
+	if (next.tripo3dSegType && !['image', 'model'].includes(String(next.tripo3dSegType))) {
+		delete next.tripo3dSegType
+	}
+
+	if (next.tripo3dGranularity && !['coarse', 'medium', 'fine'].includes(String(next.tripo3dGranularity))) {
+		delete next.tripo3dGranularity
+	}
+
+	if (next.tripo3dDecimateModel && !['v1.0', 'v2.0'].includes(String(next.tripo3dDecimateModel))) {
+		delete next.tripo3dDecimateModel
+	}
+
+	if (next.tripo3dConvertFormat && !['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'].includes(String(next.tripo3dConvertFormat))) {
+		delete next.tripo3dConvertFormat
+	}
+
+	next.tripo3dConvertQuad = Boolean(next.tripo3dConvertQuad)
+	next.tripo3dConvertFlattenBottom = Boolean(next.tripo3dConvertFlattenBottom)
+
+	if (next.tripo3dConvertFaceLimit !== undefined) {
+		const convertFaceLimit = Number(next.tripo3dConvertFaceLimit)
+		next.tripo3dConvertFaceLimit = convertFaceLimit > 0 ? convertFaceLimit : undefined
+	}
+
+	if (next.tripo3dConvertTextureSize !== undefined) {
+		const textureSize = Number(next.tripo3dConvertTextureSize)
+		next.tripo3dConvertTextureSize = textureSize > 0 ? textureSize : undefined
+	}
+
+	if (next.tripo3dPartNames && !Array.isArray(next.tripo3dPartNames)) {
+		delete next.tripo3dPartNames
+	}
+
+	if (next.tripo3dHint !== undefined) {
+		next.tripo3dHint = String(next.tripo3dHint).trim() || undefined
+	}
+
+	if (next.tripo3dTransform !== undefined) {
+		const transform = next.tripo3dTransform as number[]
+		if (!Array.isArray(transform) || transform.length !== 16) {
+			delete next.tripo3dTransform
+		}
+	}
+
+	next.tripo3dTextureModelVersion = String(next.tripo3dTextureModelVersion || 'v3.0-20250812')
+	if (!['v2.5-20250123', 'v3.0-20250812'].includes(String(next.tripo3dTextureModelVersion))) {
+		next.tripo3dTextureModelVersion = 'v3.0-20250812'
+	}
+
+	if (next.tripo3dTextureBake !== undefined) {
+		next.tripo3dTextureBake = next.tripo3dTextureBake !== false
+	} else {
+		next.tripo3dTextureBake = true
+	}
+
+	next.tripo3dTextureForceSingleImage = Boolean(next.tripo3dTextureForceSingleImage)
+
+	if (!Array.isArray(next.tripo3dTextureSelectedImages)) {
+		next.tripo3dTextureSelectedImages = []
+	}
+
 	return next as WorkflowNodeChatParamRecord
 }
 
@@ -770,7 +844,21 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				tripo3dCompress: false,
 				tripo3dExportUv: true,
 				tripo3dModelSeed: -1,
-				tripo3dTextureSeed: -1
+				tripo3dTextureSeed: -1,
+				tripo3dTaskMode: 'text_to_model',
+				tripo3dTextureModelVersion: 'v3.0-20250812',
+				tripo3dTextureBake: true,
+				tripo3dSegType: 'image',
+				tripo3dGranularity: 'medium',
+				tripo3dDecimateModel: 'v2.0',
+				tripo3dConvertFormat: 'GLTF',
+				tripo3dConvertQuad: false,
+				tripo3dConvertFlattenBottom: false,
+				tripo3dConvertFaceLimit: 0,
+				tripo3dConvertTextureSize: 2048,
+				tripo3dPartNames: [],
+				tripo3dHint: '',
+				tripo3dTransform: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
 			}
 		case 'blender':
 			return {
@@ -958,6 +1046,52 @@ export const NODE_CHAT_BLENDER_THINKING_OPTIONS = [
 	{ value: 'medium', label: 'aiConfig.blender.thinkingMedium' },
 	{ value: 'high', label: 'aiConfig.blender.thinkingHigh' }
 ] as const
+
+export const NODE_CHAT_TRIPO3D_TASK_MODE_OPTIONS = [
+	{ value: 'text_to_model', label: 'aiConfig.tripo3dTaskMode.textToModel' },
+	{ value: 'image_to_model', label: 'aiConfig.tripo3dTaskMode.imageToModel' },
+	{ value: 'multiview_to_model', label: 'aiConfig.tripo3dTaskMode.multiviewToModel' },
+	{ value: 'texture', label: 'aiConfig.tripo3dTaskMode.texture' },
+	{ value: 'refine', label: 'aiConfig.tripo3dTaskMode.refine' },
+	{ value: 'mesh_segment', label: 'aiConfig.tripo3dTaskMode.meshSegment' },
+	{ value: 'mesh_smartsegment', label: 'aiConfig.tripo3dTaskMode.meshSmartsegment' },
+	{ value: 'mesh_complete', label: 'aiConfig.tripo3dTaskMode.meshComplete' },
+	{ value: 'mesh_decimate', label: 'aiConfig.tripo3dTaskMode.meshDecimate' },
+	{ value: 'models_convert', label: 'aiConfig.tripo3dTaskMode.modelsConvert' },
+]
+
+export const NODE_CHAT_TRIPO3D_SEG_TYPE_OPTIONS = [
+	{ value: 'image', label: 'aiConfig.tripo3dSegType.image' },
+	{ value: 'model', label: 'aiConfig.tripo3dSegType.model' },
+]
+
+export const NODE_CHAT_TRIPO3D_GRANULARITY_OPTIONS = [
+	{ value: 'coarse', label: 'aiConfig.tripo3dGranularity.coarse' },
+	{ value: 'medium', label: 'aiConfig.tripo3dGranularity.medium' },
+	{ value: 'fine', label: 'aiConfig.tripo3dGranularity.fine' },
+]
+
+export const NODE_CHAT_TRIPO3D_DECIMATE_MODEL_OPTIONS = [
+	{ value: 'v1.0', label: 'aiConfig.tripo3dDecimateModel.v10' },
+	{ value: 'v2.0', label: 'aiConfig.tripo3dDecimateModel.v20', badge: 'aiConfig.common.recommended' },
+]
+
+export const NODE_CHAT_TRIPO3D_CONVERT_FORMAT_OPTIONS = [
+	{ value: 'GLTF', label: 'GLTF' },
+	{ value: 'FBX', label: 'FBX' },
+	{ value: 'USDZ', label: 'USDZ' },
+	{ value: 'OBJ', label: 'OBJ' },
+	{ value: 'STL', label: 'STL' },
+	{ value: '3MF', label: '3MF' },
+]
+
+export const isTripo3DPostProcessMode = (mode: string): boolean => {
+	return ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert'].includes(mode)
+}
+
+export const isTripo3DGenerateMode = (mode: string): boolean => {
+	return ['text_to_model', 'image_to_model', 'multiview_to_model'].includes(mode)
+}
 
 export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null => {
 	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') {

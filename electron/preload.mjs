@@ -627,6 +627,12 @@ contextBridge.exposeInMainWorld('dweb', {
 		stream: (payload) => createIpcStreamGenerator('dweb:agent', payload || {}),
 		getContext: (payload) => invoke('dweb:agent:context', payload || {}),
 		abort: (payload) => invoke('dweb:agent:abort', payload || {}),
+		listConversations: (payload) => invoke('dweb:agent:list-conversations', payload || {}),
+		createConversation: (payload) => invoke('dweb:agent:create-conversation', payload || {}),
+		deleteConversation: (payload) => invoke('dweb:agent:delete-conversation', payload || {}),
+		renameConversation: (payload) => invoke('dweb:agent:rename-conversation', payload || {}),
+		getConversationMessages: (payload) => invoke('dweb:agent:get-conversation-messages', payload || {}),
+		addConversationMessage: (payload) => invoke('dweb:agent:add-conversation-message', payload || {}),
 	},
 	// ===== Agent Skills =====
 	agentSkills: {

@@ -386,16 +386,6 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 </script>
 
 <style scoped>
-.wf-merge {
-	width: 100%;
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	flex: 1;
-	min-height: 0;
-	align-self: stretch;
-}
-
 .wf-merge-label {
 	font-size: 12px;
 	color: var(--vscode-foreground);
@@ -403,10 +393,6 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 }
 
 .wf-merge-output {
-	width: 100%;
-	box-sizing: border-box;
-	flex: 1;
-	min-height: 0;
 	padding: 6px 8px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);

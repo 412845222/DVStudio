@@ -102,5 +102,7 @@
   "nodes.model3d.exposure": "曝光",
   "nodes.model3d.lightAzimuth": "方位角",
   "nodes.model3d.lightElevation": "高度角",
-  "nodes.model3d.resetPreset": "重置为预设"
+  "nodes.model3d.resetPreset": "重置为预设",
+  "nodes.model3d.tripo3dPostProcessAvailable": "支持 Tripo3D 后处理",
+  "nodes.model3d.tripo3dPostProcessBadge": "Tripo3D 可后处理"
 }

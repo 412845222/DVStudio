@@ -30,7 +30,6 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	nodeImagePreviewVersion: (node: WorkflowNode) => string | null
 	nodeResourceUrl: (node: WorkflowNode) => string | null
 	nodeResourceName: (node: WorkflowNode) => string | null
-	connectedImageTargetsFromVideo: (videoNodeId: string) => string[]
 	rotateImagePreviewUrl: (node: WorkflowNode) => string | null
 	connectedSceneUnderstandImageInputs: (
 		nodeId: string
@@ -218,7 +217,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
 				posterUrl: resourcePosterUrl,
 				videoSettings: node.videoSettings ?? null,
-				screenshotEnabled: payload.connectedImageTargetsFromVideo(node.id).length > 0,
+				screenshotEnabled: true,
 				reloadToken: payload.nodeMediaReloadToken(node.id)
 			}
 		}

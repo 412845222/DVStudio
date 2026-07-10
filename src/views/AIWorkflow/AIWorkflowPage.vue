@@ -104,6 +104,7 @@
 						:anchor-compatibility="anchorCompatibility"
 						:is-linking="isLinking"
 						:inputs="node.inputs"
+						:isWarmupRender="isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))"
 						:nodeId="node.id"
 						:nodeType="node.type"
 						:outputs="node.outputs"
@@ -191,6 +192,7 @@
 						@run-scene-layout="onNodeRunSceneLayout(node.id)"
 						@run-scene-understanding="onNodeRunSceneUnderstanding(node.id)"
 						@screenshot="onVideoScreenshot(node.id, $event)"
+						@capture-preview="onVideoCapturePreview(node.id, $event)"
 						@select="onSelectNode"
 						@select-workflow="onComfyUISelectWorkflow(node.id, $event)"
 						@set-selected-placeholder-output="
@@ -972,6 +974,7 @@ import {
 	agentListConversations,
 	agentCreateConversation,
 	agentDeleteConversation,
+	agentRenameConversation,
 	agentGetConversationMessages
 } from '../../network/AgentChatService'
 import {
@@ -4345,6 +4348,7 @@ const chatRunState = ref<'idle' | 'sending' | 'stopping' | 'error'>('idle')
 const codexSessions = ref<LocalExecSessionItem[]>([])
 const codexActiveSessionId = ref<string>('')
 const codexFlowEvents = ref<LocalExecFlowEvent[]>([])
+let agentSessionsLoading = false
 const toolApprovalQueue = ref<ToolApprovalItem[]>([])
 
 const nanoPreviewUrl = ref<string>('')
@@ -4646,10 +4650,12 @@ function ensureProjectForLocalExec(opts?: { silent?: boolean }): Promise<number 
 	})
 }
 
-const loadCodexSessions = async () => {
+const loadAgentSessions = async () => {
 	const projectPath = String(currentProjectRootPath.value || '').trim()
+	if (!projectPath) return
 	try {
 		const res = await agentListConversations(projectPath)
+		if (String(currentProjectRootPath.value || '').trim() !== projectPath) return
 		if (!res?.ok) {
 			codexSessions.value = []
 			codexActiveSessionId.value = ''
@@ -4666,12 +4672,24 @@ const loadCodexSessions = async () => {
 			codexActiveSessionId.value = codexSessions.value[0].id
 			void onCodexSelectSession(codexActiveSessionId.value)
 		}
+		if (codexSessions.value.length === 0) {
+			await onCodexCreateSession()
+		}
 	} catch {
-		codexSessions.value = []
+		if (String(currentProjectRootPath.value || '').trim() === projectPath) {
+			codexSessions.value = []
+		}
 	}
 }
 
+const loadCodexSessions = loadAgentSessions
+const loadDVSAgentSessions = loadAgentSessions
+
 const onCodexCreateSession = async () => {
+	// 如果当前已有空会话（没有消息内容），且列表中还有其他会话，直接切换到该会话，不创建新会话
+	if (codexActiveSessionId.value && chatMessages.value.length === 0 && codexSessions.value.length > 0) {
+		return
+	}
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
 		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
@@ -4754,34 +4772,48 @@ const onCodexApproval = async (payloadValue: {
 const onCodexDeleteSession = async (sessionId: string) => {
 	const sid = String(sessionId || '').trim()
 	if (!sid) return
-	const ok = window.confirm(t('aiworkflow.page.chat.confirmDeleteSession'))
-	if (!ok) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
 		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
 		return
 	}
+	pushToast(t('aiworkflow.page.chat.deleteSessionSuccess'), 'info')
+	const wasActive = codexActiveSessionId.value === sid
 	codexSessions.value = codexSessions.value.filter((s) => s.id !== sid)
-	if (codexActiveSessionId.value === sid) {
-		codexActiveSessionId.value = codexSessions.value[0]?.id || ''
-		if (codexActiveSessionId.value) {
+	if (wasActive) {
+		if (codexSessions.value.length > 0) {
+			codexActiveSessionId.value = codexSessions.value[0].id
 			void onCodexSelectSession(codexActiveSessionId.value)
 		} else {
-			chatMessages.value = []
-			codexFlowEvents.value = []
+			await onCodexCreateSession()
 		}
 	}
 }
 
 const onCodexRenameSession = async (payloadValue: { sessionId: string; title: string }) => {
+	const sid = String(payloadValue.sessionId || '').trim()
+	const title = String(payloadValue.title || '').trim()
+	if (!sid || !title) return
+
+	if (agentBackend.value === 'dvsagent') {
+		try {
+			const res = await agentRenameConversation(sid, title)
+			if (!res?.ok) {
+				pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
+				return
+			}
+			codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
+		} catch (err: unknown) {
+			pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: getErrorMessage(err) }), 'warn')
+		}
+		return
+	}
+
 	const projectId = await ensureProjectForLocalExec()
 	if (projectId == null) {
 		pushToast(t('aiworkflow.page.chat.renameSessionFailedAutoSave'), 'warn')
 		return
 	}
-	const sid = String(payloadValue.sessionId || '').trim()
-	const title = String(payloadValue.title || '').trim()
-	if (!sid || !title) return
 	const result = (await localExecChatService.localExecUpdateSession({
 		sessionId: sid,
 		projectId,
@@ -6229,52 +6261,331 @@ const syncModel3DInputFromUpstream = async (
 			return true
 		}
 
-		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings) && fromNode.model3dSettings.modelGenerationSource === 'tripo3d') {
-			const tripo3dSettings = fromNode.model3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
-			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
-			const effective = getTripo3DEffectiveModelSource(settings)
-			const sourceUrl = effective.preferredUrl || effective.assetUrl
-			if (!sourceUrl) continue
-			const format = effective.format
-			const taskIdVal = String(settings.taskId ?? settings.tripo3dTaskId ?? fromNode.id).trim() || fromNode.id
-			const name = `tripo3d_${taskIdVal}.${format}`
-			const persisted = (await persistExternalAssetToProject({
-				kind: 'file',
-				name,
-				sourceUrl,
-				sourcePath: effective.assetPath || undefined
-			})) as PersistedAsset | null
-			revokeNodeModel3DObjectUrl(nodeId)
-			const finalModelUrl = String(persisted?.url || effective.assetUrl || sourceUrl)
-			if (isTripo3DRemoteUrl(finalModelUrl)) {
-				console.warn(
-					'[DVS:syncModel3D] tripo3d asset not yet localized, skipping commit — node:',
-					nodeId
-				)
-				continue
+		if (fromNode.type === 'image') {
+			const imgSettings = (fromNode as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
+			const rawImgTripo = imgSettings && typeof imgSettings.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings !== null
+				? imgSettings.tripo3dImageSettings as Record<string, unknown>
+				: {}
+			const directTripoSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown> | undefined
+			const settings: Record<string, unknown> = {}
+			for (const [key, value] of Object.entries(rawImgTripo)) {
+				settings[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
 			}
-			store.commit('setNodeModel3DSettings', {
-				nodeId,
-				model3dSettings: {
-					modelUrl: finalModelUrl,
-					modelFormat: format,
-					modelSourceName: name,
-					modelSourcePath:
-						String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
-					modelProjectRelativePath:
-						String(persisted?.projectRelativePath || '').trim() || undefined,
-					modelAssetUrl: String(persisted?.url || ''),
-					modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-					modelAssetProjectRelativePath:
-						String(persisted?.projectRelativePath || '').trim() || undefined,
-					lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
-					lastInputNodeId: fromNode.id,
-					lastInputSourceUrl: sourceUrl,
-					lastInputSourcePath: effective.assetPath || undefined,
-					lastInputSourceName: name
+			if (isRecord(directTripoSettings)) {
+				for (const [key, value] of Object.entries(directTripoSettings)) {
+					if (!(key in settings)) settings[key] = value
 				}
-			})
-			return true
+			}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
+				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
+				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
+				|| tripo3dTaskFamily === 'models_convert'
+			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
+
+			if (isTripo3DModelSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
+				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || 'glb'
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
+		}
+
+		if (fromNode.type === 'tripo3d' && isRecord((fromNode as Record<string, unknown>).tripo3dSettings)) {
+			const tripo3dSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown>
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
+				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
+				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
+				|| tripo3dTaskFamily === 'models_convert'
+			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
+
+			if (isTripo3DModelSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
+				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || 'glb'
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
+		}
+
+		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings)) {
+			const fromM3dSettings = fromNode.model3dSettings
+			const tripo3dSettings = fromM3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
+			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
+			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
+			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? '').trim()
+			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
+			const isTripo3DSource = fromM3dSettings.modelGenerationSource === 'tripo3d' || !!tripo3dTaskId
+
+			if (isTripo3DSource) {
+				const effective = getTripo3DEffectiveModelSource(settings)
+				const fallbackUrl = String(fromM3dSettings.modelAssetUrl ?? fromM3dSettings.modelUrl ?? '').trim()
+				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
+				const taskIdVal = tripo3dTaskId || String(settings.taskId ?? fromNode.id).trim() || fromNode.id
+
+				if (!sourceUrl) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					continue
+				}
+
+				const format = effective.format || (fromM3dSettings.modelFormat === 'gltf' ? 'gltf' : 'glb')
+				const name = `tripo3d_${taskIdVal}.${format}`
+				const persisted = (await persistExternalAssetToProject({
+					kind: 'file',
+					name,
+					sourceUrl,
+					sourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? fromM3dSettings.modelSourcePath ?? '').trim() || undefined
+				})) as PersistedAsset | null
+				revokeNodeModel3DObjectUrl(nodeId)
+				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
+				if (isTripo3DRemoteUrl(finalModelUrl)) {
+					const currentNode = store.state.nodesById[nodeId]
+					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					store.commit('setNodeModel3DSettings', {
+						nodeId,
+						model3dSettings: {
+							modelGenerationSource: 'tripo3d',
+							lastInputNodeId: fromNode.id,
+							tripo3dModelSettings: {
+								...currentTripo,
+								tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+								tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+								tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+							}
+						}
+					})
+					console.warn(
+						'[DVS:syncModel3D] tripo3d asset not yet localized, but upstream taskId synced — node:',
+						nodeId
+					)
+					continue
+				}
+
+				const currentNode = store.state.nodesById[nodeId]
+				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+
+				store.commit('setNodeModel3DSettings', {
+					nodeId,
+					model3dSettings: {
+						modelGenerationSource: 'tripo3d',
+						modelUrl: finalModelUrl,
+						modelFormat: format,
+						modelSourceName: name,
+						modelSourcePath:
+							String(persisted?.absolutePath || effective.assetPath || fromM3dSettings.modelAssetPath || '').trim() || undefined,
+						modelProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						modelAssetUrl: String(persisted?.url || ''),
+						modelAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+						modelAssetProjectRelativePath:
+							String(persisted?.projectRelativePath || '').trim() || undefined,
+						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
+						lastInputNodeId: fromNode.id,
+						lastInputSourceUrl: sourceUrl,
+						lastInputSourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? '').trim() || undefined,
+						lastInputSourceName: name,
+						tripo3dModelSettings: {
+							...currentTripo,
+							tripo3dUpstreamTaskId: tripo3dTaskId || undefined,
+							tripo3dUpstreamTaskFamily: tripo3dTaskFamily || undefined,
+							tripo3dUpstreamTaskStatus: tripo3dTaskStatus || undefined
+						}
+					}
+				})
+				return true
+			}
 		}
 
 		if (fromNode.type === 'model3d') {
@@ -6779,7 +7090,6 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
 	nodeImagePreviewVersion,
 	nodeResourceUrl,
 	nodeResourceName,
-	connectedImageTargetsFromVideo: (videoNodeId) => connectedImageTargetsFromVideo(videoNodeId),
 	rotateImagePreviewUrl,
 	connectedSceneUnderstandImageInputs,
 	connectedImageInputUrl,
@@ -7759,6 +8069,17 @@ watch(
 )
 
 watch(
+	() => agentBackend.value,
+	(v) => {
+		if (v === 'dvsagent') {
+			void loadDVSAgentSessions()
+		} else if (v === 'codex') {
+			void loadCodexSessions()
+		}
+	}
+)
+
+watch(
 	() => currentProjectId.value,
 	(newId, oldId) => {
 		void loadCodexSessions()
@@ -7786,6 +8107,19 @@ watch(
 					triggerWarmupIfNeeded()
 				}
 			}, 500)
+		}
+	}
+)
+
+watch(
+	() => currentProjectRootPath.value,
+	(prev, next) => {
+		if (prev !== next && next && agentBackend.value === 'dvsagent') {
+			codexSessions.value = []
+			codexActiveSessionId.value = ''
+			chatMessages.value = []
+			codexFlowEvents.value = []
+			void loadDVSAgentSessions()
 		}
 	}
 )
@@ -8776,7 +9110,8 @@ const {
 	normalizeTripo3DTaskStatus,
 	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
 	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value,
-	getProjectId: () => currentProjectId.value
+	getProjectId: () => currentProjectId.value,
+	syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId)
 })
 
 const importLimitAlertMessage = ref('')
@@ -8894,16 +9229,281 @@ const { onRotateImageOutput } = useAIWorkflowRotateImageOutput({
 	}
 })
 
-const { connectedImageTargetsFromVideo, onVideoScreenshot } = useAIWorkflowVideoScreenshot({
+const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	getNode: (nodeId) => store.state.nodesById[nodeId],
-	getEdges: () => edges.value,
+	getAllNodes: () =>
+		store.state.nodeOrder
+			.map((id) => store.state.nodesById[id])
+			.filter(Boolean) as WorkflowNode[],
 	dataUrlToBlob,
 	onNodeUploadResource,
 	autoSizeMediaNode,
 	commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
 		store.commit('setNodeImageSettings', { nodeId, imageSettings })
-	}
+	},
+	commitAddNodeAt: ({ worldX, worldY, title }) => {
+		store.commit('addNodeAt', { worldX, worldY, title })
+		return store.state.selectedNodeId || null
+	},
+	commitSetNodeType: ({ nodeId, type }) => {
+		store.commit('setNodeType', { nodeId, type })
+	},
+	videoScreenshotNodeTitle: t('aiworkflow.page.videoScreenshotNodeTitle')
 })
+
+const onVideoCapturePreview = (
+	nodeId: string,
+	payload: { dataUrl: string; width: number; height: number; time: number }
+) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'video' || !node.resourceId) return
+
+	const rid = String(node.resourceId)
+	const blob = dataUrlToBlob(payload.dataUrl)
+	const file = new File([blob], `preview_${rid}.png`, { type: 'image/png' })
+
+	;(async () => {
+		try {
+			const uploaded = await blueprintProjectService.uploadAsset(file, 'image', {
+				projectId: currentProjectId.value,
+				bucket: 'thumbnails'
+			})
+
+			if (uploaded.ok && uploaded.asset) {
+				const nextPosterUrl = resolveBackendUrl(String(uploaded.asset?.url || ''))
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:')) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: {
+						posterUrl: nextPosterUrl,
+						posterSourcePath: String(uploaded.asset?.absolutePath || '').trim() || undefined
+					}
+				})
+			}
+		} catch {
+			try {
+				const nextPosterUrl = URL.createObjectURL(blob)
+				setObjectUrl(`wf-poster:${rid}`, nextPosterUrl)
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: { posterUrl: nextPosterUrl }
+				})
+			} catch {
+				// ignore
+			}
+		}
+	})()
+
+	;(async () => {
+		const nid = String(nodeId).trim()
+		if (!nid) return
+
+		const pendingSet = new Set(pendingScreenshotNodeIds.value)
+		pendingSet.add(nid)
+		pendingScreenshotNodeIds.value = pendingSet
+
+		try {
+			await nextTick()
+			await waitForFrames(2)
+
+			const activeTheme = themeStore.state.mode as 'dark' | 'light'
+			screenshotPool.invalidateScreenshot(nid, activeTheme)
+			invalidateCanvasScreenshot(nid, activeTheme)
+			const clearedMap = new Map(nodeScreenshotMap.value)
+			clearedMap.delete(nid)
+			nodeScreenshotMap.value = clearedMap
+
+			await scheduleNodeScreenshot(node, 0, 'high', true)
+		} catch (err) {
+			console.warn('[Video Preview Screenshot] failed for node:', nid, err)
+		} finally {
+			const releaseSet = new Set(pendingScreenshotNodeIds.value)
+			releaseSet.delete(nid)
+			pendingScreenshotNodeIds.value = releaseSet
+			refreshCanvasNodeLayer()
+		}
+	})()
+}
+
+const videoCoverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number) => {
+	const sW = Math.max(1, srcW)
+	const sH = Math.max(1, srcH)
+	const dW = Math.max(1, dstW)
+	const dH = Math.max(1, dstH)
+	const scale = Math.max(dW / sW, dH / sH)
+	const drawW = dW / scale
+	const drawH = dH / scale
+	const sx = (sW - drawW) / 2
+	const sy = (sH - drawH) / 2
+	return { sx, sy, sw: drawW, sh: drawH }
+}
+
+const updateVideoPosterFromCapture = async (
+	nodeId: string,
+	payload: { dataUrl: string; width: number; height: number; time: number }
+) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'video' || !node.resourceId) return
+
+	const nid = String(nodeId).trim()
+	const rid = String(node.resourceId)
+	const blob = dataUrlToBlob(payload.dataUrl)
+	const file = new File([blob], `preview_${rid}.png`, { type: 'image/png' })
+
+	try {
+		try {
+			const uploaded = await blueprintProjectService.uploadAsset(file, 'image', {
+				projectId: currentProjectId.value,
+				bucket: 'thumbnails'
+			})
+
+			if (uploaded.ok && uploaded.asset) {
+				const nextPosterUrl = resolveBackendUrl(String(uploaded.asset?.url || ''))
+				const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+				if (prevPoster && prevPoster.startsWith('blob:')) {
+					try {
+						URL.revokeObjectURL(prevPoster)
+					} catch {
+						// ignore
+					}
+				}
+				store.commit('patchResource', {
+					resourceId: rid,
+					patch: {
+						posterUrl: nextPosterUrl,
+						posterSourcePath: String(uploaded.asset?.absolutePath || '').trim() || undefined
+					}
+				})
+			} else {
+				throw new Error('Upload failed')
+			}
+		} catch {
+			const nextPosterUrl = URL.createObjectURL(blob)
+			setObjectUrl(`wf-poster:${rid}`, nextPosterUrl)
+			const prevPoster = String(store.state.resourcesById?.[rid]?.posterUrl || '').trim()
+			if (prevPoster && prevPoster.startsWith('blob:') && prevPoster !== nextPosterUrl) {
+				try {
+					URL.revokeObjectURL(prevPoster)
+				} catch {
+					// ignore
+				}
+			}
+			store.commit('patchResource', {
+				resourceId: rid,
+				patch: { posterUrl: nextPosterUrl }
+			})
+		}
+
+		await nextTick()
+
+		const activeTheme = themeStore.state.mode as 'dark' | 'light'
+		screenshotPool.invalidateScreenshot(nid, activeTheme)
+		invalidateCanvasScreenshot(nid, activeTheme)
+		const clearedMap = new Map(nodeScreenshotMap.value)
+		clearedMap.delete(nid)
+		nodeScreenshotMap.value = clearedMap
+
+		await scheduleNodeScreenshot(node, 0, 'high', true)
+	} catch (err) {
+		console.warn('[Video Deselect Screenshot] failed for node:', nid, err)
+	} finally {
+		const releaseSet = new Set(pendingScreenshotNodeIds.value)
+		releaseSet.delete(nid)
+		pendingScreenshotNodeIds.value = releaseSet
+		refreshCanvasNodeLayer()
+	}
+}
+
+watch(
+	() => [...selectedNodeIds.value],
+	(newIds, oldIds) => {
+		if (!oldIds || oldIds.length === 0) return
+		const newIdSet = new Set(newIds)
+		const captures: Array<{ nid: string; dataUrl: string; width: number; height: number; time: number }> = []
+
+		for (const id of oldIds) {
+			if (newIdSet.has(id)) continue
+			const nid = String(id ?? '').trim()
+			if (!nid) continue
+			const node = store.state.nodesById[nid]
+			if (node?.type !== 'video') continue
+
+			const hostEl = nodeHostRefs.get(nid)
+			if (!hostEl) {
+				console.warn('[Video Deselect] host element not found for node:', nid)
+				continue
+			}
+
+			const videoEl = hostEl.querySelector('video') as HTMLVideoElement | null
+			if (!videoEl) {
+				console.warn('[Video Deselect] video element not found for node:', nid)
+				continue
+			}
+
+			if (videoEl.readyState < 2 || !(videoEl.videoWidth > 0)) {
+				console.warn('[Video Deselect] video not ready for capture, readyState=', videoEl.readyState, 'videoWidth=', videoEl.videoWidth)
+				continue
+			}
+
+			const curTime = Number(videoEl.currentTime) || 0
+			if (curTime <= 0.1) {
+				console.warn('[Video Deselect] video curTime too small:', curTime)
+				continue
+			}
+
+			const videoSettings = (node as any).videoSettings as { outputWidth?: number; outputHeight?: number } | undefined
+			const ow = Math.max(1, Math.floor(Number(videoSettings?.outputWidth ?? (videoEl.videoWidth || 1))))
+			const oh = Math.max(1, Math.floor(Number(videoSettings?.outputHeight ?? (videoEl.videoHeight || 1))))
+
+			try {
+				const canvas = document.createElement('canvas')
+				canvas.width = ow
+				canvas.height = oh
+				const ctx = canvas.getContext('2d')
+				if (!ctx) continue
+
+				const srcW = Math.max(1, Math.floor(videoEl.videoWidth || 1))
+				const srcH = Math.max(1, Math.floor(videoEl.videoHeight || 1))
+				const { sx, sy, sw, sh } = videoCoverDrawParams(srcW, srcH, canvas.width, canvas.height)
+				ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
+				const dataUrl = canvas.toDataURL('image/png')
+				console.log('[Video Deselect] captured frame for node:', nid, 'time=', curTime, 'size=', ow, 'x', oh)
+
+				captures.push({ nid, dataUrl, width: ow, height: oh, time: curTime })
+			} catch (err) {
+				console.warn('[Video Deselect] canvas capture failed for node:', nid, err)
+			}
+		}
+
+		if (captures.length === 0) return
+
+		const pendingSet = new Set(pendingScreenshotNodeIds.value)
+		for (const cap of captures) {
+			pendingSet.add(cap.nid)
+		}
+		pendingScreenshotNodeIds.value = pendingSet
+
+		for (const cap of captures) {
+			updateVideoPosterFromCapture(cap.nid, { dataUrl: cap.dataUrl, width: cap.width, height: cap.height, time: cap.time })
+		}
+	},
+	{ flush: 'pre' }
+)
 
 const { uploadLocalResourceAndGetUrl, persistExternalAssetToProject } =
 	useAIWorkflowAssetPersistence({
