@@ -7,6 +7,7 @@
 			:placeholder="resolvedPlaceholder"
 			:disabled="disabled"
 			:rows="minRows"
+			@wheel.stop
 			@input="onInput"
 			@keydown="onKeydown"
 			@focus="onFocus"
@@ -48,9 +49,9 @@ const props = withDefaults(
 	{
 		placeholder: undefined,
 		disabled: false,
-		maxLength: 2000,
+		maxLength: undefined,
 		minRows: 2,
-		maxRows: 8,
+		maxRows: 16,
 		autoResize: true,
 		canSubmitEmpty: false
 	}
@@ -72,7 +73,7 @@ const resolvedPlaceholder = computed(() => {
 })
 
 const clampText = (text: string): string => {
-	if (props.maxLength && text.length > props.maxLength) {
+	if (typeof props.maxLength === 'number' && props.maxLength > 0 && text.length > props.maxLength) {
 		return text.slice(0, props.maxLength)
 	}
 	return text
@@ -164,6 +165,7 @@ defineExpose({ focus, blur })
 	width: calc(100% - 20px);
 	font-family: inherit;
 	box-sizing: border-box;
+	overflow-y: auto;
 	transition:
 		border-color 0.22s ease,
 		box-shadow 0.22s ease,
