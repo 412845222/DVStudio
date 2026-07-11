@@ -4,6 +4,10 @@
  * 严格对齐 BytedanceAdapter 的经过验证的实现逻辑
  */
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 function parseArguments(argsStr) {
   if (!argsStr) return {};
   if (typeof argsStr === 'object') return argsStr;
@@ -76,7 +80,7 @@ export class DVSAgentLLMClient {
 
     const body = {
       model: this.endpointId || model,
-      messages: this.buildMessages(messages),
+      messages: await this.buildMessages(messages),
       stream: true,
     };
 
@@ -172,8 +176,9 @@ export class DVSAgentLLMClient {
     }
   }
 
-  buildMessages(messages) {
-    return messages.map(m => {
+  async buildMessages(messages) {
+    const result = [];
+    for (const m of messages) {
       const msg = { role: m.role };
 
       if (m.role === 'tool') {
@@ -191,13 +196,41 @@ export class DVSAgentLLMClient {
               : JSON.stringify(tc.function.arguments),
           },
         }));
+      } else if (Array.isArray(m.content)) {
+        const processedParts = [];
+        for (const part of m.content) {
+          if (part && typeof part === 'object' && part.type === 'image_url' && part.image_url?.url) {
+            let url = part.image_url.url;
+            if (url.startsWith('file://')) {
+              try {
+                const localPath = fileURLToPath(url);
+                if (fs.existsSync(localPath)) {
+                  const data = fs.readFileSync(localPath);
+                  const ext = path.extname(localPath).toLowerCase().slice(1) || 'png';
+                  const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : `image/${ext}`;
+                  url = `data:${mime};base64,${data.toString('base64')}`;
+                }
+              } catch (err) {
+                continue;
+              }
+            }
+            processedParts.push({
+              type: 'image_url',
+              image_url: { url, detail: part.image_url.detail || 'auto' }
+            });
+          } else {
+            processedParts.push(part);
+          }
+        }
+        msg.content = processedParts;
       } else {
         msg.content = m.content;
       }
 
       if (m.name) msg.name = m.name;
-      return msg;
-    });
+      result.push(msg);
+    }
+    return result;
   }
 
   buildToolsSchema(tools) {

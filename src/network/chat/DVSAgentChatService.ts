@@ -258,6 +258,8 @@ export class DVSAgentChatService implements IChatService {
 			apiKeys: options.apiKeys || {},
 			apiSource: options.apiSource || 'bytedance',
 			thinkingEffort: options.thinkingEffort || 'medium',
+			maxToolCalls: options.maxToolCalls,
+			enableToolCallWarning: options.enableToolCallWarning !== false,
 			systemPrompt: options.systemPrompt,
 			tools: options.tools,
 			sessionId,

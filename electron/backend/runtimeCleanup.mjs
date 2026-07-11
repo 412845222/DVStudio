@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 
 function removeDirSafe(dirPath) {
 	const abs = path.resolve(dirPath)
@@ -9,6 +10,27 @@ function removeDirSafe(dirPath) {
 		return { path: abs, status: 'removed' }
 	} catch (e) {
 		return { path: abs, status: 'error', error: String(e?.message || e) }
+	}
+}
+
+export function cleanupBlenderScreenshotTemp(log = () => {}) {
+	const tempDir = path.join(os.tmpdir(), 'dweb-blender-screenshots')
+	if (!fs.existsSync(tempDir)) {
+		log(`[cleanup:blender-screenshots] not found: ${tempDir}`)
+		return { ok: true, path: tempDir, status: 'missing' }
+	}
+	try {
+		const files = fs.readdirSync(tempDir)
+		for (const file of files) {
+			try {
+				fs.unlinkSync(path.join(tempDir, file))
+			} catch {}
+		}
+		log(`[cleanup:blender-screenshots] cleaned ${files.length} files from ${tempDir}`)
+		return { ok: true, path: tempDir, status: 'cleaned', filesRemoved: files.length }
+	} catch (e) {
+		log(`[cleanup:blender-screenshots] error: ${String(e?.message || e)}`)
+		return { ok: false, path: tempDir, status: 'error', error: String(e?.message || e) }
 	}
 }
 

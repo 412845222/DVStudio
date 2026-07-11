@@ -9,6 +9,7 @@ import {
 	collectBlenderUpstreamInputs,
 	type BlenderUpstreamInputs
 } from './useBlenderUpstreamInputs'
+import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
 
 const makeMsgId = () => `blender-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -465,6 +466,16 @@ export async function runBlenderAgentChat(
 			? await upstreamImagesToAttachments(context.blender.upstream.images)
 			: []
 
+		let globalAgentSettings = getCachedAgentSettings()
+		try {
+			globalAgentSettings = await loadAgentSettings()
+		} catch {}
+
+		const rawThinking = String(settings.thinkingEffort || '').trim()
+		const thinkingEffort = (['disabled', 'low', 'medium', 'high'].includes(rawThinking)
+			? rawThinking
+			: 'medium') as 'disabled' | 'low' | 'medium' | 'high'
+
 		const session = await chatBridge.createSession(backend, {
 			title: prompt.slice(0, 24),
 			model,
@@ -475,11 +486,7 @@ export async function runBlenderAgentChat(
 		let receivedAnyContent = false
 		let receivedError = false
 		let aborted = false
-
-		const rawThinking = String(settings.thinkingEffort || '').trim()
-		const thinkingEffort = (['disabled', 'low', 'medium', 'high'].includes(rawThinking)
-			? rawThinking
-			: 'medium') as 'disabled' | 'low' | 'medium' | 'high'
+		let lastContextUsage: { tokenCount: number; budget: number; usage: number; truncated: boolean } | null = null
 
 		for await (const ev of chatBridge.sendMessage(
 			backend,
@@ -491,7 +498,9 @@ export async function runBlenderAgentChat(
 				systemPrompt,
 				tools: effectiveTools,
 				attachments,
-				thinkingEffort
+				thinkingEffort,
+				maxToolCalls: globalAgentSettings.maxToolCalls,
+				enableToolCallWarning: globalAgentSettings.enableToolCallWarning !== false
 			},
 			abortController.signal
 		) as AsyncGenerator<ChatStreamEvent, void, void>) {
@@ -613,7 +622,16 @@ export async function runBlenderAgentChat(
 				createAssistantMsg()
 				continue
 			}
-			if (ev.type === 'context_usage') continue
+			if (ev.type === 'context_usage') {
+				lastContextUsage = {
+					tokenCount: Number(ev.tokenCount) || 0,
+					budget: Number(ev.budget) || 0,
+					usage: Number(ev.usage) || 0,
+					truncated: !!ev.truncated
+				}
+				store.commit('setBlenderChatContextUsage', { nodeId, usage: lastContextUsage })
+				continue
+			}
 			if (ev.type === 'assistant_done') {
 				if (ev.content && ev.content.trim()) {
 					currentContent = ev.content

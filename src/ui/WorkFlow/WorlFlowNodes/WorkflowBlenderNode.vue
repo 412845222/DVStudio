@@ -163,6 +163,24 @@
 					</div>
 				</div>
 
+				<!-- Token 使用量指示器 -->
+				<div v-if="chatContextUsage && chatMessages.length" class="wf-blender-token-indicator" @pointerdown.stop>
+					<div class="wf-blender-token-bar-container" :title="`上下文: ${chatContextUsage.tokenCount} / ${chatContextUsage.budget} tokens (${chatContextUsage.usage}%)${chatContextUsage.truncated ? ' — 已自动压缩' : ''}`">
+						<div
+							class="wf-blender-token-bar-fill"
+							:class="{
+								'is-warn': chatContextUsage.usage >= 70 && chatContextUsage.usage < 90,
+								'is-high': chatContextUsage.usage >= 90,
+								'is-truncated': chatContextUsage.truncated
+							}"
+							:style="{ width: `${Math.min(100, chatContextUsage.usage)}%` }"
+						></div>
+					</div>
+					<span class="wf-blender-token-label">
+						{{ formatTokenCount(chatContextUsage.tokenCount) }}/{{ formatTokenCount(chatContextUsage.budget) }}{{ chatContextUsage.truncated ? ' 📦' : '' }}
+					</span>
+				</div>
+
 				<!-- 导入进度条 -->
 				<div v-if="showImportProgress" class="wf-blender-import-progress" @pointerdown.stop>
 					<div class="wf-blender-import-header">
@@ -322,6 +340,7 @@ const importStatus = computed(() => props.blenderSettings?.importStatus ?? 'idle
 const importProgress = computed(() => props.blenderSettings?.importProgress ?? 0)
 const importError = computed(() => props.blenderSettings?.importError ?? null)
 const chatMessages = computed<WorkflowBlenderChatMessage[]>(() => props.blenderSettings?.chatMessages ?? [])
+const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
 
 const isConnected = computed(() => mcpStatus.value === 'connected')
 const isImporting = computed(() => importStatus.value === 'downloading' || importStatus.value === 'importing')
@@ -416,6 +435,12 @@ const roleLabel = (role: string) => {
 		system: '系统'
 	}
 	return map[role] ?? role
+}
+
+const formatTokenCount = (n: number) => {
+	if (!n || n < 0) return '0'
+	if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`
+	return String(Math.round(n))
 }
 
 const formatToolName = (name?: string) => {
@@ -972,6 +997,52 @@ watch(
 	color: #e74c3c;
 	font-size: 10px;
 	margin-top: 2px;
+}
+
+.wf-blender-token-indicator {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 8px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 96%, transparent);
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.wf-blender-token-bar-container {
+	flex: 1;
+	height: 3px;
+	background: rgba(255, 255, 255, 0.08);
+	overflow: hidden;
+	border-radius: 2px;
+}
+
+.wf-blender-token-bar-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #3b82f6, #60a5fa);
+	transition: width 0.4s ease, background 0.3s ease;
+	border-radius: 2px;
+}
+
+.wf-blender-token-bar-fill.is-warn {
+	background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.wf-blender-token-bar-fill.is-high {
+	background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.wf-blender-token-bar-fill.is-truncated {
+	background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+}
+
+.wf-blender-token-label {
+	font-size: 9px;
+	color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
 }
 
 .wf-blender-footer {

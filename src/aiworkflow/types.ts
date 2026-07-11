@@ -1014,6 +1014,12 @@ export type WorkflowBlenderNodeSettings = {
 	importError?: string | null
 	chatMessages?: WorkflowBlenderChatMessage[]
 	isResponding?: boolean
+	chatContextUsage?: {
+		tokenCount: number
+		budget: number
+		usage: number
+		truncated: boolean
+	}
 	agentBackend?: string
 	agentSessionId?: string
 	model?: string

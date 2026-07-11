@@ -61,6 +61,9 @@ export async function* streamAgentMessage(ctx, payload) {
 
   try {
     const runtime = getRuntime(ctx);
+    const parsedMaxToolCalls = (p.maxToolCalls !== undefined && p.maxToolCalls !== null)
+      ? Number(p.maxToolCalls)
+      : 35;
     yield* runtime.streamMessage({
       ...p,
       content,
@@ -70,6 +73,8 @@ export async function* streamAgentMessage(ctx, payload) {
       context: p.context || null,
       apiKeys: p.apiKeys || {},
       thinkingEffort: String(p.thinkingEffort || 'medium').toLowerCase(),
+      maxToolCalls: !isNaN(parsedMaxToolCalls) && parsedMaxToolCalls > 0 ? parsedMaxToolCalls : 35,
+      enableToolCallWarning: p.enableToolCallWarning !== false,
       history: Array.isArray(p.history) ? p.history : [],
       attachments: Array.isArray(p.attachments) ? p.attachments : [],
       tools: Array.isArray(p.tools) ? p.tools : [],

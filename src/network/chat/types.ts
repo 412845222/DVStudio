@@ -58,6 +58,8 @@ export interface SendMessageOptions {
 	agentMode?: 'agent' | 'ask' | 'plan'
 	permissionProfile?: string
 	thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+	maxToolCalls?: number
+	enableToolCallWarning?: boolean
 	history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 	context?: unknown
 	apiKeys?: Record<string, string>

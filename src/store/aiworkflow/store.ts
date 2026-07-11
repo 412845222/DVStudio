@@ -4358,6 +4358,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			node.blenderSettings = node.blenderSettings ?? {}
 			node.blenderSettings.isResponding = payload.responding
 		},
+		setBlenderChatContextUsage(
+			state: WorkflowState,
+			payload: {
+				nodeId: string
+				usage: { tokenCount: number; budget: number; usage: number; truncated: boolean }
+			}
+		) {
+			const node = state.nodesById[payload.nodeId]
+			if (!node) return
+			node.blenderSettings = node.blenderSettings ?? {}
+			node.blenderSettings.chatContextUsage = payload.usage
+		},
 		setBlenderLastOutputs(
 			state: WorkflowState,
 			payload: {
