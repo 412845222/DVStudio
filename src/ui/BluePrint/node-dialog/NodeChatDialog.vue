@@ -6,6 +6,7 @@
 			:class="[`bp-node-chat-${nodeType}`, { 'is-submitting': submitting }]"
 			:style="dialogPositionStyle"
 			data-wf-node-drag-ignore="true"
+			@wheel.stop
 			@pointerdown.stop
 			@mousedown.stop
 			@click.stop
