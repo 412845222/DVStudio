@@ -40,6 +40,25 @@ export type BlenderUpstreamInputs = {
 
 const MODEL_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.usd', '.usdz', '.blend']
 
+const hasModelExt = (p: string): boolean => {
+	if (!p) return false
+	let testPath = p
+	if (/^dweb:\/\//i.test(p)) {
+		try {
+			const u = new URL(p)
+			const dwebPath = u.searchParams.get('path')
+			if (dwebPath) testPath = dwebPath
+		} catch { /* ignore */ }
+	} else if (/^file:\/\//i.test(p)) {
+		try {
+			const u = new URL(p)
+			testPath = decodeURIComponent(u.pathname)
+		} catch { /* ignore */ }
+	}
+	const lower = testPath.split('?')[0].split('#')[0].toLowerCase()
+	return MODEL_EXTS.some((ext) => lower.endsWith(ext))
+}
+
 const nodeAlias = (node: WorkflowNode): string =>
 	String((node as { alias?: string }).alias || node.title || node.type || '').trim()
 
@@ -103,42 +122,117 @@ const resolveUpstreamImageUrl = (
 	return { url: '' }
 }
 
-/** 从上游节点解析 3D 模型产物路径（沿用 useBlenderAgentChat 既有候选字段策略） */
+const resolveDwebToLocalPath = (url: string, projectRoot: string | undefined): string => {
+	if (!url) return ''
+	if (url.startsWith('file://')) {
+		try {
+			const u = new URL(url)
+			let p = decodeURIComponent(u.pathname)
+			if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1)
+			return p
+		} catch { return '' }
+	}
+	if (url.startsWith('dweb://')) {
+		try {
+			const u = new URL(url)
+			const p = u.searchParams.get('path')
+			if (p && projectRoot) {
+				const normalizedRoot = String(projectRoot).replace(/[/\\]+$/, '')
+				const normalizedRel = decodeURIComponent(p).replace(/^[/\\]+/, '')
+				return `${normalizedRoot}/${normalizedRel}`
+			}
+		} catch { /* ignore */ }
+	}
+	return ''
+}
+
+/** 从上游节点解析 3D 模型产物路径。
+ *  候选字段仅限真正的模型输出路径；输入图片路径（lastInputSourcePath/localPath等）
+ *  会被排除，最终通过扩展名校验确认文件为 3D 模型格式。 */
 const resolveUpstreamModelPath = (
 	store: Store<WorkflowState>,
 	node: WorkflowNode
 ): string => {
 	const state = store.state
-	const candidatesFromSettings = (settings: Record<string, unknown> | undefined): string[] => {
-		if (!settings) return []
-		return [
-			String(settings.modelSourcePath ?? ''),
-			String(settings.modelAssetPath ?? ''),
-			String(settings.persistedModelPath ?? ''),
-			String(settings.localPath ?? '')
-		]
+	const projectRoot = (state as { projectRootPath?: string }).projectRootPath
+
+	const resolveCandidate = (raw: string): string => {
+		const c = String(raw ?? '').trim()
+		if (!c) return ''
+		if (/^https?:\/\//i.test(c)) return ''
+		// absolute local path
+		if (/^[A-Za-z]:[\\/]|^\//.test(c)) return hasModelExt(c) ? c : ''
+		// dweb:// or file:// URL
+		const resolved = resolveDwebToLocalPath(c, projectRoot)
+		if (resolved && hasModelExt(resolved)) return resolved
+		// project-relative path
+		if (projectRoot && !c.includes('://')) {
+			const normalizedRoot = String(projectRoot).replace(/[/\\]+$/, '')
+			const normalizedRel = c.replace(/^[/\\]+/, '')
+			const joined = `${normalizedRoot}/${normalizedRel}`
+			if (hasModelExt(joined)) return joined
+		}
+		// fallback: literal string
+		if (hasModelExt(c)) return c
+		return ''
 	}
+
+	const trySettingsCandidates = (settings: Record<string, unknown> | undefined): string => {
+		if (!settings) return ''
+		const s = settings as any
+		const candidates = [
+			s.modelSourcePath,
+			s.modelAssetPath,
+			s.modelProjectRelativePath,
+			s.modelAssetProjectRelativePath,
+			s.persistedModelPath,
+			s.tripo3dOutputAssetPath,
+			s.tripo3dModelUrl,
+			s.outputAssetPath,
+			s.modelUrl,
+			s.modelAssetUrl
+		]
+		for (const raw of candidates) {
+			const resolved = resolveCandidate(String(raw ?? ''))
+			if (resolved) return resolved
+		}
+		return ''
+	}
+
 	const settings =
 		node.type === 'model3d'
 			? ((node as { model3dSettings?: Record<string, unknown> }).model3dSettings ?? undefined)
 			: node.type === 'meshy'
 				? ((node as { meshySettings?: Record<string, unknown> }).meshySettings ?? undefined)
-				: undefined
-	for (const c of candidatesFromSettings(settings)) {
-		if (c && c.trim()) return c.trim()
+				: node.type === 'tripo3d'
+					? ((node as { tripo3dSettings?: Record<string, unknown> }).tripo3dSettings ?? undefined)
+					: undefined
+
+	let candidate = trySettingsCandidates(settings)
+	if (!candidate && node.type === 'model3d' && settings) {
+		const m3d = settings as any
+		candidate = trySettingsCandidates(m3d.meshyModelSettings)
+			|| trySettingsCandidates(m3d.tripo3dModelSettings)
 	}
+	if (candidate) return candidate
+
 	const resourceRid = String((node as { resourceId?: string }).resourceId ?? '').trim()
 	if (resourceRid) {
 		const resource = state.resourcesById[resourceRid]
 		if (resource) {
-			const sourcePath = String(
-				(resource as { sourcePath?: string }).sourcePath ?? ''
-			).trim()
-			if (sourcePath) return sourcePath
+			const resCandidates: (string | null | undefined)[] = [
+				(resource as { sourcePath?: string }).sourcePath,
+			]
 			const rel = String(
 				(resource as { projectRelativePath?: string }).projectRelativePath ?? ''
 			).trim()
-			if (rel) return resolveProjectPath(store, rel)
+			if (rel) resCandidates.push(resolveProjectPath(store, rel))
+			const resUrl = String((resource as { url?: string }).url ?? '').trim()
+			if (resUrl) resCandidates.push(resolveDwebToLocalPath(resUrl, projectRoot))
+			for (const raw of resCandidates) {
+				const resolved = resolveCandidate(String(raw ?? ''))
+				if (resolved) return resolved
+			}
 		}
 	}
 	return ''

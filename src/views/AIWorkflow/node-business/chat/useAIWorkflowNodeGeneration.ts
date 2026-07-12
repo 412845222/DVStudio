@@ -959,19 +959,30 @@ const runTextTask = async (
 	payload: WorkflowNodeChatSubmitPayload
 ) => {
 	const svc = getComfyService(deps)
+	const params = payload.params ?? {}
+	const modelSelection = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
+	let provider = modelSelection
+	let modelId = ''
+	let providerDisplayName = ''
+
+	if (modelSelection === 'gemini') {
+		provider = 'gemini'
+		modelId = String(params.geminiTextModelVersion ?? params.modelId ?? '').trim() || 'gemini-3.5-flash'
+		providerDisplayName = 'Gemini'
+	} else {
+		provider = 'bytedance'
+		modelId = String(params.textModelVersion ?? params.modelId ?? '').trim() || 'doubao-seed-evolving'
+		providerDisplayName = '字节方舟 Doubao'
+	}
+
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: t('aiworkflow.runtime.callingTextModel'),
+		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', { provider: providerDisplayName }),
 		progress: 15
 	})
+	appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: modelId }))
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
-	// Default provider is "bytedance" (Doubao).
-	const params = payload.params ?? {}
-	const provider = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
-	const modelId =
-		String(params.modelId ?? params.textModelVersion ?? '').trim() ||
-		'doubao-seed-2-0-pro-260215'
 	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
 	if (params.thinking) body.thinking = params.thinking

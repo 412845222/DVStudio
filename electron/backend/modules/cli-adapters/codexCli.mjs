@@ -42,6 +42,18 @@ function getCodexConfigFilePath() {
   return path.join(getCodexHomeDir(), 'config.toml');
 }
 
+function getNodePath() {
+  try {
+    const nodeCmd = process.platform === 'win32' ? 'node.exe' : 'node';
+    const nodePath = findCommandPath(nodeCmd);
+    if (nodePath && fs.existsSync(nodePath)) {
+      return nodePath;
+    }
+  } catch {}
+  logger.warn('[CodexCLI] Could not find node executable via findCommandPath, using "node" as fallback');
+  return 'node';
+}
+
 function ensureDvstudioMcpProfile() {
   try {
     const codexHome = getCodexHomeDir();
@@ -51,8 +63,10 @@ function ensureDvstudioMcpProfile() {
 
     const configPath = getCodexConfigFilePath();
     const bridgePath = STDIO_BRIDGE_PATH.replace(/\\/g, '/');
-    const mcpServerConfig = `\n[mcp_servers.dvstudio]
-command = "node"
+    const nodePath = getNodePath().replace(/\\/g, '/');
+    const mcpServerConfig = `
+[mcp_servers.dvstudio]
+command = "${nodePath}"
 args = ["${bridgePath}"]
 startup_timeout_sec = 30
 `;
@@ -1007,10 +1021,20 @@ export class CodexCliAdapter extends BaseCLIAdapter {
 1. 必须使用dvstudio MCP工具操作工作流蓝图，绝对不要读取/修改文件系统代码，也不要执行shell命令
 2. 创建节点前，先调用 get_blueprint_state 了解当前蓝图状态（返回值包含viewport视口信息：zoom/panX/panY/centerWorldX/centerWorldY）
 3. 创建节点时，如果不确定正确的节点类型ID，先调用 list_node_types 获取所有可用类型，然后再调用 create_node
-4. create_node的type参数必须使用list_node_types返回的type值（actionId，如image-generation表示图片节点，text-generation表示文本节点）
+4. create_node的type参数必须使用list_node_types返回的type值（actionId，如image-generation表示图片节点，text-generation表示文本节点，blender表示Blender 3D节点）
 5. **绝对不要给create_node传入position、x、y参数**。系统会自动将新节点放置在用户当前蓝图视口中心，并自动避开已有节点。传入错误坐标会导致节点创建到视口外，用户看不到节点！
 6. 不要试图分析项目源代码，直接通过MCP工具完成所有操作
 7. get_blueprint_state返回的viewport.centerWorldX/centerWorldY是用户当前视口中心的世界坐标，仅供你了解用户视角，创建节点时系统自动使用
+
+## Blender 3D工具使用说明
+当用户需要操作Blender 3D场景时，使用以blender_为前缀的工具：
+- 开始任务时，先调用 blender_list_workspace_images 查看工作区是否有参考图，再调用 blender_read_workspace_image 读取参考图了解目标形态
+- 操作前先调用 blender_get_objects_summary 了解场景结构
+- 使用blender_execute_blender_code执行bpy Python代码（必须设置result字典返回结果）
+- 修改场景后调用blender_get_screenshot_of_area_as_image验证结果（默认截取VIEW_3D视口）
+- **截图自动保存到工作区**：截图工具返回结果中包含截图的绝对文件路径，可通过 blender_read_workspace_image 重新查看历史截图
+- 需要重新查看截图或参考图时，使用 blender_read_workspace_image 工具（传入相对路径如 "screenshots/xxx.png"）
+- 如果调用Blender工具时提示未连接，请提醒用户先在Blender节点面板中点击"连接Blender"
 
 `;
     const enhancedContent = mcpInstruction + content;

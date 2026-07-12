@@ -738,7 +738,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 			return {
 				modelId: undefined,
 				model: 'gemini',
-				textModelVersion: 'gemini-3.5-flash',
+				textModelVersion: 'doubao-seed-evolving',
 				geminiTextModelVersion: 'gemini-3.5-flash',
 				speed: 'normal',
 				thinking: 'enabled',

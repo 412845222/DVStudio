@@ -85,5 +85,21 @@
   "settings.network.proxyGuideStep1": "1. 打开你的代理软件，找到「HTTP代理端口」设置（通常在代理设置中查看）",
   "settings.network.proxyGuideStep2": "2. 将地址填入上方输入框，格式为：http://127.0.0.1:端口号",
   "settings.network.proxyGuideStep3": "3. 输入框失焦后自动保存，下次发起Gemini请求时将使用该代理",
-  "settings.network.proxyGuideStep4": "4. 留空则不使用代理，直接连接（适合已有系统全局代理的环境）"
+  "settings.network.proxyGuideStep4": "4. 留空则不使用代理，直接连接（适合已有系统全局代理的环境）",
+  "settings.agent.title": "AI Agent 设置",
+  "settings.agent.desc": "配置 Agent 对话的行为参数，包括工具调用限制、思考深度等。修改后立即生效，不影响正在进行的对话。",
+  "settings.agent.conversationLimits": "对话限制",
+  "settings.agent.maxToolCalls": "最大工具调用次数",
+  "settings.agent.maxToolCallsHint": "单次对话中 Agent 最多可调用工具的次数，超出后将暂停并提示用户继续",
+  "settings.agent.enableToolCallWarning": "达到调用次数限制时显示警告",
+  "settings.agent.conversationExperience": "对话体验",
+  "settings.agent.thinkingEffort": "思考深度",
+  "settings.agent.thinkingEffortDisabled": "禁用",
+  "settings.agent.thinkingEffortLow": "低",
+  "settings.agent.thinkingEffortMedium": "中（推荐）",
+  "settings.agent.thinkingEffortHigh": "高",
+  "settings.agent.thinkingEffortHint": "控制 Agent 思考的深度，深度越高回答质量越好但响应越慢",
+  "settings.agent.showThoughtProcess": "默认显示思考过程",
+  "settings.agent.autoScrollToBottom": "新消息自动滚动到底部",
+  "settings.agent.settingsSaved": "Agent 设置已保存"
 }

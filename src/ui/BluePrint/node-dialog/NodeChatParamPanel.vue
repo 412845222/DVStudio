@@ -2196,7 +2196,7 @@ import {
 	isTripo3DPostProcessMode,
 	isTripo3DGenerateMode
 } from './nodeChatConfig'
-import { getChatModelCatalog, getChatModelOptions } from '../../../ai/models/chatModels'
+import { getChatModelCatalog, getChatModelOptions, getCodexModels, getCopilotModels } from '../../../ai/models/chatModels'
 
 const { t } = useI18n()
 
@@ -2384,12 +2384,12 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 				next.geminiTextModelVersion = 'gemini-3.5-flash'
 				next.thinkingEffort = 'disabled'
 			} else if (value === 'codex') {
-				const codexModels = getChatModelOptions('text', 'codex')
+				const codexModels = getCodexModels()
 				if (codexModels.length) {
 					next.modelId = codexModels[0].id
 				}
 			} else if (value === 'copilot') {
-				const copilotModels = getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
+				const copilotModels = getCopilotModels().filter(m => m.apiSource === 'copilot')
 				if (copilotModels.length) {
 					next.modelId = copilotModels[0].id
 				}
@@ -2482,12 +2482,12 @@ const blenderDvsModelOptions = computed(() => {
 
 const blenderCodexModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'codex') return []
-	return getChatModelOptions('text', 'codex').map(m => ({ value: m.id, label: m.label }))
+	return getCodexModels().map(m => ({ value: m.id, label: m.label }))
 })
 
 const blenderCopilotModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'copilot') return []
-	return getChatModelOptions('text', 'copilot')
+	return getCopilotModels()
 		.filter(m => m.apiSource === 'copilot')
 		.map(m => ({ value: m.id, label: m.label }))
 })

@@ -222,4 +222,91 @@ export class ContextBuilder {
   static getContextBudget(modelId) {
     return getContextBudget(modelId);
   }
+
+  static estimateMessagesTokens(messages) {
+    if (!Array.isArray(messages)) return 0;
+    return messages.reduce((sum, msg) => {
+      if (!msg) return sum;
+      if (typeof msg.content === 'string') {
+        return sum + estimateTokens(msg.content);
+      }
+      if (Array.isArray(msg.content)) {
+        let partSum = 0;
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            partSum += estimateTokens(part.text || '');
+          } else if (part.type === 'image_url') {
+            partSum += 1000;
+          }
+        }
+        return sum + partSum;
+      }
+      if (msg.tool_calls) {
+        return sum + estimateTokens(JSON.stringify(msg.tool_calls));
+      }
+      return sum;
+    }, 0);
+  }
+
+  static truncateMessagesInLoop(messages, thresholdTokens) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return { messages, tokenCount: 0, truncated: false };
+    }
+
+    let tokenCount = ContextBuilder.estimateMessagesTokens(messages);
+    if (tokenCount <= thresholdTokens) {
+      return { messages, tokenCount, truncated: false };
+    }
+
+    const working = [...messages];
+    let truncated = false;
+    const systemMsg = working[0]?.role === 'system' ? working[0] : null;
+    const hasSystem = systemMsg !== null;
+    const startIdx = hasSystem ? 1 : 0;
+
+    while (tokenCount > thresholdTokens && working.length > (hasSystem ? 2 : 1)) {
+      let toolCallIdx = -1;
+      for (let i = startIdx; i < working.length - 1; i++) {
+        if (working[i].role === 'assistant' && working[i].tool_calls) {
+          toolCallIdx = i;
+          break;
+        }
+      }
+
+      if (toolCallIdx !== -1) {
+        let endIdx = toolCallIdx + 1;
+        while (endIdx < working.length - 1 && working[endIdx].role === 'tool') {
+          endIdx++;
+        }
+        if (endIdx < working.length - 1 &&
+            working[endIdx].role === 'user' &&
+            Array.isArray(working[endIdx].content) &&
+            working[endIdx].content.some(p => p.type === 'image_url')) {
+          endIdx++;
+        }
+        working.splice(toolCallIdx, endIdx - toolCallIdx);
+        tokenCount = ContextBuilder.estimateMessagesTokens(working);
+        truncated = true;
+      } else {
+        break;
+      }
+    }
+
+    while (tokenCount > thresholdTokens && working.length > (hasSystem ? 3 : 2)) {
+      const removeStart = hasSystem ? 1 : 0;
+      if (working[removeStart].role === 'user' || working[removeStart].role === 'assistant') {
+        let removeEnd = removeStart + 1;
+        if (working[removeEnd] && (working[removeEnd].role === 'assistant' || working[removeEnd].role === 'user')) {
+          removeEnd = removeStart + 2;
+        }
+        working.splice(removeStart, removeEnd - removeStart);
+        tokenCount = ContextBuilder.estimateMessagesTokens(working);
+        truncated = true;
+      } else {
+        break;
+      }
+    }
+
+    return { messages: working, tokenCount, truncated };
+  }
 }
