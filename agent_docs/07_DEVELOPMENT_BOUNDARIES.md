@@ -72,7 +72,7 @@
 
 - **绝对禁止** 在 Vue 组件 / composable 中直接调用 `window.dweb.*`。
   - 必须通过 `src/electronBridge/index.ts` 封装。
-  - 命名空间：`common` / `chat` / `export` / `editor` / `comfyui` / `thirdParty` / `projects` / `projectAssets` / `meshy` / `seedance` / `agentSkills` / `codex` / `aiworkflow` / `window` / `platform`。
+  - 命名空间：`common` / `chat` / `export` / `editor` / `comfyui` / `thirdParty` / `projects` / `projectAssets` / `meshy` / `tripo3d` / `gemini` / `ark` / `seedance` / `agent` / `agentSkills` / `mcp` / `cli` / `blender` / `codex` / `cloudTemplates` / `aiworkflow` / `window` / `platform` / `videostudio`。
 - **绝对禁止** 在 Vue 组件 / composable 中直接调用 `window.dweb.platform.*`。
   - 必须通过 `src/platformBridge/` 封装。
 - **IPC 调用统一使用 `src/network/ipcClient.ts`**：
@@ -217,13 +217,52 @@
   - 任何 API Key 或敏感凭证
   - `OtherSource/` 目录（旧源码归档，仅用于参考）
 
-## 13. 与 AGENT_GUIDE 的关系
+## 13. Agent / MCP / Blender 等新模块边界
+
+### 13.1 Agent Runtime 边界
+- Agent Runtime (`electron/backend/modules/agent/runtime/`) 负责工具调用循环、上下文构建、历史管理、流式事件输出。
+- Provider 层 (`electron/backend/modules/agent/providers/`) 负责与具体 LLM 后端通信（ApiLLMProvider、CliLLMProvider等）。
+- **禁止**在 Provider 中处理工具调用逻辑；工具调用统一由 Runtime 处理。
+- 内置工具通过 MCP ToolExecutor 执行，与前端通过 IPC 桥接通信。
+- 会话数据统一存储在 LocalDB `chat_conversations` 表。
+
+### 13.2 MCP 服务器边界
+- MCP 模块 (`electron/backend/modules/mcp/`) 负责 MCP 协议通信、工具注册、客户端管理。
+- 支持 stdio 和 socket 两种桥接方式。
+- **内置工具**通过 `builtinTools.mjs` 注册，由 `toolExecutor.mjs` 统一执行，通过 IPC 转发到前端。
+- **外部 MCP 服务器**（如 Blender MCP）通过 `client.mjs` 连接，工具调用直接转发。
+- **禁止**在 MCP 模块中处理业务逻辑；MCP 只负责协议转换和工具路由。
+
+### 13.3 CLI 适配器边界
+- CLI 适配器 (`electron/backend/modules/cli-adapters/`) 负责与外部 CLI 工具（Claude/Codex/Copilot CLI）通信。
+- 每个 CLI 工具对应一个 Adapter 子类（继承 `base.mjs`）。
+- 配置通过 `cliConfigStore.mjs` 持久化到 LocalDB。
+- **禁止**在前端直接调用 CLI 进程；必须通过 IPC 通道。
+
+### 13.4 Blender 集成边界
+- Blender 模块 (`electron/backend/modules/blender/`) 通过 MCP 协议与 Blender 通信。
+- 工作区文件（脚本、截图）存储在项目临时目录，由 `workspace.mjs` 管理。
+- **禁止**在前端直接启动 Blender 进程；必须通过后端 IPC。
+- Blender MCP 连接状态通过事件通知前端。
+
+### 13.5 Tripo3D / Gemini / Ark 新模块边界
+- 这些模块遵循标准的 routes/handlers/service 结构。
+- 任务状态存储在对应 LocalDB 表（tripo3d_tasks、gemini_tasks、ark_tasks）。
+- 前端通过对应 node-business 目录下的 composable 调用，不要直接调用 window.dweb。
+
+## 14. 与 AGENT_GUIDE 的关系
 
 本文件描述「不要做什么」与「边界」；如需了解「如何做」，请按需查阅：
 
+- [00_INDEX.md](00_INDEX.md) — 文档索引与导读
 - [01_PROJECT_OVERVIEW.md](01_PROJECT_OVERVIEW.md) — 项目概述
 - [02_ARCHITECTURE.md](02_ARCHITECTURE.md) — 系统架构
 - [03_FRONTEND_GUIDE.md](03_FRONTEND_GUIDE.md) — 前端开发
 - [04_BACKEND_GUIDE.md](04_BACKEND_GUIDE.md) — 后端开发（Node.js IPC 后端）
 - [05_ELECTRON_GUIDE.md](05_ELECTRON_GUIDE.md) — 桌面端开发（含平台抽象层）
 - [06_AI_WORKFLOW_GUIDE.md](06_AI_WORKFLOW_GUIDE.md) — AI 工作流
+- [08_3D_EDITOR_RENDERING_GUIDE.md](08_3D_EDITOR_RENDERING_GUIDE.md) — 3D编辑器渲染
+- [09_AGENT_SYSTEM_GUIDE.md](09_AGENT_SYSTEM_GUIDE.md) — Agent系统详解
+- [10_MCP_GUIDE.md](10_MCP_GUIDE.md) — MCP工具协议
+- [11_NEW_AI_MODULES_GUIDE.md](11_NEW_AI_MODULES_GUIDE.md) — Tripo3D/Gemini/Ark/Blender/CLI
+- [12_TESTING_GUIDE.md](12_TESTING_GUIDE.md) — 测试体系
