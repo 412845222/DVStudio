@@ -1205,6 +1205,33 @@ const syncMeshyAnchors = (node: WorkflowNode) => {
 	node.outputs = [{ id: 'out-model', label: '模型输出', mediaType: 'model3d' }]
 }
 
+const syncBlenderAnchors = (node: WorkflowNode) => {
+	const existingIn = Array.isArray(node.inputs)
+		? node.inputs.find((a) => a.id === 'in-0')
+		: null
+	const existingOut = Array.isArray(node.outputs)
+		? node.outputs.find((a) => a.id === 'out-0')
+		: null
+	node.inputs = [
+		{
+			id: 'in-0',
+			label: '输入（文本/图片/3D模型）',
+			mediaType: 'generic' as const,
+			acceptedMediaTypes: ['text', 'image', 'model3d'] as Array<'text' | 'image' | 'model3d'>,
+			...(existingIn ?? {}),
+			multiInput: true
+		}
+	]
+	node.outputs = [
+		{
+			id: 'out-0',
+			label: '输出（文本/图片/3D模型）',
+			mediaType: 'generic' as const,
+			...(existingOut ?? {})
+		}
+	]
+}
+
 const syncSceneUnderstandAnchors = (node: WorkflowNode) => {
 	const mode =
 		node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
@@ -2031,6 +2058,24 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								mcpError: isString(rawBlenderSettings?.mcpError)
 									? String(rawBlenderSettings!.mcpError)
 									: null,
+								blenderPath: isString(rawBlenderSettings?.blenderPath)
+									? String(rawBlenderSettings!.blenderPath)
+									: null,
+								blenderVersion: isString(rawBlenderSettings?.blenderVersion)
+									? String(rawBlenderSettings!.blenderVersion)
+									: null,
+								hasBlender: typeof rawBlenderSettings?.hasBlender === 'boolean'
+									? Boolean(rawBlenderSettings!.hasBlender)
+									: undefined,
+								hasAddon: typeof rawBlenderSettings?.hasAddon === 'boolean'
+									? Boolean(rawBlenderSettings!.hasAddon)
+									: undefined,
+								blenderRunning: typeof rawBlenderSettings?.blenderRunning === 'boolean'
+									? Boolean(rawBlenderSettings!.blenderRunning)
+									: undefined,
+								addonListening: typeof rawBlenderSettings?.addonListening === 'boolean'
+									? Boolean(rawBlenderSettings!.addonListening)
+									: undefined,
 								importStatus: (isString(rawBlenderSettings?.importStatus) &&
 								['idle', 'downloading', 'importing', 'completed', 'error'].includes(
 									String(rawBlenderSettings!.importStatus)
@@ -2046,34 +2091,102 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								chatMessages: Array.isArray(rawBlenderSettings?.chatMessages)
 									? (rawBlenderSettings!.chatMessages as unknown[])
 											.filter((m) => isRecord(m))
-											.map((m) => ({
-												id: isString((m as Record<string, unknown>).id)
-													? String((m as Record<string, unknown>).id)
-													: String(Date.now() + Math.random()),
-												role: (isString((m as Record<string, unknown>).role) &&
-												['user', 'assistant', 'system', 'tool_call', 'tool_result'].includes(
-													String((m as Record<string, unknown>).role)
-												)
-													? String((m as Record<string, unknown>).role)
-													: 'user') as WorkflowBlenderChatMessage['role'],
-												content: isString((m as Record<string, unknown>).content)
-													? String((m as Record<string, unknown>).content)
-													: '',
-												timestamp: Number.isFinite(Number((m as Record<string, unknown>).timestamp))
-													? Number((m as Record<string, unknown>).timestamp)
-													: Date.now(),
-												toolName: isString((m as Record<string, unknown>).toolName)
-													? String((m as Record<string, unknown>).toolName)
-													: undefined,
-												toolArgs: isRecord((m as Record<string, unknown>).toolArgs)
-													? ((m as Record<string, unknown>).toolArgs as Record<string, unknown>)
-													: undefined,
-												toolError: isString((m as Record<string, unknown>).toolError)
-													? String((m as Record<string, unknown>).toolError)
-													: undefined,
-												isStreaming: Boolean((m as Record<string, unknown>).isStreaming)
-											}))
-									: []
+											.map((m) => {
+												const rec = m as Record<string, unknown>
+												return {
+													id: isString(rec.id) ? String(rec.id) : String(Date.now() + Math.random()),
+													role: (isString(rec.role) &&
+													['user', 'assistant', 'system', 'tool_call', 'tool_result', 'tool', 'thinking', 'command'].includes(
+														String(rec.role)
+													)
+														? String(rec.role)
+														: 'user') as WorkflowBlenderChatMessage['role'],
+													content: isString(rec.content) ? String(rec.content) : '',
+													timestamp: Number.isFinite(Number(rec.timestamp))
+														? Number(rec.timestamp)
+														: Date.now(),
+													toolName: isString(rec.toolName) ? String(rec.toolName) : undefined,
+													toolArgs: isRecord(rec.toolArgs)
+														? (rec.toolArgs as Record<string, unknown>)
+														: undefined,
+													toolResult: rec.toolResult !== undefined ? rec.toolResult : undefined,
+													toolError: isString(rec.toolError) ? String(rec.toolError) : undefined,
+													toolCallId: isString(rec.toolCallId) ? String(rec.toolCallId) : undefined,
+													status: (isString(rec.status) &&
+													['running', 'completed', 'error'].includes(String(rec.status))
+														? String(rec.status)
+														: undefined) as WorkflowBlenderChatMessage['status'],
+													isStreaming: Boolean(rec.isStreaming),
+													isThinking: Boolean(rec.isThinking),
+													isStreamingThinking: Boolean(rec.isStreamingThinking),
+													isError: Boolean(rec.isError),
+													collapsed: typeof rec.collapsed === 'boolean' ? Boolean(rec.collapsed) : undefined,
+													thinkingContent: isString(rec.thinkingContent) ? String(rec.thinkingContent) : undefined,
+													thinkingCollapsed: typeof rec.thinkingCollapsed === 'boolean' ? Boolean(rec.thinkingCollapsed) : undefined,
+													command: isString(rec.command) ? String(rec.command) : undefined,
+													screenshots: Array.isArray(rec.screenshots)
+														? (rec.screenshots as unknown[]).filter(s => isString(s)).map(s => String(s))
+														: undefined
+												}
+											})
+									: [],
+								isResponding: typeof rawBlenderSettings?.isResponding === 'boolean'
+									? Boolean(rawBlenderSettings!.isResponding)
+									: false,
+								chatContextUsage: (isRecord(rawBlenderSettings?.chatContextUsage) &&
+									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).tokenCount)) &&
+									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget)) &&
+									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage)))
+									? {
+											tokenCount: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).tokenCount),
+											budget: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget),
+											usage: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage),
+											truncated: Boolean((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).truncated)
+										}
+									: undefined,
+								agentBackend: isString(rawBlenderSettings?.agentBackend)
+									? String(rawBlenderSettings!.agentBackend)
+									: undefined,
+								agentSessionId: isString(rawBlenderSettings?.agentSessionId)
+									? String(rawBlenderSettings!.agentSessionId)
+									: undefined,
+								model: isString(rawBlenderSettings?.model)
+									? String(rawBlenderSettings!.model)
+									: undefined,
+								modelId: isString(rawBlenderSettings?.modelId)
+									? String(rawBlenderSettings!.modelId)
+									: undefined,
+								geminiTextModelVersion: isString(rawBlenderSettings?.geminiTextModelVersion)
+									? String(rawBlenderSettings!.geminiTextModelVersion)
+									: undefined,
+								textModelVersion: isString(rawBlenderSettings?.textModelVersion)
+									? String(rawBlenderSettings!.textModelVersion)
+									: undefined,
+								thinkingEffort: isString(rawBlenderSettings?.thinkingEffort)
+									? String(rawBlenderSettings!.thinkingEffort)
+									: undefined,
+								lastOutputs: isRecord(rawBlenderSettings?.lastOutputs)
+									? {
+											text: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).text)
+												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).text)
+												: undefined,
+											imageUrl: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl)
+												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl)
+												: undefined,
+											modelPath: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath)
+												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath)
+												: undefined,
+											updatedAt: Number.isFinite(Number((rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt))
+												? Number((rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt)
+												: undefined
+										}
+									: undefined,
+								workspacePath: isString(rawBlenderSettings?.workspacePath)
+									? String(rawBlenderSettings!.workspacePath)
+									: undefined,
+								workspaceRelativePath: isString(rawBlenderSettings?.workspaceRelativePath)
+									? String(rawBlenderSettings!.workspaceRelativePath)
+									: undefined
 							}
 						: undefined
 				// 数据迁移：从model3dSettings根下的tripo3d*字段和根级别tripo3dSettings合并数据
@@ -2148,6 +2261,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					syncSceneDecomposeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
 			}
 
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
@@ -2637,27 +2751,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					importError: null,
 					chatMessages: []
 				}
-				n.inputs = [
-					{
-						id: 'in-0',
-						label: '输入（文本/图片/3D模型）',
-						mediaType: 'generic' as const,
-						acceptedMediaTypes: ['text', 'image', 'model3d'] as Array<'text' | 'image' | 'model3d'>,
-						multiInput: true
-					}
-				]
-				n.outputs = [
-					{
-						id: 'out-0',
-						label: '输出（文本/图片/3D模型）',
-						mediaType: 'generic' as const
-					}
-				]
 			}
 			if (!String(n.alias ?? '').trim() || String(n.alias) === prevDefaultAlias) {
 				n.alias = defaultAliasForType(payload.type)
 			}
 			enforceSingleIOAnchors(n)
+			if (payload.type === 'blender') syncBlenderAnchors(n)
 			if (!n.sizeCustomized) {
 				if (
 					payload.type === 'image' ||
@@ -3963,7 +4062,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const inputAnchor = Array.isArray(toNode.inputs)
 				? toNode.inputs.find((a) => a.id === toAnchorId)
 				: null
-			const supportsMultiInput = inputAnchor?.multiInput === true
+			const supportsMultiInput =
+				inputAnchor?.multiInput === true ||
+				(toNode.type === 'blender' && toAnchorId === 'in-0')
 			// Only replace existing connection if multiInput is not enabled
 			if (!supportsMultiInput) {
 				for (const edgeId of state.edgeOrder.slice()) {
@@ -4113,8 +4214,25 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 
-			// 合并参数：现有nodeChatParams优先，然后是从meshyImageSettings同步的参数
-			const mergedTypeParams = { ...syncedMeshyParams, ...existingTypeParams }
+			// 从blenderSettings同步参数（如果是blender节点）- 作为兜底，确保重启后参数能恢复
+			const syncedBlenderParams: Record<string, unknown> = {}
+			if (typeKey === 'blender' && node) {
+				const blenderSettings = (node as Record<string, unknown>).blenderSettings as Record<string, unknown> | undefined
+				if (blenderSettings && typeof blenderSettings === 'object') {
+					const blenderFields = [
+						'agentBackend', 'agentSessionId', 'model', 'modelId',
+						'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'
+					] as const
+					for (const field of blenderFields) {
+						if (typeof blenderSettings[field] === 'string' && blenderSettings[field]) {
+							syncedBlenderParams[field] = blenderSettings[field]
+						}
+					}
+				}
+			}
+
+			// 合并参数：现有nodeChatParams优先，然后是从meshyImageSettings/blenderSettings同步的参数
+			const mergedTypeParams = { ...syncedMeshyParams, ...syncedBlenderParams, ...existingTypeParams }
 			state.nodeChatDialog.params = {
 				...existingChatParams,
 				[typeKey]: mergedTypeParams
@@ -4143,6 +4261,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const node = state.nodesById[state.nodeChatDialog.nodeId]
 				if (node) {
 					node.nodeChatParams = payload.params
+					// 对于blender节点，实时同步chat参数到blenderSettings确保持久化
+					if (node.type === 'blender') {
+						const blenderParams = payload.params?.blender
+						if (blenderParams && typeof blenderParams === 'object') {
+							node.blenderSettings = node.blenderSettings ?? ({} as WorkflowBlenderNodeSettings)
+							const fields = ['agentBackend', 'agentSessionId', 'model', 'modelId', 'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'] as const
+							for (const field of fields) {
+								const val = (blenderParams as Record<string, unknown>)[field]
+								if (typeof val === 'string') {
+									(node.blenderSettings as Record<string, unknown>)[field] = val
+								}
+							}
+						}
+					}
 				}
 			}
 		},
@@ -4317,46 +4449,80 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				addonListening?: boolean
 				host?: string | null
 				port?: number | null
+				toolsReady?: boolean
+				toolCount?: number
+				missingToolCount?: number
+				missingTools?: string[]
 			}
 		) {
 			const node = state.nodesById[payload.nodeId]
 			if (!node) return
-			node.blenderSettings = node.blenderSettings ?? {}
-			node.blenderSettings.mcpStatus = payload.status
-			node.blenderSettings.mcpError = payload.error ?? null
+			const prev = node.blenderSettings ?? {}
+			const next: Record<string, any> = { ...prev }
+			if (payload.status !== undefined) {
+				next.mcpStatus = payload.status
+			}
+			if (payload.error !== undefined) {
+				next.mcpError = payload.error ?? null
+			}
 			if (payload.serverId !== undefined) {
-				node.blenderSettings.mcpServerId = payload.serverId ?? undefined
+				next.mcpServerId = payload.serverId ?? undefined
 			}
 			if (payload.host !== undefined) {
-				node.blenderSettings.mcpHost = payload.host ?? undefined
+				next.mcpHost = payload.host ?? undefined
 			}
 			if (payload.port !== undefined) {
-				node.blenderSettings.mcpPort = payload.port ?? undefined
+				next.mcpPort = payload.port ?? undefined
 			}
 			if (payload.blenderPath !== undefined) {
-				node.blenderSettings.blenderPath = payload.blenderPath
+				next.blenderPath = payload.blenderPath
 			}
 			if (payload.blenderVersion !== undefined) {
-				node.blenderSettings.blenderVersion = payload.blenderVersion
+				next.blenderVersion = payload.blenderVersion
 			}
 			if (payload.hasBlender !== undefined) {
-				node.blenderSettings.hasBlender = payload.hasBlender
+				next.hasBlender = payload.hasBlender
 			}
 			if (payload.hasAddon !== undefined) {
-				node.blenderSettings.hasAddon = payload.hasAddon
+				next.hasAddon = payload.hasAddon
 			}
 			if (payload.blenderRunning !== undefined) {
-				node.blenderSettings.blenderRunning = payload.blenderRunning
+				next.blenderRunning = payload.blenderRunning
 			}
 			if (payload.addonListening !== undefined) {
-				node.blenderSettings.addonListening = payload.addonListening
+				next.addonListening = payload.addonListening
 			}
+			if (payload.toolsReady !== undefined) {
+				next.toolsReady = payload.toolsReady
+			}
+			if (payload.toolCount !== undefined) {
+				next.toolCount = payload.toolCount
+			}
+			if (payload.missingToolCount !== undefined) {
+				next.missingToolCount = payload.missingToolCount
+			}
+			if (payload.missingTools !== undefined) {
+				next.missingTools = payload.missingTools
+			}
+			node.blenderSettings = next as any
 		},
 		setBlenderResponding(state: WorkflowState, payload: { nodeId: string; responding: boolean }) {
 			const node = state.nodesById[payload.nodeId]
 			if (!node) return
 			node.blenderSettings = node.blenderSettings ?? {}
 			node.blenderSettings.isResponding = payload.responding
+		},
+		setBlenderChatContextUsage(
+			state: WorkflowState,
+			payload: {
+				nodeId: string
+				usage: { tokenCount: number; budget: number; usage: number; truncated: boolean } | null
+			}
+		) {
+			const node = state.nodesById[payload.nodeId]
+			if (!node) return
+			node.blenderSettings = node.blenderSettings ?? {}
+			node.blenderSettings.chatContextUsage = payload.usage ?? undefined
 		},
 		setBlenderLastOutputs(
 			state: WorkflowState,

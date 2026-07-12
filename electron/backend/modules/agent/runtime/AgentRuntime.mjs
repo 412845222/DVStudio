@@ -10,11 +10,12 @@
 
 import { ToolRegistry } from './ToolRegistry.mjs';
 import { ContextBuilder } from './ContextBuilder.mjs';
+import { ToolImageProcessor } from './ToolImageProcessor.mjs';
 import { getProviderById } from '../providers/index.mjs';
 import { ProviderEventType } from '../providers/ILLMProvider.mjs';
 import logger from '../../../core/logger.mjs';
 
-const MAX_TOOL_CALLS = 35;
+const DEFAULT_MAX_TOOL_CALLS = 35;
 
 export class AgentRuntime {
   constructor(ctx) {
@@ -66,21 +67,19 @@ export class AgentRuntime {
     const apiKeys = p.apiKeys || {};
     const apiSource = String(p.apiSource || 'bytedance').toLowerCase();
     const thinkingEffort = String(p.thinkingEffort || 'medium').toLowerCase();
+    const parsedMaxToolCalls = (p.maxToolCalls !== undefined && p.maxToolCalls !== null)
+      ? Number(p.maxToolCalls)
+      : DEFAULT_MAX_TOOL_CALLS;
+    const maxToolCalls = (!isNaN(parsedMaxToolCalls) && parsedMaxToolCalls > 0)
+      ? parsedMaxToolCalls
+      : DEFAULT_MAX_TOOL_CALLS;
+    const enableToolCallWarning = p.enableToolCallWarning !== false;
     const providedTools = Array.isArray(p.tools) ? p.tools : [];
     const customSystemPrompt = typeof p.systemPrompt === 'string' ? p.systemPrompt.trim() : '';
     const useCustomSystemPromptOnly = customSystemPrompt && providedTools.length > 0;
 
-    const providerId = (backend === 'dvsagent' || useCustomSystemPromptOnly) ? 'dvsagent' : backend;
-    const forcedDvsAgentForTools = useCustomSystemPromptOnly && backend !== 'dvsagent';
-    if (forcedDvsAgentForTools) {
-      logger.info(`AgentRuntime: BLENDER MODE - forcing dvsagent provider (native tool calls required), requested backend was: ${backend}, model was: ${model}`);
-    }
-    const effectiveModel = forcedDvsAgentForTools
-      ? 'doubao-seed-evolving'
-      : model;
-    const effectiveApiSource = forcedDvsAgentForTools
-      ? 'bytedance'
-      : apiSource;
+    const providerId = backend;
+    logger.info(`AgentRuntime: using backend=${providerId}, model=${model}, apiSource=${apiSource}, customSystemPrompt=${useCustomSystemPromptOnly ? 'yes' : 'no'}`);
     let provider;
     try {
       provider = this.getProvider(providerId);
@@ -92,7 +91,7 @@ export class AgentRuntime {
     let sessionId = p.sessionId;
     if (!sessionId) {
       try {
-        const sess = await provider.createSession({ model: effectiveModel, cwd: p.cwd });
+        const sess = await provider.createSession({ model, cwd: p.cwd });
         sessionId = sess.sessionId;
       } catch (err) {
         yield { type: 'error', message: `Failed to create session: ${err.message}` };
@@ -104,6 +103,9 @@ export class AgentRuntime {
 
     const abortController = new AbortController();
     this._abortControllers.set(sessionId, abortController);
+
+    const toolImageProcessor = new ToolImageProcessor(this.ctx);
+    let sessionImages = [];
 
     try {
       let tools;
@@ -124,18 +126,19 @@ export class AgentRuntime {
         logger.info(`AgentRuntime: ${tools.length} tools available: ${tools.map(t => t.function.name).join(', ')}`);
       }
 
-      const toolPromptText = provider.supportsNativeToolCalls
-        ? null
-        : this.toolRegistry.toCliToolPrompt(tools);
+      const toolPromptText = (!provider.supportsNativeToolCalls && !provider.executesOwnTools)
+        ? this.toolRegistry.toCliToolPrompt(tools)
+        : null;
 
       let systemPrompt;
       let currentMessages;
       if (useCustomSystemPromptOnly) {
-        const cliToolInstructions = !provider.supportsNativeToolCalls
+        const needCliToolPrompt = !provider.supportsNativeToolCalls && !provider.executesOwnTools;
+        const cliToolInstructions = needCliToolPrompt
           ? '\n\n' + this.toolRegistry.toCliToolPrompt(tools)
           : '';
         systemPrompt = customSystemPrompt + cliToolInstructions;
-        logger.info(`AgentRuntime: BLENDER MODE - using custom system prompt only (no blueprint context), cliToolInstructions appended: ${!provider.supportsNativeToolCalls}`);
+        logger.info(`AgentRuntime: BLENDER MODE - using custom system prompt only (no blueprint context), cliToolInstructions appended: ${needCliToolPrompt}, executesOwnTools: ${provider.executesOwnTools}`);
         const userContent = attachments.length > 0
           ? (() => {
               const parts = [{ type: 'text', text: content }];
@@ -150,21 +153,30 @@ export class AgentRuntime {
               return parts;
             })()
           : content;
-        currentMessages = [
+        const rawMessages = [
           { role: 'system', content: systemPrompt },
           ...history.filter(m => m.role === 'user' || m.role === 'assistant'),
           { role: 'user', content: userContent }
         ];
+        const budget = ContextBuilder.getContextBudget(model);
+        const initialTokens = ContextBuilder.estimateMessagesTokens(rawMessages);
+        const TRUNCATION_THRESHOLD = 0.8;
+        let truncResult = { messages: rawMessages, tokenCount: initialTokens, truncated: false };
+        if (initialTokens > budget * TRUNCATION_THRESHOLD) {
+          truncResult = ContextBuilder.truncateMessagesInLoop(rawMessages, budget * TRUNCATION_THRESHOLD);
+          logger.info(`AgentRuntime: BLENDER MODE - initial truncation: ${initialTokens} -> ${truncResult.tokenCount} tokens (budget=${budget}), truncated=${truncResult.truncated}`);
+        }
+        currentMessages = truncResult.messages;
         yield {
           type: 'context_usage',
-          tokenCount: 0,
-          budget: 0,
-          usage: 0,
-          truncated: false,
+          tokenCount: truncResult.tokenCount,
+          budget: budget,
+          usage: Math.min(100, Math.round((truncResult.tokenCount / budget) * 100)),
+          truncated: truncResult.truncated,
         };
       } else {
         const baseSystemPrompt = this.contextBuilder.buildSystemPrompt(context, {
-          includeToolInstructions: !provider.supportsNativeToolCalls && !customSystemPrompt,
+          includeToolInstructions: !provider.supportsNativeToolCalls && !provider.executesOwnTools && !customSystemPrompt,
           toolPromptText,
         });
         systemPrompt = customSystemPrompt
@@ -175,7 +187,7 @@ export class AgentRuntime {
           content,
           attachments,
           history,
-          effectiveModel
+          model
         );
 
         currentMessages = [
@@ -195,7 +207,7 @@ export class AgentRuntime {
       const providerConfig = {
         thinkingEffort,
         apiKeys,
-        apiSource: effectiveApiSource,
+        apiSource: apiSource,
       };
 
       const openaiTools = provider.supportsNativeToolCalls
@@ -206,8 +218,7 @@ export class AgentRuntime {
       let finalContent = '';
       let reasoningContent = '';
       const toolResultCache = new Map();
-
-      while (toolCallCount < MAX_TOOL_CALLS) {
+      while (toolCallCount < maxToolCalls) {
         if (abortController.signal.aborted) {
           yield { type: 'error', message: '请求已取消' };
           return;
@@ -215,7 +226,7 @@ export class AgentRuntime {
 
         const stream = provider.streamGenerate(sessionId, {
           messages: currentMessages,
-          model: effectiveModel,
+          model: model,
           tools: openaiTools,
           config: providerConfig,
         });
@@ -304,7 +315,7 @@ export class AgentRuntime {
           toolCallsToExecute = provider.parseToolCallsFromText(accumulatedText);
         }
 
-        if (provider.executesOwnTools && !useCustomSystemPromptOnly) {
+        if (provider.executesOwnTools) {
           toolCallsToExecute = [];
         }
 
@@ -313,6 +324,7 @@ export class AgentRuntime {
         }
 
         const assistantToolCalls = [];
+        let roundImages = [];
 
         for (const tc of toolCallsToExecute) {
           if (abortController.signal.aborted) break;
@@ -327,31 +339,69 @@ export class AgentRuntime {
             input: args,
           };
 
-          let toolResult;
+          let rawResult;
           let toolError = null;
+          let sanitizedResult;
+          let resultImages = [];
 
           const cacheKey = `${tc.name}:${JSON.stringify(args)}`;
           if (toolResultCache.has(cacheKey) && toolCallCount > 1) {
-            toolResult = toolResultCache.get(cacheKey);
+            const cached = toolResultCache.get(cacheKey);
+            rawResult = cached.rawResult;
+            sanitizedResult = cached.sanitizedResult;
+            resultImages = cached.images || [];
+            const cachedImagesForFrontend = [];
+            for (const img of resultImages) {
+              try {
+                const dataUrl = await toolImageProcessor.readAsDataUrl(img.localPath);
+                if (dataUrl) {
+                  cachedImagesForFrontend.push({
+                    mimeType: img.mimeType,
+                    dataUrl,
+                    fileName: img.fileName,
+                  });
+                }
+              } catch {}
+            }
             yield {
               type: 'tool_call_end',
               toolCallId: tcId,
               tool: tc.name,
-              output: toolResult,
+              output: sanitizedResult,
+              images: cachedImagesForFrontend,
             };
           } else {
             try {
-              toolResult = await this.toolRegistry.callTool(tc.name, args, tcId);
-              toolResultCache.set(cacheKey, toolResult);
+              rawResult = await this.toolRegistry.callTool(tc.name, args, tcId);
+              const processed = toolImageProcessor.processToolResult(rawResult);
+              sanitizedResult = processed.sanitizedResult;
+              resultImages = processed.images;
+              roundImages.push(...resultImages);
+              const imagesForFrontend = [];
+              for (const img of resultImages) {
+                try {
+                  const dataUrl = await toolImageProcessor.readAsDataUrl(img.localPath);
+                  if (dataUrl) {
+                    imagesForFrontend.push({
+                      mimeType: img.mimeType,
+                      dataUrl,
+                      fileName: img.fileName,
+                    });
+                  }
+                } catch {}
+              }
+              toolResultCache.set(cacheKey, { rawResult, sanitizedResult, images: resultImages });
               yield {
                 type: 'tool_call_end',
                 toolCallId: tcId,
                 tool: tc.name,
-                output: toolResult,
+                output: sanitizedResult,
+                images: imagesForFrontend,
               };
             } catch (err) {
               toolError = err.message;
-              toolResult = { error: err.message };
+              rawResult = { error: err.message };
+              sanitizedResult = rawResult;
               yield {
                 type: 'tool_call_error',
                 toolCallId: tcId,
@@ -365,7 +415,8 @@ export class AgentRuntime {
             id: tcId,
             name: tc.name,
             arguments: args,
-            result: toolResult,
+            result: rawResult,
+            sanitizedResult,
             error: toolError,
           });
         }
@@ -389,16 +440,50 @@ export class AgentRuntime {
             currentMessages.push({
               role: 'tool',
               tool_call_id: atc.id,
-              content: JSON.stringify(atc.error ? { error: atc.error } : atc.result),
+              content: JSON.stringify(atc.error ? { error: atc.error } : atc.sanitizedResult),
             });
           }
+
+          if (roundImages.length > 0) {
+            sessionImages.push(...roundImages);
+            const imageParts = [{
+              type: 'text',
+              text: '以下是操作后的截图，请根据截图验证结果并继续：'
+            }];
+            for (const img of roundImages) {
+              imageParts.push({
+                type: 'image_url',
+                image_url: { url: img.fileUrl, detail: 'auto' }
+              });
+            }
+            currentMessages.push({ role: 'user', content: imageParts });
+            logger.info(`AgentRuntime: Added ${roundImages.length} screenshot(s) as vision context, total this session: ${sessionImages.length}`);
+          }
+
+          const budget = ContextBuilder.getContextBudget(model);
+          const currentTokens = ContextBuilder.estimateMessagesTokens(currentMessages);
+          const LOOP_THRESHOLD = 0.85;
+          if (currentTokens > budget * LOOP_THRESHOLD) {
+            const beforeCount = currentTokens;
+            const compressResult = ContextBuilder.truncateMessagesInLoop(currentMessages, budget * LOOP_THRESHOLD);
+            currentMessages = compressResult.messages;
+            logger.info(`AgentRuntime: Dynamic context compression in tool loop: ${beforeCount} -> ${compressResult.tokenCount} tokens (truncated=${compressResult.truncated})`);
+          }
+          const newTokens = ContextBuilder.estimateMessagesTokens(currentMessages);
+          yield {
+            type: 'context_usage',
+            tokenCount: newTokens,
+            budget: budget,
+            usage: Math.min(100, Math.round((newTokens / budget) * 100)),
+            truncated: newTokens < currentTokens,
+          };
         } else {
           currentMessages.push({ role: 'assistant', content: accumulatedText });
           const resultParts = [];
           for (const atc of assistantToolCalls) {
             resultParts.push(`<|FunctionResult|>`);
             resultParts.push(`工具: ${atc.name}`);
-            resultParts.push(`结果: ${JSON.stringify(atc.result, null, 2)}`);
+            resultParts.push(`结果: ${JSON.stringify(atc.error ? { error: atc.error } : atc.sanitizedResult, null, 2)}`);
             if (atc.error) {
               resultParts.push(`错误: ${atc.error}`);
             }
@@ -406,14 +491,26 @@ export class AgentRuntime {
           }
           resultParts.push('请根据工具执行结果继续回答用户问题。如需调用更多工具，请使用相同的 <|FunctionCallBegin|> 格式。');
           currentMessages.push({ role: 'user', content: resultParts.join('\n') });
+
+          const budgetCli = ContextBuilder.getContextBudget(model);
+          const tokensCli = ContextBuilder.estimateMessagesTokens(currentMessages);
+          yield {
+            type: 'context_usage',
+            tokenCount: tokensCli,
+            budget: budgetCli,
+            usage: Math.min(100, Math.round((tokensCli / budgetCli) * 100)),
+            truncated: false,
+          };
         }
       }
 
-      if (toolCallCount >= MAX_TOOL_CALLS) {
-        const limitMsg = `\n\n⚠️ 已达到最大工具调用次数（${MAX_TOOL_CALLS}次），当前轮次暂停。您可以继续发送消息让我基于已有结果继续完成任务。`;
-        finalContent += limitMsg;
-        yield { type: 'text_delta', content: limitMsg };
-        logger.warn(`AgentRuntime: Max tool call iterations (${MAX_TOOL_CALLS}) reached, yielding warning and completing`);
+      if (toolCallCount >= maxToolCalls) {
+        if (enableToolCallWarning) {
+          const limitMsg = `\n\n⚠️ 已达到最大工具调用次数（${maxToolCalls}次），当前轮次暂停。您可以继续发送消息让我基于已有结果继续完成任务。`;
+          finalContent += limitMsg;
+          yield { type: 'text_delta', content: limitMsg };
+        }
+        logger.warn(`AgentRuntime: Max tool call iterations (${maxToolCalls}) reached, enableToolCallWarning=${enableToolCallWarning}`);
       }
 
       yield {
@@ -423,6 +520,11 @@ export class AgentRuntime {
       };
     } finally {
       this._abortControllers.delete(sessionId);
+      try {
+        toolImageProcessor.cleanupSessionFiles();
+      } catch (cleanupErr) {
+        logger.warn(`AgentRuntime: Failed to cleanup session screenshot files: ${cleanupErr.message}`);
+      }
     }
   }
 

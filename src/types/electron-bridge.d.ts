@@ -456,6 +456,16 @@ declare global {
 				mcpStatus(payload?: any): Promise<any>
 				mcpCallTool(payload?: any): Promise<any>
 				importModel(payload?: any): Promise<any>
+				checkToolsReady(payload?: any): Promise<any>
+				mountTools(payload?: any): Promise<any>
+				workspaceInit(payload?: { nodeId: string; projectId?: number; references?: Array<{ base64: string; mimeType: string; fileName: string; sourceAlias?: string }> }): Promise<{ ok: boolean; workspacePath?: string; relativePath?: string; screenshotsDir?: string; referencesDir?: string; references?: Array<{ fileName: string; absolutePath: string; relativePath: string; sourceAlias?: string }>; error?: string }>
+				workspaceSaveScript(payload?: { nodeId: string; projectId?: number; code: string; summary?: string }): Promise<{ ok: boolean; fileName?: string; relativePath?: string; absolutePath?: string; error?: string }>
+				workspaceSaveScreenshot(payload?: { nodeId: string; projectId?: number; base64Data: string; mimeType?: string }): Promise<{ ok: boolean; fileName?: string; relativePath?: string; absolutePath?: string; url?: string; error?: string }>
+				workspaceClear(payload?: { nodeId: string; projectId?: number }): Promise<{ ok: boolean; cleared?: boolean; error?: string }>
+				workspaceListScripts(payload?: { nodeId: string; projectId?: number }): Promise<{ ok: boolean; scripts?: Array<{ fileName: string; relativePath: string; timestamp: number; summary: string; size: number }>; error?: string }>
+				workspaceGetStats(payload?: { nodeId: string; projectId?: number }): Promise<{ ok: boolean; scriptCount?: number; screenshotCount?: number; sessionCount?: number; error?: string }>
+				workspaceOpenFolder(payload?: { nodeId: string; projectId?: number }): Promise<{ ok: boolean; path?: string; error?: string }>
+				workspaceGetPath(payload?: { nodeId: string; projectId?: number }): Promise<{ ok: boolean; path?: string; exists?: boolean; error?: string }>
 				mcpListTools(payload?: any): Promise<any>
 				onMcpStatusChanged?(callback: (payload: any) => void): () => void
 			}

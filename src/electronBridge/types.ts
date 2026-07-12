@@ -273,6 +273,16 @@ export interface Tripo3DTaskDetailResult {
 	error?: string
 }
 
+export type AgentThinkingEffort = 'disabled' | 'low' | 'medium' | 'high';
+
+export type AgentSettings = {
+	maxToolCalls: number;
+	defaultThinkingEffort: AgentThinkingEffort;
+	enableToolCallWarning: boolean;
+	autoScrollToBottom: boolean;
+	showThoughtProcess: boolean;
+};
+
 export type ClientSettings = {
 	defaultResolution: string
 	geminiApiKey: string
@@ -294,6 +304,7 @@ export type ClientSettings = {
 	cliAdapters?: {
 		[adapterName: string]: CliAdapterSavedConfig
 	}
+	agent?: AgentSettings;
 }
 
 export type ClientSettingsResult = {

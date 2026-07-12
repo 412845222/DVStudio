@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
-import type { ClientSettings, EnvironmentCheckResult, CliModelInfo, CheckStatus } from '../electronBridge/types'
+import type { ClientSettings, EnvironmentCheckResult, CliModelInfo, CheckStatus, AgentThinkingEffort } from '../electronBridge/types'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
 import { cliCheckEnvironment, cliGetAdapterConfig, cliSaveAdapterConfig, cliRunFixCommand, cliStartAuthFlow, cliCancelAuth, cliResetAdapterConfig, type AuthStreamChunk } from '../network/CLIChatService'
 import { setCopilotEnabled, setDynamicCopilotModels, setCodexEnabled, setDynamicCodexModels, convertCliModelsToCatalog, refreshChatModelCatalog } from '../ai/models/chatModels'
 import ModalDialog from '../ui/UIComponent/ModalDialog.vue'
 import { usePlatform } from '../platformBridge'
 import { useI18n } from '../i18n'
+import { DEFAULT_AGENT_SETTINGS, AGENT_CONFIG_CONSTRAINTS, validateMaxToolCalls } from '../core/agent/agentConfig'
 
 const { t, locale } = useI18n()
 
@@ -68,6 +69,7 @@ const form = reactive<ClientSettings>({
 		acceptedVersion: '',
 	},
 	cliAdapters: {},
+	agent: { ...DEFAULT_AGENT_SETTINGS },
 })
 
 const activeProvider = ref<string | null>(null)
@@ -187,6 +189,41 @@ function showSaveMessage(msg: string, type: 'success' | 'error' = 'success', dur
 	}, duration)
 }
 
+async function saveAgentSettings() {
+	try {
+		if (!form.agent) {
+			form.agent = { ...DEFAULT_AGENT_SETTINGS }
+		}
+		form.agent.maxToolCalls = validateMaxToolCalls(form.agent.maxToolCalls)
+		await saveClientSettings(buildSavePayload())
+		showSaveMessage(t('settings.agent.settingsSaved'))
+	} catch (e: unknown) {
+		showSaveMessage(t('settings.saveFailed', { msg: String(e) }), 'error')
+	}
+}
+
+function onMaxToolCallsInput(event: Event) {
+	const input = event.target as HTMLInputElement
+	let value = parseInt(input.value, 10)
+	if (isNaN(value)) value = DEFAULT_AGENT_SETTINGS.maxToolCalls
+	value = validateMaxToolCalls(value)
+	if (form.agent) {
+		form.agent.maxToolCalls = value
+	}
+}
+
+function onMaxToolCallsChange() {
+	saveAgentSettings()
+}
+
+function onAgentSwitchChange() {
+	saveAgentSettings()
+}
+
+function onThinkingEffortChange() {
+	saveAgentSettings()
+}
+
 function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettings {
 	const payload: ClientSettings = {
 		defaultResolution: form.defaultResolution,
@@ -213,6 +250,7 @@ function buildSavePayload(overrides: Partial<ClientSettings> = {}): ClientSettin
 					acceptedVersion: '',
 				},
 		cliAdapters: form.cliAdapters ? JSON.parse(JSON.stringify(form.cliAdapters)) : {},
+		agent: form.agent ? { ...form.agent } : { ...DEFAULT_AGENT_SETTINGS },
 		...overrides,
 	}
 	return payload
@@ -912,6 +950,15 @@ async function load() {
 		}
 	}
 	if (!form.cliAdapters) form.cliAdapters = {}
+	if (!form.agent) {
+		form.agent = { ...DEFAULT_AGENT_SETTINGS }
+	} else {
+		form.agent = {
+			...DEFAULT_AGENT_SETTINGS,
+			...form.agent,
+		}
+		form.agent.maxToolCalls = validateMaxToolCalls(form.agent.maxToolCalls)
+	}
 	loading.value = false
 }
 
@@ -1254,6 +1301,77 @@ const canEnableCodex = computed(() => {
 						</svg>
 					</div>
 				</button>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">{{ t('settings.agent.title') }}</h2>
+				<p class="section-desc">{{ t('settings.agent.desc') }}</p>
+			</div>
+			<div class="agent-card">
+				<div class="agent-group">
+					<h3 class="agent-group-title">{{ t('settings.agent.conversationLimits') }}</h3>
+					<div class="agent-row">
+						<label class="agent-label">
+							<span>{{ t('settings.agent.maxToolCalls') }}</span>
+							<small class="agent-hint">{{ t('settings.agent.maxToolCallsHint') }}</small>
+						</label>
+						<div class="agent-number-input">
+							<input
+								v-model.number="form.agent!.maxToolCalls"
+								type="number"
+								:min="AGENT_CONFIG_CONSTRAINTS.maxToolCalls.min"
+								:max="AGENT_CONFIG_CONSTRAINTS.maxToolCalls.max"
+								:step="AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step"
+								class="agent-input"
+								@input="onMaxToolCallsInput"
+								@change="onMaxToolCallsChange"
+							/>
+							<div class="agent-number-controls">
+								<button type="button" class="agent-number-btn" @click="form.agent && (form.agent.maxToolCalls = Math.max(AGENT_CONFIG_CONSTRAINTS.maxToolCalls.min, form.agent.maxToolCalls - AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step)); onMaxToolCallsChange()">−</button>
+								<button type="button" class="agent-number-btn" @click="form.agent && (form.agent.maxToolCalls = Math.min(AGENT_CONFIG_CONSTRAINTS.maxToolCalls.max, form.agent.maxToolCalls + AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step)); onMaxToolCallsChange()">+</button>
+							</div>
+						</div>
+					</div>
+					<div class="agent-switch-row">
+						<label class="agent-switch-label">{{ t('settings.agent.enableToolCallWarning') }}</label>
+						<label class="toggle-switch">
+							<input type="checkbox" v-model="form.agent!.enableToolCallWarning" @change="onAgentSwitchChange" />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+				</div>
+
+				<div class="agent-group">
+					<h3 class="agent-group-title">{{ t('settings.agent.conversationExperience') }}</h3>
+					<div class="agent-row">
+						<label class="agent-label">
+							<span>{{ t('settings.agent.thinkingEffort') }}</span>
+							<small class="agent-hint">{{ t('settings.agent.thinkingEffortHint') }}</small>
+						</label>
+						<select v-model="form.agent!.defaultThinkingEffort" class="agent-select" @change="onThinkingEffortChange">
+							<option value="disabled">{{ t('settings.agent.thinkingEffortDisabled') }}</option>
+							<option value="low">{{ t('settings.agent.thinkingEffortLow') }}</option>
+							<option value="medium">{{ t('settings.agent.thinkingEffortMedium') }}</option>
+							<option value="high">{{ t('settings.agent.thinkingEffortHigh') }}</option>
+						</select>
+					</div>
+					<div class="agent-switch-row">
+						<label class="agent-switch-label">{{ t('settings.agent.showThoughtProcess') }}</label>
+						<label class="toggle-switch">
+							<input type="checkbox" v-model="form.agent!.showThoughtProcess" @change="onAgentSwitchChange" />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+					<div class="agent-switch-row">
+						<label class="agent-switch-label">{{ t('settings.agent.autoScrollToBottom') }}</label>
+						<label class="toggle-switch">
+							<input type="checkbox" v-model="form.agent!.autoScrollToBottom" @change="onAgentSwitchChange" />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+				</div>
 			</div>
 		</section>
 	</div>
@@ -3345,5 +3463,205 @@ const canEnableCodex = computed(() => {
 	font-size: 12px;
 	color: var(--vscode-fg-muted);
 	text-align: center;
+}
+
+.agent-card {
+	background: var(--dweb-defualt-dark);
+	border: 1px solid var(--vscode-border);
+	border-radius: 8px;
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+.agent-group {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.agent-group-title {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-fg);
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--vscode-border);
+}
+
+.agent-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.agent-label {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.agent-label > span {
+	font-size: 13px;
+	color: var(--vscode-fg);
+	font-weight: 500;
+}
+
+.agent-hint {
+	font-size: 11.5px;
+	color: var(--vscode-fg-muted);
+	line-height: 1.4;
+}
+
+.agent-number-input {
+	display: flex;
+	align-items: center;
+	gap: 0;
+}
+
+.agent-input {
+	width: 80px;
+	background: var(--vscode-input-bg, var(--dweb-defualt-dark));
+	color: var(--vscode-fg);
+	border: 1px solid var(--vscode-border);
+	border-right: none;
+	padding: 8px 12px;
+	font-size: 13px;
+	outline: none;
+	font-family: inherit;
+	text-align: center;
+	border-radius: 4px 0 0 4px;
+	-moz-appearance: textfield;
+}
+
+.agent-input::-webkit-outer-spin-button,
+.agent-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+.agent-input:focus {
+	border-color: var(--vscode-border-accent, var(--theme-accent));
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+
+.agent-number-controls {
+	display: flex;
+	flex-direction: column;
+}
+
+.agent-number-btn {
+	appearance: none;
+	-webkit-appearance: none;
+	background: var(--vscode-button-bg, rgba(255,255,255,0.06));
+	color: var(--vscode-fg);
+	border: 1px solid var(--vscode-border);
+	width: 28px;
+	height: 17px;
+	padding: 0;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s;
+}
+
+.agent-number-btn:first-child {
+	border-radius: 0 4px 0 0;
+	border-bottom: none;
+}
+
+.agent-number-btn:last-child {
+	border-radius: 0 0 4px 0;
+}
+
+.agent-number-btn:hover {
+	background: var(--vscode-button-hover-bg, rgba(255,255,255,0.12));
+}
+
+.agent-select {
+	background: var(--vscode-input-bg, var(--dweb-defualt-dark));
+	color: var(--vscode-fg);
+	border: 1px solid var(--vscode-border);
+	padding: 8px 32px 8px 12px;
+	font-size: 13px;
+	outline: none;
+	font-family: inherit;
+	border-radius: 4px;
+	cursor: pointer;
+	appearance: none;
+	-webkit-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 10px center;
+	min-width: 140px;
+}
+
+.agent-select:focus {
+	border-color: var(--vscode-border-accent, var(--theme-accent));
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+
+.agent-switch-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 0;
+}
+
+.agent-switch-label {
+	font-size: 13px;
+	color: var(--vscode-fg);
+}
+
+.toggle-switch {
+	position: relative;
+	display: inline-block;
+	width: 40px;
+	height: 22px;
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+.toggle-switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.toggle-slider {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--vscode-checkbox-border, rgba(255,255,255,0.2));
+	border-radius: 11px;
+	transition: background 0.2s;
+}
+
+.toggle-slider::before {
+	content: '';
+	position: absolute;
+	height: 16px;
+	width: 16px;
+	left: 3px;
+	top: 3px;
+	background: white;
+	border-radius: 50%;
+	transition: transform 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+	background: var(--theme-accent, #22a06b);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+	transform: translateX(18px);
 }
 </style>

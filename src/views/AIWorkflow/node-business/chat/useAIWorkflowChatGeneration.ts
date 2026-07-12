@@ -12,6 +12,7 @@ import { getAgentChatBridge } from '../../../../network/chat'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 import { getChatModelById } from '../../../../ai/models/chatModels'
 import { t } from '../../../../i18n'
+import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
 
 type CacheRefImagesResult = {
 	ok?: unknown
@@ -401,6 +402,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			apiSource?: string
 			model?: string
 			thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+			maxToolCalls?: number
 			context?: unknown
 			skillHints?: string[]
 			executionHints?: string[]
@@ -415,6 +417,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 		const chatBridge = getAgentChatBridge()
 
+		let globalAgentSettings = getCachedAgentSettings()
+		try {
+			globalAgentSettings = await loadAgentSettings()
+		} catch {}
+
+		const effectiveMaxToolCalls = options.maxToolCalls ?? globalAgentSettings.maxToolCalls
+		const effectiveEnableToolCallWarning = globalAgentSettings.enableToolCallWarning !== false
+
 		try {
 			for await (const ev of chatBridge.sendMessage(backend, sessionId, {
 				content,
@@ -427,6 +437,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				apiKeys: options.apiKeys,
 				apiSource: options.apiSource,
 				thinkingEffort: options.thinkingEffort,
+				maxToolCalls: effectiveMaxToolCalls,
+				enableToolCallWarning: effectiveEnableToolCallWarning,
 				skillHints: options.skillHints,
 				executionHints: options.executionHints,
 				agentMode: options.agentMode,

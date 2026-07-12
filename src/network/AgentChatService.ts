@@ -6,7 +6,7 @@ export type AgentStreamChunk =
   | { type: 'text'; content: string }
   | { type: 'thinking_delta'; content: string }
   | { type: 'tool_call_start'; toolCallId: string; tool: string; input?: unknown }
-  | { type: 'tool_call_end'; toolCallId: string; tool: string; output?: unknown }
+  | { type: 'tool_call_end'; toolCallId: string; tool: string; output?: unknown; images?: Array<{ mimeType: string; dataUrl: string; fileName?: string }> }
   | { type: 'tool_call_error'; toolCallId: string; tool: string; error: string }
   | { type: 'tool_call'; tool: string; input?: unknown }
   | { type: 'tool_result'; tool: string; output?: unknown }
@@ -303,7 +303,8 @@ function normalizeAgentChunk(raw: unknown): AgentStreamChunk | null {
       type: 'tool_call_end',
       toolCallId: String(raw.toolCallId || raw.id || ''),
       tool: String(raw.tool || raw.name || ''),
-      output: raw.output || raw.result
+      output: raw.output || raw.result,
+      images: Array.isArray(raw.images) ? raw.images : undefined,
     }
   }
   if (type === 'tool_call_error') {

@@ -9,8 +9,30 @@ import {
 	collectBlenderUpstreamInputs,
 	type BlenderUpstreamInputs
 } from './useBlenderUpstreamInputs'
+import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
 
 const makeMsgId = () => `blender-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const BLENDER_TOOL_NAMES = [
+	'blender_execute_blender_code',
+	'blender_get_objects_summary',
+	'blender_get_object_detail_summary',
+	'blender_get_blendfile_summary_datablocks',
+	'blender_get_blendfile_summary_missing_files',
+	'blender_get_blendfile_summary_of_linked_libraries',
+	'blender_get_blendfile_summary_path_info',
+	'blender_get_blendfile_summary_usage_guess',
+	'blender_get_screenshot_of_area_as_image',
+	'blender_get_screenshot_of_window_as_image',
+	'blender_get_screenshot_of_window_as_json',
+	'blender_jump_to_tab_by_name',
+	'blender_jump_to_tab_by_space_type',
+	'blender_jump_to_view3d_object_by_name',
+	'blender_jump_to_view3d_object_data_by_name',
+	'blender_import_model',
+	'blender_read_workspace_image',
+	'blender_list_workspace_images',
+] as const
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	'blender_execute_blender_code': '执行Blender代码',
@@ -29,6 +51,8 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	'blender_jump_to_view3d_object_by_name': '聚焦对象',
 	'blender_jump_to_view3d_object_data_by_name': '按数据名聚焦对象',
 	'blender_import_model': '导入模型',
+	'blender_read_workspace_image': '读取工作区图片',
+	'blender_list_workspace_images': '列出工作区图片',
 }
 
 function getToolDisplayName(toolName: string): string {
@@ -104,125 +128,176 @@ export interface BlenderAgentChatDeps {
 	backend?: AgentBackendType
 	model?: string
 	onAbortReady?: (abortFn: () => void) => void
+	getProjectId?: () => number | null
 }
 
-function buildBlenderContext(store: Store<WorkflowState>, nodeId: string) {
+function buildBlenderContext(
+	store: Store<WorkflowState>,
+	nodeId: string,
+	isActuallyConnected: boolean,
+	workspaceInfo?: {
+		workspacePath?: string
+		screenshotsDir?: string
+		referencesDir?: string
+		savedReferences?: Array<{ fileName: string; absolutePath: string; relativePath: string; sourceAlias?: string }>
+	}
+) {
 	const state = store.state
 	const node = state.nodesById[nodeId]
 
 	const blenderSettings = (node?.blenderSettings ?? {}) as Record<string, unknown>
-	const mcpStatus = String(blenderSettings.mcpStatus || 'unchecked')
-	const connected = mcpStatus === 'connected'
 
-	// 设计文档 §4.3：遍历 in-0（兼容 in-model）全部入边，按 text/image/model3d 聚合
-	const upstream: BlenderUpstreamInputs = connected
-		? collectBlenderUpstreamInputs(store, nodeId)
-		: { texts: [], images: [], models: [] }
+	const fullUpstream = collectBlenderUpstreamInputs(store, nodeId)
+	const upstream: BlenderUpstreamInputs = {
+		texts: fullUpstream.texts,
+		images: fullUpstream.images,
+		models: isActuallyConnected ? fullUpstream.models : []
+	}
 
 	return {
 		blender: {
-			connected,
+			connected: isActuallyConnected,
 			host: String(blenderSettings.mcpHost || 'localhost'),
 			port: Number(blenderSettings.mcpPort || 9876),
 			upstream,
-			/** 兼容旧字段：第一个上游模型 */
 			upstreamModel: upstream.models.length
 				? {
 						nodeLabel: upstream.models[0].sourceAlias,
 						filePath: upstream.models[0].filePath,
 						format: upstream.models[0].format
 					}
-				: null
+				: null,
+			workspace: workspaceInfo || null
 		}
+	}
+}
+
+async function getBlenderStatus(): Promise<{ connected: boolean; toolsReady: boolean; availableToolCount: number; missingToolCount: number; missingTools?: string[]; host?: string; port?: number }> {
+	try {
+		const statusResult = await window.dweb?.blender?.mcpStatus?.()
+		const connected = statusResult?.ok === true && statusResult.status === 'connected'
+		return {
+			connected,
+			toolsReady: connected ? !!statusResult?.toolsReady : false,
+			availableToolCount: Number(statusResult?.availableToolCount) || 0,
+			missingToolCount: Number(statusResult?.missingToolCount) || (connected ? -1 : 0),
+			missingTools: statusResult?.missingTools,
+			host: statusResult?.host,
+			port: statusResult?.port
+		}
+	} catch {
+		return { connected: false, toolsReady: false, availableToolCount: 0, missingToolCount: -1 }
 	}
 }
 
 function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext>, toolNames: string[]): string {
 	const parts: string[] = []
-	parts.push('你是一个Blender 3D控制助手，通过官方Blender MCP协议连接到正在运行的Blender实例。你可以调用多种专用工具来查看和修改3D场景。')
+	parts.push('你是一个Blender 3D控制助手，通过官方Blender MCP协议控制Blender实例。你拥有完整的blender_*工具集来查看和修改3D场景。')
 	parts.push('')
+
+	if (context.blender.workspace?.workspacePath) {
+		parts.push('## 📂 当前工作区')
+		parts.push(`工作区绝对路径: ${context.blender.workspace.workspacePath}`)
+		parts.push(`- 截图保存目录: ${context.blender.workspace.screenshotsDir || context.blender.workspace.workspacePath + '/screenshots'}`)
+		parts.push(`- 参考图保存目录: ${context.blender.workspace.referencesDir || context.blender.workspace.workspacePath + '/references'}`)
+		parts.push('')
+		parts.push('**重要**：所有截图都会自动保存到上述screenshots目录。截图工具返回的文本中会包含截图的绝对路径。')
+		parts.push('如需重新查看之前的截图，使用 **blender_read_workspace_image** 工具，传入相对路径（如 "screenshots/文件名.png"）即可。')
+		parts.push('使用 **blender_list_workspace_images** 工具可以列出工作区中所有可用的图片（截图和参考图）。')
+		parts.push('')
+	}
+
+	if (context.blender.workspace?.savedReferences && context.blender.workspace.savedReferences.length > 0) {
+		parts.push(`## 🖼️ 已保存参考图（共 ${context.blender.workspace.savedReferences.length} 张）`)
+		parts.push('以下参考图已保存到工作区references目录，你可以通过 blender_read_workspace_image 工具读取它们：')
+		for (const ref of context.blender.workspace.savedReferences) {
+			const srcInfo = ref.sourceAlias ? `（来自节点: ${ref.sourceAlias}）` : ''
+			parts.push(`- ${ref.fileName}${srcInfo}`)
+			parts.push(`  绝对路径: ${ref.absolutePath}`)
+			parts.push(`  相对路径: ${ref.relativePath}`)
+		}
+		parts.push('建模时请仔细参考这些图片的形态、风格和细节。')
+		parts.push('')
+	}
+
 	if (context.blender.connected) {
-		parts.push(`当前Blender已连接到 ${context.blender.host}:${context.blender.port}。`)
-		parts.push('')
-		parts.push('## 核心工具')
-		parts.push('- **blender_execute_blender_code**: 执行任意bpy Python代码。当其他专用工具无法满足需求时使用此工具。代码执行后必须设置result字典。')
-		parts.push('')
-		parts.push('## 场景信息工具')
-		parts.push('- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。')
-		parts.push('- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。')
-		parts.push('- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。')
-		parts.push('- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。')
-		parts.push('- **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。')
-		parts.push('- **blender_get_blendfile_summary_missing_files**: 检查缺失的外部文件引用。')
-		parts.push('- **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。')
-		parts.push('- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。')
-		parts.push('')
-		parts.push('## 截图工具')
-		parts.push('- **blender_get_screenshot_of_area_as_image**: 截取指定区域截图（默认VIEW_3D），返回base64 PNG。每次修改后调用验证。')
-		parts.push('- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口截图。')
-		parts.push('')
-		parts.push('## 导航工具')
-		parts.push('- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。')
-		parts.push('- **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。')
-		parts.push('- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象。')
-		parts.push('- **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。')
-		parts.push('')
-		parts.push('## 其他')
-		parts.push('- **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl）。')
-		parts.push('')
-		parts.push('## 使用规则')
-		parts.push('1. **操作前先调用 blender_get_objects_summary 了解场景**')
-		parts.push('2. **不要猜测对象名称**，先用工具获取真实名称')
-		parts.push('3. **复杂操作拆分步骤**，每次少量代码，验证后继续')
-		parts.push('4. **修改场景后调用截图工具验证结果**')
-		parts.push('5. 代码执行后必须设置result = {...}字典')
-		parts.push('6. 回复用户使用中文')
-		if (toolNames.length > 0) {
-			parts.push('')
-			parts.push('## 当前可用工具')
-			parts.push(toolNames.map(t => `- ${t}（${getToolDisplayName(t)}）`).join('\n'))
-		}
-		if (context.blender.upstream.models.length > 0) {
-			parts.push('')
-			parts.push(`## 上游模型信息（共 ${context.blender.upstream.models.length} 个）`)
-			for (const m of context.blender.upstream.models) {
-				parts.push(`- 来源节点：${m.sourceAlias}，文件路径：${m.filePath}，格式：${m.format}`)
-			}
-			parts.push('当用户说"导入上游模型"或类似要求时，直接使用blender_import_model工具依次传入上述路径。')
-		}
-		if (context.blender.upstream.images.length > 0) {
-			parts.push('')
-			parts.push(`## 上游参考图（共 ${context.blender.upstream.images.length} 张）`)
-			for (const img of context.blender.upstream.images) {
-				parts.push(`- 来源节点：${img.sourceAlias}，URL：${img.url}`)
-			}
-			parts.push('用户连接了上述参考图作为建模/材质参考。建模时尽量贴合参考图描述的形态与风格。')
-		}
-		if (context.blender.upstream.texts.length > 0) {
-			parts.push('')
-			parts.push(`## 上游文本输入（共 ${context.blender.upstream.texts.length} 段）`)
-			for (const t of context.blender.upstream.texts) {
-				parts.push(`### 来自节点：${t.sourceAlias}`)
-				parts.push(t.text.slice(0, 4000))
-			}
-			parts.push('上述文本是用户通过蓝图连线提供的上下文，执行操作时优先参考。')
-		}
+		parts.push(`✅ 当前Blender已连接（${context.blender.host}:${context.blender.port}），可以直接调用工具执行操作。`)
 	} else {
-		parts.push('当前Blender未连接。请告诉用户：需要先在节点顶部点击"连接"按钮连接Blender后才能执行操作。')
+		parts.push('⚠️ 当前Blender尚未连接。你仍然拥有所有blender_*工具，但调用工具会返回"未连接"错误。请告诉用户：需要先在节点UI上点击"连接"按钮连接到正在运行的Blender实例（确保Blender已启动且MCP插件已启用），连接成功后你即可立即执行所有操作。不要说"没有可用工具"，工具是存在的，只是Blender未连接。')
+	}
+	parts.push('')
+	parts.push('## 核心工具')
+	parts.push('- **blender_execute_blender_code**: 执行任意bpy Python代码。当其他专用工具无法满足需求时使用此工具。代码执行后必须设置result字典。')
+	parts.push('')
+	parts.push('## 场景信息工具')
+	parts.push('- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。')
+	parts.push('- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。')
+	parts.push('- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。')
+	parts.push('- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。')
+	parts.push('- **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。')
+	parts.push('- **blender_get_blendfile_summary_missing_files**: 检查缺失的外部文件引用。')
+	parts.push('- **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。')
+	parts.push('- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。')
+	parts.push('')
+	parts.push('## 截图工具')
+	parts.push('- **blender_get_screenshot_of_area_as_image**: 截取指定区域截图（默认VIEW_3D），返回base64 PNG并自动保存到工作区。每次修改后调用验证。')
+	parts.push('- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口截图并自动保存到工作区。')
+	parts.push('')
+	parts.push('## 工作区图片工具')
+	parts.push('- **blender_list_workspace_images**: 列出工作区中所有已保存的图片（截图和参考图），包含绝对路径。')
+	parts.push('- **blender_read_workspace_image**: 读取工作区中的图片文件返回给你查看（传入相对路径，如 "screenshots/xxx.png" 或 "references/xxx.png"）。')
+	parts.push('')
+	parts.push('## 导航工具')
+	parts.push('- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。')
+	parts.push('- **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。')
+	parts.push('- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象。')
+	parts.push('- **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。')
+	parts.push('')
+	parts.push('## 其他')
+	parts.push('- **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl/.usd/.usdz/.blend等）。')
+	parts.push('')
+	parts.push('## 使用规则')
+	parts.push('1. **操作前先调用 blender_get_objects_summary 了解场景**')
+	parts.push('2. **不要猜测对象名称**，先用工具获取真实名称')
+	parts.push('3. **复杂操作拆分步骤**，每次少量代码，验证后继续')
+	parts.push('4. **修改场景后必须调用截图工具验证结果**，通过返回的图片观察效果')
+	parts.push('5. **参考图已保存在工作区**，需要查看参考图时调用 blender_read_workspace_image 工具')
+	parts.push('6. **迭代工作流**：截图→观察→分析→修改→再截图，反复迭代直到达到目标效果')
+	parts.push('7. 代码执行后必须设置result = {...}字典')
+	parts.push('8. 回复用户使用中文')
+	if (toolNames.length > 0) {
+		parts.push('')
+		parts.push('## 当前会话可用工具列表（白名单）')
+		parts.push(toolNames.map(t => `- ${t}（${getToolDisplayName(t)}）`).join('\n'))
+	}
+	if (context.blender.connected && context.blender.upstream.models.length > 0) {
+		parts.push('')
+		parts.push(`## 上游模型信息（共 ${context.blender.upstream.models.length} 个）`)
+		for (const m of context.blender.upstream.models) {
+			parts.push(`- 来源节点：${m.sourceAlias}，文件路径：${m.filePath}，格式：${m.format}`)
+		}
+		parts.push('当用户说"导入上游模型"或类似要求时，直接使用blender_import_model工具依次传入上述路径。')
+	}
+	if (context.blender.upstream.images.length > 0 && (!context.blender.workspace?.savedReferences || context.blender.workspace.savedReferences.length === 0)) {
+		parts.push('')
+		parts.push(`## 上游参考图（共 ${context.blender.upstream.images.length} 张）`)
+		for (const img of context.blender.upstream.images) {
+			parts.push(`- 来源节点：${img.sourceAlias}，URL：${img.url}`)
+		}
+		parts.push('用户连接了上述参考图作为建模/材质参考。这些图片将作为附件随消息发送给你。建模时尽量贴合参考图描述的形态与风格。')
+	}
+	if (context.blender.upstream.texts.length > 0) {
+		parts.push('')
+		parts.push(`## 上游文本输入（共 ${context.blender.upstream.texts.length} 段）`)
+		for (const t of context.blender.upstream.texts) {
+			parts.push(`### 来自节点：${t.sourceAlias}`)
+			parts.push(t.text.slice(0, 4000))
+		}
+		parts.push('上述文本是用户通过蓝图连线提供的上下文，执行操作时优先参考。')
 	}
 	parts.push('')
 	parts.push('重要：不要询问用户任何关于工作流、蓝图、其他节点的问题，不要尝试读取或修改工作流/蓝图。专注于Blender场景操作。')
 	return parts.join('\n')
-}
-
-async function fetchBlenderToolNames(): Promise<string[]> {
-	try {
-		const status = await window.dweb?.blender?.mcpStatus?.()
-		if (status && Array.isArray(status.tools) && status.tools.length > 0) {
-			return status.tools
-		}
-	} catch {}
-	return []
 }
 
 function extractResultText(output: unknown): string {
@@ -329,7 +404,122 @@ export async function runBlenderAgentChat(
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
 
+	const projectId = deps.getProjectId?.() ?? store.state.projectId ?? null
+
+	const preUpstream = collectBlenderUpstreamInputs(store, nodeId)
+	const referenceAttachments = preUpstream.images.length > 0
+		? await upstreamImagesToAttachments(preUpstream.images)
+		: []
+
+	let workspaceInfo: {
+		workspacePath?: string
+		screenshotsDir?: string
+		referencesDir?: string
+		savedReferences?: Array<{ fileName: string; absolutePath: string; relativePath: string; sourceAlias?: string }>
+	} = {}
+
+	if (projectId && window.dweb?.blender?.workspaceInit) {
+		try {
+			const references = referenceAttachments.map((att, idx) => {
+				const data = att.data || ''
+				const base64Match = data.match(/^data:(image\/[^;]+);base64,(.+)$/)
+				return {
+					base64: base64Match ? base64Match[2] : '',
+					mimeType: base64Match ? base64Match[1] : 'image/png',
+					fileName: att.name || `reference_${idx + 1}.png`,
+					sourceAlias: preUpstream.images[idx]?.sourceAlias || ''
+				}
+			}).filter(ref => ref.base64)
+			const wsResult = await window.dweb.blender.workspaceInit({ nodeId, projectId, references })
+			if (wsResult?.ok && wsResult.workspacePath) {
+				node.blenderSettings = node.blenderSettings ?? {}
+				;(node.blenderSettings as Record<string, unknown>).workspacePath = wsResult.workspacePath
+				;(node.blenderSettings as Record<string, unknown>).workspaceRelativePath = wsResult.relativePath
+				workspaceInfo = {
+					workspacePath: wsResult.workspacePath,
+					screenshotsDir: wsResult.screenshotsDir,
+					referencesDir: wsResult.referencesDir,
+					savedReferences: wsResult.references || []
+				}
+			}
+		} catch (err) {
+			console.warn('[BlenderChat] Failed to init workspace:', err)
+		}
+	}
+
 	const settings = (node.blenderSettings ?? {}) as Record<string, unknown>
+
+	const blenderStatus = await getBlenderStatus()
+	let realConnected = blenderStatus.connected
+	let toolsReady = blenderStatus.toolsReady
+	let availableToolCount = blenderStatus.availableToolCount
+	let missingToolCount = blenderStatus.missingToolCount
+	let missingTools = blenderStatus.missingTools
+
+	if (realConnected && !toolsReady) {
+		try {
+			const mountResult = await window.dweb?.blender?.mountTools?.()
+			if (mountResult?.ok) {
+				toolsReady = !!mountResult.ready
+				availableToolCount = Number(mountResult.availableToolCount) || 0
+				missingToolCount = Number(mountResult.missingToolCount) || 0
+				missingTools = mountResult.missingTools
+			}
+		} catch {}
+	}
+
+	if (realConnected && !toolsReady) {
+		try {
+			const recheckResult = await window.dweb?.blender?.checkToolsReady?.()
+			if (recheckResult) {
+				toolsReady = !!recheckResult.ready
+				availableToolCount = Number(recheckResult.availableToolCount) || 0
+				missingToolCount = Number(recheckResult.missingToolCount) || 0
+				missingTools = recheckResult.missingTools
+			}
+		} catch {}
+	}
+
+	store.commit('setBlenderMcpStatus', {
+		nodeId,
+		status: realConnected ? 'connected' : 'disconnected',
+		error: null,
+		serverId: realConnected ? 'blender' : null,
+		toolsReady: realConnected ? toolsReady : undefined,
+		toolCount: realConnected ? availableToolCount : undefined,
+		missingToolCount: realConnected ? missingToolCount : undefined,
+		missingTools: realConnected ? missingTools : undefined
+	})
+
+	if (!realConnected || !toolsReady) {
+		const userMsg: WorkflowBlenderChatMessage = {
+			id: makeMsgId(),
+			role: 'user',
+			content: prompt,
+			timestamp: Date.now()
+		}
+		store.commit('appendBlenderChatMessage', { nodeId, message: userMsg })
+
+		let warnText = ''
+		if (!realConnected) {
+			warnText += '⚠️ Blender未连接，请先点击节点上的"连接"按钮连接到正在运行的Blender实例。\n'
+		}
+		if (!toolsReady) {
+			warnText += '⚠️ Blender工具未就绪，请先点击"挂载工具"按钮完成工具注册。\n'
+		}
+		warnText += '完成上述步骤后，重新发送消息即可。'
+
+		const warnMsg: WorkflowBlenderChatMessage = {
+			id: makeMsgId(),
+			role: 'system',
+			content: warnText,
+			timestamp: Date.now(),
+			isError: true
+		}
+		store.commit('appendBlenderChatMessage', { nodeId, message: warnMsg })
+		return
+	}
+
 	const backendCandidate = String(
 		deps.backend || settings.agentBackend || 'dvsagent'
 	).trim()
@@ -368,21 +558,29 @@ export async function runBlenderAgentChat(
 	}
 	store.commit('appendBlenderChatMessage', { nodeId, message: userMsg })
 
-	let currentAssistantMsgId: string = makeMsgId()
+	let currentAssistantMsgId: string = ''
 	let currentContent = ''
+	let currentThinkingContent = ''
 	const createAssistantMsg = () => {
 		currentAssistantMsgId = makeMsgId()
 		currentContent = ''
+		currentThinkingContent = ''
 		const msg: WorkflowBlenderChatMessage = {
 			id: currentAssistantMsgId,
 			role: 'assistant',
 			content: '',
 			timestamp: Date.now(),
-			isThinking: true
+			isThinking: true,
+			thinkingContent: '',
+			thinkingCollapsed: true
 		}
 		store.commit('appendBlenderChatMessage', { nodeId, message: msg })
 	}
-	createAssistantMsg()
+	const ensureAssistantMsg = () => {
+		if (!currentAssistantMsgId) {
+			createAssistantMsg()
+		}
+	}
 	store.commit('setBlenderResponding', { nodeId, responding: true })
 
 	const abortController = new AbortController()
@@ -391,7 +589,8 @@ export async function runBlenderAgentChat(
 	})
 
 	let disconnected = false
-	let prevStatus: string | undefined
+
+	let prevStatus: string | undefined = String(store.state.nodesById[nodeId]?.blenderSettings?.mcpStatus || '')
 	const unsubscribeWatch = store.watch(
 		(state) => state.nodesById[nodeId]?.blenderSettings?.mcpStatus,
 		(newStatus: string | undefined) => {
@@ -401,85 +600,207 @@ export async function runBlenderAgentChat(
 			if (wasConnected && isDisconnectedState && !disconnected) {
 				disconnected = true
 				abortController.abort()
-				const sysMsgId = makeMsgId()
-				store.commit('appendBlenderChatMessage', {
-					nodeId,
-					message: {
-						id: sysMsgId,
-						role: 'system',
-						content: '⚠️ Blender连接已断开，会话中断',
-						timestamp: Date.now(),
-						isError: true
-					}
-				})
 			}
 		}
 	)
 
 	const finishCurrentAssistant = (patch: Partial<WorkflowBlenderChatMessage> = {}) => {
+		if (!currentAssistantMsgId) return
 		store.commit('updateBlenderChatMessage', {
 			nodeId,
 			messageId: currentAssistantMsgId,
-			patch: { isThinking: false, isStreaming: false, ...patch }
+			patch: { isThinking: false, isStreaming: false, isStreamingThinking: false, ...patch }
 		})
+		currentAssistantMsgId = ''
 	}
 
 	const discardCurrentAssistant = () => {
 		store.commit('removeBlenderChatMessage', { nodeId, messageId: currentAssistantMsgId })
 		currentAssistantMsgId = ''
 		currentContent = ''
+		currentThinkingContent = ''
 	}
 
 	const toolMsgMap = new Map<string, string>()
-	const activeToolCalls = new Map<string, { msgId: string; name: string }>()
+	const activeToolCalls = new Map<string, { msgId: string; name: string; args: Record<string, unknown> }>()
+
+	const autoSaveToWorkspace = async (toolName: string, inputArgs: Record<string, unknown>, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>) => {
+		try {
+			if (!window.dweb?.blender?.workspaceSaveScript && !window.dweb?.blender?.workspaceSaveScreenshot) return
+			if (!projectId) return
+
+			if (toolName === 'blender_execute_blender_code' && inputArgs.code) {
+				const code = String(inputArgs.code)
+				const resultSummary = formatToolResultDisplay(output).summary || ''
+				await window.dweb.blender.workspaceSaveScript({
+					nodeId,
+					projectId,
+					code,
+					summary: resultSummary.slice(0, 200)
+				})
+			}
+
+			const isScreenshotTool = toolName.includes('screenshot')
+			const hasEventImages = eventImages && eventImages.length > 0
+			if (isScreenshotTool || hasEventImages) {
+				let saved = false
+				if (eventImages && eventImages.length > 0) {
+					for (const img of eventImages) {
+						const base64Match = img.dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/)
+						const base64Data = base64Match ? base64Match[2] : img.dataUrl
+						const mimeType = base64Match ? base64Match[1] : (img.mimeType || 'image/png')
+						console.log(`[BlenderWorkspace] Saving screenshot from event.images to workspace, mimeType=${mimeType}, dataLen=${base64Data.length}`)
+						await window.dweb.blender.workspaceSaveScreenshot({
+							nodeId,
+							projectId,
+							base64Data,
+							mimeType
+						})
+						saved = true
+					}
+				}
+				if (!saved) {
+					const imageData = extractImageFromToolOutput(output)
+					if (imageData) {
+						console.log(`[BlenderWorkspace] Saving screenshot (fallback from output) to workspace, mimeType=${imageData.mimeType}, dataLen=${imageData.base64Data.length}`)
+						await window.dweb.blender.workspaceSaveScreenshot({
+							nodeId,
+							projectId,
+							base64Data: imageData.base64Data,
+							mimeType: imageData.mimeType
+						})
+						saved = true
+					}
+				}
+				if (!saved) {
+					console.warn('[BlenderWorkspace] Screenshot tool returned no extractable image data. Output keys:',
+						output && typeof output === 'object' ? Object.keys(output as Record<string, unknown>) : typeof output,
+						'eventImages:', eventImages?.length || 0)
+				}
+			}
+		} catch (err) {
+			console.warn('[BlenderWorkspace] Auto-save failed:', err)
+		}
+	}
+
+	function extractImageFromToolOutput(output: unknown): { base64Data: string; mimeType: string } | null {
+		if (!output || typeof output !== 'object') return null
+
+		const out = output as Record<string, unknown>
+
+		if (Array.isArray(out.content)) {
+			for (const part of out.content) {
+				if (part && typeof part === 'object') {
+					const p = part as Record<string, unknown>
+					if (p.type === 'image' && typeof p.data === 'string' && p.data) {
+						return {
+							base64Data: p.data,
+							mimeType: String(p.mimeType || 'image/png')
+						}
+					}
+					if (p.type === 'image_url' && typeof p.url === 'string' && p.url.startsWith('data:image')) {
+						const match = p.url.match(/^data:(image\/[^;]+);base64,(.+)$/)
+						if (match) {
+							return { base64Data: match[2], mimeType: match[1] }
+						}
+					}
+				}
+			}
+		}
+
+		if (Array.isArray(out.images)) {
+			for (const img of out.images) {
+				if (img && typeof img === 'object') {
+					const p = img as Record<string, unknown>
+					if (typeof p.data === 'string' && p.data) {
+						return {
+							base64Data: p.data,
+							mimeType: String(p.mimeType || 'image/png')
+						}
+					}
+					if (typeof p.url === 'string' && p.url.startsWith('data:image')) {
+						const match = p.url.match(/^data:(image\/[^;]+);base64,(.+)$/)
+						if (match) {
+							return { base64Data: match[2], mimeType: match[1] }
+						}
+					}
+				}
+			}
+		}
+
+		if (typeof out.image === 'string' && out.image) {
+			if (out.image.startsWith('data:image')) {
+				const match = out.image.match(/^data:(image\/[^;]+);base64,(.+)$/)
+				if (match) {
+					return { base64Data: match[2], mimeType: match[1] }
+				}
+			}
+			return { base64Data: out.image, mimeType: String(out.mimeType || 'image/png') }
+		}
+
+		if (typeof out.data === 'string' && out.data && out.type === 'image') {
+			return { base64Data: out.data, mimeType: String(out.mimeType || 'image/png') }
+		}
+
+		if (out.result && typeof out.result === 'object') {
+			return extractImageFromToolOutput(out.result)
+		}
+
+		if (out.value && typeof out.value === 'object') {
+			return extractImageFromToolOutput(out.value)
+		}
+
+		return null
+	}
 
 	// 产物捕获（设计文档 §4.5）：视口截图 + 最终文本，会话结束写入 lastOutputs
 	let capturedScreenshotUrl = ''
-	const tryCaptureScreenshot = (toolName: string, output: unknown) => {
-		if (!toolName.includes('screenshot')) return
-		if (!output || typeof output !== 'object') return
-		const content = (output as { content?: unknown }).content
-		if (!Array.isArray(content)) return
-		for (const part of content) {
-			if (
-				part &&
-				typeof part === 'object' &&
-				(part as { type?: string }).type === 'image' &&
-				typeof (part as { data?: string }).data === 'string' &&
-				(part as { data: string }).data
-			) {
-				const mime = String((part as { mimeType?: string }).mimeType || 'image/png')
-				capturedScreenshotUrl = `data:${mime};base64,${(part as { data: string }).data}`
-				return
+	const tryCaptureScreenshot = (_toolName: string, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>) => {
+		if (eventImages && eventImages.length > 0) {
+			const img = eventImages[0]
+			if (img.dataUrl.startsWith('data:image')) {
+				capturedScreenshotUrl = img.dataUrl
+			} else {
+				capturedScreenshotUrl = `data:${img.mimeType || 'image/png'};base64,${img.dataUrl}`
 			}
+			return
+		}
+		const imageData = extractImageFromToolOutput(output)
+		if (imageData) {
+			capturedScreenshotUrl = `data:${imageData.mimeType};base64,${imageData.base64Data}`
 		}
 	}
 
 	try {
 		const chatBridge = getAgentChatBridge()
-		const context = buildBlenderContext(store, nodeId)
-		const toolNames = context.blender.connected ? await fetchBlenderToolNames() : []
-		const effectiveTools = toolNames.length > 0 ? toolNames : ['blender_get_objects_summary', 'blender_execute_blender_code']
-		const systemPrompt = buildBlenderSystemPrompt(context, effectiveTools)
-		const attachments = context.blender.connected && context.blender.upstream.images.length > 0
-			? await upstreamImagesToAttachments(context.blender.upstream.images)
-			: []
+
+		const context = buildBlenderContext(store, nodeId, realConnected, workspaceInfo)
+		const toolNames = [...BLENDER_TOOL_NAMES]
+		const effectiveTools = toolNames
+		const systemPrompt = buildBlenderSystemPrompt(context, toolNames)
+		const attachments = referenceAttachments
+
+		let globalAgentSettings = getCachedAgentSettings()
+		try {
+			globalAgentSettings = await loadAgentSettings()
+		} catch {}
+
+		const rawThinking = String(settings.thinkingEffort || '').trim()
+		const thinkingEffort = (['disabled', 'low', 'medium', 'high'].includes(rawThinking)
+			? rawThinking
+			: 'medium') as 'disabled' | 'low' | 'medium' | 'high'
 
 		const session = await chatBridge.createSession(backend, {
 			title: prompt.slice(0, 24),
 			model,
-			projectId: store.state.projectId ?? null
+			projectId
 		})
 		const sessionId = session.id
 
 		let receivedAnyContent = false
 		let receivedError = false
 		let aborted = false
-
-		const rawThinking = String(settings.thinkingEffort || '').trim()
-		const thinkingEffort = (['disabled', 'low', 'medium', 'high'].includes(rawThinking)
-			? rawThinking
-			: 'medium') as 'disabled' | 'low' | 'medium' | 'high'
+		let lastContextUsage: { tokenCount: number; budget: number; usage: number; truncated: boolean } | null = null
 
 		for await (const ev of chatBridge.sendMessage(
 			backend,
@@ -491,7 +812,9 @@ export async function runBlenderAgentChat(
 				systemPrompt,
 				tools: effectiveTools,
 				attachments,
-				thinkingEffort
+				thinkingEffort,
+				maxToolCalls: globalAgentSettings.maxToolCalls,
+				enableToolCallWarning: globalAgentSettings.enableToolCallWarning !== false
 			},
 			abortController.signal
 		) as AsyncGenerator<ChatStreamEvent, void, void>) {
@@ -502,22 +825,78 @@ export async function runBlenderAgentChat(
 			if (ev.type === 'done' || ev.type === 'turn_done') break
 			if (ev.type === 'error') {
 				receivedError = true
+				ensureAssistantMsg()
 				const errText = currentContent + (currentContent ? '\n\n' : '') + `❌ 错误：${ev.message}`
 				finishCurrentAssistant({ content: errText, isError: true })
 				deps.pushToast?.(`Blender Agent错误：${ev.message}`, 'error')
 				break
 			}
 			if (ev.type === 'text_delta') {
+				ensureAssistantMsg()
 				receivedAnyContent = true
 				currentContent += ev.content
 				store.commit('updateBlenderChatMessage', {
 					nodeId,
 					messageId: currentAssistantMsgId,
-					patch: { content: currentContent, isThinking: false, isStreaming: true }
+					patch: { content: currentContent, isThinking: false, isStreaming: true, isStreamingThinking: false }
 				})
 				continue
 			}
-			if (ev.type === 'thinking_delta' || ev.type === 'thought') {
+			if (ev.type === 'thinking_delta') {
+				ensureAssistantMsg()
+				currentThinkingContent += ev.content
+				store.commit('updateBlenderChatMessage', {
+					nodeId,
+					messageId: currentAssistantMsgId,
+					patch: {
+						thinkingContent: currentThinkingContent,
+						isThinking: true,
+						isStreamingThinking: true
+					}
+				})
+				continue
+			}
+			if (ev.type === 'thought') {
+				ensureAssistantMsg()
+				currentThinkingContent = ev.content
+				store.commit('updateBlenderChatMessage', {
+					nodeId,
+					messageId: currentAssistantMsgId,
+					patch: {
+						thinkingContent: currentThinkingContent,
+						isThinking: false,
+						isStreamingThinking: false,
+						thinkingCollapsed: true
+					}
+				})
+				continue
+			}
+			if (ev.type === 'command_started') {
+				const cmdStr = Array.isArray(ev.command) ? ev.command.join(' ') : String(ev.command || '')
+				const cmdMsgId = ev.messageId || makeMsgId()
+				const cmdMsg: WorkflowBlenderChatMessage = {
+					id: cmdMsgId,
+					role: 'command',
+					content: `⚙️ 执行命令: ${cmdStr.slice(0, 100)}`,
+					timestamp: Date.now(),
+					command: cmdStr,
+					status: 'running',
+					collapsed: true
+				}
+				store.commit('appendBlenderChatMessage', { nodeId, message: cmdMsg })
+				continue
+			}
+			if (ev.type === 'command_completed') {
+				continue
+			}
+			if (ev.type === 'plan_update') {
+				const planMsg: WorkflowBlenderChatMessage = {
+					id: makeMsgId(),
+					role: 'system',
+					content: `📋 ${String(ev.explanation || '计划更新')}`,
+					timestamp: Date.now()
+				}
+				store.commit('appendBlenderChatMessage', { nodeId, message: planMsg })
 				continue
 			}
 			if (ev.type === 'tool_call_start') {
@@ -525,25 +904,28 @@ export async function runBlenderAgentChat(
 				const toolName = ev.tool || 'unknown'
 				const toolDisplay = getToolDisplayName(toolName)
 				const toolMsgId = makeMsgId()
+				const toolArgs = (ev.input as Record<string, unknown>) || {}
 				const toolMsg: WorkflowBlenderChatMessage = {
 					id: toolMsgId,
 					role: 'tool_call',
 					content: `🔧 ${toolDisplay}...`,
 					timestamp: Date.now(),
 					toolName,
-					toolArgs: (ev.input as Record<string, unknown>) || {},
+					toolArgs,
 					toolCallId: tcId,
 					status: 'running',
 					collapsed: true
 				}
-				if (currentContent.trim()) {
-					finishCurrentAssistant()
-				} else {
-					discardCurrentAssistant()
+				if (currentAssistantMsgId) {
+					if (currentContent.trim() || currentThinkingContent.trim()) {
+						finishCurrentAssistant()
+					} else {
+						discardCurrentAssistant()
+					}
 				}
 				store.commit('appendBlenderChatMessage', { nodeId, message: toolMsg })
 				toolMsgMap.set(tcId, toolMsgId)
-				activeToolCalls.set(tcId, { msgId: toolMsgId, name: toolName })
+				activeToolCalls.set(tcId, { msgId: toolMsgId, name: toolName, args: toolArgs })
 				continue
 			}
 			if (ev.type === 'tool_call_end') {
@@ -552,7 +934,9 @@ export async function runBlenderAgentChat(
 				const activeTc = tcId ? activeToolCalls.get(tcId) : null
 				const toolName = ev.tool || activeTc?.name || 'unknown'
 				const toolDisplay = getToolDisplayName(toolName)
-				tryCaptureScreenshot(toolName, ev.output)
+				const toolArgs = activeTc?.args || (ev as unknown as { input?: Record<string, unknown> }).input || {}
+				const eventImages = ev.images
+				tryCaptureScreenshot(toolName, ev.output, eventImages)
 				const { summary, detail } = formatToolResultDisplay(ev.output)
 				const outRec = (ev.output && typeof ev.output === 'object') ? ev.output as Record<string, unknown> : null
 				const hasError = !!(outRec && (
@@ -569,12 +953,15 @@ export async function runBlenderAgentChat(
 							toolError: hasError ? (detail || '执行出错') : undefined,
 							status: hasError ? 'error' : 'completed',
 							isError: hasError,
-							collapsed: !hasError
+							collapsed: !hasError,
+							screenshots: eventImages && eventImages.length > 0 ? eventImages.map(img => img.dataUrl) : undefined
 						}
 					})
+					if (!hasError) {
+						void autoSaveToWorkspace(toolName, toolArgs, ev.output, eventImages)
+					}
 					activeToolCalls.delete(tcId)
 				}
-				createAssistantMsg()
 				continue
 			}
 			if (ev.type === 'tool_call_error') {
@@ -582,7 +969,14 @@ export async function runBlenderAgentChat(
 				const toolMsgId = toolMsgMap.get(tcId)
 				const toolName = ev.tool || (tcId ? activeToolCalls.get(tcId)?.name : null) || 'unknown'
 				const toolDisplay = getToolDisplayName(toolName)
-				const errDetail = ev.error || '未知错误'
+				let errDetail = ev.error || '未知错误'
+
+				if (errDetail.includes('does not exist') || errDetail.includes('Tool not found')) {
+					errDetail = '⚠️ 工具未注册，请点击节点上的"挂载工具"按钮重新挂载'
+				} else if (errDetail.includes('未连接') || errDetail.includes('disconnected')) {
+					errDetail = '⚠️ Blender未连接，请先点击"连接"按钮连接Blender'
+				}
+
 				if (toolMsgId) {
 					store.commit('updateBlenderChatMessage', {
 						nodeId,
@@ -610,18 +1004,25 @@ export async function runBlenderAgentChat(
 					}
 					store.commit('appendBlenderChatMessage', { nodeId, message: errMsg })
 				}
-				createAssistantMsg()
 				continue
 			}
-			if (ev.type === 'context_usage') continue
+			if (ev.type === 'context_usage') {
+				lastContextUsage = {
+					tokenCount: Number(ev.tokenCount) || 0,
+					budget: Number(ev.budget) || 0,
+					usage: Number(ev.usage) || 0,
+					truncated: !!ev.truncated
+				}
+				store.commit('setBlenderChatContextUsage', { nodeId, usage: lastContextUsage })
+				continue
+			}
 			if (ev.type === 'assistant_done') {
 				if (ev.content && ev.content.trim()) {
+					ensureAssistantMsg()
 					currentContent = ev.content
-					store.commit('updateBlenderChatMessage', {
-						nodeId,
-						messageId: currentAssistantMsgId,
-						patch: { content: currentContent, isThinking: false, isStreaming: false }
-					})
+					finishCurrentAssistant({ content: currentContent })
+				} else {
+					finishCurrentAssistant()
 				}
 				continue
 			}
@@ -666,7 +1067,7 @@ export async function runBlenderAgentChat(
 			}
 		} else {
 			if (currentAssistantMsgId) {
-				if (currentContent.trim()) {
+				if (currentContent.trim() || currentThinkingContent.trim()) {
 					finishCurrentAssistant()
 				} else {
 					discardCurrentAssistant()
@@ -725,6 +1126,28 @@ export async function runBlenderAgentChat(
 		}
 	} finally {
 		unsubscribeWatch()
+		// 清理残留的空assistant消息（isThinking=true但无内容、无thinking的消息）
+		const node = store.state.nodesById[nodeId]
+		const msgs = node?.blenderSettings?.chatMessages
+		if (Array.isArray(msgs)) {
+			const staleIds: string[] = []
+			for (const m of msgs) {
+				if (
+					m &&
+					m.role === 'assistant' &&
+					m.isThinking &&
+					!m.isStreaming &&
+					!m.isStreamingThinking &&
+					(!m.content || !String(m.content).trim()) &&
+					(!m.thinkingContent || !String(m.thinkingContent).trim())
+				) {
+					staleIds.push(m.id)
+				}
+			}
+			for (const staleId of staleIds) {
+				store.commit('removeBlenderChatMessage', { nodeId, messageId: staleId })
+			}
+		}
 		store.commit('setBlenderResponding', { nodeId, responding: false })
 		deps.onAbortReady?.(() => {})
 	}
