@@ -85,5 +85,21 @@
   "settings.network.proxyGuideStep1": "1. Open your proxy software and find the \"HTTP Proxy Port\" setting (usually found in proxy settings)",
   "settings.network.proxyGuideStep2": "2. Enter the address in the input field above in the format: http://127.0.0.1:port",
   "settings.network.proxyGuideStep3": "3. Settings are saved automatically when the input loses focus. The proxy will be used for subsequent Gemini requests.",
-  "settings.network.proxyGuideStep4": "4. Leave empty to connect directly (suitable for environments with system-wide global proxy already configured)"
+  "settings.network.proxyGuideStep4": "4. Leave empty to connect directly (suitable for environments with system-wide global proxy already configured)",
+  "settings.agent.title": "AI Agent Settings",
+  "settings.agent.desc": "Configure Agent conversation behavior parameters, including tool call limits, thinking depth, etc. Changes take effect immediately and do not affect ongoing conversations.",
+  "settings.agent.conversationLimits": "Conversation Limits",
+  "settings.agent.maxToolCalls": "Maximum Tool Calls",
+  "settings.agent.maxToolCallsHint": "Maximum number of tool calls allowed in a single conversation. When exceeded, the Agent will pause and prompt the user to continue.",
+  "settings.agent.enableToolCallWarning": "Show warning when call limit is reached",
+  "settings.agent.conversationExperience": "Conversation Experience",
+  "settings.agent.thinkingEffort": "Thinking Depth",
+  "settings.agent.thinkingEffortDisabled": "Disabled",
+  "settings.agent.thinkingEffortLow": "Low",
+  "settings.agent.thinkingEffortMedium": "Medium (Recommended)",
+  "settings.agent.thinkingEffortHigh": "High",
+  "settings.agent.thinkingEffortHint": "Controls the depth of Agent thinking. Higher depth improves answer quality but increases response time.",
+  "settings.agent.showThoughtProcess": "Show thought process by default",
+  "settings.agent.autoScrollToBottom": "Auto-scroll to bottom on new messages",
+  "settings.agent.settingsSaved": "Agent settings saved"
 }
