@@ -44,18 +44,24 @@
 | ComfyUI | `WorkflowComfyUINode.vue` | ComfyUI 推理 | `comfyui` |
 | Model3D | `WorkflowModel3DNode.vue` | 3D 模型 | - |
 | MeshyModel | `WorkflowMeshyModelNode.vue` | Meshy 3D 生成 | `meshy` |
+| Tripo3D | `WorkflowTripo3DNode.vue` | Tripo3D 3D 生成 & 图片生成 | `tripo3d` |
+| Gemini | `WorkflowGeminiNode.vue` | Gemini 图片生成 | `gemini` |
+| Ark | （集成于任务面板） | 火山方舟任务管理 | `ark` |
+| Blender | `WorkflowBlenderNode.vue` | Blender MCP 集成 | `blender` |
 | SceneLayout | `WorkflowSceneLayoutNode.vue` | 场景布局 | `agent-skills` |
 | SceneUnderstanding | `WorkflowSceneUnderstandingNode.vue` | 场景理解 | `agent-skills` |
 | SceneDecompose | `WorkflowSceneDecomposeNode.vue` | 场景拆解 | `agent-skills` |
+| SceneLighting | （待确认） | 场景光照 | `agent-skills` |
 | RotateImage | `WorkflowRotateImageNode.vue` | 图片旋转 | - |
 | UnrealExport | `WorkflowUnrealExportNode.vue` | Unreal 导出 | `agent-skills` |
 | ImageMarkup | `ImageMarkupDialog.vue` | 图片标注对话框 | - |
-| Seedance | （待确认） | Seedance 视频生成 | `seedance` |
+| Seedance | `WorkflowSeedanceNode.vue` | Seedance 视频生成 | `seedance` |
 
 子目录：
 - `three-preview/WorkflowThreePreviewShell.vue` + `types.ts`：Three.js 预览外壳
 - `model3d/Model3DPreviewViewer.ts`：3D 模型预览
 - `sceneLayout/SceneLayoutPreviewViewer.ts`：场景布局预览
+- `blender/`：Blender 节点相关组件
 
 ## 5. 页面层（`src/views/AIWorkflow/`）
 
@@ -63,21 +69,26 @@
 | --- | --- |
 | `AIWorkflowPage.vue` | 页面主入口（被 `src/views/AIWorkflow.vue` 包装） |
 | `ResourceManagerWindow.vue` | 资源管理器独立窗口 |
-| `assets/` | 资源持久化相关 composable（13+ 个资源相关 composable，含 `useAIWorkflow404Fallback`） |
-| `blueprint-core/` | 画布核心（视口 / 选中 / 边 / Worker / 性能监控 / Three.js 生命周期 / 选择框 / 标签编辑器 / 锚点磁吸） |
+| `TemplateCenterWindow.vue` | 模板中心独立窗口 |
+| `assets/` | 资源持久化相关 composable（含 `useAIWorkflow404Fallback`、资源迁移、缓存、批量导入等） |
+| `blueprint-core/` | 画布核心（视口 / 选中 / 边 / Worker / 性能监控 / Three.js 生命周期 / 选择框 / 标签编辑器 / 锚点磁吸 / 小地图） |
 | `bridge/component-events/` | 右键菜单、键盘、节点预览、资源操作 |
 | `bridge/feedback/` | Toast 状态等反馈 |
-| `concurrency/` | 并发相关 |
+| `components/` | 通用组件（小地图、主题预热进度、节点层、锚点层、命中区域层） |
 | `network/` | 网络请求相关（通过 IPC 客户端调用后端） |
-| `node-business/chat/` | AI 对话 / 节点生成 / 视频任务面板 |
+| `node-business/chat/` | AI 对话 / 节点生成 / 视频任务面板 / Agent 工具桥接 |
 | `node-business/comfy/` | ComfyUI 业务（连接、输出路由、运行时、类型定义） |
 | `node-business/meshy/` | Meshy 业务（资产、命令、拖拽、任务面板、输入解析、请求、运行时） |
+| `node-business/tripo3d/` | Tripo3D 业务（3D 生成、图片生成、任务面板、输入解析、资源、命令、运行时） |
+| `node-business/gemini/` | Gemini 业务（图片生成任务面板） |
+| `node-business/ark/` | 火山方舟业务（任务面板） |
+| `node-business/blender/` | Blender 业务（MCP 连接、Agent 聊天、上游输入处理） |
 | `node-business/seedance/` | Seedance 业务（视频生成任务） |
-| `node-business/presentation/` | 节点展示（媒体预览源、文本输出、截图、旋转图片输出、节点额外属性） |
-| `node-business/project/` | 项目相关（catalog import、snapshot、transfer、unreal、package、identity） |
-| `node-business/scene/` | 场景相关（拆解、布局、场景理解、元数据、模型绑定） |
+| `node-business/presentation/` | 节点展示（媒体预览源、文本输出、截图、旋转图片输出、节点额外属性、视频截图） |
+| `node-business/project/` | 项目相关（catalog import、snapshot、transfer、unreal、package、identity、云模板持久化） |
+| `node-business/scene/` | 场景相关（拆解、布局、场景理解、光照、元数据、模型绑定） |
 | `node-business/unreal/` | Unreal 导出 |
-| `node-screenshot/` | **节点截图持久化缓存**（IndexedDB 缓存 + 截图池 composable） |
+| `node-screenshot/` | **节点截图持久化缓存**（IndexedDB 缓存 + 截图池 composable + 画布预热协调器） |
 | `useAIWorkflowNodeActions.ts` / `useAIWorkflowNodeRefresh.ts` / `useAIWorkflowNodeSettings.ts` / `useAIWorkflowTextMergeCommands.ts` | 通用节点 action |
 | `ui/AIWorkflowDebugPanel.vue` | 页面内嵌调试面板 |
 
@@ -166,13 +177,63 @@ for await (const chunk of generator) {
 - 节点级聊天复用同一 IPC 流通道，但通过节点上下文参数区分。
 - API 密钥存储在 LocalDB `api_keys` 表（AES-256-GCM 加密）。
 
-### 9.5 Agent Skills
+### 9.5 Agent 系统
+- 通过后端模块 `agent/` 实现，IPC 通道前缀 `dweb:agent:`
+- 统一 Agent Runtime + Provider 架构，支持 dvsagent/copilot/codex 等多种后端
+- 支持流式对话、工具调用循环、上下文构建、历史管理
+- 会话数据存储在 LocalDB `chat_conversations` 表
+- 前端通过 `src/network/chat/` 下的多个服务（AgentChatService、DVSAgentChatService等）调用
+
+### 9.6 MCP 工具系统
+- 通过后端模块 `mcp/` 实现，IPC 通道前缀 `dweb:mcp:`
+- 支持 stdio/socket 双桥接，可连接外部 MCP 服务器（如 Blender MCP）
+- 内置 13 个工作流蓝图操作工具（get_blueprint_state、create_node、connect_nodes等）
+- 内置工具通过 IPC 桥接在前端执行，可操作节点、连线、执行等
+- 前端通过 `window.dweb.mcp.*` 调用
+
+### 9.7 CLI 适配器
+- 通过后端模块 `cli-adapters/` 实现，IPC 通道前缀 `dweb:cli:`
+- 支持 Claude CLI、Codex CLI、Copilot CLI 等外部 CLI 工具
+- 统一会话管理、流式消息、配置持久化
+- 前端通过 `src/network/CLIChatService.ts` 调用
+
+### 9.8 Blender 集成
+- 通过后端模块 `blender/` 实现，IPC 通道前缀 `dweb:blender:`
+- 通过 MCP 协议与 Blender 通信，支持模型导入、工具调用、工作区管理
+- 工作区脚本与截图保存在项目临时目录
+- 前端通过 `src/views/AIWorkflow/node-business/blender/` composable 调用
+
+### 9.9 Tripo3D 集成
+- 通过后端模块 `tripo3d/` 实现，IPC 通道前缀 `dweb:tripo3d:`
+- 支持文生3D、图生3D、多视图生成、文生图、图生图等功能
+- 任务存储在 LocalDB `tripo3d_tasks` 表
+- 前端通过 `src/views/AIWorkflow/node-business/tripo3d/` composable 调用
+
+### 9.10 Gemini 集成
+- 通过后端模块 `gemini/` 实现，IPC 通道前缀 `dweb:gemini:`
+- 支持 Gemini 图片生成任务管理
+- 任务存储在 LocalDB `gemini_tasks` 表
+- 前端通过 `src/views/AIWorkflow/node-business/gemini/` composable 调用
+
+### 9.11 火山方舟（ARK）
+- 通过后端模块 `ark/` 实现，IPC 通道前缀 `dweb:ark:`
+- 任务面板集成，记录与管理方舟任务
+- 任务存储在 LocalDB `ark_tasks` 表
+- 前端通过 `src/views/AIWorkflow/node-business/ark/` composable 调用
+
+### 9.12 Agent Skills
 - 通过后端模块 `agent-skills/` 实现，IPC 通道前缀 `dweb:agent-skills:`
-- 包含场景理解、场景布局、场景拆解、Unreal 导出等功能
+- 包含场景理解、场景布局、场景拆解、场景光照、Unreal 导出等功能
 - Unreal 导出通过内置 HTTP 服务器与 Unreal 插件通信
 - 前端通过 `src/network/SceneSkillService.ts` 调用
 
-### 9.6 项目与资产管理
+### 9.13 云模板中心
+- 通过后端模块 `cloud-templates/` 实现，IPC 通道前缀 `dweb:cloud-templates:`
+- 支持本地/Steam 多适配器架构
+- 包含配额查询、模板列表、上传、下载、删除功能
+- 前端通过 `src/aiworkflow/template/useCloudTemplatePersistence.ts` 调用
+
+### 9.14 项目与资产管理
 - 项目 CRUD：后端模块 `projects/`，IPC `dweb:projects:*`
 - 项目资产元数据：后端模块 `project-assets/`，IPC `dweb:project-assets:*`
 - 资产二进制操作（上传/导入/删除）：通过 `projectStaticAssets/service.mjs` 的 IPC 通道
@@ -221,14 +282,24 @@ for await (const chunk of generator) {
 | 节点聊天对话框 | `src/ui/BluePrint/node-dialog/` |
 | 画布 | `src/ui/BluePrint/BlueprintCanvas.vue` |
 | 节点搜索菜单 | `src/ui/UIComponent/DwebCanvasNodeSearchMenu.vue` |
+| IPC 客户端 | `src/network/ipcClient.ts` |
 | ComfyUI 服务 | `src/network/ComfyUIBridgeService.ts` |
 | AI 对话服务 | `src/network/AIChatService.ts` |
+| Agent 聊天服务 | `src/network/AgentChatService.ts` |
+| CLI 聊天服务 | `src/network/CLIChatService.ts` |
 | Scene Skill 服务 | `src/network/SceneSkillService.ts` |
-| IPC 客户端 | `src/network/ipcClient.ts` |
+| Agent Runtime 后端模块 | `electron/backend/modules/agent/` |
+| MCP 后端模块 | `electron/backend/modules/mcp/` |
+| CLI 适配器后端模块 | `electron/backend/modules/cli-adapters/` |
+| Blender 后端模块 | `electron/backend/modules/blender/` |
+| Tripo3D 后端模块 | `electron/backend/modules/tripo3d/` |
+| Gemini 后端模块 | `electron/backend/modules/gemini/` |
+| Ark 后端模块 | `electron/backend/modules/ark/` |
 | ComfyUI 后端模块 | `electron/backend/modules/comfyui/` |
 | Meshy 后端模块 | `electron/backend/modules/meshy/` |
 | Seedance 后端模块 | `electron/backend/modules/seedance/` |
 | Chat 后端模块 | `electron/backend/modules/chat/` |
 | Agent Skills 后端模块 | `electron/backend/modules/agent-skills/` |
 | Third-Party 后端模块 | `electron/backend/modules/third-party/` |
+| Cloud Templates 后端模块 | `electron/backend/modules/cloud-templates/` |
 | 节点 Inspector 数据 composable | `src/views/AIWorkflow/node-business/` |
