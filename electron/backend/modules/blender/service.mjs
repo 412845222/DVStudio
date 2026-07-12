@@ -1,8 +1,14 @@
 import { EventEmitter } from 'events';
 import net from 'net';
-import { BrowserWindow } from 'electron';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { spawn, execFile } from 'child_process';
+import { BrowserWindow, shell } from 'electron';
 import logger from '../../core/logger.mjs';
 import { getToolExecutor } from '../mcp/toolExecutor.mjs';
+import { getProjectRootSnapshot } from '../../projectAssetProtocol.mjs';
+import { getBlenderWorkspace } from './workspace.mjs';
 
 const BLENDER_TOOL_PREFIX = 'blender_';
 const BLENDER_STATUS_CHANGED_CHANNEL = 'dweb:blender:mcp:status-changed';
@@ -679,33 +685,37 @@ else:
         result = {"status": "ok", "object": target.name, "data_name": _data_name, "type": target.type, "location": list(target.location), "message": msg}`;
 }
 
-function buildImportModelCode(filePath) {
-  const fp = escStr(filePath);
-  return `import bpy, os
+function buildImportModelCode(filePaths) {
+  const fps = Array.isArray(filePaths) ? filePaths : [filePaths];
+  const pyList = '[' + fps.map((p) => `"${escStr(p)}"`).join(', ') + ']';
+  return `import bpy, os, json, traceback
 
-fpath = "${fp}"
-if not os.path.exists(fpath):
-    result = {"status": "error", "message": f"File not found: {fpath}"}
-else:
-    ext = os.path.splitext(fpath)[1].lower()
-    before = set(bpy.context.scene.objects)
-    ctx_window = None
-    ctx_area = None
-    ctx_region = None
-    for window in bpy.context.window_manager.windows:
-        for area in window.screen.areas:
-            if area.type == 'VIEW_3D':
-                for region in area.regions:
-                    if region.type == 'WINDOW':
-                        ctx_window = window
-                        ctx_area = area
-                        ctx_region = region
-                        break
-                if ctx_area:
-                    break
-        if ctx_area:
-            break
+file_paths = ${pyList}
+results = []
+
+def _find_3d_view_context():
     try:
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type == 'VIEW_3D':
+                    for region in area.regions:
+                        if region.type == 'WINDOW':
+                            return window, area, region
+    except Exception:
+        pass
+    return None, None, None
+
+def _import_one(fpath):
+    if not os.path.exists(fpath):
+        return {"path": fpath, "status": "error", "message": "File not found: " + fpath}
+    ext = os.path.splitext(fpath)[1].lower()
+    try:
+        ctx_window, ctx_area, ctx_region = _find_3d_view_context()
+        try:
+            scene = bpy.context.scene
+            before = set(scene.objects) if scene else set()
+        except Exception:
+            before = set()
         def _do_import():
             if ext in ('.glb', '.gltf'):
                 bpy.ops.import_scene.gltf(filepath=fpath)
@@ -715,22 +725,387 @@ else:
                 bpy.ops.wm.obj_import(filepath=fpath)
             elif ext == '.stl':
                 bpy.ops.wm.stl_import(filepath=fpath)
+            elif ext == '.dae':
+                bpy.ops.wm.collada_import(filepath=fpath)
             else:
-                result = {"status": "error", "message": f"Unsupported format: {ext}"}
-                return False
-            return True
-        ok = False
+                return {"path": fpath, "status": "error", "message": "Unsupported format: " + ext}
+            return None
+        err = None
+        if ctx_area and ctx_region and ctx_window:
+            try:
+                with bpy.context.temp_override(window=ctx_window, area=ctx_area, region=ctx_region):
+                    err = _do_import()
+            except Exception as e:
+                err = _do_import()
+        else:
+            err = _do_import()
+        if err is not None:
+            return err
+        try:
+            scene = bpy.context.scene
+            after = set(scene.objects) if scene else set()
+            new_objs = [o.name for o in list(after - before)]
+        except Exception:
+            new_objs = []
+        return {"path": fpath, "status": "ok", "imported": os.path.basename(fpath), "format": ext, "new_objects": new_objs, "count": len(new_objs)}
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {"path": fpath, "status": "error", "message": "Import failed: " + str(e), "traceback": tb}
+
+try:
+    for fp in file_paths:
+        results.append(_import_one(fp))
+    ok_count = sum(1 for r in results if r.get("status") == "ok")
+    err_count = len(results) - ok_count
+    if ok_count == 0 and err_count > 0:
+        first_err = results[0]
+        err_detail = first_err.get("message", "Unknown error")
+        if first_err.get("traceback"):
+            err_detail += "\\n[Traceback]\\n" + first_err["traceback"]
+        print("[DVStudio Import Error] " + err_detail)
+    result = {"status": "ok" if err_count == 0 else ("partial" if ok_count > 0 else "error"), "ok_count": ok_count, "error_count": err_count, "total": len(results), "results": results}
+except Exception as e:
+    tb = traceback.format_exc()
+    print("[DVStudio Import Fatal Error] " + str(e) + "\\n" + tb)
+    result = {"status": "error", "ok_count": 0, "error_count": len(file_paths), "total": len(file_paths), "results": [{"path": fp, "status": "error", "message": "Fatal: " + str(e), "traceback": tb} for fp in file_paths], "fatal_error": str(e), "traceback": tb}
+`;
+}
+
+const WIN_COMMON_BLENDER_PATHS = [
+	'C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 4.3\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 4.1\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 4.0\\blender.exe',
+	'C:\\Program Files\\Blender Foundation\\Blender 3.6\\blender.exe',
+	'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe',
+]
+
+function fileExists(p) {
+	try { return fs.statSync(p).isFile(); } catch { return false; }
+}
+
+function findBlenderInPath() {
+	return new Promise((resolve) => {
+		const cmd = process.platform === 'win32' ? 'where' : 'which';
+		const target = process.platform === 'win32' ? 'blender.exe' : 'blender';
+		execFile(cmd, [target], { timeout: 5000 }, (err, stdout) => {
+			if (err) return resolve(null);
+			const first = String(stdout || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0];
+			resolve(first && fileExists(first) ? first : null);
+		});
+	});
+}
+
+function _queryRegistryForKey(regPath) {
+	return new Promise((resolve) => {
+		const { execFile: ef } = require('child_process');
+		ef('reg', ['query', regPath, '/s', '/f', 'Blender', '/e'], { timeout: 6000, maxBuffer: 2 * 1024 * 1024 }, (err, stdout) => {
+			if (err) return resolve(null);
+			const text = String(stdout || '');
+			const sections = text.split(/\r?\n\r?\n/);
+			for (const section of sections) {
+				const iconMatch = section.match(/DisplayIcon\s+REG_SZ\s+(.+blender\.exe)/i);
+				if (iconMatch) {
+					const p = iconMatch[1].trim();
+					if (fileExists(p)) return resolve(p);
+				}
+				const locMatch = section.match(/InstallLocation\s+REG_SZ\s+(.+)/);
+				if (locMatch) {
+					const loc = locMatch[1].trim().split(/\r?\n/)[0].replace(/[\\/]+$/, '');
+					const candidate = path.join(loc, 'blender.exe');
+					if (fileExists(candidate)) return resolve(candidate);
+				}
+			}
+			resolve(null);
+		});
+	});
+}
+
+async function findWindowsRegistryBlender() {
+	if (process.platform !== 'win32') return null;
+	const keys = [
+		'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+		'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+	];
+	for (const k of keys) {
+		const found = await _queryRegistryForKey(k);
+		if (found) return found;
+	}
+	return null;
+}
+
+async function findBlenderExecutable(hintPath) {
+	if (hintPath && typeof hintPath === 'string') {
+		if (fileExists(hintPath)) return hintPath;
+		const withExe = hintPath.toLowerCase().endsWith('.exe') ? hintPath : hintPath + '.exe';
+		if (fileExists(withExe)) return withExe;
+	}
+	if (process.platform === 'win32') {
+		for (const p of WIN_COMMON_BLENDER_PATHS) {
+			if (fileExists(p)) return p;
+		}
+	}
+	const registryPath = await findWindowsRegistryBlender();
+	if (registryPath) return registryPath;
+	const pathExe = await findBlenderInPath();
+	if (pathExe) return pathExe;
+	return null;
+}
+
+function resolveToAbsoluteFilePath(rawPath) {
+	const p = String(rawPath || '').trim();
+	if (!p) return '';
+
+	if (/^file:\/\//i.test(p)) {
+		try {
+			const u = new URL(p);
+			let decoded = decodeURIComponent(u.pathname);
+			if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(decoded)) {
+				decoded = decoded.slice(1);
+			}
+			decoded = decoded.replace(/\//g, path.sep);
+			if (fileExists(decoded)) return decoded;
+		} catch {}
+	}
+
+	if (/^dweb:\/\//i.test(p)) {
+		try {
+			const u = new URL(p);
+			const rel = decodeURIComponent(String(u.searchParams.get('path') || ''));
+			if (rel) {
+				const roots = Object.values(getProjectRootSnapshot() || {});
+				for (const root of roots) {
+					const candidate = path.resolve(String(root), rel.replace(/\\/g, path.sep));
+					if (fileExists(candidate)) return candidate;
+				}
+				if (path.isAbsolute(rel) && fileExists(rel)) return rel;
+			}
+		} catch {}
+	}
+
+	if (/^[A-Za-z]:[\\/]/.test(p)) {
+		const normalized = path.normalize(p);
+		if (fileExists(normalized)) return normalized;
+		return normalized;
+	}
+
+	const separatorsNormalized = p.replace(/\\/g, '/').replace(/\/+/g, '/');
+	const roots = Object.values(getProjectRootSnapshot() || {});
+	const candidates = [];
+
+	candidates.push(separatorsNormalized);
+
+	const stripPrefixes = ['Content/Media/', 'content/media/', 'Media/', 'media/'];
+	for (const prefix of stripPrefixes) {
+		if (separatorsNormalized.startsWith(prefix)) {
+			candidates.push(separatorsNormalized.slice(prefix.length));
+		}
+	}
+
+	const subDirs = ['images', 'videos', 'audio', 'models', 'thumbnails', 'exports', 'generated'];
+	const basename = path.basename(separatorsNormalized);
+	for (const sub of subDirs) {
+		candidates.push(`Content/Media/${sub}/${basename}`);
+	}
+
+	for (const root of roots) {
+		for (const cand of candidates) {
+			const abs = path.resolve(String(root), cand.replace(/\//g, path.sep));
+			if (fileExists(abs)) return abs;
+		}
+	}
+
+	if (path.isAbsolute(p)) return path.normalize(p);
+
+	logger.warn(`[BlenderImport] Could not resolve path to absolute/existing file: ${p}`);
+	return p;
+}
+
+function buildCliImportScript(filePaths, resultFilePath) {
+	const fps = Array.isArray(filePaths) ? filePaths : [filePaths];
+	return `import bpy, os, sys, json, traceback
+
+file_paths = ${JSON.stringify(fps)}
+result_file = ${JSON.stringify(resultFilePath)}
+results = []
+
+def _find_3d_view_context():
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                for region in area.regions:
+                    if region.type == 'WINDOW':
+                        return window, area, region
+    return None, None, None
+
+def _import_one(fpath):
+    if not os.path.exists(fpath):
+        return {"path": fpath, "status": "error", "message": "File not found: " + fpath}
+    ext = os.path.splitext(fpath)[1].lower()
+    try:
+        before = set(bpy.context.scene.objects)
+        def _do_import():
+            if ext in ('.glb', '.gltf'):
+                bpy.ops.import_scene.gltf(filepath=fpath)
+            elif ext == '.fbx':
+                bpy.ops.import_scene.fbx(filepath=fpath)
+            elif ext == '.obj':
+                bpy.ops.wm.obj_import(filepath=fpath)
+            elif ext == '.stl':
+                bpy.ops.wm.stl_import(filepath=fpath)
+            elif ext == '.dae':
+                bpy.ops.wm.collada_import(filepath=fpath)
+            elif ext == '.blend':
+                with bpy.data.libraries.load(fpath) as (data_from, data_to):
+                    data_to.objects = list(data_from.objects)
+                for obj in data_to.objects:
+                    if obj is not None:
+                        bpy.context.collection.objects.link(obj)
+            else:
+                return {"path": fpath, "status": "error", "message": "Unsupported format: " + ext}
+            return None
+        ctx_window, ctx_area, ctx_region = _find_3d_view_context()
+        err = None
         if ctx_area and ctx_region:
             with bpy.context.temp_override(window=ctx_window, area=ctx_area, region=ctx_region):
-                ok = _do_import()
+                err = _do_import()
         else:
-            ok = _do_import()
-        if ok is not False and "status" not in result:
-            after = set(bpy.context.scene.objects)
-            new_objs = [o.name for o in (after - before)]
-            result = {"status": "ok", "imported": os.path.basename(fpath), "format": ext, "new_objects": new_objs, "count": len(new_objs)}
+            err = _do_import()
+        if err is not None:
+            return err
+        after = set(bpy.context.scene.objects)
+        new_objs = [o.name for o in list(after - before)]
+        return {"path": fpath, "status": "ok", "imported": os.path.basename(fpath), "format": ext, "new_objects": new_objs, "count": len(new_objs)}
     except Exception as e:
-        result = {"status": "error", "message": f"Import failed: {str(e)}"}`;
+        return {"path": fpath, "status": "error", "message": "Import failed: " + str(e)}
+
+def _do_all_imports():
+    for fp in file_paths:
+        results.append(_import_one(fp))
+    ok_count = sum(1 for r in results if r.get("status") == "ok")
+    err_count = len(results) - ok_count
+    final = {"status": "ok" if err_count == 0 else ("partial" if ok_count > 0 else "error"), "ok_count": ok_count, "error_count": err_count, "total": len(results), "results": results}
+    try:
+        with open(result_file, "w", encoding="utf-8") as f:
+            json.dump(final, f, ensure_ascii=False)
+    except Exception as e:
+        sys.stderr.write("Write result error: " + str(e) + "\\n")
+    print("__BLENDER_CLI_IMPORT_RESULT__:" + json.dumps(final))
+    sys.stdout.flush()
+    return None
+
+def _wait_for_ui():
+    try:
+        w, a, r = _find_3d_view_context()
+        if a is not None:
+            _do_all_imports()
+            return None
+    except Exception:
+        pass
+    return 0.5
+
+bpy.app.timers.register(_wait_for_ui, first_interval=0.5)
+`;
+}
+
+const CLI_TIMEOUT_MS = 60000;
+const RESULT_FILE_POLL_MS = 500;
+
+async function runCliImport(blenderExe, filePaths) {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dvstudio-blender-import-'));
+	const scriptPath = path.join(tmpDir, 'import_models.py');
+	const resultFilePath = path.join(tmpDir, 'result.json');
+	const scriptContent = buildCliImportScript(filePaths, resultFilePath);
+	fs.writeFileSync(scriptPath, scriptContent, 'utf-8');
+
+	return new Promise((resolve) => {
+		let stdout = '';
+		let stderr = '';
+		let settled = false;
+		const settle = (result) => {
+			if (settled) return;
+			settled = true;
+			resolve(result);
+		};
+
+		const args = ['--python', scriptPath];
+		const child = spawn(blenderExe, args, {
+			detached: true,
+			stdio: ['ignore', 'pipe', 'pipe'],
+			windowsHide: false
+		});
+		child.unref();
+
+		child.stdout.on('data', (d) => {
+			stdout += d.toString('utf-8');
+		});
+		child.stderr.on('data', (d) => {
+			stderr += d.toString('utf-8');
+		});
+
+		let pollCount = 0;
+		const maxPolls = Math.floor(CLI_TIMEOUT_MS / RESULT_FILE_POLL_MS);
+		const pollTimer = setInterval(() => {
+			pollCount++;
+			if (settled) { clearInterval(pollTimer); return; }
+			if (fileExists(resultFilePath)) {
+				clearInterval(pollTimer);
+				try {
+					const raw = fs.readFileSync(resultFilePath, 'utf-8');
+					const pyResult = JSON.parse(raw);
+					const imported = (pyResult.results || []).filter((r) => r && r.status === 'ok');
+					const failed = (pyResult.results || []).filter((r) => r && r.status !== 'ok');
+					if (!imported.length) {
+						const firstErr = failed[0];
+						settle({ ok: false, error: firstErr?.message || '模型导入失败', stderr: (stderr || '').slice(-800) });
+						return;
+					}
+					settle({
+						ok: true,
+						count: imported.length,
+						total: pyResult.total || filePaths.length,
+						errorCount: failed.length,
+						imported: imported.map((r) => ({ path: r.path, name: r.imported, newObjects: r.new_objects || [], count: r.count || 0 }))
+					});
+				} catch (e) {
+					settle({ ok: false, error: '解析导入结果失败：' + (e && e.message ? e.message : String(e)) });
+				}
+				return;
+			}
+			if (pollCount >= maxPolls) {
+				clearInterval(pollTimer);
+				const markerIdx = (stdout + '\n' + stderr).indexOf('__BLENDER_CLI_IMPORT_RESULT__:');
+				if (markerIdx >= 0) {
+					try {
+						const part = (stdout + '\n' + stderr).substring(markerIdx + '__BLENDER_CLI_IMPORT_RESULT__:'.length);
+						const nl = part.indexOf('\n');
+						const jsonStr = (nl >= 0 ? part.substring(0, nl) : part).trim();
+						const pyResult = JSON.parse(jsonStr);
+						const imported = (pyResult.results || []).filter((r) => r && r.status === 'ok');
+						if (imported.length) {
+							settle({ ok: true, count: imported.length, total: pyResult.total, errorCount: pyResult.error_count || 0, imported: imported.map((r) => ({ path: r.path, name: r.imported, newObjects: r.new_objects || [] })), note: 'Blender已启动，导入完成' });
+							return;
+						}
+					} catch {}
+				}
+				settle({
+					ok: true,
+					count: filePaths.length,
+					total: filePaths.length,
+					errorCount: 0,
+					imported: filePaths.map((p) => ({ path: p, name: path.basename(p) })),
+					note: 'Blender已启动，模型导入中，请在Blender中查看'
+				});
+			}
+		}, RESULT_FILE_POLL_MS);
+
+		child.on('error', (err) => {
+			clearInterval(pollTimer);
+			settle({ ok: false, error: `启动Blender失败：${err.message}` });
+		});
+	});
 }
 
 class BlenderTcpClient {
@@ -854,6 +1229,277 @@ class BlenderTcpClient {
   }
 }
 
+const BRIDGE_DIR_NAME = 'dvstudio_blender_bridge';
+const BRIDGE_STARTUP_FILENAME = 'dvstudio_bridge.py';
+const BRIDGE_CMD_FILENAME = 'cmd.json';
+const BRIDGE_RESULT_FILENAME = 'result.json';
+const BRIDGE_STATUS_FILENAME = 'status.json';
+const BRIDGE_COMMAND_TIMEOUT_MS = 60000;
+const BRIDGE_POLL_INTERVAL_MS = 200;
+const BRIDGE_STATUS_MAX_AGE_MS = 3000;
+
+function getBridgeDir() {
+	const dir = path.join(os.tmpdir(), BRIDGE_DIR_NAME);
+	try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+	return dir;
+}
+
+function getBridgeCmdPath() { return path.join(getBridgeDir(), BRIDGE_CMD_FILENAME); }
+function getBridgeResultPath() { return path.join(getBridgeDir(), BRIDGE_RESULT_FILENAME); }
+function getBridgeStatusPath() { return path.join(getBridgeDir(), BRIDGE_STATUS_FILENAME); }
+
+const BRIDGE_PYTHON_SCRIPT = `# DVStudio Blender Bridge - auto-installed, runs at Blender startup
+import bpy
+import os
+import sys
+import json
+import time
+import threading
+import traceback
+
+_bridge_dir = os.path.join(os.environ.get('TEMP', os.path.expanduser('~')), 'dvstudio_blender_bridge')
+_cmd_path = os.path.join(_bridge_dir, 'cmd.json')
+_result_path = os.path.join(_bridge_dir, 'result.json')
+_status_path = os.path.join(_bridge_dir, 'status.json')
+_lock_path = os.path.join(_bridge_dir, 'cmd.lock')
+
+os.makedirs(_bridge_dir, exist_ok=True)
+
+_last_cmd_id = None
+_busy = False
+
+def _write_json(p, data):
+    tmp = p + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, p)
+
+def _update_status():
+    try:
+        _write_json(_status_path, {
+            'pid': os.getpid(),
+            'blender_version': bpy.app.version_string,
+            'alive': True,
+            'timestamp': time.time(),
+            'busy': _busy
+        })
+    except Exception:
+        pass
+
+def _execute_code(code, exec_globals):
+    try:
+        exec(code, exec_globals)
+        if 'result' in exec_globals:
+            return {'ok': True, 'result': exec_globals['result']}
+        return {'ok': True, 'result': {'status': 'ok'}}
+    except Exception as e:
+        return {'ok': False, 'error': str(e), 'traceback': traceback.format_exc()}
+
+def _check_and_run():
+    global _last_cmd_id, _busy
+    try:
+        if not os.path.exists(_cmd_path):
+            _update_status()
+            return 0.3
+        try:
+            with open(_cmd_path, 'r', encoding='utf-8') as f:
+                cmd = json.load(f)
+        except Exception:
+            _update_status()
+            return 0.3
+
+        cmd_id = cmd.get('id')
+        if cmd_id == _last_cmd_id:
+            _update_status()
+            return 0.3
+
+        if os.path.exists(_result_path):
+            try:
+                with open(_result_path, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+                if existing.get('id') == cmd_id:
+                    _last_cmd_id = cmd_id
+                    _update_status()
+                    return 0.3
+            except Exception:
+                pass
+
+        _busy = True
+        _update_status()
+        code = cmd.get('code', '')
+
+        exec_globals = {'__name__': '__main__', 'bpy': bpy}
+        exec_result = _execute_code(code, exec_globals)
+
+        _write_json(_result_path, {
+            'id': cmd_id,
+            'pid': os.getpid(),
+            'timestamp': time.time(),
+            **exec_result
+        })
+        _last_cmd_id = cmd_id
+        _busy = False
+        _update_status()
+    except Exception:
+        _busy = False
+        try:
+            _write_json(_result_path, {
+                'id': _last_cmd_id,
+                'pid': os.getpid(),
+                'timestamp': time.time(),
+                'ok': False,
+                'error': 'Bridge internal error: ' + traceback.format_exc()
+            })
+        except Exception:
+            pass
+        _update_status()
+    return 0.3
+
+_update_status()
+
+if not bpy.app.timers.is_registered(_check_and_run):
+    bpy.app.timers.register(_check_and_run, persistent=True)
+`;
+
+function getBlenderVersion(blenderExe) {
+	return new Promise((resolve) => {
+		execFile(blenderExe, ['--version'], { timeout: 8000, maxBuffer: 4096 }, (err, stdout) => {
+			if (err) return resolve(null);
+			const m = String(stdout || '').match(/Blender\s+(\d+)\.(\d+)/i);
+			if (!m) return resolve(null);
+			resolve({ major: parseInt(m[1], 10), minor: parseInt(m[2], 10), full: `${m[1]}.${m[2]}` });
+		});
+	});
+}
+
+function getAllBlenderUserScriptDirs() {
+	const dirs = [];
+	if (process.platform === 'win32') {
+		const appData = process.env.APPDATA;
+		if (appData) {
+			const blenderBase = path.join(appData, 'Blender Foundation', 'Blender');
+			try {
+				if (fs.existsSync(blenderBase) && fs.statSync(blenderBase).isDirectory()) {
+					for (const entry of fs.readdirSync(blenderBase)) {
+						const m = entry.match(/^(\d+)\.(\d+)$/);
+						if (m) {
+							const startupDir = path.join(blenderBase, entry, 'scripts', 'startup');
+							dirs.push({ version: entry, dir: startupDir });
+						}
+					}
+				}
+			} catch {}
+		}
+	}
+	return dirs;
+}
+
+async function ensureBridgeInstalled(blenderExe) {
+	const dirs = getAllBlenderUserScriptDirs();
+	let targets = dirs;
+
+	if (blenderExe) {
+		const ver = await getBlenderVersion(blenderExe);
+		if (ver) {
+			const verDir = path.join(process.env.APPDATA || '', 'Blender Foundation', 'Blender', ver.full, 'scripts', 'startup');
+			targets = [{ version: ver.full, dir: verDir }, ...dirs.filter((d) => d.version !== ver.full)];
+		}
+	}
+
+	let installed = 0;
+	for (const { dir: startupDir } of targets) {
+		try {
+			fs.mkdirSync(startupDir, { recursive: true });
+			const bridgePath = path.join(startupDir, BRIDGE_STARTUP_FILENAME);
+			let shouldWrite = true;
+			if (fs.existsSync(bridgePath)) {
+				try {
+					const existing = fs.readFileSync(bridgePath, 'utf-8');
+					if (existing.trim() === BRIDGE_PYTHON_SCRIPT.trim()) shouldWrite = false;
+				} catch {}
+			}
+			if (shouldWrite) {
+				fs.writeFileSync(bridgePath, BRIDGE_PYTHON_SCRIPT, 'utf-8');
+				logger.info(`[BlenderBridge] Installed bridge script to: ${bridgePath}`);
+			}
+			installed++;
+		} catch (e) {
+			logger.warn(`[BlenderBridge] Failed to install bridge to ${startupDir}: ${e.message}`);
+		}
+	}
+	return installed > 0;
+}
+
+function detectRunningBlenderProcess() {
+	return new Promise((resolve) => {
+		if (process.platform !== 'win32') {
+			resolve(false);
+			return;
+		}
+		execFile('tasklist', ['/FI', 'IMAGENAME eq blender.exe', '/NH'], { timeout: 5000 }, (err, stdout) => {
+			if (err) return resolve(false);
+			const text = String(stdout || '').toLowerCase();
+			resolve(text.includes('blender.exe'));
+		});
+	});
+}
+
+function isBridgeAlive() {
+	try {
+		const statusPath = getBridgeStatusPath();
+		if (!fs.existsSync(statusPath)) return false;
+		const st = fs.statSync(statusPath);
+		const age = Date.now() - st.mtimeMs;
+		if (age > BRIDGE_STATUS_MAX_AGE_MS) return false;
+		const raw = fs.readFileSync(statusPath, 'utf-8');
+		const status = JSON.parse(raw);
+		return !!status.alive;
+	} catch {
+		return false;
+	}
+}
+
+function sendCommandToBridge(code, timeoutMs = BRIDGE_COMMAND_TIMEOUT_MS) {
+	return new Promise((resolve) => {
+		const bridgeDir = getBridgeDir();
+		const cmdPath = getBridgeCmdPath();
+		const resultPath = getBridgeResultPath();
+
+		const cmdId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+		try {
+			if (fs.existsSync(resultPath)) fs.unlinkSync(resultPath);
+		} catch {}
+
+		const cmdPayload = JSON.stringify({ id: cmdId, code, timestamp: Date.now() });
+		const cmdTmp = cmdPath + '.tmp';
+		fs.writeFileSync(cmdTmp, cmdPayload, 'utf-8');
+		fs.renameSync(cmdTmp, cmdPath);
+
+		const start = Date.now();
+		const poll = setInterval(() => {
+			const elapsed = Date.now() - start;
+			if (elapsed > timeoutMs) {
+				clearInterval(poll);
+				resolve({ ok: false, error: `Blender桥接执行超时（${Math.round(timeoutMs / 1000)}秒）` });
+				return;
+			}
+			try {
+				if (!fs.existsSync(resultPath)) return;
+				const raw = fs.readFileSync(resultPath, 'utf-8');
+				const result = JSON.parse(raw);
+				if (result.id !== cmdId) return;
+				clearInterval(poll);
+				if (result.ok) {
+					resolve({ ok: true, result: result.result });
+				} else {
+					resolve({ ok: false, error: result.error || 'Blender执行错误', traceback: result.traceback });
+				}
+			} catch {}
+		}, BRIDGE_POLL_INTERVAL_MS);
+	});
+}
+
 class BlenderMcpService extends EventEmitter {
   constructor() {
     super();
@@ -862,6 +1508,22 @@ class BlenderMcpService extends EventEmitter {
     this.port = DEFAULT_PORT;
     this.client = null;
     this._registeredToolNames = [];
+    this._workspaceContext = null;
+    this._registerTools();
+  }
+
+  setWorkspaceContext(projectRoot, nodeId) {
+    if (projectRoot && nodeId) {
+      this._workspaceContext = { projectRoot, nodeId };
+      logger.info(`[BlenderMcpService] Workspace context set: ${projectRoot} / ${nodeId}`);
+    } else {
+      this._workspaceContext = null;
+      logger.info('[BlenderMcpService] Workspace context cleared');
+    }
+  }
+
+  getWorkspaceContext() {
+    return this._workspaceContext;
   }
 
   _setStatus(status, extra = {}) {
@@ -909,10 +1571,8 @@ class BlenderMcpService extends EventEmitter {
         throw new Error(`无法连接Blender（${this.host}:${this.port}）: ${ping.error}。请确认：\n1. Blender 5.1+已启动\n2. Edit > Preferences > Add-ons中"MCP"插件已启用\n3. 插件端口设置为${this.port}（当前客户端配置端口）`);
       }
 
-      this._registerTools();
-
       this._setStatus('connected', { tools: this._registeredToolNames, toolCount: this._registeredToolNames.length });
-      logger.info(`[BlenderMcpService] Connected to Blender at ${this.host}:${this.port} successfully, ${this._registeredToolNames.length} tools registered`);
+      logger.info(`[BlenderMcpService] Connected to Blender at ${this.host}:${this.port} successfully, ${this._registeredToolNames.length} tools available`);
 
       return {
         ok: true,
@@ -926,7 +1586,6 @@ class BlenderMcpService extends EventEmitter {
       this._setStatus('error', { error: err.message });
       logger.error(`[BlenderMcpService] Connection failed to ${this.host}:${this.port}: ${err.message}`);
       this.client = null;
-      this._unregisterTools();
       throw err;
     }
   }
@@ -980,7 +1639,7 @@ class BlenderMcpService extends EventEmitter {
         name: 'get_blendfile_summary_of_linked_libraries',
         description: '返回直接和间接链接的库文件树，以及每个库链接的数据块数量。',
         inputSchema: { type: 'object', properties: {} },
-        handler: async () => await this._executeAndFormat(buildGetBlendfileSummaryLinkedLibraries()),
+        handler: async () => await this._executeAndFormat(buildGetBlendfileSummaryOfLinkedLibraries()),
       },
       {
         name: 'get_blendfile_summary_path_info',
@@ -1088,6 +1747,24 @@ class BlenderMcpService extends EventEmitter {
         },
         handler: async (args) => await this._executeAndFormat(buildImportModelCode(args.file_path)),
       },
+      {
+        name: 'read_workspace_image',
+        description: '读取工作区中的图片文件并返回图片内容（用于视觉分析）。可以用来重新查看之前保存的截图或参考图。',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: '图片的相对路径（相对于工作区根目录），如 "screenshots/20240101_120000.png" 或 "references/ref.png"。也可以传文件名。' },
+          },
+          required: ['path'],
+        },
+        handler: async (args) => await this._readWorkspaceImage(args.path),
+      },
+      {
+        name: 'list_workspace_images',
+        description: '列出工作区中所有可用的图片文件（screenshots和references目录），返回文件名、相对路径、绝对路径和大小。',
+        inputSchema: { type: 'object', properties: {} },
+        handler: async () => await this._listWorkspaceImages(),
+      },
     ];
 
     for (const tool of tools) {
@@ -1113,9 +1790,73 @@ class BlenderMcpService extends EventEmitter {
     this._registeredToolNames = [];
   }
 
+  checkToolsReady() {
+    const executor = getToolExecutor();
+    const expectedTools = [
+      'blender_execute_blender_code',
+      'blender_get_objects_summary',
+      'blender_get_object_detail_summary',
+      'blender_get_blendfile_summary_datablocks',
+      'blender_get_blendfile_summary_missing_files',
+      'blender_get_blendfile_summary_of_linked_libraries',
+      'blender_get_blendfile_summary_path_info',
+      'blender_get_blendfile_summary_usage_guess',
+      'blender_get_screenshot_of_area_as_image',
+      'blender_get_screenshot_of_window_as_image',
+      'blender_get_screenshot_of_window_as_json',
+      'blender_jump_to_tab_by_name',
+      'blender_jump_to_tab_by_space_type',
+      'blender_jump_to_view3d_object_by_name',
+      'blender_jump_to_view3d_object_data_by_name',
+      'blender_import_model',
+      'blender_read_workspace_image',
+      'blender_list_workspace_images',
+    ];
+
+    let missingTools = [];
+    let availableTools = [];
+    for (const toolName of expectedTools) {
+      if (executor.hasTool(toolName)) {
+        availableTools.push(toolName);
+      } else {
+        missingTools.push(toolName);
+      }
+    }
+
+    if (missingTools.length > 0 && this.status === 'connected') {
+      logger.warn(`[BlenderMcpService] checkToolsReady: ${missingTools.length} tools missing despite connected status, auto-registering. Missing: ${missingTools.join(', ')}`);
+      this._registerTools();
+      missingTools = [];
+      availableTools = [];
+      for (const toolName of expectedTools) {
+        if (executor.hasTool(toolName)) {
+          availableTools.push(toolName);
+        } else {
+          missingTools.push(toolName);
+        }
+      }
+      logger.info(`[BlenderMcpService] checkToolsReady: after auto-register, ${availableTools.length}/${expectedTools.length} tools available`);
+    }
+
+    const allExecutorTools = executor.listTools();
+    const blenderToolsInExecutor = allExecutorTools.filter(t => t.name.startsWith('blender_'));
+
+    return {
+      ready: missingTools.length === 0 && this.status === 'connected',
+      expectedToolCount: expectedTools.length,
+      availableToolCount: availableTools.length,
+      missingToolCount: missingTools.length,
+      missingTools,
+      availableTools,
+      allBlenderToolsInExecutor: blenderToolsInExecutor.map(t => t.name),
+      totalToolsInExecutor: allExecutorTools.length,
+      status: this.status,
+    };
+  }
+
   async _executeRaw(code) {
-    if (!this.client) {
-      throw new Error('Blender MCP未连接，请先连接Blender');
+    if (!this.client || this.status !== 'connected') {
+      throw new Error('Blender MCP未连接，请先在Blender节点面板中点击"连接Blender"建立连接');
     }
     return await this.client.executeCode(code);
   }
@@ -1147,6 +1888,51 @@ class BlenderMcpService extends EventEmitter {
       text += text ? '\n' : '';
       text += `[stderr]\n${response.stderr}`;
     }
+
+    if (result !== undefined && typeof result === 'object' && result.image_base64) {
+      const sizeKB = Math.round(String(result.image_base64).length * 3 / 4 / 1024);
+      const content = [];
+      if (text.trim()) {
+        content.push({ type: 'text', text: text.trim() });
+      }
+
+      let savedPath = null;
+      if (this._workspaceContext) {
+        try {
+          const workspace = getBlenderWorkspace();
+          const imgMimeType = result.mime_type || 'image/png';
+          const saveResult = await workspace.saveScreenshot(
+            this._workspaceContext.projectRoot,
+            this._workspaceContext.nodeId,
+            String(result.image_base64),
+            imgMimeType
+          );
+          if (saveResult.ok) {
+            savedPath = saveResult.absolutePath;
+            logger.info(`[BlenderMcpService] Code screenshot auto-saved to workspace: ${savedPath}`);
+          } else {
+            logger.warn(`[BlenderMcpService] Failed to auto-save code screenshot: ${saveResult.error}`);
+          }
+        } catch (saveErr) {
+          logger.warn(`[BlenderMcpService] Error auto-saving code screenshot: ${saveErr.message}`);
+        }
+      }
+
+      const summary = savedPath
+        ? `代码执行完成，截图已生成 (~${sizeKB}KB)，已保存到工作区: ${savedPath}\n如需重新查看此截图，可调用 blender_read_workspace_image 工具，参数 path 为文件名或相对路径（如 "screenshots/${path.basename(savedPath)}"）`
+        : `代码执行完成，截图已生成 (~${sizeKB}KB)`;
+      content.push({ type: 'text', text: summary });
+      content.push({ type: 'image', data: String(result.image_base64), mimeType: result.mime_type || 'image/png' });
+      const display = { ...result };
+      display.image_base64 = `[base64 image, ${sizeKB}KB]`;
+      const resultStr = JSON.stringify(display, null, 2);
+      return {
+        content,
+        text: text ? `${text}\n${summary}\n${resultStr}` : `${summary}\n${resultStr}`,
+        savedPath,
+      };
+    }
+
     if (result !== undefined) {
       const display = { ...result };
       if (display.image_base64) {
@@ -1170,12 +1956,39 @@ class BlenderMcpService extends EventEmitter {
     if (result && result.image_base64) {
       const areaType = result.area_type || 'window';
       const sizeKB = Math.round(result.image_base64.length * 3 / 4 / 1024);
+
+      let savedPath = null;
+      if (this._workspaceContext) {
+        try {
+          const workspace = getBlenderWorkspace();
+          const saveResult = await workspace.saveScreenshot(
+            this._workspaceContext.projectRoot,
+            this._workspaceContext.nodeId,
+            result.image_base64,
+            'image/png'
+          );
+          if (saveResult.ok) {
+            savedPath = saveResult.absolutePath;
+            logger.info(`[BlenderMcpService] Screenshot auto-saved to workspace: ${savedPath}`);
+          } else {
+            logger.warn(`[BlenderMcpService] Failed to auto-save screenshot: ${saveResult.error}`);
+          }
+        } catch (saveErr) {
+          logger.warn(`[BlenderMcpService] Error auto-saving screenshot: ${saveErr.message}`);
+        }
+      }
+
+      const textMsg = savedPath
+        ? `${areaType}截图已生成 (~${sizeKB}KB)，已保存到工作区: ${savedPath}\n如需重新查看此截图，可调用 blender_read_workspace_image 工具，参数 path 为文件名或相对路径（如 "screenshots/${path.basename(savedPath)}"）`
+        : `${areaType}截图已生成 (~${sizeKB}KB)`;
+
       return {
         content: [
-          { type: 'text', text: `${areaType}截图已生成 (~${sizeKB}KB)` },
+          { type: 'text', text: textMsg },
           { type: 'image', data: result.image_base64, mimeType: 'image/png' },
         ],
-        text: `${areaType}截图已生成 (~${sizeKB}KB)`,
+        text: textMsg,
+        savedPath,
       };
     }
     let text = '';
@@ -1188,13 +2001,121 @@ class BlenderMcpService extends EventEmitter {
     return text || '截图失败';
   }
 
+  _requireWorkspaceContext() {
+    if (!this._workspaceContext) {
+      throw new Error('工作区未初始化。请确保在开始对话前已初始化Blender工作区。');
+    }
+    return this._workspaceContext;
+  }
+
+  async _readWorkspaceImage(imagePath) {
+    const ctx = this._requireWorkspaceContext();
+    const workspace = getBlenderWorkspace();
+    const result = workspace.readWorkspaceImage(ctx.projectRoot, ctx.nodeId, imagePath);
+    if (!result.ok) {
+      throw new Error(result.error || '读取图片失败');
+    }
+    const sizeKB = Math.round(result.size / 1024);
+    const content = [
+      { type: 'text', text: `已读取图片: ${result.absolutePath} (~${sizeKB}KB)` },
+      { type: 'image', data: result.base64, mimeType: result.mimeType },
+    ];
+    return {
+      content,
+      text: `已读取图片: ${result.absolutePath} (~${sizeKB}KB)`,
+      savedPath: result.absolutePath,
+    };
+  }
+
+  async _listWorkspaceImages() {
+    const ctx = this._requireWorkspaceContext();
+    const workspace = getBlenderWorkspace();
+    const result = workspace.listWorkspaceImages(ctx.projectRoot, ctx.nodeId);
+    if (!result.ok) {
+      throw new Error(result.error || '列出图片失败');
+    }
+    const lines = [`工作区路径: ${result.workspacePath}`, ''];
+    lines.push(`共找到 ${result.images.length} 张图片:`);
+    for (const img of result.images) {
+      lines.push(`- [${img.category}] ${img.fileName} (${Math.round(img.size/1024)}KB)`);
+      lines.push(`  相对路径: ${img.relativePath}`);
+      lines.push(`  绝对路径: ${img.absolutePath}`);
+    }
+    if (result.images.length === 0) {
+      lines.push('(暂无图片)');
+    }
+    lines.push('');
+    lines.push('提示: 使用 blender_read_workspace_image 工具传入相对路径即可查看对应图片。');
+    const text = lines.join('\n');
+    return { content: [{ type: 'text', text }], text };
+  }
+
+  async saveReferenceImages(references) {
+    const ctx = this._requireWorkspaceContext();
+    const workspace = getBlenderWorkspace();
+    const saved = [];
+    const refs = Array.isArray(references) ? references : [];
+    for (let i = 0; i < refs.length; i++) {
+      const ref = refs[i];
+      if (!ref || !ref.base64) continue;
+      const fileName = ref.fileName || `reference_${i + 1}`;
+      const mimeType = ref.mimeType || 'image/png';
+      const saveResult = await workspace.saveReferenceImage(
+        ctx.projectRoot,
+        ctx.nodeId,
+        ref.base64,
+        fileName,
+        mimeType
+      );
+      if (saveResult.ok) {
+        saved.push({
+          fileName: saveResult.fileName,
+          absolutePath: saveResult.absolutePath,
+          relativePath: path.join('references', saveResult.fileName),
+          size: saveResult.size,
+          sourceAlias: ref.sourceAlias || '',
+        });
+      }
+    }
+    return { ok: true, saved, workspacePath: this.getWorkspacePath() };
+  }
+
+  getWorkspacePath() {
+    if (!this._workspaceContext) return null;
+    const { projectRoot, nodeId } = this._workspaceContext;
+    const workspace = getBlenderWorkspace();
+    const wp = path.resolve(projectRoot, 'Content', 'agent', nodeId.replace(/[^a-zA-Z0-9_-]/g, '_'));
+    return wp;
+  }
+
   async disconnectMcp() {
     this._setStatus('disconnecting');
     logger.info('[BlenderMcpService] Disconnecting...');
-    this._unregisterTools();
     this.client = null;
     this._setStatus('disconnected');
     return { disconnected: true };
+  }
+
+  mountTools() {
+    if (this.status !== 'connected') {
+      return {
+        ok: false,
+        ready: false,
+        error: 'Blender未连接，请先连接Blender',
+        status: this.status,
+        availableToolCount: 0,
+        missingToolCount: -1,
+        missingTools: [],
+      };
+    }
+    this._registerTools();
+    this._setStatus('connected', { tools: this._registeredToolNames, toolCount: this._registeredToolNames.length });
+    const checkResult = this.checkToolsReady();
+    logger.info(`[BlenderMcpService] mountTools: ${checkResult.availableToolCount}/${checkResult.expectedToolCount} tools ready`);
+    return {
+      ok: true,
+      ...checkResult,
+    };
   }
 
   getBlenderSystemPrompt() {
@@ -1304,12 +2225,17 @@ class BlenderMcpService extends EventEmitter {
   }
 
   async getMcpStatus() {
+    const toolsCheck = this.checkToolsReady();
     return {
       ok: this.status === 'connected',
       status: this.status,
       host: this.host, port: this.port,
       tools: this._registeredToolNames,
       toolCount: this._registeredToolNames.length,
+      toolsReady: toolsCheck.ready,
+      availableToolCount: toolsCheck.availableToolCount,
+      missingToolCount: toolsCheck.missingToolCount,
+      missingTools: toolsCheck.missingTools,
     };
   }
 
@@ -1321,17 +2247,145 @@ class BlenderMcpService extends EventEmitter {
     return await getToolExecutor().callTool(prefixedName, args || {}, { skipFrontend: true });
   }
 
+  async importModelViaBridge(fps) {
+    const code = buildImportModelCode(fps);
+    const cmdResult = await sendCommandToBridge(code, BRIDGE_COMMAND_TIMEOUT_MS);
+    if (!cmdResult.ok) {
+      logger.error(`[BlenderBridge] Command execution failed: ${cmdResult.error}`);
+      if (cmdResult.traceback) logger.error(`[BlenderBridge] Traceback:\n${cmdResult.traceback}`);
+      return { ok: false, error: cmdResult.error, traceback: cmdResult.traceback };
+    }
+    const pyResult = cmdResult.result;
+    logger.info(`[BlenderBridge] Python result status: ${pyResult?.status}, results count: ${pyResult?.results?.length || 0}`);
+    if (pyResult?.fatal_error) {
+      logger.error(`[BlenderBridge] Fatal error: ${pyResult.fatal_error}`);
+      if (pyResult.traceback) logger.error(`[BlenderBridge] Traceback:\n${pyResult.traceback}`);
+    }
+    const allResults = pyResult?.results || [];
+    for (const r of allResults) {
+      if (r && r.status !== 'ok') {
+        logger.warn(`[BlenderBridge] Import failed for ${r.path}: ${r.message}`);
+        if (r.traceback) logger.warn(`[BlenderBridge] Traceback for ${r.path}:\n${r.traceback}`);
+      }
+    }
+    if (!pyResult || typeof pyResult !== 'object') {
+      return { ok: true, imported: fps.map((p) => ({ path: p, status: 'ok' })), count: fps.length, mode: 'bridge' };
+    }
+    if (pyResult.status === 'error') {
+      const firstErr = (pyResult.results || [])[0];
+      let errMsg = pyResult.message || pyResult.fatal_error || '模型导入失败';
+      if (firstErr?.message) errMsg = firstErr.message;
+      if (firstErr?.traceback) {
+        logger.error(`[BlenderBridge] First error traceback:\n${firstErr.traceback}`);
+        errMsg += '\n\n[Blender错误详情]\n' + firstErr.traceback.split('\n').slice(-5).join('\n');
+      }
+      if (pyResult.traceback) errMsg += '\n' + pyResult.traceback;
+      return { ok: false, error: errMsg, results: pyResult.results || [] };
+    }
+    const imported = (pyResult.results || []).filter((r) => r && r.status === 'ok');
+    const failed = (pyResult.results || []).filter((r) => r && r.status !== 'ok');
+    if (!imported.length) {
+      const firstErr = failed[0];
+      let errMsg = firstErr?.message || '模型导入失败';
+      if (firstErr?.traceback) {
+        errMsg += '\n\n[Blender错误详情]\n' + firstErr.traceback.split('\n').slice(-8).join('\n');
+      }
+      return { ok: false, error: errMsg, results: pyResult.results || [] };
+    }
+    return {
+      ok: true,
+      count: imported.length,
+      total: pyResult.total || fps.length,
+      errorCount: failed.length,
+      results: pyResult.results || [],
+      imported: imported.map((r) => ({
+        path: r.path,
+        name: r.imported,
+        newObjects: r.new_objects || [],
+        count: r.count || 0
+      })),
+      mode: 'bridge'
+    };
+  }
+
   async importModel(_ctx, payload) {
-    const { filePath, file_path } = payload || {};
-    const fp = filePath || file_path;
-    if (!fp) {
+    const { filePath, file_path, filePaths, blenderPath: payloadBlenderPath } = payload || {};
+    const rawList = Array.isArray(filePaths) && filePaths.length
+      ? filePaths
+      : (filePath || file_path ? [filePath || file_path] : []);
+    const rawFps = rawList.map((p) => String(p || '').trim()).filter(Boolean);
+    if (!rawFps.length) {
       throw new Error('filePath is required for importModel');
     }
-    if (!this.isConnected()) {
-      throw new Error('Blender MCP未连接，请先连接Blender');
+
+    const fps = rawFps.map((p) => resolveToAbsoluteFilePath(p));
+
+    logger.info(`[BlenderImport] Attempting to import ${fps.length} model(s)...`);
+    for (let i = 0; i < fps.length; i++) {
+      logger.info(`[BlenderImport]   [${i}] ${fps[i]} (raw: ${rawFps[i]})`);
     }
-    const code = buildImportModelCode(fp);
-    return await this._executeAndFormat(code);
+
+    const missing = fps.filter((p) => !fileExists(p));
+    if (missing.length) {
+      logger.warn(`[BlenderImport] Files not found on disk: ${missing.join(', ')}`);
+    }
+
+    const hintPath = payloadBlenderPath || undefined;
+    let blenderExe = await findBlenderExecutable(hintPath);
+
+    await ensureBridgeInstalled(blenderExe);
+
+    const blenderIsRunning = await detectRunningBlenderProcess();
+
+    if (blenderIsRunning) {
+      logger.info(`[BlenderImport] Detected running blender.exe, checking bridge...`);
+
+      const aliveCheckStart = Date.now();
+      let bridgeAlive = isBridgeAlive();
+      while (!bridgeAlive && Date.now() - aliveCheckStart < 2000) {
+        await new Promise((r) => setTimeout(r, 300));
+        bridgeAlive = isBridgeAlive();
+      }
+
+      if (bridgeAlive) {
+        logger.info(`[BlenderImport] Bridge alive, sending import to running Blender.`);
+        try {
+          const bridgeResult = await this.importModelViaBridge(fps);
+          if (bridgeResult.ok) {
+            logger.info(`[BlenderImport] Imported ${bridgeResult.count}/${fps.length} model(s) into RUNNING Blender via bridge.`);
+            return bridgeResult;
+          }
+          logger.warn(`[BlenderImport] Bridge import failed: ${bridgeResult.error}`);
+          return bridgeResult;
+        } catch (bridgeErr) {
+          logger.warn(`[BlenderImport] Bridge communication error: ${bridgeErr.message}`);
+          return { ok: false, error: `与Blender桥接通信失败：${bridgeErr.message}` };
+        }
+      } else {
+        return {
+          ok: false,
+          error: '检测到Blender已在运行，但桥接未激活。\n\nDVStudio已自动安装桥接脚本，请重启Blender后重新点击导入（仅首次需要）。\n\n重启后，模型将直接导入到当前打开的Blender窗口中，无需配置任何端口或插件。',
+          needRestart: true
+        };
+      }
+    }
+
+    logger.info(`[BlenderImport] No running blender.exe detected, launching Blender...`);
+    if (!blenderExe) {
+      blenderExe = await findBlenderExecutable();
+    }
+    if (!blenderExe) {
+      return {
+        ok: false,
+        error: '未找到Blender可执行文件。请在Blender节点的"Blender路径"中指定blender.exe路径，或先安装Blender后重试。'
+      };
+    }
+
+    const cliResult = await runCliImport(blenderExe, fps);
+    if (cliResult.ok) {
+      cliResult.mode = 'cli';
+    }
+    return cliResult;
   }
 }
 
@@ -1344,6 +2398,10 @@ export function getBlenderMcpStatus() { return blenderMcpService.getStatus(); }
 export function isBlenderMcpConnected() { return blenderMcpService.isConnected(); }
 export function getBlenderSystemPrompt() { return blenderMcpService.getBlenderSystemPrompt(); }
 export function getBlenderToolNames() { return blenderMcpService.getBlenderToolNames(); }
+export function setBlenderWorkspaceContext(projectRoot, nodeId) { return blenderMcpService.setWorkspaceContext(projectRoot, nodeId); }
+export function getBlenderWorkspaceContext() { return blenderMcpService.getWorkspaceContext(); }
+export function saveBlenderReferenceImages(references) { return blenderMcpService.saveReferenceImages(references); }
+export function getBlenderNodeWorkspacePath() { return blenderMcpService.getWorkspacePath(); }
 export function onBlenderMcpStatusChanged(listener) {
   blenderMcpService.on('status-changed', listener);
   return () => blenderMcpService.removeListener('status-changed', listener);

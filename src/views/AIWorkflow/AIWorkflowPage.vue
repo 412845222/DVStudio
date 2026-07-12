@@ -253,8 +253,11 @@
 						"
 						@blender-connect="onBlenderConnect(node.id, $event)"
 						@blender-disconnect="onBlenderDisconnect(node.id)"
+						@blender-mount-tools="onBlenderMountTools(node.id)"
 						@blender-status-click="onBlenderStatusCheck(node.id, $event)"
 						@blender-clear-chat="onBlenderClearChat(node.id)"
+						@blender-open-workspace="onBlenderOpenWorkspace(node.id)"
+						@blender-init-workspace="onBlenderInitWorkspace(node.id)"
 						@blender-import="onBlenderImport(node.id)"
 						@update-blender-settings="onBlenderSettingsUpdate(node.id, $event)"
 					/>
@@ -3900,20 +3903,37 @@ const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: s
 }
 
 const blenderAbortFns = new Map<string, () => void>()
+const blenderRetryTimers = new Map<string, number>()
+
+const clearBlenderRetryTimer = (nodeId: string) => {
+	const timer = blenderRetryTimers.get(nodeId)
+	if (timer !== undefined) {
+		clearTimeout(timer)
+		blenderRetryTimers.delete(nodeId)
+	}
+}
+
+const clearAllBlenderRetryTimers = () => {
+	for (const timer of blenderRetryTimers.values()) {
+		clearTimeout(timer)
+	}
+	blenderRetryTimers.clear()
+}
 
 const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 	if (payload.nodeType === 'blender') {
 		store.commit('setNodeChatSubmitting', { submitting: true })
 		const node = store.state.nodesById[payload.nodeId]
 		if (node && payload.params) {
-			node.blenderSettings = node.blenderSettings ?? {}
-			Object.assign(node.blenderSettings, payload.params)
+			const prev = node.blenderSettings ?? {}
+			node.blenderSettings = { ...prev, ...payload.params } as any
 		}
 		try {
 			const { runBlenderAgentChat } = await import('./node-business/blender/useBlenderAgentChat')
 			await runBlenderAgentChat(
 				{
 					store,
+					getProjectId: () => currentProjectId.value,
 					pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 						const sysMsgId = `blender-sys-${Date.now()}`
 						store.commit('appendBlenderChatMessage', {
@@ -4496,30 +4516,17 @@ onMounted(() => {
 	// 订阅后端 Blender MCP 状态推送（如 blender-mcp 子进程意外退出），同步到所有 blender 节点
 	try {
 		const unsub = window.dweb?.blender?.onMcpStatusChanged?.((payload: any) => {
-			const status = payload?.status
-			if (!status || status === 'disconnecting') return
-			const mapped =
-				status === 'connected' || status === 'connecting' || status === 'disconnected' || status === 'error'
-					? status
-					: 'disconnected'
-			for (const node of Object.values(store.state.nodesById)) {
-				if (node?.type !== 'blender') continue
-				store.commit('setBlenderMcpStatus', {
-					nodeId: node.id,
-					status: mapped,
-					error: payload?.error ?? null,
-					host: payload?.host ?? undefined,
-					port: payload?.port ?? undefined
-				})
-			}
+			syncBlenderStatusFromBackend(payload)
 		})
 		if (typeof unsub === 'function') blenderMcpStatusUnsub = unsub
 	} catch (err) {
 		console.warn('[AIWorkflowPage] subscribe blender mcp status failed', err)
 	}
+	syncAllBlenderNodesStatus()
 })
 
 onBeforeUnmount(() => {
+	clearAllBlenderRetryTimers()
 	if (blenderMcpStatusUnsub) {
 		try { blenderMcpStatusUnsub() } catch { /* ignore */ }
 		blenderMcpStatusUnsub = null
@@ -5464,38 +5471,71 @@ const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; p
 	const node = store.state.nodesById[nodeId]
 	const configuredHost = node?.blenderSettings?.mcpHost
 	const configuredPort = node?.blenderSettings?.mcpPort
+	const hasConfiguredHost = configuredHost != null
+	const hasConfiguredPort = configuredPort != null
+	const hasProbeHost = payload?.host != null
+	const hasProbePort = payload?.port != null
 	const host = payload?.host ?? configuredHost ?? 'localhost'
 	const port = payload?.port ?? configuredPort ?? 9876
 
+	const useProbe = hasProbeHost || hasProbePort || hasConfiguredHost || hasConfiguredPort
+
 	const checkingPayload: Record<string, unknown> = { nodeId, status: 'checking' }
-	if (payload?.host != null || configuredHost != null) checkingPayload.host = host
-	if (payload?.port != null || configuredPort != null) checkingPayload.port = port
+	if (useProbe) {
+		if (hasProbeHost || hasConfiguredHost) checkingPayload.host = host
+		if (hasProbePort || hasConfiguredPort) checkingPayload.port = port
+	}
 	store.commit('setBlenderMcpStatus', checkingPayload)
 	try {
-		const result = await window.dweb?.blender?.checkStatus?.({ host, port })
-		const hasHost = payload?.host != null || configuredHost != null
-		const hasPort = payload?.port != null || configuredPort != null
-		const withHostPort = (obj: Record<string, unknown>) => {
-			if (hasHost) obj.host = host
-			if (hasPort) obj.port = port
-			return obj
+		let result: any
+		if (useProbe) {
+			result = await window.dweb?.blender?.checkStatus?.({ host, port })
+		} else {
+			result = await window.dweb?.blender?.mcpStatus?.()
 		}
+		const hasHost = hasProbeHost || hasConfiguredHost
+		const hasPort = hasProbePort || hasConfiguredPort
 		if (!result) {
-			store.commit('setBlenderMcpStatus', withHostPort({
+			store.commit('setBlenderMcpStatus', {
 				nodeId,
 				status: 'error',
 				error: 'Blender API not available'
-			}))
+			})
 			return
 		}
-		if (result && result.ok !== false) {
+
+		if (!useProbe) {
+			const isConnected = result.ok === true && result.status === 'connected'
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: isConnected ? 'connected' : 'disconnected',
+				error: null,
+				serverId: isConnected ? 'blender' : null,
+				host: isConnected ? (result.host || host) : undefined,
+				port: isConnected ? (result.port || port) : undefined
+			})
+			if (isConnected) {
+				checkBlenderToolsReady(nodeId)
+			} else {
+				store.commit('setBlenderMcpStatus', {
+					nodeId,
+					toolsReady: undefined,
+					toolCount: undefined,
+					missingToolCount: undefined,
+					missingTools: undefined
+				})
+			}
+			return
+		}
+
+		if (result.ok !== false) {
 			const statusInfo = result.value ?? result
 			const isConnected = statusInfo.status === 'connected'
 			store.commit('setBlenderMcpStatus', {
 				nodeId,
 				status: statusInfo.status || 'disconnected',
 				error: statusInfo.error || null,
-				serverId: statusInfo.serverId || null,
+				serverId: statusInfo.serverId || (isConnected ? 'blender' : null),
 				blenderRunning: statusInfo.blenderRunning ?? false,
 				addonListening: statusInfo.addonListening ?? false,
 				hasBlender: statusInfo.hasBlender ?? false,
@@ -5505,21 +5545,36 @@ const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; p
 				host: isConnected ? (statusInfo.host || host) : (hasHost ? host : undefined),
 				port: isConnected ? (statusInfo.port || port) : (hasPort ? port : undefined)
 			})
+			if (isConnected) {
+				checkBlenderToolsReady(nodeId)
+			} else {
+				store.commit('setBlenderMcpStatus', {
+					nodeId,
+					toolsReady: undefined,
+					toolCount: undefined,
+					missingToolCount: undefined,
+					missingTools: undefined
+				})
+			}
 		} else {
-			store.commit('setBlenderMcpStatus', withHostPort({
+			store.commit('setBlenderMcpStatus', {
 				nodeId,
 				status: result?.status || 'error',
 				error: result?.error || 'Status check failed',
-				addonListening: false
-			}))
+				addonListening: false,
+				toolsReady: undefined,
+				toolCount: undefined
+			})
 		}
 	} catch (err: any) {
-		const hasHost = payload?.host != null || configuredHost != null
-		const hasPort = payload?.port != null || configuredPort != null
+		const hasHost = hasProbeHost || hasConfiguredHost
+		const hasPort = hasProbePort || hasConfiguredPort
 		const errPayload: Record<string, unknown> = {
 			nodeId,
 			status: 'error',
-			error: err?.message || String(err)
+			error: err?.message || String(err),
+			toolsReady: undefined,
+			toolCount: undefined
 		}
 		if (hasHost) errPayload.host = host
 		if (hasPort) errPayload.port = port
@@ -5528,14 +5583,19 @@ const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; p
 }
 
 const onBlenderConnect = async (nodeId: string, payload?: { host?: string; port?: number }) => {
+	clearBlenderRetryTimer(nodeId)
 	const node = store.state.nodesById[nodeId]
 	const host = payload?.host ?? node?.blenderSettings?.mcpHost ?? 'localhost'
 	const port = payload?.port ?? node?.blenderSettings?.mcpPort ?? 9876
 	const currentStatus = node?.blenderSettings?.mcpStatus
-	if (currentStatus === 'connected' || currentStatus === 'connecting' || currentStatus === 'checking') {
+	if (currentStatus === 'connected') {
+		checkBlenderToolsReady(nodeId)
 		return
 	}
-	store.commit('setBlenderMcpStatus', { nodeId, status: 'connecting', host, port })
+	if (currentStatus === 'connecting' || currentStatus === 'checking') {
+		return
+	}
+	store.commit('setBlenderMcpStatus', { nodeId, status: 'connecting', host, port, error: null })
 	try {
 		const result = await window.dweb?.blender?.mcpConnect?.({ host, port })
 		if (!result) {
@@ -5544,9 +5604,15 @@ const onBlenderConnect = async (nodeId: string, payload?: { host?: string; port?
 				status: 'error',
 				error: 'Blender API not available',
 				host,
-				port
+				port,
+				toolsReady: undefined,
+				toolCount: undefined
 			})
-			setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+			const timer = window.setTimeout(() => {
+				blenderRetryTimers.delete(nodeId)
+				onBlenderStatusCheck(nodeId, { host, port })
+			}, 1500)
+			blenderRetryTimers.set(nodeId, timer)
 			return
 		}
 		if (result?.ok) {
@@ -5556,17 +5622,27 @@ const onBlenderConnect = async (nodeId: string, payload?: { host?: string; port?
 				error: null,
 				serverId: 'blender',
 				host: result.host || host,
-				port: result.port || port
+				port: result.port || port,
+				toolCount: result.toolCount
 			})
+			window.setTimeout(() => {
+				checkBlenderToolsReady(nodeId)
+			}, 300)
 		} else {
 			store.commit('setBlenderMcpStatus', {
 				nodeId,
 				status: 'error',
 				error: result?.error || 'Connection failed',
 				host,
-				port
+				port,
+				toolsReady: undefined,
+				toolCount: undefined
 			})
-			setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+			const timer = window.setTimeout(() => {
+				blenderRetryTimers.delete(nodeId)
+				onBlenderStatusCheck(nodeId, { host, port })
+			}, 1500)
+			blenderRetryTimers.set(nodeId, timer)
 		}
 	} catch (err: any) {
 		store.commit('setBlenderMcpStatus', {
@@ -5574,29 +5650,148 @@ const onBlenderConnect = async (nodeId: string, payload?: { host?: string; port?
 			status: 'error',
 			error: err?.message || String(err),
 			host,
-			port
+			port,
+			toolsReady: undefined,
+			toolCount: undefined
 		})
-		setTimeout(() => onBlenderStatusCheck(nodeId, { host, port }), 1500)
+		const timer = window.setTimeout(() => {
+			blenderRetryTimers.delete(nodeId)
+			onBlenderStatusCheck(nodeId, { host, port })
+		}, 1500)
+		blenderRetryTimers.set(nodeId, timer)
 	}
 }
 
+const checkBlenderToolsReady = async (nodeId: string) => {
+	try {
+		const result = await window.dweb?.blender?.checkToolsReady?.()
+		if (result) {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				toolsReady: result.ready,
+				toolCount: result.availableToolCount,
+				missingToolCount: result.missingToolCount,
+				missingTools: result.missingTools
+			})
+		}
+	} catch {
+		store.commit('setBlenderMcpStatus', {
+			nodeId,
+			toolsReady: false,
+			toolCount: 0,
+			missingToolCount: -1,
+			missingTools: []
+		})
+	}
+}
+
+const onBlenderMountTools = async (nodeId: string) => {
+	clearBlenderRetryTimer(nodeId)
+	const node = store.state.nodesById[nodeId]
+	const currentStatus = node?.blenderSettings?.mcpStatus
+	const host = node?.blenderSettings?.mcpHost || 'localhost'
+	const port = node?.blenderSettings?.mcpPort || 9876
+	if (currentStatus === 'connecting' || currentStatus === 'checking') {
+		return
+	}
+	store.commit('setBlenderMcpStatus', {
+		nodeId,
+		status: 'checking',
+		error: null,
+	})
+	try {
+		if (currentStatus !== 'connected') {
+			const connectResult = await window.dweb?.blender?.mcpConnect?.({ host, port })
+			if (!connectResult?.ok) {
+				store.commit('setBlenderMcpStatus', {
+					nodeId,
+					status: 'error',
+					error: connectResult?.error || '连接失败',
+					host,
+					port,
+					toolsReady: false,
+					toolCount: 0,
+				})
+				return
+			}
+		}
+		const result = await window.dweb?.blender?.mountTools?.()
+		if (result?.ok) {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: 'connected',
+				error: null,
+				serverId: 'blender',
+				toolsReady: result.ready,
+				toolCount: result.availableToolCount,
+				missingToolCount: result.missingToolCount,
+				missingTools: result.missingTools,
+			})
+		} else {
+			store.commit('setBlenderMcpStatus', {
+				nodeId,
+				status: result?.status === 'connected' ? 'connected' : 'error',
+				error: result?.error || '工具挂载失败',
+				toolsReady: false,
+				toolCount: result?.availableToolCount || 0,
+			})
+		}
+	} catch (err: any) {
+		store.commit('setBlenderMcpStatus', {
+			nodeId,
+			status: 'error',
+			error: err?.message || String(err),
+			toolsReady: false,
+			toolCount: 0,
+		})
+	}
+}
+
+watch(
+	() => selectedNodeId.value,
+	(nodeId) => {
+		if (!nodeId) return
+		const node = store.state.nodesById[nodeId]
+		if (node?.type === 'blender') {
+			const toolsReady = node.blenderSettings?.toolsReady
+			if (toolsReady === undefined) {
+				checkBlenderToolsReady(nodeId)
+			}
+		}
+	}
+)
+
 const onBlenderDisconnect = async (nodeId: string) => {
+	clearAllBlenderRetryTimers()
 	const abortFn = blenderAbortFns.get(nodeId)
 	if (abortFn) {
 		abortFn()
 		blenderAbortFns.delete(nodeId)
 	}
+	for (const [id, fn] of blenderAbortFns) {
+		fn()
+	}
+	blenderAbortFns.clear()
 	store.commit('setNodeChatSubmitting', { submitting: false })
 	try {
 		await window.dweb?.blender?.mcpDisconnect?.()
 	} catch {
 		// ignore disconnect errors
 	}
-	store.commit('setBlenderMcpStatus', {
-		nodeId,
-		status: 'disconnected',
-		error: null
-	})
+	for (const id of Object.keys(store.state.nodesById)) {
+		const n = store.state.nodesById[id]
+		if (n?.type !== 'blender') continue
+		store.commit('setBlenderMcpStatus', {
+			nodeId: id,
+			status: 'disconnected',
+			error: null,
+			toolsReady: undefined,
+			toolCount: undefined,
+			missingToolCount: undefined,
+			missingTools: undefined,
+			serverId: null
+		})
+	}
 	const sysMsgId = `blender-sys-${Date.now()}`
 	store.commit('appendBlenderChatMessage', {
 		nodeId,
@@ -5610,38 +5805,131 @@ const onBlenderDisconnect = async (nodeId: string) => {
 	})
 }
 
+const syncBlenderStatusFromBackend = (payload: any) => {
+	if (!payload) return
+	const { status, host: backendHost, port: backendPort, error: backendError, toolCount: backendToolCount, tools: backendTools } = payload
+	if (!status || status === 'disconnecting') return
+	const isConnected = status === 'connected'
+	const isConnecting = status === 'connecting'
+	const blenderNodeIds = Object.keys(store.state.nodesById).filter(
+		(id) => store.state.nodesById[id]?.type === 'blender'
+	)
+	for (const id of blenderNodeIds) {
+		const patch: Record<string, unknown> = { nodeId: id, status }
+		if (backendError !== undefined) patch.error = backendError
+		else if (isConnected) patch.error = null
+		if (backendHost !== undefined) patch.host = backendHost
+		if (backendPort !== undefined) patch.port = backendPort
+		if (isConnected) {
+			patch.serverId = 'blender'
+			const tc = backendToolCount ?? backendTools?.length
+			if (typeof tc === 'number') patch.toolCount = tc
+		} else if (!isConnecting) {
+			patch.toolsReady = undefined
+			patch.toolCount = undefined
+			patch.missingToolCount = undefined
+			patch.missingTools = undefined
+			patch.serverId = null
+		}
+		store.commit('setBlenderMcpStatus', patch)
+	}
+	if (isConnected) {
+		for (const id of blenderNodeIds) {
+			setTimeout(() => checkBlenderToolsReady(id), 300)
+		}
+	}
+}
+
+const syncAllBlenderNodesStatus = async () => {
+	try {
+		const realStatus = await window.dweb?.blender?.mcpStatus?.()
+		if (realStatus) {
+			syncBlenderStatusFromBackend(realStatus)
+		}
+	} catch {
+		// silent fail
+	}
+}
+
 const onBlenderClearChat = (nodeId: string) => {
 	store.commit('clearBlenderChatMessages', { nodeId })
+	store.commit('setBlenderChatContextUsage', { nodeId, usage: null })
 	const node = store.state.nodesById[nodeId]
 	if (node?.blenderSettings) {
-		node.blenderSettings.agentSessionId = undefined
+		node.blenderSettings = { ...node.blenderSettings, agentSessionId: undefined } as any
+	}
+	const projectId = currentProjectId.value
+	if (projectId && window.dweb?.blender?.workspaceClear) {
+		void window.dweb.blender.workspaceClear({ nodeId, projectId })
+	}
+}
+
+const onBlenderOpenWorkspace = async (nodeId: string) => {
+	const projectId = currentProjectId.value
+	if (!projectId || !window.dweb?.blender?.workspaceOpenFolder) return
+	try {
+		await window.dweb.blender.workspaceOpenFolder({ nodeId, projectId })
+		const pathResult = await window.dweb.blender.workspaceGetPath?.({ nodeId, projectId })
+		if (pathResult?.ok && pathResult.path) {
+			const node = store.state.nodesById[nodeId]
+			if (node) {
+				node.blenderSettings = node.blenderSettings ?? {}
+				;(node.blenderSettings as Record<string, unknown>).workspacePath = pathResult.path
+			}
+		}
+	} catch (err) {
+		console.warn('[Blender] Failed to open workspace:', err)
+	}
+}
+
+const onBlenderInitWorkspace = async (nodeId: string, retryCount = 0) => {
+	const projectId = currentProjectId.value
+	if (!projectId) {
+		if (retryCount < 20) {
+			setTimeout(() => onBlenderInitWorkspace(nodeId, retryCount + 1), 500)
+		} else {
+			console.warn('[Blender] Cannot init workspace: projectId not available after retries')
+		}
+		return
+	}
+	if (!window.dweb?.blender?.workspaceInit) {
+		console.warn('[Blender] workspaceInit API not available')
+		return
+	}
+	const node = store.state.nodesById[nodeId]
+	if (!node) return
+	const existingPath = (node.blenderSettings as Record<string, unknown> | null | undefined)?.workspacePath
+	if (existingPath) return
+	try {
+		const result = await window.dweb.blender.workspaceInit({ nodeId, projectId })
+		if (result?.ok && result.workspacePath) {
+			node.blenderSettings = node.blenderSettings ?? {}
+			;(node.blenderSettings as Record<string, unknown>).workspacePath = result.workspacePath
+			;(node.blenderSettings as Record<string, unknown>).workspaceRelativePath = result.relativePath
+		} else if (result?.error) {
+			console.warn('[Blender] workspaceInit failed:', result.error)
+			if (retryCount < 3) {
+				setTimeout(() => onBlenderInitWorkspace(nodeId, retryCount + 1), 1000)
+			}
+		}
+	} catch (err) {
+		console.warn('[Blender] Failed to init workspace:', err)
+		if (retryCount < 3) {
+			setTimeout(() => onBlenderInitWorkspace(nodeId, retryCount + 1), 1000)
+		}
 	}
 }
 
 const onBlenderSettingsUpdate = (nodeId: string, patch: Record<string, any>) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
-	node.blenderSettings = node.blenderSettings ?? {}
-	Object.assign(node.blenderSettings, patch)
+	const prev = node.blenderSettings ?? {}
+	node.blenderSettings = { ...prev, ...patch } as any
 }
 
 const onBlenderImport = async (nodeId: string) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
-
-	const blenderSettings = node.blenderSettings ?? {}
-	if (blenderSettings.mcpStatus !== 'connected') {
-		store.commit('setBlenderImportStatus', {
-			nodeId,
-			status: 'error',
-			progress: 0,
-			error: '请先连接Blender'
-		})
-		setTimeout(() => {
-			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
-		}, 3000)
-		return
-	}
 
 	store.commit('setBlenderImportStatus', {
 		nodeId,
@@ -5651,102 +5939,24 @@ const onBlenderImport = async (nodeId: string) => {
 	})
 
 	try {
-		const inEdge = getFirstIncomingEdge(nodeId, 'in-model')
-		if (!inEdge) {
-			throw new Error('请连接上游3D模型节点到Blender节点的"3D模型"输入锚点')
-		}
+		const { collectBlenderUpstreamInputs } = await import(
+			'./node-business/blender/useBlenderUpstreamInputs'
+		)
+		const upstream = collectBlenderUpstreamInputs(store, nodeId)
 
-		const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
-		if (!fromNode) {
-			throw new Error('上游节点不存在')
-		}
-
-		const supportedModelTypes = ['model3d', 'meshy', 'scene-layout']
-		if (!supportedModelTypes.includes(fromNode.type)) {
-			throw new Error(`上游节点类型"${fromNode.type}"不是3D模型节点，仅支持model3d/meshy类型`)
-		}
-
-		let filePath = ''
-
-		const resolveProjectPath = (relPath: string): string => {
-			const projectRoot = store.state.projectRootPath
-			if (!projectRoot) return ''
-			const normalizedRoot = projectRoot.replace(/[/\\]+$/, '')
-			const normalizedRel = relPath.replace(/^[/\\]+/, '')
-			return `${normalizedRoot}/${normalizedRel}`
-		}
-
-		if (fromNode.type === 'model3d') {
-			const settings = (fromNode.model3dSettings ?? {}) as Record<string, unknown>
-			const directCandidates = [
-				String(settings.modelSourcePath ?? ''),
-				String(settings.modelAssetPath ?? ''),
-				String((settings as any).persistedModelPath ?? ''),
-				String((settings as any).localPath ?? '')
-			]
-			for (const candidate of directCandidates) {
-				if (candidate && candidate.trim()) {
-					filePath = candidate.trim()
-					break
-				}
+		if (!upstream.models.length) {
+			const connectedAny = getFirstIncomingEdge(nodeId, 'in-0')
+				|| getFirstIncomingEdge(nodeId, 'in-model')
+			if (!connectedAny) {
+				throw new Error('请连接上游3D模型节点到Blender节点的输入锚点')
 			}
-
-			if (!filePath && fromNode.resourceId) {
-				const resource = store.state.resourcesById[fromNode.resourceId]
-				if (resource) {
-					filePath = String(resource.sourcePath ?? '').trim()
-					if (!filePath && resource.projectRelativePath) {
-						filePath = resolveProjectPath(String(resource.projectRelativePath))
-					}
-				}
-			}
-
-			if (!filePath && fromNode.resourceId) {
-				const fromRes = store.state.resourcesById[fromNode.resourceId]
-				const resUrl = String(fromRes?.url ?? '')
-				if (resUrl.startsWith('dweb://project-assets')) {
-					try {
-						const u = new URL(resUrl)
-						const p = u.searchParams.get('path')
-						if (p) filePath = resolveProjectPath(decodeURIComponent(p))
-					} catch { /* ignore */ }
-				}
-			}
-		} else if (fromNode.type === 'meshy') {
-			const settings = (fromNode.meshySettings ?? {}) as Record<string, unknown>
-			const directCandidates = [
-				String((settings as any).modelAssetPath ?? ''),
-				String((settings as any).persistedModelPath ?? ''),
-				String((settings as any).modelSourcePath ?? ''),
-				String((settings as any).localPath ?? '')
-			]
-			for (const candidate of directCandidates) {
-				if (candidate && candidate.trim()) {
-					filePath = candidate.trim()
-					break
-				}
-			}
-
-			if (!filePath && fromNode.resourceId) {
-				const resource = store.state.resourcesById[fromNode.resourceId]
-				if (resource) {
-					filePath = String(resource.sourcePath ?? '').trim()
-					if (!filePath && resource.projectRelativePath) {
-						filePath = resolveProjectPath(String(resource.projectRelativePath))
-					}
-				}
-			}
+			throw new Error(
+				'上游已连接的节点中未找到可用的3D模型资源，请确保上游model3d/meshy/tripo3d节点已生成或上传模型文件（glb/gltf/fbx/obj等）'
+			)
 		}
 
-		if (!filePath) {
-			throw new Error('无法获取上游3D模型的本地文件路径，请确保上游节点已生成或上传模型文件')
-		}
-
-		const lowerPath = filePath.toLowerCase()
-		const supportedFormats = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
-		if (!supportedFormats.some(ext => lowerPath.endsWith(ext))) {
-			throw new Error(`不支持的模型格式：${filePath}，仅支持 ${supportedFormats.join('/')}`)
-		}
+		const filePaths = upstream.models.map((m) => m.filePath)
+		const blenderExePath = (node as any).blenderSettings?.blenderPath || null
 
 		store.commit('setBlenderImportStatus', {
 			nodeId,
@@ -5760,10 +5970,24 @@ const onBlenderImport = async (nodeId: string) => {
 			throw new Error('Blender API不可用')
 		}
 
-		const result = await dwebBlender.importModel({ filePath })
+		const result = await dwebBlender.importModel({
+			filePaths,
+			blenderPath: blenderExePath || undefined
+		})
 		if (!result?.ok) {
-			throw new Error(result?.error || '导入失败')
+			const detail = result?.error || ''
+			const errMsg = detail
+				? `导入失败：${detail}`
+				: `导入模型失败，请检查Blender是否正确安装`
+			throw new Error(errMsg)
 		}
+
+		const okCount = result.count || filePaths.length
+		const totalCount = result.total || filePaths.length
+		const errCount = result.errorCount || 0
+		const statusMsg = errCount > 0
+			? `已成功导入 ${okCount}/${totalCount} 个模型（${errCount} 个失败）`
+			: `成功导入 ${okCount} 个模型`
 
 		store.commit('setBlenderImportStatus', {
 			nodeId,
@@ -5774,7 +5998,7 @@ const onBlenderImport = async (nodeId: string) => {
 
 		setTimeout(() => {
 			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
-		}, 2000)
+		}, 2500)
 	} catch (err: any) {
 		store.commit('setBlenderImportStatus', {
 			nodeId,

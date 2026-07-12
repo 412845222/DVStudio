@@ -358,6 +358,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
 			output: raw.output || raw.result,
+			images: Array.isArray(raw.images) ? raw.images : undefined,
 		}
 	}
 	if (type === 'tool_call_error') {

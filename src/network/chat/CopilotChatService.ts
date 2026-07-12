@@ -63,6 +63,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
 			output: raw.output || raw.result,
+			images: Array.isArray(raw.images) ? raw.images : undefined,
 		}
 	}
 	if (type === 'tool_call_error') {
@@ -171,6 +172,8 @@ export class CopilotChatService implements IChatService {
 			history: options.history,
 			apiKeys: options.apiKeys || {},
 			thinkingEffort: options.thinkingEffort || 'medium',
+			maxToolCalls: options.maxToolCalls,
+			enableToolCallWarning: options.enableToolCallWarning !== false,
 			systemPrompt: options.systemPrompt,
 			tools: options.tools,
 			sessionId,

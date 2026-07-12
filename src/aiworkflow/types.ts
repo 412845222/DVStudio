@@ -972,7 +972,7 @@ export type WorkflowMeshyNodeSettings = {
 
 export type WorkflowBlenderChatMessage = {
 	id: string
-	role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result' | 'tool'
+	role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result' | 'tool' | 'thinking' | 'command'
 	content: string
 	timestamp: number
 	toolName?: string
@@ -983,8 +983,13 @@ export type WorkflowBlenderChatMessage = {
 	status?: 'running' | 'completed' | 'error'
 	isStreaming?: boolean
 	isThinking?: boolean
+	isStreamingThinking?: boolean
 	isError?: boolean
 	collapsed?: boolean
+	thinkingContent?: string
+	thinkingCollapsed?: boolean
+	command?: string
+	screenshots?: string[]
 }
 
 export type WorkflowBlenderNodeSettings = {
@@ -1027,6 +1032,10 @@ export type WorkflowBlenderNodeSettings = {
 	geminiTextModelVersion?: string
 	textModelVersion?: string
 	thinkingEffort?: string
+	toolsReady?: boolean
+	toolCount?: number
+	missingToolCount?: number
+	missingTools?: string[]
 	/** 上一轮 Agent 会话的产物（供 out-0 下游取数，设计文档 §4.5） */
 	lastOutputs?: {
 		/** Agent 最终回复/场景信息文本 */
@@ -1037,6 +1046,10 @@ export type WorkflowBlenderNodeSettings = {
 		modelPath?: string
 		updatedAt?: number
 	}
+	/** 工作空间绝对路径（Content/agent/{nodeId}/） */
+	workspacePath?: string
+	/** 工作空间相对项目根路径 */
+	workspaceRelativePath?: string
 }
 
 export type WorkflowNode = {

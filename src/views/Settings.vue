@@ -1319,7 +1319,7 @@ const canEnableCodex = computed(() => {
 						</label>
 						<div class="agent-number-input">
 							<input
-								v-model.number="form.agent.maxToolCalls"
+								v-model.number="form.agent!.maxToolCalls"
 								type="number"
 								:min="AGENT_CONFIG_CONSTRAINTS.maxToolCalls.min"
 								:max="AGENT_CONFIG_CONSTRAINTS.maxToolCalls.max"
@@ -1337,7 +1337,7 @@ const canEnableCodex = computed(() => {
 					<div class="agent-switch-row">
 						<label class="agent-switch-label">{{ t('settings.agent.enableToolCallWarning') }}</label>
 						<label class="toggle-switch">
-							<input type="checkbox" v-model="form.agent.enableToolCallWarning" @change="onAgentSwitchChange" />
+							<input type="checkbox" v-model="form.agent!.enableToolCallWarning" @change="onAgentSwitchChange" />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
@@ -1350,7 +1350,7 @@ const canEnableCodex = computed(() => {
 							<span>{{ t('settings.agent.thinkingEffort') }}</span>
 							<small class="agent-hint">{{ t('settings.agent.thinkingEffortHint') }}</small>
 						</label>
-						<select v-model="form.agent.defaultThinkingEffort" class="agent-select" @change="onThinkingEffortChange">
+						<select v-model="form.agent!.defaultThinkingEffort" class="agent-select" @change="onThinkingEffortChange">
 							<option value="disabled">{{ t('settings.agent.thinkingEffortDisabled') }}</option>
 							<option value="low">{{ t('settings.agent.thinkingEffortLow') }}</option>
 							<option value="medium">{{ t('settings.agent.thinkingEffortMedium') }}</option>
@@ -1360,14 +1360,14 @@ const canEnableCodex = computed(() => {
 					<div class="agent-switch-row">
 						<label class="agent-switch-label">{{ t('settings.agent.showThoughtProcess') }}</label>
 						<label class="toggle-switch">
-							<input type="checkbox" v-model="form.agent.showThoughtProcess" @change="onAgentSwitchChange" />
+							<input type="checkbox" v-model="form.agent!.showThoughtProcess" @change="onAgentSwitchChange" />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
 					<div class="agent-switch-row">
 						<label class="agent-switch-label">{{ t('settings.agent.autoScrollToBottom') }}</label>
 						<label class="toggle-switch">
-							<input type="checkbox" v-model="form.agent.autoScrollToBottom" @change="onAgentSwitchChange" />
+							<input type="checkbox" v-model="form.agent!.autoScrollToBottom" @change="onAgentSwitchChange" />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>

@@ -56,12 +56,21 @@
 				<div class="wf-blender-status-bar" @click.stop="onStatusClick" :title="hintText || ''">
 					<span class="wf-blender-status-dot" :class="statusClass"></span>
 					<span class="wf-blender-status-text">{{ statusText }}</span>
+					<span v-if="toolsReady !== undefined" class="wf-blender-tools-indicator" :class="toolsReady ? 'is-ready' : 'is-not-ready'" :title="toolsReady ? '工具就绪' : '工具未就绪，点击挂载工具按钮'">
+						{{ toolsReady ? '✓' : '⚠' }}
+					</span>
 					<span v-if="mcpError" class="wf-blender-status-error" :title="mcpError">!</span>
 				</div>
 
 				<!-- 操作提示 -->
 				<div v-if="hintText" class="wf-blender-hint">
 					{{ hintText }}
+				</div>
+
+				<!-- 工具就绪提示 -->
+				<div v-if="isConnected && toolsReady !== undefined && !toolsReady" class="wf-blender-tools-warning">
+					<span class="wf-blender-tools-warning-icon">⚠️</span>
+					<span class="wf-blender-tools-warning-text">工具未就绪，点击底部"挂载工具"按钮完成工具注册</span>
 				</div>
 
 				<!-- 连接配置：Host/Port -->
@@ -83,6 +92,20 @@
 						min="1"
 						max="65535"
 					/>
+				</div>
+
+				<!-- Blender可执行文件路径 -->
+				<div class="wf-blender-path-config">
+					<label class="wf-blender-conn-label">Blender</label>
+					<input
+						class="wf-blender-path-input"
+						type="text"
+						v-model="blenderPathInput"
+						@input="onBlenderPathChange"
+						placeholder="留空自动查找，或指定blender.exe路径"
+						spellcheck="false"
+					/>
+					<button class="wf-blender-path-browse" @click.stop="onBrowseBlender" title="浏览选择blender.exe">...</button>
 				</div>
 
 				<!-- 节点内对话记录面板 -->
@@ -139,6 +162,23 @@
 								</div>
 							</div>
 						</template>
+						<!-- 命令执行卡片 -->
+						<template v-else-if="msg.role === 'command'">
+							<div
+								class="wf-blender-command-card"
+								:class="{ 'is-running': msg.status === 'running', 'is-error': msg.status === 'error' }"
+							>
+								<div class="wf-blender-tool-header">
+									<span class="wf-blender-tool-status-icon">
+										<span v-if="msg.status === 'running'" class="wf-blender-tool-spinner"></span>
+										<span v-else-if="msg.status === 'error'">❌</span>
+										<span v-else>✅</span>
+									</span>
+									<span class="wf-blender-tool-name wf-blender-command-name">命令执行</span>
+									<span class="wf-blender-tool-summary">{{ msg.content }}</span>
+								</div>
+							</div>
+						</template>
 						<!-- 系统消息 -->
 						<template v-else-if="msg.role === 'system'">
 							<div class="wf-blender-chat-msg-system">
@@ -149,7 +189,18 @@
 						<template v-else>
 							<div class="wf-blender-chat-msg-bubble" :class="{ 'is-streaming': msg.isStreaming }">
 								<span class="wf-blender-chat-msg-role">{{ roleLabel(msg.role) }}</span>
-								<span v-if="msg.isThinking" class="wf-blender-thinking-indicator">
+								<!-- 思考内容折叠卡片 -->
+								<div v-if="msg.thinkingContent || msg.isStreamingThinking" class="wf-blender-thinking-card" :class="{ 'is-streaming': msg.isStreamingThinking }">
+									<div class="wf-blender-thinking-header" @click.stop="onToggleThinking(msg)">
+										<span class="wf-blender-thinking-icon">💭</span>
+										<span class="wf-blender-thinking-label">{{ msg.isStreamingThinking ? '思考中...' : '已思考' }}</span>
+										<span class="wf-blender-tool-toggle" style="cursor: pointer; user-select: none;">{{ isThinkingCollapsed(msg) ? '▼' : '▲' }}</span>
+									</div>
+									<div v-if="!isThinkingCollapsed(msg)" class="wf-blender-thinking-content">
+										<pre class="wf-blender-thinking-text">{{ msg.thinkingContent }}</pre>
+									</div>
+								</div>
+								<span v-if="msg.isThinking && !msg.isStreamingThinking && !msg.thinkingContent" class="wf-blender-thinking-indicator">
 									<span class="wf-blender-dot"></span>
 									<span class="wf-blender-dot"></span>
 									<span class="wf-blender-dot"></span>
@@ -161,6 +212,32 @@
 							</div>
 						</template>
 					</div>
+				</div>
+
+				<!-- 工作空间指示器 -->
+				<div class="wf-blender-workspace-indicator" @pointerdown.stop>
+					<span class="wf-blender-workspace-icon">📂</span>
+					<span v-if="workspacePath" class="wf-blender-workspace-path" :title="workspacePath">{{ workspaceFolderName }}</span>
+					<span v-else class="wf-blender-workspace-path wf-blender-workspace-path-placeholder">工作空间未初始化</span>
+					<button
+						v-if="workspacePath"
+						class="wf-blender-workspace-open-btn"
+						type="button"
+						@click.stop="onOpenWorkspace"
+						title="打开工作空间文件夹"
+					>
+						打开
+					</button>
+					<button
+						v-else
+						class="wf-blender-workspace-open-btn wf-blender-workspace-init-btn"
+						type="button"
+						@click.stop="onInitWorkspace"
+						:disabled="isWorkspaceInitializing"
+						title="初始化工作空间文件夹"
+					>
+						{{ isWorkspaceInitializing ? '初始化中...' : '初始化' }}
+					</button>
 				</div>
 
 				<!-- Token 使用量指示器 -->
@@ -212,9 +289,18 @@
 						{{ connectBtnText }}
 					</button>
 					<button
+						v-if="(isConnected || mcpStatus === 'checking') && toolsReady !== undefined && !toolsReady"
+						class="wf-blender-btn tools"
+						type="button"
+						:disabled="isBusy"
+						@click.stop="onMountTools"
+					>
+						{{ isBusy ? '挂载中...' : '挂载工具' }}
+					</button>
+					<button
 						class="wf-blender-btn ghost"
 						type="button"
-						:disabled="!isConnected || isImporting"
+						:disabled="isImporting"
 						@click.stop="emit('blender-import')"
 					>
 						{{ t('nodes.blender.btn.import') }}
@@ -234,7 +320,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from '../../BluePrint/node-dialog'
@@ -243,6 +329,7 @@ import { useI18n } from '../../../i18n'
 const { t } = useI18n()
 
 const collapsedMap = ref<Map<string, boolean>>(new Map())
+const thinkingCollapsedMap = ref<Map<string, boolean>>(new Map())
 
 type AnchorSpec = {
 	id: string
@@ -308,8 +395,11 @@ const emit = defineEmits<{
 	(e: 'blender-connect', payload: { host: string; port: number }): void
 	(e: 'blender-disconnect'): void
 	(e: 'blender-import'): void
+	(e: 'blender-mount-tools'): void
 	(e: 'blender-status-click', payload: { host: string; port: number }): void
 	(e: 'blender-clear-chat'): void
+	(e: 'blender-open-workspace'): void
+	(e: 'blender-init-workspace'): void
 	(e: 'update-blender-settings', payload: Partial<WorkflowBlenderNodeSettings>): void
 }>()
 
@@ -333,6 +423,7 @@ const DEFAULT_PORT = 9876
 
 const hostInput = ref(props.blenderSettings?.mcpHost ?? DEFAULT_HOST)
 const portInput = ref(props.blenderSettings?.mcpPort ?? DEFAULT_PORT)
+const blenderPathInput = ref(props.blenderSettings?.blenderPath ?? '')
 
 const mcpStatus = computed(() => props.blenderSettings?.mcpStatus ?? 'unchecked')
 const mcpError = computed(() => props.blenderSettings?.mcpError ?? null)
@@ -341,6 +432,46 @@ const importProgress = computed(() => props.blenderSettings?.importProgress ?? 0
 const importError = computed(() => props.blenderSettings?.importError ?? null)
 const chatMessages = computed<WorkflowBlenderChatMessage[]>(() => props.blenderSettings?.chatMessages ?? [])
 const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
+const toolsReady = computed(() => props.blenderSettings?.toolsReady)
+const workspacePath = computed(() => {
+	const wp = (props.blenderSettings as Record<string, unknown> | null | undefined)?.workspacePath
+	return typeof wp === 'string' ? wp : ''
+})
+const workspaceFolderName = computed(() => {
+	if (!workspacePath.value) return ''
+	const parts = workspacePath.value.split(/[\\/]/)
+	return parts[parts.length - 1] || 'agent'
+})
+const isWorkspaceInitializing = ref(false)
+
+const onOpenWorkspace = () => {
+	emit('blender-open-workspace')
+}
+
+const onInitWorkspace = () => {
+	if (isWorkspaceInitializing.value) return
+	isWorkspaceInitializing.value = true
+	emit('blender-init-workspace')
+	setTimeout(() => {
+		isWorkspaceInitializing.value = false
+	}, 5000)
+}
+
+watch(() => workspacePath.value, (path) => {
+	if (path) {
+		isWorkspaceInitializing.value = false
+	}
+})
+
+onMounted(() => {
+	if (!workspacePath.value) {
+		isWorkspaceInitializing.value = true
+		emit('blender-init-workspace')
+		setTimeout(() => {
+			isWorkspaceInitializing.value = false
+		}, 5000)
+	}
+})
 
 const isConnected = computed(() => mcpStatus.value === 'connected')
 const isImporting = computed(() => importStatus.value === 'downloading' || importStatus.value === 'importing')
@@ -406,6 +537,29 @@ const onHostPortChange = () => {
 	})
 }
 
+const onBlenderPathChange = () => {
+	emit('update-blender-settings', {
+		blenderPath: blenderPathInput.value.trim() || null
+	})
+}
+
+const onBrowseBlender = async () => {
+	try {
+		const bridge = (window as any).dweb?.aiworkflow
+		if (!bridge?.selectMediaFiles) return
+		const result = await bridge.selectMediaFiles({
+			filters: [{ name: 'Blender (blender.exe)', extensions: ['exe'] }]
+		})
+		const filePath = Array.isArray(result?.filePaths) ? result.filePaths[0] : null
+		if (filePath) {
+			blenderPathInput.value = filePath
+			onBlenderPathChange()
+		}
+	} catch (err) {
+		console.warn('[BlenderNode] Browse dialog failed:', err)
+	}
+}
+
 const onToggleConnect = () => {
 	onHostPortChange()
 	if (isConnected.value) {
@@ -418,6 +572,11 @@ const onToggleConnect = () => {
 			port: validPort
 		})
 	}
+}
+
+const onMountTools = () => {
+	onHostPortChange()
+	emit('blender-mount-tools')
 }
 
 const onStatusClick = () => {
@@ -458,6 +617,15 @@ const onToggleToolMsg = (msg: WorkflowBlenderChatMessage) => {
 
 const isMsgCollapsed = (msg: WorkflowBlenderChatMessage): boolean => {
 	return collapsedMap.value.get(msg.id) ?? msg.collapsed ?? true
+}
+
+const onToggleThinking = (msg: WorkflowBlenderChatMessage) => {
+	const current = thinkingCollapsedMap.value.get(msg.id) ?? msg.thinkingCollapsed ?? true
+	thinkingCollapsedMap.value.set(msg.id, !current)
+}
+
+const isThinkingCollapsed = (msg: WorkflowBlenderChatMessage): boolean => {
+	return thinkingCollapsedMap.value.get(msg.id) ?? msg.thinkingCollapsed ?? true
 }
 
 const formatToolResult = (result: unknown): string => {
@@ -517,6 +685,16 @@ watch(
 			if (!Number.isNaN(numPort) && numPort > 0 && numPort !== Number(portInput.value)) {
 				portInput.value = numPort
 			}
+		}
+	}
+)
+
+watch(
+	() => props.blenderSettings?.blenderPath,
+	(newPath) => {
+		const v = newPath || ''
+		if (v !== blenderPathInput.value) {
+			blenderPathInput.value = v
 		}
 	}
 )
@@ -610,6 +788,46 @@ watch(
 	cursor: help;
 }
 
+.wf-blender-tools-indicator {
+	font-size: 10px;
+	font-weight: bold;
+	flex-shrink: 0;
+	width: 16px;
+	text-align: center;
+}
+
+.wf-blender-tools-indicator.is-ready {
+	color: #1f9d84;
+}
+
+.wf-blender-tools-indicator.is-not-ready {
+	color: #e87d0d;
+}
+
+.wf-blender-tools-warning {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 10px;
+	color: #e87d0d;
+	line-height: 1.4;
+	padding: 4px 8px;
+	background: color-mix(in srgb, #e87d0d 8%, transparent);
+	border-left: 2px solid #e87d0d;
+	word-break: break-word;
+}
+
+.wf-blender-tools-warning-icon {
+	flex-shrink: 0;
+	font-size: 11px;
+}
+
+.wf-blender-tools-warning-text {
+	flex: 1;
+	min-width: 0;
+}
+
 .wf-blender-hint {
 	flex-shrink: 0;
 	font-size: 10px;
@@ -658,6 +876,58 @@ watch(
 
 .wf-blender-conn-port {
 	flex: 0 0 70px;
+}
+
+.wf-blender-path-config {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 96%, transparent);
+	border-top: none;
+	border-left: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 25%, transparent);
+	border-right: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 25%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 25%, transparent);
+	border-radius: 0;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.wf-blender-path-input {
+	flex: 1;
+	min-width: 0;
+	padding: 2px 6px;
+	font-size: 11px;
+	background: color-mix(in srgb, var(--vscode-input-background, rgba(255,255,255,0.1)) 90%, transparent);
+	border: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 30%, transparent);
+	color: var(--vscode-fg, #e0e0e0);
+	border-radius: 0;
+	outline: none;
+	font-family: inherit;
+}
+
+.wf-blender-path-input:focus {
+	border-color: #1f9d84;
+}
+
+.wf-blender-path-browse {
+	flex-shrink: 0;
+	width: 24px;
+	height: 22px;
+	padding: 0;
+	font-size: 12px;
+	line-height: 1;
+	background: color-mix(in srgb, var(--vscode-button-background, #2d3238) 90%, transparent);
+	border: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 30%, transparent);
+	color: var(--vscode-fg, #e0e0e0);
+	cursor: pointer;
+	border-radius: 2px;
+}
+
+.wf-blender-path-browse:hover {
+	background: #1f9d84;
+	border-color: #1f9d84;
 }
 
 @keyframes wf-blender-blink {
@@ -1045,6 +1315,71 @@ watch(
 	font-variant-numeric: tabular-nums;
 }
 
+.wf-blender-workspace-indicator {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 8px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 96%, transparent);
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.wf-blender-workspace-icon {
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+.wf-blender-workspace-path {
+	flex: 1;
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: monospace;
+}
+
+.wf-blender-workspace-open-btn {
+	flex-shrink: 0;
+	padding: 2px 8px;
+	font-size: 10px;
+	border: 1px solid color-mix(in srgb, #10b981 50%, transparent);
+	background: color-mix(in srgb, #10b981 15%, transparent);
+	color: #10b981;
+	border-radius: 2px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.wf-blender-workspace-open-btn:hover {
+	background: color-mix(in srgb, #10b981 30%, transparent);
+	border-color: #10b981;
+}
+
+.wf-blender-workspace-path-placeholder {
+	color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
+	font-style: italic;
+}
+
+.wf-blender-workspace-init-btn {
+	border-color: color-mix(in srgb, #f59e0b 50%, transparent);
+	background: color-mix(in srgb, #f59e0b 15%, transparent);
+	color: #f59e0b;
+}
+
+.wf-blender-workspace-init-btn:hover:not(:disabled) {
+	background: color-mix(in srgb, #f59e0b 30%, transparent);
+	border-color: #f59e0b;
+}
+
+.wf-blender-workspace-init-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
 .wf-blender-footer {
 	padding: 6px 8px;
 	width: 100%;
@@ -1090,6 +1425,17 @@ watch(
 	color: #1f9d84;
 }
 
+.wf-blender-btn.tools {
+	border-color: color-mix(in srgb, #3b82f6 50%, transparent);
+	background: color-mix(in srgb, #3b82f6 15%, transparent);
+	color: #3b82f6;
+}
+
+.wf-blender-btn.tools:hover:not(:disabled) {
+	background: color-mix(in srgb, #3b82f6 25%, transparent);
+	border-color: #3b82f6;
+}
+
 .wf-blender-btn.ghost {
 	border-color: color-mix(in srgb, var(--vscode-fg-muted, #888) 40%, transparent);
 	background: transparent;
@@ -1099,5 +1445,102 @@ watch(
 .wf-blender-btn.ghost:hover:not(:disabled) {
 	border-color: var(--vscode-fg-muted, #888);
 	color: var(--vscode-fg, #e0e0e0);
+}
+
+.wf-blender-thinking-card {
+	margin: 4px 0;
+	border: 1px solid color-mix(in srgb, #8b5cf6 35%, transparent);
+	background: color-mix(in srgb, #8b5cf6 8%, transparent);
+	border-left: 2px solid #8b5cf6;
+	border-radius: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.wf-blender-thinking-card.is-streaming {
+	border-color: color-mix(in srgb, #8b5cf6 50%, transparent);
+	animation: wf-blender-thinking-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes wf-blender-thinking-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.7; }
+}
+
+.wf-blender-thinking-header {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 6px;
+	font-size: 10px;
+	cursor: pointer;
+	user-select: none;
+}
+
+.wf-blender-thinking-icon {
+	font-size: 11px;
+}
+
+.wf-blender-thinking-label {
+	font-weight: 600;
+	color: #a78bfa;
+	flex-shrink: 0;
+}
+
+.wf-blender-thinking-content {
+	padding: 4px 6px 6px;
+	border-top: 1px solid color-mix(in srgb, #8b5cf6 20%, transparent);
+	user-select: text;
+	cursor: text;
+}
+
+.wf-blender-thinking-text {
+	margin: 0;
+	padding: 4px 6px;
+	font-size: 10px;
+	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 300px;
+	overflow-y: auto;
+	line-height: 1.3;
+	border-radius: 0;
+	background: color-mix(in srgb, #8b5cf6 6%, transparent);
+	border-left: 2px solid #8b5cf6;
+	color: #c4b5fd;
+	font-style: italic;
+	opacity: 0.85;
+}
+
+.wf-blender-command-card {
+	border: 1px solid color-mix(in srgb, #6b7280 35%, transparent);
+	background: color-mix(in srgb, #6b7280 8%, transparent);
+	border-left: 2px solid #6b7280;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.wf-blender-command-card.is-running {
+	border-color: color-mix(in srgb, #f0c040 50%, transparent);
+	border-left-color: #f0c040;
+	background: color-mix(in srgb, #f0c040 8%, transparent);
+}
+
+.wf-blender-command-card.is-error {
+	border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+	border-left-color: #e74c3c;
+	background: color-mix(in srgb, #e74c3c 8%, transparent);
+}
+
+.wf-blender-command-name {
+	color: #9ca3af !important;
+}
+
+.wf-blender-command-card.is-running .wf-blender-command-name {
+	color: #f0c040 !important;
+}
+
+.wf-blender-command-card.is-error .wf-blender-command-name {
+	color: #e74c3c !important;
 }
 </style>

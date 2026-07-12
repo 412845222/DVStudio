@@ -208,13 +208,13 @@ class ToolExecutor {
   }
 }
 
-let toolExecutorInstance = null;
+const GLOBAL_KEY = Symbol.for('dvstudio.toolExecutor');
 
 export function getToolExecutor() {
-  if (!toolExecutorInstance) {
-    toolExecutorInstance = new ToolExecutor();
+  if (!globalThis[GLOBAL_KEY]) {
+    globalThis[GLOBAL_KEY] = new ToolExecutor();
   }
-  return toolExecutorInstance;
+  return globalThis[GLOBAL_KEY];
 }
 
 export { TOOL_CALL_CHANNEL, TOOL_RESPONSE_CHANNEL_PREFIX };

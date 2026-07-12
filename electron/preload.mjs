@@ -267,6 +267,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 	},
+	projects: {
+		list: () => invoke('dweb:projects:list'),
+		save: (payload) => invoke('dweb:projects:save', payload || {}),
+		load: (payload) => invoke('dweb:projects:load', payload || {}),
+		delete: (payload) => invoke('dweb:projects:delete', payload || {}),
+		openFolder: (payload) => invoke('dweb:projects:open-folder', payload || {}),
+	},
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectMediaFiles: (options) => invoke('dweb:aiworkflow:selectMediaFiles', options),
@@ -705,6 +712,16 @@ contextBridge.exposeInMainWorld('dweb', {
 		mcpStatus: (payload) => invoke('dweb:blender:mcp:status', payload || {}),
 		mcpCallTool: (payload) => invoke('dweb:blender:mcp:call-tool', payload || {}),
 		importModel: (payload) => invoke('dweb:blender:import:model', payload || {}),
+		checkToolsReady: (payload) => invoke('dweb:blender:tools:check', payload || {}),
+		mountTools: (payload) => invoke('dweb:blender:tools:mount', payload || {}),
+		workspaceInit: (payload) => invoke('dweb:blender:workspace:init', payload || {}),
+		workspaceSaveScript: (payload) => invoke('dweb:blender:workspace:save-script', payload || {}),
+		workspaceSaveScreenshot: (payload) => invoke('dweb:blender:workspace:save-screenshot', payload || {}),
+		workspaceClear: (payload) => invoke('dweb:blender:workspace:clear', payload || {}),
+		workspaceListScripts: (payload) => invoke('dweb:blender:workspace:list-scripts', payload || {}),
+		workspaceGetStats: (payload) => invoke('dweb:blender:workspace:get-stats', payload || {}),
+		workspaceOpenFolder: (payload) => invoke('dweb:blender:workspace:open-folder', payload || {}),
+		workspaceGetPath: (payload) => invoke('dweb:blender:workspace:get-path', payload || {}),
 		mcpListTools: (payload) => invoke('dweb:mcp:list-tools', { ...(payload || {}), serverId: payload?.serverId || 'blender' }),
 		onMcpStatusChanged: (callback) => {
 			const listener = (_event, payload) => {

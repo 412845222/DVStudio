@@ -1376,13 +1376,14 @@ function registerIpc() {
 				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
-					preload: path.resolve(here, 'preload.mjs'),
-					contextIsolation: true,
-					nodeIntegration: false,
-					sandbox: false,
-				},
-			})
-			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
+				preload: path.resolve(here, 'preload.mjs'),
+				contextIsolation: true,
+				nodeIntegration: false,
+				sandbox: false,
+				disableDialogs: true,
+			},
+		})
+		console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
 			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
 			try { imageMarkupWindow.removeMenu() } catch {}
 
@@ -1394,6 +1395,7 @@ function registerIpc() {
 			}
 
 			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
 				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
 			})
 			imageMarkupWindow.on('closed', () => { imageMarkupWindow = null })
@@ -1471,14 +1473,15 @@ function registerIpc() {
 				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
-					preload: path.resolve(here, 'preload.mjs'),
-					contextIsolation: true,
-					nodeIntegration: false,
-					sandbox: false,
-				},
-			})
+				preload: path.resolve(here, 'preload.mjs'),
+				contextIsolation: true,
+				nodeIntegration: false,
+				sandbox: false,
+				disableDialogs: true,
+			},
+		})
 
-			try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
+		try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
 			try { resourceManagerWindow.removeMenu() } catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1489,6 +1492,7 @@ function registerIpc() {
 			}
 
 			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
 				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
 			})
 			resourceManagerWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -1637,6 +1641,7 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
+					disableDialogs: true,
 				},
 			})
 
@@ -1651,6 +1656,7 @@ function registerIpc() {
 			}
 
 			model3dEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
 				appendRuntimeLog(`[model3d-editor:${level}] ${message} (${sourceId}:${line})`)
 			})
 			model3dEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -1716,6 +1722,7 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
+					disableDialogs: true,
 				},
 			})
 
@@ -1730,6 +1737,7 @@ function registerIpc() {
 			}
 
 			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
 				appendRuntimeLog(`[template-center:${level}] ${message} (${sourceId}:${line})`)
 			})
 			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -1927,6 +1935,7 @@ async function main() {
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: false,
+			disableDialogs: true,
 		},
 	})
 	_perfMark('BrowserWindow created')
@@ -1944,6 +1953,7 @@ async function main() {
 		appendRuntimeLog(`[did-fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
 	})
 	mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+		if (sourceId?.startsWith('devtools://')) return
 		appendRuntimeLog(`[renderer:${level}] ${message} (${sourceId}:${line})`)
 	})
 	mainWindow.webContents.on('render-process-gone', (_event, details) => {
