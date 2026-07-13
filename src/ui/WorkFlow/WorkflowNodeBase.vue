@@ -1306,6 +1306,14 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
+.wf-node.wf-node-scene-understanding .wf-node-body,
+.wf-node.wf-node-scene-layout .wf-node-body,
+.wf-node.wf-node-scene-decompose .wf-node-body {
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+}
+
 .wf-node.is-auto-height .wf-node-body {
 	overflow: visible;
 	align-items: stretch;
