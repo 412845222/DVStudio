@@ -256,6 +256,7 @@
 						@blender-mount-tools="onBlenderMountTools(node.id)"
 						@blender-status-click="onBlenderStatusCheck(node.id, $event)"
 						@blender-clear-chat="onBlenderClearChat(node.id)"
+						@blender-compress-context="onBlenderCompressContext(node.id)"
 						@blender-open-workspace="onBlenderOpenWorkspace(node.id)"
 						@blender-init-workspace="onBlenderInitWorkspace(node.id)"
 						@blender-import="onBlenderImport(node.id)"
@@ -5862,6 +5863,10 @@ const onBlenderClearChat = (nodeId: string) => {
 	if (projectId && window.dweb?.blender?.workspaceClear) {
 		void window.dweb.blender.workspaceClear({ nodeId, projectId })
 	}
+}
+
+const onBlenderCompressContext = (nodeId: string) => {
+	store.commit('compressBlenderChatContext', { nodeId })
 }
 
 const onBlenderOpenWorkspace = async (nodeId: string) => {
@@ -12349,12 +12354,11 @@ if (import.meta.env.DEV) {
 	display: contents;
 }
 
-.aiwf-node-host-offscreen {
-	position: fixed !important;
-	left: -99999px !important;
-	top: 0 !important;
+.aiwf-node-host-offscreen > .wf-node,
+.aiwf-node-host-offscreen .wf-node {
 	opacity: 0 !important;
 	pointer-events: none !important;
+	visibility: hidden !important;
 }
 
 .aiwf-node-screenshot-host {

@@ -4130,7 +4130,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				draft = node?.nodeChatDraft ?? ''
 			}
 			state.nodeChatDialog.draft = draft
-			state.nodeChatDialog.submitting = false
+			if (payload.nodeType === 'blender') {
+				state.nodeChatDialog.submitting = Boolean(node?.blenderSettings?.isSubmitting)
+			} else {
+				state.nodeChatDialog.submitting = false
+			}
 
 			// 构建聊天参数：从nodeChatParams读取，并从imageSettings.meshyImageSettings同步meshy参数
 			const existingChatParams: Record<string, unknown> = (node?.nodeChatParams as Record<string, unknown>) ?? {}
@@ -4280,6 +4284,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting
+			if (state.nodeChatDialog.nodeId) {
+				const node = state.nodesById[state.nodeChatDialog.nodeId]
+				if (node && node.type === 'blender') {
+					node.blenderSettings = node.blenderSettings ?? {}
+					node.blenderSettings.isSubmitting = payload.submitting
+				}
+			}
 		},
 		registerNodeGenerationTask(state, payload: { task: WorkflowNodeGenerationTask }) {
 			const task = payload.task
@@ -4570,6 +4581,26 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!node) return
 			node.blenderSettings = node.blenderSettings ?? {}
 			node.blenderSettings.chatMessages = []
+		},
+		compressBlenderChatContext(state: WorkflowState, payload: { nodeId: string }) {
+			const node = state.nodesById[payload.nodeId]
+			if (!node) return
+			const msgs = node.blenderSettings?.chatMessages
+			if (!Array.isArray(msgs) || msgs.length <= 2) return
+
+			const keepCount = Math.max(2, Math.floor(msgs.length * 0.4))
+			const preserved = msgs.slice(-keepCount)
+
+			const systemMsg: WorkflowBlenderChatMessage = {
+				id: `context-compress-${Date.now().toString(36)}`,
+				role: 'system',
+				content: `📦 上下文已压缩：保留最近 ${keepCount} 条消息，移除 ${msgs.length - keepCount} 条历史消息`,
+				timestamp: Date.now()
+			}
+
+			node.blenderSettings = node.blenderSettings ?? {}
+			node.blenderSettings.chatMessages = [systemMsg, ...preserved]
+			node.blenderSettings.chatContextUsage = undefined
 		},
 		toggleBlenderChatMessageCollapsed(
 			state: WorkflowState,

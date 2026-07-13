@@ -42,6 +42,30 @@ function saveStore(store) {
   }
 }
 
+function validateModels(models) {
+  if (!models || !Array.isArray(models)) return { valid: [], invalid: [], changed: false };
+
+  const valid = [];
+  const invalid = [];
+
+  for (const model of models) {
+    if (model && typeof model === 'object' && model.id && typeof model.id === 'string') {
+      valid.push({
+        id: String(model.id).trim(),
+        label: model.label ? String(model.label).trim() : String(model.id).trim(),
+        vendor: model.vendor ? String(model.vendor).trim() : '',
+        capabilities: model.capabilities && Array.isArray(model.capabilities) ? model.capabilities : [],
+        recommended: model.recommended === true,
+        description: model.description ? String(model.description).trim() : undefined,
+      });
+    } else {
+      invalid.push(model);
+    }
+  }
+
+  return { valid, invalid, changed: invalid.length > 0 };
+}
+
 class CliConfigStore {
   constructor() {
     this.store = loadStore();
@@ -53,17 +77,41 @@ class CliConfigStore {
 
   getAdapterConfig(adapterName) {
     const raw = this.store.adapters?.[adapterName] || null;
-    return raw ? JSON.parse(JSON.stringify(raw)) : null;
+    if (!raw) return null;
+
+    const config = JSON.parse(JSON.stringify(raw));
+
+    if (config.models && Array.isArray(config.models)) {
+      const { valid, invalid, changed } = validateModels(config.models);
+      if (changed) {
+        logger.warn(`[CliConfigStore] Found ${invalid.length} invalid model(s) for adapter ${adapterName}, auto-cleaning...`);
+        config.models = valid;
+        this.store.adapters[adapterName] = config;
+        saveStore(this.store);
+      }
+    }
+
+    return config;
   }
 
   async updateAdapterConfig(adapterName, updates) {
     if (!this.store.adapters) this.store.adapters = {};
 
     const current = this.store.adapters[adapterName] || {};
+
     const merged = {
       ...current,
       ...updates
     };
+
+    if (merged.models && Array.isArray(merged.models)) {
+      const { valid, invalid, changed } = validateModels(merged.models);
+      if (changed) {
+        logger.warn(`[CliConfigStore] Removed ${invalid.length} invalid model(s) for adapter ${adapterName}`);
+        merged.models = valid;
+      }
+    }
+
     this.store.adapters[adapterName] = JSON.parse(JSON.stringify(merged));
 
     saveStore(this.store);

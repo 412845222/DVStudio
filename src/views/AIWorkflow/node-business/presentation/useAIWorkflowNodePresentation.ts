@@ -33,11 +33,11 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 	) => {
 		const point = worldToScreen({ x: worldX, y: worldY })
 		return {
-			left: `${point.x}px`,
-			top: `${point.y}px`,
+			left: '0px',
+			top: '0px',
 			width: `${Math.max(80, width || 240)}px`,
 			height: `${Math.max(80, height || 160)}px`,
-			transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`
+			transform: `translate(${point.x}px, ${point.y}px) translate(-50%, -50%) scale(${clampNodeScale(zoom)})`
 		} as Record<string, string>
 	}
 
@@ -63,11 +63,11 @@ export const useAIWorkflowNodePresentation = (store: Store<WorkflowState>) => {
 		const fixedHeight = Math.max(64, nodeHeight * safeZoom)
 
 		return {
-			left: `${point.x}px`,
-			top: `${point.y}px`,
+			left: '0px',
+			top: '0px',
 			width: `${fixedWidth}px`,
 			height: `${fixedHeight}px`,
-			transform: 'translate(-50%, -50%)'
+			transform: `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`
 		} as Record<string, string>
 	}
 

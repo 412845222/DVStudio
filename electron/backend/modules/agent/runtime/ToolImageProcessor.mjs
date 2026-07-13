@@ -68,14 +68,18 @@ function saveBase64Image(b64Data, mimeType) {
 
 	const fileName = generateFileName();
 	const filePath = path.join(tempDir, fileName);
+	const mime = mimeType || 'image/png';
 
 	try {
-		const buffer = decodeBase64ToBuffer(b64Data);
+		const cleanB64 = b64Data.replace(/^data:image\/\w+;base64,/, '');
+		const buffer = Buffer.from(cleanB64, 'base64');
 		fs.writeFileSync(filePath, buffer);
+		const dataUrl = `data:${mime};base64,${cleanB64}`;
 		return {
 			localPath: filePath,
 			fileUrl: pathToFileURL(filePath).href,
-			mimeType: mimeType || 'image/png',
+			dataUrl: dataUrl,
+			mimeType: mime,
 			fileName,
 		};
 	} catch (err) {

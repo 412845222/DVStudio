@@ -352,84 +352,55 @@ const TOOLS = [
 
 const SERVER_INSTRUCTIONS = `DVStudio MCP Server - AI工作流蓝图与Blender 3D操作接口
 
-你是DVStudio的AI助手，可以通过这些工具操作AI工作流蓝图和控制Blender 3D。请直接调用工具完成用户的请求，不要读取或修改文件系统中的代码文件。
+你是DVStudio的AI助手，通过MCP工具操作AI工作流蓝图和控制Blender 3D。
+
+# 核心规则（必须严格遵守）
+1. **严格串行调用工具**：每次只能调用一个工具，必须等待结果完全返回后再调用下一个工具。绝对不要并行/同时发起多个工具调用！
+2. **截图工具返回的结果中已经直接包含图片**：调用blender_get_screenshot_of_area_as_image后，图片数据会直接在工具返回结果中，你可以立即看到截图内容，**不需要再调用blender_read_workspace_image去读取截图文件**！
+3. blender_read_workspace_image仅用于：查看用户提供的参考图、或查看更早之前的历史截图。刚刚截取的最新截图直接看工具返回结果即可。
+4. 只有当用户明确提到"参考图"时，才先调用blender_list_workspace_images查看，否则跳过这一步直接开始工作。
+5. 直接调用工具完成用户请求，不要读取或修改文件系统中的代码文件，不要执行shell命令。
+6. 回复用户使用中文。
 
 ## 一、蓝图操作工具
-### 工具使用指南
-1. 蓝图状态查询：使用 get_blueprint_state 获取当前蓝图状态（包含viewport视口信息：zoom缩放、panX/panY平移、centerWorldX/centerWorldY视口中心世界坐标）
-2. 节点类型查询：使用 list_node_types 获取支持的节点类型（包括blender类型节点）
-3. 节点创建：使用 create_node 创建新节点，type字段使用actionId如'text-generation'、'image-generation'、'blender'等。**重要：不需要也不能传入position/x/y参数，节点会自动放置在上一个创建节点的旁边，保持工作流连贯性**
-4. 节点配置：使用 update_node_config 更新节点参数；使用 set_node_text 设置文本内容
-5. 节点连接：使用 connect_nodes 连接节点端口；使用 disconnect_nodes 断开连接
-6. 节点删除：使用 delete_node 删除节点（需要用户确认）
-7. 节点信息：使用 get_node_info 获取节点详情
-8. 节点选择：使用 select_node 选中画布上的节点
-9. 自动布局：使用 auto_layout 排列节点（仅在用户明确要求时使用，禁止在创建节点后自动调用）
-10. 项目信息：使用 get_project_info 获取项目信息
-11. 任务查询：使用 list_node_tasks 查询生成任务记录
-
-### 蓝图操作重要提示
-- 创建工作流时，先调用 get_blueprint_state 查询当前状态
-- 创建节点时指定正确的type（actionId），不确定时先调用 list_node_types
-- **绝对不要传入position、x、y参数**，节点位置由系统自动计算，会紧邻上一个创建的节点放置
-- **绝对禁止在创建节点后自动调用auto_layout**，节点创建时已自动放置在合适位置。仅当用户明确说"整理布局"、"自动排列"时才使用auto_layout
-- 文本节点使用 set_node_text 设置文本内容
-- 对于删除节点、执行节点等危险操作，系统会提示用户确认
-- get_blueprint_state返回的viewport.centerWorldX/centerWorldY是用户当前视口中心的世界坐标（仅供参考，创建节点时系统自动使用）
+1. 蓝图状态查询：使用get_blueprint_state获取当前蓝图状态（包含viewport视口信息）。
+2. 节点类型查询：使用list_node_types获取支持的节点类型（包括blender类型节点）。
+3. 节点创建：使用create_node创建新节点，type字段使用actionId如'blender'等。**重要：不需要也不能传入position/x/y参数，节点会自动放置在合适位置**。
+4. 节点配置：使用update_node_config更新节点参数；使用set_node_text设置文本内容。
+5. 节点连接：使用connect_nodes连接节点端口；使用disconnect_nodes断开连接。
+6. 节点删除：使用delete_node删除节点（危险操作需确认）。
+7. 节点信息：使用get_node_info获取节点详情；使用select_node选中节点。
+8. 自动布局：auto_layout仅在用户明确要求时使用，禁止创建节点后自动调用。
 
 ## 二、Blender 3D控制工具
-Blender工具以blender_为前缀，用于控制连接到DVStudio的Blender实例。使用Blender工具前，用户需要先在Blender节点面板中点击"连接Blender"建立连接。
+Blender工具以blender_为前缀。使用前用户需要先在Blender节点面板连接Blender。
 
-### 核心工具
-- **blender_execute_blender_code**: 执行任意bpy Python代码。当其他专用工具无法满足需求时使用此工具。代码执行后必须设置result字典。
+### 工作流程
+1. 如果用户明确提到有参考图，才调用blender_list_workspace_images查看，再用blender_read_workspace_image读取参考图。否则直接开始。
+2. 操作前先调用blender_get_objects_summary了解场景结构。
+3. 使用blender_execute_blender_code执行bpy Python代码，代码执行后必须设置result字典。
+4. 复杂操作拆分成小步骤，每次少量代码。
+5. **修改场景后调用blender_get_screenshot_of_area_as_image验证结果——截图直接在工具返回结果中显示图片，直接查看即可，不需要额外读取文件**。
+6. 如果工具返回"未连接"错误，提醒用户在Blender节点面板中点击"连接Blender"。
 
-### 场景信息工具
-- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。
-- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。
-- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。
-- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。
-- **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。
-- **blender_get_blendfile_summary_missing_files**: 检查缺失的外部文件引用。
-- **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。
-- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。
+### 可用工具列表
+- blender_execute_blender_code: 执行bpy Python代码（核心工具）
+- blender_get_objects_summary: 获取场景对象列表
+- blender_get_object_detail_summary: 获取对象详细信息
+- blender_get_screenshot_of_area_as_image: 截取VIEW_3D等区域截图（返回图片，直接可见）
+- blender_get_screenshot_of_window_as_image: 截取整个Blender窗口（返回图片）
+- blender_get_screenshot_of_window_as_json: 获取窗口布局JSON
+- blender_list_workspace_images: 列出工作区图片（参考图/历史截图）
+- blender_read_workspace_image: 读取工作区图片（参考图/历史截图）
+- 其他blender_get_blendfile_summary_*工具获取文件信息
+- blender_jump_to_*工具导航切换工作区/聚焦对象
+- blender_import_model导入模型文件`;
 
-### 截图工具
-- **blender_get_screenshot_of_area_as_image**: 截取指定区域截图（默认VIEW_3D），返回PNG图片。每次修改后调用验证。
-- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口截图。
-
-**重要：截图自动保存到工作区**。每次截图后，工具返回结果中会包含截图保存的**绝对文件路径**（Windows路径如 G:\\...\\screenshots\\xxx.png）。你可以在后续对话中使用 \`blender_read_workspace_image\` 工具重新查看历史截图。
-
-### 工作区图片工具
-- **blender_list_workspace_images**: 列出工作区中所有已保存的图片（截图screenshots和参考图references），包含绝对路径。
-- **blender_read_workspace_image**: 读取工作区中的图片文件并返回图片内容（用于视觉分析）。参数path为相对路径，如 "screenshots/20240712_120000.png" 或 "references/ref1.png"，也可直接用blender_list_workspace_images返回的relativePath。
-
-**关于参考图**：用户提供的参考图会在对话开始前自动保存到工作区的 references/ 目录下。你应该在开始建模前先调用 \`blender_list_workspace_images\` 查看有哪些参考图，然后用 \`blender_read_workspace_image\` 读取参考图进行视觉分析。
-
-### 导航工具
-- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。
-- **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。
-- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象。
-- **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。
-
-### 其他工具
-- **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl/.dae等）。
-
-### Blender工具使用规则
-1. **开始任务时，先调用 blender_list_workspace_images 查看工作区有哪些参考图**，再调用 blender_read_workspace_image 读取参考图了解目标形态
-2. **操作前先调用 blender_get_objects_summary 了解场景**
-3. **不要猜测对象名称**，先用工具获取真实名称
-4. **复杂操作拆分步骤**，每次少量代码，验证后继续
-5. **修改场景后调用截图工具验证结果**——截图后注意返回文本中的**绝对文件路径**
-6. 需要重新查看之前的截图或参考图时，使用 blender_read_workspace_image 工具
-7. 代码执行后必须设置result = {...}字典
-8. 如果调用Blender工具时提示未连接，请提醒用户先在Blender节点面板中连接Blender
-9. 回复用户使用中文`;
-
-function sendToElectron(toolName, args) {
+function sendToElectron(requestData) {
   return new Promise((resolve, reject) => {
     const client = net.createConnection(SOCKET_PATH, () => {
       const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      const request = JSON.stringify({ requestId, toolName, args });
+      const request = JSON.stringify({ requestId, ...requestData });
 
       const timeout = setTimeout(() => {
         try { client.destroy(); } catch {}
@@ -468,6 +439,28 @@ function sendToElectron(toolName, args) {
   });
 }
 
+let cachedTools = null;
+let cacheTimestamp = 0;
+const TOOLS_CACHE_TTL = 5000;
+
+async function getDynamicToolsList() {
+  const now = Date.now();
+  if (cachedTools && now - cacheTimestamp < TOOLS_CACHE_TTL) {
+    return cachedTools;
+  }
+
+  try {
+    const tools = await sendToElectron({ action: 'tools/list' });
+    const result = Array.isArray(tools) ? tools : [];
+    cachedTools = result;
+    cacheTimestamp = now;
+    return result;
+  } catch (err) {
+    process.stderr.write(`[DVStudio MCP Bridge] Failed to get dynamic tools: ${err.message}, using fallback\n`);
+    return TOOLS;
+  }
+}
+
 function sendResponse(id, result) {
   const response = { jsonrpc: '2.0', id, result };
   process.stdout.write(JSON.stringify(response) + '\n');
@@ -487,7 +480,7 @@ function sendNotification(method, params) {
   process.stdout.write(JSON.stringify(notification) + '\n');
 }
 
-function handleRequest(method, id, params) {
+async function handleRequest(method, id, params) {
   switch (method) {
     case 'initialize':
       sendResponse(id, {
@@ -510,11 +503,11 @@ function handleRequest(method, id, params) {
       break;
 
     case 'tools/list':
-      sendResponse(id, { tools: TOOLS });
+      await handleToolsList(id);
       break;
 
     case 'tools/call':
-      handleToolCall(id, params);
+      await handleToolCall(id, params);
       break;
 
     case 'resources/list':
@@ -539,6 +532,16 @@ function handleRequest(method, id, params) {
 
     default:
       sendErrorResponse(id, -32601, `Method not found: ${method}`);
+  }
+}
+
+async function handleToolsList(id) {
+  try {
+    const tools = await getDynamicToolsList();
+    sendResponse(id, { tools });
+  } catch (err) {
+    process.stderr.write(`[DVStudio MCP Bridge] Error handling tools/list: ${err.message}\n`);
+    sendResponse(id, { tools: TOOLS });
   }
 }
 
@@ -576,14 +579,8 @@ async function handleToolCall(id, params) {
   const toolName = params?.name;
   const args = params?.arguments || {};
 
-  const tool = TOOLS.find(t => t.name === toolName);
-  if (!tool) {
-    sendErrorResponse(id, -32601, `Unknown tool: ${toolName}`);
-    return;
-  }
-
   try {
-    const result = await sendToElectron(toolName, args);
+    const result = await sendToElectron({ toolName, args });
     sendResponse(id, {
       content: convertResultToMCPContent(result),
       isError: false
@@ -602,6 +599,17 @@ function handleNotification(method) {
   }
 }
 
+let requestQueue = Promise.resolve();
+let isProcessingRequest = false;
+
+function enqueueRequest(handler) {
+  requestQueue = requestQueue.then(
+    () => handler(),
+    () => handler()
+  );
+  return requestQueue;
+}
+
 let buffer = '';
 
 process.stdin.on('data', (data) => {
@@ -616,8 +624,20 @@ process.stdin.on('data', (data) => {
 
     try {
       const message = JSON.parse(trimmed);
+
+      if (Array.isArray(message)) {
+        const firstId = message.find(m => m && m.id !== undefined)?.id;
+        if (firstId !== undefined) {
+          sendErrorResponse(firstId, -32600, 'Batch requests are not supported. Please send one request at a time (strictly sequential tool calls).');
+        }
+        process.stderr.write('[DVStudio MCP Bridge] Rejected JSON-RPC batch request - sequential execution required\n');
+        continue;
+      }
+
       if (message.id !== undefined) {
-        handleRequest(message.method, message.id, message.params);
+        enqueueRequest(async () => {
+          await handleRequest(message.method, message.id, message.params);
+        });
       } else {
         handleNotification(message.method, message.params);
       }
@@ -631,4 +651,5 @@ process.stdin.on('end', () => {
   process.exit(0);
 });
 
-process.stderr.write(`[DVStudio MCP Bridge] Server started with ${TOOLS.length} tools\n`);
+process.stderr.write(`[DVStudio MCP Bridge] Server started with ${TOOLS.length} fallback tools\n`);
+process.stderr.write(`[DVStudio MCP Bridge] Node.js version: ${process.version}, Executable: ${process.execPath}\n`);

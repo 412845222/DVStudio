@@ -71,7 +71,17 @@ export class MCPBridgeServer {
     const executor = getToolExecutor();
     try {
       const request = JSON.parse(line);
-      const { requestId, toolName, args } = request;
+      const { requestId, action, toolName, args } = request;
+
+      if (action === 'tools/list') {
+        const tools = executor.getMCPTools();
+        const response = JSON.stringify({
+          requestId,
+          result: tools
+        });
+        socket.write(response + '\n');
+        return;
+      }
 
       this.toolRequestCounter++;
       logger.debug(`[MCP Bridge] Tool request #${this.toolRequestCounter}: ${toolName} (${requestId})`);

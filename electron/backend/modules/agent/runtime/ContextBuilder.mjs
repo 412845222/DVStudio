@@ -36,6 +36,59 @@ function estimateTokens(text) {
   return Math.ceil(cjkChars.length * 1.3 + otherChars * 0.75);
 }
 
+function estimateImageTokens(imageUrl, detail = 'auto') {
+  const BASE_TOKEN = 85;
+  const HIGH_RES_MULTIPLIER = 2.5;
+
+  if (!imageUrl) return BASE_TOKEN;
+
+  try {
+    if (imageUrl.startsWith('data:')) {
+      const base64Data = imageUrl.split(',')[1];
+      if (base64Data) {
+        const byteLength = Math.floor(base64Data.length * 0.75);
+        const pixelEstimate = Math.sqrt(byteLength / 3);
+        const resolutionFactor = Math.min(pixelEstimate / 512, 4);
+        return Math.round(BASE_TOKEN * resolutionFactor);
+      }
+      return BASE_TOKEN;
+    }
+
+    const urlObj = new URL(imageUrl);
+    const widthStr = urlObj.searchParams.get('width');
+    const heightStr = urlObj.searchParams.get('height');
+    
+    if (widthStr && heightStr) {
+      const width = parseInt(widthStr, 10);
+      const height = parseInt(heightStr, 10);
+      if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
+        const pixels = width * height;
+        const basePixels = 640 * 480;
+        const resolutionFactor = Math.sqrt(pixels / basePixels);
+        const cappedFactor = Math.min(resolutionFactor, 4);
+        const detailMultiplier = detail === 'high' ? HIGH_RES_MULTIPLIER : 1;
+        return Math.round(BASE_TOKEN * cappedFactor * detailMultiplier);
+      }
+    }
+
+    const sizeMatch = imageUrl.match(/\/(\d+)x(\d+)\//);
+    if (sizeMatch) {
+      const width = parseInt(sizeMatch[1], 10);
+      const height = parseInt(sizeMatch[2], 10);
+      if (!isNaN(width) && !isNaN(height) && width > 0 && height > 0) {
+        const pixels = width * height;
+        const basePixels = 640 * 480;
+        const resolutionFactor = Math.sqrt(pixels / basePixels);
+        const cappedFactor = Math.min(resolutionFactor, 4);
+        return Math.round(BASE_TOKEN * cappedFactor);
+      }
+    }
+  } catch {
+  }
+
+  return BASE_TOKEN;
+}
+
 function getContextBudget(modelId) {
   const id = String(modelId || '').toLowerCase();
   for (const [pattern, budget] of Object.entries(MODEL_CONTEXT_BUDGETS)) {
@@ -174,8 +227,30 @@ export class ContextBuilder {
     }
 
     const tokenCount = messages.reduce((sum, msg) => {
-      const msgContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-      return sum + estimateTokens(msgContent);
+      if (!msg) return sum;
+      if (typeof msg.content === 'string') {
+        return sum + estimateTokens(msg.content);
+      }
+      if (Array.isArray(msg.content)) {
+        let partSum = 0;
+        for (const part of msg.content) {
+          if (part.type === 'text') {
+            partSum += estimateTokens(part.text || '');
+          } else if (part.type === 'image_url') {
+            const url = part.image_url?.url || '';
+            const detail = part.image_url?.detail || 'auto';
+            partSum += estimateImageTokens(url, detail);
+          }
+        }
+        return sum + partSum;
+      }
+      if (msg.tool_calls) {
+        return sum + estimateTokens(JSON.stringify(msg.tool_calls));
+      }
+      if (msg.role === 'tool' && msg.content) {
+        return sum + estimateTokens(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content));
+      }
+      return sum;
     }, 0);
 
     const budget = getContextBudget(modelId);
@@ -236,13 +311,18 @@ export class ContextBuilder {
           if (part.type === 'text') {
             partSum += estimateTokens(part.text || '');
           } else if (part.type === 'image_url') {
-            partSum += 1000;
+            const url = part.image_url?.url || '';
+            const detail = part.image_url?.detail || 'auto';
+            partSum += estimateImageTokens(url, detail);
           }
         }
         return sum + partSum;
       }
       if (msg.tool_calls) {
         return sum + estimateTokens(JSON.stringify(msg.tool_calls));
+      }
+      if (msg.role === 'tool' && msg.content) {
+        return sum + estimateTokens(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content));
       }
       return sum;
     }, 0);

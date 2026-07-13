@@ -19,7 +19,6 @@ function run(cmd, args, { env } = {}) {
 function getMirrorConfig() {
 	if (isCI) {
 		return {
-			PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.org/simple/',
 			ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
 			ELECTRON_BUILDER_BINARIES_MIRROR:
 				process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
@@ -27,7 +26,6 @@ function getMirrorConfig() {
 		}
 	}
 	return {
-		PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.tuna.tsinghua.edu.cn/simple',
 		ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
 		ELECTRON_BUILDER_BINARIES_MIRROR:
 			process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
@@ -47,7 +45,6 @@ async function main() {
 	process.stdout.write(`[dist:win] electron cache dir: ${cacheDir}\n`)
 
 	const mirrors = getMirrorConfig()
-	process.stdout.write(`[dist:win] PIP_INDEX_URL: ${mirrors.PIP_INDEX_URL}\n`)
 	process.stdout.write(`[dist:win] ELECTRON_MIRROR: ${mirrors.ELECTRON_MIRROR}\n`)
 
 	const buildEnv = {

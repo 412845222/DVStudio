@@ -17,10 +17,11 @@ import { fileURLToPath } from 'url';
 import { shell } from 'electron';
 import { BaseCLIAdapter, CLIEventType, CheckStatus, commandExists, findCommandPath, getProxyEnvVars } from './base.mjs';
 import logger from '../../core/logger.mjs';
+import { getBundledScriptPath, getNodeExecutablePath } from '../../core/resourcePaths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const STDIO_BRIDGE_PATH = path.join(__dirname, '..', 'mcp', 'server', 'stdioBridge.mjs');
+const STDIO_BRIDGE_PATH = getBundledScriptPath('modules/mcp/server/stdioBridge.mjs');
 
 const CODEX_FALLBACK_MODELS = [
   { id: 'codex-mini', label: 'Codex Mini (推荐)', vendor: 'OpenAI Codex', capabilities: ['chat', 'code'], recommended: true },
@@ -29,6 +30,11 @@ const CODEX_FALLBACK_MODELS = [
   { id: 'gpt-5-nano', label: 'GPT-5 Nano', vendor: 'OpenAI Codex', capabilities: ['chat', 'code'] },
   { id: 'o4-mini', label: 'o4-mini', vendor: 'OpenAI Codex', capabilities: ['chat', 'code', 'reasoning'] },
 ];
+
+function getValidModelIds(models) {
+  if (!models || !Array.isArray(models)) return [];
+  return models.map(m => m.id).filter(id => id && typeof id === 'string');
+}
 
 function getCodexHomeDir() {
   return path.join(os.homedir(), '.codex');
@@ -42,16 +48,28 @@ function getCodexConfigFilePath() {
   return path.join(getCodexHomeDir(), 'config.toml');
 }
 
-function getNodePath() {
+function getNodeRuntime() {
   try {
     const nodeCmd = process.platform === 'win32' ? 'node.exe' : 'node';
     const nodePath = findCommandPath(nodeCmd);
     if (nodePath && fs.existsSync(nodePath)) {
-      return nodePath;
+      logger.info(`[CodexCLI] Using system Node: ${nodePath}`);
+      return { path: nodePath, isElectron: false };
     }
   } catch {}
-  logger.warn('[CodexCLI] Could not find node executable via findCommandPath, using "node" as fallback');
-  return 'node';
+
+  const execPath = getNodeExecutablePath();
+  if (execPath && fs.existsSync(execPath)) {
+    logger.warn(`[CodexCLI] System Node not found, falling back to Electron: ${execPath}`);
+    return { path: execPath, isElectron: true };
+  }
+
+  logger.warn('[CodexCLI] Could not determine Node.js executable path, using "node" as fallback');
+  return { path: 'node', isElectron: false };
+}
+
+function getNodePath() {
+  return getNodeRuntime().path;
 }
 
 function ensureDvstudioMcpProfile() {
@@ -63,12 +81,26 @@ function ensureDvstudioMcpProfile() {
 
     const configPath = getCodexConfigFilePath();
     const bridgePath = STDIO_BRIDGE_PATH.replace(/\\/g, '/');
-    const nodePath = getNodePath().replace(/\\/g, '/');
+    const runtime = getNodeRuntime();
+    const nodePath = runtime.path.replace(/\\/g, '/');
+
+    logger.info(`[CodexCLI] MCP bridge path: ${STDIO_BRIDGE_PATH} (exists: ${fs.existsSync(STDIO_BRIDGE_PATH)})`);
+    logger.info(`[CodexCLI] Node executable path: ${nodePath} (exists: ${fs.existsSync(runtime.path)})`);
+
+    if (!fs.existsSync(STDIO_BRIDGE_PATH)) {
+      logger.error(`[CodexCLI] MCP stdio bridge script does not exist: ${STDIO_BRIDGE_PATH}`);
+    }
+
+    let envConfig = '';
+    if (runtime.isElectron) {
+      envConfig = '\nenv = { ELECTRON_RUN_AS_NODE = "1" }';
+    }
+
     const mcpServerConfig = `
 [mcp_servers.dvstudio]
 command = "${nodePath}"
 args = ["${bridgePath}"]
-startup_timeout_sec = 30
+startup_timeout_sec = 30${envConfig}
 `;
 
     let configContent = '';
@@ -1006,7 +1038,15 @@ export class CodexCliAdapter extends BaseCLIAdapter {
       return;
     }
 
-    const model = options.model || this.cliConfig.model || 'codex-mini';
+    const requestedModel = options.model || this.cliConfig.model || 'codex-mini';
+    const configuredModels = this.cliConfig.models || CODEX_FALLBACK_MODELS;
+    const validModelIds = getValidModelIds(configuredModels);
+    const model = validModelIds.length > 0 && validModelIds.includes(requestedModel)
+      ? requestedModel
+      : validModelIds.length > 0 ? validModelIds[0] : 'codex-mini';
+    if (requestedModel !== model) {
+      logger.warn(`[CodexCLI] Model "${requestedModel}" not available in configured models, falling back to "${model}". Please refresh models in Settings.`);
+    }
 
     yield { type: CLIEventType.THINKING_DELTA, content: '正在启动 Codex...' };
 
@@ -1015,26 +1055,21 @@ export class CodexCliAdapter extends BaseCLIAdapter {
 
     ensureDvstudioMcpProfile();
 
-    const mcpInstruction = `你是DVStudio的AI工作流助手。DVStudio是一个AI工作流蓝图编辑器，提供了名为"dvstudio"的MCP工具服务器。
+    const mcpInstruction = `你是DVStudio的AI工作流助手。DVStudio提供"dvstudio"MCP工具服务器。
 
-# 重要规则
-1. 必须使用dvstudio MCP工具操作工作流蓝图，绝对不要读取/修改文件系统代码，也不要执行shell命令
-2. 创建节点前，先调用 get_blueprint_state 了解当前蓝图状态（返回值包含viewport视口信息：zoom/panX/panY/centerWorldX/centerWorldY）
-3. 创建节点时，如果不确定正确的节点类型ID，先调用 list_node_types 获取所有可用类型，然后再调用 create_node
-4. create_node的type参数必须使用list_node_types返回的type值（actionId，如image-generation表示图片节点，text-generation表示文本节点，blender表示Blender 3D节点）
-5. **绝对不要给create_node传入position、x、y参数**。系统会自动将新节点放置在用户当前蓝图视口中心，并自动避开已有节点。传入错误坐标会导致节点创建到视口外，用户看不到节点！
-6. 不要试图分析项目源代码，直接通过MCP工具完成所有操作
-7. get_blueprint_state返回的viewport.centerWorldX/centerWorldY是用户当前视口中心的世界坐标，仅供你了解用户视角，创建节点时系统自动使用
-
-## Blender 3D工具使用说明
-当用户需要操作Blender 3D场景时，使用以blender_为前缀的工具：
-- 开始任务时，先调用 blender_list_workspace_images 查看工作区是否有参考图，再调用 blender_read_workspace_image 读取参考图了解目标形态
-- 操作前先调用 blender_get_objects_summary 了解场景结构
-- 使用blender_execute_blender_code执行bpy Python代码（必须设置result字典返回结果）
-- 修改场景后调用blender_get_screenshot_of_area_as_image验证结果（默认截取VIEW_3D视口）
-- **截图自动保存到工作区**：截图工具返回结果中包含截图的绝对文件路径，可通过 blender_read_workspace_image 重新查看历史截图
-- 需要重新查看截图或参考图时，使用 blender_read_workspace_image 工具（传入相对路径如 "screenshots/xxx.png"）
-- 如果调用Blender工具时提示未连接，请提醒用户先在Blender节点面板中点击"连接Blender"
+# 核心规则（必须严格遵守）
+1. **严格串行调用工具**：每次只能调用一个工具，必须等待结果完全返回后再调用下一个工具。绝对不要并行/同时发起多个工具调用！
+2. **截图工具返回的结果中已经直接包含图片**：调用blender_get_screenshot_of_area_as_image后，图片数据会直接在工具返回结果中，你可以立即看到截图内容，**不需要再调用blender_read_workspace_image去读取截图文件**！
+3. blender_read_workspace_image仅用于：查看用户提供的参考图、或查看更早之前的历史截图。刚刚截取的最新截图直接看工具返回结果即可。
+4. 只有当用户明确提到"参考图"时，才先调用blender_list_workspace_images查看，否则跳过这一步直接开始工作。
+5. 必须使用dvstudio MCP工具操作，绝对不要读取/修改文件系统代码，不要执行shell命令。
+6. 创建节点前先调用get_blueprint_state了解当前蓝图状态；不确定节点类型ID时调用list_node_types。
+7. create_node的type参数必须使用list_node_types返回的type值（如blender表示Blender 3D节点）。
+8. **绝对不要给create_node传入position、x、y参数**，系统会自动放置节点。
+9. 不要分析项目源代码，直接通过MCP工具完成操作。
+10. 修改Blender场景后，调用blender_get_screenshot_of_area_as_image验证结果——截图直接显示在工具返回中，直接查看即可。
+11. 使用blender_execute_blender_code执行bpy代码时，必须设置result字典返回结果。
+12. 回复用户使用中文。
 
 `;
     const enhancedContent = mcpInstruction + content;

@@ -8,10 +8,6 @@ import { pipeline } from 'node:stream/promises'
 const isCI = process.env.CI === 'true'
 const PYTHON_VERSION = '3.11.9'
 const PYTHON_ZIP_FILENAME = `python-${PYTHON_VERSION}-embed-amd64.zip`
-const GET_PIP_FILENAME = 'get-pip.py'
-const PIP_INDEX_URL =
-	process.env.PIP_INDEX_URL ||
-	(isCI ? 'https://pypi.org/simple/' : 'https://pypi.tuna.tsinghua.edu.cn/simple')
 
 const OFFICIAL_PYTHON_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip`
 const CN_PYTHON_URLS = [
@@ -25,11 +21,6 @@ const PYTHON_EMBED_URLS = (process.env.PYTHON_EMBED_MIRROR
 	: isCI
 		? [OFFICIAL_PYTHON_URL, ...CN_PYTHON_URLS]
 		: [...CN_PYTHON_URLS, OFFICIAL_PYTHON_URL]
-).filter(Boolean)
-
-const GET_PIP_URLS = (process.env.GET_PIP_MIRROR
-	? [process.env.GET_PIP_MIRROR]
-	: ['https://bootstrap.pypa.io/get-pip.py']
 ).filter(Boolean)
 
 const REPO_ROOT = path.resolve(process.cwd())
@@ -182,13 +173,6 @@ function runCommand(cmd, args, options = {}) {
 	return result
 }
 
-function getPipIndexArgs() {
-	if (PIP_INDEX_URL) {
-		return ['-i', PIP_INDEX_URL, '--trusted-host', new URL(PIP_INDEX_URL).hostname]
-	}
-	return []
-}
-
 function findFileBySuffix(dir, suffix) {
 	if (!fs.existsSync(dir)) return null
 	const files = fs.readdirSync(dir)
@@ -280,7 +264,6 @@ async function main() {
 
 	log(`Preparing Python ${PYTHON_VERSION} runtime for Windows x64...`)
 	log(`Environment: ${isCI ? 'CI (GitHub Actions)' : 'local'}`)
-	log(`PIP_INDEX_URL: ${PIP_INDEX_URL}`)
 	log(`Target directory: ${path.relative(REPO_ROOT, PYTHON_RUNTIME_DIR)}`)
 	log(`Cache directory: ${path.relative(REPO_ROOT, CACHE_DIR)}`)
 
@@ -309,56 +292,12 @@ async function main() {
 	}
 
 	const zipPath = path.resolve(TEMP_DIR, PYTHON_ZIP_FILENAME)
-	const getPipPath = path.resolve(TEMP_DIR, GET_PIP_FILENAME)
 
 	try {
 		await downloadFile(PYTHON_EMBED_URLS, zipPath, PYTHON_ZIP_FILENAME)
-		await downloadFile(GET_PIP_URLS, getPipPath, GET_PIP_FILENAME)
 
 		extractZip(zipPath, PYTHON_RUNTIME_DIR)
 		configurePythonRuntime(PYTHON_RUNTIME_DIR)
-
-		log('Installing pip...')
-		runCommand(pythonExe, [getPipPath, '--no-warn-script-location', ...getPipIndexArgs()], { cwd: PYTHON_RUNTIME_DIR })
-
-		const requirementsPath = path.resolve(REPO_ROOT, 'django-app', 'requirements.txt')
-		if (fs.existsSync(requirementsPath)) {
-			log('Installing requirements from django-app/requirements.txt...')
-			runCommand(
-				pythonExe,
-				[
-					'-m',
-					'pip',
-					'install',
-					'--no-warn-script-location',
-					'--no-cache-dir',
-					'-r',
-					requirementsPath,
-					...getPipIndexArgs()
-				],
-				{ cwd: PYTHON_RUNTIME_DIR }
-			)
-		} else {
-			log('Warning: requirements.txt not found, installing minimal dependencies...')
-			runCommand(
-				pythonExe,
-				[
-					'-m',
-					'pip',
-					'install',
-					'--no-warn-script-location',
-					'--no-cache-dir',
-					'Django==4.2.11',
-					'djangorestframework==3.14.0',
-					'django-cors-headers==4.4.0',
-					'cryptography==42.0.8',
-					'Pillow>=10.4.0',
-					'certifi>=2024.0.0',
-					...getPipIndexArgs()
-				],
-				{ cwd: PYTHON_RUNTIME_DIR }
-			)
-		}
 
 		finalizePythonRuntime(PYTHON_RUNTIME_DIR)
 

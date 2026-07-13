@@ -43,22 +43,6 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		legacyModelKey: 'copilot',
 		vendor: 'GitHub Copilot',
 		supportsVision: true
-	},
-	{
-		id: 'claude-sonnet-4.5',
-		label: 'Claude Sonnet 4.5',
-		needType: 'text',
-		apiSource: 'copilot',
-		legacyModelKey: 'copilot',
-		vendor: 'GitHub Copilot'
-	},
-	{
-		id: 'o4-mini',
-		label: 'o4-mini',
-		needType: 'text',
-		apiSource: 'copilot',
-		legacyModelKey: 'copilot',
-		vendor: 'GitHub Copilot'
 	}
 ]
 
@@ -144,13 +128,16 @@ export function isCopilotEnabled(): boolean {
 
 export function getCopilotModels(): ChatModelCatalogItem[] {
 	if (copilotModelsLoaded.value && dynamicCopilotModels.value.length > 0) {
-		return dynamicCopilotModels.value
+		const validModels = dynamicCopilotModels.value.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
+		if (validModels.length > 0) {
+			return validModels
+		}
 	}
 	return DEFAULT_COPILOT_MODELS
 }
 
 export function setDynamicCodexModels(models: ChatModelCatalogItem[]) {
-	dynamicCodexModels.value = models
+	dynamicCodexModels.value = models.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
 	codexModelsLoaded.value = true
 }
 
@@ -164,7 +151,10 @@ export function isCodexEnabled(): boolean {
 
 export function getCodexModels(): ChatModelCatalogItem[] {
 	if (codexModelsLoaded.value && dynamicCodexModels.value.length > 0) {
-		return dynamicCodexModels.value
+		const validModels = dynamicCodexModels.value.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
+		if (validModels.length > 0) {
+			return validModels
+		}
 	}
 	return DEFAULT_CODEX_MODELS
 }

@@ -218,6 +218,10 @@ export class AgentRuntime {
       let finalContent = '';
       let reasoningContent = '';
       const toolResultCache = new Map();
+      const UNCACHEABLE_TOOLS = new Set([
+        'blender_get_screenshot_of_area_as_image',
+        'blender_get_screenshot_of_window_as_image',
+      ]);
       while (toolCallCount < maxToolCalls) {
         if (abortController.signal.aborted) {
           yield { type: 'error', message: '请求已取消' };
@@ -345,7 +349,8 @@ export class AgentRuntime {
           let resultImages = [];
 
           const cacheKey = `${tc.name}:${JSON.stringify(args)}`;
-          if (toolResultCache.has(cacheKey) && toolCallCount > 1) {
+          const isCacheable = !UNCACHEABLE_TOOLS.has(tc.name);
+          if (isCacheable && toolResultCache.has(cacheKey) && toolCallCount > 1) {
             const cached = toolResultCache.get(cacheKey);
             rawResult = cached.rawResult;
             sanitizedResult = cached.sanitizedResult;
@@ -390,7 +395,9 @@ export class AgentRuntime {
                   }
                 } catch {}
               }
-              toolResultCache.set(cacheKey, { rawResult, sanitizedResult, images: resultImages });
+              if (isCacheable) {
+                toolResultCache.set(cacheKey, { rawResult, sanitizedResult, images: resultImages });
+              }
               yield {
                 type: 'tool_call_end',
                 toolCallId: tcId,
@@ -448,13 +455,15 @@ export class AgentRuntime {
             sessionImages.push(...roundImages);
             const imageParts = [{
               type: 'text',
-              text: '以下是操作后的截图，请根据截图验证结果并继续：'
+              text: '以下是操作后的最新截图（screenshot_id: ' + Date.now() + '），请仔细查看截图验证当前Blender画面状态并继续：'
             }];
             for (const img of roundImages) {
+              const imageUrl = img.dataUrl || img.fileUrl;
               imageParts.push({
                 type: 'image_url',
-                image_url: { url: img.fileUrl, detail: 'auto' }
+                image_url: { url: imageUrl, detail: 'high' }
               });
+              logger.info(`AgentRuntime: Adding screenshot to vision context: ${img.fileName}, using ${img.dataUrl ? 'dataUrl' : 'fileUrl'}`);
             }
             currentMessages.push({ role: 'user', content: imageParts });
             logger.info(`AgentRuntime: Added ${roundImages.length} screenshot(s) as vision context, total this session: ${sessionImages.length}`);
