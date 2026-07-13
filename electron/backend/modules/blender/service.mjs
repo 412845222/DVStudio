@@ -16,8 +16,8 @@ const DEFAULT_HOST = 'localhost';
 const DEFAULT_PORT = 9876;
 const SOCKET_TIMEOUT_MS = 180000;
 const MAX_RESPONSE_BYTES = 50 * 1024 * 1024;
-const IMAGE_SIZE_LIMIT = 80 * 1024;
-const IMAGE_MAX_DIMENSION = 640;
+const IMAGE_SIZE_LIMIT = 250 * 1024;
+const IMAGE_MAX_WIDTH = 960;
 
 function broadcastStatusToWindows(payload) {
   try {
@@ -36,7 +36,7 @@ function escStr(s) {
 }
 
 const IMAGE_DOWNSCALE_CODE = `
-def _downscale_image(tmpdir, filepath, size_limit, max_dimension, tolerance=0):
+def _downscale_image(tmpdir, filepath, size_limit, max_width, tolerance=0):
     import os, imbuf, math
     from bpy import context
     
@@ -54,8 +54,8 @@ def _downscale_image(tmpdir, filepath, size_limit, max_dimension, tolerance=0):
         im.resize((round(w / pixel_size), round(h / pixel_size)), method='BILINEAR')
     
     w, h = im.size
-    if max(w, h) > max_dimension:
-        scale = max_dimension / max(w, h)
+    if w > max_width:
+        scale = max_width / w
         new_w = max(64, round(w * scale))
         new_h = max(64, round(h * scale))
         im.resize((new_w, new_h), method='BILINEAR')
@@ -75,7 +75,7 @@ def _downscale_image(tmpdir, filepath, size_limit, max_dimension, tolerance=0):
             new_h = max(64, round(cur_h * 0.7))
         im.resize((new_w, new_h), method='BILINEAR')
         data = _write_read(im)
-        cur_w, cur_h = new_w, new_h
+        cur_w, cur_h = new_w, cur_h
         if len(data) <= size_limit:
             break
     
@@ -381,11 +381,24 @@ usages["Audio"] = {"score": score, "certainty": cert}
 result = {"status": "ok", "usage_guesses": usages}`;
 }
 
+function buildForceRedraw() {
+  return `import bpy
+try:
+    bpy.context.view_layer.update()
+    for w in bpy.context.window_manager.windows:
+        for a in w.screen.areas:
+            a.tag_redraw()
+    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=3)
+    result = {"status": "ok", "message": "redraw_forced"}
+except Exception as e:
+    result = {"status": "error", "message": str(e)}`;
+}
+
 function buildGetScreenshotOfAreaAsImage(areaType, sizeLimit) {
   const at = escStr(areaType || 'VIEW_3D');
   const limit = Number(sizeLimit) || IMAGE_SIZE_LIMIT;
-  const maxDim = IMAGE_MAX_DIMENSION;
-  return `import bpy, tempfile, os, base64
+  const maxDim = IMAGE_MAX_WIDTH;
+  return `import bpy, tempfile, os, base64, time
 ${IMAGE_DOWNSCALE_CODE}
 _area_type = "${at}"
 if bpy.app.background:
@@ -393,20 +406,35 @@ if bpy.app.background:
 elif bpy.context.window is None:
     result = {"status": "error", "message": "No active window"}
 else:
+    target_window = bpy.context.window
     target_area = None
-    for area in bpy.context.screen.areas:
+    target_region = None
+    for area in target_window.screen.areas:
         if area.type == _area_type:
             target_area = area
+            for region in area.regions:
+                if region.type == 'WINDOW':
+                    target_region = region
+                    break
             break
     if target_area is None:
-        available = [a.type for a in bpy.context.screen.areas]
+        available = [a.type for a in target_window.screen.areas]
         result = {"status": "error", "message": f"No area of type {_area_type!r} found. Available: {available}"}
     else:
         with tempfile.TemporaryDirectory(prefix="blmcp_screenshot_") as tmpdir:
             fp = os.path.join(tmpdir, "screenshot.png")
             try:
-                with bpy.context.temp_override(area=target_area):
-                    bpy.ops.screen.screenshot_area(filepath=fp)
+                bpy.context.view_layer.update()
+                for w in bpy.context.window_manager.windows:
+                    for a in w.screen.areas:
+                        a.tag_redraw()
+                bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=3)
+                if target_region is not None:
+                    with bpy.context.temp_override(window=target_window, area=target_area, region=target_region):
+                        bpy.ops.screen.screenshot_area(filepath=fp, check_existing=False)
+                else:
+                    with bpy.context.temp_override(window=target_window, area=target_area):
+                        bpy.ops.screen.screenshot_area(filepath=fp, check_existing=False)
             except RuntimeError as ex:
                 result = {"status": "error", "message": str(ex)}
             else:
@@ -419,13 +447,15 @@ else:
                         "image_base64": base64.b64encode(img_bytes).decode("ascii"),
                         "area_type": _area_type,
                         "mime_type": "image/png",
+                        "screenshot_id": str(int(time.time() * 1000)),
+                        "file_size": len(img_bytes)
                     }`;
 }
 
 function buildGetScreenshotOfWindowAsImage(sizeLimit) {
   const limit = Number(sizeLimit) || IMAGE_SIZE_LIMIT;
-  const maxDim = IMAGE_MAX_DIMENSION;
-  return `import bpy, tempfile, os, base64
+  const maxDim = IMAGE_MAX_WIDTH;
+  return `import bpy, tempfile, os, base64, time
 ${IMAGE_DOWNSCALE_CODE}
 if bpy.app.background:
     result = {"status": "error", "message": "Screenshots not available in background mode"}
@@ -435,7 +465,13 @@ else:
     with tempfile.TemporaryDirectory(prefix="blmcp_screenshot_") as tmpdir:
         fp = os.path.join(tmpdir, "screenshot.png")
         try:
-            bpy.ops.screen.screenshot(filepath=fp)
+            bpy.context.view_layer.update()
+            for w in bpy.context.window_manager.windows:
+                for a in w.screen.areas:
+                    a.tag_redraw()
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=3)
+            with bpy.context.temp_override(window=bpy.context.window):
+                bpy.ops.screen.screenshot(filepath=fp, check_existing=False)
         except RuntimeError as ex:
             result = {"status": "error", "message": str(ex)}
         else:
@@ -447,6 +483,8 @@ else:
                     "status": "ok",
                     "image_base64": base64.b64encode(img_bytes).decode("ascii"),
                     "mime_type": "image/png",
+                    "screenshot_id": str(int(time.time() * 1000)),
+                    "file_size": len(img_bytes)
                 }`;
 }
 
@@ -1655,7 +1693,7 @@ class BlenderMcpService extends EventEmitter {
       },
       {
         name: 'get_screenshot_of_area_as_image',
-        description: '截取Blender中指定类型区域的截图并返回PNG图片（base64编码）。默认截取VIEW_3D区域，自动缩放到1MB以内。',
+        description: '【强制刷新】截取Blender中指定区域的最新截图并返回PNG图片（base64编码）。⚠️重要：每次需要查看当前画面状态时，必须调用此工具获取最新截图，绝不要使用blender_read_workspace_image读取历史截图文件！默认截取VIEW_3D区域，自动缩放到1MB以内。执行任何修改操作后，务必调用此工具验证结果。',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1670,7 +1708,7 @@ class BlenderMcpService extends EventEmitter {
       },
       {
         name: 'get_screenshot_of_window_as_image',
-        description: '截取整个Blender窗口的截图并返回PNG图片（base64编码），自动缩放到1MB以内。',
+        description: '【强制刷新】截取整个Blender窗口的最新截图并返回PNG图片（base64编码），自动缩放到1MB以内。⚠️重要：每次需要查看当前画面状态时，必须调用此工具获取最新截图，绝不要使用blender_read_workspace_image读取历史截图文件！',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1749,11 +1787,11 @@ class BlenderMcpService extends EventEmitter {
       },
       {
         name: 'read_workspace_image',
-        description: '读取工作区中的图片文件并返回图片内容（用于视觉分析）。可以用来重新查看之前保存的截图或参考图。',
+        description: '⚠️仅用于读取references目录中的参考图片，或用户明确要求查看历史保存的图片。【绝对禁止】用此工具查看Blender当前画面状态！查看当前状态必须使用blender_get_screenshot_of_area_as_image或blender_get_screenshot_of_window_as_image获取最新截图，否则会看到旧图片导致错误判断。',
         inputSchema: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: '图片的相对路径（相对于工作区根目录），如 "screenshots/20240101_120000.png" 或 "references/ref.png"。也可以传文件名。' },
+            path: { type: 'string', description: '图片的相对路径（相对于工作区根目录），如 "references/ref.png"。不要用此工具读取screenshots目录下的文件！' },
           },
           required: ['path'],
         },
@@ -1891,25 +1929,32 @@ class BlenderMcpService extends EventEmitter {
 
     if (result !== undefined && typeof result === 'object' && result.image_base64) {
       const sizeKB = Math.round(String(result.image_base64).length * 3 / 4 / 1024);
+      const screenshotId = result.screenshot_id || String(Date.now());
       const content = [];
       if (text.trim()) {
         content.push({ type: 'text', text: text.trim() });
       }
 
+      let saveResult = null;
       let savedPath = null;
+      let cacheBustUrl = null;
+      let savedFileName = null;
       if (this._workspaceContext) {
         try {
           const workspace = getBlenderWorkspace();
           const imgMimeType = result.mime_type || 'image/png';
-          const saveResult = await workspace.saveScreenshot(
+          saveResult = await workspace.saveScreenshot(
             this._workspaceContext.projectRoot,
             this._workspaceContext.nodeId,
             String(result.image_base64),
-            imgMimeType
+            imgMimeType,
+            screenshotId
           );
           if (saveResult.ok) {
             savedPath = saveResult.absolutePath;
-            logger.info(`[BlenderMcpService] Code screenshot auto-saved to workspace: ${savedPath}`);
+            cacheBustUrl = saveResult.url;
+            savedFileName = saveResult.fileName;
+            logger.info(`[BlenderMcpService] Code screenshot auto-saved to workspace: ${savedPath}, screenshotId=${screenshotId}, fileName=${savedFileName}`);
           } else {
             logger.warn(`[BlenderMcpService] Failed to auto-save code screenshot: ${saveResult.error}`);
           }
@@ -1919,8 +1964,8 @@ class BlenderMcpService extends EventEmitter {
       }
 
       const summary = savedPath
-        ? `代码执行完成，截图已生成 (~${sizeKB}KB)，已保存到工作区: ${savedPath}\n如需重新查看此截图，可调用 blender_read_workspace_image 工具，参数 path 为文件名或相对路径（如 "screenshots/${path.basename(savedPath)}"）`
-        : `代码执行完成，截图已生成 (~${sizeKB}KB)`;
+        ? `✅ 代码执行完成，最新截图已生成 (screenshot_id=${screenshotId}, ~${sizeKB}KB, 文件名=${savedFileName})\n⚠️重要：这是最新的实时截图！下次需要查看画面状态时，必须重新调用 blender_get_screenshot_of_area_as_image 获取最新截图，切勿读取工作区中的历史截图文件！`
+        : `✅ 代码执行完成，最新截图已生成 (screenshot_id=${screenshotId}, ~${sizeKB}KB)\n⚠️重要：下次需要查看画面状态时，必须重新调用截图工具获取最新画面！`;
       content.push({ type: 'text', text: summary });
       content.push({ type: 'image', data: String(result.image_base64), mimeType: result.mime_type || 'image/png' });
       const display = { ...result };
@@ -1930,6 +1975,9 @@ class BlenderMcpService extends EventEmitter {
         content,
         text: text ? `${text}\n${summary}\n${resultStr}` : `${summary}\n${resultStr}`,
         savedPath,
+        url: cacheBustUrl,
+        savedFileName,
+        screenshotId,
       };
     }
 
@@ -1956,20 +2004,27 @@ class BlenderMcpService extends EventEmitter {
     if (result && result.image_base64) {
       const areaType = result.area_type || 'window';
       const sizeKB = Math.round(result.image_base64.length * 3 / 4 / 1024);
+      const screenshotId = result.screenshot_id || String(Date.now());
 
+      let saveResult = null;
       let savedPath = null;
+      let savedUrl = null;
+      let savedFileName = null;
       if (this._workspaceContext) {
         try {
           const workspace = getBlenderWorkspace();
-          const saveResult = await workspace.saveScreenshot(
+          saveResult = await workspace.saveScreenshot(
             this._workspaceContext.projectRoot,
             this._workspaceContext.nodeId,
             result.image_base64,
-            'image/png'
+            'image/png',
+            screenshotId
           );
           if (saveResult.ok) {
             savedPath = saveResult.absolutePath;
-            logger.info(`[BlenderMcpService] Screenshot auto-saved to workspace: ${savedPath}`);
+            savedUrl = saveResult.url;
+            savedFileName = saveResult.fileName;
+            logger.info(`[BlenderMcpService] Screenshot auto-saved to workspace: ${savedPath}, screenshotId=${screenshotId}, fileName=${savedFileName}`);
           } else {
             logger.warn(`[BlenderMcpService] Failed to auto-save screenshot: ${saveResult.error}`);
           }
@@ -1979,8 +2034,8 @@ class BlenderMcpService extends EventEmitter {
       }
 
       const textMsg = savedPath
-        ? `${areaType}截图已生成 (~${sizeKB}KB)，已保存到工作区: ${savedPath}\n如需重新查看此截图，可调用 blender_read_workspace_image 工具，参数 path 为文件名或相对路径（如 "screenshots/${path.basename(savedPath)}"）`
-        : `${areaType}截图已生成 (~${sizeKB}KB)`;
+        ? `✅ ${areaType}最新截图已生成 (screenshot_id=${screenshotId}, ~${sizeKB}KB, 文件名=${savedFileName})\n⚠️重要：这是最新的实时截图！下次需要查看画面状态时，必须【重新调用截图工具】获取最新画面，绝不能读取screenshots目录中的历史截图文件！`
+        : `✅ ${areaType}最新截图已生成 (screenshot_id=${screenshotId}, ~${sizeKB}KB)\n⚠️重要：下次需要查看画面状态时，必须重新调用截图工具！`;
 
       return {
         content: [
@@ -1989,6 +2044,11 @@ class BlenderMcpService extends EventEmitter {
         ],
         text: textMsg,
         savedPath,
+        savedUrl,
+        savedFileName,
+        screenshotId,
+        areaType,
+        sizeKB,
       };
     }
     let text = '';
@@ -2016,14 +2076,19 @@ class BlenderMcpService extends EventEmitter {
       throw new Error(result.error || '读取图片失败');
     }
     const sizeKB = Math.round(result.size / 1024);
-    const content = [
-      { type: 'text', text: `已读取图片: ${result.absolutePath} (~${sizeKB}KB)` },
-      { type: 'image', data: result.base64, mimeType: result.mimeType },
-    ];
+    const content = [];
+    let textMsg = `已读取图片: ${result.fileName || result.absolutePath} (~${sizeKB}KB)`;
+    if (result.warning) {
+      textMsg = result.warning + '\n' + textMsg;
+    }
+    content.push({ type: 'text', text: textMsg });
+    content.push({ type: 'image', data: result.base64, mimeType: result.mimeType });
     return {
       content,
-      text: `已读取图片: ${result.absolutePath} (~${sizeKB}KB)`,
+      text: textMsg,
       savedPath: result.absolutePath,
+      url: result.cacheBustUrl,
+      warning: result.warning,
     };
   }
 
@@ -2134,9 +2199,16 @@ class BlenderMcpService extends EventEmitter {
 - **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。
 - **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。
 
-## 截图工具
-- **blender_get_screenshot_of_area_as_image**: 截取指定区域截图（默认VIEW_3D），返回base64 PNG。每次修改后调用验证。
-- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口截图。
+## 🔴【截图工具 - 必须严格遵守】
+- **blender_get_screenshot_of_area_as_image**: 【强制刷新】截取指定区域最新截图（默认VIEW_3D），返回base64 PNG。
+- **blender_get_screenshot_of_window_as_image**: 【强制刷新】截取整个Blender窗口最新截图。
+
+🚨 **截图铁则（违反会导致严重错误）**：
+1. **每次需要查看当前画面状态时，必须调用截图工具获取最新截图！** 绝不能依赖之前看到的截图或使用blender_read_workspace_image读取历史文件。
+2. **任何修改操作后（创建/删除/移动/修改对象、调整参数、切换视图等），必须立即调用截图工具验证结果！**
+3. **blender_read_workspace_image 工具仅用于查看references目录中的参考图片**，【绝对禁止】用它来查看Blender当前状态！screenshots目录下的文件都是历史快照，会误导你的判断！
+4. **截图是唯一可信的视觉信息来源**。如果你不确定当前画面是什么样的，就调用截图工具，不要猜测！
+5. **连续操作中，每完成一个小步骤都应该截图检查**，避免错误累积。
 
 ## 导航工具
 - **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。
@@ -2146,14 +2218,17 @@ class BlenderMcpService extends EventEmitter {
 
 ## 其他
 - **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl）。
+- **blender_read_workspace_image**: ⚠️仅用于读取references参考图，禁止用于查看当前画面！
+- **blender_list_workspace_images**: 列出工作区图片文件。
 
 ## 使用规则
 1. **操作前先调用 blender_get_objects_summary 了解场景**
 2. **不要猜测对象名称**，先用工具获取真实名称
-3. **复杂操作拆分步骤**，每次少量代码，验证后继续
-4. **修改场景后调用截图工具验证结果**
-5. 代码执行后必须设置result = {...}字典
-6. 回复用户使用中文`;
+3. **复杂操作拆分步骤**，每次少量代码，【每步后必须截图验证】再继续
+4. **修改场景后【立即】调用截图工具验证结果**，截图是唯一真相来源
+5. **绝不使用 blender_read_workspace_image 查看screenshots目录**，那都是旧图片
+6. 代码执行后必须设置result = {...}字典
+7. 回复用户使用中文`;
     if (this._registeredToolNames.length > 0) {
       prompt += '\n\n## 当前已注册工具\n';
       prompt += this._registeredToolNames.map(t => `- ${t}`).join('\n');

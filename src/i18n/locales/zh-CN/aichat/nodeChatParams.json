@@ -112,5 +112,6 @@
   "aichat.nodeChatParams.tripo3dTexturePromptFromChat": "提示词取自对话框输入",
   "aichat.nodeChatParams.tripo3dTextureNoImages": "未连接参考图片，将使用对话框文本作为贴图提示词",
   "aichat.nodeChatParams.tripo3dTextureSelectImages": "选择参考图并指定方向",
-  "aichat.nodeChatParams.tripo3dTextureViewProgress": "已选择 {selected}/{total} 视图"
+  "aichat.nodeChatParams.tripo3dTextureViewProgress": "已选择 {selected}/{total} 视图",
+  "aichat.nodeChatParams.modelNotAvailable": "模型不可用，请在设置页面刷新"
 }

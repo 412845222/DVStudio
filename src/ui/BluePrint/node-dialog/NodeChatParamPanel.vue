@@ -2482,14 +2482,26 @@ const blenderDvsModelOptions = computed(() => {
 
 const blenderCodexModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'codex') return []
-	return getCodexModels().map(m => ({ value: m.id, label: m.label }))
+	const models = getCodexModels()
+	const validIds = new Set(models.map(m => m.id))
+	const currentModelId = props.params.modelId
+	const options = models.map(m => ({ value: m.id, label: m.label }))
+	if (currentModelId && !validIds.has(currentModelId)) {
+		options.unshift({ value: currentModelId, label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})` })
+	}
+	return options
 })
 
 const blenderCopilotModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'copilot') return []
-	return getCopilotModels()
-		.filter(m => m.apiSource === 'copilot')
-		.map(m => ({ value: m.id, label: m.label }))
+	const models = getCopilotModels().filter(m => m.apiSource === 'copilot')
+	const validIds = new Set(models.map(m => m.id))
+	const currentModelId = props.params.modelId
+	const options = models.map(m => ({ value: m.id, label: m.label }))
+	if (currentModelId && !validIds.has(currentModelId)) {
+		options.unshift({ value: currentModelId, label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})` })
+	}
+	return options
 })
 
 const advancedCollapsed = ref(true)

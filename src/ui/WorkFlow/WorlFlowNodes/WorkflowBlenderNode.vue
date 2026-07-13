@@ -241,22 +241,31 @@
 				</div>
 
 				<!-- Token 使用量指示器 -->
-				<div v-if="chatContextUsage && chatMessages.length" class="wf-blender-token-indicator" @pointerdown.stop>
-					<div class="wf-blender-token-bar-container" :title="`上下文: ${chatContextUsage.tokenCount} / ${chatContextUsage.budget} tokens (${chatContextUsage.usage}%)${chatContextUsage.truncated ? ' — 已自动压缩' : ''}`">
-						<div
-							class="wf-blender-token-bar-fill"
-							:class="{
-								'is-warn': chatContextUsage.usage >= 70 && chatContextUsage.usage < 90,
-								'is-high': chatContextUsage.usage >= 90,
-								'is-truncated': chatContextUsage.truncated
-							}"
-							:style="{ width: `${Math.min(100, chatContextUsage.usage)}%` }"
-						></div>
-					</div>
-					<span class="wf-blender-token-label">
-						{{ formatTokenCount(chatContextUsage.tokenCount) }}/{{ formatTokenCount(chatContextUsage.budget) }}{{ chatContextUsage.truncated ? ' 📦' : '' }}
-					</span>
-				</div>
+		<div v-if="chatContextUsage && chatMessages.length" class="wf-blender-token-indicator" @pointerdown.stop>
+			<div class="wf-blender-token-bar-container" :title="`上下文: ${chatContextUsage.tokenCount} / ${chatContextUsage.budget} tokens (${chatContextUsage.usage}%)${chatContextUsage.truncated ? ' — 已自动压缩' : ''}`">
+				<div
+					class="wf-blender-token-bar-fill"
+					:class="{
+						'is-warn': chatContextUsage.usage >= 70 && chatContextUsage.usage < 90,
+						'is-high': chatContextUsage.usage >= 90,
+						'is-truncated': chatContextUsage.truncated
+					}"
+					:style="{ width: `${Math.min(100, chatContextUsage.usage)}%` }"
+				></div>
+			</div>
+			<span class="wf-blender-token-label">
+				{{ formatTokenCount(chatContextUsage.tokenCount) }}/{{ formatTokenCount(chatContextUsage.budget) }}{{ chatContextUsage.truncated ? ' 📦' : '' }}
+			</span>
+			<button
+				class="wf-blender-token-compress-btn"
+				type="button"
+				@click.stop="onCompressContext"
+				:title="`压缩上下文（当前 ${chatContextUsage.usage}%）`"
+				:disabled="chatMessages.length <= 2"
+			>
+				🗜️
+			</button>
+		</div>
 
 				<!-- 导入进度条 -->
 				<div v-if="showImportProgress" class="wf-blender-import-progress" @pointerdown.stop>
@@ -399,9 +408,10 @@ const emit = defineEmits<{
 	(e: 'blender-status-click', payload: { host: string; port: number }): void
 	(e: 'blender-clear-chat'): void
 	(e: 'blender-open-workspace'): void
-	(e: 'blender-init-workspace'): void
-	(e: 'update-blender-settings', payload: Partial<WorkflowBlenderNodeSettings>): void
-}>()
+		(e: 'blender-init-workspace'): void
+		(e: 'update-blender-settings', payload: Partial<WorkflowBlenderNodeSettings>): void
+		(e: 'blender-compress-context'): void
+	}>()
 
 const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => {
 	emit('start-link', payload)
@@ -572,6 +582,10 @@ const onToggleConnect = () => {
 			port: validPort
 		})
 	}
+}
+
+const onCompressContext = () => {
+	emit('blender-compress-context')
 }
 
 const onMountTools = () => {
@@ -1313,6 +1327,35 @@ watch(
 	color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
 	white-space: nowrap;
 	font-variant-numeric: tabular-nums;
+}
+
+.wf-blender-token-compress-btn {
+	flex-shrink: 0;
+	width: 20px;
+	height: 16px;
+	padding: 0;
+	font-size: 10px;
+	line-height: 1;
+	background: transparent;
+	border: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 40%, transparent);
+	color: var(--vscode-fg-muted, #888);
+	cursor: pointer;
+	border-radius: 2px;
+	transition: all 0.15s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wf-blender-token-compress-btn:hover:not(:disabled) {
+	border-color: #8b5cf6;
+	color: #8b5cf6;
+	background: color-mix(in srgb, #8b5cf6 10%, transparent);
+}
+
+.wf-blender-token-compress-btn:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
 }
 
 .wf-blender-workspace-indicator {

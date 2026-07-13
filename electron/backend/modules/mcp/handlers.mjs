@@ -11,6 +11,7 @@ import { getMCPBridgeServer } from './server/socketBridge.mjs';
 import { getDVStudioMCPServer } from './server/DVStudioMCPServer.mjs';
 import { invalidParamsError, internalError } from '../../core/errors.mjs';
 import logger from '../../core/logger.mjs';
+import { getBundledScriptPath, getNodeExecutablePath } from '../../core/resourcePaths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,13 +32,13 @@ export async function mcpGetBridgeStatus() {
 }
 
 export async function mcpGetBridgeScriptPath() {
-  const scriptPath = path.join(__dirname, 'server', 'stdioBridge.mjs');
+  const scriptPath = getBundledScriptPath('modules/mcp/server/stdioBridge.mjs');
   const socketPath = process.platform === 'win32'
     ? '\\\\.\\pipe\\dvstudio-mcp-bridge'
     : path.join(os.tmpdir(), 'dvstudio-mcp-bridge.sock');
   return {
     scriptPath,
-    nodePath: process.execPath,
+    nodePath: getNodeExecutablePath(),
     socketPath
   };
 }
