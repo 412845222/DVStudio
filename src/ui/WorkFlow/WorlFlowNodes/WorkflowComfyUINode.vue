@@ -51,7 +51,20 @@
 						{{ status === 'connecting' ? t('nodes.comfyui.connecting') : t('nodes.comfyui.connect') }}
 					</button>
 					<div class="wf-comfy-status" :class="statusClass">
-						{{ statusText }}
+						{{ connectedStatusText }}
+					</div>
+				</div>
+
+				<div v-if="status === 'connected' && systemInfo" class="wf-comfy-info">
+					<div v-if="comfyUIVersion" class="wf-comfy-info-item">
+						<span class="wf-comfy-info-label">ComfyUI</span>
+						<span class="wf-comfy-info-value">{{ comfyUIVersion }}</span>
+					</div>
+					<div v-if="nodeCount > 0" class="wf-comfy-info-item">
+						<span class="wf-comfy-info-label">{{ t('nodes.comfyui.nodeCount', { count: nodeCount }) }}</span>
+					</div>
+					<div v-if="checkpoints.length > 0" class="wf-comfy-info-item">
+						<span class="wf-comfy-info-label">{{ t('nodes.comfyui.availableCheckpoints', { count: checkpoints.length }) }}</span>
 					</div>
 				</div>
 
@@ -217,10 +230,28 @@ const props = defineProps<{
 		status?: 'idle' | 'connecting' | 'connected' | 'error'
 		message?: string
 		lastCheckedAt?: number
-		workflows?: { path: string; name: string }[]
+		workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
 		workflowPath?: string
+		workflowSource?: 'userdata' | 'history'
 		positivePrompt?: string
 		negativePrompt?: string
+		objectInfo?: Record<string, unknown>
+		systemInfo?: {
+			system?: {
+				comfyui_version?: string
+				os?: string
+				python_version?: string
+				pytorch_version?: string
+				[key: string]: unknown
+			}
+			devices?: Array<{
+				name: string
+				type?: string
+				[key: string]: unknown
+			}>
+			nodeCount?: number
+		}
+		checkpoints?: string[]
 		outputs?: Array<{
 			kind: 'image' | 'video'
 			url: string
@@ -400,10 +431,25 @@ const runStatusTextDisplay = computed(() => {
 	return runStatusText.value || runStatusTextFallback.value
 })
 
-const statusText = computed(() => {
+const systemInfo = computed(() => props.comfyuiSettings?.systemInfo ?? null)
+const comfyUIVersion = computed(() => String(systemInfo.value?.system?.comfyui_version ?? ''))
+const nodeCount = computed(() => {
+	const n = Number(systemInfo.value?.nodeCount)
+	return Number.isFinite(n) ? n : 0
+})
+const checkpoints = computed(() => {
+	const arr = props.comfyuiSettings?.checkpoints
+	return Array.isArray(arr) ? arr : []
+})
+
+const connectedStatusText = computed(() => {
 	if (!baseUrlTrimmed.value) return t('nodes.comfyui.connNoAddress')
 	if (status.value === 'connecting') return t('nodes.comfyui.connConnecting')
-	if (status.value === 'connected') return t('nodes.comfyui.connConnected')
+	if (status.value === 'connected') {
+		return comfyUIVersion.value
+			? t('nodes.comfyui.connectedInfo', { version: comfyUIVersion.value })
+			: t('nodes.comfyui.connConnected')
+	}
 	if (status.value === 'error') return message.value ? t('nodes.comfyui.connFailed', { message: message.value }) : t('nodes.comfyui.connFailed', { message: '' })
 	return t('nodes.comfyui.connNotConnected')
 })
@@ -462,13 +508,15 @@ onMounted(() => {
 	width: 100%;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 8px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-row {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-label {
@@ -491,7 +539,9 @@ onMounted(() => {
 .wf-comfy-textarea {
 	width: 100%;
 	box-sizing: border-box;
-	min-height: 56px;
+	height: 40px;
+	min-height: 32px;
+	max-height: 120px;
 	padding: 6px 8px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);
@@ -501,12 +551,14 @@ onMounted(() => {
 	resize: vertical;
 	font-family: inherit;
 	font-size: 12px;
+	overflow-y: auto;
 }
 
 .wf-comfy-prompt {
 	display: flex;
 	align-items: flex-start;
 	gap: 8px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-anchor-hit {
@@ -548,12 +600,14 @@ onMounted(() => {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-workflows {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-select {
@@ -571,18 +625,21 @@ onMounted(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-runbar {
 	display: flex;
 	gap: 10px;
 	align-items: center;
+	flex-shrink: 0;
 }
 
 .wf-comfy-progress {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-progress-track {
@@ -609,6 +666,7 @@ onMounted(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
+	flex-shrink: 0;
 }
 
 .wf-comfy-output-link {
@@ -658,16 +716,45 @@ onMounted(() => {
 	opacity: 1;
 }
 
+.wf-comfy-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+	flex-shrink: 0;
+}
+
+.wf-comfy-info-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 11px;
+}
+
+.wf-comfy-info-label {
+	color: var(--vscode-fg-muted);
+}
+
+.wf-comfy-info-value {
+	color: var(--vscode-foreground);
+	font-weight: 500;
+}
+
 .wf-comfy-inputs {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	flex-shrink: 0;
+	width: 100%;
 }
 
 .wf-comfy-inputs-header {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	flex-shrink: 0;
 }
 
 .wf-comfy-inputs-title {

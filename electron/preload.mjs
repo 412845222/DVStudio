@@ -607,9 +607,11 @@ contextBridge.exposeInMainWorld('dweb', {
 	comfyui: {
 		runtime: {
 			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
+			objectInfo: (payload) => invoke('dweb:comfyui:runtime:object_info', payload || {}),
 			workflows: {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
+				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
 			},
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),

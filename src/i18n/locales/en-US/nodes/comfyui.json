@@ -76,5 +76,10 @@
   "nodes.comfyui.jobGoneRunnable": "Job no longer exists, reset to runnable state.",
   "nodes.comfyui.cancelFailed": "Cancel failed: ComfyUI status unknown, polling stopped.",
   "nodes.comfyui.taskInvalidated": "Task detected as invalid (backend may have restarted)",
-  "nodes.comfyui.taskNotFoundReset": "Task not found, reset."
+  "nodes.comfyui.taskNotFoundReset": "Task not found, reset.",
+  "nodes.comfyui.getObjectInfoFailed": "Failed to get node info: {error}",
+  "nodes.comfyui.nodeCount": "Nodes: {count}",
+  "nodes.comfyui.systemInfo": "System Info",
+  "nodes.comfyui.availableCheckpoints": "Available models: {count}",
+  "nodes.comfyui.connectedInfo": "Connected - {version}"
 }

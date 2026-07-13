@@ -65,6 +65,11 @@ export const NEWUI2_NODE_CATALOG_CATEGORIES: Newui2NodeCatalogCategory[] = [
 		id: 'model3d',
 		label: '3D',
 		description: '3D generation, retopo, DCC utilities, and runtime integration nodes.'
+	},
+	{
+		id: 'plugin',
+		label: 'Plugin',
+		description: 'Third-party platform integration nodes like ComfyUI.'
 	}
 ]
 
@@ -171,7 +176,7 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		undefined,
 		'indoor-scene'
 	),
-	comfyui: catalogMetadata('image', 'image2d', [], '集成 ComfyUI 工作流进行高级图像生成和处理。', [
+	comfyui: catalogMetadata('plugin', 'plugin', [], '集成 ComfyUI 工作流进行高级图像和视频生成处理。', [
 		'ComfyUI',
 		'工作流'
 	]),
@@ -259,7 +264,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'comfyui',
 		nodeType: 'comfyui',
 		label: 'ComfyUI节点',
-		inputKinds: ['text'],
+		inputKinds: ['image', 'text'],
 		outputKinds: ['image', 'video'],
 		order: 38
 	},

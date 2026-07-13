@@ -40,12 +40,20 @@ export async function runtimePing(ctx, payload) {
 	return service.runtimePing(ctx, payload)
 }
 
+export async function runtimeGetObjectInfo(ctx, payload) {
+	return service.runtimeGetObjectInfo(ctx, payload)
+}
+
 export async function runtimeListWorkflowFiles(ctx, payload) {
 	return service.runtimeListWorkflowFiles(ctx, payload)
 }
 
 export async function runtimeGetWorkflowFile(ctx, payload) {
 	return service.runtimeGetWorkflowFile(ctx, payload)
+}
+
+export async function runtimeGetHistoryWorkflow(ctx, payload) {
+	return service.runtimeGetHistoryWorkflow(ctx, payload)
 }
 
 export async function runtimeRunWorkflow(ctx, payload) {
