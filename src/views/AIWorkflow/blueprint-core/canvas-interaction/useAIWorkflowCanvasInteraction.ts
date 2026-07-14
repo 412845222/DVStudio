@@ -19,6 +19,9 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	forceEndViewportMotion?: () => void
 	scheduleAsyncEdgeRender: () => void
 	canvasViewportSize: Ref<{ width: number; height: number }>
+	onNodeDragStart?: (nodeIds: string[]) => void
+	onNodeDragMove?: (nodeIds: string[]) => void
+	onNodeDragEnd?: (nodeIds: string[]) => void
 }) => {
 	const onCanvasPointerDown = (event: PointerEvent) => {
 		if (event.button !== 0) return
@@ -183,6 +186,19 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			payload.selectedNodeIds.value.length > 1 && payload.selectedNodeIds.value.includes(nodeId)
 		let prevDx = 0
 		let prevDy = 0
+		let hasMoved = false
+		let dragNodeIds: string[] = []
+		let dragMoveRafId: number | null = null
+
+		const scheduleDragMove = () => {
+			if (dragMoveRafId !== null) return
+			dragMoveRafId = requestAnimationFrame(() => {
+				dragMoveRafId = null
+				if (hasMoved && dragNodeIds.length > 0) {
+					payload.onNodeDragMove?.(dragNodeIds)
+				}
+			})
+		}
 
 		const onMove = (moveEvent: PointerEvent) => {
 			moveEvent.preventDefault()
@@ -191,6 +207,15 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			const dx = toWorld.x - fromWorld.x
 			const dy = toWorld.y - fromWorld.y
 			payload.markViewportMotion()
+
+			if (!hasMoved && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
+				hasMoved = true
+				dragNodeIds = moveGroup
+					? payload.selectedNodeIds.value.slice()
+					: [nodeId]
+				payload.onNodeDragStart?.(dragNodeIds)
+			}
+
 			if (moveGroup) {
 				const stepDx = dx - prevDx
 				const stepDy = dy - prevDy
@@ -206,10 +231,15 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 					worldY: startWorld.y + dy
 				})
 			}
+			scheduleDragMove()
 			payload.scheduleAsyncEdgeRender()
 		}
 
 		const cleanup = () => {
+			if (dragMoveRafId !== null) {
+				cancelAnimationFrame(dragMoveRafId)
+				dragMoveRafId = null
+			}
 			window.removeEventListener('pointermove', onMove, true)
 			window.removeEventListener('pointerup', onUp, true)
 			window.removeEventListener('pointercancel', onUp, true)
@@ -224,6 +254,9 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 
 		const onUp = () => {
 			cleanup()
+			if (hasMoved && dragNodeIds.length > 0) {
+				payload.onNodeDragEnd?.(dragNodeIds)
+			}
 		}
 
 		window.addEventListener('pointermove', onMove, { capture: true, passive: false })

@@ -115,8 +115,11 @@
 						<div class="wf-blender-chat-empty-desc">连接Blender后，用自然语言描述你想在Blender中执行的操作，AI将自动调用blender_execute_code工具控制Blender。</div>
 						<div class="wf-blender-chat-empty-example">例如："创建一个立方体"、"导入上游模型"、"给选中物体添加 subdivision 修改器"</div>
 					</div>
+					<div v-if="hasMoreMessages" class="wf-blender-load-more" @click.stop="onLoadMoreMessages">
+						⬆ 加载更早消息（还有 {{ chatMessages.length - visibleMessages.length }} 条）
+					</div>
 					<div
-						v-for="msg in chatMessages"
+						v-for="msg in visibleMessages"
 						:key="msg.id"
 						class="wf-blender-chat-msg"
 						:class="[
@@ -339,6 +342,23 @@ const { t } = useI18n()
 
 const collapsedMap = ref<Map<string, boolean>>(new Map())
 const thinkingCollapsedMap = ref<Map<string, boolean>>(new Map())
+
+const INITIAL_VISIBLE_COUNT = 50
+const LOAD_MORE_COUNT = 50
+const visibleMessagesCount = ref(INITIAL_VISIBLE_COUNT)
+
+const visibleMessages = computed(() => {
+	const msgs = chatMessages.value
+	const total = msgs.length
+	if (total <= visibleMessagesCount.value) return msgs
+	return msgs.slice(total - visibleMessagesCount.value)
+})
+
+const hasMoreMessages = computed(() => chatMessages.value.length > visibleMessagesCount.value)
+
+const onLoadMoreMessages = () => {
+	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
+}
 
 type AnchorSpec = {
 	id: string
@@ -970,6 +990,21 @@ watch(
 	font-size: 11px;
 	text-align: center;
 	padding: 12px 4px;
+}
+
+.wf-blender-load-more {
+	text-align: center;
+	font-size: 11px;
+	color: #e87d0d;
+	padding: 6px;
+	cursor: pointer;
+	user-select: none;
+	border-radius: 3px;
+	transition: background 0.15s;
+}
+
+.wf-blender-load-more:hover {
+	background: rgba(232, 125, 13, 0.15);
 }
 
 .wf-blender-chat-msg {

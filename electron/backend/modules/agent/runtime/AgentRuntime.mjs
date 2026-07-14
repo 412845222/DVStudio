@@ -453,17 +453,30 @@ export class AgentRuntime {
 
           if (roundImages.length > 0) {
             sessionImages.push(...roundImages);
+            const screenshotMsgText = '以下是操作后的最新截图（screenshot_id: ' + Date.now() + '），请仔细查看截图验证当前Blender画面状态并继续：';
             const imageParts = [{
               type: 'text',
-              text: '以下是操作后的最新截图（screenshot_id: ' + Date.now() + '），请仔细查看截图验证当前Blender画面状态并继续：'
+              text: screenshotMsgText
             }];
             for (const img of roundImages) {
               const imageUrl = img.dataUrl || img.fileUrl;
               imageParts.push({
                 type: 'image_url',
-                image_url: { url: imageUrl, detail: 'high' }
+                image_url: { url: imageUrl, detail: 'auto' }
               });
               logger.info(`AgentRuntime: Adding screenshot to vision context: ${img.fileName}, using ${img.dataUrl ? 'dataUrl' : 'fileUrl'}`);
+            }
+            for (let i = currentMessages.length - 1; i >= 0; i--) {
+              const msg = currentMessages[i];
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                const hasText = msg.content.some(p => p.type === 'text' && typeof p.text === 'string' && p.text.includes('screenshot_id:'));
+                const hasImage = msg.content.some(p => p.type === 'image_url');
+                if (hasText && hasImage) {
+                  currentMessages.splice(i, 1);
+                  logger.info(`AgentRuntime: Removed previous screenshot message to save tokens (index: ${i})`);
+                  break;
+                }
+              }
             }
             currentMessages.push({ role: 'user', content: imageParts });
             logger.info(`AgentRuntime: Added ${roundImages.length} screenshot(s) as vision context, total this session: ${sessionImages.length}`);

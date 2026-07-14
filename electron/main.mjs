@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process'
 
 dns.setDefaultResultOrder('ipv4first')
 
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol, session } from 'electron'
 
 import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getRepoRoot, getWindowIconPath } from './config.mjs'
 import { collectDiagnostics } from './backend/diagnostics.mjs'
@@ -751,9 +751,6 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 
 		setStep('nodeBackend', { status: 'running', progress: 80, detail: '正在初始化 Node.js IPC 后端...' })
 		try {
-			if (mainWindow && !mainWindow.isDestroyed()) {
-				initBackend(mainWindow)
-			}
 			updateBackendRuntimeState({
 				running: true,
 				healthy: true,
@@ -2022,7 +2019,12 @@ async function main() {
 	// 异步加载页面，不阻塞后续初始化
 	_perfMark('About to loadURL...')
 	const pageLoadPromise = isDev
-		? mainWindow.loadURL(devUrl)
+		? session.defaultSession.clearCache().then(() => {
+				appendRuntimeLog('[renderer] HTTP cache cleared for dev mode')
+				const url = new URL(devUrl)
+				url.searchParams.set('_t', String(Date.now()))
+				return mainWindow.loadURL(url.toString())
+			})
 		: mainWindow.loadFile(prodIndex)
 	pageLoadPromise.then(() => {
 		_perfMark('loadURL promise resolved')

@@ -1850,31 +1850,56 @@ const clearUpstreamCroppedImageUrl = (nodeId: string) => {
 }
 
 watch(
-	() => nodes.value,
-	(newNodes) => {
-		const currentNodeIds = new Set(newNodes.map((n) => String(n?.id ?? '').trim()).filter(Boolean))
-		upstreamCroppedImageUrls.forEach((url, nodeId) => {
+	() => nodes.value.map((n) => String(n?.id ?? '').trim()).filter(Boolean).join('|'),
+	() => {
+		const currentNodeIds = new Set(nodes.value.map((n) => String(n?.id ?? '').trim()).filter(Boolean))
+		const toDelete: string[] = []
+		upstreamCroppedImageUrls.forEach((_url, nodeId) => {
 			if (!currentNodeIds.has(nodeId)) {
-				clearUpstreamCroppedImageUrl(nodeId)
+				toDelete.push(nodeId)
 			}
 		})
-	},
-	{ deep: true }
+		for (const nodeId of toDelete) {
+			clearUpstreamCroppedImageUrl(nodeId)
+		}
+	}
 )
 
+const cropDependencyFingerprint = computed(() => {
+	let hash = 0
+	for (const edge of Object.values(store.state.edgesById)) {
+		if (!edge) continue
+		const anchorId = String(edge.toAnchorId ?? '')
+		if (anchorId.includes('image') || anchorId.includes('resource')) {
+			hash = (hash * 31 + String(edge.fromNodeId).length + String(edge.toNodeId).length) % 2147483647
+		}
+	}
+	for (const node of nodes.value) {
+		if (node.type !== 'image') continue
+		const s = node.imageSettings
+		if (!s?.cropEnabled || !s.crop) continue
+		hash = (hash * 17 + Math.round((s.outputWidth || 0) / 10)) % 2147483647
+		hash = (hash * 17 + Math.round((s.outputHeight || 0) / 10)) % 2147483647
+	}
+	return hash
+})
+
 watch(
-	() => store.state.nodesById,
+	() => [store.state.edgeOrder.length, cropDependencyFingerprint.value] as const,
 	() => {
+		const toClear: string[] = []
 		nodes.value.forEach((node) => {
 			if (node.type !== 'image') return
 			const newCmd = getUpstreamCroppedImageUrl(node)
 			const currentUrl = upstreamCroppedImageUrls.get(String(node.id))
 			if (newCmd && currentUrl && newCmd !== currentUrl) {
-				clearUpstreamCroppedImageUrl(String(node.id))
+				toClear.push(String(node.id))
 			}
 		})
-	},
-	{ deep: true }
+		for (const nodeId of toClear) {
+			clearUpstreamCroppedImageUrl(nodeId)
+		}
+	}
 )
 
 /**
@@ -3318,7 +3343,7 @@ watch(
 			})
 		}
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 )
 
 let prevSelectedNodeIds: string[] = []
@@ -3337,7 +3362,7 @@ watch(
 			}
 		})
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 )
 
 let hasWarmedUp = false
@@ -11664,7 +11689,33 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	markViewportMotion,
 	forceEndViewportMotion,
 	scheduleAsyncEdgeRender,
-	canvasViewportSize
+	canvasViewportSize,
+	onNodeDragStart: (nodeIds: string[]) => {
+		selectionFrameDragging.value = true
+		selectionFrameDragNodeIds.value = new Set(nodeIds)
+		selectionDragFullRenderIds.value = new Set()
+		selectionDragMoveTick.value = 0
+		scheduleUpdateDragFullRender()
+		refreshCanvasNodeLayer()
+	},
+	onNodeDragMove: (_nodeIds: string[]) => {
+		selectionDragMoveTick.value++
+		scheduleUpdateDragFullRender()
+		nodeCanvasLayerRef.value?.markDirty()
+	},
+	onNodeDragEnd: (nodeIds: string[]) => {
+		selectionFrameDragging.value = false
+		selectionFrameDragNodeIds.value = new Set()
+		selectionDragFullRenderIds.value = new Set()
+		selectionDragMoveTick.value++
+		if (updateDragFullRenderRafId !== null) {
+			cancelAnimationFrame(updateDragFullRenderRafId)
+			updateDragFullRenderRafId = null
+		}
+		forceEndViewportMotion()
+		refreshCanvasNodeLayer()
+		scheduleVisibleNodeScreenshots()
+	}
 })
 
 const onStartLink = linkInteraction.onStartLink
@@ -11820,7 +11871,7 @@ watch(
 			scheduleVisibleNodeScreenshots()
 		})
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 )
 
 watch(
@@ -11843,7 +11894,7 @@ watch(
 			nodeScreenshotMap.value = newMap
 		}
 	},
-	{ deep: true, flush: 'post' }
+	{ flush: 'post' }
 )
 
 const onCanvasPanningStart = () => {

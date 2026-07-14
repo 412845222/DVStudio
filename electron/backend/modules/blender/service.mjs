@@ -2191,7 +2191,7 @@ class BlenderMcpService extends EventEmitter {
 
 ## 场景信息工具
 - **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。
-- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。
+- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。修改对象后，优先用此工具验证参数，比截图更高效。
 - **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。
 - **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。
 - **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。
@@ -2199,36 +2199,157 @@ class BlenderMcpService extends EventEmitter {
 - **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。
 - **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。
 
-## 🔴【截图工具 - 必须严格遵守】
-- **blender_get_screenshot_of_area_as_image**: 【强制刷新】截取指定区域最新截图（默认VIEW_3D），返回base64 PNG。
-- **blender_get_screenshot_of_window_as_image**: 【强制刷新】截取整个Blender窗口最新截图。
+## 截图工具（按需使用，避免频繁截图浪费token）
+- **blender_get_screenshot_of_area_as_image**: 截取指定区域最新截图（默认VIEW_3D），返回base64 PNG。
+- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口最新截图。
 
-🚨 **截图铁则（违反会导致严重错误）**：
-1. **每次需要查看当前画面状态时，必须调用截图工具获取最新截图！** 绝不能依赖之前看到的截图或使用blender_read_workspace_image读取历史文件。
-2. **任何修改操作后（创建/删除/移动/修改对象、调整参数、切换视图等），必须立即调用截图工具验证结果！**
-3. **blender_read_workspace_image 工具仅用于查看references目录中的参考图片**，【绝对禁止】用它来查看Blender当前状态！screenshots目录下的文件都是历史快照，会误导你的判断！
-4. **截图是唯一可信的视觉信息来源**。如果你不确定当前画面是什么样的，就调用截图工具，不要猜测！
-5. **连续操作中，每完成一个小步骤都应该截图检查**，避免错误累积。
+📸 **截图策略（智能使用，节省token）**：
+1. **不需要截图的场景**（优先使用结构化工具验证）：
+   - 查询类操作（get_objects_summary、get_object_detail_summary等）
+   - 简单参数修改、对象创建/删除等操作：用get_object_detail_summary验证即可
+   - 导航操作（jump_to_*系列工具）
+   - 批量连续操作：完成所有相关步骤后再统一截图验证一次
+   - 导入模型：导入过程不需要截图，可在全部导入完成后截图确认
+2. **需要截图的场景**：
+   - 用户明确要求"看看效果"、"截图看看"、"现在什么样"
+   - 完成整个任务的最终验证
+   - 操作结果不确定、需要视觉确认布局/位置/外观
+   - 遇到错误需要调试时
+   - 涉及材质、灯光、渲染效果等视觉相关调整
+3. **重要规则**：
+   - blender_read_workspace_image 仅用于查看references目录中的参考图片
+   - 不要使用blender_read_workspace_image查看screenshots目录（历史截图）
+   - 结构化工具（get_object_detail_summary等）能验证的，优先用结构化工具，不要用截图
+
+## ⚠️ Blender 5.1 版本专属注意事项（极其重要，不要用旧API）
+
+你运行在 **Blender 5.1** 环境中，大量API相对于3.x/4.x版本已变更。以下是高频错误清单：
+
+### 渲染引擎枚举（必须使用正确值）
+- ✅ 正确：\`bpy.context.scene.render.engine = 'BLENDER_EEVEE'\`
+- ❌ 错误：\`'BLENDER_EEVEE_NEXT'\`（已废弃，不存在）
+- ❌ 错误：不要直接设置 \`eevee.use_bloom\`，EEVEE设置在5.1中已重构路径，设置前应先查询属性是否存在
+
+### 颜色值（必须4通道RGBA）
+- ✅ 正确：所有颜色输入（Base Color/Emission等）必须用4通道：\`(r, g, b, 1.0)\`
+- ❌ 错误：3通道RGB \`(1, 0, 0)\` 会报错 "sequences of dimension 0 should contain 4 items"
+
+### 旋转模式枚举
+- ✅ 正确：\`obj.rotation_mode = 'XYZ'\`
+- ❌ 错误：\`'EULER_XYZ'\`（不存在）
+
+### bmesh API使用
+- ✅ 正确：\`bm = bmesh.new(); bm.from_mesh(mesh)\` 或编辑模式下 \`bm = bmesh.from_edit_mesh(mesh)\`
+- ❌ 错误：\`bmesh.from_mesh(mesh)\`（这是模块级函数，不存在）
+
+### 视图覆盖层属性改名
+- ❌ \`overlay.show_bounds\` → ✅ \`overlay.show_object_bounds\`
+- ❌ \`overlay.show_camera\` 等属性在5.1中已改名，使用前先检查 \`hasattr(overlay, 'property_name')\`
+
+### 对象操作安全检查
+- 设置原点前必须检查类型：\`if obj.type != 'CAMERA'\` 才能调用 \`bpy.ops.object.origin_set()\`，相机会报错
+- 链接到集合前检查：\`if obj.name not in col.objects: col.objects.link(obj)\`
+- 访问对象前检查：\`obj = bpy.data.objects.get("Name")\`，判断 \`if obj is None\`
+- 创建节点前检查节点类型是否存在，Blender 5.1中部分几何节点ID已变更或移除
+- 访问节点输入输出前检查：\`if node.inputs.get("Name") is not None\`
+
+### HDRI/枚举值
+- HDRI枚举需要写完整文件名（如 \`"city.exr"\`），不要只写 \`"city"\`
+
+## 🛡️ 安全操作铁则（违反将导致严重问题）
+
+### 删除操作（极度谨慎）
+1. **永远不要执行 \`bpy.ops.object.delete()\` 不带选择**（可能删除所有对象）
+2. **永远不要执行 \`bpy.data.objects.remove(obj)\` 除非用户明确要求删除**
+3. **优先使用隐藏 \`obj.hide_set(True)\` 代替删除，可恢复**
+4. **高风险操作前先调用：\`bpy.ops.ed.undo_push(message="Before AI Operation")\`**，用户出错可按Ctrl+Z撤销
+5. **每次只修改一个对象/一个参数**，验证后再继续
+
+### 通用安全编码规范
+1. 任何操作前先检查对象是否存在：\`obj = bpy.data.objects.get("Name"); if obj is None: return error\`
+2. 任何属性设置前先检查属性是否存在：\`if hasattr(obj, 'property_name')\`
+3. 访问集合前检查索引/键是否存在：\`if 0 < len(col) or "key" in col\`
+4. 不要批量删除/修改用户未明确要求的内容
+5. 如果不确定API是否存在，先用小代码段测试属性是否存在，再执行完整操作
+
+## bpy API快速参考（避免写错API）
+
+### 对象访问与选择
+\`\`\`python
+import bpy
+
+obj = bpy.data.objects.get("ObjectName")
+if obj is None:
+    result = {"status": "error", "message": "Object not found"}
+else:
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+\`\`\`
+
+### 变换操作
+\`\`\`python
+obj.location = (x, y, z)
+obj.rotation_euler = (rx, ry, rz)
+obj.scale = (sx, sy, sz)
+
+is_visible = obj.visible_get()
+obj.hide_set(False)
+obj.hide_viewport = False
+\`\`\`
+
+### 视图操作（需要在VIEW_3D上下文执行）
+\`\`\`python
+for area in bpy.context.screen.areas:
+    if area.type == 'VIEW_3D':
+        for region in area.regions:
+            if region.type == 'WINDOW':
+                with bpy.context.temp_override(area=area, region=region):
+                    bpy.ops.view3d.view_selected()
+                break
+        break
+\`\`\`
+
+### 上下文覆盖（Blender 3.2+标准方式）
+\`\`\`python
+with bpy.context.temp_override(window=win, area=area, region=region):
+    bpy.ops.some_operator()
+\`\`\`
+
+### 模型导入
+\`\`\`python
+bpy.ops.import_scene.gltf(filepath=path)
+bpy.ops.import_scene.fbx(filepath=path)
+bpy.ops.wm.obj_import(filepath=path)
+bpy.ops.wm.stl_import(filepath=path)
+\`\`\`
+
+### 结果返回要求
+- 代码执行后**必须**设置result字典变量
+- 成功时：result = {"status": "ok", ...其他数据}
+- 失败时：result = {"status": "error", "message": "错误描述"}
 
 ## 导航工具
 - **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。
 - **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。
-- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象。
+- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象（自动显示隐藏对象）。
 - **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。
 
 ## 其他
 - **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl）。
-- **blender_read_workspace_image**: ⚠️仅用于读取references参考图，禁止用于查看当前画面！
+- **blender_read_workspace_image**: 仅用于读取references目录中的参考图片。
 - **blender_list_workspace_images**: 列出工作区图片文件。
 
 ## 使用规则
 1. **操作前先调用 blender_get_objects_summary 了解场景**
 2. **不要猜测对象名称**，先用工具获取真实名称
-3. **复杂操作拆分步骤**，每次少量代码，【每步后必须截图验证】再继续
-4. **修改场景后【立即】调用截图工具验证结果**，截图是唯一真相来源
-5. **绝不使用 blender_read_workspace_image 查看screenshots目录**，那都是旧图片
-6. 代码执行后必须设置result = {...}字典
-7. 回复用户使用中文`;
+3. **复杂操作拆分步骤**，每次少量代码
+4. **验证策略**：优先用get_object_detail_summary等结构化工具验证参数，视觉效果再用截图验证
+5. **批量操作**：连续多个相关操作完成后再统一截图，不要每步都截图
+6. **安全第一**：所有操作遵循安全编码规范，高风险操作前先push undo点
+7. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查
+8. 代码执行后必须设置result = {...}字典
+9. 回复用户使用中文`;
     if (this._registeredToolNames.length > 0) {
       prompt += '\n\n## 当前已注册工具\n';
       prompt += this._registeredToolNames.map(t => `- ${t}`).join('\n');

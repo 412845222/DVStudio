@@ -231,7 +231,7 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('')
 	parts.push('## 场景信息工具')
 	parts.push('- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。')
-	parts.push('- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。')
+	parts.push('- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。修改对象后，优先用此工具验证参数，比截图更高效。')
 	parts.push('- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。')
 	parts.push('- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。')
 	parts.push('- **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。')
@@ -239,9 +239,147 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('- **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。')
 	parts.push('- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。')
 	parts.push('')
-	parts.push('## 截图工具')
-	parts.push('- **blender_get_screenshot_of_area_as_image**: 截取指定区域截图（默认VIEW_3D），返回base64 PNG并自动保存到工作区。每次修改后调用验证。')
-	parts.push('- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口截图并自动保存到工作区。')
+	parts.push('## 截图工具（按需使用，避免频繁截图浪费token）')
+	parts.push('- **blender_get_screenshot_of_area_as_image**: 截取指定区域最新截图（默认VIEW_3D），返回base64 PNG并自动保存到工作区。')
+	parts.push('- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口最新截图并自动保存到工作区。')
+	parts.push('')
+	parts.push('📸 **截图策略（智能使用，节省token）**：')
+	parts.push('1. **不需要截图的场景**（优先使用结构化工具验证）：')
+	parts.push('   - 查询类操作（get_objects_summary、get_object_detail_summary等）')
+	parts.push('   - 简单参数修改、对象创建/删除等操作：用get_object_detail_summary验证即可')
+	parts.push('   - 导航操作（jump_to_*系列工具）')
+	parts.push('   - 批量连续操作：完成所有相关步骤后再统一截图验证一次')
+	parts.push('   - 导入模型：导入过程不需要截图，可在全部导入完成后截图确认')
+	parts.push('2. **需要截图的场景**：')
+	parts.push('   - 用户明确要求"看看效果"、"截图看看"、"现在什么样"')
+	parts.push('   - 完成整个任务的最终验证')
+	parts.push('   - 操作结果不确定、需要视觉确认布局/位置/外观')
+	parts.push('   - 遇到错误需要调试时')
+	parts.push('   - 涉及材质、灯光、渲染效果等视觉相关调整')
+	parts.push('3. **重要规则**：')
+	parts.push('   - blender_read_workspace_image 可用于查看工作区中的参考图或之前的截图')
+	parts.push('   - 结构化工具（get_object_detail_summary等）能验证的，优先用结构化工具，不要用截图')
+	parts.push('')
+	parts.push('## ⚠️ Blender 5.1 版本专属注意事项（极其重要，不要用旧API）')
+	parts.push('')
+	parts.push('你运行在 **Blender 5.1** 环境中，大量API相对于3.x/4.x版本已变更。以下是高频错误清单：')
+	parts.push('')
+	parts.push('### 渲染引擎枚举（必须使用正确值）')
+	parts.push('- ✅ 正确：`bpy.context.scene.render.engine = "BLENDER_EEVEE"`')
+	parts.push('- ❌ 错误：`"BLENDER_EEVEE_NEXT"`（已废弃，不存在）')
+	parts.push('- ❌ 错误：不要直接设置 `eevee.use_bloom`，EEVEE设置在5.1中已重构路径，设置前应先查询属性是否存在')
+	parts.push('')
+	parts.push('### 颜色值（必须4通道RGBA）')
+	parts.push('- ✅ 正确：所有颜色输入（Base Color/Emission等）必须用4通道：`(r, g, b, 1.0)`')
+	parts.push('- ❌ 错误：3通道RGB `(1, 0, 0)` 会报错 "sequences of dimension 0 should contain 4 items"')
+	parts.push('')
+	parts.push('### 旋转模式枚举')
+	parts.push('- ✅ 正确：`obj.rotation_mode = "XYZ"`')
+	parts.push('- ❌ 错误：`"EULER_XYZ"`（不存在）')
+	parts.push('')
+	parts.push('### bmesh API使用')
+	parts.push('- ✅ 正确：`bm = bmesh.new(); bm.from_mesh(mesh)` 或编辑模式下 `bm = bmesh.from_edit_mesh(mesh)`')
+	parts.push('- ❌ 错误：`bmesh.from_mesh(mesh)`（这是模块级函数，不存在）')
+	parts.push('')
+	parts.push('### 视图覆盖层属性改名')
+	parts.push('- ❌ `overlay.show_bounds` → ✅ `overlay.show_object_bounds`')
+	parts.push('- ❌ `overlay.show_camera` 等属性在5.1中已改名，使用前先检查 `hasattr(overlay, "property_name")`')
+	parts.push('')
+	parts.push('### 对象操作安全检查')
+	parts.push('- 设置原点前必须检查类型：`if obj.type != "CAMERA"` 才能调用 `bpy.ops.object.origin_set()`，相机会报错')
+	parts.push('- 链接到集合前检查：`if obj.name not in col.objects: col.objects.link(obj)`')
+	parts.push('- 访问对象前检查：`obj = bpy.data.objects.get("Name")`，判断 `if obj is None`')
+	parts.push('- 创建节点前检查节点类型是否存在，Blender 5.1中部分几何节点ID已变更或移除')
+	parts.push('- 访问节点输入输出前检查：`if node.inputs.get("Name") is not None`')
+	parts.push('')
+	parts.push('### HDRI/枚举值')
+	parts.push('- HDRI枚举需要写完整文件名（如 `"city.exr"`），不要只写 `"city"`')
+	parts.push('')
+	parts.push('## 🛡️ 安全操作铁则（违反将导致严重问题）')
+	parts.push('')
+	parts.push('### 删除操作（极度谨慎）')
+	parts.push('1. **永远不要执行 `bpy.ops.object.delete()` 不带选择**（可能删除所有对象）')
+	parts.push('2. **永远不要执行 `bpy.data.objects.remove(obj)` 除非用户明确要求删除**')
+	parts.push('3. **优先使用隐藏 `obj.hide_set(True)` 代替删除，可恢复**')
+	parts.push('4. **高风险操作前先调用：`bpy.ops.ed.undo_push(message="Before AI Operation")`**，用户出错可按Ctrl+Z撤销')
+	parts.push('5. **每次只修改一个对象/一个参数**，验证后再继续')
+	parts.push('')
+	parts.push('### 通用安全编码规范')
+	parts.push('1. 任何操作前先检查对象是否存在：`obj = bpy.data.objects.get("Name"); if obj is None: return error`')
+	parts.push('2. 任何属性设置前先检查属性是否存在：`if hasattr(obj, "property_name")`')
+	parts.push('3. 访问集合前检查索引/键是否存在：`if 0 < len(col) or "key" in col`')
+	parts.push('4. 不要批量删除/修改用户未明确要求的内容')
+	parts.push('5. 如果不确定API是否存在，先用小代码段测试属性是否存在，再执行完整操作')
+	parts.push('')
+	parts.push('## bpy API快速参考（避免写错API）')
+	parts.push('')
+	parts.push('### 对象访问与选择')
+	parts.push('```python')
+	parts.push('import bpy')
+	parts.push('')
+	parts.push('# 获取对象（安全方式，不存在返回None）')
+	parts.push('obj = bpy.data.objects.get("ObjectName")')
+	parts.push('if obj is None:')
+	parts.push('    result = {"status": "error", "message": "Object not found"}')
+	parts.push('else:')
+	parts.push('    # 选择对象')
+	parts.push('    bpy.ops.object.select_all(action="DESELECT")')
+	parts.push('    obj.select_set(True)')
+	parts.push('    bpy.context.view_layer.objects.active = obj')
+	parts.push('```')
+	parts.push('')
+	parts.push('### 变换操作')
+	parts.push('```python')
+	parts.push('# 位置、旋转、缩放')
+	parts.push('obj.location = (x, y, z)')
+	parts.push('obj.rotation_euler = (rx, ry, rz)')
+	parts.push('obj.scale = (sx, sy, sz)')
+	parts.push('')
+	parts.push('# 可见性判断')
+	parts.push('is_visible = obj.visible_get()')
+	parts.push('# 显示/隐藏')
+	parts.push('obj.hide_set(False)  # 显示')
+	parts.push('obj.hide_viewport = False  # 视口中显示')
+	parts.push('```')
+	parts.push('')
+	parts.push('### 视图操作（需要在VIEW_3D上下文执行）')
+	parts.push('```python')
+	parts.push('# 框选聚焦到选中对象（需要在VIEW_3D区域）')
+	parts.push('for area in bpy.context.screen.areas:')
+	parts.push('    if area.type == "VIEW_3D":')
+	parts.push('        for region in area.regions:')
+	parts.push('            if region.type == "WINDOW":')
+	parts.push('                with bpy.context.temp_override(area=area, region=region):')
+	parts.push('                    bpy.ops.view3d.view_selected()')
+	parts.push('                break')
+	parts.push('        break')
+	parts.push('```')
+	parts.push('')
+	parts.push('### 上下文覆盖（Blender 3.2+标准方式）')
+	parts.push('```python')
+	parts.push('# 正确方式')
+	parts.push('with bpy.context.temp_override(window=win, area=area, region=region):')
+	parts.push('    bpy.ops.some_operator()')
+	parts.push('')
+	parts.push('# 错误方式（已废弃）：bpy.context.area = area')
+	parts.push('```')
+	parts.push('')
+	parts.push('### 模型导入')
+	parts.push('```python')
+	parts.push('# GLB/GLTF')
+	parts.push('bpy.ops.import_scene.gltf(filepath=path)')
+	parts.push('# FBX')
+	parts.push('bpy.ops.import_scene.fbx(filepath=path)')
+	parts.push('# OBJ (Blender 3.2+)')
+	parts.push('bpy.ops.wm.obj_import(filepath=path)')
+	parts.push('# STL (Blender 3.2+)')
+	parts.push('bpy.ops.wm.stl_import(filepath=path)')
+	parts.push('```')
+	parts.push('')
+	parts.push('### 结果返回要求')
+	parts.push('- 代码执行后**必须**设置result字典变量')
+	parts.push('- 成功时：result = {"status": "ok", ...其他数据}')
+	parts.push('- 失败时：result = {"status": "error", "message": "错误描述"}')
 	parts.push('')
 	parts.push('## 工作区图片工具')
 	parts.push('- **blender_list_workspace_images**: 列出工作区中所有已保存的图片（截图和参考图），包含绝对路径。')
@@ -250,7 +388,7 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('## 导航工具')
 	parts.push('- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。')
 	parts.push('- **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。')
-	parts.push('- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象。')
+	parts.push('- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象（自动显示隐藏对象）。')
 	parts.push('- **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。')
 	parts.push('')
 	parts.push('## 其他')
@@ -259,12 +397,14 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('## 使用规则')
 	parts.push('1. **操作前先调用 blender_get_objects_summary 了解场景**')
 	parts.push('2. **不要猜测对象名称**，先用工具获取真实名称')
-	parts.push('3. **复杂操作拆分步骤**，每次少量代码，验证后继续')
-	parts.push('4. **修改场景后必须调用截图工具验证结果**，通过返回的图片观察效果')
-	parts.push('5. **参考图已保存在工作区**，需要查看参考图时调用 blender_read_workspace_image 工具')
-	parts.push('6. **迭代工作流**：截图→观察→分析→修改→再截图，反复迭代直到达到目标效果')
-	parts.push('7. 代码执行后必须设置result = {...}字典')
-	parts.push('8. 回复用户使用中文')
+	parts.push('3. **复杂操作拆分步骤**，每次少量代码')
+	parts.push('4. **验证策略**：优先用get_object_detail_summary等结构化工具验证参数，视觉效果再用截图验证')
+	parts.push('5. **批量操作**：连续多个相关操作完成后再统一截图，不要每步都截图')
+	parts.push('6. **安全第一**：所有操作遵循安全编码规范，高风险操作前先push undo点')
+	parts.push('7. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查')
+	parts.push('8. **参考图已保存在工作区**，需要查看参考图时调用 blender_read_workspace_image 工具')
+	parts.push('9. 代码执行后必须设置result = {...}字典')
+	parts.push('10. 回复用户使用中文')
 	if (toolNames.length > 0) {
 		parts.push('')
 		parts.push('## 当前会话可用工具列表（白名单）')
@@ -624,10 +764,11 @@ export async function runBlenderAgentChat(
 	const toolMsgMap = new Map<string, string>()
 	const activeToolCalls = new Map<string, { msgId: string; name: string; args: Record<string, unknown> }>()
 
-	const autoSaveToWorkspace = async (toolName: string, inputArgs: Record<string, unknown>, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>) => {
+	const autoSaveToWorkspace = async (toolName: string, inputArgs: Record<string, unknown>, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>): Promise<string[]> => {
+		const savedUrls: string[] = []
 		try {
-			if (!window.dweb?.blender?.workspaceSaveScript && !window.dweb?.blender?.workspaceSaveScreenshot) return
-			if (!projectId) return
+			if (!window.dweb?.blender?.workspaceSaveScript && !window.dweb?.blender?.workspaceSaveScreenshot) return savedUrls
+			if (!projectId) return savedUrls
 
 			if (toolName === 'blender_execute_blender_code' && inputArgs.code) {
 				const code = String(inputArgs.code)
@@ -650,12 +791,15 @@ export async function runBlenderAgentChat(
 						const base64Data = base64Match ? base64Match[2] : img.dataUrl
 						const mimeType = base64Match ? base64Match[1] : (img.mimeType || 'image/png')
 						console.log(`[BlenderWorkspace] Saving screenshot from event.images to workspace, mimeType=${mimeType}, dataLen=${base64Data.length}`)
-						await window.dweb.blender.workspaceSaveScreenshot({
+						const saveResult = await window.dweb.blender.workspaceSaveScreenshot({
 							nodeId,
 							projectId,
 							base64Data,
 							mimeType
 						})
+						if (saveResult?.ok && saveResult.url) {
+							savedUrls.push(saveResult.url)
+						}
 						saved = true
 					}
 				}
@@ -663,12 +807,15 @@ export async function runBlenderAgentChat(
 					const imageData = extractImageFromToolOutput(output)
 					if (imageData) {
 						console.log(`[BlenderWorkspace] Saving screenshot (fallback from output) to workspace, mimeType=${imageData.mimeType}, dataLen=${imageData.base64Data.length}`)
-						await window.dweb.blender.workspaceSaveScreenshot({
+						const saveResult = await window.dweb.blender.workspaceSaveScreenshot({
 							nodeId,
 							projectId,
 							base64Data: imageData.base64Data,
 							mimeType: imageData.mimeType
 						})
+						if (saveResult?.ok && saveResult.url) {
+							savedUrls.push(saveResult.url)
+						}
 						saved = true
 					}
 				}
@@ -681,6 +828,7 @@ export async function runBlenderAgentChat(
 		} catch (err) {
 			console.warn('[BlenderWorkspace] Auto-save failed:', err)
 		}
+		return savedUrls
 	}
 
 	function extractImageFromToolOutput(output: unknown): { base64Data: string; mimeType: string } | null {
@@ -944,6 +1092,7 @@ export async function runBlenderAgentChat(
 					('ok' in outRec && outRec.ok === false)
 				))
 				if (toolMsgId) {
+					const hasScreenshot = eventImages && eventImages.length > 0
 					store.commit('updateBlenderChatMessage', {
 						nodeId,
 						messageId: toolMsgId,
@@ -954,11 +1103,24 @@ export async function runBlenderAgentChat(
 							status: hasError ? 'error' : 'completed',
 							isError: hasError,
 							collapsed: !hasError,
-							screenshots: eventImages && eventImages.length > 0 ? eventImages.map(img => img.dataUrl) : undefined
+							screenshots: undefined
 						}
 					})
 					if (!hasError) {
-						void autoSaveToWorkspace(toolName, toolArgs, ev.output, eventImages)
+						autoSaveToWorkspace(toolName, toolArgs, ev.output, eventImages).then((savedUrls) => {
+							if (savedUrls.length > 0) {
+								store.commit('updateBlenderChatMessage', {
+									nodeId,
+									messageId: toolMsgId,
+									patch: {
+										screenshots: savedUrls
+									}
+								})
+							}
+							if (savedUrls.length > 0 && !capturedScreenshotUrl) {
+								capturedScreenshotUrl = savedUrls[savedUrls.length - 1]
+							}
+						})
 					}
 					activeToolCalls.delete(tcId)
 				}
