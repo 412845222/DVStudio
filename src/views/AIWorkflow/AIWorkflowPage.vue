@@ -1951,35 +1951,20 @@ const fullRenderNodeIds = computed<Set<string>>(() => {
 	}
 
 	if (panningFullRenderSnapshot.value) {
-		const snapshotWithPending = new Set(panningFullRenderSnapshot.value)
+		// 平移期间，最小化DOM渲染，仅保留必须DOM的节点：
+		// - 有聊天对话框打开的节点
+		// - 待截图的节点
+		// 其余所有节点（包括选中节点、邻居节点等）全部切换为Canvas轻量渲染
+		const minimalIds = new Set(panningFullRenderSnapshot.value)
 		for (const id of pendingScreenshotNodeIds.value) {
 			const nid = String(id ?? '').trim()
-			if (nid) snapshotWithPending.add(nid)
-		}
-		const nodesByIdForPan = store.state.nodesById as Record<string, WorkflowNode | undefined>
-		let selectedAddedForPan = 0
-		for (const id of selectedNodeIds.value) {
-			const nid = String(id ?? '').trim()
-			if (!nid) continue
-			if (snapshotWithPending.has(nid)) {
-				continue
-			}
-			if (selectedNodeIds.value.length > MAX_SELECTED_NODES_FOR_FULL_RENDER) {
-				const node = nodesByIdForPan[nid]
-				if (!node || !isNodeInViewport(node)) {
-					continue
-				}
-			}
-			if (selectedAddedForPan < MAX_SELECTED_NODES_FOR_FULL_RENDER) {
-				snapshotWithPending.add(nid)
-				selectedAddedForPan++
-			}
+			if (nid) minimalIds.add(nid)
 		}
 		if (nodeChatDialog.value.visible && nodeChatDialog.value.nodeId) {
 			const chatNodeId = String(nodeChatDialog.value.nodeId).trim()
-			if (chatNodeId) snapshotWithPending.add(chatNodeId)
+			if (chatNodeId) minimalIds.add(chatNodeId)
 		}
-		return snapshotWithPending
+		return minimalIds
 	}
 
 	// ==========================================
@@ -2071,22 +2056,19 @@ const effectiveFullRenderNodeIds = computed<Set<string>>(() => {
 		return baseIds
 	}
 
-	// 拖拽期间，排除被拖拽的节点，但保留：
+	// 拖拽期间，最小化DOM渲染，仅保留必须DOM的节点：
 	// - 有聊天对话框打开的节点
 	// - 待截图的节点
-	// - 视口内没有截图缓存需要临时完整渲染的节点
+	// - 没有截图缓存需要临时完整渲染的被拖拽节点
+	// 其余所有节点（包括选中节点、邻居节点等）全部切换为Canvas轻量渲染
 	const chatNodeId = nodeChatDialog.value.visible ? String(nodeChatDialog.value.nodeId).trim() : ''
 	const pendingIds = pendingScreenshotNodeIds.value
 
 	const result = new Set<string>()
-	for (const id of baseIds) {
-		if (selectionFrameDragNodeIds.value.has(id)) {
-			if (id === chatNodeId || pendingIds.has(id) || dragFullIds.has(id)) {
-				result.add(id)
-			}
-		} else {
-			result.add(id)
-		}
+	if (chatNodeId) result.add(chatNodeId)
+	for (const id of pendingIds) {
+		const nid = String(id ?? '').trim()
+		if (nid) result.add(nid)
 	}
 	for (const id of dragFullIds) {
 		result.add(id)
@@ -11695,13 +11677,14 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 		selectionFrameDragNodeIds.value = new Set(nodeIds)
 		selectionDragFullRenderIds.value = new Set()
 		selectionDragMoveTick.value = 0
+		markViewportMotion()
 		scheduleUpdateDragFullRender()
 		refreshCanvasNodeLayer()
 	},
 	onNodeDragMove: (_nodeIds: string[]) => {
 		selectionDragMoveTick.value++
 		scheduleUpdateDragFullRender()
-		nodeCanvasLayerRef.value?.markDirty()
+		refreshCanvasNodeLayer()
 	},
 	onNodeDragEnd: (nodeIds: string[]) => {
 		selectionFrameDragging.value = false
@@ -11900,14 +11883,19 @@ watch(
 const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
-	panningFullRenderSnapshot.value = new Set(fullRenderNodeIds.value)
+	// 平移开始时最小化DOM渲染：不保留之前的fullRenderNodeIds快照，
+	// 仅通过panning分支保留聊天对话框节点和待截图节点，其余全部切换为Canvas轻量渲染
+	panningFullRenderSnapshot.value = new Set()
 	markViewportMotion()
+	refreshCanvasNodeLayer()
 }
 
 const onCanvasPanningEnd = () => {
 	linkInteraction.setPanning(false)
 	panningFullRenderSnapshot.value = null
 	forceEndViewportMotion()
+	refreshCanvasNodeLayer()
+	scheduleVisibleNodeScreenshots()
 }
 
 const onCanvasPointerDown = canvasInteraction.onCanvasPointerDown
