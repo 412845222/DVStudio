@@ -227,17 +227,25 @@ class BlenderNodeWorkspace {
 
       ensureDir(screenshotsDir);
 
+      const MAX_SCREENSHOTS = 100;
       if (fs.existsSync(screenshotsDir)) {
         try {
-          const existingFiles = fs.readdirSync(screenshotsDir);
-          for (const oldFile of existingFiles) {
-            try {
-              const oldPath = path.join(screenshotsDir, oldFile);
-              const stat = fs.statSync(oldPath);
-              if (stat.isFile()) {
-                fs.unlinkSync(oldPath);
-              }
-            } catch {}
+          const existingFiles = fs.readdirSync(screenshotsDir)
+            .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
+            .map(f => {
+              try {
+                const fp = path.join(screenshotsDir, f);
+                const st = fs.statSync(fp);
+                return { file: f, path: fp, mtime: st.mtimeMs };
+              } catch { return null; }
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.mtime - a.mtime);
+          if (existingFiles.length >= MAX_SCREENSHOTS) {
+            const toDelete = existingFiles.slice(MAX_SCREENSHOTS - 1);
+            for (const old of toDelete) {
+              try { fs.unlinkSync(old.path); } catch {}
+            }
           }
         } catch {}
       }
@@ -254,7 +262,13 @@ class BlenderNodeWorkspace {
         size: imageBuffer.length,
         mimeType: mimeType || 'image/png'
       };
-      metadata.screenshots = [shotEntry];
+      if (!Array.isArray(metadata.screenshots)) {
+        metadata.screenshots = [];
+      }
+      metadata.screenshots.push(shotEntry);
+      if (metadata.screenshots.length > MAX_SCREENSHOTS) {
+        metadata.screenshots = metadata.screenshots.slice(-MAX_SCREENSHOTS);
+      }
       metadata.latestScreenshot = shotEntry;
       writeWorkspaceMetadata(workspacePath, metadata);
 

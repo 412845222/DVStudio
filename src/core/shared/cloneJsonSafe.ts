@@ -1,5 +1,4 @@
 const deepCloneFallback = (value: unknown, seen: WeakMap<object, unknown>): unknown => {
-	// Handles plain objects/arrays (including Proxies) and breaks reference sharing.
 	if (value == null) return value
 	if (typeof value !== 'object') return value
 
@@ -39,19 +38,31 @@ const reviver = (_key: string, value: unknown): unknown => {
 	return value
 }
 
+const canUseStructuredClone =
+	typeof (globalThis as { structuredClone?: unknown }).structuredClone === 'function'
+
+const cloneViaJson = <T>(v: T): T => {
+	return JSON.parse(JSON.stringify(v, replacer), reviver) as T
+}
+
+const cloneViaStructured = <T>(v: T): T => {
+	try {
+		return (globalThis as unknown as { structuredClone: <T>(v: T) => T }).structuredClone(v)
+	} catch {
+		return cloneViaJson(v)
+	}
+}
+
 export const cloneJsonSafe = <T>(v: T): T => {
 	if (v instanceof Date) {
 		return new Date(v.getTime()) as T
 	}
+	if (canUseStructuredClone) {
+		return cloneViaStructured(v)
+	}
 	try {
-		return JSON.parse(JSON.stringify(v, replacer), reviver) as T
+		return cloneViaJson(v)
 	} catch {
-		try {
-			const sc = (globalThis as { structuredClone?: (value: unknown) => unknown }).structuredClone
-			if (typeof sc === 'function') return sc(v) as T
-			return deepCloneFallback(v, new WeakMap<object, unknown>()) as T
-		} catch {
-			return deepCloneFallback(v, new WeakMap<object, unknown>()) as T
-		}
+		return deepCloneFallback(v, new WeakMap<object, unknown>()) as T
 	}
 }
