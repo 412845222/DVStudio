@@ -17,6 +17,32 @@ import logger from '../../../core/logger.mjs';
 
 const DEFAULT_MAX_TOOL_CALLS = 35;
 
+function extractErrorSignature(errorMsg, toolName) {
+  const msg = String(errorMsg || '');
+  const patterns = [
+    /AttributeError:.*has no attribute '([^']+)'/,
+    /AttributeError:.*has no attribute "([^"]+)"/,
+    /KeyError:.*key ["']([^"']+)["']/,
+    /KeyError: '([^']+)'/,
+    /NameError: name '([^']+)' is not defined/,
+    /NameError: name "([^"]+)" is not defined/,
+    /TypeError:.*'([^']+)'/,
+    /ValueError: ([^\n]+)/,
+    /RuntimeError: ([^\n]+)/,
+    /ImportError: ([^\n]+)/,
+    /ModuleNotFoundError: ([^\n]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = msg.match(pattern);
+    if (match) {
+      const errType = pattern.source.split(':')[0].replace(/\\/g, '');
+      return `${errType}:${match[1]}`;
+    }
+  }
+  const firstLine = msg.split('\n')[0].slice(0, 80);
+  return `${toolName}:${firstLine}`;
+}
+
 export class AgentRuntime {
   constructor(ctx) {
     this.ctx = ctx;
@@ -218,6 +244,8 @@ export class AgentRuntime {
       let finalContent = '';
       let reasoningContent = '';
       const toolResultCache = new Map();
+      const recentErrors = [];
+      const MAX_RECENT_ERRORS = 10;
       const UNCACHEABLE_TOOLS = new Set([
         'blender_get_screenshot_of_area_as_image',
         'blender_get_screenshot_of_window_as_image',
@@ -444,10 +472,41 @@ export class AgentRuntime {
           currentMessages.push(assistantMsg);
 
           for (const atc of assistantToolCalls) {
+            let toolContent;
+            if (atc.error) {
+              const errorSignature = extractErrorSignature(atc.error, atc.name);
+              const duplicateCount = recentErrors.filter(e => e.signature === errorSignature).length;
+              recentErrors.push({ signature: errorSignature, tool: atc.name, time: Date.now() });
+              if (recentErrors.length > MAX_RECENT_ERRORS) {
+                recentErrors.shift();
+              }
+              const errorObj = { error: atc.error };
+              if (duplicateCount >= 1) {
+                errorObj._warning = `⚠️ 注意：你刚刚已经遇到过 ${duplicateCount + 1} 次类似的错误了（"${errorSignature}"）！请不要重复尝试相同写法，仔细分析错误原因，换一种方式实现，或者先用hasattr检查属性是否存在。`;
+                logger.warn(`AgentRuntime: Detected duplicate error (${duplicateCount + 1}x): ${errorSignature}`);
+              }
+              toolContent = JSON.stringify(errorObj);
+            } else if (atc.sanitizedResult && typeof atc.sanitizedResult === 'object' && atc.sanitizedResult.status === 'error') {
+              const errMsg = atc.sanitizedResult.message || JSON.stringify(atc.sanitizedResult);
+              const errorSignature = extractErrorSignature(errMsg, atc.name);
+              const duplicateCount = recentErrors.filter(e => e.signature === errorSignature).length;
+              recentErrors.push({ signature: errorSignature, tool: atc.name, time: Date.now() });
+              if (recentErrors.length > MAX_RECENT_ERRORS) {
+                recentErrors.shift();
+              }
+              const resultObj = { ...atc.sanitizedResult };
+              if (duplicateCount >= 1) {
+                resultObj._warning = `⚠️ 注意：你刚刚已经遇到过 ${duplicateCount + 1} 次类似的错误了（"${errorSignature}"）！请不要重复尝试相同写法，仔细分析错误原因，换一种方式实现。`;
+                logger.warn(`AgentRuntime: Detected duplicate error in result (${duplicateCount + 1}x): ${errorSignature}`);
+              }
+              toolContent = JSON.stringify(resultObj);
+            } else {
+              toolContent = JSON.stringify(atc.sanitizedResult);
+            }
             currentMessages.push({
               role: 'tool',
               tool_call_id: atc.id,
-              content: JSON.stringify(atc.error ? { error: atc.error } : atc.sanitizedResult),
+              content: toolContent,
             });
           }
 

@@ -92,15 +92,20 @@ def _walk_collection_tree(coll, visited, depth=0):
     visited.add(coll.name)
     info = {
         "name": coll.name,
-        "depth": depth,
-        "objects": [obj.name for obj in coll.objects],
-        "children": [],
     }
+    if depth > 0:
+        info["depth"] = depth
+    obj_names = [obj.name for obj in coll.objects]
+    if obj_names:
+        info["objects"] = obj_names
+    children = []
     for child in coll.children:
         if child.name not in visited:
             child_info = _walk_collection_tree(child, visited, depth + 1)
             if child_info:
-                info["children"].append(child_info)
+                children.append(child_info)
+    if children:
+        info["children"] = children
     return info
 
 scene = bpy.context.scene
@@ -110,11 +115,16 @@ all_objects = []
 for obj in scene.objects:
     obj_info = {
         "name": obj.name,
-        "type": obj.type,
-        "location": list(obj.location),
-        "visible": obj.visible_get(),
-        "selected": obj.select_get(),
     }
+    if obj.type != 'MESH':
+        obj_info["type"] = obj.type
+    loc = list(obj.location)
+    if loc != [0.0, 0.0, 0.0]:
+        obj_info["location"] = loc
+    if not obj.visible_get():
+        obj_info["visible"] = False
+    if obj.select_get():
+        obj_info["selected"] = True
     all_objects.append(obj_info)
 
 collections_tree = []
@@ -127,19 +137,29 @@ if master:
 
 materials = [m.name for m in bpy.data.materials]
 cameras = [c.name for c in bpy.data.cameras]
-lights = [l.name for l in bpy.data.lights]
+lights_list = [l.name for l in bpy.data.lights]
 
 result = {
-    "scene_name": scene.name,
-    "objects_count": len(all_objects),
     "objects": all_objects,
     "collections": collections_tree,
-    "materials": materials,
-    "cameras": cameras,
-    "lights": lights,
-    "active_object": bpy.context.active_object.name if bpy.context.active_object else None,
-    "selected_objects": [o.name for o in bpy.context.selected_objects],
-    "mode": bpy.context.mode,
+}
+if materials:
+    result["materials"] = materials
+if cameras:
+    result["cameras"] = cameras
+if lights_list:
+    result["lights"] = lights_list
+active = bpy.context.active_object
+if active:
+    result["active_object"] = active.name
+selected = [o.name for o in bpy.context.selected_objects]
+if selected:
+    result["selected_objects"] = selected
+mode = bpy.context.mode
+if mode != 'OBJECT':
+    result["mode"] = mode
+if scene.name != 'Scene':
+    result["scene_name"] = scene.name
 }`;
 }
 
@@ -2256,6 +2276,20 @@ class BlenderMcpService extends EventEmitter {
 ### HDRI/枚举值
 - HDRI枚举需要写完整文件名（如 \`"city.exr"\`），不要只写 \`"city"\`
 
+### 材质设置（Blender 5.x已变更）
+- ❌ \`material.shadow_method\` 属性在Blender 5.x中已移除/重构，不要设置
+- ❌ Principled BSDF节点：不要使用 \`bsdf.inputs["Emission"]\`，Emission在Blender 5.x中需要添加独立的"Emission"节点并连接到Material Output的Surface端口
+
+### 3D视图背景图（API已重构）
+- ❌ \`space.background_images\` - 已移除，不要遍历
+- ❌ \`space.show_background_images\` - 已移除/改名
+- 背景图相关操作如果不确定，先查询可用属性
+
+### 错误记忆规则（避免重复犯同样错误）
+- **同一个API错误绝对不要犯第二次！** 如果某个属性/方法报错了，记住这个错误，换一种方式实现，不要重复尝试相同写法
+- 如果不确定API是否存在，先用极小代码段测试 \`hasattr(obj, 'property')\` 再使用
+- 代码报错时，先仔细阅读stderr错误信息，根据错误信息直接修正，不要盲目重试
+
 ## 🛡️ 安全操作铁则（违反将导致严重问题）
 
 ### 删除操作（极度谨慎）
@@ -2271,6 +2305,14 @@ class BlenderMcpService extends EventEmitter {
 3. 访问集合前检查索引/键是否存在：\`if 0 < len(col) or "key" in col\`
 4. 不要批量删除/修改用户未明确要求的内容
 5. 如果不确定API是否存在，先用小代码段测试属性是否存在，再执行完整操作
+6. **同一个错误不要重复犯**：如果代码报错了，分析错误原因后换方法，不要反复尝试相同写法
+
+## 📸 截图节流规则（强制执行，避免token浪费）
+1. **两次截图之间至少间隔30秒**，除非用户明确要求"现在截图看看"
+2. **代码错误时先看stderr错误信息**，不要立即截图 - 根据错误信息直接修正代码
+3. **连续2次修正后仍有问题时才截图**调试
+4. **批量查询/连续操作期间不截图**：先完成所有计划的修改步骤，最后统一截图验证一次
+5. 如果30秒内已经截过图了，不要重复截图
 
 ## bpy API快速参考（避免写错API）
 
@@ -2344,12 +2386,15 @@ bpy.ops.wm.stl_import(filepath=path)
 1. **操作前先调用 blender_get_objects_summary 了解场景**
 2. **不要猜测对象名称**，先用工具获取真实名称
 3. **复杂操作拆分步骤**，每次少量代码
-4. **验证策略**：优先用get_object_detail_summary等结构化工具验证参数，视觉效果再用截图验证
-5. **批量操作**：连续多个相关操作完成后再统一截图，不要每步都截图
-6. **安全第一**：所有操作遵循安全编码规范，高风险操作前先push undo点
-7. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查
-8. 代码执行后必须设置result = {...}字典
-9. 回复用户使用中文`;
+4. **验证策略**：优先用结构化工具验证参数，视觉效果再用截图验证
+5. **截图节流**：两次截图间隔至少30秒，连续操作完成后再统一截图，代码错误先看stderr
+6. **避免N+1查询**：先从get_objects_summary获取足够信息（name/type/location），不要逐个查询所有对象详情
+7. **只查询需要修改的对象**：只对你要操作的对象调用get_object_detail_summary，不要查询所有对象
+8. **安全第一**：所有操作遵循安全编码规范，高风险操作前先push undo点
+9. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查，不要重复犯同样错误
+10. **错误记忆**：同一个API错误不要犯第二次，报错后换方法实现
+11. 代码执行后必须设置result = {...}字典
+12. 回复用户使用中文`;
     if (this._registeredToolNames.length > 0) {
       prompt += '\n\n## 当前已注册工具\n';
       prompt += this._registeredToolNames.map(t => `- ${t}`).join('\n');
