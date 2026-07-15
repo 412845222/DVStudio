@@ -146,11 +146,11 @@ const nodeShellStyle = (node: CanvasAnchorNode): Record<string, string> => {
 
 	return {
 		position: 'absolute',
-		left: `${screen.x}px`,
-		top: `${screen.y}px`,
+		left: '0px',
+		top: '0px',
 		width: `${w}px`,
 		height: `${h}px`,
-		transform: `translate(-50%, -50%) scale(${clampNodeScale(zoom)})`,
+		transform: `translate(${screen.x}px, ${screen.y}px) translate(-50%, -50%) scale(${clampNodeScale(zoom)})`,
 		pointerEvents: 'none'
 	}
 }

@@ -197,7 +197,7 @@ class BlenderNodeWorkspace {
   /**
    * 保存截图
    */
-  async saveScreenshot(projectRoot, nodeId, base64Data, mimeType) {
+  async saveScreenshot(projectRoot, nodeId, base64Data, mimeType, screenshotId) {
     try {
       const workspacePath = getWorkspacePath(projectRoot, nodeId);
       if (!workspacePath) return { ok: false, error: 'Invalid workspace' };
@@ -214,40 +214,75 @@ class BlenderNodeWorkspace {
       }
 
       const imageBuffer = Buffer.from(cleanBase64, 'base64');
-      const timestamp = getTimestampSlug();
+      const timestamp = Date.now();
+      const ts = new Date(timestamp);
+      const pad = (n) => String(n).padStart(2, '0');
+      const timestampSlug = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+      const millis = String(timestamp % 1000).padStart(3, '0');
       const ext = mimeType === 'image/jpeg' ? 'jpg' : 'png';
-      const fileName = `${timestamp}.${ext}`;
+      const sId = screenshotId || String(timestamp);
+      const fileName = `${timestampSlug}_${millis}_${sId.slice(-6)}.${ext}`;
       const screenshotsDir = path.join(workspacePath, 'screenshots');
       const filePath = path.join(screenshotsDir, fileName);
 
       ensureDir(screenshotsDir);
+
+      const MAX_SCREENSHOTS = 100;
+      if (fs.existsSync(screenshotsDir)) {
+        try {
+          const existingFiles = fs.readdirSync(screenshotsDir)
+            .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
+            .map(f => {
+              try {
+                const fp = path.join(screenshotsDir, f);
+                const st = fs.statSync(fp);
+                return { file: f, path: fp, mtime: st.mtimeMs };
+              } catch { return null; }
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.mtime - a.mtime);
+          if (existingFiles.length >= MAX_SCREENSHOTS) {
+            const toDelete = existingFiles.slice(MAX_SCREENSHOTS - 1);
+            for (const old of toDelete) {
+              try { fs.unlinkSync(old.path); } catch {}
+            }
+          }
+        } catch {}
+      }
+
       fs.writeFileSync(filePath, imageBuffer);
+      logger.info(`[BlenderWorkspace] Screenshot saved: ${fileName}, size=${imageBuffer.length} bytes, path=${filePath}`);
 
       const metadata = readWorkspaceMetadata(workspacePath);
       const shotEntry = {
         fileName,
-        relativePath: path.join(WORKSPACE_ROOT, sanitizeNodeId(nodeId), 'screenshots', fileName),
-        timestamp: Date.now(),
+        relativePath: path.join(WORKSPACE_ROOT, sanitizeNodeId(nodeId), 'screenshots', fileName).replace(/\\/g, '/'),
+        timestamp: timestamp,
+        screenshotId: sId,
         size: imageBuffer.length,
         mimeType: mimeType || 'image/png'
       };
-      metadata.screenshots = metadata.screenshots || [];
-      metadata.screenshots.unshift(shotEntry);
-      if (metadata.screenshots.length > 50) {
-        const old = metadata.screenshots.pop();
-        try {
-          const oldPath = path.join(screenshotsDir, old.fileName);
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        } catch {}
+      if (!Array.isArray(metadata.screenshots)) {
+        metadata.screenshots = [];
       }
+      metadata.screenshots.push(shotEntry);
+      if (metadata.screenshots.length > MAX_SCREENSHOTS) {
+        metadata.screenshots = metadata.screenshots.slice(-MAX_SCREENSHOTS);
+      }
+      metadata.latestScreenshot = shotEntry;
       writeWorkspaceMetadata(workspacePath, metadata);
 
+      const cacheBust = `t=${timestamp}`;
       return {
         ok: true,
         fileName,
+        screenshotId: sId,
         relativePath: shotEntry.relativePath,
         absolutePath: filePath,
-        url: `dweb://${shotEntry.relativePath.replace(/\\/g, '/')}`
+        size: imageBuffer.length,
+        mimeType: mimeType || 'image/png',
+        timestamp: timestamp,
+        url: `dweb://${shotEntry.relativePath}?${cacheBust}`
       };
     } catch (err) {
       logger.error(`[BlenderWorkspace] saveScreenshot error: ${err.message}`);
@@ -299,7 +334,12 @@ class BlenderNodeWorkspace {
       const workspacePath = getWorkspacePath(projectRoot, nodeId);
       if (!workspacePath) return { ok: false, error: 'Invalid workspace' };
 
-      const normalizedInput = path.normalize(String(imagePath || ''));
+      let normalizedInput = String(imagePath || '');
+      const queryIndex = normalizedInput.indexOf('?');
+      if (queryIndex !== -1) {
+        normalizedInput = normalizedInput.substring(0, queryIndex);
+      }
+      normalizedInput = path.normalize(normalizedInput);
       const resolved = path.resolve(workspacePath, normalizedInput);
       const normalizedResolved = path.normalize(resolved);
       const normalizedWorkspace = path.normalize(workspacePath);
@@ -307,7 +347,27 @@ class BlenderNodeWorkspace {
         return { ok: false, error: 'Path traversal detected' };
       }
 
+      const normalizedScreenshots = path.normalize(path.join(workspacePath, 'screenshots'));
+      let isFromScreenshots = false;
+      if (normalizedResolved.startsWith(normalizedScreenshots + path.sep) || normalizedResolved === normalizedScreenshots) {
+        isFromScreenshots = true;
+      }
+
       if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+        if (isFromScreenshots) {
+          const latestScreenshot = this.getLatestScreenshot(projectRoot, nodeId);
+          if (latestScreenshot) {
+            return {
+              ok: true,
+              absolutePath: latestScreenshot.absolutePath,
+              base64: latestScreenshot.base64,
+              mimeType: latestScreenshot.mimeType,
+              size: latestScreenshot.size,
+              cacheBustUrl: latestScreenshot.cacheBustUrl,
+              warning: '⚠️注意：这是工作区中最新保存的截图，但可能不是Blender当前最新画面！查看当前画面状态请务必调用blender_get_screenshot_of_area_as_image工具获取实时截图！'
+            };
+          }
+        }
         return { ok: false, error: `File not found: ${imagePath}` };
       }
 
@@ -315,17 +375,70 @@ class BlenderNodeWorkspace {
       const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.bmp': 'image/bmp', '.webp': 'image/webp' };
       const mimeType = mimeMap[ext] || 'image/png';
       const buffer = fs.readFileSync(resolved);
+      const stat = fs.statSync(resolved);
 
-      return {
+      const result = {
         ok: true,
         absolutePath: resolved,
         base64: buffer.toString('base64'),
         mimeType,
-        size: buffer.length
+        size: buffer.length,
+        modifiedTime: stat.mtimeMs,
+        cacheBustUrl: `dweb://${path.relative(workspacePath, resolved).replace(/\\/g, '/')}?t=${Date.now()}`
       };
+
+      if (isFromScreenshots) {
+        result.warning = '⚠️注意：你正在读取screenshots目录中的历史截图！这可能不是Blender当前最新画面状态。要查看当前画面，请务必调用blender_get_screenshot_of_area_as_image工具获取实时最新截图！';
+      }
+
+      return result;
     } catch (err) {
       logger.error(`[BlenderWorkspace] readWorkspaceImage error: ${err.message}`);
       return { ok: false, error: err.message };
+    }
+  }
+
+  getLatestScreenshot(projectRoot, nodeId) {
+    try {
+      const workspacePath = getWorkspacePath(projectRoot, nodeId);
+      if (!workspacePath) return null;
+      const screenshotsDir = path.join(workspacePath, 'screenshots');
+      if (!fs.existsSync(screenshotsDir)) return null;
+
+      const files = fs.readdirSync(screenshotsDir);
+      let latestFile = null;
+      let latestMtime = -1;
+
+      for (const f of files) {
+        const fp = path.join(screenshotsDir, f);
+        try {
+          const stat = fs.statSync(fp);
+          if (stat.isFile() && /\.(png|jpg|jpeg)$/i.test(f) && stat.mtimeMs > latestMtime) {
+            latestMtime = stat.mtimeMs;
+            latestFile = { name: f, path: fp, stat };
+          }
+        } catch {}
+      }
+
+      if (!latestFile) return null;
+
+      const ext = path.extname(latestFile.path).toLowerCase();
+      const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg' };
+      const mimeType = mimeMap[ext] || 'image/png';
+      const buffer = fs.readFileSync(latestFile.path);
+
+      return {
+        absolutePath: latestFile.path,
+        fileName: latestFile.name,
+        base64: buffer.toString('base64'),
+        mimeType,
+        size: buffer.length,
+        modifiedTime: latestMtime,
+        cacheBustUrl: `dweb://screenshots/${latestFile.name}?t=${Date.now()}`
+      };
+    } catch (err) {
+      logger.error(`[BlenderWorkspace] getLatestScreenshot error: ${err.message}`);
+      return null;
     }
   }
 

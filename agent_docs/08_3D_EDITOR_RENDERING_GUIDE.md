@@ -6,7 +6,8 @@
 3. [光照预设设计](#光照预设设计)
 4. [PBR材质调优](#pbr材质调优)
 5. [性能优化建议](#性能优化建议)
-6. [常见问题排查](#常见问题排查)
+6. [Blender MCP 集成](#blender-mcp-集成)
+7. [常见问题排查](#常见问题排查)
 
 ---
 
@@ -202,6 +203,70 @@ PBR材质"油腻"通常由以下原因造成：
 - 使用 `renderer.info` 监控绘制调用和三角形数量
 - 使用 Chrome DevTools Performance 面板分析帧率
 - 关注 `render` 方法的执行时间
+
+---
+
+## Blender MCP 集成
+
+### 集成架构
+
+DVStudio 通过 MCP（Model Context Protocol）协议与 Blender 集成，实现 AI 驱动的 3D 场景编辑能力。
+
+```
+DVStudio Agent Runtime
+  ↓
+MCP Client (socket/stdio bridge)
+  ↓
+Blender MCP Server (Addon)
+  ↓
+Blender Python API (bpy)
+```
+
+### 核心功能
+
+| 功能 | 说明 | 后端模块 |
+|-----|------|---------|
+| MCP 连接管理 | 连接/断开 Blender MCP 服务器，状态监控 | `blender/` |
+| 模型导入 | 支持 GLB/GLTF/FBX/OBJ 等格式导入 | `blender/` |
+| 工具调用 | 通过 MCP 调用 Blender 工具（创建物体、修改材质等） | `mcp/` + `blender/` |
+| 工作区管理 | 脚本保存、截图捕获、文件管理 | `blender/workspace.mjs` |
+| Agent 聊天 | 在节点内通过 Agent 与 Blender 交互 | `chat/` + `blender/` |
+
+### 后端 IPC 通道
+
+- `dweb:blender:status:check` - 检查 Blender 状态
+- `dweb:blender:mcp:connect` - 连接 Blender MCP
+- `dweb:blender:mcp:disconnect` - 断开连接
+- `dweb:blender:mcp:call-tool` - 调用 MCP 工具
+- `dweb:blender:import:model` - 导入 3D 模型
+- `dweb:blender:workspace:*` - 工作区管理操作
+
+### 前端集成
+
+前端 Blender 节点业务逻辑位于 `src/views/AIWorkflow/node-business/blender/`：
+
+- `useBlenderAgentChat.ts` - Blender 节点 Agent 聊天
+- `useBlenderUpstreamInputs.ts` - 上游输入处理
+- 聊天 UI 复用节点聊天对话框组件
+
+### 使用流程
+
+1. 启动 Blender 并启用 MCP 插件
+2. 在 DVStudio 中添加 Blender 节点
+3. 连接 Blender MCP 服务器
+4. 通过 Agent 对话发送指令（如"创建一个红色立方体"）
+5. Agent 通过 MCP 工具调用 Blender API 执行操作
+6. 截图回传到 DVStudio 显示结果
+
+### 关键文件位置
+
+| 关注点 | 路径 |
+|-------|------|
+| Blender 后端模块 | `electron/backend/modules/blender/` |
+| MCP 后端模块 | `electron/backend/modules/mcp/` |
+| Blender 节点业务 | `src/views/AIWorkflow/node-business/blender/` |
+| Blender 节点组件 | `src/ui/WorkFlow/WorlFlowNodes/blender/` |
+| MCP 桥接 | `electron/backend/modules/mcp/server/socketBridge.mjs` |
 
 ---
 

@@ -303,8 +303,6 @@ const onPreviewListWheel = (event: WheelEvent) => {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-	flex: 1;
-	min-height: 0;
 }
 
 .wf-scene-decompose-hero,

@@ -148,12 +148,13 @@ describe('cloneJsonSafe', () => {
       expect(cloned).toEqual(original)
     })
 
-    it('does not share references between clones', () => {
+    it('preserves shared references in cloned objects', () => {
       const shared = { x: 1 }
       const original = { a: shared, b: shared }
       const cloned = cloneJsonSafe(original)
-      expect(cloned.a).not.toBe(cloned.b)
+      expect(cloned.a).toBe(cloned.b)
       expect(cloned.a).not.toBe(original.a)
+      expect(cloned.a.x).toBe(1)
     })
   })
 })

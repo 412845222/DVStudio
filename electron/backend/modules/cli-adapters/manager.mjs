@@ -83,7 +83,12 @@ class CLIAdapterManager {
       if (config?.models && config.lastCheckedAt) {
         const cacheAge = Date.now() - new Date(config.lastCheckedAt).getTime();
         if (cacheAge < 60 * 60 * 1000) {
-          return config.models;
+          const validModels = config.models.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string');
+          if (validModels.length !== config.models.length) {
+            logger.warn(`[CLIAdapterManager] Filtered ${config.models.length - validModels.length} invalid model(s) for ${adapterName}, consider refreshing in Settings`);
+            await cliConfigStore.updateAdapterConfig(adapterName, { models: validModels });
+          }
+          return validModels;
         }
       }
     }
@@ -95,9 +100,14 @@ class CLIAdapterManager {
 
     const models = await adapter.listModels();
 
-    await cliConfigStore.updateAdapterConfig(adapterName, { models });
+    const validModels = models.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string');
+    if (validModels.length !== models.length) {
+      logger.warn(`[CLIAdapterManager] Filtered ${models.length - validModels.length} invalid model(s) from ${adapterName} adapter`);
+    }
 
-    return models;
+    await cliConfigStore.updateAdapterConfig(adapterName, { models: validModels });
+
+    return validModels;
   }
 
   async getAdapterConfig(adapterName) {

@@ -17,6 +17,32 @@ import logger from '../../../core/logger.mjs';
 
 const DEFAULT_MAX_TOOL_CALLS = 35;
 
+function extractErrorSignature(errorMsg, toolName) {
+  const msg = String(errorMsg || '');
+  const patterns = [
+    /AttributeError:.*has no attribute '([^']+)'/,
+    /AttributeError:.*has no attribute "([^"]+)"/,
+    /KeyError:.*key ["']([^"']+)["']/,
+    /KeyError: '([^']+)'/,
+    /NameError: name '([^']+)' is not defined/,
+    /NameError: name "([^"]+)" is not defined/,
+    /TypeError:.*'([^']+)'/,
+    /ValueError: ([^\n]+)/,
+    /RuntimeError: ([^\n]+)/,
+    /ImportError: ([^\n]+)/,
+    /ModuleNotFoundError: ([^\n]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = msg.match(pattern);
+    if (match) {
+      const errType = pattern.source.split(':')[0].replace(/\\/g, '');
+      return `${errType}:${match[1]}`;
+    }
+  }
+  const firstLine = msg.split('\n')[0].slice(0, 80);
+  return `${toolName}:${firstLine}`;
+}
+
 export class AgentRuntime {
   constructor(ctx) {
     this.ctx = ctx;
@@ -218,6 +244,12 @@ export class AgentRuntime {
       let finalContent = '';
       let reasoningContent = '';
       const toolResultCache = new Map();
+      const recentErrors = [];
+      const MAX_RECENT_ERRORS = 10;
+      const UNCACHEABLE_TOOLS = new Set([
+        'blender_get_screenshot_of_area_as_image',
+        'blender_get_screenshot_of_window_as_image',
+      ]);
       while (toolCallCount < maxToolCalls) {
         if (abortController.signal.aborted) {
           yield { type: 'error', message: '请求已取消' };
@@ -345,7 +377,8 @@ export class AgentRuntime {
           let resultImages = [];
 
           const cacheKey = `${tc.name}:${JSON.stringify(args)}`;
-          if (toolResultCache.has(cacheKey) && toolCallCount > 1) {
+          const isCacheable = !UNCACHEABLE_TOOLS.has(tc.name);
+          if (isCacheable && toolResultCache.has(cacheKey) && toolCallCount > 1) {
             const cached = toolResultCache.get(cacheKey);
             rawResult = cached.rawResult;
             sanitizedResult = cached.sanitizedResult;
@@ -390,7 +423,9 @@ export class AgentRuntime {
                   }
                 } catch {}
               }
-              toolResultCache.set(cacheKey, { rawResult, sanitizedResult, images: resultImages });
+              if (isCacheable) {
+                toolResultCache.set(cacheKey, { rawResult, sanitizedResult, images: resultImages });
+              }
               yield {
                 type: 'tool_call_end',
                 toolCallId: tcId,
@@ -437,24 +472,70 @@ export class AgentRuntime {
           currentMessages.push(assistantMsg);
 
           for (const atc of assistantToolCalls) {
+            let toolContent;
+            if (atc.error) {
+              const errorSignature = extractErrorSignature(atc.error, atc.name);
+              const duplicateCount = recentErrors.filter(e => e.signature === errorSignature).length;
+              recentErrors.push({ signature: errorSignature, tool: atc.name, time: Date.now() });
+              if (recentErrors.length > MAX_RECENT_ERRORS) {
+                recentErrors.shift();
+              }
+              const errorObj = { error: atc.error };
+              if (duplicateCount >= 1) {
+                errorObj._warning = `⚠️ 注意：你刚刚已经遇到过 ${duplicateCount + 1} 次类似的错误了（"${errorSignature}"）！请不要重复尝试相同写法，仔细分析错误原因，换一种方式实现，或者先用hasattr检查属性是否存在。`;
+                logger.warn(`AgentRuntime: Detected duplicate error (${duplicateCount + 1}x): ${errorSignature}`);
+              }
+              toolContent = JSON.stringify(errorObj);
+            } else if (atc.sanitizedResult && typeof atc.sanitizedResult === 'object' && atc.sanitizedResult.status === 'error') {
+              const errMsg = atc.sanitizedResult.message || JSON.stringify(atc.sanitizedResult);
+              const errorSignature = extractErrorSignature(errMsg, atc.name);
+              const duplicateCount = recentErrors.filter(e => e.signature === errorSignature).length;
+              recentErrors.push({ signature: errorSignature, tool: atc.name, time: Date.now() });
+              if (recentErrors.length > MAX_RECENT_ERRORS) {
+                recentErrors.shift();
+              }
+              const resultObj = { ...atc.sanitizedResult };
+              if (duplicateCount >= 1) {
+                resultObj._warning = `⚠️ 注意：你刚刚已经遇到过 ${duplicateCount + 1} 次类似的错误了（"${errorSignature}"）！请不要重复尝试相同写法，仔细分析错误原因，换一种方式实现。`;
+                logger.warn(`AgentRuntime: Detected duplicate error in result (${duplicateCount + 1}x): ${errorSignature}`);
+              }
+              toolContent = JSON.stringify(resultObj);
+            } else {
+              toolContent = JSON.stringify(atc.sanitizedResult);
+            }
             currentMessages.push({
               role: 'tool',
               tool_call_id: atc.id,
-              content: JSON.stringify(atc.error ? { error: atc.error } : atc.sanitizedResult),
+              content: toolContent,
             });
           }
 
           if (roundImages.length > 0) {
             sessionImages.push(...roundImages);
+            const screenshotMsgText = '以下是操作后的最新截图（screenshot_id: ' + Date.now() + '），请仔细查看截图验证当前Blender画面状态并继续：';
             const imageParts = [{
               type: 'text',
-              text: '以下是操作后的截图，请根据截图验证结果并继续：'
+              text: screenshotMsgText
             }];
             for (const img of roundImages) {
+              const imageUrl = img.dataUrl || img.fileUrl;
               imageParts.push({
                 type: 'image_url',
-                image_url: { url: img.fileUrl, detail: 'auto' }
+                image_url: { url: imageUrl, detail: 'auto' }
               });
+              logger.info(`AgentRuntime: Adding screenshot to vision context: ${img.fileName}, using ${img.dataUrl ? 'dataUrl' : 'fileUrl'}`);
+            }
+            for (let i = currentMessages.length - 1; i >= 0; i--) {
+              const msg = currentMessages[i];
+              if (msg.role === 'user' && Array.isArray(msg.content)) {
+                const hasText = msg.content.some(p => p.type === 'text' && typeof p.text === 'string' && p.text.includes('screenshot_id:'));
+                const hasImage = msg.content.some(p => p.type === 'image_url');
+                if (hasText && hasImage) {
+                  currentMessages.splice(i, 1);
+                  logger.info(`AgentRuntime: Removed previous screenshot message to save tokens (index: ${i})`);
+                  break;
+                }
+              }
             }
             currentMessages.push({ role: 'user', content: imageParts });
             logger.info(`AgentRuntime: Added ${roundImages.length} screenshot(s) as vision context, total this session: ${sessionImages.length}`);

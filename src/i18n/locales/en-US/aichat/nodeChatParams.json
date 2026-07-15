@@ -112,5 +112,6 @@
   "aichat.nodeChatParams.tripo3dTexturePromptFromChat": "Prompt from chat input",
   "aichat.nodeChatParams.tripo3dTextureNoImages": "No reference images connected; chat text will be used as texture prompt",
   "aichat.nodeChatParams.tripo3dTextureSelectImages": "Select reference images and assign views",
-  "aichat.nodeChatParams.tripo3dTextureViewProgress": "Selected {selected}/{total} views"
+  "aichat.nodeChatParams.tripo3dTextureViewProgress": "Selected {selected}/{total} views",
+  "aichat.nodeChatParams.modelNotAvailable": "Model not available, refresh in Settings"
 }
