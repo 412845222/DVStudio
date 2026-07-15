@@ -197,7 +197,7 @@
 				</div>
 
 				<div class="tc-content">
-					<div v-if="activeTab === 'workshop'" class="tc-workshop-placeholder">
+					<div v-if="activeTab === 'workshop' && !workshopPlatform?.ok" class="tc-workshop-placeholder">
 						<div class="tc-workshop-icon">
 							<svg viewBox="0 0 64 64" width="80" height="80" aria-hidden="true">
 								<rect x="8" y="8" width="48" height="48" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
@@ -208,7 +208,7 @@
 						</div>
 						<h3>{{ t('aiworkflow.templateCenter.workshopTitle') }}</h3>
 						<p>{{ t('aiworkflow.templateCenter.workshopDesc') }}</p>
-						<div v-if="!cloudAvailable" class="tc-workshop-hint">
+						<div class="tc-workshop-hint">
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
 								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
 							</svg>
@@ -228,7 +228,7 @@
 					</div>
 
 					<template v-else>
-						<div v-if="loading" class="tc-loading">
+						<div v-if="loading || (activeTab === 'workshop' && loadingWorkshopTemplates)" class="tc-loading">
 							<div class="tc-spinner"></div>
 						</div>
 
@@ -277,6 +277,7 @@ import { computed, ref, watch } from 'vue'
 import TemplateCard from './TemplateCard.vue'
 import TemplateApplyDialog from './TemplateApplyDialog.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
+import { useWorkshopTemplates } from '../../aiworkflow/template/useWorkshopTemplates'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
 import type { TemplateItem, SaveTemplateOptions, TemplateSource, TemplateApplyOptions } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
@@ -323,6 +324,15 @@ const {
 	downloadFromCloud,
 	refreshCloud,
 } = useTemplateCenter()
+
+const {
+	workshopTemplates,
+	loadingWorkshopTemplates,
+	workshopPlatform,
+	ensureWorkshopAvailable,
+	loadWorkshopTemplates,
+	downloadTemplateFromWorkshop,
+} = useWorkshopTemplates()
 
 const activeTab = ref<TabId>('user')
 
@@ -377,11 +387,16 @@ const tabSourceMap: Record<TabId, TemplateSource | null> = {
 }
 
 const displayTemplates = computed(() => {
-	let result = [...templates.value]
+	let result: TemplateItem[] = []
 
-	const targetSource = tabSourceMap[activeTab.value]
-	if (targetSource) {
-		result = result.filter((t) => t.source === targetSource)
+	if (activeTab.value === 'workshop') {
+		result = [...workshopTemplates.value]
+	} else {
+		result = [...templates.value]
+		const targetSource = tabSourceMap[activeTab.value]
+		if (targetSource) {
+			result = result.filter((t) => t.source === targetSource)
+		}
 	}
 
 	if (searchKeyword.value.trim()) {
@@ -415,6 +430,10 @@ const currentTabEmptyText = computed(() => {
 			return cloudAvailable.value
 				? t('aiworkflow.templateCenter.noCloudTemplates')
 				: t('aiworkflow.templateCenter.steamRequired')
+		case 'workshop':
+			return workshopPlatform.value?.ok
+				? t('aiworkflow.templateCenter.noWorkshopTemplates')
+				: t('aiworkflow.templateCenter.steamRequired')
 		default:
 			return t('aiworkflow.templateCenter.noTemplates')
 	}
@@ -426,6 +445,10 @@ function switchTab(tabId: TabId) {
 	if (tabId === 'cloud' && cloudAvailable.value) {
 		console.log('[template-center] Switching to cloud tab, refreshing...')
 		refreshCloud()
+	}
+	if (tabId === 'workshop') {
+		console.log('[template-center] Switching to workshop tab, loading templates...')
+		loadWorkshopTemplates({ tag: 'official' })
 	}
 }
 
@@ -506,14 +529,25 @@ async function handleUpload(template: TemplateItem) {
 }
 
 async function handleDownload(template: TemplateItem) {
-	console.log('[template-center-dialog] handleDownload clicked for:', template.id, template.name)
-	const result = await downloadFromCloud(template)
-	console.log('[template-center-dialog] download result:', result ? 'success' : 'failed')
-	if (result) {
-		toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
-		emit('download-template', template)
+	console.log('[template-center-dialog] handleDownload clicked for:', template.id, template.name, 'source:', template.source)
+	if (template.source === 'steam-workshop') {
+		const result = await downloadTemplateFromWorkshop(template.id)
+		console.log('[template-center-dialog] workshop download result:', result ? 'success' : 'failed')
+		if (result) {
+			toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
+			emit('download-template', template)
+		} else {
+			toastError(t('aiworkflow.templateCenter.downloadFailed'))
+		}
 	} else {
-		toastError(t('aiworkflow.templateCenter.downloadFailed'))
+		const result = await downloadFromCloud(template)
+		console.log('[template-center-dialog] cloud download result:', result ? 'success' : 'failed')
+		if (result) {
+			toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
+			emit('download-template', template)
+		} else {
+			toastError(t('aiworkflow.templateCenter.downloadFailed'))
+		}
 	}
 }
 </script>

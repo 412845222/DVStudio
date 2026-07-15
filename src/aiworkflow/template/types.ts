@@ -39,6 +39,10 @@ export interface TemplateItem {
 	lastSyncAt?: number
 	workshopItemId?: string
 	subscribed?: boolean
+	isOfficial?: boolean
+	workshopAuthor?: string
+	workshopLikes?: number
+	workshopSubscriptions?: number
 }
 
 export interface BuiltinTemplateConfig {

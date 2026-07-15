@@ -81,6 +81,7 @@
   "aiworkflow.templateCenter.noBuiltinTemplates": "暂无内置模板",
   "aiworkflow.templateCenter.noUserTemplates": "暂无个人模板，点击上方按钮创建你的第一个模板",
   "aiworkflow.templateCenter.noCloudTemplates": "云端暂无模板",
+  "aiworkflow.templateCenter.noWorkshopTemplates": "暂无官方模板",
   "aiworkflow.templateCenter.workshopTitle": "官方模板市场",
   "aiworkflow.templateCenter.workshopDesc": "浏览和下载由 DVStudio 官方提供的精选工作流模板，获取专业创作者的优质内容",
   "aiworkflow.templateCenter.steamRequired": "请先连接云端服务后使用",

@@ -28,6 +28,12 @@ import type {
 	CloudTemplatesDeleteResult,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	WorkshopTemplatesPlatformResult,
+	WorkshopTemplatesQueryResult,
+	WorkshopTemplatesDownloadPayload,
+	WorkshopTemplatesDownloadResult,
+	WorkshopTemplatesProgressResult,
+	WorkshopTemplatesInstallInfoResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -437,6 +443,13 @@ declare global {
 				upload(payload: CloudTemplatesUploadPayload): Promise<CloudTemplatesUploadResult>
 				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
 				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>
+			}
+			workshopTemplates?: {
+				getPlatform(): Promise<WorkshopTemplatesPlatformResult>
+				query(options?: { tag?: string; limit?: number; offset?: number }): Promise<WorkshopTemplatesQueryResult>
+				download(payload: WorkshopTemplatesDownloadPayload): Promise<WorkshopTemplatesDownloadResult>
+				progress(payload: { publishedFileId: string }): Promise<WorkshopTemplatesProgressResult>
+				installInfo(payload: { publishedFileId: string }): Promise<WorkshopTemplatesInstallInfoResult>
 			}
 			meshy?: any
 			seedance?: any
