@@ -1344,6 +1344,10 @@ function registerIpc() {
 	}
 
 	let imageMarkupWindow = null
+	let imageMarkupInitialUrl = ''
+	ipcMain.handle('dweb:image-markup:get-initial-data', async () => {
+		return { imageDataUrl: imageMarkupInitialUrl }
+	})
 	ipcMain.handle('dweb:image-markup:open', async (_e, payload) => {
 		console.log('[main] dweb:image-markup:open payload:', JSON.stringify(payload))
 		try {
@@ -1351,6 +1355,7 @@ function registerIpc() {
 			const name = String(payload?.name || '图片预览').slice(0, 200)
 			console.log('[main] url resolved:', url, 'name:', name)
 			if (!url) return { ok: false, error: 'missing url' }
+			imageMarkupInitialUrl = url
 
 			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
 				try { imageMarkupWindow.close() } catch {}

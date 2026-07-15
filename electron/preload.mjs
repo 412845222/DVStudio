@@ -351,6 +351,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			console.log('[preload] openImageMarkupPreview called with:', JSON.stringify(payload))
 			return invoke('dweb:image-markup:open', payload || {})
 		},
+		getImageMarkupInitialData: () => invoke('dweb:image-markup:get-initial-data'),
 		exportImageMarkup: (payload) => invoke('dweb:image-markup:export', payload || {}),
 		onImageMarkupExported: (handler) => {
 			if (typeof handler !== 'function') return -1
