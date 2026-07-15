@@ -375,7 +375,7 @@ function exportMarkup() {
   const result = engine.composeExportDataUrl()
   if (!result) return
 
-  const dweb = (window as any).dweb
+  const dweb = window.dweb
   if (!dweb?.aiworkflow?.exportImageMarkup) {
     downloadDataUrl(result.dataUrl, 'edited-image.png')
     return
@@ -391,7 +391,7 @@ function exportScreenshot() {
   const result = engine.composeScreenshotDataUrl()
   if (!result) return
 
-  const dweb = (window as any).dweb
+  const dweb = window.dweb
   if (!dweb?.aiworkflow?.exportImageMarkup) {
     downloadDataUrl(result.dataUrl, 'cropped-image.png')
     return
@@ -514,7 +514,7 @@ function onSubjectMarginChange(val: number) {
 
 async function exportSubjectCrop() {
   if (!engine || subjectExporting.value) return
-  const dweb = (window as any).dweb
+  const dweb = window.dweb
   const exporter = dweb?.aiworkflow?.exportImageMarkup
 
   const doExportOne = async (idx?: number): Promise<boolean> => {
@@ -599,7 +599,7 @@ onMounted(async () => {
 
   engine = new ImageEditorEngine(baseCanvasRef.value, overlayCanvasRef.value)
 
-  const dweb = (window as any).dweb
+  const dweb = window.dweb
   let imageUrl: string | null = null
 
   if (dweb?.aiworkflow?.getImageMarkupInitialData) {

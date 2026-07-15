@@ -370,7 +370,7 @@ export class ImageEditorEngine implements IEditorEngine {
 		}
 	}
 
-	pointerToImageCoords(clientX: number, clientY: number, viewport: HTMLElement): Point | null {
+	pointerToImageCoords(clientX: number, clientY: number, _viewport: HTMLElement): Point | null {
 		const rect = this.baseCanvas.getBoundingClientRect()
 		const localX = clientX - rect.left
 		const localY = clientY - rect.top
@@ -823,7 +823,7 @@ export class ImageEditorEngine implements IEditorEngine {
 		bgB: number,
 		normStrict: number,
 		feather: number,
-		bounds?: { x: number; y: number; w: number; h: number }
+		_bounds?: { x: number; y: number; w: number; h: number }
 	): void {
 		const ERASED = 2
 		const SOFT = 3
@@ -1186,9 +1186,8 @@ export class ImageEditorEngine implements IEditorEngine {
 		}
 		this.startMarchingAnts()
 
-		const self = this
 		this.clickEraseApplyTimer = window.setTimeout(() => {
-			self.applyClickEraseResult()
+			this.applyClickEraseResult()
 		}, 400)
 	}
 
@@ -1339,7 +1338,6 @@ export class ImageEditorEngine implements IEditorEngine {
 					h = bottom - y
 					break
 				case 's':
-					h = Math.max(minSize, sr.y + dy - sr.y + h - sr.h)
 					h = Math.max(minSize, sr.h + dy)
 					break
 				case 'w':
