@@ -39,7 +39,7 @@ export type DwebCanvasMenuDataKind =
 	| 'audio'
 	| 'text'
 
-export type Newui2NodeCategoryId = 'basic' | 'image2d' | 'video' | 'audio' | 'model3d'
+export type Newui2NodeCategoryId = 'basic' | 'image2d' | 'video' | 'audio' | 'model3d' | 'plugin'
 
 export type Newui2NodeCatalogCategory = {
 	id: Newui2NodeCategoryId
