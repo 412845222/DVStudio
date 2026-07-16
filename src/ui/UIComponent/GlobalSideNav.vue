@@ -84,6 +84,10 @@
 						<path d="M8 20h8M10 18v2M14 18v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 						<path d="M7.5 9.5h9M7.5 13h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 					</svg>
+					<svg v-else-if="item.key === 'services'" viewBox="0 0 24 24" fill="none">
+						<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/>
+						<path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
 					<svg v-else viewBox="0 0 24 24" fill="none">
 						<path
 							d="M12 3.5l2 1.2 2.3-.3.9 2.1 2.1.9-.3 2.3 1.2 2-1.2 2 .3 2.3-2.1.9-.9 2.1-2.3-.3-2 1.2-2-1.2-2.3.3-.9-2.1-2.1-.9.3-2.3-1.2-2 1.2-2-.3-2.3 2.1-.9.9-2.1 2.3.3 2-1.2z"
@@ -158,6 +162,7 @@ const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 
 const items = computed(() => [
 	{ key: 'projects', label: t('menu.projects'), active: route.name === 'ProjectList' },
 	{ key: 'workflow', label: t('menu.workflow'), active: route.name === 'AIWorkflow' },
+	{ key: 'services', label: t('menu.services'), active: route.name === 'ServiceCenter' },
 	{ key: 'settings', label: t('menu.settings'), active: route.name === 'Settings' },
 ])
 
@@ -186,6 +191,7 @@ function onSelect(key: string) {
 		}
 	}
 	if (key === 'studio') void router.push({ name: 'VideoStudio' })
+	if (key === 'services') void router.push({ name: 'ServiceCenter' })
 	if (key === 'settings') void router.push({ name: 'Settings' })
 }
 

@@ -623,14 +623,24 @@ export type WorkflowComfyUINodeSettings = {
 	message?: string
 	/** epoch ms */
 	lastCheckedAt?: number
-	/** available workflow files under user workflows dir */
-	workflows?: { path: string; name: string }[]
-	/** selected workflow file path, e.g. workflows/xxx.json */
+	/** available workflow files under user workflows dir or history */
+	workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+	/** selected workflow file path, e.g. workflows/xxx.json or history://xxx */
 	workflowPath?: string
+	/** source of selected workflow */
+	workflowSource?: 'userdata' | 'history'
 	/** optional override text for positive CLIP prompt nodes */
 	positivePrompt?: string
 	/** optional override text for negative CLIP prompt nodes */
 	negativePrompt?: string
+	/** ComfyUI /object_info cached data */
+	objectInfo?: import('./domain/comfyui/objectInfoTypes').ComfyObjectInfo
+	/** ComfyUI system info from /system_stats */
+	systemInfo?: import('./domain/comfyui/objectInfoTypes').ComfySystemStats & {
+		nodeCount?: number
+	}
+	/** available checkpoint models list */
+	checkpoints?: string[]
 
 	/** execution status for the loaded workflow */
 	runStatus?: 'idle' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled'

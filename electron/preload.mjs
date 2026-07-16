@@ -266,6 +266,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		openDevTools: () => invoke('dweb:window:openDevTools'),
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
+		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
 	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
@@ -608,14 +609,76 @@ contextBridge.exposeInMainWorld('dweb', {
 	comfyui: {
 		runtime: {
 			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
+			objectInfo: (payload) => invoke('dweb:comfyui:runtime:object_info', payload || {}),
 			workflows: {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
+				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
 			},
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
 			job: (payload) => invoke('dweb:comfyui:runtime:job', payload || {}),
+		},
+		setup: {
+			getDefaultInstallPath: () => invoke('dweb:comfyui:setup:default-path'),
+			selectInstallPath: (payload) => invoke('dweb:comfyui:setup:select-path', payload || {}),
+			selectModelPath: () => invoke('dweb:comfyui:setup:select-model-path'),
+			validatePath: (payload) => invoke('dweb:comfyui:setup:validate-path', payload || {}),
+			probeExistingInstall: (payload) => invoke('dweb:comfyui:setup:probe', payload || {}),
+			checkEnv: (payload) => invoke('dweb:comfyui:setup:check-env', payload || {}),
+			install: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:install', payload || {}),
+			cancelInstall: () => invoke('dweb:comfyui:setup:cancel-install'),
+			startService: (payload) => invoke('dweb:comfyui:setup:start-service', payload || {}),
+			stopService: () => invoke('dweb:comfyui:setup:stop-service'),
+			getServiceStatus: () => invoke('dweb:comfyui:setup:service-status'),
+			openFolder: (payload) => invoke('dweb:comfyui:setup:open-folder', payload || {}),
+			getConfig: () => invoke('dweb:comfyui:setup:get-config'),
+			saveConfig: (payload) => invoke('dweb:comfyui:setup:save-config', payload || {}),
+			addCustomModelPath: (payload) => invoke('dweb:comfyui:setup:add-model-path', payload || {}),
+			removeCustomModelPath: (payload) => invoke('dweb:comfyui:setup:remove-model-path', payload || {}),
+			pingMirrors: () => invoke('dweb:comfyui:setup:ping-mirrors'),
+			getMirrorList: () => invoke('dweb:comfyui:setup:get-mirror-list'),
+			setMirror: (payload) => invoke('dweb:comfyui:setup:set-mirror', payload || {}),
+			fixPythonEnv: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:fix-python-env', payload || {}),
+			getDefaultVenvPath: () => invoke('dweb:comfyui:setup:default-venv-path'),
+			selectVenvPath: (payload) => invoke('dweb:comfyui:setup:select-venv-path', payload || {}),
+			setVenvPath: (payload) => invoke('dweb:comfyui:setup:set-venv-path', payload || {}),
+			getServiceLogs: () => invoke('dweb:comfyui:setup:service-logs'),
+			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
+			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
+			onServiceLog: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-log'
+				const handler = (_evt, entry) => {
+					try { listener(entry) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceStatusChange: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-status'
+				const handler = (_evt, status) => {
+					try { listener(status) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceExit: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-exit'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceLogsCleared: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-clear'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
 		},
 	},
 	// ===== Codex 编程助手 =====

@@ -51,6 +51,16 @@ const routes: RouteRecordRaw[] = [
 		path: '/template-center',
 		name: 'TemplateCenter',
 		component: () => import('../views/AIWorkflow/TemplateCenterWindow.vue')
+	},
+	{
+		path: '/comfyui-setup',
+		name: 'ComfyUISetup',
+		component: () => import('../views/ComfyUISetupPage.vue')
+	},
+	{
+		path: '/services',
+		name: 'ServiceCenter',
+		component: () => import('../views/ServiceCenterPage.vue')
 	}
 ]
 
