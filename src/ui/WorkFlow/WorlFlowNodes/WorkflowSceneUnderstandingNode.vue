@@ -98,6 +98,18 @@
 					</select>
 				</label>
 
+				<label v-if="currentMode === 'scene-layout'" class="wf-scene-understand-field">
+					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.sceneType') }}</span>
+					<select class="wf-scene-understand-input" :value="currentSceneType" :disabled="running" @change="onSceneTypeChange">
+						<option value="auto">{{ t('nodes.sceneUnderstanding.sceneTypeAuto') }}</option>
+						<option value="indoor">{{ t('nodes.sceneUnderstanding.sceneTypeIndoor') }}</option>
+						<option value="outdoor">{{ t('nodes.sceneUnderstanding.sceneTypeOutdoor') }}</option>
+					</select>
+					<div v-if="detectedSceneTypeLabel" class="wf-scene-understand-card-copy">
+						{{ detectedSceneTypeLabel }}
+					</div>
+				</label>
+
 				<label class="wf-scene-understand-field">
 					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.multimodalModel') }}</span>
 					<div class="wf-scene-understand-model-row">
@@ -250,6 +262,27 @@ const settings = computed(() => props.sceneUnderstandingSettings ?? null)
 const currentMode = computed(() =>
 	settings.value?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 )
+const currentSceneType = computed<'auto' | 'indoor' | 'outdoor'>(() => {
+	const st = settings.value?.sceneType
+	return st === 'indoor' || st === 'outdoor' ? st : 'auto'
+})
+const detectedSceneType = computed(() => {
+	const st = settings.value?.detectedSceneType
+	return st === 'indoor' || st === 'outdoor' || st === 'semi-outdoor' ? st : null
+})
+const detectedSceneTypeLabel = computed(() => {
+	if (!detectedSceneType.value) return ''
+	const confidence = settings.value?.sceneTypeConfidence
+	const confText = typeof confidence === 'number' && confidence > 0
+		? ` (${Math.round(confidence * 100)}%)`
+		: ''
+	const typeLabel = detectedSceneType.value === 'indoor'
+		? t('nodes.sceneUnderstanding.detectedIndoor')
+		: detectedSceneType.value === 'outdoor'
+			? t('nodes.sceneUnderstanding.detectedOutdoor')
+			: t('nodes.sceneUnderstanding.detectedSemiOutdoor')
+	return `${t('nodes.sceneUnderstanding.detectedAs')}${typeLabel}${confText}`
+})
 const availableModels = computed(
 	() =>
 		(Array.isArray(settings.value?.availableModels)
@@ -366,10 +399,25 @@ const onModeChange = (e: Event) => {
 		outputJson: '',
 		rawOutput: '',
 		resultSummary: '',
+		detectedSceneType: undefined,
+		sceneTypeConfidence: undefined,
 		message:
 			value === 'scene-lighting'
 				? t('nodes.sceneUnderstanding.modeLightingMessage')
 				: t('nodes.sceneUnderstanding.modeLayoutMessage')
+	})
+}
+
+const onSceneTypeChange = (e: Event) => {
+	const value = String((e.target as HTMLSelectElement).value ?? '').trim()
+	const sceneType = value === 'indoor' || value === 'outdoor' ? value : 'auto'
+	emit('update-scene-understanding-settings', {
+		sceneType,
+		detectedSceneType: undefined,
+		sceneTypeConfidence: undefined,
+		outputJson: '',
+		rawOutput: '',
+		resultSummary: ''
 	})
 }
 

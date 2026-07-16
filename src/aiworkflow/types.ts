@@ -160,8 +160,11 @@ export type WorkflowSceneUnderstandModelOption = {
 	vendor?: string
 }
 
+export type WorkflowSceneType = 'auto' | 'indoor' | 'outdoor'
+
 export type WorkflowSceneUnderstandingNodeSettings = {
 	mode?: 'scene-layout' | 'scene-lighting'
+	sceneType?: WorkflowSceneType
 	selectedModel?: string
 	availableModels?: WorkflowSceneUnderstandModelOption[]
 	status?: 'idle' | 'loading-models' | 'running' | 'completed' | 'error' | 'canceled'
@@ -180,6 +183,8 @@ export type WorkflowSceneUnderstandingNodeSettings = {
 	lastInputImageUrls?: string[]
 	lastInputPrompt?: string
 	lastInputLayoutJson?: string
+	detectedSceneType?: 'indoor' | 'outdoor' | 'semi-outdoor'
+	sceneTypeConfidence?: number
 	rewriteUsed?: boolean
 	rewriteAttempts?: number
 	mock?: boolean
