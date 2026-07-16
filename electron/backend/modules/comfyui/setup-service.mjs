@@ -211,10 +211,8 @@ const SERVICE_EXIT_CHANNEL = 'dweb:comfyui:setup:service-exit'
 const SERVICE_CLEAR_CHANNEL = 'dweb:comfyui:setup:service-clear'
 /** @type {Array<{ts:number, stream:'stdout'|'stderr'|'system', message:string}>} */
 let serviceLogBuffer = []
-/** @type {{buf:string}} */
-let _stdoutLineBuffer = { buf: '' }
-/** @type {{buf:string}} */
-let _stderrLineBuffer = { buf: '' }
+let _stdoutParserState = createLineParserState()
+let _stderrParserState = createLineParserState()
 
 function broadcastToAllWindows(channel, payload) {
 	for (const win of BrowserWindow.getAllWindows()) {
@@ -234,26 +232,20 @@ function appendServiceLog(stream, message) {
 	broadcastToAllWindows(SERVICE_LOG_CHANNEL, entry)
 }
 
-function processStreamData(rawData, streamName, bufferHolder) {
-	const text = rawData.toString('utf-8')
-	const merged = bufferHolder.buf + text
-	const lines = merged.split(/\r?\n/)
-	const last = lines.pop()
-	bufferHolder.buf = last || ''
-	for (const line of lines) {
-		if (line.length > 0) appendServiceLog(streamName, line)
+function emitParserEvents(events) {
+	for (const ev of events) {
+		appendServiceLog(ev.stream, ev.message)
 	}
 }
 
-function flushLineBuffers() {
-	if (_stdoutLineBuffer.buf) {
-		appendServiceLog('stdout', _stdoutLineBuffer.buf)
-		_stdoutLineBuffer.buf = ''
-	}
-	if (_stderrLineBuffer.buf) {
-		appendServiceLog('stderr', _stderrLineBuffer.buf)
-		_stderrLineBuffer.buf = ''
-	}
+function flushServiceStreamBuffers() {
+	emitParserEvents(processStreamData('stdout', '', _stdoutParserState, true))
+	emitParserEvents(processStreamData('stderr', '', _stderrParserState, true))
+}
+
+function resetServiceStreamBuffers() {
+	_stdoutParserState = createLineParserState()
+	_stderrParserState = createLineParserState()
 }
 
 function broadcastStatus(status) {
@@ -1518,7 +1510,7 @@ function waitForServiceExit(timeoutMs) {
 }
 
 function handleServiceExit(code, signal) {
-	flushLineBuffers()
+	flushServiceStreamBuffers()
 	serviceExitCode = (typeof code === 'number') ? code : (signal ? signal : null)
 	appendServiceLog('system', `[系统] 进程已退出 (code=${serviceExitCode})`)
 	serviceChildProcess = null
@@ -1585,8 +1577,7 @@ async function startService(installPath, port, extraArgs) {
 		spawnArgs = [...pythonBaseArgs, 'main.py', '--listen', '127.0.0.1', '--port', String(p), ...args]
 	}
 
-	_stdoutLineBuffer.buf = ''
-	_stderrLineBuffer.buf = ''
+	resetServiceStreamBuffers()
 	serviceExitCode = null
 	const cmdDisplay = useShell ? pythonCmd : `"${pythonCmd}" ${spawnArgs.join(' ')}`
 	appendServiceLog('system', `[启动] 工作目录: ${targetPath}`)
@@ -1601,10 +1592,10 @@ async function startService(installPath, port, extraArgs) {
 		})
 		serviceStartTime = Date.now()
 		serviceChildProcess.stdout?.on('data', (data) => {
-			processStreamData(data, 'stdout', _stdoutLineBuffer)
+			emitParserEvents(processStreamData('stdout', data, _stdoutParserState, false))
 		})
 		serviceChildProcess.stderr?.on('data', (data) => {
-			processStreamData(data, 'stderr', _stderrLineBuffer)
+			emitParserEvents(processStreamData('stderr', data, _stderrParserState, false))
 		})
 		serviceChildProcess.on('error', (err) => {
 			appendServiceLog('stderr', `[启动失败] ${err?.message || String(err)}`)
@@ -1821,8 +1812,7 @@ export function setupGetServiceLogs() {
 
 export function setupClearServiceLogs() {
 	serviceLogBuffer = []
-	_stdoutLineBuffer.buf = ''
-	_stderrLineBuffer.buf = ''
+	resetServiceStreamBuffers()
 	broadcastToAllWindows(SERVICE_CLEAR_CHANNEL, { ts: Date.now() })
 	return { ok: true }
 }
