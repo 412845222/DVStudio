@@ -112,7 +112,7 @@ export const SCENE_LIGHTING_MODEL_OPTIONS = [
 
 export const DEFAULT_SCENE_LIGHTING_MODEL = 'doubao-seed-2-1-pro-260628'
 
-const SCENE_UNDERSTAND_SYSTEM_PROMPT = `你是一个面向室内设计与 Unreal 场景搭建的场景理解技能。你的任务是读取输入图像和补充文本，输出严格 JSON。
+const INDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT = `你是一个面向室内设计与 Unreal 场景搭建的场景理解技能。你的任务是读取输入图像和补充文本，输出严格 JSON。
 不要输出 markdown，不要输出解释，不要输出代码块。
 所有参考图都属于同一室内空间的多视角证据。你必须先综合全部参考图，建立统一的 roomShell、主地面、墙面围合、屋顶高度与整体空间比例，再在这个统一结构里补全全部 objects。
 如果后续请求以上一轮 assistant 已输出的 JSON 前缀结尾，这表示进入官方续写模式；你必须从当前 JSON 末尾无缝继续，不能重头再写，不能重复已输出前缀，不能改写前文语义。
@@ -157,12 +157,149 @@ objects 中每个元素都必须包含以下字段：id、name、category、desc
 5. 如果收到续写指令（assistant 消息以未完成的 JSON 结尾），必须从断点处无缝续写，绝对不能从头重新输出，绝对不能重复已有内容。
 输出必须是严格有效的 JSON，不要有任何额外文字。`
 
-function buildSceneUnderstandUserPrompt(userText, imageCount) {
+const OUTDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT = `你是一个面向室外场景搭建与 Unreal Engine 场景构建的室外场景理解技能。你的任务是读取输入图像和补充文本，输出严格 JSON。
+不要输出 markdown，不要输出解释，不要输出代码块。
+
+【场景类型确认】
+你正在处理室外场景（outdoor），请按照室外场景规则进行分析，不要尝试寻找室内的墙面围合或 roomShell。必须在JSON顶层输出sceneType: "outdoor"和sceneTypeConfidence（0-1之间的数值）。
+
+【空间理解规则】
+1. 以主地平面（groundPlane）作为世界基准面（Y=0），其他对象坐标基于该原点推导。
+2. 识别地平线位置（horizonY，0-1归一化坐标），区分天空区域（skyDome）和地面区域。
+3. 将物体按深度层次分类：foreground（近景，0-10米）、midground（中景，10-50米）、background（远景，50米以外）、sky（天空层），每个物体必须输出depthLayer字段。
+4. 不输出 roomShell；改为输出 outdoorShell 描述场景范围和相机视角，包含 horizonY、hasSky、hasGround、viewDirection、depthLayers、confidence。
+5. 室外不存在正交墙面约束，建筑、道路等可以任意角度。
+6. 识别天空元素（天空、太阳、云等）作为 skyDome 的一部分，挂载类型为 sky。
+7. 地面可以是平地、斜坡、台阶、地形起伏；地面对象的 position.y 基准为 0。
+8. 如果后续请求以上一轮 assistant 已输出的 JSON 前缀结尾，这表示进入官方续写模式；你必须从当前 JSON 末尾无缝继续，不能重头再写，不能重复已输出前缀，不能改写前文语义。
+
+【元素识别优先级】
+1. 环境结构优先：天空、地面/地形、水体、山体、道路
+2. 大型结构：建筑、桥梁、塔
+3. 植被：乔木、灌木、草地
+4. 中型物体：车辆、街道家具、围栏
+5. 小型物体：人物、动物、散落道具
+
+【挂载语义（mountType）】
+- ground：直接放置在地面上的物体（建筑、树木、车辆、路灯、人物等）
+- terrain：贴合或嵌入地形的物体（岩石、植被、道路）
+- sky：天空中的元素（太阳、云、飞鸟、飞机）
+- water-surface：水面上的物体（船、水上设施）
+- support-top：放置在其他物体顶部（屋顶设备、车顶物品）
+- embedded-wall：嵌入建筑墙体（窗户、门、招牌）
+- free：漂浮或悬挂的物体（气球、风筝、悬挂物）
+
+【关键元素标记】
+必须为关键自然/建筑元素输出 isKeyElement=true：
+- 天空（sky）
+- 主地面/地形（ground/terrain）
+- 主要道路/路径（main road/path）
+- 大型水体（river/lake/sea）
+- 主体建筑（main building）
+- 标志性树木/植被（landmark tree）
+
+【输出字段要求】
+- 必须输出 sceneType: "outdoor"
+- 必须输出 sceneTypeConfidence（0-1）
+- 必须输出 outdoorShell，包含 horizonY、hasSky、hasGround、viewDirection（eye-level/low-angle/high-angle/aerial）、depthLayers（far/mid/near的z范围）、confidence
+- 必须输出 sceneSummary 简要描述场景
+- 必须输出 camera 信息，包含估算的 position/target/fov
+- 尽量输出 lightingAnalysis，包含 sunDirection（azimuth/elevation角度）、sunIntensity、skyIntensity、timeOfDay（dawn/morning/noon/afternoon/dusk/night）、weather（clear/cloudy/overcast/foggy/rainy/snowy）
+- objects 中每个元素必须包含：id、name、category、description、material、position、rotation、scale、size、sourceImageIndex、imageRect、depthLayer、mountType、shouldTouchGround、groundReason
+
+【imageRect截图要求】
+- 每个非环境对象必须给出唯一 sourceImageIndex，并在该参考图上输出紧致可裁切的 imageRect
+- imageRect 对应的实际像素宽度必须 ≥ 350px，且为横向（width ≥ height）
+- 扩边时优先左右扩，保持横向比例
+- 禁止细长截图，宽高比控制在 1:1 到 4:3 之间
+- 使用归一化坐标（0-1），必须是紧致包围框，不要默认整图
+- 源图编号从1开始，observedImageIndices 表示物体在哪些视角可见
+
+【多视角融合】
+如果输入多张参考图，它们属于同一室外场景的不同视角：
+- 综合判断场景整体布局和深度层次
+- 每张图新增的物体都要纳入统一 objects
+- 标记 observedImageIndices 表示物体在哪些视角可见
+- sourceImageIndex 选择最适合截图的那张图
+
+【室外物体扩展字段】
+- isTransparent：玻璃、水等透明物体标记为 true
+- isVegetation：植物（树木、灌木、花草）标记为 true
+- isTerrain：地形、山体标记为 true
+- occludes：字符串数组，被该物体遮挡的物体ID列表
+- occludedBy：字符串数组，遮挡该物体的物体ID列表
+
+【输出规则-最高优先级】
+1. 你必须且只能输出一个完整的 JSON 对象，从 { 开始，以 } 结束。
+2. 输出完最终的 } 之后必须立即停止生成，绝对不要在 } 之后输出任何内容。
+3. 绝对禁止在一个回复中输出两个或多个 JSON 对象。
+4. 绝对禁止在 JSON 之外添加任何自然语言文字。
+5. 如果收到续写指令，必须从断点处无缝续写，绝对不能从头重新输出。
+输出必须是严格有效的 JSON，不要有任何额外文字。`
+
+const AUTO_SCENE_UNDERSTAND_SYSTEM_PROMPT = `你是一个通用场景理解技能，支持室内和室外场景。你的任务是：
+1. 首先判断输入场景是室内（indoor）、室外（outdoor）还是半室外（semi-outdoor）
+2. 然后根据判断结果，按照对应场景类型的规则进行完整分析
+3. 输出严格 JSON 格式
+不要输出 markdown，不要输出解释，不要输出代码块。
+
+【第一步：场景类型判断】
+仔细观察图片，判断场景类型并在 JSON 顶层输出：
+- sceneType："indoor"（室内，有明确墙面/地面/天花板围合）、"outdoor"（室外，开放空间、可见天空或自然景观）、"semi-outdoor"（半室外，有屋顶但侧面开放，如阳台、露台、廊架）
+- sceneTypeConfidence：0-1 之间的置信度数值
+
+【第二步：按场景类型分析】
+判断完成后，根据 sceneType 使用对应的分析规则：
+
+【如果是 indoor（室内）】：
+- 输出 roomShell 描述房间围合（width/depth/height/centerX/centerZ/wallThickness/hasFloor/hasCeiling/detectedWalls/confidence）
+- 识别墙面、地面、天花、门窗等硬装修
+- 使用室内 mountType：floor、wall、embedded-wall、ceiling、support-top、free
+- 遵循室内立方体空间关系，墙面与地面正交
+- keyElementType 使用：floor、wall、ceiling、roof、window、column、door、opening、builtin-fixture、fixed-installation
+- 区分前墙/后墙/左墙/右墙，墙体对象填写 wallRole
+- position.y 表示物体底面高度，主地面 position.y=0
+
+【如果是 outdoor（室外）】：
+- 输出 outdoorShell 描述场景范围（horizonY/hasSky/hasGround/viewDirection/depthLayers/confidence）
+- 识别天空、地平面、地平线位置
+- 使用室外 mountType：ground、terrain、sky、water-surface、support-top、embedded-wall、free
+- 划分深度层次：foreground/midground/background/sky，每个物体输出 depthLayer 字段
+- 识别自然元素（植被、水体、地形）和建筑
+- 输出 lightingAnalysis 分析太阳光方向和天气
+- 天空元素标记 mountType=sky，地面物体 mountType=ground 或 terrain
+- 支持 isVegetation/isTerrain/isTransparent/occludes/occludedBy 扩展字段
+
+【如果是 semi-outdoor（半室外）】：
+- 输出 outdoorShell，可附带室内元素标记
+- 同时识别屋顶/天花板结构和开放侧面
+- 结合室内外规则灵活处理
+- 注意半室外特有的光照混合
+
+【通用规则】
+- 所有参考图属于同一场景，需要融合多视角分析
+- 每个非环境对象必须有唯一 sourceImageIndex 和紧致 imageRect（宽度≥350px，横向，宽高比1:1到4:3）
+- position 使用统一右手坐标系：X/Z为地面平面，Y向上，地面 Y=0，单位为米（估算值）
+- sourceImageIndex 从1开始，同时输出 observedImageIndices 标记可见视角
+- 每个对象必须包含：id、name、category、description、material、position、rotation、scale、size、sourceImageIndex、imageRect、mountType、shouldTouchGround、groundReason
+- 物体 name 为6字以内简短中文名称，禁止泛称
+- 如果收到续写指令（assistant 消息以未完成 JSON 结尾），必须从断点无缝续写，不能重头开始
+- 输出应避免冗长描述，sceneSummary 保持简短，description 用短句
+
+【输出规则-最高优先级】
+1. 你必须且只能输出一个完整的 JSON 对象，从 { 开始，以 } 结束。
+2. 必须包含 sceneType 和 sceneTypeConfidence 字段在 JSON 顶层。
+3. 根据 sceneType 包含 roomShell（室内/半室外）或 outdoorShell（室外/半室外）。
+4. 输出完 } 后立即停止，不要添加任何额外文字。
+5. 绝对禁止输出多个JSON对象或JSON外的自然语言。
+输出必须是严格有效的 JSON，不要有任何额外文字。`
+
+function buildIndoorSceneUnderstandUserPrompt(userText, imageCount) {
 	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行场景理解。'
 	const multiViewText = imageCount > 1
 		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室内空间的不同视角。请先综合全部参考图建立统一房屋结构，再补全全部内容。`
 		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室内结构。'
-	return `请基于输入图片完成室内/场景理解，识别主要物体并估算布局关系。优先识别墙面、桌面、柜体、地面这些大结构。
+	return `请基于输入图片完成室内场景理解，识别主要物体并估算布局关系。优先识别墙面、桌面、柜体、地面这些大结构。
 ${multiViewText}
 请先确定主地面并建立场景原点，再输出墙面与地面的正交关系。
 请显式输出 roomShell，描述完整房间围合范围；后续布局节点会优先使用它来生成墙面、地面、屋顶。
@@ -210,6 +347,90 @@ ${multiViewText}
 - 当墙面已经围合出房间边界时，地面和屋顶的 size/position 应覆盖整个围合区域，而不是只覆盖当前镜头可见部分。
 - 若无法判断真实尺寸，请给出合理近似值。
 用户补充要求：${extra}`
+}
+
+function buildOutdoorSceneUnderstandUserPrompt(userText, imageCount) {
+	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行室外场景理解。'
+	const multiViewText = imageCount > 1
+		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室外场景的不同视角。请综合全部参考图建立统一室外空间结构。`
+		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室外场景结构。'
+	return `请基于输入图片完成室外场景理解，识别主要物体并估算空间布局关系。
+${multiViewText}
+
+请按以下步骤分析：
+1. 首先确定地平线位置（horizonY）和天空/地面分割
+2. 识别主地平面作为 Y=0 基准面
+3. 划分近景(foreground)/中景(midground)/远景(background)/天空(sky)层次
+4. 识别环境结构元素（天空、地面、道路、水体、山体）
+5. 识别建筑和大型结构
+6. 识别植被（树木、灌木等）
+7. 识别其他物体（车辆、人物、街道设施等）
+8. 分析光照条件（太阳方位、天气、时间段）
+
+补充说明：
+- 必须在JSON顶层输出sceneType: "outdoor"和sceneTypeConfidence（0-1）
+- outdoorShell用于描述室外场景整体范围，包含horizonY、hasSky、hasGround、viewDirection、depthLayers、confidence
+- depthLayer标记每个物体的深度层次：foreground(0-10m)、midground(10-50m)、background(50m+)、sky
+- lightingAnalysis包含sunDirection(azimuth/elevation)、sunIntensity、skyIntensity、timeOfDay、weather
+- 建筑物体的rotation.yaw基于X轴正方向（东）为0度，顺时针增加（0-360）
+- 树木、植被等自然物体标记isVegetation=true，并允许较大的尺寸估算误差
+- 地形、山体标记isTerrain=true
+- 透明物体（玻璃、水面）标记isTransparent=true
+- 请尽量输出occludes/occludedBy关系描述物体遮挡关系
+- 远景物体可以简化描述，但imageRect仍需保证可截图性
+- position使用估算的世界坐标（米为单位），地面物体Y=0为底面高度，天空元素Y为较大正值
+- mountType使用室外类型：ground、terrain、sky、water-surface、support-top、embedded-wall、free
+- keyElementType推荐使用：sky、ground、terrain、water、road、path、building、bridge、tree、vegetation、landmark、street-furniture
+- relationTags推荐使用：key-element、ground-placed、terrain-fitted、sky-element、building-attached、vegetation
+- sourceImageIndex从1开始，每个非环境对象必须选择唯一一张最适合截图的参考图
+- imageRect使用归一化坐标（0-1），宽度≥350px，必须横向（width≥height），宽高比1:1到4:3，紧致包围框
+- 每个物体必须包含shouldTouchGround和groundReason字段
+- 多视角参考图需要融合分析，observedImageIndices标记物体在哪些视角可见
+- 若无法判断真实尺寸，请给出合理近似值
+用户补充要求：${extra}`
+}
+
+function buildSceneUnderstandUserPrompt(userText, imageCount, sceneType) {
+	const st = String(sceneType || 'auto').trim().toLowerCase()
+	if (st === 'indoor') {
+		return buildIndoorSceneUnderstandUserPrompt(userText, imageCount)
+	}
+	if (st === 'outdoor') {
+		return buildOutdoorSceneUnderstandUserPrompt(userText, imageCount)
+	}
+	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行场景理解。'
+	const multiViewText = imageCount > 1
+		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一场景的不同视角。请先综合全部参考图建立统一空间结构，再补全全部内容。`
+		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整场景结构。'
+	return `请基于输入图片完成场景理解（支持室内/室外自动识别），识别主要物体并估算布局关系。
+${multiViewText}
+
+请严格按照以下步骤执行：
+【第一步：场景类型判断】首先判断这是室内（indoor）、室外（outdoor）还是半室外（semi-outdoor）场景，在JSON顶层输出sceneType和sceneTypeConfidence。
+【第二步：建立空间基准】根据场景类型建立坐标系：室内建立roomShell立方体围合；室外建立outdoorShell（地平线、天空/地面）。
+【第三步：识别物体】识别场景中的所有主要物体，按优先级识别大结构再到小物体。
+【第四步：输出关系】标记物体挂载关系、遮挡关系、截图区域。
+
+通用补充说明：
+- 必须输出sceneType和sceneTypeConfidence字段
+- 室内场景输出roomShell；室外场景输出outdoorShell和depthLayer；半室外两者兼顾
+- 每个非环境对象必须有唯一sourceImageIndex和紧致imageRect（宽度≥350px，横向，宽高比1:1到4:3）
+- position使用右手坐标系：X/Z地面平面，Y向上，地面Y=0，单位米（估算值）
+- sourceImageIndex从1开始，同时输出observedImageIndices
+- mountType：室内用floor/wall/ceiling/embedded-wall/support-top/free；室外用ground/terrain/sky/water-surface/support-top/embedded-wall/free
+- 每个物体必须包含shouldTouchGround和groundReason
+- 室外物体可包含isVegetation/isTerrain/isTransparent/occludes/occludedBy扩展字段
+- 尽量输出lightingAnalysis分析光照
+- size和position允许估算但需自洽
+- 若无法判断真实尺寸，请给出合理近似值
+用户补充要求：${extra}`
+}
+
+function getSceneUnderstandSystemPrompt(sceneType) {
+	const st = String(sceneType || 'auto').trim().toLowerCase()
+	if (st === 'indoor') return INDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
+	if (st === 'outdoor') return OUTDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
+	return AUTO_SCENE_UNDERSTAND_SYSTEM_PROMPT
 }
 
 const SCENE_LIGHTING_SYSTEM_PROMPT = `你是一个面向室内设计与 Unreal 场景搭建的场景灯光分析技能。你的任务是基于场景理解的 JSON 结果和参考图像，分析场景光照条件并输出灯光布置建议的严格 JSON。
@@ -479,18 +700,19 @@ export async function sceneUnderstandRun(ctx, payload) {
 	const imageUrl = String(p.imageUrl || '').trim()
 	const imageDataUrl = String(p.imageDataUrl || '').trim()
 	const imageInputs = p.imageInputs
+	const sceneType = String(p.sceneType || 'auto').trim()
 
 	const apiKey = resolveArkApiKey(ctx)
 	if (!apiKey) throw invalidParamsError('ByteDance Ark API key is not configured')
 
 	const client = getHttpClient()
 	const messages = [
-		{ role: 'system', content: SCENE_UNDERSTAND_SYSTEM_PROMPT }
+		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }
 	]
 
 	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
 	const userContent = [
-		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount) }
+		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
 	]
 	if (Array.isArray(imageInputs) && imageInputs.length > 0) {
 		userContent.push(...buildImageContent(imageInputs))
@@ -537,6 +759,7 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 	const imageUrl = String(p.imageUrl || '').trim()
 	const imageDataUrl = String(p.imageDataUrl || '').trim()
 	const imageInputs = p.imageInputs
+	const sceneType = String(p.sceneType || 'auto').trim()
 
 	const apiKey = resolveArkApiKey(ctx)
 	if (!apiKey) {
@@ -548,12 +771,12 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 
 	const client = getHttpClient()
 	let messages = [
-		{ role: 'system', content: SCENE_UNDERSTAND_SYSTEM_PROMPT }
+		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }
 	]
 
 	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
 	const userContent = [
-		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount) }
+		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
 	]
 	if (Array.isArray(imageInputs) && imageInputs.length > 0) {
 		userContent.push(...buildImageContent(imageInputs))

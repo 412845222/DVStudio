@@ -432,6 +432,17 @@ const normalizeSceneUnderstandingSettings = (
 		: undefined
 	return {
 		mode: raw.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
+		sceneType:
+			raw.sceneType === 'indoor' || raw.sceneType === 'outdoor' ? raw.sceneType : 'auto',
+		detectedSceneType:
+			raw.detectedSceneType === 'indoor' ||
+			raw.detectedSceneType === 'outdoor' ||
+			raw.detectedSceneType === 'semi-outdoor'
+				? raw.detectedSceneType
+				: undefined,
+		sceneTypeConfidence: Number.isFinite(Number(raw.sceneTypeConfidence))
+			? Number(raw.sceneTypeConfidence)
+			: undefined,
 		selectedModel: isString(raw.selectedModel) ? raw.selectedModel : undefined,
 		availableModels,
 		status:
@@ -2613,7 +2624,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					resultSummary: '',
 					rewriteUsed: false,
 					rewriteAttempts: 0,
-					mock: false
+					mock: false,
+					sceneType: 'auto'
 				}
 				syncSceneUnderstandAnchors(n)
 			}
