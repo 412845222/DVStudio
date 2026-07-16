@@ -1,4 +1,5 @@
 import * as service from './service.mjs'
+import * as setup from './setup-service.mjs'
 
 export async function listWorkflows(ctx, payload) {
 	return service.listWorkflows(ctx, payload)
@@ -70,4 +71,110 @@ export async function runtimeCancelRun(ctx, payload) {
 
 export async function runtimeGetJobStatus(ctx, payload) {
 	return service.runtimeGetJobStatus(ctx, payload)
+}
+
+// ===== ComfyUI Setup handlers =====
+
+export function setupGetDefaultInstallPath() {
+	return setup.setupGetDefaultInstallPath()
+}
+
+export async function setupSelectPath(ctx, payload) {
+	return setup.setupSelectPath(ctx, payload)
+}
+
+export async function setupSelectModelPath(ctx) {
+	return setup.setupSelectModelPath(ctx)
+}
+
+export async function setupValidatePath(ctx, payload) {
+	return setup.setupValidatePath(ctx, payload)
+}
+
+export async function setupProbeExistingInstall(ctx, payload) {
+	return setup.setupProbeExistingInstall(ctx, payload)
+}
+
+export async function setupCheckEnv(ctx, payload) {
+	return setup.setupCheckEnv(ctx, payload)
+}
+
+export function setupGetConfig() {
+	return setup.setupGetConfig()
+}
+
+export function setupSaveConfig(ctx, payload) {
+	return setup.setupSaveConfig(ctx, payload)
+}
+
+export async function setupAddCustomModelPath(ctx, payload) {
+	return setup.setupAddCustomModelPath(ctx, payload)
+}
+
+export function setupRemoveCustomModelPath(ctx, payload) {
+	return setup.setupRemoveCustomModelPath(ctx, payload)
+}
+
+export function setupOpenFolder(ctx, payload) {
+	return setup.setupOpenFolder(ctx, payload)
+}
+
+export function setupGetServiceStatus() {
+	return setup.setupGetServiceStatus()
+}
+
+export async function setupStartService(ctx, payload) {
+	return setup.setupStartService(ctx, payload)
+}
+
+export function setupStopService() {
+	return setup.setupStopService()
+}
+
+export function setupCancelInstall() {
+	return setup.setupCancelInstall()
+}
+
+export async function* setupInstall(ctx, payload) {
+	yield* setup.setupInstall(ctx, payload)
+}
+
+export async function setupPingMirrors() {
+	return setup.setupPingMirrors()
+}
+
+export function setupGetMirrorList() {
+	return setup.setupGetMirrorList()
+}
+
+export function setupSetMirror(ctx, payload) {
+	return setup.setupSetMirror(ctx, payload)
+}
+
+export async function* setupFixPythonEnv(ctx, payload) {
+	yield* setup.setupFixPythonEnv(ctx, payload)
+}
+
+export function setupGetDefaultVenvPath() {
+	return setup.setupGetDefaultVenvPath()
+}
+
+export async function setupSelectVenvPath(ctx, payload) {
+	return setup.setupSelectVenvPath(ctx, payload)
+}
+
+export function setupSetVenvPath(ctx, payload) {
+	return setup.setupSetVenvPath(ctx, payload)
+}
+
+export function setupGetServiceLogs() {
+	return setup.setupGetServiceLogs()
+}
+
+export function setupClearServiceLogs() {
+	return setup.setupClearServiceLogs()
+}
+
+export async function setupRestartService(ctx, payload) {
+	return setup.setupRestartService(ctx, payload)
 }

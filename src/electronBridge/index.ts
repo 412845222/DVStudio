@@ -25,7 +25,9 @@ import type {
 	CloudTemplatesDownloadPayload,
 	CloudTemplatesDownloadResult,
 	CloudTemplatesDeletePayload,
-	CloudTemplatesDeleteResult
+	CloudTemplatesDeleteResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -555,6 +557,18 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 	try {
 		const result = await window.dweb.window.open3dEditor(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult> {
+	if (!window?.dweb?.window?.openComfySetup) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openComfySetup(payload || {})
 		return result || { ok: true }
 	} catch (e: unknown) {
 		return { ok: false, error: getErrorMessage(e) }

@@ -50,6 +50,14 @@
 					>
 						{{ status === 'connecting' ? t('nodes.comfyui.connecting') : t('nodes.comfyui.connect') }}
 					</button>
+					<button
+						class="wf-comfy-btn wf-comfy-btn-ghost"
+						type="button"
+						title="ComfyUI 环境设置"
+						@click.stop="onOpenSetup"
+					>
+						⚙️ 设置
+					</button>
 					<div class="wf-comfy-status" :class="statusClass">
 						{{ connectedStatusText }}
 					</div>
@@ -208,8 +216,13 @@
 import { computed, onMounted } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
+import { openComfySetup } from '../../../electronBridge'
 
 const { t } = useI18n()
+
+function onOpenSetup() {
+	openComfySetup({ source: 'node' })
+}
 
 type AnchorSpec = {
 	id: string
@@ -691,6 +704,17 @@ onMounted(() => {
 	padding: 6px 10px;
 	border-radius: 0;
 	cursor: pointer;
+}
+
+.wf-comfy-btn-ghost {
+	background: transparent;
+	border-color: var(--vscode-border);
+	opacity: 0.75;
+}
+
+.wf-comfy-btn-ghost:hover {
+	opacity: 1;
+	background: rgba(255, 255, 255, 0.06);
 }
 
 .wf-comfy-btn:disabled {

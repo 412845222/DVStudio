@@ -420,3 +420,231 @@ export type CloudTemplatesDeleteResult = {
 	ok: boolean
 	errMsg?: string
 }
+
+// ==================== ComfyUI Setup Types ====================
+
+export type ComfyInstallMode = 'new' | 'existing'
+
+export type ComfyInstallType = 'standard' | 'portable' | 'venv' | 'unknown'
+
+export type ComfyCheckItemStatus = 'ok' | 'warn' | 'error' | 'checking' | 'unknown'
+
+export interface ComfyCheckItem {
+	key: string
+	label: string
+	status: ComfyCheckItemStatus
+	detail?: string
+	version?: string
+	canFix?: boolean
+	fixAction?: string
+}
+
+export interface ComfyPathValidation {
+	ok: boolean
+	error?: string
+	warning?: string
+	exists?: boolean
+	isComfyUI?: boolean
+}
+
+export type ComfyPythonCandidateType = 'managed_venv' | 'venv' | 'portable' | 'desktop_bundled' | 'system' | 'py_launcher' | 'none'
+
+export interface ComfyPythonCandidate {
+	path: string
+	type: ComfyPythonCandidateType
+	available: boolean
+	version?: string
+	hasTorch: boolean
+	torchVersion?: string
+	torchCuda: boolean
+	canImportComfy: boolean
+	error?: string
+}
+
+export interface ComfyModelSource {
+	path: string
+	count: number
+}
+
+export interface ComfyModelTypeInfo {
+	total: number
+	sources: ComfyModelSource[]
+}
+
+export interface ComfyInstallProbeResult {
+	ok: boolean
+	error?: string
+	isComfyUI: boolean
+	isDesktop: boolean
+	version?: string
+	commitHash?: string
+	installType: ComfyInstallType
+	pythonInfo?: {
+		type: ComfyPythonCandidateType
+		path?: string
+		version?: string
+		hasTorch: boolean
+		torchVersion?: string
+		torchCuda: boolean
+		canImportComfy: boolean
+		candidates?: ComfyPythonCandidate[]
+	}
+	launchCompatibility: {
+		status: 'full' | 'partial' | 'none'
+		method?: 'main_py' | 'portable_bat' | 'desktop_app' | 'custom_script'
+		canStart: boolean
+		warnings?: string[]
+		needsFix?: string[]
+	}
+	hasExtraModelConfig: boolean
+	extraModelPaths?: Record<string, string[]>
+	customModelPaths?: string[]
+	models?: Record<string, ComfyModelTypeInfo>
+	totalModelCount?: number
+	customNodeCount?: number
+}
+
+export interface ComfyEnvCheckResult {
+	ok: boolean
+	items: ComfyCheckItem[]
+	installPath?: string
+	installMode?: ComfyInstallMode
+	installType?: ComfyInstallType
+	comfyUIFound?: boolean
+	serviceRunning?: boolean
+	serviceUrl?: string
+	pythonPath?: string
+	pythonVersion?: string
+	gitAvailable?: boolean
+	cudaAvailable?: boolean
+	cudaVersion?: string
+	torchVersion?: string
+	modelCount?: number
+}
+
+export interface ComfySetupConfig {
+	installMode: ComfyInstallMode
+	installPath: string
+	venvPath?: string
+	installType?: ComfyInstallType
+	port: number
+	autoStart: boolean
+	mirror: 'github' | 'gitee' | 'custom'
+	customMirrorUrl?: string
+	pythonPath?: string
+	extraArgs: string[]
+	proxy?: string
+	customModelPaths?: string[]
+	pypiMirror?: string
+	torchMirror?: string
+	customPypiMirrorUrl?: string
+	customTorchMirrorUrl?: string
+	probeResult?: ComfyInstallProbeResult
+}
+
+export interface ComfyMirrorSource {
+	key: string
+	name: string
+	url: string
+	kind: 'pypi' | 'torch'
+	builtin: boolean
+	country?: string
+}
+
+export interface ComfyMirrorPingResult {
+	key: string
+	name: string
+	url: string
+	kind: 'pypi' | 'torch'
+	reachable: boolean
+	latency: number | null
+	country?: string
+}
+
+export interface ComfyMirrorListResult {
+	ok: boolean
+	pypiMirrors: ComfyMirrorSource[]
+	torchMirrors: ComfyMirrorSource[]
+}
+
+export type PythonEnvSetupStep =
+	| 'preparing'
+	| 'venv_exists'
+	| 'creating_venv'
+	| 'upgrading_pip'
+	| 'installing_torch'
+	| 'installing_requirements'
+	| 'verifying'
+	| 'done'
+	| 'error'
+
+export interface PythonEnvSetupEvent {
+	type: 'step' | 'log' | 'done' | 'error' | 'progress'
+	step?: PythonEnvSetupStep
+	message?: string
+	stream?: 'stdout' | 'stderr'
+	progress?: number
+	overwrite?: boolean
+	pythonPath?: string
+	venvRoot?: string
+	error?: string
+}
+
+export type InstallStep =
+	| 'idle'
+	| 'cloning'
+	| 'creating-venv'
+	| 'installing-torch'
+	| 'installing-requirements'
+	| 'downloading-models'
+	| 'done'
+	| 'error'
+
+export interface ComfyInstallState {
+	running: boolean
+	step: InstallStep
+	progress: number
+	message?: string
+	error?: string
+}
+
+export interface OpenComfySetupPayload {
+	source?: 'node' | 'settings'
+}
+
+export interface OpenComfySetupResult {
+	ok: boolean
+	error?: string
+	focused?: boolean
+}
+
+export type ComfyServiceLogStream = 'stdout' | 'stderr' | 'system'
+
+export interface ComfyServiceLogEntry {
+	ts: number
+	stream: ComfyServiceLogStream
+	message: string
+}
+
+export type ComfyServiceLifecycle = 'stopped' | 'starting' | 'running' | 'stopping'
+
+export interface ComfyServiceRuntimeStatus {
+	running: boolean
+	pid: number | null
+	port: number
+	startTime: number | null
+	exitCode: number | string | null
+}
+
+export interface ComfyServiceInfo {
+	key: string
+	name: string
+	description: string
+	status: ComfyServiceLifecycle
+	running?: boolean
+	pid?: number | null
+	port?: number
+	startTime?: number | null
+	exitCode?: number | string | null
+	errorMsg?: string
+}

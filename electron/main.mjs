@@ -1678,6 +1678,86 @@ function registerIpc() {
 		}
 	})
 
+	let comfyuiSetupWindow = null
+	ipcMain.handle('dweb:comfyui-setup:open', async (_e, payload) => {
+		console.log('[main] dweb:comfyui-setup:open payload:', JSON.stringify(payload))
+		try {
+			const title = String(payload?.title || 'ComfyUI 环境设置').slice(0, 200)
+			const source = String(payload?.source || '').slice(0, 100)
+
+			if (comfyuiSetupWindow && !comfyuiSetupWindow.isDestroyed()) {
+				comfyuiSetupWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			if (source) queryParts.push(`source=${encodeURIComponent(source)}`)
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/comfyui-setup${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/comfyui-setup${queryStr}`
+
+			console.log('[main][comfyui-setup] targetUrl:', targetUrl)
+
+			comfyuiSetupWindow = new BrowserWindow({
+				width: 900,
+				height: 780,
+				minWidth: 720,
+				minHeight: 680,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				resizable: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true,
+				},
+			})
+
+			try { comfyuiSetupWindow.setMenuBarVisibility(false) } catch {}
+			try { comfyuiSetupWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 60
+				const offsetY = 60
+				comfyuiSetupWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			comfyuiSetupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
+				appendRuntimeLog(`[comfyui-setup:${level}] ${message} (${sourceId}:${line})`)
+			})
+			comfyuiSetupWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[comfyui-setup:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			comfyuiSetupWindow.on('closed', () => {
+				comfyuiSetupWindow = null
+			})
+
+			await comfyuiSetupWindow.loadURL(targetUrl)
+			console.log('[main][comfyui-setup] loadURL done, URL:', comfyuiSetupWindow.webContents.getURL())
+			if (isDev) {
+				comfyuiSetupWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][comfyui-setup] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	let templateCenterWindow = null
 	let templateCenterLatestData = null
 
