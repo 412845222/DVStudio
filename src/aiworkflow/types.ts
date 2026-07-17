@@ -1291,6 +1291,13 @@ export type WorkflowNodeChatSubmitPayload = {
 	nodeType: WorkflowNodeChatType
 	prompt: string
 	params: WorkflowNodeChatParamRecord
+	references?: Array<{
+		refId: string
+		nodeId: string
+		edgeId?: string
+		type: 'text' | 'image' | 'video' | 'model3d' | 'blender'
+		label: string
+	}>
 }
 
 export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
