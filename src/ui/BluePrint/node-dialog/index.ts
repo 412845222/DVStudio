@@ -8,12 +8,13 @@ export type InputParamPreviewRef = {
 	fromNodeId?: string
 	fromAnchorId?: string
 	toAnchorId?: string
-	kind: 'text' | 'image' | 'video' | 'model3d' | 'audio'
+	kind: 'text' | 'image' | 'video' | 'model3d' | 'audio' | 'blender'
 	name?: string
 	label?: string
 	text?: string
 	previewUrl?: string
 	meta?: string
+	nodeId?: string
 }
 
 export type InputTextConnectedRef = InputParamPreviewRef & {
