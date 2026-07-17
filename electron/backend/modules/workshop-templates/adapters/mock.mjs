@@ -76,7 +76,27 @@ export class MockUgcAdapter extends UgcAdapter {
 
 	async downloadItem(publishedFileId) {
 		await new Promise(r => setTimeout(r, 1500))
-		return { ok: true, contentPath: `/mock-workshop/${publishedFileId}` }
+		const template = this._templates.find(t => t.publishedFileId === publishedFileId)
+		if (!template) {
+			return { ok: false, errMsg: 'Template not found' }
+		}
+		const mockMetadata = {
+			name: template.title,
+			description: template.description,
+			category: 'other',
+			author: template.author,
+			tags: template.tags,
+		}
+		const mockZipContent = `{"template":"${template.title}","publishedFileId":"${publishedFileId}"}`
+		const zipBuffer = Buffer.from(mockZipContent, 'utf8')
+		const coverBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+		return {
+			ok: true,
+			publishedFileId,
+			metadata: mockMetadata,
+			zipBuffer,
+			coverBuffer,
+		}
 	}
 
 	getDownloadProgress(publishedFileId) {

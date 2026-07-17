@@ -7,9 +7,11 @@ import {
 	getWorkshopTemplatesDownloadProgress,
 	getWorkshopTemplatesInstallInfo,
 } from '../../electronBridge'
+import { useTemplatePersistence } from './useTemplatePersistence'
 
 const workshopPlatformState = ref<{
 	ok: boolean
+	platformAvailable: boolean
 	platformId?: string
 	platformName?: string
 } | null>(null)
@@ -21,6 +23,8 @@ const downloadProgress = ref<Record<string, { progress: number; state: string }>
 
 let _workshopInitialized = false
 
+const { saveUserTemplate } = useTemplatePersistence()
+
 export function useWorkshopTemplates() {
 	async function ensureWorkshopAvailable(): Promise<boolean> {
 		try {
@@ -28,12 +32,12 @@ export function useWorkshopTemplates() {
 			const platform = await getWorkshopTemplatesPlatform()
 			console.log('[workshop-templates] Platform result:', platform)
 			if (!platform?.ok) {
-				console.warn('[workshop-templates] Workshop platform not available:', platform?.errMsg || 'unknown error')
+				console.warn('[workshop-templates] Workshop platform query failed:', platform?.errMsg || 'unknown error')
 				workshopPlatformState.value = null
 				return false
 			}
 			workshopPlatformState.value = platform
-			console.log('[workshop-templates] Workshop platform available:', platform.platformId, platform.platformName)
+			console.log('[workshop-templates] Workshop platform info:', platform.platformId, platform.platformName, 'available:', platform.platformAvailable)
 			return true
 		} catch (err) {
 			console.error('[workshop-templates] ensureWorkshopAvailable error:', err)
@@ -96,6 +100,7 @@ export function useWorkshopTemplates() {
 		meta: TemplateItem
 		zipBlob: Blob
 		coverBlob: Blob | null
+		savedTemplate: TemplateItem | null
 	} | null> {
 		downloadingTemplateId.value = publishedFileId
 		try {
@@ -128,7 +133,19 @@ export function useWorkshopTemplates() {
 				workshopItemId: result.publishedFileId,
 			}
 
-			return { meta, zipBlob, coverBlob }
+			console.log('[workshop-templates] Saving downloaded template to local database:', meta.name)
+			const savedTemplate = await saveUserTemplate({
+				name: meta.name,
+				description: meta.description,
+				category: meta.category,
+				tags: meta.tags,
+				blob: zipBlob,
+				coverBlob,
+			})
+
+			console.log('[workshop-templates] Template saved to local database:', savedTemplate ? savedTemplate.id : 'failed')
+
+			return { meta, zipBlob, coverBlob, savedTemplate }
 		} catch (err) {
 			console.error('[workshop-templates] downloadTemplateFromWorkshop error:', err)
 			return null

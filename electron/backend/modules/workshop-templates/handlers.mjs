@@ -8,13 +8,14 @@ export async function getPlatform() {
 		const available = service.isAvailable()
 		console.log('[workshop-templates] getPlatform:', { platformId, platformName, available })
 		return {
-			ok: available,
+			ok: true,
+			platformAvailable: available,
 			platformId,
 			platformName,
 		}
 	} catch (err) {
 		console.error('[workshop-templates] getPlatform error:', err.message)
-		return { ok: false, errMsg: err.message }
+		return { ok: false, platformAvailable: false, errMsg: err.message }
 	}
 }
 

@@ -532,10 +532,11 @@ async function handleDownload(template: TemplateItem) {
 	console.log('[template-center-dialog] handleDownload clicked for:', template.id, template.name, 'source:', template.source)
 	if (template.source === 'steam-workshop') {
 		const result = await downloadTemplateFromWorkshop(template.id)
-		console.log('[template-center-dialog] workshop download result:', result ? 'success' : 'failed')
-		if (result) {
+		console.log('[template-center-dialog] workshop download result:', result ? `success, saved: ${result.savedTemplate?.id || 'no'}` : 'failed')
+		if (result?.savedTemplate) {
 			toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
 			emit('download-template', template)
+			await loadTemplates()
 		} else {
 			toastError(t('aiworkflow.templateCenter.downloadFailed'))
 		}

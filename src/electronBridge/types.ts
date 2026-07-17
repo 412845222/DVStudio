@@ -436,6 +436,7 @@ export interface WorkshopTemplateItem {
 
 export type WorkshopTemplatesPlatformResult = {
 	ok: boolean
+	platformAvailable: boolean
 	platformId?: string
 	platformName?: string
 	errMsg?: string

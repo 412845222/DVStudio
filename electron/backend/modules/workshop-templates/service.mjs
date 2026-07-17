@@ -68,6 +68,17 @@ export class WorkshopTemplatesService {
 				return downloadResult
 			}
 
+			if (downloadResult.zipBuffer) {
+				console.log('[workshop-templates] downloadItem using direct buffer from adapter, size:', downloadResult.zipBuffer.length)
+				return {
+					ok: true,
+					publishedFileId,
+					metadata: downloadResult.metadata,
+					zipBuffer: downloadResult.zipBuffer,
+					coverBuffer: downloadResult.coverBuffer,
+				}
+			}
+
 			const installInfo = await adapter.getItemInstallInfo(publishedFileId)
 			if (!installInfo.ok || !installInfo.installPath) {
 				console.error('[workshop-templates] downloadItem failed to get install path:', installInfo.errMsg)

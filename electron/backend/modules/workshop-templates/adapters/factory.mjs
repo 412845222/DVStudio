@@ -31,12 +31,16 @@ export function getActiveUgcAdapter(platformManager, options = {}) {
 		}
 	}
 	
-	const adapter = createUgcAdapter(platformId, { ...options, provider: targetProvider })
+	let adapter = createUgcAdapter(platformId, { ...options, provider: targetProvider })
 	
 	if (adapter.isAvailable()) {
 		return adapter
 	}
 	
-	console.log('[workshop-templates] Platform', platformId, 'does not support UGC, falling back to Mock')
-	return createMockUgcAdapter(options)
+	if (platformId !== 'mock') {
+		console.log('[workshop-templates] Platform', platformId, 'does not support UGC, falling back to Mock')
+		adapter = createMockUgcAdapter(options)
+	}
+	
+	return adapter
 }
