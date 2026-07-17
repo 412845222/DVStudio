@@ -1,5 +1,12 @@
 {
   "resources.panel.title": "Resource Manager",
+  "resources.panel.localStorage": "Local Resources",
+  "resources.panel.local": "Local",
+  "resources.panel.cloudStorage": "Cloud Storage",
+  "resources.panel.cloud": "Cloud",
+  "resources.panel.cloudNotConfigured": "Cloud Storage Not Configured",
+  "resources.panel.cloudSetupDesc": "Configure cloud storage to access and manage your resource files directly from the cloud",
+  "resources.panel.goToCloudSettings": "Go to Cloud Settings",
   "resources.panel.gridViewTitle": "Grid View (Large Thumbnails)",
   "resources.panel.listViewTitle": "List View (Details)",
   "resources.panel.thumbSizeSmall": "Thumbnails: Small",

@@ -156,6 +156,45 @@
 								</a>
 							</div>
 						</div>
+
+						<div
+							v-if="(detailTask.refImageUrls && detailTask.refImageUrls.length > 0) || 
+								 (detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0) ||
+								 (detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0)"
+							class="video-task-panel__section"
+						>
+							<div class="video-task-panel__section-title">{{ t('tasks.video.referenceAssets') }}</div>
+							<div class="video-task-panel__section-body">
+								<div v-if="detailTask.refImageUrls && detailTask.refImageUrls.length > 0" class="video-task-panel__ref-group">
+									<div class="video-task-panel__ref-label">{{ t('tasks.video.refImages') }} ({{ detailTask.refImageUrls.length }})</div>
+									<div class="video-task-panel__ref-list">
+										<div v-for="(url, idx) in detailTask.refImageUrls" :key="`img-${idx}`" class="video-task-panel__ref-item">
+											<img :src="url" :alt="`ref-img-${idx}`" class="video-task-panel__ref-thumb" />
+										</div>
+									</div>
+								</div>
+								<div v-if="detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0" class="video-task-panel__ref-group">
+									<div class="video-task-panel__ref-label">{{ t('tasks.video.refVideos') }} ({{ detailTask.refVideoUrls.length }})</div>
+									<div class="video-task-panel__ref-list">
+										<div v-for="(url, idx) in detailTask.refVideoUrls" :key="`vid-${idx}`" class="video-task-panel__ref-item">
+											<div class="video-task-panel__ref-video-thumb">
+												🎬
+											</div>
+											<span class="video-task-panel__ref-video-label">{{ t('tasks.video.refVideo') }} {{ idx + 1 }}</span>
+										</div>
+									</div>
+								</div>
+								<div v-if="detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0" class="video-task-panel__ref-group">
+									<div class="video-task-panel__ref-label">{{ t('tasks.video.refAudio') }} ({{ detailTask.refAudioUrls.length }})</div>
+									<div class="video-task-panel__ref-list">
+										<div v-for="(url, idx) in detailTask.refAudioUrls" :key="`aud-${idx}`" class="video-task-panel__ref-item">
+											<div class="video-task-panel__ref-audio-thumb">🎵</div>
+											<span class="video-task-panel__ref-audio-label">{{ t('tasks.video.refAudioItem') }} {{ idx + 1 }}</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
 					</template>
 					<div v-else class="video-task-panel__detail-empty">{{ t('tasks.video.selectToView') }}</div>
 				</div>
@@ -181,6 +220,9 @@ export type VideoTaskPanelItem = {
 	videoUrlRemote?: string
 	lastFrameUrlLocal?: string
 	lastFrameUrlRemote?: string
+	refImageUrls?: string[]
+	refVideoUrls?: string[]
+	refAudioUrls?: string[]
 	updatedAt: string
 	syncedAt?: string
 }
@@ -507,6 +549,85 @@ const onPreviewError = (item: VideoTaskPanelItem | null | undefined) => {
 .video-task-panel__section-body.links a {
 	color: var(--vscode-fg);
 	text-decoration-color: rgba(255, 255, 255, 0.26);
+}
+
+.video-task-panel__ref-group {
+	margin-bottom: 10px;
+}
+
+.video-task-panel__ref-group:last-child {
+	margin-bottom: 0;
+}
+
+.video-task-panel__ref-label {
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	margin-bottom: 4px;
+}
+
+.video-task-panel__ref-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.video-task-panel__ref-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+}
+
+.video-task-panel__ref-thumb {
+	width: 64px;
+	height: 64px;
+	object-fit: cover;
+	border: 1px solid rgb(from var(--vscode-border) r g b / 0.72);
+	border-radius: 2px;
+}
+
+.video-task-panel__ref-video-thumb {
+	width: 64px;
+	height: 64px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgb(from var(--dweb-defualt) r g b / 0.8);
+	border: 1px solid rgb(from var(--vscode-border) r g b / 0.72);
+	border-radius: 2px;
+	font-size: 24px;
+}
+
+.video-task-panel__ref-video-label {
+	font-size: 10px;
+	color: var(--vscode-fg-muted);
+	max-width: 64px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: center;
+}
+
+.video-task-panel__ref-audio-thumb {
+	width: 64px;
+	height: 64px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgb(from var(--dweb-defualt) r g b / 0.8);
+	border: 1px solid rgb(from var(--vscode-border) r g b / 0.72);
+	border-radius: 2px;
+	font-size: 24px;
+}
+
+.video-task-panel__ref-audio-label {
+	font-size: 10px;
+	color: var(--vscode-fg-muted);
+	max-width: 64px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: center;
 }
 
 @media (max-width: 960px) {
