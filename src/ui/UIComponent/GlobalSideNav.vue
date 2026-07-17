@@ -84,6 +84,10 @@
 						<path d="M8 20h8M10 18v2M14 18v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 						<path d="M7.5 9.5h9M7.5 13h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 					</svg>
+					<svg v-else-if="item.key === 'cloud-storage'" viewBox="0 0 24 24" fill="none">
+						<path d="M7 18a4 4 0 0 1-.8-7.9A5 5 0 0 1 16 8.5a4.5 4.5 0 0 1 .5 8.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M12 13v6M9 16l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
 					<svg v-else-if="item.key === 'services'" viewBox="0 0 24 24" fill="none">
 						<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/>
 						<path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -162,6 +166,7 @@ const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 
 const items = computed(() => [
 	{ key: 'projects', label: t('menu.projects'), active: route.name === 'ProjectList' },
 	{ key: 'workflow', label: t('menu.workflow'), active: route.name === 'AIWorkflow' },
+	{ key: 'cloud-storage', label: t('menu.cloudStorage'), active: route.name === 'CloudStorage' },
 	{ key: 'services', label: t('menu.services'), active: route.name === 'ServiceCenter' },
 	{ key: 'settings', label: t('menu.settings'), active: route.name === 'Settings' },
 ])
@@ -191,6 +196,7 @@ function onSelect(key: string) {
 		}
 	}
 	if (key === 'studio') void router.push({ name: 'VideoStudio' })
+	if (key === 'cloud-storage') void router.push({ name: 'CloudStorage' })
 	if (key === 'services') void router.push({ name: 'ServiceCenter' })
 	if (key === 'settings') void router.push({ name: 'Settings' })
 }

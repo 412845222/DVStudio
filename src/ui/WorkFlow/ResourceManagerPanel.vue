@@ -3,13 +3,86 @@
 		<div class="wf-resource-header">
 			<div class="wf-resource-title">{{ t('resources.panel.title') }}</div>
 			<div class="wf-resource-actions">
-				<div class="wf-resource-view-switch">
+				<div class="wf-resource-storage-switch">
 					<button
-						class="wf-resource-icon-btn"
-						:class="{ active: viewMode === 'grid' }"
+						class="wf-resource-storage-btn"
+						:class="{ active: storageMode === 'local' }"
 						type="button"
-						:title="t('resources.panel.gridViewTitle')"
-						@click="viewMode = 'grid'"
+						:title="t('resources.panel.localStorage')"
+						@click="storageMode = 'local'"
+					>
+						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+							<path
+								d="M2 5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5z"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+							/>
+							<path d="M2 7h12" fill="none" stroke="currentColor" stroke-width="1.2" />
+						</svg>
+						{{ t('resources.panel.local') }}
+					</button>
+					<button
+						class="wf-resource-storage-btn"
+						:class="{ active: storageMode === 'cloud' }"
+						type="button"
+						:title="t('resources.panel.cloudStorage')"
+						@click="storageMode = 'cloud'"
+					>
+						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+							<path
+								d="M4.5 12.5a3 3 0 0 1-.8-5.9 4 4 0 0 1 7.6-1.6 3 3 0 0 1 .4 5.9"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+							/>
+						</svg>
+						{{ t('resources.panel.cloud') }}
+					</button>
+				</div>
+				<template v-if="storageMode === 'local'">
+					<div class="wf-resource-view-switch">
+						<button
+							class="wf-resource-icon-btn"
+							:class="{ active: viewMode === 'grid' }"
+							type="button"
+							:title="t('resources.panel.gridViewTitle')"
+							@click="viewMode = 'grid'"
+						>
+							<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+								<path
+									d="M2.5 3.5h5v5h-5zM8.5 3.5h5v5h-5zM2.5 9.5h5v5h-5zM8.5 9.5h5v5h-5z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.1"
+								/>
+							</svg>
+						</button>
+						<button
+							class="wf-resource-icon-btn"
+							:class="{ active: viewMode === 'list' }"
+							type="button"
+							:title="t('resources.panel.listViewTitle')"
+							@click="viewMode = 'list'"
+						>
+							<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+								<path
+									d="M2.5 3.5h3v3h-3zM2.5 7h3v3h-3zM2.5 10.5h3v3h-3zM7 4h7M7 8h7M7 12h7"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.1"
+									stroke-linecap="round"
+								/>
+							</svg>
+						</button>
+					</div>
+					<button
+						v-if="viewMode === 'grid'"
+						class="wf-resource-icon-btn"
+						type="button"
+						:title="thumbSizeTitle"
+						@click="toggleThumbSize"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
 							<path
@@ -18,97 +91,95 @@
 								stroke="currentColor"
 								stroke-width="1.1"
 							/>
+							<path
+								v-if="thumbSize === 'lg'"
+								d="M3.4 4.4h3.2v3.2H3.4z"
+								fill="currentColor"
+								opacity="0.25"
+							/>
 						</svg>
 					</button>
 					<button
 						class="wf-resource-icon-btn"
-						:class="{ active: viewMode === 'list' }"
 						type="button"
-						:title="t('resources.panel.listViewTitle')"
-						@click="viewMode = 'list'"
+						:title="t('resources.panel.refreshTitle')"
+						@click="emitRefreshMissing"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
 							<path
-								d="M2.5 3.5h3v3h-3zM2.5 7h3v3h-3zM2.5 10.5h3v3h-3zM7 4h7M7 8h7M7 12h7"
+								d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
 								fill="none"
 								stroke="currentColor"
-								stroke-width="1.1"
+								stroke-width="1.2"
+								stroke-linecap="round"
+							/>
+							<path
+								d="M10.7 2.7h3v3"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
 								stroke-linecap="round"
 							/>
 						</svg>
 					</button>
-				</div>
-				<button
-					v-if="viewMode === 'grid'"
-					class="wf-resource-icon-btn"
-					type="button"
-					:title="thumbSizeTitle"
-					@click="toggleThumbSize"
-				>
-					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-						<path
-							d="M2.5 3.5h5v5h-5zM8.5 3.5h5v5h-5zM2.5 9.5h5v5h-5zM8.5 9.5h5v5h-5z"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.1"
-						/>
-						<path
-							v-if="thumbSize === 'lg'"
-							d="M3.4 4.4h3.2v3.2H3.4z"
-							fill="currentColor"
-							opacity="0.25"
-						/>
-					</svg>
-				</button>
-				<button
-					class="wf-resource-icon-btn"
-					type="button"
-					:title="t('resources.panel.refreshTitle')"
-					@click="emitRefreshMissing"
-				>
-					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-						<path
-							d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.2"
-							stroke-linecap="round"
-						/>
-						<path
-							d="M10.7 2.7h3v3"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.2"
-							stroke-linecap="round"
-						/>
-					</svg>
-				</button>
-				<button
-					class="wf-resource-icon-btn"
-					type="button"
-					:title="sortModeTitle"
-					@click="cycleSortMode"
-				>
-					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
-						<path
-							d="M4 3h8M4 6h6M4 9h4"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.2"
-							stroke-linecap="round"
-						/>
-						<path
-							v-if="sortMode === 'date-asc' || sortMode === 'name-asc'"
-							d="M12 13l-2-2h4z"
-							fill="currentColor"
-						/>
-						<path v-else d="M12 11l-2 2h4z" fill="currentColor" />
-					</svg>
-				</button>
+					<button
+						class="wf-resource-icon-btn"
+						type="button"
+						:title="sortModeTitle"
+						@click="cycleSortMode"
+					>
+						<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-icon">
+							<path
+								d="M4 3h8M4 6h6M4 9h4"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+							/>
+							<path
+								v-if="sortMode === 'date-asc' || sortMode === 'name-asc'"
+								d="M12 13l-2-2h4z"
+								fill="currentColor"
+							/>
+							<path v-else d="M12 11l-2 2h4z" fill="currentColor" />
+						</svg>
+					</button>
+				</template>
 				<button class="wf-resource-btn" type="button" :title="t('resources.panel.close')" @click="emit('close')">x</button>
 			</div>
 		</div>
 		<div ref="scrollBodyEl" class="wf-resource-body">
+			<template v-if="storageMode === 'cloud'">
+				<div v-if="!cloudConnected" class="wf-cloud-setup">
+					<svg viewBox="0 0 48 48" class="wf-cloud-setup-icon" aria-hidden="true">
+						<path
+							d="M14 37a8 8 0 0 1-2-15.7 11 11 0 0 1 20.8-4.4 8 8 0 0 1 1.2 15.9"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
+						<path d="M24 22v8M24 34v.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+					</svg>
+					<div class="wf-cloud-setup-title">{{ t('resources.panel.cloudNotConfigured') }}</div>
+					<div class="wf-cloud-setup-desc">{{ t('resources.panel.cloudSetupDesc') }}</div>
+					<button class="wf-cloud-setup-btn" type="button" @click="goToCloudSettings">
+						{{ t('resources.panel.goToCloudSettings') }}
+					</button>
+				</div>
+				<CloudFileList
+					v-else
+					ref="cloudFileListRef"
+					:connected="cloudConnected"
+					:config="cloudConfig"
+					class="wf-cloud-file-list"
+					@refresh="onCloudRefresh"
+					@upload="onCloudUpload"
+					@delete="onCloudDelete"
+				/>
+			</template>
+
+			<template v-else>
 			<!-- 筛选 + 搜索栏 -->
 			<div v-if="resources.length" class="wf-resource-filter-bar">
 				<div class="wf-resource-filter-group">
@@ -500,12 +571,14 @@
 				</div>
 				<div ref="listSentinelEl" class="wf-resource-sentinel" />
 			</div>
+			</template>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import type { WorkflowNode } from '../../aiworkflow/types'
 import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
@@ -515,8 +588,10 @@ import {
 	getUsageInfo
 } from '../../aiworkflow/resource/usage'
 import { useI18n } from '../../i18n'
+import CloudFileList from '../../views/CloudStorage/CloudFileList.vue'
 
 const { t } = useI18n()
+const router = useRouter()
 
 const props = defineProps<{
 	open?: boolean
@@ -540,6 +615,83 @@ const emit = defineEmits<{
 	(e: 'drop-to-node', resourceId: string): void
 	(e: 'focus-node', payload: { nodeId: string }): void
 }>()
+
+type StorageMode = 'local' | 'cloud'
+const storageMode = ref<StorageMode>('local')
+const cloudFileListRef = ref<InstanceType<typeof CloudFileList> | null>(null)
+const cloudConnected = ref(false)
+const cloudConfig = ref<any>(null)
+const cloudChecking = ref(false)
+
+const checkCloudConfig = async () => {
+	cloudChecking.value = true
+	try {
+		const cloudfs = (window as any).dweb?.cloudfs
+		if (cloudfs?.getConfig) {
+			const config = await cloudfs.getConfig()
+			if (config && config.connected) {
+				cloudConfig.value = config
+				cloudConnected.value = true
+			} else {
+				cloudConnected.value = false
+				cloudConfig.value = null
+			}
+		} else {
+			cloudConnected.value = false
+			cloudConfig.value = null
+		}
+	} catch {
+		cloudConnected.value = false
+		cloudConfig.value = null
+	} finally {
+		cloudChecking.value = false
+	}
+}
+
+const goToCloudSettings = () => {
+	router.push({ name: 'CloudStorage' })
+}
+
+const onCloudRefresh = () => {
+}
+
+const onCloudUpload = async (files: File[]) => {
+	if (!cloudConfig.value || !files.length) return
+	try {
+		const cloudfs = (window as any).dweb?.cloudfs
+		if (cloudfs?.uploadFiles) {
+			for (const file of files) {
+				if (cloudfs.uploadFile) {
+					await cloudfs.uploadFile(cloudConfig.value, file)
+				}
+			}
+		}
+		if (cloudFileListRef.value) {
+			await cloudFileListRef.value.refresh()
+		}
+	} catch {
+	}
+}
+
+const onCloudDelete = async (file: any) => {
+	if (!cloudConfig.value) return
+	try {
+		const cloudfs = (window as any).dweb?.cloudfs
+		if (cloudfs?.deleteFile) {
+			await cloudfs.deleteFile(cloudConfig.value, file.key)
+		}
+		if (cloudFileListRef.value) {
+			await cloudFileListRef.value.refresh()
+		}
+	} catch {
+	}
+}
+
+watch(storageMode, (mode) => {
+	if (mode === 'cloud') {
+		checkCloudConfig()
+	}
+})
 
 type FilterMode = 'all' | 'used' | 'unused'
 const filterMode = ref<FilterMode>('all')
@@ -901,6 +1053,7 @@ watch(viewMode, () => {
 })
 
 onMounted(() => {
+	checkCloudConfig()
 	nextTick(() => {
 		setupIo()
 	})
@@ -1746,5 +1899,93 @@ onBeforeUnmount(() => {
 	border-color: var(--theme-error);
 	color: var(--theme-error);
 	background: color-mix(in srgb, var(--theme-error) 10%, var(--theme-bg-tertiary));
+}
+
+.wf-resource-storage-switch {
+	display: flex;
+	gap: 2px;
+	padding: 2px;
+	background: var(--theme-bg-tertiary);
+	border-radius: 5px;
+	border: 1px solid var(--theme-border);
+}
+
+.wf-resource-storage-btn {
+	border: none;
+	background: transparent;
+	color: var(--theme-text-secondary);
+	height: 22px;
+	padding: 0 8px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	border-radius: 3px;
+	transition: all 120ms ease;
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.wf-resource-storage-btn:hover {
+	background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-bg-tertiary));
+	color: var(--theme-text-primary);
+}
+
+.wf-resource-storage-btn.active {
+	background: color-mix(in srgb, var(--theme-accent) 20%, var(--theme-bg-tertiary));
+	color: var(--theme-accent);
+}
+
+.wf-cloud-setup {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 48px 24px;
+	text-align: center;
+	gap: 12px;
+}
+
+.wf-cloud-setup-icon {
+	width: 64px;
+	height: 64px;
+	color: var(--theme-text-secondary);
+	opacity: 0.5;
+	margin-bottom: 8px;
+}
+
+.wf-cloud-setup-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--theme-text-primary);
+}
+
+.wf-cloud-setup-desc {
+	font-size: 12px;
+	color: var(--theme-text-secondary);
+	max-width: 280px;
+	line-height: 1.5;
+}
+
+.wf-cloud-setup-btn {
+	margin-top: 8px;
+	padding: 8px 20px;
+	font-size: 12px;
+	font-weight: 500;
+	color: #fff;
+	background: var(--theme-accent);
+	border: none;
+	border-radius: 5px;
+	cursor: pointer;
+	transition: all 120ms ease;
+}
+
+.wf-cloud-setup-btn:hover {
+	background: color-mix(in srgb, var(--theme-accent) 85%, #000);
+	transform: translateY(-1px);
+}
+
+.wf-cloud-file-list {
+	height: 100%;
 }
 </style>

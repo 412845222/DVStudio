@@ -1183,15 +1183,19 @@ export type WorkflowNodeChatVideoParams = {
 	modelId?: string
 	model?: string
 	seedanceModelVersion?: string
-	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference'
+	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference' | 'video_edit' | ''
 	resolution?: string
 	ratio?: string
 	duration?: number
 	seed?: number
+	quantity?: number
+	negativePrompt?: string
 	generateAudio?: boolean
 	watermark?: boolean
 	cameraFixed?: boolean
 	returnLastFrame?: boolean
+	enableWebSearch?: boolean
+	priority?: number
 }
 
 export type WorkflowNodeChatModel3DParams = {

@@ -53,6 +53,7 @@
   "aichat.nodeChatParams.removeLighting": "去除光照（推荐）",
   "aichat.nodeChatParams.transparentPreview": "透明背景预览",
   "aichat.nodeChatParams.imageFallback": "图片-{n}",
+  "aichat.nodeChatParams.mediaFallback": "素材-{n}",
   "aichat.nodeChatParams.none": "无",
   "aichat.nodeChatParams.bottom": "底部",
   "aichat.nodeChatParams.center": "中心",
@@ -113,5 +114,9 @@
   "aichat.nodeChatParams.tripo3dTextureNoImages": "未连接参考图片，将使用对话框文本作为贴图提示词",
   "aichat.nodeChatParams.tripo3dTextureSelectImages": "选择参考图并指定方向",
   "aichat.nodeChatParams.tripo3dTextureViewProgress": "已选择 {selected}/{total} 视图",
-  "aichat.nodeChatParams.modelNotAvailable": "模型不可用，请在设置页面刷新"
+  "aichat.nodeChatParams.modelNotAvailable": "模型不可用，请在设置页面刷新",
+  "aichat.nodeChatParams.referenceAssets": "已接入参考素材",
+  "aichat.nodeChatParams.videoMode.videoEdit": "视频编辑",
+  "aichat.nodeChatParams.webSearch": "联网搜索",
+  "aichat.nodeChatParams.priority": "执行优先级"
 }

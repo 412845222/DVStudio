@@ -46,7 +46,10 @@ function rowToVideoTask(row) {
 				: Number(row.remote_updated_at),
 		syncedAt: isoToMs(row.synced_at),
 		createdAt: isoToMs(row.created_at),
-		updatedAt: isoToMs(row.updated_at)
+		updatedAt: isoToMs(row.updated_at),
+		refImageUrls: parseOptionalJson(row.ref_image_urls),
+		refVideoUrls: parseOptionalJson(row.ref_video_urls),
+		refAudioUrls: parseOptionalJson(row.ref_audio_urls),
 	}
 }
 
@@ -68,7 +71,8 @@ export function createVideoTasksRepo() {
       video_url_remote, video_url_local, video_source_path_local,
       last_frame_url_remote, last_frame_url_local, last_frame_source_path_local,
       download_status, download_progress, download_error, error_message, status_text,
-      project_id, remote_created_at, remote_updated_at
+      project_id, remote_created_at, remote_updated_at,
+      ref_image_urls, ref_video_urls, ref_audio_urls
     ) VALUES (
       @remoteTaskId, @provider, @model, @taskType, @source, @status, @prompt, @ratio, @resolution,
       @duration, @seed, @generateAudio, @watermark, @cameraFixed, @serviceTier,
@@ -76,7 +80,8 @@ export function createVideoTasksRepo() {
       @videoUrlRemote, @videoUrlLocal, @videoSourcePathLocal,
       @lastFrameUrlRemote, @lastFrameUrlLocal, @lastFrameSourcePathLocal,
       @downloadStatus, @downloadProgress, @downloadError, @errorMessage, @statusText,
-      @projectId, @remoteCreatedAt, @remoteUpdatedAt
+      @projectId, @remoteCreatedAt, @remoteUpdatedAt,
+      @refImageUrls, @refVideoUrls, @refAudioUrls
     )`
 	)
 	const updateStmt = db.prepare(
@@ -93,6 +98,7 @@ export function createVideoTasksRepo() {
       download_status = @downloadStatus, download_progress = @downloadProgress,
       download_error = @downloadError, error_message = @errorMessage, status_text = @statusText,
       project_id = @projectId, remote_created_at = @remoteCreatedAt, remote_updated_at = @remoteUpdatedAt,
+      ref_image_urls = @refImageUrls, ref_video_urls = @refVideoUrls, ref_audio_urls = @refAudioUrls,
       synced_at = datetime('now'), updated_at = datetime('now')
     WHERE remote_task_id = @remoteTaskId`
 	)
@@ -143,7 +149,10 @@ export function createVideoTasksRepo() {
 					? null
 					: Number(raw.projectId) || null,
 			remoteCreatedAt: toNullableInt(raw.remoteCreatedAt || raw.remote_created_at),
-			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at)
+			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at),
+			refImageUrls: stringifyOptionalJson(raw.refImageUrls || raw.ref_image_urls),
+			refVideoUrls: stringifyOptionalJson(raw.refVideoUrls || raw.ref_video_urls),
+			refAudioUrls: stringifyOptionalJson(raw.refAudioUrls || raw.ref_audio_urls),
 		}
 	}
 

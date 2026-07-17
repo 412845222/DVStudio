@@ -28,5 +28,11 @@
   "tasks.video.remoteVideo": "远端视频",
   "tasks.video.localLastFrame": "本地尾帧",
   "tasks.video.remoteLastFrame": "远端尾帧",
-  "tasks.video.selectToView": "选择左侧任务查看详情。"
+  "tasks.video.selectToView": "选择左侧任务查看详情。",
+  "tasks.video.referenceAssets": "参考素材",
+  "tasks.video.refImages": "参考图片",
+  "tasks.video.refVideos": "参考视频",
+  "tasks.video.refVideo": "参考视频",
+  "tasks.video.refAudio": "参考音频",
+  "tasks.video.refAudioItem": "参考音频"
 }

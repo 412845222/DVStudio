@@ -450,6 +450,24 @@ declare global {
 				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
 				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>
 			}
+			cloudfs: {
+				listProviders(): Promise<{ ok: boolean; providers?: Array<{ id: string; name: string; description: string; icon?: string; configFields: Array<{ key: string; label: string; type: 'text' | 'password' | 'select' | 'textarea'; required: boolean; placeholder?: string; options?: Array<{ value: string; label: string }> }> }>; error?: string }>
+				getActiveConfig(): Promise<{ configured: boolean; providerId?: string; providerMeta?: { id: string; name: string }; config?: Record<string, unknown>; lastTestedAt?: string; lastTestOk?: boolean; error?: string }>
+				saveConfig(payload: { providerId: string; config: Record<string, unknown> }): Promise<{ ok: boolean; error?: string }>
+				clearConfig(): Promise<{ ok: boolean; error?: string }>
+				testConfig(payload: { providerId: string; config: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; message?: string }>
+				validateCredentials(payload: { providerId: string; credentials?: Record<string, unknown>; region?: string; config?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; buckets?: string[] }>
+				setupBucket(payload: { providerId: string; credentials?: Record<string, unknown>; region?: string; bucketName?: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; bucketName?: string; endpoint?: string; publicUrlBase?: string }>
+				listBuckets(payload?: { providerId?: string; credentials?: Record<string, unknown>; region?: string }): Promise<{ ok: boolean; error?: string; buckets: string[] }>
+				createBucket(payload: { bucketName: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; bucketName?: string }>
+				createFolder(payload: { folderPath: string; currentPrefix?: string }): Promise<{ ok: boolean; error?: string; key?: string }>
+				updateBucket(payload: { bucketName: string }): Promise<{ ok: boolean; error?: string }>
+				listFiles(payload?: { prefix?: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; items?: Array<{ key: string; name: string; isFolder: boolean; size: number; contentType: string; lastModified: number; etag: string; publicUrl: string; thumbnailUrl: string }>; prefixes?: string[]; nextMarker?: string; isTruncated?: boolean; error?: string }>
+				uploadFile(payload: { key?: string; data: ArrayBuffer | Uint8Array; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; key?: string; publicUrl?: string; size?: number; etag?: string }>
+				deleteFile(payload: { key: string }): Promise<{ ok: boolean; error?: string }>
+				getPublicUrl(payload: { key: string; expires?: number }): Promise<{ ok: boolean; error?: string; url?: string }>
+				uploadToPublicUrl(payload: { data: ArrayBuffer | Uint8Array; name: string; mimeType: string }): Promise<{ ok: boolean; error?: string; key?: string; publicUrl?: string; size?: number; etag?: string }>
+			}
 			meshy?: any
 			seedance?: any
 			chat?: any

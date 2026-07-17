@@ -21,6 +21,7 @@ import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
 import { routes as cloudTemplatesRoutes } from './modules/cloud-templates/routes.mjs'
 import { routes as blenderRoutes } from './modules/blender/routes.mjs'
+import { routes as cloudfsRoutes } from './modules/cloudfs/routes.mjs'
 import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
@@ -90,6 +91,7 @@ export function initBackend(mainWindow, deps = {}) {
     ...subtitleRoutes,
     ...cloudTemplatesRoutes,
     ...blenderRoutes,
+    ...cloudfsRoutes,
   ]
 
   _router = createRouter({

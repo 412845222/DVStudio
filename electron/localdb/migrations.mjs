@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 9
+const TARGET_VERSION = 12
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -432,7 +432,50 @@ function runV9(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_updated_at ON tripo3d_tasks(updated_at DESC);`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9]
+function runV10(db) {
+	db.exec(`ALTER TABLE video_tasks ADD COLUMN ref_image_urls TEXT NOT NULL DEFAULT '[]'`)
+	db.exec(`ALTER TABLE video_tasks ADD COLUMN ref_video_urls TEXT NOT NULL DEFAULT '[]'`)
+	db.exec(`ALTER TABLE video_tasks ADD COLUMN ref_audio_urls TEXT NOT NULL DEFAULT '[]'`)
+}
+
+function runV11(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_storage_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_id TEXT NOT NULL DEFAULT '',
+      config_encrypted TEXT NOT NULL DEFAULT '',
+      config_fingerprint TEXT NOT NULL DEFAULT '',
+      is_active INTEGER NOT NULL DEFAULT 0,
+      last_tested_at TEXT,
+      last_test_ok INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `)
+	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_storage_active ON cloud_storage_config(is_active) WHERE is_active = 1`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_cloud_storage_provider ON cloud_storage_config(provider_id)`)
+}
+
+function runV12(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_storage_buckets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      config_id INTEGER NOT NULL REFERENCES cloud_storage_config(id) ON DELETE CASCADE,
+      bucket_name TEXT NOT NULL,
+      region TEXT NOT NULL DEFAULT '',
+      endpoint TEXT NOT NULL DEFAULT '',
+      acl_status TEXT NOT NULL DEFAULT 'unknown',
+      is_active INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(config_id, bucket_name)
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_cloud_buckets_config ON cloud_storage_buckets(config_id)`)
+	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_buckets_active ON cloud_storage_buckets(is_active) WHERE is_active = 1`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9, runV10, runV11, runV12]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)
