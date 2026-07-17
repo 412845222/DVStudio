@@ -271,6 +271,7 @@ const getTypeIcon = (kind: string): string => {
 	if (kind === 'video') return '🎬'
 	if (kind === 'model3d') return '3D'
 	if (kind === 'blender') return '🎨'
+	if (kind === 'audio') return '🎵'
 	return '📝'
 }
 
@@ -795,6 +796,11 @@ defineExpose({ focus, blur })
 .bp-node-chat-editor :deep(.bp-mention-chip.is-blender .bp-mention-chip-icon),
 .bp-node-chat-editor :deep(.bp-mention-chip.is-blender .bp-mention-chip-label) {
 	color: #f472b6;
+}
+
+.bp-node-chat-editor :deep(.bp-mention-chip.is-audio .bp-mention-chip-icon),
+.bp-node-chat-editor :deep(.bp-mention-chip.is-audio .bp-mention-chip-label) {
+	color: #a78bfa;
 }
 
 .bp-node-chat-input-footer {
