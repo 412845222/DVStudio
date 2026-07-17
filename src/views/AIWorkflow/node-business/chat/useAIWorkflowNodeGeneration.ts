@@ -1441,7 +1441,8 @@ const runImageTask = async (
 			hasRefImages,
 			refCount: refs.length,
 			nodeId: payload.nodeId,
-			projectId: imgProjectId
+			projectId: imgProjectId,
+			prompt: payload.prompt.slice(0, 200)
 		})
 
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion }))

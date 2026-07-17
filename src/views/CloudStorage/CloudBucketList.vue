@@ -311,7 +311,120 @@ const emit = defineEmits<{
 }
 
 .cs-bl-empty-btn {
-	padding: 0 20px;
+	height: 36px;
+	padding: 0 28px;
+	font-size: 12.5px;
+}
+
+.cs-btn {
+	height: 30px;
+	padding: 0 16px;
+	font-size: 12px;
+	font-weight: 500;
+	font-family: inherit;
+	cursor: pointer;
+	transition: all 200ms ease;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, #161d24 40%, transparent);
+	color: var(--pl-fg);
+	position: relative;
+	letter-spacing: 0.3px;
+	overflow: hidden;
+}
+
+.cs-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.cs-btn-corners {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.cs-btn-c {
+	position: absolute;
+	width: 6px;
+	height: 6px;
+	border-color: var(--pl-accent);
+	opacity: 0;
+	transition: opacity 200ms ease;
+}
+
+.cs-btn:hover .cs-btn-c {
+	opacity: 1;
+}
+
+.cs-btn-c.tl {
+	top: 2px;
+	left: 2px;
+	border-top: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+
+.cs-btn-c.tr {
+	top: 2px;
+	right: 2px;
+	border-top: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+
+.cs-btn-c.bl {
+	bottom: 2px;
+	left: 2px;
+	border-bottom: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+
+.cs-btn-c.br {
+	bottom: 2px;
+	right: 2px;
+	border-bottom: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+
+.cs-btn-primary {
+	background: linear-gradient(135deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 75%, #4fb7c5));
+	border-color: var(--pl-accent);
+	color: #fff;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 0 14px color-mix(in srgb, var(--pl-accent) 28%, transparent);
+}
+
+.cs-btn-primary::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: -100%;
+	width: 100%;
+	height: 100%;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 18%, transparent), transparent);
+	transition: left 0.5s ease;
+}
+
+.cs-btn-primary:hover:not(:disabled)::before {
+	left: 100%;
+}
+
+.cs-btn-primary:hover:not(:disabled) {
+	filter: brightness(1.12);
+	box-shadow: 0 0 22px color-mix(in srgb, var(--pl-accent) 38%, transparent);
+}
+
+.cs-btn-ghost:hover:not(:disabled) {
+	border-color: var(--pl-accent);
+	color: var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow: 0 0 14px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .cs-bl-items {
