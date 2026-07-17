@@ -195,7 +195,10 @@ const singleIOAnchorsForNodeType = (
 	}
 	if (type === 'image') {
 		return {
-			inputs: [{ id: 'in-0', label: '图片输入', multiInput: true }],
+			inputs: [
+				{ id: 'in-text', label: '提示词输入', mediaType: 'text' },
+				{ id: 'in-0', label: '图片输入', multiInput: true, mediaType: 'image' }
+			],
 			outputs: [{ id: 'out-0', label: '图片输出', mediaType: 'image' }]
 		}
 	}
@@ -3145,7 +3148,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const imageGenerationSource =
 				next.imageGenerationSource === 'upload' ||
 				next.imageGenerationSource === 'comfyui' ||
-				next.imageGenerationSource === 'meshy'
+				next.imageGenerationSource === 'meshy' ||
+				next.imageGenerationSource === 'gemini' ||
+				next.imageGenerationSource === 'tripo3d'
 					? next.imageGenerationSource
 					: undefined
 
