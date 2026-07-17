@@ -56,6 +56,16 @@ const routes: RouteRecordRaw[] = [
 		path: '/cloud-storage',
 		name: 'CloudStorage',
 		component: () => import('../views/CloudStorage/CloudStoragePage.vue')
+	},
+	{
+		path: '/comfyui-setup',
+		name: 'ComfyUISetup',
+		component: () => import('../views/ComfyUISetupPage.vue')
+	},
+	{
+		path: '/services',
+		name: 'ServiceCenter',
+		component: () => import('../views/ServiceCenterPage.vue')
 	}
 ]
 

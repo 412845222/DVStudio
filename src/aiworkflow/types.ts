@@ -160,8 +160,11 @@ export type WorkflowSceneUnderstandModelOption = {
 	vendor?: string
 }
 
+export type WorkflowSceneType = 'auto' | 'indoor' | 'outdoor'
+
 export type WorkflowSceneUnderstandingNodeSettings = {
 	mode?: 'scene-layout' | 'scene-lighting'
+	sceneType?: WorkflowSceneType
 	selectedModel?: string
 	availableModels?: WorkflowSceneUnderstandModelOption[]
 	status?: 'idle' | 'loading-models' | 'running' | 'completed' | 'error' | 'canceled'
@@ -180,6 +183,8 @@ export type WorkflowSceneUnderstandingNodeSettings = {
 	lastInputImageUrls?: string[]
 	lastInputPrompt?: string
 	lastInputLayoutJson?: string
+	detectedSceneType?: 'indoor' | 'outdoor' | 'semi-outdoor'
+	sceneTypeConfidence?: number
 	rewriteUsed?: boolean
 	rewriteAttempts?: number
 	mock?: boolean
@@ -623,14 +628,24 @@ export type WorkflowComfyUINodeSettings = {
 	message?: string
 	/** epoch ms */
 	lastCheckedAt?: number
-	/** available workflow files under user workflows dir */
-	workflows?: { path: string; name: string }[]
-	/** selected workflow file path, e.g. workflows/xxx.json */
+	/** available workflow files under user workflows dir or history */
+	workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+	/** selected workflow file path, e.g. workflows/xxx.json or history://xxx */
 	workflowPath?: string
+	/** source of selected workflow */
+	workflowSource?: 'userdata' | 'history'
 	/** optional override text for positive CLIP prompt nodes */
 	positivePrompt?: string
 	/** optional override text for negative CLIP prompt nodes */
 	negativePrompt?: string
+	/** ComfyUI /object_info cached data */
+	objectInfo?: import('./domain/comfyui/objectInfoTypes').ComfyObjectInfo
+	/** ComfyUI system info from /system_stats */
+	systemInfo?: import('./domain/comfyui/objectInfoTypes').ComfySystemStats & {
+		nodeCount?: number
+	}
+	/** available checkpoint models list */
+	checkpoints?: string[]
 
 	/** execution status for the loaded workflow */
 	runStatus?: 'idle' | 'running' | 'canceling' | 'completed' | 'failed' | 'cancelled'

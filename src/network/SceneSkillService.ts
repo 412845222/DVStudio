@@ -208,6 +208,7 @@ export class SceneSkillService {
 		imageUrl?: string
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
+		sceneType?: 'auto' | 'indoor' | 'outdoor'
 	}): Promise<SceneUnderstandRunResponse> {
 		if (isAgentSkillsIpcAvailable()) {
 			try {
@@ -394,6 +395,7 @@ export class SceneSkillService {
 			imageUrl?: string
 			imageDataUrl?: string
 			imageInputs?: SceneUnderstandImageInput[]
+			sceneType?: 'auto' | 'indoor' | 'outdoor'
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { getClientSettings, saveClientSettings, openExternalUrl } from '../electronBridge'
+import { getClientSettings, saveClientSettings, openExternalUrl, openComfySetup } from '../electronBridge'
 import type { ClientSettings, EnvironmentCheckResult, CliModelInfo, CheckStatus, AgentThinkingEffort } from '../electronBridge/types'
 import { saveEncryptedAICredentials } from '../network/AICredentialService'
 import { cliCheckEnvironment, cliGetAdapterConfig, cliSaveAdapterConfig, cliRunFixCommand, cliStartAuthFlow, cliCancelAuth, cliResetAdapterConfig, type AuthStreamChunk } from '../network/CLIChatService'
@@ -1025,6 +1025,10 @@ onMounted(() => {
 	loadCodexSavedConfig()
 })
 
+function handleOpenComfySetup() {
+	openComfySetup({ source: 'settings' })
+}
+
 onUnmounted(() => {
 	if (saveMsgTimer.value) clearTimeout(saveMsgTimer.value)
 	if (codexAuthRunning.value) {
@@ -1216,6 +1220,34 @@ const canEnableCodex = computed(() => {
 							{{ t('settings.openCommunity') }}
 						</button>
 					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="settings-section">
+			<div class="section-head">
+				<h2 class="section-title">ComfyUI 集成</h2>
+				<p class="section-desc">配置本地 ComfyUI 环境，用于 AI 工作流中的 ComfyUI 节点。</p>
+			</div>
+			<div class="platform-card">
+				<div class="platform-header">
+					<div class="platform-info">
+						<div class="platform-badge">
+							<span class="platform-dot" style="background: #a78bfa;" />
+							<span class="platform-name">ComfyUI 环境设置</span>
+						</div>
+						<div class="platform-meta">
+							<span>检测、安装和管理本地 ComfyUI 环境</span>
+						</div>
+					</div>
+				</div>
+				<div class="platform-hint">
+					打开 ComfyUI 环境设置窗口，可以检测系统环境、选择已安装的 ComfyUI 路径或安装新的 ComfyUI 实例。
+				</div>
+				<div style="margin-top: 12px;">
+					<button class="btn btn-sm" type="button" @click="handleOpenComfySetup">
+						⚙️ 打开 ComfyUI 环境设置
+					</button>
 				</div>
 			</div>
 		</section>

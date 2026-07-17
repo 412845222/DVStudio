@@ -9,6 +9,8 @@
   "aiworkflow.nodeLibrary.categories.audio.description": "Audio asset creation, upload, and preview nodes.",
   "aiworkflow.nodeLibrary.categories.model3d.label": "3D",
   "aiworkflow.nodeLibrary.categories.model3d.description": "3D generation, retopology, DCC tools, and runtime integration nodes.",
+  "aiworkflow.nodeLibrary.categories.plugin.label": "Plugins",
+  "aiworkflow.nodeLibrary.categories.plugin.description": "Third-party platform integration nodes like ComfyUI.",
 
   "aiworkflow.nodeLibrary.topCategories.inputs.label": "Basic",
   "aiworkflow.nodeLibrary.topCategories.inputs.description": "Text input, canvas, notes, and basic workflow nodes.",
@@ -56,7 +58,7 @@
   "aiworkflow.nodeLibrary.nodes.scene-decompose.searchAliases": ["decompose", "breakdown", "scene"],
 
   "aiworkflow.nodeLibrary.nodes.comfyui.label": "ComfyUI Node",
-  "aiworkflow.nodeLibrary.nodes.comfyui.description": "Integrate ComfyUI workflows for advanced image generation and processing.",
+  "aiworkflow.nodeLibrary.nodes.comfyui.description": "Integrate ComfyUI workflows for advanced image and video generation processing with local ComfyUI service.",
   "aiworkflow.nodeLibrary.nodes.comfyui.searchAliases": ["ComfyUI", "workflow", "stable diffusion"],
 
   "aiworkflow.nodeLibrary.nodes.model3d.label": "3D Model Node",

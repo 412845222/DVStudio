@@ -28,6 +28,8 @@ import type {
 	CloudTemplatesDeleteResult,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -187,6 +189,7 @@ declare global {
 				openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }>
 				close(): Promise<{ ok: boolean; error?: string }>
 				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
+				openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -411,6 +414,15 @@ declare global {
 				offTemplateCenterNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
 				onTemplateCenterData(handler: (payload: unknown) => void): number
 				offTemplateCenterData(listenerId: number): Promise<{ ok: boolean; error?: string }>
+
+				getImageMarkupInitialData(): Promise<{ imageDataUrl?: string; sourceNodeId?: string; sourceProjectId?: number } | null>
+				exportImageMarkup(payload: {
+					imageDataUrl: string
+					dataUrl: string
+					width: number
+					height: number
+					exportType?: 'markup' | 'screenshot' | 'subject-crop'
+				}): Promise<{ ok: boolean; error?: string }>
 			}
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>

@@ -3,6 +3,7 @@ import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { logBlueprintRequest } from './blueprintRequestLog'
 import { getErrorMessage, isRecord, isString, isArray } from '../types/utils'
+import type { ComfyObjectInfo, ComfySystemStats } from '../aiworkflow/domain/comfyui/objectInfoTypes'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -47,7 +48,24 @@ type PingResponse =
 	| {
 			ok: true
 			baseUrl: string
-			comfyui?: { version?: string; os?: string; deviceName?: string }
+			comfyui?: { version?: string; os?: string; deviceName?: string; devices?: Array<{ name?: string; type?: string }> }
+			systemInfo?: ComfySystemStats & { nodeCount?: number }
+			nodeCount?: number
+	  }
+	| {
+			ok: false
+			error: string
+			status?: number
+			baseUrl?: string
+	  }
+
+type ObjectInfoResponse =
+	| {
+			ok: true
+			baseUrl: string
+			objectInfo: ComfyObjectInfo
+			nodeCount?: number
+			cached?: boolean
 	  }
 	| {
 			ok: false
@@ -60,13 +78,15 @@ type WorkflowsListResponse =
 	| {
 			ok: true
 			baseUrl: string
-			workflows: { path: string; name: string }[]
+			workflows: { path: string; name: string; source?: 'userdata' | 'history' }[]
+			source?: 'userdata' | 'history'
 	  }
 	| {
 			ok: false
 			error: string
 			status?: number
 			baseUrl?: string
+			workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
 	  }
 
 type WorkflowGetResponse =
@@ -2218,25 +2238,13 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as PingResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] ping IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] ping IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'ping failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/ping'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: `ping failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl
-			}
-		}
-		return (await res.json()) as PingResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
 	async listWorkflows(comfyBaseUrl: string): Promise<WorkflowsListResponse> {
@@ -2246,25 +2254,13 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as WorkflowsListResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl, workflows: [] }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] workflows/list IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] workflows/list IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/list failed via IPC', baseUrl: comfyBaseUrl, workflows: [] }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/list'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: `workflows/list failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl
-			}
-		}
-		return (await res.json()) as WorkflowsListResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl, workflows: [] }
 	}
 
 	async getWorkflow(comfyBaseUrl: string, workflowPath: string): Promise<WorkflowGetResponse> {
@@ -2274,25 +2270,45 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as WorkflowGetResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] workflows/get IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] workflows/get IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/get failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/workflows/get'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, workflowPath })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: `workflows/get failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
+	}
+
+	async getObjectInfo(comfyBaseUrl: string): Promise<ObjectInfoResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.objectInfo({ baseUrl: comfyBaseUrl })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as ObjectInfoResponse
+				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] runtime/object_info IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'object_info failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		return (await res.json()) as WorkflowGetResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
+	}
+
+	async getHistoryWorkflow(comfyBaseUrl: string, promptId: string): Promise<WorkflowGetResponse> {
+		if (isComfyRuntimeIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.getHistory({ baseUrl: comfyBaseUrl, promptId })
+				if (ipcResult && typeof ipcResult === 'object') {
+					return ipcResult as WorkflowGetResponse
+				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] workflows/get-history IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/get-history failed via IPC', baseUrl: comfyBaseUrl }
+			}
+		}
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
 	async run(
@@ -2327,47 +2343,18 @@ export class ComfyUIBridgeService {
 					}
 					return ipcResult as RunResponse
 				}
+				return { ok: false, status: 500, error: 'Invalid IPC response', baseUrl: comfyBaseUrl } as RunResponse
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] run IPC failed, falling back to HTTP:', err)
-			}
-		}
-		const form = new FormData()
-		form.set('baseUrl', comfyBaseUrl)
-		form.set('workflowPath', workflowPath)
-		if (typeof overrides?.positivePrompt === 'string')
-			form.set('positivePrompt', overrides.positivePrompt)
-		if (typeof overrides?.negativePrompt === 'string')
-			form.set('negativePrompt', overrides.negativePrompt)
-		if (typeof overrides?.confirmReuseRecord === 'boolean')
-			form.set('confirmReuseRecord', overrides.confirmReuseRecord ? '1' : '0')
-		files.forEach((f, idx) => {
-			form.append(`file${idx}`, f, f.name || `input_${idx}.png`)
-		})
-		const res = await this.fetchWithLog(this.url('/api/workflow/run'), {
-			method: 'POST',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined,
-			body: form
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			if (body.ok && isRecord(body.value)) {
-				const errorMsg = isString(body.value.error) ? body.value.error : `run failed: ${res.status}`
+				console.warn('[ComfyUIBridge] run IPC failed:', err)
 				return {
 					ok: false,
-					status: res.status,
+					status: 500,
 					baseUrl: comfyBaseUrl,
-					error: errorMsg,
-					...body.value
+					error: getErrorMessage(err) || 'run failed via IPC'
 				} as RunResponse
 			}
-			return {
-				ok: false,
-				status: res.status,
-				error: extractErrorMessage(body, `run failed: ${res.status}`),
-				baseUrl: comfyBaseUrl
-			}
 		}
-		return (await res.json()) as RunResponse
+		return { ok: false, status: 500, error: 'IPC not available', baseUrl: comfyBaseUrl } as RunResponse
 	}
 
 	async outputs(comfyBaseUrl: string, promptId: string): Promise<OutputsResponse> {
@@ -2377,25 +2364,13 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as OutputsResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] outputs IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] outputs IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'outputs failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/outputs'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: `outputs failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`,
-				baseUrl: comfyBaseUrl
-			}
-		}
-		return (await res.json()) as OutputsResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
 	async meshyGenerate(payload: Record<string, unknown>): Promise<MeshyGenerateResponse> {
@@ -3370,25 +3345,13 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as CancelResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] cancel IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] cancel IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'cancel failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/cancel'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, promptId })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: extractErrorMessage(body, `cancel failed: ${res.status}`),
-				baseUrl: comfyBaseUrl
-			}
-		}
-		return (await res.json()) as CancelResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
 	async job(comfyBaseUrl: string, id: string): Promise<JobResponse> {
@@ -3398,24 +3361,12 @@ export class ComfyUIBridgeService {
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as JobResponse
 				}
+				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] job IPC failed, falling back to HTTP:', err)
+				console.warn('[ComfyUIBridge] job IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'job failed via IPC', baseUrl: comfyBaseUrl }
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/workflow/job'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify({ baseUrl: comfyBaseUrl, id })
-		})
-		if (!res.ok) {
-			const body = await safeJson(res)
-			return {
-				ok: false,
-				status: res.status,
-				error: extractErrorMessage(body, `job failed: ${res.status}`),
-				baseUrl: comfyBaseUrl
-			}
-		}
-		return (await res.json()) as JobResponse
+		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 }
