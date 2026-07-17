@@ -53,6 +53,11 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/AIWorkflow/TemplateCenterWindow.vue')
 	},
 	{
+		path: '/cloud-storage',
+		name: 'CloudStorage',
+		component: () => import('../views/CloudStorage/CloudStoragePage.vue')
+	},
+	{
 		path: '/comfyui-setup',
 		name: 'ComfyUISetup',
 		component: () => import('../views/ComfyUISetupPage.vue')

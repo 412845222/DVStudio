@@ -5,25 +5,33 @@ import type { SeedanceTaskMirrorItem } from '../../../../network/ComfyUIBridgeSe
 import { resolveBackendUrl } from '../../../../network/backendConfig'
 import { getErrorMessage } from '../../../../types/utils'
 
-const mapVideoTaskItem = (item: SeedanceTaskMirrorItem): VideoTaskPanelItem => ({
-	taskId: String(item.taskId || '').trim(),
-	model: String(item.model || '').trim(),
-	status: String(item.status || '').trim(),
-	prompt: String(item.prompt || '').trim(),
-	ratio: String(item.ratio || '').trim(),
-	resolution: String(item.resolution || '').trim(),
-	duration: Number(item.duration || 0) || 0,
-	generateAudio: !!item.generateAudio,
-	cameraFixed: !!item.cameraFixed,
-	statusText: String(item.statusText || '').trim(),
-	errorMessage: String(item.errorMessage || '').trim(),
-	videoUrlLocal: resolveBackendUrl(String(item.videoUrlLocal || '').trim()),
-	videoUrlRemote: resolveBackendUrl(String(item.videoUrlRemote || '').trim()),
-	lastFrameUrlLocal: resolveBackendUrl(String(item.lastFrameUrlLocal || '').trim()),
-	lastFrameUrlRemote: resolveBackendUrl(String(item.lastFrameUrlRemote || '').trim()),
-	updatedAt: String(item.updatedAt || '').trim(),
-	syncedAt: String(item.syncedAt || '').trim()
-})
+const mapVideoTaskItem = (item: SeedanceTaskMirrorItem): VideoTaskPanelItem => {
+	const refImageUrls = Array.isArray(item.refImageUrls) ? item.refImageUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
+	const refVideoUrls = Array.isArray(item.refVideoUrls) ? item.refVideoUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
+	const refAudioUrls = Array.isArray(item.refAudioUrls) ? item.refAudioUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
+	return {
+		taskId: String(item.taskId || '').trim(),
+		model: String(item.model || '').trim(),
+		status: String(item.status || '').trim(),
+		prompt: String(item.prompt || '').trim(),
+		ratio: String(item.ratio || '').trim(),
+		resolution: String(item.resolution || '').trim(),
+		duration: Number(item.duration || 0) || 0,
+		generateAudio: !!item.generateAudio,
+		cameraFixed: !!item.cameraFixed,
+		statusText: String(item.statusText || '').trim(),
+		errorMessage: String(item.errorMessage || '').trim(),
+		videoUrlLocal: resolveBackendUrl(String(item.videoUrlLocal || '').trim()),
+		videoUrlRemote: resolveBackendUrl(String(item.videoUrlRemote || '').trim()),
+		lastFrameUrlLocal: resolveBackendUrl(String(item.lastFrameUrlLocal || '').trim()),
+		lastFrameUrlRemote: resolveBackendUrl(String(item.lastFrameUrlRemote || '').trim()),
+		refImageUrls: refImageUrls?.length ? refImageUrls : undefined,
+		refVideoUrls: refVideoUrls?.length ? refVideoUrls : undefined,
+		refAudioUrls: refAudioUrls?.length ? refAudioUrls : undefined,
+		updatedAt: String(item.updatedAt || '').trim(),
+		syncedAt: String(item.syncedAt || '').trim()
+	}
+}
 
 const isSucceededVideoTask = (item: VideoTaskPanelItem | null | undefined) => {
 	const status = String(item?.status || '')
