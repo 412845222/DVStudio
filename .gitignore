@@ -111,6 +111,7 @@ ehthumbs.db
 /debug-*.*
 /scripts/debug-*.*
 /count_lines.py
+/_*.*
 
 # External code folders (Claw-code, etc.)
 Claw-code/

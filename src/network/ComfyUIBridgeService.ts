@@ -220,9 +220,15 @@ export type SeedanceTaskMirrorItem = {
 	generateAudio?: boolean
 	watermark?: boolean
 	cameraFixed?: boolean
+	returnLastFrame?: boolean
+	enableWebSearch?: boolean
+	priority?: number
 	serviceTier?: string
 	tools?: unknown[]
 	usage?: Record<string, unknown>
+	refImageUrls?: string[]
+	refVideoUrls?: string[]
+	refAudioUrls?: string[]
 	videoUrlRemote?: string
 	videoUrlLocal?: string
 	videoSourcePathLocal?: string
@@ -724,21 +730,74 @@ async function* consumeCodexIpcStream(
 	}
 }
 
+const isVideoFile = (file: File): boolean => {
+	const name = file.name.toLowerCase()
+	const type = file.type.toLowerCase()
+	return (
+		type.startsWith('video/') ||
+		name.endsWith('.mp4') ||
+		name.endsWith('.mov') ||
+		name.endsWith('.avi') ||
+		name.endsWith('.webm') ||
+		name.endsWith('.mkv')
+	)
+}
+
+const isAudioFile = (file: File): boolean => {
+	const name = file.name.toLowerCase()
+	const type = file.type.toLowerCase()
+	return (
+		type.startsWith('audio/') ||
+		name.endsWith('.mp3') ||
+		name.endsWith('.wav') ||
+		name.endsWith('.ogg') ||
+		name.endsWith('.flac') ||
+		name.endsWith('.m4a')
+	)
+}
+
 async function formDataToSeedancePayload(form: FormData): Promise<Record<string, unknown>> {
 	const obj: Record<string, unknown> = {}
 	const refImageUrls: string[] = []
-	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft', 'generate_audio', 'camera_fixed', 'return_last_frame'])
-	const numKeys = new Set(['duration', 'seed', 'frames', 'width', 'height', 'quantity', 'referenceCount'])
-	const arrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images', 'imageUrls'])
+	type VideoFileRef = { __file: true; name: string; type: string; data: ArrayBuffer }
+	const refVideoUrls: (string | VideoFileRef)[] = []
+	const refAudioUrls: string[] = []
+	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft', 'generate_audio', 'camera_fixed', 'return_last_frame', 'enableWebSearch', 'enable_web_search'])
+	const numKeys = new Set(['duration', 'seed', 'frames', 'width', 'height', 'quantity', 'referenceCount', 'priority'])
+	const imageArrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images', 'imageUrls'])
+	const videoArrayKeys = new Set(['refVideos', 'ref_videos', 'videoUrls'])
+	const audioArrayKeys = new Set(['refAudios', 'ref_audios', 'audioUrls'])
 	const formAny = form as unknown as {
 		entries: () => IterableIterator<[string, FormDataEntryValue]>
 	}
 	for (const [key, value] of Array.from(formAny.entries())) {
 		if (value instanceof File) {
-			const dataUrl = await fileToDataUrl(value)
-			refImageUrls.push(dataUrl)
+			if (isVideoFile(value)) {
+				if (value.size > 200 * 1024 * 1024) {
+					throw new Error('Seedance 参考视频不能超过200MB')
+				}
+				const ab = await value.arrayBuffer()
+				refVideoUrls.push({
+					__file: true as const,
+					name: value.name,
+					type: value.type || 'video/mp4',
+					data: ab,
+				})
+			} else {
+				const dataUrl = await fileToDataUrl(value)
+				if (isAudioFile(value)) {
+					refAudioUrls.push(dataUrl)
+				} else {
+					refImageUrls.push(dataUrl)
+				}
+			}
 		} else if (typeof value === 'string') {
-			if (arrayKeys.has(key)) {
+			if (imageArrayKeys.has(key)) {
+				if (!obj[key]) obj[key] = []
+				;(obj[key] as string[]).push(value)
+			} else if (videoArrayKeys.has(key)) {
+				refVideoUrls.push(value)
+			} else if (audioArrayKeys.has(key)) {
 				if (!obj[key]) obj[key] = []
 				;(obj[key] as string[]).push(value)
 			} else if (boolKeys.has(key)) {
@@ -757,6 +816,16 @@ async function formDataToSeedancePayload(form: FormData): Promise<Record<string,
 		obj.refImages = refImageUrls
 		obj.ref_images = refImageUrls
 		obj.imageUrls = refImageUrls
+	}
+	if (refVideoUrls.length > 0) {
+		obj.refVideos = refVideoUrls
+		obj.ref_videos = refVideoUrls
+		obj.videoUrls = refVideoUrls
+	}
+	if (refAudioUrls.length > 0) {
+		obj.refAudios = refAudioUrls
+		obj.ref_audios = refAudioUrls
+		obj.audioUrls = refAudioUrls
 	}
 	if (!obj.model && obj.videoModel) obj.model = obj.videoModel
 	if (!obj.endpoint_id && obj.videoModel) obj.endpoint_id = obj.videoModel

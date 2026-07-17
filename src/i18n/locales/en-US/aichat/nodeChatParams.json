@@ -53,6 +53,7 @@
   "aichat.nodeChatParams.removeLighting": "Remove lighting (recommended)",
   "aichat.nodeChatParams.transparentPreview": "Transparent background preview",
   "aichat.nodeChatParams.imageFallback": "Image-{n}",
+  "aichat.nodeChatParams.mediaFallback": "Media-{n}",
   "aichat.nodeChatParams.none": "None",
   "aichat.nodeChatParams.bottom": "Bottom",
   "aichat.nodeChatParams.center": "Center",
@@ -113,5 +114,9 @@
   "aichat.nodeChatParams.tripo3dTextureNoImages": "No reference images connected; chat text will be used as texture prompt",
   "aichat.nodeChatParams.tripo3dTextureSelectImages": "Select reference images and assign views",
   "aichat.nodeChatParams.tripo3dTextureViewProgress": "Selected {selected}/{total} views",
-  "aichat.nodeChatParams.modelNotAvailable": "Model not available, refresh in Settings"
+  "aichat.nodeChatParams.modelNotAvailable": "Model not available, refresh in Settings",
+  "aichat.nodeChatParams.referenceAssets": "Connected Reference Assets",
+  "aichat.nodeChatParams.videoMode.videoEdit": "Video Edit",
+  "aichat.nodeChatParams.webSearch": "Web Search",
+  "aichat.nodeChatParams.priority": "Priority"
 }

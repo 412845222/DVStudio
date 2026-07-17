@@ -23,6 +23,7 @@
   "aiConfig.videoMode.imageToVideo": "Image to Video",
   "aiConfig.videoMode.firstLast": "First-Last Frame",
   "aiConfig.videoMode.reference": "Multimodal Reference",
+  "aiConfig.videoMode.videoEdit": "Video Edit",
   "aiConfig.videoDuration.auto": "Auto",
   "aiConfig.videoDuration.seconds": "{n}s",
   "aiConfig.meshyMode.textTo3d": "Text to 3D",

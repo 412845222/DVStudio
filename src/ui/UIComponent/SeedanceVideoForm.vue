@@ -75,11 +75,11 @@
 					<option value="auto">自动判断</option>
 					<option value="first">首帧约束</option>
 					<option value="first-last">首尾帧约束</option>
-					<option value="reference">多图参考</option>
+					<option value="reference">多模态参考</option>
+					<option value="video_edit" :disabled="!isSeedance20Series">视频编辑</option>
 				</select>
 				<div class="seedance-hint">
-					提示词里请显式描述主体、镜头、动作与氛围；若接入多张图，建议使用“图片1 /
-					图片2”这种编号叙述。
+					提示词里请显式描述主体、镜头、动作与氛围；若接入多张图/视频，建议使用“素材1/素材2”这种编号叙述。多模态参考支持图片、视频、音频组合输入，仅 Seedance 2.0 系列支持。
 				</div>
 			</div>
 
@@ -95,6 +95,33 @@
 					@input="onSeedInput"
 					placeholder="留空则随机"
 				/>
+			</div>
+		</div>
+
+		<div v-if="isSeedance20Series" class="seedance-advanced">
+			<div class="seedance-field">
+				<div class="seedance-label">联网搜索</div>
+				<label class="seedance-check">
+					<input
+						type="checkbox"
+						:disabled="sending"
+						:checked="config.enableWebSearch"
+						@change="onWebSearchChange"
+					/>
+					允许模型搜索互联网内容（仅 Seedance 2.0）
+				</label>
+			</div>
+			<div class="seedance-field">
+				<div class="seedance-label">执行优先级</div>
+				<select
+					class="seedance-input"
+					:disabled="sending"
+					:value="config.priority ?? 0"
+					@change="onPriorityChange"
+				>
+					<option v-for="p in 10" :key="p - 1" :value="p - 1">{{ p - 1 }}</option>
+				</select>
+				<div class="seedance-hint">数值越大优先级越高，默认 0</div>
 			</div>
 		</div>
 
@@ -144,7 +171,7 @@ export type SeedanceVideoFormConfig = {
 	model: string
 	ratio: string
 	resolution: string
-	refMode: 'auto' | 'first' | 'first-last' | 'reference' | 'recamera'
+	refMode: 'auto' | 'first' | 'first-last' | 'reference' | 'video_edit' | 'recamera'
 	useFrames: boolean
 	duration: number
 	frames?: string
@@ -158,6 +185,8 @@ export type SeedanceVideoFormConfig = {
 	returnLastFrame: boolean
 	serviceTier: '' | 'default' | 'flex'
 	executionExpiresAfter?: string
+	enableWebSearch?: boolean
+	priority?: number
 }
 </script>
 
@@ -315,6 +344,10 @@ const onCameraFixedChange = (e: Event) =>
 	patchConfig({ cameraFixed: (e.target as HTMLInputElement).checked })
 const onReturnLastFrameChange = (e: Event) =>
 	patchConfig({ returnLastFrame: (e.target as HTMLInputElement).checked })
+const onWebSearchChange = (e: Event) =>
+	patchConfig({ enableWebSearch: (e.target as HTMLInputElement).checked })
+const onPriorityChange = (e: Event) =>
+	patchConfig({ priority: Number((e.target as HTMLSelectElement).value) || 0 })
 </script>
 
 <style scoped>
@@ -328,6 +361,14 @@ const onReturnLastFrameChange = (e: Event) =>
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 8px;
+}
+
+.seedance-advanced {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-border);
 }
 
 .seedance-field {

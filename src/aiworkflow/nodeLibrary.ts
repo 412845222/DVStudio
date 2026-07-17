@@ -227,8 +227,8 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'video-generation',
 		nodeType: 'video',
 		label: '视频节点',
-		inputKinds: ['video'],
-		outputKinds: ['video'],
+		inputKinds: ['image', 'video', 'audio'],
+		outputKinds: ['video', 'image'],
 		order: 30
 	},
 	{
