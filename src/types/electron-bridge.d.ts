@@ -31,6 +31,12 @@ import type {
 	CloudStorageProviderMeta,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	WorkshopTemplatesPlatformResult,
+	WorkshopTemplatesQueryResult,
+	WorkshopTemplatesDownloadPayload,
+	WorkshopTemplatesDownloadResult,
+	WorkshopTemplatesProgressResult,
+	WorkshopTemplatesInstallInfoResult,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult,
 	OpenComfySetupPayload,
@@ -455,6 +461,13 @@ declare global {
 				upload(payload: CloudTemplatesUploadPayload): Promise<CloudTemplatesUploadResult>
 				download(payload: CloudTemplatesDownloadPayload): Promise<CloudTemplatesDownloadResult>
 				delete(payload: CloudTemplatesDeletePayload): Promise<CloudTemplatesDeleteResult>
+			}
+			workshopTemplates?: {
+				getPlatform(): Promise<WorkshopTemplatesPlatformResult>
+				query(options?: { tag?: string; limit?: number; offset?: number }): Promise<WorkshopTemplatesQueryResult>
+				download(payload: WorkshopTemplatesDownloadPayload): Promise<WorkshopTemplatesDownloadResult>
+				progress(payload: { publishedFileId: string }): Promise<WorkshopTemplatesProgressResult>
+				installInfo(payload: { publishedFileId: string }): Promise<WorkshopTemplatesInstallInfoResult>
 			}
 			cloudfs: {
 				listProviders(): Promise<{ ok: boolean; providers?: CloudStorageProviderMeta[]; error?: string }>

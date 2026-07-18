@@ -10,13 +10,37 @@ export class CloudTemplatesService {
         this._platformManager = null
         this._cachedIndex = null
         this._indexLoaded = false
+        this._boundOnPlatformChange = null
     }
 
     _ensureManager() {
         if (!this._platformManager) {
             this._platformManager = getManager()
+            this._boundOnPlatformChange = () => {
+                if (this._adapter) {
+                    const activeProvider = this._platformManager.getActiveProvider()
+                    const newPlatformId = activeProvider?.id || 'local'
+                    const currentPlatformId = this._adapter?.getPlatformId?.()
+                    if (currentPlatformId !== newPlatformId) {
+                        console.log('[cloud-templates] Platform changed from', currentPlatformId, 'to', newPlatformId, '- reinitializing adapter')
+                        this._adapter = null
+                        this._cachedIndex = null
+                        this._indexLoaded = false
+                    }
+                }
+            }
+            this._platformManager.on('status-changed', this._boundOnPlatformChange)
         }
         return this._platformManager
+    }
+
+    shutdown() {
+        if (this._platformManager && this._boundOnPlatformChange) {
+            this._platformManager.off('status-changed', this._boundOnPlatformChange)
+        }
+        this._adapter = null
+        this._cachedIndex = null
+        this._indexLoaded = false
     }
 
     _initAdapter() {
@@ -27,8 +51,22 @@ export class CloudTemplatesService {
         console.log('[cloud-templates] adapter initialized:', this._adapter?.getPlatformId?.(), 'available:', this._adapter?.isAvailable?.())
     }
 
+    _shouldReinitAdapter() {
+        if (!this._adapter) return true
+        if (!this._adapter.isAvailable()) return true
+        const mgr = this._ensureManager()
+        const activeProvider = mgr.getActiveProvider()
+        const expectedPlatformId = activeProvider?.id || 'local'
+        const currentPlatformId = this._adapter.getPlatformId?.()
+        if (currentPlatformId !== expectedPlatformId) {
+            console.log('[cloud-templates] Adapter platform mismatch: adapter=' + currentPlatformId + ', active=' + expectedPlatformId + ' - reinitializing')
+            return true
+        }
+        return false
+    }
+
     getAdapter() {
-        if (!this._adapter?.isAvailable()) {
+        if (this._shouldReinitAdapter()) {
             this._initAdapter()
         }
         return this._adapter

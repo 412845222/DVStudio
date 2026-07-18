@@ -435,6 +435,61 @@ export type CloudTemplatesDeleteResult = {
 	errMsg?: string
 }
 
+export interface WorkshopTemplateItem {
+	publishedFileId: string
+	title: string
+	description?: string
+	tags?: string[]
+	fileSize?: number
+	createdAt: number
+	updatedAt: number
+	previewUrl?: string
+	author?: string
+	isOfficial: boolean
+}
+
+export type WorkshopTemplatesPlatformResult = {
+	ok: boolean
+	platformAvailable: boolean
+	platformId?: string
+	platformName?: string
+	errMsg?: string
+}
+
+export type WorkshopTemplatesQueryResult = {
+	ok: boolean
+	items?: WorkshopTemplateItem[]
+	totalResults?: number
+	errMsg?: string
+}
+
+export type WorkshopTemplatesDownloadPayload = {
+	publishedFileId: string
+}
+
+export type WorkshopTemplatesDownloadResult = {
+	ok: boolean
+	publishedFileId: string
+	metadata?: Record<string, unknown>
+	zipData?: ArrayBuffer
+	coverData?: ArrayBuffer | null
+	errMsg?: string
+}
+
+export type WorkshopTemplatesProgressResult = {
+	ok: boolean
+	publishedFileId: string
+	progress?: { progress: number; state: string } | null
+	errMsg?: string
+}
+
+export type WorkshopTemplatesInstallInfoResult = {
+	ok: boolean
+	installed?: boolean
+	installPath?: string
+	errMsg?: string
+}
+
 export interface CloudStorageProviderRegion {
 	id: string
 	name: string

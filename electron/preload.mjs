@@ -862,6 +862,13 @@ contextBridge.exposeInMainWorld('dweb', {
 		download: (payload) => invoke('dweb:cloud-templates:download', payload || {}),
 		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {}),
 	},
+	workshopTemplates: {
+		getPlatform: () => invoke('dweb:workshop-templates:get-platform'),
+		query: (options) => invoke('dweb:workshop-templates:query', options || {}),
+		download: (payload) => invoke('dweb:workshop-templates:download', payload || {}),
+		progress: (payload) => invoke('dweb:workshop-templates:progress', payload || {}),
+		installInfo: (payload) => invoke('dweb:workshop-templates:install-info', payload || {}),
+	},
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
 		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),

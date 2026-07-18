@@ -81,6 +81,7 @@
   "aiworkflow.templateCenter.noBuiltinTemplates": "暂无内置模板",
   "aiworkflow.templateCenter.noUserTemplates": "暂无个人模板，点击上方按钮创建你的第一个模板",
   "aiworkflow.templateCenter.noCloudTemplates": "云端暂无模板",
+  "aiworkflow.templateCenter.noWorkshopTemplates": "暂无官方模板",
   "aiworkflow.templateCenter.workshopTitle": "官方模板市场",
   "aiworkflow.templateCenter.workshopDesc": "浏览和下载由 DVStudio 官方提供的精选工作流模板，获取专业创作者的优质内容",
   "aiworkflow.templateCenter.steamRequired": "请先连接云端服务后使用",
@@ -104,5 +105,6 @@
   "aiworkflow.templateCenter.noCloudConnection": "无连接",
   "aiworkflow.templateCenter.cloudConnected": "已连接",
   "aiworkflow.templateCenter.noCloudAccess": "无云端接入",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "云端服务未连接，暂不支持云端模板的上传、下载和同步"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "云端服务未连接，暂不支持云端模板的上传、下载和同步",
+  "aiworkflow.templateCenter.steamConnected": "Steam已连接，已刷新模板市场数据"
 }

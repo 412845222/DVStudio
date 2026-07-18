@@ -81,6 +81,7 @@
   "aiworkflow.templateCenter.noBuiltinTemplates": "No built-in templates",
   "aiworkflow.templateCenter.noUserTemplates": "No personal templates yet, click the button above to create your first template",
   "aiworkflow.templateCenter.noCloudTemplates": "No cloud templates",
+  "aiworkflow.templateCenter.noWorkshopTemplates": "No official templates available",
   "aiworkflow.templateCenter.workshopTitle": "Official Template Workshop",
   "aiworkflow.templateCenter.workshopDesc": "Browse and download curated workflow templates provided by DVStudio official team, get premium content from professional creators",
   "aiworkflow.templateCenter.steamRequired": "Please connect to cloud service first",
@@ -104,5 +105,6 @@
   "aiworkflow.templateCenter.noCloudConnection": "No Connection",
   "aiworkflow.templateCenter.cloudConnected": "Connected",
   "aiworkflow.templateCenter.noCloudAccess": "No Cloud Access",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud service is not connected. Cloud template upload, download, and sync are unavailable"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud service is not connected. Cloud template upload, download, and sync are unavailable",
+  "aiworkflow.templateCenter.steamConnected": "Steam connected, workshop data refreshed"
 }

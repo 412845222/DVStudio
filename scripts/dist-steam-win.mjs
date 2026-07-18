@@ -54,15 +54,16 @@ async function main() {
 	const pkgPath = path.join(repoRoot, 'package.json')
 	const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 
-	const buildUnpackedDir = path.resolve(repoRoot, 'steam-pipe', 'build', 'win64-unpacked')
+	const buildTimestamp = Date.now()
+	const buildBaseDir = path.resolve(repoRoot, 'steam-pipe', 'build')
+	const buildUnpackedDir = path.resolve(buildBaseDir, `win64-unpacked-${buildTimestamp}`)
 	const contentDir = path.resolve(repoRoot, 'steam-pipe', 'content', 'win64')
 	const cacheDir = path.resolve(repoRoot, '.electron-cache')
-	const tempConfigPath = path.join(repoRoot, 'steam-pipe', 'build', 'electron-builder-steam.json')
+	const tempConfigPath = path.join(buildBaseDir, `electron-builder-steam-${buildTimestamp}.json`)
 
 	fs.mkdirSync(cacheDir, { recursive: true })
-	fs.mkdirSync(path.dirname(buildUnpackedDir), { recursive: true })
+	fs.mkdirSync(buildBaseDir, { recursive: true })
 	fs.mkdirSync(path.dirname(contentDir), { recursive: true })
-	fs.mkdirSync(path.dirname(tempConfigPath), { recursive: true })
 
 	process.stdout.write(`[dist:steam:win] Steam AppID: ${steamAppId}\n`)
 	process.stdout.write(`[dist:steam:win] environment: ${isCI ? 'CI (GitHub Actions)' : 'local'}\n`)
@@ -102,6 +103,15 @@ async function main() {
 			...pkg.build.directories,
 			output: buildUnpackedDir
 		},
+		files: [
+			...(pkg.build.files || []),
+			'!electron/steam.config.json',
+			'!electron/**/steam.config.example.json',
+			'!electron/**/*.log',
+			'!electron/**/*.map',
+			'!**/steam.config.json',
+			'!**/*.local.mjs',
+		],
 		asar: true,
 		asarUnpack: 'electron/platform/native/**',
 		win: {
@@ -165,20 +175,14 @@ async function main() {
 		process.exit(1)
 	}
 
-	const tempContentDir = `${contentDir}.tmp-${Date.now()}`
-	fs.mkdirSync(tempContentDir, { recursive: true })
-
-	process.stdout.write(`[dist:steam:win] Copying build to staging: ${tempContentDir}\n`)
-	fs.cpSync(actualUnpackedDir, tempContentDir, { recursive: true })
-
-	const steamAppidInStaging = path.join(tempContentDir, 'steam_appid.txt')
-	if (fs.existsSync(steamAppidInStaging)) {
-		fs.rmSync(steamAppidInStaging, { force: true })
+	const steamAppidInBuild = path.join(actualUnpackedDir, 'steam_appid.txt')
+	if (fs.existsSync(steamAppidInBuild)) {
+		fs.rmSync(steamAppidInBuild, { force: true })
 		process.stdout.write('[dist:steam:win] Removed steam_appid.txt from build root (Steam auto-generates this)\n')
 	}
 
 	const nativeUnpackedAppIdPath = path.join(
-		tempContentDir, 'resources', 'app.asar.unpacked',
+		actualUnpackedDir, 'resources', 'app.asar.unpacked',
 		'electron', 'platform', 'native', 'win32', 'steam_appid.txt'
 	)
 	if (fs.existsSync(nativeUnpackedAppIdPath)) {
@@ -186,41 +190,54 @@ async function main() {
 		process.stdout.write(`[dist:steam:win] Updated native steam_appid.txt to AppID ${steamAppId}\n`)
 	}
 
+	function robocopyMirror(src, dst) {
+		return new Promise((resolve) => {
+			const args = [src, dst, '/MIR', '/R:2', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/XD', '*.tmp']
+			process.stdout.write(`[dist:steam:win] Mirroring build to content dir via robocopy...\n`)
+			const child = spawn('robocopy', args, {
+				stdio: 'inherit',
+				shell: false,
+				windowsHide: true,
+				cwd: repoRoot
+			})
+			child.once('exit', (code) => {
+				const exitCode = Number(code || 0)
+				if (exitCode >= 8) {
+					process.stdout.write(`[dist:steam:win] robocopy exited with code ${exitCode} (non-fatal for code < 8)\n`)
+				}
+				resolve(exitCode)
+			})
+		})
+	}
+
 	function sleepSync(ms) {
 		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 	}
 
-	function removeWithRetry(dir, retries = 8) {
-		for (let i = 0; i < retries; i++) {
-			try {
-				fs.rmSync(dir, { recursive: true, force: true })
-				return true
-			} catch (e) {
-				if (i === retries - 1) return false
-				process.stdout.write(`[dist:steam:win] Remove retry (${i + 1}/${retries})...\n`)
-				sleepSync(800)
+	function cleanupOldBuilds() {
+		try {
+			const entries = fs.readdirSync(buildBaseDir, { withFileTypes: true })
+			for (const entry of entries) {
+				if (entry.isDirectory() && entry.name.startsWith('win64-unpacked-')) {
+					const dirPath = path.join(buildBaseDir, entry.name)
+					if (dirPath !== buildUnpackedDir) {
+						try { fs.rmSync(dirPath, { recursive: true, force: true }) } catch (_) {}
+					}
+				} else if (entry.isFile() && entry.name.startsWith('electron-builder-steam-') && entry.name.endsWith('.json')) {
+					const filePath = path.join(buildBaseDir, entry.name)
+					if (filePath !== tempConfigPath) {
+						try { fs.rmSync(filePath, { force: true }) } catch (_) {}
+					}
+				}
 			}
-		}
-		return false
+		} catch (_) {}
 	}
 
-	if (fs.existsSync(contentDir)) {
-		process.stdout.write(`[dist:steam:win] Cleaning old content dir...\n`)
-		const removed = removeWithRetry(contentDir)
-		if (!removed) {
-			process.stdout.write('[dist:steam:win] WARNING: Could not fully remove old content dir (file locked), attempting to overwrite...\n')
-		}
-	}
+	fs.mkdirSync(contentDir, { recursive: true })
+	await robocopyMirror(actualUnpackedDir, contentDir)
 
-	process.stdout.write(`[dist:steam:win] Moving staged content to: ${contentDir}\n`)
-	try {
-		fs.renameSync(tempContentDir, contentDir)
-	} catch (renameErr) {
-		process.stdout.write(`[dist:steam:win] Rename failed (${renameErr.message}), using copy...\n`)
-		fs.mkdirSync(contentDir, { recursive: true })
-		fs.cpSync(tempContentDir, contentDir, { recursive: true, force: true })
-		try { fs.rmSync(tempContentDir, { recursive: true, force: true }) } catch (_) {}
-	}
+	try { fs.rmSync(tempConfigPath, { force: true }) } catch (_) {}
+	cleanupOldBuilds()
 
 	process.stdout.write('\n[dist:steam:win] === Build completed successfully! ===\n')
 	process.stdout.write(`[dist:steam:win] Content directory: ${contentDir}\n`)

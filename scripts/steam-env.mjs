@@ -27,9 +27,6 @@ export function loadSteamEnv() {
 	if (steamConfig?.appId && !process.env.STEAM_APP_ID) {
 		process.env.STEAM_APP_ID = String(steamConfig.appId)
 	}
-	if (steamConfig?.webApiKey && !process.env.STEAM_WEB_API_KEY) {
-		process.env.STEAM_WEB_API_KEY = steamConfig.webApiKey
-	}
 
 	const envPath = path.join(repoRoot, 'steam-pipe', '.env')
 	if (!fs.existsSync(envPath)) return

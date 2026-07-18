@@ -19,6 +19,8 @@ import type {
 	Open3DEditorResult,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 	CloudTemplatesPlatformResult,
 	CloudTemplatesQuotaResult,
 	CloudTemplatesListResult,
@@ -28,8 +30,12 @@ import type {
 	CloudTemplatesDownloadResult,
 	CloudTemplatesDeletePayload,
 	CloudTemplatesDeleteResult,
-	OpenComfySetupPayload,
-	OpenComfySetupResult
+	WorkshopTemplatesPlatformResult,
+	WorkshopTemplatesQueryResult,
+	WorkshopTemplatesDownloadPayload,
+	WorkshopTemplatesDownloadResult,
+	WorkshopTemplatesProgressResult,
+	WorkshopTemplatesInstallInfoResult,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -644,6 +650,57 @@ export async function deleteCloudTemplate(
 	if (!window?.dweb?.cloudTemplates?.delete) return null
 	try {
 		return await window.dweb.cloudTemplates.delete(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function getWorkshopTemplatesPlatform(): Promise<WorkshopTemplatesPlatformResult | null> {
+	if (!window?.dweb?.workshopTemplates?.getPlatform) return null
+	try {
+		return await window.dweb.workshopTemplates.getPlatform()
+	} catch (e: unknown) {
+		return { ok: false, platformAvailable: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function queryWorkshopTemplates(options: { tag?: string; limit?: number; offset?: number } = {}): Promise<WorkshopTemplatesQueryResult | null> {
+	if (!window?.dweb?.workshopTemplates?.query) return null
+	try {
+		return await window.dweb.workshopTemplates.query(options)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), items: [], totalResults: 0 }
+	}
+}
+
+export async function downloadWorkshopTemplate(
+	payload: WorkshopTemplatesDownloadPayload
+): Promise<WorkshopTemplatesDownloadResult | null> {
+	if (!window?.dweb?.workshopTemplates?.download) return null
+	try {
+		return await window.dweb.workshopTemplates.download(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), publishedFileId: payload.publishedFileId }
+	}
+}
+
+export async function getWorkshopTemplatesDownloadProgress(
+	payload: { publishedFileId: string }
+): Promise<WorkshopTemplatesProgressResult | null> {
+	if (!window?.dweb?.workshopTemplates?.progress) return null
+	try {
+		return await window.dweb.workshopTemplates.progress(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), publishedFileId: payload.publishedFileId }
+	}
+}
+
+export async function getWorkshopTemplatesInstallInfo(
+	payload: { publishedFileId: string }
+): Promise<WorkshopTemplatesInstallInfoResult | null> {
+	if (!window?.dweb?.workshopTemplates?.installInfo) return null
+	try {
+		return await window.dweb.workshopTemplates.installInfo(payload)
 	} catch (e: unknown) {
 		return { ok: false, errMsg: getErrorMessage(e) }
 	}
