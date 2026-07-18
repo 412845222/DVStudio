@@ -107,6 +107,14 @@ export function setupSaveConfig(ctx, payload) {
 	return setup.setupSaveConfig(ctx, payload)
 }
 
+export async function setupCheckVersionUpdate(ctx, payload) {
+	return setup.setupCheckVersionUpdate(ctx, payload)
+}
+
+export function setupResetForFreshInstall() {
+	return setup.setupResetForFreshInstall()
+}
+
 export async function setupAddCustomModelPath(ctx, payload) {
 	return setup.setupAddCustomModelPath(ctx, payload)
 }
@@ -177,4 +185,20 @@ export function setupClearServiceLogs() {
 
 export async function setupRestartService(ctx, payload) {
 	return setup.setupRestartService(ctx, payload)
+}
+
+export async function* setupCloneComfyUI(ctx, payload) {
+	yield* setup.setupCloneComfyUI(ctx, payload)
+}
+
+export async function* setupUpdateComfyUI(ctx, payload) {
+	yield* setup.setupUpdateComfyUI(ctx, payload)
+}
+
+export async function* setupAutoInstallTorch(ctx, payload) {
+	yield* setup.setupAutoInstallTorch(ctx, payload)
+}
+
+export function setupClearVenv(ctx, payload) {
+	return setup.setupClearVenv(ctx, payload)
 }

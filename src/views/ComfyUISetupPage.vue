@@ -11,6 +11,167 @@
 			<div class="setup-scroll">
 				<div class="setup-content">
 					<section
+						v-if="freshInstallMode"
+						class="setup-card setup-card-fresh"
+						@mouseenter="freshCardHovered = true"
+						@mouseleave="freshCardHovered = false"
+						@focusin="freshCardHovered = true"
+						@focusout="freshCardHovered = false"
+					>
+						<div class="card-glow" aria-hidden="true"></div>
+						<div class="sq-container" aria-hidden="true">
+							<span
+								v-for="p in freshCardParticles.particles"
+								:key="p.id"
+								class="sq-particle"
+								:class="freshCardParticles.buildHoverStateClass(freshCardHovered)"
+								:style="p.style"
+							></span>
+						</div>
+						<div class="card-frame" aria-hidden="true">
+							<span class="corner tl"></span>
+							<span class="corner tr"></span>
+							<span class="corner bl"></span>
+							<span class="corner br"></span>
+						</div>
+						<div class="setup-card-body">
+							<div class="card-section-head">
+								<h3 class="setup-card-title">全新安装 ComfyUI</h3>
+							</div>
+							<div class="fresh-install-form">
+								<div class="fresh-form-warn">
+									<span class="warn-icon">⚠️</span>
+									<span>此操作将清空所有现有 ComfyUI 配置，开始全新安装流程。</span>
+								</div>
+								<div class="fresh-form-hint">
+									请填写以下必填项（带 <span class="required-mark">*</span> 标记）以开始配置：
+								</div>
+								<div class="fresh-form-row">
+									<label class="fresh-form-label">
+										<span class="required-mark">*</span>
+										ComfyUI 安装目录
+									</label>
+									<div class="path-input-group">
+										<input
+											type="text"
+											class="path-input"
+											:value="installPath"
+											readonly
+											placeholder="请选择 ComfyUI 安装目录（必填）..."
+										/>
+										<button
+											type="button"
+											class="card-action card-action-primary"
+											@click="selectPath()"
+											:disabled="pathChanging"
+										>
+											{{ pathChanging ? '选择中...' : '📂 选择目录' }}
+										</button>
+									</div>
+									<div v-if="pathValidation?.error" class="path-hint">
+										<span class="hint-error">⚠ {{ pathValidation.error }}</span>
+									</div>
+									<div v-else-if="pathValidation?.warning" class="path-hint">
+										<span class="hint-warn">⚠ {{ pathValidation.warning }}</span>
+									</div>
+									<div v-else-if="pathValidation?.isComfyUI" class="path-hint">
+										<span class="hint-ok">✓ 检测到有效的 ComfyUI 目录，将使用现有安装</span>
+									</div>
+									<div v-else-if="installPath && pathValidation?.exists" class="path-hint">
+										<span class="hint-ok">✓ 目录有效，将在此位置安装 ComfyUI</span>
+									</div>
+									<div class="field-hint">
+										选择已有的 ComfyUI 目录可直接配置使用；选择空目录将在后续步骤中自动配置环境。
+									</div>
+								</div>
+
+								<div v-if="probing" class="probe-loading">
+									<span class="spinner" />
+									<span>正在探测 ComfyUI 环境...</span>
+								</div>
+
+								<div v-if="installPath && probeResult?.isComfyUI" class="fresh-probe-result">
+									<div v-if="probeResult.version" class="fresh-probe-item">
+										<span class="probe-item-label">检测到版本</span>
+										<span class="probe-item-value">{{ probeResult.version }}</span>
+										<span v-if="versionChecking" class="probe-version-checking">
+											<span class="spinner-sm" /> 检查更新中
+										</span>
+										<button
+											v-else
+											type="button"
+											class="probe-mini-btn"
+											@click="checkVersionUpdate"
+										>{{ versionUpdateInfo ? '重新检查' : '检查更新' }}</button>
+									</div>
+									<div v-if="versionUpdateInfo" class="probe-version-update">
+										<template v-if="versionUpdateInfo.error">
+											<div class="probe-msg probe-msg-warn">
+												版本检查失败：{{ versionUpdateInfo.error }}
+											</div>
+										</template>
+										<template v-else-if="versionUpdateInfo.updateAvailable">
+											<div class="probe-msg probe-msg-update">
+												🎉 发现新版本！
+												<span v-if="versionUpdateInfo.latestTag">最新版本：<strong>{{ versionUpdateInfo.latestTag }}</strong></span>
+												<span v-if="versionUpdateInfo.currentVersion">当前版本：{{ versionUpdateInfo.currentVersion }}</span>
+												<a
+													v-if="versionUpdateInfo.releaseUrl"
+													class="probe-update-link"
+													@click.prevent="openUrl(versionUpdateInfo.releaseUrl!)"
+												>查看发布说明</a>
+												<button
+													v-if="!updatingComfyUI && !updateDone"
+													type="button"
+													class="probe-mini-btn probe-update-btn"
+													@click="updateComfyUI"
+												>⬇ 立即更新</button>
+											</div>
+										</template>
+										<template v-else>
+											<div class="probe-msg probe-msg-ok">
+												✓ 当前已是最新版本
+												<span v-if="versionUpdateInfo.latestTag">（{{ versionUpdateInfo.latestTag }}）</span>
+											</div>
+										</template>
+									</div>
+									<div class="fresh-probe-item">
+										<span class="probe-item-label">Python</span>
+										<span class="probe-item-value" :class="probeResult.pythonInfo?.hasTorch ? '' : 'probe-value-error'">
+											<template v-if="probeResult.pythonInfo?.version">
+												{{ probeResult.pythonInfo.version }}
+												<span v-if="probeResult.pythonInfo?.hasTorch" class="probe-tag" :class="probeResult.pythonInfo.torchCuda ? 'tag-cuda' : 'tag-cpu'">
+													{{ probeResult.pythonInfo.torchCuda ? 'CUDA' : 'CPU' }}
+												</span>
+											</template>
+											<template v-else>未检测到可用环境</template>
+										</span>
+									</div>
+								</div>
+
+								<div class="fresh-form-actions">
+									<button
+										type="button"
+										class="card-action card-action-ghost"
+										@click="exitFreshInstallMode"
+									>
+										返回现有配置
+									</button>
+									<button
+										type="button"
+										class="card-action card-action-primary"
+										@click="confirmFreshInstall"
+										:disabled="!installPath || !!pathValidation?.error || pathChanging || probing"
+									>
+										✓ 确认并开始配置
+									</button>
+								</div>
+							</div>
+						</div>
+					</section>
+
+					<section
+						v-if="!freshInstallMode"
 						class="setup-card"
 						@mouseenter="pathCardHovered = true"
 						@mouseleave="pathCardHovered = false"
@@ -41,6 +202,14 @@
 									<span class="spinner-sm" />
 									检测中
 								</span>
+								<button
+									type="button"
+									class="card-action card-action-ghost card-action-sm"
+									@click="resetForFreshInstall"
+									title="清空所有配置，重新开始"
+								>
+									🔄 全新安装
+								</button>
 							</div>
 
 							<div class="path-row">
@@ -59,14 +228,6 @@
 										:disabled="pathChanging"
 									>
 										{{ pathChanging ? '...' : '浏览目录' }}
-									</button>
-									<button
-										v-if="installPath && installPath !== defaultInstallPath"
-										type="button"
-										class="card-action card-action-ghost"
-										@click="resetToDefaultPath"
-									>
-										恢复默认
 									</button>
 								</div>
 								<div v-if="pathValidation" class="path-hint">
@@ -94,7 +255,19 @@
 								<div class="probe-grid">
 									<div v-if="probeResult.version" class="probe-item">
 										<span class="probe-item-label">版本</span>
-										<span class="probe-item-value">{{ probeResult.version }}</span>
+										<span class="probe-item-value">
+											{{ probeResult.version }}
+											<button
+												v-if="!versionChecking"
+												type="button"
+												class="probe-mini-btn probe-version-check-btn"
+												@click="checkVersionUpdate"
+												title="检查更新"
+											>{{ versionUpdateInfo ? '重新检查' : '检查更新' }}</button>
+											<span v-else class="probe-version-checking">
+												<span class="spinner-sm" /> 检查中
+											</span>
+										</span>
 									</div>
 									<div v-if="probeResult.commitHash" class="probe-item">
 										<span class="probe-item-label">Commit</span>
@@ -125,8 +298,10 @@
 									</div>
 									<div v-if="probeResult.pythonInfo" class="probe-item">
 										<span class="probe-item-label">启动链路</span>
-										<span class="probe-item-value" :class="probeResult.pythonInfo.canImportComfy ? '' : 'probe-value-error'">
-											{{ probeResult.pythonInfo.canImportComfy ? '可导入 comfy' : 'comfy 导入失败' }}
+										<span class="probe-item-value" :class="probeResult.pythonInfo.canImportComfy && probeResult.pythonInfo.canStartComfy !== false ? '' : 'probe-value-error'">
+											<template v-if="!probeResult.pythonInfo.canImportComfy">comfy 导入失败</template>
+											<template v-else-if="probeResult.pythonInfo.canStartComfy === false">依赖不完整{{ probeResult.pythonInfo.importError ? '（' + probeResult.pythonInfo.importError + '）' : '' }}</template>
+											<template v-else>可正常启动</template>
 										</span>
 									</div>
 									<div v-if="probeResult.customNodeCount !== undefined" class="probe-item">
@@ -186,6 +361,39 @@
 									<span class="probe-path-text">{{ probeResult.pythonInfo.path }}</span>
 								</div>
 
+								<div v-if="versionUpdateInfo" class="probe-version-update">
+									<template v-if="versionUpdateInfo.error">
+										<div class="probe-msg probe-msg-warn">
+											版本检查失败：{{ versionUpdateInfo.error }}
+											<button type="button" class="probe-mini-btn" @click="checkVersionUpdate" style="margin-left:8px">重试</button>
+										</div>
+									</template>
+									<template v-else-if="versionUpdateInfo.updateAvailable">
+										<div class="probe-msg probe-msg-update">
+											🎉 发现新版本！
+											<span v-if="versionUpdateInfo.latestTag">最新版本：<strong>{{ versionUpdateInfo.latestTag }}</strong></span>
+											<span v-if="versionUpdateInfo.currentVersion">当前版本：{{ versionUpdateInfo.currentVersion }}</span>
+											<a
+												v-if="versionUpdateInfo.releaseUrl"
+												class="probe-update-link"
+												@click.prevent="openUrl(versionUpdateInfo.releaseUrl!)"
+											>查看发布说明</a>
+											<button
+												v-if="!updatingComfyUI && !updateDone"
+												type="button"
+												class="probe-mini-btn probe-update-btn"
+												@click="updateComfyUI"
+											>⬇ 立即更新</button>
+										</div>
+									</template>
+									<template v-else>
+										<div class="probe-msg probe-msg-ok">
+											✓ 当前已是最新版本
+											<span v-if="versionUpdateInfo.latestTag">（{{ versionUpdateInfo.latestTag }}）</span>
+										</div>
+									</template>
+								</div>
+
 								<div v-if="probeResult.launchCompatibility.warnings?.length" class="probe-messages">
 									<div v-for="w in probeResult.launchCompatibility.warnings" :key="w" class="probe-msg probe-msg-warn">
 										{{ w }}
@@ -208,6 +416,7 @@
 					</section>
 
 					<section
+						v-if="!freshInstallMode"
 						class="setup-card"
 						@mouseenter="envCardHovered = true"
 						@mouseleave="envCardHovered = false"
@@ -258,6 +467,14 @@
 									<span class="env-detail">{{ item.detail }}</span>
 									<span v-if="item.version" class="env-version">{{ item.version }}</span>
 									<button
+										v-if="item.downloadUrl"
+										type="button"
+										class="card-action card-action-sm"
+										@click="openUrl(item.downloadUrl)"
+									>
+										{{ item.downloadLabel || '下载' }}
+									</button>
+									<button
 										v-if="item.canFix && item.fixAction"
 										type="button"
 										class="card-action card-action-sm card-action-warn"
@@ -272,7 +489,162 @@
 					</section>
 
 					<section
-						v-if="showMirrorSection"
+						v-if="showCloneSection"
+						class="setup-card"
+						@mouseenter="pythonCardHovered = true"
+						@mouseleave="pythonCardHovered = false"
+						@focusin="pythonCardHovered = true"
+						@focusout="pythonCardHovered = false"
+					>
+						<div class="card-glow" aria-hidden="true"></div>
+						<div class="sq-container" aria-hidden="true">
+							<span
+								v-for="p in pythonCardParticles.particles"
+								:key="p.id"
+								class="sq-particle"
+								:class="pythonCardParticles.buildHoverStateClass(pythonCardHovered, { running: cloningComfyUI, error: !!cloneError })"
+								:style="p.style"
+							></span>
+						</div>
+						<div class="card-frame" aria-hidden="true">
+							<span class="corner tl"></span>
+							<span class="corner tr"></span>
+							<span class="corner bl"></span>
+							<span class="corner br"></span>
+						</div>
+						<div class="setup-card-body">
+							<div class="card-section-head">
+								<h3 class="setup-card-title">ComfyUI 源码安装</h3>
+							</div>
+
+							<div v-if="cloneError" class="python-error-box">
+								<div class="cmd-tip error">
+													<span>{{ cloneError }}</span>
+								</div>
+								<div class="python-error-actions">
+									<button
+										type="button"
+										class="card-action card-action-primary"
+										@click="cloneComfyUI"
+										:disabled="cloningComfyUI"
+									>
+										{{ cloningComfyUI ? '安装中...' : '🔄 重试安装' }}
+									</button>
+								</div>
+							</div>
+
+							<div v-else-if="cloneDone" class="python-success-box">
+								<div class="cmd-tip success">
+													<span>✓ {{ cloneMessage || '源码安装完成！' }}</span>
+								</div>
+							</div>
+
+							<template v-else>
+								<div v-if="cloneStep === 'preparing'" class="python-status-indicator">
+									<span class="spinner" />
+									<span>{{ cloneMessage || '准备安装...' }}</span>
+								</div>
+								<div v-else-if="cloneStep === 'cloning'" class="python-status-indicator">
+									<span class="spinner" />
+									<span>{{ cloneMessage || '正在克隆源码...' }}</span>
+								</div>
+								<div v-else class="python-status-indicator">
+									<span class="spinner" />
+									<span>{{ cloneMessage || '安装中...' }}</span>
+								</div>
+
+								<div class="python-log-container" ref="pythonLogsRef">
+									<div
+										v-for="log in cloneLogs"
+										:key="log.id"
+										class="python-log-line"
+										:class="log.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
+									>
+										<span class="log-stream-tag">{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}</span>
+										<span class="log-text">{{ log.message }}</span>
+									</div>
+								</div>
+							</template>
+						</div>
+					</section>
+
+					<section
+						v-if="showUpdateSection"
+						class="setup-card"
+						@mouseenter="pythonCardHovered = true"
+						@mouseleave="pythonCardHovered = false"
+						@focusin="pythonCardHovered = true"
+						@focusout="pythonCardHovered = false"
+					>
+						<div class="card-glow" aria-hidden="true"></div>
+						<div class="sq-container" aria-hidden="true">
+							<span
+								v-for="p in pythonCardParticles.particles"
+								:key="'u'+p.id"
+								class="sq-particle"
+								:class="pythonCardParticles.buildHoverStateClass(pythonCardHovered, { running: updatingComfyUI, error: !!updateError })"
+								:style="p.style"
+							></span>
+						</div>
+						<div class="card-frame" aria-hidden="true">
+							<span class="corner tl"></span>
+							<span class="corner tr"></span>
+							<span class="corner bl"></span>
+							<span class="corner br"></span>
+						</div>
+						<div class="setup-card-body">
+							<div class="card-section-head">
+								<h3 class="setup-card-title">ComfyUI 源码更新</h3>
+							</div>
+
+							<div v-if="updateError" class="python-error-box">
+								<div class="cmd-tip error">
+									<span>{{ updateError }}</span>
+								</div>
+								<div class="python-error-actions">
+									<button
+										type="button"
+										class="card-action card-action-primary"
+										@click="updateComfyUI"
+										:disabled="updatingComfyUI"
+									>
+										{{ updatingComfyUI ? '更新中...' : '🔄 重试更新' }}
+									</button>
+								</div>
+							</div>
+
+							<div v-else-if="updateDone" class="python-success-box">
+								<div class="cmd-tip success">
+									<span>✓ {{ updateMessage || '更新完成！' }}</span>
+								</div>
+								<div v-if="updateNeedDepUpdate" class="cmd-tip warn" style="margin-top:8px">
+									<span>💡 更新完成，正在自动检查Python依赖兼容性...</span>
+								</div>
+							</div>
+
+							<template v-else>
+								<div class="python-status-indicator">
+									<span class="spinner" />
+									<span>{{ updateMessage || '正在更新...' }}</span>
+								</div>
+
+								<div class="python-log-container" ref="pythonLogsRef">
+									<div
+										v-for="log in updateLogs"
+										:key="log.id"
+										class="python-log-line"
+										:class="log.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
+									>
+										<span class="log-stream-tag">{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}</span>
+										<span class="log-text">{{ log.message }}</span>
+									</div>
+								</div>
+							</template>
+						</div>
+					</section>
+
+					<section
+						v-if="!freshInstallMode && showMirrorSection"
 						class="setup-card"
 						@mouseenter="mirrorCardHovered = true"
 						@mouseleave="mirrorCardHovered = false"
@@ -388,7 +760,7 @@
 					</section>
 
 					<section
-						v-if="showPythonFixSection"
+						v-if="!freshInstallMode && showPythonFixSection"
 						class="setup-card"
 						@mouseenter="pythonCardHovered = true"
 						@mouseleave="pythonCardHovered = false"
@@ -422,30 +794,39 @@
 								<div class="venv-path-section">
 									<label class="venv-path-label">虚拟环境安装位置</label>
 									<div class="venv-path-row">
-										<input
-											type="text"
-											class="path-input"
-											:value="venvPath || defaultVenvPath"
-											readonly
-											placeholder="使用默认位置"
-										/>
-										<button
-											type="button"
-											class="card-action card-action-sm"
-											@click="selectVenvPath"
-											:disabled="selectingVenvPath"
-										>
-											{{ selectingVenvPath ? '选择中...' : '浏览...' }}
-										</button>
-										<button
-											v-if="venvPath && venvPath !== defaultVenvPath"
-											type="button"
-											class="card-action card-action-ghost card-action-sm"
-											@click="resetVenvPath"
-										>
-											恢复默认
-										</button>
-									</div>
+									<input
+										type="text"
+										class="path-input"
+										:value="venvPath || defaultVenvPath"
+										readonly
+										placeholder="使用默认位置"
+									/>
+									<button
+										type="button"
+										class="card-action card-action-sm"
+										@click="selectVenvPath"
+										:disabled="selectingVenvPath"
+									>
+										{{ selectingVenvPath ? '选择中...' : '📁 更换目录' }}
+									</button>
+									<button
+										v-if="venvPath && venvPath !== defaultVenvPath"
+										type="button"
+										class="card-action card-action-ghost card-action-sm"
+										@click="resetVenvPath"
+									>
+										恢复默认
+									</button>
+									<button
+										type="button"
+										class="card-action card-action-danger card-action-sm"
+										@click="onClearVenv"
+										:disabled="clearingVenv || fixingPython"
+										title="清空当前虚拟环境（不会影响ComfyUI源码和用户数据）"
+									>
+										{{ clearingVenv ? '清空中...' : '🗑 清空环境' }}
+									</button>
+								</div>
 									<div class="venv-size-hint">
 										<span class="size-hint-icon">💾</span>
 										<span class="size-hint-text">预计所需磁盘空间：GPU 版本约 6-8 GB，CPU 版本约 2-3 GB</span>
@@ -482,15 +863,151 @@
 									>{{ pythonProgressLine.message }}</div>
 								</div>
 								<div v-if="pythonFixError" class="python-fix-error">
-									<span class="python-error-text">{{ pythonFixError }}</span>
+									<div class="python-error-header">
+										<span class="python-error-icon">⚠️</span>
+										<span class="python-error-title">配置失败</span>
+									</div>
+									<div class="python-error-text">{{ pythonFixError }}</div>
+									<div v-if="pythonNeedsManualInstall" class="python-error-solution manual-install">
+										<div class="solution-env-info">
+											<span class="env-badge">Python {{ pythonDetectedVersion || '?' }}</span>
+											<span class="env-badge">{{ pythonPlatformTag || 'win_amd64' }}</span>
+											<span class="env-badge">{{ pythonCudaVersion || 'cu124' }}</span>
+											<span class="env-badge">PyTorch {{ pythonTorchVersion || '?' }}</span>
+										</div>
+										
+										<div class="solution-section recommended">
+											<div class="solution-tip">
+												<span class="solution-icon">⚡</span>
+												<span class="solution-text"><strong>推荐方案：一键命令安装（最简单）</strong></span>
+											</div>
+											<p class="solution-desc">复制下方命令，打开任意命令行窗口（CMD或PowerShell），粘贴后回车执行即可自动从阿里云镜像下载安装：</p>
+											<div class="code-block with-copy one-click-cmd" @click="copyText(pythonOneClickInstallCmd)">
+												<code>{{ pythonOneClickInstallCmd }}</code>
+												<span class="copy-hint">点击复制</span>
+											</div>
+											<div class="cmd-tip success">💡 此命令会自动下载并安装PyTorch GPU版本及其依赖，使用国内阿里云镜像加速。执行完成后点击「检测并修复」按钮即可继续，不会删除已安装环境。</div>
+										</div>
+										
+										<details class="solution-section fallback">
+											<summary class="fallback-summary">
+												<span class="solution-icon">📥</span>
+												<span>备选方案：手动下载whl包安装（适用于一键命令仍失败的情况）</span>
+											</summary>
+											<ol class="solution-list ordered">
+												<li>
+													<strong>下载3个whl文件</strong>（点击按钮直接用浏览器打开下载，推荐阿里云源速度快）：
+													<div class="wheel-download-list">
+														<div class="wheel-item">
+															<span class="wheel-name">torch (~2.4GB)</span>
+															<span class="wheel-file" :title="pythonTorchWheel">{{ pythonTorchWheel }}</span>
+															<div class="wheel-links">
+																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchUrl)">⬇ 阿里云下载</button>
+																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchUrl)">⬇ 官方下载</button>
+															</div>
+														</div>
+														<div class="wheel-item">
+															<span class="wheel-name">torchvision (~6MB)</span>
+															<span class="wheel-file" :title="pythonTorchvisionWheel">{{ pythonTorchvisionWheel }}</span>
+															<div class="wheel-links">
+																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchvisionUrl)">⬇ 阿里云下载</button>
+																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchvisionUrl)">⬇ 官方下载</button>
+															</div>
+														</div>
+														<div class="wheel-item">
+															<span class="wheel-name">torchaudio (~4MB)</span>
+															<span class="wheel-file" :title="pythonTorchaudioWheel">{{ pythonTorchaudioWheel }}</span>
+															<div class="wheel-links">
+																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchaudioUrl)">⬇ 阿里云下载</button>
+																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchaudioUrl)">⬇ 官方下载</button>
+															</div>
+														</div>
+													</div>
+												</li>
+												<li>
+													<strong>打开命令行</strong>：打开文件资源管理器，找到刚下载的3个whl文件所在文件夹，在文件夹空白处按住 <code>Shift</code> 键 + 鼠标右键，选择「在此处打开PowerShell窗口」或「在终端中打开」。
+												</li>
+												<li>
+													<strong>执行本地安装命令</strong>：点击下方「复制本地安装命令」按钮，然后在打开的命令行窗口中右键粘贴并回车执行：
+													<div class="code-block with-copy" @click="copyText(pythonManualInstallCmd)">
+														<code>{{ pythonManualInstallCmd }}</code>
+														<span class="copy-hint">点击复制</span>
+													</div>
+												</li>
+												<li>
+													<strong>安装依赖包</strong>：whl安装完成后，执行以下命令安装依赖：
+													<div class="code-block with-copy" @click="copyText(pythonInstallDepsCmd)">
+														<code>{{ pythonInstallDepsCmd }}</code>
+														<span class="copy-hint">点击复制</span>
+													</div>
+												</li>
+												<li>
+													<strong>安装完成后</strong>，点击下方「检测并修复」按钮继续（不会删除已安装环境）。
+												</li>
+											</ol>
+										</details>
+									</div>
+									<div class="python-error-actions">
+									<button
+										v-if="pythonAutoInstallAvailable && !autoInstallingTorch"
+										type="button"
+										class="card-action card-action-success card-action-sm"
+										@click="autoInstallTorch"
+										:disabled="fixingPython"
+									>
+										⚡ 一键自动安装
+									</button>
+									<button
+										v-if="autoInstallingTorch"
+										type="button"
+										class="card-action card-action-success card-action-sm"
+										disabled
+									>
+										<span class="spinner" /> 正在自动安装...
+									</button>
+									<button
+										v-if="pythonNeedsManualInstall && pythonOneClickInstallCmd && !pythonAutoInstallAvailable"
+										type="button"
+										class="card-action card-action-primary card-action-sm"
+										@click="copyText(pythonOneClickInstallCmd)"
+									>
+										📋 复制一键安装命令
+									</button>
+									<button
+										v-if="pythonNeedsManualInstall && pythonAliyunDirUrl"
+										type="button"
+										class="card-action card-action-link card-action-sm"
+										@click="openUrl(pythonAliyunDirUrl)"
+									>
+										📂 浏览阿里云镜像目录
+									</button>
 									<button
 										type="button"
 										class="card-action card-action-primary card-action-sm"
-										@click="fixPythonEnv(true)"
-										:disabled="fixingPython"
+										@click="fixPythonEnv(false)"
+										:disabled="fixingPython || autoInstallingTorch"
 									>
-										{{ fixingPython ? '配置中...' : '重新配置' }}
+										{{ fixingPython ? '检测中...' : '🔍 检测并修复' }}
 									</button>
+									<button
+										type="button"
+										class="card-action card-action-warn card-action-sm"
+										@click="onRebuildEnv"
+										:disabled="fixingPython || autoInstallingTorch"
+										title="警告：这将删除虚拟环境并完全重新安装，仅在环境彻底损坏时使用"
+									>
+										🔄 彻底重建
+									</button>
+									<button
+										type="button"
+										class="card-action card-action-danger card-action-sm"
+										@click="onClearVenv"
+										:disabled="clearingVenv || fixingPython || autoInstallingTorch"
+										title="清空当前虚拟环境，之后可重新配置"
+									>
+										{{ clearingVenv ? '清空中...' : '🗑 清空虚拟环境' }}
+									</button>
+								</div>
 								</div>
 								<div v-if="pythonFixDone && !fixingPython" class="python-fix-done">
 									<button type="button" class="card-action card-action-primary card-action-sm" @click="checkEnv">刷新检测</button>
@@ -500,6 +1017,7 @@
 					</section>
 
 					<section
+						v-if="!freshInstallMode"
 						class="setup-card"
 						@mouseenter="serviceCardHovered = true"
 						@mouseleave="serviceCardHovered = false"
@@ -582,6 +1100,7 @@
 import { computed, onMounted, watch, nextTick, ref } from 'vue'
 import { useComfyUISetup } from '../composables/useComfyUISetup'
 import { useSquareParticles } from '../composables/useSquareParticles'
+import { openExternalUrl } from '../electronBridge'
 import GlobalPageBackground from '../ui/UIComponent/GlobalPageBackground.vue'
 import '../styles/square-particles.css'
 
@@ -594,13 +1113,26 @@ const {
 	pingingMirrors, mirrorPingResults, pypiMirrorList, torchMirrorList,
 	selectedPypiMirror, selectedTorchMirror,
 	customPypiUrl, customTorchUrl, mirrorSaving, mirrorSaveMessage,
-	fixingPython, pythonFixMessage, pythonFixLogs, pythonProgressLine, pythonFixError, pythonFixDone, logsUpdated,
+	fixingPython, pythonFixMessage, pythonFixLogs, pythonProgressLine, pythonFixError, pythonFixDone,
+	pythonNeedsManualInstall, pythonAutoInstallAvailable, pythonManualDownloadUrl, pythonOfficialDownloadUrl, pythonCudaVersion,
+	pythonDetectedVersion, pythonPlatformTag, pythonAbiTag, pythonTorchVersion,
+	pythonTorchWheel, pythonTorchvisionWheel, pythonTorchaudioWheel,
+	pythonAliyunTorchUrl, pythonAliyunTorchvisionUrl, pythonAliyunTorchaudioUrl,
+	pythonOfficialTorchUrl, pythonOfficialTorchvisionUrl, pythonOfficialTorchaudioUrl,
+	pythonVenvPythonPath, pythonOneClickInstallCmd, pythonManualInstallCmd, pythonInstallDepsCmd,
+	pythonAliyunDirUrl, pythonOfficialDirUrl,
+	autoInstallingTorch, clearingVenv,
+	logsUpdated,
 	venvPath, defaultVenvPath, selectingVenvPath,
-	loadDefaultPath, loadDefaultVenvPath, selectPath, selectVenvPath, resetVenvPath, setInstallPath, resetToDefaultPath,
+	cloningComfyUI, cloneStep, cloneMessage, cloneLogs, cloneError, cloneDone,
+	updatingComfyUI, updateStep, updateMessage, updateLogs, updateError, updateDone, updateNeedDepUpdate,
+	versionChecking, versionUpdateInfo, freshInstallMode,
+	loadDefaultPath, loadDefaultVenvPath, selectPath, selectVenvPath, resetVenvPath, setInstallPath,
+	checkVersionUpdate, resetForFreshInstall, exitFreshInstallMode, confirmFreshInstall,
 	checkEnv, openInstallFolder, loadConfig, loadMirrorList, saveConfig,
 	addCustomModelPath, removeCustomModelPath,
 	startService, stopService,
-	pingMirrors, saveMirrorConfig, fixPythonEnv,
+	pingMirrors, saveMirrorConfig, fixPythonEnv, cloneComfyUI, updateComfyUI, autoInstallTorch, clearVenv,
 	getStatusColor,
 } = useComfyUISetup()
 
@@ -609,12 +1141,14 @@ const envCardParticles = useSquareParticles({ count: 5, seed: 102 })
 const mirrorCardParticles = useSquareParticles({ count: 5, seed: 103 })
 const pythonCardParticles = useSquareParticles({ count: 8, seed: 104 })
 const serviceCardParticles = useSquareParticles({ count: 6, seed: 105 })
+const freshCardParticles = useSquareParticles({ count: 7, seed: 106 })
 
 const pathCardHovered = ref(false)
 const envCardHovered = ref(false)
 const mirrorCardHovered = ref(false)
 const pythonCardHovered = ref(false)
 const serviceCardHovered = ref(false)
+const freshCardHovered = ref(false)
 
 const pypiMirrorsWithLatency = computed(() => {
 	const pingMap = new Map<string, { reachable: boolean; latency: number | null }>()
@@ -648,6 +1182,43 @@ const showPythonFixSection = computed(() => {
 	if (installPath.value && pathValidation.value?.exists !== false) return true
 	return false
 })
+
+const showCloneSection = computed(() => {
+	if (cloningComfyUI.value || cloneError.value || cloneDone.value) return true
+	return false
+})
+
+const showUpdateSection = computed(() => {
+	if (updatingComfyUI.value || updateError.value || updateDone.value) return true
+	return false
+})
+
+const isNetworkError = computed(() => {
+	const err = pythonFixError.value || ''
+	return err.includes('IncompleteRead') || err.includes('timeout') || err.includes('Connection') || err.includes('网络下载中断') || err.includes('网络下载中断问题')
+})
+
+async function openUrl(url: string) {
+	if (url) {
+		await openExternalUrl(url)
+	}
+}
+
+async function copyText(text: string) {
+	if (!text) return
+	try {
+		await navigator.clipboard.writeText(text)
+	} catch {
+		const ta = document.createElement('textarea')
+		ta.value = text
+		ta.style.position = 'fixed'
+		ta.style.opacity = '0'
+		document.body.appendChild(ta)
+		ta.select()
+		try { document.execCommand('copy') } catch {}
+		document.body.removeChild(ta)
+	}
+}
 
 const pythonLogsRef = ref<HTMLElement | null>(null)
 
@@ -718,8 +1289,22 @@ function shortenPath(p: string) {
 function handleFix(key: string) {
 	if (key === 'service' && envResult.value?.comfyUIFound) {
 		startService()
+	} else if (key === 'comfyui') {
+		cloneComfyUI()
 	} else if (key === 'venv' || key === 'deps') {
 		fixPythonEnv(false)
+	}
+}
+
+function onRebuildEnv() {
+	if (window.confirm('⚠️ 确定要彻底重建 Python 环境吗？\n\n这将删除现有的虚拟环境并重新安装所有依赖（约 6-8 GB）。\n\n如果您手动通过命令行安装了 PyTorch，这些安装将会丢失。\n\n通常情况下，请使用「检测并修复」按钮，它不会删除已安装的环境。\n\n只有在环境彻底损坏无法修复时，才建议使用此选项。')) {
+		fixPythonEnv(true)
+	}
+}
+
+function onClearVenv() {
+	if (window.confirm('⚠️ 确定要清空虚拟环境吗？\n\n这将删除当前的 Python 虚拟环境（包括已安装的 PyTorch 和所有依赖包），但不会影响 ComfyUI 源码、模型、工作流等用户数据。\n\n清空后您需要重新配置 Python 环境。')) {
+		clearVenv(true)
 	}
 }
 
@@ -1293,6 +1878,49 @@ function closeWindow() {
 	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 18%, transparent);
 }
 
+.probe-update-btn {
+	margin-left: 8px;
+	background: color-mix(in srgb, var(--pl-accent) 20%, transparent);
+	border-color: var(--pl-accent);
+	color: var(--pl-glow-2);
+	font-weight: 600;
+	animation: pulse-update 2s ease-in-out infinite;
+}
+
+.probe-update-btn:hover {
+	background: color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	box-shadow: 0 0 16px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	animation: none;
+}
+
+@keyframes pulse-update {
+	0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 12%, transparent); }
+	50% { box-shadow: 0 0 16px color-mix(in srgb, var(--pl-accent) 28%, transparent); }
+}
+
+.cmd-tip.warn {
+	background: color-mix(in srgb, #f59e0b 10%, transparent);
+	border-left-color: #f59e0b;
+	color: #fbbf24;
+	border-left: 3px solid #f59e0b;
+	padding: 8px 12px;
+	border-radius: 2px;
+	margin-top: 8px;
+	font-style: normal;
+	font-size: 11px;
+}
+
+.cmd-tip.error {
+	border-left: 3px solid #ef4444;
+	padding: 8px 12px;
+	color: #fca5a5;
+	font-style: normal;
+	font-size: 11px;
+	margin-top: 6px;
+	background: color-mix(in srgb, #ef4444 8%, transparent);
+	border-radius: 2px;
+}
+
 .custom-model-paths {
 	display: flex;
 	flex-direction: column;
@@ -1609,6 +2237,43 @@ function closeWindow() {
 	box-shadow: 0 0 12px color-mix(in srgb, #facc15 20%, transparent);
 }
 
+.card-action-success {
+	border-color: color-mix(in srgb, #4ade80 40%, transparent);
+	background: color-mix(in srgb, #4ade80 10%, transparent);
+	color: #86efac;
+}
+
+.card-action-success:hover:not(:disabled) {
+	background: color-mix(in srgb, #4ade80 18%, transparent);
+	border-color: color-mix(in srgb, #4ade80 55%, transparent);
+	box-shadow: 0 0 14px color-mix(in srgb, #4ade80 25%, transparent);
+}
+
+.card-action-link {
+	border-color: color-mix(in srgb, #60a5fa 30%, transparent);
+	background: color-mix(in srgb, #60a5fa 8%, transparent);
+	color: #93c5fd;
+}
+
+.card-action-link:hover:not(:disabled) {
+	background: color-mix(in srgb, #60a5fa 16%, transparent);
+	border-color: color-mix(in srgb, #60a5fa 50%, transparent);
+	box-shadow: 0 0 12px color-mix(in srgb, #60a5fa 20%, transparent);
+}
+
+.manual-install {
+	border-color: color-mix(in srgb, #60a5fa 25%, transparent) !important;
+	background: color-mix(in srgb, #60a5fa 6%, transparent) !important;
+}
+
+.manual-install .solution-tip {
+	color: #93c5fd !important;
+}
+
+.manual-install .solution-list {
+	color: #bfdbfe !important;
+}
+
 .card-action-ghost {
 	background: transparent;
 	border-color: color-mix(in srgb, var(--pl-fg) 12%, transparent);
@@ -1850,25 +2515,508 @@ function closeWindow() {
 }
 
 .python-fix-error {
-	padding: 10px 12px;
+	padding: 14px 16px;
 	background: color-mix(in srgb, #f87171 8%, transparent);
 	border: 1px solid color-mix(in srgb, #f87171 25%, transparent);
 	border-radius: 2px;
 	color: #fca5a5;
 	font-size: 12px;
 	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.python-error-header {
+	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
+	gap: 8px;
+}
+
+.python-error-icon {
+	font-size: 16px;
+}
+
+.python-error-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: #f87171;
 }
 
 .python-error-text {
+	color: #fca5a5;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.python-error-solution {
+	padding: 10px 12px;
+	background: color-mix(in srgb, #facc15 6%, transparent);
+	border: 1px solid color-mix(in srgb, #facc15 18%, transparent);
+	border-radius: 2px;
+}
+
+.solution-tip {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 6px;
+	color: #fcd34d;
+	font-size: 12px;
+}
+
+.solution-icon {
+	font-size: 13px;
+}
+
+.solution-text {
+	font-weight: 500;
+}
+
+.solution-list {
+	margin: 0;
+	padding-left: 20px;
+	color: #fde68a;
+	font-size: 11px;
+	line-height: 1.7;
+}
+
+.solution-list.ordered {
+	padding-left: 22px;
+	list-style-type: decimal;
+}
+
+.solution-list li {
+	margin: 4px 0;
+}
+
+.solution-sublist {
+	margin: 4px 0;
+	padding-left: 18px;
+	color: #fef08a;
+	font-size: 10px;
+	list-style-type: disc;
+}
+
+.solution-sublist li {
+	margin: 2px 0;
+}
+
+.solution-sublist code {
+	background: rgba(0, 0, 0, 0.3);
+	padding: 1px 5px;
+	border-radius: 2px;
+	font-family: 'Consolas', 'Monaco', monospace;
+	font-size: 10px;
+}
+
+.code-block {
+	margin: 6px 0;
+	padding: 8px 10px;
+	background: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(74, 222, 128, 0.2);
+	border-radius: 2px;
+	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+	font-size: 10px;
+	color: #86efac;
+	word-break: break-all;
+	user-select: all;
+	cursor: pointer;
+	transition: border-color 0.2s;
+	position: relative;
+}
+
+.code-block:hover {
+	border-color: rgba(74, 222, 128, 0.5);
+}
+
+.code-block.with-copy {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding-right: 8px;
+}
+
+.code-block.with-copy code {
 	flex: 1;
+	word-break: break-all;
+}
+
+.copy-hint {
+	font-size: 9px;
+	color: rgba(134, 239, 172, 0.5);
+	white-space: nowrap;
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.code-block.with-copy:hover .copy-hint {
+	opacity: 1;
+}
+
+.solution-env-info {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+
+.env-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	background: rgba(96, 165, 250, 0.15);
+	border: 1px solid rgba(96, 165, 250, 0.3);
+	border-radius: 2px;
+	font-size: 10px;
+	color: #93c5fd;
+	font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.wheel-download-list {
+	margin: 8px 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.wheel-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	padding: 6px 8px;
+	background: rgba(0, 0, 0, 0.25);
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	border-radius: 2px;
+}
+
+.wheel-name {
+	font-weight: 600;
+	font-size: 11px;
+	color: #fcd34d;
+	min-width: 70px;
+}
+
+.wheel-file {
+	flex: 1;
+	font-family: 'Consolas', 'Monaco', monospace;
+	font-size: 9px;
+	color: #d1d5db;
+	word-break: break-all;
+	min-width: 200px;
+}
+
+.wheel-links {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.wheel-link {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 10px;
+	border-radius: 2px;
+	font-size: 10px;
+	text-decoration: none;
+	cursor: pointer;
+	transition: all 0.15s;
+	border: 1px solid transparent;
+	font-family: inherit;
+	line-height: 1.4;
+}
+
+.wheel-link.primary {
+	background: rgba(74, 222, 128, 0.15);
+	border-color: rgba(74, 222, 128, 0.3);
+	color: #86efac;
+}
+
+.wheel-link.primary:hover {
+	background: rgba(74, 222, 128, 0.25);
+	border-color: rgba(74, 222, 128, 0.5);
+	box-shadow: 0 0 8px rgba(74, 222, 128, 0.2);
+}
+
+.wheel-link:not(.primary) {
+	background: rgba(255, 255, 255, 0.05);
+	border-color: rgba(255, 255, 255, 0.1);
+	color: #9ca3af;
+}
+
+.wheel-link:not(.primary):hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: #d1d5db;
+	border-color: rgba(255, 255, 255, 0.2);
+}
+
+.solution-section {
+	margin: 8px 0;
+	padding: 10px 12px;
+	border-radius: 2px;
+}
+
+.solution-section.recommended {
+	background: rgba(74, 222, 128, 0.08);
+	border: 1px solid rgba(74, 222, 128, 0.25);
+}
+
+.solution-section.recommended .solution-tip {
+	color: #86efac;
+}
+
+.solution-section.recommended .solution-text strong {
+	color: #4ade80;
+}
+
+.solution-section.fallback {
+	background: rgba(255, 255, 255, 0.03);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	margin-top: 10px;
+}
+
+.fallback-summary {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	font-size: 11px;
+	color: #93c5fd;
+	user-select: none;
+	padding: 2px 0;
+	list-style: none;
+}
+
+.fallback-summary::-webkit-details-marker {
+	display: none;
+}
+
+.fallback-summary:hover {
+	color: #bfdbfe;
+}
+
+.solution-desc {
+	margin: 6px 0 8px;
+	font-size: 11px;
+	color: #bfdbfe;
+	line-height: 1.6;
+}
+
+.solution-section.recommended .solution-desc {
+	color: #bbf7d0;
+}
+
+.code-block.one-click-cmd {
+	border-color: rgba(74, 222, 128, 0.4);
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.code-block.one-click-cmd code {
+	color: #4ade80;
+	font-weight: 500;
+}
+
+.cmd-tip.success {
+	color: #86efac;
+	margin-top: 6px;
+	font-style: normal;
+}
+
+.cmd-tip {
+	margin-top: 4px;
+	font-size: 10px;
+	color: #9ca3af;
+	font-style: italic;
+}
+
+.python-error-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 }
 
 .python-fix-done {
 	display: flex;
 	justify-content: flex-end;
+}
+
+.probe-version-check-btn {
+	margin-left: 8px;
+	font-size: 10px;
+	padding: 2px 8px;
+	height: auto;
+}
+
+.probe-version-checking {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: 8px;
+	font-size: 10px;
+	color: var(--pl-glow-2);
+}
+
+.probe-version-update {
+	margin-top: 10px;
+}
+
+.probe-msg-ok {
+	background: color-mix(in srgb, #4ade80 8%, transparent);
+	color: #86efac;
+	border-color: color-mix(in srgb, #4ade80 22%, transparent);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.probe-msg-update {
+	background: color-mix(in srgb, #34d399 10%, transparent);
+	color: #6ee7b7;
+	border-color: color-mix(in srgb, #34d399 30%, transparent);
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	font-weight: 500;
+}
+
+.probe-update-link {
+	color: #60a5fa;
+	text-decoration: underline;
+	cursor: pointer;
+	margin-left: auto;
+	font-size: 11px;
+	transition: color 150ms ease;
+}
+
+.probe-update-link:hover {
+	color: #93c5fd;
+}
+
+.setup-card-fresh {
+	border-color: color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--pl-accent) 8%, color-mix(in srgb, var(--pl-bg-1) 70%, transparent)),
+		color-mix(in srgb, var(--pl-accent) 4%, color-mix(in srgb, var(--pl-bg-0) 85%, transparent))
+	);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent),
+		0 4px 20px color-mix(in srgb, var(--pl-accent) 12%, transparent);
+}
+
+.fresh-install-form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.fresh-form-hint {
+	font-size: 12px;
+	color: var(--pl-fg-soft);
+	line-height: 1.6;
+	padding: 10px 14px;
+	background: color-mix(in srgb, var(--pl-cold) 6%, transparent);
+	border: 1px solid color-mix(in srgb, var(--pl-cold) 20%, transparent);
+	border-radius: 2px;
+	border-left: 3px solid var(--pl-accent);
+}
+
+.fresh-form-row {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.fresh-form-label {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--pl-fg);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.fresh-form-label.required::after {
+	content: "*";
+	color: #f87171;
+	font-weight: 700;
+	margin-left: 2px;
+}
+
+.fresh-form-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 4px;
+}
+
+.required-mark {
+	color: #f87171;
+	font-weight: 700;
+	margin-right: 2px;
+}
+
+.fresh-form-warn {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 14px;
+	background: color-mix(in srgb, #facc15 6%, transparent);
+	border: 1px solid color-mix(in srgb, #facc15 25%, transparent);
+	border-radius: 2px;
+	font-size: 12px;
+	color: #fde047;
+	line-height: 1.5;
+}
+
+.warn-icon {
+	font-size: 16px;
+	flex-shrink: 0;
+}
+
+.field-hint {
+	font-size: 11px;
+	color: var(--pl-fg-soft);
+	line-height: 1.5;
+	padding: 6px 0 0;
+}
+
+.fresh-probe-result {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 14px;
+	background: color-mix(in srgb, var(--pl-accent) 5%, color-mix(in srgb, var(--pl-bg-1) 60%, transparent));
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 20%, var(--pl-card-border));
+	border-radius: 2px;
+}
+
+.fresh-probe-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 12px;
+	flex-wrap: wrap;
+}
+
+.fresh-probe-item .probe-item-label {
+	font-size: 11px;
+	min-width: 70px;
+}
+
+.fresh-probe-item .probe-item-value {
+	font-size: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.fresh-probe-item .probe-version-checking {
+	margin-left: 4px;
 }
 
 @media (max-width: 768px) {
