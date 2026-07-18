@@ -55,9 +55,13 @@ describe('comfyui setup-service: exported venv path safety', () => {
   let setupGetDefaultVenvPath: (_ctx: unknown, payload?: { installPath?: string }) => { path: string }
   let setupClearVenv: (_ctx: unknown, payload?: { venvPath?: string }) => { ok: boolean; error?: string }
 
+  const testInstallPath = path.join(os.tmpdir(), 'ComfyUI')
+  const unsafeVenvPath = path.join(testInstallPath, 'comfyui-python', 'venv')
+  const safeVenvPath = path.join(os.tmpdir(), 'comfyui-safe-venv')
+
   beforeEach(async () => {
     vi.resetModules()
-    mockConfig = { installPath: 'C:\\ComfyUIDesktop\\ComfyUI' }
+    mockConfig = { installPath: testInstallPath }
     mockAppGetPath.mockReturnValue(mockUserData)
     mockFs.existsSync.mockImplementation((p: string) => {
       if (String(p).endsWith('comfyui_setup.json')) return true
@@ -74,23 +78,24 @@ describe('comfyui setup-service: exported venv path safety', () => {
   })
 
   it('setupGetDefaultVenvPath returns userData-based path, not installPath', () => {
-    const result = setupGetDefaultVenvPath(null as any, { installPath: 'C:\\ComfyUIDesktop\\ComfyUI' })
+    const result = setupGetDefaultVenvPath(null as any, { installPath: testInstallPath })
     expect(result.path).toBe(path.join(mockUserData, 'comfyui-python'))
-    expect(result.path.toLowerCase()).not.toContain('comfyuidesktop')
+    expect(path.resolve(result.path).toLowerCase()).not.toBe(path.resolve(testInstallPath).toLowerCase())
   })
 
   it('setupSetVenvPath rejects venv inside installPath and auto-corrects to safe path', () => {
-    const unsafePath = 'C:\\ComfyUIDesktop\\ComfyUI\\comfyui-python\\venv'
-    const result = setupSetVenvPath(null as any, { path: unsafePath })
+    const result = setupSetVenvPath(null as any, { path: unsafeVenvPath })
     expect(result.ok).toBe(false)
     expect(result.venvPath).toBeDefined()
-    expect(result.venvPath!.toLowerCase()).not.toContain('comfyuidesktop\\comfyui')
+    const venvResolved = path.resolve(result.venvPath!)
+    const installResolved = path.resolve(testInstallPath)
+    expect(venvResolved.toLowerCase() + path.sep).not.toContain(installResolved.toLowerCase() + path.sep)
+    expect(venvResolved.toLowerCase()).not.toBe(installResolved.toLowerCase())
     expect(result.error).toContain('不能设置在 ComfyUI 安装目录下')
   })
 
   it('setupSetVenvPath accepts safe paths outside installPath', () => {
-    const safePath = 'D:\\AI\\comfyui-venv'
-    const result = setupSetVenvPath(null as any, { path: safePath })
+    const result = setupSetVenvPath(null as any, { path: safeVenvPath })
     expect(result.ok).toBe(true)
   })
 
@@ -100,14 +105,13 @@ describe('comfyui setup-service: exported venv path safety', () => {
   })
 
   it('setupClearVenv returns error for venv inside installPath (safety guard)', () => {
-    const unsafeVenvInInstallDir = 'C:\\ComfyUIDesktop\\ComfyUI\\venv'
     mockFs.existsSync.mockImplementation((p: string) => {
       if (String(p).endsWith('comfyui_setup.json')) return true
-      if (String(p) === unsafeVenvInInstallDir) return true
+      if (path.resolve(String(p)) === path.resolve(unsafeVenvPath)) return true
       return false
     })
-    mockConfig = { installPath: 'C:\\ComfyUIDesktop\\ComfyUI', venvPath: unsafeVenvInInstallDir }
-    const result = setupClearVenv(null as any, { venvPath: unsafeVenvInInstallDir })
+    mockConfig = { installPath: testInstallPath, venvPath: unsafeVenvPath }
+    const result = setupClearVenv(null as any, { venvPath: unsafeVenvPath })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('ComfyUI 安装目录下')
   })
