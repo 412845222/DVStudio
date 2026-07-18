@@ -28,6 +28,8 @@ export const routes = [
 	{ channel: 'dweb:comfyui:setup:check-env', handler: handlers.setupCheckEnv },
 	{ channel: 'dweb:comfyui:setup:get-config', handler: handlers.setupGetConfig },
 	{ channel: 'dweb:comfyui:setup:save-config', handler: handlers.setupSaveConfig },
+	{ channel: 'dweb:comfyui:setup:check-version', handler: handlers.setupCheckVersionUpdate },
+	{ channel: 'dweb:comfyui:setup:reset-fresh', handler: handlers.setupResetForFreshInstall },
 	{ channel: 'dweb:comfyui:setup:add-model-path', handler: handlers.setupAddCustomModelPath },
 	{ channel: 'dweb:comfyui:setup:remove-model-path', handler: handlers.setupRemoveCustomModelPath },
 	{ channel: 'dweb:comfyui:setup:open-folder', handler: handlers.setupOpenFolder },
@@ -46,4 +48,8 @@ export const routes = [
 	{ channel: 'dweb:comfyui:setup:service-logs', handler: handlers.setupGetServiceLogs },
 	{ channel: 'dweb:comfyui:setup:clear-logs', handler: handlers.setupClearServiceLogs },
 	{ channel: 'dweb:comfyui:setup:restart-service', handler: handlers.setupRestartService },
+	{ channel: 'dweb:comfyui:setup:clone-comfyui:stream', handler: handlers.setupCloneComfyUI, stream: true },
+	{ channel: 'dweb:comfyui:setup:update-comfyui:stream', handler: handlers.setupUpdateComfyUI, stream: true },
+	{ channel: 'dweb:comfyui:setup:auto-install-torch:stream', handler: handlers.setupAutoInstallTorch, stream: true },
+	{ channel: 'dweb:comfyui:setup:clear-venv', handler: handlers.setupClearVenv },
 ]

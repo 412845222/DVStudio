@@ -105,6 +105,10 @@
 									<span class="sc-btn-icon">■</span>
 									停止
 								</button>
+								<button class="sc-btn sc-btn-ghost" @click="onOpenConfig">
+									<span class="sc-btn-icon">⚙</span>
+									配置
+								</button>
 								<button class="sc-btn sc-btn-ghost" @click="clearLogs" :disabled="logs.length === 0">
 									清空日志
 								</button>
@@ -180,6 +184,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useComfyServiceManager } from '../composables/useComfyServiceManager'
+import { openComfySetup } from '../electronBridge'
 import type { ComfyServiceLifecycle } from '../electronBridge/types'
 
 const {
@@ -232,6 +237,10 @@ function statusLabel(s: ComfyServiceLifecycle) {
 		case 'stopped': return '已停止'
 		default: return s
 	}
+}
+
+function onOpenConfig() {
+	openComfySetup({ source: 'service-center' })
 }
 
 function onTerminalScroll() {

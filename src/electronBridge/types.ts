@@ -451,6 +451,8 @@ export interface ComfyCheckItem {
 	version?: string
 	canFix?: boolean
 	fixAction?: string
+	downloadUrl?: string
+	downloadLabel?: string
 }
 
 export interface ComfyPathValidation {
@@ -472,6 +474,8 @@ export interface ComfyPythonCandidate {
 	torchVersion?: string
 	torchCuda: boolean
 	canImportComfy: boolean
+	canStartComfy?: boolean
+	importError?: string
 	error?: string
 }
 
@@ -501,6 +505,8 @@ export interface ComfyInstallProbeResult {
 		torchVersion?: string
 		torchCuda: boolean
 		canImportComfy: boolean
+		canStartComfy?: boolean
+		importError?: string
 		candidates?: ComfyPythonCandidate[]
 	}
 	launchCompatibility: {
@@ -602,6 +608,30 @@ export interface PythonEnvSetupEvent {
 	pythonPath?: string
 	venvRoot?: string
 	error?: string
+	needsManualInstall?: boolean
+	autoInstallAvailable?: boolean
+	cudaVersion?: string
+	pythonVersion?: string
+	platformTag?: string
+	abiTag?: string
+	torchVersion?: string
+	torchWheel?: string
+	torchvisionWheel?: string
+	torchaudioWheel?: string
+	aliyunTorchUrl?: string
+	aliyunTorchvisionUrl?: string
+	aliyunTorchaudioUrl?: string
+	officialTorchUrl?: string
+	officialTorchvisionUrl?: string
+	officialTorchaudioUrl?: string
+	venvPythonPath?: string
+	oneClickInstallCmd?: string
+	manualInstallCmd?: string
+	installDepsCmd?: string
+	aliyunDirUrl?: string
+	officialDirUrl?: string
+	manualDownloadUrl?: string
+	officialDownloadUrl?: string
 }
 
 export type InstallStep =
@@ -623,7 +653,7 @@ export interface ComfyInstallState {
 }
 
 export interface OpenComfySetupPayload {
-	source?: 'node' | 'settings'
+	source?: 'node' | 'settings' | 'service-center'
 }
 
 export interface OpenComfySetupResult {

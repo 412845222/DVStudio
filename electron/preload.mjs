@@ -629,6 +629,8 @@ contextBridge.exposeInMainWorld('dweb', {
 			validatePath: (payload) => invoke('dweb:comfyui:setup:validate-path', payload || {}),
 			probeExistingInstall: (payload) => invoke('dweb:comfyui:setup:probe', payload || {}),
 			checkEnv: (payload) => invoke('dweb:comfyui:setup:check-env', payload || {}),
+			checkVersion: (payload) => invoke('dweb:comfyui:setup:check-version', payload || {}),
+			resetFresh: () => invoke('dweb:comfyui:setup:reset-fresh'),
 			install: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:install', payload || {}),
 			cancelInstall: () => invoke('dweb:comfyui:setup:cancel-install'),
 			startService: (payload) => invoke('dweb:comfyui:setup:start-service', payload || {}),
@@ -643,12 +645,14 @@ contextBridge.exposeInMainWorld('dweb', {
 			getMirrorList: () => invoke('dweb:comfyui:setup:get-mirror-list'),
 			setMirror: (payload) => invoke('dweb:comfyui:setup:set-mirror', payload || {}),
 			fixPythonEnv: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:fix-python-env', payload || {}),
-			getDefaultVenvPath: () => invoke('dweb:comfyui:setup:default-venv-path'),
+			getDefaultVenvPath: (payload) => invoke('dweb:comfyui:setup:default-venv-path', payload || {}),
 			selectVenvPath: (payload) => invoke('dweb:comfyui:setup:select-venv-path', payload || {}),
 			setVenvPath: (payload) => invoke('dweb:comfyui:setup:set-venv-path', payload || {}),
 			getServiceLogs: () => invoke('dweb:comfyui:setup:service-logs'),
 			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
 			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
+			cloneComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
+			updateComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:update-comfyui', payload || {}),
 			onServiceLog: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-log'
 				const handler = (_evt, entry) => {
