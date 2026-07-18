@@ -345,6 +345,20 @@ export type Open3DEditorResult = {
 	focused?: boolean
 }
 
+export type OpenVideoEditorPayload = {
+	nodeId: string
+	projectId?: number
+	videoUrl: string
+	videoName?: string
+	title?: string
+}
+
+export type OpenVideoEditorResult = {
+	ok: boolean
+	error?: string
+	focused?: boolean
+}
+
 export type CloudQuotaInfo = {
 	totalBytes: number
 	availableBytes: number

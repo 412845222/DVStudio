@@ -423,6 +423,12 @@ export const TimelineStore = createStore<TimelineState>({
 			// 更大范围缩放：允许足够小以容纳超长时间轴，也允许更大以便精细编辑
 			state.frameWidth = clampFrameWidth(payload.frameWidth)
 		},
+		setScrubbing(state: TimelineState, payload: { isScrubbing: boolean }) {
+			state.isScrubbing = !!payload.isScrubbing
+		},
+		setPlaying(state: TimelineState, payload: { isPlaying: boolean }) {
+			state.isPlaying = !!payload.isPlaying
+		},
 		addLayer(state: TimelineState) {
 			const nextIndex = state.layers.length + 1
 			const layer: TimelineLayer = {
@@ -1373,6 +1379,12 @@ export const TimelineStore = createStore<TimelineState>({
 		},
 		setFrameWidth({ commit }, payload: { frameWidth: number }) {
 			commit('setFrameWidth', payload)
+		},
+		setScrubbing({ commit }, payload: { isScrubbing: boolean }) {
+			commit('setScrubbing', payload)
+		},
+		setPlaying({ commit }, payload: { isPlaying: boolean }) {
+			commit('setPlaying', payload)
 		},
 		addLayer({ commit, state }) {
 			commit('addLayer')

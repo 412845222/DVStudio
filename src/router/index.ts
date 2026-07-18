@@ -48,6 +48,11 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/Model3DEditorPage.vue')
 	},
 	{
+		path: '/video-editor',
+		name: 'VideoEditor',
+		component: () => import('../views/VideoEditorPage.vue')
+	},
+	{
 		path: '/template-center',
 		name: 'TemplateCenter',
 		component: () => import('../views/AIWorkflow/TemplateCenterWindow.vue')

@@ -15,6 +15,12 @@
         </span>
       </button>
       <LanguageSwitcher />
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.forceReload')" :title="t('titlebar.forceReload')" @click="onReload">
+        ↻
+      </button>
+      <button class="titlebar-btn" type="button" :aria-label="t('titlebar.devTools')" :title="t('titlebar.devTools')" @click="onOpenDevTools">
+        🛠
+      </button>
       <button class="titlebar-btn" type="button" aria-label="minimize" title="—" @click="onMinimize">—</button>
       <button class="titlebar-btn" type="button" aria-label="maximize" :title="isMaximized ? '❐' : '□'" @click="onToggleMaximize">
         {{ isMaximized ? '❐' : '□' }}
@@ -31,6 +37,8 @@ import {
   toggleMaximizeWindow,
   closeWindow,
   isWindowMaximized,
+  reloadWindow,
+  openDevTools,
 } from '../../electronBridge'
 import { ThemeStore } from '../../store/theme'
 import { useI18n } from '../../i18n'
@@ -73,6 +81,22 @@ onBeforeUnmount(() => {
 async function onMinimize() {
   try {
     await minimizeWindow()
+  } catch {
+    // ignore
+  }
+}
+
+async function onReload() {
+  try {
+    await reloadWindow()
+  } catch {
+    // ignore
+  }
+}
+
+async function onOpenDevTools() {
+  try {
+    await openDevTools()
   } catch {
     // ignore
   }

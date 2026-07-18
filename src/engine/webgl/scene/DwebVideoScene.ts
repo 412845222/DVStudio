@@ -17,6 +17,8 @@ import { RectRenderer } from '../renderers/RectRenderer'
 import { TextRenderer } from '../renderers/TextRenderer'
 import { ImageRenderer } from '../renderers/ImageRenderer'
 import { LineRenderer } from '../renderers/LineRenderer'
+import { VideoRenderer } from '../renderers/VideoRenderer'
+import { videoTexturePool } from '../renderers/VideoTexturePool'
 import { normalizeLineLocalPoints } from '../../../core/scene/geometry'
 
 export type HitTestResult = {
@@ -56,12 +58,14 @@ export class DwebVideoScene implements IDwebGLScene {
 	private readonly textRenderer = new TextRenderer()
 	private readonly imageRenderer = new ImageRenderer()
 	private readonly lineRenderer = new LineRenderer()
+	private readonly videoRenderer = new VideoRenderer()
 	private readonly rendererByType = new Map<VideoSceneUserNodeType, NodeRenderer>([
 		['base', this.baseRenderer],
 		['rect', this.rectRenderer],
 		['text', this.textRenderer],
 		['image', this.imageRenderer],
-		['line', this.lineRenderer]
+		['line', this.lineRenderer],
+		['video', this.videoRenderer]
 	])
 
 	private frameFilterQualityMax: 'low' | 'mid' | 'high' = 'high'
@@ -191,6 +195,109 @@ export class DwebVideoScene implements IDwebGLScene {
 	setState(state: VideoSceneState) {
 		this.state = state
 		this.rebuildRenderOrder()
+	}
+
+	setCanvas(canvas: DwebCanvasGL | null) {
+		videoTexturePool.setCanvas(canvas)
+	}
+
+	private videoSourcesSignature = ''
+
+	collectVideoSources(): Array<{ id: string; src: string }> {
+		const out = new Map<string, { id: string; src: string }>()
+		for (const n of this.renderOrder) {
+			if (n.type !== 'video') continue
+			const props = n.props as Record<string, unknown> ?? {}
+			const videoId = String(props.videoId ?? n.id ?? '').trim()
+			const src = (n.imageSrc ?? String(props.videoPath ?? '')).trim()
+			if (!videoId || !src) continue
+			out.set(videoId, { id: videoId, src })
+		}
+		return Array.from(out.values())
+	}
+
+	initVideoTextures() {
+		const videos = this.collectVideoSources()
+		const sigParts: string[] = []
+		for (const v of videos) sigParts.push(v.id + '=' + v.src)
+		const sig = sigParts.join('|')
+		if (sig === this.videoSourcesSignature && videos.every(v => !!videoTexturePool.getEntry(v.id))) {
+			return
+		}
+		this.videoSourcesSignature = sig
+		for (const v of videos) {
+			if (!videoTexturePool.getEntry(v.id)) {
+				videoTexturePool.getOrCreate(v.id, v.src, { muted: true, loop: true })
+			}
+		}
+	}
+
+	needsRerenderFromVideo(): boolean {
+		return videoTexturePool.hasPendingRenders()
+	}
+
+	clearVideoRenderFlag() {
+		videoTexturePool.clearRenderFlag()
+	}
+
+	seekVideo(id: string, time: number): Promise<void> {
+		const entry = videoTexturePool.getEntry(id)
+		if (!entry) return Promise.resolve()
+		return videoTexturePool.seek(entry, time)
+	}
+
+	seekVideoFast(id: string, time: number): void {
+		const entry = videoTexturePool.getEntry(id)
+		if (!entry) return
+		videoTexturePool.seekFast(entry, time)
+	}
+
+	startVideoScrubbing(id: string, time: number): void {
+		const entry = videoTexturePool.getEntry(id)
+		if (!entry) return
+		videoTexturePool.startScrubbing(entry, time)
+	}
+
+	scrubVideoTo(id: string, time: number): void {
+		const entry = videoTexturePool.getEntry(id)
+		if (!entry) return
+		videoTexturePool.scrubTo(entry, time)
+	}
+
+	endVideoScrubbing(id: string): Promise<void> {
+		const entry = videoTexturePool.getEntry(id)
+		if (!entry) return Promise.resolve()
+		return videoTexturePool.endScrubbing(entry)
+	}
+
+	getVideoDuration(id: string): number {
+		return videoTexturePool.getDuration(id)
+	}
+
+	getVideoCurrentTime(id: string): number {
+		return videoTexturePool.getCurrentTime(id)
+	}
+
+	getVideoBufferingState(id: string): { isBuffering: boolean; bufferProgress: number; readyState: number } {
+		return videoTexturePool.getVideoBufferingState(id)
+	}
+
+	playVideo(id: string): Promise<void> {
+		return videoTexturePool.play(id)
+	}
+
+	pauseVideo(id: string) {
+		videoTexturePool.pause(id)
+	}
+
+	getFirstVideoNode(): { id: string; videoId: string } | null {
+		for (const n of this.renderOrder) {
+			if (n.type !== 'video') continue
+			const props = n.props as Record<string, unknown> ?? {}
+			const videoId = String(props.videoId ?? n.id ?? '').trim()
+			if (videoId) return { id: n.id, videoId }
+		}
+		return null
 	}
 
 	collectImageSources(): Array<{ src: string; wrap: 'repeat' | 'clamp' }> {
@@ -396,6 +503,15 @@ export class DwebVideoScene implements IDwebGLScene {
 			const imageId = String(props?.imageId ?? '').trim()
 			if (imageId && this.state?.imageAssets?.[imageId]?.url) {
 				imageSrc = this.state.imageAssets[imageId].url
+			}
+			if (type === 'video') {
+				const videoId = String(props?.videoId ?? '').trim()
+				const videoPath = String(props?.videoPath ?? '')
+				if (videoId && this.state?.videoAssets?.[videoId]?.url) {
+					imageSrc = this.state.videoAssets[videoId].url
+				} else if (videoPath) {
+					imageSrc = videoPath
+				}
 			}
 			const localTransform: VideoSceneNodeTransform = {
 				...node.transform,

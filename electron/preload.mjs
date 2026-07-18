@@ -266,6 +266,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		openDevTools: () => invoke('dweb:window:openDevTools'),
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
+		openVideoEditor: (payload) => invoke('dweb:video-editor:open', payload || {}),
 		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
 	},
 	projects: {
@@ -527,6 +528,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
+		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
 	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {

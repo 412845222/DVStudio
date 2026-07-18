@@ -3,6 +3,7 @@ import { ImageNode } from './ImageNode'
 import { LineNode } from './LineNode'
 import { RectNode } from './RectNode'
 import { TextNode } from './TextNode'
+import { VideoNode } from './VideoNode'
 import type { NodeBaseDTO, NodeType } from './types'
 
 export const upgradeNodeType = (dto: NodeBaseDTO, type: NodeType): NodeBaseDTO => {
@@ -11,5 +12,6 @@ export const upgradeNodeType = (dto: NodeBaseDTO, type: NodeType): NodeBaseDTO =
 	if (type === 'text') return TextNode.upgradeFrom(normalized)
 	if (type === 'image') return ImageNode.upgradeFrom(normalized)
 	if (type === 'line') return LineNode.upgradeFrom(normalized)
+	if (type === 'video') return VideoNode.upgradeFrom(normalized)
 	return { ...normalized, type: 'base', props: normalized.props ?? {} }
 }

@@ -80,18 +80,23 @@ const draw = () => {
 const css = () => getComputedStyle(document.documentElement)
 
 const drawTopRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-	const fg = (css().getPropertyValue('--vscode-fg') || '#d4d4d4').trim()
-	const muted = (css().getPropertyValue('--vscode-fg-muted') || '#a0a0a0').trim()
-	const border = (css().getPropertyValue('--vscode-border') || '#3c3c3c').trim()
-	const bg = (css().getPropertyValue('--dweb-defualt-dark') || '#181818').trim()
+	const plAccent = (css().getPropertyValue('--pl-accent') || '#1f9d84').trim() || '#1f9d84'
+	const plBg1 = (css().getPropertyValue('--pl-bg-1') || '#111a22').trim() || '#111a22'
+	const plFg = (css().getPropertyValue('--pl-fg') || '#eaf2f5').trim() || '#eaf2f5'
+	const fg = plFg
+	const border = plAccent
+	const muted = plAccent
+	const bg = plBg1
 
 	ctx.fillStyle = bg
 	ctx.fillRect(0, 0, w, h)
 	ctx.strokeStyle = border
+	ctx.globalAlpha = 0.5
 	ctx.beginPath()
 	ctx.moveTo(0, h - 0.5)
 	ctx.lineTo(w, h - 0.5)
 	ctx.stroke()
+	ctx.globalAlpha = 1
 
 	const zoom = props.zoom
 	const panX = props.panX
@@ -102,7 +107,7 @@ const drawTopRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
 	const major = pickRulerStep(zoom)
 	const minor = major / 10
 
-	ctx.font = '10px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial'
+	ctx.font = '10px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 	ctx.textBaseline = 'top'
 	ctx.textAlign = 'left'
 
@@ -114,7 +119,7 @@ const drawTopRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
 		const sx = wx * zoom + panX
 		if (sx < 0 || sx > w) continue
 		ctx.strokeStyle = border
-		ctx.globalAlpha = 0.8
+		ctx.globalAlpha = 0.6
 		ctx.beginPath()
 		ctx.moveTo(sx + 0.5, h)
 		ctx.lineTo(sx + 0.5, h - 12)
@@ -141,18 +146,23 @@ const drawTopRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
 }
 
 const drawLeftRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-	const fg = (css().getPropertyValue('--vscode-fg') || '#d4d4d4').trim()
-	const muted = (css().getPropertyValue('--vscode-fg-muted') || '#a0a0a0').trim()
-	const border = (css().getPropertyValue('--vscode-border') || '#3c3c3c').trim()
-	const bg = (css().getPropertyValue('--dweb-defualt-dark') || '#181818').trim()
+	const plAccent = (css().getPropertyValue('--pl-accent') || '#1f9d84').trim() || '#1f9d84'
+	const plBg1 = (css().getPropertyValue('--pl-bg-1') || '#111a22').trim() || '#111a22'
+	const plFg = (css().getPropertyValue('--pl-fg') || '#eaf2f5').trim() || '#eaf2f5'
+	const fg = plFg
+	const muted = plAccent
+	const border = plAccent
+	const bg = plBg1
 
 	ctx.fillStyle = bg
 	ctx.fillRect(0, 0, w, h)
 	ctx.strokeStyle = border
+	ctx.globalAlpha = 0.5
 	ctx.beginPath()
 	ctx.moveTo(w - 0.5, 0)
 	ctx.lineTo(w - 0.5, h)
 	ctx.stroke()
+	ctx.globalAlpha = 1
 
 	const zoom = props.zoom
 	const panY = props.panY
@@ -163,7 +173,7 @@ const drawLeftRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
 	const major = pickRulerStep(zoom)
 	const minor = major / 10
 
-	ctx.font = '10px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial'
+	ctx.font = '10px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 	ctx.textBaseline = 'middle'
 	ctx.textAlign = 'left'
 
@@ -175,7 +185,7 @@ const drawLeftRuler = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
 		const sy = wy * zoom + panY
 		if (sy < 0 || sy > h) continue
 		ctx.strokeStyle = border
-		ctx.globalAlpha = 0.8
+		ctx.globalAlpha = 0.6
 		ctx.beginPath()
 		ctx.moveTo(w, sy + 0.5)
 		ctx.lineTo(w - 12, sy + 0.5)
@@ -228,9 +238,9 @@ onBeforeUnmount(() => {
 	top: 0;
 	width: var(--ruler-size);
 	height: var(--ruler-size);
-	background: var(--dweb-defualt-dark);
-	border-right: 1px solid var(--vscode-border);
-	border-bottom: 1px solid var(--vscode-border);
+	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2));
+	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 50%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 50%, transparent);
 	box-sizing: border-box;
 }
 

@@ -17,6 +17,8 @@ import type {
 	UploadedProjectAsset,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult,
 	CloudTemplatesPlatformResult,
 	CloudTemplatesQuotaResult,
 	CloudTemplatesListResult,
@@ -563,6 +565,18 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
+export async function openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult> {
+	if (!window?.dweb?.window?.openVideoEditor) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openVideoEditor(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
 export async function openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult> {
 	if (!window?.dweb?.window?.openComfySetup) {
 		return { ok: false, error: 'Not running in Electron.' }
@@ -637,5 +651,7 @@ export async function deleteCloudTemplate(
 
 export type {
 	Open3DEditorPayload,
-	Open3DEditorResult
+	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult
 }
