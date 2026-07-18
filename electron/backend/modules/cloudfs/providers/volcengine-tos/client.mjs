@@ -121,5 +121,6 @@ export function buildPublicUrlBase(bucketName, endpoint) {
 export function buildPublicUrl(bucketName, endpoint, key) {
   const base = buildPublicUrlBase(bucketName, endpoint)
   const safeKey = String(key || '').replace(/^\/+/, '')
-  return `${base}/${safeKey}`
+  const encodedKey = safeKey.split('/').map(encodeURIComponent).join('/')
+  return `${base}/${encodedKey}`
 }

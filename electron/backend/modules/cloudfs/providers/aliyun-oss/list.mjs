@@ -1,4 +1,4 @@
-import { getTosClient, resolveEndpoint, withNoProxyEnv } from './client.mjs'
+import { getOssClient, resolveEndpoint, withNoProxyEnv } from './client.mjs'
 import { getFileNameFromKey } from '../../base/utils.mjs'
 import { createCloudFileItem, createCloudListResult, createCloudFolderResult } from '../../types.mjs'
 import logger from '../../../../core/logger.mjs'
@@ -12,10 +12,6 @@ function buildContentDisposition(fileName) {
   const encodedName = encodeRfc5987Value(fileName)
   const simpleName = fileName.replace(/[^\x20-\x7E]/g, '_')
   return `inline; filename="${simpleName}"; filename*=UTF-8''${encodedName}`
-}
-
-function extractData(result) {
-  return result?.data || result || {}
 }
 
 function guessContentType(key) {
@@ -43,24 +39,22 @@ function guessContentType(key) {
   return map[ext] || 'application/octet-stream'
 }
 
-function buildSignedPreviewUrl(client, bucketName, key, fileName, expires = 86400 * 7) {
-  return client.getPreSignedUrl({
-    method: 'GET',
-    bucket: bucketName,
-    key,
+function buildSignedPreviewUrl(client, key, fileName, expires = 86400 * 7) {
+  return client.signatureUrl(key, {
     expires,
+    method: 'GET',
     response: {
       'content-disposition': buildContentDisposition(fileName),
     },
   })
 }
 
-function tosObjectToFileItem(obj, bucketName, endpoint, client) {
-  const key = obj.Key || ''
-  const lastModified = obj.LastModified ? new Date(obj.LastModified).getTime() : 0
-  const size = Number(obj.Size) || 0
-  const etag = obj.ETag ? String(obj.ETag).replace(/"/g, '') : ''
-  const contentType = obj.ContentType || guessContentType(key)
+function ossObjectToFileItem(obj, bucketName, endpoint, client) {
+  const key = obj.name || ''
+  const lastModified = obj.lastModified ? new Date(obj.lastModified).getTime() : 0
+  const size = Number(obj.size) || 0
+  const etag = obj.etag ? String(obj.etag).replace(/"/g, '') : ''
+  const contentType = obj.type || guessContentType(key)
   const fileName = getFileNameFromKey(key)
 
   return createCloudFileItem({
@@ -71,7 +65,7 @@ function tosObjectToFileItem(obj, bucketName, endpoint, client) {
     contentType,
     lastModified,
     etag,
-    publicUrl: buildSignedPreviewUrl(client, bucketName, key, fileName),
+    publicUrl: buildSignedPreviewUrl(client, key, fileName),
   })
 }
 
@@ -85,46 +79,47 @@ export async function listFiles(config, prefix = '', options = {}) {
     })
   }
   const endpoint = config.endpoint || resolveEndpoint(region)
-  const client = getTosClient(credentials, region, bucketName, endpoint)
+  const client = getOssClient(credentials, region, bucketName, endpoint)
   const delimiter = options.delimiter || '/'
   const continuationToken = options.continuationToken || ''
   const maxKeys = options.maxKeys || 1000
 
   try {
-    const result = await withNoProxyEnv(() => client.listObjectsType2({
-      bucket: bucketName,
+    const query = {
       prefix: prefix || '',
       delimiter,
-      continuationToken,
-      maxKeys,
-      listOnlyOnce: true,
-    }))
+      'max-keys': maxKeys,
+    }
+    if (continuationToken) {
+      query['continuation-token'] = continuationToken
+    }
 
-    const data = extractData(result)
+    const result = await withNoProxyEnv(() => client.listV2(query))
 
-    const items = (data.Contents || [])
-      .filter(obj => obj.Key && obj.Key !== prefix)
-      .map(obj => tosObjectToFileItem(obj, bucketName, endpoint, client))
+    const objects = result.objects || []
+    const prefixes = result.prefixes || []
 
-    const prefixes = (data.CommonPrefixes || [])
-      .map(p => p.Prefix)
+    const items = objects
+      .filter(obj => obj.name && obj.name !== prefix)
+      .map(obj => ossObjectToFileItem(obj, bucketName, endpoint, client))
+
+    const folders = prefixes
       .filter(Boolean)
-
-    const folders = prefixes.map(prefixKey => createCloudFileItem({
-      key: prefixKey,
-      name: getFileNameFromKey(prefixKey.replace(/\/$/, '')),
-      isFolder: true,
-    }))
+      .map(prefixKey => createCloudFileItem({
+        key: prefixKey,
+        name: getFileNameFromKey(prefixKey.replace(/\/$/, '')),
+        isFolder: true,
+      }))
 
     return createCloudListResult({
       ok: true,
       items: [...folders, ...items],
       prefixes,
-      nextMarker: data.NextContinuationToken || data.NextMarker,
-      isTruncated: Boolean(data.IsTruncated),
+      nextMarker: result.nextContinuationToken || result.nextMarker,
+      isTruncated: Boolean(result.isTruncated),
     })
   } catch (err) {
-    logger.error('[cloudfs:tos] listFiles failed:', err.message)
+    logger.error('[cloudfs:oss] listFiles failed:', err.message)
     return createCloudListResult({
       ok: false,
       error: err.message,
@@ -138,30 +133,26 @@ export async function listFiles(config, prefix = '', options = {}) {
 export async function getFileMetadata(config, key) {
   const { credentials, region, bucketName } = config
   const endpoint = config.endpoint || resolveEndpoint(region)
-  const client = getTosClient(credentials, region, bucketName, endpoint)
+  const client = getOssClient(credentials, region, bucketName, endpoint)
   const fileName = getFileNameFromKey(key)
 
   try {
-    const result = await client.headObject({
-      bucket: bucketName,
-      key,
-    })
-    const data = extractData(result)
-    const headers = result.headers || data
-    const contentType = headers['content-type'] || data.ContentType || guessContentType(key)
+    const result = await withNoProxyEnv(() => client.head(key))
+    const headers = result.res?.headers || {}
+    const contentType = headers['content-type'] || guessContentType(key)
 
     return createCloudFileItem({
       key,
       name: fileName,
       isFolder: false,
-      size: Number(headers['content-length'] || data.ContentLength) || 0,
+      size: Number(headers['content-length'] || 0),
       contentType,
       lastModified: headers['last-modified'] ? new Date(headers['last-modified']).getTime() : 0,
-      etag: (headers['etag'] || data.ETag || '').replace(/"/g, ''),
-      publicUrl: buildSignedPreviewUrl(client, bucketName, key, fileName),
+      etag: (headers['etag'] || '').replace(/"/g, ''),
+      publicUrl: buildSignedPreviewUrl(client, key, fileName),
     })
   } catch (err) {
-    logger.error('[cloudfs:tos] getFileMetadata failed:', err.message)
+    logger.error('[cloudfs:oss] getFileMetadata failed:', err.message)
     return null
   }
 }
@@ -169,7 +160,7 @@ export async function getFileMetadata(config, key) {
 export async function createFolder(config, folderPath) {
   const { credentials, region, bucketName } = config
   const endpoint = config.endpoint || resolveEndpoint(region)
-  const client = getTosClient(credentials, region, bucketName, endpoint)
+  const client = getOssClient(credentials, region, bucketName, endpoint)
 
   try {
     let key = folderPath || ''
@@ -180,21 +171,17 @@ export async function createFolder(config, folderPath) {
       key = key + '/'
     }
 
-    await withNoProxyEnv(() => client.putObject({
-      bucket: bucketName,
-      key,
-      body: '',
-      contentType: 'application/x-directory',
-      acl: 'public-read',
+    await withNoProxyEnv(() => client.put(key, Buffer.from(''), {
+      mime: 'application/x-directory',
     }))
 
-    logger.info(`[cloudfs:tos] createFolder success: ${key}`)
+    logger.info(`[cloudfs:oss] createFolder success: ${key}`)
     return createCloudFolderResult({
       ok: true,
       key,
     })
   } catch (err) {
-    logger.error('[cloudfs:tos] createFolder failed:', err.message)
+    logger.error('[cloudfs:oss] createFolder failed:', err.message)
     return createCloudFolderResult({
       ok: false,
       error: err.message,

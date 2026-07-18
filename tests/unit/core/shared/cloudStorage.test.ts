@@ -74,6 +74,24 @@ describe('buildPublicObjectUrl', () => {
       'https://bucket.tos-cn-beijing.volces.com/'
     )
   })
+
+  it('encodes Chinese and special characters in filenames', () => {
+    expect(buildPublicObjectUrl('bucket', 'oss-cn-beijing.aliyuncs.com', 'uploads/测试文件.png')).toBe(
+      'https://bucket.oss-cn-beijing.aliyuncs.com/uploads/%E6%B5%8B%E8%AF%95%E6%96%87%E4%BB%B6.png'
+    )
+    expect(buildPublicObjectUrl('bucket', 'oss-cn-beijing.aliyuncs.com', 'images/photo 1.jpg')).toBe(
+      'https://bucket.oss-cn-beijing.aliyuncs.com/images/photo%201.jpg'
+    )
+    expect(buildPublicObjectUrl('bucket', 'oss-cn-beijing.aliyuncs.com', 'docs/报告(v2).pdf')).toBe(
+      'https://bucket.oss-cn-beijing.aliyuncs.com/docs/%E6%8A%A5%E5%91%8A(v2).pdf'
+    )
+  })
+
+  it('preserves directory separators while encoding path segments', () => {
+    expect(buildPublicObjectUrl('bucket', 'oss-cn-beijing.aliyuncs.com', 'a/b/c/file name.txt')).toBe(
+      'https://bucket.oss-cn-beijing.aliyuncs.com/a/b/c/file%20name.txt'
+    )
+  })
 })
 
 describe('formatFileSize', () => {

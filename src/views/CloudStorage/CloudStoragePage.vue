@@ -123,29 +123,55 @@
 			</div>
 		</div>
 
-		<div v-if="uploading" class="cs-upload-toast">
-			<div class="cs-toast-frame" aria-hidden="true">
-				<span class="cs-toast-corner tl"></span>
-				<span class="cs-toast-corner tr"></span>
-				<span class="cs-toast-corner bl"></span>
-				<span class="cs-toast-corner br"></span>
+		<CloudUploadQueue :visible="showQueuePanel" @close="showQueuePanel = false" />
+
+		<div v-if="showUploadIndicator" class="cs-upload-indicator" :class="{ 'has-error': hasErrors }" @click="showQueuePanel = true">
+			<div class="cs-ui-corners" aria-hidden="true">
+				<span class="cs-uic tl"></span>
+				<span class="cs-uic tr"></span>
+				<span class="cs-uic bl"></span>
+				<span class="cs-uic br"></span>
 			</div>
-			<div class="cs-upload-bar">
-				<div class="cs-upload-fill" :style="{ width: uploadProgress + '%' }"></div>
+			<svg v-if="isActive" viewBox="0 0 16 16" class="cs-ui-spinner-icon" aria-hidden="true">
+				<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="20 10" stroke-linecap="round"/>
+			</svg>
+			<svg v-else-if="hasErrors" viewBox="0 0 16 16" class="cs-ui-error-icon" aria-hidden="true">
+				<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+				<path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+			</svg>
+			<svg v-else viewBox="0 0 16 16" class="cs-ui-done-icon" aria-hidden="true">
+				<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+			<div class="cs-ui-info">
+				<div class="cs-ui-text">
+					<span v-if="isActive">{{ t('cloudStorage.uploadQueue.uploading') }}</span>
+					<span v-else-if="hasErrors">{{ t('cloudStorage.uploadQueue.someFailed', { failed: errorCount, total: totalCount }) }}</span>
+					<span v-else>{{ t('cloudStorage.uploadQueue.completed') }}</span>
+					<span class="cs-ui-count">{{ completedCount }}/{{ totalCount }}</span>
+				</div>
+				<div class="cs-ui-mini-bar">
+					<div class="cs-ui-mini-fill" :class="{ 'has-error': hasErrors && isAllDone }" :style="{ width: overallProgress + '%' }"></div>
+				</div>
 			</div>
-			<span class="cs-upload-text">{{ t('cloudStorage.page.uploading', { progress: Math.round(uploadProgress) }) }}</span>
+			<button class="cs-ui-expand" type="button" @click.stop="showQueuePanel = true" :title="t('cloudStorage.uploadQueue.viewDetails')">
+				<svg viewBox="0 0 16 16" aria-hidden="true">
+					<path d="M5.5 3.5l5 4.5-5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, computed, watch } from 'vue'
 import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
+import { useUploadQueue } from '../../composables/useUploadQueue'
 import GlobalPageBackground from '../../ui/UIComponent/GlobalPageBackground.vue'
 import CloudStorageConfigPanel from './CloudStorageConfigPanel.vue'
 import CloudBucketList from './CloudBucketList.vue'
 import CloudFileList from './CloudFileList.vue'
+import CloudUploadQueue from './CloudUploadQueue.vue'
 import '../../styles/square-particles.css'
 
 const { t } = useI18n()
@@ -179,10 +205,33 @@ const connected = ref(false)
 const activeBucket = ref<ConfiguredBucket | null>(null)
 const configuredBuckets = ref<ConfiguredBucket[]>([])
 const loadingBuckets = ref(false)
-const uploading = ref(false)
-const uploadProgress = ref(0)
 const currentPrefix = ref('')
 const showConfigPanel = ref(false)
+const showQueuePanel = ref(false)
+
+const uploadQueue = useUploadQueue()
+const {
+	completedCount,
+	errorCount,
+	totalCount,
+	overallProgress,
+	isActive,
+	hasErrors,
+	isAllDone,
+	addFiles,
+} = uploadQueue
+
+const showUploadIndicator = computed(() => totalCount.value > 0)
+
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+watch(completedCount, (newVal, oldVal) => {
+	if (newVal > oldVal) {
+		if (refreshTimer) clearTimeout(refreshTimer)
+		refreshTimer = setTimeout(() => {
+			loadFiles()
+		}, 500)
+	}
+})
 
 const sidebarParticles = useSquareParticles({ count: 6, seed: 101 })
 const mainParticles = useSquareParticles({ count: 8, seed: 202 })
@@ -333,40 +382,12 @@ const loadFiles = async () => {
 	}
 }
 
-const handleUpload = async (files: File[], prefix?: string) => {
+const handleUpload = (files: File[], prefix?: string) => {
 	if (!files.length) return
 	if (!activeBucket.value) return
 
-	uploading.value = true
-	uploadProgress.value = 0
-
-	try {
-		const cloudfs = (window as any).dweb?.cloudfs
-		if (!cloudfs) return
-
-		const total = files.length
-		let completed = 0
-
-		for (let i = 0; i < files.length; i++) {
-			const file = files[i]
-			const arrayBuffer = await file.arrayBuffer()
-			await cloudfs.uploadToPublicUrl({
-				data: arrayBuffer,
-				name: file.name,
-				prefix: prefix || currentPrefix.value || '',
-				mimeType: file.type || 'application/octet-stream'
-			})
-			completed++
-			uploadProgress.value = (completed / total) * 100
-		}
-
-		await loadFiles()
-	} finally {
-		setTimeout(() => {
-			uploading.value = false
-			uploadProgress.value = 0
-		}, 500)
-	}
+	const uploadPrefix = prefix || currentPrefix.value || ''
+	addFiles(files, uploadPrefix)
 }
 
 const handleDelete = async (file: CloudFile) => {
@@ -860,12 +881,15 @@ onMounted(async () => {
 	width: 1px;
 }
 
-.cs-upload-toast {
+.cs-upload-indicator {
 	position: fixed;
 	bottom: 28px;
 	right: 28px;
 	z-index: 1000;
-	padding: 14px 20px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 14px;
 	background: linear-gradient(
 		135deg,
 		color-mix(in srgb, var(--pl-bg-1) 92%, transparent),
@@ -873,99 +897,186 @@ onMounted(async () => {
 	);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	backdrop-filter: blur(16px);
-	box-shadow: 
+	box-shadow:
 		0 6px 28px rgba(0, 0, 0, 0.5),
 		0 0 20px color-mix(in srgb, var(--pl-accent) 18%, transparent);
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	min-width: 240px;
+	cursor: pointer;
+	transition: all 200ms ease;
+	min-width: 200px;
+	max-width: 280px;
+	animation: cs-ui-slide-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.cs-toast-frame {
+.cs-upload-indicator.has-error {
+	border-color: color-mix(in srgb, #ef4444 35%, transparent);
+	box-shadow:
+		0 6px 28px rgba(0, 0, 0, 0.5),
+		0 0 20px color-mix(in srgb, #ef4444 18%, transparent);
+}
+
+.cs-upload-indicator.has-error:hover {
+	border-color: color-mix(in srgb, #ef4444 60%, transparent);
+	box-shadow:
+		0 8px 32px rgba(0, 0, 0, 0.55),
+		0 0 28px color-mix(in srgb, #ef4444 28%, transparent);
+	transform: translateY(-2px);
+}
+
+.cs-upload-indicator:hover {
+	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
+	box-shadow:
+		0 8px 32px rgba(0, 0, 0, 0.55),
+		0 0 28px color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	transform: translateY(-2px);
+}
+
+@keyframes cs-ui-slide-in {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.cs-ui-corners {
 	position: absolute;
 	inset: 0;
 	pointer-events: none;
 }
 
-.cs-toast-corner {
+.cs-uic {
 	position: absolute;
-	width: 10px;
-	height: 10px;
-	border-color: var(--pl-accent);
+	width: 8px;
+	height: 8px;
 }
 
-.cs-toast-corner.tl {
-	top: 3px;
-	left: 3px;
-	border-top: 1.5px solid currentColor;
-	border-left: 1.5px solid currentColor;
+.cs-uic.tl {
+	top: 2px;
+	left: 2px;
+	border-top: 1.5px solid var(--pl-accent);
+	border-left: 1.5px solid var(--pl-accent);
+}
+
+.cs-uic.tr {
+	top: 2px;
+	right: 2px;
+	border-top: 1.5px solid var(--pl-accent);
+	border-right: 1.5px solid var(--pl-accent);
+}
+
+.cs-uic.bl {
+	bottom: 2px;
+	left: 2px;
+	border-bottom: 1.5px solid var(--pl-accent);
+	border-left: 1.5px solid var(--pl-accent);
+}
+
+.cs-uic.br {
+	bottom: 2px;
+	right: 2px;
+	border-bottom: 1.5px solid var(--pl-accent);
+	border-right: 1.5px solid var(--pl-accent);
+}
+
+.cs-ui-spinner-icon {
+	width: 18px;
+	height: 18px;
 	color: var(--pl-accent);
+	flex-shrink: 0;
+	animation: cs-ui-spin 1s linear infinite;
+	filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pl-accent) 50%, transparent));
 }
 
-.cs-toast-corner.tr {
-	top: 3px;
-	right: 3px;
-	border-top: 1.5px solid currentColor;
-	border-right: 1.5px solid currentColor;
+@keyframes cs-ui-spin {
+	to { transform: rotate(360deg); }
+}
+
+.cs-ui-done-icon {
+	width: 18px;
+	height: 18px;
+	color: #22c55e;
+	flex-shrink: 0;
+	filter: drop-shadow(0 0 6px color-mix(in srgb, #22c55e 50%, transparent));
+}
+
+.cs-ui-error-icon {
+	width: 18px;
+	height: 18px;
+	color: #ef4444;
+	flex-shrink: 0;
+	filter: drop-shadow(0 0 6px color-mix(in srgb, #ef4444 50%, transparent));
+}
+
+.cs-ui-info {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.cs-ui-text {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 11px;
+	color: var(--pl-fg);
+	letter-spacing: 0.3px;
+}
+
+.cs-ui-count {
+	font-family: 'JetBrains Mono', ui-monospace, monospace;
 	color: var(--pl-accent);
+	font-size: 11px;
+	font-weight: 600;
 }
 
-.cs-toast-corner.bl {
-	bottom: 3px;
-	left: 3px;
-	border-bottom: 1.5px solid currentColor;
-	border-left: 1.5px solid currentColor;
-	color: var(--pl-accent);
-}
-
-.cs-toast-corner.br {
-	bottom: 3px;
-	right: 3px;
-	border-bottom: 1.5px solid currentColor;
-	border-right: 1.5px solid currentColor;
-	color: var(--pl-accent);
-}
-
-.cs-upload-bar {
+.cs-ui-mini-bar {
 	width: 100%;
-	height: 3px;
-	background: color-mix(in srgb, var(--pl-accent) 15%, transparent);
+	height: 2px;
+	background: color-mix(in srgb, var(--pl-accent) 12%, transparent);
 	overflow: hidden;
 	position: relative;
 }
 
-.cs-upload-bar::before {
-	content: "";
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		color-mix(in srgb, var(--pl-accent) 40%, transparent),
-		transparent
-	);
-	animation: cs-bar-shimmer 1.2s ease-in-out infinite;
-}
-
-@keyframes cs-bar-shimmer {
-	0% { transform: translateX(-100%); }
-	100% { transform: translateX(100%); }
-}
-
-.cs-upload-fill {
-	position: relative;
+.cs-ui-mini-fill {
 	height: 100%;
 	background: linear-gradient(90deg, var(--pl-accent), var(--pl-cold));
 	transition: width 200ms ease;
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 70%, transparent);
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 50%, transparent);
 }
 
-.cs-upload-text {
-	font-size: 12px;
-	color: var(--pl-fg);
-	letter-spacing: 0.5px;
-	font-family: 'JetBrains Mono', ui-monospace, monospace;
+.cs-ui-mini-fill.has-error {
+	background: linear-gradient(90deg, #ef4444, #f97316);
+	box-shadow: 0 0 6px color-mix(in srgb, #ef4444 50%, transparent);
+}
+
+.cs-ui-expand {
+	width: 24px;
+	height: 24px;
+	border: none;
+	background: transparent;
+	color: var(--pl-fg-soft);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	transition: all 160ms ease;
+}
+
+.cs-ui-expand:hover {
+	color: var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
+}
+
+.cs-ui-expand svg {
+	width: 14px;
+	height: 14px;
 }
 
 @media (max-width: 1024px) {
@@ -1011,8 +1122,7 @@ onMounted(async () => {
 	.cs-scanline-top,
 	.cs-scanline-bottom,
 	.cs-title::after,
-	.cs-subtitle::before,
-	.cs-upload-bar::before {
+	.cs-subtitle::before {
 		animation: none !important;
 	}
 }

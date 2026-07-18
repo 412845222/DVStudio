@@ -2048,6 +2048,47 @@ async function main() {
 	mainWindow.webContents.on('did-navigate', (_event, url) => {
 		appendRuntimeLog(`[did-navigate] ${url}`)
 	})
+	mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
+		const url = item.getURL()
+		const mimeType = item.getMimeType() || ''
+		const contentDisposition = item.getContentDisposition()
+		const filename = item.getFilename()
+		appendRuntimeLog(`[will-download] url=${url}, filename=${filename}, mimeType=${mimeType}, contentDisposition=${contentDisposition}`)
+
+		const isExternalUrl = url.startsWith('http://') || url.startsWith('https://')
+		const isFromCloudStorage = url.includes('.aliyuncs.com') || url.includes('.volces.com') || url.includes('.myqcloud.com') || url.includes('.amazonaws.com')
+
+		if (isExternalUrl && !isFromCloudStorage) {
+			appendRuntimeLog(`[will-download] Opening external URL in system browser: ${url}`)
+			event.preventDefault()
+			shell.openExternal(url).catch(err => {
+				appendRuntimeLog(`[will-download] openExternal failed: ${err?.message || err}`)
+			})
+			return
+		}
+
+		if (isFromCloudStorage) {
+			const hasAttachment = /attachment/i.test(contentDisposition)
+			const isInlineableMedia = (
+				mimeType.startsWith('image/') ||
+				mimeType.startsWith('video/') ||
+				mimeType.startsWith('audio/') ||
+				mimeType === 'application/pdf'
+			)
+			if (isInlineableMedia && !hasAttachment) {
+				appendRuntimeLog(`[will-download] Allowing inline cloud media: ${mimeType} ${url}`)
+			}
+		}
+	})
+	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+		appendRuntimeLog(`[window-open] external url: ${url}`)
+		if (url.startsWith('http:') || url.startsWith('https:')) {
+			shell.openExternal(url).catch(err => {
+				appendRuntimeLog(`[window-open] openExternal failed: ${err?.message || err}`)
+			})
+		}
+		return { action: 'deny' }
+	})
 
 	// ready-to-show 时再显示窗口，避免黑屏/白屏闪烁
 	mainWindow.once('ready-to-show', () => {

@@ -66,6 +66,27 @@ export function generateDefaultBucketName() {
   return sanitizeBucketName(`dvstudio-${suffix}`)
 }
 
+export function sanitizeFileName(fileName) {
+  if (!fileName) return 'file'
+  let name = String(fileName)
+    .replace(/[\\/]/g, '_')
+    .replace(/\.\.+/g, '_')
+    .trim()
+  while (name.length > 0 && (name[0] === '.' || name[0] === '_')) {
+    name = name.slice(1)
+  }
+  name = name.trim()
+  return name || 'file'
+}
+
+export function buildObjectKey(prefix, fileName) {
+  const safePrefix = prefix ? prefix.replace(/^\/+|\/+$/g, '') + '/' : ''
+  if (fileName) {
+    return `${safePrefix}${sanitizeFileName(fileName)}`
+  }
+  return generateKey(prefix)
+}
+
 export function isValidHttpsUrl(url) {
   try {
     const u = new URL(url)

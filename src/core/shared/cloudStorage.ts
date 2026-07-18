@@ -16,7 +16,8 @@ export function buildPublicUrlBase(bucketName: string, endpoint: string): string
 export function buildPublicObjectUrl(bucketName: string, endpoint: string, key: string): string {
   const base = buildPublicUrlBase(bucketName, endpoint)
   const safeKey = String(key || '').replace(/^\/+/, '')
-  return `${base}/${safeKey}`
+  const encodedKey = safeKey.split('/').map(encodeURIComponent).join('/')
+  return `${base}/${encodedKey}`
 }
 
 export function formatFileSize(bytes: number): string {

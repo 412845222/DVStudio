@@ -191,7 +191,27 @@
 			</div>
 		</div>
 
-		<div ref="scrollBodyEl" class="cs-file-body">
+		<div
+			ref="scrollBodyEl"
+			class="cs-file-body"
+			:class="{ 'cs-drag-over': isDragOver }"
+			@dragover.prevent="onDragOver"
+			@dragleave.prevent="onDragLeave"
+			@drop.prevent="onDrop"
+		>
+			<div v-if="isDragOver" class="cs-drag-overlay">
+				<div class="cs-do-corners" aria-hidden="true">
+					<span class="cs-doc tl"></span>
+					<span class="cs-doc tr"></span>
+					<span class="cs-doc bl"></span>
+					<span class="cs-doc br"></span>
+				</div>
+				<svg viewBox="0 0 48 48" class="cs-do-icon" aria-hidden="true">
+					<path d="M24 8v20M16 20l8-8 8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+					<path d="M8 34h32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+				</svg>
+				<div class="cs-do-text">{{ t('cloudStorage.fileList.dropToUpload') }}</div>
+			</div>
 			<div v-if="!connected" class="cs-empty-state">
 				<div class="cs-empty-icon-wrap">
 					<svg viewBox="0 0 48 48" class="cs-empty-icon" aria-hidden="true">
@@ -287,8 +307,9 @@
 									<path :d="getFileIconPath(item.name)" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
 								</svg>
 							</div>
-							<div v-if="!item.isFolder" class="cs-tile-overlay">
+							<div class="cs-tile-overlay">
 								<button
+									v-if="!item.isFolder"
 									class="cs-overlay-btn"
 									type="button"
 									:title="t('cloudStorage.fileList.copyUrl')"
@@ -445,6 +466,8 @@ const showNewFolder = ref(false)
 const newFolderName = ref('')
 const creatingFolder = ref(false)
 const imageLoadErrors = ref<Set<string>>(new Set())
+const isDragOver = ref(false)
+let dragCounter = 0
 
 const currentPrefix = computed(() => props.currentPrefix || '')
 
@@ -543,6 +566,38 @@ const onFileSelected = (event: Event) => {
 	const selectedFiles = Array.from(fileList)
 	emit('upload', selectedFiles, currentPrefix.value)
 	input.value = ''
+}
+
+const onDragOver = (e: DragEvent) => {
+	if (!props.bucketName) return
+	e.dataTransfer!.dropEffect = 'copy'
+	dragCounter++
+	if (!isDragOver.value) {
+		isDragOver.value = true
+	}
+}
+
+const onDragLeave = () => {
+	if (!props.bucketName) return
+	dragCounter--
+	if (dragCounter <= 0) {
+		dragCounter = 0
+		isDragOver.value = false
+	}
+}
+
+const onDrop = (e: DragEvent) => {
+	if (!props.bucketName) return
+	dragCounter = 0
+	isDragOver.value = false
+
+	const files = e.dataTransfer?.files
+	if (!files || files.length === 0) return
+
+	const droppedFiles = Array.from(files).filter(f => f.size > 0)
+	if (droppedFiles.length > 0) {
+		emit('upload', droppedFiles, currentPrefix.value)
+	}
 }
 
 const copyUrl = async (item: CloudFileItem) => {
@@ -1234,6 +1289,91 @@ defineExpose({
 	overflow-y: auto;
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(in srgb, var(--pl-accent) 35%, transparent) transparent;
+	position: relative;
+}
+
+.cs-file-body.cs-drag-over {
+	overflow: hidden;
+}
+
+.cs-drag-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 100;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	background: color-mix(in srgb, var(--pl-accent) 8%, rgba(0,0,0,0.85));
+	backdrop-filter: blur(4px);
+	border: 2px dashed color-mix(in srgb, var(--pl-accent) 60%, transparent);
+	pointer-events: none;
+}
+
+.cs-do-corners {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.cs-doc {
+	position: absolute;
+	width: 20px;
+	height: 20px;
+}
+
+.cs-doc.tl {
+	top: 8px;
+	left: 8px;
+	border-top: 2px solid var(--pl-accent);
+	border-left: 2px solid var(--pl-accent);
+	box-shadow: -2px -2px 12px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+}
+
+.cs-doc.tr {
+	top: 8px;
+	right: 8px;
+	border-top: 2px solid var(--pl-accent);
+	border-right: 2px solid var(--pl-accent);
+	box-shadow: 2px -2px 12px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+}
+
+.cs-doc.bl {
+	bottom: 8px;
+	left: 8px;
+	border-bottom: 2px solid var(--pl-accent);
+	border-left: 2px solid var(--pl-accent);
+	box-shadow: -2px 2px 12px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+}
+
+.cs-doc.br {
+	bottom: 8px;
+	right: 8px;
+	border-bottom: 2px solid var(--pl-accent);
+	border-right: 2px solid var(--pl-accent);
+	box-shadow: 2px 2px 12px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+}
+
+.cs-do-icon {
+	width: 64px;
+	height: 64px;
+	color: var(--pl-accent);
+	filter: drop-shadow(0 0 16px color-mix(in srgb, var(--pl-accent) 50%, transparent));
+	animation: cs-do-bounce 1s ease-in-out infinite;
+}
+
+@keyframes cs-do-bounce {
+	0%, 100% { transform: translateY(0); }
+	50% { transform: translateY(-8px); }
+}
+
+.cs-do-text {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--pl-accent);
+	text-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	letter-spacing: 0.5px;
 }
 
 .cs-file-body::-webkit-scrollbar {
@@ -1529,13 +1669,14 @@ defineExpose({
 	position: absolute;
 	inset: 0;
 	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 10px;
+	align-items: flex-end;
+	justify-content: flex-end;
+	gap: 6px;
+	padding: 8px;
 	opacity: 0;
 	transition: opacity 180ms ease;
-	background: color-mix(in srgb, var(--pl-bg-0) 70%, transparent);
-	backdrop-filter: blur(2px);
+	background: linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%);
+	backdrop-filter: blur(1px);
 	pointer-events: none;
 }
 

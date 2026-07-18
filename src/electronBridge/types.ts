@@ -421,6 +421,34 @@ export type CloudTemplatesDeleteResult = {
 	errMsg?: string
 }
 
+export interface CloudStorageProviderRegion {
+	id: string
+	name: string
+	endpoint?: string
+}
+
+export interface CloudStorageCredentialField {
+	key: string
+	label: string
+	type: 'text' | 'password' | 'select' | 'textarea'
+	required: boolean
+	placeholder?: string
+	options?: Array<{ value: string; label: string }>
+}
+
+export interface CloudStorageProviderMeta {
+	id: string
+	name: string
+	description?: string
+	icon?: string
+	website?: string
+	docsUrl?: string
+	keyApplyUrl?: string
+	keyApplyTip?: string
+	regions: CloudStorageProviderRegion[]
+	credentialFields: CloudStorageCredentialField[]
+}
+
 // ==================== ComfyUI Setup Types ====================
 
 export type ComfyInstallMode = 'new' | 'existing'
