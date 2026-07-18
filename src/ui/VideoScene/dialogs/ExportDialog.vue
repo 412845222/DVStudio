@@ -275,20 +275,45 @@ const onOpenOrCopy = async () => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: rgba(0, 0, 0, 0.35);
+	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0,0,0,0.6));
+	backdrop-filter: blur(4px);
 }
 
 .dvs-export-dialog {
 	position: relative;
 	width: 520px;
 	max-width: calc(100vw - 24px);
-	background: var(--dweb-defualt-light);
-	border: 1px solid var(--vscode-border);
-	box-shadow: var(--dweb-shadow);
-	padding: 14px;
-	border-radius: 0;
+	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.4));
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 32%, transparent);
+	box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
+	padding: 16px 18px;
+	border-radius: 4px;
 	box-sizing: border-box;
 	overflow: hidden;
+}
+
+.dvs-export-dialog::before,
+.dvs-export-dialog::after {
+	content: '';
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	border: 1px solid var(--pl-accent);
+	pointer-events: none;
+}
+
+.dvs-export-dialog::before {
+	top: -1px;
+	left: -1px;
+	border-right: none;
+	border-bottom: none;
+}
+
+.dvs-export-dialog::after {
+	bottom: -1px;
+	right: -1px;
+	border-left: none;
+	border-top: none;
 }
 
 .dvs-export-head {
@@ -296,35 +321,53 @@ const onOpenOrCopy = async () => {
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
-	margin-bottom: 10px;
+	margin-bottom: 12px;
 	padding-bottom: 10px;
-	border-bottom: 1px solid var(--vscode-border);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	position: relative;
+}
+
+.dvs-export-head::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: -1px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
 }
 
 .dvs-export-title {
 	font-size: 13px;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
+	letter-spacing: 0.5px;
+	text-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	font-weight: 500;
 }
 
-/* Local button skin: same tone as editor, but no rounded corners */
 .vs-btn {
-	padding: 6px 10px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border-accent);
-	background: transparent;
-	color: var(--vscode-fg);
+	padding: 6px 14px;
+	border-radius: 2px;
+	border: 1px solid var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	color: var(--pl-fg);
 	cursor: pointer;
+	font-size: 12px;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .vs-btn:hover {
-	background: var(--vscode-hover-bg);
+	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .vs-btn:disabled {
-	background: var(--vscode-disabled-bg);
-	color: var(--vscode-disabled-fg);
-	border-color: var(--vscode-border);
+	background: color-mix(in srgb, var(--pl-fg) 4%, transparent);
+	color: color-mix(in srgb, var(--pl-fg) 30%, transparent);
+	border-color: color-mix(in srgb, var(--pl-accent) 15%, transparent);
 	cursor: not-allowed;
+	box-shadow: none;
 }
 
 .dvs-export-close {
@@ -334,16 +377,16 @@ const onOpenOrCopy = async () => {
 	padding: 0;
 	line-height: 26px;
 	text-align: center;
-	font-size: 18px;
+	font-size: 16px;
 }
 
-/* Local label/select skin: remove default white select look */
 .vs-label {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	color: var(--vscode-fg);
+	color: color-mix(in srgb, var(--pl-fg) 80%, transparent);
 	font-size: 12px;
+	letter-spacing: 0.3px;
 }
 
 .vs-select {
@@ -351,32 +394,34 @@ const onOpenOrCopy = async () => {
 	min-width: 0;
 	height: 28px;
 	padding: 0 8px;
-	border-radius: 0;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	color: var(--vscode-fg);
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 5%, transparent);
+	color: var(--pl-fg);
 	outline: none;
 	box-sizing: border-box;
+	font-size: 12px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .vs-select:hover {
-	border-color: var(--vscode-hover-border);
+	border-color: color-mix(in srgb, var(--pl-accent) 55%, transparent);
 }
 
 .vs-select:focus {
-	border-color: var(--dweb-green-main);
-	box-shadow: var(--dweb-shadow);
+	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-select:disabled {
-	background: var(--vscode-disabled-bg);
-	color: var(--vscode-disabled-fg);
+	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
+	color: color-mix(in srgb, var(--pl-fg) 30%, transparent);
 }
 
 .vs-checkbox {
 	width: 16px;
 	height: 16px;
-	accent-color: var(--vscode-accent);
+	accent-color: var(--pl-accent);
 }
 
 .dvs-export-row {
@@ -386,12 +431,12 @@ const onOpenOrCopy = async () => {
 }
 
 .dvs-export-estimate {
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-fg) 60%, transparent);
 	font-size: 12px;
 }
 
 .dvs-export-progress {
-	margin-top: 12px;
+	margin-top: 14px;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
@@ -407,78 +452,84 @@ const onOpenOrCopy = async () => {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	font-size: 12px;
+	letter-spacing: 0.3px;
 }
 
 .dvs-export-progress-pct {
-	color: var(--vscode-fg-muted);
+	color: var(--pl-accent);
+	font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+	text-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 50%, transparent);
 }
 
 .dvs-export-progress-track {
-	height: 10px;
-	background: var(--dweb-defualt-dark);
-	border: 1px solid var(--vscode-border);
-	border-radius: 0;
+	height: 6px;
+	background: color-mix(in srgb, var(--pl-fg) 8%, transparent);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	border-radius: 1px;
 	overflow: hidden;
 }
 
 .dvs-export-progress-bar {
 	height: 100%;
 	transition: width 140ms linear;
-	border-radius: 0;
+	border-radius: 1px;
 }
 
 .dvs-export-progress-bar.is-upload {
-	background: var(--vscode-accent);
-	box-shadow: var(--dweb-shadow);
+	background: linear-gradient(90deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 60%, var(--pl-cold, #3aa8b4)));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .dvs-export-progress-bar.is-encode {
-	background: var(--vscode-accent-light);
-	box-shadow: var(--dweb-shadow);
+	background: linear-gradient(90deg, var(--pl-cold, #3aa8b4), color-mix(in srgb, var(--pl-cold, #3aa8b4) 70%, var(--pl-accent)));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-cold, #3aa8b4) 60%, transparent);
 }
 
 .dvs-export-result {
 	margin-top: 12px;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	font-size: 12px;
-	line-height: 1.4;
+	line-height: 1.5;
+	letter-spacing: 0.3px;
 }
 
 .dvs-export-result-line {
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 }
 
 .dvs-export-error {
-	color: var(--vscode-error);
-	text-shadow: var(--dweb-shadow-red);
+	color: #e06b6b;
+	text-shadow: 0 0 8px rgba(224, 107, 107, 0.4);
 }
 
 .dvs-export-actions {
-	margin-top: 10px;
+	margin-top: 12px;
 }
 
 .dvs-export-path {
 	margin-top: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	padding: 8px;
-	border-radius: 0;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 4%, transparent);
+	padding: 8px 10px;
+	border-radius: 2px;
 }
 
 .dvs-export-path-label {
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-fg) 50%, transparent);
 	font-size: 11px;
 	margin-bottom: 4px;
+	letter-spacing: 0.3px;
 }
 
 .dvs-export-path-value {
 	font-size: 11px;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	max-width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 </style>

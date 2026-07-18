@@ -26,6 +26,9 @@ import type {
 	CloudTemplatesDownloadResult,
 	CloudTemplatesDeletePayload,
 	CloudTemplatesDeleteResult,
+	CloudStorageProviderRegion,
+	CloudStorageCredentialField,
+	CloudStorageProviderMeta,
 	Open3DEditorPayload,
 	Open3DEditorResult,
 	WorkshopTemplatesPlatformResult,
@@ -34,6 +37,10 @@ import type {
 	WorkshopTemplatesDownloadResult,
 	WorkshopTemplatesProgressResult,
 	WorkshopTemplatesInstallInfoResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -193,6 +200,8 @@ declare global {
 				openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }>
 				close(): Promise<{ ok: boolean; error?: string }>
 				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
+				openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult>
+				openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -417,6 +426,15 @@ declare global {
 				offTemplateCenterNotify(listenerId: number): Promise<{ ok: boolean; error?: string }>
 				onTemplateCenterData(handler: (payload: unknown) => void): number
 				offTemplateCenterData(listenerId: number): Promise<{ ok: boolean; error?: string }>
+
+				getImageMarkupInitialData(): Promise<{ imageDataUrl?: string; sourceNodeId?: string; sourceProjectId?: number } | null>
+				exportImageMarkup(payload: {
+					imageDataUrl: string
+					dataUrl: string
+					width: number
+					height: number
+					exportType?: 'markup' | 'screenshot' | 'subject-crop'
+				}): Promise<{ ok: boolean; error?: string }>
 			}
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>
@@ -450,6 +468,29 @@ declare global {
 				download(payload: WorkshopTemplatesDownloadPayload): Promise<WorkshopTemplatesDownloadResult>
 				progress(payload: { publishedFileId: string }): Promise<WorkshopTemplatesProgressResult>
 				installInfo(payload: { publishedFileId: string }): Promise<WorkshopTemplatesInstallInfoResult>
+			}
+			cloudfs: {
+				listProviders(): Promise<{ ok: boolean; providers?: CloudStorageProviderMeta[]; error?: string }>
+				getActiveConfig(): Promise<{ configured: boolean; providerId?: string; providerMeta?: CloudStorageProviderMeta; config?: Record<string, unknown>; lastTestedAt?: string; lastTestOk?: boolean; error?: string }>
+				saveConfig(payload: { providerId: string; config: Record<string, unknown>; lastTestOk?: number }): Promise<{ ok: boolean; error?: string }>
+				clearConfig(): Promise<{ ok: boolean; error?: string }>
+				testConfig(payload: { providerId: string; config: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; message?: string }>
+				validateCredentials(payload: { providerId: string; credentials?: Record<string, unknown>; region?: string; endpoint?: string }): Promise<{ ok: boolean; error?: string; buckets?: Array<{ name: string; creationDate?: string; region?: string }> }>
+				setupBucket(payload: { providerId: string; credentials?: Record<string, unknown>; region?: string; bucketName?: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; bucketName?: string; endpoint?: string; publicUrlBase?: string }>
+				listBuckets(payload?: { providerId?: string; credentials?: Record<string, unknown>; region?: string; endpoint?: string }): Promise<{ ok: boolean; error?: string; buckets?: Array<{ name: string; creationDate?: string; region?: string }> }>
+				createBucket(payload: { bucketName: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; bucketName?: string }>
+				createFolder(payload: { folderPath: string; currentPrefix?: string }): Promise<{ ok: boolean; error?: string; key?: string }>
+				updateBucket(payload: { bucketName?: string; bucketId?: string }): Promise<{ ok: boolean; error?: string; bucket?: any }>
+				listFiles(payload?: { prefix?: string; options?: Record<string, unknown> }): Promise<{ ok: boolean; items?: Array<{ key: string; name: string; isFolder: boolean; size: number; contentType: string; lastModified: number; etag: string; publicUrl: string; thumbnailUrl: string }>; prefixes?: string[]; nextMarker?: string; isTruncated?: boolean; error?: string }>
+				uploadFile(payload: { key?: string; data: ArrayBuffer | Uint8Array; options?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; key?: string; publicUrl?: string; size?: number; etag?: string }>
+				deleteFile(payload: { key: string }): Promise<{ ok: boolean; error?: string }>
+				getPublicUrl(payload: { key: string; expires?: number }): Promise<{ ok: boolean; error?: string; url?: string }>
+				uploadToPublicUrl(payload: { data: ArrayBuffer | Uint8Array; name: string; mimeType: string; prefix?: string }): Promise<{ ok: boolean; error?: string; key?: string; publicUrl?: string; size?: number; etag?: string }>
+				listConfiguredBuckets(): Promise<{ ok: boolean; buckets: any[]; error?: string }>
+				addBucketFromCloud(payload: { bucketName: string; providerId?: string; credentials?: Record<string, unknown>; region?: string; endpoint?: string }): Promise<{ ok: boolean; bucket?: any; alreadyExists?: boolean; error?: string }>
+				removeConfiguredBucket(payload: { bucketId: string }): Promise<{ ok: boolean; error?: string }>
+				switchActiveBucket(payload: { bucketId: string }): Promise<{ ok: boolean; error?: string; bucket?: any }>
+				fixBucketAcl(payload: { bucketId: string }): Promise<{ ok: boolean; error?: string; acl?: string }>
 			}
 			meshy?: any
 			seedance?: any

@@ -60,7 +60,9 @@ export const createRenderableNode = (type: VideoSceneUserNodeType): VideoSceneTr
 					? 'Text'
 					: type === 'image'
 						? 'Image'
-						: 'Line'
+						: type === 'video'
+							? 'Video'
+							: 'Line'
 	)
 	const upgraded = upgradeNodeType(base, type as unknown as NodeType)
 	const tr = upgraded.transform

@@ -185,12 +185,14 @@ onBeforeUnmount(() => {
 	top: 0;
 	right: 0;
 	width: 240px;
-	border-left: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.3)) 100%);
+	backdrop-filter: blur(12px);
 	z-index: 3;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
+	box-shadow: -4px 0 20px rgba(0,0,0,0.4), inset 1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-vsplitter {
@@ -200,10 +202,11 @@ onBeforeUnmount(() => {
 	bottom: 0;
 	width: 6px;
 	cursor: col-resize;
-	background: var(--dweb-defualt);
-	border-right: 1px solid var(--vscode-border);
+	background: color-mix(in srgb, var(--pl-accent) 6%, var(--pl-bg-1));
+	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	user-select: none;
 	z-index: 2;
+	transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .vs-vsplitter::after {
@@ -214,14 +217,22 @@ onBeforeUnmount(() => {
 	width: 2px;
 	height: 28px;
 	transform: translate(-50%, -50%);
-	background: var(--vscode-fg-muted);
+	background: var(--pl-accent);
 	opacity: 0.6;
-	border-radius: 2px;
+	border-radius: 1px;
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .vs-vsplitter:hover::after,
 .vs-vsplitter.dragging::after {
 	opacity: 1;
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 80%, transparent);
+}
+
+.vs-vsplitter:hover,
+.vs-vsplitter.dragging {
+	background: color-mix(in srgb, var(--pl-accent) 12%, var(--pl-bg-1));
+	box-shadow: inset 0 0 12px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .vs-right-top {
@@ -234,11 +245,12 @@ onBeforeUnmount(() => {
 	flex: 0 0 auto;
 	height: 6px;
 	cursor: row-resize;
-	background: var(--dweb-defualt);
-	border-top: 1px solid var(--vscode-border);
-	border-bottom: 1px solid var(--vscode-border);
+	background: color-mix(in srgb, var(--pl-accent) 6%, var(--pl-bg-1));
+	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	position: relative;
 	user-select: none;
+	transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .vs-splitter::after {
@@ -249,20 +261,28 @@ onBeforeUnmount(() => {
 	width: 28px;
 	height: 2px;
 	transform: translate(-50%, -50%);
-	background: var(--vscode-fg-muted);
+	background: var(--pl-accent);
 	opacity: 0.6;
-	border-radius: 2px;
+	border-radius: 1px;
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .vs-splitter:hover::after,
 .vs-splitter.dragging::after {
 	opacity: 1;
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 80%, transparent);
+}
+
+.vs-splitter:hover,
+.vs-splitter.dragging {
+	background: color-mix(in srgb, var(--pl-accent) 12%, var(--pl-bg-1));
+	box-shadow: inset 0 0 12px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .vs-right-bottom {
 	flex: 0 0 auto;
-	border-top: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
+	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-0) 50%, transparent);
 	min-height: 0;
 	overflow: auto;
 }

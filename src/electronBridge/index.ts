@@ -17,6 +17,10 @@ import type {
 	UploadedProjectAsset,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 	CloudTemplatesPlatformResult,
 	CloudTemplatesQuotaResult,
 	CloudTemplatesListResult,
@@ -31,7 +35,9 @@ import type {
 	WorkshopTemplatesDownloadPayload,
 	WorkshopTemplatesDownloadResult,
 	WorkshopTemplatesProgressResult,
-	WorkshopTemplatesInstallInfoResult
+	WorkshopTemplatesInstallInfoResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -567,6 +573,30 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
+export async function openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult> {
+	if (!window?.dweb?.window?.openVideoEditor) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openVideoEditor(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult> {
+	if (!window?.dweb?.window?.openComfySetup) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openComfySetup(payload || {})
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
 export async function getCloudTemplatesPlatform(): Promise<CloudTemplatesPlatformResult | null> {
 	if (!window?.dweb?.cloudTemplates?.getPlatform) return null
 	try {
@@ -680,5 +710,7 @@ export async function getWorkshopTemplatesInstallInfo(
 
 export type {
 	Open3DEditorPayload,
-	Open3DEditorResult
+	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult
 }

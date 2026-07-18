@@ -748,21 +748,37 @@
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.videoMode') }}</span>
-					<div class="bp-node-chat-param-options">
-						<button
-							v-for="opt in videoModeOptions"
-							:key="opt.value"
-							type="button"
-							class="bp-node-chat-param-btn"
-							:class="{ 'is-active': params.mode === opt.value }"
-							:disabled="disabled"
-							@click="updateParam('mode', opt.value)"
-						>
-							{{ translateOpt(opt) }}
-						</button>
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.videoMode') }}</span>
+						<div class="bp-node-chat-param-options">
+							<button
+								v-for="opt in videoModeOptions"
+								:key="opt.value"
+								type="button"
+								class="bp-node-chat-param-btn"
+								:class="{ 'is-active': params.mode === opt.value }"
+								:disabled="disabled"
+								@click="updateParam('mode', opt.value)"
+							>
+								{{ translateOpt(opt) }}
+							</button>
+						</div>
 					</div>
-				</div>
+					<div v-if="videoConnectedMedia.length > 0" class="bp-node-chat-param-row">
+						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.referenceAssets') }}</span>
+						<div class="bp-node-chat-param-thumb-list">
+							<div
+								v-for="media in videoConnectedMedia"
+								:key="media.nodeId"
+								class="bp-node-chat-param-thumb-item"
+							>
+								<div class="bp-node-chat-param-thumb" :class="{ 'is-video': media.kind === 'video' }">
+									<img :src="media.thumb || media.url" :alt="media.name" />
+									<span v-if="media.kind === 'video'" class="bp-node-chat-param-thumb-video-badge">🎬</span>
+								</div>
+								<span class="bp-node-chat-param-thumb-label">{{ media.name }}</span>
+							</div>
+						</div>
+					</div>
 				<div class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}</span>
 					<div class="bp-node-chat-param-options">
@@ -852,6 +868,28 @@
 							/>
 							<span>{{ t('aichat.nodeChatParams.returnLastFrame') }}</span>
 						</label>
+						<label v-if="params.model === 'seedance'" class="bp-node-chat-param-toggle">
+							<input
+								type="checkbox"
+								:checked="params.enableWebSearch"
+								:disabled="disabled"
+								@change="updateParam('enableWebSearch', ($event.target as HTMLInputElement).checked)"
+							/>
+							<span>{{ t('aichat.nodeChatParams.webSearch') }}</span>
+						</label>
+						<div v-if="params.model === 'seedance'" class="bp-node-chat-param-seed">
+							<label>{{ t('aichat.nodeChatParams.priority') }}</label>
+							<input
+								type="number"
+								:value="params.priority"
+								min="0"
+								max="9"
+								:disabled="disabled"
+								@input="
+									updateParam('priority', Math.min(9, Math.max(0, parseInt(($event.target as HTMLInputElement).value) || 0)))
+								"
+							/>
+						</div>
 						<div class="bp-node-chat-param-seed">
 							<label>{{ t('aichat.nodeChatParams.seed') }}</label>
 							<input
@@ -2555,6 +2593,28 @@ const tripo3dConnectedImages = computed<ConnectedImageInfo[]>(() => {
 	return results
 })
 
+const videoConnectedMedia = computed<Array<{ url: string; thumb: string; name: string; nodeId: string; kind: 'image' | 'video' | 'audio' }>>(() => {
+	if (props.nodeType !== 'video') return []
+	const refs = props.inputParamPreviewRefs ?? []
+	const results: Array<{ url: string; thumb: string; name: string; nodeId: string; kind: 'image' | 'video' | 'audio' }> = []
+	const seenNodeIds = new Set<string>()
+	for (const ref of refs) {
+		if (ref.kind !== 'image' && ref.kind !== 'video' && ref.kind !== 'audio') continue
+		const url = ref.previewUrl || ''
+		const fromNodeId = ref.fromNodeId || ''
+		if (!url || !fromNodeId || seenNodeIds.has(fromNodeId)) continue
+		seenNodeIds.add(fromNodeId)
+		results.push({
+			url,
+			thumb: url,
+			name: ref.label || ref.name || t('aichat.nodeChatParams.mediaFallback', { n: results.length + 1 }),
+			nodeId: fromNodeId,
+			kind: ref.kind as 'image' | 'video' | 'audio'
+		})
+	}
+	return results
+})
+
 const tripo3dCurrentTaskMode = computed<WorkflowTripo3DMode>(() => {
 	return (props.params.tripo3dTaskMode as WorkflowTripo3DMode) || 'image_to_model'
 })
@@ -3600,5 +3660,36 @@ const updateTripo3DParam = (key: string, value: unknown) => {
 
 .bp-node-chat-param-thumb {
 	position: relative;
+}
+
+.bp-node-chat-param-thumb-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+}
+
+.bp-node-chat-param-thumb.is-video {
+	border-color: color-mix(in srgb, #22c55e 50%, transparent);
+}
+
+.bp-node-chat-param-thumb-video-badge {
+	position: absolute;
+	bottom: 2px;
+	right: 2px;
+	font-size: 12px;
+	background: rgba(0, 0, 0, 0.6);
+	padding: 1px 3px;
+	border-radius: 2px;
+}
+
+.bp-node-chat-param-thumb-label {
+	font-size: 10px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 60%, transparent);
+	max-width: 52px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: center;
 }
 </style>

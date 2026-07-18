@@ -48,9 +48,29 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/Model3DEditorPage.vue')
 	},
 	{
+		path: '/video-editor',
+		name: 'VideoEditor',
+		component: () => import('../views/VideoEditorPage.vue')
+	},
+	{
 		path: '/template-center',
 		name: 'TemplateCenter',
 		component: () => import('../views/AIWorkflow/TemplateCenterWindow.vue')
+	},
+	{
+		path: '/cloud-storage',
+		name: 'CloudStorage',
+		component: () => import('../views/CloudStorage/CloudStoragePage.vue')
+	},
+	{
+		path: '/comfyui-setup',
+		name: 'ComfyUISetup',
+		component: () => import('../views/ComfyUISetupPage.vue')
+	},
+	{
+		path: '/services',
+		name: 'ServiceCenter',
+		component: () => import('../views/ServiceCenterPage.vue')
 	}
 ]
 

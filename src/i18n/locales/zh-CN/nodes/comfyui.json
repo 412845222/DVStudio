@@ -76,5 +76,10 @@
   "nodes.comfyui.jobGoneRunnable": "任务已不存在，已重置为可运行状态。",
   "nodes.comfyui.cancelFailed": "取消失败：ComfyUI 状态未知，已停止轮询。",
   "nodes.comfyui.taskInvalidated": "检测到任务已失效（可能后端已重启）",
-  "nodes.comfyui.taskNotFoundReset": "检测到任务不存在，已重置。"
+  "nodes.comfyui.taskNotFoundReset": "检测到任务不存在，已重置。",
+  "nodes.comfyui.getObjectInfoFailed": "获取节点信息失败：{error}",
+  "nodes.comfyui.nodeCount": "节点数：{count}",
+  "nodes.comfyui.systemInfo": "系统信息",
+  "nodes.comfyui.availableCheckpoints": "可用模型：{count}",
+  "nodes.comfyui.connectedInfo": "已连接 - {version}"
 }

@@ -1,5 +1,12 @@
 {
   "resources.panel.title": "资源管理器",
+  "resources.panel.localStorage": "本地资源",
+  "resources.panel.local": "本地",
+  "resources.panel.cloudStorage": "云端存储",
+  "resources.panel.cloud": "云端",
+  "resources.panel.cloudNotConfigured": "云端存储未配置",
+  "resources.panel.cloudSetupDesc": "配置云端存储后，可以从云端直接访问和管理资源文件",
+  "resources.panel.goToCloudSettings": "前往云存储设置",
   "resources.panel.gridViewTitle": "网格视图（大缩略图）",
   "resources.panel.listViewTitle": "列表视图（详细信息）",
   "resources.panel.thumbSizeSmall": "缩略图：小",

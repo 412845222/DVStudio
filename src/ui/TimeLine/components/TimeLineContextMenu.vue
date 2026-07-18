@@ -155,42 +155,47 @@ onBeforeUnmount(() => {
 	position: fixed;
 	z-index: 9999;
 	min-width: 160px;
-	padding: 6px;
-	border: 1px solid var(--vscode-border);
-	border-radius: 8px;
-	background: var(--dweb-defualt);
-	box-shadow: var(--vscode-shadow);
+	padding: 4px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0,0,0,0.55));
+	backdrop-filter: blur(12px);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 12%, transparent), 0 8px 24px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--pl-accent) 14%, transparent);
 }
 
 .tl-menu-item {
 	width: 100%;
 	height: 28px;
-	padding: 0 10px;
+	padding: 0 12px;
 	border: 0;
-	border-radius: 6px;
+	border-radius: 2px;
 	background: transparent;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	font-size: 12px;
 	text-align: left;
 	cursor: pointer;
+	transition: background 0.12s ease, color 0.12s ease;
 }
 
 .tl-menu-item:hover {
-	background: var(--vscode-hover-bg);
+	background: color-mix(in srgb, var(--pl-accent) 12%, var(--pl-bg-1));
+	color: var(--pl-fg);
+	box-shadow: inset 2px 0 0 var(--pl-accent);
 }
 
 .tl-menu-item:disabled {
-	opacity: 0.5;
+	opacity: 0.35;
 	cursor: not-allowed;
 }
 
 .tl-menu-item:disabled:hover {
 	background: transparent;
+	box-shadow: none;
 }
 
 .tl-menu-sep {
 	height: 1px;
-	margin: 6px 4px;
-	background: var(--vscode-divider);
+	margin: 4px 6px;
+	background: color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 </style>

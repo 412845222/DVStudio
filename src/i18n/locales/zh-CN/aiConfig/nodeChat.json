@@ -23,6 +23,7 @@
   "aiConfig.videoMode.imageToVideo": "首帧图生",
   "aiConfig.videoMode.firstLast": "首尾帧",
   "aiConfig.videoMode.reference": "多模态参考",
+  "aiConfig.videoMode.videoEdit": "视频编辑",
   "aiConfig.videoDuration.auto": "自动",
   "aiConfig.videoDuration.seconds": "{n}秒",
   "aiConfig.meshyMode.textTo3d": "文生3D",

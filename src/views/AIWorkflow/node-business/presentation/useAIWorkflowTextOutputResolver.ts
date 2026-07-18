@@ -7,7 +7,7 @@ export type InputParamPreviewRef = {
 	fromNodeId?: string
 	fromAnchorId?: string
 	toAnchorId?: string
-	kind: 'text' | 'image' | 'video' | 'model3d'
+	kind: 'text' | 'image' | 'video' | 'model3d' | 'audio'
 	name?: string
 	label?: string
 	text?: string

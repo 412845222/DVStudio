@@ -153,4 +153,54 @@ describe('nodePositionUtils / findNextNodePositionFromSource', () => {
 		expect(result.worldX).toBe(100 + NODE_SPACING_X)
 		expect(result.worldY).toBe(200)
 	})
+
+	it('simulates sequential bulk export: each new node is placed to the right of the previous one', () => {
+		const sourceNode = createNode('source', 100, 200)
+		const state: { nodesById: Record<string, WorkflowNode>; edgesById: Record<string, WorkflowEdge> } = {
+			nodesById: { 'source': sourceNode },
+			edgesById: {}
+		}
+
+		const positions: Array<{ x: number; y: number }> = []
+		for (let i = 0; i < 5; i++) {
+			const pos = findNextNodePositionFromSource('source', state)
+			positions.push({ x: pos.worldX, y: pos.worldY })
+			const newId = `exported-${i}`
+			state.nodesById[newId] = createNode(newId, pos.worldX, pos.worldY)
+			state.edgesById[`edge-${i}`] = createEdge(`edge-${i}`, 'source', newId)
+		}
+
+		for (let i = 1; i < positions.length; i++) {
+			expect(positions[i].x).toBeGreaterThan(positions[i - 1].x)
+		}
+
+		for (let i = 0; i < positions.length; i++) {
+			expect(positions[i].x).toBeGreaterThan(100)
+		}
+
+		const uniqueX = new Set(positions.map(p => p.x))
+		expect(uniqueX.size).toBe(positions.length)
+	})
+
+	it('sequential bulk export does not produce overlapping node positions', () => {
+		const sourceNode = createNode('source', 100, 200)
+		const state: { nodesById: Record<string, WorkflowNode>; edgesById: Record<string, WorkflowEdge> } = {
+			nodesById: { 'source': sourceNode },
+			edgesById: {}
+		}
+
+		const placed: Array<{ x: number; y: number }> = []
+		for (let i = 0; i < 4; i++) {
+			const pos = findNextNodePositionFromSource('source', state)
+			for (const existing of placed) {
+				const dx = Math.abs(pos.worldX - existing.x)
+				const dy = Math.abs(pos.worldY - existing.y)
+				expect(dx >= NODE_SPACING_X || dy >= NODE_SPACING_Y).toBe(true)
+			}
+			placed.push({ x: pos.worldX, y: pos.worldY })
+			const newId = `exp-${i}`
+			state.nodesById[newId] = createNode(newId, pos.worldX, pos.worldY)
+			state.edgesById[`e-${i}`] = createEdge(`e-${i}`, 'source', newId)
+		}
+	})
 })

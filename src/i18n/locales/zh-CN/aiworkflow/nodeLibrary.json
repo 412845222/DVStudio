@@ -9,6 +9,8 @@
   "aiworkflow.nodeLibrary.categories.audio.description": "音频资源创建、上传和预览节点。",
   "aiworkflow.nodeLibrary.categories.model3d.label": "3D",
   "aiworkflow.nodeLibrary.categories.model3d.description": "3D生成、重拓扑、DCC工具和运行时集成节点。",
+  "aiworkflow.nodeLibrary.categories.plugin.label": "插件",
+  "aiworkflow.nodeLibrary.categories.plugin.description": "第三方平台集成节点，如ComfyUI。",
 
   "aiworkflow.nodeLibrary.topCategories.inputs.label": "基础",
   "aiworkflow.nodeLibrary.topCategories.inputs.description": "文本输入、画布、便签和基础工作流节点。",
@@ -56,7 +58,7 @@
   "aiworkflow.nodeLibrary.nodes.scene-decompose.searchAliases": ["场景拆解", "decompose"],
 
   "aiworkflow.nodeLibrary.nodes.comfyui.label": "ComfyUI节点",
-  "aiworkflow.nodeLibrary.nodes.comfyui.description": "集成 ComfyUI 工作流进行高级图像生成和处理。",
+  "aiworkflow.nodeLibrary.nodes.comfyui.description": "集成 ComfyUI 工作流进行高级图像和视频生成处理，支持本地ComfyUI服务。",
   "aiworkflow.nodeLibrary.nodes.comfyui.searchAliases": ["ComfyUI", "工作流"],
 
   "aiworkflow.nodeLibrary.nodes.model3d.label": "3D模型节点",

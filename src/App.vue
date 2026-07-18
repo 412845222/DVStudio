@@ -6,7 +6,9 @@
 			'is-preview-window': isPreviewWindow,
 			'is-resource-manager-window': isResourceManagerWindow,
 			'is-template-center-window': isTemplateCenterWindow,
-			'is-3d-editor-window': is3DEditorWindow
+			'is-3d-editor-window': is3DEditorWindow,
+			'is-video-editor-window': isVideoEditorWindow,
+			'is-comfyui-setup-window': isComfyUISetupWindow
 		}"
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
@@ -93,7 +95,7 @@ const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/template-center')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/video-editor') || path.startsWith('/template-center') || path.startsWith('/comfyui-setup')
 })
 
 const isResourceManagerWindow = computed(() => {
@@ -112,6 +114,14 @@ const is3DEditorWindow = computed(() => {
 	return String(route.path || '').startsWith('/3d-editor')
 })
 
+const isVideoEditorWindow = computed(() => {
+	return String(route.path || '').startsWith('/video-editor')
+})
+
+const isComfyUISetupWindow = computed(() => {
+	return String(route.path || '').startsWith('/comfyui-setup')
+})
+
 const dialogTitle = computed(() => {
 	const query = route.query as Record<string, string>
 	if (isResourceManagerWindow.value) {
@@ -123,8 +133,14 @@ const dialogTitle = computed(() => {
 	if (is3DEditorWindow.value) {
 		return String(query.title || '3D 模型编辑器')
 	}
+	if (isVideoEditorWindow.value) {
+		return String(query.title || '视频编辑器')
+	}
 	if (isTemplateCenterWindow.value) {
 		return String(query.title || '模板中心')
+	}
+	if (isComfyUISetupWindow.value) {
+		return String(query.title || 'ComfyUI 环境设置')
 	}
 	return ''
 })
@@ -133,6 +149,7 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 	const path = String(route.path || '')
 	const name = String((route.name as string) || '')
 	if (name === 'ProjectList' || path.startsWith('/projects')) return 'project-list'
+	if (name === 'ServiceCenter' || path.startsWith('/services')) return 'project-list'
 	if (name === 'AIWorkflow' || path.startsWith('/aiworkflow') || path.startsWith('/blueprint'))
 		return 'workflow'
 	if (name === 'VideoStudio' || path.startsWith('/video-studio') || path.startsWith('/studio'))

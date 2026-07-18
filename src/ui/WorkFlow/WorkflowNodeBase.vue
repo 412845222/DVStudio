@@ -1351,6 +1351,22 @@ onBeforeUnmount(() => {
 	padding: 0;
 }
 
+.wf-node.wf-node-comfyui .wf-node-body {
+	overflow: visible;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 0 0 auto;
+	min-height: auto;
+	padding: 8px;
+}
+
+.wf-node.wf-node-comfyui .wf-node-footer {
+	overflow: visible;
+	flex-shrink: 0;
+	padding: 4px 8px 8px;
+}
+
 .wf-node.wf-node-text .wf-text,
 .wf-node.wf-node-text-merge .wf-merge {
 	width: 100%;

@@ -50,7 +50,8 @@ export type {
 	VideoSceneRenderStep,
 	VideoSceneState,
 	VideoSceneTreeNode,
-	VideoSceneUserNodeType
+	VideoSceneUserNodeType,
+	VideoSceneVideoAsset
 } from '../../core/scene'
 
 const clampPx = (v: unknown, fallback: number) => {
@@ -118,6 +119,25 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const id = String(payload.id || '').trim()
 			if (!id) return
 			delete state.imageAssets[id]
+		},
+		upsertVideoAsset(state, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+			const id = String(payload.id || '').trim()
+			const url = String(payload.url || '').trim()
+			if (!id || !url) return
+			state.videoAssets[id] = {
+				id,
+				url,
+				name: String(payload.name ?? ''),
+				videoWidth: payload.videoWidth,
+				videoHeight: payload.videoHeight,
+				duration: payload.duration,
+				createdAt: Date.now()
+			}
+		},
+		removeVideoAsset(state, payload: { id: string }) {
+			const id = String(payload.id || '').trim()
+			if (!id) return
+			delete state.videoAssets[id]
 		},
 		toggleSizePanel(state) {
 			state.showSizePanel = !state.showSizePanel
@@ -466,6 +486,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		},
 		removeImageAsset({ commit }, payload: { id: string }) {
 			commit('removeImageAsset', payload)
+		},
+		upsertVideoAsset({ commit }, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+			commit('upsertVideoAsset', payload)
+		},
+		removeVideoAsset({ commit }, payload: { id: string }) {
+			commit('removeVideoAsset', payload)
 		},
 		toggleSizePanel({ commit }) {
 			commit('toggleSizePanel')

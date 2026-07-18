@@ -32,5 +32,6 @@ export const createDefaultVideoSceneState = (): VideoSceneState => ({
 	selectedNodeIds: [],
 	focusedNodeId: null,
 	layoutInsets: { leftPanelWidth: 0, rightPanelWidth: 240, bottomToolbarHeight: 40 },
-	imageAssets: {}
+	imageAssets: {},
+	videoAssets: {}
 })

@@ -26,6 +26,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				imageUrl?: string
 				imageDataUrl?: string
 				imageInputs?: SceneUnderstandImageInput[]
+				sceneType?: 'auto' | 'indoor' | 'outdoor'
 			},
 			signal?: AbortSignal
 		) => AsyncIterable<SceneUnderstandStreamEvent>
@@ -192,6 +193,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		clearSceneUnderstandDraftSchedule(nodeId)
 		sceneUnderstandDraftBuffers.delete(nodeId)
 		sceneUnderstandReasoningBuffers.delete(nodeId)
+		const currentSettings = getNodeSceneUnderstandingSettings(nodeId)
+		const currentSceneType = (currentSettings?.sceneType as 'auto' | 'indoor' | 'outdoor') || 'auto'
 		options.store.commit('setNodeSceneUnderstandingSettings', {
 			nodeId,
 			sceneUnderstandingSettings: {
@@ -206,6 +209,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				rawOutput: '',
 				resultSummary: '',
 				reasoningText: '',
+				sceneType: currentSceneType,
+				detectedSceneType: undefined,
+				sceneTypeConfidence: undefined,
 				rewriteUsed: false,
 				rewriteAttempts: 0,
 				mock: false
@@ -359,6 +365,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		const model = String(
 			typeof settings?.selectedModel === 'string' ? settings.selectedModel : ''
 		).trim()
+		const sceneType: 'auto' | 'indoor' | 'outdoor' =
+			settings?.sceneType === 'indoor' || settings?.sceneType === 'outdoor'
+				? settings.sceneType
+				: 'auto'
 		if (!imageUrl) {
 			options.pushToast(
 				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLightingMissingImage' : 'aiworkflow.runtime.understandingMissingImage'),
@@ -438,6 +448,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				model,
 				promptText,
 				...(mode === 'scene-lighting' ? { layoutJson } : {}),
+				...(mode === 'scene-layout' ? { sceneType } : {}),
 				...(firstImage?.imageDataUrl ? { imageDataUrl: firstImage.imageDataUrl } : {}),
 				...(firstImage?.imageUrl ? { imageUrl: firstImage.imageUrl } : {}),
 				imageInputs: normalizedImageInputs
@@ -600,6 +611,22 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						const contentStr = typeof payloadRaw.content === 'string' ? payloadRaw.content : '{}'
 						const payloadResult = JSON.parse(contentStr) as Record<string, unknown>
 						const isMock = payloadResult.mock === true
+						let parsedSceneType: 'indoor' | 'outdoor' | 'semi-outdoor' | undefined
+						let sceneConfidence: number | undefined
+						const outputJsonStr = typeof payloadResult.outputJson === 'string' ? payloadResult.outputJson : ''
+						if (outputJsonStr) {
+							try {
+								const parsedJson = JSON.parse(outputJsonStr) as Record<string, unknown>
+								const st = typeof parsedJson.sceneType === 'string' ? parsedJson.sceneType : ''
+								if (st === 'indoor' || st === 'outdoor' || st === 'semi-outdoor') {
+									parsedSceneType = st
+								}
+								const conf = Number(parsedJson.sceneTypeConfidence)
+								if (Number.isFinite(conf) && conf >= 0 && conf <= 1) {
+									sceneConfidence = conf
+								}
+							} catch {}
+						}
 						options.store.commit('setNodeSceneUnderstandingSettings', {
 							nodeId,
 							sceneUnderstandingSettings: {
@@ -613,8 +640,7 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 										? payloadResult.providerStatusText
 										: t('aiworkflow.runtime.understandingResultReady'),
 								progress: 100,
-								outputJson:
-									typeof payloadResult.outputJson === 'string' ? payloadResult.outputJson : '',
+								outputJson: outputJsonStr,
 								rawOutput:
 									typeof payloadResult.rawOutput === 'string' ? payloadResult.rawOutput : '',
 								resultSummary:
@@ -635,6 +661,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 								rewriteAttempts: Number.isFinite(Number(payloadResult.rewriteAttempts))
 									? Number(payloadResult.rewriteAttempts)
 									: 0,
+								detectedSceneType: parsedSceneType,
+								sceneTypeConfidence: sceneConfidence,
 								mock: isMock
 							}
 						})

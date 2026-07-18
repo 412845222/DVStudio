@@ -195,7 +195,10 @@ const singleIOAnchorsForNodeType = (
 	}
 	if (type === 'image') {
 		return {
-			inputs: [{ id: 'in-0', label: '图片输入', multiInput: true }],
+			inputs: [
+				{ id: 'in-text', label: '提示词输入', mediaType: 'text' },
+				{ id: 'in-0', label: '图片输入', multiInput: true, mediaType: 'image' }
+			],
 			outputs: [{ id: 'out-0', label: '图片输出', mediaType: 'image' }]
 		}
 	}
@@ -432,6 +435,17 @@ const normalizeSceneUnderstandingSettings = (
 		: undefined
 	return {
 		mode: raw.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
+		sceneType:
+			raw.sceneType === 'indoor' || raw.sceneType === 'outdoor' ? raw.sceneType : 'auto',
+		detectedSceneType:
+			raw.detectedSceneType === 'indoor' ||
+			raw.detectedSceneType === 'outdoor' ||
+			raw.detectedSceneType === 'semi-outdoor'
+				? raw.detectedSceneType
+				: undefined,
+		sceneTypeConfidence: Number.isFinite(Number(raw.sceneTypeConfidence))
+			? Number(raw.sceneTypeConfidence)
+			: undefined,
 		selectedModel: isString(raw.selectedModel) ? raw.selectedModel : undefined,
 		availableModels,
 		status:
@@ -2613,7 +2627,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					resultSummary: '',
 					rewriteUsed: false,
 					rewriteAttempts: 0,
-					mock: false
+					mock: false,
+					sceneType: 'auto'
 				}
 				syncSceneUnderstandAnchors(n)
 			}
@@ -3133,7 +3148,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const imageGenerationSource =
 				next.imageGenerationSource === 'upload' ||
 				next.imageGenerationSource === 'comfyui' ||
-				next.imageGenerationSource === 'meshy'
+				next.imageGenerationSource === 'meshy' ||
+				next.imageGenerationSource === 'gemini' ||
+				next.imageGenerationSource === 'tripo3d'
 					? next.imageGenerationSource
 					: undefined
 
