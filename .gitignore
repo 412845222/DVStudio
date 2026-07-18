@@ -134,6 +134,7 @@ html/
 DwebSteamJS/
 DwebSteamJS/build/
 SteamworksSDK/
+SteamCMD/
 steam_appid.txt
 
 # Steam native modules (deployed by setup-steam-native.mjs, not tracked)

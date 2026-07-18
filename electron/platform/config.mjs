@@ -69,9 +69,62 @@ function readSteamAppIdTxt() {
 }
 
 export function getSteamConfig() {
+	console.log('[platform:config] === Starting Steam configuration lookup ===')
+	console.log('[platform:config] isPackaged:', app.isPackaged)
+	console.log('[platform:config] process.cwd():', process.cwd())
+	console.log('[platform:config] process.execPath:', process.execPath)
+	console.log('[platform:config] SteamAppId env:', process.env.SteamAppId || '(not set)')
+	console.log('[platform:config] STEAM_APP_ID env:', process.env.STEAM_APP_ID || '(not set)')
+
+	const projectConfigCandidates = [
+		path.resolve(__dirname, '..', 'steam.config.json'),
+	]
+	if (!app.isPackaged) {
+		projectConfigCandidates.push(path.resolve(__dirname, '..', '..', 'steam.config.json'))
+	}
+	if (app.isReady()) {
+		projectConfigCandidates.push(path.join(path.dirname(process.execPath), 'steam.config.json'))
+	}
+	console.log('[platform:config] Project config candidates:')
+	for (const p of projectConfigCandidates) {
+		const exists = fs.existsSync(p)
+		console.log(`[platform:config]   - ${p} (exists: ${exists})`)
+	}
+
 	const projectConfig = readProjectConfig()
+	console.log('[platform:config] Project config loaded:', projectConfig ? JSON.stringify(projectConfig) : '(none)')
+
+	let userDataPath = '(app not ready)'
+	try {
+		if (app.isReady()) {
+			userDataPath = app.getPath('userData')
+		}
+	} catch {}
+	console.log('[platform:config] userData path:', userDataPath)
 	const userConfig = readUserDataConfig()
+	console.log('[platform:config] User config loaded:', userConfig ? JSON.stringify(userConfig) : '(none)')
+
+	const txtCandidates = [
+		path.join(process.cwd(), 'steam_appid.txt'),
+	]
+	if (!app.isPackaged) {
+		const nativeWin32Dir = path.join(__dirname, 'native', 'win32')
+		txtCandidates.push(path.join(nativeWin32Dir, 'steam_appid.txt'))
+	}
+	if (app.isReady()) {
+		txtCandidates.push(path.join(path.dirname(process.execPath), 'steam_appid.txt'))
+	}
+	console.log('[platform:config] steam_appid.txt candidates:')
+	for (const p of txtCandidates) {
+		const exists = fs.existsSync(p)
+		let content = ''
+		if (exists) {
+			try { content = fs.readFileSync(p, 'utf8').trim() } catch {}
+		}
+		console.log(`[platform:config]   - ${p} (exists: ${exists}, content: ${content || '(empty)'})`)
+	}
 	const txtAppId = readSteamAppIdTxt()
+	console.log('[platform:config] steam_appid.txt AppID:', txtAppId || '(none)')
 
 	let appId = 0
 	let configSource = 'disabled (no config found)'
@@ -101,14 +154,13 @@ export function getSteamConfig() {
 
 	const config = {
 		appId,
-		webApiKey: userConfig?.webApiKey || projectConfig?.webApiKey || process.env.STEAM_WEB_API_KEY || '',
 		environment: userConfig?.environment || projectConfig?.environment || 'production',
 	}
 
 	if (appId > 0) {
-		console.log(`[platform:config] Steam AppID: ${appId} (source: ${configSource})`)
+		console.log(`[platform:config] === Steam AppID: ${appId} (source: ${configSource}) ===`)
 	} else {
-		console.log('[platform:config] Steam integration disabled (no valid AppID configured)')
+		console.log('[platform:config] === Steam integration disabled (no valid AppID configured) ===')
 	}
 	return config
 }

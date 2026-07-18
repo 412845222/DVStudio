@@ -1149,9 +1149,10 @@ function registerIpc() {
 		return r
 	})
 
-	ipcMain.handle('dweb:aiworkflow:selectProjectFolder', async () => {
-		if (!mainWindow) return { canceled: true, filePaths: [] }
-		return dialog.showOpenDialog(mainWindow, {
+	ipcMain.handle('dweb:aiworkflow:selectProjectFolder', async (event) => {
+		const parentWindow = event.sender.getOwnerBrowserWindow() || mainWindow
+		if (!parentWindow) return { canceled: true, filePaths: [] }
+		return dialog.showOpenDialog(parentWindow, {
 			properties: ['openDirectory', 'createDirectory'],
 		})
 	})
@@ -1924,10 +1925,17 @@ function registerIpc() {
 
 			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[template-center:${level}] ${message} (${sourceId}:${line})`)
+				const logLine = `[template-center:${level}] ${message} (${sourceId}:${line})`
+				appendRuntimeLog(logLine)
+				const levelStr = ['verbose', 'info', 'warning', 'error'][level] || 'info'
+				if (level === 2) console.warn(logLine)
+				else if (level === 3) console.error(logLine)
+				else console.log(logLine)
 			})
 			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+				const failLine = `[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+				appendRuntimeLog(failLine)
+				console.error(failLine)
 			})
 			templateCenterWindow.on('closed', () => {
 				templateCenterWindow = null
@@ -1935,6 +1943,9 @@ function registerIpc() {
 
 			await templateCenterWindow.loadURL(targetUrl)
 			console.log('[main][template-center] loadURL done, URL:', templateCenterWindow.webContents.getURL())
+			if (isDev) {
+				templateCenterWindow.webContents.openDevTools({ mode: 'detach' })
+			}
 			return { ok: true, focused: false }
 		} catch (err) {
 			console.error('[main][template-center] open failed', err)

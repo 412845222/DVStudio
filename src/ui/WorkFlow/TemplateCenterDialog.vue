@@ -250,7 +250,7 @@
 								:selected="selectedTemplate?.id === template.id"
 								:size="cardSize"
 								:uploading="uploadingTemplateId === template.id"
-								:downloading="downloadingTemplateId === template.id"
+								:downloading="(cloudDownloadingId === template.id) || (workshopDownloadingId === template.id)"
 								@select="selectTemplate"
 								@preview="handlePreview"
 								@apply="handleApply"
@@ -273,7 +273,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import TemplateCard from './TemplateCard.vue'
 import TemplateApplyDialog from './TemplateApplyDialog.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
@@ -282,6 +282,9 @@ import { buildSquareParticles } from '../../composables/useSquareParticles'
 import type { TemplateItem, SaveTemplateOptions, TemplateSource, TemplateApplyOptions } from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
 import { toastSuccess, toastError, toastInfo, confirmDelete } from '../UIComponent/useGlobalFeedback'
+import { usePlatform } from '../../platformBridge/usePlatform'
+
+console.log('[TemplateCenterDialog] Component script setup executing, workshopTemplates API available:', !!window?.dweb?.workshopTemplates)
 
 type TabId = 'user' | 'cloud' | 'workshop'
 
@@ -315,7 +318,7 @@ const {
 	cloudQuota,
 	cloudSyncing,
 	uploadingTemplateId,
-	downloadingTemplateId,
+	downloadingTemplateId: cloudDownloadingId,
 	loadTemplates,
 	selectTemplate,
 	setViewMode,
@@ -332,9 +335,45 @@ const {
 	ensureWorkshopAvailable,
 	loadWorkshopTemplates,
 	downloadTemplateFromWorkshop,
+	downloadingTemplateId: workshopDownloadingId,
 } = useWorkshopTemplates()
 
+const { isSteam, isLoggedIn: isPlatformLoggedIn } = usePlatform()
+
 const activeTab = ref<TabId>('user')
+let _steamConnectedHandled = false
+
+async function initializeWhenOpen() {
+	if (!props.open) return
+	console.log('[template-center] Dialog opened, loading templates...')
+	_steamConnectedHandled = false
+	await Promise.all([
+		loadTemplates({ forceCloudRefresh: true }),
+		loadWorkshopTemplates({ tag: 'official' }),
+	])
+	selectTemplate(null)
+
+	if (isSteam.value && isPlatformLoggedIn.value && activeTab.value === 'user') {
+		activeTab.value = 'workshop'
+	}
+}
+
+onMounted(() => {
+	console.log('[template-center] Component mounted, open=', props.open)
+	initializeWhenOpen()
+})
+
+watch(
+	() => props.open,
+	async (val, oldVal) => {
+		console.log('[template-center] watch(props.open) triggered, val=', val, 'oldVal=', oldVal)
+		if (val) {
+			console.log('[template-center] open became true, calling initializeWhenOpen...')
+			await initializeWhenOpen()
+		}
+	},
+	{ immediate: true }
+)
 
 function formatBytes(bytes: number): string {
 	if (!bytes || bytes <= 0) return '0 B'
@@ -467,12 +506,14 @@ const cardSize = computed(() => {
 })
 
 watch(
-	() => props.open,
-	async (val) => {
-		if (val) {
-			console.log('[template-center] Dialog opened, loading templates...')
-			await loadTemplates({ forceCloudRefresh: true })
-			selectTemplate(null)
+	() => isSteam.value && isPlatformLoggedIn.value,
+	(steamReady) => {
+		if (steamReady && !_steamConnectedHandled && props.open) {
+			_steamConnectedHandled = true
+			console.log('[template-center] Steam connected, refreshing templates...')
+			refreshCloud()
+			loadWorkshopTemplates({ tag: 'official' })
+			toastInfo(t('aiworkflow.templateCenter.steamConnected'))
 		}
 	}
 )

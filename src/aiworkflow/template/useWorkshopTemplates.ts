@@ -9,6 +9,8 @@ import {
 } from '../../electronBridge'
 import { useTemplatePersistence } from './useTemplatePersistence'
 
+console.log('[workshop-templates] Module loaded, electronBridge available:', !!window?.dweb?.workshopTemplates)
+
 const workshopPlatformState = ref<{
 	ok: boolean
 	platformAvailable: boolean
@@ -80,6 +82,7 @@ export function useWorkshopTemplates() {
 				isOfficial: item.isOfficial,
 				workshopAuthor: item.author,
 				workshopItemId: item.publishedFileId,
+				thumbnail: item.previewUrl,
 			}))
 
 			workshopTemplates.value = items

@@ -161,6 +161,10 @@
       "dist/**",
       "electron/**",
       "!electron/static/runtime/**",
+      "!electron/steam.config.json",
+      "!electron/**/steam.config.example.json",
+      "!electron/**/*.log",
+      "!electron/**/*.map",
       "public/favicon.ico"
     ],
     "extraResources": [

@@ -105,5 +105,6 @@
   "aiworkflow.templateCenter.noCloudConnection": "No Connection",
   "aiworkflow.templateCenter.cloudConnected": "Connected",
   "aiworkflow.templateCenter.noCloudAccess": "No Cloud Access",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud service is not connected. Cloud template upload, download, and sync are unavailable"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "Cloud service is not connected. Cloud template upload, download, and sync are unavailable",
+  "aiworkflow.templateCenter.steamConnected": "Steam connected, workshop data refreshed"
 }

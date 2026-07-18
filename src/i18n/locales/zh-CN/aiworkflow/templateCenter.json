@@ -105,5 +105,6 @@
   "aiworkflow.templateCenter.noCloudConnection": "无连接",
   "aiworkflow.templateCenter.cloudConnected": "已连接",
   "aiworkflow.templateCenter.noCloudAccess": "无云端接入",
-  "aiworkflow.templateCenter.noCloudAccessDesc": "云端服务未连接，暂不支持云端模板的上传、下载和同步"
+  "aiworkflow.templateCenter.noCloudAccessDesc": "云端服务未连接，暂不支持云端模板的上传、下载和同步",
+  "aiworkflow.templateCenter.steamConnected": "Steam已连接，已刷新模板市场数据"
 }

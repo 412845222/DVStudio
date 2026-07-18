@@ -46,6 +46,19 @@ export class UgcAdapter {
 		return { ok: false, items: [], totalResults: 0, errMsg: 'Not implemented' }
 	}
 
+	async queryUserItems(listType = 'published') {
+		const ugc = this._provider?.ugc
+		if (!ugc || typeof ugc.queryUserItems !== 'function') {
+			return { ok: false, items: [], totalResults: 0, errMsg: 'queryUserItems not available' }
+		}
+		try {
+			const appId = this._provider?.getAppId?.() || 2475710
+			return await ugc.queryUserItems(appId, listType)
+		} catch (err) {
+			return { ok: false, items: [], totalResults: 0, errMsg: err.message }
+		}
+	}
+
 	async downloadItem(publishedFileId) {
 		return { ok: false, errMsg: 'Not implemented' }
 	}

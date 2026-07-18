@@ -17,6 +17,8 @@ export function createUgcAdapter(platformId, options = {}) {
 	return createMockUgcAdapter(options)
 }
 
+export { createMockUgcAdapter }
+
 export function getActiveUgcAdapter(platformManager, options = {}) {
 	const activeProvider = platformManager.getActiveProvider()
 	

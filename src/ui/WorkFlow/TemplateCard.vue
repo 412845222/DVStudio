@@ -63,12 +63,12 @@
 					</svg>
 				</button>
 				<button
-					v-if="template.source === 'steam-user'"
+					v-if="template.source === 'steam-user' || template.source === 'steam-workshop'"
 					class="tcard-action-btn tcard-action-btn--download"
 					type="button"
 					:disabled="downloading"
 					@click.stop="$emit('download', template)"
-					:title="t('aiworkflow.templateCenter.downloadToLocal')"
+					:title="template.source === 'steam-workshop' ? '保存到我的模板' : t('aiworkflow.templateCenter.downloadToLocal')"
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
 						<path d="M8 5v8M8 13l-3-3M8 13l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -76,7 +76,7 @@
 					</svg>
 				</button>
 				<button
-					v-if="template.source !== 'builtin'"
+					v-if="template.source !== 'builtin' && template.source !== 'steam-workshop'"
 					class="tcard-action-btn tcard-action-btn--delete"
 					type="button"
 					@click.stop="$emit('delete', template)"
@@ -115,7 +115,15 @@
 						</span>
 					</div>
 					<div v-if="template.description" class="tcard-desc">{{ template.description }}</div>
-					<div class="tcard-meta">
+					<div v-if="template.source === 'steam-workshop'" class="tcard-meta">
+						<span class="tcard-meta-item tcard-meta-official">
+							<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="margin-right:3px;vertical-align:-2px">
+								<path d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z" fill="currentColor" opacity="0.9"/>
+							</svg>
+							官方推荐蓝图模板
+						</span>
+					</div>
+					<div v-else class="tcard-meta">
 						<span class="tcard-meta-item">{{ getCategoryLabel(template.category) }}</span>
 						<span class="tcard-meta-dot"></span>
 						<span class="tcard-meta-item">{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}</span>
@@ -150,7 +158,7 @@
 						{{ uploading ? t('aiworkflow.templateCenter.uploading') : t('aiworkflow.templateCenter.uploadToCloud') }}
 					</button>
 					<button
-						v-if="template.source === 'steam-user'"
+						v-if="template.source === 'steam-user' || template.source === 'steam-workshop'"
 						class="tcard-list-btn tcard-list-btn--download"
 						type="button"
 						:disabled="downloading"
@@ -161,10 +169,10 @@
 							<path d="M2 4V3h12v1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
 						</svg>
 						<span v-if="downloading" class="tcard-mini-spinner"></span>
-						{{ downloading ? t('aiworkflow.templateCenter.downloading') : t('aiworkflow.templateCenter.downloadToLocal') }}
+						{{ downloading ? t('aiworkflow.templateCenter.downloading') : (template.source === 'steam-workshop' ? '保存到我的模板' : t('aiworkflow.templateCenter.downloadToLocal')) }}
 					</button>
 					<button
-						v-if="template.source !== 'builtin'"
+						v-if="template.source !== 'builtin' && template.source !== 'steam-workshop'"
 						class="tcard-list-btn tcard-list-btn--danger"
 						type="button"
 						@click.stop="$emit('delete', template)"
@@ -181,7 +189,15 @@
 				<div v-if="template.description" class="tcard-desc" :title="template.description">
 					{{ template.description }}
 				</div>
-				<div class="tcard-meta">
+				<div v-if="template.source === 'steam-workshop'" class="tcard-meta">
+					<span class="tcard-meta-item tcard-meta-official">
+						<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="margin-right:3px;vertical-align:-2px">
+							<path d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z" fill="currentColor" opacity="0.9"/>
+						</svg>
+						官方推荐蓝图模板
+					</span>
+				</div>
+				<div v-else class="tcard-meta">
 					<span class="tcard-meta-item">{{ getCategoryLabel(template.category) }}</span>
 					<span class="tcard-meta-dot"></span>
 					<span class="tcard-meta-item">{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}</span>
@@ -585,6 +601,14 @@ onUnmounted(() => {
 	align-items: center;
 	gap: 3px;
 	color: var(--tcard-accent);
+}
+
+.tcard-meta-official {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	color: #f0a030;
+	font-weight: 500;
 }
 
 .tcard-meta-synced svg {

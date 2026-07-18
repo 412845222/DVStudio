@@ -36,8 +36,6 @@ import type {
 	WorkshopTemplatesDownloadResult,
 	WorkshopTemplatesProgressResult,
 	WorkshopTemplatesInstallInfoResult,
-	OpenComfySetupPayload,
-	OpenComfySetupResult,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -662,7 +660,7 @@ export async function getWorkshopTemplatesPlatform(): Promise<WorkshopTemplatesP
 	try {
 		return await window.dweb.workshopTemplates.getPlatform()
 	} catch (e: unknown) {
-		return { ok: false, errMsg: getErrorMessage(e) }
+		return { ok: false, platformAvailable: false, errMsg: getErrorMessage(e) }
 	}
 }
 
