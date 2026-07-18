@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { registerProvider, getProvider, listProviders } from './registry.mjs'
 import volcengineTosProvider from './providers/volcengine-tos/index.mjs'
+import aliyunOssProvider from './providers/aliyun-oss/index.mjs'
 import customHttpProvider from './providers/custom-http/index.mjs'
 import logger from '../../core/logger.mjs'
 
@@ -18,6 +19,7 @@ function ensureInitialized() {
   if (initialized) return
   try {
     registerProvider(volcengineTosProvider)
+    registerProvider(aliyunOssProvider)
     registerProvider(customHttpProvider)
     initialized = true
     logger.info(`[cloudfs] Registered providers: ${listProviders().map(p => p.id).join(', ')}`)
@@ -160,9 +162,29 @@ export async function clearConfig(ctx) {
 export async function testConfig(ctx, providerId, config) {
   ensureInitialized()
   try {
-    const active = await getActiveConfigFull()
+    logger.info(`[cloudfs] testConfig called: providerId=${providerId}`)
+    logger.info(`[cloudfs] testConfig config keys: ${config ? Object.keys(config).join(', ') : 'null'}`)
+    if (config?.credentials) {
+      const creds = config.credentials
+      const akId = creds.accessKeyId || ''
+      const akSecret = creds.accessKeySecret || ''
+      logger.info(`[cloudfs] testConfig credentials before normalize: accessKeyId length=${akId.length}, prefix=${akId.slice(0, 6)}..., suffix=...${akId.slice(-4)}, accessKeySecret length=${akSecret.length}`)
+      logger.info(`[cloudfs] testConfig credentials keys: ${Object.keys(creds).join(', ')}`)
+    }
+    logger.info(`[cloudfs] testConfig region=${config?.region}, endpoint=${config?.endpoint}`)
+
+    let active = null
+    try {
+      active = await getActiveConfigFull()
+    } catch (activeErr) {
+      logger.warn(`[cloudfs] Failed to get active config (this is OK when testing new config): ${activeErr.message}`)
+      active = null
+    }
+    logger.info(`[cloudfs] active config exists: ${!!active}, active.providerId=${active?.providerId}`)
+
     let pid = providerId
     let cfg = config
+    const userExplicitlyProvidedConfig = !!(providerId && config)
 
     if (!pid && active) {
       pid = active.providerId
@@ -173,26 +195,54 @@ export async function testConfig(ctx, providerId, config) {
 
     const provider = getProvider(pid)
     if (!provider) {
+      logger.error(`[cloudfs] Provider not found: ${pid}`)
       return { ok: false, error: `Provider not found: ${pid}` }
     }
 
     if (cfg && cfg.credentials) {
-      cfg = { ...cfg, credentials: normalizeCredentialsObject(cfg.credentials) }
+      const normalizedCreds = normalizeCredentialsObject(cfg.credentials)
+      cfg = { ...cfg, credentials: normalizedCreds }
+      const afterAkId = normalizedCreds.accessKeyId || ''
+      const afterAkSecret = normalizedCreds.accessKeySecret || ''
+      logger.info(`[cloudfs] after normalize: accessKeyId length=${afterAkId.length}, accessKeySecret length=${afterAkSecret.length}`)
     }
 
     const hasCredentials = cfg?.credentials?.accessKeySecret || cfg?.apiKey
-    if (!hasCredentials && active) {
-      cfg = active.config
+    logger.info(`[cloudfs] hasCredentials=${!!hasCredentials}, userExplicitlyProvidedConfig=${userExplicitlyProvidedConfig}`)
+
+    if (!hasCredentials) {
+      if (userExplicitlyProvidedConfig) {
+        logger.error('[cloudfs] User provided config but credentials are missing after normalize')
+        return { ok: false, error: 'Credentials are required' }
+      }
+      if (active && active.providerId === pid) {
+        logger.info('[cloudfs] Falling back to active config')
+        cfg = active.config
+      } else if (active) {
+        logger.warn(`[cloudfs] Active provider (${active.providerId}) does not match requested provider (${pid}), cannot fallback`)
+        return { ok: false, error: 'Credentials are required' }
+      } else {
+        return { ok: false, error: 'No credentials provided and no active config' }
+      }
     }
 
+    logger.info(`[cloudfs] Calling provider.testConnection for ${pid} with region=${cfg?.region}, endpoint=${cfg?.endpoint}`)
     const result = await provider.testConnection(cfg)
     if (result.ok) {
-      const repos = await getRepos()
-      repos.cloudStorageConfig.updateTestStatus(true)
+      try {
+        const repos = await getRepos()
+        repos.cloudStorageConfig.updateTestStatus(true)
+      } catch (reposErr) {
+        logger.warn(`[cloudfs] Could not update test status in repos (OK for standalone test): ${reposErr.message}`)
+      }
+      logger.info(`[cloudfs] testConnection succeeded`)
+    } else {
+      logger.error(`[cloudfs] testConnection failed: ${result.error}`)
     }
     return result
   } catch (err) {
     logger.error('[cloudfs] testConfig failed:', err.message)
+    logger.error(err.stack)
     return { ok: false, error: err.message }
   }
 }
@@ -435,7 +485,9 @@ export async function uploadFile(ctx, data, options = {}) {
       return { ok: false, error: 'No active cloud storage config' }
     }
     let buffer = data
-    if (data instanceof Uint8Array) {
+    if (data instanceof ArrayBuffer) {
+      buffer = Buffer.from(data)
+    } else if (data instanceof Uint8Array) {
       buffer = Buffer.from(data)
     }
     const result = await active.provider.uploadFile(active.config, buffer, options)
@@ -483,7 +535,9 @@ export async function uploadFileToPublicUrl(ctx, { data, name, mimeType, prefix 
       return { ok: false, error: 'No active cloud storage config' }
     }
     let buffer = data
-    if (data instanceof Uint8Array) {
+    if (data instanceof ArrayBuffer) {
+      buffer = Buffer.from(data)
+    } else if (data instanceof Uint8Array) {
       buffer = Buffer.from(data)
     }
     const ext = name ? '.' + name.split('.').pop() : undefined
@@ -582,7 +636,12 @@ export async function addBucketFromCloud(ctx, payload = {}) {
     }
 
     if (!finalEndpoint) {
-      finalEndpoint = `tos-${targetRegion || 'cn-beijing'}.volces.com`
+      const provider = getProvider(providerId)
+      if (provider && typeof provider.resolveEndpoint === 'function') {
+        finalEndpoint = provider.resolveEndpoint(targetRegion)
+      } else {
+        finalEndpoint = `tos-${targetRegion || 'cn-beijing'}.volces.com`
+      }
     }
 
     const existingBucket = repos.cloudStorageConfig.getBucketByName(targetConfigId, bucketName)

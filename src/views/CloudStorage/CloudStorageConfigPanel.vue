@@ -1,7 +1,7 @@
 <template>
 	<div class="cs-config">
 		<div class="cs-config-header">
-			<button class="cs-back-btn" @click="$emit('cancel')" :title="t('common.back')">
+			<button class="cs-back-btn" @click="handleBack" :title="currentStep === 'credentials' ? t('cloudStorage.config.changeProvider') : t('common.back')">
 				<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
 					<polyline points="15 18 9 12 15 6"/>
 				</svg>
@@ -25,7 +25,7 @@
 		</div>
 
 		<div class="cs-config-body">
-			<div class="cs-form-section">
+			<div v-if="currentStep === 'select-provider'" class="cs-step-select">
 				<div class="cs-section-corners" aria-hidden="true">
 					<span class="cs-sc tl"></span>
 					<span class="cs-sc tr"></span>
@@ -34,234 +34,416 @@
 				</div>
 				<div class="cs-section-header">
 					<div class="cs-section-indicator"></div>
-					<span class="cs-section-label">{{ t('cloudStorage.config.tos.credentials') }}</span>
+					<span class="cs-section-label">{{ t('cloudStorage.config.step1Title') }}</span>
 					<div class="cs-section-line"></div>
 				</div>
-				<div class="cs-field">
-					<div class="cs-field-label-row">
-						<label class="cs-field-label">{{ t('cloudStorage.config.tos.accessKey') }}</label>
-						<button class="cs-link-btn" type="button" @click="openUrl('https://console.volcengine.com/iam/keymanage/')">
-							<svg viewBox="0 0 16 16" class="cs-link-icon" aria-hidden="true">
-								<path d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-								<path d="M9.5 3.5h3v3M13 3l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-							</svg>
-							{{ t('cloudStorage.config.tos.getKeyLink') }}
-						</button>
-					</div>
-					<div class="cs-input-wrap">
-						<span class="cs-input-deco left" aria-hidden="true"></span>
-						<input
-							v-model="tosConfig.accessKeyId"
-							type="text"
-							class="cs-input"
-							:placeholder="t('cloudStorage.config.tos.accessKeyPlaceholder')"
-						/>
-						<span class="cs-input-focus-line" aria-hidden="true"></span>
-					</div>
-				</div>
-				<div class="cs-field">
-					<div class="cs-field-label-row">
-						<label class="cs-field-label">{{ t('cloudStorage.config.tos.secretKey') }}</label>
-					</div>
-					<div class="cs-input-wrap">
-						<span class="cs-input-deco left" aria-hidden="true"></span>
-						<input
-							v-model="tosConfig.accessKeySecret"
-							type="password"
-							class="cs-input"
-							:placeholder="t('cloudStorage.config.tos.secretKeyPlaceholder')"
-						/>
-						<span class="cs-input-focus-line" aria-hidden="true"></span>
-					</div>
-				</div>
-				<div class="cs-field">
-					<label class="cs-field-label">{{ t('cloudStorage.config.tos.region') }}</label>
-					<div class="cs-input-wrap">
-						<span class="cs-input-deco left" aria-hidden="true"></span>
-						<select v-model="tosConfig.region" class="cs-input cs-select" @change="onRegionChange">
-							<option v-for="r in tosRegions" :key="r.id" :value="r.id">{{ r.name }} ({{ r.id }})</option>
-						</select>
-						<span class="cs-input-focus-line" aria-hidden="true"></span>
-					</div>
+				<div class="cs-step-subtitle">{{ t('cloudStorage.config.step1Subtitle') }}</div>
+				<CloudProviderSelector v-model="tempProviderId" @selected="onProviderSelected" />
+
+				<div class="cs-form-actions">
+					<button class="cs-btn cs-btn-primary" type="button" :disabled="!tempProviderId" @click="goToCredentials">
+						<span class="cs-btn-corners" aria-hidden="true">
+							<span class="cs-btn-c tl"></span>
+							<span class="cs-btn-c tr"></span>
+							<span class="cs-btn-c bl"></span>
+							<span class="cs-btn-c br"></span>
+						</span>
+						{{ t('cloudStorage.config.nextStep') }}
+						<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
+							<polyline points="6 4 10 8 6 12"/>
+						</svg>
+					</button>
+					<button class="cs-btn cs-btn-ghost" type="button" @click="$emit('cancel')">
+						{{ t('common.cancel') }}
+					</button>
 				</div>
 			</div>
 
-			<div v-if="credentialsVerified" class="cs-form-section">
-				<div class="cs-section-corners" aria-hidden="true">
-					<span class="cs-sc tl"></span>
-					<span class="cs-sc tr"></span>
-					<span class="cs-sc bl"></span>
-					<span class="cs-sc br"></span>
-				</div>
-				<div class="cs-section-header">
-					<div class="cs-section-indicator"></div>
-					<span class="cs-section-label">{{ t('cloudStorage.config.selectBucket') }}</span>
-					<div class="cs-section-line"></div>
-				</div>
-				<div class="cs-field">
-					<div v-if="availableBuckets.length" class="cs-bucket-list">
-						<button
-							v-for="b in availableBuckets"
-							:key="b.name"
-							class="cs-bucket-item"
-							:class="{ active: selectedBucketName === b.name }"
-							type="button"
-							@click="selectedBucketName = b.name"
-						>
-							<span class="cs-bucket-corners" aria-hidden="true">
-								<span class="cs-bc tl"></span>
-								<span class="cs-bc br"></span>
-							</span>
-							<span class="cs-bucket-indicator"></span>
-							<svg viewBox="0 0 16 16" class="cs-bucket-icon" aria-hidden="true">
-								<path d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							{{ b.name }}
-						</button>
+			<div v-else class="cs-step-credentials">
+				<div class="cs-form-section">
+					<div class="cs-section-corners" aria-hidden="true">
+						<span class="cs-sc tl"></span>
+						<span class="cs-sc tr"></span>
+						<span class="cs-sc bl"></span>
+						<span class="cs-sc br"></span>
 					</div>
-					<div v-else-if="listingBuckets" class="cs-loading-buckets">
-						<div class="cs-spinner-inline"></div>
-						<span>{{ t('cloudStorage.config.listingBuckets') }}</span>
+					<div class="cs-section-header">
+						<div class="cs-section-indicator"></div>
+						<span class="cs-section-label">{{ selectedProvider?.name || t('cloudStorage.config.provider') }}</span>
+						<div class="cs-section-line"></div>
+					</div>
+
+					<CloudKeyTipBanner
+						v-if="selectedProvider?.keyApplyUrl"
+						:provider-name="selectedProvider.name"
+						:apply-url="selectedProvider.keyApplyUrl"
+						:tip-text="selectedProvider.keyApplyTip"
+					/>
+
+					<template v-for="field in credentialFields" :key="field.key">
+						<div v-if="field.type === 'select' && field.options" class="cs-field">
+							<label class="cs-field-label">{{ field.label }}</label>
+							<div class="cs-input-wrap">
+								<span class="cs-input-deco left" aria-hidden="true"></span>
+								<select v-model="credentialValues[field.key]" class="cs-input cs-select">
+									<option v-for="opt in field.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+								</select>
+								<span class="cs-input-focus-line" aria-hidden="true"></span>
+							</div>
+						</div>
+						<div v-else class="cs-field">
+							<div class="cs-field-label-row">
+								<label class="cs-field-label">{{ field.label }}</label>
+								<button v-if="field.key === accessKeyFieldKey && selectedProvider?.keyApplyUrl" class="cs-link-btn" type="button" @click="openApplyUrl">
+									<svg viewBox="0 0 16 16" class="cs-link-icon" aria-hidden="true">
+										<path d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+										<path d="M9.5 3.5h3v3M13 3l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+									</svg>
+									{{ t('cloudStorage.config.tos.getKeyLink') }}
+								</button>
+							</div>
+							<div class="cs-input-wrap">
+								<span class="cs-input-deco left" aria-hidden="true"></span>
+								<input
+									:value="credentialValues[field.key] || ''"
+									@input="updateField(field.key, ($event.target as HTMLInputElement).value)"
+									:type="field.type === 'password' ? 'password' : 'text'"
+									class="cs-input"
+									:placeholder="field.placeholder || ''"
+								/>
+								<span class="cs-input-focus-line" aria-hidden="true"></span>
+							</div>
+						</div>
+					</template>
+
+					<div v-if="hasRegions" class="cs-field">
+						<label class="cs-field-label">{{ t('cloudStorage.config.tos.region') }}</label>
+						<div class="cs-input-wrap">
+							<span class="cs-input-deco left" aria-hidden="true"></span>
+							<select v-model="selectedRegion" class="cs-input cs-select" @change="onRegionChange">
+								<option v-for="r in selectedProvider?.regions || []" :key="r.id" :value="r.id">{{ r.name }} ({{ r.id }})</option>
+							</select>
+							<span class="cs-input-focus-line" aria-hidden="true"></span>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			<div class="cs-form-actions">
-				<button v-if="!credentialsVerified" class="cs-btn cs-btn-primary" type="button" :disabled="verifying || !canVerify" @click="verifyCredentials">
-					<span class="cs-btn-corners" aria-hidden="true">
-						<span class="cs-btn-c tl"></span>
-						<span class="cs-btn-c tr"></span>
-						<span class="cs-btn-c bl"></span>
-						<span class="cs-btn-c br"></span>
-					</span>
-					<span v-if="verifying" class="cs-spinner"></span>
-					{{ verifying ? t('cloudStorage.config.verifying') : t('cloudStorage.config.verifyAndList') }}
-				</button>
-				<button v-else class="cs-btn cs-btn-primary" type="button" :disabled="!selectedBucketName || adding" @click="addBucket">
-					<span class="cs-btn-corners" aria-hidden="true">
-						<span class="cs-btn-c tl"></span>
-						<span class="cs-btn-c tr"></span>
-						<span class="cs-btn-c bl"></span>
-						<span class="cs-btn-c br"></span>
-					</span>
-					<span v-if="adding" class="cs-spinner"></span>
-					{{ adding ? t('cloudStorage.config.adding') : t('cloudStorage.config.addBucketConfirm') }}
-				</button>
-				<button class="cs-btn cs-btn-ghost" type="button" @click="$emit('cancel')">
-					{{ t('common.cancel') }}
-				</button>
-			</div>
+				<div v-if="credentialsVerified" class="cs-form-section">
+					<div class="cs-section-corners" aria-hidden="true">
+						<span class="cs-sc tl"></span>
+						<span class="cs-sc tr"></span>
+						<span class="cs-sc bl"></span>
+						<span class="cs-sc br"></span>
+					</div>
+					<div class="cs-section-header">
+						<div class="cs-section-indicator"></div>
+						<span class="cs-section-label">{{ t('cloudStorage.config.selectBucket') }}</span>
+						<div class="cs-section-line"></div>
+					</div>
+					<div class="cs-field">
+						<div v-if="availableBuckets.length" class="cs-bucket-list">
+							<button
+								v-for="b in availableBuckets"
+								:key="b.name"
+								class="cs-bucket-item"
+								:class="{ active: selectedBucketName === b.name }"
+								type="button"
+								@click="selectedBucketName = b.name; newBucketName = ''"
+							>
+								<span class="cs-bucket-corners" aria-hidden="true">
+									<span class="cs-bc tl"></span>
+									<span class="cs-bc br"></span>
+								</span>
+								<span class="cs-bucket-indicator"></span>
+								<svg viewBox="0 0 16 16" class="cs-bucket-icon" aria-hidden="true">
+									<path d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+								</svg>
+								{{ b.name }}
+							</button>
+						</div>
+						<div v-else-if="listingBuckets" class="cs-loading-buckets">
+							<div class="cs-spinner-inline"></div>
+							<span>{{ t('cloudStorage.config.listingBuckets') }}</span>
+						</div>
 
-			<div v-if="verifyStatus.type && verifyStatus.message" class="cs-status" :class="verifyStatus.type">
-				<div class="cs-status-corners" aria-hidden="true">
-					<span class="cs-stc tl"></span>
-					<span class="cs-stc tr"></span>
-					<span class="cs-stc bl"></span>
-					<span class="cs-stc br"></span>
+						<div class="cs-create-bucket-divider">
+							<span class="cs-divider-line"></span>
+							<span class="cs-divider-text">{{ t('cloudStorage.config.orCreateNew') }}</span>
+							<span class="cs-divider-line"></span>
+						</div>
+
+						<div class="cs-create-bucket-row">
+							<div class="cs-input-wrap cs-create-input">
+								<span class="cs-input-deco left" aria-hidden="true"></span>
+								<input
+									v-model="newBucketName"
+									type="text"
+									class="cs-input"
+									:placeholder="t('cloudStorage.fileList.bucketNamePlaceholder')"
+									@input="onNewBucketNameInput"
+								/>
+								<span class="cs-input-focus-line" aria-hidden="true"></span>
+							</div>
+							<button
+								class="cs-btn cs-btn-ghost cs-create-btn"
+								type="button"
+								:disabled="!canCreateBucket || creatingBucket"
+								@click="createNewBucket"
+							>
+								<span class="cs-btn-corners" aria-hidden="true">
+									<span class="cs-btn-c tl"></span>
+									<span class="cs-btn-c tr"></span>
+									<span class="cs-btn-c bl"></span>
+									<span class="cs-btn-c br"></span>
+								</span>
+								<span v-if="creatingBucket" class="cs-spinner"></span>
+								<svg v-else viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+									<path d="M8 3v10M3 8h10"/>
+								</svg>
+								{{ creatingBucket ? t('cloudStorage.fileList.creating') : t('cloudStorage.config.createBucket') }}
+							</button>
+						</div>
+					</div>
 				</div>
-				<div class="cs-status-bar" aria-hidden="true"></div>
-				<svg v-if="verifyStatus.type === 'success'" viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
-					<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
-				<svg v-else viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
-					<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
-					<path d="M8 5v4M8 11v.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-				</svg>
-				<span class="cs-status-message">{{ verifyStatus.message }}</span>
+
+				<div class="cs-form-actions">
+					<button v-if="!credentialsVerified" class="cs-btn cs-btn-primary" type="button" :disabled="verifying || !canVerify" @click="verifyCredentials">
+						<span class="cs-btn-corners" aria-hidden="true">
+							<span class="cs-btn-c tl"></span>
+							<span class="cs-btn-c tr"></span>
+							<span class="cs-btn-c bl"></span>
+							<span class="cs-btn-c br"></span>
+						</span>
+						<span v-if="verifying" class="cs-spinner"></span>
+						{{ verifying ? t('cloudStorage.config.verifying') : t('cloudStorage.config.verifyAndList') }}
+					</button>
+					<button v-else class="cs-btn cs-btn-primary" type="button" :disabled="(!selectedBucketName && !canCreateBucket) || adding || creatingBucket" @click="addBucket">
+						<span class="cs-btn-corners" aria-hidden="true">
+							<span class="cs-btn-c tl"></span>
+							<span class="cs-btn-c tr"></span>
+							<span class="cs-btn-c bl"></span>
+							<span class="cs-btn-c br"></span>
+						</span>
+						<span v-if="adding" class="cs-spinner"></span>
+						{{ adding ? t('cloudStorage.config.adding') : t('cloudStorage.config.addBucketConfirm') }}
+					</button>
+					<button class="cs-btn cs-btn-ghost" type="button" @click="$emit('cancel')">
+						{{ t('common.cancel') }}
+					</button>
+				</div>
+
+				<div v-if="verifyStatus.type && verifyStatus.message" class="cs-status" :class="verifyStatus.type">
+					<div class="cs-status-corners" aria-hidden="true">
+						<span class="cs-stc tl"></span>
+						<span class="cs-stc tr"></span>
+						<span class="cs-stc bl"></span>
+						<span class="cs-stc br"></span>
+					</div>
+					<div class="cs-status-bar" aria-hidden="true"></div>
+					<svg v-if="verifyStatus.type === 'success'" viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
+						<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+					</svg>
+					<svg v-else viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
+						<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
+						<path d="M8 5v4M8 11v.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+					</svg>
+					<span class="cs-status-message">{{ verifyStatus.message }}</span>
+				</div>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useI18n } from '../../i18n'
 import { openExternalUrl } from '../../electronBridge'
+import CloudProviderSelector from './CloudProviderSelector.vue'
+import CloudKeyTipBanner from './CloudKeyTipBanner.vue'
+import type { CloudStorageProviderMeta } from '../../electronBridge/types'
 
 const { t } = useI18n()
 
 type VerifyStatusType = 'success' | 'error' | ''
+type PanelStep = 'select-provider' | 'credentials'
 
 const emit = defineEmits<{
 	(e: 'cancel'): void
 	(e: 'bucket-added', bucket?: any): void
 }>()
 
-interface TOSConfig {
-	accessKeyId: string
-	accessKeySecret: string
-	region: string
-	endpoint: string
-}
-
-const tosRegions = [
-	{ id: 'cn-beijing', name: '华北2（北京）', endpoint: 'tos-cn-beijing.volces.com' },
-	{ id: 'cn-shanghai', name: '华东2（上海）', endpoint: 'tos-cn-shanghai.volces.com' },
-	{ id: 'cn-guangzhou', name: '华南1（广州）', endpoint: 'tos-cn-guangzhou.volces.com' },
-	{ id: 'cn-hongkong', name: '中国香港', endpoint: 'tos-cn-hongkong.volces.com' },
-]
+const currentStep = ref<PanelStep>('select-provider')
+const providers = ref<CloudStorageProviderMeta[]>([])
+const tempProviderId = ref('')
+const selectedProviderId = ref('')
+const selectedProvider = ref<CloudStorageProviderMeta | null>(null)
+const credentialValues = reactive<Record<string, string>>({})
+const selectedRegion = ref('')
+const selectedEndpoint = ref('')
 
 const verifying = ref(false)
 const listingBuckets = ref(false)
 const adding = ref(false)
+const creatingBucket = ref(false)
 const credentialsVerified = ref(false)
 const verifyStatus = ref<{ type: VerifyStatusType; message: string }>({ type: '', message: '' })
 const availableBuckets = ref<any[]>([])
 const selectedBucketName = ref('')
+const newBucketName = ref('')
 
-const tosConfig = reactive<TOSConfig>({
-	accessKeyId: '',
-	accessKeySecret: '',
-	region: 'cn-beijing',
-	endpoint: 'tos-cn-beijing.volces.com'
+const credentialFields = computed(() => selectedProvider.value?.credentialFields || [])
+const accessKeyFieldKey = computed(() => {
+	const fields = credentialFields.value
+	if (!fields.length) return ''
+	const idField = fields.find(f => f.key.toLowerCase().includes('accesskey') && !f.key.toLowerCase().includes('secret'))
+	return idField?.key || fields[0]?.key || ''
 })
+const hasRegions = computed(() => (selectedProvider.value?.regions?.length || 0) > 0)
 
 const canVerify = computed(() => {
-	return tosConfig.accessKeyId.trim() && tosConfig.accessKeySecret.trim()
+	const fields = credentialFields.value
+	return fields.every(f => {
+		if (!f.required) return true
+		return credentialValues[f.key]?.trim()
+	})
 })
 
-const openUrl = (url: string) => {
-	openExternalUrl(url)
+const isValidBucketName = (name: string): boolean => {
+	if (!name) return false
+	if (name.length < 3 || name.length > 63) return false
+	if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(name)) return false
+	if (name.includes('--')) return false
+	return true
 }
 
-const onRegionChange = () => {
-	const region = tosRegions.find(r => r.id === tosConfig.region)
-	if (region) {
-		tosConfig.endpoint = region.endpoint
+const canCreateBucket = computed(() => {
+	return isValidBucketName(newBucketName.value.trim())
+})
+
+const getCloudfs = () => (window as any).dweb?.cloudfs
+
+const loadProviders = async () => {
+	try {
+		const cloudfs = getCloudfs()
+		if (cloudfs?.listProviders) {
+			const result = await cloudfs.listProviders()
+			if (result?.ok && Array.isArray(result.providers)) {
+				providers.value = result.providers.filter((p: CloudStorageProviderMeta) => p.id !== 'custom-http')
+				const volc = providers.value.find((p: CloudStorageProviderMeta) => p.id === 'volcengine-tos')
+				if (volc && !tempProviderId.value) {
+					tempProviderId.value = 'volcengine-tos'
+				}
+			}
+		}
+	} catch (_e) {
+		// fallback handled by CloudProviderSelector static data
 	}
 }
 
-const listBuckets = async () => {
+const initCredentialsForm = () => {
+	const fields = credentialFields.value
+	fields.forEach(f => {
+		credentialValues[f.key] = ''
+	})
+	if (hasRegions.value && selectedProvider.value?.regions?.length) {
+		const firstRegion = selectedProvider.value.regions[0]
+		selectedRegion.value = firstRegion.id
+		selectedEndpoint.value = firstRegion.endpoint || getDefaultEndpoint(firstRegion.id)
+	} else {
+		selectedRegion.value = ''
+		selectedEndpoint.value = ''
+	}
+	newBucketName.value = ''
+}
+
+const getDefaultEndpoint = (regionId: string): string => {
+	if (selectedProviderId.value === 'volcengine-tos') {
+		return `tos-${regionId}.volces.com`
+	}
+	if (selectedProviderId.value === 'aliyun-oss') {
+		return `${regionId}.aliyuncs.com`
+	}
+	return ''
+}
+
+const onProviderSelected = (provider: CloudStorageProviderMeta) => {
+	tempProviderId.value = provider.id
+}
+
+const goToCredentials = () => {
+	if (!tempProviderId.value) return
+	selectedProviderId.value = tempProviderId.value
+	selectedProvider.value = providers.value.find(p => p.id === tempProviderId.value) || null
+	if (!selectedProvider.value) return
+	initCredentialsForm()
+	credentialsVerified.value = false
+	verifyStatus.value = { type: '', message: '' }
+	availableBuckets.value = []
+	selectedBucketName.value = ''
+	currentStep.value = 'credentials'
+}
+
+const handleBack = () => {
+	if (currentStep.value === 'credentials') {
+		currentStep.value = 'select-provider'
+		credentialsVerified.value = false
+		verifyStatus.value = { type: '', message: '' }
+	} else {
+		emit('cancel')
+	}
+}
+
+const updateField = (key: string, value: string) => {
+	credentialValues[key] = value
+}
+
+const onRegionChange = () => {
+	const region = selectedProvider.value?.regions?.find(r => r.id === selectedRegion.value)
+	if (region) {
+		selectedEndpoint.value = region.endpoint || getDefaultEndpoint(region.id)
+	}
+}
+
+const openApplyUrl = () => {
+	if (selectedProvider.value?.keyApplyUrl) {
+		openExternalUrl(selectedProvider.value.keyApplyUrl)
+	}
+}
+
+const buildConfig = () => {
+	return {
+		credentials: { ...credentialValues },
+		region: selectedRegion.value,
+		endpoint: selectedEndpoint.value,
+	}
+}
+
+const listBucketsForProvider = async () => {
 	listingBuckets.value = true
 	try {
 		availableBuckets.value = []
-		const cloudfs = (window as any).dweb?.cloudfs
-		if (!cloudfs?.listBuckets) {
-			return false
-		}
+		const cloudfs = getCloudfs()
+		if (!cloudfs?.listBuckets) return false
 		const result = await cloudfs.listBuckets({
-			providerId: 'volcengine-tos',
-			region: tosConfig.region,
-			endpoint: tosConfig.endpoint,
-			credentials: {
-				accessKeyId: tosConfig.accessKeyId,
-				accessKeySecret: tosConfig.accessKeySecret,
-			}
+			providerId: selectedProviderId.value,
+			region: selectedRegion.value,
+			endpoint: selectedEndpoint.value,
+			credentials: { ...credentialValues },
 		})
 		if (result?.ok && Array.isArray(result.buckets)) {
 			availableBuckets.value = result.buckets.map((b: any) => ({
 				name: b.name || b,
-				location: b.location || tosConfig.region,
-				extranetEndpoint: b.extranetEndpoint || tosConfig.endpoint,
+				location: b.location || b.region || selectedRegion.value,
+				extranetEndpoint: b.extranetEndpoint || b.endpoint || selectedEndpoint.value,
 			}))
 			return true
 		} else if (result?.ok === false) {
-			verifyStatus.value = { type: 'error', message: result.error || '获取桶列表失败' }
+			verifyStatus.value = { type: 'error', message: result.error || t('cloudStorage.config.verifyFailed') }
 			return false
 		}
 		return false
 	} catch (e: any) {
-		verifyStatus.value = { type: 'error', message: e?.message || '获取桶列表异常' }
+		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.config.verifyFailed') }
 		return false
 	} finally {
 		listingBuckets.value = false
@@ -272,25 +454,17 @@ const verifyCredentials = async () => {
 	verifying.value = true
 	verifyStatus.value = { type: '', message: '' }
 	try {
-		const cloudfs = (window as any).dweb?.cloudfs
-
+		const cloudfs = getCloudfs()
+		const config = buildConfig()
 		if (cloudfs?.testConfig) {
-			const configToTest = {
-				credentials: {
-					accessKeyId: tosConfig.accessKeyId,
-					accessKeySecret: tosConfig.accessKeySecret,
-				},
-				region: tosConfig.region,
-				endpoint: tosConfig.endpoint,
-			}
 			const result = await cloudfs.testConfig({
-				providerId: 'volcengine-tos',
-				config: configToTest
+				providerId: selectedProviderId.value,
+				config,
 			})
 			if (result?.ok) {
 				credentialsVerified.value = true
 				verifyStatus.value = { type: 'success', message: t('cloudStorage.config.verifySuccess') }
-				await listBuckets()
+				await listBucketsForProvider()
 			} else {
 				credentialsVerified.value = false
 				verifyStatus.value = { type: 'error', message: result?.error || t('cloudStorage.config.verifyFailed') }
@@ -298,9 +472,10 @@ const verifyCredentials = async () => {
 		} else {
 			credentialsVerified.value = true
 			verifyStatus.value = { type: 'success', message: t('cloudStorage.config.verifySuccess') }
-			await listBuckets()
+			await listBucketsForProvider()
 		}
 	} catch (e: any) {
+		console.error('[CloudFS] verifyCredentials error:', e)
 		credentialsVerified.value = false
 		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.config.verifyFailed') }
 	} finally {
@@ -308,25 +483,74 @@ const verifyCredentials = async () => {
 	}
 }
 
-const addBucket = async () => {
-	if (!selectedBucketName.value) return
-	adding.value = true
+const onNewBucketNameInput = () => {
+	if (newBucketName.value) {
+		selectedBucketName.value = ''
+	}
+}
+
+const createNewBucket = async (): Promise<boolean> => {
+	const bucketName = newBucketName.value.trim()
+	if (!isValidBucketName(bucketName)) {
+		verifyStatus.value = { type: 'error', message: t('cloudStorage.fileList.bucketNameInvalid') }
+		return false
+	}
+	creatingBucket.value = true
+	verifyStatus.value = { type: '', message: '' }
 	try {
-		const cloudfs = (window as any).dweb?.cloudfs
-		if (!cloudfs?.addBucketFromCloud) {
-			throw new Error('API not available')
+		const cloudfs = getCloudfs()
+		if (!cloudfs?.setupBucket) throw new Error('API not available')
+		const result = await cloudfs.setupBucket({
+			providerId: selectedProviderId.value,
+			credentials: { ...credentialValues },
+			region: selectedRegion.value,
+			bucketName: bucketName,
+			options: { publicRead: true, lifecycleDays: 7, endpoint: selectedEndpoint.value },
+		})
+		if (result?.ok) {
+			verifyStatus.value = { type: 'success', message: `桶 "${bucketName}" 创建成功！` }
+			await listBucketsForProvider()
+			selectedBucketName.value = bucketName
+			newBucketName.value = ''
+			return true
+		} else {
+			verifyStatus.value = { type: 'error', message: result?.error || t('cloudStorage.fileList.bucketCreateError') }
+			return false
 		}
-		const selectedBucket = availableBuckets.value.find(b => b.name === selectedBucketName.value)
-		const bucketEndpoint = selectedBucket?.extranetEndpoint || tosConfig.endpoint
+	} catch (e: any) {
+		console.error('[CloudFS] createNewBucket error:', e)
+		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.fileList.bucketCreateError') }
+		return false
+	} finally {
+		creatingBucket.value = false
+	}
+}
+
+const addBucket = async () => {
+	const bucketToAdd = selectedBucketName.value || newBucketName.value.trim()
+	if (!bucketToAdd) return
+
+	adding.value = true
+	verifyStatus.value = { type: '', message: '' }
+	try {
+		if (!selectedBucketName.value && newBucketName.value.trim()) {
+			const created = await createNewBucket()
+			if (!created) {
+				adding.value = false
+				return
+			}
+		}
+
+		const cloudfs = getCloudfs()
+		if (!cloudfs?.addBucketFromCloud) throw new Error('API not available')
+		const bucket = availableBuckets.value.find(b => b.name === selectedBucketName.value)
+		const bucketEndpoint = bucket?.extranetEndpoint || selectedEndpoint.value
 		const result = await cloudfs.addBucketFromCloud({
 			bucketName: selectedBucketName.value,
-			providerId: 'volcengine-tos',
-			region: selectedBucket?.location || tosConfig.region,
+			providerId: selectedProviderId.value,
+			region: bucket?.location || selectedRegion.value,
 			endpoint: bucketEndpoint,
-			credentials: {
-				accessKeyId: tosConfig.accessKeyId,
-				accessKeySecret: tosConfig.accessKeySecret,
-			}
+			credentials: { ...credentialValues },
 		})
 		if (result?.ok) {
 			emit('bucket-added', result.bucket)
@@ -339,6 +563,10 @@ const addBucket = async () => {
 		adding.value = false
 	}
 }
+
+onMounted(() => {
+	loadProviders()
+})
 </script>
 
 <style scoped>
@@ -466,6 +694,14 @@ const addBucket = async () => {
 .cs-config-body::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	border-radius: 2px;
+}
+
+.cs-step-subtitle {
+	font-size: 11px;
+	color: var(--pl-fg-soft);
+	margin-bottom: 16px;
+	letter-spacing: 0.2px;
+	line-height: 1.5;
 }
 
 .cs-form-section {
@@ -1108,5 +1344,55 @@ const addBucket = async () => {
 	line-height: 1.5;
 	font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	font-size: 11px;
+}
+
+.cs-create-bucket-divider {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 16px 0 12px;
+}
+
+.cs-divider-line {
+	flex: 1;
+	height: 1px;
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 25%, transparent),
+		transparent
+	);
+}
+
+.cs-divider-text {
+	font-size: 10px;
+	color: var(--pl-fg-soft);
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	font-family: 'JetBrains Mono', ui-monospace, monospace;
+	flex-shrink: 0;
+}
+
+.cs-create-bucket-row {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+}
+
+.cs-create-input {
+	flex: 1;
+}
+
+.cs-create-btn {
+	flex-shrink: 0;
+	height: 34px;
+	padding: 0 14px;
+	gap: 6px;
+	white-space: nowrap;
+}
+
+.cs-create-btn svg {
+	width: 14px;
+	height: 14px;
 }
 </style>

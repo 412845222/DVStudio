@@ -5,6 +5,15 @@
 
   "cloudStorage.config.title": "存储配置",
   "cloudStorage.config.provider": "存储提供商",
+  "cloudStorage.config.step1Title": "选择云服务商",
+  "cloudStorage.config.step1Subtitle": "请选择您使用的对象存储服务商",
+  "cloudStorage.config.nextStep": "下一步",
+  "cloudStorage.config.selectProviderFirst": "请先选择一个云服务商",
+  "cloudStorage.config.changeProvider": "更换服务商",
+  "cloudStorage.config.keyTip": "请先前往 {provider} 控制台申请 AccessKey",
+  "cloudStorage.config.keyTipSub": "建议使用子账号密钥并授予最小权限",
+  "cloudStorage.config.applyKey": "前往申请",
+  "cloudStorage.config.comingSoon": "即将支持",
   "cloudStorage.config.tos.credentials": "凭证配置",
   "cloudStorage.config.tos.accessKey": "Access Key ID",
   "cloudStorage.config.tos.accessKeyPlaceholder": "请输入 Access Key ID",
@@ -24,6 +33,7 @@
   "cloudStorage.config.bucketPlaceholder": "请输入或选择存储桶名称",
   "cloudStorage.config.listBuckets": "列出桶",
   "cloudStorage.config.createBucket": "新建桶",
+  "cloudStorage.config.orCreateNew": "或新建桶",
   "cloudStorage.config.verify": "验证凭证",
   "cloudStorage.config.verifying": "验证中...",
   "cloudStorage.config.save": "保存配置",
@@ -87,5 +97,17 @@
 
   "cloudStorage.aclWarning.title": "当前桶为私有访问",
   "cloudStorage.aclWarning.description": "私有桶中的文件无法直接通过公网链接访问，缩略图和公网链接将无法正常显示。点击右侧按钮一键设置为公开读。",
-  "cloudStorage.aclWarning.fixButton": "设为公开读"
+  "cloudStorage.aclWarning.fixButton": "设为公开读",
+
+  "cloudStorage.fileList.dropToUpload": "释放文件以上传",
+
+  "cloudStorage.uploadQueue.title": "上传任务",
+  "cloudStorage.uploadQueue.uploading": "上传中",
+  "cloudStorage.uploadQueue.completed": "上传完成",
+  "cloudStorage.uploadQueue.someFailed": "{failed}个失败",
+  "cloudStorage.uploadQueue.viewDetails": "查看详情",
+  "cloudStorage.uploadQueue.clearCompleted": "清除已完成",
+  "cloudStorage.uploadQueue.empty": "暂无上传任务",
+  "cloudStorage.uploadQueue.retry": "重试",
+  "cloudStorage.uploadQueue.remove": "移除"
 }

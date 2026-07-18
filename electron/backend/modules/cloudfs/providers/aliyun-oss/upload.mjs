@@ -1,4 +1,4 @@
-import { getTosClient, resolveEndpoint, withNoProxyEnv } from './client.mjs'
+import { getOssClient, resolveEndpoint, withNoProxyEnv } from './client.mjs'
 import { buildObjectKey } from '../../base/utils.mjs'
 import { createCloudUploadResult } from '../../types.mjs'
 import logger from '../../../../core/logger.mjs'
@@ -14,37 +14,10 @@ function buildContentDisposition(fileName) {
   return `inline; filename="${simpleName}"; filename*=UTF-8''${encodedName}`
 }
 
-function guessContentType(fileName) {
-  const ext = fileName?.split('.').pop()?.toLowerCase()
-  const map = {
-    mp4: 'video/mp4',
-    webm: 'video/webm',
-    mov: 'video/quicktime',
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    bmp: 'image/bmp',
-    svg: 'image/svg+xml',
-    glb: 'model/gltf-binary',
-    gltf: 'model/gltf+json',
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    pdf: 'application/pdf',
-    txt: 'text/plain',
-    html: 'text/html',
-  }
-  return map[ext] || 'application/octet-stream'
-}
-
-function buildSignedPreviewUrl(client, bucketName, key, fileName, expires = 86400 * 7) {
-  return client.getPreSignedUrl({
-    method: 'GET',
-    bucket: bucketName,
-    key,
+function buildSignedPreviewUrl(client, key, fileName, expires = 86400 * 7) {
+  return client.signatureUrl(key, {
     expires,
+    method: 'GET',
     response: {
       'content-disposition': buildContentDisposition(fileName),
     },
@@ -62,8 +35,8 @@ function isRetryableError(err) {
     msg.includes('ENOTFOUND') ||
     msg.includes('network timeout') ||
     msg.includes('socket disconnected') ||
-    (err?.statusCode === 429) ||
-    (err?.statusCode >= 500 && err?.statusCode < 600)
+    (err?.status === 429) ||
+    (err?.status >= 500 && err?.status < 600)
   )
 }
 
@@ -74,18 +47,15 @@ async function sleep(ms) {
 export async function uploadFile(config, data, options = {}) {
   const { credentials, region, bucketName } = config
   const endpoint = config.endpoint || resolveEndpoint(region)
-  const client = getTosClient(credentials, region, bucketName, endpoint)
+  const client = getOssClient(credentials, region, bucketName, endpoint)
 
-  const contentType = options.contentType || guessContentType(options.fileName)
+  const contentType = options.contentType || 'application/octet-stream'
   const key = options.key || buildObjectKey(options.prefix || 'uploads', options.fileName)
   const fileName = options.fileName || key.split('/').pop() || key
 
-  const putOptions = {
-    bucket: bucketName,
-    key,
-    body: data,
-    contentType,
-    contentDisposition: buildContentDisposition(fileName),
+  const headers = {
+    'Content-Type': contentType,
+    'Content-Disposition': buildContentDisposition(fileName),
   }
 
   const maxRetries = 2
@@ -94,19 +64,21 @@ export async function uploadFile(config, data, options = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       if (attempt > 0) {
-        logger.warn(`[cloudfs:tos] Upload retry ${attempt}/${maxRetries} for key: ${key}`)
+        logger.warn(`[cloudfs:oss] Upload retry ${attempt}/${maxRetries} for key: ${key}`)
         await sleep(300 * attempt)
       } else {
-        logger.debug(`[cloudfs:tos] Uploading to key: ${key}, type: ${contentType}, fileName: ${fileName}`)
+        logger.debug(`[cloudfs:oss] Uploading to key: ${key}, type: ${contentType}, fileName: ${fileName}`)
       }
 
-      const result = await withNoProxyEnv(() => client.putObject(putOptions))
+      const result = await withNoProxyEnv(() => client.put(key, data, {
+        mime: contentType,
+        headers,
+      }))
 
-      const publicUrl = buildSignedPreviewUrl(client, bucketName, key, fileName)
-      const headers = result.headers || {}
-      const etag = (headers['etag'] || result?.data?.ETag || '').replace(/"/g, '')
+      const publicUrl = buildSignedPreviewUrl(client, key, fileName)
+      const etag = result.etag ? String(result.etag).replace(/"/g, '') : ''
 
-      logger.debug(`[cloudfs:tos] Upload success: ${key}, etag: ${etag}`)
+      logger.debug(`[cloudfs:oss] Upload success: ${key}, etag: ${etag}`)
 
       return createCloudUploadResult({
         ok: true,
@@ -119,7 +91,7 @@ export async function uploadFile(config, data, options = {}) {
       const errMsg = String(err?.message || err)
 
       if (attempt < maxRetries && isRetryableError(err)) {
-        logger.warn(`[cloudfs:tos] Retryable error on attempt ${attempt + 1}: ${errMsg}`)
+        logger.warn(`[cloudfs:oss] Retryable error on attempt ${attempt + 1}: ${errMsg}`)
         continue
       }
 
@@ -127,7 +99,7 @@ export async function uploadFile(config, data, options = {}) {
     }
   }
 
-  logger.error('[cloudfs:tos] uploadFile failed:', lastErr?.message || lastErr)
+  logger.error('[cloudfs:oss] uploadFile failed:', lastErr?.message || lastErr)
   return createCloudUploadResult({
     ok: false,
     error: lastErr?.message || String(lastErr),
@@ -137,19 +109,16 @@ export async function uploadFile(config, data, options = {}) {
 export async function getPublicUrl(config, key, options = {}) {
   const { credentials, region, bucketName } = config
   const endpoint = config.endpoint || resolveEndpoint(region)
-  const client = getTosClient(credentials, region, bucketName, endpoint)
+  const client = getOssClient(credentials, region, bucketName, endpoint)
   const expires = options.expires || 86400 * 7
 
   try {
     let fileName = options.fileName
     if (!fileName) {
       try {
-        const headResult = await withNoProxyEnv(() => client.headObject({
-          bucket: bucketName,
-          key,
-        }))
-        const headers = headResult.headers || {}
-        const contentDisposition = headers['content-disposition'] || ''
+        const headResult = await withNoProxyEnv(() => client.head(key))
+        const resHeaders = headResult.res?.headers || {}
+        const contentDisposition = resHeaders['content-disposition'] || ''
         if (contentDisposition) {
           const match = contentDisposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
           if (match) {
@@ -157,28 +126,23 @@ export async function getPublicUrl(config, key, options = {}) {
           }
         }
       } catch (headErr) {
-        logger.warn('[cloudfs:tos] getPublicUrl head failed, using key as filename:', headErr.message)
+        logger.warn('[cloudfs:oss] getPublicUrl head failed, using key as filename:', headErr.message)
       }
     }
     if (!fileName) {
       const parts = key.split('/')
       fileName = parts[parts.length - 1] || key
     }
-    return buildSignedPreviewUrl(client, bucketName, key, fileName, expires)
+    return buildSignedPreviewUrl(client, key, fileName, expires)
   } catch (err) {
-    logger.error('[cloudfs:tos] getPublicUrl failed:', err.message)
+    logger.error('[cloudfs:oss] getPublicUrl failed:', err.message)
     try {
       const parts = key.split('/')
       const fileName = options.fileName || parts[parts.length - 1] || key
-      return buildSignedPreviewUrl(client, bucketName, key, fileName, expires)
+      return buildSignedPreviewUrl(client, key, fileName, expires)
     } catch (err2) {
-      logger.error('[cloudfs:tos] getPublicUrl fallback failed:', err2.message)
-      return client.getPreSignedUrl({
-        method: 'GET',
-        bucket: bucketName,
-        key,
-        expires,
-      })
+      logger.error('[cloudfs:oss] getPublicUrl fallback failed:', err2.message)
+      return client.signatureUrl(key, { expires, method: 'GET' })
     }
   }
 }

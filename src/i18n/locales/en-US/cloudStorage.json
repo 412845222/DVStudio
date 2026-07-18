@@ -5,6 +5,15 @@
 
   "cloudStorage.config.title": "Storage Configuration",
   "cloudStorage.config.provider": "Storage Provider",
+  "cloudStorage.config.step1Title": "Select Cloud Provider",
+  "cloudStorage.config.step1Subtitle": "Choose your object storage provider",
+  "cloudStorage.config.nextStep": "Next",
+  "cloudStorage.config.selectProviderFirst": "Please select a cloud provider first",
+  "cloudStorage.config.changeProvider": "Change Provider",
+  "cloudStorage.config.keyTip": "Please go to {provider} console to apply for AccessKey first",
+  "cloudStorage.config.keyTipSub": "We recommend using sub-account keys with minimal permissions",
+  "cloudStorage.config.applyKey": "Apply Now",
+  "cloudStorage.config.comingSoon": "Coming Soon",
   "cloudStorage.config.tos.credentials": "Credentials",
   "cloudStorage.config.tos.accessKey": "Access Key ID",
   "cloudStorage.config.tos.accessKeyPlaceholder": "Enter Access Key ID",
@@ -24,6 +33,7 @@
   "cloudStorage.config.bucketPlaceholder": "Enter or select bucket name",
   "cloudStorage.config.listBuckets": "List Buckets",
   "cloudStorage.config.createBucket": "New Bucket",
+  "cloudStorage.config.orCreateNew": "Or create new",
   "cloudStorage.config.verify": "Verify Credentials",
   "cloudStorage.config.verifying": "Verifying...",
   "cloudStorage.config.save": "Save Config",
@@ -87,5 +97,17 @@
 
   "cloudStorage.aclWarning.title": "Current bucket is private",
   "cloudStorage.aclWarning.description": "Files in private buckets cannot be accessed directly via public URLs. Thumbnails and public links will not work properly. Click the button to set public read access.",
-  "cloudStorage.aclWarning.fixButton": "Set Public Read"
+  "cloudStorage.aclWarning.fixButton": "Set Public Read",
+
+  "cloudStorage.fileList.dropToUpload": "Drop files to upload",
+
+  "cloudStorage.uploadQueue.title": "Upload Tasks",
+  "cloudStorage.uploadQueue.uploading": "Uploading",
+  "cloudStorage.uploadQueue.completed": "Completed",
+  "cloudStorage.uploadQueue.someFailed": "{failed} failed",
+  "cloudStorage.uploadQueue.viewDetails": "View Details",
+  "cloudStorage.uploadQueue.clearCompleted": "Clear Completed",
+  "cloudStorage.uploadQueue.empty": "No upload tasks",
+  "cloudStorage.uploadQueue.retry": "Retry",
+  "cloudStorage.uploadQueue.remove": "Remove"
 }
