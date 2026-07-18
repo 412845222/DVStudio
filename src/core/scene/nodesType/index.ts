@@ -3,6 +3,7 @@ export * from './RectNode'
 export * from './TextNode'
 export * from './ImageNode'
 export * from './LineNode'
+export * from './VideoNode'
 
 export * from './numbers'
 export * from './types'

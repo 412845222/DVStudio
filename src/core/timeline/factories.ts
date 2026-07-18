@@ -5,6 +5,8 @@ export const createDefaultTimelineState = (): TimelineState => ({
 	frameCount: 120,
 	currentFrame: 0,
 	frameWidth: 14,
+	isScrubbing: false,
+	isPlaying: false,
 	uiFocus: null,
 	uiJumpToFrame: null,
 	uiJumpVersion: 0,

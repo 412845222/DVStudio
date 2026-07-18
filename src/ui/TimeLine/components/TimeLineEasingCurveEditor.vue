@@ -150,10 +150,11 @@ watch(
 .tl-easing-editor {
 	height: 110px;
 	box-sizing: border-box;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
-	border-radius: 0;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.4));
+	border-radius: 2px;
 	overflow: hidden;
+	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .tl-easing-editor-head {
@@ -162,41 +163,49 @@ watch(
 	align-items: center;
 	gap: 8px;
 	padding: 0 8px;
-	border-bottom: 1px solid var(--vscode-divider);
-	background: var(--dweb-defualt);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.3));
 }
 
 .tl-easing-select {
 	height: 22px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
-	border-radius: 6px;
-	font-size: 12px;
-	padding: 0 8px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	color: var(--pl-fg);
+	border-radius: 2px;
+	font-size: 11px;
+	padding: 0 6px;
 	outline: none;
+	transition: border-color 0.15s ease;
+}
+
+.tl-easing-select:focus {
+	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
 }
 
 .tl-easing-close {
 	margin-left: auto;
 	height: 22px;
-	border: 1px solid var(--vscode-border);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
 	background: transparent;
-	color: var(--vscode-fg);
-	border-radius: 6px;
-	font-size: 12px;
+	color: var(--pl-fg);
+	border-radius: 2px;
+	font-size: 11px;
 	padding: 0 8px;
 	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .tl-easing-close:hover {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, #ff6b6b 60%, transparent);
+	color: #ff8a80;
+	background: color-mix(in srgb, #ff6b6b 10%, transparent);
 }
 
 .tl-easing-canvas {
 	width: 100%;
 	height: calc(110px - 28px);
 	display: block;
-	background: var(--dweb-defualt-dark);
+	background: transparent;
 }
 </style>

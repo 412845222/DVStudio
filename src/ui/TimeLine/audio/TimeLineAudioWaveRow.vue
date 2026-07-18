@@ -20,9 +20,6 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 let ro: ResizeObserver | null = null
 let raf = 0
 
-const cssVar = (name: string) =>
-	getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-
 const parseHexColor = (s: string): { r: number; g: number; b: number } | null => {
 	const t = s.trim()
 	if (!t.startsWith('#')) return null
@@ -50,15 +47,17 @@ const rgba = (c: { r: number; g: number; b: number }, a: number) => {
 }
 
 const getThemeColors = () => {
-	const rowBg = cssVar('--dweb-defualt-dark') || '#181818'
-	const fgMuted = cssVar('--vscode-fg-muted') || 'rgba(212,212,212,0.72)'
-	// 需求：用明确颜色进行音频可视化
-	const accent = parseHexColor('#3aa8b4') ?? { r: 58, g: 168, b: 180 }
+	const css = () => getComputedStyle(document.documentElement)
+	const plAccent = (css().getPropertyValue('--pl-accent') || '#1f9d84').trim() || '#1f9d84'
+	const plBg0 = (css().getPropertyValue('--pl-bg-0') || '#0d1518').trim() || '#0d1518'
+	const plFg = (css().getPropertyValue('--pl-fg') || '#eaf2f5').trim() || '#eaf2f5'
+	const plCold = (css().getPropertyValue('--pl-cold') || '#3aa8b4').trim() || '#3aa8b4'
+	const accent = parseHexColor(plCold) ?? { r: 58, g: 168, b: 180 }
 	return {
-		rowBg,
-		wave: rgba(accent, 0.95),
-		mid: rgba(accent, 0.35),
-		empty: fgMuted
+		rowBg: plBg0,
+		wave: rgba(accent, 0.9),
+		mid: rgba(accent, 0.3),
+		empty: rgba(parseHexColor(plFg) ?? { r: 234, g: 242, b: 245 }, 0.45)
 	}
 }
 
@@ -110,7 +109,7 @@ const draw = () => {
 	const fps = Math.max(1, Math.floor(Number(props.fps) || 60))
 	if (!track || !Array.isArray(track.peaks) || track.peaks.length === 0) {
 		ctx.fillStyle = colors.empty
-		ctx.font = '12px sans-serif'
+		ctx.font = '11px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 		ctx.textBaseline = 'middle'
 		ctx.fillText('未导入音频', 10, cssH / 2)
 		ctx.restore()

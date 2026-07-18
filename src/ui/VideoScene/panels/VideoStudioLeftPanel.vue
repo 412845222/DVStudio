@@ -158,13 +158,15 @@ const close = () => {
 	left: 0;
 	bottom: 0;
 	width: 40vw;
-	border-right: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.3)) 100%);
+	backdrop-filter: blur(12px);
 	z-index: 3;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
 	padding-right: 6px;
+	box-shadow: 4px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-left-splitter {
@@ -174,9 +176,10 @@ const close = () => {
 	bottom: 0;
 	width: 6px;
 	cursor: col-resize;
-	background: var(--dweb-defualt);
-	border-left: 1px solid var(--vscode-border);
+	background: color-mix(in srgb, var(--pl-accent) 6%, var(--pl-bg-1));
+	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	user-select: none;
+	transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .vs-left-splitter::after {
@@ -187,14 +190,22 @@ const close = () => {
 	width: 2px;
 	height: 28px;
 	transform: translate(-50%, -50%);
-	background: var(--vscode-fg-muted);
+	background: var(--pl-accent);
 	opacity: 0.6;
-	border-radius: 2px;
+	border-radius: 1px;
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .vs-left-splitter:hover::after,
 .vs-left-splitter.dragging::after {
 	opacity: 1;
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 80%, transparent);
+}
+
+.vs-left-splitter:hover,
+.vs-left-splitter.dragging {
+	background: color-mix(in srgb, var(--pl-accent) 12%, var(--pl-bg-1));
+	box-shadow: inset 0 0 12px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .vs-left-header {
@@ -202,28 +213,47 @@ const close = () => {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 8px 10px;
-	border-bottom: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	padding: 10px 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 4%, transparent);
+	position: relative;
+}
+
+.vs-left-header::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: -1px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 60%, transparent), transparent);
 }
 
 .vs-left-title {
 	font-size: 12px;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
+	letter-spacing: 0.5px;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	font-weight: 500;
 }
 
 .vs-left-close {
 	margin-left: auto;
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0,0,0,0.3));
+	color: var(--pl-fg);
 	font-size: 12px;
 	height: 24px;
-	padding: 0 10px;
+	padding: 0 12px;
 	cursor: pointer;
+	border-radius: 2px;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .vs-left-close:hover {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 10%, var(--pl-bg-1));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 </style>

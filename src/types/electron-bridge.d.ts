@@ -28,6 +28,8 @@ import type {
 	CloudTemplatesDeleteResult,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult,
 	OpenComfySetupPayload,
 	OpenComfySetupResult,
 } from '../electronBridge/types'
@@ -189,6 +191,7 @@ declare global {
 				openDevTools(): Promise<{ ok: boolean; opened?: boolean; error?: string }>
 				close(): Promise<{ ok: boolean; error?: string }>
 				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
+				openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult>
 				openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult>
 			}
 			aiworkflow: {

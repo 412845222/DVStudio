@@ -38,7 +38,8 @@ const savedAtText = computed(() => {
 .dvs-recent-overlay {
 	position: absolute;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.35);
+	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0,0,0,0.6));
+	backdrop-filter: blur(4px);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -48,34 +49,83 @@ const savedAtText = computed(() => {
 .dvs-recent-dialog {
 	width: 420px;
 	max-width: calc(100% - 32px);
-	background: var(--dweb-defualt);
-	border: 1px solid var(--vscode-border);
-	border-radius: 12px;
-	padding: 14px;
+	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.4));
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 32%, transparent);
+	border-radius: 4px;
+	padding: 16px 18px;
+	box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
+	position: relative;
+	overflow: hidden;
+}
+
+.dvs-recent-dialog::before,
+.dvs-recent-dialog::after {
+	content: '';
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	border: 1px solid var(--pl-accent);
+	pointer-events: none;
+}
+
+.dvs-recent-dialog::before {
+	top: -1px;
+	left: -1px;
+	border-right: none;
+	border-bottom: none;
+}
+
+.dvs-recent-dialog::after {
+	bottom: -1px;
+	right: -1px;
+	border-left: none;
+	border-top: none;
 }
 
 .dvs-recent-title {
 	font-size: 14px;
-	font-weight: 600;
-	color: var(--vscode-fg);
+	font-weight: 500;
+	color: var(--pl-fg);
+	letter-spacing: 0.5px;
+	text-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 
 .dvs-recent-desc {
 	margin-top: 10px;
 	font-size: 13px;
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
+	line-height: 1.5;
+	letter-spacing: 0.3px;
 }
 
 .dvs-recent-meta {
 	margin-top: 8px;
 	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-fg) 60%, transparent);
+	font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
 }
 
 .dvs-recent-actions {
-	margin-top: 14px;
+	margin-top: 16px;
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
+}
+
+.dvs-recent-actions .vs-btn {
+	border-radius: 2px;
+	border: 1px solid var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	color: var(--pl-fg);
+	padding: 6px 14px;
+	font-size: 12px;
+	letter-spacing: 0.3px;
+	cursor: pointer;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dvs-recent-actions .vs-btn:hover {
+	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

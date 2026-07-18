@@ -7,6 +7,22 @@ export type CubicBezier = {
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
+const cssColor = (name: string, fallback: string): string => {
+	if (typeof document === 'undefined') return fallback
+	const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+	return v || fallback
+}
+
+const hexToRgba = (hex: string, alpha: number): string => {
+	const h = hex.replace('#', '')
+	if (h.length !== 6) return `rgba(255,255,255,${alpha})`
+	const r = parseInt(h.substring(0, 2), 16)
+	const g = parseInt(h.substring(2, 4), 16)
+	const b = parseInt(h.substring(4, 6), 16)
+	if ([r, g, b].some((n) => Number.isNaN(n))) return `rgba(255,255,255,${alpha})`
+	return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 export class EasingCurveCanvas {
 	private readonly padLeft = 14
 	private readonly padRight = 14
@@ -52,11 +68,17 @@ export class EasingCurveCanvas {
 		const h = ctx.canvas.height
 		const plot = this.getPlotRect()
 
+		const accent = cssColor('--pl-accent', '#1f9d84')
+		const bg0 = cssColor('--pl-bg-0', '#0d1518')
+		const fg = cssColor('--pl-fg', '#eaf2f5')
+
 		ctx.clearRect(0, 0, w, h)
+		ctx.fillStyle = hexToRgba(bg0, 0.6)
+		ctx.fillRect(0, 0, w, h)
 
 		// 背景网格
 		ctx.save()
-		ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+		ctx.strokeStyle = hexToRgba(accent, 0.12)
 		ctx.lineWidth = 1
 		const step = Math.max(16, Math.floor(Math.min(plot.width, plot.height) / 5))
 		for (let x = plot.left; x <= plot.right; x += step) {
@@ -75,7 +97,7 @@ export class EasingCurveCanvas {
 
 		// 坐标轴（左侧 x/y） + 右侧边际线
 		ctx.save()
-		ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+		ctx.strokeStyle = hexToRgba(accent, 0.45)
 		ctx.lineWidth = 1
 		// y 轴
 		ctx.beginPath()
@@ -101,41 +123,51 @@ export class EasingCurveCanvas {
 
 		// 辅助线
 		ctx.save()
-		ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+		ctx.strokeStyle = hexToRgba(accent, 0.55)
 		ctx.lineWidth = 1
+		ctx.setLineDash([3, 3])
 		ctx.beginPath()
 		ctx.moveTo(p0.x, p0.y)
 		ctx.lineTo(p1.x, p1.y)
 		ctx.lineTo(p2.x, p2.y)
 		ctx.lineTo(p3.x, p3.y)
 		ctx.stroke()
+		ctx.setLineDash([])
 		ctx.restore()
 
 		// 曲线
 		ctx.save()
-		ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+		ctx.strokeStyle = accent
 		ctx.lineWidth = 2
+		ctx.shadowColor = hexToRgba(accent, 0.6)
+		ctx.shadowBlur = 6
 		ctx.beginPath()
 		ctx.moveTo(p0.x, p0.y)
 		ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
 		ctx.stroke()
+		ctx.shadowBlur = 0
 		ctx.restore()
 
 		// 控制点
-		this.drawHandle(p1.x, p1.y, activePoint === 'p1')
-		this.drawHandle(p2.x, p2.y, activePoint === 'p2')
+		this.drawHandle(p1.x, p1.y, activePoint === 'p1', accent, bg0)
+		this.drawHandle(p2.x, p2.y, activePoint === 'p2', accent, bg0)
 	}
 
-	private drawHandle(x: number, y: number, active: boolean) {
+	private drawHandle(x: number, y: number, active: boolean, accent: string, _bg: string) {
 		const { ctx } = this
 		ctx.save()
-		ctx.fillStyle = active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.8)'
-		ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+		ctx.fillStyle = active ? accent : hexToRgba(accent, 0.8)
+		ctx.strokeStyle = hexToRgba('#000000', 0.4)
 		ctx.lineWidth = 1
+		if (active) {
+			ctx.shadowColor = hexToRgba(accent, 0.8)
+			ctx.shadowBlur = 8
+		}
 		ctx.beginPath()
-		ctx.arc(x, y, 7, 0, Math.PI * 2)
+		ctx.arc(x, y, active ? 8 : 6, 0, Math.PI * 2)
 		ctx.fill()
 		ctx.stroke()
+		ctx.shadowBlur = 0
 		ctx.restore()
 	}
 

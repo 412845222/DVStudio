@@ -462,11 +462,24 @@ const redo = () => {
 	height: 40px;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	padding: 0 12px;
-	border-top: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 88%, rgba(0,0,0,0.5));
+	backdrop-filter: blur(10px);
 	z-index: 3;
+	box-shadow: 0 -2px 16px rgba(0,0,0,0.4), inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 10%, transparent);
+}
+
+.vs-toolbar::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -1px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 50%, transparent), transparent);
+	pointer-events: none;
 }
 
 .vs-toolbar-spacer {
@@ -475,36 +488,43 @@ const redo = () => {
 }
 
 .vs-icon-btn {
-	width: 34px;
+	width: 32px;
 	padding: 0;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	font-size: 16px;
 }
 
 .vs-save-time {
-	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	font-size: 11px;
+	color: color-mix(in srgb, var(--pl-fg) 55%, transparent);
 	white-space: nowrap;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+	letter-spacing: 0.3px;
 }
 
 .vs-tool-btn {
 	height: 28px;
-	padding: 0 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 0 12px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 50%, rgba(0,0,0,0.3));
+	color: var(--pl-fg);
 	cursor: pointer;
 	font-size: 12px;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.vs-tool-btn:hover {
-	border-color: var(--vscode-border-accent);
+.vs-tool-btn:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 
 .vs-tool-btn:disabled {
-	opacity: 0.5;
+	opacity: 0.35;
 	cursor: not-allowed;
 }
 
@@ -513,6 +533,8 @@ const redo = () => {
 }
 
 .vs-tool-btn.active {
-	border-color: var(--vscode-border-accent);
+	border-color: var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 15%, var(--pl-bg-1));
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

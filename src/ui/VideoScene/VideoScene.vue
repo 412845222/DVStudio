@@ -66,6 +66,19 @@
 				/>
 			</div>
 
+			<div v-if="videoBuffering.isBuffering" class="vs-buffering-indicator">
+				<div class="vs-buffering-label">
+					<svg class="vs-buffering-spinner" viewBox="0 0 24 24" width="14" height="14">
+						<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.25" />
+						<path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+					</svg>
+					<span>缓冲中...</span>
+				</div>
+				<div class="vs-buffering-bar">
+					<div class="vs-buffering-fill" :style="{ width: (videoBuffering.bufferProgress * 100) + '%' }" />
+				</div>
+			</div>
+
 			<div class="vs-tools">
 				<button class="vs-tool" type="button" :class="{ active: showGuides }" @click="toggleGuides">
 					辅助线
@@ -833,8 +846,15 @@ const startLiveRender = () => {
 	if (liveRenderRaf != null) return
 	const tick = () => {
 		liveRenderRaf = window.requestAnimationFrame(tick)
-		// Continuous render when selected: reduces filter ghosting during edits.
-		dwebCanvas?.render()
+		const needsRender = scene?.needsRerenderFromVideo() ?? false
+		if (needsRender) {
+			scene?.clearVideoRenderFlag()
+			dwebCanvas?.render()
+		} else if (VideoSceneStore.state.selectedNodeId) {
+			dwebCanvas?.render()
+		} else if (trackedVideoId) {
+			dwebCanvas?.render()
+		}
 	}
 	liveRenderRaf = window.requestAnimationFrame(tick)
 }
@@ -845,19 +865,138 @@ const stopLiveRender = () => {
 	liveRenderRaf = null
 }
 
+let trackedVideoId: string | null = null
+let trackedVideoNodeId: string | null = null
+let lastSeekTime = -1
+let scrubActive = false
+
+const videoBuffering = reactive({
+	isBuffering: false,
+	bufferProgress: 1,
+	readyState: 0
+})
+
+let bufferingCheckRaf: number | null = null
+const startBufferingCheck = () => {
+	if (bufferingCheckRaf != null) return
+	const check = () => {
+		bufferingCheckRaf = window.requestAnimationFrame(check)
+		if (!scene) {
+			videoBuffering.isBuffering = false
+			return
+		}
+		const videoInfo = scene.getFirstVideoNode()
+		if (!videoInfo) {
+			videoBuffering.isBuffering = false
+			return
+		}
+		trackedVideoId = videoInfo.videoId
+		const state = scene.getVideoBufferingState(videoInfo.videoId)
+		videoBuffering.isBuffering = state.isBuffering
+		videoBuffering.bufferProgress = state.bufferProgress
+		videoBuffering.readyState = state.readyState
+	}
+	bufferingCheckRaf = window.requestAnimationFrame(check)
+}
+const stopBufferingCheck = () => {
+	if (bufferingCheckRaf != null) {
+		window.cancelAnimationFrame(bufferingCheckRaf)
+		bufferingCheckRaf = null
+	}
+	videoBuffering.isBuffering = false
+}
+
 watch(
 	() => VideoSceneStore.state.selectedNodeId,
 	(id) => {
-		if (id) startLiveRender()
-		else stopLiveRender()
+		if (id) {
+			startLiveRender()
+			startBufferingCheck()
+		} else {
+			stopLiveRender()
+			stopBufferingCheck()
+		}
+	},
+	{ immediate: true }
+)
+
+watch(
+	() => TimelineStore.state.isScrubbing,
+	(scrubbing) => {
+		if (!scene) return
+		const videoInfo = scene.getFirstVideoNode()
+		if (!videoInfo) return
+		trackedVideoId = videoInfo.videoId
+		trackedVideoNodeId = videoInfo.id
+		const fps = TimelineStore.state.fps || 30
+		const time = Math.max(0, (TimelineStore.state.currentFrame || 0) / fps)
+		if (scrubbing) {
+			scrubActive = true
+			startLiveRender()
+			scene.startVideoScrubbing(videoInfo.videoId, time)
+		} else if (scrubActive) {
+			scrubActive = false
+			startLiveRender()
+			scene.endVideoScrubbing(videoInfo.videoId).catch(() => {})
+		}
+	}
+)
+
+watch(
+	() => TimelineStore.state.isPlaying,
+	(playing) => {
+		if (!scene) return
+		const videoInfo = scene.getFirstVideoNode()
+		if (!videoInfo) return
+		trackedVideoId = videoInfo.videoId
+		trackedVideoNodeId = videoInfo.id
+		const fps = TimelineStore.state.fps || 30
+		const time = Math.max(0, (TimelineStore.state.currentFrame || 0) / fps)
+		if (playing) {
+			startLiveRender()
+			scene.seekVideoFast(videoInfo.videoId, time)
+			scene.playVideo(videoInfo.videoId).catch(() => {})
+		} else {
+			scene.pauseVideo(videoInfo.videoId)
+		}
 	},
 	{ immediate: true }
 )
 
 watch(
 	() => TimelineStore.state.currentFrame,
-	() => {
+	(frame) => {
 		scheduleApplyTimelineAnimation()
+		if (scene) {
+			const videoInfo = scene.getFirstVideoNode()
+			if (videoInfo) {
+				trackedVideoId = videoInfo.videoId
+				trackedVideoNodeId = videoInfo.id
+				const fps = TimelineStore.state.fps || 30
+				const time = Math.max(0, frame / fps)
+				const isScrubbing = TimelineStore.state.isScrubbing
+				const isPlaying = TimelineStore.state.isPlaying
+				if (isScrubbing) {
+					startLiveRender()
+					scene.scrubVideoTo(videoInfo.videoId, time)
+				} else if (isPlaying) {
+					startLiveRender()
+					const curTime = scene.getVideoCurrentTime(videoInfo.videoId)
+					if (Math.abs(curTime - time) > 0.1) {
+						scene.seekVideoFast(videoInfo.videoId, time)
+					}
+				} else {
+					if (scrubActive) {
+						scrubActive = false
+					}
+					if (Math.abs(time - lastSeekTime) > 0.01) {
+						lastSeekTime = time
+						startLiveRender()
+						scene.seekVideoFast(videoInfo.videoId, time)
+					}
+				}
+			}
+		}
 	},
 	{ immediate: true }
 )
@@ -1888,6 +2027,7 @@ onMounted(() => {
 	const canvas = ensureCanvas()
 	if (!canvas) return
 	scene = new DwebVideoScene()
+	scene.setCanvas(canvas)
 	scene.setStageSize({ width: stageWidth.value, height: stageHeight.value })
 	scene.setStageBackground?.({
 		type: stageBackground.value.type,
@@ -1898,6 +2038,7 @@ onMounted(() => {
 		repeat: stageBackground.value.repeat
 	})
 	scene.setState(VideoSceneStore.state)
+	scene.initVideoTextures()
 	canvas.setScene(scene)
 	unsubscribeVideoScene = VideoSceneStore.subscribe((_m, state) => {
 		type MutationType =
@@ -1937,6 +2078,7 @@ onMounted(() => {
 			}
 		}
 		scene?.setState(state)
+		scene?.initVideoTextures()
 		canvas.requestRender()
 		updateOverlay()
 	})
@@ -1947,6 +2089,7 @@ onMounted(() => {
 		const c = ensureCanvas()
 		if (!c) return
 		scene.setState(VideoSceneStore.state)
+		scene.initVideoTextures()
 		c.requestRender()
 		updateOverlay()
 	}
@@ -1993,6 +2136,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	stopLiveRender()
+	stopBufferingCheck()
 	if (bgApplyTimer != null) window.clearTimeout(bgApplyTimer)
 	if (applyAnimRaf != null) {
 		window.cancelAnimationFrame(applyAnimRaf)
@@ -2024,6 +2168,7 @@ onBeforeUnmount(() => {
 		window.removeEventListener('dvs:editor/state-restored', onEditorRestored)
 		onEditorRestored = null
 	}
+	scene?.setCanvas(null)
 	dwebCanvas?.dispose()
 	dwebCanvas = null
 	dwebCanvasRef.value = null
@@ -2069,7 +2214,8 @@ watch(
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
-	background: var(--dweb-defualt);
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-0) 92%, transparent) 0%, color-mix(in srgb, var(--pl-bg-1) 96%, transparent) 100%);
 }
 
 .vs-stage {
@@ -2112,17 +2258,18 @@ watch(
 
 .vs-marquee {
 	position: absolute;
-	border: 1px solid var(--vscode-border-accent);
-	background: var(--vscode-border-accent);
-	opacity: 0.15;
+	border: 1px solid var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 20%, transparent);
+	opacity: 0.25;
 	pointer-events: none;
 }
 
 .vs-snap-line {
 	position: absolute;
-	background: var(--vscode-border-accent);
-	opacity: 0.9;
+	background: var(--pl-accent);
+	opacity: 0.8;
 	pointer-events: none;
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 70%, transparent);
 }
 
 .vs-snap-line.v {
@@ -2137,33 +2284,122 @@ watch(
 	height: 1px;
 }
 
+.vs-buffering-indicator {
+	position: absolute;
+	right: 16px;
+	bottom: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 14px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 85%, rgba(0,0,0,0.6));
+	backdrop-filter: blur(10px);
+	z-index: 5;
+	pointer-events: none;
+	min-width: 160px;
+	box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
+}
+
+.vs-buffering-indicator::before,
+.vs-buffering-indicator::after {
+	content: '';
+	position: absolute;
+	width: 10px;
+	height: 10px;
+	border: 1px solid var(--pl-accent);
+	pointer-events: none;
+}
+
+.vs-buffering-indicator::before {
+	top: -1px;
+	left: -1px;
+	border-right: none;
+	border-bottom: none;
+}
+
+.vs-buffering-indicator::after {
+	bottom: -1px;
+	right: -1px;
+	border-left: none;
+	border-top: none;
+}
+
+.vs-buffering-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--pl-fg);
+	letter-spacing: 0.3px;
+}
+
+.vs-buffering-spinner {
+	animation: vs-buffering-spin 1s linear infinite;
+	color: var(--pl-accent);
+}
+
+@keyframes vs-buffering-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+.vs-buffering-bar {
+	width: 100%;
+	height: 3px;
+	border-radius: 1px;
+	background: color-mix(in srgb, var(--pl-fg) 10%, transparent);
+	overflow: hidden;
+}
+
+.vs-buffering-fill {
+	height: 100%;
+	border-radius: 1px;
+	background: linear-gradient(90deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 70%, var(--pl-cold, #3aa8b4)));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 70%, transparent);
+	transition: width 0.15s ease-out;
+}
+
 .vs-tools {
 	position: absolute;
 	top: calc(24px + 12px);
 	left: calc(24px + 12px);
 	display: flex;
-	gap: 8px;
+	gap: 6px;
 	z-index: 2;
 }
 
 .vs-tool {
 	pointer-events: auto;
-	padding: 6px 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 6px 12px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 70%, rgba(0,0,0,0.4));
+	color: var(--pl-fg);
 	cursor: pointer;
 	font-size: 12px;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+	backdrop-filter: blur(6px);
+	position: relative;
+}
+
+.vs-tool:hover:not(:disabled) {
+	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .vs-tool.active {
-	border-color: var(--vscode-border-accent);
-	background: var(--vscode-selected-bg);
+	border-color: var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 15%, var(--pl-bg-1));
+	color: var(--pl-fg);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-tool:disabled {
-	opacity: 0.5;
+	opacity: 0.4;
 	cursor: not-allowed;
 }
 
@@ -2174,10 +2410,37 @@ watch(
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 10px 12px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	border-radius: 10px;
+	padding: 10px 14px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 75%, rgba(0,0,0,0.5));
+	border-radius: 2px;
+	backdrop-filter: blur(8px);
+	box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
+}
+
+.vs-form::before,
+.vs-form::after {
+	content: '';
+	position: absolute;
+	width: 10px;
+	height: 10px;
+	border: 1px solid var(--pl-accent);
+	pointer-events: none;
+	opacity: 0.7;
+}
+
+.vs-form::before {
+	top: -1px;
+	left: -1px;
+	border-right: none;
+	border-bottom: none;
+}
+
+.vs-form::after {
+	bottom: -1px;
+	right: -1px;
+	border-left: none;
+	border-top: none;
 }
 
 .vs-bg-form {
@@ -2189,12 +2452,13 @@ watch(
 }
 
 .vs-link {
-	color: var(--vscode-border-accent);
+	color: var(--pl-accent);
 	text-decoration: none;
+	transition: text-shadow 0.15s ease;
 }
 
 .vs-link:hover {
-	text-decoration: underline;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .vs-label {
@@ -2202,36 +2466,60 @@ watch(
 	align-items: center;
 	gap: 6px;
 	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-fg) 70%, transparent);
+	letter-spacing: 0.3px;
 }
 
 .vs-input {
 	width: 96px;
-	padding: 6px 8px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 5px 8px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 5%, transparent);
+	color: var(--pl-fg);
 	outline: none;
+	font-size: 12px;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.vs-input:focus {
+	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 8%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-select {
 	width: 120px;
-	padding: 6px 8px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 5px 8px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 5%, transparent);
+	color: var(--pl-fg);
 	outline: none;
+	font-size: 12px;
+	cursor: pointer;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.vs-select:focus {
+	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-color {
 	width: 28px;
 	height: 28px;
 	padding: 0;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	background: transparent;
+	cursor: pointer;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vs-color:hover {
+	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 30%, transparent);
 }
 
 .vs-file {
@@ -2249,25 +2537,38 @@ watch(
 
 .vs-file-btn {
 	height: 28px;
-	padding: 0 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 0 12px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0,0,0,0.3));
+	color: var(--pl-fg);
 	font-size: 12px;
 	line-height: 28px;
+	cursor: pointer;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vs-file-btn:hover {
+	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .vs-btn {
-	padding: 6px 10px;
-	border-radius: 8px;
-	border: 1px solid var(--vscode-border-accent);
-	background: transparent;
-	color: var(--vscode-fg);
+	padding: 6px 14px;
+	border-radius: 2px;
+	border: 1px solid var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	color: var(--pl-fg);
 	cursor: pointer;
+	font-size: 12px;
+	letter-spacing: 0.3px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .vs-btn:hover {
-	background: var(--vscode-hover-bg);
+	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

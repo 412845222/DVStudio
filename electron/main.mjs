@@ -15,6 +15,7 @@ import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_L
 import { collectDiagnostics } from './backend/diagnostics.mjs'
 import { detectPythonInfo, setPythonDetectCacheDir } from './backend/python.mjs'
 import { cleanupOldRuntimeProject } from './backend/runtimeCleanup.mjs'
+import { generateFilmstrip, checkFfmpegAvailable } from './backend/videoThumbnails.mjs'
 import {
 	registerDwebProjectAssetProtocol,
 	setProjectRoot,
@@ -1162,6 +1163,23 @@ function registerIpc() {
 		})
 	})
 
+	ipcMain.handle('dweb:video:generateFilmstrip', async (_e, payload) => {
+		try {
+			const dwebUrl = String(payload?.videoUrl || '').trim()
+			if (!dwebUrl) return { ok: false, error: 'videoUrl is required' }
+			const hasFfmpeg = await checkFfmpegAvailable()
+			if (!hasFfmpeg) return { ok: false, error: 'ffmpeg not available' }
+			const result = await generateFilmstrip(dwebUrl, {
+				thumbWidth: payload?.thumbWidth || 240,
+				columns: payload?.columns || 10,
+				intervalSec: payload?.intervalSec || undefined
+			})
+			return result
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	ipcMain.handle('dweb:aiworkflow:registerProjectRoot', async (_e, payload) => {
 		const projectId = Number(payload?.projectId)
 		const rootPath = String(payload?.rootPath || '').trim()
@@ -1756,6 +1774,92 @@ function registerIpc() {
 			return { ok: true, focused: false }
 		} catch (err) {
 			console.error('[main][comfyui-setup] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	let videoEditorWindow = null
+	ipcMain.handle('dweb:video-editor:open', async (_e, payload) => {
+		console.log('[main] dweb:video-editor:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const videoUrl = String(payload?.videoUrl || '')
+			const videoName = String(payload?.videoName || '')
+			const title = String(payload?.title || '视频编辑器').slice(0, 200)
+
+			if (!videoUrl) {
+				return { ok: false, error: 'missing videoUrl' }
+			}
+
+			if (videoEditorWindow && !videoEditorWindow.isDestroyed()) {
+				videoEditorWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
+			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			if (videoUrl) queryParts.push(`videoUrl=${encodeURIComponent(videoUrl)}`)
+			if (videoName) queryParts.push(`videoName=${encodeURIComponent(videoName)}`)
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/video-editor${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/video-editor${queryStr}`
+
+			console.log('[main][video-editor] targetUrl:', targetUrl)
+
+			videoEditorWindow = new BrowserWindow({
+				width: 1600,
+				height: 900,
+				minWidth: 1200,
+				minHeight: 700,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true,
+				},
+			})
+
+			try { videoEditorWindow.setMenuBarVisibility(false) } catch {}
+			try { videoEditorWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 40
+				const offsetY = 40
+				videoEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			videoEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
+				appendRuntimeLog(`[video-editor:${level}] ${message} (${sourceId}:${line})`)
+			})
+			videoEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[video-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			videoEditorWindow.on('closed', () => {
+				videoEditorWindow = null
+			})
+
+			await videoEditorWindow.loadURL(targetUrl)
+			console.log('[main][video-editor] loadURL done, URL:', videoEditorWindow.webContents.getURL())
+			videoEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][video-editor] open failed', err)
 			return { ok: false, error: String(err?.message || err) }
 		}
 	})
