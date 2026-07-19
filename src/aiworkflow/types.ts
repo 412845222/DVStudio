@@ -1298,6 +1298,12 @@ export type WorkflowNodeChatSubmitPayload = {
 		type: 'text' | 'image' | 'video' | 'model3d' | 'blender'
 		label: string
 	}>
+	attachments?: Array<{
+		type?: string
+		name?: string
+		url?: string
+		data?: string
+	}>
 }
 
 export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
