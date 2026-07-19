@@ -5,6 +5,9 @@
  * 从现有 agent/service.mjs 中提取 buildContextPrompt、buildMessages、token 估算等逻辑。
  */
 
+import { getScene, shouldInjectBlueprintContext, shouldInjectProjectContext } from '../scenes/SceneRegistry.mjs'
+import { DVSAgentType } from '../types/AgentTypes.mjs'
+
 const MODEL_CONTEXT_BUDGETS = {
   'doubao-seed-1-6': 224000,
   'doubao-seed-1-6-flash': 224000,
@@ -144,6 +147,20 @@ function buildBlueprintContext(bp, parts) {
 
 export class ContextBuilder {
   buildSystemPrompt(context, options = {}) {
+    const agentType = options.agentType || DVSAgentType.WORKFLOW
+    const scene = getScene(agentType)
+
+    if (options.customSystemPrompt && scene.config.useCustomSystemPrompt) {
+      return scene.buildSystemPrompt(context, {
+        ...options,
+        customSystemPrompt: options.customSystemPrompt
+      })
+    }
+
+    return scene.buildSystemPrompt(context, options)
+  }
+
+  buildLegacySystemPrompt(context, options = {}) {
     const parts = ['# DVStudio 工作流上下文\n'];
     parts.push('你是 DVStudio AI 工作流中的智能助手，可以理解当前工作状态并协助操作工作流蓝图。\n');
 
