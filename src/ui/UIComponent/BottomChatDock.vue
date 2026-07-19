@@ -237,15 +237,7 @@
 					@keydown.enter.shift.exact.stop
 					@keydown.exact="onInputKeyDown"
 					@keydown.escape="onEscapeKeyDown"
-					@paste="onTextareaPaste"
 				/>
-
-				<div v-if="pendingAttachments.length > 0" class="chat-dock-attachments">
-					<div v-for="att in pendingAttachments" :key="att.id" class="chat-dock-attachment-item">
-						<img v-if="att.type === 'image'" :src="att.thumbnailUrl" class="chat-dock-attachment-thumb" :alt="att.name" />
-						<button type="button" class="chat-dock-attachment-remove" @click="removeAttachment(att.id)" title="移除附件">×</button>
-					</div>
-				</div>
 
 				<div
 					v-if="showSkillPicker"
@@ -520,7 +512,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'update:modelValue', v: string): void
-	(e: 'send', payload: { attachments?: Array<{ type: string; name?: string; url?: string; data?: string }> }): void
+	(e: 'send'): void
 	(e: 'stop'): void
 	(e: 'request-expand'): void
 	(e: 'request-collapse'): void
@@ -556,106 +548,6 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const skillPickerRef = ref<HTMLElement | null>(null)
 const chatListRef = ref<HTMLElement | null>(null)
 const pendingFocus = ref(false)
-
-const MAX_IMAGE_WIDTH = 960
-const IMAGE_QUALITY = 0.85
-
-type PendingAttachment = {
-	id: string
-	name: string
-	type: 'image' | 'video'
-	mimeType: string
-	dataUrl: string
-	thumbnailUrl?: string
-}
-
-const pendingAttachments = ref<PendingAttachment[]>([])
-
-const makeAttachmentId = () => `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-
-async function compressImageToDataUrl(file: Blob | File, maxWidth = MAX_IMAGE_WIDTH, quality = IMAGE_QUALITY): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const img = new Image()
-		img.onload = () => {
-			let { width, height } = img
-			if (width > maxWidth) {
-				const ratio = maxWidth / width
-				width = maxWidth
-				height = Math.round(height * ratio)
-			}
-			const canvas = document.createElement('canvas')
-			canvas.width = width
-			canvas.height = height
-			const ctx = canvas.getContext('2d')
-			if (!ctx) return reject(new Error('Canvas context unavailable'))
-			ctx.drawImage(img, 0, 0, width, height)
-			canvas.toBlob(
-				(blob) => {
-					if (!blob) return reject(new Error('Image compression failed'))
-					const reader = new FileReader()
-					reader.onload = () => resolve(reader.result as string)
-					reader.onerror = () => reject(new Error('Data URL conversion failed'))
-					reader.readAsDataURL(blob)
-				},
-				'image/jpeg',
-				quality
-			)
-		}
-		img.onerror = () => reject(new Error('Image load failed'))
-		const reader = new FileReader()
-		reader.onload = () => { img.src = reader.result as string }
-		reader.onerror = () => reject(new Error('File read failed'))
-		reader.readAsDataURL(file)
-	})
-}
-
-async function addImageAttachment(file: File) {
-	try {
-		const dataUrl = await compressImageToDataUrl(file)
-		pendingAttachments.value.push({
-			id: makeAttachmentId(),
-			name: file.name || `image_${Date.now()}.jpg`,
-			type: 'image',
-			mimeType: 'image/jpeg',
-			dataUrl,
-			thumbnailUrl: dataUrl
-		})
-	} catch (err) {
-		console.warn('[ChatDock] Failed to process image:', err)
-	}
-}
-
-function removeAttachment(id: string) {
-	pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id)
-}
-
-function clearAttachments() {
-	pendingAttachments.value = []
-}
-
-function collectAttachmentsForSend(): Array<{ type: string; name?: string; url?: string; data?: string }> {
-	return pendingAttachments.value.map(att => ({
-		type: att.type === 'image' ? 'image_url' : 'video_url',
-		name: att.name,
-		data: att.dataUrl,
-		url: att.dataUrl
-	}))
-}
-
-const onTextareaPaste = async (e: ClipboardEvent) => {
-	const clipboardData = e.clipboardData
-	if (!clipboardData) return
-	const items = Array.from(clipboardData.items)
-	for (const item of items) {
-		if (item.kind === 'file' && item.type.startsWith('image/')) {
-			const file = item.getAsFile()
-			if (file) {
-				e.preventDefault()
-				await addImageAttachment(file)
-			}
-		}
-	}
-}
 
 const showSkillPicker = ref(false)
 const selectedSkillIndex = ref(0)
@@ -1377,9 +1269,7 @@ const onEnterSend = () => {
 		if (!isStoppingState.value) emit('stop')
 		return
 	}
-	const attachments = collectAttachmentsForSend()
-	emit('send', { attachments })
-	clearAttachments()
+	emit('send')
 }
 
 const onClickSend = () => {
@@ -1387,9 +1277,7 @@ const onClickSend = () => {
 		if (!isStoppingState.value) emit('stop')
 		return
 	}
-	const attachments = collectAttachmentsForSend()
-	emit('send', { attachments })
-	clearAttachments()
+	emit('send')
 }
 
 const onInputKeyDown = (e: KeyboardEvent) => {
@@ -1448,18 +1336,41 @@ const onUploadClick = () => {
 	fileInputRef.value?.click()
 }
 
-const onFileSelect = async (event: Event) => {
+const onFileSelect = (event: Event) => {
 	const target = event.target as HTMLInputElement
 	const files = target.files
 	if (!files || files.length === 0) return
+
+	const uploadedFiles: Array<{ name: string; type: string; size: number; dataUrl?: string }> = []
 
 	for (let i = 0; i < files.length; i++) {
 		const file = files[i]
 		const fileType = file.type.split('/')[0]
 
-		if (fileType === 'image') {
-			await addImageAttachment(file)
+		if (fileType !== 'image' && fileType !== 'video') {
+			continue
 		}
+
+		uploadedFiles.push({
+			name: file.name,
+			type: file.type,
+			size: file.size
+		})
+
+		if (fileType === 'image') {
+			const reader = new FileReader()
+			reader.onload = (e) => {
+				const idx = uploadedFiles.findIndex((f) => f.name === file.name)
+				if (idx !== -1) {
+					uploadedFiles[idx].dataUrl = String(e.target?.result || '')
+				}
+			}
+			reader.readAsDataURL(file)
+		}
+	}
+
+	if (uploadedFiles.length > 0) {
+		emit('file-upload', uploadedFiles)
 	}
 
 	target.value = ''
@@ -3202,54 +3113,6 @@ watch(
 .chat-dock-toolbar-select:focus {
 	border-color: var(--wf-primary, #1f9d84);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
-}
-
-.chat-dock-attachments {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	padding: 6px 0;
-}
-
-.chat-dock-attachment-item {
-	position: relative;
-	width: 56px;
-	height: 56px;
-	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
-	border-radius: 2px;
-	overflow: hidden;
-	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 80%, transparent);
-}
-
-.chat-dock-attachment-thumb {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-	display: block;
-}
-
-.chat-dock-attachment-remove {
-	position: absolute;
-	top: 2px;
-	right: 2px;
-	width: 16px;
-	height: 16px;
-	border-radius: 50%;
-	background: rgba(0, 0, 0, 0.7);
-	color: #fff;
-	border: none;
-	cursor: pointer;
-	font-size: 12px;
-	line-height: 1;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0;
-	transition: background 150ms ease;
-}
-
-.chat-dock-attachment-remove:hover {
-	background: rgba(220, 60, 60, 0.9);
 }
 
 .chat-dock-input {

@@ -1,99 +1,4 @@
-export type SubtitleRecogModelSize = 'tiny' | 'base' | 'small'
-
-export interface SubtitleRecogCue {
-	startTime: number
-	endTime: number
-	text: string
-}
-
-export interface SubtitleRecogProgressChunk {
-	type: 'progress' | 'phase' | 'done' | 'error'
-	percent?: number
-	phase?: string
-	message?: string
-	downloadedBytes?: number
-	totalBytes?: number
-	path?: string
-	size?: number
-	cues?: SubtitleRecogCue[]
-	cueCount?: number
-	modelSize?: SubtitleRecogModelSize
-	version?: string
-	error?: string
-}
-
-export interface SubtitleRecogBinaryStatus {
-	ok: boolean
-	installed: boolean
-	path: string
-	size?: number
-	detail: string
-}
-
-export interface SubtitleRecogFfmpegStatus {
-	ok: boolean
-	detail: string
-}
-
-export interface SubtitleRecogInstalledModel {
-	size: SubtitleRecogModelSize
-	path: string
-	fileSize: number
-	ok: boolean
-}
-
-export interface SubtitleRecogEnvStatus {
-	ok: boolean
-	ffmpeg: SubtitleRecogFfmpegStatus
-	binary: SubtitleRecogBinaryStatus
-	models: SubtitleRecogInstalledModel[]
-	defaultModel: SubtitleRecogModelSize | null
-	paths: {
-		binaryDir: string
-		modelDir: string
-	}
-}
-
-export interface SubtitleRecogBinaryConfig {
-	supported: boolean
-	platform: string
-	version?: string
-	url?: string
-	fileName?: string
-	estimatedSize?: number
-	message?: string
-}
-
-export interface SubtitleRecogFfmpegConfig {
-	supported: boolean
-	platform: string
-	version?: string
-	url?: string
-	fileName?: string
-	estimatedSize?: number
-	message?: string
-}
-
-export interface SubtitleRecogModelInfo {
-	size: SubtitleRecogModelSize
-	name: string
-	description: string
-	diskSize: string
-	language: string
-	recommendedFor: string
-}
-
-export interface SubtitleRecogModelDownloadConfig {
-	supported: boolean
-	size: SubtitleRecogModelSize
-	name?: string
-	description?: string
-	url?: string
-	fileName?: string
-	estimatedSize?: number
-	diskSize?: string
-	message?: string
-}
+export {}
 
 import type {
 	BackendLogsResult,
@@ -534,18 +439,6 @@ declare global {
 			videostudio: {
 				pingBackend(): Promise<BackendPingResult>
 				selectExportDir(options?: unknown): Promise<DirectoryPickResult>
-			}
-			subtitleRecog: {
-				checkEnv(): Promise<SubtitleRecogEnvStatus>
-				getBinaryConfig(payload?: { useMirror?: boolean }): Promise<SubtitleRecogBinaryConfig>
-				downloadBinary(payload?: { useMirror?: boolean; overwrite?: boolean }): AsyncGenerator<SubtitleRecogProgressChunk, void, void>
-				getFfmpegConfig(payload?: { useMirror?: boolean }): Promise<SubtitleRecogFfmpegConfig>
-				downloadFfmpeg(payload?: { useMirror?: boolean; overwrite?: boolean }): AsyncGenerator<SubtitleRecogProgressChunk, void, void>
-				getAvailableModels(): Promise<SubtitleRecogModelInfo[]>
-				getModelConfig(payload?: { size?: SubtitleRecogModelSize; useMirror?: boolean }): Promise<SubtitleRecogModelDownloadConfig>
-				downloadModel(payload?: { size?: SubtitleRecogModelSize; useMirror?: boolean; overwrite?: boolean }): AsyncGenerator<SubtitleRecogProgressChunk, void, void>
-				getInstalledModels(): Promise<SubtitleRecogInstalledModel[]>
-				recognize(payload: { videoPath: string; modelSize?: SubtitleRecogModelSize; language?: string }): AsyncGenerator<SubtitleRecogProgressChunk, void, void>
 			}
 			platform: {
 				getStatus(): Promise<DwebPlatformStatus>

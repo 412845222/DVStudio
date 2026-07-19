@@ -19,7 +19,6 @@ import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
 import { routes as agentRoutes } from './modules/agent/routes.mjs'
 import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
-import { routes as subtitleRecognitionRoutes } from './modules/subtitle-recognition/routes.mjs'
 import { routes as cloudTemplatesRoutes } from './modules/cloud-templates/routes.mjs'
 import { routes as workshopTemplatesRoutes } from './modules/workshop-templates/routes.mjs'
 import { routes as blenderRoutes } from './modules/blender/routes.mjs'
@@ -91,7 +90,6 @@ export function initBackend(mainWindow, deps = {}) {
     ...agentRoutes,
     ...cliAdapterRoutes,
     ...subtitleRoutes,
-    ...subtitleRecognitionRoutes,
     ...cloudTemplatesRoutes,
     ...workshopTemplatesRoutes,
     ...blenderRoutes,
