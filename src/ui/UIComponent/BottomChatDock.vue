@@ -259,7 +259,7 @@
 			</div>
 
 				<div v-if="props.isLinkDragOver" class="chat-dock-link-drag-hint">
-					<span>释放添加节点到对话上下文</span>
+					<span>{{ t('aichat.dock.linkDragHint') }}</span>
 				</div>
 
 				<div class="chat-dock-editor-wrap" :class="{ 'is-link-drag-over': props.isLinkDragOver }">
