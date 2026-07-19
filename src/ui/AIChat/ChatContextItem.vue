@@ -9,7 +9,7 @@
 		<template v-else-if="item.type === 'file'">
 			<span class="chat-context-chip-icon">{{ getFileIcon(item.name, item.mimeType) }}</span>
 			<span class="chat-context-chip-label">{{ item.name }}</span>
-			<span v-if="item.truncated" class="chat-context-chip-badge" title="内容已截断">…</span>
+			<span v-if="item.truncated" class="chat-context-chip-badge" :title="t('aichat.dock.contentTruncated')">…</span>
 		</template>
 
 		<template v-else-if="item.type === 'skill'">
@@ -30,11 +30,15 @@
 			<span class="chat-context-chip-type">@</span>
 		</template>
 
-		<button class="chat-context-chip-remove" @click="emit('remove', item.id)" title="移除">×</button>
+		<button class="chat-context-chip-remove" @click="emit('remove', item.id)" :title="t('aichat.dock.remove')">×</button>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
 const props = defineProps<{
 	item: import('../../types/agentMention').ChatContextItem
 }>()

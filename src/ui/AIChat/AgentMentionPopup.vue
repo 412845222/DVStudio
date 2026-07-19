@@ -4,7 +4,7 @@
 		class="agent-mention-popup"
 		@mousedown.prevent.stop
 	>
-		<div class="agent-mention-header">@ 引用已添加的资源</div>
+		<div class="agent-mention-header">{{ t('aichat.mention.title') }}</div>
 		<div class="agent-mention-list">
 			<div
 				v-for="(item, index) in items"
@@ -31,13 +31,17 @@
 				<span class="agent-mention-type" :class="`kind-${item.kind}`">{{ getKindLabel(item.kind) }}</span>
 			</div>
 			<div v-if="items.length === 0" class="agent-mention-empty">
-				无匹配的资源
+				{{ t('aichat.mention.noMatch') }}
 			</div>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from '../../i18n'
+
+const { t } = useI18n()
+
 interface MentionItem {
 	id: string
 	kind: string
@@ -88,15 +92,15 @@ const getTypeIcon = (kind: string): string => {
 }
 
 const getKindLabel = (kind: string): string => {
-	if (kind === 'image') return '图片'
-	if (kind === 'video') return '视频'
-	if (kind === 'model3d') return '3D'
-	if (kind === 'blender') return 'Blender'
-	if (kind === 'audio') return '音频'
-	if (kind === 'file') return '文件'
-	if (kind === 'skill') return '技能'
-	if (kind === 'node' || kind === 'nodeOutput') return '节点'
-	if (kind === 'text') return '文本'
+	if (kind === 'image') return t('aichat.mention.kindImage')
+	if (kind === 'video') return t('aichat.mention.kindVideo')
+	if (kind === 'model3d') return t('aichat.mention.kindModel3d')
+	if (kind === 'blender') return t('aichat.mention.kindBlender')
+	if (kind === 'audio') return t('aichat.mention.kindAudio')
+	if (kind === 'file') return t('aichat.mention.kindFile')
+	if (kind === 'skill') return t('aichat.mention.kindSkill')
+	if (kind === 'node' || kind === 'nodeOutput') return t('aichat.mention.kindNode')
+	if (kind === 'text') return t('aichat.mention.kindText')
 	return kind
 }
 
