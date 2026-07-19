@@ -7,5 +7,7 @@
   "nodes.video.screenshot": "Screenshot",
   "nodes.video.screenshotDisabled": "Available only when video output connects to image input",
   "nodes.video.timeline": "Timeline",
-  "nodes.video.rangeInfo": "Range {duration}s  Zoom ×{zoom}  Precision {precision}"
+  "nodes.video.rangeInfo": "Range {duration}s  Zoom ×{zoom}  Precision {precision}",
+  "nodes.video.openVideoEditor": "Open Video Editor",
+  "nodes.video.editorTitle": "Video Editor"
 }

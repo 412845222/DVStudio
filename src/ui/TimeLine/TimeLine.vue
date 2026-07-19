@@ -1,5 +1,5 @@
 <template>
-	<div class="tl-shell">
+	<div ref="shellRef" class="tl-shell">
 		<div class="tl-toolbar">
 			<div class="tl-play-controls">
 				<button class="tl-mini-btn" type="button" :disabled="isPlaying" @click="onPlay">
@@ -304,17 +304,18 @@
 				</div>
 			</div>
 
-			<!-- 底部水平滚动条：控制整体左右滚动 -->
+			<!-- 底部迷你总览条：显示完整时间轴 + 当前可视区域窗口，支持拖拽平移 -->
 			<div class="tl-scrollbar">
-				<input
-					class="tl-range"
-					type="range"
-					:min="0"
-					:max="Math.max(0, maxScrollLeft)"
-					:step="1"
-					:value="scrollLeft"
-					@input="onScrollBarInput"
+				<canvas
+					ref="overviewCanvasRef"
+					class="tl-overview-canvas"
+					@pointerdown="onOverviewPointerDown"
+					@dblclick="onOverviewDblClick"
 				/>
+				<div class="tl-overview-hud">
+					<span class="tl-overview-label">总览</span>
+					<span class="tl-overview-zoom">{{ Math.round(frameWidth * 10) / 10 }}px/f</span>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -345,6 +346,8 @@ import {
 	getPrevNext,
 	rangeFullyCovered,
 	rangeIntersects,
+	spanEnd,
+	spanStart,
 	type TimelineFrameSpan
 } from '../../store/timeline/spans'
 import { VuexTimelineDataManager } from './core/VuexTimelineDataManager'
@@ -1286,6 +1289,8 @@ const onFrameClick = (layerId: string, frameIndex: number, ev: MouseEvent) => {
 
 const tracksRef = ref<HTMLDivElement | null>(null)
 const viewportRef = ref<HTMLDivElement | null>(null)
+const shellRef = ref<HTMLDivElement | null>(null)
+const overviewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const scrollLeft = ref(0)
 const viewportWidth = ref(0)
 const maxScrollLeft = computed(() => Math.max(0, timelineWidth.value - viewportWidth.value))
@@ -1304,6 +1309,236 @@ const syncViewportMetrics = () => {
 	if (!el) return
 	viewportWidth.value = el.clientWidth
 	if (scrollLeft.value > maxScrollLeft.value) scrollLeft.value = maxScrollLeft.value
+	scheduleOverviewDraw()
+}
+
+// ===== 迷你总览条（overview / minimap）=====
+const overviewWidth = ref(0)
+const OVERVIEW_HEIGHT = 20
+
+const cssColor = (name: string, fallback: string): string => {
+	if (typeof document === 'undefined') return fallback
+	const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+	return v || fallback
+}
+const parseHex = (hex: string): { r: number; g: number; b: number } | null => {
+	const h = hex.replace('#', '')
+	if (h.length !== 6) return null
+	const n = parseInt(h, 16)
+	return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff }
+}
+const rgba = (c: { r: number; g: number; b: number }, a: number) =>
+	`rgba(${c.r}, ${c.g}, ${c.b}, ${a})`
+const mixRgba = (hex: string, a: number, fallback = '#1f9d84') => {
+	const parsed = parseHex(hex) || parseHex(fallback) || { r: 31, g: 157, b: 132 }
+	return rgba(parsed, a)
+}
+
+let overviewRaf = 0
+const scheduleOverviewDraw = () => {
+	if (overviewRaf) return
+	overviewRaf = requestAnimationFrame(() => {
+		overviewRaf = 0
+		drawOverview()
+	})
+}
+
+const drawOverview = () => {
+	const canvas = overviewCanvasRef.value
+	if (!canvas) return
+	const parent = canvas.parentElement
+	if (!parent) return
+	const dpr = window.devicePixelRatio || 1
+	const w = parent.clientWidth
+	const h = OVERVIEW_HEIGHT
+	if (w <= 0) return
+	if (overviewWidth.value !== w) {
+		overviewWidth.value = w
+		canvas.width = Math.floor(w * dpr)
+		canvas.height = Math.floor(h * dpr)
+		canvas.style.width = w + 'px'
+		canvas.style.height = h + 'px'
+	}
+	const ctx = canvas.getContext('2d')
+	if (!ctx) return
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+	ctx.clearRect(0, 0, w, h)
+
+	const accent = cssColor('--pl-accent', '#1f9d84')
+	const bg0 = cssColor('--pl-bg-0', '#0d1518')
+	const bg1 = cssColor('--pl-bg-1', '#111a22')
+	const warm = cssColor('--pl-warm', '#e5b567')
+	const cold = cssColor('--pl-cold', '#3aa8b4')
+
+	// 背景
+	ctx.fillStyle = mixRgba(bg0, 0.95)
+	ctx.fillRect(0, 0, w, h)
+
+	// 细扫描线
+	ctx.fillStyle = mixRgba(accent, 0.06)
+	for (let y = 0; y < h; y += 2) ctx.fillRect(0, y, w, 1)
+
+	// 绘制各图层关键帧段（密度条）
+	const fc = Math.max(1, frameCount.value)
+	const ls = layers.value
+	const layerCount = ls.length
+	const kfMap = store.state.keyframeSpansByLayer ?? {}
+	if (layerCount > 0) {
+		const rowH = Math.max(1, (h - 6) / layerCount)
+		for (let i = 0; i < layerCount; i++) {
+			const layer = ls[i]
+			if (!layer) continue
+			const y = 3 + i * rowH
+			const kind = store.state.layerKindById?.[layer.id] ?? 'normal'
+			// 行底色
+			ctx.fillStyle = mixRgba(bg1, 0.5)
+			ctx.fillRect(2, y, w - 4, Math.max(1, rowH - 1))
+
+			// 关键帧段
+			const spans: TimelineFrameSpan[] = kfMap[layer.id] ?? []
+			if (spans.length > 0) {
+				const segColor = kind === 'audio' ? cold : kind === 'progress' ? cold : warm
+				ctx.fillStyle = mixRgba(segColor, 0.6)
+				for (const s of spans) {
+					const s0 = spanStart(s)
+					const s1 = spanEnd(s)
+					const x0 = (Math.max(0, s0) / fc) * w
+					const x1 = ((Math.min(fc - 1, s1) + 1) / fc) * w
+					ctx.fillRect(x0, y + 1, Math.max(1, x1 - x0), Math.max(1, rowH - 3))
+				}
+			}
+		}
+	}
+
+	// 可视区域窗口
+	const tw = Math.max(1, timelineWidth.value)
+	const vw = Math.max(0, viewportWidth.value)
+	const sl = Math.max(0, scrollLeft.value)
+	const winX = (sl / tw) * w
+	const winW = Math.max(8, (vw / tw) * w)
+
+	// 窗口阴影背景（非可视区域暗化）
+	ctx.fillStyle = 'rgba(0,0,0,0.35)'
+	ctx.fillRect(0, 0, winX, h)
+	ctx.fillRect(winX + winW, 0, Math.max(0, w - winX - winW), h)
+
+	// 窗口边框
+	ctx.strokeStyle = accent
+	ctx.lineWidth = 1
+	ctx.shadowColor = mixRgba(accent, 0.8)
+	ctx.shadowBlur = 4
+	ctx.strokeRect(winX + 0.5, 0.5, Math.max(1, winW - 1), h - 1)
+	ctx.shadowBlur = 0
+
+	// 窗口填充
+	ctx.fillStyle = mixRgba(accent, 0.10)
+	ctx.fillRect(winX, 0, winW, h)
+
+	// 播放头
+	const phX = (currentFrame.value / fc) * w
+	ctx.strokeStyle = accent
+	ctx.lineWidth = 1
+	ctx.shadowColor = mixRgba(accent, 0.9)
+	ctx.shadowBlur = 3
+	ctx.beginPath()
+	ctx.moveTo(phX, 0)
+	ctx.lineTo(phX, h)
+	ctx.stroke()
+	ctx.shadowBlur = 0
+
+	// 上下边细线
+	ctx.fillStyle = mixRgba(accent, 0.4)
+	ctx.fillRect(0, 0, w, 1)
+	ctx.fillRect(0, h - 1, w, 1)
+}
+
+// overview 交互：拖拽窗口平移，点击跳转
+type OverviewDragMode = null | 'window' | 'left' | 'right'
+let overviewDrag: OverviewDragMode = null
+let overviewDragStartX = 0
+let overviewDragStartScroll = 0
+
+const onOverviewPointerDown = (ev: PointerEvent) => {
+	const canvas = overviewCanvasRef.value
+	if (!canvas) return
+	const rect = canvas.getBoundingClientRect()
+	const x = ev.clientX - rect.left
+	const tw = Math.max(1, timelineWidth.value)
+	const w = rect.width
+	const sl = Math.max(0, scrollLeft.value)
+	const vw = Math.max(0, viewportWidth.value)
+	const winX = (sl / tw) * w
+	const winW = Math.max(8, (vw / tw) * w)
+	const edge = 6
+
+	// 判定交互类型
+	if (x < winX - 1) {
+		// 点击窗口左侧空白：直接以该点为中心跳转
+		const worldX = (x / w) * tw
+		commitScrollLeft(worldX - vw / 2)
+		overviewDrag = 'window'
+	} else if (x > winX + winW + 1) {
+		const worldX = (x / w) * tw
+		commitScrollLeft(worldX - vw / 2)
+		overviewDrag = 'window'
+	} else if (x <= winX + edge) {
+		overviewDrag = 'left'
+	} else if (x >= winX + winW - edge) {
+		overviewDrag = 'right'
+	} else {
+		overviewDrag = 'window'
+	}
+	overviewDragStartX = ev.clientX
+	overviewDragStartScroll = scrollLeft.value
+	canvas.setPointerCapture(ev.pointerId)
+	const onMove = (e: PointerEvent) => {
+		const dx = e.clientX - overviewDragStartX
+		const pixelsPerPxW = tw / w
+		const worldDx = dx * pixelsPerPxW
+		if (overviewDrag === 'window') {
+			commitScrollLeft(overviewDragStartScroll + worldDx)
+		} else if (overviewDrag === 'left') {
+			// 拖拽左边缘 → 缩放：用左边缘新位置换算 frameWidth
+			const newWinX = winX + dx
+			const newWinW = Math.max(20, winX + winW - newWinX)
+			const newFrameWidth = (vw / newWinW) * w / frameCount.value
+			const clamped = Math.max(0.05, Math.min(30, newFrameWidth))
+			store.dispatch('setFrameWidth', { frameWidth: clamped })
+		} else if (overviewDrag === 'right') {
+			const newWinW = Math.max(20, winW + dx)
+			const newFrameWidth = (vw / newWinW) * w / frameCount.value
+			const clamped = Math.max(0.05, Math.min(30, newFrameWidth))
+			store.dispatch('setFrameWidth', { frameWidth: clamped })
+		}
+	}
+	const onUp = () => {
+		overviewDrag = null
+		window.removeEventListener('pointermove', onMove)
+		window.removeEventListener('pointerup', onUp)
+	}
+	window.addEventListener('pointermove', onMove)
+	window.addEventListener('pointerup', onUp, { once: true })
+}
+
+const onOverviewDblClick = (ev: MouseEvent) => {
+	// 双击总览条：自适应缩放（让整段时间轴刚好充满可视区域）
+	const vw = Math.max(1, viewportWidth.value)
+	const fc = Math.max(1, frameCount.value)
+	const targetFw = (vw - 40) / fc
+	store.dispatch('setFrameWidth', { frameWidth: Math.max(0.05, Math.min(15, targetFw)) })
+	commitScrollLeft(0)
+}
+
+let tracksResizeObserver: ResizeObserver | null = null
+
+// 统一的 resize 处理：双 RAF 确保 DOM 布局稳定后再重算尺寸并触发 canvas 重绘
+const onAnyResize = () => {
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			syncViewportMetrics()
+			onLayersScroll()
+		})
+	})
 }
 
 let scrollRaf = 0
@@ -1318,18 +1553,6 @@ const centerOnFrame = (frameIndex: number) => {
 	const vw = Math.max(1, Math.floor(viewportWidth.value) || 1)
 	const worldX = frameIndex * fw
 	commitScrollLeft(worldX - vw / 2)
-}
-
-const onScrollBarInput = (evt: Event) => {
-	const value = Number((evt.target as HTMLInputElement).value)
-	pendingScrollLeft = value
-	if (scrollRaf) return
-	scrollRaf = requestAnimationFrame(() => {
-		scrollRaf = 0
-		if (pendingScrollLeft == null) return
-		commitScrollLeft(pendingScrollLeft)
-		pendingScrollLeft = null
-	})
 }
 
 // 滚轮缩放：改变每帧宽度（允许缩到 < 1px 以全览超长时间轴）
@@ -1448,6 +1671,7 @@ const onPlayheadPointerDown = (ev: PointerEvent) => {
 	closeMenu()
 	if (ev.button !== 0) return
 	playheadDragging = true
+	store.dispatch('setScrubbing', { isScrubbing: true })
 	try {
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
 	} catch {
@@ -1461,6 +1685,7 @@ const onPlayheadPointerDown = (ev: PointerEvent) => {
 	}
 	const onUp = (e: PointerEvent) => {
 		playheadDragging = false
+		store.dispatch('setScrubbing', { isScrubbing: false })
 		try {
 			;(ev.currentTarget as HTMLElement)?.releasePointerCapture?.(ev.pointerId)
 		} catch {
@@ -1505,6 +1730,7 @@ const onTickPointerDown = (ev: PointerEvent) => {
 	// 需要按下 Ctrl 才进入“指针多选模式”；否则为单指针拖动
 	if (!ev.ctrlKey) {
 		playheadDragging = true
+		store.dispatch('setScrubbing', { isScrubbing: true })
 		;(ev.currentTarget as HTMLElement)?.setPointerCapture?.(ev.pointerId)
 		setCurrentFrame(startFrame)
 
@@ -1514,6 +1740,7 @@ const onTickPointerDown = (ev: PointerEvent) => {
 		}
 		const onUp = (e: PointerEvent) => {
 			playheadDragging = false
+			store.dispatch('setScrubbing', { isScrubbing: false })
 			try {
 				;(ev.currentTarget as HTMLElement)?.releasePointerCapture?.(ev.pointerId)
 			} catch {
@@ -1656,7 +1883,7 @@ const onGlobalKeydown = (e: KeyboardEvent) => {
 
 	if (
 		(e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') &&
-		uiFocus.value === 'timeline' &&
+		(uiFocus.value === 'timeline' || uiFocus.value === 'stage') &&
 		!isTyping
 	) {
 		e.preventDefault()
@@ -1847,6 +2074,15 @@ const onFramePointerDown = (layerId: string, frameIndex: number, ev: PointerEven
 onMounted(() => {
 	syncViewportMetrics()
 	onLayersScroll()
+	// 使用 ResizeObserver 监听容器自身尺寸变化（弹窗缩放/分隔条拖拽等不会触发 window.resize）
+	if ('ResizeObserver' in window) {
+		tracksResizeObserver = new ResizeObserver(onAnyResize)
+		// 观察多个层级的容器：最外层 shell、tracks 容器、可视区域 viewport、图层滚动容器
+		const observeTargets = [shellRef.value, tracksRef.value, viewportRef.value, layersScrollRef.value]
+		for (const el of observeTargets) {
+			if (el) tracksResizeObserver.observe(el)
+		}
+	}
 	// 播放 tick 管理器（默认 30fps）
 	ticker = new TimelineTicker({
 		getFrameCount: () => frameCount.value,
@@ -1856,6 +2092,7 @@ onMounted(() => {
 		loop: loopEnabled.value,
 		onPlayingChange: (p) => {
 			isPlaying.value = p
+			store.dispatch('setPlaying', { isPlaying: p })
 			if (p) void startTimelineAudio()
 			else pauseTimelineAudio()
 		},
@@ -1867,13 +2104,25 @@ onMounted(() => {
 	// 兜底：用户在播放中拖拽/跳帧时也要保持可视
 	watch(
 		() => currentFrame.value,
-		(fi) => ensurePlayheadVisibleWhilePlaying(fi)
+		(fi) => {
+			ensurePlayheadVisibleWhilePlaying(fi)
+			scheduleOverviewDraw()
+		}
 	)
-	window.addEventListener('resize', syncViewportMetrics)
+	window.addEventListener('resize', onAnyResize)
 	window.addEventListener('pointerdown', onGlobalPointerDown, { capture: true })
 	window.addEventListener('keydown', onGlobalKeydown, { capture: true })
-	window.addEventListener('resize', onLayersScroll)
 	window.addEventListener(DVS_EVENTS.TimelineNav, onTimelineNav)
+	// DWeb 容器自身尺寸变化事件（独立弹窗 resize 时触发）
+	window.addEventListener('dweb:content/resize', onAnyResize, true)
+	// 触发一次初始总览绘制
+	requestAnimationFrame(() => scheduleOverviewDraw())
+	// 挂载后延迟再读一次尺寸（确保父组件完成 flex 布局）
+	setTimeout(() => {
+		syncViewportMetrics()
+		onLayersScroll()
+		scheduleOverviewDraw()
+	}, 100)
 })
 
 watch(
@@ -1889,13 +2138,16 @@ watch(
 
 onBeforeUnmount(() => {
 	if (scrollRaf) cancelAnimationFrame(scrollRaf)
+	if (overviewRaf) cancelAnimationFrame(overviewRaf)
 	ticker?.dispose()
 	ticker = null
-	window.removeEventListener('resize', syncViewportMetrics)
-	window.removeEventListener('resize', onLayersScroll)
+	tracksResizeObserver?.disconnect()
+	tracksResizeObserver = null
+	window.removeEventListener('resize', onAnyResize)
 	window.removeEventListener('pointerdown', onGlobalPointerDown, { capture: true })
 	window.removeEventListener('keydown', onGlobalKeydown, { capture: true })
 	window.removeEventListener(DVS_EVENTS.TimelineNav, onTimelineNav)
+	window.removeEventListener('dweb:content/resize', onAnyResize, true)
 	closeMenu()
 })
 
@@ -1914,6 +2166,21 @@ watch(
 
 watch(
 	() =>
+		[
+			store.state.keyframeVersion,
+			store.state.easingSegmentKeys.length,
+			frameCount.value,
+			layers.value.length,
+			scrollLeft.value,
+			viewportWidth.value,
+			store.state.progressVersion ?? 0,
+			store.state.audioVersion ?? 0
+		] as const,
+	() => scheduleOverviewDraw()
+)
+
+watch(
+	() =>
 		[store.state.keyframeVersion, store.state.easingSegmentKeys.length, frameCount.value] as const,
 	() => {
 		const next = openEasingEditors.value.filter((k) => isValidOpenEasingEditor(k))
@@ -1927,10 +2194,12 @@ watch(
 	width: 100%;
 	height: 100%;
 	min-height: 0;
+	min-width: 0;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	background: var(--dweb-defualt-dark);
-	border-top: 1px solid var(--vscode-border);
+	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.3)) 0%, color-mix(in srgb, var(--pl-bg-0) 92%, rgba(0,0,0,0.4)) 100%);
+	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
 	user-select: none;
 	-webkit-user-select: none;
 	-ms-user-select: none;
@@ -1942,66 +2211,91 @@ watch(
 	align-items: center;
 	gap: 12px;
 	padding: 0 12px;
-	border-bottom: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-1) 90%, rgba(0,0,0,0.45));
+	backdrop-filter: blur(8px);
+	position: relative;
+}
+
+.tl-toolbar::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: -1px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
+	pointer-events: none;
 }
 
 .tl-btn {
-	border: 1px solid var(--vscode-border-accent);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-weight: 600;
-	padding: 6px 12px;
-	border-radius: 8px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
+	color: var(--pl-fg);
+	font-weight: 500;
+	padding: 5px 12px;
+	border-radius: 2px;
 	cursor: pointer;
 	font-size: 12px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tl-btn:hover {
-	background: var(--vscode-hover-bg);
+	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 
 .tl-play-controls {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 }
 
 .tl-time-jump {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 4px;
+	margin-left: 6px;
+	padding-left: 10px;
+	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-time-input {
-	width: 46px;
+	width: 44px;
 	height: 24px;
-	padding: 0 6px;
-	border-radius: 6px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	padding: 0 5px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	color: var(--pl-fg);
 	font-size: 12px;
+	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
 	outline: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tl-time-input:focus {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-time-sep {
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-accent) 70%, var(--pl-fg-soft));
 	opacity: 0.8;
 	font-size: 12px;
+	font-weight: 600;
 }
 
 .tl-input-fps {
-	width: 60px;
+	width: 56px;
 }
 
 .tl-mini-btn.active {
-	border-color: var(--vscode-border-accent);
-	background: var(--vscode-hover-bg);
+	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 12%, var(--pl-bg-1));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	color: var(--pl-fg);
 }
 
 .tl-meta {
@@ -2009,37 +2303,47 @@ watch(
 	align-items: center;
 	gap: 8px;
 	margin-left: auto;
-	color: var(--vscode-fg-muted);
+	color: var(--pl-fg-soft);
 	font-size: 12px;
 }
 
 .tl-meta-label {
-	color: var(--vscode-fg-muted);
+	color: color-mix(in srgb, var(--pl-fg-soft) 75%, transparent);
+	font-size: 11px;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
 }
 
 .tl-meta-sep {
-	opacity: 0.7;
+	opacity: 0.4;
+	color: color-mix(in srgb, var(--pl-accent) 50%, transparent);
 }
 
 .tl-input {
-	width: 84px;
-	height: 28px;
-	padding: 0 8px;
-	border-radius: 6px;
-	border: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt-dark);
-	color: var(--vscode-fg);
+	width: 78px;
+	height: 26px;
+	padding: 0 7px;
+	border-radius: 2px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	color: var(--pl-fg);
 	font-size: 12px;
+	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
 	outline: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tl-input:focus {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-body {
 	flex: 1;
 	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
 }
@@ -2048,6 +2352,9 @@ watch(
 	position: relative;
 	flex: 1;
 	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
 }
@@ -2055,7 +2362,33 @@ watch(
 .tl-layers-scroll {
 	flex: 1;
 	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--pl-accent) 40%, transparent) transparent;
+}
+
+.tl-layers {
+	width: 100%;
+	box-sizing: border-box;
+	min-width: 0;
+}
+
+.tl-layers-scroll::-webkit-scrollbar {
+	width: 8px;
+}
+.tl-layers-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+.tl-layers-scroll::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	border-radius: 2px;
+}
+.tl-layers-scroll::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--pl-accent) 55%, transparent);
 }
 
 .tl-playhead {
@@ -2094,8 +2427,8 @@ watch(
 	position: absolute;
 	left: 180px;
 	top: 34px;
-	border: 1px dashed var(--dweb-accent);
-	background: transparent;
+	border: 1px dashed var(--pl-accent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
 	pointer-events: none;
 	z-index: 4;
 }
@@ -2106,17 +2439,21 @@ watch(
 	bottom: 0;
 	left: 0;
 	width: 1px;
-	background: var(--dweb-accent);
+	background: var(--pl-accent);
+	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent), 0 0 2px var(--pl-accent);
 }
 
 .tl-row {
 	min-height: 34px;
+	width: 100%;
+	box-sizing: border-box;
 	display: flex;
-	border-bottom: 1px solid var(--vscode-divider);
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .tl-manage {
-	background: var(--dweb-defualt);
+	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.35));
+	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 
 .tl-left {
@@ -2125,19 +2462,22 @@ watch(
 	display: flex;
 	align-items: center;
 	padding: 0 10px;
-	color: var(--vscode-fg-muted);
-	border-right: 1px solid var(--vscode-border);
+	color: var(--pl-fg-soft);
+	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	box-sizing: border-box;
-	background: var(--dweb-defualt);
+	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0,0,0,0.3));
 }
 
 .tl-left.selected {
-	background: var(--vscode-selected-bg);
+	background: color-mix(in srgb, var(--pl-accent) 10%, var(--pl-bg-1));
+	box-shadow: inset 3px 0 0 var(--pl-accent);
 }
 
 .tl-right {
 	flex: 1;
 	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
 }
@@ -2145,18 +2485,25 @@ watch(
 .tl-viewport {
 	flex: 1;
 	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
 	position: relative;
-	overflow: hidden; /* 不显示滚动条 */
-	background: var(--dweb-defualt-dark);
+	overflow: hidden;
+	background: color-mix(in srgb, var(--pl-bg-0) 95%, rgba(0,0,0,0.4));
 }
 
 .tl-frames-viewport {
 	flex: 0 0 34px;
 	height: 34px;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 .tl-easing-viewport {
 	flex: 0 0 auto;
+	width: 100%;
+	box-sizing: border-box;
+	border-top: 1px dashed color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-track {
@@ -2171,9 +2518,10 @@ watch(
 	width: 10px;
 	height: 12px;
 	transform: translateX(-5px);
-	background: var(--dweb-accent);
-	border-bottom-left-radius: 2px;
-	border-bottom-right-radius: 2px;
+	background: var(--pl-accent);
+	border-radius: 0;
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 70%, transparent);
+	clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 70%, 0 100%);
 }
 
 .tl-tick {
@@ -2181,21 +2529,23 @@ watch(
 	top: 0;
 	bottom: 0;
 	width: 1px;
-	background: rgba(255, 255, 255, 0.08);
+	background: color-mix(in srgb, var(--pl-accent) 20%, transparent);
 	pointer-events: none;
 }
 
 .tl-tick.major {
-	background: rgba(255, 255, 255, 0.18);
+	background: color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 
 .tl-tick-label {
 	position: absolute;
 	top: 2px;
 	left: 2px;
-	font-size: 11px;
-	color: rgba(255, 255, 255, 0.55);
+	font-size: 10px;
+	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	color: color-mix(in srgb, var(--pl-accent) 55%, var(--pl-fg-soft));
 	white-space: nowrap;
+	text-shadow: 0 0 4px color-mix(in srgb, var(--pl-accent) 30%, transparent);
 }
 
 .tl-layer-left {
@@ -2204,90 +2554,172 @@ watch(
 }
 
 .tl-layer-name {
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	font-size: 12px;
+	font-weight: 500;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 15%, transparent);
 }
 
 .tl-del {
 	margin-left: auto;
-	border: 1px solid var(--vscode-border);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
 	background: transparent;
-	color: var(--vscode-fg-muted);
-	font-size: 12px;
-	height: 24px;
-	padding: 0 10px;
+	color: var(--pl-fg-muted);
+	font-size: 11px;
+	height: 22px;
+	padding: 0 8px;
 	cursor: pointer;
+	border-radius: 2px;
+	transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .tl-subtitle {
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-size: 12px;
-	height: 24px;
-	padding: 0 10px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	background: color-mix(in srgb, var(--pl-cold) 8%, transparent);
+	color: var(--pl-fg);
+	font-size: 11px;
+	height: 22px;
+	padding: 0 8px;
 	cursor: pointer;
+	border-radius: 2px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tl-subtitle:hover {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, var(--pl-cold) 65%, transparent);
+	background: color-mix(in srgb, var(--pl-cold) 14%, var(--pl-bg-1));
+	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-cold) 25%, transparent);
 }
 
 .tl-del:hover {
-	color: var(--vscode-fg);
-	border-color: var(--vscode-border-accent);
+	color: #ff8a80;
+	border-color: color-mix(in srgb, #ff6b6b 60%, transparent);
+	background: color-mix(in srgb, #ff6b6b 10%, transparent);
 }
 
 .tl-manage-left {
-	gap: 8px;
+	gap: 6px;
 }
 
 .tl-manage-title {
-	color: var(--vscode-fg);
+	color: var(--pl-fg);
 	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 1px;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	margin-right: 4px;
 }
 
 .tl-mini-btn {
-	border: 1px solid var(--vscode-border);
-	background: transparent;
-	color: var(--vscode-fg);
-	font-size: 12px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
+	color: var(--pl-fg);
+	font-size: 11px;
 	height: 24px;
 	padding: 0 10px;
 	cursor: pointer;
+	border-radius: 2px;
+	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tl-mini-btn:hover {
-	border-color: var(--vscode-border-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
+	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-mini-btn:disabled {
-	opacity: 0.5;
+	opacity: 0.35;
 	cursor: not-allowed;
 }
 
+.tl-mini-btn:disabled:hover {
+	border-color: color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
+	box-shadow: none;
+}
+
 .tl-empty {
-	padding: 12px;
-	color: var(--vscode-fg-muted);
+	padding: 16px;
+	color: color-mix(in srgb, var(--pl-fg-soft) 50%, transparent);
 	font-size: 12px;
+	text-align: center;
+	font-style: italic;
 }
 .tl-meta-time {
 	min-width: 92px;
 	font-size: 12px;
-	color: var(--vscode-fg-muted);
+	color: var(--pl-fg);
+	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
 	white-space: nowrap;
+	text-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .tl-scrollbar {
-	height: 24px;
+	height: 30px;
 	display: flex;
 	align-items: center;
-	padding: 0 12px;
-	border-top: 1px solid var(--vscode-border);
-	background: var(--dweb-defualt);
+	padding: 4px 10px;
+	gap: 10px;
+	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.45)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.55)) 100%);
+	position: relative;
 }
 
-.tl-range {
-	width: 100%;
+.tl-scrollbar::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: -1px;
+	height: 1px;
+	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
+	pointer-events: none;
+}
+
+.tl-overview-canvas {
+	flex: 1;
+	min-width: 0;
+	height: 20px;
+	display: block;
+	cursor: grab;
+	border-radius: 2px;
+	transition: box-shadow 0.2s ease;
+}
+
+.tl-overview-canvas:active {
+	cursor: grabbing;
+}
+
+.tl-overview-canvas:hover {
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+}
+
+.tl-overview-hud {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 6px;
+	height: 20px;
+	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-size: 10px;
+	color: color-mix(in srgb, var(--pl-accent) 75%, var(--pl-fg-soft));
+	text-shadow: 0 0 4px color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	white-space: nowrap;
+	user-select: none;
+	flex-shrink: 0;
+}
+
+.tl-overview-label {
+	letter-spacing: 1px;
+	opacity: 0.8;
+}
+
+.tl-overview-zoom {
+	padding: 1px 5px;
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

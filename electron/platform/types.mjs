@@ -172,6 +172,80 @@ export const PlatformCloud = {
 }
 
 /**
+ * @typedef {Object} PlatformUgcItem
+ * @property {string} publishedFileId
+ * @property {string} title
+ * @property {string} [description]
+ * @property {string[]} [tags]
+ * @property {number} [fileSize]
+ * @property {number} createdAt
+ * @property {number} updatedAt
+ * @property {string} [previewUrl]
+ * @property {string} [author]
+ * @property {boolean} isOfficial
+ */
+
+/**
+ * @typedef {Object} PlatformUgcQueryResult
+ * @property {boolean} ok
+ * @property {PlatformUgcItem[]} [items]
+ * @property {number} [totalResults]
+ * @property {string} [errMsg]
+ */
+
+/**
+ * @typedef {Object} PlatformUgcDownloadResult
+ * @property {boolean} ok
+ * @property {string} [contentPath]
+ * @property {string} [errMsg]
+ */
+
+/**
+ * @interface PlatformUGC
+ * @description 平台UGC能力接口（官方模板分发专用）
+ */
+export const PlatformUGC = {
+	/**
+	 * 查询所有官方模板（通过official标签过滤）
+	 * @param {Object} options
+	 * @param {string} [options.tag]
+	 * @param {number} [options.limit]
+	 * @param {number} [options.offset]
+	 * @returns {PlatformUgcQueryResult}
+	 */
+	queryAll(options = {}) {
+		return { ok: false, items: [], totalResults: 0 }
+	},
+
+	/**
+	 * 下载模板内容
+	 * @param {string} publishedFileId
+	 * @returns {PlatformUgcDownloadResult}
+	 */
+	downloadItem(publishedFileId) {
+		return { ok: false }
+	},
+
+	/**
+	 * 获取下载进度
+	 * @param {string} publishedFileId
+	 * @returns {{ progress: number, state: string }|null}
+	 */
+	getDownloadProgress(publishedFileId) {
+		return null
+	},
+
+	/**
+	 * 获取模板安装信息
+	 * @param {string} publishedFileId
+	 * @returns {{ ok: boolean, installed: boolean, installPath?: string }|null}
+	 */
+	getItemInstallInfo(publishedFileId) {
+		return { ok: false, installed: false }
+	},
+}
+
+/**
  * @interface PlatformProvider
  * @description 所有平台Provider必须实现的统一接口
  */
@@ -193,6 +267,12 @@ export const PlatformProvider = {
 	 * @type {PlatformCloud|null}
 	 */
 	cloud: null,
+
+	/**
+	 * UGC/Workshop能力（官方模板分发专用）
+	 * @type {PlatformUGC|null}
+	 */
+	ugc: null,
 
 	/**
 	 * 预启动检查 - 在app.whenReady前调用

@@ -44,9 +44,6 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 let ro: ResizeObserver | null = null
 let raf = 0
 
-const cssVar = (name: string) =>
-	getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-
 const parseHexColor = (s: string): { r: number; g: number; b: number } | null => {
 	const t = s.trim()
 	if (!t.startsWith('#')) return null
@@ -74,42 +71,41 @@ const rgba = (c: { r: number; g: number; b: number }, a: number) => {
 }
 
 const getThemeColors = () => {
-	const rowBg = cssVar('--dweb-defualt-dark') || '#181818'
-	const cellBg = cssVar('--dweb-defualt-light') || '#23272e'
-	const border = cssVar('--vscode-border') || '#3c3c3c'
-	const borderAccent = cssVar('--vscode-border-accent') || cssVar('--dweb-accent') || '#3aa8b4'
-	const fg = cssVar('--vscode-fg') || '#d4d4d4'
-	const fgMuted = cssVar('--vscode-fg-muted') || 'rgba(212,212,212,0.72)'
-	const red = parseHexColor(cssVar('--dweb-red') || '#d74f4e') ?? {
-		r: 215,
-		g: 79,
-		b: 78
+	const css = () => getComputedStyle(document.documentElement)
+	const plAccent = (css().getPropertyValue('--pl-accent') || '#1f9d84').trim() || '#1f9d84'
+	const plBg0 = (css().getPropertyValue('--pl-bg-0') || '#0d1518').trim() || '#0d1518'
+	const plBg1 = (css().getPropertyValue('--pl-bg-1') || '#111a22').trim() || '#111a22'
+	const plFg = (css().getPropertyValue('--pl-fg') || '#eaf2f5').trim() || '#eaf2f5'
+	const plWarm = (css().getPropertyValue('--pl-warm') || '#e5b567').trim() || '#e5b567'
+
+	const hexToRgba = (hex: string, alpha: number) => {
+		const h = hex.replace('#', '')
+		const r = parseInt(h.substring(0, 2), 16)
+		const g = parseInt(h.substring(2, 4), 16)
+		const b = parseInt(h.substring(4, 6), 16)
+		return `rgba(${r}, ${g}, ${b}, ${alpha})`
 	}
-	const orange = parseHexColor(cssVar('--dweb-orange') || '#d77f4f') ?? {
-		r: 215,
-		g: 127,
-		b: 79
-	}
-	const accent = parseHexColor(borderAccent) ?? orange
+
+	const accent = parseHexColor(plAccent) ?? { r: 31, g: 157, b: 132 }
 
 	return {
-		rowBg,
-		cellBg,
-		border,
-		borderAccent,
-		fg,
-		fgMuted,
-		betweenBg: rgba(red, 0.14),
-		betweenBorder: rgba(red, 0.55),
-		keyframeBg: rgba(red, 0.36),
-		keyframeBorder: rgba(red, 1),
-		activeBg: rgba(orange, 0.22),
-		activeBorder: rgba(orange, 1),
-		selectedBg: 'rgba(255, 255, 255, 0.06)',
-		keyDotFill: 'rgba(255, 255, 255, 0.9)',
-		keyDotStroke: 'rgba(0, 0, 0, 0.25)',
-		easingLine: 'rgba(255, 255, 255, 0.65)',
-		progressTitle: rgba(accent, 0.8)
+		rowBg: plBg0,
+		cellBg: hexToRgba(plBg1, 0.5),
+		border: hexToRgba(plAccent, 0.22),
+		borderAccent: plAccent,
+		fg: plFg,
+		fgMuted: hexToRgba(plFg, 0.55),
+		betweenBg: rgba(accent, 0.12),
+		betweenBorder: rgba(accent, 0.55),
+		keyframeBg: hexToRgba(plWarm, 0.32),
+		keyframeBorder: plWarm,
+		activeBg: rgba(accent, 0.28),
+		activeBorder: plAccent,
+		selectedBg: rgba(accent, 0.1),
+		keyDotFill: plWarm,
+		keyDotStroke: hexToRgba(plBg0, 0.6),
+		easingLine: rgba(accent, 0.75),
+		progressTitle: rgba(accent, 0.85)
 	}
 }
 
@@ -189,7 +185,7 @@ const draw = () => {
 	const fw = Math.max(0.0001, Number(props.frameWidth) || 0)
 	// Match TimeLineTickCanvas.vue density.
 	ctx.textBaseline = 'top'
-	ctx.font = '11px sans-serif'
+	ctx.font = '10px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 
 	const start = Math.max(0, Math.floor(props.scrollLeft / fw))
 	const end = Math.min(props.frameCount - 1, Math.ceil((props.scrollLeft + cssW) / fw))
@@ -309,7 +305,7 @@ const draw = () => {
 			.sort((a, b) => a.endFrame - b.endFrame)
 
 		ctx.save()
-		ctx.font = '11px sans-serif'
+		ctx.font = '10px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 		ctx.textBaseline = 'middle'
 		ctx.fillStyle = colors.fgMuted
 		ctx.beginPath()

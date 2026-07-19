@@ -49,48 +49,51 @@
 						class="bp-node-chat-input-param-refs"
 					>
 						<div
-							v-for="(item, index) in inputParamPreviewRefsResolved"
-							:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
-							class="bp-node-chat-param-ref-item"
-							:class="`is-${item.kind}`"
-							:title="paramRefTitle(item, index)"
-						>
-							<img
-								v-if="item.previewUrl"
-								class="bp-node-chat-param-ref-thumb"
-								:src="item.previewUrl"
-								:alt="item.label || item.name || item.kind"
-								loading="lazy"
-								decoding="async"
-							/>
-							<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
-							<span class="bp-node-chat-param-ref-main">
-								<span class="bp-node-chat-param-ref-label">
-									{{ item.label || item.name || fallbackParamLabel(item, index) }}
-								</span>
-								<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
-									{{ paramRefSubline(item) }}
-								</span>
+						v-for="(item, index) in inputParamPreviewRefsResolved"
+						:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
+						class="bp-node-chat-param-ref-item"
+						:class="`is-${item.kind}`"
+						:title="paramRefTitle(item)"
+					>
+						<img
+							v-if="item.previewUrl"
+							class="bp-node-chat-param-ref-thumb"
+							:src="item.previewUrl"
+							:alt="item.label || item.kind"
+							loading="lazy"
+							decoding="async"
+						/>
+						<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
+						<span class="bp-node-chat-param-ref-main">
+							<span class="bp-node-chat-param-ref-label">
+								{{ item.label }}
 							</span>
-							<button
-								class="bp-node-chat-param-ref-remove"
-								type="button"
-								:title="t('aichat.nodeChat.disconnectUpstream')"
-								@click.stop="handleRemoveParamRef(item)"
-							>
-								×
-							</button>
-						</div>
+							<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
+								{{ paramRefSubline(item) }}
+							</span>
+						</span>
+						<button
+							class="bp-node-chat-param-ref-remove"
+							type="button"
+							:title="t('aichat.nodeChat.disconnectUpstream')"
+							@click.stop="handleRemoveParamRef(item)"
+						>
+							×
+						</button>
+					</div>
 					</div>
 					<NodeChatInput
-						ref="inputRef"
-						:modelValue="draft"
-						:placeholder="placeholder"
-						:disabled="submitting"
-						:can-submit-empty="canSubmitEmpty"
-						@update:model-value="onDraftUpdate"
-						@submit="handleSubmit"
-					/>
+					ref="inputRef"
+					:model-value="draft"
+					:placeholder="placeholder"
+					:disabled="submitting"
+					:can-submit-empty="canSubmitEmpty"
+					:input-param-preview-refs="inputParamPreviewRefsResolved"
+					:selected-references="selectedReferences"
+					@update:model-value="onDraftUpdate"
+					@update:selected-references="onSelectedReferencesUpdate"
+					@submit="handleSubmit"
+				/>
 				</div>
 
 				<div class="bp-node-chat-footer">
@@ -202,6 +205,7 @@ const emit = defineEmits<{
 
 const inputRef = ref<InstanceType<typeof NodeChatInput> | null>(null)
 const showParams = ref(false)
+const selectedReferences = ref<InputParamPreviewRef[]>([])
 
 const typeLabel = computed(() => {
 	if (!props.nodeType) return ''
@@ -242,40 +246,47 @@ const isTripo3D = computed(() => {
 })
 
 const inputParamPreviewRefsResolved = computed(() => {
-	return props.inputParamPreviewRefs ?? []
+	const raw = props.inputParamPreviewRefs ?? []
+	const typeCounter: Record<string, number> = {}
+	return raw.map((item) => {
+		const typeIdx = typeCounter[item.kind] || 0
+		typeCounter[item.kind] = typeIdx + 1
+		const i = typeIdx + 1
+		let standardLabel = ''
+		if (item.kind === 'text') standardLabel = t('aichat.nodeChat.textLabel', { index: i })
+		else if (item.kind === 'image') standardLabel = t('aichat.nodeChat.imageLabel', { index: i })
+		else if (item.kind === 'video') standardLabel = t('aichat.nodeChat.videoLabel', { index: i })
+		else if (item.kind === 'blender') standardLabel = t('aichat.nodeChat.blenderLabel', { index: i })
+		else standardLabel = t('aichat.nodeChat.model3dLabel', { index: i })
+		return { ...item, label: standardLabel }
+	})
 })
 
 const hasConnectedParams = computed(() => inputParamPreviewRefsResolved.value.length > 0)
+const hasSelectedRefs = computed(() => selectedReferences.value.length > 0)
 
-const canSubmitEmpty = computed(() => hasConnectedParams.value)
+const canSubmitEmpty = computed(() => hasConnectedParams.value || hasSelectedRefs.value)
 
 const submitDisabled = computed(() => {
-	return props.submitting || (!props.draft.trim() && !hasConnectedParams.value)
+	return props.submitting || (!props.draft.trim() && !hasConnectedParams.value && !hasSelectedRefs.value)
 })
-
-const fallbackParamLabel = (item: InputParamPreviewRef, index: number) => {
-	const i = index + 1
-	if (item.kind === 'text') return t('aichat.nodeChat.textLabel', { index: i })
-	if (item.kind === 'image') return t('aichat.nodeChat.imageLabel', { index: i })
-	if (item.kind === 'video') return t('aichat.nodeChat.videoLabel', { index: i })
-	return t('aichat.nodeChat.model3dLabel', { index: i })
-}
 
 const paramRefIcon = (item: InputParamPreviewRef) => {
 	if (item.kind === 'image') return t('aichat.nodeChat.refImage')
 	if (item.kind === 'video') return t('aichat.nodeChat.refVideo')
 	if (item.kind === 'model3d') return '3D'
+	if (item.kind === 'blender') return 'B'
 	return 'T'
 }
 
 const paramRefSubline = (item: InputParamPreviewRef) => {
 	if (item.kind === 'text') return item.text || ''
-	return item.meta || ''
+	return item.name || item.meta || ''
 }
 
-const paramRefTitle = (item: InputParamPreviewRef, index: number) => {
-	const header = item.label || item.name || fallbackParamLabel(item, index)
-	const subline = item.kind === 'text' ? item.text || '' : item.meta || ''
+const paramRefTitle = (item: InputParamPreviewRef) => {
+	const header = item.label || ''
+	const subline = item.kind === 'text' ? item.text || '' : item.name || item.meta || ''
 	return subline ? `${header}\n\n${subline}` : header
 }
 
@@ -287,6 +298,7 @@ const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidt
 
 const handleClose = () => {
 	if (props.submitting) return
+	selectedReferences.value = []
 	emit('close')
 }
 
@@ -294,15 +306,32 @@ const onDraftUpdate = (value: string) => {
 	emit('update:draft', value)
 }
 
+const onSelectedReferencesUpdate = (refs: InputParamPreviewRef[]) => {
+	selectedReferences.value = refs
+}
+
+const getRefLabel = (item: InputParamPreviewRef) => {
+	return item.label || ''
+}
+
 const handleSubmit = () => {
 	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
+	const references = selectedReferences.value.map((item) => ({
+		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
+		nodeId: item.fromNodeId || item.nodeId || '',
+		edgeId: item.edgeId,
+		type: item.kind as any,
+		label: getRefLabel(item)
+	}))
 	const payload: WorkflowNodeChatSubmitPayload = {
 		nodeId: props.nodeId,
 		nodeType: props.nodeType,
 		prompt: props.draft.trim(),
-		params: currentParams.value
+		params: currentParams.value,
+		references
 	}
 	emit('submit', payload)
+	selectedReferences.value = []
 }
 
 const handleStop = () => {
@@ -330,9 +359,12 @@ watch(
 	(visible) => {
 		if (visible) {
 			showParams.value = false
+			selectedReferences.value = []
 			nextTick(() => {
 				inputRef.value?.focus()
 			})
+		} else {
+			selectedReferences.value = []
 		}
 	}
 )

@@ -4,6 +4,7 @@ import { getBuiltinTemplates, generateBuiltinTemplateBlob } from './builtinTempl
 import { useTemplatePersistence } from './useTemplatePersistence'
 import { useCloudTemplatePersistence } from './useCloudTemplatePersistence'
 import { parseTemplatePackageBlob, createCloudTemplatePackageZip } from './useTemplateMerge'
+import { downloadWorkshopTemplate } from '../../electronBridge'
 
 export type TemplateSortBy = 'newest' | 'name'
 
@@ -17,6 +18,7 @@ const sortByState = ref<TemplateSortBy>('newest')
 const viewModeState = ref<TemplateViewMode>('grid-large')
 const selectedTemplateState = ref<TemplateItem | null>(null)
 const coverUrlCache = new Map<string, string>()
+const workshopDownloadCache = new Map<string, { zipBlob: Blob; coverBlob: Blob | null }>()
 let initialized = false
 
 export function useTemplateCenter() {
@@ -167,6 +169,32 @@ export function useTemplateCenter() {
 				return result?.zipBlob || null
 			}
 
+			if (template.source === 'steam-workshop') {
+				console.log('[loadTemplatePackage] downloading workshop template, id:', template.id, 'name:', template.name)
+				const cached = workshopDownloadCache.get(template.id)
+				if (cached?.zipBlob) {
+					console.log('[loadTemplatePackage] workshop template found in cache, size:', cached.zipBlob.size)
+					template.packageData = cached.zipBlob
+					return cached.zipBlob
+				}
+
+				const fileId = template.workshopItemId || template.id
+				const result = await downloadWorkshopTemplate({ publishedFileId: fileId })
+				if (!result?.ok || !result.zipData) {
+					console.error('[loadTemplatePackage] workshop template download failed:', result?.errMsg || 'no zip data')
+					return null
+				}
+
+				const zipBlob = new Blob([result.zipData], { type: 'application/zip' })
+				const coverBlob = result.coverData ? new Blob([result.coverData], { type: 'image/png' }) : null
+
+				workshopDownloadCache.set(template.id, { zipBlob, coverBlob })
+				template.packageData = zipBlob
+
+				console.log('[loadTemplatePackage] workshop template downloaded, zip size:', zipBlob.size, 'has cover:', !!coverBlob)
+				return zipBlob
+			}
+
 			if (template.packagePath?.startsWith('builtin:')) {
 				console.log('[loadTemplatePackage] generating builtin template blob, path:', template.packagePath)
 				const blob = await generateBuiltinTemplateBlob(template.packagePath)
@@ -206,8 +234,25 @@ export function useTemplateCenter() {
 		if (template.source === 'builtin' && template.thumbnail) {
 			return template.thumbnail
 		}
+		if (template.source === 'steam-workshop' && template.thumbnail) {
+			return template.thumbnail
+		}
 		if (coverUrlCache.has(template.id)) {
 			return coverUrlCache.get(template.id)!
+		}
+		if (template.source === 'steam-workshop') {
+			try {
+				const cached = workshopDownloadCache.get(template.id)
+				if (cached?.coverBlob) {
+					const url = URL.createObjectURL(cached.coverBlob)
+					coverUrlCache.set(template.id, url)
+					template.coverUrl = url
+					return url
+				}
+				return null
+			} catch {
+				return null
+			}
 		}
 		if (template.source === 'user') {
 			try {

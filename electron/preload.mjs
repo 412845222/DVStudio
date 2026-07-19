@@ -266,6 +266,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		openDevTools: () => invoke('dweb:window:openDevTools'),
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
+		openVideoEditor: (payload) => invoke('dweb:video-editor:open', payload || {}),
+		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
 	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
@@ -526,6 +528,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
+		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
 	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {
@@ -608,14 +611,80 @@ contextBridge.exposeInMainWorld('dweb', {
 	comfyui: {
 		runtime: {
 			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
+			objectInfo: (payload) => invoke('dweb:comfyui:runtime:object_info', payload || {}),
 			workflows: {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
+				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
 			},
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
 			job: (payload) => invoke('dweb:comfyui:runtime:job', payload || {}),
+		},
+		setup: {
+			getDefaultInstallPath: () => invoke('dweb:comfyui:setup:default-path'),
+			selectInstallPath: (payload) => invoke('dweb:comfyui:setup:select-path', payload || {}),
+			selectModelPath: () => invoke('dweb:comfyui:setup:select-model-path'),
+			validatePath: (payload) => invoke('dweb:comfyui:setup:validate-path', payload || {}),
+			probeExistingInstall: (payload) => invoke('dweb:comfyui:setup:probe', payload || {}),
+			checkEnv: (payload) => invoke('dweb:comfyui:setup:check-env', payload || {}),
+			checkVersion: (payload) => invoke('dweb:comfyui:setup:check-version', payload || {}),
+			resetFresh: () => invoke('dweb:comfyui:setup:reset-fresh'),
+			install: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:install', payload || {}),
+			cancelInstall: () => invoke('dweb:comfyui:setup:cancel-install'),
+			startService: (payload) => invoke('dweb:comfyui:setup:start-service', payload || {}),
+			stopService: () => invoke('dweb:comfyui:setup:stop-service'),
+			getServiceStatus: () => invoke('dweb:comfyui:setup:service-status'),
+			openFolder: (payload) => invoke('dweb:comfyui:setup:open-folder', payload || {}),
+			getConfig: () => invoke('dweb:comfyui:setup:get-config'),
+			saveConfig: (payload) => invoke('dweb:comfyui:setup:save-config', payload || {}),
+			addCustomModelPath: (payload) => invoke('dweb:comfyui:setup:add-model-path', payload || {}),
+			removeCustomModelPath: (payload) => invoke('dweb:comfyui:setup:remove-model-path', payload || {}),
+			pingMirrors: () => invoke('dweb:comfyui:setup:ping-mirrors'),
+			getMirrorList: () => invoke('dweb:comfyui:setup:get-mirror-list'),
+			setMirror: (payload) => invoke('dweb:comfyui:setup:set-mirror', payload || {}),
+			fixPythonEnv: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:fix-python-env', payload || {}),
+			getDefaultVenvPath: (payload) => invoke('dweb:comfyui:setup:default-venv-path', payload || {}),
+			selectVenvPath: (payload) => invoke('dweb:comfyui:setup:select-venv-path', payload || {}),
+			setVenvPath: (payload) => invoke('dweb:comfyui:setup:set-venv-path', payload || {}),
+			getServiceLogs: () => invoke('dweb:comfyui:setup:service-logs'),
+			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
+			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
+			cloneComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
+			updateComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:update-comfyui', payload || {}),
+			onServiceLog: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-log'
+				const handler = (_evt, entry) => {
+					try { listener(entry) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceStatusChange: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-status'
+				const handler = (_evt, status) => {
+					try { listener(status) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceExit: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-exit'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onServiceLogsCleared: (listener) => {
+				const ch = 'dweb:comfyui:setup:service-clear'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
 		},
 	},
 	// ===== Codex 编程助手 =====
@@ -792,5 +861,35 @@ contextBridge.exposeInMainWorld('dweb', {
 		upload: (payload) => invoke('dweb:cloud-templates:upload', payload || {}),
 		download: (payload) => invoke('dweb:cloud-templates:download', payload || {}),
 		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {}),
+	},
+	workshopTemplates: {
+		getPlatform: () => invoke('dweb:workshop-templates:get-platform'),
+		query: (options) => invoke('dweb:workshop-templates:query', options || {}),
+		download: (payload) => invoke('dweb:workshop-templates:download', payload || {}),
+		progress: (payload) => invoke('dweb:workshop-templates:progress', payload || {}),
+		installInfo: (payload) => invoke('dweb:workshop-templates:install-info', payload || {}),
+	},
+	cloudfs: {
+		listProviders: () => invoke('dweb:cloudfs:list-providers'),
+		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),
+		saveConfig: (payload) => invoke('dweb:cloudfs:save-config', payload || {}),
+		clearConfig: () => invoke('dweb:cloudfs:clear-config'),
+		testConfig: (payload) => invoke('dweb:cloudfs:test-config', payload || {}),
+		validateCredentials: (payload) => invoke('dweb:cloudfs:validate-credentials', payload || {}),
+		setupBucket: (payload) => invoke('dweb:cloudfs:setup-bucket', payload || {}),
+		listBuckets: (payload) => invoke('dweb:cloudfs:list-buckets', payload || {}),
+		createBucket: (payload) => invoke('dweb:cloudfs:create-bucket', payload || {}),
+		createFolder: (payload) => invoke('dweb:cloudfs:create-folder', payload || {}),
+		updateBucket: (payload) => invoke('dweb:cloudfs:update-bucket', payload || {}),
+		listFiles: (payload) => invoke('dweb:cloudfs:list-files', payload || {}),
+		uploadFile: (payload) => invoke('dweb:cloudfs:upload-file', payload || {}),
+		deleteFile: (payload) => invoke('dweb:cloudfs:delete-file', payload || {}),
+		getPublicUrl: (payload) => invoke('dweb:cloudfs:get-public-url', payload || {}),
+		uploadToPublicUrl: (payload) => invoke('dweb:cloudfs:upload-to-public-url', payload || {}),
+		listConfiguredBuckets: () => invoke('dweb:cloudfs:list-configured-buckets'),
+		addBucketFromCloud: (payload) => invoke('dweb:cloudfs:add-bucket-from-cloud', payload || {}),
+		removeConfiguredBucket: (payload) => invoke('dweb:cloudfs:remove-configured-bucket', payload || {}),
+		switchActiveBucket: (payload) => invoke('dweb:cloudfs:switch-active-bucket', payload || {}),
+		fixBucketAcl: (payload) => invoke('dweb:cloudfs:fix-bucket-acl', payload || {}),
 	},
 })

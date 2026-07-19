@@ -15,6 +15,7 @@ import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_L
 import { collectDiagnostics } from './backend/diagnostics.mjs'
 import { detectPythonInfo, setPythonDetectCacheDir } from './backend/python.mjs'
 import { cleanupOldRuntimeProject } from './backend/runtimeCleanup.mjs'
+import { generateFilmstrip, checkFfmpegAvailable } from './backend/videoThumbnails.mjs'
 import {
 	registerDwebProjectAssetProtocol,
 	setProjectRoot,
@@ -1148,9 +1149,10 @@ function registerIpc() {
 		return r
 	})
 
-	ipcMain.handle('dweb:aiworkflow:selectProjectFolder', async () => {
-		if (!mainWindow) return { canceled: true, filePaths: [] }
-		return dialog.showOpenDialog(mainWindow, {
+	ipcMain.handle('dweb:aiworkflow:selectProjectFolder', async (event) => {
+		const parentWindow = event.sender.getOwnerBrowserWindow() || mainWindow
+		if (!parentWindow) return { canceled: true, filePaths: [] }
+		return dialog.showOpenDialog(parentWindow, {
 			properties: ['openDirectory', 'createDirectory'],
 		})
 	})
@@ -1160,6 +1162,23 @@ function registerIpc() {
 		return dialog.showOpenDialog(mainWindow, {
 			properties: ['openDirectory', 'createDirectory'],
 		})
+	})
+
+	ipcMain.handle('dweb:video:generateFilmstrip', async (_e, payload) => {
+		try {
+			const dwebUrl = String(payload?.videoUrl || '').trim()
+			if (!dwebUrl) return { ok: false, error: 'videoUrl is required' }
+			const hasFfmpeg = await checkFfmpegAvailable()
+			if (!hasFfmpeg) return { ok: false, error: 'ffmpeg not available' }
+			const result = await generateFilmstrip(dwebUrl, {
+				thumbWidth: payload?.thumbWidth || 240,
+				columns: payload?.columns || 10,
+				intervalSec: payload?.intervalSec || undefined
+			})
+			return result
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
 	})
 
 	ipcMain.handle('dweb:aiworkflow:registerProjectRoot', async (_e, payload) => {
@@ -1680,6 +1699,172 @@ function registerIpc() {
 		}
 	})
 
+	let comfyuiSetupWindow = null
+	ipcMain.handle('dweb:comfyui-setup:open', async (_e, payload) => {
+		console.log('[main] dweb:comfyui-setup:open payload:', JSON.stringify(payload))
+		try {
+			const title = String(payload?.title || 'ComfyUI 环境设置').slice(0, 200)
+			const source = String(payload?.source || '').slice(0, 100)
+
+			if (comfyuiSetupWindow && !comfyuiSetupWindow.isDestroyed()) {
+				comfyuiSetupWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			if (source) queryParts.push(`source=${encodeURIComponent(source)}`)
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/comfyui-setup${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/comfyui-setup${queryStr}`
+
+			console.log('[main][comfyui-setup] targetUrl:', targetUrl)
+
+			comfyuiSetupWindow = new BrowserWindow({
+				width: 900,
+				height: 780,
+				minWidth: 720,
+				minHeight: 680,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				resizable: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true,
+				},
+			})
+
+			try { comfyuiSetupWindow.setMenuBarVisibility(false) } catch {}
+			try { comfyuiSetupWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 60
+				const offsetY = 60
+				comfyuiSetupWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			comfyuiSetupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
+				appendRuntimeLog(`[comfyui-setup:${level}] ${message} (${sourceId}:${line})`)
+			})
+			comfyuiSetupWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[comfyui-setup:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			comfyuiSetupWindow.on('closed', () => {
+				comfyuiSetupWindow = null
+			})
+
+			await comfyuiSetupWindow.loadURL(targetUrl)
+			console.log('[main][comfyui-setup] loadURL done, URL:', comfyuiSetupWindow.webContents.getURL())
+			if (isDev) {
+				comfyuiSetupWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][comfyui-setup] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	let videoEditorWindow = null
+	ipcMain.handle('dweb:video-editor:open', async (_e, payload) => {
+		console.log('[main] dweb:video-editor:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const videoUrl = String(payload?.videoUrl || '')
+			const videoName = String(payload?.videoName || '')
+			const title = String(payload?.title || '视频编辑器').slice(0, 200)
+
+			if (!videoUrl) {
+				return { ok: false, error: 'missing videoUrl' }
+			}
+
+			if (videoEditorWindow && !videoEditorWindow.isDestroyed()) {
+				videoEditorWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+
+			const queryParts = []
+			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
+			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			if (videoUrl) queryParts.push(`videoUrl=${encodeURIComponent(videoUrl)}`)
+			if (videoName) queryParts.push(`videoName=${encodeURIComponent(videoName)}`)
+			queryParts.push(`title=${encodeURIComponent(title)}`)
+			const queryStr = queryParts.length > 0 ? `?${queryParts.join('&')}` : ''
+
+			const targetUrl = isDev
+				? `${devUrl}/#/video-editor${queryStr}`
+				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/video-editor${queryStr}`
+
+			console.log('[main][video-editor] targetUrl:', targetUrl)
+
+			videoEditorWindow = new BrowserWindow({
+				width: 1600,
+				height: 900,
+				minWidth: 1200,
+				minHeight: 700,
+				title: `${APP_NAME} · ${title}`,
+				icon: getWindowIconPath(),
+				backgroundColor: '#181818',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true,
+				},
+			})
+
+			try { videoEditorWindow.setMenuBarVisibility(false) } catch {}
+			try { videoEditorWindow.removeMenu() } catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				const offsetX = 40
+				const offsetY = 40
+				videoEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
+			}
+
+			videoEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+				if (sourceId?.startsWith('devtools://')) return
+				appendRuntimeLog(`[video-editor:${level}] ${message} (${sourceId}:${line})`)
+			})
+			videoEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+				appendRuntimeLog(`[video-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+			})
+			videoEditorWindow.on('closed', () => {
+				videoEditorWindow = null
+			})
+
+			await videoEditorWindow.loadURL(targetUrl)
+			console.log('[main][video-editor] loadURL done, URL:', videoEditorWindow.webContents.getURL())
+			videoEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][video-editor] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	let templateCenterWindow = null
 	let templateCenterLatestData = null
 
@@ -1740,10 +1925,17 @@ function registerIpc() {
 
 			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[template-center:${level}] ${message} (${sourceId}:${line})`)
+				const logLine = `[template-center:${level}] ${message} (${sourceId}:${line})`
+				appendRuntimeLog(logLine)
+				const levelStr = ['verbose', 'info', 'warning', 'error'][level] || 'info'
+				if (level === 2) console.warn(logLine)
+				else if (level === 3) console.error(logLine)
+				else console.log(logLine)
 			})
 			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+				const failLine = `[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+				appendRuntimeLog(failLine)
+				console.error(failLine)
 			})
 			templateCenterWindow.on('closed', () => {
 				templateCenterWindow = null
@@ -1751,6 +1943,9 @@ function registerIpc() {
 
 			await templateCenterWindow.loadURL(targetUrl)
 			console.log('[main][template-center] loadURL done, URL:', templateCenterWindow.webContents.getURL())
+			if (isDev) {
+				templateCenterWindow.webContents.openDevTools({ mode: 'detach' })
+			}
 			return { ok: true, focused: false }
 		} catch (err) {
 			console.error('[main][template-center] open failed', err)
@@ -1967,6 +2162,47 @@ async function main() {
 	})
 	mainWindow.webContents.on('did-navigate', (_event, url) => {
 		appendRuntimeLog(`[did-navigate] ${url}`)
+	})
+	mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
+		const url = item.getURL()
+		const mimeType = item.getMimeType() || ''
+		const contentDisposition = item.getContentDisposition()
+		const filename = item.getFilename()
+		appendRuntimeLog(`[will-download] url=${url}, filename=${filename}, mimeType=${mimeType}, contentDisposition=${contentDisposition}`)
+
+		const isExternalUrl = url.startsWith('http://') || url.startsWith('https://')
+		const isFromCloudStorage = url.includes('.aliyuncs.com') || url.includes('.volces.com') || url.includes('.myqcloud.com') || url.includes('.amazonaws.com')
+
+		if (isExternalUrl && !isFromCloudStorage) {
+			appendRuntimeLog(`[will-download] Opening external URL in system browser: ${url}`)
+			event.preventDefault()
+			shell.openExternal(url).catch(err => {
+				appendRuntimeLog(`[will-download] openExternal failed: ${err?.message || err}`)
+			})
+			return
+		}
+
+		if (isFromCloudStorage) {
+			const hasAttachment = /attachment/i.test(contentDisposition)
+			const isInlineableMedia = (
+				mimeType.startsWith('image/') ||
+				mimeType.startsWith('video/') ||
+				mimeType.startsWith('audio/') ||
+				mimeType === 'application/pdf'
+			)
+			if (isInlineableMedia && !hasAttachment) {
+				appendRuntimeLog(`[will-download] Allowing inline cloud media: ${mimeType} ${url}`)
+			}
+		}
+	})
+	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+		appendRuntimeLog(`[window-open] external url: ${url}`)
+		if (url.startsWith('http:') || url.startsWith('https:')) {
+			shell.openExternal(url).catch(err => {
+				appendRuntimeLog(`[window-open] openExternal failed: ${err?.message || err}`)
+			})
+		}
+		return { action: 'deny' }
 	})
 
 	// ready-to-show 时再显示窗口，避免黑屏/白屏闪烁

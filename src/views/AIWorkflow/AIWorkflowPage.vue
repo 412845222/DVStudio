@@ -3969,7 +3969,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 		return
 	}
 	let resolvedPrompt = payload.prompt
-	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
+	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
 		const refs = getInputParamPreviewRefs(payload.nodeId)
 		const textRef = refs.find((r) => r.kind === 'text' && r.text)
 		if (textRef && textRef.text) {

@@ -9,7 +9,14 @@ export class SteamCloudAdapter extends CloudAdapter {
 	_getCloud() {
 		if (!this._provider || typeof this._provider.isInitialized !== 'function') return null
 		if (!this._provider.isInitialized()) return null
-		if (typeof this._provider.isLoggedIn === 'function' && !this._provider.isLoggedIn()) return null
+		if (typeof this._provider.isLoggedIn === 'function' && !this._provider.isLoggedIn()) {
+			const isDev = !!process.env.ELECTRON_DEV
+			if (isDev) {
+				console.log('[cloud-templates:steam] _getCloud: isLoggedIn=false but dev mode, proceeding')
+			} else {
+				return null
+			}
+		}
 		return this._provider.cloud || null
 	}
 

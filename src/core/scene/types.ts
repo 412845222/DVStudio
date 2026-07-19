@@ -1,7 +1,7 @@
 import type { JsonValue } from '../shared/json'
 
 export type VideoSceneProjectNodeKind = 'group' | 'stage' | 'grid' | 'unknown'
-export type VideoSceneUserNodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
+export type VideoSceneUserNodeType = 'base' | 'rect' | 'text' | 'image' | 'line' | 'video'
 export type VideoSceneNodeCategory = 'project' | 'user'
 
 export type VideoSceneNodeTransform = {
@@ -81,6 +81,16 @@ export type VideoSceneImageAsset = {
 	createdAt: number
 }
 
+export type VideoSceneVideoAsset = {
+	id: string
+	url: string
+	name: string
+	videoWidth?: number
+	videoHeight?: number
+	duration?: number
+	createdAt: number
+}
+
 export interface VideoSceneState {
 	showSizePanel: boolean
 	showBackgroundPanel: boolean
@@ -93,4 +103,5 @@ export interface VideoSceneState {
 	focusedNodeId: string | null
 	layoutInsets: VideoSceneLayoutInsets
 	imageAssets: Record<string, VideoSceneImageAsset>
+	videoAssets: Record<string, VideoSceneVideoAsset>
 }

@@ -1,8 +1,13 @@
 import crypto from 'node:crypto'
+import http from 'node:http'
+import https from 'node:https'
+import { Buffer } from 'node:buffer'
+import { URL } from 'node:url'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 import { getRepos } from '../../../localdb/index.mjs'
 import { downloadUrlToProjectRoot } from '../../projectAssetProtocol.mjs'
+import * as cloudfsService from '../cloudfs/service.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'
@@ -86,6 +91,323 @@ function getHeaders(apiKey) {
   return {
     'Authorization': key.startsWith('Bearer ') ? key : `Bearer ${key}`,
   }
+}
+
+function isDataUrl(url) {
+  return typeof url === 'string' && url.startsWith('data:')
+}
+
+function isWebUrl(url) {
+  if (typeof url !== 'string') return false
+  const str = url.trim().toLowerCase()
+  return str.startsWith('http://') || str.startsWith('https://')
+}
+
+function parseDataUrl(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return null
+  return {
+    mimeType: match[1] || 'application/octet-stream',
+    base64: match[2],
+  }
+}
+
+function getFileExtensionFromMime(mimeType) {
+  const mime = String(mimeType || '').toLowerCase()
+  const map = {
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'video/x-msvideo': 'avi',
+    'video/webm': 'webm',
+    'video/x-matroska': 'mkv',
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'audio/mpeg': 'mp3',
+    'audio/wav': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+  }
+  return map[mime] || 'bin'
+}
+
+async function uploadBufferToArkFiles(apiKey, buffer, fileName, mimeType, extraFormFields) {
+  const url = `${SEEDANCE_API_BASE}/files`
+  const boundary = '----ArkFileUpload' + Date.now().toString(16)
+  const CRLF = '\r\n'
+
+  const parts = []
+  parts.push(Buffer.from(`--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="purpose"${CRLF}${CRLF}`))
+  parts.push(Buffer.from('user_data'))
+
+  if (extraFormFields && typeof extraFormFields === 'object') {
+    for (const [key, value] of Object.entries(extraFormFields)) {
+      if (value === undefined || value === null) continue
+      parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+      parts.push(Buffer.from(`Content-Disposition: form-data; name="${key}"${CRLF}${CRLF}`))
+      parts.push(Buffer.from(String(value)))
+    }
+  }
+
+  parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}`))
+  parts.push(Buffer.from(`Content-Type: ${mimeType}${CRLF}${CRLF}`))
+  parts.push(buffer)
+  parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`))
+
+  const multipartBody = Buffer.concat(parts)
+
+  const parsedUrl = new URL(url)
+  const transport = parsedUrl.protocol === 'https:' ? https : http
+
+  return new Promise((resolve, reject) => {
+    const req = transport.request({
+      method: 'POST',
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 443,
+      path: parsedUrl.pathname + parsedUrl.search,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': multipartBody.length,
+      },
+      timeout: 180000,
+    }, (res) => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf-8')
+        let parsedBody
+        try {
+          parsedBody = JSON.parse(body)
+        } catch {
+          parsedBody = body
+        }
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(parsedBody)
+        } else {
+          let errMsg = `HTTP ${res.statusCode}`
+          if (typeof parsedBody === 'object' && parsedBody) {
+            errMsg = parsedBody.error?.message || parsedBody.message || errMsg
+          }
+          reject(new Error(`Ark Files upload failed: ${errMsg}`))
+        }
+      })
+      res.on('error', reject)
+    })
+
+    req.on('error', (err) => {
+      reject(new Error(`Ark Files upload failed: ${err.message}`))
+    })
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Upload timeout'))
+    })
+
+    req.write(multipartBody)
+    req.end()
+  })
+}
+
+async function uploadBufferToLitterbox(buffer, fileName, mimeType, expiration = '24h') {
+  const url = 'https://litterbox.catbox.moe/resources/internals/api.php'
+  const boundary = '----LitterboxUpload' + Date.now().toString(16)
+  const CRLF = '\r\n'
+
+  const parts = []
+  parts.push(Buffer.from(`--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="reqtype"${CRLF}${CRLF}`))
+  parts.push(Buffer.from('fileupload'))
+  parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="time"${CRLF}${CRLF}`))
+  parts.push(Buffer.from(expiration))
+  parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="fileToUpload"; filename="${fileName}"${CRLF}`))
+  parts.push(Buffer.from(`Content-Type: ${mimeType}${CRLF}${CRLF}`))
+  parts.push(buffer)
+  parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`))
+
+  const multipartBody = Buffer.concat(parts)
+
+  const parsedUrl = new URL(url)
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      method: 'POST',
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 443,
+      path: parsedUrl.pathname + parsedUrl.search,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': multipartBody.length,
+        'User-Agent': 'DVStudio/1.0 (Electron)',
+      },
+      timeout: 180000,
+    }, (res) => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf-8').trim()
+        if (res.statusCode >= 200 && res.statusCode < 300 && body.startsWith('http')) {
+          resolve(body)
+        } else {
+          reject(new Error(`Litterbox upload failed: HTTP ${res.statusCode} - ${body.slice(0, 300)}`))
+        }
+      })
+      res.on('error', reject)
+    })
+
+    req.on('error', (err) => reject(new Error(`Litterbox upload failed: ${err.message}`)))
+    req.on('timeout', () => req.destroy(new Error('Litterbox upload timeout')))
+    req.write(multipartBody)
+    req.end()
+  })
+}
+
+async function verifyPublicUrl(url, maxRetries = 5, retryDelayMs = 3000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const parsedUrl = new URL(url)
+      const transport = parsedUrl.protocol === 'https:' ? https : http
+      await new Promise((resolve, reject) => {
+        const req = transport.request({
+          method: 'HEAD',
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+          path: parsedUrl.pathname + parsedUrl.search,
+          timeout: 10000,
+        }, (res) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(true)
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}`))
+          }
+          res.resume()
+        })
+        req.on('error', reject)
+        req.on('timeout', () => req.destroy(new Error('Timeout')))
+        req.end()
+      })
+      return true
+    } catch (err) {
+      console.log(`[seedance] URL verification attempt ${i + 1}/${maxRetries} failed: ${err.message}`)
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs))
+      }
+    }
+  }
+  console.warn(`[seedance] WARNING: Could not verify URL accessibility after ${maxRetries} attempts, proceeding anyway`)
+  return false
+}
+
+async function uploadVideoFileAndGetUrl(ctx, apiKey, fileObj, model) {
+  const buffer = Buffer.from(fileObj.data)
+  const mimeType = String(fileObj.type || 'video/mp4').trim()
+  const ext = getFileExtensionFromMime(mimeType)
+
+  const rawName = String(fileObj.name || `video_${Date.now()}`)
+  const baseName = rawName.replace(/\.[^.]+$/, '').replace(/[^\w.\-]/g, '_') || `video_${Date.now()}`
+  const fileName = `${baseName}.${ext}`
+
+  console.log(`[seedance] Uploading video (${(buffer.length / 1024 / 1024).toFixed(2)} MB) as ${fileName} (${mimeType})...`)
+
+  try {
+    const cloudfsConfig = await cloudfsService.getActiveConfig(ctx)
+    if (cloudfsConfig.configured) {
+      console.log('[seedance] Using CloudFS for video upload...')
+      const cloudfsResult = await cloudfsService.uploadFileToPublicUrl(ctx, {
+        data: buffer,
+        name: fileName,
+        mimeType,
+      })
+      if (cloudfsResult.ok && cloudfsResult.publicUrl) {
+        console.log(`[seedance] Video uploaded via CloudFS: ${cloudfsResult.publicUrl.slice(0, 120)}...`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        await verifyPublicUrl(cloudfsResult.publicUrl)
+        return cloudfsResult.publicUrl
+      }
+      console.warn('[seedance] CloudFS upload failed, falling back to Litterbox:', cloudfsResult.error)
+    } else {
+      console.log('[seedance] CloudFS not configured, using Litterbox temporary hosting')
+    }
+  } catch (cloudfsErr) {
+    console.warn('[seedance] CloudFS upload error, falling back to Litterbox:', cloudfsErr.message)
+  }
+
+  const publicUrl = await uploadBufferToLitterbox(buffer, fileName, mimeType, '24h')
+  console.log(`[seedance] Video uploaded to public URL: ${publicUrl.slice(0, 120)}...`)
+
+  await new Promise(resolve => setTimeout(resolve, 2000))
+  await verifyPublicUrl(publicUrl)
+
+  return publicUrl
+}
+
+function createTaskWithJson(client, apiKey, createPayload) {
+  const createUrl = `${SEEDANCE_API_BASE}/contents/generations/tasks`
+  return client.post(createUrl, createPayload, {
+    headers: getHeaders(apiKey),
+    timeout: DEFAULT_TIMEOUT,
+  })
+}
+
+async function waitForFileReady(apiKey, fileId, maxWaitMs = 60000, pollIntervalMs = 2000) {
+  const startTime = Date.now()
+  const url = `${SEEDANCE_API_BASE}/files/${encodeURIComponent(fileId)}`
+  const client = getHttpClient()
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const res = await client.get(url, {
+        headers: getHeaders(apiKey),
+        timeout: 30000,
+      })
+      if (res.ok && res.body) {
+        const status = String(res.body.status || '').toLowerCase()
+        if (status === 'active' || status === 'processed' || status === 'ready' || status === 'uploaded') {
+          return res.body
+        }
+        if (status === 'error' || status === 'failed') {
+          throw new Error(`File processing failed: ${JSON.stringify(res.body)}`)
+        }
+      }
+    } catch (err) {
+      console.warn(`[seedance] error checking file status: ${err.message}`)
+    }
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+  }
+  throw new Error(`File ${fileId} processing timeout after ${maxWaitMs}ms`)
+}
+
+async function ensureWebUrl(ctx, urlOrData, index, kind) {
+  if (isWebUrl(urlOrData)) {
+    return urlOrData
+  }
+
+  if (isDataUrl(urlOrData)) {
+    if (kind === 'image' || kind === 'audio') {
+      return urlOrData
+    }
+    throw new Error(`Video data URL is not supported for ${kind} #${index + 1}, video must be uploaded as file`)
+  }
+
+  return String(urlOrData || '').trim()
+}
+
+async function ensureWebUrls(ctx, urls, kind) {
+  if (!Array.isArray(urls) || urls.length === 0) return []
+  const result = []
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i]
+    if (!url) continue
+    const webUrl = await ensureWebUrl(ctx, url, i, kind)
+    if (webUrl) result.push(webUrl)
+  }
+  return result
 }
 
 function coerceInt(v, defaultValue, minValue, maxValue) {
@@ -176,37 +498,62 @@ function extractUsageText(obj) {
   return parts.length ? `tokens: ${parts.join(', ')}` : null
 }
 
-function buildContent(prompt, refImageUrls, refMode) {
+function buildContent(prompt, refImageUrls, refMode, refVideoUrls, refAudioUrls) {
   const content = []
   const text = String(prompt || '').trim()
   if (text) {
     content.push({ type: 'text', text })
   }
-  if (!Array.isArray(refImageUrls) || !refImageUrls.length) return content
-
-  const urls = refImageUrls.map(u => String(u || '').trim()).filter(u => u)
-  if (!urls.length) return content
 
   const mode = String(refMode || 'auto').trim().toLowerCase()
 
-  if (mode === 'first-last' && urls.length >= 2) {
-    content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
-    content.push({ type: 'image_url', image_url: { url: urls[1] }, role: 'last_frame' })
-  } else if (mode === 'first') {
-    content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
-  } else if (mode === 'reference') {
-    for (const url of urls.slice(0, 9)) {
-      content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
-    }
-  } else {
-    if (urls.length === 1) {
-      content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
-    } else {
-      for (const url of urls.slice(0, 9)) {
-        content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+  if (Array.isArray(refImageUrls) && refImageUrls.length > 0) {
+    const urls = refImageUrls.map(u => String(u || '').trim()).filter(u => u)
+    if (urls.length > 0) {
+      if (mode === 'first-last' && urls.length >= 2) {
+        content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+        content.push({ type: 'image_url', image_url: { url: urls[1] }, role: 'last_frame' })
+      } else if (mode === 'first') {
+        content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+      } else if (mode === 'reference' || mode === 'video_edit') {
+        for (const url of urls.slice(0, 9)) {
+          content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+        }
+      } else {
+        if (urls.length === 1) {
+          content.push({ type: 'image_url', image_url: { url: urls[0] }, role: 'first_frame' })
+        } else {
+          for (const url of urls.slice(0, 9)) {
+            content.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
+          }
+        }
       }
     }
   }
+
+  if (Array.isArray(refVideoUrls) && refVideoUrls.length > 0) {
+    const urls = refVideoUrls.map(u => String(u || '').trim()).filter(u => u)
+    if (urls.length > 0) {
+      if (mode === 'video_edit') {
+        content.push({ type: 'video_url', video_url: { url: urls[0] }, role: 'input_video' })
+        for (const url of urls.slice(1, 3)) {
+          content.push({ type: 'video_url', video_url: { url }, role: 'reference_video' })
+        }
+      } else {
+        for (const url of urls.slice(0, 3)) {
+          content.push({ type: 'video_url', video_url: { url }, role: 'reference_video' })
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(refAudioUrls) && refAudioUrls.length > 0) {
+    const urls = refAudioUrls.map(u => String(u || '').trim()).filter(u => u)
+    for (const url of urls.slice(0, 3)) {
+      content.push({ type: 'audio_url', audio_url: { url }, role: 'reference_audio' })
+    }
+  }
+
   return content
 }
 
@@ -234,6 +581,9 @@ function serializeVideoTask(row) {
     generateAudio: Boolean(row.generateAudio),
     watermark: Boolean(row.watermark),
     cameraFixed: Boolean(row.cameraFixed),
+    returnLastFrame: Boolean(row.returnLastFrame),
+    enableWebSearch: Boolean(row.enableWebSearch),
+    priority: Number(row.priority) || 0,
     serviceTier: row.serviceTier || '',
     tools: Array.isArray(row.tools) ? row.tools : [],
     usage: row.usage && typeof row.usage === 'object' ? row.usage : {},
@@ -253,6 +603,9 @@ function serializeVideoTask(row) {
     remoteUpdatedAt: row.remoteUpdatedAt ?? null,
     requestPayload: row.requestPayload && typeof row.requestPayload === 'object' ? row.requestPayload : {},
     responsePayload: row.responsePayload && typeof row.responsePayload === 'object' ? row.responsePayload : {},
+    refImageUrls: Array.isArray(row.refImageUrls) ? row.refImageUrls : [],
+    refVideoUrls: Array.isArray(row.refVideoUrls) ? row.refVideoUrls : [],
+    refAudioUrls: Array.isArray(row.refAudioUrls) ? row.refAudioUrls : [],
     createdAt: msToIsoString(row.createdAt),
     updatedAt: msToIsoString(row.updatedAt),
     syncedAt: msToIsoString(row.syncedAt || row.updatedAt),
@@ -312,6 +665,9 @@ export async function* generateVideoStream(ctx, payload) {
   const watermark = truthy(payload?.watermark)
   const cameraFixed = truthy(payload?.cameraFixed ?? payload?.camera_fixed ?? false)
   const returnLastFrame = truthy(payload?.returnLastFrame ?? payload?.return_last_frame ?? false)
+  const enableWebSearch = truthy(payload?.enableWebSearch ?? payload?.enable_web_search ?? false)
+  const priorityRaw = Number(payload?.priority ?? 0)
+  const priority = Number.isFinite(priorityRaw) ? Math.max(0, Math.min(9, Math.floor(priorityRaw))) : 0
   const refMode = String(payload?.refMode || 'auto').trim().toLowerCase() || 'auto'
   const source = String(payload?.source || 'bottom-chat').trim() || 'bottom-chat'
   const projectId = payload?.projectId ? Number(payload.projectId) || null : null
@@ -330,17 +686,90 @@ export async function* generateVideoStream(ctx, payload) {
     }).filter(u => u)
   }
 
-  const hasRefImages = refImageUrls.length > 0
+  const videoFileObjects = []
+  let refVideoUrls = []
+  const collectVideoItem = (u) => {
+    if (u && typeof u === 'object' && u.__file === true) {
+      videoFileObjects.push(u)
+      return
+    }
+    if (typeof u === 'string') {
+      const s = u.trim()
+      if (s) refVideoUrls.push(s)
+    }
+  }
+  if (Array.isArray(payload?.videoUrls)) {
+    payload.videoUrls.forEach(collectVideoItem)
+  } else if (Array.isArray(payload?.refVideos)) {
+    payload.refVideos.forEach(collectVideoItem)
+  } else if (Array.isArray(payload?.ref_videos)) {
+    payload.ref_videos.forEach(u => {
+      if (u && typeof u === 'object' && u.__file === true) {
+        videoFileObjects.push(u)
+        return
+      }
+      if (typeof u === 'string') {
+        const s = u.trim()
+        if (s) refVideoUrls.push(s)
+      } else if (u && typeof u.data === 'string') {
+        const s = u.data.trim()
+        if (s) refVideoUrls.push(s)
+      } else if (u && typeof u.url === 'string') {
+        const s = u.url.trim()
+        if (s) refVideoUrls.push(s)
+      }
+    })
+  }
 
-  if (!prompt && !hasRefImages) {
-    yield wrapStreamError('prompt or reference images are required')
+  let refAudioUrls = []
+  if (Array.isArray(payload?.audioUrls)) {
+    refAudioUrls = payload.audioUrls.map(u => String(u || '').trim()).filter(u => u)
+  } else if (Array.isArray(payload?.refAudios)) {
+    refAudioUrls = payload.refAudios.map(u => String(u || '').trim()).filter(u => u)
+  } else if (Array.isArray(payload?.ref_audios)) {
+    refAudioUrls = payload.ref_audios.map(u => {
+      if (typeof u === 'string') return u.trim()
+      if (u && typeof u.data === 'string') return u.data.trim()
+      if (u && typeof u.url === 'string') return u.url.trim()
+      return ''
+    }).filter(u => u)
+  }
+
+  const hasRefImages = refImageUrls.length > 0
+  const hasRefVideos = refVideoUrls.length > 0 || videoFileObjects.length > 0
+  const hasRefAudios = refAudioUrls.length > 0
+
+  if (!prompt && !hasRefImages && !hasRefVideos) {
+    yield wrapStreamError('prompt or reference images/videos are required')
+    return
+  }
+
+  if (hasRefAudios && !hasRefImages && !hasRefVideos) {
+    yield wrapStreamError('reference audio must be accompanied by reference image or video')
     return
   }
 
   yield wrapTaskStatusMsg('Seedance：创建任务中…', 'generating')
 
   try {
-    const content = buildContent(prompt, refImageUrls, refMode)
+    const [uploadedImageUrls, uploadedVideoStrUrls, uploadedAudioUrls] = await Promise.all([
+      ensureWebUrls(ctx, refImageUrls, 'image'),
+      ensureWebUrls(ctx, refVideoUrls, 'video'),
+      ensureWebUrls(ctx, refAudioUrls, 'audio'),
+    ])
+
+    const uploadedVideoFileUrls = []
+    for (let i = 0; i < videoFileObjects.length; i++) {
+      yield wrapTaskStatusMsg(`Seedance：上传参考视频 ${i + 1}/${videoFileObjects.length}…`, 'generating')
+      const fileUrl = await uploadVideoFileAndGetUrl(ctx, apiKey, videoFileObjects[i], model)
+      uploadedVideoFileUrls.push(fileUrl)
+    }
+
+    const allVideoRefs = [...uploadedVideoStrUrls, ...uploadedVideoFileUrls]
+
+    console.log('[seedance] files prepared: images=', uploadedImageUrls.length, 'videos(string)=', uploadedVideoStrUrls.length, 'videos(file)=', videoFileObjects.length, 'audios=', uploadedAudioUrls.length)
+
+    const content = buildContent(prompt, uploadedImageUrls, refMode, allVideoRefs, uploadedAudioUrls)
     const createPayload = {
       model,
       content,
@@ -350,17 +779,27 @@ export async function* generateVideoStream(ctx, payload) {
       generate_audio: generateAudio,
       camera_fixed: cameraFixed,
       return_last_frame: returnLastFrame,
+      enable_web_search: enableWebSearch,
+      priority,
     }
     if (frames !== null) createPayload.frames = frames
     else if (duration !== null) createPayload.duration = duration
     if (seed !== null) createPayload.seed = seed
 
-    console.log('[seedance] creating task, model=', model, 'ratio=', ratio, 'resolution=', resolution, 'duration=', duration, 'hasRefImages=', hasRefImages, 'refMode=', refMode, 'generateAudio=', generateAudio)
-    const createUrl = `${SEEDANCE_API_BASE}/contents/generations/tasks`
-    const createRes = await client.post(createUrl, createPayload, {
-      headers: getHeaders(apiKey),
-      timeout: DEFAULT_TIMEOUT,
+    console.log('[seedance] creating task, model=', model, 'ratio=', ratio, 'resolution=', resolution, 'duration=', duration, 'hasRefImages=', hasRefImages, 'hasRefVideos=', hasRefVideos, 'hasRefAudios=', hasRefAudios, 'refMode=', refMode, 'generateAudio=', generateAudio)
+    const contentForLog = content.map(item => {
+      const copy = { ...item }
+      if (copy.image_url?.url && typeof copy.image_url.url === 'string' && copy.image_url.url.startsWith('data:')) {
+        copy.image_url = { ...copy.image_url, url: copy.image_url.url.slice(0, 50) + '...[base64 truncated]' }
+      }
+      if (copy.audio_url?.url && typeof copy.audio_url.url === 'string' && copy.audio_url.url.startsWith('data:')) {
+        copy.audio_url = { ...copy.audio_url, url: copy.audio_url.url.slice(0, 50) + '...[base64 truncated]' }
+      }
+      return copy
     })
+    console.log('[seedance] content array:', JSON.stringify(contentForLog, null, 2))
+
+    const createRes = await createTaskWithJson(client, apiKey, createPayload)
 
     if (!createRes.ok) {
       let errMsg = `HTTP ${createRes.status}`
@@ -368,6 +807,7 @@ export async function* generateVideoStream(ctx, payload) {
         if (createRes.body.error?.message) errMsg = createRes.body.error.message
         else if (createRes.body.message) errMsg = createRes.body.message
         else if (typeof createRes.body === 'object') errMsg = JSON.stringify(createRes.body).slice(0, 500)
+        else if (typeof createRes.body === 'string') errMsg = createRes.body.slice(0, 500)
       }
       console.error('[seedance] create task failed:', createRes.status, JSON.stringify(createRes.body?.error || createRes.body || {}).slice(0, 500))
       throw new Error(`Seedance create task failed: ${errMsg}`)
@@ -379,11 +819,20 @@ export async function* generateVideoStream(ctx, payload) {
       throw new Error(`Seedance create task failed: invalid response ${JSON.stringify(createObj).slice(0, 500)}`)
     }
 
+    const finalVideoUrls = [...uploadedVideoStrUrls]
+    for (let i = 0; i < videoFileObjects.length; i++) {
+      finalVideoUrls.push(`[local_file:${videoFileObjects[i].name || `video_${i}`}]`)
+    }
+
+    let taskType = 'text-to-video'
+    if (hasRefVideos) taskType = 'video-to-video'
+    else if (hasRefImages) taskType = 'image-to-video'
+
     repo.upsert({
       remoteTaskId: taskId,
       provider: 'seedance',
       model,
-      taskType: hasRefImages ? 'image-to-video' : 'text-to-video',
+      taskType,
       source,
       status: 'queued',
       prompt,
@@ -394,6 +843,9 @@ export async function* generateVideoStream(ctx, payload) {
       generateAudio,
       watermark,
       cameraFixed,
+      returnLastFrame,
+      enableWebSearch,
+      priority,
       requestPayload: createPayload,
       responsePayload: createObj,
       videoUrlRemote: '',
@@ -407,6 +859,9 @@ export async function* generateVideoStream(ctx, payload) {
       projectId,
       remoteCreatedAt: Date.now(),
       remoteUpdatedAt: Date.now(),
+      refImageUrls: uploadedImageUrls,
+      refVideoUrls: finalVideoUrls,
+      refAudioUrls: uploadedAudioUrls,
     })
 
     recordArkTask({

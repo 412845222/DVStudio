@@ -28,5 +28,11 @@
   "tasks.video.remoteVideo": "Remote Video",
   "tasks.video.localLastFrame": "Local Last Frame",
   "tasks.video.remoteLastFrame": "Remote Last Frame",
-  "tasks.video.selectToView": "Select a task on the left to view details."
+  "tasks.video.selectToView": "Select a task on the left to view details.",
+  "tasks.video.referenceAssets": "Reference Assets",
+  "tasks.video.refImages": "Reference Images",
+  "tasks.video.refVideos": "Reference Videos",
+  "tasks.video.refVideo": "Reference Video",
+  "tasks.video.refAudio": "Reference Audio",
+  "tasks.video.refAudioItem": "Reference Audio"
 }

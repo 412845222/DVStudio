@@ -121,6 +121,15 @@ const isImageInputAnchor = (anchorId: string): boolean => {
 	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
 }
 
+const isVideoInputAnchor = (anchorId: string): boolean => {
+	const id = String(anchorId || '').trim()
+	return id === 'in-video' || id === 'in-resource' || /^in-video-\d+$/.test(id)
+}
+
+const isMediaInputAnchor = (anchorId: string): boolean => {
+	return isImageInputAnchor(anchorId) || isVideoInputAnchor(anchorId)
+}
+
 const getNodeEffectiveImageUrl = (
 	node: Record<string, unknown>,
 	state: {
@@ -209,6 +218,48 @@ const getNodeEffectiveImageUrl = (
 		const standardUrl = nodeResourceUrl(node)
 		if (standardUrl) {
 			console.log('[collectReferenceImages] 从nodeResourceUrl获取URL:', standardUrl)
+			return standardUrl
+		}
+	}
+	return ''
+}
+
+const getNodeEffectiveVideoUrl = (
+	node: Record<string, unknown>,
+	state: {
+		resourcesById: Record<string, Record<string, unknown>>
+	},
+	nodeResourceUrl?: (n: any) => string | null
+): string => {
+	const resourceRid = String(node.resourceId ?? '').trim()
+	if (resourceRid) {
+		const res = state.resourcesById[resourceRid]
+		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
+		if (resUrl) {
+			return resUrl
+		}
+	}
+	const videoSettings =
+		typeof node.videoSettings === 'object' && node.videoSettings
+			? (node.videoSettings as Record<string, unknown>)
+			: {}
+	const lastGenerated =
+		typeof videoSettings?.lastGeneratedVideoUrl === 'string'
+			? String(videoSettings.lastGeneratedVideoUrl).trim()
+			: ''
+	if (lastGenerated) {
+		return lastGenerated
+	}
+	const videoUrlLocal =
+		typeof videoSettings?.videoUrlLocal === 'string'
+			? String(videoSettings.videoUrlLocal).trim()
+			: ''
+	if (videoUrlLocal) {
+		return videoUrlLocal
+	}
+	if (typeof nodeResourceUrl === 'function') {
+		const standardUrl = nodeResourceUrl(node)
+		if (standardUrl) {
 			return standardUrl
 		}
 	}
@@ -329,6 +380,82 @@ const collectReferenceImages = async (
 	}
 
 	console.log('[collectReferenceImages] 最终收集到参考图数量:', refs.length)
+	return refs
+}
+
+const downloadVideoAsBlob = async (
+	deps: NodeGenerationApiDeps,
+	candidateUrl: string
+): Promise<Blob | null> => {
+	const fetchUrl =
+		typeof deps.resolveBackendFetchUrl === 'function'
+			? deps.resolveBackendFetchUrl(candidateUrl)
+			: deps.resolveBackendUrl(candidateUrl)
+
+	try {
+		let blob: Blob | null = null
+		if (typeof deps.downloadUrlAsBlob === 'function') {
+			blob = await deps.downloadUrlAsBlob(fetchUrl)
+		}
+		if (!blob) {
+			const resp = await fetch(fetchUrl)
+			if (!resp.ok) return null
+			blob = await resp.blob()
+		}
+		if (!blob || blob.size === 0) {
+			return null
+		}
+		return blob
+	} catch (e) {
+		console.error('[downloadVideoAsBlob] 下载视频失败:', e)
+		return null
+	}
+}
+
+const collectReferenceVideos = async (
+	deps: NodeGenerationApiDeps,
+	nodeId: string,
+	maxRefs: number = 3
+): Promise<Array<{ name: string; blob: Blob }>> => {
+	const state = deps.store.state as {
+		nodesById: Record<string, Record<string, unknown>>
+		edgesById: Record<string, Record<string, unknown>>
+		edgeOrder: string[]
+		resourcesById: Record<string, Record<string, unknown>>
+	}
+	const node = state.nodesById[nodeId]
+	if (!node) {
+		return []
+	}
+
+	const refs: Array<{ name: string; blob: Blob }> = []
+
+	const incoming: Array<Record<string, unknown>> = []
+	for (const edgeId of state.edgeOrder) {
+		const edge = state.edgesById[edgeId]
+		if (!edge) continue
+		const toNodeId = String(edge.toNodeId ?? '')
+		if (toNodeId !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!isVideoInputAnchor(toAnchorId)) continue
+		incoming.push(edge)
+	}
+
+	for (const edge of incoming) {
+		if (refs.length >= maxRefs) break
+		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
+		if (!sourceNode) continue
+
+		const sourceUrl = getNodeEffectiveVideoUrl(sourceNode, state, deps.nodeResourceUrl)
+		if (!sourceUrl) continue
+
+		const blob = await downloadVideoAsBlob(deps, sourceUrl)
+		if (!blob) continue
+
+		const name = `ref-video-${String(sourceNode.type || 'video')}-${String(edge.fromNodeId)}-${Date.now()}.mp4`
+		refs.push({ name, blob })
+	}
+
 	return refs
 }
 
@@ -1314,7 +1441,8 @@ const runImageTask = async (
 			hasRefImages,
 			refCount: refs.length,
 			nodeId: payload.nodeId,
-			projectId: imgProjectId
+			projectId: imgProjectId,
+			prompt: payload.prompt.slice(0, 200)
 		})
 
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion }))
@@ -2116,20 +2244,27 @@ const runVideoTask = async (
 		form.set('seed', String(params.seed))
 	form.set('generateAudio', params.generateAudio ? '1' : '0')
 	form.set('watermark', params.watermark ? '1' : '0')
+	form.set('cameraFixed', params.cameraFixed ? '1' : '0')
+	form.set('returnLastFrame', params.returnLastFrame ? '1' : '0')
+	form.set('enableWebSearch', params.enableWebSearch ? '1' : '0')
+	const priority = Number(params.priority ?? 0)
+	if (Number.isFinite(priority) && priority >= 0) {
+		form.set('priority', String(Math.min(9, Math.floor(priority))))
+	}
 
-	// Collect connected reference images from input anchors for seedance i2v/r2v.
+	// Collect connected reference images and videos from input anchors for seedance i2v/v2v.
 	if (kind === 'seedance') {
-		const refs = await collectReferenceImages(deps, payload.nodeId, 4)
-		for (const ref of refs) form.append('refImages', ref.blob, ref.name)
-		// Map the panel's "video mode" to the backend refMode semantics:
-		//   image_to_video → first (use single anchor image as first frame)
-		//   first-last     → first-last
-		//   reference      → reference (multi-reference, e.g. consistent character)
-		//   text_to_video / auto → auto
-		const rawMode = typeof params.mode === 'string' ? params.mode : ''
+		const [imageRefs, videoRefs] = await Promise.all([
+			collectReferenceImages(deps, payload.nodeId, 9),
+			collectReferenceVideos(deps, payload.nodeId, 3),
+		])
+		for (const ref of imageRefs) form.append('refImages', ref.blob, ref.name)
+		for (const ref of videoRefs) form.append('refVideos', ref.blob, ref.name)
+		const rawMode = (typeof params.mode === 'string' ? params.mode : '') as string
 		if (rawMode === 'image_to_video') form.set('refMode', 'first')
 		else if (rawMode === 'first-last') form.set('refMode', 'first-last')
 		else if (rawMode === 'reference') form.set('refMode', 'reference')
+		else if (rawMode === 'video_edit') form.set('refMode', 'video_edit')
 		else form.set('refMode', 'auto')
 	}
 

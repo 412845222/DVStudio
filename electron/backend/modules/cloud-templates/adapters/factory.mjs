@@ -5,6 +5,7 @@ import { CloudAdapter } from './base.mjs'
 const ADAPTER_MAP = {
 	steam: createSteamCloudAdapter,
 	local: createLocalCloudAdapter,
+	mock: createLocalCloudAdapter,
 }
 
 /**

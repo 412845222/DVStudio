@@ -94,6 +94,10 @@ export type TimelineState = {
 	frameCount: number
 	currentFrame: number
 	frameWidth: number
+	/** Whether user is currently dragging the playhead (scrubbing). */
+	isScrubbing: boolean
+	/** Whether timeline is currently playing (ticker running). */
+	isPlaying: boolean
 	/** UI-only focus marker: which area user last interacted with. */
 	uiFocus: 'timeline' | 'stage' | null
 	/** UI: 请求时间轴视图跳转并居中到指定帧（由 TimeLine.vue 消费） */

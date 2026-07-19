@@ -1,5 +1,11 @@
 import type { WorkflowAnchorSpec } from '../../types'
 import { isString, isNumber, isRecord, isArray, hasKey } from '../../../types/utils'
+import type { ComfyObjectInfo } from './objectInfoTypes'
+import {
+	detectMediaTypeFromObjectInfo,
+	extractInputDefs,
+	isWidgetDef
+} from './objectInfoTypes'
 
 type ComfyWorkflowIO = {
 	inputs: Array<Pick<WorkflowAnchorSpec, 'id' | 'label' | 'mediaType'>>
@@ -13,6 +19,11 @@ const getNodeText = (node: ComfyNodeLike): string => {
 	const type = hasKey(node, 'type') && isString(node.type) ? node.type : ''
 	const title = hasKey(node, 'title') && isString(node.title) ? node.title : ''
 	return `${type} ${title}`.toLowerCase()
+}
+
+const getNodeType = (node: unknown): string => {
+	const n = isRecord(node) ? node : {}
+	return hasKey(n, 'type') && isString(n.type) ? n.type : ''
 }
 
 const detectComfyNodeMediaType = (node: unknown): WorkflowAnchorSpec['mediaType'] => {
@@ -90,7 +101,39 @@ const getIncomingOutgoingCount = (workflow: unknown) => {
 	return { incoming, outgoing }
 }
 
-export const parseComfyWorkflowIO = (workflow: unknown): ComfyWorkflowIO => {
+const isFileInputNode = (nodeType: string, objectInfo: ComfyObjectInfo | null): boolean => {
+	if (!objectInfo) return false
+	const entry = objectInfo[nodeType]
+	if (!entry) return false
+	const inputDefs = extractInputDefs(entry)
+	for (const [name, def] of Object.entries(inputDefs)) {
+		if (isWidgetDef(def)) {
+			const nameLower = name.toLowerCase()
+			if (/image|video|file|path|filename|upload/.test(nameLower)) {
+				if (Array.isArray(def[0])) {
+					const options = def[0]
+					if (options.some((o: unknown) => typeof o === 'string' && /\.(png|jpg|jpeg|webp|gif|mp4|mov|avi|webm)$/i.test(o))) {
+						return true
+					}
+				} else if (typeof def[0] === 'string' && /combo|string/.test(def[0])) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+const isOutputNodeByObjectInfo = (nodeType: string, objectInfo: ComfyObjectInfo | null): boolean => {
+	if (!objectInfo) return false
+	const entry = objectInfo[nodeType]
+	return entry?.output_node === true
+}
+
+export const parseComfyWorkflowIO = (
+	workflow: unknown,
+	objectInfo: ComfyObjectInfo | null = null
+): ComfyWorkflowIO => {
 	const wf = isRecord(workflow) ? workflow : {}
 	const nodes = isArray(wf.nodes) ? wf.nodes : []
 	const { incoming, outgoing } = getIncomingOutgoingCount(workflow)
@@ -101,9 +144,16 @@ export const parseComfyWorkflowIO = (workflow: unknown): ComfyWorkflowIO => {
 		if (/load\s*image|loadimage|image\s*input|start\s*frame/.test(text)) return true
 		if (/load\s*video|loadvideo|video\s*input/.test(text)) return true
 
+		const nodeType = getNodeType(node)
+		if (objectInfo && nodeType && isFileInputNode(nodeType, objectInfo)) {
+			return true
+		}
+
 		const idNum = getNodeIdNum(node)
 		const inCount = incoming.get(idNum) ?? 0
-		const mediaType = detectMediaTypeFromPorts(node)
+		const mediaType = objectInfo && nodeType
+			? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
+			: detectMediaTypeFromPorts(node)
 
 		if (inCount === 0 && (mediaType === 'image' || mediaType === 'video')) {
 			const nodeRec = isRecord(node) ? node : {}
@@ -125,10 +175,17 @@ export const parseComfyWorkflowIO = (workflow: unknown): ComfyWorkflowIO => {
 		if (/save\s*image|saveimage|preview\s*image/.test(text)) return true
 		if (/save\s*video|savevideo|video\s*combine|vhs/.test(text)) return true
 
+		const nodeType = getNodeType(node)
+		if (objectInfo && nodeType && isOutputNodeByObjectInfo(nodeType, objectInfo)) {
+			return true
+		}
+
 		const idNum = getNodeIdNum(node)
 		const outCount = outgoing.get(idNum) ?? 0
 		if (outCount === 0) {
-			const mediaType = detectMediaTypeFromPorts(node)
+			const mediaType = objectInfo && nodeType
+				? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
+				: detectMediaTypeFromPorts(node)
 			if (mediaType === 'image' || mediaType === 'video') return true
 		}
 
@@ -154,7 +211,9 @@ export const parseComfyWorkflowIO = (workflow: unknown): ComfyWorkflowIO => {
 			const title = isString(titleVal) ? titleVal : ''
 			const type = isString(typeVal) ? typeVal : ''
 			label = title || type || `输入${idx + 1}`
-			mediaType = detectMediaTypeFromPorts(n)
+			mediaType = objectInfo && type
+				? detectMediaTypeFromObjectInfo(objectInfo[type], type)
+				: detectMediaTypeFromPorts(n)
 			const idVal = nodeRec.id
 			nodeId = isNumber(idVal) || isString(idVal) ? String(idVal) : String(idx)
 		}
@@ -172,7 +231,9 @@ export const parseComfyWorkflowIO = (workflow: unknown): ComfyWorkflowIO => {
 			const title = isString(titleVal) ? titleVal : ''
 			const type = isString(typeVal) ? typeVal : ''
 			label = title || type || `产物${idx + 1}`
-			mediaType = detectMediaTypeFromPorts(n)
+			mediaType = objectInfo && type
+				? detectMediaTypeFromObjectInfo(objectInfo[type], type)
+				: detectMediaTypeFromPorts(n)
 			const idVal = nodeRec.id
 			nodeId = isNumber(idVal) || isString(idVal) ? String(idVal) : String(idx)
 		}

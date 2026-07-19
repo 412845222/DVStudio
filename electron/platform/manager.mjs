@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { webContents } from 'electron'
 import { createMockProvider } from './providers/mock.mjs'
 import { createSteamProvider } from './providers/steam.mjs'
@@ -6,8 +7,9 @@ import { platformEvents } from './events.mjs'
 
 const PLATFORM_PRIORITY = ['steam', 'epic', 'wegame', 'mock']
 
-class PlatformManager {
+class PlatformManager extends EventEmitter {
 	constructor() {
+		super()
 		this._providers = new Map()
 		this._activeId = 'mock'
 		this._callbackTimer = null
@@ -73,6 +75,12 @@ class PlatformManager {
 		this._lastStatus = statusJson
 
 		try {
+			this.emit('status-changed', status)
+		} catch (err) {
+			console.warn('[platform] emit status-changed error:', err.message)
+		}
+
+		try {
 			const allContents = webContents.getAllWebContents()
 			for (const contents of allContents) {
 				if (!contents.isDestroyed()) {
@@ -85,12 +93,21 @@ class PlatformManager {
 	}
 
 	discover() {
+		console.log('[platform] === discover: registering platforms ===')
 		const mock = createMockProvider()
 		this.registerProvider(mock)
+		console.log('[platform] Mock provider registered')
 
 		const steamConfig = getSteamConfig()
+		console.log('[platform] Steam config obtained:', JSON.stringify(steamConfig))
 		const steam = createSteamProvider(steamConfig)
-		if (steam) this.registerProvider(steam)
+		if (steam) {
+			this.registerProvider(steam)
+			console.log('[platform] Steam provider registered successfully')
+		} else {
+			console.warn('[platform] Steam provider creation returned null - Steam will not be available')
+		}
+		console.log('[platform] === discover: registered providers:', Array.from(this._providers.keys()))
 	}
 
 	preflightAll() {
@@ -108,32 +125,64 @@ class PlatformManager {
 	}
 
 	async initializeAll() {
+		console.log('[platform] === initializeAll: initializing all providers ===')
 		const results = []
 		for (const provider of this._providers.values()) {
+			console.log(`[platform] Initializing provider: ${provider.id}`)
 			try {
 				const result = await provider.init()
 				results.push({ id: provider.id, ...result })
-				if (!result.ok) {
+				if (result.ok) {
+					console.log(`[platform:${provider.id}] init succeeded`)
+				} else {
 					console.warn(`[platform:${provider.id}] init failed:`, result.errMsg)
 				}
 			} catch (err) {
+				console.error(`[platform:${provider.id}] init exception:`, err.message)
+				console.error(`[platform:${provider.id}] init exception stack:`, err.stack)
 				results.push({ id: provider.id, ok: false, errMsg: err.message })
 			}
 		}
+		console.log('[platform] All providers initialized, selecting active platform...')
 		this._selectActive()
+		console.log('[platform] Active platform after init:', this._activeId)
 		this._broadcastStatus()
 		return results
 	}
 
 	_selectActive() {
+		let availableNonMock = null
+
 		for (const id of PLATFORM_PRIORITY) {
 			const p = this._providers.get(id)
-			if (p && p.isInitialized() && p.isLoggedIn()) {
-				this._activeId = id
-				return
+			if (!p) continue
+
+			const isAvail = p.isAvailable()
+			const isInit = p.isInitialized()
+			const isLogged = p.isLoggedIn()
+
+			console.log(`[platform] Checking ${id}: available=${isAvail}, initialized=${isInit}, loggedIn=${isLogged}`)
+
+			if (id !== 'mock' && isAvail) {
+				availableNonMock = p
+				if (isInit && isLogged) {
+					this._activeId = id
+					console.log(`[platform] Selected active platform: ${id} (initialized and logged in)`)
+					return
+				}
+			} else if (id === 'mock' && isAvail && isInit && isLogged) {
+				console.log(`[platform] Mock is available and logged in`)
 			}
 		}
+
+		if (availableNonMock) {
+			this._activeId = availableNonMock.id
+			console.log(`[platform] Selected active platform: ${availableNonMock.id} (available, waiting for login)`)
+			return
+		}
+
 		this._activeId = 'mock'
+		console.log(`[platform] Selected active platform: mock (no real platform available)`)
 	}
 
 	getActiveProvider() {

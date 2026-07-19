@@ -17,6 +17,10 @@ import type {
 	UploadedProjectAsset,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult,
+	OpenComfySetupPayload,
+	OpenComfySetupResult,
 	CloudTemplatesPlatformResult,
 	CloudTemplatesQuotaResult,
 	CloudTemplatesListResult,
@@ -25,7 +29,13 @@ import type {
 	CloudTemplatesDownloadPayload,
 	CloudTemplatesDownloadResult,
 	CloudTemplatesDeletePayload,
-	CloudTemplatesDeleteResult
+	CloudTemplatesDeleteResult,
+	WorkshopTemplatesPlatformResult,
+	WorkshopTemplatesQueryResult,
+	WorkshopTemplatesDownloadPayload,
+	WorkshopTemplatesDownloadResult,
+	WorkshopTemplatesProgressResult,
+	WorkshopTemplatesInstallInfoResult,
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -561,6 +571,30 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
+export async function openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult> {
+	if (!window?.dweb?.window?.openVideoEditor) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openVideoEditor(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult> {
+	if (!window?.dweb?.window?.openComfySetup) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openComfySetup(payload || {})
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
 export async function getCloudTemplatesPlatform(): Promise<CloudTemplatesPlatformResult | null> {
 	if (!window?.dweb?.cloudTemplates?.getPlatform) return null
 	try {
@@ -621,7 +655,60 @@ export async function deleteCloudTemplate(
 	}
 }
 
+export async function getWorkshopTemplatesPlatform(): Promise<WorkshopTemplatesPlatformResult | null> {
+	if (!window?.dweb?.workshopTemplates?.getPlatform) return null
+	try {
+		return await window.dweb.workshopTemplates.getPlatform()
+	} catch (e: unknown) {
+		return { ok: false, platformAvailable: false, errMsg: getErrorMessage(e) }
+	}
+}
+
+export async function queryWorkshopTemplates(options: { tag?: string; limit?: number; offset?: number } = {}): Promise<WorkshopTemplatesQueryResult | null> {
+	if (!window?.dweb?.workshopTemplates?.query) return null
+	try {
+		return await window.dweb.workshopTemplates.query(options)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), items: [], totalResults: 0 }
+	}
+}
+
+export async function downloadWorkshopTemplate(
+	payload: WorkshopTemplatesDownloadPayload
+): Promise<WorkshopTemplatesDownloadResult | null> {
+	if (!window?.dweb?.workshopTemplates?.download) return null
+	try {
+		return await window.dweb.workshopTemplates.download(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), publishedFileId: payload.publishedFileId }
+	}
+}
+
+export async function getWorkshopTemplatesDownloadProgress(
+	payload: { publishedFileId: string }
+): Promise<WorkshopTemplatesProgressResult | null> {
+	if (!window?.dweb?.workshopTemplates?.progress) return null
+	try {
+		return await window.dweb.workshopTemplates.progress(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e), publishedFileId: payload.publishedFileId }
+	}
+}
+
+export async function getWorkshopTemplatesInstallInfo(
+	payload: { publishedFileId: string }
+): Promise<WorkshopTemplatesInstallInfoResult | null> {
+	if (!window?.dweb?.workshopTemplates?.installInfo) return null
+	try {
+		return await window.dweb.workshopTemplates.installInfo(payload)
+	} catch (e: unknown) {
+		return { ok: false, errMsg: getErrorMessage(e) }
+	}
+}
+
 export type {
 	Open3DEditorPayload,
-	Open3DEditorResult
+	Open3DEditorResult,
+	OpenVideoEditorPayload,
+	OpenVideoEditorResult
 }

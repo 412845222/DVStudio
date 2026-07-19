@@ -66,13 +66,24 @@ const draw = () => {
 	const start = Math.max(0, Math.floor(sl / fw))
 	const end = Math.min(frameCount - 1, Math.ceil((sl + cssW) / fw))
 
-	// match existing CSS appearance
-	const minor = 'rgba(255, 255, 255, 0.08)'
-	const major = 'rgba(255, 255, 255, 0.18)'
-	const label = 'rgba(255, 255, 255, 0.55)'
+	const css = () => getComputedStyle(document.documentElement)
+	const plAccent = (css().getPropertyValue('--pl-accent') || '#1f9d84').trim() || '#1f9d84'
+	const plBg0 = (css().getPropertyValue('--pl-bg-0') || '#0d1518').trim() || '#0d1518'
+
+	const hexToRgba = (hex: string, alpha: number) => {
+		const h = hex.replace('#', '')
+		const r = parseInt(h.substring(0, 2), 16)
+		const g = parseInt(h.substring(2, 4), 16)
+		const b = parseInt(h.substring(4, 6), 16)
+		return `rgba(${r}, ${g}, ${b}, ${alpha})`
+	}
+
+	const minor = hexToRgba(plAccent, 0.18)
+	const major = hexToRgba(plAccent, 0.4)
+	const label = hexToRgba(plAccent, 0.7)
 
 	ctx.textBaseline = 'top'
-	ctx.font = '11px sans-serif'
+	ctx.font = '10px "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace'
 
 	const niceStep = (minFrames: number) => {
 		const m = Math.max(1, Math.floor(minFrames))

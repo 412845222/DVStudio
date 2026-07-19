@@ -104,6 +104,19 @@
 						>
 							{{ t('nodes.video.screenshot') }}
 						</button>
+						<button
+							class="wf-toolbar-btn wf-video-editor-btn"
+							type="button"
+							:disabled="!resourceUrl"
+							@click.stop="onOpenVideoEditor"
+							:title="t('nodes.video.openVideoEditor')"
+						>
+							<svg class="wf-video-editor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polygon points="23 7 16 12 23 17 23 7"/>
+								<rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+							</svg>
+							<span>{{ t('nodes.video.openVideoEditor') }}</span>
+						</button>
 					</div>
 
 					<div class="wf-video-row wf-video-row2">
@@ -149,8 +162,10 @@ import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import VideoController from '../../UIComponent/VideoController.vue'
 import { DwebCanvasGL } from '../../../engine/webgl/canvas/DwebCanvasGL'
 import { useI18n } from '../../../i18n'
+import { useVideoEditor } from '../../../composables/useVideoEditor'
 
 const { t } = useI18n()
+const { open: openVideoEditor } = useVideoEditor()
 
 const videoNodeLastTime = new Map<string, number>()
 
@@ -893,6 +908,19 @@ const coverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number)
 	return { sx, sy, sw: drawW, sh: drawH }
 }
 
+const onOpenVideoEditor = async () => {
+	const url = effectiveResourceUrl.value
+	if (!url) return
+	const videoName = String(props.resourceName ?? '').trim()
+		|| props.nodeId
+		|| t('nodes.video.editorTitle')
+	await openVideoEditor({
+		nodeId: props.nodeId,
+		videoUrl: url,
+		videoName,
+	})
+}
+
 const onScreenshot = () => {
 	const v = videoEl.value
 	if (!v) return
@@ -1512,6 +1540,18 @@ onBeforeUnmount(() => {
 .wf-toolbar-btn:disabled {
 	opacity: 0.6;
 	cursor: not-allowed;
+}
+
+.wf-video-editor-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.wf-video-editor-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
 }
 
 .wf-timeline-canvas {

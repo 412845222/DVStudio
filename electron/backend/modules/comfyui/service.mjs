@@ -75,6 +75,23 @@ function buildProxyViewUrl(base, filename, subfolder, folderType) {
 
 const activePollers = new Map()
 
+const objectInfoCache = new Map()
+const OBJECT_INFO_CACHE_TTL = 5 * 60 * 1000
+
+function getCachedObjectInfo(baseUrl) {
+	const entry = objectInfoCache.get(baseUrl)
+	if (!entry) return null
+	if (Date.now() - entry.ts > OBJECT_INFO_CACHE_TTL) {
+		objectInfoCache.delete(baseUrl)
+		return null
+	}
+	return entry.data
+}
+
+function setCachedObjectInfo(baseUrl, data) {
+	objectInfoCache.set(baseUrl, { ts: Date.now(), data })
+}
+
 export function listWorkflows(ctx) {
 	const repo = getWorkflowsRepo(ctx)
 	return { items: repo.list() }
@@ -390,21 +407,13 @@ function filterWorkflowFiles(items) {
 		const lower = rel.toLowerCase()
 		if (!lower.endsWith('.json')) continue
 		if (lower.endsWith('.index.json')) continue
-		let name = rel.rsplit('/', 1)[-1]
+		const parts = rel.split('/')
+		let name = parts[parts.length - 1] || rel
 		if (name.toLowerCase().endsWith('.json')) name = name.slice(0, -5)
 		out.push({ path: `workflows/${rel}`, name })
 	}
 	out.sort((a, b) => (a.name === b.name ? a.path.localeCompare(b.path) : a.name.localeCompare(b.name)))
 	return out
-}
-
-if (!String.prototype.rsplit) {
-	String.prototype.rsplit = function(sep, maxsplit) {
-		const s = this.toString()
-		const idx = s.lastIndexOf(sep)
-		if (idx === -1 || maxsplit === 0) return [s]
-		return [s.slice(0, idx), s.slice(idx + sep.length)]
-	}
 }
 
 function extractObjectInfoInputDefs(info) {
@@ -823,15 +832,114 @@ export async function runtimePing(ctx, payload) {
 	const system = isRecord(statsResult.data.system) ? statsResult.data.system : {}
 	const devices = Array.isArray(statsResult.data.devices) ? statsResult.data.devices : []
 	const device0 = isRecord(devices[0]) ? devices[0] : {}
+
+	let nodeCount
+	try {
+		const cached = getCachedObjectInfo(base)
+		if (cached && isRecord(cached)) {
+			nodeCount = Object.keys(cached).length
+		} else {
+			const oiResult = await comfyJsonGet(client, `${base}/object_info`, 15000)
+			if (!oiResult.error && isRecord(oiResult.data)) {
+				setCachedObjectInfo(base, oiResult.data)
+				nodeCount = Object.keys(oiResult.data).length
+			}
+		}
+	} catch {}
+
+	const systemInfo = {
+		system: {
+			comfyui_version: system.comfyui_version,
+			os: system.os,
+			python_version: system.python_version,
+			pytorch_version: system.pytorch_version,
+			embedded_python: system.embedded_python
+		},
+		devices
+	}
+
 	return {
 		ok: true,
 		baseUrl: base,
 		comfyui: {
 			version: system.comfyui_version,
 			os: system.os,
-			deviceName: device0.name
+			deviceName: device0.name,
+			devices
+		},
+		systemInfo,
+		nodeCount
+	}
+}
+
+export async function runtimeGetObjectInfo(ctx, payload) {
+	const client = ctx.httpClient
+	const p = payload || {}
+	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
+	if (baseErr) return { ok: false, error: baseErr }
+
+	const forceRefresh = coerceBool(p.forceRefresh)
+	if (!forceRefresh) {
+		const cached = getCachedObjectInfo(base)
+		if (cached && isRecord(cached)) {
+			return { ok: true, baseUrl: base, objectInfo: cached, nodeCount: Object.keys(cached).length, cached: true }
 		}
 	}
+
+	const oiResult = await comfyJsonGet(client, `${base}/object_info`, 15000)
+	if (oiResult.error || !isRecord(oiResult.data)) {
+		return { ok: false, error: `failed to fetch object_info: ${oiResult.error || 'unknown error'}` }
+	}
+	setCachedObjectInfo(base, oiResult.data)
+	return { ok: true, baseUrl: base, objectInfo: oiResult.data, nodeCount: Object.keys(oiResult.data).length, cached: false }
+}
+
+function extractHistoryWorkflows(historyData, maxItems) {
+	if (!isRecord(historyData)) return []
+	const entries = []
+	for (const [promptId, entry] of Object.entries(historyData)) {
+		if (!isRecord(entry)) continue
+		const promptArr = entry.prompt
+		if (!Array.isArray(promptArr) || promptArr.length < 3) continue
+		const promptGraph = promptArr[2]
+		if (!isRecord(promptGraph)) continue
+		const numNodes = Object.keys(promptGraph).filter(k => /^\d+$/.test(k)).length
+		if (numNodes === 0) continue
+
+		let classType = '工作流'
+		let timestamp = 0
+		try {
+			const status = entry.status
+			if (isRecord(status) && status.messages && Array.isArray(status.messages) && status.messages.length > 0) {
+				const firstMsg = status.messages[0]
+				if (Array.isArray(firstMsg) && firstMsg.length > 0) {
+					const ts = Number(firstMsg[0])
+					if (Number.isFinite(ts) && ts > 0) timestamp = ts * 1000
+				}
+			}
+		} catch {}
+
+		const nodes = Object.values(promptGraph)
+		for (const node of nodes) {
+			if (isRecord(node) && typeof node.class_type === 'string' && node.class_type.trim()) {
+				const ct = node.class_type.trim()
+				if (ct !== 'CLIPTextEncode' && ct !== 'LoadImage' && ct !== 'SaveImage' && ct !== 'KSampler' && ct !== 'VAEDecode' && ct !== 'VAEEncode' && ct !== 'CheckpointLoaderSimple') {
+					classType = ct
+					break
+				}
+			}
+		}
+
+		const timeStr = timestamp > 0 ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : promptId.slice(0, 8)
+		entries.push({
+			path: `history://${promptId}`,
+			name: `[历史] ${classType} - ${timeStr}`,
+			source: 'history',
+			promptId
+		})
+		if (entries.length >= maxItems) break
+	}
+	return entries
 }
 
 export async function runtimeListWorkflowFiles(ctx, payload) {
@@ -841,12 +949,158 @@ export async function runtimeListWorkflowFiles(ctx, payload) {
 	if (baseErr) return { ok: false, error: baseErr }
 
 	const params = new URLSearchParams({ dir: 'workflows', recurse: 'true' })
-	const url = `${base}/userdata?${params.toString()}`
-	const result = await comfyJsonGet(client, url, 10000)
-	if (result.error || !Array.isArray(result.data)) {
-		return { ok: false, error: `ComfyUI /userdata failed: ${result.error || 'unknown error'}` }
+	const userdataUrl = `${base}/userdata?${params.toString()}`
+	const userdataResult = await comfyJsonGet(client, userdataUrl, 10000)
+
+	let workflows = []
+	let source = 'userdata'
+	let userdataError = null
+	let apiFailed = false
+
+	if (!userdataResult.error && Array.isArray(userdataResult.data)) {
+		workflows = filterWorkflowFiles(userdataResult.data)
+	} else {
+		userdataError = userdataResult.error
+		apiFailed = !!userdataError
 	}
-	return { ok: true, baseUrl: base, workflows: filterWorkflowFiles(result.data) }
+
+	if (workflows.length === 0) {
+		const maxHistory = Number(p.maxHistory) || 20
+		const histUrl = `${base}/history?max_items=${maxHistory}`
+		const histResult = await comfyJsonGet(client, histUrl, 10000)
+		if (!histResult.error && isRecord(histResult.data)) {
+			const historyWorkflows = extractHistoryWorkflows(histResult.data, maxHistory)
+			if (historyWorkflows.length > 0) {
+				workflows = historyWorkflows
+				source = 'history'
+			}
+		}
+	}
+
+	if (workflows.length === 0 && apiFailed) {
+		return {
+			ok: false,
+			error: `无法获取工作流列表（/userdata错误: ${userdataError}）`,
+			workflows: [],
+			source
+		}
+	}
+
+	return { ok: true, baseUrl: base, workflows, source }
+}
+
+export async function runtimeGetHistoryWorkflow(ctx, payload) {
+	const client = ctx.httpClient
+	const p = payload || {}
+	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
+	if (baseErr) return { ok: false, error: baseErr }
+
+	const promptId = String(p.promptId || '').trim()
+	if (!promptId) return { ok: false, error: 'promptId is required' }
+
+	const histUrl = `${base}/history/${encodeURIComponent(promptId)}`
+	const histResult = await comfyJsonGet(client, histUrl, 10000)
+	if (histResult.error || !isRecord(histResult.data)) {
+		return { ok: false, error: `failed to fetch history: ${histResult.error || 'unknown error'}` }
+	}
+
+	const entry = histResult.data[promptId]
+	if (!isRecord(entry)) {
+		return { ok: false, error: `history entry ${promptId} not found` }
+	}
+
+	const promptArr = entry.prompt
+	if (!Array.isArray(promptArr) || promptArr.length < 3 || !isRecord(promptArr[2])) {
+		return { ok: false, error: 'history entry does not contain valid prompt graph' }
+	}
+	const promptGraph = promptArr[2]
+
+	let workflow = null
+	if (Array.isArray(promptArr) && promptArr.length >= 4 && isRecord(promptArr[3])) {
+		const extra = promptArr[3]
+		const epi = extra.extra_pnginfo
+		if (isRecord(epi) && isRecord(epi.workflow)) {
+			workflow = epi.workflow
+		}
+	}
+
+	if (!workflow) {
+		workflow = { nodes: [], links: [], groups: [], config: {}, extra: {}, version: 0.4 }
+		const nodes = []
+		const links = []
+		let nodeIdx = 0
+		let linkId = 0
+		const idToIdx = new Map()
+
+		for (const [nodeId, nodeData] of Object.entries(promptGraph)) {
+			if (!isRecord(nodeData)) continue
+			const nid = Number(nodeId)
+			if (!Number.isFinite(nid)) continue
+			idToIdx.set(nid, nodeIdx)
+			const classType = String(nodeData.class_type || '')
+			const inputs = []
+			const widgetsValues = []
+			const inputDefs = nodeData.inputs
+			if (isRecord(inputDefs)) {
+				for (const [inputName, inputVal] of Object.entries(inputDefs)) {
+					if (Array.isArray(inputVal) && inputVal.length === 2) {
+						inputs.push({ name: inputName, type: '*', link: null })
+					} else {
+						inputs.push({ name: inputName, type: '*', link: null, widget: { name: inputName } })
+						widgetsValues.push(inputVal)
+					}
+				}
+			}
+			nodes.push({
+				id: nid,
+				type: classType,
+				pos: [nodeIdx * 220, 0],
+				size: [210, 100],
+				flags: {},
+				order: nodeIdx,
+				mode: 0,
+				inputs,
+				outputs: [],
+				properties: { 'Node name for S&R': classType },
+				widgets_values: widgetsValues
+			})
+			nodeIdx++
+		}
+
+		for (const [nodeId, nodeData] of Object.entries(promptGraph)) {
+			if (!isRecord(nodeData)) continue
+			const nid = Number(nodeId)
+			if (!Number.isFinite(nid)) continue
+			const fromIdx = idToIdx.get(nid)
+			if (fromIdx === undefined) continue
+			const inputDefs = nodeData.inputs
+			if (!isRecord(inputDefs)) continue
+			let slotIdx = 0
+			for (const [, inputVal] of Object.entries(inputDefs)) {
+				if (Array.isArray(inputVal) && inputVal.length === 2) {
+					const fromNodeId = Number(inputVal[0])
+					const fromSlot = Number(inputVal[1])
+					const toIdx = idToIdx.get(fromNodeId)
+					if (toIdx !== undefined) {
+						const fromNode = nodes[fromIdx]
+						if (!fromNode.outputs[slotIdx]) {
+							fromNode.outputs.push({ name: `OUTPUT_${slotIdx}`, type: '*', links: [], slot_index: slotIdx, shape: 6 })
+						}
+						links.push([linkId, fromNodeId, fromSlot, nid, slotIdx, '*'])
+						const toInput = fromNode.inputs.find(i => i.name === Object.keys(inputDefs)[slotIdx])
+						if (toInput) toInput.link = linkId
+						linkId++
+					}
+				}
+				slotIdx++
+			}
+		}
+		workflow.nodes = nodes
+		workflow.links = links
+	}
+
+	const workflowPath = `history://${promptId}`
+	return { ok: true, baseUrl: base, workflowPath, workflow, promptGraph, source: 'history' }
 }
 
 export async function runtimeGetWorkflowFile(ctx, payload) {
@@ -857,6 +1111,12 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 
 	let workflowPath = String(p.workflowPath || '').trim()
 	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
+
+	if (workflowPath.startsWith('history://')) {
+		const promptId = workflowPath.slice('history://'.length)
+		return runtimeGetHistoryWorkflow(ctx, { baseUrl: base, promptId })
+	}
+
 	if (workflowPath.startsWith('/')) workflowPath = workflowPath.slice(1)
 
 	const quoted = encodeURIComponent(workflowPath)
@@ -866,16 +1126,24 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 		if (!res.ok) {
 			return { ok: false, error: `ComfyUI /userdata/{file} http ${res.status}` }
 		}
-		let text
-		if (typeof res.body === 'string') text = res.body
-		else if (res.rawBody) text = res.rawBody.toString('utf-8-sig')
-		else text = JSON.stringify(res.body)
-
 		let workflow
-		try { workflow = JSON.parse(text) }
-		catch { return { ok: false, error: 'invalid workflow json' } }
+		if (res.body && typeof res.body === 'object' && !Array.isArray(res.body) && !Buffer.isBuffer(res.body)) {
+			workflow = res.body
+		} else {
+			let text
+			if (typeof res.body === 'string') {
+				text = res.body
+			} else if (Buffer.isBuffer(res.rawBody)) {
+				text = res.rawBody.toString('utf-8')
+				if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+			} else {
+				text = String(res.body ?? res.rawBody ?? '')
+			}
+			try { workflow = JSON.parse(text) }
+			catch { return { ok: false, error: 'invalid workflow json' } }
+		}
 
-		return { ok: true, baseUrl: base, workflowPath, workflow }
+		return { ok: true, baseUrl: base, workflowPath, workflow, source: 'userdata' }
 	} catch (err) {
 		return { ok: false, error: `ComfyUI /userdata/{file} failed: ${String(err?.message || err)}` }
 	}
@@ -926,12 +1194,17 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		if (upPath) uploadedPaths.push(upPath)
 	}
 
-	// Get object_info for workflow-to-prompt conversion
-	let objectInfo = null
-	try {
-		const oiResult = await comfyJsonGet(client, `${base}/object_info`, 15000)
-		if (!oiResult.error && isRecord(oiResult.data)) objectInfo = oiResult.data
-	} catch {}
+	// Get object_info for workflow-to-prompt conversion (use cache if available)
+	let objectInfo = getCachedObjectInfo(base)
+	if (!objectInfo) {
+		try {
+			const oiResult = await comfyJsonGet(client, `${base}/object_info`, 15000)
+			if (!oiResult.error && isRecord(oiResult.data)) {
+				objectInfo = oiResult.data
+				setCachedObjectInfo(base, objectInfo)
+			}
+		} catch {}
+	}
 
 	const knownNodeTypes = objectInfo ? new Set(Object.keys(objectInfo).filter(k => typeof k === 'string')) : null
 
@@ -939,12 +1212,19 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	let promptGraph
 	let promptSource = 'history'
 
+	if (isRecord(wfResult.promptGraph) && isPromptGraphJson(wfResult.promptGraph)) {
+		promptGraph = wfResult.promptGraph
+		promptSource = 'history-direct'
+	}
+
 	// Try to find from ComfyUI history first
-	const workflowId = isRecord(workflowAny) ? String(workflowAny.id || '').trim() : ''
-	if (workflowId) {
-		const histResult = await findPromptGraphFromComfyState(client, base, workflowId)
-		if (isRecord(histResult.prompt)) {
-			promptGraph = histResult.prompt
+	if (!isRecord(promptGraph)) {
+		const workflowId = isRecord(workflowAny) ? String(workflowAny.id || '').trim() : ''
+		if (workflowId) {
+			const histResult = await findPromptGraphFromComfyState(client, base, workflowId)
+			if (isRecord(histResult.prompt)) {
+				promptGraph = histResult.prompt
+			}
 		}
 	}
 

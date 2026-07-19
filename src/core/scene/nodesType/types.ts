@@ -1,6 +1,6 @@
 import type { JsonValue } from '../../shared/json'
 
-export type NodeType = 'base' | 'rect' | 'text' | 'image' | 'line'
+export type NodeType = 'base' | 'rect' | 'text' | 'image' | 'line' | 'video'
 
 export type NodeTransform = {
 	x: number
@@ -81,4 +81,15 @@ export type LineNodeProps = {
 export type LineNodeDTO = Omit<NodeBaseDTO, 'type' | 'props'> & {
 	type: 'line'
 	props: LineNodeProps
+}
+
+export type VideoNodeProps = {
+	videoId?: string
+	videoPath: string
+	videoFit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
+}
+
+export type VideoNodeDTO = Omit<NodeBaseDTO, 'type' | 'props'> & {
+	type: 'video'
+	props: VideoNodeProps
 }

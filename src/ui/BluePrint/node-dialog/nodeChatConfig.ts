@@ -74,7 +74,8 @@ export const NODE_CHAT_VIDEO_MODE_OPTIONS = [
 	{ value: 'text_to_video' as const, label: 'aiConfig.videoMode.textToVideo' },
 	{ value: 'image_to_video' as const, label: 'aiConfig.videoMode.imageToVideo' },
 	{ value: 'first-last' as const, label: 'aiConfig.videoMode.firstLast' },
-	{ value: 'reference' as const, label: 'aiConfig.videoMode.reference' }
+	{ value: 'reference' as const, label: 'aiConfig.videoMode.reference' },
+	{ value: 'video_edit' as const, label: 'aiConfig.videoMode.videoEdit' }
 ]
 
 export const NODE_CHAT_VIDEO_DURATION_OPTIONS = [
@@ -799,7 +800,9 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				generateAudio: false,
 				watermark: false,
 				cameraFixed: false,
-				returnLastFrame: false
+				returnLastFrame: false,
+				enableWebSearch: false,
+				priority: 0
 			}
 		case 'model3d':
 			return {
