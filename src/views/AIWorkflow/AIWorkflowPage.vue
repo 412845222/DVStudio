@@ -725,26 +725,6 @@
 			:position="tooltipState?.position ?? { x: 0, y: 0 }"
 		/>
 
-		<ModalDialog
-			:open="warmupConfirmDialogOpen"
-			:title="t('aiworkflow.page.warmupConfirm.title')"
-			:confirmText="t('aiworkflow.page.warmupConfirm.confirmText')"
-			:closeText="t('aiworkflow.page.warmupConfirm.closeText')"
-			:zIndex="10000"
-			@confirm="onConfirmForceWarmup"
-			@close="onCancelUseCache"
-		>
-			<div class="aiwf-warmup-confirm-dialog">
-				<p style="margin-top: 0">
-					{{ t('aiworkflow.page.warmupConfirm.question') }}
-				</p>
-				<p style="margin-bottom: 0; color: var(--text-secondary, #666); font-size: 13px;">
-					{{ t('aiworkflow.page.warmupConfirm.yesDesc') }}<br/>
-					{{ t('aiworkflow.page.warmupConfirm.noDesc') }}
-				</p>
-			</div>
-		</ModalDialog>
-
 		<!-- 缺失资产确认对话框 -->
 		<ModalDialog
 			:open="missingAssetDialogOpen"
@@ -1518,8 +1498,6 @@ const stableLinkHoverNodeId = ref<string>('')
 let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
 const LINK_HOVER_STABLE_DELAY_MS = 400
 const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
-
-const warmupConfirmDialogOpen = ref(false)
 
 const themeWarmupOpen = ref(false)
 const themeWarmupProgress = ref(0)
@@ -3362,48 +3340,22 @@ const triggerWarmupIfNeeded = () => {
 		const count = nodes.value.length
 		if (count <= 0) return
 		if (hasWarmedUp) return
-		warmupConfirmDialogOpen.value = true
-	}, 300)
-}
-
-const onConfirmForceWarmup = () => {
-	warmupConfirmDialogOpen.value = false
-	warmupMode = 'force'
-	hasWarmedUp = true
-	screenshotPool.cleanup()
-	nodeScreenshotMap.value = new Map()
-	disposeCanvasScreenshot()
-	initCanvasScreenshot()
-	canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
-	initCanvasScreenshotPool()
-	warmupAllNodeScreenshots(true).catch((err) => {
-		console.warn('[Screenshot Warmup] force warmup failed:', err)
-		isWarmingUpScreenshots.value = false
-		screenshotWarmupOpen.value = false
-		hasWarmedUp = false
-		warmupMode = null
-	})
-}
-
-const onCancelUseCache = async () => {
-	warmupConfirmDialogOpen.value = false
-	warmupMode = 'cache'
-	hasWarmedUp = true
-	try {
-		await loadCachedScreenshotsToCanvas()
-	} catch (err) {
-		console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
-		warmupMode = 'force'
-		screenshotPool.cleanup()
-		nodeScreenshotMap.value = new Map()
-		warmupAllNodeScreenshots(true).catch((err2) => {
-			console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
-			isWarmingUpScreenshots.value = false
-			screenshotWarmupOpen.value = false
-			hasWarmedUp = false
-			warmupMode = null
+		warmupMode = 'cache'
+		hasWarmedUp = true
+		loadCachedScreenshotsToCanvas().catch((err) => {
+			console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
+			warmupMode = 'force'
+			screenshotPool.cleanup()
+			nodeScreenshotMap.value = new Map()
+			warmupAllNodeScreenshots(true).catch((err2) => {
+				console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
+				isWarmingUpScreenshots.value = false
+				screenshotWarmupOpen.value = false
+				hasWarmedUp = false
+				warmupMode = null
+			})
 		})
-	}
+	}, 300)
 }
 
 const loadCachedScreenshotsToCanvas = async () => {
@@ -8322,7 +8274,6 @@ watch(
 		if (newId !== oldId) {
 			hasWarmedUp = false
 			warmupMode = null
-			warmupConfirmDialogOpen.value = false
 			screenshotWarmupOpen.value = false
 			isWarmingUpScreenshots.value = false
 			nodeScreenshotMap.value = new Map()
