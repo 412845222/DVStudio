@@ -61,25 +61,44 @@ function getToolDisplayName(toolName: string): string {
 	return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
-const MAX_IMAGE_DIMENSION = 640
-const MAX_IMAGE_BASE64_CHARS = 200 * 1024
+const MAX_IMAGE_WIDTH = 960
+const IMAGE_QUALITY = 0.85
+const MAX_IMAGE_BASE64_CHARS = 500 * 1024
 
-async function compressImageToDataUrl(blob: Blob, maxDim: number = MAX_IMAGE_DIMENSION, quality: number = 0.5): Promise<string> {
-	const bitmap = await createImageBitmap(blob)
-	let { width, height } = bitmap
-	if (width > maxDim || height > maxDim) {
-		const scale = maxDim / Math.max(width, height)
-		width = Math.round(width * scale)
-		height = Math.round(height * scale)
-	}
-	const canvas = document.createElement('canvas')
-	canvas.width = width
-	canvas.height = height
-	const ctx = canvas.getContext('2d')
-	if (!ctx) throw new Error('canvas context unavailable')
-	ctx.drawImage(bitmap, 0, 0, width, height)
-	bitmap.close()
-	return canvas.toDataURL('image/jpeg', quality)
+async function compressImageToDataUrl(blob: Blob, maxWidth: number = MAX_IMAGE_WIDTH, quality: number = IMAGE_QUALITY): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const img = new Image()
+		img.onload = () => {
+			let { width, height } = img
+			if (width > maxWidth) {
+				const ratio = maxWidth / width
+				width = maxWidth
+				height = Math.round(height * ratio)
+			}
+			const canvas = document.createElement('canvas')
+			canvas.width = width
+			canvas.height = height
+			const ctx = canvas.getContext('2d')
+			if (!ctx) return reject(new Error('Canvas context unavailable'))
+			ctx.drawImage(img, 0, 0, width, height)
+			canvas.toBlob(
+				(blob) => {
+					if (!blob) return reject(new Error('Image compression failed'))
+					const reader = new FileReader()
+					reader.onload = () => resolve(reader.result as string)
+					reader.onerror = () => reject(new Error('Data URL conversion failed'))
+					reader.readAsDataURL(blob)
+				},
+				'image/jpeg',
+				quality
+			)
+		}
+		img.onerror = () => reject(new Error('Image load failed'))
+		const reader = new FileReader()
+		reader.onload = () => { img.src = reader.result as string }
+		reader.onerror = () => reject(new Error('File read failed'))
+		reader.readAsDataURL(blob)
+	})
 }
 
 async function urlToBase64Attachment(url: string, name?: string): Promise<ChatAttachment | null> {
@@ -93,18 +112,15 @@ async function urlToBase64Attachment(url: string, name?: string): Promise<ChatAt
 			}
 			const resp = await fetch(url)
 			blob = await resp.blob()
+		} else if (url.startsWith('file:')) {
+			return null
 		} else {
 			const resp = await fetch(url)
 			if (!resp.ok) return null
 			blob = await resp.blob()
 		}
-		let dataUrl = await compressImageToDataUrl(blob)
-		let b64Len = dataUrl.length - dataUrl.indexOf(',') - 1
-		if (b64Len > MAX_IMAGE_BASE64_CHARS * 1.5) {
-			dataUrl = await compressImageToDataUrl(blob, MAX_IMAGE_DIMENSION / 2, 0.5)
-			b64Len = dataUrl.length - dataUrl.indexOf(',') - 1
-		}
-		return { type: 'image_url', name, data: dataUrl, url }
+		const dataUrl = await compressImageToDataUrl(blob)
+		return { type: 'image_url', name, data: dataUrl, url: dataUrl }
 	} catch {
 		return null
 	}
@@ -563,7 +579,8 @@ function formatToolResultDisplay(output: unknown): { summary: string; detail: st
 export async function runBlenderAgentChat(
 	deps: BlenderAgentChatDeps,
 	nodeId: string,
-	prompt: string
+	prompt: string,
+	userAttachments?: ChatAttachment[]
 ) {
 	const { store } = deps
 	const node = store.state.nodesById[nodeId]
@@ -576,6 +593,8 @@ export async function runBlenderAgentChat(
 		? await upstreamImagesToAttachments(preUpstream.images)
 		: []
 
+	const mergedAttachments = [...referenceAttachments, ...(userAttachments || [])]
+
 	let workspaceInfo: {
 		workspacePath?: string
 		screenshotsDir?: string
@@ -585,14 +604,15 @@ export async function runBlenderAgentChat(
 
 	if (projectId && window.dweb?.blender?.workspaceInit) {
 		try {
-			const references = referenceAttachments.map((att, idx) => {
+			const references = mergedAttachments.map((att, idx) => {
 				const data = att.data || ''
 				const base64Match = data.match(/^data:(image\/[^;]+);base64,(.+)$/)
+				const isFromUpstream = idx < preUpstream.images.length
 				return {
 					base64: base64Match ? base64Match[2] : '',
 					mimeType: base64Match ? base64Match[1] : 'image/png',
 					fileName: att.name || `reference_${idx + 1}.png`,
-					sourceAlias: preUpstream.images[idx]?.sourceAlias || ''
+					sourceAlias: isFromUpstream ? (preUpstream.images[idx]?.sourceAlias || '') : '用户上传'
 				}
 			}).filter(ref => ref.base64)
 			const wsResult = await window.dweb.blender.workspaceInit({ nodeId, projectId, references })
@@ -951,7 +971,7 @@ export async function runBlenderAgentChat(
 		const toolNames = [...BLENDER_TOOL_NAMES]
 		const effectiveTools = toolNames
 		const systemPrompt = buildBlenderSystemPrompt(context, toolNames)
-		const attachments = referenceAttachments
+		const attachments = mergedAttachments
 
 		let globalAgentSettings = getCachedAgentSettings()
 		try {

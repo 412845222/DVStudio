@@ -1127,6 +1127,14 @@ const runTextTask = async (
 			// skip failed images
 		}
 	}
+	// Add user @mentioned attachments
+	if (payload.attachments && payload.attachments.length > 0) {
+		for (const att of payload.attachments) {
+			if (att.type === 'image_url' && att.data && att.data.startsWith('data:image/')) {
+				refImages.push(att.data)
+			}
+		}
+	}
 	if (refImages.length > 0) {
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
 	}

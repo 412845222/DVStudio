@@ -33,6 +33,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
+import { TimelineStore } from '../../../store/timeline'
 import SubtitleEditorPanel from './SubtitleEditorPanel.vue'
 import AiSubtitleUnderstandingPanel from './AiSubtitleUnderstandingPanel.vue'
 import ComponentLibraryPanel from './ComponentLibraryPanel.vue'
@@ -47,6 +48,7 @@ defineExpose({ rootEl })
 const open = computed(() => !!store.state.leftPanel?.open)
 const mode = computed(() => store.state.leftPanel?.mode ?? null)
 const layerId = computed(() => store.state.leftPanel?.layerId ?? null)
+const videoPath = computed(() => store.state.leftPanel?.videoPath ?? null)
 const refreshToken = computed(() => store.state.leftPanel?.refreshToken ?? 0)
 
 const title = computed(() => {

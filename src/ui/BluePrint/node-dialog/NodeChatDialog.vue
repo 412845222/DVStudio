@@ -183,6 +183,71 @@ import type { InputParamPreviewRef } from './index'
 
 const { t } = useI18n()
 
+const MAX_IMAGE_WIDTH = 960
+const IMAGE_QUALITY = 0.85
+const MAX_IMAGE_BASE64_CHARS = 500 * 1024
+
+async function compressImageToDataUrl(blob: Blob, maxWidth: number = MAX_IMAGE_WIDTH, quality: number = IMAGE_QUALITY): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const img = new Image()
+		img.onload = () => {
+			let { width, height } = img
+			if (width > maxWidth) {
+				const ratio = maxWidth / width
+				width = maxWidth
+				height = Math.round(height * ratio)
+			}
+			const canvas = document.createElement('canvas')
+			canvas.width = width
+			canvas.height = height
+			const ctx = canvas.getContext('2d')
+			if (!ctx) return reject(new Error('Canvas context unavailable'))
+			ctx.drawImage(img, 0, 0, width, height)
+			canvas.toBlob(
+				(blob) => {
+					if (!blob) return reject(new Error('Image compression failed'))
+					const reader = new FileReader()
+					reader.onload = () => resolve(reader.result as string)
+					reader.onerror = () => reject(new Error('Data URL conversion failed'))
+					reader.readAsDataURL(blob)
+				},
+				'image/jpeg',
+				quality
+			)
+		}
+		img.onerror = () => reject(new Error('Image load failed'))
+		const reader = new FileReader()
+		reader.onload = () => { img.src = reader.result as string }
+		reader.onerror = () => reject(new Error('File read failed'))
+		reader.readAsDataURL(blob)
+	})
+}
+
+async function urlToBase64Attachment(url: string, name?: string): Promise<{ type: string; name?: string; url: string; data: string } | null> {
+	if (!url) return null
+	try {
+		let blob: Blob
+		if (url.startsWith('data:image/')) {
+			const b64Len = url.length - url.indexOf(',') - 1
+			if (b64Len <= MAX_IMAGE_BASE64_CHARS) {
+				return { type: 'image_url', name, data: url, url }
+			}
+			const resp = await fetch(url)
+			blob = await resp.blob()
+		} else if (url.startsWith('file:')) {
+			return null
+		} else {
+			const resp = await fetch(url)
+			if (!resp.ok) return null
+			blob = await resp.blob()
+		}
+		const dataUrl = await compressImageToDataUrl(blob)
+		return { type: 'image_url', name, data: dataUrl, url: dataUrl }
+	} catch {
+		return null
+	}
+}
+
 const props = defineProps<{
 	visible: boolean
 	nodeId: string | null
@@ -314,7 +379,7 @@ const getRefLabel = (item: InputParamPreviewRef) => {
 	return item.label || ''
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
 	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
 	const references = selectedReferences.value.map((item) => ({
 		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
@@ -323,12 +388,23 @@ const handleSubmit = () => {
 		type: item.kind as any,
 		label: getRefLabel(item)
 	}))
+	const attachments: Array<{ type: string; name?: string; url: string; data: string }> = []
+	for (const item of selectedReferences.value) {
+		if (item.kind === 'image' && item.previewUrl) {
+			const name = item.name || item.label || `image_${attachments.length + 1}.jpg`
+			const att = await urlToBase64Attachment(item.previewUrl, name)
+			if (att) {
+				attachments.push(att)
+			}
+		}
+	}
 	const payload: WorkflowNodeChatSubmitPayload = {
 		nodeId: props.nodeId,
 		nodeType: props.nodeType,
 		prompt: props.draft.trim(),
 		params: currentParams.value,
-		references
+		references,
+		attachments: attachments.length > 0 ? attachments : undefined
 	}
 	emit('submit', payload)
 	selectedReferences.value = []
