@@ -1007,7 +1007,8 @@ export async function runBlenderAgentChat(
 				attachments,
 				thinkingEffort,
 				maxToolCalls: globalAgentSettings.maxToolCalls,
-				enableToolCallWarning: globalAgentSettings.enableToolCallWarning !== false
+				enableToolCallWarning: globalAgentSettings.enableToolCallWarning !== false,
+				agentType: 'blender',
 			},
 			abortController.signal
 		) as AsyncGenerator<ChatStreamEvent, void, void>) {

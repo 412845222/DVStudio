@@ -48,7 +48,9 @@ export async function* streamAgentMessage(ctx, payload) {
     backend = cliMode ? apiSource : 'dvsagent';
   }
 
-  if (!content) {
+  const hasAttachments = Array.isArray(p.attachments) && p.attachments.length > 0;
+  const hasReferences = Array.isArray(p.references) && p.references.length > 0;
+  if (!content && !hasAttachments && !hasReferences) {
     yield { type: 'error', message: 'content is required' };
     return;
   }
@@ -78,7 +80,14 @@ export async function* streamAgentMessage(ctx, payload) {
       history: Array.isArray(p.history) ? p.history : [],
       attachments: Array.isArray(p.attachments) ? p.attachments : [],
       tools: Array.isArray(p.tools) ? p.tools : [],
+      skillHints: Array.isArray(p.skillHints) ? p.skillHints : [],
+      references: Array.isArray(p.references) ? p.references : [],
+      referencedNodeIds: Array.isArray(p.referencedNodeIds) ? p.referencedNodeIds : [],
+      referencedOutputs: Array.isArray(p.referencedOutputs) ? p.referencedOutputs : [],
+      activeSkills: Array.isArray(p.activeSkills) ? p.activeSkills : [],
+      executionHints: Array.isArray(p.executionHints) ? p.executionHints : [],
       systemPrompt: typeof p.systemPrompt === 'string' ? p.systemPrompt : undefined,
+      agentType: p.agentType || 'workflow',
     });
   } catch (err) {
     logger.error(`Runtime stream failed for backend=${backend}: ${err.message}`);
