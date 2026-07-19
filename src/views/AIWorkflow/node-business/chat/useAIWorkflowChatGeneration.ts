@@ -408,7 +408,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			executionHints?: string[]
 			agentMode?: 'agent' | 'ask' | 'plan'
 			permissionProfile?: string
-			attachments?: Array<{ type: string; name?: string; url?: string; data?: string }>
 		} = {}
 	) => {
 		setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
@@ -444,7 +443,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				executionHints: options.executionHints,
 				agentMode: options.agentMode,
 				permissionProfile: options.permissionProfile,
-				attachments: options.attachments,
 			}, signal)) {
 				if (ev.type === 'done' || ev.type === 'turn_done') {
 					setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
@@ -773,17 +771,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		return []
 	}
 
-	const onSend = async (sendPayload?: { attachments?: Array<{ type: string; name?: string; url?: string; data?: string }> }) => {
+	const onSend = async () => {
 		if (payload.chatModelKey.value === 'nanobanana' || payload.chatModelKey.value === 'seedance')
 			return
 		if (payload.chatSending.value) return
-		let content = String(payload.chatDraft.value || '').trim()
-		const attachments = sendPayload?.attachments || []
-
-		if (!content && attachments.length === 0) return
-		if (!content && attachments.length > 0) {
-			content = '请描述这张图片'
-		}
+		const content = String(payload.chatDraft.value || '').trim()
+		if (!content) return
 
 		const history = payload.chatMessages.value
 			.filter(
@@ -871,7 +864,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					model: payload.chatModelId.value,
 					thinkingEffort: payload.chatThinkingEffort.value,
 					context,
-					attachments,
 				})
 
 				try {
@@ -942,7 +934,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					executionHints: parsed.executionHints,
 					agentMode: payload.agentConversationMode.value,
 					permissionProfile: 'default',
-					attachments,
 				})
 				return
 			}
@@ -958,7 +949,6 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				await handleChatStream('codex', content, session.id, assistantMsg.id, {
 					history,
 					model: payload.chatModelId.value,
-					attachments,
 				})
 				return
 			}

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<div ref="shellRef" class="tl-shell">
 		<div class="tl-toolbar">
 			<div class="tl-play-controls">
@@ -83,7 +83,7 @@
 					@change="applyFrameCount"
 				/>
 			</div>
-</div>
+		</div>
 
 		<div class="tl-body">
 			<div ref="tracksRef" class="tl-tracks">
@@ -595,6 +595,7 @@ const removeLayer = async (layerId: string) => {
 const openSubtitlePanel = (layerId: string) => {
 	void VideoSceneStore.dispatch('openLeftPanel', { mode: 'subtitle', layerId })
 }
+
 const applyFrameCount = () => {
 	const next = Math.max(1, Math.floor(Number(inputFrameCount.value) || 1))
 	store.dispatch('setFrameCount', { frameCount: next })
@@ -2316,27 +2317,6 @@ watch(
 .tl-meta-sep {
 	opacity: 0.4;
 	color: color-mix(in srgb, var(--pl-accent) 50%, transparent);
-}
-
-.tl-tools {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-left: 12px;
-	padding-left: 12px;
-	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
-}
-
-.tl-subtitle-btn {
-	display: flex;
-	align-items: center;
-	color: var(--pl-accent);
-	border-color: color-mix(in srgb, var(--pl-accent) 40%, transparent);
-}
-
-.tl-subtitle-btn:hover {
-	background: color-mix(in srgb, var(--pl-accent) 15%, transparent);
-	border-color: var(--pl-accent);
 }
 
 .tl-input {

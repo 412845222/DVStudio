@@ -530,20 +530,6 @@ contextBridge.exposeInMainWorld('dweb', {
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
 		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
 	},
-	subtitleRecog: {
-		checkEnv: () => invoke('dweb:subtitle-recog:check-env'),
-		getBinaryConfig: (payload) => invoke('dweb:subtitle-recog:get-binary-config', payload || {}),
-		downloadBinary: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-binary', payload || {}),
-		getFfmpegConfig: (payload) => invoke('dweb:subtitle-recog:get-ffmpeg-config', payload || {}),
-		downloadFfmpeg: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-ffmpeg', payload || {}),
-		getAvailableModels: () => invoke('dweb:subtitle-recog:get-available-models'),
-		getModelConfig: (payload) => invoke('dweb:subtitle-recog:get-model-config', payload || {}),
-		downloadModel: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-model', payload || {}),
-		getInstalledModels: () => invoke('dweb:subtitle-recog:get-installed-models'),
-		recognize: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:recognize', payload || {}),
-		readAudioFile: (payload) => invoke('dweb:subtitle-recog:read-audio-file', payload || {}),
-		cleanupAudioFile: (payload) => invoke('dweb:subtitle-recog:cleanup-audio-file', payload || {}),
-	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {
 		nanobanana: {

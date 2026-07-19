@@ -3960,8 +3960,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 				},
 				payload.nodeId,
-				payload.prompt,
-				payload.attachments
+				payload.prompt
 			)
 		} finally {
 			blenderAbortFns.delete(payload.nodeId)
