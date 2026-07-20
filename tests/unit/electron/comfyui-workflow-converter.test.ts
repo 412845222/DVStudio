@@ -3,8 +3,8 @@ import { describe, it, expect } from 'vitest'
 
 describe('comfyui workflow-converter: core utilities', () => {
   let flattenWorkflow: (w: any) => { nodes: any[]; links: any[] }
-  let buildPromptFromFlat: (nodes: any[], links: any[], objectInfo: any) => { prompt: Record<string, any>; error: string | null }
-  let workflowToPrompt: (w: any, objectInfo: any) => { prompt: Record<string, any>; error: string | null }
+  let buildPromptFromFlat: (nodes: any[], links: any[], objectInfo: any) => { prompt: Record<string, any>; error: string | null; warnings?: string[] }
+  let workflowToPrompt: (w: any, objectInfo: any) => { prompt: Record<string, any>; error: string | null; warnings?: string[] }
 
   beforeAll(async () => {
     const mod = await import('../../../electron/backend/modules/comfyui/workflow-converter.mjs')
@@ -272,10 +272,86 @@ describe('comfyui workflow-converter: core utilities', () => {
       expect(prompt['1'].inputs.sampler_name).toBe('euler')
     })
 
-    it('returns error for unknown node types', () => {
-      const nodes = [{ id: '1', type: 'UnknownCustomNode', inputs: [] }]
-      const { error } = buildPromptFromFlat(nodes, [], objectInfo)
-      expect(error).toContain('UnknownCustomNode')
+    it('preserves unknown/custom node types in prompt instead of erroring (ComfyUI validates)', () => {
+      const w = (name: string) => ({ name, widget: { name } })
+      const nodes = [
+        { id: '1', type: 'CustomLoadImage', widgets_values: ['test.png'], inputs: [w('image')] },
+        { id: '2', type: 'CustomVideoProcessor', inputs: [{ name: 'image' }], widgets_values: [24, 1024] },
+        { id: '3', type: 'SaveVideo', widgets_values: ['ComfyUI'], inputs: [{ name: 'images' }, w('filename_prefix')] }
+      ]
+      const links = [
+        ['l0', '1', 0, '2', 0, 'IMAGE'],
+        ['l1', '2', 0, '3', 0, 'IMAGE']
+      ]
+      const { prompt, error } = buildPromptFromFlat(nodes, links, objectInfo)
+      expect(error).toBeNull()
+      expect(prompt['1']).toBeDefined()
+      expect(prompt['1'].class_type).toBe('CustomLoadImage')
+      expect(prompt['1'].inputs.image).toBe('test.png')
+      expect(prompt['2']).toBeDefined()
+      expect(prompt['2'].class_type).toBe('CustomVideoProcessor')
+      expect(prompt['2'].inputs.image).toEqual(['1', 0])
+      expect(prompt['3']).toBeDefined()
+      expect(prompt['3'].class_type).toBe('SaveVideo')
+      expect(prompt['3'].inputs.images).toEqual(['2', 0])
+    })
+
+    it('resolves SaveVideo video input through Reroute and custom video generator nodes', () => {
+      const nodes = [
+        { id: '1', type: 'WanVideoModelLoader', widgets_values: ['wan2_1_t2v_14B_fp8_e4m3fn.safetensors'], inputs: [{ name: 'unet_name', widget: { name: 'unet_name' } }] },
+        { id: '2', type: 'WanVideoSampler', inputs: [{ name: 'model' }, { name: 'positive' }, { name: 'negative' }, { name: 'latent_image' }], outputs: [{ name: 'video', type: 'VIDEO' }], widgets_values: [10] },
+        { id: '3', type: 'Reroute', inputs: [{ name: 'video', type: 'VIDEO' }], outputs: [{ name: 'video', type: 'VIDEO' }] },
+        { id: '108', type: 'SaveVideo', inputs: [{ name: 'video', type: 'VIDEO' }, { name: 'filename_prefix', widget: { name: 'filename_prefix' } }], widgets_values: ['ComfyUI'] }
+      ]
+      const links = [
+        ['l0', '1', 0, '2', 0, 'MODEL'],
+        ['l1', '2', 0, '3', 0, 'VIDEO'],
+        ['l2', '3', 0, '108', 0, 'VIDEO']
+      ]
+      const { prompt, error, warnings } = buildPromptFromFlat(nodes, links, objectInfo)
+      expect(error).toBeNull()
+      expect(warnings).toBeUndefined()
+      expect(prompt['108']).toBeDefined()
+      expect(prompt['108'].inputs.video).toEqual(['2', 0])
+      expect(prompt['108'].inputs.filename_prefix).toBe('ComfyUI')
+    })
+
+    it('reports unresolved connections as warnings when source is missing', () => {
+      const nodes = [
+        { id: '108', type: 'SaveVideo', inputs: [{ name: 'video', type: 'VIDEO' }], widgets_values: ['ComfyUI'] }
+      ]
+      const links = [
+        ['l0', '999', 0, '108', 0, 'VIDEO']
+      ]
+      const { prompt, error, warnings } = buildPromptFromFlat(nodes, links, objectInfo)
+      expect(error).toBeNull()
+      expect(prompt['108'].inputs.video).toBeUndefined()
+      expect(warnings).toBeDefined()
+      expect(warnings!.length).toBeGreaterThan(0)
+      expect(warnings![0]).toContain('unresolved link l0')
+    })
+
+    it('resolves connection from connsByTo when inp.links references a stale/deleted link ID (post-subgraph-expansion)', () => {
+      const nodes = [
+        { id: '170', type: 'CreateVideo', inputs: [{ name: 'fps', widget: { name: 'fps' } }], outputs: [{ name: 'video', type: 'VIDEO' }], widgets_values: [16] },
+        {
+          id: '108', type: 'SaveVideo', widgets_values: ['ComfyUI', 'auto', 'auto'],
+          inputs: [
+            { name: 'video', type: 'VIDEO', links: [239] },
+            { name: 'filename_prefix', widget: { name: 'filename_prefix' } },
+            { name: 'format', widget: { name: 'format' } },
+            { name: 'codec', widget: { name: 'codec' } }
+          ]
+        }
+      ]
+      const links = [
+        ['new-link-2', '170', 0, '108', 0, 'VIDEO']
+      ]
+      const { prompt, error, warnings } = buildPromptFromFlat(nodes, links, objectInfo)
+      expect(error).toBeNull()
+      expect(warnings).toBeUndefined()
+      expect(prompt['108'].inputs.video).toEqual(['170', 0])
+      expect(prompt['108'].inputs.filename_prefix).toBe('ComfyUI')
     })
 
     it('coerces INT and FLOAT widget values from strings to numbers', () => {
@@ -307,8 +383,72 @@ describe('comfyui workflow-converter: core utilities', () => {
       }
       const { prompt, error } = workflowToPrompt(workflow, objectInfo)
       expect(error).toBeNull()
+      expect(Object.keys(prompt)).toHaveLength(1)
       expect(prompt['1'].class_type).toBe('CheckpointLoaderSimple')
       expect(prompt['1'].inputs.ckpt_name).toBe('test.safetensors')
+    })
+
+    it('expands subgraph UUID node with internal Reroute and PrimitiveNode and resolves connections', () => {
+      const w = (name: string) => ({ name, widget: { name } })
+      const wi = (name: string, type: string) => ({ name, type })
+      const objectInfo = {
+        LoadImage: { input: { required: { image: ['STRING'] } }, output: ['IMAGE'] },
+        SaveVideo: { input: { required: { video: ['VIDEO'], filename_prefix: ['STRING'] } }, output: [] },
+        TestSwitch: { input: { required: { on_true: ['*'], on_false: ['*'], switch: ['BOOLEAN'] } }, output: ['*'] },
+        TestMath: { input: { required: { a: ['FLOAT'], b: ['FLOAT'], expression: ['STRING'] } }, output: ['*'] },
+        InternalProcessor: { input: { required: { image: ['IMAGE'] } }, output: ['VIDEO'] }
+      }
+      const subgraphUuid = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+      const workflow = {
+        nodes: [
+          { id: '10', type: 'LoadImage', widgets_values: ['test.png'], inputs: [w('image')], outputs: [{ name: 'IMAGE', type: 'IMAGE', links: [200] }] },
+          {
+            id: '20', type: subgraphUuid,
+            inputs: [
+              { name: 'image', type: 'IMAGE', link: 200 }
+            ],
+            outputs: [
+              { name: 'VIDEO', type: 'VIDEO', links: [300] }
+            ],
+            widgets_values: []
+          },
+          { id: '30', type: 'SaveVideo', widgets_values: ['output'], inputs: [wi('video', 'VIDEO'), w('filename_prefix')], outputs: [] }
+        ],
+        links: [
+          [200, '10', 0, '20', 0, 'IMAGE'],
+          [300, '20', 0, '30', 0, 'VIDEO']
+        ],
+        definitions: {
+          subgraphs: [{
+            id: subgraphUuid,
+            nodes: [
+              { id: '1', type: 'SubgraphInput', outputs: [{ name: 'image', type: 'IMAGE', links: [] }] },
+              { id: '2', type: 'InternalProcessor', inputs: [wi('image', 'IMAGE')], outputs: [{ name: 'VIDEO', type: 'VIDEO', links: [] }], widgets_values: [] },
+              { id: '3', type: 'Reroute', inputs: [wi('video', 'VIDEO')], outputs: [{ name: 'video', type: 'VIDEO', links: [] }] },
+              { id: '4', type: 'PrimitiveBoolean', widgets_values: [false], outputs: [{ name: 'BOOLEAN', type: 'BOOLEAN', links: [] }] },
+              { id: '5', type: 'TestSwitch', inputs: [wi('on_true', '*'), wi('on_false', '*'), wi('switch', 'BOOLEAN')], outputs: [{ name: '*', type: '*', links: [] }], widgets_values: [true, false] },
+              { id: '6', type: 'SubgraphOutput', inputs: [wi('video', 'VIDEO')] }
+            ],
+            links: [
+              ['s1', '1', 0, '2', 0, 'IMAGE'],
+              ['s2', '2', 0, '3', 0, 'VIDEO'],
+              ['s3', '3', 0, '6', 0, 'VIDEO'],
+              ['s4', '4', 0, '5', 2, 'BOOLEAN']
+            ],
+            inputNode: { id: '1' },
+            outputNode: { id: '6' }
+          }]
+        }
+      }
+      const { prompt, error, warnings } = workflowToPrompt(workflow, objectInfo)
+      expect(error).toBeNull()
+      expect(warnings).toBeUndefined()
+      const saveVideoNode = Object.values(prompt).find((n: any) => n.class_type === 'SaveVideo')
+      expect(saveVideoNode).toBeDefined()
+      const videoInput = saveVideoNode.inputs.video
+      expect(Array.isArray(videoInput)).toBe(true)
+      const processorId = videoInput[0]
+      expect(prompt[processorId].class_type).toBe('InternalProcessor')
     })
   })
 })

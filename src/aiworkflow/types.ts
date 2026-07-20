@@ -676,6 +676,47 @@ export type WorkflowComfyUINodeSettings = {
 	workflowWarnings?: string[]
 	/** whether the preview screenshot is stale and needs refresh */
 	previewStale?: boolean
+
+	/** history resolution status: whether we have a valid successful run record */
+	hasHistory?: boolean
+	/** whether history check has been performed for current workflow */
+	historyChecked?: boolean
+	/** error from history resolution */
+	historyError?: string
+	/** guide message to show when no history */
+	historyGuideMessage?: string
+	/** ComfyUI base url for opening UI when no history */
+	historyGuideBaseUrl?: string
+	/** prompt id of the matched history run */
+	historyPromptId?: string
+	/** epoch ms of the history run */
+	historyTimestamp?: number
+	/** match type used: exact/fuzzy/direct */
+	historyMatchType?: 'exact' | 'fuzzy' | 'direct'
+	/** number of image inputs detected from history */
+	imageInputCount?: number
+	/** number of video inputs detected from history */
+	videoInputCount?: number
+	/** whether there are text prompt inputs (CLIPTextEncode) */
+	hasTextPromptInput?: boolean
+	/** number of nodes in the prompt graph */
+	historyNodeCount?: number
+	/** exact input node mappings resolved from history, used for precise parameter replacement at runtime */
+	historyInputMappings?: {
+		imageInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
+		videoInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
+		textNodes: {
+			positive: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
+			negative: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
+		}
+		seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
+	}
+	// detected output nodes from the workflow
+	historyOutputNodes?: Array<{ nodeId: string; classType: string; mediaKind: 'image' | 'video' | 'model3d'; displayName?: string }>
+	// which media types the workflow actually outputs (detected from Save/VHS_/Export nodes)
+	hasImageOutput?: boolean
+	hasVideoOutput?: boolean
+	hasModel3dOutput?: boolean
 }
 
 export type WorkflowMeshyModelSettings = {

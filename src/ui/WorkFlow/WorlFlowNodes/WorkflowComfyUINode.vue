@@ -143,6 +143,40 @@
 					</select>
 				</div>
 
+				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-history">
+					<div v-if="!historyChecked" class="wf-comfy-history-status checking">
+						<span class="wf-comfy-history-dot" />
+						<span>{{ t('nodes.comfyui.historyChecking') }}</span>
+					</div>
+					<div v-else-if="hasHistory" class="wf-comfy-history-status ready">
+						<span class="wf-comfy-history-dot" />
+						<span class="wf-comfy-history-text">{{ historyStatusText }}</span>
+						<button
+							class="wf-comfy-clear-history-btn"
+							type="button"
+							:title="t('nodes.comfyui.clearHistoryCache')"
+							@click.stop="onClearHistoryCache"
+						>
+							✕
+						</button>
+					</div>
+					<div v-else class="wf-comfy-history-guide">
+						<div class="wf-comfy-history-guide-title">⚠️ {{ t('nodes.comfyui.noHistoryTitle') }}</div>
+						<div class="wf-comfy-history-guide-desc">{{ historyStatusText }}</div>
+						<div class="wf-comfy-history-guide-actions">
+							<button class="wf-comfy-btn wf-comfy-btn-sm" type="button" @click.stop="onOpenComfyUI">
+								{{ t('nodes.comfyui.openComfyUI') }}
+							</button>
+							<button class="wf-comfy-btn wf-comfy-btn-sm wf-comfy-btn-ghost" type="button" @click.stop="onRefreshHistory">
+								{{ t('nodes.comfyui.refreshHistoryCheck') }}
+							</button>
+						</div>
+					</div>
+					<div v-if="hasHistory && historyInputSummary" class="wf-comfy-history-inputs">
+						{{ historyInputSummary }}
+					</div>
+				</div>
+
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-row">
 					<div class="wf-comfy-label">{{ t('nodes.comfyui.positivePrompt') }}</div>
 					<div class="wf-comfy-prompt">
@@ -658,6 +692,18 @@ const props = defineProps<{
 		progress?: number
 		statusText?: string
 		lastUpdateAt?: number
+		hasHistory?: boolean
+		historyChecked?: boolean
+		historyError?: string
+		historyGuideMessage?: string
+		historyGuideBaseUrl?: string
+		historyPromptId?: string
+		historyTimestamp?: number
+		historyMatchType?: 'exact' | 'fuzzy' | 'direct'
+		imageInputCount?: number
+		videoInputCount?: number
+		hasTextPromptInput?: boolean
+		historyNodeCount?: number
 	} | null
 	width: number
 	height: number
@@ -736,6 +782,8 @@ const emit = defineEmits<{
 	(e: 'select-workflow', payload: { workflowPath: string }): void
 	(e: 'run-comfyui'): void
 	(e: 'cancel-comfyui'): void
+	(e: 'refresh-history-check'): void
+	(e: 'clear-history-cache'): void
 }>()
 
 const baseUrl = computed(() => String(props.comfyuiSettings?.baseUrl ?? ''))
@@ -812,8 +860,71 @@ const runStatusText = computed(() => String(props.comfyuiSettings?.statusText ??
 const runDisabled = computed(() => {
 	if (status.value !== 'connected') return true
 	if (!workflowPath.value) return true
+	if (historyChecked.value && hasHistory.value === false) return true
 	return runStatus.value === 'running' || runStatus.value === 'canceling'
 })
+
+const historyChecked = computed(() => props.comfyuiSettings?.historyChecked === true)
+const hasHistory = computed(() => props.comfyuiSettings?.hasHistory === true)
+const historyError = computed(() => String(props.comfyuiSettings?.historyError ?? ''))
+const historyGuideMessage = computed(() => String(props.comfyuiSettings?.historyGuideMessage ?? ''))
+const historyGuideBaseUrl = computed(() => String(props.comfyuiSettings?.historyGuideBaseUrl ?? ''))
+const historyPromptId = computed(() => String(props.comfyuiSettings?.historyPromptId ?? ''))
+const historyTimestamp = computed(() => {
+	const ts = Number(props.comfyuiSettings?.historyTimestamp)
+	return Number.isFinite(ts) && ts > 0 ? ts : null
+})
+const imageInputCount = computed(() => {
+	const n = Number(props.comfyuiSettings?.imageInputCount)
+	return Number.isFinite(n) ? n : 0
+})
+const videoInputCount = computed(() => {
+	const n = Number(props.comfyuiSettings?.videoInputCount)
+return Number.isFinite(n) ? n : 0
+})
+const hasTextPromptInput = computed(() => props.comfyuiSettings?.hasTextPromptInput === true)
+
+const historyStatusText = computed(() => {
+	if (!historyChecked.value) return t('nodes.comfyui.historyChecking')
+	if (hasHistory.value) {
+		if (historyTimestamp.value) {
+			const d = new Date(historyTimestamp.value)
+			const pad = (n: number) => n < 10 ? '0' + n : String(n)
+			const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+			return t('nodes.comfyui.historyReady', { time: timeStr })
+		}
+		return t('nodes.comfyui.historyReadySimple')
+	}
+	return historyGuideMessage.value || t('nodes.comfyui.noHistoryRecord')
+})
+
+const historyInputSummary = computed(() => {
+	const parts: string[] = []
+	if (imageInputCount.value > 0) parts.push(t('nodes.comfyui.imageInputCount', { count: imageInputCount.value }))
+	if (videoInputCount.value > 0) parts.push(t('nodes.comfyui.videoInputCount', { count: videoInputCount.value }))
+	if (hasTextPromptInput.value) parts.push(t('nodes.comfyui.promptInputRequired'))
+	return parts.join(' · ')
+})
+
+function formatHistoryTime(ts: number | null) {
+	if (!ts) return ''
+	const d = new Date(ts)
+	const pad = (n: number) => n < 10 ? '0' + n : String(n)
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function onOpenComfyUI() {
+	const url = historyGuideBaseUrl.value || baseUrlTrimmed.value
+	if (url) window.open(url, '_blank')
+}
+
+function onRefreshHistory() {
+	emit('refresh-history-check')
+}
+
+function onClearHistoryCache() {
+	emit('clear-history-cache')
+}
 
 const cancelDisabled = computed(() => {
 	if (status.value !== 'connected') return true
@@ -1460,5 +1571,116 @@ onBeforeUnmount(() => {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.wf-comfy-history {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.wf-comfy-history-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt-dark);
+}
+
+.wf-comfy-history-status.ready {
+	border-color: var(--vscode-charts-green, #4caf50);
+}
+
+.wf-comfy-history-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.wf-comfy-clear-history-btn {
+	flex-shrink: 0;
+	width: 18px;
+	height: 18px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	color: var(--vscode-descriptionForeground, #999);
+	cursor: pointer;
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 1;
+	padding: 0;
+	opacity: 0.6;
+	transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.wf-comfy-clear-history-btn:hover {
+	opacity: 1;
+	background: var(--vscode-errorBackground, rgba(255, 80, 80, 0.15));
+	color: var(--vscode-errorForeground, #f48771);
+}
+
+.wf-comfy-history-status.checking {
+	opacity: 0.8;
+}
+
+.wf-comfy-history-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #888;
+	flex-shrink: 0;
+}
+
+.wf-comfy-history-status.ready .wf-comfy-history-dot {
+	background: var(--vscode-charts-green, #4caf50);
+}
+
+.wf-comfy-history-status.checking .wf-comfy-history-dot {
+	background: var(--vscode-charts-yellow, #ffc107);
+	animation: wf-comfy-pulse 1s ease-in-out infinite;
+}
+
+@keyframes wf-comfy-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
+.wf-comfy-history-guide {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid var(--vscode-inputValidation-warningBorder, #ffc107);
+	background: rgba(255, 193, 7, 0.08);
+}
+
+.wf-comfy-history-guide-title {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-editorWarning-foreground, #ffc107);
+}
+
+.wf-comfy-history-guide-desc {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	opacity: 0.9;
+	line-height: 1.5;
+}
+
+.wf-comfy-history-guide-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wf-comfy-history-inputs {
+	font-size: 11px;
+	color: var(--vscode-fg-muted);
+	padding: 0 2px;
 }
 </style>
