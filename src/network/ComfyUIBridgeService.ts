@@ -616,15 +616,27 @@ function isCodexIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.codex
 }
 
-async function filesToDataUrlFiles(files: File[]): Promise<Array<{ name: string; dataUrl: string }>> {
-	const out: Array<{ name: string; dataUrl: string }> = []
+type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' | 'model3d' }
+
+async function filesToDataUrlFiles(files: ComfyInputFile[]): Promise<Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video' | 'model3d'; mimeType: string }>> {
+	const out: Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video' | 'model3d'; mimeType: string }> = []
 	for (let i = 0; i < files.length; i++) {
-		const f = files[i]
-		if (!f) continue
+		const entry = files[i]
+		if (!entry) continue
+		const f = entry instanceof File ? entry : entry.file
+		const mediaType = entry instanceof File ? guessMediaTypeName(f.name) : entry.mediaType
 		const dataUrl = await fileToDataUrl(f)
-		out.push({ name: f.name || `input_${i}.png`, dataUrl })
+		out.push({ name: f.name || `input_${i}`, dataUrl, mediaType, mimeType: f.type || 'application/octet-stream' })
 	}
 	return out
+}
+
+function guessMediaTypeName(filename: string): 'image' | 'video' | 'model3d' {
+	const n = String(filename || '').trim().toLowerCase()
+	if (!n) return 'image'
+	if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some(ext => n.endsWith(ext))) return 'video'
+	if (['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.ply', '.3ds'].some(ext => n.endsWith(ext))) return 'model3d'
+	return 'image'
 }
 
 async function formDataToObject(form: FormData): Promise<Record<string, unknown>> {
@@ -2314,8 +2326,17 @@ export class ComfyUIBridgeService {
 	async run(
 		comfyBaseUrl: string,
 		workflowPath: string,
-		files: File[] = [],
-		overrides?: { positivePrompt?: string; negativePrompt?: string; confirmReuseRecord?: boolean }
+		files: ComfyInputFile[] = [],
+		overrides?: {
+			positivePrompt?: string
+			negativePrompt?: string
+			confirmReuseRecord?: boolean
+			resourcePaths?: {
+				imageCount: number
+				videoCount: number
+				modelCount: number
+			}
+		}
 	): Promise<RunResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
@@ -2326,6 +2347,7 @@ export class ComfyUIBridgeService {
 					positivePrompt: overrides?.positivePrompt,
 					negativePrompt: overrides?.negativePrompt,
 					confirmReuseRecord: overrides?.confirmReuseRecord,
+					resourcePaths: overrides?.resourcePaths,
 					files: dataUrlFiles
 				}
 				const ipcResult = await (window as any).dweb.comfyui.runtime.run(ipcPayload)

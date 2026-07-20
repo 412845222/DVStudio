@@ -37,10 +37,11 @@ export const useAIWorkflowComfyConnection = (payload: {
 		}>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	onWorkflowChanged?: (nodeId: string, workflowPath: string) => void
 }) => {
 	const onComfyUISettingsUpdate = (
 		nodeId: string,
-		input: { baseUrl?: string; positivePrompt?: string; negativePrompt?: string }
+		input: { baseUrl?: string; positivePrompt?: string; negativePrompt?: string; autoWireEnabled?: boolean }
 	) => {
 		payload.store.commit('setNodeComfyUISettings', { nodeId, comfyuiSettings: input })
 	}
@@ -155,15 +156,16 @@ export const useAIWorkflowComfyConnection = (payload: {
 				return
 			}
 			const objectInfo = node?.comfyuiSettings?.objectInfo || null
-			const { inputs, outputs, warnings } = parseComfyWorkflowIO(
+			const { outputs, warnings, inputRequirements } = parseComfyWorkflowIO(
 				res.workflow as Record<string, unknown>,
 				objectInfo
 			)
 			for (const warning of warnings) payload.pushToast(warning, 'warn')
 			payload.store.commit('setNodeComfyUIWorkflowIO', {
 				nodeId,
-				inputs,
 				outputs,
+				warnings,
+				inputRequirements,
 				workflowPath: res.workflowPath || workflowPath
 			})
 			payload.store.commit('setNodeComfyUISettings', {
@@ -173,6 +175,9 @@ export const useAIWorkflowComfyConnection = (payload: {
 					workflowSource
 				}
 			})
+			if (payload.onWorkflowChanged) {
+				try { payload.onWorkflowChanged(nodeId, res.workflowPath || workflowPath) } catch {}
+			}
 		} catch (err: unknown) {
 			payload.pushToast(t('nodes.comfyui.getWorkflowFailed', { error: getErrorMessage(err) }), 'error')
 		}

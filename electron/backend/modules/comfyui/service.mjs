@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+import { workflowToPrompt as newWorkflowToPrompt } from './workflow-converter.mjs'
 
 const DEFAULT_COMFYUI_BASE = 'http://127.0.0.1:8188'
 
@@ -59,7 +60,7 @@ function isPromptGraphJson(v) {
 	if ('nodes' in v && 'links' in v) return false
 	let saw = 0
 	for (const [k, val] of Object.entries(v)) {
-		if (!/^\d+$/.test(k) || !isRecord(val)) continue
+		if (typeof k !== 'string' || !k || !isRecord(val)) continue
 		if (!('class_type' in val) || !('inputs' in val)) continue
 		if (!isRecord(val.inputs)) continue
 		saw++
@@ -397,6 +398,101 @@ async function uploadImageToComfyui(client, base, filename, content, contentType
 	}
 }
 
+const IMAGE_INPUT_CLASS_TYPES = new Set([
+	'LoadImage', 'LoadImageFromUrl', 'LoadImageMask',
+	'LoadImageOutput'
+])
+
+const VIDEO_INPUT_CLASS_TYPES = new Set([
+	'VHS_LoadVideo', 'VHS_LoadAudio', 'LoadVideo', 'VideoLoad'
+])
+
+const MODEL3D_INPUT_CLASS_TYPES = new Set([
+	'LoadGLB', 'LoadGLTF', 'LoadFBX', 'LoadOBJ', 'Load3DModel',
+	'TripoLoadGLB', 'MeshyLoadModel', 'LoadModel3D'
+])
+
+function getNodePosition(node) {
+	if (!isRecord(node)) return [0, 0]
+	const pos = node._meta?.pos
+	if (Array.isArray(pos) && pos.length >= 2) {
+		const x = Number(pos[0]), y = Number(pos[1])
+		if (Number.isFinite(x) && Number.isFinite(y)) return [x, y]
+	}
+	return [0, 0]
+}
+
+function sortNodesByPosition(nodes) {
+	return nodes.sort((a, b) => {
+		const [ax, ay] = a.pos
+		const [bx, by] = b.pos
+		if (Math.abs(ax - bx) > 50) return ax - bx
+		return ay - by
+	})
+}
+
+function classifyInputNode(classType) {
+	const ct = String(classType || '').trim()
+	if (IMAGE_INPUT_CLASS_TYPES.has(ct)) return 'image'
+	if (VIDEO_INPUT_CLASS_TYPES.has(ct)) return 'video'
+	if (MODEL3D_INPUT_CLASS_TYPES.has(ct)) return 'model3d'
+	if (/load.*image/i.test(ct)) return 'image'
+	if (/load.*video/i.test(ct)) return 'video'
+	if (/load.*(glb|gltf|fbx|obj|3d|model)/i.test(ct)) return 'model3d'
+	return null
+}
+
+function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels) {
+	const imageNodes = []
+	const videoNodes = []
+	const modelNodes = []
+
+	for (const [k, v] of Object.entries(promptGraph)) {
+		if (!isRecord(v)) continue
+		const classType = String(v.class_type || '')
+		const meta = isRecord(v._meta) ? v._meta : {}
+		const title = String(meta.title || '')
+		const pos = getNodePosition(meta)
+		const category = classifyInputNode(classType)
+		const entry = { id: k, node: v, title, pos, classType }
+		if (category === 'image') imageNodes.push(entry)
+		else if (category === 'video') videoNodes.push(entry)
+		else if (category === 'model3d') modelNodes.push(entry)
+	}
+
+	const sortedImages = sortNodesByPosition(imageNodes)
+	const sortedVideos = sortNodesByPosition(videoNodes)
+	const sortedModels = sortNodesByPosition(modelNodes)
+
+	const assignPaths = (nodes, paths, inputKey) => {
+		for (let idx = 0; idx < paths.length && idx < nodes.length; idx++) {
+			const { node } = nodes[idx]
+			if (!isRecord(node.inputs)) node.inputs = {}
+			node.inputs[inputKey] = paths[idx]
+		}
+	}
+
+	assignPaths(sortedImages, uploadedImages, 'image')
+	assignPaths(sortedVideos, uploadedVideos, 'video')
+	assignPaths(sortedModels, uploadedModels, 'model_file')
+
+	if (uploadedModels.length > 0 && modelNodes.length === 0) {
+		for (let idx = 0; idx < uploadedModels.length; idx++) {
+			const modelPath = uploadedModels[idx]
+			for (const [k, v] of Object.entries(promptGraph)) {
+				if (!isRecord(v)) continue
+				const classType = String(v.class_type || '')
+				if (!/glb|gltf|fbx|obj|model3d|3dmodel/i.test(classType)) continue
+				if (!isRecord(v.inputs)) v.inputs = {}
+				if (!v.inputs.model_file && !v.inputs.model && !v.inputs.model_path) {
+					v.inputs.model_file = modelPath
+					break
+				}
+			}
+		}
+	}
+}
+
 function filterWorkflowFiles(items) {
 	if (!Array.isArray(items)) return []
 	const out = []
@@ -504,63 +600,787 @@ function objectInfoCoerceValue(defn, value) {
 	return value
 }
 
+const FRONTEND_ONLY_NODE_TYPES = new Set([
+	'MarkdownNote', 'Note', 'Reroute', 'PrimitiveNode',
+	'PrimitiveString', 'PrimitiveStringMultiline', 'PrimitiveNumber', 'PrimitiveBoolean',
+	'PrimitiveInteger', 'PrimitiveFloat', 'PrimitiveText',
+	'GroupNode', 'SubgraphNode', 'ComfyNote', 'NoteNode',
+	'NodeNote', 'Comment', 'Annotation', 'Label',
+	'WidgetNode', 'Converter', 'RelayNode', 'RerouteNode',
+	'FrontendNode', 'VirtualNode', 'PlaceholderNode',
+	'QuickNodes', 'TextNote', 'StickyNote'
+])
+
+function isPrimitiveNodeType(typeStr) {
+	if (typeof typeStr !== 'string') return false
+	const t = typeStr.trim()
+	if (!t) return false
+	if (FRONTEND_ONLY_NODE_TYPES.has(t)) {
+		return t === 'PrimitiveNode' || t.startsWith('Primitive')
+	}
+	return false
+}
+
+function normalizeNodeId(id) {
+	if (id == null) return ''
+	const s = String(id).trim()
+	if (!s || s === 'undefined' || s === 'null' || s === 'NaN') return ''
+	return s
+}
+
+const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+
+function isUuidLikeType(typeStr) {
+	if (typeof typeStr !== 'string') return false
+	return UUID_RE.test(typeStr.trim())
+}
+
+function isPassthroughNode(node) {
+	if (!isRecord(node)) return false
+	const ct = String(node.type || '').trim()
+	if (FRONTEND_ONLY_NODE_TYPES.has(ct)) return true
+	return false
+}
+
+function isNodeSkipped(node, nid, rerouteNodeIds, valueProviderNodes) {
+	if (!isRecord(node)) return true
+	const ct = String(node.type || '').trim()
+	if (FRONTEND_ONLY_NODE_TYPES.has(ct)) return true
+	if (rerouteNodeIds.has(nid)) return true
+	if (valueProviderNodes.has(nid)) return true
+	return false
+}
+
+function isRerouteLikeNode(node) {
+	if (!isRecord(node)) return false
+	const ct = String(node.type || '').trim()
+	if (ct === 'Reroute' || ct === 'RerouteNode' || ct === 'RelayNode') return true
+	return false
+}
+
+function hasNodeInputConnections(node, nodeInputLinksMap) {
+	const nid = normalizeNodeId(node.id)
+	const links = nodeInputLinksMap.get(nid)
+	return Array.isArray(links) && links.length > 0
+}
+
+function resolveNodeClassType(node) {
+	if (!isRecord(node)) return ''
+	const t = String(node.type || '').trim()
+	if (t) return t
+	const props = isRecord(node.properties) ? node.properties : {}
+	const candidates = [
+		props.comfyClass, props.class_type, props.classType,
+		props.node_type, props.nodeType,
+		node.class_type, node.classType
+	]
+	for (const c of candidates) {
+		const s = String(c || '').trim()
+		if (s) return s
+	}
+	return t
+}
+
+function structurallyLooksLikeReroute(node) {
+	if (!isRecord(node)) return false
+	if (isRerouteLikeNode(node)) return true
+	const inputs = Array.isArray(node.inputs) ? node.inputs : []
+	const outputs = Array.isArray(node.outputs) ? node.outputs : []
+	if (inputs.length <= 1 && outputs.length <= 1) {
+		const inpType = inputs.length === 1 ? String(inputs[0]?.type || '*').trim() : ''
+		const outType = outputs.length === 1 ? String(outputs[0]?.type || '*').trim() : ''
+		if (inpType === '*' && outType === '*') return true
+	}
+	return false
+}
+
+function structurallyLooksLikePrimitive(node) {
+	if (!isRecord(node)) return false
+	const ct = String(node.type || '').trim()
+	if (isPrimitiveNodeType(ct)) return true
+	const inputs = Array.isArray(node.inputs) ? node.inputs : []
+	const outputs = Array.isArray(node.outputs) ? node.outputs : []
+	const values = Array.isArray(node.widgets_values) ? node.widgets_values : []
+	if (inputs.length === 0 && outputs.length <= 1 && values.length >= 1) {
+		return true
+	}
+	if (inputs.length === 0 && outputs.length === 1 && isRecord(outputs[0])) {
+		const outType = String(outputs[0].type || '*').trim().toUpperCase()
+		if (['*', 'STRING', 'INT', 'FLOAT', 'NUMBER', 'BOOLEAN', 'BOOL'].includes(outType)) {
+			return true
+		}
+	}
+	return false
+}
+
+function structurallyLooksLikeNote(node) {
+	if (!isRecord(node)) return false
+	const ct = String(node.type || '').trim()
+	if (FRONTEND_ONLY_NODE_TYPES.has(ct) && !isPrimitiveNodeType(ct) && !isRerouteLikeNode(node)) return true
+	const inputs = Array.isArray(node.inputs) ? node.inputs : []
+	const outputs = Array.isArray(node.outputs) ? node.outputs : []
+	if (inputs.length === 0 && outputs.length === 0) return true
+	return false
+}
+
+function deepCloneJson(v) {
+	if (v === undefined || v === null) return v
+	return JSON.parse(JSON.stringify(v))
+}
+
+function findSubgraphDefsInObject(obj, depth, results) {
+	if (depth > 6 || obj == null || typeof obj !== 'object') return
+	if (Array.isArray(obj)) {
+		for (const item of obj) {
+			findSubgraphDefsInObject(item, depth + 1, results)
+		}
+		return
+	}
+	const hasNodesLinks = Array.isArray(obj.nodes) && obj.nodes.length > 0 && Array.isArray(obj.links)
+	if (hasNodesLinks) {
+		results.push(obj)
+	}
+	for (const [k, v] of Object.entries(obj)) {
+		if (k === 'links') continue
+		findSubgraphDefsInObject(v, depth + 1, results)
+	}
+}
+
+function looksLikeSubgraphDef(v) {
+	if (!isRecord(v)) return false
+	if (Array.isArray(v.nodes) && v.nodes.length > 0 && Array.isArray(v.links)) return true
+	if (isRecord(v.data) && Array.isArray(v.data.nodes) && v.data.nodes.length > 0 && Array.isArray(v.data.links)) return true
+	if (isRecord(v.graph) && Array.isArray(v.graph.nodes) && v.graph.nodes.length > 0 && Array.isArray(v.graph.links)) return true
+	if (isRecord(v.subgraph) && Array.isArray(v.subgraph.nodes) && v.subgraph.nodes.length > 0 && Array.isArray(v.subgraph.links)) return true
+	return false
+}
+
+function extractSubgraphContent(v) {
+	if (!isRecord(v)) return null
+	if (Array.isArray(v.nodes) && v.nodes.length > 0 && Array.isArray(v.links)) return v
+	if (isRecord(v.data) && Array.isArray(v.data.nodes) && v.data.nodes.length > 0 && Array.isArray(v.data.links)) return v.data
+	if (isRecord(v.graph) && Array.isArray(v.graph.nodes) && v.graph.nodes.length > 0 && Array.isArray(v.graph.links)) return v.graph
+	if (isRecord(v.subgraph) && Array.isArray(v.subgraph.nodes) && v.subgraph.nodes.length > 0 && Array.isArray(v.subgraph.links)) return v.subgraph
+	return null
+}
+
+function findSubgraphDefinitions(workflow) {
+	const defs = new Map()
+	if (!isRecord(workflow) || !isRecord(workflow.definitions)) return defs
+	const subgraphsArr = workflow.definitions.subgraphs
+	if (!Array.isArray(subgraphsArr)) return defs
+	for (const sg of subgraphsArr) {
+		if (!isRecord(sg)) continue
+		let content = sg
+		if (isRecord(sg.data) && Array.isArray(sg.data.nodes) && Array.isArray(sg.data.links)) content = sg.data
+		else if (isRecord(sg.graph) && Array.isArray(sg.graph.nodes) && Array.isArray(sg.graph.links)) content = sg.graph
+		else if (isRecord(sg.subgraph) && Array.isArray(sg.subgraph.nodes) && Array.isArray(sg.subgraph.links)) content = sg.subgraph
+		if (!Array.isArray(content.nodes) || !Array.isArray(content.links)) continue
+		const sgId = normalizeNodeId(sg.id ?? sg.uuid)
+		if (!sgId) continue
+		let vInId = null, vOutId = null
+		if (isRecord(sg.inputNode)) vInId = normalizeNodeId(sg.inputNode.id)
+		else if (sg.inputNode != null) vInId = normalizeNodeId(sg.inputNode)
+		if (isRecord(sg.outputNode)) vOutId = normalizeNodeId(sg.outputNode.id)
+		else if (sg.outputNode != null) vOutId = normalizeNodeId(sg.outputNode)
+		defs.set(sgId, {
+			id: sgId,
+			name: String(sg.name || ''),
+			inputNodeId: vInId,
+			outputNodeId: vOutId,
+			nodes: content.nodes,
+			links: content.links
+		})
+	}
+	return defs
+}
+
+function parseLinkEndpoint(l, which) {
+	if (Array.isArray(l) && l.length >= 5) {
+		if (which === 'from') return { id: normalizeNodeId(l[1]), slot: Number(l[2]), type: String(l[5] || '*') }
+		return { id: normalizeNodeId(l[3]), slot: Number(l[4]), type: String(l[5] || '*') }
+	}
+	if (isRecord(l)) {
+		if (which === 'from') return { id: normalizeNodeId(l.origin_id ?? l.fromId ?? l.sourceId), slot: Number(l.origin_slot ?? l.fromSlot ?? l.sourceSlot ?? 0), type: String(l.type || l.dataType || '*') }
+		return { id: normalizeNodeId(l.target_id ?? l.toId ?? l.targetId), slot: Number(l.target_slot ?? l.toSlot ?? l.targetSlot ?? 0), type: String(l.type || l.dataType || '*') }
+	}
+	return null
+}
+
+function getMaxNumericId(nodesArr) {
+	let max = 0
+	for (const n of nodesArr) {
+		if (!isRecord(n)) continue
+		const id = Number(n.id)
+		if (Number.isFinite(id) && id > max) max = id
+	}
+	return max
+}
+
+function expandSubgraphsInWorkflow(workflow) {
+	if (!isRecord(workflow) || !Array.isArray(workflow.nodes) || !Array.isArray(workflow.links)) {
+		return { nodes: workflow?.nodes || [], links: workflow?.links || [] }
+	}
+	let nodes = deepCloneJson(workflow.nodes)
+	let links = deepCloneJson(workflow.links)
+	const defs = findSubgraphDefinitions(workflow)
+	if (defs.size === 0) {
+		console.log('[subgraph] No subgraph definitions found')
+		return resolveAllReroutes(nodes, links)
+	}
+	console.log(`[subgraph] Found ${defs.size} subgraph definitions`)
+
+	let passCount = 0
+	let expandedAny = true
+	while (expandedAny && passCount < 10) {
+		passCount++
+		expandedAny = false
+		const newNodes = []
+		let maxId = getMaxNumericId([...nodes, ...newNodes])
+		const usedIds = new Set()
+		for (const existing of [...nodes, ...newNodes]) {
+			if (!isRecord(existing)) continue
+			const eid = normalizeNodeId(existing.id)
+			if (eid) usedIds.add(eid)
+		}
+
+		for (let ni = 0; ni < nodes.length; ni++) {
+			const n = nodes[ni]
+			if (!isRecord(n)) { newNodes.push(n); continue }
+			const nid = normalizeNodeId(n.id)
+			const ntype = String(n.type || '').trim()
+			if (!nid) { newNodes.push(n); continue }
+
+			const def = defs.get(ntype)
+			if (!def || !isUuidLikeType(ntype)) {
+				newNodes.push(n)
+				continue
+			}
+
+			console.log(`[subgraph] Expanding node ${nid} type=${ntype} (${def.name})`)
+			expandedAny = true
+
+			const internalNodes = deepCloneJson(def.nodes)
+			const internalLinks = deepCloneJson(def.links)
+			const vInId = def.inputNodeId
+			const vOutId = def.outputNodeId
+			console.log(`[subgraph]   virtual in=${vInId}, out=${vOutId}, internal nodes=${internalNodes.length}, links=${internalLinks.length}`)
+
+			const idRemap = new Map()
+			const keptInternal = []
+
+			for (const inNode of internalNodes) {
+				if (!isRecord(inNode)) continue
+				const oldId = normalizeNodeId(inNode.id)
+				if (!oldId) continue
+				const oldIdNum = Number(oldId)
+				if (Number.isFinite(oldIdNum) && oldIdNum < 0) {
+					idRemap.set(oldId, '__VIRTUAL__')
+					continue
+				}
+				const itype = String(inNode.type || '').trim()
+				if (itype === 'Note' || itype === 'MarkdownNote') {
+					idRemap.set(oldId, '__VIRTUAL__')
+					continue
+				}
+				maxId++
+				while (usedIds.has(String(maxId))) maxId++
+				const newId = String(maxId)
+				idRemap.set(oldId, newId)
+				usedIds.add(newId)
+				inNode.id = newId
+				if (Array.isArray(inNode.inputs)) {
+					for (const inp of inNode.inputs) {
+						if (isRecord(inp)) { inp.link = null; if (Array.isArray(inp.links)) inp.links = [] }
+					}
+				}
+				if (Array.isArray(inNode.outputs)) {
+					for (const out of inNode.outputs) {
+						if (isRecord(out)) { if (Array.isArray(out.links)) out.links = [] }
+					}
+				}
+				keptInternal.push(inNode)
+			}
+
+			const inputBridges = new Map()
+			const outputBridges = new Map()
+			for (const l of internalLinks) {
+				const from = parseLinkEndpoint(l, 'from')
+				const to = parseLinkEndpoint(l, 'to')
+				if (!from || !to) continue
+				if (vInId && from.id === vInId) {
+					const slot = from.slot
+					if (!inputBridges.has(slot)) inputBridges.set(slot, [])
+					const newTgtId = idRemap.get(to.id)
+					if (newTgtId && newTgtId !== '__VIRTUAL__') {
+						inputBridges.get(slot).push({ targetId: newTgtId, targetSlot: to.slot, type: to.type })
+					}
+				}
+				if (vOutId && to.id === vOutId) {
+					const slot = to.slot
+					if (!outputBridges.has(slot)) outputBridges.set(slot, [])
+					const newSrcId = idRemap.get(from.id)
+					if (newSrcId && newSrcId !== '__VIRTUAL__') {
+						outputBridges.get(slot).push({ sourceId: newSrcId, sourceSlot: from.slot, type: from.type })
+					}
+				}
+			}
+
+			const extInLinks = new Map()
+			const extOutLinks = new Map()
+			const remainingLinks = []
+			for (const l of links) {
+				const from = parseLinkEndpoint(l, 'from')
+				const to = parseLinkEndpoint(l, 'to')
+				if (!from || !to) { remainingLinks.push(l); continue }
+				if (to.id === nid) {
+					const slot = to.slot
+					if (!extInLinks.has(slot)) extInLinks.set(slot, [])
+					extInLinks.get(slot).push(from)
+				} else if (from.id === nid) {
+					const slot = from.slot
+					if (!extOutLinks.has(slot)) extOutLinks.set(slot, [])
+					extOutLinks.get(slot).push(to)
+				} else {
+					remainingLinks.push(l)
+				}
+			}
+			links = remainingLinks
+
+			const newLinks = []
+			for (const l of internalLinks) {
+				const from = parseLinkEndpoint(l, 'from')
+				const to = parseLinkEndpoint(l, 'to')
+				if (!from || !to) continue
+				const newFrom = idRemap.get(from.id)
+				const newTo = idRemap.get(to.id)
+				if (!newFrom || !newTo) continue
+				if (newFrom === '__VIRTUAL__' || newTo === '__VIRTUAL__') continue
+				const ltype = from.type !== '*' ? from.type : to.type
+				newLinks.push([crypto.randomUUID(), newFrom, from.slot, newTo, to.slot, ltype])
+			}
+
+			let rewireIn = 0, rewireOut = 0
+			for (const [slot, sources] of extInLinks) {
+				const bridges = inputBridges.get(slot) || []
+				for (const src of sources) {
+					for (const br of bridges) {
+						const ltype = br.type !== '*' ? br.type : src.type
+						newLinks.push([crypto.randomUUID(), src.id, src.slot, br.targetId, br.targetSlot, ltype])
+						rewireIn++
+					}
+				}
+			}
+			for (const [slot, targets] of extOutLinks) {
+				const bridges = outputBridges.get(slot) || []
+				for (const tgt of targets) {
+					for (const br of bridges) {
+						const ltype = br.type !== '*' ? br.type : tgt.type
+						newLinks.push([crypto.randomUUID(), br.sourceId, br.sourceSlot, tgt.id, tgt.slot, ltype])
+						rewireOut++
+					}
+				}
+			}
+
+			console.log(`[subgraph]   rewired in=${rewireIn}, out=${rewireOut}, internal links=${newLinks.length}, added ${keptInternal.length} nodes`)
+
+			for (const kn of keptInternal) newNodes.push(kn)
+			for (const nl of newLinks) links.push(nl)
+		}
+		nodes = newNodes
+	}
+	console.log(`[subgraph] Expansion complete after ${passCount} passes. Nodes: ${nodes.length}, Links: ${links.length}`)
+
+	const resolved = resolveAllReroutes(nodes, links)
+	console.log(`[subgraph] After Reroute resolution: nodes=${resolved.nodes.length}, links=${resolved.links.length}`)
+	return resolved
+}
+
 function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 	if (!isRecord(workflow)) return { error: 'workflow must be object' }
-	const nodes = workflow.nodes
-	const links = workflow.links
-	if (!Array.isArray(nodes) || !Array.isArray(links)) return { error: 'workflow.nodes/workflow.links missing' }
 
-	const linkFromById = new Map()
-	const usedNodeIds = new Set()
-	for (const l of links) {
-		if (!Array.isArray(l) || l.length < 5) continue
-		try {
-			const linkId = Number(l[0])
-			const fromNodeId = Number(l[1])
-			const fromSlot = Number(l[2])
-			linkFromById.set(linkId, [fromNodeId, fromSlot])
-			usedNodeIds.add(Number(l[1]))
-			usedNodeIds.add(Number(l[3]))
-		} catch {}
+	console.log('[ComfyUI workflowToPrompt] ===== WORKFLOW TOP-LEVEL KEYS =====')
+	for (const [k, v] of Object.entries(workflow)) {
+		const vtype = Array.isArray(v) ? `array[${v.length}]` : typeof v
+		console.log(`  key "${k}": ${vtype}`)
+		if (k === 'extra' && isRecord(v)) {
+			console.log(`  extra keys:`, Object.keys(v))
+			for (const [ek, ev] of Object.entries(v)) {
+				const evtype = Array.isArray(ev) ? `array[${ev.length}]` : (isRecord(ev) ? `object{keys:${Object.keys(ev).join(',')}}` : typeof ev)
+				console.log(`    extra["${ek}"]: ${evtype}`)
+				if (isRecord(ev) && ('nodes' in ev || 'links' in ev)) {
+					console.log(`    >>> extra["${ek}"] CONTAINS nodes/links - POSSIBLE SUBGRAPH!`)
+					console.log(`    ${JSON.stringify(ev).substring(0, 2000)}`)
+				}
+			}
+		}
+		if (k === 'groups' && Array.isArray(v)) {
+			for (let gi = 0; gi < Math.min(v.length, 5); gi++) {
+				console.log(`  group[${gi}]:`, JSON.stringify(v[gi]).substring(0, 500))
+			}
+		}
+		if (k !== 'nodes' && k !== 'links' && isRecord(v) && ('nodes' in v || 'links' in v)) {
+			console.log(`  >>> KEY "${k}" CONTAINS nodes/links!`)
+		}
 	}
 
-	const prompt = {}
-	const unknownUsedTypes = new Set()
+	function findSubgraphDefs(obj, path, depth, found) {
+		if (depth > 5) return
+		if (Array.isArray(obj)) {
+			for (let i = 0; i < obj.length; i++) {
+				findSubgraphDefs(obj[i], `${path}[${i}]`, depth + 1, found)
+			}
+		} else if (isRecord(obj)) {
+			if (Array.isArray(obj.nodes) && Array.isArray(obj.links) && path !== '') {
+				found.push({ path, nodeCount: obj.nodes.length, linkCount: obj.links.length })
+			}
+			for (const [k2, v2] of Object.entries(obj)) {
+				if (k2 === 'nodes' || k2 === 'links') continue
+				findSubgraphDefs(v2, `${path}.${k2}`, depth + 1, found)
+			}
+		}
+	}
+	const subgraphsFound = []
+	findSubgraphDefs(workflow, '', 0, subgraphsFound)
+	if (subgraphsFound.length > 0) {
+		console.log('[ComfyUI workflowToPrompt] ===== FOUND NESTED GRAPHS (possible subgraphs):')
+		for (const sg of subgraphsFound) {
+			console.log(`  path: ${sg.path}, nodes: ${sg.nodeCount}, links: ${sg.linkCount}`)
+		}
+	}
+
+	const expanded = expandSubgraphsInWorkflow(workflow)
+	const nodes = expanded.nodes
+	const links = expanded.links
+	if (!Array.isArray(nodes) || !Array.isArray(links)) return { error: 'workflow.nodes/workflow.links missing' }
+
+	console.log('[ComfyUI workflowToPrompt] nodes count:', nodes.length, 'links count:', links.length)
+	const remainingUuidNodes = []
+	for (let i = 0; i < nodes.length; i++) {
+		const n = nodes[i]
+		if (isRecord(n)) {
+			const ct = String(n.type || '').trim()
+			const nodeKeys = Object.keys(n)
+			console.log(`  node[${i}] id=`, n.id, 'type=', n.type, 'title=', n.title, 'keys=[', nodeKeys.join(','), ']')
+			if (isUuidLikeType(ct)) {
+				remainingUuidNodes.push({ index: i, id: n.id, type: ct, title: n.title, keys: nodeKeys })
+				console.log(`    [UUID NODE FULL JSON - AFTER EXPANSION]:`, JSON.stringify(n, null, 2).substring(0, 8000))
+				if (n.properties && isRecord(n.properties)) {
+					console.log(`    [UUID NODE PROPERTIES KEYS]:`, Object.keys(n.properties))
+					for (const [pk, pv] of Object.entries(n.properties)) {
+						const pvt = Array.isArray(pv) ? `array[${pv.length}]` : typeof pv
+						console.log(`      property "${pk}": ${pvt}${isRecord(pv) ? ` keys=[${Object.keys(pv).join(',')}]` : ''}`)
+					}
+				}
+				if (n.widgets_values) {
+					console.log(`    [UUID NODE WIDGETS_VALUES]:`, JSON.stringify(n.widgets_values, null, 2).substring(0, 3000))
+				}
+			}
+		}
+	}
+	if (remainingUuidNodes.length > 0) {
+		console.log(`[ComfyUI workflowToPrompt] WARNING: ${remainingUuidNodes.length} UUID-type nodes remain after expansion. These may cause ComfyUI errors:`)
+		for (const un of remainingUuidNodes) {
+			console.log(`  - Node id=${un.id}, type=${un.type}, title=${un.title}`)
+		}
+		const sgType = typeof workflow.subgraphs
+		console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs type: ${sgType}`)
+		if (workflow.subgraphs) {
+			if (Array.isArray(workflow.subgraphs)) {
+				console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs is array with ${workflow.subgraphs.length} entries`)
+				for (let si = 0; si < workflow.subgraphs.length; si++) {
+					const sg = workflow.subgraphs[si]
+					if (isRecord(sg)) {
+						console.log(`  subgraphs[${si}]: id=${sg.id}, type=${sg.type}, nodes=${Array.isArray(sg.nodes)?sg.nodes.length:'N/A'}, links=${Array.isArray(sg.links)?sg.links.length:'N/A'}`)
+					}
+				}
+			} else if (isRecord(workflow.subgraphs)) {
+				console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs is object with keys: ${Object.keys(workflow.subgraphs).join(',')}`)
+			}
+		}
+	}
+	for (let i = 0; i < Math.min(links.length, 50); i++) {
+		console.log(`  link[${i}]:`, links[i])
+	}
+
+	const linkFromById = new Map()
+	const linkToById = new Map()
+	const usedNodeIds = new Set()
+	const nodeOutputsMap = new Map()
+	const nodeInputLinksMap = new Map()
+	const allNodeIds = new Set()
+	const rerouteNodeIds = new Set()
+	const valueProviderNodes = new Map()
+	const nodeById = new Map()
+
+	function getPrimitiveNodeValue(node) {
+		if (!isRecord(node)) return undefined
+		const values = Array.isArray(node.widgets_values) ? node.widgets_values : []
+		if (values.length > 0) return values[0]
+		const inputs = Array.isArray(node.inputs) ? node.inputs : []
+		for (const inp of inputs) {
+			if (isRecord(inp) && isRecord(inp.widget) && 'value' in inp.widget) {
+				return inp.widget.value
+			}
+		}
+		return undefined
+	}
 
 	for (const node of nodes) {
 		if (!isRecord(node)) continue
-		const rawNodeId = node.id
-		if (rawNodeId == null) continue
-		let nodeId
-		try { nodeId = Number(rawNodeId) } catch { continue }
-		const classType = String(node.type || '').trim()
-		if (!classType) continue
-		if (classType === 'MarkdownNote') continue
+		const nid = normalizeNodeId(node.id)
+		if (!nid) continue
+		allNodeIds.add(nid)
+		nodeById.set(nid, node)
+		const outputsArr = Array.isArray(node.outputs) ? node.outputs : []
+		nodeOutputsMap.set(nid, outputsArr.map((o, i) => isRecord(o) ? { name: String(o.name || '').trim(), type: String(o.type || '*').trim(), links: Array.isArray(o.links) ? o.links : [], slot_index: typeof o.slot_index === 'number' ? o.slot_index : i } : { name: '', type: '*', links: [], slot_index: i }))
+	}
 
-		if (knownNodeTypes && !knownNodeTypes.has(classType)) {
-			if (usedNodeIds.has(nodeId)) unknownUsedTypes.add(classType)
+	for (const l of links) {
+		let linkId, fromNodeId, toNodeId, fromSlot, toSlot
+		
+		if (Array.isArray(l)) {
+			if (l.length < 5) continue
+			linkId = normalizeNodeId(l[0])
+			fromNodeId = normalizeNodeId(l[1])
+			fromSlot = Number(l[2])
+			toNodeId = normalizeNodeId(l[3])
+			toSlot = Number(l[4])
+			if (!fromNodeId || !toNodeId) {
+				if (l.length >= 4) {
+					const raw0 = normalizeNodeId(l[0])
+					const raw1 = Number(l[1])
+					const raw2 = normalizeNodeId(l[2])
+					const raw3 = Number(l[3])
+					if (raw0 && raw2 && Number.isFinite(raw1) && Number.isFinite(raw3)) {
+						linkId = crypto.randomUUID()
+						fromNodeId = raw0
+						fromSlot = raw1
+						toNodeId = raw2
+						toSlot = raw3
+					}
+				}
+			}
+		} else if (isRecord(l)) {
+			linkId = normalizeNodeId(l.id ?? l.linkId ?? l.link_id)
+			fromNodeId = normalizeNodeId(l.origin_id ?? l.fromId ?? l.from_node_id ?? l.sourceId ?? l.source_node_id)
+			fromSlot = Number(l.origin_slot ?? l.fromSlot ?? l.from_slot ?? l.sourceSlot ?? l.source_slot ?? 0)
+			toNodeId = normalizeNodeId(l.target_id ?? l.toId ?? l.to_node_id ?? l.targetId ?? l.target_node_id)
+			toSlot = Number(l.target_slot ?? l.toSlot ?? l.to_slot ?? l.targetSlot ?? l.target_slot ?? 0)
+			if (!linkId) {
+				linkId = crypto.randomUUID()
+			}
+		} else {
 			continue
 		}
+		
+		if (!linkId || !fromNodeId || !toNodeId) continue
+		if (!Number.isFinite(fromSlot) || !Number.isFinite(toSlot)) continue
+		
+		linkFromById.set(linkId, { origin_id: fromNodeId, origin_slot: fromSlot })
+		linkToById.set(linkId, { target_id: toNodeId, target_slot: toSlot })
+		usedNodeIds.add(fromNodeId)
+		usedNodeIds.add(toNodeId)
+		
+		if (!nodeInputLinksMap.has(toNodeId)) {
+			nodeInputLinksMap.set(toNodeId, [])
+		}
+		nodeInputLinksMap.get(toNodeId).push({ linkId, fromNodeId, fromSlot, toSlot })
+	}
+
+	for (const [nid, node] of nodeById) {
+		const ct = resolveNodeClassType(node)
+		if (structurallyLooksLikeNote(node)) {
+			if (!structurallyLooksLikePrimitive(node) && !structurallyLooksLikeReroute(node)) {
+				continue
+			}
+		}
+		if (structurallyLooksLikeReroute(node)) {
+			rerouteNodeIds.add(nid)
+			continue
+		}
+		if (structurallyLooksLikePrimitive(node)) {
+			const v = getPrimitiveNodeValue(node)
+			if (v !== undefined) {
+				valueProviderNodes.set(nid, v)
+			} else if (hasNodeInputConnections(node, nodeInputLinksMap)) {
+				rerouteNodeIds.add(nid)
+			}
+			continue
+		}
+		if (FRONTEND_ONLY_NODE_TYPES.has(ct)) {
+			if (hasNodeInputConnections(node, nodeInputLinksMap)) {
+				rerouteNodeIds.add(nid)
+			} else {
+				const v = getPrimitiveNodeValue(node)
+				if (v !== undefined) {
+					valueProviderNodes.set(nid, v)
+				}
+			}
+			continue
+		}
+	}
+
+	const prompt = {}
+	const skippedNodeIds = new Set()
+	const finalPromptNodeIds = new Set()
+
+	for (const node of nodes) {
+		if (!isRecord(node)) continue
+		const nid = normalizeNodeId(node.id)
+		if (!nid) continue
+		const classType = resolveNodeClassType(node)
+		if (!classType) {
+			skippedNodeIds.add(nid)
+			continue
+		}
+		if (rerouteNodeIds.has(nid) || valueProviderNodes.has(nid)) {
+			skippedNodeIds.add(nid)
+			continue
+		}
+		if (structurallyLooksLikeNote(node) || structurallyLooksLikePrimitive(node) || structurallyLooksLikeReroute(node)) {
+			skippedNodeIds.add(nid)
+			continue
+		}
+		if (FRONTEND_ONLY_NODE_TYPES.has(classType)) {
+			skippedNodeIds.add(nid)
+			continue
+		}
+
+		finalPromptNodeIds.add(nid)
+	}
+
+	function resolveLinkSource2(linkId, visited) {
+		if (visited.has(linkId)) return null
+		visited.add(linkId)
+		const fromInfo = linkFromById.get(linkId)
+		if (!fromInfo) return null
+		const { origin_id, origin_slot } = fromInfo
+		if (valueProviderNodes.has(origin_id)) {
+			return { value: valueProviderNodes.get(origin_id) }
+		}
+		if (finalPromptNodeIds.has(origin_id)) {
+			return { nodeId: origin_id, slot: origin_slot }
+		}
+		const relayNode = nodeById.get(origin_id)
+		if (!isRecord(relayNode)) return null
+
+		const relayInputs = Array.isArray(relayNode.inputs) ? relayNode.inputs : []
+		const relayOutputs = Array.isArray(relayNode.outputs) ? relayNode.outputs : []
+
+		let targetInputIndex = -1
+		const targetOutput = relayOutputs[origin_slot]
+		if (isRecord(targetOutput)) {
+			const targetOutType = String(targetOutput.type || '*').trim().toUpperCase()
+			const targetOutName = String(targetOutput.name || '').trim().toLowerCase()
+			for (let i = 0; i < relayInputs.length; i++) {
+				const inp = relayInputs[i]
+				if (!isRecord(inp)) continue
+				const inType = String(inp.type || '*').trim().toUpperCase()
+				const inName = String(inp.name || '').trim().toLowerCase()
+				if (inType === targetOutType || inName === targetOutName) {
+					const hasLink = inp.link != null || (Array.isArray(inp.links) && inp.links.length > 0)
+					if (hasLink) {
+						targetInputIndex = i
+						break
+					}
+				}
+			}
+			if (targetInputIndex < 0 && origin_slot < relayInputs.length) {
+				const candidate = relayInputs[origin_slot]
+				if (isRecord(candidate) && (candidate.link != null || (Array.isArray(candidate.links) && candidate.links.length > 0))) {
+					targetInputIndex = origin_slot
+				}
+			}
+		}
+		if (targetInputIndex < 0) {
+			for (let i = 0; i < relayInputs.length; i++) {
+				const inp = relayInputs[i]
+				if (!isRecord(inp)) continue
+				if (inp.link != null || (Array.isArray(inp.links) && inp.links.length > 0)) {
+					targetInputIndex = i
+					break
+				}
+			}
+		}
+
+		if (targetInputIndex < 0) {
+			const v = getPrimitiveNodeValue(relayNode)
+			if (v !== undefined) {
+				return { value: v }
+			}
+			return null
+		}
+
+		const targetInput = relayInputs[targetInputIndex]
+		let prevLinkId = null
+		if (targetInput.link != null) {
+			prevLinkId = normalizeNodeId(targetInput.link)
+		} else if (Array.isArray(targetInput.links) && targetInput.links.length > 0) {
+			prevLinkId = normalizeNodeId(targetInput.links[0])
+		}
+		if (!prevLinkId) {
+			const v = getPrimitiveNodeValue(relayNode)
+			if (v !== undefined) {
+				return { value: v }
+			}
+			return null
+		}
+		return resolveLinkSource2(prevLinkId, visited)
+	}
+
+	for (const node of nodes) {
+		if (!isRecord(node)) continue
+		const nid = normalizeNodeId(node.id)
+		if (!nid) continue
+		if (!finalPromptNodeIds.has(nid)) continue
+		const classType = resolveNodeClassType(node)
+		if (!classType) continue
 
 		const inputsList = Array.isArray(node.inputs) ? node.inputs : []
 		const values = Array.isArray(node.widgets_values) ? node.widgets_values : []
 		const inputs = {}
 		const linkedNames = new Set()
 
+		const inputWidgetValues = new Map()
+		for (const inp of inputsList) {
+			if (!isRecord(inp)) continue
+			const inpName = String(inp.name || '').trim()
+			if (!inpName) continue
+			if (isRecord(inp.widget) && 'value' in inp.widget) {
+				inputWidgetValues.set(inpName, inp.widget.value)
+			}
+		}
+
 		for (const inp of inputsList) {
 			if (!isRecord(inp)) continue
 			const name = String(inp.name || '').trim()
 			if (!name) continue
+			let inputLinkId = null
 			if (inp.link != null) {
-				try {
-					const linkId = Number(inp.link)
-					const fromInfo = linkFromById.get(linkId)
-					if (!fromInfo) continue
-					const [fromNodeId, fromSlot] = fromInfo
-					inputs[name] = [String(fromNodeId), fromSlot]
+				inputLinkId = normalizeNodeId(inp.link)
+			} else if (Array.isArray(inp.links) && inp.links.length > 0) {
+				inputLinkId = normalizeNodeId(inp.links[0])
+			}
+			if (inputLinkId) {
+				const linkId = inputLinkId
+				const resolved = resolveLinkSource2(linkId, new Set())
+				if (!resolved) continue
+				if ('value' in resolved) {
+					inputs[name] = resolved.value
 					linkedNames.add(name)
-				} catch {}
+				} else {
+					inputs[name] = [String(resolved.nodeId), resolved.slot]
+					linkedNames.add(name)
+				}
 				continue
+			}
+		}
+
+		if (inputWidgetValues.size > 0) {
+			for (const [wname, wval] of inputWidgetValues) {
+				if (wname in inputs || linkedNames.has(wname)) continue
+				inputs[wname] = wval
 			}
 		}
 
@@ -603,7 +1423,10 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 				if (!isRecord(inp)) continue
 				const name = String(inp.name || '').trim()
 				if (!name || name in inputs) continue
-				if (inp.link != null) continue
+				let hasLink = false
+				if (inp.link != null) hasLink = true
+				if (Array.isArray(inp.links) && inp.links.length > 0) hasLink = true
+				if (hasLink) continue
 				if (isRecord(inp.widget)) {
 					if (valueIdx < values.length) inputs[name] = values[valueIdx]
 					valueIdx++
@@ -611,12 +1434,32 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 			}
 		}
 
-		prompt[String(nodeId)] = { class_type: classType, inputs }
+		const nodeMeta = isRecord(node._meta) ? { ...node._meta } : {}
+		if (node.title && !nodeMeta.title) nodeMeta.title = String(node.title)
+		if (node.type && !nodeMeta.node_type) nodeMeta.node_type = String(node.type)
+		if (Array.isArray(node.pos) && node.pos.length >= 2) {
+			const px = Number(node.pos[0]), py = Number(node.pos[1])
+			if (Number.isFinite(px) && Number.isFinite(py)) nodeMeta.pos = [px, py]
+		}
+		prompt[nid] = { class_type: classType, inputs, _meta: nodeMeta }
 	}
 
-	if (unknownUsedTypes.size > 0) {
-		return { error: `workflow contains unknown node types (used by links): ${[...unknownUsedTypes].sort().join(', ')}` }
+	console.log('[ComfyUI workflowToPrompt] Final prompt nodes:')
+	for (const [pid, pnode] of Object.entries(prompt)) {
+		if (!isRecord(pnode)) continue
+		const ct = String(pnode.class_type || '')
+		const inputKeys = Object.keys(isRecord(pnode.inputs) ? pnode.inputs : {})
+		const isUuid = isUuidLikeType(ct)
+		const inKnown = knownNodeTypes ? knownNodeTypes.has(ct) : 'N/A (no objectInfo)'
+		console.log(`  [${pid}] ${ct}${isUuid ? ' [UUID]' : ''} (known=${inKnown}): inputs=`, inputKeys)
+		if (ct.includes('SaveImage') || ct.includes('Save')) {
+			console.log(`    [SaveImage DEBUG] inputs detail:`, JSON.stringify(pnode.inputs, null, 2).substring(0, 500))
+		}
 	}
+	console.log('[ComfyUI workflowToPrompt] rerouteNodeIds:', [...rerouteNodeIds])
+	console.log('[ComfyUI workflowToPrompt] valueProviderNodes:', [...valueProviderNodes.keys()])
+	console.log('[ComfyUI workflowToPrompt] skippedNodeIds:', [...skippedNodeIds])
+	console.log('[ComfyUI workflowToPrompt] total nodes in workflow:', nodes.length, '→ final prompt nodes:', Object.keys(prompt).length)
 
 	return { prompt }
 }
@@ -628,12 +1471,10 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 
 	const textNodes = []
 	for (const [k, v] of Object.entries(promptGraph)) {
-		if (!/^\d+$/.test(k) || !isRecord(v)) continue
+		if (!isRecord(v)) continue
 		if (String(v.class_type || '') !== 'CLIPTextEncode') continue
-		try { textNodes.push([Number(k), v]) } catch {}
+		textNodes.push([k, v])
 	}
-	textNodes.sort((a, b) => a[0] - b[0])
-	if (textNodes.length === 0) return
 
 	const negativeIdxs = []
 	const positiveIdxs = []
@@ -668,24 +1509,16 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 	}
 }
 
-function patchPromptGraphLoadImages(promptGraph, uploadedPaths) {
-	const loadNodes = []
-	for (const [k, v] of Object.entries(promptGraph)) {
-		if (!/^\d+$/.test(k) || !isRecord(v)) continue
-		if (String(v.class_type || '') !== 'LoadImage') continue
-		try { loadNodes.push([Number(k), v]) } catch {}
-	}
-	loadNodes.sort((a, b) => a[0] - b[0])
-	for (let idx = 0; idx < uploadedPaths.length && idx < loadNodes.length; idx++) {
-		const [, node] = loadNodes[idx]
-		if (!isRecord(node.inputs)) node.inputs = {}
-		node.inputs.image = uploadedPaths[idx]
-	}
-}
-
 function normalizePromptGraphForRuntime(promptGraph, objectInfo) {
-	const socketTypes = new Set(['MODEL', 'CLIP', 'VAE', 'CONDITIONING', 'LATENT', 'IMAGE', 'MASK', 'SAMPLER', 'SIGMAS', 'AUDIO', 'VIDEO', 'CLIP_VISION_OUTPUT'])
+	const knownSocketTypes = new Set([
+		'MODEL', 'CLIP', 'VAE', 'CONDITIONING', 'LATENT', 'IMAGE', 'MASK',
+		'SAMPLER', 'SIGMAS', 'AUDIO', 'VIDEO', 'CLIP_VISION_OUTPUT',
+		'CONTROL_NET', 'STYLE_MODEL', 'CLIP_VISION', 'UPSCALE_MODEL',
+		'GLIGEN', 'NOISE', 'GUIDER', 'BOOST', 'WEBCAM',
+		'IPADAPTER', 'FACEID', 'INSTANTID', 'FACEMASK'
+	])
 	const isValidLinkRef = v => Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number'
+	const isPrimitiveValue = v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
 
 	for (const node of Object.values(promptGraph)) {
 		if (!isRecord(node)) continue
@@ -694,18 +1527,21 @@ function normalizePromptGraphForRuntime(promptGraph, objectInfo) {
 		const classType = String(node.class_type || '')
 		const defs = objectInfo ? extractObjectInfoInputDefs(objectInfo[classType]) : {}
 
-		if (Object.keys(defs).length > 0) {
-			for (const [name, defn] of Object.entries(defs)) {
-				if (!(name in inputs)) continue
-				if (!Array.isArray(defn) || defn.length === 0) continue
+		for (const [name, val] of Object.entries(inputs)) {
+			if (isValidLinkRef(val)) continue
+			if (isPrimitiveValue(val)) continue
+			if (Array.isArray(val) && !isValidLinkRef(val) && val.length !== 2) continue
+			const defn = defs[name]
+			if (Array.isArray(defn) && defn.length > 0) {
 				const t = defn[0]
-				if (typeof t !== 'string' || !socketTypes.has(t)) continue
-				if (!isValidLinkRef(inputs[name])) delete inputs[name]
+				if (typeof t === 'string' && knownSocketTypes.has(t.toUpperCase())) {
+					delete inputs[name]
+				}
 			}
 		}
 
 		for (const key of ['clip_vision_output', 'audio']) {
-			if (key in inputs && !isValidLinkRef(inputs[key])) delete inputs[key]
+			if (key in inputs && !isValidLinkRef(inputs[key]) && !isPrimitiveValue(inputs[key])) delete inputs[key]
 		}
 		node.inputs = inputs
 	}
@@ -729,7 +1565,8 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 		const n = String(name || '').trim().toLowerCase()
 		if (!n) return null
 		if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some(ext => n.endsWith(ext))) return 'video'
-		if (['.png', '.jpg', '.jpeg', '.webp', '.bmp'].some(ext => n.endsWith(ext))) return 'image'
+		if (['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif'].some(ext => n.endsWith(ext))) return 'image'
+		if (['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.ply', '.3ds', '.usdz', '.usd'].some(ext => n.endsWith(ext))) return 'model3d'
 		return null
 	}
 	const nodeSortKey = v => {
@@ -747,18 +1584,22 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 
 	for (const [nodeId, nodeOut] of sortedNodes) {
 		if (!isRecord(nodeOut)) continue
-		for (const key of ['images', 'gifs', 'videos']) {
+		for (const key of Object.keys(nodeOut)) {
 			const arr = nodeOut[key]
 			if (!Array.isArray(arr)) continue
 			for (const m of arr) {
 				if (!isRecord(m)) continue
-				const filename = String(m.filename || '').trim()
+				const filename = String(m.filename || m.name || '').trim()
 				if (!filename) continue
 				const subfolder = String(m.subfolder || '').trim()
 				const folderType = String(m.type || 'output').trim()
-				let kind = key === 'gifs' || key === 'videos' ? 'video' : 'image'
+				let kind = null
+				if (key === 'gifs' || key === 'videos') kind = 'video'
+				else if (key === 'images') kind = 'image'
+				else if (key === 'meshes' || key === 'models' || key === 'models3d' || key === 'files') kind = 'model3d'
 				const inferred = kindByFilename(filename)
 				if (inferred) kind = inferred
+				if (!kind) continue
 				media.push({
 					nodeId: String(nodeId),
 					kind,
@@ -903,8 +1744,13 @@ function extractHistoryWorkflows(historyData, maxItems) {
 		if (!Array.isArray(promptArr) || promptArr.length < 3) continue
 		const promptGraph = promptArr[2]
 		if (!isRecord(promptGraph)) continue
-		const numNodes = Object.keys(promptGraph).filter(k => /^\d+$/.test(k)).length
-		if (numNodes === 0) continue
+		let validNodeCount = 0
+		for (const node of Object.values(promptGraph)) {
+			if (isRecord(node) && typeof node.class_type === 'string' && node.class_type.trim()) {
+				validNodeCount++
+			}
+		}
+		if (validNodeCount === 0) continue
 
 		let classType = '工作流'
 		let timestamp = 0
@@ -1034,8 +1880,8 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 
 		for (const [nodeId, nodeData] of Object.entries(promptGraph)) {
 			if (!isRecord(nodeData)) continue
-			const nid = Number(nodeId)
-			if (!Number.isFinite(nid)) continue
+			const nid = normalizeNodeId(nodeId)
+			if (!nid) continue
 			idToIdx.set(nid, nodeIdx)
 			const classType = String(nodeData.class_type || '')
 			const inputs = []
@@ -1043,7 +1889,7 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 			const inputDefs = nodeData.inputs
 			if (isRecord(inputDefs)) {
 				for (const [inputName, inputVal] of Object.entries(inputDefs)) {
-					if (Array.isArray(inputVal) && inputVal.length === 2) {
+					if (Array.isArray(inputVal) && inputVal.length === 2 && (typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') && typeof inputVal[1] === 'number') {
 						inputs.push({ name: inputName, type: '*', link: null })
 					} else {
 						inputs.push({ name: inputName, type: '*', link: null, widget: { name: inputName } })
@@ -1069,16 +1915,16 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 
 		for (const [nodeId, nodeData] of Object.entries(promptGraph)) {
 			if (!isRecord(nodeData)) continue
-			const nid = Number(nodeId)
-			if (!Number.isFinite(nid)) continue
+			const nid = normalizeNodeId(nodeId)
+			if (!nid) continue
 			const fromIdx = idToIdx.get(nid)
 			if (fromIdx === undefined) continue
 			const inputDefs = nodeData.inputs
 			if (!isRecord(inputDefs)) continue
 			let slotIdx = 0
-			for (const [, inputVal] of Object.entries(inputDefs)) {
-				if (Array.isArray(inputVal) && inputVal.length === 2) {
-					const fromNodeId = Number(inputVal[0])
+			for (const [inputName, inputVal] of Object.entries(inputDefs)) {
+				if (Array.isArray(inputVal) && inputVal.length === 2 && (typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') && typeof inputVal[1] === 'number') {
+					const fromNodeId = normalizeNodeId(inputVal[0])
 					const fromSlot = Number(inputVal[1])
 					const toIdx = idToIdx.get(fromNodeId)
 					if (toIdx !== undefined) {
@@ -1086,9 +1932,9 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 						if (!fromNode.outputs[slotIdx]) {
 							fromNode.outputs.push({ name: `OUTPUT_${slotIdx}`, type: '*', links: [], slot_index: slotIdx, shape: 6 })
 						}
-						links.push([linkId, fromNodeId, fromSlot, nid, slotIdx, '*'])
-						const toInput = fromNode.inputs.find(i => i.name === Object.keys(inputDefs)[slotIdx])
-						if (toInput) toInput.link = linkId
+						links.push([String(linkId), fromNodeId, fromSlot, nid, slotIdx, '*'])
+						const toInput = fromNode.inputs.find(i => i.name === inputName)
+						if (toInput) toInput.link = String(linkId)
 						linkId++
 					}
 				}
@@ -1165,8 +2011,75 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	if (!wfResult.ok) return { ok: false, error: `读取工作流失败：${wfResult.error}` }
 	const workflowAny = wfResult.workflow
 
-	// Upload input images
-	const uploadedPaths = []
+	// === COMPREHENSIVE WORKFLOW DIAGNOSTIC ===
+	console.log('\n========== [ComfyUI Workflow Diagnostic] ==========')
+	console.log('workflowPath:', workflowPath)
+	if (isRecord(workflowAny)) {
+		console.log('[Top-level keys]:', Object.keys(workflowAny))
+		console.log('[version]:', workflowAny.version)
+		console.log('[id]:', workflowAny.id)
+		console.log('[has nodes]:', Array.isArray(workflowAny.nodes), 'count:', Array.isArray(workflowAny.nodes) ? workflowAny.nodes.length : 0)
+		console.log('[has links]:', Array.isArray(workflowAny.links), 'count:', Array.isArray(workflowAny.links) ? workflowAny.links.length : 0)
+		console.log('[has groups]:', Array.isArray(workflowAny.groups), 'count:', Array.isArray(workflowAny.groups) ? workflowAny.groups.length : 0)
+		console.log('[has extra]:', isRecord(workflowAny.extra))
+		if (isRecord(workflowAny.extra)) {
+			console.log('[extra keys]:', Object.keys(workflowAny.extra))
+			if (workflowAny.extra.ds) console.log('[extra.ds scale]:', workflowAny.extra.ds.scale, 'offset:', workflowAny.extra.ds.offset)
+		}
+		console.log('[has config]:', isRecord(workflowAny.config))
+		if (isRecord(workflowAny.config)) console.log('[config keys]:', Object.keys(workflowAny.config))
+		// Print all node types found
+		if (Array.isArray(workflowAny.nodes)) {
+			const typeCount = new Map()
+			const uuidNodes = []
+			for (const n of workflowAny.nodes) {
+				if (!isRecord(n)) continue
+				const t = String(n.type || '').trim()
+				typeCount.set(t, (typeCount.get(t) || 0) + 1)
+				if (isUuidLikeType(t)) {
+					uuidNodes.push(n)
+				}
+			}
+			console.log('\n[Node type counts]:')
+			for (const [t, c] of [...typeCount.entries()].sort((a, b) => b[1] - a[1])) {
+				console.log(`  ${t}: ${c}`)
+			}
+			console.log(`\n[UUID-typed nodes count]: ${uuidNodes.length}`)
+			for (const n of uuidNodes) {
+				console.log(`\n--- UUID Node id=${n.id} type=${n.type} ---`)
+				console.log('  title:', n.title)
+				console.log('  pos:', n.pos)
+				console.log('  size:', n.size)
+				console.log('  flags:', JSON.stringify(n.flags))
+				console.log('  order:', n.order)
+				console.log('  mode:', n.mode)
+				console.log('  widgets_values:', JSON.stringify(n.widgets_values))
+				console.log('  inputs:', JSON.stringify(n.inputs))
+				console.log('  outputs:', JSON.stringify(n.outputs))
+				console.log('  properties:', JSON.stringify(n.properties))
+				console.log('  ALL KEYS:', Object.keys(n))
+				// Print the full node JSON
+				console.log('  FULL JSON:', JSON.stringify(n))
+			}
+		}
+		// Check for components/extra node definitions
+		if (workflowAny.extra && isRecord(workflowAny.extra)) {
+			for (const key of Object.keys(workflowAny.extra)) {
+				const val = workflowAny.extra[key]
+				if (typeof val === 'object' && val !== null) {
+					console.log(`\n[extra.${key}] type:`, Array.isArray(val) ? 'array' : typeof val, Array.isArray(val) ? `length=${val.length}` : `keys=${Object.keys(val).slice(0, 20)}`)
+				}
+			}
+		}
+	} else {
+		console.log('workflowAny is NOT a record, type:', typeof workflowAny)
+	}
+	console.log('========== [End Workflow Diagnostic] ==========\n')
+
+	// Upload input files (classified by mediaType)
+	const uploadedImages = []
+	const uploadedVideos = []
+	const uploadedModels = []
 	const inputFiles = Array.isArray(p.files) ? p.files : []
 	for (let i = 0; i < inputFiles.length; i++) {
 		const f = inputFiles[i]
@@ -1183,15 +2096,24 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			fileBuf = Buffer.isBuffer(f.content) ? f.content : Buffer.from(f.content, 'base64')
 		}
 		if (!fileBuf) continue
+		const mediaType = String(f.mediaType || 'image').toLowerCase()
 		fileName = String(f.name || f.filename || `input_${i}.png`)
-		fileMime = fileMime || f.contentType || f.mimeType || 'image/png'
+		fileMime = fileMime || f.contentType || f.mimeType || (mediaType === 'video' ? 'video/mp4' : mediaType === 'model3d' ? 'application/octet-stream' : 'image/png')
 
 		const upResult = await uploadImageToComfyui(client, base, fileName, fileBuf, fileMime)
-		if (upResult.error) return { ok: false, error: `上传图片失败：${upResult.error}` }
+		if (upResult.error) return { ok: false, error: `上传${mediaType === 'video' ? '视频' : mediaType === 'model3d' ? '3D模型' : '图片'}失败：${upResult.error}` }
 		const name = String(upResult.data?.name || '').trim()
 		const subfolder = String(upResult.data?.subfolder || '').trim().replace(/\\/g, '/')
 		const upPath = subfolder ? `${subfolder}/${name}` : name
-		if (upPath) uploadedPaths.push(upPath)
+		if (!upPath) continue
+
+		if (mediaType === 'video') {
+			uploadedVideos.push(upPath)
+		} else if (mediaType === 'model3d') {
+			uploadedModels.push(upPath)
+		} else {
+			uploadedImages.push(upPath)
+		}
 	}
 
 	// Get object_info for workflow-to-prompt conversion (use cache if available)
@@ -1242,7 +2164,7 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	// Convert from workflow UI format
 	if (!isRecord(promptGraph)) {
 		if (isRecord(workflowAny) && Array.isArray(workflowAny.nodes) && Array.isArray(workflowAny.links)) {
-			const convResult = workflowToPrompt(workflowAny, objectInfo, knownNodeTypes)
+			const convResult = newWorkflowToPrompt(workflowAny, objectInfo)
 			if (convResult.error) {
 				return { ok: false, error: `工作流转换失败：${convResult.error}` }
 			}
@@ -1258,10 +2180,8 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	// Deep copy to avoid mutating source
 	try { promptGraph = JSON.parse(JSON.stringify(promptGraph)) } catch {}
 
-	// Patch uploaded images into LoadImage nodes
-	if (uploadedPaths.length > 0) {
-		patchPromptGraphLoadImages(promptGraph, uploadedPaths)
-	}
+	// Patch uploaded files into input nodes (images/videos/3D models)
+	patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels)
 
 	// Normalize socket inputs
 	normalizePromptGraphForRuntime(promptGraph, objectInfo)
@@ -1280,11 +2200,26 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 	}
 
+	console.log('[ComfyUI] Submitting prompt, nodes:', Object.keys(promptGraph).length, 'source:', promptSource)
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node)) continue
+		const inputKeys = isRecord(node.inputs) ? Object.keys(node.inputs) : []
+		console.log(`  node[${nid}] class_type=${node.class_type}, inputs:`, inputKeys.join(', '))
+	}
+
 	const submitResult = await comfyJsonPost(client, `${base}/prompt`, comfyPayload, 30000)
 	if (submitResult.error) {
 		let comfyError = null
 		if (submitResult.status === 400 && isRecord(submitResult.body)) {
 			comfyError = submitResult.body
+			console.error('[ComfyUI] /prompt validation error:', JSON.stringify(comfyError, null, 2))
+			if (isRecord(comfyError.node_errors)) {
+				for (const [nid, err] of Object.entries(comfyError.node_errors)) {
+					console.error(`  node_errors[${nid}]:`, JSON.stringify(err))
+				}
+			}
+		} else {
+			console.error('[ComfyUI] /prompt failed:', submitResult.status, submitResult.error)
 		}
 		return {
 			ok: false,

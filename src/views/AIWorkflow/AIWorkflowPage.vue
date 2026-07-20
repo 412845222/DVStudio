@@ -1104,6 +1104,7 @@ import {
 import { useAIWorkflowComfyConnection } from './node-business/comfy/useAIWorkflowComfyConnection'
 import { useAIWorkflowComfyOutputRouter } from './node-business/comfy/useAIWorkflowComfyOutputRouter'
 import { useAIWorkflowComfyRuntime } from './node-business/comfy/useAIWorkflowComfyRuntime'
+import { useAIWorkflowComfyAutoWire } from './node-business/comfy/useAIWorkflowComfyAutoWire'
 import { useAIWorkflowNodeRefresh } from './node-business/useAIWorkflowNodeRefresh'
 import { useAIWorkflowNodeActions } from './node-business/useAIWorkflowNodeActions'
 import { useAIWorkflowNodeSettings } from './node-business/useAIWorkflowNodeSettings'
@@ -8339,7 +8340,11 @@ const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow } =
 	useAIWorkflowComfyConnection({
 		store,
 		comfyService,
-		pushToast: (message, tone) => pushToastBridge(message, tone)
+		pushToast: (message, tone) => pushToastBridge(message, tone),
+		onWorkflowChanged: (nodeId: string) => {
+			screenshotPool.invalidateScreenshot(nodeId, themeStore.state.mode as 'dark' | 'light')
+			refreshCanvasNodeLayer()
+		}
 	})
 
 const {
@@ -8414,6 +8419,42 @@ const getIncomingTextValue = (toNodeId: string, toAnchorId: string) => {
 	return ''
 }
 
+const bindModelResourceToNode = (
+	nodeId: string,
+	url: string,
+	name: string,
+	meta?: { sourcePath?: string; format?: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' }
+) => {
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'model3d') return
+	revokeNodeModel3DObjectUrl(nodeId)
+	const modelFormat = meta?.format ?? 'glb'
+	store.commit('setNodeModel3DSettings', {
+		nodeId,
+		model3dSettings: {
+			modelUrl: url,
+			modelFormat,
+			modelSourceName: name,
+			modelSourcePath: meta?.sourcePath,
+			modelAssetUrl: url,
+			modelAssetPath: meta?.sourcePath
+		}
+	})
+}
+
+const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoWire({
+	store,
+	getOutgoingEdges,
+	getIncomingEdges,
+	bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
+		bindMediaResourceToNode(nodeId, kind, url, name, meta),
+	bindModelResourceToNode,
+	onAutoWireStart: (sourceNodeId) => onAutoWireStart(sourceNodeId),
+	onAutoWireNodeCreated: (nodeId) => onAutoWireNodeCreated(nodeId),
+	onAutoWireEnd: () => onAutoWireEnd(),
+	pushToast: (message, tone) => pushToastBridge(message, tone)
+})
+
 const {
 	reuseRecordConfirm,
 	formatReuseRecordTime,
@@ -8429,7 +8470,8 @@ const {
 	pushToast: (message, tone) => pushToastBridge(message, tone),
 	routeComfyOutputsToConnectedNodes,
 	clearComfyRouteCache,
-	getIncomingTextValue
+	getIncomingTextValue,
+	autoWireComfyOutputs
 })
 
 const onStoryPreviewSettingsUpdate = (

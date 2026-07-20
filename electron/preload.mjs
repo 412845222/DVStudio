@@ -699,6 +699,14 @@ contextBridge.exposeInMainWorld('dweb', {
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
 			},
+			onConfigChange: (listener) => {
+				const ch = 'dweb:comfyui:setup:config-changed'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
 		},
 	},
 	// ===== Codex 编程助手 =====

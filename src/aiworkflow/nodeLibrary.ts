@@ -264,8 +264,8 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'comfyui',
 		nodeType: 'comfyui',
 		label: 'ComfyUI节点',
-		inputKinds: ['image', 'text'],
-		outputKinds: ['image', 'video'],
+		inputKinds: ['generic'],
+		outputKinds: ['image', 'video', 'model3d'],
 		order: 38
 	},
 	{
