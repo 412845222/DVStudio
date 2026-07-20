@@ -1,8 +1,8 @@
-import { parseComfyWorkflowIO } from '../../../../aiworkflow/domain/comfyui/parseWorkflowIO'
 import { extractCheckpointsFromObjectInfo } from '../../../../aiworkflow/domain/comfyui/objectInfoTypes'
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import type { ComfyObjectInfo } from '../../../../aiworkflow/domain/comfyui/objectInfoTypes'
+import type { ResolveHistoryResponse } from '../../../../network/ComfyUIBridgeService'
 
 export const useAIWorkflowComfyConnection = (payload: {
 	store: {
@@ -35,6 +35,8 @@ export const useAIWorkflowComfyConnection = (payload: {
 			objectInfo?: ComfyObjectInfo
 			[key: string]: unknown
 		}>
+		resolveHistory: (baseUrl: string, workflowPath: string) => Promise<ResolveHistoryResponse>
+		clearHistoryCache: (baseUrl: string, workflowPath: string) => Promise<{ ok: boolean; error?: string }>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	onWorkflowChanged?: (nodeId: string, workflowPath: string) => void
@@ -139,53 +141,243 @@ export const useAIWorkflowComfyConnection = (payload: {
 		}
 	}
 
+	const resolveHistoryForWorkflow = async (nodeId: string, baseUrl: string, workflowPath: string, workflowSource: 'userdata' | 'history') => {
+		payload.store.commit('setNodeComfyUISettings', {
+			nodeId,
+			comfyuiSettings: {
+				historyChecked: false,
+				hasHistory: undefined,
+				historyError: undefined,
+				historyGuideMessage: undefined,
+				historyGuideBaseUrl: undefined,
+				historyPromptId: undefined,
+				historyTimestamp: undefined,
+				historyMatchType: undefined,
+				imageInputCount: undefined,
+				videoInputCount: undefined,
+				hasTextPromptInput: undefined,
+				historyNodeCount: undefined,
+				historyInputMappings: undefined,
+				historyOutputNodes: undefined,
+				hasImageOutput: undefined,
+				hasVideoOutput: undefined,
+				hasModel3dOutput: undefined
+			}
+		})
+
+		try {
+			const histRes = await payload.comfyService.resolveHistory(baseUrl, workflowPath)
+			if (histRes.ok) {
+				const resolvedOutputs = Array.isArray(histRes.outputs) ? histRes.outputs : []
+				const outputAnchors = [] as Array<{ id: string; label: string; mediaType: string }>
+
+				const mediaTypeLabels: Record<string, string> = {
+					image: 'Image',
+					video: 'Video',
+					model3d: '3D Model'
+				}
+
+				for (let i = 0; i < resolvedOutputs.length; i++) {
+					const out = resolvedOutputs[i]
+					const kind = out.mediaKind
+					if (kind !== 'image' && kind !== 'video' && kind !== 'model3d') continue
+					outputAnchors.push({
+						id: `out-${out.nodeId}`,
+						label: out.displayName || `${mediaTypeLabels[kind] || kind} ${i + 1}`,
+						mediaType: kind
+					})
+				}
+
+				if (outputAnchors.length === 0) {
+					outputAnchors.push({ id: 'out', label: 'Output', mediaType: 'image' })
+				}
+
+				const inputMappings = {
+					imageInputs: histRes.imageInputs,
+					videoInputs: histRes.videoInputs,
+					textNodes: histRes.textNodes,
+					seedNodes: histRes.seedNodes
+				}
+
+				payload.store.commit('setNodeComfyUIWorkflowIO', {
+					nodeId,
+					outputs: outputAnchors,
+					warnings: [],
+					inputRequirements: {
+						images: histRes.imageInputs.length,
+						videos: histRes.videoInputs.length,
+						models: 0,
+						requiresPrompts: histRes.hasTextPrompt
+					},
+					workflowPath
+				})
+
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: {
+						workflowPath,
+						workflowSource,
+						historyChecked: true,
+						hasHistory: true,
+						historyPromptId: histRes.promptId,
+						historyTimestamp: histRes.timestamp,
+						historyMatchType: histRes.matchType,
+						imageInputCount: histRes.imageInputs.length,
+						videoInputCount: histRes.videoInputs.length,
+						hasTextPromptInput: histRes.hasTextPrompt,
+						historyNodeCount: histRes.nodeCount,
+						historyInputMappings: inputMappings,
+						historyOutputNodes: resolvedOutputs,
+						hasImageOutput: histRes.hasImageOutput,
+						hasVideoOutput: histRes.hasVideoOutput,
+						hasModel3dOutput: histRes.hasModel3dOutput,
+						historyError: undefined,
+						historyGuideMessage: undefined,
+						historyGuideBaseUrl: undefined
+					}
+				})
+				return true
+			} else {
+				const isNoHistory = histRes.error === 'NO_HISTORY'
+					payload.store.commit('setNodeComfyUIWorkflowIO', {
+					nodeId,
+					outputs: [{ id: 'out', label: 'Output', mediaType: 'image' }],
+					warnings: isNoHistory ? [] : [histRes.message || histRes.error || 'history check failed'],
+					inputRequirements: { images: 0, videos: 0, models: 0, requiresPrompts: false },
+					workflowPath
+				})
+
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: {
+						workflowPath,
+						workflowSource,
+						historyChecked: true,
+						hasHistory: false,
+						historyError: histRes.error || 'history check failed',
+						historyGuideMessage: isNoHistory ? histRes.message : undefined,
+						historyGuideBaseUrl: isNoHistory ? (histRes.baseUrl || baseUrl) : undefined,
+						historyPromptId: undefined,
+						historyTimestamp: undefined,
+						historyMatchType: undefined,
+						imageInputCount: 0,
+						videoInputCount: 0,
+						hasTextPromptInput: false,
+						historyNodeCount: 0,
+						historyInputMappings: undefined,
+						historyOutputNodes: undefined,
+						hasImageOutput: undefined,
+						hasVideoOutput: undefined,
+						hasModel3dOutput: undefined
+					}
+				})
+
+				if (!isNoHistory && histRes.message) {
+					payload.pushToast(histRes.message, 'warn')
+				}
+				return false
+			}
+		} catch (err: unknown) {
+			const errMsg = getErrorMessage(err)
+			payload.store.commit('setNodeComfyUISettings', {
+				nodeId,
+				comfyuiSettings: {
+					historyChecked: true,
+					hasHistory: false,
+					historyError: errMsg
+				}
+			})
+			payload.pushToast(t('nodes.comfyui.resolveHistoryFailed', { error: errMsg }), 'warn')
+			return false
+		}
+	}
+
 	const onComfyUISelectWorkflow = async (nodeId: string, input: { workflowPath: string }) => {
 		const workflowPath = String(input?.workflowPath ?? '').trim()
 		if (!workflowPath) return
 		const nodeRecord = payload.store.state.nodesById[nodeId]
-		const node = nodeRecord as { type?: string; comfyuiSettings?: { baseUrl?: string; objectInfo?: ComfyObjectInfo; workflowSource?: 'userdata' | 'history' } } | undefined
+		const node = nodeRecord as { type?: string; comfyuiSettings?: { baseUrl?: string } } | undefined
 		const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
 		if (!node || node.type !== 'comfyui' || !baseUrl) return
 
 		const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://') ? 'history' : 'userdata'
 
+		await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
+
+		if (payload.onWorkflowChanged) {
+			try { payload.onWorkflowChanged(nodeId, workflowPath) } catch {}
+		}
+	}
+
+	const onRefreshHistoryCheck = async (nodeId: string) => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as { type?: string; comfyuiSettings?: { baseUrl?: string; workflowPath?: string; workflowSource?: 'userdata' | 'history' } } | undefined
+		const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
+		const workflowPath = String(node?.comfyuiSettings?.workflowPath ?? '').trim()
+		if (!node || node.type !== 'comfyui' || !baseUrl || !workflowPath) return
+
+		const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://') ? 'history' : 'userdata'
+		const ok = await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
+		if (ok) {
+			payload.pushToast(t('nodes.comfyui.historyFound'), 'info')
+		}
+	}
+
+	const onClearHistoryCache = async (nodeId: string) => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as { type?: string; comfyuiSettings?: { baseUrl?: string; workflowPath?: string } } | undefined
+		if (!node || node.type !== 'comfyui') return
+		const baseUrl = String(node.comfyuiSettings?.baseUrl ?? '').trim()
+		const workflowPath = String(node.comfyuiSettings?.workflowPath ?? '').trim()
+		if (!baseUrl || !workflowPath) return
+
 		try {
-			const res = await payload.comfyService.getWorkflow(baseUrl, workflowPath)
-			if (!res.ok) {
-				payload.pushToast(t('nodes.comfyui.getWorkflowFailed', { error: res.error || 'unknown' }), 'error')
-				return
+			const result = await payload.comfyService.clearHistoryCache(baseUrl, workflowPath)
+			if (result.ok) {
+				payload.store.commit('setNodeComfyUIWorkflowIO', {
+					nodeId,
+					outputs: [{ id: 'out', label: 'Output', mediaType: 'image' }],
+					warnings: [],
+					inputRequirements: { images: 0, videos: 0, models: 0, requiresPrompts: false },
+					workflowPath
+				})
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: {
+						historyChecked: false,
+						hasHistory: undefined,
+						historyPromptId: undefined,
+						historyInputMappings: undefined,
+						historyOutputNodes: undefined,
+						historyTimestamp: undefined,
+						historyError: undefined,
+						imageInputCount: undefined,
+						videoInputCount: undefined,
+						hasTextPromptInput: undefined,
+						historyNodeCount: undefined,
+						inputRequirements: undefined,
+						hasImageOutput: undefined,
+						hasVideoOutput: undefined,
+						hasModel3dOutput: undefined,
+						workflowWarnings: undefined
+					}
+				})
+				const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://') ? 'history' : 'userdata'
+				await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
+				payload.pushToast(t('nodes.comfyui.historyCacheCleared'), 'info')
+			} else {
+				payload.pushToast(result.error || t('nodes.comfyui.historyCacheClearFailed'), 'warn')
 			}
-			const objectInfo = node?.comfyuiSettings?.objectInfo || null
-			const { outputs, warnings, inputRequirements } = parseComfyWorkflowIO(
-				res.workflow as Record<string, unknown>,
-				objectInfo
-			)
-			for (const warning of warnings) payload.pushToast(warning, 'warn')
-			payload.store.commit('setNodeComfyUIWorkflowIO', {
-				nodeId,
-				outputs,
-				warnings,
-				inputRequirements,
-				workflowPath: res.workflowPath || workflowPath
-			})
-			payload.store.commit('setNodeComfyUISettings', {
-				nodeId,
-				comfyuiSettings: {
-					workflowPath: res.workflowPath || workflowPath,
-					workflowSource
-				}
-			})
-			if (payload.onWorkflowChanged) {
-				try { payload.onWorkflowChanged(nodeId, res.workflowPath || workflowPath) } catch {}
-			}
-		} catch (err: unknown) {
-			payload.pushToast(t('nodes.comfyui.getWorkflowFailed', { error: getErrorMessage(err) }), 'error')
+		} catch (err) {
+			payload.pushToast(t('nodes.comfyui.historyCacheClearFailed'), 'warn')
 		}
 	}
 
 	return {
 		onComfyUISettingsUpdate,
 		onComfyUIConnect,
-		onComfyUISelectWorkflow
+		onComfyUISelectWorkflow,
+		onRefreshHistoryCheck,
+		onClearHistoryCache
 	}
 }

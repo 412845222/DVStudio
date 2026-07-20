@@ -1,8 +1,69 @@
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { app } from 'electron'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
-import { workflowToPrompt as newWorkflowToPrompt } from './workflow-converter.mjs'
 
 const DEFAULT_COMFYUI_BASE = 'http://127.0.0.1:8188'
+
+function getHistoryCacheDir() {
+	const dir = path.join(app.getPath('userData'), 'comfyui_history_cache')
+	try { fs.mkdirSync(dir, { recursive: true }) } catch {}
+	return dir
+}
+
+function getCacheKey(baseUrl, workflowPath) {
+	const raw = `${String(baseUrl).trim()}::${String(workflowPath).trim()}`
+	return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24)
+}
+
+function readHistoryCache(baseUrl, workflowPath) {
+	try {
+		const key = getCacheKey(baseUrl, workflowPath)
+		const filePath = path.join(getHistoryCacheDir(), `${key}.json`)
+		if (!fs.existsSync(filePath)) return null
+		const raw = fs.readFileSync(filePath, 'utf-8')
+		const data = JSON.parse(raw)
+		if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+		if (!data.promptGraph || typeof data.promptGraph !== 'object' || Array.isArray(data.promptGraph)) return null
+		return data
+	} catch {
+		return null
+	}
+}
+
+function writeHistoryCache(baseUrl, workflowPath, data) {
+	try {
+		const key = getCacheKey(baseUrl, workflowPath)
+		const filePath = path.join(getHistoryCacheDir(), `${key}.json`)
+		fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8')
+		return true
+	} catch {
+		return false
+	}
+}
+
+function clearHistoryCache(baseUrl, workflowPath) {
+	try {
+		const key = getCacheKey(baseUrl, workflowPath)
+		const filePath = path.join(getHistoryCacheDir(), `${key}.json`)
+		if (fs.existsSync(filePath)) {
+			fs.unlinkSync(filePath)
+		}
+		return { ok: true }
+	} catch (err) {
+		return { ok: false, error: err.message || 'clear cache failed' }
+	}
+}
+
+export async function runtimeClearHistoryCache(ctx, payload) {
+	const p = payload || {}
+	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
+	if (baseErr) return { ok: false, error: baseErr }
+	const workflowPath = String(p.workflowPath || '').trim()
+	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
+	return clearHistoryCache(base, workflowPath)
+}
 
 function getWorkflowsRepo(ctx) {
 	const repo = ctx.localdb?.comfyuiWorkflows
@@ -436,16 +497,76 @@ function classifyInputNode(classType) {
 	if (IMAGE_INPUT_CLASS_TYPES.has(ct)) return 'image'
 	if (VIDEO_INPUT_CLASS_TYPES.has(ct)) return 'video'
 	if (MODEL3D_INPUT_CLASS_TYPES.has(ct)) return 'model3d'
-	if (/load.*image/i.test(ct)) return 'image'
-	if (/load.*video/i.test(ct)) return 'video'
-	if (/load.*(glb|gltf|fbx|obj|3d|model)/i.test(ct)) return 'model3d'
+	const ctl = ct.toLowerCase()
+	if (/image/.test(ctl) && /load/.test(ctl)) return 'image'
+	if (/video|vhs/.test(ctl) && /load/.test(ctl)) return 'video'
+	if (/(glb|gltf|fbx|obj|3d|model|mesh)/.test(ctl) && /load/.test(ctl)) return 'model3d'
 	return null
 }
 
-function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels) {
+function isSocketValue(v) {
+	return Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number'
+}
+
+function detectFileInputKindFromParamName(name) {
+	const n = String(name || '').toLowerCase()
+	if (!n) return null
+	if (/\bvideo\b|\bvhs\b|\bmp4\b|\bwebm\b|\bmov\b|\bgif\b/.test(n)) return 'video'
+	if (/\bmodel\b|\bglb\b|\bgltf\b|\bfbx\b|\bobj\b|\bmesh\b|\b3d\b/.test(n)) return 'model3d'
+	if (/\bimage\b|\bimg\b|\bphoto\b|\bpicture\b|\bfile\b|\bpath\b|\bfilename\b|\bupload\b/.test(n)) return 'image'
+	return null
+}
+
+function detectFileInputKeyForNode(node, objectInfo) {
+	if (!isRecord(node)) return null
+	const classType = String(node.class_type || '').trim()
+	const inputs = isRecord(node.inputs) ? node.inputs : {}
+	const defs = objectInfo ? extractObjectInfoInputDefs(objectInfo[classType]) : {}
+
+	const candidates = []
+	for (const [key, val] of Object.entries(inputs)) {
+		if (isSocketValue(val)) continue
+		if (isObjectInfoWidgetDef(defs[key])) {
+			candidates.push({ key, kind: detectFileInputKindFromParamName(key), order: candidates.length })
+			continue
+		}
+		if (typeof val === 'string') {
+			const kind = detectFileInputKindFromParamName(key)
+			if (kind) candidates.push({ key, kind, order: candidates.length })
+		}
+	}
+
+	if (candidates.length === 0) return null
+
+	const nodeKind = classifyInputNode(classType)
+	const nodeNameLower = classType.toLowerCase()
+	const preferredKind = nodeKind || (/\bvideo\b|vhs/.test(nodeNameLower) ? 'video' : /\bmodel\b|3d|glb|gltf|fbx|obj|mesh/.test(nodeNameLower) ? 'model3d' : 'image')
+
+	for (const c of candidates) {
+		if (c.kind === preferredKind) return { key: c.key, kind: c.kind }
+	}
+	return { key: candidates[0].key, kind: candidates[0].kind || preferredKind }
+}
+
+function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels, objectInfo) {
 	const imageNodes = []
 	const videoNodes = []
 	const modelNodes = []
+	const IMAGE_EXTS = /\.(png|jpg|jpeg|webp|gif|bmp|tiff)$/i
+	const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv)$/i
+	const MODEL_EXTS = /\.(glb|gltf|fbx|obj|safetensors|ckpt|pt|pth|bin)$/i
+
+	const detectByFilename = (inputs) => {
+		for (const [key, val] of Object.entries(inputs)) {
+			if (isSocketValue(val)) continue
+			if (typeof val !== 'string') continue
+			const base = val.split(/[\\/]/).pop() || val
+			if (IMAGE_EXTS.test(base)) return { key, kind: 'image' }
+			if (VIDEO_EXTS.test(base)) return { key, kind: 'video' }
+			if (MODEL_EXTS.test(base)) return { key, kind: 'model3d' }
+		}
+		return null
+	}
 
 	for (const [k, v] of Object.entries(promptGraph)) {
 		if (!isRecord(v)) continue
@@ -453,28 +574,54 @@ function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, upl
 		const meta = isRecord(v._meta) ? v._meta : {}
 		const title = String(meta.title || '')
 		const pos = getNodePosition(meta)
-		const category = classifyInputNode(classType)
-		const entry = { id: k, node: v, title, pos, classType }
-		if (category === 'image') imageNodes.push(entry)
-		else if (category === 'video') videoNodes.push(entry)
-		else if (category === 'model3d') modelNodes.push(entry)
+		const inputs = isRecord(v.inputs) ? v.inputs : {}
+
+		let fileInput = detectFileInputKeyForNode(v, objectInfo)
+		if (!fileInput) {
+			const fallbackCategory = classifyInputNode(classType)
+			if (fallbackCategory) {
+				const fallbackKey = fallbackCategory === 'image' ? 'image' : fallbackCategory === 'video' ? 'video' : 'model_file'
+				fileInput = { key: fallbackKey, kind: fallbackCategory }
+			}
+		}
+		if (!fileInput) {
+			fileInput = detectByFilename(inputs)
+		}
+		if (!fileInput) continue
+
+		const entry = { id: k, node: v, title, pos, classType, inputKey: fileInput.key, kind: fileInput.kind }
+		if (fileInput.kind === 'image') imageNodes.push(entry)
+		else if (fileInput.kind === 'video') videoNodes.push(entry)
+		else if (fileInput.kind === 'model3d') modelNodes.push(entry)
 	}
 
 	const sortedImages = sortNodesByPosition(imageNodes)
 	const sortedVideos = sortNodesByPosition(videoNodes)
 	const sortedModels = sortNodesByPosition(modelNodes)
 
-	const assignPaths = (nodes, paths, inputKey) => {
+	const assignPaths = (nodes, paths) => {
 		for (let idx = 0; idx < paths.length && idx < nodes.length; idx++) {
-			const { node } = nodes[idx]
+			const { node, inputKey } = nodes[idx]
 			if (!isRecord(node.inputs)) node.inputs = {}
 			node.inputs[inputKey] = paths[idx]
 		}
 	}
 
-	assignPaths(sortedImages, uploadedImages, 'image')
-	assignPaths(sortedVideos, uploadedVideos, 'video')
-	assignPaths(sortedModels, uploadedModels, 'model_file')
+	assignPaths(sortedImages, uploadedImages)
+	assignPaths(sortedVideos, uploadedVideos)
+	assignPaths(sortedModels, uploadedModels)
+
+	if (uploadedImages.length > 0 && imageNodes.length === 0) {
+		let imgIdx = 0
+		for (const [, v] of Object.entries(promptGraph)) {
+			if (!isRecord(v) || imgIdx >= uploadedImages.length) break
+			const ct = String(v.class_type || '').toLowerCase()
+			if (/loadimage|load.image|image.input/i.test(ct) && isRecord(v.inputs)) {
+				if (!isSocketValue(v.inputs.image) && typeof v.inputs.image !== 'string') continue
+				v.inputs.image = uploadedImages[imgIdx++]
+			}
+		}
+	}
 
 	if (uploadedModels.length > 0 && modelNodes.length === 0) {
 		for (let idx = 0; idx < uploadedModels.length; idx++) {
@@ -1470,30 +1617,81 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 	if (!pp && !np) return
 
 	const textNodes = []
+	const TEXT_ENCODE_TYPE_RE = /TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+	const TEXT_INPUT_KEYS = ['text', 'text_g', 'text_l', 'prompt', 'positive', 'negative', 'caption', 'description', 'instruction']
 	for (const [k, v] of Object.entries(promptGraph)) {
 		if (!isRecord(v)) continue
-		if (String(v.class_type || '') !== 'CLIPTextEncode') continue
-		textNodes.push([k, v])
+		const ct = String(v.class_type || '')
+		const inputs = isRecord(v.inputs) ? v.inputs : {}
+		let isTextNode = false
+		let primaryKey = 'text'
+		if (ct === 'CLIPTextEncode' || ct === 'BNK_CLIPTextEncodeAdvanced' || TEXT_ENCODE_TYPE_RE.test(ct)) {
+			isTextNode = true
+		} else {
+			for (const tk of TEXT_INPUT_KEYS) {
+				if (tk in inputs && typeof inputs[tk] === 'string' && !isSocketValue(inputs[tk])) {
+					if (!/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_/i.test(ct)) {
+						isTextNode = true
+						primaryKey = tk
+						break
+					}
+				}
+			}
+		}
+		if (isTextNode) {
+			const meta = isRecord(v._meta) ? v._meta : {}
+			const title = String(meta.title || '')
+			const textKeys = []
+			for (const tk of TEXT_INPUT_KEYS) {
+				if (tk in inputs && typeof inputs[tk] === 'string' && !isSocketValue(inputs[tk])) {
+					textKeys.push(tk)
+				}
+			}
+			if (textKeys.length === 0) textKeys.push(primaryKey)
+			textNodes.push({ nodeId: k, node: v, title, textKeys, primaryKey })
+		}
 	}
+
+	if (textNodes.length === 0) return
 
 	const negativeIdxs = []
 	const positiveIdxs = []
 	for (let i = 0; i < textNodes.length; i++) {
-		const [, node] = textNodes[i]
-		const meta = node._meta
-		let title = ''
-		if (isRecord(meta)) title = String(meta.title || '')
-		const t = title.toLowerCase()
-		if (t.includes('negative') || title.includes('负')) negativeIdxs.push(i)
+		const tn = textNodes[i]
+		const t = tn.title.toLowerCase()
+		let isNeg = false
+		for (const key of tn.textKeys) {
+			const val = String(tn.node.inputs?.[key] || '').toLowerCase()
+			if (key.includes('negative') || t.includes('negative') || t.includes('负') ||
+				val.includes('negative') || val.includes('nsfw') || val.includes('worst quality') ||
+				val.includes('low quality') || val.includes('bad anatomy')) {
+				isNeg = true
+				break
+			}
+		}
+		if (isNeg) negativeIdxs.push(i)
 		else positiveIdxs.push(i)
+	}
+
+	function writeText(idx, val) {
+		const tn = textNodes[idx]
+		if (!tn || !isRecord(tn.node.inputs)) return
+		let written = false
+		for (const key of tn.textKeys) {
+			if (key in tn.node.inputs && typeof tn.node.inputs[key] === 'string') {
+				tn.node.inputs[key] = val
+				written = true
+			}
+		}
+		if (!written) {
+			tn.node.inputs[tn.primaryKey || 'text'] = val
+		}
 	}
 
 	if (pp) {
 		const targets = positiveIdxs.length > 0 ? positiveIdxs : [0]
 		for (const i of targets) {
-			const node = textNodes[i][1]
-			if (!isRecord(node.inputs)) node.inputs = {}
-			node.inputs.text = pp
+			writeText(i, pp)
 		}
 	}
 	if (np) {
@@ -1502,9 +1700,7 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 		else if (textNodes.length >= 2) targets = [1]
 		else targets = [0]
 		for (const i of targets) {
-			const node = textNodes[i][1]
-			if (!isRecord(node.inputs)) node.inputs = {}
-			node.inputs.text = np
+			writeText(i, np)
 		}
 	}
 }
@@ -1561,12 +1757,15 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 	if (!isRecord(outputs)) return []
 
 	const media = []
+	const VIDEO_EXTS = ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif', '.m4v', '.wmv', '.flv']
+	const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif', '.gif']
+	const MODEL3D_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.ply', '.3ds', '.usdz', '.usd', '.blend', '.step', '.iges']
 	const kindByFilename = name => {
 		const n = String(name || '').trim().toLowerCase()
 		if (!n) return null
-		if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some(ext => n.endsWith(ext))) return 'video'
-		if (['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif'].some(ext => n.endsWith(ext))) return 'image'
-		if (['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.ply', '.3ds', '.usdz', '.usd'].some(ext => n.endsWith(ext))) return 'model3d'
+		if (VIDEO_EXTS.some(ext => n.endsWith(ext))) return 'video'
+		if (IMAGE_EXTS.some(ext => n.endsWith(ext))) return 'image'
+		if (MODEL3D_EXTS.some(ext => n.endsWith(ext))) return 'model3d'
 		return null
 	}
 	const nodeSortKey = v => {
@@ -1594,9 +1793,10 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 				const subfolder = String(m.subfolder || '').trim()
 				const folderType = String(m.type || 'output').trim()
 				let kind = null
-				if (key === 'gifs' || key === 'videos') kind = 'video'
-				else if (key === 'images') kind = 'image'
-				else if (key === 'meshes' || key === 'models' || key === 'models3d' || key === 'files') kind = 'model3d'
+				const lkey = String(key || '').toLowerCase()
+				if (lkey === 'gifs' || lkey === 'videos') kind = 'video'
+				else if (lkey === 'images') kind = 'image'
+				else if (lkey === 'meshes' || lkey === 'models' || lkey === 'models3d' || lkey === 'files' || lkey === 'results') kind = 'model3d'
 				const inferred = kindByFilename(filename)
 				if (inferred) kind = inferred
 				if (!kind) continue
@@ -1636,6 +1836,136 @@ function extractCreateTimeFromExtra(extra) {
 	const raw = extra.create_time
 	if (raw == null) return 0
 	try { const v = Number(String(raw).trim()); return v > 0 ? v : 0 } catch { return 0 }
+}
+
+function extractEntryTimestamp(entry) {
+	if (!isRecord(entry)) return 0
+	try {
+		const status = entry.status
+		if (isRecord(status) && Array.isArray(status.messages) && status.messages.length > 0) {
+			const firstMsg = status.messages[0]
+			if (Array.isArray(firstMsg) && firstMsg.length > 0) {
+				const ts = Number(firstMsg[0])
+				if (Number.isFinite(ts) && ts > 0) return ts * 1000
+			}
+		}
+	} catch {}
+	const promptArr = Array.isArray(entry?.prompt) ? entry.prompt : null
+	if (promptArr && promptArr.length >= 4) {
+		const ct = extractCreateTimeFromExtra(promptArr[3])
+		if (ct > 0) return ct
+	}
+	return 0
+}
+
+function isEntrySuccessful(entry) {
+	if (!isRecord(entry)) return false
+	const status = entry.status
+	if (!isRecord(status)) return false
+	const statusStr = String(status.status_str || '').toLowerCase()
+	if (statusStr === 'success') return true
+	if (status.completed === true && !status.status_str) return true
+	return false
+}
+
+function buildWorkflowFingerprint(promptGraph) {
+	if (!isRecord(promptGraph)) return ''
+	const classTypes = []
+	for (const node of Object.values(promptGraph)) {
+		if (isRecord(node) && typeof node.class_type === 'string') {
+			classTypes.push(node.class_type)
+		}
+	}
+	classTypes.sort()
+	return classTypes.join('|')
+}
+
+function buildWorkflowFingerprintFromWorkflowJson(workflow) {
+	if (!isRecord(workflow)) return ''
+	const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : []
+	const types = []
+	for (const node of nodes) {
+		if (isRecord(node) && typeof node.type === 'string') {
+			const t = node.type
+			if (t !== 'Reroute' && t !== 'Note' && t !== 'PrimitiveNode') {
+				types.push(t)
+			}
+		}
+	}
+	types.sort()
+	return types.join('|')
+}
+
+async function findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint) {
+	const maxItems = 200
+	const histResult = await comfyJsonGet(client, `${base}/history?max_items=${maxItems}`, 15000)
+	if (histResult.error || !isRecord(histResult.data)) return { error: 'failed to fetch history' }
+
+	const exactMatches = []
+	const fuzzyMatches = []
+
+	for (const [promptId, entry] of Object.entries(histResult.data)) {
+		if (!isRecord(entry)) continue
+		const promptArr = entry.prompt
+		if (!Array.isArray(promptArr) || promptArr.length < 3 || !isRecord(promptArr[2])) continue
+		const promptGraph = promptArr[2]
+		if (!isPromptGraphJson(promptGraph)) continue
+
+		const extra = promptArr.length >= 4 && isRecord(promptArr[3]) ? promptArr[3] : null
+		const entryWorkflowId = extractWorkflowIdFromExtra(extra)
+		const timestamp = extractEntryTimestamp(entry)
+		const successful = isEntrySuccessful(entry)
+		const candidate = { promptId, promptGraph, extra, workflow: isRecord(extra?.extra_pnginfo) && isRecord(extra.extra_pnginfo.workflow) ? extra.extra_pnginfo.workflow : null, timestamp, successful }
+
+		if (entryWorkflowId && workflowId && entryWorkflowId === workflowId) {
+			if (successful) exactMatches.push(candidate)
+		} else if (workflowFingerprint && successful) {
+			const histWorkflowFp = candidate.workflow ? buildWorkflowFingerprintFromWorkflowJson(candidate.workflow) : buildWorkflowFingerprint(promptGraph)
+			if (histWorkflowFp === workflowFingerprint) fuzzyMatches.push(candidate)
+		}
+	}
+
+	const pick = (arr) => {
+		if (arr.length === 0) return null
+		arr.sort((a, b) => b.timestamp - a.timestamp)
+		return arr[0]
+	}
+
+	const best = pick(exactMatches) || pick(fuzzyMatches)
+	if (!best) {
+		const hasAny = Object.keys(histResult.data).length > 0
+		return { error: hasAny ? 'no matching successful run in history' : 'history is empty' }
+	}
+
+	return {
+		promptGraph: best.promptGraph,
+		workflow: best.workflow,
+		promptId: best.promptId,
+		timestamp: best.timestamp,
+		matchType: exactMatches.includes(best) ? 'exact' : 'fuzzy'
+	}
+}
+
+function randomizeSeedInPrompt(promptGraph) {
+	if (!isRecord(promptGraph)) return
+	const samplerTypes = new Set(['KSampler', 'KSamplerAdvanced', 'KSampler (Efficient)', 'BNK_CLIPTextEncodeAdvanced'])
+	const seedKeyNames = ['noise_seed', 'seed', 'seed_num']
+	for (const node of Object.values(promptGraph)) {
+		if (!isRecord(node)) continue
+		const ct = String(node.class_type || '')
+		if (!samplerTypes.has(ct) && !/sampler/i.test(ct)) continue
+		if (!isRecord(node.inputs)) continue
+		for (const key of seedKeyNames) {
+			if (key in node.inputs && !isSocketValue(node.inputs[key])) {
+				if (typeof node.inputs[key] === 'number' || typeof node.inputs[key] === 'string') {
+					const s = String(node.inputs[key]).trim()
+					if (/^\d+$/.test(s) && BigInt(s) <= 0xffffffffffffffffn) {
+						node.inputs[key] = Math.floor(Math.random() * 0xffffffff)
+					}
+				}
+			}
+		}
+	}
 }
 
 async function findPromptGraphFromComfyState(client, base, workflowId) {
@@ -1949,6 +2279,456 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 	return { ok: true, baseUrl: base, workflowPath, workflow, promptGraph, source: 'history' }
 }
 
+export async function runtimeResolveHistoryPrompt(ctx, payload) {
+	const client = ctx.httpClient
+	const p = payload || {}
+	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
+	if (baseErr) return { ok: false, error: baseErr }
+
+	const workflowPath = String(p.workflowPath || '').trim()
+	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
+
+	if (workflowPath.startsWith('history://')) {
+		const promptId = workflowPath.slice('history://'.length)
+		const histUrl = `${base}/history/${encodeURIComponent(promptId)}`
+		const histResult = await comfyJsonGet(client, histUrl, 10000)
+		if (!histResult.error && isRecord(histResult.data)) {
+			const entry = histResult.data[promptId]
+			if (isRecord(entry)) {
+				const promptArr = entry.prompt
+				if (Array.isArray(promptArr) && promptArr.length >= 3 && isRecord(promptArr[2])) {
+					const directGraph = promptArr[2]
+					const directInputInfo = analyzeInputNodes(directGraph)
+					const directTs = extractEntryTimestamp(entry)
+					const resp = {
+						ok: true,
+						baseUrl: base,
+						hasHistory: true,
+						promptGraph: directGraph,
+						promptId,
+						timestamp: directTs,
+						matchType: 'direct',
+						nodeCount: directInputInfo.nodeCount,
+						imageInputs: directInputInfo.images,
+						videoInputs: directInputInfo.videos,
+						textNodes: directInputInfo.textNodes,
+						seedNodes: directInputInfo.seedNodes,
+						outputs: directInputInfo.outputs,
+						hasImageInput: directInputInfo.hasImageInput,
+						hasVideoInput: directInputInfo.hasVideoInput,
+						hasTextPrompt: directInputInfo.hasTextPrompt,
+						hasImageOutput: directInputInfo.hasImageOutput,
+						hasVideoOutput: directInputInfo.hasVideoOutput,
+						hasModel3dOutput: directInputInfo.hasModel3dOutput,
+						source: 'history-direct',
+						fromCache: false
+					}
+					writeHistoryCache(base, workflowPath, resp)
+					return resp
+				}
+			}
+		}
+		const cached = readHistoryCache(base, workflowPath)
+		if (cached) {
+			return { ...cached, fromCache: true, source: 'cache-direct' }
+		}
+		return { ok: false, error: 'NO_HISTORY', message: '历史记录已不存在，请重新在ComfyUI中运行该工作流' }
+	}
+
+	const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
+	if (!wfResult.ok) return { ok: false, error: `读取工作流失败：${wfResult.error}` }
+	const workflowAny = wfResult.workflow
+	const workflowId = isRecord(workflowAny) ? String(workflowAny.id || '').trim() : ''
+	const workflowFingerprint = buildWorkflowFingerprintFromWorkflowJson(workflowAny)
+
+	const historyResult = await findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint || null)
+	if (historyResult.error || !isRecord(historyResult.promptGraph)) {
+		const cached = readHistoryCache(base, workflowPath)
+		if (cached) {
+			return { ...cached, fromCache: true, source: 'cache-matched' }
+		}
+		return {
+			ok: false,
+			error: 'NO_HISTORY',
+			message: `该工作流暂无成功运行记录。请先打开ComfyUI界面（${base}），加载"${workflowPath}"工作流并成功运行一次，然后回到DVStudio重试。`,
+			baseUrl: base
+		}
+	}
+
+	const nodeCount = Object.keys(historyResult.promptGraph).length
+	const inputNodeInfo = analyzeInputNodes(historyResult.promptGraph)
+
+	const resp = {
+		ok: true,
+		baseUrl: base,
+		hasHistory: true,
+		promptGraph: historyResult.promptGraph,
+		promptId: historyResult.promptId,
+		timestamp: historyResult.timestamp,
+		matchType: historyResult.matchType,
+		nodeCount,
+		imageInputs: inputNodeInfo.images,
+		videoInputs: inputNodeInfo.videos,
+		textNodes: inputNodeInfo.textNodes,
+		seedNodes: inputNodeInfo.seedNodes,
+		outputs: inputNodeInfo.outputs,
+		hasImageInput: inputNodeInfo.hasImageInput,
+		hasVideoInput: inputNodeInfo.hasVideoInput,
+		hasTextPrompt: inputNodeInfo.hasTextPrompt,
+		hasImageOutput: inputNodeInfo.hasImageOutput,
+		hasVideoOutput: inputNodeInfo.hasVideoOutput,
+		hasModel3dOutput: inputNodeInfo.hasModel3dOutput,
+		source: 'history-matched',
+		fromCache: false
+	}
+	writeHistoryCache(base, workflowPath, resp)
+	return resp
+}
+
+function analyzeInputNodes(promptGraph) {
+	const images = []
+	const videos = []
+	const allTextNodes = []
+	const seedNodes = []
+	const IMAGE_EXTS = /\.(png|jpg|jpeg|webp|gif|bmp|tiff)$/i
+	const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv)$/i
+	const IMAGE_LOADER_TYPES = new Set(['LoadImage', 'LoadImageFromPath', 'Load Image', 'ImageLoader', 'LoadImageMasked'])
+	const VIDEO_LOADER_TYPES = new Set(['LoadVideo', 'Load Video', 'VHS_LoadVideo', 'VideoLoader'])
+	const TEXT_ENCODE_TYPE_RE = /TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+	const SAMPLER_TYPE_RE = /sampler|KSampler|KSamplerSelect|BasicScheduler|FlowSampler|CausalVideoSampler|WanSampler|WanImageToVideo|WanI2V|WanTextToVideo|WanT2V|HunyuanVideoSampler|CogVideoSampler|VideoSampler|LTXVSampler|MochiSampler|SVD_img2vid/i
+	const SEED_KEYS = ['noise_seed', 'seed', 'seed_num', 'rand_seed']
+	const TEXT_INPUT_KEYS = ['text', 'text_g', 'text_l', 'prompt', 'positive', 'negative', 'caption', 'description', 'instruction', 'text_positive', 'text_negative']
+
+	function detectFileKind(classType, key, val) {
+		if (isSocketValue(val)) return null
+		if (typeof val !== 'string') return null
+		const base = val.split(/[\\/]/).pop() || val
+		if (IMAGE_EXTS.test(base)) return 'image'
+		if (VIDEO_EXTS.test(base)) return 'video'
+		if (IMAGE_LOADER_TYPES.has(classType) && (key === 'image' || key === 'image_path' || key === 'path')) return 'image'
+		if (VIDEO_LOADER_TYPES.has(classType) && (key === 'video' || key === 'video_path' || key === 'path')) return 'video'
+		if (/LoadImage|Load.*Image/i.test(classType) && key === 'image') return 'image'
+		if (/LoadVideo|Load.*Video/i.test(classType) && key === 'video') return 'video'
+		return null
+	}
+
+	function detectTextInputKeys(node, inputs) {
+		const found = []
+		for (const key of TEXT_INPUT_KEYS) {
+			if (key in inputs && typeof inputs[key] === 'string' && !isSocketValue(inputs[key])) {
+				found.push(key)
+			}
+		}
+		if (found.length > 0) return found
+		for (const [key, val] of Object.entries(inputs)) {
+			if (isSocketValue(val)) continue
+			if (typeof val !== 'string') continue
+			if (key.toLowerCase().includes('text') || key.toLowerCase() === 'prompt') {
+				found.push(key)
+			}
+		}
+		return found
+	}
+
+	function isTextEncoderNode(ct, inputs) {
+		if (ct === 'CLIPTextEncode') return true
+		if (ct === 'BNK_CLIPTextEncodeAdvanced') return true
+		if (TEXT_ENCODE_TYPE_RE.test(ct)) return true
+		if (isRecord(inputs)) {
+			for (const key of TEXT_INPUT_KEYS) {
+				if (key in inputs && typeof inputs[key] === 'string' && !isSocketValue(inputs[key])) {
+					if (!/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_/i.test(ct)) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node)) continue
+		const ct = String(node.class_type || '')
+		const inputs = isRecord(node.inputs) ? node.inputs : {}
+		const meta = isRecord(node._meta) ? node._meta : {}
+		const title = String(meta.title || '')
+
+		if (isTextEncoderNode(ct, inputs)) {
+			const textKeys = detectTextInputKeys(node, inputs)
+			if (textKeys.length > 0) {
+				const primaryKey = textKeys[0]
+				const textVal = typeof inputs[primaryKey] === 'string' ? inputs[primaryKey] : ''
+				allTextNodes.push({
+					nodeId: nid,
+					classType: ct,
+					inputKey: primaryKey,
+					allTextKeys: textKeys,
+					originalText: textVal,
+					title
+				})
+			}
+		}
+
+		if (SAMPLER_TYPE_RE.test(ct)) {
+			for (const seedKey of SEED_KEYS) {
+				if (seedKey in inputs && !isSocketValue(inputs[seedKey])) {
+					seedNodes.push({ nodeId: nid, classType: ct, inputKey: seedKey })
+					break
+				}
+			}
+		}
+
+		for (const [key, val] of Object.entries(inputs)) {
+			const kind = detectFileKind(ct, key, val)
+			if (kind === 'image') {
+				images.push({ nodeId: nid, classType: ct, inputKey: key, originalValue: String(val), displayName: `${ct}.${key}` })
+			} else if (kind === 'video') {
+				videos.push({ nodeId: nid, classType: ct, inputKey: key, originalValue: String(val), displayName: `${ct}.${key}` })
+			}
+		}
+	}
+
+	const samplerNodes = []
+	const conditioningNodes = []
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node)) continue
+		const ct = String(node.class_type || '')
+		const inputs = isRecord(node.inputs) ? node.inputs : {}
+		if (SAMPLER_TYPE_RE.test(ct) && inputs) {
+			samplerNodes.push({ nodeId: nid, inputs })
+		}
+		if (isRecord(inputs) && ('positive' in inputs || 'negative' in inputs || 'positive_conditioning' in inputs || 'negative_conditioning' in inputs || 'positive_embeds' in inputs || 'negative_embeds' in inputs || 'positive_embeddings' in inputs || 'negative_embeddings' in inputs || 'cond_positive' in inputs || 'cond_negative' in inputs)) {
+			conditioningNodes.push({ nodeId: nid, inputs, ct })
+		}
+	}
+
+	const positiveIds = new Set()
+	const negativeIds = new Set()
+
+	function addConnectedId(conn, set) {
+		if (Array.isArray(conn) && conn.length >= 1) set.add(String(conn[0]))
+	}
+
+	for (const s of [...samplerNodes, ...conditioningNodes]) {
+		addConnectedId(s.inputs.positive, positiveIds)
+		addConnectedId(s.inputs.negative, negativeIds)
+		addConnectedId(s.inputs.positive_conditioning, positiveIds)
+		addConnectedId(s.inputs.negative_conditioning, negativeIds)
+		addConnectedId(s.inputs.positive_embeds, positiveIds)
+		addConnectedId(s.inputs.negative_embeds, negativeIds)
+		addConnectedId(s.inputs.positive_embeddings, positiveIds)
+		addConnectedId(s.inputs.negative_embeddings, negativeIds)
+		addConnectedId(s.inputs.cond_positive, positiveIds)
+		addConnectedId(s.inputs.cond_negative, negativeIds)
+	}
+
+	const classifiedPositive = []
+	const classifiedNegative = []
+	const unclassifiedText = []
+	for (const tn of allTextNodes) {
+		if (positiveIds.has(tn.nodeId)) {
+			classifiedPositive.push(tn)
+		} else if (negativeIds.has(tn.nodeId)) {
+			classifiedNegative.push(tn)
+		} else {
+			unclassifiedText.push(tn)
+		}
+	}
+
+	for (const tn of unclassifiedText) {
+		const text = (tn.originalText || '').toLowerCase()
+		const title = (tn.title || '').toLowerCase()
+		const key = (tn.inputKey || '').toLowerCase()
+		const isNegative =
+			key.includes('negative') ||
+			title.includes('negative') || title.includes('负') ||
+			text.includes('negative') || text.includes('nsfw') || text.includes('worst quality') ||
+			text.includes('low quality') || text.includes('bad anatomy')
+		if (isNegative) {
+			classifiedNegative.push(tn)
+		} else {
+			classifiedPositive.push(tn)
+		}
+	}
+
+	if (classifiedPositive.length === 0 && classifiedNegative.length === 0 && allTextNodes.length > 0) {
+		if (allTextNodes.length === 1) {
+			classifiedPositive.push(allTextNodes[0])
+		} else {
+			classifiedPositive.push(allTextNodes[0])
+			for (let i = 1; i < allTextNodes.length; i++) {
+				classifiedNegative.push(allTextNodes[i])
+			}
+		}
+	}
+
+	const SAVE_IMAGE_TYPES = new Set(['SaveImage', 'PreviewImage', 'SaveImageNoPreview', 'SaveImageWebp'])
+	const SAVE_VIDEO_TYPES = new Set(['VHS_VideoCombine', 'SaveVideo', 'SaveAnimatedWEBP', 'SaveAnimatedPNG', 'SaveGif'])
+	const SAVE_VIDEO_TYPE_RE = /SaveVideo|VHS_VideoCombine|AnimateCombine|SaveAnimated|VideoCombine|VHS_Save/i
+	const SAVE_IMAGE_TYPE_RE = /SaveImage|PreviewImage|SaveImageNoPreview/i
+	const SAVE_MODEL_TYPE_RE = /SaveGLB|SaveModel3D|SaveMesh|ExportModel|ExportMesh|SaveGltf|Save3D|SaveOBJ|SaveFBX|SaveSTL|SavePLY/i
+	const VIDEO_EXTS_OUTPUT = /\.(mp4|webm|mov|mkv|avi|gif|m4v|wmv|flv)$/i
+	const IMAGE_EXTS_OUTPUT = /\.(png|jpg|jpeg|webp|bmp|tiff?)$/i
+	const MODEL3D_EXTS_OUTPUT = /\.(glb|gltf|fbx|obj|stl|dae|ply|3ds|usdz?|blend|step|iges)$/i
+	const outputs = []
+
+	function detectOutputKind(ct, inputs) {
+		if (SAVE_IMAGE_TYPES.has(ct) || SAVE_IMAGE_TYPE_RE.test(ct)) return 'image'
+		if (SAVE_VIDEO_TYPES.has(ct) || SAVE_VIDEO_TYPE_RE.test(ct)) return 'video'
+		if (SAVE_MODEL_TYPE_RE.test(ct)) return 'model3d'
+		if (isRecord(inputs)) {
+			for (const [key, val] of Object.entries(inputs)) {
+				if (isSocketValue(val)) continue
+				if (typeof val !== 'string') continue
+				const base = val.split(/[\\/]/).pop() || val
+				if (VIDEO_EXTS_OUTPUT.test(base)) return 'video'
+				if (MODEL3D_EXTS_OUTPUT.test(base)) return 'model3d'
+			}
+			const filename_prefix = typeof inputs.filename_prefix === 'string' ? inputs.filename_prefix.toLowerCase() : ''
+			if (filename_prefix.includes('video') || filename_prefix.includes('animate')) return 'video'
+		}
+		return null
+	}
+
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node)) continue
+		const ct = String(node.class_type || '')
+		const inputs = isRecord(node.inputs) ? node.inputs : {}
+		if (/LoadImage|LoadVideo|LoadAudio|LoadData/i.test(ct)) continue
+		const meta = isRecord(node._meta) ? node._meta : {}
+		const title = String(meta.title || '')
+		const kind = detectOutputKind(ct, inputs)
+		if (kind) {
+			outputs.push({
+				nodeId: nid,
+				classType: ct,
+				mediaKind: kind,
+				displayName: title || ct
+			})
+		}
+	}
+
+	const outputKinds = new Set(outputs.map(o => o.mediaKind))
+	const hasImageOutput = outputKinds.has('image')
+	const hasVideoOutput = outputKinds.has('video')
+	const hasModel3dOutput = outputKinds.has('model3d')
+
+	const nodeCount = Object.keys(promptGraph).length
+	return {
+		images,
+		videos,
+		textNodes: {
+			positive: classifiedPositive,
+			negative: classifiedNegative
+		},
+		seedNodes,
+		outputs,
+		nodeCount,
+		hasImageInput: images.length > 0,
+		hasVideoInput: videos.length > 0,
+		hasTextPrompt: classifiedPositive.length > 0 || classifiedNegative.length > 0,
+		hasImageOutput,
+		hasVideoOutput,
+		hasModel3dOutput
+	}
+}
+
+function applyExactInputMappings(promptGraph, mappings, uploadedImages, uploadedVideos) {
+	const imgMappings = Array.isArray(mappings?.imageInputs) ? mappings.imageInputs : []
+	const vidMappings = Array.isArray(mappings?.videoInputs) ? mappings.videoInputs : []
+	const missingNodes = []
+
+	function assignPaths(nodeMappings, paths, label) {
+		for (let i = 0; i < paths.length && i < nodeMappings.length; i++) {
+			const m = nodeMappings[i]
+			const node = promptGraph[m.nodeId]
+			if (!node || !isRecord(node.inputs)) {
+				missingNodes.push(`${label}[${i}]: node ${m.nodeId}`)
+				continue
+			}
+			node.inputs[m.inputKey] = paths[i]
+		}
+	}
+
+	assignPaths(imgMappings, uploadedImages, 'image')
+	assignPaths(vidMappings, uploadedVideos, 'video')
+
+	if (missingNodes.length > 0) {
+		throw new Error(`Input nodes not found in prompt graph: ${missingNodes.join(', ')}. The workflow history may be outdated, please re-run in ComfyUI.`)
+	}
+}
+
+function applyTextOverridesWithMappings(promptGraph, mappings, positivePrompt, negativePrompt) {
+	const pp = String(positivePrompt || '').trim()
+	const np = String(negativePrompt || '').trim()
+	const textNodeMappings = mappings?.textNodes || {}
+	const posNodes = Array.isArray(textNodeMappings.positive) ? textNodeMappings.positive : []
+	const negNodes = Array.isArray(textNodeMappings.negative) ? textNodeMappings.negative : []
+
+	function writeTextToNode(node, mapping, textValue, isNegative) {
+		if (!node || !isRecord(node.inputs)) return
+		const keys = mapping && Array.isArray(mapping.allTextKeys) && mapping.allTextKeys.length > 0
+			? mapping.allTextKeys
+			: (mapping && mapping.inputKey ? [mapping.inputKey] : ['text'])
+		const commonKeys = isNegative
+			? ['text', 'text_l', 'negative', 'caption', 'description', 'text_negative']
+			: ['text', 'text_g', 'text_l', 'prompt', 'positive', 'caption', 'description', 'instruction', 'text_positive']
+		let written = false
+		for (const key of [...new Set([...keys, ...commonKeys])]) {
+			if (key in node.inputs && typeof node.inputs[key] === 'string') {
+				node.inputs[key] = textValue
+				written = true
+			}
+		}
+		if (!written) {
+			const skipKeys = new Set(['filename_prefix', 'image', 'video', 'model', 'clip', 'vae', 'samples', 'latent_image', 'noise_seed', 'seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise', 'width', 'height', 'ckpt_name', 'vae_name', 'clip_name', 'lora_name', 'control_net_name', 'style', 'strength', 'ratio'])
+			const antiKey = isNegative ? /positive/i : /negative/i
+			for (const [key, val] of Object.entries(node.inputs)) {
+				if (skipKeys.has(key)) continue
+				if (antiKey.test(key)) continue
+				if (typeof val === 'string' && !/^https?:\/\//.test(val) && !isSocketValue(val) && !/\.(png|jpg|jpeg|webp|mp4|webm|mov|avi|mkv|safetensors|ckpt|pt|bin)$/i.test(val)) {
+					node.inputs[key] = textValue
+					written = true
+					break
+				}
+			}
+		}
+		if (!written) {
+			node.inputs.text = textValue
+		}
+	}
+
+	if (pp) {
+		for (const m of posNodes) {
+			const node = promptGraph[m.nodeId]
+			writeTextToNode(node, m, pp, false)
+		}
+	}
+	if (np) {
+		for (const m of negNodes) {
+			const node = promptGraph[m.nodeId]
+			writeTextToNode(node, m, np, true)
+		}
+	}
+
+	if ((posNodes.length === 0 || negNodes.length === 0) && (pp || np)) {
+		applyTextOverrides(promptGraph, pp, np)
+	}
+}
+
+function randomizeSeedFromMappings(promptGraph, mappings) {
+	const seedMappings = Array.isArray(mappings?.seedNodes) ? mappings.seedNodes : []
+	for (const m of seedMappings) {
+		const node = promptGraph[m.nodeId]
+		if (node && isRecord(node.inputs) && m.inputKey in node.inputs) {
+			node.inputs[m.inputKey] = Math.floor(Math.random() * 0xffffffff)
+		}
+	}
+	if (seedMappings.length === 0) {
+		randomizeSeedInPrompt(promptGraph)
+	}
+}
+
 export async function runtimeGetWorkflowFile(ctx, payload) {
 	const client = ctx.httpClient
 	const p = payload || {}
@@ -2005,81 +2785,12 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
 	const positivePrompt = String(p.positivePrompt || '')
 	const negativePrompt = String(p.negativePrompt || '')
+	const inputMappings = isRecord(p.inputMappings) ? p.inputMappings : null
+	const historyPromptId = String(p.historyPromptId || '').trim()
 
-	// Fetch workflow JSON from ComfyUI userdata
-	const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
-	if (!wfResult.ok) return { ok: false, error: `读取工作流失败：${wfResult.error}` }
-	const workflowAny = wfResult.workflow
-
-	// === COMPREHENSIVE WORKFLOW DIAGNOSTIC ===
-	console.log('\n========== [ComfyUI Workflow Diagnostic] ==========')
-	console.log('workflowPath:', workflowPath)
-	if (isRecord(workflowAny)) {
-		console.log('[Top-level keys]:', Object.keys(workflowAny))
-		console.log('[version]:', workflowAny.version)
-		console.log('[id]:', workflowAny.id)
-		console.log('[has nodes]:', Array.isArray(workflowAny.nodes), 'count:', Array.isArray(workflowAny.nodes) ? workflowAny.nodes.length : 0)
-		console.log('[has links]:', Array.isArray(workflowAny.links), 'count:', Array.isArray(workflowAny.links) ? workflowAny.links.length : 0)
-		console.log('[has groups]:', Array.isArray(workflowAny.groups), 'count:', Array.isArray(workflowAny.groups) ? workflowAny.groups.length : 0)
-		console.log('[has extra]:', isRecord(workflowAny.extra))
-		if (isRecord(workflowAny.extra)) {
-			console.log('[extra keys]:', Object.keys(workflowAny.extra))
-			if (workflowAny.extra.ds) console.log('[extra.ds scale]:', workflowAny.extra.ds.scale, 'offset:', workflowAny.extra.ds.offset)
-		}
-		console.log('[has config]:', isRecord(workflowAny.config))
-		if (isRecord(workflowAny.config)) console.log('[config keys]:', Object.keys(workflowAny.config))
-		// Print all node types found
-		if (Array.isArray(workflowAny.nodes)) {
-			const typeCount = new Map()
-			const uuidNodes = []
-			for (const n of workflowAny.nodes) {
-				if (!isRecord(n)) continue
-				const t = String(n.type || '').trim()
-				typeCount.set(t, (typeCount.get(t) || 0) + 1)
-				if (isUuidLikeType(t)) {
-					uuidNodes.push(n)
-				}
-			}
-			console.log('\n[Node type counts]:')
-			for (const [t, c] of [...typeCount.entries()].sort((a, b) => b[1] - a[1])) {
-				console.log(`  ${t}: ${c}`)
-			}
-			console.log(`\n[UUID-typed nodes count]: ${uuidNodes.length}`)
-			for (const n of uuidNodes) {
-				console.log(`\n--- UUID Node id=${n.id} type=${n.type} ---`)
-				console.log('  title:', n.title)
-				console.log('  pos:', n.pos)
-				console.log('  size:', n.size)
-				console.log('  flags:', JSON.stringify(n.flags))
-				console.log('  order:', n.order)
-				console.log('  mode:', n.mode)
-				console.log('  widgets_values:', JSON.stringify(n.widgets_values))
-				console.log('  inputs:', JSON.stringify(n.inputs))
-				console.log('  outputs:', JSON.stringify(n.outputs))
-				console.log('  properties:', JSON.stringify(n.properties))
-				console.log('  ALL KEYS:', Object.keys(n))
-				// Print the full node JSON
-				console.log('  FULL JSON:', JSON.stringify(n))
-			}
-		}
-		// Check for components/extra node definitions
-		if (workflowAny.extra && isRecord(workflowAny.extra)) {
-			for (const key of Object.keys(workflowAny.extra)) {
-				const val = workflowAny.extra[key]
-				if (typeof val === 'object' && val !== null) {
-					console.log(`\n[extra.${key}] type:`, Array.isArray(val) ? 'array' : typeof val, Array.isArray(val) ? `length=${val.length}` : `keys=${Object.keys(val).slice(0, 20)}`)
-				}
-			}
-		}
-	} else {
-		console.log('workflowAny is NOT a record, type:', typeof workflowAny)
-	}
-	console.log('========== [End Workflow Diagnostic] ==========\n')
-
-	// Upload input files (classified by mediaType)
+	// Upload input files first (classified by mediaType)
 	const uploadedImages = []
 	const uploadedVideos = []
-	const uploadedModels = []
 	const inputFiles = Array.isArray(p.files) ? p.files : []
 	for (let i = 0; i < inputFiles.length; i++) {
 		const f = inputFiles[i]
@@ -2098,10 +2809,10 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		if (!fileBuf) continue
 		const mediaType = String(f.mediaType || 'image').toLowerCase()
 		fileName = String(f.name || f.filename || `input_${i}.png`)
-		fileMime = fileMime || f.contentType || f.mimeType || (mediaType === 'video' ? 'video/mp4' : mediaType === 'model3d' ? 'application/octet-stream' : 'image/png')
+		fileMime = fileMime || f.contentType || f.mimeType || (mediaType === 'video' ? 'video/mp4' : 'image/png')
 
 		const upResult = await uploadImageToComfyui(client, base, fileName, fileBuf, fileMime)
-		if (upResult.error) return { ok: false, error: `上传${mediaType === 'video' ? '视频' : mediaType === 'model3d' ? '3D模型' : '图片'}失败：${upResult.error}` }
+		if (upResult.error) return { ok: false, error: `上传${mediaType === 'video' ? '视频' : '图片'}失败：${upResult.error}` }
 		const name = String(upResult.data?.name || '').trim()
 		const subfolder = String(upResult.data?.subfolder || '').trim().replace(/\\/g, '/')
 		const upPath = subfolder ? `${subfolder}/${name}` : name
@@ -2109,93 +2820,165 @@ export async function runtimeRunWorkflow(ctx, payload) {
 
 		if (mediaType === 'video') {
 			uploadedVideos.push(upPath)
-		} else if (mediaType === 'model3d') {
-			uploadedModels.push(upPath)
 		} else {
 			uploadedImages.push(upPath)
 		}
 	}
 
-	// Get object_info for workflow-to-prompt conversion (use cache if available)
-	let objectInfo = getCachedObjectInfo(base)
-	if (!objectInfo) {
-		try {
-			const oiResult = await comfyJsonGet(client, `${base}/object_info`, 15000)
-			if (!oiResult.error && isRecord(oiResult.data)) {
-				objectInfo = oiResult.data
-				setCachedObjectInfo(base, objectInfo)
-			}
-		} catch {}
-	}
-
-	const knownNodeTypes = objectInfo ? new Set(Object.keys(objectInfo).filter(k => typeof k === 'string')) : null
-
-	// Determine prompt graph
-	let promptGraph
+	let promptGraph = null
 	let promptSource = 'history'
+	let resolvedWorkflow = null
+	let matchType = 'none'
+	let effectiveMappings = inputMappings
 
-	if (isRecord(wfResult.promptGraph) && isPromptGraphJson(wfResult.promptGraph)) {
-		promptGraph = wfResult.promptGraph
-		promptSource = 'history-direct'
-	}
-
-	// Try to find from ComfyUI history first
-	if (!isRecord(promptGraph)) {
-		const workflowId = isRecord(workflowAny) ? String(workflowAny.id || '').trim() : ''
-		if (workflowId) {
-			const histResult = await findPromptGraphFromComfyState(client, base, workflowId)
-			if (isRecord(histResult.prompt)) {
-				promptGraph = histResult.prompt
+	if (historyPromptId) {
+		const histUrl = `${base}/history/${encodeURIComponent(historyPromptId)}`
+		const histResult = await comfyJsonGet(client, histUrl, 10000)
+		if (!histResult.error && isRecord(histResult.data)) {
+			const entry = histResult.data[historyPromptId]
+			if (isRecord(entry)) {
+				const pa = entry.prompt
+				if (Array.isArray(pa) && pa.length >= 3 && isRecord(pa[2])) {
+					promptGraph = pa[2]
+					matchType = 'direct'
+					promptSource = 'history-direct-by-id'
+				}
+			}
+		}
+		if (!isRecord(promptGraph)) {
+			const cached = readHistoryCache(base, `history://${historyPromptId}`)
+			if (cached && isRecord(cached.promptGraph)) {
+				promptGraph = cached.promptGraph
+				matchType = cached.matchType || 'direct'
+				promptSource = 'cache-direct-by-id'
+				if (!effectiveMappings) {
+					effectiveMappings = {
+						imageInputs: cached.imageInputs || [],
+						videoInputs: cached.videoInputs || [],
+						textNodes: cached.textNodes || { positive: [], negative: [] },
+						seedNodes: cached.seedNodes || []
+					}
+				}
 			}
 		}
 	}
 
-	// If workflow JSON is already a prompt graph, use it directly
-	if (!isRecord(promptGraph)) {
-		if (isPromptGraphJson(workflowAny)) {
-			promptGraph = workflowAny
-			promptSource = 'prompt-graph'
-		} else if (isRecord(workflowAny) && isPromptGraphJson(workflowAny.prompt)) {
-			promptGraph = workflowAny.prompt
-			promptSource = 'wrapped-prompt'
-		}
-	}
-
-	// Convert from workflow UI format
-	if (!isRecord(promptGraph)) {
-		if (isRecord(workflowAny) && Array.isArray(workflowAny.nodes) && Array.isArray(workflowAny.links)) {
-			const convResult = newWorkflowToPrompt(workflowAny, objectInfo)
-			if (convResult.error) {
-				return { ok: false, error: `工作流转换失败：${convResult.error}` }
+	if (workflowPath.startsWith('history://') && !isRecord(promptGraph)) {
+		const promptId = workflowPath.slice('history://'.length)
+		const histUrl = `${base}/history/${encodeURIComponent(promptId)}`
+		const histResult = await comfyJsonGet(client, histUrl, 10000)
+		if (!histResult.error && isRecord(histResult.data)) {
+			const entry = histResult.data[promptId]
+			if (isRecord(entry)) {
+				const pa = entry.prompt
+				if (Array.isArray(pa) && pa.length >= 3 && isRecord(pa[2])) {
+					promptGraph = pa[2]
+					matchType = 'direct'
+					promptSource = 'history-direct'
+				}
 			}
-			promptGraph = convResult.prompt
-			promptSource = 'template'
+		}
+		if (!isRecord(promptGraph)) {
+			const cached = readHistoryCache(base, workflowPath)
+			if (cached && isRecord(cached.promptGraph)) {
+				promptGraph = cached.promptGraph
+				matchType = cached.matchType || 'direct'
+				promptSource = 'cache-direct'
+				if (!effectiveMappings) {
+					effectiveMappings = {
+						imageInputs: cached.imageInputs || [],
+						videoInputs: cached.videoInputs || [],
+						textNodes: cached.textNodes || { positive: [], negative: [] },
+						seedNodes: cached.seedNodes || []
+					}
+				}
+			}
 		}
 	}
 
 	if (!isRecord(promptGraph)) {
-		return { ok: false, error: '无法从工作流构建可执行的 prompt graph' }
+		const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
+		if (!wfResult.ok) return { ok: false, error: `读取工作流失败：${wfResult.error}` }
+		resolvedWorkflow = wfResult.workflow
+		const workflowId = isRecord(resolvedWorkflow) ? String(resolvedWorkflow.id || '').trim() : ''
+		const workflowFingerprint = buildWorkflowFingerprintFromWorkflowJson(resolvedWorkflow)
+		const histResult = await findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint || null)
+		if (isRecord(histResult.promptGraph)) {
+				promptGraph = histResult.promptGraph
+				matchType = histResult.matchType || 'exact'
+				promptSource = `history-${matchType}`
+				if (!effectiveMappings) {
+					const analyzed = analyzeInputNodes(promptGraph)
+					effectiveMappings = {
+						imageInputs: analyzed.images,
+						videoInputs: analyzed.videos,
+						textNodes: analyzed.textNodes,
+						seedNodes: analyzed.seedNodes
+					}
+				}
+			}
+		if (!isRecord(promptGraph)) {
+			const cached = readHistoryCache(base, workflowPath)
+			if (cached && isRecord(cached.promptGraph)) {
+				promptGraph = cached.promptGraph
+				matchType = cached.matchType || 'exact'
+				promptSource = 'cache-matched'
+				if (!effectiveMappings) {
+					effectiveMappings = {
+						imageInputs: cached.imageInputs || [],
+						videoInputs: cached.videoInputs || [],
+						textNodes: cached.textNodes || { positive: [], negative: [] },
+						seedNodes: cached.seedNodes || []
+					}
+				}
+			}
+		}
 	}
 
-	// Deep copy to avoid mutating source
+	if (!isRecord(promptGraph)) {
+		return {
+			ok: false,
+			error: 'NO_HISTORY',
+			message: `该工作流暂无成功运行记录。请先打开ComfyUI界面（${base}），加载"${workflowPath}"工作流并成功运行一次，然后回到DVStudio重试。`,
+			baseUrl: base,
+			requiresHistorySetup: true
+		}
+	}
+
+	if (!effectiveMappings) {
+		const analyzed = analyzeInputNodes(promptGraph)
+		effectiveMappings = {
+			imageInputs: analyzed.images,
+			videoInputs: analyzed.videos,
+			textNodes: analyzed.textNodes,
+			seedNodes: analyzed.seedNodes
+		}
+	}
+
 	try { promptGraph = JSON.parse(JSON.stringify(promptGraph)) } catch {}
 
-	// Patch uploaded files into input nodes (images/videos/3D models)
-	patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels)
+	console.log(`[ComfyUI] Using history prompt (source=${promptSource}, match=${matchType}), nodes:`, Object.keys(promptGraph).length)
+	console.log(`[ComfyUI] Positive prompt: "${positivePrompt.slice(0, 100)}${positivePrompt.length > 100 ? '...' : ''}"`)
+	console.log(`[ComfyUI] Negative prompt: "${negativePrompt.slice(0, 100)}${negativePrompt.length > 100 ? '...' : ''}"`)
+	console.log(`[ComfyUI] Text node mappings - positive:`, (effectiveMappings?.textNodes?.positive || []).map((n) => `${n.nodeId}(${n.classType}).${n.inputKey}`), 'negative:', (effectiveMappings?.textNodes?.negative || []).map((n) => `${n.nodeId}(${n.classType}).${n.inputKey}`))
 
-	// Normalize socket inputs
-	normalizePromptGraphForRuntime(promptGraph, objectInfo)
+	try {
+		applyExactInputMappings(promptGraph, effectiveMappings, uploadedImages, uploadedVideos)
+	} catch (mappingErr) {
+		return { ok: false, error: mappingErr.message || 'Input mapping failed' }
+	}
 
-	// Apply text overrides
-	applyTextOverrides(promptGraph, positivePrompt, negativePrompt)
+	applyTextOverridesWithMappings(promptGraph, effectiveMappings, positivePrompt, negativePrompt)
 
-	// Submit to ComfyUI
+	randomizeSeedFromMappings(promptGraph, effectiveMappings)
+
+	const workflowForSubmit = isRecord(resolvedWorkflow) ? resolvedWorkflow : {}
 	const clientId = crypto.randomBytes(16).toString('hex')
 	const comfyPayload = {
 		prompt: promptGraph,
 		client_id: clientId,
 		extra_data: {
-			extra_pnginfo: { workflow: workflowAny },
+			extra_pnginfo: { workflow: workflowForSubmit },
 			create_time: Date.now()
 		}
 	}
@@ -2203,8 +2986,18 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	console.log('[ComfyUI] Submitting prompt, nodes:', Object.keys(promptGraph).length, 'source:', promptSource)
 	for (const [nid, node] of Object.entries(promptGraph)) {
 		if (!isRecord(node)) continue
-		const inputKeys = isRecord(node.inputs) ? Object.keys(node.inputs) : []
-		console.log(`  node[${nid}] class_type=${node.class_type}, inputs:`, inputKeys.join(', '))
+		const inputs = isRecord(node.inputs) ? node.inputs : {}
+		const inputSummary = {}
+		for (const [k, v] of Object.entries(inputs)) {
+			if (Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number') {
+				inputSummary[k] = `[link ${v[0]}:${v[1]}]`
+			} else if (typeof v === 'string' && v.length > 80) {
+				inputSummary[k] = `${v.slice(0, 80)}...`
+			} else {
+				inputSummary[k] = v
+			}
+		}
+		console.log(`  node[${nid}] class_type=${node.class_type}, inputs:`, JSON.stringify(inputSummary))
 	}
 
 	const submitResult = await comfyJsonPost(client, `${base}/prompt`, comfyPayload, 30000)

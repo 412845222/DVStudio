@@ -283,6 +283,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 					const fromAnchor = outputAnchorMap.get(anchorId)
 					const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor'))
 					const fromMediaType = fromAnchor?.mediaType as 'image' | 'video' | 'model3d' | undefined
+					const hasDownstream = edgesForAnchor.length > 0
 
 					const targetKinds = edgesForAnchor
 						.map((e: Edge) => {
@@ -296,7 +297,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						.filter((x): x is 'image' | 'video' | 'model3d' => x === 'image' || x === 'video' || x === 'model3d')
 					const uniqueTargetKinds = Array.from(new Set(targetKinds))
 
-					if (fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d') {
+					if (hasDownstream && (fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d')) {
 						if (uniqueTargetKinds.some((k) => k !== fromMediaType)) {
 							alerts.add(
 								t('nodes.comfyui.typeMismatch', { anchor: fromAnchorLabel, mediaType: fromMediaType })
@@ -325,11 +326,13 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 					}
 
 					if (!inferredMediaType) {
-						alerts.add(t('nodes.comfyui.noMediaOutput', { anchor: fromAnchorLabel }))
+						if (hasDownstream) {
+							alerts.add(t('nodes.comfyui.noMediaOutput', { anchor: fromAnchorLabel }))
+						}
 						continue
 					}
 
-					if (fromMediaType !== 'image' && fromMediaType !== 'video' && fromMediaType !== 'model3d') {
+					if (hasDownstream && fromMediaType !== 'image' && fromMediaType !== 'video' && fromMediaType !== 'model3d') {
 						alerts.add(
 							t('nodes.comfyui.unlabeledType', { anchor: fromAnchorLabel, mediaType: inferredMediaType })
 						)
@@ -337,10 +340,12 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 
 					const list = inferredMediaType === 'image' ? imageMedia : inferredMediaType === 'video' ? videoMedia : model3dMedia
 					if (!list.length) {
-						const mediaTypeLabel = inferredMediaType === 'image' ? t('nodes.comfyui.imageType') : inferredMediaType === 'video' ? t('nodes.comfyui.videoType') : t('common.model3d')
-						alerts.add(
-							t('nodes.comfyui.noMediaForAnchor', { mediaType: mediaTypeLabel, anchor: fromAnchorLabel })
-						)
+						if (hasDownstream) {
+							const mediaTypeLabel = inferredMediaType === 'image' ? t('nodes.comfyui.imageType') : inferredMediaType === 'video' ? t('nodes.comfyui.videoType') : t('common.model3d')
+							alerts.add(
+								t('nodes.comfyui.noMediaForAnchor', { mediaType: mediaTypeLabel, anchor: fromAnchorLabel })
+							)
+						}
 						continue
 					}
 

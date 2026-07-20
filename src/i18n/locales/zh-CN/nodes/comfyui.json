@@ -108,5 +108,22 @@
   "nodes.comfyui.serviceOpenSettings": "打开设置",
   "nodes.comfyui.serviceEnvNotReady": "Python环境未就绪",
   "nodes.comfyui.serviceLogsHeader": "命令行日志 ({count}行)",
-  "nodes.comfyui.serviceClickToConfig": "点击⚙️设置配置路径后可直接启动"
+  "nodes.comfyui.serviceClickToConfig": "点击⚙️设置配置路径后可直接启动",
+  "nodes.comfyui.historyChecking": "正在查询运行记录…",
+  "nodes.comfyui.historyReady": "已找到运行记录（{time}）",
+  "nodes.comfyui.historyReadySimple": "已找到运行记录，可以运行",
+  "nodes.comfyui.noHistoryRecord": "该工作流暂无成功运行记录，请先在ComfyUI中运行一次",
+  "nodes.comfyui.noHistoryTitle": "需要先在ComfyUI中运行",
+  "nodes.comfyui.openComfyUI": "打开ComfyUI界面",
+  "nodes.comfyui.refreshHistoryCheck": "我已运行，刷新检查",
+  "nodes.comfyui.historyFound": "已成功找到工作流运行记录",
+  "nodes.comfyui.clearHistoryCache": "清除缓存的运行记录，重新从ComfyUI获取",
+  "nodes.comfyui.historyCacheCleared": "已清除缓存的运行记录，正在重新查询…",
+  "nodes.comfyui.historyCacheClearFailed": "清除运行记录缓存失败",
+  "nodes.comfyui.resolveHistoryFailed": "查询运行记录失败：{error}",
+  "nodes.comfyui.needRunInComfyFirst": "请先在ComfyUI中成功运行此工作流后再试",
+  "nodes.comfyui.imageInputCount": "图片×{count}",
+  "nodes.comfyui.videoInputCount": "视频×{count}",
+  "nodes.comfyui.modelInputCount": "模型×{count}",
+  "nodes.comfyui.promptInputRequired": "需要提示词"
 }

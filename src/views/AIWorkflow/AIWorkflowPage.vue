@@ -187,6 +187,8 @@
 						@auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
 						@restart-meshy-task="onNodeRestartMeshyTask(node.id)"
 						@run-comfyui="onComfyUIRun(node.id)"
+						@refresh-history-check="onRefreshHistoryCheck(node.id)"
+						@clear-history-cache="onClearHistoryCache(node.id)"
 						@run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
 						@run-scene-decompose="onNodeRunSceneDecompose(node.id)"
 						@run-scene-layout="onNodeRunSceneLayout(node.id)"
@@ -646,27 +648,6 @@
 							@click="onConfirmImportLimitAlert"
 						>
 							{{ t('aiworkflow.page.importLimit.confirm') }}
-						</button>
-					</div>
-				</div>
-
-				<div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
-					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.reuseRecord.title') }}</div>
-					<div class="aiwf-reuse-alert-body">
-						{{ t('aiworkflow.page.reuseRecord.template', { name: reuseRecordConfirm.workflowName || t('aiworkflow.page.reuseRecord.unknownTemplate') }) }}
-						<br />
-						{{ t('aiworkflow.page.reuseRecord.savedAt', { time: formatReuseRecordTime(reuseRecordConfirm.savedAt) }) }}
-					</div>
-					<div class="aiwf-reuse-alert-actions">
-						<button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
-							{{ t('aiworkflow.page.reuseRecord.cancel') }}
-						</button>
-						<button
-							class="aiwf-reuse-alert-btn primary"
-							type="button"
-							@click="onConfirmReuseRecord"
-						>
-							{{ t('aiworkflow.page.reuseRecord.confirm') }}
 						</button>
 					</div>
 				</div>
@@ -8155,7 +8136,6 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 			cancelActiveRecoverySession()
 			store.commit('hydrateDraft', { snapshot: buildSnapshotFromState(createDefaultAIWorkflowState()) })
 			setUnsavedProject('')
-			reuseRecordConfirm.value = null
 			disposeComfyRuntime()
 			comfyAnchorAssignments.clear()
 			comfyAnchorLocalizedOutputs.clear()
@@ -8336,7 +8316,7 @@ const { setSavedProject, setUnsavedProject, readLastProjectId, forgetLastProject
 
 let pushToastBridge = (_message: string, _tone?: 'info' | 'warn' | 'error') => {}
 
-const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow } =
+const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow, onRefreshHistoryCheck, onClearHistoryCache } =
 	useAIWorkflowComfyConnection({
 		store,
 		comfyService,
@@ -8456,10 +8436,6 @@ const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoW
 })
 
 const {
-	reuseRecordConfirm,
-	formatReuseRecordTime,
-	onCancelReuseRecord,
-	onConfirmReuseRecord,
 	onComfyUIRun,
 	onComfyUICancel,
 	recoverComfyUIRunStates,
@@ -10065,7 +10041,6 @@ const {
 	createEmptyDraftSnapshot: () => buildSnapshotFromState(createDefaultAIWorkflowState()),
 	store,
 	setUnsavedProject,
-	reuseRecordConfirm,
 	resetComfyRuntime: disposeComfyRuntime,
 	comfyAnchorAssignments,
 	comfyAnchorLocalizedOutputs,

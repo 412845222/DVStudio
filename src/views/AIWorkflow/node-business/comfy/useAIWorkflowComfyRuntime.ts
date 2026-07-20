@@ -2,12 +2,7 @@ import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
-
-type ReuseRecordConfirmState = {
-	nodeId: string
-	workflowName?: string
-	savedAt?: number
-}
+import type { ComfyInputMappings } from '../../../../network/ComfyUIBridgeService'
 
 type RunState = {
 	runStatus: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -15,7 +10,7 @@ type RunState = {
 	text: string
 }
 
-type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' | 'model3d' }
+type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' }
 
 type ComfyService = {
 	run: (
@@ -25,24 +20,13 @@ type ComfyService = {
 		opts?: {
 			positivePrompt?: string
 			negativePrompt?: string
-			confirmReuseRecord?: boolean
-			resourcePaths?: {
-				imageCount: number
-				videoCount: number
-				modelCount: number
-			}
-			[key: string]: unknown
+			historyPromptId?: string
+			inputMappings?: ComfyInputMappings
 		}
-	) => Promise<{
-		ok: boolean
-		error?: string
-		promptId?: string
-		requiresConfirm?: boolean
-		fallbackRecord?: Record<string, unknown>
-		comfyuiError?: Record<string, unknown>
-		result?: Record<string, unknown>
-		[key: string]: unknown
-	}>
+	) => Promise<
+		| { ok: true; promptId: string; result?: Record<string, unknown>; promptSource?: string; snapshot?: Record<string, unknown>; [key: string]: unknown }
+		| { ok: false; error: string; status?: number; requiresHistorySetup?: boolean; message?: string; baseUrl?: string; comfyuiError?: Record<string, unknown>; [key: string]: unknown }
+	>
 	cancel: (
 		baseUrl: string,
 		promptId: string
@@ -114,14 +98,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	const comfyPollTimers = new Map<string, number>()
 	const comfyTerminalNotified = new Set<string>()
 	const comfyPollErrorCounts = new Map<string, number>()
-
-	const reuseRecordConfirm = ref<ReuseRecordConfirmState | null>(null)
-
-	const formatReuseRecordTime = (value?: number) => {
-		const ts = Number(value)
-		if (!Number.isFinite(ts) || ts <= 0) return t('aiworkflow.runtime.unknown')
-		return new Date(ts).toLocaleString()
-	}
 
 	const stopComfyUIPoll = (nodeId: string) => {
 		const timer = comfyPollTimers.get(nodeId)
@@ -358,7 +334,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	type CollectedResources = {
 		images: File[]
 		videos: File[]
-		models: File[]
 		texts: string[]
 	}
 
@@ -377,7 +352,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	}
 
 	const collectComfyUIInputResources = async (nodeId: string): Promise<CollectedResources> => {
-		const result: CollectedResources = { images: [], videos: [], models: [], texts: [] }
+		const result: CollectedResources = { images: [], videos: [], texts: [] }
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
 		if (!node || node.type !== 'comfyui') return result
@@ -412,15 +387,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				result.images.push(file)
 			} else if (fromType === 'video' || kind === 'video') {
 				result.videos.push(file)
-			} else if (fromType === 'model3d' || kind === 'model3d' || kind === 'model' || kind === 'resource') {
-				result.models.push(file)
 			} else {
 				if (file.type.startsWith('image/')) {
 					result.images.push(file)
 				} else if (file.type.startsWith('video/')) {
 					result.videos.push(file)
-				} else {
-					result.models.push(file)
 				}
 			}
 		}
@@ -444,22 +415,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		return ''
 	}
 
-	const onCancelReuseRecord = () => {
-		const target = reuseRecordConfirm.value
-		reuseRecordConfirm.value = null
-		if (!target) return
-		payload.store.commit('setNodeComfyUISettings', {
-			nodeId: target.nodeId,
-			comfyuiSettings: {
-				runStatus: 'idle',
-				progress: 0,
-				statusText: t('nodes.comfyui.reuseRecordCancelled'),
-				lastUpdateAt: Date.now()
-			}
-		})
-	}
-
-	const onComfyUIRun = async (nodeId: string, opts?: { confirmReuseRecord?: boolean }) => {
+	const onComfyUIRun = async (nodeId: string) => {
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
 		const settings = (node?.comfyuiSettings ?? {}) as {
@@ -475,13 +431,30 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				negativePrompt?: { required: boolean }
 			}
 			workflowWarnings?: string[]
+			hasHistory?: boolean
+			historyChecked?: boolean
+			historyGuideMessage?: string
+			historyGuideBaseUrl?: string
+			historyPromptId?: string
+			historyInputMappings?: {
+				imageInputs: Array<{ nodeId: string; classType: string; inputKey: string }>
+				videoInputs: Array<{ nodeId: string; classType: string; inputKey: string }>
+				textNodes: {
+					positive: Array<{ nodeId: string; classType: string; inputKey?: string; allTextKeys?: string[] }>
+					negative: Array<{ nodeId: string; classType: string; inputKey?: string; allTextKeys?: string[] }>
+				}
+				seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
+			}
+			imageInputCount?: number
+			videoInputCount?: number
+			hasTextPromptInput?: boolean
 		}
 		const baseUrl = String(settings.baseUrl ?? '').trim()
 		const workflowPath = String(settings.workflowPath ?? '').trim()
 		const configuredPositivePrompt = String(settings.positivePrompt ?? '')
 		const configuredNegativePrompt = String(settings.negativePrompt ?? '')
 		const incomingText = collectComfyInputText(nodeId)
-		const finalPositivePrompt = incomingText || configuredPositivePrompt
+		const finalPositivePrompt = [incomingText, configuredPositivePrompt].filter(Boolean).join(', ')
 		const finalNegativePrompt = configuredNegativePrompt
 
 		if (!node || node.type !== 'comfyui') return
@@ -491,6 +464,21 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		}
 		if (!workflowPath) {
 			payload.pushToast(t('aiworkflow.toast.comfyWorkflowRequired'), 'warn')
+			return
+		}
+
+		if (settings.historyChecked && settings.hasHistory === false) {
+			const errMsg = settings.historyGuideMessage || t('nodes.comfyui.noHistoryRecord')
+			payload.pushToast(errMsg, 'warn')
+			payload.store.commit('setNodeComfyUISettings', {
+				nodeId,
+				comfyuiSettings: {
+					runStatus: 'idle',
+					progress: 0,
+					statusText: t('nodes.comfyui.needRunInComfyFirst'),
+					lastUpdateAt: Date.now()
+				}
+			})
 			return
 		}
 
@@ -510,11 +498,24 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 		try {
 			const resources = await collectComfyUIInputResources(nodeId)
-			const inputReqs = settings.inputRequirements
 
-			if (inputReqs) {
-				const validationErrors: string[] = []
+			const validationErrors: string[] = []
+			const expectedImages = typeof settings.imageInputCount === 'number' ? settings.imageInputCount : null
+			const expectedVideos = typeof settings.videoInputCount === 'number' ? settings.videoInputCount : null
+			const needsPrompt = settings.hasTextPromptInput === true
 
+			if (expectedImages !== null && expectedImages > 0 && resources.images.length < expectedImages) {
+				validationErrors.push(`工作流需要 ${expectedImages} 张图片输入，当前连接了 ${resources.images.length} 张`)
+			}
+			if (expectedVideos !== null && expectedVideos > 0 && resources.videos.length < expectedVideos) {
+				validationErrors.push(`工作流需要 ${expectedVideos} 个视频输入，当前连接了 ${resources.videos.length} 个`)
+			}
+			if (needsPrompt && !finalPositivePrompt) {
+				validationErrors.push('工作流需要提示词输入，请连接文本节点或在设置中填写提示词')
+			}
+
+			if (settings.inputRequirements && validationErrors.length === 0) {
+				const inputReqs = settings.inputRequirements
 				const imgMin = Number(inputReqs.images?.min ?? 0)
 				const imgMax = Number(inputReqs.images?.max ?? 999)
 				if (resources.images.length < imgMin) {
@@ -531,71 +532,51 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					validationErrors.push(`工作流最多接受 ${vidMax} 个视频输入，当前连接了 ${resources.videos.length} 个`)
 				}
 
-				const mdlMin = Number(inputReqs.models?.min ?? 0)
-				const mdlMax = Number(inputReqs.models?.max ?? 999)
-				if (resources.models.length < mdlMin) {
-					validationErrors.push(`工作流需要至少 ${mdlMin} 个3D模型输入，当前连接了 ${resources.models.length} 个`)
-				} else if (resources.models.length > mdlMax) {
-					validationErrors.push(`工作流最多接受 ${mdlMax} 个3D模型输入，当前连接了 ${resources.models.length} 个`)
-				}
-
 				if (inputReqs.positivePrompt?.required && !finalPositivePrompt) {
 					validationErrors.push('工作流需要正向提示词输入，请连接文本节点或在设置中填写提示词')
 				}
+			}
 
-				if (validationErrors.length > 0) {
-					payload.store.commit('setNodeComfyUISettings', {
-						nodeId,
-						comfyuiSettings: {
-							runStatus: 'failed',
-							progress: 0,
-							statusText: '输入参数校验失败',
-							lastUpdateAt: Date.now()
-						}
-					})
-					payload.pushToast(`输入参数不满足要求：\n${validationErrors.slice(0, 3).join('\n')}`, 'error')
-					return
-				}
+			if (validationErrors.length > 0) {
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: {
+						runStatus: 'failed',
+						progress: 0,
+						statusText: '输入参数校验失败',
+						lastUpdateAt: Date.now()
+					}
+				})
+				payload.pushToast(`输入参数不满足要求：\n${validationErrors.slice(0, 3).join('\n')}`, 'error')
+				return
 			}
 
 			const allFiles: ComfyInputFile[] = [
 				...resources.images.map((f) => ({ file: f, mediaType: 'image' as const })),
-				...resources.videos.map((f) => ({ file: f, mediaType: 'video' as const })),
-				...resources.models.map((f) => ({ file: f, mediaType: 'model3d' as const }))
+				...resources.videos.map((f) => ({ file: f, mediaType: 'video' as const }))
 			]
 			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, {
 				positivePrompt: finalPositivePrompt,
 				negativePrompt: finalNegativePrompt,
-				resourcePaths: {
-					imageCount: resources.images.length,
-					videoCount: resources.videos.length,
-					modelCount: resources.models.length
-				},
-				confirmReuseRecord: Boolean(opts?.confirmReuseRecord)
+				historyPromptId: settings.historyPromptId,
+				inputMappings: settings.historyInputMappings
 			})
 			if (!rr.ok) {
-				if (rr.requiresConfirm) {
-					const fallback = rr.fallbackRecord as
-						| { workflowName?: string; savedAt?: number }
-						| undefined
-					reuseRecordConfirm.value = {
-						nodeId,
-						workflowName: String(fallback?.workflowName ?? workflowPath),
-						savedAt: Number(fallback?.savedAt)
-					}
+				if (rr.requiresHistorySetup) {
 					payload.store.commit('setNodeComfyUISettings', {
 						nodeId,
 						comfyuiSettings: {
 							runStatus: 'idle',
 							progress: 0,
-							statusText: t('nodes.comfyui.waitingReuseConfirm'),
-							lastUpdateAt: Date.now()
+							statusText: t('nodes.comfyui.needRunInComfyFirst'),
+							lastUpdateAt: Date.now(),
+							historyChecked: true,
+							hasHistory: false,
+							historyGuideMessage: rr.message || t('nodes.comfyui.noHistoryRecord'),
+							historyGuideBaseUrl: rr.baseUrl || baseUrl
 						}
 					})
-					payload.pushToast(
-						t('nodes.comfyui.historyUnavailable'),
-						'warn'
-					)
+					payload.pushToast(rr.message || t('nodes.comfyui.noHistoryRecord'), 'warn')
 					return
 				}
 				console.error('[ComfyUI] 运行失败', {
@@ -666,13 +647,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			})
 			payload.pushToast(t('aiworkflow.toast.comfyRunException', { error: getErrorMessage(err) }), 'error')
 		}
-	}
-
-	const onConfirmReuseRecord = () => {
-		const target = reuseRecordConfirm.value
-		reuseRecordConfirm.value = null
-		if (!target) return
-		void onComfyUIRun(target.nodeId, { confirmReuseRecord: true })
 	}
 
 	const onComfyUICancel = async (nodeId: string) => {
@@ -803,7 +777,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	}
 
 	const disposeComfyRuntime = () => {
-		reuseRecordConfirm.value = null
 		for (const timer of comfyPollTimers.values()) window.clearInterval(timer)
 		comfyPollTimers.clear()
 		comfyPollErrorCounts.clear()
@@ -811,10 +784,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	}
 
 	return {
-		reuseRecordConfirm,
-		formatReuseRecordTime,
-		onCancelReuseRecord,
-		onConfirmReuseRecord,
 		onComfyUIRun,
 		onComfyUICancel,
 		recoverComfyUIRunStates,

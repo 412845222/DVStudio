@@ -56,12 +56,14 @@ const isComfyAutoWireEnabled = (node: WorkflowNode | null | undefined): boolean 
 const calculateNodePosition = (
 	sourceNode: WorkflowNode,
 	outputIndex: number,
-	mediaType: ComfySupportedMediaType
+	mediaType: ComfySupportedMediaType,
+	existingNodeCount: number = 0
 ) => {
 	const footprint = COMFY_NODE_FOOTPRINT[mediaType]
+	const startOffset = existingNodeCount * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	return {
 		worldX: sourceNode.worldX + sourceNode.width + COMFY_AUTO_WIRE_HORIZONTAL_GAP + footprint.width / 2,
-		worldY: sourceNode.worldY + outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
+		worldY: sourceNode.worldY + startOffset + outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	}
 }
 
@@ -75,6 +77,27 @@ const hasExistingConnection = (
 		const fromAnchor = String(edge?.fromAnchorId ?? '').trim()
 		return fromAnchor === anchorId
 	})
+}
+
+const getExistingConnectionMediaTypes = (
+	getOutgoingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[],
+	nodesById: Record<string, unknown>,
+	nodeId: string,
+	anchorId: string
+): Set<ComfySupportedMediaType> => {
+	const edges = getOutgoingEdges(nodeId, anchorId)
+	const types = new Set<ComfySupportedMediaType>()
+	for (const edge of edges) {
+		if (String(edge?.fromAnchorId ?? '').trim() !== anchorId) continue
+		const toNodeId = String(edge?.toNodeId ?? '').trim()
+		if (!toNodeId) continue
+		const toNode = nodesById[toNodeId] as { type?: string } | undefined
+		if (!toNode) continue
+		if (toNode.type === 'image') types.add('image')
+		else if (toNode.type === 'video') types.add('video')
+		else if (toNode.type === 'model3d') types.add('model3d')
+	}
+	return types
 }
 
 export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOptions) => {
@@ -195,13 +218,14 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 		const pendingTargets: PendingTarget[] = []
 
 		if (isSingleOutAnchor) {
-			if (hasExistingConnection(options.getOutgoingEdges, comfyNodeId, 'out')) {
-				result.skippedOutputs = validOutputs.map(() => ({
-					anchorId: 'out',
-					reason: 'already-connected' as ComfyAutoWireSkipReason
-				}))
-				return result
-			}
+			const existingMediaTypes = getExistingConnectionMediaTypes(
+				options.getOutgoingEdges,
+				options.store.state.nodesById as Record<string, unknown>,
+				comfyNodeId,
+				'out'
+			)
+
+			const seenMediaTypes = new Set<ComfySupportedMediaType>()
 
 			for (let i = 0; i < validOutputs.length; i++) {
 				const output = validOutputs[i]
@@ -210,6 +234,12 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 					result.skippedOutputs.push({ anchorId: 'out', reason: 'unknown-media-type' })
 					continue
 				}
+				if (existingMediaTypes.has(mediaType)) {
+					result.skippedOutputs.push({ anchorId: 'out', reason: 'already-connected' })
+					continue
+				}
+				if (seenMediaTypes.has(mediaType)) continue
+				seenMediaTypes.add(mediaType)
 				const sourceLabel =
 					String(output.filename ?? '').trim() ||
 					`${t('nodes.comfyui.autoWireOutputPrefix')} ${i + 1}`
@@ -259,9 +289,11 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 		options.onAutoWireStart?.(comfyNodeId)
 
 		try {
+			const existingOutgoingCount = options.getOutgoingEdges(comfyNodeId).length
+
 			for (let i = 0; i < pendingTargets.length; i += 1) {
 				const { anchorId, mediaType, primaryOutput, sourceLabel } = pendingTargets[i]
-				const position = calculateNodePosition(sourceNode, i, mediaType)
+				const position = calculateNodePosition(sourceNode, i, mediaType, existingOutgoingCount)
 
 				try {
 					const targetNodeId = createMediaNode(position, mediaType, sourceLabel)

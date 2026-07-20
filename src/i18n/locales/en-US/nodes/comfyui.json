@@ -108,5 +108,22 @@
   "nodes.comfyui.serviceOpenSettings": "Open Settings",
   "nodes.comfyui.serviceEnvNotReady": "Python environment not ready",
   "nodes.comfyui.serviceLogsHeader": "Console Logs ({count} lines)",
-  "nodes.comfyui.serviceClickToConfig": "Click ⚙️ Settings to configure path before starting"
+  "nodes.comfyui.serviceClickToConfig": "Click ⚙️ Settings to configure path before starting",
+  "nodes.comfyui.historyChecking": "Checking run history...",
+  "nodes.comfyui.historyReady": "Run record found ({time})",
+  "nodes.comfyui.historyReadySimple": "Run record found, ready to run",
+  "nodes.comfyui.noHistoryRecord": "No successful run record for this workflow. Please run it in ComfyUI first.",
+  "nodes.comfyui.noHistoryTitle": "Run in ComfyUI first",
+  "nodes.comfyui.openComfyUI": "Open ComfyUI",
+  "nodes.comfyui.refreshHistoryCheck": "I've run it, refresh",
+  "nodes.comfyui.historyFound": "Workflow run record found successfully",
+  "nodes.comfyui.clearHistoryCache": "Clear cached run record and re-fetch from ComfyUI",
+  "nodes.comfyui.historyCacheCleared": "Cached run record cleared, re-checking…",
+  "nodes.comfyui.historyCacheClearFailed": "Failed to clear run record cache",
+  "nodes.comfyui.resolveHistoryFailed": "Failed to check run history: {error}",
+  "nodes.comfyui.needRunInComfyFirst": "Please run this workflow successfully in ComfyUI first",
+  "nodes.comfyui.imageInputCount": "Images×{count}",
+  "nodes.comfyui.videoInputCount": "Videos×{count}",
+  "nodes.comfyui.modelInputCount": "Models×{count}",
+  "nodes.comfyui.promptInputRequired": "Prompt required"
 }
