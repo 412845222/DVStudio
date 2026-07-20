@@ -10,6 +10,14 @@ const dweb = (window as any).dweb
 
 const SERVICE_LOG_MAX = 2000
 
+interface ComfyServiceConfig {
+	installPath?: string
+	pythonPath?: string
+	port?: number
+	extraArgs?: string[]
+	[key: string]: any
+}
+
 function cloneValue<T>(v: T): T {
 	if (v === null || v === undefined) return v
 	return JSON.parse(JSON.stringify(v))
@@ -42,6 +50,12 @@ export function useComfyServiceManager() {
 	const pendingOp = ref<'starting' | 'stopping' | null>(null)
 	const lastError = ref<string>('')
 	const loadingInitial = ref(true)
+	const config = ref<ComfyServiceConfig | null>(null)
+
+	const configured = computed(() => {
+		const p = config.value?.installPath
+		return !!(p && String(p).trim())
+	})
 
 	const selected = computed<ComfyServiceInfo>(() => {
 		return services.value.find(s => s.key === selectedKey.value) || services.value[0]
@@ -51,6 +65,7 @@ export function useComfyServiceManager() {
 	let _unsubStatus: (() => void) | null = null
 	let _unsubExit: (() => void) | null = null
 	let _unsubClear: (() => void) | null = null
+	let _unsubConfig: (() => void) | null = null
 
 	function applyRuntimeStatus(status: ComfyServiceRuntimeStatus) {
 		runtimeStatus.value = status
@@ -80,6 +95,25 @@ export function useComfyServiceManager() {
 		nextTick(() => {
 			el.scrollTop = el.scrollHeight
 		})
+	}
+
+	async function refreshConfig() {
+		try {
+			const setup = dweb?.comfyui?.setup
+			if (!setup?.getConfig) {
+				config.value = null
+				return
+			}
+			const cfg = await setup.getConfig()
+			config.value = cfg?.config || cfg || null
+			const svc = services.value.find(s => s.key === 'comfyui')
+			if (svc && config.value?.port && typeof config.value.port === 'number') {
+				svc.port = config.value.port
+			}
+		} catch (e) {
+			console.warn('[SvcMgr] getConfig failed:', e)
+			config.value = null
+		}
 	}
 
 	async function refreshStatus() {
@@ -115,13 +149,13 @@ export function useComfyServiceManager() {
 		pendingOp.value = 'starting'
 		lastError.value = ''
 		try {
+			await refreshConfig()
 			const setup = dweb?.comfyui?.setup
-			const cfg = setup?.getConfig ? await setup.getConfig() : null
-			const config = cfg?.config || cfg || {}
+			const cfg = config.value || {}
 			const r = await setup.startService(cloneValue({
-				installPath: config.installPath || '',
-				port: typeof config.port === 'number' ? config.port : 8188,
-				extraArgs: Array.isArray(config.extraArgs) ? [...config.extraArgs] : [],
+				installPath: cfg.installPath || '',
+				port: typeof cfg.port === 'number' ? cfg.port : 8188,
+				extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
 			}))
 			if (r?.ok) {
 				await refreshStatus()
@@ -150,13 +184,13 @@ export function useComfyServiceManager() {
 		pendingOp.value = 'starting'
 		lastError.value = ''
 		try {
+			await refreshConfig()
 			const setup = dweb?.comfyui?.setup
-			const cfg = setup?.getConfig ? await setup.getConfig() : null
-			const config = cfg?.config || cfg || {}
+			const cfg = config.value || {}
 			const r = await setup.restartService(cloneValue({
-				installPath: config.installPath || '',
-				port: typeof config.port === 'number' ? config.port : 8188,
-				extraArgs: Array.isArray(config.extraArgs) ? [...config.extraArgs] : [],
+				installPath: cfg.installPath || '',
+				port: typeof cfg.port === 'number' ? cfg.port : 8188,
+				extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
 			}))
 			if (r?.ok) {
 				await refreshStatus()
@@ -207,6 +241,12 @@ export function useComfyServiceManager() {
 					logs.value = []
 				})
 			}
+			if (setup?.onConfigChange) {
+				_unsubConfig = setup.onConfigChange(() => {
+					refreshConfig()
+				})
+			}
+			await refreshConfig()
 			await loadInitialLogs()
 			await refreshStatus()
 		})()
@@ -218,10 +258,12 @@ export function useComfyServiceManager() {
 		_unsubStatus?.()
 		_unsubExit?.()
 		_unsubClear?.()
+		_unsubConfig?.()
 		_unsubLog = null
 		_unsubStatus = null
 		_unsubExit = null
 		_unsubClear = null
+		_unsubConfig = null
 	})
 
 	init()
@@ -236,11 +278,14 @@ export function useComfyServiceManager() {
 		pendingOp,
 		lastError,
 		loadingInitial,
+		config,
+		configured,
 		selectService,
 		startService,
 		stopService,
 		restartService,
 		clearLogs,
+		refreshConfig,
 		refreshStatus,
 		scrollToBottom,
 	}

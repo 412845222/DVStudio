@@ -657,7 +657,7 @@ export type WorkflowComfyUINodeSettings = {
 	statusText?: string
 	/** extracted output media urls from history */
 	outputs?: Array<{
-		kind: 'image' | 'video'
+		kind: 'image' | 'video' | 'model3d'
 		url: string
 		filename?: string
 		anchorId?: string
@@ -668,6 +668,14 @@ export type WorkflowComfyUINodeSettings = {
 	}>
 	/** epoch ms */
 	lastUpdateAt?: number
+	/** whether to auto-create and wire downstream nodes on task completion */
+	autoWireEnabled?: boolean
+	/** parsed input requirements from the workflow (images/videos/models/prompts) */
+	inputRequirements?: import('./domain/comfyui/parseWorkflowIO').ComfyInputRequirements
+	/** workflow parsing warnings */
+	workflowWarnings?: string[]
+	/** whether the preview screenshot is stale and needs refresh */
+	previewStale?: boolean
 }
 
 export type WorkflowMeshyModelSettings = {

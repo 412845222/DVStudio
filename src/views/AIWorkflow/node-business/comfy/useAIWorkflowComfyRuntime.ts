@@ -15,18 +15,31 @@ type RunState = {
 	text: string
 }
 
+type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' | 'model3d' }
+
 type ComfyService = {
 	run: (
 		baseUrl: string,
 		workflowPath: string,
-		files: File[],
-		opts?: Record<string, unknown>
+		files: ComfyInputFile[],
+		opts?: {
+			positivePrompt?: string
+			negativePrompt?: string
+			confirmReuseRecord?: boolean
+			resourcePaths?: {
+				imageCount: number
+				videoCount: number
+				modelCount: number
+			}
+			[key: string]: unknown
+		}
 	) => Promise<{
 		ok: boolean
 		error?: string
 		promptId?: string
 		requiresConfirm?: boolean
 		fallbackRecord?: Record<string, unknown>
+		comfyuiError?: Record<string, unknown>
 		result?: Record<string, unknown>
 		[key: string]: unknown
 	}>
@@ -70,7 +83,7 @@ type ComfyEdge = {
 }
 type ComfyResource = { kind?: string; url?: string; name?: string; [key: string]: unknown }
 
-type InputAnchor = { id?: string; [key: string]: unknown }
+type _InputAnchor = { id?: string; [key: string]: unknown }
 type JobStatus = { status?: string; outputs_count?: number; [key: string]: unknown }
 
 export const useAIWorkflowComfyRuntime = (payload: {
@@ -93,6 +106,10 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	) => Promise<{ alerts: string[]; outputs: ComfyLocalizedOutput[] }>
 	clearComfyRouteCache: (nodeId: string) => void
 	getIncomingTextValue: (toNodeId: string, toAnchorId: string) => string
+	autoWireComfyOutputs?: (
+		comfyNodeId: string,
+		outputs: ComfyLocalizedOutput[]
+	) => Promise<{ createdNodeIds: string[]; connectedEdgeIds: string[]; skippedOutputs: Array<{ anchorId: string; reason: string }> }>
 }) => {
 	const comfyPollTimers = new Map<string, number>()
 	const comfyTerminalNotified = new Set<string>()
@@ -240,6 +257,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 				let terminalAlerts: string[] = []
 				let derivedTerminalStatus = next.runStatus
+				let localizedOutputsForAutoWire: ComfyLocalizedOutput[] = []
 				if (next.runStatus === 'running' || next.runStatus === 'completed') {
 					try {
 						const or = await payload.comfyService.outputs(baseUrl, promptId)
@@ -251,6 +269,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							const localizedOutputs = Array.isArray(dispatchRes?.outputs)
 								? dispatchRes.outputs
 								: []
+							localizedOutputsForAutoWire = localizedOutputs
 							const runningText = t('nodes.comfyui.importProgress', {
 									status: next.text,
 									imported: String(localizedOutputs.length),
@@ -306,6 +325,18 @@ export const useAIWorkflowComfyRuntime = (payload: {
 									'warn'
 								)
 							}
+							if (payload.autoWireComfyOutputs && localizedOutputsForAutoWire.length > 0) {
+								void payload.autoWireComfyOutputs(nodeId, localizedOutputsForAutoWire).then((wireResult) => {
+									if (wireResult.createdNodeIds.length > 0) {
+										payload.pushToast(
+											t('nodes.comfyui.autoWireSuccess', { count: String(wireResult.createdNodeIds.length) }),
+											'info'
+										)
+									}
+								}).catch((err) => {
+									console.error('[ComfyUI] Auto-wire failed', err)
+								})
+							}
 						} else if (derivedTerminalStatus === 'failed') {
 							payload.pushToast(t('aiworkflow.toast.comfyTaskFailed'), 'warn')
 						} else if (derivedTerminalStatus === 'cancelled') {
@@ -324,39 +355,93 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		comfyPollTimers.set(nodeId, timer)
 	}
 
-	const collectComfyUIInputFiles = async (nodeId: string): Promise<File[]> => {
+	type CollectedResources = {
+		images: File[]
+		videos: File[]
+		models: File[]
+		texts: string[]
+	}
+
+	const resourceToFile = async (resource: ComfyResource, fallbackName: string): Promise<File | null> => {
+		const url = String(resource.url ?? '').trim()
+		if (!url) return null
+		try {
+			const resp = await fetch(url)
+			if (!resp.ok) return null
+			const blob = await resp.blob()
+			const name = String(resource.name ?? fallbackName) || fallbackName
+			return new File([blob], name, { type: blob.type || 'application/octet-stream' })
+		} catch {
+			return null
+		}
+	}
+
+	const collectComfyUIInputResources = async (nodeId: string): Promise<CollectedResources> => {
+		const result: CollectedResources = { images: [], videos: [], models: [], texts: [] }
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
-		if (!node || node.type !== 'comfyui') return []
-		const inputs = Array.isArray(node.inputs) ? (node.inputs as InputAnchor[]) : []
+		if (!node || node.type !== 'comfyui') return result
 
-		const out: File[] = []
-		for (let i = 0; i < inputs.length; i += 1) {
-			const anchorId = String(inputs[i]?.id ?? '').trim()
-			if (!anchorId) continue
-			const edge = payload.store.state.edgeOrder
-				.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
-				.find((e) => e && e.toNodeId === nodeId && e.toAnchorId === anchorId)
-			if (!edge) continue
+		const edges = payload.store.state.edgeOrder
+			.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
+			.filter((e): e is ComfyEdge => Boolean(e && e.toNodeId === nodeId && e.toAnchorId === 'in' && e.fromNodeId))
+
+		for (let i = 0; i < edges.length; i++) {
+			const edge = edges[i]
 			const fromNodeRecord = payload.store.state.nodesById[edge.fromNodeId ?? '']
 			const fromNode = fromNodeRecord as ComfyNode | undefined
-			const rid = String(fromNode?.resourceId ?? '').trim()
+			if (!fromNode) continue
+			const fromType = String(fromNode.type ?? '').toLowerCase()
+
+			if (fromType === 'text') {
+				const textVal = String(fromNode.textValue ?? fromNode.prompt ?? '').trim()
+				if (textVal) result.texts.push(textVal)
+				continue
+			}
+
+			const rid = String(fromNode.resourceId ?? '').trim()
 			if (!rid) continue
 			const resourceRecord = payload.store.state.resourcesById[rid]
 			const resource = resourceRecord as ComfyResource | undefined
 			if (!resource) continue
-			if (resource.kind !== 'image') {
-				payload.pushToast(t('aiworkflow.toast.comfyImageOnly'), 'warn')
-				continue
+			const kind = String(resource.kind ?? '').toLowerCase()
+			const name = String(resource.name ?? `input_${i}`)
+			const file = await resourceToFile(resource, name)
+			if (!file) continue
+			if (fromType === 'image' || kind === 'image') {
+				result.images.push(file)
+			} else if (fromType === 'video' || kind === 'video') {
+				result.videos.push(file)
+			} else if (fromType === 'model3d' || kind === 'model3d' || kind === 'model' || kind === 'resource') {
+				result.models.push(file)
+			} else {
+				if (file.type.startsWith('image/')) {
+					result.images.push(file)
+				} else if (file.type.startsWith('video/')) {
+					result.videos.push(file)
+				} else {
+					result.models.push(file)
+				}
 			}
-			const url = String(resource.url ?? '').trim()
-			if (!url) continue
-			const resp = await fetch(url)
-			const blob = await resp.blob()
-			const name = String(resource.name ?? `input_${i}.png`) || `input_${i}.png`
-			out.push(new File([blob], name, { type: blob.type || 'image/png' }))
 		}
-		return out
+		return result
+	}
+
+	const collectComfyInputText = (nodeId: string): string => {
+		const edges = payload.store.state.edgeOrder
+			.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
+			.filter((e): e is ComfyEdge => Boolean(e && e.toNodeId === nodeId && e.toAnchorId === 'in' && e.fromNodeId))
+
+		for (const edge of edges) {
+			const fromNodeRecord = payload.store.state.nodesById[edge.fromNodeId ?? '']
+			const fromNode = fromNodeRecord as ComfyNode | undefined
+			if (!fromNode) continue
+			const fromType = String(fromNode.type ?? '').toLowerCase()
+			if (fromType === 'text') {
+				return String(fromNode.textValue ?? fromNode.prompt ?? '').trim()
+			}
+		}
+		return ''
 	}
 
 	const onCancelReuseRecord = () => {
@@ -382,15 +467,22 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			workflowPath?: string
 			positivePrompt?: string
 			negativePrompt?: string
+			inputRequirements?: {
+				images?: { min: number; max: number }
+				videos?: { min: number; max: number }
+				models?: { min: number; max: number }
+				positivePrompt?: { required: boolean }
+				negativePrompt?: { required: boolean }
+			}
+			workflowWarnings?: string[]
 		}
 		const baseUrl = String(settings.baseUrl ?? '').trim()
 		const workflowPath = String(settings.workflowPath ?? '').trim()
-		const positivePrompt = String(settings.positivePrompt ?? '')
-		const negativePrompt = String(settings.negativePrompt ?? '')
-		const positiveFromText = payload.getIncomingTextValue(nodeId, 'in-positive')
-		const negativeFromText = payload.getIncomingTextValue(nodeId, 'in-negative')
-		const finalPositivePrompt = String(positiveFromText).trim() ? positiveFromText : positivePrompt
-		const finalNegativePrompt = String(negativeFromText).trim() ? negativeFromText : negativePrompt
+		const configuredPositivePrompt = String(settings.positivePrompt ?? '')
+		const configuredNegativePrompt = String(settings.negativePrompt ?? '')
+		const incomingText = collectComfyInputText(nodeId)
+		const finalPositivePrompt = incomingText || configuredPositivePrompt
+		const finalNegativePrompt = configuredNegativePrompt
 
 		if (!node || node.type !== 'comfyui') return
 		if (!baseUrl) {
@@ -417,10 +509,68 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		})
 
 		try {
-			const files = await collectComfyUIInputFiles(nodeId)
-			const rr = await payload.comfyService.run(baseUrl, workflowPath, files, {
+			const resources = await collectComfyUIInputResources(nodeId)
+			const inputReqs = settings.inputRequirements
+
+			if (inputReqs) {
+				const validationErrors: string[] = []
+
+				const imgMin = Number(inputReqs.images?.min ?? 0)
+				const imgMax = Number(inputReqs.images?.max ?? 999)
+				if (resources.images.length < imgMin) {
+					validationErrors.push(`工作流需要至少 ${imgMin} 张图片输入，当前连接了 ${resources.images.length} 张`)
+				} else if (resources.images.length > imgMax) {
+					validationErrors.push(`工作流最多接受 ${imgMax} 张图片输入，当前连接了 ${resources.images.length} 张`)
+				}
+
+				const vidMin = Number(inputReqs.videos?.min ?? 0)
+				const vidMax = Number(inputReqs.videos?.max ?? 999)
+				if (resources.videos.length < vidMin) {
+					validationErrors.push(`工作流需要至少 ${vidMin} 个视频输入，当前连接了 ${resources.videos.length} 个`)
+				} else if (resources.videos.length > vidMax) {
+					validationErrors.push(`工作流最多接受 ${vidMax} 个视频输入，当前连接了 ${resources.videos.length} 个`)
+				}
+
+				const mdlMin = Number(inputReqs.models?.min ?? 0)
+				const mdlMax = Number(inputReqs.models?.max ?? 999)
+				if (resources.models.length < mdlMin) {
+					validationErrors.push(`工作流需要至少 ${mdlMin} 个3D模型输入，当前连接了 ${resources.models.length} 个`)
+				} else if (resources.models.length > mdlMax) {
+					validationErrors.push(`工作流最多接受 ${mdlMax} 个3D模型输入，当前连接了 ${resources.models.length} 个`)
+				}
+
+				if (inputReqs.positivePrompt?.required && !finalPositivePrompt) {
+					validationErrors.push('工作流需要正向提示词输入，请连接文本节点或在设置中填写提示词')
+				}
+
+				if (validationErrors.length > 0) {
+					payload.store.commit('setNodeComfyUISettings', {
+						nodeId,
+						comfyuiSettings: {
+							runStatus: 'failed',
+							progress: 0,
+							statusText: '输入参数校验失败',
+							lastUpdateAt: Date.now()
+						}
+					})
+					payload.pushToast(`输入参数不满足要求：\n${validationErrors.slice(0, 3).join('\n')}`, 'error')
+					return
+				}
+			}
+
+			const allFiles: ComfyInputFile[] = [
+				...resources.images.map((f) => ({ file: f, mediaType: 'image' as const })),
+				...resources.videos.map((f) => ({ file: f, mediaType: 'video' as const })),
+				...resources.models.map((f) => ({ file: f, mediaType: 'model3d' as const }))
+			]
+			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, {
 				positivePrompt: finalPositivePrompt,
 				negativePrompt: finalNegativePrompt,
+				resourcePaths: {
+					imageCount: resources.images.length,
+					videoCount: resources.videos.length,
+					modelCount: resources.models.length
+				},
 				confirmReuseRecord: Boolean(opts?.confirmReuseRecord)
 			})
 			if (!rr.ok) {
@@ -453,6 +603,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					baseUrl,
 					workflowPath,
 					error: rr.error,
+					comfyuiError: rr.comfyuiError,
 					raw: rr
 				})
 				payload.store.commit('setNodeComfyUISettings', {
@@ -464,7 +615,24 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						lastUpdateAt: Date.now()
 					}
 				})
-				payload.pushToast(t('aiworkflow.toast.comfyRunFailed', { error: String(rr.error || 'unknown') }), 'error')
+				let errorMsg = String(rr.error || 'unknown')
+				if (rr.comfyuiError && typeof rr.comfyuiError === 'object') {
+					const nodeErrors = (rr.comfyuiError as any).node_errors
+					if (nodeErrors && typeof nodeErrors === 'object') {
+						const details: string[] = []
+						for (const [_nid, errInfo] of Object.entries(nodeErrors)) {
+							const info = errInfo as any
+							const errors = Array.isArray(info?.errors) ? info.errors : []
+							const msg = errors.map((e: any) => e.message || e.details || String(e)).join('; ')
+							const classType = info?.class_type ? `(${info.class_type})` : ''
+							details.push(`节点${classType}: ${msg}`)
+						}
+						if (details.length > 0) {
+							errorMsg = `${errorMsg}\n${details.slice(0, 3).join('\n')}`
+						}
+					}
+				}
+				payload.pushToast(t('aiworkflow.toast.comfyRunFailed', { error: errorMsg }), 'error')
 				return
 			}
 
@@ -549,7 +717,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			}
 
 			startComfyUIPoll(nodeId, baseUrl, promptId)
-		} catch (err: unknown) {
+		} catch (_err: unknown) {
 			resetComfyNodeToIdle(nodeId, t('nodes.comfyui.cancelFailed'), 'warn')
 		}
 	}
