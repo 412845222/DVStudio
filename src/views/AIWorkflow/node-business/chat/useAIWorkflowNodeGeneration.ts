@@ -9,6 +9,7 @@ import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../networ
 import type { Tripo3DGenerateResponse } from '../tripo3d/types'
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
+import { checkVideoReferencePrerequisites, clearPendingPrompt } from '../seedance/useSeedanceVideoReferenceCheck'
 
 export type NodeGenerationApiDeps = {
 	store: Store<WorkflowState>
@@ -63,12 +64,23 @@ class FatalTaskError extends Error {
 	}
 }
 
+class UserAbortError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'UserAbortError'
+	}
+}
+
 const throwFatal = (message: string): never => {
 	throw new FatalTaskError(message)
 }
 
-const isFatalError = (err: unknown): boolean => {
+const isFatalError = (err: unknown): err is FatalTaskError => {
 	return err instanceof FatalTaskError
+}
+
+const isUserAbortError = (err: unknown): err is UserAbortError => {
+	return err instanceof UserAbortError
 }
 
 const getComfyService = (deps: NodeGenerationApiDeps) => {
@@ -1048,6 +1060,15 @@ export const runNodeGenerationTask = async (
 		}
 		return { ok: true, taskType: 'other' }
 	} catch (err: unknown) {
+		if (isUserAbortError(err)) {
+			clearPendingPrompt()
+			updateTask(deps, task.id, {
+				status: 'cancelled',
+				statusText: err.message || '已取消',
+				finishedAt: Date.now()
+			})
+			return { ok: false, error: 'aborted' }
+		}
 		const raw = getErrorMessage(err)
 		const looksLikeNetworkError =
 			/Failed to fetch/i.test(raw) ||
@@ -2228,11 +2249,6 @@ const runVideoTask = async (
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
 	const { kind, model } = normalizeVideoModel(params)
-	updateTask(deps, task.id, {
-		status: 'running',
-		statusText: t('aiworkflow.runtime.callingVideoModel', { kind }),
-		progress: 20
-	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
 
@@ -2260,7 +2276,8 @@ const runVideoTask = async (
 		form.set('priority', String(Math.min(9, Math.floor(priority))))
 	}
 
-	// Collect connected reference images and videos from input anchors for seedance i2v/v2v.
+	let hasVideoReferences = false
+
 	if (kind === 'seedance') {
 		const [imageRefs, videoRefs] = await Promise.all([
 			collectReferenceImages(deps, payload.nodeId, 9),
@@ -2268,6 +2285,7 @@ const runVideoTask = async (
 		])
 		for (const ref of imageRefs) form.append('refImages', ref.blob, ref.name)
 		for (const ref of videoRefs) form.append('refVideos', ref.blob, ref.name)
+		hasVideoReferences = videoRefs.length > 0
 		const rawMode = (typeof params.mode === 'string' ? params.mode : '') as string
 		if (rawMode === 'image_to_video') form.set('refMode', 'first')
 		else if (rawMode === 'first-last') form.set('refMode', 'first-last')
@@ -2275,6 +2293,19 @@ const runVideoTask = async (
 		else if (rawMode === 'video_edit') form.set('refMode', 'video_edit')
 		else form.set('refMode', 'auto')
 	}
+
+	if (hasVideoReferences) {
+		const checkResult = await checkVideoReferencePrerequisites(true)
+		if (!checkResult.canProceed) {
+			throw new UserAbortError('需要配置云存储')
+		}
+	}
+
+	updateTask(deps, task.id, {
+		status: 'running',
+		statusText: t('aiworkflow.runtime.callingVideoModel', { kind }),
+		progress: 20
+	})
 
 	const stream =
 		kind === 'jimeng'

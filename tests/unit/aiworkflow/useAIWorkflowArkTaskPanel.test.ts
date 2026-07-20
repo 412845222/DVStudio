@@ -7,17 +7,25 @@ describe('useAIWorkflowArkTaskPanel', () => {
       expect(normalizeStatus('queued')).toBe('queued')
       expect(normalizeStatus('running')).toBe('running')
       expect(normalizeStatus('processing')).toBe('running')
+      expect(normalizeStatus('in_progress')).toBe('running')
       expect(normalizeStatus('succeeded')).toBe('succeeded')
       expect(normalizeStatus('success')).toBe('succeeded')
       expect(normalizeStatus('completed')).toBe('succeeded')
+      expect(normalizeStatus('ready')).toBe('succeeded')
+      expect(normalizeStatus('active')).toBe('succeeded')
+      expect(normalizeStatus('processed')).toBe('succeeded')
       expect(normalizeStatus('failed')).toBe('failed')
       expect(normalizeStatus('error')).toBe('failed')
+      expect(normalizeStatus('expired')).toBe('failed')
       expect(normalizeStatus('canceled')).toBe('canceled')
       expect(normalizeStatus('cancelled')).toBe('canceled')
       expect(normalizeStatus('not_found')).toBe('canceled')
       expect(normalizeStatus('unknown')).toBe('queued')
       expect(normalizeStatus('')).toBe('queued')
       expect(normalizeStatus(null as any)).toBe('queued')
+      expect(normalizeStatus(undefined as any)).toBe('queued')
+      expect(normalizeStatus('SUCCESS')).toBe('succeeded')
+      expect(normalizeStatus('  Processing  ')).toBe('running')
     })
   })
 
@@ -146,6 +154,122 @@ describe('useAIWorkflowArkTaskPanel', () => {
       expect(result.resultUrls).toEqual([])
       expect(result.thumbnailUrl).toBe('')
       expect(result.projectId).toBe(null)
+    })
+
+    it('should prefer remoteCreatedAt/remoteUpdatedAt numeric timestamps over ISO strings', () => {
+      const remoteCreated = 1700000000000
+      const remoteUpdated = 1700000100000
+      const item = {
+        taskId: 'task-ts',
+        model: 'doubao-seedance-2-0-mini',
+        status: 'running',
+        prompt: 'test',
+        videoUrlRemote: '',
+        lastFrameUrlRemote: '',
+        errorMessage: '',
+        statusText: '',
+        projectId: null,
+        remoteCreatedAt: remoteCreated,
+        remoteUpdatedAt: remoteUpdated,
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:30:00Z'
+      }
+
+      const result = seedanceItemToArkTask(item as any)
+
+      expect(result.createdAt).toBe(remoteCreated)
+      expect(result.updatedAt).toBe(remoteUpdated)
+    })
+
+    it('should fall back to ISO string timestamps when remote timestamps are missing', () => {
+      const isoCreated = '2024-06-15T12:00:00Z'
+      const isoUpdated = '2024-06-15T12:05:00Z'
+      const item = {
+        taskId: 'task-iso',
+        model: 'doubao-seedance-2-0-mini',
+        status: 'succeeded',
+        prompt: 'test',
+        videoUrlRemote: 'http://example.com/v.mp4',
+        lastFrameUrlRemote: '',
+        errorMessage: '',
+        statusText: '',
+        projectId: 1,
+        createdAt: isoCreated,
+        updatedAt: isoUpdated
+      }
+
+      const result = seedanceItemToArkTask(item as any)
+
+      expect(result.createdAt).toBe(new Date(isoCreated).getTime())
+      expect(result.updatedAt).toBe(new Date(isoUpdated).getTime())
+    })
+
+    it('should normalize status aliases like success/completed/processing', () => {
+      const cases = [
+        { raw: 'success', expected: 'succeeded' },
+        { raw: 'completed', expected: 'succeeded' },
+        { raw: 'processing', expected: 'running' },
+        { raw: 'in_progress', expected: 'running' },
+        { raw: 'error', expected: 'failed' },
+        { raw: 'expired', expected: 'failed' },
+        { raw: 'cancelled', expected: 'canceled' }
+      ]
+      for (const { raw, expected } of cases) {
+        const result = seedanceItemToArkTask({
+          taskId: `task-${raw}`,
+          model: 'm',
+          status: raw,
+          prompt: '',
+          videoUrlRemote: '',
+          lastFrameUrlRemote: '',
+          errorMessage: '',
+          statusText: '',
+          projectId: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        } as any)
+        expect(result.status).toBe(expected)
+      }
+    })
+
+    it('should prefer lastFrameUrlRemote as thumbnail over videoUrlRemote', () => {
+      const item = {
+        taskId: 'task-thumb',
+        model: 'm',
+        status: 'succeeded',
+        prompt: 'p',
+        videoUrlRemote: 'http://example.com/video.mp4',
+        lastFrameUrlRemote: 'http://example.com/frame.jpg',
+        errorMessage: '',
+        statusText: '',
+        projectId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+
+      const result = seedanceItemToArkTask(item as any)
+      expect(result.thumbnailUrl).toBe('http://example.com/frame.jpg')
+      expect(result.resultUrls).toEqual(['http://example.com/video.mp4', 'http://example.com/frame.jpg'])
+    })
+
+    it('should fallback to videoUrlRemote as thumbnail when lastFrameUrlRemote is empty', () => {
+      const item = {
+        taskId: 'task-thumb2',
+        model: 'm',
+        status: 'succeeded',
+        prompt: 'p',
+        videoUrlRemote: 'http://example.com/video.mp4',
+        lastFrameUrlRemote: '',
+        errorMessage: '',
+        statusText: '',
+        projectId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+
+      const result = seedanceItemToArkTask(item as any)
+      expect(result.thumbnailUrl).toBe('http://example.com/video.mp4')
+      expect(result.resultUrls).toEqual(['http://example.com/video.mp4'])
     })
   })
 

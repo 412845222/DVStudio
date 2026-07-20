@@ -896,6 +896,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
 		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),
+		getConfigStatus: () => invoke('dweb:cloudfs:get-config-status'),
 		saveConfig: (payload) => invoke('dweb:cloudfs:save-config', payload || {}),
 		clearConfig: () => invoke('dweb:cloudfs:clear-config'),
 		testConfig: (payload) => invoke('dweb:cloudfs:test-config', payload || {}),

@@ -109,10 +109,86 @@ export async function getActiveConfig(ctx) {
   }
 }
 
+export async function getConfigStatus(ctx) {
+  ensureInitialized()
+  try {
+    const repos = await getRepos()
+    const activeResult = repos.cloudStorageConfig.getActive()
+    
+    if (!activeResult.configured) {
+      return {
+        configured: false,
+        hasActiveBucket: false,
+        providerId: '',
+        providerName: '',
+        activeBucketName: '',
+        error: null,
+      }
+    }
+
+    const provider = getProvider(activeResult.providerId)
+    if (!provider) {
+      return {
+        configured: true,
+        hasActiveBucket: false,
+        providerId: activeResult.providerId,
+        providerName: '',
+        activeBucketName: '',
+        error: `Provider not found: ${activeResult.providerId}`,
+      }
+    }
+
+    const providerMeta = provider.getMeta()
+    let bucketResult = repos.cloudStorageConfig.getActiveBucketWithConfig()
+    let hasActiveBucket = bucketResult?.ok && bucketResult?.bucket?.name
+
+    if (!hasActiveBucket) {
+      const bucketsResult = repos.cloudStorageConfig.listConfiguredBuckets()
+      if (bucketsResult.ok && bucketsResult.buckets.length > 0) {
+        const targetBucket = bucketsResult.buckets.find(b => b.isActive) || bucketsResult.buckets[0]
+        repos.cloudStorageConfig.setActiveBucket(targetBucket.id)
+        bucketResult = repos.cloudStorageConfig.getActiveBucketWithConfig()
+        hasActiveBucket = bucketResult?.ok && bucketResult?.bucket?.name
+      }
+    }
+
+    const activeBucketName = hasActiveBucket ? bucketResult.bucket.name : ''
+
+    return {
+      configured: true,
+      hasActiveBucket: !!hasActiveBucket,
+      providerId: activeResult.providerId,
+      providerName: providerMeta?.name || activeResult.providerId,
+      activeBucketName,
+      lastTestedAt: activeResult.lastTestedAt,
+      lastTestOk: activeResult.lastTestOk,
+      error: null,
+    }
+  } catch (err) {
+    logger.error('[cloudfs] getConfigStatus failed:', err.message)
+    return {
+      configured: false,
+      hasActiveBucket: false,
+      providerId: '',
+      providerName: '',
+      activeBucketName: '',
+      error: err.message,
+    }
+  }
+}
+
 async function getActiveConfigFull() {
   ensureInitialized()
   const repos = await getRepos()
-  const result = repos.cloudStorageConfig.getActiveBucketWithConfig()
+  let result = repos.cloudStorageConfig.getActiveBucketWithConfig()
+  if (!result.ok) {
+    const bucketsResult = repos.cloudStorageConfig.listConfiguredBuckets()
+    if (bucketsResult.ok && bucketsResult.buckets.length > 0) {
+      const firstActive = bucketsResult.buckets.find(b => b.isActive) || bucketsResult.buckets[0]
+      repos.cloudStorageConfig.setActiveBucket(firstActive.id)
+      result = repos.cloudStorageConfig.getActiveBucketWithConfig()
+    }
+  }
   if (!result.ok) {
     return null
   }
@@ -120,9 +196,11 @@ async function getActiveConfigFull() {
   if (!provider) {
     return null
   }
+  const providerMeta = provider.getMeta?.() || {}
   return {
     providerId: result.providerId,
     provider,
+    providerName: providerMeta.name || result.providerId,
     config: normalizeCredentials(result.config),
     bucket: result.bucket,
   }
@@ -556,6 +634,8 @@ export async function uploadFileToPublicUrl(ctx, { data, name, mimeType, prefix 
       ok: true,
       publicUrl: result.publicUrl,
       key: result.key,
+      providerName: active.providerName,
+      bucketName: active.bucket?.bucketName,
     }
   } catch (err) {
     logger.error('[cloudfs] uploadFileToPublicUrl failed:', err.message)
@@ -745,15 +825,24 @@ export async function fixBucketAcl(ctx, payload = {}) {
     if (!active) {
       return { ok: false, error: 'Failed to get active config' }
     }
+    let aclStatus = 'unknown'
+    let aclError = null
     if (active.provider?.ensureBucketPublicRead) {
-      const aclResult = await active.provider.ensureBucketPublicRead(active.config)
-      if (aclResult.ok) {
-        repos.cloudStorageConfig.updateBucketAcl(bucketId, 'public-read')
-        return { ok: true, acl: 'public-read' }
+      try {
+        const aclResult = await active.provider.ensureBucketPublicRead(active.config)
+        if (aclResult.ok) {
+          aclStatus = 'public-read'
+          repos.cloudStorageConfig.updateBucketAcl(bucketId, 'public-read')
+        } else {
+          aclError = aclResult.error
+          logger.warn(`[cloudfs] fixBucketAcl: failed to set public-read for bucket ${bucketId}: ${aclResult.error}`)
+        }
+      } catch (aclErr) {
+        aclError = aclErr.message
+        logger.warn(`[cloudfs] fixBucketAcl: exception setting public-read for bucket ${bucketId}: ${aclErr.message}`)
       }
-      return { ok: false, error: aclResult.error }
     }
-    return { ok: false, error: 'Provider does not support ACL fix' }
+    return { ok: true, acl: aclStatus, aclWarning: aclError }
   } catch (err) {
     logger.error('[cloudfs] fixBucketAcl failed:', err.message)
     return { ok: false, error: err.message }

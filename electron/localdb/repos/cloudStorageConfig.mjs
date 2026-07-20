@@ -300,7 +300,23 @@ export function createCloudStorageConfigRepo({ appSecret }) {
 
 	function listConfiguredBuckets() {
 		try {
-			const rows = getAllBucketsStmt.all()
+			let rows = getAllBucketsStmt.all()
+			const activeRows = rows.filter(r => Boolean(r.is_active))
+			if (activeRows.length === 0 && rows.length > 0) {
+				const firstBucket = rows[0]
+				clearActiveBucketStmt.run()
+				db.prepare("UPDATE cloud_storage_buckets SET is_active = 1, updated_at = datetime('now') WHERE id = ?").run(firstBucket.id)
+				clearActiveStmt.run()
+				db.prepare("UPDATE cloud_storage_config SET is_active = 1, updated_at = datetime('now') WHERE id = ?").run(firstBucket.config_id)
+				rows = getAllBucketsStmt.all()
+			} else if (activeRows.length > 1) {
+				const firstActive = activeRows[0]
+				clearActiveBucketStmt.run()
+				db.prepare("UPDATE cloud_storage_buckets SET is_active = 1, updated_at = datetime('now') WHERE id = ?").run(firstActive.id)
+				clearActiveStmt.run()
+				db.prepare("UPDATE cloud_storage_config SET is_active = 1, updated_at = datetime('now') WHERE id = ?").run(firstActive.config_id)
+				rows = getAllBucketsStmt.all()
+			}
 			return { ok: true, buckets: rows.map(rowToBucket) }
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err), buckets: [] }
