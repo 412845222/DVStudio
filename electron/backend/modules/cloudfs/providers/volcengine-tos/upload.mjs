@@ -45,9 +45,6 @@ function buildSignedPreviewUrl(client, bucketName, key, fileName, expires = 8640
     bucket: bucketName,
     key,
     expires,
-    response: {
-      'content-disposition': buildContentDisposition(fileName),
-    },
   })
 }
 

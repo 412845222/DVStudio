@@ -1355,7 +1355,7 @@ export type WorkflowNodeChatSubmitPayload = {
 	}>
 }
 
-export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
+export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error' | 'cancelled'
 
 export type WorkflowNodeGenerationTask = {
 	id: string
