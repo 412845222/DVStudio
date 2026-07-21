@@ -218,5 +218,11 @@
   "aiworkflow.page.startup.projectLoadFailed": "项目数据加载失败",
   "aiworkflow.page.startup.initProject": "初始化项目",
   "aiworkflow.page.startup.loadAssets": "加载静态资产",
-  "aiworkflow.page.blueprintLog.pageReady": "蓝图页面已加载，日志面板就绪"
+  "aiworkflow.page.blueprintLog.pageReady": "蓝图页面已加载，日志面板就绪",
+  "aiworkflow.warmup.title": "节点预热提示",
+  "aiworkflow.warmup.confirm": "开始预热",
+  "aiworkflow.warmup.cancel": "稍后再说",
+  "aiworkflow.warmup.dontShowAgain": "不再提示",
+  "aiworkflow.warmup.message": "检测到当前蓝图有 {count}/{total} 个节点尚未预热",
+  "aiworkflow.warmup.description": "预热节点可以提升蓝图操作流畅度，是否立即开始预热？预热过程将根据您的CPU性能自动调整并发数。"
 }

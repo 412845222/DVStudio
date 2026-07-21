@@ -799,6 +799,8 @@
 		>
 			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
+
+		<WarmupPromptDialog />
 	</div>
 </template>
 
@@ -1115,6 +1117,8 @@ import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWor
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { useStartupProgress } from '../../composables/useStartupProgress'
+import WarmupPromptDialog from '../../ui/BluePrint/WarmupPromptDialog.vue'
+import { useWarmupPrompt } from './node-screenshot/warmupPromptManager'
 
 interface GeneratedResourceBase {
 	id: string
@@ -1583,6 +1587,49 @@ const nodeHostRefs = new Map<string, HTMLElement>()
 const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
 const screenshotPool = createNodeScreenshotPool()
 
+const { checkUnwarmedNodes, showPrompt } = useWarmupPrompt()
+
+const checkAndShowWarmupPrompt = () => {
+	const projectId = String(currentProjectId.value || '').trim()
+	const blueprintId = String(currentProjectName.value || '').trim()
+	if (!projectId || !blueprintId) return
+
+	const allNodes = Object.values(store.state.nodesById || {})
+	const nodeIds = allNodes.map((n: WorkflowNode) => String(n.id))
+	const activeTheme = themeStore.state.mode as 'dark' | 'light'
+
+	const unwarmed = checkUnwarmedNodes(
+		projectId,
+		blueprintId,
+		nodeIds,
+		(nodeId) => {
+			const node = store.state.nodesById[nodeId]
+			if (!node) return false
+			const version = getNodeScreenshotVersion(node, activeTheme)
+			return screenshotPool.hasCachedScreenshot(nodeId, version)
+		}
+	)
+
+	if (unwarmed.length > 0) {
+		showPrompt(
+			projectId,
+			blueprintId,
+			unwarmed,
+			nodeIds.length,
+			(nodeIdsToWarmup: string[]) => {
+				screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+				screenshotPool.setBurstMode(true)
+				for (const nid of nodeIdsToWarmup) {
+					onNodeInvalidateScreenshot(nid)
+				}
+				setTimeout(() => {
+					screenshotPool.setBurstMode(false)
+				}, 30000)
+			}
+		)
+	}
+}
+
 // Canvas2D截图渲染模块
 const {
 	state: canvasScreenshotState,
@@ -1731,11 +1778,23 @@ const canvasNodeEntries = computed(() => {
 })
 
 // 刷新Canvas节点层，强制全量重绘
+let refreshCanvasRafId: number | null = null
 const refreshCanvasNodeLayer = () => {
-	canvasScreenshotRefreshTick.value++
-	nextTick(() => {
+	if (refreshCanvasRafId !== null) return
+	refreshCanvasRafId = requestAnimationFrame(() => {
+		refreshCanvasRafId = null
+		canvasScreenshotRefreshTick.value++
 		nodeCanvasLayerRef.value?.markDirty()
 	})
+}
+
+const flushCanvasNodeLayer = () => {
+	if (refreshCanvasRafId !== null) {
+		cancelAnimationFrame(refreshCanvasRafId)
+		refreshCanvasRafId = null
+	}
+	canvasScreenshotRefreshTick.value++
+	nodeCanvasLayerRef.value?.markDirty()
 }
 
 // 判断节点是否有Canvas截图可以用于Canvas渲染
@@ -3061,15 +3120,18 @@ watch(
 watch(
 	() => viewportMotionActive.value,
 	(isActive) => {
-		if (!isActive) {
+		if (isActive) {
+			screenshotPool.pause()
+		} else {
+			screenshotPool.resume(300)
 			setTimeout(() => {
-				if (!viewportMotionActive.value) {
+				if (!viewportMotionActive.value && !isLinking.value) {
 					scheduleVisibleNodeScreenshots()
 				}
-			}, 200)
+			}, 300)
 		}
 	},
-	{ flush: 'post' }
+	{ flush: 'sync' }
 )
 
 watch(
@@ -7038,19 +7100,28 @@ const onNodeMediaReady = (nodeId: string) => {
 	)
 }
 
+const invalidateScreenshotDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const onNodeInvalidateScreenshot = (nodeId: string) => {
-	if (selectedNodeIds.value.includes(nodeId)) return
-	if (fullRenderNodeIds.value.has(nodeId)) return
 	const activeTheme = themeStore.state.mode as 'dark' | 'light'
 	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
 	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
-	nextTick(() => {
-		const node = store.state.nodesById[nodeId]
-		if (node) void scheduleNodeScreenshot(node, 0, 'normal')
-	})
+
+	const existing = invalidateScreenshotDebounceTimers.get(nodeId)
+	if (existing) clearTimeout(existing)
+
+	invalidateScreenshotDebounceTimers.set(
+		nodeId,
+		setTimeout(() => {
+			invalidateScreenshotDebounceTimers.delete(nodeId)
+			const node = store.state.nodesById[nodeId]
+			if (node && !fullRenderNodeIds.value.has(nodeId) && !screenshotPool.isInteractionPaused()) {
+				void scheduleNodeScreenshot(node, 0, 'low')
+			}
+		}, 300)
+	)
 }
 
 const videoPosterGenerating = new Set<string>()
@@ -11863,6 +11934,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	forceEndViewportMotion,
 	scheduleAsyncEdgeRender,
 	canvasViewportSize,
+	flushCanvasNodeLayer,
 	onNodeDragStart: (nodeIds: string[]) => {
 		selectionFrameDragging.value = true
 		selectionFrameDragNodeIds.value = new Set(nodeIds)
@@ -11875,7 +11947,6 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	onNodeDragMove: (_nodeIds: string[]) => {
 		selectionDragMoveTick.value++
 		scheduleUpdateDragFullRender()
-		refreshCanvasNodeLayer()
 	},
 	onNodeDragEnd: (nodeIds: string[]) => {
 		selectionFrameDragging.value = false
@@ -11887,7 +11958,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 			updateDragFullRenderRafId = null
 		}
 		forceEndViewportMotion()
-		refreshCanvasNodeLayer()
+		flushCanvasNodeLayer()
 		scheduleVisibleNodeScreenshots()
 	}
 })
@@ -11902,6 +11973,23 @@ const anchorCompatibility = linkInteraction.anchorCompatibility
 const isLinking = linkInteraction.isLinking
 const linkingFromNodeId = linkInteraction.linkingFromNodeId
 const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
+
+watch(
+	() => isLinking.value,
+	(linking) => {
+		if (linking) {
+			screenshotPool.pause()
+		} else {
+			screenshotPool.resume(250)
+			setTimeout(() => {
+				if (!viewportMotionActive.value && !isLinking.value) {
+					scheduleVisibleNodeScreenshots()
+				}
+			}, 250)
+		}
+	},
+	{ flush: 'sync' }
+)
 
 const canvasScreenToWorld = (point: { x: number; y: number }) => {
 	const vw = canvasViewportSize.value.width
@@ -12123,8 +12211,6 @@ watch(
 const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
-	// 平移开始时最小化DOM渲染：不保留之前的fullRenderNodeIds快照，
-	// 仅通过panning分支保留聊天对话框节点和待截图节点，其余全部切换为Canvas轻量渲染
 	panningFullRenderSnapshot.value = new Set()
 	markViewportMotion()
 	refreshCanvasNodeLayer()
@@ -12180,6 +12266,57 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 
 const MAX_DRAG_FULL_RENDER_NODES = 40
 let updateDragFullRenderRafId: number | null = null
+let selectionFrameDragRafId: number | null = null
+let selectionFramePendingDx = 0
+let selectionFramePendingDy = 0
+let selectionFramePendingNodeIds: string[] = []
+let hasSelectionFramePendingUpdate = false
+
+const flushSelectionFrameDrag = () => {
+	if (selectionFrameDragRafId !== null) {
+		cancelAnimationFrame(selectionFrameDragRafId)
+		selectionFrameDragRafId = null
+	}
+	if (hasSelectionFramePendingUpdate) {
+		hasSelectionFramePendingUpdate = false
+		if (Math.abs(selectionFramePendingDx) > 0.001 || Math.abs(selectionFramePendingDy) > 0.001) {
+			store.dispatch('moveNodesBy', {
+				dx: selectionFramePendingDx,
+				dy: selectionFramePendingDy,
+				nodeIds: selectionFramePendingNodeIds
+			})
+			selectionFramePendingDx = 0
+			selectionFramePendingDy = 0
+		}
+		selectionDragMoveTick.value++
+		scheduleAsyncEdgeRender()
+		scheduleUpdateDragFullRender()
+		flushCanvasNodeLayer()
+	}
+}
+
+const scheduleSelectionFrameDrag = () => {
+	if (selectionFrameDragRafId !== null) return
+	selectionFrameDragRafId = requestAnimationFrame(() => {
+		selectionFrameDragRafId = null
+		if (hasSelectionFramePendingUpdate) {
+			hasSelectionFramePendingUpdate = false
+			if (Math.abs(selectionFramePendingDx) > 0.001 || Math.abs(selectionFramePendingDy) > 0.001) {
+				store.dispatch('moveNodesBy', {
+					dx: selectionFramePendingDx,
+					dy: selectionFramePendingDy,
+					nodeIds: selectionFramePendingNodeIds
+				})
+				selectionFramePendingDx = 0
+				selectionFramePendingDy = 0
+			}
+			selectionDragMoveTick.value++
+			scheduleAsyncEdgeRender()
+			scheduleUpdateDragFullRender()
+			flushCanvasNodeLayer()
+		}
+	})
+}
 
 const updateSelectionDragFullRender = () => {
 	updateDragFullRenderRafId = null
@@ -12227,31 +12364,35 @@ const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
 	selectionDragFullRenderIds.value = new Set()
 	selectionDragMoveTick.value = 0
+	selectionFramePendingDx = 0
+	selectionFramePendingDy = 0
+	selectionFramePendingNodeIds = payload.nodeIds
+	hasSelectionFramePendingUpdate = false
 	markViewportMotion()
 	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
-	store.dispatch('moveNodesBy', payload)
-	selectionDragMoveTick.value++
+	selectionFramePendingDx += payload.dx
+	selectionFramePendingDy += payload.dy
+	selectionFramePendingNodeIds = payload.nodeIds
+	hasSelectionFramePendingUpdate = true
 	markViewportMotion()
-	scheduleAsyncEdgeRender()
-	scheduleUpdateDragFullRender()
-	refreshCanvasNodeLayer()
+	scheduleSelectionFrameDrag()
 }
 
 const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = false
 	selectionFrameDragNodeIds.value = new Set()
 	selectionDragFullRenderIds.value = new Set()
-	selectionDragMoveTick.value++
+	flushSelectionFrameDrag()
 	if (updateDragFullRenderRafId !== null) {
 		cancelAnimationFrame(updateDragFullRenderRafId)
 		updateDragFullRenderRafId = null
 	}
 	forceEndViewportMotion()
-	refreshCanvasNodeLayer()
+	flushCanvasNodeLayer()
 	scheduleVisibleNodeScreenshots()
 }
 
@@ -12435,6 +12576,10 @@ async function runProjectEnterSequence(
 			},
 			{ errorDetailOnFailure: true }
 		)
+
+		setTimeout(() => {
+			checkAndShowWarmupPrompt()
+		}, 1500)
 	}
 }
 

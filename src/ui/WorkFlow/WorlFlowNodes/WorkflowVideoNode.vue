@@ -604,6 +604,7 @@ const onLoadedMetadata = () => {
 	}
 	drawTimeline()
 	nextTick(() => baseRef.value?.requestAutoResize())
+	scheduleInvalidateScreenshot()
 }
 
 let srcWatchRunId = 0
@@ -884,6 +885,7 @@ const onOutputWidthChange = (e: Event) => {
 	const w = Math.max(1, Math.floor(Number(input.value) || 0))
 	if (!Number.isFinite(w) || w <= 0) return
 	emit('update-video-settings', { outputWidth: w })
+	scheduleInvalidateScreenshot()
 }
 
 const onOutputHeightChange = (e: Event) => {
@@ -891,6 +893,7 @@ const onOutputHeightChange = (e: Event) => {
 	const h = Math.max(1, Math.floor(Number(input.value) || 0))
 	if (!Number.isFinite(h) || h <= 0) return
 	emit('update-video-settings', { outputHeight: h })
+	scheduleInvalidateScreenshot()
 }
 
 const coverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number) => {
@@ -1126,6 +1129,7 @@ watch(
 		if (newPoster && localPosterUrl.value) {
 			localPosterUrl.value = null
 		}
+		scheduleInvalidateScreenshot()
 	}
 )
 
@@ -1181,6 +1185,7 @@ watch(
 		if (isSelected && !wasSelected) {
 			localPosterUrl.value = null
 		}
+		scheduleInvalidateScreenshot()
 	},
 	{ flush: 'pre' }
 )
@@ -1353,6 +1358,7 @@ onMounted(() => {
 		if (cur > 0.1) {
 			emit('update-video-settings', { currentTime: cur })
 		}
+		scheduleInvalidateScreenshot()
 	})
 	videoEl.value.addEventListener('pause', () => {
 		playing.value = false

@@ -13,12 +13,12 @@ describe('__test__inlineAllStyles', () => {
 		clone = source.cloneNode(true) as HTMLElement
 	})
 
-	it('should inline computed styles from source to clone', () => {
-		__test__inlineAllStyles(source, clone)
+	it('should inline computed styles from source to clone', async () => {
+		await __test__inlineAllStyles(source, clone)
 		expect(clone.style.width).toBeTruthy()
 	})
 
-	it('should preserve root element positioning styles (position, left, top, transform)', () => {
+	it('should preserve root element positioning styles (position, left, top, transform)', async () => {
 		const positionedSource = document.createElement('div')
 		positionedSource.style.cssText = 'width:200px;height:100px;'
 		document.body.appendChild(positionedSource)
@@ -33,7 +33,7 @@ describe('__test__inlineAllStyles', () => {
 		posClone.style.transform = 'none'
 		posClone.style.transformOrigin = 'top left'
 
-		__test__inlineAllStyles(positionedSource, posClone)
+		await __test__inlineAllStyles(positionedSource, posClone)
 
 		expect(posClone.style.position).toBe('absolute')
 		expect(posClone.style.left).toBe('20px')
@@ -42,18 +42,18 @@ describe('__test__inlineAllStyles', () => {
 		expect(posClone.style.transformOrigin).toBe('top left')
 	})
 
-	it('should preserve root element margin', () => {
+	it('should preserve root element margin', async () => {
 		const src = document.createElement('div')
 		src.style.cssText = 'width:200px;height:100px;'
 		document.body.appendChild(src)
 		const cl = src.cloneNode(true) as HTMLElement
 		cl.style.margin = '0'
 
-		__test__inlineAllStyles(src, cl)
+		await __test__inlineAllStyles(src, cl)
 		expect(cl.style.margin).toBe('0px')
 	})
 
-	it('should inline styles for child elements', () => {
+	it('should inline styles for child elements', async () => {
 		const parent = document.createElement('div')
 		parent.style.cssText = 'width:200px;height:200px;display:flex;'
 		const child = document.createElement('span')
@@ -63,13 +63,13 @@ describe('__test__inlineAllStyles', () => {
 		document.body.appendChild(parent)
 
 		const parentClone = parent.cloneNode(true) as HTMLElement
-		__test__inlineAllStyles(parent, parentClone)
+		await __test__inlineAllStyles(parent, parentClone)
 
 		const childClone = parentClone.querySelector('span') as HTMLElement
 		expect(childClone).toBeTruthy()
 	})
 
-	it('should skip cursor and pointer-events properties', () => {
+	it('should skip cursor and pointer-events properties', async () => {
 		const src = document.createElement('div')
 		src.style.cursor = 'pointer'
 		src.style.pointerEvents = 'none'
@@ -77,10 +77,10 @@ describe('__test__inlineAllStyles', () => {
 		document.body.appendChild(src)
 		const cl = src.cloneNode(true) as HTMLElement
 
-		__test__inlineAllStyles(src, cl)
+		await __test__inlineAllStyles(src, cl)
 	})
 
-	it('should set crossOrigin on cloned images', () => {
+	it('should set crossOrigin on cloned images', async () => {
 		const container = document.createElement('div')
 		const img = document.createElement('img')
 		img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
@@ -88,22 +88,22 @@ describe('__test__inlineAllStyles', () => {
 		document.body.appendChild(container)
 
 		const containerClone = container.cloneNode(true) as HTMLElement
-		__test__inlineAllStyles(container, containerClone)
+		await __test__inlineAllStyles(container, containerClone)
 
 		const clonedImg = containerClone.querySelector('img') as HTMLImageElement
 		expect(clonedImg.crossOrigin).toBe('anonymous')
 	})
 
-	it('should accept additional preserveProps', () => {
+	it('should accept additional preserveProps', async () => {
 		const src = document.createElement('div')
 		src.style.width = '100px'
 		document.body.appendChild(src)
 		const cl = src.cloneNode(true) as HTMLElement
 
-		__test__inlineAllStyles(src, cl, new Set(['width']))
+		await __test__inlineAllStyles(src, cl, undefined, new Set(['width']))
 	})
 
-	it('should walk tree in sync order', () => {
+	it('should walk tree in sync order', async () => {
 		const container = document.createElement('div')
 		const a = document.createElement('div')
 		a.className = 'child-a'
@@ -116,7 +116,7 @@ describe('__test__inlineAllStyles', () => {
 		document.body.appendChild(container)
 
 		const containerClone = container.cloneNode(true) as HTMLElement
-		__test__inlineAllStyles(container, containerClone)
+		await __test__inlineAllStyles(container, containerClone)
 
 		expect(containerClone.querySelectorAll('.child-a').length).toBe(1)
 		expect(containerClone.querySelectorAll('.child-b').length).toBe(1)
