@@ -3,7 +3,8 @@ import {
 	anchorKind,
 	canLinkAnchors,
 	normalizeAnchorMediaType,
-	anchorKindLabel
+	anchorKindLabel,
+	findBestInputAnchorForOutput
 } from '../../../../src/aiworkflow/domain/link/anchorKinds'
 import type { WorkflowNode } from '../../../../src/aiworkflow/types'
 
@@ -222,6 +223,128 @@ describe('anchorKinds', () => {
 
 		it('should return unknown for null', () => {
 			expect(anchorKindLabel(null)).toBe('unknown')
+		})
+	})
+
+	describe('findBestInputAnchorForOutput', () => {
+		const createNode = (
+			id: string,
+			type: string,
+			inputs: any[] = [],
+			outputs: any[] = []
+		): WorkflowNode => ({
+			id,
+			type,
+			worldX: 0,
+			worldY: 0,
+			width: 200,
+			height: 100,
+			inputs,
+			outputs
+		} as WorkflowNode)
+
+		it('should return null when from node does not exist', () => {
+			const nodesById: Record<string, WorkflowNode> = {}
+			expect(findBestInputAnchorForOutput(nodesById, 'missing', 'out-1', 'node-b')).toBeNull()
+		})
+
+		it('should return null when to node has no inputs', () => {
+			const nodesById: Record<string, WorkflowNode> = {
+				'node-a': createNode('node-a', 'image', [], [{ id: 'out-1', mediaType: 'image' }]),
+				'node-b': createNode('node-b', 'image', [], [])
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'node-a', 'out-1', 'node-b')).toBeNull()
+		})
+
+		it('should return null when no linkable anchors exist', () => {
+			const nodesById: Record<string, WorkflowNode> = {
+				'audio-out': createNode('audio-out', 'audio', [], [{ id: 'out-1', mediaType: 'audio' }]),
+				'image-in': createNode('image-in', 'image', [{ id: 'in-1', mediaType: 'image' }], [])
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'audio-out', 'out-1', 'image-in')).toBeNull()
+		})
+
+		it('should connect image output to image input on image node (bug fix)', () => {
+			const imageOutNode = createNode('image-out', 'image', [], [{ id: 'out-0', mediaType: 'image' }])
+			const imageInNode = createNode('image-in', 'image', [
+				{ id: 'in-text', mediaType: 'text' },
+				{ id: 'in-0', mediaType: 'image' }
+			], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'image-out': imageOutNode,
+				'image-in': imageInNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'image-out', 'out-0', 'image-in')).toBe('in-0')
+		})
+
+		it('should connect text output to text input on image node', () => {
+			const textOutNode = createNode('text-out', 'text', [], [{ id: 'out-0', mediaType: 'text' }])
+			const imageInNode = createNode('image-in', 'image', [
+				{ id: 'in-text', mediaType: 'text' },
+				{ id: 'in-0', mediaType: 'image' }
+			], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'text-out': textOutNode,
+				'image-in': imageInNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'text-out', 'out-0', 'image-in')).toBe('in-text')
+		})
+
+		it('should connect image output to generic anchor with acceptedMediaTypes (Blender/ComfyUI)', () => {
+			const imageOutNode = createNode('image-out', 'image', [], [{ id: 'out-0', mediaType: 'image' }])
+			const blenderNode = createNode('blender-in', 'blender', [
+				{ id: 'in-flow', mediaType: 'flow' },
+				{ id: 'in-generic', mediaType: 'generic', acceptedMediaTypes: ['image', 'video', 'text', 'model3d'], multiInput: true }
+			], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'image-out': imageOutNode,
+				'blender-in': blenderNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'image-out', 'out-0', 'blender-in')).toBe('in-generic')
+		})
+
+		it('should prefer multiInput anchor when multiple exact matches exist', () => {
+			const imageOutNode = createNode('image-out', 'image', [], [{ id: 'out-0', mediaType: 'image' }])
+			const targetNode = createNode('target', 'custom', [
+				{ id: 'in-single', mediaType: 'image' },
+				{ id: 'in-multi', mediaType: 'image', multiInput: true }
+			], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'image-out': imageOutNode,
+				'target': targetNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'image-out', 'out-0', 'target')).toBe('in-multi')
+		})
+
+		it('should prefer multiInput generic anchor over other linkable anchors', () => {
+			const imageOutNode = createNode('image-out', 'image', [], [{ id: 'out-0', mediaType: 'image' }])
+			const targetNode = createNode('target', 'custom', [
+				{ id: 'in-resource' },
+				{ id: 'in-generic', mediaType: 'generic', acceptedMediaTypes: ['image'], multiInput: true }
+			], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'image-out': imageOutNode,
+				'target': targetNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'image-out', 'out-0', 'target')).toBe('in-generic')
+		})
+
+		it('should fall back to first linkable anchor when no exact or generic match', () => {
+			const textOutNode = createNode('text-out', 'text', [], [{ id: 'out-0', mediaType: 'text' }])
+			const videoInNode = createNode('video-in', 'video', [{ id: 'in-0' }], [])
+			const nodesById: Record<string, WorkflowNode> = {
+				'text-out': textOutNode,
+				'video-in': videoInNode
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'text-out', 'out-0', 'video-in')).toBe('in-0')
+		})
+
+		it('should return null when output anchor is not found', () => {
+			const nodesById: Record<string, WorkflowNode> = {
+				'node-a': createNode('node-a', 'image', [], [{ id: 'out-real', mediaType: 'image' }]),
+				'node-b': createNode('node-b', 'image', [{ id: 'in-0', mediaType: 'image' }], [])
+			}
+			expect(findBestInputAnchorForOutput(nodesById, 'node-a', 'out-missing', 'node-b')).toBeNull()
 		})
 	})
 })
