@@ -1147,6 +1147,8 @@ export type WorkflowNode = {
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
 	nodeChatParams?: Record<string, unknown>
+	/** For chat dialog: selected @mention references (persisted for chip restoration) */
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	/** For chat dialog: mirror of nodeChatDraft (legacy prompt field, kept for back-compat) */
 	prompt?: string
 	worldX: number
@@ -1335,6 +1337,14 @@ export type WorkflowNodeChatParams = {
 	blender?: WorkflowNodeChatParamRecord
 }
 
+export type WorkflowNodeChatSelectedRef = {
+	edgeId?: string
+	fromNodeId?: string
+	fromAnchorId?: string
+	kind: 'text' | 'image' | 'video' | 'model3d' | 'blender'
+	label: string
+}
+
 export type WorkflowNodeChatSubmitPayload = {
 	nodeId: string
 	nodeType: WorkflowNodeChatType
@@ -1378,6 +1388,7 @@ export type WorkflowNodeChatDialog = {
 	draft: string
 	submitting: boolean
 	params: WorkflowNodeChatParams
+	selectedRefs: WorkflowNodeChatSelectedRef[]
 }
 
 export type WorkflowState = {

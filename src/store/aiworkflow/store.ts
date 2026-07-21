@@ -25,6 +25,7 @@ import type {
 	WorkflowMeshyTaskTarget,
 	WorkflowNodeChatType,
 	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask,
 	WorkflowSelectionTag,
 	SavedSelectionFrame,
@@ -49,6 +50,22 @@ const clampZoom = (v: unknown) => {
 	const n = Number(v)
 	if (!Number.isFinite(n)) return 1
 	return Math.max(0.2, Math.min(6, n))
+}
+
+const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | undefined => {
+	if (!Array.isArray(v)) return undefined
+	const result: WorkflowNodeChatSelectedRef[] = []
+	for (const item of v) {
+		if (!item || typeof item !== 'object') continue
+		const kind = (item as any).kind
+		if (kind !== 'text' && kind !== 'image' && kind !== 'video' && kind !== 'model3d' && kind !== 'blender') continue
+		const label = isString((item as any).label) ? String((item as any).label) : ''
+		const edgeId = isString((item as any).edgeId) ? String((item as any).edgeId) : undefined
+		const fromNodeId = isString((item as any).fromNodeId) ? String((item as any).fromNodeId) : undefined
+		const fromAnchorId = isString((item as any).fromAnchorId) ? String((item as any).fromAnchorId) : undefined
+		result.push({ kind, label, edgeId, fromNodeId, fromAnchorId })
+	}
+	return result.length > 0 ? result : undefined
 }
 
 const normalizeSceneLayoutLightingControls = (
@@ -110,7 +127,8 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 			nodeType: null,
 			draft: '',
 			submitting: false,
-			params: {}
+			params: {},
+			selectedRefs: [] as WorkflowNodeChatSelectedRef[]
 		},
 		nodeGenerationTasksById: {},
 		nodeGenerationTaskIdsByNodeId: {},
@@ -2278,6 +2296,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings),
 					nodeChatDraft: isString(n.nodeChatDraft) ? String(n.nodeChatDraft) : undefined,
 					nodeChatParams: isRecord(n.nodeChatParams) ? n.nodeChatParams : undefined,
+					nodeChatSelectedRefs: normalizeChatSelectedRefs((n as any).nodeChatSelectedRefs),
 					prompt: isString(n.prompt) ? String(n.prompt) : undefined
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
@@ -3920,7 +3939,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					nodeType: dialog.nodeType ?? null,
 					draft: typeof dialog.draft === 'string' ? dialog.draft : '',
 					submitting: Boolean(dialog.submitting),
-					params: dialog.params && typeof dialog.params === 'object' ? dialog.params : {}
+					params: dialog.params && typeof dialog.params === 'object' ? dialog.params : {},
+					selectedRefs: Array.isArray(dialog.selectedRefs) ? dialog.selectedRefs : []
 				}
 			}
 			if (snap.nodeGenerationTasksById && typeof snap.nodeGenerationTasksById === 'object') {
@@ -4162,6 +4182,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				draft = node?.nodeChatDraft ?? ''
 			}
 			state.nodeChatDialog.draft = draft
+			state.nodeChatDialog.selectedRefs = node?.nodeChatSelectedRefs
+				? JSON.parse(JSON.stringify(node.nodeChatSelectedRefs))
+				: []
 			if (payload.nodeType === 'blender') {
 				state.nodeChatDialog.submitting = Boolean(node?.blenderSettings?.isSubmitting)
 			} else {
@@ -4273,6 +4296,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...existingChatParams,
 				[typeKey]: mergedTypeParams
 			}
+
+			state.nodeChatDialog.selectedRefs = normalizeChatSelectedRefs(node?.nodeChatSelectedRefs) ?? []
 		},
 		closeNodeChatDialog(state) {
 			state.nodeChatDialog.visible = false
@@ -4280,6 +4305,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.nodeType = null
 			state.nodeChatDialog.draft = ''
 			state.nodeChatDialog.submitting = false
+			state.nodeChatDialog.selectedRefs = []
 		},
 		setNodeChatDraft(state, payload: { text: string }) {
 			state.nodeChatDialog.draft = payload.text
@@ -4311,6 +4337,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 							}
 						}
 					}
+				}
+			}
+		},
+		setNodeChatSelectedRefs(state: WorkflowState, payload: { refs: WorkflowNodeChatSelectedRef[] }) {
+			state.nodeChatDialog.selectedRefs = payload.refs
+			if (state.nodeChatDialog.nodeId) {
+				const node = state.nodesById[state.nodeChatDialog.nodeId]
+				if (node) {
+					node.nodeChatSelectedRefs = payload.refs.length > 0 ? [...payload.refs] : undefined
 				}
 			}
 		},

@@ -24,6 +24,7 @@
 		:nodeChatDraft="nodeChatDraft"
 		:nodeChatSubmitting="nodeChatSubmitting"
 		:nodeChatParams="nodeChatParams"
+		:nodeChatSelectedRefs="nodeChatSelectedRefs"
 		:inputParamPreviewRefs="inputParamPreviewRefs"
 		:nodeGenerationTask="nodeGenerationTask"
 		:anchorCompatibility="anchorCompatibility"
@@ -45,6 +46,7 @@
 		@auto-resize="(h) => emit('auto-resize', h)"
 		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
 		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
+		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
 		@node-chat-close="emit('node-chat-close')"
 		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
 		@node-chat-stop="emit('node-chat-stop')"
@@ -334,7 +336,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
+import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatSelectedRef, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from '../../BluePrint/node-dialog'
 import { useI18n } from '../../../i18n'
 
@@ -382,6 +384,7 @@ const props = defineProps<{
 	nodeChatDraft?: string
 	nodeChatSubmitting?: boolean
 	nodeChatParams?: Record<string, unknown>
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	nodeGenerationTask?: WorkflowNodeGenerationTask | null
 	anchorCompatibility?: Record<string, boolean | null>
 	isLinking?: boolean
@@ -406,6 +409,7 @@ const emit = defineEmits<{
 	(e: 'auto-resize', height: number): void
 	(e: 'node-chat-update-draft', value: string): void
 	(e: 'node-chat-update-params', value: Record<string, unknown>): void
+	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
 	(e: 'node-chat-close'): void
 	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'node-chat-stop'): void

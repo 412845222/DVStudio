@@ -164,10 +164,12 @@
 			:draft="nodeChatDraft"
 			:submitting="nodeChatSubmitting"
 			:params="nodeChatParams"
+			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
 			@update:draft="(value) => emit('node-chat-update-draft', value)"
 			@update:params="(value) => emit('node-chat-update-params', value)"
+			@update:selected-references="(value) => emit('node-chat-update-selected-refs', value)"
 			@close="emit('node-chat-close')"
 			@submit="(payload) => emit('node-chat-submit', payload)"
 			@stop="emit('node-chat-stop')"
@@ -270,6 +272,7 @@ import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
 	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
 import { NodeChatDialog, type InputParamPreviewRef } from '../BluePrint/node-dialog'
@@ -313,6 +316,7 @@ const props = defineProps<{
 	nodeChatDraft?: string
 	nodeChatSubmitting?: boolean
 	nodeChatParams?: Record<string, unknown>
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 	nodeGenerationTask?: WorkflowNodeGenerationTask | null
 	anchorCompatibility?: Record<string, boolean | null>
@@ -363,6 +367,7 @@ const emit = defineEmits<{
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(e: 'node-chat-update-draft', value: string): void
 	(e: 'node-chat-update-params', value: Record<string, unknown>): void
+	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
 	(e: 'node-chat-close'): void
 	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'node-chat-stop'): void
@@ -436,6 +441,7 @@ const visualStatus = computed<'idle' | 'running' | 'error'>(() => {
 const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
 const nodeChatParams = computed(() => props.nodeChatParams ?? {})
+const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
