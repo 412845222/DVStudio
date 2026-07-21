@@ -19,6 +19,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	forceEndViewportMotion?: () => void
 	scheduleAsyncEdgeRender: () => void
 	canvasViewportSize: Ref<{ width: number; height: number }>
+	flushCanvasNodeLayer?: () => void
 	onNodeDragStart?: (nodeIds: string[]) => void
 	onNodeDragMove?: (nodeIds: string[]) => void
 	onNodeDragEnd?: (nodeIds: string[]) => void
@@ -184,18 +185,43 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		const startWorld = { x: node.worldX, y: node.worldY }
 		const moveGroup =
 			payload.selectedNodeIds.value.length > 1 && payload.selectedNodeIds.value.includes(nodeId)
-		let prevDx = 0
-		let prevDy = 0
 		let hasMoved = false
 		let dragNodeIds: string[] = []
 		let dragMoveRafId: number | null = null
+		let latestDx = 0
+		let latestDy = 0
+		let lastCommittedDx = 0
+		let lastCommittedDy = 0
+		let pendingSingleNodeX = 0
+		let pendingSingleNodeY = 0
+		let hasPendingUpdate = false
 
 		const scheduleDragMove = () => {
 			if (dragMoveRafId !== null) return
 			dragMoveRafId = requestAnimationFrame(() => {
 				dragMoveRafId = null
 				if (hasMoved && dragNodeIds.length > 0) {
+					if (hasPendingUpdate) {
+						hasPendingUpdate = false
+						if (moveGroup) {
+							const stepDx = latestDx - lastCommittedDx
+							const stepDy = latestDy - lastCommittedDy
+							if (Math.abs(stepDx) > 0.001 || Math.abs(stepDy) > 0.001) {
+								payload.store.commit('moveSelectedNodesByDelta', { dx: stepDx, dy: stepDy })
+								lastCommittedDx = latestDx
+								lastCommittedDy = latestDy
+							}
+						} else {
+							payload.store.commit('setNodePosition', {
+								nodeId,
+								worldX: pendingSingleNodeX,
+								worldY: pendingSingleNodeY
+							})
+						}
+						payload.scheduleAsyncEdgeRender()
+					}
 					payload.onNodeDragMove?.(dragNodeIds)
+					payload.flushCanvasNodeLayer?.()
 				}
 			})
 		}
@@ -213,26 +239,46 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				dragNodeIds = moveGroup
 					? payload.selectedNodeIds.value.slice()
 					: [nodeId]
+				lastCommittedDx = 0
+				lastCommittedDy = 0
 				payload.onNodeDragStart?.(dragNodeIds)
 			}
 
 			if (moveGroup) {
-				const stepDx = dx - prevDx
-				const stepDy = dy - prevDy
-				prevDx = dx
-				prevDy = dy
-				if (Math.abs(stepDx) > 0 || Math.abs(stepDy) > 0) {
-					payload.store.commit('moveSelectedNodesByDelta', { dx: stepDx, dy: stepDy })
-				}
+				latestDx = dx
+				latestDy = dy
 			} else {
-				payload.store.commit('setNodePosition', {
-					nodeId,
-					worldX: startWorld.x + dx,
-					worldY: startWorld.y + dy
-				})
+				pendingSingleNodeX = startWorld.x + dx
+				pendingSingleNodeY = startWorld.y + dy
 			}
+			hasPendingUpdate = true
 			scheduleDragMove()
-			payload.scheduleAsyncEdgeRender()
+		}
+
+		const flushPendingDragUpdate = () => {
+			if (dragMoveRafId !== null) {
+				cancelAnimationFrame(dragMoveRafId)
+				dragMoveRafId = null
+			}
+			if (hasMoved && hasPendingUpdate) {
+				hasPendingUpdate = false
+				if (moveGroup) {
+					const stepDx = latestDx - lastCommittedDx
+					const stepDy = latestDy - lastCommittedDy
+					if (Math.abs(stepDx) > 0.001 || Math.abs(stepDy) > 0.001) {
+						payload.store.commit('moveSelectedNodesByDelta', { dx: stepDx, dy: stepDy })
+						lastCommittedDx = latestDx
+						lastCommittedDy = latestDy
+					}
+				} else {
+					payload.store.commit('setNodePosition', {
+						nodeId,
+						worldX: pendingSingleNodeX,
+						worldY: pendingSingleNodeY
+					})
+				}
+				payload.scheduleAsyncEdgeRender()
+			}
 		}
 
 		const cleanup = () => {
@@ -240,6 +286,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				cancelAnimationFrame(dragMoveRafId)
 				dragMoveRafId = null
 			}
+			flushPendingDragUpdate()
 			window.removeEventListener('pointermove', onMove, true)
 			window.removeEventListener('pointerup', onUp, true)
 			window.removeEventListener('pointercancel', onUp, true)
