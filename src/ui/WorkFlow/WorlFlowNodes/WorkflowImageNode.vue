@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -241,6 +242,7 @@ const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-imag
 const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const onPreviewContextMenu = (e: MouseEvent) => {
 	emit('select', props.nodeId)
@@ -338,8 +340,6 @@ const outputHeightDisplay = computed(() =>
 )
 
 const previewWrapStyle = computed(() => {
-	const aspect = outputAspect.value
-	if (aspect) return { aspectRatio: `${aspect}` }
 	return {}
 })
 
@@ -507,6 +507,7 @@ const onPreviewImageLoad = () => {
 			void ensureNaturalSizeFallback()
 		}
 		emit('media-ready')
+		nextTick(() => baseRef.value?.requestAutoResize())
 		return
 	}
 
@@ -518,6 +519,7 @@ const onPreviewImageLoad = () => {
 		const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value
 		if (!needsUpdate && !pendingResourceReset.value) {
 			emit('media-ready')
+			nextTick(() => baseRef.value?.requestAutoResize())
 			return
 		}
 
@@ -532,6 +534,7 @@ const onPreviewImageLoad = () => {
 		void ensureNaturalSizeFallback()
 	}
 	emit('media-ready')
+	nextTick(() => baseRef.value?.requestAutoResize())
 }
 
 const onPreviewImageError = () => {
@@ -629,8 +632,7 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
 	align-self: stretch;
 }
 
@@ -638,7 +640,7 @@ onBeforeUnmount(() => {
 	width: 100%;
 	flex: 0 0 auto;
 	aspect-ratio: 1 / 1;
-	border-radius: 0;
+	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt);
@@ -656,7 +658,7 @@ onBeforeUnmount(() => {
 	width: 100%;
 	aspect-ratio: 1 / 1;
 	border: 1px dashed var(--vscode-border);
-	border-radius: 0;
+	border-radius: 6px;
 	padding: 10px;
 	text-align: center;
 	color: var(--vscode-fg-muted);

@@ -3750,11 +3750,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n) return
 			if (payload.width != null) {
 				const w = Number(payload.width)
-				if (Number.isFinite(w)) n.width = Math.max(80, Math.min(1000, w))
+				if (Number.isFinite(w)) n.width = Math.max(80, Math.min(2000, w))
 			}
 			if (payload.height != null) {
 				const h = Number(payload.height)
-				if (Number.isFinite(h)) n.height = Math.max(80, Math.min(1000, h))
+				if (Number.isFinite(h)) n.height = Math.max(80, h)
 			}
 			if (payload.customized !== false) n.sizeCustomized = true
 			if (n.type === 'story') syncStoryAnchors(n)

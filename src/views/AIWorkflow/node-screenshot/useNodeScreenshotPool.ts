@@ -218,13 +218,12 @@ const extractThemeFromVersion = (version: string): 'dark' | 'light' => {
 
 const makeCacheKey = (nodeId: string, theme: 'dark' | 'light') => `${nodeId}::${theme}`
 
-const inlineAllStyles = (source: Element, clone: Element) => {
+export const __test__inlineAllStyles = (source: Element, clone: Element, preserveProps?: Set<string>) => {
 	const sw = document.createTreeWalker(source, NodeFilter.SHOW_ELEMENT)
 	const cw = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT)
 	let sn: Node | null = sw.currentNode
 	let cn: Node | null = cw.currentNode
 
-	// 需要跳过的属性（交互类、非视觉类）
 	const skipProps = new Set([
 		'cursor',
 		'pointer-events',
@@ -238,8 +237,11 @@ const inlineAllStyles = (source: Element, clone: Element) => {
 		'outline-color',
 		'outline-style',
 		'outline-width',
-		'outline-offset'
+		'outline-offset',
+		...(preserveProps || [])
 	])
+
+	const isRoot = sn === source && cn === clone
 
 	while (sn && cn) {
 		const sEl = sn as HTMLElement | SVGElement
@@ -250,21 +252,48 @@ const inlineAllStyles = (source: Element, clone: Element) => {
 			(cEl instanceof HTMLElement || cEl instanceof SVGElement)
 		) {
 			const computed = window.getComputedStyle(sEl)
-			const props: string[] = []
 
-			// 遍历所有计算样式属性并内联（不使用预定义列表，保证完整性）
-			for (let i = 0; i < computed.length; i++) {
-				const prop = computed[i]
-				if (skipProps.has(prop)) continue
-				try {
-					const val = computed.getPropertyValue(prop)
-					if (val) {
-						props.push(`${prop}: ${val}`)
-					}
-				} catch {}
+			if (isRoot && cEl instanceof HTMLElement) {
+				const preservedTransform = cEl.style.transform
+				const preservedTransformOrigin = cEl.style.transformOrigin
+				const preservedLeft = cEl.style.left
+				const preservedTop = cEl.style.top
+				const preservedRight = cEl.style.right
+				const preservedBottom = cEl.style.bottom
+				const preservedPosition = cEl.style.position
+				const preservedMargin = cEl.style.margin
+
+				for (let i = 0; i < computed.length; i++) {
+					const prop = computed[i]
+					if (skipProps.has(prop)) continue
+					try {
+						const val = computed.getPropertyValue(prop)
+						if (val) {
+							cEl.style.setProperty(prop, val, computed.getPropertyPriority(prop))
+						}
+					} catch {}
+				}
+
+				cEl.style.transform = preservedTransform
+				cEl.style.transformOrigin = preservedTransformOrigin
+				cEl.style.left = preservedLeft
+				cEl.style.top = preservedTop
+				cEl.style.right = preservedRight
+				cEl.style.bottom = preservedBottom
+				cEl.style.position = preservedPosition
+				cEl.style.margin = preservedMargin
+			} else {
+				for (let i = 0; i < computed.length; i++) {
+					const prop = computed[i]
+					if (skipProps.has(prop)) continue
+					try {
+						const val = computed.getPropertyValue(prop)
+						if (val) {
+							cEl.style.setProperty(prop, val, computed.getPropertyPriority(prop))
+						}
+					} catch {}
+				}
 			}
-
-			cEl.setAttribute('style', props.join('; '))
 		}
 
 		if (cEl instanceof HTMLImageElement) {
@@ -594,7 +623,7 @@ export const createNodeScreenshotPool = () => {
 
 		await convertImagesToDataUrls(wrapper)
 
-		inlineAllStyles(clone, clone)
+		__test__inlineAllStyles(clone, clone)
 
 		try {
 			const serializedWrapper = document.createElement('div')
