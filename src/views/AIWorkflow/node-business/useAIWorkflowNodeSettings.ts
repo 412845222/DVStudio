@@ -34,7 +34,7 @@ export const useAIWorkflowNodeSettings = (payload: {
 		input: { width: number; height: number; worldX: number; worldY: number }
 	) => {
 		payload.markViewportMotion()
-		payload.store.commit('setNodeSize', { nodeId, width: input.width, height: input.height })
+		payload.store.commit('setNodeSize', { nodeId, width: input.width, height: input.height, customized: false })
 		payload.store.commit('setNodePosition', { nodeId, worldX: input.worldX, worldY: input.worldY })
 		payload.scheduleAsyncEdgeRender()
 	}
@@ -42,7 +42,6 @@ export const useAIWorkflowNodeSettings = (payload: {
 	const onNodeAutoResize = (nodeId: string, height: number) => {
 		const node = payload.store.state.nodesById[nodeId]
 		if (!isRecord(node)) return
-		if (node.sizeCustomized) return
 		const nextHeight = Math.max(80, Math.floor(Number(height) || 0))
 		if (!nextHeight || !Number.isFinite(nextHeight)) return
 		const prevHeight = Number(node.height) || 0

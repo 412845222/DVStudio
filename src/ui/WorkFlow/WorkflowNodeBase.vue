@@ -12,7 +12,7 @@
 				'wf-node-error': visualStatus === 'error'
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
-			{ 'is-auto-height': autoHeight },
+			{ 'is-auto-height': autoHeight !== false },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
@@ -577,7 +577,7 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 const nodeElRef = ref<HTMLElement | null>(null)
 
 const MIN_AUTO_HEIGHT = 120
-const MAX_AUTO_HEIGHT = 800
+const MAX_AUTO_HEIGHT = 10000
 const HEIGHT_CHANGE_THRESHOLD = 2
 
 let resizeObserver: ResizeObserver | null = null
@@ -610,7 +610,6 @@ const requestAutoResize = () => {
 	rafId = requestAnimationFrame(() => {
 		rafId = 0
 		if (userResized) return
-		if (props.sizeCustomized) return
 		if (props.autoHeight === false) return
 		const nextHeight = measureNaturalHeight()
 		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
@@ -708,6 +707,15 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		} catch {
 			// ignore
 		}
+		if (props.autoHeight !== false) {
+			userResized = false
+			nextTick(() => {
+				setupResizeObserver()
+				requestAutoResize()
+				setTimeout(requestAutoResize, 50)
+				setTimeout(requestAutoResize, 200)
+			})
+		}
 	}
 	el.addEventListener('pointermove', onMove)
 	el.addEventListener('pointerup', onUp, { once: true })
@@ -797,7 +805,6 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 }
 onMounted(() => {
 	if (props.autoHeight === false) return
-	if (props.sizeCustomized) return
 	nextTick(() => {
 		setupResizeObserver()
 		requestAutoResize()
@@ -811,7 +818,7 @@ watch(
 	(customized) => {
 		if (customized) {
 			teardownResizeObserver()
-		} else if (!userResized && props.autoHeight !== false) {
+		} else if (props.autoHeight !== false) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -825,7 +832,7 @@ watch(
 	(enabled) => {
 		if (enabled === false) {
 			teardownResizeObserver()
-		} else if (!userResized && !props.sizeCustomized) {
+		} else if (!props.sizeCustomized) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -836,6 +843,10 @@ watch(
 
 onBeforeUnmount(() => {
 	teardownResizeObserver()
+})
+
+defineExpose({
+	requestAutoResize,
 })
 </script>
 
@@ -1152,12 +1163,13 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex: 1;
 	min-height: 0;
-	align-items: center;
-	justify-content: center;
+	align-items: stretch;
+	justify-content: flex-start;
 	color: var(--wf-text-muted);
 	background: var(--wf-surface-base);
 	font-size: 12px;
 	overflow: hidden;
+	box-sizing: border-box;
 }
 
 .wf-media {
@@ -1165,25 +1177,25 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	flex: 1;
-	min-height: 0;
+	aspect-ratio: 1 / 1;
+	flex-shrink: 0;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);
 	background: var(--wf-surface-base);
+	position: relative;
 }
 
 .wf-media-preview img,
 .wf-media-preview video {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
 
@@ -1287,6 +1299,8 @@ onBeforeUnmount(() => {
 .wf-node-footer {
 	font-size: 11px;
 	color: var(--wf-text-muted);
+	flex-shrink: 0;
+	min-height: 0;
 }
 
 .wf-node.wf-node-meshy {
@@ -1326,9 +1340,7 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
-.wf-node.wf-node-text .wf-node-body,
-.wf-node.wf-node-text-merge .wf-node-body,
-.wf-node.wf-node-blender .wf-node-body {
+.wf-node.is-auto-height.wf-node-text .wf-node-body {
 	overflow: hidden;
 	align-items: stretch;
 	justify-content: flex-start;
@@ -1337,8 +1349,43 @@ onBeforeUnmount(() => {
 	min-height: 0;
 }
 
+.wf-node.is-auto-height.wf-node-text-merge .wf-node-body {
+	overflow: visible;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 0 0 auto;
+	min-height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-text {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+}
+
+.wf-node.is-auto-height.wf-node-text-merge .wf-merge {
+	flex: 0 0 auto;
+	min-height: auto;
+	height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-textarea {
+	flex: 1;
+	min-height: 0;
+}
+
 .wf-node.wf-node-text .wf-node-footer {
 	display: none;
+}
+
+.wf-node.is-auto-height.wf-node-blender .wf-node-body {
+	overflow: visible;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex: 0 0 auto;
+	min-height: auto;
+	padding: 0;
 }
 
 .wf-node.wf-node-blender .wf-node-body {

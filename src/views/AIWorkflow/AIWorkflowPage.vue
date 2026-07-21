@@ -98,7 +98,7 @@
 						:alias="node.alias"
 						:height="node.height"
 						:sizeCustomized="node.sizeCustomized"
-						:autoHeight="true"
+						:autoHeight="node.type !== 'text'"
 						:hoverInputAnchorId="hoverInputAnchorId(node.id)"
 						:hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
 						:anchor-compatibility="anchorCompatibility"
@@ -11926,6 +11926,55 @@ const onCanvasAnchorPointerDown = (payload: {
 		canvasScreenToWorld
 	)
 }
+
+let prevSelectedForScreenshot = new Set<string>(selectedNodeIds.value)
+watch(
+	() => [...selectedNodeIds.value],
+	(newIds) => {
+		const newSet = new Set(newIds)
+		const exitingIds: string[] = []
+		for (const id of prevSelectedForScreenshot) {
+			if (!newSet.has(id)) {
+				exitingIds.push(id)
+			}
+		}
+		if (exitingIds.length > 0) {
+			const pendingCapture: WorkflowNode[] = []
+			const pendingSet = new Set(pendingScreenshotNodeIds.value)
+			for (const id of exitingIds) {
+				const node = nodes.value.find((n) => String(n.id) === id)
+				if (!node) continue
+				nodesNeedingScreenshotRefresh.delete(id)
+				userSelectedNodesNeedingRefresh.delete(id)
+				pendingSet.add(id)
+				pendingCapture.push(node)
+			}
+			pendingScreenshotNodeIds.value = pendingSet
+
+			if (pendingCapture.length > 0) {
+				nextTick(() => {
+					setTimeout(() => {
+						for (const node of pendingCapture) {
+							const nodeId = String(node.id)
+							scheduleNodeScreenshot(node, 0, 'high', true)
+								.catch((err) => {
+									console.warn('[Screenshot] deselect capture failed for node:', nodeId, err)
+								})
+								.finally(() => {
+									const newPendingSet = new Set(pendingScreenshotNodeIds.value)
+									newPendingSet.delete(nodeId)
+									pendingScreenshotNodeIds.value = newPendingSet
+									refreshCanvasNodeLayer()
+								})
+						}
+					}, 100)
+				})
+			}
+		}
+		prevSelectedForScreenshot = newSet
+	},
+	{ flush: 'sync' }
+)
 
 watch(
 	() => Array.from(fullRenderNodeIds.value),

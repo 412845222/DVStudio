@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -273,6 +274,7 @@ const emit = defineEmits<{
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const onPreviewContextMenu = (e: MouseEvent) => {
 	emit('select', props.nodeId)
@@ -398,11 +400,6 @@ const outputHeight = computed(() => {
 })
 
 const previewWrapStyle = computed(() => {
-	const nw = naturalWidth.value
-	const nh = naturalHeight.value
-	if (nw && nh && nw > 0 && nh > 0) {
-		return { aspectRatio: `${nw} / ${nh}` }
-	}
 	return {}
 })
 
@@ -606,6 +603,7 @@ const onLoadedMetadata = () => {
 		}
 	}
 	drawTimeline()
+	nextTick(() => baseRef.value?.requestAutoResize())
 }
 
 let srcWatchRunId = 0
@@ -1420,7 +1418,8 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 0 0 auto;
+	flex-shrink: 0;
+	align-self: stretch;
 }
 
 .wf-media-preview {
@@ -1437,14 +1436,14 @@ onBeforeUnmount(() => {
 .wf-media-video {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
 
 .wf-media-poster-img {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
 

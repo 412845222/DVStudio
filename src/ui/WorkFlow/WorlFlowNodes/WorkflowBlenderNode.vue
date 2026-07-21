@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -447,6 +448,7 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 }
 
 const chatPanelRef = ref<HTMLElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const DEFAULT_HOST = 'localhost'
 const DEFAULT_PORT = 9876
@@ -770,11 +772,10 @@ watch(
 	gap: 6px;
 	padding: 6px 8px;
 	width: 100%;
-	height: 100%;
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
+	align-self: stretch;
 	box-sizing: border-box;
-	overflow: hidden;
+	overflow: visible;
 }
 
 .wf-blender-status-bar {
@@ -970,11 +971,10 @@ watch(
 }
 
 .wf-blender-chat-panel {
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
 	width: 100%;
 	min-width: 0;
-	overflow-y: auto;
+	overflow: visible;
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -1197,10 +1197,9 @@ watch(
 	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 	white-space: pre-wrap;
 	word-break: break-all;
-	max-height: 200px;
-	overflow-y: auto;
 	line-height: 1.3;
 	border-radius: 0;
+	overflow: visible;
 }
 
 .wf-blender-tool-code {
@@ -1579,8 +1578,6 @@ watch(
 	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 	white-space: pre-wrap;
 	word-break: break-all;
-	max-height: 300px;
-	overflow-y: auto;
 	line-height: 1.3;
 	border-radius: 0;
 	background: color-mix(in srgb, #8b5cf6 6%, transparent);
@@ -1588,6 +1585,7 @@ watch(
 	color: #c4b5fd;
 	font-style: italic;
 	opacity: 0.85;
+	overflow: visible;
 }
 
 .wf-blender-command-card {

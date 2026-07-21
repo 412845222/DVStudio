@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -341,6 +342,7 @@ const svcLogs = ref<ServiceLogEntry[]>([])
 const svcConfig = ref<{ installPath?: string; pythonPath?: string; port?: number; extraArgs?: string[] } | null>(null)
 const svcConfigured = ref(false)
 const logContainerRef = ref<HTMLElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 const tick = ref(0)
 let uptimeTimer: ReturnType<typeof setInterval> | null = null
 let statusPollTimer: ReturnType<typeof setInterval> | null = null
@@ -431,6 +433,7 @@ function scrollLogsToBottom() {
 		if (logContainerRef.value) {
 			logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
 		}
+		baseRef.value?.requestAutoResize()
 	})
 }
 
@@ -727,12 +730,7 @@ function requestResize() {
 	if (resizeRafId != null) return
 	resizeRafId = requestAnimationFrame(() => {
 		resizeRafId = null
-		emit('resize', {
-			width: props.width,
-			height: props.height,
-			worldX: props.worldX,
-			worldY: props.worldY,
-		})
+		baseRef.value?.requestAutoResize()
 	})
 }
 
@@ -1117,6 +1115,7 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	gap: 8px;
 	flex-shrink: 0;
+	align-self: stretch;
 }
 
 .wf-comfy-row {
@@ -1372,8 +1371,6 @@ onBeforeUnmount(() => {
 }
 
 .wf-comfy-logs {
-	max-height: 200px;
-	overflow-y: auto;
 	background: #1a1a1a;
 	border: 1px solid var(--vscode-border);
 	padding: 6px;
@@ -1381,6 +1378,7 @@ onBeforeUnmount(() => {
 	font-size: 11px;
 	line-height: 1.5;
 	flex-shrink: 0;
+	overflow: visible;
 }
 
 .wf-comfy-logs-empty {
