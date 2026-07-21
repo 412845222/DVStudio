@@ -104,7 +104,7 @@
 						:anchor-compatibility="anchorCompatibility"
 						:is-linking="isLinking"
 						:inputs="node.inputs"
-						:isWarmupRender="isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))"
+						:isWarmupRender="(isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))) || pendingScreenshotNodeIds.has(String(node.id))"
 						:nodeId="node.id"
 						:nodeType="node.type"
 						:outputs="node.outputs"
