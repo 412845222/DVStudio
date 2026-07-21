@@ -772,10 +772,11 @@ watch(
 	gap: 6px;
 	padding: 6px 8px;
 	width: 100%;
-	flex-shrink: 0;
+	flex: 1;
+	min-height: 0;
 	align-self: stretch;
 	box-sizing: border-box;
-	overflow: visible;
+	overflow: hidden;
 }
 
 .wf-blender-status-bar {
@@ -971,10 +972,11 @@ watch(
 }
 
 .wf-blender-chat-panel {
-	flex-shrink: 0;
+	flex: 1;
+	min-height: 0;
 	width: 100%;
 	min-width: 0;
-	overflow: visible;
+	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
