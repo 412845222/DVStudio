@@ -1,6 +1,5 @@
 <template>
 	<WorkflowNodeBase
-		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -346,20 +345,8 @@ const thinkingCollapsedMap = ref<Map<string, boolean>>(new Map())
 
 const INITIAL_VISIBLE_COUNT = 50
 const LOAD_MORE_COUNT = 50
+const WARMUP_VISIBLE_COUNT = 8
 const visibleMessagesCount = ref(INITIAL_VISIBLE_COUNT)
-
-const visibleMessages = computed(() => {
-	const msgs = chatMessages.value
-	const total = msgs.length
-	if (total <= visibleMessagesCount.value) return msgs
-	return msgs.slice(total - visibleMessagesCount.value)
-})
-
-const hasMoreMessages = computed(() => chatMessages.value.length > visibleMessagesCount.value)
-
-const onLoadMoreMessages = () => {
-	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
-}
 
 type AnchorSpec = {
 	id: string
@@ -400,6 +387,7 @@ const props = defineProps<{
 	isLinking?: boolean
 	sizeCustomized?: boolean
 	autoHeight?: boolean
+	isWarmupRender?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -448,7 +436,6 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 }
 
 const chatPanelRef = ref<HTMLElement | null>(null)
-const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const DEFAULT_HOST = 'localhost'
 const DEFAULT_PORT = 9876
@@ -463,6 +450,29 @@ const importStatus = computed(() => props.blenderSettings?.importStatus ?? 'idle
 const importProgress = computed(() => props.blenderSettings?.importProgress ?? 0)
 const importError = computed(() => props.blenderSettings?.importError ?? null)
 const chatMessages = computed<WorkflowBlenderChatMessage[]>(() => props.blenderSettings?.chatMessages ?? [])
+
+const effectiveVisibleCount = computed(() => {
+	if (props.isWarmupRender) return WARMUP_VISIBLE_COUNT
+	return visibleMessagesCount.value
+})
+
+const visibleMessages = computed(() => {
+	const msgs = chatMessages.value
+	const total = msgs.length
+	const count = effectiveVisibleCount.value
+	if (total <= count) return msgs
+	return msgs.slice(total - count)
+})
+
+const hasMoreMessages = computed(() => {
+	if (props.isWarmupRender) return false
+	return chatMessages.value.length > visibleMessagesCount.value
+})
+
+const onLoadMoreMessages = () => {
+	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
+}
+
 const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
 const toolsReady = computed(() => props.blenderSettings?.toolsReady)
 const workspacePath = computed(() => {
@@ -761,6 +771,16 @@ watch(
 	() => isResponding.value,
 	() => {
 		scrollToBottom()
+	}
+)
+
+// 进入预热截图模式时，滚动到底部确保截图展示最新消息
+watch(
+	() => props.isWarmupRender,
+	(val) => {
+		if (val) {
+			scrollToBottom()
+		}
 	}
 )
 </script>
