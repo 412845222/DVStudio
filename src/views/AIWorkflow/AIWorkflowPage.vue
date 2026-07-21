@@ -129,6 +129,7 @@
 							nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false
 						"
 						:node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
+						:node-chat-selected-refs="nodeChatDialog.nodeId === node.id ? nodeChatDialog.selectedRefs : []"
 						:node-chat-node-width="node.width"
 						:node-generation-task="latestGenerationTaskByNodeId(node.id)"
 						:style="
@@ -220,6 +221,7 @@
 						@three-preview-error="onNodeThreePreviewError(node.id)"
 						@node-chat-update-draft="onNodeChatDraftUpdate"
 						@node-chat-update-params="onNodeChatParamsUpdate"
+						@node-chat-update-selected-refs="onNodeChatSelectedRefsUpdate"
 						@node-chat-close="onNodeChatClose"
 						@node-chat-submit="onNodeChatSubmit"
 						@node-chat-stop="onNodeChatStop"
@@ -901,6 +903,7 @@ import type {
 	WorkflowUnrealResolvedLayoutExport,
 	WorkflowNode,
 	WorkflowNodeChatParams,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowSceneDecomposeOutput,
 	WorkflowSelectionTarget,
@@ -3622,6 +3625,10 @@ const onNodeChatDraftUpdate = (text: string) => {
 
 const onNodeChatParamsUpdate = (params: WorkflowNodeChatParams) => {
 	store.commit('setNodeChatParams', { params })
+}
+
+const onNodeChatSelectedRefsUpdate = (refs: WorkflowNodeChatSelectedRef[]) => {
+	store.commit('setNodeChatSelectedRefs', { refs })
 }
 
 const onNodeChatClose = () => {

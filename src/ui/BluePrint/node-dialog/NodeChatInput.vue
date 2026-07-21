@@ -106,7 +106,7 @@ const selectedMentionIndex = ref(0)
 
 const charCount = computed(() => props.modelValue.length)
 const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
-const selectedRefs = computed(() => props.selectedReferences ?? [])
+const selectedRefs = ref<InputParamPreviewRef[]>([])
 
 const availableForMention = computed(() => {
 	return inputParamRefs.value
@@ -371,6 +371,7 @@ const syncFromDOM = () => {
 
 	text = text.replace(/\u00A0/g, ' ')
 	isEmpty.value = text.trim() === '' && refs.length === 0
+	selectedRefs.value = refs
 	emit('update:modelValue', text)
 	emit('update:selectedReferences', refs)
 
@@ -606,6 +607,7 @@ const onResizeEnd = () => {
 
 onMounted(() => {
 	currentHeight.value = MIN_HEIGHT + 20
+	selectedRefs.value = [...(props.selectedReferences ?? [])]
 	renderFromModel()
 
 	const editor = editorRef.value
@@ -622,12 +624,12 @@ onMounted(() => {
 })
 
 watch(
-	() => [props.modelValue, props.selectedReferences],
+	() => props.modelValue,
 	() => {
 		if (isInternalUpdate) return
+		selectedRefs.value = [...(props.selectedReferences ?? [])]
 		renderFromModel()
-	},
-	{ deep: true }
+	}
 )
 
 onBeforeUnmount(() => {
@@ -654,7 +656,24 @@ const blur = () => {
 	editorRef.value?.blur()
 }
 
-defineExpose({ focus, blur })
+const getFullText = (): string => {
+	if (!editorRef.value) return props.modelValue
+	let text = ''
+	const walk = (node: Node) => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			text += node.textContent || ''
+		} else if (node.nodeType === Node.ELEMENT_NODE) {
+			const el = node as HTMLElement
+			if (el.tagName === 'BR') return
+			if (el.classList && el.classList.contains('bp-mention-chip-remove')) return
+			el.childNodes.forEach(walk)
+		}
+	}
+	editorRef.value.childNodes.forEach(walk)
+	return text.replace(/\u00A0/g, ' ')
+}
+
+defineExpose({ focus, blur, getFullText })
 </script>
 
 <style scoped>
