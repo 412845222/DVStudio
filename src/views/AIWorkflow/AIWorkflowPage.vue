@@ -98,7 +98,7 @@
 						:alias="node.alias"
 						:height="node.height"
 						:sizeCustomized="node.sizeCustomized"
-						:autoHeight="node.type !== 'text'"
+						:autoHeight="node.type !== 'text' && node.type !== 'blender'"
 						:hoverInputAnchorId="hoverInputAnchorId(node.id)"
 						:hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
 						:anchor-compatibility="anchorCompatibility"

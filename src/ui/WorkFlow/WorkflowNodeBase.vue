@@ -1379,23 +1379,33 @@ defineExpose({
 	display: none;
 }
 
-.wf-node.is-auto-height.wf-node-blender .wf-node-body {
-	overflow: visible;
-	align-items: stretch;
-	justify-content: flex-start;
-	flex: 0 0 auto;
-	min-height: auto;
-	padding: 0;
-}
-
 .wf-node.wf-node-blender .wf-node-body {
 	padding: 0;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	overflow: hidden;
+	flex: 1;
+	min-height: 0;
 }
 
 .wf-node.wf-node-blender .wf-node-footer {
-	overflow: visible;
+	overflow: hidden;
 	flex-shrink: 0;
 	padding: 0;
+}
+
+.wf-node.wf-node-blender .wf-blender-body {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+.wf-node.wf-node-blender .wf-blender-chat-panel {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .wf-node.wf-node-comfyui .wf-node-body {
