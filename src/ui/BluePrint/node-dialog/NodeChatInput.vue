@@ -19,6 +19,7 @@
 				@blur="onBlur"
 				@mousedown="onEditorMouseDown"
 				@mouseup="onEditorMouseUp"
+				@paste="onPaste"
 			></div>
 			<div v-if="isEmpty" class="bp-node-chat-placeholder">{{ resolvedPlaceholder }}</div>
 		</div>
@@ -108,17 +109,7 @@ const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
 const selectedRefs = computed(() => props.selectedReferences ?? [])
 
 const availableForMention = computed(() => {
-	const selectedEdgeIds = new Set(selectedRefs.value.map(r => r.edgeId).filter(Boolean))
-	const selectedNodeAnchorPairs = new Set(
-		selectedRefs.value
-			.filter(r => r.fromNodeId && r.fromAnchorId)
-			.map(r => `${r.fromNodeId}:${r.fromAnchorId}`)
-	)
-	return inputParamRefs.value.filter(item => {
-		if (item.edgeId && selectedEdgeIds.has(item.edgeId)) return false
-		if (item.fromNodeId && item.fromAnchorId && selectedNodeAnchorPairs.has(`${item.fromNodeId}:${item.fromAnchorId}`)) return false
-		return true
-	})
+	return inputParamRefs.value
 })
 
 const filteredItems = computed(() => {
@@ -500,6 +491,50 @@ const getNodeBeforeCursor = (range: Range): Node | null => {
 const onEditorMouseDown = () => {}
 const onEditorMouseUp = () => {
 	detectMention()
+}
+
+const onPaste = (e: ClipboardEvent) => {
+	if (isComposing) return
+	e.preventDefault()
+
+	const text = e.clipboardData?.getData('text/plain') || ''
+	if (!text) return
+
+	const sel = window.getSelection()
+	if (!sel || sel.rangeCount === 0 || !editorRef.value) {
+		document.execCommand('insertText', false, text)
+		syncFromDOM()
+		return
+	}
+
+	const range = sel.getRangeAt(0)
+	range.deleteContents()
+
+	const lines = text.split(/\r?\n/)
+	const fragment = document.createDocumentFragment()
+
+	lines.forEach((line, index) => {
+		if (index > 0) {
+			fragment.appendChild(document.createElement('br'))
+		}
+		if (line) {
+			fragment.appendChild(document.createTextNode(line))
+		}
+	})
+
+	const lastNode = fragment.lastChild
+	range.insertNode(fragment)
+
+	if (lastNode) {
+		const newRange = document.createRange()
+		newRange.setStartAfter(lastNode)
+		newRange.collapse(true)
+		sel.removeAllRanges()
+		sel.addRange(newRange)
+	}
+
+	syncFromDOM()
+	editorRef.value?.focus()
 }
 
 const onInnerMouseDown = (e: MouseEvent) => {
