@@ -62,7 +62,6 @@ export type VideoSceneLeftPanelState = {
 	open: boolean
 	mode: VideoSceneLeftPanelMode | null
 	layerId: string | null
-	videoPath?: string | null
 	/** increments whenever openLeftPanel is called, used to force-refresh UI */
 	refreshToken: number
 }
@@ -96,7 +95,6 @@ export interface VideoSceneState {
 	showSizePanel: boolean
 	showBackgroundPanel: boolean
 	showExportPanel: boolean
-	showSubtitleRecogDialog: boolean
 	leftPanel: VideoSceneLeftPanelState
 	layers: VideoSceneLayer[]
 	activeLayerId: string

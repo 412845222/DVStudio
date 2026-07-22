@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<div ref="shellRef" class="vs-shell">
 		<VideoStudioLeftPanel ref="leftPanelRef" />
 		<div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
@@ -211,13 +211,11 @@
 				"
 			/>
 
-			<SubtitleRecognitionDialog
-				:open="showSubtitleRecogDialog"
-				@close="
-					() => {
-						void VideoSceneStore.dispatch('setSubtitleRecogDialogVisible', { visible: false })
-					}
-				"
+			<LoadRecentEditDialog
+				:open="showLoadRecentEditDialog"
+				:saved-at="recentEditSavedAt"
+				@load="loadRecentEdit"
+				@discard="discardRecentEdit"
 			/>
 		</div>
 
@@ -253,7 +251,7 @@ import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import AIChatDialog from '../AIChat/AIChatDialog.vue'
 import ExportDialog from './dialogs/ExportDialog.vue'
-import SubtitleRecognitionDialog from './dialogs/SubtitleRecognitionDialog.vue'
+import LoadRecentEditDialog from './dialogs/LoadRecentEditDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
 import { DwebVideoScene } from '../../engine/webgl'
 import { TimelineStore } from '../../store/timeline'
@@ -261,6 +259,7 @@ import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/span
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 import { editorPersistence } from '../../adapters/editorPersistence'
+import { editorRecentCache } from '../../adapters/editorRecentCache'
 import { ExportService, type ExportFormat, type ExportQuality } from '../../network/ExportService'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
 import LineControlPoints, {
@@ -428,7 +427,6 @@ provide(DwebCanvasGLKey, dwebCanvasRef)
 const showSizePanel = computed(() => VideoSceneStore.state.showSizePanel)
 const showBackgroundPanel = computed(() => VideoSceneStore.state.showBackgroundPanel)
 const showExportPanel = computed(() => VideoSceneStore.state.showExportPanel)
-const showSubtitleRecogDialog = computed(() => VideoSceneStore.state.showSubtitleRecogDialog)
 const shellRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const toolbarRef = ref<InstanceType<typeof VideoSceneToolbar> | null>(null)
@@ -465,6 +463,9 @@ const stageOrigin = computed(() => ({ x: -stageWidth.value / 2, y: -stageHeight.
 
 const inputWidth = ref<number>(1920)
 const inputHeight = ref<number>(1080)
+
+const showLoadRecentEditDialog = ref(false)
+const recentEditSavedAt = ref<number | null>(null)
 
 const stageBackground = computed(() => store.state.stage.background)
 const bgType = ref<'color' | 'image'>('color')
@@ -554,6 +555,27 @@ const resetRenderResultKeepFrames = () => {
 			exportStatus.value = 'framesDone'
 		}
 	}
+}
+
+const loadRecentEdit = () => {
+	const cached = editorRecentCache.read()
+	if (!cached) {
+		showLoadRecentEditDialog.value = false
+		recentEditSavedAt.value = null
+		return
+	}
+	try {
+		editorPersistence.replace(cached.snapshot)
+	} finally {
+		showLoadRecentEditDialog.value = false
+		recentEditSavedAt.value = cached.savedAt
+	}
+}
+
+const discardRecentEdit = () => {
+	editorRecentCache.clear()
+	showLoadRecentEditDialog.value = false
+	recentEditSavedAt.value = null
 }
 
 const exportFrames = async () => {
@@ -1990,6 +2012,13 @@ const queueWheelZoom = (canvas: DwebCanvasGL, p: { x: number; y: number }, delta
 }
 
 onMounted(() => {
+	// 刷新时：若检测到最近保存的编辑历史，先询问是否加载
+	const cachedAt = editorRecentCache.peekSavedAt()
+	if (cachedAt) {
+		recentEditSavedAt.value = cachedAt
+		showLoadRecentEditDialog.value = true
+	}
+
 	const shell = shellRef.value
 	const stageEl = stageRef.value
 	const canvasEl = canvasRef.value

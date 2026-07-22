@@ -29,14 +29,12 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<div ref="wrap" class="wf-rotate-wrap">
-				<canvas
-					ref="canvas"
-					class="wf-rotate-canvas"
-					:class="{ dragging: dragging }"
-					@pointerdown.stop.prevent="onDragStart"
-				/>
-			</div>
+			<canvas
+				ref="canvas"
+				class="wf-rotate-canvas"
+				:class="{ dragging: dragging }"
+				@pointerdown.stop.prevent="onDragStart"
+			/>
 			<div class="wf-rotate-overlay" @pointerdown.stop>
 				<div class="wf-view-cube" :aria-label="t('nodes.rotateImage.cubeLabel')">
 					<div class="wf-cube-graphic">
@@ -196,19 +194,7 @@ const emit = defineEmits<{
 			height: number
 		}
 	): void
-	(e: 'invalidate-screenshot'): void
 }>()
-
-let invalidateScreenshotTimer: number | null = null
-const scheduleInvalidateScreenshot = (delayMs: number = 200) => {
-	if (invalidateScreenshotTimer != null) {
-		clearTimeout(invalidateScreenshotTimer)
-	}
-	invalidateScreenshotTimer = window.setTimeout(() => {
-		invalidateScreenshotTimer = null
-		emit('invalidate-screenshot')
-	}, delayMs)
-}
 
 const PLACEHOLDER_SVG = computed(() =>
 	`data:image/svg+xml;utf8,` +
@@ -280,7 +266,6 @@ const setImageElementSource = (src: string, useCrossOrigin: boolean) => {
 		loadedImageKey = src
 		lastOutputKey = ''
 		draw()
-		scheduleInvalidateScreenshot(100)
 	}
 	next.onerror = () => {
 		if (img !== next) return
@@ -288,7 +273,6 @@ const setImageElementSource = (src: string, useCrossOrigin: boolean) => {
 		loadedImageKey = ''
 		lastOutputKey = ''
 		draw()
-		scheduleInvalidateScreenshot(100)
 	}
 	next.src = src
 	img = next
@@ -829,7 +813,6 @@ const animateTo = (targetYaw: number, targetPitch: number, duration = 320) => {
 			return
 		}
 		rotateAnimRaf = 0
-		scheduleInvalidateScreenshot(100)
 	}
 
 	rotateAnimRaf = requestAnimationFrame(step)
@@ -896,7 +879,6 @@ const onDragStart = (e: PointerEvent) => {
 		} catch {
 			// ignore
 		}
-		scheduleInvalidateScreenshot(150)
 	}
 
 	window.addEventListener('pointermove', onMove)
@@ -916,13 +898,6 @@ watch(
 		draw()
 	},
 	{ immediate: true }
-)
-
-watch(
-	() => props.selected,
-	() => {
-		scheduleInvalidateScreenshot(100)
-	}
 )
 
 onMounted(() => {

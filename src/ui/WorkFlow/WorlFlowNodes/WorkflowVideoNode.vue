@@ -1,6 +1,5 @@
 <template>
 	<WorkflowNodeBase
-		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -274,7 +273,6 @@ const emit = defineEmits<{
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
-const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const onPreviewContextMenu = (e: MouseEvent) => {
 	emit('select', props.nodeId)
@@ -400,6 +398,11 @@ const outputHeight = computed(() => {
 })
 
 const previewWrapStyle = computed(() => {
+	const nw = naturalWidth.value
+	const nh = naturalHeight.value
+	if (nw && nh && nw > 0 && nh > 0) {
+		return { aspectRatio: `${nw} / ${nh}` }
+	}
 	return {}
 })
 
@@ -603,8 +606,6 @@ const onLoadedMetadata = () => {
 		}
 	}
 	drawTimeline()
-	nextTick(() => baseRef.value?.requestAutoResize())
-	scheduleInvalidateScreenshot()
 }
 
 let srcWatchRunId = 0
@@ -885,7 +886,6 @@ const onOutputWidthChange = (e: Event) => {
 	const w = Math.max(1, Math.floor(Number(input.value) || 0))
 	if (!Number.isFinite(w) || w <= 0) return
 	emit('update-video-settings', { outputWidth: w })
-	scheduleInvalidateScreenshot()
 }
 
 const onOutputHeightChange = (e: Event) => {
@@ -893,7 +893,6 @@ const onOutputHeightChange = (e: Event) => {
 	const h = Math.max(1, Math.floor(Number(input.value) || 0))
 	if (!Number.isFinite(h) || h <= 0) return
 	emit('update-video-settings', { outputHeight: h })
-	scheduleInvalidateScreenshot()
 }
 
 const coverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number) => {
@@ -1129,7 +1128,6 @@ watch(
 		if (newPoster && localPosterUrl.value) {
 			localPosterUrl.value = null
 		}
-		scheduleInvalidateScreenshot()
 	}
 )
 
@@ -1185,7 +1183,6 @@ watch(
 		if (isSelected && !wasSelected) {
 			localPosterUrl.value = null
 		}
-		scheduleInvalidateScreenshot()
 	},
 	{ flush: 'pre' }
 )
@@ -1358,7 +1355,6 @@ onMounted(() => {
 		if (cur > 0.1) {
 			emit('update-video-settings', { currentTime: cur })
 		}
-		scheduleInvalidateScreenshot()
 	})
 	videoEl.value.addEventListener('pause', () => {
 		playing.value = false
@@ -1424,8 +1420,7 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex-shrink: 0;
-	align-self: stretch;
+	flex: 0 0 auto;
 }
 
 .wf-media-preview {
@@ -1442,14 +1437,14 @@ onBeforeUnmount(() => {
 .wf-media-video {
 	width: 100%;
 	height: 100%;
-	object-fit: contain;
+	object-fit: cover;
 	display: block;
 }
 
 .wf-media-poster-img {
 	width: 100%;
 	height: 100%;
-	object-fit: contain;
+	object-fit: cover;
 	display: block;
 }
 

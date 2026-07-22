@@ -37,6 +37,8 @@
 					:value="textValue"
 					:placeholder="t('nodes.text.placeholder')"
 					@input="onTextInput"
+					@focus="onFocus"
+					@blur="onBlur"
 				/>
 			</div>
 		</template>
@@ -44,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
 
@@ -81,6 +83,8 @@ const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: n
 const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
 const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
 const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+
+
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -131,25 +135,39 @@ const outputs = computed(() => (Array.isArray(props.outputs) ? props.outputs : [
 const hoverInputAnchorId = computed(() => props.hoverInputAnchorId ?? null)
 const hoverOutputAnchorId = computed(() => props.hoverOutputAnchorId ?? null)
 
-const textareaEl = ref<HTMLTextAreaElement | null>(null)
-
 const onTextInput = (e: Event) => {
 	const v = String((e.target as HTMLTextAreaElement).value ?? '')
 	emit('update-text-value', { textValue: v })
 }
+
+const textareaEl = ref<HTMLTextAreaElement | null>(null)
+const isUserEditing = ref(false)
+
+const onFocus = () => {
+	isUserEditing.value = true
+}
+
+const onBlur = () => {
+	isUserEditing.value = false
+}
+
+const scrollToBottom = (el: HTMLElement | null) => {
+	if (!el) return
+	nextTick(() => {
+		el.scrollTop = el.scrollHeight
+	})
+}
+
+watch(textValue, (newVal, oldVal) => {
+	if (isUserEditing.value) return
+	if (!newVal) return
+	if (newVal.length > (oldVal?.length ?? 0)) {
+		scrollToBottom(textareaEl.value)
+	}
+})
 </script>
 
 <style scoped>
-.wf-text {
-	width: 100%;
-	height: 100%;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	flex: 1;
-	min-height: 0;
-}
-
 .wf-text-label {
 	font-size: 12px;
 	color: var(--vscode-foreground);
@@ -158,21 +176,16 @@ const onTextInput = (e: Event) => {
 }
 
 .wf-textarea {
-	width: 100%;
-	flex: 1;
-	min-height: 0;
 	padding: 6px 8px;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt-dark);
 	color: var(--vscode-foreground);
-	border-radius: 4px;
+	border-radius: 0;
 	outline: none;
 	resize: none;
 	font-family: inherit;
 	font-size: 12px;
-	line-height: 18px;
-	box-sizing: border-box;
-	overflow-y: auto;
+	overflow: auto;
 }
 
 .wf-textarea:focus {

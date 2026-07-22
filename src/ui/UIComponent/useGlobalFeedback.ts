@@ -8,12 +8,6 @@ export interface ToastAction {
 	onClick?: () => void
 }
 
-export interface ModalAction {
-	label: string
-	role?: 'confirm' | 'cancel' | 'default'
-	onClick?: () => void
-}
-
 export interface ToastItem {
 	id: string
 	message: string
@@ -22,7 +16,6 @@ export interface ToastItem {
 	persistent?: boolean
 	showClose?: boolean
 	actions?: ToastAction[]
-	onClose?: () => void
 }
 
 export interface ModalOptions {
@@ -32,8 +25,6 @@ export interface ModalOptions {
 	confirmText?: string
 	cancelText?: string
 	showCancel?: boolean
-	actions?: ModalAction[]
-	showClose?: boolean
 }
 
 const toasts = ref<ToastItem[]>([])
@@ -90,7 +81,6 @@ export function pushToast(message: string, tone: ToastTone = 'info', options?: P
 		persistent: options?.persistent || false,
 		showClose: options?.showClose !== false,
 		actions: options?.actions,
-		onClose: options?.onClose,
 	}
 	toasts.value.push(toast)
 	if (!toast.persistent) {
@@ -112,9 +102,7 @@ export function removeToast(id: string) {
 	}
 	const idx = toasts.value.findIndex(t => t.id === id)
 	if (idx >= 0) {
-		const toast = toasts.value[idx]
 		toasts.value.splice(idx, 1)
-		toast.onClose?.()
 	}
 }
 

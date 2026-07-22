@@ -46,41 +46,12 @@ export interface ChatAttachment {
 	name?: string
 	url?: string
 	data?: string
-	mimeType?: string
-}
-
-export interface ChatReference {
-	path?: string
-	kind?: string
-	name?: string
-	content?: string
-	nodeId?: string
-	anchorId?: string
-	previewUrl?: string
-}
-
-export interface ReferencedOutput {
-	kind: string
-	nodeId: string
-	anchorId: string
-	label: string
-	text?: string
-	previewUrl?: string
-	meta?: Record<string, unknown>
-	nodeType: string
-}
-
-export interface ActiveSkill {
-	id: string
-	name: string
-	description: string
-	prompt: string
 }
 
 export interface SendMessageOptions {
 	content: string
 	model?: string
-	references?: ChatReference[]
+	references?: Array<{ path: string; kind?: string; name?: string }>
 	attachments?: ChatAttachment[]
 	skillHints?: string[]
 	executionHints?: string[]
@@ -95,10 +66,6 @@ export interface SendMessageOptions {
 	apiSource?: string
 	systemPrompt?: string
 	tools?: string[]
-	referencedNodeIds?: string[]
-	referencedOutputs?: ReferencedOutput[]
-	activeSkills?: ActiveSkill[]
-	agentType?: 'workflow' | 'blender' | 'video_editor' | 'node_chat' | 'general'
 }
 
 export interface ChatModelInfo {

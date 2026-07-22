@@ -1,6 +1,5 @@
 <template>
 	<WorkflowNodeBase
-		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -234,7 +233,6 @@ const emit = defineEmits<{
 	): void
 	(e: 'media-ready'): void
 	(e: 'preview-request', payload: { imageUrl: string }): void
-	(e: 'invalidate-screenshot'): void
 }>()
 
 const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
@@ -242,19 +240,7 @@ const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: num
 const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
 const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
 
-let invalidateScreenshotTimer: number | null = null
-const scheduleInvalidateScreenshot = (delayMs: number = 150) => {
-	if (invalidateScreenshotTimer != null) {
-		clearTimeout(invalidateScreenshotTimer)
-	}
-	invalidateScreenshotTimer = window.setTimeout(() => {
-		invalidateScreenshotTimer = null
-		emit('invalidate-screenshot')
-	}, delayMs)
-}
-
 const fileInput = ref<HTMLInputElement | null>(null)
-const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const onPreviewContextMenu = (e: MouseEvent) => {
 	emit('select', props.nodeId)
@@ -352,6 +338,8 @@ const outputHeightDisplay = computed(() =>
 )
 
 const previewWrapStyle = computed(() => {
+	const aspect = outputAspect.value
+	if (aspect) return { aspectRatio: `${aspect}` }
 	return {}
 })
 
@@ -514,13 +502,11 @@ const initPreviewLayoutObserver = () => {
 }
 
 const onPreviewImageLoad = () => {
-	scheduleInvalidateScreenshot(50)
 	if (usingPreviewResource.value) {
 		if (!naturalWidth.value || !naturalHeight.value || pendingResourceReset.value) {
 			void ensureNaturalSizeFallback()
 		}
 		emit('media-ready')
-		nextTick(() => baseRef.value?.requestAutoResize())
 		return
 	}
 
@@ -532,7 +518,6 @@ const onPreviewImageLoad = () => {
 		const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value
 		if (!needsUpdate && !pendingResourceReset.value) {
 			emit('media-ready')
-			nextTick(() => baseRef.value?.requestAutoResize())
 			return
 		}
 
@@ -547,14 +532,11 @@ const onPreviewImageLoad = () => {
 		void ensureNaturalSizeFallback()
 	}
 	emit('media-ready')
-	nextTick(() => baseRef.value?.requestAutoResize())
 }
 
 const onPreviewImageError = () => {
-	scheduleInvalidateScreenshot(50)
 	if (usingPreviewResource.value) {
 		failedPreviewUrl.value = activePreviewUrl.value
-		scheduleInvalidateScreenshot(100)
 		return
 	}
 	const sourceFilePath = normalizedResourceSourcePath.value
@@ -562,7 +544,6 @@ const onPreviewImageError = () => {
 		const fileUrl = toFileUrl(sourceFilePath)
 		if (fileUrl) {
 			resourceFallbackUrl.value = fileUrl
-			scheduleInvalidateScreenshot(100)
 			return
 		}
 	}
@@ -573,7 +554,6 @@ watch(
 	() => [props.resourcePreviewUrl320, props.resourcePreviewUrl640],
 	() => {
 		failedPreviewUrl.value = ''
-		scheduleInvalidateScreenshot(100)
 	}
 )
 
@@ -588,7 +568,6 @@ watch(
 			lastResourceUrl.value = ''
 			failedPreviewUrl.value = ''
 			resourceFallbackUrl.value = ''
-			scheduleInvalidateScreenshot(50)
 			return
 		}
 		if (next !== prev || next !== lastResourceUrl.value) {
@@ -597,24 +576,10 @@ watch(
 			failedPreviewUrl.value = ''
 			resourceFallbackUrl.value = ''
 		}
-		scheduleInvalidateScreenshot(50)
 		initPreviewLayoutObserver()
 		await ensureNaturalSizeFallback()
 	},
 	{ immediate: true }
-)
-
-watch(
-	() => [
-		props.imageSettings?.outputWidth,
-		props.imageSettings?.outputHeight,
-		props.imageSettings?.cropEnabled,
-		props.imageSettings?.crop
-	],
-	() => {
-		scheduleInvalidateScreenshot(150)
-	},
-	{ deep: true }
 )
 
 watch(
@@ -624,16 +589,8 @@ watch(
 	],
 	async () => {
 		await nextTick()
-		scheduleInvalidateScreenshot(100)
 	},
 	{ flush: 'post' }
-)
-
-watch(
-	() => resourceFallbackUrl.value,
-	() => {
-		scheduleInvalidateScreenshot(100)
-	}
 )
 
 defineExpose({
@@ -661,10 +618,6 @@ onBeforeUnmount(() => {
 		ro?.disconnect()
 	} catch {
 	}
-	if (invalidateScreenshotTimer != null) {
-		clearTimeout(invalidateScreenshotTimer)
-		invalidateScreenshotTimer = null
-	}
 	ro = null
 	previewImg.value = null
 })
@@ -676,7 +629,8 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex-shrink: 0;
+	flex: 1;
+	min-height: 0;
 	align-self: stretch;
 }
 
@@ -684,7 +638,7 @@ onBeforeUnmount(() => {
 	width: 100%;
 	flex: 0 0 auto;
 	aspect-ratio: 1 / 1;
-	border-radius: 6px;
+	border-radius: 0;
 	overflow: hidden;
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt);
@@ -702,7 +656,7 @@ onBeforeUnmount(() => {
 	width: 100%;
 	aspect-ratio: 1 / 1;
 	border: 1px dashed var(--vscode-border);
-	border-radius: 6px;
+	border-radius: 0;
 	padding: 10px;
 	text-align: center;
 	color: var(--vscode-fg-muted);

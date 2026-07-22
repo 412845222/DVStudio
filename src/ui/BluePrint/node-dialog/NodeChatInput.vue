@@ -19,7 +19,6 @@
 				@blur="onBlur"
 				@mousedown="onEditorMouseDown"
 				@mouseup="onEditorMouseUp"
-				@paste="onPaste"
 			></div>
 			<div v-if="isEmpty" class="bp-node-chat-placeholder">{{ resolvedPlaceholder }}</div>
 		</div>
@@ -59,22 +58,6 @@ import type { InputParamPreviewRef } from './index'
 
 const { t } = useI18n()
 
-const CHIP_MARKER = '\u0001'
-
-const calcDisplayLength = (serialized: string, refs: InputParamPreviewRef[]): number => {
-	const parts = serialized.split(CHIP_MARKER)
-	let len = 0
-	let refIdx = 0
-	for (let i = 0; i < parts.length; i++) {
-		len += parts[i].length
-		if (i < parts.length - 1) {
-			const ref = refs[refIdx++]
-			if (ref) len += (ref.label || '').length
-		}
-	}
-	return len
-}
-
 const props = withDefaults(
 	defineProps<{
 		modelValue: string
@@ -106,8 +89,7 @@ const innerRef = ref<HTMLDivElement | null>(null)
 const editorRef = ref<HTMLDivElement | null>(null)
 const focused = ref(false)
 const isDragging = ref(false)
-const initialText = (props.modelValue ?? '').replace(new RegExp(CHIP_MARKER, 'g'), '')
-const isEmpty = ref(initialText.trim() === '' && (props.selectedReferences?.length ?? 0) === 0)
+const isEmpty = ref(true)
 const currentHeight = ref(120)
 const MIN_HEIGHT = 100
 const MAX_HEIGHT = 400
@@ -121,12 +103,22 @@ const isMentionOpen = ref(false)
 const mentionFilter = ref('')
 const selectedMentionIndex = ref(0)
 
-const charCount = ref(calcDisplayLength(props.modelValue ?? '', props.selectedReferences ?? []))
+const charCount = computed(() => props.modelValue.length)
 const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
-const selectedRefs = ref<InputParamPreviewRef[]>([...(props.selectedReferences ?? [])])
+const selectedRefs = computed(() => props.selectedReferences ?? [])
 
 const availableForMention = computed(() => {
-	return inputParamRefs.value
+	const selectedEdgeIds = new Set(selectedRefs.value.map(r => r.edgeId).filter(Boolean))
+	const selectedNodeAnchorPairs = new Set(
+		selectedRefs.value
+			.filter(r => r.fromNodeId && r.fromAnchorId)
+			.map(r => `${r.fromNodeId}:${r.fromAnchorId}`)
+	)
+	return inputParamRefs.value.filter(item => {
+		if (item.edgeId && selectedEdgeIds.has(item.edgeId)) return false
+		if (item.fromNodeId && item.fromAnchorId && selectedNodeAnchorPairs.has(`${item.fromNodeId}:${item.fromAnchorId}`)) return false
+		return true
+	})
 })
 
 const filteredItems = computed(() => {
@@ -356,14 +348,11 @@ const syncFromDOM = () => {
 	if (!editorRef.value) return
 	isInternalUpdate = true
 
-	let serializedText = ''
-	let displayText = ''
+	let text = ''
 	const refs: InputParamPreviewRef[] = []
 	const processNode = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			const t = node.textContent || ''
-			serializedText += t
-			displayText += t
+			text += node.textContent || ''
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const el = node as HTMLElement
 			if (el.classList && el.classList.contains('bp-mention-chip')) {
@@ -382,26 +371,16 @@ const syncFromDOM = () => {
 					fromAnchorId: fromAnchorId || undefined,
 					previewUrl: previewUrl || undefined
 				} as InputParamPreviewRef)
-				serializedText += CHIP_MARKER
-				displayText += label
-			} else if (el.classList && el.classList.contains('bp-mention-chip-remove')) {
-				return
-			} else if (el.tagName === 'BR') {
-				serializedText += '\n'
-				displayText += '\n'
-			} else {
+			} else if (el.tagName !== 'BR') {
 				el.childNodes.forEach(processNode)
 			}
 		}
 	}
 	editorRef.value.childNodes.forEach(processNode)
 
-	serializedText = serializedText.replace(/\u00A0/g, ' ')
-	displayText = displayText.replace(/\u00A0/g, ' ')
-	isEmpty.value = displayText.trim() === '' && refs.length === 0
-	charCount.value = displayText.length
-	selectedRefs.value = refs
-	emit('update:modelValue', serializedText)
+	text = text.replace(/\u00A0/g, ' ')
+	isEmpty.value = text.trim() === '' && refs.length === 0
+	emit('update:modelValue', text)
 	emit('update:selectedReferences', refs)
 
 	nextTick(() => {
@@ -413,47 +392,28 @@ const renderFromModel = () => {
 	if (!editorRef.value || isInternalUpdate) return
 	const editor = editorRef.value
 	const refs = selectedRefs.value
-	const serialized = props.modelValue
+	const text = props.modelValue
 
-	if (refs.length === 0 && !serialized) {
+	if (refs.length === 0 && !text) {
 		editor.innerHTML = ''
 		isEmpty.value = true
-		charCount.value = 0
 		return
 	}
 
 	editor.innerHTML = ''
 
-	let refIdx = 0
-	const parts = serialized.split(CHIP_MARKER)
-	let displayLen = 0
-
-	parts.forEach((part, i) => {
-		if (part) {
-			const lines = part.split('\n')
-			lines.forEach((line, li) => {
-				if (li > 0) {
-					editor.appendChild(document.createElement('br'))
-					displayLen += 1
-				}
-				if (line) {
-					editor.appendChild(document.createTextNode(line))
-					displayLen += line.length
-				}
-			})
-		}
-		if (i < parts.length - 1) {
-			const ref = refs[refIdx++]
-			if (ref) {
-				const chipEl = createChipElement(ref)
-				editor.appendChild(chipEl)
-				displayLen += (ref.label || '').length
-			}
-		}
+	refs.forEach((item) => {
+		const chipEl = createChipElement(item)
+		editor.appendChild(chipEl)
+		editor.appendChild(document.createTextNode(' '))
 	})
 
-	isEmpty.value = displayLen === 0 && refs.length === 0
-	charCount.value = displayLen
+	if (text) {
+		const textNode = document.createTextNode(text)
+		editor.appendChild(textNode)
+	}
+
+	isEmpty.value = refs.length === 0 && !text.trim()
 }
 
 const onEditorInput = () => {
@@ -542,51 +502,6 @@ const onEditorMouseUp = () => {
 	detectMention()
 }
 
-const onPaste = (e: ClipboardEvent) => {
-	if (isComposing) return
-	e.preventDefault()
-
-	let text = e.clipboardData?.getData('text/plain') || ''
-	if (!text) return
-	text = text.replace(/\u0001/g, '')
-
-	const sel = window.getSelection()
-	if (!sel || sel.rangeCount === 0 || !editorRef.value) {
-		document.execCommand('insertText', false, text)
-		syncFromDOM()
-		return
-	}
-
-	const range = sel.getRangeAt(0)
-	range.deleteContents()
-
-	const lines = text.split(/\r?\n/)
-	const fragment = document.createDocumentFragment()
-
-	lines.forEach((line, index) => {
-		if (index > 0) {
-			fragment.appendChild(document.createElement('br'))
-		}
-		if (line) {
-			fragment.appendChild(document.createTextNode(line))
-		}
-	})
-
-	const lastNode = fragment.lastChild
-	range.insertNode(fragment)
-
-	if (lastNode) {
-		const newRange = document.createRange()
-		newRange.setStartAfter(lastNode)
-		newRange.collapse(true)
-		sel.removeAllRanges()
-		sel.addRange(newRange)
-	}
-
-	syncFromDOM()
-	editorRef.value?.focus()
-}
-
 const onInnerMouseDown = (e: MouseEvent) => {
 	if (e.target === editorRef.value) return
 	if (editorRef.value?.contains(e.target as Node)) return
@@ -656,7 +571,6 @@ const onResizeEnd = () => {
 
 onMounted(() => {
 	currentHeight.value = MIN_HEIGHT + 20
-	selectedRefs.value = [...(props.selectedReferences ?? [])]
 	renderFromModel()
 
 	const editor = editorRef.value
@@ -673,13 +587,12 @@ onMounted(() => {
 })
 
 watch(
-	() => props.modelValue,
+	() => [props.modelValue, props.selectedReferences],
 	() => {
 		if (isInternalUpdate) return
-		selectedRefs.value = [...(props.selectedReferences ?? [])]
-		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
 		renderFromModel()
-	}
+	},
+	{ deep: true }
 )
 
 onBeforeUnmount(() => {
@@ -706,37 +619,7 @@ const blur = () => {
 	editorRef.value?.blur()
 }
 
-const getFullText = (): string => {
-	if (!editorRef.value) return props.modelValue
-	let text = ''
-	const walk = (node: Node) => {
-		if (node.nodeType === Node.TEXT_NODE) {
-			text += node.textContent || ''
-		} else if (node.nodeType === Node.ELEMENT_NODE) {
-			const el = node as HTMLElement
-			if (el.tagName === 'BR') {
-				return
-			}
-			if (el.classList && el.classList.contains('bp-mention-chip')) {
-				const label = el.getAttribute('data-label') || ''
-				text += label
-				return
-			}
-			if (el.classList && (
-				el.classList.contains('bp-mention-chip-remove') ||
-				el.classList.contains('bp-mention-chip-icon') ||
-				el.classList.contains('bp-mention-chip-thumb')
-			)) {
-				return
-			}
-			el.childNodes.forEach(walk)
-		}
-	}
-	editorRef.value.childNodes.forEach(walk)
-	return text.replace(/\u00A0/g, ' ')
-}
-
-defineExpose({ focus, blur, getFullText })
+defineExpose({ focus, blur })
 </script>
 
 <style scoped>
