@@ -1371,6 +1371,7 @@ export type WorkflowNodeGenerationTask = {
 	id: string
 	nodeId: string
 	nodeType: WorkflowNodeChatType
+	provider?: string
 	status: WorkflowNodeGenerationStatus
 	statusText: string
 	progress: number
@@ -1379,6 +1380,9 @@ export type WorkflowNodeGenerationTask = {
 	errorMessage?: string
 	results: Array<{ url: string; label?: string; kind: 'image' | 'video' | 'text' | 'model3d' }>
 	detailLines: string[]
+	prompt?: string
+	globalTaskId?: string
+	clientRequestId?: string
 }
 
 export type WorkflowNodeChatDialog = {
