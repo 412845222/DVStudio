@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AIWorkflowStore } from '@/store/aiworkflow/store'
-import type { WorkflowState } from '@/aiworkflow/types'
+import type { WorkflowState, WorkflowNodeChatSelectedRef } from '@/aiworkflow/types'
 
 describe('store/nodeChatDialog', () => {
 	let store: typeof AIWorkflowStore
@@ -20,7 +20,8 @@ describe('store/nodeChatDialog', () => {
 					nodeType: null,
 					draft: '',
 					submitting: false,
-					params: {}
+					params: {},
+					selectedRefs: []
 				},
 				viewport: { zoom: 1, panX: 0, panY: 0 },
 				selectedNodeId: null,
@@ -286,6 +287,163 @@ describe('store/nodeChatDialog', () => {
 			expect(store.state.nodeChatDialog.nodeId).toBe(null)
 			expect(store.state.nodeChatDialog.nodeType).toBe(null)
 			expect(store.state.nodeChatDialog.draft).toBe('')
+			expect(store.state.nodeChatDialog.selectedRefs).toEqual([])
+		})
+	})
+
+	describe('setNodeChatSelectedRefs', () => {
+		it('updates nodeChatDialog.selectedRefs', () => {
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-refs-1',
+					type: 'image',
+					title: 'Test Node',
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+			store.commit('openNodeChatDialog', { nodeId: 'node-refs-1', nodeType: 'image' })
+
+			const refs: WorkflowNodeChatSelectedRef[] = [
+				{ kind: 'image', label: '参考图1', edgeId: 'edge-1' }
+			]
+			store.commit('setNodeChatSelectedRefs', { refs })
+
+			expect(store.state.nodeChatDialog.selectedRefs).toEqual(refs)
+		})
+
+		it('persists refs to node.nodeChatSelectedRefs', () => {
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-refs-2',
+					type: 'image',
+					title: 'Test Node',
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+			store.commit('openNodeChatDialog', { nodeId: 'node-refs-2', nodeType: 'image' })
+
+			const refs: WorkflowNodeChatSelectedRef[] = [
+				{ kind: 'image', label: '参考图1', edgeId: 'edge-1' },
+				{ kind: 'video', label: '参考视频1', fromNodeId: 'node-video', fromAnchorId: 'video-out' }
+			]
+			store.commit('setNodeChatSelectedRefs', { refs })
+
+			expect(store.state.nodesById['node-refs-2'].nodeChatSelectedRefs).toEqual(refs)
+		})
+
+		it('sets node.nodeChatSelectedRefs to undefined when refs array is empty', () => {
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-refs-3',
+					type: 'image',
+					title: 'Test Node',
+					nodeChatSelectedRefs: [{ kind: 'image', label: '参考图1', edgeId: 'edge-1' }],
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+			store.commit('openNodeChatDialog', { nodeId: 'node-refs-3', nodeType: 'image' })
+
+			store.commit('setNodeChatSelectedRefs', { refs: [] })
+
+			expect(store.state.nodesById['node-refs-3'].nodeChatSelectedRefs).toBeUndefined()
+		})
+
+		it('supports multiple references of the same kind', () => {
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-refs-4',
+					type: 'image',
+					title: 'Test Node',
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+			store.commit('openNodeChatDialog', { nodeId: 'node-refs-4', nodeType: 'image' })
+
+			const refs: WorkflowNodeChatSelectedRef[] = [
+				{ kind: 'image', label: '参考图1', edgeId: 'edge-1' },
+				{ kind: 'image', label: '参考图2', edgeId: 'edge-2' }
+			]
+			store.commit('setNodeChatSelectedRefs', { refs })
+
+			expect(store.state.nodeChatDialog.selectedRefs).toHaveLength(2)
+			expect(store.state.nodeChatDialog.selectedRefs[0].label).toBe('参考图1')
+			expect(store.state.nodeChatDialog.selectedRefs[1].label).toBe('参考图2')
+			expect(store.state.nodesById['node-refs-4'].nodeChatSelectedRefs).toHaveLength(2)
+		})
+	})
+
+	describe('openNodeChatDialog restoring selectedRefs', () => {
+		it('restores selectedRefs from node.nodeChatSelectedRefs when dialog opens', () => {
+			const savedRefs: WorkflowNodeChatSelectedRef[] = [
+				{ kind: 'image', label: '参考图1', edgeId: 'edge-saved-1' },
+				{ kind: 'text', label: '参考文本1', fromNodeId: 'node-text', fromAnchorId: 'text-out' }
+			]
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-restore-1',
+					type: 'image',
+					title: 'Test Node',
+					nodeChatDraft: 'a prompt with refs',
+					nodeChatSelectedRefs: savedRefs,
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+
+			store.commit('openNodeChatDialog', { nodeId: 'node-restore-1', nodeType: 'image' })
+
+			expect(store.state.nodeChatDialog.draft).toBe('a prompt with refs')
+			expect(store.state.nodeChatDialog.selectedRefs).toEqual(savedRefs)
+		})
+
+		it('initializes selectedRefs as empty array when node has no saved refs', () => {
+			store.commit('upsertNode', {
+				node: {
+					id: 'node-restore-2',
+					type: 'video',
+					title: 'Video Node',
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			})
+
+			store.commit('openNodeChatDialog', { nodeId: 'node-restore-2', nodeType: 'video' })
+
+			expect(store.state.nodeChatDialog.selectedRefs).toEqual([])
 		})
 	})
 })

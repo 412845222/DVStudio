@@ -24,6 +24,7 @@
 		:nodeChatDraft="nodeChatDraft"
 		:nodeChatSubmitting="nodeChatSubmitting"
 		:nodeChatParams="nodeChatParams"
+		:nodeChatSelectedRefs="nodeChatSelectedRefs"
 		:inputParamPreviewRefs="inputParamPreviewRefs"
 		:nodeGenerationTask="nodeGenerationTask"
 		:anchorCompatibility="anchorCompatibility"
@@ -45,6 +46,7 @@
 		@auto-resize="(h) => emit('auto-resize', h)"
 		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
 		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
+		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
 		@node-chat-close="emit('node-chat-close')"
 		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
 		@node-chat-stop="emit('node-chat-stop')"
@@ -334,7 +336,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
+import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatSelectedRef, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from '../../BluePrint/node-dialog'
 import { useI18n } from '../../../i18n'
 
@@ -345,20 +347,8 @@ const thinkingCollapsedMap = ref<Map<string, boolean>>(new Map())
 
 const INITIAL_VISIBLE_COUNT = 50
 const LOAD_MORE_COUNT = 50
+const WARMUP_VISIBLE_COUNT = 8
 const visibleMessagesCount = ref(INITIAL_VISIBLE_COUNT)
-
-const visibleMessages = computed(() => {
-	const msgs = chatMessages.value
-	const total = msgs.length
-	if (total <= visibleMessagesCount.value) return msgs
-	return msgs.slice(total - visibleMessagesCount.value)
-})
-
-const hasMoreMessages = computed(() => chatMessages.value.length > visibleMessagesCount.value)
-
-const onLoadMoreMessages = () => {
-	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
-}
 
 type AnchorSpec = {
 	id: string
@@ -394,11 +384,13 @@ const props = defineProps<{
 	nodeChatDraft?: string
 	nodeChatSubmitting?: boolean
 	nodeChatParams?: Record<string, unknown>
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	nodeGenerationTask?: WorkflowNodeGenerationTask | null
 	anchorCompatibility?: Record<string, boolean | null>
 	isLinking?: boolean
 	sizeCustomized?: boolean
 	autoHeight?: boolean
+	isWarmupRender?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -417,6 +409,7 @@ const emit = defineEmits<{
 	(e: 'auto-resize', height: number): void
 	(e: 'node-chat-update-draft', value: string): void
 	(e: 'node-chat-update-params', value: Record<string, unknown>): void
+	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
 	(e: 'node-chat-close'): void
 	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'node-chat-stop'): void
@@ -461,6 +454,29 @@ const importStatus = computed(() => props.blenderSettings?.importStatus ?? 'idle
 const importProgress = computed(() => props.blenderSettings?.importProgress ?? 0)
 const importError = computed(() => props.blenderSettings?.importError ?? null)
 const chatMessages = computed<WorkflowBlenderChatMessage[]>(() => props.blenderSettings?.chatMessages ?? [])
+
+const effectiveVisibleCount = computed(() => {
+	if (props.isWarmupRender) return WARMUP_VISIBLE_COUNT
+	return visibleMessagesCount.value
+})
+
+const visibleMessages = computed(() => {
+	const msgs = chatMessages.value
+	const total = msgs.length
+	const count = effectiveVisibleCount.value
+	if (total <= count) return msgs
+	return msgs.slice(total - count)
+})
+
+const hasMoreMessages = computed(() => {
+	if (props.isWarmupRender) return false
+	return chatMessages.value.length > visibleMessagesCount.value
+})
+
+const onLoadMoreMessages = () => {
+	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
+}
+
 const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
 const toolsReady = computed(() => props.blenderSettings?.toolsReady)
 const workspacePath = computed(() => {
@@ -761,6 +777,16 @@ watch(
 		scrollToBottom()
 	}
 )
+
+// 进入预热截图模式时，滚动到底部确保截图展示最新消息
+watch(
+	() => props.isWarmupRender,
+	(val) => {
+		if (val) {
+			scrollToBottom()
+		}
+	}
+)
 </script>
 
 <style scoped>
@@ -770,9 +796,9 @@ watch(
 	gap: 6px;
 	padding: 6px 8px;
 	width: 100%;
-	height: 100%;
 	flex: 1;
 	min-height: 0;
+	align-self: stretch;
 	box-sizing: border-box;
 	overflow: hidden;
 }
@@ -1197,10 +1223,9 @@ watch(
 	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 	white-space: pre-wrap;
 	word-break: break-all;
-	max-height: 200px;
-	overflow-y: auto;
 	line-height: 1.3;
 	border-radius: 0;
+	overflow: visible;
 }
 
 .wf-blender-tool-code {
@@ -1579,8 +1604,6 @@ watch(
 	font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 	white-space: pre-wrap;
 	word-break: break-all;
-	max-height: 300px;
-	overflow-y: auto;
 	line-height: 1.3;
 	border-radius: 0;
 	background: color-mix(in srgb, #8b5cf6 6%, transparent);
@@ -1588,6 +1611,7 @@ watch(
 	color: #c4b5fd;
 	font-style: italic;
 	opacity: 0.85;
+	overflow: visible;
 }
 
 .wf-blender-command-card {

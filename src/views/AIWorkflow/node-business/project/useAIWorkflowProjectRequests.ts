@@ -12,7 +12,6 @@ export const useAIWorkflowProjectRequests = (payload: {
 		commit: (type: string, value: unknown) => void
 	}
 	setUnsavedProject: (name?: string) => void
-	reuseRecordConfirm: Ref<unknown>
 	resetComfyRuntime: () => void
 	comfyAnchorAssignments: Map<string, Map<string, string>>
 	comfyAnchorLocalizedOutputs: Map<string, Map<string, unknown>>
@@ -84,7 +83,6 @@ export const useAIWorkflowProjectRequests = (payload: {
 		payload.cancelActiveRecoverySession()
 		payload.store.commit('hydrateDraft', { snapshot: payload.createEmptyDraftSnapshot() })
 		payload.setUnsavedProject('')
-		payload.reuseRecordConfirm.value = null
 
 		payload.resetComfyRuntime()
 		payload.comfyAnchorAssignments.clear()

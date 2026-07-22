@@ -530,6 +530,20 @@ contextBridge.exposeInMainWorld('dweb', {
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
 		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
 	},
+	subtitleRecog: {
+		checkEnv: () => invoke('dweb:subtitle-recog:check-env'),
+		getBinaryConfig: (payload) => invoke('dweb:subtitle-recog:get-binary-config', payload || {}),
+		downloadBinary: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-binary', payload || {}),
+		getFfmpegConfig: (payload) => invoke('dweb:subtitle-recog:get-ffmpeg-config', payload || {}),
+		downloadFfmpeg: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-ffmpeg', payload || {}),
+		getAvailableModels: () => invoke('dweb:subtitle-recog:get-available-models'),
+		getModelConfig: (payload) => invoke('dweb:subtitle-recog:get-model-config', payload || {}),
+		downloadModel: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-model', payload || {}),
+		getInstalledModels: () => invoke('dweb:subtitle-recog:get-installed-models'),
+		recognize: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:recognize', payload || {}),
+		readAudioFile: (payload) => invoke('dweb:subtitle-recog:read-audio-file', payload || {}),
+		cleanupAudioFile: (payload) => invoke('dweb:subtitle-recog:cleanup-audio-file', payload || {}),
+	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {
 		nanobanana: {
@@ -616,7 +630,9 @@ contextBridge.exposeInMainWorld('dweb', {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
 				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
+				resolveHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:resolve-history', payload || {}),
 			},
+			clearCache: (payload) => invoke('dweb:comfyui:runtime:clear-cache', payload || {}),
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
@@ -679,6 +695,14 @@ contextBridge.exposeInMainWorld('dweb', {
 			},
 			onServiceLogsCleared: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-clear'
+				const handler = (_evt, payload) => {
+					try { listener(payload) } catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			},
+			onConfigChange: (listener) => {
+				const ch = 'dweb:comfyui:setup:config-changed'
 				const handler = (_evt, payload) => {
 					try { listener(payload) } catch {}
 				}
@@ -872,6 +896,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
 		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),
+		getConfigStatus: () => invoke('dweb:cloudfs:get-config-status'),
 		saveConfig: (payload) => invoke('dweb:cloudfs:save-config', payload || {}),
 		clearConfig: () => invoke('dweb:cloudfs:clear-config'),
 		testConfig: (payload) => invoke('dweb:cloudfs:test-config', payload || {}),
@@ -891,5 +916,100 @@ contextBridge.exposeInMainWorld('dweb', {
 		removeConfiguredBucket: (payload) => invoke('dweb:cloudfs:remove-configured-bucket', payload || {}),
 		switchActiveBucket: (payload) => invoke('dweb:cloudfs:switch-active-bucket', payload || {}),
 		fixBucketAcl: (payload) => invoke('dweb:cloudfs:fix-bucket-acl', payload || {}),
+	},
+	// ===== 全局任务队列 =====
+	taskQueue: {
+		list: (payload) => invoke('dweb:task-queue:list', payload || {}),
+		listByProject: (payload) => invoke('dweb:task-queue:list-by-project', payload || {}),
+		listUnbackfilledCompleted: (payload) => invoke('dweb:task-queue:list-unbackfilled-completed', payload || {}),
+		reconcile: (payload) => invoke('dweb:task-queue:reconcile', payload || {}),
+		summary: () => invoke('dweb:task-queue:summary'),
+		get: (payload) => invoke('dweb:task-queue:get', payload || {}),
+		findByUniqueKey: (payload) => invoke('dweb:task-queue:find-by-unique-key', payload || {}),
+		findActiveByNodeId: (payload) => invoke('dweb:task-queue:find-active-by-node', payload || {}),
+		cancel: (payload) => invoke('dweb:task-queue:cancel', payload || {}),
+		dismiss: (payload) => invoke('dweb:task-queue:dismiss', payload || {}),
+		delete: (payload) => invoke('dweb:task-queue:delete', payload || {}),
+		clearCompleted: () => invoke('dweb:task-queue:clear-completed'),
+		markBackfilled: (payload) => invoke('dweb:task-queue:mark-backfilled', payload || {}),
+		submit: (payload) => invoke('dweb:task-queue:submit', payload || {}),
+		create: (payload) => invoke('dweb:task-queue:create', payload || {}),
+		register: (payload) => invoke('dweb:task-queue:register', payload || {}),
+		fail: (payload) => invoke('dweb:task-queue:fail', payload || {}),
+		complete: (payload) => invoke('dweb:task-queue:complete', payload || {}),
+		bindRemoteTask: (payload) => invoke('dweb:task-queue:bind-remote-task', payload || {}),
+		update: (payload) => invoke('dweb:task-queue:update', payload || {}),
+		onUpdate: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:update] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:update', wrapped)
+			return id
+		},
+		offUpdate: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:update', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onSummary: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:summary] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:summary', wrapped)
+			return id
+		},
+		offSummary: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:summary', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onDeleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:deleted] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:deleted', wrapped)
+			return id
+		},
+		offDeleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:deleted', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onCompleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:completed] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:task-completed', wrapped)
+			return id
+		},
+		offCompleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:task-completed', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
 	},
 })
