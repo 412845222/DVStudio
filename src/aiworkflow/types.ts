@@ -657,7 +657,7 @@ export type WorkflowComfyUINodeSettings = {
 	statusText?: string
 	/** extracted output media urls from history */
 	outputs?: Array<{
-		kind: 'image' | 'video' | 'model3d'
+		kind: 'image' | 'video'
 		url: string
 		filename?: string
 		anchorId?: string
@@ -668,55 +668,6 @@ export type WorkflowComfyUINodeSettings = {
 	}>
 	/** epoch ms */
 	lastUpdateAt?: number
-	/** whether to auto-create and wire downstream nodes on task completion */
-	autoWireEnabled?: boolean
-	/** parsed input requirements from the workflow (images/videos/models/prompts) */
-	inputRequirements?: import('./domain/comfyui/parseWorkflowIO').ComfyInputRequirements
-	/** workflow parsing warnings */
-	workflowWarnings?: string[]
-	/** whether the preview screenshot is stale and needs refresh */
-	previewStale?: boolean
-
-	/** history resolution status: whether we have a valid successful run record */
-	hasHistory?: boolean
-	/** whether history check has been performed for current workflow */
-	historyChecked?: boolean
-	/** error from history resolution */
-	historyError?: string
-	/** guide message to show when no history */
-	historyGuideMessage?: string
-	/** ComfyUI base url for opening UI when no history */
-	historyGuideBaseUrl?: string
-	/** prompt id of the matched history run */
-	historyPromptId?: string
-	/** epoch ms of the history run */
-	historyTimestamp?: number
-	/** match type used: exact/fuzzy/direct */
-	historyMatchType?: 'exact' | 'fuzzy' | 'direct'
-	/** number of image inputs detected from history */
-	imageInputCount?: number
-	/** number of video inputs detected from history */
-	videoInputCount?: number
-	/** whether there are text prompt inputs (CLIPTextEncode) */
-	hasTextPromptInput?: boolean
-	/** number of nodes in the prompt graph */
-	historyNodeCount?: number
-	/** exact input node mappings resolved from history, used for precise parameter replacement at runtime */
-	historyInputMappings?: {
-		imageInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
-		videoInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
-		textNodes: {
-			positive: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
-			negative: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
-		}
-		seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
-	}
-	// detected output nodes from the workflow
-	historyOutputNodes?: Array<{ nodeId: string; classType: string; mediaKind: 'image' | 'video' | 'model3d'; displayName?: string }>
-	// which media types the workflow actually outputs (detected from Save/VHS_/Export nodes)
-	hasImageOutput?: boolean
-	hasVideoOutput?: boolean
-	hasModel3dOutput?: boolean
 }
 
 export type WorkflowMeshyModelSettings = {
@@ -1147,8 +1098,6 @@ export type WorkflowNode = {
 	nodeChatDraft?: string
 	/** For chat dialog: user-configured params */
 	nodeChatParams?: Record<string, unknown>
-	/** For chat dialog: selected @mention references (persisted for chip restoration) */
-	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	/** For chat dialog: mirror of nodeChatDraft (legacy prompt field, kept for back-compat) */
 	prompt?: string
 	worldX: number
@@ -1337,14 +1286,6 @@ export type WorkflowNodeChatParams = {
 	blender?: WorkflowNodeChatParamRecord
 }
 
-export type WorkflowNodeChatSelectedRef = {
-	edgeId?: string
-	fromNodeId?: string
-	fromAnchorId?: string
-	kind: 'text' | 'image' | 'video' | 'model3d' | 'blender'
-	label: string
-}
-
 export type WorkflowNodeChatSubmitPayload = {
 	nodeId: string
 	nodeType: WorkflowNodeChatType
@@ -1357,21 +1298,14 @@ export type WorkflowNodeChatSubmitPayload = {
 		type: 'text' | 'image' | 'video' | 'model3d' | 'blender'
 		label: string
 	}>
-	attachments?: Array<{
-		type?: string
-		name?: string
-		url?: string
-		data?: string
-	}>
 }
 
-export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error' | 'cancelled'
+export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error'
 
 export type WorkflowNodeGenerationTask = {
 	id: string
 	nodeId: string
 	nodeType: WorkflowNodeChatType
-	provider?: string
 	status: WorkflowNodeGenerationStatus
 	statusText: string
 	progress: number
@@ -1380,9 +1314,6 @@ export type WorkflowNodeGenerationTask = {
 	errorMessage?: string
 	results: Array<{ url: string; label?: string; kind: 'image' | 'video' | 'text' | 'model3d' }>
 	detailLines: string[]
-	prompt?: string
-	globalTaskId?: string
-	clientRequestId?: string
 }
 
 export type WorkflowNodeChatDialog = {
@@ -1392,7 +1323,6 @@ export type WorkflowNodeChatDialog = {
 	draft: string
 	submitting: boolean
 	params: WorkflowNodeChatParams
-	selectedRefs: WorkflowNodeChatSelectedRef[]
 }
 
 export type WorkflowState = {

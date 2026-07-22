@@ -14,8 +14,6 @@ import { ToolImageProcessor } from './ToolImageProcessor.mjs';
 import { getProviderById } from '../providers/index.mjs';
 import { ProviderEventType } from '../providers/ILLMProvider.mjs';
 import logger from '../../../core/logger.mjs';
-import { getScene } from '../scenes/SceneRegistry.mjs';
-import { DVSAgentType } from '../types/AgentTypes.mjs';
 
 const DEFAULT_MAX_TOOL_CALLS = 35;
 
@@ -105,11 +103,9 @@ export class AgentRuntime {
     const providedTools = Array.isArray(p.tools) ? p.tools : [];
     const customSystemPrompt = typeof p.systemPrompt === 'string' ? p.systemPrompt.trim() : '';
     const useCustomSystemPromptOnly = customSystemPrompt && providedTools.length > 0;
-    const agentType = p.agentType || DVSAgentType.WORKFLOW;
-    const scene = getScene(agentType);
 
     const providerId = backend;
-    logger.info(`AgentRuntime: using backend=${providerId}, model=${model}, apiSource=${apiSource}, agentType=${agentType}, customSystemPrompt=${useCustomSystemPromptOnly ? 'yes' : 'no'}`);
+    logger.info(`AgentRuntime: using backend=${providerId}, model=${model}, apiSource=${apiSource}, customSystemPrompt=${useCustomSystemPromptOnly ? 'yes' : 'no'}`);
     let provider;
     try {
       provider = this.getProvider(providerId);
@@ -139,22 +135,21 @@ export class AgentRuntime {
 
     try {
       let tools;
-      const allTools = await this.toolRegistry.listTools();
-
       if (providedTools.length > 0) {
+        const allTools = await this.toolRegistry.listTools();
         const allowedNames = new Set(providedTools.map(t => String(t)));
         tools = allTools.filter(t => allowedNames.has(t.function.name));
-        logger.info(`AgentRuntime: REQUESTED TOOLS MODE - requested tools: ${Array.from(allowedNames).join(', ')}`);
-        logger.info(`AgentRuntime: REQUESTED TOOLS MODE - found ${allTools.length} total tools, ${tools.length} matched: ${tools.map(t => t.function.name).join(', ')}`);
+        logger.info(`AgentRuntime: BLENDER MODE - requested tools: ${Array.from(allowedNames).join(', ')}`);
+        logger.info(`AgentRuntime: BLENDER MODE - found ${allTools.length} total tools, ${tools.length} matched: ${tools.map(t => t.function.name).join(', ')}`);
         if (tools.length === 0) {
           const allNames = allTools.map(t => t.function.name).join(', ');
-          logger.warn(`AgentRuntime: REQUESTED TOOLS MODE - no matching tools found! Available tool names: ${allNames}`);
-          yield { type: 'error', message: `工具不可用：找不到 ${Array.from(allowedNames).join(', ')}。当前可用工具：${allNames}` };
+          logger.warn(`AgentRuntime: BLENDER MODE - no matching tools found! Available tool names: ${allNames}`);
+          yield { type: 'error', message: `Blender工具不可用：找不到 ${Array.from(allowedNames).join(', ')}。请确认Blender已连接。当前可用工具：${allNames}` };
           return;
         }
       } else {
-        tools = scene.filterTools(allTools);
-        logger.info(`AgentRuntime: SCENE MODE (${agentType}) - ${tools.length} tools available: ${tools.map(t => t.function.name).join(', ')}`);
+        tools = await this.toolRegistry.listTools();
+        logger.info(`AgentRuntime: ${tools.length} tools available: ${tools.map(t => t.function.name).join(', ')}`);
       }
 
       const toolPromptText = (!provider.supportsNativeToolCalls && !provider.executesOwnTools)
@@ -169,7 +164,7 @@ export class AgentRuntime {
           ? '\n\n' + this.toolRegistry.toCliToolPrompt(tools)
           : '';
         systemPrompt = customSystemPrompt + cliToolInstructions;
-        logger.info(`AgentRuntime: CUSTOM SYSTEM PROMPT MODE - using custom system prompt only, cliToolInstructions appended: ${needCliToolPrompt}, executesOwnTools: ${provider.executesOwnTools}`);
+        logger.info(`AgentRuntime: BLENDER MODE - using custom system prompt only (no blueprint context), cliToolInstructions appended: ${needCliToolPrompt}, executesOwnTools: ${provider.executesOwnTools}`);
         const userContent = attachments.length > 0
           ? (() => {
               const parts = [{ type: 'text', text: content }];
@@ -195,7 +190,7 @@ export class AgentRuntime {
         let truncResult = { messages: rawMessages, tokenCount: initialTokens, truncated: false };
         if (initialTokens > budget * TRUNCATION_THRESHOLD) {
           truncResult = ContextBuilder.truncateMessagesInLoop(rawMessages, budget * TRUNCATION_THRESHOLD);
-          logger.info(`AgentRuntime: CUSTOM SYSTEM PROMPT MODE - initial truncation: ${initialTokens} -> ${truncResult.tokenCount} tokens (budget=${budget}), truncated=${truncResult.truncated}`);
+          logger.info(`AgentRuntime: BLENDER MODE - initial truncation: ${initialTokens} -> ${truncResult.tokenCount} tokens (budget=${budget}), truncated=${truncResult.truncated}`);
         }
         currentMessages = truncResult.messages;
         yield {
@@ -209,7 +204,6 @@ export class AgentRuntime {
         const baseSystemPrompt = this.contextBuilder.buildSystemPrompt(context, {
           includeToolInstructions: !provider.supportsNativeToolCalls && !provider.executesOwnTools && !customSystemPrompt,
           toolPromptText,
-          agentType,
         });
         systemPrompt = customSystemPrompt
           ? customSystemPrompt + '\n\n' + baseSystemPrompt

@@ -218,11 +218,5 @@
   "aiworkflow.page.startup.projectLoadFailed": "Project data loading failed",
   "aiworkflow.page.startup.initProject": "Initializing Project",
   "aiworkflow.page.startup.loadAssets": "Loading Static Assets",
-  "aiworkflow.page.blueprintLog.pageReady": "Blueprint page loaded, log panel ready",
-  "aiworkflow.warmup.title": "Node Warmup Prompt",
-  "aiworkflow.warmup.confirm": "Start Warmup",
-  "aiworkflow.warmup.cancel": "Later",
-  "aiworkflow.warmup.dontShowAgain": "Don't show again",
-  "aiworkflow.warmup.message": "Detected {count}/{total} nodes in the current blueprint that haven't been warmed up yet",
-  "aiworkflow.warmup.description": "Warming up nodes can improve blueprint operation smoothness. Start warmup now? The warmup process will automatically adjust concurrency based on your CPU performance."
+  "aiworkflow.page.blueprintLog.pageReady": "Blueprint page loaded, log panel ready"
 }

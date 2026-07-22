@@ -108,7 +108,6 @@ type RunResponse =
 			ok: true
 			baseUrl: string
 			promptId: string
-			promptSource?: string
 			result: Record<string, unknown>
 			snapshot?: Record<string, unknown>
 	  }
@@ -117,9 +116,14 @@ type RunResponse =
 			error: string
 			status?: number
 			baseUrl?: string
-			requiresHistorySetup?: boolean
-			message?: string
-			comfyuiError?: Record<string, unknown>
+			requiresConfirm?: boolean
+			fallbackRecord?: {
+				workflowName?: string
+				workflowPath?: string
+				workflowId?: string
+				savedAt?: number
+				runDir?: string
+			}
 	  }
 
 type OutputsResponse =
@@ -535,70 +539,6 @@ type JobResponse =
 			baseUrl?: string
 	  }
 
-export type ResolvedInputNode = {
-	nodeId: string
-	classType: string
-	inputKey: string
-	originalValue?: string
-	displayName?: string
-}
-
-export type ResolvedTextNode = {
-	nodeId: string
-	classType: string
-	originalText?: string
-	inputKey?: string
-	allTextKeys?: string[]
-}
-
-export type ComfyInputMappings = {
-	imageInputs: ResolvedInputNode[]
-	videoInputs: ResolvedInputNode[]
-	textNodes: {
-		positive: ResolvedTextNode[]
-		negative: ResolvedTextNode[]
-	}
-	seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
-}
-
-export type ResolvedOutputNode = {
-	nodeId: string
-	classType: string
-	mediaKind: 'image' | 'video' | 'model3d'
-	displayName?: string
-}
-
-export type ResolveHistoryResponse =
-	| {
-			ok: true
-			baseUrl: string
-			hasHistory: true
-			promptGraph: Record<string, any>
-			promptId: string
-			matchType: 'exact' | 'fuzzy' | 'direct'
-			timestamp?: number
-			nodeCount: number
-			imageInputs: ResolvedInputNode[]
-			videoInputs: ResolvedInputNode[]
-			textNodes: ComfyInputMappings['textNodes']
-			seedNodes: ComfyInputMappings['seedNodes']
-			outputs?: ResolvedOutputNode[]
-			hasImageInput?: boolean
-			hasVideoInput?: boolean
-			hasTextPrompt: boolean
-			hasImageOutput?: boolean
-			hasVideoOutput?: boolean
-			hasModel3dOutput?: boolean
-			source?: string
-	  }
-	| {
-			ok: false
-			error: 'NO_HISTORY' | string
-			message?: string
-			baseUrl?: string
-			requiresHistorySetup?: boolean
-	  }
-
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
 		'Content-Type': 'application/json'
@@ -676,26 +616,15 @@ function isCodexIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.codex
 }
 
-type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' }
-
-async function filesToDataUrlFiles(files: ComfyInputFile[]): Promise<Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }>> {
-	const out: Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }> = []
+async function filesToDataUrlFiles(files: File[]): Promise<Array<{ name: string; dataUrl: string }>> {
+	const out: Array<{ name: string; dataUrl: string }> = []
 	for (let i = 0; i < files.length; i++) {
-		const entry = files[i]
-		if (!entry) continue
-		const f = entry instanceof File ? entry : entry.file
-		const mediaType = entry instanceof File ? guessMediaTypeName(f.name) : entry.mediaType
+		const f = files[i]
+		if (!f) continue
 		const dataUrl = await fileToDataUrl(f)
-		out.push({ name: f.name || `input_${i}`, dataUrl, mediaType, mimeType: f.type || 'application/octet-stream' })
+		out.push({ name: f.name || `input_${i}.png`, dataUrl })
 	}
 	return out
-}
-
-function guessMediaTypeName(filename: string): 'image' | 'video' {
-	const n = String(filename || '').trim().toLowerCase()
-	if (!n) return 'image'
-	if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some(ext => n.endsWith(ext))) return 'video'
-	return 'image'
 }
 
 async function formDataToObject(form: FormData): Promise<Record<string, unknown>> {
@@ -2382,46 +2311,23 @@ export class ComfyUIBridgeService {
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
-	async resolveHistory(comfyBaseUrl: string, workflowPath: string): Promise<ResolveHistoryResponse> {
-		if (isComfyRuntimeIpcAvailable()) {
-			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.resolveHistory({ baseUrl: comfyBaseUrl, workflowPath })
-				if (ipcResult && typeof ipcResult === 'object') {
-					return ipcResult as ResolveHistoryResponse
-				}
-				return { ok: false, error: 'Invalid IPC response', message: 'Invalid IPC response', baseUrl: comfyBaseUrl }
-			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] workflows/resolve-history IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'resolve-history failed via IPC', message: getErrorMessage(err) || 'resolve-history failed via IPC', baseUrl: comfyBaseUrl }
-			}
-		}
-		return { ok: false, error: 'IPC not available', message: 'IPC not available', baseUrl: comfyBaseUrl }
-	}
-
 	async run(
 		comfyBaseUrl: string,
 		workflowPath: string,
-		files: ComfyInputFile[] = [],
-		overrides?: {
-			positivePrompt?: string
-			negativePrompt?: string
-			historyPromptId?: string
-			inputMappings?: ComfyInputMappings
-		}
+		files: File[] = [],
+		overrides?: { positivePrompt?: string; negativePrompt?: string; confirmReuseRecord?: boolean }
 	): Promise<RunResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
 				const dataUrlFiles = await filesToDataUrlFiles(files)
-				const rawPayload = {
+				const ipcPayload = {
 					baseUrl: comfyBaseUrl,
 					workflowPath,
 					positivePrompt: overrides?.positivePrompt,
 					negativePrompt: overrides?.negativePrompt,
-					historyPromptId: overrides?.historyPromptId,
-					inputMappings: overrides?.inputMappings,
+					confirmReuseRecord: overrides?.confirmReuseRecord,
 					files: dataUrlFiles
 				}
-				const ipcPayload = JSON.parse(JSON.stringify(rawPayload))
 				const ipcResult = await (window as any).dweb.comfyui.runtime.run(ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
 					if (ipcResult.ok === false) {
@@ -2430,8 +2336,8 @@ export class ComfyUIBridgeService {
 							status: ipcResult.status || 500,
 							baseUrl: comfyBaseUrl,
 							error: ipcResult.error || 'run failed via IPC',
-							requiresHistorySetup: ipcResult.requiresHistorySetup,
-							message: ipcResult.message,
+							requiresConfirm: ipcResult.requiresConfirm,
+							fallbackRecord: ipcResult.fallbackRecord,
 							comfyuiError: ipcResult.comfyuiError
 						} as RunResponse
 					}
@@ -3462,21 +3368,5 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
-	}
-
-	async clearHistoryCache(comfyBaseUrl: string, workflowPath: string): Promise<{ ok: boolean; error?: string }> {
-		if (isComfyRuntimeIpcAvailable()) {
-			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.clearCache({ baseUrl: comfyBaseUrl, workflowPath })
-				if (ipcResult && typeof ipcResult === 'object') {
-					return ipcResult as { ok: boolean; error?: string }
-				}
-				return { ok: false, error: 'Invalid IPC response' }
-			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] clearCache IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'clearCache failed via IPC' }
-			}
-		}
-		return { ok: false, error: 'IPC not available' }
 	}
 }

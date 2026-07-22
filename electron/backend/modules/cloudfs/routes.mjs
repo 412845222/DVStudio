@@ -4,7 +4,6 @@ import * as handlers from './handlers.mjs'
 export const routes = [
   { channel: CLOUD_FS_CHANNELS.LIST_PROVIDERS, handler: handlers.listProviders },
   { channel: CLOUD_FS_CHANNELS.GET_ACTIVE_CONFIG, handler: handlers.getActiveConfig },
-  { channel: CLOUD_FS_CHANNELS.GET_CONFIG_STATUS, handler: handlers.getConfigStatus },
   { channel: CLOUD_FS_CHANNELS.SAVE_CONFIG, handler: handlers.saveConfig },
   { channel: CLOUD_FS_CHANNELS.CLEAR_CONFIG, handler: handlers.clearConfig },
   { channel: CLOUD_FS_CHANNELS.TEST_CONFIG, handler: handlers.testConfig },

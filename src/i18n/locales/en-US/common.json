@@ -47,6 +47,5 @@
   "common.connected": "Connected",
   "common.disconnected": "Disconnected",
   "common.image": "Image",
-  "common.video": "Video",
-  "common.model3d": "3D Model"
+  "common.video": "Video"
 }

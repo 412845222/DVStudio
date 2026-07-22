@@ -89,7 +89,7 @@
 					:disabled="submitting"
 					:can-submit-empty="canSubmitEmpty"
 					:input-param-preview-refs="inputParamPreviewRefsResolved"
-					:selected-references="selectedRefsForInput"
+					:selected-references="selectedReferences"
 					@update:model-value="onDraftUpdate"
 					@update:selected-references="onSelectedReferencesUpdate"
 					@submit="handleSubmit"
@@ -168,7 +168,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord, WorkflowNodeChatSelectedRef } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
 	NODE_CHAT_TYPE_LABELS,
 	NODE_CHAT_TYPE_ICONS,
@@ -183,71 +183,6 @@ import type { InputParamPreviewRef } from './index'
 
 const { t } = useI18n()
 
-const MAX_IMAGE_WIDTH = 960
-const IMAGE_QUALITY = 0.85
-const MAX_IMAGE_BASE64_CHARS = 500 * 1024
-
-async function compressImageToDataUrl(blob: Blob, maxWidth: number = MAX_IMAGE_WIDTH, quality: number = IMAGE_QUALITY): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const img = new Image()
-		img.onload = () => {
-			let { width, height } = img
-			if (width > maxWidth) {
-				const ratio = maxWidth / width
-				width = maxWidth
-				height = Math.round(height * ratio)
-			}
-			const canvas = document.createElement('canvas')
-			canvas.width = width
-			canvas.height = height
-			const ctx = canvas.getContext('2d')
-			if (!ctx) return reject(new Error('Canvas context unavailable'))
-			ctx.drawImage(img, 0, 0, width, height)
-			canvas.toBlob(
-				(blob) => {
-					if (!blob) return reject(new Error('Image compression failed'))
-					const reader = new FileReader()
-					reader.onload = () => resolve(reader.result as string)
-					reader.onerror = () => reject(new Error('Data URL conversion failed'))
-					reader.readAsDataURL(blob)
-				},
-				'image/jpeg',
-				quality
-			)
-		}
-		img.onerror = () => reject(new Error('Image load failed'))
-		const reader = new FileReader()
-		reader.onload = () => { img.src = reader.result as string }
-		reader.onerror = () => reject(new Error('File read failed'))
-		reader.readAsDataURL(blob)
-	})
-}
-
-async function urlToBase64Attachment(url: string, name?: string): Promise<{ type: string; name?: string; url: string; data: string } | null> {
-	if (!url) return null
-	try {
-		let blob: Blob
-		if (url.startsWith('data:image/')) {
-			const b64Len = url.length - url.indexOf(',') - 1
-			if (b64Len <= MAX_IMAGE_BASE64_CHARS) {
-				return { type: 'image_url', name, data: url, url }
-			}
-			const resp = await fetch(url)
-			blob = await resp.blob()
-		} else if (url.startsWith('file:')) {
-			return null
-		} else {
-			const resp = await fetch(url)
-			if (!resp.ok) return null
-			blob = await resp.blob()
-		}
-		const dataUrl = await compressImageToDataUrl(blob)
-		return { type: 'image_url', name, data: dataUrl, url: dataUrl }
-	} catch {
-		return null
-	}
-}
-
 const props = defineProps<{
 	visible: boolean
 	nodeId: string | null
@@ -255,7 +190,6 @@ const props = defineProps<{
 	draft: string
 	submitting: boolean
 	params: WorkflowNodeChatParams
-	selectedReferences?: WorkflowNodeChatSelectedRef[]
 	nodeWidth?: number
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
@@ -264,7 +198,6 @@ const emit = defineEmits<{
 	(e: 'close'): void
 	(e: 'update:draft', value: string): void
 	(e: 'update:params', params: WorkflowNodeChatParams): void
-	(e: 'update:selected-references', refs: WorkflowNodeChatSelectedRef[]): void
 	(e: 'submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'stop'): void
 	(e: 'remove-param-ref', item: InputParamPreviewRef): void
@@ -272,6 +205,7 @@ const emit = defineEmits<{
 
 const inputRef = ref<InstanceType<typeof NodeChatInput> | null>(null)
 const showParams = ref(false)
+const selectedReferences = ref<InputParamPreviewRef[]>([])
 
 const typeLabel = computed(() => {
 	if (!props.nodeType) return ''
@@ -328,78 +262,8 @@ const inputParamPreviewRefsResolved = computed(() => {
 	})
 })
 
-const buildResolvedRefMap = () => {
-	const map = new Map<string, InputParamPreviewRef>()
-	for (const item of inputParamPreviewRefsResolved.value) {
-		if (item.edgeId) map.set(`edge:${item.edgeId}`, item)
-		if (item.fromNodeId && item.fromAnchorId) map.set(`anchor:${item.fromNodeId}:${item.fromAnchorId}`, item)
-	}
-	return map
-}
-
-const persistedToInputRefs = (persisted: WorkflowNodeChatSelectedRef[] | undefined): InputParamPreviewRef[] => {
-	if (!persisted || persisted.length === 0) return []
-	const resolvedMap = buildResolvedRefMap()
-	return persisted.map((p) => {
-		let resolved: InputParamPreviewRef | undefined
-		if (p.edgeId) resolved = resolvedMap.get(`edge:${p.edgeId}`)
-		if (!resolved && p.fromNodeId && p.fromAnchorId) resolved = resolvedMap.get(`anchor:${p.fromNodeId}:${p.fromAnchorId}`)
-		if (resolved) {
-			return { ...resolved, label: p.label || resolved.label }
-		}
-		return {
-			kind: p.kind,
-			label: p.label,
-			edgeId: p.edgeId,
-			fromNodeId: p.fromNodeId,
-			fromAnchorId: p.fromAnchorId,
-		}
-	})
-}
-
-const inputRefsToPersisted = (refs: InputParamPreviewRef[]): WorkflowNodeChatSelectedRef[] => {
-	return refs.map((r) => ({
-		kind: r.kind as 'text' | 'image' | 'video' | 'model3d' | 'blender',
-		label: r.label || '',
-		edgeId: r.edgeId,
-		fromNodeId: r.fromNodeId,
-		fromAnchorId: r.fromAnchorId,
-	}))
-}
-
-const selectedRefsForInput = ref<InputParamPreviewRef[]>([])
-
-watch(
-	() => props.visible,
-	(visible) => {
-		if (visible) {
-			selectedRefsForInput.value = persistedToInputRefs(props.selectedReferences)
-		}
-	},
-	{ immediate: true }
-)
-
-watch(
-	() => props.inputParamPreviewRefs,
-	() => {
-		if (props.visible) {
-			const resolvedMap = buildResolvedRefMap()
-			selectedRefsForInput.value = selectedRefsForInput.value.map((r) => {
-				let resolved: InputParamPreviewRef | undefined
-				if (r.edgeId) resolved = resolvedMap.get(`edge:${r.edgeId}`)
-				if (!resolved && r.fromNodeId && r.fromAnchorId) resolved = resolvedMap.get(`anchor:${r.fromNodeId}:${r.fromAnchorId}`)
-				if (resolved) {
-					return { ...resolved, label: r.label || resolved.label }
-				}
-				return r
-			})
-		}
-	},
-	{ deep: true }
-)
-
 const hasConnectedParams = computed(() => inputParamPreviewRefsResolved.value.length > 0)
-const hasSelectedRefs = computed(() => selectedRefsForInput.value.length > 0)
+const hasSelectedRefs = computed(() => selectedReferences.value.length > 0)
 
 const canSubmitEmpty = computed(() => hasConnectedParams.value || hasSelectedRefs.value)
 
@@ -434,6 +298,7 @@ const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidt
 
 const handleClose = () => {
 	if (props.submitting) return
+	selectedReferences.value = []
 	emit('close')
 }
 
@@ -442,45 +307,31 @@ const onDraftUpdate = (value: string) => {
 }
 
 const onSelectedReferencesUpdate = (refs: InputParamPreviewRef[]) => {
-	selectedRefsForInput.value = refs
-	emit('update:selected-references', inputRefsToPersisted(refs))
+	selectedReferences.value = refs
 }
 
 const getRefLabel = (item: InputParamPreviewRef) => {
 	return item.label || ''
 }
 
-const handleSubmit = async () => {
+const handleSubmit = () => {
 	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
-	const references = selectedRefsForInput.value.map((item) => ({
+	const references = selectedReferences.value.map((item) => ({
 		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
 		nodeId: item.fromNodeId || item.nodeId || '',
 		edgeId: item.edgeId,
 		type: item.kind as any,
 		label: getRefLabel(item)
 	}))
-	const attachments: Array<{ type: string; name?: string; url: string; data: string }> = []
-	for (const item of selectedRefsForInput.value) {
-		if (item.kind === 'image' && item.previewUrl) {
-			const name = item.name || item.label || `image_${attachments.length + 1}.jpg`
-			const att = await urlToBase64Attachment(item.previewUrl, name)
-			if (att) {
-				attachments.push(att)
-			}
-		}
-	}
-	const fullPrompt = inputRef.value?.getFullText?.() ?? props.draft
 	const payload: WorkflowNodeChatSubmitPayload = {
 		nodeId: props.nodeId,
 		nodeType: props.nodeType,
-		prompt: fullPrompt.trim(),
+		prompt: props.draft.trim(),
 		params: currentParams.value,
-		references,
-		attachments: attachments.length > 0 ? attachments : undefined
+		references
 	}
 	emit('submit', payload)
-	selectedRefsForInput.value = []
-	emit('update:selected-references', [])
+	selectedReferences.value = []
 }
 
 const handleStop = () => {
@@ -508,9 +359,12 @@ watch(
 	(visible) => {
 		if (visible) {
 			showParams.value = false
+			selectedReferences.value = []
 			nextTick(() => {
 				inputRef.value?.focus()
 			})
+		} else {
+			selectedReferences.value = []
 		}
 	}
 )

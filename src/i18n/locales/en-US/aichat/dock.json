@@ -55,20 +55,5 @@
   "aichat.dock.modelJimengImage3": "Jimeng Image 3.0",
   "aichat.dock.modelJimengImage4": "Jimeng Image 4.0",
   "aichat.dock.modelJimengVideo3": "Jimeng Video 3.0",
-  "aichat.dock.modelJimengVideo3Pro": "Jimeng Video 3.0 Pro",
-  "aichat.dock.pickNode": "Pick Node",
-  "aichat.dock.linkDragHint": "Drop to add node to conversation context",
-  "aichat.dock.remove": "Remove",
-  "aichat.dock.contentTruncated": "Content truncated",
-  "aichat.mention.title": "@ Mention added resources",
-  "aichat.mention.noMatch": "No matching resources",
-  "aichat.mention.kindImage": "Image",
-  "aichat.mention.kindVideo": "Video",
-  "aichat.mention.kindModel3d": "3D",
-  "aichat.mention.kindBlender": "Blender",
-  "aichat.mention.kindAudio": "Audio",
-  "aichat.mention.kindFile": "File",
-  "aichat.mention.kindSkill": "Skill",
-  "aichat.mention.kindNode": "Node",
-  "aichat.mention.kindText": "Text"
+  "aichat.dock.modelJimengVideo3Pro": "Jimeng Video 3.0 Pro"
 }
