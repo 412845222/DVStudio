@@ -30,5 +30,22 @@
   "taskQueue.typeComfyUI": "ComfyUI",
   "taskQueue.timeJustNow": "刚刚",
   "taskQueue.timeMinutesAgo": "{n}分钟前",
-  "taskQueue.timeHoursAgo": "{n}小时前"
+  "taskQueue.timeHoursAgo": "{n}小时前",
+  "taskQueue.statusPreparing": "准备中...",
+  "taskQueue.statusCompletedDefault": "已完成",
+  "taskQueue.statusCancelledDefault": "已取消",
+  "taskQueue.provider.meshy": "Meshy",
+  "taskQueue.provider.gemini": "Gemini",
+  "taskQueue.provider.seedream": "Seedream",
+  "taskQueue.provider.jimeng": "Jimeng",
+  "taskQueue.provider.tripo3d": "Tripo3D",
+  "taskQueue.provider.nanobanana": "NanoBanana",
+  "taskQueue.provider.seedance": "Seedance",
+  "taskQueue.provider.kling": "Kling",
+  "taskQueue.provider.luma": "Luma",
+  "taskQueue.provider.bytedance": "Doubao",
+  "taskQueue.category.image": "图片",
+  "taskQueue.category.model3d": "3D模型",
+  "taskQueue.category.video": "视频",
+  "taskQueue.category.custom": "文本"
 }
