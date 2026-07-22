@@ -67,7 +67,6 @@ import aiworkflowRuntime from './aiworkflow/runtime.json'
 import aiworkflowPage from './aiworkflow/page.json'
 import aiworkflowTemplateCenter from './aiworkflow/templateCenter.json'
 import cloudStorage from './cloudStorage.json'
-import taskQueue from './taskQueue.json'
 
 const messages = {
 	...common,
@@ -138,7 +137,6 @@ const messages = {
 	...aiworkflowPage,
 	...aiworkflowTemplateCenter,
 	...cloudStorage,
-	...taskQueue,
 }
 
 const locale: LocalePackage = {

@@ -31,7 +31,6 @@
     </div>
 
     <div class="global-title-bar-right" :aria-label="t('titlebar.windowControls')">
-      <GlobalTaskButton />
       <LanguageSwitcher />
       <button class="theme-toggle-btn" type="button" :aria-label="t('titlebar.themeToggle')" :title="t('titlebar.themeToggle')" @click="toggleTheme">
         <span class="theme-toggle-track" />
@@ -77,7 +76,6 @@ import { getAppName } from '../../network/appInfo'
 import { openAboutDialog } from './aboutDialogStore'
 import { useI18n } from '../../i18n'
 import LanguageSwitcher from './LanguageSwitcher.vue'
-import GlobalTaskButton from './GlobalTaskButton.vue'
 
 const { t } = useI18n()
 const router = useRouter()
