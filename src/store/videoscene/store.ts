@@ -181,6 +181,22 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				state.showBackgroundPanel = false
 			}
 		},
+		toggleSubtitleRecogDialog(state) {
+			state.showSubtitleRecogDialog = !state.showSubtitleRecogDialog
+			if (state.showSubtitleRecogDialog) {
+				state.showSizePanel = false
+				state.showBackgroundPanel = false
+				state.showExportPanel = false
+			}
+		},
+		setSubtitleRecogDialogVisible(state, payload: { visible: boolean }) {
+			state.showSubtitleRecogDialog = !!payload.visible
+			if (state.showSubtitleRecogDialog) {
+				state.showSizePanel = false
+				state.showBackgroundPanel = false
+				state.showExportPanel = false
+			}
+		},
 		setActiveLayer(state, payload: { layerId: string }) {
 			const layer = findLayer(state, payload.layerId)
 			if (!layer) return
@@ -224,16 +240,18 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				)
 			}
 		},
-		openLeftPanel(state, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
+		openLeftPanel(state, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }) {
 			state.leftPanel.open = true
 			state.leftPanel.mode = payload.mode
 			state.leftPanel.layerId = payload.layerId ? String(payload.layerId) : null
+			state.leftPanel.videoPath = payload.videoPath ? String(payload.videoPath) : null
 			state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
 		},
 		closeLeftPanel(state) {
 			state.leftPanel.open = false
 			state.leftPanel.mode = null
 			state.leftPanel.layerId = null
+			state.leftPanel.videoPath = null
 			state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
 		},
 		addLayer(state, payload: { layerId: string; name: string }) {
@@ -511,6 +529,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setExportPanelVisible({ commit }, payload: { visible: boolean }) {
 			commit('setExportPanelVisible', payload)
 		},
+		toggleSubtitleRecogDialog({ commit }) {
+			commit('toggleSubtitleRecogDialog')
+		},
+		setSubtitleRecogDialogVisible({ commit }, payload: { visible: boolean }) {
+			commit('setSubtitleRecogDialogVisible', payload)
+		},
 		setActiveLayer({ commit }, payload: { layerId: string }) {
 			commit('setActiveLayer', payload)
 		},
@@ -539,7 +563,7 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
 			commit('setLayoutInsets', payload)
 		},
-		openLeftPanel({ commit }, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
+		openLeftPanel({ commit }, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }) {
 			commit('openLeftPanel', payload)
 		},
 		closeLeftPanel({ commit }) {

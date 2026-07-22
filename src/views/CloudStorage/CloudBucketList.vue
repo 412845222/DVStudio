@@ -84,29 +84,24 @@
 				</div>
 
 				<div class="cs-bl-item-status">
-					<span class="cs-bl-acl-badge" :class="b.is_public ? 'public' : 'private'">
-						<svg v-if="b.is_public" viewBox="0 0 16 16" class="cs-bl-acl-icon" aria-hidden="true">
-							<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
-							<path d="M8 5v3l2 1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+					<span v-if="b.isActive" class="cs-bl-default-badge">
+						<svg viewBox="0 0 16 16" class="cs-bl-default-icon" aria-hidden="true">
+							<path d="M8 2l1.8 3.8L14 6.5l-3 2.8.7 4.1L8 11.3 4.3 13.4 5 9.3 2 6.5l4.2-.7L8 2z" fill="currentColor"/>
 						</svg>
-						<svg v-else viewBox="0 0 16 16" class="cs-bl-acl-icon" aria-hidden="true">
-							<rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
-							<path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-						</svg>
-						{{ b.is_public ? t('cloudStorage.buckets.public') : t('cloudStorage.buckets.private') }}
+						默认
 					</span>
 				</div>
 
 				<div class="cs-bl-item-actions">
 					<button
-						v-if="!b.is_public"
-						class="cs-bl-action-btn fix"
+						v-if="!b.isActive"
+						class="cs-bl-action-btn set-default"
 						type="button"
-						@click.stop="emit('fix-acl', b)"
-						:title="t('cloudStorage.buckets.fixAcl')"
+						@click.stop="emit('set-default', b)"
+						title="设为默认桶"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true">
-							<path d="M13.5 4.5L11.5 2.5M5.5 12.5H3.5v-2l6-6 2 2-6 6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+							<path d="M8 2l1.8 3.8L14 6.5l-3 2.8.7 4.1L8 11.3 4.3 13.4 5 9.3 2 6.5l4.2-.7L8 2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
 						</svg>
 					</button>
 					<button
@@ -153,7 +148,7 @@ const emit = defineEmits<{
 	(e: 'select-bucket', bucket: CloudBucket): void
 	(e: 'add-bucket'): void
 	(e: 'remove-bucket', bucket: CloudBucket): void
-	(e: 'fix-acl', bucket: CloudBucket): void
+	(e: 'set-default', bucket: CloudBucket): void
 }>()
 </script>
 
@@ -592,33 +587,24 @@ const emit = defineEmits<{
 	flex-shrink: 0;
 }
 
-.cs-bl-acl-badge {
+.cs-bl-default-badge {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
 	padding: 3px 8px;
 	font-size: 10px;
-	font-weight: 500;
+	font-weight: 600;
 	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	border: 1px solid transparent;
+	color: var(--pl-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 }
 
-.cs-bl-acl-badge.public {
-	color: #4ade80;
-	border-color: color-mix(in srgb, #4ade80 25%, transparent);
-	background: color-mix(in srgb, #4ade80 8%, transparent);
-}
-
-.cs-bl-acl-badge.private {
-	color: #fbbf24;
-	border-color: color-mix(in srgb, #fbbf24 25%, transparent);
-	background: color-mix(in srgb, #fbbf24 8%, transparent);
-}
-
-.cs-bl-acl-icon {
+.cs-bl-default-icon {
 	width: 11px;
 	height: 11px;
+	filter: drop-shadow(0 0 4px color-mix(in srgb, var(--pl-accent) 50%, transparent));
 }
 
 .cs-bl-item-actions {
@@ -654,10 +640,10 @@ const emit = defineEmits<{
 	height: 13px;
 }
 
-.cs-bl-action-btn.fix:hover {
-	color: #4ade80;
-	border-color: color-mix(in srgb, #4ade80 40%, transparent);
-	background: color-mix(in srgb, #4ade80 8%, transparent);
+.cs-bl-action-btn.set-default:hover {
+	color: var(--pl-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .cs-bl-action-btn.remove:hover {

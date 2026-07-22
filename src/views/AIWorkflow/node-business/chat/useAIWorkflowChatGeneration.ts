@@ -13,6 +13,9 @@ import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/u
 import { getChatModelById } from '../../../../ai/models/chatModels'
 import { t } from '../../../../i18n'
 import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
+import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
+import useChatContext from './useChatContext'
+import type { NodeOutputKind } from '../../../../types/agentMention'
 
 type CacheRefImagesResult = {
 	ok?: unknown
@@ -120,6 +123,7 @@ type ChatGenerationPayload = {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => WorkflowEdge | null | undefined
 	nodeResourceUrl: (node: WorkflowNode) => string | null
+	nodeImagePreviewUrl: (node: WorkflowNode, maxSize: number) => string | null
 	nodeResourceName: (node: WorkflowNode) => string | null
 	buildCroppedImageTransferFile: (
 		fromNode: WorkflowNode,
@@ -145,6 +149,66 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	const makeChatId = () =>
 		`aiwf-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	let activeAbortController: AbortController | null = null
+
+	const getNodePreviewUrl = (node: WorkflowNode): { url: string | null; kind: NodeOutputKind } | null => {
+		const nodeType = node.type
+		if (nodeType === 'image' || nodeType === 'rotate-image' || nodeType === 'video') {
+			const previewUrl = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 160))
+			if (previewUrl) {
+				return {
+					url: previewUrl,
+					kind: nodeType === 'video' ? 'video' : 'image'
+				}
+			}
+			const resourceUrl = sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node))
+			if (resourceUrl) {
+				return {
+					url: resourceUrl,
+					kind: nodeType === 'video' ? 'video' : 'image'
+				}
+			}
+		}
+		if (nodeType === 'text' || nodeType === 'text-merge' || nodeType === 'story') {
+			return { url: null, kind: 'text' }
+		}
+		if (nodeType === 'model3d' || nodeType === 'meshy') {
+			return { url: null, kind: 'model3d' }
+		}
+		if (nodeType === 'blender') {
+			return { url: null, kind: 'blender' }
+		}
+		return null
+	}
+
+	const {
+		items,
+		nodeOutputRefs,
+		isPickingNode,
+		allItems,
+		hasContext,
+		contextCount,
+		addImage,
+		addFile,
+		addSkill,
+		addNode,
+		addNodeOutputRef,
+		removeItem,
+		removeNodeOutputRef,
+		clearAll,
+		enterNodePickMode,
+		exitNodePickMode,
+		onNodePicked,
+		toAttachments,
+		toReferences,
+		toSkillHints,
+		getNodeContexts,
+		getNodeOutputContexts,
+		getReferencedNodeIds,
+		getActiveSkills
+	} = useChatContext({
+		getNodePreviewUrl,
+		getNodeResourceUrl: (node: WorkflowNode) => sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node))
+	})
 
 	const setTaskStatus = (text: string) => {
 		payload.chatTaskStatusText.value = text
@@ -408,6 +472,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			executionHints?: string[]
 			agentMode?: 'agent' | 'ask' | 'plan'
 			permissionProfile?: string
+			attachments?: Array<{ type: string; name?: string; url?: string; data?: string; mimeType?: string }>
+			references?: Array<{ kind?: string; name?: string; path?: string; content?: string; nodeId?: string; anchorId?: string; previewUrl?: string }>
+			referencedNodeIds?: string[]
+			referencedOutputs?: Array<{ kind: string; nodeId: string; nodeType: string; anchorId: string; label: string; text?: string; previewUrl?: string; meta?: Record<string, unknown> }>
+			activeSkills?: Array<{ id: string; name: string; description: string; prompt: string }>
+			agentType?: 'workflow' | 'blender' | 'video_editor' | 'node_chat' | 'general'
 		} = {}
 	) => {
 		setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
@@ -443,6 +513,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				executionHints: options.executionHints,
 				agentMode: options.agentMode,
 				permissionProfile: options.permissionProfile,
+				attachments: options.attachments,
+				references: options.references,
+				referencedNodeIds: options.referencedNodeIds,
+				referencedOutputs: options.referencedOutputs,
+				activeSkills: options.activeSkills,
+				agentType: options.agentType || 'workflow',
 			}, signal)) {
 				if (ev.type === 'done' || ev.type === 'turn_done') {
 					setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
@@ -771,12 +847,57 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		return []
 	}
 
+	const buildContextText = () => {
+		let text = ''
+		for (const item of items.value) {
+			if (item.type === 'file' && item.content) {
+				text += `\n\n## 参考文件：${item.name}\n\`\`\`\n${item.content}\n\`\`\`\n`
+			}
+		}
+		for (const item of items.value) {
+			if (item.type === 'skill' && item.prompt) {
+				text += `\n\n## 激活技能：${item.name}\n${item.prompt}\n`
+			}
+		}
+		for (const item of items.value) {
+			if (item.type === 'node') {
+				text += `\n\n## 引用节点详情：${item.label} (${item.nodeType})\n节点ID: ${item.nodeId}\n配置:\n\`\`\`json\n${JSON.stringify(item.config, null, 2)}\n\`\`\`\n`
+			}
+		}
+		for (const ref of nodeOutputRefs.value) {
+			if (ref.kind === 'text' && ref.text) {
+				const truncatedText = ref.text.length > 2000 ? ref.text.slice(0, 2000) + '...' : ref.text
+				text += `\n\n## 引用节点输出：[${ref.kind}] ${ref.label}\n\`\`\`\n${truncatedText}\n\`\`\`\n`
+			}
+		}
+		return text
+	}
+
 	const onSend = async () => {
 		if (payload.chatModelKey.value === 'nanobanana' || payload.chatModelKey.value === 'seedance')
 			return
 		if (payload.chatSending.value) return
-		const content = String(payload.chatDraft.value || '').trim()
-		if (!content) return
+		const userInput = String(payload.chatDraft.value || '').trim()
+		if (!userInput && !hasContext.value) return
+
+		const attachments = await toAttachments()
+		const skillHints = toSkillHints()
+		const referencedNodeIds = getReferencedNodeIds()
+		const activeSkills = getActiveSkills()
+		const nodeOutputContexts = getNodeOutputContexts()
+		const referencedOutputs = nodeOutputContexts.map(ref => ({
+			kind: ref.kind,
+			nodeId: ref.nodeId,
+			nodeType: ref.nodeType,
+			anchorId: ref.anchorId,
+			label: ref.label,
+			text: ref.text,
+			previewUrl: ref.previewUrl,
+			meta: ref.meta
+		}))
+
+		const contextText = buildContextText()
+		const content = userInput + contextText
 
 		const history = payload.chatMessages.value
 			.filter(
@@ -807,7 +928,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				} catch {
 					// ignore frontend api key failure, backend reads from localdb
 				}
-				const context = collectBlueprintContext()
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
 
 				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 				const chatBridge = getAgentChatBridge()
@@ -816,7 +943,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (!sessionId) {
 					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 					const session = await chatBridge.createSession('dvsagent', {
-						title: content.slice(0, 24),
+						title: userInput.slice(0, 24),
 						model: payload.chatModelId.value,
 						cwd: undefined,
 						projectId: payload.currentProjectId.value
@@ -835,7 +962,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				} else {
 					const existingSession = payload.codexSessions.value.find((s) => s.id === sessionId)
 					if (existingSession && (existingSession.title === t('aiworkflow.page.chat.newConversation') || existingSession.title === '新对话')) {
-						const newTitle = content.slice(0, 24)
+						const newTitle = userInput.slice(0, 24)
 						existingSession.title = newTitle
 						try {
 							const dvsagentService = chatBridge.getService('dvsagent') as any
@@ -864,6 +991,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					model: payload.chatModelId.value,
 					thinkingEffort: payload.chatThinkingEffort.value,
 					context,
+					attachments,
+					skillHints,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills,
+					agentType: 'workflow',
 				})
 
 				try {
@@ -893,14 +1027,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					return
 				}
 
-				const parsed = parseLocalExecSlashCommand(content)
+				const parsed = parseLocalExecSlashCommand(userInput)
 				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 
 				const chatBridge = getAgentChatBridge()
 				if (!sessionId) {
 					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 					const session = await chatBridge.createSession('copilot', {
-						title: content.slice(0, 24),
+						title: userInput.slice(0, 24),
 						model: payload.chatModelId.value || 'auto',
 						projectId,
 					})
@@ -927,13 +1061,27 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				})
 				setTaskStatus(t('aiworkflow.toast.aiTaskSessionReady'))
 
-				await handleChatStream('copilot', parsed.content, sessionId, assistantMsg.id, {
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
+
+				await handleChatStream('copilot', parsed.content + contextText, sessionId, assistantMsg.id, {
 					history,
 					model: payload.chatModelId.value || 'auto',
-					skillHints: parsed.skillHints,
+					skillHints: [...parsed.skillHints, ...skillHints],
 					executionHints: parsed.executionHints,
 					agentMode: payload.agentConversationMode.value,
 					permissionProfile: 'default',
+					context,
+					attachments,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills,
 				})
 				return
 			}
@@ -942,13 +1090,27 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const chatBridge = getAgentChatBridge()
 				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 				const session = await chatBridge.createSession('codex', {
-					title: content.slice(0, 24),
+					title: userInput.slice(0, 24),
 					model: payload.chatModelId.value,
 					projectId: payload.currentProjectId.value
 				})
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
 				await handleChatStream('codex', content, session.id, assistantMsg.id, {
 					history,
 					model: payload.chatModelId.value,
+					context,
+					attachments,
+					skillHints,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills,
 				})
 				return
 			}
@@ -970,6 +1132,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (activeAbortController === abortController) activeAbortController = null
 			payload.chatSending.value = false
 			if (payload.chatRunState.value !== 'error') payload.chatRunState.value = 'idle'
+			clearAll()
 		}
 	}
 
@@ -1968,6 +2131,23 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		onStop,
 		onNanoBananaGenerate,
 		onSeedanceGenerate,
-		handleUserChoiceSelect
+		handleUserChoiceSelect,
+		contextItems: items,
+		nodeOutputRefs,
+		isPickingNode,
+		allContextItems: allItems,
+		hasContext,
+		contextCount,
+		addImage,
+		addFile,
+		addSkill,
+		addNode,
+		addNodeOutputRef,
+		removeContextItem: removeItem,
+		removeNodeOutputRef,
+		clearAllContext: clearAll,
+		enterNodePickMode,
+		exitNodePickMode,
+		onNodePicked
 	}
 }

@@ -7,22 +7,6 @@
 
     <div class="backend-status-wrap" :title="t('titlebar.backendStatus')">
       <span class="backend-status-dot" :class="backendStatusClass" aria-hidden="true" />
-      <span class="backend-status-text">{{ backendStatusText }}</span>
-      <div
-        class="setup-progress-chip"
-        :class="{ running: setupRunning }"
-        :title="setupProgressTitle"
-        role="progressbar"
-        :aria-valuenow="setupPercent"
-        aria-valuemin="0"
-        aria-valuemax="100"
-      >
-        <span class="setup-progress-label">{{ t('titlebar.setupProgress', { percent: setupPercent }) }}</span>
-        <span class="setup-progress-track" aria-hidden="true">
-          <span class="setup-progress-fill" :style="{ width: setupPercent + '%' }" />
-        </span>
-      </div>
-      <button class="titlebar-btn status-jump" type="button" @click="goWelcome">{{ t('titlebar.envCheck') }}</button>
     </div>
 
     <div class="platform-status-wrap" :title="platformStatusTooltip">
@@ -59,10 +43,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import {
 	getBackendRuntimeState,
-	getSetupState,
 	onBackendRuntimeStateChanged,
 	minimizeWindow,
 	toggleMaximizeWindow,
@@ -71,7 +53,7 @@ import {
 	openDevTools,
 } from '../../electronBridge'
 import { usePlatform } from '../../platformBridge'
-import type { BackendRuntimeState, SetupState } from '../../electronBridge/types'
+import type { BackendRuntimeState } from '../../electronBridge/types'
 import { ThemeStore } from '../../store/theme'
 import { getAppName } from '../../network/appInfo'
 import { openAboutDialog } from './aboutDialogStore'
@@ -80,64 +62,12 @@ import LanguageSwitcher from './LanguageSwitcher.vue'
 import GlobalTaskButton from './GlobalTaskButton.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 
 const appName = getAppName()
 
 const backendRuntime = ref<BackendRuntimeState | null>(null)
 
-const setupState = ref<SetupState | null>(null)
-
 let offRuntimeListener: (() => void) | null = null
-let setupPollTimer: number | null = null
-
-const setupPercent = computed(() => {
-  const steps = Array.isArray(setupState.value?.steps) ? setupState.value!.steps : []
-  if (!steps.length) return 0
-  let sum = 0
-  for (const step of steps) {
-    const status = String(step?.status || '').trim().toLowerCase()
-    if (status === 'ok') {
-      sum += 1
-      continue
-    }
-    if (status === 'running') {
-      const pRaw = Number(step?.progress ?? 0)
-      const p = Number.isFinite(pRaw) ? Math.max(0, Math.min(100, pRaw)) : 0
-      sum += p / 100
-      continue
-    }
-    if (status === 'failed') {
-      sum += 0
-      continue
-    }
-    const pRaw = Number(step?.progress ?? 0)
-    const p = Number.isFinite(pRaw) ? Math.max(0, Math.min(100, pRaw)) : 0
-    sum += p / 100
-  }
-  return Math.max(0, Math.min(100, Math.round((sum / steps.length) * 100)))
-})
-
-const setupRunning = computed(() => Boolean(setupState.value?.running))
-
-const setupProgressTitle = computed(() => {
-  const steps = Array.isArray(setupState.value?.steps) ? setupState.value!.steps : []
-  const running = steps.find((step) => String(step?.status || '').trim().toLowerCase() === 'running')
-  if (running) {
-    const detail = String(running.detail || '').trim()
-    return detail ? `${running.label}：${detail}` : running.label
-  }
-  return setupRunning.value ? t('titlebar.setupRunning') : t('titlebar.setupIdle')
-})
-
-const refreshSetupState = async () => {
-  try {
-    const st = await getSetupState()
-    if (st) setupState.value = st
-  } catch {
-    // ignore
-  }
-}
 
 const backendStatusClass = computed(() => {
   const st = backendRuntime.value
@@ -145,34 +75,17 @@ const backendStatusClass = computed(() => {
   return st.running && st.healthy ? 'good' : 'bad'
 })
 
-const backendStatusText = computed(() => {
-  const st = backendRuntime.value
-  if (!st) return t('titlebar.backendStatusUnknown')
-  if (st.setupRunning) return t('titlebar.setupRunning')
-  if (st.running && st.healthy) return t('titlebar.backendRunning', { port: st.port || '-' })
-  if (st.running && !st.healthy) return t('titlebar.backendError')
-  return t('titlebar.backendNotStarted')
-})
-
 onMounted(async () => {
   const st = await getBackendRuntimeState()
   if (st) backendRuntime.value = st
-  await refreshSetupState()
   offRuntimeListener = onBackendRuntimeStateChanged((next) => {
     backendRuntime.value = next
   })
-  setupPollTimer = window.setInterval(() => {
-    void refreshSetupState()
-  }, 1000)
 })
 
 onBeforeUnmount(() => {
   offRuntimeListener?.()
   offRuntimeListener = null
-  if (setupPollTimer != null) {
-    window.clearInterval(setupPollTimer)
-    setupPollTimer = null
-  }
 })
 
 async function onMinimize() {
@@ -221,10 +134,6 @@ async function onClose() {
   } catch {
     // ignore
   }
-}
-
-function goWelcome() {
-  void router.push({ name: 'Welcome' })
 }
 
 const { status: platformStatus, isSteam, isRealPlatform, user, displayName } = usePlatform()
@@ -406,49 +315,6 @@ function onOpenAbout() {
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-error) 68%, transparent);
 }
 
-.backend-status-text {
-  font-size: 12px;
-  color: var(--theme-text-secondary);
-  white-space: nowrap;
-}
-
-.setup-progress-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 128px;
-  max-width: 180px;
-  padding: 2px 6px;
-  border: 1px solid var(--theme-border);
-  background: var(--theme-bg-tertiary);
-}
-
-.setup-progress-chip.running {
-  border-color: color-mix(in srgb, var(--theme-success) 56%, var(--theme-border));
-}
-
-.setup-progress-label {
-  font-size: 11px;
-  color: var(--theme-text-secondary);
-  white-space: nowrap;
-}
-
-.setup-progress-track {
-  position: relative;
-  width: 64px;
-  height: 6px;
-  background: color-mix(in srgb, var(--theme-text-secondary) 18%, transparent);
-  overflow: hidden;
-}
-
-.setup-progress-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-success) 82%, #6fd1a0), var(--theme-success));
-}
-
 .global-title-bar-logo {
   width: 16px;
   height: 16px;
@@ -488,13 +354,6 @@ function onOpenAbout() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.titlebar-btn.status-jump {
-  width: auto;
-  min-width: 72px;
-  padding: 0 10px;
-  font-size: 12px;
 }
 
 .titlebar-btn:hover {

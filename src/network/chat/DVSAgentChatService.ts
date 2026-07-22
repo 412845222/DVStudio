@@ -262,6 +262,15 @@ export class DVSAgentChatService implements IChatService {
 			enableToolCallWarning: options.enableToolCallWarning !== false,
 			systemPrompt: options.systemPrompt,
 			tools: options.tools,
+			skillHints: options.skillHints || [],
+			references: options.references || [],
+			referencedNodeIds: options.referencedNodeIds || [],
+			referencedOutputs: options.referencedOutputs || [],
+			activeSkills: options.activeSkills || [],
+			executionHints: options.executionHints || [],
+			agentMode: options.agentMode,
+			permissionProfile: options.permissionProfile,
+			agentType: options.agentType || 'workflow',
 			sessionId,
 		})
 
