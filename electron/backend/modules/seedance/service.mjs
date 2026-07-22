@@ -8,6 +8,7 @@ import { internalError, invalidParamsError, notFoundError, upstreamError } from 
 import { getRepos } from '../../../localdb/index.mjs'
 import { downloadUrlToProjectRoot } from '../../projectAssetProtocol.mjs'
 import * as cloudfsService from '../cloudfs/service.mjs'
+import { getTaskQueueService } from '../task-queue/handlers.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'
@@ -671,6 +672,8 @@ export async function* generateVideoStream(ctx, payload) {
   const refMode = String(payload?.refMode || 'auto').trim().toLowerCase() || 'auto'
   const source = String(payload?.source || 'bottom-chat').trim() || 'bottom-chat'
   const projectId = payload?.projectId ? Number(payload.projectId) || null : null
+  const clientRequestId = String(payload?.clientRequestId || '').trim()
+  const nodeId = String(payload?.nodeId || '').trim()
 
   let refImageUrls = []
   if (Array.isArray(payload?.imageUrls)) {
@@ -819,10 +822,33 @@ export async function* generateVideoStream(ctx, payload) {
       throw new Error(`Seedance create task failed: invalid response ${JSON.stringify(createObj).slice(0, 500)}`)
     }
 
-    const finalVideoUrls = [...uploadedVideoStrUrls]
-    for (let i = 0; i < videoFileObjects.length; i++) {
-      finalVideoUrls.push(`[local_file:${videoFileObjects[i].name || `video_${i}`}]`)
+    const tq = getTaskQueueService()
+    let globalTaskId = null
+    if (tq && clientRequestId) {
+      try {
+        const regResult = tq.registerTask({
+          provider: 'seedance',
+          category: 'video',
+          projectId,
+          nodeId: nodeId || null,
+          clientRequestId,
+          remoteTaskId: taskId,
+          title: (prompt || '').slice(0, 50) || 'Seedance视频生成',
+          prompt,
+          status: 'running',
+          progress: 10,
+          statusText: 'Seedance：任务已创建，等待生成…',
+          canCancel: false,
+        })
+        if (regResult?.ok && regResult.task) {
+          globalTaskId = regResult.task.id
+        }
+      } catch (tqErr) {
+        console.warn('[seedance] Failed to register with task queue:', tqErr?.message || tqErr)
+      }
     }
+
+    const finalVideoUrls = [...uploadedVideoStrUrls, ...uploadedVideoFileUrls]
 
     let taskType = 'text-to-video'
     if (hasRefVideos) taskType = 'video-to-video'
@@ -954,6 +980,24 @@ export async function* generateVideoStream(ctx, payload) {
         }
         if (billingText) outPayload.billing = billingText
 
+        if (tq && globalTaskId) {
+          try {
+            tq.completeTask(globalTaskId, {
+              resultUrl: videoUrl,
+              coverUrl: lastFrameUrl || videoUrl,
+              statusText: 'Seedance：完成',
+              resultAssets: [
+                { type: 'video', url: videoUrl, thumbnailUrl: lastFrameUrl || videoUrl },
+                ...(lastFrameUrl ? [{ type: 'image', url: lastFrameUrl, thumbnailUrl: lastFrameUrl }] : []),
+              ],
+              nodeId: nodeId || null,
+              projectId,
+            })
+          } catch (tqErr) {
+            console.warn('[seedance] Failed to complete task in queue:', tqErr?.message || tqErr)
+          }
+        }
+
         yield wrapChatMsg(outPayload)
         yield wrapTaskStatusMsg('Seedance：完成', 'done')
         yield wrapDone()
@@ -990,6 +1034,14 @@ export async function* generateVideoStream(ctx, payload) {
           remoteTaskId: taskId,
         })
 
+        if (tq && globalTaskId) {
+          try {
+            tq.failTask(globalTaskId, errMsg)
+          } catch (tqErr) {
+            console.warn('[seedance] Failed to fail task in queue:', tqErr?.message || tqErr)
+          }
+        }
+
         throw new Error(`Seedance task failed: ${errMsg}`)
       }
 
@@ -997,6 +1049,7 @@ export async function* generateVideoStream(ctx, payload) {
       const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
       const suffix = billingText ? `；计费：${billingText}` : ''
       const statusMsg = `Seedance：${status || 'running'}（${elapsed}s）${suffix}`
+      const runningProgress = Math.min(90, 20 + Math.floor(elapsed / 3))
 
       repo.upsert({
         remoteTaskId: taskId,
@@ -1021,6 +1074,18 @@ export async function* generateVideoStream(ctx, payload) {
         remoteTaskId: taskId,
       })
 
+      if (tq && globalTaskId) {
+        try {
+          tq.updateTask(globalTaskId, {
+            status: 'running',
+            progress: runningProgress,
+            statusText: statusMsg,
+          })
+        } catch (tqErr) {
+          // ignore update errors during polling
+        }
+      }
+
       yield wrapTaskStatusMsg(statusMsg, 'streaming')
 
       if (Date.now() - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
@@ -1030,7 +1095,15 @@ export async function* generateVideoStream(ctx, payload) {
       await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
     }
   } catch (err) {
-    yield wrapStreamError(String(err?.message || err || 'unknown error'))
+    const errMsg = String(err?.message || err || 'unknown error')
+    if (tq && globalTaskId) {
+      try {
+        tq.failTask(globalTaskId, errMsg)
+      } catch (tqErr) {
+        // ignore
+      }
+    }
+    yield wrapStreamError(errMsg)
     yield wrapDone()
   }
 }

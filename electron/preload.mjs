@@ -892,4 +892,99 @@ contextBridge.exposeInMainWorld('dweb', {
 		switchActiveBucket: (payload) => invoke('dweb:cloudfs:switch-active-bucket', payload || {}),
 		fixBucketAcl: (payload) => invoke('dweb:cloudfs:fix-bucket-acl', payload || {}),
 	},
+	// ===== 全局任务队列 =====
+	taskQueue: {
+		list: (payload) => invoke('dweb:task-queue:list', payload || {}),
+		listByProject: (payload) => invoke('dweb:task-queue:list-by-project', payload || {}),
+		listUnbackfilledCompleted: (payload) => invoke('dweb:task-queue:list-unbackfilled-completed', payload || {}),
+		reconcile: (payload) => invoke('dweb:task-queue:reconcile', payload || {}),
+		summary: () => invoke('dweb:task-queue:summary'),
+		get: (payload) => invoke('dweb:task-queue:get', payload || {}),
+		findByUniqueKey: (payload) => invoke('dweb:task-queue:find-by-unique-key', payload || {}),
+		findActiveByNodeId: (payload) => invoke('dweb:task-queue:find-active-by-node', payload || {}),
+		cancel: (payload) => invoke('dweb:task-queue:cancel', payload || {}),
+		dismiss: (payload) => invoke('dweb:task-queue:dismiss', payload || {}),
+		delete: (payload) => invoke('dweb:task-queue:delete', payload || {}),
+		clearCompleted: () => invoke('dweb:task-queue:clear-completed'),
+		markBackfilled: (payload) => invoke('dweb:task-queue:mark-backfilled', payload || {}),
+		submit: (payload) => invoke('dweb:task-queue:submit', payload || {}),
+		create: (payload) => invoke('dweb:task-queue:create', payload || {}),
+		register: (payload) => invoke('dweb:task-queue:register', payload || {}),
+		fail: (payload) => invoke('dweb:task-queue:fail', payload || {}),
+		complete: (payload) => invoke('dweb:task-queue:complete', payload || {}),
+		bindRemoteTask: (payload) => invoke('dweb:task-queue:bind-remote-task', payload || {}),
+		update: (payload) => invoke('dweb:task-queue:update', payload || {}),
+		onUpdate: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:update] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:update', wrapped)
+			return id
+		},
+		offUpdate: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:update', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onSummary: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:summary] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:summary', wrapped)
+			return id
+		},
+		offSummary: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:summary', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onDeleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:deleted] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:deleted', wrapped)
+			return id
+		},
+		offDeleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:deleted', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onCompleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try { handler(payload) } catch (err) { console.warn('[preload:taskQueue:completed] handler error:', err) }
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:task-completed', wrapped)
+			return id
+		},
+		offCompleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:task-completed', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+	},
 })

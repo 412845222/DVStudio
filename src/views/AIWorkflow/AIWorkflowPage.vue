@@ -1122,6 +1122,7 @@ import {
 	type InputParamPreviewRef
 } from './node-business/presentation/useAIWorkflowTextOutputResolver'
 import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
+import { useGlobalTaskBridge } from '../../composables/useGlobalTaskBridge'
 import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
 import WorkflowTagEditor from '../../ui/WorkFlow/selection/WorkflowTagEditor.vue'
 import SelectionFrameOverlay from '../../ui/WorkFlow/selection/SelectionFrameOverlay.vue'
@@ -1267,6 +1268,8 @@ const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const { t } = useI18n()
+const globalTaskBridge = useGlobalTaskBridge(store)
+const { destroy: destroyGlobalTaskBridge } = globalTaskBridge
 const {
 	categories: i18nCategories,
 	topCategories: i18nTopCategories,
@@ -4328,7 +4331,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			createImageNodeAtCenter,
 			createImageNodeAt,
-			persistExternalAssetToProject
+			persistExternalAssetToProject,
+			globalTaskBridge
 		},
 		castPayload
 	)
@@ -12010,6 +12014,11 @@ const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 onBeforeUnmount(() => {
 	cancelActiveImportSession({ cleanupUnresolved: false })
 	mediaImportManager.dispose()
+	try {
+		destroyGlobalTaskBridge?.()
+	} catch {
+		// ignore
+	}
 	try {
 		videoMetadataQueue?.cancel()
 	} catch {
