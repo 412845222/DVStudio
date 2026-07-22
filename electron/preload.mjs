@@ -530,20 +530,6 @@ contextBridge.exposeInMainWorld('dweb', {
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
 		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
 	},
-	subtitleRecog: {
-		checkEnv: () => invoke('dweb:subtitle-recog:check-env'),
-		getBinaryConfig: (payload) => invoke('dweb:subtitle-recog:get-binary-config', payload || {}),
-		downloadBinary: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-binary', payload || {}),
-		getFfmpegConfig: (payload) => invoke('dweb:subtitle-recog:get-ffmpeg-config', payload || {}),
-		downloadFfmpeg: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-ffmpeg', payload || {}),
-		getAvailableModels: () => invoke('dweb:subtitle-recog:get-available-models'),
-		getModelConfig: (payload) => invoke('dweb:subtitle-recog:get-model-config', payload || {}),
-		downloadModel: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:download-model', payload || {}),
-		getInstalledModels: () => invoke('dweb:subtitle-recog:get-installed-models'),
-		recognize: (payload) => createIpcStreamGenerator('dweb:subtitle-recog:recognize', payload || {}),
-		readAudioFile: (payload) => invoke('dweb:subtitle-recog:read-audio-file', payload || {}),
-		cleanupAudioFile: (payload) => invoke('dweb:subtitle-recog:cleanup-audio-file', payload || {}),
-	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {
 		nanobanana: {
@@ -630,9 +616,7 @@ contextBridge.exposeInMainWorld('dweb', {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
 				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
-				resolveHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:resolve-history', payload || {}),
 			},
-			clearCache: (payload) => invoke('dweb:comfyui:runtime:clear-cache', payload || {}),
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
@@ -695,14 +679,6 @@ contextBridge.exposeInMainWorld('dweb', {
 			},
 			onServiceLogsCleared: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-clear'
-				const handler = (_evt, payload) => {
-					try { listener(payload) } catch {}
-				}
-				ipcRenderer.on(ch, handler)
-				return () => ipcRenderer.removeListener(ch, handler)
-			},
-			onConfigChange: (listener) => {
-				const ch = 'dweb:comfyui:setup:config-changed'
 				const handler = (_evt, payload) => {
 					try { listener(payload) } catch {}
 				}
@@ -896,7 +872,6 @@ contextBridge.exposeInMainWorld('dweb', {
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
 		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),
-		getConfigStatus: () => invoke('dweb:cloudfs:get-config-status'),
 		saveConfig: (payload) => invoke('dweb:cloudfs:save-config', payload || {}),
 		clearConfig: () => invoke('dweb:cloudfs:clear-config'),
 		testConfig: (payload) => invoke('dweb:cloudfs:test-config', payload || {}),

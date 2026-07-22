@@ -98,13 +98,13 @@
 						:alias="node.alias"
 						:height="node.height"
 						:sizeCustomized="node.sizeCustomized"
-						:autoHeight="node.type !== 'text' && node.type !== 'blender'"
+						:autoHeight="true"
 						:hoverInputAnchorId="hoverInputAnchorId(node.id)"
 						:hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
 						:anchor-compatibility="anchorCompatibility"
 						:is-linking="isLinking"
 						:inputs="node.inputs"
-						:isWarmupRender="(isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))) || pendingScreenshotNodeIds.has(String(node.id))"
+						:isWarmupRender="isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))"
 						:nodeId="node.id"
 						:nodeType="node.type"
 						:outputs="node.outputs"
@@ -129,7 +129,6 @@
 							nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false
 						"
 						:node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
-						:node-chat-selected-refs="nodeChatDialog.nodeId === node.id ? nodeChatDialog.selectedRefs : []"
 						:node-chat-node-width="node.width"
 						:node-generation-task="latestGenerationTaskByNodeId(node.id)"
 						:style="
@@ -188,8 +187,6 @@
 						@auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
 						@restart-meshy-task="onNodeRestartMeshyTask(node.id)"
 						@run-comfyui="onComfyUIRun(node.id)"
-						@refresh-history-check="onRefreshHistoryCheck(node.id)"
-						@clear-history-cache="onClearHistoryCache(node.id)"
 						@run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
 						@run-scene-decompose="onNodeRunSceneDecompose(node.id)"
 						@run-scene-layout="onNodeRunSceneLayout(node.id)"
@@ -221,7 +218,6 @@
 						@three-preview-error="onNodeThreePreviewError(node.id)"
 						@node-chat-update-draft="onNodeChatDraftUpdate"
 						@node-chat-update-params="onNodeChatParamsUpdate"
-						@node-chat-update-selected-refs="onNodeChatSelectedRefsUpdate"
 						@node-chat-close="onNodeChatClose"
 						@node-chat-submit="onNodeChatSubmit"
 						@node-chat-stop="onNodeChatStop"
@@ -303,7 +299,6 @@
 		<!-- UI按钮容器 -->
 		<div class="aiwf-ui-container">
 			<BottomChatDock
-				ref="chatDockRef"
 				class="aiwf-chat-dock"
 				v-model="chatDraft"
 				:messages="chatMessages"
@@ -337,10 +332,6 @@
 				:codexFlowEvents="codexFlowEvents"
 				:thinkingEffort="chatThinkingEffort"
 				:contextUsage="chatContextUsage"
-				:context-items="chatContextItems"
-				:is-picking-node="isPickingNode"
-				:mention-items-data="mentionItemsData"
-				:is-link-drag-over="isLinkOverChatDock"
 				@send="onSend"
 				@stop="onStop"
 				@update:agent-mode="agentConversationMode = $event"
@@ -372,13 +363,6 @@
 				@layout-changed="onDockLayoutChanged"
 				@safe-area-changed="onDockSafeAreaChanged"
 				@locate-node="onFocusNode"
-				@add-image="handleAddChatImage"
-				@add-file="handleAddChatFile"
-				@add-skill="handleAddChatSkill"
-				@remove-context-item="handleRemoveChatContextItem"
-				@enter-node-pick-mode="enterNodePickMode"
-				@cancel-node-pick-mode="exitNodePickMode"
-				@update:selected-references="onUpdateSelectedReferences"
 			/>
 
 			<div class="aiwf-overlay-top-left">
@@ -654,6 +638,27 @@
 					</div>
 				</div>
 
+				<div v-if="reuseRecordConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
+					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.reuseRecord.title') }}</div>
+					<div class="aiwf-reuse-alert-body">
+						{{ t('aiworkflow.page.reuseRecord.template', { name: reuseRecordConfirm.workflowName || t('aiworkflow.page.reuseRecord.unknownTemplate') }) }}
+						<br />
+						{{ t('aiworkflow.page.reuseRecord.savedAt', { time: formatReuseRecordTime(reuseRecordConfirm.savedAt) }) }}
+					</div>
+					<div class="aiwf-reuse-alert-actions">
+						<button class="aiwf-reuse-alert-btn" type="button" @click="onCancelReuseRecord">
+							{{ t('aiworkflow.page.reuseRecord.cancel') }}
+						</button>
+						<button
+							class="aiwf-reuse-alert-btn primary"
+							type="button"
+							@click="onConfirmReuseRecord"
+						>
+							{{ t('aiworkflow.page.reuseRecord.confirm') }}
+						</button>
+					</div>
+				</div>
+
 				<div v-if="meshyTextureConfirm" class="aiwf-reuse-alert" @pointerdown.stop>
 					<div class="aiwf-reuse-alert-title">{{ t('aiworkflow.page.meshyTexture.title') }}</div>
 					<div class="aiwf-reuse-alert-body">
@@ -719,6 +724,26 @@
 			:compatible="tooltipState?.compatible"
 			:position="tooltipState?.position ?? { x: 0, y: 0 }"
 		/>
+
+		<ModalDialog
+			:open="warmupConfirmDialogOpen"
+			:title="t('aiworkflow.page.warmupConfirm.title')"
+			:confirmText="t('aiworkflow.page.warmupConfirm.confirmText')"
+			:closeText="t('aiworkflow.page.warmupConfirm.closeText')"
+			:zIndex="10000"
+			@confirm="onConfirmForceWarmup"
+			@close="onCancelUseCache"
+		>
+			<div class="aiwf-warmup-confirm-dialog">
+				<p style="margin-top: 0">
+					{{ t('aiworkflow.page.warmupConfirm.question') }}
+				</p>
+				<p style="margin-bottom: 0; color: var(--text-secondary, #666); font-size: 13px;">
+					{{ t('aiworkflow.page.warmupConfirm.yesDesc') }}<br/>
+					{{ t('aiworkflow.page.warmupConfirm.noDesc') }}
+				</p>
+			</div>
+		</ModalDialog>
 
 		<!-- 缺失资产确认对话框 -->
 		<ModalDialog
@@ -799,8 +824,6 @@
 		>
 			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
-
-		<WarmupPromptDialog />
 	</div>
 </template>
 
@@ -905,7 +928,6 @@ import type {
 	WorkflowUnrealResolvedLayoutExport,
 	WorkflowNode,
 	WorkflowNodeChatParams,
-	WorkflowNodeChatSelectedRef,
 	WorkflowNodeChatSubmitPayload,
 	WorkflowSceneDecomposeOutput,
 	WorkflowSelectionTarget,
@@ -1080,7 +1102,6 @@ import { useAIWorkflowProjectTransfer } from './node-business/project/useAIWorkf
 import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useAIWorkflowProjectUnrealSnapshot'
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
-import type { AgentEditorMentionItem, AgentEditorChipData } from './node-business/chat/useAgentEditor'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
 import { useNodeLibraryI18n } from '../../aiworkflow/useNodeLibraryI18n'
 import {
@@ -1090,7 +1111,6 @@ import {
 import { useAIWorkflowComfyConnection } from './node-business/comfy/useAIWorkflowComfyConnection'
 import { useAIWorkflowComfyOutputRouter } from './node-business/comfy/useAIWorkflowComfyOutputRouter'
 import { useAIWorkflowComfyRuntime } from './node-business/comfy/useAIWorkflowComfyRuntime'
-import { useAIWorkflowComfyAutoWire } from './node-business/comfy/useAIWorkflowComfyAutoWire'
 import { useAIWorkflowNodeRefresh } from './node-business/useAIWorkflowNodeRefresh'
 import { useAIWorkflowNodeActions } from './node-business/useAIWorkflowNodeActions'
 import { useAIWorkflowNodeSettings } from './node-business/useAIWorkflowNodeSettings'
@@ -1117,8 +1137,6 @@ import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWor
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { useStartupProgress } from '../../composables/useStartupProgress'
-import WarmupPromptDialog from '../../ui/BluePrint/WarmupPromptDialog.vue'
-import { useWarmupPrompt } from './node-screenshot/warmupPromptManager'
 
 interface GeneratedResourceBase {
 	id: string
@@ -1501,6 +1519,8 @@ let linkHoverStableTimer: ReturnType<typeof setTimeout> | null = null
 const LINK_HOVER_STABLE_DELAY_MS = 400
 const MAX_SELECTED_NODES_FOR_FULL_RENDER = 40
 
+const warmupConfirmDialogOpen = ref(false)
+
 const themeWarmupOpen = ref(false)
 const themeWarmupProgress = ref(0)
 const themeWarmupDetail = ref('')
@@ -1586,49 +1606,6 @@ const safeVisibleRenderNodes = computed(() => {
 const nodeHostRefs = new Map<string, HTMLElement>()
 const nodeScreenshotMap = shallowRef(new Map<string, ScreenshotCacheEntry>())
 const screenshotPool = createNodeScreenshotPool()
-
-const { checkUnwarmedNodes, showPrompt } = useWarmupPrompt()
-
-const checkAndShowWarmupPrompt = () => {
-	const projectId = String(currentProjectId.value || '').trim()
-	const blueprintId = String(currentProjectName.value || '').trim()
-	if (!projectId || !blueprintId) return
-
-	const allNodes = Object.values(store.state.nodesById || {})
-	const nodeIds = allNodes.map((n: WorkflowNode) => String(n.id))
-	const activeTheme = themeStore.state.mode as 'dark' | 'light'
-
-	const unwarmed = checkUnwarmedNodes(
-		projectId,
-		blueprintId,
-		nodeIds,
-		(nodeId) => {
-			const node = store.state.nodesById[nodeId]
-			if (!node) return false
-			const version = getNodeScreenshotVersion(node, activeTheme)
-			return screenshotPool.hasCachedScreenshot(nodeId, version)
-		}
-	)
-
-	if (unwarmed.length > 0) {
-		showPrompt(
-			projectId,
-			blueprintId,
-			unwarmed,
-			nodeIds.length,
-			(nodeIdsToWarmup: string[]) => {
-				screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-				screenshotPool.setBurstMode(true)
-				for (const nid of nodeIdsToWarmup) {
-					onNodeInvalidateScreenshot(nid)
-				}
-				setTimeout(() => {
-					screenshotPool.setBurstMode(false)
-				}, 30000)
-			}
-		)
-	}
-}
 
 // Canvas2D截图渲染模块
 const {
@@ -1778,23 +1755,11 @@ const canvasNodeEntries = computed(() => {
 })
 
 // 刷新Canvas节点层，强制全量重绘
-let refreshCanvasRafId: number | null = null
 const refreshCanvasNodeLayer = () => {
-	if (refreshCanvasRafId !== null) return
-	refreshCanvasRafId = requestAnimationFrame(() => {
-		refreshCanvasRafId = null
-		canvasScreenshotRefreshTick.value++
+	canvasScreenshotRefreshTick.value++
+	nextTick(() => {
 		nodeCanvasLayerRef.value?.markDirty()
 	})
-}
-
-const flushCanvasNodeLayer = () => {
-	if (refreshCanvasRafId !== null) {
-		cancelAnimationFrame(refreshCanvasRafId)
-		refreshCanvasRafId = null
-	}
-	canvasScreenshotRefreshTick.value++
-	nodeCanvasLayerRef.value?.markDirty()
 }
 
 // 判断节点是否有Canvas截图可以用于Canvas渲染
@@ -3120,18 +3085,15 @@ watch(
 watch(
 	() => viewportMotionActive.value,
 	(isActive) => {
-		if (isActive) {
-			screenshotPool.pause()
-		} else {
-			screenshotPool.resume(300)
+		if (!isActive) {
 			setTimeout(() => {
-				if (!viewportMotionActive.value && !isLinking.value) {
+				if (!viewportMotionActive.value) {
 					scheduleVisibleNodeScreenshots()
 				}
-			}, 300)
+			}, 200)
 		}
 	},
-	{ flush: 'sync' }
+	{ flush: 'post' }
 )
 
 watch(
@@ -3400,22 +3362,48 @@ const triggerWarmupIfNeeded = () => {
 		const count = nodes.value.length
 		if (count <= 0) return
 		if (hasWarmedUp) return
-		warmupMode = 'cache'
-		hasWarmedUp = true
-		loadCachedScreenshotsToCanvas().catch((err) => {
-			console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
-			warmupMode = 'force'
-			screenshotPool.cleanup()
-			nodeScreenshotMap.value = new Map()
-			warmupAllNodeScreenshots(true).catch((err2) => {
-				console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
-				isWarmingUpScreenshots.value = false
-				screenshotWarmupOpen.value = false
-				hasWarmedUp = false
-				warmupMode = null
-			})
-		})
+		warmupConfirmDialogOpen.value = true
 	}, 300)
+}
+
+const onConfirmForceWarmup = () => {
+	warmupConfirmDialogOpen.value = false
+	warmupMode = 'force'
+	hasWarmedUp = true
+	screenshotPool.cleanup()
+	nodeScreenshotMap.value = new Map()
+	disposeCanvasScreenshot()
+	initCanvasScreenshot()
+	canvasScreenshotPool.value = { getEntry: () => null, setActiveTheme: () => {} }
+	initCanvasScreenshotPool()
+	warmupAllNodeScreenshots(true).catch((err) => {
+		console.warn('[Screenshot Warmup] force warmup failed:', err)
+		isWarmingUpScreenshots.value = false
+		screenshotWarmupOpen.value = false
+		hasWarmedUp = false
+		warmupMode = null
+	})
+}
+
+const onCancelUseCache = async () => {
+	warmupConfirmDialogOpen.value = false
+	warmupMode = 'cache'
+	hasWarmedUp = true
+	try {
+		await loadCachedScreenshotsToCanvas()
+	} catch (err) {
+		console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
+		warmupMode = 'force'
+		screenshotPool.cleanup()
+		nodeScreenshotMap.value = new Map()
+		warmupAllNodeScreenshots(true).catch((err2) => {
+			console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
+			isWarmingUpScreenshots.value = false
+			screenshotWarmupOpen.value = false
+			hasWarmedUp = false
+			warmupMode = null
+		})
+	}
 }
 
 const loadCachedScreenshotsToCanvas = async () => {
@@ -3687,10 +3675,6 @@ const onNodeChatDraftUpdate = (text: string) => {
 
 const onNodeChatParamsUpdate = (params: WorkflowNodeChatParams) => {
 	store.commit('setNodeChatParams', { params })
-}
-
-const onNodeChatSelectedRefsUpdate = (refs: WorkflowNodeChatSelectedRef[]) => {
-	store.commit('setNodeChatSelectedRefs', { refs })
 }
 
 const onNodeChatClose = () => {
@@ -3976,8 +3960,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 				},
 				payload.nodeId,
-				payload.prompt,
-				payload.attachments
+				payload.prompt
 			)
 		} finally {
 			blenderAbortFns.delete(payload.nodeId)
@@ -7100,28 +7083,19 @@ const onNodeMediaReady = (nodeId: string) => {
 	)
 }
 
-const invalidateScreenshotDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const onNodeInvalidateScreenshot = (nodeId: string) => {
+	if (selectedNodeIds.value.includes(nodeId)) return
+	if (fullRenderNodeIds.value.has(nodeId)) return
 	const activeTheme = themeStore.state.mode as 'dark' | 'light'
 	screenshotPool.invalidateScreenshot(nodeId, activeTheme)
 	invalidateCanvasScreenshot(nodeId, activeTheme)
 	const newMap = new Map(nodeScreenshotMap.value)
 	newMap.delete(nodeId)
 	nodeScreenshotMap.value = newMap
-
-	const existing = invalidateScreenshotDebounceTimers.get(nodeId)
-	if (existing) clearTimeout(existing)
-
-	invalidateScreenshotDebounceTimers.set(
-		nodeId,
-		setTimeout(() => {
-			invalidateScreenshotDebounceTimers.delete(nodeId)
-			const node = store.state.nodesById[nodeId]
-			if (node && !fullRenderNodeIds.value.has(nodeId) && !screenshotPool.isInteractionPaused()) {
-				void scheduleNodeScreenshot(node, 0, 'low')
-			}
-		}, 300)
-	)
+	nextTick(() => {
+		const node = store.state.nodesById[nodeId]
+		if (node) void scheduleNodeScreenshot(node, 0, 'normal')
+	})
 }
 
 const videoPosterGenerating = new Set<string>()
@@ -8214,6 +8188,7 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 			cancelActiveRecoverySession()
 			store.commit('hydrateDraft', { snapshot: buildSnapshotFromState(createDefaultAIWorkflowState()) })
 			setUnsavedProject('')
+			reuseRecordConfirm.value = null
 			disposeComfyRuntime()
 			comfyAnchorAssignments.clear()
 			comfyAnchorLocalizedOutputs.clear()
@@ -8347,6 +8322,7 @@ watch(
 		if (newId !== oldId) {
 			hasWarmedUp = false
 			warmupMode = null
+			warmupConfirmDialogOpen.value = false
 			screenshotWarmupOpen.value = false
 			isWarmingUpScreenshots.value = false
 			nodeScreenshotMap.value = new Map()
@@ -8394,15 +8370,11 @@ const { setSavedProject, setUnsavedProject, readLastProjectId, forgetLastProject
 
 let pushToastBridge = (_message: string, _tone?: 'info' | 'warn' | 'error') => {}
 
-const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow, onRefreshHistoryCheck, onClearHistoryCache } =
+const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow } =
 	useAIWorkflowComfyConnection({
 		store,
 		comfyService,
-		pushToast: (message, tone) => pushToastBridge(message, tone),
-		onWorkflowChanged: (nodeId: string) => {
-			screenshotPool.invalidateScreenshot(nodeId, themeStore.state.mode as 'dark' | 'light')
-			refreshCanvasNodeLayer()
-		}
+		pushToast: (message, tone) => pushToastBridge(message, tone)
 	})
 
 const {
@@ -8477,43 +8449,11 @@ const getIncomingTextValue = (toNodeId: string, toAnchorId: string) => {
 	return ''
 }
 
-const bindModelResourceToNode = (
-	nodeId: string,
-	url: string,
-	name: string,
-	meta?: { sourcePath?: string; format?: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' }
-) => {
-	const node = store.state.nodesById[nodeId]
-	if (!node || node.type !== 'model3d') return
-	revokeNodeModel3DObjectUrl(nodeId)
-	const modelFormat = meta?.format ?? 'glb'
-	store.commit('setNodeModel3DSettings', {
-		nodeId,
-		model3dSettings: {
-			modelUrl: url,
-			modelFormat,
-			modelSourceName: name,
-			modelSourcePath: meta?.sourcePath,
-			modelAssetUrl: url,
-			modelAssetPath: meta?.sourcePath
-		}
-	})
-}
-
-const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoWire({
-	store,
-	getOutgoingEdges,
-	getIncomingEdges,
-	bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
-		bindMediaResourceToNode(nodeId, kind, url, name, meta),
-	bindModelResourceToNode,
-	onAutoWireStart: (sourceNodeId) => onAutoWireStart(sourceNodeId),
-	onAutoWireNodeCreated: (nodeId) => onAutoWireNodeCreated(nodeId),
-	onAutoWireEnd: () => onAutoWireEnd(),
-	pushToast: (message, tone) => pushToastBridge(message, tone)
-})
-
 const {
+	reuseRecordConfirm,
+	formatReuseRecordTime,
+	onCancelReuseRecord,
+	onConfirmReuseRecord,
 	onComfyUIRun,
 	onComfyUICancel,
 	recoverComfyUIRunStates,
@@ -8524,8 +8464,7 @@ const {
 	pushToast: (message, tone) => pushToastBridge(message, tone),
 	routeComfyOutputsToConnectedNodes,
 	clearComfyRouteCache,
-	getIncomingTextValue,
-	autoWireComfyOutputs
+	getIncomingTextValue
 })
 
 const onStoryPreviewSettingsUpdate = (
@@ -9811,24 +9750,7 @@ const { uploadLocalResourceAndGetUrl, persistExternalAssetToProject } =
 		importAssetIntoProjectScope: (payload) => importAssetIntoProjectScope(payload)
 	})
 
-const {
-	onSend,
-	onStop,
-	onNanoBananaGenerate,
-	onSeedanceGenerate,
-	handleUserChoiceSelect,
-	contextItems: chatContextItems,
-	isPickingNode,
-	addImage: addChatImage,
-	addFile: addChatFile,
-	addSkill: addChatSkill,
-	addNode: addChatNode,
-	addNodeOutputRef: addChatNodeOutputRef,
-	removeContextItem: removeChatContextItem,
-	enterNodePickMode,
-	exitNodePickMode,
-	onNodePicked
-} = useAIWorkflowChatGeneration({
+const { onSend, onStop, onNanoBananaGenerate, onSeedanceGenerate, handleUserChoiceSelect } = useAIWorkflowChatGeneration({
 	store,
 	chatModelKey,
 	chatDraft,
@@ -9865,7 +9787,6 @@ const {
 	pushToast,
 	getFirstIncomingEdge,
 	nodeResourceUrl,
-	nodeImagePreviewUrl,
 	nodeResourceName,
 	buildCroppedImageTransferFile,
 	fileFromUrl,
@@ -9877,103 +9798,6 @@ const {
 	getAllNodes: () => nodes.value,
 	getAllEdges: () => renderEdges.value,
 })
-
-const mentionItemsData = computed<AgentEditorMentionItem[]>(() => {
-	const items: AgentEditorMentionItem[] = []
-	for (const item of chatContextItems.value) {
-		if (item.type === 'image') {
-			items.push({
-				id: `ctx-${item.id}`,
-				kind: 'image',
-				label: item.name,
-				previewUrl: item.dataUrl || item.url || item.thumbnailUrl,
-				dataUrl: item.dataUrl,
-				url: item.url,
-				contextItemId: item.id
-			})
-		} else if (item.type === 'file') {
-			items.push({
-				id: `ctx-${item.id}`,
-				kind: 'file',
-				label: item.name,
-				contextItemId: item.id
-			})
-		} else if (item.type === 'skill') {
-			items.push({
-				id: `ctx-${item.id}`,
-				kind: 'skill',
-				label: item.name,
-				description: item.description,
-				contextItemId: item.id
-			})
-		} else if (item.type === 'node') {
-			items.push({
-				id: `ctx-${item.id}`,
-				kind: (item.thumbKind || 'node') as AgentEditorMentionItem['kind'],
-				label: item.label,
-				previewUrl: item.previewUrl,
-				text: item.mainOutputText,
-				nodeId: item.nodeId,
-				nodeType: item.nodeType,
-				contextItemId: item.id
-			})
-		}
-	}
-	return items
-})
-
-const selectedReferences = ref<AgentEditorChipData[]>([])
-const onUpdateSelectedReferences = (refs: AgentEditorChipData[]) => {
-	selectedReferences.value = refs
-}
-
-const guessMimeType = (filename: string): string => {
-	const ext = filename.split('.').pop()?.toLowerCase() || ''
-	const map: Record<string, string> = {
-		txt: 'text/plain', md: 'text/markdown', json: 'application/json',
-		js: 'text/javascript', ts: 'text/typescript', jsx: 'text/javascript',
-		tsx: 'text/typescript', vue: 'text/plain', css: 'text/css', scss: 'text/css',
-		less: 'text/css', html: 'text/html', xml: 'application/xml',
-		yaml: 'text/yaml', yml: 'text/yaml', py: 'text/x-python',
-		java: 'text/x-java', c: 'text/x-c', cpp: 'text/x-c++', h: 'text/x-c',
-		go: 'text/x-go', rs: 'text/x-rust', sh: 'text/x-shellscript',
-		bat: 'text/plain', ps1: 'text/plain', mjs: 'text/javascript', cjs: 'text/javascript'
-	}
-	return map[ext] || 'text/plain'
-}
-
-const handleAddChatImage = (file: File) => {
-	addChatImage(file).catch((err: unknown) => {
-		pushToast(`添加图片失败: ${getErrorMessage(err)}`, 'warn')
-	})
-}
-
-const handleAddChatFile = async (file: File) => {
-	try {
-		const content = await file.text()
-		const MAX_SIZE = 100 * 1024
-		const truncated = content.length > MAX_SIZE
-		addChatFile({
-			name: file.name,
-			path: (file as any).path || undefined,
-			mimeType: file.type || guessMimeType(file.name),
-			size: file.size,
-			content: truncated ? content.slice(0, MAX_SIZE) + '\n...[truncated]' : content,
-			truncated,
-			lines: truncated ? MAX_SIZE : content.length
-		})
-	} catch (err: unknown) {
-		pushToast(`读取文件失败: ${getErrorMessage(err)}`, 'warn')
-	}
-}
-
-const handleAddChatSkill = (skillId: string) => {
-	addChatSkill(skillId)
-}
-
-const handleRemoveChatContextItem = (id: string) => {
-	removeChatContextItem(id)
-}
 
 const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } = useAgentToolBridge({
 	store,
@@ -10119,6 +9943,7 @@ const {
 	createEmptyDraftSnapshot: () => buildSnapshotFromState(createDefaultAIWorkflowState()),
 	store,
 	setUnsavedProject,
+	reuseRecordConfirm,
 	resetComfyRuntime: disposeComfyRuntime,
 	comfyAnchorAssignments,
 	comfyAnchorLocalizedOutputs,
@@ -10358,9 +10183,6 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 	return []
 })
 
-const chatDockRef = ref<InstanceType<typeof BottomChatDock> | null>(null)
-const isLinkOverChatDock = ref(false)
-
 const {
 	contextMenu,
 	inspectorOpen,
@@ -10391,45 +10213,6 @@ const {
 	pushToast,
 	openFolderForPath
 })
-
-const handleLinkDropOnChatDock = (payload: {
-	clientX: number
-	clientY: number
-	fromNodeId: string
-	fromAnchorId: string
-}) => {
-	if (chatCollapsed.value) return false
-	const dock = chatDockRef.value
-	if (!dock) return false
-	const rect = dock.getInputDropRect()
-	if (!rect) return false
-	const { clientX, clientY } = payload
-	if (
-		clientX < rect.left ||
-		clientX > rect.right ||
-		clientY < rect.top ||
-		clientY > rect.bottom
-	) {
-		return false
-	}
-	const node = store.state.nodesById[payload.fromNodeId]
-	if (node) {
-		addChatNode(node)
-	}
-	return true
-}
-
-const wrappedOnLinkDropOnCanvas = (payload: {
-	clientX: number
-	clientY: number
-	worldX: number
-	worldY: number
-	fromNodeId: string
-	fromAnchorId: string
-}) => {
-	if (handleLinkDropOnChatDock(payload)) return
-	onLinkDropOnCanvas(payload)
-}
 
 const linkInteraction = useAIWorkflowLinking({
 	store,
@@ -10501,7 +10284,7 @@ const linkInteraction = useAIWorkflowLinking({
 			void syncConnectedImageTargetsFromMeshy(fromNodeId)
 		}
 	},
-	onLinkDropOnCanvas: wrappedOnLinkDropOnCanvas
+	onLinkDropOnCanvas
 })
 
 const {
@@ -10580,51 +10363,6 @@ watch(
 		}
 	}
 )
-
-const isPointOverChatDockInput = (clientX: number, clientY: number) => {
-	if (chatCollapsed.value) return false
-	const dock = chatDockRef.value
-	if (!dock) return false
-	const rect = dock.getInputDropRect()
-	if (!rect) return false
-	return (
-		clientX >= rect.left &&
-		clientX <= rect.right &&
-		clientY >= rect.top &&
-		clientY <= rect.bottom
-	)
-}
-
-let linkDragMoveHandler: ((e: PointerEvent) => void) | null = null
-
-watch(
-	() => linkInteraction.isLinking.value,
-	(isLinking) => {
-		if (isLinking) {
-			isLinkOverChatDock.value = false
-			linkDragMoveHandler = (e: PointerEvent) => {
-				const over = isPointOverChatDockInput(e.clientX, e.clientY)
-				if (over !== isLinkOverChatDock.value) {
-					isLinkOverChatDock.value = over
-				}
-			}
-			window.addEventListener('pointermove', linkDragMoveHandler, true)
-		} else {
-			if (linkDragMoveHandler) {
-				window.removeEventListener('pointermove', linkDragMoveHandler, true)
-				linkDragMoveHandler = null
-			}
-			isLinkOverChatDock.value = false
-		}
-	}
-)
-
-onBeforeUnmount(() => {
-	if (linkDragMoveHandler) {
-		window.removeEventListener('pointermove', linkDragMoveHandler, true)
-		linkDragMoveHandler = null
-	}
-})
 
 let nearDragRafId: number | null = null
 let nearDragLastPointer: { x: number; y: number } | null = null
@@ -11934,7 +11672,6 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	forceEndViewportMotion,
 	scheduleAsyncEdgeRender,
 	canvasViewportSize,
-	flushCanvasNodeLayer,
 	onNodeDragStart: (nodeIds: string[]) => {
 		selectionFrameDragging.value = true
 		selectionFrameDragNodeIds.value = new Set(nodeIds)
@@ -11947,6 +11684,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 	onNodeDragMove: (_nodeIds: string[]) => {
 		selectionDragMoveTick.value++
 		scheduleUpdateDragFullRender()
+		refreshCanvasNodeLayer()
 	},
 	onNodeDragEnd: (nodeIds: string[]) => {
 		selectionFrameDragging.value = false
@@ -11958,7 +11696,7 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 			updateDragFullRenderRafId = null
 		}
 		forceEndViewportMotion()
-		flushCanvasNodeLayer()
+		refreshCanvasNodeLayer()
 		scheduleVisibleNodeScreenshots()
 	}
 })
@@ -11973,23 +11711,6 @@ const anchorCompatibility = linkInteraction.anchorCompatibility
 const isLinking = linkInteraction.isLinking
 const linkingFromNodeId = linkInteraction.linkingFromNodeId
 const linkingHoverNodeId = linkInteraction.linkingHoverNodeId
-
-watch(
-	() => isLinking.value,
-	(linking) => {
-		if (linking) {
-			screenshotPool.pause()
-		} else {
-			screenshotPool.resume(250)
-			setTimeout(() => {
-				if (!viewportMotionActive.value && !isLinking.value) {
-					scheduleVisibleNodeScreenshots()
-				}
-			}, 250)
-		}
-	},
-	{ flush: 'sync' }
-)
 
 const canvasScreenToWorld = (point: { x: number; y: number }) => {
 	const vw = canvasViewportSize.value.width
@@ -12021,55 +11742,6 @@ const onCanvasAnchorPointerDown = (payload: {
 		canvasScreenToWorld
 	)
 }
-
-let prevSelectedForScreenshot = new Set<string>(selectedNodeIds.value)
-watch(
-	() => [...selectedNodeIds.value],
-	(newIds) => {
-		const newSet = new Set(newIds)
-		const exitingIds: string[] = []
-		for (const id of prevSelectedForScreenshot) {
-			if (!newSet.has(id)) {
-				exitingIds.push(id)
-			}
-		}
-		if (exitingIds.length > 0) {
-			const pendingCapture: WorkflowNode[] = []
-			const pendingSet = new Set(pendingScreenshotNodeIds.value)
-			for (const id of exitingIds) {
-				const node = nodes.value.find((n) => String(n.id) === id)
-				if (!node) continue
-				nodesNeedingScreenshotRefresh.delete(id)
-				userSelectedNodesNeedingRefresh.delete(id)
-				pendingSet.add(id)
-				pendingCapture.push(node)
-			}
-			pendingScreenshotNodeIds.value = pendingSet
-
-			if (pendingCapture.length > 0) {
-				nextTick(() => {
-					setTimeout(() => {
-						for (const node of pendingCapture) {
-							const nodeId = String(node.id)
-							scheduleNodeScreenshot(node, 0, 'high', true)
-								.catch((err) => {
-									console.warn('[Screenshot] deselect capture failed for node:', nodeId, err)
-								})
-								.finally(() => {
-									const newPendingSet = new Set(pendingScreenshotNodeIds.value)
-									newPendingSet.delete(nodeId)
-									pendingScreenshotNodeIds.value = newPendingSet
-									refreshCanvasNodeLayer()
-								})
-						}
-					}, 100)
-				})
-			}
-		}
-		prevSelectedForScreenshot = newSet
-	},
-	{ flush: 'sync' }
-)
 
 watch(
 	() => Array.from(fullRenderNodeIds.value),
@@ -12211,6 +11883,8 @@ watch(
 const onCanvasPanningStart = () => {
 	canvasInteraction.cancelFocusAnimation()
 	linkInteraction.setPanning(true)
+	// 平移开始时最小化DOM渲染：不保留之前的fullRenderNodeIds快照，
+	// 仅通过panning分支保留聊天对话框节点和待截图节点，其余全部切换为Canvas轻量渲染
 	panningFullRenderSnapshot.value = new Set()
 	markViewportMotion()
 	refreshCanvasNodeLayer()
@@ -12247,14 +11921,6 @@ const onCanvasNodeClick = (nodeId: string, _event: PointerEvent) => {
 	if (canvasScreenshotDebugMode.value) {
 		console.log('[CanvasNode] click:', nodeId)
 	}
-	if (isPickingNode.value) {
-		const node = (store.state.nodesById as Record<string, any>)[nodeId]
-		if (node) {
-			onNodePicked(node)
-			pushToast(`已添加节点「${node.label || node.type || nodeId}」到上下文`, 'info')
-		}
-		return
-	}
 	onSelectNode(nodeId)
 }
 
@@ -12266,57 +11932,6 @@ const onCanvasNodePointerDown = (nodeId: string | null, _event: PointerEvent) =>
 
 const MAX_DRAG_FULL_RENDER_NODES = 40
 let updateDragFullRenderRafId: number | null = null
-let selectionFrameDragRafId: number | null = null
-let selectionFramePendingDx = 0
-let selectionFramePendingDy = 0
-let selectionFramePendingNodeIds: string[] = []
-let hasSelectionFramePendingUpdate = false
-
-const flushSelectionFrameDrag = () => {
-	if (selectionFrameDragRafId !== null) {
-		cancelAnimationFrame(selectionFrameDragRafId)
-		selectionFrameDragRafId = null
-	}
-	if (hasSelectionFramePendingUpdate) {
-		hasSelectionFramePendingUpdate = false
-		if (Math.abs(selectionFramePendingDx) > 0.001 || Math.abs(selectionFramePendingDy) > 0.001) {
-			store.dispatch('moveNodesBy', {
-				dx: selectionFramePendingDx,
-				dy: selectionFramePendingDy,
-				nodeIds: selectionFramePendingNodeIds
-			})
-			selectionFramePendingDx = 0
-			selectionFramePendingDy = 0
-		}
-		selectionDragMoveTick.value++
-		scheduleAsyncEdgeRender()
-		scheduleUpdateDragFullRender()
-		flushCanvasNodeLayer()
-	}
-}
-
-const scheduleSelectionFrameDrag = () => {
-	if (selectionFrameDragRafId !== null) return
-	selectionFrameDragRafId = requestAnimationFrame(() => {
-		selectionFrameDragRafId = null
-		if (hasSelectionFramePendingUpdate) {
-			hasSelectionFramePendingUpdate = false
-			if (Math.abs(selectionFramePendingDx) > 0.001 || Math.abs(selectionFramePendingDy) > 0.001) {
-				store.dispatch('moveNodesBy', {
-					dx: selectionFramePendingDx,
-					dy: selectionFramePendingDy,
-					nodeIds: selectionFramePendingNodeIds
-				})
-				selectionFramePendingDx = 0
-				selectionFramePendingDy = 0
-			}
-			selectionDragMoveTick.value++
-			scheduleAsyncEdgeRender()
-			scheduleUpdateDragFullRender()
-			flushCanvasNodeLayer()
-		}
-	})
-}
 
 const updateSelectionDragFullRender = () => {
 	updateDragFullRenderRafId = null
@@ -12364,35 +11979,31 @@ const onSelectionFrameDragStart = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragNodeIds.value = new Set(payload.nodeIds)
 	selectionDragFullRenderIds.value = new Set()
 	selectionDragMoveTick.value = 0
-	selectionFramePendingDx = 0
-	selectionFramePendingDy = 0
-	selectionFramePendingNodeIds = payload.nodeIds
-	hasSelectionFramePendingUpdate = false
 	markViewportMotion()
 	scheduleUpdateDragFullRender()
 	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDrag = (payload: { dx: number; dy: number; nodeIds: string[] }) => {
-	selectionFramePendingDx += payload.dx
-	selectionFramePendingDy += payload.dy
-	selectionFramePendingNodeIds = payload.nodeIds
-	hasSelectionFramePendingUpdate = true
+	store.dispatch('moveNodesBy', payload)
+	selectionDragMoveTick.value++
 	markViewportMotion()
-	scheduleSelectionFrameDrag()
+	scheduleAsyncEdgeRender()
+	scheduleUpdateDragFullRender()
+	refreshCanvasNodeLayer()
 }
 
 const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 	selectionFrameDragging.value = false
 	selectionFrameDragNodeIds.value = new Set()
 	selectionDragFullRenderIds.value = new Set()
-	flushSelectionFrameDrag()
+	selectionDragMoveTick.value++
 	if (updateDragFullRenderRafId !== null) {
 		cancelAnimationFrame(updateDragFullRenderRafId)
 		updateDragFullRenderRafId = null
 	}
 	forceEndViewportMotion()
-	flushCanvasNodeLayer()
+	refreshCanvasNodeLayer()
 	scheduleVisibleNodeScreenshots()
 }
 
@@ -12576,10 +12187,6 @@ async function runProjectEnterSequence(
 			},
 			{ errorDetailOnFailure: true }
 		)
-
-		setTimeout(() => {
-			checkAndShowWarmupPrompt()
-		}, 1500)
 	}
 }
 

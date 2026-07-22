@@ -214,26 +214,74 @@ async function uploadBufferToArkFiles(apiKey, buffer, fileName, mimeType, extraF
   })
 }
 
-async function verifyPublicUrl(url, maxRetries = 3, retryDelayMs = 2000) {
-  if (!url || typeof url !== 'string') return false
-  const upperUrl = url.toUpperCase()
-  if (upperUrl.includes('X-TOS-SIGNATURE=') || upperUrl.includes('SIGNATURE=') || upperUrl.includes('X-OSS-EXPIRES=')) {
-    console.log('[seedance] Presigned URL detected, skipping HTTP verification')
-    return true
-  }
+async function uploadBufferToLitterbox(buffer, fileName, mimeType, expiration = '24h') {
+  const url = 'https://litterbox.catbox.moe/resources/internals/api.php'
+  const boundary = '----LitterboxUpload' + Date.now().toString(16)
+  const CRLF = '\r\n'
+
+  const parts = []
+  parts.push(Buffer.from(`--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="reqtype"${CRLF}${CRLF}`))
+  parts.push(Buffer.from('fileupload'))
+  parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="time"${CRLF}${CRLF}`))
+  parts.push(Buffer.from(expiration))
+  parts.push(Buffer.from(`${CRLF}--${boundary}${CRLF}`))
+  parts.push(Buffer.from(`Content-Disposition: form-data; name="fileToUpload"; filename="${fileName}"${CRLF}`))
+  parts.push(Buffer.from(`Content-Type: ${mimeType}${CRLF}${CRLF}`))
+  parts.push(buffer)
+  parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`))
+
+  const multipartBody = Buffer.concat(parts)
+
+  const parsedUrl = new URL(url)
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      method: 'POST',
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 443,
+      path: parsedUrl.pathname + parsedUrl.search,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': multipartBody.length,
+        'User-Agent': 'DVStudio/1.0 (Electron)',
+      },
+      timeout: 180000,
+    }, (res) => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf-8').trim()
+        if (res.statusCode >= 200 && res.statusCode < 300 && body.startsWith('http')) {
+          resolve(body)
+        } else {
+          reject(new Error(`Litterbox upload failed: HTTP ${res.statusCode} - ${body.slice(0, 300)}`))
+        }
+      })
+      res.on('error', reject)
+    })
+
+    req.on('error', (err) => reject(new Error(`Litterbox upload failed: ${err.message}`)))
+    req.on('timeout', () => req.destroy(new Error('Litterbox upload timeout')))
+    req.write(multipartBody)
+    req.end()
+  })
+}
+
+async function verifyPublicUrl(url, maxRetries = 5, retryDelayMs = 3000) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const parsedUrl = new URL(url)
       const transport = parsedUrl.protocol === 'https:' ? https : http
       await new Promise((resolve, reject) => {
         const req = transport.request({
-          method: 'GET',
+          method: 'HEAD',
           hostname: parsedUrl.hostname,
           port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
           path: parsedUrl.pathname + parsedUrl.search,
           timeout: 10000,
         }, (res) => {
-          if (res.statusCode >= 200 && res.statusCode < 400) {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
             resolve(true)
           } else {
             reject(new Error(`HTTP ${res.statusCode}`))
@@ -265,30 +313,38 @@ async function uploadVideoFileAndGetUrl(ctx, apiKey, fileObj, model) {
   const baseName = rawName.replace(/\.[^.]+$/, '').replace(/[^\w.\-]/g, '_') || `video_${Date.now()}`
   const fileName = `${baseName}.${ext}`
 
-  const fileSizeMB = (buffer.length / 1024 / 1024).toFixed(2)
-  console.log(`[seedance] Uploading video (${fileSizeMB} MB) as ${fileName} (${mimeType})...`)
+  console.log(`[seedance] Uploading video (${(buffer.length / 1024 / 1024).toFixed(2)} MB) as ${fileName} (${mimeType})...`)
 
-  const cloudfsResult = await cloudfsService.uploadFileToPublicUrl(ctx, {
-    data: buffer,
-    name: fileName,
-    mimeType,
-  })
-
-  if (!cloudfsResult.ok || !cloudfsResult.publicUrl) {
-    const errorMsg = cloudfsResult.error || 'Unknown error'
-    console.warn('[seedance] CloudFS upload failed:', errorMsg)
-    if (errorMsg.includes('No active cloud storage') || errorMsg.includes('not found') || errorMsg.includes('active')) {
-      throw new Error('云存储未配置默认桶，请先在云存储页面选择一个桶作为默认上传桶')
+  try {
+    const cloudfsConfig = await cloudfsService.getActiveConfig(ctx)
+    if (cloudfsConfig.configured) {
+      console.log('[seedance] Using CloudFS for video upload...')
+      const cloudfsResult = await cloudfsService.uploadFileToPublicUrl(ctx, {
+        data: buffer,
+        name: fileName,
+        mimeType,
+      })
+      if (cloudfsResult.ok && cloudfsResult.publicUrl) {
+        console.log(`[seedance] Video uploaded via CloudFS: ${cloudfsResult.publicUrl.slice(0, 120)}...`)
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        await verifyPublicUrl(cloudfsResult.publicUrl)
+        return cloudfsResult.publicUrl
+      }
+      console.warn('[seedance] CloudFS upload failed, falling back to Litterbox:', cloudfsResult.error)
+    } else {
+      console.log('[seedance] CloudFS not configured, using Litterbox temporary hosting')
     }
-    throw new Error(`云存储上传失败: ${errorMsg}`)
+  } catch (cloudfsErr) {
+    console.warn('[seedance] CloudFS upload error, falling back to Litterbox:', cloudfsErr.message)
   }
 
-  const providerName = cloudfsResult.providerName || '云存储'
-  console.log(`[seedance] Video uploaded via CloudFS (${providerName}), verifying...`)
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  await verifyPublicUrl(cloudfsResult.publicUrl)
-  console.log(`[seedance] Video uploaded via CloudFS: ${cloudfsResult.publicUrl.slice(0, 120)}...`)
-  return { url: cloudfsResult.publicUrl, source: 'cloudfs', providerName }
+  const publicUrl = await uploadBufferToLitterbox(buffer, fileName, mimeType, '24h')
+  console.log(`[seedance] Video uploaded to public URL: ${publicUrl.slice(0, 120)}...`)
+
+  await new Promise(resolve => setTimeout(resolve, 2000))
+  await verifyPublicUrl(publicUrl)
+
+  return publicUrl
 }
 
 function createTaskWithJson(client, apiKey, createPayload) {
@@ -440,39 +496,6 @@ function extractUsageText(obj) {
   if (typeof usage.total_tokens === 'number') parts.push(`total=${usage.total_tokens}`)
   if (typeof usage.completion_tokens === 'number') parts.push(`completion=${usage.completion_tokens}`)
   return parts.length ? `tokens: ${parts.join(', ')}` : null
-}
-
-function normalizeSeedanceStatus(raw) {
-  const s = String(raw || 'queued').trim().toLowerCase()
-  if (s === 'success' || s === 'completed' || s === 'processed' || s === 'ready' || s === 'active') return 'succeeded'
-  if (s === 'processing' || s === 'in_progress') return 'running'
-  if (s === 'error' || s === 'expired') return 'failed'
-  if (s === 'cancelled' || s === 'canceled') return 'canceled'
-  return s
-}
-
-function extractSeedanceErrorMessage(taskObj, status) {
-  const s = String(status || '').trim().toLowerCase()
-  if (!['failed', 'error'].includes(s)) return ''
-  const err = taskObj?.error
-  if (!err) return `status=${s}`
-  if (typeof err === 'string') return err
-  if (typeof err === 'object') {
-    if (err.message) return String(err.message)
-    if (err.code) return `Error ${err.code}: ${JSON.stringify(err)}`
-    try { return JSON.stringify(err) } catch { return String(err) }
-  }
-  return String(err)
-}
-
-function parseSeedanceTimestamp(val) {
-  if (!val) return null
-  if (typeof val === 'number') return val > 1e12 ? val : val * 1000
-  if (typeof val === 'string') {
-    const ms = new Date(val).getTime()
-    return Number.isFinite(ms) ? ms : null
-  }
-  return null
 }
 
 function buildContent(prompt, refImageUrls, refMode, refVideoUrls, refAudioUrls) {
@@ -736,19 +759,10 @@ export async function* generateVideoStream(ctx, payload) {
     ])
 
     const uploadedVideoFileUrls = []
-    const videoUploadSources = []
     for (let i = 0; i < videoFileObjects.length; i++) {
-      const fileObj = videoFileObjects[i]
-      const fileSizeMB = (Buffer.from(fileObj.data).length / 1024 / 1024).toFixed(2)
-      
-      yield wrapTaskStatusMsg(`Seedance：准备参考视频 ${i + 1}/${videoFileObjects.length}（${fileSizeMB} MB）…`, 'generating')
-      yield wrapTaskStatusMsg(`Seedance：正在上传参考视频到您的云存储（${fileSizeMB} MB）…`, 'generating')
-      
-      const uploadResult = await uploadVideoFileAndGetUrl(ctx, apiKey, fileObj, model)
-      uploadedVideoFileUrls.push(uploadResult.url)
-      videoUploadSources.push({ source: uploadResult.source, providerName: uploadResult.providerName })
-      
-      yield wrapTaskStatusMsg(`Seedance：参考视频上传完成，正在验证访问权限…`, 'generating')
+      yield wrapTaskStatusMsg(`Seedance：上传参考视频 ${i + 1}/${videoFileObjects.length}…`, 'generating')
+      const fileUrl = await uploadVideoFileAndGetUrl(ctx, apiKey, videoFileObjects[i], model)
+      uploadedVideoFileUrls.push(fileUrl)
     }
 
     const allVideoRefs = [...uploadedVideoStrUrls, ...uploadedVideoFileUrls]
@@ -805,7 +819,10 @@ export async function* generateVideoStream(ctx, payload) {
       throw new Error(`Seedance create task failed: invalid response ${JSON.stringify(createObj).slice(0, 500)}`)
     }
 
-    const finalVideoUrls = [...uploadedVideoStrUrls, ...uploadedVideoFileUrls]
+    const finalVideoUrls = [...uploadedVideoStrUrls]
+    for (let i = 0; i < videoFileObjects.length; i++) {
+      finalVideoUrls.push(`[local_file:${videoFileObjects[i].name || `video_${i}`}]`)
+    }
 
     let taskType = 'text-to-video'
     if (hasRefVideos) taskType = 'video-to-video'
@@ -1082,40 +1099,27 @@ export async function syncTasks(ctx, payload) {
       throw upstreamError(`Seedance get task failed: HTTP ${taskRes.status}`)
     }
     const taskObj = taskRes.body || {}
-    const remoteStatus = normalizeSeedanceStatus(taskObj.status)
+    const remoteStatus = String(taskObj.status || 'queued').trim().toLowerCase()
     const { videoUrl, lastFrameUrl } = extractVideoUrls(taskObj)
     const billingText = extractUsageText(taskObj)
 
-    const existing = repo.getByRemoteTaskId(taskId)
-    const promptText = extractPrompt(taskObj) || (existing?.prompt || '')
-    const remoteCreatedAt = parseSeedanceTimestamp(taskObj.created_at || taskObj.createdAt || taskObj.create_time)
-
-    const upsertPayload = {
+    repo.upsert({
       remoteTaskId: taskId,
       provider: 'seedance',
-      model: String(taskObj.model || existing?.model || model || DEFAULT_MODEL).trim(),
-      taskType: String(taskObj.task_type || existing?.taskType || '').trim(),
+      model: String(taskObj.model || model || DEFAULT_MODEL).trim(),
+      taskType: String(taskObj.task_type || '').trim(),
       source: 'sync',
       status: remoteStatus,
-      prompt: promptText,
-      videoUrlRemote: videoUrl || (existing?.videoUrlRemote || ''),
-      lastFrameUrlRemote: lastFrameUrl || (existing?.lastFrameUrlRemote || ''),
-      errorMessage: extractSeedanceErrorMessage(taskObj, remoteStatus),
+      prompt: extractPrompt(taskObj),
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(taskObj.error || '').trim() : '',
       statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
-      usage: taskObj.usage || existing?.usage || null,
+      usage: taskObj.usage || null,
       responsePayload: taskObj,
-      projectId: existing?.projectId ?? projectId,
-      remoteCreatedAt: remoteCreatedAt || existing?.remoteCreatedAt || null,
+      projectId,
       remoteUpdatedAt: Date.now(),
-    }
-    if (existing?.ratio && !taskObj.ratio) upsertPayload.ratio = existing.ratio
-    if (existing?.resolution && !taskObj.resolution) upsertPayload.resolution = existing.resolution
-    if (existing?.duration && !taskObj.duration) upsertPayload.duration = existing.duration
-    if (existing?.refImageUrls) upsertPayload.refImageUrls = existing.refImageUrls
-    if (existing?.refVideoUrls) upsertPayload.refVideoUrls = existing.refVideoUrls
-    if (existing?.refAudioUrls) upsertPayload.refAudioUrls = existing.refAudioUrls
-
-    repo.upsert(upsertPayload)
+    })
 
     const resultUrls = videoUrl ? [videoUrl] : []
     if (lastFrameUrl) resultUrls.push(lastFrameUrl)
@@ -1125,14 +1129,14 @@ export async function syncTasks(ctx, payload) {
       apiType: 'seedance',
       apiAction: 'video_generation',
       model: String(taskObj.model || model || DEFAULT_MODEL).trim(),
-      status: remoteStatus,
-      prompt: promptText,
+      status: remoteStatus === 'success' || remoteStatus === 'succeeded' ? 'succeeded' : remoteStatus,
+      prompt: extractPrompt(taskObj),
       resultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
-      errorMessage: upsertPayload.errorMessage,
-      statusText: upsertPayload.statusText,
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(taskObj.error || '').trim() : '',
+      statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
       responsePayload: taskObj,
-      projectId: existing?.projectId ?? projectId,
+      projectId,
       remoteTaskId: taskId,
     })
 
@@ -1168,37 +1172,25 @@ export async function syncTasks(ctx, payload) {
     if (!remoteTaskId) continue
 
     const { videoUrl, lastFrameUrl } = extractVideoUrls(remoteTask)
-    const taskStatus = normalizeSeedanceStatus(remoteTask.status)
-    const existing = repo.getByRemoteTaskId(remoteTaskId)
-    const promptText = extractPrompt(remoteTask) || (existing?.prompt || '')
-    const remoteCreatedAt = parseSeedanceTimestamp(remoteTask.created_at || remoteTask.createdAt || remoteTask.create_time)
+    const taskStatus = String(remoteTask.status || 'queued').trim().toLowerCase()
 
-    const upsertPayload = {
+    repo.upsert({
       remoteTaskId,
       provider: 'seedance',
-      model: String(remoteTask.model || existing?.model || model || DEFAULT_MODEL).trim(),
-      taskType: String(remoteTask.task_type || existing?.taskType || '').trim(),
+      model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
+      taskType: String(remoteTask.task_type || '').trim(),
       source: 'sync',
       status: taskStatus,
-      prompt: promptText,
-      videoUrlRemote: videoUrl || (existing?.videoUrlRemote || ''),
-      lastFrameUrlRemote: lastFrameUrl || (existing?.lastFrameUrlRemote || ''),
-      errorMessage: extractSeedanceErrorMessage(remoteTask, taskStatus),
+      prompt: extractPrompt(remoteTask),
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
       statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
-      usage: remoteTask.usage || existing?.usage || null,
+      usage: remoteTask.usage || null,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? projectId,
-      remoteCreatedAt: remoteCreatedAt || existing?.remoteCreatedAt || null,
+      projectId,
       remoteUpdatedAt: Date.now(),
-    }
-    if (existing?.ratio && !remoteTask.ratio) upsertPayload.ratio = existing.ratio
-    if (existing?.resolution && !remoteTask.resolution) upsertPayload.resolution = existing.resolution
-    if (existing?.duration && !remoteTask.duration) upsertPayload.duration = existing.duration
-    if (existing?.refImageUrls) upsertPayload.refImageUrls = existing.refImageUrls
-    if (existing?.refVideoUrls) upsertPayload.refVideoUrls = existing.refVideoUrls
-    if (existing?.refAudioUrls) upsertPayload.refAudioUrls = existing.refAudioUrls
-
-    repo.upsert(upsertPayload)
+    })
 
     const batchResultUrls = videoUrl ? [videoUrl] : []
     if (lastFrameUrl) batchResultUrls.push(lastFrameUrl)
@@ -1208,14 +1200,14 @@ export async function syncTasks(ctx, payload) {
       apiType: 'seedance',
       apiAction: 'video_generation',
       model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
-      status: taskStatus,
-      prompt: promptText,
+      status: taskStatus === 'success' || taskStatus === 'succeeded' ? 'succeeded' : taskStatus,
+      prompt: extractPrompt(remoteTask),
       resultUrls: batchResultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
-      errorMessage: upsertPayload.errorMessage,
-      statusText: upsertPayload.statusText,
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? projectId,
+      projectId,
       remoteTaskId,
     })
 
@@ -1225,7 +1217,7 @@ export async function syncTasks(ctx, payload) {
     }
   }
 
-  return { ok: true, items: syncedItems, total: syncedItems.length, totalCount: Number(data.total || data.total_count || 0) || syncedItems.length, hasMore: Boolean(data.has_more), pageNum, pageSize, remote: data }
+  return { ok: true, items: syncedItems, total: syncedItems.length, remote: data }
 }
 
 export async function health(ctx) {
@@ -1264,52 +1256,42 @@ export async function getTaskDetailRemote(ctx, payload) {
     resourceUnavailableReason = `查询失败：HTTP ${taskRes.status}`
   } else {
     remoteTask = taskRes.body || {}
-    remoteStatus = normalizeSeedanceStatus(remoteTask.status)
+    remoteStatus = String(remoteTask.status || 'queued').trim().toLowerCase()
     const extracted = extractVideoUrls(remoteTask)
     videoUrl = extracted.videoUrl
     lastFrameUrl = extracted.lastFrameUrl
 
-    if (remoteStatus === 'succeeded') {
+    if (remoteStatus === 'succeeded' || remoteStatus === 'success') {
       resourceAvailable = !!videoUrl
       if (!videoUrl) resourceUnavailableReason = '任务已完成但未返回视频地址'
-    } else if (['failed', 'error', 'canceled'].includes(remoteStatus)) {
+    } else if (['failed', 'error', 'expired', 'cancelled'].includes(remoteStatus)) {
       resourceAvailable = false
-      resourceUnavailableReason = extractSeedanceErrorMessage(remoteTask, remoteStatus) || `任务状态：${remoteStatus}`
+      const errObj = remoteTask.error
+      resourceUnavailableReason = errObj
+        ? (typeof errObj === 'string' ? errObj : JSON.stringify(errObj))
+        : `任务状态：${remoteStatus}`
     } else {
       resourceAvailable = false
       resourceUnavailableReason = '任务尚未完成，暂无可下载产物'
     }
 
-    const existing = repo.getByRemoteTaskId(taskId)
-    const promptText = extractPrompt(remoteTask) || (existing?.prompt || '')
-    const remoteCreatedAt = parseSeedanceTimestamp(remoteTask.created_at || remoteTask.createdAt || remoteTask.create_time)
-
-    const upsertPayload = {
+    repo.upsert({
       remoteTaskId: taskId,
       provider: 'seedance',
-      model: String(remoteTask.model || existing?.model || DEFAULT_MODEL).trim(),
-      taskType: String(remoteTask.task_type || existing?.taskType || '').trim(),
+      model: String(remoteTask.model || DEFAULT_MODEL).trim(),
+      taskType: String(remoteTask.task_type || '').trim(),
       source: 'sync',
       status: remoteStatus,
-      prompt: promptText,
-      videoUrlRemote: videoUrl || (existing?.videoUrlRemote || ''),
-      lastFrameUrlRemote: lastFrameUrl || (existing?.lastFrameUrlRemote || ''),
-      errorMessage: extractSeedanceErrorMessage(remoteTask, remoteStatus),
+      prompt: extractPrompt(remoteTask),
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(remoteTask.error || '').trim() : '',
       statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
-      usage: remoteTask.usage || existing?.usage || null,
+      usage: remoteTask.usage || null,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? projectId,
-      remoteCreatedAt: remoteCreatedAt || existing?.remoteCreatedAt || null,
+      projectId,
       remoteUpdatedAt: Date.now(),
-    }
-    if (existing?.ratio && !remoteTask.ratio) upsertPayload.ratio = existing.ratio
-    if (existing?.resolution && !remoteTask.resolution) upsertPayload.resolution = existing.resolution
-    if (existing?.duration && !remoteTask.duration) upsertPayload.duration = existing.duration
-    if (existing?.refImageUrls) upsertPayload.refImageUrls = existing.refImageUrls
-    if (existing?.refVideoUrls) upsertPayload.refVideoUrls = existing.refVideoUrls
-    if (existing?.refAudioUrls) upsertPayload.refAudioUrls = existing.refAudioUrls
-
-    repo.upsert(upsertPayload)
+    })
 
     const resultUrls = videoUrl ? [videoUrl] : []
     if (lastFrameUrl) resultUrls.push(lastFrameUrl)
@@ -1319,14 +1301,14 @@ export async function getTaskDetailRemote(ctx, payload) {
       apiType: 'seedance',
       apiAction: 'video_generation',
       model: String(remoteTask.model || DEFAULT_MODEL).trim(),
-      status: remoteStatus,
-      prompt: promptText,
+      status: remoteStatus === 'success' || remoteStatus === 'succeeded' ? 'succeeded' : remoteStatus,
+      prompt: extractPrompt(remoteTask),
       resultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
-      errorMessage: upsertPayload.errorMessage,
-      statusText: upsertPayload.statusText,
+      errorMessage: ['failed', 'error'].includes(remoteStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: remoteStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${remoteStatus}`,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? projectId,
+      projectId,
       remoteTaskId: taskId,
     })
   }
@@ -1413,11 +1395,9 @@ export async function listAllTasksRemote(ctx, payload) {
   if (!repo) throw internalError('videoTasks repo not available')
 
   const pageNum = Math.max(1, parseInt(String(payload?.pageNum || 1), 10) || 1)
-  const requestedPageSize = Math.max(1, Math.min(100, parseInt(String(payload?.pageSize || 50), 10) || 50))
-  const pageSize = requestedPageSize
+  const pageSize = Math.max(1, Math.min(100, parseInt(String(payload?.pageSize || 50), 10) || 50))
   const status = String(payload?.status || '').trim()
   const model = String(payload?.model || '').trim()
-  const autoFetchAll = payload?.fetchAll !== false && pageNum === 1
 
   const query = new URLSearchParams({
     page_num: String(pageNum),
@@ -1440,49 +1420,36 @@ export async function listAllTasksRemote(ctx, payload) {
   const data = res.body || {}
   const remoteItems = Array.isArray(data.items) ? data.items : (Array.isArray(data.data) ? data.data : [])
   const syncedItems = []
-  const totalFromRemote = Number(data.total || data.total_count || 0) || remoteItems.length
 
-  const syncRemoteTask = (remoteTask) => {
+  for (const remoteTask of remoteItems) {
     const remoteTaskId = String(remoteTask?.id || '').trim()
-    if (!remoteTaskId) return null
+    if (!remoteTaskId) continue
 
     const { videoUrl, lastFrameUrl } = extractVideoUrls(remoteTask)
-    const taskStatus = normalizeSeedanceStatus(remoteTask.status)
+    const taskStatus = String(remoteTask.status || 'queued').trim().toLowerCase()
     const existing = repo.getByRemoteTaskId(remoteTaskId)
+    const existingProjectId = existing?.projectId ?? null
 
     const extractedPrompt = extractPrompt(remoteTask)
     const fallbackPrompt = extractedPrompt || (existing?.prompt ? String(existing.prompt).trim() : '')
 
-    const remoteCreatedAt = parseSeedanceTimestamp(remoteTask.created_at || remoteTask.createdAt || remoteTask.create_time)
-    const remoteUpdatedAt = parseSeedanceTimestamp(remoteTask.updated_at || remoteTask.updatedAt || remoteTask.update_time) || Date.now()
-
-    const upsertPayload = {
+    repo.upsert({
       remoteTaskId,
       provider: 'seedance',
-      model: String(remoteTask.model || existing?.model || model || DEFAULT_MODEL).trim(),
-      taskType: String(remoteTask.task_type || existing?.taskType || existing?.task_type || '').trim(),
+      model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
+      taskType: String(remoteTask.task_type || '').trim(),
       source: 'sync',
       status: taskStatus,
       prompt: fallbackPrompt,
-      videoUrlRemote: videoUrl || (existing?.videoUrlRemote || ''),
-      lastFrameUrlRemote: lastFrameUrl || (existing?.lastFrameUrlRemote || ''),
-      errorMessage: extractSeedanceErrorMessage(remoteTask, taskStatus),
+      videoUrlRemote: videoUrl,
+      lastFrameUrlRemote: lastFrameUrl,
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
       statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
-      usage: remoteTask.usage || existing?.usage || null,
+      usage: remoteTask.usage || null,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? null,
-      remoteCreatedAt: remoteCreatedAt || existing?.remoteCreatedAt || null,
-      remoteUpdatedAt,
-    }
-
-    if (existing?.ratio && !remoteTask.ratio) upsertPayload.ratio = existing.ratio
-    if (existing?.resolution && !remoteTask.resolution) upsertPayload.resolution = existing.resolution
-    if (existing?.duration && !remoteTask.duration) upsertPayload.duration = existing.duration
-    if (existing?.refImageUrls) upsertPayload.refImageUrls = existing.refImageUrls
-    if (existing?.refVideoUrls) upsertPayload.refVideoUrls = existing.refVideoUrls
-    if (existing?.refAudioUrls) upsertPayload.refAudioUrls = existing.refAudioUrls
-
-    repo.upsert(upsertPayload)
+      projectId: existingProjectId,
+      remoteUpdatedAt: Date.now(),
+    })
 
     const batchResultUrls = videoUrl ? [videoUrl] : []
     if (lastFrameUrl) batchResultUrls.push(lastFrameUrl)
@@ -1492,36 +1459,29 @@ export async function listAllTasksRemote(ctx, payload) {
       apiType: 'seedance',
       apiAction: 'video_generation',
       model: String(remoteTask.model || model || DEFAULT_MODEL).trim(),
-      status: taskStatus,
+      status: taskStatus === 'success' || taskStatus === 'succeeded' ? 'succeeded' : taskStatus,
       prompt: fallbackPrompt,
       resultUrls: batchResultUrls,
       thumbnailUrl: lastFrameUrl || videoUrl || '',
-      errorMessage: upsertPayload.errorMessage,
-      statusText: upsertPayload.statusText,
+      errorMessage: ['failed', 'error'].includes(taskStatus) ? String(remoteTask.error || '').trim() : '',
+      statusText: taskStatus === 'succeeded' ? 'Seedance：完成' : `Seedance：${taskStatus}`,
       responsePayload: remoteTask,
-      projectId: existing?.projectId ?? null,
+      projectId: existingProjectId,
       remoteTaskId,
     })
 
     const local = repo.getByRemoteTaskId(remoteTaskId)
-    return local ? serializeVideoTask(local) : null
+    if (local) {
+      syncedItems.push(serializeVideoTask(local))
+    }
   }
-
-  for (const remoteTask of remoteItems) {
-    const item = syncRemoteTask(remoteTask)
-    if (item) syncedItems.push(item)
-  }
-
-  const hasMore = Boolean(data.has_more) || (totalFromRemote > pageNum * pageSize)
-
-  console.log(`[seedance] listAllTasksRemote: fetched page ${pageNum}, got ${syncedItems.length} items, total=${totalFromRemote}, hasMore=${hasMore}`)
 
   return {
     ok: true,
     items: syncedItems,
     total: syncedItems.length,
-    totalCount: Math.max(totalFromRemote, syncedItems.length),
-    hasMore,
+    totalCount: Number(data.total || data.total_count || syncedItems.length),
+    hasMore: Boolean(data.has_more),
     pageNum,
     pageSize,
   }

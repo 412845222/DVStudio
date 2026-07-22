@@ -35,7 +35,6 @@ const TRANSIENT_MUTATIONS = new Set([
 	'toggleNodeSelection',
 	'setChatDraft',
 	'setNodeChatDraft',
-	'setNodeChatSelectedRefs',
 	'setNodeChatSubmitting',
 	'setBlenderResponding',
 	'setBlenderMcpStatus',

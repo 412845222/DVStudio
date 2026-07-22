@@ -74,12 +74,6 @@
 						</div>
 						<div class="scifi-modal-glow"></div>
 						<div class="scifi-modal-scanline"></div>
-
-						<button v-if="activeModal.showClose !== false" class="scifi-modal-close" @click="handleModalCancel" aria-label="Close">
-							<svg viewBox="0 0 16 16" width="14" height="14">
-								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-							</svg>
-						</button>
 						
 						<div class="scifi-modal-icon" :class="[`scifi-modal-icon--${activeModal.tone || 'info'}`]">
 							<svg v-if="activeModal.tone === 'success'" viewBox="0 0 24 24" width="28" height="28">
@@ -102,33 +96,20 @@
 						<p v-if="activeModal.message" class="scifi-modal-message">{{ activeModal.message }}</p>
 						
 						<div class="scifi-modal-buttons">
-							<template v-if="activeModal.actions && activeModal.actions.length > 0">
-								<button
-									v-for="(action, idx) in activeModal.actions"
-									:key="idx"
-									class="scifi-modal-btn"
-									:class="getModalActionClass(action)"
-									@click="handleModalAction(action)"
-								>
-									{{ action.label }}
-								</button>
-							</template>
-							<template v-else>
-								<button
-									v-if="activeModal.showCancel !== false"
-									class="scifi-modal-btn scifi-modal-btn--cancel"
-									@click="handleModalCancel"
-								>
-									{{ activeModal.cancelText || 'Cancel' }}
-								</button>
-								<button
-									class="scifi-modal-btn scifi-modal-btn--confirm"
-									:class="[`scifi-modal-btn--${activeModal.tone || 'info'}`]"
-									@click="handleModalConfirm"
-								>
-									{{ activeModal.confirmText || 'Confirm' }}
-								</button>
-							</template>
+							<button
+								v-if="activeModal.showCancel !== false"
+								class="scifi-modal-btn scifi-modal-btn--cancel"
+								@click="handleModalCancel"
+							>
+								{{ activeModal.cancelText || 'Cancel' }}
+							</button>
+							<button
+								class="scifi-modal-btn scifi-modal-btn--confirm"
+								:class="[`scifi-modal-btn--${activeModal.tone || 'info'}`]"
+								@click="handleModalConfirm"
+							>
+								{{ activeModal.confirmText || 'Confirm' }}
+							</button>
 						</div>
 					</div>
 				</div>
@@ -139,7 +120,6 @@
 
 <script setup lang="ts">
 import { useGlobalFeedback } from './useGlobalFeedback'
-import type { ModalAction } from './useGlobalFeedback'
 
 const {
 	toasts,
@@ -166,17 +146,6 @@ function handleModalConfirm() {
 
 function handleModalCancel() {
 	cancelModal()
-}
-
-function handleModalAction(action: ModalAction) {
-	action.onClick?.()
-	cancelModal()
-}
-
-function getModalActionClass(action: ModalAction): string {
-	if (action.role === 'confirm') return 'scifi-modal-btn--confirm scifi-modal-btn--warn'
-	if (action.role === 'cancel') return 'scifi-modal-btn--cancel'
-	return 'scifi-modal-btn--default'
 }
 </script>
 
@@ -429,7 +398,7 @@ function getModalActionClass(action: ModalAction): string {
 	--sc-modal-fg-soft: #9aa0a6;
 	position: relative;
 	width: 100%;
-	max-width: 440px;
+	max-width: 400px;
 	padding: 32px 28px 24px;
 	background: var(--sc-modal-bg);
 	border: 1px solid var(--sc-modal-border);
@@ -440,29 +409,6 @@ function getModalActionClass(action: ModalAction): string {
 		0 24px 80px rgba(0, 0, 0, 0.5),
 		0 0 0 1px color-mix(in srgb, var(--sc-modal-accent) 10%, transparent),
 		0 0 60px var(--sc-modal-accent-glow);
-}
-
-.scifi-modal-close {
-	position: absolute;
-	top: 12px;
-	right: 12px;
-	width: 28px;
-	height: 28px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background: transparent;
-	border: none;
-	color: var(--sc-modal-fg-soft);
-	cursor: pointer;
-	border-radius: 2px;
-	padding: 0;
-	transition: all 160ms ease;
-	z-index: 10;
-}
-.scifi-modal-close:hover {
-	color: var(--sc-modal-fg);
-	background: color-mix(in srgb, var(--sc-modal-fg) 10%, transparent);
 }
 
 .scifi-modal-icon--success { --sc-modal-accent: #2ec27e; --sc-modal-accent-glow: rgba(46, 194, 126, 0.3); --sc-modal-border: rgba(46, 194, 126, 0.35); }
@@ -575,16 +521,6 @@ function getModalActionClass(action: ModalAction): string {
 	border-color: var(--sc-modal-accent);
 	color: #fff;
 	box-shadow: 0 0 18px var(--sc-modal-accent-glow);
-}
-
-.scifi-modal-btn--default {
-	background: color-mix(in srgb, var(--sc-modal-accent) 10%, transparent);
-	border-color: color-mix(in srgb, var(--sc-modal-accent) 30%, transparent);
-	color: var(--sc-modal-fg);
-}
-.scifi-modal-btn--default:hover {
-	background: color-mix(in srgb, var(--sc-modal-accent) 20%, transparent);
-	border-color: color-mix(in srgb, var(--sc-modal-accent) 50%, transparent);
 }
 
 .scifi-modal-btn--success { --sc-modal-accent: #2ec27e; --sc-modal-accent-glow: rgba(46, 194, 126, 0.3); }

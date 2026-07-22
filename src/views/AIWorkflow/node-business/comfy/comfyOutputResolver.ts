@@ -1,11 +1,11 @@
 export const inferMediaKind = (
 	media: { kind?: string; filename?: string; url?: string } | null | undefined
-): 'image' | 'video' | 'model3d' | null => {
+): 'image' | 'video' | null => {
 	if (!media) return null
 	const rawKind = String(media.kind ?? '')
 		.toLowerCase()
 		.trim()
-	if (rawKind === 'image' || rawKind === 'video' || rawKind === 'model3d') return rawKind
+	if (rawKind === 'image' || rawKind === 'video') return rawKind
 	const url = String(media.url ?? '').trim()
 	let filenameFromQuery = ''
 	if (url) {
@@ -19,14 +19,13 @@ export const inferMediaKind = (
 		}
 	}
 	const ref = `${String(media.filename ?? '')} ${filenameFromQuery} ${url}`.toLowerCase()
-	if (/\.(mp4|webm|mov|mkv|avi|gif|m4v|wmv|flv)([?#&]|$)/.test(ref)) return 'video'
-	if (/\.(png|jpg|jpeg|webp|bmp|tiff?)([?#&]|$)/.test(ref)) return 'image'
-	if (/\.(glb|gltf|fbx|obj|stl|dae|ply|3ds|usdz?|blend|step|iges)([?#&]|$)/.test(ref)) return 'model3d'
+	if (/\.(mp4|webm|mov|mkv|avi|gif)([?#&]|$)/.test(ref)) return 'video'
+	if (/\.(png|jpg|jpeg|webp|bmp)([?#&]|$)/.test(ref)) return 'image'
 	return null
 }
 
 export type ComfyBridgeMedia = {
-	kind: 'image' | 'video' | 'model3d'
+	kind: 'image' | 'video'
 	url: string
 	filename?: string
 	nodeId?: string
@@ -35,7 +34,7 @@ export type ComfyBridgeMedia = {
 }
 
 export type ComfyLocalizedOutput = {
-	kind: 'image' | 'video' | 'model3d'
+	kind: 'image' | 'video'
 	url: string
 	filename?: string
 	anchorId?: string
@@ -48,7 +47,6 @@ export type ComfyLocalizedOutput = {
 export const comfyAnchorNodeIdFromAnchorId = (anchorId: string): string => {
 	const raw = String(anchorId || '').trim()
 	if (!raw) return ''
-	if (raw === 'out') return ''
 	if (!raw.startsWith('out-')) return ''
 	return raw.slice(4).trim()
 }
@@ -56,7 +54,7 @@ export const comfyAnchorNodeIdFromAnchorId = (anchorId: string): string => {
 export const comfyOutputForAnchor = (
 	outputs: ComfyLocalizedOutput[],
 	anchorId: string,
-	expectedKind: 'image' | 'video' | 'model3d'
+	expectedKind: 'image' | 'video'
 ) => {
 	const byAnchorAndKind = outputs.find(
 		(media) =>

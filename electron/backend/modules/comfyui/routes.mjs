@@ -15,12 +15,10 @@ export const routes = [
 	{ channel: 'dweb:comfyui:runtime:workflows:list', handler: handlers.runtimeListWorkflowFiles },
 	{ channel: 'dweb:comfyui:runtime:workflows:get', handler: handlers.runtimeGetWorkflowFile },
 	{ channel: 'dweb:comfyui:runtime:workflows:get-history', handler: handlers.runtimeGetHistoryWorkflow },
-	{ channel: 'dweb:comfyui:runtime:workflows:resolve-history', handler: handlers.runtimeResolveHistoryPrompt },
 	{ channel: 'dweb:comfyui:runtime:run', handler: handlers.runtimeRunWorkflow },
 	{ channel: 'dweb:comfyui:runtime:outputs', handler: handlers.runtimeGetOutputs },
 	{ channel: 'dweb:comfyui:runtime:cancel', handler: handlers.runtimeCancelRun },
 	{ channel: 'dweb:comfyui:runtime:job', handler: handlers.runtimeGetJobStatus },
-	{ channel: 'dweb:comfyui:runtime:clear-cache', handler: handlers.runtimeClearHistoryCache },
 	// Setup routes
 	{ channel: 'dweb:comfyui:setup:default-path', handler: handlers.setupGetDefaultInstallPath },
 	{ channel: 'dweb:comfyui:setup:select-path', handler: handlers.setupSelectPath },

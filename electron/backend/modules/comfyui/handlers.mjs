@@ -57,10 +57,6 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 	return service.runtimeGetHistoryWorkflow(ctx, payload)
 }
 
-export async function runtimeResolveHistoryPrompt(ctx, payload) {
-	return service.runtimeResolveHistoryPrompt(ctx, payload)
-}
-
 export async function runtimeRunWorkflow(ctx, payload) {
 	return service.runtimeRunWorkflow(ctx, payload)
 }
@@ -75,10 +71,6 @@ export async function runtimeCancelRun(ctx, payload) {
 
 export async function runtimeGetJobStatus(ctx, payload) {
 	return service.runtimeGetJobStatus(ctx, payload)
-}
-
-export async function runtimeClearHistoryCache(ctx, payload) {
-	return service.runtimeClearHistoryCache(ctx, payload)
 }
 
 // ===== ComfyUI Setup handlers =====

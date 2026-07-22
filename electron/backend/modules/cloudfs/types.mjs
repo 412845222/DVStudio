@@ -1,7 +1,6 @@
 export const CLOUD_FS_CHANNELS = Object.freeze({
   LIST_PROVIDERS: 'dweb:cloudfs:list-providers',
   GET_ACTIVE_CONFIG: 'dweb:cloudfs:get-active-config',
-  GET_CONFIG_STATUS: 'dweb:cloudfs:get-config-status',
   SAVE_CONFIG: 'dweb:cloudfs:save-config',
   CLEAR_CONFIG: 'dweb:cloudfs:clear-config',
   TEST_CONFIG: 'dweb:cloudfs:test-config',

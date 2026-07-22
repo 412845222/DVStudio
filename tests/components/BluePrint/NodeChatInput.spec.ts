@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import NodeChatInput from '@/ui/BluePrint/node-dialog/NodeChatInput.vue'
 import type { InputParamPreviewRef } from '@/ui/BluePrint/node-dialog/index'
@@ -94,8 +94,8 @@ describe('NodeChatInput', () => {
 		})
 	})
 
-	describe('available references - allows multiple mentions of same asset', () => {
-		it('does NOT filter out already selected references by edgeId - same asset can be mentioned multiple times', async () => {
+	describe('available references filtering', () => {
+		it('filters out already selected references by edgeId', async () => {
 			const item1 = createRefItem({ edgeId: 'e1', label: 'Image 1' })
 			const item2 = createRefItem({ edgeId: 'e2', label: 'Image 2' })
 			const selected = [createRefItem({ edgeId: 'e1', label: 'Image 1' })]
@@ -110,10 +110,11 @@ describe('NodeChatInput', () => {
 
 			const vm = wrapper.vm as any
 			const available = vm.availableForMention
-			expect(available).toHaveLength(2)
+			expect(available).toHaveLength(1)
+			expect(available[0].edgeId).toBe('e2')
 		})
 
-		it('does NOT filter out already selected references by nodeId:anchorId pair - same asset can be mentioned multiple times', async () => {
+		it('filters out already selected references by nodeId:anchorId pair', async () => {
 			const item1: InputParamPreviewRef = { kind: 'image', label: 'Img', fromNodeId: 'n1', fromAnchorId: 'a1' }
 			const item2: InputParamPreviewRef = { kind: 'image', label: 'Img2', fromNodeId: 'n2', fromAnchorId: 'a2' }
 			const selected: InputParamPreviewRef[] = [{ kind: 'image', label: 'Img', fromNodeId: 'n1', fromAnchorId: 'a1' }]
@@ -128,7 +129,8 @@ describe('NodeChatInput', () => {
 
 			const vm = wrapper.vm as any
 			const available = vm.availableForMention
-			expect(available).toHaveLength(2)
+			expect(available).toHaveLength(1)
+			expect(available[0].fromNodeId).toBe('n2')
 		})
 
 		it('returns all items when nothing is selected', () => {
@@ -145,76 +147,6 @@ describe('NodeChatInput', () => {
 
 			const vm = wrapper.vm as any
 			expect(vm.availableForMention).toHaveLength(2)
-		})
-
-		it('returns all items even when all are already selected - allows repeated mentions', () => {
-			const item1 = createRefItem({ edgeId: 'e1', label: 'Image 1' })
-			const item2 = createRefItem({ edgeId: 'e2', label: 'Image 2' })
-
-			const wrapper = mount(NodeChatInput, {
-				props: {
-					modelValue: '',
-					inputParamPreviewRefs: [item1, item2],
-					selectedReferences: [item1, item2],
-				},
-			})
-
-			const vm = wrapper.vm as any
-			expect(vm.availableForMention).toHaveLength(2)
-		})
-	})
-
-	describe('paste handling - plain text only', () => {
-		it('binds paste event listener to editor', () => {
-			const wrapper = mount(NodeChatInput, {
-				props: { modelValue: '' },
-			})
-
-			const editor = wrapper.find('.bp-node-chat-editor')
-			const hasPasteBinding = editor.attributes('onpaste') !== undefined ||
-				// Check that the element exists and our component has the onPaste handler
-				editor.exists()
-
-			expect(hasPasteBinding).toBe(true)
-		})
-
-		it('processes plain text from clipboard when paste is triggered', async () => {
-			const wrapper = mount(NodeChatInput, {
-				props: { modelValue: 'initial' },
-				attachTo: document.body,
-			})
-
-			const vm = wrapper.vm as any
-			const editor = wrapper.find('.bp-node-chat-editor').element as HTMLElement
-
-			editor.focus()
-
-			const plainText = 'pasted plain text'
-			const pasteEvent = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
-			Object.defineProperty(pasteEvent, 'clipboardData', {
-				value: {
-					getData: (type: string) => {
-						if (type === 'text/plain') return plainText
-						return ''
-					},
-				},
-				configurable: true,
-			})
-
-			let defaultPrevented = false
-			pasteEvent.preventDefault = () => { defaultPrevented = true }
-
-			;(document as any).execCommand = vi.fn(() => true)
-
-			editor.dispatchEvent(pasteEvent)
-
-			await wrapper.vm.$nextTick()
-			await new Promise(resolve => setTimeout(resolve, 50))
-
-			expect(defaultPrevented).toBe(true)
-
-			delete (document as any).execCommand
-			wrapper.unmount()
 		})
 	})
 

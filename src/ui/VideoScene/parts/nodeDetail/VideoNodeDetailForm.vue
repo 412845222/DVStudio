@@ -15,7 +15,6 @@
 					<option value="rect">矩形</option>
 					<option value="text">文本</option>
 					<option value="image">图片</option>
-					<option value="video">视频</option>
 					<option value="line">线条</option>
 				</select>
 			</label>
@@ -69,14 +68,6 @@
 				:onNumberInputBlur="onNumberInputBlur"
 			/>
 
-			<VideoNodeForm
-				v-else-if="draft.type === 'video'"
-				:draft="draft"
-				:has-video="!!draft.videoPath"
-				:video-name="draft.videoName"
-				@set-fit="setVideoFit"
-			/>
-
 			<NodeFiltersForm :layerId="selected.layerId" :nodeId="selected.node.id" :filters="filters" />
 		</form>
 	</div>
@@ -105,7 +96,6 @@ import LineNodeForm from './forms/LineNodeForm.vue'
 import NodeFiltersForm from './forms/NodeFiltersForm.vue'
 import RectNodeForm from './forms/RectNodeForm.vue'
 import TextNodeForm from './forms/TextNodeForm.vue'
-import VideoNodeForm from './forms/VideoNodeForm.vue'
 import { useNumberScrub } from './forms/useNumberScrub'
 
 defineOptions({ name: 'VideoNodeDetailForm' })
@@ -115,7 +105,6 @@ const studioStore = useStore<VideoStudioState>(VideoStudioKey)
 
 type TextAlign = 'left' | 'center' | 'right'
 type ImageFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
-type VideoFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down'
 type LineStyle = 'solid' | 'dashed'
 
 type NodeDraft = {
@@ -146,10 +135,6 @@ type NodeDraft = {
 	imagePath: string
 	imageName: string
 	imageFit: ImageFit
-	videoId: string
-	videoPath: string
-	videoName: string
-	videoFit: VideoFit
 	startX: number
 	startY: number
 	endX: number
@@ -212,10 +197,6 @@ const draft = reactive<NodeDraft>({
 	imagePath: '',
 	imageName: '',
 	imageFit: 'contain',
-	videoId: '',
-	videoPath: '',
-	videoName: '',
-	videoFit: 'contain',
 	startX: -88,
 	startY: 0,
 	endX: 88,
@@ -264,14 +245,6 @@ const getImageFit = (props: VideoSceneNodeProps | undefined, fallback: ImageFit)
 	return fallback
 }
 
-const getVideoFit = (props: VideoSceneNodeProps | undefined, fallback: VideoFit): VideoFit => {
-	if (!props) return fallback
-	const v = props.videoFit
-	if (v === 'contain' || v === 'cover' || v === 'fill' || v === 'none' || v === 'scale-down')
-		return v
-	return fallback
-}
-
 const getLineStyle = (props: VideoSceneNodeProps | undefined, fallback: LineStyle): LineStyle => {
 	if (!props) return fallback
 	const v = props.lineStyle
@@ -305,11 +278,6 @@ const onPickNodeImageFile = (file: File) => {
 const setImageFit = (fit: ImageFit) => {
 	draft.imageFit = fit
 	applyProps('image')
-}
-
-const setVideoFit = (fit: VideoFit) => {
-	draft.videoFit = fit
-	applyProps('video')
 }
 
 const syncFromStore = () => {
@@ -378,15 +346,6 @@ const syncFromStore = () => {
 	draft.imagePath = assetUrl || getStringFromProps(p, 'imagePath', '').trim()
 	draft.imageName = assetName || getStringFromProps(p, 'imageName', '').trim()
 	draft.imageFit = getImageFit(p, draft.imageFit)
-	draft.videoId = getStringFromProps(p, 'videoId', draft.videoId)
-	const fromVideoAsset = draft.videoId
-		? store.state.videoAssets[draft.videoId]
-		: undefined
-	const videoAssetUrl = String(fromVideoAsset?.url ?? '').trim()
-	const videoAssetName = String(fromVideoAsset?.name ?? '').trim()
-	draft.videoPath = videoAssetUrl || getStringFromProps(p, 'videoPath', '').trim()
-	draft.videoName = videoAssetName || getStringFromProps(p, 'videoName', '').trim()
-	draft.videoFit = getVideoFit(p, draft.videoFit)
 	draft.startX = getNumberFromProps(p, 'startX', draft.startX)
 	draft.startY = getNumberFromProps(p, 'startY', draft.startY)
 	draft.endX = getNumberFromProps(p, 'endX', draft.endX)
@@ -452,10 +411,6 @@ watch(
 			imageFit: p.imageFit,
 			imageId: p.imageId,
 			imageName: p.imageName,
-			videoPath: p.videoPath,
-			videoFit: p.videoFit,
-			videoId: p.videoId,
-			videoName: p.videoName,
 			startX: p.startX,
 			startY: p.startY,
 			endX: p.endX,
@@ -568,7 +523,7 @@ const applyQuick = (action: QuickAction) => {
 	})
 }
 
-const applyProps = (kind: 'rect' | 'text' | 'image' | 'video' | 'line') => {
+const applyProps = (kind: 'rect' | 'text' | 'image' | 'line') => {
 	const s = selected.value
 	if (!s) return
 	if (kind === 'rect') {
@@ -614,19 +569,6 @@ const applyProps = (kind: 'rect' | 'text' | 'image' | 'video' | 'line') => {
 				lineColor: draft.lineColor,
 				lineWidth: draft.lineWidth,
 				lineStyle: draft.lineStyle
-			}
-		})
-		return
-	}
-	if (kind === 'video') {
-		store.dispatch('updateNodeProps', {
-			layerId: s.layerId,
-			nodeId: s.node.id,
-			patch: {
-				videoId: draft.videoId,
-				videoPath: draft.videoPath,
-				videoFit: draft.videoFit,
-				videoName: draft.videoName
 			}
 		})
 		return
