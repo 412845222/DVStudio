@@ -1250,7 +1250,7 @@ const startupProgress = useStartupProgress()
 
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const { t } = useI18n()
-const globalTaskBridge = useGlobalTaskBridge(store)
+const globalTaskBridge = useGlobalTaskBridge(store, t)
 const { destroy: destroyGlobalTaskBridge } = globalTaskBridge
 const {
 	categories: i18nCategories,

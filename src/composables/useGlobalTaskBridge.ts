@@ -30,6 +30,8 @@ export function makeClientRequestId(nodeId: string, provider: string): string {
 	return `${pid}-${nid}-${ts}-${rand}`
 }
 
+export type TranslateFunction = (key: string, params?: Record<string, any>) => string
+
 export function detectCategoryFromNodeType(nodeType: string): TaskCategory {
 	const nt = String(nodeType || '').toLowerCase()
 	if (nt.includes('3d') || nt === 'model3d') return '3d'
@@ -38,28 +40,40 @@ export function detectCategoryFromNodeType(nodeType: string): TaskCategory {
 	return 'image'
 }
 
-export function getLabelForCategory(category: TaskCategory, provider: string): string {
-	const labels: Record<string, string> = {
-		'meshy-image': 'Meshy图片',
-		'gemini-image': 'Gemini图片',
-		'seedream-image': 'Seedream图片',
-		'jimeng-image': 'Jimeng图片',
-		'tripo3d-image': 'Tripo3D图片',
-		'nanobanana-image': 'NanoBanana图片',
-		'meshy-3d': 'Meshy 3D',
-		'tripo3d-3d': 'Tripo3D',
-		'seedance-video': 'Seedance视频',
-		'jimeng-video': 'Jimeng视频',
-		'kling-video': 'Kling视频',
-		'luma-video': 'Luma视频',
-		'bytedance-custom': 'Doubao文本',
-		'gemini-custom': 'Gemini文本',
+export function getLabelForCategory(category: TaskCategory, provider: string, t?: TranslateFunction): string {
+	const providerKey = provider ? `taskQueue.provider.${provider}` : ''
+	const categoryKey = `taskQueue.category.${category}`
+	
+	const providerNames: Record<string, string> = {
+		meshy: t?.('taskQueue.provider.meshy') || 'Meshy',
+		gemini: t?.('taskQueue.provider.gemini') || 'Gemini',
+		seedream: t?.('taskQueue.provider.seedream') || 'Seedream',
+		jimeng: t?.('taskQueue.provider.jimeng') || 'Jimeng',
+		tripo3d: t?.('taskQueue.provider.tripo3d') || 'Tripo3D',
+		nanobanana: t?.('taskQueue.provider.nanobanana') || 'NanoBanana',
+		seedance: t?.('taskQueue.provider.seedance') || 'Seedance',
+		kling: t?.('taskQueue.provider.kling') || 'Kling',
+		luma: t?.('taskQueue.provider.luma') || 'Luma',
+		bytedance: t?.('taskQueue.provider.bytedance') || 'Doubao',
 	}
-	const key = `${provider}-${category}`
-	if (labels[key]) return labels[key]
-	const catLabel: Record<string, string> = { image: '图片', '3d': '3D模型', video: '视频', custom: '文本' }
-	if (provider) return `${provider}${catLabel[category] || 'Task'}`
-	return catLabel[category] || 'Task'
+	
+	const categoryLabels: Record<string, string> = {
+		image: t?.('taskQueue.category.image') || '图片',
+		'3d': t?.('taskQueue.category.model3d') || '3D模型',
+		video: t?.('taskQueue.category.video') || '视频',
+		custom: t?.('taskQueue.category.custom') || '文本',
+	}
+	
+	const providerName = providerNames[provider] || provider
+	const categoryLabel = categoryLabels[category] || 'Task'
+	
+	if (category === '3d' && (provider === 'meshy' || provider === 'tripo3d')) {
+		if (provider === 'tripo3d') return providerName
+		return `${providerName} 3D`
+	}
+	
+	if (providerName) return `${providerName}${categoryLabel}`
+	return categoryLabel
 }
 
 export function safeStr(v: unknown, def = ''): string {
@@ -75,7 +89,7 @@ export function getErrorMessage(err: unknown): string {
 	return String(err)
 }
 
-export function useGlobalTaskBridge(store: Store<any>) {
+export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 	const bridge = (window as any)?.dweb?.taskQueue
 	if (!bridge) {
 		console.warn('[GlobalTaskBridge] window.dweb.taskQueue not available, task sync disabled')
@@ -107,7 +121,7 @@ export function useGlobalTaskBridge(store: Store<any>) {
 			const nodeId = safeStr(input.nodeId, '')
 			const provider = safeStr(input.provider, '')
 			const category = input.category || detectCategoryFromNodeType(input.nodeType || '')
-			const label = getLabelForCategory(category, provider)
+			const label = getLabelForCategory(category, provider, t)
 			const node = nodeId ? state?.nodesById?.[nodeId] : null
 			const nodeName = safeStr(node?.title || node?.label || node?.name, '')
 			const clientRequestId = makeClientRequestId(nodeId, provider)
@@ -124,7 +138,7 @@ export function useGlobalTaskBridge(store: Store<any>) {
 				clientRequestId,
 				status: 'submitting',
 				progress: 0,
-				statusText: '准备中...',
+				statusText: t?.('taskQueue.statusPreparing') || '准备中...',
 				canCancel: true,
 			})
 
@@ -348,11 +362,11 @@ export function useGlobalTaskBridge(store: Store<any>) {
 			const mappedStatus = mapStatus(status)
 			if (mappedStatus && TERMINAL_TASK_STATUSES.has(mappedStatus)) {
 				if (mappedStatus === 'completed' && resultUrl) {
-					await completeTask(taskId, { resultUrl, coverUrl: coverUrl || resultUrl, statusText: statusText || '已完成' })
+					await completeTask(taskId, { resultUrl, coverUrl: coverUrl || resultUrl, statusText: statusText || (t?.('taskQueue.statusCompletedDefault') || '已完成') })
 				} else if (mappedStatus === 'failed' && errorMessage) {
 					await failTask(taskId, errorMessage)
 				} else if (mappedStatus === 'cancelled') {
-					await updateTask(taskId, { status: 'cancelled', statusText: statusText || '已取消' })
+					await updateTask(taskId, { status: 'cancelled', statusText: statusText || (t?.('taskQueue.statusCancelledDefault') || '已取消') })
 				}
 			} else if (progress > 0 || statusText || mappedStatus) {
 				await updateTask(taskId, {

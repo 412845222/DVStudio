@@ -30,5 +30,22 @@
   "taskQueue.typeComfyUI": "ComfyUI",
   "taskQueue.timeJustNow": "Just now",
   "taskQueue.timeMinutesAgo": "{n}m ago",
-  "taskQueue.timeHoursAgo": "{n}h ago"
+  "taskQueue.timeHoursAgo": "{n}h ago",
+  "taskQueue.statusPreparing": "Preparing...",
+  "taskQueue.statusCompletedDefault": "Completed",
+  "taskQueue.statusCancelledDefault": "Cancelled",
+  "taskQueue.provider.meshy": "Meshy",
+  "taskQueue.provider.gemini": "Gemini",
+  "taskQueue.provider.seedream": "Seedream",
+  "taskQueue.provider.jimeng": "Jimeng",
+  "taskQueue.provider.tripo3d": "Tripo3D",
+  "taskQueue.provider.nanobanana": "NanoBanana",
+  "taskQueue.provider.seedance": "Seedance",
+  "taskQueue.provider.kling": "Kling",
+  "taskQueue.provider.luma": "Luma",
+  "taskQueue.provider.bytedance": "Doubao",
+  "taskQueue.category.image": "Image",
+  "taskQueue.category.model3d": "3D Model",
+  "taskQueue.category.video": "Video",
+  "taskQueue.category.custom": "Text"
 }
