@@ -12,7 +12,7 @@
 				'wf-node-error': visualStatus === 'error'
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
-			{ 'is-auto-height': autoHeight },
+			{ 'is-auto-height': autoHeight !== false },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
@@ -164,10 +164,12 @@
 			:draft="nodeChatDraft"
 			:submitting="nodeChatSubmitting"
 			:params="nodeChatParams"
+			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
 			@update:draft="(value) => emit('node-chat-update-draft', value)"
 			@update:params="(value) => emit('node-chat-update-params', value)"
+			@update:selected-references="(value) => emit('node-chat-update-selected-refs', value)"
 			@close="emit('node-chat-close')"
 			@submit="(payload) => emit('node-chat-submit', payload)"
 			@stop="emit('node-chat-stop')"
@@ -270,6 +272,7 @@ import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
 	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
 import { NodeChatDialog, type InputParamPreviewRef } from '../BluePrint/node-dialog'
@@ -313,6 +316,7 @@ const props = defineProps<{
 	nodeChatDraft?: string
 	nodeChatSubmitting?: boolean
 	nodeChatParams?: Record<string, unknown>
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 	nodeGenerationTask?: WorkflowNodeGenerationTask | null
 	anchorCompatibility?: Record<string, boolean | null>
@@ -363,6 +367,7 @@ const emit = defineEmits<{
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(e: 'node-chat-update-draft', value: string): void
 	(e: 'node-chat-update-params', value: Record<string, unknown>): void
+	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
 	(e: 'node-chat-close'): void
 	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
 	(e: 'node-chat-stop'): void
@@ -436,6 +441,7 @@ const visualStatus = computed<'idle' | 'running' | 'error'>(() => {
 const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
 const nodeChatParams = computed(() => props.nodeChatParams ?? {})
+const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
@@ -577,7 +583,7 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 const nodeElRef = ref<HTMLElement | null>(null)
 
 const MIN_AUTO_HEIGHT = 120
-const MAX_AUTO_HEIGHT = 800
+const MAX_AUTO_HEIGHT = 10000
 const HEIGHT_CHANGE_THRESHOLD = 2
 
 let resizeObserver: ResizeObserver | null = null
@@ -610,7 +616,6 @@ const requestAutoResize = () => {
 	rafId = requestAnimationFrame(() => {
 		rafId = 0
 		if (userResized) return
-		if (props.sizeCustomized) return
 		if (props.autoHeight === false) return
 		const nextHeight = measureNaturalHeight()
 		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
@@ -708,6 +713,15 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		} catch {
 			// ignore
 		}
+		if (props.autoHeight !== false) {
+			userResized = false
+			nextTick(() => {
+				setupResizeObserver()
+				requestAutoResize()
+				setTimeout(requestAutoResize, 50)
+				setTimeout(requestAutoResize, 200)
+			})
+		}
 	}
 	el.addEventListener('pointermove', onMove)
 	el.addEventListener('pointerup', onUp, { once: true })
@@ -797,7 +811,6 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 }
 onMounted(() => {
 	if (props.autoHeight === false) return
-	if (props.sizeCustomized) return
 	nextTick(() => {
 		setupResizeObserver()
 		requestAutoResize()
@@ -811,7 +824,7 @@ watch(
 	(customized) => {
 		if (customized) {
 			teardownResizeObserver()
-		} else if (!userResized && props.autoHeight !== false) {
+		} else if (props.autoHeight !== false) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -825,7 +838,7 @@ watch(
 	(enabled) => {
 		if (enabled === false) {
 			teardownResizeObserver()
-		} else if (!userResized && !props.sizeCustomized) {
+		} else if (!props.sizeCustomized) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -836,6 +849,10 @@ watch(
 
 onBeforeUnmount(() => {
 	teardownResizeObserver()
+})
+
+defineExpose({
+	requestAutoResize,
 })
 </script>
 
@@ -1152,12 +1169,13 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex: 1;
 	min-height: 0;
-	align-items: center;
-	justify-content: center;
+	align-items: stretch;
+	justify-content: flex-start;
 	color: var(--wf-text-muted);
 	background: var(--wf-surface-base);
 	font-size: 12px;
 	overflow: hidden;
+	box-sizing: border-box;
 }
 
 .wf-media {
@@ -1165,25 +1183,25 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	flex: 1;
-	min-height: 0;
+	aspect-ratio: 1 / 1;
+	flex-shrink: 0;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);
 	background: var(--wf-surface-base);
+	position: relative;
 }
 
 .wf-media-preview img,
 .wf-media-preview video {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
 
@@ -1287,6 +1305,8 @@ onBeforeUnmount(() => {
 .wf-node-footer {
 	font-size: 11px;
 	color: var(--wf-text-muted);
+	flex-shrink: 0;
+	min-height: 0;
 }
 
 .wf-node.wf-node-meshy {
@@ -1326,13 +1346,37 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
-.wf-node.wf-node-text .wf-node-body,
-.wf-node.wf-node-text-merge .wf-node-body,
-.wf-node.wf-node-blender .wf-node-body {
+.wf-node.is-auto-height.wf-node-text .wf-node-body {
 	overflow: hidden;
 	align-items: stretch;
 	justify-content: flex-start;
 	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.is-auto-height.wf-node-text-merge .wf-node-body {
+	overflow: visible;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 0 0 auto;
+	min-height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-text {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+}
+
+.wf-node.is-auto-height.wf-node-text-merge .wf-merge {
+	flex: 0 0 auto;
+	min-height: auto;
+	height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-textarea {
 	flex: 1;
 	min-height: 0;
 }
@@ -1343,12 +1387,31 @@ onBeforeUnmount(() => {
 
 .wf-node.wf-node-blender .wf-node-body {
 	padding: 0;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	overflow: hidden;
+	flex: 1;
+	min-height: 0;
 }
 
 .wf-node.wf-node-blender .wf-node-footer {
-	overflow: visible;
+	overflow: hidden;
 	flex-shrink: 0;
 	padding: 0;
+}
+
+.wf-node.wf-node-blender .wf-blender-body {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+.wf-node.wf-node-blender .wf-blender-chat-panel {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .wf-node.wf-node-comfyui .wf-node-body {

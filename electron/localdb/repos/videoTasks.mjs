@@ -109,6 +109,12 @@ export function createVideoTasksRepo() {
 		const toBool = (v) =>
 			v === true || v === 1 || (typeof v === 'string' && v.toLowerCase() === 'true')
 		const toNullableInt = (v) => (v === null || v === undefined || v === '' ? null : Number(v))
+		const toJsonArray = (v) => {
+			if (v === null || v === undefined) return '[]'
+			if (Array.isArray(v)) return JSON.stringify(v)
+			if (typeof v === 'string') return v
+			return JSON.stringify(v)
+		}
 		return {
 			remoteTaskId: String(raw.remoteTaskId || raw.remote_task_id || '').trim(),
 			provider: String(raw.provider || 'seedance').trim(),
@@ -125,10 +131,10 @@ export function createVideoTasksRepo() {
 			watermark: toBool(raw.watermark) ? 1 : 0,
 			cameraFixed: toBool(raw.cameraFixed || raw.camera_fixed) ? 1 : 0,
 			serviceTier: String(raw.serviceTier || raw.service_tier || '').trim(),
-			tools: stringifyOptionalJson(raw.tools),
-			usage: stringifyOptionalJson(raw.usage),
-			requestPayload: stringifyOptionalJson(raw.requestPayload || raw.request_payload),
-			responsePayload: stringifyOptionalJson(raw.responsePayload || raw.response_payload),
+			tools: stringifyOptionalJson(raw.tools) || 'null',
+			usage: stringifyOptionalJson(raw.usage) || 'null',
+			requestPayload: stringifyOptionalJson(raw.requestPayload || raw.request_payload) || '{}',
+			responsePayload: stringifyOptionalJson(raw.responsePayload || raw.response_payload) || '{}',
 			videoUrlRemote: String(raw.videoUrlRemote || raw.video_url_remote || '').trim(),
 			videoUrlLocal: String(raw.videoUrlLocal || raw.video_url_local || '').trim(),
 			videoSourcePathLocal: String(
@@ -150,9 +156,9 @@ export function createVideoTasksRepo() {
 					: Number(raw.projectId) || null,
 			remoteCreatedAt: toNullableInt(raw.remoteCreatedAt || raw.remote_created_at),
 			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at),
-			refImageUrls: stringifyOptionalJson(raw.refImageUrls || raw.ref_image_urls),
-			refVideoUrls: stringifyOptionalJson(raw.refVideoUrls || raw.ref_video_urls),
-			refAudioUrls: stringifyOptionalJson(raw.refAudioUrls || raw.ref_audio_urls),
+			refImageUrls: toJsonArray(raw.refImageUrls || raw.ref_image_urls),
+			refVideoUrls: toJsonArray(raw.refVideoUrls || raw.ref_video_urls),
+			refAudioUrls: toJsonArray(raw.refAudioUrls || raw.ref_audio_urls),
 		}
 	}
 
@@ -175,12 +181,57 @@ export function createVideoTasksRepo() {
 	}
 
 	function upsert(input) {
-		const params = normalize(input)
-		if (!params.remoteTaskId) return { ok: false, error: 'remoteTaskId is required' }
-		const existing = getByRemoteTaskIdStmt.get(params.remoteTaskId)
-		if (existing) updateStmt.run(params)
-		else insertStmt.run(params)
-		return { ok: true, task: getByRemoteTaskId(params.remoteTaskId) }
+		const raw = input || {}
+		const remoteTaskId = String(raw.remoteTaskId || raw.remote_task_id || '').trim()
+		if (!remoteTaskId) return { ok: false, error: 'remoteTaskId is required' }
+		const existing = getByRemoteTaskIdStmt.get(remoteTaskId)
+		let params
+		if (existing) {
+			const merged = {
+				remoteTaskId,
+				provider: raw.provider !== undefined ? raw.provider : existing.provider,
+				model: raw.model !== undefined ? raw.model : existing.model,
+				taskType: raw.taskType !== undefined ? raw.taskType : existing.task_type,
+				source: raw.source !== undefined ? raw.source : existing.source,
+				status: raw.status !== undefined ? raw.status : existing.status,
+				prompt: raw.prompt !== undefined ? raw.prompt : existing.prompt,
+				ratio: raw.ratio !== undefined ? raw.ratio : existing.ratio,
+				resolution: raw.resolution !== undefined ? raw.resolution : existing.resolution,
+				duration: raw.duration !== undefined ? raw.duration : existing.duration,
+				seed: raw.seed !== undefined ? raw.seed : existing.seed,
+				generateAudio: raw.generateAudio !== undefined ? raw.generateAudio : Boolean(existing.generate_audio),
+				watermark: raw.watermark !== undefined ? raw.watermark : Boolean(existing.watermark),
+				cameraFixed: raw.cameraFixed !== undefined ? raw.cameraFixed : Boolean(existing.camera_fixed),
+				serviceTier: raw.serviceTier !== undefined ? raw.serviceTier : existing.service_tier,
+				tools: raw.tools !== undefined ? raw.tools : parseOptionalJson(existing.tools),
+				usage: raw.usage !== undefined ? raw.usage : parseOptionalJson(existing.usage),
+				requestPayload: raw.requestPayload !== undefined ? raw.requestPayload : (raw.request_payload !== undefined ? raw.request_payload : parseOptionalJson(existing.request_payload)),
+				responsePayload: raw.responsePayload !== undefined ? raw.responsePayload : (raw.response_payload !== undefined ? raw.response_payload : parseOptionalJson(existing.response_payload)),
+				videoUrlRemote: raw.videoUrlRemote !== undefined ? raw.videoUrlRemote : existing.video_url_remote,
+				videoUrlLocal: raw.videoUrlLocal !== undefined ? raw.videoUrlLocal : existing.video_url_local,
+				videoSourcePathLocal: raw.videoSourcePathLocal !== undefined ? raw.videoSourcePathLocal : existing.video_source_path_local,
+				lastFrameUrlRemote: raw.lastFrameUrlRemote !== undefined ? raw.lastFrameUrlRemote : existing.last_frame_url_remote,
+				lastFrameUrlLocal: raw.lastFrameUrlLocal !== undefined ? raw.lastFrameUrlLocal : existing.last_frame_url_local,
+				lastFrameSourcePathLocal: raw.lastFrameSourcePathLocal !== undefined ? raw.lastFrameSourcePathLocal : existing.last_frame_source_path_local,
+				downloadStatus: raw.downloadStatus !== undefined ? raw.downloadStatus : existing.download_status,
+				downloadProgress: raw.downloadProgress !== undefined ? raw.downloadProgress : existing.download_progress,
+				downloadError: raw.downloadError !== undefined ? raw.downloadError : existing.download_error,
+				errorMessage: raw.errorMessage !== undefined ? raw.errorMessage : existing.error_message,
+				statusText: raw.statusText !== undefined ? raw.statusText : existing.status_text,
+				projectId: raw.projectId !== undefined ? raw.projectId : (existing.project_id ? Number(existing.project_id) : null),
+				remoteCreatedAt: raw.remoteCreatedAt !== undefined ? raw.remoteCreatedAt : (existing.remote_created_at ? Number(existing.remote_created_at) : null),
+				remoteUpdatedAt: raw.remoteUpdatedAt !== undefined ? raw.remoteUpdatedAt : (existing.remote_updated_at ? Number(existing.remote_updated_at) : null),
+				refImageUrls: raw.refImageUrls !== undefined ? raw.refImageUrls : (raw.ref_image_urls !== undefined ? raw.ref_image_urls : parseOptionalJson(existing.ref_image_urls)),
+				refVideoUrls: raw.refVideoUrls !== undefined ? raw.refVideoUrls : (raw.ref_video_urls !== undefined ? raw.ref_video_urls : parseOptionalJson(existing.ref_video_urls)),
+				refAudioUrls: raw.refAudioUrls !== undefined ? raw.refAudioUrls : (raw.ref_audio_urls !== undefined ? raw.ref_audio_urls : parseOptionalJson(existing.ref_audio_urls)),
+			}
+			params = normalize(merged)
+			updateStmt.run(params)
+		} else {
+			params = normalize(raw)
+			insertStmt.run(params)
+		}
+		return { ok: true, task: getByRemoteTaskId(remoteTaskId) }
 	}
 
 	function remove(remoteTaskId) {

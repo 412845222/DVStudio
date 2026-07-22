@@ -11,9 +11,11 @@
  *
  * 新增：优先级队列 + 时间分片执行，避免阻塞主线程
  * 新增：双主题缓存(dark/light)，主题切换时保留两套截图，支持无缝过渡
+ * 新增：交互感知暂停 - 用户交互时立即中断正在执行的截图任务
  */
 
 import { ref } from 'vue'
+import { enhancedWaitForAllImages, enhancedConvertImagesToDataUrls, prepareClonedImages } from './imageScreenshotHelper'
 
 export interface ScreenshotCacheEntry {
 	nodeId: string
@@ -29,11 +31,59 @@ export interface ScreenshotCacheEntry {
 export type ScreenshotPriority = 'high' | 'normal' | 'low'
 
 const BASE_CONCURRENT_CAPTURES = 1
-const MAX_CONCURRENT_CAPTURES = 8
+const MAX_CONCURRENT_CAPTURES = 4
+const WARMUP_MAX_CONCURRENCY = 1
 const HIGH_PRIORITY_FRAME_TIME_MS = 16
 const NORMAL_PRIORITY_FRAME_TIME_MS = 8
 const LOW_PRIORITY_FRAME_TIME_MS = 5
-const IDLE_CALLBACK_TIMEOUT = 50
+const IDLE_CALLBACK_TIMEOUT = 100
+
+class AbortError extends Error {
+	constructor() {
+		super('Screenshot aborted due to user interaction')
+		this.name = 'AbortError'
+	}
+}
+
+const yieldToMain = (signal?: AbortSignal): Promise<void> => {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(new AbortError())
+			return
+		}
+		const onAbort = () => {
+			reject(new AbortError())
+		}
+		if (signal) {
+			signal.addEventListener('abort', onAbort, { once: true })
+		}
+		const finish = () => {
+			if (signal) {
+				signal.removeEventListener('abort', onAbort)
+			}
+			resolve()
+		}
+		if (typeof window.requestIdleCallback === 'function') {
+			window.requestIdleCallback(() => finish(), { timeout: 50 })
+		} else {
+			setTimeout(finish, 0)
+		}
+	})
+}
+
+const checkAbort = (signal?: AbortSignal) => {
+	if (signal?.aborted) {
+		throw new AbortError()
+	}
+}
+
+const scheduleMicrotask = (fn: () => void) => {
+	if (typeof window.queueMicrotask === 'function') {
+		window.queueMicrotask(fn)
+	} else {
+		Promise.resolve().then(fn)
+	}
+}
 
 const getIdealConcurrency = () => {
 	try {
@@ -43,17 +93,12 @@ const getIdealConcurrency = () => {
 			Math.max(BASE_CONCURRENT_CAPTURES, Math.floor(cores / 4))
 		)
 	} catch {
-		return 2
+		return 1
 	}
 }
 
 const getWarmupConcurrency = () => {
-	try {
-		const cores = navigator.hardwareConcurrency || 4
-		return Math.min(MAX_CONCURRENT_CAPTURES, Math.max(4, cores - 1))
-	} catch {
-		return 4
-	}
+	return 1
 }
 const QUEUE_DELAY_MS = 10
 const IMAGE_WAIT_TIMEOUT = 2500
@@ -137,15 +182,29 @@ const cleanupSlots = () => {
 	slotsInitialized = false
 }
 
-const waitForAllImages = (root: HTMLElement): Promise<void> => {
-	return new Promise((resolve) => {
+const waitForAllImages = (root: HTMLElement, signal?: AbortSignal): Promise<void> => {
+	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(new AbortError())
+			return
+		}
 		const imgs = Array.from(root.querySelectorAll('img'))
 		if (imgs.length === 0) return resolve()
 		let done = false
 		let loaded = 0
+		const onAbort = () => {
+			if (!done) {
+				done = true
+				reject(new AbortError())
+			}
+		}
+		if (signal) {
+			signal.addEventListener('abort', onAbort, { once: true })
+		}
 		const finish = () => {
 			if (!done) {
 				done = true
+				if (signal) signal.removeEventListener('abort', onAbort)
 				resolve()
 			}
 		}
@@ -218,13 +277,12 @@ const extractThemeFromVersion = (version: string): 'dark' | 'light' => {
 
 const makeCacheKey = (nodeId: string, theme: 'dark' | 'light') => `${nodeId}::${theme}`
 
-const inlineAllStyles = (source: Element, clone: Element) => {
-	const sw = document.createTreeWalker(source, NodeFilter.SHOW_ELEMENT)
-	const cw = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT)
-	let sn: Node | null = sw.currentNode
-	let cn: Node | null = cw.currentNode
-
-	// 需要跳过的属性（交互类、非视觉类）
+export const __test__inlineAllStyles = async (
+	source: Element,
+	clone: Element,
+	signal?: AbortSignal,
+	preserveProps?: Set<string>
+) => {
 	const skipProps = new Set([
 		'cursor',
 		'pointer-events',
@@ -238,57 +296,113 @@ const inlineAllStyles = (source: Element, clone: Element) => {
 		'outline-color',
 		'outline-style',
 		'outline-width',
-		'outline-offset'
+		'outline-offset',
+		...(preserveProps || [])
 	])
 
+	const allSourceElements: Element[] = []
+	const allCloneElements: Element[] = []
+	const sw = document.createTreeWalker(source, NodeFilter.SHOW_ELEMENT)
+	const cw = document.createTreeWalker(clone, NodeFilter.SHOW_ELEMENT)
+	let sn: Node | null = sw.currentNode
+	let cn: Node | null = cw.currentNode
 	while (sn && cn) {
-		const sEl = sn as HTMLElement | SVGElement
-		const cEl = cn as HTMLElement | SVGElement
-
-		if (
-			(sEl instanceof HTMLElement || sEl instanceof SVGElement) &&
-			(cEl instanceof HTMLElement || cEl instanceof SVGElement)
-		) {
-			const computed = window.getComputedStyle(sEl)
-			const props: string[] = []
-
-			// 遍历所有计算样式属性并内联（不使用预定义列表，保证完整性）
-			for (let i = 0; i < computed.length; i++) {
-				const prop = computed[i]
-				if (skipProps.has(prop)) continue
-				try {
-					const val = computed.getPropertyValue(prop)
-					if (val) {
-						props.push(`${prop}: ${val}`)
-					}
-				} catch {}
-			}
-
-			cEl.setAttribute('style', props.join('; '))
-		}
-
-		if (cEl instanceof HTMLImageElement) {
-			cEl.crossOrigin = 'anonymous'
-		}
-
+		allSourceElements.push(sn as Element)
+		allCloneElements.push(cn as Element)
 		sn = sw.nextNode()
 		cn = cw.nextNode()
 	}
+
+	const batchSize = 20
+	for (let i = 0; i < allSourceElements.length; i += batchSize) {
+		checkAbort(signal)
+		await yieldToMain(signal)
+		const end = Math.min(i + batchSize, allSourceElements.length)
+		for (let j = i; j < end; j++) {
+			const sEl = allSourceElements[j] as HTMLElement | SVGElement
+			const cEl = allCloneElements[j] as HTMLElement | SVGElement
+
+			if (
+				(sEl instanceof HTMLElement || sEl instanceof SVGElement) &&
+				(cEl instanceof HTMLElement || cEl instanceof SVGElement)
+			) {
+				const computed = window.getComputedStyle(sEl)
+				const isRoot = j === 0
+				let preservedTransform: string | null = null
+				let preservedTransformOrigin: string | null = null
+				let preservedLeft: string | null = null
+				let preservedTop: string | null = null
+				let preservedRight: string | null = null
+				let preservedBottom: string | null = null
+				let preservedPosition: string | null = null
+				let preservedMargin: string | null = null
+
+				if (isRoot && cEl instanceof HTMLElement) {
+					preservedTransform = cEl.style.transform
+					preservedTransformOrigin = cEl.style.transformOrigin
+					preservedLeft = cEl.style.left
+					preservedTop = cEl.style.top
+					preservedRight = cEl.style.right
+					preservedBottom = cEl.style.bottom
+					preservedPosition = cEl.style.position
+					preservedMargin = cEl.style.margin
+				}
+
+				for (let k = 0; k < computed.length; k++) {
+					const prop = computed[k]
+					if (skipProps.has(prop)) continue
+					try {
+						const val = computed.getPropertyValue(prop)
+						if (val) {
+							cEl.style.setProperty(prop, val, computed.getPropertyPriority(prop))
+						}
+					} catch {}
+				}
+
+				if (isRoot && cEl instanceof HTMLElement) {
+					cEl.style.transform = preservedTransform!
+					cEl.style.transformOrigin = preservedTransformOrigin!
+					cEl.style.left = preservedLeft!
+					cEl.style.top = preservedTop!
+					cEl.style.right = preservedRight!
+					cEl.style.bottom = preservedBottom!
+					cEl.style.position = preservedPosition!
+					cEl.style.margin = preservedMargin!
+				}
+			}
+
+			if (cEl instanceof HTMLImageElement) {
+				cEl.crossOrigin = 'anonymous'
+			}
+		}
+	}
 }
 
-const convertImagesToDataUrls = async (root: HTMLElement): Promise<void> => {
+const convertImagesToDataUrls = async (root: HTMLElement, signal?: AbortSignal): Promise<void> => {
 	const imgs = Array.from(root.querySelectorAll('img'))
 	if (imgs.length === 0) return
 	await Promise.all(
 		imgs.map((img) => {
-			return new Promise<void>((resolve) => {
+			return new Promise<void>((resolve, reject) => {
+				if (signal?.aborted) {
+					reject(new AbortError())
+					return
+				}
+				const onAbort = () => reject(new AbortError())
+				if (signal) signal.addEventListener('abort', onAbort, { once: true })
 				try {
 					if (!img.src || img.src.startsWith('data:')) {
+						if (signal) signal.removeEventListener('abort', onAbort)
 						resolve()
 						return
 					}
 					const doConvert = () => {
 						try {
+							if (signal?.aborted) {
+								if (signal) signal.removeEventListener('abort', onAbort)
+								reject(new AbortError())
+								return
+							}
 							const canvas = document.createElement('canvas')
 							const w = img.naturalWidth || img.width || 1
 							const h = img.naturalHeight || img.height || 1
@@ -300,16 +414,24 @@ const convertImagesToDataUrls = async (root: HTMLElement): Promise<void> => {
 								img.src = canvas.toDataURL('image/png')
 							}
 						} catch {}
+						if (signal) signal.removeEventListener('abort', onAbort)
 						resolve()
 					}
 					if (img.complete && img.naturalWidth > 0) {
 						doConvert()
 					} else {
 						img.addEventListener('load', doConvert, { once: true })
-						img.addEventListener('error', () => resolve(), { once: true })
-						setTimeout(() => resolve(), 1000)
+						img.addEventListener('error', () => {
+							if (signal) signal.removeEventListener('abort', onAbort)
+							resolve()
+						}, { once: true })
+						setTimeout(() => {
+							if (signal) signal.removeEventListener('abort', onAbort)
+							resolve()
+						}, 1000)
 					}
 				} catch {
+					if (signal) signal.removeEventListener('abort', onAbort)
 					resolve()
 				}
 			})
@@ -320,35 +442,66 @@ const convertImagesToDataUrls = async (root: HTMLElement): Promise<void> => {
 const renderSvgToCanvas = (
 	svgDataUrl: string,
 	width: number,
-	height: number
+	height: number,
+	signal?: AbortSignal
 ): Promise<HTMLCanvasElement> => {
 	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(new AbortError())
+			return
+		}
 		const img = new Image()
 		img.crossOrigin = 'anonymous'
+		const onAbort = () => reject(new AbortError())
+		if (signal) signal.addEventListener('abort', onAbort, { once: true })
 		img.onload = () => {
+			if (signal?.aborted) {
+				if (signal) signal.removeEventListener('abort', onAbort)
+				reject(new AbortError())
+				return
+			}
 			const canvas = document.createElement('canvas')
 			canvas.width = width
 			canvas.height = height
 			const ctx = canvas.getContext('2d')
 			if (!ctx) {
+				if (signal) signal.removeEventListener('abort', onAbort)
 				reject(new Error('Failed to get 2d context'))
 				return
 			}
 			ctx.clearRect(0, 0, width, height)
 			ctx.drawImage(img, 0, 0, width, height)
+			if (signal) signal.removeEventListener('abort', onAbort)
 			resolve(canvas)
 		}
-		img.onerror = () => reject(new Error('Failed to load SVG image'))
+		img.onerror = () => {
+			if (signal) signal.removeEventListener('abort', onAbort)
+			reject(new Error('Failed to load SVG image'))
+		}
 		img.src = svgDataUrl
 	})
 }
 
 const scheduleWork = (fn: () => void, priority: ScreenshotPriority) => {
-	const timeout = priority === 'high' ? 0 : priority === 'normal' ? 16 : 50
+	if (priority === 'high') {
+		setTimeout(fn, 0)
+		return
+	}
 
-	if (typeof window.requestIdleCallback === 'function' && priority !== 'high') {
-		window.requestIdleCallback(() => fn(), { timeout: IDLE_CALLBACK_TIMEOUT })
+	if (typeof window.requestIdleCallback === 'function') {
+		const idleTimeout = priority === 'normal' ? 50 : IDLE_CALLBACK_TIMEOUT
+		window.requestIdleCallback(
+			(deadline) => {
+				if (deadline.didTimeout || deadline.timeRemaining() > 5) {
+					fn()
+				} else {
+					scheduleWork(fn, priority)
+				}
+			},
+			{ timeout: idleTimeout }
+		)
 	} else {
+		const timeout = priority === 'normal' ? 16 : 32
 		setTimeout(fn, timeout)
 	}
 }
@@ -360,14 +513,14 @@ export interface WarmupProgressInfo {
 }
 
 export const createNodeScreenshotPool = () => {
-	const maxConcurrency = ref<number>(getIdealConcurrency())
+	const maxConcurrency = ref<number>(1)
 	const cache = new Map<string, ScreenshotCacheEntry>()
 	const highPriorityQueue: ScreenshotTask[] = []
 	const normalPriorityQueue: ScreenshotTask[] = []
 	const lowPriorityQueue: ScreenshotTask[] = []
 	const inFlight = new Map<
 		string,
-		{ version: string; resolves: Array<(e: ScreenshotCacheEntry | null) => void> }
+		{ version: string; resolves: Array<(e: ScreenshotCacheEntry | null) => void>; abortController: AbortController }
 	>()
 
 	let processing = false
@@ -375,6 +528,9 @@ export const createNodeScreenshotPool = () => {
 	let burstMode = false
 	let activeTheme: 'dark' | 'light' = 'dark'
 	let onWarmupProgress: ((info: WarmupProgressInfo) => void) | null = null
+	let isPaused = false
+	let resumeTimer: ReturnType<typeof setTimeout> | null = null
+	let globalAbortController: AbortController | null = null
 
 	const getCacheKey = (nodeId: string, theme: 'dark' | 'light') => makeCacheKey(nodeId, theme)
 
@@ -453,19 +609,35 @@ export const createNodeScreenshotPool = () => {
 		return count
 	}
 
+	const abortAllInFlight = () => {
+		if (globalAbortController) {
+			globalAbortController.abort()
+		}
+		globalAbortController = new AbortController()
+		for (const [, entry] of inFlight) {
+			entry.abortController.abort()
+		}
+	}
+
 	const capture = async (
 		slot: ScreenshotSlot,
 		sourceEl: HTMLElement,
 		width: number,
 		height: number,
 		padding: number,
-		captureTheme: 'dark' | 'light'
+		captureTheme: 'dark' | 'light',
+		isWarmup: boolean = false,
+		signal?: AbortSignal
 	): Promise<HTMLCanvasElement | null> => {
+		checkAbort(signal)
 		const host = slot.host
 		host.setAttribute('data-theme', captureTheme)
 		while (host.firstChild) {
 			host.removeChild(host.firstChild)
 		}
+
+		await yieldToMain(signal)
+		checkAbort(signal)
 
 		const totalW = width + padding * 2
 		const totalH = height + padding * 2
@@ -485,10 +657,6 @@ export const createNodeScreenshotPool = () => {
 		wrapper.style.background = 'transparent'
 		wrapper.style.backgroundColor = 'transparent'
 
-		// 临时设置文档主题以确保getComputedStyle获取正确的值（仅当host不在正确主题上下文中时）
-		// 注意：host在body下，会继承html[data-theme]，但为了安全显式设置
-		// 不修改html主题，因为host已设置data-theme且CSS变量是继承的
-
 		const clone = sourceEl.cloneNode(true) as HTMLElement
 
 		clone.style.position = 'absolute'
@@ -500,6 +668,11 @@ export const createNodeScreenshotPool = () => {
 		clone.style.transform = 'none'
 		clone.style.transformOrigin = 'top left'
 		clone.style.boxSizing = 'border-box'
+
+		if (isWarmup) {
+			await yieldToMain(signal)
+			checkAbort(signal)
+		}
 
 		const stripSelectors = [
 			'.wf-anchors',
@@ -543,6 +716,11 @@ export const createNodeScreenshotPool = () => {
 				dst.setAttribute('value', src.value)
 			}
 		})
+
+		if (isWarmup) {
+			await yieldToMain(signal)
+			checkAbort(signal)
+		}
 
 		const sourceCanvases = sourceEl.querySelectorAll('canvas')
 		const cloneCanvases = clone.querySelectorAll('canvas')
@@ -590,11 +768,26 @@ export const createNodeScreenshotPool = () => {
 		wrapper.appendChild(clone)
 		host.appendChild(wrapper)
 
-		await waitForAllImages(wrapper)
+		prepareClonedImages(sourceEl, wrapper)
 
-		await convertImagesToDataUrls(wrapper)
+		await enhancedWaitForAllImages(wrapper)
+		checkAbort(signal)
 
-		inlineAllStyles(clone, clone)
+		await enhancedConvertImagesToDataUrls(wrapper)
+		checkAbort(signal)
+
+		if (isWarmup) {
+			await yieldToMain(signal)
+			checkAbort(signal)
+		}
+
+		await __test__inlineAllStyles(clone, clone, signal)
+		checkAbort(signal)
+
+		if (isWarmup) {
+			await yieldToMain(signal)
+			checkAbort(signal)
+		}
 
 		try {
 			const serializedWrapper = document.createElement('div')
@@ -611,7 +804,6 @@ export const createNodeScreenshotPool = () => {
 			serializedWrapper.style.left = '0'
 			serializedWrapper.style.top = '0'
 
-			// 注入完整CSS样式表，确保class选择器和组件样式正常工作
 			const styleEl = document.createElement('style')
 			styleEl.setAttribute('type', 'text/css')
 			styleEl.textContent = getDocumentStyles()
@@ -630,7 +822,8 @@ export const createNodeScreenshotPool = () => {
         </svg>
       `
 			const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-			const canvas = await renderSvgToCanvas(svgDataUrl, totalW, totalH)
+			checkAbort(signal)
+			const canvas = await renderSvgToCanvas(svgDataUrl, totalW, totalH, signal)
 			return canvas
 		} finally {
 			while (host.firstChild) {
@@ -664,6 +857,9 @@ export const createNodeScreenshotPool = () => {
 	}
 
 	const processNext = () => {
+		if (isPaused) {
+			return
+		}
 		if (getQueueLength() === 0 || active >= maxConcurrency.value) {
 			return
 		}
@@ -679,9 +875,12 @@ export const createNodeScreenshotPool = () => {
 
 		active++
 
+		const isWarmupTask = task.priority === 'low' || burstMode
+		const taskAbortController = new AbortController()
+
 		const inflightKey = `${task.nodeId}::${task.theme}`
 		const inflightResolves: Array<(e: ScreenshotCacheEntry | null) => void> = []
-		inFlight.set(inflightKey, { version: task.version, resolves: inflightResolves })
+		inFlight.set(inflightKey, { version: task.version, resolves: inflightResolves, abortController: taskAbortController })
 		inflightResolves.push(task.resolve)
 		;(async () => {
 			const startTime = performance.now()
@@ -695,7 +894,16 @@ export const createNodeScreenshotPool = () => {
 					return
 				}
 
-				const canvas = await capture(slot, task.element, task.width, task.height, task.padding, task.theme)
+				const canvas = await capture(
+					slot,
+					task.element,
+					task.width,
+					task.height,
+					task.padding,
+					task.theme,
+					isWarmupTask,
+					taskAbortController.signal
+				)
 				releaseSlot(slot)
 
 				if (!canvas) {
@@ -703,6 +911,10 @@ export const createNodeScreenshotPool = () => {
 					reportWarmupProgress()
 					for (const r of inflightResolves) r(null)
 					return
+				}
+
+				if (isWarmupTask) {
+					await yieldToMain()
 				}
 
 				const entry: ScreenshotCacheEntry = {
@@ -720,29 +932,24 @@ export const createNodeScreenshotPool = () => {
 				reportWarmupProgress()
 				for (const r of inflightResolves) r(entry)
 			} catch (err) {
-				console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
 				releaseSlot(slot)
-				completedTaskCount++
-				reportWarmupProgress()
-				for (const r of inflightResolves) r(null)
+				if (err instanceof AbortError) {
+					for (const r of inflightResolves) r(null)
+				} else {
+					console.warn('[ScreenshotPool] capture failed for node:', task.nodeId, err)
+					completedTaskCount++
+					reportWarmupProgress()
+					for (const r of inflightResolves) r(null)
+				}
 			} finally {
 				inFlight.delete(inflightKey)
 				active--
-				if (burstMode) {
-					processNext()
-				} else {
-					const elapsed = performance.now() - startTime
-					const frameBudget =
-						task.priority === 'high'
-							? HIGH_PRIORITY_FRAME_TIME_MS
-							: task.priority === 'normal'
-								? NORMAL_PRIORITY_FRAME_TIME_MS
-								: LOW_PRIORITY_FRAME_TIME_MS
 
-					if (elapsed > frameBudget) {
-						scheduleWork(processNext, task.priority)
+				if (!isPaused) {
+					if (task.priority === 'high') {
+						scheduleMicrotask(processNext)
 					} else {
-						processNext()
+						scheduleWork(processNext, task.priority)
 					}
 				}
 			}
@@ -763,6 +970,8 @@ export const createNodeScreenshotPool = () => {
 			}
 			setTimeout(checkComplete, 16)
 		}
+
+		if (isPaused) return
 
 		const slotsAvailable = maxConcurrency.value - active
 		const toStart = Math.min(slotsAvailable, getQueueLength())
@@ -785,6 +994,11 @@ export const createNodeScreenshotPool = () => {
 			const cached = getCached(nodeId, version)
 			if (cached) {
 				resolve(cached)
+				return
+			}
+
+			if (isPaused && priority !== 'high') {
+				resolve(null)
 				return
 			}
 
@@ -813,7 +1027,7 @@ export const createNodeScreenshotPool = () => {
 					originalResolve(entry)
 					resolve(entry)
 				}
-				if (burstMode) {
+				if (burstMode && !isPaused) {
 					ensureSlots(maxConcurrency.value)
 					const slotsAvailable = maxConcurrency.value - active
 					if (slotsAvailable > 0) {
@@ -844,7 +1058,7 @@ export const createNodeScreenshotPool = () => {
 				normalPriorityQueue.push(task)
 			}
 
-			if (burstMode) {
+			if (burstMode && !isPaused) {
 				ensureSlots(maxConcurrency.value)
 				const slotsAvailable = maxConcurrency.value - active
 				if (slotsAvailable > 0) {
@@ -899,7 +1113,7 @@ export const createNodeScreenshotPool = () => {
 		if (newVal !== maxConcurrency.value) {
 			maxConcurrency.value = newVal
 			ensureSlots(newVal)
-			if (processing) {
+			if (processing && !isPaused) {
 				setTimeout(process, 0)
 			}
 		}
@@ -911,7 +1125,7 @@ export const createNodeScreenshotPool = () => {
 
 	const setBurstMode = (enabled: boolean) => {
 		burstMode = enabled
-		if (enabled) {
+		if (enabled && !isPaused) {
 			ensureSlots(maxConcurrency.value)
 			const slotsAvailable = maxConcurrency.value - active
 			if (slotsAvailable > 0 && getQueueLength() > 0) {
@@ -920,6 +1134,31 @@ export const createNodeScreenshotPool = () => {
 			}
 		}
 	}
+
+	const pause = () => {
+		isPaused = true
+		if (resumeTimer) {
+			clearTimeout(resumeTimer)
+			resumeTimer = null
+		}
+		abortAllInFlight()
+		highPriorityQueue.length = 0
+		normalPriorityQueue.length = 0
+		lowPriorityQueue.length = 0
+	}
+
+	const resume = (delayMs: number = 200) => {
+		if (resumeTimer) {
+			clearTimeout(resumeTimer)
+		}
+		resumeTimer = setTimeout(() => {
+			isPaused = false
+			resumeTimer = null
+			process()
+		}, delayMs)
+	}
+
+	const isInteractionPaused = () => isPaused
 
 	const beginWarmupTracking = (theme: 'dark' | 'light') => {
 		currentWarmupTheme = theme
@@ -940,7 +1179,7 @@ export const createNodeScreenshotPool = () => {
 		highPriorityQueue.length = 0
 		normalPriorityQueue.length = 0
 		lowPriorityQueue.length = 0
-		inFlight.clear()
+		abortAllInFlight()
 	}
 
 	const cancelPendingForTheme = (theme: 'dark' | 'light') => {
@@ -952,12 +1191,16 @@ export const createNodeScreenshotPool = () => {
 		filterByTheme(highPriorityQueue)
 		filterByTheme(normalPriorityQueue)
 		filterByTheme(lowPriorityQueue)
-		for (const [key] of inFlight) {
-			if (key.endsWith(`::${theme}`)) inFlight.delete(key)
+		for (const [key, entry] of inFlight) {
+			if (key.endsWith(`::${theme}`)) {
+				entry.abortController.abort()
+				inFlight.delete(key)
+			}
 		}
 	}
 
 	const cleanup = () => {
+		abortAllInFlight()
 		clearAllSlots()
 		cleanupSlots()
 		cache.clear()
@@ -989,6 +1232,9 @@ export const createNodeScreenshotPool = () => {
 		setConcurrency,
 		resetConcurrency,
 		setBurstMode,
+		pause,
+		resume,
+		isInteractionPaused,
 		getWarmupConcurrency,
 		setActiveTheme,
 		getActiveTheme,

@@ -4,7 +4,7 @@ import { useI18n } from '../../../../i18n'
 import type { WorkflowAction } from '../../../../aiworkflow/actions'
 import type { WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
 import type { ContextMenuSection } from '../../../../ui/UIComponent/ContextMenu.vue'
-import { canLinkAnchors } from '../../../../aiworkflow/domain/link/anchorKinds'
+import { findBestInputAnchorForOutput } from '../../../../aiworkflow/domain/link/anchorKinds'
 import {
 	NEWUI2_NODE_CATALOG,
 	NEWUI2_NODE_CATALOG_CATEGORIES,
@@ -322,17 +322,14 @@ export const useAIWorkflowContextMenu = (payload: {
 		if (pendingLinkAnchor.value && newNodeId) {
 			const { fromNodeId, fromAnchorId } = pendingLinkAnchor.value
 			const nodesById = payload.store.state.nodesById
-			const newNode = nodesById[newNodeId]
-			if (newNode && newNode.inputs && newNode.inputs.length > 0) {
-				const toAnchorId = newNode.inputs[0].id
-				if (canLinkAnchors(nodesById, fromNodeId, fromAnchorId, newNodeId, toAnchorId)) {
-					payload.store.commit('addEdge', {
-						fromNodeId,
-						fromAnchorId,
-						toNodeId: newNodeId,
-						toAnchorId
-					})
-				}
+			const toAnchorId = findBestInputAnchorForOutput(nodesById, fromNodeId, fromAnchorId, newNodeId)
+			if (toAnchorId) {
+				payload.store.commit('addEdge', {
+					fromNodeId,
+					fromAnchorId,
+					toNodeId: newNodeId,
+					toAnchorId
+				})
 			}
 		}
 
