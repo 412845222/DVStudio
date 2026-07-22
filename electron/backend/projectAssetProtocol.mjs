@@ -3,10 +3,8 @@ import fs from 'node:fs'
 import https from 'node:https'
 import http from 'node:http'
 import { protocol, net } from 'electron'
-import { getTempDir } from './modules/subtitle-recognition/paths.mjs'
 
 const DWEB_PROJECT_ASSET_HOST = 'project-assets'
-const DWEB_SUBTITLE_TEMP_HOST = 'subtitle-temp'
 const CACHE_DIR = '.dvcache'
 const CACHE_BIN_DIR = '.dvcache/bin'
 
@@ -803,133 +801,6 @@ function handleProjectAssetRequest(request) {
 	}
 }
 
-function guessTempFileMimeType(filePath) {
-	const ext = path.extname(filePath).toLowerCase()
-	if (ext === '.wav') return 'audio/wav'
-	if (ext === '.mp3') return 'audio/mpeg'
-	if (ext === '.ogg') return 'audio/ogg'
-	if (ext === '.m4a') return 'audio/mp4'
-	if (ext === '.flac') return 'audio/flac'
-	if (ext === '.webm') return 'audio/webm'
-	return 'application/octet-stream'
-}
-
-async function handleSubtitleTempRequest(request) {
-	try {
-		const u = new URL(request.url)
-		const fileName = String(u.searchParams.get('file') || '').trim()
-		if (!fileName) {
-			return new Response('Bad Request: missing file param', { status: 400 })
-		}
-
-		if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
-			console.warn('[dweb-protocol][subtitle-temp] invalid file name (path traversal rejected):', fileName)
-			return new Response('Forbidden', { status: 403 })
-		}
-
-		const tempDir = getTempDir()
-		const filePath = path.resolve(tempDir, fileName)
-
-		const tempDirNorm = path.normalize(tempDir)
-		const filePathNorm = path.normalize(filePath)
-		const tempDirWithSep = tempDirNorm.endsWith(path.sep) ? tempDirNorm : tempDirNorm + path.sep
-		const isInside = filePathNorm.startsWith(tempDirWithSep) || filePathNorm === tempDirNorm
-		if (!isInside) {
-			console.warn('[dweb-protocol][subtitle-temp] file outside temp dir rejected:', filePathNorm)
-			return new Response('Forbidden', { status: 403 })
-		}
-
-		if (!fs.existsSync(filePath)) {
-			console.warn('[dweb-protocol][subtitle-temp] file not found:', filePath)
-			return new Response('Not Found', { status: 404 })
-		}
-
-		const stat = fs.statSync(filePath)
-		if (!stat.isFile()) {
-			return new Response('Not Found', { status: 404 })
-		}
-
-		const total = Number(stat.size || 0)
-		const contentType = guessTempFileMimeType(filePath)
-
-		const rangeHeader = request.headers ? String(request.headers.get('range') || '') : ''
-		let start = 0
-		let end = total - 1
-		let isValidRange = false
-
-		if (rangeHeader && /^bytes=\s*(\d*)-(\d*)\s*$/.test(rangeHeader)) {
-			const match = rangeHeader.match(/^bytes=\s*(\d*)-(\d*)\s*$/)
-			if (match) {
-				const startStr = match[1]
-				const endStr = match[2]
-				if (startStr === '' && endStr !== '') {
-					const suffixLen = Math.min(total, Math.max(1, Number(endStr) || 0))
-					start = Math.max(0, total - suffixLen)
-					end = total - 1
-					isValidRange = total > 0
-				} else if (startStr !== '' && endStr === '') {
-					start = Math.max(0, Math.min(total - 1, Number(startStr) || 0))
-					end = total - 1
-					isValidRange = total > 0
-				} else if (startStr !== '' && endStr !== '') {
-					start = Math.max(0, Math.min(total - 1, Number(startStr) || 0))
-					end = Math.min(total - 1, Math.max(start, Number(endStr) || 0))
-					isValidRange = total > 0
-				}
-			}
-		}
-
-		const streamStart = isValidRange ? start : 0
-		const streamEnd = isValidRange ? end : total - 1
-		const contentLength = Math.max(0, streamEnd - streamStart + 1)
-
-		const nodeStream = fs.createReadStream(filePath, {
-			start: streamStart,
-			end: Math.max(streamStart, streamEnd),
-			highWaterMark: 256 * 1024
-		})
-
-		const webStream = new ReadableStream({
-			start(controller) {
-				nodeStream.on('data', (chunk) => {
-					const bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
-					controller.enqueue(bytes)
-				})
-				nodeStream.on('end', () => {
-					controller.close()
-				})
-				nodeStream.on('error', (err) => {
-					console.error('[dweb-protocol][subtitle-temp] stream error:', err)
-					try { controller.error(err) } catch {}
-				})
-			},
-			cancel() {
-				try { nodeStream.destroy() } catch {}
-			}
-		})
-
-		const headers = new Headers()
-		headers.set('Content-Type', contentType)
-		headers.set('Content-Length', String(contentLength))
-		headers.set('Accept-Ranges', 'bytes')
-		headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
-		headers.set('X-Content-Type-Options', 'nosniff')
-
-		const statusCode = isValidRange ? 206 : 200
-		if (isValidRange) {
-			headers.set('Content-Range', `bytes ${start}-${end}/${total}`)
-		} else if (total > 0) {
-			headers.set('Content-Range', `bytes 0-${total - 1}/${total}`)
-		}
-
-		console.log('[dweb-protocol][subtitle-temp] serving:', fileName, 'size:', total, 'type:', contentType)
-		return new Response(webStream, { status: statusCode, headers })
-	} catch (err) {
-		console.error('[dweb-protocol][subtitle-temp] handler error:', err)
-		return new Response('Internal Server Error', { status: 500 })
-	}
-}
-
 export function registerDwebProjectAssetProtocol() {
 	try {
 		protocol.handle('dweb', async (request) => {
@@ -937,9 +808,6 @@ export function registerDwebProjectAssetProtocol() {
 				const host = String(new URL(request.url).hostname || '').toLowerCase()
 				if (host === DWEB_PROJECT_ASSET_HOST) {
 					return handleProjectAssetRequest(request)
-				}
-				if (host === DWEB_SUBTITLE_TEMP_HOST) {
-					return handleSubtitleTempRequest(request)
 				}
 				return new Response('Not Found', { status: 404 })
 			} catch (err) {
@@ -962,9 +830,6 @@ export function registerDwebProjectAssetProtocol() {
 					const host = String(new URL(request.url).hostname || '').toLowerCase()
 					if (host === DWEB_PROJECT_ASSET_HOST) {
 						return handleProjectAssetRequest(request)
-					}
-					if (host === DWEB_SUBTITLE_TEMP_HOST) {
-						return handleSubtitleTempRequest(request)
 					}
 					return new Response('Not Found', { status: 404 })
 				} catch (err) {

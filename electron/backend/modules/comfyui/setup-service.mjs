@@ -257,7 +257,6 @@ const SERVICE_LOG_CHANNEL = 'dweb:comfyui:setup:service-log'
 const SERVICE_STATUS_CHANNEL = 'dweb:comfyui:setup:service-status'
 const SERVICE_EXIT_CHANNEL = 'dweb:comfyui:setup:service-exit'
 const SERVICE_CLEAR_CHANNEL = 'dweb:comfyui:setup:service-clear'
-const CONFIG_CHANGE_CHANNEL = 'dweb:comfyui:setup:config-changed'
 /** @type {Array<{ts:number, stream:'stdout'|'stderr'|'system', message:string}>} */
 let serviceLogBuffer = []
 let _stdoutParserState = createLineParserState()
@@ -389,7 +388,6 @@ function saveConfig(partial, forceReplace = false) {
 			? { ...defaultComfyConfig(), ...partial }
 			: { ...loadConfig(), ...partial }
 		fs.writeFileSync(configPath, JSON.stringify(updated, null, 2), 'utf-8')
-		broadcastToAllWindows(CONFIG_CHANGE_CHANNEL, { config: { ...updated } })
 		return true
 	} catch (err) {
 		console.warn('[comfyui-setup] failed to save config:', err)
@@ -799,25 +797,6 @@ async function checkPythonCanImport(pythonExe, code, timeout) {
 	return runCommand(pythonExe, ['-c', code], { timeout: timeout || 20000 })
 }
 
-function getRequirementsCriticalPackages(reqFilePath) {
-	const critical = {}
-	try {
-		if (!fs.existsSync(reqFilePath)) return critical
-		const content = fs.readFileSync(reqFilePath, 'utf-8')
-		const lines = content.split(/\r?\n/)
-		for (const line of lines) {
-			const trimmed = line.trim()
-			if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('-r') || trimmed.startsWith('-e') || trimmed.startsWith('--')) continue
-			const exactMatch = trimmed.match(/^([a-zA-Z0-9_][a-zA-Z0-9._-]*)\s*==\s*([^\s;]+)/)
-			if (exactMatch) {
-				const pkgName = exactMatch[1].toLowerCase().replace(/_/g, '-')
-				critical[pkgName] = exactMatch[2]
-			}
-		}
-	} catch {}
-	return critical
-}
-
 async function findWorkingPython(comfyDir, installType) {
 	const candidates = []
 	const managedPy = getManagedVenvPython()
@@ -858,7 +837,6 @@ async function findWorkingPython(comfyDir, installType) {
 			candidates.push(sc)
 		}
 	}
-	const criticalReqs = getRequirementsCriticalPackages(path.join(comfyDir, 'requirements.txt'))
 	const results = []
 	for (const cand of candidates) {
 		const info = { path: cand.path, type: cand.type, available: false, version: undefined, hasTorch: false, torchCuda: false, canImportComfy: false, error: undefined }
@@ -896,41 +874,6 @@ async function findWorkingPython(comfyDir, installType) {
 				info.canImportComfy = true
 			}
 			if (info.canImportComfy) {
-				const versionMismatches = []
-				if (Object.keys(criticalReqs).length > 0) {
-					try {
-						const pkgListCode = [
-							'import importlib.metadata as md',
-							'import json',
-							'pkgs = ' + JSON.stringify(Object.keys(criticalReqs)),
-							'result = {}',
-							'for p in pkgs:',
-							'    try:',
-							'        result[p] = md.version(p)',
-							'    except Exception:',
-							'        result[p] = None',
-							'print(json.dumps(result))',
-						].join('; ')
-						const verCheckR = await runPythonCheck(cand.cmd, cand.args, pkgListCode, 15000)
-						if (verCheckR.ok && verCheckR.stdout) {
-							try {
-								const lastLine = verCheckR.stdout.trim().split('\n').filter(Boolean).pop()
-								const installed = JSON.parse(lastLine)
-								for (const [pkg, requiredVer] of Object.entries(criticalReqs)) {
-									const installedVer = installed[pkg]
-									if (!installedVer) {
-										versionMismatches.push(`${pkg}==${requiredVer} (未安装)`)
-									} else if (installedVer !== requiredVer) {
-										versionMismatches.push(`${pkg} 需要 ${requiredVer}，当前 ${installedVer}`)
-									}
-								}
-							} catch {}
-						}
-					} catch {}
-				}
-
-				const versionBlockOk = versionMismatches.length === 0
-
 				const mainCheckSrc = [
 					'import sys, os',
 					`sys.path.insert(0, ${JSON.stringify(comfyDir)})`,
@@ -947,24 +890,17 @@ async function findWorkingPython(comfyDir, installType) {
 				].join('\n')
 				const mainCode = `exec(${JSON.stringify(mainCheckSrc)})`
 				const mainR = await runPythonCheck(cand.cmd, cand.args, mainCode, 30000)
-				if (mainR.ok && mainR.stdout.includes('MAIN_OK') && versionBlockOk) {
+				if (mainR.ok && mainR.stdout.includes('MAIN_OK')) {
 					info.canStartComfy = true
 				} else {
 					info.canStartComfy = false
-					const errParts = []
-					if (versionMismatches.length > 0) {
-						errParts.push('依赖版本不匹配: ' + versionMismatches.join(', '))
-					}
-					const importErrs = (mainR.stderr || mainR.stdout || '').split(/\r?\n/).filter(l => l.includes('ModuleNotFoundError') || l.includes('ImportError')).slice(0, 3).join('; ')
-					if (importErrs) errParts.push(importErrs)
-					info.importError = errParts.join('; ')
+					info.importError = (mainR.stderr || mainR.stdout || '').split(/\r?\n/).filter(l => l.includes('ModuleNotFoundError') || l.includes('ImportError')).slice(0, 3).join('; ')
 				}
 			}
 		} catch {}
 		results.push(info)
 	}
-	const bestPick = results.find(r => r.hasTorch && r.canImportComfy && r.canStartComfy)
-		|| results.find(r => r.hasTorch && r.canImportComfy)
+	const bestPick = results.find(r => r.hasTorch && r.canImportComfy)
 		|| results.find(r => r.hasTorch)
 		|| results.find(r => r.available)
 		|| null
@@ -2355,9 +2291,6 @@ async function startService(installPath, port, extraArgs) {
 	const targetPath = installPath || config.installPath
 	const p = typeof port === 'number' ? port : config.port
 	const args = Array.isArray(extraArgs) ? [...extraArgs] : (Array.isArray(config.extraArgs) ? [...config.extraArgs] : [])
-	if (!args.includes('--disable-cuda-malloc')) {
-		args.unshift('--disable-cuda-malloc')
-	}
 
 	if (serviceChildProcess && !serviceChildProcess.killed) {
 		return { ok: false, error: '服务已在运行中' }
@@ -2398,9 +2331,6 @@ async function startService(installPath, port, extraArgs) {
 			: 'run_cpu.bat'
 		pythonCmd = path.join(targetPath, batFile)
 		useShell = true
-		if (p !== DEFAULT_COMFYUI_PORT) {
-			appendServiceLog('system', `[提示] 便携版ComfyUI使用内置启动脚本，端口配置可能不生效，将使用bat文件默认端口`)
-		}
 	} else {
 		const bestPy = probe.pythonInfo
 		if (bestPy?.type === 'managed_venv' && fs.existsSync(bestPy.path)) {

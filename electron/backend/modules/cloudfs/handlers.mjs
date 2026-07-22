@@ -18,15 +18,6 @@ export async function getActiveConfig(ctx) {
   }
 }
 
-export async function getConfigStatus(ctx) {
-  try {
-    const result = await service.getConfigStatus(ctx)
-    return { ok: true, ...result }
-  } catch (err) {
-    return { ok: false, error: String(err?.message || err), configured: false, hasActiveBucket: false }
-  }
-}
-
 export async function saveConfig(ctx, payload) {
   try {
     const p = payload || {}

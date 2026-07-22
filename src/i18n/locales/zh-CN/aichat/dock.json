@@ -55,20 +55,5 @@
   "aichat.dock.modelJimengImage3": "即梦 图片 3.0",
   "aichat.dock.modelJimengImage4": "即梦 图片 4.0",
   "aichat.dock.modelJimengVideo3": "即梦 视频 3.0",
-  "aichat.dock.modelJimengVideo3Pro": "即梦 视频 3.0 Pro",
-  "aichat.dock.pickNode": "选择节点",
-  "aichat.dock.linkDragHint": "释放添加节点到对话上下文",
-  "aichat.dock.remove": "移除",
-  "aichat.dock.contentTruncated": "内容已截断",
-  "aichat.mention.title": "@ 引用已添加的资源",
-  "aichat.mention.noMatch": "无匹配的资源",
-  "aichat.mention.kindImage": "图片",
-  "aichat.mention.kindVideo": "视频",
-  "aichat.mention.kindModel3d": "3D",
-  "aichat.mention.kindBlender": "Blender",
-  "aichat.mention.kindAudio": "音频",
-  "aichat.mention.kindFile": "文件",
-  "aichat.mention.kindSkill": "技能",
-  "aichat.mention.kindNode": "节点",
-  "aichat.mention.kindText": "文本"
+  "aichat.dock.modelJimengVideo3Pro": "即梦 视频 3.0 Pro"
 }

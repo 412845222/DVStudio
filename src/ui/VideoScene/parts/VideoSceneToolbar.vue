@@ -13,13 +13,6 @@
 		</button>
 		<button class="vs-tool-btn" type="button" @click="addBase">添加</button>
 		<button class="vs-tool-btn" type="button" @click="onImportSubtitle">导入字幕</button>
-		<button class="vs-tool-btn vs-subtitle-recog-btn" type="button" @click="onSubtitleRecog" title="自动字幕识别">
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle">
-				<rect x="2" y="4" width="20" height="16" rx="2"/>
-				<path d="M7 15h4M13 15h4M7 11h10"/>
-			</svg>
-			字幕识别
-		</button>
 		<button class="vs-tool-btn" type="button" @click="onImportAudio">导入音频</button>
 		<button class="vs-tool-btn" type="button" @click="onImportComponent">导入高级组件</button>
 		<button
@@ -171,10 +164,6 @@ const onImportComponent = () => {
 
 const onImportSubtitle = () => {
 	importSubtitleInputEl.value?.click()
-}
-
-const onSubtitleRecog = () => {
-	void store.dispatch('setSubtitleRecogDialogVisible', { visible: true })
 }
 
 const onImportAudio = () => {

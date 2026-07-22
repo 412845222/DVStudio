@@ -71,7 +71,7 @@
 							@add-bucket="showAddBucket"
 							@select-bucket="onSelectBucket"
 							@remove-bucket="onRemoveBucket"
-							@set-default="onSetDefaultBucket"
+							@fix-acl="onFixBucketAcl"
 						/>
 						<CloudStorageConfigPanel
 							v-else
@@ -247,19 +247,8 @@ const loadConfiguredBuckets = async () => {
 		if (result?.ok && Array.isArray(result.buckets)) {
 			configuredBuckets.value = result.buckets
 			const active = result.buckets.find((b: ConfiguredBucket) => b.isActive)
-			if (active) {
-				const currentId = activeBucket.value?.id
-				activeBucket.value = active
-				connected.value = true
-				if (currentId !== active.id) {
-					currentPrefix.value = ''
-					nextTick(() => {
-						loadFiles()
-					})
-				}
-			} else if (result.buckets.length === 0) {
-				activeBucket.value = null
-				connected.value = false
+			if (active && !activeBucket.value) {
+				await onSelectBucket(active)
 			}
 		}
 	} catch (err) {
@@ -298,10 +287,16 @@ const onBucketAdded = async (bucket?: ConfiguredBucket) => {
 const onSelectBucket = async (bucket: ConfiguredBucket) => {
 	try {
 		const cloudfs = (window as any).dweb?.cloudfs
-		if (cloudfs?.fixBucketAcl) {
-			await cloudfs.fixBucketAcl({ bucketId: bucket.id })
+		if (cloudfs?.switchActiveBucket) {
+			await cloudfs.switchActiveBucket({ bucketId: bucket.id })
 		}
+		activeBucket.value = bucket
+		connected.value = true
+		currentPrefix.value = ''
 		await loadConfiguredBuckets()
+		nextTick(() => {
+			loadFiles()
+		})
 	} catch (err) {
 		console.error('[CloudStoragePage] onSelectBucket error:', err)
 	}
@@ -323,23 +318,26 @@ const onRemoveBucket = async (bucket: ConfiguredBucket) => {
 	}
 }
 
-const onSetDefaultBucket = async (bucket: ConfiguredBucket) => {
+const onFixBucketAcl = async (bucket: ConfiguredBucket) => {
 	try {
 		const cloudfs = (window as any).dweb?.cloudfs
 		if (cloudfs?.fixBucketAcl) {
 			const result = await cloudfs.fixBucketAcl({ bucketId: bucket.id })
 			if (result?.ok) {
 				await loadConfiguredBuckets()
+				if (activeBucket.value?.id === bucket.id) {
+					await loadFiles()
+				}
 			}
 		}
 	} catch (err) {
-		console.error('[CloudStoragePage] onSetDefaultBucket error:', err)
+		console.error('[CloudStoragePage] onFixBucketAcl error:', err)
 	}
 }
 
 const onFixCurrentBucketAcl = async () => {
 	if (activeBucket.value) {
-		await onSetDefaultBucket(activeBucket.value)
+		await onFixBucketAcl(activeBucket.value)
 	}
 }
 

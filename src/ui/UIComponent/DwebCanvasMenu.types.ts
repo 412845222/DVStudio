@@ -38,7 +38,6 @@ export type DwebCanvasMenuDataKind =
 	| 'video'
 	| 'audio'
 	| 'text'
-	| 'model3d'
 
 export type Newui2NodeCategoryId = 'basic' | 'image2d' | 'video' | 'audio' | 'model3d' | 'plugin'
 

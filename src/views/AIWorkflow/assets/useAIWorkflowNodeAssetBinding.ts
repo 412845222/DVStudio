@@ -308,7 +308,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 	const bindMediaResourceToNode = (
 		nodeId: string,
-		kind: 'image' | 'video' | 'model3d',
+		kind: 'image' | 'video',
 		url: string,
 		name: string,
 		opts?: {
@@ -320,30 +320,6 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 	) => {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
-
-		if (kind === 'model3d') {
-			options.revokeNodeModel3DObjectUrl(nodeId)
-			const lowerName = String(name || url || '').toLowerCase()
-			let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
-			if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
-			else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
-			else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
-			else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
-			else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
-			options.store.commit('setNodeModel3DSettings', {
-				nodeId,
-				model3dSettings: {
-					modelUrl: url,
-					modelFormat,
-					modelSourceName: String(name || 'model'),
-					modelSourcePath: String(opts?.sourcePath ?? '').trim() || undefined,
-					modelAssetUrl: String(url || '').trim() || undefined,
-					modelAssetPath: String(opts?.sourcePath ?? '').trim() || undefined
-				}
-			})
-			return
-		}
-
 		const resourceId = options.makeResourceId()
 		options.store.commit('addResource', {
 			id: resourceId,

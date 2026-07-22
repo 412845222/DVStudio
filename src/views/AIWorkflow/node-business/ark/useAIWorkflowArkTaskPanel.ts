@@ -80,9 +80,9 @@ const getStatusLabel = (status: ArkTaskPanelItem['status'] | 'not_found'): strin
 const normalizeStatus = (raw: string): ArkTaskPanelItem['status'] => {
 	const value = String(raw ?? '').trim().toLowerCase()
 	if (value === 'queued') return 'queued'
-	if (value === 'running' || value === 'processing' || value === 'in_progress') return 'running'
-	if (value === 'succeeded' || value === 'success' || value === 'completed' || value === 'processed' || value === 'ready' || value === 'active') return 'succeeded'
-	if (value === 'failed' || value === 'error' || value === 'expired') return 'failed'
+	if (value === 'running' || value === 'processing') return 'running'
+	if (value === 'succeeded' || value === 'success' || value === 'completed') return 'succeeded'
+	if (value === 'failed' || value === 'error') return 'failed'
 	if (value === 'canceled' || value === 'cancelled') return 'canceled'
 	if (value === 'not_found') return 'canceled'
 	return 'queued'
@@ -123,17 +123,10 @@ const parseStringArray = (value: unknown): string[] => {
 }
 
 const seedanceItemToArkTask = (item: SeedanceTaskMirrorItem): ArkRawTask => {
-	const status = normalizeStatus(item.status)
+	const status = String(item.status || 'queued').trim().toLowerCase()
 	const resultUrls: string[] = []
 	if (item.videoUrlRemote) resultUrls.push(item.videoUrlRemote)
 	if (item.lastFrameUrlRemote) resultUrls.push(item.lastFrameUrlRemote)
-	const fallbackNow = Date.now()
-	const createdMs = typeof item.remoteCreatedAt === 'number' && item.remoteCreatedAt > 0
-		? item.remoteCreatedAt
-		: (new Date(item.createdAt || fallbackNow).getTime() || fallbackNow)
-	const updatedMs = typeof item.remoteUpdatedAt === 'number' && item.remoteUpdatedAt > 0
-		? item.remoteUpdatedAt
-		: (new Date(item.updatedAt || fallbackNow).getTime() || fallbackNow)
 	return {
 		id: String(item.taskId || '').trim(),
 		taskId: `seedance-${item.taskId}`,
@@ -154,8 +147,8 @@ const seedanceItemToArkTask = (item: SeedanceTaskMirrorItem): ArkRawTask => {
 		remoteTaskId: String(item.taskId || '').trim(),
 		requestPayload: null,
 		responsePayload: null,
-		createdAt: createdMs,
-		updatedAt: updatedMs
+		createdAt: new Date(item.createdAt || Date.now()).getTime(),
+		updatedAt: new Date(item.updatedAt || Date.now()).getTime()
 	}
 }
 

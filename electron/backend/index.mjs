@@ -19,13 +19,10 @@ import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
 import { routes as agentRoutes } from './modules/agent/routes.mjs'
 import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
-import { routes as subtitleRecognitionRoutes } from './modules/subtitle-recognition/routes.mjs'
 import { routes as cloudTemplatesRoutes } from './modules/cloud-templates/routes.mjs'
 import { routes as workshopTemplatesRoutes } from './modules/workshop-templates/routes.mjs'
 import { routes as blenderRoutes } from './modules/blender/routes.mjs'
 import { routes as cloudfsRoutes } from './modules/cloudfs/routes.mjs'
-import { routes as taskQueueRoutes } from './modules/task-queue/routes.mjs'
-import { initTaskQueue } from './modules/task-queue/init.mjs'
 import { startUnrealHttpServer, stopUnrealHttpServer } from './modules/agent-skills/service.mjs'
 import { setProjectRoot } from './projectAssetProtocol.mjs'
 import { getRepos } from '../localdb/index.mjs'
@@ -93,12 +90,10 @@ export function initBackend(mainWindow, deps = {}) {
     ...agentRoutes,
     ...cliAdapterRoutes,
     ...subtitleRoutes,
-    ...subtitleRecognitionRoutes,
     ...cloudTemplatesRoutes,
     ...workshopTemplatesRoutes,
     ...blenderRoutes,
     ...cloudfsRoutes,
-    ...taskQueueRoutes,
   ]
 
   _router = createRouter({
@@ -113,8 +108,6 @@ export function initBackend(mainWindow, deps = {}) {
 
   registerBuiltinTools()
   initMCPModule()
-
-  initTaskQueue(mainWindow)
 
   startUnrealHttpServer().then(result => {
     if (result.ok) {
