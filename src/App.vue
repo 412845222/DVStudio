@@ -55,6 +55,7 @@
 		/>
 		<AboutDialog />
 		<SciFiFeedback />
+		<GlobalTaskPanel v-if="isElectronRuntime && !isPreviewWindow" />
 	</div>
 </template>
 
@@ -76,6 +77,8 @@ import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
 import SteamPanel from './ui/Steam/SteamPanel.vue'
 import AboutDialog from './ui/UIComponent/AboutDialog.vue'
 import SciFiFeedback from './ui/UIComponent/SciFiFeedback.vue'
+import GlobalTaskPanel from './ui/UIComponent/GlobalTaskPanel.vue'
+import { TaskQueueKey, TaskQueueStore } from './store/taskqueue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
@@ -86,6 +89,7 @@ provide(TimelineKey, TimelineStore)
 provide(AIWorkflowKey, AIWorkflowStore)
 provide(ThemeKey, ThemeStore)
 provide(I18nStoreKey, I18nStore)
+provide(TaskQueueKey, TaskQueueStore)
 
 const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
@@ -238,6 +242,7 @@ onMounted(() => {
 	void I18nStore.dispatch('initLocale')
 	void initCopilotConfig()
 	void initCodexConfig()
+	void TaskQueueStore.dispatch('init')
 	window.addEventListener('storage', onStorageChange)
 })
 

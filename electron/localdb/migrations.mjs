@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 12
+const TARGET_VERSION = 15
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -475,7 +475,49 @@ function runV12(db) {
 	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_buckets_active ON cloud_storage_buckets(is_active) WHERE is_active = 1`)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9, runV10, runV11, runV12]
+function runV13(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS global_tasks (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      task_type TEXT NOT NULL DEFAULT '',
+      project_id INTEGER,
+      node_id TEXT NOT NULL DEFAULT '',
+      remote_task_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      progress INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL DEFAULT '',
+      prompt TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      result_assets TEXT,
+      extra_data TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_provider ON global_tasks(provider);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_status ON global_tasks(status);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_project_id ON global_tasks(project_id);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_created_at ON global_tasks(created_at DESC);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_remote_task_id ON global_tasks(remote_task_id);`)
+}
+
+function runV14(db) {
+	db.exec(`ALTER TABLE global_tasks ADD COLUMN backfilled INTEGER NOT NULL DEFAULT 0`)
+	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_global_tasks_unique ON global_tasks(project_id, provider, remote_task_id) WHERE remote_task_id != ''`)
+	db.exec(`DELETE FROM global_tasks WHERE remote_task_id = '' AND status IN ('failed', 'cancelled') AND created_at < (strftime('%s','now') - 86400) * 1000`)
+}
+
+function runV15(db) {
+	db.exec(`ALTER TABLE global_tasks ADD COLUMN client_request_id TEXT NOT NULL DEFAULT ''`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_client_req ON global_tasks(project_id, client_request_id) WHERE client_request_id != ''`)
+}
+
+const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9, runV10, runV11, runV12, runV13, runV14, runV15]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

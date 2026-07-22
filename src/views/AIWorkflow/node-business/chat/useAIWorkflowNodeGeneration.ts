@@ -10,6 +10,9 @@ import type { Tripo3DGenerateResponse } from '../tripo3d/types'
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import { checkVideoReferencePrerequisites, clearPendingPrompt } from '../seedance/useSeedanceVideoReferenceCheck'
+import type { useGlobalTaskBridge } from '../../../../composables/useGlobalTaskBridge'
+
+type GlobalTaskBridge = ReturnType<typeof useGlobalTaskBridge>
 
 export type NodeGenerationApiDeps = {
 	store: Store<WorkflowState>
@@ -49,6 +52,7 @@ export type NodeGenerationApiDeps = {
 		absolutePath: string
 		projectRelativePath?: string
 	} | null>
+	globalTaskBridge?: GlobalTaskBridge
 }
 
 // Loose alias for store action callers that don't want to import types directly.
@@ -867,11 +871,28 @@ const handleMeshyTaskStatus = async (
 		.toUpperCase()
 	const progress = Number(taskRes.progress ?? 0)
 	const progressPct = Math.min(95, Math.max(20, progress))
+	const pollStatusText = t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) })
 
 	updateTask(deps, generationTaskId, {
-		statusText: t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) }),
+		statusText: pollStatusText,
 		progress: progressPct
 	})
+
+	const node = (deps.store.state as any)?.nodesById?.[nodeId] as any
+	if (node?.imageSettings?.meshyImageSettings) {
+		deps.store.commit('setNodeImageSettings', {
+			nodeId,
+			imageSettings: {
+				...node.imageSettings,
+				meshyImageSettings: {
+					...node.imageSettings.meshyImageSettings,
+					taskStatus: status.toLowerCase(),
+					progress: progressPct,
+					statusText: pollStatusText,
+				}
+			}
+		})
+	}
 
 	switch (status) {
 		case 'SUCCEEDED':
@@ -982,16 +1003,40 @@ const pollMeshyTaskStatus = async (
 	)
 }
 
+const inferTaskProvider = (nodeType: string, params: Record<string, unknown>): string => {
+	if (nodeType === 'image') {
+		const rawModel = String(params?.imageModel ?? params?.model ?? '').trim().toLowerCase()
+		if (rawModel === 'gemini' || rawModel === 'nanobanana' || rawModel.startsWith('gemini')) return 'gemini'
+		if (rawModel === 'meshy') return 'meshy'
+		if (rawModel.startsWith('jimeng')) return 'jimeng'
+		if (rawModel === 'tripo3d') return 'tripo3d'
+		return 'seedream'
+	}
+	if (nodeType === 'model3d') {
+		const p = String(params?.provider ?? '').trim().toLowerCase()
+		if (p === 'tripo3d' || p === 'tripo') return 'tripo3d'
+		return 'meshy'
+	}
+	if (nodeType === 'video') {
+		const rawModel = String(params?.videoModel ?? params?.model ?? '').trim().toLowerCase()
+		if (rawModel.startsWith('jimeng')) return 'jimeng'
+		return 'seedance'
+	}
+	return ''
+}
+
 const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerationTask => ({
 	id: makeTaskId(),
 	nodeId: payload.nodeId,
 	nodeType: payload.nodeType,
+	provider: inferTaskProvider(payload.nodeType, payload.params ?? {}),
 	status: 'submitting',
 	statusText: t('aiworkflow.runtime.submittingTask'),
 	progress: 5,
 	startedAt: Date.now(),
 	results: [],
-	detailLines: []
+	detailLines: [],
+	prompt: payload.prompt || ''
 })
 
 export type NodeGenerationResult = {
@@ -1017,48 +1062,99 @@ export const runNodeGenerationTask = async (
 	}
 
 	const task = createTask(payload)
+
+	const globalBridge = deps.globalTaskBridge
+	let globalRegistered = false
+	if (globalBridge) {
+		const category = task.nodeType === 'video' ? 'video' : task.nodeType === 'model3d' ? '3d' : task.nodeType === 'text' ? 'custom' : 'image'
+		const regResult = await globalBridge.registerTask({
+			nodeId: task.nodeId,
+			provider: task.provider || '',
+			category: category as any,
+			title: (task.prompt || '').slice(0, 50) || t('aiworkflow.runtime.taskDefaultTitle'),
+			prompt: task.prompt,
+			nodeType: payload.nodeType,
+		})
+		if (regResult.ok && 'taskId' in regResult && regResult.taskId) {
+			task.globalTaskId = regResult.taskId
+			task.clientRequestId = regResult.clientRequestId
+			globalRegistered = true
+		}
+	}
+
 	deps.store.commit('registerNodeGenerationTask', { task })
 	deps.store.commit('setNodeChatSubmitting', { submitting: true })
 
+	const syncGlobalProgress = (patch: { progress?: number; statusText?: string; status?: string }) => {
+		if (!globalRegistered || !task.globalTaskId || !globalBridge) return
+		void globalBridge.updateTask(task.globalTaskId, {
+			progress: patch.progress,
+			statusText: patch.statusText,
+			status: patch.status === 'running' ? 'running' : patch.status === 'submitting' ? 'submitting' : undefined,
+		})
+	}
+
+	const syncGlobalFail = (errorMessage: string) => {
+		if (!globalRegistered || !task.globalTaskId || !globalBridge) return
+		void globalBridge.failTask(task.globalTaskId, errorMessage)
+	}
+
+	const syncGlobalComplete = (resultUrl?: string, coverUrl?: string, statusText?: string) => {
+		if (!globalRegistered || !task.globalTaskId || !globalBridge) return
+		void globalBridge.completeTask(task.globalTaskId, { resultUrl, coverUrl, statusText })
+	}
+
+	const syncGlobalBindRemote = (remoteTaskId: string) => {
+		if (!globalRegistered || !task.globalTaskId || !globalBridge) return
+		void globalBridge.bindRemoteTask(task.globalTaskId, remoteTaskId)
+	}
+
 	try {
+		let result: NodeGenerationResult
 		if (payload.nodeType === 'text') {
-			await runTextTask(deps, task, payload)
-			return { ok: true, taskType: 'other' }
+			await runTextTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail })
+			result = { ok: true, taskType: 'other' }
 		} else if (payload.nodeType === 'image') {
 			const params = payload.params ?? {}
 			const { kind } = normalizeImageModel(params)
-			await runImageTask(deps, task, payload)
-			return { ok: true, taskType: kind === 'meshy' ? 'meshy-image' : kind === 'tripo3d' ? 'other' : 'other' }
+			await runImageTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+			result = { ok: true, taskType: kind === 'meshy' ? 'meshy-image' : kind === 'tripo3d' ? 'other' : 'other' }
 		} else if (payload.nodeType === 'video') {
-			await runVideoTask(deps, task, payload)
-			return { ok: true, taskType: 'other' }
+			await runVideoTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+			result = { ok: true, taskType: 'other' }
 		} else if (payload.nodeType === 'model3d') {
 			const params = payload.params ?? {}
 			const provider = String(params.provider || '').trim()
 			if (provider === 'meshy') {
-				const result = await runModel3dMeshyTask(deps, task, payload)
-				return {
-					ok: result.ok,
-					taskId: result.taskId,
+				const res = await runModel3dMeshyTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+				result = {
+					ok: res.ok,
+					taskId: res.taskId,
 					taskType: 'meshy-3d',
-					mode: result.mode,
-					error: result.error
+					mode: res.mode,
+					error: res.error
 				}
 			} else if (provider === 'tripo3d') {
-				const result = await runModel3dTripo3dTask(deps, task, payload)
-				return {
-					ok: result.ok,
-					taskId: result.taskId,
+				const res = await runModel3dTripo3dTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+				result = {
+					ok: res.ok,
+					taskId: res.taskId,
 					taskType: 'other',
-					mode: result.mode,
-					error: result.error
+					mode: res.mode,
+					error: res.error
 				}
 			} else {
 				runModel3dStub(deps, task, payload)
-				return { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
+				result = { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
 			}
+		} else {
+			result = { ok: true, taskType: 'other' }
 		}
-		return { ok: true, taskType: 'other' }
+
+		if (result.ok) {
+			syncGlobalComplete(undefined, undefined, t('aiworkflow.runtime.completedStatus'))
+		}
+		return result
 	} catch (err: unknown) {
 		if (isUserAbortError(err)) {
 			clearPendingPrompt()
@@ -1067,6 +1163,9 @@ export const runNodeGenerationTask = async (
 				statusText: err.message || '已取消',
 				finishedAt: Date.now()
 			})
+			if (globalRegistered && task.globalTaskId && globalBridge) {
+				void globalBridge.updateTask(task.globalTaskId, { status: 'cancelled', statusText: err.message || '已取消' })
+			}
 			return { ok: false, error: 'aborted' }
 		}
 		const raw = getErrorMessage(err)
@@ -1087,6 +1186,7 @@ export const runNodeGenerationTask = async (
 			errorMessage: message,
 			finishedAt: Date.now()
 		})
+		syncGlobalFail(message)
 		pushToast(deps, t('aiworkflow.toast.generationFailed', { type: labelForType(payload.nodeType), message }), 'error')
 		return { ok: false, error: message }
 	} finally {
@@ -1101,10 +1201,18 @@ const labelForType = (nodeType: WorkflowNodeGenerationTask['nodeType']) => {
 	return t('aiworkflow.toast.nodeTypeModel3d')
 }
 
+type GlobalTaskSyncHelpers = {
+	syncGlobalProgress?: (patch: { progress?: number; statusText?: string; status?: string }) => void
+	syncGlobalComplete?: (resultUrl?: string, coverUrl?: string, statusText?: string) => void
+	syncGlobalFail?: (errorMessage: string) => void
+	syncGlobalBindRemote?: (remoteTaskId: string) => void
+}
+
 const runTextTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -1237,7 +1345,8 @@ const runTextTask = async (
 const runImageTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -1255,6 +1364,9 @@ const runImageTask = async (
 	form.set('imageModel', model)
 	const imgProjectId = deps.getProjectId?.() ?? null
 	if (imgProjectId != null) form.set('projectId', String(imgProjectId))
+	if (task.clientRequestId) form.set('clientRequestId', task.clientRequestId)
+	if (task.nodeId) form.set('nodeId', task.nodeId)
+	if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
 
 	const isSeedream = kind === 'seedream'
 
@@ -1405,6 +1517,12 @@ const runImageTask = async (
 				form.append('refImages', ref.blob, ref.name)
 			}
 
+			const projectIdForForm = deps.getProjectId?.() ?? null
+			if (projectIdForForm != null) form.set('projectId', String(projectIdForForm))
+			if (task.clientRequestId) form.set('clientRequestId', task.clientRequestId)
+			if (task.nodeId) form.set('nodeId', task.nodeId)
+			if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
+
 			console.log('[Meshy Image - Node Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refs.length)
 			const createRes = await svc.meshyGenerateImage(form)
 			if (!createRes.ok) {
@@ -1429,6 +1547,7 @@ const runImageTask = async (
 					}
 				}
 			})
+			syncHelpers?.syncGlobalBindRemote?.(newTaskId)
 
 			// 轮询任务状态
 			await pollMeshyTaskStatus(deps, svc, newTaskId, task.id, payload.nodeId, taskType)
@@ -2244,7 +2363,8 @@ const runImageTask = async (
 const runVideoTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -2257,6 +2377,9 @@ const runVideoTask = async (
 	form.set('model', model)
 	const projectId = deps.getProjectId?.() ?? null
 	if (projectId != null) form.set('projectId', String(projectId))
+	if (task.clientRequestId) form.set('clientRequestId', task.clientRequestId)
+	if (task.nodeId) form.set('nodeId', task.nodeId)
+	if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
 	if (typeof params.mode === 'string' && params.mode) form.set('mode', params.mode)
 	if (typeof params.ratio === 'string' && params.ratio) form.set('ratio', params.ratio)
 	if (typeof params.resolution === 'string' && params.resolution)
@@ -2902,7 +3025,8 @@ const resolveModel3DInput = async (
 const runModel3dMeshyTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -3060,6 +3184,12 @@ const runModel3dMeshyTask = async (
 
 		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingMeshy3dTask'), progress: 15 })
 
+		const projectIdFor3d = deps.getProjectId?.() ?? null
+		if (projectIdFor3d != null) meshyPayload.projectId = String(projectIdFor3d)
+		if (task.clientRequestId) meshyPayload.clientRequestId = task.clientRequestId
+		if (task.nodeId) meshyPayload.nodeId = task.nodeId
+		if (task.globalTaskId) meshyPayload.globalTaskId = task.globalTaskId
+
 		const createRes = await svc.meshyGenerate(meshyPayload)
 
 		if (!createRes.ok) {
@@ -3087,6 +3217,7 @@ const runModel3dMeshyTask = async (
 				}
 			}
 		})
+		syncHelpers?.syncGlobalBindRemote?.(meshyTaskId)
 
 		updateTask(deps, task.id, {
 			status: 'running',
@@ -3122,7 +3253,8 @@ const runModel3dMeshyTask = async (
 const runModel3dTripo3dTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -3492,6 +3624,8 @@ const runModel3dTripo3dTask = async (
 		const projectIdVal = deps.getProjectId?.() ?? null
 		tripo3dPayload.nodeId = payload.nodeId
 		if (projectIdVal != null) tripo3dPayload.projectId = projectIdVal
+		if (task.clientRequestId) tripo3dPayload.clientRequestId = task.clientRequestId
+		if (task.globalTaskId) tripo3dPayload.globalTaskId = task.globalTaskId
 
 		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingTripo3DTask'), progress: 15 })
 
@@ -3805,7 +3939,8 @@ const pollTripo3DTaskStatus = async (
 const runModel3dStub = (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	_syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	appendDetail(
 		deps,
