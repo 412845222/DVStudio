@@ -1,0 +1,238 @@
+{
+  "version": "1.0",
+  "viewport": {
+    "zoom": 1,
+    "panX": 0,
+    "panY": 0
+  },
+  "nodes": [
+    {
+      "id": "node_start",
+      "type": "start",
+      "title": "开始",
+      "subtitle": "工作流起点",
+      "worldX": 100,
+      "worldY": 200,
+      "width": 180,
+      "height": 80,
+      "createdAt": 1720000000000,
+      "inputs": [],
+      "outputs": [
+        { "id": "out_flow", "label": "开始", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_text_1",
+      "type": "text",
+      "title": "文本输入",
+      "subtitle": "输入提示词",
+      "textValue": "一个美丽的风景图片",
+      "worldX": 380,
+      "worldY": 100,
+      "width": 200,
+      "height": 120,
+      "createdAt": 1720000001000,
+      "inputs": [
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_text", "label": "文本", "mediaType": "text" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_image_1",
+      "type": "image",
+      "title": "图像生成",
+      "subtitle": "Gemini图像生成",
+      "worldX": 680,
+      "worldY": 100,
+      "width": 220,
+      "height": 160,
+      "createdAt": 1720000002000,
+      "imageSettings": {
+        "imageGenerationSource": "gemini",
+        "geminiImageSettings": {
+          "model": "gemini-2.0-flash-exp",
+          "aspectRatio": "16:9"
+        }
+      },
+      "inputs": [
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "图像", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_video_1",
+      "type": "video",
+      "title": "视频生成",
+      "subtitle": "文生视频",
+      "worldX": 1000,
+      "worldY": 100,
+      "width": 220,
+      "height": 140,
+      "createdAt": 1720000003000,
+      "inputs": [
+        { "id": "in_image", "label": "参考图", "mediaType": "image" },
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_video", "label": "视频", "mediaType": "video" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_model3d_1",
+      "type": "model3d",
+      "title": "3D模型生成",
+      "subtitle": "Tripo3D",
+      "worldX": 680,
+      "worldY": 340,
+      "width": 220,
+      "height": 140,
+      "createdAt": 1720000004000,
+      "model3dSettings": {
+        "modelGenerationSource": "tripo3d",
+        "tripo3dModelSettings": {
+          "tripo3dTaskFamily": "text_to_model"
+        }
+      },
+      "inputs": [
+        { "id": "in_image", "label": "参考图", "mediaType": "image" },
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_model", "label": "3D模型", "mediaType": "model3d" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_chat_1",
+      "type": "chat",
+      "title": "AI对话",
+      "subtitle": "多轮对话节点",
+      "worldX": 380,
+      "worldY": 340,
+      "width": 200,
+      "height": 120,
+      "createdAt": 1720000005000,
+      "inputs": [
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_text", "label": "文本", "mediaType": "text" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_end",
+      "type": "end",
+      "title": "结束",
+      "subtitle": "工作流终点",
+      "worldX": 1300,
+      "worldY": 200,
+      "width": 160,
+      "height": 80,
+      "createdAt": 1720000006000,
+      "inputs": [
+        { "id": "in_flow", "label": "输入", "mediaType": "flow" }
+      ],
+      "outputs": []
+    },
+    {
+      "id": "node_image_2",
+      "type": "image",
+      "title": "图像生成",
+      "subtitle": "Meshy多视角",
+      "worldX": 680,
+      "worldY": 560,
+      "width": 220,
+      "height": 140,
+      "createdAt": 1720000007000,
+      "imageSettings": {
+        "imageGenerationSource": "meshy"
+      },
+      "inputs": [
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "图像", "mediaType": "image", "multiInput": true },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_comfy_1",
+      "type": "comfyui",
+      "title": "ComfyUI工作流",
+      "subtitle": "自定义工作流",
+      "worldX": 380,
+      "worldY": 560,
+      "width": 220,
+      "height": 120,
+      "createdAt": 1720000008000,
+      "comfyuiSettings": {
+        "status": "idle"
+      },
+      "inputs": [
+        { "id": "in_image1", "label": "图像1", "mediaType": "image" },
+        { "id": "in_image2", "label": "图像2", "mediaType": "image" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "图像", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_story_1",
+      "type": "story",
+      "title": "故事分支",
+      "subtitle": "分支剧情",
+      "worldX": 100,
+      "worldY": 520,
+      "width": 200,
+      "height": 180,
+      "createdAt": 1720000009000,
+      "storySettings": {
+        "previewWidth": 320,
+        "previewHeight": 180
+      },
+      "branches": [
+        { "id": "branch_a", "text": "走向森林" },
+        { "id": "branch_b", "text": "走向城堡" },
+        { "id": "branch_c", "text": "原地等待" }
+      ],
+      "inputs": [
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_branch_a", "label": "分支A", "mediaType": "flow", "offsetY": 30 },
+        { "id": "out_branch_b", "label": "分支B", "mediaType": "flow", "offsetY": 60 },
+        { "id": "out_branch_c", "label": "分支C", "mediaType": "flow", "offsetY": 90 }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "edge_1", "fromNodeId": "node_start", "fromAnchorId": "out_flow", "toNodeId": "node_text_1", "toAnchorId": "in_flow", "createdAt": 1720000010000 },
+    { "id": "edge_2", "fromNodeId": "node_text_1", "fromAnchorId": "out_text", "toNodeId": "node_image_1", "toAnchorId": "in_prompt", "createdAt": 1720000011000 },
+    { "id": "edge_3", "fromNodeId": "node_text_1", "fromAnchorId": "out_flow", "toNodeId": "node_image_1", "toAnchorId": "in_flow", "createdAt": 1720000012000 },
+    { "id": "edge_4", "fromNodeId": "node_image_1", "fromAnchorId": "out_image", "toNodeId": "node_video_1", "toAnchorId": "in_image", "createdAt": 1720000013000 },
+    { "id": "edge_5", "fromNodeId": "node_image_1", "fromAnchorId": "out_flow", "toNodeId": "node_video_1", "toAnchorId": "in_flow", "createdAt": 1720000014000 },
+    { "id": "edge_6", "fromNodeId": "node_image_1", "fromAnchorId": "out_image", "toNodeId": "node_model3d_1", "toAnchorId": "in_image", "createdAt": 1720000015000 },
+    { "id": "edge_7", "fromNodeId": "node_chat_1", "fromAnchorId": "out_text", "toNodeId": "node_model3d_1", "toAnchorId": "in_prompt", "createdAt": 1720000016000 },
+    { "id": "edge_8", "fromNodeId": "node_image_1", "fromAnchorId": "out_flow", "toNodeId": "node_model3d_1", "toAnchorId": "in_flow", "createdAt": 1720000017000 },
+    { "id": "edge_9", "fromNodeId": "node_video_1", "fromAnchorId": "out_flow", "toNodeId": "node_end", "toAnchorId": "in_flow", "createdAt": 1720000018000 },
+    { "id": "edge_10", "fromNodeId": "node_chat_1", "fromAnchorId": "out_text", "toNodeId": "node_image_2", "toAnchorId": "in_prompt", "createdAt": 1720000019000 },
+    { "id": "edge_11", "fromNodeId": "node_image_2", "fromAnchorId": "out_flow", "toNodeId": "node_model3d_1", "toAnchorId": "in_flow", "createdAt": 1720000020000 },
+    { "id": "edge_12", "fromNodeId": "node_story_1", "fromAnchorId": "out_branch_a", "toNodeId": "node_chat_1", "toAnchorId": "in_flow", "createdAt": 1720000021000 },
+    { "id": "edge_13", "fromNodeId": "node_story_1", "fromAnchorId": "out_branch_b", "toNodeId": "node_comfy_1", "toAnchorId": "in_flow", "createdAt": 1720000022000 },
+    { "id": "edge_14", "fromNodeId": "node_comfy_1", "fromAnchorId": "out_image", "toNodeId": "node_image_2", "toAnchorId": "in_prompt", "createdAt": 1720000023000 }
+  ]
+}
