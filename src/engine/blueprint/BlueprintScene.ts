@@ -6,8 +6,10 @@ import { Port } from './Port';
 import { BlueprintGrid } from './BlueprintGrid';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import { BlueprintEditorTool } from './BlueprintEditorTool';
-import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFrameData } from './types';
+import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFrameData, LegacyBlueprintData, LegacyResourceData } from './types';
 import type { SavedSelectionFrame } from './SelectionFrame';
+import { BlueprintLegacyLoader } from './BlueprintLegacyLoader';
+import { BlueprintLegacySaver } from './BlueprintLegacySaver';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -23,6 +25,7 @@ export class BlueprintScene extends Scene {
   private _tempConnection: TempConnection;
   private _pendingConnection: PendingConnection | null = null;
   private _savedSelectionFrames: Map<string, SavedSelectionFrame> = new Map();
+  private _legacyResources: Record<string, LegacyResourceData> = {};
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -50,7 +53,15 @@ export class BlueprintScene extends Scene {
     return Array.from(this._nodeMap.values());
   }
 
-  loadBlueprint(data: BlueprintData): void {
+  loadBlueprint(data: BlueprintData | LegacyBlueprintData): void {
+    let blueprintData: BlueprintData;
+
+    if (BlueprintLegacyLoader.isLegacyFormat(data)) {
+      blueprintData = BlueprintLegacyLoader.load(data);
+    } else {
+      blueprintData = data;
+    }
+
     for (const node of this._nodeMap.values()) {
       this.removeChild(node);
       node.dispose();
@@ -64,21 +75,22 @@ export class BlueprintScene extends Scene {
     this._connectionMap.clear();
 
     this._savedSelectionFrames.clear();
+    this._legacyResources = blueprintData.legacyResources || {};
 
-    if (data.viewport) {
-      this.setViewport(data.viewport);
+    if (blueprintData.viewport) {
+      this.setViewport(blueprintData.viewport);
     }
 
-    for (const nodeData of data.nodes) {
+    for (const nodeData of blueprintData.nodes) {
       this.addBlueprintNode(nodeData);
     }
 
-    for (const edgeData of data.edges) {
+    for (const edgeData of blueprintData.edges) {
       this.addConnection(edgeData);
     }
 
-    if (data.savedSelectionFrames) {
-      for (const frameData of data.savedSelectionFrames) {
+    if (blueprintData.savedSelectionFrames) {
+      for (const frameData of blueprintData.savedSelectionFrames) {
         this._savedSelectionFrames.set(frameData.id, {
           id: frameData.id,
           nodeIds: [...frameData.nodeIds],
@@ -90,6 +102,10 @@ export class BlueprintScene extends Scene {
     this.cancelPendingConnection();
     this.updateAllConnectionEndpoints();
     this.requestRedraw();
+  }
+
+  loadLegacyBlueprint(data: LegacyBlueprintData): void {
+    this.loadBlueprint(data);
   }
 
   addBlueprintNode(data: BlueprintNodeData): BlueprintNode {
@@ -329,11 +345,17 @@ export class BlueprintScene extends Scene {
     }
 
     return {
+      schemaVersion: 2,
       viewport: this.getViewport(),
       nodes,
       edges,
-      savedSelectionFrames
+      savedSelectionFrames,
+      legacyResources: Object.keys(this._legacyResources).length > 0 ? { ...this._legacyResources } : undefined
     };
+  }
+
+  serializeLegacy(): LegacyBlueprintData {
+    return BlueprintLegacySaver.save(this.serialize());
   }
 
   render(ctx: RenderContext): void {

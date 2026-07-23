@@ -1,4 +1,5 @@
 export type MediaType = 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta' | 'resource';
+export type ResizeCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export interface PortSpec {
   id: string;
@@ -19,6 +20,7 @@ export interface BlueprintNodeData {
   worldY: number;
   width: number;
   height: number;
+  sizeCustomized?: boolean;
   inputs: PortSpec[];
   outputs: PortSpec[];
   color?: string;
@@ -26,11 +28,35 @@ export interface BlueprintNodeData {
   selected?: boolean;
   status?: 'idle' | 'running' | 'success' | 'error';
   previewContent?: {
-    kind: 'text' | 'image' | 'video' | 'icon';
+    kind: 'text' | 'image' | 'video' | 'model3d' | 'icon';
     text?: string;
     imageUrl?: string;
     icon?: string;
   };
+  resourceId?: string;
+  textValue?: string;
+  imageSettings?: Record<string, any> | null;
+  videoSettings?: Record<string, any> | null;
+  model3dSettings?: Record<string, any> | null;
+  meshySettings?: Record<string, any> | null;
+  tripo3dSettings?: Record<string, any> | null;
+  blenderSettings?: Record<string, any> | null;
+  storySettings?: Record<string, any> | null;
+  sceneUnderstandingSettings?: Record<string, any> | null;
+  sceneLayoutSettings?: Record<string, any> | null;
+  sceneDecomposeSettings?: Record<string, any> | null;
+  unrealExportSettings?: Record<string, any> | null;
+  comfyuiSettings?: Record<string, any> | null;
+  nodeChatDraft?: string | null;
+  nodeChatParams?: Record<string, any> | null;
+  nodeChatSelectedRefs?: any[] | null;
+  resourcePath?: string | null;
+  rotatePromptText?: string | null;
+  textMergeItems?: any[] | null;
+  branches?: any[] | null;
+  prompt?: string | null;
+  createdAt?: number;
+  [key: string]: any;
 }
 
 export interface ConnectionData {
@@ -40,19 +66,66 @@ export interface ConnectionData {
   toNodeId: string;
   toAnchorId: string;
   selected?: boolean;
+  createdAt?: number;
+}
+
+export interface LegacyResourceData {
+  id: string;
+  kind: string;
+  name: string;
+  url: string;
+  sourcePath?: string | null;
+  projectRelativePath?: string | null;
+  size?: number;
+  localFileKey?: string | null;
+  relativePath?: string | null;
+  absolutePath?: string | null;
+  posterProjectRelativePath?: string | null;
+  posterUrl?: string;
+  [key: string]: any;
+}
+
+export interface LegacySelectionTag {
+  key: string;
+  label: string;
+  nodeIds: string[];
+  color?: string | null;
+  note?: string | null;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface LegacyBlueprintData {
+  schemaVersion: number;
+  savedAt?: number;
+  viewport: { zoom: number; panX: number; panY: number };
+  nodesById: Record<string, BlueprintNodeData>;
+  nodeOrder: string[];
+  edgesById: Record<string, ConnectionData>;
+  edgeOrder: string[];
+  resourcesById: Record<string, LegacyResourceData>;
+  resourceOrder: string[];
+  selectedNodeId?: string | null;
+  selectedNodeIds?: string[];
+  selectionTagsByKey: Record<string, LegacySelectionTag>;
+  savedSelectionFrames?: SavedSelectionFrameData[];
+  nodeCheckboxVisible?: boolean;
 }
 
 export interface BlueprintData {
+  schemaVersion?: number;
   viewport: { zoom: number; panX: number; panY: number };
   nodes: BlueprintNodeData[];
   edges: ConnectionData[];
   savedSelectionFrames?: SavedSelectionFrameData[];
+  legacyResources?: Record<string, LegacyResourceData>;
 }
 
 export interface SavedSelectionFrameData {
   id: string;
   nodeIds: string[];
   label: string;
+  createdAt?: number;
 }
 
 export const PORT_SIZE = 24;
@@ -75,8 +148,8 @@ export const PORT_TOP_OFFSET = NODE_HEADER_HEIGHT + 20;
 
 export const GRID_STEP = 80;
 export const GRID_MAJOR_EVERY = 5;
-export const GRID_COLOR = 'rgba(237, 242, 244, 0.10)';
-export const GRID_MAJOR_COLOR = 'rgba(237, 242, 244, 0.18)';
+export const GRID_COLOR = 'rgba(237, 242, 244, 0.12)';
+export const GRID_MAJOR_COLOR = 'rgba(237, 242, 244, 0.20)';
 export const BACKGROUND_COLOR = '#15181c';
 
 export const WF_PRIMARY = '#1f9d84';
@@ -151,3 +224,9 @@ export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number 
   'unreal-export': { width: 240, height: 160 },
   blender: { width: 260, height: 240 }
 };
+
+export const RESIZE_HANDLE_SIZE = 12;
+export const RESIZE_HANDLE_HIT_SIZE = 16;
+export const RESIZE_HANDLE_OFFSET = 4;
+export const MIN_NODE_WIDTH = 180;
+export const MIN_NODE_HEIGHT = 120;

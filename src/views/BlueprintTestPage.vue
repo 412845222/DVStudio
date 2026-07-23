@@ -13,16 +13,20 @@
         <button @click="saveSelection" :disabled="!canSaveSelection">保存分组 (Ctrl+G)</button>
         <button @click="clearAll">清空</button>
         <button @click="reloadData">重新加载测试数据</button>
+        <button @click="loadFile">加载蓝图文件</button>
+        <button @click="saveLegacy">保存为v1格式</button>
         <span class="zoom-info">{{ Math.round(zoom * 100) }}%</span>
       </div>
     </div>
     <div class="canvas-container" ref="containerRef">
       <canvas ref="canvasRef"></canvas>
+      <input type="file" ref="fileInputRef" accept=".json" style="display: none" @change="handleFileLoad" />
       <div class="hint-overlay" v-if="showHint">
         <div class="hint-content">
           <h3>操作提示</h3>
           <ul>
             <li>🖱️ <b>左键拖拽节点</b>：移动节点</li>
+            <li>📐 <b>选中节点后拖拽四角</b>：调整节点尺寸（最小180x120）</li>
             <li>🔗 <b>从右侧输出端口拖拽到输入端口</b>：创建连线</li>
             <li>🖱️ <b>左键空白拖拽</b>：框选</li>
             <li>🟦 <b>选中≥2节点显示蓝色多选框</b>：拖拽蓝色框区域可整体移动</li>
@@ -32,6 +36,7 @@
             <li>⌫ <b>Delete/Backspace</b>：删除选中节点或连线</li>
             <li>⎋ <b>Esc</b>：取消选择/连线</li>
             <li>🔄 <b>Ctrl+A</b>：全选</li>
+            <li>📂 <b>加载蓝图文件</b>：支持v1旧格式和v2新格式自动识别</li>
           </ul>
           <button @click="showHint = false">知道了</button>
         </div>
@@ -48,6 +53,7 @@ import testData from '../../samples/blueprint_test_data.json';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 const scene = ref<BlueprintScene | null>(null);
 const fps = ref(60);
 const zoom = ref(1);
@@ -143,6 +149,49 @@ function reloadData() {
   scene.value.loadBlueprint(testData as BlueprintData);
   scene.value.fitToContent(100);
   scene.value.onViewportChanged();
+}
+
+function loadFile() {
+  if (fileInputRef.value) {
+    fileInputRef.value.click();
+  }
+}
+
+function handleFileLoad(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file || !scene.value) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const content = e.target?.result as string;
+      const data = JSON.parse(content);
+      clearAll();
+      scene.value!.loadBlueprint(data);
+      scene.value!.fitToContent(100);
+      scene.value!.onViewportChanged();
+      console.log('蓝图加载成功，节点数:', (scene.value as any)._nodeMap?.size, '连线数:', (scene.value as any)._connectionMap?.size);
+    } catch (err) {
+      console.error('蓝图加载失败:', err);
+      alert('加载失败: ' + (err as Error).message);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function saveLegacy() {
+  if (!scene.value) return;
+  const data = scene.value.serializeLegacy();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'main.blueprint.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  console.log('已保存为v1格式');
 }
 
 onMounted(() => {

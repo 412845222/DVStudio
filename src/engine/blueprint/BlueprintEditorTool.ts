@@ -17,13 +17,18 @@ import {
   type SavedSelectionFrame,
   SELECTION_FRAME_CONSTANTS
 } from './SelectionFrame';
+import { MIN_NODE_WIDTH, MIN_NODE_HEIGHT, type ResizeCorner } from './types';
 
 enum DragMode {
   NONE,
   NODES,
   SELECTION_FRAME,
-  SAVED_FRAME
+  SAVED_FRAME,
+  RESIZE
 }
+
+const ANCHOR_MAGNET_DISTANCE = 15;
+const DRAG_BOUNDARY = 5000;
 
 export class BlueprintEditorTool extends Tool {
   private dragging: boolean = false;
@@ -34,12 +39,19 @@ export class BlueprintEditorTool extends Tool {
   private lastPanPos: Vector2 = new Vector2();
   private pendingFromPort: Port | null = null;
   private pendingFromNode: BlueprintNode | null = null;
+  private magnetedPort: Port | null = null;
   private dragMode: DragMode = DragMode.NONE;
   private dragStartScreen: Vector2 = new Vector2();
   private dragLastScreen: Vector2 = new Vector2();
   private dragSavedFrameId: string | null = null;
   private tempSelectionBounds: Rect | null = null;
   private savedFrameLabelWidths: Map<string, number> = new Map();
+  private resizeNode: BlueprintNode | null = null;
+  private resizeCorner: ResizeCorner | null = null;
+  private resizeStartWidth: number = 0;
+  private resizeStartHeight: number = 0;
+  private resizeStartX: number = 0;
+  private resizeStartY: number = 0;
 
   constructor() {
     super('blueprint_editor', 'default');
@@ -62,6 +74,17 @@ export class BlueprintEditorTool extends Tool {
     const sel = this.manager!.selection;
     const nodes = sel.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
     this.tempSelectionBounds = computeSelectionBounds(nodes);
+  }
+
+  private clampSelectionToBoundary(): void {
+    const sel = this.manager!.selection;
+    const nodes = sel.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    for (const node of nodes) {
+      const pos = node.transform.position;
+      pos.x = Math.max(-DRAG_BOUNDARY, Math.min(DRAG_BOUNDARY, pos.x));
+      pos.y = Math.max(-DRAG_BOUNDARY, Math.min(DRAG_BOUNDARY, pos.y));
+      node.markDirty(1);
+    }
   }
 
   private measureSavedFrameLabels(): void {
@@ -109,6 +132,25 @@ export class BlueprintEditorTool extends Tool {
     return pointInFrameDragArea(screenPoint, this.tempSelectionBounds, camera);
   }
 
+  private hitTestResizeHandle(screenPoint: Vector2): { node: BlueprintNode; corner: ResizeCorner } | null {
+    const scene = this.bpScene;
+    const camera = scene.camera;
+    const invZoom = 1 / camera.zoom;
+    const worldPoint = camera.screenToWorld(screenPoint);
+
+    const allNodes = scene.getAllBlueprintNodes();
+    for (let i = allNodes.length - 1; i >= 0; i--) {
+      const node = allNodes[i];
+      if (!node.selected && !node.hoveredResizeCorner) continue;
+      const localPoint = node.worldToLocal(worldPoint);
+      const corner = node.getResizeCornerAtPoint(localPoint, invZoom);
+      if (corner) {
+        return { node, corner };
+      }
+    }
+    return null;
+  }
+
   onPointerDown(event: GraphPointerEvent, hit: HitTestResult | null): void {
     const scene = this.bpScene;
     const sel = this.manager!.selection;
@@ -122,6 +164,26 @@ export class BlueprintEditorTool extends Tool {
       this.setCursor('grabbing');
       scene.requestRedraw();
       return;
+    }
+
+    if (event.button === 0) {
+      const resizeHit = this.hitTestResizeHandle(event.screenPosition);
+      if (resizeHit) {
+        this.resizeNode = resizeHit.node;
+        this.resizeCorner = resizeHit.corner;
+        this.resizeStartWidth = resizeHit.node.data.width;
+        this.resizeStartHeight = resizeHit.node.data.height;
+        this.resizeStartX = resizeHit.node.transform.position.x;
+        this.resizeStartY = resizeHit.node.transform.position.y;
+        this.dragMode = DragMode.RESIZE;
+        this.dragging = true;
+        this.dragMoved = false;
+        this.dragStartScreen.copy(event.screenPosition);
+        this.dragLastScreen.copy(event.screenPosition);
+        this.setCursor(resizeHit.node.getResizeCursor(resizeHit.corner));
+        scene.requestRedraw();
+        return;
+      }
     }
 
     const savedFrameHit = this.hitTestSavedFrame(event.screenPosition);
@@ -238,13 +300,39 @@ export class BlueprintEditorTool extends Tool {
         }
       }
 
+      let nearestPort: Port | null = null;
+      let nearestDist = ANCHOR_MAGNET_DISTANCE;
+      for (const node of scene.getAllBlueprintNodes()) {
+        if (node === this.pendingFromNode) continue;
+        for (const inputPort of node.inputPorts) {
+          const portWorldPos = inputPort.getWorldPosition();
+          const dist = Math.hypot(worldPos.x - portWorldPos.x, worldPos.y - portWorldPos.y);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestPort = inputPort;
+          }
+        }
+      }
+
+      if (nearestPort) {
+        hoveredPort = nearestPort;
+        compatible = true;
+      }
+
+      this.magnetedPort = hoveredPort;
+
       for (const node of scene.getAllBlueprintNodes()) {
         for (const p of [...node.inputPorts, ...node.outputPorts]) {
           p.setSnapped(p === hoveredPort, compatible);
         }
       }
 
-      scene.updatePendingConnection(worldPos, hoveredPort, compatible);
+      if (hoveredPort && compatible) {
+        const snappedWorldPos = hoveredPort.getWorldPosition();
+        scene.updatePendingConnection(snappedWorldPos, hoveredPort, compatible);
+      } else {
+        scene.updatePendingConnection(worldPos, hoveredPort, compatible);
+      }
       scene.requestRedraw();
       return;
     }
@@ -261,8 +349,52 @@ export class BlueprintEditorTool extends Tool {
 
     if (this.dragMode === DragMode.NODES && drag.isDragging()) {
       drag.updateDrag(event);
+      this.clampSelectionToBoundary();
       this.dragMoved = true;
       this.updateTempSelectionBounds();
+      scene.updateAllConnectionEndpoints();
+      scene.requestRedraw();
+    } else if (this.dragMode === DragMode.RESIZE && this.resizeNode && this.resizeCorner) {
+      const dx = event.screenPosition.x - this.dragLastScreen.x;
+      const dy = event.screenPosition.y - this.dragLastScreen.y;
+      const worldDelta = scene.camera.screenDeltaToWorld(new Vector2(dx, dy));
+
+      let newWidth = this.resizeStartWidth;
+      let newHeight = this.resizeStartHeight;
+      let newX = this.resizeStartX;
+      let newY = this.resizeStartY;
+
+      switch (this.resizeCorner) {
+        case 'bottom-right':
+          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth + worldDelta.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight + worldDelta.y);
+          break;
+        case 'bottom-left':
+          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth - worldDelta.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight + worldDelta.y);
+          newX = this.resizeStartX + (this.resizeStartWidth - newWidth);
+          break;
+        case 'top-right':
+          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth + worldDelta.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight - worldDelta.y);
+          newY = this.resizeStartY + (this.resizeStartHeight - newHeight);
+          break;
+        case 'top-left':
+          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth - worldDelta.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight - worldDelta.y);
+          newX = this.resizeStartX + (this.resizeStartWidth - newWidth);
+          newY = this.resizeStartY + (this.resizeStartHeight - newHeight);
+          break;
+      }
+
+      this.resizeNode.transform.setPosition(newX, newY);
+      this.resizeNode.updateSize(newWidth, newHeight);
+      this.resizeNode.data.worldX = newX;
+      this.resizeNode.data.worldY = newY;
+      this.resizeNode.data.sizeCustomized = true;
+
+      this.dragLastScreen.copy(event.screenPosition);
+      this.dragMoved = true;
       scene.updateAllConnectionEndpoints();
       scene.requestRedraw();
     } else if (this.dragMode === DragMode.SELECTION_FRAME) {
@@ -270,6 +402,7 @@ export class BlueprintEditorTool extends Tool {
       const dy = event.screenPosition.y - this.dragLastScreen.y;
       const worldDelta = scene.camera.screenDeltaToWorld(new Vector2(dx, dy));
       sel.moveSelection(worldDelta);
+      this.clampSelectionToBoundary();
       this.dragLastScreen.copy(event.screenPosition);
       this.dragMoved = true;
       this.updateTempSelectionBounds();
@@ -280,6 +413,7 @@ export class BlueprintEditorTool extends Tool {
       const dy = event.screenPosition.y - this.dragLastScreen.y;
       const worldDelta = scene.camera.screenDeltaToWorld(new Vector2(dx, dy));
       sel.moveSelection(worldDelta);
+      this.clampSelectionToBoundary();
       this.dragLastScreen.copy(event.screenPosition);
       this.dragMoved = true;
       this.updateTempSelectionBounds();
@@ -293,22 +427,33 @@ export class BlueprintEditorTool extends Tool {
       this.updateTempSelectionBounds();
       this.measureSavedFrameLabels();
 
-      const savedFrameHit = this.hitTestSavedFrame(event.screenPosition);
-      if (savedFrameHit && savedFrameHit.hitDelete) {
-        this.setCursor('pointer');
-      } else if (savedFrameHit && savedFrameHit.hitTagBar) {
-        this.setCursor('grab');
-      } else if (this.hitTestTempFrameDragArea(event.screenPosition)) {
-        this.setCursor('grab');
-      } else if (hit && hit.node instanceof Port) {
-        this.setCursor('crosshair');
-      } else if (hit && hit.node instanceof BlueprintNode) {
-        this.setCursor('grab');
-      } else if (hit && hit.node instanceof Connection) {
-        this.setCursor('pointer');
-      } else {
-        this.setCursor('default');
+      for (const node of scene.getAllBlueprintNodes()) {
+        node.hoveredResizeCorner = null;
       }
+
+      const resizeHit = this.hitTestResizeHandle(event.screenPosition);
+      if (resizeHit) {
+        resizeHit.node.hoveredResizeCorner = resizeHit.corner;
+        this.setCursor(resizeHit.node.getResizeCursor(resizeHit.corner));
+      } else {
+        const savedFrameHit = this.hitTestSavedFrame(event.screenPosition);
+        if (savedFrameHit && savedFrameHit.hitDelete) {
+          this.setCursor('pointer');
+        } else if (savedFrameHit && savedFrameHit.hitTagBar) {
+          this.setCursor('grab');
+        } else if (this.hitTestTempFrameDragArea(event.screenPosition)) {
+          this.setCursor('grab');
+        } else if (hit && hit.node instanceof Port) {
+          this.setCursor('crosshair');
+        } else if (hit && hit.node instanceof BlueprintNode) {
+          this.setCursor('grab');
+        } else if (hit && hit.node instanceof Connection) {
+          this.setCursor('pointer');
+        } else {
+          this.setCursor('default');
+        }
+      }
+      scene.requestRedraw();
     }
   }
 
@@ -329,8 +474,12 @@ export class BlueprintEditorTool extends Tool {
       }
 
       let completed = false;
-      if (hit && hit.node instanceof Port) {
-        const targetPort = hit.node;
+      let targetPort: Port | null = this.magnetedPort;
+      if (!targetPort && hit && hit.node instanceof Port) {
+        targetPort = hit.node;
+      }
+
+      if (targetPort) {
         const targetNode = this.findParentNode(targetPort);
         if (
           targetNode &&
@@ -349,6 +498,7 @@ export class BlueprintEditorTool extends Tool {
       }
       this.pendingFromPort = null;
       this.pendingFromNode = null;
+      this.magnetedPort = null;
       this.setCursor('default');
       scene.requestRedraw();
       return;
@@ -365,6 +515,9 @@ export class BlueprintEditorTool extends Tool {
       if (drag.isDragging()) {
         drag.endDrag(event);
       }
+    } else if (this.dragMode === DragMode.RESIZE) {
+      this.resizeNode = null;
+      this.resizeCorner = null;
     } else if (this.dragMode === DragMode.SELECTION_FRAME) {
       if (!this.dragMoved && this.tempSelectionBounds) {
         sel.clearSelection();

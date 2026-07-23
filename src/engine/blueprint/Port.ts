@@ -6,12 +6,9 @@ import type { HitTestResult } from '../graphbase/scene/interfaces';
 import {
   PORT_SIZE,
   PORT_INNER_SIZE,
-  PORT_CORNER_RADIUS,
-  PORT_INNER_CORNER,
   PORT_HOVER_SCALE,
   PORT_HIT_RADIUS,
   MEDIA_TYPE_COLORS,
-  WF_NODE_BG,
   WF_PRIMARY,
   type PortSpec,
   type MediaType
@@ -97,32 +94,24 @@ export class Port extends Node {
     return this.getLocalBounds();
   }
 
-  private drawRoundedRect(
+  private drawSquare(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     w: number,
-    h: number,
-    r: number
+    h: number
   ): void {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
   }
 
   protected renderSelf(ctx: RenderContext): void {
+    const c = ctx.ctx;
     const color = this.getColor();
     const isHovered = this.hovered;
     const isArmed = this.armed;
     const isSnapped = this.snapped;
+    const invZoom = 1 / ctx.camera.zoom;
     const scale = (isHovered || isArmed || isSnapped) ? PORT_HOVER_SCALE : 1;
     const halfOuter = (PORT_SIZE / 2) * scale;
     const halfInner = (PORT_INNER_SIZE / 2) * (isSnapped ? 1.15 : scale);
@@ -147,56 +136,52 @@ export class Port extends Node {
     }
 
     if (this.connected) {
-      ctx.ctx.save();
-      ctx.ctx.shadowColor = color;
-      ctx.ctx.shadowBlur = 8;
-      ctx.ctx.fillStyle = this.hexToRgba(color, 0.2);
-      this.drawRoundedRect(ctx.ctx, -halfOuter - 4, -halfOuter - 4, (halfOuter + 4) * 2, (halfOuter + 4) * 2, PORT_CORNER_RADIUS * 1.5);
-      ctx.ctx.fill();
-      ctx.ctx.restore();
+      c.save();
+      c.shadowColor = color;
+      c.shadowBlur = 8 * invZoom;
+      c.fillStyle = this.hexToRgba(color, 0.2);
+      c.fillRect(-halfOuter - 4 * invZoom, -halfOuter - 4 * invZoom, (halfOuter + 4 * invZoom) * 2, (halfOuter + 4 * invZoom) * 2);
+      c.restore();
     }
 
     if (isSnapped) {
-      ctx.ctx.save();
-      ctx.ctx.shadowColor = glowColor;
-      ctx.ctx.shadowBlur = 18;
-      ctx.ctx.fillStyle = glowColor;
-      const glowSize = halfOuter + 8;
-      this.drawRoundedRect(ctx.ctx, -glowSize, -glowSize, glowSize * 2, glowSize * 2, PORT_CORNER_RADIUS * 2);
-      ctx.ctx.fill();
-      ctx.ctx.restore();
+      c.save();
+      c.shadowColor = glowColor;
+      c.shadowBlur = 18 * invZoom;
+      c.fillStyle = glowColor;
+      const glowSize = halfOuter + 8 * invZoom;
+      c.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+      c.restore();
     } else if (isArmed || isHovered) {
-      ctx.ctx.save();
-      ctx.ctx.shadowColor = glowColor;
-      ctx.ctx.shadowBlur = 12;
-      ctx.ctx.fillStyle = glowColor;
-      const glowSize = halfOuter + 4;
-      this.drawRoundedRect(ctx.ctx, -glowSize, -glowSize, glowSize * 2, glowSize * 2, PORT_CORNER_RADIUS * 1.5);
-      ctx.ctx.fill();
-      ctx.ctx.restore();
+      c.save();
+      c.shadowColor = glowColor;
+      c.shadowBlur = 12 * invZoom;
+      c.fillStyle = glowColor;
+      const glowSize = halfOuter + 4 * invZoom;
+      c.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+      c.restore();
     }
 
-    ctx.ctx.save();
-    ctx.ctx.fillStyle = WF_NODE_BG;
-    ctx.ctx.strokeStyle = borderColor;
-    ctx.ctx.lineWidth = 1;
-    this.drawRoundedRect(ctx.ctx, -halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2, PORT_CORNER_RADIUS);
-    ctx.ctx.fill();
-    ctx.ctx.stroke();
-    ctx.ctx.restore();
+    c.save();
+    c.fillStyle = 'rgba(21, 24, 28, 0.9)';
+    c.strokeStyle = borderColor;
+    c.lineWidth = 1.5 * invZoom;
+    c.fillRect(-halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2);
+    c.strokeRect(-halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2);
+    c.restore();
 
-    ctx.ctx.save();
+    c.save();
     if (isSnapped) {
-      ctx.ctx.shadowColor = borderColor;
-      ctx.ctx.shadowBlur = 10;
+      c.shadowColor = borderColor;
+      c.shadowBlur = 10 * invZoom;
     }
-    ctx.ctx.fillStyle = isSnapped && this.compatible !== false ? (this.connected ? '#ffffff' : color) : color;
-    this.drawRoundedRect(ctx.ctx, -halfInner, -halfInner, halfInner * 2, halfInner * 2, PORT_INNER_CORNER);
-    ctx.ctx.fill();
-    ctx.ctx.restore();
+    c.fillStyle = isSnapped && this.compatible !== false ? (this.connected ? '#ffffff' : color) : color;
+    c.fillRect(-halfInner, -halfInner, halfInner * 2, halfInner * 2);
+    c.restore();
   }
 
   private hexToRgba(hex: string, alpha: number): string {
+    if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
     const h = hex.replace('#', '');
     const r = parseInt(h.substring(0, 2), 16);
     const g = parseInt(h.substring(2, 4), 16);
@@ -205,8 +190,8 @@ export class Port extends Node {
   }
 
   protected hitTestSelf(localPoint: Vector2): HitTestResult | null {
-    const dist = Math.max(Math.abs(localPoint.x), Math.abs(localPoint.y));
-    if (dist <= PORT_HIT_RADIUS) {
+    const half = PORT_HIT_RADIUS;
+    if (Math.abs(localPoint.x) <= half && Math.abs(localPoint.y) <= half) {
       return {
         node: this,
         localPoint: localPoint.clone(),

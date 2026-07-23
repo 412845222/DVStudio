@@ -102,9 +102,6 @@ export class ToolManager implements Disposable {
     const unsub2 = this.input.on.on('pointermove', (e: unknown) => {
       const evt = e as GraphPointerEvent;
       this.activeTool?.onPointerMove(evt, evt.hitResult);
-      if (this.activeTool?.cursor) {
-        this.setCursor(this.activeTool.cursor);
-      }
     });
     const unsub3 = this.input.on.on('pointerup', (e: unknown) => {
       const evt = e as GraphPointerEvent;
