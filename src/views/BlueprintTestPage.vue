@@ -10,6 +10,7 @@
         <button @click="fitToContent">适应内容</button>
         <button @click="zoomIn">放大</button>
         <button @click="zoomOut">缩小</button>
+        <button @click="saveSelection" :disabled="!canSaveSelection">保存分组 (Ctrl+G)</button>
         <button @click="clearAll">清空</button>
         <button @click="reloadData">重新加载测试数据</button>
         <span class="zoom-info">{{ Math.round(zoom * 100) }}%</span>
@@ -24,7 +25,9 @@
             <li>🖱️ <b>左键拖拽节点</b>：移动节点</li>
             <li>🔗 <b>从右侧输出端口拖拽到输入端口</b>：创建连线</li>
             <li>🖱️ <b>左键空白拖拽</b>：框选</li>
-            <li>🖱️ <b>中键/空格+左键拖拽</b>：平移画布</li>
+            <li>🟦 <b>选中≥2节点显示蓝色多选框</b>：拖拽蓝色框区域可整体移动</li>
+            <li>🟩 <b>Ctrl+G 保存分组</b>：显示绿色保存分组框，可拖拽/删除</li>
+            <li>🖱️ <b>中键/右键/空格+左键拖拽</b>：平移画布</li>
             <li>🔍 <b>滚轮</b>：缩放视图（以鼠标位置为中心）</li>
             <li>⌫ <b>Delete/Backspace</b>：删除选中节点或连线</li>
             <li>⎋ <b>Esc</b>：取消选择/连线</li>
@@ -39,7 +42,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { BlueprintScene } from '../engine/blueprint';
+import { BlueprintScene, BlueprintNode } from '../engine/blueprint';
 import type { BlueprintData } from '../engine/blueprint';
 import testData from '../../samples/blueprint_test_data.json';
 
@@ -49,6 +52,7 @@ const scene = ref<BlueprintScene | null>(null);
 const fps = ref(60);
 const zoom = ref(1);
 const showHint = ref(true);
+const selectedNodeCount = ref(0);
 
 let frameCount = 0;
 let lastFpsTime = performance.now();
@@ -64,6 +68,21 @@ const edgeCount = computed(() => {
   if (!scene.value) return 0;
   return (scene.value as any)._connectionMap?.size ?? 0;
 });
+
+const canSaveSelection = computed(() => {
+  return selectedNodeCount.value >= 2;
+});
+
+function saveSelection() {
+  if (!scene.value) return;
+  const s = scene.value;
+  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+  if (selectedNodes.length >= 2) {
+    const defaultLabel = `分组 ${s.getSavedSelectionFrames().length + 1}`;
+    s.saveSelectionFrame(selectedNodes.map(n => n.id), defaultLabel);
+    s.requestRedraw();
+  }
+}
 
 function updateFps() {
   frameCount++;
@@ -142,6 +161,13 @@ onMounted(() => {
   s.on.on('viewport-change', () => {
     zoom.value = s.camera.zoom;
     s.onViewportChanged();
+  });
+
+  s.selection.on.on('select', () => {
+    selectedNodeCount.value = s.selection.getSelection().filter(n => n instanceof BlueprintNode).length;
+  });
+  s.selection.on.on('deselect', () => {
+    selectedNodeCount.value = s.selection.getSelection().filter(n => n instanceof BlueprintNode).length;
   });
 
   resizeObserver = new ResizeObserver(handleResize);

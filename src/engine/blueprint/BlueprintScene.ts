@@ -6,7 +6,8 @@ import { Port } from './Port';
 import { BlueprintGrid } from './BlueprintGrid';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import { BlueprintEditorTool } from './BlueprintEditorTool';
-import type { BlueprintNodeData, BlueprintData, ConnectionData } from './types';
+import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFrameData } from './types';
+import type { SavedSelectionFrame } from './SelectionFrame';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -21,6 +22,7 @@ export class BlueprintScene extends Scene {
   private _grid: BlueprintGrid;
   private _tempConnection: TempConnection;
   private _pendingConnection: PendingConnection | null = null;
+  private _savedSelectionFrames: Map<string, SavedSelectionFrame> = new Map();
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -61,6 +63,8 @@ export class BlueprintScene extends Scene {
     }
     this._connectionMap.clear();
 
+    this._savedSelectionFrames.clear();
+
     if (data.viewport) {
       this.setViewport(data.viewport);
     }
@@ -71,6 +75,16 @@ export class BlueprintScene extends Scene {
 
     for (const edgeData of data.edges) {
       this.addConnection(edgeData);
+    }
+
+    if (data.savedSelectionFrames) {
+      for (const frameData of data.savedSelectionFrames) {
+        this._savedSelectionFrames.set(frameData.id, {
+          id: frameData.id,
+          nodeIds: [...frameData.nodeIds],
+          label: frameData.label
+        });
+      }
     }
 
     this.cancelPendingConnection();
@@ -232,6 +246,46 @@ export class BlueprintScene extends Scene {
     return this._pendingConnection;
   }
 
+  getSavedSelectionFrames(): SavedSelectionFrame[] {
+    return Array.from(this._savedSelectionFrames.values());
+  }
+
+  getSavedSelectionFrame(frameId: string): SavedSelectionFrame | null {
+    return this._savedSelectionFrames.get(frameId) ?? null;
+  }
+
+  saveSelectionFrame(nodeIds: string[], label: string): SavedSelectionFrame {
+    const id = `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const sortedIds = [...nodeIds].sort();
+    const frame: SavedSelectionFrame = { id, nodeIds: sortedIds, label };
+    this._savedSelectionFrames.set(id, frame);
+    this.requestRedraw();
+    return frame;
+  }
+
+  deleteSavedSelectionFrame(frameId: string): boolean {
+    const deleted = this._savedSelectionFrames.delete(frameId);
+    if (deleted) this.requestRedraw();
+    return deleted;
+  }
+
+  renameSavedSelectionFrame(frameId: string, newLabel: string): boolean {
+    const frame = this._savedSelectionFrames.get(frameId);
+    if (!frame) return false;
+    frame.label = newLabel;
+    this.requestRedraw();
+    return true;
+  }
+
+  getNodesByIds(ids: string[]): BlueprintNode[] {
+    const nodes: BlueprintNode[] = [];
+    for (const id of ids) {
+      const node = this._nodeMap.get(id);
+      if (node) nodes.push(node);
+    }
+    return nodes;
+  }
+
   updateAllConnectionEndpoints(): void {
     for (const conn of this._connectionMap.values()) {
       const fromNode = this._nodeMap.get(conn.data.fromNodeId);
@@ -265,10 +319,20 @@ export class BlueprintScene extends Scene {
       edges.push({ ...conn.data });
     }
 
+    const savedSelectionFrames: SavedSelectionFrameData[] = [];
+    for (const frame of this._savedSelectionFrames.values()) {
+      savedSelectionFrames.push({
+        id: frame.id,
+        nodeIds: [...frame.nodeIds],
+        label: frame.label
+      });
+    }
+
     return {
       viewport: this.getViewport(),
       nodes,
-      edges
+      edges,
+      savedSelectionFrames
     };
   }
 
@@ -280,6 +344,7 @@ export class BlueprintScene extends Scene {
   dispose(): void {
     this._nodeMap.clear();
     this._connectionMap.clear();
+    this._savedSelectionFrames.clear();
     super.dispose();
   }
 }

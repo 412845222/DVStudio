@@ -2,7 +2,7 @@ import { Vector2 } from '../core/Vector2';
 import { Rect } from '../core/Rect';
 import { EventEmitter } from '../core/EventEmitter';
 import type { Scene } from '../scene/Scene';
-import type { Node } from '../scene/Node';
+import { Node } from '../scene/Node';
 
 export class SelectionManager {
   private scene: Scene;
@@ -56,7 +56,7 @@ export class SelectionManager {
   }
 
   selectAll(): void {
-    const allNodes = this.scene.getAllNodes().filter(n => n.selectable);
+    const allNodes = this.scene.getAllNodes().filter(n => n.selectable && n.draggable);
     for (const node of allNodes) {
       if (!this.selected.has(node.id)) {
         this.selected.add(node.id);
@@ -159,7 +159,7 @@ export class SelectionManager {
     }
 
     const selected: Node[] = [];
-    const allNodes = this.scene.getAllNodes().filter(n => n.selectable);
+    const allNodes = this.scene.getAllNodes().filter(n => n.selectable && n.draggable);
     for (const node of allNodes) {
       const bounds = node.getWorldBounds();
       if (this.marqueeRect.containsRect(bounds) || this.marqueeRect.intersects(bounds)) {
@@ -195,9 +195,12 @@ export class SelectionManager {
   }
 
   moveSelection(delta: Vector2): void {
-    const nodes = this.getSelection();
+    const nodes = this.getSelection().filter(n => n.draggable);
     for (const node of nodes) {
       node.translate(delta.x, delta.y);
+      if (node instanceof Node) {
+        node.onDragMove(delta, null);
+      }
     }
     if (nodes.length > 0) {
       this.scene.requestRedraw();

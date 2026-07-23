@@ -69,6 +69,10 @@ export class Scene extends Group implements Disposable {
     return this._started;
   }
 
+  get canvas(): HTMLCanvasElement {
+    return this._canvas;
+  }
+
   private setupKeyboardShortcuts(): void {
     this.input.on.on('keydown', (e: unknown) => {
       const evt = e as { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; preventDefault: () => void };

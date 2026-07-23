@@ -115,6 +115,10 @@ export class Camera {
     return this.getInverseViewMatrix().transformPoint(screen);
   }
 
+  screenDeltaToWorld(screenDelta: Vector2): Vector2 {
+    return new Vector2(screenDelta.x / this.zoom, screenDelta.y / this.zoom);
+  }
+
   getWorldViewport(): Rect {
     const topLeft = this.screenToWorld(new Vector2(this.viewport.left, this.viewport.top));
     const bottomRight = this.screenToWorld(new Vector2(this.viewport.right, this.viewport.bottom));

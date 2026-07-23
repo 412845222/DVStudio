@@ -46,6 +46,13 @@ export interface BlueprintData {
   viewport: { zoom: number; panX: number; panY: number };
   nodes: BlueprintNodeData[];
   edges: ConnectionData[];
+  savedSelectionFrames?: SavedSelectionFrameData[];
+}
+
+export interface SavedSelectionFrameData {
+  id: string;
+  nodeIds: string[];
+  label: string;
 }
 
 export const PORT_SIZE = 24;
