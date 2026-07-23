@@ -138,26 +138,26 @@ export class Port extends Node {
     if (this.connected) {
       c.save();
       c.shadowColor = color;
-      c.shadowBlur = 8 * invZoom;
+      c.shadowBlur = 8;
       c.fillStyle = this.hexToRgba(color, 0.2);
-      c.fillRect(-halfOuter - 4 * invZoom, -halfOuter - 4 * invZoom, (halfOuter + 4 * invZoom) * 2, (halfOuter + 4 * invZoom) * 2);
+      c.fillRect(-halfOuter - 4, -halfOuter - 4, (halfOuter + 4) * 2, (halfOuter + 4) * 2);
       c.restore();
     }
 
     if (isSnapped) {
       c.save();
       c.shadowColor = glowColor;
-      c.shadowBlur = 18 * invZoom;
+      c.shadowBlur = 18;
       c.fillStyle = glowColor;
-      const glowSize = halfOuter + 8 * invZoom;
+      const glowSize = halfOuter + 8;
       c.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
       c.restore();
     } else if (isArmed || isHovered) {
       c.save();
       c.shadowColor = glowColor;
-      c.shadowBlur = 12 * invZoom;
+      c.shadowBlur = 12;
       c.fillStyle = glowColor;
-      const glowSize = halfOuter + 4 * invZoom;
+      const glowSize = halfOuter + 4;
       c.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
       c.restore();
     }
@@ -165,7 +165,7 @@ export class Port extends Node {
     c.save();
     c.fillStyle = 'rgba(21, 24, 28, 0.9)';
     c.strokeStyle = borderColor;
-    c.lineWidth = 1.5 * invZoom;
+    c.lineWidth = 1.5;
     c.fillRect(-halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2);
     c.strokeRect(-halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2);
     c.restore();
@@ -173,7 +173,7 @@ export class Port extends Node {
     c.save();
     if (isSnapped) {
       c.shadowColor = borderColor;
-      c.shadowBlur = 10 * invZoom;
+      c.shadowBlur = 10;
     }
     c.fillStyle = isSnapped && this.compatible !== false ? (this.connected ? '#ffffff' : color) : color;
     c.fillRect(-halfInner, -halfInner, halfInner * 2, halfInner * 2);

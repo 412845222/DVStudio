@@ -355,36 +355,46 @@ export class BlueprintEditorTool extends Tool {
       scene.updateAllConnectionEndpoints();
       scene.requestRedraw();
     } else if (this.dragMode === DragMode.RESIZE && this.resizeNode && this.resizeCorner) {
-      const dx = event.screenPosition.x - this.dragLastScreen.x;
-      const dy = event.screenPosition.y - this.dragLastScreen.y;
-      const worldDelta = scene.camera.screenDeltaToWorld(new Vector2(dx, dy));
+      const mouseWorld = scene.camera.screenToWorld(event.screenPosition);
 
-      let newWidth = this.resizeStartWidth;
-      let newHeight = this.resizeStartHeight;
-      let newX = this.resizeStartX;
-      let newY = this.resizeStartY;
+      let newWidth: number;
+      let newHeight: number;
+      let newX: number;
+      let newY: number;
 
       switch (this.resizeCorner) {
-        case 'bottom-right':
-          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth + worldDelta.x);
-          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight + worldDelta.y);
+        case 'bottom-right': {
+          newX = this.resizeStartX;
+          newY = this.resizeStartY;
+          newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - this.resizeStartX);
+          newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - this.resizeStartY);
           break;
-        case 'bottom-left':
-          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth - worldDelta.x);
-          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight + worldDelta.y);
-          newX = this.resizeStartX + (this.resizeStartWidth - newWidth);
+        }
+        case 'bottom-left': {
+          newY = this.resizeStartY;
+          const rightEdge = this.resizeStartX + this.resizeStartWidth;
+          newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - this.resizeStartY);
+          newX = rightEdge - newWidth;
           break;
-        case 'top-right':
-          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth + worldDelta.x);
-          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight - worldDelta.y);
-          newY = this.resizeStartY + (this.resizeStartHeight - newHeight);
+        }
+        case 'top-right': {
+          newX = this.resizeStartX;
+          const bottomEdge = this.resizeStartY + this.resizeStartHeight;
+          newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - this.resizeStartX);
+          newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y);
+          newY = bottomEdge - newHeight;
           break;
-        case 'top-left':
-          newWidth = Math.max(MIN_NODE_WIDTH, this.resizeStartWidth - worldDelta.x);
-          newHeight = Math.max(MIN_NODE_HEIGHT, this.resizeStartHeight - worldDelta.y);
-          newX = this.resizeStartX + (this.resizeStartWidth - newWidth);
-          newY = this.resizeStartY + (this.resizeStartHeight - newHeight);
+        }
+        case 'top-left': {
+          const rightEdge = this.resizeStartX + this.resizeStartWidth;
+          const bottomEdge = this.resizeStartY + this.resizeStartHeight;
+          newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x);
+          newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y);
+          newX = rightEdge - newWidth;
+          newY = bottomEdge - newHeight;
           break;
+        }
       }
 
       this.resizeNode.transform.setPosition(newX, newY);
@@ -392,9 +402,10 @@ export class BlueprintEditorTool extends Tool {
       this.resizeNode.data.worldX = newX;
       this.resizeNode.data.worldY = newY;
       this.resizeNode.data.sizeCustomized = true;
+      this.resizeNode.hoveredResizeCorner = this.resizeCorner;
 
-      this.dragLastScreen.copy(event.screenPosition);
       this.dragMoved = true;
+      this.setCursor(this.resizeNode.getResizeCursor(this.resizeCorner));
       scene.updateAllConnectionEndpoints();
       scene.requestRedraw();
     } else if (this.dragMode === DragMode.SELECTION_FRAME) {

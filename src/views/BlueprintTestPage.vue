@@ -13,6 +13,7 @@
         <button @click="saveSelection" :disabled="!canSaveSelection">保存分组 (Ctrl+G)</button>
         <button @click="clearAll">清空</button>
         <button @click="reloadData">重新加载测试数据</button>
+        <button @click="loadLegacyDemo">加载演示项目(v1格式)</button>
         <button @click="loadFile">加载蓝图文件</button>
         <button @click="saveLegacy">保存为v1格式</button>
         <span class="zoom-info">{{ Math.round(zoom * 100) }}%</span>
@@ -50,6 +51,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { BlueprintScene, BlueprintNode } from '../engine/blueprint';
 import type { BlueprintData } from '../engine/blueprint';
 import testData from '../../samples/blueprint_test_data.json';
+import legacyDemoData from '../../samples/legacy_demo.blueprint.json';
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -149,6 +151,18 @@ function reloadData() {
   scene.value.loadBlueprint(testData as BlueprintData);
   scene.value.fitToContent(100);
   scene.value.onViewportChanged();
+}
+
+function loadLegacyDemo() {
+  if (!scene.value) return;
+  clearAll();
+  scene.value.loadBlueprint(legacyDemoData as any);
+  scene.value.fitToContent(80);
+  scene.value.onViewportChanged();
+  const nodeCount = (scene.value as any)._nodeMap?.size ?? 0;
+  const edgeCount = (scene.value as any)._connectionMap?.size ?? 0;
+  const frameCount = (scene.value as any)._savedSelectionFrames?.size ?? 0;
+  console.log(`演示项目加载成功: ${nodeCount}个节点, ${edgeCount}条连线, ${frameCount}个分组`);
 }
 
 function loadFile() {

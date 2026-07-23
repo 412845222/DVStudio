@@ -43,49 +43,71 @@ export class BlueprintGrid extends Node {
   protected renderSelf(ctx: RenderContext): void {
     const c = ctx.ctx;
     const camera = ctx.camera;
+    const zoom = camera.zoom;
     const worldVp = camera.getWorldViewport();
 
     c.fillStyle = BACKGROUND_COLOR;
     c.fillRect(worldVp.left, worldVp.top, worldVp.width, worldVp.height);
 
-    if (camera.zoom * GRID_STEP < 6) {
+    let minorStep = GRID_STEP;
+    let majorStep = GRID_STEP * GRID_MAJOR_EVERY;
+
+    let screenMinorStep = minorStep * zoom;
+
+    if (screenMinorStep < 16) {
+      minorStep = GRID_STEP * GRID_MAJOR_EVERY;
+      majorStep = minorStep * GRID_MAJOR_EVERY;
+      screenMinorStep = minorStep * zoom;
+    }
+    if (screenMinorStep < 8) {
+      minorStep = majorStep;
+      majorStep = minorStep * GRID_MAJOR_EVERY;
+    }
+
+    const screenMajorStep = majorStep * zoom;
+    if (screenMajorStep < 20) {
       return;
     }
 
-    const startX = Math.floor(worldVp.left / GRID_STEP) * GRID_STEP;
-    const endX = Math.ceil(worldVp.right / GRID_STEP) * GRID_STEP;
-    const startY = Math.floor(worldVp.top / GRID_STEP) * GRID_STEP;
-    const endY = Math.ceil(worldVp.bottom / GRID_STEP) * GRID_STEP;
+    const lineWidth = Math.max(1 / zoom, 0.5);
 
-    c.lineWidth = 1 / camera.zoom;
+    const startX = Math.floor(worldVp.left / minorStep) * minorStep;
+    const endX = Math.ceil(worldVp.right / minorStep) * minorStep;
+    const startY = Math.floor(worldVp.top / minorStep) * minorStep;
+    const endY = Math.ceil(worldVp.bottom / minorStep) * minorStep;
 
-    c.beginPath();
-    c.strokeStyle = GRID_COLOR;
-    for (let x = startX; x <= endX; x += GRID_STEP) {
-      const col = Math.round(x / GRID_STEP);
-      if (col % GRID_MAJOR_EVERY === 0) continue;
-      c.moveTo(x, worldVp.top);
-      c.lineTo(x, worldVp.bottom);
+    if (minorStep !== majorStep) {
+      c.beginPath();
+      c.strokeStyle = GRID_COLOR;
+      c.lineWidth = lineWidth;
+      for (let x = startX; x <= endX; x += minorStep) {
+        const col = Math.round(x / minorStep);
+        if (col % GRID_MAJOR_EVERY === 0) continue;
+        c.moveTo(x, worldVp.top);
+        c.lineTo(x, worldVp.bottom);
+      }
+      for (let y = startY; y <= endY; y += minorStep) {
+        const row = Math.round(y / minorStep);
+        if (row % GRID_MAJOR_EVERY === 0) continue;
+        c.moveTo(worldVp.left, y);
+        c.lineTo(worldVp.right, y);
+      }
+      c.stroke();
     }
-    for (let y = startY; y <= endY; y += GRID_STEP) {
-      const row = Math.round(y / GRID_STEP);
-      if (row % GRID_MAJOR_EVERY === 0) continue;
-      c.moveTo(worldVp.left, y);
-      c.lineTo(worldVp.right, y);
-    }
-    c.stroke();
+
+    const majorStartX = Math.floor(worldVp.left / majorStep) * majorStep;
+    const majorEndX = Math.ceil(worldVp.right / majorStep) * majorStep;
+    const majorStartY = Math.floor(worldVp.top / majorStep) * majorStep;
+    const majorEndY = Math.ceil(worldVp.bottom / majorStep) * majorStep;
 
     c.beginPath();
     c.strokeStyle = GRID_MAJOR_COLOR;
-    for (let x = startX; x <= endX; x += GRID_STEP) {
-      const col = Math.round(x / GRID_STEP);
-      if (col % GRID_MAJOR_EVERY !== 0) continue;
+    c.lineWidth = lineWidth * 1.2;
+    for (let x = majorStartX; x <= majorEndX; x += majorStep) {
       c.moveTo(x, worldVp.top);
       c.lineTo(x, worldVp.bottom);
     }
-    for (let y = startY; y <= endY; y += GRID_STEP) {
-      const row = Math.round(y / GRID_STEP);
-      if (row % GRID_MAJOR_EVERY !== 0) continue;
+    for (let y = majorStartY; y <= majorEndY; y += majorStep) {
       c.moveTo(worldVp.left, y);
       c.lineTo(worldVp.right, y);
     }

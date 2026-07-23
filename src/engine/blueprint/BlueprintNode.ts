@@ -219,7 +219,7 @@ export class BlueprintNode extends Node {
 
     if (this.selected) {
       c.shadowColor = colors.glow;
-      c.shadowBlur = 20 * invZoom;
+      c.shadowBlur = 20;
       c.shadowOffsetX = 0;
       c.shadowOffsetY = 0;
     }
@@ -240,20 +240,20 @@ export class BlueprintNode extends Node {
     c.fillRect(0, 0, w, NODE_HEADER_HEIGHT);
 
     c.strokeStyle = this.hexToRgba(colors.border, 0.6);
-    c.lineWidth = NODE_BORDER_WIDTH * invZoom;
+    c.lineWidth = NODE_BORDER_WIDTH;
     c.strokeRect(0, 0, w, h);
 
-    this.drawLCorner(c, 0, 0, 1, 1, NODE_BRACKET_SIZE * invZoom, colors.bracket, NODE_BORDER_WIDTH * 1.5 * invZoom);
-    this.drawLCorner(c, w, 0, -1, 1, NODE_BRACKET_SIZE * invZoom, colors.bracket, NODE_BORDER_WIDTH * 1.5 * invZoom);
-    this.drawLCorner(c, 0, h, 1, -1, NODE_BRACKET_SIZE * invZoom, colors.bracket, NODE_BORDER_WIDTH * 1.5 * invZoom);
-    this.drawLCorner(c, w, h, -1, -1, NODE_BRACKET_SIZE * invZoom, colors.bracket, NODE_BORDER_WIDTH * 1.5 * invZoom);
+    this.drawLCorner(c, 0, 0, 1, 1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
+    this.drawLCorner(c, w, 0, -1, 1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
+    this.drawLCorner(c, 0, h, 1, -1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
+    this.drawLCorner(c, w, h, -1, -1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
 
     if (this.selected) {
-      this.drawParticleDots(c, 2 * invZoom, 2 * invZoom, w - 4 * invZoom, h - 4 * invZoom, this.hexToRgba(WF_PRIMARY, 0.3));
+      this.drawParticleDots(c, 2, 2, w - 4, h - 4, this.hexToRgba(WF_PRIMARY, 0.3));
     }
 
     c.strokeStyle = this.hexToRgba(WF_PRIMARY, 0.2);
-    c.lineWidth = 1 * invZoom;
+    c.lineWidth = 1;
     c.beginPath();
     c.moveTo(0, NODE_HEADER_HEIGHT);
     c.lineTo(w, NODE_HEADER_HEIGHT);
@@ -261,7 +261,7 @@ export class BlueprintNode extends Node {
 
     const titleX = NODE_INNER_PADDING;
     c.fillStyle = WF_TEXT;
-    c.font = `500 ${12 * Math.max(invZoom, 0.8)}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+    c.font = `500 12px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
     c.textBaseline = 'middle';
     c.textAlign = 'left';
     c.fillText(this.alias || this.title, titleX, NODE_HEADER_HEIGHT / 2);
@@ -269,7 +269,7 @@ export class BlueprintNode extends Node {
     const statusDotX = w - NODE_INNER_PADDING - 8;
     const statusDotY = NODE_HEADER_HEIGHT / 2;
     c.fillStyle = colors.badge;
-    const dotSize = 4 * invZoom;
+    const dotSize = 4;
     c.fillRect(statusDotX - dotSize / 2, statusDotY - dotSize / 2, dotSize, dotSize);
 
     this.renderPortLabels(c, invZoom);
@@ -285,8 +285,8 @@ export class BlueprintNode extends Node {
   private getResizeHandleRect(corner: ResizeCorner, invZoom: number): Rect {
     const w = this.data.width;
     const h = this.data.height;
-    const handleSize = RESIZE_HANDLE_SIZE * invZoom;
-    const offset = RESIZE_HANDLE_OFFSET * invZoom;
+    const handleSize = RESIZE_HANDLE_SIZE;
+    const offset = RESIZE_HANDLE_OFFSET;
 
     let x: number, y: number;
     switch (corner) {
@@ -312,12 +312,12 @@ export class BlueprintNode extends Node {
 
   private renderResizeHandles(c: CanvasRenderingContext2D, w: number, h: number, invZoom: number): void {
     const corners: ResizeCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-    const handleSize = RESIZE_HANDLE_SIZE * invZoom;
+    const handleSize = RESIZE_HANDLE_SIZE;
 
     c.save();
     c.fillStyle = WF_PRIMARY;
     c.strokeStyle = '#ffffff';
-    c.lineWidth = 1.5 * invZoom;
+    c.lineWidth = 1;
 
     for (const corner of corners) {
       const rect = this.getResizeHandleRect(corner, invZoom);
@@ -368,7 +368,7 @@ export class BlueprintNode extends Node {
   }
 
   private renderPortLabels(c: CanvasRenderingContext2D, invZoom: number): void {
-    c.font = `${11 * Math.max(invZoom, 0.8)}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+    c.font = `11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
     c.textBaseline = 'middle';
 
     this.inputPorts.forEach((port, i) => {
@@ -452,7 +452,7 @@ export class BlueprintNode extends Node {
     c.fillStyle = this.hexToRgba(accentColor, 0.04);
     c.fillRect(previewX, previewTop, previewW, previewH);
     c.strokeStyle = this.hexToRgba(accentColor, 0.15);
-    c.lineWidth = 1 * invZoom;
+    c.lineWidth = 1;
     c.strokeRect(previewX, previewTop, previewW, previewH);
 
     if (kind === 'text') {
@@ -489,7 +489,7 @@ export class BlueprintNode extends Node {
 
     if (this.subtitle) {
       c.fillStyle = WF_TEXT_MUTED;
-      c.font = `${10 * Math.max(invZoom, 0.8)}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
       c.fillText(this.subtitle, cx, cy + iconSize * 0.5 + 16);
     }
     c.restore();
@@ -498,7 +498,7 @@ export class BlueprintNode extends Node {
   private renderTextPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number): void {
     const padding = 10;
     const text = this.previewText || '暂无文本内容';
-    const fontSize = Math.max(10, 11 * Math.max(invZoom, 0.85));
+    const fontSize = 11;
     const lineHeight = Math.ceil(fontSize * 1.5);
     c.fillStyle = WF_TEXT_MUTED;
     c.font = `${fontSize}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
@@ -551,21 +551,21 @@ export class BlueprintNode extends Node {
     c.fill();
 
     c.strokeStyle = this.hexToRgba(accentColor, 0.3);
-    c.lineWidth = 1 * invZoom;
+    c.lineWidth = 1;
     c.strokeRect(px, py, pw, ph);
 
     if (this.nodeType === 'rotate-image') {
       c.save();
       c.translate(cx, py + ph * 0.15);
       c.strokeStyle = this.hexToRgba(accentColor, 0.5);
-      c.lineWidth = 1.5 * invZoom;
+      c.lineWidth = 1.5;
       c.beginPath();
-      c.arc(0, 0, 8 * invZoom, 0.3, Math.PI * 1.7);
+      c.arc(0, 0, 8, 0.3, Math.PI * 1.7);
       c.stroke();
       c.beginPath();
-      c.moveTo(0, -10 * invZoom);
-      c.lineTo(3 * invZoom, -6 * invZoom);
-      c.lineTo(-3 * invZoom, -6 * invZoom);
+      c.moveTo(0, -10);
+      c.lineTo(3, -6);
+      c.lineTo(-3, -6);
       c.closePath();
       c.fillStyle = this.hexToRgba(accentColor, 0.6);
       c.fill();
@@ -596,15 +596,15 @@ export class BlueprintNode extends Node {
     c.fill();
 
     c.strokeStyle = this.hexToRgba(accentColor, 0.3);
-    c.lineWidth = 1 * invZoom;
+    c.lineWidth = 1;
     c.strokeRect(px, py, pw, ph);
 
     c.fillStyle = 'rgba(0,0,0,0.4)';
-    c.fillRect(px, py + ph - 14 * invZoom, pw, 14 * invZoom);
+    c.fillRect(px, py + ph - 14, pw, 14);
     c.fillStyle = this.hexToRgba(accentColor, 0.7);
-    c.fillRect(px + 4, py + ph - 10 * invZoom, pw * 0.35, 4 * invZoom);
+    c.fillRect(px + 4, py + ph - 10, pw * 0.35, 4);
     c.beginPath();
-    c.arc(px + pw - 12 * invZoom, py + ph - 8 * invZoom, 4 * invZoom, 0, Math.PI * 2);
+    c.arc(px + pw - 12, py + ph - 8, 4, 0, Math.PI * 2);
     c.fillStyle = this.hexToRgba(accentColor, 0.6);
     c.fill();
   }
@@ -616,7 +616,7 @@ export class BlueprintNode extends Node {
 
     c.save();
     c.strokeStyle = this.hexToRgba(accentColor, 0.5);
-    c.lineWidth = 1.5 * invZoom;
+    c.lineWidth = 1.5;
     c.fillStyle = this.hexToRgba(accentColor, 0.1);
 
     const offset = size * 0.35;
@@ -670,7 +670,7 @@ export class BlueprintNode extends Node {
 
     if (this.subtitle) {
       c.fillStyle = WF_TEXT_MUTED;
-      c.font = `${10 * Math.max(invZoom, 0.8)}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
       c.textAlign = 'center';
       c.textBaseline = 'top';
       c.fillText(this.subtitle, cx, bottom + 12);

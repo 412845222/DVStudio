@@ -90,21 +90,21 @@ export class Connection extends Node {
     const { cp1, cp2 } = this.getBezierPoints(from, to);
 
     const invZoom = 1 / camera.zoom;
-    let baseLineWidth = LINE_WIDTH * invZoom;
+    let baseLineWidth = LINE_WIDTH;
     let alpha = 0.85;
     let glowAlpha = 0;
     let glowSize = 0;
 
     if (this.selected) {
-      baseLineWidth = LINE_WIDTH_SELECTED * invZoom;
+      baseLineWidth = LINE_WIDTH_SELECTED;
       alpha = 1;
       glowAlpha = 0.35;
-      glowSize = 10 * invZoom;
+      glowSize = 10;
     } else if (this.hovered) {
-      baseLineWidth = LINE_WIDTH_HOVER * invZoom;
+      baseLineWidth = LINE_WIDTH_HOVER;
       alpha = 0.95;
       glowAlpha = 0.2;
-      glowSize = 6 * invZoom;
+      glowSize = 6;
     }
 
     c.save();
@@ -131,7 +131,7 @@ export class Connection extends Node {
     c.stroke();
 
     c.strokeStyle = 'rgba(255,255,255,0.2)';
-    c.lineWidth = Math.max(invZoom, baseLineWidth * 0.4);
+    c.lineWidth = Math.max(1, baseLineWidth * 0.4);
     c.beginPath();
     c.moveTo(from.x, from.y);
     c.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y);
@@ -258,13 +258,13 @@ export class TempConnection extends Node {
 
     if (!this.valid) {
       c.shadowColor = '#e74c3c';
-      c.shadowBlur = 8 * invZoom;
+      c.shadowBlur = 8;
     }
 
     c.strokeStyle = this.hexToRgba(color, this.valid ? 0.8 : 0.9);
-    c.lineWidth = LINE_WIDTH * invZoom;
+    c.lineWidth = LINE_WIDTH;
     c.lineCap = 'round';
-    c.setLineDash([8 * invZoom, 5 * invZoom]);
+    c.setLineDash([8, 5]);
     c.beginPath();
     c.moveTo(this.fromWorld.x, this.fromWorld.y);
     c.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, this.toWorld.x, this.toWorld.y);
