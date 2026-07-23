@@ -2,7 +2,7 @@
   <div class="blueprint-test-page">
     <div class="toolbar">
       <div class="toolbar-left">
-        <span class="title">GraphBase 蓝图引擎测试</span>
+        <span class="title">AI工作流蓝图编辑器测试</span>
         <span class="stats">FPS: {{ fps }} | Nodes: {{ nodeCount }} | Edges: {{ edgeCount }}</span>
       </div>
       <div class="toolbar-right">
@@ -22,12 +22,13 @@
           <h3>操作提示</h3>
           <ul>
             <li>🖱️ <b>左键拖拽节点</b>：移动节点</li>
-            <li>🔗 <b>从端口拖拽</b>：创建连线</li>
+            <li>🔗 <b>从右侧输出端口拖拽到输入端口</b>：创建连线</li>
             <li>🖱️ <b>左键空白拖拽</b>：框选</li>
             <li>🖱️ <b>中键/空格+左键拖拽</b>：平移画布</li>
-            <li>🔍 <b>Ctrl+滚轮</b>：缩放视图</li>
-            <li>⌫ <b>Delete</b>：删除选中节点</li>
+            <li>🔍 <b>滚轮</b>：缩放视图（以鼠标位置为中心）</li>
+            <li>⌫ <b>Delete/Backspace</b>：删除选中节点或连线</li>
             <li>⎋ <b>Esc</b>：取消选择/连线</li>
+            <li>🔄 <b>Ctrl+A</b>：全选</li>
           </ul>
           <button @click="showHint = false">知道了</button>
         </div>
@@ -81,41 +82,40 @@ function updateFps() {
 function handleResize() {
   if (!containerRef.value || !canvasRef.value || !scene.value) return;
   const rect = containerRef.value.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  canvasRef.value.width = rect.width * dpr;
-  canvasRef.value.height = rect.height * dpr;
-  canvasRef.value.style.width = rect.width + 'px';
-  canvasRef.value.style.height = rect.height + 'px';
   scene.value.resize(rect.width, rect.height);
+  scene.value.onResize(rect.width, rect.height);
 }
 
 function resetView() {
   if (!scene.value) return;
   scene.value.setViewport({ zoom: 1, panX: 0, panY: 0 });
+  scene.value.onViewportChanged();
 }
 
 function fitToContent() {
   if (!scene.value) return;
   scene.value.fitToContent(100);
+  scene.value.onViewportChanged();
 }
 
 function zoomIn() {
   if (!scene.value) return;
   scene.value.setZoom(scene.value.camera.zoom * 1.2);
+  scene.value.onViewportChanged();
 }
 
 function zoomOut() {
   if (!scene.value) return;
   scene.value.setZoom(scene.value.camera.zoom / 1.2);
+  scene.value.onViewportChanged();
 }
 
 function clearAll() {
   if (!scene.value) return;
-  scene.value.clearAllNodes();
-  (scene.value as any)._nodeMap.clear();
-  (scene.value as any)._connectionMap.clear();
-  const gridBg = (scene.value as any)._gridBg;
-  scene.value.addChild(gridBg);
+  const s = scene.value;
+  s.loadBlueprint({ viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [], edges: [] });
+  s.selection.clearSelection();
+  s.requestRedraw();
 }
 
 function reloadData() {
@@ -123,6 +123,7 @@ function reloadData() {
   clearAll();
   scene.value.loadBlueprint(testData as BlueprintData);
   scene.value.fitToContent(100);
+  scene.value.onViewportChanged();
 }
 
 onMounted(() => {
@@ -130,6 +131,8 @@ onMounted(() => {
 
   const s = new BlueprintScene(canvasRef.value);
   scene.value = s;
+  (window as any).__scene = s;
+  (window as any).__canvas = canvasRef.value;
 
   handleResize();
   s.loadBlueprint(testData as BlueprintData);
@@ -138,6 +141,7 @@ onMounted(() => {
 
   s.on.on('viewport-change', () => {
     zoom.value = s.camera.zoom;
+    s.onViewportChanged();
   });
 
   resizeObserver = new ResizeObserver(handleResize);
@@ -163,8 +167,8 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #15181c;
+  color: #edf2f4;
   font-family: system-ui, -apple-system, sans-serif;
   position: absolute;
   top: 0;
@@ -178,9 +182,10 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
-  background: #1e293b;
-  border-bottom: 1px solid #334155;
+  background: #1a1f25;
+  border-bottom: 1px solid rgba(31, 157, 132, 0.2);
   flex-shrink: 0;
+  z-index: 10;
 }
 
 .toolbar-left {
@@ -197,7 +202,7 @@ onUnmounted(() => {
 
 .stats {
   font-size: 12px;
-  color: #94a3b8;
+  color: #aeb8bd;
 }
 
 .toolbar-right {
@@ -208,9 +213,9 @@ onUnmounted(() => {
 
 .toolbar-right button {
   padding: 6px 12px;
-  background: #334155;
-  color: #e2e8f0;
-  border: 1px solid #475569;
+  background: rgba(31, 157, 132, 0.1);
+  color: #edf2f4;
+  border: 1px solid rgba(31, 157, 132, 0.3);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
@@ -218,13 +223,13 @@ onUnmounted(() => {
 }
 
 .toolbar-right button:hover {
-  background: #475569;
+  background: rgba(31, 157, 132, 0.25);
   border-color: #1f9d84;
 }
 
 .zoom-info {
   font-size: 12px;
-  color: #94a3b8;
+  color: #aeb8bd;
   min-width: 50px;
   text-align: right;
 }
@@ -246,7 +251,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(21, 24, 28, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -254,11 +259,11 @@ onUnmounted(() => {
 }
 
 .hint-content {
-  background: #1e293b;
-  border: 1px solid #334155;
+  background: #1a1f25;
+  border: 1px solid rgba(31, 157, 132, 0.3);
   border-radius: 12px;
   padding: 24px 32px;
-  max-width: 400px;
+  max-width: 420px;
 }
 
 .hint-content h3 {
@@ -276,7 +281,7 @@ onUnmounted(() => {
 .hint-content li {
   padding: 6px 0;
   font-size: 13px;
-  color: #cbd5e1;
+  color: #aeb8bd;
 }
 
 .hint-content button {

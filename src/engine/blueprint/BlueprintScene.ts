@@ -1,13 +1,12 @@
 import { Scene } from '../graphbase/scene/Scene';
 import { Vector2 } from '../graphbase/core/Vector2';
-import { GridBackground } from '../graphbase/scene/shapes';
 import { BlueprintNode } from './BlueprintNode';
-import { Connection } from './Connection';
+import { Connection, TempConnection } from './Connection';
 import { Port } from './Port';
-import { bezierPoint, bezierTangent } from '../graphbase/core/Bezier';
+import { BlueprintGrid } from './BlueprintGrid';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import { BlueprintEditorTool } from './BlueprintEditorTool';
-import type { BlueprintNodeData, BlueprintData, ConnectionData, MediaType } from './types';
+import type { BlueprintNodeData, BlueprintData, ConnectionData } from './types';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -19,27 +18,48 @@ interface PendingConnection {
 export class BlueprintScene extends Scene {
   private _nodeMap: Map<string, BlueprintNode> = new Map();
   private _connectionMap: Map<string, Connection> = new Map();
-  private _gridBg: GridBackground;
+  private _grid: BlueprintGrid;
+  private _tempConnection: TempConnection;
   private _pendingConnection: PendingConnection | null = null;
-  private _hoveredPort: Port | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
-    super(canvas, { backgroundColor: '#0f172a', enableDefaultTools: false });
+    super(canvas, { backgroundColor: null, enableDefaultTools: false });
 
-    this._gridBg = new GridBackground({
-      gridSize: 20,
-      majorGridSize: 100,
-      minorColor: 'rgba(148,163,184,0.06)',
-      majorColor: 'rgba(148,163,184,0.12)'
-    });
-    this.addChild(this._gridBg);
+    this._grid = new BlueprintGrid();
+    this.addChild(this._grid);
+
+    this._tempConnection = new TempConnection();
+    this._tempConnection.visible = false;
+    this.addChild(this._tempConnection);
 
     this.tools.registerTool(new BlueprintEditorTool());
     this.tools.setDefaultTool('blueprint_editor');
   }
 
+  onResize(_width: number, _height: number): void {
+    this.requestRedraw();
+  }
+
+  onViewportChanged(): void {
+    this.requestRedraw();
+  }
+
+  getAllBlueprintNodes(): BlueprintNode[] {
+    return Array.from(this._nodeMap.values());
+  }
+
   loadBlueprint(data: BlueprintData): void {
-    this.clearAllNodes();
+    for (const node of this._nodeMap.values()) {
+      this.removeChild(node);
+      node.dispose();
+    }
+    this._nodeMap.clear();
+
+    for (const conn of this._connectionMap.values()) {
+      this.removeChild(conn);
+      conn.dispose();
+    }
+    this._connectionMap.clear();
 
     if (data.viewport) {
       this.setViewport(data.viewport);
@@ -53,7 +73,8 @@ export class BlueprintScene extends Scene {
       this.addConnection(edgeData);
     }
 
-    this.updateAllConnections();
+    this.cancelPendingConnection();
+    this.updateAllConnectionEndpoints();
     this.requestRedraw();
   }
 
@@ -71,7 +92,7 @@ export class BlueprintScene extends Scene {
 
     const connectionsToRemove: string[] = [];
     for (const [id, conn] of this._connectionMap) {
-      if (conn.fromNodeId === nodeId || conn.toNodeId === nodeId) {
+      if (conn.data.fromNodeId === nodeId || conn.data.toNodeId === nodeId) {
         connectionsToRemove.push(id);
       }
     }
@@ -81,7 +102,7 @@ export class BlueprintScene extends Scene {
 
     this._nodeMap.delete(nodeId);
     this.removeChild(node);
-    this.selection.clearSelection();
+    node.dispose();
     this.requestRedraw();
   }
 
@@ -90,24 +111,20 @@ export class BlueprintScene extends Scene {
     const toNode = this._nodeMap.get(data.toNodeId);
     if (!fromNode || !toNode) return null;
 
-    const fromPort = fromNode.getOutputPortById(data.fromAnchorId);
-    const toPort = toNode.getInputPortById(data.toAnchorId);
+    const fromPort = fromNode.getOutputPort(data.fromAnchorId);
+    const toPort = toNode.getInputPort(data.toAnchorId);
     if (!fromPort || !toPort) return null;
 
-    const connection = new Connection(
-      data.fromNodeId,
-      data.fromAnchorId,
-      data.toNodeId,
-      data.toAnchorId,
-      fromPort.mediaType,
-      data.id
-    );
-    connection.layer = 10;
-    this._connectionMap.set(connection.id, connection);
-    this.addChild(connection);
-
+    const connection = new Connection(data);
+    connection.setEndpoints({
+      fromWorld: fromPort.getWorldPosition(),
+      toWorld: toPort.getWorldPosition(),
+      mediaType: fromPort.mediaType
+    });
     fromPort.connected = true;
     toPort.connected = true;
+    this._connectionMap.set(connection.id, connection);
+    this.addChild(connection);
 
     this.requestRedraw();
     return connection;
@@ -117,19 +134,30 @@ export class BlueprintScene extends Scene {
     const conn = this._connectionMap.get(connectionId);
     if (!conn) return;
 
-    const fromNode = this._nodeMap.get(conn.fromNodeId);
-    const toNode = this._nodeMap.get(conn.toNodeId);
+    const fromNode = this._nodeMap.get(conn.data.fromNodeId);
+    const toNode = this._nodeMap.get(conn.data.toNodeId);
     if (fromNode) {
-      const port = fromNode.getOutputPortById(conn.fromPortId);
-      if (port) port.connected = false;
+      const port = fromNode.getOutputPort(conn.data.fromAnchorId);
+      if (port) {
+        const otherConns = Array.from(this._connectionMap.values()).filter(
+          c => c !== conn && c.data.fromNodeId === conn.data.fromNodeId && c.data.fromAnchorId === conn.data.fromAnchorId
+        );
+        if (otherConns.length === 0) port.connected = false;
+      }
     }
     if (toNode) {
-      const port = toNode.getInputPortById(conn.toPortId);
-      if (port) port.connected = false;
+      const port = toNode.getInputPort(conn.data.toAnchorId);
+      if (port) {
+        const otherConns = Array.from(this._connectionMap.values()).filter(
+          c => c !== conn && c.data.toNodeId === conn.data.toNodeId && c.data.toAnchorId === conn.data.toAnchorId
+        );
+        if (otherConns.length === 0) port.connected = false;
+      }
     }
 
     this._connectionMap.delete(connectionId);
     this.removeChild(conn);
+    conn.dispose();
     this.requestRedraw();
   }
 
@@ -141,33 +169,6 @@ export class BlueprintScene extends Scene {
     return this._connectionMap.get(connectionId) ?? null;
   }
 
-  getPort(nodeId: string, portId: string, isInput: boolean): Port | null {
-    const node = this._nodeMap.get(nodeId);
-    if (!node) return null;
-    return isInput ? node.getInputPortById(portId) : node.getOutputPortById(portId);
-  }
-
-  findPortAtWorldPoint(worldPoint: Vector2): { node: BlueprintNode; port: Port; isInput: boolean } | null {
-    for (const node of this._nodeMap.values()) {
-      const localPoint = node.worldToLocal(worldPoint);
-      for (const port of node.inputPorts) {
-        const plocal = port.worldToLocal(worldPoint);
-        const hit = port.hitTest(plocal);
-        if (hit) {
-          return { node, port, isInput: true };
-        }
-      }
-      for (const port of node.outputPorts) {
-        const plocal = port.worldToLocal(worldPoint);
-        const hit = port.hitTest(plocal);
-        if (hit) {
-          return { node, port, isInput: false };
-        }
-      }
-    }
-    return null;
-  }
-
   startPendingConnection(fromNode: BlueprintNode, fromPort: Port, currentWorldPos: Vector2): void {
     this._pendingConnection = {
       fromNode,
@@ -175,25 +176,34 @@ export class BlueprintScene extends Scene {
       currentPos: currentWorldPos.clone(),
       isValid: false
     };
+    this._tempConnection.visible = true;
+    this._tempConnection.setPoints(
+      fromPort.getWorldPosition(),
+      currentWorldPos,
+      fromPort.mediaType,
+      false
+    );
     this.requestRedraw();
   }
 
-  updatePendingConnection(worldPos: Vector2, hoveredPort: Port | null): void {
+  updatePendingConnection(worldPos: Vector2, _hoveredPort: Port | null, compatible: boolean | null = null): void {
     if (!this._pendingConnection) return;
     this._pendingConnection.currentPos.copy(worldPos);
+    this._pendingConnection.isValid = compatible === true;
 
-    let valid = false;
-    if (hoveredPort && hoveredPort !== this._pendingConnection.fromPort) {
-      valid = hoveredPort.isInput !== this._pendingConnection.fromPort.isInput;
-    }
-    this._pendingConnection.isValid = valid;
-    this._hoveredPort = hoveredPort;
+    this._tempConnection.setPoints(
+      this._pendingConnection.fromPort.getWorldPosition(),
+      worldPos,
+      this._pendingConnection.fromPort.mediaType,
+      compatible !== false
+    );
     this.requestRedraw();
   }
 
   cancelPendingConnection(): void {
     this._pendingConnection = null;
-    this._hoveredPort = null;
+    this._tempConnection.visible = false;
+    this._tempConnection.clear();
     this.requestRedraw();
   }
 
@@ -201,29 +211,18 @@ export class BlueprintScene extends Scene {
     if (!this._pendingConnection) return null;
 
     const { fromNode, fromPort } = this._pendingConnection;
-    if (fromPort.isInput === toPort.isInput) {
+    if (fromPort.isInput === toPort.isInput || fromNode === toNode) {
       this.cancelPendingConnection();
       return null;
     }
 
-    let data: ConnectionData;
-    if (fromPort.isInput) {
-      data = {
-        id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        fromNodeId: toNode.id,
-        fromAnchorId: toPort.spec.id,
-        toNodeId: fromNode.id,
-        toAnchorId: fromPort.spec.id
-      };
-    } else {
-      data = {
-        id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        fromNodeId: fromNode.id,
-        fromAnchorId: fromPort.spec.id,
-        toNodeId: toNode.id,
-        toAnchorId: toPort.spec.id
-      };
-    }
+    const data: ConnectionData = {
+      id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      fromNodeId: fromNode.id,
+      fromAnchorId: fromPort.spec.id,
+      toNodeId: toNode.id,
+      toAnchorId: toPort.spec.id
+    };
 
     this.cancelPendingConnection();
     return this.addConnection(data);
@@ -233,22 +232,26 @@ export class BlueprintScene extends Scene {
     return this._pendingConnection;
   }
 
-  getHoveredPort(): Port | null {
-    return this._hoveredPort;
-  }
-
-  updateAllConnections(): void {
+  updateAllConnectionEndpoints(): void {
     for (const conn of this._connectionMap.values()) {
-      const fromNode = this._nodeMap.get(conn.fromNodeId);
-      const toNode = this._nodeMap.get(conn.toNodeId);
+      const fromNode = this._nodeMap.get(conn.data.fromNodeId);
+      const toNode = this._nodeMap.get(conn.data.toNodeId);
       if (!fromNode || !toNode) continue;
 
-      const fromPos = fromNode.getOutputPortWorldPosition(conn.fromPortId);
-      const toPos = toNode.getInputPortWorldPosition(conn.toPortId);
-      if (fromPos && toPos) {
-        conn.setEndpoints(fromPos, toPos);
+      const fromPort = fromNode.getOutputPort(conn.data.fromAnchorId);
+      const toPort = toNode.getInputPort(conn.data.toAnchorId);
+      if (fromPort && toPort) {
+        conn.setEndpoints({
+          fromWorld: fromPort.getWorldPosition(),
+          toWorld: toPort.getWorldPosition(),
+          mediaType: fromPort.mediaType
+        });
       }
     }
+  }
+
+  screenToWorld(screen: Vector2): Vector2 {
+    return this.camera.screenToWorld(screen);
   }
 
   serialize(): BlueprintData {
@@ -259,13 +262,7 @@ export class BlueprintScene extends Scene {
 
     const edges: ConnectionData[] = [];
     for (const conn of this._connectionMap.values()) {
-      edges.push({
-        id: conn.id,
-        fromNodeId: conn.fromNodeId,
-        fromAnchorId: conn.fromPortId,
-        toNodeId: conn.toNodeId,
-        toAnchorId: conn.toPortId
-      });
+      edges.push({ ...conn.data });
     }
 
     return {
@@ -276,50 +273,13 @@ export class BlueprintScene extends Scene {
   }
 
   render(ctx: RenderContext): void {
-    this.updateAllConnections();
+    this.updateAllConnectionEndpoints();
     super.render(ctx);
-
-    if (this._pendingConnection) {
-      this.renderPendingConnection(ctx);
-    }
   }
 
-  private renderPendingConnection(ctx: RenderContext): void {
-    const pending = this._pendingConnection;
-    if (!pending) return;
-
-    const fromPos = pending.fromPort.getWorldPosition();
-    const toPos = pending.currentPos;
-    const color = pending.isValid ? '#22c55e' : '#ef4444';
-
-    const dx = Math.abs(toPos.x - fromPos.x);
-    const cpOffset = Math.max(50, dx * 0.4);
-    const cp1 = new Vector2(fromPos.x + cpOffset, fromPos.y);
-    const cp2 = new Vector2(toPos.x - cpOffset, toPos.y);
-
-    ctx.save();
-    ctx.ctx.strokeStyle = color;
-    ctx.ctx.lineWidth = 2.5;
-    ctx.ctx.lineCap = 'round';
-    ctx.setLineDash([6, 4]);
-    ctx.drawBezier(fromPos, cp1, cp2, toPos, color, 2.5);
-    ctx.setLineDash([]);
-
-    const t = 0.5;
-    const point = bezierPoint(t, fromPos, cp1, cp2, toPos);
-    const tangent = bezierTangent(t, fromPos, cp1, cp2, toPos).normalize();
-    const perp = new Vector2(-tangent.y, tangent.x);
-    const arrowSize = 8;
-
-    ctx.ctx.fillStyle = color;
-    ctx.ctx.beginPath();
-    ctx.ctx.moveTo(point.x + tangent.x * arrowSize, point.y + tangent.y * arrowSize);
-    ctx.ctx.lineTo(point.x - tangent.x * arrowSize * 0.5 + perp.x * arrowSize * 0.6, point.y - tangent.y * arrowSize * 0.5 + perp.y * arrowSize * 0.6);
-    ctx.ctx.lineTo(point.x - tangent.x * arrowSize * 0.5 - perp.x * arrowSize * 0.6, point.y - tangent.y * arrowSize * 0.5 - perp.y * arrowSize * 0.6);
-    ctx.ctx.closePath();
-    ctx.ctx.fill();
-
-    ctx.drawCircle(toPos, 8, color + '44', color, 2);
-    ctx.restore();
+  dispose(): void {
+    this._nodeMap.clear();
+    this._connectionMap.clear();
+    super.dispose();
   }
 }

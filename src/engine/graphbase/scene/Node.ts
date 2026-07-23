@@ -68,20 +68,21 @@ export abstract class Node extends GraphObject implements Renderable, HitTestabl
   render(ctx: RenderContext): void {
     if (!this.visible) return;
 
-    const worldMatrix = this.getWorldMatrix();
     const worldBounds = this.getWorldBounds();
     if (ctx.camera && !ctx.camera.isWorldRectVisible(worldBounds)) {
       return;
     }
 
+    const localMatrix = this.transform.getLocalMatrix();
+
     ctx.save();
     ctx.ctx.transform(
-      worldMatrix.elements[0],
-      worldMatrix.elements[1],
-      worldMatrix.elements[3],
-      worldMatrix.elements[4],
-      worldMatrix.elements[6],
-      worldMatrix.elements[7]
+      localMatrix.elements[0],
+      localMatrix.elements[1],
+      localMatrix.elements[3],
+      localMatrix.elements[4],
+      localMatrix.elements[6],
+      localMatrix.elements[7]
     );
     this.applyStyle(ctx);
     this.renderSelf(ctx);

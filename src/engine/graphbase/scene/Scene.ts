@@ -197,11 +197,12 @@ export class Scene extends Group implements Disposable {
   }
 
   hitTest(worldPoint: Vector2) {
-    for (let i = this.children.length - 1; i >= 0; i--) {
-      const child = this.children[i];
+    const sortedChildren = [...this.children].sort((a, b) => (b as Node).layer - (a as Node).layer);
+    for (let i = 0; i < sortedChildren.length; i++) {
+      const child = sortedChildren[i] as Node;
       if (!child.visible) continue;
       const childLocal = child.worldToLocal(worldPoint);
-      const hit = (child as Node).hitTest(childLocal);
+      const hit = child.hitTest(childLocal);
       if (hit) return hit;
     }
     return null;
