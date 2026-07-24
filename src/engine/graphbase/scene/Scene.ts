@@ -261,6 +261,8 @@ export class Scene extends Group implements Disposable {
       ctx.ctx.fillRect(vp.x, vp.y, vp.width, vp.height);
     }
 
+    this.tools.renderUnderlay(ctx);
+
     for (let i = 0; i < this.children.length; i++) {
       const child = this.children[i];
       if (child.visible) {

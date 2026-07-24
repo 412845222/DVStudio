@@ -26,6 +26,7 @@ export abstract class Tool {
   onKeyDown(_event: GraphKeyboardEvent): void {}
   onKeyUp(_event: GraphKeyboardEvent): void {}
 
+  onPreRender(_ctx: RenderContext): void {}
   onRender(_ctx: RenderContext): void {}
 
   setCursor(cursor: string): void {

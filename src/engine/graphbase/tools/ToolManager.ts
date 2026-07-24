@@ -120,6 +120,10 @@ export class ToolManager implements Disposable {
     this.unsubscribeInput.push(unsub1, unsub2, unsub3, unsub4, unsub5, unsub6);
   }
 
+  renderUnderlay(ctx: RenderContext): void {
+    this.activeTool?.onPreRender(ctx);
+  }
+
   render(ctx: RenderContext): void {
     this.activeTool?.onRender(ctx);
   }

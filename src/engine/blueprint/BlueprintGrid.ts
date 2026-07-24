@@ -69,7 +69,8 @@ export class BlueprintGrid extends Node {
       return;
     }
 
-    const lineWidth = Math.max(1 / zoom, 0.5);
+    const dotRadiusMinor = Math.max(1 / zoom, 0.6);
+    const dotRadiusMajor = Math.max(1.8 / zoom, 1);
 
     const startX = Math.floor(worldVp.left / minorStep) * minorStep;
     const endX = Math.ceil(worldVp.right / minorStep) * minorStep;
@@ -77,22 +78,18 @@ export class BlueprintGrid extends Node {
     const endY = Math.ceil(worldVp.bottom / minorStep) * minorStep;
 
     if (minorStep !== majorStep) {
-      c.beginPath();
-      c.strokeStyle = GRID_COLOR;
-      c.lineWidth = lineWidth;
+      c.fillStyle = GRID_COLOR;
       for (let x = startX; x <= endX; x += minorStep) {
         const col = Math.round(x / minorStep);
         if (col % GRID_MAJOR_EVERY === 0) continue;
-        c.moveTo(x, worldVp.top);
-        c.lineTo(x, worldVp.bottom);
+        for (let y = startY; y <= endY; y += minorStep) {
+          const row = Math.round(y / minorStep);
+          if (row % GRID_MAJOR_EVERY === 0) continue;
+          c.beginPath();
+          c.arc(x, y, dotRadiusMinor, 0, Math.PI * 2);
+          c.fill();
+        }
       }
-      for (let y = startY; y <= endY; y += minorStep) {
-        const row = Math.round(y / minorStep);
-        if (row % GRID_MAJOR_EVERY === 0) continue;
-        c.moveTo(worldVp.left, y);
-        c.lineTo(worldVp.right, y);
-      }
-      c.stroke();
     }
 
     const majorStartX = Math.floor(worldVp.left / majorStep) * majorStep;
@@ -100,18 +97,14 @@ export class BlueprintGrid extends Node {
     const majorStartY = Math.floor(worldVp.top / majorStep) * majorStep;
     const majorEndY = Math.ceil(worldVp.bottom / majorStep) * majorStep;
 
-    c.beginPath();
-    c.strokeStyle = GRID_MAJOR_COLOR;
-    c.lineWidth = lineWidth * 1.2;
+    c.fillStyle = GRID_MAJOR_COLOR;
     for (let x = majorStartX; x <= majorEndX; x += majorStep) {
-      c.moveTo(x, worldVp.top);
-      c.lineTo(x, worldVp.bottom);
+      for (let y = majorStartY; y <= majorEndY; y += majorStep) {
+        c.beginPath();
+        c.arc(x, y, dotRadiusMajor, 0, Math.PI * 2);
+        c.fill();
+      }
     }
-    for (let y = majorStartY; y <= majorEndY; y += majorStep) {
-      c.moveTo(worldVp.left, y);
-      c.lineTo(worldVp.right, y);
-    }
-    c.stroke();
   }
 
   getLocalBounds(): Rect {

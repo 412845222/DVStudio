@@ -50,7 +50,14 @@ export abstract class GraphObject implements Disposable {
         child.markDirty(DirtyFlag.TRANSFORM);
       }
     }
-    if (this.parent) {
+    if (flags & DirtyFlag.CHILDREN) {
+      this._localBoundsCache = null;
+      this._worldBoundsCache = null;
+      if (this.parent) {
+        this.parent.markDirty(DirtyFlag.CHILDREN);
+      }
+    }
+    if (this.parent && !(flags & DirtyFlag.CHILDREN)) {
       this.parent.markDirty(DirtyFlag.CHILDREN);
     }
     this.on.emit('dirty', flags);

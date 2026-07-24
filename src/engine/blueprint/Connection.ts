@@ -2,15 +2,16 @@ import { Vector2 } from '../graphbase/core/Vector2';
 import { Rect } from '../graphbase/core/Rect';
 import { Node } from '../graphbase/scene/Node';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
-import type { HitTestResult } from '../graphbase/scene/interfaces';
+import type { HitTestResult, HitTestable } from '../graphbase/scene/interfaces';
 import type { Camera } from '../graphbase/renderer/Camera';
+import type { Scene } from '../graphbase/scene/Scene';
 import { MEDIA_TYPE_COLORS, WF_PRIMARY } from './types';
 
 const LINE_WIDTH = 2.5;
 const LINE_WIDTH_SELECTED = 3;
 const LINE_WIDTH_HOVER = 3;
 const BEZIER_CONTROL_DISTANCE = 80;
-const HIT_WIDTH = 12;
+const HIT_WIDTH_SCREEN = 10;
 
 export interface ConnectionEndpoints {
   fromWorld: Vector2;
@@ -156,12 +157,40 @@ export class Connection extends Node {
 
   getLocalBounds(): Rect {
     if (!this._endpoints) return new Rect(0, 0, 0, 0);
-    const pad = 30;
+    const zoom = this.getCameraZoom();
+    const pad = Math.max(HIT_WIDTH_SCREEN / zoom, 15);
     const minX = Math.min(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) - pad;
     const minY = Math.min(this._endpoints.fromWorld.y, this._endpoints.toWorld.y) - pad;
     const maxX = Math.max(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) + pad;
     const maxY = Math.max(this._endpoints.fromWorld.y, this._endpoints.toWorld.y) + pad;
     return Rect.fromPoints(new Vector2(minX, minY), new Vector2(maxX, maxY));
+  }
+
+  private getCameraZoom(): number {
+    let p = this.parent;
+    while (p) {
+      if ('camera' in p) return (p as Scene).camera.zoom;
+      p = (p as Node).parent;
+    }
+    return 1;
+  }
+
+  hitTest(localPoint: Vector2): HitTestResult | null {
+    if (!this.visible) return null;
+
+    for (let i = this.children.length - 1; i >= 0; i--) {
+      const child = this.children[i];
+      if (child.visible && 'hitTest' in child) {
+        const childLocal = child.worldToLocal(this.localToWorld(localPoint));
+        const childHit = (child as unknown as HitTestable).hitTest(childLocal);
+        if (childHit) return childHit;
+      }
+    }
+
+    const hitBounds = this.getHitBounds();
+    if (!hitBounds.containsPoint(localPoint)) return null;
+
+    return this.hitTestSelf(localPoint);
   }
 
   getHitBounds(): Rect {
@@ -180,7 +209,9 @@ export class Connection extends Node {
     const to = this._endpoints.toWorld;
     const { cp1, cp2 } = this.getBezierPoints(from, to);
     const dist = this.distanceToBezier(localPoint, from, cp1, cp2, to);
-    if (dist <= HIT_WIDTH) {
+    const zoom = this.getCameraZoom();
+    const hitWidth = HIT_WIDTH_SCREEN / zoom;
+    if (dist <= hitWidth) {
       return {
         node: this,
         localPoint: localPoint.clone(),

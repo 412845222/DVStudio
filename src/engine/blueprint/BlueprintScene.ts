@@ -26,6 +26,8 @@ export class BlueprintScene extends Scene {
   private _pendingConnection: PendingConnection | null = null;
   private _savedSelectionFrames: Map<string, SavedSelectionFrame> = new Map();
   private _legacyResources: Record<string, LegacyResourceData> = {};
+  private _clipboardNodes: BlueprintNodeData[] = [];
+  private _clipboardEdges: ConnectionData[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -300,6 +302,68 @@ export class BlueprintScene extends Scene {
       if (node) nodes.push(node);
     }
     return nodes;
+  }
+
+  copySelection(selectedNodes: BlueprintNode[]): void {
+    if (selectedNodes.length === 0) return;
+
+    const selectedIds = new Set(selectedNodes.map(n => n.id));
+
+    this._clipboardNodes = selectedNodes.map(node => ({
+      ...node.data
+    }));
+
+    this._clipboardEdges = [];
+    for (const conn of this._connectionMap.values()) {
+      if (selectedIds.has(conn.data.fromNodeId) && selectedIds.has(conn.data.toNodeId)) {
+        this._clipboardEdges.push({ ...conn.data });
+      }
+    }
+  }
+
+  pasteFromClipboard(offsetX: number = 50, offsetY: number = 50): BlueprintNode[] {
+    if (this._clipboardNodes.length === 0) return [];
+
+    const idMap = new Map<string, string>();
+    const newNodes: BlueprintNode[] = [];
+
+    for (const nodeData of this._clipboardNodes) {
+      const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      idMap.set(nodeData.id, newId);
+
+      const newData: BlueprintNodeData = {
+        ...nodeData,
+        id: newId,
+        worldX: nodeData.worldX + offsetX,
+        worldY: nodeData.worldY + offsetY,
+        selected: false
+      };
+
+      const node = this.addBlueprintNode(newData);
+      newNodes.push(node);
+    }
+
+    for (const edgeData of this._clipboardEdges) {
+      const newFromId = idMap.get(edgeData.fromNodeId);
+      const newToId = idMap.get(edgeData.toNodeId);
+      if (!newFromId || !newToId) continue;
+
+      const newConnId = `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      this.addConnection({
+        ...edgeData,
+        id: newConnId,
+        fromNodeId: newFromId,
+        toNodeId: newToId
+      });
+    }
+
+    this.updateAllConnectionEndpoints();
+    this.requestRedraw();
+    return newNodes;
+  }
+
+  hasClipboardData(): boolean {
+    return this._clipboardNodes.length > 0;
   }
 
   updateAllConnectionEndpoints(): void {

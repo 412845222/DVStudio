@@ -37,22 +37,26 @@ export class BlueprintLegacyLoader {
       edges.push({ ...legacyEdge });
     }
 
-    if (legacyData.selectionTagsByKey) {
-      for (const key of Object.keys(legacyData.selectionTagsByKey)) {
-        const tag = legacyData.selectionTagsByKey[key];
-        savedSelectionFrames.push({
-          id: tag.key,
-          nodeIds: [...tag.nodeIds],
-          label: tag.label,
-          createdAt: tag.createdAt
-        });
+    if (legacyData.savedSelectionFrames) {
+      for (const frame of legacyData.savedSelectionFrames) {
+        savedSelectionFrames.push({ ...frame });
       }
     }
 
-    if (legacyData.savedSelectionFrames) {
-      for (const frame of legacyData.savedSelectionFrames) {
-        if (!savedSelectionFrames.find(f => f.id === frame.id)) {
-          savedSelectionFrames.push({ ...frame });
+    if (legacyData.selectionTagsByKey) {
+      const existingNodeIdSets = new Set(
+        savedSelectionFrames.map(f => [...f.nodeIds].sort().join('|'))
+      );
+      for (const key of Object.keys(legacyData.selectionTagsByKey)) {
+        const tag = legacyData.selectionTagsByKey[key];
+        const nodeKey = [...tag.nodeIds].sort().join('|');
+        if (!existingNodeIdSets.has(nodeKey)) {
+          savedSelectionFrames.push({
+            id: tag.key,
+            nodeIds: [...tag.nodeIds],
+            label: tag.label,
+            createdAt: tag.createdAt
+          });
         }
       }
     }

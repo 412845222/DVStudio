@@ -178,6 +178,22 @@ export class Port extends Node {
     c.fillStyle = isSnapped && this.compatible !== false ? (this.connected ? '#ffffff' : color) : color;
     c.fillRect(-halfInner, -halfInner, halfInner * 2, halfInner * 2);
     c.restore();
+
+    if (this.spec.label && ctx.camera.zoom >= 0.3) {
+      c.save();
+      c.font = `11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.fillStyle = 'rgba(237, 242, 244, 0.75)';
+      c.textBaseline = 'middle';
+      const labelOffset = halfOuter + 8;
+      if (this.isInput) {
+        c.textAlign = 'right';
+        c.fillText(this.spec.label, -labelOffset, 0);
+      } else {
+        c.textAlign = 'left';
+        c.fillText(this.spec.label, labelOffset, 0);
+      }
+      c.restore();
+    }
   }
 
   private hexToRgba(hex: string, alpha: number): string {

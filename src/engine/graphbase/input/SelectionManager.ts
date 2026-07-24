@@ -147,7 +147,7 @@ export class SelectionManager {
     return this.marqueeRect;
   }
 
-  endMarquee(additive: boolean = false): Node[] {
+  endMarquee(additive: boolean = false, mode: 'contain' | 'intersect' = 'intersect'): Node[] {
     if (!this.marqueeRect) {
       this.marqueeStart = null;
       this.marqueeEnd = null;
@@ -162,7 +162,10 @@ export class SelectionManager {
     const allNodes = this.scene.getAllNodes().filter(n => n.selectable && n.draggable);
     for (const node of allNodes) {
       const bounds = node.getWorldBounds();
-      if (this.marqueeRect.containsRect(bounds) || this.marqueeRect.intersects(bounds)) {
+      const hit = mode === 'contain'
+        ? this.marqueeRect.containsRect(bounds)
+        : (this.marqueeRect.containsRect(bounds) || this.marqueeRect.intersects(bounds));
+      if (hit) {
         if (!this.selected.has(node.id)) {
           this.selected.add(node.id);
           node.onSelect();
@@ -177,6 +180,11 @@ export class SelectionManager {
     this.marqueeRect = null;
     this.scene.requestRedraw();
     return selected;
+  }
+
+  getMarqueeDirection(): 'left-to-right' | 'right-to-left' | null {
+    if (!this.marqueeStart || !this.marqueeEnd) return null;
+    return this.marqueeEnd.x >= this.marqueeStart.x ? 'left-to-right' : 'right-to-left';
   }
 
   cancelMarquee(): void {
