@@ -13,6 +13,33 @@
 		</div>
 		<!-- 蓝图节点容器 -->
 		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
+			<!-- 新版BlueprintEditor (Canvas+DOM混合渲染) -->
+			<BlueprintEditor
+				ref="blueprintEditorRef"
+				class="aiwf-canvas"
+				:initial-data="blueprintEditorData"
+				:readonly="false"
+				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
+				@change="onBlueprintEditorChange"
+				@selection-change="onBlueprintEditorSelectionChange"
+				@viewport-change="onBlueprintEditorViewportChange"
+				@node-double-click="onBlueprintEditorNodeDblClick"
+				@node-context-menu="onBlueprintEditorNodeContextMenu"
+			>
+				<!-- 节点搜索菜单 (复用旧组件) -->
+				<DwebCanvasNodeSearchMenu
+					:visible="nodeSearchMenuVisible"
+					:items="i18nCatalogItems"
+					:categories="i18nCategories"
+					:top-categories="i18nTopCategories"
+					:special-groups="i18nSpecialGroups"
+					@select="onNodeSearchMenuSelect"
+					@upload-file="onNodeSearchMenuUploadFile"
+					@close="closeNodeSearchMenu"
+				/>
+			</BlueprintEditor>
+
+			<!-- 旧版BlueprintCanvas (注释保留以便回滚)
 			<BlueprintCanvas
 				class="aiwf-canvas"
 				:viewport="viewport"
@@ -43,7 +70,6 @@
 				@selection-frame-delete-selected="onDeleteSelectedNodes"
 				v-slot="vp"
 			>
-				<!-- Canvas2D节点渲染层 (截图节点Canvas渲染) -->
 				<NodeCanvasLayer
 					ref="nodeCanvasLayerRef"
 					:nodes="canvasNodeEntries"
@@ -87,10 +113,6 @@
 						}
 					"
 				>
-					<!-- 渲染模式: canvas(由NodeCanvasLayer) | full(选中/激活节点) -->
-					<!-- 注意：已移除 'dom-screenshot' 模式，因为它会导致CSS transform在缩放时生效 -->
-
-					<!-- Full node component (用于选中/激活/无截图的节点) -->
 					<component
 						v-if="getNodeRenderMode(node.id) === 'full'"
 						:is="nodeComponent(node)"
@@ -287,7 +309,6 @@
 					@close="closeNodeSearchMenu"
 				/>
 
-				<!-- 标签编辑器 -->
 				<WorkflowTagEditor
 					:visible="tagEditor.visible.value"
 					:screenX="tagEditor.screenX.value"
@@ -298,6 +319,7 @@
 					@update:visible="tagEditor.visible.value = $event"
 				/>
 			</BlueprintCanvas>
+			-->
 		</div>
 
 		<!-- UI按钮容器 -->
@@ -824,6 +846,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
+import BlueprintEditor from '../../engine/blueprint/BlueprintEditor.vue'
+import type { LegacyBlueprintData } from '../../engine/blueprint/types'
+import { workflowStateToLegacyBlueprint, legacyBlueprintToWorkflowState } from './blueprint-bridge/workflowStateAdapter'
 import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
 import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
@@ -1260,6 +1285,69 @@ const {
 } = useNodeLibraryI18n()
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
+
+// ========== 新版BlueprintEditor集成 ==========
+const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
+const isUpdatingFromStore = ref(false)
+
+const blueprintEditorData = computed<LegacyBlueprintData>(() => {
+  return workflowStateToLegacyBlueprint(store.state)
+})
+
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function onBlueprintEditorChange(data: LegacyBlueprintData) {
+  if (isUpdatingFromStore.value) return
+  if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
+  syncDebounceTimer = setTimeout(() => {
+    const partialState = legacyBlueprintToWorkflowState(data)
+    isUpdatingFromStore.value = true
+    store.commit('loadSnapshot', partialState)
+    nextTick(() => {
+      isUpdatingFromStore.value = false
+    })
+  }, 100)
+}
+
+function onBlueprintEditorSelectionChange(nodeIds: string[]) {
+  if (isUpdatingFromStore.value) return
+  isUpdatingFromStore.value = true
+  if (nodeIds.length > 0) {
+    store.commit('setSelectedNodeIds', nodeIds)
+    store.commit('setSelectedNodeId', nodeIds[nodeIds.length - 1])
+  } else {
+    store.commit('clearSelection')
+  }
+  nextTick(() => {
+    isUpdatingFromStore.value = false
+  })
+}
+
+function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
+  if (isUpdatingFromStore.value) return
+  store.commit('setViewport', { zoom, panX, panY })
+}
+
+function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
+  console.log('[BlueprintEditor] 双击节点:', nodeId)
+}
+
+function onBlueprintEditorNodeContextMenu(nodeId: string, event: MouseEvent) {
+  console.log('[BlueprintEditor] 右键节点:', nodeId, event)
+}
+
+watch(() => store.state, () => {
+  if (isUpdatingFromStore.value) return
+  if (blueprintEditorRef.value) {
+    isUpdatingFromStore.value = true
+    const data = workflowStateToLegacyBlueprint(store.state)
+    blueprintEditorRef.value.loadBlueprint(data)
+    nextTick(() => {
+      isUpdatingFromStore.value = false
+    })
+  }
+}, { deep: true })
+// ========== 新版BlueprintEditor集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 

@@ -1,4 +1,5 @@
 export type MediaType = 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta' | 'resource';
+export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
 export type ResizeCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export interface PortSpec {
