@@ -184,7 +184,7 @@ function convertWorkflowNodeToLegacy(node: WorkflowNode): BlueprintNodeData {
 }
 
 function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNode {
-  return {
+  const node: WorkflowNode = {
     id: legacyNode.id,
     type: legacyNode.type,
     title: legacyNode.title,
@@ -200,6 +200,26 @@ function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNod
     resourceId: legacyNode.resourceId ?? null,
     createdAt: legacyNode.createdAt ?? Date.now(),
   } as WorkflowNode;
+
+  if (legacyNode.textValue !== undefined) (node as any).textValue = legacyNode.textValue;
+  if (legacyNode.imageSettings !== undefined) (node as any).imageSettings = legacyNode.imageSettings;
+  if (legacyNode.videoSettings !== undefined) (node as any).videoSettings = legacyNode.videoSettings;
+  if (legacyNode.model3dSettings !== undefined) (node as any).model3dSettings = legacyNode.model3dSettings;
+  if (legacyNode.meshySettings !== undefined) (node as any).meshySettings = legacyNode.meshySettings;
+  if (legacyNode.tripo3dSettings !== undefined) (node as any).tripo3dSettings = legacyNode.tripo3dSettings;
+  if (legacyNode.blenderSettings !== undefined) (node as any).blenderSettings = legacyNode.blenderSettings;
+  if (legacyNode.storySettings !== undefined) (node as any).storySettings = legacyNode.storySettings;
+  if (legacyNode.sceneUnderstandingSettings !== undefined) (node as any).sceneUnderstandingSettings = legacyNode.sceneUnderstandingSettings;
+  if (legacyNode.sceneLayoutSettings !== undefined) (node as any).sceneLayoutSettings = legacyNode.sceneLayoutSettings;
+  if (legacyNode.sceneDecomposeSettings !== undefined) (node as any).sceneDecomposeSettings = legacyNode.sceneDecomposeSettings;
+  if (legacyNode.unrealExportSettings !== undefined) (node as any).unrealExportSettings = legacyNode.unrealExportSettings;
+  if (legacyNode.comfyuiSettings !== undefined) (node as any).comfyuiSettings = legacyNode.comfyuiSettings;
+  if (legacyNode.nodeChatDraft !== undefined) (node as any).nodeChatDraft = legacyNode.nodeChatDraft;
+  if (legacyNode.nodeChatParams !== undefined) (node as any).nodeChatParams = legacyNode.nodeChatParams;
+  if (legacyNode.nodeChatSelectedRefs !== undefined) (node as any).nodeChatSelectedRefs = legacyNode.nodeChatSelectedRefs;
+  if (legacyNode.status !== undefined) (node as any).status = legacyNode.status;
+
+  return node;
 }
 
 function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceData {
@@ -208,23 +228,42 @@ function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceD
     kind: res.kind,
     name: res.name,
     url: res.url,
-    sourcePath: (res as any).sourcePath,
-    projectRelativePath: (res as any).projectRelativePath,
-    size: (res as any).size,
-    localFileKey: (res as any).localFileKey,
-    relativePath: (res as any).relativePath,
-    absolutePath: (res as any).absolutePath,
-    posterProjectRelativePath: (res as any).posterProjectRelativePath,
-    posterUrl: (res as any).posterUrl,
-    contentType: (res as any).contentType,
+    projectRelativePath: res.projectRelativePath,
+    previewUrl: res.previewUrl,
+    previewProjectRelativePath: res.previewProjectRelativePath,
+    previewVersion: res.previewVersion,
+    posterUrl: res.posterUrl,
+    posterProjectRelativePath: res.posterProjectRelativePath,
+    posterSourcePath: res.posterSourcePath,
+    sourcePath: res.sourcePath,
+    sourceFingerprint: res.sourceFingerprint,
+    sourceName: res.sourceName,
+    sourceSize: res.sourceSize,
+    sourceLastModified: res.sourceLastModified,
+    localFileKey: res.localFileKey,
+    createdAt: res.createdAt,
   };
 }
 
 function convertLegacyResourceToWorkflow(legacyRes: LegacyResourceData): WorkflowResource {
   return {
     id: legacyRes.id,
-    kind: legacyRes.kind,
+    kind: legacyRes.kind as any,
     name: legacyRes.name,
     url: legacyRes.url,
-  } as WorkflowResource;
+    projectRelativePath: legacyRes.projectRelativePath ?? legacyRes.relativePath ?? undefined,
+    previewUrl: legacyRes.previewUrl ?? undefined,
+    previewProjectRelativePath: legacyRes.previewProjectRelativePath ?? undefined,
+    previewVersion: legacyRes.previewVersion ?? undefined,
+    posterUrl: legacyRes.posterUrl ?? undefined,
+    posterProjectRelativePath: legacyRes.posterProjectRelativePath ?? undefined,
+    posterSourcePath: legacyRes.posterSourcePath ?? undefined,
+    sourcePath: legacyRes.sourcePath ?? legacyRes.absolutePath ?? undefined,
+    sourceFingerprint: legacyRes.sourceFingerprint ?? undefined,
+    sourceName: legacyRes.sourceName ?? undefined,
+    sourceSize: legacyRes.sourceSize ?? legacyRes.size ?? undefined,
+    sourceLastModified: legacyRes.sourceLastModified ?? undefined,
+    localFileKey: legacyRes.localFileKey ?? undefined,
+    createdAt: legacyRes.createdAt ?? Date.now(),
+  };
 }

@@ -1,6 +1,7 @@
 import { defineAsyncComponent, type Component } from 'vue';
 import type { BlueprintNodeData, LegacyResourceData, PortSpec } from '../types';
 import type { BlueprintNode } from '../BlueprintNode';
+import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl';
 
 type WorkflowAnchorSpec = {
   id: string;
@@ -96,9 +97,9 @@ export class NodeComponentResolver {
 
     const props: ResourceRelatedProps = {};
 
-    if (res.url) props.resourceUrl = res.url;
+    if (res.url) props.resourceUrl = resolveWorkflowResourceUrl(res.url);
     if (res.sourcePath) props.resourceSourcePath = res.sourcePath;
-    if (res.posterUrl) props.posterUrl = res.posterUrl;
+    if (res.posterUrl) props.posterUrl = resolveWorkflowResourceUrl(res.posterUrl);
 
     return props;
   }

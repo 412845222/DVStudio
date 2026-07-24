@@ -26,7 +26,6 @@
           :status="node.status"
           :input-port-renders="node.inputPorts"
           :output-port-renders="node.outputPorts"
-          @resize-start="(corner, ev) => onResizeStart(node.nodeId, corner, ev)"
           @dblclick="(ev) => emit('node-dblclick', node.nodeId, ev)"
           @contextmenu="(ev) => emit('node-contextmenu', node.nodeId, ev)"
         >
@@ -63,9 +62,8 @@ import DomNodeWrapper, { type NodeStatus } from './DomNodeWrapper.vue';
 import WorkflowNodeWrapper from './WorkflowNodeWrapper.vue';
 import { BlueprintNode } from '../index';
 import { Rect } from '../../graphbase/core/Rect';
-import { Vector2 } from '../../graphbase/core/Vector2';
-import { MEDIA_TYPE_COLORS, MIN_NODE_WIDTH, MIN_NODE_HEIGHT } from '../types';
-import type { ResizeCorner, LegacyResourceData } from '../types';
+import { MEDIA_TYPE_COLORS } from '../types';
+import type { LegacyResourceData } from '../types';
 import { NodeComponentResolver } from './NodeComponentResolver';
 import { UpdateNodeTextCommand } from '../commands/UpdateNodeTextCommand';
 
@@ -193,94 +191,6 @@ let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const prevDomMap = new Map<string, BlueprintNode>();
 const lastKnownText = new Map<string, string>();
-
-const isResizing = ref(false);
-let resizingNode: BlueprintNode | null = null;
-let resizingCorner: ResizeCorner | null = null;
-let resizeStartX = 0;
-let resizeStartY = 0;
-let resizeStartWidth = 0;
-let resizeStartHeight = 0;
-
-function onResizeStart(nodeId: string, corner: ResizeCorner, event: PointerEvent) {
-  if (!props.scene) return;
-  const node = prevDomMap.get(nodeId);
-  if (!node) return;
-
-  resizingNode = node;
-  resizingCorner = corner;
-  resizeStartX = node.transform.position.x;
-  resizeStartY = node.transform.position.y;
-  resizeStartWidth = node.data.width;
-  resizeStartHeight = node.data.height;
-  isResizing.value = true;
-
-  window.addEventListener('pointermove', onResizePointerMove);
-  window.addEventListener('pointerup', onResizePointerUp, { once: true });
-}
-
-function onResizePointerMove(e: PointerEvent) {
-  if (!props.scene || !resizingNode || !resizingCorner || !overlayRef.value) return;
-
-  const rect = overlayRef.value.getBoundingClientRect();
-  const screenPoint = new Vector2(e.clientX - rect.left, e.clientY - rect.top);
-  const mouseWorld = props.scene.camera.screenToWorld(screenPoint);
-
-  let newWidth: number;
-  let newHeight: number;
-  let newX: number;
-  let newY: number;
-
-  switch (resizingCorner) {
-    case 'bottom-right': {
-      newX = resizeStartX;
-      newY = resizeStartY;
-      newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - resizeStartX);
-      newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - resizeStartY);
-      break;
-    }
-    case 'bottom-left': {
-      newY = resizeStartY;
-      const rightEdge = resizeStartX + resizeStartWidth;
-      newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x);
-      newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - resizeStartY);
-      newX = rightEdge - newWidth;
-      break;
-    }
-    case 'top-right': {
-      newX = resizeStartX;
-      const bottomEdge = resizeStartY + resizeStartHeight;
-      newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - resizeStartX);
-      newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y);
-      newY = bottomEdge - newHeight;
-      break;
-    }
-    case 'top-left': {
-      const rightEdge = resizeStartX + resizeStartWidth;
-      const bottomEdge = resizeStartY + resizeStartHeight;
-      newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x);
-      newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y);
-      newX = rightEdge - newWidth;
-      newY = bottomEdge - newHeight;
-      break;
-    }
-  }
-
-  resizingNode.transform.setPosition(newX, newY);
-  resizingNode.updateSize(newWidth, newHeight);
-  resizingNode.data.worldX = newX;
-  resizingNode.data.worldY = newY;
-  resizingNode.data.sizeCustomized = true;
-  props.scene.updateAllConnectionEndpoints();
-  props.scene.requestRedraw();
-}
-
-function onResizePointerUp() {
-  isResizing.value = false;
-  resizingNode = null;
-  resizingCorner = null;
-  window.removeEventListener('pointermove', onResizePointerMove);
-}
 
 const overlayStyle = computed(() => ({
   position: 'absolute' as const,

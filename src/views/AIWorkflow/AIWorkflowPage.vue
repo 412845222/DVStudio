@@ -25,7 +25,18 @@
 				@viewport-change="onBlueprintEditorViewportChange"
 				@node-double-click="onBlueprintEditorNodeDblClick"
 				@node-context-menu="onBlueprintEditorNodeContextMenu"
+				@canvas-context-menu="onBlueprintEditorCanvasContextMenu"
+				@canvas-double-click="onBlueprintEditorCanvasDblClick"
+				@canvas-drop="onBlueprintEditorDrop"
 			>
+				<!-- 旧版ContextMenu (业务菜单) -->
+				<ContextMenu
+					:visible="contextMenu.open"
+					:x="contextMenu.x"
+					:y="contextMenu.y"
+					:sections="contextMenuSections"
+					@select="onContextMenuSelect"
+				/>
 				<!-- 节点搜索菜单 (复用旧组件) -->
 				<DwebCanvasNodeSearchMenu
 					:visible="nodeSearchMenuVisible"
@@ -105,7 +116,6 @@
 					v-for="node in safeVisibleRenderNodes"
 					:key="node.id"
 					class="aiwf-node-host"
-					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id)) }"
 					:ref="
 						(el: any) => {
 							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
@@ -126,7 +136,7 @@
 						:anchor-compatibility="anchorCompatibility"
 						:is-linking="isLinking"
 						:inputs="node.inputs"
-						:isWarmupRender="(isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))) || pendingScreenshotNodeIds.has(String(node.id))"
+						:isWarmupRender="false"
 						:nodeId="node.id"
 						:nodeType="node.type"
 						:outputs="node.outputs"
@@ -715,14 +725,6 @@
 				:cancellable="false"
 			/>
 
-			<FullscreenProgressOverlay
-				:open="screenshotWarmupOpen"
-				:title="t('aiworkflow.page.screenshotWarmup.title')"
-				:detail="screenshotWarmupDetail || t('aiworkflow.page.screenshotWarmup.detail')"
-				:progress="screenshotWarmupProgress"
-				:cancellable="false"
-			/>
-
 			<ThemeWarmupProgress
 				:visible="themeWarmupOpen"
 				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
@@ -1300,9 +1302,9 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
   if (isUpdatingFromStore.value) return
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
   syncDebounceTimer = setTimeout(() => {
-    const partialState = legacyBlueprintToWorkflowState(data)
+    const snapshot = legacyBlueprintToWorkflowState(data)
     isUpdatingFromStore.value = true
-    store.commit('loadSnapshot', partialState)
+    store.commit('hydrateDraft', { snapshot })
     nextTick(() => {
       isUpdatingFromStore.value = false
     })
@@ -1313,8 +1315,7 @@ function onBlueprintEditorSelectionChange(nodeIds: string[]) {
   if (isUpdatingFromStore.value) return
   isUpdatingFromStore.value = true
   if (nodeIds.length > 0) {
-    store.commit('setSelectedNodeIds', nodeIds)
-    store.commit('setSelectedNodeId', nodeIds[nodeIds.length - 1])
+    store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
   } else {
     store.commit('clearSelection')
   }
@@ -1329,24 +1330,108 @@ function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: numbe
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
-  console.log('[BlueprintEditor] 双击节点:', nodeId)
+  store.commit('setSelectedNode', { nodeId })
+  if (_openInspectorFn) {
+    _openInspectorFn(true)
+  }
 }
 
-function onBlueprintEditorNodeContextMenu(nodeId: string, event: MouseEvent) {
-  console.log('[BlueprintEditor] 右键节点:', nodeId, event)
+function onBlueprintEditorNodeContextMenu(nodeId: string, event: MouseEvent, _worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  if (nodeId) {
+    const selectedIds = selectedNodeIds.value
+    if (!selectedIds.includes(nodeId)) {
+      store.commit('setSelectedNode', { nodeId })
+    }
+  }
+  nextTick(() => {
+    if (_onCanvasContextMenuFn) {
+      _onCanvasContextMenuFn({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        worldX: _worldPos.x,
+        worldY: _worldPos.y
+      })
+    }
+  })
 }
 
-watch(() => store.state, () => {
-  if (isUpdatingFromStore.value) return
-  if (blueprintEditorRef.value) {
-    isUpdatingFromStore.value = true
-    const data = workflowStateToLegacyBlueprint(store.state)
-    blueprintEditorRef.value.loadBlueprint(data)
-    nextTick(() => {
-      isUpdatingFromStore.value = false
+function onBlueprintEditorCanvasContextMenu(event: MouseEvent, worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  store.commit('clearSelection')
+  nextTick(() => {
+    if (_onCanvasContextMenuFn) {
+      _onCanvasContextMenuFn({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        worldX: worldPos.x,
+        worldY: worldPos.y
+      })
+    }
+  })
+}
+
+function onBlueprintEditorCanvasDblClick(event: MouseEvent, worldPos: { x: number; y: number }) {
+  if (_openNodeSearchMenuFn) {
+    _openNodeSearchMenuFn({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      worldX: worldPos.x,
+      worldY: worldPos.y
     })
   }
-}, { deep: true })
+}
+
+function onBlueprintEditorDrop(event: DragEvent, worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  if (_onCanvasDropFn) {
+    const modifiedEvent = new DragEvent('drop', {
+      dataTransfer: event.dataTransfer,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      bubbles: true
+    })
+    Object.defineProperty(modifiedEvent, 'currentTarget', {
+      value: event.currentTarget,
+      writable: false
+    })
+    ;(modifiedEvent as any)._worldPos = worldPos
+    _onCanvasDropFn(modifiedEvent)
+  }
+}
+
+let _openNodeSearchMenuFn: ((position: { clientX: number; clientY: number; worldX: number; worldY: number }, linkInfo?: { fromNodeId: string; fromAnchorId: string }) => void) | null = null
+let _onCanvasDropFn: ((e: DragEvent) => void) | null = null
+let _onCanvasContextMenuFn: ((menuPayload: { clientX: number; clientY: number; worldX: number; worldY: number }) => void) | null = null
+let _openInspectorFn: ((open: boolean) => void) | null = null
+
+let storeSyncFrameId: number | null = null
+function scheduleStoreSyncToEditor() {
+  if (storeSyncFrameId !== null) return
+  storeSyncFrameId = requestAnimationFrame(() => {
+    storeSyncFrameId = null
+    if (isUpdatingFromStore.value) return
+    if (blueprintEditorRef.value) {
+      isUpdatingFromStore.value = true
+      const data = workflowStateToLegacyBlueprint(store.state)
+      blueprintEditorRef.value.loadBlueprint(data)
+      nextTick(() => {
+        isUpdatingFromStore.value = false
+      })
+    }
+  })
+}
+
+watch(() => [
+  store.state.nodeOrder,
+  store.state.edgeOrder,
+  store.state.resourceOrder,
+  store.state.selectedNodeIds,
+  store.state.viewport
+], () => {
+  if (isUpdatingFromStore.value) return
+  scheduleStoreSyncToEditor()
+}, { deep: false })
 // ========== 新版BlueprintEditor集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
@@ -2757,190 +2842,7 @@ const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
 }
 
 const warmupAutoWireNodes = async (): Promise<void> => {
-	const newNodeIds = autoWireCreatedNodeIds.value
-	if (newNodeIds.length === 0) return
-
-	const newNodes = newNodeIds
-		.map((id) => store.state.nodesById[id])
-		.filter(Boolean) as WorkflowNode[]
-	if (newNodes.length === 0) return
-
-	isWarmingUpScreenshots.value = true
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.renderingNewNodes', { count: String(newNodes.length) })
-
-	warmupForceRenderNodeIds.value = new Set(newNodeIds)
-
-	await waitForFrames(2)
-
-	const newMap = new Map(nodeScreenshotMap.value)
-	const nodesNeedingCapture: WorkflowNode[] = []
-
-	for (const node of newNodes) {
-		const nodeId = String(node.id ?? '').trim()
-		if (!nodeId) continue
-		if (selectedNodeIds.value.includes(nodeId)) continue
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		nodesNeedingCapture.push(node)
-	}
-
-	const total = nodesNeedingCapture.length
-	if (total === 0) {
-		nodeScreenshotMap.value = newMap
-		isWarmingUpScreenshots.value = false
-		warmupExitingFullRender.value = true
-		warmupForceRenderNodeIds.value = new Set()
-		await nextTick()
-		warmupExitingFullRender.value = false
-		await waitForFrames(1)
-		if (newMap.size > 0) {
-			await warmupCanvasAll(newMap)
-			initCanvasScreenshotPool()
-			refreshCanvasNodeLayer()
-		}
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 8 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						'high'
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						const cacheCtx = getScreenshotCacheContext()
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[AutoWire Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewProgress', { completed: String(screenshotCompleted), total: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFrames = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFrames++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted === 0) {
-			screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
-		} else {
-			const pending = screenshotStarted - screenshotCompleted
-			screenshotWarmupProgress.value =
-				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl as HTMLElement)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
-	if (newMap.size > 0) {
-		await warmupCanvasAll(newMap)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-	}
-	await waitForFrames(2)
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 const waitForFrames = (count = 2): Promise<void> => {
@@ -3014,188 +2916,7 @@ function animateViewportTo(
 }
 
 const warmupNewTemplateNodes = async (newNodeIds: string[]): Promise<void> => {
-	if (!newNodeIds || newNodeIds.length === 0) return
-
-	const newNodes = newNodeIds
-		.map((id) => store.state.nodesById[id])
-		.filter(Boolean) as WorkflowNode[]
-	if (newNodes.length === 0) return
-
-	isWarmingUpScreenshots.value = true
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodes', { count: String(newNodes.length) })
-
-	warmupForceRenderNodeIds.value = new Set(newNodeIds)
-
-	await waitForFrames(2)
-
-	const newMap = new Map(nodeScreenshotMap.value)
-	const nodesNeedingCapture: WorkflowNode[] = []
-
-	for (const node of newNodes) {
-		const nodeId = String(node.id ?? '').trim()
-		if (!nodeId) continue
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		nodesNeedingCapture.push(node)
-	}
-
-	const total = nodesNeedingCapture.length
-	if (total === 0) {
-		nodeScreenshotMap.value = newMap
-		isWarmingUpScreenshots.value = false
-		warmupExitingFullRender.value = true
-		warmupForceRenderNodeIds.value = new Set()
-		await nextTick()
-		warmupExitingFullRender.value = false
-		await waitForFrames(1)
-		if (newMap.size > 0) {
-			await warmupCanvasAll(newMap)
-			initCanvasScreenshotPool()
-			refreshCanvasNodeLayer()
-		}
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 8 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						'high'
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						const cacheCtx = getScreenshotCacheContext()
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[Template Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodesProgress', { completed: String(screenshotCompleted), total: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFramesCount = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFramesCount < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFramesCount++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted === 0) {
-			screenshotWarmupProgress.value = 0.02 + (waitFramesCount / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
-		} else {
-			const pending = screenshotStarted - screenshotCompleted
-			screenshotWarmupProgress.value =
-				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl as HTMLElement)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
-	if (newMap.size > 0) {
-		await warmupCanvasAll(newMap)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-	}
-	await waitForFrames(2)
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 watch(
@@ -3481,32 +3202,7 @@ let warmupDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let warmupMode: 'force' | 'cache' | null = null
 
 const triggerWarmupIfNeeded = () => {
-	if (warmupDebounceTimer) {
-		clearTimeout(warmupDebounceTimer)
-		warmupDebounceTimer = null
-	}
-	warmupDebounceTimer = setTimeout(() => {
-		warmupDebounceTimer = null
-		if (isWarmingUpScreenshots.value) return
-		const count = nodes.value.length
-		if (count <= 0) return
-		if (hasWarmedUp) return
-		warmupMode = 'cache'
-		hasWarmedUp = true
-		loadCachedScreenshotsToCanvas().catch((err) => {
-			console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
-			warmupMode = 'force'
-			screenshotPool.cleanup()
-			nodeScreenshotMap.value = new Map()
-			warmupAllNodeScreenshots(true).catch((err2) => {
-				console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
-				isWarmingUpScreenshots.value = false
-				screenshotWarmupOpen.value = false
-				hasWarmedUp = false
-				warmupMode = null
-			})
-		})
-	}, 300)
+	return
 }
 
 const loadCachedScreenshotsToCanvas = async () => {
@@ -9394,6 +9090,10 @@ const {
 	autoSizeMediaNode,
 	bindMediaResourceToNode,
 	resolveDropWorldFromEvent: (e) => {
+		const presetWorldPos = (e as any)._worldPos as { x: number; y: number } | undefined
+		if (presetWorldPos) {
+			return { worldX: presetWorldPos.x, worldY: presetWorldPos.y }
+		}
 		const wrap = e.currentTarget as HTMLElement | null
 		const rect = wrap?.getBoundingClientRect() ?? null
 		if (!rect) return null
@@ -9417,6 +9117,7 @@ const {
 	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
+_onCanvasDropFn = onCanvasDrop
 
 const { recoverLocalResourcesFromHandles } = useAIWorkflowLocalResourceRecovery({
 	store,
@@ -10483,6 +10184,9 @@ const {
 	pushToast,
 	openFolderForPath
 })
+_openNodeSearchMenuFn = openNodeSearchMenu
+_onCanvasContextMenuFn = onCanvasContextMenu
+_openInspectorFn = (open: boolean) => { inspectorOpen.value = open }
 
 const handleLinkDropOnChatDock = (payload: {
 	clientX: number

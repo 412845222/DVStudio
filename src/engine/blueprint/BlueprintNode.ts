@@ -4,6 +4,7 @@ import { Node } from '../graphbase/scene/Node';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import type { HitTestResult } from '../graphbase/scene/interfaces';
 import { Port } from './Port';
+import { resolveWorkflowResourceUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl';
 import {
   NODE_HEADER_HEIGHT,
   NODE_BRACKET_SIZE,
@@ -23,9 +24,13 @@ import {
   MIN_NODE_WIDTH,
   MIN_NODE_HEIGHT,
   type BlueprintNodeData,
+  type LegacyResourceData,
   type PortSpec,
   type ResizeCorner
 } from './types';
+
+const BLUEPRINT_NODE_IMAGE_CACHE = new Map<string, HTMLImageElement>();
+const BLUEPRINT_NODE_IMAGE_LOADING = new Map<string, Promise<void>>();
 
 export class BlueprintNode extends Node {
   data: BlueprintNodeData;
@@ -358,7 +363,10 @@ export class BlueprintNode extends Node {
     this.renderPreviewArea(c, w, h, invZoom);
 
     if (this.selected || this.hoveredResizeCorner) {
+      const savedAlpha = c.globalAlpha;
+      c.globalAlpha = this.opacity;
       this.renderResizeHandles(c, w, h, invZoom);
+      c.globalAlpha = savedAlpha;
     }
 
     c.restore();
@@ -614,6 +622,81 @@ export class BlueprintNode extends Node {
     }
   }
 
+  private getLegacyResources(): Record<string, LegacyResourceData> {
+    let p: any = this.parent;
+    while (p) {
+      const lr = p.legacyResources;
+      if (lr && typeof lr === 'object') {
+        return lr as Record<string, LegacyResourceData>;
+      }
+      p = p.parent;
+    }
+    return {};
+  }
+
+  private getResourceData(): LegacyResourceData | null {
+    const resourceId = this.data.resourceId;
+    if (!resourceId) return null;
+    const resources = this.getLegacyResources();
+    return resources[resourceId] || null;
+  }
+
+  private getResolvedImageUrl(): string {
+    const res = this.getResourceData();
+    if (!res?.url) return '';
+    return resolveWorkflowResourceUrl(res.url);
+  }
+
+  private getResolvedPosterUrl(): string {
+    const res = this.getResourceData();
+    if (res?.posterUrl) {
+      const url = resolveWorkflowResourceUrl(res.posterUrl);
+      if (url) return url;
+    }
+    return this.getResolvedImageUrl();
+  }
+
+  private beginLoadImage(url: string): void {
+    if (!url || BLUEPRINT_NODE_IMAGE_CACHE.has(url) || BLUEPRINT_NODE_IMAGE_LOADING.has(url)) {
+      return;
+    }
+    const promise = new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        BLUEPRINT_NODE_IMAGE_CACHE.set(url, img);
+        BLUEPRINT_NODE_IMAGE_LOADING.delete(url);
+        this.markDirty(1);
+        resolve();
+      };
+      img.onerror = () => {
+        BLUEPRINT_NODE_IMAGE_LOADING.delete(url);
+        resolve();
+      };
+      img.src = url;
+    });
+    BLUEPRINT_NODE_IMAGE_LOADING.set(url, promise);
+  }
+
+  private getCachedImage(url: string): HTMLImageElement | null {
+    return BLUEPRINT_NODE_IMAGE_CACHE.get(url) || null;
+  }
+
+  private drawImageCover(c: CanvasRenderingContext2D, img: HTMLImageElement, dx: number, dy: number, dw: number, dh: number): void {
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    const boxRatio = dw / dh;
+    let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+
+    if (imgRatio > boxRatio) {
+      sw = img.naturalHeight * boxRatio;
+      sx = (img.naturalWidth - sw) / 2;
+    } else {
+      sh = img.naturalWidth / boxRatio;
+      sy = (img.naturalHeight - sh) / 2;
+    }
+
+    c.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+  }
+
   private renderImagePreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
     const margin = 6;
     const px = x + margin;
@@ -623,6 +706,44 @@ export class BlueprintNode extends Node {
 
     c.fillStyle = this.hexToRgba(accentColor, 0.08);
     c.fillRect(px, py, pw, ph);
+
+    const imgUrl = this.getResolvedImageUrl();
+    if (imgUrl) {
+      this.beginLoadImage(imgUrl);
+      const img = this.getCachedImage(imgUrl);
+      if (img && img.naturalWidth > 0) {
+        c.save();
+        c.beginPath();
+        c.rect(px, py, pw, ph);
+        c.clip();
+        this.drawImageCover(c, img, px, py, pw, ph);
+        c.restore();
+
+        c.strokeStyle = this.hexToRgba(accentColor, 0.3);
+        c.lineWidth = 1;
+        c.strokeRect(px, py, pw, ph);
+
+        if (this.nodeType === 'rotate-image') {
+          const cx = px + pw / 2;
+          c.save();
+          c.translate(cx, py + ph * 0.15);
+          c.strokeStyle = this.hexToRgba(accentColor, 0.7);
+          c.lineWidth = 1.5;
+          c.beginPath();
+          c.arc(0, 0, 8, 0.3, Math.PI * 1.7);
+          c.stroke();
+          c.beginPath();
+          c.moveTo(0, -10);
+          c.lineTo(3, -6);
+          c.lineTo(-3, -6);
+          c.closePath();
+          c.fillStyle = this.hexToRgba(accentColor, 0.8);
+          c.fill();
+          c.restore();
+        }
+        return;
+      }
+    }
 
     const cx = px + pw / 2;
     const cy = py + ph / 2;
@@ -676,29 +797,55 @@ export class BlueprintNode extends Node {
     c.fillStyle = this.hexToRgba(accentColor, 0.08);
     c.fillRect(px, py, pw, ph);
 
+    const posterUrl = this.getResolvedPosterUrl();
+    let hasPoster = false;
+    if (posterUrl) {
+      this.beginLoadImage(posterUrl);
+      const img = this.getCachedImage(posterUrl);
+      if (img && img.naturalWidth > 0) {
+        c.save();
+        c.beginPath();
+        c.rect(px, py, pw, ph);
+        c.clip();
+        this.drawImageCover(c, img, px, py, pw, ph);
+        c.restore();
+        c.fillStyle = 'rgba(0,0,0,0.35)';
+        c.fillRect(px, py, pw, ph);
+        hasPoster = true;
+      }
+    }
+
     const cx = px + pw / 2;
     const cy = py + ph / 2;
     const playSize = Math.min(pw, ph) * 0.25;
 
     c.beginPath();
-    c.moveTo(cx - playSize * 0.4, cy - playSize * 0.5);
-    c.lineTo(cx + playSize * 0.6, cy);
-    c.lineTo(cx - playSize * 0.4, cy + playSize * 0.5);
+    c.arc(cx, cy, playSize * 0.8, 0, Math.PI * 2);
+    c.fillStyle = hasPoster ? 'rgba(0,0,0,0.5)' : this.hexToRgba(accentColor, 0.2);
+    c.fill();
+    c.strokeStyle = hasPoster ? 'rgba(255,255,255,0.8)' : this.hexToRgba(accentColor, 0.5);
+    c.lineWidth = 2;
+    c.stroke();
+
+    c.beginPath();
+    c.moveTo(cx - playSize * 0.3, cy - playSize * 0.4);
+    c.lineTo(cx + playSize * 0.5, cy);
+    c.lineTo(cx - playSize * 0.3, cy + playSize * 0.4);
     c.closePath();
-    c.fillStyle = this.hexToRgba(accentColor, 0.5);
+    c.fillStyle = hasPoster ? 'rgba(255,255,255,0.9)' : this.hexToRgba(accentColor, 0.6);
     c.fill();
 
     c.strokeStyle = this.hexToRgba(accentColor, 0.3);
     c.lineWidth = 1;
     c.strokeRect(px, py, pw, ph);
 
-    c.fillStyle = 'rgba(0,0,0,0.4)';
+    c.fillStyle = 'rgba(0,0,0,0.5)';
     c.fillRect(px, py + ph - 14, pw, 14);
-    c.fillStyle = this.hexToRgba(accentColor, 0.7);
+    c.fillStyle = hasPoster ? 'rgba(255,255,255,0.8)' : this.hexToRgba(accentColor, 0.7);
     c.fillRect(px + 4, py + ph - 10, pw * 0.35, 4);
     c.beginPath();
     c.arc(px + pw - 12, py + ph - 8, 4, 0, Math.PI * 2);
-    c.fillStyle = this.hexToRgba(accentColor, 0.6);
+    c.fillStyle = hasPoster ? 'rgba(255,255,255,0.7)' : this.hexToRgba(accentColor, 0.6);
     c.fill();
   }
 

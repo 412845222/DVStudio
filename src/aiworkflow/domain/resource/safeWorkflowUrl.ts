@@ -145,3 +145,39 @@ export const buildProjectAssetRuntimeUrl = (
 	if (!Number.isFinite(pid) || pid <= 0 || !rel) return ''
 	return `dweb://project-assets?projectId=${encodeURIComponent(String(Math.floor(pid)))}&path=${encodeURIComponent(rel)}`
 }
+
+/**
+ * 解析工作流资源URL：
+ * - Electron环境：直接返回dweb:// URL（由主进程protocol handler处理）
+ * - 非Electron环境（开发模式）：返回占位图片data URL，避免404错误
+ * - http/https/blob/data URL：直接返回
+ */
+export const resolveWorkflowResourceUrl = (url: unknown): string => {
+	const raw = String(url ?? '').trim()
+	if (!raw) return ''
+
+	if (/^(blob:|data:|https?:|file:)/i.test(raw)) {
+		return raw
+	}
+
+	if (raw.toLowerCase().startsWith('dweb://project-assets') || raw.toLowerCase().startsWith('dweb:project-assets')) {
+		const isElectronRuntime =
+			window?.__DWEB_RUNTIME__?.platform === 'electron' ||
+			!!window?.dweb?.common
+
+		if (isElectronRuntime) {
+			return raw
+		}
+
+		return getDevPlaceholderUrl(raw)
+	}
+
+	return raw
+}
+
+/**
+ * 获取开发环境占位图片URL（1x1透明PNG）
+ */
+function getDevPlaceholderUrl(_originalUrl: string): string {
+	return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMjAyNTI2Ii8+CjxwYXRoIGQ9Ik0yMCAyNEg0NFY0MEgyMFYyNFoiIGZpbGw9IiMzNzQwNDIiLz4KPHBhdGggZD0iTTI4IDMySDM2VjM4SDI4VjMyWiIgZmlsbD0iIzU2NjE2MyIvPgo8L3N2Zz4='
+}

@@ -82,26 +82,15 @@
     >
       <div class="dnw-port-inner" :style="{ backgroundColor: getPortColor(port.mediaType) }"></div>
     </div>
-
-    <div
-      v-for="(corner, cIdx) in corners"
-      :key="corner.key"
-      class="dnw-corner"
-      :class="`dnw-corner-${corner.key}`"
-      :data-corner="corner.key"
-      @pointerdown="onCornerPointerDown($event, corner.key)"
-    ></div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, useSlots } from 'vue';
 
-type ResizeCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
 
 const emit = defineEmits<{
-  (e: 'resize-start', corner: ResizeCorner, event: PointerEvent): void;
   (e: 'dblclick', event: MouseEvent): void;
   (e: 'contextmenu', event: MouseEvent): void;
 }>();
@@ -120,13 +109,6 @@ interface PreviewData {
   posterUrl?: string;
   iconChar?: string;
 }
-
-const corners: { key: ResizeCorner }[] = [
-  { key: 'top-left' },
-  { key: 'top-right' },
-  { key: 'bottom-left' },
-  { key: 'bottom-right' },
-];
 
 const props = defineProps<{
   nodeId: string;
@@ -184,7 +166,6 @@ const NODE_HEADER_HEIGHT = 32;
 const PORT_SIZE = 12;
 const PORT_STAGGER = 30;
 const CONTENT_DELAY = 150;
-const RESIZE_DELAY = 500;
 
 const themeColor = computed(() => {
   if (props.status && props.status !== 'idle') {
@@ -252,14 +233,6 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
     height: `${PORT_SIZE}px`,
     '--port-delay': `${delay}ms`,
   };
-}
-
-function onCornerPointerDown(e: PointerEvent, corner: ResizeCorner) {
-  if (e.button !== 0) return;
-  e.stopPropagation();
-  e.preventDefault();
-  (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  emit('resize-start', corner, e);
 }
 </script>
 
@@ -651,92 +624,6 @@ function onCornerPointerDown(e: PointerEvent, corner: ResizeCorner) {
   filter: drop-shadow(0 0 8px rgba(31, 157, 132, 0.4));
 }
 
-.dnw-corner {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  background: transparent;
-  z-index: 10;
-  opacity: 0;
-  transform: scale(0.5);
-  animation: dnw-corner-enter 150ms ease-out forwards;
-  animation-delay: 500ms;
-  pointer-events: auto;
-}
-
-@keyframes dnw-corner-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.dnw-corner-tl {
-  top: -3px;
-  left: -3px;
-  cursor: nwse-resize;
-  border-top: 2px solid var(--dnw-accent);
-  border-left: 2px solid var(--dnw-accent);
-}
-
-.dnw-corner-tr {
-  top: -3px;
-  right: -3px;
-  cursor: nesw-resize;
-  border-top: 2px solid var(--dnw-accent);
-  border-right: 2px solid var(--dnw-accent);
-}
-
-.dnw-corner-bl {
-  bottom: -3px;
-  left: -3px;
-  cursor: nesw-resize;
-  border-bottom: 2px solid var(--dnw-accent);
-  border-left: 2px solid var(--dnw-accent);
-}
-
-.dnw-corner-br {
-  bottom: -3px;
-  right: -3px;
-  cursor: nwse-resize;
-  border-bottom: 2px solid var(--dnw-accent);
-  border-right: 2px solid var(--dnw-accent);
-}
-
-.dom-node-wrapper.selected .dnw-corner {
-  box-shadow: 0 0 6px var(--dnw-accent);
-}
-
-.dom-node-wrapper.selected .dnw-corner::before {
-  content: '';
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 1px;
-}
-
-.dom-node-wrapper.selected .dnw-corner-tl::before {
-  top: 1px;
-  left: 1px;
-}
-.dom-node-wrapper.selected .dnw-corner-tr::before {
-  top: 1px;
-  right: 1px;
-}
-.dom-node-wrapper.selected .dnw-corner-bl::before {
-  bottom: 1px;
-  left: 1px;
-}
-.dom-node-wrapper.selected .dnw-corner-br::before {
-  bottom: 1px;
-  right: 1px;
-}
-
 .dnw-port {
   position: absolute;
   border-radius: 50%;
@@ -813,10 +700,6 @@ function onCornerPointerDown(e: PointerEvent, corner: ResizeCorner) {
   animation: dnw-port-exit 150ms ease-in forwards;
 }
 
-.dom-node-wrapper.dnw-leave-active .dnw-corner {
-  animation: dnw-corner-exit 100ms ease-in forwards;
-}
-
 @keyframes dnw-exit {
   0% {
     opacity: 1;
@@ -881,17 +764,6 @@ function onCornerPointerDown(e: PointerEvent, corner: ResizeCorner) {
 }
 
 @keyframes dnw-port-exit {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-}
-
-@keyframes dnw-corner-exit {
   from {
     opacity: 1;
     transform: scale(1);

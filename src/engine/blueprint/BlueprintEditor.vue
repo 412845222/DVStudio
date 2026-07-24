@@ -44,6 +44,7 @@ import { DEFAULT_NODE_SIZES } from './types';
 import BlueprintDomOverlay from './dom/BlueprintDomOverlay.vue';
 import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
+import { Vector2 } from '../graphbase/core/Vector2';
 
 interface Props {
   initialData?: LegacyBlueprintData;
@@ -62,7 +63,10 @@ interface Emits {
   (e: 'save', data: LegacyBlueprintData): void;
   (e: 'selectionChange', nodeIds: string[]): void;
   (e: 'nodeDoubleClick', nodeId: string, event: MouseEvent): void;
-  (e: 'nodeContextMenu', nodeId: string, event: MouseEvent): void;
+  (e: 'nodeContextMenu', nodeId: string, event: MouseEvent, worldPos: { x: number; y: number }): void;
+  (e: 'canvasContextMenu', event: MouseEvent, worldPos: { x: number; y: number }): void;
+  (e: 'canvasDoubleClick', event: MouseEvent, worldPos: { x: number; y: number }): void;
+  (e: 'canvasDrop', event: DragEvent, worldPos: { x: number; y: number }): void;
   (e: 'viewportChange', zoom: number, panX: number, panY: number): void;
 }
 
@@ -76,6 +80,27 @@ let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let isUpdatingFromProps = false;
 let changeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let lastStructureHash: string | null = null;
+let hasInitiallyLoaded = false;
+
+function computeStructureHash(data: LegacyBlueprintData): string {
+  const nodeParts: string[] = [];
+  for (const id of data.nodeOrder || Object.keys(data.nodesById || {})) {
+    const n = data.nodesById[id];
+    if (n) {
+      nodeParts.push(`${id}:${n.worldX.toFixed(1)},${n.worldY.toFixed(1)},${n.width},${n.height}`);
+    }
+  }
+  const edgeSig = (data.edgeOrder || Object.keys(data.edgesById || {})).sort().join(',');
+  const resSig = (data.resourceOrder || Object.keys(data.resourcesById || {})).sort().join(',');
+  return `${nodeParts.join('|')}||${edgeSig}||${resSig}`;
+}
+
+function viewportEquals(a: { zoom: number; panX: number; panY: number }, b: { zoom: number; panX: number; panY: number }): boolean {
+  return Math.abs(a.zoom - b.zoom) < 0.001
+    && Math.abs(a.panX - b.panX) < 0.5
+    && Math.abs(a.panY - b.panY) < 0.5;
+}
 
 const ctxMenu = reactive({
   visible: false,
@@ -129,7 +154,8 @@ function openCtxMenu(x: number, y: number, targetNodeId: string | null) {
 function handleNodeContextMenu(nodeId: string, event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
-  emit('nodeContextMenu', nodeId, event);
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  emit('nodeContextMenu', nodeId, event, worldPos);
   openCtxMenu(event.clientX, event.clientY, nodeId);
 }
 
@@ -156,6 +182,15 @@ function handleNodeDelete(nodeId: string) {
   emitChange();
 }
 
+function getWorldPosFromClient(clientX: number, clientY: number): { x: number; y: number } {
+  if (!containerRef.value || !scene.value) return { x: 0, y: 0 };
+  const rect = containerRef.value.getBoundingClientRect();
+  const sx = clientX - rect.left;
+  const sy = clientY - rect.top;
+  const worldPos = scene.value.camera.screenToWorld(new Vector2(sx, sy));
+  return { x: worldPos.x, y: worldPos.y };
+}
+
 function onToolContextMenu(event: GraphPointerEvent) {
   if (ctxMenu.visible) closeCtxMenu();
   if (!scene.value) return;
@@ -163,6 +198,7 @@ function onToolContextMenu(event: GraphPointerEvent) {
   const originalEvent = event.originalEvent as MouseEvent;
   const clientX = originalEvent.clientX;
   const clientY = originalEvent.clientY;
+  const worldPos = getWorldPosFromClient(clientX, clientY);
 
   const hitNode = event.hitResult?.node;
   if (hitNode && hitNode instanceof BlueprintNode) {
@@ -172,11 +208,11 @@ function onToolContextMenu(event: GraphPointerEvent) {
       s.selection.setSelection([targetId]);
       s.requestRedraw();
     }
-    openCtxMenu(clientX, clientY, targetId);
+    emit('nodeContextMenu', targetId, originalEvent, worldPos);
   } else {
     s.selection.clearSelection();
     s.requestRedraw();
-    openCtxMenu(clientX, clientY, null);
+    emit('canvasContextMenu', originalEvent, worldPos);
   }
 }
 
@@ -288,8 +324,22 @@ function handleResize() {
 let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
 let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
 let unsubToolContextMenu: (() => void) | null = null;
+let unsubToolDblClick: (() => void) | null = null;
 let unsubSelection: (() => void) | null = null;
 let unsubViewport: (() => void) | null = null;
+let onContainerDragOver: ((e: DragEvent) => void) | null = null;
+let onContainerDrop: ((e: DragEvent) => void) | null = null;
+
+function handleCanvasDblClick(event: GraphPointerEvent) {
+  const originalEvent = event.originalEvent as MouseEvent;
+  const worldPos = getWorldPosFromClient(originalEvent.clientX, originalEvent.clientY);
+  const hitNode = event.hitResult?.node;
+  if (hitNode && hitNode instanceof BlueprintNode) {
+    emit('nodeDoubleClick', hitNode.id, originalEvent);
+  } else {
+    emit('canvasDoubleClick', originalEvent, worldPos);
+  }
+}
 
 function setupKeyboardShortcuts(s: BlueprintScene) {
   ctxCaptureKeyDown = (e: KeyboardEvent) => {
@@ -407,14 +457,43 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 }
 
 watch(() => props.initialData, (newData) => {
-  if (newData && scene.value) {
-    isUpdatingFromProps = true;
-    scene.value.loadBlueprint(newData);
-    scene.value.requestRedraw();
-    nextTick(() => {
-      isUpdatingFromProps = false;
-    });
+  if (!newData || !scene.value) return;
+  const s = scene.value;
+
+  const newHash = computeStructureHash(newData);
+  const structureChanged = newHash !== lastStructureHash;
+
+  isUpdatingFromProps = true;
+
+  if (structureChanged || !hasInitiallyLoaded) {
+    s.loadBlueprint(newData);
+    lastStructureHash = newHash;
+    hasInitiallyLoaded = true;
   }
+
+  if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
+    s.selection.setSelection(newData.selectedNodeIds);
+  } else if (newData.selectedNodeId) {
+    s.selection.setSelection([newData.selectedNodeId]);
+  } else {
+    if (structureChanged) {
+      s.selection.clearSelection();
+    }
+  }
+
+  if (newData.viewport) {
+    const curVp = s.getViewport();
+    if (!viewportEquals(curVp, newData.viewport)) {
+      s.setViewport(newData.viewport);
+    }
+  } else if (structureChanged && !hasInitiallyLoaded) {
+    s.fitToContent(100);
+  }
+
+  s.requestRedraw();
+  nextTick(() => {
+    isUpdatingFromProps = false;
+  });
 }, { deep: false });
 
 onMounted(() => {
@@ -427,6 +506,8 @@ onMounted(() => {
 
   if (props.initialData) {
     s.loadBlueprint(props.initialData);
+    lastStructureHash = computeStructureHash(props.initialData);
+    hasInitiallyLoaded = true;
   }
 
   s.start();
@@ -434,26 +515,42 @@ onMounted(() => {
   s.on.on('viewport-change', (vp: { zoom: number; panX: number; panY: number }) => {
     emit('viewportChange', vp.zoom, vp.panX, vp.panY);
     s.onViewportChanged();
-    emitChange();
   });
 
   unsubSelection = s.selection.on.on('select', () => {
     emit('selectionChange', getSelectedNodeIds());
-    emitChange();
   });
   unsubSelection = s.selection.on.on('deselect', () => {
     emit('selectionChange', getSelectedNodeIds());
-    emitChange();
   });
 
   const handleToolContextMenu = (e: unknown) => onToolContextMenu(e as GraphPointerEvent);
   unsubToolContextMenu = s.tools.on.on('context-menu', handleToolContextMenu);
+
+  const handleToolDblClick = (e: unknown) => handleCanvasDblClick(e as GraphPointerEvent);
+  unsubToolDblClick = s.tools.on.on('dblclick', handleToolDblClick);
 
   s.on.on('after-command', () => {
     ctxMenu.canUndo = s.canUndo();
     ctxMenu.canRedo = s.canRedo();
     emitChange();
   });
+
+  if (containerRef.value) {
+    onContainerDragOver = (e: DragEvent) => {
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      e.preventDefault();
+    };
+    onContainerDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const worldPos = getWorldPosFromClient(e.clientX, e.clientY);
+      emit('canvasDrop', e, worldPos);
+    };
+    containerRef.value.addEventListener('dragover', onContainerDragOver);
+    containerRef.value.addEventListener('drop', onContainerDrop);
+  }
 
   resizeObserver = new ResizeObserver(handleResize);
   resizeObserver.observe(containerRef.value);
@@ -470,7 +567,11 @@ onMounted(() => {
   setupKeyboardShortcuts(s);
 
   nextTick(() => {
-    s.fitToContent(100);
+    if (props.initialData?.viewport) {
+      s.setViewport(props.initialData.viewport);
+    } else {
+      s.fitToContent(100);
+    }
     s.onViewportChanged();
   });
 });
@@ -482,8 +583,13 @@ onUnmounted(() => {
   if (ctxOutsidePointerDown) window.removeEventListener('pointerdown', ctxOutsidePointerDown, true);
   if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
   if (unsubToolContextMenu) unsubToolContextMenu();
+  if (unsubToolDblClick) unsubToolDblClick();
   if (unsubSelection) unsubSelection();
   if (unsubViewport) unsubViewport();
+  if (containerRef.value) {
+    if (onContainerDragOver) containerRef.value.removeEventListener('dragover', onContainerDragOver);
+    if (onContainerDrop) containerRef.value.removeEventListener('drop', onContainerDrop);
+  }
   if (changeDebounceTimer) clearTimeout(changeDebounceTimer);
   if (scene.value) {
     scene.value.dispose();
@@ -491,16 +597,29 @@ onUnmounted(() => {
 });
 
 defineExpose({
-  loadBlueprint(data: LegacyBlueprintData) {
+  loadBlueprint(data: LegacyBlueprintData, options?: { fitToContent?: boolean }) {
     if (!scene.value) return;
     isUpdatingFromProps = true;
     scene.value.loadBlueprint(data);
-    scene.value.fitToContent(100);
+    lastStructureHash = computeStructureHash(data);
+    hasInitiallyLoaded = true;
+    if (options?.fitToContent || !data.viewport) {
+      scene.value.fitToContent(100);
+    } else if (data.viewport) {
+      scene.value.setViewport(data.viewport);
+    }
     scene.value.onViewportChanged();
     scene.value.requestRedraw();
     nextTick(() => {
       isUpdatingFromProps = false;
     });
+  },
+
+  setViewport(viewport: { zoom: number; panX: number; panY: number }) {
+    if (!scene.value) return;
+    scene.value.setViewport(viewport);
+    scene.value.onViewportChanged();
+    scene.value.requestRedraw();
   },
 
   saveBlueprint(): LegacyBlueprintData | null {
@@ -624,6 +743,10 @@ defineExpose({
     return scene.value?.camera.zoom ?? 1;
   },
 
+  screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
+    return getWorldPosFromClient(clientX, clientY);
+  },
+
   getScene(): BlueprintScene | null {
     return scene.value;
   },
@@ -632,6 +755,14 @@ defineExpose({
     if (!scene.value || props.readonly) return;
     scene.value.loadBlueprint({ viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [], edges: [] });
     scene.value.selection.clearSelection();
+    lastStructureHash = computeStructureHash({
+      schemaVersion: 1,
+      viewport: { zoom: 1, panX: 0, panY: 0 },
+      nodesById: {}, nodeOrder: [],
+      edgesById: {}, edgeOrder: [],
+      resourcesById: {}, resourceOrder: [],
+      selectionTagsByKey: {},
+    });
     scene.value.requestRedraw();
     emitChange();
   },
@@ -688,7 +819,7 @@ defineExpose({
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #15181c;
+  background: var(--wf-page-bg, #15181c);
   position: relative;
   overflow: hidden;
 }
