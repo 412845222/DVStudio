@@ -1,6 +1,6 @@
 import { Scene } from '../graphbase/scene/Scene';
 import { Vector2 } from '../graphbase/core/Vector2';
-import { BlueprintNode } from './BlueprintNode';
+import { BlueprintNode, clearBlueprintNodeImageCache } from './BlueprintNode';
 import { Connection, TempConnection } from './Connection';
 import { Port } from './Port';
 import { BlueprintGrid } from './BlueprintGrid';
@@ -99,6 +99,8 @@ export class BlueprintScene extends Scene {
     } else {
       blueprintData = data;
     }
+
+    clearBlueprintNodeImageCache();
 
     for (const node of this._nodeMap.values()) {
       this.removeChild(node);

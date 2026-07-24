@@ -542,17 +542,6 @@
 				</div>
 			</div>
 
-			<div class="aiwf-overlay-top-right" :style="overlayTopRightStyle">
-				<button
-					class="aiwf-inspector-toggle"
-					type="button"
-					@pointerdown.stop
-					@click.stop="toggleInspector"
-				>
-					{{ t('aiworkflow.page.inspector.toggle') }}
-				</button>
-			</div>
-
 			<div class="aiwf-overlay-floating">
 				<WorkflowInspectorPanel
 					:open="inspectorOpen"
@@ -1326,7 +1315,9 @@ function onBlueprintEditorSelectionChange(nodeIds: string[]) {
 
 function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
   if (isUpdatingFromStore.value) return
+  isUpdatingFromStore.value = true
   store.commit('setViewport', { zoom, panX, panY })
+  isUpdatingFromStore.value = false
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
@@ -1426,11 +1417,23 @@ watch(() => [
   store.state.nodeOrder,
   store.state.edgeOrder,
   store.state.resourceOrder,
-  store.state.selectedNodeIds,
-  store.state.viewport
+  store.state.selectedNodeIds
 ], () => {
   if (isUpdatingFromStore.value) return
   scheduleStoreSyncToEditor()
+}, { deep: false })
+
+watch(() => [
+  store.state.viewport.zoom,
+  store.state.viewport.panX,
+  store.state.viewport.panY
+], () => {
+  if (isUpdatingFromStore.value) return
+  if (blueprintEditorRef.value) {
+    isUpdatingFromStore.value = true
+    blueprintEditorRef.value.setViewport(store.state.viewport)
+    isUpdatingFromStore.value = false
+  }
 }, { deep: false })
 // ========== 新版BlueprintEditor集成结束 ==========
 
@@ -1694,15 +1697,10 @@ const onAutoWireStart = (sourceNodeId: string) => {
 	autoWireInProgress.value = true
 	autoWireSourceNodeId.value = sourceNodeId
 	autoWireCreatedNodeIds.value = []
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.generating')
 }
 
 const onAutoWireNodeCreated = (nodeId: string) => {
 	autoWireCreatedNodeIds.value.push(nodeId)
-	const count = autoWireCreatedNodeIds.value.length
-	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.progress', { count: String(count) })
 }
 
 const onAutoWireEnd = async () => {
@@ -2542,303 +2540,7 @@ const getScreenshotCacheContext = () => {
 }
 
 const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
-	const allNodes = nodes.value.filter((n) => {
-		const nodeId = String(n?.id ?? '').trim()
-		return nodeId
-	})
-	console.log('[Screenshot Warmup] warmupAllNodeScreenshots called, forceRecapture:', forceRecapture, 'allNodes count:', allNodes.length, 'selectedNodeIds:', selectedNodeIds.value)
-	if (allNodes.length === 0) return
-
-	const currentTheme = themeStore.state.mode as 'dark' | 'light'
-	screenshotPool.setActiveTheme(currentTheme)
-	setCanvasActiveTheme(currentTheme)
-
-	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
-	screenshotPool.pruneToValidNodes(validNodeIds)
-
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = forceRecapture ? t('aiworkflow.page.warmup.prepareRecapture') : t('aiworkflow.page.warmup.preparing')
-
-	const cacheCtx = getScreenshotCacheContext()
-	void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
-
-	await nextTick()
-
-	const visibleNodeIds = new Set(safeVisibleRenderNodes.value.map((n) => String(n.id)))
-
-	const newMap = new Map<string, ScreenshotCacheEntry>()
-
-	let diskLoadedCount = 0
-	if (!forceRecapture) {
-		screenshotWarmupProgress.value = 0.03
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
-		try {
-			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-			const totalNodes = allNodes.length
-			const currentTheme = themeStore.state.mode as 'dark' | 'light'
-			const otherTheme: 'dark' | 'light' = currentTheme === 'dark' ? 'light' : 'dark'
-			for (let i = 0; i < totalNodes; i++) {
-				const node = allNodes[i]
-				const nodeId = node.id
-				for (const theme of ['dark', 'light'] as const) {
-					const version = getNodeScreenshotVersion(node, theme)
-					const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
-					if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
-						screenshotPool.prefillCache(
-							nodeId,
-							version,
-							diskEntry.dataUrl,
-							diskEntry.width,
-							diskEntry.height,
-							SCREENSHOT_PADDING
-						)
-						if (theme === currentTheme) {
-							const screenshotEntry: ScreenshotCacheEntry = {
-								nodeId,
-								version,
-								theme,
-								dataUrl: diskEntry.dataUrl,
-								width: diskEntry.width,
-								height: diskEntry.height,
-								padding: SCREENSHOT_PADDING,
-								capturedAt: Date.now()
-							}
-							newMap.set(nodeId, screenshotEntry)
-						}
-						diskLoadedCount++
-					}
-				}
-				if (i % 10 === 0 || i === totalNodes - 1) {
-					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
-					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', { loaded: String(diskLoadedCount), totalNodes: String(totalNodes * 2) })
-					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
-				}
-			}
-		} catch (err) {
-			console.warn('[Screenshot Warmup] load from disk failed:', err)
-		}
-	}
-
-	const nodesNeedingCapture: WorkflowNode[] = []
-	for (const node of allNodes) {
-		const nodeId = node.id
-		if (forceRecapture) {
-			nodesNeedingCapture.push(node)
-			continue
-		}
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		if (newMap.has(nodeId)) continue
-		nodesNeedingCapture.push(node)
-	}
-
-	nodesNeedingCapture.sort((a, b) => {
-		const aVisible = visibleNodeIds.has(String(a.id))
-		const bVisible = visibleNodeIds.has(String(b.id))
-		if (aVisible && !bVisible) return -1
-		if (!aVisible && bVisible) return 1
-		return 0
-	})
-
-	const total = nodesNeedingCapture.length
-	const cachedCount = allNodes.length - total
-
-	console.log('[Screenshot Warmup] stats:', {
-		allNodes: allNodes.length,
-		selectedNodes: selectedNodeIds.value.length,
-		diskLoaded: diskLoadedCount,
-		poolCached: cachedCount - diskLoadedCount,
-		needCapture: total,
-		newMapSize: newMap.size,
-		allNodeIds: allNodes.map(n => n.id),
-		needCaptureIds: nodesNeedingCapture.map(n => n.id)
-	})
-
-	nodeScreenshotMap.value = newMap
-
-	if (total === 0) {
-		await nextTick()
-		await waitForFrames(1)
-		screenshotWarmupProgress.value = 0.1
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-		await warmupCanvasAll(
-			newMap,
-			undefined,
-			(p: number, d: string) => {
-				screenshotWarmupProgress.value = 0.1 + p * 0.88
-				screenshotWarmupDetail.value = d
-			}
-		)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-		screenshotWarmupProgress.value = 0.99
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-		await waitForFrames(1)
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	warmupForceRenderNodeIds.value = new Set(nodesNeedingCapture.map((n) => String(n.id)))
-	isWarmingUpScreenshots.value = true
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	await waitForFrames(2)
-
-	screenshotWarmupProgress.value = 0.1
-	if (forceRecapture) {
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.forceRecapture', { nodeCount: String(allNodes.length) })
-	} else {
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readyToCapture', { nodeCount: String(allNodes.length), cached: String(cachedCount), diskLoaded: String(diskLoadedCount) })
-	}
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement | null) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const isVisible = visibleNodeIds.has(nodeId)
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 5 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					const priority: ScreenshotPriority = isVisible ? 'high' : 'normal'
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						priority
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[Screenshot Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			const ratio = screenshotCompleted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturing', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFrames = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFrames++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted > 0) {
-			const ratio = screenshotStarted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturingWithReady', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total), started: String(screenshotStarted) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-
-	// === Canvas截图预热：加载所有截图到内存 ===
-	screenshotWarmupProgress.value = 0.88
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-	await waitForFrames(1)
-
-	await warmupCanvasAll(
-		newMap,
-		undefined,
-		(p: number, d: string) => {
-			screenshotWarmupProgress.value = 0.88 + p * 0.11
-			screenshotWarmupDetail.value = d
-		}
-	)
-
-	initCanvasScreenshotPool()
-	refreshCanvasNodeLayer()
-
-	screenshotWarmupProgress.value = 0.99
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-	await waitForFrames(1)
-
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 const warmupAutoWireNodes = async (): Promise<void> => {
@@ -3206,122 +2908,7 @@ const triggerWarmupIfNeeded = () => {
 }
 
 const loadCachedScreenshotsToCanvas = async () => {
-	const allNodes = nodes.value.filter((n) => {
-		const nodeId = String(n?.id ?? '').trim()
-		return nodeId
-	})
-	console.log('[Screenshot Warmup] loadCachedScreenshotsToCanvas called, allNodes count:', allNodes.length)
-	if (allNodes.length === 0) {
-		hasWarmedUp = false
-		warmupMode = null
-		return
-	}
-
-	const currentTheme = themeStore.state.mode as 'dark' | 'light'
-	screenshotPool.setActiveTheme(currentTheme)
-	setCanvasActiveTheme(currentTheme)
-
-	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
-	screenshotPool.pruneToValidNodes(validNodeIds)
-
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingDiskCache')
-
-	const cacheCtx = getScreenshotCacheContext()
-
-	await nextTick()
-	await waitForFrames(1)
-
-	const newMap = new Map<string, ScreenshotCacheEntry>()
-
-	let diskLoadedCount = 0
-	try {
-		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
-		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-		const totalNodes = allNodes.length
-		const currentTheme = themeStore.state.mode as 'dark' | 'light'
-		for (let i = 0; i < totalNodes; i++) {
-			const node = allNodes[i]
-			const nodeId = node.id
-			for (const theme of ['dark', 'light'] as const) {
-				const version = getNodeScreenshotVersion(node, theme)
-				const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
-				if (diskEntry && diskEntry.dataUrl && diskEntry.version === version) {
-					screenshotPool.prefillCache(
-						nodeId,
-						version,
-						diskEntry.dataUrl,
-						diskEntry.width,
-						diskEntry.height,
-						SCREENSHOT_PADDING
-					)
-					if (theme === currentTheme) {
-						const screenshotEntry: ScreenshotCacheEntry = {
-							nodeId,
-							version,
-							theme,
-							dataUrl: diskEntry.dataUrl,
-							width: diskEntry.width,
-							height: diskEntry.height,
-							padding: SCREENSHOT_PADDING,
-							capturedAt: Date.now()
-						}
-						newMap.set(nodeId, screenshotEntry)
-					}
-					diskLoadedCount++
-				}
-			}
-			if (i % 10 === 0 || i === totalNodes - 1) {
-				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
-				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', {
-					loaded: String(diskLoadedCount),
-					totalNodes: String(totalNodes * 2)
-				})
-				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
-			}
-		}
-	} catch (err) {
-		console.warn('[Screenshot Warmup] load from disk failed:', err)
-	}
-
-	nodeScreenshotMap.value = newMap
-
-	screenshotWarmupProgress.value = 0.28
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-
-	await warmupCanvasAll(
-		newMap,
-		undefined,
-		(p: number, d: string) => {
-			screenshotWarmupProgress.value = 0.3 + p * 0.68
-			screenshotWarmupDetail.value = d
-		}
-	)
-	initCanvasScreenshotPool()
-	refreshCanvasNodeLayer()
-
-	screenshotWarmupProgress.value = 0.98
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-	await waitForFrames(1)
-
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
-
-	if (newMap.size === 0) {
-		console.log('[Screenshot Warmup] no cached screenshots found, triggering force warmup')
-		warmupMode = 'force'
-		await waitForFrames(1)
-		warmupAllNodeScreenshots(true).catch((err) => {
-			console.warn('[Screenshot Warmup] fallback force warmup failed:', err)
-			isWarmingUpScreenshots.value = false
-			screenshotWarmupOpen.value = false
-			hasWarmedUp = false
-			warmupMode = null
-		})
-	}
+	return
 }
 
 watch(
@@ -4246,13 +3833,6 @@ const overlaySafeRight = computed(() => {
 	const safeWidth = Number(dockSafeArea.value?.width ?? 0)
 	if (!Number.isFinite(safeWidth)) return 0
 	return Math.max(0, Math.round(safeWidth))
-})
-
-const overlayTopRightStyle = computed(() => {
-	const right = overlaySafeRight.value > 0 ? overlaySafeRight.value + 12 : 16
-	return {
-		right: `${right}px`
-	} as Record<string, string>
 })
 
 const overlayAlertStyle = computed(() => {

@@ -223,11 +223,64 @@ function saveLegacy() {
 onMounted(() => {
   currentData.value = testData as unknown as LegacyBlueprintData;
   rafId = requestAnimationFrame(updateFps);
+  window.addEventListener('keydown', onTestPageKeyDown, true);
 });
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId);
+  window.removeEventListener('keydown', onTestPageKeyDown, true);
 });
+
+function onTestPageKeyDown(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null;
+  const tag = (target?.tagName || '').toLowerCase();
+  const isEditable = tag === 'input' || tag === 'textarea' || (target as any)?.isContentEditable === true;
+  if (isEditable) return;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  const key = e.key.toLowerCase();
+
+  if (ctrl && key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    editorRef.value?.undo();
+    return;
+  }
+  if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    editorRef.value?.redo();
+    return;
+  }
+  if (ctrl && key === 'a') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    editorRef.value?.selectAll();
+    return;
+  }
+  if (ctrl && key === 'c') {
+    if (selectedNodeCount.value > 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      editorRef.value?.copySelection();
+    }
+    return;
+  }
+  if (ctrl && key === 'v') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    editorRef.value?.paste();
+    return;
+  }
+  if ((key === 'delete' || key === 'backspace') && !ctrl) {
+    if (selectedNodeCount.value > 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      editorRef.value?.deleteSelection();
+    }
+    return;
+  }
+}
 </script>
 
 <style scoped>

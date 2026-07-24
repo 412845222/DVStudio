@@ -81,11 +81,10 @@ export class SelectTool extends Tool {
 
   onWheel(event: GraphWheelEvent): void {
     if (event.ctrlKey || event.metaKey) {
-      this.manager!.scene.camera.zoomAt(event.screenPosition, event.deltaY);
+      this.manager!.scene.zoomAt(event.screenPosition, event.deltaY);
     } else {
-      this.manager!.scene.camera.panBy(-event.deltaX, -event.deltaY);
+      this.manager!.scene.panBy(-event.deltaX, -event.deltaY);
     }
-    this.manager!.scene.requestRedraw();
   }
 
   onKeyDown(event: GraphKeyboardEvent): void {

@@ -29,8 +29,93 @@ import {
   type ResizeCorner
 } from './types';
 
-const BLUEPRINT_NODE_IMAGE_CACHE = new Map<string, HTMLImageElement>();
-const BLUEPRINT_NODE_IMAGE_LOADING = new Map<string, Promise<void>>();
+interface CachedBlueprintTexture {
+  canvas: HTMLCanvasElement;
+  naturalWidth: number;
+  naturalHeight: number;
+  lastUsed: number;
+  refCount: number;
+}
+
+const BLUEPRINT_TEXTURE_POOL = new Map<string, CachedBlueprintTexture>();
+const BLUEPRINT_TEXTURE_LOADING = new Map<string, Promise<void>>();
+const BLUEPRINT_TEXTURE_ERRORS = new Set<string>();
+const MAX_TEXTURE_POOL_SIZE = 100;
+const TEXTURE_PREVIEW_MAX = 288;
+
+export function clearBlueprintNodeImageCache(): void {
+  BLUEPRINT_TEXTURE_POOL.clear();
+  BLUEPRINT_TEXTURE_LOADING.clear();
+  BLUEPRINT_TEXTURE_ERRORS.clear();
+}
+
+function evictLRUTextures(): void {
+  if (BLUEPRINT_TEXTURE_POOL.size <= MAX_TEXTURE_POOL_SIZE) return;
+  const entries = Array.from(BLUEPRINT_TEXTURE_POOL.entries())
+    .filter(([, t]) => t.refCount <= 0)
+    .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+  while (BLUEPRINT_TEXTURE_POOL.size > MAX_TEXTURE_POOL_SIZE * 0.8 && entries.length > 0) {
+    const [url] = entries.shift()!;
+    BLUEPRINT_TEXTURE_POOL.delete(url);
+  }
+}
+
+function touchTexture(url: string): void {
+  const tex = BLUEPRINT_TEXTURE_POOL.get(url);
+  if (tex) {
+    tex.lastUsed = performance.now();
+    tex.refCount++;
+  }
+}
+
+function releaseTexture(url: string): void {
+  const tex = BLUEPRINT_TEXTURE_POOL.get(url);
+  if (tex && tex.refCount > 0) {
+    tex.refCount--;
+  }
+}
+
+function beginLoadTexture(url: string, onReady: () => void): void {
+  if (!url || BLUEPRINT_TEXTURE_POOL.has(url) || BLUEPRINT_TEXTURE_LOADING.has(url) || BLUEPRINT_TEXTURE_ERRORS.has(url)) {
+    return;
+  }
+  const promise = new Promise<void>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const nw = img.naturalWidth;
+      const nh = img.naturalHeight;
+      const scale = Math.min(TEXTURE_PREVIEW_MAX / nw, TEXTURE_PREVIEW_MAX / nh, 1);
+      const cw = Math.max(1, Math.ceil(nw * scale));
+      const ch = Math.max(1, Math.ceil(nh * scale));
+      const offscreen = document.createElement('canvas');
+      offscreen.width = cw;
+      offscreen.height = ch;
+      const octx = offscreen.getContext('2d');
+      if (octx) {
+        octx.drawImage(img, 0, 0, cw, ch);
+      }
+      BLUEPRINT_TEXTURE_POOL.set(url, {
+        canvas: offscreen,
+        naturalWidth: nw,
+        naturalHeight: nh,
+        lastUsed: performance.now(),
+        refCount: 0
+      });
+      BLUEPRINT_TEXTURE_LOADING.delete(url);
+      evictLRUTextures();
+      onReady();
+      resolve();
+    };
+    img.onerror = () => {
+      BLUEPRINT_TEXTURE_LOADING.delete(url);
+      BLUEPRINT_TEXTURE_ERRORS.add(url);
+      resolve();
+    };
+    img.src = url;
+  });
+  BLUEPRINT_TEXTURE_LOADING.set(url, promise);
+}
 
 export class BlueprintNode extends Node {
   data: BlueprintNodeData;
@@ -478,7 +563,7 @@ export class BlueprintNode extends Node {
     });
   }
 
-  private getPreviewKind(): 'text' | 'image' | 'video' | 'model3d' | 'icon' {
+  private getPreviewKind(): 'text' | 'image' | 'video' | 'model3d' | 'scene-understanding' | 'scene-layout' | 'scene-decompose' | 'comfyui' | 'unreal-export' | 'blender' | 'icon' {
     if (this.data.previewContent?.kind) return this.data.previewContent.kind as any;
     switch (this.nodeType) {
       case 'text': return 'text';
@@ -486,6 +571,12 @@ export class BlueprintNode extends Node {
       case 'rotate-image': return 'image';
       case 'video': return 'video';
       case 'model3d': return 'model3d';
+      case 'scene-understanding': return 'scene-understanding';
+      case 'scene-layout': return 'scene-layout';
+      case 'scene-decompose': return 'scene-decompose';
+      case 'comfyui': return 'comfyui';
+      case 'unreal-export': return 'unreal-export';
+      case 'blender': return 'blender';
       default: return 'icon';
     }
   }
@@ -556,6 +647,24 @@ export class BlueprintNode extends Node {
     c.lineWidth = 1;
     c.strokeRect(previewX, previewTop, previewW, previewH);
 
+    const cornerLen = 6;
+    c.strokeStyle = this.hexToRgba(accentColor, 0.4);
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(previewX, previewTop + cornerLen);
+    c.lineTo(previewX, previewTop);
+    c.lineTo(previewX + cornerLen, previewTop);
+    c.moveTo(previewX + previewW - cornerLen, previewTop);
+    c.lineTo(previewX + previewW, previewTop);
+    c.lineTo(previewX + previewW, previewTop + cornerLen);
+    c.moveTo(previewX + previewW, previewTop + previewH - cornerLen);
+    c.lineTo(previewX + previewW, previewTop + previewH);
+    c.lineTo(previewX + previewW - cornerLen, previewTop + previewH);
+    c.moveTo(previewX + cornerLen, previewTop + previewH);
+    c.lineTo(previewX, previewTop + previewH);
+    c.lineTo(previewX, previewTop + previewH - cornerLen);
+    c.stroke();
+
     if (kind === 'text') {
       this.renderTextPreview(c, previewX, previewTop, previewW, previewH, invZoom);
     } else if (kind === 'image') {
@@ -564,6 +673,18 @@ export class BlueprintNode extends Node {
       this.renderVideoPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
     } else if (kind === 'model3d') {
       this.renderModel3DPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'scene-understanding') {
+      this.renderSceneUnderstandingPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'scene-layout') {
+      this.renderSceneLayoutPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'scene-decompose') {
+      this.renderSceneDecomposePreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'comfyui') {
+      this.renderComfyUIPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'unreal-export') {
+      this.renderUnrealExportPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
+    } else if (kind === 'blender') {
+      this.renderBlenderPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
     } else {
       this.renderIconPreview(c, previewX, previewTop, previewW, previewH, invZoom, accentColor);
     }
@@ -598,7 +719,7 @@ export class BlueprintNode extends Node {
 
   private renderTextPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number): void {
     const padding = 10;
-    const text = this.previewText || '暂无文本内容';
+    const text = this.previewText || this.data.textValue || '暂无文本内容';
     const fontSize = 11;
     const lineHeight = Math.ceil(fontSize * 1.5);
     c.fillStyle = WF_TEXT_MUTED;
@@ -607,10 +728,12 @@ export class BlueprintNode extends Node {
     c.textBaseline = 'top';
 
     const maxWidth = w - padding * 2;
-    const maxLines = Math.floor((h - padding * 2) / lineHeight);
+    const availableHeight = h - padding * 2;
+    const maxLines = Math.max(1, Math.floor(availableHeight / lineHeight));
     const lines = this.wrapTextChinese(c, text, maxWidth);
+    const displayLines = Math.min(lines.length, maxLines);
 
-    for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+    for (let i = 0; i < displayLines; i++) {
       let line = lines[i];
       if (i === maxLines - 1 && lines.length > maxLines) {
         while (c.measureText(line + '...').width > maxWidth && line.length > 0) {
@@ -656,45 +779,81 @@ export class BlueprintNode extends Node {
     return this.getResolvedImageUrl();
   }
 
+  private _cachedScene: any = null;
+
   private beginLoadImage(url: string): void {
-    if (!url || BLUEPRINT_NODE_IMAGE_CACHE.has(url) || BLUEPRINT_NODE_IMAGE_LOADING.has(url)) {
+    beginLoadTexture(url, () => this.requestSceneRedraw());
+  }
+
+  private requestSceneRedraw(): void {
+    if (this._cachedScene && typeof this._cachedScene.requestRedraw === 'function') {
+      this._cachedScene.requestRedraw();
       return;
     }
-    const promise = new Promise<void>((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        BLUEPRINT_NODE_IMAGE_CACHE.set(url, img);
-        BLUEPRINT_NODE_IMAGE_LOADING.delete(url);
-        this.markDirty(1);
-        resolve();
-      };
-      img.onerror = () => {
-        BLUEPRINT_NODE_IMAGE_LOADING.delete(url);
-        resolve();
-      };
-      img.src = url;
-    });
-    BLUEPRINT_NODE_IMAGE_LOADING.set(url, promise);
+    let p: any = this.parent;
+    while (p) {
+      if (typeof p.requestRedraw === 'function') {
+        this._cachedScene = p;
+        p.requestRedraw();
+        return;
+      }
+      p = p.parent;
+    }
   }
 
-  private getCachedImage(url: string): HTMLImageElement | null {
-    return BLUEPRINT_NODE_IMAGE_CACHE.get(url) || null;
+  private getCachedTexture(url: string): CachedBlueprintTexture | null {
+    const tex = BLUEPRINT_TEXTURE_POOL.get(url);
+    if (tex) {
+      tex.lastUsed = performance.now();
+    }
+    return tex || null;
   }
 
-  private drawImageCover(c: CanvasRenderingContext2D, img: HTMLImageElement, dx: number, dy: number, dw: number, dh: number): void {
-    const imgRatio = img.naturalWidth / img.naturalHeight;
+  private drawTextureCover(c: CanvasRenderingContext2D, tex: CachedBlueprintTexture, dx: number, dy: number, dw: number, dh: number): void {
+    const nw = tex.naturalWidth;
+    const nh = tex.naturalHeight;
+    const imgRatio = nw / nh;
     const boxRatio = dw / dh;
-    let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+    let sx = 0, sy = 0, sw: number, sh: number;
 
     if (imgRatio > boxRatio) {
-      sw = img.naturalHeight * boxRatio;
-      sx = (img.naturalWidth - sw) / 2;
+      sw = nh * boxRatio;
+      sh = nh;
+      sx = (nw - sw) / 2;
+      sy = 0;
     } else {
-      sh = img.naturalWidth / boxRatio;
-      sy = (img.naturalHeight - sh) / 2;
+      sw = nw;
+      sh = nw / boxRatio;
+      sx = 0;
+      sy = (nh - sh) / 2;
     }
 
-    c.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+    const cw = tex.canvas.width;
+    const ch = tex.canvas.height;
+    const scaleX = cw / nw;
+    const scaleY = ch / nh;
+
+    c.drawImage(
+      tex.canvas,
+      sx * scaleX, sy * scaleY,
+      sw * scaleX, sh * scaleY,
+      dx, dy, dw, dh
+    );
+  }
+
+  private drawRoundedRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+    const rr = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.lineTo(x + w - rr, y);
+    c.quadraticCurveTo(x + w, y, x + w, y + rr);
+    c.lineTo(x + w, y + h - rr);
+    c.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    c.lineTo(x + rr, y + h);
+    c.quadraticCurveTo(x, y + h, x, y + h - rr);
+    c.lineTo(x, y + rr);
+    c.quadraticCurveTo(x, y, x + rr, y);
+    c.closePath();
   }
 
   private renderImagePreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
@@ -705,19 +864,21 @@ export class BlueprintNode extends Node {
     const ph = h - margin * 2;
 
     c.fillStyle = this.hexToRgba(accentColor, 0.08);
-    c.fillRect(px, py, pw, ph);
+    this.drawRoundedRectPath(c, px, py, pw, ph, 4);
+    c.fill();
 
     const imgUrl = this.getResolvedImageUrl();
     if (imgUrl) {
       this.beginLoadImage(imgUrl);
-      const img = this.getCachedImage(imgUrl);
-      if (img && img.naturalWidth > 0) {
+      const tex = this.getCachedTexture(imgUrl);
+      if (tex && tex.canvas.width > 0) {
+        touchTexture(imgUrl);
         c.save();
-        c.beginPath();
-        c.rect(px, py, pw, ph);
+        this.drawRoundedRectPath(c, px, py, pw, ph, 4);
         c.clip();
-        this.drawImageCover(c, img, px, py, pw, ph);
+        this.drawTextureCover(c, tex, px, py, pw, ph);
         c.restore();
+        releaseTexture(imgUrl);
 
         c.strokeStyle = this.hexToRgba(accentColor, 0.3);
         c.lineWidth = 1;
@@ -795,20 +956,22 @@ export class BlueprintNode extends Node {
     const ph = h - margin * 2;
 
     c.fillStyle = this.hexToRgba(accentColor, 0.08);
-    c.fillRect(px, py, pw, ph);
+    this.drawRoundedRectPath(c, px, py, pw, ph, 4);
+    c.fill();
 
     const posterUrl = this.getResolvedPosterUrl();
     let hasPoster = false;
     if (posterUrl) {
       this.beginLoadImage(posterUrl);
-      const img = this.getCachedImage(posterUrl);
-      if (img && img.naturalWidth > 0) {
+      const tex = this.getCachedTexture(posterUrl);
+      if (tex && tex.canvas.width > 0) {
+        touchTexture(posterUrl);
         c.save();
-        c.beginPath();
-        c.rect(px, py, pw, ph);
+        this.drawRoundedRectPath(c, px, py, pw, ph, 4);
         c.clip();
-        this.drawImageCover(c, img, px, py, pw, ph);
+        this.drawTextureCover(c, tex, px, py, pw, ph);
         c.restore();
+        releaseTexture(posterUrl);
         c.fillStyle = 'rgba(0,0,0,0.35)';
         c.fillRect(px, py, pw, ph);
         hasPoster = true;
@@ -839,12 +1002,22 @@ export class BlueprintNode extends Node {
     c.lineWidth = 1;
     c.strokeRect(px, py, pw, ph);
 
-    c.fillStyle = 'rgba(0,0,0,0.5)';
-    c.fillRect(px, py + ph - 14, pw, 14);
-    c.fillStyle = hasPoster ? 'rgba(255,255,255,0.8)' : this.hexToRgba(accentColor, 0.7);
-    c.fillRect(px + 4, py + ph - 10, pw * 0.35, 4);
+    const barH = 16;
+    const barY = py + ph - barH;
+    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillRect(px, barY, pw, barH);
+
+    const progressW = pw * 0.35;
+    const progressX = px + 6;
+    const progressY = barY + 6;
+    const progressH = 4;
+    c.fillStyle = this.hexToRgba(accentColor, 0.25);
+    c.fillRect(progressX, progressY, pw - 30, progressH);
+    c.fillStyle = hasPoster ? 'rgba(255,255,255,0.85)' : this.hexToRgba(accentColor, 0.75);
+    c.fillRect(progressX, progressY, progressW - 6, progressH);
+
     c.beginPath();
-    c.arc(px + pw - 12, py + ph - 8, 4, 0, Math.PI * 2);
+    c.arc(px + pw - 10, barY + barH / 2, 4, 0, Math.PI * 2);
     c.fillStyle = hasPoster ? 'rgba(255,255,255,0.7)' : this.hexToRgba(accentColor, 0.6);
     c.fill();
   }
@@ -914,6 +1087,347 @@ export class BlueprintNode extends Node {
       c.textAlign = 'center';
       c.textBaseline = 'top';
       c.fillText(this.subtitle, cx, bottom + 12);
+    }
+    c.restore();
+  }
+
+  private renderSceneUnderstandingPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 8;
+    const size = Math.min(w, h) * 0.35;
+
+    c.save();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.5);
+    c.lineWidth = 1.5;
+
+    c.beginPath();
+    c.arc(cx, cy, size, 0, Math.PI * 2);
+    c.strokeStyle = this.hexToRgba(accentColor, 0.3);
+    c.stroke();
+
+    c.beginPath();
+    c.arc(cx, cy, size * 0.7, 0, Math.PI * 2);
+    c.strokeStyle = this.hexToRgba(accentColor, 0.45);
+    c.stroke();
+
+    c.beginPath();
+    c.arc(cx, cy, size * 0.35, 0, Math.PI * 2);
+    c.fillStyle = this.hexToRgba(accentColor, 0.2);
+    c.fill();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.6);
+    c.stroke();
+
+    c.beginPath();
+    c.arc(cx, cy, 3, 0, Math.PI * 2);
+    c.fillStyle = this.hexToRgba(accentColor, 0.9);
+    c.fill();
+
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const x1 = cx + Math.cos(angle) * size * 0.4;
+      const y1 = cy + Math.sin(angle) * size * 0.4;
+      const x2 = cx + Math.cos(angle) * size * 0.9;
+      const y2 = cy + Math.sin(angle) * size * 0.9;
+      c.beginPath();
+      c.moveTo(x1, y1);
+      c.lineTo(x2, y2);
+      c.strokeStyle = this.hexToRgba(accentColor, 0.35);
+      c.lineWidth = 1;
+      c.stroke();
+    }
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + size + 12);
+    }
+    c.restore();
+  }
+
+  private renderSceneLayoutPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 5;
+    const size = Math.min(w, h) * 0.3;
+    const gridSize = size * 0.5;
+
+    c.save();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.4);
+    c.lineWidth = 1;
+
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        const gx = cx + i * gridSize;
+        const gy = cy + j * gridSize;
+        c.strokeRect(gx - gridSize * 0.35, gy - gridSize * 0.35, gridSize * 0.7, gridSize * 0.7);
+      }
+    }
+
+    c.strokeStyle = this.hexToRgba(accentColor, 0.7);
+    c.lineWidth = 1.5;
+    c.strokeRect(cx - size * 0.7, cy - size * 0.5, size * 1.4, size);
+
+    c.fillStyle = this.hexToRgba(accentColor, 0.2);
+    c.fillRect(cx - size * 0.5, cy - size * 0.3, size * 0.35, size * 0.25);
+    c.fillStyle = this.hexToRgba(accentColor, 0.15);
+    c.fillRect(cx - size * 0.1, cy - size * 0.3, size * 0.3, size * 0.4);
+    c.fillStyle = this.hexToRgba(accentColor, 0.1);
+    c.fillRect(cx + size * 0.25, cy - size * 0.3, size * 0.3, size * 0.6);
+
+    c.beginPath();
+    c.moveTo(cx - size * 0.7, cy + size * 0.5);
+    c.lineTo(cx - size * 0.35, cy + size * 0.2);
+    c.lineTo(cx, cy + size * 0.4);
+    c.lineTo(cx + size * 0.35, cy);
+    c.lineTo(cx + size * 0.7, cy + size * 0.5);
+    c.strokeStyle = this.hexToRgba(accentColor, 0.5);
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + size * 0.7 + 10);
+    }
+    c.restore();
+  }
+
+  private renderSceneDecomposePreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 5;
+    const size = Math.min(w, h) * 0.3;
+
+    c.save();
+
+    c.beginPath();
+    c.rect(cx - size, cy - size * 0.7, size * 2, size * 1.4);
+    c.fillStyle = this.hexToRgba(accentColor, 0.08);
+    c.fill();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.4);
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    const boxSize = size * 0.45;
+    const boxes = [
+      { x: cx - size * 0.6, y: cy - size * 0.4, label: '1' },
+      { x: cx + size * 0.15, y: cy - size * 0.45, label: '2' },
+      { x: cx - size * 0.3, y: cy + size * 0.1, label: '3' },
+      { x: cx + size * 0.4, y: cy + size * 0.15, label: '4' }
+    ];
+
+    boxes.forEach((box, i) => {
+      const alpha = 0.15 + i * 0.05;
+      c.fillStyle = this.hexToRgba(accentColor, alpha);
+      c.fillRect(box.x, box.y, boxSize, boxSize * 0.75);
+      c.strokeStyle = this.hexToRgba(accentColor, 0.5 + i * 0.1);
+      c.lineWidth = 1;
+      c.strokeRect(box.x, box.y, boxSize, boxSize * 0.75);
+
+      c.fillStyle = this.hexToRgba(WF_TEXT, 0.7);
+      c.font = '10px sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(box.label, box.x + boxSize / 2, box.y + boxSize * 0.375);
+    });
+
+    c.strokeStyle = this.hexToRgba(accentColor, 0.25);
+    c.lineWidth = 1;
+    c.setLineDash([3, 3]);
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(cx + size * 1.1, cy - size * 0.6);
+    c.moveTo(cx, cy);
+    c.lineTo(cx + size * 1.1, cy);
+    c.moveTo(cx, cy);
+    c.lineTo(cx + size * 1.1, cy + size * 0.6);
+    c.stroke();
+    c.setLineDash([]);
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + size * 0.8 + 10);
+    }
+    c.restore();
+  }
+
+  private renderComfyUIPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 5;
+    const nodeR = Math.min(w, h) * 0.12;
+    const spacing = nodeR * 2.8;
+
+    c.save();
+
+    const nodePositions = [
+      { x: cx - spacing, y: cy - spacing * 0.6, type: 'input' },
+      { x: cx, y: cy - spacing * 0.8, type: 'process' },
+      { x: cx + spacing, y: cy - spacing * 0.5, type: 'model' },
+      { x: cx - spacing * 0.5, y: cy + spacing * 0.3, type: 'process' },
+      { x: cx + spacing * 0.6, y: cy + spacing * 0.5, type: 'output' }
+    ];
+
+    c.strokeStyle = this.hexToRgba(accentColor, 0.3);
+    c.lineWidth = 1.5;
+    const connections = [
+      [0, 1], [1, 2], [0, 3], [1, 3], [2, 4], [3, 4]
+    ];
+    connections.forEach(([a, b]) => {
+      c.beginPath();
+      c.moveTo(nodePositions[a].x, nodePositions[a].y);
+      c.lineTo(nodePositions[b].x, nodePositions[b].y);
+      c.stroke();
+    });
+
+    nodePositions.forEach((node, i) => {
+      c.beginPath();
+      c.arc(node.x, node.y, nodeR, 0, Math.PI * 2);
+      const alpha = node.type === 'output' ? 0.25 : node.type === 'model' ? 0.3 : 0.18;
+      c.fillStyle = this.hexToRgba(accentColor, alpha);
+      c.fill();
+      c.strokeStyle = this.hexToRgba(accentColor, 0.5 + i * 0.05);
+      c.lineWidth = 1.5;
+      c.stroke();
+    });
+
+    c.beginPath();
+    c.arc(nodePositions[4].x, nodePositions[4].y, nodeR * 0.5, 0, Math.PI * 2);
+    c.fillStyle = this.hexToRgba(accentColor, 0.7);
+    c.fill();
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + spacing + 8);
+    }
+    c.restore();
+  }
+
+  private renderUnrealExportPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 8;
+    const size = Math.min(w, h) * 0.3;
+
+    c.save();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.5);
+    c.lineWidth = 1.5;
+
+    c.beginPath();
+    c.moveTo(cx, cy - size * 0.7);
+    c.lineTo(cx + size * 0.6, cy - size * 0.2);
+    c.lineTo(cx + size * 0.6, cy + size * 0.5);
+    c.lineTo(cx, cy + size * 0.7);
+    c.lineTo(cx - size * 0.6, cy + size * 0.5);
+    c.lineTo(cx - size * 0.6, cy - size * 0.2);
+    c.closePath();
+    c.fillStyle = this.hexToRgba(accentColor, 0.12);
+    c.fill();
+    c.stroke();
+
+    c.beginPath();
+    c.moveTo(cx, cy - size * 0.7);
+    c.lineTo(cx, cy + size * 0.7);
+    c.moveTo(cx - size * 0.6, cy - size * 0.2);
+    c.lineTo(cx + size * 0.6, cy - size * 0.2);
+    c.moveTo(cx - size * 0.6, cy + size * 0.5);
+    c.lineTo(cx + size * 0.6, cy + size * 0.5);
+    c.strokeStyle = this.hexToRgba(accentColor, 0.25);
+    c.lineWidth = 1;
+    c.stroke();
+
+    c.fillStyle = this.hexToRgba(accentColor, 0.4);
+    c.font = 'bold 14px sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText('U', cx, cy - 2);
+
+    c.beginPath();
+    c.moveTo(cx + size * 0.8, cy);
+    c.lineTo(cx + size * 1.1, cy - size * 0.2);
+    c.lineTo(cx + size * 1.1, cy + size * 0.2);
+    c.closePath();
+    c.fillStyle = this.hexToRgba(accentColor, 0.6);
+    c.fill();
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + size * 0.8 + 10);
+    }
+    c.restore();
+  }
+
+  private renderBlenderPreview(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, invZoom: number, accentColor: string): void {
+    const cx = x + w / 2;
+    const cy = y + h / 2 - 5;
+    const size = Math.min(w, h) * 0.3;
+
+    c.save();
+
+    c.beginPath();
+    c.ellipse(cx, cy + size * 0.15, size * 0.8, size * 0.25, 0, 0, Math.PI * 2);
+    c.fillStyle = this.hexToRgba(accentColor, 0.08);
+    c.fill();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.3);
+    c.lineWidth = 1;
+    c.stroke();
+
+    const cty = cy - size * 0.3;
+    c.beginPath();
+    c.moveTo(cx - size * 0.15, cty - size * 0.1);
+    c.lineTo(cx - size * 0.15, cty + size * 0.5);
+    c.lineTo(cx + size * 0.15, cty + size * 0.5);
+    c.lineTo(cx + size * 0.15, cty - size * 0.1);
+    c.lineTo(cx + size * 0.5, cty - size * 0.1);
+    c.lineTo(cx + size * 0.5, cty + size * 0.1);
+    c.lineTo(cx + size * 0.25, cty + size * 0.1);
+    c.lineTo(cx + size * 0.25, cty + size * 0.6);
+    c.lineTo(cx - size * 0.25, cty + size * 0.6);
+    c.lineTo(cx - size * 0.25, cty + size * 0.1);
+    c.lineTo(cx - size * 0.5, cty + size * 0.1);
+    c.lineTo(cx - size * 0.5, cty - size * 0.1);
+    c.closePath();
+    c.fillStyle = this.hexToRgba(accentColor, 0.15);
+    c.fill();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.5);
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    c.beginPath();
+    c.arc(cx, cty - size * 0.25, size * 0.18, 0, Math.PI * 2);
+    c.fillStyle = this.hexToRgba(accentColor, 0.25);
+    c.fill();
+    c.strokeStyle = this.hexToRgba(accentColor, 0.6);
+    c.stroke();
+
+    c.beginPath();
+    c.moveTo(cx - size * 0.3, cy - size * 0.5);
+    c.lineTo(cx, cy - size * 0.65);
+    c.lineTo(cx + size * 0.3, cy - size * 0.5);
+    c.strokeStyle = this.hexToRgba(accentColor, 0.4);
+    c.lineWidth = 2;
+    c.stroke();
+
+    c.fillStyle = this.hexToRgba(WF_TEXT, 0.5);
+    c.font = '10px sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+
+    if (this.subtitle) {
+      c.fillStyle = WF_TEXT_MUTED;
+      c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText(this.subtitle, cx, cy + size * 0.55 + 8);
     }
     c.restore();
   }

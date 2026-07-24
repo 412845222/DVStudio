@@ -325,8 +325,10 @@ let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
 let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
 let unsubToolContextMenu: (() => void) | null = null;
 let unsubToolDblClick: (() => void) | null = null;
-let unsubSelection: (() => void) | null = null;
+let unsubSelect: (() => void) | null = null;
+let unsubDeselect: (() => void) | null = null;
 let unsubViewport: (() => void) | null = null;
+let unsubAfterCommand: (() => void) | null = null;
 let onContainerDragOver: ((e: DragEvent) => void) | null = null;
 let onContainerDrop: ((e: DragEvent) => void) | null = null;
 
@@ -361,46 +363,6 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       return;
     }
 
-    if (ctrl && key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      s.undo();
-      return;
-    }
-    if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      s.redo();
-      return;
-    }
-    if (ctrl && key === 'a') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      s.selection.setSelection(s.getAllBlueprintNodes().map(n => n.id));
-      s.requestRedraw();
-      return;
-    }
-    if (ctrl && key === 'c') {
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      if (selectedNodes.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        s.copySelection(selectedNodes);
-      }
-      return;
-    }
-    if (ctrl && key === 'v') {
-      if (s.hasClipboardData()) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        const newNodeIds = s.executePaste(50, 50);
-        if (newNodeIds.length > 0) {
-          s.selection.setSelection(newNodeIds);
-          s.requestRedraw();
-        }
-      }
-      return;
-    }
     if (ctrl && key === 'd') {
       const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
       if (selectedNodes.length > 0) {
@@ -442,16 +404,6 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       }
       return;
     }
-    if ((key === 'delete' || key === 'backspace') && !ctrl) {
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      const selectedConns = s.selection.getSelection().filter(n => !(n instanceof BlueprintNode));
-      if (selectedNodes.length > 0 || selectedConns.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        deleteSelection();
-      }
-      return;
-    }
   };
   window.addEventListener('keydown', ctxCaptureKeyDown, true);
 }
@@ -486,8 +438,6 @@ watch(() => props.initialData, (newData) => {
     if (!viewportEquals(curVp, newData.viewport)) {
       s.setViewport(newData.viewport);
     }
-  } else if (structureChanged && !hasInitiallyLoaded) {
-    s.fitToContent(100);
   }
 
   s.requestRedraw();
@@ -502,6 +452,8 @@ onMounted(() => {
   const s = new BlueprintScene(canvasRef.value);
   scene.value = s;
 
+  isUpdatingFromProps = true;
+
   handleResize();
 
   if (props.initialData) {
@@ -512,15 +464,18 @@ onMounted(() => {
 
   s.start();
 
-  s.on.on('viewport-change', (vp: { zoom: number; panX: number; panY: number }) => {
+  unsubViewport = s.on.on('viewport-change', (vp: { zoom: number; panX: number; panY: number }) => {
+    if (isUpdatingFromProps) return;
     emit('viewportChange', vp.zoom, vp.panX, vp.panY);
     s.onViewportChanged();
   });
 
-  unsubSelection = s.selection.on.on('select', () => {
+  unsubSelect = s.selection.on.on('select', () => {
+    if (isUpdatingFromProps) return;
     emit('selectionChange', getSelectedNodeIds());
   });
-  unsubSelection = s.selection.on.on('deselect', () => {
+  unsubDeselect = s.selection.on.on('deselect', () => {
+    if (isUpdatingFromProps) return;
     emit('selectionChange', getSelectedNodeIds());
   });
 
@@ -530,7 +485,7 @@ onMounted(() => {
   const handleToolDblClick = (e: unknown) => handleCanvasDblClick(e as GraphPointerEvent);
   unsubToolDblClick = s.tools.on.on('dblclick', handleToolDblClick);
 
-  s.on.on('after-command', () => {
+  unsubAfterCommand = s.on.on('after-command', () => {
     ctxMenu.canUndo = s.canUndo();
     ctxMenu.canRedo = s.canRedo();
     emitChange();
@@ -573,6 +528,12 @@ onMounted(() => {
       s.fitToContent(100);
     }
     s.onViewportChanged();
+    s.requestRedraw();
+    nextTick(() => {
+      isUpdatingFromProps = false;
+      const curVp = s.getViewport();
+      emit('viewportChange', curVp.zoom, curVp.panX, curVp.panY);
+    });
   });
 });
 
@@ -584,8 +545,10 @@ onUnmounted(() => {
   if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
   if (unsubToolContextMenu) unsubToolContextMenu();
   if (unsubToolDblClick) unsubToolDblClick();
-  if (unsubSelection) unsubSelection();
+  if (unsubSelect) unsubSelect();
+  if (unsubDeselect) unsubDeselect();
   if (unsubViewport) unsubViewport();
+  if (unsubAfterCommand) unsubAfterCommand();
   if (containerRef.value) {
     if (onContainerDragOver) containerRef.value.removeEventListener('dragover', onContainerDragOver);
     if (onContainerDrop) containerRef.value.removeEventListener('drop', onContainerDrop);
@@ -612,14 +575,22 @@ defineExpose({
     scene.value.requestRedraw();
     nextTick(() => {
       isUpdatingFromProps = false;
+      if (scene.value) {
+        const curVp = scene.value.getViewport();
+        emit('viewportChange', curVp.zoom, curVp.panX, curVp.panY);
+      }
     });
   },
 
   setViewport(viewport: { zoom: number; panX: number; panY: number }) {
     if (!scene.value) return;
+    isUpdatingFromProps = true;
     scene.value.setViewport(viewport);
     scene.value.onViewportChanged();
     scene.value.requestRedraw();
+    nextTick(() => {
+      isUpdatingFromProps = false;
+    });
   },
 
   saveBlueprint(): LegacyBlueprintData | null {

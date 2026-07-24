@@ -63,22 +63,28 @@ window.addEventListener(
 			return
 		}
 
-		// Ctrl+Z/Ctrl+Y: 撤销/重做（输入框内交给浏览器原生文本撤销）
+		// Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z: 撤销/重做（输入框内交给浏览器原生文本撤销）
+		// 使用自定义事件让各页面自行处理，fallback到视频编辑器的editorPersistence
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
-			!e.shiftKey &&
-			(e.key === 'z' || e.key === 'Z')
+			((e.key === 'z' || e.key === 'Z') || (e.key === 'y' || e.key === 'Y'))
 		) {
 			e.preventDefault()
 			e.stopPropagation()
-			editorPersistence.undo()
-			return
-		}
-		if (!isEditable && (e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-			e.preventDefault()
-			e.stopPropagation()
-			editorPersistence.redo()
+			const isRedo = e.shiftKey || (e.key === 'y' || e.key === 'Y')
+			const eventName = isRedo ? 'dvs:shortcut/redo' : 'dvs:shortcut/undo'
+			const ok = window.dispatchEvent(new CustomEvent(eventName, { cancelable: true }))
+			if (ok) {
+				const routeName = router.currentRoute.value.name
+				if (routeName !== 'AIWorkflow' && routeName !== 'BlueprintTest') {
+					if (isRedo) {
+						editorPersistence.redo()
+					} else {
+						editorPersistence.undo()
+					}
+				}
+			}
 			return
 		}
 

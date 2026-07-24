@@ -32,9 +32,8 @@ export class PanTool extends Tool {
     if (this.panning) {
       const dx = event.screenPosition.x - this.lastPos.x;
       const dy = event.screenPosition.y - this.lastPos.y;
-      this.manager!.scene.camera.panBy(dx, dy);
+      this.manager!.scene.panBy(dx, dy);
       this.lastPos.copy(event.screenPosition);
-      this.manager!.scene.requestRedraw();
     }
   }
 
@@ -45,11 +44,10 @@ export class PanTool extends Tool {
 
   onWheel(event: GraphWheelEvent): void {
     if (event.ctrlKey || event.metaKey) {
-      this.manager!.scene.camera.zoomAt(event.screenPosition, event.deltaY);
+      this.manager!.scene.zoomAt(event.screenPosition, event.deltaY);
     } else {
-      this.manager!.scene.camera.panBy(-event.deltaX, -event.deltaY);
+      this.manager!.scene.panBy(-event.deltaX, -event.deltaY);
     }
-    this.manager!.scene.requestRedraw();
   }
 
   onKeyDown(event: GraphKeyboardEvent): void {

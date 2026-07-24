@@ -107,8 +107,7 @@ export class Scene extends Group implements Disposable {
       const evt = e as { ctrlKey: boolean; metaKey: boolean; deltaY: number; screenPosition: Vector2; preventDefault: () => void };
       if (evt.ctrlKey || evt.metaKey) {
         evt.preventDefault();
-        this.camera.zoomAt(evt.screenPosition, evt.deltaY);
-        this.requestRedraw();
+        this.zoomAt(evt.screenPosition, evt.deltaY);
       }
     });
   }
@@ -140,33 +139,39 @@ export class Scene extends Group implements Disposable {
   }
 
   setZoom(zoom: number, center?: Vector2): void {
-    this.camera.setZoom(zoom, center);
-    this.requestRedraw();
-    this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+    const changed = this.camera.setZoom(zoom, center);
+    if (changed) {
+      this.requestRedraw();
+      this.on.emit('viewport-change', this.getViewport());
+    }
   }
 
   zoomAt(screenPoint: Vector2, delta: number): void {
-    this.camera.zoomAt(screenPoint, delta);
-    this.requestRedraw();
-    this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+    const changed = this.camera.zoomAt(screenPoint, delta);
+    if (changed) {
+      this.requestRedraw();
+      this.on.emit('viewport-change', this.getViewport());
+    }
   }
 
   panBy(dx: number, dy: number): void {
-    this.camera.panBy(dx, dy);
-    this.requestRedraw();
-    this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+    const changed = this.camera.panBy(dx, dy);
+    if (changed) {
+      this.requestRedraw();
+      this.on.emit('viewport-change', this.getViewport());
+    }
   }
 
   panTo(x: number, y: number): void {
     this.camera.panTo(x, y);
     this.requestRedraw();
-    this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+    this.on.emit('viewport-change', this.getViewport());
   }
 
   centerOn(worldPoint: Vector2): void {
     this.camera.centerOn(worldPoint);
     this.requestRedraw();
-    this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+    this.on.emit('viewport-change', this.getViewport());
   }
 
   fitToContent(padding: number = 50): void {
@@ -174,7 +179,7 @@ export class Scene extends Group implements Disposable {
     if (!bounds.isEmpty) {
       this.camera.fitToWorldRect(bounds, padding);
       this.requestRedraw();
-      this.on.emit('viewport-change', { zoom: this.camera.zoom, panX: -this.camera.position.x * this.camera.zoom, panY: -this.camera.position.y * this.camera.zoom });
+      this.on.emit('viewport-change', this.getViewport());
     }
   }
 
@@ -187,11 +192,23 @@ export class Scene extends Group implements Disposable {
   }
 
   setViewport(vp: { zoom?: number; panX?: number; panY?: number }): void {
+    const oldZoom = this.camera.zoom;
+    const oldPosX = this.camera.position.x;
+    const oldPosY = this.camera.position.y;
+
     if (vp.zoom !== undefined) this.camera.zoom = vp.zoom;
     if (vp.panX !== undefined) this.camera.position.x = -vp.panX / this.camera.zoom;
     if (vp.panY !== undefined) this.camera.position.y = -vp.panY / this.camera.zoom;
-    (this.camera as any)['dirty'] = true;
-    this.requestRedraw();
+
+    const posChanged = Math.abs(this.camera.position.x - oldPosX) > 1e-6 ||
+                       Math.abs(this.camera.position.y - oldPosY) > 1e-6;
+    const zoomChanged = Math.abs(this.camera.zoom - oldZoom) > 1e-6;
+
+    if (posChanged || zoomChanged) {
+      (this.camera as any)['dirty'] = true;
+      this.requestRedraw();
+      this.on.emit('viewport-change', this.getViewport());
+    }
   }
 
   hitTestPoint(screenPoint: Vector2): Node | null {

@@ -31,32 +31,38 @@ export class Camera {
     this.dirty = true;
   }
 
-  setZoom(zoom: number, center?: Vector2): void {
+  setZoom(zoom: number, center?: Vector2): boolean {
     const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
-    if (newZoom === this.zoom) return;
+    if (Math.abs(newZoom - this.zoom) < 1e-6) return false;
 
     if (center) {
       const worldBefore = this.screenToWorld(center);
+
       this.zoom = newZoom;
       this.dirty = true;
-      const worldAfter = this.screenToWorld(center);
-      this.position.x += worldBefore.x - worldAfter.x;
-      this.position.y += worldBefore.y - worldAfter.y;
+
+      const screenAfter = this.worldToScreen(worldBefore);
+      const dx = center.x - screenAfter.x;
+      const dy = center.y - screenAfter.y;
+      this.panBy(dx, dy);
     } else {
       this.zoom = newZoom;
     }
     this.dirty = true;
+    return true;
   }
 
-  zoomAt(screenPoint: Vector2, delta: number): void {
+  zoomAt(screenPoint: Vector2, delta: number): boolean {
     const factor = Math.exp(-delta * 0.001);
-    this.setZoom(this.zoom * factor, screenPoint);
+    return this.setZoom(this.zoom * factor, screenPoint);
   }
 
-  panBy(dx: number, dy: number): void {
+  panBy(dx: number, dy: number): boolean {
+    if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return false;
     this.position.x -= dx / this.zoom;
     this.position.y -= dy / this.zoom;
     this.dirty = true;
+    return true;
   }
 
   panTo(x: number, y: number): void {

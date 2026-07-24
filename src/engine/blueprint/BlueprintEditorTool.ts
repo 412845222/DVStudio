@@ -536,10 +536,8 @@ export class BlueprintEditorTool extends Tool {
     if (this.spacePanning) {
       const dx = event.screenPosition.x - this.lastPanPos.x;
       const dy = event.screenPosition.y - this.lastPanPos.y;
-      scene.camera.panBy(dx, dy);
+      scene.panBy(dx, dy);
       this.lastPanPos.copy(event.screenPosition);
-      scene.onViewportChanged();
-      scene.requestRedraw();
       return;
     }
 
@@ -556,10 +554,8 @@ export class BlueprintEditorTool extends Tool {
       }
       const dx = event.screenPosition.x - this.lastPanPos.x;
       const dy = event.screenPosition.y - this.lastPanPos.y;
-      scene.camera.panBy(dx, dy);
+      scene.panBy(dx, dy);
       this.lastPanPos.copy(event.screenPosition);
-      scene.onViewportChanged();
-      scene.requestRedraw();
       return;
     }
 
@@ -869,9 +865,7 @@ export class BlueprintEditorTool extends Tool {
   onWheel(event: GraphWheelEvent): void {
     const scene = this.bpScene;
     event.preventDefault();
-    scene.camera.zoomAt(event.screenPosition, event.deltaY);
-    scene.onViewportChanged();
-    scene.requestRedraw();
+    scene.zoomAt(event.screenPosition, event.deltaY);
   }
 
   onKeyDown(event: GraphKeyboardEvent): void {
@@ -1008,15 +1002,13 @@ export class BlueprintEditorTool extends Tool {
       event.preventDefault();
       const camera = scene.camera;
       const center = new Vector2(camera.viewport.width / 2, camera.viewport.height / 2);
-      camera.setZoom(camera.zoom * 1.1, center);
-      scene.onViewportChanged();
+      scene.setZoom(camera.zoom * 1.1, center);
     }
     if ((key === '-' || key === '_' || key === 'numpadsubtract') && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       const camera = scene.camera;
       const center = new Vector2(camera.viewport.width / 2, camera.viewport.height / 2);
-      camera.setZoom(camera.zoom / 1.1, center);
-      scene.onViewportChanged();
+      scene.setZoom(camera.zoom / 1.1, center);
     }
     this.updateTempSelectionBounds();
     scene.requestRedraw();

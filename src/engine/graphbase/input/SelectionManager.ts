@@ -83,9 +83,22 @@ export class SelectionManager {
   }
 
   setSelection(ids: string[]): void {
+    const targetIds = new Set(ids.filter(id => id && id.trim()));
+    if (this.selected.size === targetIds.size) {
+      let same = true;
+      for (const id of targetIds) {
+        if (!this.selected.has(id)) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
     this.clearSelection();
     for (const id of ids) {
-      this.selectById(id, true);
+      if (id && id.trim()) {
+        this.selectById(id, true);
+      }
     }
   }
 
