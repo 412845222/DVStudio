@@ -38,6 +38,7 @@ export class BlueprintNode extends Node {
   icon?: string;
   previewText?: string;
   hoveredResizeCorner: ResizeCorner | null = null;
+  domMode: boolean = false;
 
   constructor(data: BlueprintNodeData) {
     super('node', data.id);
@@ -84,6 +85,16 @@ export class BlueprintNode extends Node {
     this.data.width = width;
     this.data.height = height;
     this.updatePortPositions();
+    this.markDirty(1);
+  }
+
+  setDomMode(active: boolean): void {
+    if (this.domMode === active) return;
+    this.domMode = active;
+    const targetAlpha = active ? 0 : 1;
+    this.alpha = targetAlpha;
+    this.inputPorts.forEach(port => { port.alpha = targetAlpha; });
+    this.outputPorts.forEach(port => { port.alpha = targetAlpha; });
     this.markDirty(1);
   }
 

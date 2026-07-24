@@ -16,11 +16,21 @@
         <button @click="loadLegacyDemo">加载演示项目(v1格式)</button>
         <button @click="loadFile">加载蓝图文件</button>
         <button @click="saveLegacy">保存为v1格式</button>
+        <span class="divider">|</span>
+        <button @click="setSelectedNodeStatus('idle')" :disabled="!selectedNodeForStatus">状态: idle</button>
+        <button @click="setSelectedNodeStatus('running')" :disabled="!selectedNodeForStatus">状态: running</button>
+        <button @click="setSelectedNodeStatus('success')" :disabled="!selectedNodeForStatus">状态: success</button>
+        <button @click="setSelectedNodeStatus('error')" :disabled="!selectedNodeForStatus">状态: error</button>
         <span class="zoom-info">{{ Math.round(zoom * 100) }}%</span>
       </div>
     </div>
     <div class="canvas-container" ref="containerRef">
       <canvas ref="canvasRef"></canvas>
+      <BlueprintDomOverlay 
+        :scene="scene" 
+        @node-dblclick="onNodeDblClick"
+        @node-contextmenu="onNodeContextMenu"
+      />
       <input type="file" ref="fileInputRef" accept=".json" style="display: none" @change="handleFileLoad" />
       <div class="hint-overlay" v-if="showHint">
         <div class="hint-content">
@@ -28,7 +38,10 @@
           <ul>
             <li>🖱️ <b>左键拖拽节点</b>：移动节点</li>
             <li>📐 <b>选中节点后拖拽四角</b>：调整节点尺寸（最小180x120）</li>
-            <li>🔗 <b>从右侧输出端口拖拽到输入端口</b>：创建连线</li>
+            <li>🔗 <b>从端口拖拽到另一端口</b>：创建连线（DOM端口事件穿透复用Canvas逻辑）</li>
+            <li>🖱️ <b>双击节点</b>：触发双击事件（控制台输出）</li>
+            <li>🖱️ <b>右键节点</b>：触发右键菜单事件（控制台输出）</li>
+            <li>🎨 <b>选中单个节点后点击状态按钮</b>：切换节点状态（idle/running/success/error）</li>
             <li>🖱️ <b>左键空白拖拽</b>：框选</li>
             <li>🟦 <b>选中≥2节点显示蓝色多选框</b>：拖拽蓝色框区域可整体移动</li>
             <li>🟩 <b>Ctrl+G 保存分组</b>：显示绿色保存分组框，可拖拽/删除</li>
@@ -49,6 +62,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { BlueprintScene, BlueprintNode } from '../engine/blueprint';
+import BlueprintDomOverlay from '../engine/blueprint/dom/BlueprintDomOverlay.vue';
 import type { BlueprintData } from '../engine/blueprint';
 import testData from '../../samples/blueprint_test_data.json';
 import legacyDemoData from '../../samples/legacy_demo.blueprint.json';
@@ -80,6 +94,28 @@ const edgeCount = computed(() => {
 const canSaveSelection = computed(() => {
   return selectedNodeCount.value >= 2;
 });
+
+const selectedNodeForStatus = computed(() => {
+  if (!scene.value) return null;
+  const sel = scene.value.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+  return sel.length === 1 ? sel[0] : null;
+});
+
+function setSelectedNodeStatus(status: 'idle' | 'running' | 'success' | 'error') {
+  const node = selectedNodeForStatus.value;
+  if (!node) return;
+  (node.data as any).status = status;
+  scene.value!.requestRedraw();
+  console.log(`节点 ${node.id} 状态设为: ${status}`);
+}
+
+function onNodeDblClick(nodeId: string, event: MouseEvent) {
+  console.log('[DOM事件] 双击节点:', nodeId, event);
+}
+
+function onNodeContextMenu(nodeId: string, event: MouseEvent) {
+  console.log('[DOM事件] 右键菜单节点:', nodeId, event);
+}
 
 function saveSelection() {
   if (!scene.value) return;
@@ -314,6 +350,18 @@ onUnmounted(() => {
 .toolbar-right button:hover {
   background: rgba(31, 157, 132, 0.25);
   border-color: #1f9d84;
+}
+
+.toolbar-right .divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 4px;
+}
+
+.toolbar-right button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .zoom-info {

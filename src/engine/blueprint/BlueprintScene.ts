@@ -47,6 +47,10 @@ export class BlueprintScene extends Scene {
     this.requestRedraw();
   }
 
+  get legacyResources(): Record<string, LegacyResourceData> {
+    return this._legacyResources;
+  }
+
   onViewportChanged(): void {
     this.requestRedraw();
   }
