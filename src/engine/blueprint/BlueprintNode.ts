@@ -10,7 +10,8 @@ import {
   NODE_BORDER_WIDTH,
   NODE_INNER_PADDING,
   PORT_SPACING,
-  PORT_TOP_OFFSET,
+  PORT_MIN_MARGIN_TOP,
+  PORT_MIN_MARGIN_BOTTOM,
   WF_TEXT,
   WF_TEXT_MUTED,
   WF_PRIMARY,
@@ -82,9 +83,71 @@ export class BlueprintNode extends Node {
   updateSize(width: number, height: number): void {
     this.data.width = width;
     this.data.height = height;
-    this.inputPorts.forEach(p => p.updateNodeSize(width, height));
-    this.outputPorts.forEach(p => p.updateNodeSize(width, height));
+    this.updatePortPositions();
     this.markDirty(1);
+  }
+
+  private updatePortPositions(): void {
+    const w = this.data.width;
+    const h = this.data.height;
+    const inputYs = this.calculatePortYPositions(this.inputPorts.map(p => p.spec), h);
+    const outputYs = this.calculatePortYPositions(this.outputPorts.map(p => p.spec), h);
+
+    this.inputPorts.forEach((port, i) => {
+      port.spec.offsetY = inputYs[i];
+      port.updateNodeSize(w, h);
+    });
+    this.outputPorts.forEach((port, i) => {
+      port.spec.offsetY = outputYs[i];
+      port.updateNodeSize(w, h);
+    });
+  }
+
+  private calculatePortYPositions(specs: PortSpec[], h: number): number[] {
+    const ys: number[] = [];
+    let dataPortIndex = 0;
+
+    const dataStartY = NODE_HEADER_HEIGHT + PORT_MIN_MARGIN_TOP + PORT_SIZE / 2;
+    const flowY = h - PORT_MIN_MARGIN_BOTTOM - PORT_SIZE / 2;
+
+    for (const spec of specs) {
+      if (spec.mediaType === 'flow') {
+        ys.push(flowY);
+      } else {
+        ys.push(dataStartY + dataPortIndex * PORT_SPACING);
+        dataPortIndex++;
+      }
+    }
+
+    return ys;
+  }
+
+  private calculateMinHeight(): number {
+    const allPorts = [...this.data.inputs, ...this.data.outputs];
+    let dataPortCount = 0;
+
+    for (const p of allPorts) {
+      if (p.mediaType !== 'flow') {
+        dataPortCount++;
+      }
+    }
+
+    const inputDataCount = this.data.inputs.filter(p => p.mediaType !== 'flow').length;
+    const outputDataCount = this.data.outputs.filter(p => p.mediaType !== 'flow').length;
+    const maxDataCount = Math.max(inputDataCount, outputDataCount);
+
+    const dataPortHeight = maxDataCount > 0
+      ? (maxDataCount - 1) * PORT_SPACING + PORT_SIZE
+      : 0;
+
+    const dataAreaBottom = NODE_HEADER_HEIGHT + PORT_MIN_MARGIN_TOP + PORT_SIZE / 2 + dataPortHeight;
+    const flowAreaTop = PORT_MIN_MARGIN_BOTTOM + PORT_SIZE + PORT_MIN_MARGIN_TOP;
+
+    const requiredByPorts = dataAreaBottom + flowAreaTop;
+
+    const baseHeight = NODE_HEADER_HEIGHT + 100;
+
+    return Math.max(MIN_NODE_HEIGHT, baseHeight, requiredByPorts);
   }
 
   rebuildPorts(): void {
@@ -94,12 +157,21 @@ export class BlueprintNode extends Node {
     this.inputPorts = [];
     this.outputPorts = [];
 
-    const w = this.data.width;
-    const h = this.data.height;
+    let w = this.data.width;
+    let h = this.data.height;
+
+    const minH = this.calculateMinHeight();
+    if (h < minH) {
+      h = minH;
+      this.data.height = h;
+    }
+
+    const inputYs = this.calculatePortYPositions(this.data.inputs, h);
+    const outputYs = this.calculatePortYPositions(this.data.outputs, h);
 
     this.data.inputs.forEach((spec: PortSpec, i: number) => {
       const port = new Port(
-        { ...spec, offsetY: PORT_TOP_OFFSET + i * PORT_SPACING },
+        { ...spec, offsetY: inputYs[i] },
         true, w, h, `${this.id}-in-${spec.id}`
       );
       this.inputPorts.push(port);
@@ -108,7 +180,7 @@ export class BlueprintNode extends Node {
 
     this.data.outputs.forEach((spec: PortSpec, i: number) => {
       const port = new Port(
-        { ...spec, offsetY: PORT_TOP_OFFSET + i * PORT_SPACING },
+        { ...spec, offsetY: outputYs[i] },
         false, w, h, `${this.id}-out-${spec.id}`
       );
       this.outputPorts.push(port);
@@ -272,7 +344,6 @@ export class BlueprintNode extends Node {
     const dotSize = 4;
     c.fillRect(statusDotX - dotSize / 2, statusDotY - dotSize / 2, dotSize, dotSize);
 
-    this.renderPortLabels(c, invZoom);
     this.renderPreviewArea(c, w, h, invZoom);
 
     if (this.selected || this.hoveredResizeCorner) {
@@ -371,16 +442,16 @@ export class BlueprintNode extends Node {
     c.font = `11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`;
     c.textBaseline = 'middle';
 
-    this.inputPorts.forEach((port, i) => {
-      const y = PORT_TOP_OFFSET + i * PORT_SPACING;
+    this.inputPorts.forEach((port) => {
+      const y = port.spec.offsetY ?? 0;
       c.fillStyle = WF_TEXT_MUTED;
       c.textAlign = 'left';
       const label = port.spec.label || port.spec.id;
       c.fillText(label, PORT_SIZE / 2 + NODE_INNER_PADDING / 2, y);
     });
 
-    this.outputPorts.forEach((port, i) => {
-      const y = PORT_TOP_OFFSET + i * PORT_SPACING;
+    this.outputPorts.forEach((port) => {
+      const y = port.spec.offsetY ?? 0;
       c.fillStyle = WF_TEXT_MUTED;
       c.textAlign = 'right';
       const label = port.spec.label || port.spec.id;
@@ -435,9 +506,20 @@ export class BlueprintNode extends Node {
   }
 
   private renderPreviewArea(c: CanvasRenderingContext2D, w: number, h: number, invZoom: number): void {
-    const maxPorts = Math.max(this.inputPorts.length, this.outputPorts.length);
-    const previewTop = PORT_TOP_OFFSET + maxPorts * PORT_SPACING + 8;
-    const previewBottom = h - NODE_INNER_PADDING;
+    const inputDataCount = this.data.inputs.filter(p => p.mediaType !== 'flow').length;
+    const outputDataCount = this.data.outputs.filter(p => p.mediaType !== 'flow').length;
+    const maxDataCount = Math.max(inputDataCount, outputDataCount);
+
+    const dataStartY = NODE_HEADER_HEIGHT + PORT_MIN_MARGIN_TOP + PORT_SIZE / 2;
+    const dataPortBottom = maxDataCount > 0
+      ? dataStartY + (maxDataCount - 1) * PORT_SPACING + PORT_SIZE / 2
+      : NODE_HEADER_HEIGHT;
+
+    const flowY = h - PORT_MIN_MARGIN_BOTTOM - PORT_SIZE / 2;
+    const flowPortTop = flowY - PORT_SIZE / 2;
+
+    const previewTop = dataPortBottom + 8;
+    const previewBottom = flowPortTop - 8;
 
     if (previewBottom - previewTop < 40) return;
 

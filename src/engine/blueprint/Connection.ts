@@ -8,10 +8,12 @@ import type { Scene } from '../graphbase/scene/Scene';
 import { MEDIA_TYPE_COLORS, WF_PRIMARY } from './types';
 
 const LINE_WIDTH = 2.5;
-const LINE_WIDTH_SELECTED = 3;
-const LINE_WIDTH_HOVER = 3;
+const LINE_WIDTH_SELECTED = 4;
+const LINE_WIDTH_HOVER = 3.5;
 const BEZIER_CONTROL_DISTANCE = 80;
-const HIT_WIDTH_SCREEN = 10;
+const HIT_WIDTH_WORLD = 8;
+const SELECTED_GLOW_SIZE = 14;
+const HOVER_GLOW_SIZE = 8;
 
 export interface ConnectionEndpoints {
   fromWorld: Vector2;
@@ -99,13 +101,13 @@ export class Connection extends Node {
     if (this.selected) {
       baseLineWidth = LINE_WIDTH_SELECTED;
       alpha = 1;
-      glowAlpha = 0.35;
-      glowSize = 10;
+      glowAlpha = 0.45;
+      glowSize = SELECTED_GLOW_SIZE;
     } else if (this.hovered) {
       baseLineWidth = LINE_WIDTH_HOVER;
       alpha = 0.95;
-      glowAlpha = 0.2;
-      glowSize = 6;
+      glowAlpha = 0.25;
+      glowSize = HOVER_GLOW_SIZE;
     }
 
     c.save();
@@ -157,8 +159,7 @@ export class Connection extends Node {
 
   getLocalBounds(): Rect {
     if (!this._endpoints) return new Rect(0, 0, 0, 0);
-    const zoom = this.getCameraZoom();
-    const pad = Math.max(HIT_WIDTH_SCREEN / zoom, 15);
+    const pad = Math.max(HIT_WIDTH_WORLD, 15);
     const minX = Math.min(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) - pad;
     const minY = Math.min(this._endpoints.fromWorld.y, this._endpoints.toWorld.y) - pad;
     const maxX = Math.max(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) + pad;
@@ -209,13 +210,12 @@ export class Connection extends Node {
     const to = this._endpoints.toWorld;
     const { cp1, cp2 } = this.getBezierPoints(from, to);
     const dist = this.distanceToBezier(localPoint, from, cp1, cp2, to);
-    const zoom = this.getCameraZoom();
-    const hitWidth = HIT_WIDTH_SCREEN / zoom;
-    if (dist <= hitWidth) {
+    if (dist <= HIT_WIDTH_WORLD) {
       return {
         node: this,
         localPoint: localPoint.clone(),
-        worldPoint: localPoint.clone()
+        worldPoint: localPoint.clone(),
+        cursor: 'pointer'
       };
     }
     return null;

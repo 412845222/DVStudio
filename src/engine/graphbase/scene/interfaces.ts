@@ -20,6 +20,7 @@ export interface HitTestResult {
   localPoint: Vector2;
   worldPoint: Vector2;
   data?: Record<string, unknown>;
+  cursor?: string;
 }
 
 export interface Selectable {

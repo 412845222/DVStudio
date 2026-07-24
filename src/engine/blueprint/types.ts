@@ -145,6 +145,8 @@ export const NODE_INNER_PADDING = 12;
 
 export const PORT_SPACING = 28;
 export const PORT_TOP_OFFSET = NODE_HEADER_HEIGHT + 20;
+export const PORT_MIN_MARGIN_TOP = 16;
+export const PORT_MIN_MARGIN_BOTTOM = 16;
 
 export const GRID_STEP = 80;
 export const GRID_MAJOR_EVERY = 5;
