@@ -36,6 +36,7 @@ enum DragMode {
 const ANCHOR_MAGNET_DISTANCE = 15;
 const DRAG_BOUNDARY = 100000;
 const DOUBLE_CLICK_MS = 300;
+const RIGHT_PAN_THRESHOLD_DIST = 4;
 
 export class BlueprintEditorTool extends Tool {
   private dragging: boolean = false;
@@ -43,6 +44,9 @@ export class BlueprintEditorTool extends Tool {
   private connecting: boolean = false;
   private spacePanning: boolean = false;
   private rightPanning: boolean = false;
+  private rightDownPos: Vector2 = new Vector2();
+  private rightPanStarted: boolean = false;
+  private suppressContextMenu: boolean = false;
   private lastPanPos: Vector2 = new Vector2();
   private pendingFromPort: Port | null = null;
   private pendingFromNode: BlueprintNode | null = null;
@@ -290,8 +294,11 @@ export class BlueprintEditorTool extends Tool {
 
     if (event.button === 2) {
       this.rightPanning = true;
+      this.rightPanStarted = false;
+      this.suppressContextMenu = false;
+      this.rightDownPos.copy(event.screenPosition);
       this.lastPanPos.copy(event.screenPosition);
-      this.setCursor('grabbing');
+      this.setCursor('grab');
       scene.requestRedraw();
       return;
     }
@@ -526,7 +533,27 @@ export class BlueprintEditorTool extends Tool {
       return;
     }
 
-    if (this.spacePanning || this.rightPanning) {
+    if (this.spacePanning) {
+      const dx = event.screenPosition.x - this.lastPanPos.x;
+      const dy = event.screenPosition.y - this.lastPanPos.y;
+      scene.camera.panBy(dx, dy);
+      this.lastPanPos.copy(event.screenPosition);
+      scene.onViewportChanged();
+      scene.requestRedraw();
+      return;
+    }
+
+    if (this.rightPanning) {
+      if (!this.rightPanStarted) {
+        const dx = event.screenPosition.x - this.rightDownPos.x;
+        const dy = event.screenPosition.y - this.rightDownPos.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < RIGHT_PAN_THRESHOLD_DIST * RIGHT_PAN_THRESHOLD_DIST) {
+          return;
+        }
+        this.rightPanStarted = true;
+        this.setCursor('grabbing');
+      }
       const dx = event.screenPosition.x - this.lastPanPos.x;
       const dy = event.screenPosition.y - this.lastPanPos.y;
       scene.camera.panBy(dx, dy);
@@ -716,9 +743,18 @@ export class BlueprintEditorTool extends Tool {
       return;
     }
 
-    if (this.spacePanning || this.rightPanning) {
+    if (this.spacePanning) {
       this.spacePanning = false;
+      this.setCursor('default');
+      return;
+    }
+
+    if (this.rightPanning) {
+      if (this.rightPanStarted) {
+        this.suppressContextMenu = true;
+      }
       this.rightPanning = false;
+      this.rightPanStarted = false;
       this.setCursor('default');
       return;
     }
@@ -820,6 +856,14 @@ export class BlueprintEditorTool extends Tool {
     this.updateTempSelectionBounds();
     scene.updateAllConnectionEndpoints();
     scene.requestRedraw();
+  }
+
+  onContextMenu(_event: GraphPointerEvent, _hit: HitTestResult | null): boolean {
+    if (this.suppressContextMenu) {
+      this.suppressContextMenu = false;
+      return true;
+    }
+    return false;
   }
 
   onWheel(event: GraphWheelEvent): void {

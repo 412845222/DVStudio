@@ -22,6 +22,8 @@ export abstract class Tool {
   abstract onPointerMove(event: GraphPointerEvent, hit: HitTestResult | null): void;
   abstract onPointerUp(event: GraphPointerEvent, hit: HitTestResult | null): void;
 
+  onContextMenu(_event: GraphPointerEvent, _hit: HitTestResult | null): boolean { return false; }
+
   onWheel(_event: GraphWheelEvent): void {}
   onKeyDown(_event: GraphKeyboardEvent): void {}
   onKeyUp(_event: GraphKeyboardEvent): void {}

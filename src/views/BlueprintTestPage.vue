@@ -25,7 +25,7 @@
       </div>
     </div>
     <div class="canvas-container" ref="containerRef">
-      <canvas ref="canvasRef" @contextmenu.prevent="onCanvasContextMenu"></canvas>
+      <canvas ref="canvasRef"></canvas>
       <BlueprintDomOverlay 
         :scene="scene" 
         @node-dblclick="onNodeDblClick"
@@ -63,7 +63,8 @@
             <li>📐 <b>选中节点后拖拽四角</b>：调整节点尺寸（最小180x120）</li>
             <li>🔗 <b>从端口拖拽到另一端口</b>：创建连线（DOM端口事件穿透复用Canvas逻辑）</li>
             <li>🖱️ <b>双击节点</b>：触发双击事件（控制台输出）</li>
-            <li>🖱️ <b>右键节点</b>：触发右键菜单事件（控制台输出）</li>
+            <li>🖱️ <b>右键点击</b>：打开右键菜单（节点菜单/空白菜单）</li>
+            <li>🖱️ <b>右键拖拽</b>：平移画布（移动超过4px开始平移，平移后不弹菜单）</li>
             <li>🎨 <b>选中单个节点后点击状态按钮</b>：切换节点状态（idle/running/success/error）</li>
             <li>🖱️ <b>左键空白拖拽</b>：框选</li>
             <li>🟦 <b>选中≥2节点显示蓝色多选框</b>：拖拽蓝色框区域可整体移动</li>
@@ -85,6 +86,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { BlueprintScene, BlueprintNode } from '../engine/blueprint';
+import type { GraphPointerEvent } from '../engine/graphbase/input/events';
 import BlueprintDomOverlay from '../engine/blueprint/dom/BlueprintDomOverlay.vue';
 import BlueprintContextMenu from '../engine/blueprint/dom/BlueprintContextMenu.vue';
 import { DeleteSelectionCommand } from '../engine/blueprint/commands/DeleteSelectionCommand';
@@ -192,6 +194,30 @@ function onNodeContextMenu(nodeId: string, event: MouseEvent) {
   openCtxMenu(event.clientX, event.clientY, nodeId);
 }
 
+function onToolContextMenu(event: GraphPointerEvent) {
+  if (ctxMenu.visible) closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const originalEvent = event.originalEvent as MouseEvent;
+  const clientX = originalEvent.clientX;
+  const clientY = originalEvent.clientY;
+
+  const hitNode = event.hitResult?.node;
+  if (hitNode && hitNode instanceof BlueprintNode) {
+    const targetId = hitNode.id;
+    const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    if (!selectedNodes.find(n => n.id === targetId)) {
+      s.selection.setSelection([targetId]);
+      s.requestRedraw();
+    }
+    openCtxMenu(clientX, clientY, targetId);
+  } else {
+    s.selection.clearSelection();
+    s.requestRedraw();
+    openCtxMenu(clientX, clientY, null);
+  }
+}
+
 function onNodeCopy(nodeId: string) {
   if (!scene.value) return;
   const s = scene.value;
@@ -208,15 +234,6 @@ function onNodeDelete(nodeId: string) {
   s.selection.clearSelection();
   s.updateAllConnectionEndpoints();
   s.requestRedraw();
-}
-
-function onCanvasContextMenu(event: MouseEvent) {
-  if (ctxMenu.visible) closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  s.selection.clearSelection();
-  s.requestRedraw();
-  openCtxMenu(event.clientX, event.clientY, null);
 }
 
 function onCtxUndo() { closeCtxMenu(); scene.value?.undo(); }
@@ -423,6 +440,7 @@ function saveLegacy() {
 
 let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
 let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
+let unsubToolContextMenu: (() => void) | null = null;
 
 onMounted(() => {
   if (!canvasRef.value || !containerRef.value) return;
@@ -448,6 +466,9 @@ onMounted(() => {
   s.selection.on.on('deselect', () => {
     selectedNodeCount.value = s.selection.getSelection().filter(n => n instanceof BlueprintNode).length;
   });
+
+  const handleToolContextMenu = (e: unknown) => onToolContextMenu(e as GraphPointerEvent);
+  unsubToolContextMenu = s.tools.on.on('context-menu', handleToolContextMenu);
 
   resizeObserver = new ResizeObserver(handleResize);
   resizeObserver.observe(containerRef.value);
@@ -559,6 +580,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   if (ctxOutsidePointerDown) window.removeEventListener('pointerdown', ctxOutsidePointerDown, true);
   if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
+  if (unsubToolContextMenu) unsubToolContextMenu();
   if (scene.value) {
     scene.value.dispose();
   }

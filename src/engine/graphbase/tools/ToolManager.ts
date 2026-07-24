@@ -116,8 +116,15 @@ export class ToolManager implements Disposable {
     const unsub6 = this.input.on.on('keyup', (e: unknown) => {
       this.activeTool?.onKeyUp(e as GraphKeyboardEvent);
     });
+    const unsub7 = this.input.on.on('contextmenu', (e: unknown) => {
+      const evt = e as GraphPointerEvent;
+      const suppressed = this.activeTool?.onContextMenu(evt, evt.hitResult) ?? false;
+      if (!suppressed) {
+        this.on.emit('context-menu', evt);
+      }
+    });
 
-    this.unsubscribeInput.push(unsub1, unsub2, unsub3, unsub4, unsub5, unsub6);
+    this.unsubscribeInput.push(unsub1, unsub2, unsub3, unsub4, unsub5, unsub6, unsub7);
   }
 
   renderUnderlay(ctx: RenderContext): void {

@@ -255,6 +255,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 }
 
 function onCornerPointerDown(e: PointerEvent, corner: ResizeCorner) {
+  if (e.button !== 0) return;
   e.stopPropagation();
   e.preventDefault();
   (e.target as HTMLElement).setPointerCapture(e.pointerId);

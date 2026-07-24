@@ -136,7 +136,7 @@ export class InputManager implements Disposable {
   private onPointerDown = (e: PointerEvent): void => {
     if (this.disabled) return;
     e.preventDefault();
-    this.target.setPointerCapture(e.pointerId);
+    try { this.target.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
     const screenPos = this.getScreenPoint(e);
     const state = this.getOrCreatePointer(e.pointerId, e);
     state.position.copy(screenPos);
