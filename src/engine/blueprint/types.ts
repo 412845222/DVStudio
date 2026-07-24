@@ -99,7 +99,7 @@ export interface LegacySelectionTag {
 export interface LegacyBlueprintData {
   schemaVersion: number;
   savedAt?: number;
-  viewport: { zoom: number; panX: number; panY: number };
+  viewport?: { zoom: number; panX: number; panY: number };
   nodesById: Record<string, BlueprintNodeData>;
   nodeOrder: string[];
   edgesById: Record<string, ConnectionData>;

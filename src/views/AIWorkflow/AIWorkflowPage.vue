@@ -35,7 +35,7 @@
 					:x="contextMenu.x"
 					:y="contextMenu.y"
 					:sections="contextMenuSections"
-					@select="onContextMenuSelect"
+					@select="handleContextMenuSelect"
 				/>
 				<!-- 节点搜索菜单 (复用旧组件) -->
 				<DwebCanvasNodeSearchMenu
@@ -1280,6 +1280,7 @@ ensureAIWorkflowHistory()
 // ========== 新版BlueprintEditor集成 ==========
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
 const isUpdatingFromStore = ref(false)
+const editorInitialized = ref(false)
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
   return workflowStateToLegacyBlueprint(store.state)
@@ -1423,18 +1424,27 @@ watch(() => [
   scheduleStoreSyncToEditor()
 }, { deep: false })
 
-watch(() => [
-  store.state.viewport.zoom,
-  store.state.viewport.panX,
-  store.state.viewport.panY
-], () => {
-  if (isUpdatingFromStore.value) return
-  if (blueprintEditorRef.value) {
-    isUpdatingFromStore.value = true
-    blueprintEditorRef.value.setViewport(store.state.viewport)
-    isUpdatingFromStore.value = false
+// Editor初始化后从store恢复viewport（仅一次）
+let hasRestoredViewport = false
+watch(blueprintEditorRef, (editor) => {
+  if (editor && !hasRestoredViewport) {
+    nextTick(() => {
+      const storedVp = store.state.viewport
+      if (storedVp && (Math.abs(storedVp.zoom - 1) > 0.001 || Math.abs(storedVp.panX) > 0.5 || Math.abs(storedVp.panY) > 0.5)) {
+        isUpdatingFromStore.value = true
+        editor.setViewport(storedVp)
+        nextTick(() => {
+          isUpdatingFromStore.value = false
+        })
+      } else {
+        editor.fitToView()
+      }
+      hasRestoredViewport = true
+      editorInitialized.value = true
+    })
   }
-}, { deep: false })
+}, { immediate: true })
+
 // ========== 新版BlueprintEditor集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
@@ -2574,9 +2584,16 @@ function animateViewportTo(
 			viewportAnimationRaf = null
 		}
 
-		const startPanX = viewport.value.panX
-		const startPanY = viewport.value.panY
-		const startZoom = viewport.value.zoom
+		const editor = blueprintEditorRef.value
+		if (!editor) {
+			resolve()
+			return
+		}
+
+		const curVp = editor.getViewport()
+		const startPanX = curVp.panX
+		const startPanY = curVp.panY
+		const startZoom = curVp.zoom
 		const endPanX = target.panX ?? startPanX
 		const endPanY = target.panY ?? startPanY
 		const endZoom = target.zoom ?? startZoom
@@ -2602,7 +2619,7 @@ function animateViewportTo(
 			const curPanY = startPanY + (endPanY - startPanY) * t
 			const curZoom = startZoom + (endZoom - startZoom) * t
 
-			onViewportUpdate({ panX: curPanX, panY: curPanY, zoom: curZoom })
+			editor.setViewport({ zoom: curZoom, panX: curPanX, panY: curPanY })
 
 			if (rawT < 1) {
 				viewportAnimationRaf = requestAnimationFrame(step)
@@ -9767,6 +9784,15 @@ const {
 _openNodeSearchMenuFn = openNodeSearchMenu
 _onCanvasContextMenuFn = onCanvasContextMenu
 _openInspectorFn = (open: boolean) => { inspectorOpen.value = open }
+
+// 包装onContextMenuSelect以拦截reset-viewport，直接调用editor.resetView()
+function handleContextMenuSelect(id: string) {
+	if (id === 'reset-viewport' && blueprintEditorRef.value) {
+		blueprintEditorRef.value.resetView()
+		return
+	}
+	onContextMenuSelect(id)
+}
 
 const handleLinkDropOnChatDock = (payload: {
 	clientX: number

@@ -51,7 +51,6 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
   return {
     schemaVersion: LEGACY_SCHEMA_VERSION,
     savedAt: Date.now(),
-    viewport: { ...state.viewport },
     nodesById,
     nodeOrder: [...state.nodeOrder],
     edgesById,
@@ -111,7 +110,7 @@ export function legacyBlueprintToWorkflowState(legacy: LegacyBlueprintData): Par
   }
 
   return {
-    viewport: { ...legacy.viewport },
+    viewport: legacy.viewport ? { ...legacy.viewport } : { zoom: 1, panX: 0, panY: 0 },
     nodesById,
     nodeOrder: [...(legacy.nodeOrder || Object.keys(nodesById))],
     edgesById,

@@ -62,7 +62,9 @@ export class Scene extends Group implements Disposable {
     this.tools.setCursorElement(canvas);
 
     this.setupKeyboardShortcuts();
-    this.setupWheelZoom();
+    if (options?.enableDefaultTools !== false) {
+      this.setupWheelZoom();
+    }
   }
 
   get started(): boolean {

@@ -421,22 +421,28 @@ watch(() => props.initialData, (newData) => {
     s.loadBlueprint(newData);
     lastStructureHash = newHash;
     hasInitiallyLoaded = true;
-  }
 
-  if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
-    s.selection.setSelection(newData.selectedNodeIds);
-  } else if (newData.selectedNodeId) {
-    s.selection.setSelection([newData.selectedNodeId]);
-  } else {
-    if (structureChanged) {
+    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
+      s.selection.setSelection(newData.selectedNodeIds);
+    } else if (newData.selectedNodeId) {
+      s.selection.setSelection([newData.selectedNodeId]);
+    } else {
       s.selection.clearSelection();
     }
-  }
 
-  if (newData.viewport) {
-    const curVp = s.getViewport();
-    if (!viewportEquals(curVp, newData.viewport)) {
-      s.setViewport(newData.viewport);
+    if (newData.viewport) {
+      const curVp = s.getViewport();
+      if (!viewportEquals(curVp, newData.viewport)) {
+        s.setViewport(newData.viewport);
+      }
+    }
+  } else {
+    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
+      s.selection.setSelection(newData.selectedNodeIds);
+    } else if (newData.selectedNodeId) {
+      s.selection.setSelection([newData.selectedNodeId]);
+    } else {
+      s.selection.clearSelection();
     }
   }
 
@@ -560,6 +566,11 @@ onUnmounted(() => {
 });
 
 defineExpose({
+  getViewport() {
+    if (!scene.value) return { zoom: 1, panX: 0, panY: 0 };
+    return scene.value.getViewport();
+  },
+
   loadBlueprint(data: LegacyBlueprintData, options?: { fitToContent?: boolean }) {
     if (!scene.value) return;
     isUpdatingFromProps = true;
