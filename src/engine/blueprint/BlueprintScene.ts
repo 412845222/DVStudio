@@ -10,6 +10,9 @@ import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFr
 import type { SavedSelectionFrame } from './SelectionFrame';
 import { BlueprintLegacyLoader } from './BlueprintLegacyLoader';
 import { BlueprintLegacySaver } from './BlueprintLegacySaver';
+import { CommandStack } from '../graphbase/commands/CommandStack';
+import type { Command } from '../graphbase/commands/Command';
+import { PasteCommand } from './commands/PasteCommand';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -28,6 +31,7 @@ export class BlueprintScene extends Scene {
   private _legacyResources: Record<string, LegacyResourceData> = {};
   private _clipboardNodes: BlueprintNodeData[] = [];
   private _clipboardEdges: ConnectionData[] = [];
+  readonly commandStack: CommandStack = new CommandStack();
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -59,6 +63,34 @@ export class BlueprintScene extends Scene {
     return Array.from(this._nodeMap.values());
   }
 
+  getAllConnections(): Connection[] {
+    return Array.from(this._connectionMap.values());
+  }
+
+  executeCommand(command: Command): void {
+    this.commandStack.execute(command);
+  }
+
+  undo(): boolean {
+    return this.commandStack.undo();
+  }
+
+  redo(): boolean {
+    return this.commandStack.redo();
+  }
+
+  canUndo(): boolean {
+    return this.commandStack.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.commandStack.canRedo();
+  }
+
+  clearCommandStack(): void {
+    this.commandStack.clear();
+  }
+
   loadBlueprint(data: BlueprintData | LegacyBlueprintData): void {
     let blueprintData: BlueprintData;
 
@@ -82,6 +114,7 @@ export class BlueprintScene extends Scene {
 
     this._savedSelectionFrames.clear();
     this._legacyResources = blueprintData.legacyResources || {};
+    this.commandStack.clear();
 
     if (blueprintData.viewport) {
       this.setViewport(blueprintData.viewport);
@@ -243,7 +276,7 @@ export class BlueprintScene extends Scene {
     this.requestRedraw();
   }
 
-  completePendingConnection(toNode: BlueprintNode, toPort: Port): Connection | null {
+  completePendingConnection(toNode: BlueprintNode, toPort: Port): ConnectionData | null {
     if (!this._pendingConnection) return null;
 
     const { fromNode, fromPort } = this._pendingConnection;
@@ -261,7 +294,7 @@ export class BlueprintScene extends Scene {
     };
 
     this.cancelPendingConnection();
-    return this.addConnection(data);
+    return data;
   }
 
   getPendingConnection(): PendingConnection | null {
@@ -368,6 +401,13 @@ export class BlueprintScene extends Scene {
 
   hasClipboardData(): boolean {
     return this._clipboardNodes.length > 0;
+  }
+
+  executePaste(offsetX: number = 50, offsetY: number = 50): string[] {
+    if (this._clipboardNodes.length === 0) return [];
+    const cmd = new PasteCommand(this, this._clipboardNodes, this._clipboardEdges, offsetX, offsetY);
+    this.executeCommand(cmd);
+    return cmd.getCreatedNodeIds();
   }
 
   updateAllConnectionEndpoints(): void {

@@ -46,6 +46,10 @@
             @node-resize="onBusinessResize"
             @start-link="onBusinessStartLink"
             @end-link="onBusinessEndLink"
+            @select="onBusinessSelect"
+            @copy="onBusinessCopy"
+            @delete="onBusinessDelete"
+            @refresh="onBusinessRefresh"
           />
         </DomNodeWrapper>
       </TransitionGroup>
@@ -63,6 +67,7 @@ import { Vector2 } from '../../graphbase/core/Vector2';
 import { MEDIA_TYPE_COLORS, MIN_NODE_WIDTH, MIN_NODE_HEIGHT } from '../types';
 import type { ResizeCorner, LegacyResourceData } from '../types';
 import { NodeComponentResolver } from './NodeComponentResolver';
+import { UpdateNodeTextCommand } from '../commands/UpdateNodeTextCommand';
 
 interface PortRenderData {
   id: string;
@@ -93,6 +98,10 @@ const emit = defineEmits<{
   (e: 'node-update-text', payload: { nodeId: string; textValue: string }): void;
   (e: 'node-start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void;
   (e: 'node-end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void;
+  (e: 'node-select', nodeId: string): void;
+  (e: 'node-copy', nodeId: string): void;
+  (e: 'node-delete', nodeId: string): void;
+  (e: 'node-refresh', nodeId: string): void;
 }>();
 
 const props = defineProps<{
@@ -115,10 +124,18 @@ function canUseBusinessComponent(nodeType: string): boolean {
 function onBusinessUpdateText(payload: { nodeId: string; textValue: string }) {
   if (!props.scene) return;
   const node = prevDomMap.get(payload.nodeId);
-  if (node) {
-    (node.data as any).textValue = payload.textValue;
-    props.scene.requestRedraw();
-  }
+  if (!node) return;
+
+  const oldText = lastKnownText.get(payload.nodeId) ?? (node.data as any).textValue ?? '';
+  const newText = payload.textValue;
+
+  if (oldText === newText) return;
+
+  lastKnownText.set(payload.nodeId, newText);
+
+  const cmd = new UpdateNodeTextCommand(props.scene, payload.nodeId, oldText, newText);
+  props.scene.executeCommand(cmd);
+
   emit('node-update-text', payload);
 }
 
@@ -152,6 +169,22 @@ function handleBusinessContextMenu(payload: { nodeId: string; x: number; y: numb
   emit('node-contextmenu', payload.nodeId, new MouseEvent('contextmenu', { clientX: payload.x, clientY: payload.y }));
 }
 
+function onBusinessSelect(nodeId: string) {
+  emit('node-select', nodeId);
+}
+
+function onBusinessCopy(nodeId: string) {
+  emit('node-copy', nodeId);
+}
+
+function onBusinessDelete(nodeId: string) {
+  emit('node-delete', nodeId);
+}
+
+function onBusinessRefresh(nodeId: string) {
+  emit('node-refresh', nodeId);
+}
+
 const viewportSize = ref({ width: 800, height: 600 });
 const cameraState = ref({ x: 0, y: 0, zoom: 1 });
 const domNodeRenders = ref<DomNodeRenderData[]>([]);
@@ -159,6 +192,7 @@ const domNodeRenders = ref<DomNodeRenderData[]>([]);
 let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const prevDomMap = new Map<string, BlueprintNode>();
+const lastKnownText = new Map<string, string>();
 
 const isResizing = ref(false);
 let resizingNode: BlueprintNode | null = null;
@@ -360,11 +394,15 @@ function syncDomNodes() {
       outputPorts: extractPortData(node.outputPorts, wb.x, wb.y),
       node: node,
     });
+    if (!lastKnownText.has(node.id)) {
+      lastKnownText.set(node.id, (node.data as any).textValue ?? '');
+    }
   }
 
   for (const [id, node] of prevDomMap) {
     if (!currentMap.has(id)) {
       node.setDomMode(false);
+      lastKnownText.delete(id);
     }
   }
   for (const [id, node] of currentMap) {

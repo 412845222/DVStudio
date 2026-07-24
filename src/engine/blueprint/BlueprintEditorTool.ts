@@ -8,6 +8,10 @@ import { Port } from './Port';
 import { BlueprintNode } from './BlueprintNode';
 import { Connection } from './Connection';
 import type { BlueprintScene } from './BlueprintScene';
+import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand';
+import { ResizeNodeCommand } from './commands/ResizeNodeCommand';
+import { CreateConnectionCommand } from './commands/CreateConnectionCommand';
+import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
 import {
   computeSelectionBounds,
   drawSelectionFrame,
@@ -55,6 +59,7 @@ export class BlueprintEditorTool extends Tool {
   private resizeStartHeight: number = 0;
   private resizeStartX: number = 0;
   private resizeStartY: number = 0;
+  private moveStartPositions: Map<string, Vector2> = new Map();
 
   private editingTempInput: boolean = false;
   private editingSavedFrameId: string | null = null;
@@ -358,6 +363,12 @@ export class BlueprintEditorTool extends Tool {
               sel.selectById(id, true);
             }
           }
+          this.moveStartPositions.clear();
+          for (const n of sel.getSelection()) {
+            if (n instanceof BlueprintNode) {
+              this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+            }
+          }
           this.setCursor('grabbing');
           scene.requestRedraw();
           return;
@@ -422,6 +433,12 @@ export class BlueprintEditorTool extends Tool {
           this.dragMode = DragMode.NODES;
           this.dragging = true;
           this.dragMoved = false;
+          this.moveStartPositions.clear();
+          for (const n of this.manager!.drag.getDraggedNodes()) {
+            if (n instanceof BlueprintNode) {
+              this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+            }
+          }
         }
       }
     } else {
@@ -431,6 +448,12 @@ export class BlueprintEditorTool extends Tool {
         this.dragMoved = false;
         this.dragStartScreen.copy(event.screenPosition);
         this.dragLastScreen.copy(event.screenPosition);
+        this.moveStartPositions.clear();
+        for (const n of sel.getSelection()) {
+          if (n instanceof BlueprintNode) {
+            this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+          }
+        }
         this.setCursor('grabbing');
       } else {
         if (!event.shiftKey && !event.ctrlKey) {
@@ -675,7 +698,10 @@ export class BlueprintEditorTool extends Tool {
           !this.pendingFromPort.isInput &&
           targetNode !== this.pendingFromNode
         ) {
-          scene.completePendingConnection(targetNode, targetPort);
+          const connData = scene.completePendingConnection(targetNode, targetPort);
+          if (connData) {
+            scene.executeCommand(new CreateConnectionCommand(scene, connData));
+          }
           completed = true;
         }
       }
@@ -699,17 +725,88 @@ export class BlueprintEditorTool extends Tool {
 
     if (this.dragMode === DragMode.NODES) {
       if (drag.isDragging()) {
+        const draggedNodes = drag.getDraggedNodes().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
         drag.endDrag(event);
+        if (this.dragMoved && draggedNodes.length > 0 && this.moveStartPositions.size > 0) {
+          const endPositions = new Map<string, Vector2>();
+          for (const n of draggedNodes) {
+            endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+          }
+          const moveFn = (id: string, pos: Vector2) => {
+            const node = scene.getBlueprintNode(id);
+            if (node) {
+              node.transform.setPosition(pos.x, pos.y);
+              node.data.worldX = pos.x;
+              node.data.worldY = pos.y;
+              node.markDirty(1);
+            }
+          };
+          scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
+          scene.updateAllConnectionEndpoints();
+        }
+        this.moveStartPositions.clear();
       }
     } else if (this.dragMode === DragMode.RESIZE) {
+      if (this.resizeNode && this.dragMoved) {
+        const node = this.resizeNode;
+        scene.executeCommand(new ResizeNodeCommand(
+          scene,
+          node,
+          this.resizeStartX,
+          this.resizeStartY,
+          this.resizeStartWidth,
+          this.resizeStartHeight,
+          node.transform.position.x,
+          node.transform.position.y,
+          node.data.width,
+          node.data.height
+        ));
+      }
       this.resizeNode = null;
       this.resizeCorner = null;
     } else if (this.dragMode === DragMode.SELECTION_FRAME) {
-      if (!this.dragMoved && this.tempSelectionBounds) {
+      if (this.dragMoved && this.moveStartPositions.size > 0) {
+        const selectedNodes = sel.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+        const endPositions = new Map<string, Vector2>();
+        for (const n of selectedNodes) {
+          endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+        }
+        const moveFn = (id: string, pos: Vector2) => {
+          const node = scene.getBlueprintNode(id);
+          if (node) {
+            node.transform.setPosition(pos.x, pos.y);
+            node.data.worldX = pos.x;
+            node.data.worldY = pos.y;
+            node.markDirty(1);
+          }
+        };
+        scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
+        scene.updateAllConnectionEndpoints();
+      } else if (!this.dragMoved && this.tempSelectionBounds) {
         sel.clearSelection();
       }
+      this.moveStartPositions.clear();
     } else if (this.dragMode === DragMode.SAVED_FRAME) {
+      if (this.dragMoved && this.moveStartPositions.size > 0) {
+        const selectedNodes = sel.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+        const endPositions = new Map<string, Vector2>();
+        for (const n of selectedNodes) {
+          endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+        }
+        const moveFn = (id: string, pos: Vector2) => {
+          const node = scene.getBlueprintNode(id);
+          if (node) {
+            node.transform.setPosition(pos.x, pos.y);
+            node.data.worldX = pos.x;
+            node.data.worldY = pos.y;
+            node.markDirty(1);
+          }
+        };
+        scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
+        scene.updateAllConnectionEndpoints();
+      }
       this.dragSavedFrameId = null;
+      this.moveStartPositions.clear();
     } else if (sel.isMarqueeing()) {
       const additive = event.shiftKey || event.ctrlKey;
       const direction = sel.getMarqueeDirection();
@@ -789,13 +886,32 @@ export class BlueprintEditorTool extends Tool {
           connIdsToRemove.push(node.id);
         }
       }
-      for (const id of connIdsToRemove) {
-        scene.removeConnection(id);
+      if (nodeIdsToRemove.length > 0 || connIdsToRemove.length > 0) {
+        scene.executeCommand(new DeleteSelectionCommand(scene, nodeIdsToRemove, connIdsToRemove));
+        sel.clearSelection();
+        scene.updateAllConnectionEndpoints();
       }
-      for (const id of nodeIdsToRemove) {
-        scene.removeBlueprintNode(id);
-      }
-      sel.clearSelection();
+    }
+    if ((key === 'z') && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.repeat) {
+      event.preventDefault();
+      scene.undo();
+      scene.updateAllConnectionEndpoints();
+      scene.requestRedraw();
+      return;
+    }
+    if ((key === 'z') && (event.ctrlKey || event.metaKey) && event.shiftKey && !event.repeat) {
+      event.preventDefault();
+      scene.redo();
+      scene.updateAllConnectionEndpoints();
+      scene.requestRedraw();
+      return;
+    }
+    if ((key === 'y') && (event.ctrlKey || event.metaKey) && !event.repeat) {
+      event.preventDefault();
+      scene.redo();
+      scene.updateAllConnectionEndpoints();
+      scene.requestRedraw();
+      return;
     }
     if (key === 'a' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
@@ -809,10 +925,11 @@ export class BlueprintEditorTool extends Tool {
     if (key === 'v' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       if (scene.hasClipboardData()) {
-        const newNodes = scene.pasteFromClipboard(50, 50);
+        const newNodeIds = scene.executePaste(50, 50);
         sel.clearSelection();
-        for (const n of newNodes) {
-          sel.select(n, true);
+        for (const id of newNodeIds) {
+          const n = scene.getBlueprintNode(id);
+          if (n) sel.select(n, true);
         }
       }
     }

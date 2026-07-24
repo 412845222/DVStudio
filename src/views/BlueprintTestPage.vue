@@ -25,11 +25,34 @@
       </div>
     </div>
     <div class="canvas-container" ref="containerRef">
-      <canvas ref="canvasRef"></canvas>
+      <canvas ref="canvasRef" @contextmenu.prevent="onCanvasContextMenu"></canvas>
       <BlueprintDomOverlay 
         :scene="scene" 
         @node-dblclick="onNodeDblClick"
         @node-contextmenu="onNodeContextMenu"
+        @node-copy="onNodeCopy"
+        @node-delete="onNodeDelete"
+      />
+      <BlueprintContextMenu
+        :visible="ctxMenu.visible"
+        :x="ctxMenu.x"
+        :y="ctxMenu.y"
+        :can-undo="ctxMenu.canUndo"
+        :can-redo="ctxMenu.canRedo"
+        :can-cut="ctxMenu.canCut"
+        :can-copy="ctxMenu.canCopy"
+        :can-paste="ctxMenu.canPaste"
+        :can-duplicate="ctxMenu.canDuplicate"
+        :can-delete="ctxMenu.canDelete"
+        :can-select-all="ctxMenu.canSelectAll"
+        @undo="onCtxUndo"
+        @redo="onCtxRedo"
+        @cut="onCtxCut"
+        @copy="onCtxCopy"
+        @paste="onCtxPaste"
+        @duplicate="onCtxDuplicate"
+        @delete="onCtxDelete"
+        @select-all="onCtxSelectAll"
       />
       <input type="file" ref="fileInputRef" accept=".json" style="display: none" @change="handleFileLoad" />
       <div class="hint-overlay" v-if="showHint">
@@ -60,9 +83,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue';
 import { BlueprintScene, BlueprintNode } from '../engine/blueprint';
 import BlueprintDomOverlay from '../engine/blueprint/dom/BlueprintDomOverlay.vue';
+import BlueprintContextMenu from '../engine/blueprint/dom/BlueprintContextMenu.vue';
+import { DeleteSelectionCommand } from '../engine/blueprint/commands/DeleteSelectionCommand';
 import type { BlueprintData } from '../engine/blueprint';
 import testData from '../../samples/blueprint_test_data.json';
 import legacyDemoData from '../../samples/legacy_demo.blueprint.json';
@@ -113,8 +138,160 @@ function onNodeDblClick(nodeId: string, event: MouseEvent) {
   console.log('[DOM事件] 双击节点:', nodeId, event);
 }
 
+const ctxMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  targetNodeId: null as string | null,
+  canUndo: false,
+  canRedo: false,
+  canCut: false,
+  canCopy: false,
+  canPaste: false,
+  canDuplicate: false,
+  canDelete: false,
+  canSelectAll: true,
+});
+
+function closeCtxMenu() {
+  ctxMenu.visible = false;
+  ctxMenu.targetNodeId = null;
+}
+
+function openCtxMenu(x: number, y: number, targetNodeId: string | null) {
+  if (!scene.value) return;
+  const s = scene.value;
+  let selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+
+  if (targetNodeId) {
+    const node = s.getBlueprintNode(targetNodeId);
+    if (node && !selectedNodes.find(n => n.id === targetNodeId)) {
+      s.selection.setSelection([node.id]);
+      selectedNodes = [node];
+    }
+  }
+
+  const hasSelection = selectedNodes.length > 0;
+  ctxMenu.visible = true;
+  ctxMenu.x = x;
+  ctxMenu.y = y;
+  ctxMenu.targetNodeId = targetNodeId;
+  ctxMenu.canUndo = s.canUndo();
+  ctxMenu.canRedo = s.canRedo();
+  ctxMenu.canCut = hasSelection;
+  ctxMenu.canCopy = hasSelection;
+  ctxMenu.canPaste = s.hasClipboardData();
+  ctxMenu.canDuplicate = hasSelection;
+  ctxMenu.canDelete = hasSelection;
+  ctxMenu.canSelectAll = s.getAllBlueprintNodes().length > 0;
+}
+
 function onNodeContextMenu(nodeId: string, event: MouseEvent) {
-  console.log('[DOM事件] 右键菜单节点:', nodeId, event);
+  event.preventDefault();
+  event.stopPropagation();
+  openCtxMenu(event.clientX, event.clientY, nodeId);
+}
+
+function onNodeCopy(nodeId: string) {
+  if (!scene.value) return;
+  const s = scene.value;
+  const node = s.getBlueprintNode(nodeId);
+  if (node) {
+    s.copySelection([node]);
+  }
+}
+
+function onNodeDelete(nodeId: string) {
+  if (!scene.value) return;
+  const s = scene.value;
+  s.executeCommand(new DeleteSelectionCommand(s as any, [nodeId], []));
+  s.selection.clearSelection();
+  s.updateAllConnectionEndpoints();
+  s.requestRedraw();
+}
+
+function onCanvasContextMenu(event: MouseEvent) {
+  if (ctxMenu.visible) closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  s.selection.clearSelection();
+  s.requestRedraw();
+  openCtxMenu(event.clientX, event.clientY, null);
+}
+
+function onCtxUndo() { closeCtxMenu(); scene.value?.undo(); }
+function onCtxRedo() { closeCtxMenu(); scene.value?.redo(); }
+function onCtxCut() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+  if (selectedNodes.length > 0) {
+    s.copySelection(selectedNodes);
+    const nodeIds = selectedNodes.map(n => n.id);
+    const allConns = s.getAllConnections();
+    const connIds = allConns.filter(c => nodeIds.includes(c.data.fromNodeId) && nodeIds.includes(c.data.toNodeId)).map(c => c.id);
+    s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
+    s.selection.clearSelection();
+  }
+}
+function onCtxCopy() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+  if (selectedNodes.length > 0) {
+    s.copySelection(selectedNodes);
+  }
+}
+function onCtxPaste() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const newNodeIds = s.executePaste(50, 50);
+  if (newNodeIds.length > 0) {
+    s.selection.setSelection(newNodeIds);
+    s.requestRedraw();
+  }
+}
+function onCtxDuplicate() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+  if (selectedNodes.length > 0) {
+    s.copySelection(selectedNodes);
+    const newNodeIds = s.executePaste(30, 30);
+    if (newNodeIds.length > 0) {
+      s.selection.setSelection(newNodeIds);
+      s.requestRedraw();
+    }
+  }
+}
+function onCtxDelete() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  const sel = s.selection.getSelection();
+  const nodeIds = sel.filter(n => n instanceof BlueprintNode).map(n => (n as BlueprintNode).id);
+  const connIds: string[] = [];
+  for (const item of sel) {
+    const c = item as any;
+    if (c && c.data && typeof c.id === 'string' && c.data.fromNodeId && c.data.toNodeId) {
+      connIds.push(c.id);
+    }
+  }
+  if (nodeIds.length > 0 || connIds.length > 0) {
+    s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
+    s.selection.clearSelection();
+  }
+}
+function onCtxSelectAll() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  s.selection.setSelection(s.getAllBlueprintNodes().map(n => n.id));
+  s.requestRedraw();
 }
 
 function saveSelection() {
@@ -244,6 +421,9 @@ function saveLegacy() {
   console.log('已保存为v1格式');
 }
 
+let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
+let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
+
 onMounted(() => {
   if (!canvasRef.value || !containerRef.value) return;
 
@@ -274,12 +454,111 @@ onMounted(() => {
 
   window.addEventListener('resize', handleResize);
   rafId = requestAnimationFrame(updateFps);
+
+  ctxOutsidePointerDown = (e: PointerEvent) => {
+    if (!ctxMenu.visible) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('.bp-ctx-menu')) return;
+    closeCtxMenu();
+  };
+  window.addEventListener('pointerdown', ctxOutsidePointerDown, true);
+
+  ctxCaptureKeyDown = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement | null;
+    const tag = (target?.tagName || '').toLowerCase();
+    const isEditable = tag === 'input' || tag === 'textarea' || (target as any)?.isContentEditable === true;
+    if (isEditable) return;
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+
+    if (key === 'escape') {
+      if (ctxMenu.visible) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeCtxMenu();
+      }
+      return;
+    }
+
+    if (ctrl && key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.undo();
+      return;
+    }
+    if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.redo();
+      return;
+    }
+    if (ctrl && key === 'a') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.selection.setSelection(s.getAllBlueprintNodes().map(n => n.id));
+      s.requestRedraw();
+      return;
+    }
+    if (ctrl && key === 'c') {
+      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+      if (selectedNodes.length > 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        s.copySelection(selectedNodes);
+      }
+      return;
+    }
+    if (ctrl && key === 'v') {
+      if (s.hasClipboardData()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const newNodeIds = s.executePaste(50, 50);
+        if (newNodeIds.length > 0) {
+          s.selection.setSelection(newNodeIds);
+          s.requestRedraw();
+        }
+      }
+      return;
+    }
+    if (ctrl && key === 'd') {
+      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+      if (selectedNodes.length > 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        s.copySelection(selectedNodes);
+        const newNodeIds = s.executePaste(30, 30);
+        if (newNodeIds.length > 0) {
+          s.selection.setSelection(newNodeIds);
+          s.requestRedraw();
+        }
+      }
+      return;
+    }
+    if (ctrl && key === 'x') {
+      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+      if (selectedNodes.length > 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        s.copySelection(selectedNodes);
+        const nodeIds = selectedNodes.map(n => n.id);
+        const allConns = s.getAllConnections();
+        const connIds = allConns.filter(c => nodeIds.includes(c.data.fromNodeId) && nodeIds.includes(c.data.toNodeId)).map(c => c.id);
+        s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
+        s.selection.clearSelection();
+      }
+      return;
+    }
+  };
+  window.addEventListener('keydown', ctxCaptureKeyDown, true);
 });
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId);
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('resize', handleResize);
+  if (ctxOutsidePointerDown) window.removeEventListener('pointerdown', ctxOutsidePointerDown, true);
+  if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
   if (scene.value) {
     scene.value.dispose();
   }

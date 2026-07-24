@@ -8,7 +8,7 @@
     :style="nodeStyle"
     :data-node-id="nodeId"
     @dblclick="onDblClick"
-    @contextmenu.prevent="onContextMenu"
+    @contextmenu.prevent.stop="onContextMenu"
   >
     <div class="dnw-border-base"></div>
     <div class="dnw-border-glow"></div>
