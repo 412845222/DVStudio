@@ -100,6 +100,12 @@ type GLTFLoaderLike = {
 		onProgress?: (event: { loaded: number; total: number }) => void,
 		onError?: (err: unknown) => void
 	): void
+	parse(
+		data: ArrayBuffer | string,
+		path: string,
+		onLoad: (gltf: GLTFResult) => void,
+		onError?: (err: unknown) => void
+	): void
 }
 
 export type Model3DPreviewOptions = {
@@ -392,6 +398,26 @@ export class Model3DPreviewViewer {
 						ratio: Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0
 					})
 				},
+				(err: unknown) => reject(err)
+			)
+		})
+		this.setObject(gltf.scene, cachedView)
+	}
+
+	async loadModelFromArrayBuffer(
+		buffer: ArrayBuffer,
+		path: string,
+		cachedView?: Model3DViewState | null
+	) {
+		if (!buffer || buffer.byteLength === 0) {
+			this.clearModel()
+			return
+		}
+		const gltf = await new Promise<GLTFResult>((resolve, reject) => {
+			this.loader.parse(
+				buffer,
+				path,
+				(value: GLTFResult) => resolve(value),
 				(err: unknown) => reject(err)
 			)
 		})

@@ -217,7 +217,7 @@ const onChatStop = () => {
   height: 100% !important;
   transform: none !important;
   margin: 0 !important;
-  pointer-events: auto !important;
+  pointer-events: none !important;
   cursor: default !important;
   overflow: visible !important;
   box-sizing: border-box !important;
@@ -245,15 +245,15 @@ const onChatStop = () => {
 }
 
 .workflow-node-wrapper :deep(.wf-node-header) {
-  pointer-events: auto !important;
+  pointer-events: none !important;
 }
 
 .workflow-node-wrapper :deep(.wf-node-body) {
-  pointer-events: auto !important;
+  pointer-events: none !important;
 }
 
 .workflow-node-wrapper :deep(.wf-node-footer) {
-  pointer-events: auto !important;
+  pointer-events: none !important;
 }
 
 .workflow-node-wrapper :deep(.wf-node-bg),
@@ -266,6 +266,11 @@ const onChatStop = () => {
 .workflow-node-wrapper :deep(.wf-textarea),
 .workflow-node-wrapper :deep(.wf-media-btn),
 .workflow-node-wrapper :deep(.wf-file-input),
+.workflow-node-wrapper :deep(.wf-model3d-viewer-shell),
+.workflow-node-wrapper :deep(.wf-model3d-actions),
+.workflow-node-wrapper :deep(.wf-model3d-footer),
+.workflow-node-wrapper :deep(.wf-model3d-download-progress),
+.workflow-node-wrapper :deep(.wf-model3d-fetch-error),
 .workflow-node-wrapper :deep(textarea),
 .workflow-node-wrapper :deep(input),
 .workflow-node-wrapper :deep(button),
@@ -274,7 +279,13 @@ const onChatStop = () => {
 .workflow-node-wrapper :deep(.wf-quick-action),
 .workflow-node-wrapper :deep(.wf-file-drop),
 .workflow-node-wrapper :deep([role="button"]),
-.workflow-node-wrapper :deep(label) {
+.workflow-node-wrapper :deep(label),
+.workflow-node-wrapper :deep(.wf-chat-input),
+.workflow-node-wrapper :deep(.wf-chat-send-btn),
+.workflow-node-wrapper :deep(.wf-param-item),
+.workflow-node-wrapper :deep(.wf-slider),
+.workflow-node-wrapper :deep(.wf-toggle),
+.workflow-node-wrapper :deep(.wf-node-status-dot) {
   pointer-events: auto !important;
   cursor: pointer;
 }

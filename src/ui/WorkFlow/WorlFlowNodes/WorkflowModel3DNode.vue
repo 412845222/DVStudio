@@ -279,7 +279,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { getErrorMessage } from '../../../types/utils'
-import { diagnoseDwebAsset } from '../../../electronBridge'
+import { diagnoseDwebAsset, fetchAsArrayBuffer } from '../../../electronBridge'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { Model3DPreviewViewer } from './model3d/Model3DPreviewViewer'
 import type { Model3DViewState } from './model3d/Model3DPreviewViewer'
@@ -799,6 +799,11 @@ const saveViewState = () => {
 	MODEL3D_VIEWSTATE_CACHE.set(snapshotCacheKey, state)
 }
 
+const isDwebProjectAssetUrl = (url: string): boolean => {
+	const lower = String(url ?? '').trim().toLowerCase()
+	return lower.startsWith('dweb://project-assets') || lower.startsWith('dweb:project-assets')
+}
+
 const loadModelIntoViewer = async (requestId?: number) => {
 	const url = effectiveModelUrl.value
 	if (!viewer) return false
@@ -828,6 +833,23 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	applyViewerOptions()
 	if (requestId != null) emitPreviewProgress(0.2, t('nodes.model3d.progressLoadResource'))
 	try {
+		if (isDwebProjectAssetUrl(url)) {
+			const fetchResult = await fetchAsArrayBuffer(url)
+			if (fetchResult?.ok && fetchResult.buffer) {
+				if (requestId == null) return true
+				if (requestId !== activePreviewRequestId) return false
+				const arrayBuffer = fetchResult.buffer.buffer.slice(
+					fetchResult.buffer.byteOffset,
+					fetchResult.buffer.byteOffset + fetchResult.buffer.byteLength
+				) as ArrayBuffer
+				emitPreviewProgress(0.6, t('nodes.model3d.progressLoadModel'))
+				await viewer.loadModelFromArrayBuffer(arrayBuffer, url, cachedView)
+				cachedModelSignature = currentSignature
+				initialSyncDone = true
+				return true
+			}
+		}
+
 		await viewer.loadModel(url, (payload) => {
 			if (requestId == null) return
 			if (requestId !== activePreviewRequestId) return
@@ -852,6 +874,21 @@ const loadModelIntoViewer = async (requestId?: number) => {
 				emitPreviewProgress(0.3, t('nodes.model3d.progressFixRefs'))
 			}
 			try {
+				if (isDwebProjectAssetUrl(repairResult.newUrl)) {
+					const fetchResult = await fetchAsArrayBuffer(repairResult.newUrl)
+					if (fetchResult?.ok && fetchResult.buffer) {
+						const arrayBuffer = fetchResult.buffer.buffer.slice(
+							fetchResult.buffer.byteOffset,
+							fetchResult.buffer.byteOffset + fetchResult.buffer.byteLength
+						) as ArrayBuffer
+						emitPreviewProgress(0.7, t('nodes.model3d.progressLoadTextures'))
+						await viewer.loadModelFromArrayBuffer(arrayBuffer, repairResult.newUrl, null)
+						cachedModelSignature = modelSignature.value
+						cameraUserControlled = false
+						initialSyncDone = true
+						return true
+					}
+				}
 				await viewer.loadModel(repairResult.newUrl, (payload) => {
 					if (requestId == null) return
 					if (requestId !== activePreviewRequestId) return
