@@ -39,6 +39,8 @@ const emit = defineEmits<{
   'node-chat-remove-param-ref': [payload: { nodeId: string; refItem: any }]
   'node-chat-stop': [nodeId: string]
   'link-drop-on-canvas': [payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }]
+  'node-start-link': [payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }]
+  'node-end-link': [payload: { nodeId: string; anchorId: string; anchorIndex: number }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -121,6 +123,14 @@ function onLinkDropOnCanvas(payload: { clientX: number; clientY: number; worldX:
   emit('link-drop-on-canvas', payload)
 }
 
+function onNodeStartLink(payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) {
+  emit('node-start-link', payload)
+}
+
+function onNodeEndLink(payload: { nodeId: string; anchorId: string; anchorIndex: number }) {
+  emit('node-end-link', payload)
+}
+
 watch(blueprintEditorRef, (editor) => {
   if (editor && !hasRestoredViewport) {
     nextTick(() => {
@@ -165,6 +175,8 @@ watch(blueprintEditorRef, (editor) => {
       @node-chat-remove-param-ref="(p: any) => emit('node-chat-remove-param-ref', p)"
       @node-chat-stop="(id: string) => emit('node-chat-stop', id)"
       @link-drop-on-canvas="onLinkDropOnCanvas"
+      @node-start-link="onNodeStartLink"
+      @node-end-link="onNodeEndLink"
     />
     <div class="bp-overlay-layer">
       <slot />

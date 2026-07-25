@@ -805,6 +805,40 @@ const isDwebProjectAssetUrl = (url: string): boolean => {
 	return lower.startsWith('dweb://project-assets') || lower.startsWith('dweb:project-assets')
 }
 
+let progressTimer: number | null = null
+
+const stopProgressSim = () => {
+	if (progressTimer) {
+		clearInterval(progressTimer)
+		progressTimer = null
+	}
+}
+
+const startProgressSim = (
+	startFrom: number,
+	endAt: number,
+	step: number,
+	intervalMs: number,
+	labelKey: string,
+	requestId?: number
+) => {
+	stopProgressSim()
+	let simulated = startFrom
+	progressTimer = window.setInterval(() => {
+		if (requestId != null && requestId !== activePreviewRequestId) {
+			stopProgressSim()
+			return
+		}
+		simulated = Math.min(simulated + step, endAt)
+		emitPreviewProgress(simulated, t(labelKey))
+		if (simulated >= endAt) {
+			stopProgressSim()
+		}
+	}, intervalMs)
+}
+
+const rAF = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
 const loadModelIntoViewer = async (requestId?: number) => {
 	const url = effectiveModelUrl.value
 	if (!viewer) return false
@@ -832,35 +866,70 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		initialSyncDone = false
 	}
 	applyViewerOptions()
-	if (requestId != null) emitPreviewProgress(0.2, t('nodes.model3d.progressLoadResource'))
 	try {
 		if (isDwebProjectAssetUrl(url)) {
+			if (requestId != null) {
+				startProgressSim(
+					0.3,
+					0.55,
+					0.015,
+					150,
+					'nodes.model3d.progressDownloading',
+					requestId
+				)
+			}
 			const fetchResult = await fetchAsArrayBuffer(url)
+			stopProgressSim()
 			if (fetchResult?.ok && fetchResult.buffer) {
 				if (requestId == null) return true
 				if (requestId !== activePreviewRequestId) return false
+				if (requestId != null) {
+					emitPreviewProgress(0.55, t('nodes.model3d.progressParseModel'))
+				}
+				await rAF()
 				const arrayBuffer = fetchResult.buffer.buffer.slice(
 					fetchResult.buffer.byteOffset,
 					fetchResult.buffer.byteOffset + fetchResult.buffer.byteLength
 				) as ArrayBuffer
-				emitPreviewProgress(0.6, t('nodes.model3d.progressLoadModel'))
+				if (requestId != null) {
+					emitPreviewProgress(0.6, t('nodes.model3d.progressLoadModel'))
+				}
 				await viewer.loadModelFromArrayBuffer(arrayBuffer, url, cachedView)
+				await rAF()
+				if (requestId != null && requestId === activePreviewRequestId) {
+					emitPreviewProgress(0.75, t('nodes.model3d.progressPrepareScene'))
+				}
+				await rAF()
+				if (requestId != null && requestId === activePreviewRequestId) {
+					emitPreviewProgress(0.88, t('nodes.model3d.progressLoadTextures'))
+				}
+				await rAF()
+				if (requestId != null && requestId === activePreviewRequestId) {
+					emitPreviewProgress(0.92, t('nodes.model3d.progressInitInteraction'))
+				}
 				cachedModelSignature = currentSignature
 				initialSyncDone = true
 				return true
 			}
 		}
 
+		if (requestId != null) {
+			emitPreviewProgress(0.3, t('nodes.model3d.progressLoadResource'))
+		}
 		await viewer.loadModel(url, (payload) => {
 			if (requestId == null) return
 			if (requestId !== activePreviewRequestId) return
 			const ratio = Number(payload?.ratio ?? 0)
-			emitPreviewProgress(0.2 + Math.max(0, Math.min(1, ratio)) * 0.72, t('nodes.model3d.progressLoadModel'))
+			emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.62, t('nodes.model3d.progressLoadModel'))
 		}, cachedView)
+		if (requestId != null && requestId === activePreviewRequestId) {
+			emitPreviewProgress(0.92, t('nodes.model3d.progressInitInteraction'))
+		}
 		cachedModelSignature = currentSignature
 		initialSyncDone = true
 		return true
 	} catch (err: unknown) {
+		stopProgressSim()
 		errorMessage.value = getErrorMessage(err) || t('nodes.model3d.modelLoadFailed')
 		viewer.clearModel()
 		cachedModelSignature = ''
@@ -876,14 +945,39 @@ const loadModelIntoViewer = async (requestId?: number) => {
 			}
 			try {
 				if (isDwebProjectAssetUrl(repairResult.newUrl)) {
+					if (requestId != null) {
+						startProgressSim(
+							0.3,
+							0.5,
+							0.015,
+							150,
+							'nodes.model3d.progressDownloading',
+							requestId
+						)
+					}
 					const fetchResult = await fetchAsArrayBuffer(repairResult.newUrl)
+					stopProgressSim()
 					if (fetchResult?.ok && fetchResult.buffer) {
+						if (requestId != null && requestId === activePreviewRequestId) {
+							emitPreviewProgress(0.5, t('nodes.model3d.progressParseModel'))
+						}
+						await rAF()
 						const arrayBuffer = fetchResult.buffer.buffer.slice(
 							fetchResult.buffer.byteOffset,
 							fetchResult.buffer.byteOffset + fetchResult.buffer.byteLength
 						) as ArrayBuffer
-						emitPreviewProgress(0.7, t('nodes.model3d.progressLoadTextures'))
+						if (requestId != null && requestId === activePreviewRequestId) {
+							emitPreviewProgress(0.7, t('nodes.model3d.progressLoadTextures'))
+						}
 						await viewer.loadModelFromArrayBuffer(arrayBuffer, repairResult.newUrl, null)
+						await rAF()
+						if (requestId != null && requestId === activePreviewRequestId) {
+							emitPreviewProgress(0.85, t('nodes.model3d.progressLoadTextures'))
+						}
+						await rAF()
+						if (requestId != null && requestId === activePreviewRequestId) {
+							emitPreviewProgress(0.95, t('nodes.model3d.progressInitInteraction'))
+						}
 						cachedModelSignature = modelSignature.value
 						cameraUserControlled = false
 						initialSyncDone = true
@@ -896,11 +990,15 @@ const loadModelIntoViewer = async (requestId?: number) => {
 					const ratio = Number(payload?.ratio ?? 0)
 					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, t('nodes.model3d.progressLoadTextures'))
 				}, null)
+				if (requestId != null && requestId === activePreviewRequestId) {
+					emitPreviewProgress(0.95, t('nodes.model3d.progressInitInteraction'))
+				}
 				cachedModelSignature = modelSignature.value
 				cameraUserControlled = false
 				initialSyncDone = true
 				return true
 			} catch {
+				stopProgressSim()
 				errorMessage.value = t('nodes.model3d.modelLoadFailed')
 				viewer.clearModel()
 				cachedModelSignature = ''
@@ -1114,6 +1212,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+	stopProgressSim()
 	saveViewState()
 	cacheSnapshot(snapshotUrl.value)
 	disposeViewer()
@@ -1123,11 +1222,11 @@ onBeforeUnmount(() => {
 <style scoped>
 .wf-model3d-body {
 	width: 100%;
-	height: 100%;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
-	flex-shrink: 0;
+	flex: 1;
+	min-height: 0;
 	align-self: stretch;
 	box-sizing: border-box;
 }

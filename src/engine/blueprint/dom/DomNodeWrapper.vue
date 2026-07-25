@@ -262,6 +262,10 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   pointer-events: none;
 }
 
+.dom-node-wrapper.dnw-business-mode .dnw-business-content > * {
+  pointer-events: auto;
+}
+
 .dom-node-wrapper.dnw-business-mode .dnw-port {
   pointer-events: auto;
   cursor: crosshair;
@@ -476,6 +480,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   opacity: 0;
   animation: dnw-content-fade 200ms ease-out forwards;
   animation-delay: 150ms;
+  pointer-events: auto;
+  cursor: grab;
 }
 
 .dnw-content {
@@ -655,7 +661,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   justify-content: center;
   opacity: 0;
   transform: scale(0.7);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: crosshair;
   animation: dnw-port-enter 200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   animation-delay: var(--port-delay, 200ms);
   will-change: transform, opacity;

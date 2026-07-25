@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
 import type { Store } from 'vuex'
 import { useI18n } from '../../../../i18n'
 import type { WorkflowAction } from '../../../../aiworkflow/actions'
@@ -276,7 +276,9 @@ export const useAIWorkflowContextMenu = (payload: {
 		}
 
 		if (id === 'add-node') {
-			payload.store.commit('addNodeAt', {
+			openNodeSearchMenu({
+				clientX: contextMenu.value.x,
+				clientY: contextMenu.value.y,
 				worldX: contextMenu.value.worldX,
 				worldY: contextMenu.value.worldY
 			})
@@ -306,7 +308,7 @@ export const useAIWorkflowContextMenu = (payload: {
 		closeContextMenu()
 	}
 
-	const onNodeSearchMenuSelect = (actionId: DwebCanvasMenuNodeActionId) => {
+	const onNodeSearchMenuSelect = async (actionId: DwebCanvasMenuNodeActionId) => {
 		const catalogItem = NEWUI2_NODE_CATALOG.find((item) => item.actionId === actionId)
 		if (!catalogItem) return
 
@@ -319,10 +321,24 @@ export const useAIWorkflowContextMenu = (payload: {
 			payload.store.commit('setNodeType', { nodeId: newNodeId, type: catalogItem.nodeType })
 		}
 
+		await nextTick()
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
+		let toAnchorId: string | null = null
 		if (pendingLinkAnchor.value && newNodeId) {
 			const { fromNodeId, fromAnchorId } = pendingLinkAnchor.value
 			const nodesById = payload.store.state.nodesById
-			const toAnchorId = findBestInputAnchorForOutput(nodesById, fromNodeId, fromAnchorId, newNodeId)
+			const toNode = nodesById[newNodeId]
+
+			if (toNode && Array.isArray(toNode.inputs) && toNode.inputs.length > 0) {
+				toAnchorId = findBestInputAnchorForOutput(nodesById, fromNodeId, fromAnchorId, newNodeId)
+				if (!toAnchorId) {
+					await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+					const refreshedNodesById = payload.store.state.nodesById
+					toAnchorId = findBestInputAnchorForOutput(refreshedNodesById, fromNodeId, fromAnchorId, newNodeId)
+				}
+			}
+
 			if (toAnchorId) {
 				payload.store.commit('addEdge', {
 					fromNodeId,
@@ -330,9 +346,11 @@ export const useAIWorkflowContextMenu = (payload: {
 					toNodeId: newNodeId,
 					toAnchorId
 				})
+				await nextTick()
 			}
 		}
 
+		pendingLinkAnchor.value = null
 		closeNodeSearchMenu()
 	}
 

@@ -19,6 +19,8 @@
         @node-chat-update-selected-refs="(p) => emit('nodeChatUpdateSelectedRefs', p)"
         @node-chat-remove-param-ref="(p) => emit('nodeChatRemoveParamRef', p)"
         @node-chat-stop="(id: string) => emit('nodeChatStop', id)"
+        @node-start-link="(p) => emit('nodeStartLink', p)"
+        @node-end-link="(p) => emit('nodeEndLink', p)"
       />
       <BlueprintContextMenu
         :visible="ctxMenu.visible"
@@ -94,6 +96,8 @@ interface Emits {
   (e: 'nodeChatRemoveParamRef', payload: { nodeId: string; refItem: any }): void;
   (e: 'nodeChatStop', nodeId: string): void;
   (e: 'linkDropOnCanvas', payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }): void;
+  (e: 'nodeStartLink', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void;
+  (e: 'nodeEndLink', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void;
 }
 
 const emit = defineEmits<Emits>();

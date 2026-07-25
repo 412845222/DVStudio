@@ -39,6 +39,8 @@
 				@node-chat-remove-param-ref="onHostNodeChatRemoveParamRef"
 				@node-chat-stop="onHostNodeChatStop"
 				@link-drop-on-canvas="onLinkDropOnCanvas"
+				@node-start-link="onDomNodeStartLink"
+				@node-end-link="onDomNodeEndLink"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -10692,9 +10694,22 @@ const onVideoTaskPanelMediaError = (taskId: string) => {
 }
 
 const onRailQuickAdd = (event: MouseEvent) => {
-	const worldX = (event.clientX - viewport.value.panX) / viewport.value.zoom
-	const worldY = (event.clientY - viewport.value.panY) / viewport.value.zoom
-	store.commit('addNodeAt', { worldX, worldY })
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
+	if (!wrapEl) return
+	const rect = wrapEl.getBoundingClientRect()
+	const vw = rect.width
+	const vh = rect.height
+	const z = viewport.value.zoom
+	const screenCenterX = event.clientX
+	const screenCenterY = event.clientY
+	const worldX = (screenCenterX - vw / 2 - viewport.value.panX) / z
+	const worldY = (screenCenterY - vh / 2 - viewport.value.panY) / z
+	openNodeSearchMenu({
+		clientX: screenCenterX,
+		clientY: screenCenterY,
+		worldX,
+		worldY
+	})
 }
 
 const onDeleteSelectedNodes = () => {
@@ -10719,13 +10734,16 @@ const onRailToggleNodeLibrary = () => {
 	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
-		const screenCenter = { x: rect.width / 2, y: rect.height / 2 }
+		const vw = rect.width
+		const vh = rect.height
 		const z = viewport.value.zoom
-		const worldX = (screenCenter.x - screenCenter.x - viewport.value.panX) / z
-		const worldY = (screenCenter.y - screenCenter.y - viewport.value.panY) / z
+		const screenCenterX = rect.left + rect.width / 2
+		const screenCenterY = rect.top + rect.height / 2
+		const worldX = (screenCenterX - vw / 2 - viewport.value.panX) / z
+		const worldY = (screenCenterY - vh / 2 - viewport.value.panY) / z
 		openNodeSearchMenu({
-			clientX: rect.left + rect.width / 2,
-			clientY: rect.top + rect.height / 2,
+			clientX: screenCenterX,
+			clientY: screenCenterY,
 			worldX,
 			worldY
 		})
@@ -11280,6 +11298,31 @@ const onCanvasAnchorPointerDown = (payload: {
 		},
 		canvasScreenToWorld
 	)
+}
+
+const onDomNodeStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	onStartLink(
+		{
+			nodeId: payload.nodeId,
+			anchorId: payload.anchorId,
+			anchorIndex: payload.anchorIndex,
+			event: payload.event
+		},
+		canvasScreenToWorld
+	)
+}
+
+const onDomNodeEndLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+}) => {
+	onEndLink(payload)
 }
 
 let prevSelectedForScreenshot = new Set<string>(selectedNodeIds.value)
