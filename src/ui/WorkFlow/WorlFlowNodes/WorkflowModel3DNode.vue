@@ -89,7 +89,7 @@
 						:emptyText="t('nodes.model3d.previewEmptyText')"
 						:maskedTitle="t('nodes.model3d.previewMaskedTitle')"
 						:maskedText="t('nodes.model3d.previewMaskedText')"
-						@start="emit('start-three-preview')"
+						@start="handlePreviewStart"
 					>
 						<canvas
 							ref="canvasRef"
@@ -287,7 +287,8 @@ import type { WorkflowModel3DNodeSettings } from '../../../aiworkflow/types'
 import WorkflowThreePreviewShell from './three-preview/WorkflowThreePreviewShell.vue'
 import type {
 	WorkflowThreePreviewProgressPayload,
-	WorkflowThreePreviewState
+	WorkflowThreePreviewState,
+	WorkflowThreePreviewPhase
 } from './three-preview/types'
 import { useI18n } from '../../../i18n'
 import { useModel3DEditor } from '../../../composables/useModel3DEditor'
@@ -428,6 +429,18 @@ let cachedModelSignature = ''
 let cameraUserControlled = false
 let initialSyncDone = false
 
+const internalPreviewRequestId = ref(0)
+const internalPreviewPhase = ref<WorkflowThreePreviewPhase>('masked')
+const internalPreviewProgress = ref(0)
+const internalPreviewLabel = ref('')
+const internalPreviewState = computed<WorkflowThreePreviewState>(() => ({
+	phase: internalPreviewPhase.value,
+	canStart: true,
+	progress: internalPreviewProgress.value,
+	label: internalPreviewLabel.value,
+	requestId: internalPreviewRequestId.value,
+}))
+
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
 	const next = String(value ?? '').trim()
@@ -436,9 +449,7 @@ const cacheSnapshot = (value: string) => {
 }
 
 const settings = computed(() => props.model3dSettings ?? null)
-const rawThreePreviewState = computed(() => props.threePreviewState ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
-const previewRequestId = computed(() => Number(rawThreePreviewState.value?.requestId ?? 0))
 const effectiveModelUrl = computed(() => {
 	const assetUrl = String(settings.value?.modelAssetUrl ?? '').trim()
 	const primaryUrl = String(settings.value?.modelUrl ?? '').trim()
@@ -580,17 +591,59 @@ const activeDownloadIsFailed = computed(() => {
 	return state?.stage === 'failed'
 })
 
-const threePreviewState = computed(() => rawThreePreviewState.value)
+const threePreviewState = computed(() => props.threePreviewState ?? internalPreviewState.value)
 const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const previewRequestId = computed(() => Number(threePreviewState.value?.requestId ?? 0))
 const previewInteractive = computed(() => previewPhase.value === 'interactive')
 const viewerLive = computed(
 	() => previewPhase.value === 'loading' || previewPhase.value === 'interactive'
 )
 
+const setPreviewPhase = (phase: WorkflowThreePreviewPhase) => {
+	internalPreviewPhase.value = phase
+	if (phase === 'masked') {
+		internalPreviewProgress.value = 0
+		internalPreviewLabel.value = ''
+	}
+}
+const setPreviewProgress = (progress: number, label?: string) => {
+	internalPreviewProgress.value = Math.max(0, Math.min(1, progress))
+	if (label !== undefined) internalPreviewLabel.value = label
+}
+const startPreview = () => {
+	const url = effectiveModelUrl.value
+	if (!url) {
+		errorMessage.value = t('nodes.model3d.noModelBound2')
+		return
+	}
+	internalPreviewRequestId.value += 1
+	activePreviewRequestId = internalPreviewRequestId.value
+	errorMessage.value = ''
+	setPreviewPhase('loading')
+	setPreviewProgress(0.12, t('nodes.model3d.progressInitRenderer'))
+}
+const handlePreviewStart = () => {
+	emit('start-three-preview')
+	startPreview()
+}
+const handlePreviewProgress = (progress: number, label: string) => {
+	emitPreviewProgress(progress, label)
+	setPreviewProgress(progress, label)
+}
+const handlePreviewReady = () => {
+	setPreviewPhase('interactive')
+	emit('three-preview-ready')
+}
+const handlePreviewError = () => {
+	setPreviewPhase('masked')
+	emit('three-preview-error')
+}
+
 const updateSettings = (patch: Partial<WorkflowModel3DNodeSettings>) =>
 	emit('update-model3d-settings', patch)
 const emitPreviewProgress = (progress: number, label: string) => {
 	emit('three-preview-progress', { progress, label })
+	setPreviewProgress(progress, label)
 }
 
 const clearViewerInitSchedule = () => {
@@ -756,7 +809,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		initialSyncDone = false
 		if (requestId != null && requestId === activePreviewRequestId) {
 			errorMessage.value = t('nodes.model3d.noModelBound2')
-			emit('three-preview-error')
+			handlePreviewError()
 		}
 		return false
 	}
@@ -790,7 +843,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		cachedModelSignature = ''
 		cameraUserControlled = false
 		initialSyncDone = false
-		if (requestId != null) emit('three-preview-error')
+		if (requestId != null) handlePreviewError()
 
 		const repairResult = await attemptRepairModelUrl(url, requestId)
 		if (repairResult.success && repairResult.newUrl) {
@@ -815,7 +868,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 				cachedModelSignature = ''
 				cameraUserControlled = false
 				initialSyncDone = false
-				if (requestId != null) emit('three-preview-error')
+				if (requestId != null) handlePreviewError()
 				return false
 			}
 		}
@@ -858,7 +911,7 @@ const startPreviewLoad = async (requestId: number) => {
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
 		errorMessage.value = t('nodes.model3d.previewerInitTimeout')
-		emit('three-preview-error')
+		handlePreviewError()
 		return
 	}
 	viewer.setRenderSuspended(false)
@@ -870,7 +923,7 @@ const startPreviewLoad = async (requestId: number) => {
 		errorMessage.value = t('nodes.model3d.noModelBound2')
 		viewer.clearModel()
 		cachedModelSignature = ''
-		emit('three-preview-error')
+		handlePreviewError()
 		return
 	}
 	const loaded = await loadModelIntoViewer(requestId)
@@ -881,8 +934,11 @@ const startPreviewLoad = async (requestId: number) => {
 		saveViewState()
 		captureSnapshot()
 		emitPreviewProgress(0.98, t('nodes.model3d.progressSyncInteraction'))
-		emit('three-preview-ready')
+		handlePreviewReady()
 		nextTick(() => baseRef.value?.requestAutoResize())
+	} else {
+		if (!errorMessage.value) errorMessage.value = t('nodes.model3d.modelLoadFailed')
+		handlePreviewError()
 	}
 }
 
