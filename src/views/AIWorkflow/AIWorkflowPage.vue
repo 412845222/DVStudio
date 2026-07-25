@@ -3245,7 +3245,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
-					return true
+					patchBlueprintNodeData(nodeId)
+					return base.url
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
@@ -3318,7 +3319,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
 				patchBlueprintNodeData(nodeId)
-				return true
+				return base.url
 			},
 			bindVideoResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]

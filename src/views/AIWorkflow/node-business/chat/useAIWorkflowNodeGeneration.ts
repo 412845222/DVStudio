@@ -24,8 +24,8 @@ export type NodeGenerationApiDeps = {
 	nodeResourceUrl?: (node: any) => string | null
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
 	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
-	/** Bind produced asset url to the originating node, e.g. as its resource. */
-	bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
+	/** Bind produced asset url to the originating node, e.g. as its resource. Returns final persisted URL or false on failure. */
+	bindImageResultToNode?: (nodeId: string, url: string) => string | false | void | Promise<string | false | void>
 	bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
 	bindTextResultToNode?: (nodeId: string, text: string) => void
 	bindModel3dResultToNode?: (
@@ -1722,17 +1722,18 @@ const runImageTask = async (
 							}
 						}
 
-						let bound = true
+						let finalUrl = ''
 						if (typeof deps.bindImageResultToNode === 'function') {
 							const bindRet = await deps.bindImageResultToNode(bindNodeId, sourceUrl)
-							bound = bindRet !== false
+							if (bindRet === false || bindRet === undefined || bindRet === null) {
+								appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+								continue
+							}
+							finalUrl = typeof bindRet === 'string' ? bindRet : deps.resolveBackendUrl(sourceUrl)
+						} else {
+							finalUrl = deps.resolveBackendUrl(sourceUrl)
 						}
-						if (!bound) {
-							appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
-							continue
-						}
-						const resolved = deps.resolveBackendUrl(sourceUrl)
-						appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+						appendResult(deps, task.id, { kind: 'image', url: finalUrl, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 						
 						if (isNewNode) {
 							deps.store.commit('setNodeImageSettings', {
@@ -1743,8 +1744,8 @@ const runImageTask = async (
 										taskStatus: 'completed',
 										progress: 100,
 										statusText: t('tasks.gemini.statusCompleted'),
-										imageUrls: [sourceUrl],
-										thumbnailUrl: sourceUrl
+										imageUrls: [finalUrl],
+										thumbnailUrl: finalUrl
 									}
 								}
 							})
@@ -2312,17 +2313,18 @@ const runImageTask = async (
 			if (obj && typeof obj.imageUrl === 'string') {
 				const sourceUrl = String(obj.imageUrl || '').trim()
 				if (!sourceUrl) continue
-				let bound = true
+				let finalUrl = ''
 				if (typeof deps.bindImageResultToNode === 'function') {
 					const bindRet = await deps.bindImageResultToNode(payload.nodeId, sourceUrl)
-					bound = bindRet !== false
+					if (bindRet === false || bindRet === undefined || bindRet === null) {
+						appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+						continue
+					}
+					finalUrl = typeof bindRet === 'string' ? bindRet : deps.resolveBackendUrl(sourceUrl)
+				} else {
+					finalUrl = deps.resolveBackendUrl(sourceUrl)
 				}
-				if (!bound) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
-					continue
-				}
-				const resolved = deps.resolveBackendUrl(sourceUrl)
-				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+				appendResult(deps, task.id, { kind: 'image', url: finalUrl, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
 				produced += 1
 				updateTask(deps, task.id, {
 					status: 'running',

@@ -1389,7 +1389,12 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
 	}
 
 	try {
-		await fetchRemoteUrl(url, absolutePath)
+		// Handle data: URLs (base64 or URL-encoded inline data)
+		if (/^data:/i.test(url)) {
+			saveDataUrlToFile(url, absolutePath)
+		} else {
+			await fetchRemoteUrl(url, absolutePath)
+		}
 	} catch (err) {
 		return { ok: false, error: `download failed: ${String(err?.message || err)}` }
 	}
@@ -1409,6 +1414,24 @@ export async function downloadUrlToProjectRoot(projectId, rawUrl, desiredFilenam
 		relativePath,
 		size: fs.statSync(absolutePath).size
 	}
+}
+
+function saveDataUrlToFile(dataUrl, targetPath) {
+	const matches = /^data:([^;]+);base64,(.+)$/i.exec(dataUrl)
+	if (matches) {
+		const b64Data = matches[2]
+		const buffer = Buffer.from(b64Data, 'base64')
+		fs.writeFileSync(targetPath, buffer)
+		return
+	}
+	// Try URL-encoded data
+	const urlMatches = /^data:([^,]+),(.*)$/i.exec(dataUrl)
+	if (urlMatches) {
+		const textData = decodeURIComponent(urlMatches[2])
+		fs.writeFileSync(targetPath, textData, 'utf-8')
+		return
+	}
+	throw new Error('invalid data URL format')
 }
 
 function isPathInsideProject(root, filePath) {
@@ -1571,6 +1594,32 @@ function inferExtension(safeName, rawUrl) {
 	if (dotIdx > 0 && dotIdx >= lower.length - 8) return lower.slice(dotIdx)
 
 	const urlLower = String(rawUrl || '').toLowerCase()
+
+	// Handle data: URLs by extracting MIME type
+	if (urlLower.startsWith('data:')) {
+		const mimeMatch = /^data:([^;,]+)/i.exec(rawUrl)
+		if (mimeMatch) {
+			const mime = String(mimeMatch[1] || '').toLowerCase().trim()
+			const mimeExtMap = {
+				'image/png': '.png',
+				'image/jpeg': '.jpg',
+				'image/jpg': '.jpg',
+				'image/webp': '.webp',
+				'image/gif': '.gif',
+				'image/bmp': '.bmp',
+				'video/mp4': '.mp4',
+				'video/webm': '.webm',
+				'video/quicktime': '.mov',
+				'audio/mpeg': '.mp3',
+				'audio/wav': '.wav',
+				'audio/ogg': '.ogg',
+				'application/pdf': '.pdf',
+				'model/gltf-binary': '.glb',
+				'model/gltf+json': '.gltf'
+			}
+			if (mimeExtMap[mime]) return mimeExtMap[mime]
+		}
+	}
 
 	const extMap = {
 		jpg: '.jpg',

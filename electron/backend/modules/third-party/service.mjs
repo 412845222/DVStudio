@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
+import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { app } from 'electron'
 import { HttpsProxyAgent } from 'https-proxy-agent'
@@ -14,6 +15,92 @@ import { getRepos } from '../../../localdb/index.mjs'
 import * as geminiTaskService from '../gemini/service.mjs'
 
 const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+
+const isDevMockMode = () => {
+	return process.env.ELECTRON_DEV === '1' || process.env.NODE_ENV === 'development' || !app.isPackaged
+}
+
+const crc32 = (buf) => {
+	let crc = 0xffffffff
+	const table = new Uint32Array(256)
+	for (let n = 0; n < 256; n++) {
+		let c = n
+		for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+		table[n] = c >>> 0
+	}
+	for (let i = 0; i < buf.length; i++) crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8)
+	return (crc ^ 0xffffffff) >>> 0
+}
+
+const MOCK_TEXT_RESPONSE = `这是DVStudio开发环境的Mock响应。
+
+✅ 文本生成链路验证成功！
+- 任务提交：正常
+- 流式传输：正常
+- Canvas预览更新：待验证
+- 双面板同步：待验证
+
+你可以继续测试图片生成、3D模型生成等其他功能。当前是开发Mock模式，配置真实API密钥后将使用实际AI服务。`
+
+const MOCK_IMAGE_DATA_URL = (() => {
+	const size = 512
+	const channels = 4
+	const data = Buffer.alloc(size * size * channels)
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			const idx = (y * size + x) * channels
+			const t = (x + y) / (size * 2)
+			data[idx] = Math.floor(40 + t * 80)
+			data[idx + 1] = Math.floor(180 + t * 50)
+			data[idx + 2] = Math.floor(120 + t * 60)
+			data[idx + 3] = 255
+		}
+	}
+	const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+	const ihdr = Buffer.alloc(25)
+	ihdr.writeUInt32BE(13, 0)
+	ihdr.write('IHDR', 4)
+	ihdr.writeUInt32BE(size, 8)
+	ihdr.writeUInt32BE(size, 12)
+	ihdr[16] = 8
+	ihdr[17] = 6
+	ihdr[18] = 0
+	ihdr[19] = 0
+	ihdr[20] = 0
+	const ihdrCrc = crc32(ihdr.subarray(4, 21))
+	ihdr.writeUInt32BE(ihdrCrc, 21)
+
+	const compressed = zlib.deflateRawSync(data, { level: 9 })
+	const idat = Buffer.alloc(compressed.length + 12)
+	idat.writeUInt32BE(compressed.length, 0)
+	idat.write('IDAT', 4)
+	compressed.copy(idat, 8)
+	const idatCrc = crc32(Buffer.concat([Buffer.from('IDAT'), compressed]))
+	idat.writeUInt32BE(idatCrc, compressed.length + 8)
+
+	const iend = Buffer.from([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])
+	const png = Buffer.concat([pngSignature, ihdr, idat, iend])
+	return `data:image/png;base64,${png.toString('base64')}`
+})()
+
+async function* mockTextStream() {
+	const chars = MOCK_TEXT_RESPONSE.split('')
+	for (let i = 0; i < chars.length; i++) {
+		yield wrapTextMsg(chars[i])
+		await new Promise(r => setTimeout(r, 15))
+	}
+	yield wrapDone()
+}
+
+async function* mockImageStream() {
+	yield wrapTaskStatusMsg('Mock: 正在生成图片...', 'generating')
+	await new Promise(r => setTimeout(r, 500))
+	yield wrapTaskStatusMsg('Mock: 处理中...', 'processing')
+	await new Promise(r => setTimeout(r, 500))
+	yield wrapChatMsg({ imageUrl: MOCK_IMAGE_DATA_URL })
+	yield wrapDone()
+}
+
 
 const defaultHttpsAgent = new https.Agent({
 	keepAlive: true,
@@ -813,6 +900,11 @@ export async function* nanobananaGenerateStream(ctx, payload) {
 	}
 	const apiKey = tryGetKey(ctx, 'meshy', 'nanobanana')
 	if (!apiKey) {
+		if (isDevMockMode()) {
+			console.log('[third-party:mock] Using mock image stream for nanobananaGenerateStream (no API key configured, dev mode)')
+			yield* mockImageStream()
+			return
+		}
 		yield wrapStreamError('meshy/nanobanana api key is not configured')
 		return
 	}
@@ -968,6 +1060,11 @@ export async function* seedreamGenerateStream(ctx, payload) {
 		} catch {}
 	}
 	if (!apiKey) {
+		if (isDevMockMode()) {
+			console.log('[third-party:mock] Using mock image stream for seedreamGenerateStream (no API key configured, dev mode)')
+			yield* mockImageStream()
+			return
+		}
 		yield wrapStreamError('seedream api key (ark api key) is not configured')
 		return
 	}
@@ -1409,6 +1506,34 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	if (!cfg || !apiKey) {
+		if (isDevMockMode()) {
+			console.log('[third-party:mock] Using mock text stream for blueprintChatStream (no API key configured, dev mode)')
+			const taskId = `mock-chat-${Date.now()}`
+			const projectId = p.projectId ? Number(p.projectId) : null
+			const nodeId = String(p.nodeId || '').trim()
+			recordArkTask({
+				taskId,
+				provider: 'mock',
+				apiType: 'blueprintChat',
+				apiAction: 'text_chat',
+				model: 'mock-dev',
+				status: 'running',
+				prompt: message,
+				statusText: 'Mock模式：正在生成文本…',
+				requestPayload: { model: 'mock-dev', messageLength: message.length },
+				projectId,
+				nodeId
+			})
+			yield* mockTextStream()
+			recordArkTask({
+				taskId,
+				status: 'succeeded',
+				resultText: MOCK_TEXT_RESPONSE,
+				statusText: 'Mock文本生成完成',
+				responsePayload: { contentLength: MOCK_TEXT_RESPONSE.length }
+			})
+			return
+		}
 		yield wrapStreamError('No LLM API key configured (gemini/bytedance/openai)')
 		return
 	}
