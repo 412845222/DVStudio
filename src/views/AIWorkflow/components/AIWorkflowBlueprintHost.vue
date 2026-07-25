@@ -35,9 +35,11 @@ const emit = defineEmits<{
   'node-chat-update-params': [payload: { nodeId: string; params: Record<string, any> }]
   'node-chat-update-selected-refs': [payload: { nodeId: string; selectedRefs: any[] }]
   'node-chat-remove-param-ref': [payload: { nodeId: string; refItem: any }]
+  'node-chat-stop': [nodeId: string]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
+const hostRootRef = ref<HTMLDivElement | null>(null)
 let hasRestoredViewport = false
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -59,6 +61,9 @@ defineExpose({
   },
   getInstance() {
     return blueprintEditorRef.value
+  },
+  getNodeScreenRect(nodeId: string) {
+    return blueprintEditorRef.value?.getNodeScreenRect?.(nodeId) ?? null
   }
 })
 
@@ -106,30 +111,6 @@ function onBlueprintEditorNodeRefresh(nodeId: string) {
   emit('node-refresh', nodeId)
 }
 
-function onBlueprintEditorNodeChatSubmit(payload: WorkflowNodeChatSubmitPayload) {
-  emit('node-chat-submit', payload)
-}
-
-function onBlueprintEditorNodeChatClose(nodeId: string) {
-  emit('node-chat-close', nodeId)
-}
-
-function onBlueprintEditorNodeChatUpdateDraft(payload: { nodeId: string; draft: string }) {
-  emit('node-chat-update-draft', payload)
-}
-
-function onBlueprintEditorNodeChatUpdateParams(payload: { nodeId: string; params: Record<string, any> }) {
-  emit('node-chat-update-params', payload)
-}
-
-function onBlueprintEditorNodeChatUpdateSelectedRefs(payload: { nodeId: string; selectedRefs: any[] }) {
-  emit('node-chat-update-selected-refs', payload)
-}
-
-function onBlueprintEditorNodeChatRemoveParamRef(payload: { nodeId: string; refItem: any }) {
-  emit('node-chat-remove-param-ref', payload)
-}
-
 watch(blueprintEditorRef, (editor) => {
   if (editor && !hasRestoredViewport) {
     nextTick(() => {
@@ -147,29 +128,58 @@ watch(blueprintEditorRef, (editor) => {
 </script>
 
 <template>
-  <BlueprintEditor
-    ref="blueprintEditorRef"
-    class="aiwf-canvas"
-    :initial-data="initialData"
-    :readonly="readonly"
-    :theme="theme"
-    :chat-state="chatState"
-    @change="onBlueprintEditorChange"
-    @selection-change="onBlueprintEditorSelectionChange"
-    @viewport-change="onBlueprintEditorViewportChange"
-    @node-double-click="onBlueprintEditorNodeDblClick"
-    @node-context-menu="onBlueprintEditorNodeContextMenu"
-    @canvas-context-menu="onBlueprintEditorCanvasContextMenu"
-    @canvas-double-click="onBlueprintEditorCanvasDblClick"
-    @canvas-drop="onBlueprintEditorDrop"
-    @node-refresh="onBlueprintEditorNodeRefresh"
-    @node-chat-submit="onBlueprintEditorNodeChatSubmit"
-    @node-chat-close="onBlueprintEditorNodeChatClose"
-    @node-chat-update-draft="onBlueprintEditorNodeChatUpdateDraft"
-    @node-chat-update-params="onBlueprintEditorNodeChatUpdateParams"
-    @node-chat-update-selected-refs="onBlueprintEditorNodeChatUpdateSelectedRefs"
-    @node-chat-remove-param-ref="onBlueprintEditorNodeChatRemoveParamRef"
-  >
-    <slot />
-  </BlueprintEditor>
+  <div ref="hostRootRef" class="bp-editor-root">
+    <BlueprintEditor
+      ref="blueprintEditorRef"
+      class="aiwf-canvas"
+      :initial-data="initialData"
+      :readonly="readonly"
+      :theme="theme"
+      :chat-state="chatState"
+      @change="onBlueprintEditorChange"
+      @selection-change="onBlueprintEditorSelectionChange"
+      @viewport-change="onBlueprintEditorViewportChange"
+      @node-double-click="onBlueprintEditorNodeDblClick"
+      @node-context-menu="onBlueprintEditorNodeContextMenu"
+      @canvas-context-menu="onBlueprintEditorCanvasContextMenu"
+      @canvas-double-click="onBlueprintEditorCanvasDblClick"
+      @canvas-drop="onBlueprintEditorDrop"
+      @node-refresh="onBlueprintEditorNodeRefresh"
+      @node-chat-submit="(p: WorkflowNodeChatSubmitPayload) => emit('node-chat-submit', p)"
+      @node-chat-close="(id: string) => emit('node-chat-close', id)"
+      @node-chat-update-draft="(p: any) => emit('node-chat-update-draft', p)"
+      @node-chat-update-params="(p: any) => emit('node-chat-update-params', p)"
+      @node-chat-update-selected-refs="(p: any) => emit('node-chat-update-selected-refs', p)"
+      @node-chat-remove-param-ref="(p: any) => emit('node-chat-remove-param-ref', p)"
+      @node-chat-stop="(id: string) => emit('node-chat-stop', id)"
+    />
+    <div class="bp-overlay-layer">
+      <slot />
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.bp-editor-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bp-editor-root :deep(.aiwf-canvas) {
+  width: 100%;
+  height: 100%;
+}
+
+.bp-overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.bp-overlay-layer :deep(> *) {
+  pointer-events: auto;
+}
+</style>

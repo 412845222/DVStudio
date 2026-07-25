@@ -159,7 +159,7 @@ export class NodeComponentResolver {
     const typeSpecificProps: Record<string, unknown> = {};
     switch (data.type) {
       case 'text':
-        if (data.textValue != null) typeSpecificProps.textContent = data.textValue;
+        if (data.textValue != null) typeSpecificProps.textValue = data.textValue;
         break;
       case 'image':
       case 'rotate-image':

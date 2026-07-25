@@ -20,6 +20,7 @@
 				:readonly="false"
 				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
 				:chat-state="chatStateForHost"
+				@editor-ready="onHostEditorReady"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
 				@viewport-change="onBlueprintEditorViewportChange"
@@ -34,6 +35,7 @@
 				@node-chat-update-params="onHostNodeChatUpdateParams"
 				@node-chat-update-selected-refs="onHostNodeChatUpdateSelectedRefs"
 				@node-chat-remove-param-ref="onHostNodeChatRemoveParamRef"
+				@node-chat-stop="onHostNodeChatStop"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -562,6 +564,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import AIWorkflowBlueprintHost from './components/AIWorkflowBlueprintHost.vue'
+import { useAIWorkflowBlueprintHost } from './composables/useAIWorkflowBlueprintHost'
 import type { LegacyBlueprintData } from '../../engine/blueprint/types'
 import { workflowStateToLegacyBlueprint, legacyBlueprintToWorkflowState } from './blueprint-bridge/workflowStateAdapter'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
@@ -994,7 +997,16 @@ const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
 // ========== AIWorkflowBlueprintHost集成 ==========
-const blueprintHostRef = ref<InstanceType<typeof AIWorkflowBlueprintHost> | null>(null)
+const {
+  hostRef: blueprintHostRef,
+  viewport: hostViewport,
+  canvasSize: hostCanvasSize,
+  onHostReady,
+  onViewportChange: onHostViewportChange,
+  bindHostEvents,
+  unbindHostEvents,
+  updateCanvasSize: updateHostCanvasSize
+} = useAIWorkflowBlueprintHost()
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
   return workflowStateToLegacyBlueprint(store.state)
@@ -1024,12 +1036,32 @@ function onBlueprintEditorSelectionChange(nodeIds: string[]) {
   } else {
     store.commit('clearSelection')
   }
+  if (nodeIds.length === 1) {
+    const node = store.state.nodesById[nodeIds[0]]
+    if (node && isNodeChatTypeSupported(node.type)) {
+      store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
+    } else {
+      if (store.state.nodeChatDialog?.visible) {
+        store.dispatch('closeNodeChatDialog')
+      }
+    }
+  } else {
+    if (store.state.nodeChatDialog?.visible) {
+      store.dispatch('closeNodeChatDialog')
+    }
+  }
   nextTick(() => {
     isUpdatingFromStore = false
   })
 }
 
+function onHostEditorReady(editor: any) {
+  onHostReady(editor)
+  updateHostCanvasSize()
+}
+
 function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
+  onHostViewportChange(zoom, panX, panY)
   if (isUpdatingFromStore) return
   isUpdatingFromStore = true
   store.commit('setViewport', { zoom, panX, panY })
@@ -2642,6 +2674,7 @@ watch(
 )
 
 onMounted(() => {
+	bindHostEvents()
 	setTimeout(() => {
 		scheduleVisibleNodeScreenshots()
 	}, 1000)
@@ -2807,6 +2840,10 @@ const onHostNodeChatUpdateSelectedRefs = (payload: { nodeId: string; selectedRef
 
 const onHostNodeChatRemoveParamRef = (payload: { nodeId: string; refItem: any }) => {
 	onNodeChatRemoveParamRef(payload.refItem)
+}
+
+const onHostNodeChatStop = (_nodeId: string) => {
+	onNodeChatStop()
 }
 
 const onNodeChatDraftUpdate = (text: string) => {
@@ -11536,6 +11573,7 @@ const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 }
 
 onBeforeUnmount(() => {
+	unbindHostEvents()
 	cancelActiveImportSession({ cleanupUnresolved: false })
 	mediaImportManager.dispose()
 	try {

@@ -16,6 +16,7 @@
         @node-chat-update-params="(p) => emit('nodeChatUpdateParams', p)"
         @node-chat-update-selected-refs="(p) => emit('nodeChatUpdateSelectedRefs', p)"
         @node-chat-remove-param-ref="(p) => emit('nodeChatRemoveParamRef', p)"
+        @node-chat-stop="(id: string) => emit('nodeChatStop', id)"
       />
       <BlueprintContextMenu
         :visible="ctxMenu.visible"
@@ -86,6 +87,7 @@ interface Emits {
   (e: 'nodeChatUpdateParams', payload: { nodeId: string; params: Record<string, any> }): void;
   (e: 'nodeChatUpdateSelectedRefs', payload: { nodeId: string; selectedRefs: any[] }): void;
   (e: 'nodeChatRemoveParamRef', payload: { nodeId: string; refItem: any }): void;
+  (e: 'nodeChatStop', nodeId: string): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -809,6 +811,23 @@ defineExpose({
 
   getEdgeCount(): number {
     return scene.value?.getAllConnections().length ?? 0;
+  },
+
+  getNodeScreenRect(nodeId: string): { left: number; top: number; width: number; height: number; nodeType?: string } | null {
+    if (!scene.value || !containerRef.value) return null;
+    const s = scene.value;
+    const node = s.getBlueprintNode(nodeId);
+    if (!node) return null;
+    const nw = node.data.width || 240;
+    const nh = node.data.height || 180;
+    const topLeft = s.camera.worldToScreen(new Vector2(node.data.worldX, node.data.worldY));
+    return {
+      left: topLeft.x,
+      top: topLeft.y,
+      width: nw * s.camera.zoom,
+      height: nh * s.camera.zoom,
+      nodeType: node.nodeType || node.data.type
+    };
   },
 });
 </script>

@@ -23,6 +23,7 @@
       @node-chat-update-params="onChatUpdateParams"
       @node-chat-update-selected-refs="onChatUpdateSelectedRefs"
       @node-chat-remove-param-ref="onChatRemoveParamRef"
+      @node-chat-stop="onChatStop"
     />
   </div>
 </template>
@@ -64,6 +65,7 @@ const emit = defineEmits<{
   (e: 'node-chat-update-params', payload: { nodeId: string; params: Record<string, any> }): void;
   (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
   (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
+  (e: 'node-chat-stop', nodeId: string): void;
 }>();
 
 const businessComponent = computed(() => {
@@ -187,6 +189,10 @@ const onChatUpdateSelectedRefs = (selectedRefs: any[]) => {
 
 const onChatRemoveParamRef = (refItem: any) => {
   emit('node-chat-remove-param-ref', { nodeId: props.node.id, refItem });
+};
+
+const onChatStop = () => {
+  emit('node-chat-stop', props.node.id);
 };
 </script>
 
