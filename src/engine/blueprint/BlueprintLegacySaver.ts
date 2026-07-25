@@ -94,10 +94,6 @@ export class BlueprintLegacySaver {
       legacyNode.createdAt = Date.now();
     }
 
-    delete legacyNode.worldX;
-    delete legacyNode.worldY;
-    delete legacyNode.sizeCustomized;
-
     return legacyNode;
   }
 }

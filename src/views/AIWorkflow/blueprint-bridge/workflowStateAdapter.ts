@@ -156,6 +156,8 @@ function convertWorkflowNodeToLegacy(node: WorkflowNode): BlueprintNodeData {
     alias: node.alias,
     worldX: node.worldX,
     worldY: node.worldY,
+    x: node.worldX,
+    y: node.worldY,
     width: node.width,
     height: node.height,
     sizeCustomized: node.sizeCustomized,
@@ -184,14 +186,16 @@ function convertWorkflowNodeToLegacy(node: WorkflowNode): BlueprintNodeData {
 }
 
 function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNode {
+  const wx = (legacyNode as any).x ?? legacyNode.worldX ?? 0;
+  const wy = (legacyNode as any).y ?? legacyNode.worldY ?? 0;
   const node: WorkflowNode = {
     id: legacyNode.id,
     type: legacyNode.type,
     title: legacyNode.title,
     subtitle: legacyNode.subtitle,
     alias: legacyNode.alias,
-    worldX: legacyNode.worldX,
-    worldY: legacyNode.worldY,
+    worldX: wx,
+    worldY: wy,
     width: legacyNode.width,
     height: legacyNode.height,
     sizeCustomized: legacyNode.sizeCustomized,

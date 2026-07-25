@@ -114,7 +114,9 @@ function computeStructureHash(data: LegacyBlueprintData): string {
   for (const id of data.nodeOrder || Object.keys(data.nodesById || {})) {
     const n = data.nodesById[id];
     if (n) {
-      nodeParts.push(`${id}:${n.worldX.toFixed(1)},${n.worldY.toFixed(1)},${n.width},${n.height}`);
+      const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0);
+      const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0);
+      nodeParts.push(`${id}:${wx.toFixed(1)},${wy.toFixed(1)},${n.width},${n.height}`);
     }
   }
   const edgeSig = (data.edgeOrder || Object.keys(data.edgesById || {})).sort().join(',');
@@ -400,19 +402,23 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
     if (ctrl && key === 'z' && !e.shiftKey) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      s.undo();
-      s.updateAllConnectionEndpoints();
-      s.requestRedraw();
-      emitChange();
+      const undone = s.undo();
+      if (undone) {
+        s.updateAllConnectionEndpoints();
+        s.requestRedraw();
+        emitChange();
+      }
       return;
     }
     if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      s.redo();
-      s.updateAllConnectionEndpoints();
-      s.requestRedraw();
-      emitChange();
+      const redone = s.redo();
+      if (redone) {
+        s.updateAllConnectionEndpoints();
+        s.requestRedraw();
+        emitChange();
+      }
       return;
     }
     if (key === 'delete' || key === 'backspace') {

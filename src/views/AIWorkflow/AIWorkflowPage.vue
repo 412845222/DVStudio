@@ -1046,6 +1046,17 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
   if (isUpdatingFromStore) return
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
   syncDebounceTimer = setTimeout(() => {
+    for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
+      const n = data.nodesById[nodeId]
+      if (n) {
+        const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0)
+        const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0)
+        if (!isFinite(wx) || !isFinite(wy)) {
+          console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
+          return
+        }
+      }
+    }
     const snapshot = legacyBlueprintToWorkflowState(data)
     isUpdatingFromStore = true
     store.commit('hydrateDraft', { snapshot })
