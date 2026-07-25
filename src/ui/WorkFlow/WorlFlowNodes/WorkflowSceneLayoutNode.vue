@@ -1565,9 +1565,11 @@ defineExpose({
 <style scoped>
 .wf-scene-layout {
 	width: 100%;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
+	box-sizing: border-box;
 }
 
 .wf-scene-layout-toolbar {
@@ -1898,5 +1900,13 @@ defineExpose({
 	height: 1px;
 	margin: 4px 0;
 	background: rgba(148, 163, 184, 0.18);
+}
+
+:deep(.wf-node-body) {
+	flex: 1 1 auto !important;
+	flex-direction: column;
+	align-items: stretch;
+	min-height: 0;
+	overflow: hidden;
 }
 </style>

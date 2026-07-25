@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import BlueprintEditor from '../../../engine/blueprint/BlueprintEditor.vue'
-import type { LegacyBlueprintData } from '../../../engine/blueprint/types'
+import type { LegacyBlueprintData, LegacyResourceData } from '../../../engine/blueprint/types'
 import type { NodeChatState } from '../../../engine/blueprint/dom/NodeComponentResolver'
-import type { WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
 
 interface Props {
   initialData: LegacyBlueprintData
   readonly?: boolean
   theme?: 'light' | 'dark'
   chatState?: NodeChatState | null
+  nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+  legacyResources?: Record<string, LegacyResourceData>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -36,6 +38,7 @@ const emit = defineEmits<{
   'node-chat-update-selected-refs': [payload: { nodeId: string; selectedRefs: any[] }]
   'node-chat-remove-param-ref': [payload: { nodeId: string; refItem: any }]
   'node-chat-stop': [nodeId: string]
+  'link-drop-on-canvas': [payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -61,6 +64,9 @@ defineExpose({
   },
   getInstance() {
     return blueprintEditorRef.value
+  },
+  getContainerEl() {
+    return hostRootRef.value
   },
   getNodeScreenRect(nodeId: string) {
     return blueprintEditorRef.value?.getNodeScreenRect?.(nodeId) ?? null
@@ -111,6 +117,10 @@ function onBlueprintEditorNodeRefresh(nodeId: string) {
   emit('node-refresh', nodeId)
 }
 
+function onLinkDropOnCanvas(payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }) {
+  emit('link-drop-on-canvas', payload)
+}
+
 watch(blueprintEditorRef, (editor) => {
   if (editor && !hasRestoredViewport) {
     nextTick(() => {
@@ -136,6 +146,8 @@ watch(blueprintEditorRef, (editor) => {
       :readonly="readonly"
       :theme="theme"
       :chat-state="chatState"
+      :node-generation-tasks="nodeGenerationTasks"
+      :legacy-resources="legacyResources"
       @change="onBlueprintEditorChange"
       @selection-change="onBlueprintEditorSelectionChange"
       @viewport-change="onBlueprintEditorViewportChange"
@@ -152,6 +164,7 @@ watch(blueprintEditorRef, (editor) => {
       @node-chat-update-selected-refs="(p: any) => emit('node-chat-update-selected-refs', p)"
       @node-chat-remove-param-ref="(p: any) => emit('node-chat-remove-param-ref', p)"
       @node-chat-stop="(id: string) => emit('node-chat-stop', id)"
+      @link-drop-on-canvas="onLinkDropOnCanvas"
     />
     <div class="bp-overlay-layer">
       <slot />

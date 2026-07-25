@@ -2,6 +2,7 @@ import { defineAsyncComponent, type Component } from 'vue';
 import type { BlueprintNodeData, LegacyResourceData, PortSpec } from '../types';
 import type { BlueprintNode } from '../BlueprintNode';
 import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl';
+import type { WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
 
 type WorkflowAnchorSpec = {
   id: string;
@@ -38,6 +39,7 @@ type ResourceRelatedProps = {
   resourcePreviewUrl320?: string;
   resourcePreviewUrl640?: string;
   posterUrl?: string;
+  resourceName?: string;
 };
 
 export type ResolvedWorkflowNodeProps = WorkflowNodeBaseProps & ResourceRelatedProps & Record<string, unknown>;
@@ -110,6 +112,9 @@ export class NodeComponentResolver {
     if (res.url) props.resourceUrl = resolveWorkflowResourceUrl(res.url);
     if (res.sourcePath) props.resourceSourcePath = res.sourcePath;
     if (res.posterUrl) props.posterUrl = resolveWorkflowResourceUrl(res.posterUrl);
+    if (res.name) props.resourceName = res.name;
+    if (res.previewUrl320) props.resourcePreviewUrl320 = resolveWorkflowResourceUrl(res.previewUrl320);
+    if (res.previewUrl640) props.resourcePreviewUrl640 = resolveWorkflowResourceUrl(res.previewUrl640);
 
     return props;
   }
@@ -119,10 +124,20 @@ export class NodeComponentResolver {
     zoom: number = 1,
     legacyResources: Record<string, LegacyResourceData> = {},
     isSelected: boolean = false,
-    chatState?: NodeChatState | null
+    chatState?: NodeChatState | null,
+    generationTasksById?: Record<string, WorkflowNodeGenerationTask>
   ): ResolvedWorkflowNodeProps {
     const data = node.data;
     const isChatActive = chatState && chatState.visible && chatState.nodeId === data.id;
+
+    const nodeTask = generationTasksById ? Object.values(generationTasksById).find(t => t.nodeId === data.id && (t.status === 'submitting' || t.status === 'running' || t.status === 'error' || t.status === 'completed')) : null;
+    const generationTask = nodeTask ?? null;
+
+    const baseStatus = data.status === 'error' ? 'error' : data.status === 'running' ? 'running' : 'idle';
+    const taskStatus = generationTask ? (generationTask.status === 'error' ? 'error' : (generationTask.status === 'running' || generationTask.status === 'submitting') ? 'running' : 'idle') : 'idle';
+    const effectiveStatus: 'idle' | 'running' | 'error' =
+      baseStatus === 'error' || taskStatus === 'error' ? 'error' :
+      baseStatus === 'running' || taskStatus === 'running' ? 'running' : 'idle';
 
     const baseProps: WorkflowNodeBaseProps = {
       nodeId: data.id,
@@ -140,7 +155,7 @@ export class NodeComponentResolver {
       selected: isSelected,
       isPrimarySelected: isSelected,
       isSecondarySelected: false,
-      visualStatus: data.status === 'error' ? 'error' : data.status === 'running' ? 'running' : 'idle',
+      visualStatus: effectiveStatus,
       sizeCustomized: data.sizeCustomized,
       autoHeight: false,
     };
@@ -216,6 +231,7 @@ export class NodeComponentResolver {
       ...resourceProps,
       ...chatProps,
       ...typeSpecificProps,
+      nodeGenerationTask: generationTask,
     };
   }
 }

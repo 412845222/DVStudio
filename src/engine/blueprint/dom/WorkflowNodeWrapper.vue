@@ -34,7 +34,7 @@ import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolv
 import type { BlueprintNode } from '../BlueprintNode';
 import type { LegacyResourceData } from '../types';
 import type { NodeStatus } from './DomNodeWrapper.vue';
-import type { WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types';
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
 
 const props = defineProps<{
   node: BlueprintNode;
@@ -46,6 +46,7 @@ const props = defineProps<{
   accentColor: string;
   legacyResources: Record<string, LegacyResourceData>;
   chatState?: NodeChatState | null;
+  generationTasks?: Record<string, WorkflowNodeGenerationTask>;
 }>();
 
 const emit = defineEmits<{
@@ -78,7 +79,8 @@ const resolvedProps = computed(() => {
     props.zoom,
     props.legacyResources,
     props.selected,
-    props.chatState
+    props.chatState,
+    props.generationTasks
   );
 });
 
@@ -215,7 +217,7 @@ const onChatStop = () => {
   height: 100% !important;
   transform: none !important;
   margin: 0 !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
   cursor: default !important;
   overflow: visible !important;
   box-sizing: border-box !important;
@@ -242,13 +244,8 @@ const onChatStop = () => {
   display: none !important;
 }
 
-.workflow-node-wrapper :deep(.wf-node::before),
-.workflow-node-wrapper :deep(.wf-node::after) {
-  display: none !important;
-}
-
 .workflow-node-wrapper :deep(.wf-node-header) {
-  pointer-events: none !important;
+  pointer-events: auto !important;
 }
 
 .workflow-node-wrapper :deep(.wf-node-body) {
@@ -259,19 +256,34 @@ const onChatStop = () => {
   pointer-events: auto !important;
 }
 
-.workflow-node-wrapper :deep(.wf-textarea) {
-  pointer-events: auto !important;
+.workflow-node-wrapper :deep(.wf-node-bg),
+.workflow-node-wrapper :deep(.wf-node-border),
+.workflow-node-wrapper :deep(.wf-node-glow),
+.workflow-node-wrapper :deep(.wf-node-shine) {
+  pointer-events: none !important;
 }
 
+.workflow-node-wrapper :deep(.wf-textarea),
 .workflow-node-wrapper :deep(.wf-media-btn),
 .workflow-node-wrapper :deep(.wf-file-input),
 .workflow-node-wrapper :deep(textarea),
 .workflow-node-wrapper :deep(input),
 .workflow-node-wrapper :deep(button),
+.workflow-node-wrapper :deep(select),
 .workflow-node-wrapper :deep(.wf-inline-btn),
 .workflow-node-wrapper :deep(.wf-quick-action),
-.workflow-node-wrapper :deep(.wf-file-drop) {
+.workflow-node-wrapper :deep(.wf-file-drop),
+.workflow-node-wrapper :deep([role="button"]),
+.workflow-node-wrapper :deep(label) {
   pointer-events: auto !important;
+  cursor: pointer;
+}
+
+.workflow-node-wrapper :deep(button:hover),
+.workflow-node-wrapper :deep(.wf-media-btn:hover),
+.workflow-node-wrapper :deep(.wf-inline-btn:hover),
+.workflow-node-wrapper :deep([role="button"]:hover) {
+  filter: brightness(1.15);
 }
 
 .workflow-node-wrapper :deep(.bp-node-chat-dialog) {

@@ -20,6 +20,8 @@
 				:readonly="false"
 				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
 				:chat-state="chatStateForHost"
+				:node-generation-tasks="store.state.nodeGenerationTasksById"
+				:legacy-resources="legacyResourcesForDom"
 				@editor-ready="onHostEditorReady"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
@@ -36,6 +38,7 @@
 				@node-chat-update-selected-refs="onHostNodeChatUpdateSelectedRefs"
 				@node-chat-remove-param-ref="onHostNodeChatRemoveParamRef"
 				@node-chat-stop="onHostNodeChatStop"
+				@link-drop-on-canvas="onLinkDropOnCanvas"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -152,7 +155,7 @@
 					:nodes-by-id="store.state.nodesById"
 					:node-order="store.state.nodeOrder"
 					:current-project-id="currentProjectId"
-					:nodeLibraryOpen="false"
+					:nodeLibraryOpen="nodeSearchMenuVisible"
 					:backendLogOpen="blueprintLogPanelOpen"
 					:electronReady="isElectron()"
 					:show-repair-assets="true"
@@ -1011,6 +1014,21 @@ const {
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
   return workflowStateToLegacyBlueprint(store.state)
+})
+
+const legacyResourcesForDom = computed<Record<string, any>>(() => {
+  const result: Record<string, any> = {}
+  for (const resId of store.state.resourceOrder) {
+    const res = store.state.resourcesById[resId]
+    if (res) {
+      result[resId] = {
+        ...res,
+        previewUrl320: (res as any).previewUrl320 || res.previewUrl,
+        previewUrl640: (res as any).previewUrl640 || res.previewUrl,
+      }
+    }
+  }
+  return result
 })
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -10686,7 +10704,7 @@ const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
 }
 
 const onRailToggleNodeLibrary = () => {
-	const wrapEl = document.querySelector('.bp-wrap')
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
 		const screenCenter = { x: rect.width / 2, y: rect.height / 2 }
@@ -10705,7 +10723,7 @@ const onRailToggleNodeLibrary = () => {
 const onNodeOpenLibrary = (nodeId: string) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
-	const wrapEl = document.querySelector('.bp-wrap')
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
 		const z = viewport.value.zoom

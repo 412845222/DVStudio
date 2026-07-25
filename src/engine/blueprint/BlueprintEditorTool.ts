@@ -729,6 +729,16 @@ export class BlueprintEditorTool extends Tool {
         }
       }
       if (!completed) {
+        const clientX = event.originalEvent.clientX;
+        const clientY = event.originalEvent.clientY;
+        scene.on.emit('link-drop-on-canvas', {
+          clientX,
+          clientY,
+          worldX: event.worldPosition.x,
+          worldY: event.worldPosition.y,
+          fromNodeId: this.pendingFromNode?.id ?? '',
+          fromAnchorId: this.pendingFromPort?.id ?? ''
+        });
         scene.cancelPendingConnection();
       }
       this.pendingFromPort = null;

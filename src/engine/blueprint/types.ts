@@ -206,6 +206,12 @@ export const NODE_STATUS_COLORS: Record<string, {
     glow: 'rgba(229, 181, 103, 0.35)',
     badge: 'rgba(229, 181, 103, 0.45)'
   },
+  success: {
+    border: 'rgba(46, 164, 79, 0.70)',
+    bracket: 'rgba(46, 164, 79, 0.80)',
+    glow: 'rgba(46, 164, 79, 0.30)',
+    badge: 'rgba(46, 164, 79, 0.45)'
+  },
   error: {
     border: 'rgba(207, 90, 70, 0.75)',
     bracket: 'rgba(207, 90, 70, 0.80)',

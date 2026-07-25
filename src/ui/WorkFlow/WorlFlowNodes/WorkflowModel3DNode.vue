@@ -1023,11 +1023,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .wf-model3d-body {
 	width: 100%;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 	flex-shrink: 0;
 	align-self: stretch;
+	box-sizing: border-box;
 }
 
 .wf-model3d-fetch-error {
@@ -1110,8 +1112,8 @@ onBeforeUnmount(() => {
 .wf-model3d-viewer-shell {
 	position: relative;
 	width: 100%;
-	aspect-ratio: 1 / 1;
-	flex-shrink: 0;
+	flex: 1;
+	min-height: 200px;
 	border: 1px solid var(--vscode-border);
 	border-radius: 6px;
 	background: #0f1720;
@@ -1283,6 +1285,7 @@ onBeforeUnmount(() => {
 	align-items: center;
 	justify-content: space-between;
 	gap: 10px;
+	flex-shrink: 0;
 }
 
 .wf-model3d-filemeta {
@@ -1494,5 +1497,13 @@ onBeforeUnmount(() => {
 	.wf-model3d-grid {
 		grid-template-columns: 1fr;
 	}
+}
+
+:deep(.wf-node-body) {
+	flex: 1 1 auto !important;
+	flex-direction: column;
+	align-items: stretch;
+	min-height: 0;
+	overflow: hidden;
 }
 </style>

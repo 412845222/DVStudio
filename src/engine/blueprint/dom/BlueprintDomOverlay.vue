@@ -38,8 +38,9 @@
             :status="node.status"
             :selected="node.selected"
             :accent-color="node.accentColor"
-            :legacy-resources="legacyResources"
+            :legacy-resources="legacyResourcesResolved"
             :chat-state="chatState"
+            :generation-tasks="nodeGenerationTasks"
             @edit="(id: string) => handleBusinessEdit(id)"
             @contextmenu="handleBusinessContextMenu"
             @update-text="onBusinessUpdateText"
@@ -74,7 +75,7 @@ import { MEDIA_TYPE_COLORS } from '../types';
 import type { LegacyResourceData } from '../types';
 import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolver';
 import { UpdateNodeTextCommand } from '../commands/UpdateNodeTextCommand';
-import type { WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types';
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
 
 interface PortRenderData {
   id: string;
@@ -122,12 +123,15 @@ const props = defineProps<{
   scene: any;
   showDebug?: boolean;
   chatState?: NodeChatState | null;
+  nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>;
+  legacyResources?: Record<string, LegacyResourceData>;
 }>();
 
 const overlayRef = ref<HTMLDivElement | null>(null);
 const transformLayerRef = ref<HTMLDivElement | null>(null);
 
-const legacyResources = computed<Record<string, LegacyResourceData>>(() => {
+const legacyResourcesResolved = computed<Record<string, LegacyResourceData>>(() => {
+  if (props.legacyResources) return props.legacyResources;
   if (!props.scene) return {};
   return props.scene.legacyResources || {};
 });
@@ -265,9 +269,18 @@ const transformLayerStyle = computed(() => {
 });
 
 function getNodeStatus(node: BlueprintNode): NodeStatus {
-  const status = (node.data as any)?.status;
-  if (status === 'running' || status === 'success' || status === 'error') {
-    return status;
+  const dataStatus = (node.data as any)?.status;
+  if (dataStatus === 'running' || dataStatus === 'success' || dataStatus === 'error') {
+    return dataStatus;
+  }
+  if (props.nodeGenerationTasks) {
+    const tasks = Object.values(props.nodeGenerationTasks);
+    const nodeTask = tasks.find(t => t.nodeId === node.id);
+    if (nodeTask) {
+      if (nodeTask.status === 'submitting' || nodeTask.status === 'running') return 'running';
+      if (nodeTask.status === 'error') return 'error';
+      if (nodeTask.status === 'completed') return 'success';
+    }
   }
   return 'idle';
 }

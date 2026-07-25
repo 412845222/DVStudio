@@ -5,6 +5,8 @@
       <BlueprintDomOverlay 
         :scene="scene" 
         :chat-state="chatState"
+        :node-generation-tasks="nodeGenerationTasks"
+        :legacy-resources="legacyResources"
         @node-dblclick="handleNodeDblClick"
         @node-contextmenu="handleNodeContextMenu"
         @node-copy="handleNodeCopy"
@@ -55,7 +57,8 @@ import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
 import type { NodeChatState } from './dom/NodeComponentResolver';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
 import { Vector2 } from '../graphbase/core/Vector2';
-import type { WorkflowNodeChatSubmitPayload } from '../../aiworkflow/types';
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../aiworkflow/types';
+import type { LegacyResourceData } from './types';
 
 interface Props {
   initialData?: LegacyBlueprintData;
@@ -63,6 +66,8 @@ interface Props {
   readonly?: boolean;
   theme?: 'light' | 'dark';
   chatState?: NodeChatState | null;
+  nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>;
+  legacyResources?: Record<string, LegacyResourceData>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -88,6 +93,7 @@ interface Emits {
   (e: 'nodeChatUpdateSelectedRefs', payload: { nodeId: string; selectedRefs: any[] }): void;
   (e: 'nodeChatRemoveParamRef', payload: { nodeId: string; refItem: any }): void;
   (e: 'nodeChatStop', nodeId: string): void;
+  (e: 'linkDropOnCanvas', payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -349,6 +355,7 @@ let unsubSelect: (() => void) | null = null;
 let unsubDeselect: (() => void) | null = null;
 let unsubViewport: (() => void) | null = null;
 let unsubAfterCommand: (() => void) | null = null;
+let unsubLinkDropOnCanvas: (() => void) | null = null;
 let onContainerDragOver: ((e: DragEvent) => void) | null = null;
 let onContainerDrop: ((e: DragEvent) => void) | null = null;
 
@@ -552,6 +559,39 @@ watch(() => props.initialData, (newData) => {
   });
 }, { deep: false });
 
+watch(() => props.nodeGenerationTasks, (tasks) => {
+  if (!scene.value || !tasks) return;
+  const s = scene.value;
+  const nodes = s.getAllBlueprintNodes();
+  let needsRedraw = false;
+  for (const node of nodes) {
+    const nodeId = node.id;
+    const nodeTasks = Object.values(tasks).filter(t => t.nodeId === nodeId);
+    const activeTask = nodeTasks.find(t => t.status === 'submitting' || t.status === 'running')
+      || nodeTasks.find(t => t.status === 'error')
+      || nodeTasks.find(t => t.status === 'completed')
+      || null;
+    let nextStatus: 'idle' | 'running' | 'success' | 'error' = 'idle';
+    if (activeTask) {
+      if (activeTask.status === 'submitting' || activeTask.status === 'running') nextStatus = 'running';
+      else if (activeTask.status === 'error') nextStatus = 'error';
+      else if (activeTask.status === 'completed') nextStatus = 'success';
+    }
+    if ((node.data as any).status !== nextStatus) {
+      (node.data as any).status = nextStatus;
+      needsRedraw = true;
+    }
+  }
+  if (needsRedraw) {
+    s.requestRedraw();
+  }
+}, { deep: true });
+
+watch(() => props.legacyResources, (res) => {
+  if (!scene.value || !res) return;
+  (scene.value as any)._legacyResources = res;
+}, { deep: false });
+
 onMounted(() => {
   if (!canvasRef.value || !containerRef.value) return;
 
@@ -595,6 +635,10 @@ onMounted(() => {
     ctxMenu.canUndo = s.canUndo();
     ctxMenu.canRedo = s.canRedo();
     emitChange();
+  });
+
+  unsubLinkDropOnCanvas = s.on.on('link-drop-on-canvas', (payload: unknown) => {
+    emit('linkDropOnCanvas', payload as { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string });
   });
 
   if (containerRef.value) {
@@ -655,6 +699,7 @@ onUnmounted(() => {
   if (unsubDeselect) unsubDeselect();
   if (unsubViewport) unsubViewport();
   if (unsubAfterCommand) unsubAfterCommand();
+  if (unsubLinkDropOnCanvas) unsubLinkDropOnCanvas();
   if (containerRef.value) {
     if (onContainerDragOver) containerRef.value.removeEventListener('dragover', onContainerDragOver);
     if (onContainerDrop) containerRef.value.removeEventListener('drop', onContainerDrop);

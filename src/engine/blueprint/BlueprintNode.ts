@@ -326,10 +326,19 @@ export class BlueprintNode extends Node {
 
   private getStatusColors() {
     if (this.data.status === 'error') return NODE_STATUS_COLORS.error;
+    if (this.data.status === 'success') return NODE_STATUS_COLORS.success;
     if (this.data.status === 'running') return NODE_STATUS_COLORS.running;
     if (this.selected) return NODE_STATUS_COLORS.selected;
     if (this.hovered) return NODE_STATUS_COLORS.hovered;
     return NODE_STATUS_COLORS.idle;
+  }
+
+  private _breathPhase = 0;
+
+  private getBreathIntensity(): number {
+    if (this.data.status !== 'running') return 0;
+    const t = (performance.now() / 1000) % 2;
+    return (Math.sin(t * Math.PI) - 1) / -2;
   }
 
   private hexToRgba(hex: string, alpha: number): string {
@@ -387,12 +396,15 @@ export class BlueprintNode extends Node {
     const h = this.data.height;
     const colors = this.getStatusColors();
     const invZoom = 1 / ctx.camera.zoom;
+    const breath = this.getBreathIntensity();
+    const isTaskActive = this.data.status === 'running' || this.data.status === 'error';
 
     c.save();
 
-    if (this.selected) {
+    if (this.selected || isTaskActive) {
+      const glowIntensity = this.selected ? 1 : (0.5 + breath * 0.5);
       c.shadowColor = colors.glow;
-      c.shadowBlur = 20;
+      c.shadowBlur = 16 + breath * 16;
       c.shadowOffsetX = 0;
       c.shadowOffsetY = 0;
     }
@@ -406,20 +418,42 @@ export class BlueprintNode extends Node {
     c.shadowColor = 'transparent';
     c.shadowBlur = 0;
 
+    const headerAccent = this.data.status === 'running'
+      ? `rgba(229, 181, 103, ${0.12 + breath * 0.12})`
+      : this.data.status === 'error'
+        ? 'rgba(207, 90, 70, 0.15)'
+        : this.data.status === 'success'
+          ? 'rgba(46, 164, 79, 0.15)'
+          : 'rgba(31, 157, 132, 0.15)';
+    const headerAccentBottom = this.data.status === 'running'
+      ? `rgba(229, 181, 103, ${0.04 + breath * 0.05})`
+      : this.data.status === 'error'
+        ? 'rgba(207, 90, 70, 0.05)'
+        : this.data.status === 'success'
+          ? 'rgba(46, 164, 79, 0.05)'
+          : 'rgba(31, 157, 132, 0.05)';
     const headerGradient = c.createLinearGradient(0, 0, 0, NODE_HEADER_HEIGHT);
-    headerGradient.addColorStop(0, 'rgba(31, 157, 132, 0.15)');
-    headerGradient.addColorStop(1, 'rgba(31, 157, 132, 0.05)');
+    headerGradient.addColorStop(0, headerAccent);
+    headerGradient.addColorStop(1, headerAccentBottom);
     c.fillStyle = headerGradient;
     c.fillRect(0, 0, w, NODE_HEADER_HEIGHT);
 
-    c.strokeStyle = this.hexToRgba(colors.border, 0.6);
-    c.lineWidth = NODE_BORDER_WIDTH;
+    const borderAlpha = this.data.status === 'running'
+      ? 0.45 + breath * 0.35
+      : this.data.status === 'error'
+        ? 0.6
+        : 0.6;
+    c.strokeStyle = this.hexToRgba(colors.border, borderAlpha);
+    c.lineWidth = NODE_BORDER_WIDTH + (this.data.status === 'running' ? breath * 1.5 : 0);
     c.strokeRect(0, 0, w, h);
 
-    this.drawLCorner(c, 0, 0, 1, 1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
-    this.drawLCorner(c, w, 0, -1, 1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
-    this.drawLCorner(c, 0, h, 1, -1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
-    this.drawLCorner(c, w, h, -1, -1, NODE_BRACKET_SIZE, colors.bracket, NODE_BORDER_WIDTH * 1.5);
+    const bracketAlpha = this.data.status === 'running'
+      ? 0.55 + breath * 0.45
+      : 1;
+    this.drawLCorner(c, 0, 0, 1, 1, NODE_BRACKET_SIZE, this.hexToRgba(colors.bracket, bracketAlpha), NODE_BORDER_WIDTH * (1.5 + breath));
+    this.drawLCorner(c, w, 0, -1, 1, NODE_BRACKET_SIZE, this.hexToRgba(colors.bracket, bracketAlpha), NODE_BORDER_WIDTH * (1.5 + breath));
+    this.drawLCorner(c, 0, h, 1, -1, NODE_BRACKET_SIZE, this.hexToRgba(colors.bracket, bracketAlpha), NODE_BORDER_WIDTH * (1.5 + breath));
+    this.drawLCorner(c, w, h, -1, -1, NODE_BRACKET_SIZE, this.hexToRgba(colors.bracket, bracketAlpha), NODE_BORDER_WIDTH * (1.5 + breath));
 
     if (this.selected) {
       this.drawParticleDots(c, 2, 2, w - 4, h - 4, this.hexToRgba(WF_PRIMARY, 0.3));
@@ -441,9 +475,20 @@ export class BlueprintNode extends Node {
 
     const statusDotX = w - NODE_INNER_PADDING - 8;
     const statusDotY = NODE_HEADER_HEIGHT / 2;
-    c.fillStyle = colors.badge;
-    const dotSize = 4;
-    c.fillRect(statusDotX - dotSize / 2, statusDotY - dotSize / 2, dotSize, dotSize);
+    if (this.data.status === 'running') {
+      const pulse = 0.4 + breath * 0.6;
+      c.save();
+      c.shadowColor = colors.badge;
+      c.shadowBlur = 4 + breath * 6;
+      c.fillStyle = this.hexToRgba(colors.bracket, pulse);
+      const dotSize = 4 + breath * 1;
+      c.fillRect(statusDotX - dotSize / 2, statusDotY - dotSize / 2, dotSize, dotSize);
+      c.restore();
+    } else {
+      c.fillStyle = colors.badge;
+      const dotSize = 4;
+      c.fillRect(statusDotX - dotSize / 2, statusDotY - dotSize / 2, dotSize, dotSize);
+    }
 
     this.renderPreviewArea(c, w, h, invZoom);
 

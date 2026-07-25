@@ -255,6 +255,15 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   box-shadow: none;
   border-radius: 0;
   overflow: visible;
+  pointer-events: auto;
+}
+
+.dom-node-wrapper.dnw-business-mode .dnw-border-base,
+.dom-node-wrapper.dnw-business-mode .dnw-border-glow,
+.dom-node-wrapper.dnw-business-mode .dnw-border-scan,
+.dom-node-wrapper.dnw-business-mode .dnw-header,
+.dom-node-wrapper.dnw-business-mode .dnw-content {
+  display: none;
 }
 
 .dom-node-wrapper.selected {

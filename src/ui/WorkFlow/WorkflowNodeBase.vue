@@ -8,8 +8,11 @@
 			{
 				'is-primary-selected': isPrimarySelectedResolved,
 				'is-secondary-selected': isSecondarySelectedResolved,
-				'wf-node-running': visualStatus === 'running',
-				'wf-node-error': visualStatus === 'error'
+				'wf-node-running': visualStatus === 'running' || taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-error': visualStatus === 'error' || taskVisualStatus === 'error',
+				'wf-node-task-running': taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-task-success': taskVisualStatus === 'success',
+				'wf-node-task-error': taskVisualStatus === 'error'
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
 			{ 'is-auto-height': autoHeight !== false },
@@ -436,6 +439,14 @@ const visualStatus = computed<'idle' | 'running' | 'error'>(() => {
 	const status = props.visualStatus
 	if (status === 'running' || status === 'error') return status
 	return 'idle'
+})
+
+const taskVisualStatus = computed<'idle' | 'submitting' | 'running' | 'success' | 'error'>(() => {
+	const task = props.nodeGenerationTask
+	if (!task) return 'idle'
+	if (task.status === 'completed') return 'success'
+	if (task.status === 'cancelled' || task.status === 'idle') return 'idle'
+	return task.status as 'submitting' | 'running' | 'error'
 })
 
 const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
@@ -1658,6 +1669,75 @@ defineExpose({
 	.wf-anchor-hit::after {
 		transition: none !important;
 		animation: none !important;
+	}
+}
+
+.wf-node-task-running {
+	animation: wf-node-breath 2s ease-in-out infinite;
+	border-color: color-mix(in srgb, var(--wf-primary) 60%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--wf-primary) 30%, transparent),
+		0 0 28px color-mix(in srgb, var(--wf-primary) 15%, transparent) !important;
+}
+
+.wf-node-task-success {
+	animation: wf-node-success-flash 0.8s ease-out;
+	border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+		0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+}
+
+.wf-node-task-error {
+	border-color: color-mix(in srgb, #e74c3c 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #e74c3c 30%, transparent),
+		0 0 24px color-mix(in srgb, #e74c3c 15%, transparent) !important;
+	animation: wf-node-error-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wf-node-breath {
+	0%, 100% {
+		border-color: color-mix(in srgb, var(--wf-primary) 40%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+			0 0 14px color-mix(in srgb, var(--wf-primary) 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, var(--wf-primary) 80%, transparent);
+		box-shadow:
+			0 0 16px color-mix(in srgb, var(--wf-primary) 40%, transparent),
+			0 0 36px color-mix(in srgb, var(--wf-primary) 20%, transparent);
+	}
+}
+
+@keyframes wf-node-success-flash {
+	0% {
+		border-color: #2ea44f !important;
+		box-shadow:
+			0 0 24px color-mix(in srgb, #2ea44f 60%, transparent),
+			0 0 48px color-mix(in srgb, #2ea44f 30%, transparent) !important;
+	}
+	100% {
+		border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+		box-shadow:
+			0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+			0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+	}
+}
+
+@keyframes wf-node-error-pulse {
+	0%, 100% {
+		border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, #e74c3c 15%, transparent),
+			0 0 14px color-mix(in srgb, #e74c3c 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, #e74c3c 90%, transparent);
+		box-shadow:
+			0 0 18px color-mix(in srgb, #e74c3c 45%, transparent),
+			0 0 36px color-mix(in srgb, #e74c3c 22%, transparent);
 	}
 }
 </style>
