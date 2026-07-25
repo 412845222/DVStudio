@@ -293,6 +293,7 @@ import type {
 import { useI18n } from '../../../i18n'
 import { useModel3DEditor } from '../../../composables/useModel3DEditor'
 import { formatBytes, formatSpeed } from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
+import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
@@ -451,8 +452,10 @@ const cacheSnapshot = (value: string) => {
 const settings = computed(() => props.model3dSettings ?? null)
 const previewSuspended = computed(() => props.previewSuspended === true)
 const effectiveModelUrl = computed(() => {
-	const assetUrl = String(settings.value?.modelAssetUrl ?? '').trim()
-	const primaryUrl = String(settings.value?.modelUrl ?? '').trim()
+	const rawAssetUrl = String(settings.value?.modelAssetUrl ?? '').trim()
+	const rawPrimaryUrl = String(settings.value?.modelUrl ?? '').trim()
+	const assetUrl = rawAssetUrl ? resolveWorkflowResourceUrl(rawAssetUrl) : ''
+	const primaryUrl = rawPrimaryUrl ? resolveWorkflowResourceUrl(rawPrimaryUrl) : ''
 	if (assetUrl && !isRemoteMeshyUrl(assetUrl)) return assetUrl
 	if (primaryUrl && !isRemoteMeshyUrl(primaryUrl)) return primaryUrl
 	return assetUrl || primaryUrl
@@ -612,15 +615,13 @@ const setPreviewProgress = (progress: number, label?: string) => {
 }
 const startPreview = () => {
 	const url = effectiveModelUrl.value
-	if (!url) {
-		errorMessage.value = t('nodes.model3d.noModelBound2')
-		return
-	}
 	internalPreviewRequestId.value += 1
-	activePreviewRequestId = internalPreviewRequestId.value
+	const newRequestId = internalPreviewRequestId.value
+	activePreviewRequestId = newRequestId
 	errorMessage.value = ''
 	setPreviewPhase('loading')
 	setPreviewProgress(0.12, t('nodes.model3d.progressInitRenderer'))
+	void startPreviewLoad(newRequestId)
 }
 const handlePreviewStart = () => {
 	emit('start-three-preview')
@@ -957,10 +958,16 @@ const startPreviewLoad = async (requestId: number) => {
 	emitPreviewProgress(0.3, t('nodes.model3d.progressPrepareModel'))
 	const url = effectiveModelUrl.value
 	if (!url) {
-		errorMessage.value = t('nodes.model3d.noModelBound2')
 		viewer.clearModel()
 		cachedModelSignature = ''
-		handlePreviewError()
+		errorMessage.value = ''
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+		if (activePreviewRequestId !== requestId || !viewer) return
+		saveViewState()
+		captureSnapshot()
+		emitPreviewProgress(0.98, t('nodes.model3d.progressSyncInteraction'))
+		handlePreviewReady()
+		nextTick(() => baseRef.value?.requestAutoResize())
 		return
 	}
 	const loaded = await loadModelIntoViewer(requestId)

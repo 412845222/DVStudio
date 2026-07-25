@@ -285,6 +285,7 @@
 					@upload-resource="onInspectorUploadResource"
 					@clear-resource="onInspectorClearResource"
 					@focus-node="onFocusNode"
+					@close="inspectorOpen = false"
 					@add-branch="onStoryBranchAdd"
 					@remove-branch="onStoryBranchRemove"
 					@update-branch="onStoryBranchUpdateFromInspector"
