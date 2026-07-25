@@ -254,7 +254,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   background: transparent;
   box-shadow: none;
   border-radius: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dom-node-wrapper.selected {
@@ -488,7 +488,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   opacity: 0;
   animation: dnw-content-fade 250ms ease-out forwards;
   animation-delay: 150ms;
-  overflow: hidden;
+  overflow: visible;
+  pointer-events: auto;
 }
 
 @keyframes dnw-content-fade {

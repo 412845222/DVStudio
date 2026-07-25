@@ -156,6 +156,7 @@
 					:backendLogOpen="blueprintLogPanelOpen"
 					:electronReady="isElectron()"
 					:show-repair-assets="true"
+					:node-generation-tasks="store.state.nodeGenerationTasksById"
 					@quick-add="onRailQuickAdd"
 					@toggle-node-library="onRailToggleNodeLibrary"
 					@toggle-backend-log="onRailToggleBackendLog"
@@ -1015,6 +1016,14 @@ const blueprintEditorData = computed<LegacyBlueprintData>(() => {
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let isUpdatingFromStore = false
 
+function resetIsUpdatingFromStore() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      isUpdatingFromStore = false
+    })
+  })
+}
+
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
   if (isUpdatingFromStore) return
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
@@ -1022,9 +1031,7 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
     const snapshot = legacyBlueprintToWorkflowState(data)
     isUpdatingFromStore = true
     store.commit('hydrateDraft', { snapshot })
-    nextTick(() => {
-      isUpdatingFromStore = false
-    })
+    resetIsUpdatingFromStore()
   }, 100)
 }
 
@@ -1050,9 +1057,7 @@ function onBlueprintEditorSelectionChange(nodeIds: string[]) {
       store.dispatch('closeNodeChatDialog')
     }
   }
-  nextTick(() => {
-    isUpdatingFromStore = false
-  })
+  resetIsUpdatingFromStore()
 }
 
 function onHostEditorReady(editor: any) {
@@ -1159,11 +1164,26 @@ function scheduleStoreSyncToEditor() {
       isUpdatingFromStore = true
       const data = workflowStateToLegacyBlueprint(store.state)
       blueprintHostRef.value.loadBlueprint(data)
-      nextTick(() => {
-        isUpdatingFromStore = false
-      })
+      resetIsUpdatingFromStore()
     }
   })
+}
+
+function patchBlueprintNodeData(nodeId: string) {
+  const editor = blueprintHostRef.value?.getInstance?.()
+  if (!editor) return
+  const scene = editor.getScene?.()
+  if (!scene) return
+  const node = scene.getBlueprintNode?.(nodeId)
+  if (!node) return
+  const storeNode = store.state.nodesById[nodeId]
+  if (!storeNode) return
+  const storeData = JSON.parse(JSON.stringify(storeNode))
+  Object.assign(node.data, storeData)
+  if (typeof node.updateSize === 'function') {
+    node.updateSize(storeNode.width, storeNode.height)
+  }
+  scene.requestRedraw?.()
 }
 
 watch(() => [
@@ -3184,6 +3204,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			bindTextResultToNode: (nodeId: string, text: string) => {
 				store.commit('setNodeTextValue', { nodeId, textValue: text })
+				patchBlueprintNodeData(nodeId)
 			},
 			bindImageResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]
@@ -3296,6 +3317,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			bindVideoResultToNode: async (nodeId: string, url: string) => {
@@ -3311,6 +3333,34 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				const pid = Number(currentProjectId.value ?? 0)
 				const sourceUrl = String(url || '').trim()
+
+				if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+					base.url = sourceUrl
+					try {
+						const u = new URL(sourceUrl)
+						const path = u.searchParams.get('path')
+						if (path) {
+							base.projectRelativePath = decodeURIComponent(path)
+						}
+					} catch {
+						// ignore
+					}
+					finalizeGeneratedResourceLocalUrl(base, pid)
+					base.url = String(base.url || '').trim()
+					if (
+						!base.url ||
+						!isStrictLocalRenderableUrl(base.url) ||
+						!isWorkflowLocalAssetUrl(base.url)
+					) {
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+						return false
+					}
+					store.commit('addResource', base)
+					store.commit('setNodeResource', { nodeId, resourceId })
+					patchBlueprintNodeData(nodeId)
+					return true
+				}
+
 				if (!(pid > 0) || !sourceUrl) {
 					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
 					return false
@@ -3378,6 +3428,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			bindModel3dResultToNode: async (nodeId: string, url: string, format?: string) => {
@@ -3414,6 +3465,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
+					patchBlueprintNodeData(nodeId)
 					return true
 				}
 
@@ -3477,6 +3529,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {

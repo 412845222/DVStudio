@@ -873,6 +873,23 @@ export class BlueprintEditorTool extends Tool {
     const sel = this.manager!.selection;
     const key = event.key.toLowerCase();
 
+    const activeEl = document.activeElement as HTMLElement | null;
+    const isInputFocused = !!(
+      activeEl &&
+      (activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'SELECT' ||
+        activeEl.isContentEditable ||
+        activeEl.closest('.bp-node-chat-dialog'))
+    );
+
+    if (isInputFocused && !this.editingTempInput && !this.editingSavedFrameId) {
+      if (key === 'escape' && !event.repeat) {
+        (activeEl as HTMLElement).blur();
+      }
+      return;
+    }
+
     if (this.editingTempInput || this.editingSavedFrameId) {
       if (key === 'enter' && !event.repeat) {
         event.preventDefault();

@@ -108,6 +108,7 @@
 					<path d="M5 7h6M5 9h4" />
 				</svg>
 				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.tasks') }}</span>
+				<span v-if="runningTaskCount > 0" class="aiwf-floating-rail__badge">{{ runningTaskCount }}</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 		</nav>
@@ -293,33 +294,57 @@
 					<div class="aiwf-floating-rail-popover__head">
 						<span>{{ t('aiworkflow.toolbar.taskManagement') }}</span>
 					</div>
+					<div v-if="recentGenerationTasks.length > 0" class="aiwf-task-list">
+						<div
+							v-for="task in recentGenerationTasks"
+							:key="task.id"
+							class="aiwf-task-list__item"
+							:class="`is-${task.status}`"
+						>
+							<div class="aiwf-task-list__item-head">
+								<span class="aiwf-task-list__type">{{ nodeTypeLabel(task.nodeType) }}</span>
+								<span class="aiwf-task-list__status">{{ taskStatusLabel(task.status) }}</span>
+							</div>
+							<div class="aiwf-task-list__prompt" :title="task.prompt || ''">
+								{{ task.prompt || task.statusText }}
+							</div>
+							<div v-if="task.status === 'running' || task.status === 'submitting'" class="aiwf-task-list__progress">
+								<div class="aiwf-task-list__progress-bar" :style="{ width: `${Math.min(100, task.progress || 0)}%` }"></div>
+							</div>
+							<div v-if="task.errorMessage" class="aiwf-task-list__error">{{ task.errorMessage }}</div>
+						</div>
+					</div>
+					<div v-else class="aiwf-floating-rail-popover__item is-disabled">
+						<span>暂无任务</span>
+					</div>
+					<div class="aiwf-floating-rail-popover__sep"></div>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('open-meshy-task-panel')"
 					>
-						<span>Meshy</span>
+						<span>Meshy 任务面板</span>
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('open-gemini-task-panel')"
 					>
-						<span>Gemini</span>
+						<span>Gemini 任务面板</span>
 					</button>
 					<button
 					class="aiwf-floating-rail-popover__item"
 					type="button"
 					@click="emitThenClose('open-ark-task-panel')"
 				>
-					<span>{{ t('tasks.ark.volcArk') }}</span>
+					<span>{{ t('tasks.ark.volcArk') }} 任务面板</span>
 				</button>
 				<button
 					class="aiwf-floating-rail-popover__item"
 					type="button"
 					@click="emitThenClose('open-tripo3d-task-panel')"
 				>
-					<span>Tripo3D</span>
+					<span>Tripo3D 任务面板</span>
 				</button>
 			</template>
 			</section>
@@ -457,7 +482,7 @@ import { useI18n } from '../../i18n'
 import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
-import type { WorkflowNode } from '../../aiworkflow/types'
+import type { WorkflowNode, WorkflowNodeGenerationTask } from '../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -477,6 +502,7 @@ const props = defineProps<{
 	nodeLibraryOpen?: boolean
 	backendLogOpen?: boolean
 	showRepairAssets?: boolean
+	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 }>()
 
 const emit = defineEmits<{
@@ -518,6 +544,40 @@ const resources = computed(() => (Array.isArray(props.resources) ? props.resourc
 const nodeLibraryOpen = computed(() => props.nodeLibraryOpen === true)
 const backendLogOpen = computed(() => props.backendLogOpen === true)
 const showRepairAssets = computed(() => props.showRepairAssets === true)
+
+const recentGenerationTasks = computed(() => {
+	const tasks = props.nodeGenerationTasks ?? {}
+	return Object.values(tasks)
+		.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+		.slice(0, 10)
+})
+
+const runningTaskCount = computed(() => {
+	return recentGenerationTasks.value.filter(t => t.status === 'running' || t.status === 'submitting').length
+})
+
+const nodeTypeLabel = (nodeType: string) => {
+	const map: Record<string, string> = {
+		text: '文本',
+		image: '图片',
+		video: '视频',
+		model3d: '3D模型',
+		blender: 'Blender'
+	}
+	return map[nodeType] || nodeType
+}
+
+const taskStatusLabel = (status: string) => {
+	const map: Record<string, string> = {
+		idle: '等待中',
+		submitting: '提交中',
+		running: '生成中',
+		completed: '已完成',
+		error: '失败',
+		cancelled: '已取消'
+	}
+	return map[status] || status
+}
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
 const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject'))
@@ -1034,6 +1094,111 @@ onBeforeUnmount(() => {
 	font-size: 9px;
 	line-height: 1;
 	opacity: 0.65;
+}
+
+.aiwf-floating-rail__badge {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 7px;
+	background: var(--theme-accent, #1f9d84);
+	color: #fff;
+	font-size: 9px;
+	font-weight: 600;
+	line-height: 14px;
+	text-align: center;
+	pointer-events: none;
+}
+
+/* ── Task List ── */
+.aiwf-task-list {
+	max-height: 240px;
+	overflow-y: auto;
+	padding: 2px 0;
+}
+
+.aiwf-task-list__item {
+	padding: 8px 10px;
+	margin-bottom: 4px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--theme-bg-secondary, #222) 80%, transparent);
+}
+
+.aiwf-task-list__item.is-completed {
+	opacity: 0.7;
+}
+
+.aiwf-task-list__item.is-error {
+	border-left: 2px solid #e5484d;
+}
+
+.aiwf-task-list__item.is-running,
+.aiwf-task-list__item.is-submitting {
+	border-left: 2px solid var(--theme-accent, #1f9d84);
+}
+
+.aiwf-task-list__item-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.aiwf-task-list__type {
+	font-size: 10px;
+	font-weight: 600;
+	padding: 1px 5px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent);
+	color: var(--theme-accent, #1f9d84);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.aiwf-task-list__status {
+	font-size: 10px;
+	opacity: 0.7;
+}
+
+.aiwf-task-list__prompt {
+	font-size: 11px;
+	line-height: 1.4;
+	opacity: 0.85;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 4px;
+}
+
+.aiwf-task-list__progress {
+	height: 3px;
+	background: color-mix(in srgb, var(--theme-bg-tertiary, #333) 80%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.aiwf-task-list__progress-bar {
+	height: 100%;
+	background: var(--theme-accent, #1f9d84);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+.aiwf-task-list__error {
+	font-size: 10px;
+	color: #e5484d;
+	margin-top: 4px;
+	opacity: 0.8;
+}
+
+.aiwf-floating-rail-popover__sep {
+	height: 1px;
+	margin: 4px 0;
+	background: color-mix(in srgb, var(--theme-border, #333) 60%, transparent);
 }
 
 /* ── Popover ── */

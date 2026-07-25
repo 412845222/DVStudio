@@ -51,6 +51,7 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
   return {
     schemaVersion: LEGACY_SCHEMA_VERSION,
     savedAt: Date.now(),
+    viewport: state.viewport ? { ...state.viewport } : { zoom: 1, panX: 0, panY: 0 },
     nodesById,
     nodeOrder: [...state.nodeOrder],
     edgesById,

@@ -46,7 +46,7 @@
 
 <script setup lang="ts">
 import { ref, shallowRef, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { BlueprintScene, BlueprintNode } from './index';
+import { BlueprintScene, BlueprintNode, Connection } from './index';
 import type { GraphPointerEvent } from '../graphbase/input/events';
 import type { LegacyBlueprintData, NodeStatus, BlueprintNodeData, BlueprintData } from './types';
 import { DEFAULT_NODE_SIZES } from './types';
@@ -368,8 +368,15 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
     if (props.readonly) return;
     const target = e.target as HTMLElement | null;
     const tag = (target?.tagName || '').toLowerCase();
-    const isEditable = tag === 'input' || tag === 'textarea' || (target as any)?.isContentEditable === true;
-    if (isEditable) return;
+    const isEditable = tag === 'input' || tag === 'textarea' || tag === 'select' ||
+      (target as any)?.isContentEditable === true ||
+      !!(target && target.closest('.bp-node-chat-dialog'));
+    if (isEditable) {
+      if (e.key === 'Escape' && !e.repeat && target) {
+        (target as HTMLElement).blur();
+      }
+      return;
+    }
 
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
@@ -379,6 +386,77 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
         e.preventDefault();
         e.stopImmediatePropagation();
         closeCtxMenu();
+      }
+      return;
+    }
+
+    if (ctrl && key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.undo();
+      s.updateAllConnectionEndpoints();
+      s.requestRedraw();
+      emitChange();
+      return;
+    }
+    if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.redo();
+      s.updateAllConnectionEndpoints();
+      s.requestRedraw();
+      emitChange();
+      return;
+    }
+    if (key === 'delete' || key === 'backspace') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const selected = s.selection.getSelection();
+      const nodeIdsToRemove: string[] = [];
+      const connIdsToRemove: string[] = [];
+      for (const item of selected) {
+        if (item instanceof BlueprintNode) {
+          nodeIdsToRemove.push(item.id);
+        } else if (item instanceof Connection) {
+          connIdsToRemove.push(item.id);
+        }
+      }
+      if (nodeIdsToRemove.length > 0 || connIdsToRemove.length > 0) {
+        s.executeCommand(new DeleteSelectionCommand(s as any, nodeIdsToRemove, connIdsToRemove));
+        s.selection.clearSelection();
+        s.updateAllConnectionEndpoints();
+        s.requestRedraw();
+        emitChange();
+      }
+      return;
+    }
+    if (ctrl && key === 'a') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      s.selection.selectAll();
+      s.requestRedraw();
+      return;
+    }
+    if (ctrl && key === 'c') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+      s.copySelection(selectedNodes);
+      return;
+    }
+    if (ctrl && key === 'v') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (s.hasClipboardData()) {
+        const newNodeIds = s.executePaste(50, 50);
+        s.selection.clearSelection();
+        for (const id of newNodeIds) {
+          const n = s.getBlueprintNode(id);
+          if (n) s.selection.select(n, true);
+        }
+        s.updateAllConnectionEndpoints();
+        s.requestRedraw();
+        emitChange();
       }
       return;
     }
@@ -393,6 +471,7 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
         if (newNodeIds.length > 0) {
           s.selection.setSelection(newNodeIds);
           s.requestRedraw();
+          emitChange();
         }
       }
       return;
@@ -409,6 +488,7 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
         s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
         s.selection.clearSelection();
         s.requestRedraw();
+        emitChange();
       }
       return;
     }
