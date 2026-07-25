@@ -151,8 +151,10 @@ export class BlueprintScene extends Scene {
 
   addBlueprintNode(data: BlueprintNodeData): BlueprintNode {
     const node = new BlueprintNode(data);
+    node.on.on('nodemoved', () => this.markConnectionEndpointsDirty());
     this._nodeMap.set(data.id, node);
     this.addChild(node);
+    this._connectionEndpointsDirty = true;
     this.requestRedraw();
     return node;
   }
@@ -174,6 +176,7 @@ export class BlueprintScene extends Scene {
     this._nodeMap.delete(nodeId);
     this.removeChild(node);
     node.dispose();
+    this._connectionEndpointsDirty = true;
     this.requestRedraw();
   }
 
@@ -197,6 +200,7 @@ export class BlueprintScene extends Scene {
     this._connectionMap.set(connection.id, connection);
     this.addChild(connection);
 
+    this._connectionEndpointsDirty = true;
     this.requestRedraw();
     return connection;
   }
@@ -229,6 +233,7 @@ export class BlueprintScene extends Scene {
     this._connectionMap.delete(connectionId);
     this.removeChild(conn);
     conn.dispose();
+    this._connectionEndpointsDirty = true;
     this.requestRedraw();
   }
 
@@ -412,6 +417,13 @@ export class BlueprintScene extends Scene {
     return cmd.getCreatedNodeIds();
   }
 
+  private _connectionEndpointsDirty: boolean = true;
+
+  markConnectionEndpointsDirty(): void {
+    this._connectionEndpointsDirty = true;
+    this.requestRedraw();
+  }
+
   updateAllConnectionEndpoints(): void {
     for (const conn of this._connectionMap.values()) {
       const fromNode = this._nodeMap.get(conn.data.fromNodeId);
@@ -428,6 +440,7 @@ export class BlueprintScene extends Scene {
         });
       }
     }
+    this._connectionEndpointsDirty = false;
   }
 
   screenToWorld(screen: Vector2): Vector2 {
@@ -469,7 +482,9 @@ export class BlueprintScene extends Scene {
   }
 
   render(ctx: RenderContext): void {
-    this.updateAllConnectionEndpoints();
+    if (this._connectionEndpointsDirty) {
+      this.updateAllConnectionEndpoints();
+    }
     super.render(ctx);
   }
 

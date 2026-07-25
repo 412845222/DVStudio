@@ -42,6 +42,16 @@ type ResourceRelatedProps = {
 
 export type ResolvedWorkflowNodeProps = WorkflowNodeBaseProps & ResourceRelatedProps & Record<string, unknown>;
 
+export type NodeChatState = {
+  visible: boolean;
+  nodeId: string | null;
+  nodeType: string | null;
+  draft: string;
+  submitting: boolean;
+  params: Record<string, any>;
+  selectedRefs: any[];
+};
+
 const NODE_COMPONENT_MAP: Record<string, () => Promise<Component>> = {
   'text': () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowTextNode.vue'),
   'text-merge': () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowTextMergeNode.vue'),
@@ -108,9 +118,12 @@ export class NodeComponentResolver {
     node: BlueprintNode,
     zoom: number = 1,
     legacyResources: Record<string, LegacyResourceData> = {},
-    isSelected: boolean = false
+    isSelected: boolean = false,
+    chatState?: NodeChatState | null
   ): ResolvedWorkflowNodeProps {
     const data = node.data;
+    const isChatActive = chatState && chatState.visible && chatState.nodeId === data.id;
+
     const baseProps: WorkflowNodeBaseProps = {
       nodeId: data.id,
       title: data.title,
@@ -133,6 +146,15 @@ export class NodeComponentResolver {
     };
 
     const resourceProps = this.resolveResourceProps(data, legacyResources);
+
+    const chatProps: Record<string, unknown> = {
+      nodeChatVisible: !!isChatActive,
+      nodeChatNodeType: isChatActive ? (chatState!.nodeType || data.type) : data.type,
+      nodeChatSubmitting: isChatActive ? chatState!.submitting : false,
+      nodeChatDraft: isChatActive ? (chatState!.draft || '') : '',
+      nodeChatParams: isChatActive ? (chatState!.params || {}) : {},
+      nodeChatSelectedRefs: isChatActive ? (chatState!.selectedRefs || []) : [],
+    };
 
     const typeSpecificProps: Record<string, unknown> = {};
     switch (data.type) {
@@ -183,9 +205,16 @@ export class NodeComponentResolver {
     if (data.nodeChatParams != null) typeSpecificProps.nodeChatParams = data.nodeChatParams;
     if (data.nodeChatSelectedRefs != null) typeSpecificProps.nodeChatSelectedRefs = data.nodeChatSelectedRefs;
 
+    if (isChatActive) {
+      typeSpecificProps.nodeChatDraft = chatState!.draft;
+      typeSpecificProps.nodeChatParams = chatState!.params;
+      typeSpecificProps.nodeChatSelectedRefs = chatState!.selectedRefs;
+    }
+
     return {
       ...baseProps,
       ...resourceProps,
+      ...chatProps,
       ...typeSpecificProps,
     };
   }

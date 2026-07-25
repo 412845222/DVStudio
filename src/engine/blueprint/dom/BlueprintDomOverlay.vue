@@ -39,6 +39,7 @@
             :selected="node.selected"
             :accent-color="node.accentColor"
             :legacy-resources="legacyResources"
+            :chat-state="chatState"
             @edit="(id: string) => handleBusinessEdit(id)"
             @contextmenu="handleBusinessContextMenu"
             @update-text="onBusinessUpdateText"
@@ -49,6 +50,12 @@
             @copy="onBusinessCopy"
             @delete="onBusinessDelete"
             @refresh="onBusinessRefresh"
+            @node-chat-submit="onBusinessChatSubmit"
+            @node-chat-close="onBusinessChatClose"
+            @node-chat-update-draft="onBusinessChatUpdateDraft"
+            @node-chat-update-params="onBusinessChatUpdateParams"
+            @node-chat-update-selected-refs="onBusinessChatUpdateSelectedRefs"
+            @node-chat-remove-param-ref="onBusinessChatRemoveParamRef"
           />
         </DomNodeWrapper>
       </TransitionGroup>
@@ -64,8 +71,9 @@ import { BlueprintNode } from '../index';
 import { Rect } from '../../graphbase/core/Rect';
 import { MEDIA_TYPE_COLORS } from '../types';
 import type { LegacyResourceData } from '../types';
-import { NodeComponentResolver } from './NodeComponentResolver';
+import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolver';
 import { UpdateNodeTextCommand } from '../commands/UpdateNodeTextCommand';
+import type { WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types';
 
 interface PortRenderData {
   id: string;
@@ -100,11 +108,18 @@ const emit = defineEmits<{
   (e: 'node-copy', nodeId: string): void;
   (e: 'node-delete', nodeId: string): void;
   (e: 'node-refresh', nodeId: string): void;
+  (e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void;
+  (e: 'node-chat-close', nodeId: string): void;
+  (e: 'node-chat-update-draft', payload: { nodeId: string; draft: string }): void;
+  (e: 'node-chat-update-params', payload: { nodeId: string; params: Record<string, any> }): void;
+  (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
+  (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
 }>();
 
 const props = defineProps<{
   scene: any;
   showDebug?: boolean;
+  chatState?: NodeChatState | null;
 }>();
 
 const overlayRef = ref<HTMLDivElement | null>(null);
@@ -183,6 +198,30 @@ function onBusinessRefresh(nodeId: string) {
   emit('node-refresh', nodeId);
 }
 
+function onBusinessChatSubmit(payload: WorkflowNodeChatSubmitPayload) {
+  emit('node-chat-submit', payload);
+}
+
+function onBusinessChatClose(nodeId: string) {
+  emit('node-chat-close', nodeId);
+}
+
+function onBusinessChatUpdateDraft(payload: { nodeId: string; draft: string }) {
+  emit('node-chat-update-draft', payload);
+}
+
+function onBusinessChatUpdateParams(payload: { nodeId: string; params: Record<string, any> }) {
+  emit('node-chat-update-params', payload);
+}
+
+function onBusinessChatUpdateSelectedRefs(payload: { nodeId: string; selectedRefs: any[] }) {
+  emit('node-chat-update-selected-refs', payload);
+}
+
+function onBusinessChatRemoveParamRef(payload: { nodeId: string; refItem: any }) {
+  emit('node-chat-remove-param-ref', payload);
+}
+
 const viewportSize = ref({ width: 800, height: 600 });
 const cameraState = ref({ x: 0, y: 0, zoom: 1 });
 const domNodeRenders = ref<DomNodeRenderData[]>([]);
@@ -200,7 +239,7 @@ const overlayStyle = computed(() => ({
   height: '100%',
   pointerEvents: 'none' as const,
   zIndex: 10,
-  overflow: 'hidden' as const,
+  overflow: 'visible' as const,
 }));
 
 const transformLayerStyle = computed(() => {
@@ -215,6 +254,7 @@ const transformLayerStyle = computed(() => {
     transformOrigin: '0 0',
     transform: `translate(${width / 2}px, ${height / 2}px) scale(${zoom}) translate(${-x}px, ${-y}px)`,
     willChange: 'transform',
+    overflow: 'visible' as const,
   };
 });
 

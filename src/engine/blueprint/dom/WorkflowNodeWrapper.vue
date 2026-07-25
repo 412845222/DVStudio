@@ -17,16 +17,23 @@
       @copy="onCopy"
       @delete="onDelete"
       @refresh="onRefresh"
+      @node-chat-submit="onChatSubmit"
+      @node-chat-close="onChatClose"
+      @node-chat-update-draft="onChatUpdateDraft"
+      @node-chat-update-params="onChatUpdateParams"
+      @node-chat-update-selected-refs="onChatUpdateSelectedRefs"
+      @node-chat-remove-param-ref="onChatRemoveParamRef"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { NodeComponentResolver } from './NodeComponentResolver';
+import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolver';
 import type { BlueprintNode } from '../BlueprintNode';
 import type { LegacyResourceData } from '../types';
 import type { NodeStatus } from './DomNodeWrapper.vue';
+import type { WorkflowNodeChatSubmitPayload } from '../../../aiworkflow/types';
 
 const props = defineProps<{
   node: BlueprintNode;
@@ -37,6 +44,7 @@ const props = defineProps<{
   selected: boolean;
   accentColor: string;
   legacyResources: Record<string, LegacyResourceData>;
+  chatState?: NodeChatState | null;
 }>();
 
 const emit = defineEmits<{
@@ -50,6 +58,12 @@ const emit = defineEmits<{
   (e: 'copy', nodeId: string): void;
   (e: 'delete', nodeId: string): void;
   (e: 'refresh', nodeId: string): void;
+  (e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void;
+  (e: 'node-chat-close', nodeId: string): void;
+  (e: 'node-chat-update-draft', payload: { nodeId: string; draft: string }): void;
+  (e: 'node-chat-update-params', payload: { nodeId: string; params: Record<string, any> }): void;
+  (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
+  (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
 }>();
 
 const businessComponent = computed(() => {
@@ -61,7 +75,8 @@ const resolvedProps = computed(() => {
     props.node,
     props.zoom,
     props.legacyResources,
-    props.selected
+    props.selected,
+    props.chatState
   );
 });
 
@@ -93,7 +108,7 @@ const wrapperStyle = computed(() => ({
   width: '100%',
   height: '100%',
   position: 'relative' as const,
-  overflow: 'hidden',
+  overflow: 'visible',
   zIndex: 1,
 }));
 
@@ -149,6 +164,30 @@ const onDelete = () => {
 const onRefresh = () => {
   emit('refresh', props.node.id);
 };
+
+const onChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
+  emit('node-chat-submit', payload);
+};
+
+const onChatClose = () => {
+  emit('node-chat-close', props.node.id);
+};
+
+const onChatUpdateDraft = (draft: string) => {
+  emit('node-chat-update-draft', { nodeId: props.node.id, draft });
+};
+
+const onChatUpdateParams = (params: Record<string, any>) => {
+  emit('node-chat-update-params', { nodeId: props.node.id, params });
+};
+
+const onChatUpdateSelectedRefs = (selectedRefs: any[]) => {
+  emit('node-chat-update-selected-refs', { nodeId: props.node.id, selectedRefs });
+};
+
+const onChatRemoveParamRef = (refItem: any) => {
+  emit('node-chat-remove-param-ref', { nodeId: props.node.id, refItem });
+};
 </script>
 
 <style scoped>
@@ -172,7 +211,7 @@ const onRefresh = () => {
   margin: 0 !important;
   pointer-events: none !important;
   cursor: default !important;
-  overflow: hidden;
+  overflow: visible !important;
   box-sizing: border-box !important;
 }
 
@@ -226,6 +265,10 @@ const onRefresh = () => {
 .workflow-node-wrapper :deep(.wf-inline-btn),
 .workflow-node-wrapper :deep(.wf-quick-action),
 .workflow-node-wrapper :deep(.wf-file-drop) {
+  pointer-events: auto !important;
+}
+
+.workflow-node-wrapper :deep(.bp-node-chat-dialog) {
   pointer-events: auto !important;
 }
 </style>

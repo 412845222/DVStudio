@@ -13,13 +13,13 @@
 		</div>
 		<!-- 蓝图节点容器 -->
 		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
-			<!-- 新版BlueprintEditor (Canvas+DOM混合渲染) -->
-			<BlueprintEditor
-				ref="blueprintEditorRef"
-				class="aiwf-canvas"
+			<!-- AIWorkflowBlueprintHost (架构分层，隔离BlueprintEditor集成) -->
+			<AIWorkflowBlueprintHost
+				ref="blueprintHostRef"
 				:initial-data="blueprintEditorData"
 				:readonly="false"
 				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
+				:chat-state="chatStateForHost"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
 				@viewport-change="onBlueprintEditorViewportChange"
@@ -28,6 +28,12 @@
 				@canvas-context-menu="onBlueprintEditorCanvasContextMenu"
 				@canvas-double-click="onBlueprintEditorCanvasDblClick"
 				@canvas-drop="onBlueprintEditorDrop"
+				@node-chat-submit="onHostNodeChatSubmit"
+				@node-chat-close="onHostNodeChatClose"
+				@node-chat-update-draft="onHostNodeChatUpdateDraft"
+				@node-chat-update-params="onHostNodeChatUpdateParams"
+				@node-chat-update-selected-refs="onHostNodeChatUpdateSelectedRefs"
+				@node-chat-remove-param-ref="onHostNodeChatRemoveParamRef"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -48,288 +54,7 @@
 					@upload-file="onNodeSearchMenuUploadFile"
 					@close="closeNodeSearchMenu"
 				/>
-			</BlueprintEditor>
-
-			<!-- 旧版BlueprintCanvas (注释保留以便回滚)
-			<BlueprintCanvas
-				class="aiwf-canvas"
-				:viewport="viewport"
-				:selection-frame="{
-					visible: selectionFrame.visible.value,
-					worldRect: selectionFrame.worldRect.value,
-					label: selectionFrame.label.value,
-					nodeCount: selectionFrame.nodeCount.value,
-					nodeIds: selectionFrame.nodeIds.value
-				}"
-				:saved-frames="selectionFrame.savedFrames.value"
-				:nodes-by-id="store.state.nodesById"
-				@update:viewport="onViewportUpdate"
-				@canvas-contextmenu="onCanvasContextMenu"
-				@canvas-dblclick="onCanvasDblClick"
-				@box-select="onBoxSelect"
-				@canvas-panning-start="onCanvasPanningStart"
-				@canvas-panning-end="onCanvasPanningEnd"
-				@pointerdown="onCanvasPointerDown"
-				@dragover.prevent="onCanvasDragOver"
-				@drop.prevent="onCanvasDrop"
-				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
-				@selection-frame-delete="onDeleteSelectionFrame"
-				@selection-frame-save-template="onSaveSelectionAsTemplate"
-				@selection-frame-drag-start="onSelectionFrameDragStart"
-				@selection-frame-drag="onSelectionFrameDrag"
-				@selection-frame-drag-end="onSelectionFrameDragEnd"
-				@selection-frame-delete-selected="onDeleteSelectedNodes"
-				v-slot="vp"
-			>
-				<NodeCanvasLayer
-					ref="nodeCanvasLayerRef"
-					:nodes="canvasNodeEntries"
-					:viewport="viewport"
-					:motion-active="viewportMotionActive"
-					:screenshot-pool-provider="canvasScreenshotPoolProvider"
-					:theme="themeStore.state.mode"
-					@node-click="onCanvasNodeClick"
-				/>
-
-				<CanvasAnchorLayer
-					:nodes="canvasNodeEntries"
-					:viewport="viewport"
-					:selected-node-ids="selectedNodeIds"
-					:hide-visuals="true"
-					:motion-active="viewportMotionActive"
-					@start-link="onStartLink($event, vp.screenToWorld)"
-					@end-link="onEndLink"
-				/>
-
-				<WorkflowEdgeLayer
-					:edges="asyncEdgeRenders"
-					:selectedEdgeId="selectedEdgeId"
-					:draft="asyncDraftRender"
-					:motionActive="viewportMotionActive"
-					:zoom="viewport.zoom"
-					:anchors="canvasAnchorRenderList"
-					@select-edge="onSelectEdge"
-					@anchor-pointerdown="onCanvasAnchorPointerDown"
-				/>
-
-				<div
-					v-for="node in safeVisibleRenderNodes"
-					:key="node.id"
-					class="aiwf-node-host"
-					:ref="
-						(el: any) => {
-							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
-							else nodeHostRefs.delete(node.id)
-						}
-					"
-				>
-					<component
-						v-if="getNodeRenderMode(node.id) === 'full'"
-						:is="nodeComponent(node)"
-						:ref="setWorkflowNodeComponentRef(node.id, node.type)"
-						:alias="node.alias"
-						:height="node.height"
-						:sizeCustomized="node.sizeCustomized"
-						:autoHeight="node.type !== 'text' && node.type !== 'blender'"
-						:hoverInputAnchorId="hoverInputAnchorId(node.id)"
-						:hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
-						:anchor-compatibility="anchorCompatibility"
-						:is-linking="isLinking"
-						:inputs="node.inputs"
-						:isWarmupRender="false"
-						:nodeId="node.id"
-						:nodeType="node.type"
-						:outputs="node.outputs"
-						:selected="selectedNodeIds.includes(node.id)"
-						:isPrimarySelected="selectedNodeIds.length === 1 && selectedNodeId === node.id"
-						:isSecondarySelected="
-							selectedNodeIds.length === 1 &&
-							selectedNodeIds.includes(node.id) &&
-							selectedNodeId !== node.id
-						"
-						:visualStatus="resolveNodeRuntimeVisualState(node)"
-						:node-chat-visible="
-							nodeChatDialog.visible &&
-							nodeChatDialog.nodeId === node.id &&
-							selectedNodeId === node.id
-						"
-						:node-chat-node-type="
-							nodeChatDialog.nodeId === node.id ? nodeChatDialog.nodeType : null
-						"
-						:node-chat-draft="nodeChatDialog.nodeId === node.id ? nodeChatDialog.draft : ''"
-						:node-chat-submitting="
-							nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false
-						"
-						:node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
-						:node-chat-selected-refs="nodeChatDialog.nodeId === node.id ? nodeChatDialog.selectedRefs : []"
-						:node-chat-node-width="node.width"
-						:node-generation-task="latestGenerationTaskByNodeId(node.id)"
-						:style="
-							nodeStyle(
-								vp.worldToScreen,
-								node.worldX,
-								node.worldY,
-								vp.zoom,
-								node.width,
-								node.height
-							)
-						"
-						:subtitle="node.subtitle"
-						:title="node.title"
-						:width="node.width"
-						:worldX="node.worldX"
-						:worldY="node.worldY"
-						:zoom="vp.zoom"
-						v-bind="nodeExtraProps(node)"
-						@add-branch="onStoryBranchAdd(node.id)"
-						@add-merge-item="onTextMergeItemAdd(node.id)"
-						@await-unreal-connection="onNodeAwaitUnrealConnection(node.id)"
-						@cancel-comfyui="onComfyUICancel(node.id)"
-						@cancel-scene-understanding="onNodeCancelSceneUnderstanding(node.id)"
-						@clear-resource="onNodeClearResource(node.id)"
-						@clear-scene-layout-model-binding="
-							onNodeClearSceneLayoutModelBinding(node.id, $event.objectId)
-						"
-						@update-model-bindings="onNodeUpdateSceneLayoutModelBindings(node.id, $event)"
-						@connect-comfyui="onComfyUIConnect(node.id, $event)"
-						@copy="() => onNodeCopy(node.id)"
-						@clear-node="() => onNodeClear(node.id)"
-						@delete="() => onNodeDelete(node.id)"
-						@delete-meshy-task="onNodeDeleteMeshyTask(node.id)"
-						@detect-editor="onNodeDetectEditor(node.id)"
-						@check-plugin="onNodeCheckPlugin(node.id, $event)"
-						@install-plugin="onNodeInstallPlugin(node.id, $event)"
-						@set-asset-root-path="onNodeSetAssetRootPath(node.id, $event)"
-						@disconnect-unreal="onNodeDisconnect(node.id)"
-						@end-link="onEndLink"
-						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
-						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
-						@generate-meshy="onNodeGenerateMeshy(node.id)"
-						@media-ready="onNodeMediaReady(node.id)"
-						@invalidate-screenshot="onNodeInvalidateScreenshot(node.id)"
-						@move-merge-item="onTextMergeItemMove(node.id, $event)"
-						@preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
-						@preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
-						@pull-meshy-output="onNodePullMeshyOutput(node.id)"
-						@refresh="() => onNodeRefresh(node.id)"
-						@refresh-meshy-task="onNodeRefreshMeshyTask(node.id)"
-						@remove-branch="onStoryBranchRemove(node.id, $event)"
-						@remove-merge-item="onTextMergeItemRemove(node.id, $event)"
-						@request-scene-models="onNodeRequestSceneModels(node.id)"
-						@resize="onNodeResize(node.id, $event)"
-						@auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
-						@restart-meshy-task="onNodeRestartMeshyTask(node.id)"
-						@run-comfyui="onComfyUIRun(node.id)"
-						@refresh-history-check="onRefreshHistoryCheck(node.id)"
-						@clear-history-cache="onClearHistoryCache(node.id)"
-						@run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
-						@run-scene-decompose="onNodeRunSceneDecompose(node.id)"
-						@run-scene-layout="onNodeRunSceneLayout(node.id)"
-						@run-scene-understanding="onNodeRunSceneUnderstanding(node.id)"
-						@screenshot="onVideoScreenshot(node.id, $event)"
-						@capture-preview="onVideoCapturePreview(node.id, $event)"
-						@select="onSelectNode"
-						@select-workflow="onComfyUISelectWorkflow(node.id, $event)"
-						@set-selected-placeholder-output="
-							onNodeSceneLayoutSelectedPlaceholderOutput(node.id, $event)
-						"
-						@set-type="onNodeSetType(node.id, $event)"
-						@open-node-library="onNodeOpenLibrary(node.id)"
-						@start-link="onStartLink($event, vp.screenToWorld)"
-						@stop-meshy-task="onNodeStopMeshyTask(node.id)"
-						@start-three-preview="onNodeStartThreePreview(node.id)"
-						@retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
-						@open-meshy-task-panel="onOpenMeshyTaskPanel"
-						@open-ark-task-panel="onOpenArkTaskPanel"
-						@open-gemini-task-panel="onOpenGeminiTaskPanel"
-						@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
-						@generate-tripo3d="onNodeGenerateTripo3D(node.id)"
-						@refresh-tripo3d-task="onNodeRefreshTripo3DTask(node.id)"
-						@pull-tripo3d-output="onNodePullTripo3DOutput(node.id)"
-						@stop-tripo3d-task="onNodeStopTripo3DTask(node.id)"
-						@delete-tripo3d-task="onNodeDeleteTripo3DTask(node.id)"
-						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
-						@three-preview-ready="onNodeThreePreviewReady(node.id)"
-						@three-preview-error="onNodeThreePreviewError(node.id)"
-						@node-chat-update-draft="onNodeChatDraftUpdate"
-						@node-chat-update-params="onNodeChatParamsUpdate"
-						@node-chat-update-selected-refs="onNodeChatSelectedRefsUpdate"
-						@node-chat-close="onNodeChatClose"
-						@node-chat-submit="onNodeChatSubmit"
-						@node-chat-stop="onNodeChatStop"
-						@node-chat-remove-param-ref="onNodeChatRemoveParamRef"
-						@update-branch="onStoryBranchUpdate(node.id, $event)"
-						@update-comfyui-settings="onComfyUISettingsUpdate(node.id, $event)"
-						@update-hide-placeholder-cubes="
-							onNodeSceneLayoutHidePlaceholdersUpdate(node.id, $event)
-						"
-						@update-image-settings="onNodeImageSettingsUpdate(node.id, $event)"
-						@update-layout-items="onNodeSceneLayoutItemsUpdate(node.id, $event)"
-						@update-lighting-controls="onNodeSceneLayoutLightingControlsUpdate(node.id, $event)"
-						@update-lighting-debug="onNodeSceneLayoutLightingDebugUpdate(node.id, $event)"
-						@update-lighting-preview="onNodeSceneLayoutLightingPreviewUpdate(node.id, $event)"
-						@update-meshy-settings="onNodeMeshySettingsUpdate(node.id, $event)"
-						@update-model3d-settings="onNodeModel3DSettingsUpdate(node.id, $event)"
-						@update-preview-mode="onNodeSceneLayoutPreviewModeUpdate(node.id, $event)"
-						@update-preview-settings="onStoryPreviewSettingsUpdate(node.id, $event)"
-						@update-rotate-output="onRotateImageOutput(node.id, $event)"
-						@update-scene-understanding-settings="
-							onNodeSceneUnderstandingSettingsUpdate(node.id, $event)
-						"
-						@update-selected-layout-item="onNodeSceneLayoutSelectedItemUpdate(node.id, $event)"
-						@update-text-value="onNodeTextValueUpdate(node.id, $event)"
-						@update-video-settings="onNodeVideoSettingsUpdate(node.id, $event)"
-						@update:world-x="onNodeX(node.id, $event)"
-						@update:world-y="onNodeY(node.id, $event)"
-						@update:world-position="onNodeDragPosition(node.id, $event)"
-						@upload-model-file="onNodeUploadModel3DFile(node.id, $event.file)"
-						@upload-resource="onNodeUploadResource(node.id, $event.file, $event.kind)"
-						@upload-scene-layout-model-file="
-							onNodeUploadSceneLayoutModelFile(node.id, $event.file, $event.objectId)
-						"
-						@blender-connect="onBlenderConnect(node.id, $event)"
-						@blender-disconnect="onBlenderDisconnect(node.id)"
-						@blender-mount-tools="onBlenderMountTools(node.id)"
-						@blender-status-click="onBlenderStatusCheck(node.id, $event)"
-						@blender-clear-chat="onBlenderClearChat(node.id)"
-						@blender-compress-context="onBlenderCompressContext(node.id)"
-						@blender-open-workspace="onBlenderOpenWorkspace(node.id)"
-						@blender-init-workspace="onBlenderInitWorkspace(node.id)"
-						@blender-import="onBlenderImport(node.id)"
-						@update-blender-settings="onBlenderSettingsUpdate(node.id, $event)"
-					/>
-				</div>
-
-				<ContextMenu
-					:visible="contextMenu.open"
-					:x="contextMenu.x"
-					:y="contextMenu.y"
-					:sections="contextMenuSections"
-					@select="onContextMenuSelect"
-				/>
-
-				<DwebCanvasNodeSearchMenu
-					:visible="nodeSearchMenuVisible"
-					:items="i18nCatalogItems"
-					:categories="i18nCategories"
-					:top-categories="i18nTopCategories"
-					:special-groups="i18nSpecialGroups"
-					@select="onNodeSearchMenuSelect"
-					@upload-file="onNodeSearchMenuUploadFile"
-					@close="closeNodeSearchMenu"
-				/>
-
-				<WorkflowTagEditor
-					:visible="tagEditor.visible.value"
-					:screenX="tagEditor.screenX.value"
-					:screenY="tagEditor.screenY.value"
-					:initialLabel="tagEditor.initialLabel.value"
-					@commit="tagEditor.commitTag($event)"
-					@cancel="tagEditor.closeEditor()"
-					@update:visible="tagEditor.visible.value = $event"
-				/>
-			</BlueprintCanvas>
-			-->
+			</AIWorkflowBlueprintHost>
 		</div>
 
 		<!-- UI按钮容器 -->
@@ -836,14 +561,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
-import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
-import BlueprintEditor from '../../engine/blueprint/BlueprintEditor.vue'
+import AIWorkflowBlueprintHost from './components/AIWorkflowBlueprintHost.vue'
 import type { LegacyBlueprintData } from '../../engine/blueprint/types'
 import { workflowStateToLegacyBlueprint, legacyBlueprintToWorkflowState } from './blueprint-bridge/workflowStateAdapter'
-import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
-import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
-import CanvasAnchorLayer from './components/CanvasAnchorLayer.vue'
 import WorkflowMinimap from './components/WorkflowMinimap.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
@@ -1001,21 +722,18 @@ import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeV
 import { useAIWorkflowCanvasInteraction } from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
 import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
+import { isNodeChatTypeSupported } from '../../ui/BluePrint/node-dialog/nodeChatConfig'
 import {
 	createNodeScreenshotPool,
 	invalidateDocumentStyleCache,
 	SCREENSHOT_PADDING,
 	type ScreenshotCacheEntry,
-	type ScreenshotPriority,
-	type VisibleNodeEntry
+	type ScreenshotPriority
 } from './node-screenshot'
 // Canvas2D渲染模块
 import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCanvasScreenshot'
 import {
-	loadAllScreenshotsForBlueprint,
-	saveScreenshotToDisk,
-	cleanupOldScreenshots,
-	makeDiskCacheKey
+	saveScreenshotToDisk
 } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
@@ -1120,8 +838,6 @@ import {
 import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
 import { useGlobalTaskBridge } from '../../composables/useGlobalTaskBridge'
 import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
-import WorkflowTagEditor from '../../ui/WorkFlow/selection/WorkflowTagEditor.vue'
-import SelectionFrameOverlay from '../../ui/WorkFlow/selection/SelectionFrameOverlay.vue'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
@@ -1277,52 +993,56 @@ const {
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
-// ========== 新版BlueprintEditor集成 ==========
-const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
-const isUpdatingFromStore = ref(false)
-const editorInitialized = ref(false)
+// ========== AIWorkflowBlueprintHost集成 ==========
+const blueprintHostRef = ref<InstanceType<typeof AIWorkflowBlueprintHost> | null>(null)
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
   return workflowStateToLegacyBlueprint(store.state)
 })
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let isUpdatingFromStore = false
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
-  if (isUpdatingFromStore.value) return
+  if (isUpdatingFromStore) return
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
   syncDebounceTimer = setTimeout(() => {
     const snapshot = legacyBlueprintToWorkflowState(data)
-    isUpdatingFromStore.value = true
+    isUpdatingFromStore = true
     store.commit('hydrateDraft', { snapshot })
     nextTick(() => {
-      isUpdatingFromStore.value = false
+      isUpdatingFromStore = false
     })
   }, 100)
 }
 
 function onBlueprintEditorSelectionChange(nodeIds: string[]) {
-  if (isUpdatingFromStore.value) return
-  isUpdatingFromStore.value = true
+  if (isUpdatingFromStore) return
+  isUpdatingFromStore = true
   if (nodeIds.length > 0) {
     store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
   } else {
     store.commit('clearSelection')
   }
   nextTick(() => {
-    isUpdatingFromStore.value = false
+    isUpdatingFromStore = false
   })
 }
 
 function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
-  if (isUpdatingFromStore.value) return
-  isUpdatingFromStore.value = true
+  if (isUpdatingFromStore) return
+  isUpdatingFromStore = true
   store.commit('setViewport', { zoom, panX, panY })
-  isUpdatingFromStore.value = false
+  isUpdatingFromStore = false
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
   store.commit('setSelectedNode', { nodeId })
+  const node = store.state.nodesById[nodeId]
+  if (node && isNodeChatTypeSupported(node.type)) {
+    store.dispatch('openNodeChatDialog', { nodeId, nodeType: node.type as any })
+    return
+  }
   if (_openInspectorFn) {
     _openInspectorFn(true)
   }
@@ -1402,13 +1122,13 @@ function scheduleStoreSyncToEditor() {
   if (storeSyncFrameId !== null) return
   storeSyncFrameId = requestAnimationFrame(() => {
     storeSyncFrameId = null
-    if (isUpdatingFromStore.value) return
-    if (blueprintEditorRef.value) {
-      isUpdatingFromStore.value = true
+    if (isUpdatingFromStore) return
+    if (blueprintHostRef.value) {
+      isUpdatingFromStore = true
       const data = workflowStateToLegacyBlueprint(store.state)
-      blueprintEditorRef.value.loadBlueprint(data)
+      blueprintHostRef.value.loadBlueprint(data)
       nextTick(() => {
-        isUpdatingFromStore.value = false
+        isUpdatingFromStore = false
       })
     }
   })
@@ -1420,32 +1140,11 @@ watch(() => [
   store.state.resourceOrder,
   store.state.selectedNodeIds
 ], () => {
-  if (isUpdatingFromStore.value) return
+  if (isUpdatingFromStore) return
   scheduleStoreSyncToEditor()
 }, { deep: false })
 
-// Editor初始化后从store恢复viewport（仅一次）
-let hasRestoredViewport = false
-watch(blueprintEditorRef, (editor) => {
-  if (editor && !hasRestoredViewport) {
-    nextTick(() => {
-      const storedVp = store.state.viewport
-      if (storedVp && (Math.abs(storedVp.zoom - 1) > 0.001 || Math.abs(storedVp.panX) > 0.5 || Math.abs(storedVp.panY) > 0.5)) {
-        isUpdatingFromStore.value = true
-        editor.setViewport(storedVp)
-        nextTick(() => {
-          isUpdatingFromStore.value = false
-        })
-      } else {
-        editor.fitToView()
-      }
-      hasRestoredViewport = true
-      editorInitialized.value = true
-    })
-  }
-}, { immediate: true })
-
-// ========== 新版BlueprintEditor集成结束 ==========
+// ========== AIWorkflowBlueprintHost集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
@@ -1842,7 +1541,7 @@ const {
 })
 
 // NodeCanvasLayer组件引用
-const nodeCanvasLayerRef = ref<InstanceType<typeof NodeCanvasLayer> | null>(null)
+const nodeCanvasLayerRef = ref<any | null>(null)
 
 // Canvas截图池引用 (用于传递给NodeCanvasLayer)
 // 注意：始终有值，不会为null
@@ -2584,13 +2283,17 @@ function animateViewportTo(
 			viewportAnimationRaf = null
 		}
 
-		const editor = blueprintEditorRef.value
-		if (!editor) {
+		const host = blueprintHostRef.value
+		if (!host) {
 			resolve()
 			return
 		}
 
-		const curVp = editor.getViewport()
+		const curVp = host.getViewport()
+		if (!curVp) {
+			resolve()
+			return
+		}
 		const startPanX = curVp.panX
 		const startPanY = curVp.panY
 		const startZoom = curVp.zoom
@@ -2619,7 +2322,7 @@ function animateViewportTo(
 			const curPanY = startPanY + (endPanY - startPanY) * t
 			const curZoom = startZoom + (endZoom - startZoom) * t
 
-			editor.setViewport({ zoom: curZoom, panX: curPanX, panY: curPanY })
+			host.setViewport({ zoom: curZoom, panX: curPanX, panY: curPanY })
 
 			if (rawT < 1) {
 				viewportAnimationRaf = requestAnimationFrame(step)
@@ -3071,6 +2774,40 @@ const chatDraft = computed({
 })
 
 const nodeChatDialog = computed(() => store.state.nodeChatDialog)
+
+const chatStateForHost = computed(() => ({
+	visible: nodeChatDialog.value.visible,
+	nodeId: nodeChatDialog.value.nodeId,
+	nodeType: nodeChatDialog.value.nodeType,
+	draft: nodeChatDialog.value.draft,
+	submitting: nodeChatDialog.value.submitting,
+	params: nodeChatDialog.value.params,
+	selectedRefs: nodeChatDialog.value.selectedRefs,
+}))
+
+const onHostNodeChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
+	onNodeChatSubmit(payload)
+}
+
+const onHostNodeChatClose = (_nodeId: string) => {
+	onNodeChatClose()
+}
+
+const onHostNodeChatUpdateDraft = (payload: { nodeId: string; draft: string }) => {
+	onNodeChatDraftUpdate(payload.draft)
+}
+
+const onHostNodeChatUpdateParams = (payload: { nodeId: string; params: Record<string, any> }) => {
+	onNodeChatParamsUpdate(payload.params as WorkflowNodeChatParams)
+}
+
+const onHostNodeChatUpdateSelectedRefs = (payload: { nodeId: string; selectedRefs: WorkflowNodeChatSelectedRef[] }) => {
+	onNodeChatSelectedRefsUpdate(payload.selectedRefs)
+}
+
+const onHostNodeChatRemoveParamRef = (payload: { nodeId: string; refItem: any }) => {
+	onNodeChatRemoveParamRef(payload.refItem)
+}
 
 const onNodeChatDraftUpdate = (text: string) => {
 	store.commit('setNodeChatDraft', { text })
@@ -9785,10 +9522,10 @@ _openNodeSearchMenuFn = openNodeSearchMenu
 _onCanvasContextMenuFn = onCanvasContextMenu
 _openInspectorFn = (open: boolean) => { inspectorOpen.value = open }
 
-// 包装onContextMenuSelect以拦截reset-viewport，直接调用editor.resetView()
+// 包装onContextMenuSelect以拦截reset-viewport，直接调用host.resetView()
 function handleContextMenuSelect(id: string) {
-	if (id === 'reset-viewport' && blueprintEditorRef.value) {
-		blueprintEditorRef.value.resetView()
+	if (id === 'reset-viewport' && blueprintHostRef.value) {
+		blueprintHostRef.value.resetView()
 		return
 	}
 	onContextMenuSelect(id)

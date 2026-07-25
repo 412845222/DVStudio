@@ -4,10 +4,18 @@
       <canvas ref="canvasRef"></canvas>
       <BlueprintDomOverlay 
         :scene="scene" 
+        :chat-state="chatState"
         @node-dblclick="handleNodeDblClick"
         @node-contextmenu="handleNodeContextMenu"
         @node-copy="handleNodeCopy"
         @node-delete="handleNodeDelete"
+        @node-refresh="(id: string) => emit('nodeRefresh', id)"
+        @node-chat-submit="(p) => emit('nodeChatSubmit', p)"
+        @node-chat-close="(id: string) => emit('nodeChatClose', id)"
+        @node-chat-update-draft="(p) => emit('nodeChatUpdateDraft', p)"
+        @node-chat-update-params="(p) => emit('nodeChatUpdateParams', p)"
+        @node-chat-update-selected-refs="(p) => emit('nodeChatUpdateSelectedRefs', p)"
+        @node-chat-remove-param-ref="(p) => emit('nodeChatRemoveParamRef', p)"
       />
       <BlueprintContextMenu
         :visible="ctxMenu.visible"
@@ -43,14 +51,17 @@ import type { LegacyBlueprintData, NodeStatus, BlueprintNodeData, BlueprintData 
 import { DEFAULT_NODE_SIZES } from './types';
 import BlueprintDomOverlay from './dom/BlueprintDomOverlay.vue';
 import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
+import type { NodeChatState } from './dom/NodeComponentResolver';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
 import { Vector2 } from '../graphbase/core/Vector2';
+import type { WorkflowNodeChatSubmitPayload } from '../../aiworkflow/types';
 
 interface Props {
   initialData?: LegacyBlueprintData;
   projectPath?: string;
   readonly?: boolean;
   theme?: 'light' | 'dark';
+  chatState?: NodeChatState | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -68,6 +79,13 @@ interface Emits {
   (e: 'canvasDoubleClick', event: MouseEvent, worldPos: { x: number; y: number }): void;
   (e: 'canvasDrop', event: DragEvent, worldPos: { x: number; y: number }): void;
   (e: 'viewportChange', zoom: number, panX: number, panY: number): void;
+  (e: 'nodeRefresh', nodeId: string): void;
+  (e: 'nodeChatSubmit', payload: WorkflowNodeChatSubmitPayload): void;
+  (e: 'nodeChatClose', nodeId: string): void;
+  (e: 'nodeChatUpdateDraft', payload: { nodeId: string; draft: string }): void;
+  (e: 'nodeChatUpdateParams', payload: { nodeId: string; params: Record<string, any> }): void;
+  (e: 'nodeChatUpdateSelectedRefs', payload: { nodeId: string; selectedRefs: any[] }): void;
+  (e: 'nodeChatRemoveParamRef', payload: { nodeId: string; refItem: any }): void;
 }
 
 const emit = defineEmits<Emits>();
