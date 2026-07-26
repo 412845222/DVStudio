@@ -11,9 +11,12 @@ const LINE_WIDTH = 2.5;
 const LINE_WIDTH_SELECTED = 4;
 const LINE_WIDTH_HOVER = 3.5;
 const BEZIER_CONTROL_DISTANCE = 80;
-const HIT_WIDTH_WORLD = 8;
+const HIT_SCREEN_PX = 8;
+const HIT_MIN_WORLD = 6;
 const SELECTED_GLOW_SIZE = 14;
 const HOVER_GLOW_SIZE = 8;
+const BEZIER_COARSE_STEPS = 40;
+const BEZIER_REFINE_STEPS = 12;
 
 export interface ConnectionEndpoints {
   fromWorld: Vector2;
@@ -143,27 +146,54 @@ export class Connection extends Node {
     c.restore();
   }
 
+  private _evalBezier(t: number, from: Vector2, cp1: Vector2, cp2: Vector2, to: Vector2): Vector2 {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const t2 = t * t;
+    const x = mt2 * mt * from.x + 3 * mt2 * t * cp1.x + 3 * mt * t2 * cp2.x + t2 * t * to.x;
+    const y = mt2 * mt * from.y + 3 * mt2 * t * cp1.y + 3 * mt * t2 * cp2.y + t2 * t * to.y;
+    return new Vector2(x, y);
+  }
+
   private distanceToBezier(point: Vector2, from: Vector2, cp1: Vector2, cp2: Vector2, to: Vector2): number {
+    let bestT = 0;
     let minDist = Infinity;
-    const steps = 24;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const mt = 1 - t;
-      const x = mt * mt * mt * from.x + 3 * mt * mt * t * cp1.x + 3 * mt * t * t * cp2.x + t * t * t * to.x;
-      const y = mt * mt * mt * from.y + 3 * mt * mt * t * cp1.y + 3 * mt * t * t * cp2.y + t * t * t * to.y;
-      const dist = Math.hypot(point.x - x, point.y - y);
-      if (dist < minDist) minDist = dist;
+    for (let i = 0; i <= BEZIER_COARSE_STEPS; i++) {
+      const t = i / BEZIER_COARSE_STEPS;
+      const p = this._evalBezier(t, from, cp1, cp2, to);
+      const dist = Math.hypot(point.x - p.x, point.y - p.y);
+      if (dist < minDist) {
+        minDist = dist;
+        bestT = t;
+      }
     }
+
+    const refineRadius = 1 / BEZIER_COARSE_STEPS;
+    const lo = Math.max(0, bestT - refineRadius);
+    const hi = Math.min(1, bestT + refineRadius);
+    for (let i = 1; i < BEZIER_REFINE_STEPS; i++) {
+      const t = lo + (hi - lo) * (i / BEZIER_REFINE_STEPS);
+      const p = this._evalBezier(t, from, cp1, cp2, to);
+      const dist = Math.hypot(point.x - p.x, point.y - p.y);
+      if (dist < minDist) {
+        minDist = dist;
+      }
+    }
+
     return minDist;
   }
 
   getLocalBounds(): Rect {
     if (!this._endpoints) return new Rect(0, 0, 0, 0);
-    const pad = Math.max(HIT_WIDTH_WORLD, 15);
-    const minX = Math.min(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) - pad;
-    const minY = Math.min(this._endpoints.fromWorld.y, this._endpoints.toWorld.y) - pad;
-    const maxX = Math.max(this._endpoints.fromWorld.x, this._endpoints.toWorld.x) + pad;
-    const maxY = Math.max(this._endpoints.fromWorld.y, this._endpoints.toWorld.y) + pad;
+    const zoom = this.getCameraZoom();
+    const hitWidthWorld = Math.max(HIT_SCREEN_PX / zoom, HIT_MIN_WORLD);
+    const pad = Math.max(hitWidthWorld, 15);
+    const fromLocal = this.worldToLocal(this._endpoints.fromWorld);
+    const toLocal = this.worldToLocal(this._endpoints.toWorld);
+    const minX = Math.min(fromLocal.x, toLocal.x) - pad;
+    const minY = Math.min(fromLocal.y, toLocal.y) - pad;
+    const maxX = Math.max(fromLocal.x, toLocal.x) + pad;
+    const maxY = Math.max(fromLocal.y, toLocal.y) + pad;
     return Rect.fromPoints(new Vector2(minX, minY), new Vector2(maxX, maxY));
   }
 
@@ -206,15 +236,18 @@ export class Connection extends Node {
 
   protected hitTestSelf(localPoint: Vector2): HitTestResult | null {
     if (!this._endpoints) return null;
+    const worldPoint = this.localToWorld(localPoint);
     const from = this._endpoints.fromWorld;
     const to = this._endpoints.toWorld;
     const { cp1, cp2 } = this.getBezierPoints(from, to);
-    const dist = this.distanceToBezier(localPoint, from, cp1, cp2, to);
-    if (dist <= HIT_WIDTH_WORLD) {
+    const dist = this.distanceToBezier(worldPoint, from, cp1, cp2, to);
+    const zoom = this.getCameraZoom();
+    const hitWidthWorld = Math.max(HIT_SCREEN_PX / zoom, HIT_MIN_WORLD);
+    if (dist <= hitWidthWorld) {
       return {
         node: this,
         localPoint: localPoint.clone(),
-        worldPoint: localPoint.clone(),
+        worldPoint: worldPoint.clone(),
         cursor: 'pointer'
       };
     }

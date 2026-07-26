@@ -309,8 +309,9 @@ export class Scene extends Group implements Disposable {
 
     this.tools.renderUnderlay(ctx);
 
-    for (let i = 0; i < this.children.length; i++) {
-      const child = this.children[i];
+    const sortedChildren = [...this.children].sort((a, b) => (a as Node).layer - (b as Node).layer);
+    for (let i = 0; i < sortedChildren.length; i++) {
+      const child = sortedChildren[i] as Node;
       if (child.visible) {
         child.render(ctx);
       }
