@@ -38,6 +38,7 @@ export class BlueprintScene extends Scene {
   readonly commandStack: CommandStack = new CommandStack();
   public isEngineDragging: boolean = false;
   public isDomInteractionLocked: boolean = false;
+  public isViewportPanning: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -132,6 +133,7 @@ export class BlueprintScene extends Scene {
 
     this.isEngineDragging = false;
     this.isDomInteractionLocked = false;
+    this.isViewportPanning = false;
 
     for (const node of this._nodeMap.values()) {
       this.removeChild(node);

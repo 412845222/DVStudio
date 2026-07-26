@@ -1103,7 +1103,7 @@ function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: numbe
   if (isUpdatingFromStore) return
   isUpdatingFromStore = true
   store.commit('setViewport', { zoom, panX, panY })
-  isUpdatingFromStore = false
+  resetIsUpdatingFromStore()
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
@@ -1240,6 +1240,40 @@ watch(() => [
   if (isUpdatingFromStore) return
   requestStoreSyncToEditor()
 }, { deep: false })
+
+let viewportSyncFrameId: number | null = null
+let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null
+
+function flushViewportSyncToEngine() {
+  viewportSyncFrameId = null
+  const vp = pendingViewportSync
+  pendingViewportSync = null
+  if (!vp) return
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor) return
+  if (typeof editor.getViewport !== 'function' || typeof editor.setViewport !== 'function') return
+  const curVp = editor.getViewport()
+  if (curVp && Math.abs(curVp.zoom - vp.zoom) < 0.0001 && Math.abs(curVp.panX - vp.panX) < 0.1 && Math.abs(curVp.panY - vp.panY) < 0.1) {
+    return
+  }
+  isUpdatingFromStore = true
+  editor.setViewport(vp)
+  resetIsUpdatingFromStore()
+}
+
+watch(() => store.state.viewport, (newVp) => {
+  if (isUpdatingFromStore) return
+  if (!newVp) return
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor) return
+  pendingViewportSync = { zoom: newVp.zoom, panX: newVp.panX, panY: newVp.panY }
+  if (viewportSyncFrameId !== null) return
+  viewportSyncFrameId = requestAnimationFrame(flushViewportSyncToEngine)
+}, { deep: true })
 
 // ========== AIWorkflowBlueprintHost集成结束 ==========
 

@@ -322,6 +322,7 @@ export class BlueprintEditorTool extends Tool {
       this.rightDownPos.copy(event.screenPosition);
       this.lastPanPos.copy(event.screenPosition);
       this.setCursor('grab');
+      scene.isViewportPanning = false;
       scene.requestRedraw();
       return;
     }
@@ -440,6 +441,7 @@ export class BlueprintEditorTool extends Tool {
 
     if (this.spacePanning || event.button === 1) {
       this.spacePanning = true;
+      scene.isViewportPanning = true;
       this.lastPanPos.copy(event.screenPosition);
       this.setCursor('grabbing');
       return;
@@ -588,6 +590,7 @@ export class BlueprintEditorTool extends Tool {
           return;
         }
         this.rightPanStarted = true;
+        scene.isViewportPanning = true;
         this.setCursor('grabbing');
       }
       const dx = event.screenPosition.x - this.lastPanPos.x;
@@ -830,6 +833,7 @@ export class BlueprintEditorTool extends Tool {
       this.pendingClickNode = null;
       this.moveStartPositions.clear();
       scene.isEngineDragging = false;
+      scene.isViewportPanning = false;
       drag.cancelDrag();
       this.setCursor('default');
       return;
@@ -847,6 +851,7 @@ export class BlueprintEditorTool extends Tool {
       this.pendingClickNode = null;
       this.moveStartPositions.clear();
       scene.isEngineDragging = false;
+      scene.isViewportPanning = false;
       drag.cancelDrag();
       this.setCursor('default');
       return;

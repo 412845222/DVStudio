@@ -120,17 +120,20 @@ function applyInitialData(newData: LegacyBlueprintData) {
   if (!scene.value) return;
   const s = scene.value;
 
-  if (s.isEngineDragging || s.isDomInteractionLocked) return;
+  if (s.isEngineDragging || s.isDomInteractionLocked || s.isViewportPanning) return;
 
   const newHash = computeStructureHash(newData);
   const structureChanged = newHash !== lastStructureHash;
 
   isUpdatingFromProps = true;
 
+  let needsRedraw = false;
+
   if (structureChanged || !hasInitiallyLoaded) {
     s.loadBlueprint(newData);
     lastStructureHash = newHash;
     hasInitiallyLoaded = true;
+    needsRedraw = true;
 
     if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
       s.selection.setSelection(newData.selectedNodeIds);
@@ -144,6 +147,7 @@ function applyInitialData(newData: LegacyBlueprintData) {
       const curVp = s.getViewport();
       if (!viewportEquals(curVp, newData.viewport)) {
         s.setViewport(newData.viewport);
+        needsRedraw = true;
       }
     }
 
@@ -156,7 +160,9 @@ function applyInitialData(newData: LegacyBlueprintData) {
     }
   }
 
-  s.requestRedraw();
+  if (needsRedraw) {
+    s.requestRedraw();
+  }
   nextTick(() => {
     isUpdatingFromProps = false;
   });

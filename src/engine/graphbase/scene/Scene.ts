@@ -32,6 +32,8 @@ export class Scene extends Group implements Disposable {
   background: string | null = null;
   private _started: boolean = false;
   private _canvas: HTMLCanvasElement;
+  private _pendingViewportEmit: boolean = false;
+  private _viewportEmitRAF: number = 0;
 
   constructor(canvas: HTMLCanvasElement, options?: SceneOptions) {
     super('scene', 'scene_root');
@@ -144,7 +146,7 @@ export class Scene extends Group implements Disposable {
     const changed = this.camera.setZoom(zoom, center);
     if (changed) {
       this.requestRedraw();
-      this.on.emit('viewport-change', this.getViewport());
+      this.scheduleViewportEmit();
     }
   }
 
@@ -152,7 +154,7 @@ export class Scene extends Group implements Disposable {
     const changed = this.camera.zoomAt(screenPoint, delta);
     if (changed) {
       this.requestRedraw();
-      this.on.emit('viewport-change', this.getViewport());
+      this.scheduleViewportEmit();
     }
   }
 
@@ -160,20 +162,20 @@ export class Scene extends Group implements Disposable {
     const changed = this.camera.panBy(dx, dy);
     if (changed) {
       this.requestRedraw();
-      this.on.emit('viewport-change', this.getViewport());
+      this.scheduleViewportEmit();
     }
   }
 
   panTo(x: number, y: number): void {
     this.camera.panTo(x, y);
     this.requestRedraw();
-    this.on.emit('viewport-change', this.getViewport());
+    this.scheduleViewportEmit();
   }
 
   centerOn(worldPoint: Vector2): void {
     this.camera.centerOn(worldPoint);
     this.requestRedraw();
-    this.on.emit('viewport-change', this.getViewport());
+    this.scheduleViewportEmit();
   }
 
   fitToContent(padding: number = 50): void {
@@ -181,7 +183,7 @@ export class Scene extends Group implements Disposable {
     if (!bounds.isEmpty) {
       this.camera.fitToWorldRect(bounds, padding);
       this.requestRedraw();
-      this.on.emit('viewport-change', this.getViewport());
+      this.flushViewportEmit();
     }
   }
 
@@ -191,6 +193,25 @@ export class Scene extends Group implements Disposable {
       panX: -this.camera.position.x * this.camera.zoom,
       panY: -this.camera.position.y * this.camera.zoom
     };
+  }
+
+  private scheduleViewportEmit(): void {
+    if (this._pendingViewportEmit) return;
+    this._pendingViewportEmit = true;
+    this._viewportEmitRAF = requestAnimationFrame(() => {
+      this._pendingViewportEmit = false;
+      this._viewportEmitRAF = 0;
+      this.on.emit('viewport-change', this.getViewport());
+    });
+  }
+
+  private flushViewportEmit(): void {
+    if (this._pendingViewportEmit) {
+      cancelAnimationFrame(this._viewportEmitRAF);
+      this._pendingViewportEmit = false;
+      this._viewportEmitRAF = 0;
+      this.on.emit('viewport-change', this.getViewport());
+    }
   }
 
   setViewport(vp: { zoom?: number; panX?: number; panY?: number }): void {
@@ -211,7 +232,7 @@ export class Scene extends Group implements Disposable {
 
     if (posChanged || zoomChanged) {
       this.requestRedraw();
-      this.on.emit('viewport-change', this.getViewport());
+      this.flushViewportEmit();
     }
   }
 
@@ -297,6 +318,11 @@ export class Scene extends Group implements Disposable {
 
   dispose(): void {
     this.stop();
+    if (this._viewportEmitRAF) {
+      cancelAnimationFrame(this._viewportEmitRAF);
+      this._viewportEmitRAF = 0;
+      this._pendingViewportEmit = false;
+    }
     this.drag.cancelDrag();
     this.tools.dispose();
     this.selection.dispose();

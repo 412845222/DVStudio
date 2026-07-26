@@ -4,7 +4,32 @@ import type { WorkflowResource } from '../../../aiworkflow/resource/types';
 
 const LEGACY_SCHEMA_VERSION = 1;
 
+let _cachedResult: LegacyBlueprintData | null = null;
+let _cacheKey: string = '';
+
 export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlueprintData {
+  const structureKey = [
+    state.nodeOrder.join(','),
+    state.edgeOrder.join(','),
+    state.resourceOrder.join(','),
+    state.selectedNodeId ?? '',
+    (state.selectedNodeIds ?? []).join(','),
+    state.nodeCheckboxVisible ? '1' : '0',
+    state.savedSelectionFrames?.length ?? 0,
+  ].join('|');
+
+  if (_cachedResult && _cacheKey === structureKey) {
+    if (state.viewport) {
+      if (!_cachedResult.viewport) {
+        _cachedResult.viewport = { zoom: 1, panX: 0, panY: 0 };
+      }
+      _cachedResult.viewport.zoom = state.viewport.zoom;
+      _cachedResult.viewport.panX = state.viewport.panX;
+      _cachedResult.viewport.panY = state.viewport.panY;
+    }
+    return _cachedResult;
+  }
+
   const nodesById: Record<string, BlueprintNodeData> = {};
   for (const nodeId of state.nodeOrder) {
     const node = state.nodesById[nodeId];
@@ -48,7 +73,7 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
     }
   }
 
-  return {
+  const result: LegacyBlueprintData = {
     schemaVersion: LEGACY_SCHEMA_VERSION,
     savedAt: Date.now(),
     viewport: state.viewport ? { ...state.viewport } : { zoom: 1, panX: 0, panY: 0 },
@@ -64,6 +89,15 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
     savedSelectionFrames,
     nodeCheckboxVisible: state.nodeCheckboxVisible,
   };
+
+  _cachedResult = result;
+  _cacheKey = structureKey;
+  return result;
+}
+
+export function invalidateWorkflowStateCache(): void {
+  _cachedResult = null;
+  _cacheKey = '';
 }
 
 export function legacyBlueprintToWorkflowState(legacy: LegacyBlueprintData): Partial<WorkflowState> {
