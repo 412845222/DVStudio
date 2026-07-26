@@ -198,16 +198,18 @@ export class Scene extends Group implements Disposable {
     const oldPosX = this.camera.position.x;
     const oldPosY = this.camera.position.y;
 
-    if (vp.zoom !== undefined) this.camera.zoom = vp.zoom;
-    if (vp.panX !== undefined) this.camera.position.x = -vp.panX / this.camera.zoom;
-    if (vp.panY !== undefined) this.camera.position.y = -vp.panY / this.camera.zoom;
+    if (vp.zoom !== undefined) {
+      this.camera.setZoomDirect(vp.zoom);
+    }
+    const safeZoom = Math.max(this.camera.zoom, 1e-6);
+    if (vp.panX !== undefined) this.camera.setPositionDirect(-vp.panX / safeZoom, this.camera.position.y);
+    if (vp.panY !== undefined) this.camera.setPositionDirect(this.camera.position.x, -vp.panY / safeZoom);
 
     const posChanged = Math.abs(this.camera.position.x - oldPosX) > 1e-6 ||
                        Math.abs(this.camera.position.y - oldPosY) > 1e-6;
     const zoomChanged = Math.abs(this.camera.zoom - oldZoom) > 1e-6;
 
     if (posChanged || zoomChanged) {
-      (this.camera as any)['dirty'] = true;
       this.requestRedraw();
       this.on.emit('viewport-change', this.getViewport());
     }

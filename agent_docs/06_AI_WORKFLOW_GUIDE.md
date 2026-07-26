@@ -1,6 +1,94 @@
 # AI 工作流蓝图开发指引 (AI Workflow Guide)
 
-## ⚠️ 重要架构变更
+## 🔴🔴🔴 架构红线必读（2026-07-27更新）
+
+### 图形底座 + 蓝图业务层双层架构
+
+AI工作流蓝图已迁移到**图形底座（GraphBase）+ 蓝图业务层（Blueprint）**的新架构：
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Vuex Store（仅页面级状态）                           │
+│  - selectedNodeIds（UI选中状态，只读投影）             │
+│  - nodeChatDialog（聊天对话框UI状态）                 │
+│  - viewport（视口状态，只读投影）                      │
+│  - 任务面板状态、toast通知、面板开关                  │
+│  ❌ 不存储节点位置、连线、尺寸等蓝图绘制状态           │
+└───────────────▲─────────────────────────────────────┘
+                │ Engine → Vuex（单向只读投影）
+                │ 禁止 Vuex → Engine 全量同步
+┌───────────────┴─────────────────────────────────────┐
+│  AIWorkflowPage.vue（Host桥接层）                    │
+│  - onBlueprintEditorChange → hydrateDraft到Vuex     │
+│  - onBlueprintEditorSelectionChange → 同步选中状态    │
+│  - requestStoreSyncToEditor() 仅显式业务流程调用      │
+│  ❌ watch selectedNodeIds 禁止触发反向loadBlueprint   │
+└───────────────▲─────────────────────────────────────┘
+                │ 通过 BlueprintEditor.vue 组件通信
+┌───────────────┴─────────────────────────────────────┐
+│  蓝图业务层（src/engine/blueprint/）                  │
+│  - BlueprintScene：节点/连线CRUD、序列化、撤销重做     │
+│  - BlueprintNode：节点业务数据+渲染                   │
+│  - BlueprintEditorTool：交互（拖拽/选框/连线/右键）   │
+│  - BlueprintDomOverlay：DOM覆盖层（编辑态节点）       │
+│  - Commands：撤销重做命令栈                          │
+│  唯一数据源：node.setPosition() / node.setSize()     │
+└───────────────▲─────────────────────────────────────┘
+                │ 继承/组合
+┌───────────────┴─────────────────────────────────────┐
+│  图形底座（src/engine/graphbase/）                    │
+│  - Scene/GraphObject：场景图、Transform、渲染         │
+│  - Canvas2DRenderer：Canvas2D渲染                    │
+│  - InputManager：输入事件分发                        │
+│  - SelectionManager/DragManager：选择/拖拽基础能力    │
+│  - Camera：视口/缩放/平移                            │
+│  只负责通用2D图形能力，不知道"蓝图"业务概念            │
+└─────────────────────────────────────────────────────┘
+```
+
+### 数据流向铁律（违反即bug）
+
+1. **唯一数据源**：引擎内部（`transform.position` + `data.worldX/Y` 通过 `setPosition()` 同步）是蓝图绘制状态的唯一权威来源
+2. **单向数据流**：
+   - ✅ **引擎 → Vuex**：用户交互完成后通过 `emitChange` → `onBlueprintEditorChange` → `hydrateDraft` 同步
+   - ❌ **禁止 Vuex → 引擎全量重建**：除初始加载和显式业务流程外，禁止通过 `loadBlueprint()` 从Vuex重建节点
+3. **API封装**：
+   - ✅ 节点位置修改：必须使用 `node.setPosition(x, y)` 或 `node.translate(dx, dy)`
+   - ✅ 节点尺寸修改：必须使用 `node.setSize(w, h)` 或 `node.updateSize(w, h)`
+   - ❌ 禁止直接赋值：`node.transform.position.x = ...`、`node.data.worldX = ...`
+4. **Vuex的职责边界**：
+   - ✅ 页面级UI状态：对话框开关、面板展开/折叠、toast通知、选中高亮状态
+   - ✅ 后端任务状态：ComfyUI/Meshy/Tripo3d等任务进度
+   - ✅ 引擎状态的只读投影：nodesById/edges（供Inspector面板等非画布组件读取）
+   - ❌ 禁止：节点位置/尺寸/连线坐标等蓝图绘制状态的"真值存储"
+   - ❌ 禁止：通过watch Vuex状态变化来反向驱动引擎重建
+
+### 禁止的代码模式（架构门禁测试会拦截）
+
+| 禁止模式 | 原因 | 正确做法 |
+|---------|------|---------|
+| `node.transform.position.x = ...` | 绕过setPosition，双轨数据不一致 | `node.setPosition(x, y)` |
+| `node.data.worldX = ...` | 绕过setPosition，双轨数据不一致 | 通过setPosition统一入口 |
+| `watch(() => store.state.selectedNodeIds, ...)`触发syncBlueprintNow | 点击空白deselect→反向loadBlueprint→位置回退 | selectedNodeIds变化不触发蓝图重建 |
+| `syncBlueprintNow()` 在用户交互路径调用 | Vuex→Engine反向覆盖拖拽结果 | 仅业务自动流程显式调用requestStoreSyncToEditor() |
+| 在业务代码中直接修改 `transform.position` | 绕过API封装，数据不同步 | 始终通过公共API修改 |
+
+### 新架构关键文件
+
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| 图形底座入口 | [src/engine/graphbase/](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase) | 通用2D渲染/交互/场景图 |
+| 图形对象基类 | [GraphObject.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/scene/GraphObject.ts) | setPosition/translate/setSize API |
+| 蓝图场景 | [BlueprintScene.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintScene.ts) | 节点/连线CRUD、序列化、命令栈 |
+| 蓝图节点 | [BlueprintNode.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintNode.ts) | 业务数据+setPosition同步data |
+| 交互工具 | [BlueprintEditorTool.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintEditorTool.ts) | 拖拽/选框/连线交互 |
+| DOM覆盖层 | [BlueprintDomOverlay.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/dom/BlueprintDomOverlay.vue) | 编辑态DOM节点渲染 |
+| Host桥接 | [AIWorkflowPage.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/views/AIWorkflow/AIWorkflowPage.vue) | 引擎↔Vuex桥接（单向） |
+| 状态适配器 | [workflowStateAdapter.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts) | 引擎LegacyData ↔ Vuex WorkflowState转换 |
+
+---
+
+## ⚠️ 重要架构变更（历史）
 
 **后端通信已从 Django HTTP 改为 Electron IPC**。所有后端调用通过 `src/network/ipcClient.ts` 走 Electron IPC 通道，不再使用 HTTP 请求到 localhost。
 
@@ -258,15 +346,20 @@ for await (const chunk of generator) {
 
 ## 11. 关键约定
 
-- **数据流向**：用户操作 → 节点 composable → Vuex mutation → 画布重新渲染；远端状态由 IPC 后端通过流式通道或 LocalDB 变更回写到 Vuex。
+- **数据流向（新架构）**：
+  - 画布交互（拖拽/连线/缩放）→ 引擎API（setPosition等）→ 引擎内部更新 → emitChange → hydrateDraft到Vuex（单向只读投影）
+  - 业务操作（添加节点/删除/粘贴/撤销重做）→ 引擎Command → 引擎内部更新 → emitChange → hydrateDraft到Vuex
+  - Vuex仅作为引擎状态的只读投影供非画布组件（Inspector、面板等）读取，**禁止Vuex反向驱动引擎重建**
+  - 远端状态由 IPC 后端通过流式通道或 LocalDB 变更回写到 Vuex（任务状态等非绘制状态）
 - **节点 ID 与锚点 ID**：由 `src/core/project/package/ids.ts` 工厂生成，**禁止**在 UI 层手动拼接。
 - **连线规则**：`comfyui_bridge` / `anchorKinds.ts` 决定哪些 mediaType 可以互连。
 - **资源 URL 解析**：所有展示 / 上传的资源 URL 走 `src/network/backendConfig.ts` 的 `resolveBackendUrl()`，dweb:// 协议自动被 Electron 拦截。
-- **蓝图快照**：保存项目时使用 `src/aiworkflow/persistence/blueprintSnapshot.ts` 序列化，反序列化必须做版本兼容处理。
+- **蓝图快照**：保存项目时从引擎 `serialize()` 获取数据序列化，反序列化必须做版本兼容处理，加载通过引擎 `loadBlueprint()`。
 - **平台感知**：工作流中的平台特有功能（如 Steam 分享）必须通过 `src/platformBridge/` 访问，使用 Mock 降级。
 - **截图缓存**：节点缩略图优先使用 `node-screenshot/` 缓存，避免重复渲染。
 - **IPC 优先**：所有后端调用使用 `src/network/ipcClient.ts`，不要直接发起 HTTP 请求到 localhost（迁移期兼容代码除外）。
 - **禁止外部 API 调用**：前端不要直接调用外部 AI 厂商 API，必须通过后端 IPC 模块以保护 API Key。
+- **蓝图绘制状态不走Vuex**：节点位置（worldX/worldY）、尺寸（width/height）、连线坐标等绘制状态的唯一权威来源是引擎内部，Vuex仅存只读投影。
 
 ## 12. 关键文件位置速查
 

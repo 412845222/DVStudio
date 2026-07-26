@@ -2,7 +2,7 @@
   <div
     class="dom-node-wrapper"
     :class="[
-      { selected: selected, 'dnw-business-mode': hasDefaultSlot },
+      { selected: selected, 'dnw-business-mode': hasDefaultSlot, 'dnw-dragging': isDragging },
       `dnw-status-${status}`,
     ]"
     :style="nodeStyle"
@@ -10,12 +10,19 @@
     @dblclick="onDblClick"
     @contextmenu.prevent.stop="onContextMenu"
   >
+    <div class="dnw-hit-area"></div>
     <div class="dnw-border-base"></div>
     <div class="dnw-border-glow"></div>
     <div class="dnw-border-scan"></div>
 
+    <div
+      v-if="hasDefaultSlot"
+      class="dnw-drag-handle"
+      @pointerdown="onDragHandlePointerDown"
+    ></div>
+
     <template v-if="!hasDefaultSlot">
-      <div class="dnw-header" :style="headerStyle">
+      <div class="dnw-header" :style="headerStyle" @pointerdown="onDragHandlePointerDown">
         <span class="dnw-title">{{ title }}</span>
         <span class="dnw-status-dot" :style="statusDotStyle"></span>
       </div>
@@ -68,6 +75,7 @@
       :style="getPortStyle(port, true, idx)"
       :data-port-id="port.id"
       :data-port-media="port.mediaType"
+      @pointerdown.stop="onPortPointerDown(port.id, true, $event)"
     >
       <div class="dnw-port-inner" :style="{ backgroundColor: getPortColor(port.mediaType) }"></div>
     </div>
@@ -79,9 +87,15 @@
       :style="getPortStyle(port, false, inputPortRenders.length + idx)"
       :data-port-id="port.id"
       :data-port-media="port.mediaType"
+      @pointerdown.stop="onPortPointerDown(port.id, false, $event)"
     >
       <div class="dnw-port-inner" :style="{ backgroundColor: getPortColor(port.mediaType) }"></div>
     </div>
+
+    <div v-if="selected" class="dnw-resize-handle dnw-resize-nw" @pointerdown.stop.prevent="onResizePointerDown('nw', $event)"></div>
+    <div v-if="selected" class="dnw-resize-handle dnw-resize-ne" @pointerdown.stop.prevent="onResizePointerDown('ne', $event)"></div>
+    <div v-if="selected" class="dnw-resize-handle dnw-resize-sw" @pointerdown.stop.prevent="onResizePointerDown('sw', $event)"></div>
+    <div v-if="selected" class="dnw-resize-se" @pointerdown.stop.prevent="onResizePointerDown('se', $event)"></div>
   </div>
 </template>
 
@@ -93,6 +107,9 @@ export type NodeStatus = 'idle' | 'running' | 'success' | 'error';
 const emit = defineEmits<{
   (e: 'dblclick', event: MouseEvent): void;
   (e: 'contextmenu', event: MouseEvent): void;
+  (e: 'dragstart', event: PointerEvent): void;
+  (e: 'port-pointerdown', payload: { portId: string; isInput: boolean; event: PointerEvent }): void;
+  (e: 'resize-start', payload: { corner: string; event: PointerEvent }): void;
 }>();
 
 interface PortRenderData {
@@ -130,6 +147,7 @@ const slots = useSlots();
 const hasDefaultSlot = computed(() => !!slots.default);
 
 const imgError = ref(false);
+const isDragging = ref(false);
 
 function onImgError() {
   imgError.value = true;
@@ -141,6 +159,34 @@ function onDblClick(e: MouseEvent) {
 
 function onContextMenu(e: MouseEvent) {
   emit('contextmenu', e);
+}
+
+function onDragHandlePointerDown(e: PointerEvent) {
+  if (e.button !== 0) return;
+  isDragging.value = true;
+  e.stopPropagation();
+  e.preventDefault();
+  emit('dragstart', e);
+  const onUp = () => {
+    isDragging.value = false;
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+function onPortPointerDown(portId: string, isInput: boolean, e: PointerEvent) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  e.preventDefault();
+  emit('port-pointerdown', { portId, isInput, event: e });
+}
+
+function onResizePointerDown(corner: string, e: PointerEvent) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  emit('resize-start', { corner, event: e });
 }
 
 const STATUS_COLORS: Record<NodeStatus, string> = {
@@ -243,11 +289,28 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   border-radius: 3px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   overflow: visible;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: default;
   opacity: 0;
   transform: scale(0.97);
   will-change: transform, opacity;
   animation: dnw-enter 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.dom-node-wrapper:not(.dnw-business-mode) .dnw-content {
+  pointer-events: none;
+}
+
+.dom-node-wrapper:not(.dnw-business-mode) .dnw-header {
+  cursor: grab;
+}
+
+.dom-node-wrapper:not(.dnw-business-mode) .dnw-header:active {
+  cursor: grabbing;
+}
+
+.dom-node-wrapper.dnw-dragging {
+  cursor: grabbing;
 }
 
 .dom-node-wrapper.dnw-business-mode {
@@ -256,19 +319,30 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   border-radius: 0;
   overflow: visible;
   pointer-events: none;
+  cursor: default;
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-business-content {
   pointer-events: none;
 }
 
-.dom-node-wrapper.dnw-business-mode .dnw-business-content > * {
+.dom-node-wrapper.dnw-business-mode .dnw-drag-handle {
   pointer-events: auto;
+  cursor: grab;
+}
+
+.dom-node-wrapper.dnw-business-mode .dnw-drag-handle:active {
+  cursor: grabbing;
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-port {
   pointer-events: auto;
   cursor: crosshair;
+}
+
+.dom-node-wrapper.dnw-business-mode .dnw-hit-area {
+  pointer-events: auto;
+  border-radius: 0;
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-border-base,
@@ -277,6 +351,67 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 .dom-node-wrapper.dnw-business-mode .dnw-header,
 .dom-node-wrapper.dnw-business-mode .dnw-content {
   display: none;
+}
+
+.dnw-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 10;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.dnw-drag-handle:active {
+  cursor: grabbing;
+}
+
+.dnw-resize-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: rgba(10, 15, 14, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+  z-index: 20;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.dnw-resize-nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+
+.dnw-resize-ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+
+.dnw-resize-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+
+.dnw-resize-se {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: rgba(31, 157, 132, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 2px;
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+  z-index: 20;
+  pointer-events: auto;
+  box-sizing: border-box;
+  box-shadow: 0 0 6px rgba(31, 157, 132, 0.5);
 }
 
 .dom-node-wrapper.selected {
@@ -331,6 +466,16 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
     opacity: 0.5;
     box-shadow: 0 0 12px currentColor;
   }
+}
+
+.dnw-hit-area {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+  cursor: default;
+  background: transparent;
+  border-radius: 3px;
 }
 
 .dnw-border-base {
@@ -501,7 +646,6 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 }
 
 .dnw-content:has(> :not(template)) {
-  pointer-events: auto;
   align-items: stretch;
 }
 
@@ -655,7 +799,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
   background: rgba(10, 15, 14, 0.9);
   border: 2px solid rgba(255, 255, 255, 0.85);
   box-sizing: border-box;
-  z-index: 5;
+  z-index: 15;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -702,6 +846,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 
 .dom-node-wrapper.dnw-leave-active {
   animation: dnw-exit 300ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none !important;
 }
 
 .dom-node-wrapper.dnw-leave-active .dnw-border-base {

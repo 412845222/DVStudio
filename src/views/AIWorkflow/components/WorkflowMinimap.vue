@@ -129,6 +129,7 @@ let isDraggingViewport = false
 let dragStartMinimap = { x: 0, y: 0 }
 let dragStartPan = { x: 0, y: 0 }
 let themeObserver: MutationObserver | null = null
+let isUpdatingFromMinimap = false
 
 const getNodeColor = (type: string): string => {
 	const colors = NODE_TYPE_COLORS[type] || { dark: '#1f9d84', light: '#0f766e' }
@@ -275,9 +276,11 @@ const onCanvasPointerDown = (e: PointerEvent) => {
 	const local = toCanvasLocal(e)
 	canvas.setPointerCapture(e.pointerId)
 
-	const world = minimapToWorld(local.x, local.y)
 	const zoom = props.viewport.zoom || 1
+	const world = minimapToWorld(local.x, local.y)
 	const { panX: targetPanX, panY: targetPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX: targetPanX, panY: targetPanY })
 	isDraggingViewport = true
 	dragStartMinimap = local
@@ -302,6 +305,7 @@ const onCanvasPointerMove = (e: PointerEvent) => {
 	const panX = dragStartPan.x - dxWorld * zoom
 	const panY = dragStartPan.y - dyWorld * zoom
 
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX, panY })
 }
 
@@ -317,6 +321,9 @@ const onCanvasPointerUp = (e: PointerEvent) => {
 			}
 		}
 	}
+	requestAnimationFrame(() => {
+		isUpdatingFromMinimap = false
+	})
 }
 
 const onCanvasWheel = (e: WheelEvent) => {
@@ -337,12 +344,20 @@ const onCanvasWheel = (e: WheelEvent) => {
 		minimapOffset.value,
 		e.deltaY
 	)
+	isUpdatingFromMinimap = true
 	emit('update:viewport', result)
+	requestAnimationFrame(() => {
+		isUpdatingFromMinimap = false
+	})
 }
 
 const fitToAllNodes = () => {
 	const result = computeFitAllViewport(nodesList.value, props.canvasSize)
+	isUpdatingFromMinimap = true
 	emit('update:viewport', result)
+	requestAnimationFrame(() => {
+		isUpdatingFromMinimap = false
+	})
 }
 
 watch(

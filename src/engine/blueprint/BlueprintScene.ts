@@ -13,6 +13,9 @@ import { BlueprintLegacySaver } from './BlueprintLegacySaver';
 import { CommandStack } from '../graphbase/commands/CommandStack';
 import type { Command } from '../graphbase/commands/Command';
 import { PasteCommand } from './commands/PasteCommand';
+import { AddNodeCommand } from './commands/AddNodeCommand';
+import { CreateConnectionCommand } from './commands/CreateConnectionCommand';
+import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -29,9 +32,12 @@ export class BlueprintScene extends Scene {
   private _pendingConnection: PendingConnection | null = null;
   private _savedSelectionFrames: Map<string, SavedSelectionFrame> = new Map();
   private _legacyResources: Record<string, LegacyResourceData> = {};
+  private _lastLoadSignature = '';
   private _clipboardNodes: BlueprintNodeData[] = [];
   private _clipboardEdges: ConnectionData[] = [];
   readonly commandStack: CommandStack = new CommandStack();
+  public isEngineDragging: boolean = false;
+  public isDomInteractionLocked: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -45,6 +51,10 @@ export class BlueprintScene extends Scene {
 
     this.tools.registerTool(new BlueprintEditorTool());
     this.tools.setDefaultTool('blueprint_editor');
+
+    this.commandStack.on.on('execute', () => this.on.emit('after-command'));
+    this.commandStack.on.on('undo', () => this.on.emit('after-command'));
+    this.commandStack.on.on('redo', () => this.on.emit('after-command'));
   }
 
   onResize(_width: number, _height: number): void {
@@ -91,6 +101,18 @@ export class BlueprintScene extends Scene {
     this.commandStack.clear();
   }
 
+  createWorkflowNode(data: BlueprintNodeData): BlueprintNode | null {
+    const existing = this._nodeMap.get(data.id);
+    if (existing) return existing;
+    this.executeCommand(new AddNodeCommand(this, data));
+    return this._nodeMap.get(data.id) ?? null;
+  }
+
+  createWorkflowEdge(data: ConnectionData): Connection | null {
+    this.executeCommand(new CreateConnectionCommand(this, data));
+    return this._connectionMap.get(data.id) ?? null;
+  }
+
   loadBlueprint(data: BlueprintData | LegacyBlueprintData): void {
     let blueprintData: BlueprintData;
 
@@ -100,7 +122,16 @@ export class BlueprintScene extends Scene {
       blueprintData = data;
     }
 
-    clearBlueprintNodeImageCache();
+    const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|')}`;
+    if (this._lastLoadSignature === signature) {
+      console.log('[LOAD-DIAG] loadBlueprint: skipped (same signature)', signature.slice(0, 200));
+      return;
+    }
+    this._lastLoadSignature = signature;
+    console.log('[LOAD-DIAG] loadBlueprint: loading, nodes=', blueprintData.nodes.length, 'edges=', blueprintData.edges.length, 'sig=', signature.slice(0, 200));
+
+    this.isEngineDragging = false;
+    this.isDomInteractionLocked = false;
 
     for (const node of this._nodeMap.values()) {
       this.removeChild(node);
@@ -140,7 +171,6 @@ export class BlueprintScene extends Scene {
       }
     }
 
-    this.cancelPendingConnection();
     this.updateAllConnectionEndpoints();
     this.requestRedraw();
   }
@@ -283,6 +313,26 @@ export class BlueprintScene extends Scene {
     this.requestRedraw();
   }
 
+  isPortCompatible(fromPort: Port, toPort: Port): boolean {
+    if (fromPort.isInput === toPort.isInput) return false;
+    if (fromPort.mediaType === 'generic' || toPort.mediaType === 'generic') return true;
+    return fromPort.mediaType === toPort.mediaType;
+  }
+
+  isPortAlreadyConnected(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): boolean {
+    for (const conn of this._connectionMap.values()) {
+      if (
+        conn.data.fromNodeId === fromNodeId &&
+        conn.data.fromAnchorId === fromAnchorId &&
+        conn.data.toNodeId === toNodeId &&
+        conn.data.toAnchorId === toAnchorId
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   completePendingConnection(toNode: BlueprintNode, toPort: Port): ConnectionData | null {
     if (!this._pendingConnection) return null;
 
@@ -292,12 +342,24 @@ export class BlueprintScene extends Scene {
       return null;
     }
 
+    const outPort = fromPort.isInput ? toPort : fromPort;
+    const inPort = fromPort.isInput ? fromPort : toPort;
+    if (!this.isPortCompatible(outPort, inPort)) {
+      this.cancelPendingConnection();
+      return null;
+    }
+
+    if (this.isPortAlreadyConnected(fromNode.id, fromPort.spec.id, toNode.id, toPort.spec.id)) {
+      this.cancelPendingConnection();
+      return null;
+    }
+
     const data: ConnectionData = {
       id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      fromNodeId: fromNode.id,
-      fromAnchorId: fromPort.spec.id,
-      toNodeId: toNode.id,
-      toAnchorId: toPort.spec.id
+      fromNodeId: fromPort.isInput ? toNode.id : fromNode.id,
+      fromAnchorId: fromPort.isInput ? toPort.spec.id : fromPort.spec.id,
+      toNodeId: fromPort.isInput ? fromNode.id : toNode.id,
+      toAnchorId: fromPort.isInput ? fromPort.spec.id : toPort.spec.id
     };
 
     this.cancelPendingConnection();
@@ -412,9 +474,65 @@ export class BlueprintScene extends Scene {
 
   executePaste(offsetX: number = 50, offsetY: number = 50): string[] {
     if (this._clipboardNodes.length === 0) return [];
-    const cmd = new PasteCommand(this, this._clipboardNodes, this._clipboardEdges, offsetX, offsetY);
+    const cmd = new PasteCommand(this, this._clipboardNodes, this._clipboardEdges, undefined, undefined, offsetX, offsetY);
     this.executeCommand(cmd);
     return cmd.getCreatedNodeIds();
+  }
+
+  pasteAt(worldX: number, worldY: number): string[] {
+    if (this._clipboardNodes.length === 0) return [];
+    const cmd = new PasteCommand(this, this._clipboardNodes, this._clipboardEdges, worldX, worldY);
+    this.executeCommand(cmd);
+    return cmd.getCreatedNodeIds();
+  }
+
+  deleteSelection(): void {
+    const selected = this.selection.getSelection();
+    const nodeIds: string[] = [];
+    const connIds: string[] = [];
+    for (const item of selected) {
+      if (item instanceof BlueprintNode) {
+        nodeIds.push(item.id);
+      } else if (item instanceof Connection) {
+        connIds.push(item.id);
+      }
+    }
+    if (nodeIds.length > 0 || connIds.length > 0) {
+      this.executeCommand(new DeleteSelectionCommand(this, nodeIds, connIds));
+      this.selection.clearSelection();
+    }
+  }
+
+  duplicateSelection(offsetX: number = 30, offsetY: number = 30): string[] {
+    const selectedNodes = this.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    if (selectedNodes.length === 0) return [];
+    this.copySelection(selectedNodes);
+    return this.executePaste(offsetX, offsetY);
+  }
+
+  connectNodes(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): Connection | null {
+    const fromNode = this.getBlueprintNode(fromNodeId);
+    const toNode = this.getBlueprintNode(toNodeId);
+    if (!fromNode || !toNode) return null;
+
+    const fromPort = fromNode.getOutputPort(fromAnchorId);
+    const toPort = toNode.getInputPort(toAnchorId);
+    if (!fromPort || !toPort) return null;
+
+    if (!this.isPortCompatible(fromPort, toPort)) return null;
+    if (this.isPortAlreadyConnected(fromNodeId, fromAnchorId, toNodeId, toAnchorId)) return null;
+
+    const existing = this._connectionMap.get(`conn_${fromNodeId}_${fromAnchorId}_${toNodeId}_${toAnchorId}`);
+    if (existing) return existing;
+
+    const edgeData: ConnectionData = {
+      id: `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      fromNodeId,
+      fromAnchorId,
+      toNodeId,
+      toAnchorId
+    };
+    return this.createWorkflowEdge(edgeData);
   }
 
   private _connectionEndpointsDirty: boolean = true;
@@ -448,6 +566,10 @@ export class BlueprintScene extends Scene {
   }
 
   serialize(): BlueprintData {
+    for (const node of this._nodeMap.values()) {
+      node.syncDataFromTransform();
+    }
+
     const nodes: BlueprintNodeData[] = [];
     for (const node of this._nodeMap.values()) {
       nodes.push({ ...node.data });
@@ -489,9 +611,13 @@ export class BlueprintScene extends Scene {
   }
 
   dispose(): void {
+    for (const node of this._nodeMap.values()) {
+      node.dispose();
+    }
     this._nodeMap.clear();
     this._connectionMap.clear();
     this._savedSelectionFrames.clear();
+    clearBlueprintNodeImageCache();
     super.dispose();
   }
 }

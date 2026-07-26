@@ -67,11 +67,59 @@ defineExpose({
   getInstance() {
     return blueprintEditorRef.value
   },
+  getScene() {
+    return blueprintEditorRef.value?.getScene?.() ?? null
+  },
   getContainerEl() {
     return hostRootRef.value
   },
   getNodeScreenRect(nodeId: string) {
     return blueprintEditorRef.value?.getNodeScreenRect?.(nodeId) ?? null
+  },
+  addNode(type: string, x: number, y: number, data?: Record<string, any>): string | null {
+    return blueprintEditorRef.value?.addNode?.(type, x, y, data) ?? null
+  },
+  deleteSelection() {
+    blueprintEditorRef.value?.deleteSelection?.()
+  },
+  copySelection() {
+    blueprintEditorRef.value?.copySelection?.()
+  },
+  paste() {
+    blueprintEditorRef.value?.paste?.()
+  },
+  pasteAt(worldX: number, worldY: number) {
+    return blueprintEditorRef.value?.pasteAt?.(worldX, worldY) ?? []
+  },
+  duplicate() {
+    blueprintEditorRef.value?.duplicate?.()
+  },
+  undo() {
+    blueprintEditorRef.value?.undo?.()
+  },
+  redo() {
+    blueprintEditorRef.value?.redo?.()
+  },
+  canUndo(): boolean {
+    return blueprintEditorRef.value?.canUndo?.() ?? false
+  },
+  canRedo(): boolean {
+    return blueprintEditorRef.value?.canRedo?.() ?? false
+  },
+  getSelectedNodeIds(): string[] {
+    return blueprintEditorRef.value?.getSelectedNodeIds?.() ?? []
+  },
+  createNodeWithConnection(params: {
+    type: string;
+    x: number;
+    y: number;
+    title?: string;
+    fromNodeId: string;
+    fromAnchorId: string;
+    findBestInputAnchor?: (nodesById: Record<string, any>, fromNodeId: string, fromAnchorId: string, newNodeId: string) => string | null;
+    additionalData?: Record<string, any>;
+  }) {
+    return blueprintEditorRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
   }
 })
 
@@ -80,11 +128,12 @@ let isEmittingFromEditor = false
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
   if (isEmittingFromEditor) return
   isEmittingFromEditor = true
-  if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
-  syncDebounceTimer = setTimeout(() => {
-    emit('change', data)
-    isEmittingFromEditor = false
-  }, 100)
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer)
+    syncDebounceTimer = null
+  }
+  emit('change', data)
+  isEmittingFromEditor = false
 }
 
 function onBlueprintEditorSelectionChange(nodeIds: string[]) {

@@ -10,6 +10,7 @@
   "aiworkflow.contextMenu.resetViewport": "Reset Viewport",
   "aiworkflow.contextMenu.copy": "Copy",
   "aiworkflow.contextMenu.paste": "Paste",
+  "aiworkflow.contextMenu.duplicate": "Duplicate",
   "aiworkflow.contextMenu.nodeSettings": "Node Settings",
   "aiworkflow.contextMenu.setType": "Set Type",
   "aiworkflow.contextMenu.saveImageAs": "Save Image As",

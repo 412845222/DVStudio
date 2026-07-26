@@ -36,6 +36,7 @@ enum DragMode {
 const ANCHOR_MAGNET_DISTANCE = 15;
 const DRAG_BOUNDARY = 100000;
 const DOUBLE_CLICK_MS = 300;
+const CLICK_DRAG_THRESHOLD = 4;
 const RIGHT_PAN_THRESHOLD_DIST = 4;
 
 export class BlueprintEditorTool extends Tool {
@@ -70,6 +71,8 @@ export class BlueprintEditorTool extends Tool {
   private editText: string = '';
   private lastClickTime: number = 0;
   private lastClickScreen: Vector2 = new Vector2();
+  private pendingClickNode: BlueprintNode | null = null;
+  private clickDownScreen: Vector2 = new Vector2();
 
   constructor() {
     super('blueprint_editor', 'default');
@@ -165,9 +168,7 @@ export class BlueprintEditorTool extends Tool {
 
     if (adjustX !== 0 || adjustY !== 0) {
       for (const node of nodes) {
-        node.transform.position.x += adjustX;
-        node.transform.position.y += adjustY;
-        node.markDirty(1);
+        node.translate(adjustX, adjustY);
       }
     }
   }
@@ -266,6 +267,28 @@ export class BlueprintEditorTool extends Tool {
   onPointerDown(event: GraphPointerEvent, hit: HitTestResult | null): void {
     const scene = this.bpScene;
     const sel = this.manager!.selection;
+    const drag = this.manager!.drag;
+
+    if (scene.isDomInteractionLocked) {
+      return;
+    }
+
+    this.pendingClickNode = null;
+    this.dragging = false;
+    this.dragMoved = false;
+    this.dragMode = DragMode.NONE;
+    this.resizeNode = null;
+    this.resizeCorner = null;
+    this.connecting = false;
+    this.dragSavedFrameId = null;
+    this.pendingFromPort = null;
+    this.pendingFromNode = null;
+    this.magnetedPort = null;
+    this.rightPanning = false;
+    this.rightPanStarted = false;
+    this.suppressContextMenu = false;
+    this.moveStartPositions.clear();
+    drag.cancelDrag();
 
     if (this.editingTempInput || this.editingSavedFrameId) {
       const inTempInput = this.hitTestTempFrameInput(event.screenPosition);
@@ -396,8 +419,6 @@ export class BlueprintEditorTool extends Tool {
           return;
         }
       }
-
-      this.isDoubleClick(event.screenPosition);
     }
 
     if (hit && hit.node instanceof Port) {
@@ -426,6 +447,12 @@ export class BlueprintEditorTool extends Tool {
 
     if (hit) {
       const node = hit.node;
+      if (node instanceof BlueprintNode) {
+        this.pendingClickNode = node;
+        this.clickDownScreen.copy(event.screenPosition);
+      } else {
+        this.pendingClickNode = null;
+      }
       if (node.selectable) {
         if (event.shiftKey || event.ctrlKey) {
           sel.toggleSelect(node);
@@ -435,20 +462,28 @@ export class BlueprintEditorTool extends Tool {
 
         this.updateTempSelectionBounds();
 
-        if (node.draggable && sel.isSelected(node) && node instanceof BlueprintNode) {
-          this.manager!.drag.startDrag(event, sel.getSelection());
+        if (node.draggable && node instanceof BlueprintNode && !event.shiftKey && !event.ctrlKey) {
+          const targetIsSelected = sel.isSelected(node);
           this.dragMode = DragMode.NODES;
           this.dragging = true;
           this.dragMoved = false;
           this.moveStartPositions.clear();
-          for (const n of this.manager!.drag.getDraggedNodes()) {
-            if (n instanceof BlueprintNode) {
-              this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
-            }
+          const nodesToRecord = targetIsSelected
+            ? sel.getSelection().filter(n => n instanceof BlueprintNode && n.draggable)
+            : [node];
+          for (const n of nodesToRecord) {
+            this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
           }
+          const actualNodesToDrag = targetIsSelected && nodesToRecord.length > 0
+            ? nodesToRecord
+            : [node];
+          drag.startDragWithNodes(actualNodesToDrag, event, node);
+          scene.isEngineDragging = true;
+          console.log('[DRAG-DIAG] pointerdown: start node drag, nodeId=', node.id, 'startPos=', node.transform.position.x, node.transform.position.y, 'isEngineDragging=true');
         }
       }
     } else {
+      this.pendingClickNode = null;
       if (this.hitTestTempFrameDragArea(event.screenPosition)) {
         this.dragMode = DragMode.SELECTION_FRAME;
         this.dragging = true;
@@ -461,6 +496,7 @@ export class BlueprintEditorTool extends Tool {
             this.moveStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
           }
         }
+        scene.isEngineDragging = true;
         this.setCursor('grabbing');
       } else {
         if (!event.shiftKey && !event.ctrlKey) {
@@ -489,8 +525,8 @@ export class BlueprintEditorTool extends Tool {
       if (hit && hit.node instanceof Port) {
         hoveredPort = hit.node;
         hoveredNode = this.findParentNode(hoveredPort);
-        if (hoveredPort.isInput && hoveredNode !== this.pendingFromNode) {
-          compatible = true;
+        if (hoveredPort.isInput && hoveredNode !== this.pendingFromNode && this.pendingFromPort) {
+          compatible = scene.isPortCompatible(this.pendingFromPort, hoveredPort);
         } else {
           compatible = false;
         }
@@ -503,9 +539,11 @@ export class BlueprintEditorTool extends Tool {
         for (const inputPort of node.inputPorts) {
           const portWorldPos = inputPort.getWorldPosition();
           const dist = Math.hypot(worldPos.x - portWorldPos.x, worldPos.y - portWorldPos.y);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestPort = inputPort;
+          if (dist < nearestDist && this.pendingFromPort) {
+            if (scene.isPortCompatible(this.pendingFromPort, inputPort)) {
+              nearestDist = dist;
+              nearestPort = inputPort;
+            }
           }
         }
       }
@@ -564,13 +602,34 @@ export class BlueprintEditorTool extends Tool {
       return;
     }
 
-    if (this.dragMode === DragMode.NODES && drag.isDragging()) {
-      drag.updateDrag(event);
-      this.clampSelectionToBoundary();
-      this.dragMoved = true;
-      this.updateTempSelectionBounds();
-      scene.updateAllConnectionEndpoints();
-      scene.requestRedraw();
+    if (this.dragMode === DragMode.NODES) {
+      if (drag.isDragging()) {
+        const dx = event.screenPosition.x - this.clickDownScreen.x;
+        const dy = event.screenPosition.y - this.clickDownScreen.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq >= CLICK_DRAG_THRESHOLD * CLICK_DRAG_THRESHOLD) {
+          if (!this.dragMoved) {
+            this.dragMoved = true;
+            this.setCursor('grabbing');
+            console.log('[DRAG-DIAG] pointermove: threshold exceeded, dragMoved=true, distSq=', distSq);
+          }
+        }
+        if (this.dragMoved) {
+          const firstDraggedNode = drag.getDraggedNodes()[0];
+          const posBefore = firstDraggedNode ? { x: firstDraggedNode.transform.position.x, y: firstDraggedNode.transform.position.y } : null;
+          drag.updateDrag(event);
+          const posAfter = firstDraggedNode ? { x: firstDraggedNode.transform.position.x, y: firstDraggedNode.transform.position.y } : null;
+          this.clampSelectionToBoundary();
+          this.updateTempSelectionBounds();
+          scene.updateAllConnectionEndpoints();
+          if (posBefore && posAfter && (posBefore.x !== posAfter.x || posBefore.y !== posAfter.y)) {
+            // 仅在第一次有位移时输出，避免日志过多
+          }
+        }
+        scene.requestRedraw();
+      } else {
+        console.log('[DRAG-DIAG] pointermove: dragMode=NODES but drag.isDragging()=false');
+      }
     } else if (this.dragMode === DragMode.RESIZE && this.resizeNode && this.resizeCorner) {
       const mouseWorld = scene.camera.screenToWorld(event.screenPosition);
 
@@ -614,10 +673,8 @@ export class BlueprintEditorTool extends Tool {
         }
       }
 
-      this.resizeNode.transform.setPosition(newX, newY);
+      this.resizeNode.setPosition(newX, newY);
       this.resizeNode.updateSize(newWidth, newHeight);
-      this.resizeNode.data.worldX = newX;
-      this.resizeNode.data.worldY = newY;
       this.resizeNode.data.sizeCustomized = true;
       this.resizeNode.hoveredResizeCorner = this.resizeCorner;
 
@@ -694,6 +751,15 @@ export class BlueprintEditorTool extends Tool {
     const sel = this.manager!.selection;
     const drag = this.manager!.drag;
 
+    if (scene.isDomInteractionLocked) {
+      this.dragging = false;
+      this.dragMoved = false;
+      this.dragMode = DragMode.NONE;
+      this.pendingClickNode = null;
+      scene.isEngineDragging = false;
+      return;
+    }
+
     if (this.connecting) {
       this.connecting = false;
       if (this.pendingFromPort) {
@@ -737,13 +803,20 @@ export class BlueprintEditorTool extends Tool {
           worldX: event.worldPosition.x,
           worldY: event.worldPosition.y,
           fromNodeId: this.pendingFromNode?.id ?? '',
-          fromAnchorId: this.pendingFromPort?.id ?? ''
+          fromAnchorId: this.pendingFromPort?.spec.id ?? ''
         });
         scene.cancelPendingConnection();
       }
       this.pendingFromPort = null;
       this.pendingFromNode = null;
       this.magnetedPort = null;
+      this.dragging = false;
+      this.dragMoved = false;
+      this.dragMode = DragMode.NONE;
+      this.pendingClickNode = null;
+      this.moveStartPositions.clear();
+      scene.isEngineDragging = false;
+      drag.cancelDrag();
       this.setCursor('default');
       scene.requestRedraw();
       return;
@@ -751,6 +824,13 @@ export class BlueprintEditorTool extends Tool {
 
     if (this.spacePanning) {
       this.spacePanning = false;
+      this.dragging = false;
+      this.dragMoved = false;
+      this.dragMode = DragMode.NONE;
+      this.pendingClickNode = null;
+      this.moveStartPositions.clear();
+      scene.isEngineDragging = false;
+      drag.cancelDrag();
       this.setCursor('default');
       return;
     }
@@ -761,36 +841,60 @@ export class BlueprintEditorTool extends Tool {
       }
       this.rightPanning = false;
       this.rightPanStarted = false;
+      this.dragging = false;
+      this.dragMoved = false;
+      this.dragMode = DragMode.NONE;
+      this.pendingClickNode = null;
+      this.moveStartPositions.clear();
+      scene.isEngineDragging = false;
+      drag.cancelDrag();
       this.setCursor('default');
       return;
     }
 
     if (this.dragMode === DragMode.NODES) {
+      const totalDist = this.pendingClickNode
+        ? Math.hypot(event.screenPosition.x - this.clickDownScreen.x, event.screenPosition.y - this.clickDownScreen.y)
+        : 0;
+      const isClick = totalDist < CLICK_DRAG_THRESHOLD;
+
       if (drag.isDragging()) {
-        const draggedNodes = drag.getDraggedNodes().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-        drag.endDrag(event);
-        if (this.dragMoved && draggedNodes.length > 0 && this.moveStartPositions.size > 0) {
-          const endPositions = new Map<string, Vector2>();
-          for (const n of draggedNodes) {
-            endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
-          }
-          const moveFn = (id: string, pos: Vector2) => {
-            const node = scene.getBlueprintNode(id);
-            if (node) {
-              node.transform.setPosition(pos.x, pos.y);
-              node.data.worldX = pos.x;
-              node.data.worldY = pos.y;
-              node.markDirty(1);
+        if (isClick) {
+          console.log('[DRAG-DIAG] pointerup: isClick=true (dist=' + totalDist.toFixed(1) + '), cancelDrag');
+          drag.cancelDrag();
+          scene.isEngineDragging = false;
+        } else {
+          const draggedNodes = drag.getDraggedNodes().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+          drag.endDrag(event);
+          if (draggedNodes.length > 0 && this.moveStartPositions.size > 0) {
+            const endPositions = new Map<string, Vector2>();
+            for (const n of draggedNodes) {
+              endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+              const start = this.moveStartPositions.get(n.id);
+              console.log('[DRAG-DIAG] pointerup: drag end, nodeId=', n.id, 'start=', start?.x, start?.y, 'end=', n.transform.position.x, n.transform.position.y);
             }
-          };
-          scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
-          scene.updateAllConnectionEndpoints();
+            const moveFn = (id: string, pos: Vector2) => {
+              const node = scene.getBlueprintNode(id);
+              if (node) {
+                node.setPosition(pos.x, pos.y);
+              }
+            };
+            scene.isEngineDragging = false;
+            console.log('[DRAG-DIAG] pointerup: isEngineDragging=false before executeCommand');
+            scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
+            scene.updateAllConnectionEndpoints();
+            console.log('[DRAG-DIAG] pointerup: MoveNodeCommand executed, about to emitChange');
+          }
         }
-        this.moveStartPositions.clear();
+      } else {
+        console.log('[DRAG-DIAG] pointerup: dragMode=NODES but drag.isDragging()=false');
       }
+      this.moveStartPositions.clear();
+      this.dragMoved = !isClick;
     } else if (this.dragMode === DragMode.RESIZE) {
       if (this.resizeNode && this.dragMoved) {
         const node = this.resizeNode;
+        scene.isEngineDragging = false;
         scene.executeCommand(new ResizeNodeCommand(
           scene,
           node,
@@ -816,12 +920,10 @@ export class BlueprintEditorTool extends Tool {
         const moveFn = (id: string, pos: Vector2) => {
           const node = scene.getBlueprintNode(id);
           if (node) {
-            node.transform.setPosition(pos.x, pos.y);
-            node.data.worldX = pos.x;
-            node.data.worldY = pos.y;
-            node.markDirty(1);
+            node.setPosition(pos.x, pos.y);
           }
         };
+        scene.isEngineDragging = false;
         scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
         scene.updateAllConnectionEndpoints();
       } else if (!this.dragMoved && this.tempSelectionBounds) {
@@ -838,12 +940,10 @@ export class BlueprintEditorTool extends Tool {
         const moveFn = (id: string, pos: Vector2) => {
           const node = scene.getBlueprintNode(id);
           if (node) {
-            node.transform.setPosition(pos.x, pos.y);
-            node.data.worldX = pos.x;
-            node.data.worldY = pos.y;
-            node.markDirty(1);
+            node.setPosition(pos.x, pos.y);
           }
         };
+        scene.isEngineDragging = false;
         scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
         scene.updateAllConnectionEndpoints();
       }
@@ -856,9 +956,20 @@ export class BlueprintEditorTool extends Tool {
       sel.endMarquee(additive, mode);
     }
 
+    if (!this.dragMoved && this.pendingClickNode) {
+      scene.on.emit('node-click', this.pendingClickNode);
+    }
+
     this.dragging = false;
     this.dragMoved = false;
     this.dragMode = DragMode.NONE;
+    scene.isEngineDragging = false;
+    this.pendingClickNode = null;
+    this.resizeNode = null;
+    this.resizeCorner = null;
+    this.dragSavedFrameId = null;
+    this.moveStartPositions.clear();
+    drag.cancelDrag();
     this.updateTempSelectionBounds();
     scene.updateAllConnectionEndpoints();
     scene.requestRedraw();

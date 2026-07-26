@@ -1,11 +1,13 @@
 import { Command } from '../../graphbase/commands/Command';
 import type { BlueprintScene } from '../BlueprintScene';
 import type { BlueprintNodeData, ConnectionData } from '../types';
+import { Vector2 } from '../../graphbase/core/Vector2';
 
 export class PasteCommand extends Command {
   private scene: BlueprintScene;
   private nodeDatas: BlueprintNodeData[];
   private edgeDatas: ConnectionData[];
+  private targetPos: Vector2 | null;
   private offsetX: number;
   private offsetY: number;
   private createdNodeIds: string[] = [];
@@ -13,13 +15,47 @@ export class PasteCommand extends Command {
   private createdNodesData: BlueprintNodeData[] = [];
   private createdEdgesData: ConnectionData[] = [];
 
-  constructor(scene: BlueprintScene, clipboardNodes: BlueprintNodeData[], clipboardEdges: ConnectionData[], offsetX: number = 50, offsetY: number = 50) {
+  constructor(
+    scene: BlueprintScene,
+    clipboardNodes: BlueprintNodeData[],
+    clipboardEdges: ConnectionData[],
+    targetWorldX?: number,
+    targetWorldY?: number,
+    fallbackOffsetX: number = 50,
+    fallbackOffsetY: number = 50
+  ) {
     super('paste');
     this.scene = scene;
     this.nodeDatas = clipboardNodes.map(n => ({ ...n }));
     this.edgeDatas = clipboardEdges.map(e => ({ ...e }));
-    this.offsetX = offsetX;
-    this.offsetY = offsetY;
+    if (targetWorldX !== undefined && targetWorldY !== undefined) {
+      this.targetPos = new Vector2(targetWorldX, targetWorldY);
+      this.offsetX = 0;
+      this.offsetY = 0;
+    } else {
+      this.targetPos = null;
+      this.offsetX = fallbackOffsetX;
+      this.offsetY = fallbackOffsetY;
+    }
+  }
+
+  private computePasteOffset(): { dx: number; dy: number } {
+    if (this.targetPos && this.nodeDatas.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of this.nodeDatas) {
+        minX = Math.min(minX, n.worldX);
+        minY = Math.min(minY, n.worldY);
+        maxX = Math.max(maxX, n.worldX + (n.width ?? 200));
+        maxY = Math.max(maxY, n.worldY + (n.height ?? 100));
+      }
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      return {
+        dx: this.targetPos.x - centerX,
+        dy: this.targetPos.y - centerY
+      };
+    }
+    return { dx: this.offsetX, dy: this.offsetY };
   }
 
   execute(): void {
@@ -28,6 +64,7 @@ export class PasteCommand extends Command {
       return;
     }
 
+    const { dx, dy } = this.computePasteOffset();
     const idMap = new Map<string, string>();
 
     for (const srcData of this.nodeDatas) {
@@ -37,8 +74,8 @@ export class PasteCommand extends Command {
       const newData: BlueprintNodeData = {
         ...srcData,
         id: newId,
-        worldX: srcData.worldX + this.offsetX,
-        worldY: srcData.worldY + this.offsetY,
+        worldX: srcData.worldX + dx,
+        worldY: srcData.worldY + dy,
         selected: false
       };
 

@@ -83,7 +83,7 @@ export class BlueprintLegacyLoader {
 
   private static convertNode(legacyNode: any): BlueprintNodeData {
     const type = legacyNode.type || 'generic';
-    const defaultSize = DEFAULT_NODE_SIZES[type] || { width: 240, height: 200 };
+    const defaultSize = DEFAULT_NODE_SIZES[type] || DEFAULT_NODE_SIZES.base || { width: 240, height: 160 };
 
     const node: BlueprintNodeData = {
       id: legacyNode.id,

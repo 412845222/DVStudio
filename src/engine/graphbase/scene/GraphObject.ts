@@ -147,9 +147,7 @@ export abstract class GraphObject implements Disposable {
   }
 
   translate(dx: number, dy: number): this {
-    this.transform.translate(dx, dy);
-    this.markDirty(DirtyFlag.TRANSFORM);
-    return this;
+    return this.setPosition(this.transform.position.x + dx, this.transform.position.y + dy);
   }
 
   abstract getLocalBounds(): Rect;

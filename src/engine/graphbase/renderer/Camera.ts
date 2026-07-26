@@ -28,6 +28,8 @@ export class Camera {
 
   setViewport(viewport: Rect): void {
     this.viewport = viewport.clone();
+    if (this.zoom < this.minZoom) this.zoom = this.minZoom;
+    if (this.zoom > this.maxZoom) this.zoom = this.maxZoom;
     this.dirty = true;
   }
 
@@ -52,6 +54,18 @@ export class Camera {
     return true;
   }
 
+  setZoomDirect(zoom: number): void {
+    this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, zoom));
+    this.dirty = true;
+  }
+
+  setPositionDirect(x: number, y: number): void {
+    const MAX_POS = 1e7;
+    this.position.x = Math.max(-MAX_POS, Math.min(MAX_POS, x));
+    this.position.y = Math.max(-MAX_POS, Math.min(MAX_POS, y));
+    this.dirty = true;
+  }
+
   zoomAt(screenPoint: Vector2, delta: number): boolean {
     const factor = Math.exp(-delta * 0.001);
     return this.setZoom(this.zoom * factor, screenPoint);
@@ -59,8 +73,16 @@ export class Camera {
 
   panBy(dx: number, dy: number): boolean {
     if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return false;
-    this.position.x -= dx / this.zoom;
-    this.position.y -= dy / this.zoom;
+    if (this.zoom < this.minZoom) {
+      this.zoom = this.minZoom;
+      this.dirty = true;
+    }
+    const safeZoom = Math.max(this.zoom, 1e-6);
+    const newX = this.position.x - dx / safeZoom;
+    const newY = this.position.y - dy / safeZoom;
+    const MAX_PAN = 1e7;
+    this.position.x = Math.max(-MAX_PAN, Math.min(MAX_PAN, newX));
+    this.position.y = Math.max(-MAX_PAN, Math.min(MAX_PAN, newY));
     this.dirty = true;
     return true;
   }
@@ -79,6 +101,7 @@ export class Camera {
     if (worldRect.isEmpty) return;
     const vw = this.viewport.width - padding * 2;
     const vh = this.viewport.height - padding * 2;
+    if (vw <= 0 || vh <= 0) return;
     const scaleX = vw / worldRect.width;
     const scaleY = vh / worldRect.height;
     const newZoom = Math.min(scaleX, scaleY);

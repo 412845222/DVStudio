@@ -46,10 +46,9 @@ const clamp = (v: unknown, min: number, max: number) => {
 }
 
 const clampZoom = (v: unknown) => {
-	// 与 BlueprintCanvas 的交互 clamp 保持一致
 	const n = Number(v)
 	if (!Number.isFinite(n)) return 1
-	return Math.max(0.2, Math.min(6, n))
+	return Math.max(0.1, Math.min(10, n))
 }
 
 const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | undefined => {
@@ -2460,7 +2459,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const id = String(payload?.id ?? '').trim()
 			if (!id) return
 			state.resourcesById[id] = payload
-			if (!state.resourceOrder.includes(id)) state.resourceOrder.push(id)
+			if (!state.resourceOrder.includes(id)) state.resourceOrder = [...state.resourceOrder, id]
 		},
 		patchResource(
 			state: WorkflowState,
@@ -2506,22 +2505,32 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 		) {
 			const newNodeIds: string[] = []
+			const newResourceIds: string[] = []
+			const newEdgeIds: string[] = []
 			for (const res of payload.resources) {
 				if (!res || !res.id) continue
 				state.resourcesById[res.id] = res
-				if (!state.resourceOrder.includes(res.id)) state.resourceOrder.push(res.id)
+				if (!state.resourceOrder.includes(res.id)) newResourceIds.push(res.id)
 			}
 			for (const node of payload.nodes) {
 				if (!node || !node.id) continue
 				state.nodesById[node.id] = node
-				state.nodeOrder.push(node.id)
 				newNodeIds.push(node.id)
 			}
 			for (const edge of payload.edges) {
 				if (!edge || !edge.id) continue
 				if (!state.nodesById[edge.fromNodeId] || !state.nodesById[edge.toNodeId]) continue
 				state.edgesById[edge.id] = edge
-				state.edgeOrder.push(edge.id)
+				newEdgeIds.push(edge.id)
+			}
+			if (newResourceIds.length > 0) {
+				state.resourceOrder = [...state.resourceOrder, ...newResourceIds]
+			}
+			if (newNodeIds.length > 0) {
+				state.nodeOrder = [...state.nodeOrder, ...newNodeIds]
+			}
+			if (newEdgeIds.length > 0) {
+				state.edgeOrder = [...state.edgeOrder, ...newEdgeIds]
 			}
 			state.selectedNodeIds = newNodeIds
 			state.selectedNodeId = newNodeIds[0] ?? null
@@ -3864,9 +3873,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						createdAt: Date.now()
 					}
 					state.nodesById[id] = node
-					state.nodeOrder.push(id)
 					newIds.push(id)
 				}
+				state.nodeOrder = [...state.nodeOrder, ...newIds]
 				state.selectedNodeIds = newIds
 				state.selectedNodeId = newIds[0] ?? null
 				state.selectedEdgeId = null
@@ -3892,7 +3901,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
-			state.nodeOrder.push(id)
+			state.nodeOrder = [...state.nodeOrder, id]
 			state.selectedNodeId = id
 			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
@@ -4026,7 +4035,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (next.type === 'scene-layout') syncSceneLayoutAnchors(next)
 			if (next.type === 'scene-decompose') syncSceneDecomposeAnchors(next)
 			enforceSingleIOAnchors(next)
-			if (!state.nodeOrder.includes(id)) state.nodeOrder.push(id)
+			if (!state.nodeOrder.includes(id)) state.nodeOrder = [...state.nodeOrder, id]
 		},
 		addNodeAt(state, payload: { worldX: number; worldY: number; title?: string }) {
 			const id = makeId('wf-node')
@@ -4048,7 +4057,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
-			state.nodeOrder.push(id)
+			state.nodeOrder = [...state.nodeOrder, id]
 			state.selectedNodeId = id
 			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
@@ -4138,7 +4147,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.edgesById[id] = edge
-			state.edgeOrder.push(id)
+			state.edgeOrder = [...state.edgeOrder, id]
 			state.selectedEdgeId = id
 			state.selectedNodeId = null
 			state.selectedNodeIds = []

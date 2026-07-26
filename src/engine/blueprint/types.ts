@@ -221,18 +221,66 @@ export const NODE_STATUS_COLORS: Record<string, {
 };
 
 export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number }> = {
-  text: { width: 240, height: 200 },
-  image: { width: 260, height: 280 },
-  'rotate-image': { width: 260, height: 300 },
-  video: { width: 280, height: 260 },
-  'scene-understanding': { width: 240, height: 180 },
-  'scene-layout': { width: 240, height: 180 },
-  'scene-decompose': { width: 240, height: 200 },
-  comfyui: { width: 280, height: 320 },
-  model3d: { width: 260, height: 280 },
-  'unreal-export': { width: 240, height: 160 },
-  blender: { width: 260, height: 240 }
+  base: { width: 240, height: 160 },
+  text: { width: 360, height: 260 },
+  'text-merge': { width: 420, height: 320 },
+  image: { width: 450, height: 300 },
+  'rotate-image': { width: 450, height: 300 },
+  video: { width: 450, height: 300 },
+  story: { width: 450, height: 300 },
+  'scene-understanding': { width: 450, height: 360 },
+  'scene-layout': { width: 450, height: 430 },
+  'scene-decompose': { width: 450, height: 360 },
+  comfyui: { width: 450, height: 300 },
+  model3d: { width: 450, height: 420 },
+  meshy: { width: 450, height: 470 },
+  'unreal-export': { width: 450, height: 320 },
+  blender: { width: 450, height: 440 }
 };
+
+export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: PortSpec[] }> = {
+  base: {
+    inputs: [{ id: 'in-0', label: '入口' }],
+    outputs: [{ id: 'out-0', label: '出口' }]
+  },
+  text: {
+    inputs: [{ id: 'in-text', label: '文本输入', mediaType: 'text' }],
+    outputs: [{ id: 'out-text', label: '文本输出', mediaType: 'text' }]
+  },
+  image: {
+    inputs: [{ id: 'in-image', label: '图片输入', mediaType: 'image' }],
+    outputs: [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
+  },
+  'rotate-image': {
+    inputs: [{ id: 'in-0', label: '图片输入', mediaType: 'image' }],
+    outputs: [{ id: 'out-0', label: '旋转图片', mediaType: 'image' }]
+  },
+  video: {
+    inputs: [{ id: 'in-0', label: '视频输入' }],
+    outputs: [{ id: 'out-0', label: '视频输出', mediaType: 'video' }]
+  },
+  model3d: {
+    inputs: [{ id: 'in-model', label: '模型输入', mediaType: 'model3d' }],
+    outputs: [{ id: 'out-model', label: '模型输出', mediaType: 'model3d' }]
+  }
+};
+
+export function getDefaultNodeData(type: string, id: string, x: number, y: number, title?: string): BlueprintNodeData {
+  const defaultSize = DEFAULT_NODE_SIZES[type] || DEFAULT_NODE_SIZES.base || { width: 240, height: 160 };
+  const defaultPorts = DEFAULT_NODE_PORTS[type] || DEFAULT_NODE_PORTS.base || { inputs: [{ id: 'in-0', label: '入口' }], outputs: [{ id: 'out-0', label: '出口' }] };
+  return {
+    id,
+    type,
+    title: title || type,
+    worldX: x,
+    worldY: y,
+    width: defaultSize.width,
+    height: defaultSize.height,
+    inputs: defaultPorts.inputs.map(p => ({ ...p })),
+    outputs: defaultPorts.outputs.map(p => ({ ...p })),
+    status: 'idle'
+  };
+}
 
 export const RESIZE_HANDLE_SIZE = 12;
 export const RESIZE_HANDLE_HIT_SIZE = 16;

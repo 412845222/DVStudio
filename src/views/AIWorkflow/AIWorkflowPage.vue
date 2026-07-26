@@ -1034,7 +1034,6 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
   return result
 })
 
-let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let isUpdatingFromStore = false
 
 function resetIsUpdatingFromStore() {
@@ -1046,35 +1045,38 @@ function resetIsUpdatingFromStore() {
 }
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
-  if (isUpdatingFromStore) return
-  if (syncDebounceTimer) clearTimeout(syncDebounceTimer)
-  syncDebounceTimer = setTimeout(() => {
-    for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
-      const n = data.nodesById[nodeId]
-      if (n) {
-        const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0)
-        const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0)
-        if (!isFinite(wx) || !isFinite(wy)) {
-          console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
-          return
-        }
+  if (isUpdatingFromStore) {
+    console.log('[SYNC-DIAG] onBlueprintEditorChange: skipped (isUpdatingFromStore=true)');
+    return
+  }
+  console.log('[SYNC-DIAG] onBlueprintEditorChange: Engine→Vuex hydrateDraft, nodes=', data.nodeOrder?.length, 'edges=', data.edgeOrder?.length);
+  for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
+    const n = data.nodesById[nodeId]
+    if (n) {
+      const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0)
+      const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0)
+      if (!isFinite(wx) || !isFinite(wy)) {
+        console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
+        return
       }
     }
-    const snapshot = legacyBlueprintToWorkflowState(data)
-    isUpdatingFromStore = true
-    store.commit('hydrateDraft', { snapshot })
-    resetIsUpdatingFromStore()
-  }, 100)
+  }
+  const snapshot = legacyBlueprintToWorkflowState(data)
+  isUpdatingFromStore = true
+  store.commit('hydrateDraft', { snapshot })
+  resetIsUpdatingFromStore()
 }
 
 function onBlueprintEditorSelectionChange(nodeIds: string[]) {
   if (isUpdatingFromStore) return
+  console.log('[SYNC-DIAG] onBlueprintEditorSelectionChange: nodeIds=', nodeIds);
   isUpdatingFromStore = true
   if (nodeIds.length > 0) {
     store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
   } else {
     store.commit('clearSelection')
   }
+  resetIsUpdatingFromStore()
   if (nodeIds.length === 1) {
     const node = store.state.nodesById[nodeIds[0]]
     if (node && isNodeChatTypeSupported(node.type)) {
@@ -1089,7 +1091,6 @@ function onBlueprintEditorSelectionChange(nodeIds: string[]) {
       store.dispatch('closeNodeChatDialog')
     }
   }
-  resetIsUpdatingFromStore()
 }
 
 function onHostEditorReady(editor: any) {
@@ -1187,17 +1188,30 @@ let _onCanvasContextMenuFn: ((menuPayload: { clientX: number; clientY: number; w
 let _openInspectorFn: ((open: boolean) => void) | null = null
 
 let storeSyncFrameId: number | null = null
+let pendingStoreSync = false
+
+function requestStoreSyncToEditor() {
+  pendingStoreSync = true
+  scheduleStoreSyncToEditor()
+}
+
+function syncBlueprintNow() {
+  if (isUpdatingFromStore) return
+  if (!pendingStoreSync) return
+  pendingStoreSync = false
+  if (blueprintHostRef.value) {
+    console.log('[SYNC-DIAG] syncBlueprintNow: Vuex→Engine loadBlueprint triggered');
+    isUpdatingFromStore = true
+    const data = workflowStateToLegacyBlueprint(store.state)
+    blueprintHostRef.value.loadBlueprint(data)
+    resetIsUpdatingFromStore()
+  }
+}
 function scheduleStoreSyncToEditor() {
   if (storeSyncFrameId !== null) return
   storeSyncFrameId = requestAnimationFrame(() => {
     storeSyncFrameId = null
-    if (isUpdatingFromStore) return
-    if (blueprintHostRef.value) {
-      isUpdatingFromStore = true
-      const data = workflowStateToLegacyBlueprint(store.state)
-      blueprintHostRef.value.loadBlueprint(data)
-      resetIsUpdatingFromStore()
-    }
+    syncBlueprintNow()
   })
 }
 
@@ -1221,11 +1235,10 @@ function patchBlueprintNodeData(nodeId: string) {
 watch(() => [
   store.state.nodeOrder,
   store.state.edgeOrder,
-  store.state.resourceOrder,
-  store.state.selectedNodeIds
+  store.state.resourceOrder
 ], () => {
   if (isUpdatingFromStore) return
-  scheduleStoreSyncToEditor()
+  requestStoreSyncToEditor()
 }, { deep: false })
 
 // ========== AIWorkflowBlueprintHost集成结束 ==========
@@ -9639,7 +9652,28 @@ const {
 	pasteNodesWithResourceDedupe,
 	applyAction,
 	pushToast,
-	openFolderForPath
+	openFolderForPath,
+	syncBlueprint: syncBlueprintNow,
+	engineApi: {
+		addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
+			return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+		},
+		createNodeWithConnection: (params) => {
+			return blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+		},
+		copySelection: () => {
+			blueprintHostRef.value?.copySelection?.()
+		},
+		paste: () => {
+			blueprintHostRef.value?.paste?.()
+		},
+		duplicate: () => {
+			blueprintHostRef.value?.duplicate?.()
+		},
+		deleteSelection: () => {
+			blueprintHostRef.value?.deleteSelection?.()
+		}
+	}
 })
 _openNodeSearchMenuFn = openNodeSearchMenu
 _onCanvasContextMenuFn = onCanvasContextMenu

@@ -54,8 +54,8 @@ export class MoveNodeCommand extends Command {
     endPositions: Map<string, Vector2>,
     moveFn: (id: string, pos: Vector2) => void
   ) {
-    super('move-node', 'move-node');
-    this.mergeable = true;
+    super('move-node');
+    this.mergeable = false;
     this.startPositions = new Map(startPositions);
     this.endPositions = new Map(endPositions);
     this.moveFn = moveFn;

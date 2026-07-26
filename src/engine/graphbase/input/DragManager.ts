@@ -40,8 +40,13 @@ export class DragManager {
     if (!node || !node.draggable) return false;
 
     let nodesToDrag = selectedNodes.includes(node) ? selectedNodes : [node];
-    nodesToDrag = nodesToDrag.filter(n => n.draggable);
+    return this.startDragWithNodes(nodesToDrag, event, node);
+  }
 
+  startDragWithNodes(nodesToDrag: Node[], event: GraphPointerEvent, primaryNode: Node): boolean {
+    if (this.dragging) return false;
+
+    nodesToDrag = nodesToDrag.filter(n => n.draggable);
     if (nodesToDrag.length === 0) return false;
 
     this.draggedNodes = nodesToDrag;
@@ -53,10 +58,10 @@ export class DragManager {
 
     const worldPos = event.worldPosition;
     this.dragState = {
-      node,
+      node: primaryNode,
       startScreen: event.screenPosition.clone(),
       startWorld: worldPos.clone(),
-      startPosition: new Vector2(node.transform.position.x, node.transform.position.y),
+      startPosition: new Vector2(primaryNode.transform.position.x, primaryNode.transform.position.y),
       currentScreen: event.screenPosition.clone(),
       currentWorld: worldPos.clone(),
       delta: new Vector2(),
@@ -69,7 +74,9 @@ export class DragManager {
   }
 
   updateDrag(event: GraphPointerEvent): boolean {
-    if (!this.dragging || !this.dragState) return false;
+    if (!this.dragging || !this.dragState) {
+      return false;
+    }
 
     this.dragState.currentScreen = event.screenPosition.clone();
     this.dragState.currentWorld = event.worldPosition.clone();
@@ -81,11 +88,9 @@ export class DragManager {
     for (const node of this.draggedNodes) {
       const startPos = this.startPositions.get(node.id);
       if (startPos) {
-        node.transform.setPosition(
-          startPos.x + this.dragState.delta.x,
-          startPos.y + this.dragState.delta.y
-        );
-        node.markDirty(1);
+        const newX = startPos.x + this.dragState.delta.x;
+        const newY = startPos.y + this.dragState.delta.y;
+        node.setPosition(newX, newY);
         node.onDragMove(this.dragState.delta, event);
       }
     }
@@ -118,8 +123,7 @@ export class DragManager {
     for (const node of this.draggedNodes) {
       const startPos = this.startPositions.get(node.id);
       if (startPos) {
-        node.transform.setPosition(startPos.x, startPos.y);
-        node.markDirty(1);
+        node.setPosition(startPos.x, startPos.y);
       }
       node.dragging = false;
     }

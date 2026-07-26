@@ -54,8 +54,9 @@
 - **框架**：Vue 3（Composition API + `<script setup lang="ts">`）
 - **语言**：TypeScript
 - **构建**：Vite
-- **状态管理**：Vuex（`aiworkflow` / `timeline` / `videoscene` / `videostudio` / `theme` / `i18n`）
-- **2D 渲染引擎**：自研 WebGL2 引擎（`src/engine/webgl/`）
+- **状态管理**：Vuex（`aiworkflow` / `timeline` / `videoscene` / `videostudio` / `theme` / `i18n`）。⚠️ **AI工作流蓝图（`aiworkflow`模块）已迁移到图形底座+蓝图业务层新架构**：Vuex仅管理页面级UI状态和引擎状态的只读投影，蓝图绘制状态（节点位置/尺寸/连线）由引擎内部管理，禁止Vuex反向驱动引擎重建（详见[06_AI_WORKFLOW_GUIDE.md](agent_docs/06_AI_WORKFLOW_GUIDE.md)架构红线章节）
+- **2D 图形引擎（蓝图）**：自研图形底座（GraphBase，`src/engine/graphbase/`）+ 蓝图业务层（Blueprint，`src/engine/blueprint/`）双层架构。图形底座提供通用2D渲染/交互/场景图能力；蓝图业务层提供节点/连线/命令栈等工作流特定功能。Canvas渲染+DOM覆盖层混合模式。
+- **2D 渲染引擎（旧/视频编辑器）**：自研 WebGL2 引擎（`src/engine/webgl/`）
 - **3D 渲染引擎**：Three.js（`three` + `three-bvh-csg`，用于 3D 模型编辑器）
 - **路由**：Vue Router 4（Electron 下使用 Hash History，Web 下使用 HTML5 History，共 13 个路由）
 - **运行平台感知**：`src/electronBridge/index.ts` 中 `isElectron()`（Electron / Web / Unknown）
@@ -304,6 +305,14 @@
 20. **3D 编辑器规范**：3D 相关功能使用 Three.js（`three` + `three-bvh-csg`），与 2D WebGL2 引擎（`src/engine/webgl/`）分离；3D 编辑器逻辑优先通过 `src/composables/` 组织。
 21. **ComfyUI 管理规范**：ComfyUI 本地服务管理（安装、配置、启停、日志）统一走 `electron/backend/modules/comfyui/` 模块，前端通过 `window.dweb.comfyui.setup.*` 调用，不要在前端直接执行子进程或文件操作。
 22. **测试规范**：新增功能应配套单元测试，放在 `tests/` 目录下（按 `unit/` + 业务域 + 模块组织），运行 `npm run test` 验证。
+23. **🔴 AI工作流蓝图架构红线**：蓝图编辑器使用图形底座（`src/engine/graphbase/`）+ 蓝图业务层（`src/engine/blueprint/`）双层架构，**Vuex不管理蓝图绘制状态**：
+    - 蓝图绘制状态（节点位置/尺寸/连线坐标）唯一权威来源是引擎内部，通过`node.setPosition()`/`node.setSize()`等公共API修改
+    - **禁止直接赋值**：不允许写`node.transform.position.x = ...`或`node.data.worldX = ...`绕过API
+    - **单向数据流**：引擎→Vuex（只读投影），禁止Vuex→引擎全量`loadBlueprint()`重建（初始加载和显式业务流程除外）
+    - **禁止watch selectedNodeIds触发反向同步**：点击空白deselect不得触发蓝图重建
+    - Vuex仅存页面级UI状态（对话框开关、面板状态、任务进度、选中高亮等）和引擎状态的只读投影
+    - 违反以上规则会导致双轨/三轨数据不同步bug（拖拽瞬移、位置回退、DOM层拦截），架构门禁测试会拦截此类违规代码
+    - 详见 [06_AI_WORKFLOW_GUIDE.md 架构红线必读章节](agent_docs/06_AI_WORKFLOW_GUIDE.md#%E6%9E%B6%E6%9E%84%E7%BA%A2%E7%BA%BF%E5%BF%85%E8%AF%BB2026-07-27%E6%9B%B4%E6%96%B0)
 
 ### 快速开发常用命令
 
@@ -481,11 +490,15 @@ npm run git:protect-off
 | Python Bridge（可选） | `electron/backend/python-bridge/`（index/runtime/rpc/pip + scripts/） |
 | Unreal 插件源码 | `electron/static/unreal-plugin/`（DwebWorkflowBridge 源码 + zip） |
 | Python 引导安装 | `electron/static/bootstrap/`（mac/windows 安装脚本） |
-| 3D 渲染引擎 | `src/engine/webgl/`（2D WebGL2 引擎）；3D 使用 Three.js（`three` + `three-bvh-csg` 依赖） |
+| 3D 渲染引擎 | `src/engine/webgl/`（2D WebGL2 引擎，旧/视频编辑器）；3D 使用 Three.js（`three` + `three-bvh-csg` 依赖） |
+| 图形底座（蓝图） | `src/engine/graphbase/`（通用2D场景图/渲染/输入/选择/拖拽/Camera） |
+| 蓝图业务层 | `src/engine/blueprint/`（BlueprintScene/BlueprintNode/BlueprintEditorTool/Commands/DOM覆盖层） |
+| 蓝图Host桥接 | `src/views/AIWorkflow/AIWorkflowPage.vue`（引擎↔Vuex单向同步桥接层） |
+| 蓝图状态适配器 | `src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts`（引擎LegacyData ↔ Vuex WorkflowState） |
 | 单元测试 | `tests/`（unit/ + components/ + engine/ + scripts/，按业务域组织） |
 | 3D 编辑器文档 | `agent_docs/08_3D_EDITOR_RENDERING_GUIDE.md` |
 | 用户设置存储 | `DVSResource/UserSettings/settings.json` |
 | 运行时日志 | `DVSResource/Logs/runtime.log`（便携模式）或 `userData/dweb-runtime.log` |
 
 ---
-*注：本文件及 `agent_docs/` 目录专为 AI Agent 设计，旨在提供结构化的项目上下文。最后更新：2026-07-19（反映新增模块：workshop-templates Steam工坊、cloudfs云存储；Three.js 3D编辑器增强；ComfyUI本地服务管理；独立视频编辑器页面；服务中心页面；云存储管理页面；LocalDB 仓库扩展至 15 个；后端模块扩展至 22 个；Electron 桥接命名空间 22 个；前端路由扩展至 13 个；新增阿里云OSS/火山引擎TOS云存储SDK依赖）*
+*注：本文件及 `agent_docs/` 目录专为 AI Agent 设计，旨在提供结构化的项目上下文。最后更新：2026-07-27（反映AI工作流蓝图架构迁移到图形底座+蓝图业务层双层架构；Vuex职责边界明确为页面级状态+引擎只读投影；新增架构红线规则#23；新增架构一致性门禁测试；引擎目录新增graphbase/blueprint双层结构）*

@@ -10,6 +10,7 @@
   "aiworkflow.contextMenu.resetViewport": "重置视口",
   "aiworkflow.contextMenu.copy": "复制",
   "aiworkflow.contextMenu.paste": "粘贴",
+  "aiworkflow.contextMenu.duplicate": "创建副本",
   "aiworkflow.contextMenu.nodeSettings": "节点设置",
   "aiworkflow.contextMenu.setType": "设置类型",
   "aiworkflow.contextMenu.saveImageAs": "图片另存为",

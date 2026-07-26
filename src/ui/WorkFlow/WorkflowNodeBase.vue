@@ -19,7 +19,6 @@
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
-		@pointerdown.stop.prevent="onPointerDown"
 		@click.stop="onSelect"
 	>
 		<div v-if="selected && isPrimarySelectedResolved" class="wf-node-toolbar" @pointerdown.stop>
@@ -657,10 +656,9 @@ const teardownResizeObserver = () => {
 	}
 }
 
-let drag: null | {
-	startClient: { x: number; y: number }
-	startWorld: { x: number; y: number }
-} = null
+const onSelect = () => {
+	emit('select', props.nodeId)
+}
 
 const MIN_SIZE = 80
 
@@ -737,50 +735,6 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 	el.addEventListener('pointermove', onMove)
 	el.addEventListener('pointerup', onUp, { once: true })
 	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onPointerDown = (e: PointerEvent) => {
-	if (e.button !== 0) return
-	emit('select', props.nodeId)
-	const targetEl = e.target as HTMLElement | null
-	if (targetEl?.closest('[data-wf-node-drag-ignore="true"]')) {
-		return
-	}
-	const el = e.currentTarget as HTMLElement
-	const z = Math.max(1e-6, props.zoom)
-	drag = {
-		startClient: { x: e.clientX, y: e.clientY },
-		startWorld: { x: props.worldX, y: props.worldY }
-	}
-	el.setPointerCapture(e.pointerId)
-
-	const onMove = (ev: PointerEvent) => {
-		if (!drag) return
-		ev.preventDefault()
-		const dx = ev.clientX - drag.startClient.x
-		const dy = ev.clientY - drag.startClient.y
-		const worldX = drag.startWorld.x + dx / z
-		const worldY = drag.startWorld.y + dy / z
-		emit('update:worldPosition', { worldX, worldY })
-	}
-	const onUp = (ev: PointerEvent) => {
-		drag = null
-		el.removeEventListener('pointermove', onMove)
-		el.removeEventListener('pointerup', onUp)
-		el.removeEventListener('pointercancel', onUp)
-		try {
-			el.releasePointerCapture(ev.pointerId)
-		} catch {
-			// ignore
-		}
-	}
-	el.addEventListener('pointermove', onMove)
-	el.addEventListener('pointerup', onUp, { once: true })
-	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onSelect = () => {
-	emit('select', props.nodeId)
 }
 
 const onStartLink = (anchorId: string, anchorIndex: number, event: PointerEvent) => {
@@ -877,12 +831,11 @@ defineExpose({
 	box-shadow: var(--wf-node-shadow);
 	box-sizing: border-box;
 	padding: 8px 10px 10px;
-	cursor: grab;
+	cursor: default;
 	display: flex;
 	flex-direction: column;
 	z-index: 1;
 	overflow: visible;
-	touch-action: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	will-change: transform, width, height;
@@ -1063,10 +1016,6 @@ defineExpose({
 		opacity: 1;
 		transform: translateX(-50%) translateY(0);
 	}
-}
-
-.wf-node:active {
-	cursor: grabbing;
 }
 
 .wf-node-header {

@@ -36,6 +36,24 @@ export const useAIWorkflowContextMenu = (payload: {
 	applyAction: (action: WorkflowAction) => void
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	openFolderForPath: (path: string) => Promise<{ ok?: boolean; error?: string } | null | void>
+	syncBlueprint?: () => void
+	engineApi?: {
+		addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+		createNodeWithConnection?: (params: {
+			type: string
+			x: number
+			y: number
+			title?: string
+			fromNodeId: string
+			fromAnchorId: string
+			findBestInputAnchor?: (nodesById: Record<string, any>, fromNodeId: string, fromAnchorId: string, newNodeId: string) => string | null
+			additionalData?: Record<string, any>
+		}) => { nodeId: string | null; connected: boolean }
+		copySelection?: () => void
+		paste?: () => void
+		duplicate?: () => void
+		deleteSelection?: () => void
+	}
 }) => {
 	const { t } = useI18n()
 	const contextMenu = ref<ContextMenuState>({ open: false, x: 0, y: 0, worldX: 0, worldY: 0 })
@@ -165,6 +183,7 @@ export const useAIWorkflowContextMenu = (payload: {
 			!!payload.store.state.clipboardNode ||
 			(Array.isArray(payload.store.state.clipboardNodes) &&
 				payload.store.state.clipboardNodes.length > 0)
+		const canDuplicate = payload.selectedNodeIds.value.length > 0
 		const canSetType = !!payload.selectedNodeId.value
 
 		return [
@@ -176,7 +195,8 @@ export const useAIWorkflowContextMenu = (payload: {
 					{ id: 'add-node', label: t('aiworkflow.contextMenu.addNode') },
 					{ id: 'reset-viewport', label: t('aiworkflow.contextMenu.resetViewport') },
 					{ id: 'copy-node', label: t('aiworkflow.contextMenu.copy'), disabled: !canCopy },
-					{ id: 'paste-node', label: t('aiworkflow.contextMenu.paste'), disabled: !canPaste }
+					{ id: 'paste-node', label: t('aiworkflow.contextMenu.paste'), disabled: !canPaste },
+					{ id: 'duplicate-node', label: t('aiworkflow.contextMenu.duplicate'), disabled: !canDuplicate }
 				]
 			},
 			{
@@ -287,22 +307,39 @@ export const useAIWorkflowContextMenu = (payload: {
 			payload.store.commit('resetViewport')
 		}
 		if (id === 'copy-node') {
-			const primary = payload.selectedNodeId.value ?? payload.selectedNodeIds.value[0]
-			if (primary) payload.store.commit('copyNode', { nodeId: primary })
+			if (payload.engineApi?.copySelection) {
+				payload.engineApi.copySelection()
+			} else {
+				const primary = payload.selectedNodeId.value ?? payload.selectedNodeIds.value[0]
+				if (primary) payload.store.commit('copyNode', { nodeId: primary })
+			}
 		}
 		if (id === 'paste-node') {
-			payload.pasteNodesWithResourceDedupe({
-				worldX: contextMenu.value.worldX,
-				worldY: contextMenu.value.worldY
-			})
+			if (payload.engineApi?.paste) {
+				payload.engineApi.paste()
+			} else {
+				payload.pasteNodesWithResourceDedupe({
+					worldX: contextMenu.value.worldX,
+					worldY: contextMenu.value.worldY
+				})
+			}
+		}
+		if (id === 'duplicate-node') {
+			if (payload.engineApi?.duplicate) {
+				payload.engineApi.duplicate()
+			}
 		}
 		if (id.startsWith('set-type:') && payload.selectedNodeId.value) {
 			const nextType = id.slice('set-type:'.length)
 			payload.store.commit('setNodeType', { nodeId: payload.selectedNodeId.value, type: nextType })
 		}
 		if (id === 'delete') {
-			const action = payload.selectionActions.value.find((item) => item.id === 'delete')
-			if (action) payload.applyAction(action)
+			if (payload.engineApi?.deleteSelection) {
+				payload.engineApi.deleteSelection()
+			} else {
+				const action = payload.selectionActions.value.find((item) => item.id === 'delete')
+				if (action) payload.applyAction(action)
+			}
 		}
 
 		closeContextMenu()
@@ -314,22 +351,41 @@ export const useAIWorkflowContextMenu = (payload: {
 
 		const { worldX, worldY } = nodeSearchMenuPosition.value
 
-		payload.store.commit('addNodeAt', { worldX, worldY, title: catalogItem.label })
+		let newNodeId: string | null = null
 
-		const newNodeId = payload.store.state.selectedNodeId
-		if (newNodeId && catalogItem.nodeType) {
-			payload.store.commit('setNodeType', { nodeId: newNodeId, type: catalogItem.nodeType })
+		if (payload.engineApi?.createNodeWithConnection && pendingLinkAnchor.value) {
+			const { fromNodeId, fromAnchorId } = pendingLinkAnchor.value
+			const result = payload.engineApi.createNodeWithConnection({
+				type: catalogItem.nodeType || 'base',
+				x: worldX,
+				y: worldY,
+				title: catalogItem.label,
+				fromNodeId,
+				fromAnchorId,
+				findBestInputAnchor: findBestInputAnchorForOutput,
+			})
+			newNodeId = result.nodeId
+		} else if (payload.engineApi?.addNode) {
+			newNodeId = payload.engineApi.addNode(catalogItem.nodeType || 'base', worldX, worldY, { title: catalogItem.label })
+		} else {
+			payload.store.commit('addNodeAt', { worldX, worldY, title: catalogItem.label })
+			newNodeId = payload.store.state.selectedNodeId
+			if (newNodeId && catalogItem.nodeType) {
+				payload.store.commit('setNodeType', { nodeId: newNodeId, type: catalogItem.nodeType })
+			}
+			if (newNodeId && !pendingLinkAnchor.value && payload.syncBlueprint) {
+				await nextTick()
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+				payload.syncBlueprint()
+			}
 		}
 
-		await nextTick()
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-
-		let toAnchorId: string | null = null
-		if (pendingLinkAnchor.value && newNodeId) {
+		if (pendingLinkAnchor.value && newNodeId && !payload.engineApi?.createNodeWithConnection) {
 			const { fromNodeId, fromAnchorId } = pendingLinkAnchor.value
 			const nodesById = payload.store.state.nodesById
 			const toNode = nodesById[newNodeId]
 
+			let toAnchorId: string | null = null
 			if (toNode && Array.isArray(toNode.inputs) && toNode.inputs.length > 0) {
 				toAnchorId = findBestInputAnchorForOutput(nodesById, fromNodeId, fromAnchorId, newNodeId)
 				if (!toAnchorId) {
@@ -347,6 +403,11 @@ export const useAIWorkflowContextMenu = (payload: {
 					toAnchorId
 				})
 				await nextTick()
+			}
+
+			if (payload.syncBlueprint) {
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+				payload.syncBlueprint()
 			}
 		}
 

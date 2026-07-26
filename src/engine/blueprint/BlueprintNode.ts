@@ -29,24 +29,26 @@ import {
   type ResizeCorner
 } from './types';
 
+type TextureState = 'loading' | 'ready' | 'error';
+
 interface CachedBlueprintTexture {
   canvas: HTMLCanvasElement;
   naturalWidth: number;
   naturalHeight: number;
   lastUsed: number;
   refCount: number;
+  state: TextureState;
 }
 
 const BLUEPRINT_TEXTURE_POOL = new Map<string, CachedBlueprintTexture>();
-const BLUEPRINT_TEXTURE_LOADING = new Map<string, Promise<void>>();
 const BLUEPRINT_TEXTURE_ERRORS = new Set<string>();
 const MAX_TEXTURE_POOL_SIZE = 100;
 const TEXTURE_PREVIEW_MAX = 288;
 
 export function clearBlueprintNodeImageCache(): void {
   BLUEPRINT_TEXTURE_POOL.clear();
-  BLUEPRINT_TEXTURE_LOADING.clear();
   BLUEPRINT_TEXTURE_ERRORS.clear();
+  textureReadyCallbacks.clear();
 }
 
 function evictLRUTextures(): void {
@@ -75,46 +77,93 @@ function releaseTexture(url: string): void {
   }
 }
 
-function beginLoadTexture(url: string, onReady: () => void): void {
-  if (!url || BLUEPRINT_TEXTURE_POOL.has(url) || BLUEPRINT_TEXTURE_LOADING.has(url) || BLUEPRINT_TEXTURE_ERRORS.has(url)) {
+type TextureReadyCallback = () => void;
+const textureReadyCallbacks = new Map<string, TextureReadyCallback[]>();
+const loadingUrls = new Set<string>();
+
+function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
+  if (!url) return;
+  const existing = BLUEPRINT_TEXTURE_POOL.get(url);
+  if (existing && existing.state === 'ready') {
+    existing.lastUsed = performance.now();
+    requestAnimationFrame(() => {
+      onReady();
+    });
     return;
   }
-  const promise = new Promise<void>((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const nw = img.naturalWidth;
-      const nh = img.naturalHeight;
-      const scale = Math.min(TEXTURE_PREVIEW_MAX / nw, TEXTURE_PREVIEW_MAX / nh, 1);
-      const cw = Math.max(1, Math.ceil(nw * scale));
-      const ch = Math.max(1, Math.ceil(nh * scale));
-      const offscreen = document.createElement('canvas');
-      offscreen.width = cw;
-      offscreen.height = ch;
-      const octx = offscreen.getContext('2d');
-      if (octx) {
-        octx.drawImage(img, 0, 0, cw, ch);
-      }
+  if (existing && existing.state === 'loading') {
+    const cbs = textureReadyCallbacks.get(url);
+    if (cbs) {
+      cbs.push(onReady);
+    } else {
+      textureReadyCallbacks.set(url, [onReady]);
+    }
+    return;
+  }
+  if (BLUEPRINT_TEXTURE_ERRORS.has(url)) {
+    return;
+  }
+  BLUEPRINT_TEXTURE_POOL.set(url, {
+    canvas: null as any,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    lastUsed: performance.now(),
+    refCount: 0,
+    state: 'loading'
+  });
+  textureReadyCallbacks.set(url, [onReady]);
+  loadingUrls.add(url);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    loadingUrls.delete(url);
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    const scale = Math.min(TEXTURE_PREVIEW_MAX / nw, TEXTURE_PREVIEW_MAX / nh, 1);
+    const cw = Math.max(1, Math.ceil(nw * scale));
+    const ch = Math.max(1, Math.ceil(nh * scale));
+    const offscreen = document.createElement('canvas');
+    offscreen.width = cw;
+    offscreen.height = ch;
+    const octx = offscreen.getContext('2d');
+    if (octx) {
+      octx.drawImage(img, 0, 0, cw, ch);
+    }
+    const entry = BLUEPRINT_TEXTURE_POOL.get(url);
+    if (entry) {
+      entry.canvas = offscreen;
+      entry.naturalWidth = nw;
+      entry.naturalHeight = nh;
+      entry.lastUsed = performance.now();
+      entry.state = 'ready';
+    } else {
       BLUEPRINT_TEXTURE_POOL.set(url, {
         canvas: offscreen,
         naturalWidth: nw,
         naturalHeight: nh,
         lastUsed: performance.now(),
-        refCount: 0
+        refCount: 0,
+        state: 'ready'
       });
-      BLUEPRINT_TEXTURE_LOADING.delete(url);
-      evictLRUTextures();
-      onReady();
-      resolve();
-    };
-    img.onerror = () => {
-      BLUEPRINT_TEXTURE_LOADING.delete(url);
-      BLUEPRINT_TEXTURE_ERRORS.add(url);
-      resolve();
-    };
-    img.src = url;
-  });
-  BLUEPRINT_TEXTURE_LOADING.set(url, promise);
+    }
+    evictLRUTextures();
+    const callbacks = textureReadyCallbacks.get(url);
+    textureReadyCallbacks.delete(url);
+    if (callbacks) {
+      requestAnimationFrame(() => {
+        for (const cb of callbacks) {
+          try { cb(); } catch { /* ignore */ }
+        }
+      });
+    }
+  };
+  img.onerror = () => {
+    loadingUrls.delete(url);
+    BLUEPRINT_TEXTURE_ERRORS.add(url);
+    BLUEPRINT_TEXTURE_POOL.delete(url);
+    textureReadyCallbacks.delete(url);
+  };
+  img.src = url;
 }
 
 export class BlueprintNode extends Node {
@@ -147,6 +196,19 @@ export class BlueprintNode extends Node {
     this.rebuildPorts();
   }
 
+  setPosition(x: number, y: number): this {
+    super.setPosition(x, y);
+    this.data.worldX = x;
+    this.data.worldY = y;
+    this.updatePortPositions();
+    return this;
+  }
+
+  syncDataFromTransform(): void {
+    this.data.worldX = this.transform.position.x;
+    this.data.worldY = this.transform.position.y;
+  }
+
   setData(data: Partial<BlueprintNodeData>): void {
     if (data.title !== undefined) this.title = data.title;
     if (data.subtitle !== undefined) this.subtitle = data.subtitle;
@@ -156,7 +218,7 @@ export class BlueprintNode extends Node {
     const newX = data.worldX ?? this.data.worldX;
     const newY = data.worldY ?? this.data.worldY;
     if (data.worldX !== undefined || data.worldY !== undefined) {
-      this.transform.setPosition(newX, newY);
+      this.setPosition(newX, newY);
     }
     if (data.width !== undefined || data.height !== undefined) {
       if (data.width !== undefined) this.data.width = data.width;
@@ -166,8 +228,6 @@ export class BlueprintNode extends Node {
     if (data.selected !== undefined) {
       this.selected = data.selected;
     }
-    this.data.worldX = this.transform.position.x;
-    this.data.worldY = this.transform.position.y;
     this.markDirty(1);
   }
 
@@ -181,10 +241,10 @@ export class BlueprintNode extends Node {
   setDomMode(active: boolean): void {
     if (this.domMode === active) return;
     this.domMode = active;
-    const targetAlpha = active ? 0 : 1;
-    this.alpha = targetAlpha;
-    this.inputPorts.forEach(port => { port.alpha = targetAlpha; });
-    this.outputPorts.forEach(port => { port.alpha = targetAlpha; });
+    this.visible = !active;
+    this.alpha = 1;
+    this.inputPorts.forEach(port => { port.visible = !active; port.alpha = 1; });
+    this.outputPorts.forEach(port => { port.visible = !active; port.alpha = 1; });
     this.markDirty(1);
   }
 
@@ -492,7 +552,7 @@ export class BlueprintNode extends Node {
 
     this.renderPreviewArea(c, w, h, invZoom);
 
-    if (this.selected || this.hoveredResizeCorner) {
+    if (!this.domMode && (this.selected || this.hoveredResizeCorner)) {
       const savedAlpha = c.globalAlpha;
       c.globalAlpha = this.opacity;
       this.renderResizeHandles(c, w, h, invZoom);
@@ -557,6 +617,7 @@ export class BlueprintNode extends Node {
   }
 
   getResizeCornerAtPoint(localPoint: Vector2, invZoom: number): ResizeCorner | null {
+    if (this.domMode) return null;
     const corners: ResizeCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
     const hitSize = RESIZE_HANDLE_HIT_SIZE * invZoom;
     const halfHit = hitSize / 2;
@@ -832,14 +893,14 @@ export class BlueprintNode extends Node {
 
   private requestSceneRedraw(): void {
     if (this._cachedScene && typeof this._cachedScene.requestRedraw === 'function') {
-      this._cachedScene.requestRedraw();
+      this._cachedScene.requestRedraw(false);
       return;
     }
     let p: any = this.parent;
     while (p) {
       if (typeof p.requestRedraw === 'function') {
         this._cachedScene = p;
-        p.requestRedraw();
+        p.requestRedraw(false);
         return;
       }
       p = p.parent;
@@ -848,10 +909,12 @@ export class BlueprintNode extends Node {
 
   private getCachedTexture(url: string): CachedBlueprintTexture | null {
     const tex = BLUEPRINT_TEXTURE_POOL.get(url);
-    if (tex) {
+    if (tex && tex.state === 'ready') {
       tex.lastUsed = performance.now();
+      tex.refCount++;
+      return tex;
     }
-    return tex || null;
+    return null;
   }
 
   private drawTextureCover(c: CanvasRenderingContext2D, tex: CachedBlueprintTexture, dx: number, dy: number, dw: number, dh: number): void {
@@ -917,7 +980,6 @@ export class BlueprintNode extends Node {
       this.beginLoadImage(imgUrl);
       const tex = this.getCachedTexture(imgUrl);
       if (tex && tex.canvas.width > 0) {
-        touchTexture(imgUrl);
         c.save();
         this.drawRoundedRectPath(c, px, py, pw, ph, 4);
         c.clip();
@@ -1010,7 +1072,6 @@ export class BlueprintNode extends Node {
       this.beginLoadImage(posterUrl);
       const tex = this.getCachedTexture(posterUrl);
       if (tex && tex.canvas.width > 0) {
-        touchTexture(posterUrl);
         c.save();
         this.drawRoundedRectPath(c, px, py, pw, ph, 4);
         c.clip();
@@ -1513,8 +1574,11 @@ export class BlueprintNode extends Node {
   }
 
   onDragMove(_delta: Vector2): void {
-    this.data.worldX = this.transform.position.x;
-    this.data.worldY = this.transform.position.y;
     this.on.emit('nodemoved', { id: this.id, x: this.data.worldX, y: this.data.worldY });
+  }
+
+  dispose(): void {
+    this._cachedScene = null;
+    super.dispose();
   }
 }

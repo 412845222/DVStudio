@@ -26,8 +26,8 @@ export class ResizeNodeCommand extends Command {
     endWidth: number,
     endHeight: number
   ) {
-    super('resize-node', 'resize-node');
-    this.mergeable = true;
+    super('resize-node');
+    this.mergeable = false;
     this.scene = scene;
     this.nodeId = node.id;
     this.startX = startX;
@@ -43,10 +43,8 @@ export class ResizeNodeCommand extends Command {
   private apply(x: number, y: number, w: number, h: number): void {
     const node = this.scene.getBlueprintNode(this.nodeId);
     if (!node) return;
-    node.transform.setPosition(x, y);
+    node.setPosition(x, y);
     node.updateSize(w, h);
-    node.data.worldX = x;
-    node.data.worldY = y;
     node.data.sizeCustomized = true;
     this.scene.updateAllConnectionEndpoints();
     this.scene.requestRedraw();

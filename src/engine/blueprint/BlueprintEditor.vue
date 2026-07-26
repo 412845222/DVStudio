@@ -7,7 +7,8 @@
         :chat-state="chatState"
         :node-generation-tasks="nodeGenerationTasks"
         :legacy-resources="legacyResources"
-        @node-dblclick="handleNodeDblClick"
+        :editing-node-id="editingNodeId"
+        @node-click="handleNodeClick"
         @node-contextmenu="handleNodeContextMenu"
         @node-copy="handleNodeCopy"
         @node-delete="handleNodeDelete"
@@ -21,6 +22,7 @@
         @node-chat-stop="(id: string) => emit('nodeChatStop', id)"
         @node-start-link="(p) => emit('nodeStartLink', p)"
         @node-end-link="(p) => emit('nodeEndLink', p)"
+        @interaction-end="emitChange"
       />
       <BlueprintContextMenu
         :visible="ctxMenu.visible"
@@ -53,7 +55,7 @@ import { ref, shallowRef, reactive, onMounted, onUnmounted, watch, nextTick } fr
 import { BlueprintScene, BlueprintNode, Connection } from './index';
 import type { GraphPointerEvent } from '../graphbase/input/events';
 import type { LegacyBlueprintData, NodeStatus, BlueprintNodeData, BlueprintData } from './types';
-import { DEFAULT_NODE_SIZES } from './types';
+import { DEFAULT_NODE_SIZES, getDefaultNodeData } from './types';
 import BlueprintDomOverlay from './dom/BlueprintDomOverlay.vue';
 import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
 import type { NodeChatState } from './dom/NodeComponentResolver';
@@ -81,7 +83,7 @@ interface Emits {
   (e: 'change', data: LegacyBlueprintData): void;
   (e: 'save', data: LegacyBlueprintData): void;
   (e: 'selectionChange', nodeIds: string[]): void;
-  (e: 'nodeDoubleClick', nodeId: string, event: MouseEvent): void;
+  (e: 'nodeClick', nodeId: string, event: MouseEvent): void;
   (e: 'nodeContextMenu', nodeId: string, event: MouseEvent, worldPos: { x: number; y: number }): void;
   (e: 'canvasContextMenu', event: MouseEvent, worldPos: { x: number; y: number }): void;
   (e: 'canvasDoubleClick', event: MouseEvent, worldPos: { x: number; y: number }): void;
@@ -105,6 +107,7 @@ const emit = defineEmits<Emits>();
 const containerRef = ref<HTMLDivElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const scene = shallowRef<BlueprintScene | null>(null);
+const editingNodeId = ref<string | null>(null);
 
 let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
@@ -112,6 +115,86 @@ let isUpdatingFromProps = false;
 let changeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastStructureHash: string | null = null;
 let hasInitiallyLoaded = false;
+
+function applyInitialData(newData: LegacyBlueprintData) {
+  if (!scene.value) return;
+  const s = scene.value;
+
+  if (s.isEngineDragging || s.isDomInteractionLocked) return;
+
+  const newHash = computeStructureHash(newData);
+  const structureChanged = newHash !== lastStructureHash;
+
+  isUpdatingFromProps = true;
+
+  if (structureChanged || !hasInitiallyLoaded) {
+    s.loadBlueprint(newData);
+    lastStructureHash = newHash;
+    hasInitiallyLoaded = true;
+
+    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
+      s.selection.setSelection(newData.selectedNodeIds);
+    } else if (newData.selectedNodeId) {
+      s.selection.setSelection([newData.selectedNodeId]);
+    } else {
+      s.selection.clearSelection();
+    }
+  } else {
+    if (newData.viewport) {
+      const curVp = s.getViewport();
+      if (!viewportEquals(curVp, newData.viewport)) {
+        s.setViewport(newData.viewport);
+      }
+    }
+
+    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
+      s.selection.setSelection(newData.selectedNodeIds);
+    } else if (newData.selectedNodeId) {
+      s.selection.setSelection([newData.selectedNodeId]);
+    } else {
+      s.selection.clearSelection();
+    }
+  }
+
+  s.requestRedraw();
+  nextTick(() => {
+    isUpdatingFromProps = false;
+  });
+}
+
+function enterEditMode(nodeId: string) {
+  if (!scene.value) return;
+  const node = scene.value.getBlueprintNode(nodeId);
+  if (!node) return;
+
+  if (editingNodeId.value && editingNodeId.value !== nodeId) {
+    const prevNode = scene.value.getBlueprintNode(editingNodeId.value);
+    if (prevNode) prevNode.setDomMode(false);
+  }
+
+  editingNodeId.value = nodeId;
+  node.setDomMode(true);
+  scene.value.selection.setSelection([nodeId]);
+  scene.value.requestRedraw();
+}
+
+function exitEditMode() {
+  if (editingNodeId.value) {
+    if (scene.value) {
+      const node = scene.value.getBlueprintNode(editingNodeId.value);
+      if (node) node.setDomMode(false);
+      scene.value.isEngineDragging = false;
+      scene.value.isDomInteractionLocked = false;
+      scene.value.tools.drag?.cancelDrag?.();
+      scene.value.requestRedraw();
+    }
+    editingNodeId.value = null;
+  }
+}
+
+function handleSceneNodeClick(node: BlueprintNode) {
+  enterEditMode(node.id);
+}
 
 function computeStructureHash(data: LegacyBlueprintData): string {
   const nodeParts: string[] = [];
@@ -191,8 +274,9 @@ function handleNodeContextMenu(nodeId: string, event: MouseEvent) {
   openCtxMenu(event.clientX, event.clientY, nodeId);
 }
 
-function handleNodeDblClick(nodeId: string, event: MouseEvent) {
-  emit('nodeDoubleClick', nodeId, event);
+function handleNodeClick(nodeId: string, event: MouseEvent) {
+  enterEditMode(nodeId);
+  emit('nodeClick', nodeId, event);
 }
 
 function handleNodeCopy(nodeId: string) {
@@ -248,8 +332,26 @@ function onToolContextMenu(event: GraphPointerEvent) {
   }
 }
 
-function onCtxUndo() { closeCtxMenu(); scene.value?.undo(); }
-function onCtxRedo() { closeCtxMenu(); scene.value?.redo(); }
+function onCtxUndo() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  if (s.undo()) {
+    s.updateAllConnectionEndpoints();
+    s.requestRedraw();
+    emitChange();
+  }
+}
+function onCtxRedo() {
+  closeCtxMenu();
+  if (!scene.value) return;
+  const s = scene.value;
+  if (s.redo()) {
+    s.updateAllConnectionEndpoints();
+    s.requestRedraw();
+    emitChange();
+  }
+}
 function onCtxCut() {
   closeCtxMenu();
   if (!scene.value) return;
@@ -262,7 +364,9 @@ function onCtxCut() {
     const connIds = allConns.filter(c => nodeIds.includes(c.data.fromNodeId) && nodeIds.includes(c.data.toNodeId)).map(c => c.id);
     s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
     s.selection.clearSelection();
+    s.updateAllConnectionEndpoints();
     s.requestRedraw();
+    emitChange();
   }
 }
 function onCtxCopy() {
@@ -276,26 +380,32 @@ function onCtxCopy() {
 }
 function onCtxPaste() {
   closeCtxMenu();
-  if (!scene.value) return;
+  if (!scene.value || props.readonly) return;
   const s = scene.value;
-  const newNodeIds = s.executePaste(50, 50);
+  let newNodeIds: string[];
+  const mp = lastMouseWorldPos.value;
+  if (mp) {
+    newNodeIds = s.pasteAt(mp.x, mp.y);
+  } else {
+    newNodeIds = s.executePaste(50, 50);
+  }
   if (newNodeIds.length > 0) {
     s.selection.setSelection(newNodeIds);
+    s.updateAllConnectionEndpoints();
     s.requestRedraw();
+    emitChange();
   }
 }
 function onCtxDuplicate() {
   closeCtxMenu();
-  if (!scene.value) return;
+  if (!scene.value || props.readonly) return;
   const s = scene.value;
-  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-  if (selectedNodes.length > 0) {
-    s.copySelection(selectedNodes);
-    const newNodeIds = s.executePaste(30, 30);
-    if (newNodeIds.length > 0) {
-      s.selection.setSelection(newNodeIds);
-      s.requestRedraw();
-    }
+  const newNodeIds = s.duplicateSelection(30, 30);
+  if (newNodeIds.length > 0) {
+    s.selection.setSelection(newNodeIds);
+    s.updateAllConnectionEndpoints();
+    s.requestRedraw();
+    emitChange();
   }
 }
 function onCtxDelete() {
@@ -311,21 +421,18 @@ function onCtxSelectAll() {
 }
 
 function deleteSelection() {
-  if (!scene.value) return;
+  if (!scene.value || props.readonly) return;
   const s = scene.value;
-  const sel = s.selection.getSelection();
-  const nodeIds = sel.filter(n => n instanceof BlueprintNode).map(n => (n as BlueprintNode).id);
-  const connIds: string[] = [];
-  for (const item of sel) {
-    const c = item as any;
-    if (c && c.data && typeof c.id === 'string' && c.data.fromNodeId && c.data.toNodeId) {
-      connIds.push(c.id);
-    }
+  const hadSelection = s.selection.getSelection().length > 0;
+  s.deleteSelection();
+  if (editingNodeId.value) {
+    const stillExists = s.getBlueprintNode(editingNodeId.value);
+    if (!stillExists) exitEditMode();
   }
-  if (nodeIds.length > 0 || connIds.length > 0) {
-    s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
-    s.selection.clearSelection();
+  if (hadSelection) {
+    s.updateAllConnectionEndpoints();
     s.requestRedraw();
+    emitChange();
   }
 }
 
@@ -338,12 +445,13 @@ function getSelectedNodeIds(): string[] {
 
 function emitChange() {
   if (isUpdatingFromProps || !scene.value) return;
-  if (changeDebounceTimer) clearTimeout(changeDebounceTimer);
-  changeDebounceTimer = setTimeout(() => {
-    if (!scene.value) return;
-    const data = scene.value.serializeLegacy();
-    emit('change', data);
-  }, 100);
+  if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return;
+  if (changeDebounceTimer) {
+    clearTimeout(changeDebounceTimer);
+    changeDebounceTimer = null;
+  }
+  const data = scene.value.serializeLegacy();
+  emit('change', data);
 }
 
 function handleResize() {
@@ -356,7 +464,7 @@ function handleResize() {
 let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
 let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
 let unsubToolContextMenu: (() => void) | null = null;
-let unsubToolDblClick: (() => void) | null = null;
+let unsubNodeClick: (() => void) | null = null;
 let unsubSelect: (() => void) | null = null;
 let unsubDeselect: (() => void) | null = null;
 let unsubViewport: (() => void) | null = null;
@@ -364,17 +472,8 @@ let unsubAfterCommand: (() => void) | null = null;
 let unsubLinkDropOnCanvas: (() => void) | null = null;
 let onContainerDragOver: ((e: DragEvent) => void) | null = null;
 let onContainerDrop: ((e: DragEvent) => void) | null = null;
-
-function handleCanvasDblClick(event: GraphPointerEvent) {
-  const originalEvent = event.originalEvent as MouseEvent;
-  const worldPos = getWorldPosFromClient(originalEvent.clientX, originalEvent.clientY);
-  const hitNode = event.hitResult?.node;
-  if (hitNode && hitNode instanceof BlueprintNode) {
-    emit('nodeDoubleClick', hitNode.id, originalEvent);
-  } else {
-    emit('canvasDoubleClick', originalEvent, worldPos);
-  }
-}
+let onContainerMouseMove: ((e: MouseEvent) => void) | null = null;
+const lastMouseWorldPos = ref<{ x: number; y: number } | null>(null);
 
 function setupKeyboardShortcuts(s: BlueprintScene) {
   ctxCaptureKeyDown = (e: KeyboardEvent) => {
@@ -441,10 +540,31 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       if (nodeIdsToRemove.length > 0 || connIdsToRemove.length > 0) {
         s.executeCommand(new DeleteSelectionCommand(s as any, nodeIdsToRemove, connIdsToRemove));
         s.selection.clearSelection();
+        if (editingNodeId.value && nodeIdsToRemove.includes(editingNodeId.value)) {
+          exitEditMode();
+        }
         s.updateAllConnectionEndpoints();
         s.requestRedraw();
         emitChange();
       }
+      return;
+    }
+    if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+      if (selectedNodes.length === 1) {
+        enterEditMode(selectedNodes[0].id);
+      }
+      return;
+    }
+    if (key === 'escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (editingNodeId.value) {
+        exitEditMode();
+      }
+      closeCtxMenu();
       return;
     }
     if (ctrl && key === 'a') {
@@ -465,11 +585,15 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (s.hasClipboardData()) {
-        const newNodeIds = s.executePaste(50, 50);
-        s.selection.clearSelection();
-        for (const id of newNodeIds) {
-          const n = s.getBlueprintNode(id);
-          if (n) s.selection.select(n, true);
+        let newNodeIds: string[];
+        const mp = lastMouseWorldPos.value;
+        if (mp) {
+          newNodeIds = s.pasteAt(mp.x, mp.y);
+        } else {
+          newNodeIds = s.executePaste(50, 50);
+        }
+        if (newNodeIds.length > 0) {
+          s.selection.setSelection(newNodeIds);
         }
         s.updateAllConnectionEndpoints();
         s.requestRedraw();
@@ -527,46 +651,7 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 
 watch(() => props.initialData, (newData) => {
   if (!newData || !scene.value) return;
-  const s = scene.value;
-
-  const newHash = computeStructureHash(newData);
-  const structureChanged = newHash !== lastStructureHash;
-
-  isUpdatingFromProps = true;
-
-  if (structureChanged || !hasInitiallyLoaded) {
-    s.loadBlueprint(newData);
-    lastStructureHash = newHash;
-    hasInitiallyLoaded = true;
-
-    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
-      s.selection.setSelection(newData.selectedNodeIds);
-    } else if (newData.selectedNodeId) {
-      s.selection.setSelection([newData.selectedNodeId]);
-    } else {
-      s.selection.clearSelection();
-    }
-
-    if (newData.viewport) {
-      const curVp = s.getViewport();
-      if (!viewportEquals(curVp, newData.viewport)) {
-        s.setViewport(newData.viewport);
-      }
-    }
-  } else {
-    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
-      s.selection.setSelection(newData.selectedNodeIds);
-    } else if (newData.selectedNodeId) {
-      s.selection.setSelection([newData.selectedNodeId]);
-    } else {
-      s.selection.clearSelection();
-    }
-  }
-
-  s.requestRedraw();
-  nextTick(() => {
-    isUpdatingFromProps = false;
-  });
+  applyInitialData(newData);
 }, { deep: false });
 
 watch(() => props.nodeGenerationTasks, (tasks) => {
@@ -628,18 +713,29 @@ onMounted(() => {
 
   unsubSelect = s.selection.on.on('select', () => {
     if (isUpdatingFromProps) return;
+    const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    if (editingNodeId.value && selectedNodes.length > 1) {
+      exitEditMode();
+    }
     emit('selectionChange', getSelectedNodeIds());
   });
   unsubDeselect = s.selection.on.on('deselect', () => {
     if (isUpdatingFromProps) return;
+    const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    if (editingNodeId.value && selectedNodes.length === 0) {
+      exitEditMode();
+    }
     emit('selectionChange', getSelectedNodeIds());
   });
 
   const handleToolContextMenu = (e: unknown) => onToolContextMenu(e as GraphPointerEvent);
   unsubToolContextMenu = s.tools.on.on('context-menu', handleToolContextMenu);
 
-  const handleToolDblClick = (e: unknown) => handleCanvasDblClick(e as GraphPointerEvent);
-  unsubToolDblClick = s.tools.on.on('dblclick', handleToolDblClick);
+  unsubNodeClick = s.on.on('node-click', (node: unknown) => {
+    if (node instanceof BlueprintNode) {
+      handleSceneNodeClick(node);
+    }
+  });
 
   unsubAfterCommand = s.on.on('after-command', () => {
     ctxMenu.canUndo = s.canUndo();
@@ -663,8 +759,13 @@ onMounted(() => {
       const worldPos = getWorldPosFromClient(e.clientX, e.clientY);
       emit('canvasDrop', e, worldPos);
     };
+    onContainerMouseMove = (e: MouseEvent) => {
+      const worldPos = getWorldPosFromClient(e.clientX, e.clientY);
+      lastMouseWorldPos.value = worldPos;
+    };
     containerRef.value.addEventListener('dragover', onContainerDragOver);
     containerRef.value.addEventListener('drop', onContainerDrop);
+    containerRef.value.addEventListener('mousemove', onContainerMouseMove);
   }
 
   resizeObserver = new ResizeObserver(handleResize);
@@ -704,7 +805,7 @@ onUnmounted(() => {
   if (ctxOutsidePointerDown) window.removeEventListener('pointerdown', ctxOutsidePointerDown, true);
   if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
   if (unsubToolContextMenu) unsubToolContextMenu();
-  if (unsubToolDblClick) unsubToolDblClick();
+  if (unsubNodeClick) unsubNodeClick();
   if (unsubSelect) unsubSelect();
   if (unsubDeselect) unsubDeselect();
   if (unsubViewport) unsubViewport();
@@ -713,6 +814,7 @@ onUnmounted(() => {
   if (containerRef.value) {
     if (onContainerDragOver) containerRef.value.removeEventListener('dragover', onContainerDragOver);
     if (onContainerDrop) containerRef.value.removeEventListener('drop', onContainerDrop);
+    if (onContainerMouseMove) containerRef.value.removeEventListener('mousemove', onContainerMouseMove);
   }
   if (changeDebounceTimer) clearTimeout(changeDebounceTimer);
   if (scene.value) {
@@ -807,26 +909,24 @@ defineExpose({
   addNode(type: string, x: number, y: number, data?: Record<string, any>): string | null {
     if (!scene.value || props.readonly) return null;
     const s = scene.value;
-    const defaultSize = DEFAULT_NODE_SIZES[type] || { width: 240, height: 180 };
     const nodeId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     
+    const baseNodeData = getDefaultNodeData(type, nodeId, x, y, data?.title);
     const nodeData: BlueprintNodeData = {
-      title: type,
-      width: defaultSize.width,
-      height: defaultSize.height,
-      inputs: [],
-      outputs: [],
+      ...baseNodeData,
       ...data,
       id: nodeId,
       type,
       worldX: x,
       worldY: y,
+      inputs: data?.inputs ?? baseNodeData.inputs,
+      outputs: data?.outputs ?? baseNodeData.outputs,
     };
     
-    s.addBlueprintNode(nodeData);
+    s.createWorkflowNode(nodeData);
     s.selection.setSelection([nodeId]);
+    s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
     return nodeId;
   },
 
@@ -844,11 +944,87 @@ defineExpose({
 
   paste() {
     if (!scene.value || props.readonly) return;
-    const newNodeIds = scene.value.executePaste(50, 50);
+    let newNodeIds: string[];
+    const mp = lastMouseWorldPos.value;
+    if (mp) {
+      newNodeIds = scene.value.pasteAt(mp.x, mp.y);
+    } else {
+      newNodeIds = scene.value.executePaste(50, 50);
+    }
     if (newNodeIds.length > 0) {
       scene.value.selection.setSelection(newNodeIds);
+      scene.value.updateAllConnectionEndpoints();
       scene.value.requestRedraw();
+      emitChange();
     }
+  },
+
+  pasteAt(worldX: number, worldY: number) {
+    if (!scene.value || props.readonly) return [];
+    const newNodeIds = scene.value.pasteAt(worldX, worldY);
+    if (newNodeIds.length > 0) {
+      scene.value.selection.setSelection(newNodeIds);
+      scene.value.updateAllConnectionEndpoints();
+      scene.value.requestRedraw();
+      emitChange();
+    }
+    return newNodeIds;
+  },
+
+  duplicate() {
+    if (!scene.value || props.readonly) return;
+    const newNodeIds = scene.value.duplicateSelection(30, 30);
+    if (newNodeIds.length > 0) {
+      scene.value.selection.setSelection(newNodeIds);
+      scene.value.updateAllConnectionEndpoints();
+      scene.value.requestRedraw();
+      emitChange();
+    }
+  },
+
+  createNodeWithConnection(params: {
+    type: string;
+    x: number;
+    y: number;
+    title?: string;
+    fromNodeId: string;
+    fromAnchorId: string;
+    findBestInputAnchor?: (nodesById: Record<string, any>, fromNodeId: string, fromAnchorId: string, newNodeId: string) => string | null;
+    additionalData?: Record<string, any>;
+  }): { nodeId: string | null; connected: boolean } {
+    if (!scene.value || props.readonly) return { nodeId: null, connected: false };
+    const s = scene.value;
+    const nodeId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const baseNodeData = getDefaultNodeData(params.type, nodeId, params.x, params.y, params.title);
+    const nodeData: BlueprintNodeData = {
+      ...baseNodeData,
+      ...(params.additionalData || {}),
+      id: nodeId,
+      type: params.type,
+      worldX: params.x,
+      worldY: params.y,
+      inputs: params.additionalData?.inputs ?? baseNodeData.inputs,
+      outputs: params.additionalData?.outputs ?? baseNodeData.outputs,
+    };
+
+    s.createWorkflowNode(nodeData);
+
+    let connected = false;
+    if (params.findBestInputAnchor) {
+      const currentData = s.serializeLegacy();
+      const toAnchorId = params.findBestInputAnchor(currentData.nodesById, params.fromNodeId, params.fromAnchorId, nodeId);
+      if (toAnchorId) {
+        const conn = s.connectNodes(params.fromNodeId, params.fromAnchorId, nodeId, toAnchorId);
+        connected = !!conn;
+      }
+    }
+
+    s.selection.setSelection([nodeId]);
+    s.updateAllConnectionEndpoints();
+    s.requestRedraw();
+    emitChange();
+    return { nodeId, connected };
   },
 
   selectAll() {
@@ -953,8 +1129,8 @@ defineExpose({
     const s = scene.value;
     const node = s.getBlueprintNode(nodeId);
     if (!node) return null;
-    const nw = node.data.width || 240;
-    const nh = node.data.height || 180;
+    const nw = node.data.width || DEFAULT_NODE_SIZES.base.width;
+    const nh = node.data.height || DEFAULT_NODE_SIZES.base.height;
     const topLeft = s.camera.worldToScreen(new Vector2(node.data.worldX, node.data.worldY));
     return {
       left: topLeft.x,

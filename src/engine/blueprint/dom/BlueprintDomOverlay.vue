@@ -26,8 +26,10 @@
           :status="node.status"
           :input-port-renders="node.inputPorts"
           :output-port-renders="node.outputPorts"
-          @dblclick="(ev) => emit('node-dblclick', node.nodeId, ev)"
           @contextmenu="(ev) => emit('node-contextmenu', node.nodeId, ev)"
+          @dragstart="(ev) => onDomNodeDragStart(node.nodeId, ev)"
+          @port-pointerdown="(p) => onPortPointerDown(node.nodeId, p.portId, p.isInput, p.event)"
+          @resize-start="(p) => onDomNodeResizeStart(node.nodeId, p.corner, p.event)"
         >
           <WorkflowNodeWrapper
             v-if="canUseBusinessComponent(node.nodeType)"
@@ -66,15 +68,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import DomNodeWrapper, { type NodeStatus } from './DomNodeWrapper.vue';
 import WorkflowNodeWrapper from './WorkflowNodeWrapper.vue';
-import { BlueprintNode } from '../index';
+import { BlueprintNode, Port } from '../index';
 import { Rect } from '../../graphbase/core/Rect';
+import { Vector2 } from '../../graphbase/core/Vector2';
 import { MEDIA_TYPE_COLORS } from '../types';
 import type { LegacyResourceData } from '../types';
 import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolver';
 import { UpdateNodeTextCommand } from '../commands/UpdateNodeTextCommand';
+import { MoveNodeCommand } from '../../graphbase/commands/CompositeCommand';
+import { CreateConnectionCommand } from '../commands/CreateConnectionCommand';
+import { ResizeNodeCommand } from '../commands/ResizeNodeCommand';
 import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
 
 interface PortRenderData {
@@ -101,7 +107,7 @@ interface DomNodeRenderData {
 }
 
 const emit = defineEmits<{
-  (e: 'node-dblclick', nodeId: string, event: MouseEvent): void;
+  (e: 'node-click', nodeId: string, event: MouseEvent): void;
   (e: 'node-contextmenu', nodeId: string, event: MouseEvent): void;
   (e: 'node-update-text', payload: { nodeId: string; textValue: string }): void;
   (e: 'node-start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void;
@@ -110,6 +116,7 @@ const emit = defineEmits<{
   (e: 'node-copy', nodeId: string): void;
   (e: 'node-delete', nodeId: string): void;
   (e: 'node-refresh', nodeId: string): void;
+  (e: 'interaction-end'): void;
   (e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void;
   (e: 'node-chat-close', nodeId: string): void;
   (e: 'node-chat-update-draft', payload: { nodeId: string; draft: string }): void;
@@ -125,6 +132,7 @@ const props = defineProps<{
   chatState?: NodeChatState | null;
   nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>;
   legacyResources?: Record<string, LegacyResourceData>;
+  editingNodeId?: string | null;
 }>();
 
 const overlayRef = ref<HTMLDivElement | null>(null);
@@ -161,15 +169,22 @@ function onBusinessUpdateText(payload: { nodeId: string; textValue: string }) {
 function onBusinessResize(payload: { nodeId: string; width: number; height: number; worldX: number; worldY: number }) {
   if (!props.scene) return;
   const node = prevDomMap.get(payload.nodeId);
-  if (node) {
-    node.transform.setPosition(payload.worldX, payload.worldY);
-    node.updateSize(payload.width, payload.height);
-    node.data.worldX = payload.worldX;
-    node.data.worldY = payload.worldY;
-    node.data.sizeCustomized = true;
-    props.scene.updateAllConnectionEndpoints();
-    props.scene.requestRedraw();
-  }
+  if (!node) return;
+  const s = props.scene;
+  const startX = node.data.worldX;
+  const startY = node.data.worldY;
+  const startWidth = node.data.width;
+  const startHeight = node.data.height;
+  const endX = payload.worldX;
+  const endY = payload.worldY;
+  const endWidth = payload.width;
+  const endHeight = payload.height;
+  if (startX === endX && startY === endY && startWidth === endWidth && startHeight === endHeight) return;
+  s.executeCommand(new ResizeNodeCommand(
+    s, node,
+    startX, startY, startWidth, startHeight,
+    endX, endY, endWidth, endHeight
+  ));
 }
 
 function onBusinessStartLink(payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) {
@@ -181,7 +196,7 @@ function onBusinessEndLink(payload: { nodeId: string; anchorId: string; anchorIn
 }
 
 function handleBusinessEdit(nodeId: string) {
-  emit('node-dblclick', nodeId, new MouseEvent('dblclick'));
+  emit('node-click', nodeId, new MouseEvent('click'));
 }
 
 function handleBusinessContextMenu(payload: { nodeId: string; x: number; y: number }) {
@@ -240,6 +255,406 @@ let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const prevDomMap = new Map<string, BlueprintNode>();
 const lastKnownText = new Map<string, string>();
+
+const isDragging = ref(false);
+const isConnecting = ref(false);
+const isInteractionLocked = ref(false);
+let interactionLockedNodeIds: Set<string> = new Set();
+let dragNodeId: string | null = null;
+let dragStartClientX = 0;
+let dragStartClientY = 0;
+let dragStartWorldX = 0;
+let dragStartWorldY = 0;
+let dragStartPositions = new Map<string, Vector2>();
+let dragCurrentPositions = new Map<string, Vector2>();
+
+let connectFromNode: BlueprintNode | null = null;
+let connectFromPort: Port | null = null;
+
+let isResizing = false;
+let resizeNodeId: string | null = null;
+let resizeCorner: string | null = null;
+let resizeStartClientX = 0;
+let resizeStartClientY = 0;
+let resizeStartWorldX = 0;
+let resizeStartWorldY = 0;
+let resizeStartWidth = 0;
+let resizeStartHeight = 0;
+let resizeStartNodeX = 0;
+let resizeStartNodeY = 0;
+const MIN_NODE_WIDTH_LOCAL = 120;
+const MIN_NODE_HEIGHT_LOCAL = 80;
+
+function findPortUnderPointer(clientX: number, clientY: number): { node: BlueprintNode; port: Port; isInput: boolean } | null {
+  const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+  if (!el) return null;
+  const portEl = el.closest('.dnw-port') as HTMLElement | null;
+  if (!portEl) return null;
+  const nodeWrapperEl = portEl.closest('.dom-node-wrapper') as HTMLElement | null;
+  if (!nodeWrapperEl) return null;
+  const nodeId = nodeWrapperEl.getAttribute('data-node-id');
+  const portId = portEl.getAttribute('data-port-id');
+  const isInput = portEl.classList.contains('dnw-port-input');
+  if (!nodeId || !portId) return null;
+  const node = props.scene?.getBlueprintNode?.(nodeId);
+  if (!node) return null;
+  const port = isInput ? node.getInputPort(portId) : node.getOutputPort(portId);
+  if (!port) return null;
+  return { node, port, isInput };
+}
+
+function onPortPointerDown(nodeId: string, portId: string, isInput: boolean, event: PointerEvent) {
+  if (!props.scene || event.button !== 0) return;
+  const s = props.scene;
+  const node = s.getBlueprintNode?.(nodeId);
+  if (!node) return;
+  const port = isInput ? node.getInputPort(portId) : node.getOutputPort(portId);
+  if (!port) return;
+
+  if (isInput) {
+    return;
+  }
+
+  connectFromNode = node;
+  connectFromPort = port;
+  isConnecting.value = true;
+  isInteractionLocked.value = true;
+  interactionLockedNodeIds.add(node.id);
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  s.startPendingConnection(node, port, new Vector2(worldPos.x, worldPos.y));
+  event.stopPropagation();
+  event.preventDefault();
+  window.addEventListener('pointermove', onPortPointerMove);
+  window.addEventListener('pointerup', onPortPointerUp);
+  window.addEventListener('pointercancel', onPortPointerUp);
+  s.requestRedraw();
+}
+
+function onPortPointerMove(event: PointerEvent) {
+  if (!props.scene || !isConnecting.value || !connectFromPort) return;
+  const s = props.scene;
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  const hit = findPortUnderPointer(event.clientX, event.clientY);
+  let compatible: boolean | null = null;
+  if (hit && hit.isInput && hit.node !== connectFromNode && connectFromPort) {
+    compatible = s.isPortCompatible(connectFromPort, hit.port);
+  } else if (hit) {
+    compatible = false;
+  }
+  s.updatePendingConnection(new Vector2(worldPos.x, worldPos.y), null, compatible);
+
+  for (const node of s.getAllBlueprintNodes()) {
+    for (const p of [...node.inputPorts, ...node.outputPorts]) {
+      if (hit && p === hit.port) {
+        p.setSnapped(true, compatible);
+      } else {
+        p.setSnapped(false, null);
+      }
+    }
+  }
+  s.requestRedraw();
+}
+
+function onPortPointerUp(event: PointerEvent) {
+  if (!props.scene || !isConnecting.value) return;
+  const s = props.scene;
+
+  window.removeEventListener('pointermove', onPortPointerMove);
+  window.removeEventListener('pointerup', onPortPointerUp);
+  window.removeEventListener('pointercancel', onPortPointerUp);
+
+  let completed = false;
+  const hit = findPortUnderPointer(event.clientX, event.clientY);
+
+  if (hit && connectFromPort && connectFromNode) {
+    const connData = s.completePendingConnection(hit.node, hit.port);
+    if (connData) {
+      s.executeCommand(new CreateConnectionCommand(s, connData));
+      completed = true;
+    }
+  }
+
+  if (!completed && connectFromNode && connectFromPort) {
+    const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+    s.on.emit('link-drop-on-canvas', {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      worldX: worldPos.x,
+      worldY: worldPos.y,
+      fromNodeId: connectFromNode.id,
+      fromAnchorId: connectFromPort.spec.id,
+    });
+    s.cancelPendingConnection();
+  } else if (!completed) {
+    s.cancelPendingConnection();
+  }
+
+  isConnecting.value = false;
+  isInteractionLocked.value = false;
+  interactionLockedNodeIds.clear();
+  connectFromNode = null;
+  connectFromPort = null;
+  s.requestRedraw();
+}
+
+function getWorldPosFromClient(clientX: number, clientY: number): { x: number; y: number } {
+  if (!props.scene || !overlayRef.value) return { x: 0, y: 0 };
+  const rect = overlayRef.value.getBoundingClientRect();
+  const cam = props.scene.camera;
+  const screenX = clientX - rect.left;
+  const screenY = clientY - rect.top;
+  const worldX = (screenX - rect.width / 2) / cam.zoom + cam.position.x;
+  const worldY = (screenY - rect.height / 2) / cam.zoom + cam.position.y;
+  return { x: worldX, y: worldY };
+}
+
+function cleanupInteractionStates() {
+  window.removeEventListener('pointermove', onDomNodeDragMove);
+  window.removeEventListener('pointerup', onDomNodeDragEnd);
+  window.removeEventListener('pointercancel', onDomNodeDragEnd);
+  window.removeEventListener('pointermove', onPortPointerMove);
+  window.removeEventListener('pointerup', onPortPointerUp);
+  window.removeEventListener('pointercancel', onPortPointerUp);
+  window.removeEventListener('pointermove', onDomNodeResizeMove);
+  window.removeEventListener('pointerup', onDomNodeResizeEnd);
+  window.removeEventListener('pointercancel', onDomNodeResizeEnd);
+
+  isDragging.value = false;
+  isConnecting.value = false;
+  isResizing = false;
+  isInteractionLocked.value = false;
+  interactionLockedNodeIds.clear();
+  dragNodeId = null;
+  dragStartPositions.clear();
+  dragCurrentPositions.clear();
+  connectFromNode = null;
+  connectFromPort = null;
+  resizeNodeId = null;
+  resizeCorner = null;
+}
+
+function onDomNodeResizeStart(nodeId: string, corner: string, event: PointerEvent) {
+  if (!props.scene) return;
+  event.stopPropagation();
+  event.preventDefault();
+
+  const s = props.scene;
+  const node = prevDomMap.get(nodeId);
+  if (!node) return;
+
+  resizeNodeId = nodeId;
+  resizeCorner = corner;
+  resizeStartClientX = event.clientX;
+  resizeStartClientY = event.clientY;
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  resizeStartWorldX = worldPos.x;
+  resizeStartWorldY = worldPos.y;
+  resizeStartWidth = node.data.width;
+  resizeStartHeight = node.data.height;
+  resizeStartNodeX = node.transform.position.x;
+  resizeStartNodeY = node.transform.position.y;
+
+  isResizing = true;
+  isInteractionLocked.value = true;
+  interactionLockedNodeIds.clear();
+  interactionLockedNodeIds.add(nodeId);
+
+  window.addEventListener('pointermove', onDomNodeResizeMove);
+  window.addEventListener('pointerup', onDomNodeResizeEnd);
+  window.addEventListener('pointercancel', onDomNodeResizeEnd);
+}
+
+function onDomNodeResizeMove(event: PointerEvent) {
+  if (!props.scene || !isResizing || !resizeNodeId || !resizeCorner) return;
+  const s = props.scene;
+  const node = s.getBlueprintNode(resizeNodeId);
+  if (!node) return;
+
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  const dx = worldPos.x - resizeStartWorldX;
+  const dy = worldPos.y - resizeStartWorldY;
+
+  let newX = resizeStartNodeX;
+  let newY = resizeStartNodeY;
+  let newWidth = resizeStartWidth;
+  let newHeight = resizeStartHeight;
+
+  switch (resizeCorner) {
+    case 'se': {
+      newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth + dx);
+      newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight + dy);
+      break;
+    }
+    case 'sw': {
+      newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth - dx);
+      newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight + dy);
+      newX = resizeStartNodeX + (resizeStartWidth - newWidth);
+      break;
+    }
+    case 'ne': {
+      newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth + dx);
+      newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight - dy);
+      newY = resizeStartNodeY + (resizeStartHeight - newHeight);
+      break;
+    }
+    case 'nw': {
+      newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth - dx);
+      newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight - dy);
+      newX = resizeStartNodeX + (resizeStartWidth - newWidth);
+      newY = resizeStartNodeY + (resizeStartHeight - newHeight);
+      break;
+    }
+  }
+
+  node.setPosition(newX, newY);
+  node.updateSize(newWidth, newHeight);
+  node.data.sizeCustomized = true;
+
+  s.updateAllConnectionEndpoints();
+  s.requestRedraw();
+}
+
+function onDomNodeResizeEnd() {
+  if (!props.scene) return;
+  const s = props.scene;
+
+  window.removeEventListener('pointermove', onDomNodeResizeMove);
+  window.removeEventListener('pointerup', onDomNodeResizeEnd);
+  window.removeEventListener('pointercancel', onDomNodeResizeEnd);
+
+  if (isResizing && resizeNodeId) {
+    const node = s.getBlueprintNode(resizeNodeId);
+    if (node) {
+      const endX = node.transform.position.x;
+      const endY = node.transform.position.y;
+      const endWidth = node.data.width;
+      const endHeight = node.data.height;
+      const moved = Math.abs(endX - resizeStartNodeX) > 0.5 ||
+                    Math.abs(endY - resizeStartNodeY) > 0.5 ||
+                    Math.abs(endWidth - resizeStartWidth) > 0.5 ||
+                    Math.abs(endHeight - resizeStartHeight) > 0.5;
+      if (moved) {
+        s.executeCommand(new ResizeNodeCommand(
+          s, node,
+          resizeStartNodeX, resizeStartNodeY, resizeStartWidth, resizeStartHeight,
+          endX, endY, endWidth, endHeight
+        ));
+        s.updateAllConnectionEndpoints();
+      }
+    }
+  }
+
+  isResizing = false;
+  isInteractionLocked.value = false;
+  interactionLockedNodeIds.clear();
+  resizeNodeId = null;
+  resizeCorner = null;
+  s.requestRedraw();
+}
+
+function onDomNodeDragStart(nodeId: string, event: PointerEvent) {
+  if (!props.scene) return;
+  if (event.button !== 0) return;
+  const s = props.scene;
+  const node = prevDomMap.get(nodeId);
+  if (!node) return;
+
+  event.stopPropagation();
+  event.preventDefault();
+
+  const selectedNodes = s.selection?.getSelection?.()?.filter((n: any) => n instanceof BlueprintNode) as BlueprintNode[] || [];
+  const isNodeSelected = selectedNodes.some(n => n.id === nodeId);
+
+  if (!isNodeSelected) {
+    s.selection.setSelection([nodeId]);
+    s.requestRedraw();
+  }
+
+  dragNodeId = nodeId;
+  dragStartClientX = event.clientX;
+  dragStartClientY = event.clientY;
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  dragStartWorldX = worldPos.x;
+  dragStartWorldY = worldPos.y;
+
+  dragStartPositions.clear();
+  dragCurrentPositions.clear();
+  const nodesToDrag = isNodeSelected ? selectedNodes : [node];
+  interactionLockedNodeIds.clear();
+  for (const n of nodesToDrag) {
+    dragStartPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+    dragCurrentPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
+    interactionLockedNodeIds.add(n.id);
+  }
+
+  isDragging.value = true;
+  isInteractionLocked.value = true;
+
+  window.addEventListener('pointermove', onDomNodeDragMove);
+  window.addEventListener('pointerup', onDomNodeDragEnd);
+  window.addEventListener('pointercancel', onDomNodeDragEnd);
+}
+
+function onDomNodeDragMove(event: PointerEvent) {
+  if (!props.scene || !isDragging.value) return;
+  const s = props.scene;
+
+  const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
+  const dx = worldPos.x - dragStartWorldX;
+  const dy = worldPos.y - dragStartWorldY;
+
+  for (const [nodeId, startPos] of dragStartPositions) {
+    const node = s.getBlueprintNode(nodeId);
+    if (node) {
+      const newX = startPos.x + dx;
+      const newY = startPos.y + dy;
+      node.setPosition(newX, newY);
+      dragCurrentPositions.set(nodeId, new Vector2(newX, newY));
+    }
+  }
+
+  s.updateAllConnectionEndpoints();
+  s.requestRedraw();
+}
+
+function onDomNodeDragEnd() {
+  if (!props.scene) return;
+  const s = props.scene;
+
+  window.removeEventListener('pointermove', onDomNodeDragMove);
+  window.removeEventListener('pointerup', onDomNodeDragEnd);
+  window.removeEventListener('pointercancel', onDomNodeDragEnd);
+
+  if (dragStartPositions.size > 0 && dragCurrentPositions.size > 0) {
+    let moved = false;
+    for (const [nodeId, startPos] of dragStartPositions) {
+      const curPos = dragCurrentPositions.get(nodeId);
+      if (curPos && (Math.abs(curPos.x - startPos.x) > 0.5 || Math.abs(curPos.y - startPos.y) > 0.5)) {
+        moved = true;
+        break;
+      }
+    }
+
+    if (moved) {
+      const moveFn = (id: string, pos: Vector2) => {
+        const node = s.getBlueprintNode(id);
+        if (node) {
+          node.setPosition(pos.x, pos.y);
+        }
+      };
+      s.executeCommand(new MoveNodeCommand(dragStartPositions, dragCurrentPositions, moveFn));
+      s.updateAllConnectionEndpoints();
+    }
+  }
+
+  isDragging.value = false;
+  isInteractionLocked.value = false;
+  interactionLockedNodeIds.clear();
+  dragNodeId = null;
+  dragStartPositions.clear();
+  dragCurrentPositions.clear();
+  s.requestRedraw();
+}
 
 const overlayStyle = computed(() => ({
   position: 'absolute' as const,
@@ -324,7 +739,7 @@ function extractPortData(ports: any[], nodeWorldX: number, nodeWorldY: number): 
   return ports.map((p: any) => {
     const wp = p.getWorldPosition();
     return {
-      id: p.id,
+      id: p.spec.id,
       label: p.spec?.label,
       offsetY: wp.y - nodeWorldY,
       mediaType: p.spec?.mediaType || 'generic',
@@ -336,14 +751,31 @@ function syncDomNodes() {
   if (!props.scene) return;
   const s = props.scene;
   const currentLegacyResources = s.legacyResources || {};
-  const currentSelected: BlueprintNode[] = (s.selection?.getSelection?.() ?? [])
-    .filter((n: any) => n instanceof BlueprintNode) as BlueprintNode[];
+  const editingId = props.editingNodeId;
 
   const newRenders: DomNodeRenderData[] = [];
   const currentMap = new Map<string, BlueprintNode>();
 
-  const isSingleSelect = currentSelected.length === 1;
-  const nodesToRender: BlueprintNode[] = isSingleSelect ? [currentSelected[0]] : [];
+  const isEngineDragging = s.isEngineDragging;
+  const isDomInteracting = isInteractionLocked.value;
+  const isEngineOrDomInteracting = isDomInteracting || isEngineDragging;
+
+  let nodesToRender: BlueprintNode[];
+  if (isEngineDragging) {
+    nodesToRender = [];
+  } else if (isDomInteracting) {
+    nodesToRender = [];
+    for (const nodeId of interactionLockedNodeIds) {
+      const node = s.getBlueprintNode(nodeId);
+      if (node) nodesToRender.push(node);
+    }
+  } else {
+    nodesToRender = [];
+    if (editingId) {
+      const editingNode = s.getBlueprintNode(editingId);
+      if (editingNode) nodesToRender.push(editingNode);
+    }
+  }
 
   for (const node of nodesToRender) {
     currentMap.set(node.id, node);
@@ -424,6 +856,7 @@ onUnmounted(() => {
     resizeObserver.disconnect();
     resizeObserver = null;
   }
+  cleanupInteractionStates();
   if (props.scene) {
     for (const [, node] of prevDomMap) {
       node.setDomMode(false);
@@ -439,6 +872,29 @@ watch(() => props.scene, (newScene) => {
     syncDomNodes();
   }
 }, { immediate: true });
+
+watch(isInteractionLocked, (locked, wasLocked) => {
+  if (props.scene) {
+    props.scene.isDomInteractionLocked = locked;
+  }
+  if (wasLocked && !locked) {
+    nextTick(() => emit('interaction-end'));
+  }
+});
+
+watch(() => props.editingNodeId, (newId, oldId) => {
+  if (oldId && !newId) {
+    cleanupInteractionStates();
+    if (props.scene) {
+      for (const [id, node] of prevDomMap) {
+        node.setDomMode(false);
+      }
+    }
+    prevDomMap.clear();
+    lastKnownText.clear();
+    domNodeRenders.value = [];
+  }
+});
 </script>
 
 <style scoped>

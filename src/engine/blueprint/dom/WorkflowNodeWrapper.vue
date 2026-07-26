@@ -232,10 +232,6 @@ const onChatStop = () => {
   display: none !important;
 }
 
-.workflow-node-wrapper :deep(.wf-resize) {
-  display: none !important;
-}
-
 .workflow-node-wrapper :deep(.wf-node-particles) {
   display: none !important;
 }
@@ -261,6 +257,10 @@ const onChatStop = () => {
 .workflow-node-wrapper :deep(.wf-node-glow),
 .workflow-node-wrapper :deep(.wf-node-shine) {
   pointer-events: none !important;
+}
+
+.workflow-node-wrapper :deep(.wf-resize) {
+  display: none !important;
 }
 
 .workflow-node-wrapper :deep(.wf-textarea),
