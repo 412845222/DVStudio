@@ -67,6 +67,7 @@ import BlueprintDomOverlay from './dom/BlueprintDomOverlay.vue';
 import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
 import type { NodeChatState } from './dom/NodeComponentResolver';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
+import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand';
 import { Vector2 } from '../graphbase/core/Vector2';
 import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../aiworkflow/types';
 import type { LegacyResourceData } from './types';
@@ -1202,6 +1203,50 @@ defineExpose({
     if (patch.inputs || patch.outputs) {
       s.updateAllConnectionEndpoints();
     }
+    s.requestRedraw();
+    emitChange();
+    return true;
+  },
+
+  moveNode(nodeId: string, x: number, y: number): boolean {
+    if (!scene.value || props.readonly) return false;
+    const s = scene.value;
+    const node = s.getBlueprintNode(nodeId);
+    if (!node) return false;
+    const startPositions = new Map<string, Vector2>();
+    const endPositions = new Map<string, Vector2>();
+    startPositions.set(nodeId, new Vector2(node.data.worldX, node.data.worldY));
+    endPositions.set(nodeId, new Vector2(x, y));
+    const moveFn = (id: string, pos: Vector2) => {
+      const n = s.getBlueprintNode(id);
+      if (n) n.setPosition(pos.x, pos.y);
+    };
+    s.executeCommand(new MoveNodeCommand(startPositions, endPositions, moveFn));
+    s.updateAllConnectionEndpoints();
+    s.requestRedraw();
+    emitChange();
+    return true;
+  },
+
+  moveNodesByDelta(nodeIds: string[], dx: number, dy: number): boolean {
+    if (!scene.value || props.readonly) return false;
+    const s = scene.value;
+    const startPositions = new Map<string, Vector2>();
+    const endPositions = new Map<string, Vector2>();
+    for (const nodeId of nodeIds) {
+      const node = s.getBlueprintNode(nodeId);
+      if (node) {
+        startPositions.set(nodeId, new Vector2(node.data.worldX, node.data.worldY));
+        endPositions.set(nodeId, new Vector2(node.data.worldX + dx, node.data.worldY + dy));
+      }
+    }
+    if (startPositions.size === 0) return false;
+    const moveFn = (id: string, pos: Vector2) => {
+      const n = s.getBlueprintNode(id);
+      if (n) n.setPosition(pos.x, pos.y);
+    };
+    s.executeCommand(new MoveNodeCommand(startPositions, endPositions, moveFn));
+    s.updateAllConnectionEndpoints();
     s.requestRedraw();
     emitChange();
     return true;

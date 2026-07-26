@@ -1114,6 +1114,20 @@ const engineApi = {
   },
   removeEdge: (edgeId: string) => {
     return blueprintHostRef.value?.removeEdge?.(edgeId) ?? false
+  },
+  moveNode: (nodeId: string, x: number, y: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.moveNode === 'function') {
+      return editor.moveNode(nodeId, x, y)
+    }
+    return false
+  },
+  moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.moveNodesByDelta === 'function') {
+      return editor.moveNodesByDelta(nodeIds, dx, dy)
+    }
+    return false
   }
 }
 
@@ -1271,31 +1285,15 @@ let _onCanvasDropFn: ((e: DragEvent) => void) | null = null
 let _onCanvasContextMenuFn: ((menuPayload: { clientX: number; clientY: number; worldX: number; worldY: number }) => void) | null = null
 let _openInspectorFn: ((open: boolean) => void) | null = null
 
-let storeSyncFrameId: number | null = null
-let pendingStoreSync = false
-
-function requestStoreSyncToEditor() {
-  pendingStoreSync = true
-  scheduleStoreSyncToEditor()
-}
-
 function syncBlueprintNow() {
-  if (isUpdatingFromStore) return
-  if (!pendingStoreSync) return
-  pendingStoreSync = false
-  if (blueprintHostRef.value) {
-    isUpdatingFromStore = true
-    const data = workflowStateToLegacyBlueprint(store.state)
-    blueprintHostRef.value.loadBlueprint(data)
-    resetIsUpdatingFromStore()
-  }
-}
-function scheduleStoreSyncToEditor() {
-  if (storeSyncFrameId !== null) return
-  storeSyncFrameId = requestAnimationFrame(() => {
-    storeSyncFrameId = null
-    syncBlueprintNow()
-  })
+  if (!blueprintHostRef.value) return false
+  const editor = blueprintHostRef.value.getInstance?.()
+  if (!editor || typeof editor.loadBlueprint !== 'function') return false
+  const data = workflowStateToLegacyBlueprint(store.state)
+  isUpdatingFromStore = true
+  blueprintHostRef.value.loadBlueprint(data)
+  resetIsUpdatingFromStore()
+  return true
 }
 
 function patchBlueprintNodeData(nodeId: string) {
@@ -1307,21 +1305,19 @@ function patchBlueprintNodeData(nodeId: string) {
   if (!node) return
   const storeNode = store.state.nodesById[nodeId]
   if (!storeNode) return
-  const storeData = JSON.parse(JSON.stringify(storeNode))
-  Object.assign(node.data, storeData)
-  if (typeof node.updateSize === 'function') {
-    node.updateSize(storeNode.width, storeNode.height)
+  if (typeof node.setData === 'function') {
+    const patch: Record<string, any> = { ...storeNode }
+    if (patch.resourceId === null) delete patch.resourceId
+    node.setData(patch)
+  } else {
+    const storeData = JSON.parse(JSON.stringify(storeNode))
+    Object.assign(node.data, storeData)
+    if (typeof node.updateSize === 'function') {
+      node.updateSize(storeNode.width, storeNode.height)
+    }
   }
   scene.requestRedraw?.()
 }
-
-watch(() => [
-  store.state.nodeOrder,
-  store.state.edgeOrder
-], () => {
-  if (isUpdatingFromStore) return
-  requestStoreSyncToEditor()
-}, { deep: false })
 
 let viewportSyncFrameId: number | null = null
 let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null

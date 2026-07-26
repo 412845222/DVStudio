@@ -236,17 +236,33 @@ export class BlueprintNode extends Node {
   }
 
   setData(data: Partial<BlueprintNodeData>): void {
-    if (data.title !== undefined) this.title = data.title;
-    if (data.subtitle !== undefined) this.subtitle = data.subtitle;
-    if (data.alias !== undefined) this.alias = data.alias;
-    if (data.icon !== undefined) this.icon = data.icon;
-    if (data.previewContent?.text !== undefined) this.previewText = data.previewContent.text;
+    if (data.title !== undefined) {
+      this.title = data.title;
+      this.data.title = data.title;
+    }
+    if (data.subtitle !== undefined) {
+      this.subtitle = data.subtitle;
+      this.data.subtitle = data.subtitle;
+    }
+    if (data.alias !== undefined) {
+      this.alias = data.alias;
+      this.data.alias = data.alias;
+    }
+    if (data.icon !== undefined) {
+      this.icon = data.icon;
+      this.data.icon = data.icon;
+    }
+    if (data.previewContent?.text !== undefined) {
+      this.previewText = data.previewContent.text;
+      this.data.previewContent = data.previewContent;
+    }
     if (data.textValue !== undefined) {
       this.data.textValue = data.textValue;
       this.previewText = data.textValue;
     }
     if (data.type !== undefined) {
       this.data.type = data.type;
+      this.nodeType = data.type;
     }
     const newX = data.worldX ?? this.data.worldX;
     const newY = data.worldY ?? this.data.worldY;
@@ -260,11 +276,16 @@ export class BlueprintNode extends Node {
     }
     if (data.selected !== undefined) {
       this.selected = data.selected;
+      this.data.selected = data.selected;
     }
     if (data.inputs !== undefined) this.data.inputs = data.inputs;
     if (data.outputs !== undefined) this.data.outputs = data.outputs;
+    if (data.sizeCustomized !== undefined) this.data.sizeCustomized = data.sizeCustomized;
+    if (data.resourceId !== undefined) this.data.resourceId = data.resourceId;
+    if (data.resourcePath !== undefined) this.data.resourcePath = data.resourcePath;
     const knownKeys = new Set(['id', 'type', 'title', 'subtitle', 'alias', 'icon', 'previewContent',
-      'textValue', 'worldX', 'worldY', 'width', 'height', 'selected', 'inputs', 'outputs']);
+      'textValue', 'worldX', 'worldY', 'width', 'height', 'selected', 'inputs', 'outputs',
+      'sizeCustomized', 'resourceId', 'resourcePath', 'createdAt']);
     for (const key of Object.keys(data)) {
       if (!knownKeys.has(key)) {
         (this.data as Record<string, any>)[key] = (data as Record<string, any>)[key];

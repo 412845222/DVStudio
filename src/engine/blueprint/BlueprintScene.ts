@@ -7,7 +7,7 @@ import { BlueprintGrid } from './BlueprintGrid';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import { BlueprintEditorTool } from './BlueprintEditorTool';
 import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFrameData, LegacyBlueprintData, LegacyResourceData } from './types';
-import { CURRENT_SCHEMA_VERSION, clampZoom, clampPan } from './types';
+import { CURRENT_SCHEMA_VERSION, DEFAULT_NODE_SIZES, clampZoom, clampPan } from './types';
 import type { SavedSelectionFrame } from './SelectionFrame';
 import { BlueprintLegacyLoader } from './BlueprintLegacyLoader';
 import { BlueprintLegacySaver } from './BlueprintLegacySaver';
@@ -131,13 +131,23 @@ export class BlueprintScene extends Scene {
   }
 
   loadBlueprint(data: BlueprintData | LegacyBlueprintData): void {
+    if (!data || typeof data !== 'object') {
+      console.warn('[Blueprint] loadBlueprint: invalid data, loading empty blueprint');
+      data = { schemaVersion: CURRENT_SCHEMA_VERSION, viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: [], edges: [] };
+    }
+
     let blueprintData: BlueprintData;
 
     if (BlueprintLegacyLoader.isLegacyFormat(data)) {
       blueprintData = BlueprintLegacyLoader.load(data);
     } else {
-      blueprintData = data;
+      blueprintData = data as BlueprintData;
     }
+
+    if (!Array.isArray(blueprintData.nodes)) blueprintData.nodes = [];
+    if (!Array.isArray(blueprintData.edges)) blueprintData.edges = [];
+    if (!Array.isArray(blueprintData.savedSelectionFrames)) blueprintData.savedSelectionFrames = [];
+    if (!blueprintData.legacyResources || typeof blueprintData.legacyResources !== 'object') blueprintData.legacyResources = {};
 
     const version = blueprintData.schemaVersion ?? 1;
     if (version > CURRENT_SCHEMA_VERSION) {
@@ -145,6 +155,7 @@ export class BlueprintScene extends Scene {
     }
 
     blueprintData = this.migrateSchema(blueprintData);
+    blueprintData = this.sanitizeLoadedData(blueprintData);
 
     const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|')}`;
     if (this._lastLoadSignature === signature) {
@@ -229,6 +240,115 @@ export class BlueprintScene extends Scene {
       edges: data.edges ?? [],
       savedSelectionFrames: data.savedSelectionFrames ?? [],
       legacyResources: data.legacyResources ?? {}
+    };
+  }
+
+  private sanitizeLoadedData(data: BlueprintData): BlueprintData {
+    const validNodeIds = new Set<string>();
+    const nodes: BlueprintNodeData[] = [];
+    const discarded = { nodes: 0, edges: 0, frames: 0 };
+
+    for (const raw of data.nodes ?? []) {
+      if (!raw || typeof raw !== 'object') { discarded.nodes++; continue; }
+      if (!raw.id || typeof raw.id !== 'string') { discarded.nodes++; continue; }
+      if (validNodeIds.has(raw.id)) { discarded.nodes++; continue; }
+      const type = raw.type || 'generic';
+      const defaultSize = DEFAULT_NODE_SIZES[type] || DEFAULT_NODE_SIZES.base || { width: 240, height: 160 };
+      const node: BlueprintNodeData = {
+        id: raw.id,
+        type,
+        title: raw.title ?? type,
+        subtitle: raw.subtitle,
+        alias: raw.alias,
+        worldX: typeof raw.worldX === 'number' ? raw.worldX : 0,
+        worldY: typeof raw.worldY === 'number' ? raw.worldY : 0,
+        width: typeof raw.width === 'number' && raw.width > 0 ? raw.width : defaultSize.width,
+        height: typeof raw.height === 'number' && raw.height > 0 ? raw.height : defaultSize.height,
+        sizeCustomized: !!raw.sizeCustomized,
+        inputs: Array.isArray(raw.inputs) ? [...raw.inputs] : [],
+        outputs: Array.isArray(raw.outputs) ? [...raw.outputs] : [],
+        color: raw.color,
+        icon: raw.icon,
+        selected: false,
+        status: raw.status || 'idle',
+        resourceId: raw.resourceId,
+        resourcePath: raw.resourcePath,
+        textValue: raw.textValue,
+        previewContent: raw.previewContent ? { ...raw.previewContent } : undefined,
+        imageSettings: raw.imageSettings ? { ...raw.imageSettings } : undefined,
+        videoSettings: raw.videoSettings ? { ...raw.videoSettings } : undefined,
+        model3dSettings: raw.model3dSettings ? { ...raw.model3dSettings } : undefined,
+        meshySettings: raw.meshySettings ? { ...raw.meshySettings } : undefined,
+        tripo3dSettings: raw.tripo3dSettings ? { ...raw.tripo3dSettings } : undefined,
+        blenderSettings: raw.blenderSettings ? { ...raw.blenderSettings } : undefined,
+        storySettings: raw.storySettings ? { ...raw.storySettings } : undefined,
+        sceneUnderstandingSettings: raw.sceneUnderstandingSettings ? { ...raw.sceneUnderstandingSettings } : undefined,
+        sceneLayoutSettings: raw.sceneLayoutSettings ? { ...raw.sceneLayoutSettings } : undefined,
+        sceneDecomposeSettings: raw.sceneDecomposeSettings ? { ...raw.sceneDecomposeSettings } : undefined,
+        unrealExportSettings: raw.unrealExportSettings ? { ...raw.unrealExportSettings } : undefined,
+        comfyuiSettings: raw.comfyuiSettings ? { ...raw.comfyuiSettings } : undefined,
+        nodeChatDraft: raw.nodeChatDraft,
+        nodeChatParams: raw.nodeChatParams,
+        nodeChatSelectedRefs: Array.isArray(raw.nodeChatSelectedRefs) ? [...raw.nodeChatSelectedRefs] : raw.nodeChatSelectedRefs,
+        rotatePromptText: raw.rotatePromptText,
+        textMergeItems: Array.isArray(raw.textMergeItems) ? [...raw.textMergeItems] : raw.textMergeItems,
+        branches: Array.isArray(raw.branches) ? [...raw.branches] : raw.branches,
+        prompt: raw.prompt,
+        createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now()
+      };
+      for (const key of Object.keys(raw)) {
+        if (!(key in node)) {
+          (node as any)[key] = (raw as any)[key];
+        }
+      }
+      validNodeIds.add(node.id);
+      nodes.push(node);
+    }
+
+    const edges: ConnectionData[] = [];
+    for (const raw of data.edges ?? []) {
+      if (!raw || typeof raw !== 'object') { discarded.edges++; continue; }
+      const fromNodeId = raw.fromNodeId ?? (raw as any).sourceNodeId;
+      const toNodeId = raw.toNodeId ?? (raw as any).targetNodeId;
+      const fromAnchorId = raw.fromAnchorId ?? (raw as any).sourcePortIndex;
+      const toAnchorId = raw.toAnchorId ?? (raw as any).targetPortIndex;
+      if (!raw.id || !fromNodeId || !toNodeId) { discarded.edges++; continue; }
+      if (!validNodeIds.has(fromNodeId) || !validNodeIds.has(toNodeId)) { discarded.edges++; continue; }
+      edges.push({
+        id: raw.id,
+        fromNodeId,
+        fromAnchorId: typeof fromAnchorId === 'string' ? fromAnchorId : String(fromAnchorId ?? ''),
+        toNodeId,
+        toAnchorId: typeof toAnchorId === 'string' ? toAnchorId : String(toAnchorId ?? ''),
+        selected: !!raw.selected,
+        createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now()
+      });
+    }
+
+    const savedSelectionFrames: SavedSelectionFrameData[] = [];
+    for (const raw of data.savedSelectionFrames ?? []) {
+      if (!raw || !raw.id || !raw.label) { discarded.frames++; continue; }
+      const nodeIds = Array.isArray(raw.nodeIds) ? raw.nodeIds.filter((id: any) => validNodeIds.has(id)) : [];
+      if (nodeIds.length === 0) { discarded.frames++; continue; }
+      savedSelectionFrames.push({ id: raw.id, nodeIds, label: raw.label });
+    }
+
+    const totalDiscarded = discarded.nodes + discarded.edges + discarded.frames;
+    if (totalDiscarded > 0) {
+      console.warn(`[Blueprint] sanitizeLoadedData: discarded invalid entries - nodes:${discarded.nodes} edges:${discarded.edges} frames:${discarded.frames}`);
+    }
+
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      viewport: {
+        zoom: clampZoom(data.viewport?.zoom ?? 1),
+        panX: clampPan(data.viewport?.panX ?? 0),
+        panY: clampPan(data.viewport?.panY ?? 0)
+      },
+      nodes,
+      edges,
+      savedSelectionFrames,
+      legacyResources: data.legacyResources && typeof data.legacyResources === 'object' ? { ...data.legacyResources } : {}
     };
   }
 

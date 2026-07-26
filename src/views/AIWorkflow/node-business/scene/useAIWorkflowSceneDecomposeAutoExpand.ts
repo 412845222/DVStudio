@@ -186,11 +186,15 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				created = !!sceneLayoutNodeId
 				if (sceneLayoutNodeId) createdNodeIds.push(sceneLayoutNodeId)
 			} else {
-				options.store.commit('setNodePosition', {
-					nodeId: sceneLayoutNodeId,
-					worldX: targetX,
-					worldY: targetY
-				})
+				if (options.engineApi?.moveNode) {
+					options.engineApi.moveNode(sceneLayoutNodeId, targetX, targetY)
+				} else {
+					options.store.commit('setNodePosition', {
+						nodeId: sceneLayoutNodeId,
+						worldX: targetX,
+						worldY: targetY
+					})
+				}
 			}
 
 			if (!sceneLayoutNodeId) return ''
