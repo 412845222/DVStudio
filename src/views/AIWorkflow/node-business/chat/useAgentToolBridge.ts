@@ -45,6 +45,14 @@ type AgentToolBridgePayload = {
     height: number
   }>
   focusNode?: (nodeId: string) => boolean
+  engineApi?: {
+    addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+    updateNodeData?: (id: string, data: Record<string, any>) => void
+    connectPorts?: (fId: string, fA: string, tId: string, tA: string) => boolean
+    disconnectPorts?: (fId: string, fA: string, tId: string, tA: string) => boolean
+    removeNode?: (id: string) => void
+    removeEdge?: (edgeId: string) => void
+  }
 }
 
 const DANGEROUS_TOOLS = new Set(['delete_node', 'disconnect_nodes', 'execute_node'])
@@ -371,13 +379,20 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       worldY = -panY / zoom - NODE_DEFAULT_HEIGHT / 2
     }
 
-    payload.store.commit('addNodeAt', {
-      worldX,
-      worldY,
-      title
-    })
-
-    const nodeId = String(payload.store.state.selectedNodeId ?? '').trim()
+    let nodeId: string | null = null
+    let usedEngineSuccess = false
+    if (payload.engineApi?.addNode) {
+      nodeId = payload.engineApi.addNode(nodeType, worldX, worldY, { title, alias })
+      usedEngineSuccess = Boolean(nodeId)
+    }
+    if (!nodeId) {
+      payload.store.commit('addNodeAt', {
+        worldX,
+        worldY,
+        title
+      })
+      nodeId = String(payload.store.state.selectedNodeId ?? '').trim()
+    }
     if (!nodeId) {
       payload.pushToast(t('aiworkflow.toast.agentCreateNodeFailed', { label }), 'warn')
       return {
@@ -386,36 +401,43 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
     }
 
-    sessionCreatedNodeIds.push(nodeId)
+    const finalNodeId: string = nodeId
+    sessionCreatedNodeIds.push(finalNodeId)
 
-    const validNodeTypes = ['base', 'text', 'text-merge', 'image', 'rotate-image', 'video', 'scene-understanding', 'scene-decompose', 'scene-layout', 'unreal-export', 'story', 'comfyui', 'model3d'] as const
-    if (validNodeTypes.includes(nodeType as typeof validNodeTypes[number])) {
-      payload.store.commit('setNodeType', { nodeId, type: nodeType as typeof validNodeTypes[number] })
+    if (!usedEngineSuccess) {
+      const validNodeTypes = ['base', 'text', 'text-merge', 'image', 'rotate-image', 'video', 'scene-understanding', 'scene-decompose', 'scene-layout', 'unreal-export', 'story', 'comfyui', 'model3d'] as const
+      if (validNodeTypes.includes(nodeType as typeof validNodeTypes[number])) {
+        payload.store.commit('setNodeType', { nodeId: finalNodeId, type: nodeType as typeof validNodeTypes[number] })
+      }
+      payload.store.commit('setNodeAlias', { nodeId: finalNodeId, alias })
     }
-    payload.store.commit('setNodeAlias', { nodeId, alias })
 
     if (args.config && typeof args.config === 'object') {
-      Object.entries(args.config).forEach(([key, value]) => {
-        payload.store.commit('upsertNode', {
-          node: {
-            ...payload.store.state.nodesById[nodeId],
-            id: nodeId,
-            [key]: value
-          }
+      if (usedEngineSuccess && payload.engineApi?.updateNodeData) {
+        payload.engineApi.updateNodeData(finalNodeId, args.config as Record<string, any>)
+      } else {
+        Object.entries(args.config).forEach(([key, value]) => {
+          payload.store.commit('upsertNode', {
+            node: {
+              ...payload.store.state.nodesById[finalNodeId],
+              id: finalNodeId,
+              [key]: value
+            }
+          })
         })
-      })
+      }
     }
 
     payload.pushToast(t('aiworkflow.toast.agentNodeCreated', { label }), 'info')
 
     const focusNodeFn = payload.focusNode
     if (typeof focusNodeFn === 'function') {
-      setTimeout(() => focusNodeFn(nodeId), 150)
+      setTimeout(() => focusNodeFn(finalNodeId), 150)
     }
 
     return {
       ok: true,
-      nodeId,
+      nodeId: finalNodeId,
       nodeType: nodeType,
       title,
       position: { x: worldX, y: worldY }
@@ -434,7 +456,11 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
     }
 
-    payload.store.commit('removeNode', { nodeId })
+    if (payload.engineApi?.removeNode) {
+      payload.engineApi.removeNode(nodeId)
+    } else {
+      payload.store.commit('removeNode', { nodeId })
+    }
     payload.pushToast(t('aiworkflow.toast.agentNodeDeleted', { id: nodeId }), 'info')
     return {
       ok: true,
@@ -501,12 +527,18 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
     const resolvedFromPort = fromAnchor?.id || fromPort
     const resolvedToPort = toAnchor?.id || toPort
 
-    payload.store.commit('addEdge', {
-      fromNodeId,
-      fromAnchorId: resolvedFromPort,
-      toNodeId,
-      toAnchorId: resolvedToPort
-    })
+    let connected = false
+    if (payload.engineApi?.connectPorts) {
+      connected = payload.engineApi.connectPorts(fromNodeId, resolvedFromPort, toNodeId, resolvedToPort)
+    }
+    if (!connected) {
+      payload.store.commit('addEdge', {
+        fromNodeId,
+        fromAnchorId: resolvedFromPort,
+        toNodeId,
+        toAnchorId: resolvedToPort
+      })
+    }
 
     payload.pushToast(t('aiworkflow.toast.agentNodesConnected'), 'info')
     return {
@@ -529,7 +561,11 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       if (!edge) {
         return { ok: false, error: `Edge ${edgeId} not found` }
       }
-      payload.store.commit('removeEdge', { edgeId })
+      if (payload.engineApi?.removeEdge) {
+        payload.engineApi.removeEdge(edgeId)
+      } else {
+        payload.store.commit('removeEdge', { edgeId })
+      }
       payload.pushToast(t('aiworkflow.toast.agentEdgeDisconnected', { id: edgeId }), 'info')
       return { ok: true, edgeId, note: 'Edge disconnected successfully' }
     }
@@ -553,7 +589,11 @@ export const useAgentToolBridge = (payload: AgentToolBridgePayload) => {
       }
 
       for (const eId of edgesToRemove) {
-        payload.store.commit('removeEdge', { edgeId: eId })
+        if (payload.engineApi?.removeEdge) {
+          payload.engineApi.removeEdge(eId)
+        } else {
+          payload.store.commit('removeEdge', { edgeId: eId })
+        }
       }
 
       payload.pushToast(t('aiworkflow.toast.agentNodeDisconnected', { id: nodeId, count: edgesToRemove.length }), 'info')

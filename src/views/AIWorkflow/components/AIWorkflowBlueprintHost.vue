@@ -133,6 +133,18 @@ defineExpose({
   },
   connectPorts(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): boolean {
     return blueprintEditorRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
+  },
+  setSelection(nodeIds: string[]) {
+    blueprintEditorRef.value?.setSelection?.(nodeIds)
+  },
+  clearSelection() {
+    blueprintEditorRef.value?.clearSelection?.()
+  },
+  removeNode(nodeId: string): boolean {
+    return blueprintEditorRef.value?.removeNode?.(nodeId) ?? false
+  },
+  removeEdge(edgeId: string): boolean {
+    return blueprintEditorRef.value?.removeEdge?.(edgeId) ?? false
   }
 })
 

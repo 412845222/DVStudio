@@ -965,9 +965,11 @@ defineExpose({
     };
     
     s.createWorkflowNode(nodeData);
+    s.selection.setSelection([nodeId]);
     enterEditMode(nodeId);
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
+    emitChange();
     return nodeId;
   },
 
@@ -1078,6 +1080,15 @@ defineExpose({
     if (!scene.value) return;
     scene.value.selection.clearSelection();
     scene.value.requestRedraw();
+    emitChange();
+  },
+
+  setSelection(nodeIds: string[]) {
+    if (!scene.value) return;
+    const validIds = nodeIds.filter(id => scene.value!.getBlueprintNode(id));
+    scene.value.selection.setSelection(validIds);
+    scene.value.requestRedraw();
+    emitChange();
   },
 
   setNodeStatus(nodeId: string, status: NodeStatus) {
@@ -1206,6 +1217,29 @@ defineExpose({
       return true;
     }
     return false;
+  },
+
+  removeNode(nodeId: string): boolean {
+    if (!scene.value || props.readonly) return false;
+    const node = scene.value.getBlueprintNode(nodeId);
+    if (!node) return false;
+    scene.value.executeCommand(new DeleteSelectionCommand(scene.value, [nodeId], []));
+    scene.value.selection.clearSelection();
+    scene.value.updateAllConnectionEndpoints();
+    scene.value.requestRedraw();
+    emitChange();
+    return true;
+  },
+
+  removeEdge(edgeId: string): boolean {
+    if (!scene.value || props.readonly) return false;
+    const conn = scene.value.getConnection(edgeId);
+    if (!conn) return false;
+    scene.value.executeCommand(new DeleteSelectionCommand(scene.value, [], [edgeId]));
+    scene.value.updateAllConnectionEndpoints();
+    scene.value.requestRedraw();
+    emitChange();
+    return true;
   },
 });
 </script>

@@ -47,6 +47,11 @@ export type AIWorkflowDroppedFile = {
 
 export const useAIWorkflowBatchMediaImport = (options: {
 	store: AIWorkflowStore
+	engineApi?: {
+		addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+		setSelection?: (nodeIds: string[]) => void
+	}
 	makeResourceId: () => string
 	maxBatchImportMediaCount: number
 	inferMediaKindFromFile: (file: File) => 'image' | 'video' | null
@@ -130,6 +135,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			name: string
 			file: File
 		}> = []
+		let anyUsedEngine = false
 
 		for (let i = 0; i < media.length; i += 1) {
 			const item = media[i]
@@ -176,29 +182,46 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				createdAt: Date.now()
 			})
 
-			options.store.commit('addNodeAt', {
-				worldX,
-				worldY,
-				title: item.kind === 'image' ? t('common.image') : t('common.video')
+			const title = item.kind === 'image' ? t('common.image') : t('common.video')
+			let nodeId: string | null | undefined = options.engineApi?.addNode?.(item.kind, worldX, worldY, {
+				title,
+				resourceId
 			})
-			const nodeId = options.store.state.selectedNodeId
-			if (!nodeId) continue
-			createdNodeIds.push(nodeId)
-			options.store.commit('setNodeType', { nodeId, type: item.kind })
-			options.store.commit('setNodeResource', { nodeId, resourceId })
-			if (absPath) {
-				options.store.commit('setNodeResourcePath', { nodeId, resourcePath: absPath })
+			const usedEngine = Boolean(nodeId)
+			if (usedEngine) anyUsedEngine = true
+			if (!nodeId) {
+				options.store.commit('addNodeAt', {
+					worldX,
+					worldY,
+					title
+				})
+				nodeId = options.store.state.selectedNodeId
+				if (!nodeId) continue
+				options.store.commit('setNodeType', { nodeId, type: item.kind })
+				options.store.commit('setNodeResource', { nodeId, resourceId })
+				if (absPath) {
+					options.store.commit('setNodeResourcePath', { nodeId, resourcePath: absPath })
+				}
+			} else if (absPath && options.engineApi?.updateNodeData) {
+				options.engineApi.updateNodeData(nodeId, { resourceId, resourcePath: absPath })
+			} else if (options.engineApi?.updateNodeData) {
+				options.engineApi.updateNodeData(nodeId, { resourceId })
 			}
+			createdNodeIds.push(nodeId)
 			resourceIdToNode.set(resourceId, { nodeId, kind: item.kind })
 			nodeIdToResourceId.set(nodeId, resourceId)
 			importTasks.push({ resourceId, kind: item.kind, name, file: item.file })
 		}
 
 		if (createdNodeIds.length) {
-			options.store.commit('setSelectedNodes', {
-				nodeIds: createdNodeIds,
-				primaryNodeId: createdNodeIds[0]
-			})
+			if (anyUsedEngine && options.engineApi?.setSelection) {
+				options.engineApi.setSelection(createdNodeIds)
+			} else {
+				options.store.commit('setSelectedNodes', {
+					nodeIds: createdNodeIds,
+					primaryNodeId: createdNodeIds[0]
+				})
+			}
 		}
 
 		options.cancelActiveImportSession({ cleanupUnresolved: false })
@@ -362,25 +385,34 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					const sourcePath =
 						typeof result.sourcePath === 'string' ? String(result.sourcePath).trim() : ''
 					if (sourcePath) {
-						options.store.commit('setNodeResourcePath', {
-							nodeId: info.nodeId,
-							resourcePath: sourcePath
-						})
+						if (options.engineApi?.updateNodeData) {
+							options.engineApi.updateNodeData(info.nodeId, { resourcePath: sourcePath })
+						} else {
+							options.store.commit('setNodeResourcePath', {
+								nodeId: info.nodeId,
+								resourcePath: sourcePath
+							})
+						}
 					}
 
 					if (info.kind === 'image' && result.width && result.height) {
 						const width = Math.max(1, Math.floor(Number(result.width) || 1))
 						const height = Math.max(1, Math.floor(Number(result.height) || 1))
-						options.store.commit('setNodeImageSettings', {
-							nodeId: info.nodeId,
-							imageSettings: {
-								outputWidth: width,
-								outputHeight: height,
-								naturalWidth: width,
-								naturalHeight: height,
-								crop: { x: 0, y: 0, width: 1, height: 1 }
-							}
-						})
+						const imageSettings = {
+							outputWidth: width,
+							outputHeight: height,
+							naturalWidth: width,
+							naturalHeight: height,
+							crop: { x: 0, y: 0, width: 1, height: 1 }
+						}
+						if (options.engineApi?.updateNodeData) {
+							options.engineApi.updateNodeData(info.nodeId, { imageSettings })
+						} else {
+							options.store.commit('setNodeImageSettings', {
+								nodeId: info.nodeId,
+								imageSettings
+							})
+						}
 						options.autoSizeImageNodeFromDims(info.nodeId, width, height)
 					}
 

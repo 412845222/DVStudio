@@ -245,6 +245,9 @@ export class BlueprintNode extends Node {
       this.data.textValue = data.textValue;
       this.previewText = data.textValue;
     }
+    if (data.type !== undefined) {
+      this.data.type = data.type;
+    }
     const newX = data.worldX ?? this.data.worldX;
     const newY = data.worldY ?? this.data.worldY;
     if (data.worldX !== undefined || data.worldY !== undefined) {
@@ -257,6 +260,15 @@ export class BlueprintNode extends Node {
     }
     if (data.selected !== undefined) {
       this.selected = data.selected;
+    }
+    if (data.inputs !== undefined) this.data.inputs = data.inputs;
+    if (data.outputs !== undefined) this.data.outputs = data.outputs;
+    const knownKeys = new Set(['id', 'type', 'title', 'subtitle', 'alias', 'icon', 'previewContent',
+      'textValue', 'worldX', 'worldY', 'width', 'height', 'selected', 'inputs', 'outputs']);
+    for (const key of Object.keys(data)) {
+      if (!knownKeys.has(key)) {
+        (this.data as Record<string, any>)[key] = (data as Record<string, any>)[key];
+      }
     }
     this.markDirty(1);
   }

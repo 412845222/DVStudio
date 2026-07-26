@@ -18,8 +18,13 @@ export type AIWorkflowDraggedTripo3DTaskItem = Tripo3DDraggedTaskPayload & {
 	tripo3dSettings?: Record<string, unknown>
 }
 
+type EngineApi = {
+	addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+}
+
 export const useAIWorkflowTripo3DDrop = (options: {
 	store: Tripo3DStoreLike
+	engineApi?: EngineApi
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	pullTripo3DTaskToNode?: (nodeId: string, taskId: string, mode?: string) => Promise<{ ok: boolean; error?: string; finalStatus?: string }>
 	createImageNodeAtCenter?: CreateImageNodeAtCenterFn
@@ -45,20 +50,6 @@ export const useAIWorkflowTripo3DDrop = (options: {
 
 		if (isImageTask && options.createImageNodeAtCenter) {
 			const nodeTitle = title || t('tasks.tripo3d.imageTaskNodeName')
-			options.store.commit('addNodeAt', {
-				worldX: payload.worldX,
-				worldY: payload.worldY,
-				title: nodeTitle
-			})
-			const nodeId = options.store.state.selectedNodeId
-			if (!nodeId) return true
-
-			options.store.commit('setNodeType', { nodeId, type: 'image' })
-			options.store.commit('setNodeAlias', {
-				nodeId,
-				alias: nodeTitle
-			})
-
 			const tripo3dImageSettings: Record<string, unknown> = {
 				taskId: taskId || undefined,
 				taskFamily: mode || 'text_to_image',
@@ -80,17 +71,40 @@ export const useAIWorkflowTripo3DDrop = (options: {
 				tripo3dImageSettings.statusText = t('tasks.tripo3d.pullingImageArtifacts')
 			}
 
-			options.store.commit('setNodeImageSettings', {
-				nodeId,
-				imageSettings: {
-					imageGenerationSource: 'tripo3d',
-					imageUrl: isCompleted ? primaryImageUrl : undefined,
-					thumbnailUrl: thumbnailUrl || undefined,
-					tripo3dImageSettings
-				}
-			})
+			const imageSettings = {
+				imageGenerationSource: 'tripo3d',
+				imageUrl: isCompleted ? primaryImageUrl : undefined,
+				thumbnailUrl: thumbnailUrl || undefined,
+				tripo3dImageSettings
+			}
 
-			if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
+			const nodeId = options.engineApi?.addNode?.(
+				'image',
+				payload.worldX,
+				payload.worldY,
+				{ title: nodeTitle, alias: nodeTitle, imageSettings }
+			) ?? null
+
+			if (!nodeId) {
+				options.store.commit('addNodeAt', {
+					worldX: payload.worldX,
+					worldY: payload.worldY,
+					title: nodeTitle
+				})
+				const fallbackId = options.store.state.selectedNodeId
+				if (fallbackId) {
+					options.store.commit('setNodeType', { nodeId: fallbackId, type: 'image' })
+					options.store.commit('setNodeAlias', { nodeId: fallbackId, alias: nodeTitle })
+					options.store.commit('setNodeImageSettings', { nodeId: fallbackId, imageSettings })
+					if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
+						void options.pullTripo3DTaskToNode(fallbackId, taskId, mode).then((res) => {
+							if (!res.ok) {
+								options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+							}
+						})
+					}
+				}
+			} else if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 				void options.pullTripo3DTaskToNode(nodeId, taskId, mode).then((res) => {
 					if (!res.ok) {
 						options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
@@ -102,20 +116,6 @@ export const useAIWorkflowTripo3DDrop = (options: {
 		}
 
 		const nodeTitle = title || t('tasks.tripo3d.model3dTaskNodeName')
-		options.store.commit('addNodeAt', {
-			worldX: payload.worldX,
-			worldY: payload.worldY,
-			title: nodeTitle
-		})
-		const nodeId = options.store.state.selectedNodeId
-		if (!nodeId) return true
-
-		options.store.commit('setNodeType', { nodeId, type: 'model3d' })
-		options.store.commit('setNodeAlias', {
-			nodeId,
-			alias: nodeTitle
-		})
-
 		const initialSettings: Record<string, unknown> = {
 			modelGenerationSource: 'tripo3d',
 			tripo3dModelSettings: {
@@ -143,12 +143,33 @@ export const useAIWorkflowTripo3DDrop = (options: {
 			}
 		}
 
-		options.store.commit('setNodeModel3DSettings', {
-			nodeId,
-			model3dSettings: initialSettings
-		})
+		const nodeId = options.engineApi?.addNode?.(
+			'model3d',
+			payload.worldX,
+			payload.worldY,
+			{ title: nodeTitle, alias: nodeTitle, model3dSettings: initialSettings }
+		) ?? null
 
-		if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
+		if (!nodeId) {
+			options.store.commit('addNodeAt', {
+				worldX: payload.worldX,
+				worldY: payload.worldY,
+				title: nodeTitle
+			})
+			const fallbackId = options.store.state.selectedNodeId
+			if (fallbackId) {
+				options.store.commit('setNodeType', { nodeId: fallbackId, type: 'model3d' })
+				options.store.commit('setNodeAlias', { nodeId: fallbackId, alias: nodeTitle })
+				options.store.commit('setNodeModel3DSettings', { nodeId: fallbackId, model3dSettings: initialSettings })
+				if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
+					void options.pullTripo3DTaskToNode(fallbackId, taskId, mode).then((res) => {
+						if (!res.ok) {
+							options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+						}
+					})
+				}
+			}
+		} else if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 			void options.pullTripo3DTaskToNode(nodeId, taskId, mode).then((res) => {
 				if (!res.ok) {
 					options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')

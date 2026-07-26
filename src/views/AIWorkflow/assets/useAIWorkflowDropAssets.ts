@@ -82,8 +82,17 @@ type AIWorkflowStore = {
 	dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown> | unknown
 }
 
+type AIWorkflowEngineApi = {
+	addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+	createNodeWithConnection?: (params: any) => { nodeId: string | null; connected: boolean }
+	updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+	connectPorts?: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => boolean
+	setSelection?: (nodeIds: string[]) => void
+}
+
 export const useAIWorkflowDropAssets = (options: {
 	store: AIWorkflowStore
+	engineApi?: AIWorkflowEngineApi
 	makeResourceId: () => string
 	setObjectUrl: (key: string, url: string) => void
 	resolveBackendUrl: (value: string) => string
@@ -481,28 +490,28 @@ export const useAIWorkflowDropAssets = (options: {
 		const resource = options.store.state.resourcesById?.[payload.item.resourceId]
 		if (!resource) return false
 
-		options.store.commit('addNodeAt', {
-			worldX: payload.worldX,
-			worldY: payload.worldY,
-			title: payload.item.kind === 'image' ? t('common.image') : t('common.video')
-		})
-		const nodeId = options.store.state.selectedNodeId
+		const kind = payload.item.kind
+		const nodeId = options.engineApi?.addNode?.(
+			kind,
+			payload.worldX,
+			payload.worldY,
+			{ title: kind === 'image' ? t('common.image') : t('common.video') }
+		) ?? null
 		if (!nodeId) return true
 
-		options.store.commit('setNodeType', { nodeId, type: payload.item.kind })
 		const mediaUrl = String(resource?.url || payload.item.url || '').trim()
 		const sourcePath = String(resource?.sourcePath || payload.item.sourcePath || '').trim()
 		const posterUrl =
-			payload.item.kind === 'video' ? String(resource?.posterUrl || '').trim() : ''
+			kind === 'video' ? String(resource?.posterUrl || '').trim() : ''
 
 		options.bindMediaResourceToNode(
 			nodeId,
-			payload.item.kind,
+			kind,
 			mediaUrl,
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(payload.item.kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
+					(kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -511,7 +520,7 @@ export const useAIWorkflowDropAssets = (options: {
 		)
 
 		if (mediaUrl) {
-			options.autoSizeMediaNode(nodeId, mediaUrl, payload.item.kind)
+			options.autoSizeMediaNode(nodeId, mediaUrl, kind)
 		}
 		return true
 	}
@@ -571,15 +580,14 @@ export const useAIWorkflowDropAssets = (options: {
 		const finalUrl = options.resolveBackendUrl(storedUrl)
 		const displayName = storedFileName || defaultFileName
 
-		options.store.commit('addNodeAt', {
-			worldX: payload.worldX,
-			worldY: payload.worldY,
-			title: kind === 'video' ? t('common.video') : t('common.image')
-		})
-		const nodeId = options.store.state.selectedNodeId
+		const nodeId = options.engineApi?.addNode?.(
+			kind,
+			payload.worldX,
+			payload.worldY,
+			{ title: kind === 'video' ? t('common.video') : t('common.image') }
+		) ?? null
 		if (!nodeId) return true
 
-		options.store.commit('setNodeType', { nodeId, type: kind })
 		options.bindMediaResourceToNode(
 			nodeId,
 			kind,
@@ -666,15 +674,13 @@ export const useAIWorkflowDropAssets = (options: {
 			const rawDisplayUrl = firstUrl || thumbnailUrl
 			const isCompleted = String(draggedArkTask.status || '').trim().toLowerCase() === 'succeeded'
 
-			options.store.commit('addNodeAt', {
-				worldX: world.worldX,
-				worldY: world.worldY,
-				title: prompt ? `${title}：${prompt.slice(0, 20)}` : title
-			})
-			const nodeId = options.store.state.selectedNodeId
+			const nodeId = options.engineApi?.addNode?.(
+				kind,
+				world.worldX,
+				world.worldY,
+				{ title: prompt ? `${title}：${prompt.slice(0, 20)}` : title }
+			) ?? null
 			if (!nodeId) return
-
-			options.store.commit('setNodeType', { nodeId, type: kind })
 
 			if (rawDisplayUrl && isCompleted) {
 				const defaultFileName = kind === 'video'
@@ -763,14 +769,13 @@ export const useAIWorkflowDropAssets = (options: {
 
 							const finalUrl = options.resolveBackendUrl(storedUrl)
 
-							options.store.commit('addNodeAt', {
-								worldX: world.worldX + offset,
-								worldY: world.worldY + offset,
-								title: kind === 'image' ? t('common.image') : t('common.video')
-							})
-							const nodeId = options.store.state.selectedNodeId
+							const nodeId = options.engineApi?.addNode?.(
+								kind,
+								world.worldX + offset,
+								world.worldY + offset,
+								{ title: kind === 'image' ? t('common.image') : t('common.video') }
+							) ?? null
 							if (nodeId) {
-								options.store.commit('setNodeType', { nodeId, type: kind })
 								options.bindMediaResourceToNode(
 									nodeId,
 									kind,

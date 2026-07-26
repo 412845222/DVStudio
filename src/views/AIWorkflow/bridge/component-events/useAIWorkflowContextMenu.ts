@@ -334,7 +334,9 @@ export const useAIWorkflowContextMenu = (payload: {
 		}
 		if (id.startsWith('set-type:') && payload.selectedNodeId.value) {
 			const nextType = id.slice('set-type:'.length)
-			payload.store.commit('setNodeType', { nodeId: payload.selectedNodeId.value, type: nextType })
+			if (payload.engineApi?.updateNodeData) {
+				payload.engineApi.updateNodeData(payload.selectedNodeId.value, { type: nextType })
+			}
 		}
 		if (id === 'delete') {
 			if (payload.engineApi?.deleteSelection) {
@@ -370,48 +372,6 @@ export const useAIWorkflowContextMenu = (payload: {
 			newNodeId = result.nodeId
 		} else if (payload.engineApi?.addNode) {
 			newNodeId = payload.engineApi.addNode(catalogItem.nodeType || 'base', worldX, worldY, { title: catalogItem.label })
-		} else {
-			payload.store.commit('addNodeAt', { worldX, worldY, title: catalogItem.label })
-			newNodeId = payload.store.state.selectedNodeId
-			if (newNodeId && catalogItem.nodeType) {
-				payload.store.commit('setNodeType', { nodeId: newNodeId, type: catalogItem.nodeType })
-			}
-			if (newNodeId && !pendingLinkAnchor.value && payload.syncBlueprint) {
-				await nextTick()
-				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-				payload.syncBlueprint()
-			}
-		}
-
-		if (pendingLinkAnchor.value && newNodeId && !payload.engineApi?.createNodeWithConnection) {
-			const { fromNodeId, fromAnchorId } = pendingLinkAnchor.value
-			const nodesById = payload.store.state.nodesById
-			const toNode = nodesById[newNodeId]
-
-			let toAnchorId: string | null = null
-			if (toNode && Array.isArray(toNode.inputs) && toNode.inputs.length > 0) {
-				toAnchorId = findBestInputAnchorForOutput(nodesById, fromNodeId, fromAnchorId, newNodeId)
-				if (!toAnchorId) {
-					await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-					const refreshedNodesById = payload.store.state.nodesById
-					toAnchorId = findBestInputAnchorForOutput(refreshedNodesById, fromNodeId, fromAnchorId, newNodeId)
-				}
-			}
-
-			if (toAnchorId) {
-				payload.store.commit('addEdge', {
-					fromNodeId,
-					fromAnchorId,
-					toNodeId: newNodeId,
-					toAnchorId
-				})
-				await nextTick()
-			}
-
-			if (payload.syncBlueprint) {
-				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-				payload.syncBlueprint()
-			}
 		}
 
 		pendingLinkAnchor.value = null

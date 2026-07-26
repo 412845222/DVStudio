@@ -71,8 +71,13 @@ type TooltipState = {
 
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
+type EngineApi = {
+	connectPorts?: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => boolean
+}
+
 export const useAIWorkflowLinking = (payload: {
 	store: Store<WorkflowState>
+	engineApi?: EngineApi
 	nodes: Ref<WorkflowNode[]>
 	chatModelKey: Ref<string>
 	nanoAnchorNodeId: string
@@ -752,12 +757,16 @@ export const useAIWorkflowLinking = (payload: {
 		const toNodeId = target.nodeId
 		const toAnchorId = target.anchorId
 
-		payload.store.commit('addEdge', {
-			fromNodeId,
-			fromAnchorId,
-			toNodeId,
-			toAnchorId
-		})
+		if (payload.engineApi?.connectPorts) {
+			payload.engineApi.connectPorts(fromNodeId, fromAnchorId, toNodeId, toAnchorId)
+		} else {
+			payload.store.commit('addEdge', {
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId
+			})
+		}
 
 		payload.onLinkConnected?.({
 			fromNodeId,
@@ -797,12 +806,16 @@ export const useAIWorkflowLinking = (payload: {
 		const toNodeId = endPayload.nodeId
 		const toAnchorId = endPayload.anchorId
 
-		payload.store.commit('addEdge', {
-			fromNodeId,
-			fromAnchorId,
-			toNodeId,
-			toAnchorId
-		})
+		if (payload.engineApi?.connectPorts) {
+			payload.engineApi.connectPorts(fromNodeId, fromAnchorId, toNodeId, toAnchorId)
+		} else {
+			payload.store.commit('addEdge', {
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId
+			})
+		}
 
 		payload.onLinkConnected?.({
 			fromNodeId,

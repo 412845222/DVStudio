@@ -1053,6 +1053,70 @@ function resetIsUpdatingFromStore() {
   })
 }
 
+function syncEngineProjectionToStore() {
+  const editor = blueprintHostRef.value?.getInstance?.()
+  if (editor && typeof editor.saveBlueprint === 'function') {
+    const latest = editor.saveBlueprint()
+    if (latest) {
+      const snapshot = legacyBlueprintToWorkflowState(latest)
+      isUpdatingFromStore = true
+      store.commit('hydrateDraft', { snapshot })
+      resetIsUpdatingFromStore()
+    }
+  }
+}
+
+const engineApi = {
+  addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
+    return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+  },
+  createNodeWithConnection: (params: any) => {
+    const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+    return result
+  },
+  updateNodeData: (nodeId: string, patch: Record<string, any>) => {
+    const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
+    return ok
+  },
+  connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => {
+    const ok = blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
+    return ok
+  },
+  copySelection: () => {
+    blueprintHostRef.value?.copySelection?.()
+  },
+  paste: () => {
+    blueprintHostRef.value?.paste?.()
+  },
+  pasteAt: (worldX: number, worldY: number) => {
+    return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
+  },
+  duplicate: () => {
+    blueprintHostRef.value?.duplicate?.()
+  },
+  deleteSelection: () => {
+    blueprintHostRef.value?.deleteSelection?.()
+  },
+  setSelection: (nodeIds: string[]) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelection === 'function') {
+      editor.setSelection(nodeIds)
+    }
+  },
+  clearSelection: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.clearSelection === 'function') {
+      editor.clearSelection()
+    }
+  },
+  removeNode: (nodeId: string) => {
+    return blueprintHostRef.value?.removeNode?.(nodeId) ?? false
+  },
+  removeEdge: (edgeId: string) => {
+    return blueprintHostRef.value?.removeEdge?.(edgeId) ?? false
+  }
+}
+
 function syncNodeChatDialog(nodeIds: string[]) {
   if (nodeIds.length === 1) {
     const node = store.state.nodesById[nodeIds[0]]
@@ -1253,8 +1317,7 @@ function patchBlueprintNodeData(nodeId: string) {
 
 watch(() => [
   store.state.nodeOrder,
-  store.state.edgeOrder,
-  store.state.resourceOrder
+  store.state.edgeOrder
 ], () => {
   if (isUpdatingFromStore) return
   requestStoreSyncToEditor()
@@ -3128,14 +3191,6 @@ const createImageNodeAtCenter = (url: string, name?: string, opts?: {
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
-		store.commit('addNodeAt', {
-			worldX,
-			worldY,
-			title: name || t('aiworkflow.page.defaultImageNodeTitle')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
 		const imageSource = opts?.imageGenerationSource || 'gemini'
 		const imageSettings: Record<string, unknown> = {
 			imageUrl: url,
@@ -3151,12 +3206,12 @@ const createImageNodeAtCenter = (url: string, name?: string, opts?: {
 				outputImages: opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : (url ? [url] : [])
 			}
 		}
-		if (url) {
-			store.commit('setNodeImageSettings', {
-				nodeId: newNodeId,
-				imageSettings
-			})
-		}
+		const newNodeId = engineApi.addNode(
+			'image',
+			worldX,
+			worldY,
+			{ title: name || t('aiworkflow.page.defaultImageNodeTitle'), ...(url ? { imageSettings } : {}) }
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -3172,14 +3227,12 @@ const createModel3DNodeAtCenter = (opts?: {
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
-		store.commit('addNodeAt', {
+		const newNodeId = engineApi.addNode(
+			'model3d',
 			worldX,
 			worldY,
-			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'model3d' })
+			{ title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName') }
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createModel3DNodeAtCenter] 创建节点失败:', e)
@@ -3189,23 +3242,15 @@ const createModel3DNodeAtCenter = (opts?: {
 
 const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
 	try {
-		store.commit('addNodeAt', {
+		const newNodeId = engineApi.addNode(
+			'image',
 			worldX,
 			worldY,
-			title: name || t('aiworkflow.page.defaultImageNodeTitle')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
-		if (url) {
-			store.commit('setNodeImageSettings', {
-				nodeId: newNodeId,
-				imageSettings: {
-					imageUrl: url,
-					imageGenerationSource: 'gemini'
-				}
-			})
-		}
+			{
+				title: name || t('aiworkflow.page.defaultImageNodeTitle'),
+				...(url ? { imageSettings: { imageUrl: url, imageGenerationSource: 'gemini' } } : {})
+			}
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAt] 创建节点失败:', e)
@@ -3755,7 +3800,7 @@ const disconnectNanoRefEdges = () => {
 		if (e.toNodeId === NANO_ANCHOR_NODE_ID || e.fromNodeId === NANO_ANCHOR_NODE_ID)
 			removeIds.push(edgeId)
 	}
-	for (const edgeId of removeIds) store.commit('removeEdge', { edgeId })
+	for (const edgeId of removeIds) engineApi.removeEdge(edgeId)
 }
 
 const onDockLayoutChanged = () => {
@@ -4264,8 +4309,11 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 }
 
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
-	store.commit('pasteNode', payload ?? {})
-	// Keep resources unique per pasted node.
+	if (payload?.worldX != null && payload?.worldY != null) {
+		engineApi.pasteAt(payload.worldX, payload.worldY)
+	} else {
+		engineApi.paste()
+	}
 }
 
 const inferMediaKindFromUrlOrName = (input: string): 'image' | 'video' | null => {
@@ -4398,14 +4446,13 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				displayName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
 			}
 
-			store.commit('addNodeAt', {
-				worldX: worldX + offset,
-				worldY: worldY + offset,
-				title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-			})
-			const nodeId = store.state.selectedNodeId
+			const nodeId = engineApi.addNode(
+				kind as 'image' | 'video',
+				worldX + offset,
+				worldY + offset,
+				{ title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
+			)
 			if (nodeId) {
-				store.commit('setNodeType', { nodeId, type: kind })
 				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
 					sourcePath: assetAbsPath || undefined,
 					projectRelativePath: assetRelPath || undefined
@@ -4457,14 +4504,13 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				? generateUniqueMediaFileName('paste', 'mp4')
 				: generateUniqueMediaFileName('paste', 'png')
 
-			store.commit('addNodeAt', {
-				worldX: center.worldX,
-				worldY: center.worldY,
-				title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-			})
-			const nodeId = store.state.selectedNodeId
+			const nodeId = engineApi.addNode(
+				urlKind as 'image' | 'video',
+				center.worldX,
+				center.worldY,
+				{ title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
+			)
 			if (nodeId) {
-				store.commit('setNodeType', { nodeId, type: urlKind })
 				bindMediaResourceToNode(nodeId, urlKind as 'image' | 'video', finalUrl, displayName || defaultName, {
 					sourcePath: assetAbsPath || undefined,
 					projectRelativePath: assetRelPath || undefined
@@ -4711,7 +4757,7 @@ const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
 				const st = session.resourceState.get(rid)
 				if (st?.done) continue
 
-				if (store.state.nodesById[info.nodeId]) store.commit('removeNode', { nodeId: info.nodeId })
+				if (store.state.nodesById[info.nodeId]) engineApi.removeNode(info.nodeId)
 				if (store.state.resourcesById[rid]) {
 					revokeTrackedObjectUrlsForResource(rid)
 					store.commit('removeResource', { resourceId: rid })
@@ -7618,7 +7664,7 @@ function onPasteSelectedNodes() {
 	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
 	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
 	const center = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
-	store.commit('pasteNode', { worldX: center.x, worldY: center.y })
+	engineApi.pasteAt(center.x, center.y)
 }
 
 const projectList = ref<BlueprintProjectListItem[]>([])
@@ -7749,6 +7795,7 @@ const {
 
 const { autoExpandSceneDecomposeOutputs } = useAIWorkflowSceneDecomposeAutoExpand({
 	store,
+	engineApi,
 	getIncomingEdges,
 	connectedTextInputValue,
 	hasExactEdge,
@@ -7817,6 +7864,7 @@ const bindModelResourceToNode = (
 
 const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoWire({
 	store,
+	engineApi,
 	getOutgoingEdges,
 	getIncomingEdges,
 	bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
@@ -8611,6 +8659,7 @@ const {
 	onCanvasDrop
 } = useAIWorkflowDropAssets({
 	store,
+	engineApi,
 	makeResourceId,
 	setObjectUrl,
 	resolveBackendUrl,
@@ -8660,6 +8709,7 @@ const { recoverLocalResourcesFromHandles } = useAIWorkflowLocalResourceRecovery(
 
 const { createNodeFromDraggedMeshyTask } = useAIWorkflowMeshyDrop({
 	store,
+	engineApi,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
@@ -8761,6 +8811,7 @@ const onConfirmImportLimitAlert = () => {
 const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkflowBatchMediaImport(
 	{
 		store,
+		engineApi,
 		makeResourceId,
 		maxBatchImportMediaCount: MAX_BATCH_IMPORT_MEDIA_COUNT,
 		inferMediaKindFromFile,
@@ -8858,12 +8909,11 @@ const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
 		store.commit('setNodeImageSettings', { nodeId, imageSettings })
 	},
-	commitAddNodeAt: ({ worldX, worldY, title }) => {
-		store.commit('addNodeAt', { worldX, worldY, title })
-		return store.state.selectedNodeId || null
+	commitAddNodeAt: ({ worldX, worldY, title, type }: { worldX: number; worldY: number; title?: string; type?: string }) => {
+		return engineApi.addNode((type || 'base') as any, worldX, worldY, { title })
 	},
-	commitSetNodeType: ({ nodeId, type }) => {
-		store.commit('setNodeType', { nodeId, type })
+	commitSetNodeType: ({ nodeId, type }: { nodeId: string; type: string }) => {
+		engineApi.updateNodeData(nodeId, { type })
 	},
 	videoScreenshotNodeTitle: t('aiworkflow.page.videoScreenshotNodeTitle')
 })
@@ -9297,6 +9347,7 @@ const handleRemoveChatContextItem = (id: string) => {
 
 const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } = useAgentToolBridge({
 	store,
+	engineApi,
 	toolApprovalQueue,
 	pushToast,
 	getSelectedNode: () => selectedNode.value,
@@ -9639,7 +9690,7 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 		void removeSelectedNodesWithResourceCleanup(nodeIds)
 	},
 	removeSelectedEdge: (edgeId) => {
-		store.commit('removeEdge', { edgeId })
+		engineApi.removeEdge(edgeId)
 	},
 	scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender()
 })
@@ -9650,7 +9701,7 @@ const applyAction = (action: WorkflowAction) => {
 			void removeSelectedNodesWithResourceCleanup(selectedNodeIds.value)
 			return
 		}
-		if (selectedEdgeId.value) store.commit('removeEdge', { edgeId: selectedEdgeId.value })
+		if (selectedEdgeId.value) engineApi.removeEdge(selectedEdgeId.value)
 	}
 }
 
@@ -9711,61 +9762,7 @@ const {
 	pushToast,
 	openFolderForPath,
 	syncBlueprint: syncBlueprintNow,
-	engineApi: {
-		addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
-			const nodeId = blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
-			if (nodeId) {
-				const editor = blueprintHostRef.value?.getInstance?.()
-				if (editor && typeof editor.saveBlueprint === 'function') {
-					const latest = editor.saveBlueprint()
-					if (latest) {
-						const snapshot = legacyBlueprintToWorkflowState(latest)
-						isUpdatingFromStore = true
-						store.commit('hydrateDraft', { snapshot })
-						resetIsUpdatingFromStore()
-					}
-				}
-			}
-			return nodeId
-		},
-		createNodeWithConnection: (params) => {
-			const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
-			if (result.nodeId) {
-				const editor = blueprintHostRef.value?.getInstance?.()
-				if (editor && typeof editor.saveBlueprint === 'function') {
-					const latest = editor.saveBlueprint()
-					if (latest) {
-						const snapshot = legacyBlueprintToWorkflowState(latest)
-						isUpdatingFromStore = true
-						store.commit('hydrateDraft', { snapshot })
-						resetIsUpdatingFromStore()
-					}
-				}
-			}
-			return result
-		},
-		updateNodeData: (nodeId: string, patch: Record<string, any>) => {
-			return blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
-		},
-		connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => {
-			return blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
-		},
-		copySelection: () => {
-			blueprintHostRef.value?.copySelection?.()
-		},
-		paste: () => {
-			blueprintHostRef.value?.paste?.()
-		},
-		pasteAt: (worldX: number, worldY: number) => {
-			return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
-		},
-		duplicate: () => {
-			blueprintHostRef.value?.duplicate?.()
-		},
-		deleteSelection: () => {
-			blueprintHostRef.value?.deleteSelection?.()
-		}
-	}
+	engineApi,
 })
 _openNodeSearchMenuFn = openNodeSearchMenu
 _onCanvasContextMenuFn = onCanvasContextMenu
@@ -9821,6 +9818,7 @@ const wrappedOnLinkDropOnCanvas = (payload: {
 
 const linkInteraction = useAIWorkflowLinking({
 	store,
+	engineApi,
 	nodes,
 	chatModelKey,
 	nanoAnchorNodeId: NANO_ANCHOR_NODE_ID,
@@ -10271,9 +10269,8 @@ const handleImageMarkupExported = async (payload: {
 		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
 		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
-		store.commit('addNodeAt', { worldX: nextPosition.worldX, worldY: nextPosition.worldY, title })
-		const newNodeId = String(store.state.selectedNodeId || '').trim()
-		if (!newNodeId || !store.state.nodesById[newNodeId]) {
+		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, { title })
+		if (!newNodeId) {
 			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
@@ -10302,7 +10299,6 @@ const handleImageMarkupExported = async (payload: {
 		}
 		store.commit('addResource', newResource)
 
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
 		store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
 
 		const w = Math.max(1, Math.floor(Number(payload.width) || 1))
@@ -10323,12 +10319,7 @@ const handleImageMarkupExported = async (payload: {
 				(a) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))
 			) || fromAnchors?.[0]
 		if (fromAnchor) {
-			store.commit('addEdge', {
-				fromNodeId,
-				fromAnchorId: String(fromAnchor.id),
-				toNodeId: newNodeId,
-				toAnchorId: 'in-0'
-			})
+			engineApi.connectPorts(fromNodeId, String(fromAnchor.id), newNodeId, 'in-0')
 		}
 
 		if (exportType !== 'screenshot') {
@@ -10448,6 +10439,7 @@ const onOpenTripo3DTaskPanel = () => {
 
 const { createNodeFromDraggedTripo3DTask } = useAIWorkflowTripo3DDrop({
 	store,
+	engineApi,
 	pushToast: (message, tone) => pushToast(message, tone),
 	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId),
 	createImageNodeAtCenter: (url, name, opts) => createImageNodeAtCenter(url, name, opts),
@@ -10587,10 +10579,8 @@ const {
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
 		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
-		const nodeId = store.state.selectedNodeId
+		const nodeId = engineApi.addNode(kind as 'image' | 'video', worldX, worldY, { title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
 		if (!nodeId) return ''
-		store.commit('setNodeType', { nodeId, type: kind })
 		store.commit('addResource', base)
 		store.commit('setNodeResource', { nodeId, resourceId })
 		autoSizeMediaNode(nodeId, base.url, kind)
@@ -10800,9 +10790,9 @@ const onResourceDraggedToBlueprint = (
 	const worldY = (screenY - vp.panY) / vp.zoom
 
 	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
-	store.commit('addNodeAt', { worldX, worldY, title })
-	const newNodeId = String(store.state.selectedNodeId || '').trim()
-	if (!newNodeId || !store.state.nodesById[newNodeId]) {
+	const nodeType = resource.kind === 'video' ? 'video' : 'image'
+	const newNodeId = engineApi.addNode(nodeType, worldX, worldY, { title })
+	if (!newNodeId) {
 		pushToast(t('aiworkflow.page.resourceNode.createFailed'), 'error')
 		return
 	}
@@ -11307,7 +11297,11 @@ const { removeResourceByPolicy, onRemoveResource, onRefreshMissingResourceRecord
 removeResourceByPolicyBridge = removeResourceByPolicy
 
 const onAliasChange = (nodeId: string, alias: string) => {
-	store.commit('setNodeAlias', { nodeId, alias })
+	if (engineApi.updateNodeData) {
+		engineApi.updateNodeData(nodeId, { alias })
+	} else {
+		store.commit('setNodeAlias', { nodeId, alias })
+	}
 }
 
 const onCanvasDblClick = (payload: {
