@@ -141,7 +141,7 @@ function resetIsUpdatingFromMinimap() {
 
 function clampPan(v: number): number {
 	if (!isFinite(v)) return 0
-	return Math.max(-1e7, Math.min(1e7, v))
+	return Math.round(Math.max(-1e7, Math.min(1e7, v)))
 }
 
 const getNodeColor = (type: string): string => {
@@ -291,7 +291,9 @@ const onCanvasPointerDown = (e: PointerEvent) => {
 
 	const zoom = props.viewport.zoom || 1
 	const world = minimapToWorld(local.x, local.y)
-	const { panX: targetPanX, panY: targetPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const { panX: rawPanX, panY: rawPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const targetPanX = clampPan(rawPanX)
+	const targetPanY = clampPan(rawPanY)
 
 	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX: targetPanX, panY: targetPanY })
@@ -355,8 +357,13 @@ const onCanvasWheel = (e: WheelEvent) => {
 		minimapOffset.value,
 		e.deltaY
 	)
+	const clamped = {
+		zoom: Math.round(result.zoom * 10000) / 10000,
+		panX: clampPan(result.panX),
+		panY: clampPan(result.panY)
+	}
 	isUpdatingFromMinimap = true
-	emit('update:viewport', result)
+	emit('update:viewport', clamped)
 	resetIsUpdatingFromMinimap()
 }
 

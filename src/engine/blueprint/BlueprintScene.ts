@@ -667,6 +667,17 @@ export class BlueprintScene extends Scene {
     super.render(ctx);
   }
 
+  update(deltaTime: number): void {
+    let hasRunningNode = false;
+    for (const node of this._nodeMap.values()) {
+      if (node.data.status === 'running') {
+        hasRunningNode = true;
+        break;
+      }
+    }
+    this.setPersistentAnimation(hasRunningNode);
+  }
+
   dispose(): void {
     for (const node of this._nodeMap.values()) {
       node.dispose();

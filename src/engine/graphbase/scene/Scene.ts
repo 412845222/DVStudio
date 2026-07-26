@@ -138,6 +138,10 @@ export class Scene extends Group implements Disposable {
     this.renderer.requestContinuousFrames(frames);
   }
 
+  setPersistentAnimation(active: boolean): void {
+    this.renderer.setPersistentAnimation(active);
+  }
+
   screenToWorld(screenPoint: Vector2): Vector2 {
     return this.camera.screenToWorld(screenPoint);
   }

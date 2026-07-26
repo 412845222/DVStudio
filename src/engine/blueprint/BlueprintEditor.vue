@@ -129,6 +129,7 @@ let isUpdatingFromProps = false;
 let changeDebounceTimer: number | null = null;
 let lastStructureHash: string | null = null;
 let hasInitiallyLoaded = false;
+let isEnteringEditMode = false;
 
 function applyInitialData(newData: LegacyBlueprintData) {
   if (!scene.value) return;
@@ -192,11 +193,17 @@ function enterEditMode(nodeId: string) {
   if (editingNodeId.value && editingNodeId.value !== nodeId) {
     const prevNode = scene.value.getBlueprintNode(editingNodeId.value);
     if (prevNode) prevNode.setDomMode(false);
+    editingNodeId.value = null;
   }
+
+  isEnteringEditMode = true;
+  scene.value.selection.setSelection([nodeId]);
+  isEnteringEditMode = false;
 
   editingNodeId.value = nodeId;
   node.setDomMode(true);
-  scene.value.selection.setSelection([nodeId]);
+  scene.value.isEngineDragging = false;
+  scene.value.isDomInteractionLocked = false;
   scene.value.requestRedraw();
 }
 
@@ -744,7 +751,7 @@ onMounted(() => {
   unsubSelect = s.selection.on.on('select', () => {
     if (isUpdatingFromProps) return;
     const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-    if (editingNodeId.value && selectedNodes.length > 1) {
+    if (editingNodeId.value && selectedNodes.length > 1 && !isEnteringEditMode) {
       exitEditMode();
     }
     emit('selectionChange', getSelectedNodeIds());
@@ -752,7 +759,7 @@ onMounted(() => {
   unsubDeselect = s.selection.on.on('deselect', () => {
     if (isUpdatingFromProps) return;
     const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-    if (editingNodeId.value && selectedNodes.length === 0) {
+    if (editingNodeId.value && selectedNodes.length === 0 && !isEnteringEditMode) {
       exitEditMode();
     }
     emit('selectionChange', getSelectedNodeIds());
@@ -954,7 +961,7 @@ defineExpose({
     };
     
     s.createWorkflowNode(nodeData);
-    s.selection.setSelection([nodeId]);
+    enterEditMode(nodeId);
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
     return nodeId;

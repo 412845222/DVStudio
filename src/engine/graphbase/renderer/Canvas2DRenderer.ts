@@ -35,8 +35,9 @@ export class Canvas2DRenderer implements Disposable {
   private useDoubleBuffer: boolean = true;
   private needsRedraw: boolean = true;
   private forceContinuousFrames: number = 0;
+  private hasPersistentAnimation: boolean = false;
   private idleFrames: number = 0;
-  private static readonly MAX_IDLE_FRAMES = 5;
+  private static readonly MAX_IDLE_FRAMES = 8;
 
   constructor(canvas: HTMLCanvasElement, options?: RendererOptions) {
     this.canvas = canvas;
@@ -149,7 +150,7 @@ export class Canvas2DRenderer implements Disposable {
     this.on.emit('stop');
   }
 
-  requestRedraw(fullRedraw: boolean = false): void {
+  requestRedraw(fullRedraw: boolean = true): void {
     this.needsRedraw = true;
     this.idleFrames = 0;
     if (fullRedraw) {
@@ -181,6 +182,16 @@ export class Canvas2DRenderer implements Disposable {
     }
   }
 
+  setPersistentAnimation(active: boolean): void {
+    if (this.hasPersistentAnimation !== active) {
+      this.hasPersistentAnimation = active;
+      this.idleFrames = 0;
+      if (active && !this.running) {
+        this.start();
+      }
+    }
+  }
+
   private tick = (time: number): void => {
     if (!this.running) return;
     const deltaTime = (time - this.lastTime) / 1000;
@@ -198,12 +209,14 @@ export class Canvas2DRenderer implements Disposable {
       console.error('[Canvas2DRenderer] Render error:', e);
     }
 
-    const hasContinuousFrames = this.forceContinuousFrames > 0;
+    const hadContinuousFrames = this.forceContinuousFrames > 0;
     if (this.forceContinuousFrames > 0) {
       this.forceContinuousFrames--;
     }
 
-    if (!this.needsRedraw && !hasContinuousFrames && !didRender) {
+    const shouldKeepRunning = this.hasPersistentAnimation;
+
+    if (!this.needsRedraw && !hadContinuousFrames && !shouldKeepRunning && !didRender) {
       this.idleFrames++;
       if (this.idleFrames >= Canvas2DRenderer.MAX_IDLE_FRAMES) {
         this.stop();
@@ -216,16 +229,17 @@ export class Canvas2DRenderer implements Disposable {
   private render(deltaTime: number): boolean {
     if (!this.scene) return false;
 
-    if (this.scene.update) {
-      this.scene.update(deltaTime);
-    }
-
     const hasContinuousFrames = this.forceContinuousFrames > 0;
+    const needsRender = this.needsRedraw || hasContinuousFrames || this.hasPersistentAnimation;
 
-    if (!this.needsRedraw && !hasContinuousFrames) {
+    if (!needsRender) {
       return false;
     }
     this.needsRedraw = false;
+
+    if (typeof (this.scene as any).update === 'function') {
+      (this.scene as any).update(deltaTime);
+    }
 
     const vp = this.camera.viewport;
 
@@ -250,6 +264,11 @@ export class Canvas2DRenderer implements Disposable {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    if (this.backgroundColor) {
+      ctx.fillStyle = this.backgroundColor;
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
     this.renderContext.save();
@@ -268,6 +287,11 @@ export class Canvas2DRenderer implements Disposable {
 
     backCtx.setTransform(1, 0, 0, 1, 0, 0);
     backCtx.clearRect(0, 0, back.width, back.height);
+
+    if (this.backgroundColor) {
+      backCtx.fillStyle = this.backgroundColor;
+      backCtx.fillRect(0, 0, back.width, back.height);
+    }
 
     backCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 

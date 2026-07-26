@@ -399,7 +399,7 @@
 					:nodes-by-id="store.state.nodesById"
 					:viewport="viewport"
 					:canvas-size="canvasViewportSize"
-					@update:viewport="onViewportUpdate"
+					@update:viewport="onMinimapViewportDirect"
 				/>
 			</div>
 
@@ -1046,19 +1046,28 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
 let isUpdatingFromStore = false
 
 function resetIsUpdatingFromStore() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      isUpdatingFromStore = false
-    })
+  nextTick(() => {
+    isUpdatingFromStore = false
   })
+}
+
+function syncNodeChatDialog(nodeIds: string[]) {
+  if (nodeIds.length === 1) {
+    const node = store.state.nodesById[nodeIds[0]]
+    if (node && isNodeChatTypeSupported(node.type)) {
+      store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
+      return
+    }
+  }
+  if (store.state.nodeChatDialog?.visible) {
+    store.dispatch('closeNodeChatDialog')
+  }
 }
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
   if (isUpdatingFromStore) {
-    console.log('[SYNC-DIAG] onBlueprintEditorChange: skipped (isUpdatingFromStore=true)');
     return
   }
-  console.log('[SYNC-DIAG] onBlueprintEditorChange: Engine→Vuex hydrateDraft, nodes=', data.nodeOrder?.length, 'edges=', data.edgeOrder?.length);
   for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
     const n = data.nodesById[nodeId]
     if (n) {
@@ -1074,32 +1083,24 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
   isUpdatingFromStore = true
   store.commit('hydrateDraft', { snapshot })
   resetIsUpdatingFromStore()
+  nextTick(() => {
+    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+    syncNodeChatDialog(selectedIds)
+  })
 }
 
 function onBlueprintEditorSelectionChange(nodeIds: string[]) {
-  if (isUpdatingFromStore) return
-  console.log('[SYNC-DIAG] onBlueprintEditorSelectionChange: nodeIds=', nodeIds);
   isUpdatingFromStore = true
   if (nodeIds.length > 0) {
     store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
   } else {
     store.commit('clearSelection')
   }
-  resetIsUpdatingFromStore()
-  if (nodeIds.length === 1) {
-    const node = store.state.nodesById[nodeIds[0]]
-    if (node && isNodeChatTypeSupported(node.type)) {
-      store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
-    } else {
-      if (store.state.nodeChatDialog?.visible) {
-        store.dispatch('closeNodeChatDialog')
-      }
-    }
-  } else {
-    if (store.state.nodeChatDialog?.visible) {
-      store.dispatch('closeNodeChatDialog')
-    }
-  }
+  nextTick(() => {
+    isUpdatingFromStore = false
+    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+    syncNodeChatDialog(selectedIds)
+  })
 }
 
 function onHostEditorReady(editor: any) {
@@ -1113,6 +1114,14 @@ function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: numbe
   isUpdatingFromStore = true
   store.commit('setViewport', { zoom, panX, panY })
   resetIsUpdatingFromStore()
+}
+
+function onMinimapViewportDirect(vp: { zoom: number; panX: number; panY: number }) {
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor || typeof editor.setViewport !== 'function') return
+  editor.setViewport(vp)
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
@@ -1209,7 +1218,6 @@ function syncBlueprintNow() {
   if (!pendingStoreSync) return
   pendingStoreSync = false
   if (blueprintHostRef.value) {
-    console.log('[SYNC-DIAG] syncBlueprintNow: Vuex→Engine loadBlueprint triggered');
     isUpdatingFromStore = true
     const data = workflowStateToLegacyBlueprint(store.state)
     blueprintHostRef.value.loadBlueprint(data)

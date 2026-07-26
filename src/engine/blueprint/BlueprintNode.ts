@@ -52,21 +52,24 @@ export function clearBlueprintNodeImageCache(): void {
 
 function evictLRUTextures(): void {
   if (BLUEPRINT_TEXTURE_POOL.size <= MAX_TEXTURE_POOL_SIZE) return;
+  const target = Math.floor(MAX_TEXTURE_POOL_SIZE * 0.8);
   const entries = Array.from(BLUEPRINT_TEXTURE_POOL.entries())
     .filter(([, t]) => t.refCount <= 0 && t.state !== 'loading')
     .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
-  while (BLUEPRINT_TEXTURE_POOL.size > MAX_TEXTURE_POOL_SIZE * 0.8 && entries.length > 0) {
+  while (BLUEPRINT_TEXTURE_POOL.size > target && entries.length > 0) {
     const [url] = entries.shift()!;
     BLUEPRINT_TEXTURE_POOL.delete(url);
     textureReadyCallbacks.delete(url);
   }
-}
-
-function touchTexture(url: string): void {
-  const tex = BLUEPRINT_TEXTURE_POOL.get(url);
-  if (tex) {
-    tex.lastUsed = performance.now();
-    tex.refCount++;
+  if (BLUEPRINT_TEXTURE_POOL.size > MAX_TEXTURE_POOL_SIZE) {
+    const forced = Array.from(BLUEPRINT_TEXTURE_POOL.entries())
+      .filter(([, t]) => t.state !== 'loading')
+      .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    while (BLUEPRINT_TEXTURE_POOL.size > target && forced.length > 0) {
+      const [url] = forced.shift()!;
+      BLUEPRINT_TEXTURE_POOL.delete(url);
+      textureReadyCallbacks.delete(url);
+    }
   }
 }
 
@@ -86,9 +89,6 @@ function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
   const existing = BLUEPRINT_TEXTURE_POOL.get(url);
   if (existing && existing.state === 'ready') {
     existing.lastUsed = performance.now();
-    requestAnimationFrame(() => {
-      onReady();
-    });
     return;
   }
   if (existing && existing.state === 'loading') {
@@ -123,6 +123,15 @@ function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
     loadingUrls.delete(url);
     const nw = img.naturalWidth;
     const nh = img.naturalHeight;
+    if (!nw || !nh) {
+      const eEntry = BLUEPRINT_TEXTURE_POOL.get(url);
+      if (eEntry) {
+        eEntry.state = 'error';
+        eEntry.lastUsed = performance.now();
+      }
+      textureReadyCallbacks.delete(url);
+      return;
+    }
     const scale = Math.min(TEXTURE_PREVIEW_MAX / nw, TEXTURE_PREVIEW_MAX / nh, 1);
     const cw = Math.max(1, Math.ceil(nw * scale));
     const ch = Math.max(1, Math.ceil(nh * scale));
@@ -153,7 +162,7 @@ function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
     evictLRUTextures();
     const callbacks = textureReadyCallbacks.get(url);
     textureReadyCallbacks.delete(url);
-    if (callbacks) {
+    if (callbacks && callbacks.length > 0) {
       requestAnimationFrame(() => {
         for (const cb of callbacks) {
           try { cb(); } catch { /* ignore */ }
@@ -1000,37 +1009,40 @@ export class BlueprintNode extends Node {
     if (imgUrl) {
       this.beginLoadImage(imgUrl);
       const tex = this.getCachedTexture(imgUrl);
-      if (tex && tex.canvas.width > 0) {
-        c.save();
-        this.drawRoundedRectPath(c, px, py, pw, ph, 4);
-        c.clip();
-        this.drawTextureCover(c, tex, px, py, pw, ph);
-        c.restore();
-        releaseTexture(imgUrl);
-
-        c.strokeStyle = this.hexToRgba(accentColor, 0.3);
-        c.lineWidth = 1;
-        c.strokeRect(px, py, pw, ph);
-
-        if (this.nodeType === 'rotate-image') {
-          const cx = px + pw / 2;
+      if (tex) {
+        if (tex.canvas.width > 0) {
           c.save();
-          c.translate(cx, py + ph * 0.15);
-          c.strokeStyle = this.hexToRgba(accentColor, 0.7);
-          c.lineWidth = 1.5;
-          c.beginPath();
-          c.arc(0, 0, 8, 0.3, Math.PI * 1.7);
-          c.stroke();
-          c.beginPath();
-          c.moveTo(0, -10);
-          c.lineTo(3, -6);
-          c.lineTo(-3, -6);
-          c.closePath();
-          c.fillStyle = this.hexToRgba(accentColor, 0.8);
-          c.fill();
+          this.drawRoundedRectPath(c, px, py, pw, ph, 4);
+          c.clip();
+          this.drawTextureCover(c, tex, px, py, pw, ph);
           c.restore();
+
+          c.strokeStyle = this.hexToRgba(accentColor, 0.3);
+          c.lineWidth = 1;
+          c.strokeRect(px, py, pw, ph);
+
+          if (this.nodeType === 'rotate-image') {
+            const cx = px + pw / 2;
+            c.save();
+            c.translate(cx, py + ph * 0.15);
+            c.strokeStyle = this.hexToRgba(accentColor, 0.7);
+            c.lineWidth = 1.5;
+            c.beginPath();
+            c.arc(0, 0, 8, 0.3, Math.PI * 1.7);
+            c.stroke();
+            c.beginPath();
+            c.moveTo(0, -10);
+            c.lineTo(3, -6);
+            c.lineTo(-3, -6);
+            c.closePath();
+            c.fillStyle = this.hexToRgba(accentColor, 0.8);
+            c.fill();
+            c.restore();
+          }
+          releaseTexture(imgUrl);
+          return;
         }
-        return;
+        releaseTexture(imgUrl);
       }
     }
 
@@ -1092,16 +1104,18 @@ export class BlueprintNode extends Node {
     if (posterUrl) {
       this.beginLoadImage(posterUrl);
       const tex = this.getCachedTexture(posterUrl);
-      if (tex && tex.canvas.width > 0) {
-        c.save();
-        this.drawRoundedRectPath(c, px, py, pw, ph, 4);
-        c.clip();
-        this.drawTextureCover(c, tex, px, py, pw, ph);
-        c.restore();
+      if (tex) {
+        if (tex.canvas.width > 0) {
+          c.save();
+          this.drawRoundedRectPath(c, px, py, pw, ph, 4);
+          c.clip();
+          this.drawTextureCover(c, tex, px, py, pw, ph);
+          c.restore();
+          c.fillStyle = 'rgba(0,0,0,0.35)';
+          c.fillRect(px, py, pw, ph);
+          hasPoster = true;
+        }
         releaseTexture(posterUrl);
-        c.fillStyle = 'rgba(0,0,0,0.35)';
-        c.fillRect(px, py, pw, ph);
-        hasPoster = true;
       }
     }
 

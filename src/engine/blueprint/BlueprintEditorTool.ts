@@ -1106,12 +1106,7 @@ export class BlueprintEditorTool extends Tool {
     if (key === 'v' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       if (scene.hasClipboardData()) {
-        const newNodeIds = scene.executePaste(50, 50);
-        sel.clearSelection();
-        for (const id of newNodeIds) {
-          const n = scene.getBlueprintNode(id);
-          if (n) sel.select(n, true);
-        }
+        scene.executePaste(50, 50);
       }
     }
     if (key === 'g' && (event.ctrlKey || event.metaKey)) {
