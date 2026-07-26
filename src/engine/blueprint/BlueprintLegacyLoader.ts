@@ -6,7 +6,7 @@ import type {
   SavedSelectionFrameData,
   ConnectionData
 } from './types';
-import { DEFAULT_NODE_SIZES } from './types';
+import { DEFAULT_NODE_SIZES, CURRENT_SCHEMA_VERSION, clampZoom, clampPan } from './types';
 
 export class BlueprintLegacyLoader {
   static isLegacyFormat(data: any): data is LegacyBlueprintData {
@@ -72,8 +72,12 @@ export class BlueprintLegacyLoader {
     }
 
     return {
-      schemaVersion: 1,
-      viewport: legacyData.viewport || { zoom: 1, panX: 0, panY: 0 },
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      viewport: legacyData.viewport ? {
+        zoom: clampZoom(legacyData.viewport.zoom ?? 1),
+        panX: clampPan(legacyData.viewport.panX ?? 0),
+        panY: clampPan(legacyData.viewport.panY ?? 0)
+      } : { zoom: 1, panX: 0, panY: 0 },
       nodes,
       edges,
       savedSelectionFrames,

@@ -2,8 +2,8 @@ export const MINIMAP_WIDTH = 200
 export const MINIMAP_HEIGHT = 150
 export const MINIMAP_PADDING = 8
 export const DEFAULT_WORLD_BOUNDS = { x: -1000, y: -1000, width: 2000, height: 2000 }
-export const MIN_ZOOM = 0.1
-export const MAX_ZOOM = 10
+export const MIN_ZOOM = 0.2
+export const MAX_ZOOM = 6
 
 export interface MinimapNodeLike {
 	worldX?: number

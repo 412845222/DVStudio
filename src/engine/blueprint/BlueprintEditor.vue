@@ -13,15 +13,22 @@
         @node-copy="handleNodeCopy"
         @node-delete="handleNodeDelete"
         @node-refresh="(id: string) => emit('nodeRefresh', id)"
-        @node-chat-submit="(p) => emit('nodeChatSubmit', p)"
+        @node-chat-submit="(p: any) => emit('nodeChatSubmit', p)"
         @node-chat-close="(id: string) => emit('nodeChatClose', id)"
-        @node-chat-update-draft="(p) => emit('nodeChatUpdateDraft', p)"
-        @node-chat-update-params="(p) => emit('nodeChatUpdateParams', p)"
-        @node-chat-update-selected-refs="(p) => emit('nodeChatUpdateSelectedRefs', p)"
-        @node-chat-remove-param-ref="(p) => emit('nodeChatRemoveParamRef', p)"
+        @node-chat-update-draft="(p: any) => emit('nodeChatUpdateDraft', p)"
+        @node-chat-update-params="(p: any) => emit('nodeChatUpdateParams', p)"
+        @node-chat-update-selected-refs="(p: any) => emit('nodeChatUpdateSelectedRefs', p)"
+        @node-chat-remove-param-ref="(p: any) => emit('nodeChatRemoveParamRef', p)"
         @node-chat-stop="(id: string) => emit('nodeChatStop', id)"
-        @node-start-link="(p) => emit('nodeStartLink', p)"
-        @node-end-link="(p) => emit('nodeEndLink', p)"
+        @node-start-link="(p: any) => emit('nodeStartLink', p)"
+        @node-end-link="(p: any) => emit('nodeEndLink', p)"
+        @node-preview-request="(p: any) => emit('nodePreviewRequest', p)"
+        @node-clear-resource="(id: string) => emit('nodeClearResource', id)"
+        @node-upload-resource="(p: any) => emit('nodeUploadResource', p)"
+        @node-update-image-settings="(p: any) => emit('nodeUpdateImageSettings', p)"
+        @node-media-ready="(id: string) => emit('nodeMediaReady', id)"
+        @node-invalidate-screenshot="(id: string) => emit('nodeInvalidateScreenshot', id)"
+        @node-preview-contextmenu="(p: any) => emit('nodePreviewContextMenu', p)"
         @interaction-end="emitChange"
       />
       <BlueprintContextMenu
@@ -100,6 +107,13 @@ interface Emits {
   (e: 'linkDropOnCanvas', payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }): void;
   (e: 'nodeStartLink', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void;
   (e: 'nodeEndLink', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void;
+  (e: 'nodePreviewRequest', payload: { nodeId: string; imageUrl: string }): void;
+  (e: 'nodeClearResource', nodeId: string): void;
+  (e: 'nodeUploadResource', payload: { nodeId: string; file: File; kind: string }): void;
+  (e: 'nodeUpdateImageSettings', payload: { nodeId: string; patch: Record<string, any> }): void;
+  (e: 'nodeMediaReady', nodeId: string): void;
+  (e: 'nodeInvalidateScreenshot', nodeId: string): void;
+  (e: 'nodePreviewContextMenu', payload: { nodeId: string; clientX: number; clientY: number }): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -112,7 +126,7 @@ const editingNodeId = ref<string | null>(null);
 let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let isUpdatingFromProps = false;
-let changeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let changeDebounceTimer: number | null = null;
 let lastStructureHash: string | null = null;
 let hasInitiallyLoaded = false;
 
@@ -121,6 +135,8 @@ function applyInitialData(newData: LegacyBlueprintData) {
   const s = scene.value;
 
   if (s.isEngineDragging || s.isDomInteractionLocked || s.isViewportPanning) return;
+
+  if (editingNodeId.value) return;
 
   const newHash = computeStructureHash(newData);
   const structureChanged = newHash !== lastStructureHash;
@@ -193,6 +209,11 @@ function exitEditMode() {
       scene.value.isDomInteractionLocked = false;
       scene.value.tools.drag?.cancelDrag?.();
       scene.value.requestRedraw();
+      nextTick(() => {
+        if (!isUpdatingFromProps && scene.value) {
+          emitChange();
+        }
+      });
     }
     editingNodeId.value = null;
   }
@@ -454,10 +475,13 @@ function emitChange() {
   if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return;
   if (changeDebounceTimer) {
     clearTimeout(changeDebounceTimer);
-    changeDebounceTimer = null;
   }
-  const data = scene.value.serializeLegacy();
-  emit('change', data);
+  changeDebounceTimer = window.setTimeout(() => {
+    changeDebounceTimer = null;
+    if (!scene.value || isUpdatingFromProps) return;
+    const data = scene.value.serializeLegacy();
+    emit('change', data);
+  }, 16);
 }
 
 function handleResize() {

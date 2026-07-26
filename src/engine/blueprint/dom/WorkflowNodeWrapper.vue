@@ -24,6 +24,13 @@
       @node-chat-update-selected-refs="onChatUpdateSelectedRefs"
       @node-chat-remove-param-ref="onChatRemoveParamRef"
       @node-chat-stop="onChatStop"
+      @preview-request="onPreviewRequest"
+      @clear-resource="onClearResource"
+      @upload-resource="onUploadResource"
+      @update-image-settings="onUpdateImageSettings"
+      @media-ready="onMediaReady"
+      @invalidate-screenshot="onInvalidateScreenshot"
+      @preview-contextmenu="onPreviewContextMenu"
     />
   </div>
 </template>
@@ -67,6 +74,13 @@ const emit = defineEmits<{
   (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
   (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
   (e: 'node-chat-stop', nodeId: string): void;
+  (e: 'preview-request', payload: { nodeId: string; imageUrl: string }): void;
+  (e: 'clear-resource', nodeId: string): void;
+  (e: 'upload-resource', payload: { nodeId: string; file: File; kind: string }): void;
+  (e: 'update-image-settings', payload: { nodeId: string; patch: Record<string, any> }): void;
+  (e: 'media-ready', nodeId: string): void;
+  (e: 'invalidate-screenshot', nodeId: string): void;
+  (e: 'preview-contextmenu', payload: { nodeId: string; clientX: number; clientY: number }): void;
 }>();
 
 const businessComponent = computed(() => {
@@ -195,6 +209,34 @@ const onChatRemoveParamRef = (refItem: any) => {
 
 const onChatStop = () => {
   emit('node-chat-stop', props.node.id);
+};
+
+const onPreviewRequest = (payload: { imageUrl: string }) => {
+  emit('preview-request', { nodeId: props.node.id, imageUrl: payload.imageUrl });
+};
+
+const onClearResource = () => {
+  emit('clear-resource', props.node.id);
+};
+
+const onUploadResource = (payload: { file: File; kind: string }) => {
+  emit('upload-resource', { nodeId: props.node.id, file: payload.file, kind: payload.kind });
+};
+
+const onUpdateImageSettings = (patch: Record<string, any>) => {
+  emit('update-image-settings', { nodeId: props.node.id, patch });
+};
+
+const onMediaReady = () => {
+  emit('media-ready', props.node.id);
+};
+
+const onInvalidateScreenshot = () => {
+  emit('invalidate-screenshot', props.node.id);
+};
+
+const onPreviewContextMenu = (payload: { clientX: number; clientY: number }) => {
+  emit('preview-contextmenu', { nodeId: props.node.id, clientX: payload.clientX, clientY: payload.clientY });
 };
 </script>
 

@@ -36,6 +36,7 @@ export class UpdateNodeTextCommand extends Command {
   mergeWith(other: Command): Command {
     if (other instanceof UpdateNodeTextCommand && other.nodeId === this.nodeId) {
       this.newText = other.newText;
+      this.applyText(this.newText);
     }
     return this;
   }
@@ -43,7 +44,6 @@ export class UpdateNodeTextCommand extends Command {
   private applyText(text: string): void {
     const node = this.scene.getBlueprintNode(this.nodeId);
     if (!node) return;
-    (node.data as any).textValue = text;
-    this.scene.requestRedraw();
+    node.setData({ textValue: text });
   }
 }

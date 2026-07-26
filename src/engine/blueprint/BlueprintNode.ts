@@ -41,24 +41,24 @@ interface CachedBlueprintTexture {
 }
 
 const BLUEPRINT_TEXTURE_POOL = new Map<string, CachedBlueprintTexture>();
-const BLUEPRINT_TEXTURE_ERRORS = new Set<string>();
 const MAX_TEXTURE_POOL_SIZE = 100;
 const TEXTURE_PREVIEW_MAX = 288;
+const TEXTURE_ERROR_COOLDOWN_MS = 30000;
 
 export function clearBlueprintNodeImageCache(): void {
   BLUEPRINT_TEXTURE_POOL.clear();
-  BLUEPRINT_TEXTURE_ERRORS.clear();
   textureReadyCallbacks.clear();
 }
 
 function evictLRUTextures(): void {
   if (BLUEPRINT_TEXTURE_POOL.size <= MAX_TEXTURE_POOL_SIZE) return;
   const entries = Array.from(BLUEPRINT_TEXTURE_POOL.entries())
-    .filter(([, t]) => t.refCount <= 0)
+    .filter(([, t]) => t.refCount <= 0 && t.state !== 'loading')
     .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
   while (BLUEPRINT_TEXTURE_POOL.size > MAX_TEXTURE_POOL_SIZE * 0.8 && entries.length > 0) {
     const [url] = entries.shift()!;
     BLUEPRINT_TEXTURE_POOL.delete(url);
+    textureReadyCallbacks.delete(url);
   }
 }
 
@@ -100,9 +100,13 @@ function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
     }
     return;
   }
-  if (BLUEPRINT_TEXTURE_ERRORS.has(url)) {
-    return;
+  if (existing && existing.state === 'error') {
+    if (existing.lastUsed + TEXTURE_ERROR_COOLDOWN_MS > performance.now()) {
+      return;
+    }
+    BLUEPRINT_TEXTURE_POOL.delete(url);
   }
+  evictLRUTextures();
   BLUEPRINT_TEXTURE_POOL.set(url, {
     canvas: null as any,
     naturalWidth: 0,
@@ -159,8 +163,21 @@ function beginLoadTexture(url: string, onReady: TextureReadyCallback): void {
   };
   img.onerror = () => {
     loadingUrls.delete(url);
-    BLUEPRINT_TEXTURE_ERRORS.add(url);
-    BLUEPRINT_TEXTURE_POOL.delete(url);
+    const entry = BLUEPRINT_TEXTURE_POOL.get(url);
+    if (entry) {
+      entry.state = 'error';
+      entry.lastUsed = performance.now();
+      entry.canvas = null as any;
+    } else {
+      BLUEPRINT_TEXTURE_POOL.set(url, {
+        canvas: null as any,
+        naturalWidth: 0,
+        naturalHeight: 0,
+        lastUsed: performance.now(),
+        refCount: 0,
+        state: 'error'
+      });
+    }
     textureReadyCallbacks.delete(url);
   };
   img.src = url;
@@ -215,6 +232,10 @@ export class BlueprintNode extends Node {
     if (data.alias !== undefined) this.alias = data.alias;
     if (data.icon !== undefined) this.icon = data.icon;
     if (data.previewContent?.text !== undefined) this.previewText = data.previewContent.text;
+    if (data.textValue !== undefined) {
+      this.data.textValue = data.textValue;
+      this.previewText = data.textValue;
+    }
     const newX = data.worldX ?? this.data.worldX;
     const newY = data.worldY ?? this.data.worldY;
     if (data.worldX !== undefined || data.worldY !== undefined) {

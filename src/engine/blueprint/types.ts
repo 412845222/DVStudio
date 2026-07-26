@@ -113,6 +113,20 @@ export interface LegacyBlueprintData {
   nodeCheckboxVisible?: boolean;
 }
 
+export const CURRENT_SCHEMA_VERSION = 2;
+
+export const MIN_ZOOM = 0.2;
+export const MAX_ZOOM = 6;
+export const MAX_PAN = 1e7;
+
+export function clampZoom(zoom: number): number {
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+}
+
+export function clampPan(v: number): number {
+  return Math.max(-MAX_PAN, Math.min(MAX_PAN, v));
+}
+
 export interface BlueprintData {
   schemaVersion?: number;
   viewport: { zoom: number; panX: number; panY: number };

@@ -60,6 +60,13 @@
             @node-chat-update-selected-refs="onBusinessChatUpdateSelectedRefs"
             @node-chat-remove-param-ref="onBusinessChatRemoveParamRef"
             @node-chat-stop="onBusinessChatStop"
+            @preview-request="onBusinessPreviewRequest"
+            @clear-resource="onBusinessClearResource"
+            @upload-resource="onBusinessUploadResource"
+            @update-image-settings="onBusinessUpdateImageSettings"
+            @media-ready="onBusinessMediaReady"
+            @invalidate-screenshot="onBusinessInvalidateScreenshot"
+            @preview-contextmenu="onBusinessPreviewContextMenu"
           />
         </DomNodeWrapper>
       </TransitionGroup>
@@ -124,6 +131,13 @@ const emit = defineEmits<{
   (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
   (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
   (e: 'node-chat-stop', nodeId: string): void;
+  (e: 'node-preview-request', payload: { nodeId: string; imageUrl: string }): void;
+  (e: 'node-clear-resource', nodeId: string): void;
+  (e: 'node-upload-resource', payload: { nodeId: string; file: File; kind: string }): void;
+  (e: 'node-update-image-settings', payload: { nodeId: string; patch: Record<string, any> }): void;
+  (e: 'node-media-ready', nodeId: string): void;
+  (e: 'node-invalidate-screenshot', nodeId: string): void;
+  (e: 'node-preview-contextmenu', payload: { nodeId: string; clientX: number; clientY: number }): void;
 }>();
 
 const props = defineProps<{
@@ -245,6 +259,34 @@ function onBusinessChatRemoveParamRef(payload: { nodeId: string; refItem: any })
 
 function onBusinessChatStop(nodeId: string) {
   emit('node-chat-stop', nodeId);
+}
+
+function onBusinessPreviewRequest(payload: { nodeId: string; imageUrl: string }) {
+  emit('node-preview-request', payload);
+}
+
+function onBusinessClearResource(nodeId: string) {
+  emit('node-clear-resource', nodeId);
+}
+
+function onBusinessUploadResource(payload: { nodeId: string; file: File; kind: string }) {
+  emit('node-upload-resource', payload);
+}
+
+function onBusinessUpdateImageSettings(payload: { nodeId: string; patch: Record<string, any> }) {
+  emit('node-update-image-settings', payload);
+}
+
+function onBusinessMediaReady(nodeId: string) {
+  emit('node-media-ready', nodeId);
+}
+
+function onBusinessInvalidateScreenshot(nodeId: string) {
+  emit('node-invalidate-screenshot', nodeId);
+}
+
+function onBusinessPreviewContextMenu(payload: { nodeId: string; clientX: number; clientY: number }) {
+  emit('node-preview-contextmenu', payload);
 }
 
 const viewportSize = ref({ width: 800, height: 600 });

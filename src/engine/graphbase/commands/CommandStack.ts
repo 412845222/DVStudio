@@ -24,6 +24,15 @@ export class CommandStack {
       if (last.canMergeWith(command)) {
         last.mergeWith(command);
         this.redoStack = [];
+        if (command.mergeable && command.mergeKey) {
+          this.lastMergeKey = command.mergeKey;
+          if (this.mergeTimeout !== null) clearTimeout(this.mergeTimeout);
+          this.mergeTimeout = window.setTimeout(() => {
+            this.lastMergeKey = null;
+            this.mergeTimeout = null;
+          }, 500);
+        }
+        this.on.emit('execute', { command: last });
         this.on.emit('change', { type: 'merge', command: last });
         return;
       }

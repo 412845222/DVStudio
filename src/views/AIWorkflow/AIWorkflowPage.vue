@@ -41,6 +41,7 @@
 				@link-drop-on-canvas="onLinkDropOnCanvas"
 				@node-start-link="onDomNodeStartLink"
 				@node-end-link="onDomNodeEndLink"
+				@node-preview-request="onHostNodePreviewRequest"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -383,6 +384,14 @@
 				/>
 
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
+
+				<ImageMarkupDialog
+					:visible="!!(imageMarkupContext.url && !isElectronRuntime)"
+					:image-url="imageMarkupContext.url"
+					:source-name="imageMarkupContext.name"
+					@update:visible="(v: boolean) => { if (!v) closeImageMarkupDialog() }"
+					@export-markup="onNodeExportMarkupImage"
+				/>
 			</div>
 
 			<div class="aiwf-overlay-bottom-left">
@@ -2943,6 +2952,10 @@ const onHostNodeChatRemoveParamRef = (payload: { nodeId: string; refItem: any })
 
 const onHostNodeChatStop = (_nodeId: string) => {
 	onNodeChatStop()
+}
+
+const onHostNodePreviewRequest = (payload: { nodeId: string; imageUrl: string }) => {
+	onNodeImagePreviewRequestInline(payload.nodeId, { imageUrl: payload.imageUrl })
 }
 
 const onNodeChatDraftUpdate = (text: string) => {

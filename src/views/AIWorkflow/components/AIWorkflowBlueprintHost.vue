@@ -41,6 +41,13 @@ const emit = defineEmits<{
   'link-drop-on-canvas': [payload: { clientX: number; clientY: number; worldX: number; worldY: number; fromNodeId: string; fromAnchorId: string }]
   'node-start-link': [payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }]
   'node-end-link': [payload: { nodeId: string; anchorId: string; anchorIndex: number }]
+  'node-preview-request': [payload: { nodeId: string; imageUrl: string }]
+  'node-clear-resource': [nodeId: string]
+  'node-upload-resource': [payload: { nodeId: string; file: File; kind: string }]
+  'node-update-image-settings': [payload: { nodeId: string; patch: Record<string, any> }]
+  'node-media-ready': [nodeId: string]
+  'node-invalidate-screenshot': [nodeId: string]
+  'node-preview-contextmenu': [payload: { nodeId: string; clientX: number; clientY: number }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -226,6 +233,13 @@ watch(blueprintEditorRef, (editor) => {
       @link-drop-on-canvas="onLinkDropOnCanvas"
       @node-start-link="onNodeStartLink"
       @node-end-link="onNodeEndLink"
+      @node-preview-request="(p: any) => emit('node-preview-request', p)"
+      @node-clear-resource="(id: string) => emit('node-clear-resource', id)"
+      @node-upload-resource="(p: any) => emit('node-upload-resource', p)"
+      @node-update-image-settings="(p: any) => emit('node-update-image-settings', p)"
+      @node-media-ready="(id: string) => emit('node-media-ready', id)"
+      @node-invalidate-screenshot="(id: string) => emit('node-invalidate-screenshot', id)"
+      @node-preview-contextmenu="(p: any) => emit('node-preview-contextmenu', p)"
     />
     <div class="bp-overlay-layer">
       <slot />

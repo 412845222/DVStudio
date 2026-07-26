@@ -134,6 +134,10 @@ export class Scene extends Group implements Disposable {
     this.renderer.requestRedraw(fullRedraw);
   }
 
+  requestContinuousFrames(frames: number = 3): void {
+    this.renderer.requestContinuousFrames(frames);
+  }
+
   screenToWorld(screenPoint: Vector2): Vector2 {
     return this.camera.screenToWorld(screenPoint);
   }

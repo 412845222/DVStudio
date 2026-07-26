@@ -14,6 +14,7 @@ export class PasteCommand extends Command {
   private createdEdgeIds: string[] = [];
   private createdNodesData: BlueprintNodeData[] = [];
   private createdEdgesData: ConnectionData[] = [];
+  private previousSelectionIds: string[] = [];
 
   constructor(
     scene: BlueprintScene,
@@ -37,6 +38,15 @@ export class PasteCommand extends Command {
       this.offsetX = fallbackOffsetX;
       this.offsetY = fallbackOffsetY;
     }
+  }
+
+  private selectCreatedNodes(): void {
+    this.previousSelectionIds = this.scene.selection.getSelectedIds();
+    this.scene.selection.setSelection(this.createdNodeIds);
+  }
+
+  private restorePreviousSelection(): void {
+    this.scene.selection.setSelection(this.previousSelectionIds);
   }
 
   private computePasteOffset(): { dx: number; dy: number } {
@@ -76,7 +86,7 @@ export class PasteCommand extends Command {
         id: newId,
         worldX: srcData.worldX + dx,
         worldY: srcData.worldY + dy,
-        selected: false
+        selected: true
       };
 
       this.createdNodesData.push(newData);
@@ -103,6 +113,7 @@ export class PasteCommand extends Command {
     }
 
     this.scene.updateAllConnectionEndpoints();
+    this.selectCreatedNodes();
     this.scene.requestRedraw();
   }
 
@@ -113,17 +124,19 @@ export class PasteCommand extends Command {
     for (const id of this.createdNodeIds) {
       this.scene.removeBlueprintNode(id);
     }
+    this.restorePreviousSelection();
     this.scene.requestRedraw();
   }
 
   redo(): void {
     for (const data of this.createdNodesData) {
-      this.scene.addBlueprintNode({ ...data });
+      this.scene.addBlueprintNode({ ...data, selected: true });
     }
     for (const data of this.createdEdgesData) {
       this.scene.addConnection({ ...data });
     }
     this.scene.updateAllConnectionEndpoints();
+    this.scene.selection.setSelection(this.createdNodeIds);
     this.scene.requestRedraw();
   }
 

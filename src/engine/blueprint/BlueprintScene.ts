@@ -7,6 +7,7 @@ import { BlueprintGrid } from './BlueprintGrid';
 import type { RenderContext } from '../graphbase/renderer/RenderContext';
 import { BlueprintEditorTool } from './BlueprintEditorTool';
 import type { BlueprintNodeData, BlueprintData, ConnectionData, SavedSelectionFrameData, LegacyBlueprintData, LegacyResourceData } from './types';
+import { CURRENT_SCHEMA_VERSION, clampZoom, clampPan } from './types';
 import type { SavedSelectionFrame } from './SelectionFrame';
 import { BlueprintLegacyLoader } from './BlueprintLegacyLoader';
 import { BlueprintLegacySaver } from './BlueprintLegacySaver';
@@ -38,7 +39,19 @@ export class BlueprintScene extends Scene {
   readonly commandStack: CommandStack = new CommandStack();
   public isEngineDragging: boolean = false;
   public isDomInteractionLocked: boolean = false;
-  public isViewportPanning: boolean = false;
+  private _isViewportPanning: boolean = false;
+
+  get isViewportPanning(): boolean {
+    return this._isViewportPanning;
+  }
+  set isViewportPanning(value: boolean) {
+    const wasPanning = this._isViewportPanning;
+    this._isViewportPanning = value;
+    if (wasPanning && !value) {
+      this.requestRedraw();
+      this.requestContinuousFrames(3);
+    }
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     super(canvas, { backgroundColor: null, enableDefaultTools: false });
@@ -52,6 +65,9 @@ export class BlueprintScene extends Scene {
 
     this.tools.registerTool(new BlueprintEditorTool());
     this.tools.setDefaultTool('blueprint_editor');
+
+    this.camera.minZoom = 0.2;
+    this.camera.maxZoom = 6;
 
     this.commandStack.on.on('execute', () => this.on.emit('after-command'));
     this.commandStack.on.on('undo', () => this.on.emit('after-command'));
@@ -123,6 +139,13 @@ export class BlueprintScene extends Scene {
       blueprintData = data;
     }
 
+    const version = blueprintData.schemaVersion ?? 1;
+    if (version > CURRENT_SCHEMA_VERSION) {
+      console.warn(`[Blueprint] Loading data from newer schema version ${version} (current: ${CURRENT_SCHEMA_VERSION}). Some features may not be available.`);
+    }
+
+    blueprintData = this.migrateSchema(blueprintData);
+
     const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|')}`;
     if (this._lastLoadSignature === signature) {
       console.log('[LOAD-DIAG] loadBlueprint: skipped (same signature)', signature.slice(0, 200));
@@ -152,7 +175,11 @@ export class BlueprintScene extends Scene {
     this.commandStack.clear();
 
     if (blueprintData.viewport) {
-      this.setViewport(blueprintData.viewport);
+      this.setViewport({
+        zoom: clampZoom(blueprintData.viewport.zoom ?? 1),
+        panX: clampPan(blueprintData.viewport.panX ?? 0),
+        panY: clampPan(blueprintData.viewport.panY ?? 0)
+      });
     }
 
     for (const nodeData of blueprintData.nodes) {
@@ -175,6 +202,34 @@ export class BlueprintScene extends Scene {
 
     this.updateAllConnectionEndpoints();
     this.requestRedraw();
+  }
+
+  private migrateSchema(data: BlueprintData): BlueprintData {
+    const version = data.schemaVersion ?? 1;
+    if (version >= CURRENT_SCHEMA_VERSION) return data;
+
+    const nodes = data.nodes.map(n => ({ ...n }));
+
+    if (version < 2) {
+      for (const node of nodes) {
+        if (typeof (node as any).x === 'number' && node.worldX === undefined) {
+          node.worldX = (node as any).x;
+        }
+        if (typeof (node as any).y === 'number' && node.worldY === undefined) {
+          node.worldY = (node as any).y;
+        }
+      }
+    }
+
+    return {
+      ...data,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      viewport: data.viewport ?? { zoom: 1, panX: 0, panY: 0 },
+      nodes,
+      edges: data.edges ?? [],
+      savedSelectionFrames: data.savedSelectionFrames ?? [],
+      legacyResources: data.legacyResources ?? {}
+    };
   }
 
   loadLegacyBlueprint(data: LegacyBlueprintData): void {
@@ -592,7 +647,7 @@ export class BlueprintScene extends Scene {
     }
 
     return {
-      schemaVersion: 2,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       viewport: this.getViewport(),
       nodes,
       edges,
