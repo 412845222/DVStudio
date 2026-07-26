@@ -127,6 +127,12 @@ defineExpose({
     additionalData?: Record<string, any>;
   }) {
     return blueprintEditorRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+  },
+  updateNodeData(nodeId: string, patch: Record<string, any>): boolean {
+    return blueprintEditorRef.value?.updateNodeData?.(nodeId, patch) ?? false
+  },
+  connectPorts(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): boolean {
+    return blueprintEditorRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
   }
 })
 

@@ -895,6 +895,10 @@ defineExpose({
     scene.value.requestRedraw();
     nextTick(() => {
       isUpdatingFromProps = false;
+      if (scene.value) {
+        const curVp = scene.value.getViewport();
+        emit('viewportChange', curVp.zoom, curVp.panX, curVp.panY);
+      }
     });
   },
 
@@ -1176,6 +1180,32 @@ defineExpose({
       height: nh * s.camera.zoom,
       nodeType: node.nodeType || node.data.type
     };
+  },
+
+  updateNodeData(nodeId: string, patch: Record<string, any>): boolean {
+    if (!scene.value || props.readonly) return false;
+    const s = scene.value;
+    const node = s.getBlueprintNode(nodeId);
+    if (!node) return false;
+    node.setData(patch);
+    if (patch.inputs || patch.outputs) {
+      s.updateAllConnectionEndpoints();
+    }
+    s.requestRedraw();
+    emitChange();
+    return true;
+  },
+
+  connectPorts(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): boolean {
+    if (!scene.value || props.readonly) return false;
+    const conn = scene.value.connectNodes(fromNodeId, fromAnchorId, toNodeId, toAnchorId);
+    if (conn) {
+      scene.value.updateAllConnectionEndpoints();
+      scene.value.requestRedraw();
+      emitChange();
+      return true;
+    }
+    return false;
   },
 });
 </script>

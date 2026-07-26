@@ -1046,8 +1046,10 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
 let isUpdatingFromStore = false
 
 function resetIsUpdatingFromStore() {
-  nextTick(() => {
-    isUpdatingFromStore = false
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      isUpdatingFromStore = false
+    })
   })
 }
 
@@ -9711,16 +9713,51 @@ const {
 	syncBlueprint: syncBlueprintNow,
 	engineApi: {
 		addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
-			return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+			const nodeId = blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+			if (nodeId) {
+				const editor = blueprintHostRef.value?.getInstance?.()
+				if (editor && typeof editor.saveBlueprint === 'function') {
+					const latest = editor.saveBlueprint()
+					if (latest) {
+						const snapshot = legacyBlueprintToWorkflowState(latest)
+						isUpdatingFromStore = true
+						store.commit('hydrateDraft', { snapshot })
+						resetIsUpdatingFromStore()
+					}
+				}
+			}
+			return nodeId
 		},
 		createNodeWithConnection: (params) => {
-			return blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+			const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+			if (result.nodeId) {
+				const editor = blueprintHostRef.value?.getInstance?.()
+				if (editor && typeof editor.saveBlueprint === 'function') {
+					const latest = editor.saveBlueprint()
+					if (latest) {
+						const snapshot = legacyBlueprintToWorkflowState(latest)
+						isUpdatingFromStore = true
+						store.commit('hydrateDraft', { snapshot })
+						resetIsUpdatingFromStore()
+					}
+				}
+			}
+			return result
+		},
+		updateNodeData: (nodeId: string, patch: Record<string, any>) => {
+			return blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
+		},
+		connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => {
+			return blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
 		},
 		copySelection: () => {
 			blueprintHostRef.value?.copySelection?.()
 		},
 		paste: () => {
 			blueprintHostRef.value?.paste?.()
+		},
+		pasteAt: (worldX: number, worldY: number) => {
+			return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
 		},
 		duplicate: () => {
 			blueprintHostRef.value?.duplicate?.()

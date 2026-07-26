@@ -49,8 +49,11 @@ export const useAIWorkflowContextMenu = (payload: {
 			findBestInputAnchor?: (nodesById: Record<string, any>, fromNodeId: string, fromAnchorId: string, newNodeId: string) => string | null
 			additionalData?: Record<string, any>
 		}) => { nodeId: string | null; connected: boolean }
+		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+		connectPorts?: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => boolean
 		copySelection?: () => void
 		paste?: () => void
+		pasteAt?: (worldX: number, worldY: number) => string[]
 		duplicate?: () => void
 		deleteSelection?: () => void
 	}
