@@ -94,23 +94,42 @@ export class BlueprintScene extends Scene {
   }
 
   executeCommand(command: Command): void {
+    console.log('[KEY-DEBUG] BlueprintScene.executeCommand: type=' + command.type + ', undoStackSize=' + this.commands.getUndoCount());
     this.commands.execute(command);
+    this.syncLoadSignature();
+    console.log('[KEY-DEBUG] BlueprintScene.executeCommand done: undoStackSize=' + this.commands.getUndoCount());
   }
 
   undo(): boolean {
+    console.log('[KEY-DEBUG] BlueprintScene.undo() called');
     const result = super.undo();
     if (result) {
+      console.log('[KEY-DEBUG] BlueprintScene.undo() updating connection endpoints');
       this.updateAllConnectionEndpoints();
+      this.syncLoadSignature();
     }
     return result;
   }
 
   redo(): boolean {
+    console.log('[KEY-DEBUG] BlueprintScene.redo() called');
     const result = super.redo();
     if (result) {
+      console.log('[KEY-DEBUG] BlueprintScene.redo() updating connection endpoints');
       this.updateAllConnectionEndpoints();
+      this.syncLoadSignature();
     }
     return result;
+  }
+
+  private syncLoadSignature(): void {
+    const nodeEntries: string[] = [];
+    for (const [, node] of this._nodeMap) {
+      node.syncDataFromTransform();
+      nodeEntries.push(`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)}`);
+    }
+    const edgeCount = this._connectionMap.size;
+    this._lastLoadSignature = `${this._nodeMap.size}:${edgeCount}:${nodeEntries.join('|')}`;
   }
 
   canUndo(): boolean {
@@ -164,50 +183,109 @@ export class BlueprintScene extends Scene {
     blueprintData = this.migrateSchema(blueprintData);
     blueprintData = this.sanitizeLoadedData(blueprintData);
 
-    const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|')}`;
+    const incomingNodeIds = new Set(blueprintData.nodes.map(n => n.id));
+    const incomingEdgeIds = new Set(blueprintData.edges.map(e => e.id));
+
+    const existingNodeCount = this._nodeMap.size;
+    const existingEdgeCount = this._connectionMap.size;
+    const isInitialLoad = existingNodeCount === 0 && existingEdgeCount === 0;
+
+    const positionSignature = blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|');
+    const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`;
     if (this._lastLoadSignature === signature) {
       console.log('[LOAD-DIAG] loadBlueprint: skipped (same signature)', signature.slice(0, 200));
       return;
     }
     this._lastLoadSignature = signature;
-    console.log('[LOAD-DIAG] loadBlueprint: loading, nodes=', blueprintData.nodes.length, 'edges=', blueprintData.edges.length, 'sig=', signature.slice(0, 200));
+
+    console.log('[LOAD-DIAG] loadBlueprint: ' + (isInitialLoad ? 'initial' : 'incremental') + ', nodes=', blueprintData.nodes.length, 'edges=', blueprintData.edges.length, 'sig=', signature.slice(0, 200));
 
     this.isEngineDragging = false;
     this.isDomInteractionLocked = false;
     this.isViewportPanning = false;
 
-    for (const node of this._nodeMap.values()) {
-      this.removeChild(node);
-      node.dispose();
-    }
-    this._nodeMap.clear();
+    if (isInitialLoad) {
+      this._legacyResources = blueprintData.legacyResources || {};
 
-    for (const conn of this._connectionMap.values()) {
-      this.removeChild(conn);
-      conn.dispose();
+      if (blueprintData.viewport) {
+        this.setViewport({
+          zoom: clampZoom(blueprintData.viewport.zoom ?? 1),
+          panX: clampPan(blueprintData.viewport.panX ?? 0),
+          panY: clampPan(blueprintData.viewport.panY ?? 0)
+        });
+      }
+
+      for (const nodeData of blueprintData.nodes) {
+        this.addBlueprintNode(nodeData);
+      }
+
+      for (const edgeData of blueprintData.edges) {
+        this.addConnection(edgeData);
+      }
+    } else {
+      this._legacyResources = blueprintData.legacyResources || {};
+
+      if (blueprintData.viewport) {
+        this.setViewport({
+          zoom: clampZoom(blueprintData.viewport.zoom ?? 1),
+          panX: clampPan(blueprintData.viewport.panX ?? 0),
+          panY: clampPan(blueprintData.viewport.panY ?? 0)
+        });
+      }
+
+      const nodeIdsToRemove: string[] = [];
+      for (const [existingId] of this._nodeMap) {
+        if (!incomingNodeIds.has(existingId)) {
+          nodeIdsToRemove.push(existingId);
+        }
+      }
+      for (const id of nodeIdsToRemove) {
+        this.removeBlueprintNode(id);
+      }
+
+      for (const nodeData of blueprintData.nodes) {
+        const existing = this._nodeMap.get(nodeData.id);
+        if (existing) {
+          const posChanged = existing.data.worldX !== nodeData.worldX || existing.data.worldY !== nodeData.worldY;
+          const sizeChanged = existing.data.width !== nodeData.width || existing.data.height !== nodeData.height;
+          if (posChanged || sizeChanged) {
+            existing.setData(nodeData);
+          }
+        } else {
+          this.addBlueprintNode(nodeData);
+        }
+      }
+
+      const edgeIdsToRemove: string[] = [];
+      for (const [existingId] of this._connectionMap) {
+        if (!incomingEdgeIds.has(existingId)) {
+          edgeIdsToRemove.push(existingId);
+        }
+      }
+      for (const id of edgeIdsToRemove) {
+        this.removeConnection(id);
+      }
+
+      for (const edgeData of blueprintData.edges) {
+        const existing = this._connectionMap.get(edgeData.id);
+        if (existing) {
+          const changed = existing.data.fromNodeId !== edgeData.fromNodeId ||
+            existing.data.toNodeId !== edgeData.toNodeId ||
+            existing.data.fromAnchorId !== edgeData.fromAnchorId ||
+            existing.data.toAnchorId !== edgeData.toAnchorId;
+          if (changed) {
+            existing.data.fromNodeId = edgeData.fromNodeId;
+            existing.data.toNodeId = edgeData.toNodeId;
+            existing.data.fromAnchorId = edgeData.fromAnchorId;
+            existing.data.toAnchorId = edgeData.toAnchorId;
+          }
+        } else {
+          this.addConnection(edgeData);
+        }
+      }
     }
-    this._connectionMap.clear();
 
     this._savedSelectionFrames.clear();
-    this._legacyResources = blueprintData.legacyResources || {};
-    this.commands.clear();
-
-    if (blueprintData.viewport) {
-      this.setViewport({
-        zoom: clampZoom(blueprintData.viewport.zoom ?? 1),
-        panX: clampPan(blueprintData.viewport.panX ?? 0),
-        panY: clampPan(blueprintData.viewport.panY ?? 0)
-      });
-    }
-
-    for (const nodeData of blueprintData.nodes) {
-      this.addBlueprintNode(nodeData);
-    }
-
-    for (const edgeData of blueprintData.edges) {
-      this.addConnection(edgeData);
-    }
-
     if (blueprintData.savedSelectionFrames) {
       for (const frameData of blueprintData.savedSelectionFrames) {
         this._savedSelectionFrames.set(frameData.id, {
@@ -681,9 +759,13 @@ export class BlueprintScene extends Scene {
         connIds.push(item.id);
       }
     }
+    console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: nodeIds=' + JSON.stringify(nodeIds) + ', connIds=' + JSON.stringify(connIds));
     if (nodeIds.length > 0 || connIds.length > 0) {
       this.executeCommand(new DeleteSelectionCommand(this, nodeIds, connIds));
+      console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: calling clearSelection() after delete command');
       this.selection.clearSelection();
+    } else {
+      console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: nothing selected, skip');
     }
   }
 

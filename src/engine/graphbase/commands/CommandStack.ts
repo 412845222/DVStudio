@@ -22,6 +22,7 @@ export class CommandStack {
     if (command.mergeable && command.mergeKey && command.mergeKey === this.lastMergeKey && this.undoStack.length > 0) {
       const last = this.undoStack[this.undoStack.length - 1];
       if (last.canMergeWith(command)) {
+        console.log('[KEY-DEBUG] CommandStack.execute: MERGED command type=' + command.type + ' with last, undoStackSize=' + this.undoStack.length);
         last.mergeWith(command);
         this.redoStack = [];
         if (command.mergeable && command.mergeKey) {
@@ -56,6 +57,7 @@ export class CommandStack {
       this.lastMergeKey = null;
     }
 
+    console.log('[KEY-DEBUG] CommandStack.execute: PUSHED command type=' + command.type + ', undoStackSize=' + this.undoStack.length);
     this.on.emit('execute', { command });
     this.on.emit('change', { type: 'execute', command });
   }

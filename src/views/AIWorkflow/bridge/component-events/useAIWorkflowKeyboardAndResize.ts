@@ -23,11 +23,31 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	scheduleAsyncEdgeRender: () => void
 }) => {
 	const onWorkflowKeyDown = (ev: KeyboardEvent) => {
-		if (!payload.isRouteActive()) return
-		if (isEditableEventTarget(ev.target ?? null)) return
-
 		const key = String(ev.key || '').toLowerCase()
 		const mod = ev.ctrlKey || ev.metaKey
+		const tag = ((ev.target as HTMLElement | null)?.tagName || '').toLowerCase()
+		if (!payload.isRouteActive()) {
+			if (key === 'backspace' || key === 'delete' || (mod && (key === 'z' || key === 'y'))) {
+				console.log('[KEY-DEBUG] AIWorkflow capture keydown: route NOT active, skip. key=' + key + ', mod=' + mod)
+			}
+			return
+		}
+		if (isEditableEventTarget(ev.target ?? null)) {
+			if (key === 'backspace' || key === 'delete' || (mod && (key === 'z' || key === 'y'))) {
+				console.log('[KEY-DEBUG] AIWorkflow capture keydown: target is editable (tag=' + tag + '), skip. key=' + key)
+			}
+			return
+		}
+
+		if (mod && key === 'z' && !ev.shiftKey) {
+			console.log('[KEY-DEBUG] AIWorkflow capture Ctrl+Z (undo): NOT HANDLED here (no undo in payload), letting event propagate')
+		}
+		if (mod && key === 'z' && ev.shiftKey) {
+			console.log('[KEY-DEBUG] AIWorkflow capture Ctrl+Shift+Z (redo): NOT HANDLED here, letting event propagate')
+		}
+		if (mod && key === 'y') {
+			console.log('[KEY-DEBUG] AIWorkflow capture Ctrl+Y (redo): NOT HANDLED here, letting event propagate')
+		}
 
 		if (mod && key === 'c') {
 			const selected = payload.getSelectedNodeIds()
@@ -38,16 +58,25 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		}
 
 		if (key === 'backspace' || key === 'delete') {
-			if (ev.repeat) return
+			if (ev.repeat) {
+				console.log('[KEY-DEBUG] AIWorkflow capture Delete: repeat=true, skip')
+				return
+			}
 			const selected = payload.getSelectedNodeIds()
+			console.log('[KEY-DEBUG] AIWorkflow capture Delete: selectedNodes=' + JSON.stringify(selected) + ', selectedEdgeId=' + payload.getSelectedEdgeId())
 			if (!selected.length) {
 				const selectedEdgeId = String(payload.getSelectedEdgeId() ?? '').trim()
-				if (!selectedEdgeId) return
+				if (!selectedEdgeId) {
+					console.log('[KEY-DEBUG] AIWorkflow capture Delete: no selection, letting event propagate')
+					return
+				}
+				console.log('[KEY-DEBUG] AIWorkflow capture Delete: removing edge ' + selectedEdgeId + ', stopImmediatePropagation')
 				ev.preventDefault()
 				ev.stopImmediatePropagation()
 				payload.removeSelectedEdge(selectedEdgeId)
 				return
 			}
+			console.log('[KEY-DEBUG] AIWorkflow capture Delete: removing nodes ' + JSON.stringify(selected) + ', stopImmediatePropagation')
 			ev.preventDefault()
 			ev.stopImmediatePropagation()
 			payload.removeSelectedNodes(selected)

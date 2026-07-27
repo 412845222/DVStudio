@@ -45,6 +45,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 					.filter(Boolean)
 			)
 		)
+		console.log('[KEY-DEBUG] removeSelectedNodesWithResourceCleanup: ids=' + JSON.stringify(ids) + ', hasPerformDelete=' + !!payload.performDelete)
 		if (!ids.length) return
 
 		for (const nodeId of ids) {
@@ -55,6 +56,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 		const affectedResourceIds = collectResourceIdsFromNodes(ids)
 
 		if (payload.performDelete) {
+			console.log('[KEY-DEBUG] removeSelectedNodesWithResourceCleanup: calling performDelete')
 			payload.performDelete(ids)
 		} else {
 			payload.store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })

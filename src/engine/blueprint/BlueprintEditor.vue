@@ -165,6 +165,7 @@ function applyInitialData(newData: LegacyBlueprintData) {
 }
 
 function enterEditMode(nodeId: string) {
+  console.log('[KEY-DEBUG] enterEditMode called for nodeId=' + nodeId + ', currentEditing=' + editingNodeId.value);
   if (!scene.value) return;
   const node = scene.value.getBlueprintNode(nodeId);
   if (!node) return;
@@ -184,9 +185,11 @@ function enterEditMode(nodeId: string) {
   scene.value.isEngineDragging = false;
   scene.value.isDomInteractionLocked = false;
   scene.value.requestRedraw();
+  console.log('[KEY-DEBUG] enterEditMode done, editingNodeId=' + editingNodeId.value);
 }
 
 function exitEditMode() {
+  console.log('[KEY-DEBUG] exitEditMode called, editingNodeId=' + editingNodeId.value + ', isUpdatingFromProps=' + isUpdatingFromProps);
   if (editingNodeId.value) {
     if (scene.value) {
       const node = scene.value.getBlueprintNode(editingNodeId.value);
@@ -203,6 +206,7 @@ function exitEditMode() {
     }
     editingNodeId.value = null;
     canvasRef.value?.focus({ preventScroll: true });
+    console.log('[KEY-DEBUG] exitEditMode done, editingNodeId is now null');
   }
 }
 
@@ -359,6 +363,15 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
     const isEditable = tag === 'input' || tag === 'textarea' || tag === 'select' ||
       (target as any)?.isContentEditable === true ||
       !!(target && target.closest('.bp-node-chat-dialog'));
+    const key = e.key.toLowerCase();
+    const ctrl = e.ctrlKey || e.metaKey;
+    const isUndoRedo = ctrl && (key === 'z' || key === 'y');
+    const isDelete = key === 'delete' || key === 'backspace';
+
+    if (isUndoRedo || isDelete) {
+      console.log('[KEY-DEBUG] BlueprintEditor capture keydown: key=' + key + ', ctrl=' + ctrl + ', shift=' + e.shiftKey + ', isEditable=' + isEditable + ', editingNodeId=' + editingNodeId.value + ', targetTag=' + tag);
+    }
+
     if (isEditable) {
       if (e.key === 'Escape' && !e.repeat && target) {
         (target as HTMLElement).blur();
@@ -366,12 +379,10 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       return;
     }
 
-    const ctrl = e.ctrlKey || e.metaKey;
-    const key = e.key.toLowerCase();
-
     if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey && !e.repeat) {
       const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
       if (selectedNodes.length === 1) {
+        console.log('[KEY-DEBUG] BlueprintEditor capture: Enter -> enterEditMode');
         e.preventDefault();
         e.stopImmediatePropagation();
         enterEditMode(selectedNodes[0].id);
@@ -380,6 +391,7 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
     }
     if (key === 'escape' && !e.repeat) {
       if (editingNodeId.value) {
+        console.log('[KEY-DEBUG] BlueprintEditor capture: Escape -> exitEditMode');
         e.preventDefault();
         e.stopImmediatePropagation();
         exitEditMode();
@@ -466,7 +478,9 @@ onMounted(() => {
   unsubSelect = s.selection.on.on('select', () => {
     if (isUpdatingFromProps) return;
     const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    console.log('[KEY-DEBUG] selection select event: selectedCount=' + selectedNodes.length + ', editingNodeId=' + editingNodeId.value + ', isEnteringEditMode=' + isEnteringEditMode);
     if (editingNodeId.value && selectedNodes.length > 1 && !isEnteringEditMode) {
+      console.log('[KEY-DEBUG] select event: multi-select while editing, calling exitEditMode');
       exitEditMode();
     }
     emit('selectionChange', getSelectedNodeIds());
@@ -474,7 +488,9 @@ onMounted(() => {
   unsubDeselect = s.selection.on.on('deselect', () => {
     if (isUpdatingFromProps) return;
     const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
+    console.log('[KEY-DEBUG] selection deselect event: selectedCount=' + selectedNodes.length + ', editingNodeId=' + editingNodeId.value + ', isEnteringEditMode=' + isEnteringEditMode);
     if (editingNodeId.value && selectedNodes.length === 0 && !isEnteringEditMode) {
+      console.log('[KEY-DEBUG] deselect event: editingNodeId exists but selection empty, calling exitEditMode');
       exitEditMode();
     }
     emit('selectionChange', getSelectedNodeIds());

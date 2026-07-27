@@ -64,36 +64,46 @@ window.addEventListener(
 		}
 
 		// Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z: 撤销/重做（输入框内交给浏览器原生文本撤销）
-		// 使用自定义事件让各页面自行处理，fallback到视频编辑器的editorPersistence
+		// AIWorkflow/BlueprintTest 使用引擎内置CommandStack处理undo/redo，不在此处拦截
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
 			((e.key === 'z' || e.key === 'Z') || (e.key === 'y' || e.key === 'Y'))
 		) {
+			const isRedo = e.shiftKey || (e.key === 'y' || e.key === 'Y')
+			const routeName = router.currentRoute.value.name
+			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
+				console.log('[KEY-DEBUG] main.ts bubble Ctrl+Z/Y: route=' + String(routeName) + ', PASS THROUGH - engine handles via InputManager, NOT calling stopPropagation')
+				return
+			}
+			console.log('[KEY-DEBUG] main.ts bubble Ctrl+Z/Y: isRedo=' + isRedo + ', route=' + String(routeName) + ', intercepting')
 			e.preventDefault()
 			e.stopPropagation()
-			const isRedo = e.shiftKey || (e.key === 'y' || e.key === 'Y')
 			const eventName = isRedo ? 'dvs:shortcut/redo' : 'dvs:shortcut/undo'
 			const ok = window.dispatchEvent(new CustomEvent(eventName, { cancelable: true }))
 			if (ok) {
-				const routeName = router.currentRoute.value.name
-				if (routeName !== 'AIWorkflow' && routeName !== 'BlueprintTest') {
-					if (isRedo) {
-						editorPersistence.redo()
-					} else {
-						editorPersistence.undo()
-					}
+				if (isRedo) {
+					editorPersistence.redo()
+				} else {
+					editorPersistence.undo()
 				}
 			}
 			return
 		}
 
 		// Backspace/Delete: 删除选中节点（仅在非输入框且确实有舞台选中时触发）
+		// AIWorkflow/BlueprintTest 自行处理Delete，不在此处拦截
 		if (!isEditable && (e.key === 'Backspace' || e.key === 'Delete')) {
+			const routeName = router.currentRoute.value.name
+			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
+				return
+			}
 			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds)
 				? VideoSceneStore.state.selectedNodeIds
 				: []
+			console.log('[KEY-DEBUG] main.ts bubble Delete/Backspace: VideoSceneStore.selectedNodeIds=' + JSON.stringify(selected))
 			if (selected.length) {
+				console.log('[KEY-DEBUG] main.ts Delete handled by VideoSceneStore, stopPropagation called!')
 				e.preventDefault()
 				e.stopPropagation()
 				void VideoSceneStore.dispatch('deleteSelectedNodes')
