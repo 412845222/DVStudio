@@ -18,6 +18,7 @@ concurrency:
 
 env:
   CI: true
+  FORCE_COLOR: 2
 
 jobs:
   lint-check:
@@ -39,6 +40,25 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint
+
+  format-check:
+    name: Format Check (prettier)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Check Prettier formatting
+        run: npm run format:check
 
   type-check:
     name: Type Check
@@ -79,8 +99,27 @@ jobs:
       - name: Run blueprint architecture compliance tests
         run: npm run test:architecture
 
-  frontend-test:
-    name: Frontend Tests
+  i18n-check:
+    name: i18n Completeness Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Run i18n locale completeness tests
+        run: npx vitest run tests/unit/i18n/ --reporter=verbose
+
+  engine-tests:
+    name: Blueprint Engine Tests
     runs-on: ubuntu-latest
     needs: [type-check, architecture-compliance]
     steps:
@@ -96,7 +135,47 @@ jobs:
       - name: Install dependencies (skip scripts)
         run: npm ci --ignore-scripts
 
-      - name: Run Vitest tests
+      - name: Run engine unit tests (Command/Stack/Architecture/Commands)
+        run: npx vitest run tests/engine/ --reporter=verbose
+
+  blueprint-compat:
+    name: Blueprint Data Compatibility
+    runs-on: ubuntu-latest
+    needs: [type-check, architecture-compliance]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Run blueprint load/save compatibility tests
+        run: npx vitest run tests/engine/blueprint-compat.test.ts --reporter=verbose
+
+  frontend-test:
+    name: Frontend Tests (All)
+    runs-on: ubuntu-latest
+    needs: [engine-tests, blueprint-compat, i18n-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Run all Vitest tests
         run: npm run test
 
       - name: Run coverage check
@@ -143,7 +222,7 @@ jobs:
         continue-on-error: true
 
   build-check:
-    name: Build Check
+    name: Production Build
     runs-on: ubuntu-latest
     needs: [frontend-test, python-bridge-check]
     steps:
@@ -156,8 +235,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install dependencies (full, for native modules)
         run: npm ci
 
-      - name: Run Vite build
-        run: npx vite build
+      - name: Run full production build (vue-tsc + vite build)
+        run: npm run build
+
+      - name: Verify dist output exists
+        run: |
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ dist/index.html not found - build may have failed"
+            exit 1
+          fi
+          echo "✅ Build output verified"
+          ls -la dist/ | head -20
+        shell: bash

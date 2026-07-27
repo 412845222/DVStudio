@@ -142,9 +142,74 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   // 2. 空 fetch 桩：由各 Service 测试自行覆盖实现
   vi.stubGlobal('fetch', vi.fn())
 
-  // 3. WebGL2 桩：用于 VideoScene / engine 组件
+  // 3. WebGL2 + Canvas2D 桩：用于 VideoScene / engine 组件
+  const mock2DContext = {
+    canvas: { width: 1920, height: 1080 },
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    scale: () => {},
+    rotate: () => {},
+    transform: () => {},
+    setTransform: () => {},
+    resetTransform: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    beginPath: () => {},
+    closePath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    bezierCurveTo: () => {},
+    quadraticCurveTo: () => {},
+    arc: () => {},
+    arcTo: () => {},
+    ellipse: () => {},
+    rect: () => {},
+    fill: () => {},
+    stroke: () => {},
+    drawImage: () => {},
+    clip: () => {},
+    isPointInPath: () => false,
+    isPointInStroke: () => false,
+    fillText: () => {},
+    strokeText: () => {},
+    measureText: () => ({ width: 10, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    createRadialGradient: () => ({ addColorStop: () => {} }),
+    createPattern: () => ({}),
+    createImageData: () => ({ width: 0, height: 0, data: new Uint8ClampedArray() }),
+    getImageData: () => ({ width: 0, height: 0, data: new Uint8ClampedArray() }),
+    putImageData: () => {},
+    setLineDash: () => {},
+    getLineDash: () => [],
+    drawFocusIfNeeded: () => {},
+    scrollPathIntoView: () => {},
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    globalAlpha: 1,
+    lineWidth: 1,
+    lineCap: 'butt' as CanvasLineCap,
+    lineJoin: 'miter' as CanvasLineJoin,
+    miterLimit: 10,
+    lineDashOffset: 0,
+    shadowOffsetX: 0,
+    shadowOffsetY: 0,
+    shadowBlur: 0,
+    shadowColor: 'transparent',
+    globalCompositeOperation: 'source-over',
+    font: '12px sans-serif',
+    textAlign: 'start' as CanvasTextAlign,
+    textBaseline: 'alphabetic' as CanvasTextBaseline,
+    direction: 'ltr' as CanvasDirection,
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'low' as ImageSmoothingQuality,
+  }
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     value: (type: string) => {
+      if (type === '2d') {
+        return mock2DContext as unknown as CanvasRenderingContext2D
+      }
       if (type === 'webgl2' || type === 'webgl') {
         return {
           getExtension: () => null,

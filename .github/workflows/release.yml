@@ -48,6 +48,9 @@ jobs:
       - name: Type Check
         run: npm run typecheck
 
+      - name: 🔴 Blueprint Architecture Compliance
+        run: npm run test:architecture
+
       - name: Frontend Tests
         run: npm run test
 
