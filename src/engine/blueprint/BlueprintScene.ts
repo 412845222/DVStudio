@@ -123,8 +123,10 @@ export class BlueprintScene extends Scene {
   }
 
   private syncLoadSignature(): void {
+    const nodeIds = Array.from(this._nodeMap.keys()).sort();
     const nodeEntries: string[] = [];
-    for (const [, node] of this._nodeMap) {
+    for (const id of nodeIds) {
+      const node = this._nodeMap.get(id)!;
       node.syncDataFromTransform();
       nodeEntries.push(`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)}`);
     }
@@ -190,12 +192,22 @@ export class BlueprintScene extends Scene {
     const existingEdgeCount = this._connectionMap.size;
     const isInitialLoad = existingNodeCount === 0 && existingEdgeCount === 0;
 
-    const positionSignature = blueprintData.nodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|');
+    const sortedIncomingNodes = [...blueprintData.nodes].sort((a, b) => a.id.localeCompare(b.id));
+    const positionSignature = sortedIncomingNodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|');
     const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`;
     if (this._lastLoadSignature === signature) {
       console.log('[LOAD-DIAG] loadBlueprint: skipped (same signature)', signature.slice(0, 200));
       return;
     }
+    console.log('[LOAD-DIAG] loadBlueprint: SIGNATURE MISMATCH!');
+    console.log('[LOAD-DIAG]   _lastLoadSignature=', this._lastLoadSignature?.slice(0, 300));
+    console.log('[LOAD-DIAG]   incomingSig=    ', signature.slice(0, 300));
+    const firstNodeDiff = sortedIncomingNodes.slice(0, 3).map(n => {
+      const ex = this._nodeMap.get(n.id);
+      if (!ex) return `NEW node ${n.id} at (${n.worldX},${n.worldY})`;
+      return `${n.id}: engineNow=(${Math.round(ex.data.worldX)},${Math.round(ex.data.worldY)}) incoming=(${Math.round(n.worldX)},${Math.round(n.worldY)}) delta=(${Math.round(n.worldX - ex.data.worldX)},${Math.round(n.worldY - ex.data.worldY)})`;
+    });
+    console.log('[LOAD-DIAG]   first 3 nodes diff:', firstNodeDiff);
     this._lastLoadSignature = signature;
 
     console.log('[LOAD-DIAG] loadBlueprint: ' + (isInitialLoad ? 'initial' : 'incremental') + ', nodes=', blueprintData.nodes.length, 'edges=', blueprintData.edges.length, 'sig=', signature.slice(0, 200));

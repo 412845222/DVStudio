@@ -120,6 +120,17 @@ function applyInitialData(newData: LegacyBlueprintData) {
 
   const newHash = computeStructureHash(newData);
   const structureChanged = newHash !== lastStructureHash;
+  console.log('[APPLY-DIAG] applyInitialData: structureChanged=' + structureChanged + ', isUpdatingFromProps=' + isUpdatingFromProps + ', hasInitiallyLoaded=' + hasInitiallyLoaded);
+  if (structureChanged && hasInitiallyLoaded) {
+    const sampleKey = (newData.nodeOrder || Object.keys(newData.nodesById || {}))[0];
+    if (sampleKey) {
+      const sn = newData.nodesById[sampleKey];
+      const en = s.getBlueprintNode(sampleKey);
+      if (sn && en) {
+        console.log('[APPLY-DIAG]   sample node ' + sampleKey + ': engineNow=(' + Math.round(en.data.worldX) + ',' + Math.round(en.data.worldY) + ') incoming=(' + Math.round((sn.worldX ?? (sn as any).x ?? 0)) + ',' + Math.round((sn.worldY ?? (sn as any).y ?? 0)) + ')');
+      }
+    }
+  }
 
   isUpdatingFromProps = true;
 
