@@ -1,7 +1,7 @@
 <template>
   <div class="blueprint-editor" :class="{ 'bp-readonly': readonly }">
     <div class="bp-canvas-container" ref="containerRef">
-      <canvas ref="canvasRef"></canvas>
+      <canvas ref="canvasRef" tabindex="0" data-wf-scene-layout-canvas="true"></canvas>
       <BlueprintDomOverlay 
         :scene="scene" 
         :chat-state="chatState"
@@ -31,40 +31,18 @@
         @node-preview-contextmenu="(p: any) => emit('nodePreviewContextMenu', p)"
         @interaction-end="emitChange"
       />
-      <BlueprintContextMenu
-        :visible="ctxMenu.visible"
-        :x="ctxMenu.x"
-        :y="ctxMenu.y"
-        :can-undo="ctxMenu.canUndo"
-        :can-redo="ctxMenu.canRedo"
-        :can-cut="ctxMenu.canCut"
-        :can-copy="ctxMenu.canCopy"
-        :can-paste="ctxMenu.canPaste"
-        :can-duplicate="ctxMenu.canDuplicate"
-        :can-delete="ctxMenu.canDelete"
-        :can-select-all="ctxMenu.canSelectAll"
-        @undo="onCtxUndo"
-        @redo="onCtxRedo"
-        @cut="onCtxCut"
-        @copy="onCtxCopy"
-        @paste="onCtxPaste"
-        @duplicate="onCtxDuplicate"
-        @delete="onCtxDelete"
-        @select-all="onCtxSelectAll"
-      />
       <slot></slot>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { BlueprintScene, BlueprintNode, Connection } from './index';
+import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { BlueprintScene, BlueprintNode } from './index';
 import type { GraphPointerEvent } from '../graphbase/input/events';
 import type { LegacyBlueprintData, NodeStatus, BlueprintNodeData, BlueprintData } from './types';
 import { DEFAULT_NODE_SIZES, getDefaultNodeData } from './types';
 import BlueprintDomOverlay from './dom/BlueprintDomOverlay.vue';
-import BlueprintContextMenu from './dom/BlueprintContextMenu.vue';
 import type { NodeChatState } from './dom/NodeComponentResolver';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
 import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand';
@@ -224,6 +202,7 @@ function exitEditMode() {
       });
     }
     editingNodeId.value = null;
+    canvasRef.value?.focus({ preventScroll: true });
   }
 }
 
@@ -252,61 +231,11 @@ function viewportEquals(a: { zoom: number; panX: number; panY: number }, b: { zo
     && Math.abs(a.panY - b.panY) < 0.5;
 }
 
-const ctxMenu = reactive({
-  visible: false,
-  x: 0,
-  y: 0,
-  targetNodeId: null as string | null,
-  canUndo: false,
-  canRedo: false,
-  canCut: false,
-  canCopy: false,
-  canPaste: false,
-  canDuplicate: false,
-  canDelete: false,
-  canSelectAll: true,
-});
-
-function closeCtxMenu() {
-  ctxMenu.visible = false;
-  ctxMenu.targetNodeId = null;
-}
-
-function openCtxMenu(x: number, y: number, targetNodeId: string | null) {
-  if (!scene.value) return;
-  const s = scene.value;
-  let selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-
-  if (targetNodeId) {
-    const node = s.getBlueprintNode(targetNodeId);
-    if (node && !selectedNodes.find(n => n.id === targetNodeId)) {
-      s.selection.setSelection([node.id]);
-      selectedNodes = [node];
-      s.requestRedraw();
-    }
-  }
-
-  const hasSelection = selectedNodes.length > 0;
-  ctxMenu.visible = true;
-  ctxMenu.x = x;
-  ctxMenu.y = y;
-  ctxMenu.targetNodeId = targetNodeId;
-  ctxMenu.canUndo = s.canUndo();
-  ctxMenu.canRedo = s.canRedo();
-  ctxMenu.canCut = hasSelection;
-  ctxMenu.canCopy = hasSelection;
-  ctxMenu.canPaste = s.hasClipboardData();
-  ctxMenu.canDuplicate = hasSelection;
-  ctxMenu.canDelete = hasSelection;
-  ctxMenu.canSelectAll = s.getAllBlueprintNodes().length > 0;
-}
-
 function handleNodeContextMenu(nodeId: string, event: MouseEvent) {
   event.preventDefault();
   event.stopPropagation();
   const worldPos = getWorldPosFromClient(event.clientX, event.clientY);
   emit('nodeContextMenu', nodeId, event, worldPos);
-  openCtxMenu(event.clientX, event.clientY, nodeId);
 }
 
 function handleNodeClick(nodeId: string, event: MouseEvent) {
@@ -343,7 +272,6 @@ function getWorldPosFromClient(clientX: number, clientY: number): { x: number; y
 }
 
 function onToolContextMenu(event: GraphPointerEvent) {
-  if (ctxMenu.visible) closeCtxMenu();
   if (!scene.value) return;
   const s = scene.value;
   const originalEvent = event.originalEvent as MouseEvent;
@@ -365,94 +293,6 @@ function onToolContextMenu(event: GraphPointerEvent) {
     s.requestRedraw();
     emit('canvasContextMenu', originalEvent, worldPos);
   }
-}
-
-function onCtxUndo() {
-  closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  if (s.undo()) {
-    s.updateAllConnectionEndpoints();
-    s.requestRedraw();
-    emitChange();
-  }
-}
-function onCtxRedo() {
-  closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  if (s.redo()) {
-    s.updateAllConnectionEndpoints();
-    s.requestRedraw();
-    emitChange();
-  }
-}
-function onCtxCut() {
-  closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-  if (selectedNodes.length > 0) {
-    s.copySelection(selectedNodes);
-    const nodeIds = selectedNodes.map(n => n.id);
-    const allConns = s.getAllConnections();
-    const connIds = allConns.filter(c => nodeIds.includes(c.data.fromNodeId) && nodeIds.includes(c.data.toNodeId)).map(c => c.id);
-    s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
-    s.selection.clearSelection();
-    s.updateAllConnectionEndpoints();
-    s.requestRedraw();
-    emitChange();
-  }
-}
-function onCtxCopy() {
-  closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-  if (selectedNodes.length > 0) {
-    s.copySelection(selectedNodes);
-  }
-}
-function onCtxPaste() {
-  closeCtxMenu();
-  if (!scene.value || props.readonly) return;
-  const s = scene.value;
-  let newNodeIds: string[];
-  const mp = lastMouseWorldPos.value;
-  if (mp) {
-    newNodeIds = s.pasteAt(mp.x, mp.y);
-  } else {
-    newNodeIds = s.executePaste(50, 50);
-  }
-  if (newNodeIds.length > 0) {
-    s.selection.setSelection(newNodeIds);
-    s.updateAllConnectionEndpoints();
-    s.requestRedraw();
-    emitChange();
-  }
-}
-function onCtxDuplicate() {
-  closeCtxMenu();
-  if (!scene.value || props.readonly) return;
-  const s = scene.value;
-  const newNodeIds = s.duplicateSelection(30, 30);
-  if (newNodeIds.length > 0) {
-    s.selection.setSelection(newNodeIds);
-    s.updateAllConnectionEndpoints();
-    s.requestRedraw();
-    emitChange();
-  }
-}
-function onCtxDelete() {
-  closeCtxMenu();
-  deleteSelection();
-}
-function onCtxSelectAll() {
-  closeCtxMenu();
-  if (!scene.value) return;
-  const s = scene.value;
-  s.selection.setSelection(s.getAllBlueprintNodes().map(n => n.id));
-  s.requestRedraw();
 }
 
 function deleteSelection() {
@@ -499,7 +339,6 @@ function handleResize() {
   scene.value.onResize(rect.width, rect.height);
 }
 
-let ctxOutsidePointerDown: ((e: PointerEvent) => void) | null = null;
 let ctxCaptureKeyDown: ((e: KeyboardEvent) => void) | null = null;
 let unsubToolContextMenu: (() => void) | null = null;
 let unsubNodeClick: (() => void) | null = null;
@@ -511,6 +350,7 @@ let unsubLinkDropOnCanvas: (() => void) | null = null;
 let onContainerDragOver: ((e: DragEvent) => void) | null = null;
 let onContainerDrop: ((e: DragEvent) => void) | null = null;
 let onContainerMouseMove: ((e: MouseEvent) => void) | null = null;
+let onCanvasPointerDownFocus: ((e: PointerEvent) => void) | null = null;
 const lastMouseWorldPos = ref<{ x: number; y: number } | null>(null);
 
 function setupKeyboardShortcuts(s: BlueprintScene) {
@@ -530,15 +370,6 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
-
-    if (key === 'escape') {
-      if (ctxMenu.visible) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        closeCtxMenu();
-      }
-      return;
-    }
 
     if (ctrl && key === 'z' && !e.shiftKey) {
       e.preventDefault();
@@ -562,31 +393,6 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       }
       return;
     }
-    if (key === 'delete' || key === 'backspace') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const selected = s.selection.getSelection();
-      const nodeIdsToRemove: string[] = [];
-      const connIdsToRemove: string[] = [];
-      for (const item of selected) {
-        if (item instanceof BlueprintNode) {
-          nodeIdsToRemove.push(item.id);
-        } else if (item instanceof Connection) {
-          connIdsToRemove.push(item.id);
-        }
-      }
-      if (nodeIdsToRemove.length > 0 || connIdsToRemove.length > 0) {
-        s.executeCommand(new DeleteSelectionCommand(s as any, nodeIdsToRemove, connIdsToRemove));
-        s.selection.clearSelection();
-        if (editingNodeId.value && nodeIdsToRemove.includes(editingNodeId.value)) {
-          exitEditMode();
-        }
-        s.updateAllConnectionEndpoints();
-        s.requestRedraw();
-        emitChange();
-      }
-      return;
-    }
     if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -597,49 +403,13 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
       return;
     }
     if (key === 'escape') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
       if (editingNodeId.value) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         exitEditMode();
       }
-      closeCtxMenu();
       return;
     }
-    if (ctrl && key === 'a') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      s.selection.selectAll();
-      s.requestRedraw();
-      return;
-    }
-    if (ctrl && key === 'c') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      s.copySelection(selectedNodes);
-      return;
-    }
-    if (ctrl && key === 'v') {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (s.hasClipboardData()) {
-        let newNodeIds: string[];
-        const mp = lastMouseWorldPos.value;
-        if (mp) {
-          newNodeIds = s.pasteAt(mp.x, mp.y);
-        } else {
-          newNodeIds = s.executePaste(50, 50);
-        }
-        if (newNodeIds.length > 0) {
-          s.selection.setSelection(newNodeIds);
-        }
-        s.updateAllConnectionEndpoints();
-        s.requestRedraw();
-        emitChange();
-      }
-      return;
-    }
-
     if (ctrl && key === 'd') {
       const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
       if (selectedNodes.length > 0) {
@@ -743,6 +513,16 @@ onMounted(() => {
 
   s.start();
 
+  const canvas = canvasRef.value;
+  onCanvasPointerDownFocus = (e: PointerEvent) => {
+    const tgt = e.target as HTMLElement | null;
+    const tag = (tgt?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (tgt?.isContentEditable) return;
+    canvas?.focus({ preventScroll: true });
+  };
+  containerRef.value.addEventListener('pointerdown', onCanvasPointerDownFocus, true);
+
   unsubViewport = s.on.on('viewport-change', (vp: { zoom: number; panX: number; panY: number }) => {
     if (isUpdatingFromProps) return;
     emit('viewportChange', vp.zoom, vp.panX, vp.panY);
@@ -776,8 +556,6 @@ onMounted(() => {
   });
 
   unsubAfterCommand = s.on.on('after-command', () => {
-    ctxMenu.canUndo = s.canUndo();
-    ctxMenu.canRedo = s.canRedo();
     emitChange();
   });
 
@@ -810,14 +588,6 @@ onMounted(() => {
   resizeObserver.observe(containerRef.value);
   window.addEventListener('resize', handleResize);
 
-  ctxOutsidePointerDown = (e: PointerEvent) => {
-    if (!ctxMenu.visible) return;
-    const target = e.target as HTMLElement;
-    if (target.closest('.bp-ctx-menu')) return;
-    closeCtxMenu();
-  };
-  window.addEventListener('pointerdown', ctxOutsidePointerDown, true);
-
   setupKeyboardShortcuts(s);
 
   nextTick(() => {
@@ -840,8 +610,10 @@ onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId);
   if (resizeObserver) resizeObserver.disconnect();
   window.removeEventListener('resize', handleResize);
-  if (ctxOutsidePointerDown) window.removeEventListener('pointerdown', ctxOutsidePointerDown, true);
   if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true);
+  if (onCanvasPointerDownFocus && containerRef.value) {
+    containerRef.value.removeEventListener('pointerdown', onCanvasPointerDownFocus, true);
+  }
   if (unsubToolContextMenu) unsubToolContextMenu();
   if (unsubNodeClick) unsubNodeClick();
   if (unsubSelect) unsubSelect();
@@ -1313,5 +1085,6 @@ defineExpose({
 .bp-canvas-container canvas {
   display: block;
   cursor: default;
+  outline: none;
 }
 </style>

@@ -1128,6 +1128,36 @@ const engineApi = {
       return editor.moveNodesByDelta(nodeIds, dx, dy)
     }
     return false
+  },
+  undo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.undo === 'function') {
+      editor.undo()
+      return true
+    }
+    return false
+  },
+  redo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.redo === 'function') {
+      editor.redo()
+      return true
+    }
+    return false
+  },
+  canUndo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.canUndo === 'function') {
+      return editor.canUndo()
+    }
+    return false
+  },
+  canRedo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.canRedo === 'function') {
+      return editor.canRedo()
+    }
+    return false
   }
 }
 
@@ -1297,6 +1327,14 @@ function syncBlueprintNow() {
 }
 
 function patchBlueprintNodeData(nodeId: string) {
+  if (engineApi.updateNodeData) {
+    const storeNode = store.state.nodesById[nodeId]
+    if (!storeNode) return
+    const patch: Record<string, any> = { ...storeNode }
+    if (patch.resourceId === null) delete patch.resourceId
+    engineApi.updateNodeData(nodeId, patch)
+    return
+  }
   const editor = blueprintHostRef.value?.getInstance?.()
   if (!editor) return
   const scene = editor.getScene?.()
@@ -6605,16 +6643,29 @@ const onStoryBranchUpdate = (nodeId: string, payload: { branchId: string; text: 
 	store.commit('updateStoryBranch', { nodeId, branchId: payload.branchId, text: payload.text })
 }
 
+function syncNodeToEngineAfterCommit(nodeId: string) {
+	if (engineApi.updateNodeData) {
+		const n = store.state.nodesById[nodeId]
+		if (n) {
+			const patch: Record<string, any> = { ...(n as any) }
+			engineApi.updateNodeData(nodeId, patch)
+		}
+	}
+}
+
 const onStoryBranchAdd = (nodeId: string) => {
 	store.commit('addStoryBranch', { nodeId })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onStoryBranchRemove = (nodeId: string, branchId: string) => {
 	store.commit('removeStoryBranch', { nodeId, branchId })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onStoryBranchUpdateFromInspector = (nodeId: string, branchId: string, text: string) => {
 	store.commit('updateStoryBranch', { nodeId, branchId, text })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onInspectorUploadResource = async (nodeId: string, file: File, kind: 'image' | 'video') => {
@@ -9677,10 +9728,10 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 		return !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
 	},
 	undo: () => {
-		aiWorkflowHistory.undo()
+		engineApi.undo()
 	},
 	redo: () => {
-		aiWorkflowHistory.redo()
+		engineApi.redo()
 	},
 	removeSelectedNodes: (nodeIds) => {
 		void removeSelectedNodesWithResourceCleanup(nodeIds)
@@ -11651,7 +11702,22 @@ const onSelectNode = canvasInteraction.onSelectNode
 const onSelectEdge = canvasInteraction.onSelectEdge
 const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown
 const onBoxSelect = canvasInteraction.onBoxSelect
-const onNodeSizeChange = canvasInteraction.onNodeSizeChange
+const onNodeSizeChange = (nodeId: string, width?: number, height?: number) => {
+	store.commit('setNodeSize', { nodeId, width, height })
+	const patch: Record<string, any> = {}
+	const n = store.state.nodesById[nodeId]
+	if (n) {
+		patch.width = n.width
+		patch.height = n.height
+		patch.sizeCustomized = n.sizeCustomized
+		if (n.type === 'story' && (n as any).inputs) patch.inputs = (n as any).inputs
+		if (n.type === 'story' && (n as any).outputs) patch.outputs = (n as any).outputs
+	}
+	if (engineApi.updateNodeData) {
+		engineApi.updateNodeData(nodeId, patch)
+	}
+	scheduleAsyncEdgeRender()
+}
 const onFocusNode = canvasInteraction.onFocusNode
 
 // Canvas节点事件处理

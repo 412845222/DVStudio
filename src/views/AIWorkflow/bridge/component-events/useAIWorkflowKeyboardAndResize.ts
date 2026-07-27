@@ -28,9 +28,6 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		if (!payload.isRouteActive()) return
 		if (isEditableEventTarget(ev.target ?? null)) return
 
-		const activeEl = document.activeElement as HTMLElement | null
-		if (activeEl?.dataset?.wfSceneLayoutCanvas === 'true') return
-
 		const key = String(ev.key || '').toLowerCase()
 		const mod = ev.ctrlKey || ev.metaKey
 
@@ -89,9 +86,6 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		if (!payload.isRouteActive()) return
 		if (isEditableEventTarget(ev.target ?? null)) return
 
-		const activeEl = document.activeElement as HTMLElement | null
-		if (activeEl?.dataset?.wfSceneLayoutCanvas === 'true') return
-
 		const selected = payload.getSelectedNodeIds()
 		if (selected.length === 0) return
 
@@ -113,9 +107,6 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	const onWorkflowPaste = (ev: ClipboardEvent) => {
 		if (!payload.isRouteActive()) return
 		if (isEditableEventTarget(ev.target ?? null)) return
-
-		const activeEl = document.activeElement as HTMLElement | null
-		if (activeEl?.dataset?.wfSceneLayoutCanvas === 'true') return
 
 		const cd = ev.clipboardData ?? null
 

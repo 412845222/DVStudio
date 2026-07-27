@@ -765,6 +765,7 @@ export class BlueprintEditorTool extends Tool {
 
     if (this.connecting) {
       this.connecting = false;
+      scene.isEngineDragging = false;
       if (this.pendingFromPort) {
         this.pendingFromPort.setArmed(false);
       }

@@ -176,7 +176,8 @@ function onBusinessUpdateText(payload: { nodeId: string; textValue: string }) {
 
   const cmd = new UpdateNodeTextCommand(props.scene, payload.nodeId, oldText, newText);
   props.scene.executeCommand(cmd);
-
+  props.scene.updateAllConnectionEndpoints();
+  props.scene.requestRedraw();
   emit('node-update-text', payload);
 }
 
@@ -199,6 +200,8 @@ function onBusinessResize(payload: { nodeId: string; width: number; height: numb
     startX, startY, startWidth, startHeight,
     endX, endY, endWidth, endHeight
   ));
+  s.updateAllConnectionEndpoints();
+  s.requestRedraw();
 }
 
 function onBusinessStartLink(payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) {
@@ -575,6 +578,8 @@ function onDomNodeResizeEnd() {
                     Math.abs(endY - resizeStartNodeY) > 0.5 ||
                     Math.abs(endWidth - resizeStartWidth) > 0.5 ||
                     Math.abs(endHeight - resizeStartHeight) > 0.5;
+      isInteractionLocked.value = false;
+      interactionLockedNodeIds.clear();
       if (moved) {
         s.executeCommand(new ResizeNodeCommand(
           s, node,
@@ -584,11 +589,12 @@ function onDomNodeResizeEnd() {
         s.updateAllConnectionEndpoints();
       }
     }
+  } else {
+    isInteractionLocked.value = false;
+    interactionLockedNodeIds.clear();
   }
 
   isResizing = false;
-  isInteractionLocked.value = false;
-  interactionLockedNodeIds.clear();
   resizeNodeId = null;
   resizeCorner = null;
   s.requestRedraw();
@@ -677,6 +683,10 @@ function onDomNodeDragEnd() {
       }
     }
 
+    isDragging.value = false;
+    isInteractionLocked.value = false;
+    interactionLockedNodeIds.clear();
+
     if (moved) {
       const moveFn = (id: string, pos: Vector2) => {
         const node = s.getBlueprintNode(id);
@@ -687,11 +697,12 @@ function onDomNodeDragEnd() {
       s.executeCommand(new MoveNodeCommand(dragStartPositions, dragCurrentPositions, moveFn));
       s.updateAllConnectionEndpoints();
     }
+  } else {
+    isDragging.value = false;
+    isInteractionLocked.value = false;
+    interactionLockedNodeIds.clear();
   }
 
-  isDragging.value = false;
-  isInteractionLocked.value = false;
-  interactionLockedNodeIds.clear();
   dragNodeId = null;
   dragStartPositions.clear();
   dragCurrentPositions.clear();
