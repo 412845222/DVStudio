@@ -762,7 +762,6 @@ defineExpose({
     if (!scene.value) return;
     scene.value.selection.clearSelection();
     scene.value.requestRedraw();
-    emitChange();
   },
 
   setSelection(nodeIds: string[]) {
@@ -770,7 +769,6 @@ defineExpose({
     const validIds = nodeIds.filter(id => scene.value!.getBlueprintNode(id));
     scene.value.selection.setSelection(validIds);
     scene.value.requestRedraw();
-    emitChange();
   },
 
   setNodeStatus(nodeId: string, status: NodeStatus) {

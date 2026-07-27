@@ -1,5 +1,7 @@
 # AI 工作流蓝图开发指引 (AI Workflow Guide)
 
+> 🔴 **重要提示**：蓝图引擎架构的完整详解（双层架构、SSOT数据流、engineApi清单、8条架构铁律、快捷键划分、15条合规测试规则）请优先阅读 [AGENT_GUIDE.md](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/AGENT_GUIDE.md) 的 **"AI 工作流蓝图引擎架构详解"** 章节及架构红线#23。本文档主要聚焦**业务节点开发流程**和后端IPC集成，不再重复架构基础。
+
 ## 🔴🔴🔴 架构红线必读（2026-07-27更新）
 
 ### 图形底座 + 蓝图业务层双层架构
@@ -329,20 +331,23 @@ for await (const chunk of generator) {
 
 ## 10. 渲染与交互
 
-- 画布：`src/ui/BluePrint/BlueprintCanvas.vue`
-- 节点搜索菜单：`src/ui/UIComponent/DwebCanvasNodeSearchMenu.vue`
-- 连线：`src/ui/WorkFlow/WorkflowEdgeLayer.vue`
-- 节点基类：`src/ui/WorkFlow/WorkflowNodeBase.vue`
-- 选中工具栏：`src/ui/WorkFlow/WorkflowSelectionToolbar.vue`
-- 选择框覆盖层：`src/ui/WorkFlow/selection/SelectionFrameOverlay.vue`
-- 标签编辑器：`src/ui/WorkFlow/selection/WorkflowTagEditor.vue`
-- 检查器面板：`src/ui/WorkFlow/WorkflowInspectorPanel.vue`
-- 项目工具栏：`src/ui/WorkFlow/BlueprintProjectToolbar.vue`
-- 资源面板：`src/ui/WorkFlow/ResourceManagerPanel.vue`
-- Meshy 任务面板：`src/ui/WorkFlow/MeshyTaskPanel.vue`
-- Seedance/视频任务面板：`src/ui/WorkFlow/VideoTaskPanel.vue`
-- 日志面板：`src/ui/WorkFlow/BlueprintLogPanel.vue`
-- 锚点提示：`src/ui/WorkFlow/AnchorTooltip.vue`
+> ⚠️ 以下旧UI路径已迁移到引擎层，以新引擎路径为准。
+
+- **画布主入口（新）**：`src/engine/blueprint/BlueprintEditor.vue`（Vue组件封装，暴露engineApi）
+- **蓝图场景（新）**：`src/engine/blueprint/BlueprintScene.ts`（节点/连线/Command管理）
+- **交互工具（新）**：`src/engine/blueprint/BlueprintEditorTool.ts`（拖拽/连线/框选/右键菜单）
+- **DOM覆盖层（新）**：`src/engine/blueprint/dom/BlueprintDomOverlay.vue`（节点Vue组件渲染）
+- **节点搜索菜单**：`src/ui/UIComponent/DwebCanvasNodeSearchMenu.vue`
+- **连线（已迁移到引擎）**：`src/engine/blueprint/Connection.ts`（Canvas渲染由引擎负责）
+- **节点基类（新）**：`src/engine/blueprint/dom/DomNodeWrapper.vue` + `src/engine/blueprint/dom/WorkflowNodeWrapper.vue`
+- **业务节点Vue组件**：`src/views/AIWorkflow/node-components/`（图片/视频/3D/文本/AI对话等）
+- **检查器面板**：`src/views/AIWorkflow/side-panel/WorkflowInspectorPanel.vue`
+- **项目工具栏**：`src/views/AIWorkflow/BlueprintProjectToolbar.vue`
+- **资源面板**：`src/views/AIWorkflow/ResourceManagerPanel.vue`
+- **Meshy 任务面板**：`src/views/AIWorkflow/MeshyTaskPanel.vue`
+- **Seedance/视频任务面板**：`src/views/AIWorkflow/VideoTaskPanel.vue`
+- **日志面板**：`src/views/AIWorkflow/BlueprintLogPanel.vue`
+- **锚点提示**：`src/views/AIWorkflow/AnchorTooltip.vue`
 
 ## 11. 关键约定
 
@@ -371,9 +376,14 @@ for await (const chunk of generator) {
 | 页面主入口 | `src/views/AIWorkflow/AIWorkflowPage.vue` |
 | 节点业务 | `src/views/AIWorkflow/node-business/` |
 | 节点截图缓存 | `src/views/AIWorkflow/node-screenshot/` |
-| 节点 UI 组件 | `src/ui/WorkFlow/WorlFlowNodes/` |
-| 节点聊天对话框 | `src/ui/BluePrint/node-dialog/` |
-| 画布 | `src/ui/BluePrint/BlueprintCanvas.vue` |
+| 节点 UI 组件（业务节点） | `src/views/AIWorkflow/node-components/` |
+| 蓝图引擎主组件（新） | `src/engine/blueprint/BlueprintEditor.vue` |
+| 蓝图场景（新） | `src/engine/blueprint/BlueprintScene.ts` |
+| 蓝图交互工具（新） | `src/engine/blueprint/BlueprintEditorTool.ts` |
+| DOM覆盖层（新） | `src/engine/blueprint/dom/BlueprintDomOverlay.vue` |
+| 业务Command集合（新） | `src/engine/blueprint/commands/` |
+| 图形底座（新） | `src/engine/graphbase/` |
+| 状态适配器（新） | `src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts` |
 | 节点搜索菜单 | `src/ui/UIComponent/DwebCanvasNodeSearchMenu.vue` |
 | IPC 客户端 | `src/network/ipcClient.ts` |
 | ComfyUI 服务 | `src/network/ComfyUIBridgeService.ts` |

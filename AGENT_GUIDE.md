@@ -243,6 +243,297 @@
 - 启动时自动启动，关闭时自动停止
 - 用于 Unreal 插件与 DVStudio 的双向通信
 
+---
+
+## 🔵 AI 工作流蓝图引擎架构详解
+
+> ⚠️ 这是当前分支（`feat-continue-graphics-blueprint`）完成的核心架构重构。任何涉及蓝图编辑器的开发**必须**仔细阅读本节。违反架构规则会导致双轨/三轨数据不同步bug（拖拽瞬移、位置回退、DOM层拦截、undo失效等），架构合规测试会拦截此类违规代码。
+
+### 一、双层引擎架构：图形底座 + 蓝图业务层
+
+蓝图编辑器采用**双层引擎架构**，严格分离通用能力与业务逻辑：
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│  AIWorkflowPage.vue (Host 桥接层)                              │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  Vuex Store (src/store/modules/workflow/)               │  │
+│  │  ─ 页面级UI状态（对话框/面板/任务进度/选中高亮）          │  │
+│  │  ─ 引擎状态的只读投影（hydrateDraft单向写入）             │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│        ▲ 单向数据流（engine → store via emitChange）            │
+│        │ 禁止反向全量同步                                       │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  BlueprintEditor.vue 组件 (src/engine/blueprint/)       │  │
+│  │  ┌───────────────────────────────────────────────────┐  │  │
+│  │  │  蓝图业务层 (Blueprint Layer)                     │  │  │
+│  │  │  ─ BlueprintScene (场景/Command/undo/增量同步)    │  │  │
+│  │  │  ─ BlueprintNode (节点位置/尺寸/端口/data同步)     │  │  │
+│  │  │  ─ BlueprintEditorTool (交互/拖拽/连线/右键菜单)  │  │  │
+│  │  │  ─ BlueprintDomOverlay (DOM层覆盖渲染)            │  │  │
+│  │  │  ─ Connection/Port (连线与端口)                   │  │  │
+│  │  │  ─ commands/ (业务Command集合)                    │  │  │
+│  │  └───────────────────────────────────────────────────┘  │  │
+│  │        ▲ 继承/组合                                        │  │
+│  │  ┌───────────────────────────────────────────────────┐  │  │
+│  │  │  图形底座 (GraphBase Layer)                       │  │  │
+│  │  │  ─ Scene (场景图基类/CommandStack/键盘处理)       │  │  │
+│  │  │  ─ GraphObject (对象基类/Transform/脏标记)        │  │  │
+│  │  │  ─ Canvas2DRenderer (Canvas渲染器/Camera)         │  │  │
+│  │  │  ─ InputManager (事件系统/命中检测)               │  │  │
+│  │  │  ─ SelectionManager/DragManager (基础交互)        │  │  │
+│  │  │  ─ commands/ (Command基类/CompositeCommand)       │  │  │
+│  │  └───────────────────────────────────────────────────┘  │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**各层职责详解：**
+
+| 层级 | 目录 | 职责 | 不知道什么 |
+|------|------|------|-----------|
+| **图形底座 (graphbase/)** | `src/engine/graphbase/` | 通用2D场景图能力：对象树、变换(Transform)、渲染、事件、选择、拖拽、Command栈、undo/redo基础、键盘快捷键 | 不知道"蓝图"、"节点"、"端口"、"连线"等业务概念，只处理GraphObject抽象基类 |
+| **蓝图业务层 (blueprint/)** | `src/engine/blueprint/` | 工作流特定逻辑：BlueprintNode（含data.worldX/Y/width/height/inputs/outputs/status等业务字段）、连线创建与端口兼容检查、DOM节点覆盖渲染、增量loadBlueprint、节点/连线/缩放等业务Command、右键菜单 | 不关心底层Canvas如何绘制，不直接操作transform.position（通过setPosition/setSize API） |
+| **Host桥接层** | `src/views/AIWorkflow/AIWorkflowPage.vue` | Vue组件宿主：引擎实例化、Vuex状态桥接、IPC通信、Inspector面板参数绑定、对话框管理、右键菜单业务处理 | 不直接修改引擎内部状态，通过engineApi调用引擎方法 |
+| **Vuex Store** | `src/store/modules/workflow/` | 页面级UI状态管理（对话框开关、面板可见性、任务进度、选中高亮、搜索过滤等）+ 引擎状态的只读投影（通过hydrateDraft单向写入） | 不包含蓝图绘制状态的权威数据，不直接触发引擎状态变更（初始加载和显式业务流程除外） |
+
+**关键文件索引：**
+
+| 文件 | 职责 |
+|------|------|
+| [src/engine/graphbase/scene/Scene.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/scene/Scene.ts) | 场景图基类，管理GraphObject树、Camera、CommandStack、InputManager、键盘快捷键(Ctrl+Z/Y)、undo/redo入口 |
+| [src/engine/graphbase/scene/GraphObject.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/scene/GraphObject.ts) | 对象基类，提供transform、setPosition/setSize/translate等公共API和脏标记机制 |
+| [src/engine/graphbase/renderer/Canvas2DRenderer.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/renderer/Canvas2DRenderer.ts) | Canvas 2D渲染器，管理Camera、requestRedraw、视口变换 |
+| [src/engine/graphbase/input/InputManager.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/input/InputManager.ts) | 统一输入系统，Pointer/Mouse/Wheel事件分发、命中检测、拖拽状态机 |
+| [src/engine/graphbase/commands/Command.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/graphbase/commands/Command.ts) | Command基类（execute/undo/redo），CommandStack管理undo/redo历史 |
+| [src/engine/blueprint/BlueprintScene.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintScene.ts) | 蓝图场景，继承Scene，实现节点创建/删除/连线/serializeLegacy/loadBlueprint（增量）/syncLoadSignature、after-command事件触发emitChange |
+| [src/engine/blueprint/BlueprintNode.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintNode.ts) | 蓝图节点，继承GraphObject，重写setPosition/setSize同步data.worldX/Y/width/height，管理inputs/outputs端口、status状态 |
+| [src/engine/blueprint/BlueprintEditorTool.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintEditorTool.ts) | 蓝图编辑器交互工具，处理节点拖拽/连线拖拽/框选/右键菜单/DOM模式切换、port兼容检查、自动对齐等核心交互逻辑 |
+| [src/engine/blueprint/BlueprintEditor.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/BlueprintEditor.vue) | Vue组件封装，实例化Scene/Renderer/Tool/DomOverlay，暴露engineApi给Host，监听引擎事件（change/selectionChange/viewport-change）转发给Host |
+| [src/engine/blueprint/dom/BlueprintDomOverlay.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/dom/BlueprintDomOverlay.vue) | DOM覆盖层，在Canvas上层渲染可交互的节点Vue组件（图片/视频/3D/文本/AI对话节点） |
+| [src/engine/blueprint/commands/](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/engine/blueprint/commands) | 业务Command集合：MoveNodeCommand/ResizeNodeCommand/ConnectPortsCommand/DeleteSelectionCommand/PasteCommand/DuplicateCommand/AddNodeCommand/CopySelectionCommand/UpdateNodeTextCommand/CompositeCommand |
+| [src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts) | 状态适配器：workflowStateToLegacyBlueprint（Vuex WorkflowState → LegacyBlueprintData，含缓存和坐标同步）、legacyBlueprintToWorkflowState（反向转换，用于加载） |
+| [src/views/AIWorkflow/bridge/component-events/useAIWorkflowKeyboardAndResize.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/src/views/AIWorkflow/bridge/component-events/useAIWorkflowKeyboardAndResize.ts) | 业务层键盘事件处理（捕获Ctrl+C/V/A/Delete/Backspace等，转发到engineApi；Ctrl+C加stopImmediatePropagation防止双重复制） |
+
+### 二、SSOT 单向数据流（Single Source of Truth）
+
+这是新架构的**核心原则**：引擎内部是蓝图绘制状态的唯一权威数据源（SSOT），数据流严格单向。
+
+```
+用户交互（鼠标/键盘/面板操作）
+    ↓
+BlueprintEditorTool/业务层处理
+    ↓
+创建 Command 对象（MoveNode/ResizeNode/Delete/Connect 等）
+    ↓
+scene.executeCommand(cmd)
+    ↓
+Command.execute() 执行操作（调用 node.setPosition/node.setSize 等 API）
+    ↓
+CommandStack 压入栈，触发 scene 'after-command' 事件
+    ↓
+BlueprintEditor.vue 监听到 after-command → emitChange()（防抖0ms，零延迟）
+    ↓  ⚠️ emitChange 有守卫：isEngineDragging || isDomInteractionLocked 时不触发
+Host (AIWorkflowPage.vue) onBlueprintEditorChange
+    ↓
+isUpdatingFromStore = true（防反馈环标志）
+    ↓
+store.commit('workflow/hydrateDraft', legacyData)  // 全量序列化后写入Vuex只读投影
+    ↓
+nextTick 微任务中重置 isUpdatingFromStore = false
+    ↓
+Vuex 触发各面板/组件更新（Inspector/缩略图/大纲等）
+```
+
+**独立同步路径（不触发全量serialize）：**
+
+- **选择变化**：`selection` 对象触发 `select/deselect` 事件 → `selectionChange` 事件 → Host `onBlueprintEditorSelectionChange` → 仅commit `setSelectedNodeIds`，不触发hydrateDraft
+- **视口变化**：`camera` 对象触发 `change` 事件 → `viewport-change` 事件 → Host `onBlueprintEditorViewportChange` → 仅commit `setViewport`
+- **节点状态变化**：非位置/尺寸/连线的data变化（如status运行状态）通过 `setNodeStatus` 直接设置 → requestRedraw，不触发emitChange（运行状态由业务层单独管理）
+
+**关键防反馈环机制：**
+
+1. **isUpdatingFromStore 标志**：Host在commit到Vuex前设置true，commit后nextTick重置false。watch blueprint数据变化时若isUpdatingFromStore为true则跳过，防止"引擎→Vuex→引擎"的死循环。
+2. **syncLoadSignature()**：每次executeCommand/undo/redo成功后，BlueprintScene计算当前节点/连线状态的signature存入`_lastLoadSignature`。当Vuex状态变化触发`loadBlueprint`时（如父组件序列化回传），先计算signature比较，相同则跳过增量更新，避免覆盖undo效果。
+3. **交互锁**：
+   - `isEngineDragging`：Canvas层拖拽节点/连线期间为true，阻止emitChange，避免拖拽中间状态被序列化覆盖最终位置
+   - `isDomInteractionLocked`：DOM层拖拽/resize/连线期间为true，阻止Canvas层干扰并阻止emitChange
+   - **顺序规则**：DOM/Canvas交互结束时，**必须先释放锁再executeCommand**，否则after-command触发的emitChange会被锁拦截导致状态不同步
+
+### 三、engineApi 完整参考
+
+Host通过`editorRef.value`调用`defineExpose`暴露的engineApi。**所有业务操作必须通过engineApi进行，禁止直接操作Vuex蓝图状态或直接访问引擎内部对象。**
+
+| API | 走Command? | 说明 | 注意事项 |
+|-----|-----------|------|---------|
+| `addNode(type, x, y, title?, additionalData?)` | ✅ | 添加节点并自动选中 | 端口定义从getDefaultNodeData获取 |
+| `connectPorts(fromNodeId, fromAnchorId, toNodeId, toAnchorId)` | ✅ | 连接两个端口 | anchorId必须使用`port.spec.id`（业务ID），不能用`port.id`（运行时ID） |
+| `deleteSelection()` | ✅ | 删除当前选中节点/连线 | 同时触发资源清理（业务层在selectionChange时处理） |
+| `copySelection()` | — | 复制选中节点到引擎内部剪贴板 | 业务层Ctrl+C需先stopImmediatePropagation再调用，防止双重复制 |
+| `paste()` | ✅ | 在当前鼠标位置粘贴 | 使用内部跟踪的lastMouseWorldPos |
+| `pasteAt(worldX, worldY)` | ✅ | 在指定位置粘贴 | 返回新节点ID数组 |
+| `duplicate()` | ✅ | 原地复制选中节点（偏移30,30） | 内部实现为copy+paste |
+| `createNodeWithConnection(params)` | ✅* | 创建节点并自动连接到指定端口 | fromAnchorId同样用spec.id |
+| `undo()` | ✅ | 撤销上一操作 | 由引擎InputManager统一处理Ctrl+Z，业务层不得拦截 |
+| `redo()` | ✅ | 重做下一操作 | Ctrl+Y/Shift+Z由引擎处理 |
+| `canUndo()` | — | 查询是否可撤销 | 用于按钮状态 |
+| `canRedo()` | — | 查询是否可重做 | 用于按钮状态 |
+| `selectAll()` | — | 全选节点 | 触发selectionChange，不触发emitChange |
+| `clearSelection()` | — | 清除选择 | 触发selectionChange |
+| `setSelection(nodeIds)` | — | 设置选中节点 | 触发selectionChange |
+| `getSelectedNodeIds()` | — | 获取当前选中节点ID数组 | 业务层获取选中状态**必须**使用此API，不能依赖Vuex.selectedNodeIds |
+| `updateNodeData(nodeId, patch)` | ❌ | 更新节点data字段（合并patch） | ⚠️ 当前不走Command（暂不支持undo），inputs/outputs变化时自动更新连线端点 |
+| `moveNode(nodeId, x, y)` | ✅ | 以Command方式移动单个节点 | 可撤销 |
+| `moveNodesByDelta(nodeIds, dx, dy)` | ✅ | 以Command方式批量偏移节点 | 用于键盘方向键移动 |
+| `setNodePosition(nodeId, worldX, worldY)` | ❌ | 直接设置节点位置（不走Command） | 仅用于初始化/程序化放置，不走undo |
+| `setNodeSize(nodeId, width?, height?)` | ❌ | 直接设置节点尺寸（不走Command） | 仅用于resize完成后 |
+| `removeNode(nodeId)` | ✅ | 删除单个节点 | 走DeleteSelectionCommand |
+| `removeEdge(edgeId)` | ✅ | 删除单条连线 | 走DeleteSelectionCommand |
+| `focusNode(nodeId)` | — | 聚焦并居中显示节点 | 调整viewport |
+| `setEngineViewport(zoom, panX, panY)` | ❌ | 直接设置视口（不走Command） | Minimap操作直接调用此API绕过Vuex避免反馈环 |
+| `setViewport(zoom, panX, panY, animate?)` | — | 设置视口（带动画选项） | Host桥接层使用 |
+| `fitToView()` | — | 适配全部节点到视口 | |
+| `resetView()` | — | 重置视口到默认（zoom=1, pan=0,0） | |
+| `loadBlueprint(data)` | ❌ | 加载蓝图数据（增量模式） | **增量更新**：不dispose已有节点、不调用commands.clear()（保留undo栈），有signature去重 |
+| `saveBlueprint()` | — | 序列化为LegacyBlueprintData格式 | 内部调用scene.serializeLegacy() |
+| `clear()` | ❌ | 清空蓝图 | ⚠️ 重置lastStructureHash，会清空undo栈 |
+| `getZoom()` | — | 获取当前缩放比例 | |
+| `screenToWorld(clientX, clientY)` | — | 屏幕坐标转世界坐标 | |
+| `getNodeScreenRect(nodeId)` | — | 获取节点在屏幕上的矩形 | 用于滚动定位、Minimap绘制 |
+| `getScene()` | — | 获取BlueprintScene实例 | ⚠️ 高级用法，一般业务代码不应直接调用 |
+| `getNode(nodeId)` | — | 获取BlueprintNode实例 | ⚠️ 高级用法，读取可以，但修改必须通过engineApi |
+| `getNodeCount()` | — | 获取节点数量 | |
+| `getEdgeCount()` | — | 获取连线数量 | |
+| `setNodeStatus(nodeId, status)` | ❌ | 设置节点运行状态（pending/running/success/error等） | 不走Command，不触发emitChange |
+| `saveSelectionFrame(label?)` | ❌ | 保存选中分组（预留功能） | |
+| `getSavedSelectionFrames()` | — | 获取已保存分组 | |
+| `deleteSavedSelectionFrame(frameId)` | ❌ | 删除分组 | |
+| `renameSavedSelectionFrame(frameId, newLabel)` | ❌ | 重命名分组 | |
+| `updateNodePositionDirect(nodeId, x, y)` | ❌ | 拖拽过程中直接更新位置（不走Command） | 仅用于拖拽中间态，拖拽结束必须用commitNodeMovement |
+| `updateNodesPositionDirect(nodePositions)` | ❌ | 批量直接更新位置 | 框选拖拽中间态 |
+| `commitNodeMovement(startPositions, endPositions)` | ✅ | 提交拖拽为MoveNodeCommand（可undo） | 拖拽结束时调用，记录起点终点 |
+| `setSelectedNode(nodeId)` | — | 设置单选节点 | |
+| `setSelectedNodes(nodeIds, primaryNodeId?)` | — | 设置多选节点 | |
+
+### 四、架构红线：禁止模式与历史教训
+
+以下8条铁律是开发过程中踩过的关键坑，违反任何一条都会导致难以调试的状态不同步bug。**架构合规测试（`npm run test:architecture`）会自动检测这些违规。**
+
+#### 🔴 铁律1：禁止直接赋值 `node.transform.position.x/y`
+- **错误做法**：`node.transform.position.x = 100;`
+- **正确做法**：`node.setPosition(x, y)`（BlueprintNode重写此方法，同步transform和data.worldX/Y，并标记脏标记）
+- **后果**：绕过脏标记清除机制，data.worldX/Y不同步，DOM层读取错误位置，渲染位置与逻辑位置不一致
+- **测试规则**：Rule 1 — 蓝图层（blueprint/目录）禁止`.transform.position.[xy] =`直接赋值
+
+#### 🔴 铁律2：禁止直接赋值 `node.data.worldX/worldY/width/height`
+- **错误做法**：`node.data.worldX = 100; node.data.width = 400;`
+- **正确做法**：使用`node.setPosition(x, y)` / `node.setSize(w, h)`统一入口
+- **后果**：transform未同步，Canvas渲染位置与DOM位置不一致，连线端点错误
+- **测试规则**：Rule 2 — Host层（views/AIWorkflow/，除adapter外）禁止直接赋值data.worldX/worldY/width/height
+
+#### 🔴 铁律3：禁止watch selectedNodeIds触发反向同步
+- **错误做法**：watch(selectedNodeIds变化后调用syncBlueprintNow/loadBlueprint
+- **正确做法**：selectedNodeIds变化仅更新UI高亮，不触发任何引擎状态变更
+- **后果**：点击空白deselect时触发全量loadBlueprint，signature不匹配导致增量更新覆盖引擎状态，节点位置回退、undo栈失效
+- **测试规则**：Rule 3 — selectedNodeIds的watch不得调用syncBlueprintNow/scheduleStoreSyncToEditor触发反向同步
+
+#### 🔴 铁律4：GraphObject.translate() 必须委托给 setPosition()
+- **原因**：多态机制要求translate()内部调用this.setPosition()，这样子类（BlueprintNode）重写setPosition后translate才能正确同步data字段
+- **测试规则**：Rule 4
+
+#### 🔴 铁律5：BlueprintNode.setPosition 必须同步 data.worldX/Y
+- **原因**：引擎内部使用GraphObject.transform.position（Vector2），而序列化和Vuex投影使用data.worldX/worldY，两者必须保持同步
+- **测试规则**：Rule 5
+
+#### 🔴 铁律6：交互锁释放顺序——先解锁后executeCommand
+- **错误做法**：先executeCommand再释放isDomInteractionLocked
+- **正确做法**：`isDomInteractionLocked = false; scene.executeCommand(cmd);`
+- **后果**：after-command事件触发emitChange时锁仍为true，emitChange被守卫拦截，Vuex状态不更新，面板显示旧数据
+- **测试规则**：Rule 6 — pointerup的NODES路径必须在executeCommand(MoveNodeCommand)之前设置isEngineDragging=false
+
+#### 🔴 铁律7：loadBlueprint 必须增量更新，不得调用 commands.clear() 或 dispose 已有节点
+- **错误做法**：每次loadBlueprint都clear()→disposeAll()→重新create所有节点
+- **正确做法**：增量模式——已存在节点更新位置/尺寸/标题，已删除节点/连线移除，新增节点/连线创建
+- **后果**：全量重建会清空CommandStack（undo历史丢失），节点对象引用变化导致DOM层持有disposed引用，内存泄漏
+- **测试规则**：Rule 9（signature去重）、Rule 12（增量更新+禁止commands.clear()）
+
+#### 🔴 铁律8：executeCommand/undo/redo 后必须 syncLoadSignature()
+- **原因**：Command执行后引擎状态已变化，必须更新_lastLoadSignature。否则当Vuex因响应式变化序列化回传时，signature不匹配触发无意义的增量更新，会覆盖undo后的状态
+- **测试规则**：Rule 13
+
+### 五、键盘快捷键职责划分
+
+快捷键处理采用**路由感知的分层处理**策略，`src/main.ts`在AIWorkflow/BlueprintTest路由下**不得拦截**键盘事件，让事件自然传播到引擎InputManager。
+
+| 快捷键 | 处理层 | 处理方式 | 原因 |
+|--------|--------|---------|------|
+| **Ctrl+Z** | 引擎层 (Scene.setupKeyboardShortcuts) | InputManager捕获→scene.undo() | undo/redo必须由引擎CommandStack统一管理，保证多操作原子性 |
+| **Ctrl+Y / Ctrl+Shift+Z** | 引擎层 | InputManager捕获→scene.redo() | 同上 |
+| **Ctrl+X** | 业务层 (useAIWorkflowKeyboardAndResize) | keydown capture→copySelection+deleteSelection（stopImmediatePropagation） | 剪切需要同时处理业务资源清理 |
+| **Ctrl+C** | 业务层 | keydown capture→copySelectedNodes（stopImmediatePropagation，不加preventDefault以保留copy事件MIME标记） | 防止引擎层重复执行copySelection导致双重复制 |
+| **Ctrl+V** | 业务层 | keydown capture→pasteAt(lastMouseWorldPos)（stopImmediatePropagation） | 粘贴需要在鼠标位置而非画布中心，需要业务层跟踪鼠标位置 |
+| **Ctrl+A** | 业务层 | keydown capture→engineApi.selectAll()（preventDefault） | 全选不触发浏览器默认全选页面文本 |
+| **Ctrl+D** | 引擎层 | InputManager→duplicate | 引擎内部处理偏移30px复制 |
+| **Delete / Backspace** | 业务层 | keydown capture→资源清理→engineApi.deleteSelection()（preventDefault+return） | 删除前需清理关联资源（如运行中任务、临时文件等），阻止浏览器后退默认行为 |
+| **Enter** | 引擎层 | 进入DOM编辑模式/确认连线 | 引擎InputManager处理 |
+| **Esc** | 引擎层 | 取消当前操作/退出DOM编辑模式 | 引擎InputManager处理 |
+| **方向键** | 业务层/引擎 | Alt+方向键微调选中节点位置（moveNodesByDelta，走Command可撤销） | 微调精度由引擎配置 |
+
+**main.ts中的路由放行规则**（测试Rule 11）：
+```
+在AIWorkflow/BlueprintTest路由下：
+- Ctrl+Z/Y：PASS THROUGH（不调用stopPropagation/preventDefault），引擎InputManager处理undo/redo
+- Delete/Backspace：PASS THROUGH，业务层capture处理资源清理后转发到引擎
+- Ctrl+C/V/X/A：业务层capture处理，preventDefault/stopImmediatePropagation阻止默认行为
+不在蓝图路由下：保持原有的全局行为（阻止Ctrl+Z/Y等）
+```
+
+### 六、架构合规测试15条规则速查
+
+运行`npm run test:architecture`自动检测以下规则：
+
+| Rule | 检查内容 | 违反后果 |
+|------|---------|---------|
+| **Rule 1** | 蓝图层禁止直接赋值`.transform.position.x/y`（GraphObject.ts除外） | 数据不同步、脏标记不清除 |
+| **Rule 2** | Host层（views/AIWorkflow/，除adapter外）禁止直接赋值`.data.worldX/worldY/width/height` | Canvas与DOM位置不一致 |
+| **Rule 3** | watch selectedNodeIds不得触发syncBlueprintNow/scheduleStoreSyncToEditor反向同步 | 点击空白deselect→位置回退、undo失效 |
+| **Rule 4** | GraphObject.translate()必须调用this.setPosition()保证多态 | BlueprintNode重写失效、data不同步 |
+| **Rule 5** | BlueprintNode.setPosition()必须设置this.data.worldX和this.data.worldY | 序列化数据与实际位置不一致 |
+| **Rule 6** | pointerup中MoveNodeCommand executeCommand前必须有isEngineDragging=false | 拖拽结束后emitChange被锁拦截、Vuex不更新 |
+| **Rule 7** | BlueprintScene.serialize()必须有防御性syncDataFromTransform | 序列化时data.worldX/Y可能过期 |
+| **Rule 8** | emitChange必须有isEngineDragging守卫 | 拖拽中间态覆盖最终位置、性能问题 |
+| **Rule 9** | loadBlueprint必须有signature去重（_lastLoadSignature） | 无意义重建覆盖undo效果 |
+| **Rule 10** | onBlueprintEditorSelectionChange在commit前必须设置isUpdatingFromStore=true | 选择变化触发反馈环 |
+| **Rule 11** | main.ts在AIWorkflow/BlueprintTest路由下必须PASS THROUGH（放行Ctrl+Z/Y/Delete） | 快捷键不工作或重复执行 |
+| **Rule 12** | loadBlueprint必须增量更新已有节点，不得调用commands.clear() | undo历史丢失、节点引用失效 |
+| **Rule 13** | executeCommand/undo/redo后必须调用syncLoadSignature() | Command后状态被loadBlueprint覆盖 |
+| **Rule 14** | Scene基类setupKeyboardShortcuts必须处理Ctrl+Z→undo()、Ctrl+Y→redo() | 引擎层无法处理undo/redo |
+| **Rule 15** | workflowStateToLegacyBlueprint缓存命中时必须同步节点坐标/尺寸/标题，cache key必须包含nodeCount | 缓存返回过期坐标、loadBlueprint覆盖引擎位置 |
+
+### 七、后续开发注意事项
+
+1. **新增节点类型**：流程参见[agent_docs/06_AI_WORKFLOW_GUIDE.md](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/feat-continue-graphics-blueprint-VGeGk0/agent_docs/06_AI_WORKFLOW_GUIDE.md)，重点关注：
+   - 端口定义（inputs/outputs）在`getDefaultNodeData`中定义，包含`id/type/mediaType/label/position`
+   - 节点Vue组件注册在`NodeComponentResolver`
+   - 节点默认尺寸在`DEFAULT_NODE_SIZES`常量中同步更新（DOM层和引擎层必须一致）
+
+2. **业务字段更新**：优先使用`engineApi.updateNodeData(nodeId, patch)`，不要直接`store.commit('patchBlueprintNodeData')`。`updateNodeData`会同步到引擎和Vuex，保持一致性。
+
+3. **新增Command规范**：
+   - 在`src/engine/blueprint/commands/`下创建新Command类，继承`Command`基类
+   - 实现对称的`execute()`/`undo()`/`redo()`方法（redo默认调用execute）
+   - Command构造函数应保存所有undo所需的状态快照（旧值/新值）
+   - 建议补充单元测试（参考现有Command测试模式）
+   - 在commands/index.ts中导出（如需要外部引用）
+
+4. **禁止操作清单**（违反会导致架构破坏）：
+   - ❌ 禁止直接访问`engine.getScene().commands`直接操作CommandStack
+   - ❌ 禁止在业务层直接修改`store.state.workflow.blueprintDraft.nodesById/edgesById`
+   - ❌ 禁止watch blueprintDraft.nodesById/edgesById触发任何引擎操作
+   - ❌ 禁止在DOM节点组件的onDrag/onResize中直接修改node.transform
+   - ❌ 禁止在Port连接中使用`port.id`（运行时ID），必须使用`port.spec.id`（业务稳定ID）
+   - ❌ 禁止在BlueprintDomOverlay中直接操作canvas或transform，位置/尺寸完全由BlueprintEditorTool/BlueprintNode控制
+
 ### 前后端通信模型
 
 - **Electron 主进程**（`electron/main.mjs`）
