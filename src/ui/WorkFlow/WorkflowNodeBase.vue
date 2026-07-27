@@ -8,15 +8,17 @@
 			{
 				'is-primary-selected': isPrimarySelectedResolved,
 				'is-secondary-selected': isSecondarySelectedResolved,
-				'wf-node-running': visualStatus === 'running',
-				'wf-node-error': visualStatus === 'error'
+				'wf-node-running': visualStatus === 'running' || taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-error': visualStatus === 'error' || taskVisualStatus === 'error',
+				'wf-node-task-running': taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-task-success': taskVisualStatus === 'success',
+				'wf-node-task-error': taskVisualStatus === 'error'
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
 			{ 'is-auto-height': autoHeight !== false },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
-		@pointerdown.stop.prevent="onPointerDown"
 		@click.stop="onSelect"
 	>
 		<div v-if="selected && isPrimarySelectedResolved" class="wf-node-toolbar" @pointerdown.stop>
@@ -438,6 +440,14 @@ const visualStatus = computed<'idle' | 'running' | 'error'>(() => {
 	return 'idle'
 })
 
+const taskVisualStatus = computed<'idle' | 'submitting' | 'running' | 'success' | 'error'>(() => {
+	const task = props.nodeGenerationTask
+	if (!task) return 'idle'
+	if (task.status === 'completed') return 'success'
+	if (task.status === 'cancelled' || task.status === 'idle') return 'idle'
+	return task.status as 'submitting' | 'running' | 'error'
+})
+
 const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
 const nodeChatParams = computed(() => props.nodeChatParams ?? {})
@@ -646,10 +656,9 @@ const teardownResizeObserver = () => {
 	}
 }
 
-let drag: null | {
-	startClient: { x: number; y: number }
-	startWorld: { x: number; y: number }
-} = null
+const onSelect = () => {
+	emit('select', props.nodeId)
+}
 
 const MIN_SIZE = 80
 
@@ -726,50 +735,6 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 	el.addEventListener('pointermove', onMove)
 	el.addEventListener('pointerup', onUp, { once: true })
 	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onPointerDown = (e: PointerEvent) => {
-	if (e.button !== 0) return
-	emit('select', props.nodeId)
-	const targetEl = e.target as HTMLElement | null
-	if (targetEl?.closest('[data-wf-node-drag-ignore="true"]')) {
-		return
-	}
-	const el = e.currentTarget as HTMLElement
-	const z = Math.max(1e-6, props.zoom)
-	drag = {
-		startClient: { x: e.clientX, y: e.clientY },
-		startWorld: { x: props.worldX, y: props.worldY }
-	}
-	el.setPointerCapture(e.pointerId)
-
-	const onMove = (ev: PointerEvent) => {
-		if (!drag) return
-		ev.preventDefault()
-		const dx = ev.clientX - drag.startClient.x
-		const dy = ev.clientY - drag.startClient.y
-		const worldX = drag.startWorld.x + dx / z
-		const worldY = drag.startWorld.y + dy / z
-		emit('update:worldPosition', { worldX, worldY })
-	}
-	const onUp = (ev: PointerEvent) => {
-		drag = null
-		el.removeEventListener('pointermove', onMove)
-		el.removeEventListener('pointerup', onUp)
-		el.removeEventListener('pointercancel', onUp)
-		try {
-			el.releasePointerCapture(ev.pointerId)
-		} catch {
-			// ignore
-		}
-	}
-	el.addEventListener('pointermove', onMove)
-	el.addEventListener('pointerup', onUp, { once: true })
-	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onSelect = () => {
-	emit('select', props.nodeId)
 }
 
 const onStartLink = (anchorId: string, anchorIndex: number, event: PointerEvent) => {
@@ -866,12 +831,11 @@ defineExpose({
 	box-shadow: var(--wf-node-shadow);
 	box-sizing: border-box;
 	padding: 8px 10px 10px;
-	cursor: grab;
+	cursor: default;
 	display: flex;
 	flex-direction: column;
 	z-index: 1;
 	overflow: visible;
-	touch-action: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	will-change: transform, width, height;
@@ -1052,10 +1016,6 @@ defineExpose({
 		opacity: 1;
 		transform: translateX(-50%) translateY(0);
 	}
-}
-
-.wf-node:active {
-	cursor: grabbing;
 }
 
 .wf-node-header {
@@ -1658,6 +1618,75 @@ defineExpose({
 	.wf-anchor-hit::after {
 		transition: none !important;
 		animation: none !important;
+	}
+}
+
+.wf-node-task-running {
+	animation: wf-node-breath 2s ease-in-out infinite;
+	border-color: color-mix(in srgb, var(--wf-primary) 60%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--wf-primary) 30%, transparent),
+		0 0 28px color-mix(in srgb, var(--wf-primary) 15%, transparent) !important;
+}
+
+.wf-node-task-success {
+	animation: wf-node-success-flash 0.8s ease-out;
+	border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+		0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+}
+
+.wf-node-task-error {
+	border-color: color-mix(in srgb, #e74c3c 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #e74c3c 30%, transparent),
+		0 0 24px color-mix(in srgb, #e74c3c 15%, transparent) !important;
+	animation: wf-node-error-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wf-node-breath {
+	0%, 100% {
+		border-color: color-mix(in srgb, var(--wf-primary) 40%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+			0 0 14px color-mix(in srgb, var(--wf-primary) 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, var(--wf-primary) 80%, transparent);
+		box-shadow:
+			0 0 16px color-mix(in srgb, var(--wf-primary) 40%, transparent),
+			0 0 36px color-mix(in srgb, var(--wf-primary) 20%, transparent);
+	}
+}
+
+@keyframes wf-node-success-flash {
+	0% {
+		border-color: #2ea44f !important;
+		box-shadow:
+			0 0 24px color-mix(in srgb, #2ea44f 60%, transparent),
+			0 0 48px color-mix(in srgb, #2ea44f 30%, transparent) !important;
+	}
+	100% {
+		border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+		box-shadow:
+			0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+			0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+	}
+}
+
+@keyframes wf-node-error-pulse {
+	0%, 100% {
+		border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, #e74c3c 15%, transparent),
+			0 0 14px color-mix(in srgb, #e74c3c 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, #e74c3c 90%, transparent);
+		box-shadow:
+			0 0 18px color-mix(in srgb, #e74c3c 45%, transparent),
+			0 0 36px color-mix(in srgb, #e74c3c 22%, transparent);
 	}
 }
 </style>

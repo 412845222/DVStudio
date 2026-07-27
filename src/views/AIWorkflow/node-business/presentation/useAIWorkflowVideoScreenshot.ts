@@ -22,7 +22,12 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 			crop: { x: number; y: number; width: number; height: number }
 		}
 	}) => void
-	commitAddNodeAt: (payload: { worldX: number; worldY: number; title?: string }) => string | null
+	commitAddNodeAt: (payload: {
+		worldX: number
+		worldY: number
+		title?: string
+		type?: string
+	}) => string | null
 	commitSetNodeType: (payload: { nodeId: string; type: string }) => void
 	videoScreenshotNodeTitle: string
 }) => {
@@ -89,20 +94,15 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 		return { worldX: baseWorldX, worldY: baseWorldY + 21 * (imageNodeHeight + spacing) }
 	}
 
-	const createImageNodeForVideoScreenshot = (
-		videoNodeId: string,
-		time: number
-	): string | null => {
+	const createImageNodeForVideoScreenshot = (videoNodeId: string, time: number): string | null => {
 		const videoNode = payload.getNode(videoNodeId)
 		if (!videoNode) return null
 
 		const { worldX, worldY } = findNonOverlappingPosition(videoNode)
 
 		const title = `${payload.videoScreenshotNodeTitle} (${Math.max(0, time).toFixed(2)}s)`
-		const newNodeId = payload.commitAddNodeAt({ worldX, worldY, title })
+		const newNodeId = payload.commitAddNodeAt({ worldX, worldY, title, type: 'image' })
 		if (!newNodeId) return null
-
-		payload.commitSetNodeType({ nodeId: newNodeId, type: 'image' })
 
 		return newNodeId
 	}

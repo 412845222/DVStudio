@@ -129,6 +129,20 @@ let isDraggingViewport = false
 let dragStartMinimap = { x: 0, y: 0 }
 let dragStartPan = { x: 0, y: 0 }
 let themeObserver: MutationObserver | null = null
+let isUpdatingFromMinimap = false
+
+function resetIsUpdatingFromMinimap() {
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			isUpdatingFromMinimap = false
+		})
+	})
+}
+
+function clampPan(v: number): number {
+	if (!isFinite(v)) return 0
+	return Math.round(Math.max(-1e7, Math.min(1e7, v)))
+}
 
 const getNodeColor = (type: string): string => {
 	const colors = NODE_TYPE_COLORS[type] || { dark: '#1f9d84', light: '#0f766e' }
@@ -275,9 +289,13 @@ const onCanvasPointerDown = (e: PointerEvent) => {
 	const local = toCanvasLocal(e)
 	canvas.setPointerCapture(e.pointerId)
 
-	const world = minimapToWorld(local.x, local.y)
 	const zoom = props.viewport.zoom || 1
-	const { panX: targetPanX, panY: targetPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const world = minimapToWorld(local.x, local.y)
+	const { panX: rawPanX, panY: rawPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const targetPanX = clampPan(rawPanX)
+	const targetPanY = clampPan(rawPanY)
+
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX: targetPanX, panY: targetPanY })
 	isDraggingViewport = true
 	dragStartMinimap = local
@@ -299,9 +317,10 @@ const onCanvasPointerMove = (e: PointerEvent) => {
 	const dxWorld = dxMinimap / scale
 	const dyWorld = dyMinimap / scale
 
-	const panX = dragStartPan.x - dxWorld * zoom
-	const panY = dragStartPan.y - dyWorld * zoom
+	const panX = clampPan(dragStartPan.x - dxWorld * zoom)
+	const panY = clampPan(dragStartPan.y - dyWorld * zoom)
 
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX, panY })
 }
 
@@ -317,6 +336,7 @@ const onCanvasPointerUp = (e: PointerEvent) => {
 			}
 		}
 	}
+	resetIsUpdatingFromMinimap()
 }
 
 const onCanvasWheel = (e: WheelEvent) => {
@@ -337,12 +357,21 @@ const onCanvasWheel = (e: WheelEvent) => {
 		minimapOffset.value,
 		e.deltaY
 	)
-	emit('update:viewport', result)
+	const clamped = {
+		zoom: Math.round(result.zoom * 10000) / 10000,
+		panX: clampPan(result.panX),
+		panY: clampPan(result.panY)
+	}
+	isUpdatingFromMinimap = true
+	emit('update:viewport', clamped)
+	resetIsUpdatingFromMinimap()
 }
 
 const fitToAllNodes = () => {
 	const result = computeFitAllViewport(nodesList.value, props.canvasSize)
+	isUpdatingFromMinimap = true
 	emit('update:viewport', result)
+	resetIsUpdatingFromMinimap()
 }
 
 watch(

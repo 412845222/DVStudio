@@ -1,8 +1,21 @@
-import type { WorkflowNode, WorkflowSceneDecomposeOutput, WorkflowEdge, WorkflowState, WorkflowAnchorSpec } from '../../../../aiworkflow/types'
+import type {
+	WorkflowNode,
+	WorkflowSceneDecomposeOutput,
+	WorkflowEdge,
+	WorkflowState,
+	WorkflowAnchorSpec
+} from '../../../../aiworkflow/types'
 import { t } from '../../../../i18n'
 
 export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 	store: { commit: (mutation: string, payload?: unknown) => void; state: WorkflowState }
+	engineApi?: {
+		addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+		connectPorts?: (fId: string, fA: string, tId: string, tA: string) => boolean
+		removeEdge?: (edgeId: string) => void
+		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+		moveNode?: (nodeId: string, x: number, y: number) => void
+	}
 	getIncomingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
 	connectedTextInputValue: (nodeId: string, anchorId: string) => string
 	hasExactEdge: (payload: {
@@ -80,15 +93,31 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			type: WorkflowNode['type']
 			alias: string
 		}) => {
-			options.store.commit('addNodeAt', {
-				worldX: payload.worldX,
-				worldY: payload.worldY,
-				title: payload.title
-			})
-			const nodeId = String(options.store.state.selectedNodeId ?? '').trim()
+			let nodeId = ''
+			const engineNodeId = options.engineApi?.addNode?.(
+				payload.type,
+				payload.worldX,
+				payload.worldY,
+				{
+					title: payload.title,
+					alias: payload.alias
+				}
+			)
+			if (engineNodeId) {
+				nodeId = engineNodeId
+			} else {
+				options.store.commit('addNodeAt', {
+					worldX: payload.worldX,
+					worldY: payload.worldY,
+					title: payload.title
+				})
+				nodeId = String(options.store.state.selectedNodeId ?? '').trim()
+				if (nodeId) {
+					options.store.commit('setNodeType', { nodeId, type: payload.type })
+					options.store.commit('setNodeAlias', { nodeId, alias: payload.alias })
+				}
+			}
 			if (!nodeId) return ''
-			options.store.commit('setNodeType', { nodeId, type: payload.type })
-			options.store.commit('setNodeAlias', { nodeId, alias: payload.alias })
 			options.onAutoWireNodeCreated?.(nodeId)
 			return nodeId
 		}
@@ -101,6 +130,13 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 		}) => {
 			const exists = options.hasExactEdge(payload)
 			if (exists) return false
+			const connected = options.engineApi?.connectPorts?.(
+				payload.fromNodeId,
+				payload.fromAnchorId,
+				payload.toNodeId,
+				payload.toAnchorId
+			)
+			if (connected) return true
 			options.store.commit('addEdge', payload)
 			return true
 		}
@@ -114,12 +150,16 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 			let removedAny = false
 			for (const edge of incomingEdges) {
 				const fromNodeId = String(edge?.fromNodeId ?? '').trim()
-			if (!fromNodeId || fromNodeId === nextModel3dNodeId) continue
-			const fromNode = options.store.state.nodesById[fromNodeId]
-			if (!fromNode || fromNode.type !== 'model3d') continue
-			const edgeId = String(edge?.id ?? '').trim()
+				if (!fromNodeId || fromNodeId === nextModel3dNodeId) continue
+				const fromNode = options.store.state.nodesById[fromNodeId]
+				if (!fromNode || fromNode.type !== 'model3d') continue
+				const edgeId = String(edge?.id ?? '').trim()
 				if (!edgeId) continue
-				options.store.commit('removeEdge', { edgeId })
+				if (options.engineApi?.removeEdge) {
+					options.engineApi.removeEdge(edgeId)
+				} else {
+					options.store.commit('removeEdge', { edgeId })
+				}
 				removedAny = true
 			}
 			return removedAny
@@ -162,11 +202,15 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				created = !!sceneLayoutNodeId
 				if (sceneLayoutNodeId) createdNodeIds.push(sceneLayoutNodeId)
 			} else {
-				options.store.commit('setNodePosition', {
-					nodeId: sceneLayoutNodeId,
-					worldX: targetX,
-					worldY: targetY
-				})
+				if (options.engineApi?.moveNode) {
+					options.engineApi.moveNode(sceneLayoutNodeId, targetX, targetY)
+				} else {
+					options.store.commit('setNodePosition', {
+						nodeId: sceneLayoutNodeId,
+						worldX: targetX,
+						worldY: targetY
+					})
+				}
 			}
 
 			if (!sceneLayoutNodeId) return ''
@@ -306,8 +350,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				if (!objectId || !model3dNodeId) continue
 				const inputAnchorId = options.sceneLayoutModelInputAnchorId(objectId)
 				const hasAnchor = Array.isArray(sceneLayoutNode.inputs)
-				? sceneLayoutNode.inputs.some((anchor: WorkflowAnchorSpec) => String(anchor?.id ?? '') === inputAnchorId)
-				: false
+					? sceneLayoutNode.inputs.some(
+							(anchor: WorkflowAnchorSpec) => String(anchor?.id ?? '') === inputAnchorId
+						)
+					: false
 				if (!hasAnchor) continue
 
 				replaceIncomingSceneLayoutModelEdge(sceneLayoutNodeId, inputAnchorId, model3dNodeId)

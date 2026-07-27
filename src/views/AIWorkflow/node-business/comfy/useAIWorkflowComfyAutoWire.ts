@@ -23,6 +23,11 @@ type UseAIWorkflowComfyAutoWireOptions = {
 		state: WorkflowState
 		commit: (mutation: string, payload?: unknown) => void
 	}
+	engineApi?: {
+		addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+		connectPorts?: (fId: string, fA: string, tId: string, tA: string) => boolean
+		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+	}
 	getOutgoingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
 	getIncomingEdges: (nodeId: string, anchorId?: string) => WorkflowEdge[]
 	bindMediaResourceToNode: (
@@ -62,8 +67,12 @@ const calculateNodePosition = (
 	const footprint = COMFY_NODE_FOOTPRINT[mediaType]
 	const startOffset = existingNodeCount * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	return {
-		worldX: sourceNode.worldX + sourceNode.width + COMFY_AUTO_WIRE_HORIZONTAL_GAP + footprint.width / 2,
-		worldY: sourceNode.worldY + startOffset + outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
+		worldX:
+			sourceNode.worldX + sourceNode.width + COMFY_AUTO_WIRE_HORIZONTAL_GAP + footprint.width / 2,
+		worldY:
+			sourceNode.worldY +
+			startOffset +
+			outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	}
 }
 
@@ -111,36 +120,48 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 			video: t('nodes.comfyui.autoWireVideoTitle'),
 			model3d: t('nodes.comfyui.autoWireModel3DTitle')
 		}
+		const nodeAlias = `${sourceLabel} - ${t('nodes.comfyui.autoWireOutputSuffix')}`
+		const nodeType = COMFY_TARGET_NODE_TYPE[mediaType]
 
-		options.store.commit('addNodeAt', {
-			worldX: position.worldX,
-			worldY: position.worldY,
-			title: titleMap[mediaType]
-		})
-
-		const nodeId = String(options.store.state.selectedNodeId ?? '').trim()
+		let nodeId: string = ''
+		if (options.engineApi?.addNode) {
+			const initialData: Record<string, any> = { title: titleMap[mediaType], alias: nodeAlias }
+			if (mediaType === 'model3d') {
+				initialData.model3dSettings = { modelGenerationSource: 'comfyui' }
+			}
+			const createdId = options.engineApi.addNode(
+				nodeType,
+				position.worldX,
+				position.worldY,
+				initialData
+			)
+			if (createdId) {
+				nodeId = String(createdId).trim()
+			}
+		}
+		if (!nodeId) {
+			options.store.commit('addNodeAt', {
+				worldX: position.worldX,
+				worldY: position.worldY,
+				title: titleMap[mediaType]
+			})
+			nodeId = String(options.store.state.selectedNodeId ?? '').trim()
+		}
 		if (!nodeId) throw new Error('Failed to create auto-wire node')
 
-		options.store.commit('setNodeType', {
-			nodeId,
-			type: COMFY_TARGET_NODE_TYPE[mediaType]
-		})
-
-		options.store.commit('setNodeAlias', {
-			nodeId,
-			alias: `${sourceLabel} - ${t('nodes.comfyui.autoWireOutputSuffix')}`
-		})
-
-		if (mediaType === 'model3d') {
-			const createdNode = options.store.state.nodesById?.[nodeId]
-			const currentSettings = isRecord(createdNode?.model3dSettings) ? createdNode.model3dSettings : {}
-			options.store.commit('patchNodeSettings', {
-				nodeId,
-				settings: {
-					...currentSettings,
-					modelGenerationSource: 'comfyui'
-				}
-			})
+		if (!options.engineApi?.addNode) {
+			options.store.commit('setNodeType', { nodeId, type: nodeType })
+			options.store.commit('setNodeAlias', { nodeId, alias: nodeAlias })
+			if (mediaType === 'model3d') {
+				const createdNode = options.store.state.nodesById?.[nodeId]
+				const currentSettings = isRecord(createdNode?.model3dSettings)
+					? createdNode.model3dSettings
+					: {}
+				options.store.commit('patchNodeSettings', {
+					nodeId,
+					settings: { ...currentSettings, modelGenerationSource: 'comfyui' }
+				})
+			}
 		}
 
 		options.onAutoWireNodeCreated?.(nodeId)
@@ -161,6 +182,14 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 				String(edge?.toAnchorId ?? '').trim() === payload.toAnchorId
 		)
 		if (exists) return false
+		if (options.engineApi?.connectPorts) {
+			return options.engineApi.connectPorts(
+				payload.fromNodeId,
+				payload.fromAnchorId,
+				payload.toNodeId,
+				payload.toAnchorId
+			)
+		}
 		options.store.commit('addEdge', payload)
 		return true
 	}
@@ -206,7 +235,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 			return result
 		}
 
-		const anchorIds = new Set(validOutputs.map((o) => String(o.anchorId ?? '').trim()).filter(Boolean))
+		const anchorIds = new Set(
+			validOutputs.map((o) => String(o.anchorId ?? '').trim()).filter(Boolean)
+		)
 		const isSingleOutAnchor = anchorIds.size === 1 && anchorIds.has('out')
 
 		type PendingTarget = {
@@ -321,7 +352,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 
 					await nextTick()
 					if (i < pendingTargets.length - 1) {
-						await new Promise((resolve) => window.setTimeout(resolve, COMFY_AUTO_WIRE_NODE_DELAY_MS))
+						await new Promise((resolve) =>
+							window.setTimeout(resolve, COMFY_AUTO_WIRE_NODE_DELAY_MS)
+						)
 					}
 				} catch (err) {
 					console.error('[ComfyUI AutoWire] Failed to create node for anchor', anchorId, err)

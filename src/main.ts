@@ -63,27 +63,39 @@ window.addEventListener(
 			return
 		}
 
-		// Ctrl+Z/Ctrl+Y: 撤销/重做（输入框内交给浏览器原生文本撤销）
+		// Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z: 撤销/重做（输入框内交给浏览器原生文本撤销）
+		// AIWorkflow/BlueprintTest: PASS THROUGH - engine handles undo/redo via InputManager, do NOT intercept here
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
-			!e.shiftKey &&
-			(e.key === 'z' || e.key === 'Z')
+			(e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')
 		) {
+			const isRedo = e.shiftKey || e.key === 'y' || e.key === 'Y'
+			const routeName = router.currentRoute.value.name
+			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
+				return
+			}
 			e.preventDefault()
 			e.stopPropagation()
-			editorPersistence.undo()
-			return
-		}
-		if (!isEditable && (e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-			e.preventDefault()
-			e.stopPropagation()
-			editorPersistence.redo()
+			const eventName = isRedo ? 'dvs:shortcut/redo' : 'dvs:shortcut/undo'
+			const ok = window.dispatchEvent(new CustomEvent(eventName, { cancelable: true }))
+			if (ok) {
+				if (isRedo) {
+					editorPersistence.redo()
+				} else {
+					editorPersistence.undo()
+				}
+			}
 			return
 		}
 
 		// Backspace/Delete: 删除选中节点（仅在非输入框且确实有舞台选中时触发）
+		// AIWorkflow/BlueprintTest 自行处理Delete，不在此处拦截
 		if (!isEditable && (e.key === 'Backspace' || e.key === 'Delete')) {
+			const routeName = router.currentRoute.value.name
+			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
+				return
+			}
 			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds)
 				? VideoSceneStore.state.selectedNodeIds
 				: []

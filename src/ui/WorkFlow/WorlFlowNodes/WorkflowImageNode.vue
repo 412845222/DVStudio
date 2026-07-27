@@ -15,8 +15,17 @@
 		:inputs="inputs"
 		:outputs="outputs"
 		:selected="selected"
+		:isPrimarySelected="selected"
+		:isSecondarySelected="false"
+		:visualStatus="visualStatus"
 		:hoverInputAnchorId="hoverInputAnchorId"
 		:hoverOutputAnchorId="hoverOutputAnchorId"
+		:nodeChatVisible="nodeChatVisible"
+		:nodeChatNodeType="nodeChatNodeType"
+		:nodeChatDraft="nodeChatDraft"
+		:nodeChatSubmitting="nodeChatSubmitting"
+		:nodeChatParams="nodeChatParams"
+		:nodeChatSelectedRefs="nodeChatSelectedRefs"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"
@@ -28,6 +37,13 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
+		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
+		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
+		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
+		@node-chat-close="emit('node-chat-close')"
+		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
+		@node-chat-stop="emit('node-chat-stop')"
+		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-media">
@@ -138,6 +154,7 @@ import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { exportWorkflowImageOutputPng } from '../../../aiworkflow/imageOutput'
 import { useAIWorkflowResourceCache } from '../../../views/AIWorkflow/assets/useAIWorkflowResourceCache'
 import { useI18n } from '../../../i18n'
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -178,6 +195,14 @@ const props = defineProps<{
 	selected?: boolean
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
+	visualStatus?: 'idle' | 'running' | 'error'
+	nodeChatVisible?: boolean
+	nodeChatNodeType?: WorkflowNodeChatType | null
+	nodeChatDraft?: string
+	nodeChatSubmitting?: boolean
+	nodeChatParams?: Record<string, any>
+	nodeChatSelectedRefs?: any[]
+	inputParamPreviewRefs?: any[]
 }>()
 
 const emit = defineEmits<{
@@ -235,6 +260,13 @@ const emit = defineEmits<{
 	(e: 'media-ready'): void
 	(e: 'preview-request', payload: { imageUrl: string }): void
 	(e: 'invalidate-screenshot'): void
+	(e: 'node-chat-update-draft', value: string): void
+	(e: 'node-chat-update-params', value: Record<string, any>): void
+	(e: 'node-chat-update-selected-refs', value: any[]): void
+	(e: 'node-chat-close'): void
+	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
+	(e: 'node-chat-stop'): void
+	(e: 'node-chat-remove-param-ref', item: any): void
 }>()
 
 const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }

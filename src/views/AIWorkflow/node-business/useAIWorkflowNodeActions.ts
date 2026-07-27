@@ -28,18 +28,26 @@ export const useAIWorkflowNodeActions = (payload: {
 	selectedNodeIds: { value: string[] }
 	pasteNodesWithResourceDedupe: (position?: { worldX?: number; worldY?: number }) => void
 	removeSelectedNodesWithResourceCleanup: (nodeIds: string[]) => Promise<void>
+	copySelection?: () => void
+	paste?: () => void
+	setSelection?: (nodeIds: string[]) => void
 }) => {
 	const onNodeCopy = (nodeId: string) => {
+		if (payload.setSelection) {
+			payload.setSelection([nodeId])
+		}
+		if (payload.copySelection) {
+			payload.copySelection()
+		}
 		payload.store.commit('copyNode', { nodeId })
 	}
 
-	const onNodePaste = (nodeId: string) => {
-		const node = payload.store.state.nodesById[nodeId]
-		if (!node) return
-		payload.pasteNodesWithResourceDedupe({
-			worldX: Number(node.worldX) + 20,
-			worldY: Number(node.worldY) + 20
-		})
+	const onNodePaste = (_nodeId: string) => {
+		if (payload.paste) {
+			payload.paste()
+		} else {
+			payload.pasteNodesWithResourceDedupe()
+		}
 	}
 
 	const onNodeDelete = (nodeId: string) => {

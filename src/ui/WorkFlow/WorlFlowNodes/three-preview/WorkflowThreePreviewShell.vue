@@ -84,7 +84,10 @@ const emit = defineEmits<{
 }>()
 
 const phase = computed(() => props.state?.phase ?? 'masked')
-const canStart = computed(() => props.state?.canStart === true)
+const canStart = computed(() => {
+	if (props.state?.canStart === false) return false
+	return phase.value === 'masked' && !props.empty
+})
 const showSnapshot = computed(() => phase.value !== 'interactive')
 const hasSnapshot = computed(() => String(props.snapshotUrl ?? '').trim().length > 0)
 const showMaskedOverlay = computed(

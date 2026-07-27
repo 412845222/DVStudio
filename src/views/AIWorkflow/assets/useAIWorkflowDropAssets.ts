@@ -49,7 +49,9 @@ interface FileSystemFileHandle extends FileSystemHandle {
 }
 
 interface FileSystemDirectoryHandle extends FileSystemHandle {
-	entries: () => AsyncIterableIterator<[string, FileSystemHandle]> | IterableIterator<[string, FileSystemHandle]>
+	entries: () =>
+		| AsyncIterableIterator<[string, FileSystemHandle]>
+		| IterableIterator<[string, FileSystemHandle]>
 }
 
 type MeshyTaskItem = {
@@ -71,7 +73,10 @@ type Tripo3DTaskItem = {
 }
 
 type AIWorkflowStoreState = {
-	resourcesById?: Record<string, { url?: string; name?: string; sourcePath?: string; posterUrl?: string }>
+	resourcesById?: Record<
+		string,
+		{ url?: string; name?: string; sourcePath?: string; posterUrl?: string }
+	>
 	selectedNodeId?: string | null
 	[key: string]: unknown
 }
@@ -82,8 +87,22 @@ type AIWorkflowStore = {
 	dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown> | unknown
 }
 
+type AIWorkflowEngineApi = {
+	addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+	createNodeWithConnection?: (params: any) => { nodeId: string | null; connected: boolean }
+	updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
+	connectPorts?: (
+		fromNodeId: string,
+		fromAnchorId: string,
+		toNodeId: string,
+		toAnchorId: string
+	) => boolean
+	setSelection?: (nodeIds: string[]) => void
+}
+
 export const useAIWorkflowDropAssets = (options: {
 	store: AIWorkflowStore
+	engineApi?: AIWorkflowEngineApi
 	makeResourceId: () => string
 	setObjectUrl: (key: string, url: string) => void
 	resolveBackendUrl: (value: string) => string
@@ -111,7 +130,11 @@ export const useAIWorkflowDropAssets = (options: {
 		worldX: number
 		worldY: number
 	}) => boolean | void
-	persistBlobUrlToProject?: (inputUrl: string, kind: 'image' | 'video', prefix?: string) => Promise<{
+	persistBlobUrlToProject?: (
+		inputUrl: string,
+		kind: 'image' | 'video',
+		prefix?: string
+	) => Promise<{
 		url: string
 		sourcePath?: string
 		projectRelativePath?: string
@@ -346,7 +369,9 @@ export const useAIWorkflowDropAssets = (options: {
 					// Try async iteration first, fall back to sync
 					let isAsync = false
 					try {
-						const asyncIter = (entries as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator]
+						const asyncIter = (entries as { [Symbol.asyncIterator]?: unknown })[
+							Symbol.asyncIterator
+						]
 						isAsync = typeof asyncIter === 'function'
 					} catch {
 						isAsync = false
@@ -376,8 +401,9 @@ export const useAIWorkflowDropAssets = (options: {
 		const itemsWithHandle = Array.from(dt.items ?? []).filter(
 			(it) =>
 				it.kind === 'file' &&
-				typeof (it as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle> })
-					.getAsFileSystemHandle === 'function'
+				typeof (
+					it as DataTransferItem & { getAsFileSystemHandle?: () => Promise<FileSystemHandle> }
+				).getAsFileSystemHandle === 'function'
 		) as Array<DataTransferItem & { getAsFileSystemHandle: () => Promise<FileSystemHandle> }>
 		if (itemsWithHandle.length) {
 			const handles = await Promise.all(
@@ -390,7 +416,9 @@ export const useAIWorkflowDropAssets = (options: {
 				})
 			)
 			const nested = await Promise.all(
-				handles.filter((h): h is FileSystemHandle => !!h).map((h) => collectDroppedFilesFromHandle(h, ''))
+				handles
+					.filter((h): h is FileSystemHandle => !!h)
+					.map((h) => collectDroppedFilesFromHandle(h, ''))
 			)
 			const flat = nested.flat()
 			if (flat.length) return flat
@@ -400,8 +428,9 @@ export const useAIWorkflowDropAssets = (options: {
 		const items = Array.from(dt.items ?? []).filter((it) => it.kind === 'file')
 		const entries: FileSystemEntry[] = []
 		for (const it of items) {
-			const e = (it as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null })
-				.webkitGetAsEntry?.()
+			const e = (
+				it as DataTransferItem & { webkitGetAsEntry?: () => FileSystemEntry | null }
+			).webkitGetAsEntry?.()
 			if (e) entries.push(e)
 		}
 		if (entries.length) {
@@ -413,11 +442,19 @@ export const useAIWorkflowDropAssets = (options: {
 		return files.map((f) => ({ file: f, relativePath: String(f?.name ?? '') }))
 	}
 
-	const snapshotRemoteMediaToProjectOrObjectUrl = async (inputUrl: string, resourceId: string, kind: 'image' | 'video') => {
+	const snapshotRemoteMediaToProjectOrObjectUrl = async (
+		inputUrl: string,
+		resourceId: string,
+		kind: 'image' | 'video'
+	) => {
 		const url = String(inputUrl || '').trim()
 		if (!url) return { url: '', fileName: '' }
 
-		const isRemote = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')
+		const isRemote =
+			url.startsWith('http://') ||
+			url.startsWith('https://') ||
+			url.startsWith('blob:') ||
+			url.startsWith('data:')
 		const isDweb = url.toLowerCase().startsWith('dweb://')
 
 		if (isDweb) {
@@ -481,28 +518,25 @@ export const useAIWorkflowDropAssets = (options: {
 		const resource = options.store.state.resourcesById?.[payload.item.resourceId]
 		if (!resource) return false
 
-		options.store.commit('addNodeAt', {
-			worldX: payload.worldX,
-			worldY: payload.worldY,
-			title: payload.item.kind === 'image' ? t('common.image') : t('common.video')
-		})
-		const nodeId = options.store.state.selectedNodeId
+		const kind = payload.item.kind
+		const nodeId =
+			options.engineApi?.addNode?.(kind, payload.worldX, payload.worldY, {
+				title: kind === 'image' ? t('common.image') : t('common.video')
+			}) ?? null
 		if (!nodeId) return true
 
-		options.store.commit('setNodeType', { nodeId, type: payload.item.kind })
 		const mediaUrl = String(resource?.url || payload.item.url || '').trim()
 		const sourcePath = String(resource?.sourcePath || payload.item.sourcePath || '').trim()
-		const posterUrl =
-			payload.item.kind === 'video' ? String(resource?.posterUrl || '').trim() : ''
+		const posterUrl = kind === 'video' ? String(resource?.posterUrl || '').trim() : ''
 
 		options.bindMediaResourceToNode(
 			nodeId,
-			payload.item.kind,
+			kind,
 			mediaUrl,
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(payload.item.kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
+					(kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -511,7 +545,7 @@ export const useAIWorkflowDropAssets = (options: {
 		)
 
 		if (mediaUrl) {
-			options.autoSizeMediaNode(nodeId, mediaUrl, payload.item.kind)
+			options.autoSizeMediaNode(nodeId, mediaUrl, kind)
 		}
 		return true
 	}
@@ -548,7 +582,11 @@ export const useAIWorkflowDropAssets = (options: {
 
 		if (!effectiveUrl) return false
 
-		const isRemoteUrl = effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://') || effectiveUrl.startsWith('blob:') || effectiveUrl.startsWith('data:')
+		const isRemoteUrl =
+			effectiveUrl.startsWith('http://') ||
+			effectiveUrl.startsWith('https://') ||
+			effectiveUrl.startsWith('blob:') ||
+			effectiveUrl.startsWith('data:')
 
 		const resourceId = `wf-res-nanobanana-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 		let storedUrl = effectiveUrl
@@ -564,32 +602,24 @@ export const useAIWorkflowDropAssets = (options: {
 			storedFileName = snap.fileName || ''
 		}
 
-		const defaultFileName = kind === 'video'
-			? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
-			: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
+		const defaultFileName =
+			kind === 'video'
+				? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
+				: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
 
 		const finalUrl = options.resolveBackendUrl(storedUrl)
 		const displayName = storedFileName || defaultFileName
 
-		options.store.commit('addNodeAt', {
-			worldX: payload.worldX,
-			worldY: payload.worldY,
-			title: kind === 'video' ? t('common.video') : t('common.image')
-		})
-		const nodeId = options.store.state.selectedNodeId
+		const nodeId =
+			options.engineApi?.addNode?.(kind, payload.worldX, payload.worldY, {
+				title: kind === 'video' ? t('common.video') : t('common.image')
+			}) ?? null
 		if (!nodeId) return true
 
-		options.store.commit('setNodeType', { nodeId, type: kind })
-		options.bindMediaResourceToNode(
-			nodeId,
-			kind,
-			finalUrl,
-			displayName,
-			{
-				sourcePath: storedSourcePath || metaSourcePath || undefined,
-				projectRelativePath: storedRelPath
-			}
-		)
+		options.bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
+			sourcePath: storedSourcePath || metaSourcePath || undefined,
+			projectRelativePath: storedRelPath
+		})
 		options.autoSizeMediaNode(nodeId, finalUrl, kind)
 		return true
 	}
@@ -606,7 +636,8 @@ export const useAIWorkflowDropAssets = (options: {
 		const arkTaskItem = getDraggedArkTaskItem(e)
 		const nanoMeta = getDraggedNanoPreviewMeta(e)
 		const url = nanoMeta?.url || getDraggedNanoPreviewUrl(e)
-		if (!hasFiles && !url && !resourceItem && !meshyTaskItem && !tripo3dTaskItem && !arkTaskItem) return
+		if (!hasFiles && !url && !resourceItem && !meshyTaskItem && !tripo3dTaskItem && !arkTaskItem)
+			return
 		try {
 			if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
 		} catch {
@@ -656,40 +687,55 @@ export const useAIWorkflowDropAssets = (options: {
 		}
 
 		if (draggedArkTask) {
-			const apiType = String(draggedArkTask.apiType || '').trim().toLowerCase()
+			const apiType = String(draggedArkTask.apiType || '')
+				.trim()
+				.toLowerCase()
 			const kind: 'image' | 'video' = apiType === 'seedance' ? 'video' : 'image'
-			const title = apiType === 'seedance' ? t('common.video') : (apiType === 'seedream' ? t('common.image') : 'ARK')
+			const title =
+				apiType === 'seedance'
+					? t('common.video')
+					: apiType === 'seedream'
+						? t('common.image')
+						: 'ARK'
 			const prompt = String(draggedArkTask.prompt || '').trim()
 			const resultUrls = Array.isArray(draggedArkTask.resultUrls) ? draggedArkTask.resultUrls : []
 			const firstUrl = resultUrls[0] || ''
 			const thumbnailUrl = String(draggedArkTask.thumbnailUrl || '').trim()
 			const rawDisplayUrl = firstUrl || thumbnailUrl
-			const isCompleted = String(draggedArkTask.status || '').trim().toLowerCase() === 'succeeded'
+			const isCompleted =
+				String(draggedArkTask.status || '')
+					.trim()
+					.toLowerCase() === 'succeeded'
 
-			options.store.commit('addNodeAt', {
-				worldX: world.worldX,
-				worldY: world.worldY,
-				title: prompt ? `${title}：${prompt.slice(0, 20)}` : title
-			})
-			const nodeId = options.store.state.selectedNodeId
+			const nodeId =
+				options.engineApi?.addNode?.(kind, world.worldX, world.worldY, {
+					title: prompt ? `${title}：${prompt.slice(0, 20)}` : title
+				}) ?? null
 			if (!nodeId) return
 
-			options.store.commit('setNodeType', { nodeId, type: kind })
-
 			if (rawDisplayUrl && isCompleted) {
-				const defaultFileName = kind === 'video'
-					? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
-					: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
+				const defaultFileName =
+					kind === 'video'
+						? `Seedance_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.mp4`
+						: `Seedream_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`
 				const resourceId = `wf-res-ark-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-				const isRemoteUrl = rawDisplayUrl.startsWith('http://') || rawDisplayUrl.startsWith('https://') || rawDisplayUrl.startsWith('blob:') || rawDisplayUrl.startsWith('data:')
+				const isRemoteUrl =
+					rawDisplayUrl.startsWith('http://') ||
+					rawDisplayUrl.startsWith('https://') ||
+					rawDisplayUrl.startsWith('blob:') ||
+					rawDisplayUrl.startsWith('data:')
 				let finalUrl = rawDisplayUrl
 				let finalSourcePath: string | undefined
 				let finalRelPath: string | undefined
 				let finalFileName = defaultFileName
 
 				if (isRemoteUrl) {
-					const snap = await snapshotRemoteMediaToProjectOrObjectUrl(rawDisplayUrl, resourceId, kind)
+					const snap = await snapshotRemoteMediaToProjectOrObjectUrl(
+						rawDisplayUrl,
+						resourceId,
+						kind
+					)
 					finalUrl = snap.url || rawDisplayUrl
 					finalSourcePath = snap.sourcePath
 					finalRelPath = snap.projectRelativePath
@@ -724,7 +770,8 @@ export const useAIWorkflowDropAssets = (options: {
 					const remoteFiles: Array<{ file: File; kind: 'image' | 'video' }> = []
 
 					for (const item of mediaFiles) {
-						const hasLocalPath = typeof (item.file as FileWithPath)?.path === 'string' &&
+						const hasLocalPath =
+							typeof (item.file as FileWithPath)?.path === 'string' &&
 							String((item.file as FileWithPath).path).trim().length > 0
 						const hasFsHandle = !!item.fsHandle
 
@@ -763,24 +810,15 @@ export const useAIWorkflowDropAssets = (options: {
 
 							const finalUrl = options.resolveBackendUrl(storedUrl)
 
-							options.store.commit('addNodeAt', {
-								worldX: world.worldX + offset,
-								worldY: world.worldY + offset,
-								title: kind === 'image' ? t('common.image') : t('common.video')
-							})
-							const nodeId = options.store.state.selectedNodeId
+							const nodeId =
+								options.engineApi?.addNode?.(kind, world.worldX + offset, world.worldY + offset, {
+									title: kind === 'image' ? t('common.image') : t('common.video')
+								}) ?? null
 							if (nodeId) {
-								options.store.commit('setNodeType', { nodeId, type: kind })
-								options.bindMediaResourceToNode(
-									nodeId,
-									kind,
-									finalUrl,
-									storedFileName,
-									{
-										sourcePath: storedSourcePath,
-										projectRelativePath: storedRelPath
-									}
-								)
+								options.bindMediaResourceToNode(nodeId, kind, finalUrl, storedFileName, {
+									sourcePath: storedSourcePath,
+									projectRelativePath: storedRelPath
+								})
 								options.autoSizeMediaNode(nodeId, finalUrl, kind)
 							}
 							offset += 40
@@ -792,7 +830,10 @@ export const useAIWorkflowDropAssets = (options: {
 					}
 				}
 			} catch (err: unknown) {
-				options.pushToast(t('aiworkflow.toast.dragImportFailed', { error: getErrorMessage(err) }), 'warn')
+				options.pushToast(
+					t('aiworkflow.toast.dragImportFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 			}
 		}
 

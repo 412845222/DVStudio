@@ -13,269 +13,45 @@
 		</div>
 		<!-- 蓝图节点容器 -->
 		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
-			<BlueprintCanvas
-				class="aiwf-canvas"
-				:viewport="viewport"
-				:selection-frame="{
-					visible: selectionFrame.visible.value,
-					worldRect: selectionFrame.worldRect.value,
-					label: selectionFrame.label.value,
-					nodeCount: selectionFrame.nodeCount.value,
-					nodeIds: selectionFrame.nodeIds.value
-				}"
-				:saved-frames="selectionFrame.savedFrames.value"
-				:nodes-by-id="store.state.nodesById"
-				@update:viewport="onViewportUpdate"
-				@canvas-contextmenu="onCanvasContextMenu"
-				@canvas-dblclick="onCanvasDblClick"
-				@box-select="onBoxSelect"
-				@canvas-panning-start="onCanvasPanningStart"
-				@canvas-panning-end="onCanvasPanningEnd"
-				@pointerdown="onCanvasPointerDown"
-				@dragover.prevent="onCanvasDragOver"
-				@drop.prevent="onCanvasDrop"
-				@selection-frame-tag-save="(label: string) => tagEditor.commitTag(label)"
-				@selection-frame-delete="onDeleteSelectionFrame"
-				@selection-frame-save-template="onSaveSelectionAsTemplate"
-				@selection-frame-drag-start="onSelectionFrameDragStart"
-				@selection-frame-drag="onSelectionFrameDrag"
-				@selection-frame-drag-end="onSelectionFrameDragEnd"
-				@selection-frame-delete-selected="onDeleteSelectedNodes"
-				v-slot="vp"
+			<!-- AIWorkflowBlueprintHost (架构分层，隔离BlueprintEditor集成) -->
+			<AIWorkflowBlueprintHost
+				ref="blueprintHostRef"
+				:initial-data="blueprintEditorData"
+				:readonly="false"
+				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
+				:chat-state="chatStateForHost"
+				:node-generation-tasks="store.state.nodeGenerationTasksById"
+				:legacy-resources="legacyResourcesForDom"
+				@editor-ready="onHostEditorReady"
+				@change="onBlueprintEditorChange"
+				@selection-change="onBlueprintEditorSelectionChange"
+				@viewport-change="onBlueprintEditorViewportChange"
+				@node-double-click="onBlueprintEditorNodeDblClick"
+				@node-context-menu="onBlueprintEditorNodeContextMenu"
+				@canvas-context-menu="onBlueprintEditorCanvasContextMenu"
+				@canvas-double-click="onBlueprintEditorCanvasDblClick"
+				@canvas-drop="onBlueprintEditorDrop"
+				@node-chat-submit="onHostNodeChatSubmit"
+				@node-chat-close="onHostNodeChatClose"
+				@node-chat-update-draft="onHostNodeChatUpdateDraft"
+				@node-chat-update-params="onHostNodeChatUpdateParams"
+				@node-chat-update-selected-refs="onHostNodeChatUpdateSelectedRefs"
+				@node-chat-remove-param-ref="onHostNodeChatRemoveParamRef"
+				@node-chat-stop="onHostNodeChatStop"
+				@link-drop-on-canvas="onLinkDropOnCanvas"
+				@node-start-link="onDomNodeStartLink"
+				@node-end-link="onDomNodeEndLink"
+				@node-preview-request="onHostNodePreviewRequest"
 			>
-				<!-- Canvas2D节点渲染层 (截图节点Canvas渲染) -->
-				<NodeCanvasLayer
-					ref="nodeCanvasLayerRef"
-					:nodes="canvasNodeEntries"
-					:viewport="viewport"
-					:motion-active="viewportMotionActive"
-					:screenshot-pool-provider="canvasScreenshotPoolProvider"
-					:theme="themeStore.state.mode"
-					@node-click="onCanvasNodeClick"
-				/>
-
-				<CanvasAnchorLayer
-					:nodes="canvasNodeEntries"
-					:viewport="viewport"
-					:selected-node-ids="selectedNodeIds"
-					:hide-visuals="true"
-					:motion-active="viewportMotionActive"
-					@start-link="onStartLink($event, vp.screenToWorld)"
-					@end-link="onEndLink"
-				/>
-
-				<WorkflowEdgeLayer
-					:edges="asyncEdgeRenders"
-					:selectedEdgeId="selectedEdgeId"
-					:draft="asyncDraftRender"
-					:motionActive="viewportMotionActive"
-					:zoom="viewport.zoom"
-					:anchors="canvasAnchorRenderList"
-					@select-edge="onSelectEdge"
-					@anchor-pointerdown="onCanvasAnchorPointerDown"
-				/>
-
-				<div
-					v-for="node in safeVisibleRenderNodes"
-					:key="node.id"
-					class="aiwf-node-host"
-					:class="{ 'aiwf-node-host-offscreen': isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id)) }"
-					:ref="
-						(el: any) => {
-							if (el) nodeHostRefs.set(node.id, el as HTMLElement)
-							else nodeHostRefs.delete(node.id)
-						}
-					"
-				>
-					<!-- 渲染模式: canvas(由NodeCanvasLayer) | full(选中/激活节点) -->
-					<!-- 注意：已移除 'dom-screenshot' 模式，因为它会导致CSS transform在缩放时生效 -->
-
-					<!-- Full node component (用于选中/激活/无截图的节点) -->
-					<component
-						v-if="getNodeRenderMode(node.id) === 'full'"
-						:is="nodeComponent(node)"
-						:ref="setWorkflowNodeComponentRef(node.id, node.type)"
-						:alias="node.alias"
-						:height="node.height"
-						:sizeCustomized="node.sizeCustomized"
-						:autoHeight="node.type !== 'text' && node.type !== 'blender'"
-						:hoverInputAnchorId="hoverInputAnchorId(node.id)"
-						:hoverOutputAnchorId="hoverOutputAnchorId(node.id)"
-						:anchor-compatibility="anchorCompatibility"
-						:is-linking="isLinking"
-						:inputs="node.inputs"
-						:isWarmupRender="(isWarmingUpScreenshots && warmupForceRenderNodeIds.has(String(node.id))) || pendingScreenshotNodeIds.has(String(node.id))"
-						:nodeId="node.id"
-						:nodeType="node.type"
-						:outputs="node.outputs"
-						:selected="selectedNodeIds.includes(node.id)"
-						:isPrimarySelected="selectedNodeIds.length === 1 && selectedNodeId === node.id"
-						:isSecondarySelected="
-							selectedNodeIds.length === 1 &&
-							selectedNodeIds.includes(node.id) &&
-							selectedNodeId !== node.id
-						"
-						:visualStatus="resolveNodeRuntimeVisualState(node)"
-						:node-chat-visible="
-							nodeChatDialog.visible &&
-							nodeChatDialog.nodeId === node.id &&
-							selectedNodeId === node.id
-						"
-						:node-chat-node-type="
-							nodeChatDialog.nodeId === node.id ? nodeChatDialog.nodeType : null
-						"
-						:node-chat-draft="nodeChatDialog.nodeId === node.id ? nodeChatDialog.draft : ''"
-						:node-chat-submitting="
-							nodeChatDialog.nodeId === node.id ? nodeChatDialog.submitting : false
-						"
-						:node-chat-params="nodeChatDialog.nodeId === node.id ? nodeChatDialog.params : {}"
-						:node-chat-selected-refs="nodeChatDialog.nodeId === node.id ? nodeChatDialog.selectedRefs : []"
-						:node-chat-node-width="node.width"
-						:node-generation-task="latestGenerationTaskByNodeId(node.id)"
-						:style="
-							nodeStyle(
-								vp.worldToScreen,
-								node.worldX,
-								node.worldY,
-								vp.zoom,
-								node.width,
-								node.height
-							)
-						"
-						:subtitle="node.subtitle"
-						:title="node.title"
-						:width="node.width"
-						:worldX="node.worldX"
-						:worldY="node.worldY"
-						:zoom="vp.zoom"
-						v-bind="nodeExtraProps(node)"
-						@add-branch="onStoryBranchAdd(node.id)"
-						@add-merge-item="onTextMergeItemAdd(node.id)"
-						@await-unreal-connection="onNodeAwaitUnrealConnection(node.id)"
-						@cancel-comfyui="onComfyUICancel(node.id)"
-						@cancel-scene-understanding="onNodeCancelSceneUnderstanding(node.id)"
-						@clear-resource="onNodeClearResource(node.id)"
-						@clear-scene-layout-model-binding="
-							onNodeClearSceneLayoutModelBinding(node.id, $event.objectId)
-						"
-						@update-model-bindings="onNodeUpdateSceneLayoutModelBindings(node.id, $event)"
-						@connect-comfyui="onComfyUIConnect(node.id, $event)"
-						@copy="() => onNodeCopy(node.id)"
-						@clear-node="() => onNodeClear(node.id)"
-						@delete="() => onNodeDelete(node.id)"
-						@delete-meshy-task="onNodeDeleteMeshyTask(node.id)"
-						@detect-editor="onNodeDetectEditor(node.id)"
-						@check-plugin="onNodeCheckPlugin(node.id, $event)"
-						@install-plugin="onNodeInstallPlugin(node.id, $event)"
-						@set-asset-root-path="onNodeSetAssetRootPath(node.id, $event)"
-						@disconnect-unreal="onNodeDisconnect(node.id)"
-						@end-link="onEndLink"
-						@export-unreal-lighting="onNodeExportUnrealLighting(node.id)"
-						@export-unreal-scene="onNodeExportUnrealScene(node.id)"
-						@generate-meshy="onNodeGenerateMeshy(node.id)"
-						@media-ready="onNodeMediaReady(node.id)"
-						@invalidate-screenshot="onNodeInvalidateScreenshot(node.id)"
-						@move-merge-item="onTextMergeItemMove(node.id, $event)"
-						@preview-contextmenu="onNodePreviewContextMenu(node.id, $event)"
-						@preview-request="onNodeImagePreviewRequestInline(node.id, $event)"
-						@pull-meshy-output="onNodePullMeshyOutput(node.id)"
-						@refresh="() => onNodeRefresh(node.id)"
-						@refresh-meshy-task="onNodeRefreshMeshyTask(node.id)"
-						@remove-branch="onStoryBranchRemove(node.id, $event)"
-						@remove-merge-item="onTextMergeItemRemove(node.id, $event)"
-						@request-scene-models="onNodeRequestSceneModels(node.id)"
-						@resize="onNodeResize(node.id, $event)"
-						@auto-resize="(h: number) => onNodeAutoResize(node.id, h)"
-						@restart-meshy-task="onNodeRestartMeshyTask(node.id)"
-						@run-comfyui="onComfyUIRun(node.id)"
-						@refresh-history-check="onRefreshHistoryCheck(node.id)"
-						@clear-history-cache="onClearHistoryCache(node.id)"
-						@run-followup-meshy="onNodeRunMeshyFollowup(node.id, $event)"
-						@run-scene-decompose="onNodeRunSceneDecompose(node.id)"
-						@run-scene-layout="onNodeRunSceneLayout(node.id)"
-						@run-scene-understanding="onNodeRunSceneUnderstanding(node.id)"
-						@screenshot="onVideoScreenshot(node.id, $event)"
-						@capture-preview="onVideoCapturePreview(node.id, $event)"
-						@select="onSelectNode"
-						@select-workflow="onComfyUISelectWorkflow(node.id, $event)"
-						@set-selected-placeholder-output="
-							onNodeSceneLayoutSelectedPlaceholderOutput(node.id, $event)
-						"
-						@set-type="onNodeSetType(node.id, $event)"
-						@open-node-library="onNodeOpenLibrary(node.id)"
-						@start-link="onStartLink($event, vp.screenToWorld)"
-						@stop-meshy-task="onNodeStopMeshyTask(node.id)"
-						@start-three-preview="onNodeStartThreePreview(node.id)"
-						@retry-meshy-fetch="onNodeRetryMeshyFetch(node.id)"
-						@open-meshy-task-panel="onOpenMeshyTaskPanel"
-						@open-ark-task-panel="onOpenArkTaskPanel"
-						@open-gemini-task-panel="onOpenGeminiTaskPanel"
-						@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
-						@generate-tripo3d="onNodeGenerateTripo3D(node.id)"
-						@refresh-tripo3d-task="onNodeRefreshTripo3DTask(node.id)"
-						@pull-tripo3d-output="onNodePullTripo3DOutput(node.id)"
-						@stop-tripo3d-task="onNodeStopTripo3DTask(node.id)"
-						@delete-tripo3d-task="onNodeDeleteTripo3DTask(node.id)"
-						@three-preview-progress="onNodeThreePreviewProgress(node.id, $event)"
-						@three-preview-ready="onNodeThreePreviewReady(node.id)"
-						@three-preview-error="onNodeThreePreviewError(node.id)"
-						@node-chat-update-draft="onNodeChatDraftUpdate"
-						@node-chat-update-params="onNodeChatParamsUpdate"
-						@node-chat-update-selected-refs="onNodeChatSelectedRefsUpdate"
-						@node-chat-close="onNodeChatClose"
-						@node-chat-submit="onNodeChatSubmit"
-						@node-chat-stop="onNodeChatStop"
-						@node-chat-remove-param-ref="onNodeChatRemoveParamRef"
-						@update-branch="onStoryBranchUpdate(node.id, $event)"
-						@update-comfyui-settings="onComfyUISettingsUpdate(node.id, $event)"
-						@update-hide-placeholder-cubes="
-							onNodeSceneLayoutHidePlaceholdersUpdate(node.id, $event)
-						"
-						@update-image-settings="onNodeImageSettingsUpdate(node.id, $event)"
-						@update-layout-items="onNodeSceneLayoutItemsUpdate(node.id, $event)"
-						@update-lighting-controls="onNodeSceneLayoutLightingControlsUpdate(node.id, $event)"
-						@update-lighting-debug="onNodeSceneLayoutLightingDebugUpdate(node.id, $event)"
-						@update-lighting-preview="onNodeSceneLayoutLightingPreviewUpdate(node.id, $event)"
-						@update-meshy-settings="onNodeMeshySettingsUpdate(node.id, $event)"
-						@update-model3d-settings="onNodeModel3DSettingsUpdate(node.id, $event)"
-						@update-preview-mode="onNodeSceneLayoutPreviewModeUpdate(node.id, $event)"
-						@update-preview-settings="onStoryPreviewSettingsUpdate(node.id, $event)"
-						@update-rotate-output="onRotateImageOutput(node.id, $event)"
-						@update-scene-understanding-settings="
-							onNodeSceneUnderstandingSettingsUpdate(node.id, $event)
-						"
-						@update-selected-layout-item="onNodeSceneLayoutSelectedItemUpdate(node.id, $event)"
-						@update-text-value="onNodeTextValueUpdate(node.id, $event)"
-						@update-video-settings="onNodeVideoSettingsUpdate(node.id, $event)"
-						@update:world-x="onNodeX(node.id, $event)"
-						@update:world-y="onNodeY(node.id, $event)"
-						@update:world-position="onNodeDragPosition(node.id, $event)"
-						@upload-model-file="onNodeUploadModel3DFile(node.id, $event.file)"
-						@upload-resource="onNodeUploadResource(node.id, $event.file, $event.kind)"
-						@upload-scene-layout-model-file="
-							onNodeUploadSceneLayoutModelFile(node.id, $event.file, $event.objectId)
-						"
-						@blender-connect="onBlenderConnect(node.id, $event)"
-						@blender-disconnect="onBlenderDisconnect(node.id)"
-						@blender-mount-tools="onBlenderMountTools(node.id)"
-						@blender-status-click="onBlenderStatusCheck(node.id, $event)"
-						@blender-clear-chat="onBlenderClearChat(node.id)"
-						@blender-compress-context="onBlenderCompressContext(node.id)"
-						@blender-open-workspace="onBlenderOpenWorkspace(node.id)"
-						@blender-init-workspace="onBlenderInitWorkspace(node.id)"
-						@blender-import="onBlenderImport(node.id)"
-						@update-blender-settings="onBlenderSettingsUpdate(node.id, $event)"
-					/>
-				</div>
-
+				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
 					:visible="contextMenu.open"
 					:x="contextMenu.x"
 					:y="contextMenu.y"
 					:sections="contextMenuSections"
-					@select="onContextMenuSelect"
+					@select="handleContextMenuSelect"
 				/>
-
+				<!-- 节点搜索菜单 (复用旧组件) -->
 				<DwebCanvasNodeSearchMenu
 					:visible="nodeSearchMenuVisible"
 					:items="i18nCatalogItems"
@@ -286,18 +62,7 @@
 					@upload-file="onNodeSearchMenuUploadFile"
 					@close="closeNodeSearchMenu"
 				/>
-
-				<!-- 标签编辑器 -->
-				<WorkflowTagEditor
-					:visible="tagEditor.visible.value"
-					:screenX="tagEditor.screenX.value"
-					:screenY="tagEditor.screenY.value"
-					:initialLabel="tagEditor.initialLabel.value"
-					@commit="tagEditor.commitTag($event)"
-					@cancel="tagEditor.closeEditor()"
-					@update:visible="tagEditor.visible.value = $event"
-				/>
-			</BlueprintCanvas>
+			</AIWorkflowBlueprintHost>
 		</div>
 
 		<!-- UI按钮容器 -->
@@ -393,10 +158,11 @@
 					:nodes-by-id="store.state.nodesById"
 					:node-order="store.state.nodeOrder"
 					:current-project-id="currentProjectId"
-					:nodeLibraryOpen="false"
+					:nodeLibraryOpen="nodeSearchMenuVisible"
 					:backendLogOpen="blueprintLogPanelOpen"
 					:electronReady="isElectron()"
 					:show-repair-assets="true"
+					:node-generation-tasks="store.state.nodeGenerationTasksById"
 					@quick-add="onRailQuickAdd"
 					@toggle-node-library="onRailToggleNodeLibrary"
 					@toggle-backend-log="onRailToggleBackendLog"
@@ -510,17 +276,6 @@
 				</div>
 			</div>
 
-			<div class="aiwf-overlay-top-right" :style="overlayTopRightStyle">
-				<button
-					class="aiwf-inspector-toggle"
-					type="button"
-					@pointerdown.stop
-					@click.stop="toggleInspector"
-				>
-					{{ t('aiworkflow.page.inspector.toggle') }}
-				</button>
-			</div>
-
 			<div class="aiwf-overlay-floating">
 				<WorkflowInspectorPanel
 					:open="inspectorOpen"
@@ -533,6 +288,7 @@
 					@upload-resource="onInspectorUploadResource"
 					@clear-resource="onInspectorClearResource"
 					@focus-node="onFocusNode"
+					@close="inspectorOpen = false"
 					@add-branch="onStoryBranchAdd"
 					@remove-branch="onStoryBranchRemove"
 					@update-branch="onStoryBranchUpdateFromInspector"
@@ -628,6 +384,14 @@
 				/>
 
 				<ToastStack :items="toasts" @close="removeToast" @hover="setToastHovering" />
+
+				<ImageMarkupDialog
+					:visible="!!(imageMarkupContext.url && !isElectronRuntime)"
+					:image-url="imageMarkupContext.url"
+					:source-name="imageMarkupContext.name"
+					@update:visible="(v: boolean) => { if (!v) closeImageMarkupDialog() }"
+					@export-markup="onNodeExportMarkupImage"
+				/>
 			</div>
 
 			<div class="aiwf-overlay-bottom-left">
@@ -635,7 +399,7 @@
 					:nodes-by-id="store.state.nodesById"
 					:viewport="viewport"
 					:canvas-size="canvasViewportSize"
-					@update:viewport="onViewportUpdate"
+					@update:viewport="onMinimapViewportDirect"
 				/>
 			</div>
 
@@ -690,14 +454,6 @@
 				:title="recoveryOverlayTitle"
 				:detail="recoveryOverlayDetail"
 				:progress="recoveryOverlayProgress"
-				:cancellable="false"
-			/>
-
-			<FullscreenProgressOverlay
-				:open="screenshotWarmupOpen"
-				:title="t('aiworkflow.page.screenshotWarmup.title')"
-				:detail="screenshotWarmupDetail || t('aiworkflow.page.screenshotWarmup.detail')"
-				:progress="screenshotWarmupProgress"
 				:cancellable="false"
 			/>
 
@@ -823,11 +579,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
-import BlueprintCanvas from '../../ui/BluePrint/BlueprintCanvas.vue'
-import WorkflowEdgeLayer from '../../ui/WorkFlow/WorkflowEdgeLayer.vue'
-import NodeCanvasLayer from './components/NodeCanvasLayer.vue'
+import AIWorkflowBlueprintHost from './components/AIWorkflowBlueprintHost.vue'
+import { useAIWorkflowBlueprintHost } from './composables/useAIWorkflowBlueprintHost'
+import type { LegacyBlueprintData } from '../../engine/blueprint/types'
+import { workflowStateToLegacyBlueprint, legacyBlueprintToWorkflowState } from './blueprint-bridge/workflowStateAdapter'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
-import CanvasAnchorLayer from './components/CanvasAnchorLayer.vue'
 import WorkflowMinimap from './components/WorkflowMinimap.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
 import BlueprintProjectToolbar, {
@@ -985,21 +741,18 @@ import { useAIWorkflowNodeVisibility } from './blueprint-core/useAIWorkflowNodeV
 import { useAIWorkflowCanvasInteraction } from './blueprint-core/canvas-interaction/useAIWorkflowCanvasInteraction'
 import { useAIWorkflowLinking } from './blueprint-core/linking/useAIWorkflowLinking'
 import { useAIWorkflowNodePresentation } from './node-business/presentation/useAIWorkflowNodePresentation'
+import { isNodeChatTypeSupported } from '../../ui/BluePrint/node-dialog/nodeChatConfig'
 import {
 	createNodeScreenshotPool,
 	invalidateDocumentStyleCache,
 	SCREENSHOT_PADDING,
 	type ScreenshotCacheEntry,
-	type ScreenshotPriority,
-	type VisibleNodeEntry
+	type ScreenshotPriority
 } from './node-screenshot'
 // Canvas2D渲染模块
 import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCanvasScreenshot'
 import {
-	loadAllScreenshotsForBlueprint,
-	saveScreenshotToDisk,
-	cleanupOldScreenshots,
-	makeDiskCacheKey
+	saveScreenshotToDisk
 } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
@@ -1104,8 +857,6 @@ import {
 import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
 import { useGlobalTaskBridge } from '../../composables/useGlobalTaskBridge'
 import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
-import WorkflowTagEditor from '../../ui/WorkFlow/selection/WorkflowTagEditor.vue'
-import SelectionFrameOverlay from '../../ui/WorkFlow/selection/SelectionFrameOverlay.vue'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
@@ -1260,6 +1011,455 @@ const {
 } = useNodeLibraryI18n()
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
+
+// ========== AIWorkflowBlueprintHost集成 ==========
+const {
+  hostRef: blueprintHostRef,
+  viewport: hostViewport,
+  canvasSize: hostCanvasSize,
+  onHostReady,
+  onViewportChange: onHostViewportChange,
+  bindHostEvents,
+  unbindHostEvents,
+  updateCanvasSize: updateHostCanvasSize
+} = useAIWorkflowBlueprintHost()
+
+const blueprintEditorData = computed<LegacyBlueprintData>(() => {
+  return workflowStateToLegacyBlueprint(store.state)
+})
+
+const legacyResourcesForDom = computed<Record<string, any>>(() => {
+  const result: Record<string, any> = {}
+  for (const resId of store.state.resourceOrder) {
+    const res = store.state.resourcesById[resId]
+    if (res) {
+      result[resId] = {
+        ...res,
+        previewUrl320: (res as any).previewUrl320 || res.previewUrl,
+        previewUrl640: (res as any).previewUrl640 || res.previewUrl,
+      }
+    }
+  }
+  return result
+})
+
+let isUpdatingFromStore = false
+
+function resetIsUpdatingFromStore() {
+  nextTick(() => {
+    isUpdatingFromStore = false
+  })
+}
+
+function syncEngineProjectionToStore() {
+  const editor = blueprintHostRef.value?.getInstance?.()
+  if (editor && typeof editor.saveBlueprint === 'function') {
+    const latest = editor.saveBlueprint()
+    if (latest) {
+      const snapshot = legacyBlueprintToWorkflowState(latest)
+      isUpdatingFromStore = true
+      store.commit('hydrateDraft', { snapshot })
+      resetIsUpdatingFromStore()
+    }
+  }
+}
+
+const engineApi = {
+  addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
+    return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+  },
+  createNodeWithConnection: (params: any) => {
+    const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
+    return result
+  },
+  updateNodeData: (nodeId: string, patch: Record<string, any>) => {
+    const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
+    return ok
+  },
+  connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => {
+    const ok = blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
+    return ok
+  },
+  copySelection: () => {
+    blueprintHostRef.value?.copySelection?.()
+  },
+  paste: () => {
+    blueprintHostRef.value?.paste?.()
+  },
+  pasteAt: (worldX: number, worldY: number) => {
+    return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
+  },
+  duplicate: () => {
+    blueprintHostRef.value?.duplicate?.()
+  },
+  deleteSelection: () => {
+    blueprintHostRef.value?.deleteSelection?.()
+  },
+  setSelection: (nodeIds: string[]) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelection === 'function') {
+      editor.setSelection(nodeIds)
+    }
+  },
+  setSelectedNode: (nodeId: string | null) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelectedNode === 'function') {
+      editor.setSelectedNode(nodeId)
+    }
+  },
+  setSelectedNodes: (nodeIds: string[], primaryNodeId?: string | null) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelectedNodes === 'function') {
+      editor.setSelectedNodes(nodeIds, primaryNodeId)
+    }
+  },
+  clearSelection: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.clearSelection === 'function') {
+      editor.clearSelection()
+    }
+  },
+  removeNode: (nodeId: string) => {
+    return blueprintHostRef.value?.removeNode?.(nodeId) ?? false
+  },
+  removeEdge: (edgeId: string) => {
+    return blueprintHostRef.value?.removeEdge?.(edgeId) ?? false
+  },
+  moveNode: (nodeId: string, x: number, y: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.moveNode === 'function') {
+      return editor.moveNode(nodeId, x, y)
+    }
+    return false
+  },
+  moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.moveNodesByDelta === 'function') {
+      editor.moveNodesByDelta(nodeIds, dx, dy)
+    }
+  },
+  setNodePosition: (nodeId: string, worldX: number, worldY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setNodePosition === 'function') {
+      editor.setNodePosition(nodeId, worldX, worldY)
+    }
+  },
+  setNodeSize: (nodeId: string, width?: number, height?: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setNodeSize === 'function') {
+      editor.setNodeSize(nodeId, width, height)
+    }
+  },
+  updateNodePositionDirect: (nodeId: string, worldX: number, worldY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.updateNodePositionDirect === 'function') {
+      editor.updateNodePositionDirect(nodeId, worldX, worldY)
+    }
+  },
+  updateNodesPositionDirect: (positions: Map<string, { x: number; y: number }>) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.updateNodesPositionDirect === 'function') {
+      editor.updateNodesPositionDirect(positions)
+    }
+  },
+  commitNodeMovement: (startPositions: Map<string, { x: number; y: number }>, endPositions: Map<string, { x: number; y: number }>) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.commitNodeMovement === 'function') {
+      editor.commitNodeMovement(startPositions, endPositions)
+    }
+  },
+  setEngineViewport: (zoom: number, panX: number, panY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setEngineViewport === 'function') {
+      editor.setEngineViewport(zoom, panX, panY)
+    }
+  },
+  focusNode: (nodeId: string) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.focusNode === 'function') {
+      return editor.focusNode(nodeId)
+    }
+    return false
+  },
+  getNode: (nodeId: string) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.getNode === 'function') {
+      return editor.getNode(nodeId)
+    }
+    return null
+  },
+  undo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.undo === 'function') {
+      editor.undo()
+      return true
+    }
+    return false
+  },
+  redo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.redo === 'function') {
+      editor.redo()
+      return true
+    }
+    return false
+  },
+  canUndo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.canUndo === 'function') {
+      return editor.canUndo()
+    }
+    return false
+  },
+  canRedo: () => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.canRedo === 'function') {
+      return editor.canRedo()
+    }
+    return false
+  },
+  selectAll: () => {
+    blueprintHostRef.value?.selectAll?.()
+  },
+  hasClipboardData: () => {
+    return blueprintHostRef.value?.hasClipboardData?.() ?? false
+  },
+  getSelectedNodeIds: () => {
+    return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
+  }
+}
+
+function syncNodeChatDialog(nodeIds: string[]) {
+  if (nodeIds.length === 1) {
+    const node = store.state.nodesById[nodeIds[0]]
+    if (node && isNodeChatTypeSupported(node.type)) {
+      store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
+      return
+    }
+  }
+  if (store.state.nodeChatDialog?.visible) {
+    store.dispatch('closeNodeChatDialog')
+  }
+}
+
+function onBlueprintEditorChange(data: LegacyBlueprintData) {
+  if (isUpdatingFromStore) {
+    return
+  }
+  for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
+    const n = data.nodesById[nodeId]
+    if (n) {
+      const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0)
+      const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0)
+      if (!isFinite(wx) || !isFinite(wy)) {
+        console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
+        return
+      }
+    }
+  }
+  const snapshot = legacyBlueprintToWorkflowState(data)
+  isUpdatingFromStore = true
+  store.commit('hydrateDraft', { snapshot })
+  resetIsUpdatingFromStore()
+  nextTick(() => {
+    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+    syncNodeChatDialog(selectedIds)
+  })
+}
+
+function onBlueprintEditorSelectionChange(nodeIds: string[]) {
+  isUpdatingFromStore = true
+  if (nodeIds.length > 0) {
+    store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
+  } else {
+    store.commit('clearSelection')
+  }
+  nextTick(() => {
+    isUpdatingFromStore = false
+    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+    syncNodeChatDialog(selectedIds)
+  })
+}
+
+function onHostEditorReady(editor: any) {
+  onHostReady(editor)
+  updateHostCanvasSize()
+}
+
+function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
+  onHostViewportChange(zoom, panX, panY)
+  if (isUpdatingFromStore) return
+  isUpdatingFromStore = true
+  store.commit('setViewport', { zoom, panX, panY })
+  resetIsUpdatingFromStore()
+}
+
+function onMinimapViewportDirect(vp: { zoom: number; panX: number; panY: number }) {
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor || typeof editor.setViewport !== 'function') return
+  editor.setViewport(vp)
+}
+
+function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
+  store.commit('setSelectedNode', { nodeId })
+  const node = store.state.nodesById[nodeId]
+  if (node && isNodeChatTypeSupported(node.type)) {
+    store.dispatch('openNodeChatDialog', { nodeId, nodeType: node.type as any })
+    return
+  }
+  if (_openInspectorFn) {
+    _openInspectorFn(true)
+  }
+}
+
+function onBlueprintEditorNodeContextMenu(nodeId: string, event: MouseEvent, _worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  if (nodeId) {
+    const selectedIds = selectedNodeIds.value
+    if (!selectedIds.includes(nodeId)) {
+      store.commit('setSelectedNode', { nodeId })
+    }
+  }
+  nextTick(() => {
+    if (_onCanvasContextMenuFn) {
+      _onCanvasContextMenuFn({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        worldX: _worldPos.x,
+        worldY: _worldPos.y
+      })
+    }
+  })
+}
+
+function onBlueprintEditorCanvasContextMenu(event: MouseEvent, worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  store.commit('clearSelection')
+  nextTick(() => {
+    if (_onCanvasContextMenuFn) {
+      _onCanvasContextMenuFn({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        worldX: worldPos.x,
+        worldY: worldPos.y
+      })
+    }
+  })
+}
+
+function onBlueprintEditorCanvasDblClick(event: MouseEvent, worldPos: { x: number; y: number }) {
+  if (_openNodeSearchMenuFn) {
+    _openNodeSearchMenuFn({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      worldX: worldPos.x,
+      worldY: worldPos.y
+    })
+  }
+}
+
+function onBlueprintEditorDrop(event: DragEvent, worldPos: { x: number; y: number }) {
+  event.preventDefault()
+  if (_onCanvasDropFn) {
+    const modifiedEvent = new DragEvent('drop', {
+      dataTransfer: event.dataTransfer,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      bubbles: true
+    })
+    Object.defineProperty(modifiedEvent, 'currentTarget', {
+      value: event.currentTarget,
+      writable: false
+    })
+    ;(modifiedEvent as any)._worldPos = worldPos
+    _onCanvasDropFn(modifiedEvent)
+  }
+}
+
+let _openNodeSearchMenuFn: ((position: { clientX: number; clientY: number; worldX: number; worldY: number }, linkInfo?: { fromNodeId: string; fromAnchorId: string }) => void) | null = null
+let _onCanvasDropFn: ((e: DragEvent) => void) | null = null
+let _onCanvasContextMenuFn: ((menuPayload: { clientX: number; clientY: number; worldX: number; worldY: number }) => void) | null = null
+let _openInspectorFn: ((open: boolean) => void) | null = null
+
+function syncBlueprintNow() {
+  if (!blueprintHostRef.value) return false
+  const editor = blueprintHostRef.value.getInstance?.()
+  if (!editor || typeof editor.loadBlueprint !== 'function') return false
+  const data = workflowStateToLegacyBlueprint(store.state)
+  isUpdatingFromStore = true
+  blueprintHostRef.value.loadBlueprint(data)
+  resetIsUpdatingFromStore()
+  return true
+}
+
+function patchBlueprintNodeData(nodeId: string) {
+  if (engineApi.updateNodeData) {
+    const storeNode = store.state.nodesById[nodeId]
+    if (!storeNode) return
+    const patch: Record<string, any> = { ...storeNode }
+    if (patch.resourceId === null) delete patch.resourceId
+    engineApi.updateNodeData(nodeId, patch)
+    return
+  }
+  const editor = blueprintHostRef.value?.getInstance?.()
+  if (!editor) return
+  const scene = editor.getScene?.()
+  if (!scene) return
+  const node = scene.getBlueprintNode?.(nodeId)
+  if (!node) return
+  const storeNode = store.state.nodesById[nodeId]
+  if (!storeNode) return
+  if (typeof node.setData === 'function') {
+    const patch: Record<string, any> = { ...storeNode }
+    if (patch.resourceId === null) delete patch.resourceId
+    node.setData(patch)
+  } else {
+    const storeData = JSON.parse(JSON.stringify(storeNode))
+    Object.assign(node.data, storeData)
+    if (typeof node.updateSize === 'function') {
+      node.updateSize(storeNode.width, storeNode.height)
+    }
+  }
+  scene.requestRedraw?.()
+}
+
+let viewportSyncFrameId: number | null = null
+let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null
+
+function flushViewportSyncToEngine() {
+  viewportSyncFrameId = null
+  const vp = pendingViewportSync
+  pendingViewportSync = null
+  if (!vp) return
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor) return
+  if (typeof editor.getViewport !== 'function' || typeof editor.setViewport !== 'function') return
+  const curVp = editor.getViewport()
+  if (curVp && Math.abs(curVp.zoom - vp.zoom) < 0.0001 && Math.abs(curVp.panX - vp.panX) < 0.1 && Math.abs(curVp.panY - vp.panY) < 0.1) {
+    return
+  }
+  isUpdatingFromStore = true
+  editor.setViewport(vp)
+  resetIsUpdatingFromStore()
+}
+
+watch(() => store.state.viewport, (newVp) => {
+  if (isUpdatingFromStore) return
+  if (!newVp) return
+  const host = blueprintHostRef.value
+  if (!host) return
+  const editor = host.getInstance?.()
+  if (!editor) return
+  pendingViewportSync = { zoom: newVp.zoom, panX: newVp.panX, panY: newVp.panY }
+  if (viewportSyncFrameId !== null) return
+  viewportSyncFrameId = requestAnimationFrame(flushViewportSyncToEngine)
+}, { deep: true })
+
+// ========== AIWorkflowBlueprintHost集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
@@ -1521,15 +1721,10 @@ const onAutoWireStart = (sourceNodeId: string) => {
 	autoWireInProgress.value = true
 	autoWireSourceNodeId.value = sourceNodeId
 	autoWireCreatedNodeIds.value = []
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.generating')
 }
 
 const onAutoWireNodeCreated = (nodeId: string) => {
 	autoWireCreatedNodeIds.value.push(nodeId)
-	const count = autoWireCreatedNodeIds.value.length
-	screenshotWarmupDetail.value = t('aiworkflow.page.autoWire.progress', { count: String(count) })
 }
 
 const onAutoWireEnd = async () => {
@@ -1661,7 +1856,7 @@ const {
 })
 
 // NodeCanvasLayer组件引用
-const nodeCanvasLayerRef = ref<InstanceType<typeof NodeCanvasLayer> | null>(null)
+const nodeCanvasLayerRef = ref<any | null>(null)
 
 // Canvas截图池引用 (用于传递给NodeCanvasLayer)
 // 注意：始终有值，不会为null
@@ -2369,490 +2564,11 @@ const getScreenshotCacheContext = () => {
 }
 
 const warmupAllNodeScreenshots = async (forceRecapture: boolean = false) => {
-	const allNodes = nodes.value.filter((n) => {
-		const nodeId = String(n?.id ?? '').trim()
-		return nodeId
-	})
-	console.log('[Screenshot Warmup] warmupAllNodeScreenshots called, forceRecapture:', forceRecapture, 'allNodes count:', allNodes.length, 'selectedNodeIds:', selectedNodeIds.value)
-	if (allNodes.length === 0) return
-
-	const currentTheme = themeStore.state.mode as 'dark' | 'light'
-	screenshotPool.setActiveTheme(currentTheme)
-	setCanvasActiveTheme(currentTheme)
-
-	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
-	screenshotPool.pruneToValidNodes(validNodeIds)
-
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = forceRecapture ? t('aiworkflow.page.warmup.prepareRecapture') : t('aiworkflow.page.warmup.preparing')
-
-	const cacheCtx = getScreenshotCacheContext()
-	void cleanupOldScreenshots(7 * 24 * 60 * 60 * 1000)
-
-	await nextTick()
-
-	const visibleNodeIds = new Set(safeVisibleRenderNodes.value.map((n) => String(n.id)))
-
-	const newMap = new Map<string, ScreenshotCacheEntry>()
-
-	let diskLoadedCount = 0
-	if (!forceRecapture) {
-		screenshotWarmupProgress.value = 0.03
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
-		try {
-			const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-			const totalNodes = allNodes.length
-			const currentTheme = themeStore.state.mode as 'dark' | 'light'
-			const otherTheme: 'dark' | 'light' = currentTheme === 'dark' ? 'light' : 'dark'
-			for (let i = 0; i < totalNodes; i++) {
-				const node = allNodes[i]
-				const nodeId = node.id
-				for (const theme of ['dark', 'light'] as const) {
-					const version = getNodeScreenshotVersion(node, theme)
-					const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
-					if (diskEntry && diskEntry.version === version && diskEntry.dataUrl) {
-						screenshotPool.prefillCache(
-							nodeId,
-							version,
-							diskEntry.dataUrl,
-							diskEntry.width,
-							diskEntry.height,
-							SCREENSHOT_PADDING
-						)
-						if (theme === currentTheme) {
-							const screenshotEntry: ScreenshotCacheEntry = {
-								nodeId,
-								version,
-								theme,
-								dataUrl: diskEntry.dataUrl,
-								width: diskEntry.width,
-								height: diskEntry.height,
-								padding: SCREENSHOT_PADDING,
-								capturedAt: Date.now()
-							}
-							newMap.set(nodeId, screenshotEntry)
-						}
-						diskLoadedCount++
-					}
-				}
-				if (i % 10 === 0 || i === totalNodes - 1) {
-					const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
-					screenshotWarmupProgress.value = 0.03 + ratio * 0.06
-					screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', { loaded: String(diskLoadedCount), totalNodes: String(totalNodes * 2) })
-					if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
-				}
-			}
-		} catch (err) {
-			console.warn('[Screenshot Warmup] load from disk failed:', err)
-		}
-	}
-
-	const nodesNeedingCapture: WorkflowNode[] = []
-	for (const node of allNodes) {
-		const nodeId = node.id
-		if (forceRecapture) {
-			nodesNeedingCapture.push(node)
-			continue
-		}
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		if (newMap.has(nodeId)) continue
-		nodesNeedingCapture.push(node)
-	}
-
-	nodesNeedingCapture.sort((a, b) => {
-		const aVisible = visibleNodeIds.has(String(a.id))
-		const bVisible = visibleNodeIds.has(String(b.id))
-		if (aVisible && !bVisible) return -1
-		if (!aVisible && bVisible) return 1
-		return 0
-	})
-
-	const total = nodesNeedingCapture.length
-	const cachedCount = allNodes.length - total
-
-	console.log('[Screenshot Warmup] stats:', {
-		allNodes: allNodes.length,
-		selectedNodes: selectedNodeIds.value.length,
-		diskLoaded: diskLoadedCount,
-		poolCached: cachedCount - diskLoadedCount,
-		needCapture: total,
-		newMapSize: newMap.size,
-		allNodeIds: allNodes.map(n => n.id),
-		needCaptureIds: nodesNeedingCapture.map(n => n.id)
-	})
-
-	nodeScreenshotMap.value = newMap
-
-	if (total === 0) {
-		await nextTick()
-		await waitForFrames(1)
-		screenshotWarmupProgress.value = 0.1
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-		await warmupCanvasAll(
-			newMap,
-			undefined,
-			(p: number, d: string) => {
-				screenshotWarmupProgress.value = 0.1 + p * 0.88
-				screenshotWarmupDetail.value = d
-			}
-		)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-		screenshotWarmupProgress.value = 0.99
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-		await waitForFrames(1)
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	warmupForceRenderNodeIds.value = new Set(nodesNeedingCapture.map((n) => String(n.id)))
-	isWarmingUpScreenshots.value = true
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	await waitForFrames(2)
-
-	screenshotWarmupProgress.value = 0.1
-	if (forceRecapture) {
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.forceRecapture', { nodeCount: String(allNodes.length) })
-	} else {
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readyToCapture', { nodeCount: String(allNodes.length), cached: String(cachedCount), diskLoaded: String(diskLoadedCount) })
-	}
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement | null) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const isVisible = visibleNodeIds.has(nodeId)
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 5 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					const priority: ScreenshotPriority = isVisible ? 'high' : 'normal'
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						priority
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[Screenshot Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			const ratio = screenshotCompleted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.78
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturing', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFrames = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFrames++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted > 0) {
-			const ratio = screenshotStarted / total
-			screenshotWarmupProgress.value = 0.1 + ratio * 0.12 + (screenshotCompleted / total) * 0.66
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.capturingWithReady', { nodeCount: String(allNodes.length), completed: String(screenshotCompleted), needCapture: String(total), started: String(screenshotStarted) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-
-	// === Canvas截图预热：加载所有截图到内存 ===
-	screenshotWarmupProgress.value = 0.88
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-	await waitForFrames(1)
-
-	await warmupCanvasAll(
-		newMap,
-		undefined,
-		(p: number, d: string) => {
-			screenshotWarmupProgress.value = 0.88 + p * 0.11
-			screenshotWarmupDetail.value = d
-		}
-	)
-
-	initCanvasScreenshotPool()
-	refreshCanvasNodeLayer()
-
-	screenshotWarmupProgress.value = 0.99
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-	await waitForFrames(1)
-
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 const warmupAutoWireNodes = async (): Promise<void> => {
-	const newNodeIds = autoWireCreatedNodeIds.value
-	if (newNodeIds.length === 0) return
-
-	const newNodes = newNodeIds
-		.map((id) => store.state.nodesById[id])
-		.filter(Boolean) as WorkflowNode[]
-	if (newNodes.length === 0) return
-
-	isWarmingUpScreenshots.value = true
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.renderingNewNodes', { count: String(newNodes.length) })
-
-	warmupForceRenderNodeIds.value = new Set(newNodeIds)
-
-	await waitForFrames(2)
-
-	const newMap = new Map(nodeScreenshotMap.value)
-	const nodesNeedingCapture: WorkflowNode[] = []
-
-	for (const node of newNodes) {
-		const nodeId = String(node.id ?? '').trim()
-		if (!nodeId) continue
-		if (selectedNodeIds.value.includes(nodeId)) continue
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		nodesNeedingCapture.push(node)
-	}
-
-	const total = nodesNeedingCapture.length
-	if (total === 0) {
-		nodeScreenshotMap.value = newMap
-		isWarmingUpScreenshots.value = false
-		warmupExitingFullRender.value = true
-		warmupForceRenderNodeIds.value = new Set()
-		await nextTick()
-		warmupExitingFullRender.value = false
-		await waitForFrames(1)
-		if (newMap.size > 0) {
-			await warmupCanvasAll(newMap)
-			initCanvasScreenshotPool()
-			refreshCanvasNodeLayer()
-		}
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 8 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						'high'
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						const cacheCtx = getScreenshotCacheContext()
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[AutoWire Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewProgress', { completed: String(screenshotCompleted), total: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFrames = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFrames < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFrames++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted === 0) {
-			screenshotWarmupProgress.value = 0.02 + (waitFrames / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
-		} else {
-			const pending = screenshotStarted - screenshotCompleted
-			screenshotWarmupProgress.value =
-				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl as HTMLElement)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
-	if (newMap.size > 0) {
-		await warmupCanvasAll(newMap)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-	}
-	await waitForFrames(2)
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 const waitForFrames = (count = 2): Promise<void> => {
@@ -2882,9 +2598,20 @@ function animateViewportTo(
 			viewportAnimationRaf = null
 		}
 
-		const startPanX = viewport.value.panX
-		const startPanY = viewport.value.panY
-		const startZoom = viewport.value.zoom
+		const host = blueprintHostRef.value
+		if (!host) {
+			resolve()
+			return
+		}
+
+		const curVp = host.getViewport()
+		if (!curVp) {
+			resolve()
+			return
+		}
+		const startPanX = curVp.panX
+		const startPanY = curVp.panY
+		const startZoom = curVp.zoom
 		const endPanX = target.panX ?? startPanX
 		const endPanY = target.panY ?? startPanY
 		const endZoom = target.zoom ?? startZoom
@@ -2910,7 +2637,7 @@ function animateViewportTo(
 			const curPanY = startPanY + (endPanY - startPanY) * t
 			const curZoom = startZoom + (endZoom - startZoom) * t
 
-			onViewportUpdate({ panX: curPanX, panY: curPanY, zoom: curZoom })
+			host.setViewport({ zoom: curZoom, panX: curPanX, panY: curPanY })
 
 			if (rawT < 1) {
 				viewportAnimationRaf = requestAnimationFrame(step)
@@ -2926,188 +2653,7 @@ function animateViewportTo(
 }
 
 const warmupNewTemplateNodes = async (newNodeIds: string[]): Promise<void> => {
-	if (!newNodeIds || newNodeIds.length === 0) return
-
-	const newNodes = newNodeIds
-		.map((id) => store.state.nodesById[id])
-		.filter(Boolean) as WorkflowNode[]
-	if (newNodes.length === 0) return
-
-	isWarmingUpScreenshots.value = true
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodes', { count: String(newNodes.length) })
-
-	warmupForceRenderNodeIds.value = new Set(newNodeIds)
-
-	await waitForFrames(2)
-
-	const newMap = new Map(nodeScreenshotMap.value)
-	const nodesNeedingCapture: WorkflowNode[] = []
-
-	for (const node of newNodes) {
-		const nodeId = String(node.id ?? '').trim()
-		if (!nodeId) continue
-		const version = getNodeScreenshotVersion(node)
-		if (screenshotPool.hasCachedScreenshot(nodeId, version)) {
-			const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-			if (cached) newMap.set(nodeId, cached)
-			continue
-		}
-		nodesNeedingCapture.push(node)
-	}
-
-	const total = nodesNeedingCapture.length
-	if (total === 0) {
-		nodeScreenshotMap.value = newMap
-		isWarmingUpScreenshots.value = false
-		warmupExitingFullRender.value = true
-		warmupForceRenderNodeIds.value = new Set()
-		await nextTick()
-		warmupExitingFullRender.value = false
-		await waitForFrames(1)
-		if (newMap.size > 0) {
-			await warmupCanvasAll(newMap)
-			initCanvasScreenshotPool()
-			refreshCanvasNodeLayer()
-		}
-		screenshotWarmupOpen.value = false
-		screenshotWarmupDetail.value = ''
-		return
-	}
-
-	screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-	screenshotPool.setBurstMode(true)
-
-	screenshotWarmupProgress.value = 0.02
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreview', { total: String(total) })
-
-	let screenshotStarted = 0
-	let screenshotCompleted = 0
-	const nodeElMap = new Map<string, HTMLElement>()
-	const startedSet = new Set<string>()
-	const promises: Promise<void>[] = []
-
-	const startScreenshot = (node: WorkflowNode, nodeEl: HTMLElement) => {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) return
-		startedSet.add(nodeId)
-		screenshotStarted++
-
-		const promise = (async () => {
-			let entry: ScreenshotCacheEntry | null = null
-			try {
-				const version = getNodeScreenshotVersion(node)
-				let el: HTMLElement | null = nodeEl
-				if (!el) {
-					let retries = 0
-					while (retries < 8 && !el) {
-						await nextTick()
-						await waitForFrames(2)
-						const hostEl = nodeHostRefs.get(nodeId)
-						if (hostEl) {
-							el = findNodeElementForScreenshot(hostEl)
-						}
-						retries++
-					}
-				}
-				if (el) {
-					const width = Math.max(80, Math.round(node.width) || 240)
-					const height = Math.max(80, Math.round(node.height) || 160)
-					entry = await screenshotPool.queueScreenshot(
-						nodeId,
-						el,
-						version,
-						width,
-						height,
-						SCREENSHOT_PADDING,
-						'high'
-					)
-					if (entry?.dataUrl) {
-						newMap.set(nodeId, entry)
-						const cacheCtx = getScreenshotCacheContext()
-						void saveScreenshotToDisk(
-							cacheCtx.projectId,
-							cacheCtx.blueprintId,
-							nodeId,
-							version,
-							entry.dataUrl,
-							entry.width,
-							entry.height
-						)
-					}
-				}
-			} catch (err) {
-				console.warn('[Template Warmup] failed for node:', nodeId, err)
-			}
-
-			screenshotCompleted++
-			screenshotWarmupProgress.value = screenshotCompleted / total
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.templateNodesProgress', { completed: String(screenshotCompleted), total: String(total) })
-		})()
-		promises.push(promise)
-	}
-
-	let waitFramesCount = 0
-	const MAX_WAIT_FRAMES = 30
-	while (screenshotStarted < total && waitFramesCount < MAX_WAIT_FRAMES) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-		waitFramesCount++
-
-		for (const node of nodesNeedingCapture) {
-			const nodeId = String(node.id ?? '').trim()
-			if (startedSet.has(nodeId)) continue
-			const hostEl = nodeHostRefs.get(nodeId)
-			if (hostEl) {
-				const nodeEl = findNodeElementForScreenshot(hostEl)
-				if (nodeEl) {
-					nodeElMap.set(nodeId, nodeEl)
-					startScreenshot(node, nodeEl)
-				}
-			}
-		}
-
-		if (screenshotCompleted === total) break
-
-		if (screenshotStarted === 0) {
-			screenshotWarmupProgress.value = 0.02 + (waitFramesCount / MAX_WAIT_FRAMES) * 0.08
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.waitingRender')
-		} else {
-			const pending = screenshotStarted - screenshotCompleted
-			screenshotWarmupProgress.value =
-				(screenshotStarted / total) * 0.15 + (screenshotCompleted / total) * 0.85
-			screenshotWarmupDetail.value = t('aiworkflow.page.warmup.generatingPreviewPending', { completed: String(screenshotCompleted), total: String(total), pending: String(pending) })
-		}
-	}
-
-	for (const node of nodesNeedingCapture) {
-		const nodeId = String(node.id ?? '').trim()
-		if (startedSet.has(nodeId)) continue
-		const hostEl = nodeHostRefs.get(nodeId)
-		const nodeEl = hostEl ? findNodeElementForScreenshot(hostEl) : null
-		startScreenshot(node, nodeEl as HTMLElement)
-	}
-
-	await Promise.all(promises)
-
-	screenshotPool.setBurstMode(false)
-	screenshotPool.resetConcurrency()
-
-	nodeScreenshotMap.value = newMap
-	isWarmingUpScreenshots.value = false
-	warmupExitingFullRender.value = true
-	warmupForceRenderNodeIds.value = new Set()
-	await nextTick()
-	warmupExitingFullRender.value = false
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.newNodesDone', { count: String(newNodes.length) })
-	if (newMap.size > 0) {
-		await warmupCanvasAll(newMap)
-		initCanvasScreenshotPool()
-		refreshCanvasNodeLayer()
-	}
-	await waitForFrames(2)
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
+	return
 }
 
 watch(
@@ -3393,151 +2939,11 @@ let warmupDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let warmupMode: 'force' | 'cache' | null = null
 
 const triggerWarmupIfNeeded = () => {
-	if (warmupDebounceTimer) {
-		clearTimeout(warmupDebounceTimer)
-		warmupDebounceTimer = null
-	}
-	warmupDebounceTimer = setTimeout(() => {
-		warmupDebounceTimer = null
-		if (isWarmingUpScreenshots.value) return
-		const count = nodes.value.length
-		if (count <= 0) return
-		if (hasWarmedUp) return
-		warmupMode = 'cache'
-		hasWarmedUp = true
-		loadCachedScreenshotsToCanvas().catch((err) => {
-			console.warn('[Screenshot Warmup] load cache failed, falling back to force warmup:', err)
-			warmupMode = 'force'
-			screenshotPool.cleanup()
-			nodeScreenshotMap.value = new Map()
-			warmupAllNodeScreenshots(true).catch((err2) => {
-				console.warn('[Screenshot Warmup] fallback force warmup failed:', err2)
-				isWarmingUpScreenshots.value = false
-				screenshotWarmupOpen.value = false
-				hasWarmedUp = false
-				warmupMode = null
-			})
-		})
-	}, 300)
+	return
 }
 
 const loadCachedScreenshotsToCanvas = async () => {
-	const allNodes = nodes.value.filter((n) => {
-		const nodeId = String(n?.id ?? '').trim()
-		return nodeId
-	})
-	console.log('[Screenshot Warmup] loadCachedScreenshotsToCanvas called, allNodes count:', allNodes.length)
-	if (allNodes.length === 0) {
-		hasWarmedUp = false
-		warmupMode = null
-		return
-	}
-
-	const currentTheme = themeStore.state.mode as 'dark' | 'light'
-	screenshotPool.setActiveTheme(currentTheme)
-	setCanvasActiveTheme(currentTheme)
-
-	const validNodeIds = new Set(allNodes.map((n) => String(n.id)))
-	screenshotPool.pruneToValidNodes(validNodeIds)
-
-	screenshotWarmupOpen.value = true
-	screenshotWarmupProgress.value = 0
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingDiskCache')
-
-	const cacheCtx = getScreenshotCacheContext()
-
-	await nextTick()
-	await waitForFrames(1)
-
-	const newMap = new Map<string, ScreenshotCacheEntry>()
-
-	let diskLoadedCount = 0
-	try {
-		screenshotWarmupProgress.value = 0.05
-		screenshotWarmupDetail.value = t('aiworkflow.page.warmup.readingDiskCache')
-		const diskCache = await loadAllScreenshotsForBlueprint(cacheCtx.projectId, cacheCtx.blueprintId)
-		const totalNodes = allNodes.length
-		const currentTheme = themeStore.state.mode as 'dark' | 'light'
-		for (let i = 0; i < totalNodes; i++) {
-			const node = allNodes[i]
-			const nodeId = node.id
-			for (const theme of ['dark', 'light'] as const) {
-				const version = getNodeScreenshotVersion(node, theme)
-				const diskEntry = diskCache.get(makeDiskCacheKey(nodeId, theme))
-				if (diskEntry && diskEntry.dataUrl && diskEntry.version === version) {
-					screenshotPool.prefillCache(
-						nodeId,
-						version,
-						diskEntry.dataUrl,
-						diskEntry.width,
-						diskEntry.height,
-						SCREENSHOT_PADDING
-					)
-					if (theme === currentTheme) {
-						const screenshotEntry: ScreenshotCacheEntry = {
-							nodeId,
-							version,
-							theme,
-							dataUrl: diskEntry.dataUrl,
-							width: diskEntry.width,
-							height: diskEntry.height,
-							padding: SCREENSHOT_PADDING,
-							capturedAt: Date.now()
-						}
-						newMap.set(nodeId, screenshotEntry)
-					}
-					diskLoadedCount++
-				}
-			}
-			if (i % 10 === 0 || i === totalNodes - 1) {
-				const ratio = totalNodes > 0 ? (i + 1) / totalNodes : 1
-				screenshotWarmupProgress.value = 0.05 + ratio * 0.2
-				screenshotWarmupDetail.value = t('aiworkflow.page.warmup.diskCacheLoading', {
-					loaded: String(diskLoadedCount),
-					totalNodes: String(totalNodes * 2)
-				})
-				if (i % 20 === 0) await new Promise<void>(r => requestAnimationFrame(() => r()))
-			}
-		}
-	} catch (err) {
-		console.warn('[Screenshot Warmup] load from disk failed:', err)
-	}
-
-	nodeScreenshotMap.value = newMap
-
-	screenshotWarmupProgress.value = 0.28
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.loadingCanvas', { count: String(newMap.size) })
-
-	await warmupCanvasAll(
-		newMap,
-		undefined,
-		(p: number, d: string) => {
-			screenshotWarmupProgress.value = 0.3 + p * 0.68
-			screenshotWarmupDetail.value = d
-		}
-	)
-	initCanvasScreenshotPool()
-	refreshCanvasNodeLayer()
-
-	screenshotWarmupProgress.value = 0.98
-	screenshotWarmupDetail.value = t('aiworkflow.page.warmup.done')
-	await waitForFrames(1)
-
-	screenshotWarmupOpen.value = false
-	screenshotWarmupDetail.value = ''
-
-	if (newMap.size === 0) {
-		console.log('[Screenshot Warmup] no cached screenshots found, triggering force warmup')
-		warmupMode = 'force'
-		await waitForFrames(1)
-		warmupAllNodeScreenshots(true).catch((err) => {
-			console.warn('[Screenshot Warmup] fallback force warmup failed:', err)
-			isWarmingUpScreenshots.value = false
-			screenshotWarmupOpen.value = false
-			hasWarmedUp = false
-			warmupMode = null
-		})
-	}
+	return
 }
 
 watch(
@@ -3551,6 +2957,7 @@ watch(
 )
 
 onMounted(() => {
+	bindHostEvents()
 	setTimeout(() => {
 		scheduleVisibleNodeScreenshots()
 	}, 1000)
@@ -3683,6 +3090,48 @@ const chatDraft = computed({
 })
 
 const nodeChatDialog = computed(() => store.state.nodeChatDialog)
+
+const chatStateForHost = computed(() => ({
+	visible: nodeChatDialog.value.visible,
+	nodeId: nodeChatDialog.value.nodeId,
+	nodeType: nodeChatDialog.value.nodeType,
+	draft: nodeChatDialog.value.draft,
+	submitting: nodeChatDialog.value.submitting,
+	params: nodeChatDialog.value.params,
+	selectedRefs: nodeChatDialog.value.selectedRefs,
+}))
+
+const onHostNodeChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
+	onNodeChatSubmit(payload)
+}
+
+const onHostNodeChatClose = (_nodeId: string) => {
+	onNodeChatClose()
+}
+
+const onHostNodeChatUpdateDraft = (payload: { nodeId: string; draft: string }) => {
+	onNodeChatDraftUpdate(payload.draft)
+}
+
+const onHostNodeChatUpdateParams = (payload: { nodeId: string; params: Record<string, any> }) => {
+	onNodeChatParamsUpdate(payload.params as WorkflowNodeChatParams)
+}
+
+const onHostNodeChatUpdateSelectedRefs = (payload: { nodeId: string; selectedRefs: WorkflowNodeChatSelectedRef[] }) => {
+	onNodeChatSelectedRefsUpdate(payload.selectedRefs)
+}
+
+const onHostNodeChatRemoveParamRef = (payload: { nodeId: string; refItem: any }) => {
+	onNodeChatRemoveParamRef(payload.refItem)
+}
+
+const onHostNodeChatStop = (_nodeId: string) => {
+	onNodeChatStop()
+}
+
+const onHostNodePreviewRequest = (payload: { nodeId: string; imageUrl: string }) => {
+	onNodeImagePreviewRequestInline(payload.nodeId, { imageUrl: payload.imageUrl })
+}
 
 const onNodeChatDraftUpdate = (text: string) => {
 	store.commit('setNodeChatDraft', { text })
@@ -3844,14 +3293,6 @@ const createImageNodeAtCenter = (url: string, name?: string, opts?: {
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
-		store.commit('addNodeAt', {
-			worldX,
-			worldY,
-			title: name || t('aiworkflow.page.defaultImageNodeTitle')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
 		const imageSource = opts?.imageGenerationSource || 'gemini'
 		const imageSettings: Record<string, unknown> = {
 			imageUrl: url,
@@ -3867,12 +3308,12 @@ const createImageNodeAtCenter = (url: string, name?: string, opts?: {
 				outputImages: opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : (url ? [url] : [])
 			}
 		}
-		if (url) {
-			store.commit('setNodeImageSettings', {
-				nodeId: newNodeId,
-				imageSettings
-			})
-		}
+		const newNodeId = engineApi.addNode(
+			'image',
+			worldX,
+			worldY,
+			{ title: name || t('aiworkflow.page.defaultImageNodeTitle'), ...(url ? { imageSettings } : {}) }
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -3888,14 +3329,12 @@ const createModel3DNodeAtCenter = (opts?: {
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
-		store.commit('addNodeAt', {
+		const newNodeId = engineApi.addNode(
+			'model3d',
 			worldX,
 			worldY,
-			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'model3d' })
+			{ title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName') }
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createModel3DNodeAtCenter] 创建节点失败:', e)
@@ -3905,23 +3344,15 @@ const createModel3DNodeAtCenter = (opts?: {
 
 const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
 	try {
-		store.commit('addNodeAt', {
+		const newNodeId = engineApi.addNode(
+			'image',
 			worldX,
 			worldY,
-			title: name || t('aiworkflow.page.defaultImageNodeTitle')
-		})
-		const newNodeId = store.state.selectedNodeId
-		if (!newNodeId) return null
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
-		if (url) {
-			store.commit('setNodeImageSettings', {
-				nodeId: newNodeId,
-				imageSettings: {
-					imageUrl: url,
-					imageGenerationSource: 'gemini'
-				}
-			})
-		}
+			{
+				title: name || t('aiworkflow.page.defaultImageNodeTitle'),
+				...(url ? { imageSettings: { imageUrl: url, imageGenerationSource: 'gemini' } } : {})
+			}
+		)
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAt] 创建节点失败:', e)
@@ -4022,6 +3453,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			bindTextResultToNode: (nodeId: string, text: string) => {
 				store.commit('setNodeTextValue', { nodeId, textValue: text })
+				patchBlueprintNodeData(nodeId)
 			},
 			bindImageResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]
@@ -4062,7 +3494,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
-					return true
+					patchBlueprintNodeData(nodeId)
+					return base.url
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
@@ -4134,7 +3567,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
-				return true
+				patchBlueprintNodeData(nodeId)
+				return base.url
 			},
 			bindVideoResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]
@@ -4149,6 +3583,34 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				const pid = Number(currentProjectId.value ?? 0)
 				const sourceUrl = String(url || '').trim()
+
+				if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
+					base.url = sourceUrl
+					try {
+						const u = new URL(sourceUrl)
+						const path = u.searchParams.get('path')
+						if (path) {
+							base.projectRelativePath = decodeURIComponent(path)
+						}
+					} catch {
+						// ignore
+					}
+					finalizeGeneratedResourceLocalUrl(base, pid)
+					base.url = String(base.url || '').trim()
+					if (
+						!base.url ||
+						!isStrictLocalRenderableUrl(base.url) ||
+						!isWorkflowLocalAssetUrl(base.url)
+					) {
+						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+						return false
+					}
+					store.commit('addResource', base)
+					store.commit('setNodeResource', { nodeId, resourceId })
+					patchBlueprintNodeData(nodeId)
+					return true
+				}
+
 				if (!(pid > 0) || !sourceUrl) {
 					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
 					return false
@@ -4216,6 +3678,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			bindModel3dResultToNode: async (nodeId: string, url: string, format?: string) => {
@@ -4252,6 +3715,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
+					patchBlueprintNodeData(nodeId)
 					return true
 				}
 
@@ -4315,6 +3779,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
@@ -4437,7 +3902,7 @@ const disconnectNanoRefEdges = () => {
 		if (e.toNodeId === NANO_ANCHOR_NODE_ID || e.fromNodeId === NANO_ANCHOR_NODE_ID)
 			removeIds.push(edgeId)
 	}
-	for (const edgeId of removeIds) store.commit('removeEdge', { edgeId })
+	for (const edgeId of removeIds) engineApi.removeEdge(edgeId)
 }
 
 const onDockLayoutChanged = () => {
@@ -4462,13 +3927,6 @@ const overlaySafeRight = computed(() => {
 	const safeWidth = Number(dockSafeArea.value?.width ?? 0)
 	if (!Number.isFinite(safeWidth)) return 0
 	return Math.max(0, Math.round(safeWidth))
-})
-
-const overlayTopRightStyle = computed(() => {
-	const right = overlaySafeRight.value > 0 ? overlaySafeRight.value + 12 : 16
-	return {
-		right: `${right}px`
-	} as Record<string, string>
 })
 
 const overlayAlertStyle = computed(() => {
@@ -4889,6 +4347,9 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 				return Promise.resolve({ removed: false, reason: 'skip' as const })
 			}
 			return removeResourceByPolicyBridge(resourceId, opts)
+		},
+		performDelete: (nodeIds) => {
+			engineApi.deleteSelection()
 		}
 	})
 
@@ -4953,8 +4414,11 @@ const normalizePastedNodeResources = (nodeIds: string[]) => {
 }
 
 const pasteNodesWithResourceDedupe = (payload?: { worldX?: number; worldY?: number }) => {
-	store.commit('pasteNode', payload ?? {})
-	// Keep resources unique per pasted node.
+	if (payload?.worldX != null && payload?.worldY != null) {
+		engineApi.pasteAt(payload.worldX, payload.worldY)
+	} else {
+		engineApi.paste()
+	}
 }
 
 const inferMediaKindFromUrlOrName = (input: string): 'image' | 'video' | null => {
@@ -5087,14 +4551,13 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				displayName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
 			}
 
-			store.commit('addNodeAt', {
-				worldX: worldX + offset,
-				worldY: worldY + offset,
-				title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-			})
-			const nodeId = store.state.selectedNodeId
+			const nodeId = engineApi.addNode(
+				kind as 'image' | 'video',
+				worldX + offset,
+				worldY + offset,
+				{ title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
+			)
 			if (nodeId) {
-				store.commit('setNodeType', { nodeId, type: kind })
 				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
 					sourcePath: assetAbsPath || undefined,
 					projectRelativePath: assetRelPath || undefined
@@ -5146,14 +4609,13 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				? generateUniqueMediaFileName('paste', 'mp4')
 				: generateUniqueMediaFileName('paste', 'png')
 
-			store.commit('addNodeAt', {
-				worldX: center.worldX,
-				worldY: center.worldY,
-				title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-			})
-			const nodeId = store.state.selectedNodeId
+			const nodeId = engineApi.addNode(
+				urlKind as 'image' | 'video',
+				center.worldX,
+				center.worldY,
+				{ title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
+			)
 			if (nodeId) {
-				store.commit('setNodeType', { nodeId, type: urlKind })
 				bindMediaResourceToNode(nodeId, urlKind as 'image' | 'video', finalUrl, displayName || defaultName, {
 					sourcePath: assetAbsPath || undefined,
 					projectRelativePath: assetRelPath || undefined
@@ -5171,7 +4633,10 @@ const { onNodeCopy, onNodePaste, onNodeDelete, onNodeSetType } = useAIWorkflowNo
 	store,
 	selectedNodeIds,
 	pasteNodesWithResourceDedupe,
-	removeSelectedNodesWithResourceCleanup
+	removeSelectedNodesWithResourceCleanup,
+	copySelection: () => engineApi.copySelection(),
+	paste: () => engineApi.paste(),
+	setSelection: (nodeIds) => engineApi.setSelection(nodeIds)
 })
 
 const makeResourceId = () =>
@@ -5400,7 +4865,7 @@ const cancelActiveImportSession = (opts?: { cleanupUnresolved?: boolean }) => {
 				const st = session.resourceState.get(rid)
 				if (st?.done) continue
 
-				if (store.state.nodesById[info.nodeId]) store.commit('removeNode', { nodeId: info.nodeId })
+				if (store.state.nodesById[info.nodeId]) engineApi.removeNode(info.nodeId)
 				if (store.state.resourcesById[rid]) {
 					revokeTrackedObjectUrlsForResource(rid)
 					store.commit('removeResource', { resourceId: rid })
@@ -7252,16 +6717,29 @@ const onStoryBranchUpdate = (nodeId: string, payload: { branchId: string; text: 
 	store.commit('updateStoryBranch', { nodeId, branchId: payload.branchId, text: payload.text })
 }
 
+function syncNodeToEngineAfterCommit(nodeId: string) {
+	if (engineApi.updateNodeData) {
+		const n = store.state.nodesById[nodeId]
+		if (n) {
+			const patch: Record<string, any> = { ...(n as any) }
+			engineApi.updateNodeData(nodeId, patch)
+		}
+	}
+}
+
 const onStoryBranchAdd = (nodeId: string) => {
 	store.commit('addStoryBranch', { nodeId })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onStoryBranchRemove = (nodeId: string, branchId: string) => {
 	store.commit('removeStoryBranch', { nodeId, branchId })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onStoryBranchUpdateFromInspector = (nodeId: string, branchId: string, text: string) => {
 	store.commit('updateStoryBranch', { nodeId, branchId, text })
+	syncNodeToEngineAfterCommit(nodeId)
 }
 
 const onInspectorUploadResource = async (nodeId: string, file: File, kind: 'image' | 'video') => {
@@ -8307,7 +7785,7 @@ function onPasteSelectedNodes() {
 	const canvasW = canvasViewportSize.value?.width ?? window.innerWidth
 	const canvasH = canvasViewportSize.value?.height ?? window.innerHeight
 	const center = getViewportCenterInWorld(store.state.viewport, canvasW, canvasH)
-	store.commit('pasteNode', { worldX: center.x, worldY: center.y })
+	engineApi.pasteAt(center.x, center.y)
 }
 
 const projectList = ref<BlueprintProjectListItem[]>([])
@@ -8438,6 +7916,7 @@ const {
 
 const { autoExpandSceneDecomposeOutputs } = useAIWorkflowSceneDecomposeAutoExpand({
 	store,
+	engineApi,
 	getIncomingEdges,
 	connectedTextInputValue,
 	hasExactEdge,
@@ -8506,6 +7985,7 @@ const bindModelResourceToNode = (
 
 const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoWire({
 	store,
+	engineApi,
 	getOutgoingEdges,
 	getIncomingEdges,
 	bindMediaResourceToNode: (nodeId, kind, url, name, meta) =>
@@ -9300,12 +8780,17 @@ const {
 	onCanvasDrop
 } = useAIWorkflowDropAssets({
 	store,
+	engineApi,
 	makeResourceId,
 	setObjectUrl,
 	resolveBackendUrl,
 	autoSizeMediaNode,
 	bindMediaResourceToNode,
 	resolveDropWorldFromEvent: (e) => {
+		const presetWorldPos = (e as any)._worldPos as { x: number; y: number } | undefined
+		if (presetWorldPos) {
+			return { worldX: presetWorldPos.x, worldY: presetWorldPos.y }
+		}
 		const wrap = e.currentTarget as HTMLElement | null
 		const rect = wrap?.getBoundingClientRect() ?? null
 		if (!rect) return null
@@ -9329,6 +8814,7 @@ const {
 	fetchUrlAsArrayBuffer: fetchRemoteUrlAsArrayBuffer,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
+_onCanvasDropFn = onCanvasDrop
 
 const { recoverLocalResourcesFromHandles } = useAIWorkflowLocalResourceRecovery({
 	store,
@@ -9344,6 +8830,7 @@ const { recoverLocalResourcesFromHandles } = useAIWorkflowLocalResourceRecovery(
 
 const { createNodeFromDraggedMeshyTask } = useAIWorkflowMeshyDrop({
 	store,
+	engineApi,
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
@@ -9445,6 +8932,7 @@ const onConfirmImportLimitAlert = () => {
 const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkflowBatchMediaImport(
 	{
 		store,
+		engineApi,
 		makeResourceId,
 		maxBatchImportMediaCount: MAX_BATCH_IMPORT_MEDIA_COUNT,
 		inferMediaKindFromFile,
@@ -9542,12 +9030,11 @@ const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
 		store.commit('setNodeImageSettings', { nodeId, imageSettings })
 	},
-	commitAddNodeAt: ({ worldX, worldY, title }) => {
-		store.commit('addNodeAt', { worldX, worldY, title })
-		return store.state.selectedNodeId || null
+	commitAddNodeAt: ({ worldX, worldY, title, type }: { worldX: number; worldY: number; title?: string; type?: string }) => {
+		return engineApi.addNode((type || 'base') as any, worldX, worldY, { title })
 	},
-	commitSetNodeType: ({ nodeId, type }) => {
-		store.commit('setNodeType', { nodeId, type })
+	commitSetNodeType: ({ nodeId, type }: { nodeId: string; type: string }) => {
+		engineApi.updateNodeData(nodeId, { type })
 	},
 	videoScreenshotNodeTitle: t('aiworkflow.page.videoScreenshotNodeTitle')
 })
@@ -9981,6 +9468,7 @@ const handleRemoveChatContextItem = (id: string) => {
 
 const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } = useAgentToolBridge({
 	store,
+	engineApi,
 	toolApprovalQueue,
 	pushToast,
 	getSelectedNode: () => selectedNode.value,
@@ -10296,34 +9784,27 @@ let scheduleLinkEdgeRender = () => {}
 
 const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResize({
 	isRouteActive: () => route.name === 'AIWorkflow',
-	getSelectedNodeIds: () => selectedNodeIds.value,
+	getSelectedNodeIds: () => engineApi.getSelectedNodeIds(),
 	getSelectedEdgeId: () => selectedEdgeId.value,
 	selectAllNodes: () => {
-		const ids = store.state.nodeOrder.slice()
-		store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })
+		engineApi.selectAll()
 	},
 	pasteNodesAtCanvasCenter: () => {
-		const { worldX, worldY } = getCanvasCenterWorld()
-		pasteNodesWithResourceDedupe({ worldX, worldY })
+		engineApi.paste()
 	},
 	pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
 	copySelectedNodes: (primaryNodeId) => {
+		engineApi.copySelection()
 		store.commit('copyNode', { nodeId: primaryNodeId })
 	},
 	hasClipboardNodes: () => {
-		return !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
-	},
-	undo: () => {
-		aiWorkflowHistory.undo()
-	},
-	redo: () => {
-		aiWorkflowHistory.redo()
+		return engineApi.hasClipboardData() || !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
 	},
 	removeSelectedNodes: (nodeIds) => {
 		void removeSelectedNodesWithResourceCleanup(nodeIds)
 	},
 	removeSelectedEdge: (edgeId) => {
-		store.commit('removeEdge', { edgeId })
+		engineApi.removeEdge(edgeId)
 	},
 	scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender()
 })
@@ -10334,7 +9815,7 @@ const applyAction = (action: WorkflowAction) => {
 			void removeSelectedNodesWithResourceCleanup(selectedNodeIds.value)
 			return
 		}
-		if (selectedEdgeId.value) store.commit('removeEdge', { edgeId: selectedEdgeId.value })
+		if (selectedEdgeId.value) engineApi.removeEdge(selectedEdgeId.value)
 	}
 }
 
@@ -10393,8 +9874,22 @@ const {
 	pasteNodesWithResourceDedupe,
 	applyAction,
 	pushToast,
-	openFolderForPath
+	openFolderForPath,
+	syncBlueprint: syncBlueprintNow,
+	engineApi,
 })
+_openNodeSearchMenuFn = openNodeSearchMenu
+_onCanvasContextMenuFn = onCanvasContextMenu
+_openInspectorFn = (open: boolean) => { inspectorOpen.value = open }
+
+// 包装onContextMenuSelect以拦截reset-viewport，直接调用host.resetView()
+function handleContextMenuSelect(id: string) {
+	if (id === 'reset-viewport' && blueprintHostRef.value) {
+		blueprintHostRef.value.resetView()
+		return
+	}
+	onContextMenuSelect(id)
+}
 
 const handleLinkDropOnChatDock = (payload: {
 	clientX: number
@@ -10437,6 +9932,7 @@ const wrappedOnLinkDropOnCanvas = (payload: {
 
 const linkInteraction = useAIWorkflowLinking({
 	store,
+	engineApi,
 	nodes,
 	chatModelKey,
 	nanoAnchorNodeId: NANO_ANCHOR_NODE_ID,
@@ -10887,9 +10383,8 @@ const handleImageMarkupExported = async (payload: {
 		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
 		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
-		store.commit('addNodeAt', { worldX: nextPosition.worldX, worldY: nextPosition.worldY, title })
-		const newNodeId = String(store.state.selectedNodeId || '').trim()
-		if (!newNodeId || !store.state.nodesById[newNodeId]) {
+		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, { title })
+		if (!newNodeId) {
 			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
@@ -10918,7 +10413,6 @@ const handleImageMarkupExported = async (payload: {
 		}
 		store.commit('addResource', newResource)
 
-		store.commit('setNodeType', { nodeId: newNodeId, type: 'image' })
 		store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
 
 		const w = Math.max(1, Math.floor(Number(payload.width) || 1))
@@ -10939,12 +10433,7 @@ const handleImageMarkupExported = async (payload: {
 				(a) => String(a.mediaType || '') === 'image' || /^out-image/.test(String(a.id || ''))
 			) || fromAnchors?.[0]
 		if (fromAnchor) {
-			store.commit('addEdge', {
-				fromNodeId,
-				fromAnchorId: String(fromAnchor.id),
-				toNodeId: newNodeId,
-				toAnchorId: 'in-0'
-			})
+			engineApi.connectPorts(fromNodeId, String(fromAnchor.id), newNodeId, 'in-0')
 		}
 
 		if (exportType !== 'screenshot') {
@@ -11064,6 +10553,7 @@ const onOpenTripo3DTaskPanel = () => {
 
 const { createNodeFromDraggedTripo3DTask } = useAIWorkflowTripo3DDrop({
 	store,
+	engineApi,
 	pushToast: (message, tone) => pushToast(message, tone),
 	pullTripo3DTaskToNode: (nodeId, taskId, mode) => refreshTripo3DTaskToNode(nodeId, taskId),
 	createImageNodeAtCenter: (url, name, opts) => createImageNodeAtCenter(url, name, opts),
@@ -11203,10 +10693,8 @@ const {
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
 		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-		store.commit('addNodeAt', { worldX, worldY, title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
-		const nodeId = store.state.selectedNodeId
+		const nodeId = engineApi.addNode(kind as 'image' | 'video', worldX, worldY, { title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
 		if (!nodeId) return ''
-		store.commit('setNodeType', { nodeId, type: kind })
 		store.commit('addResource', base)
 		store.commit('setNodeResource', { nodeId, resourceId })
 		autoSizeMediaNode(nodeId, base.url, kind)
@@ -11416,9 +10904,9 @@ const onResourceDraggedToBlueprint = (
 	const worldY = (screenY - vp.panY) / vp.zoom
 
 	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
-	store.commit('addNodeAt', { worldX, worldY, title })
-	const newNodeId = String(store.state.selectedNodeId || '').trim()
-	if (!newNodeId || !store.state.nodesById[newNodeId]) {
+	const nodeType = resource.kind === 'video' ? 'video' : 'image'
+	const newNodeId = engineApi.addNode(nodeType, worldX, worldY, { title })
+	if (!newNodeId) {
 		pushToast(t('aiworkflow.page.resourceNode.createFailed'), 'error')
 		return
 	}
@@ -11436,9 +10924,22 @@ const onVideoTaskPanelMediaError = (taskId: string) => {
 }
 
 const onRailQuickAdd = (event: MouseEvent) => {
-	const worldX = (event.clientX - viewport.value.panX) / viewport.value.zoom
-	const worldY = (event.clientY - viewport.value.panY) / viewport.value.zoom
-	store.commit('addNodeAt', { worldX, worldY })
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
+	if (!wrapEl) return
+	const rect = wrapEl.getBoundingClientRect()
+	const vw = rect.width
+	const vh = rect.height
+	const z = viewport.value.zoom
+	const screenCenterX = event.clientX
+	const screenCenterY = event.clientY
+	const worldX = (screenCenterX - vw / 2 - viewport.value.panX) / z
+	const worldY = (screenCenterY - vh / 2 - viewport.value.panY) / z
+	openNodeSearchMenu({
+		clientX: screenCenterX,
+		clientY: screenCenterY,
+		worldX,
+		worldY
+	})
 }
 
 const onDeleteSelectedNodes = () => {
@@ -11460,16 +10961,19 @@ const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
 }
 
 const onRailToggleNodeLibrary = () => {
-	const wrapEl = document.querySelector('.bp-wrap')
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
-		const screenCenter = { x: rect.width / 2, y: rect.height / 2 }
+		const vw = rect.width
+		const vh = rect.height
 		const z = viewport.value.zoom
-		const worldX = (screenCenter.x - screenCenter.x - viewport.value.panX) / z
-		const worldY = (screenCenter.y - screenCenter.y - viewport.value.panY) / z
+		const screenCenterX = rect.left + rect.width / 2
+		const screenCenterY = rect.top + rect.height / 2
+		const worldX = (screenCenterX - vw / 2 - viewport.value.panX) / z
+		const worldY = (screenCenterY - vh / 2 - viewport.value.panY) / z
 		openNodeSearchMenu({
-			clientX: rect.left + rect.width / 2,
-			clientY: rect.top + rect.height / 2,
+			clientX: screenCenterX,
+			clientY: screenCenterY,
 			worldX,
 			worldY
 		})
@@ -11479,7 +10983,7 @@ const onRailToggleNodeLibrary = () => {
 const onNodeOpenLibrary = (nodeId: string) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
-	const wrapEl = document.querySelector('.bp-wrap')
+	const wrapEl = blueprintHostRef.value?.getContainerEl?.()
 	if (wrapEl) {
 		const rect = wrapEl.getBoundingClientRect()
 		const z = viewport.value.zoom
@@ -11907,7 +11411,11 @@ const { removeResourceByPolicy, onRemoveResource, onRefreshMissingResourceRecord
 removeResourceByPolicyBridge = removeResourceByPolicy
 
 const onAliasChange = (nodeId: string, alias: string) => {
-	store.commit('setNodeAlias', { nodeId, alias })
+	if (engineApi.updateNodeData) {
+		engineApi.updateNodeData(nodeId, { alias })
+	} else {
+		store.commit('setNodeAlias', { nodeId, alias })
+	}
 }
 
 const onCanvasDblClick = (payload: {
@@ -11930,6 +11438,7 @@ const { onNodePreviewContextMenu } = useAIWorkflowNodePreviewContextMenu({
 
 const canvasInteraction = useAIWorkflowCanvasInteraction({
 	store,
+	engineApi,
 	selectedNodeIds,
 	inspectorOpen,
 	chatModelKey,
@@ -11964,6 +11473,18 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 		forceEndViewportMotion()
 		flushCanvasNodeLayer()
 		scheduleVisibleNodeScreenshots()
+	},
+	onOpenNodeChat: (nodeId: string) => {
+		store.dispatch('openNodeChatDialog', { nodeId })
+	},
+	onCloseNodeChat: () => {
+		store.dispatch('closeNodeChatDialog')
+	},
+	onSetInspectorOpen: (open: boolean) => {
+		inspectorOpen.value = open
+	},
+	onSetChatCollapsed: (collapsed: boolean) => {
+		chatCollapsed.value = collapsed
 	}
 })
 
@@ -12024,6 +11545,31 @@ const onCanvasAnchorPointerDown = (payload: {
 		},
 		canvasScreenToWorld
 	)
+}
+
+const onDomNodeStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	onStartLink(
+		{
+			nodeId: payload.nodeId,
+			anchorId: payload.anchorId,
+			anchorIndex: payload.anchorIndex,
+			event: payload.event
+		},
+		canvasScreenToWorld
+	)
+}
+
+const onDomNodeEndLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+}) => {
+	onEndLink(payload)
 }
 
 let prevSelectedForScreenshot = new Set<string>(selectedNodeIds.value)
@@ -12236,7 +11782,22 @@ const onSelectNode = canvasInteraction.onSelectNode
 const onSelectEdge = canvasInteraction.onSelectEdge
 const onCompactNodePointerDown = canvasInteraction.onCompactNodePointerDown
 const onBoxSelect = canvasInteraction.onBoxSelect
-const onNodeSizeChange = canvasInteraction.onNodeSizeChange
+const onNodeSizeChange = (nodeId: string, width?: number, height?: number) => {
+	store.commit('setNodeSize', { nodeId, width, height })
+	const patch: Record<string, any> = {}
+	const n = store.state.nodesById[nodeId]
+	if (n) {
+		patch.width = n.width
+		patch.height = n.height
+		patch.sizeCustomized = n.sizeCustomized
+		if (n.type === 'story' && (n as any).inputs) patch.inputs = (n as any).inputs
+		if (n.type === 'story' && (n as any).outputs) patch.outputs = (n as any).outputs
+	}
+	if (engineApi.updateNodeData) {
+		engineApi.updateNodeData(nodeId, patch)
+	}
+	scheduleAsyncEdgeRender()
+}
 const onFocusNode = canvasInteraction.onFocusNode
 
 // Canvas节点事件处理
@@ -12401,6 +11962,7 @@ const onSelectionFrameDragEnd = (payload: { nodeIds: string[] }) => {
 }
 
 onBeforeUnmount(() => {
+	unbindHostEvents()
 	cancelActiveImportSession({ cleanupUnresolved: false })
 	mediaImportManager.dispose()
 	try {

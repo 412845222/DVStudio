@@ -5,11 +5,17 @@ import type {
 	WorkflowNode,
 	WorkflowState
 } from '../../../../aiworkflow/types'
-import { ComfyUIBridgeService, type MeshyTaskResponse } from '../../../../network/ComfyUIBridgeService'
+import {
+	ComfyUIBridgeService,
+	type MeshyTaskResponse
+} from '../../../../network/ComfyUIBridgeService'
 import type { Tripo3DGenerateResponse } from '../tripo3d/types'
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
-import { checkVideoReferencePrerequisites, clearPendingPrompt } from '../seedance/useSeedanceVideoReferenceCheck'
+import {
+	checkVideoReferencePrerequisites,
+	clearPendingPrompt
+} from '../seedance/useSeedanceVideoReferenceCheck'
 import type { useGlobalTaskBridge } from '../../../../composables/useGlobalTaskBridge'
 
 type GlobalTaskBridge = ReturnType<typeof useGlobalTaskBridge>
@@ -24,8 +30,11 @@ export type NodeGenerationApiDeps = {
 	nodeResourceUrl?: (node: any) => string | null
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
 	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
-	/** Bind produced asset url to the originating node, e.g. as its resource. */
-	bindImageResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
+	/** Bind produced asset url to the originating node, e.g. as its resource. Returns final persisted URL or false on failure. */
+	bindImageResultToNode?: (
+		nodeId: string,
+		url: string
+	) => string | false | void | Promise<string | false | void>
 	bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
 	bindTextResultToNode?: (nodeId: string, text: string) => void
 	bindModel3dResultToNode?: (
@@ -184,7 +193,8 @@ const getNodeEffectiveImageUrl = (
 			typeof blenderSettings.lastOutputs === 'object' && blenderSettings.lastOutputs
 				? (blenderSettings.lastOutputs as Record<string, unknown>)
 				: {}
-		const blenderImage = typeof lastOutputs.imageUrl === 'string' ? String(lastOutputs.imageUrl).trim() : ''
+		const blenderImage =
+			typeof lastOutputs.imageUrl === 'string' ? String(lastOutputs.imageUrl).trim() : ''
 		if (blenderImage) return blenderImage
 	}
 	const meshySettings =
@@ -196,14 +206,18 @@ const getNodeEffectiveImageUrl = (
 			typeof meshySettings.outputSummary === 'object' && meshySettings.outputSummary
 				? (meshySettings.outputSummary as Record<string, unknown>)
 				: {}
-		const preferredUrl = typeof outputSummary.preferredUrl === 'string' ? String(outputSummary.preferredUrl).trim() : ''
+		const preferredUrl =
+			typeof outputSummary.preferredUrl === 'string'
+				? String(outputSummary.preferredUrl).trim()
+				: ''
 		if (preferredUrl) {
 			console.log('[collectReferenceImages] 从meshyOutputSummary获取URL:', preferredUrl)
 			return preferredUrl
 		}
 	}
 	const tripo3dImgSettings =
-		typeof (imageSettings as Record<string, unknown>).tripo3dImageSettings === 'object' && (imageSettings as Record<string, unknown>).tripo3dImageSettings
+		typeof (imageSettings as Record<string, unknown>).tripo3dImageSettings === 'object' &&
+		(imageSettings as Record<string, unknown>).tripo3dImageSettings
 			? ((imageSettings as Record<string, unknown>).tripo3dImageSettings as Record<string, unknown>)
 			: undefined
 	if (tripo3dImgSettings) {
@@ -211,24 +225,40 @@ const getNodeEffectiveImageUrl = (
 			typeof tripo3dImgSettings.outputSummary === 'object' && tripo3dImgSettings.outputSummary
 				? (tripo3dImgSettings.outputSummary as Record<string, unknown>)
 				: {}
-		const preferredUrl = typeof outputSummary.preferredUrl === 'string' ? String(outputSummary.preferredUrl).trim() : ''
+		const preferredUrl =
+			typeof outputSummary.preferredUrl === 'string'
+				? String(outputSummary.preferredUrl).trim()
+				: ''
 		if (preferredUrl) {
 			return preferredUrl
 		}
-		const tripoThumb = typeof tripo3dImgSettings.thumbnailUrl === 'string' ? String(tripo3dImgSettings.thumbnailUrl).trim() : ''
+		const tripoThumb =
+			typeof tripo3dImgSettings.thumbnailUrl === 'string'
+				? String(tripo3dImgSettings.thumbnailUrl).trim()
+				: ''
 		if (tripoThumb) return tripoThumb
-		const tripoImgs = Array.isArray(tripo3dImgSettings.imageUrls) ? tripo3dImgSettings.imageUrls as string[] : []
-		if (tripoImgs.length > 0 && typeof tripoImgs[0] === 'string' && tripoImgs[0].trim()) return tripoImgs[0].trim()
+		const tripoImgs = Array.isArray(tripo3dImgSettings.imageUrls)
+			? (tripo3dImgSettings.imageUrls as string[])
+			: []
+		if (tripoImgs.length > 0 && typeof tripoImgs[0] === 'string' && tripoImgs[0].trim())
+			return tripoImgs[0].trim()
 	}
 	const geminiImgSettings =
-		typeof (imageSettings as Record<string, unknown>).geminiImageSettings === 'object' && (imageSettings as Record<string, unknown>).geminiImageSettings
+		typeof (imageSettings as Record<string, unknown>).geminiImageSettings === 'object' &&
+		(imageSettings as Record<string, unknown>).geminiImageSettings
 			? ((imageSettings as Record<string, unknown>).geminiImageSettings as Record<string, unknown>)
 			: undefined
 	if (geminiImgSettings) {
-		const geminiThumb = typeof geminiImgSettings.thumbnailUrl === 'string' ? String(geminiImgSettings.thumbnailUrl).trim() : ''
+		const geminiThumb =
+			typeof geminiImgSettings.thumbnailUrl === 'string'
+				? String(geminiImgSettings.thumbnailUrl).trim()
+				: ''
 		if (geminiThumb) return geminiThumb
-		const geminiImgs = Array.isArray(geminiImgSettings.imageUrls) ? geminiImgSettings.imageUrls as string[] : []
-		if (geminiImgs.length > 0 && typeof geminiImgs[0] === 'string' && geminiImgs[0].trim()) return geminiImgs[0].trim()
+		const geminiImgs = Array.isArray(geminiImgSettings.imageUrls)
+			? (geminiImgSettings.imageUrls as string[])
+			: []
+		if (geminiImgs.length > 0 && typeof geminiImgs[0] === 'string' && geminiImgs[0].trim())
+			return geminiImgs[0].trim()
 	}
 	if (typeof nodeResourceUrl === 'function') {
 		const standardUrl = nodeResourceUrl(node)
@@ -298,7 +328,10 @@ const downloadImageAsBlob = async (
 		if (typeof deps.downloadUrlAsBlob === 'function') {
 			console.log('[downloadImageAsBlob] 使用downloadUrlAsBlob下载')
 			blob = await deps.downloadUrlAsBlob(fetchUrl)
-			console.log('[downloadImageAsBlob] downloadUrlAsBlob结果:', blob ? `size=${blob.size}, type=${blob.type}` : 'null')
+			console.log(
+				'[downloadImageAsBlob] downloadUrlAsBlob结果:',
+				blob ? `size=${blob.size}, type=${blob.type}` : 'null'
+			)
 		}
 		if (!blob) {
 			console.log('[downloadImageAsBlob] 使用fetch下载')
@@ -335,7 +368,12 @@ const collectReferenceImages = async (
 		return []
 	}
 
-	console.log('[collectReferenceImages] 开始收集参考图, nodeId:', nodeId, '总边数:', state.edgeOrder.length)
+	console.log(
+		'[collectReferenceImages] 开始收集参考图, nodeId:',
+		nodeId,
+		'总边数:',
+		state.edgeOrder.length
+	)
 
 	const refs: Array<{ name: string; blob: Blob }> = []
 
@@ -383,7 +421,10 @@ const collectReferenceImages = async (
 
 		const sourceUrl = getNodeEffectiveImageUrl(sourceNode, state, deps.nodeResourceUrl)
 		if (!sourceUrl) {
-			console.warn('[collectReferenceImages] 无法获取源节点图片URL, fromNodeId:', String(edge.fromNodeId ?? ''))
+			console.warn(
+				'[collectReferenceImages] 无法获取源节点图片URL, fromNodeId:',
+				String(edge.fromNodeId ?? '')
+			)
 			continue
 		}
 
@@ -526,15 +567,19 @@ const collectReferenceImagesWithUrl = async (
 		if (!candidateUrl) {
 			const meshySettings =
 				typeof sourceNode.imageSettings === 'object' && sourceNode.imageSettings
-					? ((sourceNode.imageSettings as Record<string, unknown>).meshyImageSettings as Record<string, unknown> | undefined)
+					? ((sourceNode.imageSettings as Record<string, unknown>).meshyImageSettings as
+							| Record<string, unknown>
+							| undefined)
 					: undefined
 			if (meshySettings) {
 				const outputSummary =
 					typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
 						? (meshySettings.outputSummary as Record<string, unknown>)
 						: {}
-				const preferredUrl = typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
-				const thumbnailUrl = typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
+				const preferredUrl =
+					typeof outputSummary?.preferredUrl === 'string' ? String(outputSummary.preferredUrl) : ''
+				const thumbnailUrl =
+					typeof outputSummary?.thumbnailUrl === 'string' ? String(outputSummary.thumbnailUrl) : ''
 				candidateUrl = preferredUrl || thumbnailUrl
 			}
 		}
@@ -578,9 +623,7 @@ const normalizeImageModel = (params: Record<string, unknown>) => {
 	// Gemini/NanoBanana 图片生成模型（统一使用Gemini官方API）
 	if (rawModel === 'gemini' || rawModel === 'nanobanana') {
 		const geminiModelVersion = String(
-			params?.geminiImageModelVersion || 
-			params?.nanobananaModelVersion || 
-			'gemini-3.1-flash-image'
+			params?.geminiImageModelVersion || params?.nanobananaModelVersion || 'gemini-3.1-flash-image'
 		).trim()
 		return { kind: 'gemini', model: geminiModelVersion }
 	}
@@ -680,7 +723,10 @@ const handleMeshySuccess = async (
 	let currentNode = state.nodesById[targetNodeId]
 
 	if (!currentNode && typeof deps.createImageNodeAtCenter === 'function') {
-		const newNodeId = deps.createImageNodeAtCenter(preferredUrl, t('aiworkflow.runtime.meshyResultNodeName'))
+		const newNodeId = deps.createImageNodeAtCenter(
+			preferredUrl,
+			t('aiworkflow.runtime.meshyResultNodeName')
+		)
 		if (newNodeId) {
 			targetNodeId = newNodeId
 			nodeCreated = true
@@ -710,7 +756,8 @@ const handleMeshySuccess = async (
 			? (currentNode.imageSettings as Record<string, unknown>)
 			: {}
 	const currentMeshySettings =
-		typeof currentImgSettings.meshyImageSettings === 'object' && currentImgSettings.meshyImageSettings
+		typeof currentImgSettings.meshyImageSettings === 'object' &&
+		currentImgSettings.meshyImageSettings
 			? (currentImgSettings.meshyImageSettings as Record<string, unknown>)
 			: {}
 
@@ -753,15 +800,28 @@ const handleMeshySuccess = async (
 			if (typeof deps.createImageNodeAt === 'function') {
 				const newX = currentWorldX + NODE_SPACING * i
 				const newY = currentWorldY
-				const newNodeId = deps.createImageNodeAt(newX, newY, finalUrl, t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) }))
+				const newNodeId = deps.createImageNodeAt(
+					newX,
+					newY,
+					finalUrl,
+					t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) })
+				)
 				if (newNodeId) {
 					bindNodeId = newNodeId
 					isNewNode = true
 					createdNodes.push(newNodeId)
-					console.log('[Meshy Poll] 为额外图片创建新节点:', { index: i, nodeId: newNodeId, x: newX, y: newY })
+					console.log('[Meshy Poll] 为额外图片创建新节点:', {
+						index: i,
+						nodeId: newNodeId,
+						x: newX,
+						y: newY
+					})
 				}
 			} else if (typeof deps.createImageNodeAtCenter === 'function') {
-				const newNodeId = deps.createImageNodeAtCenter(finalUrl, t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) }))
+				const newNodeId = deps.createImageNodeAtCenter(
+					finalUrl,
+					t('aiworkflow.runtime.meshyResultNodeNameIndexed', { index: String(i + 1) })
+				)
 				if (newNodeId) {
 					bindNodeId = newNodeId
 					isNewNode = true
@@ -778,7 +838,10 @@ const handleMeshySuccess = async (
 				appendResult(deps, generationTaskId, {
 					kind: 'image',
 					url: finalUrl,
-					label: i === 0 ? t('aiworkflow.runtime.meshyImageLabel') : t('aiworkflow.runtime.meshyImageLabelIndexed', { index: String(i + 1) })
+					label:
+						i === 0
+							? t('aiworkflow.runtime.meshyImageLabel')
+							: t('aiworkflow.runtime.meshyImageLabelIndexed', { index: String(i + 1) })
 				})
 
 				if (isNewNode) {
@@ -819,9 +882,13 @@ const handleMeshySuccess = async (
 				taskId,
 				taskStatus: 'succeeded',
 				progress: 100,
-				statusText: nodeCreated || createdNodes.length > 0
-					? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', { count: String(allUrls.length), nodes: String(createdNodes.length) })
-					: t('aiworkflow.runtime.meshyImageComplete'),
+				statusText:
+					nodeCreated || createdNodes.length > 0
+						? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', {
+								count: String(allUrls.length),
+								nodes: String(createdNodes.length)
+							})
+						: t('aiworkflow.runtime.meshyImageComplete'),
 				outputSummary
 			}
 		}
@@ -829,9 +896,13 @@ const handleMeshySuccess = async (
 
 	updateTask(deps, generationTaskId, {
 		status: 'completed',
-		statusText: nodeCreated || createdNodes.length > 0
-			? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', { count: String(allUrls.length), nodes: String(createdNodes.length) })
-			: t('aiworkflow.runtime.meshyImageCompleteCount', { count: String(allUrls.length) }),
+		statusText:
+			nodeCreated || createdNodes.length > 0
+				? t('aiworkflow.runtime.meshyImageCompleteWithNewNodes', {
+						count: String(allUrls.length),
+						nodes: String(createdNodes.length)
+					})
+				: t('aiworkflow.runtime.meshyImageCompleteCount', { count: String(allUrls.length) }),
 		progress: 100,
 		finishedAt: Date.now()
 	})
@@ -855,7 +926,10 @@ const handleMeshyTaskStatus = async (
 		appendDetail(
 			deps,
 			generationTaskId,
-			t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
+			t('aiworkflow.runtime.pollFailed', {
+				status: String(taskRes.status),
+				error: String(taskRes.error)
+			})
 		)
 		console.warn('[Meshy Poll] 轮询失败:', errorDetails)
 
@@ -871,7 +945,11 @@ const handleMeshyTaskStatus = async (
 		.toUpperCase()
 	const progress = Number(taskRes.progress ?? 0)
 	const progressPct = Math.min(95, Math.max(20, progress))
-	const pollStatusText = t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) })
+	const pollStatusText = t('aiworkflow.runtime.meshyTaskStatus', {
+		taskType,
+		status,
+		progress: String(progress)
+	})
 
 	updateTask(deps, generationTaskId, {
 		statusText: pollStatusText,
@@ -888,7 +966,7 @@ const handleMeshyTaskStatus = async (
 					...node.imageSettings.meshyImageSettings,
 					taskStatus: status.toLowerCase(),
 					progress: progressPct,
-					statusText: pollStatusText,
+					statusText: pollStatusText
 				}
 			}
 		})
@@ -954,14 +1032,20 @@ const createPollingController = async <T>(
 			appendDetail(
 				deps,
 				generationTaskId,
-				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
+				t('aiworkflow.runtime.pollException', {
+					attempt: String(i + 1),
+					consecutive: String(consecutiveErrors),
+					error: errMsg
+				})
 			)
 			console.error('[Meshy Poll] 轮询异常:', errorDetails)
 
 			if (consecutiveErrors >= 5) {
 				pushToast(
 					deps,
-					t('aiworkflow.runtime.meshyPollConsecutiveFailures', { count: String(consecutiveErrors) }),
+					t('aiworkflow.runtime.meshyPollConsecutiveFailures', {
+						count: String(consecutiveErrors)
+					}),
 					'warn'
 				)
 			}
@@ -1005,20 +1089,27 @@ const pollMeshyTaskStatus = async (
 
 const inferTaskProvider = (nodeType: string, params: Record<string, unknown>): string => {
 	if (nodeType === 'image') {
-		const rawModel = String(params?.imageModel ?? params?.model ?? '').trim().toLowerCase()
-		if (rawModel === 'gemini' || rawModel === 'nanobanana' || rawModel.startsWith('gemini')) return 'gemini'
+		const rawModel = String(params?.imageModel ?? params?.model ?? '')
+			.trim()
+			.toLowerCase()
+		if (rawModel === 'gemini' || rawModel === 'nanobanana' || rawModel.startsWith('gemini'))
+			return 'gemini'
 		if (rawModel === 'meshy') return 'meshy'
 		if (rawModel.startsWith('jimeng')) return 'jimeng'
 		if (rawModel === 'tripo3d') return 'tripo3d'
 		return 'seedream'
 	}
 	if (nodeType === 'model3d') {
-		const p = String(params?.provider ?? '').trim().toLowerCase()
+		const p = String(params?.provider ?? '')
+			.trim()
+			.toLowerCase()
 		if (p === 'tripo3d' || p === 'tripo') return 'tripo3d'
 		return 'meshy'
 	}
 	if (nodeType === 'video') {
-		const rawModel = String(params?.videoModel ?? params?.model ?? '').trim().toLowerCase()
+		const rawModel = String(params?.videoModel ?? params?.model ?? '')
+			.trim()
+			.toLowerCase()
 		if (rawModel.startsWith('jimeng')) return 'jimeng'
 		return 'seedance'
 	}
@@ -1066,14 +1157,21 @@ export const runNodeGenerationTask = async (
 	const globalBridge = deps.globalTaskBridge
 	let globalRegistered = false
 	if (globalBridge) {
-		const category = task.nodeType === 'video' ? 'video' : task.nodeType === 'model3d' ? '3d' : task.nodeType === 'text' ? 'custom' : 'image'
+		const category =
+			task.nodeType === 'video'
+				? 'video'
+				: task.nodeType === 'model3d'
+					? '3d'
+					: task.nodeType === 'text'
+						? 'custom'
+						: 'image'
 		const regResult = await globalBridge.registerTask({
 			nodeId: task.nodeId,
 			provider: task.provider || '',
 			category: category as any,
 			title: (task.prompt || '').slice(0, 50) || t('aiworkflow.runtime.taskDefaultTitle'),
 			prompt: task.prompt,
-			nodeType: payload.nodeType,
+			nodeType: payload.nodeType
 		})
 		if (regResult.ok && 'taskId' in regResult && regResult.taskId) {
 			task.globalTaskId = regResult.taskId
@@ -1085,12 +1183,21 @@ export const runNodeGenerationTask = async (
 	deps.store.commit('registerNodeGenerationTask', { task })
 	deps.store.commit('setNodeChatSubmitting', { submitting: true })
 
-	const syncGlobalProgress = (patch: { progress?: number; statusText?: string; status?: string }) => {
+	const syncGlobalProgress = (patch: {
+		progress?: number
+		statusText?: string
+		status?: string
+	}) => {
 		if (!globalRegistered || !task.globalTaskId || !globalBridge) return
 		void globalBridge.updateTask(task.globalTaskId, {
 			progress: patch.progress,
 			statusText: patch.statusText,
-			status: patch.status === 'running' ? 'running' : patch.status === 'submitting' ? 'submitting' : undefined,
+			status:
+				patch.status === 'running'
+					? 'running'
+					: patch.status === 'submitting'
+						? 'submitting'
+						: undefined
 		})
 	}
 
@@ -1112,21 +1219,43 @@ export const runNodeGenerationTask = async (
 	try {
 		let result: NodeGenerationResult
 		if (payload.nodeType === 'text') {
-			await runTextTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail })
+			await runTextTask(deps, task, payload, {
+				syncGlobalProgress,
+				syncGlobalComplete,
+				syncGlobalFail
+			})
 			result = { ok: true, taskType: 'other' }
 		} else if (payload.nodeType === 'image') {
 			const params = payload.params ?? {}
 			const { kind } = normalizeImageModel(params)
-			await runImageTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
-			result = { ok: true, taskType: kind === 'meshy' ? 'meshy-image' : kind === 'tripo3d' ? 'other' : 'other' }
+			await runImageTask(deps, task, payload, {
+				syncGlobalProgress,
+				syncGlobalComplete,
+				syncGlobalFail,
+				syncGlobalBindRemote
+			})
+			result = {
+				ok: true,
+				taskType: kind === 'meshy' ? 'meshy-image' : kind === 'tripo3d' ? 'other' : 'other'
+			}
 		} else if (payload.nodeType === 'video') {
-			await runVideoTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+			await runVideoTask(deps, task, payload, {
+				syncGlobalProgress,
+				syncGlobalComplete,
+				syncGlobalFail,
+				syncGlobalBindRemote
+			})
 			result = { ok: true, taskType: 'other' }
 		} else if (payload.nodeType === 'model3d') {
 			const params = payload.params ?? {}
 			const provider = String(params.provider || '').trim()
 			if (provider === 'meshy') {
-				const res = await runModel3dMeshyTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+				const res = await runModel3dMeshyTask(deps, task, payload, {
+					syncGlobalProgress,
+					syncGlobalComplete,
+					syncGlobalFail,
+					syncGlobalBindRemote
+				})
 				result = {
 					ok: res.ok,
 					taskId: res.taskId,
@@ -1135,7 +1264,12 @@ export const runNodeGenerationTask = async (
 					error: res.error
 				}
 			} else if (provider === 'tripo3d') {
-				const res = await runModel3dTripo3dTask(deps, task, payload, { syncGlobalProgress, syncGlobalComplete, syncGlobalFail, syncGlobalBindRemote })
+				const res = await runModel3dTripo3dTask(deps, task, payload, {
+					syncGlobalProgress,
+					syncGlobalComplete,
+					syncGlobalFail,
+					syncGlobalBindRemote
+				})
 				result = {
 					ok: res.ok,
 					taskId: res.taskId,
@@ -1164,7 +1298,10 @@ export const runNodeGenerationTask = async (
 				finishedAt: Date.now()
 			})
 			if (globalRegistered && task.globalTaskId && globalBridge) {
-				void globalBridge.updateTask(task.globalTaskId, { status: 'cancelled', statusText: err.message || '已取消' })
+				void globalBridge.updateTask(task.globalTaskId, {
+					status: 'cancelled',
+					statusText: err.message || '已取消'
+				})
 			}
 			return { ok: false, error: 'aborted' }
 		}
@@ -1187,7 +1324,11 @@ export const runNodeGenerationTask = async (
 			finishedAt: Date.now()
 		})
 		syncGlobalFail(message)
-		pushToast(deps, t('aiworkflow.toast.generationFailed', { type: labelForType(payload.nodeType), message }), 'error')
+		pushToast(
+			deps,
+			t('aiworkflow.toast.generationFailed', { type: labelForType(payload.nodeType), message }),
+			'error'
+		)
 		return { ok: false, error: message }
 	} finally {
 		deps.store.commit('setNodeChatSubmitting', { submitting: false })
@@ -1223,21 +1364,29 @@ const runTextTask = async (
 
 	if (modelSelection === 'gemini') {
 		provider = 'gemini'
-		modelId = String(params.geminiTextModelVersion ?? params.modelId ?? '').trim() || 'gemini-3.5-flash'
+		modelId =
+			String(params.geminiTextModelVersion ?? params.modelId ?? '').trim() || 'gemini-3.5-flash'
 		providerDisplayName = 'Gemini'
 	} else {
 		provider = 'bytedance'
-		modelId = String(params.textModelVersion ?? params.modelId ?? '').trim() || 'doubao-seed-evolving'
+		modelId =
+			String(params.textModelVersion ?? params.modelId ?? '').trim() || 'doubao-seed-evolving'
 		providerDisplayName = '字节方舟 Doubao'
 	}
 
 	updateTask(deps, task.id, {
 		status: 'running',
-		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', { provider: providerDisplayName }),
+		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', {
+			provider: providerDisplayName
+		}),
 		progress: 15
 	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: modelId }))
-	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+	appendDetail(
+		deps,
+		task.id,
+		t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
+	)
 
 	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
 	if (params.speed) body.speed = params.speed
@@ -1265,18 +1414,24 @@ const runTextTask = async (
 		}
 	}
 	if (refImages.length > 0) {
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) })
+		)
 	}
 
 	let accumulated = ''
 	try {
-			for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
-				content: String(body.content ?? ''),
-				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined,
-				provider: String(body.provider ?? ''),
-				modelId: String(body.modelId ?? ''),
-				refImages
-			})) {
+		for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
+			content: String(body.content ?? ''),
+			history: body.history as
+				| Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+				| undefined,
+			provider: String(body.provider ?? ''),
+			modelId: String(body.modelId ?? ''),
+			refImages
+		})) {
 			if (ev.type === 'done') break
 			if (ev.type === 'error') {
 				throw new Error(String(ev.error?.message ?? 'unknown'))
@@ -1309,22 +1464,28 @@ const runTextTask = async (
 		// Fallback: attempt simple non-streaming endpoint to keep the node task observable.
 		const fallbackMsg = getErrorMessage(err)
 		appendDetail(deps, task.id, t('aiworkflow.runtime.streamCallFailed', { error: fallbackMsg }))
-		updateTask(deps, task.id, { status: 'running', statusText: t('aiworkflow.runtime.fallbackAttempt') })
+		updateTask(deps, task.id, {
+			status: 'running',
+			statusText: t('aiworkflow.runtime.fallbackAttempt')
+		})
 		try {
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
 				content: String(body.content ?? ''),
-				history: body.history as Array<{ role: 'user' | 'assistant' | 'system'; content: string }> | undefined,
+				history: body.history as
+					| Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+					| undefined,
 				provider: String(body.provider ?? ''),
 				modelId: String(body.modelId ?? ''),
 				refImages
 			})
-			const text =
-				plain.ok && typeof plain.assistant === 'string'
-					? plain.assistant
-					: ''
+			const text = plain.ok && typeof plain.assistant === 'string' ? plain.assistant : ''
 			if (text) accumulated = text
 		} catch (fallbackErr: unknown) {
-			appendDetail(deps, task.id, t('aiworkflow.runtime.fallbackRequestFailed', { error: getErrorMessage(fallbackErr) }))
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.fallbackRequestFailed', { error: getErrorMessage(fallbackErr) })
+			)
 			throw err
 		}
 	}
@@ -1357,7 +1518,11 @@ const runImageTask = async (
 		progress: 15
 	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
-	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+	appendDetail(
+		deps,
+		task.id,
+		t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
+	)
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -1371,7 +1536,9 @@ const runImageTask = async (
 	const isSeedream = kind === 'seedream'
 
 	if (isSeedream) {
-		const seedreamModelVersion = String(params.seedreamModelVersion || 'doubao-seedream-4-5-251128').trim()
+		const seedreamModelVersion = String(
+			params.seedreamModelVersion || 'doubao-seedream-4-5-251128'
+		).trim()
 		const seedreamSize = String(params.seedreamSize || '2K').trim()
 		const seedreamAspectRatio = String(params.seedreamAspectRatio || '1:1').trim()
 		const seedreamQuantity = Number(params.seedreamQuantity ?? 1)
@@ -1387,10 +1554,19 @@ const runImageTask = async (
 		form.set('quantity', String(Math.min(4, Math.max(1, Math.floor(seedreamQuantity)))))
 		form.set('watermark', seedreamWatermark ? '1' : '0')
 		if (seedreamNegativePrompt) form.set('negativePrompt', seedreamNegativePrompt)
-		if (Number.isFinite(seedreamSeed) && seedreamSeed >= 0) form.set('seed', String(Math.floor(seedreamSeed)))
+		if (Number.isFinite(seedreamSeed) && seedreamSeed >= 0)
+			form.set('seed', String(Math.floor(seedreamSeed)))
 
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeedreamModel', { model: seedreamModelVersion }))
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: seedreamSize, ratio: seedreamAspectRatio }))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailSeedreamModel', { model: seedreamModelVersion })
+		)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailResolution', { size: seedreamSize, ratio: seedreamAspectRatio })
+		)
 	} else {
 		if (typeof params.aspectRatio === 'string' && params.aspectRatio)
 			form.set('aspectRatio', params.aspectRatio)
@@ -1438,13 +1614,36 @@ const runImageTask = async (
 
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailMeshyMode', { mode: taskType }))
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: meshyGenerateMultiView ? 'Multi-View (1:1)' : meshyAspectRatio }))
-		if (meshyPoseMode) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
-		if (meshyGenerateMultiView) appendDetail(deps, task.id, t('aiworkflow.runtime.multiViewEnabled'))
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(meshyOutputImageCount) }))
-		if (meshyNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: meshyNegativePrompt.slice(0, 80) }))
-		if (Number.isFinite(meshySeed) && meshySeed >= 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
-		if (hasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) }))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailAspectRatio', {
+				ratio: meshyGenerateMultiView ? 'Multi-View (1:1)' : meshyAspectRatio
+			})
+		)
+		if (meshyPoseMode)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
+		if (meshyGenerateMultiView)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.multiViewEnabled'))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailOutputCount', { count: String(meshyOutputImageCount) })
+		)
+		if (meshyNegativePrompt)
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailNegativePrompt', { prompt: meshyNegativePrompt.slice(0, 80) })
+			)
+		if (Number.isFinite(meshySeed) && meshySeed >= 0)
+			appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
+		if (hasRefImages)
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) })
+			)
 
 		try {
 			// 构建 Meshy API 请求体 - 严格按照官方文档
@@ -1465,8 +1664,14 @@ const runImageTask = async (
 				meshyPayload.output_image_count = 4
 			} else {
 				meshyPayload.aspect_ratio = meshyAspectRatio || '1:1'
-				console.log(`[Meshy Image - Node Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`)
-				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+				console.log(
+					`[Meshy Image - Node Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyPayload.aspect_ratio}, model=${meshyAiModel}`
+				)
+				if (
+					Number.isFinite(meshyOutputImageCount) &&
+					meshyOutputImageCount > 0 &&
+					meshyOutputImageCount <= 4
+				) {
 					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
 				}
 			}
@@ -1487,7 +1692,11 @@ const runImageTask = async (
 				poseMode: meshyPoseMode || 'None',
 				generateMultiView: meshyGenerateMultiView,
 				negativePrompt: meshyNegativePrompt || 'None',
-				outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
+				outputCount: meshyGenerateMultiView
+					? 4
+					: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0
+						? Math.floor(meshyOutputImageCount)
+						: 1,
 				seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
 				referenceImageCount: hasRefImages ? refs.length : 0,
 				submittedAt: new Date().toISOString()
@@ -1496,7 +1705,10 @@ const runImageTask = async (
 			// 将submittedParams添加到请求payload中，确保后端能记录
 			meshyPayload.submittedParams = submittedParams
 
-			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.creatingMeshyTask', { taskType }), progress: 20 })
+			updateTask(deps, task.id, {
+				statusText: t('aiworkflow.runtime.creatingMeshyTask', { taskType }),
+				progress: 20
+			})
 
 			// 关键修复：统一使用FormData + meshyGenerateImage路径处理所有情况（文生图/图生图）
 			// 确保参数类型转换一致（布尔值、数字、JSON对象都经过正确处理）
@@ -1523,7 +1735,12 @@ const runImageTask = async (
 			if (task.nodeId) form.set('nodeId', task.nodeId)
 			if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
 
-			console.log('[Meshy Image - Node Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refs.length)
+			console.log(
+				'[Meshy Image - Node Chat] 发送请求（统一FormData路径），hasRefImages:',
+				hasRefImages,
+				'refCount:',
+				refs.length
+			)
 			const createRes = await svc.meshyGenerateImage(form)
 			if (!createRes.ok) {
 				throw new Error(String(createRes.error || t('aiworkflow.runtime.meshyTaskCreateFailed')))
@@ -1571,13 +1788,18 @@ const runImageTask = async (
 		const geminiModelVersion = model
 		const geminiImageSize = String(params?.geminiImageSize || params?.imageSize || '2K').trim()
 		const geminiAspectRatio = String(
-			params?.geminiAspectRatio || 
-			params?.aspectRatio || 
-			'1:1'
+			params?.geminiAspectRatio || params?.aspectRatio || '1:1'
 		).trim()
-		const geminiQuantity = Math.max(1, Math.min(4, Number(params?.geminiQuantity ?? params?.quantity ?? 1)))
-		const geminiThinkingLevel = String(params?.geminiThinkingLevel || params?.thinkingLevel || 'minimal').trim()
-		const geminiNegativePrompt = String(params?.geminiNegativePrompt || params?.negativePrompt || '').trim()
+		const geminiQuantity = Math.max(
+			1,
+			Math.min(4, Number(params?.geminiQuantity ?? params?.quantity ?? 1))
+		)
+		const geminiThinkingLevel = String(
+			params?.geminiThinkingLevel || params?.thinkingLevel || 'minimal'
+		).trim()
+		const geminiNegativePrompt = String(
+			params?.geminiNegativePrompt || params?.negativePrompt || ''
+		).trim()
 
 		console.log('[Gemini Image - Node Chat] 原始参数:', {
 			geminiModelVersion,
@@ -1593,11 +1815,33 @@ const runImageTask = async (
 			prompt: payload.prompt.slice(0, 200)
 		})
 
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion }))
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: geminiImageSize, ratio: geminiAspectRatio }))
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(geminiQuantity) }))
-		if (geminiNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) }))
-		if (hasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) }))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailAiModel', { model: geminiModelVersion })
+		)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailResolution', { size: geminiImageSize, ratio: geminiAspectRatio })
+		)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailOutputCount', { count: String(geminiQuantity) })
+		)
+		if (geminiNegativePrompt)
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailNegativePrompt', { prompt: geminiNegativePrompt.slice(0, 80) })
+			)
+		if (hasRefImages)
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(refs.length) })
+			)
 
 		try {
 			// 将参考图片转换为base64 data URI
@@ -1645,7 +1889,10 @@ const runImageTask = async (
 				submittedAt: new Date().toISOString()
 			}
 
-			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.callingGeminiApi'), progress: 20 })
+			updateTask(deps, task.id, {
+				statusText: t('aiworkflow.runtime.callingGeminiApi'),
+				progress: 20
+			})
 
 			// 标记图片节点的 imageGenerationSource 为 gemini
 			deps.store.commit('setNodeImageSettings', {
@@ -1706,14 +1953,26 @@ const runImageTask = async (
 							if (typeof deps.createImageNodeAt === 'function') {
 								const newX = sourceWorldX + NODE_SPACING * produced
 								const newY = sourceWorldY
-								const newNodeId = deps.createImageNodeAt(newX, newY, sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								const newNodeId = deps.createImageNodeAt(
+									newX,
+									newY,
+									sourceUrl,
+									t('aiworkflow.runtime.geminiResultNodeNameIndexed', {
+										index: String(produced + 1)
+									})
+								)
 								if (newNodeId) {
 									bindNodeId = newNodeId
 									isNewNode = true
 									createdNodes.push(newNodeId)
 								}
 							} else if (typeof deps.createImageNodeAtCenter === 'function') {
-								const newNodeId = deps.createImageNodeAtCenter(sourceUrl, t('aiworkflow.runtime.geminiResultNodeNameIndexed', { index: String(produced + 1) }))
+								const newNodeId = deps.createImageNodeAtCenter(
+									sourceUrl,
+									t('aiworkflow.runtime.geminiResultNodeNameIndexed', {
+										index: String(produced + 1)
+									})
+								)
 								if (newNodeId) {
 									bindNodeId = newNodeId
 									isNewNode = true
@@ -1722,18 +1981,23 @@ const runImageTask = async (
 							}
 						}
 
-						let bound = true
+						let finalUrl = ''
 						if (typeof deps.bindImageResultToNode === 'function') {
 							const bindRet = await deps.bindImageResultToNode(bindNodeId, sourceUrl)
-							bound = bindRet !== false
+							if (bindRet === false || bindRet === undefined || bindRet === null) {
+								appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+								continue
+							}
+							finalUrl = typeof bindRet === 'string' ? bindRet : deps.resolveBackendUrl(sourceUrl)
+						} else {
+							finalUrl = deps.resolveBackendUrl(sourceUrl)
 						}
-						if (!bound) {
-							appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
-							continue
-						}
-						const resolved = deps.resolveBackendUrl(sourceUrl)
-						appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
-						
+						appendResult(deps, task.id, {
+							kind: 'image',
+							url: finalUrl,
+							label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) })
+						})
+
 						if (isNewNode) {
 							deps.store.commit('setNodeImageSettings', {
 								nodeId: bindNodeId,
@@ -1743,8 +2007,8 @@ const runImageTask = async (
 										taskStatus: 'completed',
 										progress: 100,
 										statusText: t('tasks.gemini.statusCompleted'),
-										imageUrls: [sourceUrl],
-										thumbnailUrl: sourceUrl
+										imageUrls: [finalUrl],
+										thumbnailUrl: finalUrl
 									}
 								}
 							})
@@ -1787,9 +2051,13 @@ const runImageTask = async (
 			if (produced === 0) throw new Error(t('aiworkflow.runtime.noImagesReceived'))
 			updateTask(deps, task.id, {
 				status: 'completed',
-				statusText: createdNodes.length > 0
-					? t('aiworkflow.runtime.geminiImageCompleteWithNewNodes', { count: String(produced), nodes: String(createdNodes.length) })
-					: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
+				statusText:
+					createdNodes.length > 0
+						? t('aiworkflow.runtime.geminiImageCompleteWithNewNodes', {
+								count: String(produced),
+								nodes: String(createdNodes.length)
+							})
+						: t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) }),
 				progress: 100,
 				finishedAt: Date.now()
 			})
@@ -1828,16 +2096,44 @@ const runImageTask = async (
 
 		const tripo3dImageModel = String(params?.tripo3dImageModel || model || 'seedream_v4').trim()
 		const tripo3dImageSize = String(params?.tripo3dImageSize || params?.imageSize || '').trim()
-		const tripo3dImageAspectRatio = String(params?.tripo3dImageAspectRatio || params?.aspectRatio || '').trim()
-		const tripo3dImageOutputFormat = String((params as Record<string, unknown>)?.tripo3dImageOutputFormat || (params as Record<string, unknown>)?.outputFormat || 'png').trim() as 'png' | 'jpeg'
-		const tripo3dImageWatermark = Boolean((params as Record<string, unknown>)?.tripo3dImageWatermark ?? (params as Record<string, unknown>)?.watermark ?? false)
-		const tripo3dImageNumOutputs = Number((params as Record<string, unknown>)?.tripo3dImageNumOutputs ?? (params as Record<string, unknown>)?.quantity ?? 1)
-		const tripo3dImageNegativePrompt = String((params as Record<string, unknown>)?.tripo3dImageNegativePrompt || (params as Record<string, unknown>)?.negativePrompt || '').trim()
-		const tripo3dImageSeed = Number((params as Record<string, unknown>)?.tripo3dImageSeed ?? (params as Record<string, unknown>)?.seed ?? -1)
-		const tripo3dImageStrength = Number((params as Record<string, unknown>)?.tripo3dImageStrength ?? (params as Record<string, unknown>)?.strength ?? 0.7)
+		const tripo3dImageAspectRatio = String(
+			params?.tripo3dImageAspectRatio || params?.aspectRatio || ''
+		).trim()
+		const tripo3dImageOutputFormat = String(
+			(params as Record<string, unknown>)?.tripo3dImageOutputFormat ||
+				(params as Record<string, unknown>)?.outputFormat ||
+				'png'
+		).trim() as 'png' | 'jpeg'
+		const tripo3dImageWatermark = Boolean(
+			(params as Record<string, unknown>)?.tripo3dImageWatermark ??
+			(params as Record<string, unknown>)?.watermark ??
+			false
+		)
+		const tripo3dImageNumOutputs = Number(
+			(params as Record<string, unknown>)?.tripo3dImageNumOutputs ??
+				(params as Record<string, unknown>)?.quantity ??
+				1
+		)
+		const tripo3dImageNegativePrompt = String(
+			(params as Record<string, unknown>)?.tripo3dImageNegativePrompt ||
+				(params as Record<string, unknown>)?.negativePrompt ||
+				''
+		).trim()
+		const tripo3dImageSeed = Number(
+			(params as Record<string, unknown>)?.tripo3dImageSeed ??
+				(params as Record<string, unknown>)?.seed ??
+				-1
+		)
+		const tripo3dImageStrength = Number(
+			(params as Record<string, unknown>)?.tripo3dImageStrength ??
+				(params as Record<string, unknown>)?.strength ??
+				0.7
+		)
 		const tripo3dImageTemplate = String(params?.tripo3dImageTemplate || '').trim()
 		const tripo3dUserMode = String(params?.tripo3dImageMode || '').trim()
-		const tripo3dImageForceSingleImage = Boolean((params as Record<string, unknown>)?.tripo3dImageForceSingleImage)
+		const tripo3dImageForceSingleImage = Boolean(
+			(params as Record<string, unknown>)?.tripo3dImageForceSingleImage
+		)
 
 		// 模式判断：优先根据参考图自动判断，用户手动选择仅作为补充
 		let effectiveMode: 'text_to_image' | 'image_to_image' | 'image_to_multiview'
@@ -1881,7 +2177,10 @@ const runImageTask = async (
 			return
 		}
 
-		if ((effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview') && tripo3dRefs.length === 0) {
+		if (
+			(effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview') &&
+			tripo3dRefs.length === 0
+		) {
 			pushToast(deps, t('tasks.tripo3d.imageToModelRequiresImage'), 'warn')
 			updateTask(deps, task.id, {
 				status: 'error',
@@ -1897,32 +2196,69 @@ const runImageTask = async (
 		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: tripo3dImageModel }))
 		if (effectiveMode !== 'image_to_multiview') {
 			if (tripo3dImageSize && !tripo3dImageModel.startsWith('banana')) {
-				appendDetail(deps, task.id, t('aiworkflow.runtime.detailResolution', { size: tripo3dImageSize, ratio: tripo3dImageAspectRatio || 'Default' }))
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailResolution', {
+						size: tripo3dImageSize,
+						ratio: tripo3dImageAspectRatio || 'Default'
+					})
+				)
 			}
 			if (tripo3dImageModel.startsWith('banana') && tripo3dImageAspectRatio) {
-				appendDetail(deps, task.id, t('aiworkflow.runtime.detailAspectRatio', { ratio: tripo3dImageAspectRatio }))
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailAspectRatio', { ratio: tripo3dImageAspectRatio })
+				)
 			}
-			appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputCount', { count: String(Math.min(4, Math.max(1, Math.floor(tripo3dImageNumOutputs)))) }))
-			if (tripo3dImageNegativePrompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailNegativePrompt', { prompt: tripo3dImageNegativePrompt.slice(0, 80) }))
-			if (Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0) appendDetail(deps, task.id, t('aiworkflow.runtime.detailSeed', { seed: String(Math.floor(tripo3dImageSeed)) }))
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailOutputCount', {
+					count: String(Math.min(4, Math.max(1, Math.floor(tripo3dImageNumOutputs))))
+				})
+			)
+			if (tripo3dImageNegativePrompt)
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailNegativePrompt', {
+						prompt: tripo3dImageNegativePrompt.slice(0, 80)
+					})
+				)
+			if (Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0)
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailSeed', { seed: String(Math.floor(tripo3dImageSeed)) })
+				)
 		}
-		if (tripo3dHasRefImages) appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(tripo3dRefs.length) }))
+		if (tripo3dHasRefImages)
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(tripo3dRefs.length) })
+			)
 
 		try {
 			const isBananaModel = tripo3dImageModel.startsWith('banana')
 			const isSeedreamModel = tripo3dImageModel.startsWith('seedream')
 
 			const tripo3dPayload: Record<string, unknown> = {
-				model: tripo3dImageModel,
+				model: tripo3dImageModel
 			}
 
 			if (effectiveMode !== 'image_to_multiview') {
 				if (finalPrompt) tripo3dPayload.prompt = finalPrompt
 				if (tripo3dImageNegativePrompt) tripo3dPayload.negative_prompt = tripo3dImageNegativePrompt
 				tripo3dPayload.output_format = tripo3dImageOutputFormat === 'jpeg' ? 'jpeg' : 'png'
-				tripo3dPayload.num_outputs = Number.isFinite(tripo3dImageNumOutputs) && tripo3dImageNumOutputs >= 1 && tripo3dImageNumOutputs <= 4
-					? Math.floor(tripo3dImageNumOutputs)
-					: 1
+				tripo3dPayload.num_outputs =
+					Number.isFinite(tripo3dImageNumOutputs) &&
+					tripo3dImageNumOutputs >= 1 &&
+					tripo3dImageNumOutputs <= 4
+						? Math.floor(tripo3dImageNumOutputs)
+						: 1
 
 				if (isBananaModel && tripo3dImageAspectRatio) {
 					tripo3dPayload.aspect_ratio = tripo3dImageAspectRatio
@@ -1934,7 +2270,10 @@ const runImageTask = async (
 					tripo3dPayload.watermark = Boolean(tripo3dImageWatermark)
 				}
 
-				if (tripo3dImageTemplate && (effectiveMode === 'text_to_image' || effectiveMode === 'image_to_image')) {
+				if (
+					tripo3dImageTemplate &&
+					(effectiveMode === 'text_to_image' || effectiveMode === 'image_to_image')
+				) {
 					tripo3dPayload.template = tripo3dImageTemplate
 				}
 
@@ -1945,7 +2284,10 @@ const runImageTask = async (
 
 			let imageDataUris: string[] = []
 			if (effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview') {
-				updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.uploadingTripo3DImage'), progress: 10 })
+				updateTask(deps, task.id, {
+					statusText: t('aiworkflow.runtime.uploadingTripo3DImage'),
+					progress: 10
+				})
 				appendDetail(deps, task.id, t('aiworkflow.runtime.uploadingImage'))
 
 				// 上传所有参考图，获取file tokens
@@ -1967,7 +2309,11 @@ const runImageTask = async (
 						fileType: 'image/png'
 					})
 					if (!uploadRes.ok) {
-						throw new Error(t('aiworkflow.runtime.tripo3dUploadFailed', { error: String(uploadRes.error || 'unknown') }))
+						throw new Error(
+							t('aiworkflow.runtime.tripo3dUploadFailed', {
+								error: String(uploadRes.error || 'unknown')
+							})
+						)
 					}
 					const fileToken = String(uploadRes.fileToken || '').trim()
 					if (!fileToken) {
@@ -1986,9 +2332,12 @@ const runImageTask = async (
 				}
 
 				if (effectiveMode === 'image_to_image') {
-					const strengthValue = Number.isFinite(tripo3dImageStrength) && tripo3dImageStrength >= 0 && tripo3dImageStrength <= 1
-						? tripo3dImageStrength
-						: 0.7
+					const strengthValue =
+						Number.isFinite(tripo3dImageStrength) &&
+						tripo3dImageStrength >= 0 &&
+						tripo3dImageStrength <= 1
+							? tripo3dImageStrength
+							: 0.7
 					tripo3dPayload.strength = strengthValue
 				}
 			}
@@ -2013,13 +2362,22 @@ const runImageTask = async (
 				template: (tripo3dPayload.template as string) || 'None',
 				numOutputs: (tripo3dPayload.num_outputs as number) || 1,
 				negativePrompt: tripo3dImageNegativePrompt || 'None',
-				seed: Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0 ? Math.floor(tripo3dImageSeed) : 'Random',
-				strength: (effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview') ? (tripo3dPayload.strength as number) : undefined,
+				seed:
+					Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0
+						? Math.floor(tripo3dImageSeed)
+						: 'Random',
+				strength:
+					effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview'
+						? (tripo3dPayload.strength as number)
+						: undefined,
 				referenceImageCount: tripo3dHasRefImages ? tripo3dRefs.length : 0,
 				submittedAt: new Date().toISOString()
 			}
 
-			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.creatingTripo3dTask', { mode: effectiveMode }), progress: 20 })
+			updateTask(deps, task.id, {
+				statusText: t('aiworkflow.runtime.creatingTripo3dTask', { mode: effectiveMode }),
+				progress: 20
+			})
 
 			deps.store.commit('setNodeImageSettings', {
 				nodeId: payload.nodeId,
@@ -2083,17 +2441,31 @@ const runImageTask = async (
 
 				const taskRes = await svc.tripo3dTask(newTaskId)
 				if (!taskRes.ok) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.pollFailed', {
+							status: String(taskRes.status),
+							error: String(taskRes.error)
+						})
+					)
 					continue
 				}
 
-				const status = String(taskRes.status || '').trim().toLowerCase()
+				const status = String(taskRes.status || '')
+					.trim()
+					.toLowerCase()
 				const progress = Number(taskRes.progress ?? 0)
-				const progressPct = status === 'success' || status === 'succeeded' || status === 'completed'
-					? 100
-					: Math.min(95, Math.max(10, progress))
+				const progressPct =
+					status === 'success' || status === 'succeeded' || status === 'completed'
+						? 100
+						: Math.min(95, Math.max(10, progress))
 
-				const statusText = t('aiworkflow.runtime.tripo3dTaskStatus', { taskMode: effectiveMode, status, progress: String(progress) })
+				const statusText = t('aiworkflow.runtime.tripo3dTaskStatus', {
+					taskMode: effectiveMode,
+					status,
+					progress: String(progress)
+				})
 				updateTask(deps, task.id, { statusText, progress: progressPct })
 
 				deps.store.commit('setNodeImageSettings', {
@@ -2102,7 +2474,12 @@ const runImageTask = async (
 						imageGenerationSource: 'tripo3d',
 						tripo3dImageSettings: {
 							taskId: newTaskId,
-							taskStatus: status === 'failed' || status === 'error' ? 'failed' : status === 'cancelled' || status === 'canceled' ? 'canceled' : 'running',
+							taskStatus:
+								status === 'failed' || status === 'error'
+									? 'failed'
+									: status === 'cancelled' || status === 'canceled'
+										? 'canceled'
+										: 'running',
 							taskFamily: effectiveMode,
 							progress: progressPct,
 							statusText
@@ -2120,16 +2497,24 @@ const runImageTask = async (
 				}
 
 				if (status === 'success' || status === 'succeeded' || status === 'completed') {
-					const rawImageUrls = Array.isArray((taskRes as any).imageUrls) ? (taskRes as any).imageUrls as string[] : []
+					const rawImageUrls = Array.isArray((taskRes as any).imageUrls)
+						? ((taskRes as any).imageUrls as string[])
+						: []
 					const thumbnailUrl = String(taskRes.thumbnailUrl || '').trim()
 
 					const allUrls: string[] = []
 					const urlSet = new Set<string>()
 					for (const u of rawImageUrls) {
 						const us = String(u || '').trim()
-						if (us && !urlSet.has(us)) { urlSet.add(us); allUrls.push(us) }
+						if (us && !urlSet.has(us)) {
+							urlSet.add(us)
+							allUrls.push(us)
+						}
 					}
-					if (thumbnailUrl && !urlSet.has(thumbnailUrl)) { urlSet.add(thumbnailUrl); allUrls.unshift(thumbnailUrl) }
+					if (thumbnailUrl && !urlSet.has(thumbnailUrl)) {
+						urlSet.add(thumbnailUrl)
+						allUrls.unshift(thumbnailUrl)
+					}
 
 					if (allUrls.length === 0) {
 						throw new Error(t('aiworkflow.runtime.tripo3dNoImages'))
@@ -2148,7 +2533,10 @@ const runImageTask = async (
 
 						if (typeof deps.persistExternalAssetToProject === 'function') {
 							try {
-								const ext = String(imageUrl).split('?')[0].match(/\.[^.]+$/)?.[0] || '.png'
+								const ext =
+									String(imageUrl)
+										.split('?')[0]
+										.match(/\.[^.]+$/)?.[0] || '.png'
 								const fileName = `tripo3d-img-${newTaskId}-${imgI}${ext}`
 								const persisted = await deps.persistExternalAssetToProject({
 									kind: 'image',
@@ -2172,11 +2560,31 @@ const runImageTask = async (
 							if (typeof deps.createImageNodeAt === 'function') {
 								const newX = sourceWorldX + NODE_SPACING * produced
 								const newY = sourceWorldY
-								const newNodeId = deps.createImageNodeAt(newX, newY, finalUrl, t('aiworkflow.runtime.tripo3dResultNodeNameIndexed', { index: String(produced + 1) }))
-								if (newNodeId) { bindNodeId = newNodeId; isNewNode = true; createdNodes.push(newNodeId) }
+								const newNodeId = deps.createImageNodeAt(
+									newX,
+									newY,
+									finalUrl,
+									t('aiworkflow.runtime.tripo3dResultNodeNameIndexed', {
+										index: String(produced + 1)
+									})
+								)
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
 							} else if (typeof deps.createImageNodeAtCenter === 'function') {
-								const newNodeId = deps.createImageNodeAtCenter(finalUrl, t('aiworkflow.runtime.tripo3dResultNodeNameIndexed', { index: String(produced + 1) }))
-								if (newNodeId) { bindNodeId = newNodeId; isNewNode = true; createdNodes.push(newNodeId) }
+								const newNodeId = deps.createImageNodeAtCenter(
+									finalUrl,
+									t('aiworkflow.runtime.tripo3dResultNodeNameIndexed', {
+										index: String(produced + 1)
+									})
+								)
+								if (newNodeId) {
+									bindNodeId = newNodeId
+									isNewNode = true
+									createdNodes.push(newNodeId)
+								}
 							}
 						}
 
@@ -2192,7 +2600,11 @@ const runImageTask = async (
 						}
 
 						if (bound) {
-							appendResult(deps, task.id, { kind: 'image', url: finalUrl, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+							appendResult(deps, task.id, {
+								kind: 'image',
+								url: finalUrl,
+								label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) })
+							})
 						}
 
 						if (isNewNode) {
@@ -2223,14 +2635,19 @@ const runImageTask = async (
 								taskStatus: produced > 0 ? 'completed' : 'failed',
 								taskFamily: effectiveMode,
 								progress: 100,
-								statusText: produced > 0
-									? t('aiworkflow.runtime.tripo3dComplete')
-									: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
-								imageUrls: allUrls.map(u => deps.resolveBackendUrl(u)),
-								thumbnailUrl: thumbnailUrl ? deps.resolveBackendUrl(thumbnailUrl) : (allUrls.length > 0 ? deps.resolveBackendUrl(allUrls[0]) : ''),
+								statusText:
+									produced > 0
+										? t('aiworkflow.runtime.tripo3dComplete')
+										: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
+								imageUrls: allUrls.map((u) => deps.resolveBackendUrl(u)),
+								thumbnailUrl: thumbnailUrl
+									? deps.resolveBackendUrl(thumbnailUrl)
+									: allUrls.length > 0
+										? deps.resolveBackendUrl(allUrls[0])
+										: '',
 								outputSummary: {
 									preferredUrl: produced > 0 ? deps.resolveBackendUrl(allUrls[0]) : '',
-									imageUrls: allUrls.map(u => deps.resolveBackendUrl(u)),
+									imageUrls: allUrls.map((u) => deps.resolveBackendUrl(u)),
 									thumbnailUrl: thumbnailUrl ? deps.resolveBackendUrl(thumbnailUrl) : ''
 								}
 							}
@@ -2239,9 +2656,10 @@ const runImageTask = async (
 
 					updateTask(deps, task.id, {
 						status: produced > 0 ? 'completed' : 'error',
-						statusText: produced > 0
-							? t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) })
-							: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
+						statusText:
+							produced > 0
+								? t('aiworkflow.runtime.imageGenerationComplete', { count: String(produced) })
+								: t('aiworkflow.runtime.tripo3dCompleteFetchFailed'),
 						progress: 100,
 						finishedAt: Date.now()
 					})
@@ -2312,17 +2730,22 @@ const runImageTask = async (
 			if (obj && typeof obj.imageUrl === 'string') {
 				const sourceUrl = String(obj.imageUrl || '').trim()
 				if (!sourceUrl) continue
-				let bound = true
+				let finalUrl = ''
 				if (typeof deps.bindImageResultToNode === 'function') {
 					const bindRet = await deps.bindImageResultToNode(payload.nodeId, sourceUrl)
-					bound = bindRet !== false
+					if (bindRet === false || bindRet === undefined || bindRet === null) {
+						appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
+						continue
+					}
+					finalUrl = typeof bindRet === 'string' ? bindRet : deps.resolveBackendUrl(sourceUrl)
+				} else {
+					finalUrl = deps.resolveBackendUrl(sourceUrl)
 				}
-				if (!bound) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.imageImportFailed'))
-					continue
-				}
-				const resolved = deps.resolveBackendUrl(sourceUrl)
-				appendResult(deps, task.id, { kind: 'image', url: resolved, label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) }) })
+				appendResult(deps, task.id, {
+					kind: 'image',
+					url: finalUrl,
+					label: t('aiworkflow.runtime.imageLabel', { index: String(produced + 1) })
+				})
 				produced += 1
 				updateTask(deps, task.id, {
 					status: 'running',
@@ -2370,7 +2793,11 @@ const runVideoTask = async (
 	const params = payload.params ?? {}
 	const { kind, model } = normalizeVideoModel(params)
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
-	appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+	appendDetail(
+		deps,
+		task.id,
+		t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
+	)
 
 	const form = new FormData()
 	form.set('prompt', payload.prompt)
@@ -2404,7 +2831,7 @@ const runVideoTask = async (
 	if (kind === 'seedance') {
 		const [imageRefs, videoRefs] = await Promise.all([
 			collectReferenceImages(deps, payload.nodeId, 9),
-			collectReferenceVideos(deps, payload.nodeId, 3),
+			collectReferenceVideos(deps, payload.nodeId, 3)
 		])
 		for (const ref of imageRefs) form.append('refImages', ref.blob, ref.name)
 		for (const ref of videoRefs) form.append('refVideos', ref.blob, ref.name)
@@ -2431,9 +2858,7 @@ const runVideoTask = async (
 	})
 
 	const stream =
-		kind === 'jimeng'
-			? svc.jimengVideoGenerateStream(form)
-			: svc.seedanceGenerateStream(form)
+		kind === 'jimeng' ? svc.jimengVideoGenerateStream(form) : svc.seedanceGenerateStream(form)
 
 	let produced = 0
 	for await (const ev of stream) {
@@ -2474,12 +2899,20 @@ const runVideoTask = async (
 						appendDetail(deps, task.id, t('aiworkflow.runtime.videoImportFailed'))
 						continue
 					}
-					appendResult(deps, task.id, { kind: 'video', url, label: t('aiworkflow.runtime.videoResultLabel') })
+					appendResult(deps, task.id, {
+						kind: 'video',
+						url,
+						label: t('aiworkflow.runtime.videoResultLabel')
+					})
 					produced += 1
 				}
 				updateTask(deps, task.id, {
 					status: produced > 0 ? 'completed' : 'running',
-					statusText: downloadStatus || (produced > 0 ? t('aiworkflow.runtime.videoResultReady') : t('aiworkflow.runtime.taskProcessing')),
+					statusText:
+						downloadStatus ||
+						(produced > 0
+							? t('aiworkflow.runtime.videoResultReady')
+							: t('aiworkflow.runtime.taskProcessing')),
 					progress,
 					...(produced > 0 ? { finishedAt: Date.now() } : {})
 				})
@@ -2546,7 +2979,10 @@ const pollMeshy3DTaskStatus = async (
 				appendDetail(
 					deps,
 					generationTaskId,
-					t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
+					t('aiworkflow.runtime.pollFailed', {
+						status: String(taskRes.status),
+						error: String(taskRes.error)
+					})
 				)
 				console.warn('[Meshy 3D Poll] 轮询失败:', {
 					status: taskRes.status,
@@ -2563,7 +2999,11 @@ const pollMeshy3DTaskStatus = async (
 			const progress = Number(taskRes.progress ?? 0)
 			const progressPct = status === 'SUCCEEDED' ? 100 : Math.min(99, Math.max(10, progress))
 
-			const statusText = t('aiworkflow.runtime.meshy3dTaskStatus', { taskMode, status, progress: String(progress) })
+			const statusText = t('aiworkflow.runtime.meshy3dTaskStatus', {
+				taskMode,
+				status,
+				progress: String(progress)
+			})
 
 			updateTask(deps, generationTaskId, {
 				statusText,
@@ -2699,9 +3139,7 @@ const pollMeshy3DTaskStatus = async (
 							statusText: fetchSucceeded
 								? t('aiworkflow.runtime.meshy3dComplete')
 								: t('aiworkflow.runtime.meshy3dCompleteFetchFailed'),
-							errorMessage: fetchSucceeded
-								? ''
-								: t('aiworkflow.runtime.meshy3dFetchFailedMessage'),
+							errorMessage: fetchSucceeded ? '' : t('aiworkflow.runtime.meshy3dFetchFailedMessage'),
 							outputSummary: {
 								preferredUrl: persistedUrl,
 								assetUrl: persistedUrl,
@@ -2741,7 +3179,11 @@ const pollMeshy3DTaskStatus = async (
 			appendDetail(
 				deps,
 				generationTaskId,
-				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
+				t('aiworkflow.runtime.pollException', {
+					attempt: String(i + 1),
+					consecutive: String(consecutiveErrors),
+					error: errMsg
+				})
 			)
 			console.error('[Meshy 3D Poll] 轮询异常:', {
 				message: errMsg,
@@ -2752,7 +3194,9 @@ const pollMeshy3DTaskStatus = async (
 			})
 
 			if (consecutiveErrors >= 10) {
-				return throwFatal(t('aiworkflow.runtime.meshy3dConsecutiveFailures', { count: String(consecutiveErrors) }))
+				return throwFatal(
+					t('aiworkflow.runtime.meshy3dConsecutiveFailures', { count: String(consecutiveErrors) })
+				)
 			}
 		}
 	}
@@ -2769,7 +3213,11 @@ const blobToBase64DataUri = async (blob: Blob): Promise<string> => {
 	})
 }
 
-const normalizeModelUrlForMeshy = async (deps: NodeGenerationApiDeps, rawUrl: string, _label?: string): Promise<string> => {
+const normalizeModelUrlForMeshy = async (
+	deps: NodeGenerationApiDeps,
+	rawUrl: string,
+	_label?: string
+): Promise<string> => {
 	const value = String(rawUrl ?? '').trim()
 	if (!value) return ''
 	if (value.startsWith('data:')) return value
@@ -2850,12 +3298,18 @@ const resolveModel3DInput = async (
 	const state = deps.store.state
 	console.log('[Tripo3D Chat] resolveModel3DInput 开始解析, nodeId:', nodeId)
 
-	const tryGetTripo3DTaskIdFromModel3d = (m3d: Record<string, unknown> | undefined, source: string): string => {
+	const tryGetTripo3DTaskIdFromModel3d = (
+		m3d: Record<string, unknown> | undefined,
+		source: string
+	): string => {
 		if (!m3d) {
 			console.log('[Tripo3D Chat]   tryGetTripo3DTaskIdFromModel3d (' + source + '): m3d为空')
 			return ''
 		}
-		console.log('[Tripo3D Chat]   tryGetTripo3DTaskIdFromModel3d (' + source + '): m3d keys:', Object.keys(m3d))
+		console.log(
+			'[Tripo3D Chat]   tryGetTripo3DTaskIdFromModel3d (' + source + '): m3d keys:',
+			Object.keys(m3d)
+		)
 		const tripo = m3d.tripo3dModelSettings
 		console.log('[Tripo3D Chat]   tripo3dModelSettings:', tripo)
 		if (tripo && typeof tripo === 'object' && tripo !== null) {
@@ -2885,9 +3339,7 @@ const resolveModel3DInput = async (
 	// 1. 查找 in-model 或 in-resource 输入边
 	const allEdges = Object.values(state.edgesById || {})
 	console.log('[Tripo3D Chat]  所有边数量:', allEdges.length)
-	const incomingEdges = allEdges.filter(
-		(e) => String(e.toNodeId ?? '') === String(nodeId)
-	)
+	const incomingEdges = allEdges.filter((e) => String(e.toNodeId ?? '') === String(nodeId))
 	console.log('[Tripo3D Chat]  目标节点入边数量:', incomingEdges.length)
 	for (const e of incomingEdges) {
 		console.log('[Tripo3D Chat]   入边:', {
@@ -2899,37 +3351,58 @@ const resolveModel3DInput = async (
 	}
 
 	const edge = allEdges.find(
-		(e) => String(e.toNodeId ?? '') === String(nodeId) && (String(e.toAnchorId ?? '').trim() === 'in-model' || String(e.toAnchorId ?? '').trim() === 'in-resource')
+		(e) =>
+			String(e.toNodeId ?? '') === String(nodeId) &&
+			(String(e.toAnchorId ?? '').trim() === 'in-model' ||
+				String(e.toAnchorId ?? '').trim() === 'in-resource')
 	)
-	console.log('[Tripo3D Chat]  匹配到模型输入边:', edge ? {
-		fromNodeId: String(edge.fromNodeId ?? ''),
-		toAnchorId: String(edge.toAnchorId ?? '')
-	} : null)
+	console.log(
+		'[Tripo3D Chat]  匹配到模型输入边:',
+		edge
+			? {
+					fromNodeId: String(edge.fromNodeId ?? ''),
+					toAnchorId: String(edge.toAnchorId ?? '')
+				}
+			: null
+	)
 
 	if (edge) {
 		const fromNodeId = String(edge.fromNodeId ?? '')
 		const fromNode = state.nodesById[fromNodeId]
-		console.log('[Tripo3D Chat]  上游节点:', fromNode ? {
-			id: fromNode.id,
-			type: fromNode.type,
-			keys: Object.keys(fromNode as Record<string, unknown>)
-		} : null)
+		console.log(
+			'[Tripo3D Chat]  上游节点:',
+			fromNode
+				? {
+						id: fromNode.id,
+						type: fromNode.type,
+						keys: Object.keys(fromNode as Record<string, unknown>)
+					}
+				: null
+		)
 
 		if (!fromNode) {
 			console.log('[Tripo3D Chat]  上游节点不存在')
 		} else if (fromNode.type === 'meshy') {
-			const settings = (fromNode as Record<string, unknown>).meshySettings as Record<string, unknown> | undefined
-			const relationSummary = settings && typeof settings.meshyRelationSummary === 'object' && settings.meshyRelationSummary !== null
-				? (settings.meshyRelationSummary as Record<string, unknown>)
-				: {}
+			const settings = (fromNode as Record<string, unknown>).meshySettings as
+				| Record<string, unknown>
+				| undefined
+			const relationSummary =
+				settings &&
+				typeof settings.meshyRelationSummary === 'object' &&
+				settings.meshyRelationSummary !== null
+					? (settings.meshyRelationSummary as Record<string, unknown>)
+					: {}
 			const taskId = String(settings?.meshyTaskId ?? relationSummary?.effectiveTaskId ?? '').trim()
 			if (taskId) {
 				console.log('[Tripo3D Chat]  从meshy节点找到taskId:', taskId)
 				return { inputTaskId: taskId }
 			}
-			const outputSummary = settings && typeof settings.meshyOutputSummary === 'object' && settings.meshyOutputSummary !== null
-				? (settings.meshyOutputSummary as Record<string, unknown>)
-				: {}
+			const outputSummary =
+				settings &&
+				typeof settings.meshyOutputSummary === 'object' &&
+				settings.meshyOutputSummary !== null
+					? (settings.meshyOutputSummary as Record<string, unknown>)
+					: {}
 			const sourceUrl = String(
 				relationSummary?.preferredUrl ?? outputSummary?.preferredUrl ?? ''
 			).trim()
@@ -2940,39 +3413,60 @@ const resolveModel3DInput = async (
 		} else if (fromNode.type === 'tripo3d' || fromNode.type === 'image') {
 			let settings: Record<string, unknown> | undefined
 			if (fromNode.type === 'image') {
-				const imgSettings = (fromNode as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
-				const rawImgTripo = imgSettings && typeof imgSettings.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings !== null
-					? imgSettings.tripo3dImageSettings as Record<string, unknown>
-					: {}
+				const imgSettings = (fromNode as Record<string, unknown>).imageSettings as
+					| Record<string, unknown>
+					| undefined
+				const rawImgTripo =
+					imgSettings &&
+					typeof imgSettings.tripo3dImageSettings === 'object' &&
+					imgSettings.tripo3dImageSettings !== null
+						? (imgSettings.tripo3dImageSettings as Record<string, unknown>)
+						: {}
 				settings = {}
 				for (const [key, value] of Object.entries(rawImgTripo)) {
 					settings[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
 				}
 			} else {
-				settings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown> | undefined
+				settings = (fromNode as Record<string, unknown>).tripo3dSettings as
+					| Record<string, unknown>
+					| undefined
 			}
 			const tripoTaskId = String(settings?.tripo3dTaskId ?? '').trim()
-			const tripoTaskFamily = String(settings?.tripo3dTaskFamily ?? settings?.tripo3dTaskMode ?? '').trim()
+			const tripoTaskFamily = String(
+				settings?.tripo3dTaskFamily ?? settings?.tripo3dTaskMode ?? ''
+			).trim()
 			const tripoTaskStatus = String(settings?.tripo3dTaskStatus ?? '').trim()
 			console.log('[Tripo3D Chat]  tripo3d/image节点设置 (normalized):', settings)
-			const isModelTask = tripoTaskFamily === 'text_to_model' || tripoTaskFamily === 'image_to_model' || tripoTaskFamily === 'multiview_to_model'
-				|| tripoTaskFamily === 'texture' || tripoTaskFamily === 'refine' || tripoTaskFamily === 'mesh_segment'
-				|| tripoTaskFamily === 'mesh_smartsegment' || tripoTaskFamily === 'mesh_complete' || tripoTaskFamily === 'mesh_decimate'
-				|| tripoTaskFamily === 'models_convert'
+			const isModelTask =
+				tripoTaskFamily === 'text_to_model' ||
+				tripoTaskFamily === 'image_to_model' ||
+				tripoTaskFamily === 'multiview_to_model' ||
+				tripoTaskFamily === 'texture' ||
+				tripoTaskFamily === 'refine' ||
+				tripoTaskFamily === 'mesh_segment' ||
+				tripoTaskFamily === 'mesh_smartsegment' ||
+				tripoTaskFamily === 'mesh_complete' ||
+				tripoTaskFamily === 'mesh_decimate' ||
+				tripoTaskFamily === 'models_convert'
 			if (tripoTaskId && isModelTask) {
 				console.log('[Tripo3D Chat]  从tripo3d/image节点找到model taskId:', tripoTaskId)
 				return { inputTaskId: tripoTaskId }
 			}
-			const outputSummary = settings && typeof settings.tripo3dOutputSummary === 'object' && settings.tripo3dOutputSummary !== null
-				? (settings.tripo3dOutputSummary as Record<string, unknown>)
-				: {}
+			const outputSummary =
+				settings &&
+				typeof settings.tripo3dOutputSummary === 'object' &&
+				settings.tripo3dOutputSummary !== null
+					? (settings.tripo3dOutputSummary as Record<string, unknown>)
+					: {}
 			const modelUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
 			if (modelUrl && isModelTask) {
 				console.log('[Tripo3D Chat]  tripo3d/image节点使用modelUrl:', modelUrl.slice(0, 80))
 				return { modelUrl }
 			}
 		} else if (fromNode.type === 'model3d') {
-			const m3d = (fromNode as Record<string, unknown>).model3dSettings as Record<string, unknown> | undefined
+			const m3d = (fromNode as Record<string, unknown>).model3dSettings as
+				| Record<string, unknown>
+				| undefined
 			console.log('[Tripo3D Chat]  上游model3d节点设置:', m3d)
 			const tripoTaskId = tryGetTripo3DTaskIdFromModel3d(m3d, 'upstream-model3d')
 			if (tripoTaskId) {
@@ -2997,14 +3491,18 @@ const resolveModel3DInput = async (
 	const selfNode = state.nodesById[String(nodeId)]
 	if (selfNode) {
 		console.log('[Tripo3D Chat]  回退检查当前节点自身, type:', selfNode.type)
-		const selfM3d = (selfNode as Record<string, unknown>).model3dSettings as Record<string, unknown> | undefined
+		const selfM3d = (selfNode as Record<string, unknown>).model3dSettings as
+			| Record<string, unknown>
+			| undefined
 		console.log('[Tripo3D Chat]  当前节点model3dSettings:', selfM3d)
 		const selfTripoTaskId = tryGetTripo3DTaskIdFromModel3d(selfM3d, 'self-model3d')
 		if (selfTripoTaskId) {
 			console.log('[Tripo3D Chat]  从当前节点找到tripoTaskId:', selfTripoTaskId)
 			return { inputTaskId: selfTripoTaskId }
 		}
-		const selfMeshy = (selfNode as Record<string, unknown>).meshyModelSettings as Record<string, unknown> | undefined
+		const selfMeshy = (selfNode as Record<string, unknown>).meshyModelSettings as
+			| Record<string, unknown>
+			| undefined
 		const taskId = String(selfMeshy?.taskId ?? '').trim()
 		if (taskId) {
 			console.log('[Tripo3D Chat]  从当前节点找到meshyTaskId:', taskId)
@@ -3049,7 +3547,8 @@ const runModel3dMeshyTask = async (
 	const meshyAlphaThumbnail = Boolean(params.meshyAlphaThumbnail ?? false)
 	const meshyStyleSource = String(params.meshyStyleSource || 'text').trim()
 
-	const isPostProcessMode = meshyMode === 'remesh' || meshyMode === 'retexture' || meshyMode === 'uv-unwrap'
+	const isPostProcessMode =
+		meshyMode === 'remesh' || meshyMode === 'retexture' || meshyMode === 'uv-unwrap'
 
 	updateTask(deps, task.id, {
 		status: 'running',
@@ -3057,9 +3556,20 @@ const runModel3dMeshyTask = async (
 		progress: 10
 	})
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailMode', { mode: meshyMode }))
-	if (!isPostProcessMode) appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
-	if (meshyOutputFormat && meshyMode !== 'uv-unwrap') appendDetail(deps, task.id, t('aiworkflow.runtime.detailOutputFormat', { format: meshyOutputFormat }))
-	if (payload.prompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+	if (!isPostProcessMode)
+		appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: meshyAiModel }))
+	if (meshyOutputFormat && meshyMode !== 'uv-unwrap')
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailOutputFormat', { format: meshyOutputFormat })
+		)
+	if (payload.prompt)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
+		)
 
 	try {
 		const meshyPayload: Record<string, unknown> = {
@@ -3075,14 +3585,22 @@ const runModel3dMeshyTask = async (
 		}
 
 		if (meshyModelType && !isPostProcessMode) meshyPayload.model_type = meshyModelType
-		if (meshyTopology && meshyMode !== 'retexture' && meshyMode !== 'uv-unwrap') meshyPayload.topology = meshyTopology
+		if (meshyTopology && meshyMode !== 'retexture' && meshyMode !== 'uv-unwrap')
+			meshyPayload.topology = meshyTopology
 		if (meshySymmetryMode && !isPostProcessMode) meshyPayload.symmetry_mode = meshySymmetryMode
-		if (meshyOriginAt && (!isPostProcessMode || meshyMode === 'remesh')) meshyPayload.origin_at = meshyOriginAt
+		if (meshyOriginAt && (!isPostProcessMode || meshyMode === 'remesh'))
+			meshyPayload.origin_at = meshyOriginAt
 		if (meshyPoseMode && !isPostProcessMode) meshyPayload.pose_mode = meshyPoseMode
-		if (meshyOutputFormat && meshyMode !== 'uv-unwrap') meshyPayload.output_format = meshyOutputFormat
+		if (meshyOutputFormat && meshyMode !== 'uv-unwrap')
+			meshyPayload.output_format = meshyOutputFormat
 		if (!isPostProcessMode && meshySeed > 0) meshyPayload.seed = meshySeed
-		if (isPostProcessMode && Number.isFinite(meshyTargetPolycount)) meshyPayload.target_polycount = Math.max(100, Math.min(300000, Math.floor(meshyTargetPolycount)))
-		if (meshyMode === 'remesh' && meshyDecimationMode) meshyPayload.decimation_mode = meshyDecimationMode
+		if (isPostProcessMode && Number.isFinite(meshyTargetPolycount))
+			meshyPayload.target_polycount = Math.max(
+				100,
+				Math.min(300000, Math.floor(meshyTargetPolycount))
+			)
+		if (meshyMode === 'remesh' && meshyDecimationMode)
+			meshyPayload.decimation_mode = meshyDecimationMode
 		if (meshyMode === 'retexture') {
 			if (meshyStyleSource === 'text' && payload.prompt) {
 				meshyPayload.text_style_prompt = payload.prompt
@@ -3115,7 +3633,11 @@ const runModel3dMeshyTask = async (
 				throw new Error(t('aiworkflow.runtime.multiImageTo3dNeedImages'))
 			}
 
-			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) })
+			)
 
 			for (const ref of refImages) {
 				try {
@@ -3143,7 +3665,7 @@ const runModel3dMeshyTask = async (
 			const selectedNodeId = String(params.meshyTextureImageNodeId || '').trim()
 			let selectedRef: { name: string; blob: Blob; url: string; fromNodeId: string } | null = null
 			if (selectedNodeId && styleRefs.length > 0) {
-				selectedRef = styleRefs.find(ref => ref.fromNodeId === selectedNodeId) || null
+				selectedRef = styleRefs.find((ref) => ref.fromNodeId === selectedNodeId) || null
 			}
 			if (!selectedRef && styleRefs.length > 0) {
 				selectedRef = styleRefs[0]
@@ -3153,9 +3675,12 @@ const runModel3dMeshyTask = async (
 					const dataUri = await blobToBase64DataUri(selectedRef.blob)
 					if (dataUri) {
 						meshyPayload.image_style_url = dataUri
-						appendDetail(deps, task.id, selectedNodeId
-							? t('aiworkflow.runtime.usingSelectedImageStyle')
-							: t('aiworkflow.runtime.usingConnectedImageStyle')
+						appendDetail(
+							deps,
+							task.id,
+							selectedNodeId
+								? t('aiworkflow.runtime.usingSelectedImageStyle')
+								: t('aiworkflow.runtime.usingConnectedImageStyle')
 						)
 					}
 				} catch {
@@ -3168,21 +3693,29 @@ const runModel3dMeshyTask = async (
 			const modelInput = await resolveModel3DInput(deps, payload.nodeId)
 			if (modelInput?.inputTaskId) {
 				meshyPayload.input_task_id = modelInput.inputTaskId
-				appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+				)
 			} else if (modelInput?.modelUrl) {
 				meshyPayload.model_url = modelInput.modelUrl
 				appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 			} else {
-				const modeLabel = meshyMode === 'remesh'
-					? t('aiworkflow.runtime.modeRemesh')
-					: meshyMode === 'retexture'
-						? t('aiworkflow.runtime.modeRetexture')
-						: t('aiworkflow.runtime.modeUvUnwrap')
+				const modeLabel =
+					meshyMode === 'remesh'
+						? t('aiworkflow.runtime.modeRemesh')
+						: meshyMode === 'retexture'
+							? t('aiworkflow.runtime.modeRetexture')
+							: t('aiworkflow.runtime.modeUvUnwrap')
 				throw new Error(t('aiworkflow.runtime.postProcessNeedInput', { mode: modeLabel }))
 			}
 		}
 
-		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingMeshy3dTask'), progress: 15 })
+		updateTask(deps, task.id, {
+			statusText: t('aiworkflow.runtime.submittingMeshy3dTask'),
+			progress: 15
+		})
 
 		const projectIdFor3d = deps.getProjectId?.() ?? null
 		if (projectIdFor3d != null) meshyPayload.projectId = String(projectIdFor3d)
@@ -3277,7 +3810,9 @@ const runModel3dTripo3dTask = async (
 	const tripo3dModelSeed = Number(params.tripo3dModelSeed ?? -1)
 	const tripo3dTextureSeed = Number(params.tripo3dTextureSeed ?? -1)
 	const tripo3dNegativePrompt = String(params.tripo3dNegativePrompt || '').trim()
-	const tripo3dSelectedImages = Array.isArray(params.tripo3dSelectedImages) ? params.tripo3dSelectedImages : []
+	const tripo3dSelectedImages = Array.isArray(params.tripo3dSelectedImages)
+		? params.tripo3dSelectedImages
+		: []
 	const tripo3dForceSingleImage = params.tripo3dForceSingleImage === true
 
 	const tripo3dTaskMode = String(params.tripo3dTaskMode || '').trim()
@@ -3291,9 +3826,13 @@ const runModel3dTripo3dTask = async (
 	const tripo3dConvertTextureSize = Number(params.tripo3dConvertTextureSize ?? 0)
 	const tripo3dPartNames = Array.isArray(params.tripo3dPartNames) ? params.tripo3dPartNames : []
 	const tripo3dHint = String(params.tripo3dHint || '').trim()
-	const tripo3dTextureModelVersion = String(params.tripo3dTextureModelVersion || 'v3.0-20250812').trim()
+	const tripo3dTextureModelVersion = String(
+		params.tripo3dTextureModelVersion || 'v3.0-20250812'
+	).trim()
 	const tripo3dTextureForceSingleImage = Boolean(params.tripo3dTextureForceSingleImage)
-	const tripo3dTextureSelectedImages = Array.isArray(params.tripo3dTextureSelectedImages) ? params.tripo3dTextureSelectedImages : []
+	const tripo3dTextureSelectedImages = Array.isArray(params.tripo3dTextureSelectedImages)
+		? params.tripo3dTextureSelectedImages
+		: []
 	const tripo3dTextureBake = Boolean(params.tripo3dTextureBake ?? true)
 
 	updateTask(deps, task.id, {
@@ -3301,8 +3840,18 @@ const runModel3dTripo3dTask = async (
 		statusText: t('aiworkflow.runtime.creatingTripo3DTask', { mode: 'detecting' }),
 		progress: 10
 	})
-	if (tripo3dModelVersion) appendDetail(deps, task.id, t('aiworkflow.runtime.detailAiModel', { model: tripo3dModelVersion }))
-	if (payload.prompt) appendDetail(deps, task.id, t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) }))
+	if (tripo3dModelVersion)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailAiModel', { model: tripo3dModelVersion })
+		)
+	if (payload.prompt)
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
+		)
 
 	try {
 		let refImages: Array<{ name: string; blob: Blob }> = []
@@ -3311,7 +3860,15 @@ const runModel3dTripo3dTask = async (
 		const allRefImages = await collectReferenceImages(deps, payload.nodeId, 4)
 		const imageCount = allRefImages.length
 
-		const postProcessModes = ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+		const postProcessModes = [
+			'texture',
+			'refine',
+			'mesh_segment',
+			'mesh_smartsegment',
+			'mesh_complete',
+			'mesh_decimate',
+			'models_convert'
+		]
 		const isPostProcessMode = postProcessModes.includes(tripo3dTaskMode)
 
 		let tripo3dMode: string
@@ -3374,7 +3931,11 @@ const runModel3dTripo3dTask = async (
 				throw new Error(t('aiworkflow.runtime.imageTo3dNeedImage'))
 			}
 
-			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) })
+			)
 
 			const dataUri = await blobToBase64DataUri(refImages[0].blob)
 			if (!dataUri) {
@@ -3382,7 +3943,10 @@ const runModel3dTripo3dTask = async (
 			}
 			imageDataUris.push(dataUri)
 
-			updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.uploadingTripo3DImage'), progress: 12 })
+			updateTask(deps, task.id, {
+				statusText: t('aiworkflow.runtime.uploadingTripo3DImage'),
+				progress: 12
+			})
 			appendDetail(deps, task.id, t('aiworkflow.runtime.uploadingImage'))
 
 			const uploadRes = await svc.tripo3dUploadFile({
@@ -3392,7 +3956,11 @@ const runModel3dTripo3dTask = async (
 			})
 
 			if (!uploadRes.ok) {
-				throw new Error(t('aiworkflow.runtime.tripo3dUploadFailed', { error: String(uploadRes.error || 'unknown') }))
+				throw new Error(
+					t('aiworkflow.runtime.tripo3dUploadFailed', {
+						error: String(uploadRes.error || 'unknown')
+					})
+				)
 			}
 
 			const fileToken = String(uploadRes.fileToken || '').trim()
@@ -3407,7 +3975,11 @@ const runModel3dTripo3dTask = async (
 				throw new Error(t('aiworkflow.runtime.multiImageTo3dNeedImages'))
 			}
 
-			appendDetail(deps, task.id, t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) }))
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailRefImageCount', { count: String(refImages.length) })
+			)
 
 			const fileTokens: string[] = []
 			for (let i = 0; i < refImages.length; i++) {
@@ -3418,10 +3990,17 @@ const runModel3dTripo3dTask = async (
 						imageDataUris.push(dataUri)
 
 						updateTask(deps, task.id, {
-							statusText: t('aiworkflow.runtime.uploadingTripo3DImageIndexed', { index: String(i + 1), total: String(refImages.length) }),
-							progress: 8 + Math.floor((i + 1) / refImages.length * 10)
+							statusText: t('aiworkflow.runtime.uploadingTripo3DImageIndexed', {
+								index: String(i + 1),
+								total: String(refImages.length)
+							}),
+							progress: 8 + Math.floor(((i + 1) / refImages.length) * 10)
 						})
-						appendDetail(deps, task.id, t('aiworkflow.runtime.uploadingImageIndexed', { index: String(i + 1) }))
+						appendDetail(
+							deps,
+							task.id,
+							t('aiworkflow.runtime.uploadingImageIndexed', { index: String(i + 1) })
+						)
 
 						const uploadRes = await svc.tripo3dUploadFile({
 							fileData: dataUri,
@@ -3431,10 +4010,21 @@ const runModel3dTripo3dTask = async (
 
 						if (uploadRes.ok && uploadRes.fileToken) {
 							fileTokens.push(uploadRes.fileToken)
-							appendDetail(deps, task.id, t('aiworkflow.runtime.detailFileTokenIndexed', { index: String(i + 1), token: uploadRes.fileToken }))
+							appendDetail(
+								deps,
+								task.id,
+								t('aiworkflow.runtime.detailFileTokenIndexed', {
+									index: String(i + 1),
+									token: uploadRes.fileToken
+								})
+							)
 						} else {
 							const errMsg = !uploadRes.ok ? String(uploadRes.error || 'unknown') : 'no file token'
-							appendDetail(deps, task.id, t('aiworkflow.runtime.uploadImageFailed', { index: String(i + 1), error: errMsg }))
+							appendDetail(
+								deps,
+								task.id,
+								t('aiworkflow.runtime.uploadImageFailed', { index: String(i + 1), error: errMsg })
+							)
 						}
 					}
 				} catch {
@@ -3462,7 +4052,11 @@ const runModel3dTripo3dTask = async (
 					throw new Error(t('tasks.tripo3d.meshCompleteRequiresSegment'))
 				}
 				tripo3dPayload.input = modelInput.inputTaskId
-				appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+				appendDetail(
+					deps,
+					task.id,
+					t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+				)
 			} else if (tripo3dMode === 'mesh_smartsegment') {
 				if (!hasTaskId && !hasModelUrl) {
 					throw new Error(t('tasks.tripo3d.postProcessRequiresModel'))
@@ -3470,14 +4064,18 @@ const runModel3dTripo3dTask = async (
 				tripo3dPayload.seg_type = tripo3dSegType
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
 				if (tripo3dGranularity) tripo3dPayload.granularity = tripo3dGranularity
 				if (tripo3dHint) tripo3dPayload.hint = tripo3dHint
 				if (tripo3dSegType === 'model') {
-					tripo3dPayload.transform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
+					tripo3dPayload.transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 				}
 			} else if (tripo3dMode === 'mesh_segment') {
 				if (!hasTaskId && !hasModelUrl) {
@@ -3485,7 +4083,11 @@ const runModel3dTripo3dTask = async (
 				}
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
@@ -3496,11 +4098,16 @@ const runModel3dTripo3dTask = async (
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				tripo3dPayload.model = tripo3dDecimateModel
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
-				if (tripo3dConvertFaceLimit > 0) tripo3dPayload.face_limit = Math.floor(tripo3dConvertFaceLimit)
+				if (tripo3dConvertFaceLimit > 0)
+					tripo3dPayload.face_limit = Math.floor(tripo3dConvertFaceLimit)
 				if (tripo3dConvertQuad) tripo3dPayload.quad = true
 			} else if (tripo3dMode === 'models_convert') {
 				if (!hasTaskId && !hasModelUrl) {
@@ -3508,15 +4115,21 @@ const runModel3dTripo3dTask = async (
 				}
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
 				tripo3dPayload.format = tripo3dConvertQuad ? 'FBX' : tripo3dConvertFormat
 				if (tripo3dConvertQuad) tripo3dPayload.quad = true
-				if (tripo3dConvertFaceLimit > 0) tripo3dPayload.face_limit = Math.floor(tripo3dConvertFaceLimit)
+				if (tripo3dConvertFaceLimit > 0)
+					tripo3dPayload.face_limit = Math.floor(tripo3dConvertFaceLimit)
 				if (tripo3dConvertFlattenBottom) tripo3dPayload.flatten_bottom = true
-				if (tripo3dConvertTextureSize > 0) tripo3dPayload.texture_size = Math.floor(tripo3dConvertTextureSize)
+				if (tripo3dConvertTextureSize > 0)
+					tripo3dPayload.texture_size = Math.floor(tripo3dConvertTextureSize)
 			} else if (tripo3dMode === 'texture') {
 				if (!hasTaskId && !hasModelUrl) {
 					throw new Error(t('tasks.tripo3d.postProcessRequiresModel'))
@@ -3524,7 +4137,11 @@ const runModel3dTripo3dTask = async (
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				tripo3dPayload.model = tripo3dTextureModelVersion
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
@@ -3539,7 +4156,10 @@ const runModel3dTripo3dTask = async (
 						tripo3dPayload.texture_prompt = { text: promptText }
 					}
 				} else if (textureImageCount === 1 || textureForceSingle) {
-					updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.uploadingTripo3DImage'), progress: 12 })
+					updateTask(deps, task.id, {
+						statusText: t('aiworkflow.runtime.uploadingTripo3DImage'),
+						progress: 12
+					})
 					const ref = textureRefs[0]
 					const dataUri = await blobToBase64DataUri(ref.blob)
 					if (dataUri) {
@@ -3556,18 +4176,24 @@ const runModel3dTripo3dTask = async (
 						}
 					}
 				} else {
-					updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.uploadingTripo3DImage'), progress: 12 })
+					updateTask(deps, task.id, {
+						statusText: t('aiworkflow.runtime.uploadingTripo3DImage'),
+						progress: 12
+					})
 					const viewOrder = ['front', 'left', 'back', 'right'] as const
 					const selectedByView = new Map<string, { blob: Blob; nodeId: string }>()
 					for (const sel of tripo3dTextureSelectedImages) {
-						const found = textureRefs.find(r => r.fromNodeId === sel.nodeId)
+						const found = textureRefs.find((r) => r.fromNodeId === sel.nodeId)
 						if (found) {
 							selectedByView.set(sel.view, { blob: found.blob, nodeId: sel.nodeId })
 						}
 					}
 					if (selectedByView.size === 0 && textureRefs.length >= 2) {
 						for (let i = 0; i < Math.min(textureRefs.length, viewOrder.length); i++) {
-							selectedByView.set(viewOrder[i], { blob: textureRefs[i].blob, nodeId: textureRefs[i].fromNodeId })
+							selectedByView.set(viewOrder[i], {
+								blob: textureRefs[i].blob,
+								nodeId: textureRefs[i].fromNodeId
+							})
 						}
 					}
 					const imagesObj: Record<string, { file_token: string }> = {}
@@ -3604,11 +4230,19 @@ const runModel3dTripo3dTask = async (
 				if (tripo3dTextureSeed > 0) tripo3dPayload.texture_seed = tripo3dTextureSeed
 			} else if (tripo3dMode === 'refine') {
 				if (!hasTaskId && !hasModelUrl) {
-					throw new Error(t('aiworkflow.runtime.postProcessNeedInput', { mode: t('aiworkflow.runtime.modeRefine') }))
+					throw new Error(
+						t('aiworkflow.runtime.postProcessNeedInput', {
+							mode: t('aiworkflow.runtime.modeRefine')
+						})
+					)
 				}
 				tripo3dPayload.input = modelInput?.inputTaskId || modelInput?.modelUrl
 				if (modelInput?.inputTaskId) {
-					appendDetail(deps, task.id, t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId }))
+					appendDetail(
+						deps,
+						task.id,
+						t('aiworkflow.runtime.detailUpstreamTaskId', { taskId: modelInput.inputTaskId })
+					)
 				} else if (modelInput?.modelUrl) {
 					appendDetail(deps, task.id, t('aiworkflow.runtime.inputModelUrlReady'))
 				}
@@ -3627,9 +4261,15 @@ const runModel3dTripo3dTask = async (
 		if (task.clientRequestId) tripo3dPayload.clientRequestId = task.clientRequestId
 		if (task.globalTaskId) tripo3dPayload.globalTaskId = task.globalTaskId
 
-		updateTask(deps, task.id, { statusText: t('aiworkflow.runtime.submittingTripo3DTask'), progress: 15 })
+		updateTask(deps, task.id, {
+			statusText: t('aiworkflow.runtime.submittingTripo3DTask'),
+			progress: 15
+		})
 
-		console.log('[Tripo3D Chat]  最终提交payload (mode=' + tripo3dMode + '):', JSON.stringify(tripo3dPayload, null, 2))
+		console.log(
+			'[Tripo3D Chat]  最终提交payload (mode=' + tripo3dMode + '):',
+			JSON.stringify(tripo3dPayload, null, 2)
+		)
 		const createRes = await svc.tripo3dGenerate(tripo3dPayload)
 
 		if (!createRes.ok) {
@@ -3639,15 +4279,23 @@ const runModel3dTripo3dTask = async (
 		const tripo3dTaskId = String(createRes.taskId || '').trim()
 		if (!tripo3dTaskId) throw new Error(t('aiworkflow.runtime.tripo3dEmptyTaskId'))
 
-		appendDetail(deps, task.id, t('aiworkflow.runtime.detailTaskCreated', { taskId: tripo3dTaskId }))
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailTaskCreated', { taskId: tripo3dTaskId })
+		)
 
-		const currentNodeState = deps.store.state.nodesById[payload.nodeId] as Record<string, unknown> | undefined
-		const currentM3d = currentNodeState?.model3dSettings && typeof currentNodeState.model3dSettings === 'object'
-			? currentNodeState.model3dSettings as Record<string, unknown>
-			: {}
-		const existingTripo = currentM3d.tripo3dModelSettings && typeof currentM3d.tripo3dModelSettings === 'object'
-			? currentM3d.tripo3dModelSettings as Record<string, unknown>
-			: {}
+		const currentNodeState = deps.store.state.nodesById[payload.nodeId] as
+			| Record<string, unknown>
+			| undefined
+		const currentM3d =
+			currentNodeState?.model3dSettings && typeof currentNodeState.model3dSettings === 'object'
+				? (currentNodeState.model3dSettings as Record<string, unknown>)
+				: {}
+		const existingTripo =
+			currentM3d.tripo3dModelSettings && typeof currentM3d.tripo3dModelSettings === 'object'
+				? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+				: {}
 
 		deps.store.commit('setNodeModel3DSettings', {
 			nodeId: payload.nodeId,
@@ -3659,7 +4307,9 @@ const runModel3dTripo3dTask = async (
 					tripo3dTaskStatus: 'pending',
 					tripo3dTaskFamily: tripo3dMode,
 					tripo3dProgress: 15,
-					tripo3dStatusText: t('aiworkflow.runtime.tripo3dTaskCreatedStatus', { mode: tripo3dMode }),
+					tripo3dStatusText: t('aiworkflow.runtime.tripo3dTaskCreatedStatus', {
+						mode: tripo3dMode
+					}),
 					tripo3dImageCount: refImages.length,
 					tripo3dImageUrls: imageDataUris,
 					tripo3dPrompt: payload.prompt
@@ -3673,14 +4323,7 @@ const runModel3dTripo3dTask = async (
 			progress: 15
 		})
 
-		void pollTripo3DTaskStatus(
-			deps,
-			svc,
-			tripo3dTaskId,
-			task.id,
-			payload.nodeId,
-			tripo3dMode
-		)
+		void pollTripo3DTaskStatus(deps, svc, tripo3dTaskId, task.id, payload.nodeId, tripo3dMode)
 
 		return { ok: true, taskId: tripo3dTaskId, mode: tripo3dMode }
 	} catch (err: unknown) {
@@ -3720,7 +4363,10 @@ const pollTripo3DTaskStatus = async (
 				appendDetail(
 					deps,
 					generationTaskId,
-					t('aiworkflow.runtime.pollFailed', { status: String(taskRes.status), error: String(taskRes.error) })
+					t('aiworkflow.runtime.pollFailed', {
+						status: String(taskRes.status),
+						error: String(taskRes.error)
+					})
 				)
 				console.warn('[Tripo3D Poll] 轮询失败:', {
 					status: taskRes.status,
@@ -3735,11 +4381,16 @@ const pollTripo3DTaskStatus = async (
 				.trim()
 				.toLowerCase()
 			const progress = Number(taskRes.progress ?? 0)
-			const progressPct = status === 'success' || status === 'succeeded' || status === 'completed'
-				? 100
-				: Math.min(99, Math.max(10, progress))
+			const progressPct =
+				status === 'success' || status === 'succeeded' || status === 'completed'
+					? 100
+					: Math.min(99, Math.max(10, progress))
 
-			const statusText = t('aiworkflow.runtime.tripo3dTaskStatus', { taskMode, status, progress: String(progress) })
+			const statusText = t('aiworkflow.runtime.tripo3dTaskStatus', {
+				taskMode,
+				status,
+				progress: String(progress)
+			})
 
 			updateTask(deps, generationTaskId, {
 				statusText,
@@ -3755,13 +4406,17 @@ const pollTripo3DTaskStatus = async (
 				return 'running' as const
 			})()
 
-			const pollNodeState = deps.store.state.nodesById[nodeId] as Record<string, unknown> | undefined
-			const pollM3d = pollNodeState?.model3dSettings && typeof pollNodeState.model3dSettings === 'object'
-				? pollNodeState.model3dSettings as Record<string, unknown>
-				: {}
-			const pollExistingTripo = pollM3d.tripo3dModelSettings && typeof pollM3d.tripo3dModelSettings === 'object'
-				? pollM3d.tripo3dModelSettings as Record<string, unknown>
-				: {}
+			const pollNodeState = deps.store.state.nodesById[nodeId] as
+				| Record<string, unknown>
+				| undefined
+			const pollM3d =
+				pollNodeState?.model3dSettings && typeof pollNodeState.model3dSettings === 'object'
+					? (pollNodeState.model3dSettings as Record<string, unknown>)
+					: {}
+			const pollExistingTripo =
+				pollM3d.tripo3dModelSettings && typeof pollM3d.tripo3dModelSettings === 'object'
+					? (pollM3d.tripo3dModelSettings as Record<string, unknown>)
+					: {}
 
 			deps.store.commit('setNodeModel3DSettings', {
 				nodeId,
@@ -3847,13 +4502,17 @@ const pollTripo3DTaskStatus = async (
 
 				const fetchSucceeded = bound && !persistFailed
 
-				const successNodeState = deps.store.state.nodesById[nodeId] as Record<string, unknown> | undefined
-				const successM3d = successNodeState?.model3dSettings && typeof successNodeState.model3dSettings === 'object'
-					? successNodeState.model3dSettings as Record<string, unknown>
-					: {}
-				const successExistingTripo = successM3d.tripo3dModelSettings && typeof successM3d.tripo3dModelSettings === 'object'
-					? successM3d.tripo3dModelSettings as Record<string, unknown>
-					: {}
+				const successNodeState = deps.store.state.nodesById[nodeId] as
+					| Record<string, unknown>
+					| undefined
+				const successM3d =
+					successNodeState?.model3dSettings && typeof successNodeState.model3dSettings === 'object'
+						? (successNodeState.model3dSettings as Record<string, unknown>)
+						: {}
+				const successExistingTripo =
+					successM3d.tripo3dModelSettings && typeof successM3d.tripo3dModelSettings === 'object'
+						? (successM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 
 				deps.store.commit('setNodeModel3DSettings', {
 					nodeId,
@@ -3897,7 +4556,9 @@ const pollTripo3DTaskStatus = async (
 			}
 
 			if (status === 'failed' || status === 'error') {
-				const errorMsg = String(taskRes.errorMessage || taskRes.statusText || t('aiworkflow.runtime.unknownError'))
+				const errorMsg = String(
+					taskRes.errorMessage || taskRes.statusText || t('aiworkflow.runtime.unknownError')
+				)
 				return throwFatal(t('aiworkflow.runtime.tripo3dTaskFailed', { error: errorMsg }))
 			}
 
@@ -3923,7 +4584,11 @@ const pollTripo3DTaskStatus = async (
 			appendDetail(
 				deps,
 				generationTaskId,
-				t('aiworkflow.runtime.pollException', { attempt: String(i + 1), consecutive: String(consecutiveErrors), error: errMsg })
+				t('aiworkflow.runtime.pollException', {
+					attempt: String(i + 1),
+					consecutive: String(consecutiveErrors),
+					error: errMsg
+				})
 			)
 			console.error('[Tripo3D Poll] 轮询异常:', errorDetails)
 
@@ -3942,18 +4607,18 @@ const runModel3dStub = (
 	payload: WorkflowNodeChatSubmitPayload,
 	_syncHelpers?: GlobalTaskSyncHelpers
 ) => {
-	appendDetail(
-		deps,
-		task.id,
-		t('aiworkflow.runtime.model3dStubDetail')
-	)
+	appendDetail(deps, task.id, t('aiworkflow.runtime.model3dStubDetail'))
 	updateTask(deps, task.id, {
 		status: 'error',
 		statusText: t('aiworkflow.runtime.model3dStubStatus'),
 		errorMessage: t('aiworkflow.runtime.model3dStubError'),
 		finishedAt: Date.now()
 	})
-	pushToast(deps, t('aiworkflow.runtime.nodeNotAvailable', { type: labelForType(payload.nodeType) }), 'warn')
+	pushToast(
+		deps,
+		t('aiworkflow.runtime.nodeNotAvailable', { type: labelForType(payload.nodeType) }),
+		'warn'
+	)
 }
 
 export const getLatestTaskForNode = (

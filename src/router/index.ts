@@ -71,6 +71,11 @@ const routes: RouteRecordRaw[] = [
 		path: '/services',
 		name: 'ServiceCenter',
 		component: () => import('../views/ServiceCenterPage.vue')
+	},
+	{
+		path: '/blueprint-test',
+		name: 'BlueprintTest',
+		component: () => import('../views/BlueprintTestPage.vue')
 	}
 ]
 
