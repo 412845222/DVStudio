@@ -720,6 +720,10 @@ defineExpose({
     return scene.value?.canRedo() ?? false;
   },
 
+  hasClipboardData(): boolean {
+    return scene.value?.hasClipboardData() ?? false;
+  },
+
   addNode(type: string, x: number, y: number, data?: Record<string, any>): string | null {
     if (!scene.value || props.readonly) return null;
     const s = scene.value;

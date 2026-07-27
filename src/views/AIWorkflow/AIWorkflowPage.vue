@@ -1158,6 +1158,12 @@ const engineApi = {
       return editor.canRedo()
     }
     return false
+  },
+  selectAll: () => {
+    blueprintHostRef.value?.selectAll?.()
+  },
+  hasClipboardData: () => {
+    return blueprintHostRef.value?.hasClipboardData?.() ?? false
   }
 }
 
@@ -4279,6 +4285,10 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 				return Promise.resolve({ removed: false, reason: 'skip' as const })
 			}
 			return removeResourceByPolicyBridge(resourceId, opts)
+		},
+		performDelete: (nodeIds) => {
+			engineApi.setSelection(nodeIds)
+			engineApi.deleteSelection()
 		}
 	})
 
@@ -4562,7 +4572,10 @@ const { onNodeCopy, onNodePaste, onNodeDelete, onNodeSetType } = useAIWorkflowNo
 	store,
 	selectedNodeIds,
 	pasteNodesWithResourceDedupe,
-	removeSelectedNodesWithResourceCleanup
+	removeSelectedNodesWithResourceCleanup,
+	copySelection: () => engineApi.copySelection(),
+	paste: () => engineApi.paste(),
+	setSelection: (nodeIds) => engineApi.setSelection(nodeIds)
 })
 
 const makeResourceId = () =>
@@ -9713,19 +9726,18 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	getSelectedNodeIds: () => selectedNodeIds.value,
 	getSelectedEdgeId: () => selectedEdgeId.value,
 	selectAllNodes: () => {
-		const ids = store.state.nodeOrder.slice()
-		store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })
+		engineApi.selectAll()
 	},
 	pasteNodesAtCanvasCenter: () => {
-		const { worldX, worldY } = getCanvasCenterWorld()
-		pasteNodesWithResourceDedupe({ worldX, worldY })
+		engineApi.paste()
 	},
 	pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
 	copySelectedNodes: (primaryNodeId) => {
+		engineApi.copySelection()
 		store.commit('copyNode', { nodeId: primaryNodeId })
 	},
 	hasClipboardNodes: () => {
-		return !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
+		return engineApi.hasClipboardData() || !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
 	},
 	undo: () => {
 		engineApi.undo()

@@ -15,6 +15,7 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 		resourceId: string,
 		opts?: { silent?: boolean }
 	) => Promise<{ removed: boolean; reason: 'record' | 'django-file' | 'skip' | 'error' }>
+	performDelete?: (nodeIds: string[]) => void
 }) => {
 	const collectResourceIdsFromNodes = (nodeIds: string[]) => {
 		const out = new Set<string>()
@@ -52,8 +53,13 @@ export const useAIWorkflowNodeResourceCleanup = (payload: {
 		}
 
 		const affectedResourceIds = collectResourceIdsFromNodes(ids)
-		payload.store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })
-		payload.store.commit('removeSelectedNodes', undefined)
+
+		if (payload.performDelete) {
+			payload.performDelete(ids)
+		} else {
+			payload.store.commit('setSelectedNodes', { nodeIds: ids, primaryNodeId: ids[0] ?? null })
+			payload.store.commit('removeSelectedNodes', undefined)
+		}
 
 		for (const rid of affectedResourceIds) {
 			if (resourceUsed(rid)) continue

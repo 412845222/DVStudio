@@ -137,8 +137,14 @@ defineExpose({
   setSelection(nodeIds: string[]) {
     blueprintEditorRef.value?.setSelection?.(nodeIds)
   },
+  selectAll() {
+    blueprintEditorRef.value?.selectAll?.()
+  },
   clearSelection() {
     blueprintEditorRef.value?.clearSelection?.()
+  },
+  hasClipboardData(): boolean {
+    return blueprintEditorRef.value?.hasClipboardData?.() ?? false
   },
   removeNode(nodeId: string): boolean {
     return blueprintEditorRef.value?.removeNode?.(nodeId) ?? false
