@@ -259,7 +259,6 @@ function handleNodeDelete(nodeId: string) {
   s.selection.clearSelection();
   s.updateAllConnectionEndpoints();
   s.requestRedraw();
-  emitChange();
 }
 
 function getWorldPosFromClient(clientX: number, clientY: number): { x: number; y: number } {
@@ -307,7 +306,6 @@ function deleteSelection() {
   if (hadSelection) {
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
   }
 }
 
@@ -371,85 +369,21 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
 
-    if (ctrl && key === 'z' && !e.shiftKey) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const undone = s.undo();
-      if (undone) {
-        s.updateAllConnectionEndpoints();
-        s.requestRedraw();
-        emitChange();
-      }
-      return;
-    }
-    if ((ctrl && key === 'z' && e.shiftKey) || (ctrl && key === 'y')) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      const redone = s.redo();
-      if (redone) {
-        s.updateAllConnectionEndpoints();
-        s.requestRedraw();
-        emitChange();
-      }
-      return;
-    }
-    if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
+    if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey && !e.repeat) {
       const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
       if (selectedNodes.length === 1) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         enterEditMode(selectedNodes[0].id);
       }
       return;
     }
-    if (key === 'escape') {
+    if (key === 'escape' && !e.repeat) {
       if (editingNodeId.value) {
         e.preventDefault();
         e.stopImmediatePropagation();
         exitEditMode();
-      }
-      return;
-    }
-    if (ctrl && key === 'd') {
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      if (selectedNodes.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        s.copySelection(selectedNodes);
-        const newNodeIds = s.executePaste(30, 30);
-        if (newNodeIds.length > 0) {
-          s.selection.setSelection(newNodeIds);
-          s.requestRedraw();
-          emitChange();
-        }
-      }
-      return;
-    }
-    if (ctrl && key === 'x') {
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      if (selectedNodes.length > 0) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        s.copySelection(selectedNodes);
-        const nodeIds = selectedNodes.map(n => n.id);
-        const allConns = s.getAllConnections();
-        const connIds = allConns.filter(c => nodeIds.includes(c.data.fromNodeId) && nodeIds.includes(c.data.toNodeId)).map(c => c.id);
-        s.executeCommand(new DeleteSelectionCommand(s as any, nodeIds, connIds));
-        s.selection.clearSelection();
-        s.requestRedraw();
-        emitChange();
-      }
-      return;
-    }
-    if (ctrl && key === 'g') {
-      const selectedNodes = s.selection.getSelection().filter(n => n instanceof BlueprintNode) as BlueprintNode[];
-      if (selectedNodes.length >= 2) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        const defaultLabel = `分组 ${s.getSavedSelectionFrames().length + 1}`;
-        s.saveSelectionFrame(selectedNodes.map(n => n.id), defaultLabel);
-        s.requestRedraw();
-        emitChange();
+        return;
       }
       return;
     }
@@ -1048,7 +982,6 @@ defineExpose({
     scene.value.selection.clearSelection();
     scene.value.updateAllConnectionEndpoints();
     scene.value.requestRedraw();
-    emitChange();
     return true;
   },
 
@@ -1059,7 +992,6 @@ defineExpose({
     scene.value.executeCommand(new DeleteSelectionCommand(scene.value, [], [edgeId]));
     scene.value.updateAllConnectionEndpoints();
     scene.value.requestRedraw();
-    emitChange();
     return true;
   },
 });

@@ -18,8 +18,6 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	pasteMediaData: (clipboardData: DataTransfer | null) => Promise<boolean> | boolean
 	copySelectedNodes: (primaryNodeId: string) => void
 	hasClipboardNodes: () => boolean
-	undo: () => void
-	redo: () => void
 	removeSelectedNodes: (nodeIds: string[]) => void
 	removeSelectedEdge: (edgeId: string) => void
 	scheduleAsyncEdgeRender: () => void
@@ -31,51 +29,27 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		const key = String(ev.key || '').toLowerCase()
 		const mod = ev.ctrlKey || ev.metaKey
 
-		if (mod && key === 'a') {
-			ev.preventDefault()
-			payload.selectAllNodes()
-			return
-		}
-
-		// Ctrl+C：不在这里直接处理复制，而是让浏览器触发原生 copy 事件
-		// 在 copy 事件中设置内部剪贴板并写入自定义 MIME 标记
 		if (mod && key === 'c') {
 			const selected = payload.getSelectedNodeIds()
 			if (selected.length > 0) {
-				// 执行内部复制
 				payload.copySelectedNodes(selected[0])
-				// 不 preventDefault，让浏览器触发 copy 事件以便我们写入自定义标记
-				// 但我们会在 copy 事件中 preventDefault 阻止默认的文本/选区复制
 			}
-			return
-		}
-
-		if (mod && key === 'z') {
-			ev.preventDefault()
-			if (ev.shiftKey) {
-				payload.redo()
-			} else {
-				payload.undo()
-			}
-			return
-		}
-
-		if (mod && key === 'y') {
-			ev.preventDefault()
-			payload.redo()
 			return
 		}
 
 		if (key === 'backspace' || key === 'delete') {
+			if (ev.repeat) return
 			const selected = payload.getSelectedNodeIds()
 			if (!selected.length) {
 				const selectedEdgeId = String(payload.getSelectedEdgeId() ?? '').trim()
 				if (!selectedEdgeId) return
 				ev.preventDefault()
+				ev.stopImmediatePropagation()
 				payload.removeSelectedEdge(selectedEdgeId)
 				return
 			}
 			ev.preventDefault()
+			ev.stopImmediatePropagation()
 			payload.removeSelectedNodes(selected)
 		}
 	}

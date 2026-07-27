@@ -9,6 +9,7 @@
     :data-node-id="nodeId"
     @dblclick="onDblClick"
     @contextmenu.prevent.stop="onContextMenu"
+    @pointerdown="onNodePointerDown"
   >
     <div class="dnw-hit-area"></div>
     <div class="dnw-border-base"></div>
@@ -110,6 +111,7 @@ const emit = defineEmits<{
   (e: 'dragstart', event: PointerEvent): void;
   (e: 'port-pointerdown', payload: { portId: string; isInput: boolean; event: PointerEvent }): void;
   (e: 'resize-start', payload: { corner: string; event: PointerEvent }): void;
+  (e: 'select', event: PointerEvent): void;
 }>();
 
 interface PortRenderData {
@@ -187,6 +189,18 @@ function onResizePointerDown(corner: string, e: PointerEvent) {
   if (e.button !== 0) return;
   e.stopPropagation();
   emit('resize-start', { corner, event: e });
+}
+
+function onNodePointerDown(e: PointerEvent) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  if (e.target !== e.currentTarget) {
+    const tgt = e.target as HTMLElement | null;
+    if (tgt && (tgt.closest('.dnw-port') || tgt.closest('.dnw-resize-handle') || tgt.closest('.dnw-drag-handle') || tgt.closest('.dnw-header'))) {
+      return;
+    }
+  }
+  emit('select', e);
 }
 
 const STATUS_COLORS: Record<NodeStatus, string> = {

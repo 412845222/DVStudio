@@ -30,6 +30,7 @@
           @dragstart="(ev) => onDomNodeDragStart(node.nodeId, ev)"
           @port-pointerdown="(p) => onPortPointerDown(node.nodeId, p.portId, p.isInput, p.event)"
           @resize-start="(p) => onDomNodeResizeStart(node.nodeId, p.corner, p.event)"
+          @select="(ev) => onDomNodeSelect(node.nodeId, ev)"
         >
           <WorkflowNodeWrapper
             v-if="canUseBusinessComponent(node.nodeType)"
@@ -222,6 +223,17 @@ function handleBusinessContextMenu(payload: { nodeId: string; x: number; y: numb
 
 function onBusinessSelect(nodeId: string) {
   emit('node-select', nodeId);
+}
+
+function onDomNodeSelect(nodeId: string, event: PointerEvent) {
+  const s = props.scene;
+  if (!s) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    s.selection.toggleSelect(s.getBlueprintNode(nodeId)!);
+  } else if (!s.selection.isSelected(s.getBlueprintNode(nodeId)!)) {
+    s.selection.setSelection([nodeId]);
+  }
+  s.requestRedraw();
 }
 
 function onBusinessCopy(nodeId: string) {

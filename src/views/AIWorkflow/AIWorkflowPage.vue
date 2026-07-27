@@ -1164,6 +1164,9 @@ const engineApi = {
   },
   hasClipboardData: () => {
     return blueprintHostRef.value?.hasClipboardData?.() ?? false
+  },
+  getSelectedNodeIds: () => {
+    return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
   }
 }
 
@@ -9723,7 +9726,7 @@ let scheduleLinkEdgeRender = () => {}
 
 const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResize({
 	isRouteActive: () => route.name === 'AIWorkflow',
-	getSelectedNodeIds: () => selectedNodeIds.value,
+	getSelectedNodeIds: () => engineApi.getSelectedNodeIds(),
 	getSelectedEdgeId: () => selectedEdgeId.value,
 	selectAllNodes: () => {
 		engineApi.selectAll()
@@ -9738,12 +9741,6 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	},
 	hasClipboardNodes: () => {
 		return engineApi.hasClipboardData() || !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
-	},
-	undo: () => {
-		engineApi.undo()
-	},
-	redo: () => {
-		engineApi.redo()
 	},
 	removeSelectedNodes: (nodeIds) => {
 		void removeSelectedNodesWithResourceCleanup(nodeIds)

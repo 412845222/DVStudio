@@ -1069,10 +1069,13 @@ export class BlueprintEditorTool extends Tool {
         }
       }
       if (nodeIdsToRemove.length > 0 || connIdsToRemove.length > 0) {
+        event.preventDefault();
         scene.executeCommand(new DeleteSelectionCommand(scene, nodeIdsToRemove, connIdsToRemove));
         sel.clearSelection();
         scene.updateAllConnectionEndpoints();
+        scene.requestRedraw();
       }
+      return;
     }
     if ((key === 'z') && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.repeat) {
       event.preventDefault();
