@@ -120,17 +120,6 @@ function applyInitialData(newData: LegacyBlueprintData) {
 
   const newHash = computeStructureHash(newData);
   const structureChanged = newHash !== lastStructureHash;
-  console.log('[APPLY-DIAG] applyInitialData: structureChanged=' + structureChanged + ', isUpdatingFromProps=' + isUpdatingFromProps + ', hasInitiallyLoaded=' + hasInitiallyLoaded);
-  if (structureChanged && hasInitiallyLoaded) {
-    const sampleKey = (newData.nodeOrder || Object.keys(newData.nodesById || {}))[0];
-    if (sampleKey) {
-      const sn = newData.nodesById[sampleKey];
-      const en = s.getBlueprintNode(sampleKey);
-      if (sn && en) {
-        console.log('[APPLY-DIAG]   sample node ' + sampleKey + ': engineNow=(' + Math.round(en.data.worldX) + ',' + Math.round(en.data.worldY) + ') incoming=(' + Math.round((sn.worldX ?? (sn as any).x ?? 0)) + ',' + Math.round((sn.worldY ?? (sn as any).y ?? 0)) + ')');
-      }
-    }
-  }
 
   isUpdatingFromProps = true;
 
@@ -141,14 +130,6 @@ function applyInitialData(newData: LegacyBlueprintData) {
     lastStructureHash = newHash;
     hasInitiallyLoaded = true;
     needsRedraw = true;
-
-    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
-      s.selection.setSelection(newData.selectedNodeIds);
-    } else if (newData.selectedNodeId) {
-      s.selection.setSelection([newData.selectedNodeId]);
-    } else {
-      s.selection.clearSelection();
-    }
   } else {
     if (newData.viewport) {
       const curVp = s.getViewport();
@@ -156,14 +137,6 @@ function applyInitialData(newData: LegacyBlueprintData) {
         s.setViewport(newData.viewport);
         needsRedraw = true;
       }
-    }
-
-    if (newData.selectedNodeIds && newData.selectedNodeIds.length > 0) {
-      s.selection.setSelection(newData.selectedNodeIds);
-    } else if (newData.selectedNodeId) {
-      s.selection.setSelection([newData.selectedNodeId]);
-    } else {
-      s.selection.clearSelection();
     }
   }
 
@@ -226,18 +199,10 @@ function handleSceneNodeClick(node: BlueprintNode) {
 }
 
 function computeStructureHash(data: LegacyBlueprintData): string {
-  const nodeParts: string[] = [];
-  for (const id of data.nodeOrder || Object.keys(data.nodesById || {})) {
-    const n = data.nodesById[id];
-    if (n) {
-      const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0);
-      const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0);
-      nodeParts.push(`${id}:${wx.toFixed(1)},${wy.toFixed(1)},${n.width},${n.height}`);
-    }
-  }
-  const edgeSig = (data.edgeOrder || Object.keys(data.edgesById || {})).sort().join(',');
-  const resSig = (data.resourceOrder || Object.keys(data.resourcesById || {})).sort().join(',');
-  return `${nodeParts.join('|')}||${edgeSig}||${resSig}`;
+  const nodeIds = (data.nodeOrder || Object.keys(data.nodesById || {})).slice().sort();
+  const edgeIds = (data.edgeOrder || Object.keys(data.edgesById || {})).slice().sort();
+  const resIds = (data.resourceOrder || Object.keys(data.resourcesById || {})).slice().sort();
+  return `nodes:${nodeIds.join(',')}||edges:${edgeIds.join(',')}||res:${resIds.join(',')}`;
 }
 
 function viewportEquals(a: { zoom: number; panX: number; panY: number }, b: { zoom: number; panX: number; panY: number }): boolean {
@@ -332,17 +297,18 @@ function getSelectedNodeIds(): string[] {
 }
 
 function emitChange() {
-  if (isUpdatingFromProps || !scene.value) return;
+  if (!scene.value) return;
   if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return;
   if (changeDebounceTimer) {
     clearTimeout(changeDebounceTimer);
   }
   changeDebounceTimer = window.setTimeout(() => {
     changeDebounceTimer = null;
-    if (!scene.value || isUpdatingFromProps) return;
+    if (!scene.value) return;
+    if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return;
     const data = scene.value.serializeLegacy();
     emit('change', data);
-  }, 16);
+  }, 0);
 }
 
 function handleResize() {
@@ -1012,6 +978,60 @@ defineExpose({
     scene.value.updateAllConnectionEndpoints();
     scene.value.requestRedraw();
     return true;
+  },
+
+  setNodeSize(nodeId: string, width?: number, height?: number): boolean {
+    if (!scene.value || props.readonly) return false;
+    scene.value.setNodeSize(nodeId, width, height);
+    return true;
+  },
+
+  setNodePosition(nodeId: string, worldX: number, worldY: number): boolean {
+    if (!scene.value || props.readonly) return false;
+    scene.value.setNodePosition(nodeId, worldX, worldY);
+    return true;
+  },
+
+  updateNodePositionDirect(nodeId: string, worldX: number, worldY: number): void {
+    if (!scene.value) return;
+    scene.value.updateNodePositionDirect(nodeId, worldX, worldY);
+  },
+
+  updateNodesPositionDirect(nodePositions: Map<string, { x: number; y: number }>): void {
+    if (!scene.value) return;
+    scene.value.updateNodesPositionDirect(nodePositions);
+  },
+
+  commitNodeMovement(
+    startPositions: Map<string, { x: number; y: number }>,
+    endPositions: Map<string, { x: number; y: number }>
+  ): void {
+    if (!scene.value) return;
+    scene.value.commitNodeMovement(startPositions, endPositions);
+  },
+
+  setSelectedNode(nodeId: string | null): void {
+    if (!scene.value) return;
+    scene.value.setSelectedNode(nodeId);
+  },
+
+  setSelectedNodes(nodeIds: string[], primaryNodeId?: string | null): void {
+    if (!scene.value) return;
+    scene.value.setSelectedNodes(nodeIds, primaryNodeId);
+  },
+
+  setEngineViewport(zoom: number, panX: number, panY: number): void {
+    if (!scene.value) return;
+    scene.value.setEngineViewport(zoom, panX, panY);
+  },
+
+  focusNode(nodeId: string): boolean {
+    if (!scene.value) return false;
+    return scene.value.focusNode(nodeId);
+  },
+
+  getNode(nodeId: string): BlueprintNode | null {
+    return scene.value?.getBlueprintNode(nodeId) ?? null;
   },
 });
 </script>

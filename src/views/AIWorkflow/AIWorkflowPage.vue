@@ -1046,10 +1046,8 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
 let isUpdatingFromStore = false
 
 function resetIsUpdatingFromStore() {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      isUpdatingFromStore = false
-    })
+  nextTick(() => {
+    isUpdatingFromStore = false
   })
 }
 
@@ -1103,6 +1101,18 @@ const engineApi = {
       editor.setSelection(nodeIds)
     }
   },
+  setSelectedNode: (nodeId: string | null) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelectedNode === 'function') {
+      editor.setSelectedNode(nodeId)
+    }
+  },
+  setSelectedNodes: (nodeIds: string[], primaryNodeId?: string | null) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setSelectedNodes === 'function') {
+      editor.setSelectedNodes(nodeIds, primaryNodeId)
+    }
+  },
   clearSelection: () => {
     const editor = blueprintHostRef.value?.getInstance?.()
     if (editor && typeof editor.clearSelection === 'function') {
@@ -1125,9 +1135,58 @@ const engineApi = {
   moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => {
     const editor = blueprintHostRef.value?.getInstance?.()
     if (editor && typeof editor.moveNodesByDelta === 'function') {
-      return editor.moveNodesByDelta(nodeIds, dx, dy)
+      editor.moveNodesByDelta(nodeIds, dx, dy)
+    }
+  },
+  setNodePosition: (nodeId: string, worldX: number, worldY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setNodePosition === 'function') {
+      editor.setNodePosition(nodeId, worldX, worldY)
+    }
+  },
+  setNodeSize: (nodeId: string, width?: number, height?: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setNodeSize === 'function') {
+      editor.setNodeSize(nodeId, width, height)
+    }
+  },
+  updateNodePositionDirect: (nodeId: string, worldX: number, worldY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.updateNodePositionDirect === 'function') {
+      editor.updateNodePositionDirect(nodeId, worldX, worldY)
+    }
+  },
+  updateNodesPositionDirect: (positions: Map<string, { x: number; y: number }>) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.updateNodesPositionDirect === 'function') {
+      editor.updateNodesPositionDirect(positions)
+    }
+  },
+  commitNodeMovement: (startPositions: Map<string, { x: number; y: number }>, endPositions: Map<string, { x: number; y: number }>) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.commitNodeMovement === 'function') {
+      editor.commitNodeMovement(startPositions, endPositions)
+    }
+  },
+  setEngineViewport: (zoom: number, panX: number, panY: number) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.setEngineViewport === 'function') {
+      editor.setEngineViewport(zoom, panX, panY)
+    }
+  },
+  focusNode: (nodeId: string) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.focusNode === 'function') {
+      return editor.focusNode(nodeId)
     }
     return false
+  },
+  getNode: (nodeId: string) => {
+    const editor = blueprintHostRef.value?.getInstance?.()
+    if (editor && typeof editor.getNode === 'function') {
+      return editor.getNode(nodeId)
+    }
+    return null
   },
   undo: () => {
     const editor = blueprintHostRef.value?.getInstance?.()
@@ -11380,6 +11439,7 @@ const { onNodePreviewContextMenu } = useAIWorkflowNodePreviewContextMenu({
 
 const canvasInteraction = useAIWorkflowCanvasInteraction({
 	store,
+	engineApi,
 	selectedNodeIds,
 	inspectorOpen,
 	chatModelKey,
@@ -11414,6 +11474,18 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 		forceEndViewportMotion()
 		flushCanvasNodeLayer()
 		scheduleVisibleNodeScreenshots()
+	},
+	onOpenNodeChat: (nodeId: string) => {
+		store.dispatch('openNodeChatDialog', { nodeId })
+	},
+	onCloseNodeChat: () => {
+		store.dispatch('closeNodeChatDialog')
+	},
+	onSetInspectorOpen: (open: boolean) => {
+		inspectorOpen.value = open
+	},
+	onSetChatCollapsed: (collapsed: boolean) => {
+		chatCollapsed.value = collapsed
 	}
 })
 

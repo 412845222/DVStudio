@@ -17,6 +17,8 @@ import { PasteCommand } from './commands/PasteCommand';
 import { AddNodeCommand } from './commands/AddNodeCommand';
 import { CreateConnectionCommand } from './commands/CreateConnectionCommand';
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand';
+import { ResizeNodeCommand } from './commands/ResizeNodeCommand';
+import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand';
 
 interface PendingConnection {
   fromNode: BlueprintNode;
@@ -745,6 +747,163 @@ export class BlueprintScene extends Scene {
     if (selectedNodes.length === 0) return [];
     this.copySelection(selectedNodes);
     return this.executePaste(offsetX, offsetY);
+  }
+
+  moveNodesByDelta(nodeIds: string[], dx: number, dy: number): void {
+    if (!nodeIds || nodeIds.length === 0) return;
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+
+    const startPositions = new Map<string, Vector2>();
+    const endPositions = new Map<string, Vector2>();
+
+    for (const id of nodeIds) {
+      const node = this.getBlueprintNode(id);
+      if (!node) continue;
+      node.syncDataFromTransform();
+      const startX = node.data.worldX;
+      const startY = node.data.worldY;
+      startPositions.set(id, new Vector2(startX, startY));
+      endPositions.set(id, new Vector2(startX + dx, startY + dy));
+    }
+
+    if (startPositions.size === 0) return;
+
+    const moveFn = (nid: string, pos: Vector2) => {
+      const n = this.getBlueprintNode(nid);
+      if (n) {
+        n.setPosition(pos.x, pos.y);
+        n.syncDataFromTransform();
+      }
+    };
+
+    this.executeCommand(new MoveNodeCommand(startPositions, endPositions, moveFn));
+    this.updateAllConnectionEndpoints();
+    this.requestRedraw();
+  }
+
+  setNodePosition(nodeId: string, worldX: number, worldY: number): void {
+    const node = this.getBlueprintNode(nodeId);
+    if (!node) return;
+    node.syncDataFromTransform();
+    const startX = node.data.worldX;
+    const startY = node.data.worldY;
+    const dx = worldX - startX;
+    const dy = worldY - startY;
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+    this.moveNodesByDelta([nodeId], dx, dy);
+  }
+
+  setNodeSize(nodeId: string, width?: number, height?: number): void {
+    const node = this.getBlueprintNode(nodeId);
+    if (!node) return;
+    node.syncDataFromTransform();
+    const startX = node.data.worldX;
+    const startY = node.data.worldY;
+    const startW = node.data.width;
+    const startH = node.data.height;
+    const endW = (typeof width === 'number' && width > 0) ? width : startW;
+    const endH = (typeof height === 'number' && height > 0) ? height : startH;
+    if (startW === endW && startH === endH) return;
+
+    this.executeCommand(new ResizeNodeCommand(
+      this, node,
+      startX, startY, startW, startH,
+      startX, startY, endW, endH
+    ));
+  }
+
+  setSelectedNode(nodeId: string | null): void {
+    if (nodeId) {
+      const node = this.getBlueprintNode(nodeId);
+      if (node) {
+        this.selection.setSelection([node.id]);
+      }
+    } else {
+      this.selection.clearSelection();
+    }
+    this.requestRedraw();
+  }
+
+  setSelectedNodes(nodeIds: string[], primaryNodeId?: string | null): void {
+    const validIds: string[] = [];
+    for (const id of nodeIds) {
+      const node = this.getBlueprintNode(id);
+      if (node) validIds.push(id);
+    }
+    this.selection.setSelection(validIds);
+    this.requestRedraw();
+  }
+
+  clearSelection(): void {
+    this.selection.clearSelection();
+    this.requestRedraw();
+  }
+
+  setEngineViewport(zoom: number, panX: number, panY: number): void {
+    this.setViewport({
+      zoom: clampZoom(zoom),
+      panX: clampPan(panX),
+      panY: clampPan(panY)
+    });
+    this.requestRedraw();
+  }
+
+  updateNodePositionDirect(nodeId: string, worldX: number, worldY: number): void {
+    const node = this.getBlueprintNode(nodeId);
+    if (!node) return;
+    node.setPosition(worldX, worldY);
+    this.markConnectionEndpointsDirty();
+    this.requestRedraw();
+  }
+
+  updateNodesPositionDirect(nodePositions: Map<string, { x: number; y: number }>): void {
+    for (const [id, pos] of nodePositions) {
+      const node = this.getBlueprintNode(id);
+      if (node) {
+        node.setPosition(pos.x, pos.y);
+      }
+    }
+    this.markConnectionEndpointsDirty();
+    this.requestRedraw();
+  }
+
+  commitNodeMovement(
+    startPositions: Map<string, { x: number; y: number }>,
+    endPositions: Map<string, { x: number; y: number }>
+  ): void {
+    if (startPositions.size === 0 || endPositions.size === 0) return;
+
+    const startVec = new Map<string, Vector2>();
+    const endVec = new Map<string, Vector2>();
+    for (const [id, pos] of startPositions) {
+      startVec.set(id, new Vector2(pos.x, pos.y));
+    }
+    for (const [id, pos] of endPositions) {
+      endVec.set(id, new Vector2(pos.x, pos.y));
+    }
+
+    const moveFn = (nid: string, pos: Vector2) => {
+      const n = this.getBlueprintNode(nid);
+      if (n) {
+        n.setPosition(pos.x, pos.y);
+        n.syncDataFromTransform();
+      }
+    };
+
+    this.executeCommand(new MoveNodeCommand(startVec, endVec, moveFn));
+    this.updateAllConnectionEndpoints();
+    this.requestRedraw();
+  }
+
+  focusNode(nodeId: string): boolean {
+    const node = this.getBlueprintNode(nodeId);
+    if (!node) return false;
+    node.syncDataFromTransform();
+    const zoom = Math.max(0.01, Number(this.getViewport().zoom) || 1);
+    const targetPanX = -node.data.worldX * zoom;
+    const targetPanY = -node.data.worldY * zoom;
+    this.setEngineViewport(zoom, targetPanX, targetPanY);
+    return true;
   }
 
   connectNodes(fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string): Connection | null {

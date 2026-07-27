@@ -420,6 +420,11 @@ function onPortPointerUp(event: PointerEvent) {
   window.removeEventListener('pointerup', onPortPointerUp);
   window.removeEventListener('pointercancel', onPortPointerUp);
 
+  isConnecting.value = false;
+  isInteractionLocked.value = false;
+  interactionLockedNodeIds.clear();
+  s.isDomInteractionLocked = false;
+
   let completed = false;
   const hit = findPortUnderPointer(event.clientX, event.clientY);
 
@@ -446,9 +451,6 @@ function onPortPointerUp(event: PointerEvent) {
     s.cancelPendingConnection();
   }
 
-  isConnecting.value = false;
-  isInteractionLocked.value = false;
-  interactionLockedNodeIds.clear();
   connectFromNode = null;
   connectFromPort = null;
   s.requestRedraw();
@@ -481,6 +483,7 @@ function cleanupInteractionStates() {
   isResizing = false;
   isInteractionLocked.value = false;
   interactionLockedNodeIds.clear();
+  if (props.scene) props.scene.isDomInteractionLocked = false;
   dragNodeId = null;
   dragStartPositions.clear();
   dragCurrentPositions.clear();
@@ -592,6 +595,7 @@ function onDomNodeResizeEnd() {
                     Math.abs(endHeight - resizeStartHeight) > 0.5;
       isInteractionLocked.value = false;
       interactionLockedNodeIds.clear();
+      s.isDomInteractionLocked = false;
       if (moved) {
         s.executeCommand(new ResizeNodeCommand(
           s, node,
@@ -604,6 +608,7 @@ function onDomNodeResizeEnd() {
   } else {
     isInteractionLocked.value = false;
     interactionLockedNodeIds.clear();
+    if (s) s.isDomInteractionLocked = false;
   }
 
   isResizing = false;
@@ -698,6 +703,7 @@ function onDomNodeDragEnd() {
     isDragging.value = false;
     isInteractionLocked.value = false;
     interactionLockedNodeIds.clear();
+    s.isDomInteractionLocked = false;
 
     if (moved) {
       const moveFn = (id: string, pos: Vector2) => {
@@ -708,11 +714,13 @@ function onDomNodeDragEnd() {
       };
       s.executeCommand(new MoveNodeCommand(dragStartPositions, dragCurrentPositions, moveFn));
       s.updateAllConnectionEndpoints();
+      s.requestRedraw();
     }
   } else {
     isDragging.value = false;
     isInteractionLocked.value = false;
     interactionLockedNodeIds.clear();
+    s.isDomInteractionLocked = false;
   }
 
   dragNodeId = null;

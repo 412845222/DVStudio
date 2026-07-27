@@ -151,6 +151,15 @@ defineExpose({
   },
   removeEdge(edgeId: string): boolean {
     return blueprintEditorRef.value?.removeEdge?.(edgeId) ?? false
+  },
+  updateNodePositionDirect(nodeId: string, worldX: number, worldY: number) {
+    blueprintEditorRef.value?.updateNodePositionDirect?.(nodeId, worldX, worldY)
+  },
+  updateNodesPositionDirect(nodePositions: Map<string, { x: number; y: number }>) {
+    blueprintEditorRef.value?.updateNodesPositionDirect?.(nodePositions)
+  },
+  commitNodeMovement(startPositions: Map<string, { x: number; y: number }>, endPositions: Map<string, { x: number; y: number }>) {
+    blueprintEditorRef.value?.commitNodeMovement?.(startPositions, endPositions)
   }
 })
 
