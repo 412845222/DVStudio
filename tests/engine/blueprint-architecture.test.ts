@@ -457,4 +457,51 @@ describe('🔴 Blueprint Architecture Compliance Tests', () => {
       expect(hasRedoCall, 'Scene should call this.redo() for redo shortcuts').toBe(true)
     })
   })
+
+  describe('Rule 15: workflowStateToLegacyBlueprint cache must update node coordinates on cache hit', () => {
+    it('cache hit path must sync worldX/worldY/x/y/width/height from state nodes to cached result', () => {
+      const adapterFile = allSourceFiles.find(
+        f => f.relativePath === 'src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts'
+      )
+      expect(adapterFile, 'workflowStateAdapter.ts should exist').toBeTruthy()
+      if (!adapterFile) return
+
+      const content = adapterFile.content
+
+      const cacheHitBlock = content.match(/if\s*\(\s*_cachedResult\s*&&\s*_cacheKey\s*===\s*structureKey\s*\)\s*\{([\s\S]*?)return\s+_cachedResult\s*;/)
+      expect(cacheHitBlock, 'cache hit block should exist').toBeTruthy()
+      if (!cacheHitBlock) return
+
+      const cacheBody = cacheHitBlock[1]
+
+      const hasNodeCoordSync = /cachedNode\.worldX\s*=/.test(cacheBody) && /cachedNode\.worldY\s*=/.test(cacheBody)
+      const hasLegacyXYUpdate = /cachedNode\.x\s*=/.test(cacheBody) && /cachedNode\.y\s*=/.test(cacheBody)
+      const hasSizeSync = /cachedNode\.width\s*=/.test(cacheBody) && /cachedNode\.height\s*=/.test(cacheBody)
+      const loopsOverNodes = /for\s*\(\s*const\s+nodeId\s+of\s+state\.nodeOrder\s*\)/.test(cacheBody)
+
+      if (!hasNodeCoordSync || !hasLegacyXYUpdate || !hasSizeSync || !loopsOverNodes) {
+        console.log('\n❌ workflowStateToLegacyBlueprint cache hit block does not update node coordinates/sizes')
+        console.log('   This causes stale coordinates to be returned when only positions change,')
+        console.log('   leading to loadBlueprint overwriting engine state and breaking undo.')
+      }
+
+      expect(loopsOverNodes, 'cache hit block should iterate state.nodeOrder to update node positions').toBe(true)
+      expect(hasNodeCoordSync, 'cache hit block should sync cachedNode.worldX/worldY from current state').toBe(true)
+      expect(hasLegacyXYUpdate, 'cache hit block should update legacy x/y fields too').toBe(true)
+      expect(hasSizeSync, 'cache hit block should sync cachedNode.width/height from current state').toBe(true)
+    })
+
+    it('cache key must NOT rely solely on node order/edges/selection but must invalidate on node count changes', () => {
+      const adapterFile = allSourceFiles.find(
+        f => f.relativePath === 'src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts'
+      )
+      expect(adapterFile, 'workflowStateAdapter.ts should exist').toBeTruthy()
+      if (!adapterFile) return
+
+      const content = adapterFile.content
+
+      const hasNodeCountInKey = /nodeCount|state\.nodeOrder\.length/.test(content)
+      expect(hasNodeCountInKey, 'structureKey should include node count to invalidate when nodes are added/removed').toBe(true)
+    })
+  })
 })

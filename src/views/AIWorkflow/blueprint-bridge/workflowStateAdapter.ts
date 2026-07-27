@@ -8,6 +8,9 @@ let _cachedResult: LegacyBlueprintData | null = null;
 let _cacheKey: string = '';
 
 export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlueprintData {
+  const nodeCount = state.nodeOrder.length;
+  const edgeCount = state.edgeOrder.length;
+  const resCount = state.resourceOrder.length;
   const structureKey = [
     state.nodeOrder.join(','),
     state.edgeOrder.join(','),
@@ -16,6 +19,7 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
     (state.selectedNodeIds ?? []).join(','),
     state.nodeCheckboxVisible ? '1' : '0',
     state.savedSelectionFrames?.length ?? 0,
+    nodeCount, edgeCount, resCount,
   ].join('|');
 
   if (_cachedResult && _cacheKey === structureKey) {
@@ -27,6 +31,22 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
       _cachedResult.viewport.panX = state.viewport.panX;
       _cachedResult.viewport.panY = state.viewport.panY;
     }
+    for (const nodeId of state.nodeOrder) {
+      const wfNode = state.nodesById[nodeId];
+      const cachedNode = _cachedResult.nodesById[nodeId];
+      if (wfNode && cachedNode) {
+        cachedNode.worldX = wfNode.worldX;
+        cachedNode.worldY = wfNode.worldY;
+        cachedNode.x = wfNode.worldX;
+        cachedNode.y = wfNode.worldY;
+        cachedNode.width = wfNode.width;
+        cachedNode.height = wfNode.height;
+        cachedNode.title = wfNode.title;
+        cachedNode.subtitle = wfNode.subtitle;
+        cachedNode.status = (wfNode as any).status ?? cachedNode.status;
+      }
+    }
+    _cachedResult.savedAt = Date.now();
     return _cachedResult;
   }
 
