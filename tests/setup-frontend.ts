@@ -65,21 +65,17 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 		},
 		agentSkills: {
 			sceneUnderstand: {
-				models: vi
-					.fn()
-					.mockResolvedValue({
-						ok: true,
-						models: [{ id: 'test-model', label: 'Test Model' }],
-						defaultModel: 'test-model'
-					}),
-				run: vi
-					.fn()
-					.mockResolvedValue({
-						ok: true,
-						model: 'test-model',
-						outputJson: '{}',
-						summary: 'Test summary'
-					}),
+				models: vi.fn().mockResolvedValue({
+					ok: true,
+					models: [{ id: 'test-model', label: 'Test Model' }],
+					defaultModel: 'test-model'
+				}),
+				run: vi.fn().mockResolvedValue({
+					ok: true,
+					model: 'test-model',
+					outputJson: '{}',
+					summary: 'Test summary'
+				}),
 				runStream: vi.fn().mockImplementation(() =>
 					(async function* () {
 						yield { type: 'done' }
@@ -87,21 +83,17 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 				)
 			},
 			sceneLighting: {
-				models: vi
-					.fn()
-					.mockResolvedValue({
-						ok: true,
-						models: [{ id: 'lighting-model', label: 'Lighting Model' }],
-						defaultModel: 'lighting-model'
-					}),
-				run: vi
-					.fn()
-					.mockResolvedValue({
-						ok: true,
-						model: 'lighting-model',
-						outputJson: '{}',
-						summary: 'Lighting summary'
-					}),
+				models: vi.fn().mockResolvedValue({
+					ok: true,
+					models: [{ id: 'lighting-model', label: 'Lighting Model' }],
+					defaultModel: 'lighting-model'
+				}),
+				run: vi.fn().mockResolvedValue({
+					ok: true,
+					model: 'lighting-model',
+					outputJson: '{}',
+					summary: 'Lighting summary'
+				}),
 				runStream: vi.fn().mockImplementation(() =>
 					(async function* () {
 						yield { type: 'done' }
