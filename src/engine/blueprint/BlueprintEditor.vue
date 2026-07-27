@@ -696,7 +696,6 @@ defineExpose({
     enterEditMode(nodeId);
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
     return nodeId;
   },
 
@@ -725,7 +724,6 @@ defineExpose({
       scene.value.selection.setSelection(newNodeIds);
       scene.value.updateAllConnectionEndpoints();
       scene.value.requestRedraw();
-      emitChange();
     }
   },
 
@@ -736,7 +734,6 @@ defineExpose({
       scene.value.selection.setSelection(newNodeIds);
       scene.value.updateAllConnectionEndpoints();
       scene.value.requestRedraw();
-      emitChange();
     }
     return newNodeIds;
   },
@@ -748,7 +745,6 @@ defineExpose({
       scene.value.selection.setSelection(newNodeIds);
       scene.value.updateAllConnectionEndpoints();
       scene.value.requestRedraw();
-      emitChange();
     }
   },
 
@@ -793,7 +789,6 @@ defineExpose({
     s.selection.setSelection([nodeId]);
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
     return { nodeId, connected };
   },
 
@@ -950,7 +945,6 @@ defineExpose({
     s.executeCommand(new MoveNodeCommand(startPositions, endPositions, moveFn));
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
     return true;
   },
 
@@ -974,7 +968,6 @@ defineExpose({
     s.executeCommand(new MoveNodeCommand(startPositions, endPositions, moveFn));
     s.updateAllConnectionEndpoints();
     s.requestRedraw();
-    emitChange();
     return true;
   },
 
@@ -984,7 +977,6 @@ defineExpose({
     if (conn) {
       scene.value.updateAllConnectionEndpoints();
       scene.value.requestRedraw();
-      emitChange();
       return true;
     }
     return false;
