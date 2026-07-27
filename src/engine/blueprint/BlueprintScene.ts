@@ -41,6 +41,7 @@ export class BlueprintScene extends Scene {
   public isEngineDragging: boolean = false;
   public isDomInteractionLocked: boolean = false;
   private _isViewportPanning: boolean = false;
+  private _lastMouseWorldPos: Vector2 | null = null;
 
   get isViewportPanning(): boolean {
     return this._isViewportPanning;
@@ -705,6 +706,18 @@ export class BlueprintScene extends Scene {
 
   hasClipboardData(): boolean {
     return this._clipboardNodes.length > 0;
+  }
+
+  setLastMouseWorldPos(x: number, y: number): void {
+    this._lastMouseWorldPos = new Vector2(x, y);
+  }
+
+  pasteFromMouse(): string[] {
+    if (this._clipboardNodes.length === 0) return [];
+    if (this._lastMouseWorldPos) {
+      return this.pasteAt(this._lastMouseWorldPos.x, this._lastMouseWorldPos.y);
+    }
+    return this.executePaste(50, 50);
   }
 
   executePaste(offsetX: number = 50, offsetY: number = 50): string[] {

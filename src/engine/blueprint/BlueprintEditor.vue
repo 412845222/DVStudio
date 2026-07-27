@@ -505,6 +505,9 @@ onMounted(() => {
     onContainerMouseMove = (e: MouseEvent) => {
       const worldPos = getWorldPosFromClient(e.clientX, e.clientY);
       lastMouseWorldPos.value = worldPos;
+      if (scene.value) {
+        scene.value.setLastMouseWorldPos(worldPos.x, worldPos.y);
+      }
     };
     containerRef.value.addEventListener('dragover', onContainerDragOver);
     containerRef.value.addEventListener('drop', onContainerDrop);
@@ -690,13 +693,7 @@ defineExpose({
 
   paste() {
     if (!scene.value || props.readonly) return;
-    let newNodeIds: string[];
-    const mp = lastMouseWorldPos.value;
-    if (mp) {
-      newNodeIds = scene.value.pasteAt(mp.x, mp.y);
-    } else {
-      newNodeIds = scene.value.executePaste(50, 50);
-    }
+    const newNodeIds = scene.value.pasteFromMouse();
     if (newNodeIds.length > 0) {
       scene.value.selection.setSelection(newNodeIds);
       scene.value.updateAllConnectionEndpoints();

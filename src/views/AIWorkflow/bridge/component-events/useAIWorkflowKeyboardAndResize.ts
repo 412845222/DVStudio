@@ -57,6 +57,15 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			return
 		}
 
+		if (mod && key === 'v') {
+			if (payload.hasClipboardNodes()) {
+				ev.preventDefault()
+				ev.stopImmediatePropagation()
+				payload.pasteNodesAtCanvasCenter()
+			}
+			return
+		}
+
 		if (key === 'backspace' || key === 'delete') {
 			if (ev.repeat) {
 				console.log('[KEY-DEBUG] AIWorkflow capture Delete: repeat=true, skip')

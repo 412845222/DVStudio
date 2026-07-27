@@ -518,6 +518,9 @@ export class BlueprintEditorTool extends Tool {
     const sel = this.manager!.selection;
     const drag = this.manager!.drag;
 
+    const wp = scene.screenToWorld(event.screenPosition);
+    scene.setLastMouseWorldPos(wp.x, wp.y);
+
     if (this.connecting) {
       const worldPos = scene.screenToWorld(event.screenPosition);
       let hoveredPort: Port | null = null;
@@ -1110,8 +1113,13 @@ export class BlueprintEditorTool extends Tool {
     if (key === 'v' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       if (scene.hasClipboardData()) {
-        scene.executePaste(50, 50);
+        const newIds = scene.pasteFromMouse();
+        if (newIds.length > 0) {
+          scene.selection.setSelection(newIds);
+          scene.updateAllConnectionEndpoints();
+        }
       }
+      return;
     }
     if (key === 'g' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
