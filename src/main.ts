@@ -64,7 +64,7 @@ window.addEventListener(
 		}
 
 		// Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z: 撤销/重做（输入框内交给浏览器原生文本撤销）
-		// AIWorkflow/BlueprintTest 使用引擎内置CommandStack处理undo/redo，不在此处拦截
+		// AIWorkflow/BlueprintTest: PASS THROUGH - engine handles undo/redo via InputManager, do NOT intercept here
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
@@ -73,10 +73,8 @@ window.addEventListener(
 			const isRedo = e.shiftKey || (e.key === 'y' || e.key === 'Y')
 			const routeName = router.currentRoute.value.name
 			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
-				console.log('[KEY-DEBUG] main.ts bubble Ctrl+Z/Y: route=' + String(routeName) + ', PASS THROUGH - engine handles via InputManager, NOT calling stopPropagation')
 				return
 			}
-			console.log('[KEY-DEBUG] main.ts bubble Ctrl+Z/Y: isRedo=' + isRedo + ', route=' + String(routeName) + ', intercepting')
 			e.preventDefault()
 			e.stopPropagation()
 			const eventName = isRedo ? 'dvs:shortcut/redo' : 'dvs:shortcut/undo'
@@ -101,9 +99,7 @@ window.addEventListener(
 			const selected = Array.isArray(VideoSceneStore.state.selectedNodeIds)
 				? VideoSceneStore.state.selectedNodeIds
 				: []
-			console.log('[KEY-DEBUG] main.ts bubble Delete/Backspace: VideoSceneStore.selectedNodeIds=' + JSON.stringify(selected))
 			if (selected.length) {
-				console.log('[KEY-DEBUG] main.ts Delete handled by VideoSceneStore, stopPropagation called!')
 				e.preventDefault()
 				e.stopPropagation()
 				void VideoSceneStore.dispatch('deleteSelectedNodes')

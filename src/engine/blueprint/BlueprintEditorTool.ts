@@ -481,7 +481,6 @@ export class BlueprintEditorTool extends Tool {
             : [node];
           drag.startDragWithNodes(actualNodesToDrag, event, node);
           scene.isEngineDragging = true;
-          console.log('[DRAG-DIAG] pointerdown: start node drag, nodeId=', node.id, 'startPos=', node.transform.position.x, node.transform.position.y, 'isEngineDragging=true');
         }
       }
     } else {
@@ -617,7 +616,6 @@ export class BlueprintEditorTool extends Tool {
           if (!this.dragMoved) {
             this.dragMoved = true;
             this.setCursor('grabbing');
-            console.log('[DRAG-DIAG] pointermove: threshold exceeded, dragMoved=true, distSq=', distSq);
           }
         }
         if (this.dragMoved) {
@@ -633,8 +631,6 @@ export class BlueprintEditorTool extends Tool {
           }
         }
         scene.requestRedraw();
-      } else {
-        console.log('[DRAG-DIAG] pointermove: dragMode=NODES but drag.isDragging()=false');
       }
     } else if (this.dragMode === DragMode.RESIZE && this.resizeNode && this.resizeCorner) {
       const mouseWorld = scene.camera.screenToWorld(event.screenPosition);
@@ -869,7 +865,6 @@ export class BlueprintEditorTool extends Tool {
 
       if (drag.isDragging()) {
         if (isClick) {
-          console.log('[DRAG-DIAG] pointerup: isClick=true (dist=' + totalDist.toFixed(1) + '), cancelDrag');
           drag.cancelDrag();
           scene.isEngineDragging = false;
         } else {
@@ -880,7 +875,6 @@ export class BlueprintEditorTool extends Tool {
             for (const n of draggedNodes) {
               endPositions.set(n.id, new Vector2(n.transform.position.x, n.transform.position.y));
               const start = this.moveStartPositions.get(n.id);
-              console.log('[DRAG-DIAG] pointerup: drag end, nodeId=', n.id, 'start=', start?.x, start?.y, 'end=', n.transform.position.x, n.transform.position.y);
             }
             const moveFn = (id: string, pos: Vector2) => {
               const node = scene.getBlueprintNode(id);
@@ -889,14 +883,10 @@ export class BlueprintEditorTool extends Tool {
               }
             };
             scene.isEngineDragging = false;
-            console.log('[DRAG-DIAG] pointerup: isEngineDragging=false before executeCommand');
             scene.executeCommand(new MoveNodeCommand(this.moveStartPositions, endPositions, moveFn));
             scene.updateAllConnectionEndpoints();
-            console.log('[DRAG-DIAG] pointerup: MoveNodeCommand executed, about to emitChange');
           }
         }
-      } else {
-        console.log('[DRAG-DIAG] pointerup: dragMode=NODES but drag.isDragging()=false');
       }
       this.moveStartPositions.clear();
       this.dragMoved = !isClick;

@@ -4349,7 +4349,6 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 			return removeResourceByPolicyBridge(resourceId, opts)
 		},
 		performDelete: (nodeIds) => {
-			console.log('[KEY-DEBUG] AIWorkflowPage performDelete: nodeIds=' + JSON.stringify(nodeIds) + ', calling engineApi.deleteSelection()')
 			engineApi.deleteSelection()
 		}
 	})

@@ -97,17 +97,13 @@ export class BlueprintScene extends Scene {
   }
 
   executeCommand(command: Command): void {
-    console.log('[KEY-DEBUG] BlueprintScene.executeCommand: type=' + command.type + ', undoStackSize=' + this.commands.getUndoCount());
     this.commands.execute(command);
     this.syncLoadSignature();
-    console.log('[KEY-DEBUG] BlueprintScene.executeCommand done: undoStackSize=' + this.commands.getUndoCount());
   }
 
   undo(): boolean {
-    console.log('[KEY-DEBUG] BlueprintScene.undo() called');
     const result = super.undo();
     if (result) {
-      console.log('[KEY-DEBUG] BlueprintScene.undo() updating connection endpoints');
       this.updateAllConnectionEndpoints();
       this.syncLoadSignature();
     }
@@ -115,10 +111,8 @@ export class BlueprintScene extends Scene {
   }
 
   redo(): boolean {
-    console.log('[KEY-DEBUG] BlueprintScene.redo() called');
     const result = super.redo();
     if (result) {
-      console.log('[KEY-DEBUG] BlueprintScene.redo() updating connection endpoints');
       this.updateAllConnectionEndpoints();
       this.syncLoadSignature();
     }
@@ -199,21 +193,9 @@ export class BlueprintScene extends Scene {
     const positionSignature = sortedIncomingNodes.map(n => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`).join('|');
     const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`;
     if (this._lastLoadSignature === signature) {
-      console.log('[LOAD-DIAG] loadBlueprint: skipped (same signature)', signature.slice(0, 200));
       return;
     }
-    console.log('[LOAD-DIAG] loadBlueprint: SIGNATURE MISMATCH!');
-    console.log('[LOAD-DIAG]   _lastLoadSignature=', this._lastLoadSignature?.slice(0, 300));
-    console.log('[LOAD-DIAG]   incomingSig=    ', signature.slice(0, 300));
-    const firstNodeDiff = sortedIncomingNodes.slice(0, 3).map(n => {
-      const ex = this._nodeMap.get(n.id);
-      if (!ex) return `NEW node ${n.id} at (${n.worldX},${n.worldY})`;
-      return `${n.id}: engineNow=(${Math.round(ex.data.worldX)},${Math.round(ex.data.worldY)}) incoming=(${Math.round(n.worldX)},${Math.round(n.worldY)}) delta=(${Math.round(n.worldX - ex.data.worldX)},${Math.round(n.worldY - ex.data.worldY)})`;
-    });
-    console.log('[LOAD-DIAG]   first 3 nodes diff:', firstNodeDiff);
     this._lastLoadSignature = signature;
-
-    console.log('[LOAD-DIAG] loadBlueprint: ' + (isInitialLoad ? 'initial' : 'incremental') + ', nodes=', blueprintData.nodes.length, 'edges=', blueprintData.edges.length, 'sig=', signature.slice(0, 200));
 
     this.isEngineDragging = false;
     this.isDomInteractionLocked = false;
@@ -745,13 +727,9 @@ export class BlueprintScene extends Scene {
         connIds.push(item.id);
       }
     }
-    console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: nodeIds=' + JSON.stringify(nodeIds) + ', connIds=' + JSON.stringify(connIds));
     if (nodeIds.length > 0 || connIds.length > 0) {
       this.executeCommand(new DeleteSelectionCommand(this, nodeIds, connIds));
-      console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: calling clearSelection() after delete command');
       this.selection.clearSelection();
-    } else {
-      console.log('[KEY-DEBUG] BlueprintScene.deleteSelection: nothing selected, skip');
     }
   }
 

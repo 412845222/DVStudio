@@ -287,7 +287,6 @@ export class InputManager implements Disposable {
     if (this.disabled) {
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && (k === 'z' || k === 'y')) {
-        console.log('[KEY-DEBUG] InputManager.onKeyDown: DISABLED, skipping. key=' + k);
       }
       return;
     }
@@ -296,7 +295,6 @@ export class InputManager implements Disposable {
     const isDelete = k === 'delete' || k === 'backspace';
     if (isUndoRedo || isDelete) {
       const target = e.target as HTMLElement | null;
-      console.log('[KEY-DEBUG] InputManager.onKeyDown bubble: key=' + k + ', ctrl=' + (e.ctrlKey || e.metaKey) + ', shift=' + e.shiftKey + ', targetTag=' + (target?.tagName || 'null') + ', targetIsCanvas=' + (target === this.target));
     }
     const event: GraphKeyboardEvent = {
       type: 'keydown',

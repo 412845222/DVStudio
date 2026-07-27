@@ -83,9 +83,6 @@ export class Scene extends Group implements Disposable {
       const evt = e as GraphKeyboardEvent;
       const ctrl = evt.ctrlKey || evt.metaKey;
       const key = evt.key.toLowerCase();
-      if (ctrl && (key === 'z' || key === 'y')) {
-        console.log('[KEY-DEBUG] Scene.input keydown received: key=' + key + ', shift=' + evt.shiftKey + ', ctrl=' + ctrl + ', activeTool=' + this.tools.getActiveToolName() + ', undoStackSize=' + this.commands.getUndoCount() + ', redoStackSize=' + this.commands.getRedoCount());
-      }
       if (evt.key === ' ' && !evt.shiftKey) {
         const activeName = this.tools.getActiveToolName();
         if (activeName !== 'pan') {
@@ -94,17 +91,14 @@ export class Scene extends Group implements Disposable {
       }
       if (ctrl && key === 'z' && !evt.shiftKey && !evt.repeat) {
         evt.preventDefault();
-        console.log('[KEY-DEBUG] Scene calling undo()');
         this.undo();
       }
       if (ctrl && key === 'z' && evt.shiftKey && !evt.repeat) {
         evt.preventDefault();
-        console.log('[KEY-DEBUG] Scene calling redo()');
         this.redo();
       }
       if (ctrl && key === 'y' && !evt.repeat) {
         evt.preventDefault();
-        console.log('[KEY-DEBUG] Scene calling redo()');
         this.redo();
       }
     });
@@ -118,9 +112,7 @@ export class Scene extends Group implements Disposable {
   }
 
   undo(): boolean {
-    console.log('[KEY-DEBUG] Scene.undo() called, canUndo=' + this.commands.canUndo());
     const result = this.commands.undo();
-    console.log('[KEY-DEBUG] Scene.undo() result=' + result + ', undoStackSize=' + this.commands.getUndoCount() + ', redoStackSize=' + this.commands.getRedoCount());
     if (result) {
       this.requestRedraw();
     }
@@ -128,9 +120,7 @@ export class Scene extends Group implements Disposable {
   }
 
   redo(): boolean {
-    console.log('[KEY-DEBUG] Scene.redo() called, canRedo=' + this.commands.canRedo());
     const result = this.commands.redo();
-    console.log('[KEY-DEBUG] Scene.redo() result=' + result + ', undoStackSize=' + this.commands.getUndoCount() + ', redoStackSize=' + this.commands.getRedoCount());
     if (result) {
       this.requestRedraw();
     }
