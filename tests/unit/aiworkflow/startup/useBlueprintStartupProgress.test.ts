@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useBlueprintStartupProgress, STARTUP_STEP_KEYS } from '@/views/AIWorkflow/startup/useBlueprintStartupProgress'
+import {
+	useBlueprintStartupProgress,
+	STARTUP_STEP_KEYS
+} from '@/views/AIWorkflow/startup/useBlueprintStartupProgress'
 
 describe('useBlueprintStartupProgress', () => {
 	let progress: ReturnType<typeof useBlueprintStartupProgress>
@@ -77,8 +80,8 @@ describe('useBlueprintStartupProgress', () => {
 		it('progress should never exceed 99 before finish()', () => {
 			const keys = Object.values(STARTUP_STEP_KEYS)
 			for (const key of keys) {
-				progress.beginStep(key as typeof STARTUP_STEP_KEYS[keyof typeof STARTUP_STEP_KEYS])
-				progress.completeStep(key as typeof STARTUP_STEP_KEYS[keyof typeof STARTUP_STEP_KEYS])
+				progress.beginStep(key as (typeof STARTUP_STEP_KEYS)[keyof typeof STARTUP_STEP_KEYS])
+				progress.completeStep(key as (typeof STARTUP_STEP_KEYS)[keyof typeof STARTUP_STEP_KEYS])
 			}
 			expect(progress.overallProgress).toBeLessThanOrEqual(99)
 		})

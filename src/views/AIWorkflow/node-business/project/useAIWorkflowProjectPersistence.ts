@@ -157,7 +157,11 @@ type ResourcePatch = Record<string, unknown>
 export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePayload) => {
 	const resolveOrRepairProjectScopedResources = async (
 		projectId: number,
-		opts?: { silent?: boolean; projectRootPath?: string; onProgress?: (current: number, total: number) => void }
+		opts?: {
+			silent?: boolean
+			projectRootPath?: string
+			onProgress?: (current: number, total: number) => void
+		}
 	) => {
 		const pid = Number(projectId)
 		if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
@@ -479,20 +483,30 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 
 	const loadProjectById = async (
 		projectId: number,
-		opts?: { silent?: boolean; suppressErrorToast?: boolean; onProgress?: (current: number, total: number) => void }
+		opts?: {
+			silent?: boolean
+			suppressErrorToast?: boolean
+			onProgress?: (current: number, total: number) => void
+		}
 	) => {
 		payload.cancelActiveRecoverySession()
 		const res = await payload.blueprintProjectService.loadProject(projectId)
 		if (!res.ok) {
 			if (!opts?.suppressErrorToast) {
-				payload.pushToast(t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }), 'error')
+				payload.pushToast(
+					t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }),
+					'error'
+				)
 			}
-			blueprintLog.append(t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }), {
-				category: 'operation',
-				level: 'ERROR',
-				tag: 'project-load',
-				detail: { projectId }
-			})
+			blueprintLog.append(
+				t('aiworkflow.runtime.loadProjectFailed', { error: String(res.error || 'unknown') }),
+				{
+					category: 'operation',
+					level: 'ERROR',
+					tag: 'project-load',
+					detail: { projectId }
+				}
+			)
 			return false
 		}
 		if (!payload.isValidBlueprintSnapshot(res.snapshot)) {
@@ -538,7 +552,13 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 				// keep load flow resilient if static asset canonicalization fails
 			}
 		}
-		if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.loadProjectSource'))) return false
+		if (
+			!payload.hydrateBlueprintSnapshotSafely(
+				runtimeSafeSnapshot,
+				t('aiworkflow.runtime.loadProjectSource')
+			)
+		)
+			return false
 		payload.resetCurrentUnrealExportNodeRuntimeState()
 
 		const recoverySessionId = payload.startRecoverySessionFromCurrentState({
@@ -576,7 +596,10 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			const st = await payload.recoverLocalResourcesFromHandles({ silent: Boolean(opts?.silent) })
 			if (opts?.silent && st && (st.missingHandle || st.permissionDenied)) {
 				payload.pushToast(
-					t('aiworkflow.runtime.localResourcesNeedAuth', { missingHandle: String(st.missingHandle), permissionDenied: String(st.permissionDenied) }),
+					t('aiworkflow.runtime.localResourcesNeedAuth', {
+						missingHandle: String(st.missingHandle),
+						permissionDenied: String(st.permissionDenied)
+					}),
 					'warn'
 				)
 			}
@@ -622,15 +645,22 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 
 		if (!opts?.silent)
 			payload.pushToast(
-				t('aiworkflow.runtime.loadProjectSuccess', { name: payload.currentProjectName.value || `#${projectId}` }),
+				t('aiworkflow.runtime.loadProjectSuccess', {
+					name: payload.currentProjectName.value || `#${projectId}`
+				}),
 				'info'
 			)
-		blueprintLog.append(t('aiworkflow.runtime.loadProjectSuccess', { name: payload.currentProjectName.value || `#${projectId}` }), {
-			category: 'operation',
-			level: 'INFO',
-			tag: 'project-load',
-			detail: { projectId }
-		})
+		blueprintLog.append(
+			t('aiworkflow.runtime.loadProjectSuccess', {
+				name: payload.currentProjectName.value || `#${projectId}`
+			}),
+			{
+				category: 'operation',
+				level: 'INFO',
+				tag: 'project-load',
+				detail: { projectId }
+			}
+		)
 		return true
 	}
 
@@ -663,7 +693,11 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		try {
 			snapshot = await payload.buildPersistableSnapshotWithOptions({ uploadLocalResources })
 		} catch (err: unknown) {
-			if (!silent) payload.pushToast(t('aiworkflow.runtime.saveProjectFailed', { error: getErrorMessage(err) }), 'error')
+			if (!silent)
+				payload.pushToast(
+					t('aiworkflow.runtime.saveProjectFailed', { error: getErrorMessage(err) }),
+					'error'
+				)
 			return false
 		}
 		const res = await payload.blueprintProjectService.saveProject({
@@ -672,13 +706,20 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			projectId: payload.currentProjectId.value ?? undefined
 		})
 		if (!res.ok) {
-			if (!silent) payload.pushToast(t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }), 'error')
-			blueprintLog.append(t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }), {
-				category: 'operation',
-				level: 'ERROR',
-				tag: 'project-save',
-				detail: { name: nextName, projectId: payload.currentProjectId.value }
-			})
+			if (!silent)
+				payload.pushToast(
+					t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }),
+					'error'
+				)
+			blueprintLog.append(
+				t('aiworkflow.runtime.saveProjectFailed', { error: String(res.error || 'unknown') }),
+				{
+					category: 'operation',
+					level: 'ERROR',
+					tag: 'project-save',
+					detail: { name: nextName, projectId: payload.currentProjectId.value }
+				}
+			)
 			return false
 		}
 
@@ -711,30 +752,50 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 						projectId
 					})
 					if (!second.ok && !silent) {
-						payload.pushToast(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: String(second.error || 'unknown') }), 'warn')
-						blueprintLog.append(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: String(second.error || 'unknown') }), {
-							category: 'operation',
-							level: 'WARN',
-							tag: 'project-save',
-							detail: { projectId }
-						})
+						payload.pushToast(
+							t('aiworkflow.runtime.saveProjectMigrateFailed', {
+								error: String(second.error || 'unknown')
+							}),
+							'warn'
+						)
+						blueprintLog.append(
+							t('aiworkflow.runtime.saveProjectMigrateFailed', {
+								error: String(second.error || 'unknown')
+							}),
+							{
+								category: 'operation',
+								level: 'WARN',
+								tag: 'project-save',
+								detail: { projectId }
+							}
+						)
 					}
 				} catch (err: unknown) {
 					if (!silent) {
-						payload.pushToast(t('aiworkflow.runtime.saveProjectMigrateFailed', { error: getErrorMessage(err) }), 'warn')
+						payload.pushToast(
+							t('aiworkflow.runtime.saveProjectMigrateFailed', { error: getErrorMessage(err) }),
+							'warn'
+						)
 					}
 				}
 			}
 		}
 
 		await payload.refreshProjectList()
-		if (!silent) payload.pushToast(t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value }), 'info')
-		blueprintLog.append(t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value || nextName }), {
-			category: 'operation',
-			level: 'INFO',
-			tag: 'project-save',
-			detail: { projectId: payload.currentProjectId.value, name: nextName }
-		})
+		if (!silent)
+			payload.pushToast(
+				t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value }),
+				'info'
+			)
+		blueprintLog.append(
+			t('aiworkflow.toast.projectSaved', { name: payload.currentProjectName.value || nextName }),
+			{
+				category: 'operation',
+				level: 'INFO',
+				tag: 'project-save',
+				detail: { projectId: payload.currentProjectId.value, name: nextName }
+			}
+		)
 		return true
 	}
 
@@ -794,7 +855,10 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 		const result = await resolveOrRepairProjectScopedResources(pid, { silent })
 		if (!silent) {
 			if (result.changed > 0) {
-				payload.pushToast(t('aiworkflow.toast.resourceFixComplete', { count: result.changed }), 'info')
+				payload.pushToast(
+					t('aiworkflow.toast.resourceFixComplete', { count: result.changed }),
+					'info'
+				)
 			} else {
 				payload.pushToast(t('aiworkflow.runtime.resourceCheckComplete'), 'info')
 			}

@@ -15,7 +15,13 @@ const yieldToMain = (): Promise<void> => {
 }
 
 export async function processInBatches<T>(options: BatchProcessorOptions<T>): Promise<void> {
-	const { items, batchSize = DEFAULT_BATCH_SIZE, processItem, onProgress, onBatchComplete } = options
+	const {
+		items,
+		batchSize = DEFAULT_BATCH_SIZE,
+		processItem,
+		onProgress,
+		onBatchComplete
+	} = options
 	const total = items.length
 	if (total === 0) return
 

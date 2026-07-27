@@ -13,9 +13,7 @@
 			<div class="no-project-card">
 				<h2>{{ t('aiworkflow.page.noProject.title') }}</h2>
 				<p>{{ t('aiworkflow.page.noProject.description') }}</p>
-				<button
-					@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
-				>
+				<button @click="goToProjectList">
 					{{ t('aiworkflow.page.noProject.goToList') }}
 				</button>
 			</div>
@@ -10181,6 +10179,11 @@ const handleStartupSkipError = () => {
 	}
 }
 
+const goToProjectList = () => {
+	noProjectSelected.value = false
+	void router.push({ name: 'ProjectList' })
+}
+
 const onPreviewResource = async (resourceId: string) => {
 	const r = store.state.resourcesById?.[String(resourceId)]
 	if (!r) return
@@ -11305,10 +11308,7 @@ const getGeminiService = () => {
 		clearCompleted: (
 			payload?: Record<string, unknown>
 		) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
-		getImagePath: (payload: {
-			taskId: string
-			imageIndex?: number
-		}) => Promise<{
+		getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{
 			ok: boolean
 			path?: string
 			filename?: string
