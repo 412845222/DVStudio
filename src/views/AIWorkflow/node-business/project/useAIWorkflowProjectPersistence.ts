@@ -3,6 +3,7 @@ import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence
 import { blueprintLog } from '../../blueprint-core/blueprintLog'
 import { getErrorMessage, isNumber, isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
+import { processInBatches } from '../../startup/resourceBatchProcessor'
 
 type AssetRecord = {
 	url?: unknown
@@ -156,13 +157,19 @@ type ResourcePatch = Record<string, unknown>
 export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePayload) => {
 	const resolveOrRepairProjectScopedResources = async (
 		projectId: number,
-		opts?: { silent?: boolean; projectRootPath?: string }
+		opts?: { silent?: boolean; projectRootPath?: string; onProgress?: (current: number, total: number) => void }
 	) => {
 		const pid = Number(projectId)
 		if (!Number.isFinite(pid) || pid <= 0) return { changed: 0, failed: 0 }
 
+		const resourceIds = payload.store.state.resourceOrder.filter((rid) => {
+			return Boolean(payload.store.state.resourcesById?.[rid])
+		})
+		const total = resourceIds.length
+		let processed = 0
 		const patches: Array<{ resourceId: string; patch: ResourcePatch }> = []
 		let failed = 0
+
 		const projectRoot =
 			typeof opts?.projectRootPath === 'string'
 				? opts.projectRootPath.replace(/\\/g, '/').replace(/\/+$/, '')
@@ -173,218 +180,229 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 			return `dweb://project-assets?projectId=${encodeURIComponent(String(pid))}&path=${encodeURIComponent(relPath)}`
 		}
 
-		for (const rid of payload.store.state.resourceOrder) {
-			const resource = payload.store.state.resourcesById?.[rid]
-			if (!resource) continue
-
-			const kindRaw = String(resource.kind ?? '')
-				.trim()
-				.toLowerCase()
-			const kind = (kindRaw === 'video' ? 'video' : kindRaw === 'image' ? 'image' : 'file') as
-				| 'image'
-				| 'video'
-				| 'file'
-			const rawName = String(resource.name || '').trim()
-			const sourcePath = String(resource.sourcePath || '')
-				.replace(/\\/g, '/')
-				.trim()
-			const rawUrl = String(resource.url || '').trim()
-			const projectRelativePath = String(resource.projectRelativePath || '').trim()
-			const posterSourcePath = String(resource.posterSourcePath || '')
-				.replace(/\\/g, '/')
-				.trim()
-			const posterUrl = String(resource.posterUrl || '').trim()
-			const posterProjectRelativePath = String(resource.posterProjectRelativePath || '').trim()
-
-			const nextPatch: ResourcePatch = {}
-
-			const hasChineseInName = /[\u4e00-\u9fff]/.test(rawName)
-			if (hasChineseInName || !rawName) {
-				const safeName = `${kind}_${String(rid).slice(-8)}`
-				nextPatch.name = safeName
-			}
-
-			const isFileProtocol = rawUrl.toLowerCase().startsWith('file://')
-
-			let inferredRelPath = projectRelativePath
-			if (!inferredRelPath && sourcePath && projectRoot) {
-				const normalizedSource = sourcePath.toLowerCase()
-				const normalizedRoot = projectRoot.toLowerCase()
-				if (normalizedSource.startsWith(normalizedRoot + '/')) {
-					inferredRelPath = sourcePath.slice(projectRoot.length + 1)
+		await processInBatches({
+			items: resourceIds,
+			batchSize: 8,
+			processItem: async (rid) => {
+				const resource = payload.store.state.resourcesById?.[rid]
+				if (!resource) {
+					processed++
+					opts?.onProgress?.(processed, total)
+					return
 				}
-			}
 
-			const needsUrlFromRelPath =
-				inferredRelPath &&
-				(!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol)
-			const needsFileProtocolFix = isFileProtocol
-			const needsUrlFix = needsUrlFromRelPath || needsFileProtocolFix
+				const kindRaw = String(resource.kind ?? '')
+					.trim()
+					.toLowerCase()
+				const kind = (kindRaw === 'video' ? 'video' : kindRaw === 'image' ? 'image' : 'file') as
+					| 'image'
+					| 'video'
+					| 'file'
+				const rawName = String(resource.name || '').trim()
+				const sourcePath = String(resource.sourcePath || '')
+					.replace(/\\/g, '/')
+					.trim()
+				const rawUrl = String(resource.url || '').trim()
+				const projectRelativePath = String(resource.projectRelativePath || '').trim()
+				const posterSourcePath = String(resource.posterSourcePath || '')
+					.replace(/\\/g, '/')
+					.trim()
+				const posterUrl = String(resource.posterUrl || '').trim()
+				const posterProjectRelativePath = String(resource.posterProjectRelativePath || '').trim()
 
-			if (needsUrlFix) {
-				if (inferredRelPath) {
-					nextPatch.url = buildDwebUrl(inferredRelPath)
-					nextPatch.projectRelativePath = inferredRelPath
-				} else if (sourcePath) {
+				const nextPatch: ResourcePatch = {}
+
+				const hasChineseInName = /[\u4e00-\u9fff]/.test(rawName)
+				if (hasChineseInName || !rawName) {
+					const safeName = `${kind}_${String(rid).slice(-8)}`
+					nextPatch.name = safeName
+				}
+
+				const isFileProtocol = rawUrl.toLowerCase().startsWith('file://')
+
+				let inferredRelPath = projectRelativePath
+				if (!inferredRelPath && sourcePath && projectRoot) {
+					const normalizedSource = sourcePath.toLowerCase()
+					const normalizedRoot = projectRoot.toLowerCase()
+					if (normalizedSource.startsWith(normalizedRoot + '/')) {
+						inferredRelPath = sourcePath.slice(projectRoot.length + 1)
+					}
+				}
+
+				const needsUrlFromRelPath =
+					inferredRelPath &&
+					(!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol)
+				const needsFileProtocolFix = isFileProtocol
+				const needsUrlFix = needsUrlFromRelPath || needsFileProtocolFix
+
+				if (needsUrlFix) {
+					if (inferredRelPath) {
+						nextPatch.url = buildDwebUrl(inferredRelPath)
+						nextPatch.projectRelativePath = inferredRelPath
+					} else if (sourcePath) {
+						try {
+							const resolved = await payload.blueprintProjectService.resolveAsset({
+								projectId: pid,
+								kind,
+								name: rawName || undefined,
+								sourcePath: sourcePath || undefined,
+								projectRelativePath: projectRelativePath || undefined
+							})
+							const asset = resolved.ok && resolved.resolved ? resolved.asset : null
+							if (asset) {
+								const nextUrl = isString(asset.url) ? asset.url.trim() : ''
+								const nextRel = isString(asset.projectRelativePath)
+									? asset.projectRelativePath.trim()
+									: isString(asset.relativePath)
+										? asset.relativePath.trim()
+										: ''
+								if (nextUrl) {
+									nextPatch.url = payload.toProjectAssetRuntimeUrl
+										? payload.toProjectAssetRuntimeUrl(
+												pid,
+												nextRel || inferredRelPath,
+												payload.resolveBackendUrl(nextUrl)
+											)
+										: payload.resolveBackendUrl(nextUrl)
+								}
+								if (nextRel) nextPatch.projectRelativePath = nextRel
+								if (isString(asset.absolutePath)) nextPatch.sourcePath = asset.absolutePath
+							}
+						} catch {
+							failed += 1
+						}
+					}
+				}
+
+				const needsResourceFix =
+					!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol
+				if (needsResourceFix && !needsUrlFix && (projectRelativePath || sourcePath || rawUrl)) {
 					try {
 						const resolved = await payload.blueprintProjectService.resolveAsset({
 							projectId: pid,
 							kind,
 							name: rawName || undefined,
 							sourcePath: sourcePath || undefined,
+							sourceUrl: !isFileProtocol ? rawUrl : undefined,
 							projectRelativePath: projectRelativePath || undefined
 						})
-						const asset = resolved.ok && resolved.resolved ? resolved.asset : null
+						let asset = resolved.ok && resolved.resolved ? resolved.asset : null
+
+						if (!asset && projectRelativePath) {
+							const repaired = await payload.blueprintProjectService.repairAsset({
+								projectId: pid,
+								kind,
+								name: rawName || undefined,
+								projectRelativePath: projectRelativePath || undefined
+							})
+							asset = repaired.ok && repaired.repaired ? repaired.asset : null
+						}
+
 						if (asset) {
 							const nextUrl = isString(asset.url) ? asset.url.trim() : ''
+							const nextAbs = isString(asset.absolutePath) ? asset.absolutePath.trim() : ''
 							const nextRel = isString(asset.projectRelativePath)
 								? asset.projectRelativePath.trim()
 								: isString(asset.relativePath)
 									? asset.relativePath.trim()
 									: ''
 							if (nextUrl) {
+								const resolvedHttpUrl = payload.resolveBackendUrl(nextUrl)
 								nextPatch.url = payload.toProjectAssetRuntimeUrl
 									? payload.toProjectAssetRuntimeUrl(
 											pid,
-											nextRel || inferredRelPath,
-											payload.resolveBackendUrl(nextUrl)
+											nextRel || projectRelativePath,
+											resolvedHttpUrl
 										)
-									: payload.resolveBackendUrl(nextUrl)
+									: resolvedHttpUrl
 							}
+							if (nextAbs) nextPatch.sourcePath = nextAbs
 							if (nextRel) nextPatch.projectRelativePath = nextRel
-							if (isString(asset.absolutePath)) nextPatch.sourcePath = asset.absolutePath
 						}
 					} catch {
 						failed += 1
 					}
 				}
-			}
 
-			const needsResourceFix =
-				!rawUrl || rawUrl.startsWith('blob:') || rawUrl.startsWith('data:') || isFileProtocol
-			if (needsResourceFix && !needsUrlFix && (projectRelativePath || sourcePath || rawUrl)) {
-				try {
-					const resolved = await payload.blueprintProjectService.resolveAsset({
-						projectId: pid,
-						kind,
-						name: rawName || undefined,
-						sourcePath: sourcePath || undefined,
-						sourceUrl: !isFileProtocol ? rawUrl : undefined,
-						projectRelativePath: projectRelativePath || undefined
-					})
-					let asset = resolved.ok && resolved.resolved ? resolved.asset : null
-
-					if (!asset && projectRelativePath) {
-						const repaired = await payload.blueprintProjectService.repairAsset({
-							projectId: pid,
-							kind,
-							name: rawName || undefined,
-							projectRelativePath: projectRelativePath || undefined
-						})
-						asset = repaired.ok && repaired.repaired ? repaired.asset : null
-					}
-
-					if (asset) {
-						const nextUrl = isString(asset.url) ? asset.url.trim() : ''
-						const nextAbs = isString(asset.absolutePath) ? asset.absolutePath.trim() : ''
-						const nextRel = isString(asset.projectRelativePath)
-							? asset.projectRelativePath.trim()
-							: isString(asset.relativePath)
-								? asset.relativePath.trim()
-								: ''
-						if (nextUrl) {
-							const resolvedHttpUrl = payload.resolveBackendUrl(nextUrl)
-							nextPatch.url = payload.toProjectAssetRuntimeUrl
-								? payload.toProjectAssetRuntimeUrl(
-										pid,
-										nextRel || projectRelativePath,
-										resolvedHttpUrl
-									)
-								: resolvedHttpUrl
+				const posterIsFileProtocol = posterUrl.toLowerCase().startsWith('file://')
+				const needsPosterUrlFix = posterIsFileProtocol
+				const posterHasNoValidUrl =
+					!posterUrl || posterUrl.startsWith('blob:') || posterUrl.startsWith('data:')
+				const needsPosterFix = kind === 'video' && (posterHasNoValidUrl || needsPosterUrlFix)
+				if (needsPosterFix && (posterProjectRelativePath || posterSourcePath || posterUrl)) {
+					let inferredPosterRelPath = posterProjectRelativePath
+					if (!inferredPosterRelPath && posterSourcePath && projectRoot) {
+						const normalizedSource = posterSourcePath.toLowerCase()
+						const normalizedRoot = projectRoot.toLowerCase()
+						if (normalizedSource.startsWith(normalizedRoot + '/')) {
+							inferredPosterRelPath = posterSourcePath.slice(projectRoot.length + 1)
 						}
-						if (nextAbs) nextPatch.sourcePath = nextAbs
-						if (nextRel) nextPatch.projectRelativePath = nextRel
 					}
-				} catch {
-					failed += 1
-				}
-			}
 
-			const posterIsFileProtocol = posterUrl.toLowerCase().startsWith('file://')
-			const needsPosterUrlFix = posterIsFileProtocol
-			const posterHasNoValidUrl =
-				!posterUrl || posterUrl.startsWith('blob:') || posterUrl.startsWith('data:')
-			const needsPosterFix = kind === 'video' && (posterHasNoValidUrl || needsPosterUrlFix)
-			if (needsPosterFix && (posterProjectRelativePath || posterSourcePath || posterUrl)) {
-				let inferredPosterRelPath = posterProjectRelativePath
-				if (!inferredPosterRelPath && posterSourcePath && projectRoot) {
-					const normalizedSource = posterSourcePath.toLowerCase()
-					const normalizedRoot = projectRoot.toLowerCase()
-					if (normalizedSource.startsWith(normalizedRoot + '/')) {
-						inferredPosterRelPath = posterSourcePath.slice(projectRoot.length + 1)
-					}
-				}
-
-				if (inferredPosterRelPath && (needsPosterUrlFix || !posterUrl)) {
-					nextPatch.posterUrl = buildDwebUrl(inferredPosterRelPath)
-					nextPatch.posterProjectRelativePath = inferredPosterRelPath
-				} else {
-					try {
-						const posterResolved = await payload.blueprintProjectService.resolveAsset({
-							projectId: pid,
-							kind: 'image',
-							name: `poster_${String(rid).slice(-8)}.jpg`,
-							sourcePath: posterSourcePath || undefined,
-							sourceUrl: !posterIsFileProtocol ? posterUrl : undefined,
-							projectRelativePath: posterProjectRelativePath || undefined
-						})
-						let posterAsset =
-							posterResolved.ok && posterResolved.resolved ? posterResolved.asset : null
-
-						if (!posterAsset && posterProjectRelativePath) {
-							const posterRepaired = await payload.blueprintProjectService.repairAsset({
+					if (inferredPosterRelPath && (needsPosterUrlFix || !posterUrl)) {
+						nextPatch.posterUrl = buildDwebUrl(inferredPosterRelPath)
+						nextPatch.posterProjectRelativePath = inferredPosterRelPath
+					} else {
+						try {
+							const posterResolved = await payload.blueprintProjectService.resolveAsset({
 								projectId: pid,
 								kind: 'image',
 								name: `poster_${String(rid).slice(-8)}.jpg`,
-								projectRelativePath: posterProjectRelativePath
+								sourcePath: posterSourcePath || undefined,
+								sourceUrl: !posterIsFileProtocol ? posterUrl : undefined,
+								projectRelativePath: posterProjectRelativePath || undefined
 							})
-							posterAsset =
-								posterRepaired.ok && posterRepaired.repaired ? posterRepaired.asset : null
-						}
+							let posterAsset =
+								posterResolved.ok && posterResolved.resolved ? posterResolved.asset : null
 
-						if (posterAsset) {
-							const nextPosterUrl = isString(posterAsset.url) ? posterAsset.url.trim() : ''
-							const nextPosterAbs = isString(posterAsset.absolutePath)
-								? posterAsset.absolutePath.trim()
-								: ''
-							const nextPosterRel = isString(posterAsset.projectRelativePath)
-								? posterAsset.projectRelativePath.trim()
-								: isString(posterAsset.relativePath)
-									? posterAsset.relativePath.trim()
-									: ''
-							if (nextPosterUrl) {
-								const resolvedPosterHttpUrl = payload.resolveBackendUrl(nextPosterUrl)
-								nextPatch.posterUrl = payload.toProjectAssetRuntimeUrl
-									? payload.toProjectAssetRuntimeUrl(
-											pid,
-											nextPosterRel || posterProjectRelativePath,
-											resolvedPosterHttpUrl
-										)
-									: resolvedPosterHttpUrl
+							if (!posterAsset && posterProjectRelativePath) {
+								const posterRepaired = await payload.blueprintProjectService.repairAsset({
+									projectId: pid,
+									kind: 'image',
+									name: `poster_${String(rid).slice(-8)}.jpg`,
+									projectRelativePath: posterProjectRelativePath
+								})
+								posterAsset =
+									posterRepaired.ok && posterRepaired.repaired ? posterRepaired.asset : null
 							}
-							if (nextPosterAbs) nextPatch.posterSourcePath = nextPosterAbs
-							if (nextPosterRel) nextPatch.posterProjectRelativePath = nextPosterRel
+
+							if (posterAsset) {
+								const nextPosterUrl = isString(posterAsset.url) ? posterAsset.url.trim() : ''
+								const nextPosterAbs = isString(posterAsset.absolutePath)
+									? posterAsset.absolutePath.trim()
+									: ''
+								const nextPosterRel = isString(posterAsset.projectRelativePath)
+									? posterAsset.projectRelativePath.trim()
+									: isString(posterAsset.relativePath)
+										? posterAsset.relativePath.trim()
+										: ''
+								if (nextPosterUrl) {
+									const resolvedPosterHttpUrl = payload.resolveBackendUrl(nextPosterUrl)
+									nextPatch.posterUrl = payload.toProjectAssetRuntimeUrl
+										? payload.toProjectAssetRuntimeUrl(
+												pid,
+												nextPosterRel || posterProjectRelativePath,
+												resolvedPosterHttpUrl
+											)
+										: resolvedPosterHttpUrl
+								}
+								if (nextPosterAbs) nextPatch.posterSourcePath = nextPosterAbs
+								if (nextPosterRel) nextPatch.posterProjectRelativePath = nextPosterRel
+							}
+						} catch {
+							failed += 1
 						}
-					} catch {
-						failed += 1
 					}
 				}
-			}
 
-			if (Object.keys(nextPatch).length > 0) {
-				patches.push({ resourceId: rid, patch: nextPatch })
+				if (Object.keys(nextPatch).length > 0) {
+					patches.push({ resourceId: rid, patch: nextPatch })
+				}
+
+				processed++
+				opts?.onProgress?.(processed, total)
 			}
-		}
+		})
 
 		if (patches.length) {
 			payload.store.commit('patchResourcesBatch', { patches })
@@ -461,7 +479,7 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 
 	const loadProjectById = async (
 		projectId: number,
-		opts?: { silent?: boolean; suppressErrorToast?: boolean }
+		opts?: { silent?: boolean; suppressErrorToast?: boolean; onProgress?: (current: number, total: number) => void }
 	) => {
 		payload.cancelActiveRecoverySession()
 		const res = await payload.blueprintProjectService.loadProject(projectId)
@@ -546,7 +564,8 @@ export const useAIWorkflowProjectPersistence = (payload: ProjectPersistencePaylo
 						: ''
 				await resolveOrRepairProjectScopedResources(repairProjectId, {
 					silent: true,
-					projectRootPath: projectRoot
+					projectRootPath: projectRoot,
+					onProgress: opts?.onProgress
 				})
 			} catch {
 				// keep load flow resilient if auto repair fails
