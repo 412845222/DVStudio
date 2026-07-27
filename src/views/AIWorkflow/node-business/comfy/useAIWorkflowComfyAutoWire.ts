@@ -67,8 +67,12 @@ const calculateNodePosition = (
 	const footprint = COMFY_NODE_FOOTPRINT[mediaType]
 	const startOffset = existingNodeCount * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	return {
-		worldX: sourceNode.worldX + sourceNode.width + COMFY_AUTO_WIRE_HORIZONTAL_GAP + footprint.width / 2,
-		worldY: sourceNode.worldY + startOffset + outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
+		worldX:
+			sourceNode.worldX + sourceNode.width + COMFY_AUTO_WIRE_HORIZONTAL_GAP + footprint.width / 2,
+		worldY:
+			sourceNode.worldY +
+			startOffset +
+			outputIndex * (footprint.height + COMFY_AUTO_WIRE_VERTICAL_GAP)
 	}
 }
 
@@ -150,7 +154,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 			options.store.commit('setNodeAlias', { nodeId, alias: nodeAlias })
 			if (mediaType === 'model3d') {
 				const createdNode = options.store.state.nodesById?.[nodeId]
-				const currentSettings = isRecord(createdNode?.model3dSettings) ? createdNode.model3dSettings : {}
+				const currentSettings = isRecord(createdNode?.model3dSettings)
+					? createdNode.model3dSettings
+					: {}
 				options.store.commit('patchNodeSettings', {
 					nodeId,
 					settings: { ...currentSettings, modelGenerationSource: 'comfyui' }
@@ -229,7 +235,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 			return result
 		}
 
-		const anchorIds = new Set(validOutputs.map((o) => String(o.anchorId ?? '').trim()).filter(Boolean))
+		const anchorIds = new Set(
+			validOutputs.map((o) => String(o.anchorId ?? '').trim()).filter(Boolean)
+		)
 		const isSingleOutAnchor = anchorIds.size === 1 && anchorIds.has('out')
 
 		type PendingTarget = {
@@ -344,7 +352,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 
 					await nextTick()
 					if (i < pendingTargets.length - 1) {
-						await new Promise((resolve) => window.setTimeout(resolve, COMFY_AUTO_WIRE_NODE_DELAY_MS))
+						await new Promise((resolve) =>
+							window.setTimeout(resolve, COMFY_AUTO_WIRE_NODE_DELAY_MS)
+						)
 					}
 				} catch (err) {
 					console.error('[ComfyUI AutoWire] Failed to create node for anchor', anchorId, err)

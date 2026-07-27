@@ -148,7 +148,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				item.relativePath || item.file.name || (item.kind === 'image' ? 'image' : 'video')
 			)
 			const absPath =
-				typeof (item.file as FileWithPath)?.path === 'string' ? String((item.file as FileWithPath).path).trim() : ''
+				typeof (item.file as FileWithPath)?.path === 'string'
+					? String((item.file as FileWithPath).path).trim()
+					: ''
 			const sourceName = String(item.file?.name || name || '').trim()
 			const sourceSize = Number(item.file?.size || 0)
 			const sourceLastModified = Number(item.file?.lastModified || 0)
@@ -183,10 +185,15 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			})
 
 			const title = item.kind === 'image' ? t('common.image') : t('common.video')
-			let nodeId: string | null | undefined = options.engineApi?.addNode?.(item.kind, worldX, worldY, {
-				title,
-				resourceId
-			})
+			let nodeId: string | null | undefined = options.engineApi?.addNode?.(
+				item.kind,
+				worldX,
+				worldY,
+				{
+					title,
+					resourceId
+				}
+			)
 			const usedEngine = Boolean(nodeId)
 			if (usedEngine) anyUsedEngine = true
 			if (!nodeId) {
@@ -264,7 +271,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			}
 
 			const sourcePath =
-				typeof (task.file as FileWithPath)?.path === 'string' ? String((task.file as FileWithPath).path).trim() : ''
+				typeof (task.file as FileWithPath)?.path === 'string'
+					? String((task.file as FileWithPath).path).trim()
+					: ''
 
 			// 在 Electron 环境中，尝试将本地视频文件复制到项目目录
 			const projectId = options.getProjectId?.()
@@ -318,7 +327,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		if (projectIdForImages) {
 			for (const task of imageTasks) {
 				const sourcePath =
-					typeof (task.file as FileWithPath)?.path === 'string' ? String((task.file as FileWithPath).path).trim() : ''
+					typeof (task.file as FileWithPath)?.path === 'string'
+						? String((task.file as FileWithPath).path).trim()
+						: ''
 
 				if (sourcePath) {
 					try {

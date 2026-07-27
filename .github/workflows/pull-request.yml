@@ -47,6 +47,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -57,8 +59,18 @@ jobs:
       - name: Install dependencies (skip scripts)
         run: npm ci --ignore-scripts
 
-      - name: Check Prettier formatting
-        run: npm run format:check
+      - name: Get changed files
+        id: changed
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED=$(git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.css' '*.json' '*.mjs' '*.js' '*.yml' | tr '\n' ' ')
+          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          echo "Changed files to check: $CHANGED"
+        shell: bash
+
+      - name: Check Prettier formatting (changed files only)
+        run: npx prettier --check ${{ steps.changed.outputs.files }}
+        shell: bash
 
   type-check:
     name: Type Check

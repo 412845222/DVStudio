@@ -68,9 +68,9 @@ window.addEventListener(
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
-			((e.key === 'z' || e.key === 'Z') || (e.key === 'y' || e.key === 'Y'))
+			(e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y')
 		) {
-			const isRedo = e.shiftKey || (e.key === 'y' || e.key === 'Y')
+			const isRedo = e.shiftKey || e.key === 'y' || e.key === 'Y'
 			const routeName = router.currentRoute.value.name
 			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
 				return

@@ -1,66 +1,66 @@
-import { Vector2 } from '../core/Vector2';
-import { Tool } from './Tool';
-import type { GraphPointerEvent, GraphWheelEvent, GraphKeyboardEvent } from '../input/events';
-import type { HitTestResult } from '../scene/interfaces';
-import type { RenderContext } from '../renderer/RenderContext';
+import { Vector2 } from '../core/Vector2'
+import { Tool } from './Tool'
+import type { GraphPointerEvent, GraphWheelEvent, GraphKeyboardEvent } from '../input/events'
+import type { HitTestResult } from '../scene/interfaces'
+import type { RenderContext } from '../renderer/RenderContext'
 
 export class PanTool extends Tool {
-  private panning: boolean = false;
-  private lastPos: Vector2 = new Vector2();
+	private panning: boolean = false
+	private lastPos: Vector2 = new Vector2()
 
-  constructor() {
-    super('pan', 'grab');
-  }
+	constructor() {
+		super('pan', 'grab')
+	}
 
-  onActivate(): void {
-    this.panning = false;
-  }
+	onActivate(): void {
+		this.panning = false
+	}
 
-  onDeactivate(): void {
-    this.panning = false;
-  }
+	onDeactivate(): void {
+		this.panning = false
+	}
 
-  onPointerDown(event: GraphPointerEvent, _hit: HitTestResult | null): void {
-    if (event.button === 0 || event.button === 1) {
-      this.panning = true;
-      this.lastPos.copy(event.screenPosition);
-      this.setCursor('grabbing');
-    }
-  }
+	onPointerDown(event: GraphPointerEvent, _hit: HitTestResult | null): void {
+		if (event.button === 0 || event.button === 1) {
+			this.panning = true
+			this.lastPos.copy(event.screenPosition)
+			this.setCursor('grabbing')
+		}
+	}
 
-  onPointerMove(event: GraphPointerEvent, _hit: HitTestResult | null): void {
-    if (this.panning) {
-      const dx = event.screenPosition.x - this.lastPos.x;
-      const dy = event.screenPosition.y - this.lastPos.y;
-      this.manager!.scene.panBy(dx, dy);
-      this.lastPos.copy(event.screenPosition);
-    }
-  }
+	onPointerMove(event: GraphPointerEvent, _hit: HitTestResult | null): void {
+		if (this.panning) {
+			const dx = event.screenPosition.x - this.lastPos.x
+			const dy = event.screenPosition.y - this.lastPos.y
+			this.manager!.scene.panBy(dx, dy)
+			this.lastPos.copy(event.screenPosition)
+		}
+	}
 
-  onPointerUp(_event: GraphPointerEvent, _hit: HitTestResult | null): void {
-    this.panning = false;
-    this.setCursor('grab');
-  }
+	onPointerUp(_event: GraphPointerEvent, _hit: HitTestResult | null): void {
+		this.panning = false
+		this.setCursor('grab')
+	}
 
-  onWheel(event: GraphWheelEvent): void {
-    if (event.ctrlKey || event.metaKey) {
-      this.manager!.scene.zoomAt(event.screenPosition, event.deltaY);
-    } else {
-      this.manager!.scene.panBy(-event.deltaX, -event.deltaY);
-    }
-  }
+	onWheel(event: GraphWheelEvent): void {
+		if (event.ctrlKey || event.metaKey) {
+			this.manager!.scene.zoomAt(event.screenPosition, event.deltaY)
+		} else {
+			this.manager!.scene.panBy(-event.deltaX, -event.deltaY)
+		}
+	}
 
-  onKeyDown(event: GraphKeyboardEvent): void {
-    if (event.key === ' ' && !event.repeat) {
-      this.setCursor('grab');
-    }
-  }
+	onKeyDown(event: GraphKeyboardEvent): void {
+		if (event.key === ' ' && !event.repeat) {
+			this.setCursor('grab')
+		}
+	}
 
-  onKeyUp(event: GraphKeyboardEvent): void {
-    if (event.key === ' ') {
-      this.setCursor('grab');
-    }
-  }
+	onKeyUp(event: GraphKeyboardEvent): void {
+		if (event.key === ' ') {
+			this.setCursor('grab')
+		}
+	}
 
-  onRender(_ctx: RenderContext): void {}
+	onRender(_ctx: RenderContext): void {}
 }

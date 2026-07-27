@@ -1,9 +1,9 @@
-let _nextId = 1;
+let _nextId = 1
 
 export function generateId(prefix = 'node'): string {
-  return `${prefix}_${_nextId++}`;
+	return `${prefix}_${_nextId++}`
 }
 
 export function resetIdCounter(): void {
-  _nextId = 1;
+	_nextId = 1
 }

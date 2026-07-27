@@ -515,7 +515,12 @@ export class Model3DPreviewViewer {
 		}
 		disposeHelper(this.grid)
 		disposeHelper(this.axes)
-		this.grid = new THREE.GridHelper(gridSize, gridDivisions, '#64748b', '#334155') as unknown as GridHelperLike
+		this.grid = new THREE.GridHelper(
+			gridSize,
+			gridDivisions,
+			'#64748b',
+			'#334155'
+		) as unknown as GridHelperLike
 		this.grid.position.y = 0
 		this.axes = new THREE.AxesHelper(axesSize) as unknown as GridHelperLike
 		this.scene.add(this.grid)

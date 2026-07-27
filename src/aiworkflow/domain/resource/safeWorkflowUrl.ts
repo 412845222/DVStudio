@@ -160,10 +160,12 @@ export const resolveWorkflowResourceUrl = (url: unknown): string => {
 		return raw
 	}
 
-	if (raw.toLowerCase().startsWith('dweb://project-assets') || raw.toLowerCase().startsWith('dweb:project-assets')) {
+	if (
+		raw.toLowerCase().startsWith('dweb://project-assets') ||
+		raw.toLowerCase().startsWith('dweb:project-assets')
+	) {
 		const isElectronRuntime =
-			window?.__DWEB_RUNTIME__?.platform === 'electron' ||
-			!!window?.dweb?.common
+			window?.__DWEB_RUNTIME__?.platform === 'electron' || !!window?.dweb?.common
 
 		if (isElectronRuntime) {
 			return raw

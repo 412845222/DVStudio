@@ -46,11 +46,21 @@ export const useAIWorkflowContextMenu = (payload: {
 			title?: string
 			fromNodeId: string
 			fromAnchorId: string
-			findBestInputAnchor?: (nodesById: Record<string, any>, fromNodeId: string, fromAnchorId: string, newNodeId: string) => string | null
+			findBestInputAnchor?: (
+				nodesById: Record<string, any>,
+				fromNodeId: string,
+				fromAnchorId: string,
+				newNodeId: string
+			) => string | null
 			additionalData?: Record<string, any>
 		}) => { nodeId: string | null; connected: boolean }
 		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
-		connectPorts?: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => boolean
+		connectPorts?: (
+			fromNodeId: string,
+			fromAnchorId: string,
+			toNodeId: string,
+			toAnchorId: string
+		) => boolean
 		copySelection?: () => void
 		paste?: () => void
 		pasteAt?: (worldX: number, worldY: number) => string[]
@@ -135,7 +145,9 @@ export const useAIWorkflowContextMenu = (payload: {
 			const node = payload.store.state.nodesById[payload.selectedNodeId.value]
 			topItems.push({
 				id: 'node-info',
-				label: node ? t('aiworkflow.contextMenu.nodeInfo', { name: node.title }) : t('aiworkflow.contextMenu.nodeNotFound'),
+				label: node
+					? t('aiworkflow.contextMenu.nodeInfo', { name: node.title })
+					: t('aiworkflow.contextMenu.nodeNotFound'),
 				disabled: true
 			})
 		} else if (payload.selectedEdgeId.value) {
@@ -157,7 +169,10 @@ export const useAIWorkflowContextMenu = (payload: {
 			const url = payload.nodeResourceUrl(selectedNode)
 			actionItems.push({
 				id: selectedNode.type === 'image' ? 'save-image-resource' : 'save-video-resource',
-				label: selectedNode.type === 'image' ? t('aiworkflow.contextMenu.saveImageAs') : t('aiworkflow.contextMenu.saveVideoAs'),
+				label:
+					selectedNode.type === 'image'
+						? t('aiworkflow.contextMenu.saveImageAs')
+						: t('aiworkflow.contextMenu.saveVideoAs'),
 				disabled: !String(url ?? '').trim()
 			})
 			actionItems.push({
@@ -169,7 +184,11 @@ export const useAIWorkflowContextMenu = (payload: {
 
 		if (selectedNode && selectedNode.type === 'model3d') {
 			const url = String(selectedNode.model3dSettings?.modelUrl ?? '').trim()
-			actionItems.push({ id: 'save-model-resource', label: t('aiworkflow.contextMenu.saveModelAs'), disabled: !url })
+			actionItems.push({
+				id: 'save-model-resource',
+				label: t('aiworkflow.contextMenu.saveModelAs'),
+				disabled: !url
+			})
 			actionItems.push({
 				id: 'open-image-folder',
 				label: t('aiworkflow.contextMenu.revealInFolder'),
@@ -191,7 +210,9 @@ export const useAIWorkflowContextMenu = (payload: {
 
 		return [
 			{ title: t('aiworkflow.contextMenu.currentSelection'), items: topItems },
-			...(actionItems.length ? [{ title: t('aiworkflow.contextMenu.selectionActions'), items: actionItems }] : []),
+			...(actionItems.length
+				? [{ title: t('aiworkflow.contextMenu.selectionActions'), items: actionItems }]
+				: []),
 			{
 				title: t('aiworkflow.contextMenu.general'),
 				items: [
@@ -199,7 +220,11 @@ export const useAIWorkflowContextMenu = (payload: {
 					{ id: 'reset-viewport', label: t('aiworkflow.contextMenu.resetViewport') },
 					{ id: 'copy-node', label: t('aiworkflow.contextMenu.copy'), disabled: !canCopy },
 					{ id: 'paste-node', label: t('aiworkflow.contextMenu.paste'), disabled: !canPaste },
-					{ id: 'duplicate-node', label: t('aiworkflow.contextMenu.duplicate'), disabled: !canDuplicate }
+					{
+						id: 'duplicate-node',
+						label: t('aiworkflow.contextMenu.duplicate'),
+						disabled: !canDuplicate
+					}
 				]
 			},
 			{
@@ -249,7 +274,10 @@ export const useAIWorkflowContextMenu = (payload: {
 					.then(() => payload.pushToast(t('aiworkflow.contextMenu.downloadStarted'), 'info'))
 					.catch((err: unknown) => {
 						const errMsg = err instanceof Error ? err.message : String(err ?? 'unknown')
-						payload.pushToast(t('aiworkflow.contextMenu.downloadFailed', { error: errMsg }), 'error')
+						payload.pushToast(
+							t('aiworkflow.contextMenu.downloadFailed', { error: errMsg }),
+							'error'
+						)
 					})
 			}
 		}
@@ -267,13 +295,13 @@ export const useAIWorkflowContextMenu = (payload: {
 								message = String(ro.error ?? 'unknown')
 							}
 							if (/No handler registered/i.test(message)) {
-								payload.pushToast(
-									t('aiworkflow.contextMenu.folderOpenFailedIpc'),
-									'warn'
-								)
+								payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailedIpc'), 'warn')
 								return
 							}
-							payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailed', { error: message }), 'warn')
+							payload.pushToast(
+								t('aiworkflow.contextMenu.folderOpenFailed', { error: message }),
+								'warn'
+							)
 						}
 					})
 					.catch((err: unknown) => {
@@ -287,13 +315,13 @@ export const useAIWorkflowContextMenu = (payload: {
 							message = String(err)
 						}
 						if (/No handler registered/i.test(message)) {
-							payload.pushToast(
-								t('aiworkflow.contextMenu.folderOpenFailedIpc'),
-								'warn'
-							)
+							payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailedIpc'), 'warn')
 							return
 						}
-						payload.pushToast(t('aiworkflow.contextMenu.folderOpenFailed', { error: message }), 'warn')
+						payload.pushToast(
+							t('aiworkflow.contextMenu.folderOpenFailed', { error: message }),
+							'warn'
+						)
 					})
 			}
 		}
@@ -367,11 +395,13 @@ export const useAIWorkflowContextMenu = (payload: {
 				title: catalogItem.label,
 				fromNodeId,
 				fromAnchorId,
-				findBestInputAnchor: findBestInputAnchorForOutput,
+				findBestInputAnchor: findBestInputAnchorForOutput
 			})
 			newNodeId = result.nodeId
 		} else if (payload.engineApi?.addNode) {
-			newNodeId = payload.engineApi.addNode(catalogItem.nodeType || 'base', worldX, worldY, { title: catalogItem.label })
+			newNodeId = payload.engineApi.addNode(catalogItem.nodeType || 'base', worldX, worldY, {
+				title: catalogItem.label
+			})
 		}
 
 		pendingLinkAnchor.value = null

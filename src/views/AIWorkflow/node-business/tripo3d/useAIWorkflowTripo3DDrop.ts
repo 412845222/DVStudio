@@ -1,5 +1,10 @@
 import { t } from '../../../../i18n'
-import type { Tripo3DStoreLike, Tripo3DTaskPanelItem, CreateImageNodeAtCenterFn, CreateModel3DNodeAtCenterFn } from './types'
+import type {
+	Tripo3DStoreLike,
+	Tripo3DTaskPanelItem,
+	CreateImageNodeAtCenterFn,
+	CreateModel3DNodeAtCenterFn
+} from './types'
 import { isTripo3DImageMode } from './types'
 
 export type Tripo3DDraggedTaskPayload = {
@@ -26,7 +31,11 @@ export const useAIWorkflowTripo3DDrop = (options: {
 	store: Tripo3DStoreLike
 	engineApi?: EngineApi
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	pullTripo3DTaskToNode?: (nodeId: string, taskId: string, mode?: string) => Promise<{ ok: boolean; error?: string; finalStatus?: string }>
+	pullTripo3DTaskToNode?: (
+		nodeId: string,
+		taskId: string,
+		mode?: string
+	) => Promise<{ ok: boolean; error?: string; finalStatus?: string }>
 	createImageNodeAtCenter?: CreateImageNodeAtCenterFn
 	createModel3DNodeAtCenter?: CreateModel3DNodeAtCenterFn
 }) => {
@@ -38,12 +47,16 @@ export const useAIWorkflowTripo3DDrop = (options: {
 		const taskId = String(payload.item.taskId ?? '').trim()
 		const mode = String(payload.item.mode ?? 'text_to_model').trim()
 		const title = String(payload.item.title ?? '').trim()
-		const taskStatus = String(payload.item.status ?? '').trim().toLowerCase()
+		const taskStatus = String(payload.item.status ?? '')
+			.trim()
+			.toLowerCase()
 		const isCompleted = taskStatus === 'succeeded' || taskStatus === 'success'
 		const isImageTask = isTripo3DImageMode(mode)
 		const thumbnailUrl = String(payload.item.thumbnailUrl ?? '').trim()
 		const imageUrls = Array.isArray(payload.item.imageUrls)
-			? payload.item.imageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+			? payload.item.imageUrls
+					.filter((u): u is string => typeof u === 'string' && !!u.trim())
+					.map((u) => u.trim())
 			: []
 		const primaryImageUrl = imageUrls.length > 0 ? imageUrls[0] : thumbnailUrl
 		const modelUrl = String(payload.item.modelUrl ?? '').trim()
@@ -55,7 +68,8 @@ export const useAIWorkflowTripo3DDrop = (options: {
 				taskFamily: mode || 'text_to_image',
 				prompt: String(payload.item.prompt ?? '').trim() || undefined,
 				thumbnailUrl: thumbnailUrl || undefined,
-				outputImages: imageUrls.length > 0 ? imageUrls : (primaryImageUrl ? [primaryImageUrl] : undefined)
+				outputImages:
+					imageUrls.length > 0 ? imageUrls : primaryImageUrl ? [primaryImageUrl] : undefined
 			}
 
 			if (isCompleted) {
@@ -78,12 +92,12 @@ export const useAIWorkflowTripo3DDrop = (options: {
 				tripo3dImageSettings
 			}
 
-			const nodeId = options.engineApi?.addNode?.(
-				'image',
-				payload.worldX,
-				payload.worldY,
-				{ title: nodeTitle, alias: nodeTitle, imageSettings }
-			) ?? null
+			const nodeId =
+				options.engineApi?.addNode?.('image', payload.worldX, payload.worldY, {
+					title: nodeTitle,
+					alias: nodeTitle,
+					imageSettings
+				}) ?? null
 
 			if (!nodeId) {
 				options.store.commit('addNodeAt', {
@@ -99,7 +113,10 @@ export const useAIWorkflowTripo3DDrop = (options: {
 					if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 						void options.pullTripo3DTaskToNode(fallbackId, taskId, mode).then((res) => {
 							if (!res.ok) {
-								options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+								options.pushToast(
+									t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }),
+									'warn'
+								)
 							}
 						})
 					}
@@ -107,7 +124,10 @@ export const useAIWorkflowTripo3DDrop = (options: {
 			} else if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 				void options.pullTripo3DTaskToNode(nodeId, taskId, mode).then((res) => {
 					if (!res.ok) {
-						options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+						options.pushToast(
+							t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }),
+							'warn'
+						)
 					}
 				})
 			}
@@ -143,12 +163,12 @@ export const useAIWorkflowTripo3DDrop = (options: {
 			}
 		}
 
-		const nodeId = options.engineApi?.addNode?.(
-			'model3d',
-			payload.worldX,
-			payload.worldY,
-			{ title: nodeTitle, alias: nodeTitle, model3dSettings: initialSettings }
-		) ?? null
+		const nodeId =
+			options.engineApi?.addNode?.('model3d', payload.worldX, payload.worldY, {
+				title: nodeTitle,
+				alias: nodeTitle,
+				model3dSettings: initialSettings
+			}) ?? null
 
 		if (!nodeId) {
 			options.store.commit('addNodeAt', {
@@ -160,11 +180,17 @@ export const useAIWorkflowTripo3DDrop = (options: {
 			if (fallbackId) {
 				options.store.commit('setNodeType', { nodeId: fallbackId, type: 'model3d' })
 				options.store.commit('setNodeAlias', { nodeId: fallbackId, alias: nodeTitle })
-				options.store.commit('setNodeModel3DSettings', { nodeId: fallbackId, model3dSettings: initialSettings })
+				options.store.commit('setNodeModel3DSettings', {
+					nodeId: fallbackId,
+					model3dSettings: initialSettings
+				})
 				if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 					void options.pullTripo3DTaskToNode(fallbackId, taskId, mode).then((res) => {
 						if (!res.ok) {
-							options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+							options.pushToast(
+								t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }),
+								'warn'
+							)
 						}
 					})
 				}
@@ -172,7 +198,10 @@ export const useAIWorkflowTripo3DDrop = (options: {
 		} else if (taskId && typeof options.pullTripo3DTaskToNode === 'function') {
 			void options.pullTripo3DTaskToNode(nodeId, taskId, mode).then((res) => {
 				if (!res.ok) {
-					options.pushToast(t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }), 'warn')
+					options.pushToast(
+						t('tasks.tripo3d.pullArtifactsFailed', { error: res.error || 'unknown' }),
+						'warn'
+					)
 				}
 			})
 		}
@@ -187,7 +216,18 @@ export const useAIWorkflowTripo3DDrop = (options: {
 }
 
 export const buildTripo3DDragDataTransfer = (
-	task: Pick<Tripo3DTaskPanelItem, 'taskId' | 'title' | 'mode' | 'promptPreview' | 'thumbnailUrl' | 'modelUrl' | 'status' | 'taskType' | 'imageUrls'>
+	task: Pick<
+		Tripo3DTaskPanelItem,
+		| 'taskId'
+		| 'title'
+		| 'mode'
+		| 'promptPreview'
+		| 'thumbnailUrl'
+		| 'modelUrl'
+		| 'status'
+		| 'taskType'
+		| 'imageUrls'
+	>
 ) => {
 	const payload: Tripo3DDraggedTaskPayload = {
 		taskId: task.taskId,

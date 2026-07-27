@@ -22,7 +22,12 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 			crop: { x: number; y: number; width: number; height: number }
 		}
 	}) => void
-	commitAddNodeAt: (payload: { worldX: number; worldY: number; title?: string; type?: string }) => string | null
+	commitAddNodeAt: (payload: {
+		worldX: number
+		worldY: number
+		title?: string
+		type?: string
+	}) => string | null
 	commitSetNodeType: (payload: { nodeId: string; type: string }) => void
 	videoScreenshotNodeTitle: string
 }) => {
@@ -89,10 +94,7 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 		return { worldX: baseWorldX, worldY: baseWorldY + 21 * (imageNodeHeight + spacing) }
 	}
 
-	const createImageNodeForVideoScreenshot = (
-		videoNodeId: string,
-		time: number
-	): string | null => {
+	const createImageNodeForVideoScreenshot = (videoNodeId: string, time: number): string | null => {
 		const videoNode = payload.getNode(videoNodeId)
 		if (!videoNode) return null
 

@@ -32,19 +32,16 @@ export const useAIWorkflowMeshyDrop = (options: {
 			meshyOutputSummary: itemSettings.meshyOutputSummary ?? undefined
 		}
 		const alias =
-			String(payload.item.alias ?? payload.item.title ?? t('tasks.meshy.taskNodeDefaultAlias')).trim() ||
-			t('tasks.meshy.taskNodeDefaultAlias')
+			String(
+				payload.item.alias ?? payload.item.title ?? t('tasks.meshy.taskNodeDefaultAlias')
+			).trim() || t('tasks.meshy.taskNodeDefaultAlias')
 
-		const nodeId = options.engineApi?.addNode?.(
-			'meshy',
-			payload.worldX,
-			payload.worldY,
-			{
+		const nodeId =
+			options.engineApi?.addNode?.('meshy', payload.worldX, payload.worldY, {
 				title: t('tasks.meshy.taskNodeTitle'),
 				meshySettings,
 				alias
-			}
-		) ?? null
+			}) ?? null
 		if (!nodeId) {
 			options.store.commit('addNodeAt', {
 				worldX: payload.worldX,

@@ -72,7 +72,12 @@ type TooltipState = {
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
 type EngineApi = {
-	connectPorts?: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => boolean
+	connectPorts?: (
+		fromNodeId: string,
+		fromAnchorId: string,
+		toNodeId: string,
+		toAnchorId: string
+	) => boolean
 }
 
 export const useAIWorkflowLinking = (payload: {
@@ -253,9 +258,7 @@ export const useAIWorkflowLinking = (payload: {
 		const sourceKey = linkDraft.value
 			? anchorKey(linkDraft.value.fromNodeId, 'out', linkDraft.value.fromAnchorId)
 			: null
-		const targetKey = target
-			? anchorKey(target.nodeId, target.direction, target.anchorId)
-			: null
+		const targetKey = target ? anchorKey(target.nodeId, target.direction, target.anchorId) : null
 		let compatCheck: boolean | null = null
 
 		if (sourceKey && target && target.direction === 'in' && linkDraft.value) {
@@ -278,7 +281,9 @@ export const useAIWorkflowLinking = (payload: {
 			if (sourceKey && key === sourceKey) {
 				phase = 'dragging'
 			} else if (targetKey && key === targetKey && target) {
-				phase = (target.phase === 'dragging' ? 'dragging' : target.phase) as AnchorVisualState['phase']
+				phase = (
+					target.phase === 'dragging' ? 'dragging' : target.phase
+				) as AnchorVisualState['phase']
 				if (target.direction === 'in' && linkDraft.value) {
 					mx = 0
 					my = 0
@@ -371,8 +376,12 @@ export const useAIWorkflowLinking = (payload: {
 	): HTMLElement | null => {
 		if (typeof document === 'undefined') return null
 		const selector = [
-			`.wf-node [data-wf-node-id="${String(nodeId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
-			`[data-wf-anchor-id="${String(anchorId ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`,
+			`.wf-node [data-wf-node-id="${String(nodeId ?? '')
+				.replace(/\\/g, '\\\\')
+				.replace(/"/g, '\\"')}"]`,
+			`[data-wf-anchor-id="${String(anchorId ?? '')
+				.replace(/\\/g, '\\\\')
+				.replace(/"/g, '\\"')}"]`,
 			`[data-wf-dir="${direction}"]`
 		].join('')
 		const el = document.querySelector(selector)
@@ -501,7 +510,11 @@ export const useAIWorkflowLinking = (payload: {
 			[sourceKey]: compatible
 		}
 		const targetNode = payload.store.state.nodesById[target.nodeId]
-		const anchors = targetNode ? (target.direction === 'in' ? targetNode.inputs : targetNode.outputs) : []
+		const anchors = targetNode
+			? target.direction === 'in'
+				? targetNode.inputs
+				: targetNode.outputs
+			: []
 		const anchor = anchors.find((a) => a.id === target.anchorId)
 		tooltipState.value = {
 			visible: true,
@@ -633,7 +646,8 @@ export const useAIWorkflowLinking = (payload: {
 
 		if (!payload.canvasAnchors) {
 			const nextSourceEl = anchorElement(startPayload.nodeId, startPayload.anchorId, 'out')
-			if (lastMagnetDomEl && lastMagnetDomEl !== nextSourceEl) scheduleAnchorRelease(lastMagnetDomEl)
+			if (lastMagnetDomEl && lastMagnetDomEl !== nextSourceEl)
+				scheduleAnchorRelease(lastMagnetDomEl)
 			lastMagnetDomEl = null
 			sourceMagnetDomEl = nextSourceEl
 			if (sourceMagnetDomEl) {
@@ -834,7 +848,13 @@ export const useAIWorkflowLinking = (payload: {
 		if (!payload.canvasAnchors) return null
 		const cp = payload.clientToCanvasPoint({ x: clientX, y: clientY })
 		if (!cp) return null
-		let best: { dist: number; nodeId: string; anchorId: string; anchorIndex: number; direction: 'in' | 'out' } | null = null
+		let best: {
+			dist: number
+			nodeId: string
+			anchorId: string
+			anchorIndex: number
+			direction: 'in' | 'out'
+		} | null = null
 		const hitRadius = magnet.hitRadiusPx.value
 		for (const a of payload.canvasAnchors.value) {
 			const dx = cp.x - a.screenX
@@ -842,10 +862,23 @@ export const useAIWorkflowLinking = (payload: {
 			const dist = Math.hypot(dx, dy)
 			if (dist > hitRadius) continue
 			if (!best || dist < best.dist) {
-				best = { dist, nodeId: a.nodeId, anchorId: a.anchorId, anchorIndex: a.anchorIndex, direction: a.direction }
+				best = {
+					dist,
+					nodeId: a.nodeId,
+					anchorId: a.anchorId,
+					anchorIndex: a.anchorIndex,
+					direction: a.direction
+				}
 			}
 		}
-		return best ? { nodeId: best.nodeId, anchorId: best.anchorId, anchorIndex: best.anchorIndex, direction: best.direction } : null
+		return best
+			? {
+					nodeId: best.nodeId,
+					anchorId: best.anchorId,
+					anchorIndex: best.anchorIndex,
+					direction: best.direction
+				}
+			: null
 	}
 
 	const draftRender = (
