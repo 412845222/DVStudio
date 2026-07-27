@@ -4290,7 +4290,6 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 			return removeResourceByPolicyBridge(resourceId, opts)
 		},
 		performDelete: (nodeIds) => {
-			engineApi.setSelection(nodeIds)
 			engineApi.deleteSelection()
 		}
 	})

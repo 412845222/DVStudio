@@ -9,6 +9,7 @@ import type { Camera } from '../renderer/Camera';
 import { InputManager } from '../input/InputManager';
 import { SelectionManager } from '../input/SelectionManager';
 import { DragManager } from '../input/DragManager';
+import type { GraphKeyboardEvent } from '../input/events';
 import { ToolManager } from '../tools/ToolManager';
 import { PanTool } from '../tools/PanTool';
 import { SelectTool } from '../tools/SelectTool';
@@ -79,22 +80,26 @@ export class Scene extends Group implements Disposable {
 
   private setupKeyboardShortcuts(): void {
     this.input.on.on('keydown', (e: unknown) => {
-      const evt = e as { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; preventDefault: () => void };
-      if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z' && !evt.shiftKey) {
-        evt.preventDefault();
-        this.commands.undo();
-        this.requestRedraw();
-      }
-      if ((evt.ctrlKey || evt.metaKey) && (evt.key.toLowerCase() === 'y' || (evt.shiftKey && evt.key.toLowerCase() === 'z'))) {
-        evt.preventDefault();
-        this.commands.redo();
-        this.requestRedraw();
-      }
+      const evt = e as GraphKeyboardEvent;
       if (evt.key === ' ' && !evt.shiftKey) {
         const activeName = this.tools.getActiveToolName();
         if (activeName !== 'pan') {
           this.tools.setActiveTool('pan');
         }
+      }
+      const ctrl = evt.ctrlKey || evt.metaKey;
+      const key = evt.key.toLowerCase();
+      if (ctrl && key === 'z' && !evt.shiftKey && !evt.repeat) {
+        evt.preventDefault();
+        this.undo();
+      }
+      if (ctrl && key === 'z' && evt.shiftKey && !evt.repeat) {
+        evt.preventDefault();
+        this.redo();
+      }
+      if (ctrl && key === 'y' && !evt.repeat) {
+        evt.preventDefault();
+        this.redo();
       }
     });
 
@@ -104,6 +109,22 @@ export class Scene extends Group implements Disposable {
         this.tools.resetToDefault();
       }
     });
+  }
+
+  undo(): boolean {
+    const result = this.commands.undo();
+    if (result) {
+      this.requestRedraw();
+    }
+    return result;
+  }
+
+  redo(): boolean {
+    const result = this.commands.redo();
+    if (result) {
+      this.requestRedraw();
+    }
+    return result;
   }
 
   private setupWheelZoom(): void {

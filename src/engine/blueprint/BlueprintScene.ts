@@ -36,7 +36,6 @@ export class BlueprintScene extends Scene {
   private _lastLoadSignature = '';
   private _clipboardNodes: BlueprintNodeData[] = [];
   private _clipboardEdges: ConnectionData[] = [];
-  readonly commandStack: CommandStack = new CommandStack();
   public isEngineDragging: boolean = false;
   public isDomInteractionLocked: boolean = false;
   private _isViewportPanning: boolean = false;
@@ -69,9 +68,9 @@ export class BlueprintScene extends Scene {
     this.camera.minZoom = 0.2;
     this.camera.maxZoom = 6;
 
-    this.commandStack.on.on('execute', () => this.on.emit('after-command'));
-    this.commandStack.on.on('undo', () => this.on.emit('after-command'));
-    this.commandStack.on.on('redo', () => this.on.emit('after-command'));
+    this.commands.on.on('execute', () => this.on.emit('after-command'));
+    this.commands.on.on('undo', () => this.on.emit('after-command'));
+    this.commands.on.on('redo', () => this.on.emit('after-command'));
   }
 
   onResize(_width: number, _height: number): void {
@@ -95,27 +94,35 @@ export class BlueprintScene extends Scene {
   }
 
   executeCommand(command: Command): void {
-    this.commandStack.execute(command);
+    this.commands.execute(command);
   }
 
   undo(): boolean {
-    return this.commandStack.undo();
+    const result = super.undo();
+    if (result) {
+      this.updateAllConnectionEndpoints();
+    }
+    return result;
   }
 
   redo(): boolean {
-    return this.commandStack.redo();
+    const result = super.redo();
+    if (result) {
+      this.updateAllConnectionEndpoints();
+    }
+    return result;
   }
 
   canUndo(): boolean {
-    return this.commandStack.canUndo();
+    return this.commands.canUndo();
   }
 
   canRedo(): boolean {
-    return this.commandStack.canRedo();
+    return this.commands.canRedo();
   }
 
   clearCommandStack(): void {
-    this.commandStack.clear();
+    this.commands.clear();
   }
 
   createWorkflowNode(data: BlueprintNodeData): BlueprintNode | null {
@@ -183,7 +190,7 @@ export class BlueprintScene extends Scene {
 
     this._savedSelectionFrames.clear();
     this._legacyResources = blueprintData.legacyResources || {};
-    this.commandStack.clear();
+    this.commands.clear();
 
     if (blueprintData.viewport) {
       this.setViewport({
