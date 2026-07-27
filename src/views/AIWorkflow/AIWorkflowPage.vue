@@ -1,18 +1,29 @@
 <template>
 	<div class="aiwf-page">
+		<BlueprintStartupOverlay
+			:visible="startupOverlayVisible"
+			:title="blueprintStartupProgress.title"
+			:overall-progress="blueprintStartupProgress.overallProgress / 100"
+			:steps="blueprintStartupProgress.steps"
+			:error="blueprintStartupProgress.error"
+			:can-skip-error="blueprintStartupProgress.canSkipError"
+			@skip-error="handleStartupSkipError"
+		/>
 		<div v-if="noProjectSelected" class="no-project-guide">
 			<div class="no-project-card">
 				<h2>{{ t('aiworkflow.page.noProject.title') }}</h2>
 				<p>{{ t('aiworkflow.page.noProject.description') }}</p>
-				<button
-				@click="noProjectSelected = false; void $router.push({ name: 'ProjectList' })"
-			>
+				<button @click="goToProjectList">
 					{{ t('aiworkflow.page.noProject.goToList') }}
 				</button>
 			</div>
 		</div>
 		<!-- 蓝图节点容器 -->
-		<div class="aiwf-blueprint-container" :class="{ 'aiwf-viewport-motion': viewportMotionActive }">
+		<div
+			v-if="blueprintStartupReady"
+			class="aiwf-blueprint-container"
+			:class="{ 'aiwf-viewport-motion': viewportMotionActive }"
+		>
 			<!-- AIWorkflowBlueprintHost (架构分层，隔离BlueprintEditor集成) -->
 			<AIWorkflowBlueprintHost
 				ref="blueprintHostRef"
@@ -114,10 +125,7 @@
 				@update:thinking-effort="chatThinkingEffort = $event"
 				@update:model-key="
 					(v: unknown) => {
-						if (
-							typeof v === 'string' &&
-							['text', 'nanobanana', 'seedance', 'codex'].includes(v)
-						)
+						if (typeof v === 'string' && ['text', 'nanobanana', 'seedance', 'codex'].includes(v))
 							chatModelKey = v as typeof chatModelKey
 					}
 				"
@@ -129,7 +137,9 @@
 				@codex-delete-session="onCodexDeleteSession"
 				@codex-rename-session="onCodexRenameSession"
 				@codex-approval="onCodexApproval"
-				@user-choice-select="handleUserChoiceSelect($event.messageId, $event.choiceIndex, $event.choiceText)"
+				@user-choice-select="
+					handleUserChoiceSelect($event.messageId, $event.choiceIndex, $event.choiceText)
+				"
 				@workflow-end-link="onEndLink"
 				@request-expand="chatCollapsed = false"
 				@request-collapse="chatCollapsed = true"
@@ -177,7 +187,7 @@
 					@request-export-performance-diagnostics="onExportPerfDiagnostics"
 					@request-save="onRequestSaveProject"
 					@request-load-list="refreshProjectList"
-					@request-load-project="onRequestLoadProject"
+					@request-load-project="handleRequestLoadProject"
 					@request-delete-project="onRequestDeleteProject"
 					@request-import-local="onRequestImportLocalProject"
 					@request-import-package="onRequestImportProjectPackage"
@@ -185,7 +195,7 @@
 					@request-export-package="onRequestExportProjectPackage"
 					@open-meshy-task-panel="onOpenMeshyTaskPanel"
 					@open-ark-task-panel="onOpenArkTaskPanel"
-				@open-gemini-task-panel="onOpenGeminiTaskPanel"
+					@open-gemini-task-panel="onOpenGeminiTaskPanel"
 					@open-tripo3d-task-panel="onOpenTripo3DTaskPanel"
 					@open-template-center="onOpenTemplateCenter"
 				/>
@@ -266,10 +276,7 @@
 					</div>
 					<div class="aiwf-perf-stats-row">
 						<span class="aiwf-perf-stats-label">{{ t('aiworkflow.page.perf.status') }}</span>
-						<span
-							class="aiwf-perf-stats-value"
-							:class="perfHealthClass"
-						>
+						<span class="aiwf-perf-stats-value" :class="perfHealthClass">
 							{{ perfHealthLabel }}
 						</span>
 					</div>
@@ -389,7 +396,11 @@
 					:visible="!!(imageMarkupContext.url && !isElectronRuntime)"
 					:image-url="imageMarkupContext.url"
 					:source-name="imageMarkupContext.name"
-					@update:visible="(v: boolean) => { if (!v) closeImageMarkupDialog() }"
+					@update:visible="
+						(v: boolean) => {
+							if (!v) closeImageMarkupDialog()
+						}
+					"
 					@export-markup="onNodeExportMarkupImage"
 				/>
 			</div>
@@ -405,7 +416,9 @@
 
 			<div class="aiwf-overlay-alerts" :style="overlayAlertStyle">
 				<div v-if="importLimitAlertMessage" class="aiwf-import-limit-alert" @pointerdown.stop>
-					<div class="aiwf-import-limit-alert-title">{{ t('aiworkflow.page.importLimit.title') }}</div>
+					<div class="aiwf-import-limit-alert-title">
+						{{ t('aiworkflow.page.importLimit.title') }}
+					</div>
 					<div class="aiwf-import-limit-alert-body">{{ importLimitAlertMessage }}</div>
 					<div class="aiwf-import-limit-alert-actions">
 						<button
@@ -492,19 +505,25 @@
 				</p>
 				<div class="aiwf-missing-asset-info">
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.assetName') }}</span>
+						<span class="aiwf-missing-asset-label">
+							{{ t('aiworkflow.page.missingAsset.assetName') }}
+						</span>
 						<span class="aiwf-missing-asset-value">
 							<strong>{{ missingAssetDialogPending.assetName }}</strong>
 						</span>
 					</div>
 					<div class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.requestedPath') }}</span>
+						<span class="aiwf-missing-asset-label">
+							{{ t('aiworkflow.page.missingAsset.requestedPath') }}
+						</span>
 						<span class="aiwf-missing-asset-value aiewf-mono">
 							{{ missingAssetDialogPending.requestedPath }}
 						</span>
 					</div>
 					<div v-if="missingAssetDialogPending.absolutePath" class="aiwf-missing-asset-row">
-						<span class="aiwf-missing-asset-label">{{ t('aiworkflow.page.missingAsset.absolutePath') }}</span>
+						<span class="aiwf-missing-asset-label">
+							{{ t('aiworkflow.page.missingAsset.absolutePath') }}
+						</span>
 						<span class="aiwf-missing-asset-value aiewf-mono" style="word-break: break-all">
 							{{ missingAssetDialogPending.absolutePath }}
 						</span>
@@ -516,7 +535,11 @@
 					class="aiwf-missing-asset-sources"
 				>
 					<div class="aiwf-missing-asset-sources-title">
-						{{ t('aiworkflow.page.missingAsset.sourcesTitle', { count: String(missingAssetDialogPending.sources.length) }) }}
+						{{
+							t('aiworkflow.page.missingAsset.sourcesTitle', {
+								count: String(missingAssetDialogPending.sources.length)
+							})
+						}}
 					</div>
 					<ul class="aiwf-missing-asset-source-list">
 						<li v-for="(s, i) in missingAssetDialogPending.sources" :key="i">
@@ -582,7 +605,10 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import AIWorkflowBlueprintHost from './components/AIWorkflowBlueprintHost.vue'
 import { useAIWorkflowBlueprintHost } from './composables/useAIWorkflowBlueprintHost'
 import type { LegacyBlueprintData } from '../../engine/blueprint/types'
-import { workflowStateToLegacyBlueprint, legacyBlueprintToWorkflowState } from './blueprint-bridge/workflowStateAdapter'
+import {
+	workflowStateToLegacyBlueprint,
+	legacyBlueprintToWorkflowState
+} from './blueprint-bridge/workflowStateAdapter'
 import ThemeWarmupProgress from './components/ThemeWarmupProgress.vue'
 import WorkflowMinimap from './components/WorkflowMinimap.vue'
 import AnchorTooltip from '../../ui/WorkFlow/AnchorTooltip.vue'
@@ -751,9 +777,7 @@ import {
 } from './node-screenshot'
 // Canvas2D渲染模块
 import { useAIWorkflowCanvasScreenshot } from './blueprint-core/useAIWorkflowCanvasScreenshot'
-import {
-	saveScreenshotToDisk
-} from './node-screenshot/nodeScreenshotPersistentCache'
+import { saveScreenshotToDisk } from './node-screenshot/nodeScreenshotPersistentCache'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { useAIWorkflowRotateImageOutput } from './node-business/presentation/useAIWorkflowRotateImageOutput'
 import { useAIWorkflowVideoScreenshot } from './node-business/presentation/useAIWorkflowVideoScreenshot'
@@ -816,7 +840,10 @@ import {
 	fileExtensionFromUrl,
 	normalizeMeshyTaskStatus
 } from './node-business/meshy/meshyRuntimeUtils'
-import { normalizeTripo3DTaskStatus, fileExtensionFromUrl as tripo3dFileExtensionFromUrl } from './node-business/tripo3d/tripo3dRuntimeUtils'
+import {
+	normalizeTripo3DTaskStatus,
+	fileExtensionFromUrl as tripo3dFileExtensionFromUrl
+} from './node-business/tripo3d/tripo3dRuntimeUtils'
 import {
 	AIWF_PROJECT_PACKAGE_ENTRY,
 	sanitizeFileNamePart,
@@ -833,7 +860,10 @@ import { useAIWorkflowProjectTransfer } from './node-business/project/useAIWorkf
 import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useAIWorkflowProjectUnrealSnapshot'
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
-import type { AgentEditorMentionItem, AgentEditorChipData } from './node-business/chat/useAgentEditor'
+import type {
+	AgentEditorMentionItem,
+	AgentEditorChipData
+} from './node-business/chat/useAgentEditor'
 import { useAgentToolBridge, type ToolApprovalItem } from './node-business/chat/useAgentToolBridge'
 import { useNodeLibraryI18n } from '../../aiworkflow/useNodeLibraryI18n'
 import {
@@ -871,6 +901,9 @@ import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/Worl
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import WarmupPromptDialog from '../../ui/BluePrint/WarmupPromptDialog.vue'
 import { useWarmupPrompt } from './node-screenshot/warmupPromptManager'
+import BlueprintStartupOverlay from '../../ui/UIComponent/BlueprintStartupOverlay.vue'
+import { useBlueprintStartupProgress } from './startup/useBlueprintStartupProgress'
+import { createBlueprintStartupLoader } from './startup/useBlueprintStartupLoader'
 
 interface GeneratedResourceBase {
 	id: string
@@ -998,476 +1031,521 @@ interface LocalExecListResult {
 const router = useRouter()
 const route = useRoute()
 const startupProgress = useStartupProgress()
-
 const store = useStore<WorkflowState>(AIWorkflowKey)
 const { t } = useI18n()
+const blueprintStartupProgress = useBlueprintStartupProgress()
+
+const startupOverlayVisible = computed(() => blueprintStartupProgress.isVisible)
 const globalTaskBridge = useGlobalTaskBridge(store, t)
 const { destroy: destroyGlobalTaskBridge } = globalTaskBridge
 const {
 	categories: i18nCategories,
 	topCategories: i18nTopCategories,
 	specialGroups: i18nSpecialGroups,
-	catalogItems: i18nCatalogItems,
+	catalogItems: i18nCatalogItems
 } = useNodeLibraryI18n()
 const themeStore = useStore<{ mode: ThemeMode }>(ThemeKey)
 ensureAIWorkflowHistory()
 
 // ========== AIWorkflowBlueprintHost集成 ==========
 const {
-  hostRef: blueprintHostRef,
-  viewport: hostViewport,
-  canvasSize: hostCanvasSize,
-  onHostReady,
-  onViewportChange: onHostViewportChange,
-  bindHostEvents,
-  unbindHostEvents,
-  updateCanvasSize: updateHostCanvasSize
+	hostRef: blueprintHostRef,
+	viewport: hostViewport,
+	canvasSize: hostCanvasSize,
+	onHostReady,
+	onViewportChange: onHostViewportChange,
+	bindHostEvents,
+	unbindHostEvents,
+	updateCanvasSize: updateHostCanvasSize
 } = useAIWorkflowBlueprintHost()
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
-  return workflowStateToLegacyBlueprint(store.state)
+	return workflowStateToLegacyBlueprint(store.state)
 })
 
 const legacyResourcesForDom = computed<Record<string, any>>(() => {
-  const result: Record<string, any> = {}
-  for (const resId of store.state.resourceOrder) {
-    const res = store.state.resourcesById[resId]
-    if (res) {
-      result[resId] = {
-        ...res,
-        previewUrl320: (res as any).previewUrl320 || res.previewUrl,
-        previewUrl640: (res as any).previewUrl640 || res.previewUrl,
-      }
-    }
-  }
-  return result
+	const result: Record<string, any> = {}
+	for (const resId of store.state.resourceOrder) {
+		const res = store.state.resourcesById[resId]
+		if (res) {
+			result[resId] = {
+				...res,
+				previewUrl320: (res as any).previewUrl320 || res.previewUrl,
+				previewUrl640: (res as any).previewUrl640 || res.previewUrl
+			}
+		}
+	}
+	return result
 })
 
 let isUpdatingFromStore = false
 
 function resetIsUpdatingFromStore() {
-  nextTick(() => {
-    isUpdatingFromStore = false
-  })
+	nextTick(() => {
+		isUpdatingFromStore = false
+	})
 }
 
 function syncEngineProjectionToStore() {
-  const editor = blueprintHostRef.value?.getInstance?.()
-  if (editor && typeof editor.saveBlueprint === 'function') {
-    const latest = editor.saveBlueprint()
-    if (latest) {
-      const snapshot = legacyBlueprintToWorkflowState(latest)
-      isUpdatingFromStore = true
-      store.commit('hydrateDraft', { snapshot })
-      resetIsUpdatingFromStore()
-    }
-  }
+	const editor = blueprintHostRef.value?.getInstance?.()
+	if (editor && typeof editor.saveBlueprint === 'function') {
+		const latest = editor.saveBlueprint()
+		if (latest) {
+			const snapshot = legacyBlueprintToWorkflowState(latest)
+			isUpdatingFromStore = true
+			store.commit('hydrateDraft', { snapshot })
+			resetIsUpdatingFromStore()
+		}
+	}
 }
 
 const engineApi = {
-  addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
-    return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
-  },
-  createNodeWithConnection: (params: any) => {
-    const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? { nodeId: null, connected: false }
-    return result
-  },
-  updateNodeData: (nodeId: string, patch: Record<string, any>) => {
-    const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
-    return ok
-  },
-  connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string) => {
-    const ok = blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ?? false
-    return ok
-  },
-  copySelection: () => {
-    blueprintHostRef.value?.copySelection?.()
-  },
-  paste: () => {
-    blueprintHostRef.value?.paste?.()
-  },
-  pasteAt: (worldX: number, worldY: number) => {
-    return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
-  },
-  duplicate: () => {
-    blueprintHostRef.value?.duplicate?.()
-  },
-  deleteSelection: () => {
-    blueprintHostRef.value?.deleteSelection?.()
-  },
-  setSelection: (nodeIds: string[]) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setSelection === 'function') {
-      editor.setSelection(nodeIds)
-    }
-  },
-  setSelectedNode: (nodeId: string | null) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setSelectedNode === 'function') {
-      editor.setSelectedNode(nodeId)
-    }
-  },
-  setSelectedNodes: (nodeIds: string[], primaryNodeId?: string | null) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setSelectedNodes === 'function') {
-      editor.setSelectedNodes(nodeIds, primaryNodeId)
-    }
-  },
-  clearSelection: () => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.clearSelection === 'function') {
-      editor.clearSelection()
-    }
-  },
-  removeNode: (nodeId: string) => {
-    return blueprintHostRef.value?.removeNode?.(nodeId) ?? false
-  },
-  removeEdge: (edgeId: string) => {
-    return blueprintHostRef.value?.removeEdge?.(edgeId) ?? false
-  },
-  moveNode: (nodeId: string, x: number, y: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.moveNode === 'function') {
-      return editor.moveNode(nodeId, x, y)
-    }
-    return false
-  },
-  moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.moveNodesByDelta === 'function') {
-      editor.moveNodesByDelta(nodeIds, dx, dy)
-    }
-  },
-  setNodePosition: (nodeId: string, worldX: number, worldY: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setNodePosition === 'function') {
-      editor.setNodePosition(nodeId, worldX, worldY)
-    }
-  },
-  setNodeSize: (nodeId: string, width?: number, height?: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setNodeSize === 'function') {
-      editor.setNodeSize(nodeId, width, height)
-    }
-  },
-  updateNodePositionDirect: (nodeId: string, worldX: number, worldY: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.updateNodePositionDirect === 'function') {
-      editor.updateNodePositionDirect(nodeId, worldX, worldY)
-    }
-  },
-  updateNodesPositionDirect: (positions: Map<string, { x: number; y: number }>) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.updateNodesPositionDirect === 'function') {
-      editor.updateNodesPositionDirect(positions)
-    }
-  },
-  commitNodeMovement: (startPositions: Map<string, { x: number; y: number }>, endPositions: Map<string, { x: number; y: number }>) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.commitNodeMovement === 'function') {
-      editor.commitNodeMovement(startPositions, endPositions)
-    }
-  },
-  setEngineViewport: (zoom: number, panX: number, panY: number) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.setEngineViewport === 'function') {
-      editor.setEngineViewport(zoom, panX, panY)
-    }
-  },
-  focusNode: (nodeId: string) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.focusNode === 'function') {
-      return editor.focusNode(nodeId)
-    }
-    return false
-  },
-  getNode: (nodeId: string) => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.getNode === 'function') {
-      return editor.getNode(nodeId)
-    }
-    return null
-  },
-  undo: () => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.undo === 'function') {
-      editor.undo()
-      return true
-    }
-    return false
-  },
-  redo: () => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.redo === 'function') {
-      editor.redo()
-      return true
-    }
-    return false
-  },
-  canUndo: () => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.canUndo === 'function') {
-      return editor.canUndo()
-    }
-    return false
-  },
-  canRedo: () => {
-    const editor = blueprintHostRef.value?.getInstance?.()
-    if (editor && typeof editor.canRedo === 'function') {
-      return editor.canRedo()
-    }
-    return false
-  },
-  selectAll: () => {
-    blueprintHostRef.value?.selectAll?.()
-  },
-  hasClipboardData: () => {
-    return blueprintHostRef.value?.hasClipboardData?.() ?? false
-  },
-  getSelectedNodeIds: () => {
-    return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
-  }
+	addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
+		return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+	},
+	createNodeWithConnection: (params: any) => {
+		const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? {
+			nodeId: null,
+			connected: false
+		}
+		return result
+	},
+	updateNodeData: (nodeId: string, patch: Record<string, any>) => {
+		const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
+		return ok
+	},
+	connectPorts: (
+		fromNodeId: string,
+		fromAnchorId: string,
+		toNodeId: string,
+		toAnchorId: string
+	) => {
+		const ok =
+			blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ??
+			false
+		return ok
+	},
+	copySelection: () => {
+		blueprintHostRef.value?.copySelection?.()
+	},
+	paste: () => {
+		blueprintHostRef.value?.paste?.()
+	},
+	pasteAt: (worldX: number, worldY: number) => {
+		return blueprintHostRef.value?.pasteAt?.(worldX, worldY) ?? []
+	},
+	duplicate: () => {
+		blueprintHostRef.value?.duplicate?.()
+	},
+	deleteSelection: () => {
+		blueprintHostRef.value?.deleteSelection?.()
+	},
+	setSelection: (nodeIds: string[]) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setSelection === 'function') {
+			editor.setSelection(nodeIds)
+		}
+	},
+	setSelectedNode: (nodeId: string | null) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setSelectedNode === 'function') {
+			editor.setSelectedNode(nodeId)
+		}
+	},
+	setSelectedNodes: (nodeIds: string[], primaryNodeId?: string | null) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setSelectedNodes === 'function') {
+			editor.setSelectedNodes(nodeIds, primaryNodeId)
+		}
+	},
+	clearSelection: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.clearSelection === 'function') {
+			editor.clearSelection()
+		}
+	},
+	removeNode: (nodeId: string) => {
+		return blueprintHostRef.value?.removeNode?.(nodeId) ?? false
+	},
+	removeEdge: (edgeId: string) => {
+		return blueprintHostRef.value?.removeEdge?.(edgeId) ?? false
+	},
+	moveNode: (nodeId: string, x: number, y: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.moveNode === 'function') {
+			return editor.moveNode(nodeId, x, y)
+		}
+		return false
+	},
+	moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.moveNodesByDelta === 'function') {
+			editor.moveNodesByDelta(nodeIds, dx, dy)
+		}
+	},
+	setNodePosition: (nodeId: string, worldX: number, worldY: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setNodePosition === 'function') {
+			editor.setNodePosition(nodeId, worldX, worldY)
+		}
+	},
+	setNodeSize: (nodeId: string, width?: number, height?: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setNodeSize === 'function') {
+			editor.setNodeSize(nodeId, width, height)
+		}
+	},
+	updateNodePositionDirect: (nodeId: string, worldX: number, worldY: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.updateNodePositionDirect === 'function') {
+			editor.updateNodePositionDirect(nodeId, worldX, worldY)
+		}
+	},
+	updateNodesPositionDirect: (positions: Map<string, { x: number; y: number }>) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.updateNodesPositionDirect === 'function') {
+			editor.updateNodesPositionDirect(positions)
+		}
+	},
+	commitNodeMovement: (
+		startPositions: Map<string, { x: number; y: number }>,
+		endPositions: Map<string, { x: number; y: number }>
+	) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.commitNodeMovement === 'function') {
+			editor.commitNodeMovement(startPositions, endPositions)
+		}
+	},
+	setEngineViewport: (zoom: number, panX: number, panY: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.setEngineViewport === 'function') {
+			editor.setEngineViewport(zoom, panX, panY)
+		}
+	},
+	focusNode: (nodeId: string) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.focusNode === 'function') {
+			return editor.focusNode(nodeId)
+		}
+		return false
+	},
+	getNode: (nodeId: string) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.getNode === 'function') {
+			return editor.getNode(nodeId)
+		}
+		return null
+	},
+	undo: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.undo === 'function') {
+			editor.undo()
+			return true
+		}
+		return false
+	},
+	redo: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.redo === 'function') {
+			editor.redo()
+			return true
+		}
+		return false
+	},
+	canUndo: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.canUndo === 'function') {
+			return editor.canUndo()
+		}
+		return false
+	},
+	canRedo: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.canRedo === 'function') {
+			return editor.canRedo()
+		}
+		return false
+	},
+	selectAll: () => {
+		blueprintHostRef.value?.selectAll?.()
+	},
+	hasClipboardData: () => {
+		return blueprintHostRef.value?.hasClipboardData?.() ?? false
+	},
+	getSelectedNodeIds: () => {
+		return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
+	}
 }
 
 function syncNodeChatDialog(nodeIds: string[]) {
-  if (nodeIds.length === 1) {
-    const node = store.state.nodesById[nodeIds[0]]
-    if (node && isNodeChatTypeSupported(node.type)) {
-      store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
-      return
-    }
-  }
-  if (store.state.nodeChatDialog?.visible) {
-    store.dispatch('closeNodeChatDialog')
-  }
+	if (nodeIds.length === 1) {
+		const node = store.state.nodesById[nodeIds[0]]
+		if (node && isNodeChatTypeSupported(node.type)) {
+			store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
+			return
+		}
+	}
+	if (store.state.nodeChatDialog?.visible) {
+		store.dispatch('closeNodeChatDialog')
+	}
 }
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
-  if (isUpdatingFromStore) {
-    return
-  }
-  for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
-    const n = data.nodesById[nodeId]
-    if (n) {
-      const wx = (typeof n.worldX === 'number' && !isNaN(n.worldX)) ? n.worldX : ((n as any).x ?? 0)
-      const wy = (typeof n.worldY === 'number' && !isNaN(n.worldY)) ? n.worldY : ((n as any).y ?? 0)
-      if (!isFinite(wx) || !isFinite(wy)) {
-        console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
-        return
-      }
-    }
-  }
-  const snapshot = legacyBlueprintToWorkflowState(data)
-  isUpdatingFromStore = true
-  store.commit('hydrateDraft', { snapshot })
-  resetIsUpdatingFromStore()
-  nextTick(() => {
-    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
-    syncNodeChatDialog(selectedIds)
-  })
+	if (isUpdatingFromStore) {
+		return
+	}
+	for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
+		const n = data.nodesById[nodeId]
+		if (n) {
+			const wx = typeof n.worldX === 'number' && !isNaN(n.worldX) ? n.worldX : ((n as any).x ?? 0)
+			const wy = typeof n.worldY === 'number' && !isNaN(n.worldY) ? n.worldY : ((n as any).y ?? 0)
+			if (!isFinite(wx) || !isFinite(wy)) {
+				console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
+				return
+			}
+		}
+	}
+	const snapshot = legacyBlueprintToWorkflowState(data)
+	isUpdatingFromStore = true
+	store.commit('hydrateDraft', { snapshot })
+	resetIsUpdatingFromStore()
+	nextTick(() => {
+		const selectedIds =
+			store.state.selectedNodeIds ||
+			(store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+		syncNodeChatDialog(selectedIds)
+	})
 }
 
 function onBlueprintEditorSelectionChange(nodeIds: string[]) {
-  isUpdatingFromStore = true
-  if (nodeIds.length > 0) {
-    store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
-  } else {
-    store.commit('clearSelection')
-  }
-  nextTick(() => {
-    isUpdatingFromStore = false
-    const selectedIds = store.state.selectedNodeIds || (store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
-    syncNodeChatDialog(selectedIds)
-  })
+	isUpdatingFromStore = true
+	if (nodeIds.length > 0) {
+		store.commit('setSelectedNodes', { nodeIds, primaryNodeId: nodeIds[nodeIds.length - 1] })
+	} else {
+		store.commit('clearSelection')
+	}
+	nextTick(() => {
+		isUpdatingFromStore = false
+		const selectedIds =
+			store.state.selectedNodeIds ||
+			(store.state.selectedNodeId ? [store.state.selectedNodeId] : [])
+		syncNodeChatDialog(selectedIds)
+	})
 }
 
 function onHostEditorReady(editor: any) {
-  onHostReady(editor)
-  updateHostCanvasSize()
+	onHostReady(editor)
+	updateHostCanvasSize()
 }
 
 function onBlueprintEditorViewportChange(zoom: number, panX: number, panY: number) {
-  onHostViewportChange(zoom, panX, panY)
-  if (isUpdatingFromStore) return
-  isUpdatingFromStore = true
-  store.commit('setViewport', { zoom, panX, panY })
-  resetIsUpdatingFromStore()
+	onHostViewportChange(zoom, panX, panY)
+	if (isUpdatingFromStore) return
+	isUpdatingFromStore = true
+	store.commit('setViewport', { zoom, panX, panY })
+	resetIsUpdatingFromStore()
 }
 
 function onMinimapViewportDirect(vp: { zoom: number; panX: number; panY: number }) {
-  const host = blueprintHostRef.value
-  if (!host) return
-  const editor = host.getInstance?.()
-  if (!editor || typeof editor.setViewport !== 'function') return
-  editor.setViewport(vp)
+	const host = blueprintHostRef.value
+	if (!host) return
+	const editor = host.getInstance?.()
+	if (!editor || typeof editor.setViewport !== 'function') return
+	editor.setViewport(vp)
 }
 
 function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
-  store.commit('setSelectedNode', { nodeId })
-  const node = store.state.nodesById[nodeId]
-  if (node && isNodeChatTypeSupported(node.type)) {
-    store.dispatch('openNodeChatDialog', { nodeId, nodeType: node.type as any })
-    return
-  }
-  if (_openInspectorFn) {
-    _openInspectorFn(true)
-  }
+	store.commit('setSelectedNode', { nodeId })
+	const node = store.state.nodesById[nodeId]
+	if (node && isNodeChatTypeSupported(node.type)) {
+		store.dispatch('openNodeChatDialog', { nodeId, nodeType: node.type as any })
+		return
+	}
+	if (_openInspectorFn) {
+		_openInspectorFn(true)
+	}
 }
 
-function onBlueprintEditorNodeContextMenu(nodeId: string, event: MouseEvent, _worldPos: { x: number; y: number }) {
-  event.preventDefault()
-  if (nodeId) {
-    const selectedIds = selectedNodeIds.value
-    if (!selectedIds.includes(nodeId)) {
-      store.commit('setSelectedNode', { nodeId })
-    }
-  }
-  nextTick(() => {
-    if (_onCanvasContextMenuFn) {
-      _onCanvasContextMenuFn({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        worldX: _worldPos.x,
-        worldY: _worldPos.y
-      })
-    }
-  })
+function onBlueprintEditorNodeContextMenu(
+	nodeId: string,
+	event: MouseEvent,
+	_worldPos: { x: number; y: number }
+) {
+	event.preventDefault()
+	if (nodeId) {
+		const selectedIds = selectedNodeIds.value
+		if (!selectedIds.includes(nodeId)) {
+			store.commit('setSelectedNode', { nodeId })
+		}
+	}
+	nextTick(() => {
+		if (_onCanvasContextMenuFn) {
+			_onCanvasContextMenuFn({
+				clientX: event.clientX,
+				clientY: event.clientY,
+				worldX: _worldPos.x,
+				worldY: _worldPos.y
+			})
+		}
+	})
 }
 
 function onBlueprintEditorCanvasContextMenu(event: MouseEvent, worldPos: { x: number; y: number }) {
-  event.preventDefault()
-  store.commit('clearSelection')
-  nextTick(() => {
-    if (_onCanvasContextMenuFn) {
-      _onCanvasContextMenuFn({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        worldX: worldPos.x,
-        worldY: worldPos.y
-      })
-    }
-  })
+	event.preventDefault()
+	store.commit('clearSelection')
+	nextTick(() => {
+		if (_onCanvasContextMenuFn) {
+			_onCanvasContextMenuFn({
+				clientX: event.clientX,
+				clientY: event.clientY,
+				worldX: worldPos.x,
+				worldY: worldPos.y
+			})
+		}
+	})
 }
 
 function onBlueprintEditorCanvasDblClick(event: MouseEvent, worldPos: { x: number; y: number }) {
-  if (_openNodeSearchMenuFn) {
-    _openNodeSearchMenuFn({
-      clientX: event.clientX,
-      clientY: event.clientY,
-      worldX: worldPos.x,
-      worldY: worldPos.y
-    })
-  }
+	if (_openNodeSearchMenuFn) {
+		_openNodeSearchMenuFn({
+			clientX: event.clientX,
+			clientY: event.clientY,
+			worldX: worldPos.x,
+			worldY: worldPos.y
+		})
+	}
 }
 
 function onBlueprintEditorDrop(event: DragEvent, worldPos: { x: number; y: number }) {
-  event.preventDefault()
-  if (_onCanvasDropFn) {
-    const modifiedEvent = new DragEvent('drop', {
-      dataTransfer: event.dataTransfer,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      bubbles: true
-    })
-    Object.defineProperty(modifiedEvent, 'currentTarget', {
-      value: event.currentTarget,
-      writable: false
-    })
-    ;(modifiedEvent as any)._worldPos = worldPos
-    _onCanvasDropFn(modifiedEvent)
-  }
+	event.preventDefault()
+	if (_onCanvasDropFn) {
+		const modifiedEvent = new DragEvent('drop', {
+			dataTransfer: event.dataTransfer,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			bubbles: true
+		})
+		Object.defineProperty(modifiedEvent, 'currentTarget', {
+			value: event.currentTarget,
+			writable: false
+		})
+		;(modifiedEvent as any)._worldPos = worldPos
+		_onCanvasDropFn(modifiedEvent)
+	}
 }
 
-let _openNodeSearchMenuFn: ((position: { clientX: number; clientY: number; worldX: number; worldY: number }, linkInfo?: { fromNodeId: string; fromAnchorId: string }) => void) | null = null
+let _openNodeSearchMenuFn:
+	| ((
+			position: { clientX: number; clientY: number; worldX: number; worldY: number },
+			linkInfo?: { fromNodeId: string; fromAnchorId: string }
+	  ) => void)
+	| null = null
 let _onCanvasDropFn: ((e: DragEvent) => void) | null = null
-let _onCanvasContextMenuFn: ((menuPayload: { clientX: number; clientY: number; worldX: number; worldY: number }) => void) | null = null
+let _onCanvasContextMenuFn:
+	| ((menuPayload: { clientX: number; clientY: number; worldX: number; worldY: number }) => void)
+	| null = null
 let _openInspectorFn: ((open: boolean) => void) | null = null
 
 function syncBlueprintNow() {
-  if (!blueprintHostRef.value) return false
-  const editor = blueprintHostRef.value.getInstance?.()
-  if (!editor || typeof editor.loadBlueprint !== 'function') return false
-  const data = workflowStateToLegacyBlueprint(store.state)
-  isUpdatingFromStore = true
-  blueprintHostRef.value.loadBlueprint(data)
-  resetIsUpdatingFromStore()
-  return true
+	if (!blueprintHostRef.value) return false
+	const editor = blueprintHostRef.value.getInstance?.()
+	if (!editor || typeof editor.loadBlueprint !== 'function') return false
+	const data = workflowStateToLegacyBlueprint(store.state)
+	isUpdatingFromStore = true
+	blueprintHostRef.value.loadBlueprint(data)
+	resetIsUpdatingFromStore()
+	return true
 }
 
 function patchBlueprintNodeData(nodeId: string) {
-  if (engineApi.updateNodeData) {
-    const storeNode = store.state.nodesById[nodeId]
-    if (!storeNode) return
-    const patch: Record<string, any> = { ...storeNode }
-    if (patch.resourceId === null) delete patch.resourceId
-    engineApi.updateNodeData(nodeId, patch)
-    return
-  }
-  const editor = blueprintHostRef.value?.getInstance?.()
-  if (!editor) return
-  const scene = editor.getScene?.()
-  if (!scene) return
-  const node = scene.getBlueprintNode?.(nodeId)
-  if (!node) return
-  const storeNode = store.state.nodesById[nodeId]
-  if (!storeNode) return
-  if (typeof node.setData === 'function') {
-    const patch: Record<string, any> = { ...storeNode }
-    if (patch.resourceId === null) delete patch.resourceId
-    node.setData(patch)
-  } else {
-    const storeData = JSON.parse(JSON.stringify(storeNode))
-    Object.assign(node.data, storeData)
-    if (typeof node.updateSize === 'function') {
-      node.updateSize(storeNode.width, storeNode.height)
-    }
-  }
-  scene.requestRedraw?.()
+	if (engineApi.updateNodeData) {
+		const storeNode = store.state.nodesById[nodeId]
+		if (!storeNode) return
+		const patch: Record<string, any> = { ...storeNode }
+		if (patch.resourceId === null) delete patch.resourceId
+		engineApi.updateNodeData(nodeId, patch)
+		return
+	}
+	const editor = blueprintHostRef.value?.getInstance?.()
+	if (!editor) return
+	const scene = editor.getScene?.()
+	if (!scene) return
+	const node = scene.getBlueprintNode?.(nodeId)
+	if (!node) return
+	const storeNode = store.state.nodesById[nodeId]
+	if (!storeNode) return
+	if (typeof node.setData === 'function') {
+		const patch: Record<string, any> = { ...storeNode }
+		if (patch.resourceId === null) delete patch.resourceId
+		node.setData(patch)
+	} else {
+		const storeData = JSON.parse(JSON.stringify(storeNode))
+		Object.assign(node.data, storeData)
+		if (typeof node.updateSize === 'function') {
+			node.updateSize(storeNode.width, storeNode.height)
+		}
+	}
+	scene.requestRedraw?.()
 }
 
 let viewportSyncFrameId: number | null = null
 let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null
 
 function flushViewportSyncToEngine() {
-  viewportSyncFrameId = null
-  const vp = pendingViewportSync
-  pendingViewportSync = null
-  if (!vp) return
-  const host = blueprintHostRef.value
-  if (!host) return
-  const editor = host.getInstance?.()
-  if (!editor) return
-  if (typeof editor.getViewport !== 'function' || typeof editor.setViewport !== 'function') return
-  const curVp = editor.getViewport()
-  if (curVp && Math.abs(curVp.zoom - vp.zoom) < 0.0001 && Math.abs(curVp.panX - vp.panX) < 0.1 && Math.abs(curVp.panY - vp.panY) < 0.1) {
-    return
-  }
-  isUpdatingFromStore = true
-  editor.setViewport(vp)
-  resetIsUpdatingFromStore()
+	viewportSyncFrameId = null
+	const vp = pendingViewportSync
+	pendingViewportSync = null
+	if (!vp) return
+	const host = blueprintHostRef.value
+	if (!host) return
+	const editor = host.getInstance?.()
+	if (!editor) return
+	if (typeof editor.getViewport !== 'function' || typeof editor.setViewport !== 'function') return
+	const curVp = editor.getViewport()
+	if (
+		curVp &&
+		Math.abs(curVp.zoom - vp.zoom) < 0.0001 &&
+		Math.abs(curVp.panX - vp.panX) < 0.1 &&
+		Math.abs(curVp.panY - vp.panY) < 0.1
+	) {
+		return
+	}
+	isUpdatingFromStore = true
+	editor.setViewport(vp)
+	resetIsUpdatingFromStore()
 }
 
-watch(() => store.state.viewport, (newVp) => {
-  if (isUpdatingFromStore) return
-  if (!newVp) return
-  const host = blueprintHostRef.value
-  if (!host) return
-  const editor = host.getInstance?.()
-  if (!editor) return
-  pendingViewportSync = { zoom: newVp.zoom, panX: newVp.panX, panY: newVp.panY }
-  if (viewportSyncFrameId !== null) return
-  viewportSyncFrameId = requestAnimationFrame(flushViewportSyncToEngine)
-}, { deep: true })
+watch(
+	() => store.state.viewport,
+	(newVp) => {
+		if (isUpdatingFromStore) return
+		if (!newVp) return
+		const host = blueprintHostRef.value
+		if (!host) return
+		const editor = host.getInstance?.()
+		if (!editor) return
+		pendingViewportSync = { zoom: newVp.zoom, panX: newVp.panX, panY: newVp.panY }
+		if (viewportSyncFrameId !== null) return
+		viewportSyncFrameId = requestAnimationFrame(flushViewportSyncToEngine)
+	},
+	{ deep: true }
+)
 
 // ========== AIWorkflowBlueprintHost集成结束 ==========
 
 const AIWF_LAST_PROJECT_STORAGE_KEY = 'dweb.aiworkflow.lastProjectId.v1'
 
-const { viewport, onViewportUpdate, viewportMotionActive, markViewportMotion, forceEndViewportMotion, canvasViewportSize } =
-	useAIWorkflowViewport(store, {
-		canvasSelector: '.aiwf-canvas',
-		motionResetMs: 140
-	})
+const {
+	viewport,
+	onViewportUpdate,
+	viewportMotionActive,
+	markViewportMotion,
+	forceEndViewportMotion,
+	canvasViewportSize
+} = useAIWorkflowViewport(store, {
+	canvasSelector: '.aiwf-canvas',
+	motionResetMs: 140
+})
 
 const performancePriorityMode = ref(false)
 const screenshotAnchorsEnabled = ref(true)
@@ -1491,7 +1569,12 @@ const shouldCollapseChatDrawerByViewport = () => true
 const chatModelKey = ref<'text' | 'nanobanana' | 'seedance' | 'codex'>('codex')
 const chatModelId = ref<string>('auto')
 const chatThinkingEffort = ref<'disabled' | 'low' | 'medium' | 'high'>('medium')
-const chatContextUsage = ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>(null)
+const chatContextUsage = ref<{
+	tokenCount: number
+	budget: number
+	usage: number
+	truncated?: boolean
+} | null>(null)
 const agentConversationMode = ref<'agent' | 'ask' | 'plan'>('agent')
 const agentBackend = ref<AgentBackendType>('dvsagent')
 const chatCollapsed = ref(shouldCollapseChatDrawerByViewport())
@@ -1579,7 +1662,8 @@ const screenshotAnchorDefaultOffsets = (idx: number, count: number) => {
 const resolveScreenshotAnchors = (node: WorkflowNode, direction: 'in' | 'out') => {
 	const raw = direction === 'in' ? node.inputs : node.outputs
 	const fallbackId = direction === 'in' ? 'in-0' : 'out-0'
-	const fallbackLabel = direction === 'in' ? t('aiworkflow.page.anchor.input') : t('aiworkflow.page.anchor.output')
+	const fallbackLabel =
+		direction === 'in' ? t('aiworkflow.page.anchor.input') : t('aiworkflow.page.anchor.output')
 	const list =
 		Array.isArray(raw) && raw.length > 0 ? raw : [{ id: fallbackId } as WorkflowAnchorSpec]
 	return list.map((a, index) => {
@@ -1651,6 +1735,8 @@ const getScreenshotParticles = (nodeId: string) => {
 	return cached
 }
 
+const blueprintStartupReady = ref(false)
+
 const ensureNanoAnchorNode = () => {
 	const existing = store.state.nodesById[NANO_ANCHOR_NODE_ID]
 	const inputs: WorkflowAnchorSpec[] = Array.from({ length: NANO_REF_IMAGE_MAX }, (_, i) => ({
@@ -1677,13 +1763,17 @@ const ensureNanoAnchorNode = () => {
 	store.commit('upsertNode', { node })
 }
 
+const ensureNanoAnchorIfReady = () => {
+	if (!blueprintStartupReady.value) return
+	if (chatModelKey.value !== 'nanobanana') return
+	ensureNanoAnchorNode()
+}
+
 watch(
 	() => chatModelKey.value,
 	() => {
-		// Ensure the pseudo node exists so edges can be created/persisted.
-		ensureNanoAnchorNode()
-	},
-	{ immediate: true }
+		ensureNanoAnchorIfReady()
+	}
 )
 
 const isWarmingUpScreenshots = ref(false)
@@ -1709,7 +1799,11 @@ const themeWarmupProgress = ref(0)
 const themeWarmupDetail = ref('')
 const themeWarmupTargetTheme = ref<'dark' | 'light'>('dark')
 const themeWarmupThemeLabel = computed(() =>
-	t(themeWarmupTargetTheme.value === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+	t(
+		themeWarmupTargetTheme.value === 'light'
+			? 'aiworkflow.page.themeWarmup.lightLabel'
+			: 'aiworkflow.page.themeWarmup.darkLabel'
+	)
 )
 let themeWarmupAbortController: AbortController | null = null
 
@@ -1796,35 +1890,24 @@ const checkAndShowWarmupPrompt = () => {
 	const nodeIds = allNodes.map((n: WorkflowNode) => String(n.id))
 	const activeTheme = themeStore.state.mode as 'dark' | 'light'
 
-	const unwarmed = checkUnwarmedNodes(
-		projectId,
-		blueprintId,
-		nodeIds,
-		(nodeId) => {
-			const node = store.state.nodesById[nodeId]
-			if (!node) return false
-			const version = getNodeScreenshotVersion(node, activeTheme)
-			return screenshotPool.hasCachedScreenshot(nodeId, version)
-		}
-	)
+	const unwarmed = checkUnwarmedNodes(projectId, blueprintId, nodeIds, (nodeId) => {
+		const node = store.state.nodesById[nodeId]
+		if (!node) return false
+		const version = getNodeScreenshotVersion(node, activeTheme)
+		return screenshotPool.hasCachedScreenshot(nodeId, version)
+	})
 
 	if (unwarmed.length > 0) {
-		showPrompt(
-			projectId,
-			blueprintId,
-			unwarmed,
-			nodeIds.length,
-			(nodeIdsToWarmup: string[]) => {
-				screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
-				screenshotPool.setBurstMode(true)
-				for (const nid of nodeIdsToWarmup) {
-					onNodeInvalidateScreenshot(nid)
-				}
-				setTimeout(() => {
-					screenshotPool.setBurstMode(false)
-				}, 30000)
+		showPrompt(projectId, blueprintId, unwarmed, nodeIds.length, (nodeIdsToWarmup: string[]) => {
+			screenshotPool.setConcurrency(screenshotPool.getWarmupConcurrency())
+			screenshotPool.setBurstMode(true)
+			for (const nid of nodeIdsToWarmup) {
+				onNodeInvalidateScreenshot(nid)
 			}
-		)
+			setTimeout(() => {
+				screenshotPool.setBurstMode(false)
+			}, 30000)
+		})
 	}
 }
 
@@ -1861,7 +1944,10 @@ const nodeCanvasLayerRef = ref<any | null>(null)
 // Canvas截图池引用 (用于传递给NodeCanvasLayer)
 // 注意：始终有值，不会为null
 const canvasScreenshotPool = shallowRef<{
-	getEntry: (nodeId: string, theme?: 'dark' | 'light') => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
+	getEntry: (
+		nodeId: string,
+		theme?: 'dark' | 'light'
+	) => { bitmap: ImageBitmap | HTMLCanvasElement; width: number; height: number } | null
 	setActiveTheme: (theme: 'dark' | 'light') => void
 }>({
 	getEntry: () => null,
@@ -2083,9 +2169,15 @@ const clearUpstreamCroppedImageUrl = (nodeId: string) => {
 }
 
 watch(
-	() => nodes.value.map((n) => String(n?.id ?? '').trim()).filter(Boolean).join('|'),
+	() =>
+		nodes.value
+			.map((n) => String(n?.id ?? '').trim())
+			.filter(Boolean)
+			.join('|'),
 	() => {
-		const currentNodeIds = new Set(nodes.value.map((n) => String(n?.id ?? '').trim()).filter(Boolean))
+		const currentNodeIds = new Set(
+			nodes.value.map((n) => String(n?.id ?? '').trim()).filter(Boolean)
+		)
 		const toDelete: string[] = []
 		upstreamCroppedImageUrls.forEach((_url, nodeId) => {
 			if (!currentNodeIds.has(nodeId)) {
@@ -2104,7 +2196,8 @@ const cropDependencyFingerprint = computed(() => {
 		if (!edge) continue
 		const anchorId = String(edge.toAnchorId ?? '')
 		if (anchorId.includes('image') || anchorId.includes('resource')) {
-			hash = (hash * 31 + String(edge.fromNodeId).length + String(edge.toNodeId).length) % 2147483647
+			hash =
+				(hash * 31 + String(edge.fromNodeId).length + String(edge.toNodeId).length) % 2147483647
 		}
 	}
 	for (const node of nodes.value) {
@@ -2502,7 +2595,7 @@ const scheduleNodeScreenshot = async (
 	}
 }
 
-	let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
+let screenshotScheduleTimer: ReturnType<typeof setTimeout> | null = null
 const scheduleVisibleNodeScreenshots = () => {
 	if (screenshotScheduleTimer) {
 		clearTimeout(screenshotScheduleTimer)
@@ -2616,7 +2709,8 @@ function animateViewportTo(
 		const endPanY = target.panY ?? startPanY
 		const endZoom = target.zoom ?? startZoom
 
-		const hasChange = Math.abs(endPanX - startPanX) > 0.5 ||
+		const hasChange =
+			Math.abs(endPanX - startPanX) > 0.5 ||
 			Math.abs(endPanY - startPanY) > 0.5 ||
 			Math.abs(endZoom - startZoom) > 0.001
 
@@ -2704,8 +2798,8 @@ watch(
 			themeWarmupAbortController = null
 		}
 
-		const fromTheme: 'dark' | 'light' = (oldTheme === 'light' ? 'light' : 'dark')
-		const toTheme: 'dark' | 'light' = (newTheme === 'light' ? 'light' : 'dark')
+		const fromTheme: 'dark' | 'light' = oldTheme === 'light' ? 'light' : 'dark'
+		const toTheme: 'dark' | 'light' = newTheme === 'light' ? 'light' : 'dark'
 
 		if (fromTheme === toTheme) return
 
@@ -2764,7 +2858,11 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	themeWarmupTargetTheme.value = toTheme
 	themeWarmupOpen.value = true
 	themeWarmupProgress.value = 0
-	const twLabel = t(toTheme === 'light' ? 'aiworkflow.page.themeWarmup.lightLabel' : 'aiworkflow.page.themeWarmup.darkLabel')
+	const twLabel = t(
+		toTheme === 'light'
+			? 'aiworkflow.page.themeWarmup.lightLabel'
+			: 'aiworkflow.page.themeWarmup.darkLabel'
+	)
 	themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.preparing', { theme: twLabel })
 
 	const warmupNodeIds = new Set(nodesNeedingCapture.map((n) => String(n.id)))
@@ -2826,7 +2924,11 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 		if (!signal.aborted) {
 			const ratio = screenshotCompleted / total
 			themeWarmupProgress.value = ratio
-			themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.progress', { theme: twLabel, completed: String(screenshotCompleted), total: String(total) })
+			themeWarmupDetail.value = t('aiworkflow.page.themeWarmup.progress', {
+				theme: twLabel,
+				completed: String(screenshotCompleted),
+				total: String(total)
+			})
 			refreshCanvasNodeLayer()
 		}
 	}
@@ -2961,7 +3063,7 @@ onMounted(() => {
 	setTimeout(() => {
 		scheduleVisibleNodeScreenshots()
 	}, 1000)
-	
+
 	// Canvas2D截图渲染初始化
 	initCanvasScreenshot()
 	initCanvasScreenshotPool()
@@ -3098,7 +3200,7 @@ const chatStateForHost = computed(() => ({
 	draft: nodeChatDialog.value.draft,
 	submitting: nodeChatDialog.value.submitting,
 	params: nodeChatDialog.value.params,
-	selectedRefs: nodeChatDialog.value.selectedRefs,
+	selectedRefs: nodeChatDialog.value.selectedRefs
 }))
 
 const onHostNodeChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
@@ -3117,7 +3219,10 @@ const onHostNodeChatUpdateParams = (payload: { nodeId: string; params: Record<st
 	onNodeChatParamsUpdate(payload.params as WorkflowNodeChatParams)
 }
 
-const onHostNodeChatUpdateSelectedRefs = (payload: { nodeId: string; selectedRefs: WorkflowNodeChatSelectedRef[] }) => {
+const onHostNodeChatUpdateSelectedRefs = (payload: {
+	nodeId: string
+	selectedRefs: WorkflowNodeChatSelectedRef[]
+}) => {
 	onNodeChatSelectedRefsUpdate(payload.selectedRefs)
 }
 
@@ -3285,12 +3390,16 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 	return rootPath
 }
 
-const createImageNodeAtCenter = (url: string, name?: string, opts?: {
-	taskId?: string
-	mode?: string
-	imageGenerationSource?: string
-	imageUrls?: string[]
-}): string | null => {
+const createImageNodeAtCenter = (
+	url: string,
+	name?: string,
+	opts?: {
+		taskId?: string
+		mode?: string
+		imageGenerationSource?: string
+		imageUrls?: string[]
+	}
+): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
 		const imageSource = opts?.imageGenerationSource || 'gemini'
@@ -3305,15 +3414,14 @@ const createImageNodeAtCenter = (url: string, name?: string, opts?: {
 				taskStatus: 'pending',
 				progress: 0,
 				statusText: t('tasks.tripo3d.pullingImageArtifacts'),
-				outputImages: opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : (url ? [url] : [])
+				outputImages:
+					opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : url ? [url] : []
 			}
 		}
-		const newNodeId = engineApi.addNode(
-			'image',
-			worldX,
-			worldY,
-			{ title: name || t('aiworkflow.page.defaultImageNodeTitle'), ...(url ? { imageSettings } : {}) }
-		)
+		const newNodeId = engineApi.addNode('image', worldX, worldY, {
+			title: name || t('aiworkflow.page.defaultImageNodeTitle'),
+			...(url ? { imageSettings } : {})
+		})
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -3329,12 +3437,9 @@ const createModel3DNodeAtCenter = (opts?: {
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
-		const newNodeId = engineApi.addNode(
-			'model3d',
-			worldX,
-			worldY,
-			{ title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName') }
-		)
+		const newNodeId = engineApi.addNode('model3d', worldX, worldY, {
+			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
+		})
 		return newNodeId
 	} catch (e) {
 		console.error('[createModel3DNodeAtCenter] 创建节点失败:', e)
@@ -3342,17 +3447,17 @@ const createModel3DNodeAtCenter = (opts?: {
 	}
 }
 
-const createImageNodeAt = (worldX: number, worldY: number, url: string, name?: string): string | null => {
+const createImageNodeAt = (
+	worldX: number,
+	worldY: number,
+	url: string,
+	name?: string
+): string | null => {
 	try {
-		const newNodeId = engineApi.addNode(
-			'image',
-			worldX,
-			worldY,
-			{
-				title: name || t('aiworkflow.page.defaultImageNodeTitle'),
-				...(url ? { imageSettings: { imageUrl: url, imageGenerationSource: 'gemini' } } : {})
-			}
-		)
+		const newNodeId = engineApi.addNode('image', worldX, worldY, {
+			title: name || t('aiworkflow.page.defaultImageNodeTitle'),
+			...(url ? { imageSettings: { imageUrl: url, imageGenerationSource: 'gemini' } } : {})
+		})
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAt] 创建节点失败:', e)
@@ -3489,7 +3594,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						!isStrictLocalRenderableUrl(base.url) ||
 						!isWorkflowLocalAssetUrl(base.url)
 					) {
-						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
+						pushToast(
+							t('aiworkflow.page.media.importFailedNoLocalUrl', {
+								mediaType: t('aiworkflow.page.mediaType.image')
+							}),
+							'error'
+						)
 						return false
 					}
 					store.commit('addResource', base)
@@ -3499,12 +3609,22 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.image') }), 'warn')
+					pushToast(
+						t('aiworkflow.page.media.remoteNotAllowed', {
+							mediaType: t('aiworkflow.page.mediaType.image')
+						}),
+						'warn'
+					)
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoRootBound', {
+							mediaType: t('aiworkflow.page.mediaType.image')
+						}),
+						'error'
+					)
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3562,7 +3682,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.image') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoLocalUrl', {
+							mediaType: t('aiworkflow.page.mediaType.image')
+						}),
+						'error'
+					)
 					return false
 				}
 				store.commit('addResource', base)
@@ -3602,7 +3727,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						!isStrictLocalRenderableUrl(base.url) ||
 						!isWorkflowLocalAssetUrl(base.url)
 					) {
-						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+						pushToast(
+							t('aiworkflow.page.media.importFailedNoLocalUrl', {
+								mediaType: t('aiworkflow.page.mediaType.video')
+							}),
+							'error'
+						)
 						return false
 					}
 					store.commit('addResource', base)
@@ -3612,12 +3742,22 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.video') }), 'warn')
+					pushToast(
+						t('aiworkflow.page.media.remoteNotAllowed', {
+							mediaType: t('aiworkflow.page.mediaType.video')
+						}),
+						'warn'
+					)
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoRootBound', {
+							mediaType: t('aiworkflow.page.mediaType.video')
+						}),
+						'error'
+					)
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3673,7 +3813,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					!isStrictLocalRenderableUrl(base.url) ||
 					!isWorkflowLocalAssetUrl(base.url)
 				) {
-					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoLocalUrl', {
+							mediaType: t('aiworkflow.page.mediaType.video')
+						}),
+						'error'
+					)
 					return false
 				}
 				store.commit('addResource', base)
@@ -3710,7 +3855,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
 					if (!base.url) {
-						pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
+						pushToast(
+							t('aiworkflow.page.media.importFailedNoLocalUrl', {
+								mediaType: t('aiworkflow.page.mediaType.model3d')
+							}),
+							'error'
+						)
 						return false
 					}
 					store.commit('addResource', base)
@@ -3720,12 +3870,22 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 
 				if (!(pid > 0) || !sourceUrl) {
-					pushToast(t('aiworkflow.page.media.remoteNotAllowed', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'warn')
+					pushToast(
+						t('aiworkflow.page.media.remoteNotAllowed', {
+							mediaType: t('aiworkflow.page.mediaType.model3d')
+						}),
+						'warn'
+					)
 					return false
 				}
 				const rootPath = await ensureActiveProjectRootRegistered(pid)
 				if (isElectron() && !rootPath) {
-					pushToast(t('aiworkflow.page.media.importFailedNoRootBound', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoRootBound', {
+							mediaType: t('aiworkflow.page.mediaType.model3d')
+						}),
+						'error'
+					)
 					return false
 				}
 				if (pid > 0 && sourceUrl) {
@@ -3774,7 +3934,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				finalizeGeneratedResourceLocalUrl(base, pid)
 				base.url = String(base.url || '').trim()
 				if (!base.url) {
-					pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.model3d') }), 'error')
+					pushToast(
+						t('aiworkflow.page.media.importFailedNoLocalUrl', {
+							mediaType: t('aiworkflow.page.mediaType.model3d')
+						}),
+						'error'
+					)
 					return false
 				}
 				store.commit('addResource', base)
@@ -3850,7 +4015,13 @@ watch(
 		}
 		const node = store.state.nodesById[chatNodeId]
 		const type = node?.type
-		if (type !== 'text' && type !== 'image' && type !== 'video' && type !== 'model3d' && type !== 'blender') {
+		if (
+			type !== 'text' &&
+			type !== 'image' &&
+			type !== 'video' &&
+			type !== 'model3d' &&
+			type !== 'blender'
+		) {
 			store.dispatch('closeNodeChatDialog')
 		}
 	}
@@ -4015,7 +4186,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	clearAllBlenderRetryTimers()
 	if (blenderMcpStatusUnsub) {
-		try { blenderMcpStatusUnsub() } catch { /* ignore */ }
+		try {
+			blenderMcpStatusUnsub()
+		} catch {
+			/* ignore */
+		}
 		blenderMcpStatusUnsub = null
 	}
 	window.removeEventListener('resize', syncGlobalSafeAreaCssVars)
@@ -4077,7 +4252,9 @@ const chatTaskStatus = computed(() => {
 	if (chatTaskStatusText.value) return chatTaskStatusText.value
 	if (chatRunState.value === 'stopping') return t('aiworkflow.page.chatTask.stopping')
 	if (chatRunState.value === 'error') return t('aiworkflow.page.chatTask.error')
-	return chatSending.value ? t('aiworkflow.page.chatTask.generating') : t('aiworkflow.page.chatTask.idle')
+	return chatSending.value
+		? t('aiworkflow.page.chatTask.generating')
+		: t('aiworkflow.page.chatTask.idle')
 })
 
 const isElectronRuntime =
@@ -4119,7 +4296,9 @@ let autoHelloSent = false
 
 const mapCodexSession = (row: CodexSessionRow): LocalExecSessionItem => ({
 	id: String(row?.id || '').trim(),
-	title: String(row?.title || t('aiworkflow.page.chat.defaultSessionTitle')).trim() || t('aiworkflow.page.chat.defaultSessionTitle'),
+	title:
+		String(row?.title || t('aiworkflow.page.chat.defaultSessionTitle')).trim() ||
+		t('aiworkflow.page.chat.defaultSessionTitle'),
 	status: String(row?.status || 'active').trim() || 'active',
 	modelName: String(row?.model_name || '').trim(),
 	source: 'copilot-cli'
@@ -4181,17 +4360,32 @@ const loadDVSAgentSessions = loadAgentSessions
 
 const onCodexCreateSession = async () => {
 	// 如果当前已有空会话（没有消息内容），且列表中还有其他会话，直接切换到该会话，不创建新会话
-	if (codexActiveSessionId.value && chatMessages.value.length === 0 && codexSessions.value.length > 0) {
+	if (
+		codexActiveSessionId.value &&
+		chatMessages.value.length === 0 &&
+		codexSessions.value.length > 0
+	) {
 		return
 	}
 	const projectPath = String(currentProjectRootPath.value || '').trim()
 	try {
-		const res = await agentCreateConversation(t('aiworkflow.page.chat.newConversation'), chatModelId.value, projectPath)
+		const res = await agentCreateConversation(
+			t('aiworkflow.page.chat.newConversation'),
+			chatModelId.value,
+			projectPath
+		)
 		if (!res?.ok) {
-			pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
+			pushToast(
+				t('aiworkflow.page.chat.createSessionFailed', {
+					error: String(res?.error || t('aiworkflow.page.chat.unknownError'))
+				}),
+				'warn'
+			)
 			return
 		}
-		const conversation = res.conversation as { id: string; title: string; model: string } | undefined
+		const conversation = res.conversation as
+			| { id: string; title: string; model: string }
+			| undefined
 		if (!conversation?.id) {
 			pushToast(t('aiworkflow.page.chat.createSessionFailedEmptyId'), 'warn')
 			return
@@ -4206,7 +4400,10 @@ const onCodexCreateSession = async () => {
 		codexActiveSessionId.value = item.id
 		chatMessages.value = []
 	} catch (err: unknown) {
-		pushToast(t('aiworkflow.page.chat.createSessionFailed', { error: getErrorMessage(err) }), 'warn')
+		pushToast(
+			t('aiworkflow.page.chat.createSessionFailed', { error: getErrorMessage(err) }),
+			'warn'
+		)
 	}
 }
 
@@ -4254,12 +4451,18 @@ const onCodexApproval = async (payloadValue: {
 			projectId
 		})) as LocalExecListResult
 		if (result?.error) {
-			pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: String(result.error) }), 'warn')
+			pushToast(
+				t('aiworkflow.page.chat.approvalSubmitFailed', { error: String(result.error) }),
+				'warn'
+			)
 			return
 		}
 		pushToast(t('aiworkflow.page.chat.approvalSubmitted'), 'info')
 	} catch (err: unknown) {
-		pushToast(t('aiworkflow.page.chat.approvalSubmitFailed', { error: getErrorMessage(err) }), 'warn')
+		pushToast(
+			t('aiworkflow.page.chat.approvalSubmitFailed', { error: getErrorMessage(err) }),
+			'warn'
+		)
 	}
 }
 
@@ -4268,7 +4471,12 @@ const onCodexDeleteSession = async (sessionId: string) => {
 	if (!sid) return
 	const res = await agentDeleteConversation(sid)
 	if (!res?.ok) {
-		pushToast(t('aiworkflow.page.chat.deleteSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
+		pushToast(
+			t('aiworkflow.page.chat.deleteSessionFailed', {
+				error: String(res?.error || t('aiworkflow.page.chat.unknownError'))
+			}),
+			'warn'
+		)
 		return
 	}
 	pushToast(t('aiworkflow.page.chat.deleteSessionSuccess'), 'info')
@@ -4293,12 +4501,20 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
 		try {
 			const res = await agentRenameConversation(sid, title)
 			if (!res?.ok) {
-				pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(res?.error || t('aiworkflow.page.chat.unknownError')) }), 'warn')
+				pushToast(
+					t('aiworkflow.page.chat.renameSessionFailed', {
+						error: String(res?.error || t('aiworkflow.page.chat.unknownError'))
+					}),
+					'warn'
+				)
 				return
 			}
 			codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
 		} catch (err: unknown) {
-			pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: getErrorMessage(err) }), 'warn')
+			pushToast(
+				t('aiworkflow.page.chat.renameSessionFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 		return
 	}
@@ -4314,7 +4530,10 @@ const onCodexRenameSession = async (payloadValue: { sessionId: string; title: st
 		title
 	})) as LocalExecListResult
 	if (result?.error) {
-		pushToast(t('aiworkflow.page.chat.renameSessionFailed', { error: String(result.error) }), 'warn')
+		pushToast(
+			t('aiworkflow.page.chat.renameSessionFailed', { error: String(result.error) }),
+			'warn'
+		)
 		return
 	}
 	codexSessions.value = codexSessions.value.map((s) => (s.id === sid ? { ...s, title } : s))
@@ -4511,7 +4730,9 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 						contentType: 'image/png'
 					})
 					if (uploaded && uploaded.ok && uploaded.asset) {
-						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetRelPath = String(
+							uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+						).trim()
 						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
 						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
 					}
@@ -4534,7 +4755,9 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 						contentType: videoMime
 					})
 					if (uploaded && uploaded.ok && uploaded.asset) {
-						assetRelPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+						assetRelPath = String(
+							uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+						).trim()
 						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
 						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
 					}
@@ -4555,7 +4778,12 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 				kind as 'image' | 'video',
 				worldX + offset,
 				worldY + offset,
-				{ title: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
+				{
+					title:
+						kind === 'image'
+							? t('aiworkflow.page.mediaType.image')
+							: t('aiworkflow.page.mediaType.video')
+				}
 			)
 			if (nodeId) {
 				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
@@ -4584,11 +4812,17 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	).trim()
 
 	if (urlText) {
-		const isRemote = urlText.startsWith('http://') || urlText.startsWith('https://') || urlText.startsWith('blob:') || urlText.startsWith('data:')
+		const isRemote =
+			urlText.startsWith('http://') ||
+			urlText.startsWith('https://') ||
+			urlText.startsWith('blob:') ||
+			urlText.startsWith('data:')
 		if (isRemote) {
-			const urlKind = urlText.startsWith('data:video/') || /\.(mp4|webm|mov|m4v|mkv|avi|flv|wmv)(\?|$)/i.test(urlText)
-				? 'video'
-				: 'image'
+			const urlKind =
+				urlText.startsWith('data:video/') ||
+				/\.(mp4|webm|mov|m4v|mkv|avi|flv|wmv)(\?|$)/i.test(urlText)
+					? 'video'
+					: 'image'
 			const center = getCanvasCenterWorld()
 
 			let assetUrl = urlText
@@ -4596,7 +4830,11 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 			let assetRelPath = ''
 			let displayName = ''
 
-			const persisted = await persistBlobUrlToProject(urlText, urlKind as 'image' | 'video', 'paste')
+			const persisted = await persistBlobUrlToProject(
+				urlText,
+				urlKind as 'image' | 'video',
+				'paste'
+			)
 			if (persisted && persisted.url) {
 				assetUrl = persisted.url
 				assetAbsPath = persisted.sourcePath || ''
@@ -4605,21 +4843,28 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 			}
 
 			const finalUrl = resolveBackendUrl(assetUrl)
-			const defaultName = urlKind === 'video'
-				? generateUniqueMediaFileName('paste', 'mp4')
-				: generateUniqueMediaFileName('paste', 'png')
+			const defaultName =
+				urlKind === 'video'
+					? generateUniqueMediaFileName('paste', 'mp4')
+					: generateUniqueMediaFileName('paste', 'png')
 
-			const nodeId = engineApi.addNode(
-				urlKind as 'image' | 'video',
-				center.worldX,
-				center.worldY,
-				{ title: urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }
-			)
+			const nodeId = engineApi.addNode(urlKind as 'image' | 'video', center.worldX, center.worldY, {
+				title:
+					urlKind === 'image'
+						? t('aiworkflow.page.mediaType.image')
+						: t('aiworkflow.page.mediaType.video')
+			})
 			if (nodeId) {
-				bindMediaResourceToNode(nodeId, urlKind as 'image' | 'video', finalUrl, displayName || defaultName, {
-					sourcePath: assetAbsPath || undefined,
-					projectRelativePath: assetRelPath || undefined
-				})
+				bindMediaResourceToNode(
+					nodeId,
+					urlKind as 'image' | 'video',
+					finalUrl,
+					displayName || defaultName,
+					{
+						sourcePath: assetAbsPath || undefined,
+						projectRelativePath: assetRelPath || undefined
+					}
+				)
 				autoSizeMediaNode(nodeId, finalUrl, urlKind as 'image' | 'video')
 				return true
 			}
@@ -5005,8 +5250,8 @@ const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; p
 				status: isConnected ? 'connected' : 'disconnected',
 				error: null,
 				serverId: isConnected ? 'blender' : null,
-				host: isConnected ? (result.host || host) : undefined,
-				port: isConnected ? (result.port || port) : undefined
+				host: isConnected ? result.host || host : undefined,
+				port: isConnected ? result.port || port : undefined
 			})
 			if (isConnected) {
 				checkBlenderToolsReady(nodeId)
@@ -5036,8 +5281,8 @@ const onBlenderStatusCheck = async (nodeId: string, payload?: { host?: string; p
 				hasAddon: statusInfo.hasAddon ?? false,
 				blenderPath: statusInfo.blenderPath || null,
 				blenderVersion: statusInfo.blenderVersion || null,
-				host: isConnected ? (statusInfo.host || host) : (hasHost ? host : undefined),
-				port: isConnected ? (statusInfo.port || port) : (hasPort ? port : undefined)
+				host: isConnected ? statusInfo.host || host : hasHost ? host : undefined,
+				port: isConnected ? statusInfo.port || port : hasPort ? port : undefined
 			})
 			if (isConnected) {
 				checkBlenderToolsReady(nodeId)
@@ -5191,7 +5436,7 @@ const onBlenderMountTools = async (nodeId: string) => {
 	store.commit('setBlenderMcpStatus', {
 		nodeId,
 		status: 'checking',
-		error: null,
+		error: null
 	})
 	try {
 		if (currentStatus !== 'connected') {
@@ -5204,7 +5449,7 @@ const onBlenderMountTools = async (nodeId: string) => {
 					host,
 					port,
 					toolsReady: false,
-					toolCount: 0,
+					toolCount: 0
 				})
 				return
 			}
@@ -5219,7 +5464,7 @@ const onBlenderMountTools = async (nodeId: string) => {
 				toolsReady: result.ready,
 				toolCount: result.availableToolCount,
 				missingToolCount: result.missingToolCount,
-				missingTools: result.missingTools,
+				missingTools: result.missingTools
 			})
 		} else {
 			store.commit('setBlenderMcpStatus', {
@@ -5227,7 +5472,7 @@ const onBlenderMountTools = async (nodeId: string) => {
 				status: result?.status === 'connected' ? 'connected' : 'error',
 				error: result?.error || '工具挂载失败',
 				toolsReady: false,
-				toolCount: result?.availableToolCount || 0,
+				toolCount: result?.availableToolCount || 0
 			})
 		}
 	} catch (err: any) {
@@ -5236,7 +5481,7 @@ const onBlenderMountTools = async (nodeId: string) => {
 			status: 'error',
 			error: err?.message || String(err),
 			toolsReady: false,
-			toolCount: 0,
+			toolCount: 0
 		})
 	}
 }
@@ -5301,7 +5546,14 @@ const onBlenderDisconnect = async (nodeId: string) => {
 
 const syncBlenderStatusFromBackend = (payload: any) => {
 	if (!payload) return
-	const { status, host: backendHost, port: backendPort, error: backendError, toolCount: backendToolCount, tools: backendTools } = payload
+	const {
+		status,
+		host: backendHost,
+		port: backendPort,
+		error: backendError,
+		toolCount: backendToolCount,
+		tools: backendTools
+	} = payload
 	if (!status || status === 'disconnecting') return
 	const isConnected = status === 'connected'
 	const isConnecting = status === 'connecting'
@@ -5396,7 +5648,8 @@ const onBlenderInitWorkspace = async (nodeId: string, retryCount = 0) => {
 	}
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
-	const existingPath = (node.blenderSettings as Record<string, unknown> | null | undefined)?.workspacePath
+	const existingPath = (node.blenderSettings as Record<string, unknown> | null | undefined)
+		?.workspacePath
 	if (existingPath) return
 	try {
 		const result = await window.dweb.blender.workspaceInit({ nodeId, projectId })
@@ -5437,14 +5690,13 @@ const onBlenderImport = async (nodeId: string) => {
 	})
 
 	try {
-		const { collectBlenderUpstreamInputs } = await import(
-			'./node-business/blender/useBlenderUpstreamInputs'
-		)
+		const { collectBlenderUpstreamInputs } =
+			await import('./node-business/blender/useBlenderUpstreamInputs')
 		const upstream = collectBlenderUpstreamInputs(store, nodeId)
 
 		if (!upstream.models.length) {
-			const connectedAny = getFirstIncomingEdge(nodeId, 'in-0')
-				|| getFirstIncomingEdge(nodeId, 'in-model')
+			const connectedAny =
+				getFirstIncomingEdge(nodeId, 'in-0') || getFirstIncomingEdge(nodeId, 'in-model')
 			if (!connectedAny) {
 				throw new Error('请连接上游3D模型节点到Blender节点的输入锚点')
 			}
@@ -5474,18 +5726,17 @@ const onBlenderImport = async (nodeId: string) => {
 		})
 		if (!result?.ok) {
 			const detail = result?.error || ''
-			const errMsg = detail
-				? `导入失败：${detail}`
-				: `导入模型失败，请检查Blender是否正确安装`
+			const errMsg = detail ? `导入失败：${detail}` : `导入模型失败，请检查Blender是否正确安装`
 			throw new Error(errMsg)
 		}
 
 		const okCount = result.count || filePaths.length
 		const totalCount = result.total || filePaths.length
 		const errCount = result.errorCount || 0
-		const statusMsg = errCount > 0
-			? `已成功导入 ${okCount}/${totalCount} 个模型（${errCount} 个失败）`
-			: `成功导入 ${okCount} 个模型`
+		const statusMsg =
+			errCount > 0
+				? `已成功导入 ${okCount}/${totalCount} 个模型（${errCount} 个失败）`
+				: `成功导入 ${okCount} 个模型`
 
 		store.commit('setBlenderImportStatus', {
 			nodeId,
@@ -5747,14 +5998,23 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
-		const errorMsg = viewerExportResult.ok ? t('aiworkflow.page.placeholder.failedGetGlb') : viewerExportResult.error
+		const errorMsg = viewerExportResult.ok
+			? t('aiworkflow.page.placeholder.failedGetGlb')
+			: viewerExportResult.error
 		pushToast(t('aiworkflow.page.placeholder.exportFailed', { error: String(errorMsg) }), 'error')
-		throw new Error(t('aiworkflow.page.placeholder.exportPlaceholderFailed', { error: String(errorMsg) }))
+		throw new Error(
+			t('aiworkflow.page.placeholder.exportPlaceholderFailed', { error: String(errorMsg) })
+		)
 	}
 
 	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
 	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
-	pushToast(t('aiworkflow.page.placeholder.exportSuccess', { name: String(viewerExportResult.name || placeholderName) }), 'info')
+	pushToast(
+		t('aiworkflow.page.placeholder.exportSuccess', {
+			name: String(viewerExportResult.name || placeholderName)
+		}),
+		'info'
+	)
 	return {
 		file,
 		signature,
@@ -5984,11 +6244,18 @@ const syncModel3DInputFromUpstream = async (
 		}
 
 		if (fromNode.type === 'image') {
-			const imgSettings = (fromNode as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
-			const rawImgTripo = imgSettings && typeof imgSettings.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings !== null
-				? imgSettings.tripo3dImageSettings as Record<string, unknown>
-				: {}
-			const directTripoSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown> | undefined
+			const imgSettings = (fromNode as Record<string, unknown>).imageSettings as
+				| Record<string, unknown>
+				| undefined
+			const rawImgTripo =
+				imgSettings &&
+				typeof imgSettings.tripo3dImageSettings === 'object' &&
+				imgSettings.tripo3dImageSettings !== null
+					? (imgSettings.tripo3dImageSettings as Record<string, unknown>)
+					: {}
+			const directTripoSettings = (fromNode as Record<string, unknown>).tripo3dSettings as
+				| Record<string, unknown>
+				| undefined
 			const settings: Record<string, unknown> = {}
 			for (const [key, value] of Object.entries(rawImgTripo)) {
 				settings[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
@@ -5999,25 +6266,42 @@ const syncModel3DInputFromUpstream = async (
 				}
 			}
 			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
-			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskFamily = String(
+				settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? ''
+			).trim()
 			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
-			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
-				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
-				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
-				|| tripo3dTaskFamily === 'models_convert'
+			const isModelTask =
+				tripo3dTaskFamily === 'text_to_model' ||
+				tripo3dTaskFamily === 'image_to_model' ||
+				tripo3dTaskFamily === 'multiview_to_model' ||
+				tripo3dTaskFamily === 'texture' ||
+				tripo3dTaskFamily === 'refine' ||
+				tripo3dTaskFamily === 'mesh_segment' ||
+				tripo3dTaskFamily === 'mesh_smartsegment' ||
+				tripo3dTaskFamily === 'mesh_complete' ||
+				tripo3dTaskFamily === 'mesh_decimate' ||
+				tripo3dTaskFamily === 'models_convert'
 			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
 
 			if (isTripo3DModelSource) {
 				const effective = getTripo3DEffectiveModelSource(settings)
-				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
-				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const outputSummary = isRecord(settings.tripo3dOutputSummary)
+					? (settings.tripo3dOutputSummary as Record<string, unknown>)
+					: {}
+				const fallbackUrl = String(
+					outputSummary.preferredUrl ?? outputSummary.assetUrl ?? ''
+				).trim()
 				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
 				const taskIdVal = tripo3dTaskId || fromNode.id
 
 				if (!sourceUrl) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6046,8 +6330,12 @@ const syncModel3DInputFromUpstream = async (
 				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
 				if (isTripo3DRemoteUrl(finalModelUrl)) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6065,8 +6353,12 @@ const syncModel3DInputFromUpstream = async (
 				}
 
 				const currentNode = store.state.nodesById[nodeId]
-				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+				const currentM3d = isRecord(currentNode?.model3dSettings)
+					? (currentNode.model3dSettings as Record<string, unknown>)
+					: {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+					? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+					: {}
 
 				store.commit('setNodeModel3DSettings', {
 					nodeId,
@@ -6100,29 +6392,52 @@ const syncModel3DInputFromUpstream = async (
 			}
 		}
 
-		if (fromNode.type === 'tripo3d' && isRecord((fromNode as Record<string, unknown>).tripo3dSettings)) {
-			const tripo3dSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<string, unknown>
+		if (
+			fromNode.type === 'tripo3d' &&
+			isRecord((fromNode as Record<string, unknown>).tripo3dSettings)
+		) {
+			const tripo3dSettings = (fromNode as Record<string, unknown>).tripo3dSettings as Record<
+				string,
+				unknown
+			>
 			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
 			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
-			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? '').trim()
+			const tripo3dTaskFamily = String(
+				settings.tripo3dTaskFamily ?? settings.tripo3dTaskMode ?? ''
+			).trim()
 			const tripo3dTaskStatus = String(settings.tripo3dTaskStatus ?? '').trim()
-			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
-				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
-				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
-				|| tripo3dTaskFamily === 'models_convert'
+			const isModelTask =
+				tripo3dTaskFamily === 'text_to_model' ||
+				tripo3dTaskFamily === 'image_to_model' ||
+				tripo3dTaskFamily === 'multiview_to_model' ||
+				tripo3dTaskFamily === 'texture' ||
+				tripo3dTaskFamily === 'refine' ||
+				tripo3dTaskFamily === 'mesh_segment' ||
+				tripo3dTaskFamily === 'mesh_smartsegment' ||
+				tripo3dTaskFamily === 'mesh_complete' ||
+				tripo3dTaskFamily === 'mesh_decimate' ||
+				tripo3dTaskFamily === 'models_convert'
 			const isTripo3DModelSource = !!tripo3dTaskId && isModelTask
 
 			if (isTripo3DModelSource) {
 				const effective = getTripo3DEffectiveModelSource(settings)
-				const outputSummary = isRecord(settings.tripo3dOutputSummary) ? settings.tripo3dOutputSummary as Record<string, unknown> : {}
-				const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
+				const outputSummary = isRecord(settings.tripo3dOutputSummary)
+					? (settings.tripo3dOutputSummary as Record<string, unknown>)
+					: {}
+				const fallbackUrl = String(
+					outputSummary.preferredUrl ?? outputSummary.assetUrl ?? ''
+				).trim()
 				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
 				const taskIdVal = tripo3dTaskId || fromNode.id
 
 				if (!sourceUrl) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6151,8 +6466,12 @@ const syncModel3DInputFromUpstream = async (
 				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
 				if (isTripo3DRemoteUrl(finalModelUrl)) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6170,8 +6489,12 @@ const syncModel3DInputFromUpstream = async (
 				}
 
 				const currentNode = store.state.nodesById[nodeId]
-				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+				const currentM3d = isRecord(currentNode?.model3dSettings)
+					? (currentNode.model3dSettings as Record<string, unknown>)
+					: {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+					? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+					: {}
 
 				store.commit('setNodeModel3DSettings', {
 					nodeId,
@@ -6207,7 +6530,9 @@ const syncModel3DInputFromUpstream = async (
 
 		if (fromNode.type === 'model3d' && isRecord(fromNode.model3dSettings)) {
 			const fromM3dSettings = fromNode.model3dSettings
-			const tripo3dSettings = fromM3dSettings.tripo3dModelSettings as Record<string, unknown> | undefined
+			const tripo3dSettings = fromM3dSettings.tripo3dModelSettings as
+				| Record<string, unknown>
+				| undefined
 			const settings = isRecord(tripo3dSettings) ? tripo3dSettings : {}
 			const tripo3dTaskId = String(settings.tripo3dTaskId ?? '').trim()
 			const tripo3dTaskFamily = String(settings.tripo3dTaskFamily ?? '').trim()
@@ -6216,14 +6541,21 @@ const syncModel3DInputFromUpstream = async (
 
 			if (isTripo3DSource) {
 				const effective = getTripo3DEffectiveModelSource(settings)
-				const fallbackUrl = String(fromM3dSettings.modelAssetUrl ?? fromM3dSettings.modelUrl ?? '').trim()
+				const fallbackUrl = String(
+					fromM3dSettings.modelAssetUrl ?? fromM3dSettings.modelUrl ?? ''
+				).trim()
 				const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
-				const taskIdVal = tripo3dTaskId || String(settings.taskId ?? fromNode.id).trim() || fromNode.id
+				const taskIdVal =
+					tripo3dTaskId || String(settings.taskId ?? fromNode.id).trim() || fromNode.id
 
 				if (!sourceUrl) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6246,14 +6578,23 @@ const syncModel3DInputFromUpstream = async (
 					kind: 'file',
 					name,
 					sourceUrl,
-					sourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? fromM3dSettings.modelSourcePath ?? '').trim() || undefined
+					sourcePath:
+						effective.assetPath ||
+						String(
+							fromM3dSettings.modelAssetPath ?? fromM3dSettings.modelSourcePath ?? ''
+						).trim() ||
+						undefined
 				})) as PersistedAsset | null
 				revokeNodeModel3DObjectUrl(nodeId)
 				const finalModelUrl = String(persisted?.url || effective.assetUrl || fallbackUrl)
 				if (isTripo3DRemoteUrl(finalModelUrl)) {
 					const currentNode = store.state.nodesById[nodeId]
-					const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-					const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+					const currentM3d = isRecord(currentNode?.model3dSettings)
+						? (currentNode.model3dSettings as Record<string, unknown>)
+						: {}
+					const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+						? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+						: {}
 					store.commit('setNodeModel3DSettings', {
 						nodeId,
 						model3dSettings: {
@@ -6275,8 +6616,12 @@ const syncModel3DInputFromUpstream = async (
 				}
 
 				const currentNode = store.state.nodesById[nodeId]
-				const currentM3d = isRecord(currentNode?.model3dSettings) ? currentNode.model3dSettings as Record<string, unknown> : {}
-				const currentTripo = isRecord(currentM3d.tripo3dModelSettings) ? currentM3d.tripo3dModelSettings as Record<string, unknown> : {}
+				const currentM3d = isRecord(currentNode?.model3dSettings)
+					? (currentNode.model3dSettings as Record<string, unknown>)
+					: {}
+				const currentTripo = isRecord(currentM3d.tripo3dModelSettings)
+					? (currentM3d.tripo3dModelSettings as Record<string, unknown>)
+					: {}
 
 				store.commit('setNodeModel3DSettings', {
 					nodeId,
@@ -6286,7 +6631,12 @@ const syncModel3DInputFromUpstream = async (
 						modelFormat: format,
 						modelSourceName: name,
 						modelSourcePath:
-							String(persisted?.absolutePath || effective.assetPath || fromM3dSettings.modelAssetPath || '').trim() || undefined,
+							String(
+								persisted?.absolutePath ||
+									effective.assetPath ||
+									fromM3dSettings.modelAssetPath ||
+									''
+							).trim() || undefined,
 						modelProjectRelativePath:
 							String(persisted?.projectRelativePath || '').trim() || undefined,
 						modelAssetUrl: String(persisted?.url || ''),
@@ -6296,7 +6646,10 @@ const syncModel3DInputFromUpstream = async (
 						lastInputSignature: `${fromNode.id}:${taskIdVal}:${sourceUrl}`,
 						lastInputNodeId: fromNode.id,
 						lastInputSourceUrl: sourceUrl,
-						lastInputSourcePath: effective.assetPath || String(fromM3dSettings.modelAssetPath ?? '').trim() || undefined,
+						lastInputSourcePath:
+							effective.assetPath ||
+							String(fromM3dSettings.modelAssetPath ?? '').trim() ||
+							undefined,
 						lastInputSourceName: name,
 						tripo3dModelSettings: {
 							...currentTripo,
@@ -6422,7 +6775,9 @@ const syncConnectedModel3DTargets = async (
 		.filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
 
 	for (const nodeId of targets) {
-		await syncModel3DInputFromUpstream(nodeId, { forceSceneLayoutExport: opts?.forceSceneLayoutExport })
+		await syncModel3DInputFromUpstream(nodeId, {
+			forceSceneLayoutExport: opts?.forceSceneLayoutExport
+		})
 	}
 }
 
@@ -6935,7 +7290,7 @@ const mediaService = {
 	seedanceGenerateStream: (form: FormData) => comfyService.seedanceGenerateStream(form),
 	meshyGenerate: (payload: Record<string, unknown>) => comfyService.meshyGenerate(payload),
 	meshyGenerateImage: (form: FormData) => comfyService.meshyGenerateImage(form),
-	meshyTask: (taskId: string, mode: string) => comfyService.meshyTask(taskId, mode),
+	meshyTask: (taskId: string, mode: string) => comfyService.meshyTask(taskId, mode)
 }
 const localExecStreamMode = ref<'real' | 'mock'>(resolveLocalExecStreamMode())
 localExecChatService.setLocalExecStreamMode(localExecStreamMode.value)
@@ -7025,7 +7380,11 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 	try {
 		const res = await unrealExportService.listSessions()
 		if (!res.ok) {
-			if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: String(res.error || 'unknown') }), 'warn')
+			if (!opts?.silent)
+				pushToast(
+					t('aiworkflow.page.unreal.listSessionsFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 			return { ok: false, hasRunningJob: false, skipped: false }
 		}
 		const sessions: UnrealExportSessionInfo[] = Array.isArray(res.sessions) ? res.sessions : []
@@ -7107,7 +7466,14 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 							? t('aiworkflow.page.unreal.exportFailed')
 							: nodeHasRunningJob
 								? t('aiworkflow.page.unreal.exporting')
-								: t('aiworkflow.page.unreal.connected', { projectName: String(matchedSession.projectName ?? matchedSession.displayName ?? matchedSession.sessionId).trim() || matchedSession.sessionId }),
+								: t('aiworkflow.page.unreal.connected', {
+										projectName:
+											String(
+												matchedSession.projectName ??
+													matchedSession.displayName ??
+													matchedSession.sessionId
+											).trim() || matchedSession.sessionId
+									}),
 						targetSessionId: String(matchedSession.sessionId ?? '').trim(),
 						connectedSession: matchedSession,
 						lastHeartbeatAt: Number(matchedSession.lastSeenAt ?? 0) || undefined,
@@ -7219,7 +7585,11 @@ const syncUnrealExportNodesInternal = async (opts?: { silent?: boolean; nodeId?:
 		}
 		return { ok: true, hasRunningJob, skipped: false }
 	} catch (err: unknown) {
-		if (!opts?.silent) pushToast(t('aiworkflow.page.unreal.listSessionsFailed', { error: getErrorMessage(err) }), 'warn')
+		if (!opts?.silent)
+			pushToast(
+				t('aiworkflow.page.unreal.listSessionsFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		return { ok: false, hasRunningJob: false, skipped: false }
 	} finally {
 		unrealExportSyncRunning = false
@@ -7342,7 +7712,10 @@ const exportSceneLayoutPlaceholderGLB = async (sceneLayoutNodeId: string) => {
 	}
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
 	if (!instance || typeof instance.exportSelectedPlaceholderGLB !== 'function') {
-		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstanceSelectPlaceholder') }
+		return {
+			ok: false as const,
+			error: t('aiworkflow.page.sceneLayout.noPreviewInstanceSelectPlaceholder')
+		}
 	}
 	try {
 		return await instance.exportSelectedPlaceholderGLB()
@@ -7365,7 +7738,14 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 }
 
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
-const { loadTemplatePackage, deleteTemplate, saveUserTemplateFromBlob, loadTemplates, refreshCloud, templates: templateCenterTemplates } = useTemplateCenter()
+const {
+	loadTemplatePackage,
+	deleteTemplate,
+	saveUserTemplateFromBlob,
+	loadTemplates,
+	refreshCloud,
+	templates: templateCenterTemplates
+} = useTemplateCenter()
 const templateCenterOpen = ref(false)
 const templateApplyDialogOpen = ref(false)
 const selectedTemplateForApply = ref<TemplateItem | null>(null)
@@ -7382,9 +7762,12 @@ let saveTemplatePendingCoverGen: { nodeIds: string[] } | null = null
 function onOpenTemplateCenter() {
 	void loadTemplates()
 	try {
-		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.openTemplateCenter === 'function') {
+		if (
+			window.dweb?.aiworkflow &&
+			typeof window.dweb.aiworkflow.openTemplateCenter === 'function'
+		) {
 			window.dweb.aiworkflow.openTemplateCenter({
-				title: t('aiworkflow.templateCenter.title'),
+				title: t('aiworkflow.templateCenter.title')
 			})
 		}
 	} catch (err) {
@@ -7405,7 +7788,7 @@ async function onDeleteTemplate(template: TemplateItem) {
 		t('aiworkflow.templateCenter.deleteConfirmMessage'),
 		{
 			confirmText: t('aiworkflow.templateCenter.delete'),
-			cancelText: t('aiworkflow.templateCenter.cancel'),
+			cancelText: t('aiworkflow.templateCenter.cancel')
 		}
 	)
 	if (!confirmed) return
@@ -7419,7 +7802,10 @@ async function generateAutoCoverForNodes(nodeIds: string[]): Promise<Blob | null
 	try {
 		const currentTheme = themeStore.state.mode as 'dark' | 'light'
 		const cachedScreenshots = screenshotPool.getAllCachedForTheme(currentTheme)
-		const screenshotMap = new Map<string, { nodeId: string; dataUrl: string; width: number; height: number; padding?: number }>()
+		const screenshotMap = new Map<
+			string,
+			{ nodeId: string; dataUrl: string; width: number; height: number; padding?: number }
+		>()
 		for (const [nid, entry] of cachedScreenshots) {
 			if (nodeIds.includes(nid)) {
 				screenshotMap.set(nid, entry)
@@ -7487,7 +7873,9 @@ async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
 			nodeIdsForCover = options.nodeIds
 		} else {
 			snapshot = buildFullSnapshot(store.state)
-			nodeIdsForCover = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+			nodeIdsForCover = Array.isArray(snapshot.nodeOrder)
+				? snapshot.nodeOrder
+				: Object.keys(snapshot.nodesById || {})
 		}
 
 		const nodeCount = snapshot.nodeOrder.length
@@ -7497,9 +7885,15 @@ async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
 			coverBlob = await generateAutoCoverForNodes(nodeIdsForCover)
 		}
 		saveTemplateProgress.value = 10
-		const blob = await createTemplatePackageZip(snapshot, options.name, coverBlob, undefined, (progress) => {
-			saveTemplateProgress.value = 10 + progress.percent * 0.85
-		})
+		const blob = await createTemplatePackageZip(
+			snapshot,
+			options.name,
+			coverBlob,
+			undefined,
+			(progress) => {
+				saveTemplateProgress.value = 10 + progress.percent * 0.85
+			}
+		)
 		saveTemplateProgress.value = 95
 		const saved = await saveUserTemplateFromBlob({
 			name: options.name,
@@ -7534,9 +7928,20 @@ async function onConfirmSaveTemplate(options: SaveTemplateConfirmPayload) {
 }
 
 async function applyTemplateToCurrent(template: TemplateItem) {
-	console.log('[AIWorkflowPage] applyTemplateToCurrent started, template:', template?.id, template?.name, 'packageData:', !!template?.packageData, 'packagePath:', template?.packagePath)
+	console.log(
+		'[AIWorkflowPage] applyTemplateToCurrent started, template:',
+		template?.id,
+		template?.name,
+		'packageData:',
+		!!template?.packageData,
+		'packagePath:',
+		template?.packagePath
+	)
 	const blob = await loadTemplatePackage(template)
-	console.log('[AIWorkflowPage] loadTemplatePackage result:', blob ? `Blob size=${blob.size} type=${blob.type}` : 'null/undefined')
+	console.log(
+		'[AIWorkflowPage] loadTemplatePackage result:',
+		blob ? `Blob size=${blob.size} type=${blob.type}` : 'null/undefined'
+	)
 	if (!blob) {
 		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
 		return
@@ -7549,7 +7954,9 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 		return
 	}
 
-	const templateNodeIds = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
+	const templateNodeIds = Array.isArray(snapshot.nodeOrder)
+		? snapshot.nodeOrder
+		: Object.keys(snapshot.nodesById || {})
 	const templateBounds = calculateNodeBounds(templateNodeIds, snapshot.nodesById)
 	if (!templateBounds) {
 		pushToast(t('aiworkflow.templateCenter.templatePackageNotFound'), 'error')
@@ -7578,14 +7985,20 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 					})
 					return res?.ok && res?.asset
 						? {
-							url: res.asset.url,
-							relativePath: res.asset.relativePath || '',
-							absolutePath: res.asset.absolutePath || res.asset.sourcePath || ''
-						}
+								url: res.asset.url,
+								relativePath: res.asset.relativePath || '',
+								absolutePath: res.asset.absolutePath || res.asset.sourcePath || ''
+							}
 						: null
 				}
 			)
-			remapTemplateAssetUrls(snapshot, parsed.assets, importResult.fileUrlMap, importResult.filePathMap, importResult.fileAbsPathMap)
+			remapTemplateAssetUrls(
+				snapshot,
+				parsed.assets,
+				importResult.fileUrlMap,
+				importResult.filePathMap,
+				importResult.fileAbsPathMap
+			)
 		} catch (err) {
 			console.error('[AIWF] Failed to import template assets:', err)
 		}
@@ -7613,7 +8026,7 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 		resources: result.resources
 	})
 
-	const newNodeIds = result.nodes.map(n => n.id)
+	const newNodeIds = result.nodes.map((n) => n.id)
 	store.commit('setSelectedNodes', { nodeIds: newNodeIds })
 
 	await nextTick()
@@ -7658,7 +8071,13 @@ async function applyTemplateToCurrent(template: TemplateItem) {
 }
 
 async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
-	console.log('[AIWorkflowPage] onConfirmApplyTemplate called, target:', options.target, 'template:', options.template?.id, options.template?.name)
+	console.log(
+		'[AIWorkflowPage] onConfirmApplyTemplate called, target:',
+		options.target,
+		'template:',
+		options.template?.id,
+		options.template?.name
+	)
 	templateApplyDialogOpen.value = false
 	const template = options.template
 	selectedTemplateForApply.value = null
@@ -7694,20 +8113,29 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 
 		try {
 			cancelActiveRecoverySession()
-			store.commit('hydrateDraft', { snapshot: buildSnapshotFromState(createDefaultAIWorkflowState()) })
+			store.commit('hydrateDraft', {
+				snapshot: buildSnapshotFromState(createDefaultAIWorkflowState())
+			})
 			setUnsavedProject('')
 			disposeComfyRuntime()
 			comfyAnchorAssignments.clear()
 			comfyAnchorLocalizedOutputs.clear()
 
-			const opened = await blueprintProjectService.openProjectFolder({
+			const opened = (await blueprintProjectService.openProjectFolder({
 				rootPath,
 				name: projectName,
 				create: true
-			}) as { ok: boolean; error?: string; project?: { id?: number; name?: string; rootPath?: string } }
+			})) as {
+				ok: boolean
+				error?: string
+				project?: { id?: number; name?: string; rootPath?: string }
+			}
 
 			if (!opened?.ok) {
-				pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
+				pushToast(
+					t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }),
+					'error'
+				)
 				return
 			}
 
@@ -7717,11 +8145,14 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 				return
 			}
 
-			await setSavedProject({
-				id: newProjectId,
-				name: opened.project?.name || projectName,
-				rootPath: opened.project?.rootPath || rootPath
-			}, projectName)
+			await setSavedProject(
+				{
+					id: newProjectId,
+					name: opened.project?.name || projectName,
+					rootPath: opened.project?.rootPath || rootPath
+				},
+				projectName
+			)
 
 			await recoverComfyUIRunStates({ silent: true })
 			await refreshProjectList()
@@ -7759,7 +8190,8 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 					finalZoom = Math.min(finalZoom, 1.5)
 					const targetPanX = canvasW / 2 - newBounds.centerX * finalZoom
 					const targetPanY = canvasH / 2 - newBounds.centerY * finalZoom
-					const panChanged = Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
+					const panChanged =
+						Math.abs(targetPanX - curPanX) > 15 || Math.abs(targetPanY - curPanY) > 15
 					if (needsZoomOut) {
 						await animateViewportTo({ zoom: finalZoom, panX: targetPanX, panY: targetPanY }, 400)
 					} else if (panChanged) {
@@ -7770,7 +8202,10 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 
 			pushToast(t('aiworkflow.templateCenter.templateApplied'), 'info')
 		} catch (err: unknown) {
-			pushToast(t('aiworkflow.toast.projectCreateFailed', { error: getErrorMessage(err) || 'unknown' }), 'error')
+			pushToast(
+				t('aiworkflow.toast.projectCreateFailed', { error: getErrorMessage(err) || 'unknown' }),
+				'error'
+			)
 		}
 	}
 }
@@ -7876,16 +8311,21 @@ const { setSavedProject, setUnsavedProject, readLastProjectId, forgetLastProject
 
 let pushToastBridge = (_message: string, _tone?: 'info' | 'warn' | 'error') => {}
 
-const { onComfyUISettingsUpdate, onComfyUIConnect, onComfyUISelectWorkflow, onRefreshHistoryCheck, onClearHistoryCache } =
-	useAIWorkflowComfyConnection({
-		store,
-		comfyService,
-		pushToast: (message, tone) => pushToastBridge(message, tone),
-		onWorkflowChanged: (nodeId: string) => {
-			screenshotPool.invalidateScreenshot(nodeId, themeStore.state.mode as 'dark' | 'light')
-			refreshCanvasNodeLayer()
-		}
-	})
+const {
+	onComfyUISettingsUpdate,
+	onComfyUIConnect,
+	onComfyUISelectWorkflow,
+	onRefreshHistoryCheck,
+	onClearHistoryCache
+} = useAIWorkflowComfyConnection({
+	store,
+	comfyService,
+	pushToast: (message, tone) => pushToastBridge(message, tone),
+	onWorkflowChanged: (nodeId: string) => {
+		screenshotPool.invalidateScreenshot(nodeId, themeStore.state.mode as 'dark' | 'light')
+		refreshCanvasNodeLayer()
+	}
+})
 
 const {
 	onNodeSceneLayoutLightingPreviewUpdate,
@@ -7997,20 +8437,16 @@ const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoW
 	pushToast: (message, tone) => pushToastBridge(message, tone)
 })
 
-const {
-	onComfyUIRun,
-	onComfyUICancel,
-	recoverComfyUIRunStates,
-	disposeComfyRuntime
-} = useAIWorkflowComfyRuntime({
-	store,
-	comfyService,
-	pushToast: (message, tone) => pushToastBridge(message, tone),
-	routeComfyOutputsToConnectedNodes,
-	clearComfyRouteCache,
-	getIncomingTextValue,
-	autoWireComfyOutputs
-})
+const { onComfyUIRun, onComfyUICancel, recoverComfyUIRunStates, disposeComfyRuntime } =
+	useAIWorkflowComfyRuntime({
+		store,
+		comfyService,
+		pushToast: (message, tone) => pushToastBridge(message, tone),
+		routeComfyOutputsToConnectedNodes,
+		clearComfyRouteCache,
+		getIncomingTextValue,
+		autoWireComfyOutputs
+	})
 
 const onStoryPreviewSettingsUpdate = (
 	nodeId: string,
@@ -8593,7 +9029,10 @@ const { onNodeUploadSceneLayoutModelFile, onNodeClearSceneLayoutModelBinding } =
 		resolveBackendUrl
 	})
 
-const onNodeUpdateSceneLayoutModelBindings = (nodeId: string, bindings: WorkflowSceneLayoutManualModelBinding[]) => {
+const onNodeUpdateSceneLayoutModelBindings = (
+	nodeId: string,
+	bindings: WorkflowSceneLayoutManualModelBinding[]
+) => {
 	const node = store.state.nodesById[String(nodeId)]
 	if (!node || node.type !== 'scene-layout') return
 	const currentSettings = node.sceneLayoutSettings ?? {}
@@ -8647,7 +9086,10 @@ const transcodeImageToPng = async (sourceBuffer: ArrayBuffer): Promise<ArrayBuff
 							resolve(null)
 							return
 						}
-						pngBlob.arrayBuffer().then((buf) => resolve(buf)).catch(() => resolve(null))
+						pngBlob
+							.arrayBuffer()
+							.then((buf) => resolve(buf))
+							.catch(() => resolve(null))
 					}, 'image/png')
 				} catch {
 					resolve(null)
@@ -8663,7 +9105,11 @@ const transcodeImageToPng = async (sourceBuffer: ArrayBuffer): Promise<ArrayBuff
 	}
 }
 
-const persistBlobUrlToProject = async (inputUrl: string, kind: 'image' | 'video', prefix = 'dragdrop'): Promise<{
+const persistBlobUrlToProject = async (
+	inputUrl: string,
+	kind: 'image' | 'video',
+	prefix = 'dragdrop'
+): Promise<{
 	url: string
 	sourcePath?: string
 	projectRelativePath?: string
@@ -8744,7 +9190,9 @@ const persistBlobUrlToProject = async (inputUrl: string, kind: 'image' | 'video'
 			contentType
 		})
 		if (uploaded && uploaded.ok && uploaded.asset) {
-			const relPath = String(uploaded.asset.projectRelativePath || uploaded.asset.relativePath || '').trim()
+			const relPath = String(
+				uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+			).trim()
 			const absPath = String(uploaded.asset.absolutePath || '').trim()
 			const dwebUrl = buildProjectAssetUrl(pid, relPath)
 			if (dwebUrl) {
@@ -8834,21 +9282,26 @@ const { createNodeFromDraggedMeshyTask } = useAIWorkflowMeshyDrop({
 	pushToast: (message, tone) => pushToast(message, tone)
 })
 
-const { stopMeshyPoll, applyMeshyTaskResult, startMeshyPoll, recoverMeshyTaskStates, clearMeshyRuntime } =
-	useAIWorkflowMeshyRuntime({
-		store,
-		getComfyService: () => comfyService,
-		pushToast: (message, tone) => pushToast(message, tone),
-		normalizeMeshyTaskStatus,
-		pickMeshyPreferredModelUrl,
-		pickMeshyPreferredFormat,
-		fileExtensionFromUrl,
-		persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
-		syncConnectedImageTargetsFromMeshy: (nodeId) => syncConnectedImageTargetsFromMeshy(nodeId),
-		syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
-		refreshMeshyTaskItems: (opts) => refreshMeshyTaskItems(opts),
-		shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value
-	})
+const {
+	stopMeshyPoll,
+	applyMeshyTaskResult,
+	startMeshyPoll,
+	recoverMeshyTaskStates,
+	clearMeshyRuntime
+} = useAIWorkflowMeshyRuntime({
+	store,
+	getComfyService: () => comfyService,
+	pushToast: (message, tone) => pushToast(message, tone),
+	normalizeMeshyTaskStatus,
+	pickMeshyPreferredModelUrl,
+	pickMeshyPreferredFormat,
+	fileExtensionFromUrl,
+	persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
+	syncConnectedImageTargetsFromMeshy: (nodeId) => syncConnectedImageTargetsFromMeshy(nodeId),
+	syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
+	refreshMeshyTaskItems: (opts) => refreshMeshyTaskItems(opts),
+	shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value
+})
 
 const {
 	meshyTextureConfirm,
@@ -8871,24 +9324,26 @@ const {
 	shouldRefreshMeshyTaskItems: () => meshyTaskDialogOpen.value || meshyTaskRemoteLoaded.value
 })
 
-const { stopTripo3DPoll, applyTripo3DTaskResult, startTripo3DPoll, recoverTripo3DTaskStates, clearTripo3DRuntime } =
-	useAIWorkflowTripo3DRuntime({
-		store,
-		getComfyService: () => comfyService,
-		pushToast: (message, tone) => pushToast(message, tone),
-		normalizeTripo3DTaskStatus,
-		pickTripo3DPreferredModelUrl,
-		fileExtensionFromUrl: tripo3dFileExtensionFromUrl,
-		persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
-		syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
-		refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
-		shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
-	})
-
 const {
-	onNodeGenerateTripo3D,
-	onNodeRestartTripo3DTask
-} = useAIWorkflowTripo3DCommands({
+	stopTripo3DPoll,
+	applyTripo3DTaskResult,
+	startTripo3DPoll,
+	recoverTripo3DTaskStates,
+	clearTripo3DRuntime
+} = useAIWorkflowTripo3DRuntime({
+	store,
+	getComfyService: () => comfyService,
+	pushToast: (message, tone) => pushToast(message, tone),
+	normalizeTripo3DTaskStatus,
+	pickTripo3DPreferredModelUrl,
+	fileExtensionFromUrl: tripo3dFileExtensionFromUrl,
+	persistExternalAssetToProject: (payload) => persistExternalAssetToProject(payload),
+	syncConnectedModel3DTargets: (nodeId) => syncConnectedModel3DTargets(nodeId),
+	refreshTripo3DTaskItems: (opts) => refreshTripo3DTaskItems(opts),
+	shouldRefreshTripo3DTaskItems: () => tripo3dTaskDialogOpen.value
+})
+
+const { onNodeGenerateTripo3D, onNodeRestartTripo3DTask } = useAIWorkflowTripo3DCommands({
 	store,
 	getComfyService: () => comfyService,
 	pushToast: (message, tone) => pushToast(message, tone),
@@ -8947,7 +9402,10 @@ const { createMediaNodesFromFiles: createBatchMediaNodesFromFiles } = useAIWorkf
 		scheduleVideoMetadataRead,
 		autoSizeImageNodeFromDims,
 		onLimitExceeded: (count, limit) => {
-			importLimitAlertMessage.value = t('aiworkflow.page.importLimit.message', { count: String(count), limit: String(limit) })
+			importLimitAlertMessage.value = t('aiworkflow.page.importLimit.message', {
+				count: String(count),
+				limit: String(limit)
+			})
 		},
 		getProjectId: () => Number(currentProjectId.value ?? 0) || null,
 		copyFileToProjectRoot: (projectId, sourcePath, desiredFilename) =>
@@ -9021,16 +9479,24 @@ const { onRotateImageOutput } = useAIWorkflowRotateImageOutput({
 const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	getNode: (nodeId) => store.state.nodesById[nodeId],
 	getAllNodes: () =>
-		store.state.nodeOrder
-			.map((id) => store.state.nodesById[id])
-			.filter(Boolean) as WorkflowNode[],
+		store.state.nodeOrder.map((id) => store.state.nodesById[id]).filter(Boolean) as WorkflowNode[],
 	dataUrlToBlob,
 	onNodeUploadResource,
 	autoSizeMediaNode,
 	commitSetNodeImageSettings: ({ nodeId, imageSettings }) => {
 		store.commit('setNodeImageSettings', { nodeId, imageSettings })
 	},
-	commitAddNodeAt: ({ worldX, worldY, title, type }: { worldX: number; worldY: number; title?: string; type?: string }) => {
+	commitAddNodeAt: ({
+		worldX,
+		worldY,
+		title,
+		type
+	}: {
+		worldX: number
+		worldY: number
+		title?: string
+		type?: string
+	}) => {
 		return engineApi.addNode((type || 'base') as any, worldX, worldY, { title })
 	},
 	commitSetNodeType: ({ nodeId, type }: { nodeId: string; type: string }) => {
@@ -9096,7 +9562,6 @@ const onVideoCapturePreview = (
 			}
 		}
 	})()
-
 	;(async () => {
 		const nid = String(nodeId).trim()
 		if (!nid) return
@@ -9222,7 +9687,13 @@ watch(
 	(newIds, oldIds) => {
 		if (!oldIds || oldIds.length === 0) return
 		const newIdSet = new Set(newIds)
-		const captures: Array<{ nid: string; dataUrl: string; width: number; height: number; time: number }> = []
+		const captures: Array<{
+			nid: string
+			dataUrl: string
+			width: number
+			height: number
+			time: number
+		}> = []
 
 		for (const id of oldIds) {
 			if (newIdSet.has(id)) continue
@@ -9244,7 +9715,12 @@ watch(
 			}
 
 			if (videoEl.readyState < 2 || !(videoEl.videoWidth > 0)) {
-				console.warn('[Video Deselect] video not ready for capture, readyState=', videoEl.readyState, 'videoWidth=', videoEl.videoWidth)
+				console.warn(
+					'[Video Deselect] video not ready for capture, readyState=',
+					videoEl.readyState,
+					'videoWidth=',
+					videoEl.videoWidth
+				)
 				continue
 			}
 
@@ -9254,9 +9730,17 @@ watch(
 				continue
 			}
 
-			const videoSettings = (node as any).videoSettings as { outputWidth?: number; outputHeight?: number } | undefined
-			const ow = Math.max(1, Math.floor(Number(videoSettings?.outputWidth ?? (videoEl.videoWidth || 1))))
-			const oh = Math.max(1, Math.floor(Number(videoSettings?.outputHeight ?? (videoEl.videoHeight || 1))))
+			const videoSettings = (node as any).videoSettings as
+				| { outputWidth?: number; outputHeight?: number }
+				| undefined
+			const ow = Math.max(
+				1,
+				Math.floor(Number(videoSettings?.outputWidth ?? (videoEl.videoWidth || 1)))
+			)
+			const oh = Math.max(
+				1,
+				Math.floor(Number(videoSettings?.outputHeight ?? (videoEl.videoHeight || 1)))
+			)
 
 			try {
 				const canvas = document.createElement('canvas')
@@ -9270,7 +9754,16 @@ watch(
 				const { sx, sy, sw, sh } = videoCoverDrawParams(srcW, srcH, canvas.width, canvas.height)
 				ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height)
 				const dataUrl = canvas.toDataURL('image/png')
-				console.log('[Video Deselect] captured frame for node:', nid, 'time=', curTime, 'size=', ow, 'x', oh)
+				console.log(
+					'[Video Deselect] captured frame for node:',
+					nid,
+					'time=',
+					curTime,
+					'size=',
+					ow,
+					'x',
+					oh
+				)
 
 				captures.push({ nid, dataUrl, width: ow, height: oh, time: curTime })
 			} catch (err) {
@@ -9287,7 +9780,12 @@ watch(
 		pendingScreenshotNodeIds.value = pendingSet
 
 		for (const cap of captures) {
-			updateVideoPosterFromCapture(cap.nid, { dataUrl: cap.dataUrl, width: cap.width, height: cap.height, time: cap.time })
+			updateVideoPosterFromCapture(cap.nid, {
+				dataUrl: cap.dataUrl,
+				width: cap.width,
+				height: cap.height,
+				time: cap.time
+			})
 		}
 	},
 	{ flush: 'pre' }
@@ -9366,7 +9864,7 @@ const {
 	onSeedanceTaskObserved,
 	getSelectedNode: () => selectedNode.value,
 	getAllNodes: () => nodes.value,
-	getAllEdges: () => renderEdges.value,
+	getAllEdges: () => renderEdges.value
 })
 
 const mentionItemsData = computed<AgentEditorMentionItem[]>(() => {
@@ -9421,14 +9919,33 @@ const onUpdateSelectedReferences = (refs: AgentEditorChipData[]) => {
 const guessMimeType = (filename: string): string => {
 	const ext = filename.split('.').pop()?.toLowerCase() || ''
 	const map: Record<string, string> = {
-		txt: 'text/plain', md: 'text/markdown', json: 'application/json',
-		js: 'text/javascript', ts: 'text/typescript', jsx: 'text/javascript',
-		tsx: 'text/typescript', vue: 'text/plain', css: 'text/css', scss: 'text/css',
-		less: 'text/css', html: 'text/html', xml: 'application/xml',
-		yaml: 'text/yaml', yml: 'text/yaml', py: 'text/x-python',
-		java: 'text/x-java', c: 'text/x-c', cpp: 'text/x-c++', h: 'text/x-c',
-		go: 'text/x-go', rs: 'text/x-rust', sh: 'text/x-shellscript',
-		bat: 'text/plain', ps1: 'text/plain', mjs: 'text/javascript', cjs: 'text/javascript'
+		txt: 'text/plain',
+		md: 'text/markdown',
+		json: 'application/json',
+		js: 'text/javascript',
+		ts: 'text/typescript',
+		jsx: 'text/javascript',
+		tsx: 'text/typescript',
+		vue: 'text/plain',
+		css: 'text/css',
+		scss: 'text/css',
+		less: 'text/css',
+		html: 'text/html',
+		xml: 'application/xml',
+		yaml: 'text/yaml',
+		yml: 'text/yaml',
+		py: 'text/x-python',
+		java: 'text/x-java',
+		c: 'text/x-c',
+		cpp: 'text/x-c++',
+		h: 'text/x-c',
+		go: 'text/x-go',
+		rs: 'text/x-rust',
+		sh: 'text/x-shellscript',
+		bat: 'text/plain',
+		ps1: 'text/plain',
+		mjs: 'text/javascript',
+		cjs: 'text/javascript'
 	}
 	return map[ext] || 'text/plain'
 }
@@ -9466,38 +9983,41 @@ const handleRemoveChatContextItem = (id: string) => {
 	removeChatContextItem(id)
 }
 
-const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } = useAgentToolBridge({
-	store,
-	engineApi,
-	toolApprovalQueue,
-	pushToast,
-	getSelectedNode: () => selectedNode.value,
-	getAllNodes: () => nodes.value,
-	getAllEdges: () => renderEdges.value,
-	getNodeTypes: (category) => {
-		const cat = String(category || '').trim().toLowerCase()
-		return i18nCatalogItems.value
-			.filter((item) => {
-				if (!cat) return true
-				if (item.topCategoryId === cat) return true
-				if (item.primaryCategoryId === cat) return true
-				if ((item.categoryIds as string[])?.includes(cat)) return true
-				return false
-			})
-			.map((item) => ({
-				type: item.actionId,
-				label: item.label,
-				category: item.topCategoryId,
-			}))
-	},
-	getProjectInfo: () => ({
-		id: currentProjectId.value,
-		name: currentProjectName.value,
-	}),
-	viewport: computed(() => viewport.value),
-	canvasViewportSize: computed(() => canvasViewportSize.value),
-	focusNode: (nodeId) => onFocusNode(nodeId),
-})
+const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupAgentToolListener } =
+	useAgentToolBridge({
+		store,
+		engineApi,
+		toolApprovalQueue,
+		pushToast,
+		getSelectedNode: () => selectedNode.value,
+		getAllNodes: () => nodes.value,
+		getAllEdges: () => renderEdges.value,
+		getNodeTypes: (category) => {
+			const cat = String(category || '')
+				.trim()
+				.toLowerCase()
+			return i18nCatalogItems.value
+				.filter((item) => {
+					if (!cat) return true
+					if (item.topCategoryId === cat) return true
+					if (item.primaryCategoryId === cat) return true
+					if ((item.categoryIds as string[])?.includes(cat)) return true
+					return false
+				})
+				.map((item) => ({
+					type: item.actionId,
+					label: item.label,
+					category: item.topCategoryId
+				}))
+		},
+		getProjectInfo: () => ({
+			id: currentProjectId.value,
+			name: currentProjectName.value
+		}),
+		viewport: computed(() => viewport.value),
+		canvasViewportSize: computed(() => canvasViewportSize.value),
+		focusNode: (nodeId) => onFocusNode(nodeId)
+	})
 
 const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuilder({
 	store,
@@ -9624,6 +10144,46 @@ const {
 	repairProjectAssetsNow
 })
 
+const blueprintStartupLoader = createBlueprintStartupLoader({
+	store,
+	t,
+	progress: blueprintStartupProgress,
+	loadProjectById,
+	recoverComfyUIRunStates,
+	recoverMeshyTaskStates
+})
+
+const handleRequestLoadProject = async (request: { projectId: number }) => {
+	const id = Number(request?.projectId)
+	if (!Number.isFinite(id) || id <= 0) return
+	blueprintStartupReady.value = false
+	noProjectSelected.value = false
+	const ok = await blueprintStartupLoader.loadProject(id)
+	if (ok) {
+		blueprintStartupReady.value = true
+		ensureNanoAnchorIfReady()
+		await refreshProjectList()
+	} else {
+		noProjectSelected.value = true
+		blueprintStartupReady.value = true
+	}
+}
+
+const handleStartupSkipError = () => {
+	blueprintStartupProgress.skipError()
+	if (!blueprintStartupReady.value) {
+		blueprintStartupReady.value = true
+		nextTick(() => {
+			ensureNanoAnchorIfReady()
+		})
+	}
+}
+
+const goToProjectList = () => {
+	noProjectSelected.value = false
+	void router.push({ name: 'ProjectList' })
+}
+
 const onPreviewResource = async (resourceId: string) => {
 	const r = store.state.resourcesById?.[String(resourceId)]
 	if (!r) return
@@ -9734,10 +10294,10 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 			})
 			return result?.ok && result?.asset
 				? {
-					url: result.asset.url,
-					relativePath: result.asset.relativePath || '',
-					absolutePath: result.asset.absolutePath || result.asset.sourcePath || ''
-				}
+						url: result.asset.url,
+						relativePath: result.asset.relativePath || '',
+						absolutePath: result.asset.absolutePath || result.asset.sourcePath || ''
+					}
 				: null
 		} catch (err) {
 			console.error('[AIWF] importAssetFromBuffer failed:', err)
@@ -9798,7 +10358,13 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 		store.commit('copyNode', { nodeId: primaryNodeId })
 	},
 	hasClipboardNodes: () => {
-		return engineApi.hasClipboardData() || !!(store.state.clipboardNode || (Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0))
+		return (
+			engineApi.hasClipboardData() ||
+			!!(
+				store.state.clipboardNode ||
+				(Array.isArray(store.state.clipboardNodes) && store.state.clipboardNodes.length > 0)
+			)
+		)
 	},
 	removeSelectedNodes: (nodeIds) => {
 		void removeSelectedNodesWithResourceCleanup(nodeIds)
@@ -9826,7 +10392,9 @@ const selectionActions = computed<WorkflowAction[]>(() => {
 				id: 'delete',
 				label:
 					selectedNodeIds.value.length > 1
-						? t('aiworkflow.contextMenu.deleteSelectedNodes', { count: selectedNodeIds.value.length })
+						? t('aiworkflow.contextMenu.deleteSelectedNodes', {
+								count: selectedNodeIds.value.length
+							})
 						: t('aiworkflow.contextMenu.delete'),
 				target: { kind: 'none' }
 			}
@@ -9859,7 +10427,7 @@ const {
 	onNodeSearchMenuSelect,
 	onNodeSearchMenuUploadFile,
 	onLinkDropOnCanvas,
-	openNodeSearchMenu,
+	openNodeSearchMenu
 } = useAIWorkflowContextMenu({
 	store,
 	selectedNodeId,
@@ -9876,11 +10444,13 @@ const {
 	pushToast,
 	openFolderForPath,
 	syncBlueprint: syncBlueprintNow,
-	engineApi,
+	engineApi
 })
 _openNodeSearchMenuFn = openNodeSearchMenu
 _onCanvasContextMenuFn = onCanvasContextMenu
-_openInspectorFn = (open: boolean) => { inspectorOpen.value = open }
+_openInspectorFn = (open: boolean) => {
+	inspectorOpen.value = open
+}
 
 // 包装onContextMenuSelect以拦截reset-viewport，直接调用host.resetView()
 function handleContextMenuSelect(id: string) {
@@ -9903,12 +10473,7 @@ const handleLinkDropOnChatDock = (payload: {
 	const rect = dock.getInputDropRect()
 	if (!rect) return false
 	const { clientX, clientY } = payload
-	if (
-		clientX < rect.left ||
-		clientX > rect.right ||
-		clientY < rect.top ||
-		clientY > rect.bottom
-	) {
+	if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
 		return false
 	}
 	const node = store.state.nodesById[payload.fromNodeId]
@@ -10088,10 +10653,7 @@ const isPointOverChatDockInput = (clientX: number, clientY: number) => {
 	const rect = dock.getInputDropRect()
 	if (!rect) return false
 	return (
-		clientX >= rect.left &&
-		clientX <= rect.right &&
-		clientY >= rect.top &&
-		clientY <= rect.bottom
+		clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
 	)
 }
 
@@ -10365,7 +10927,9 @@ const handleImageMarkupExported = async (payload: {
 	const fromNodeId = imageMarkupContext.value.nodeId
 	const exportType = payload.exportType || 'markup'
 	const isScreenshot = exportType === 'screenshot'
-	const typeLabel = isScreenshot ? t('aiworkflow.page.mediaType.screenshot') : t('aiworkflow.page.mediaType.markedImage')
+	const typeLabel = isScreenshot
+		? t('aiworkflow.page.mediaType.screenshot')
+		: t('aiworkflow.page.mediaType.markedImage')
 	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
@@ -10383,7 +10947,9 @@ const handleImageMarkupExported = async (payload: {
 		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
 		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
-		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, { title })
+		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, {
+			title
+		})
 		if (!newNodeId) {
 			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
@@ -10396,7 +10962,11 @@ const handleImageMarkupExported = async (payload: {
 		let projectRelativePath = ''
 
 		if (isScreenshot && currentProjectId.value && isElectron()) {
-			const dl = await downloadUrlToProjectRoot(currentProjectId.value, payload.dataUrl, resourceName)
+			const dl = await downloadUrlToProjectRoot(
+				currentProjectId.value,
+				payload.dataUrl,
+				resourceName
+			)
 			if (dl?.ok && dl.relativePath) {
 				resourceUrl = `dweb://project-assets?projectId=${currentProjectId.value}&path=${encodeURIComponent(dl.relativePath)}`
 				projectRelativePath = dl.relativePath
@@ -10577,7 +11147,10 @@ const onNodeRetryMeshyFetch = async (nodeId: string) => {
 	try {
 		const res = await comfyService.meshyTask(taskId, mode)
 		if (!res?.ok) {
-			pushToast(t('aiworkflow.page.meshy.pullFailed', { error: String(res?.error ?? 'unknown') }), 'error')
+			pushToast(
+				t('aiworkflow.page.meshy.pullFailed', { error: String(res?.error ?? 'unknown') }),
+				'error'
+			)
 			return
 		}
 		const finalStatus = await applyMeshyTaskResult(nodeId, res as unknown)
@@ -10655,7 +11228,12 @@ const {
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: t('aiworkflow.page.mediaType.video') }), 'error')
+			pushToast(
+				t('aiworkflow.page.media.importFailedNoLocalUrl', {
+					mediaType: t('aiworkflow.page.mediaType.video')
+				}),
+				'error'
+			)
 			return false
 		}
 		store.commit('addResource', base)
@@ -10667,9 +11245,8 @@ const {
 		if (!(pid > 0)) return ''
 		const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')
 		const resourceId = `ark-${kind}-new-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-		const resourceName = kind === 'image'
-			? `ark_image_${timestamp}.png`
-			: `ark_video_${timestamp}.mp4`
+		const resourceName =
+			kind === 'image' ? `ark_image_${timestamp}.png` : `ark_video_${timestamp}.mp4`
 		const base: GeneratedResourceBase = {
 			id: resourceId,
 			kind,
@@ -10679,7 +11256,15 @@ const {
 		finalizeGeneratedResourceLocalUrl(base, pid)
 		base.url = String(base.url || '').trim()
 		if (!base.url) {
-			pushToast(t('aiworkflow.page.media.importFailedNoLocalUrl', { mediaType: kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video') }), 'error')
+			pushToast(
+				t('aiworkflow.page.media.importFailedNoLocalUrl', {
+					mediaType:
+						kind === 'image'
+							? t('aiworkflow.page.mediaType.image')
+							: t('aiworkflow.page.mediaType.video')
+				}),
+				'error'
+			)
 			return ''
 		}
 		const vp = store.state.viewport
@@ -10692,8 +11277,11 @@ const {
 		const nodeH = 160
 		const worldX = worldCenterX - nodeW / 2
 		const worldY = worldCenterY - nodeH / 2
-		const titleLabel = kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
-		const nodeId = engineApi.addNode(kind as 'image' | 'video', worldX, worldY, { title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel })
+		const titleLabel =
+			kind === 'image' ? t('aiworkflow.page.mediaType.image') : t('aiworkflow.page.mediaType.video')
+		const nodeId = engineApi.addNode(kind as 'image' | 'video', worldX, worldY, {
+			title: prompt ? `${titleLabel}：${prompt.slice(0, 20)}` : titleLabel
+		})
 		if (!nodeId) return ''
 		store.commit('addResource', base)
 		store.commit('setNodeResource', { nodeId, resourceId })
@@ -10708,12 +11296,25 @@ const getGeminiService = () => {
 	if (!isRecord(dweb) || !isRecord(dweb.gemini)) return null
 	return dweb.gemini as unknown as {
 		health: () => Promise<{ ok: boolean; configured?: boolean }>
-		getTask: (payload: { taskId: string }) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
-		listTasks: (payload?: { limit?: number; status?: string }) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
+		getTask: (payload: {
+			taskId: string
+		}) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
+		listTasks: (payload?: {
+			limit?: number
+			status?: string
+		}) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
 		cancel: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
 		deleteTask: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
-		clearCompleted: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
-		getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{ ok: boolean; path?: string; filename?: string; mimeType?: string; error?: string }>
+		clearCompleted: (
+			payload?: Record<string, unknown>
+		) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
+		getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{
+			ok: boolean
+			path?: string
+			filename?: string
+			mimeType?: string
+			error?: string
+		}>
 	}
 }
 
@@ -10903,7 +11504,9 @@ const onResourceDraggedToBlueprint = (
 	const worldX = (screenX - vp.panX) / vp.zoom
 	const worldY = (screenY - vp.panY) / vp.zoom
 
-	const title = String(resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')).slice(0, 200)
+	const title = String(
+		resource.name || resourceId || t('aiworkflow.page.resourceNode.defaultTitle')
+	).slice(0, 200)
 	const nodeType = resource.kind === 'video' ? 'video' : 'image'
 	const newNodeId = engineApi.addNode(nodeType, worldX, worldY, { title })
 	if (!newNodeId) {
@@ -11133,7 +11736,11 @@ const registerResourceManagerEventListener = () => {
 
 const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) => {
 	const { event, data } = payload || {}
-	console.log('[AIWorkflowPage][template-center] received event:', event, data ? 'has data' : 'no data')
+	console.log(
+		'[AIWorkflowPage][template-center] received event:',
+		event,
+		data ? 'has data' : 'no data'
+	)
 	if (!event) return
 	switch (String(event)) {
 		case 'apply-template-confirm':
@@ -11141,12 +11748,25 @@ const onTemplateCenterWindowEvent = (payload: { event: string; data: unknown }) 
 			if (data && typeof data === 'object' && 'template' in data && 'target' in data) {
 				const options = data as TemplateApplyOptions
 				const remoteTemplate = options.template
-				console.log('[AIWorkflowPage][template-center] looking up local template for id:', remoteTemplate?.id, 'local templates count:', templateCenterTemplates.value.length)
-				const localTemplate = templateCenterTemplates.value.find(t => t.id === remoteTemplate.id) || remoteTemplate
-				console.log('[AIWorkflowPage][template-center] found localTemplate:', !!localTemplate, 'packageData:', !!(localTemplate as TemplateItem)?.packageData)
+				console.log(
+					'[AIWorkflowPage][template-center] looking up local template for id:',
+					remoteTemplate?.id,
+					'local templates count:',
+					templateCenterTemplates.value.length
+				)
+				const localTemplate =
+					templateCenterTemplates.value.find((t) => t.id === remoteTemplate.id) || remoteTemplate
+				console.log(
+					'[AIWorkflowPage][template-center] found localTemplate:',
+					!!localTemplate,
+					'packageData:',
+					!!(localTemplate as TemplateItem)?.packageData
+				)
 				void onConfirmApplyTemplate({ ...options, template: localTemplate })
 			} else {
-				console.error('[AIWorkflowPage][template-center] apply-template-confirm: invalid data format, missing template or target')
+				console.error(
+					'[AIWorkflowPage][template-center] apply-template-confirm: invalid data format, missing template or target'
+				)
 			}
 			break
 		case 'apply-template':
@@ -11189,12 +11809,20 @@ const registerTemplateCenterEventListener = () => {
 	const dweb = safeGetRecord(w, 'dweb')
 	const dwebAiworkflow = dweb ? safeGetRecord(dweb, 'aiworkflow') : undefined
 	const onEvent = dwebAiworkflow?.onTemplateCenterEvent
-	console.log('[AIWorkflowPage] registerTemplateCenterEventListener: isElectron=', isElectronRuntime, 'hasOnEvent=', typeof onEvent)
+	console.log(
+		'[AIWorkflowPage] registerTemplateCenterEventListener: isElectron=',
+		isElectronRuntime,
+		'hasOnEvent=',
+		typeof onEvent
+	)
 	if (!isElectronRuntime || typeof onEvent !== 'function') return
 	templateCenterEventListenerId = (
 		onEvent as (cb: (payload: { event: string; data: unknown }) => void) => number
 	)(onTemplateCenterWindowEvent)
-	console.log('[AIWorkflowPage] template center event listener registered, id:', templateCenterEventListenerId)
+	console.log(
+		'[AIWorkflowPage] template center event listener registered, id:',
+		templateCenterEventListenerId
+	)
 	void loadTemplates({ forceCloudRefresh: false })
 }
 
@@ -11392,8 +12020,10 @@ const { mediaRelativePathFromUrl, migrateCurrentResourcesToProjectScope } =
 		resolveBackendUrl,
 		normalizeSourcePathKey,
 		isDjangoManagedResource: isDjangoManagedResource as (resource: unknown) => boolean,
-		importAssetIntoProjectScope: (payload: Parameters<typeof importAssetIntoProjectScope>[0]) => importAssetIntoProjectScope(payload),
-	deleteAsset: (payload: Parameters<typeof blueprintProjectService.deleteAsset>[0]) => blueprintProjectService.deleteAsset(payload),
+		importAssetIntoProjectScope: (payload: Parameters<typeof importAssetIntoProjectScope>[0]) =>
+			importAssetIntoProjectScope(payload),
+		deleteAsset: (payload: Parameters<typeof blueprintProjectService.deleteAsset>[0]) =>
+			blueprintProjectService.deleteAsset(payload),
 		pushToast
 	})
 
@@ -11564,11 +12194,7 @@ const onDomNodeStartLink = (payload: {
 	)
 }
 
-const onDomNodeEndLink = (payload: {
-	nodeId: string
-	anchorId: string
-	anchorIndex: number
-}) => {
+const onDomNodeEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
 	onEndLink(payload)
 }
 
@@ -11694,37 +12320,40 @@ watch(
 				pendingScreenshotNodeIds.value = pendingSet
 
 				nextTick(() => {
-					setTimeout(() => {
-						const capturePromises: Promise<void>[] = []
-						for (const node of pendingCapture) {
-							const promise = (async () => {
-								const nodeId = String(node.id)
-								try {
-									await scheduleNodeScreenshot(node, 0, 'high', true)
-									const version = getNodeScreenshotVersion(node)
-									const cached = screenshotPool.getCachedScreenshot(nodeId, version)
-									if (cached) {
-										const newMap = new Map(nodeScreenshotMap.value)
-										newMap.set(nodeId, cached)
-										nodeScreenshotMap.value = newMap
-										try {
-											await loadScreenshotToCanvas(cached)
-										} catch {}
-										initCanvasScreenshotPool()
+					setTimeout(
+						() => {
+							const capturePromises: Promise<void>[] = []
+							for (const node of pendingCapture) {
+								const promise = (async () => {
+									const nodeId = String(node.id)
+									try {
+										await scheduleNodeScreenshot(node, 0, 'high', true)
+										const version = getNodeScreenshotVersion(node)
+										const cached = screenshotPool.getCachedScreenshot(nodeId, version)
+										if (cached) {
+											const newMap = new Map(nodeScreenshotMap.value)
+											newMap.set(nodeId, cached)
+											nodeScreenshotMap.value = newMap
+											try {
+												await loadScreenshotToCanvas(cached)
+											} catch {}
+											initCanvasScreenshotPool()
+										}
+									} catch (err) {
+										console.warn('[Screenshot] pending capture failed for node:', nodeId, err)
+									} finally {
+										const newPendingSet = new Set(pendingScreenshotNodeIds.value)
+										newPendingSet.delete(nodeId)
+										pendingScreenshotNodeIds.value = newPendingSet
+										refreshCanvasNodeLayer()
 									}
-								} catch (err) {
-									console.warn('[Screenshot] pending capture failed for node:', nodeId, err)
-								} finally {
-									const newPendingSet = new Set(pendingScreenshotNodeIds.value)
-									newPendingSet.delete(nodeId)
-									pendingScreenshotNodeIds.value = newPendingSet
-									refreshCanvasNodeLayer()
-								}
-							})()
-							capturePromises.push(promise)
-						}
-						void Promise.all(capturePromises)
-					}, isWarmupExit ? 0 : 50)
+								})()
+								capturePromises.push(promise)
+							}
+							void Promise.all(capturePromises)
+						},
+						isWarmupExit ? 0 : 50
+					)
 				})
 			}
 		}
@@ -12051,20 +12680,50 @@ onMounted(() => {
 		Number.isFinite(parsedProjectId) && parsedProjectId > 0 ? Math.floor(parsedProjectId) : null
 
 	void (async () => {
-		if (resolvedProjectId) {
-			await runProjectEnterSequence({ kind: 'open', projectId: resolvedProjectId })
-			return
+		let startupOk = false
+		try {
+			if (resolvedProjectId) {
+				startupOk = await blueprintStartupLoader.loadProject(resolvedProjectId)
+			} else if (hasNewProjectQuery && rawRootPath) {
+				blueprintStartupProgress.start(t('aiworkflow.page.startupLoadingTitle'))
+				blueprintStartupProgress.finish()
+				noProjectSelected.value = true
+				blueprintStartupReady.value = true
+				return
+			} else {
+				const lastId = await readLastProjectId()
+				if (lastId) {
+					startupOk = await blueprintStartupLoader.loadProject(lastId)
+				} else {
+					const listRes = await blueprintProjectService.listProjects()
+					const projects =
+						listRes?.ok && Array.isArray((listRes as { projects?: unknown[] }).projects)
+							? (listRes as { projects: unknown[] }).projects
+							: []
+					if (projects.length > 0) {
+						const firstId = Number((projects[0] as Record<string, unknown>)?.id || 0)
+						if (Number.isFinite(firstId) && firstId > 0) {
+							startupOk = await blueprintStartupLoader.loadProject(firstId)
+						}
+					}
+				}
+			}
+		} catch (err) {
+			console.error('[BlueprintStartup] Unexpected error:', err)
+			blueprintStartupProgress.fail(getErrorMessage(err), true)
 		}
-		if (hasNewProjectQuery && rawRootPath) {
-			// 直接用 newProject query 进入已不再支持，跳回项目列表
+
+		if (startupOk) {
+			blueprintStartupReady.value = true
+			ensureNanoAnchorIfReady()
+			setTimeout(() => {
+				checkAndShowWarmupPrompt()
+			}, 1500)
+		} else if (!blueprintStartupReady.value) {
+			blueprintStartupProgress.start(t('aiworkflow.page.startupLoadingTitle'))
+			blueprintStartupProgress.finish()
 			noProjectSelected.value = true
-			return
-		}
-		await tryAutoLoadLastProject()
-		await recoverComfyUIRunStates({ silent: true })
-		await recoverMeshyTaskStates({ silent: true })
-		if (!currentProjectId.value) {
-			noProjectSelected.value = true
+			blueprintStartupReady.value = true
 		}
 	})()
 

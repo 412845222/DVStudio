@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { AIWorkflowStore } from '@/store/aiworkflow/store'
+import { AIWorkflowStore, createDefaultAIWorkflowState } from '@/store/aiworkflow/store'
 
 describe('store/aiworkflow', () => {
 	let store: typeof AIWorkflowStore
@@ -325,6 +325,70 @@ describe('store/aiworkflow', () => {
 			expect(node.nodeChatDraft).toBeUndefined()
 			expect(node.nodeChatParams).toBeUndefined()
 			expect(node.prompt).toBeUndefined()
+		})
+	})
+
+	describe('createDefaultAIWorkflowState - empty blueprint (no default nodes)', () => {
+		it('should return empty nodesById and nodeOrder for new projects', () => {
+			const state = createDefaultAIWorkflowState()
+			expect(Object.keys(state.nodesById)).toHaveLength(0)
+			expect(state.nodeOrder).toHaveLength(0)
+			expect(state.edgesById).toEqual({})
+			expect(state.edgeOrder).toHaveLength(0)
+		})
+
+		it('should have default viewport at origin with zoom 1', () => {
+			const state = createDefaultAIWorkflowState()
+			expect(state.viewport).toEqual({ zoom: 1, panX: 0, panY: 0 })
+		})
+
+		it('should have no selected nodes or edges by default', () => {
+			const state = createDefaultAIWorkflowState()
+			expect(state.selectedNodeId).toBeNull()
+			expect(state.selectedNodeIds).toEqual([])
+			expect(state.selectedEdgeId).toBeNull()
+		})
+	})
+
+	describe('hydrateDraft - empty snapshot should stay empty (no default node injection)', () => {
+		it('should produce empty canvas when hydrating an empty snapshot', () => {
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			expect(Object.keys(store.state.nodesById)).toHaveLength(0)
+			expect(store.state.nodeOrder).toHaveLength(0)
+			expect(Object.keys(store.state.edgesById)).toHaveLength(0)
+		})
+
+		it('should not inject NanoBanana reference node when hydrating empty snapshot', () => {
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			const allNodes = Object.values(store.state.nodesById)
+			const nanoNodes = allNodes.filter(
+				(n) => n.type === 'nanoanchor' || (n.title && n.title.includes('NanoBanana'))
+			)
+			expect(nanoNodes).toHaveLength(0)
 		})
 	})
 })

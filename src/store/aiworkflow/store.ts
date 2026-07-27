@@ -100,32 +100,16 @@ const normalizeSceneLayoutLightingControls = (
 }
 
 export const createDefaultAIWorkflowState = (): WorkflowState => {
-	const demo: WorkflowNode = {
-		id: 'demo',
-		type: 'base',
-		title: '工作流节点（示意）',
-		alias: '工作流节点',
-		subtitle: '入口参数 / 出口结果',
-		worldX: 120,
-		worldY: -40,
-		width: 240,
-		height: 160,
-		sizeCustomized: false,
-		resourceId: null,
-		inputs: [{ id: 'in-0', label: '入口' }],
-		outputs: [{ id: 'out-0', label: '出口' }],
-		createdAt: Date.now()
-	}
 	return {
 		viewport: { zoom: 1, panX: 0, panY: 0 },
-		nodesById: { [demo.id]: demo },
-		nodeOrder: [demo.id],
+		nodesById: {},
+		nodeOrder: [],
 		edgesById: {},
 		edgeOrder: [],
 		resourcesById: {},
 		resourceOrder: [],
-		selectedNodeId: demo.id,
-		selectedNodeIds: [demo.id],
+		selectedNodeId: null,
+		selectedNodeIds: [],
 		selectedEdgeId: null,
 		clipboardNode: null,
 		clipboardNodes: null,
