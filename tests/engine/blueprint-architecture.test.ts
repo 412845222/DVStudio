@@ -353,4 +353,108 @@ describe('🔴 Blueprint Architecture Compliance Tests', () => {
       expect(hasGuard, 'onBlueprintEditorSelectionChange must set isUpdatingFromStore=true before committing selection changes to Vuex').toBe(true)
     })
   })
+
+  describe('Rule 11: main.ts must pass through Ctrl+Z/Y/Delete for blueprint routes', () => {
+    it('window keydown handler in main.ts should skip stopPropagation for AIWorkflow/BlueprintTest routes', () => {
+      const mainFile = allSourceFiles.find(
+        f => f.relativePath === 'src/main.ts'
+      )
+      expect(mainFile, 'main.ts should exist').toBeTruthy()
+      if (!mainFile) return
+
+      const content = mainFile.content
+
+      const hasRouteCheck = /AIWorkflow.*BlueprintTest|BlueprintTest.*AIWorkflow/.test(content)
+      const hasPassThrough = /PASS THROUGH|return.*engine handles/.test(content)
+
+      if (!hasRouteCheck || !hasPassThrough) {
+        console.log('\n❌ main.ts does not have route-aware pass-through for Ctrl+Z/Y on blueprint routes')
+      }
+
+      expect(hasRouteCheck, 'main.ts should check for AIWorkflow/BlueprintTest routes').toBe(true)
+      expect(hasPassThrough, 'main.ts should pass through keyboard events for blueprint routes instead of stopping propagation').toBe(true)
+    })
+  })
+
+  describe('Rule 12: loadBlueprint must support incremental updates without clearing command stack', () => {
+    it('loadBlueprint should have incremental update path and must NOT call commands.clear() within loadBlueprint', () => {
+      const sceneFile = allSourceFiles.find(
+        f => f.relativePath === 'src/engine/blueprint/BlueprintScene.ts'
+      )
+      expect(sceneFile, 'BlueprintScene.ts should exist').toBeTruthy()
+      if (!sceneFile) return
+
+      const content = sceneFile.content
+
+      const loadMatch = content.match(/loadBlueprint\s*\([^)]*\)\s*:\s*void\s*\{([\s\S]*?)(?=\n\s*(?:public|private|protected)\s+\w+[\s(])/)
+      if (!loadMatch) {
+        expect(true, 'loadBlueprint method exists').toBe(true)
+        return
+      }
+
+      const loadBody = loadMatch[1]
+      const hasIncrementalUpdate = /existing\s*=.*_nodeMap\.get/.test(loadBody) || /posChanged|sizeChanged/.test(loadBody)
+      const hasCommandsClearInLoad = /this\.commands\.clear\s*\(/.test(loadBody)
+
+      if (!hasIncrementalUpdate) {
+        console.log('\n❌ loadBlueprint does not appear to have incremental update logic')
+      }
+      if (hasCommandsClearInLoad) {
+        console.log('\n❌ loadBlueprint calls this.commands.clear() which destroys undo history')
+      }
+
+      expect(hasIncrementalUpdate, 'loadBlueprint should incrementally update existing nodes instead of full dispose/recreate').toBe(true)
+      expect(hasCommandsClearInLoad, 'loadBlueprint must NOT call this.commands.clear() as it destroys undo history').toBe(false)
+    })
+  })
+
+  describe('Rule 13: syncLoadSignature must be called after command execution/undo/redo', () => {
+    it('executeCommand/undo/redo must update _lastLoadSignature to prevent feedback loops', () => {
+      const sceneFile = allSourceFiles.find(
+        f => f.relativePath === 'src/engine/blueprint/BlueprintScene.ts'
+      )
+      expect(sceneFile, 'BlueprintScene.ts should exist').toBeTruthy()
+      if (!sceneFile) return
+
+      const content = sceneFile.content
+
+      const hasSyncMethod = /syncLoadSignature\s*\(/.test(content) || /_lastLoadSignature\s*=.*node\.data\.worldX/.test(content)
+      const executeCallsSync = /executeCommand[\s\S]{0,200}syncLoadSignature/.test(content)
+      const undoCallsSync = /undo\s*\([\s\S]{0,200}syncLoadSignature/.test(content)
+      const redoCallsSync = /redo\s*\([\s\S]{0,200}syncLoadSignature/.test(content)
+
+      if (!hasSyncMethod) {
+        console.log('\n❌ BlueprintScene does not have syncLoadSignature method')
+      }
+
+      expect(hasSyncMethod, 'BlueprintScene should have syncLoadSignature method').toBe(true)
+      expect(executeCallsSync, 'executeCommand must call syncLoadSignature after executing command').toBe(true)
+      expect(undoCallsSync, 'undo must call syncLoadSignature after successful undo').toBe(true)
+      expect(redoCallsSync, 'redo must call syncLoadSignature after successful redo').toBe(true)
+    })
+  })
+
+  describe('Rule 14: Scene.setupKeyboardShortcuts must handle Ctrl+Z/Y for undo/redo', () => {
+    it('base Scene class should handle Ctrl+Z (undo) and Ctrl+Y/Shift+Z (redo) keyboard shortcuts', () => {
+      const sceneFile = allSourceFiles.find(
+        f => f.relativePath === 'src/engine/graphbase/scene/Scene.ts'
+      )
+      expect(sceneFile, 'Scene.ts should exist').toBeTruthy()
+      if (!sceneFile) return
+
+      const content = sceneFile.content
+
+      const hasCtrlZ = /ctrl\s*&&\s*key\s*===\s*['"]z['"]/.test(content) || /KeyZ.*ctrlKey|ctrlKey.*KeyZ/.test(content)
+      const hasUndoCall = /this\.undo\s*\(/.test(content)
+      const hasRedoCall = /this\.redo\s*\(/.test(content)
+
+      if (!hasCtrlZ || !hasUndoCall) {
+        console.log('\n❌ Scene.setupKeyboardShortcuts does not handle Ctrl+Z undo')
+      }
+
+      expect(hasCtrlZ, 'Scene should detect Ctrl+Z keyboard shortcut').toBe(true)
+      expect(hasUndoCall, 'Scene should call this.undo() on Ctrl+Z').toBe(true)
+      expect(hasRedoCall, 'Scene should call this.redo() for redo shortcuts').toBe(true)
+    })
+  })
 })
