@@ -209,17 +209,268 @@ AI工作流蓝图已迁移到**图形底座（GraphBase）+ 蓝图业务层（Bl
 - `useNodeScreenshotPool.ts`：节点截图池 composable，管理截图的内存缓存与持久化
 - `index.ts`：统一导出
 
-## 8. 节点聊天对话框（`src/ui/BluePrint/node-dialog/`）
+## 8. 节点底部对话框（Node Chat Dialog）Agent 开发边界
 
-部分节点（如需要 AI 辅助输入的节点）支持内置聊天对话框：
+> **重要**：节点底部对话框是AI工作流中**单节点级AI交互入口**，与全局Agent聊天（顶部Chat面板）有本质区别。不同节点类型的对话框职责、输出格式、后端接口完全不同，修改时必须严格遵守以下边界。
 
-- `NodeChatDialog.vue`：节点聊天对话框容器
-- `NodeChatInput.vue`：聊天输入框
-- `NodeChatParamPanel.vue`：聊天参数面板
-- `nodeChatConfig.ts`：节点聊天配置
-- `index.ts`：统一导出
+### 8.1 通用架构
 
-通过节点上的聊天按钮打开，用于针对单个节点进行 AI 交互（如生成文本描述、调整参数等）。聊天通过 `chat` 后端 IPC 模块的流式通道实现。
+节点底部对话框的通用代码位于 `src/ui/BluePrint/node-dialog/`：
+
+| 文件 | 职责 |
+|------|------|
+| `NodeChatDialog.vue` | 对话框容器（定位、展开/折叠、动画） |
+| `NodeChatInput.vue` | 输入框组件（消息输入、发送按钮、停止生成） |
+| `NodeChatParamPanel.vue` | 参数面板（模型选择、分辨率、比例等参数配置） |
+| `nodeChatConfig.ts` | 节点聊天类型定义、默认参数、选项常量、参数规范化 |
+| `useNodeChatSync.ts` | 节点草稿/聊天状态同步（draft ↔ node.data ↔ Vuex） |
+| `index.ts` | 统一导出 |
+
+业务执行逻辑位于 `src/views/AIWorkflow/node-business/chat/useAIWorkflowNodeGeneration.ts`，根据节点类型（`nodeType`）分发到不同的任务函数。
+
+**通用数据流**：
+```
+用户输入 → NodeChatInput → handleSubmit → useNodeChatSync
+  → runNodeGenerationTask → 根据nodeType分发:
+      ├─ text → runTextTask() → third-party:blueprintChatStream
+      ├─ image → runImageTask() → gemini/seedream/meshy/tripo3d对应接口
+      ├─ video → runVideoTask() → seedance接口
+      ├─ model3d → runModel3DTask() → meshy/tripo3d接口
+      └─ blender → useBlenderAgentChat() → blender MCP接口
+```
+
+---
+
+### 8.2 文本节点 (text) — 提示词生成器
+
+**核心定位**：文本节点是工作流中的**提示词中转站**，输出必须是纯提示词文本，可直接被下游图像/视频/3D节点读取使用，不能有对话式内容。
+
+| 维度 | 规范 |
+|------|------|
+| **节点类型** | `text` |
+| **后端模块** | `electron/backend/modules/third-party/` |
+| **IPC通道** | 流式: `dweb:third-party:blueprint:chat:stream`；非流式: `dweb:third-party:blueprint:chat` |
+| **支持模型** | `bytedance`(豆包/Seed系列，默认)、`gemini` |
+| **默认模型版本** | `doubao-seed-evolving` / `gemini-3.5-flash` |
+| **输出写入位置** | `node.data.draft[assistantIdx].content` → 节点文本预览 → 下游节点输入 |
+| **前端执行函数** | `runTextTask()` in `useAIWorkflowNodeGeneration.ts` |
+| **系统Prompt常量** | `BLUEPRINT_TEXT_SYSTEM_PROMPT` in `service.mjs` |
+
+**🔴 输出格式强制规则**：
+1. **纯提示词输出**：直接输出提示词文本，禁止任何解释、前言、后记
+2. **禁止对话语气**：禁止"以下是..."、"希望对你有帮助"等助手式语言
+3. **禁止Markdown装饰**：禁止代码块（```` ``` ````）、标题（`###`）、分割线（`---`）、emoji、列表符号
+4. **禁止提及软件**：禁止提到DVStudio或任何软件名称
+5. **禁止参数教程**：禁止给出参数建议、使用教程、调整方案
+6. **语言一致**：用户输入中文输出中文，输入英文输出英文
+7. **可直接使用**：输出内容就是最终提示词，用逗号分隔关键词标签，自然流畅
+
+**可配置参数**（`nodeChatConfig.ts` → `getDefaultParamsForType('text')`）：
+- `model`: `'bytedance' | 'gemini'` — 模型提供商
+- `textModelVersion`: 豆包模型版本（默认 `'doubao-seed-evolving'`）
+- `geminiTextModelVersion`: Gemini文本模型版本（默认 `'gemini-3.5-flash'`）
+- `speed`: `'fast' | 'normal' | 'slow'`
+- `thinking`: `'enabled' | 'disabled'`
+- `responseFormat`: `'text' | 'json_object'`
+- `maxTokens`: `2048 | 4096 | 8192 | 16384`（默认4096）
+
+**禁止行为**：
+- ❌ 复用全局Agent聊天的系统prompt（如"你是DVStudio蓝图助手"）
+- ❌ 输出多段内容（中文+英文+负向提示词分块）
+- ❌ 输出教程、参数建议、调整方案
+- ❌ 前端直接调用外部LLM API，必须通过Electron IPC
+
+---
+
+### 8.3 图片节点 (image) — AI图像生成
+
+**核心定位**：图片节点用于直接生成图像资产，输出是图片资源URL，输入支持文本提示词+参考图。
+
+| 维度 | 规范 |
+|------|------|
+| **节点类型** | `image` |
+| **后端模块** | `third-party/`（gemini/seedream）、`meshy/`、`tripo3d/` |
+| **IPC通道** | 按模型走对应模块的generate通道（如 `dweb:gemini:generate:stream`、`dweb:third-party:seedream:generate:stream`等） |
+| **支持模型** | `gemini`(NanoBanana，默认)、`seedream`、`meshy`、`tripo3d`(文生图) |
+| **输出写入位置** | 生成的图片URL → 节点资源池 → `node.data.outputs` → 节点预览 |
+| **前端执行函数** | `runImageTask()` in `useAIWorkflowNodeGeneration.ts` |
+
+**各模型参数差异**（由`NodeChatParamPanel.vue`根据选中模型动态渲染）：
+- **Gemini/NanoBanana**: 模型版本（3.1-flash/3.1-pro/3.1-flash-lite等）、尺寸（512px~4K）、宽高比（1:1/16:9/9:16等14种）、数量（1/2/4）、思考深度（快速/深度）、负向提示词
+- **SeeDream**: 模型版本（v4.0/v4.5/v5.0/v5.0-lite）、尺寸（1K~4K）、宽高比、输出格式（png/jpeg）、数量、水印开关、随机种子、负向提示词
+- **Meshy文生图**: AI模型（nano-banana/nano-banana-2/nano-banana-pro/gpt-image-2）、宽高比、姿势模式（无/A-pose/T-pose）、负向提示词、多视图开关、随机种子、输出数量
+- **Tripo3D文生图**: 模型（seedream_v4/seedream_v5/banana/banana_pro/banana2/chat_image系列）、尺寸、宽高比、输出格式、水印、模板（asset_extraction/character_completion/t_pose等）、数量、负向提示词、参考强度、随机种子
+
+**参考图收集规则**：
+- 通过`collectReferenceImages()`函数收集节点上游连接的图片节点输出
+- 支持多张参考图，按连接顺序传入
+- 图片节点本身也可以有图片输入边（图生图模式）
+
+**任务状态追踪**：
+- 任务执行过程中实时更新`node.data.taskStatus`（pending/processing/completed/failed）
+- 完成后将生成的图片资源写入节点输出端口
+- 失败时显示错误消息并保留在对话框历史中
+
+---
+
+### 8.4 视频节点 (video) — AI视频生成
+
+**核心定位**：视频节点用于生成视频资产，输出是视频文件URL，支持文生视频、图生视频、首尾帧等模式。
+
+| 维度 | 规范 |
+|------|------|
+| **节点类型** | `video` |
+| **后端模块** | `electron/backend/modules/seedance/` |
+| **IPC通道** | `dweb:seedance:generate:stream` |
+| **支持模型** | `seedance`（字节Seedance系列） |
+| **默认模型版本** | `doubao-seedance-2-0-260128` |
+| **输出写入位置** | 生成的视频URL → 节点资源池 → `node.data.outputs` → 视频节点预览 |
+| **前端执行函数** | `runVideoTask()` in `useAIWorkflowNodeGeneration.ts` |
+| **任务存储** | LocalDB `video_tasks` 表 |
+
+**可配置参数**：
+- `modelVersion`: Seedance模型版本（2.0/2.0 Fast/2.0 Mini/1.5 Pro/1.0 Pro等）
+- `mode`: `auto | text_to_video | image_to_video | first-last | reference | video_edit`
+- `resolution`: `480p | 720p | 1080p | 4k`
+- `ratio`: `adaptive | 16:9 | 9:16 | 1:1 | 4:3 | 3:4`
+- `duration`: 视频时长（-1自动/4/5/6/8/10/12/15秒）
+- `seed`: 随机种子（-1为随机）
+- `generateAudio`: 是否生成音频
+- `watermark`: 是否加水印
+- `cameraFixed`: 是否固定镜头
+- `returnLastFrame`: 是否返回最后一帧
+- `enableWebSearch`: 是否启用联网搜索
+- `priority`: 任务优先级
+
+**参考输入**：
+- 图生视频模式：收集上游图片节点输出作为首帧
+- 首尾帧模式：收集两张参考图作为起始帧和结束帧
+- 视频编辑模式：收集上游视频节点输出作为编辑源
+
+---
+
+### 8.5 3D模型节点 (model3d) — AI 3D资产生成
+
+**核心定位**：3D模型节点用于生成3D模型资产（GLB/FBX/OBJ等格式），支持文生3D、图生3D、多视图生成、纹理烘焙、网格处理等多种任务模式。
+
+| 维度 | 规范 |
+|------|------|
+| **节点类型** | `model3d` |
+| **后端模块** | `electron/backend/modules/meshy/`、`electron/backend/modules/tripo3d/` |
+| **IPC通道** | 按provider走对应模块通道（`dweb:meshy:*` / `dweb:tripo3d:*`） |
+| **支持Provider** | `meshy`（默认）、`tripo3d` |
+| **输出写入位置** | 生成的3D模型URL → 节点资源池 → `node.data.outputs` → Three.js预览 |
+| **前端执行函数** | `runModel3DTask()`（分发到meshy/tripo3d对应composable） |
+| **任务存储** | LocalDB `meshy_tasks` / `tripo3d_tasks` 表 |
+
+**Meshy支持的任务模式**：
+- `text-to-3d`: 文生3D
+- `image-to-3d`: 单图生3D
+- `multi-image-to-3d`: 多图生3D
+- `remesh`: 重拓扑
+- `retexture`: 重纹理
+- `uv-unwrap`: UV展开
+
+**Tripo3D支持的任务模式**：
+- `text_to_model`: 文生3D
+- `image_to_model`: 单图/多图生3D
+- `multiview_to_model`: 多视图生3D
+- `texture`: 纹理烘焙
+- `refine`: 模型精炼
+- `mesh_segment`: 网格分割
+- `mesh_smartsegment`: 智能分割
+- `mesh_complete`: 网格补全
+- `mesh_decimate`: 网格减面
+- `models_convert`: 格式转换
+
+**关键参数（因provider和模式差异较大，由参数面板动态渲染）**：
+- 通用：provider、taskMode、输出格式（glb/fbx/obj/stl/usdz/3mf）
+- Meshy专属：AI模型（latest/meshy-6/meshy-5）、模型类型（standard/lowpoly）、拓扑（triangle/quad）、目标面数、对称模式、原点位置、姿势模式、PBR、高清纹理、面数限制
+- Tripo3D专属：模型系列（H系列/P系列）、模型版本、面数限制（移动端/网页/游戏/影视级别）、纹理质量、几何质量、纹理对齐方式、朝向、自动尺寸、压缩、导出UV、智能低模、部件生成、分割类型、粒度、减面模型版本、转换格式/面数/纹理尺寸等
+
+**参数规范化**：
+- 所有参数必须经过 `normalizeTripo3DParams()` 规范化处理
+- 根据模型版本和任务模式自动禁用不兼容的参数
+- P系列模型禁用高级参数（quad/smartLowPoly/generateParts等）
+
+**参考图收集**：
+- 图生3D/多视图生3D模式：收集上游图片节点输出
+- 纹理烘焙模式：收集目标模型+参考纹理图
+- 多视图模式：收集前/左/后/右视图图片
+
+---
+
+### 8.6 Blender节点 (blender) — Blender MCP Agent 控制
+
+**核心定位**：Blender节点通过MCP协议与Blender软件通信，由Agent直接操控Blender执行建模、材质、动画、渲染等操作。这是唯一需要外部软件（Blender）配合的节点类型。
+
+| 维度 | 规范 |
+|------|------|
+| **节点类型** | `blender` |
+| **后端模块** | `electron/backend/modules/blender/` |
+| **IPC通道** | `dweb:blender:*`（MCP协议通信） |
+| **支持Agent后端** | `dvsagent`(默认)、`codex`、`copilot` |
+| **默认模型** | `bytedance` / `doubao-seed-evolving` |
+| **输出** | Blender操作结果、3D场景修改、可导出资产 |
+| **前端业务文件** | `src/views/AIWorkflow/node-business/blender/useBlenderAgentChat.ts` |
+| **前置依赖** | 需要Blender已启动并通过MCP连接 |
+
+**可配置参数**：
+- `agentBackend`: Agent后端选择（dvsagent/codex/copilot）
+- `model`: 模型提供商（默认bytedance）
+- `modelId`/`textModelVersion`: 模型版本
+- `thinkingEffort`: 思考深度（disabled/low/medium/high）
+
+**特殊机制**：
+- **MCP工具调用**：Agent可调用Blender MCP工具执行具体操作（创建物体、修改材质、设置动画等）
+- **工作区管理**：Blender工作区脚本/截图存储在项目临时目录，由`workspace.mjs`管理
+- **上游输入处理**：通过`useBlenderUpstreamInputs.ts`收集上游节点（图片/模型/文本）的输出作为Blender上下文
+- **连接状态监听**：实时监听Blender MCP连接状态，未连接时提示用户启动Blender
+- **事件通知**：Blender连接/断开/操作结果通过事件总线通知前端
+
+**禁止行为**：
+- ❌ 前端直接启动Blender进程，必须通过后端IPC
+- ❌ 前端直接与Blender MCP服务器通信，必须通过后端blender模块桥接
+- ❌ 绕过MCP协议直接调用Blender Python API
+
+---
+
+### 8.7 节点聊天对话框开发规范
+
+#### 🔴 系统Prompt边界
+| 节点类型 | 系统Prompt用途 | 是否允许对话式输出 |
+|---------|---------------|------------------|
+| text | 提示词优化器 | ❌ 禁止，必须纯提示词 |
+| image | 图像生成提示词理解 | ✅ 允许简短状态反馈 |
+| video | 视频生成提示词理解 | ✅ 允许简短状态反馈 |
+| model3d | 3D生成需求理解 | ✅ 允许简短状态反馈 |
+| blender | Blender操作Agent | ✅ 允许工具调用过程反馈 |
+
+**注意**：只有`text`节点强制纯提示词输出，其他生成类节点允许输出简短的状态说明（如"正在生成..."、"已完成"），但主要输出是生成的资产而非文本。
+
+#### 🔴 参数面板规范
+1. **参数面板组件**：统一使用`NodeChatParamPanel.vue`，通过`nodeType`动态渲染对应参数控件
+2. **默认参数**：所有参数默认值必须在`nodeChatConfig.ts`的`getDefaultParamsForType()`中定义
+3. **参数规范化**：新增参数必须有对应的规范化逻辑（参考`normalizeTripo3DParams()`模式）
+4. **模型选项集中管理**：模型/版本/分辨率/比例等选项常量统一定义在`nodeChatConfig.ts`，不要在组件内硬编码
+
+#### 🔴 后端调用规范
+1. **禁止前端直连**：所有外部AI API调用必须通过Electron后端IPC，禁止前端直接`fetch`外部接口
+2. **通道命名**：遵循`dweb:<module>:<action>:stream`格式，流式接口必须标记`stream: true`
+3. **preload绑定**：`createIpcStreamGenerator()`会自动给baseChannel追加`:stream`后缀，绑定时传入的baseChannel不要包含`:stream`（见[07_DEVELOPMENT_BOUNDARIES.md#4-electron-桥接-ipc-边界](07_DEVELOPMENT_BOUNDARIES.md)）
+4. **API Key管理**：所有API Key存储在LocalDB `api_keys`表（自动加密），禁止硬编码
+5. **任务持久化**：长时间运行的生成任务（图像/视频/3D）必须将任务状态存储到对应LocalDB表
+
+#### 🔴 状态同步规范
+1. **草稿状态**：节点聊天草稿保存在`node.data.draft`数组，与`useNodeChatSync.ts`同步
+2. **任务状态**：生成过程中更新`node.data.taskStatus`和`node.data.taskProgress`
+3. **输出写入**：生成结果（图片/视频/3D模型URL）必须写入节点对应输出锚点的资源池
+4. **历史保留**：聊天历史保存在节点data中，随项目一起保存/加载
+
+#### 🔴 参考图收集规范
+- 使用`collectReferenceImages()`统一收集上游节点输出
+- 根据节点类型和生成模式决定收集哪些类型的上游资源
+- 参考图数量限制由各后端API决定，前端不做硬截断（由参数面板配置）
 
 ## 9. 后端通信
 

@@ -692,10 +692,17 @@ onMounted(() => {
 
 watch(
 	() => props.modelValue,
-	() => {
+	(newVal) => {
+		// If the new value matches what we just serialized from DOM, this update was
+		// triggered by user input -> skip re-rendering to preserve caret position.
+		if (newVal === currentSerializedText.value) {
+			selectedRefs.value = [...(props.selectedReferences ?? [])]
+			return
+		}
+		// External/programmatic update -> reset guard and re-render from model.
+		isInternalUpdate = false
 		selectedRefs.value = [...(props.selectedReferences ?? [])]
 		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
-		isInternalUpdate = false
 		renderFromModel()
 	},
 	{ flush: 'post' }

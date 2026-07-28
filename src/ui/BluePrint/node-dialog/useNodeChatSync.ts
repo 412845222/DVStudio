@@ -2,6 +2,7 @@ import { ref, watch, nextTick, computed, onMounted } from 'vue'
 import { useNodeChatApi } from './useNodeChatApi'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
+import { getDefaultParamsForType } from './nodeChatConfig'
 
 interface NodeChatDialogProps {
 	visible: boolean
@@ -19,8 +20,18 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	const chatApi = useNodeChatApi()
 
 	const inputRef = ref<{ focus: () => void } | null>(null)
+
+	const mergeWithDefaultParams = (
+		nodeType: WorkflowNodeChatType | null,
+		params: Record<string, any> | undefined
+	): Record<string, any> => {
+		if (!nodeType) return { ...(params ?? {}) }
+		const defaultParams = getDefaultParamsForType(nodeType)
+		return { ...defaultParams, ...(params ?? {}) }
+	}
+
 	const localDraft = ref(props.draft ?? '')
-	const localParams = ref<Record<string, any>>({ ...(props.params ?? {}) })
+	const localParams = ref<Record<string, any>>(mergeWithDefaultParams(props.nodeType, props.params))
 	const localSelectedRefs = ref<any[]>(
 		props.selectedReferences ? [...props.selectedReferences] : []
 	)
@@ -86,7 +97,7 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			localDraft.value = props.draft
 		}
 		if (props.params !== undefined) {
-			localParams.value = { ...(props.params || {}) }
+			localParams.value = mergeWithDefaultParams(props.nodeType, props.params)
 		}
 		if (props.selectedReferences !== undefined) {
 			localSelectedRefs.value = props.selectedReferences ? [...props.selectedReferences] : []
@@ -101,9 +112,9 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			localDraft.value = props.draft
 		}
 		if (!props.params || Object.keys(props.params).length === 0) {
-			localParams.value = { ...(state.params || {}) }
+			localParams.value = mergeWithDefaultParams(props.nodeType, state.params)
 		} else {
-			localParams.value = { ...(props.params || {}) }
+			localParams.value = mergeWithDefaultParams(props.nodeType, props.params)
 		}
 		if (!props.selectedReferences || props.selectedReferences.length === 0) {
 			localSelectedRefs.value = state.selectedRefs ? [...state.selectedRefs] : []
@@ -184,7 +195,7 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		(newVal) => {
 			if (isInternalUpdate) return
 			if (newVal !== undefined) {
-				localParams.value = { ...(newVal || {}) }
+				localParams.value = mergeWithDefaultParams(props.nodeType, newVal)
 			}
 		},
 		{ deep: true, immediate: true }
@@ -282,6 +293,16 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			selectedReferences: localSelectedRefs.value,
 			inputParamRefs: props.inputParamPreviewRefs || []
 		}
+		console.log('[NodeChatSync#handleSubmit] SUBMIT PAYLOAD:', {
+			nodeId: nid,
+			nodeType: nType,
+			promptLen: payload.prompt.length,
+			paramsKeys: Object.keys(payload.params),
+			paramsModel: payload.params.model,
+			paramsProvider: payload.params.provider,
+			paramsTextModelVersion: payload.params.textModelVersion,
+			paramsGeminiTextModelVersion: payload.params.geminiTextModelVersion
+		})
 		chatApi.submit(nid, payload)
 	}
 

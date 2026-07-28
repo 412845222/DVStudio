@@ -2878,6 +2878,10 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(
 				next.aspectRatio = next.geminiAspectRatio
 				next.quantity = next.geminiQuantity
 			}
+		} else if (value === 'bytedance') {
+			if (props.nodeType === 'text' && !next.textModelVersion) {
+				next.textModelVersion = 'doubao-seed-evolving'
+			}
 		}
 	}
 
