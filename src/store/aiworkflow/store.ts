@@ -4754,6 +4754,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const tryWrite = targetNodeId && state.nodesById[targetNodeId]
 			if (tryWrite) {
 				;(state.nodesById[targetNodeId] as any).nodeChatDraft = payload.text
+				;(state.nodesById[targetNodeId] as any).prompt = payload.text
 			}
 			if (prevLen !== newLen || !tryWrite) {
 				console.log('[DraftFlow#store setNodeChatDraft] MUTATION', {
@@ -4788,7 +4789,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const curNodeId = state.nodeChatDialog.nodeId
 			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
 			if (writeToNodesById) {
-				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs = payload.refs
+				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs = payload.refs.length === 0 ? undefined : payload.refs
 			}
 			console.log('[DraftFlow#store setNodeChatSelectedRefs] MUTATION', {
 				nodeId: curNodeId,
