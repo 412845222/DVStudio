@@ -83,10 +83,9 @@
 					</div>
 					<NodeChatInput
 					ref="inputRef"
-					:model-value="draft"
+					:model-value="localDraft"
 					:placeholder="placeholder"
 					:disabled="submitting"
-					:can-submit-empty="canSubmitEmpty"
 					:input-param-preview-refs="inputParamPreviewRefsResolved"
 					:selected-references="selectedRefsForInput"
 					@update:model-value="onDraftUpdate"
@@ -271,6 +270,46 @@ const emit = defineEmits<{
 const inputRef = ref<InstanceType<typeof NodeChatInput> | null>(null)
 const showParams = ref(false)
 
+const localDraft = ref('')
+const localParams = ref<WorkflowNodeChatParams>({})
+const localSelectedRefs = ref<WorkflowNodeChatSelectedRef[]>([])
+
+const syncFromProps = () => {
+	localDraft.value = String(props.draft ?? '')
+	localParams.value = { ...(props.params ?? {}) }
+	localSelectedRefs.value = [...(props.selectedReferences ?? [])]
+}
+
+watch(() => props.visible, (visible, prevVisible) => {
+	if (visible && !prevVisible) {
+		showParams.value = false
+		syncFromProps()
+		nextTick(() => {
+			inputRef.value?.focus?.()
+		})
+	}
+	if (visible && !prevVisible) {
+		window.addEventListener('keydown', onKeydown)
+	}
+	if (!visible && prevVisible) {
+		window.removeEventListener('keydown', onKeydown)
+	}
+})
+
+watch(() => props.nodeType, (type) => {
+	if (type && !localParams.value[type]) {
+		const defaults = getDefaultParamsForType(type)
+		localParams.value = { ...localParams.value, [type]: defaults }
+		emit('update:params', localParams.value)
+	}
+}, { immediate: true })
+
+const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
+	if (!props.nodeType) return {}
+	return (localParams.value as any)?.[props.nodeType] ?? {}
+})
+const currentSelectedRefs = computed<WorkflowNodeChatSelectedRef[]>(() => localSelectedRefs.value)
+
 const typeLabel = computed(() => {
 	if (!props.nodeType) return ''
 	return t(NODE_CHAT_TYPE_LABELS[props.nodeType])
@@ -286,15 +325,10 @@ const placeholder = computed(() => {
 	return t(NODE_CHAT_PLACEHOLDERS[props.nodeType])
 })
 
-const typeDescription = computed(() => {
-	if (!props.nodeType) return ''
-	return t(NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType])
-})
-
-const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
+const resolvedParams = computed<WorkflowNodeChatParamRecord>(() => {
 	if (!props.nodeType) return {}
 	const defaults = getDefaultParamsForType(props.nodeType) as WorkflowNodeChatParamRecord
-	const saved = (props.params[props.nodeType] ?? {}) as WorkflowNodeChatParamRecord
+	const saved = currentParams.value as WorkflowNodeChatParamRecord
 	return { ...defaults, ...saved }
 })
 
@@ -305,7 +339,7 @@ const showInputParamRefs = computed(() => {
 
 const isTripo3D = computed(() => {
 	if (!props.nodeType || props.nodeType !== 'model3d') return false
-	const model3dParams = (props.params.model3d ?? {}) as any
+	const model3dParams = currentParams.value as any
 	return model3dParams.model === 'tripo3d'
 })
 
@@ -365,44 +399,15 @@ const inputRefsToPersisted = (refs: InputParamPreviewRef[]): WorkflowNodeChatSel
 	}))
 }
 
-const selectedRefsForInput = ref<InputParamPreviewRef[]>([])
-
-watch(
-	() => props.visible,
-	(visible) => {
-		if (visible) {
-			selectedRefsForInput.value = persistedToInputRefs(props.selectedReferences)
-		}
-	},
-	{ immediate: true }
-)
-
-watch(
-	() => props.inputParamPreviewRefs,
-	() => {
-		if (props.visible) {
-			const resolvedMap = buildResolvedRefMap()
-			selectedRefsForInput.value = selectedRefsForInput.value.map((r) => {
-				let resolved: InputParamPreviewRef | undefined
-				if (r.edgeId) resolved = resolvedMap.get(`edge:${r.edgeId}`)
-				if (!resolved && r.fromNodeId && r.fromAnchorId) resolved = resolvedMap.get(`anchor:${r.fromNodeId}:${r.fromAnchorId}`)
-				if (resolved) {
-					return { ...resolved, label: r.label || resolved.label }
-				}
-				return r
-			})
-		}
-	},
-	{ deep: true }
-)
+const selectedRefsForInput = computed<InputParamPreviewRef[]>(() => {
+	return persistedToInputRefs(currentSelectedRefs.value)
+})
 
 const hasConnectedParams = computed(() => inputParamPreviewRefsResolved.value.length > 0)
 const hasSelectedRefs = computed(() => selectedRefsForInput.value.length > 0)
 
-const canSubmitEmpty = computed(() => hasConnectedParams.value || hasSelectedRefs.value)
-
 const submitDisabled = computed(() => {
-	return props.submitting || (!props.draft.trim() && !hasConnectedParams.value && !hasSelectedRefs.value)
+	return props.submitting || (!localDraft.value.trim() && !hasConnectedParams.value && !hasSelectedRefs.value)
 })
 
 const paramRefIcon = (item: InputParamPreviewRef) => {
@@ -432,23 +437,20 @@ const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidt
 
 const handleClose = () => {
 	if (props.submitting) return
-	console.log('[NodeChatDialog] handleClose', {
-		nodeId: props.nodeId,
-		nodeType: props.nodeType,
-		draftLength: props.draft.length,
-		paramsKeys: Object.keys(props.params),
-		selectedRefsCount: selectedRefsForInput.value.length
-	})
+	emit('update:draft', localDraft.value)
+	emit('update:params', localParams.value)
+	emit('update:selected-references', localSelectedRefs.value)
 	emit('close')
 }
 
 const onDraftUpdate = (value: string) => {
+	localDraft.value = value
 	emit('update:draft', value)
 }
 
 const onSelectedReferencesUpdate = (refs: InputParamPreviewRef[]) => {
-	selectedRefsForInput.value = refs
-	emit('update:selected-references', inputRefsToPersisted(refs))
+	localSelectedRefs.value = inputRefsToPersisted(refs)
+	emit('update:selected-references', localSelectedRefs.value)
 }
 
 const getRefLabel = (item: InputParamPreviewRef) => {
@@ -457,13 +459,8 @@ const getRefLabel = (item: InputParamPreviewRef) => {
 
 const handleSubmit = async () => {
 	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
-	console.log('[NodeChatDialog] handleSubmit', {
-		nodeId: props.nodeId,
-		nodeType: props.nodeType,
-		promptLength: props.draft.length,
-		params: currentParams.value,
-		selectedRefsCount: selectedRefsForInput.value.length
-	})
+	const textFromInput = inputRef.value?.getFullText?.()
+	const finalPrompt = (textFromInput ?? localDraft.value).trim()
 	const references = selectedRefsForInput.value.map((item) => ({
 		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
 		nodeId: item.fromNodeId || item.nodeId || '',
@@ -481,18 +478,15 @@ const handleSubmit = async () => {
 			}
 		}
 	}
-	const fullPrompt = inputRef.value?.getFullText?.() ?? props.draft
 	const payload: WorkflowNodeChatSubmitPayload = {
 		nodeId: props.nodeId,
 		nodeType: props.nodeType,
-		prompt: fullPrompt.trim(),
+		prompt: finalPrompt,
 		params: currentParams.value,
 		references,
 		attachments: attachments.length > 0 ? attachments : undefined
 	}
 	emit('submit', payload)
-	selectedRefsForInput.value = []
-	emit('update:selected-references', [])
 }
 
 const handleStop = () => {
@@ -501,7 +495,8 @@ const handleStop = () => {
 
 const onParamsUpdate = (nextParams: WorkflowNodeChatParamRecord) => {
 	if (!props.nodeType) return
-	const merged: WorkflowNodeChatParams = { ...props.params, [props.nodeType]: nextParams }
+	const merged: WorkflowNodeChatParams = { ...localParams.value, [props.nodeType]: nextParams }
+	localParams.value = merged
 	emit('update:params', merged)
 }
 
@@ -514,39 +509,6 @@ const onKeydown = (e: KeyboardEvent) => {
 		handleClose()
 	}
 }
-
-watch(
-	() => props.visible,
-	(visible) => {
-		if (visible) {
-			showParams.value = false
-			nextTick(() => {
-				inputRef.value?.focus()
-			})
-		}
-	}
-)
-
-watch(
-	() => props.nodeType,
-	(type) => {
-		if (type && !props.params[type]) {
-			const defaults = getDefaultParamsForType(type)
-			const merged = { ...props.params, [type]: defaults }
-			emit('update:params', merged)
-		}
-	},
-	{ immediate: true }
-)
-
-watch(
-	() => props.visible,
-	(visible, previous) => {
-		if (visible && !previous) window.addEventListener('keydown', onKeydown)
-		if (!visible && previous) window.removeEventListener('keydown', onKeydown)
-	},
-	{ immediate: true }
-)
 
 onBeforeUnmount(() => {
 	window.removeEventListener('keydown', onKeydown)

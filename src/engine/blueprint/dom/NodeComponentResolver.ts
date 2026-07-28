@@ -191,9 +191,9 @@ export class NodeComponentResolver {
 
 		const resourceProps = this.resolveResourceProps(data, legacyResources)
 
-		const persistedChatDraft = data.nodeChatDraft || ''
-		const persistedChatParams = data.nodeChatParams || {}
-		const persistedChatSelectedRefs = data.nodeChatSelectedRefs || []
+		const persistedChatDraft = data.nodeChatDraft ?? ''
+		const persistedChatParams = data.nodeChatParams ?? {}
+		const persistedChatSelectedRefs = data.nodeChatSelectedRefs ?? []
 
 		const chatProps: Record<string, unknown> = {
 			nodeChatVisible: !!isChatActive,
@@ -206,7 +206,7 @@ export class NodeComponentResolver {
 					: false,
 			nodeChatDraft:
 				isChatActive && chatState && chatState.nodeId === data.id
-					? chatState.draft || persistedChatDraft
+					? (chatState.draft != null ? chatState.draft : persistedChatDraft)
 					: persistedChatDraft,
 			nodeChatParams:
 				isChatActive && chatState && chatState.nodeId === data.id

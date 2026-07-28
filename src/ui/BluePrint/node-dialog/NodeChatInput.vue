@@ -108,6 +108,7 @@ const focused = ref(false)
 const isDragging = ref(false)
 const initialText = (props.modelValue ?? '').replace(new RegExp(CHIP_MARKER, 'g'), '')
 const isEmpty = ref(initialText.trim() === '' && (props.selectedReferences?.length ?? 0) === 0)
+const currentSerializedText = ref(props.modelValue ?? '')
 const currentHeight = ref(120)
 const MIN_HEIGHT = 100
 const MAX_HEIGHT = 400
@@ -400,6 +401,7 @@ const syncFromDOM = () => {
 	displayText = displayText.replace(/\u00A0/g, ' ')
 	isEmpty.value = displayText.trim() === '' && refs.length === 0
 	charCount.value = displayText.length
+	currentSerializedText.value = serializedText
 	selectedRefs.value = refs
 	emit('update:modelValue', serializedText)
 	emit('update:selectedReferences', refs)
@@ -411,6 +413,7 @@ const syncFromDOM = () => {
 
 const renderFromModel = () => {
 	if (!editorRef.value || isInternalUpdate) return
+	isInternalUpdate = true
 	const editor = editorRef.value
 	const refs = selectedRefs.value
 	const serialized = props.modelValue
@@ -419,6 +422,9 @@ const renderFromModel = () => {
 		editor.innerHTML = ''
 		isEmpty.value = true
 		charCount.value = 0
+		nextTick(() => {
+			isInternalUpdate = false
+		})
 		return
 	}
 
@@ -454,6 +460,9 @@ const renderFromModel = () => {
 
 	isEmpty.value = displayLen === 0 && refs.length === 0
 	charCount.value = displayLen
+	nextTick(() => {
+		isInternalUpdate = false
+	})
 }
 
 const onEditorInput = () => {
@@ -492,8 +501,9 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 
 	if (e.key === 'Enter' && !e.shiftKey) {
 		e.preventDefault()
+		const hasText = !isEmpty.value
 		const hasRefs = selectedRefs.value.length > 0
-		if ((props.modelValue.trim() || hasRefs) && !props.disabled) {
+		if ((hasText || hasRefs) && !props.disabled) {
 			emit('submit')
 		}
 		return

@@ -448,28 +448,10 @@ const taskVisualStatus = computed<'idle' | 'submitting' | 'running' | 'success' 
 	return task.status as 'submitting' | 'running' | 'error'
 })
 
-const localChatDraft = ref(String(props.nodeChatDraft ?? ''))
-const localChatParams = ref<Record<string, unknown>>({ ...(props.nodeChatParams ?? {}) })
-const localChatSelectedRefs = ref<WorkflowNodeChatSelectedRef[]>([...(props.nodeChatSelectedRefs ?? [])])
-
-watch(() => props.nodeChatVisible, (visible) => {
-	if (visible) {
-		localChatDraft.value = String(props.nodeChatDraft ?? '')
-		localChatParams.value = { ...(props.nodeChatParams ?? {}) }
-		localChatSelectedRefs.value = [...(props.nodeChatSelectedRefs ?? [])]
-	}
-}, { immediate: true })
-
-watch(() => props.nodeChatDraft, (val) => {
-	if (props.nodeChatVisible && val !== localChatDraft.value) {
-		localChatDraft.value = String(val ?? '')
-	}
-})
-
-const nodeChatDraft = computed(() => localChatDraft.value)
+const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
-const nodeChatParams = computed(() => localChatParams.value)
-const nodeChatSelectedRefs = computed(() => localChatSelectedRefs.value)
+const nodeChatParams = computed(() => props.nodeChatParams ?? {})
+const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
@@ -677,23 +659,20 @@ const onSelect = () => {
 }
 
 const flushChatState = () => {
-	emit('node-chat-update-draft', localChatDraft.value)
-	emit('node-chat-update-params', localChatParams.value)
-	emit('node-chat-update-selected-refs', localChatSelectedRefs.value)
+	emit('node-chat-update-draft', nodeChatDraft.value)
+	emit('node-chat-update-params', nodeChatParams.value)
+	emit('node-chat-update-selected-refs', nodeChatSelectedRefs.value)
 }
 
 const onChatDraftUpdate = (value: string) => {
-	localChatDraft.value = value
 	emit('node-chat-update-draft', value)
 }
 
 const onChatParamsUpdate = (value: Record<string, unknown>) => {
-	localChatParams.value = value
 	emit('node-chat-update-params', value)
 }
 
 const onChatSelectedRefsUpdate = (value: WorkflowNodeChatSelectedRef[]) => {
-	localChatSelectedRefs.value = value
 	emit('node-chat-update-selected-refs', value)
 }
 
