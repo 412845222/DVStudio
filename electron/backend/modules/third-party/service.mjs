@@ -1677,18 +1677,31 @@ export async function* blueprintChatStream(ctx, payload) {
 	let apiKey = ''
 
 	if (requestedProvider) {
-		console.log('[blueprintChatStream] Looking for API key for requested provider:', requestedProvider)
+		console.log(
+			'[blueprintChatStream] Looking for API key for requested provider:',
+			requestedProvider
+		)
 		for (const pc of providerConfigs) {
 			if (
 				pc.prov === requestedProvider ||
 				requestedProvider.includes(pc.prov) ||
 				pc.names.some((n) => requestedProvider.includes(n))
 			) {
-				console.log('[blueprintChatStream] Matched provider config:', pc.prov, 'checking key names:', pc.names)
+				console.log(
+					'[blueprintChatStream] Matched provider config:',
+					pc.prov,
+					'checking key names:',
+					pc.names
+				)
 				for (const name of pc.names) {
 					const k = getKeyFor(name)
 					if (k) {
-						console.log('[blueprintChatStream] Found API key for name:', name, 'key length:', k.length)
+						console.log(
+							'[blueprintChatStream] Found API key for name:',
+							name,
+							'key length:',
+							k.length
+						)
 						cfg = pc
 						provider = pc.prov
 						apiKey = k
@@ -1698,7 +1711,10 @@ export async function* blueprintChatStream(ctx, payload) {
 					}
 				}
 				if (!cfg || !apiKey) {
-					console.error('[blueprintChatStream] No API key found for requested provider:', requestedProvider)
+					console.error(
+						'[blueprintChatStream] No API key found for requested provider:',
+						requestedProvider
+					)
 					yield wrapStreamError(
 						`No API key configured for requested provider: ${requestedProvider}. Please configure it in Settings.`
 					)
@@ -1970,7 +1986,10 @@ export async function* blueprintChatStream(ctx, payload) {
 							fullContent += delta
 							yield wrapTextMsg(delta)
 						} else if (chunkCount <= 3) {
-							console.log(`[${provider}:chat] First chunks without text delta:`, JSON.stringify(parsed).slice(0, 500))
+							console.log(
+								`[${provider}:chat] First chunks without text delta:`,
+								JSON.stringify(parsed).slice(0, 500)
+							)
 						}
 					} catch (parseErr) {
 						console.warn(`[${provider}:chat] Failed to parse SSE chunk:`, parseErr?.message)
