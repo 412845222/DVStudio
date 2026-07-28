@@ -182,9 +182,17 @@ describe('anchorKinds', () => {
 		it('should reject video connecting to non-video/image/text inputs', () => {
 			const nodesById: Record<string, WorkflowNode> = {
 				'video-out': createNode('video-out', 'video', [], [{ id: 'out-1' }]),
+				'audio-in': createNode('audio-in', 'audio', [{ id: 'in-1' }], [])
+			}
+			expect(canLinkAnchors(nodesById, 'video-out', 'out-1', 'audio-in', 'in-1')).toBe(false)
+		})
+
+		it('should allow video connecting to text inputs (multimodal)', () => {
+			const nodesById: Record<string, WorkflowNode> = {
+				'video-out': createNode('video-out', 'video', [], [{ id: 'out-1' }]),
 				'text-in': createNode('text-in', 'text', [{ id: 'in-1' }], [])
 			}
-			expect(canLinkAnchors(nodesById, 'video-out', 'out-1', 'text-in', 'in-1')).toBe(false)
+			expect(canLinkAnchors(nodesById, 'video-out', 'out-1', 'text-in', 'in-1')).toBe(true)
 		})
 
 		it('should allow model3d to connect to resource inputs', () => {

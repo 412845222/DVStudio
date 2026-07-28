@@ -107,7 +107,7 @@ describe('useNodeLibraryI18n', () => {
 		const textNode = catalogItems.value.find((n) => n.actionId === 'text-generation')
 		expect(textNode!.actionId).toBe('text-generation')
 		expect(textNode!.nodeType).toBe('text')
-		expect(textNode!.inputKinds).toEqual(['text'])
+		expect(textNode!.inputKinds).toEqual(['text', 'image', 'video', 'model3d', 'audio', 'resource'])
 		expect(textNode!.outputKinds).toEqual(['text'])
 		expect(textNode!.order).toBe(10)
 	})

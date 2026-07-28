@@ -685,11 +685,12 @@ onMounted(() => {
 watch(
 	() => props.modelValue,
 	() => {
-		if (isInternalUpdate) return
 		selectedRefs.value = [...(props.selectedReferences ?? [])]
 		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
+		isInternalUpdate = false
 		renderFromModel()
-	}
+	},
+	{ flush: 'post' }
 )
 
 onBeforeUnmount(() => {
