@@ -169,11 +169,11 @@
 			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
-			@update:draft="(value) => emit('node-chat-update-draft', value)"
-			@update:params="(value) => emit('node-chat-update-params', value)"
-			@update:selected-references="(value) => emit('node-chat-update-selected-refs', value)"
-			@close="emit('node-chat-close')"
-			@submit="(payload) => emit('node-chat-submit', payload)"
+			@update:draft="onChatDraftUpdate"
+			@update:params="onChatParamsUpdate"
+			@update:selected-references="onChatSelectedRefsUpdate"
+			@close="onChatClose"
+			@submit="onChatSubmit"
 			@stop="emit('node-chat-stop')"
 			@remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 		/>
@@ -448,10 +448,28 @@ const taskVisualStatus = computed<'idle' | 'submitting' | 'running' | 'success' 
 	return task.status as 'submitting' | 'running' | 'error'
 })
 
-const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
+const localChatDraft = ref(String(props.nodeChatDraft ?? ''))
+const localChatParams = ref<Record<string, unknown>>({ ...(props.nodeChatParams ?? {}) })
+const localChatSelectedRefs = ref<WorkflowNodeChatSelectedRef[]>([...(props.nodeChatSelectedRefs ?? [])])
+
+watch(() => props.nodeChatVisible, (visible) => {
+	if (visible) {
+		localChatDraft.value = String(props.nodeChatDraft ?? '')
+		localChatParams.value = { ...(props.nodeChatParams ?? {}) }
+		localChatSelectedRefs.value = [...(props.nodeChatSelectedRefs ?? [])]
+	}
+}, { immediate: true })
+
+watch(() => props.nodeChatDraft, (val) => {
+	if (props.nodeChatVisible && val !== localChatDraft.value) {
+		localChatDraft.value = String(val ?? '')
+	}
+})
+
+const nodeChatDraft = computed(() => localChatDraft.value)
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
-const nodeChatParams = computed(() => props.nodeChatParams ?? {})
-const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
+const nodeChatParams = computed(() => localChatParams.value)
+const nodeChatSelectedRefs = computed(() => localChatSelectedRefs.value)
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
@@ -656,6 +674,37 @@ const teardownResizeObserver = () => {
 
 const onSelect = () => {
 	emit('select', props.nodeId)
+}
+
+const flushChatState = () => {
+	emit('node-chat-update-draft', localChatDraft.value)
+	emit('node-chat-update-params', localChatParams.value)
+	emit('node-chat-update-selected-refs', localChatSelectedRefs.value)
+}
+
+const onChatDraftUpdate = (value: string) => {
+	localChatDraft.value = value
+	emit('node-chat-update-draft', value)
+}
+
+const onChatParamsUpdate = (value: Record<string, unknown>) => {
+	localChatParams.value = value
+	emit('node-chat-update-params', value)
+}
+
+const onChatSelectedRefsUpdate = (value: WorkflowNodeChatSelectedRef[]) => {
+	localChatSelectedRefs.value = value
+	emit('node-chat-update-selected-refs', value)
+}
+
+const onChatClose = () => {
+	flushChatState()
+	emit('node-chat-close')
+}
+
+const onChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
+	flushChatState()
+	emit('node-chat-submit', payload)
 }
 
 const MIN_SIZE = 80

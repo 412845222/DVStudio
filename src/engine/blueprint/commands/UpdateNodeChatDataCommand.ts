@@ -70,10 +70,6 @@ export class UpdateNodeChatDataCommand extends Command {
 
 		if (data.draft !== undefined) {
 			node.data.nodeChatDraft = data.draft ?? undefined
-			if (node.nodeType === 'text' || !node.nodeType) {
-				node.data.textValue = data.draft ?? undefined
-			}
-			node.data.prompt = data.draft ?? undefined
 		}
 		if (data.params !== undefined) {
 			node.data.nodeChatParams = data.params

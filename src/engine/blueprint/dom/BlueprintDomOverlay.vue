@@ -253,70 +253,29 @@ function onBusinessRefresh(nodeId: string) {
 function saveChatStateForNode(nodeId: string) {
   if (!props.scene || !props.chatState) return;
   if (props.chatState.nodeId !== nodeId) return;
-
-  const node = props.scene.getBlueprintNode?.(nodeId);
-  if (!node) return;
-
-  const oldData = {
-    draft: (node.data as any).nodeChatDraft ?? '',
-    params: (node.data as any).nodeChatParams ?? {},
-    selectedRefs: (node.data as any).nodeChatSelectedRefs ?? [],
-    textValue: (node.data as any).textValue ?? '',
-    prompt: (node.data as any).prompt ?? '',
-    blenderSettings: (node.data as any).blenderSettings ? JSON.parse(JSON.stringify((node.data as any).blenderSettings)) : null
-  };
-
-  const newData = {
-    draft: props.chatState.draft ?? '',
-    params: props.chatState.params ?? {},
-    selectedRefs: props.chatState.selectedRefs ?? [],
-    textValue: (node.nodeType === 'text' || !node.nodeType) ? (props.chatState.draft ?? '') : oldData.textValue,
-    prompt: props.chatState.draft ?? '',
-    blenderSettings: (() => {
-      if (node.nodeType === 'blender' && props.chatState.params?.blender) {
-        const blenderParams = props.chatState.params.blender as Record<string, unknown>;
-        const nextSettings = oldData.blenderSettings ? JSON.parse(JSON.stringify(oldData.blenderSettings)) : {};
-        const fields = ['agentBackend', 'agentSessionId', 'model', 'modelId', 'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'] as const;
-        for (const field of fields) {
-          const val = blenderParams[field];
-          if (typeof val === 'string') {
-            (nextSettings as Record<string, unknown>)[field] = val;
-          }
-        }
-        return nextSettings;
-      }
-      return oldData.blenderSettings;
-    })()
-  };
-
-  const hasChanges =
-    oldData.draft !== newData.draft ||
-    JSON.stringify(oldData.params) !== JSON.stringify(newData.params) ||
-    JSON.stringify(oldData.selectedRefs) !== JSON.stringify(newData.selectedRefs) ||
-    oldData.textValue !== newData.textValue ||
-    oldData.prompt !== newData.prompt ||
-    JSON.stringify(oldData.blenderSettings) !== JSON.stringify(newData.blenderSettings);
-
-  if (hasChanges) {
-    console.log('[BlueprintDomOverlay] saveChatStateForNode', {
-      nodeId,
-      draftLength: newData.draft.length,
-      paramsKeys: Object.keys(newData.params),
-      selectedRefsCount: newData.selectedRefs.length
-    });
-    const cmd = new UpdateNodeChatDataCommand(props.scene, nodeId, oldData, newData);
-    props.scene.executeCommand(cmd);
-  }
+  saveChatStateToNode(
+    nodeId,
+    props.chatState.draft ?? '',
+    props.chatState.params ?? {},
+    props.chatState.selectedRefs ?? []
+  );
 }
 
 function onBusinessChatSubmit(payload: WorkflowNodeChatSubmitPayload) {
-  flushChatStateSave();
+  if (props.chatState && props.chatState.nodeId) {
+    saveChatStateToNode(
+      props.chatState.nodeId,
+      props.chatState.draft ?? '',
+      props.chatState.params ?? {},
+      props.chatState.selectedRefs ?? []
+    );
+  }
   emit('node-chat-submit', payload);
 }
 
 function onBusinessChatClose(nodeId: string) {
   console.log('[BlueprintDomOverlay] onBusinessChatClose', { nodeId });
-  flushChatStateSave();
+  saveChatStateForNode(nodeId);
 
   if (props.scene) {
     const node = props.scene.getBlueprintNode?.(nodeId);
@@ -942,6 +901,13 @@ function syncDomNodes() {
       const editingNode = s.getBlueprintNode(editingId);
       if (editingNode) nodesToRender.push(editingNode);
     }
+    // 确保聊天对话框打开时，对应的节点也被渲染
+    if (props.chatState?.visible && props.chatState?.nodeId) {
+      const chatNode = s.getBlueprintNode(props.chatState.nodeId);
+      if (chatNode && !nodesToRender.some(n => n.id === chatNode.id)) {
+        nodesToRender.push(chatNode);
+      }
+    }
   }
 
   if (isDomInteracting) {
@@ -1077,22 +1043,7 @@ watch(() => props.editingNodeId, (newId, oldId) => {
   }
 });
 
-let chatStateSaveTimer: number | null = null;
-let lastKnownChatState: { nodeId: string; draft: string; params: Record<string, any>; selectedRefs: any[] } | null = null;
-
-function flushChatStateSave() {
-  if (chatStateSaveTimer !== null) {
-    clearTimeout(chatStateSaveTimer);
-    chatStateSaveTimer = null;
-  }
-  if (lastKnownChatState) {
-    const { nodeId, draft, params, selectedRefs } = lastKnownChatState;
-    saveChatStateDirect(nodeId, draft, params, selectedRefs);
-    lastKnownChatState = null;
-  }
-}
-
-function saveChatStateDirect(nodeId: string, draft: string, params: Record<string, any>, selectedRefs: any[]) {
+function saveChatStateToNode(nodeId: string, draft: string, params: Record<string, any>, selectedRefs: any[]) {
   if (!props.scene) return;
   const node = props.scene.getBlueprintNode?.(nodeId);
   if (!node) return;
@@ -1100,73 +1051,24 @@ function saveChatStateDirect(nodeId: string, draft: string, params: Record<strin
   const oldData = {
     draft: (node.data as any).nodeChatDraft ?? '',
     params: (node.data as any).nodeChatParams ?? {},
-    selectedRefs: (node.data as any).nodeChatSelectedRefs ?? [],
-    textValue: (node.data as any).textValue ?? '',
-    prompt: (node.data as any).prompt ?? '',
-    blenderSettings: (node.data as any).blenderSettings ? JSON.parse(JSON.stringify((node.data as any).blenderSettings)) : null
+    selectedRefs: (node.data as any).nodeChatSelectedRefs ?? []
   };
 
   const newData = {
     draft: draft ?? '',
     params: params ?? {},
-    selectedRefs: selectedRefs ?? [],
-    textValue: (node.nodeType === 'text' || !node.nodeType) ? (draft ?? '') : oldData.textValue,
-    prompt: draft ?? '',
-    blenderSettings: (() => {
-      if (node.nodeType === 'blender' && params?.blender) {
-        const blenderParams = params.blender as Record<string, unknown>;
-        const nextSettings = oldData.blenderSettings ? JSON.parse(JSON.stringify(oldData.blenderSettings)) : {};
-        const fields = ['agentBackend', 'agentSessionId', 'model', 'modelId', 'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'] as const;
-        for (const field of fields) {
-          const val = blenderParams[field];
-          if (typeof val === 'string') {
-            (nextSettings as Record<string, unknown>)[field] = val;
-          }
-        }
-        return nextSettings;
-      }
-      return oldData.blenderSettings;
-    })()
+    selectedRefs: selectedRefs ?? []
   };
 
   const hasChanges =
     oldData.draft !== newData.draft ||
     JSON.stringify(oldData.params) !== JSON.stringify(newData.params) ||
-    JSON.stringify(oldData.selectedRefs) !== JSON.stringify(newData.selectedRefs) ||
-    oldData.textValue !== newData.textValue ||
-    oldData.prompt !== newData.prompt ||
-    JSON.stringify(oldData.blenderSettings) !== JSON.stringify(newData.blenderSettings);
+    JSON.stringify(oldData.selectedRefs) !== JSON.stringify(newData.selectedRefs);
 
   if (hasChanges) {
-    console.log('[BlueprintDomOverlay] saveChatStateDirect', {
-      nodeId,
-      draftLength: newData.draft.length,
-      paramsKeys: Object.keys(newData.params),
-      selectedRefsCount: newData.selectedRefs.length
-    });
     const cmd = new UpdateNodeChatDataCommand(props.scene, nodeId, oldData, newData);
     props.scene.executeCommand(cmd);
   }
-}
-
-function debouncedSaveChatState(nodeId: string) {
-  if (chatStateSaveTimer !== null) {
-    clearTimeout(chatStateSaveTimer);
-  }
-  if (props.chatState) {
-    lastKnownChatState = {
-      nodeId,
-      draft: props.chatState.draft ?? '',
-      params: props.chatState.params ?? {},
-      selectedRefs: props.chatState.selectedRefs ?? []
-    };
-  }
-  chatStateSaveTimer = window.setTimeout(() => {
-    chatStateSaveTimer = null;
-    if (lastKnownChatState) {
-      saveChatStateDirect(lastKnownChatState.nodeId, lastKnownChatState.draft, lastKnownChatState.params, lastKnownChatState.selectedRefs);
-    }
-  }, 300);
 }
 
 watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (current, previous) => {
@@ -1175,9 +1077,16 @@ watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (curre
   const [visible, nodeId] = current;
   const [prevVisible, prevNodeId] = previous ?? [false, null];
 
-  // 对话框关闭或切换到其他节点时，保存当前草稿
+  // 对话框关闭或切换到其他节点时，确保保存当前状态
   if ((prevVisible && !visible) || (prevVisible && visible && prevNodeId && prevNodeId !== nodeId)) {
-    flushChatStateSave();
+    if (prevNodeId && props.chatState) {
+      saveChatStateToNode(
+        prevNodeId,
+        props.chatState.draft ?? '',
+        props.chatState.params ?? {},
+        props.chatState.selectedRefs ?? []
+      );
+    }
   }
 
   if (visible && typeof nodeId === 'string') {
@@ -1185,7 +1094,6 @@ watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (curre
     if (node) {
       const currentVisible = !!(node.data as any).nodeChatVisible;
       if (!currentVisible) {
-        console.log('[BlueprintDomOverlay] chatState opened, setting nodeChatVisible=true via Command', { nodeId });
         const cmd = new SetNodeChatVisibleCommand(props.scene, nodeId, false, true);
         props.scene.executeCommand(cmd);
       }
@@ -1199,7 +1107,12 @@ watch(() => [
   props.chatState?.selectedRefs ? JSON.stringify(props.chatState.selectedRefs) : ''
 ], () => {
   if (!props.scene || !props.chatState?.visible || !props.chatState?.nodeId) return;
-  debouncedSaveChatState(props.chatState.nodeId);
+  saveChatStateToNode(
+    props.chatState.nodeId,
+    props.chatState.draft ?? '',
+    props.chatState.params ?? {},
+    props.chatState.selectedRefs ?? []
+  );
 });
 </script>
 
