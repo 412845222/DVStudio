@@ -163,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord, WorkflowNodeChatSelectedRef } from '../../../aiworkflow/types'
 import {
@@ -275,34 +275,141 @@ const localParams = ref<WorkflowNodeChatParams>({})
 const localSelectedRefs = ref<WorkflowNodeChatSelectedRef[]>([])
 
 const syncFromProps = () => {
+	const prevDraft = localDraft.value
+	const prevParamsKeys = Object.keys(localParams.value)
+	const prevRefsLen = localSelectedRefs.value.length
 	localDraft.value = String(props.draft ?? '')
 	localParams.value = { ...(props.params ?? {}) }
 	localSelectedRefs.value = [...(props.selectedReferences ?? [])]
+	console.log('[DraftFlow#NodeChatDialog syncFromProps] EXECUTED', {
+		nodeId: props.nodeId,
+		nodeType: props.nodeType,
+		visible: props.visible,
+		prevDraftLen: prevDraft.length,
+		newDraftLen: localDraft.value.length,
+		newDraftPreview: localDraft.value.length > 40
+			? localDraft.value.slice(0, 40) + '...'
+			: localDraft.value || '(empty)',
+		prevParamsKeys,
+		newParamsKeys: Object.keys(localParams.value),
+		paramsTypeKeys: localParams.value[props.nodeType as keyof WorkflowNodeChatParams]
+			? Object.keys(localParams.value[props.nodeType as keyof WorkflowNodeChatParams] as Record<string, unknown>)
+			: null,
+		prevRefsLen,
+		newRefsLen: localSelectedRefs.value.length,
+		callStack: new Error().stack?.split('\n').slice(1, 4).join(' | ')
+	})
 }
 
 watch(() => props.visible, (visible, prevVisible) => {
-	if (visible && !prevVisible) {
+	console.log('[DraftFlow#NodeChatDialog visible watch] TRIGGER', {
+		from: prevVisible,
+		to: visible,
+		nodeId: props.nodeId,
+		nodeType: props.nodeType,
+		propsDraftLen: props.draft?.length ?? -1,
+		propsDraftPreview: props.draft?.length > 40
+			? props.draft.slice(0, 40) + '...'
+			: (props.draft as string) || '(empty)',
+		propsParamsKeys: props.params ? Object.keys(props.params) : null,
+		propsSelectedRefsLen: props.selectedReferences?.length ?? -1,
+	})
+	if (visible && (!prevVisible || !localDraft.value.length || !localDraft.value)) {
 		showParams.value = false
 		syncFromProps()
 		nextTick(() => {
 			inputRef.value?.focus?.()
 		})
 	}
-	if (visible && !prevVisible) {
+	if (visible && prevVisible === false) {
 		window.addEventListener('keydown', onKeydown)
 	}
 	if (!visible && prevVisible) {
 		window.removeEventListener('keydown', onKeydown)
 	}
-})
+}, { immediate: true })
 
 watch(() => props.nodeType, (type) => {
+	console.log('[DraftFlow#NodeChatDialog nodeType watch] TRIGGER (immediate)', {
+		type,
+		visible: props.visible,
+		localParamsTypeKeys: type && localParams.value[type as keyof WorkflowNodeChatParams]
+			? Object.keys(localParams.value[type as keyof WorkflowNodeChatParams] as Record<string, unknown>)
+			: null,
+		propsParamsTypeKeys: type && props.params?.[type as keyof WorkflowNodeChatParams]
+			? Object.keys(props.params[type as keyof WorkflowNodeChatParams] as Record<string, unknown>)
+			: null,
+	})
 	if (type && !localParams.value[type]) {
 		const defaults = getDefaultParamsForType(type)
+		console.log('[DraftFlow#NodeChatDialog nodeType watch] Applying defaults', {
+			type,
+			defaultKeys: Object.keys(defaults as Record<string, unknown>),
+		})
 		localParams.value = { ...localParams.value, [type]: defaults }
 		emit('update:params', localParams.value)
 	}
+	if (type && props.visible) {
+		syncFromProps()
+	}
 }, { immediate: true })
+
+watch(() => props.draft, (nextDraft) => {
+	const nextDraftStr = String(nextDraft ?? '')
+	if (!nextDraftStr) return
+	if (localDraft.value === nextDraftStr) return
+	if (nextDraftStr.length >= localDraft.value.length) {
+		console.log('[DraftFlow#NodeChatDialog props.draft watch] SYNC to localDraft', {
+			nodeId: props.nodeId,
+			nodeType: props.nodeType,
+			prevLocalLen: localDraft.value.length,
+			nextLen: nextDraftStr.length,
+			nextPreview: nextDraftStr.length > 40 ? nextDraftStr.slice(0, 40) + '...' : nextDraftStr || '(empty)',
+		})
+		localDraft.value = nextDraftStr
+	}
+}, { immediate: false })
+
+watch(() => props.params, (nextParams) => {
+	if (!nextParams || typeof nextParams !== 'object') return
+	const incomingJson = JSON.stringify(nextParams)
+	const localJson = JSON.stringify(localParams.value)
+	if (incomingJson.length >= localJson.length && incomingJson !== localJson) {
+		console.log('[DraftFlow#NodeChatDialog props.params watch] SYNC to localParams', {
+			nodeId: props.nodeId,
+			nodeType: props.nodeType,
+			incomingKeys: Object.keys(nextParams),
+		})
+		localParams.value = JSON.parse(incomingJson)
+	}
+}, { immediate: false, deep: true })
+
+watch(() => props.selectedReferences, (nextRefs) => {
+	const nextRefsArr = Array.isArray(nextRefs) ? nextRefs : []
+	if (nextRefsArr.length >= localSelectedRefs.value.length && nextRefsArr.length > 0) {
+		console.log('[DraftFlow#NodeChatDialog props.selectedRefs watch] SYNC to localSelectedRefs', {
+			nodeId: props.nodeId,
+			nodeType: props.nodeType,
+			nextLen: nextRefsArr.length,
+		})
+		localSelectedRefs.value = JSON.parse(JSON.stringify(nextRefsArr))
+	}
+}, { immediate: false, deep: true })
+
+onMounted(() => {
+	if (props.visible) {
+		console.log('[DraftFlow#NodeChatDialog onMounted] FALLBACK syncFromProps (component re-mounted while visible=true)', {
+			nodeId: props.nodeId,
+			nodeType: props.nodeType,
+			propsDraftLen: props.draft?.length ?? -1,
+			localDraftBeforeLen: localDraft.value.length,
+		})
+		syncFromProps()
+		nextTick(() => {
+			inputRef.value?.focus?.()
+		})
+	}
+})
 
 const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
 	if (!props.nodeType) return {}

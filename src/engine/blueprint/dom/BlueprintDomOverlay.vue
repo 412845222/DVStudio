@@ -274,7 +274,6 @@ function onBusinessChatSubmit(payload: WorkflowNodeChatSubmitPayload) {
 }
 
 function onBusinessChatClose(nodeId: string) {
-  console.log('[BlueprintDomOverlay] onBusinessChatClose', { nodeId });
   saveChatStateForNode(nodeId);
 
   if (props.scene) {
@@ -347,6 +346,21 @@ let rafId: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
 const prevDomMap = new Map<string, BlueprintNode>();
 const lastKnownText = new Map<string, string>();
+const lastValidChatStatePerNode = new Map<string, {
+  draft: string;
+  params: Record<string, any>;
+  selectedRefs: any[];
+}>();
+
+watch(() => [props.chatState?.visible, props.chatState?.nodeId, props.chatState?.draft] as const, () => {
+  if (props.chatState?.visible && props.chatState?.nodeId) {
+    lastValidChatStatePerNode.set(props.chatState.nodeId, {
+      draft: props.chatState.draft ?? '',
+      params: { ...(props.chatState.params ?? {}) },
+      selectedRefs: [...(props.chatState.selectedRefs ?? [])]
+    });
+  }
+}, { immediate: true, deep: true });
 
 const isDragging = ref(false);
 const isConnecting = ref(false);
@@ -1065,11 +1079,70 @@ function saveChatStateToNode(nodeId: string, draft: string, params: Record<strin
     JSON.stringify(oldData.params) !== JSON.stringify(newData.params) ||
     JSON.stringify(oldData.selectedRefs) !== JSON.stringify(newData.selectedRefs);
 
+  console.log('[DraftFlow#saveChatStateToNode] CALLED', {
+    nodeId,
+    hasChanges,
+    oldDraftLen: oldData.draft.length,
+    newDraftLen: newData.draft.length,
+    oldDraftPreview: oldData.draft.length > 40 ? oldData.draft.slice(0, 40) + '...' : oldData.draft || '(empty)',
+    newDraftPreview: newData.draft.length > 40 ? newData.draft.slice(0, 40) + '...' : newData.draft || '(empty)',
+    callStack: new Error().stack?.split('\n').slice(1, 4).join(' | ')
+  });
+
   if (hasChanges) {
     const cmd = new UpdateNodeChatDataCommand(props.scene, nodeId, oldData, newData);
     props.scene.executeCommand(cmd);
   }
 }
+
+const lastChatStateSnapshot = ref<{
+  nodeId: string | null;
+  visible: boolean;
+  draft: string;
+  params: Record<string, any>;
+  selectedRefs: any[];
+} | null>(null);
+
+watch(() => [props.chatState?.draft, props.chatState?.params, props.chatState?.selectedRefs] as const, () => {
+  if (!props.scene) return;
+  const chatState = props.chatState;
+  let targetNodeId: string | null | undefined = chatState?.nodeId;
+  let draftToUse = chatState?.draft;
+  let paramsToUse = chatState?.params;
+  let refsToUse = chatState?.selectedRefs;
+  let saveReason = 'draftChange_whenVisible';
+  if (!targetNodeId && lastChatStateSnapshot.value?.nodeId) {
+    targetNodeId = lastChatStateSnapshot.value.nodeId;
+    const cached = lastValidChatStatePerNode.get(targetNodeId);
+    if (cached) {
+      draftToUse = cached.draft;
+      paramsToUse = cached.params;
+      refsToUse = cached.selectedRefs;
+      saveReason = 'draftChange_useLastSnapshotNodeId';
+    } else {
+      draftToUse = lastChatStateSnapshot.value.draft;
+      paramsToUse = lastChatStateSnapshot.value.params;
+      refsToUse = lastChatStateSnapshot.value.selectedRefs;
+      saveReason = 'draftChange_useLastChatSnapshot';
+    }
+  }
+  if (!targetNodeId) return;
+  console.log('[DraftFlow#DomOverlay draft watch(DraftRealTimeSave)] TRIGGER', {
+    nodeId: targetNodeId,
+    visible: chatState?.visible,
+    directNodeIdIsNull: !chatState?.nodeId,
+    draftLen: (draftToUse ?? '').length,
+    paramsKeys: paramsToUse ? Object.keys(paramsToUse) : null,
+    saveReason,
+    callStack: new Error().stack?.split('\n').slice(1, 4).join(' | '),
+  });
+  saveChatStateToNode(
+    targetNodeId,
+    draftToUse ?? '',
+    (paramsToUse ?? {}) as Record<string, any>,
+    (refsToUse ?? []) as any[],
+  );
+}, { deep: true });
 
 watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (current, previous) => {
   if (!props.scene) return;
@@ -1077,17 +1150,66 @@ watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (curre
   const [visible, nodeId] = current;
   const [prevVisible, prevNodeId] = previous ?? [false, null];
 
-  // 对话框关闭或切换到其他节点时，确保保存当前状态
-  if ((prevVisible && !visible) || (prevVisible && visible && prevNodeId && prevNodeId !== nodeId)) {
-    if (prevNodeId && props.chatState) {
-      saveChatStateToNode(
-        prevNodeId,
-        props.chatState.draft ?? '',
-        props.chatState.params ?? {},
-        props.chatState.selectedRefs ?? []
-      );
-    }
+  console.log('[DraftFlow#DomOverlay visible|nodeId watch] TRANSITION', {
+    fromVisible: prevVisible,
+    toVisible: visible,
+    fromNodeId: prevNodeId,
+    toNodeId: nodeId,
+    lastSnapshotNodeId: lastChatStateSnapshot.value?.nodeId,
+    lastSnapshotDraftLen: lastChatStateSnapshot.value?.draft.length ?? -1,
+  });
+
+  const nodeIdsNeedSave: { id: string; reason: string }[] = [];
+  if (prevVisible && prevNodeId && prevNodeId !== nodeId) {
+    nodeIdsNeedSave.push({ id: prevNodeId, reason: 'switch_to_other_node' });
   }
+  if (prevVisible && !visible && prevNodeId && prevNodeId === nodeId) {
+    nodeIdsNeedSave.push({ id: prevNodeId, reason: 'close_same_node_dialog' });
+  }
+  if (prevVisible && !visible && prevNodeId && nodeId === null) {
+    nodeIdsNeedSave.push({ id: prevNodeId, reason: 'close_and_nodeId_cleared' });
+  }
+  for (const { id: saveNodeId, reason } of nodeIdsNeedSave) {
+    const cached = lastValidChatStatePerNode.get(saveNodeId);
+    const fallback = (() => {
+      const n = props.scene?.getBlueprintNode?.(saveNodeId);
+      return n ? {
+        draft: (n.data as any).nodeChatDraft ?? '',
+        params: (n.data as any).nodeChatParams ?? {},
+        selectedRefs: (n.data as any).nodeChatSelectedRefs ?? []
+      } : null;
+    })();
+    const snapshotFallback = (lastChatStateSnapshot.value?.nodeId === saveNodeId)
+      ? {
+        draft: lastChatStateSnapshot.value.draft,
+        params: lastChatStateSnapshot.value.params,
+        selectedRefs: lastChatStateSnapshot.value.selectedRefs,
+      }
+      : null;
+    const toSave = cached ?? snapshotFallback ?? fallback ?? { draft: '', params: {}, selectedRefs: [] };
+
+    console.log('[DraftFlow#DomOverlay visible|nodeId watch] SAVING LAST STATE', {
+      saveNodeId,
+      reason,
+      source: cached ? 'lastValidChatStatePerNode' : snapshotFallback ? 'lastChatStateSnapshot' : fallback ? 'engineFallback' : 'empty',
+      draftLen: toSave.draft.length,
+      draftPreview: toSave.draft.length > 40 ? toSave.draft.slice(0, 40) + '...' : toSave.draft || '(empty)',
+    });
+    saveChatStateToNode(
+      saveNodeId,
+      toSave.draft,
+      toSave.params as Record<string, any>,
+      toSave.selectedRefs as any,
+    );
+  }
+
+  lastChatStateSnapshot.value = {
+    nodeId: typeof nodeId === 'string' ? nodeId : (prevNodeId ?? null),
+    visible: !!visible,
+    draft: props.chatState?.draft ?? '',
+    params: { ...(props.chatState?.params ?? {}) },
+    selectedRefs: [...(props.chatState?.selectedRefs ?? [])],
+  };
 
   if (visible && typeof nodeId === 'string') {
     const node = props.scene.getBlueprintNode?.(nodeId);
@@ -1100,20 +1222,6 @@ watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (curre
     }
   }
 }, { immediate: true });
-
-watch(() => [
-  props.chatState?.draft,
-  props.chatState?.params ? JSON.stringify(props.chatState.params) : '',
-  props.chatState?.selectedRefs ? JSON.stringify(props.chatState.selectedRefs) : ''
-], () => {
-  if (!props.scene || !props.chatState?.visible || !props.chatState?.nodeId) return;
-  saveChatStateToNode(
-    props.chatState.nodeId,
-    props.chatState.draft ?? '',
-    props.chatState.params ?? {},
-    props.chatState.selectedRefs ?? []
-  );
-});
 </script>
 
 <style scoped>

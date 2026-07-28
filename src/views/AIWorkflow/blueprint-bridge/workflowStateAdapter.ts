@@ -141,13 +141,17 @@ export function invalidateWorkflowStateCache(): void {
 }
 
 export function legacyBlueprintToWorkflowState(
-	legacy: LegacyBlueprintData
+	legacy: LegacyBlueprintData,
+	existingNodesById?: Record<string, WorkflowNode>
 ): Partial<WorkflowState> {
 	const nodesById: Record<string, WorkflowNode> = {}
 	for (const nodeId of legacy.nodeOrder || Object.keys(legacy.nodesById || {})) {
 		const legacyNode = legacy.nodesById[nodeId]
 		if (legacyNode) {
-			nodesById[nodeId] = convertLegacyNodeToWorkflow(legacyNode)
+			nodesById[nodeId] = convertLegacyNodeToWorkflow(
+				legacyNode,
+				existingNodesById?.[nodeId]
+			)
 		}
 	}
 
@@ -266,7 +270,10 @@ function convertWorkflowNodeToLegacy(node: WorkflowNode): BlueprintNodeData {
 	}
 }
 
-function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNode {
+function convertLegacyNodeToWorkflow(
+	legacyNode: BlueprintNodeData,
+	existingNode?: WorkflowNode
+): WorkflowNode {
 	const wx = (legacyNode as any).x ?? legacyNode.worldX ?? 0
 	const wy = (legacyNode as any).y ?? legacyNode.worldY ?? 0
 	const node: WorkflowNode = {
@@ -307,11 +314,41 @@ function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNod
 		(node as any).unrealExportSettings = legacyNode.unrealExportSettings
 	if (legacyNode.comfyuiSettings !== undefined)
 		(node as any).comfyuiSettings = legacyNode.comfyuiSettings
-	if (legacyNode.nodeChatDraft !== undefined) (node as any).nodeChatDraft = legacyNode.nodeChatDraft
-	if (legacyNode.nodeChatParams !== undefined)
-		(node as any).nodeChatParams = legacyNode.nodeChatParams
-	if (legacyNode.nodeChatSelectedRefs !== undefined)
-		(node as any).nodeChatSelectedRefs = legacyNode.nodeChatSelectedRefs
+
+	const incomingDraft = legacyNode.nodeChatDraft
+	const hasIncomingDraft = typeof incomingDraft === 'string' && incomingDraft.length > 0
+	const existingDraft = (existingNode as any)?.nodeChatDraft
+	const hasExistingDraft = typeof existingDraft === 'string' && existingDraft.length > 0
+	if (hasIncomingDraft || !hasExistingDraft) {
+		if (incomingDraft !== undefined) (node as any).nodeChatDraft = incomingDraft
+	} else {
+		;(node as any).nodeChatDraft = existingDraft
+	}
+
+	const incomingParams = legacyNode.nodeChatParams
+	const hasIncomingParams =
+		!!incomingParams && typeof incomingParams === 'object' &&
+		Object.keys(incomingParams).length > 0
+	const existingParams = (existingNode as any)?.nodeChatParams
+	const hasExistingParams =
+		!!existingParams && typeof existingParams === 'object' &&
+		Object.keys(existingParams).length > 0
+	if (hasIncomingParams || !hasExistingParams) {
+		if (incomingParams !== undefined) (node as any).nodeChatParams = incomingParams
+	} else {
+		;(node as any).nodeChatParams = existingParams
+	}
+
+	const incomingRefs = legacyNode.nodeChatSelectedRefs
+	const hasIncomingRefs = Array.isArray(incomingRefs) && incomingRefs.length > 0
+	const existingRefs = (existingNode as any)?.nodeChatSelectedRefs
+	const hasExistingRefs = Array.isArray(existingRefs) && existingRefs.length > 0
+	if (hasIncomingRefs || !hasExistingRefs) {
+		if (incomingRefs !== undefined) (node as any).nodeChatSelectedRefs = incomingRefs
+	} else {
+		;(node as any).nodeChatSelectedRefs = existingRefs
+	}
+
 	if (legacyNode.nodeChatVisible !== undefined)
 		(node as any).nodeChatVisible = legacyNode.nodeChatVisible
 	if (legacyNode.status !== undefined) (node as any).status = legacyNode.status

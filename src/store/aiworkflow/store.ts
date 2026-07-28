@@ -2482,6 +2482,68 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					nodeChatVisible: typeof n.nodeChatVisible === 'boolean' ? n.nodeChatVisible : false,
 					prompt: isString(n.prompt) ? String(n.prompt) : undefined
 				}
+				const prevNode = state.nodesById[nodeId]
+				const incoming = nextNodesById[nodeId] as any
+				const prevDraft = (prevNode as any)?.nodeChatDraft
+				const incomingDraft = incoming.nodeChatDraft
+				const prevDraftStr = typeof prevDraft === 'string' ? prevDraft : ''
+				const incomingDraftStr = typeof incomingDraft === 'string' ? incomingDraft : ''
+				const needPreserveDraft = prevDraftStr.length > incomingDraftStr.length
+				if (needPreserveDraft) {
+					incoming.nodeChatDraft = prevDraftStr
+					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatDraft): Vuex longer, preserving Vuex', {
+						nodeId,
+						nodeType: type,
+						prevLen: prevDraftStr.length,
+						incomingLen: incomingDraftStr.length,
+						preservedDraftPreview: prevDraftStr.length > 40
+							? prevDraftStr.slice(0, 40) + '...'
+							: prevDraftStr || '(empty)',
+						incomingDraftPreview: incomingDraftStr.length > 40
+							? incomingDraftStr.slice(0, 40) + '...'
+							: incomingDraftStr || '(empty)',
+						defendReason: !incomingDraftStr.length ? 'incoming_empty' : 'vuex_longer_than_incoming',
+					})
+				}
+				const prevParams = (prevNode as any)?.nodeChatParams
+				const incomingParams = incoming.nodeChatParams
+				const prevParamsKeys = (prevParams && typeof prevParams === 'object')
+					? Object.keys(prevParams as Record<string, unknown>)
+					: []
+				const incomingParamsKeys = (incomingParams && typeof incomingParams === 'object')
+					? Object.keys(incomingParams as Record<string, unknown>)
+					: []
+				const prevParamsNestedDepth = JSON.stringify(prevParams ?? {}).length
+				const incomingParamsNestedDepth = JSON.stringify(incomingParams ?? {}).length
+				const needPreserveParams = !incomingParamsKeys.length && prevParamsKeys.length
+					? true
+					: prevParamsNestedDepth > incomingParamsNestedDepth + 10
+				if (needPreserveParams) {
+					incoming.nodeChatParams = JSON.parse(JSON.stringify(prevParams ?? {}))
+					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatParams): Vuex has more/deeper, preserving Vuex', {
+						nodeId,
+						nodeType: type,
+						prevKeysLen: prevParamsKeys.length,
+						incomingKeysLen: incomingParamsKeys.length,
+						prevJsonLen: prevParamsNestedDepth,
+						incomingJsonLen: incomingParamsNestedDepth,
+						preservedKeys: prevParamsKeys.slice(0, 20),
+					})
+				}
+				const prevRefs = (prevNode as any)?.nodeChatSelectedRefs
+				const incomingRefs = incoming.nodeChatSelectedRefs
+				const prevRefsLen = Array.isArray(prevRefs) ? prevRefs.length : 0
+				const incomingRefsLen = Array.isArray(incomingRefs) ? incomingRefs.length : 0
+				const needPreserveRefs = prevRefsLen > incomingRefsLen
+				if (needPreserveRefs) {
+					incoming.nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevRefs ?? []))
+					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatSelectedRefs): Vuex longer, preserving Vuex', {
+						nodeId,
+						nodeType: type,
+						prevLen: prevRefsLen,
+						incomingLen: incomingRefsLen,
+					})
+				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'scene-understanding')
@@ -2509,6 +2571,53 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 
 			state.nodesById = nextNodesById
 			state.nodeOrder = nodeOrder
+
+			// ULTIMATE FALLBACK: After replacing entire nodesById, re-apply floating nodeChatDialog
+			// values (never cleared by closeNodeChatDialog) back to nodesById — guarantees that
+			// the most recent user input cannot be lost even if engine/hydrate has bugs.
+			const { nodeId: dialogNodeId, draft: dialogDraft, params: dialogParams, selectedRefs: dialogRefs } =
+				state.nodeChatDialog
+			if (dialogNodeId && state.nodesById[dialogNodeId]) {
+				const targetNode = state.nodesById[dialogNodeId] as any
+				const curDraft = typeof targetNode.nodeChatDraft === 'string' ? targetNode.nodeChatDraft : ''
+				const dialogDraftStr = typeof dialogDraft === 'string' ? dialogDraft : ''
+				if (dialogDraftStr.length > curDraft.length) {
+					targetNode.nodeChatDraft = dialogDraftStr
+					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatDraft): re-applied from floating dialog', {
+						nodeId: dialogNodeId,
+						fromNodesByIdLen: curDraft.length,
+						fromDialogLen: dialogDraftStr.length,
+						appliedPreview: dialogDraftStr.length > 40
+							? dialogDraftStr.slice(0, 40) + '...'
+							: dialogDraftStr || '(empty)',
+					})
+				}
+				const curParamsKeys = (targetNode.nodeChatParams && typeof targetNode.nodeChatParams === 'object')
+					? Object.keys(targetNode.nodeChatParams as Record<string, unknown>)
+					: []
+				const dialogParamsKeys = (dialogParams && typeof dialogParams === 'object')
+					? Object.keys(dialogParams as Record<string, unknown>)
+					: []
+				if (dialogParamsKeys.length > 0 && curParamsKeys.length === 0) {
+					targetNode.nodeChatParams = JSON.parse(JSON.stringify(dialogParams ?? {}))
+					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatParams): re-applied from floating dialog', {
+						nodeId: dialogNodeId,
+						appliedKeys: dialogParamsKeys.slice(0, 20),
+					})
+				}
+				const curRefsLen = Array.isArray(targetNode.nodeChatSelectedRefs)
+					? targetNode.nodeChatSelectedRefs.length
+					: 0
+				const dialogRefsLen = Array.isArray(dialogRefs) ? dialogRefs.length : 0
+				if (dialogRefsLen > curRefsLen) {
+					targetNode.nodeChatSelectedRefs = JSON.parse(JSON.stringify(dialogRefs ?? []))
+					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatSelectedRefs): re-applied from floating dialog', {
+						nodeId: dialogNodeId,
+						fromNodesByIdLen: curRefsLen,
+						fromDialogLen: dialogRefsLen,
+					})
+				}
+			}
 
 			// resources
 			// Keep blob urls during hydrate so imported project packages can use in-memory assets
@@ -4358,43 +4467,119 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
 				state.selectedEdgeId = null
 		},
-		openNodeChatDialog(state, payload: { nodeId: string; nodeType: WorkflowNodeChatType }) {
+		openNodeChatDialog(state, payload: {
+			nodeId: string;
+			nodeType: WorkflowNodeChatType;
+			engineNodeChatDraft?: string;
+			engineNodeChatParams?: Record<string, unknown>;
+			engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[];
+		}) {
+			const prevDialogNodeId = state.nodeChatDialog.nodeId
+			const prevDialogDraft = state.nodeChatDialog.draft ?? ''
+			const prevDialogParams = state.nodeChatDialog.params ?? {} as Record<string, unknown>
+			const prevDialogRefs = state.nodeChatDialog.selectedRefs ?? []
+			const isReopeningSameNode = prevDialogNodeId === payload.nodeId && prevDialogDraft.length > 0
+			if (isReopeningSameNode) {
+				const targetNode = state.nodesById[payload.nodeId]
+				if (targetNode) {
+					const currentNodesByIdDraft = (targetNode as any).nodeChatDraft ?? ''
+					const recovered = prevDialogDraft.length >= currentNodesByIdDraft.length ? prevDialogDraft : currentNodesByIdDraft
+					;(targetNode as any).nodeChatDraft = recovered
+					const currentParams = (targetNode as any).nodeChatParams
+					const hasCurrentParams = currentParams && typeof currentParams === 'object' && Object.keys(currentParams).length > 0
+					const hasPrevParams = Object.keys(prevDialogParams).length > 0
+					if (!hasCurrentParams && hasPrevParams) {
+						;(targetNode as any).nodeChatParams = JSON.parse(JSON.stringify(prevDialogParams))
+					}
+					const currentRefs = (targetNode as any).nodeChatSelectedRefs
+					const hasCurrentRefs = Array.isArray(currentRefs) && currentRefs.length > 0
+					const hasPrevRefs = prevDialogRefs.length > 0
+					if (!hasCurrentRefs && hasPrevRefs) {
+						;(targetNode as any).nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevDialogRefs))
+					}
+				}
+			}
+
 			state.nodeChatDialog.visible = true
 			state.nodeChatDialog.nodeId = payload.nodeId
 			state.nodeChatDialog.nodeType = payload.nodeType
 			const node = state.nodesById[payload.nodeId]
-			let draft = ''
-			// 优先从nodeChatDraft读取（聊天对话框专门保存的草稿）
-			draft = node?.nodeChatDraft ?? ''
-			if (!draft) {
-				if (payload.nodeType !== 'text') {
-					draft = node?.textValue ?? ''
-				}
+
+			let draft: string
+			const vuexDraft = node?.nodeChatDraft ?? ''
+			const engineDraft = payload.engineNodeChatDraft ?? ''
+			let recoveredFromPrevDialog = ''
+			if (isReopeningSameNode && prevDialogDraft.length > vuexDraft.length && prevDialogDraft.length > engineDraft.length) {
+				recoveredFromPrevDialog = prevDialogDraft
 			}
-			if (!draft) {
+			const candidateFromFour = [vuexDraft, engineDraft, recoveredFromPrevDialog] as const
+			draft = candidateFromFour.reduce((best, cur) => (cur.length >= best.length ? cur : best), '')
+
+			const fallbackFromTextValue: string | null = (() => {
+				if (draft) return null
+				if (payload.nodeType !== 'text') return node?.textValue ?? ''
+				return null
+			})()
+			if (fallbackFromTextValue !== null) draft = fallbackFromTextValue
+			const fallbackFromPrompt: string | null = (() => {
+				if (draft) return null
 				const nodePrompt = (node as Record<string, unknown>).prompt
-				draft = typeof nodePrompt === 'string' ? nodePrompt : ''
-			}
+				return typeof nodePrompt === 'string' ? nodePrompt : null
+			})()
+			if (fallbackFromPrompt !== null) draft = fallbackFromPrompt
 			state.nodeChatDialog.draft = draft
-			state.nodeChatDialog.selectedRefs = node?.nodeChatSelectedRefs
-				? JSON.parse(JSON.stringify(node.nodeChatSelectedRefs))
-				: []
+
+			console.log('[DraftFlow#store openNodeChatDialog] MUTATION', {
+				nodeId: payload.nodeId,
+				nodeType: payload.nodeType,
+				isReopeningSameNode,
+				vuexDraftLen: vuexDraft.length,
+				engineDraftLen: engineDraft.length,
+				floatingDialogDraftLen: prevDialogDraft.length,
+				recoveredFromPrevDialogLen: recoveredFromPrevDialog.length,
+				vuexDraftPreview: vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)',
+				engineDraftPreview: engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
+				floatingDialogDraftPreview: prevDialogDraft.length > 40 ? prevDialogDraft.slice(0, 40) + '...' : prevDialogDraft || '(empty)',
+				finalDraftLen: draft.length,
+				finalDraftPreview: draft.length > 40 ? draft.slice(0, 40) + '...' : draft || '(empty)',
+				fallbackFromTextValue: fallbackFromTextValue !== null ? String(fallbackFromTextValue.length) : null,
+				fallbackFromPromptUsed: fallbackFromPrompt !== null,
+				vuexNodeChatParamsKeys: node?.nodeChatParams ? Object.keys(node.nodeChatParams as Record<string, unknown>) : null,
+				engineNodeChatParamsKeys: payload.engineNodeChatParams ? Object.keys(payload.engineNodeChatParams) : null,
+				vuexSelectedRefsLen: Array.isArray(node?.nodeChatSelectedRefs) ? node.nodeChatSelectedRefs.length : -1,
+				engineSelectedRefsLen: Array.isArray(payload.engineNodeChatSelectedRefs) ? payload.engineNodeChatSelectedRefs.length : -1,
+			})
+
+			const vuexRefs = node?.nodeChatSelectedRefs ?? []
+			const engineRefs = payload.engineNodeChatSelectedRefs ?? []
+			const resolvedSelectedRefs =
+				(Array.isArray(vuexRefs) ? vuexRefs.length : 0) >=
+				(Array.isArray(engineRefs) ? engineRefs.length : 0)
+					? vuexRefs
+						? JSON.parse(JSON.stringify(vuexRefs))
+						: []
+					: engineRefs
+						? JSON.parse(JSON.stringify(engineRefs))
+						: []
+			state.nodeChatDialog.selectedRefs =
+				normalizeChatSelectedRefs(resolvedSelectedRefs) ?? []
+
 			if (payload.nodeType === 'blender') {
 				state.nodeChatDialog.submitting = Boolean(node?.blenderSettings?.isSubmitting)
 			} else {
 				state.nodeChatDialog.submitting = false
 			}
 
-			// 构建聊天参数：从nodeChatParams读取，并从imageSettings.meshyImageSettings同步meshy参数
-			const existingChatParams: Record<string, unknown> =
+			const vuexParams: Record<string, unknown> =
 				(node?.nodeChatParams as Record<string, unknown>) ?? {}
+			const engineParams = payload.engineNodeChatParams ?? {}
+			const existingChatParams: Record<string, unknown> = { ...engineParams, ...vuexParams }
 			const typeKey = payload.nodeType
 			const existingTypeParams: Record<string, unknown> =
 				typeof existingChatParams[typeKey] === 'object' && existingChatParams[typeKey] !== null
 					? (existingChatParams[typeKey] as Record<string, unknown>)
 					: {}
 
-			// 从imageSettings.meshyImageSettings同步meshy参数（如果是image节点）
 			const syncedMeshyParams: Record<string, unknown> = {}
 			if (typeKey === 'image' && node) {
 				const imgSettings = (node as Record<string, unknown>).imageSettings as
@@ -4405,7 +4590,6 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						? (imgSettings.meshyImageSettings as Record<string, unknown> | undefined)
 						: undefined
 				if (meshyImgSettings && typeof meshyImgSettings === 'object') {
-					// 从submittedParams中获取提交过的参数（优先）
 					const submittedParams =
 						typeof meshyImgSettings.submittedParams === 'object' &&
 						meshyImgSettings.submittedParams !== null
@@ -4413,21 +4597,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 							: undefined
 
 					if (submittedParams) {
-						// model是meshy的AI模型名（如nano-banana），需要设置params.model='meshy'和params.meshyImageAiModel
 						if (typeof submittedParams.model === 'string' && submittedParams.model) {
 							syncedMeshyParams.model = 'meshy'
 							syncedMeshyParams.meshyImageAiModel = submittedParams.model
 						}
-						// aspectRatio：处理'1:1 (多视图)'格式
 						if (typeof submittedParams.aspectRatio === 'string') {
 							const ar = submittedParams.aspectRatio.replace(/\s*\(多视图\)\s*/g, '').trim()
 							if (ar) syncedMeshyParams.meshyAspectRatio = ar
 						}
-						// generateMultiView：布尔值
 						if (typeof submittedParams.generateMultiView === 'boolean') {
 							syncedMeshyParams.meshyGenerateMultiView = submittedParams.generateMultiView
 						}
-						// poseMode：'无'表示空
 						if (
 							typeof submittedParams.poseMode === 'string' &&
 							submittedParams.poseMode &&
@@ -4435,7 +4615,6 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						) {
 							syncedMeshyParams.meshyPoseMode = submittedParams.poseMode
 						}
-						// negativePrompt：'无'表示空
 						if (
 							typeof submittedParams.negativePrompt === 'string' &&
 							submittedParams.negativePrompt &&
@@ -4443,11 +4622,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						) {
 							syncedMeshyParams.meshyNegativePrompt = submittedParams.negativePrompt
 						}
-						// seed：'随机'表示-1
 						if (typeof submittedParams.seed === 'number' && submittedParams.seed >= 0) {
 							syncedMeshyParams.meshySeed = submittedParams.seed
 						}
-						// outputCount
 						if (
 							typeof submittedParams.outputCount === 'number' &&
 							submittedParams.outputCount > 0
@@ -4459,7 +4636,6 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						}
 					}
 
-					// 直接从meshyImageSettings中读取（作为兜底）
 					if (
 						typeof meshyImgSettings.aiModel === 'string' &&
 						meshyImgSettings.aiModel &&
@@ -4515,7 +4691,6 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 
-			// 从blenderSettings同步参数（如果是blender节点）- 作为兜底，确保重启后参数能恢复
 			const syncedBlenderParams: Record<string, unknown> = {}
 			if (typeKey === 'blender' && node) {
 				const blenderSettings = (node as Record<string, unknown>).blenderSettings as
@@ -4539,7 +4714,6 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 
-			// 合并参数：现有nodeChatParams优先，然后是从meshyImageSettings/blenderSettings同步的参数
 			const mergedTypeParams = {
 				...syncedMeshyParams,
 				...syncedBlenderParams,
@@ -4549,30 +4723,78 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...existingChatParams,
 				[typeKey]: mergedTypeParams
 			}
-
-			state.nodeChatDialog.selectedRefs =
-				normalizeChatSelectedRefs(node?.nodeChatSelectedRefs) ?? []
 		},
 		closeNodeChatDialog(state) {
+			const prevNodeId = state.nodeChatDialog.nodeId
+			const prevDraftLen = state.nodeChatDialog.draft?.length ?? -1
+			const prevDraftPreview = (state.nodeChatDialog.draft || '').length > 40
+				? (state.nodeChatDialog.draft as string).slice(0, 40) + '...'
+				: (state.nodeChatDialog.draft || '(empty)')
+			console.log('[DraftFlow#store closeNodeChatDialog] MUTATION', {
+				prevNodeId,
+				prevDraftLen,
+				prevDraftPreview,
+				nodesByIdNodeChatDraft: prevNodeId && state.nodesById[prevNodeId]
+					? (state.nodesById[prevNodeId] as any).nodeChatDraft?.length ?? -1
+					: -1,
+				nodesByIdNodeChatParamsKeys: prevNodeId && state.nodesById[prevNodeId]
+					? Object.keys((state.nodesById[prevNodeId] as any).nodeChatParams ?? {})
+					: null,
+				willPreserveNodeIdAndDraft: true,
+			})
 			state.nodeChatDialog.visible = false
-			state.nodeChatDialog.nodeId = null
-			state.nodeChatDialog.nodeType = null
-			state.nodeChatDialog.draft = ''
 			state.nodeChatDialog.submitting = false
-			state.nodeChatDialog.params = {}
-			state.nodeChatDialog.selectedRefs = []
 		},
 		setNodeChatDraft(state, payload: { text: string }) {
+			const curDialogNodeId = state.nodeChatDialog.nodeId
+			const prevLen = state.nodeChatDialog.draft.length
 			state.nodeChatDialog.draft = payload.text
+			const newLen = payload.text.length
+			const targetNodeId = curDialogNodeId
+			const tryWrite = targetNodeId && state.nodesById[targetNodeId]
+			if (tryWrite) {
+				;(state.nodesById[targetNodeId] as any).nodeChatDraft = payload.text
+			}
+			if (prevLen !== newLen || !tryWrite) {
+				console.log('[DraftFlow#store setNodeChatDraft] MUTATION', {
+					nodeId: curDialogNodeId,
+					targetNodeId,
+					writeSuccess: !!tryWrite,
+					prevLen,
+					newLen,
+					prevPreview: prevLen > 40 ? state.nodeChatDialog.draft.slice(0, 40) + '...' : state.nodeChatDialog.draft || '(empty)',
+					newPreview: newLen > 40 ? payload.text.slice(0, 40) + '...' : payload.text || '(empty)',
+				})
+			}
 		},
 		setNodeChatParams(state: WorkflowState, payload: { params: Record<string, unknown> }) {
 			state.nodeChatDialog.params = payload.params
+			const curNodeId = state.nodeChatDialog.nodeId
+			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
+			if (writeToNodesById) {
+				;(state.nodesById[curNodeId] as any).nodeChatParams = payload.params
+			}
+			console.log('[DraftFlow#store setNodeChatParams] MUTATION', {
+				nodeId: curNodeId,
+				writeSuccess: !!writeToNodesById,
+				paramsKeys: Object.keys(payload.params),
+			})
 		},
 		setNodeChatSelectedRefs(
 			state: WorkflowState,
 			payload: { refs: WorkflowNodeChatSelectedRef[] }
 		) {
 			state.nodeChatDialog.selectedRefs = payload.refs
+			const curNodeId = state.nodeChatDialog.nodeId
+			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
+			if (writeToNodesById) {
+				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs = payload.refs
+			}
+			console.log('[DraftFlow#store setNodeChatSelectedRefs] MUTATION', {
+				nodeId: curNodeId,
+				writeSuccess: !!writeToNodesById,
+				refsLen: payload.refs.length,
+			})
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting
@@ -4984,19 +5206,76 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		removeEdge({ commit }, payload: { edgeId: string }) {
 			commit('removeEdge', payload)
 		},
-		openNodeChatDialog({ commit, state }, payload: { nodeId: string }) {
+		openNodeChatDialog(
+			{ commit, state },
+			payload: {
+				nodeId: string;
+				nodeType?: WorkflowNodeChatType;
+				engineNodeChatDraft?: string;
+				engineNodeChatParams?: Record<string, unknown>;
+				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[];
+			}
+		) {
 			const node = state.nodesById[payload.nodeId]
-			if (!node) return
-			const nodeType = node.type as WorkflowNodeChatType
+			const engineDraft = payload.engineNodeChatDraft ?? ''
+			const vuexDraft = (node as any)?.nodeChatDraft ?? ''
+			console.log('[DraftFlow#store action openNodeChatDialog] START', {
+				payloadNodeId: payload.nodeId,
+				payloadNodeType: payload.nodeType,
+				engineDraftLen: engineDraft.length,
+				engineDraftPreview: engineDraft.length > 40
+					? engineDraft.slice(0, 40) + '...'
+					: engineDraft || '(empty)',
+				foundNodeInVuex: !!node,
+				vuexNodeType: node?.type,
+				vuexDraftLen: vuexDraft.length,
+				vuexDraftPreview: vuexDraft.length > 40
+					? vuexDraft.slice(0, 40) + '...'
+					: vuexDraft || '(empty)',
+			})
+			if (!node) {
+				console.warn('[DraftFlow#store action openNodeChatDialog] ABORT: node not found in state.nodesById', {
+					nodeId: payload.nodeId,
+					nodesByIdKeys: Object.keys(state.nodesById).slice(0, 20),
+					totalNodes: Object.keys(state.nodesById).length,
+				})
+				return
+			}
+			let nodeType: WorkflowNodeChatType
+			if (
+				typeof payload.nodeType === 'string' &&
+				['text', 'image', 'video', 'model3d', 'blender'].includes(payload.nodeType)
+			) {
+				nodeType = payload.nodeType
+			} else {
+				nodeType = node.type as WorkflowNodeChatType
+			}
 			if (
 				nodeType !== 'text' &&
 				nodeType !== 'image' &&
 				nodeType !== 'video' &&
 				nodeType !== 'model3d' &&
 				nodeType !== 'blender'
-			)
+			) {
+				console.warn('[DraftFlow#store action openNodeChatDialog] ABORT: unsupported nodeType', {
+					nodeId: payload.nodeId,
+					nodeType,
+					passedNodeType: payload.nodeType,
+					vuexNodeActualType: node.type,
+				})
 				return
-			commit('openNodeChatDialog', { nodeId: payload.nodeId, nodeType })
+			}
+			console.log('[DraftFlow#store action openNodeChatDialog] ABOUT TO COMMIT', {
+				nodeId: payload.nodeId,
+				resolvedNodeType: nodeType,
+			})
+			commit('openNodeChatDialog', {
+				nodeId: payload.nodeId,
+				nodeType,
+				engineNodeChatDraft: payload.engineNodeChatDraft,
+				engineNodeChatParams: payload.engineNodeChatParams,
+				engineNodeChatSelectedRefs: payload.engineNodeChatSelectedRefs
+			})
 		},
 		closeNodeChatDialog({ commit }) {
 			commit('closeNodeChatDialog')

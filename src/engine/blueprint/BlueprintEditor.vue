@@ -160,15 +160,29 @@ function enterEditMode(nodeId: string) {
     return;
   }
 
+  const nodeData = node.data as any;
   console.log('[BlueprintEditor] enterEditMode', {
     nodeId,
     prevEditingId: editingNodeId.value,
-    nodeChatVisible: (node.data as any).nodeChatVisible,
-    hasChatDraft: !!((node.data as any).nodeChatDraft)
+    nodeChatVisible: nodeData.nodeChatVisible,
+    hasChatDraft: !!(nodeData.nodeChatDraft),
+    chatDraftPreview: typeof nodeData.nodeChatDraft === 'string'
+      ? (nodeData.nodeChatDraft.length > 40
+        ? nodeData.nodeChatDraft.slice(0, 40) + '...'
+        : nodeData.nodeChatDraft || '(empty string)')
+      : String(nodeData.nodeChatDraft),
+    nodeChatParamsKeys: nodeData.nodeChatParams ? Object.keys(nodeData.nodeChatParams) : null,
+    nodeChatSelectedRefsLen: Array.isArray(nodeData.nodeChatSelectedRefs)
+      ? nodeData.nodeChatSelectedRefs.length
+      : null
   });
 
   if (editingNodeId.value && editingNodeId.value !== nodeId) {
     const prevNode = scene.value.getBlueprintNode(editingNodeId.value);
+    console.log('[BlueprintEditor] enterEditMode switch: setting prev node DOM mode false', {
+      prevNodeId: editingNodeId.value,
+      prevChatDraft: prevNode ? (prevNode.data as any).nodeChatDraft : 'PREV_NODE_NOT_FOUND'
+    });
     if (prevNode) prevNode.setDomMode(false);
     editingNodeId.value = null;
   }
@@ -186,9 +200,17 @@ function enterEditMode(nodeId: string) {
 
 function exitEditMode() {
   if (editingNodeId.value) {
-    console.log('[BlueprintEditor] exitEditMode', { editingNodeId: editingNodeId.value });
+    const exitingId = editingNodeId.value;
+    const exitingNode = scene.value?.getBlueprintNode(exitingId);
+    const exitingDraft = exitingNode ? (exitingNode.data as any).nodeChatDraft : 'NODE_NOT_FOUND';
+    console.log('[BlueprintEditor] exitEditMode START', {
+      editingNodeId: exitingId,
+      engineDraftBeforeSetDomFalse: typeof exitingDraft === 'string'
+        ? (exitingDraft.length > 40 ? exitingDraft.slice(0, 40) + '...' : exitingDraft || '(empty string)')
+        : String(exitingDraft)
+    });
     if (scene.value) {
-      const node = scene.value.getBlueprintNode(editingNodeId.value);
+      const node = scene.value.getBlueprintNode(exitingId);
       if (node) node.setDomMode(false);
       scene.value.isEngineDragging = false;
       scene.value.isDomInteractionLocked = false;
@@ -196,6 +218,17 @@ function exitEditMode() {
       scene.value.requestRedraw();
       nextTick(() => {
         if (!isUpdatingFromProps && scene.value) {
+          const node2 = scene.value.getBlueprintNode(exitingId);
+          const draftAfterTick = node2 ? (node2.data as any).nodeChatDraft : '(missing)';
+          console.log('[BlueprintEditor] exitEditMode nextTick emitChange:', {
+            nodeId: exitingId,
+            engineDraftAfterTick: typeof draftAfterTick === 'string'
+              ? (draftAfterTick.length > 40
+                ? draftAfterTick.slice(0, 40) + '...'
+                : draftAfterTick || '(empty string)')
+              : String(draftAfterTick),
+            changeDebounceTimer
+          });
           emitChange();
         }
       });
