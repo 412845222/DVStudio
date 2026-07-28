@@ -59,6 +59,11 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				cachedNode.title = wfNode.title
 				cachedNode.subtitle = wfNode.subtitle
 				cachedNode.status = (wfNode as any).status ?? cachedNode.status
+				cachedNode.nodeChatDraft = (wfNode as any).nodeChatDraft
+				cachedNode.nodeChatParams = (wfNode as any).nodeChatParams
+				cachedNode.nodeChatSelectedRefs = (wfNode as any).nodeChatSelectedRefs
+				cachedNode.nodeChatVisible = (wfNode as any).nodeChatVisible
+				cachedNode.textValue = (wfNode as any).textValue
 			}
 		}
 		_cachedResult.savedAt = Date.now()
@@ -255,6 +260,7 @@ function convertWorkflowNodeToLegacy(node: WorkflowNode): BlueprintNodeData {
 		nodeChatDraft: (node as any).nodeChatDraft,
 		nodeChatParams: (node as any).nodeChatParams,
 		nodeChatSelectedRefs: (node as any).nodeChatSelectedRefs,
+		nodeChatVisible: (node as any).nodeChatVisible,
 		createdAt: node.createdAt,
 		status: (node as any).status
 	}
@@ -306,6 +312,8 @@ function convertLegacyNodeToWorkflow(legacyNode: BlueprintNodeData): WorkflowNod
 		(node as any).nodeChatParams = legacyNode.nodeChatParams
 	if (legacyNode.nodeChatSelectedRefs !== undefined)
 		(node as any).nodeChatSelectedRefs = legacyNode.nodeChatSelectedRefs
+	if (legacyNode.nodeChatVisible !== undefined)
+		(node as any).nodeChatVisible = legacyNode.nodeChatVisible
 	if (legacyNode.status !== undefined) (node as any).status = legacyNode.status
 
 	return node

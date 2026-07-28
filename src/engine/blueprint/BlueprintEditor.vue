@@ -151,7 +151,21 @@ function applyInitialData(newData: LegacyBlueprintData) {
 function enterEditMode(nodeId: string) {
   if (!scene.value) return;
   const node = scene.value.getBlueprintNode(nodeId);
-  if (!node) return;
+  if (!node) {
+    console.warn('[BlueprintEditor] enterEditMode: node not found', nodeId);
+    return;
+  }
+
+  if (editingNodeId.value === nodeId) {
+    return;
+  }
+
+  console.log('[BlueprintEditor] enterEditMode', {
+    nodeId,
+    prevEditingId: editingNodeId.value,
+    nodeChatVisible: (node.data as any).nodeChatVisible,
+    hasChatDraft: !!((node.data as any).nodeChatDraft)
+  });
 
   if (editingNodeId.value && editingNodeId.value !== nodeId) {
     const prevNode = scene.value.getBlueprintNode(editingNodeId.value);
@@ -172,6 +186,7 @@ function enterEditMode(nodeId: string) {
 
 function exitEditMode() {
   if (editingNodeId.value) {
+    console.log('[BlueprintEditor] exitEditMode', { editingNodeId: editingNodeId.value });
     if (scene.value) {
       const node = scene.value.getBlueprintNode(editingNodeId.value);
       if (node) node.setDomMode(false);

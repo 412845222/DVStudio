@@ -21,6 +21,7 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	removeSelectedNodes: (nodeIds: string[]) => void
 	removeSelectedEdge: (edgeId: string) => void
 	scheduleAsyncEdgeRender: () => void
+	saveProject?: () => void | Promise<void>
 }) => {
 	const onWorkflowKeyDown = (ev: KeyboardEvent) => {
 		const key = String(ev.key || '').toLowerCase()
@@ -29,6 +30,16 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		if (!payload.isRouteActive()) {
 			return
 		}
+
+		if (mod && key === 's') {
+			if (payload.saveProject) {
+				ev.preventDefault()
+				ev.stopImmediatePropagation()
+				Promise.resolve(payload.saveProject()).catch(() => {})
+			}
+			return
+		}
+
 		if (isEditableEventTarget(ev.target ?? null)) {
 			return
 		}

@@ -158,7 +158,7 @@
 		</div>
 
 		<NodeChatDialog
-			v-if="nodeChatVisibleResolved"
+			v-show="nodeChatVisibleResolved"
 			class="wf-node-inline-chat"
 			:visible="nodeChatVisibleResolved"
 			:node-id="nodeId"
@@ -462,8 +462,6 @@ const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 const nodeChatVisibleResolved = computed(() => {
 	return Boolean(
 		props.nodeChatVisible &&
-		props.selected &&
-		isPrimarySelectedResolved.value &&
 		nodeChatNodeTypeResolved.value
 	)
 })
@@ -664,6 +662,12 @@ const MIN_SIZE = 80
 
 const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 	if (e.button !== 0) return
+	console.log('[WorkflowNodeBase] onResizeStart', {
+		nodeId: props.nodeId,
+		corner,
+		nodeChatVisible: nodeChatVisibleResolved.value,
+		hasDraft: nodeChatDraft.value.length > 0
+	})
 	userResized = true
 	teardownResizeObserver()
 	emit('select', props.nodeId)
@@ -714,6 +718,10 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		})
 	}
 	const onUp = (ev: PointerEvent) => {
+		console.log('[WorkflowNodeBase] onResizeEnd', {
+			nodeId: props.nodeId,
+			nodeChatVisible: nodeChatVisibleResolved.value
+		})
 		el.removeEventListener('pointermove', onMove)
 		el.removeEventListener('pointerup', onUp)
 		el.removeEventListener('pointercancel', onUp)

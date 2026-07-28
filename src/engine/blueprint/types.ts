@@ -60,6 +60,7 @@ export interface BlueprintNodeData {
 	nodeChatDraft?: string | null
 	nodeChatParams?: Record<string, any> | null
 	nodeChatSelectedRefs?: any[] | null
+	nodeChatVisible?: boolean
 	resourcePath?: string | null
 	rotatePromptText?: string | null
 	textMergeItems?: any[] | null

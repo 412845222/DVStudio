@@ -1730,9 +1730,25 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
+	const temperature = p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
+	const maxTokens = p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
+	const topP = p.topP !== undefined && p.topP !== null ? Number(p.topP) : undefined
 	const taskId = `chat-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
 	const projectId = p.projectId ? Number(p.projectId) : null
 	const nodeId = String(p.nodeId || '').trim()
+
+	// Build user message: support multimodal (image + text) when refImages are provided
+	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
+
+	const requestPayload = {
+		model: useModel,
+		messageLength: message.length,
+		provider,
+		temperature,
+		maxTokens,
+		topP,
+		refImageCount: refImages.length
+	}
 	recordArkTask({
 		taskId,
 		provider,
@@ -1742,7 +1758,7 @@ export async function* blueprintChatStream(ctx, payload) {
 		status: 'queued',
 		prompt: message,
 		statusText: '正在调用文本模型…',
-		requestPayload: { model: useModel, messageLength: message.length },
+		requestPayload,
 		projectId,
 		nodeId
 	})
@@ -1752,8 +1768,6 @@ export async function* blueprintChatStream(ctx, payload) {
 		if (m && m.role && m.content) chatMessages.push({ role: m.role, content: String(m.content) })
 	}
 
-	// Build user message: support multimodal (image + text) when refImages are provided
-	const refImages = Array.isArray(p.refImages) ? p.refImages.filter(Boolean) : []
 	const hasRefImages = refImages.length > 0
 	if (hasRefImages) {
 		const userContent = []
@@ -1783,6 +1797,15 @@ export async function* blueprintChatStream(ctx, payload) {
 			}
 			if (systemInstruction) {
 				geminiBody.systemInstruction = systemInstruction
+			}
+			if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+				geminiBody.generationConfig.temperature = Math.max(0, Math.min(2, temperature))
+			}
+			if (typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0) {
+				geminiBody.generationConfig.maxOutputTokens = Math.floor(maxTokens)
+			}
+			if (typeof topP === 'number' && !Number.isNaN(topP)) {
+				geminiBody.generationConfig.topP = Math.max(0, Math.min(1, topP))
 			}
 			const url = `${cfg.baseUrl}/models/${useModel}:streamGenerateContent?alt=sse&key=${apiKey}`
 
@@ -1862,9 +1885,19 @@ export async function* blueprintChatStream(ctx, payload) {
 				}
 			}
 		} else {
+			const openaiBody = { model: useModel, messages: chatMessages, stream: true }
+			if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+				openaiBody.temperature = Math.max(0, Math.min(2, temperature))
+			}
+			if (typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0) {
+				openaiBody.max_tokens = Math.floor(maxTokens)
+			}
+			if (typeof topP === 'number' && !Number.isNaN(topP)) {
+				openaiBody.top_p = Math.max(0, Math.min(1, topP))
+			}
 			const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
 				headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify({ model: useModel, messages: chatMessages, stream: true }),
+				body: JSON.stringify(openaiBody),
 				timeout: 120000
 			})
 			for await (const rawLine of stream) {
@@ -1986,6 +2019,9 @@ export async function blueprintChat(ctx, payload) {
 	if (!cfg) return { ok: false, error: 'No LLM API key configured (gemini/bytedance/openai)' }
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
+	const temperature = p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
+	const maxTokens = p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
+	const topP = p.topP !== undefined && p.topP !== null ? Number(p.topP) : undefined
 	const chatMessages = [{ role: 'system', content: systemPrompt }]
 	for (const m of history) {
 		if (m && m.role && m.content) chatMessages.push({ role: m.role, content: String(m.content) })
@@ -2022,6 +2058,15 @@ export async function blueprintChat(ctx, payload) {
 			}
 			if (systemInstruction) {
 				geminiBody.systemInstruction = systemInstruction
+			}
+			if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+				geminiBody.generationConfig.temperature = Math.max(0, Math.min(2, temperature))
+			}
+			if (typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0) {
+				geminiBody.generationConfig.maxOutputTokens = Math.floor(maxTokens)
+			}
+			if (typeof topP === 'number' && !Number.isNaN(topP)) {
+				geminiBody.generationConfig.topP = Math.max(0, Math.min(1, topP))
 			}
 			const url = `${cfg.baseUrl}/models/${useModel}:generateContent?key=${cfg.apiKey}`
 
@@ -2064,13 +2109,19 @@ export async function blueprintChat(ctx, payload) {
 			}
 			assistant = assistant.trim()
 		} else {
+			const openaiBody = { model: useModel, messages: chatMessages, stream: false }
+			if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+				openaiBody.temperature = Math.max(0, Math.min(2, temperature))
+			}
+			if (typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0) {
+				openaiBody.max_tokens = Math.floor(maxTokens)
+			}
+			if (typeof topP === 'number' && !Number.isNaN(topP)) {
+				openaiBody.top_p = Math.max(0, Math.min(1, topP))
+			}
 			const res = await client.post(
 				`${cfg.baseUrl}/chat/completions`,
-				{
-					model: useModel,
-					messages: chatMessages,
-					stream: false
-				},
+				openaiBody,
 				{
 					headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
 					timeout: 120000

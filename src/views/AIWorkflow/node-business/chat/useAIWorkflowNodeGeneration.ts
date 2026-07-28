@@ -141,18 +141,36 @@ const appendResult = (
  * The resolved url is also run through `deps.resolveBackendUrl` to ensure
  * any relative / project-internal URLs are resolved correctly.
  */
-const isImageInputAnchor = (anchorId: string): boolean => {
+const isImageInputAnchor = (anchorId: string, sourceNodeType?: string, targetNodeType?: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+	const isImageAnchor = id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
+	if (isImageAnchor) return true
+	if (id === 'in-0') {
+		const sourceType = String(sourceNodeType || '').trim().toLowerCase()
+		const targetType = String(targetNodeType || '').trim().toLowerCase()
+		if (targetType === 'text') return true
+		return sourceType === 'image' || sourceType === 'blender' || sourceType === ''
+	}
+	return false
 }
 
-const isVideoInputAnchor = (anchorId: string): boolean => {
+const isVideoInputAnchor = (anchorId: string, sourceNodeType?: string, targetNodeType?: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-video' || id === 'in-resource' || /^in-video-\d+$/.test(id)
+	const isVideoAnchor = id === 'in-video' || id === 'in-resource' || /^in-video-\d+$/.test(id)
+	if (isVideoAnchor) return true
+	if (id === 'in-0') {
+		const sourceType = String(sourceNodeType || '').trim().toLowerCase()
+		const targetType = String(targetNodeType || '').trim().toLowerCase()
+		if (targetType === 'text') return true
+		return sourceType === 'video' || sourceType === ''
+	}
+	return false
 }
 
 const isMediaInputAnchor = (anchorId: string): boolean => {
-	return isImageInputAnchor(anchorId) || isVideoInputAnchor(anchorId)
+	const id = String(anchorId || '').trim()
+	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || id === 'in-video' ||
+		/^in-image-\d+$/.test(id) || /^in-video-\d+$/.test(id) || id === 'in-text' || id === 'in-generic'
 }
 
 const getNodeEffectiveImageUrl = (
@@ -367,10 +385,13 @@ const collectReferenceImages = async (
 		console.warn('[collectReferenceImages] 节点不存在:', nodeId)
 		return []
 	}
+	const targetNodeType = String(node.type || '')
 
 	console.log(
 		'[collectReferenceImages] 开始收集参考图, nodeId:',
 		nodeId,
+		'nodeType:',
+		targetNodeType,
 		'总边数:',
 		state.edgeOrder.length
 	)
@@ -390,34 +411,34 @@ const collectReferenceImages = async (
 	}
 
 	// Step 2: Collect images from connected input edges
-	const incoming: Array<Record<string, unknown>> = []
+	const incoming: Array<{ edge: Record<string, unknown>; sourceNode: Record<string, unknown> }> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
 		const toNodeId = String(edge.toNodeId ?? '')
 		if (toNodeId !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
-		const isImageAnchor = isImageInputAnchor(toAnchorId)
+		const fromNodeId = String(edge.fromNodeId ?? '')
+		const sourceNode = state.nodesById[fromNodeId]
+		if (!sourceNode) continue
+		const sourceType = String(sourceNode.type || '')
+		const isImageAnchor = isImageInputAnchor(toAnchorId, sourceType, targetNodeType)
 		console.log('[collectReferenceImages] 找到入边:', {
 			edgeId,
-			fromNodeId: String(edge.fromNodeId ?? ''),
+			fromNodeId,
+			sourceType,
 			toNodeId,
 			toAnchorId,
 			isImageAnchor
 		})
 		if (!isImageAnchor) continue
-		incoming.push(edge)
+		incoming.push({ edge, sourceNode })
 	}
 
 	console.log('[collectReferenceImages] 匹配到的图片输入边数量:', incoming.length)
 
-	for (const edge of incoming) {
+	for (const { edge, sourceNode } of incoming) {
 		if (refs.length >= maxRefs) break
-		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
-		if (!sourceNode) {
-			console.warn('[collectReferenceImages] 源节点不存在:', String(edge.fromNodeId ?? ''))
-			continue
-		}
 
 		const sourceUrl = getNodeEffectiveImageUrl(sourceNode, state, deps.nodeResourceUrl)
 		if (!sourceUrl) {
@@ -484,24 +505,27 @@ const collectReferenceVideos = async (
 	if (!node) {
 		return []
 	}
+	const targetNodeType = String(node.type || '')
 
 	const refs: Array<{ name: string; blob: Blob }> = []
 
-	const incoming: Array<Record<string, unknown>> = []
+	const incoming: Array<{ edge: Record<string, unknown>; sourceNode: Record<string, unknown> }> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
 		const toNodeId = String(edge.toNodeId ?? '')
 		if (toNodeId !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
-		if (!isVideoInputAnchor(toAnchorId)) continue
-		incoming.push(edge)
+		const fromNodeId = String(edge.fromNodeId ?? '')
+		const sourceNode = state.nodesById[fromNodeId]
+		if (!sourceNode) continue
+		const sourceType = String(sourceNode.type || '')
+		if (!isVideoInputAnchor(toAnchorId, sourceType, targetNodeType)) continue
+		incoming.push({ edge, sourceNode })
 	}
 
-	for (const edge of incoming) {
+	for (const { edge, sourceNode } of incoming) {
 		if (refs.length >= maxRefs) break
-		const sourceNode = state.nodesById[String(edge.fromNodeId ?? '')]
-		if (!sourceNode) continue
 
 		const sourceUrl = getNodeEffectiveVideoUrl(sourceNode, state, deps.nodeResourceUrl)
 		if (!sourceUrl) continue
@@ -530,22 +554,24 @@ const collectReferenceImagesWithUrl = async (
 	const node = state.nodesById[nodeId]
 	if (!node) return []
 
-	const incoming: Array<Record<string, unknown>> = []
+	const incoming: Array<{ edge: Record<string, unknown>; sourceNode: Record<string, unknown> }> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
 		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
-		if (!isImageInputAnchor(toAnchorId)) continue
-		incoming.push(edge)
-	}
-
-	const refs: Array<{ name: string; blob: Blob; url: string; fromNodeId: string }> = []
-	for (const edge of incoming) {
-		if (refs.length >= maxRefs) break
 		const fromNodeId = String(edge.fromNodeId ?? '')
 		const sourceNode = state.nodesById[fromNodeId]
 		if (!sourceNode) continue
+		const sourceType = String(sourceNode.type || '')
+		if (!isImageInputAnchor(toAnchorId, sourceType)) continue
+		incoming.push({ edge, sourceNode })
+	}
+
+	const refs: Array<{ name: string; blob: Blob; url: string; fromNodeId: string }> = []
+	for (const { edge, sourceNode } of incoming) {
+		if (refs.length >= maxRefs) break
+		const fromNodeId = String(edge.fromNodeId ?? '')
 
 		const resourceRid = String(sourceNode.resourceId ?? '').trim()
 		let candidateUrl: string = ''
@@ -611,6 +637,80 @@ const collectReferenceImagesWithUrl = async (
 			continue
 		}
 	}
+	return refs
+}
+
+const isTextInputAnchor = (anchorId: string): boolean => {
+	const id = String(anchorId || '').trim()
+	return id === 'in-text' || id === 'in-0' || id === 'in' || id.startsWith('in-text') || id === 'in-generic'
+}
+
+const getNodeEffectiveText = (node: Record<string, unknown>): string => {
+	const textValue = String(node.textValue ?? '').trim()
+	if (textValue) return textValue
+	const textSettings =
+		typeof node.textSettings === 'object' && node.textSettings
+			? (node.textSettings as Record<string, unknown>)
+			: {}
+	const lastGenerated =
+		typeof textSettings?.lastGeneratedText === 'string'
+			? String(textSettings.lastGeneratedText).trim()
+			: ''
+	if (lastGenerated) return lastGenerated
+	return ''
+}
+
+const collectUpstreamTextRefs = async (
+	deps: NodeGenerationApiDeps,
+	nodeId: string,
+	maxRefs: number = 5
+): Promise<Array<{ nodeId: string; nodeType: string; text: string }>> => {
+	const state = deps.store.state as {
+		nodesById: Record<string, Record<string, unknown>>
+		edgesById: Record<string, Record<string, unknown>>
+		edgeOrder: string[]
+	}
+	const node = state.nodesById[nodeId]
+	if (!node) return []
+
+	const refs: Array<{ nodeId: string; nodeType: string; text: string }> = []
+
+	const incoming: Array<Record<string, unknown>> = []
+	for (const edgeId of state.edgeOrder) {
+		const edge = state.edgesById[edgeId]
+		if (!edge) continue
+		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!isTextInputAnchor(toAnchorId) && !isMediaInputAnchor(toAnchorId)) continue
+		incoming.push(edge)
+	}
+
+	for (const edge of incoming) {
+		if (refs.length >= maxRefs) break
+		const fromNodeId = String(edge.fromNodeId ?? '')
+		const sourceNode = state.nodesById[fromNodeId]
+		if (!sourceNode) continue
+
+		const sourceType = String(sourceNode.type || 'unknown')
+		let text = ''
+
+		if (sourceType === 'text') {
+			text = getNodeEffectiveText(sourceNode)
+		} else {
+			const textSettings =
+				typeof sourceNode.textSettings === 'object' && sourceNode.textSettings
+					? (sourceNode.textSettings as Record<string, unknown>)
+					: {}
+			text = typeof textSettings?.lastGeneratedText === 'string'
+				? String(textSettings.lastGeneratedText).trim()
+				: ''
+		}
+
+		if (text) {
+			refs.push({ nodeId: fromNodeId, nodeType: sourceType, text })
+		}
+	}
+
 	return refs
 }
 
@@ -1374,6 +1474,16 @@ const runTextTask = async (
 		providerDisplayName = '字节方舟 Doubao'
 	}
 
+	const temperature = params.temperature !== undefined && params.temperature !== null
+		? Number(params.temperature)
+		: undefined
+	const maxTokens = params.maxTokens !== undefined && params.maxTokens !== null
+		? Number(params.maxTokens)
+		: undefined
+	const topP = params.topP !== undefined && params.topP !== null
+		? Number(params.topP)
+		: undefined
+
 	updateTask(deps, task.id, {
 		status: 'running',
 		statusText: t('aiworkflow.runtime.callingTextModelWithProvider', {
@@ -1388,11 +1498,32 @@ const runTextTask = async (
 		t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
 	)
 
-	const body: Record<string, unknown> = { content: payload.prompt, provider, modelId }
-	if (params.speed) body.speed = params.speed
-	if (params.thinking) body.thinking = params.thinking
-	if (params.responseFormat) body.responseFormat = params.responseFormat
-	if (params.maxTokens) body.maxTokens = params.maxTokens
+	// Collect upstream text references from connected nodes
+	const upstreamTexts = await collectUpstreamTextRefs(deps, payload.nodeId)
+	let finalPrompt = payload.prompt
+	if (upstreamTexts.length > 0) {
+		const contextParts = upstreamTexts.map((ref, idx) =>
+			`[上下文${idx + 1} - 来自${ref.nodeType}节点]:\n${ref.text}`
+		)
+		finalPrompt = `${contextParts.join('\n\n')}\n\n[用户输入]:\n${payload.prompt}`
+		appendDetail(
+			deps,
+			task.id,
+			t('aiworkflow.runtime.detailUpstreamTextCount', { count: String(upstreamTexts.length) })
+		)
+	}
+
+	// Record full submission parameters
+	appendDetail(deps, task.id, `[参数] provider=${provider}, model=${modelId}`)
+	if (typeof temperature === 'number' && !Number.isNaN(temperature)) {
+		appendDetail(deps, task.id, `[参数] temperature=${temperature}`)
+	}
+	if (typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0) {
+		appendDetail(deps, task.id, `[参数] maxTokens=${maxTokens}`)
+	}
+	if (typeof topP === 'number' && !Number.isNaN(topP)) {
+		appendDetail(deps, task.id, `[参数] topP=${topP}`)
+	}
 
 	// Collect connected reference images from input anchors
 	const refs = await collectReferenceImages(deps, payload.nodeId, 5)
@@ -1424,13 +1555,13 @@ const runTextTask = async (
 	let accumulated = ''
 	try {
 		for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
-			content: String(body.content ?? ''),
-			history: body.history as
-				| Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
-				| undefined,
-			provider: String(body.provider ?? ''),
-			modelId: String(body.modelId ?? ''),
-			refImages
+			content: finalPrompt,
+			provider,
+			modelId,
+			refImages,
+			temperature: typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
+			maxTokens: typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+			topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
 		})) {
 			if (ev.type === 'done') break
 			if (ev.type === 'error') {
@@ -1470,13 +1601,13 @@ const runTextTask = async (
 		})
 		try {
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
-				content: String(body.content ?? ''),
-				history: body.history as
-					| Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
-					| undefined,
-				provider: String(body.provider ?? ''),
-				modelId: String(body.modelId ?? ''),
-				refImages
+				content: finalPrompt,
+				provider,
+				modelId,
+				refImages,
+				temperature: typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
+				maxTokens: typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+				topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
 			})
 			const text = plain.ok && typeof plain.assistant === 'string' ? plain.assistant : ''
 			if (text) accumulated = text
@@ -1501,6 +1632,7 @@ const runTextTask = async (
 		progress: 100,
 		finishedAt: Date.now()
 	})
+	syncHelpers?.syncGlobalComplete?.()
 }
 
 const runImageTask = async (

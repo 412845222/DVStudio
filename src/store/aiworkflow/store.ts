@@ -201,7 +201,13 @@ const singleIOAnchorsForNodeType = (
 ): { inputs: WorkflowAnchorSpec[]; outputs: WorkflowAnchorSpec[] } | null => {
 	if (type === 'text') {
 		return {
-			inputs: [{ id: 'in-0', label: '输入', mediaType: 'text', multiInput: true }],
+			inputs: [{
+				id: 'in-0',
+				label: '多模态输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+				multiInput: true
+			}],
 			outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 		}
 	}
@@ -1272,6 +1278,31 @@ const syncBlenderAnchors = (node: WorkflowNode) => {
 			id: 'out-0',
 			label: '输出（文本/图片/3D模型）',
 			mediaType: 'generic' as const,
+			...(existingOut ?? {})
+		}
+	]
+}
+
+const syncTextAnchors = (node: WorkflowNode) => {
+	const existingIn = Array.isArray(node.inputs) ? node.inputs.find((a) => a.id === 'in-0') : null
+	const existingOut = Array.isArray(node.outputs)
+		? node.outputs.find((a) => a.id === 'out-0')
+		: null
+	node.inputs = [
+		{
+			id: 'in-0',
+			label: '输入（文本/图片/视频/3D模型/音频）',
+			mediaType: 'generic' as const,
+			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'] as Array<'text' | 'image' | 'video' | 'model3d' | 'audio'>,
+			...(existingIn ?? {}),
+			multiInput: true
+		}
+	]
+	node.outputs = [
+		{
+			id: 'out-0',
+			label: '文本输出',
+			mediaType: 'text' as const,
 			...(existingOut ?? {})
 		}
 	]
@@ -2448,6 +2479,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					nodeChatDraft: isString(n.nodeChatDraft) ? String(n.nodeChatDraft) : undefined,
 					nodeChatParams: isRecord(n.nodeChatParams) ? n.nodeChatParams : undefined,
 					nodeChatSelectedRefs: normalizeChatSelectedRefs((n as any).nodeChatSelectedRefs),
+					nodeChatVisible: typeof n.nodeChatVisible === 'boolean' ? n.nodeChatVisible : false,
 					prompt: isString(n.prompt) ? String(n.prompt) : undefined
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
@@ -2463,6 +2495,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
 			}
 
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
@@ -2782,13 +2815,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				payload.type !== 'unreal-export' &&
 				payload.type !== 'model3d' &&
 				payload.type !== 'meshy' &&
-				payload.type !== 'blender'
+				payload.type !== 'blender' &&
+				payload.type !== 'text'
 			) {
-				n.inputs = payload.type === 'text' ? [] : [{ id: 'in-0', label: '入口' }]
-				n.outputs =
-					payload.type === 'text'
-						? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
-						: [{ id: 'out-0', label: '出口' }]
+				n.inputs = [{ id: 'in-0', label: '入口' }]
+				n.outputs = [{ id: 'out-0', label: '出口' }]
 			}
 			if (payload.type === 'rotate-image') {
 				n.inputs = [{ id: 'in-0', label: '图片输入', mediaType: 'image' }]
@@ -2877,8 +2908,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			if (payload.type === 'text') {
 				n.textValue = typeof n.textValue === 'string' ? n.textValue : ''
-				n.inputs = [{ id: 'in-text', label: '文本输入', mediaType: 'text' }]
-				n.outputs = [{ id: 'out-text', label: '文本输出', mediaType: 'text' }]
+				syncTextAnchors(n)
 			}
 			if (payload.type === 'comfyui') {
 				n.comfyuiSettings =
@@ -2966,6 +2996,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			enforceSingleIOAnchors(n)
 			if (payload.type === 'blender') syncBlenderAnchors(n)
+			if (payload.type === 'text') syncTextAnchors(n)
 			if (!n.sizeCustomized) {
 				if (
 					payload.type === 'image' ||
@@ -4333,15 +4364,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.nodeType = payload.nodeType
 			const node = state.nodesById[payload.nodeId]
 			let draft = ''
-			if (payload.nodeType !== 'text') {
-				draft = node?.textValue ?? ''
+			// 优先从nodeChatDraft读取（聊天对话框专门保存的草稿）
+			draft = node?.nodeChatDraft ?? ''
+			if (!draft) {
+				if (payload.nodeType !== 'text') {
+					draft = node?.textValue ?? ''
+				}
 			}
 			if (!draft) {
 				const nodePrompt = (node as Record<string, unknown>).prompt
 				draft = typeof nodePrompt === 'string' ? nodePrompt : ''
-			}
-			if (!draft) {
-				draft = node?.nodeChatDraft ?? ''
 			}
 			state.nodeChatDialog.draft = draft
 			state.nodeChatDialog.selectedRefs = node?.nodeChatSelectedRefs
@@ -4527,60 +4559,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.nodeType = null
 			state.nodeChatDialog.draft = ''
 			state.nodeChatDialog.submitting = false
+			state.nodeChatDialog.params = {}
 			state.nodeChatDialog.selectedRefs = []
 		},
 		setNodeChatDraft(state, payload: { text: string }) {
 			state.nodeChatDialog.draft = payload.text
-			if (state.nodeChatDialog.nodeId) {
-				const node = state.nodesById[state.nodeChatDialog.nodeId]
-				if (node) {
-					node.nodeChatDraft = payload.text
-					;(node as Record<string, unknown>).prompt = payload.text
-				}
-			}
 		},
 		setNodeChatParams(state: WorkflowState, payload: { params: Record<string, unknown> }) {
 			state.nodeChatDialog.params = payload.params
-			if (state.nodeChatDialog.nodeId) {
-				const node = state.nodesById[state.nodeChatDialog.nodeId]
-				if (node) {
-					node.nodeChatParams = payload.params
-					// 对于blender节点，实时同步chat参数到blenderSettings确保持久化
-					if (node.type === 'blender') {
-						const blenderParams = payload.params?.blender
-						if (blenderParams && typeof blenderParams === 'object') {
-							node.blenderSettings = node.blenderSettings ?? ({} as WorkflowBlenderNodeSettings)
-							const fields = [
-								'agentBackend',
-								'agentSessionId',
-								'model',
-								'modelId',
-								'geminiTextModelVersion',
-								'textModelVersion',
-								'thinkingEffort'
-							] as const
-							for (const field of fields) {
-								const val = (blenderParams as Record<string, unknown>)[field]
-								if (typeof val === 'string') {
-									;(node.blenderSettings as Record<string, unknown>)[field] = val
-								}
-							}
-						}
-					}
-				}
-			}
 		},
 		setNodeChatSelectedRefs(
 			state: WorkflowState,
 			payload: { refs: WorkflowNodeChatSelectedRef[] }
 		) {
 			state.nodeChatDialog.selectedRefs = payload.refs
-			if (state.nodeChatDialog.nodeId) {
-				const node = state.nodesById[state.nodeChatDialog.nodeId]
-				if (node) {
-					node.nodeChatSelectedRefs = payload.refs.length > 0 ? [...payload.refs] : undefined
-				}
-			}
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting

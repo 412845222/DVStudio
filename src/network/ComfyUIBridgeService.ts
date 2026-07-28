@@ -1002,6 +1002,9 @@ export class ComfyUIBridgeService {
 		provider?: string
 		modelId?: string
 		refImages?: string[]
+		temperature?: number
+		maxTokens?: number
+		topP?: number
 	}): Promise<BlueprintChatResponse> {
 		if (isThirdPartyIpcAvailable()) {
 			try {
@@ -1011,7 +1014,10 @@ export class ComfyUIBridgeService {
 					history: payload.history || [],
 					provider: payload.provider,
 					modelId: payload.modelId,
-					refImages: payload.refImages || []
+					refImages: payload.refImages || [],
+					temperature: payload.temperature,
+					maxTokens: payload.maxTokens,
+					topP: payload.topP
 				}
 				const ipcResult = await (window as any).dweb.thirdParty.blueprint.chat(ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -1068,6 +1074,9 @@ export class ComfyUIBridgeService {
 			provider?: string
 			modelId?: string
 			refImages?: string[]
+			temperature?: number
+			maxTokens?: number
+			topP?: number
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
@@ -1079,7 +1088,10 @@ export class ComfyUIBridgeService {
 					history: payload.history || [],
 					provider: payload.provider,
 					modelId: payload.modelId,
-					refImages: payload.refImages || []
+					refImages: payload.refImages || [],
+					temperature: payload.temperature,
+					maxTokens: payload.maxTokens,
+					topP: payload.topP
 				}
 				const generator = (window as any).dweb.thirdParty.blueprint.chatStream(ipcPayload)
 				yield* consumeThirdPartyIpcStream(generator, 'blueprint/chat:stream')

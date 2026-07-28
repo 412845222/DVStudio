@@ -136,7 +136,9 @@ export class NodeComponentResolver {
 		generationTasksById?: Record<string, WorkflowNodeGenerationTask>
 	): ResolvedWorkflowNodeProps {
 		const data = node.data
-		const isChatActive = chatState && chatState.visible && chatState.nodeId === data.id
+		const isChatActive =
+			(chatState && chatState.visible && chatState.nodeId === data.id) ||
+			!!data.nodeChatVisible
 
 		const nodeTask = generationTasksById
 			? Object.values(generationTasksById).find(
@@ -189,13 +191,33 @@ export class NodeComponentResolver {
 
 		const resourceProps = this.resolveResourceProps(data, legacyResources)
 
+		const persistedChatDraft = data.nodeChatDraft || ''
+		const persistedChatParams = data.nodeChatParams || {}
+		const persistedChatSelectedRefs = data.nodeChatSelectedRefs || []
+
 		const chatProps: Record<string, unknown> = {
 			nodeChatVisible: !!isChatActive,
-			nodeChatNodeType: isChatActive ? chatState!.nodeType || data.type : data.type,
-			nodeChatSubmitting: isChatActive ? chatState!.submitting : false,
-			nodeChatDraft: isChatActive ? chatState!.draft || '' : '',
-			nodeChatParams: isChatActive ? chatState!.params || {} : {},
-			nodeChatSelectedRefs: isChatActive ? chatState!.selectedRefs || [] : []
+			nodeChatNodeType: isChatActive
+				? (chatState && chatState.nodeId === data.id ? chatState.nodeType : null) || data.type
+				: data.type,
+			nodeChatSubmitting:
+				isChatActive && chatState && chatState.nodeId === data.id
+					? chatState.submitting
+					: false,
+			nodeChatDraft:
+				isChatActive && chatState && chatState.nodeId === data.id
+					? chatState.draft || persistedChatDraft
+					: persistedChatDraft,
+			nodeChatParams:
+				isChatActive && chatState && chatState.nodeId === data.id
+					? { ...persistedChatParams, ...(chatState.params || {}) }
+					: persistedChatParams,
+			nodeChatSelectedRefs:
+				isChatActive && chatState && chatState.nodeId === data.id
+					? chatState.selectedRefs?.length
+						? chatState.selectedRefs
+						: persistedChatSelectedRefs
+					: persistedChatSelectedRefs
 		}
 
 		const typeSpecificProps: Record<string, unknown> = {}
@@ -247,16 +269,6 @@ export class NodeComponentResolver {
 		if (data.rotatePromptText != null) typeSpecificProps.promptText = data.rotatePromptText
 		if (data.textMergeItems != null) typeSpecificProps.textMergeItems = data.textMergeItems
 		if (data.prompt != null) typeSpecificProps.prompt = data.prompt
-		if (data.nodeChatDraft != null) typeSpecificProps.nodeChatDraft = data.nodeChatDraft
-		if (data.nodeChatParams != null) typeSpecificProps.nodeChatParams = data.nodeChatParams
-		if (data.nodeChatSelectedRefs != null)
-			typeSpecificProps.nodeChatSelectedRefs = data.nodeChatSelectedRefs
-
-		if (isChatActive) {
-			typeSpecificProps.nodeChatDraft = chatState!.draft
-			typeSpecificProps.nodeChatParams = chatState!.params
-			typeSpecificProps.nodeChatSelectedRefs = chatState!.selectedRefs
-		}
 
 		return {
 			...baseProps,

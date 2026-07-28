@@ -208,7 +208,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'text-generation',
 		nodeType: 'text',
 		label: '文本节点',
-		inputKinds: ['text'],
+		inputKinds: ['text', 'image', 'video', 'model3d', 'audio', 'resource'],
 		outputKinds: ['text'],
 		order: 10
 	},

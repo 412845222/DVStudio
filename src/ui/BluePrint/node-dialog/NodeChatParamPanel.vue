@@ -1,6 +1,6 @@
 <template>
-	<div class="bp-node-chat-param-panel" :class="{ 'is-collapsed': collapsed }">
-		<div class="bp-node-chat-param-header" @click="toggleCollapse">
+	<div class="bp-node-chat-param-panel" :class="{ 'is-collapsed': collapsed }" @click.stop @mousedown.stop @pointerdown.stop>
+		<div class="bp-node-chat-param-header" @click="toggleCollapse" @pointerdown.stop>
 			<span class="bp-node-chat-param-title">{{ t('aichat.nodeChatParams.title') }}</span>
 			<span class="bp-node-chat-param-toggle">
 				<svg
@@ -29,6 +29,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.model === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('model', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -45,6 +46,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.geminiTextModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiTextModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -61,6 +63,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.textModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('textModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -77,6 +80,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.speed === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('speed', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -93,6 +97,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.thinking === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('thinking', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -109,6 +114,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.responseFormat === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('responseFormat', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -125,6 +131,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.maxTokens === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('maxTokens', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -144,6 +151,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.model === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('model', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -161,6 +169,7 @@
 							:class="{ 'is-active': params.tripo3dImageModel === opt.value }"
 							:disabled="disabled"
 							:title="opt.description ? t(opt.description) : undefined"
+							@pointerdown.stop.prevent
 							@click="updateTripo3DParam('tripo3dImageModel', opt.value)"
 						>
 							{{ t(opt.label) }}
@@ -201,7 +210,8 @@
 								:class="{ 'is-active': params.tripo3dImageSize === opt.value }"
 								:disabled="disabled"
 								:title="opt.description ? (opt.description.startsWith('aiConfig.') ? t(opt.description) : opt.description) : undefined"
-								@click="updateTripo3DParam('tripo3dImageSize', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageSize', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
@@ -217,7 +227,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageAspectRatio === opt.value }"
 								:disabled="disabled"
-								@click="updateTripo3DParam('tripo3dImageAspectRatio', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageAspectRatio', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
@@ -233,7 +244,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageOutputFormat === opt.value }"
 								:disabled="disabled"
-								@click="updateTripo3DParam('tripo3dImageOutputFormat', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageOutputFormat', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
@@ -249,7 +261,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageWatermark === opt.value }"
 								:disabled="disabled"
-								@click="updateTripo3DParam('tripo3dImageWatermark', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageWatermark', opt.value)"
 							>
 								{{ t(opt.label) }}
 							</button>
@@ -265,7 +278,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageTemplate === opt.value }"
 								:disabled="disabled"
-								@click="updateTripo3DParam('tripo3dImageTemplate', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageTemplate', opt.value)"
 							>
 								{{ t(opt.label) }}
 							</button>
@@ -281,7 +295,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageNumOutputs === n }"
 								:disabled="disabled"
-								@click="updateTripo3DParam('tripo3dImageNumOutputs', n)"
+								@pointerdown.stop.prevent
+							@click="updateTripo3DParam('tripo3dImageNumOutputs', n)"
 							>
 								{{ n }}x
 							</button>
@@ -298,6 +313,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.tripo3dImageStrength === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateTripo3DParam('tripo3dImageStrength', opt.value)"
 						>
 							{{ opt.label }}
@@ -343,6 +359,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.geminiImageModelVersion === opt.value || params.nanobananaModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiImageModelVersion', opt.value)"
 							:title="opt.description"
 						>
@@ -362,6 +379,7 @@
 							:class="{ 'is-active': params.geminiImageSize === opt.value }"
 							:disabled="disabled"
 							:title="opt.description"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiImageSize', opt.value)"
 						>
 							{{ opt.label }}
@@ -378,6 +396,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedreamModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedreamModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -394,6 +413,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.meshyImageAiModel === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyImageAiModel', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -410,6 +430,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.meshyPoseMode === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyPoseMode', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -424,6 +445,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': !params.meshyGenerateMultiView }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyGenerateMultiView', false)"
 						>
 							{{ t('aichat.nodeChatParams.off') }}
@@ -433,6 +455,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.meshyGenerateMultiView === true }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyGenerateMultiView', true)"
 						>
 							{{ t('aichat.nodeChatParams.on') }}
@@ -449,6 +472,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedreamSize === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedreamSize', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -465,6 +489,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedreamAspectRatio === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedreamAspectRatio', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -481,6 +506,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedreamQuantity === n }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedreamQuantity', n)"
 						>
 							{{ n }}x
@@ -497,6 +523,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedreamOutputFormat === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedreamOutputFormat', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -551,6 +578,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.resolution === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('resolution', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -568,6 +596,7 @@
 							:class="{ 'is-active': params.geminiAspectRatio === opt.value }"
 							:disabled="disabled"
 							:title="opt.labelZh"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiAspectRatio', opt.value)"
 						>
 							{{ opt.label }}
@@ -584,6 +613,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.aspectRatio === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('aspectRatio', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -600,6 +630,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.meshyAspectRatio === opt.value }"
 							:disabled="disabled || params.meshyGenerateMultiView"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyAspectRatio', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -619,6 +650,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.meshyOutputImageCount === n }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('meshyOutputImageCount', n)"
 						>
 							{{ n }}x
@@ -635,6 +667,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.geminiQuantity === n }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiQuantity', n)"
 						>
 							{{ n }}x
@@ -651,6 +684,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.quantity === n }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('quantity', n)"
 						>
 							{{ n }}x
@@ -668,6 +702,7 @@
 							:class="{ 'is-active': params.geminiThinkingLevel === opt.value }"
 							:disabled="disabled"
 							:title="opt.description"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiThinkingLevel', opt.value)"
 						>
 							{{ opt.label }}
@@ -725,6 +760,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.model === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('model', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -741,6 +777,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.seedanceModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('seedanceModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -757,7 +794,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.mode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('mode', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('mode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -789,6 +827,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.resolution === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('resolution', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -805,6 +844,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.ratio === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('ratio', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -821,6 +861,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.duration === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('duration', opt.value)"
 						>
 							{{ translateDurationOpt(opt) }}
@@ -917,6 +958,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.provider === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('provider', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -934,7 +976,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyMode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyMode', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -950,7 +993,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyAiModel === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyAiModel', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyAiModel', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -966,7 +1010,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyModelType === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyModelType', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyModelType', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -982,7 +1027,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyTopology === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyTopology', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyTopology', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -998,7 +1044,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshySymmetryMode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshySymmetryMode', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshySymmetryMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1014,7 +1061,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyOriginAt === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyOriginAt', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyOriginAt', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1030,7 +1078,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyPoseMode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyPoseMode', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyPoseMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1046,7 +1095,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyOutputFormat === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyOutputFormat', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyOutputFormat', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1081,7 +1131,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.meshyDecimationMode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('meshyDecimationMode', opt.value)"
+								@pointerdown.stop.prevent
+							@click="updateParam('meshyDecimationMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1096,7 +1147,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.meshyStyleSource === 'text' }"
 									:disabled="disabled"
-									@click="updateParam('meshyStyleSource', 'text')"
+									@pointerdown.stop.prevent
+							@click="updateParam('meshyStyleSource', 'text')"
 								>
 									{{ t('aichat.nodeChatParams.textDescription') }}
 								</button>
@@ -1105,7 +1157,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.meshyStyleSource === 'image' }"
 									:disabled="disabled"
-									@click="updateParam('meshyStyleSource', 'image')"
+									@pointerdown.stop.prevent
+							@click="updateParam('meshyStyleSource', 'image')"
 								>
 									{{ t('aichat.nodeChatParams.referenceImage') }}
 								</button>
@@ -1121,7 +1174,8 @@
 									class="bp-node-chat-param-thumb"
 									:class="{ 'is-selected': params.meshyTextureImageNodeId === img.nodeId }"
 									:disabled="disabled"
-									@click="updateParam('meshyTextureImageNodeId', img.nodeId)"
+									@pointerdown.stop.prevent
+							@click="updateParam('meshyTextureImageNodeId', img.nodeId)"
 								>
 									<img :src="img.thumb || img.url" :alt="img.name" />
 								</button>
@@ -1138,7 +1192,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.meshyAiModel === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('meshyAiModel', opt.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('meshyAiModel', opt.value)"
 								>
 									{{ translateOpt(opt) }}
 								</button>
@@ -1253,7 +1308,8 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': tripo3dCurrentTaskMode === opt.value }"
 								:disabled="disabled"
-								@click="updateParam('tripo3dTaskMode', opt.value as WorkflowTripo3DMode)"
+								@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTaskMode', opt.value as WorkflowTripo3DMode)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1350,7 +1406,8 @@
 										class="bp-node-chat-param-btn"
 										:class="{ 'is-active': params.tripo3dTextureModelVersion === opt.value }"
 										:disabled="disabled"
-										@click="updateParam('tripo3dTextureModelVersion', opt.value as 'v2.5-20250123' | 'v3.0-20250812')"
+										@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTextureModelVersion', opt.value as 'v2.5-20250123' | 'v3.0-20250812')"
 									>
 										{{ t(opt.label) }}
 									</button>
@@ -1397,7 +1454,8 @@
 										class="bp-node-chat-param-btn"
 										:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
 										:disabled="disabled"
-										@click="updateParam('tripo3dTextureQuality', opt.value as 'standard' | 'detailed' | 'extreme')"
+										@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTextureQuality', opt.value as 'standard' | 'detailed' | 'extreme')"
 									>
 										{{ t(opt.label) }}
 										<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -1415,7 +1473,8 @@
 										class="bp-node-chat-param-btn"
 										:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
 										:disabled="disabled"
-										@click="updateParam('tripo3dTextureAlignment', opt.value as 'original_image' | 'geometry')"
+										@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTextureAlignment', opt.value as 'original_image' | 'geometry')"
 									>
 										{{ t(opt.label) }}
 									</button>
@@ -1478,7 +1537,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dSegType === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dSegType', opt.value as 'image' | 'model')"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dSegType', opt.value as 'image' | 'model')"
 								>
 									{{ translateOpt(opt) }}
 								</button>
@@ -1495,7 +1555,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dGranularity === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dGranularity', opt.value as 'coarse' | 'medium' | 'fine')"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dGranularity', opt.value as 'coarse' | 'medium' | 'fine')"
 								>
 									{{ translateOpt(opt) }}
 								</button>
@@ -1512,7 +1573,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dDecimateModel === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dDecimateModel', opt.value as 'v1.0' | 'v2.0')"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dDecimateModel', opt.value as 'v1.0' | 'v2.0')"
 								>
 									{{ translateOpt(opt) }}
 									<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -1530,7 +1592,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dConvertFormat === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dConvertFormat', opt.value as 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF')"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dConvertFormat', opt.value as 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF')"
 								>
 									{{ opt.label }}
 								</button>
@@ -1639,7 +1702,8 @@
 									class="bp-node-chat-param-btn bp-node-chat-param-btn-series"
 									:class="{ 'is-active': tripo3dCurrentSeries === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dModelSeries', opt.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dModelSeries', opt.value)"
 								>
 									<span class="bp-node-chat-param-btn-icon">{{ opt.icon }}</span>
 									{{ t(opt.label) }}
@@ -1658,7 +1722,8 @@
 									:class="{ 'is-active': tripo3dCurrentVersion === opt.value }"
 									:disabled="disabled"
 									:title="opt.description ? t(opt.description) : ''"
-									@click="updateParam('tripo3dModelVersion', opt.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dModelVersion', opt.value)"
 								>
 									{{ opt.label }}
 									<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -1771,7 +1836,8 @@
 									:class="{ 'is-active': params.tripo3dFaceLimit === preset.value }"
 									:disabled="disabled"
 									:title="preset.description ? t(preset.description) : ''"
-									@click="updateParam('tripo3dFaceLimit', preset.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dFaceLimit', preset.value)"
 								>
 									{{ t(preset.label) }}
 								</button>
@@ -1809,7 +1875,8 @@
 										class="bp-node-chat-param-btn"
 										:class="{ 'is-active': !params.tripo3dEnableImageAutofix }"
 										:disabled="disabled"
-										@click="updateParam('tripo3dEnableImageAutofix', false)"
+										@pointerdown.stop.prevent
+							@click="updateParam('tripo3dEnableImageAutofix', false)"
 									>
 									{{ t('aiConfig.common.off') }}
 								</button>
@@ -1818,7 +1885,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dEnableImageAutofix === true }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dEnableImageAutofix', true)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dEnableImageAutofix', true)"
 								>
 									{{ t('aiConfig.common.on') }}
 								</button>
@@ -1834,7 +1902,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dTextureAlignment', opt.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTextureAlignment', opt.value)"
 								>
 									{{ t(opt.label) }}
 								</button>
@@ -1850,7 +1919,8 @@
 									class="bp-node-chat-param-btn"
 									:class="{ 'is-active': params.tripo3dOrientation === opt.value }"
 									:disabled="disabled"
-									@click="updateParam('tripo3dOrientation', opt.value)"
+									@pointerdown.stop.prevent
+							@click="updateParam('tripo3dOrientation', opt.value)"
 								>
 									{{ t(opt.label) }}
 								</button>
@@ -1886,7 +1956,8 @@
 											class="bp-node-chat-param-btn"
 											:class="{ 'is-active': params.tripo3dGeometryQuality === opt.value }"
 											:disabled="disabled"
-											@click="updateParam('tripo3dGeometryQuality', opt.value)"
+											@pointerdown.stop.prevent
+							@click="updateParam('tripo3dGeometryQuality', opt.value)"
 										>
 											{{ t(opt.label) }}
 										</button>
@@ -1902,7 +1973,8 @@
 											class="bp-node-chat-param-btn"
 											:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
 											:disabled="disabled || !params.tripo3dTexture"
-											@click="updateParam('tripo3dTextureQuality', opt.value)"
+											@pointerdown.stop.prevent
+							@click="updateParam('tripo3dTextureQuality', opt.value)"
 										>
 											{{ t(opt.label) }}
 											<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -2047,6 +2119,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.agentBackend === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('agentBackend', opt.value)"
 						>
 							{{ t(opt.label) }}
@@ -2062,6 +2135,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.model === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('model', opt.value)"
 						>
 							{{ t(opt.label) }}
@@ -2077,6 +2151,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.geminiTextModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('geminiTextModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -2092,6 +2167,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.textModelVersion === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('textModelVersion', opt.value)"
 						>
 							{{ translateOpt(opt) }}
@@ -2107,6 +2183,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.modelId === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('modelId', opt.value)"
 						>
 							{{ opt.label }}
@@ -2122,6 +2199,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.modelId === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('modelId', opt.value)"
 						>
 							{{ opt.label }}
@@ -2137,6 +2215,7 @@
 							class="bp-node-chat-param-btn"
 							:class="{ 'is-active': params.thinkingEffort === opt.value }"
 							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('thinkingEffort', opt.value)"
 						>
 							{{ t(opt.label) }}

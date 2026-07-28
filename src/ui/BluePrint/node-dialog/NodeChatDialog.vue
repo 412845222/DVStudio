@@ -1,17 +1,16 @@
 <template>
-	<Transition name="bp-dialog-fade">
-		<div
-			v-if="visible && nodeId && nodeType"
-			class="bp-node-chat-dialog"
-			:class="[`bp-node-chat-${nodeType}`, { 'is-submitting': submitting }]"
-			:style="dialogPositionStyle"
-			data-wf-node-drag-ignore="true"
-			@wheel.stop
-			@pointerdown.stop
-			@mousedown.stop
-			@click.stop
-			@contextmenu.stop
-		>
+	<div
+		v-show="visible && nodeId && nodeType"
+		class="bp-node-chat-dialog"
+		:class="[`bp-node-chat-${nodeType}`, { 'is-submitting': submitting }]"
+		:style="dialogPositionStyle"
+		data-wf-node-drag-ignore="true"
+		@wheel.stop
+		@pointerdown.stop
+		@mousedown.stop
+		@click.stop
+		@contextmenu.stop
+	>
 			<div class="bp-node-chat-dialog-inner">
 			<div class="bp-node-chat-surface glass-surface">
 				<span class="bp-dialog-bracket bp-dialog-bracket-tl" aria-hidden="true"></span>
@@ -148,7 +147,7 @@
 
 		<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
 			<NodeChatParamPanel
-				v-if="showParams"
+				v-if="showParams && nodeType"
 				:key="`param-panel-${JSON.stringify(currentParams)}`"
 				class="bp-node-chat-param-popover"
 				:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
@@ -162,7 +161,6 @@
 		</Transition>
 		</div>
 		</div>
-	</Transition>
 </template>
 
 <script setup lang="ts">
@@ -434,6 +432,13 @@ const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidt
 
 const handleClose = () => {
 	if (props.submitting) return
+	console.log('[NodeChatDialog] handleClose', {
+		nodeId: props.nodeId,
+		nodeType: props.nodeType,
+		draftLength: props.draft.length,
+		paramsKeys: Object.keys(props.params),
+		selectedRefsCount: selectedRefsForInput.value.length
+	})
 	emit('close')
 }
 
@@ -452,6 +457,13 @@ const getRefLabel = (item: InputParamPreviewRef) => {
 
 const handleSubmit = async () => {
 	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
+	console.log('[NodeChatDialog] handleSubmit', {
+		nodeId: props.nodeId,
+		nodeType: props.nodeType,
+		promptLength: props.draft.length,
+		params: currentParams.value,
+		selectedRefsCount: selectedRefsForInput.value.length
+	})
 	const references = selectedRefsForInput.value.map((item) => ({
 		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
 		nodeId: item.fromNodeId || item.nodeId || '',

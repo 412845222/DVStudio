@@ -1149,6 +1149,8 @@ export type WorkflowNode = {
 	nodeChatParams?: Record<string, unknown>
 	/** For chat dialog: selected @mention references (persisted for chip restoration) */
 	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
+	/** For chat dialog: whether the dialog is visible (persisted for resize/drag stability) */
+	nodeChatVisible?: boolean
 	/** For chat dialog: mirror of nodeChatDraft (legacy prompt field, kept for back-compat) */
 	prompt?: string
 	worldX: number
@@ -1183,6 +1185,8 @@ export type WorkflowNodeChatTextParams = {
 	thinking?: string
 	responseFormat?: string
 	maxTokens?: number
+	temperature?: number
+	topP?: number
 }
 
 export type WorkflowNodeChatImageParams = {

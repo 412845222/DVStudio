@@ -196,7 +196,7 @@ function onNodePointerDown(e: PointerEvent) {
   e.stopPropagation();
   if (e.target !== e.currentTarget) {
     const tgt = e.target as HTMLElement | null;
-    if (tgt && (tgt.closest('.dnw-port') || tgt.closest('.dnw-resize-handle') || tgt.closest('.dnw-drag-handle') || tgt.closest('.dnw-header'))) {
+    if (tgt && (tgt.closest('.dnw-port') || tgt.closest('.dnw-resize-handle') || tgt.closest('.dnw-drag-handle') || tgt.closest('.dnw-header') || tgt.closest('.bp-node-chat-dialog') || tgt.closest('.bp-node-chat-param-panel'))) {
       return;
     }
   }
