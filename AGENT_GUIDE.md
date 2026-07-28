@@ -664,6 +664,8 @@ Host通过`editorRef.value`调用`defineExpose`暴露的engineApi。**所有业�
 8. **🔴 openNodeChatDialog必须使用"最长优先"策略选draft**——不能简单取第一个非空值
 9. **🔴 saveChatStateToNode在切换节点前必须立即刷新缓存**——不能依赖防抖（防抖会导致切换时保存不及时）
 
+> **节点类型Agent开发边界**：本节主要讲解NodeChatDialog的UI状态同步三层架构。不同节点类型（文本/图片/视频/3D模型/Blender）的后端接口、系统Prompt、输出格式、参数规范等Agent开发边界，请参阅 [agent_docs/06_AI_WORKFLOW_GUIDE.md 第8节](agent_docs/06_AI_WORKFLOW_GUIDE.md#8-节点底部对话框node-chat-dialogagent-开发边界)。
+
 ### 前后端通信模型
 
 - **Electron 主进程**（`electron/main.mjs`）
