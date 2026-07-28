@@ -7,6 +7,7 @@
 				:chat-state="chatState"
 				:node-generation-tasks="nodeGenerationTasks"
 				:legacy-resources="legacyResources"
+				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:editing-node-id="editingNodeId"
 				@node-click="handleNodeClick"
 				@node-contextmenu="handleNodeContextMenu"
@@ -53,6 +54,20 @@ import type {
 } from '../../aiworkflow/types'
 import type { LegacyResourceData } from './types'
 
+// 通用的输入参数预览引用类型（引擎层不依赖业务层类型）
+type InputParamPreviewRefItem = {
+	edgeId?: string
+	fromNodeId?: string
+	fromAnchorId?: string
+	toAnchorId?: string
+	kind: 'text' | 'image' | 'video' | 'model3d' | 'audio'
+	name?: string
+	label?: string
+	text?: string
+	previewUrl?: string
+	meta?: string
+}
+
 interface Props {
 	initialData?: LegacyBlueprintData
 	projectPath?: string
@@ -61,11 +76,13 @@ interface Props {
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 	legacyResources?: Record<string, LegacyResourceData>
+	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRefItem[]>
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	readonly: false,
-	theme: 'dark'
+	theme: 'dark',
+	inputParamPreviewRefsByNodeId: () => ({})
 })
 
 interface Emits {
@@ -507,6 +524,17 @@ watch(
 		;(scene.value as any)._legacyResources = res
 	},
 	{ deep: false }
+)
+
+watch(
+	() => props.inputParamPreviewRefsByNodeId,
+	(refs) => {
+		if (!scene.value || !refs) return
+		;(scene.value as any)._inputParamPreviewRefsByNodeId = refs
+		const nodesWithRefs = Object.entries(refs).filter(([, r]) => r && r.length > 0)
+		console.log(`[BlueprintEditor][inputParamPreviewRefsByNodeId] updated: ${nodesWithRefs.length} nodes with refs`, nodesWithRefs.map(([id]) => id))
+	},
+	{ deep: false, immediate: true }
 )
 
 onMounted(() => {

@@ -25,9 +25,9 @@ export const COMFY_AUTO_WIRE_HORIZONTAL_GAP = 180
 export const COMFY_AUTO_WIRE_VERTICAL_GAP = 80
 
 export const COMFY_TARGET_INPUT_ANCHOR: Record<ComfySupportedMediaType, string> = {
-	image: 'in-image',
+	image: 'in-0',
 	video: 'in-video',
-	model3d: 'in-resource'
+	model3d: 'in-model'
 }
 
 export const COMFY_TARGET_NODE_TYPE: Record<ComfySupportedMediaType, 'image' | 'video' | 'model3d'> = {

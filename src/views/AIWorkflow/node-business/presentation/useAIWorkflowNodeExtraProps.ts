@@ -64,9 +64,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
 		if (node.type !== 'image') return null
 		if (node.resourceId) return null
-		const edge =
-			payload.getFirstIncomingEdge(node.id, 'in-image') ||
-			payload.getFirstIncomingEdge(node.id, 'in-resource')
+		// 按优先级查找图片输入边：in-0 (新多模态) > in-image > in-resource
+		let edge = payload.getFirstIncomingEdge(node.id, 'in-0')
+		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-image')
+		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-resource')
 		if (!edge) return null
 		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as WorkflowNode | undefined
 		if (!fromNode || fromNode.type !== 'image') return null
@@ -300,7 +301,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				sourcePreviewUrl: shedHeavyMedia
 					? ''
 					: sanitizeWorkflowMediaUrl(sanitizeMeshyPreviewUrl(sourcePreview.url)),
-				sourcePreviewLabel: sourcePreview.label
+				sourcePreviewLabel: sourcePreview.label,
+				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
 			}
 		}
 		if (node.type === 'blender') {

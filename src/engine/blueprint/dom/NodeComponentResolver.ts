@@ -133,7 +133,8 @@ export class NodeComponentResolver {
 		legacyResources: Record<string, LegacyResourceData> = {},
 		isSelected: boolean = false,
 		chatState?: NodeChatState | null,
-		generationTasksById?: Record<string, WorkflowNodeGenerationTask>
+		generationTasksById?: Record<string, WorkflowNodeGenerationTask>,
+		inputParamPreviewRefs?: any[]
 	): ResolvedWorkflowNodeProps {
 		const data = node.data
 		const isChatActive =
@@ -269,12 +270,18 @@ export class NodeComponentResolver {
 		if (data.textMergeItems != null) typeSpecificProps.textMergeItems = data.textMergeItems
 		if (data.prompt != null) typeSpecificProps.prompt = data.prompt
 
+		// 调试日志
+		if (inputParamPreviewRefs && inputParamPreviewRefs.length > 0) {
+			console.log(`[NodeComponentResolver] resolveNodeProps for nodeId=${data.id}, type=${data.type}, inputParamPreviewRefs count=${inputParamPreviewRefs.length}`, inputParamPreviewRefs)
+		}
+
 		return {
 			...baseProps,
 			...resourceProps,
 			...chatProps,
 			...typeSpecificProps,
-			nodeGenerationTask: generationTask
+			nodeGenerationTask: generationTask,
+			inputParamPreviewRefs: inputParamPreviewRefs || []
 		}
 	}
 }

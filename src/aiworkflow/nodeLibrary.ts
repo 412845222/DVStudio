@@ -223,7 +223,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'image-generation',
 		nodeType: 'image',
 		label: '图片节点',
-		inputKinds: ['resource'],
+		inputKinds: ['text', 'image', 'video', 'model3d', 'audio', 'resource'],
 		outputKinds: ['image'],
 		order: 20
 	},
@@ -239,7 +239,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'video-generation',
 		nodeType: 'video',
 		label: '视频节点',
-		inputKinds: ['image', 'video', 'audio'],
+		inputKinds: ['text', 'image', 'video'],
 		outputKinds: ['video', 'image'],
 		order: 30
 	},

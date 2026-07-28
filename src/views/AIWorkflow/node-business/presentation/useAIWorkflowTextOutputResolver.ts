@@ -96,10 +96,11 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		if (node.type === 'text') {
 			const n = node as Record<string, unknown>
 			const inputs = Array.isArray(n.inputs) ? n.inputs : []
+			// text节点现在是单个多模态输入in-0，优先找它
 			const inputAnchor = inputs.find(
 				(anchor: unknown) => {
 					const a = anchor as Record<string, unknown>
-					return String(a?.mediaType ?? '') === 'text' || String(a?.id ?? '') === 'in-text'
+					return String(a?.id ?? '') === 'in-0' || String(a?.mediaType ?? '') === 'text' || String(a?.id ?? '') === 'in-text'
 				}
 			) as Record<string, unknown> | undefined
 			if (inputAnchor?.id) {
@@ -143,6 +144,9 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		const refs: InputParamPreviewRef[] = []
 		const seen = new Set<string>()
 		const incomingEdges = payload.getIncomingEdges(nodeId)
+		const targetNode = payload.store.state.nodesById[nodeId]
+		const targetInputs = Array.isArray(targetNode?.inputs) ? targetNode.inputs : []
+
 		for (const edge of incomingEdges) {
 			const e = edge as Record<string, unknown>
 			const fromNodeId = String(e?.fromNodeId ?? '').trim()
@@ -153,6 +157,13 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const fromNode = payload.store.state.nodesById[fromNodeId]
 			if (!fromNode) continue
 
+			// 获取目标锚点配置
+			const targetAnchor = targetInputs.find((a: any) => String(a?.id ?? '') === toAnchorId)
+			const targetMediaType = String(targetAnchor?.mediaType ?? '').trim()
+			const targetAcceptedTypes = Array.isArray((targetAnchor as any)?.acceptedMediaTypes)
+				? ((targetAnchor as any).acceptedMediaTypes as string[])
+				: []
+
 			const base = {
 				edgeId: edgeId || undefined,
 				fromNodeId: fromNodeId || undefined,
@@ -161,29 +172,76 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 				name: resolveNodeName(fromNode)
 			}
 
-			if (
-				fromNode.type === 'text' ||
-				fromNode.type === 'text-merge' ||
-				fromNode.type === 'rotate-image' ||
-				fromNode.type === 'scene-understanding' ||
-				fromNode.type === 'scene-decompose' ||
-				fromNode.type === 'scene-layout'
-			) {
+			// 根据目标锚点mediaType + 源节点实际输出来判断引用类型
+			let refKind: 'text' | 'image' | 'video' | 'model3d' | null = null
+
+			// 1. 如果目标锚点明确指定mediaType，优先使用
+			if (targetMediaType === 'text') refKind = 'text'
+			else if (targetMediaType === 'image') refKind = 'image'
+			else if (targetMediaType === 'video') refKind = 'video'
+			else if (targetMediaType === 'model3d') refKind = 'model3d'
+			else if (targetMediaType === 'generic') {
+				// generic类型根据源节点类型和acceptedMediaTypes判断
+				if (
+					fromNode.type === 'text' ||
+					fromNode.type === 'text-merge' ||
+					fromNode.type === 'rotate-image' ||
+					fromNode.type === 'scene-understanding' ||
+					fromNode.type === 'scene-decompose' ||
+					fromNode.type === 'scene-layout'
+				) {
+					if (targetAcceptedTypes.length === 0 || targetAcceptedTypes.includes('text')) {
+						refKind = 'text'
+					}
+				} else if (fromNode.type === 'image') {
+					if (targetAcceptedTypes.length === 0 || targetAcceptedTypes.includes('image')) {
+						refKind = 'image'
+					}
+				} else if (fromNode.type === 'video') {
+					if (targetAcceptedTypes.length === 0 || targetAcceptedTypes.includes('video')) {
+						refKind = 'video'
+					}
+				} else if (fromNode.type === 'model3d') {
+					if (targetAcceptedTypes.length === 0 || targetAcceptedTypes.includes('model3d')) {
+						refKind = 'model3d'
+					}
+				}
+			} else {
+				// 无mediaType时降级为源节点类型判断（向后兼容）
+				if (
+					fromNode.type === 'text' ||
+					fromNode.type === 'text-merge' ||
+					fromNode.type === 'rotate-image' ||
+					fromNode.type === 'scene-understanding' ||
+					fromNode.type === 'scene-decompose' ||
+					fromNode.type === 'scene-layout'
+				) {
+					refKind = 'text'
+				} else if (fromNode.type === 'image') {
+					refKind = 'image'
+				} else if (fromNode.type === 'video') {
+					refKind = 'video'
+				} else if (fromNode.type === 'model3d') {
+					refKind = 'model3d'
+				}
+			}
+
+			if (!refKind) continue
+
+			// 根据refKind收集预览信息
+			if (refKind === 'text') {
 				const text = getTextOutputForNode(fromNodeId, undefined, fromAnchorId)
-				if (!text.trim()) continue
-				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:text:${text.slice(0, 64)}`
+				// 即使文本为空也显示连接提示，让用户知道有节点连接上来
+				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:text`
 				if (seen.has(dedupeKey)) continue
 				seen.add(dedupeKey)
 				refs.push({
 					...base,
 					kind: 'text',
-					text,
-					label: previewText(text)
+					text: text || '',
+					label: previewText(text) || base.name || t('aiworkflow.runtime.textInput')
 				})
-				continue
-			}
-
-			if (fromNode.type === 'image') {
+			} else if (refKind === 'image') {
 				const previewUrl =
 					sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(fromNode, 160)) ||
 					sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(fromNode)) ||
@@ -198,15 +256,11 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					label: base.name || t('aiworkflow.runtime.imageInput'),
 					meta: previewUrl ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.pending')
 				})
-				continue
-			}
-
-			if (fromNode.type === 'video') {
+			} else if (refKind === 'video') {
 				const previewUrl = resolveVideoPosterUrl(fromNode)
 				const resourceUrl = sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(fromNode)) || ''
 				if (!previewUrl && !resourceUrl) continue
-				const dedupeKey =
-					edgeId || `${fromNodeId}:${fromAnchorId}:video:${previewUrl || resourceUrl}`
+				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:video:${previewUrl || resourceUrl}`
 				if (seen.has(dedupeKey)) continue
 				seen.add(dedupeKey)
 				refs.push({
@@ -216,10 +270,7 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					label: base.name || t('aiworkflow.runtime.videoInput'),
 					meta: t('aiworkflow.runtime.videoResource')
 				})
-				continue
-			}
-
-			if (fromNode.type === 'model3d') {
+			} else if (refKind === 'model3d') {
 				const modelLabel = resolveModel3DLabel(fromNode)
 				if (!modelLabel) continue
 				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:model3d:${modelLabel}`

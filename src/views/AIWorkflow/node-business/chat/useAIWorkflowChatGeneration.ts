@@ -1335,7 +1335,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					? (selectedNode.inputs as WorkflowAnchorSpec[])
 					: ([] as WorkflowAnchorSpec[])
 				
-				// 筛选图片输入锚点：in-image, in-resource, in-image-N
+				// 筛选图片输入锚点：in-image, in-resource, in-image-N（向后兼容in-0）
 				const isImageInputAnchor = (anchorId: string): boolean => {
 					const id = String(anchorId || '').trim()
 					return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)

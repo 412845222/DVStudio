@@ -338,8 +338,8 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 	}
 
 	const connectedTripo3DModelInput = async (nodeId: string) => {
-		let edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
-		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-model')
+		let edge = options.getFirstIncomingEdge(nodeId, 'in-model')
+		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
 		if (!edge) return null
 		const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) return null

@@ -4,6 +4,7 @@ import BlueprintEditor from '../../../engine/blueprint/BlueprintEditor.vue'
 import type { LegacyBlueprintData, LegacyResourceData } from '../../../engine/blueprint/types'
 import type { NodeChatState } from '../../../engine/blueprint/dom/NodeComponentResolver'
 import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
+import type { InputParamPreviewRef } from '../node-business/presentation/useAIWorkflowTextOutputResolver'
 
 interface Props {
   initialData: LegacyBlueprintData
@@ -12,12 +13,14 @@ interface Props {
   chatState?: NodeChatState | null
   nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
   legacyResources?: Record<string, LegacyResourceData>
+  inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRef[]>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   readonly: false,
   theme: 'dark',
-  chatState: null
+  chatState: null,
+  inputParamPreviewRefsByNodeId: () => ({})
 })
 
 const emit = defineEmits<{
@@ -247,6 +250,7 @@ watch(blueprintEditorRef, (editor) => {
       :chat-state="chatState"
       :node-generation-tasks="nodeGenerationTasks"
       :legacy-resources="legacyResources"
+      :input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
       @change="onBlueprintEditorChange"
       @selection-change="onBlueprintEditorSelectionChange"
       @viewport-change="onBlueprintEditorViewportChange"

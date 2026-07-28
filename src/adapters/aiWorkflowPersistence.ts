@@ -22,7 +22,6 @@ const TRANSIENT_STATE_KEYS = new Set([
 const TRANSIENT_NODE_KEYS = new Set([
 	'isResponding',
 	'isSubmitting',
-	'nodeChatDraft',
 ])
 
 const TRANSIENT_MUTATIONS = new Set([
@@ -34,8 +33,6 @@ const TRANSIENT_MUTATIONS = new Set([
 	'clearSelection',
 	'toggleNodeSelection',
 	'setChatDraft',
-	'setNodeChatDraft',
-	'setNodeChatSelectedRefs',
 	'setNodeChatSubmitting',
 	'setBlenderResponding',
 	'setBlenderMcpStatus',

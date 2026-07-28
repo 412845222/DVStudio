@@ -33,6 +33,7 @@
 				:chat-state="chatStateForHost"
 				:node-generation-tasks="store.state.nodeGenerationTasksById"
 				:legacy-resources="legacyResourcesForDom"
+				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				@editor-ready="onHostEditorReady"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
@@ -1075,6 +1076,27 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
 			}
 		}
 	}
+	return result
+})
+
+// 按nodeId预计算所有节点的inputParamPreviewRefs，用于注入到底层蓝图引擎
+const inputParamPreviewRefsByNodeId = computed<Record<string, InputParamPreviewRef[]>>(() => {
+	const result: Record<string, InputParamPreviewRef[]> = {}
+	const nodeIds = store.state.nodeOrder
+	for (const nodeId of nodeIds) {
+		try {
+			const refs = getInputParamPreviewRefs(nodeId)
+			result[nodeId] = refs
+			// 调试日志：只在有引用时输出
+			if (refs.length > 0) {
+				console.log(`[AIWorkflowPage][inputParamPreviewRefs] nodeId=${nodeId}, refsCount=${refs.length}`, refs)
+			}
+		} catch (err) {
+			console.error(`[AIWorkflowPage][inputParamPreviewRefs] error for nodeId=${nodeId}:`, err)
+			result[nodeId] = []
+		}
+	}
+	console.log(`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${Object.values(result).filter(r => r.length > 0).length}`)
 	return result
 })
 
@@ -2203,7 +2225,7 @@ const getUpstreamCroppedImageUrl = (node: WorkflowNode): string | null => {
 	if (node.type !== 'image') return null
 	if (node.resourceId) return null
 	const inEdge =
-		getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
+		getFirstIncomingEdge(node.id, 'in-0') || getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
 	if (!inEdge) return null
 	const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 	if (!fromNode || fromNode.type !== 'image') return null
@@ -2511,7 +2533,7 @@ const getNodeScreenshotVersion = (node: WorkflowNode, theme?: 'dark' | 'light'):
 
 	if (node.type === 'image' && !node.resourceId) {
 		const inEdge =
-			getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
+			getFirstIncomingEdge(node.id, 'in-0') || getFirstIncomingEdge(node.id, 'in-image') || getFirstIncomingEdge(node.id, 'in-resource')
 		if (inEdge) {
 			const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 			if (fromNode && fromNode.type === 'image' && fromNode.resourceId) {
@@ -6919,7 +6941,7 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 		const toAnchorId = String(e.toAnchorId ?? '')
 		return (
 			/^out-image(?:-\d+)?$/.test(fromAnchorId) &&
-			(toAnchorId === 'in-image' || toAnchorId === 'in-resource')
+			(toAnchorId === 'in-0' || toAnchorId === 'in-image' || toAnchorId === 'in-resource')
 		)
 	})
 	if (!outputEdges.length) return false
@@ -10655,7 +10677,7 @@ const linkInteraction = useAIWorkflowLinking({
 			/^out-image(?:-\d+)?$/.test(String(fromAnchorId ?? '')) &&
 			toNode &&
 			toNode.type === 'image' &&
-			(toAnchorId === 'in-image' || toAnchorId === 'in-resource')
+			(toAnchorId === 'in-0' || toAnchorId === 'in-image' || toAnchorId === 'in-resource')
 		) {
 			void syncConnectedImageTargetsFromMeshy(fromNodeId)
 		}

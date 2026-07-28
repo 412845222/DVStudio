@@ -1426,6 +1426,11 @@ export type WorkflowNodeChatSelectedRef = {
 	fromAnchorId?: string
 	kind: 'text' | 'image' | 'video' | 'model3d' | 'blender'
 	label: string
+	name?: string
+	previewUrl?: string
+	fromContent?: string
+	id?: string
+	type?: string
 }
 
 export type WorkflowNodeChatSubmitPayload = {

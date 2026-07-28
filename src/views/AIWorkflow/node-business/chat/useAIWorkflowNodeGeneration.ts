@@ -132,6 +132,49 @@ const appendResult = (
 }
 
 /**
+ * 根据锚点ID获取锚点的mediaType
+ */
+const getAnchorMediaType = (
+	state: { nodesById: Record<string, Record<string, unknown>> },
+	nodeId: string,
+	anchorId: string,
+	direction: 'in' | 'out'
+): string | null => {
+	const node = state.nodesById[nodeId]
+	if (!node) return null
+	const anchors = direction === 'in' ? node.inputs : node.outputs
+	if (!Array.isArray(anchors)) return null
+	const anchor = anchors.find((a: any) => String(a?.id ?? '') === String(anchorId ?? ''))
+	if (!anchor) return null
+	return String((anchor as any).mediaType ?? '') || null
+}
+
+/**
+ * 根据源节点类型推断其输出mediaType（用于旧节点/generic输出锚点的兼容）
+ */
+const inferSourceMediaType = (sourceNode: Record<string, unknown> | undefined, fromAnchorId: string): string | null => {
+	if (!sourceNode) return null
+	const sourceType = String(sourceNode.type ?? '').trim().toLowerCase()
+	// 先尝试获取源输出锚点的mediaType
+	const outMediaType = getAnchorMediaType(
+		{ nodesById: { [String(sourceNode.id ?? '')]: sourceNode } } as any,
+		String(sourceNode.id ?? ''),
+		fromAnchorId,
+		'out'
+	)
+	if (outMediaType && outMediaType !== 'generic') return outMediaType
+	// 根据节点类型推断默认输出类型
+	if (sourceType === 'text' || sourceType === 'text-merge' || sourceType === 'rotate-image' ||
+		sourceType === 'scene-understanding' || sourceType === 'scene-decompose' || sourceType === 'scene-layout') {
+		return 'text'
+	}
+	if (sourceType === 'image') return 'image'
+	if (sourceType === 'video') return 'video'
+	if (sourceType === 'model3d' || sourceType === 'meshy' || sourceType === 'tripo3d') return 'model3d'
+	return null
+}
+
+/**
  * Collect reference images from the input anchors of a node.
  *
  * Walks the incoming edges of the node. For each edge whose source node
@@ -142,43 +185,71 @@ const appendResult = (
  * any relative / project-internal URLs are resolved correctly.
  */
 const isImageInputAnchor = (
+	state: { nodesById: Record<string, Record<string, unknown>> },
+	targetNodeId: string,
 	anchorId: string,
-	sourceNodeType?: string,
-	targetNodeType?: string
+	sourceNode?: Record<string, unknown>,
+	fromAnchorId?: string
 ): boolean => {
 	const id = String(anchorId || '').trim()
-	const isImageAnchor = id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
-	if (isImageAnchor) return true
+	// 先通过锚点mediaType判断（权威方式）
+	const mediaType = getAnchorMediaType(state, targetNodeId, id, 'in')
+	if (mediaType === 'image') return true
+	if (mediaType === 'generic') {
+		// generic类型锚点：检查acceptedMediaTypes是否接受image，并确认源输出确实是image类型
+		const node = state.nodesById[targetNodeId]
+		const anchors = Array.isArray(node?.inputs) ? (node.inputs as any[]) : []
+		const anchor = anchors.find((a: any) => String(a?.id ?? '') === id)
+		const accepted = Array.isArray(anchor?.acceptedMediaTypes) ? anchor.acceptedMediaTypes : []
+		if (accepted.length > 0 && !accepted.includes('image')) return false
+		// 检查源输出类型
+		const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
+		return sourceMediaType === 'image'
+	}
+	// 向后兼容：旧ID匹配
+	if (id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNodeType || '')
-			.trim()
-			.toLowerCase()
-		const targetType = String(targetNodeType || '')
-			.trim()
-			.toLowerCase()
-		if (targetType === 'text') return true
-		return sourceType === 'image' || sourceType === 'blender' || sourceType === ''
+		const sourceType = String(sourceNode?.type || '').trim().toLowerCase()
+		const targetNode = state.nodesById[targetNodeId]
+		const targetType = String(targetNode?.type || '').trim().toLowerCase()
+		if (targetType === 'text') return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'image')
+		return sourceType === 'image' || sourceType === 'blender'
 	}
 	return false
 }
 
+const sourceMediaTypeCheck = (sourceNode: Record<string, unknown> | undefined, fromAnchorId: string | undefined, expected: string): boolean => {
+	const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
+	return sourceMediaType === expected
+}
+
 const isVideoInputAnchor = (
+	state: { nodesById: Record<string, Record<string, unknown>> },
+	targetNodeId: string,
 	anchorId: string,
-	sourceNodeType?: string,
-	targetNodeType?: string
+	sourceNode?: Record<string, unknown>,
+	fromAnchorId?: string
 ): boolean => {
 	const id = String(anchorId || '').trim()
-	const isVideoAnchor = id === 'in-video' || id === 'in-resource' || /^in-video-\d+$/.test(id)
-	if (isVideoAnchor) return true
+	const mediaType = getAnchorMediaType(state, targetNodeId, id, 'in')
+	if (mediaType === 'video') return true
+	if (mediaType === 'generic') {
+		const node = state.nodesById[targetNodeId]
+		const anchors = Array.isArray(node?.inputs) ? (node.inputs as any[]) : []
+		const anchor = anchors.find((a: any) => String(a?.id ?? '') === id)
+		const accepted = Array.isArray(anchor?.acceptedMediaTypes) ? anchor.acceptedMediaTypes : []
+		if (accepted.length > 0 && !accepted.includes('video')) return false
+		const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
+		return sourceMediaType === 'video'
+	}
+	// 向后兼容
+	if (id === 'in-video' || /^in-video-\d+$/.test(id)) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNodeType || '')
-			.trim()
-			.toLowerCase()
-		const targetType = String(targetNodeType || '')
-			.trim()
-			.toLowerCase()
-		if (targetType === 'text') return true
-		return sourceType === 'video' || sourceType === ''
+		const sourceType = String(sourceNode?.type || '').trim().toLowerCase()
+		const targetNode = state.nodesById[targetNodeId]
+		const targetType = String(targetNode?.type || '').trim().toLowerCase()
+		if (targetType === 'text') return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'video')
+		return sourceType === 'video'
 	}
 	return false
 }
@@ -193,7 +264,8 @@ const isMediaInputAnchor = (anchorId: string): boolean => {
 		/^in-image-\d+$/.test(id) ||
 		/^in-video-\d+$/.test(id) ||
 		id === 'in-text' ||
-		id === 'in-generic'
+		id === 'in-generic' ||
+		id === 'in-model'
 	)
 }
 
@@ -443,10 +515,11 @@ const collectReferenceImages = async (
 		if (toNodeId !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
 		const fromNodeId = String(edge.fromNodeId ?? '')
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const sourceNode = state.nodesById[fromNodeId]
 		if (!sourceNode) continue
 		const sourceType = String(sourceNode.type || '')
-		const isImageAnchor = isImageInputAnchor(toAnchorId, sourceType, targetNodeType)
+		const isImageAnchor = isImageInputAnchor(state, nodeId, toAnchorId, sourceNode, fromAnchorId)
 		console.log('[collectReferenceImages] 找到入边:', {
 			edgeId,
 			fromNodeId,
@@ -541,10 +614,11 @@ const collectReferenceVideos = async (
 		if (toNodeId !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
 		const fromNodeId = String(edge.fromNodeId ?? '')
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const sourceNode = state.nodesById[fromNodeId]
 		if (!sourceNode) continue
 		const sourceType = String(sourceNode.type || '')
-		if (!isVideoInputAnchor(toAnchorId, sourceType, targetNodeType)) continue
+		if (!isVideoInputAnchor(state, nodeId, toAnchorId, sourceNode, fromAnchorId)) continue
 		incoming.push({ edge, sourceNode })
 	}
 
@@ -585,10 +659,11 @@ const collectReferenceImagesWithUrl = async (
 		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
 		const fromNodeId = String(edge.fromNodeId ?? '')
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const sourceNode = state.nodesById[fromNodeId]
 		if (!sourceNode) continue
 		const sourceType = String(sourceNode.type || '')
-		if (!isImageInputAnchor(toAnchorId, sourceType)) continue
+		if (!isImageInputAnchor(state, nodeId, toAnchorId, sourceNode, fromAnchorId)) continue
 		incoming.push({ edge, sourceNode })
 	}
 
@@ -664,15 +739,27 @@ const collectReferenceImagesWithUrl = async (
 	return refs
 }
 
-const isTextInputAnchor = (anchorId: string): boolean => {
+const isTextInputAnchor = (
+	state: { nodesById: Record<string, Record<string, unknown>> },
+	targetNodeId: string,
+	anchorId: string,
+	sourceNode?: Record<string, unknown>,
+	fromAnchorId?: string
+): boolean => {
 	const id = String(anchorId || '').trim()
-	return (
-		id === 'in-text' ||
-		id === 'in-0' ||
-		id === 'in' ||
-		id.startsWith('in-text') ||
-		id === 'in-generic'
-	)
+	const mediaType = getAnchorMediaType(state, targetNodeId, id, 'in')
+	if (mediaType === 'text') return true
+	if (mediaType === 'generic') {
+		const node = state.nodesById[targetNodeId]
+		const anchors = Array.isArray(node?.inputs) ? (node.inputs as any[]) : []
+		const anchor = anchors.find((a: any) => String(a?.id ?? '') === id)
+		const accepted = Array.isArray(anchor?.acceptedMediaTypes) ? anchor.acceptedMediaTypes : []
+		if (accepted.length > 0 && !accepted.includes('text')) return false
+		const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
+		return sourceMediaType === 'text'
+	}
+	// 向后兼容
+	return id === 'in-text' || id === 'in-0' || id === 'in' || id.startsWith('in-text') || id === 'in-generic'
 }
 
 const getNodeEffectiveText = (node: Record<string, unknown>): string => {
@@ -705,21 +792,26 @@ const collectUpstreamTextRefs = async (
 
 	const refs: Array<{ nodeId: string; nodeType: string; text: string }> = []
 
-	const incoming: Array<Record<string, unknown>> = []
+	const incoming: Array<{ edge: Record<string, unknown>; sourceNode: Record<string, unknown> }> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
 		if (!edge) continue
 		if (String(edge.toNodeId ?? '') !== String(nodeId)) continue
 		const toAnchorId = String(edge.toAnchorId ?? '').trim()
-		if (!isTextInputAnchor(toAnchorId) && !isMediaInputAnchor(toAnchorId)) continue
-		incoming.push(edge)
-	}
-
-	for (const edge of incoming) {
-		if (refs.length >= maxRefs) break
 		const fromNodeId = String(edge.fromNodeId ?? '')
+		const fromAnchorId = String(edge.fromAnchorId ?? '').trim()
 		const sourceNode = state.nodesById[fromNodeId]
 		if (!sourceNode) continue
+		// 判断是否是文本输入锚点（对于generic锚点会检查源输出是否为text类型）
+		const isTextAnchor = isTextInputAnchor(state, nodeId, toAnchorId, sourceNode, fromAnchorId)
+		// 向后兼容：旧的媒体输入锚点也尝试提取文本
+		if (!isTextAnchor && !isMediaInputAnchor(toAnchorId)) continue
+		incoming.push({ edge, sourceNode })
+	}
+
+	for (const { edge, sourceNode } of incoming) {
+		if (refs.length >= maxRefs) break
+		const fromNodeId = String(edge.fromNodeId ?? '')
 
 		const sourceType = String(sourceNode.type || 'unknown')
 		let text = ''
@@ -1278,10 +1370,6 @@ export const runNodeGenerationTask = async (
 		pushToast(deps, t('aiworkflow.toast.nodeNotFound'), 'error')
 		return { ok: false, error: t('aiworkflow.runtime.nodeNotFound') }
 	}
-	if (!payload.prompt.trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
-		pushToast(deps, t('aiworkflow.toast.promptRequired'), 'warn')
-		return { ok: false, error: t('aiworkflow.runtime.promptEmpty') }
-	}
 
 	const task = createTask(payload)
 
@@ -1348,6 +1436,43 @@ export const runNodeGenerationTask = async (
 	}
 
 	try {
+		// 统一收集上游文本节点的提示词，合并到payload.prompt（适用于所有节点类型）
+		const upstreamTexts = (await collectUpstreamTextRefs(deps, payload.nodeId)).filter(
+			(ref) => String(ref.text ?? '').trim().length > 0
+		)
+		if (upstreamTexts.length > 0) {
+			const contextParts = upstreamTexts.map(
+				(ref, idx) => `[上下文${idx + 1} - 来自${ref.nodeType}节点]:\n${ref.text}`
+			)
+			const userPrompt = String(payload.prompt ?? '').trim()
+			const finalPrompt = userPrompt
+				? `${contextParts.join('\n\n')}\n\n[用户输入]:\n${userPrompt}`
+				: contextParts.join('\n\n')
+			payload.prompt = finalPrompt
+			task.prompt = finalPrompt
+			appendDetail(
+				deps,
+				task.id,
+				t('aiworkflow.runtime.detailUpstreamTextCount', { count: String(upstreamTexts.length) })
+			)
+		}
+
+		// 合并上游文本后再验证prompt是否为空（text/video节点必须有prompt）
+		if (!String(payload.prompt ?? '').trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
+			pushToast(deps, t('aiworkflow.toast.promptRequired'), 'warn')
+			updateTask(deps, task.id, {
+				status: 'error',
+				statusText: t('aiworkflow.runtime.promptEmpty'),
+				progress: 0,
+				finishedAt: Date.now()
+			})
+			deps.store.commit('setNodeChatSubmitting', { submitting: false })
+			if (globalRegistered && globalBridge) {
+				await globalBridge.failTask(task.globalTaskId!, t('aiworkflow.runtime.promptEmpty'))
+			}
+			return { ok: false, error: t('aiworkflow.runtime.promptEmpty') }
+		}
+
 		let result: NodeGenerationResult
 		if (payload.nodeType === 'text') {
 			await runTextTask(deps, task, payload, {
@@ -1544,20 +1669,8 @@ const runTextTask = async (
 		t('aiworkflow.runtime.detailPrompt', { prompt: payload.prompt.slice(0, 120) })
 	)
 
-	// Collect upstream text references from connected nodes
-	const upstreamTexts = await collectUpstreamTextRefs(deps, payload.nodeId)
-	let finalPrompt = payload.prompt
-	if (upstreamTexts.length > 0) {
-		const contextParts = upstreamTexts.map(
-			(ref, idx) => `[上下文${idx + 1} - 来自${ref.nodeType}节点]:\n${ref.text}`
-		)
-		finalPrompt = `${contextParts.join('\n\n')}\n\n[用户输入]:\n${payload.prompt}`
-		appendDetail(
-			deps,
-			task.id,
-			t('aiworkflow.runtime.detailUpstreamTextCount', { count: String(upstreamTexts.length) })
-		)
-	}
+	// 上游文本已在runNodeGenerationTask入口统一合并到payload.prompt
+	const finalPrompt = payload.prompt
 
 	// Record full submission parameters
 	appendDetail(deps, task.id, `[参数] provider=${provider}, model=${modelId}`)
