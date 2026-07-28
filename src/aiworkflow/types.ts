@@ -703,16 +703,45 @@ export type WorkflowComfyUINodeSettings = {
 	historyNodeCount?: number
 	/** exact input node mappings resolved from history, used for precise parameter replacement at runtime */
 	historyInputMappings?: {
-		imageInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
-		videoInputs: Array<{ nodeId: string; classType: string; inputKey: string; originalValue?: string; displayName?: string }>
+		imageInputs: Array<{
+			nodeId: string
+			classType: string
+			inputKey: string
+			originalValue?: string
+			displayName?: string
+		}>
+		videoInputs: Array<{
+			nodeId: string
+			classType: string
+			inputKey: string
+			originalValue?: string
+			displayName?: string
+		}>
 		textNodes: {
-			positive: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
-			negative: Array<{ nodeId: string; classType: string; originalText?: string; inputKey?: string; allTextKeys?: string[] }>
+			positive: Array<{
+				nodeId: string
+				classType: string
+				originalText?: string
+				inputKey?: string
+				allTextKeys?: string[]
+			}>
+			negative: Array<{
+				nodeId: string
+				classType: string
+				originalText?: string
+				inputKey?: string
+				allTextKeys?: string[]
+			}>
 		}
 		seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
 	}
 	// detected output nodes from the workflow
-	historyOutputNodes?: Array<{ nodeId: string; classType: string; mediaKind: 'image' | 'video' | 'model3d'; displayName?: string }>
+	historyOutputNodes?: Array<{
+		nodeId: string
+		classType: string
+		mediaKind: 'image' | 'video' | 'model3d'
+		displayName?: string
+	}>
 	// which media types the workflow actually outputs (detected from Save/VHS_/Export nodes)
 	hasImageOutput?: boolean
 	hasVideoOutput?: boolean
@@ -769,9 +798,31 @@ export type WorkflowMeshyModelSettings = {
 	downloadError?: string
 }
 
-export type WorkflowTripo3DTaskStatus = 'idle' | 'pending' | 'queued' | 'running' | 'success' | 'succeeded' | 'failed' | 'cancelled' | 'canceled'
+export type WorkflowTripo3DTaskStatus =
+	| 'idle'
+	| 'pending'
+	| 'queued'
+	| 'running'
+	| 'success'
+	| 'succeeded'
+	| 'failed'
+	| 'cancelled'
+	| 'canceled'
 
-export type WorkflowTripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine' | 'text_to_image' | 'image_to_image' | 'image_to_multiview' | 'mesh_segment' | 'mesh_smartsegment' | 'mesh_complete' | 'mesh_decimate' | 'models_convert'
+export type WorkflowTripo3DMode =
+	| 'text_to_model'
+	| 'image_to_model'
+	| 'multiview_to_model'
+	| 'texture'
+	| 'refine'
+	| 'text_to_image'
+	| 'image_to_image'
+	| 'image_to_multiview'
+	| 'mesh_segment'
+	| 'mesh_smartsegment'
+	| 'mesh_complete'
+	| 'mesh_decimate'
+	| 'models_convert'
 
 export type WorkflowTripo3DModelSeries = 'h' | 'p'
 
@@ -791,7 +842,15 @@ export type WorkflowTripo3DTextureAlignment = 'original_image' | 'geometry'
 
 export type WorkflowTripo3DOrientation = 'default' | 'align_image'
 
-export type WorkflowTripo3DRelationKind = 'model' | 'texture' | 'refine' | 'mesh_segment' | 'mesh_smartsegment' | 'mesh_complete' | 'mesh_decimate' | 'models_convert'
+export type WorkflowTripo3DRelationKind =
+	| 'model'
+	| 'texture'
+	| 'refine'
+	| 'mesh_segment'
+	| 'mesh_smartsegment'
+	| 'mesh_complete'
+	| 'mesh_decimate'
+	| 'models_convert'
 
 export type WorkflowTripo3DInputSummary = {
 	promptSource?: 'linked' | 'manual' | 'none'
@@ -982,7 +1041,13 @@ export type WorkflowMeshyNodeSettings = {
 	meshyParentTaskId?: string
 	meshyCapabilities?: WorkflowMeshyCapability[]
 	meshyHelpTopic?: string
-	meshyMode?: 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'remesh' | 'retexture' | 'uv-unwrap'
+	meshyMode?:
+		| 'text-to-3d'
+		| 'image-to-3d'
+		| 'multi-image-to-3d'
+		| 'remesh'
+		| 'retexture'
+		| 'uv-unwrap'
 	meshyStage?: 'preview' | 'refine'
 	meshyPrompt?: string
 	meshyNegativePrompt?: string
@@ -1036,7 +1101,15 @@ export type WorkflowMeshyNodeSettings = {
 
 export type WorkflowBlenderChatMessage = {
 	id: string
-	role: 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result' | 'tool' | 'thinking' | 'command'
+	role:
+		| 'user'
+		| 'assistant'
+		| 'system'
+		| 'tool_call'
+		| 'tool_result'
+		| 'tool'
+		| 'thinking'
+		| 'command'
 	content: string
 	timestamp: number
 	toolName?: string
@@ -1238,7 +1311,14 @@ export type WorkflowNodeChatVideoParams = {
 	modelId?: string
 	model?: string
 	seedanceModelVersion?: string
-	mode?: 'auto' | 'text_to_video' | 'image_to_video' | 'first-last' | 'reference' | 'video_edit' | ''
+	mode?:
+		| 'auto'
+		| 'text_to_video'
+		| 'image_to_video'
+		| 'first-last'
+		| 'reference'
+		| 'video_edit'
+		| ''
 	resolution?: string
 	ratio?: string
 	duration?: number
@@ -1326,12 +1406,11 @@ export type WorkflowNodeChatBlenderParams = {
 	thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
 }
 
-export type WorkflowNodeChatParamRecord =
-	& Partial<WorkflowNodeChatTextParams>
-	& Partial<WorkflowNodeChatImageParams>
-	& Partial<WorkflowNodeChatVideoParams>
-	& Partial<WorkflowNodeChatModel3DParams>
-	& Partial<WorkflowNodeChatBlenderParams>
+export type WorkflowNodeChatParamRecord = Partial<WorkflowNodeChatTextParams> &
+	Partial<WorkflowNodeChatImageParams> &
+	Partial<WorkflowNodeChatVideoParams> &
+	Partial<WorkflowNodeChatModel3DParams> &
+	Partial<WorkflowNodeChatBlenderParams>
 
 export type WorkflowNodeChatParams = {
 	text?: WorkflowNodeChatParamRecord
@@ -1369,7 +1448,13 @@ export type WorkflowNodeChatSubmitPayload = {
 	}>
 }
 
-export type WorkflowNodeGenerationStatus = 'idle' | 'submitting' | 'running' | 'completed' | 'error' | 'cancelled'
+export type WorkflowNodeGenerationStatus =
+	| 'idle'
+	| 'submitting'
+	| 'running'
+	| 'completed'
+	| 'error'
+	| 'cancelled'
 
 export type WorkflowNodeGenerationTask = {
 	id: string

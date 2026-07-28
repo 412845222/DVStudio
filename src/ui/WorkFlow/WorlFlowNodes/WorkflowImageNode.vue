@@ -255,10 +255,40 @@ const emit = defineEmits<{
 	(e: 'invalidate-screenshot'): void
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 let invalidateScreenshotTimer: number | null = null
 const scheduleInvalidateScreenshot = (delayMs: number = 150) => {
@@ -636,10 +666,7 @@ watch(
 )
 
 watch(
-	() => [
-		outputWidth.value,
-		outputHeight.value
-	],
+	() => [outputWidth.value, outputHeight.value],
 	async () => {
 		await nextTick()
 		scheduleInvalidateScreenshot(100)
@@ -677,8 +704,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	try {
 		ro?.disconnect()
-	} catch {
-	}
+	} catch {}
 	if (invalidateScreenshotTimer != null) {
 		clearTimeout(invalidateScreenshotTimer)
 		invalidateScreenshotTimer = null

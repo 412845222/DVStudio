@@ -27,7 +27,10 @@ const canLinkBasicMediaNodes = (
 	const fromType = normalizeNodeType(fromNode)
 	const toType = normalizeNodeType(toNode)
 	if (toType === 'video') return fromType === 'image' || fromType === 'video' || fromType === 'text'
-	if (toType === 'text') return fromType === 'text' || fromType === 'image' || fromType === 'video' || fromType === 'audio'
+	if (toType === 'text')
+		return (
+			fromType === 'text' || fromType === 'image' || fromType === 'video' || fromType === 'audio'
+		)
 	return fromType === 'text' || fromType === 'image'
 }
 

@@ -2,7 +2,8 @@
 # DVStudio pre-push hook
 #
 # 1. Prevents direct pushes to the protected branches `main` and `dev`.
-# 2. Runs quality checks (typecheck + test) before pushing to feature branches.
+# 2. Runs Prettier format check on changed files before pushing.
+# 3. Runs quality checks (typecheck + test) before pushing to feature branches.
 #
 # To disable branch protection temporarily:
 #   DWEB_GIT_ALLOW_DIRECT_PUSH=1 git push ...
@@ -30,6 +31,45 @@ echo_warn() { printf "${COLOR_YELLOW}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
 echo_error() { printf "${COLOR_RED}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
 echo_success() { printf "${COLOR_GREEN}[dvstudio/git]${COLOR_NONE} %s\n" "$*"; }
 
+# Run Prettier format check on files changed vs origin/dev (mirrors CI logic)
+check_prettier_format() {
+  local base_ref="origin/dev"
+  if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+    base_ref="origin/main"
+  fi
+  if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+    echo_warn "无法找到 $base_ref，跳过 Prettier 格式检查（建议先 git fetch origin dev）。"
+    return 0
+  fi
+
+  # Get list of changed files matching prettier-supported extensions (same as CI)
+  local changed_files
+  changed_files=$(git diff --name-only --diff-filter=ACMRTUXB "$base_ref"...HEAD -- '*.ts' '*.vue' '*.css' '*.json' '*.mjs' '*.js' '*.yml' 2>/dev/null | grep -v 'package-lock.json' | tr '\n' ' ')
+
+  if [ -z "${changed_files// /}" ]; then
+    echo_info "未检测到需格式化的变更文件，跳过 Prettier 检查。"
+    return 0
+  fi
+
+  echo_info "运行 Prettier 格式检查 (变更文件)..."
+  if npx prettier --check $changed_files 2>&1; then
+    echo_success "Prettier 格式检查通过。"
+    return 0
+  else
+    echo_error "Prettier 格式检查未通过，推送已取消。"
+    echo ""
+    echo "请运行以下命令自动修复格式问题："
+    echo ""
+    echo "       npx prettier --write $changed_files"
+    echo ""
+    echo "或临时跳过检查："
+    echo ""
+    echo "       DWEB_SKIP_QUALITY_CHECK=1 git push"
+    echo ""
+    return 1
+  fi
+}
+
 SKIP_QUALITY="${DWEB_SKIP_QUALITY_CHECK:-0}"
 
 if [ "${DWEB_GIT_ALLOW_DIRECT_PUSH:-0}" = "1" ]; then
@@ -39,6 +79,7 @@ if [ "${DWEB_GIT_ALLOW_DIRECT_PUSH:-0}" = "1" ]; then
     exit 0
   fi
   echo_info "运行质量检查..."
+  check_prettier_format || exit 1
   if npm run quality 2>&1; then
     echo_success "质量检查通过。"
     exit 0
@@ -101,7 +142,8 @@ if [ "$SKIP_QUALITY" = "1" ]; then
   exit 0
 fi
 
-echo_info "运行质量检查 (typecheck + test)..."
+echo_info "运行质量检查 (prettier + typecheck + test)..."
+check_prettier_format || exit 1
 if npm run quality 2>&1; then
   echo_success "质量检查通过。"
   echo_info "未命中受保护分支 (main/dev)，推送继续。"

@@ -148,10 +148,7 @@ export function legacyBlueprintToWorkflowState(
 	for (const nodeId of legacy.nodeOrder || Object.keys(legacy.nodesById || {})) {
 		const legacyNode = legacy.nodesById[nodeId]
 		if (legacyNode) {
-			nodesById[nodeId] = convertLegacyNodeToWorkflow(
-				legacyNode,
-				existingNodesById?.[nodeId]
-			)
+			nodesById[nodeId] = convertLegacyNodeToWorkflow(legacyNode, existingNodesById?.[nodeId])
 		}
 	}
 
@@ -327,12 +324,10 @@ function convertLegacyNodeToWorkflow(
 
 	const incomingParams = legacyNode.nodeChatParams
 	const hasIncomingParams =
-		!!incomingParams && typeof incomingParams === 'object' &&
-		Object.keys(incomingParams).length > 0
+		!!incomingParams && typeof incomingParams === 'object' && Object.keys(incomingParams).length > 0
 	const existingParams = (existingNode as any)?.nodeChatParams
 	const hasExistingParams =
-		!!existingParams && typeof existingParams === 'object' &&
-		Object.keys(existingParams).length > 0
+		!!existingParams && typeof existingParams === 'object' && Object.keys(existingParams).length > 0
 	if (hasIncomingParams || !hasExistingParams) {
 		if (incomingParams !== undefined) (node as any).nodeChatParams = incomingParams
 	} else {

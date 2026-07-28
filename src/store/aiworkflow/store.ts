@@ -201,13 +201,15 @@ const singleIOAnchorsForNodeType = (
 ): { inputs: WorkflowAnchorSpec[]; outputs: WorkflowAnchorSpec[] } | null => {
 	if (type === 'text') {
 		return {
-			inputs: [{
-				id: 'in-0',
-				label: '多模态输入',
-				mediaType: 'generic',
-				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
-				multiInput: true
-			}],
+			inputs: [
+				{
+					id: 'in-0',
+					label: '多模态输入',
+					mediaType: 'generic',
+					acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+					multiInput: true
+				}
+			],
 			outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 		}
 	}
@@ -1293,7 +1295,9 @@ const syncTextAnchors = (node: WorkflowNode) => {
 			id: 'in-0',
 			label: '输入（文本/图片/视频/3D模型/音频）',
 			mediaType: 'generic' as const,
-			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'] as Array<'text' | 'image' | 'video' | 'model3d' | 'audio'>,
+			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'] as Array<
+				'text' | 'image' | 'video' | 'model3d' | 'audio'
+			>,
 			...(existingIn ?? {}),
 			multiInput: true
 		}
@@ -2491,44 +2495,57 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const needPreserveDraft = prevDraftStr.length > incomingDraftStr.length
 				if (needPreserveDraft) {
 					incoming.nodeChatDraft = prevDraftStr
-					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatDraft): Vuex longer, preserving Vuex', {
-						nodeId,
-						nodeType: type,
-						prevLen: prevDraftStr.length,
-						incomingLen: incomingDraftStr.length,
-						preservedDraftPreview: prevDraftStr.length > 40
-							? prevDraftStr.slice(0, 40) + '...'
-							: prevDraftStr || '(empty)',
-						incomingDraftPreview: incomingDraftStr.length > 40
-							? incomingDraftStr.slice(0, 40) + '...'
-							: incomingDraftStr || '(empty)',
-						defendReason: !incomingDraftStr.length ? 'incoming_empty' : 'vuex_longer_than_incoming',
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatDraft): Vuex longer, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevLen: prevDraftStr.length,
+							incomingLen: incomingDraftStr.length,
+							preservedDraftPreview:
+								prevDraftStr.length > 40
+									? prevDraftStr.slice(0, 40) + '...'
+									: prevDraftStr || '(empty)',
+							incomingDraftPreview:
+								incomingDraftStr.length > 40
+									? incomingDraftStr.slice(0, 40) + '...'
+									: incomingDraftStr || '(empty)',
+							defendReason: !incomingDraftStr.length
+								? 'incoming_empty'
+								: 'vuex_longer_than_incoming'
+						}
+					)
 				}
 				const prevParams = (prevNode as any)?.nodeChatParams
 				const incomingParams = incoming.nodeChatParams
-				const prevParamsKeys = (prevParams && typeof prevParams === 'object')
-					? Object.keys(prevParams as Record<string, unknown>)
-					: []
-				const incomingParamsKeys = (incomingParams && typeof incomingParams === 'object')
-					? Object.keys(incomingParams as Record<string, unknown>)
-					: []
+				const prevParamsKeys =
+					prevParams && typeof prevParams === 'object'
+						? Object.keys(prevParams as Record<string, unknown>)
+						: []
+				const incomingParamsKeys =
+					incomingParams && typeof incomingParams === 'object'
+						? Object.keys(incomingParams as Record<string, unknown>)
+						: []
 				const prevParamsNestedDepth = JSON.stringify(prevParams ?? {}).length
 				const incomingParamsNestedDepth = JSON.stringify(incomingParams ?? {}).length
-				const needPreserveParams = !incomingParamsKeys.length && prevParamsKeys.length
-					? true
-					: prevParamsNestedDepth > incomingParamsNestedDepth + 10
+				const needPreserveParams =
+					!incomingParamsKeys.length && prevParamsKeys.length
+						? true
+						: prevParamsNestedDepth > incomingParamsNestedDepth + 10
 				if (needPreserveParams) {
 					incoming.nodeChatParams = JSON.parse(JSON.stringify(prevParams ?? {}))
-					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatParams): Vuex has more/deeper, preserving Vuex', {
-						nodeId,
-						nodeType: type,
-						prevKeysLen: prevParamsKeys.length,
-						incomingKeysLen: incomingParamsKeys.length,
-						prevJsonLen: prevParamsNestedDepth,
-						incomingJsonLen: incomingParamsNestedDepth,
-						preservedKeys: prevParamsKeys.slice(0, 20),
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatParams): Vuex has more/deeper, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevKeysLen: prevParamsKeys.length,
+							incomingKeysLen: incomingParamsKeys.length,
+							prevJsonLen: prevParamsNestedDepth,
+							incomingJsonLen: incomingParamsNestedDepth,
+							preservedKeys: prevParamsKeys.slice(0, 20)
+						}
+					)
 				}
 				const prevRefs = (prevNode as any)?.nodeChatSelectedRefs
 				const incomingRefs = incoming.nodeChatSelectedRefs
@@ -2537,12 +2554,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const needPreserveRefs = prevRefsLen > incomingRefsLen
 				if (needPreserveRefs) {
 					incoming.nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevRefs ?? []))
-					console.log('[DraftFlow#store hydrateDraft] DEFEND(nodeChatSelectedRefs): Vuex longer, preserving Vuex', {
-						nodeId,
-						nodeType: type,
-						prevLen: prevRefsLen,
-						incomingLen: incomingRefsLen,
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatSelectedRefs): Vuex longer, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevLen: prevRefsLen,
+							incomingLen: incomingRefsLen
+						}
+					)
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
@@ -2575,35 +2595,49 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			// ULTIMATE FALLBACK: After replacing entire nodesById, re-apply floating nodeChatDialog
 			// values (never cleared by closeNodeChatDialog) back to nodesById — guarantees that
 			// the most recent user input cannot be lost even if engine/hydrate has bugs.
-			const { nodeId: dialogNodeId, draft: dialogDraft, params: dialogParams, selectedRefs: dialogRefs } =
-				state.nodeChatDialog
+			const {
+				nodeId: dialogNodeId,
+				draft: dialogDraft,
+				params: dialogParams,
+				selectedRefs: dialogRefs
+			} = state.nodeChatDialog
 			if (dialogNodeId && state.nodesById[dialogNodeId]) {
 				const targetNode = state.nodesById[dialogNodeId] as any
-				const curDraft = typeof targetNode.nodeChatDraft === 'string' ? targetNode.nodeChatDraft : ''
+				const curDraft =
+					typeof targetNode.nodeChatDraft === 'string' ? targetNode.nodeChatDraft : ''
 				const dialogDraftStr = typeof dialogDraft === 'string' ? dialogDraft : ''
 				if (dialogDraftStr.length > curDraft.length) {
 					targetNode.nodeChatDraft = dialogDraftStr
-					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatDraft): re-applied from floating dialog', {
-						nodeId: dialogNodeId,
-						fromNodesByIdLen: curDraft.length,
-						fromDialogLen: dialogDraftStr.length,
-						appliedPreview: dialogDraftStr.length > 40
-							? dialogDraftStr.slice(0, 40) + '...'
-							: dialogDraftStr || '(empty)',
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatDraft): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							fromNodesByIdLen: curDraft.length,
+							fromDialogLen: dialogDraftStr.length,
+							appliedPreview:
+								dialogDraftStr.length > 40
+									? dialogDraftStr.slice(0, 40) + '...'
+									: dialogDraftStr || '(empty)'
+						}
+					)
 				}
-				const curParamsKeys = (targetNode.nodeChatParams && typeof targetNode.nodeChatParams === 'object')
-					? Object.keys(targetNode.nodeChatParams as Record<string, unknown>)
-					: []
-				const dialogParamsKeys = (dialogParams && typeof dialogParams === 'object')
-					? Object.keys(dialogParams as Record<string, unknown>)
-					: []
+				const curParamsKeys =
+					targetNode.nodeChatParams && typeof targetNode.nodeChatParams === 'object'
+						? Object.keys(targetNode.nodeChatParams as Record<string, unknown>)
+						: []
+				const dialogParamsKeys =
+					dialogParams && typeof dialogParams === 'object'
+						? Object.keys(dialogParams as Record<string, unknown>)
+						: []
 				if (dialogParamsKeys.length > 0 && curParamsKeys.length === 0) {
 					targetNode.nodeChatParams = JSON.parse(JSON.stringify(dialogParams ?? {}))
-					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatParams): re-applied from floating dialog', {
-						nodeId: dialogNodeId,
-						appliedKeys: dialogParamsKeys.slice(0, 20),
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatParams): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							appliedKeys: dialogParamsKeys.slice(0, 20)
+						}
+					)
 				}
 				const curRefsLen = Array.isArray(targetNode.nodeChatSelectedRefs)
 					? targetNode.nodeChatSelectedRefs.length
@@ -2611,11 +2645,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const dialogRefsLen = Array.isArray(dialogRefs) ? dialogRefs.length : 0
 				if (dialogRefsLen > curRefsLen) {
 					targetNode.nodeChatSelectedRefs = JSON.parse(JSON.stringify(dialogRefs ?? []))
-					console.log('[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatSelectedRefs): re-applied from floating dialog', {
-						nodeId: dialogNodeId,
-						fromNodesByIdLen: curRefsLen,
-						fromDialogLen: dialogRefsLen,
-					})
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatSelectedRefs): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							fromNodesByIdLen: curRefsLen,
+							fromDialogLen: dialogRefsLen
+						}
+					)
 				}
 			}
 
@@ -4467,26 +4504,35 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
 				state.selectedEdgeId = null
 		},
-		openNodeChatDialog(state, payload: {
-			nodeId: string;
-			nodeType: WorkflowNodeChatType;
-			engineNodeChatDraft?: string;
-			engineNodeChatParams?: Record<string, unknown>;
-			engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[];
-		}) {
+		openNodeChatDialog(
+			state,
+			payload: {
+				nodeId: string
+				nodeType: WorkflowNodeChatType
+				engineNodeChatDraft?: string
+				engineNodeChatParams?: Record<string, unknown>
+				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
 			const prevDialogNodeId = state.nodeChatDialog.nodeId
 			const prevDialogDraft = state.nodeChatDialog.draft ?? ''
-			const prevDialogParams = state.nodeChatDialog.params ?? {} as Record<string, unknown>
+			const prevDialogParams = state.nodeChatDialog.params ?? ({} as Record<string, unknown>)
 			const prevDialogRefs = state.nodeChatDialog.selectedRefs ?? []
 			const isReopeningSameNode = prevDialogNodeId === payload.nodeId && prevDialogDraft.length > 0
 			if (isReopeningSameNode) {
 				const targetNode = state.nodesById[payload.nodeId]
 				if (targetNode) {
 					const currentNodesByIdDraft = (targetNode as any).nodeChatDraft ?? ''
-					const recovered = prevDialogDraft.length >= currentNodesByIdDraft.length ? prevDialogDraft : currentNodesByIdDraft
+					const recovered =
+						prevDialogDraft.length >= currentNodesByIdDraft.length
+							? prevDialogDraft
+							: currentNodesByIdDraft
 					;(targetNode as any).nodeChatDraft = recovered
 					const currentParams = (targetNode as any).nodeChatParams
-					const hasCurrentParams = currentParams && typeof currentParams === 'object' && Object.keys(currentParams).length > 0
+					const hasCurrentParams =
+						currentParams &&
+						typeof currentParams === 'object' &&
+						Object.keys(currentParams).length > 0
 					const hasPrevParams = Object.keys(prevDialogParams).length > 0
 					if (!hasCurrentParams && hasPrevParams) {
 						;(targetNode as any).nodeChatParams = JSON.parse(JSON.stringify(prevDialogParams))
@@ -4509,7 +4555,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const vuexDraft = node?.nodeChatDraft ?? ''
 			const engineDraft = payload.engineNodeChatDraft ?? ''
 			let recoveredFromPrevDialog = ''
-			if (isReopeningSameNode && prevDialogDraft.length > vuexDraft.length && prevDialogDraft.length > engineDraft.length) {
+			if (
+				isReopeningSameNode &&
+				prevDialogDraft.length > vuexDraft.length &&
+				prevDialogDraft.length > engineDraft.length
+			) {
 				recoveredFromPrevDialog = prevDialogDraft
 			}
 			const candidateFromFour = [vuexDraft, engineDraft, recoveredFromPrevDialog] as const
@@ -4537,17 +4587,31 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				engineDraftLen: engineDraft.length,
 				floatingDialogDraftLen: prevDialogDraft.length,
 				recoveredFromPrevDialogLen: recoveredFromPrevDialog.length,
-				vuexDraftPreview: vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)',
-				engineDraftPreview: engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
-				floatingDialogDraftPreview: prevDialogDraft.length > 40 ? prevDialogDraft.slice(0, 40) + '...' : prevDialogDraft || '(empty)',
+				vuexDraftPreview:
+					vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)',
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
+				floatingDialogDraftPreview:
+					prevDialogDraft.length > 40
+						? prevDialogDraft.slice(0, 40) + '...'
+						: prevDialogDraft || '(empty)',
 				finalDraftLen: draft.length,
 				finalDraftPreview: draft.length > 40 ? draft.slice(0, 40) + '...' : draft || '(empty)',
-				fallbackFromTextValue: fallbackFromTextValue !== null ? String(fallbackFromTextValue.length) : null,
+				fallbackFromTextValue:
+					fallbackFromTextValue !== null ? String(fallbackFromTextValue.length) : null,
 				fallbackFromPromptUsed: fallbackFromPrompt !== null,
-				vuexNodeChatParamsKeys: node?.nodeChatParams ? Object.keys(node.nodeChatParams as Record<string, unknown>) : null,
-				engineNodeChatParamsKeys: payload.engineNodeChatParams ? Object.keys(payload.engineNodeChatParams) : null,
-				vuexSelectedRefsLen: Array.isArray(node?.nodeChatSelectedRefs) ? node.nodeChatSelectedRefs.length : -1,
-				engineSelectedRefsLen: Array.isArray(payload.engineNodeChatSelectedRefs) ? payload.engineNodeChatSelectedRefs.length : -1,
+				vuexNodeChatParamsKeys: node?.nodeChatParams
+					? Object.keys(node.nodeChatParams as Record<string, unknown>)
+					: null,
+				engineNodeChatParamsKeys: payload.engineNodeChatParams
+					? Object.keys(payload.engineNodeChatParams)
+					: null,
+				vuexSelectedRefsLen: Array.isArray(node?.nodeChatSelectedRefs)
+					? node.nodeChatSelectedRefs.length
+					: -1,
+				engineSelectedRefsLen: Array.isArray(payload.engineNodeChatSelectedRefs)
+					? payload.engineNodeChatSelectedRefs.length
+					: -1
 			})
 
 			const vuexRefs = node?.nodeChatSelectedRefs ?? []
@@ -4561,8 +4625,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					: engineRefs
 						? JSON.parse(JSON.stringify(engineRefs))
 						: []
-			state.nodeChatDialog.selectedRefs =
-				normalizeChatSelectedRefs(resolvedSelectedRefs) ?? []
+			state.nodeChatDialog.selectedRefs = normalizeChatSelectedRefs(resolvedSelectedRefs) ?? []
 
 			if (payload.nodeType === 'blender') {
 				state.nodeChatDialog.submitting = Boolean(node?.blenderSettings?.isSubmitting)
@@ -4727,20 +4790,23 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		closeNodeChatDialog(state) {
 			const prevNodeId = state.nodeChatDialog.nodeId
 			const prevDraftLen = state.nodeChatDialog.draft?.length ?? -1
-			const prevDraftPreview = (state.nodeChatDialog.draft || '').length > 40
-				? (state.nodeChatDialog.draft as string).slice(0, 40) + '...'
-				: (state.nodeChatDialog.draft || '(empty)')
+			const prevDraftPreview =
+				(state.nodeChatDialog.draft || '').length > 40
+					? (state.nodeChatDialog.draft as string).slice(0, 40) + '...'
+					: state.nodeChatDialog.draft || '(empty)'
 			console.log('[DraftFlow#store closeNodeChatDialog] MUTATION', {
 				prevNodeId,
 				prevDraftLen,
 				prevDraftPreview,
-				nodesByIdNodeChatDraft: prevNodeId && state.nodesById[prevNodeId]
-					? (state.nodesById[prevNodeId] as any).nodeChatDraft?.length ?? -1
-					: -1,
-				nodesByIdNodeChatParamsKeys: prevNodeId && state.nodesById[prevNodeId]
-					? Object.keys((state.nodesById[prevNodeId] as any).nodeChatParams ?? {})
-					: null,
-				willPreserveNodeIdAndDraft: true,
+				nodesByIdNodeChatDraft:
+					prevNodeId && state.nodesById[prevNodeId]
+						? ((state.nodesById[prevNodeId] as any).nodeChatDraft?.length ?? -1)
+						: -1,
+				nodesByIdNodeChatParamsKeys:
+					prevNodeId && state.nodesById[prevNodeId]
+						? Object.keys((state.nodesById[prevNodeId] as any).nodeChatParams ?? {})
+						: null,
+				willPreserveNodeIdAndDraft: true
 			})
 			state.nodeChatDialog.visible = false
 			state.nodeChatDialog.submitting = false
@@ -4763,8 +4829,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					writeSuccess: !!tryWrite,
 					prevLen,
 					newLen,
-					prevPreview: prevLen > 40 ? state.nodeChatDialog.draft.slice(0, 40) + '...' : state.nodeChatDialog.draft || '(empty)',
-					newPreview: newLen > 40 ? payload.text.slice(0, 40) + '...' : payload.text || '(empty)',
+					prevPreview:
+						prevLen > 40
+							? state.nodeChatDialog.draft.slice(0, 40) + '...'
+							: state.nodeChatDialog.draft || '(empty)',
+					newPreview: newLen > 40 ? payload.text.slice(0, 40) + '...' : payload.text || '(empty)'
 				})
 			}
 		},
@@ -4778,7 +4847,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			console.log('[DraftFlow#store setNodeChatParams] MUTATION', {
 				nodeId: curNodeId,
 				writeSuccess: !!writeToNodesById,
-				paramsKeys: Object.keys(payload.params),
+				paramsKeys: Object.keys(payload.params)
 			})
 		},
 		setNodeChatSelectedRefs(
@@ -4789,12 +4858,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const curNodeId = state.nodeChatDialog.nodeId
 			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
 			if (writeToNodesById) {
-				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs = payload.refs.length === 0 ? undefined : payload.refs
+				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs =
+					payload.refs.length === 0 ? undefined : payload.refs
 			}
 			console.log('[DraftFlow#store setNodeChatSelectedRefs] MUTATION', {
 				nodeId: curNodeId,
 				writeSuccess: !!writeToNodesById,
-				refsLen: payload.refs.length,
+				refsLen: payload.refs.length
 			})
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
@@ -5210,11 +5280,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		openNodeChatDialog(
 			{ commit, state },
 			payload: {
-				nodeId: string;
-				nodeType?: WorkflowNodeChatType;
-				engineNodeChatDraft?: string;
-				engineNodeChatParams?: Record<string, unknown>;
-				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[];
+				nodeId: string
+				nodeType?: WorkflowNodeChatType
+				engineNodeChatDraft?: string
+				engineNodeChatParams?: Record<string, unknown>
+				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 			}
 		) {
 			const node = state.nodesById[payload.nodeId]
@@ -5224,22 +5294,23 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				payloadNodeId: payload.nodeId,
 				payloadNodeType: payload.nodeType,
 				engineDraftLen: engineDraft.length,
-				engineDraftPreview: engineDraft.length > 40
-					? engineDraft.slice(0, 40) + '...'
-					: engineDraft || '(empty)',
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
 				foundNodeInVuex: !!node,
 				vuexNodeType: node?.type,
 				vuexDraftLen: vuexDraft.length,
-				vuexDraftPreview: vuexDraft.length > 40
-					? vuexDraft.slice(0, 40) + '...'
-					: vuexDraft || '(empty)',
+				vuexDraftPreview:
+					vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)'
 			})
 			if (!node) {
-				console.warn('[DraftFlow#store action openNodeChatDialog] ABORT: node not found in state.nodesById', {
-					nodeId: payload.nodeId,
-					nodesByIdKeys: Object.keys(state.nodesById).slice(0, 20),
-					totalNodes: Object.keys(state.nodesById).length,
-				})
+				console.warn(
+					'[DraftFlow#store action openNodeChatDialog] ABORT: node not found in state.nodesById',
+					{
+						nodeId: payload.nodeId,
+						nodesByIdKeys: Object.keys(state.nodesById).slice(0, 20),
+						totalNodes: Object.keys(state.nodesById).length
+					}
+				)
 				return
 			}
 			let nodeType: WorkflowNodeChatType
@@ -5262,13 +5333,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					nodeId: payload.nodeId,
 					nodeType,
 					passedNodeType: payload.nodeType,
-					vuexNodeActualType: node.type,
+					vuexNodeActualType: node.type
 				})
 				return
 			}
 			console.log('[DraftFlow#store action openNodeChatDialog] ABOUT TO COMMIT', {
 				nodeId: payload.nodeId,
-				resolvedNodeType: nodeType,
+				resolvedNodeType: nodeType
 			})
 			commit('openNodeChatDialog', {
 				nodeId: payload.nodeId,

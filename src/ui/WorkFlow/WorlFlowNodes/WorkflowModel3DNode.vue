@@ -70,9 +70,9 @@
 					@pointerdown.stop
 					@wheel.stop="onPreviewWheel"
 					@pointerdown="onPreviewPointerDown"
-				@pointermove="onPreviewPointerMove"
-				@pointerup="onPreviewPointerUp"
-				@contextmenu.prevent
+					@pointermove="onPreviewPointerMove"
+					@pointerup="onPreviewPointerUp"
+					@contextmenu.prevent
 				>
 					<WorkflowThreePreviewShell
 						:state="threePreviewState"
@@ -91,7 +91,10 @@
 							:data-wf-model3d-canvas-node-id="nodeId"
 						/>
 						<template #overlay>
-							<div v-if="effectiveModelUrl && viewerLive && !errorMessage" class="wf-model3d-gesture-tip">
+							<div
+								v-if="effectiveModelUrl && viewerLive && !errorMessage"
+								class="wf-model3d-gesture-tip"
+							>
 								{{ t('nodes.model3d.interactionHint') }}
 							</div>
 							<div v-if="errorMessage" class="wf-model3d-overlay error">{{ errorMessage }}</div>
@@ -104,10 +107,21 @@
 						<div class="wf-model3d-download-title">
 							<span v-if="activeDownloadIsActive" class="wf-model3d-download-spinner"></span>
 							<span v-else-if="activeDownloadIsDone" class="wf-model3d-download-icon done">✓</span>
-							<span v-else-if="activeDownloadIsFailed" class="wf-model3d-download-icon failed">!</span>
-							{{ activeDownloadIsFailed ? t('nodes.model3d.downloadFailed') : activeDownloadIsDone ? t('nodes.model3d.downloadComplete') : t('nodes.model3d.downloadingModel', { source: activeDownloadState.source }) }}
+							<span v-else-if="activeDownloadIsFailed" class="wf-model3d-download-icon failed">
+								!
+							</span>
+							{{
+								activeDownloadIsFailed
+									? t('nodes.model3d.downloadFailed')
+									: activeDownloadIsDone
+										? t('nodes.model3d.downloadComplete')
+										: t('nodes.model3d.downloadingModel', { source: activeDownloadState.source })
+							}}
 						</div>
-						<div class="wf-model3d-download-speed" v-if="activeDownloadIsActive && activeDownloadState.speed > 0">
+						<div
+							class="wf-model3d-download-speed"
+							v-if="activeDownloadIsActive && activeDownloadState.speed > 0"
+						>
 							{{ formatSpeed(activeDownloadState.speed) }}
 						</div>
 					</div>
@@ -123,14 +137,20 @@
 						></div>
 					</div>
 					<div class="wf-model3d-download-meta" v-if="activeDownloadState.total > 0">
-						<span>{{ formatBytes(activeDownloadState.loaded) }} / {{ formatBytes(activeDownloadState.total) }}</span>
+						<span>
+							{{ formatBytes(activeDownloadState.loaded) }} /
+							{{ formatBytes(activeDownloadState.total) }}
+						</span>
 						<span>{{ activeDownloadState.progress }}%</span>
 					</div>
 					<div class="wf-model3d-download-meta" v-else-if="activeDownloadIsActive">
 						<span>{{ formatBytes(activeDownloadState.loaded) }}</span>
 						<span>{{ activeDownloadState.progress }}%</span>
 					</div>
-					<div class="wf-model3d-download-error" v-if="activeDownloadIsFailed && activeDownloadState.error">
+					<div
+						class="wf-model3d-download-error"
+						v-if="activeDownloadIsFailed && activeDownloadState.error"
+					>
 						{{ activeDownloadState.error }}
 					</div>
 				</div>
@@ -142,7 +162,11 @@
 					</div>
 					<div class="wf-model3d-action-buttons">
 						<button class="wf-model3d-btn" type="button" @click.stop="onUploadClick">
-							{{ effectiveModelUrl ? t('nodes.model3d.replaceResource') : t('nodes.model3d.uploadResource') }}
+							{{
+								effectiveModelUrl
+									? t('nodes.model3d.replaceResource')
+									: t('nodes.model3d.uploadResource')
+							}}
 						</button>
 						<button
 							v-if="effectiveModelUrl"
@@ -174,10 +198,20 @@
 						@click.stop="onOpenEditor"
 						:title="t('nodes.model3d.open3DEditor')"
 					>
-						<svg class="wf-model3d-editor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-							<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-							<line x1="12" y1="22.08" x2="12" y2="12"/>
+						<svg
+							class="wf-model3d-editor-icon"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path
+								d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+							/>
+							<polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+							<line x1="12" y1="22.08" x2="12" y2="12" />
 						</svg>
 						<span>{{ t('nodes.model3d.open3DEditor') }}</span>
 					</button>
@@ -186,10 +220,18 @@
 						class="wf-model3d-tripo3d-badge"
 						:title="t('nodes.model3d.tripo3dPostProcessAvailable')"
 					>
-						<svg class="wf-model3d-tripo3d-badge-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-							<path d="M12 2L2 7l10 5 10-5-10-5z"/>
-							<path d="M2 17l10 5 10-5"/>
-							<path d="M2 12l10 5 10-5"/>
+						<svg
+							class="wf-model3d-tripo3d-badge-icon"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M12 2L2 7l10 5 10-5-10-5z" />
+							<path d="M2 17l10 5 10-5" />
+							<path d="M2 12l10 5 10-5" />
 						</svg>
 						<span>{{ t('nodes.model3d.tripo3dPostProcessBadge') }}</span>
 					</div>
@@ -285,7 +327,10 @@ import type {
 } from './three-preview/types'
 import { useI18n } from '../../../i18n'
 import { useModel3DEditor } from '../../../composables/useModel3DEditor'
-import { formatBytes, formatSpeed } from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
+import {
+	formatBytes,
+	formatSpeed
+} from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
 import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
@@ -349,10 +394,40 @@ const props = defineProps<{
 	inputParamPreviewRefs?: any[]
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -425,7 +500,7 @@ const internalPreviewState = computed<WorkflowThreePreviewState>(() => ({
 	canStart: true,
 	progress: internalPreviewProgress.value,
 	label: internalPreviewLabel.value,
-	requestId: internalPreviewRequestId.value,
+	requestId: internalPreviewRequestId.value
 }))
 
 const cacheSnapshot = (value: string) => {
@@ -483,7 +558,10 @@ const sourceHintDisplay = computed(() => {
 		.trim()
 		.toUpperCase()
 	if (settings.value?.lastInputNodeId)
-		return t('nodes.model3d.fromUpstreamNode', { nodeId: settings.value.lastInputNodeId }) + (format ? ` · ${format}` : '')
+		return (
+			t('nodes.model3d.fromUpstreamNode', { nodeId: settings.value.lastInputNodeId }) +
+			(format ? ` · ${format}` : '')
+		)
 	if (settings.value?.modelSourcePath) return settings.value.modelSourcePath
 	return format ? t('nodes.model3d.formatPreview', { format }) : t('nodes.model3d.supportedFormats')
 })
@@ -512,7 +590,15 @@ const tripo3dPostProcessAvailable = computed(() => {
 	const hasModel = !!(modelAssetUrl || modelUrl)
 	const successStatuses = ['success', 'succeeded', 'done']
 	const generationModes = ['text_to_model', 'image_to_model', 'multiview_to_model']
-	const postProcessModes = ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+	const postProcessModes = [
+		'texture',
+		'refine',
+		'mesh_segment',
+		'mesh_smartsegment',
+		'mesh_complete',
+		'mesh_decimate',
+		'models_convert'
+	]
 	const validFamily = generationModes.includes(family) || postProcessModes.includes(family)
 	// 条件1：标准条件 - 有任务ID、成功状态、有效任务类型
 	if (taskId && successStatuses.includes(status) && validFamily) return true
@@ -529,7 +615,9 @@ const meshyFetchFailed = computed(() => {
 })
 const meshyFetchErrorText = computed(() => {
 	return String(
-		meshySettings.value?.errorMessage ?? meshySettings.value?.statusText ?? t('nodes.model3d.fetchFailed')
+		meshySettings.value?.errorMessage ??
+			meshySettings.value?.statusText ??
+			t('nodes.model3d.fetchFailed')
 	).trim()
 })
 
@@ -722,7 +810,8 @@ const createViewerNow = () => {
 		viewer = null
 		viewerInitCooldownUntil = Date.now() + 400
 		errorMessage.value =
-			(err instanceof Error ? err.message : String(err ?? 'unknown')) || t('nodes.model3d.modelLoadFailed')
+			(err instanceof Error ? err.message : String(err ?? 'unknown')) ||
+			t('nodes.model3d.modelLoadFailed')
 	}
 }
 
@@ -787,7 +876,9 @@ const saveViewState = () => {
 }
 
 const isDwebProjectAssetUrl = (url: string): boolean => {
-	const lower = String(url ?? '').trim().toLowerCase()
+	const lower = String(url ?? '')
+		.trim()
+		.toLowerCase()
 	return lower.startsWith('dweb://project-assets') || lower.startsWith('dweb:project-assets')
 }
 
@@ -845,7 +936,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	const urlChanged = currentUrlSignature !== prevUrlSignature
 	const cachedView =
 		!urlChanged && cachedModelSignature
-			? MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+			? (MODEL3D_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null)
 			: null
 	if (urlChanged) {
 		cameraUserControlled = false
@@ -855,14 +946,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	try {
 		if (isDwebProjectAssetUrl(url)) {
 			if (requestId != null) {
-				startProgressSim(
-					0.3,
-					0.55,
-					0.015,
-					150,
-					'nodes.model3d.progressDownloading',
-					requestId
-				)
+				startProgressSim(0.3, 0.55, 0.015, 150, 'nodes.model3d.progressDownloading', requestId)
 			}
 			const fetchResult = await fetchAsArrayBuffer(url)
 			stopProgressSim()
@@ -902,12 +986,19 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		if (requestId != null) {
 			emitPreviewProgress(0.3, t('nodes.model3d.progressLoadResource'))
 		}
-		await viewer.loadModel(url, (payload) => {
-			if (requestId == null) return
-			if (requestId !== activePreviewRequestId) return
-			const ratio = Number(payload?.ratio ?? 0)
-			emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.62, t('nodes.model3d.progressLoadModel'))
-		}, cachedView)
+		await viewer.loadModel(
+			url,
+			(payload) => {
+				if (requestId == null) return
+				if (requestId !== activePreviewRequestId) return
+				const ratio = Number(payload?.ratio ?? 0)
+				emitPreviewProgress(
+					0.3 + Math.max(0, Math.min(1, ratio)) * 0.62,
+					t('nodes.model3d.progressLoadModel')
+				)
+			},
+			cachedView
+		)
 		if (requestId != null && requestId === activePreviewRequestId) {
 			emitPreviewProgress(0.92, t('nodes.model3d.progressInitInteraction'))
 		}
@@ -932,14 +1023,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 			try {
 				if (isDwebProjectAssetUrl(repairResult.newUrl)) {
 					if (requestId != null) {
-						startProgressSim(
-							0.3,
-							0.5,
-							0.015,
-							150,
-							'nodes.model3d.progressDownloading',
-							requestId
-						)
+						startProgressSim(0.3, 0.5, 0.015, 150, 'nodes.model3d.progressDownloading', requestId)
 					}
 					const fetchResult = await fetchAsArrayBuffer(repairResult.newUrl)
 					stopProgressSim()
@@ -970,12 +1054,19 @@ const loadModelIntoViewer = async (requestId?: number) => {
 						return true
 					}
 				}
-				await viewer.loadModel(repairResult.newUrl, (payload) => {
-					if (requestId == null) return
-					if (requestId !== activePreviewRequestId) return
-					const ratio = Number(payload?.ratio ?? 0)
-					emitPreviewProgress(0.3 + Math.max(0, Math.min(1, ratio)) * 0.65, t('nodes.model3d.progressLoadTextures'))
-				}, null)
+				await viewer.loadModel(
+					repairResult.newUrl,
+					(payload) => {
+						if (requestId == null) return
+						if (requestId !== activePreviewRequestId) return
+						const ratio = Number(payload?.ratio ?? 0)
+						emitPreviewProgress(
+							0.3 + Math.max(0, Math.min(1, ratio)) * 0.65,
+							t('nodes.model3d.progressLoadTextures')
+						)
+					},
+					null
+				)
 				if (requestId != null && requestId === activePreviewRequestId) {
 					emitPreviewProgress(0.95, t('nodes.model3d.progressInitInteraction'))
 				}
@@ -999,7 +1090,10 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	}
 }
 
-const attemptRepairModelUrl = async (url: string, requestId?: number): Promise<{ success: boolean; newUrl?: string }> => {
+const attemptRepairModelUrl = async (
+	url: string,
+	requestId?: number
+): Promise<{ success: boolean; newUrl?: string }> => {
 	try {
 		const parsed = new URL(url)
 		if (parsed.protocol !== 'dweb:' || parsed.hostname !== 'project-assets') {
@@ -1136,13 +1230,14 @@ const onAutoRotateToggle = (e: Event) =>
 const onOpenEditor = async () => {
 	const url = effectiveModelUrl.value
 	if (!url) return
-	const modelName = String(settings.value?.modelSourceName ?? '').trim() 
-		|| props.nodeId 
-		|| t('nodes.model3d.defaultModelName')
+	const modelName =
+		String(settings.value?.modelSourceName ?? '').trim() ||
+		props.nodeId ||
+		t('nodes.model3d.defaultModelName')
 	await open3DEditor({
 		nodeId: props.nodeId,
 		modelUrl: url,
-		modelName,
+		modelName
 	})
 }
 
@@ -1545,11 +1640,7 @@ onBeforeUnmount(() => {
 	gap: 6px;
 	padding: 7px 12px;
 	border: 1px solid rgb(34 197 94 / 0.5);
-	background: linear-gradient(
-		180deg,
-		rgb(34 197 94 / 0.18),
-		rgb(34 197 94 / 0.08)
-	);
+	background: linear-gradient(180deg, rgb(34 197 94 / 0.18), rgb(34 197 94 / 0.08));
 	color: rgb(134 239 172);
 	font-size: 12px;
 	cursor: pointer;
@@ -1562,11 +1653,7 @@ onBeforeUnmount(() => {
 
 .wf-model3d-editor-btn:hover:not(:disabled) {
 	border-color: rgb(34 197 94 / 0.8);
-	background: linear-gradient(
-		180deg,
-		rgb(34 197 94 / 0.28),
-		rgb(34 197 94 / 0.14)
-	);
+	background: linear-gradient(180deg, rgb(34 197 94 / 0.28), rgb(34 197 94 / 0.14));
 	box-shadow:
 		0 0 0 1px rgb(34 197 94 / 0.2),
 		0 0 24px rgb(34 197 94 / 0.2);
@@ -1590,11 +1677,7 @@ onBeforeUnmount(() => {
 	margin-left: 10px;
 	padding: 6px 10px;
 	border: 1px solid rgb(59 130 246 / 0.5);
-	background: linear-gradient(
-		180deg,
-		rgb(59 130 246 / 0.15),
-		rgb(59 130 246 / 0.06)
-	);
+	background: linear-gradient(180deg, rgb(59 130 246 / 0.15), rgb(59 130 246 / 0.06));
 	color: rgb(147 197 253);
 	font-size: 11px;
 	letter-spacing: 0.3px;

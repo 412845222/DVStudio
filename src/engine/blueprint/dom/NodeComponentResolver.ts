@@ -137,8 +137,7 @@ export class NodeComponentResolver {
 	): ResolvedWorkflowNodeProps {
 		const data = node.data
 		const isChatActive =
-			(chatState && chatState.visible && chatState.nodeId === data.id) ||
-			!!data.nodeChatVisible
+			(chatState && chatState.visible && chatState.nodeId === data.id) || !!data.nodeChatVisible
 
 		const nodeTask = generationTasksById
 			? Object.values(generationTasksById).find(
@@ -201,12 +200,12 @@ export class NodeComponentResolver {
 				? (chatState && chatState.nodeId === data.id ? chatState.nodeType : null) || data.type
 				: data.type,
 			nodeChatSubmitting:
-				isChatActive && chatState && chatState.nodeId === data.id
-					? chatState.submitting
-					: false,
+				isChatActive && chatState && chatState.nodeId === data.id ? chatState.submitting : false,
 			nodeChatDraft:
 				isChatActive && chatState && chatState.nodeId === data.id
-					? (chatState.draft != null ? chatState.draft : persistedChatDraft)
+					? chatState.draft != null
+						? chatState.draft
+						: persistedChatDraft
 					: persistedChatDraft,
 			nodeChatParams:
 				isChatActive && chatState && chatState.nodeId === data.id

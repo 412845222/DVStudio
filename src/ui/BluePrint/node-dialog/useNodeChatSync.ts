@@ -21,7 +21,9 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	const inputRef = ref<{ focus: () => void } | null>(null)
 	const localDraft = ref(props.draft ?? '')
 	const localParams = ref<Record<string, any>>({ ...(props.params ?? {}) })
-	const localSelectedRefs = ref<any[]>(props.selectedReferences ? [...props.selectedReferences] : [])
+	const localSelectedRefs = ref<any[]>(
+		props.selectedReferences ? [...props.selectedReferences] : []
+	)
 	const showParams = ref(false)
 	let isInternalUpdate = false
 	let isReady = false
@@ -39,21 +41,28 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		const refs = localSelectedRefs.value || []
 		const inputRefs = props.inputParamPreviewRefs || []
 		const inputEdgeKeys = new Set(inputRefs.map((r: any) => `${r.fromNodeId}:${r.fromAnchorId}`))
-		return refs.filter((r: any) => {
-			if (!r) return false
-			const rKind = r.kind || r.type
-			if (rKind !== allowedType) return false
-			if (r.fromNodeId && r.fromAnchorId && inputEdgeKeys.has(`${r.fromNodeId}:${r.fromAnchorId}`)) return false
-			return true
-		}).map((r: any) => ({
-			edgeId: r.edgeId,
-			fromNodeId: r.fromNodeId,
-			fromAnchorId: r.fromAnchorId,
-			kind: r.kind || r.type || allowedType,
-			name: r.name || r.label || '',
-			label: r.label || r.name || '',
-			previewUrl: r.previewUrl,
-		}))
+		return refs
+			.filter((r: any) => {
+				if (!r) return false
+				const rKind = r.kind || r.type
+				if (rKind !== allowedType) return false
+				if (
+					r.fromNodeId &&
+					r.fromAnchorId &&
+					inputEdgeKeys.has(`${r.fromNodeId}:${r.fromAnchorId}`)
+				)
+					return false
+				return true
+			})
+			.map((r: any) => ({
+				edgeId: r.edgeId,
+				fromNodeId: r.fromNodeId,
+				fromAnchorId: r.fromAnchorId,
+				kind: r.kind || r.type || allowedType,
+				name: r.name || r.label || '',
+				label: r.label || r.name || '',
+				previewUrl: r.previewUrl
+			}))
 	})
 
 	const showInputParamRefs = computed(() => {
@@ -139,40 +148,58 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		}
 	})
 
-	watch(() => props.visible, (newVal, oldVal) => {
-		if (newVal && (oldVal === false || oldVal === undefined)) {
-			initializeForVisible()
-		} else if (!newVal && oldVal) {
-			initGuardToken++
-			isReady = false
-			isInternalUpdate = false
+	watch(
+		() => props.visible,
+		(newVal, oldVal) => {
+			if (newVal && (oldVal === false || oldVal === undefined)) {
+				initializeForVisible()
+			} else if (!newVal && oldVal) {
+				initGuardToken++
+				isReady = false
+				isInternalUpdate = false
+			}
 		}
-	})
+	)
 
-	watch(() => props.nodeType, () => {
-		showParams.value = false
-	})
-
-	watch(() => props.draft, (newVal) => {
-		if (isInternalUpdate) return
-		if (newVal !== undefined) {
-			localDraft.value = newVal
+	watch(
+		() => props.nodeType,
+		() => {
+			showParams.value = false
 		}
-	}, { immediate: true })
+	)
 
-	watch(() => props.params, (newVal) => {
-		if (isInternalUpdate) return
-		if (newVal !== undefined) {
-			localParams.value = { ...(newVal || {}) }
-		}
-	}, { deep: true, immediate: true })
+	watch(
+		() => props.draft,
+		(newVal) => {
+			if (isInternalUpdate) return
+			if (newVal !== undefined) {
+				localDraft.value = newVal
+			}
+		},
+		{ immediate: true }
+	)
 
-	watch(() => props.selectedReferences, (newVal) => {
-		if (isInternalUpdate) return
-		if (newVal !== undefined) {
-			localSelectedRefs.value = newVal ? [...newVal] : []
-		}
-	}, { deep: true, immediate: true })
+	watch(
+		() => props.params,
+		(newVal) => {
+			if (isInternalUpdate) return
+			if (newVal !== undefined) {
+				localParams.value = { ...(newVal || {}) }
+			}
+		},
+		{ deep: true, immediate: true }
+	)
+
+	watch(
+		() => props.selectedReferences,
+		(newVal) => {
+			if (isInternalUpdate) return
+			if (newVal !== undefined) {
+				localSelectedRefs.value = newVal ? [...newVal] : []
+			}
+		},
+		{ deep: true, immediate: true }
+	)
 
 	const onDraftInput = (value: string) => {
 		if (isInternalUpdate) return
@@ -216,7 +243,7 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			fromAnchorId: r.fromAnchorId,
 			fromContent: r.fromContent,
 			label: r.name || r.label || '',
-			name: r.name || r.label || '',
+			name: r.name || r.label || ''
 		}))
 		if (!isReady) {
 			localSelectedRefs.value = refsForNode
@@ -253,7 +280,7 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			params: { ...currentParams.value },
 			paramKey: paramKeyMap[nType] || 'aiText',
 			selectedReferences: localSelectedRefs.value,
-			inputParamRefs: props.inputParamPreviewRefs || [],
+			inputParamRefs: props.inputParamPreviewRefs || []
 		}
 		chatApi.submit(nid, payload)
 	}
@@ -302,6 +329,6 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		handleStop,
 		handleClose,
 		handleRemoveParamRef,
-		toggleParams,
+		toggleParams
 	}
 }

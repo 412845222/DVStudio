@@ -32,14 +32,13 @@
 				引用 ·
 				<kbd>Enter</kbd>
 				发送 ·
-				<kbd>Shift</kbd>+<kbd>Enter</kbd>
+				<kbd>Shift</kbd>
+				+
+				<kbd>Enter</kbd>
 				换行
 			</span>
 		</div>
-		<div
-			class="bp-node-chat-resize-handle"
-			@mousedown="onResizeStart"
-		></div>
+		<div class="bp-node-chat-resize-handle" @mousedown="onResizeStart"></div>
 		<NodeMentionPopup
 			:visible="isMentionOpen"
 			:items="filteredItems"
@@ -144,7 +143,11 @@ const resolvedPlaceholder = computed(() => {
 	return props.placeholder || t('aichat.nodeChat.placeholder')
 })
 
-const getTextFromNodeStartToCaret = (): { text: string; atTextNode: Text; atOffset: number } | null => {
+const getTextFromNodeStartToCaret = (): {
+	text: string
+	atTextNode: Text
+	atOffset: number
+} | null => {
 	const sel = window.getSelection()
 	if (!sel || sel.rangeCount === 0 || !editorRef.value) return null
 	const range = sel.getRangeAt(0)
@@ -478,7 +481,10 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault()
-				selectedMentionIndex.value = Math.min(selectedMentionIndex.value + 1, Math.max(0, filteredItems.value.length - 1))
+				selectedMentionIndex.value = Math.min(
+					selectedMentionIndex.value + 1,
+					Math.max(0, filteredItems.value.length - 1)
+				)
 				return
 			case 'ArrowUp':
 				e.preventDefault()
@@ -671,7 +677,9 @@ onMounted(() => {
 
 	const editor = editorRef.value
 	if (editor) {
-		editor.addEventListener('compositionstart', () => { isComposing = true })
+		editor.addEventListener('compositionstart', () => {
+			isComposing = true
+		})
 		editor.addEventListener('compositionend', () => {
 			isComposing = false
 			nextTick(() => {
@@ -733,11 +741,12 @@ const getFullText = (): string => {
 				text += label
 				return
 			}
-			if (el.classList && (
-				el.classList.contains('bp-mention-chip-remove') ||
-				el.classList.contains('bp-mention-chip-icon') ||
-				el.classList.contains('bp-mention-chip-thumb')
-			)) {
+			if (
+				el.classList &&
+				(el.classList.contains('bp-mention-chip-remove') ||
+					el.classList.contains('bp-mention-chip-icon') ||
+					el.classList.contains('bp-mention-chip-thumb'))
+			) {
 				return
 			}
 			el.childNodes.forEach(walk)

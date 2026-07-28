@@ -141,26 +141,42 @@ const appendResult = (
  * The resolved url is also run through `deps.resolveBackendUrl` to ensure
  * any relative / project-internal URLs are resolved correctly.
  */
-const isImageInputAnchor = (anchorId: string, sourceNodeType?: string, targetNodeType?: string): boolean => {
+const isImageInputAnchor = (
+	anchorId: string,
+	sourceNodeType?: string,
+	targetNodeType?: string
+): boolean => {
 	const id = String(anchorId || '').trim()
 	const isImageAnchor = id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)
 	if (isImageAnchor) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNodeType || '').trim().toLowerCase()
-		const targetType = String(targetNodeType || '').trim().toLowerCase()
+		const sourceType = String(sourceNodeType || '')
+			.trim()
+			.toLowerCase()
+		const targetType = String(targetNodeType || '')
+			.trim()
+			.toLowerCase()
 		if (targetType === 'text') return true
 		return sourceType === 'image' || sourceType === 'blender' || sourceType === ''
 	}
 	return false
 }
 
-const isVideoInputAnchor = (anchorId: string, sourceNodeType?: string, targetNodeType?: string): boolean => {
+const isVideoInputAnchor = (
+	anchorId: string,
+	sourceNodeType?: string,
+	targetNodeType?: string
+): boolean => {
 	const id = String(anchorId || '').trim()
 	const isVideoAnchor = id === 'in-video' || id === 'in-resource' || /^in-video-\d+$/.test(id)
 	if (isVideoAnchor) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNodeType || '').trim().toLowerCase()
-		const targetType = String(targetNodeType || '').trim().toLowerCase()
+		const sourceType = String(sourceNodeType || '')
+			.trim()
+			.toLowerCase()
+		const targetType = String(targetNodeType || '')
+			.trim()
+			.toLowerCase()
 		if (targetType === 'text') return true
 		return sourceType === 'video' || sourceType === ''
 	}
@@ -169,8 +185,16 @@ const isVideoInputAnchor = (anchorId: string, sourceNodeType?: string, targetNod
 
 const isMediaInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || id === 'in-video' ||
-		/^in-image-\d+$/.test(id) || /^in-video-\d+$/.test(id) || id === 'in-text' || id === 'in-generic'
+	return (
+		id === 'in-image' ||
+		id === 'in-resource' ||
+		id === 'in-0' ||
+		id === 'in-video' ||
+		/^in-image-\d+$/.test(id) ||
+		/^in-video-\d+$/.test(id) ||
+		id === 'in-text' ||
+		id === 'in-generic'
+	)
 }
 
 const getNodeEffectiveImageUrl = (
@@ -642,7 +666,13 @@ const collectReferenceImagesWithUrl = async (
 
 const isTextInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-text' || id === 'in-0' || id === 'in' || id.startsWith('in-text') || id === 'in-generic'
+	return (
+		id === 'in-text' ||
+		id === 'in-0' ||
+		id === 'in' ||
+		id.startsWith('in-text') ||
+		id === 'in-generic'
+	)
 }
 
 const getNodeEffectiveText = (node: Record<string, unknown>): string => {
@@ -701,9 +731,10 @@ const collectUpstreamTextRefs = async (
 				typeof sourceNode.textSettings === 'object' && sourceNode.textSettings
 					? (sourceNode.textSettings as Record<string, unknown>)
 					: {}
-			text = typeof textSettings?.lastGeneratedText === 'string'
-				? String(textSettings.lastGeneratedText).trim()
-				: ''
+			text =
+				typeof textSettings?.lastGeneratedText === 'string'
+					? String(textSettings.lastGeneratedText).trim()
+					: ''
 		}
 
 		if (text) {
@@ -1474,15 +1505,15 @@ const runTextTask = async (
 		providerDisplayName = '字节方舟 Doubao'
 	}
 
-	const temperature = params.temperature !== undefined && params.temperature !== null
-		? Number(params.temperature)
-		: undefined
-	const maxTokens = params.maxTokens !== undefined && params.maxTokens !== null
-		? Number(params.maxTokens)
-		: undefined
-	const topP = params.topP !== undefined && params.topP !== null
-		? Number(params.topP)
-		: undefined
+	const temperature =
+		params.temperature !== undefined && params.temperature !== null
+			? Number(params.temperature)
+			: undefined
+	const maxTokens =
+		params.maxTokens !== undefined && params.maxTokens !== null
+			? Number(params.maxTokens)
+			: undefined
+	const topP = params.topP !== undefined && params.topP !== null ? Number(params.topP) : undefined
 
 	updateTask(deps, task.id, {
 		status: 'running',
@@ -1502,8 +1533,8 @@ const runTextTask = async (
 	const upstreamTexts = await collectUpstreamTextRefs(deps, payload.nodeId)
 	let finalPrompt = payload.prompt
 	if (upstreamTexts.length > 0) {
-		const contextParts = upstreamTexts.map((ref, idx) =>
-			`[上下文${idx + 1} - 来自${ref.nodeType}节点]:\n${ref.text}`
+		const contextParts = upstreamTexts.map(
+			(ref, idx) => `[上下文${idx + 1} - 来自${ref.nodeType}节点]:\n${ref.text}`
 		)
 		finalPrompt = `${contextParts.join('\n\n')}\n\n[用户输入]:\n${payload.prompt}`
 		appendDetail(
@@ -1559,8 +1590,12 @@ const runTextTask = async (
 			provider,
 			modelId,
 			refImages,
-			temperature: typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
-			maxTokens: typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+			temperature:
+				typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
+			maxTokens:
+				typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0
+					? Math.floor(maxTokens)
+					: undefined,
 			topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
 		})) {
 			if (ev.type === 'done') break
@@ -1605,8 +1640,12 @@ const runTextTask = async (
 				provider,
 				modelId,
 				refImages,
-				temperature: typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
-				maxTokens: typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+				temperature:
+					typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
+				maxTokens:
+					typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0
+						? Math.floor(maxTokens)
+						: undefined,
 				topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
 			})
 			const text = plain.ok && typeof plain.assistant === 'string' ? plain.assistant : ''

@@ -1278,9 +1278,9 @@ const engineApi = {
 }
 
 function getEngineNodeChatPayload(nodeId: string): {
-	engineNodeChatDraft?: string;
-	engineNodeChatParams?: Record<string, unknown>;
-	engineNodeChatSelectedRefs?: any[];
+	engineNodeChatDraft?: string
+	engineNodeChatParams?: Record<string, unknown>
+	engineNodeChatSelectedRefs?: any[]
 } {
 	const host = blueprintHostRef.value
 	const editor: any = host?.getInstance?.()
@@ -1300,7 +1300,7 @@ function syncNodeChatDialog(nodeIds: string[]) {
 		nodeIds,
 		currentDialogNodeId: store.state.nodeChatDialog.nodeId,
 		currentDialogVisible: store.state.nodeChatDialog.visible,
-		currentDialogDraftLen: store.state.nodeChatDialog.draft?.length ?? -1,
+		currentDialogDraftLen: store.state.nodeChatDialog.draft?.length ?? -1
 	})
 	if (nodeIds.length === 1) {
 		const node = store.state.nodesById[nodeIds[0]]
@@ -1311,9 +1311,8 @@ function syncNodeChatDialog(nodeIds: string[]) {
 			nodeType: node?.type,
 			isSupported: node ? isNodeChatTypeSupported(node.type) : false,
 			vuexDraftLen: vuexDraft.length,
-			vuexDraftPreview: vuexDraft.length > 40
-				? vuexDraft.slice(0, 40) + '...'
-				: vuexDraft || '(empty)',
+			vuexDraftPreview:
+				vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)'
 		})
 		if (node && isNodeChatTypeSupported(node.type)) {
 			const payloadExtra = getEngineNodeChatPayload(nodeIds[0])
@@ -1322,12 +1321,11 @@ function syncNodeChatDialog(nodeIds: string[]) {
 				nodeId: nodeIds[0],
 				nodeType: node.type,
 				engineDraftLen: engineDraft.length,
-				engineDraftPreview: engineDraft.length > 40
-					? engineDraft.slice(0, 40) + '...'
-					: engineDraft || '(empty)',
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
 				engineParamsKeys: payloadExtra.engineNodeChatParams
 					? Object.keys(payloadExtra.engineNodeChatParams)
-					: null,
+					: null
 			})
 			store.dispatch('openNodeChatDialog', {
 				nodeId: nodeIds[0],
@@ -1346,12 +1344,15 @@ function syncNodeChatDialog(nodeIds: string[]) {
 }
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
-	const previewInfo: Record<string, {
-		engineDraftLen: number;
-		engineDraftPreview: string;
-		engineParamsKeys: string[] | null;
-		engineSelectedRefsLen: number;
-	}> = {}
+	const previewInfo: Record<
+		string,
+		{
+			engineDraftLen: number
+			engineDraftPreview: string
+			engineParamsKeys: string[] | null
+			engineSelectedRefsLen: number
+		}
+	> = {}
 	for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
 		const n = data.nodesById[nodeId]
 		if (n) {
@@ -1364,14 +1365,22 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
 			const d = (n as any).nodeChatDraft
 			const p = (n as any).nodeChatParams
 			const r = (n as any).nodeChatSelectedRefs
-			if ((typeof d === 'string' && d.length > 0) || (p && typeof p === 'object' && Object.keys(p).length > 0) || (Array.isArray(r) && r.length > 0)) {
+			if (
+				(typeof d === 'string' && d.length > 0) ||
+				(p && typeof p === 'object' && Object.keys(p).length > 0) ||
+				(Array.isArray(r) && r.length > 0)
+			) {
 				previewInfo[nodeId] = {
 					engineDraftLen: typeof d === 'string' ? d.length : -1,
-					engineDraftPreview: typeof d === 'string'
-						? d.length > 40 ? d.slice(0, 40) + '...' : d || '(empty)'
-						: String(d),
-					engineParamsKeys: p && typeof p === 'object' ? Object.keys(p as Record<string, unknown>) : null,
-					engineSelectedRefsLen: Array.isArray(r) ? r.length : -1,
+					engineDraftPreview:
+						typeof d === 'string'
+							? d.length > 40
+								? d.slice(0, 40) + '...'
+								: d || '(empty)'
+							: String(d),
+					engineParamsKeys:
+						p && typeof p === 'object' ? Object.keys(p as Record<string, unknown>) : null,
+					engineSelectedRefsLen: Array.isArray(r) ? r.length : -1
 				}
 			}
 		}
@@ -1380,7 +1389,7 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
 		nodeCount: data.nodeOrder?.length ?? Object.keys(data.nodesById || {}).length,
 		nodesWithChatData: Object.keys(previewInfo),
 		previewInfo,
-		skippedBecauseIsUpdatingFromStore: isUpdatingFromStore,
+		skippedBecauseIsUpdatingFromStore: isUpdatingFromStore
 	})
 	if (isUpdatingFromStore) {
 		return

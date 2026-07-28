@@ -21,12 +21,7 @@ export class UpdateNodeChatDataCommand extends Command {
 		blenderSettings?: Record<string, any> | null
 	}
 
-	constructor(
-		scene: BlueprintScene,
-		nodeId: string,
-		oldData: NodeChatData,
-		newData: NodeChatData
-	) {
+	constructor(scene: BlueprintScene, nodeId: string, oldData: NodeChatData, newData: NodeChatData) {
 		super('update-node-chat-data', `chat-data:${nodeId}`)
 		this.mergeable = true
 		this.scene = scene
@@ -60,11 +55,13 @@ export class UpdateNodeChatDataCommand extends Command {
 		return this
 	}
 
-	private applyData(data: NodeChatData & {
-		textValue?: string | null
-		prompt?: string | null
-		blenderSettings?: Record<string, any> | null
-	}): void {
+	private applyData(
+		data: NodeChatData & {
+			textValue?: string | null
+			prompt?: string | null
+			blenderSettings?: Record<string, any> | null
+		}
+	): void {
 		const node = this.scene.getBlueprintNode(this.nodeId)
 		if (!node) return
 
@@ -88,7 +85,7 @@ export class UpdateNodeChatDataCommand extends Command {
 				for (const field of fields) {
 					const val = blenderParams[field]
 					if (typeof val === 'string') {
-						(node.data.blenderSettings as Record<string, unknown>)[field] = val
+						;(node.data.blenderSettings as Record<string, unknown>)[field] = val
 					}
 				}
 			}

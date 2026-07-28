@@ -1730,8 +1730,10 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
-	const temperature = p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
-	const maxTokens = p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
+	const temperature =
+		p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
+	const maxTokens =
+		p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
 	const topP = p.topP !== undefined && p.topP !== null ? Number(p.topP) : undefined
 	const taskId = `chat-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
 	const projectId = p.projectId ? Number(p.projectId) : null
@@ -2019,8 +2021,10 @@ export async function blueprintChat(ctx, payload) {
 	if (!cfg) return { ok: false, error: 'No LLM API key configured (gemini/bytedance/openai)' }
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
-	const temperature = p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
-	const maxTokens = p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
+	const temperature =
+		p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
+	const maxTokens =
+		p.maxTokens !== undefined && p.maxTokens !== null ? Number(p.maxTokens) : undefined
 	const topP = p.topP !== undefined && p.topP !== null ? Number(p.topP) : undefined
 	const chatMessages = [{ role: 'system', content: systemPrompt }]
 	for (const m of history) {
@@ -2119,14 +2123,10 @@ export async function blueprintChat(ctx, payload) {
 			if (typeof topP === 'number' && !Number.isNaN(topP)) {
 				openaiBody.top_p = Math.max(0, Math.min(1, topP))
 			}
-			const res = await client.post(
-				`${cfg.baseUrl}/chat/completions`,
-				openaiBody,
-				{
-					headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
-					timeout: 120000
-				}
-			)
+			const res = await client.post(`${cfg.baseUrl}/chat/completions`, openaiBody, {
+				headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+				timeout: 120000
+			})
 			if (!res.ok) {
 				const errMsg =
 					typeof res.body === 'object' && res.body?.error

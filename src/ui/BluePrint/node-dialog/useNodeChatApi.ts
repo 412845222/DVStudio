@@ -13,7 +13,10 @@ export interface NodeChatApi {
 	saveDraft(nodeId: string, draft: string): void
 	saveParams(nodeId: string, params: Record<string, any>): void
 	saveSelectedRefs(nodeId: string, refs: any[]): void
-	flush(nodeId: string, state: { draft?: string; params?: Record<string, any>; selectedRefs?: any[] }): void
+	flush(
+		nodeId: string,
+		state: { draft?: string; params?: Record<string, any>; selectedRefs?: any[] }
+	): void
 	submit(nodeId: string, payload: any): void
 	stop(nodeId: string): void
 	removeParamRef(nodeId: string, refItem: any): void

@@ -51,7 +51,12 @@
 				<div class="wf-blender-status-bar" @click.stop="onStatusClick" :title="hintText || ''">
 					<span class="wf-blender-status-dot" :class="statusClass"></span>
 					<span class="wf-blender-status-text">{{ statusText }}</span>
-					<span v-if="toolsReady !== undefined" class="wf-blender-tools-indicator" :class="toolsReady ? 'is-ready' : 'is-not-ready'" :title="toolsReady ? '工具就绪' : '工具未就绪，点击挂载工具按钮'">
+					<span
+						v-if="toolsReady !== undefined"
+						class="wf-blender-tools-indicator"
+						:class="toolsReady ? 'is-ready' : 'is-not-ready'"
+						:title="toolsReady ? '工具就绪' : '工具未就绪，点击挂载工具按钮'"
+					>
 						{{ toolsReady ? '✓' : '⚠' }}
 					</span>
 					<span v-if="mcpError" class="wf-blender-status-error" :title="mcpError">!</span>
@@ -63,9 +68,14 @@
 				</div>
 
 				<!-- 工具就绪提示 -->
-				<div v-if="isConnected && toolsReady !== undefined && !toolsReady" class="wf-blender-tools-warning">
+				<div
+					v-if="isConnected && toolsReady !== undefined && !toolsReady"
+					class="wf-blender-tools-warning"
+				>
 					<span class="wf-blender-tools-warning-icon">⚠️</span>
-					<span class="wf-blender-tools-warning-text">工具未就绪，点击底部"挂载工具"按钮完成工具注册</span>
+					<span class="wf-blender-tools-warning-text">
+						工具未就绪，点击底部"挂载工具"按钮完成工具注册
+					</span>
 				</div>
 
 				<!-- 连接配置：Host/Port -->
@@ -100,15 +110,25 @@
 						placeholder="留空自动查找，或指定blender.exe路径"
 						spellcheck="false"
 					/>
-					<button class="wf-blender-path-browse" @click.stop="onBrowseBlender" title="浏览选择blender.exe">...</button>
+					<button
+						class="wf-blender-path-browse"
+						@click.stop="onBrowseBlender"
+						title="浏览选择blender.exe"
+					>
+						...
+					</button>
 				</div>
 
 				<!-- 节点内对话记录面板 -->
 				<div class="wf-blender-chat-panel" ref="chatPanelRef" @pointerdown.stop>
 					<div v-if="!chatMessages.length" class="wf-blender-chat-empty">
 						<div class="wf-blender-chat-empty-title">🤖 Blender AI 助手</div>
-						<div class="wf-blender-chat-empty-desc">连接Blender后，用自然语言描述你想在Blender中执行的操作，AI将自动调用blender_execute_code工具控制Blender。</div>
-						<div class="wf-blender-chat-empty-example">例如："创建一个立方体"、"导入上游模型"、"给选中物体添加 subdivision 修改器"</div>
+						<div class="wf-blender-chat-empty-desc">
+							连接Blender后，用自然语言描述你想在Blender中执行的操作，AI将自动调用blender_execute_code工具控制Blender。
+						</div>
+						<div class="wf-blender-chat-empty-example">
+							例如："创建一个立方体"、"导入上游模型"、"给选中物体添加 subdivision 修改器"
+						</div>
 					</div>
 					<div v-if="hasMoreMessages" class="wf-blender-load-more" @click.stop="onLoadMoreMessages">
 						⬆ 加载更早消息（还有 {{ chatMessages.length - visibleMessages.length }} 条）
@@ -132,22 +152,44 @@
 						<template v-if="msg.role === 'tool_call'">
 							<div
 								class="wf-blender-tool-card"
-								:class="{ 'is-collapsed': isMsgCollapsed(msg), 'is-running': msg.status === 'running', 'is-error': msg.status === 'error' }"
+								:class="{
+									'is-collapsed': isMsgCollapsed(msg),
+									'is-running': msg.status === 'running',
+									'is-error': msg.status === 'error'
+								}"
 							>
-								<div class="wf-blender-tool-header" style="cursor: pointer;" @click.stop="onToggleToolMsg(msg)">
+								<div
+									class="wf-blender-tool-header"
+									style="cursor: pointer"
+									@click.stop="onToggleToolMsg(msg)"
+								>
 									<span class="wf-blender-tool-status-icon">
 										<span v-if="msg.status === 'running'" class="wf-blender-tool-spinner"></span>
 										<span v-else-if="msg.status === 'error'">❌</span>
 										<span v-else>✅</span>
 									</span>
 									<span class="wf-blender-tool-name">{{ formatToolName(msg.toolName) }}</span>
-									<span class="wf-blender-tool-summary">{{ msg.content.replace(/^[🔧✅❌]\s*/, '').replace(/^执行Blender代码/, '').replace(/^Blender代码执行/, '') }}</span>
-									<span class="wf-blender-tool-toggle" style="cursor: pointer; user-select: none;">{{ isMsgCollapsed(msg) ? '▼' : '▲' }}</span>
+									<span class="wf-blender-tool-summary">
+										{{
+											msg.content
+												.replace(/^[🔧✅❌]\s*/, '')
+												.replace(/^执行Blender代码/, '')
+												.replace(/^Blender代码执行/, '')
+										}}
+									</span>
+									<span class="wf-blender-tool-toggle" style="cursor: pointer; user-select: none">
+										{{ isMsgCollapsed(msg) ? '▼' : '▲' }}
+									</span>
 								</div>
 								<div v-if="!isMsgCollapsed(msg)" class="wf-blender-tool-detail" @click.stop>
-									<div v-if="msg.toolArgs && (msg.toolArgs as any).code" class="wf-blender-tool-code-section">
+									<div
+										v-if="msg.toolArgs && (msg.toolArgs as any).code"
+										class="wf-blender-tool-code-section"
+									>
 										<div class="wf-blender-tool-detail-label">📝 代码：</div>
-										<pre class="wf-blender-tool-code"><code>{{ (msg.toolArgs as any).code }}</code></pre>
+										<pre
+											class="wf-blender-tool-code"
+										><code>{{ (msg.toolArgs as any).code }}</code></pre>
 									</div>
 									<div v-if="msg.toolError" class="wf-blender-tool-error-section">
 										<div class="wf-blender-tool-detail-label">❌ 错误：</div>
@@ -164,7 +206,10 @@
 						<template v-else-if="msg.role === 'command'">
 							<div
 								class="wf-blender-command-card"
-								:class="{ 'is-running': msg.status === 'running', 'is-error': msg.status === 'error' }"
+								:class="{
+									'is-running': msg.status === 'running',
+									'is-error': msg.status === 'error'
+								}"
 							>
 								<div class="wf-blender-tool-header">
 									<span class="wf-blender-tool-status-icon">
@@ -188,17 +233,28 @@
 							<div class="wf-blender-chat-msg-bubble" :class="{ 'is-streaming': msg.isStreaming }">
 								<span class="wf-blender-chat-msg-role">{{ roleLabel(msg.role) }}</span>
 								<!-- 思考内容折叠卡片 -->
-								<div v-if="msg.thinkingContent || msg.isStreamingThinking" class="wf-blender-thinking-card" :class="{ 'is-streaming': msg.isStreamingThinking }">
+								<div
+									v-if="msg.thinkingContent || msg.isStreamingThinking"
+									class="wf-blender-thinking-card"
+									:class="{ 'is-streaming': msg.isStreamingThinking }"
+								>
 									<div class="wf-blender-thinking-header" @click.stop="onToggleThinking(msg)">
 										<span class="wf-blender-thinking-icon">💭</span>
-										<span class="wf-blender-thinking-label">{{ msg.isStreamingThinking ? '思考中...' : '已思考' }}</span>
-										<span class="wf-blender-tool-toggle" style="cursor: pointer; user-select: none;">{{ isThinkingCollapsed(msg) ? '▼' : '▲' }}</span>
+										<span class="wf-blender-thinking-label">
+											{{ msg.isStreamingThinking ? '思考中...' : '已思考' }}
+										</span>
+										<span class="wf-blender-tool-toggle" style="cursor: pointer; user-select: none">
+											{{ isThinkingCollapsed(msg) ? '▼' : '▲' }}
+										</span>
 									</div>
 									<div v-if="!isThinkingCollapsed(msg)" class="wf-blender-thinking-content">
 										<pre class="wf-blender-thinking-text">{{ msg.thinkingContent }}</pre>
 									</div>
 								</div>
-								<span v-if="msg.isThinking && !msg.isStreamingThinking && !msg.thinkingContent" class="wf-blender-thinking-indicator">
+								<span
+									v-if="msg.isThinking && !msg.isStreamingThinking && !msg.thinkingContent"
+									class="wf-blender-thinking-indicator"
+								>
 									<span class="wf-blender-dot"></span>
 									<span class="wf-blender-dot"></span>
 									<span class="wf-blender-dot"></span>
@@ -215,8 +271,12 @@
 				<!-- 工作空间指示器 -->
 				<div class="wf-blender-workspace-indicator" @pointerdown.stop>
 					<span class="wf-blender-workspace-icon">📂</span>
-					<span v-if="workspacePath" class="wf-blender-workspace-path" :title="workspacePath">{{ workspaceFolderName }}</span>
-					<span v-else class="wf-blender-workspace-path wf-blender-workspace-path-placeholder">工作空间未初始化</span>
+					<span v-if="workspacePath" class="wf-blender-workspace-path" :title="workspacePath">
+						{{ workspaceFolderName }}
+					</span>
+					<span v-else class="wf-blender-workspace-path wf-blender-workspace-path-placeholder">
+						工作空间未初始化
+					</span>
 					<button
 						v-if="workspacePath"
 						class="wf-blender-workspace-open-btn"
@@ -239,31 +299,40 @@
 				</div>
 
 				<!-- Token 使用量指示器 -->
-		<div v-if="chatContextUsage && chatMessages.length" class="wf-blender-token-indicator" @pointerdown.stop>
-			<div class="wf-blender-token-bar-container" :title="`上下文: ${chatContextUsage.tokenCount} / ${chatContextUsage.budget} tokens (${chatContextUsage.usage}%)${chatContextUsage.truncated ? ' — 已自动压缩' : ''}`">
 				<div
-					class="wf-blender-token-bar-fill"
-					:class="{
-						'is-warn': chatContextUsage.usage >= 70 && chatContextUsage.usage < 90,
-						'is-high': chatContextUsage.usage >= 90,
-						'is-truncated': chatContextUsage.truncated
-					}"
-					:style="{ width: `${Math.min(100, chatContextUsage.usage)}%` }"
-				></div>
-			</div>
-			<span class="wf-blender-token-label">
-				{{ formatTokenCount(chatContextUsage.tokenCount) }}/{{ formatTokenCount(chatContextUsage.budget) }}{{ chatContextUsage.truncated ? ' 📦' : '' }}
-			</span>
-			<button
-				class="wf-blender-token-compress-btn"
-				type="button"
-				@click.stop="onCompressContext"
-				:title="`压缩上下文（当前 ${chatContextUsage.usage}%）`"
-				:disabled="chatMessages.length <= 2"
-			>
-				🗜️
-			</button>
-		</div>
+					v-if="chatContextUsage && chatMessages.length"
+					class="wf-blender-token-indicator"
+					@pointerdown.stop
+				>
+					<div
+						class="wf-blender-token-bar-container"
+						:title="`上下文: ${chatContextUsage.tokenCount} / ${chatContextUsage.budget} tokens (${chatContextUsage.usage}%)${chatContextUsage.truncated ? ' — 已自动压缩' : ''}`"
+					>
+						<div
+							class="wf-blender-token-bar-fill"
+							:class="{
+								'is-warn': chatContextUsage.usage >= 70 && chatContextUsage.usage < 90,
+								'is-high': chatContextUsage.usage >= 90,
+								'is-truncated': chatContextUsage.truncated
+							}"
+							:style="{ width: `${Math.min(100, chatContextUsage.usage)}%` }"
+						></div>
+					</div>
+					<span class="wf-blender-token-label">
+						{{ formatTokenCount(chatContextUsage.tokenCount) }}/{{
+							formatTokenCount(chatContextUsage.budget)
+						}}{{ chatContextUsage.truncated ? ' 📦' : '' }}
+					</span>
+					<button
+						class="wf-blender-token-compress-btn"
+						type="button"
+						@click.stop="onCompressContext"
+						:title="`压缩上下文（当前 ${chatContextUsage.usage}%）`"
+						:disabled="chatMessages.length <= 2"
+					>
+						🗜️
+					</button>
+				</div>
 
 				<!-- 导入进度条 -->
 				<div v-if="showImportProgress" class="wf-blender-import-progress" @pointerdown.stop>
@@ -274,7 +343,10 @@
 					<div class="wf-blender-import-bar-container">
 						<div
 							class="wf-blender-import-bar-fill"
-							:class="{ 'is-error': importStatus === 'error', 'is-done': importStatus === 'completed' }"
+							:class="{
+								'is-error': importStatus === 'error',
+								'is-done': importStatus === 'completed'
+							}"
 							:style="{ width: `${importProgress}%` }"
 						></div>
 					</div>
@@ -296,7 +368,9 @@
 						{{ connectBtnText }}
 					</button>
 					<button
-						v-if="(isConnected || mcpStatus === 'checking') && toolsReady !== undefined && !toolsReady"
+						v-if="
+							(isConnected || mcpStatus === 'checking') && toolsReady !== undefined && !toolsReady
+						"
 						class="wf-blender-btn tools"
 						type="button"
 						:disabled="isBusy"
@@ -329,7 +403,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSelectedRef, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
+import type {
+	WorkflowBlenderNodeSettings,
+	WorkflowBlenderChatMessage,
+	WorkflowNodeChatType,
+	WorkflowNodeChatSelectedRef,
+	WorkflowNodeGenerationTask
+} from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from '../../BluePrint/node-dialog'
 import { useI18n } from '../../../i18n'
 
@@ -391,12 +471,33 @@ const emit = defineEmits<{
 	(e: 'update:worldY', v: number): void
 	(e: 'update:worldPosition', p: { worldX: number; worldY: number }): void
 	(e: 'select', nodeId: string): void
-	(e: 'start-link', payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }): void
+	(
+		e: 'start-link',
+		payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }
+	): void
 	(e: 'end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void
 	(e: 'copy'): void
 	(e: 'refresh'): void
 	(e: 'delete'): void
-	(e: 'set-type', v: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender'): void
+	(
+		e: 'set-type',
+		v:
+			| 'base'
+			| 'text'
+			| 'text-merge'
+			| 'image'
+			| 'rotate-image'
+			| 'video'
+			| 'scene-understanding'
+			| 'scene-decompose'
+			| 'scene-layout'
+			| 'unreal-export'
+			| 'story'
+			| 'comfyui'
+			| 'model3d'
+			| 'meshy'
+			| 'blender'
+	): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(e: 'open-node-library'): void
 	(e: 'auto-resize', height: number): void
@@ -407,18 +508,40 @@ const emit = defineEmits<{
 	(e: 'blender-status-click', payload: { host: string; port: number }): void
 	(e: 'blender-clear-chat'): void
 	(e: 'blender-open-workspace'): void
-		(e: 'blender-init-workspace'): void
-		(e: 'update-blender-settings', payload: Partial<WorkflowBlenderNodeSettings>): void
-		(e: 'blender-compress-context'): void
-	}>()
+	(e: 'blender-init-workspace'): void
+	(e: 'update-blender-settings', payload: Partial<WorkflowBlenderNodeSettings>): void
+	(e: 'blender-compress-context'): void
+}>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => {
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
 	emit('start-link', payload)
 }
 const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
 	emit('end-link', payload)
 }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => {
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
 	emit('set-type', type)
 }
 const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
@@ -439,7 +562,9 @@ const mcpError = computed(() => props.blenderSettings?.mcpError ?? null)
 const importStatus = computed(() => props.blenderSettings?.importStatus ?? 'idle')
 const importProgress = computed(() => props.blenderSettings?.importProgress ?? 0)
 const importError = computed(() => props.blenderSettings?.importError ?? null)
-const chatMessages = computed<WorkflowBlenderChatMessage[]>(() => props.blenderSettings?.chatMessages ?? [])
+const chatMessages = computed<WorkflowBlenderChatMessage[]>(
+	() => props.blenderSettings?.chatMessages ?? []
+)
 
 const effectiveVisibleCount = computed(() => {
 	if (props.isWarmupRender) return WARMUP_VISIBLE_COUNT
@@ -460,7 +585,10 @@ const hasMoreMessages = computed(() => {
 })
 
 const onLoadMoreMessages = () => {
-	visibleMessagesCount.value = Math.min(visibleMessagesCount.value + LOAD_MORE_COUNT, chatMessages.value.length)
+	visibleMessagesCount.value = Math.min(
+		visibleMessagesCount.value + LOAD_MORE_COUNT,
+		chatMessages.value.length
+	)
 }
 
 const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
@@ -489,11 +617,14 @@ const onInitWorkspace = () => {
 	}, 5000)
 }
 
-watch(() => workspacePath.value, (path) => {
-	if (path) {
-		isWorkspaceInitializing.value = false
+watch(
+	() => workspacePath.value,
+	(path) => {
+		if (path) {
+			isWorkspaceInitializing.value = false
+		}
 	}
-})
+)
 
 onMounted(() => {
 	if (!workspacePath.value) {
@@ -506,7 +637,9 @@ onMounted(() => {
 })
 
 const isConnected = computed(() => mcpStatus.value === 'connected')
-const isImporting = computed(() => importStatus.value === 'downloading' || importStatus.value === 'importing')
+const isImporting = computed(
+	() => importStatus.value === 'downloading' || importStatus.value === 'importing'
+)
 const isResponding = computed(() => props.blenderSettings?.isResponding ?? false)
 const showImportProgress = computed(() => importStatus.value !== 'idle')
 
@@ -540,7 +673,11 @@ const hintText = computed(() => {
 })
 
 const canConnect = computed(() => {
-	return mcpStatus.value !== 'connected' && mcpStatus.value !== 'connecting' && mcpStatus.value !== 'checking'
+	return (
+		mcpStatus.value !== 'connected' &&
+		mcpStatus.value !== 'connecting' &&
+		mcpStatus.value !== 'checking'
+	)
 })
 
 const isBusy = computed(() => mcpStatus.value === 'connecting' || mcpStatus.value === 'checking')
@@ -812,16 +949,30 @@ watch(
 	flex-shrink: 0;
 }
 
-.wf-blender-status-dot.is-unchecked { background: #888; }
-.wf-blender-status-dot.is-checking { background: #f0c040; animation: wf-blender-blink 1s infinite; }
+.wf-blender-status-dot.is-unchecked {
+	background: #888;
+}
+.wf-blender-status-dot.is-checking {
+	background: #f0c040;
+	animation: wf-blender-blink 1s infinite;
+}
 .wf-blender-status-dot.is-no-blender,
 .wf-blender-status-dot.is-no-addon,
-.wf-blender-status-dot.is-error { background: #e74c3c; }
+.wf-blender-status-dot.is-error {
+	background: #e74c3c;
+}
 .wf-blender-status-dot.is-blender-not-running,
 .wf-blender-status-dot.is-addon-not-started,
-.wf-blender-status-dot.is-disconnected { background: #e87d0d; }
-.wf-blender-status-dot.is-connecting { background: #f0c040; animation: wf-blender-blink 1s infinite; }
-.wf-blender-status-dot.is-connected { background: #1f9d84; }
+.wf-blender-status-dot.is-disconnected {
+	background: #e87d0d;
+}
+.wf-blender-status-dot.is-connecting {
+	background: #f0c040;
+	animation: wf-blender-blink 1s infinite;
+}
+.wf-blender-status-dot.is-connected {
+	background: #1f9d84;
+}
 
 .wf-blender-status-text {
 	color: var(--vscode-fg, #e0e0e0);
@@ -909,7 +1060,11 @@ watch(
 	min-width: 0;
 	padding: 2px 6px;
 	font-size: 11px;
-	background: color-mix(in srgb, var(--vscode-input-background, rgba(255,255,255,0.1)) 90%, transparent);
+	background: color-mix(
+		in srgb,
+		var(--vscode-input-background, rgba(255, 255, 255, 0.1)) 90%,
+		transparent
+	);
 	border: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 30%, transparent);
 	color: var(--vscode-fg, #e0e0e0);
 	border-radius: 0;
@@ -945,7 +1100,11 @@ watch(
 	min-width: 0;
 	padding: 2px 6px;
 	font-size: 11px;
-	background: color-mix(in srgb, var(--vscode-input-background, rgba(255,255,255,0.1)) 90%, transparent);
+	background: color-mix(
+		in srgb,
+		var(--vscode-input-background, rgba(255, 255, 255, 0.1)) 90%,
+		transparent
+	);
 	border: 1px solid color-mix(in srgb, var(--vscode-fg-muted, #888) 30%, transparent);
 	color: var(--vscode-fg, #e0e0e0);
 	border-radius: 0;
@@ -977,8 +1136,13 @@ watch(
 }
 
 @keyframes wf-blender-blink {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.3; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
 }
 
 .wf-blender-chat-panel {
@@ -1138,7 +1302,9 @@ watch(
 }
 
 @keyframes wf-blender-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .wf-blender-tool-name {
@@ -1243,8 +1409,13 @@ watch(
 }
 
 @keyframes wf-blender-caret-blink {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
 }
 
 .is-streaming {
@@ -1266,12 +1437,24 @@ watch(
 	animation: wf-blender-dot-bounce 1.2s ease-in-out infinite;
 }
 
-.wf-blender-dot:nth-child(2) { animation-delay: 0.15s; }
-.wf-blender-dot:nth-child(3) { animation-delay: 0.3s; }
+.wf-blender-dot:nth-child(2) {
+	animation-delay: 0.15s;
+}
+.wf-blender-dot:nth-child(3) {
+	animation-delay: 0.3s;
+}
 
 @keyframes wf-blender-dot-bounce {
-	0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-	40% { transform: scale(1); opacity: 1; }
+	0%,
+	80%,
+	100% {
+		transform: scale(0.6);
+		opacity: 0.4;
+	}
+	40% {
+		transform: scale(1);
+		opacity: 1;
+	}
 }
 
 .wf-blender-import-progress {
@@ -1352,7 +1535,9 @@ watch(
 .wf-blender-token-bar-fill {
 	height: 100%;
 	background: linear-gradient(90deg, #3b82f6, #60a5fa);
-	transition: width 0.4s ease, background 0.3s ease;
+	transition:
+		width 0.4s ease,
+		background 0.3s ease;
 	border-radius: 2px;
 }
 
@@ -1552,8 +1737,13 @@ watch(
 }
 
 @keyframes wf-blender-thinking-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.7; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.7;
+	}
 }
 
 .wf-blender-thinking-header {

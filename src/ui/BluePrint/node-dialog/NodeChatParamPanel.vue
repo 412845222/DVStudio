@@ -1,5 +1,11 @@
 <template>
-	<div class="bp-node-chat-param-panel" :class="{ 'is-collapsed': collapsed }" @click.stop @mousedown.stop @pointerdown.stop>
+	<div
+		class="bp-node-chat-param-panel"
+		:class="{ 'is-collapsed': collapsed }"
+		@click.stop
+		@mousedown.stop
+		@pointerdown.stop
+	>
 		<div class="bp-node-chat-param-header" @click="toggleCollapse" @pointerdown.stop>
 			<span class="bp-node-chat-param-title">{{ t('aichat.nodeChatParams.title') }}</span>
 			<span class="bp-node-chat-param-toggle">
@@ -88,7 +94,9 @@
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.deepThinking') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.deepThinking') }}
+					</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textThinkingOptions"
@@ -105,7 +113,9 @@
 					</div>
 				</div>
 				<div v-if="params.model === 'bytedance'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.outputFormat') }}
+					</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in textResponseFormatOptions"
@@ -180,11 +190,18 @@
 				<div v-if="params.model === 'tripo3d'" class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.genMode') }}</span>
 					<div class="bp-node-chat-param-auto-mode">
-						<span class="bp-node-chat-param-auto-mode-badge">{{ tripo3dImageDetectedModeLabel }}</span>
-						<span class="bp-node-chat-param-auto-mode-hint">{{ tripo3dImageDetectedModeHint }}</span>
+						<span class="bp-node-chat-param-auto-mode-badge">
+							{{ tripo3dImageDetectedModeLabel }}
+						</span>
+						<span class="bp-node-chat-param-auto-mode-hint">
+							{{ tripo3dImageDetectedModeHint }}
+						</span>
 					</div>
 				</div>
-				<div v-if="params.model === 'tripo3d' && showTripo3DForceSingleImage" class="bp-node-chat-param-row">
+				<div
+					v-if="params.model === 'tripo3d' && showTripo3DForceSingleImage"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label"></span>
 					<div class="bp-node-chat-param-advanced">
 						<label class="bp-node-chat-param-toggle">
@@ -192,7 +209,12 @@
 								type="checkbox"
 								:checked="params.tripo3dImageForceSingleImage === true"
 								:disabled="disabled"
-								@change="updateTripo3DParam('tripo3dImageForceSingleImage', ($event.target as HTMLInputElement).checked)"
+								@change="
+									updateTripo3DParam(
+										'tripo3dImageForceSingleImage',
+										($event.target as HTMLInputElement).checked
+									)
+								"
 							/>
 							<span>{{ t('aichat.nodeChatParams.forceSingleImage') }}</span>
 						</label>
@@ -209,16 +231,24 @@
 								class="bp-node-chat-param-btn"
 								:class="{ 'is-active': params.tripo3dImageSize === opt.value }"
 								:disabled="disabled"
-								:title="opt.description ? (opt.description.startsWith('aiConfig.') ? t(opt.description) : opt.description) : undefined"
+								:title="
+									opt.description
+										? opt.description.startsWith('aiConfig.')
+											? t(opt.description)
+											: opt.description
+										: undefined
+								"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageSize', opt.value)"
+								@click="updateTripo3DParam('tripo3dImageSize', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
 						</div>
 					</div>
 					<div v-if="showTripo3DAspectRatio" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.aspectRatio') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_ASPECT_RATIO_OPTIONS"
@@ -228,14 +258,16 @@
 								:class="{ 'is-active': params.tripo3dImageAspectRatio === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageAspectRatio', opt.value)"
+								@click="updateTripo3DParam('tripo3dImageAspectRatio', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
 						</div>
 					</div>
 					<div class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.outputFormat') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in NODE_CHAT_TRIPO3D_IMAGE_OUTPUT_FORMAT_OPTIONS"
@@ -245,7 +277,7 @@
 								:class="{ 'is-active': params.tripo3dImageOutputFormat === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageOutputFormat', opt.value)"
+								@click="updateTripo3DParam('tripo3dImageOutputFormat', opt.value)"
 							>
 								{{ opt.label }}
 							</button>
@@ -262,13 +294,16 @@
 								:class="{ 'is-active': params.tripo3dImageWatermark === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageWatermark', opt.value)"
+								@click="updateTripo3DParam('tripo3dImageWatermark', opt.value)"
 							>
 								{{ t(opt.label) }}
 							</button>
 						</div>
 					</div>
-					<div v-if="showTripo3DTemplate && currentTripo3DTemplateOptions.length > 0" class="bp-node-chat-param-row">
+					<div
+						v-if="showTripo3DTemplate && currentTripo3DTemplateOptions.length > 0"
+						class="bp-node-chat-param-row"
+					>
 						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.template') }}</span>
 						<div class="bp-node-chat-param-options">
 							<button
@@ -279,7 +314,7 @@
 								:class="{ 'is-active': params.tripo3dImageTemplate === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageTemplate', opt.value)"
+								@click="updateTripo3DParam('tripo3dImageTemplate', opt.value)"
 							>
 								{{ t(opt.label) }}
 							</button>
@@ -296,14 +331,17 @@
 								:class="{ 'is-active': params.tripo3dImageNumOutputs === n }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateTripo3DParam('tripo3dImageNumOutputs', n)"
+								@click="updateTripo3DParam('tripo3dImageNumOutputs', n)"
 							>
 								{{ n }}x
 							</button>
 						</div>
 					</div>
 				</template>
-				<div v-if="params.model === 'tripo3d' && showTripo3DStrength" class="bp-node-chat-param-row">
+				<div
+					v-if="params.model === 'tripo3d' && showTripo3DStrength"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.strength') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -320,20 +358,35 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'tripo3d' && showTripo3DNegativePrompt" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+				<div
+					v-if="params.model === 'tripo3d' && showTripo3DNegativePrompt"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.negativePrompt') }}
+					</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
 							:value="params.tripo3dImageNegativePrompt"
 							:disabled="disabled"
 							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
-							@input="updateTripo3DParam('tripo3dImageNegativePrompt', ($event.target as HTMLInputElement).value)"
+							@input="
+								updateTripo3DParam(
+									'tripo3dImageNegativePrompt',
+									($event.target as HTMLInputElement).value
+								)
+							"
 						/>
 					</div>
 				</div>
-				<div v-if="params.model === 'tripo3d' && showTripo3DAdvanced" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
+				<div
+					v-if="params.model === 'tripo3d' && showTripo3DAdvanced"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.advancedSettings') }}
+					</span>
 					<div class="bp-node-chat-param-advanced">
 						<div class="bp-node-chat-param-seed">
 							<label>{{ t('aichat.nodeChatParams.seed') }}</label>
@@ -343,13 +396,19 @@
 								:disabled="disabled"
 								:placeholder="t('aichat.nodeChatParams.seedRandom')"
 								@input="
-									updateTripo3DParam('tripo3dImageSeed', parseInt(($event.target as HTMLInputElement).value) || -1)
+									updateTripo3DParam(
+										'tripo3dImageSeed',
+										parseInt(($event.target as HTMLInputElement).value) || -1
+									)
 								"
 							/>
 						</div>
 					</div>
 				</div>
-				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+				<div
+					v-if="params.model === 'gemini' || params.model === 'nanobanana'"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.model') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -357,7 +416,11 @@
 							:key="opt.value"
 							type="button"
 							class="bp-node-chat-param-btn"
-							:class="{ 'is-active': params.geminiImageModelVersion === opt.value || params.nanobananaModelVersion === opt.value }"
+							:class="{
+								'is-active':
+									params.geminiImageModelVersion === opt.value ||
+									params.nanobananaModelVersion === opt.value
+							}"
 							:disabled="disabled"
 							@pointerdown.stop.prevent
 							@click="updateParam('geminiImageModelVersion', opt.value)"
@@ -368,8 +431,13 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}（清晰度）</span>
+				<div
+					v-if="params.model === 'gemini' || params.model === 'nanobanana'"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.resolution') }}（清晰度）
+					</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentGeminiImageSizeOptions"
@@ -513,8 +581,13 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'seedream' && showSeedreamOutputFormat" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
+				<div
+					v-if="params.model === 'seedream' && showSeedreamOutputFormat"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.outputFormat') }}
+					</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentSeedreamOutputFormatOptions"
@@ -531,14 +604,18 @@
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.advancedSettings') }}
+					</span>
 					<div class="bp-node-chat-param-advanced">
 						<label class="bp-node-chat-param-toggle">
 							<input
 								type="checkbox"
 								:checked="params.seedreamWatermark"
 								:disabled="disabled"
-								@change="updateParam('seedreamWatermark', ($event.target as HTMLInputElement).checked)"
+								@change="
+									updateParam('seedreamWatermark', ($event.target as HTMLInputElement).checked)
+								"
 							/>
 							<span>{{ t('aichat.nodeChatParams.addWatermark') }}</span>
 						</label>
@@ -550,25 +627,41 @@
 								:disabled="disabled"
 								:placeholder="t('aichat.nodeChatParams.seedRandom')"
 								@input="
-									updateParam('seedreamSeed', parseInt(($event.target as HTMLInputElement).value) || -1)
+									updateParam(
+										'seedreamSeed',
+										parseInt(($event.target as HTMLInputElement).value) || -1
+									)
 								"
 							/>
 						</div>
 					</div>
 				</div>
 				<div v-if="params.model === 'seedream'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.negativePrompt') }}
+					</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
 							:value="params.seedreamNegativePrompt"
 							:disabled="disabled"
 							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
-							@input="updateParam('seedreamNegativePrompt', ($event.target as HTMLInputElement).value)"
+							@input="
+								updateParam('seedreamNegativePrompt', ($event.target as HTMLInputElement).value)
+							"
 						/>
 					</div>
 				</div>
-				<div v-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'gemini' && params.model !== 'nanobanana' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
+				<div
+					v-if="
+						params.model !== 'meshy' &&
+						params.model !== 'seedream' &&
+						params.model !== 'gemini' &&
+						params.model !== 'nanobanana' &&
+						params.model !== 'tripo3d'
+					"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.size') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -585,7 +678,10 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+				<div
+					v-if="params.model === 'gemini' || params.model === 'nanobanana'"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -603,7 +699,12 @@
 						</button>
 					</div>
 				</div>
-				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
+				<div
+					v-else-if="
+						params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'
+					"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aspectRatio') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -657,7 +758,10 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
+				<div
+					v-if="params.model === 'gemini' || params.model === 'nanobanana'"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -674,7 +778,12 @@
 						</button>
 					</div>
 				</div>
-				<div v-else-if="params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'" class="bp-node-chat-param-row">
+				<div
+					v-else-if="
+						params.model !== 'meshy' && params.model !== 'seedream' && params.model !== 'tripo3d'
+					"
+					class="bp-node-chat-param-row"
+				>
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.quantity') }}</span>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -691,8 +800,15 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="(params.model === 'gemini' || params.model === 'nanobanana') && showGeminiThinkingLevel" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.thinkingLevel') }}</span>
+				<div
+					v-if="
+						(params.model === 'gemini' || params.model === 'nanobanana') && showGeminiThinkingLevel
+					"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.thinkingLevel') }}
+					</span>
 					<div class="bp-node-chat-param-options">
 						<button
 							v-for="opt in currentGeminiThinkingLevelOptions"
@@ -709,20 +825,29 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.model === 'gemini' || params.model === 'nanobanana'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+				<div
+					v-if="params.model === 'gemini' || params.model === 'nanobanana'"
+					class="bp-node-chat-param-row"
+				>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.negativePrompt') }}
+					</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
 							:value="params.geminiNegativePrompt"
 							:disabled="disabled"
 							:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
-							@input="updateParam('geminiNegativePrompt', ($event.target as HTMLInputElement).value)"
+							@input="
+								updateParam('geminiNegativePrompt', ($event.target as HTMLInputElement).value)
+							"
 						/>
 					</div>
 				</div>
 				<div v-if="params.model === 'meshy'" class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.negativePrompt') }}
+					</span>
 					<div class="bp-node-chat-param-input">
 						<input
 							type="text"
@@ -785,38 +910,42 @@
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.videoMode') }}</span>
-						<div class="bp-node-chat-param-options">
-							<button
-								v-for="opt in videoModeOptions"
-								:key="opt.value"
-								type="button"
-								class="bp-node-chat-param-btn"
-								:class="{ 'is-active': params.mode === opt.value }"
-								:disabled="disabled"
-								@pointerdown.stop.prevent
+					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.videoMode') }}</span>
+					<div class="bp-node-chat-param-options">
+						<button
+							v-for="opt in videoModeOptions"
+							:key="opt.value"
+							type="button"
+							class="bp-node-chat-param-btn"
+							:class="{ 'is-active': params.mode === opt.value }"
+							:disabled="disabled"
+							@pointerdown.stop.prevent
 							@click="updateParam('mode', opt.value)"
-							>
-								{{ translateOpt(opt) }}
-							</button>
-						</div>
+						>
+							{{ translateOpt(opt) }}
+						</button>
 					</div>
-					<div v-if="videoConnectedMedia.length > 0" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.referenceAssets') }}</span>
-						<div class="bp-node-chat-param-thumb-list">
-							<div
-								v-for="media in videoConnectedMedia"
-								:key="media.nodeId"
-								class="bp-node-chat-param-thumb-item"
-							>
-								<div class="bp-node-chat-param-thumb" :class="{ 'is-video': media.kind === 'video' }">
-									<img :src="media.thumb || media.url" :alt="media.name" />
-									<span v-if="media.kind === 'video'" class="bp-node-chat-param-thumb-video-badge">🎬</span>
-								</div>
-								<span class="bp-node-chat-param-thumb-label">{{ media.name }}</span>
+				</div>
+				<div v-if="videoConnectedMedia.length > 0" class="bp-node-chat-param-row">
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.referenceAssets') }}
+					</span>
+					<div class="bp-node-chat-param-thumb-list">
+						<div
+							v-for="media in videoConnectedMedia"
+							:key="media.nodeId"
+							class="bp-node-chat-param-thumb-item"
+						>
+							<div class="bp-node-chat-param-thumb" :class="{ 'is-video': media.kind === 'video' }">
+								<img :src="media.thumb || media.url" :alt="media.name" />
+								<span v-if="media.kind === 'video'" class="bp-node-chat-param-thumb-video-badge">
+									🎬
+								</span>
 							</div>
+							<span class="bp-node-chat-param-thumb-label">{{ media.name }}</span>
 						</div>
 					</div>
+				</div>
 				<div class="bp-node-chat-param-row">
 					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.resolution') }}</span>
 					<div class="bp-node-chat-param-options">
@@ -869,7 +998,9 @@
 					</div>
 				</div>
 				<div class="bp-node-chat-param-row">
-					<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
+					<span class="bp-node-chat-param-label">
+						{{ t('aichat.nodeChatParams.advancedSettings') }}
+					</span>
 					<div class="bp-node-chat-param-advanced">
 						<label class="bp-node-chat-param-toggle">
 							<input
@@ -914,7 +1045,9 @@
 								type="checkbox"
 								:checked="params.enableWebSearch"
 								:disabled="disabled"
-								@change="updateParam('enableWebSearch', ($event.target as HTMLInputElement).checked)"
+								@change="
+									updateParam('enableWebSearch', ($event.target as HTMLInputElement).checked)
+								"
 							/>
 							<span>{{ t('aichat.nodeChatParams.webSearch') }}</span>
 						</label>
@@ -927,7 +1060,13 @@
 								max="9"
 								:disabled="disabled"
 								@input="
-									updateParam('priority', Math.min(9, Math.max(0, parseInt(($event.target as HTMLInputElement).value) || 0)))
+									updateParam(
+										'priority',
+										Math.min(
+											9,
+											Math.max(0, parseInt(($event.target as HTMLInputElement).value) || 0)
+										)
+									)
 								"
 							/>
 						</div>
@@ -977,7 +1116,7 @@
 								:class="{ 'is-active': params.meshyMode === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyMode', opt.value)"
+								@click="updateParam('meshyMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -994,7 +1133,7 @@
 								:class="{ 'is-active': params.meshyAiModel === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyAiModel', opt.value)"
+								@click="updateParam('meshyAiModel', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1011,7 +1150,7 @@
 								:class="{ 'is-active': params.meshyModelType === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyModelType', opt.value)"
+								@click="updateParam('meshyModelType', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1028,14 +1167,16 @@
 								:class="{ 'is-active': params.meshyTopology === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyTopology', opt.value)"
+								@click="updateParam('meshyTopology', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.symmetryMode') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.symmetryMode') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshySymmetryModeOptions"
@@ -1045,14 +1186,19 @@
 								:class="{ 'is-active': params.meshySymmetryMode === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshySymmetryMode', opt.value)"
+								@click="updateParam('meshySymmetryMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
-					<div v-if="!isMeshyPostProcessMode || params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.originPosition') }}</span>
+					<div
+						v-if="!isMeshyPostProcessMode || params.meshyMode === 'remesh'"
+						class="bp-node-chat-param-row"
+					>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.originPosition') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyOriginAtOptions"
@@ -1062,7 +1208,7 @@
 								:class="{ 'is-active': params.meshyOriginAt === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyOriginAt', opt.value)"
+								@click="updateParam('meshyOriginAt', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1079,14 +1225,16 @@
 								:class="{ 'is-active': params.meshyPoseMode === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyPoseMode', opt.value)"
+								@click="updateParam('meshyPoseMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="params.meshyMode !== 'uv-unwrap'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.outputFormat') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.outputFormat') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyOutputFormatOptions"
@@ -1096,14 +1244,16 @@
 								:class="{ 'is-active': params.meshyOutputFormat === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyOutputFormat', opt.value)"
+								@click="updateParam('meshyOutputFormat', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
 						</div>
 					</div>
 					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.targetPolycount') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.targetPolycount') }}
+						</span>
 						<div class="bp-node-chat-param-input">
 							<input
 								type="number"
@@ -1122,7 +1272,9 @@
 						</div>
 					</div>
 					<div v-if="params.meshyMode === 'remesh'" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.decimationMode') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.decimationMode') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in meshyDecimationModeOptions"
@@ -1132,7 +1284,7 @@
 								:class="{ 'is-active': params.meshyDecimationMode === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('meshyDecimationMode', opt.value)"
+								@click="updateParam('meshyDecimationMode', opt.value)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1140,7 +1292,9 @@
 					</div>
 					<template v-if="params.meshyMode === 'retexture'">
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.styleMode') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.styleMode') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									type="button"
@@ -1148,7 +1302,7 @@
 									:class="{ 'is-active': params.meshyStyleSource === 'text' }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('meshyStyleSource', 'text')"
+									@click="updateParam('meshyStyleSource', 'text')"
 								>
 									{{ t('aichat.nodeChatParams.textDescription') }}
 								</button>
@@ -1158,14 +1312,16 @@
 									:class="{ 'is-active': params.meshyStyleSource === 'image' }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('meshyStyleSource', 'image')"
+									@click="updateParam('meshyStyleSource', 'image')"
 								>
 									{{ t('aichat.nodeChatParams.referenceImage') }}
 								</button>
 							</div>
 						</div>
 						<div v-if="params.meshyStyleSource === 'image'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.referenceImage') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.referenceImage') }}
+							</span>
 							<div v-if="retextureConnectedImages.length > 0" class="bp-node-chat-param-thumb-list">
 								<button
 									v-for="img in retextureConnectedImages"
@@ -1175,12 +1331,14 @@
 									:class="{ 'is-selected': params.meshyTextureImageNodeId === img.nodeId }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('meshyTextureImageNodeId', img.nodeId)"
+									@click="updateParam('meshyTextureImageNodeId', img.nodeId)"
 								>
 									<img :src="img.thumb || img.url" :alt="img.name" />
 								</button>
 							</div>
-							<span v-else class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.connectImageNode') }}</span>
+							<span v-else class="bp-node-chat-param-hint">
+								{{ t('aichat.nodeChatParams.connectImageNode') }}
+							</span>
 						</div>
 						<div class="bp-node-chat-param-row">
 							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.aiModel') }}</span>
@@ -1193,14 +1351,16 @@
 									:class="{ 'is-active': params.meshyAiModel === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('meshyAiModel', opt.value)"
+									@click="updateParam('meshyAiModel', opt.value)"
 								>
 									{{ translateOpt(opt) }}
 								</button>
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.uvAndMesh') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.uvAndMesh') }}
+							</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -1208,7 +1368,10 @@
 										:checked="params.meshyEnableOriginalUv"
 										:disabled="disabled"
 										@change="
-											updateParam('meshyEnableOriginalUv', ($event.target as HTMLInputElement).checked)
+											updateParam(
+												'meshyEnableOriginalUv',
+												($event.target as HTMLInputElement).checked
+											)
 										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.keepOriginalUV') }}</span>
@@ -1216,7 +1379,9 @@
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureOptions') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.textureOptions') }}
+							</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
@@ -1246,7 +1411,10 @@
 										:checked="params.meshyRemoveLighting"
 										:disabled="disabled"
 										@change="
-											updateParam('meshyRemoveLighting', ($event.target as HTMLInputElement).checked)
+											updateParam(
+												'meshyRemoveLighting',
+												($event.target as HTMLInputElement).checked
+											)
 										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.removeLighting') }}</span>
@@ -1257,7 +1425,10 @@
 										:checked="params.meshyAlphaThumbnail"
 										:disabled="disabled"
 										@change="
-											updateParam('meshyAlphaThumbnail', ($event.target as HTMLInputElement).checked)
+											updateParam(
+												'meshyAlphaThumbnail',
+												($event.target as HTMLInputElement).checked
+											)
 										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.transparentPreview') }}</span>
@@ -1266,7 +1437,9 @@
 						</div>
 					</template>
 					<div v-if="!isMeshyPostProcessMode" class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedSettings') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.advancedSettings') }}
+						</span>
 						<div class="bp-node-chat-param-advanced">
 							<label class="bp-node-chat-param-toggle">
 								<input
@@ -1299,7 +1472,9 @@
 				</template>
 				<template v-else-if="params.provider === 'tripo3d'">
 					<div class="bp-node-chat-param-row">
-						<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dTaskMode') }}</span>
+						<span class="bp-node-chat-param-label">
+							{{ t('aichat.nodeChatParams.tripo3dTaskMode') }}
+						</span>
 						<div class="bp-node-chat-param-options">
 							<button
 								v-for="opt in NODE_CHAT_TRIPO3D_TASK_MODE_OPTIONS"
@@ -1309,7 +1484,7 @@
 								:class="{ 'is-active': tripo3dCurrentTaskMode === opt.value }"
 								:disabled="disabled"
 								@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTaskMode', opt.value as WorkflowTripo3DMode)"
+								@click="updateParam('tripo3dTaskMode', opt.value as WorkflowTripo3DMode)"
 							>
 								{{ translateOpt(opt) }}
 							</button>
@@ -1317,21 +1492,45 @@
 					</div>
 
 					<template v-if="isTripo3DPostProcessMode(tripo3dCurrentTaskMode)">
-						<span class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.tripo3dPostProcessHint') }}</span>
+						<span class="bp-node-chat-param-hint">
+							{{ t('aichat.nodeChatParams.tripo3dPostProcessHint') }}
+						</span>
 
 						<template v-if="tripo3dCurrentTaskMode === 'texture'">
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.detectedMode') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.detectedMode') }}
+								</span>
 								<div class="bp-node-chat-param-mode-display">
-									<span class="bp-node-chat-param-mode-badge" :class="'mode-' + tripo3dTextureDetectedMode">
-										{{ t('aiConfig.tripo3dTextureModes.' + (tripo3dTextureDetectedMode === 'text_only' ? 'textOnly' : tripo3dTextureDetectedMode === 'single_image' ? 'singleImage' : 'multiview')) }}
+									<span
+										class="bp-node-chat-param-mode-badge"
+										:class="'mode-' + tripo3dTextureDetectedMode"
+									>
+										{{
+											t(
+												'aiConfig.tripo3dTextureModes.' +
+													(tripo3dTextureDetectedMode === 'text_only'
+														? 'textOnly'
+														: tripo3dTextureDetectedMode === 'single_image'
+															? 'singleImage'
+															: 'multiview')
+											)
+										}}
 									</span>
-									<label v-if="tripo3dConnectedImages.length >= 2" class="bp-node-chat-param-toggle bp-node-chat-param-force-single">
+									<label
+										v-if="tripo3dConnectedImages.length >= 2"
+										class="bp-node-chat-param-toggle bp-node-chat-param-force-single"
+									>
 										<input
 											type="checkbox"
 											:checked="params.tripo3dTextureForceSingleImage"
 											:disabled="disabled"
-											@change="updateParam('tripo3dTextureForceSingleImage', ($event.target as HTMLInputElement).checked)"
+											@change="
+												updateParam(
+													'tripo3dTextureForceSingleImage',
+													($event.target as HTMLInputElement).checked
+												)
+											"
 										/>
 										<span>{{ t('aichat.nodeChatParams.forceSingleImage') }}</span>
 									</label>
@@ -1342,11 +1541,22 @@
 								<div class="bp-node-chat-param-row">
 									<span class="bp-node-chat-param-label">
 										{{ t('aichat.nodeChatParams.selectImages') }}
-										<span v-if="tripo3dTextureDetectedMode === 'multiview'" class="bp-node-chat-param-hint-inline">
-											{{ t('aichat.nodeChatParams.viewProgress', { selected: tripo3dTextureSelectedViewCount, total: tripo3dConnectedImages.length }) }}
+										<span
+											v-if="tripo3dTextureDetectedMode === 'multiview'"
+											class="bp-node-chat-param-hint-inline"
+										>
+											{{
+												t('aichat.nodeChatParams.viewProgress', {
+													selected: tripo3dTextureSelectedViewCount,
+													total: tripo3dConnectedImages.length
+												})
+											}}
 										</span>
 									</span>
-									<div v-if="tripo3dConnectedImages.length > 0" class="bp-node-chat-param-image-grid">
+									<div
+										v-if="tripo3dConnectedImages.length > 0"
+										class="bp-node-chat-param-image-grid"
+									>
 										<div
 											v-for="img in tripo3dConnectedImages"
 											:key="img.nodeId"
@@ -1367,14 +1577,26 @@
 													×
 												</button>
 												<div
-													v-if="tripo3dTextureDetectedMode === 'multiview' && isTripo3DTextureImageSelected(img.nodeId)"
+													v-if="
+														tripo3dTextureDetectedMode === 'multiview' &&
+														isTripo3DTextureImageSelected(img.nodeId)
+													"
 													class="bp-node-chat-param-view-badge"
-													:style="{ backgroundColor: tripo3dViewOptions.find(v => v.key === getTripo3DTextureImageView(img.nodeId))?.color }"
+													:style="{
+														backgroundColor: tripo3dViewOptions.find(
+															(v) => v.key === getTripo3DTextureImageView(img.nodeId)
+														)?.color
+													}"
 												>
 													{{ t('aiConfig.tripo3dViews.' + getTripo3DTextureImageView(img.nodeId)) }}
 												</div>
 											</div>
-											<template v-if="tripo3dTextureDetectedMode === 'multiview' && !isTripo3DTextureImageSelected(img.nodeId)">
+											<template
+												v-if="
+													tripo3dTextureDetectedMode === 'multiview' &&
+													!isTripo3DTextureImageSelected(img.nodeId)
+												"
+											>
 												<div class="bp-node-chat-param-view-selector">
 													<button
 														v-for="view in tripo3dViewOptions"
@@ -1382,8 +1604,15 @@
 														type="button"
 														class="bp-node-chat-param-view-btn"
 														:class="{ 'is-required': view.required }"
-														:disabled="disabled || tripo3dTextureSelectedImages.some(s => s.view === view.key)"
-														:style="tripo3dTextureSelectedImages.some(s => s.view === view.key) ? {} : { '--view-color': view.color }"
+														:disabled="
+															disabled ||
+															tripo3dTextureSelectedImages.some((s) => s.view === view.key)
+														"
+														:style="
+															tripo3dTextureSelectedImages.some((s) => s.view === view.key)
+																? {}
+																: { '--view-color': view.color }
+														"
 														@click="selectTripo3DTextureImage(img.nodeId, view.key)"
 													>
 														{{ t('aiConfig.tripo3dViews.' + view.key) }}
@@ -1392,12 +1621,16 @@
 											</template>
 										</div>
 									</div>
-									<span v-else class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.connectImageNode') }}</span>
+									<span v-else class="bp-node-chat-param-hint">
+										{{ t('aichat.nodeChatParams.connectImageNode') }}
+									</span>
 								</div>
 							</template>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dTextureModelVersion') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.tripo3dTextureModelVersion') }}
+								</span>
 								<div class="bp-node-chat-param-options">
 									<button
 										v-for="opt in tripo3dTextureModelVersionOptions"
@@ -1407,7 +1640,12 @@
 										:class="{ 'is-active': params.tripo3dTextureModelVersion === opt.value }"
 										:disabled="disabled"
 										@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTextureModelVersion', opt.value as 'v2.5-20250123' | 'v3.0-20250812')"
+										@click="
+											updateParam(
+												'tripo3dTextureModelVersion',
+												opt.value as 'v2.5-20250123' | 'v3.0-20250812'
+											)
+										"
 									>
 										{{ t(opt.label) }}
 									</button>
@@ -1415,14 +1653,18 @@
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.generatePbr') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.generatePbr') }}
+								</span>
 								<div class="bp-node-chat-param-advanced">
 									<label class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dPbr !== false"
 											:disabled="disabled"
-											@change="updateParam('tripo3dPbr', ($event.target as HTMLInputElement).checked)"
+											@change="
+												updateParam('tripo3dPbr', ($event.target as HTMLInputElement).checked)
+											"
 										/>
 										<span>{{ t('aichat.nodeChatParams.on') }}</span>
 									</label>
@@ -1430,14 +1672,21 @@
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dTextureBake') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.tripo3dTextureBake') }}
+								</span>
 								<div class="bp-node-chat-param-advanced">
 									<label class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dTextureBake !== false"
 											:disabled="disabled"
-											@change="updateParam('tripo3dTextureBake', ($event.target as HTMLInputElement).checked)"
+											@change="
+												updateParam(
+													'tripo3dTextureBake',
+													($event.target as HTMLInputElement).checked
+												)
+											"
 										/>
 										<span>{{ t('aichat.nodeChatParams.on') }}</span>
 									</label>
@@ -1445,7 +1694,9 @@
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureQuality') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.textureQuality') }}
+								</span>
 								<div class="bp-node-chat-param-options">
 									<button
 										v-for="opt in tripo3dTextureQualityOptions"
@@ -1455,16 +1706,25 @@
 										:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
 										:disabled="disabled"
 										@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTextureQuality', opt.value as 'standard' | 'detailed' | 'extreme')"
+										@click="
+											updateParam(
+												'tripo3dTextureQuality',
+												opt.value as 'standard' | 'detailed' | 'extreme'
+											)
+										"
 									>
 										{{ t(opt.label) }}
-										<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
+										<span v-if="opt.badge" class="bp-node-chat-param-badge">
+											{{ t(opt.badge) }}
+										</span>
 									</button>
 								</div>
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureAlignment') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.textureAlignment') }}
+								</span>
 								<div class="bp-node-chat-param-options">
 									<button
 										v-for="opt in tripo3dTextureAlignmentOptions"
@@ -1474,7 +1734,12 @@
 										:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
 										:disabled="disabled"
 										@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTextureAlignment', opt.value as 'original_image' | 'geometry')"
+										@click="
+											updateParam(
+												'tripo3dTextureAlignment',
+												opt.value as 'original_image' | 'geometry'
+											)
+										"
 									>
 										{{ t(opt.label) }}
 									</button>
@@ -1482,14 +1747,18 @@
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.compress') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.compress') }}
+								</span>
 								<div class="bp-node-chat-param-advanced">
 									<label class="bp-node-chat-param-toggle">
 										<input
 											type="checkbox"
 											:checked="params.tripo3dCompress === true"
 											:disabled="disabled"
-											@change="updateParam('tripo3dCompress', ($event.target as HTMLInputElement).checked)"
+											@change="
+												updateParam('tripo3dCompress', ($event.target as HTMLInputElement).checked)
+											"
 										/>
 										<span>{{ t('aichat.nodeChatParams.on') }}</span>
 									</label>
@@ -1497,16 +1766,28 @@
 							</div>
 
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureSeed') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.textureSeed') }}
+								</span>
 								<div class="bp-node-chat-param-input">
 									<input
 										type="number"
 										:value="params.tripo3dTextureSeed"
 										:disabled="disabled"
 										:placeholder="t('aichat.nodeChatParams.seedRandom')"
-										@input="updateParam('tripo3dTextureSeed', parseInt(($event.target as HTMLInputElement).value) || -1)"
+										@input="
+											updateParam(
+												'tripo3dTextureSeed',
+												parseInt(($event.target as HTMLInputElement).value) || -1
+											)
+										"
 									/>
-									<button type="button" class="bp-node-chat-param-seed-random" :disabled="disabled" @click="randomizeSeed('tripo3dTextureSeed')">
+									<button
+										type="button"
+										class="bp-node-chat-param-seed-random"
+										:disabled="disabled"
+										@click="randomizeSeed('tripo3dTextureSeed')"
+									>
 										🎲
 									</button>
 								</div>
@@ -1514,7 +1795,9 @@
 						</template>
 
 						<div v-if="tripo3dCurrentTaskMode === 'refine'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dHint') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dHint') }}
+							</span>
 							<div class="bp-node-chat-param-input">
 								<input
 									type="text"
@@ -1527,8 +1810,13 @@
 							</div>
 						</div>
 
-						<div v-if="tripo3dCurrentTaskMode === 'mesh_smartsegment'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dSegType') }}</span>
+						<div
+							v-if="tripo3dCurrentTaskMode === 'mesh_smartsegment'"
+							class="bp-node-chat-param-row"
+						>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dSegType') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in NODE_CHAT_TRIPO3D_SEG_TYPE_OPTIONS"
@@ -1538,15 +1826,23 @@
 									:class="{ 'is-active': params.tripo3dSegType === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dSegType', opt.value as 'image' | 'model')"
+									@click="updateParam('tripo3dSegType', opt.value as 'image' | 'model')"
 								>
 									{{ translateOpt(opt) }}
 								</button>
 							</div>
 						</div>
 
-						<div v-if="tripo3dCurrentTaskMode === 'mesh_segment' || tripo3dCurrentTaskMode === 'mesh_smartsegment'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dGranularity') }}</span>
+						<div
+							v-if="
+								tripo3dCurrentTaskMode === 'mesh_segment' ||
+								tripo3dCurrentTaskMode === 'mesh_smartsegment'
+							"
+							class="bp-node-chat-param-row"
+						>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dGranularity') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in NODE_CHAT_TRIPO3D_GRANULARITY_OPTIONS"
@@ -1556,7 +1852,9 @@
 									:class="{ 'is-active': params.tripo3dGranularity === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dGranularity', opt.value as 'coarse' | 'medium' | 'fine')"
+									@click="
+										updateParam('tripo3dGranularity', opt.value as 'coarse' | 'medium' | 'fine')
+									"
 								>
 									{{ translateOpt(opt) }}
 								</button>
@@ -1564,7 +1862,9 @@
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'mesh_decimate'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dDecimateModel') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dDecimateModel') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in NODE_CHAT_TRIPO3D_DECIMATE_MODEL_OPTIONS"
@@ -1574,7 +1874,7 @@
 									:class="{ 'is-active': params.tripo3dDecimateModel === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dDecimateModel', opt.value as 'v1.0' | 'v2.0')"
+									@click="updateParam('tripo3dDecimateModel', opt.value as 'v1.0' | 'v2.0')"
 								>
 									{{ translateOpt(opt) }}
 									<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -1583,7 +1883,9 @@
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'models_convert'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dConvertFormat') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dConvertFormat') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in NODE_CHAT_TRIPO3D_CONVERT_FORMAT_OPTIONS"
@@ -1593,7 +1895,12 @@
 									:class="{ 'is-active': params.tripo3dConvertFormat === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dConvertFormat', opt.value as 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF')"
+									@click="
+										updateParam(
+											'tripo3dConvertFormat',
+											opt.value as 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF'
+										)
+									"
 								>
 									{{ opt.label }}
 								</button>
@@ -1601,14 +1908,18 @@
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'models_convert'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dConvertQuad') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dConvertQuad') }}
+							</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
 										type="checkbox"
 										:checked="params.tripo3dConvertQuad"
 										:disabled="disabled"
-										@change="updateParam('tripo3dConvertQuad', ($event.target as HTMLInputElement).checked)"
+										@change="
+											updateParam('tripo3dConvertQuad', ($event.target as HTMLInputElement).checked)
+										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.on') }}</span>
 								</label>
@@ -1616,14 +1927,21 @@
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'models_convert'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dConvertFlattenBottom') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dConvertFlattenBottom') }}
+							</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
 										type="checkbox"
 										:checked="params.tripo3dConvertFlattenBottom"
 										:disabled="disabled"
-										@change="updateParam('tripo3dConvertFlattenBottom', ($event.target as HTMLInputElement).checked)"
+										@change="
+											updateParam(
+												'tripo3dConvertFlattenBottom',
+												($event.target as HTMLInputElement).checked
+											)
+										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.on') }}</span>
 								</label>
@@ -1631,7 +1949,9 @@
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'models_convert'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dConvertFaceLimit') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dConvertFaceLimit') }}
+							</span>
 							<div class="bp-node-chat-param-input">
 								<input
 									type="number"
@@ -1639,13 +1959,20 @@
 									:disabled="disabled"
 									placeholder="0 表示不限制"
 									min="0"
-									@input="updateParam('tripo3dConvertFaceLimit', parseInt(($event.target as HTMLInputElement).value) || 0)"
+									@input="
+										updateParam(
+											'tripo3dConvertFaceLimit',
+											parseInt(($event.target as HTMLInputElement).value) || 0
+										)
+									"
 								/>
 							</div>
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'models_convert'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dConvertTextureSize') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dConvertTextureSize') }}
+							</span>
 							<div class="bp-node-chat-param-input">
 								<input
 									type="number"
@@ -1654,13 +1981,20 @@
 									placeholder="512/1024/2048"
 									min="64"
 									max="4096"
-									@input="updateParam('tripo3dConvertTextureSize', parseInt(($event.target as HTMLInputElement).value) || 0)"
+									@input="
+										updateParam(
+											'tripo3dConvertTextureSize',
+											parseInt(($event.target as HTMLInputElement).value) || 0
+										)
+									"
 								/>
 							</div>
 						</div>
 
 						<div v-if="tripo3dCurrentTaskMode === 'mesh_complete'" class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.tripo3dPartNames') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.tripo3dPartNames') }}
+							</span>
 							<div class="bp-node-chat-param-input">
 								<input
 									type="text"
@@ -1668,7 +2002,15 @@
 									:disabled="disabled"
 									placeholder="部件名称，逗号分隔"
 									maxlength="255"
-									@input="updateParam('tripo3dPartNames', ($event.target as HTMLInputElement).value.split(',').map(s => s.trim()).filter(Boolean))"
+									@input="
+										updateParam(
+											'tripo3dPartNames',
+											($event.target as HTMLInputElement).value
+												.split(',')
+												.map((s) => s.trim())
+												.filter(Boolean)
+										)
+									"
 								/>
 							</div>
 						</div>
@@ -1676,24 +2018,45 @@
 
 					<template v-if="isTripo3DGenerateMode(tripo3dCurrentTaskMode)">
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.detectedMode') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.detectedMode') }}
+							</span>
 							<div class="bp-node-chat-param-mode-display">
 								<span class="bp-node-chat-param-mode-badge" :class="'mode-' + tripo3dDetectedMode">
-									{{ t('aiConfig.tripo3dModes.' + (tripo3dDetectedMode === 'text_to_model' ? 'textToModel' : tripo3dDetectedMode === 'image_to_model' ? 'imageToModel' : 'multiviewToModel')) }}
+									{{
+										t(
+											'aiConfig.tripo3dModes.' +
+												(tripo3dDetectedMode === 'text_to_model'
+													? 'textToModel'
+													: tripo3dDetectedMode === 'image_to_model'
+														? 'imageToModel'
+														: 'multiviewToModel')
+										)
+									}}
 								</span>
-								<label v-if="tripo3dConnectedImages.length >= 2" class="bp-node-chat-param-toggle bp-node-chat-param-force-single">
+								<label
+									v-if="tripo3dConnectedImages.length >= 2"
+									class="bp-node-chat-param-toggle bp-node-chat-param-force-single"
+								>
 									<input
 										type="checkbox"
 										:checked="params.tripo3dForceSingleImage"
 										:disabled="disabled"
-										@change="updateParam('tripo3dForceSingleImage', ($event.target as HTMLInputElement).checked)"
+										@change="
+											updateParam(
+												'tripo3dForceSingleImage',
+												($event.target as HTMLInputElement).checked
+											)
+										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.forceSingleImage') }}</span>
 								</label>
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.modelSeries') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.modelSeries') }}
+							</span>
 							<div class="bp-node-chat-param-options">
 								<button
 									v-for="opt in tripo3dModelSeriesOptions"
@@ -1703,7 +2066,7 @@
 									:class="{ 'is-active': tripo3dCurrentSeries === opt.value }"
 									:disabled="disabled"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dModelSeries', opt.value)"
+									@click="updateParam('tripo3dModelSeries', opt.value)"
 								>
 									<span class="bp-node-chat-param-btn-icon">{{ opt.icon }}</span>
 									{{ t(opt.label) }}
@@ -1723,7 +2086,7 @@
 									:disabled="disabled"
 									:title="opt.description ? t(opt.description) : ''"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dModelVersion', opt.value)"
+									@click="updateParam('tripo3dModelVersion', opt.value)"
 								>
 									{{ opt.label }}
 									<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
@@ -1734,8 +2097,16 @@
 							<div class="bp-node-chat-param-row">
 								<span class="bp-node-chat-param-label">
 									{{ t('aichat.nodeChatParams.selectImages') }}
-									<span v-if="tripo3dDetectedMode === 'multiview_to_model'" class="bp-node-chat-param-hint-inline">
-										{{ t('aichat.nodeChatParams.viewProgress', { selected: tripo3dSelectedViewCount, total: tripo3dConnectedImages.length }) }}
+									<span
+										v-if="tripo3dDetectedMode === 'multiview_to_model'"
+										class="bp-node-chat-param-hint-inline"
+									>
+										{{
+											t('aichat.nodeChatParams.viewProgress', {
+												selected: tripo3dSelectedViewCount,
+												total: tripo3dConnectedImages.length
+											})
+										}}
 									</span>
 								</span>
 								<div v-if="tripo3dConnectedImages.length > 0" class="bp-node-chat-param-image-grid">
@@ -1759,14 +2130,26 @@
 												×
 											</button>
 											<div
-												v-if="tripo3dDetectedMode === 'multiview_to_model' && isTripo3DImageSelected(img.nodeId)"
+												v-if="
+													tripo3dDetectedMode === 'multiview_to_model' &&
+													isTripo3DImageSelected(img.nodeId)
+												"
 												class="bp-node-chat-param-view-badge"
-												:style="{ backgroundColor: tripo3dViewOptions.find(v => v.key === getTripo3DImageView(img.nodeId))?.color }"
+												:style="{
+													backgroundColor: tripo3dViewOptions.find(
+														(v) => v.key === getTripo3DImageView(img.nodeId)
+													)?.color
+												}"
 											>
 												{{ t('aiConfig.tripo3dViews.' + getTripo3DImageView(img.nodeId)) }}
 											</div>
 										</div>
-										<template v-if="tripo3dDetectedMode === 'multiview_to_model' && !isTripo3DImageSelected(img.nodeId)">
+										<template
+											v-if="
+												tripo3dDetectedMode === 'multiview_to_model' &&
+												!isTripo3DImageSelected(img.nodeId)
+											"
+										>
 											<div class="bp-node-chat-param-view-selector">
 												<button
 													v-for="view in tripo3dViewOptions"
@@ -1774,8 +2157,14 @@
 													type="button"
 													class="bp-node-chat-param-view-btn"
 													:class="{ 'is-required': view.required }"
-													:disabled="disabled || tripo3dSelectedImages.some(s => s.view === view.key)"
-													:style="tripo3dSelectedImages.some(s => s.view === view.key) ? {} : { '--view-color': view.color }"
+													:disabled="
+														disabled || tripo3dSelectedImages.some((s) => s.view === view.key)
+													"
+													:style="
+														tripo3dSelectedImages.some((s) => s.view === view.key)
+															? {}
+															: { '--view-color': view.color }
+													"
 													@click="selectTripo3DImage(img.nodeId, view.key)"
 												>
 													{{ t('aiConfig.tripo3dViews.' + view.key) }}
@@ -1784,7 +2173,9 @@
 										</template>
 									</div>
 								</div>
-								<span v-else class="bp-node-chat-param-hint">{{ t('aichat.nodeChatParams.connectImageNode') }}</span>
+								<span v-else class="bp-node-chat-param-hint">
+									{{ t('aichat.nodeChatParams.connectImageNode') }}
+								</span>
 							</div>
 						</template>
 						<div class="bp-node-chat-param-row">
@@ -1837,21 +2228,25 @@
 									:disabled="disabled"
 									:title="preset.description ? t(preset.description) : ''"
 									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dFaceLimit', preset.value)"
+									@click="updateParam('tripo3dFaceLimit', preset.value)"
 								>
 									{{ t(preset.label) }}
 								</button>
 							</div>
 						</div>
 						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureOptions') }}</span>
+							<span class="bp-node-chat-param-label">
+								{{ t('aichat.nodeChatParams.textureOptions') }}
+							</span>
 							<div class="bp-node-chat-param-advanced">
 								<label class="bp-node-chat-param-toggle">
 									<input
 										type="checkbox"
 										:checked="params.tripo3dTexture"
 										:disabled="disabled || params.tripo3dGenerateParts"
-										@change="updateParam('tripo3dTexture', ($event.target as HTMLInputElement).checked)"
+										@change="
+											updateParam('tripo3dTexture', ($event.target as HTMLInputElement).checked)
+										"
 									/>
 									<span>{{ t('aichat.nodeChatParams.generateTexture') }}</span>
 								</label>
@@ -1868,7 +2263,9 @@
 						</div>
 						<template v-if="tripo3dDetectedMode !== 'text_to_model'">
 							<div class="bp-node-chat-param-row">
-								<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.enableImageAutofix') }}</span>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.enableImageAutofix') }}
+								</span>
 								<div class="bp-node-chat-param-options">
 									<button
 										type="button"
@@ -1876,236 +2273,301 @@
 										:class="{ 'is-active': !params.tripo3dEnableImageAutofix }"
 										:disabled="disabled"
 										@pointerdown.stop.prevent
-							@click="updateParam('tripo3dEnableImageAutofix', false)"
+										@click="updateParam('tripo3dEnableImageAutofix', false)"
 									>
-									{{ t('aiConfig.common.off') }}
-								</button>
-								<button
-									type="button"
-									class="bp-node-chat-param-btn"
-									:class="{ 'is-active': params.tripo3dEnableImageAutofix === true }"
-									:disabled="disabled"
-									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dEnableImageAutofix', true)"
-								>
-									{{ t('aiConfig.common.on') }}
-								</button>
-							</div>
-						</div>
-						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.textureAlignment') }}</span>
-							<div class="bp-node-chat-param-options">
-								<button
-									v-for="opt in tripo3dTextureAlignmentOptions"
-									:key="opt.value"
-									type="button"
-									class="bp-node-chat-param-btn"
-									:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
-									:disabled="disabled"
-									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTextureAlignment', opt.value)"
-								>
-									{{ t(opt.label) }}
-								</button>
-							</div>
-						</div>
-						<div class="bp-node-chat-param-row">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.orientation') }}</span>
-							<div class="bp-node-chat-param-options">
-								<button
-									v-for="opt in tripo3dOrientationOptions"
-									:key="opt.value"
-									type="button"
-									class="bp-node-chat-param-btn"
-									:class="{ 'is-active': params.tripo3dOrientation === opt.value }"
-									:disabled="disabled"
-									@pointerdown.stop.prevent
-							@click="updateParam('tripo3dOrientation', opt.value)"
-								>
-									{{ t(opt.label) }}
-								</button>
-							</div>
-						</div>
-					</template>
-					<div class="bp-node-chat-param-row">
-						<div class="bp-node-chat-param-advanced-header" @click="advancedCollapsed = !advancedCollapsed">
-							<span class="bp-node-chat-param-label">{{ t('aichat.nodeChatParams.advancedCollapsed') }}</span>
-							<svg
-								class="bp-node-chat-chevron"
-								:class="{ 'is-collapsed': advancedCollapsed }"
-								width="12"
-								height="12"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-							>
-								<polyline points="6 9 12 15 18 9" />
-							</svg>
-						</div>
-						<div v-show="!advancedCollapsed" class="bp-node-chat-param-advanced-body">
-							<div class="bp-node-chat-param-subsection">
-								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.qualitySettings') }}</span>
-								<div v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-row">
-									<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.geometryQuality') }}</span>
-									<div class="bp-node-chat-param-options">
-										<button
-											v-for="opt in tripo3dGeometryQualityOptions"
-											:key="opt.value"
-											type="button"
-											class="bp-node-chat-param-btn"
-											:class="{ 'is-active': params.tripo3dGeometryQuality === opt.value }"
-											:disabled="disabled"
-											@pointerdown.stop.prevent
-							@click="updateParam('tripo3dGeometryQuality', opt.value)"
-										>
-											{{ t(opt.label) }}
-										</button>
-									</div>
-								</div>
-								<div class="bp-node-chat-param-row">
-									<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.textureQuality') }}</span>
-									<div class="bp-node-chat-param-options">
-										<button
-											v-for="opt in tripo3dTextureQualityOptions"
-											:key="opt.value"
-											type="button"
-											class="bp-node-chat-param-btn"
-											:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
-											:disabled="disabled || !params.tripo3dTexture"
-											@pointerdown.stop.prevent
-							@click="updateParam('tripo3dTextureQuality', opt.value)"
-										>
-											{{ t(opt.label) }}
-											<span v-if="opt.badge" class="bp-node-chat-param-badge">{{ t(opt.badge) }}</span>
-										</button>
-									</div>
-								</div>
-							</div>
-							<div class="bp-node-chat-param-subsection">
-								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.topologySettings') }}</span>
-								<div class="bp-node-chat-param-advanced">
-									<label v-if="tripo3dSupportsAdvancedFeatures" class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dQuad"
-											:disabled="disabled || params.tripo3dGenerateParts || params.tripo3dSmartLowPoly"
-											@change="updateParam('tripo3dQuad', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.quad') }}</span>
-									</label>
-									<label v-if="tripo3dIsV3OrLater && !tripo3dIsPSeries" class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dSmartLowPoly"
-											:disabled="disabled || params.tripo3dQuad"
-											@change="updateParam('tripo3dSmartLowPoly', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.smartLowPoly') }}</span>
-									</label>
-									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dGenerateParts"
-											:disabled="disabled"
-											@change="updateParam('tripo3dGenerateParts', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.generateParts') }}</span>
-									</label>
-								</div>
-							</div>
-							<div class="bp-node-chat-param-subsection">
-								<span class="bp-node-chat-param-subtitle">{{ t('aichat.nodeChatParams.otherOptions') }}</span>
-								<div class="bp-node-chat-param-advanced">
-									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dAutoSize"
-											:disabled="disabled"
-											@change="updateParam('tripo3dAutoSize', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.autoSize') }}</span>
-									</label>
-									<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dCompress"
-											:disabled="disabled"
-											@change="updateParam('tripo3dCompress', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.compress') }}</span>
-									</label>
-									<label class="bp-node-chat-param-toggle">
-										<input
-											type="checkbox"
-											:checked="params.tripo3dExportUv"
-											:disabled="disabled"
-											@change="updateParam('tripo3dExportUv', ($event.target as HTMLInputElement).checked)"
-										/>
-										<span>{{ t('aichat.nodeChatParams.exportUv') }}</span>
-									</label>
-								</div>
-							</div>
-							<div class="bp-node-chat-param-subsection">
-								<div class="bp-node-chat-param-seed-group">
-									<div class="bp-node-chat-param-seed">
-										<label>{{ t('aichat.nodeChatParams.modelSeed') }}</label>
-										<input
-											type="number"
-											:value="params.tripo3dModelSeed"
-											:disabled="disabled"
-											:placeholder="t('aichat.nodeChatParams.seedRandom')"
-											@input="
-												updateParam(
-													'tripo3dModelSeed',
-													parseInt(($event.target as HTMLInputElement).value) || -1
-												)
-											"
-										/>
-										<button type="button" class="bp-node-chat-param-seed-random" :disabled="disabled" @click="randomizeSeed('tripo3dModelSeed')">
-											🎲
-										</button>
-									</div>
-									<div class="bp-node-chat-param-seed">
-										<label>{{ t('aichat.nodeChatParams.textureSeed') }}</label>
-										<input
-											type="number"
-											:value="params.tripo3dTextureSeed"
-											:disabled="disabled || !params.tripo3dTexture"
-											:placeholder="t('aichat.nodeChatParams.seedRandom')"
-											@input="
-												updateParam(
-													'tripo3dTextureSeed',
-													parseInt(($event.target as HTMLInputElement).value) || -1
-												)
-											"
-										/>
-										<button type="button" class="bp-node-chat-param-seed-random" :disabled="disabled || !params.tripo3dTexture" @click="randomizeSeed('tripo3dTextureSeed')">
-											🎲
-										</button>
-									</div>
-								</div>
-							</div>
-							<div class="bp-node-chat-param-subsection">
-								<span class="bp-node-chat-param-sublabel">{{ t('aichat.nodeChatParams.negativePrompt') }}</span>
-								<div class="bp-node-chat-param-input">
-									<input
-										type="text"
-										:value="params.tripo3dNegativePrompt"
+										{{ t('aiConfig.common.off') }}
+									</button>
+									<button
+										type="button"
+										class="bp-node-chat-param-btn"
+										:class="{ 'is-active': params.tripo3dEnableImageAutofix === true }"
 										:disabled="disabled"
-										:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
-										maxlength="255"
-										@input="
-											updateParam(
-												'tripo3dNegativePrompt',
-												($event.target as HTMLInputElement).value
-											)
-										"
-									/>
+										@pointerdown.stop.prevent
+										@click="updateParam('tripo3dEnableImageAutofix', true)"
+									>
+										{{ t('aiConfig.common.on') }}
+									</button>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-row">
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.textureAlignment') }}
+								</span>
+								<div class="bp-node-chat-param-options">
+									<button
+										v-for="opt in tripo3dTextureAlignmentOptions"
+										:key="opt.value"
+										type="button"
+										class="bp-node-chat-param-btn"
+										:class="{ 'is-active': params.tripo3dTextureAlignment === opt.value }"
+										:disabled="disabled"
+										@pointerdown.stop.prevent
+										@click="updateParam('tripo3dTextureAlignment', opt.value)"
+									>
+										{{ t(opt.label) }}
+									</button>
+								</div>
+							</div>
+							<div class="bp-node-chat-param-row">
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.orientation') }}
+								</span>
+								<div class="bp-node-chat-param-options">
+									<button
+										v-for="opt in tripo3dOrientationOptions"
+										:key="opt.value"
+										type="button"
+										class="bp-node-chat-param-btn"
+										:class="{ 'is-active': params.tripo3dOrientation === opt.value }"
+										:disabled="disabled"
+										@pointerdown.stop.prevent
+										@click="updateParam('tripo3dOrientation', opt.value)"
+									>
+										{{ t(opt.label) }}
+									</button>
+								</div>
+							</div>
+						</template>
+						<div class="bp-node-chat-param-row">
+							<div
+								class="bp-node-chat-param-advanced-header"
+								@click="advancedCollapsed = !advancedCollapsed"
+							>
+								<span class="bp-node-chat-param-label">
+									{{ t('aichat.nodeChatParams.advancedCollapsed') }}
+								</span>
+								<svg
+									class="bp-node-chat-chevron"
+									:class="{ 'is-collapsed': advancedCollapsed }"
+									width="12"
+									height="12"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<polyline points="6 9 12 15 18 9" />
+								</svg>
+							</div>
+							<div v-show="!advancedCollapsed" class="bp-node-chat-param-advanced-body">
+								<div class="bp-node-chat-param-subsection">
+									<span class="bp-node-chat-param-subtitle">
+										{{ t('aichat.nodeChatParams.qualitySettings') }}
+									</span>
+									<div v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-row">
+										<span class="bp-node-chat-param-sublabel">
+											{{ t('aichat.nodeChatParams.geometryQuality') }}
+										</span>
+										<div class="bp-node-chat-param-options">
+											<button
+												v-for="opt in tripo3dGeometryQualityOptions"
+												:key="opt.value"
+												type="button"
+												class="bp-node-chat-param-btn"
+												:class="{ 'is-active': params.tripo3dGeometryQuality === opt.value }"
+												:disabled="disabled"
+												@pointerdown.stop.prevent
+												@click="updateParam('tripo3dGeometryQuality', opt.value)"
+											>
+												{{ t(opt.label) }}
+											</button>
+										</div>
+									</div>
+									<div class="bp-node-chat-param-row">
+										<span class="bp-node-chat-param-sublabel">
+											{{ t('aichat.nodeChatParams.textureQuality') }}
+										</span>
+										<div class="bp-node-chat-param-options">
+											<button
+												v-for="opt in tripo3dTextureQualityOptions"
+												:key="opt.value"
+												type="button"
+												class="bp-node-chat-param-btn"
+												:class="{ 'is-active': params.tripo3dTextureQuality === opt.value }"
+												:disabled="disabled || !params.tripo3dTexture"
+												@pointerdown.stop.prevent
+												@click="updateParam('tripo3dTextureQuality', opt.value)"
+											>
+												{{ t(opt.label) }}
+												<span v-if="opt.badge" class="bp-node-chat-param-badge">
+													{{ t(opt.badge) }}
+												</span>
+											</button>
+										</div>
+									</div>
+								</div>
+								<div class="bp-node-chat-param-subsection">
+									<span class="bp-node-chat-param-subtitle">
+										{{ t('aichat.nodeChatParams.topologySettings') }}
+									</span>
+									<div class="bp-node-chat-param-advanced">
+										<label v-if="tripo3dSupportsAdvancedFeatures" class="bp-node-chat-param-toggle">
+											<input
+												type="checkbox"
+												:checked="params.tripo3dQuad"
+												:disabled="
+													disabled || params.tripo3dGenerateParts || params.tripo3dSmartLowPoly
+												"
+												@change="
+													updateParam('tripo3dQuad', ($event.target as HTMLInputElement).checked)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.quad') }}</span>
+										</label>
+										<label
+											v-if="tripo3dIsV3OrLater && !tripo3dIsPSeries"
+											class="bp-node-chat-param-toggle"
+										>
+											<input
+												type="checkbox"
+												:checked="params.tripo3dSmartLowPoly"
+												:disabled="disabled || params.tripo3dQuad"
+												@change="
+													updateParam(
+														'tripo3dSmartLowPoly',
+														($event.target as HTMLInputElement).checked
+													)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.smartLowPoly') }}</span>
+										</label>
+										<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
+											<input
+												type="checkbox"
+												:checked="params.tripo3dGenerateParts"
+												:disabled="disabled"
+												@change="
+													updateParam(
+														'tripo3dGenerateParts',
+														($event.target as HTMLInputElement).checked
+													)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.generateParts') }}</span>
+										</label>
+									</div>
+								</div>
+								<div class="bp-node-chat-param-subsection">
+									<span class="bp-node-chat-param-subtitle">
+										{{ t('aichat.nodeChatParams.otherOptions') }}
+									</span>
+									<div class="bp-node-chat-param-advanced">
+										<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
+											<input
+												type="checkbox"
+												:checked="params.tripo3dAutoSize"
+												:disabled="disabled"
+												@change="
+													updateParam(
+														'tripo3dAutoSize',
+														($event.target as HTMLInputElement).checked
+													)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.autoSize') }}</span>
+										</label>
+										<label v-if="tripo3dIsV3OrLater" class="bp-node-chat-param-toggle">
+											<input
+												type="checkbox"
+												:checked="params.tripo3dCompress"
+												:disabled="disabled"
+												@change="
+													updateParam(
+														'tripo3dCompress',
+														($event.target as HTMLInputElement).checked
+													)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.compress') }}</span>
+										</label>
+										<label class="bp-node-chat-param-toggle">
+											<input
+												type="checkbox"
+												:checked="params.tripo3dExportUv"
+												:disabled="disabled"
+												@change="
+													updateParam(
+														'tripo3dExportUv',
+														($event.target as HTMLInputElement).checked
+													)
+												"
+											/>
+											<span>{{ t('aichat.nodeChatParams.exportUv') }}</span>
+										</label>
+									</div>
+								</div>
+								<div class="bp-node-chat-param-subsection">
+									<div class="bp-node-chat-param-seed-group">
+										<div class="bp-node-chat-param-seed">
+											<label>{{ t('aichat.nodeChatParams.modelSeed') }}</label>
+											<input
+												type="number"
+												:value="params.tripo3dModelSeed"
+												:disabled="disabled"
+												:placeholder="t('aichat.nodeChatParams.seedRandom')"
+												@input="
+													updateParam(
+														'tripo3dModelSeed',
+														parseInt(($event.target as HTMLInputElement).value) || -1
+													)
+												"
+											/>
+											<button
+												type="button"
+												class="bp-node-chat-param-seed-random"
+												:disabled="disabled"
+												@click="randomizeSeed('tripo3dModelSeed')"
+											>
+												🎲
+											</button>
+										</div>
+										<div class="bp-node-chat-param-seed">
+											<label>{{ t('aichat.nodeChatParams.textureSeed') }}</label>
+											<input
+												type="number"
+												:value="params.tripo3dTextureSeed"
+												:disabled="disabled || !params.tripo3dTexture"
+												:placeholder="t('aichat.nodeChatParams.seedRandom')"
+												@input="
+													updateParam(
+														'tripo3dTextureSeed',
+														parseInt(($event.target as HTMLInputElement).value) || -1
+													)
+												"
+											/>
+											<button
+												type="button"
+												class="bp-node-chat-param-seed-random"
+												:disabled="disabled || !params.tripo3dTexture"
+												@click="randomizeSeed('tripo3dTextureSeed')"
+											>
+												🎲
+											</button>
+										</div>
+									</div>
+								</div>
+								<div class="bp-node-chat-param-subsection">
+									<span class="bp-node-chat-param-sublabel">
+										{{ t('aichat.nodeChatParams.negativePrompt') }}
+									</span>
+									<div class="bp-node-chat-param-input">
+										<input
+											type="text"
+											:value="params.tripo3dNegativePrompt"
+											:disabled="disabled"
+											:placeholder="t('aichat.nodeChatParams.negativePromptPlaceholder')"
+											maxlength="255"
+											@input="
+												updateParam(
+													'tripo3dNegativePrompt',
+													($event.target as HTMLInputElement).value
+												)
+											"
+										/>
+									</div>
 								</div>
 							</div>
 						</div>
-					</div>
 					</template>
 				</template>
 			</template>
@@ -2142,7 +2604,10 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.agentBackend === 'dvsagent' && params.model === 'gemini'" class="bp-node-chat-param-row">
+				<div
+					v-if="params.agentBackend === 'dvsagent' && params.model === 'gemini'"
+					class="bp-node-chat-param-row"
+				>
 					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.modelVersion') }}</label>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -2158,7 +2623,10 @@
 						</button>
 					</div>
 				</div>
-				<div v-if="params.agentBackend === 'dvsagent' && params.model === 'bytedance'" class="bp-node-chat-param-row">
+				<div
+					v-if="params.agentBackend === 'dvsagent' && params.model === 'bytedance'"
+					class="bp-node-chat-param-row"
+				>
 					<label class="bp-node-chat-param-label">{{ t('aiConfig.blender.modelVersion') }}</label>
 					<div class="bp-node-chat-param-options">
 						<button
@@ -2230,7 +2698,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord, WorkflowTripo3DView, WorkflowTripo3DMode } from '../../../aiworkflow/types'
+import type {
+	WorkflowNodeChatType,
+	WorkflowNodeChatParamRecord,
+	WorkflowTripo3DView,
+	WorkflowTripo3DMode
+} from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
 import {
 	NODE_CHAT_ASPECT_RATIO_OPTIONS,
@@ -2313,7 +2786,12 @@ import {
 	isTripo3DPostProcessMode,
 	isTripo3DGenerateMode
 } from './nodeChatConfig'
-import { getChatModelCatalog, getChatModelOptions, getCodexModels, getCopilotModels } from '../../../ai/models/chatModels'
+import {
+	getChatModelCatalog,
+	getChatModelOptions,
+	getCodexModels,
+	getCopilotModels
+} from '../../../ai/models/chatModels'
 
 const { t } = useI18n()
 
@@ -2335,7 +2813,10 @@ const normalizeIfNeeded = () => {
 	const normalized = normalizeTripo3DParams(props.params)
 	let changed = false
 	for (const key of Object.keys(normalized)) {
-		if (props.params[key as keyof WorkflowNodeChatParamRecord] !== normalized[key as keyof WorkflowNodeChatParamRecord]) {
+		if (
+			props.params[key as keyof WorkflowNodeChatParamRecord] !==
+			normalized[key as keyof WorkflowNodeChatParamRecord]
+		) {
 			changed = true
 			break
 		}
@@ -2345,9 +2826,13 @@ const normalizeIfNeeded = () => {
 	}
 }
 
-watch(() => [props.nodeType, props.params], () => {
-	normalizeIfNeeded()
-}, { immediate: true, deep: false })
+watch(
+	() => [props.nodeType, props.params],
+	() => {
+		normalizeIfNeeded()
+	},
+	{ immediate: true, deep: false }
+)
 
 const collapsed = ref(false)
 
@@ -2355,7 +2840,10 @@ const toggleCollapse = () => {
 	collapsed.value = !collapsed.value
 }
 
-const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value: WorkflowNodeChatParamRecord[K]) => {
+const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(
+	key: K,
+	value: WorkflowNodeChatParamRecord[K]
+) => {
 	const next: WorkflowNodeChatParamRecord = { ...props.params, [key]: value }
 
 	if (key === 'model') {
@@ -2365,16 +2853,19 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 			}
 			if (props.nodeType === 'image') {
 				const defaultModel = 'gemini-3.1-flash-image'
-				if (!next.geminiImageModelVersion || !String(next.geminiImageModelVersion).startsWith('gemini-')) {
+				if (
+					!next.geminiImageModelVersion ||
+					!String(next.geminiImageModelVersion).startsWith('gemini-')
+				) {
 					next.geminiImageModelVersion = defaultModel
 				}
 				next.nanobananaModelVersion = next.geminiImageModelVersion
 				const modelVer = String(next.geminiImageModelVersion)
-				const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+				const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map((o) => o.value)
 				if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
 					next.geminiAspectRatio = '1:1'
 				}
-				const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+				const allowedSizes = getGeminiImageSizeOptions(modelVer).map((o) => o.value)
 				if (!allowedSizes.includes(String(next.geminiImageSize))) {
 					next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
 				}
@@ -2393,11 +2884,11 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 	if (key === 'geminiImageModelVersion' && typeof value === 'string') {
 		next.nanobananaModelVersion = value
 		const modelVer = value
-		const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map(o => o.value)
+		const allowedAspectRatios = getGeminiAspectRatioOptions(modelVer).map((o) => o.value)
 		if (!allowedAspectRatios.includes(String(next.geminiAspectRatio))) {
 			next.geminiAspectRatio = '1:1'
 		}
-		const allowedSizes = getGeminiImageSizeOptions(modelVer).map(o => o.value)
+		const allowedSizes = getGeminiImageSizeOptions(modelVer).map((o) => o.value)
 		if (!allowedSizes.includes(String(next.geminiImageSize))) {
 			next.geminiImageSize = getDefaultGeminiImageSize(modelVer)
 		}
@@ -2409,14 +2900,14 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 
 	if (key === 'seedreamModelVersion' && typeof value === 'string') {
 		const modelVer = value
-		const allowedResolutions = getSeedreamResolutionOptions(modelVer).map(o => o.value)
+		const allowedResolutions = getSeedreamResolutionOptions(modelVer).map((o) => o.value)
 		if (!allowedResolutions.includes(String(next.seedreamSize))) {
 			next.seedreamSize = allowedResolutions[0]
 		}
 		if (!supportsSeedreamOutputFormat(modelVer)) {
 			next.seedreamOutputFormat = 'jpeg'
 		} else {
-			const allowedFormats = getSeedreamOutputFormatOptions(modelVer).map(o => o.value)
+			const allowedFormats = getSeedreamOutputFormatOptions(modelVer).map((o) => o.value)
 			if (!allowedFormats.includes(String(next.seedreamOutputFormat))) {
 				next.seedreamOutputFormat = allowedFormats[0]
 			}
@@ -2424,7 +2915,7 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 	}
 
 	if (key === 'meshyImageAiModel' && typeof value === 'string') {
-		const allowedAspectRatios = getMeshyImageAspectRatioOptions(value).map(o => o.value)
+		const allowedAspectRatios = getMeshyImageAspectRatioOptions(value).map((o) => o.value)
 		if (!allowedAspectRatios.includes(String(next.meshyAspectRatio))) {
 			next.meshyAspectRatio = allowedAspectRatios[0] || '1:1'
 		}
@@ -2432,7 +2923,7 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 
 	if (key === 'model' && value === 'seedream') {
 		const ver = String(next.seedreamModelVersion || 'doubao-seedream-4-5-251128')
-		const allowedResolutions = getSeedreamResolutionOptions(ver).map(o => o.value)
+		const allowedResolutions = getSeedreamResolutionOptions(ver).map((o) => o.value)
 		if (!allowedResolutions.includes(String(next.seedreamSize))) {
 			next.seedreamSize = allowedResolutions[0]
 		}
@@ -2477,7 +2968,7 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 	if (key === 'tripo3dModelSeries' && typeof value === 'string') {
 		const newVersionOptions = getTripo3DModelVersionOptions(value as 'h' | 'p')
 		const currentVersion = String(next.tripo3dModelVersion || '')
-		const validVersions = newVersionOptions.map(o => o.value)
+		const validVersions = newVersionOptions.map((o) => o.value)
 		if (!validVersions.includes(currentVersion)) {
 			next.tripo3dModelVersion = newVersionOptions[0].value
 		}
@@ -2506,7 +2997,7 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 					next.modelId = codexModels[0].id
 				}
 			} else if (value === 'copilot') {
-				const copilotModels = getCopilotModels().filter(m => m.apiSource === 'copilot')
+				const copilotModels = getCopilotModels().filter((m) => m.apiSource === 'copilot')
 				if (copilotModels.length) {
 					next.modelId = copilotModels[0].id
 				}
@@ -2522,7 +3013,10 @@ const updateParam = <K extends keyof WorkflowNodeChatParamRecord>(key: K, value:
 				next.modelId = 'doubao-seed-evolving'
 			}
 		}
-		if ((key === 'geminiTextModelVersion' || key === 'textModelVersion') && typeof value === 'string') {
+		if (
+			(key === 'geminiTextModelVersion' || key === 'textModelVersion') &&
+			typeof value === 'string'
+		) {
 			next.modelId = value
 		}
 		if (!next.thinkingEffort) {
@@ -2589,10 +3083,13 @@ const blenderDvsModelOptions = computed(() => {
 	const src = props.params.model
 	if (props.params.agentBackend !== 'dvsagent') return []
 	if (src === 'gemini') {
-		return NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS.map(o => ({ value: o.value, label: o.label }))
+		return NODE_CHAT_GEMINI_TEXT_MODEL_VERSION_OPTIONS.map((o) => ({
+			value: o.value,
+			label: o.label
+		}))
 	}
 	if (src === 'bytedance') {
-		return NODE_CHAT_SEED_MODEL_VERSION_OPTIONS.map(o => ({ value: o.value, label: o.label }))
+		return NODE_CHAT_SEED_MODEL_VERSION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))
 	}
 	return []
 })
@@ -2600,23 +3097,29 @@ const blenderDvsModelOptions = computed(() => {
 const blenderCodexModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'codex') return []
 	const models = getCodexModels()
-	const validIds = new Set(models.map(m => m.id))
+	const validIds = new Set(models.map((m) => m.id))
 	const currentModelId = props.params.modelId
-	const options = models.map(m => ({ value: m.id, label: m.label }))
+	const options = models.map((m) => ({ value: m.id, label: m.label }))
 	if (currentModelId && !validIds.has(currentModelId)) {
-		options.unshift({ value: currentModelId, label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})` })
+		options.unshift({
+			value: currentModelId,
+			label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})`
+		})
 	}
 	return options
 })
 
 const blenderCopilotModelOptions = computed(() => {
 	if (props.params.agentBackend !== 'copilot') return []
-	const models = getCopilotModels().filter(m => m.apiSource === 'copilot')
-	const validIds = new Set(models.map(m => m.id))
+	const models = getCopilotModels().filter((m) => m.apiSource === 'copilot')
+	const validIds = new Set(models.map((m) => m.id))
 	const currentModelId = props.params.modelId
-	const options = models.map(m => ({ value: m.id, label: m.label }))
+	const options = models.map((m) => ({ value: m.id, label: m.label }))
 	if (currentModelId && !validIds.has(currentModelId)) {
-		options.unshift({ value: currentModelId, label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})` })
+		options.unshift({
+			value: currentModelId,
+			label: `${currentModelId} (${t('aichat.nodeChatParams.modelNotAvailable')})`
+		})
 	}
 	return options
 })
@@ -2651,7 +3154,9 @@ const tripo3dCurrentVersionOptions = computed(() => {
 const tripo3dConnectedImages = computed<ConnectedImageInfo[]>(() => {
 	if (props.nodeType !== 'model3d') return []
 	const isTripo3DProvider = props.params.provider === 'tripo3d'
-	const isTripo3DPostProcess = props.params.tripo3dTaskMode && isTripo3DPostProcessMode(props.params.tripo3dTaskMode as WorkflowTripo3DMode)
+	const isTripo3DPostProcess =
+		props.params.tripo3dTaskMode &&
+		isTripo3DPostProcessMode(props.params.tripo3dTaskMode as WorkflowTripo3DMode)
 	if (!isTripo3DProvider && !isTripo3DPostProcess) return []
 	const refs = props.inputParamPreviewRefs ?? []
 	const results: ConnectedImageInfo[] = []
@@ -2665,17 +3170,34 @@ const tripo3dConnectedImages = computed<ConnectedImageInfo[]>(() => {
 		results.push({
 			url,
 			thumb: url,
-			name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
+			name:
+				ref.label ||
+				ref.name ||
+				t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
 			nodeId: fromNodeId
 		})
 	}
 	return results
 })
 
-const videoConnectedMedia = computed<Array<{ url: string; thumb: string; name: string; nodeId: string; kind: 'image' | 'video' | 'audio' }>>(() => {
+const videoConnectedMedia = computed<
+	Array<{
+		url: string
+		thumb: string
+		name: string
+		nodeId: string
+		kind: 'image' | 'video' | 'audio'
+	}>
+>(() => {
 	if (props.nodeType !== 'video') return []
 	const refs = props.inputParamPreviewRefs ?? []
-	const results: Array<{ url: string; thumb: string; name: string; nodeId: string; kind: 'image' | 'video' | 'audio' }> = []
+	const results: Array<{
+		url: string
+		thumb: string
+		name: string
+		nodeId: string
+		kind: 'image' | 'video' | 'audio'
+	}> = []
 	const seenNodeIds = new Set<string>()
 	for (const ref of refs) {
 		if (ref.kind !== 'image' && ref.kind !== 'video' && ref.kind !== 'audio') continue
@@ -2686,7 +3208,10 @@ const videoConnectedMedia = computed<Array<{ url: string; thumb: string; name: s
 		results.push({
 			url,
 			thumb: url,
-			name: ref.label || ref.name || t('aichat.nodeChatParams.mediaFallback', { n: results.length + 1 }),
+			name:
+				ref.label ||
+				ref.name ||
+				t('aichat.nodeChatParams.mediaFallback', { n: results.length + 1 }),
 			nodeId: fromNodeId,
 			kind: ref.kind as 'image' | 'video' | 'audio'
 		})
@@ -2698,16 +3223,26 @@ const tripo3dCurrentTaskMode = computed<WorkflowTripo3DMode>(() => {
 	return (props.params.tripo3dTaskMode as WorkflowTripo3DMode) || 'image_to_model'
 })
 
-const tripo3dDetectedMode = computed<'text_to_model' | 'image_to_model' | 'multiview_to_model'>(() => {
-	const imageCount = tripo3dConnectedImages.value.length
-	const forceSingle = props.params.tripo3dForceSingleImage === true
-	if (imageCount === 0) return 'text_to_model'
-	if (imageCount === 1 || forceSingle) return 'image_to_model'
-	return 'multiview_to_model'
-})
+const tripo3dDetectedMode = computed<'text_to_model' | 'image_to_model' | 'multiview_to_model'>(
+	() => {
+		const imageCount = tripo3dConnectedImages.value.length
+		const forceSingle = props.params.tripo3dForceSingleImage === true
+		if (imageCount === 0) return 'text_to_model'
+		if (imageCount === 1 || forceSingle) return 'image_to_model'
+		return 'multiview_to_model'
+	}
+)
 
-const tripo3dSelectedImages = computed<Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>>(() => {
-	return (props.params.tripo3dSelectedImages as Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>) || []
+const tripo3dSelectedImages = computed<
+	Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>
+>(() => {
+	return (
+		(props.params.tripo3dSelectedImages as Array<{
+			nodeId: string
+			view: WorkflowTripo3DView
+			order: number
+		}>) || []
+	)
 })
 
 const tripo3dFaceLimitRange = computed(() => {
@@ -2719,18 +3254,25 @@ const tripo3dFaceLimitRange = computed(() => {
 })
 
 const tripo3dAvailablePresets = computed(() => {
-	return tripo3dFaceLimitPresets.filter(preset => {
+	return tripo3dFaceLimitPresets.filter((preset) => {
 		if (preset.hSeriesOnly && tripo3dCurrentSeries.value !== 'h') return false
 		if (preset.value === 0) return true
-		return preset.value <= tripo3dFaceLimitRange.value.max && preset.value >= tripo3dFaceLimitRange.value.min
+		return (
+			preset.value <= tripo3dFaceLimitRange.value.max &&
+			preset.value >= tripo3dFaceLimitRange.value.min
+		)
 	})
 })
 
 const localTripo3dFaceLimit = ref<number>(Number(props.params.tripo3dFaceLimit) || 0)
 
-watch(() => props.params.tripo3dFaceLimit, (newVal: number | undefined) => {
-	localTripo3dFaceLimit.value = Number(newVal) || 0
-}, { immediate: true })
+watch(
+	() => props.params.tripo3dFaceLimit,
+	(newVal: number | undefined) => {
+		localTripo3dFaceLimit.value = Number(newVal) || 0
+	},
+	{ immediate: true }
+)
 
 const onTripo3dFaceLimitInput = (event: Event) => {
 	const input = event.target as HTMLInputElement
@@ -2751,7 +3293,8 @@ const onTripo3dFaceLimitChange = (event: Event) => {
 
 const tripo3dFaceLimitDisplay = computed(() => {
 	const faceLimit = Number(localTripo3dFaceLimit.value)
-	if (!faceLimit || faceLimit === 0) return t('aichat.nodeChatParams.faceLimitFaces', { count: 0 }).replace('0 面', '自适应')
+	if (!faceLimit || faceLimit === 0)
+		return t('aichat.nodeChatParams.faceLimitFaces', { count: 0 }).replace('0 面', '自适应')
 	return t('aichat.nodeChatParams.faceLimitFaces', { count: faceLimit })
 })
 
@@ -2761,7 +3304,7 @@ const tripo3dSelectedViewCount = computed(() => {
 
 const selectTripo3DImage = (nodeId: string, view?: WorkflowTripo3DView) => {
 	const currentSelected = [...tripo3dSelectedImages.value]
-	const existingIndex = currentSelected.findIndex(s => s.nodeId === nodeId)
+	const existingIndex = currentSelected.findIndex((s) => s.nodeId === nodeId)
 
 	if (tripo3dDetectedMode.value === 'image_to_model') {
 		if (existingIndex >= 0) {
@@ -2773,12 +3316,12 @@ const selectTripo3DImage = (nodeId: string, view?: WorkflowTripo3DView) => {
 		if (existingIndex >= 0) {
 			currentSelected.splice(existingIndex, 1)
 		} else if (view) {
-			const viewExists = currentSelected.find(s => s.view === view)
+			const viewExists = currentSelected.find((s) => s.view === view)
 			if (viewExists) return
 			currentSelected.push({
 				nodeId,
 				view,
-				order: tripo3dViewOptions.find(v => v.key === view)?.order || currentSelected.length + 1
+				order: tripo3dViewOptions.find((v) => v.key === view)?.order || currentSelected.length + 1
 			})
 		}
 		currentSelected.sort((a, b) => a.order - b.order)
@@ -2787,16 +3330,16 @@ const selectTripo3DImage = (nodeId: string, view?: WorkflowTripo3DView) => {
 }
 
 const removeTripo3DImage = (nodeId: string) => {
-	const currentSelected = tripo3dSelectedImages.value.filter(s => s.nodeId !== nodeId)
+	const currentSelected = tripo3dSelectedImages.value.filter((s) => s.nodeId !== nodeId)
 	updateParam('tripo3dSelectedImages', currentSelected)
 }
 
 const isTripo3DImageSelected = (nodeId: string) => {
-	return tripo3dSelectedImages.value.some(s => s.nodeId === nodeId)
+	return tripo3dSelectedImages.value.some((s) => s.nodeId === nodeId)
 }
 
 const getTripo3DImageView = (nodeId: string): WorkflowTripo3DView | undefined => {
-	return tripo3dSelectedImages.value.find(s => s.nodeId === nodeId)?.view
+	return tripo3dSelectedImages.value.find((s) => s.nodeId === nodeId)?.view
 }
 
 const tripo3dTextureDetectedMode = computed<'text_only' | 'single_image' | 'multiview'>(() => {
@@ -2807,8 +3350,16 @@ const tripo3dTextureDetectedMode = computed<'text_only' | 'single_image' | 'mult
 	return 'multiview'
 })
 
-const tripo3dTextureSelectedImages = computed<Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>>(() => {
-	return (props.params.tripo3dTextureSelectedImages as Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>) || []
+const tripo3dTextureSelectedImages = computed<
+	Array<{ nodeId: string; view: WorkflowTripo3DView; order: number }>
+>(() => {
+	return (
+		(props.params.tripo3dTextureSelectedImages as Array<{
+			nodeId: string
+			view: WorkflowTripo3DView
+			order: number
+		}>) || []
+	)
 })
 
 const tripo3dTextureSelectedViewCount = computed(() => {
@@ -2817,7 +3368,7 @@ const tripo3dTextureSelectedViewCount = computed(() => {
 
 const selectTripo3DTextureImage = (nodeId: string, view?: WorkflowTripo3DView) => {
 	const currentSelected = [...tripo3dTextureSelectedImages.value]
-	const existingIndex = currentSelected.findIndex(s => s.nodeId === nodeId)
+	const existingIndex = currentSelected.findIndex((s) => s.nodeId === nodeId)
 
 	if (tripo3dTextureDetectedMode.value === 'single_image') {
 		if (existingIndex >= 0) {
@@ -2829,12 +3380,12 @@ const selectTripo3DTextureImage = (nodeId: string, view?: WorkflowTripo3DView) =
 		if (existingIndex >= 0) {
 			currentSelected.splice(existingIndex, 1)
 		} else if (view) {
-			const viewExists = currentSelected.find(s => s.view === view)
+			const viewExists = currentSelected.find((s) => s.view === view)
 			if (viewExists) return
 			currentSelected.push({
 				nodeId,
 				view,
-				order: tripo3dViewOptions.find(v => v.key === view)?.order || currentSelected.length + 1
+				order: tripo3dViewOptions.find((v) => v.key === view)?.order || currentSelected.length + 1
 			})
 		}
 		currentSelected.sort((a, b) => a.order - b.order)
@@ -2843,16 +3394,16 @@ const selectTripo3DTextureImage = (nodeId: string, view?: WorkflowTripo3DView) =
 }
 
 const removeTripo3DTextureImage = (nodeId: string) => {
-	const currentSelected = tripo3dTextureSelectedImages.value.filter(s => s.nodeId !== nodeId)
+	const currentSelected = tripo3dTextureSelectedImages.value.filter((s) => s.nodeId !== nodeId)
 	updateParam('tripo3dTextureSelectedImages', currentSelected)
 }
 
 const isTripo3DTextureImageSelected = (nodeId: string) => {
-	return tripo3dTextureSelectedImages.value.some(s => s.nodeId === nodeId)
+	return tripo3dTextureSelectedImages.value.some((s) => s.nodeId === nodeId)
 }
 
 const getTripo3DTextureImageView = (nodeId: string): WorkflowTripo3DView | undefined => {
-	return tripo3dTextureSelectedImages.value.find(s => s.nodeId === nodeId)?.view
+	return tripo3dTextureSelectedImages.value.find((s) => s.nodeId === nodeId)?.view
 }
 
 const randomizeSeed = (seedKey: 'tripo3dModelSeed' | 'tripo3dTextureSeed') => {
@@ -2882,7 +3433,8 @@ const showGeminiThinkingLevel = computed(() => {
 })
 
 const I18N_KEY_PREFIXES = ['aiConfig.', 'aichat.', 'common.']
-const isI18nKey = (label: string): boolean => I18N_KEY_PREFIXES.some(prefix => label.startsWith(prefix))
+const isI18nKey = (label: string): boolean =>
+	I18N_KEY_PREFIXES.some((prefix) => label.startsWith(prefix))
 
 const translateOpt = (opt: { label: string; value: unknown; tokens?: number }) => {
 	if (!isI18nKey(opt.label)) return opt.label
@@ -2892,7 +3444,12 @@ const translateOpt = (opt: { label: string; value: unknown; tokens?: number }) =
 	return t(opt.label)
 }
 
-const translateDurationOpt = (opt: { label: string; value: number; isAuto?: boolean; seconds?: number }) => {
+const translateDurationOpt = (opt: {
+	label: string
+	value: number
+	isAuto?: boolean
+	seconds?: number
+}) => {
 	if (!isI18nKey(opt.label)) return opt.label
 	if (opt.isAuto) {
 		return t(opt.label)
@@ -2973,7 +3530,10 @@ const retextureConnectedImages = computed<ConnectedImageInfo[]>(() => {
 		results.push({
 			url,
 			thumb: url,
-			name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
+			name:
+				ref.label ||
+				ref.name ||
+				t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
 			nodeId: fromNodeId
 		})
 	}
@@ -3001,7 +3561,10 @@ const tripo3dImageConnectedImages = computed<ConnectedImageInfo[]>(() => {
 			results.push({
 				url,
 				thumb: url,
-				name: ref.label || ref.name || t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
+				name:
+					ref.label ||
+					ref.name ||
+					t('aichat.nodeChatParams.imageFallback', { n: results.length + 1 }),
 				nodeId: fromNodeId
 			})
 		}
@@ -3025,7 +3588,9 @@ const tripo3dImageConnectedCount = computed(() => {
 
 const tripo3dImageForceSingle = computed(() => props.params.tripo3dImageForceSingleImage === true)
 
-const tripo3dImageDetectedMode = computed<'text_to_image' | 'image_to_image' | 'image_to_multiview'>(() => {
+const tripo3dImageDetectedMode = computed<
+	'text_to_image' | 'image_to_image' | 'image_to_multiview'
+>(() => {
 	const count = tripo3dImageConnectedCount.value
 	if (count === 0) return 'text_to_image'
 	if (count === 1 || tripo3dImageForceSingle.value) return 'image_to_image'
@@ -3034,10 +3599,14 @@ const tripo3dImageDetectedMode = computed<'text_to_image' | 'image_to_image' | '
 
 const tripo3dImageDetectedModeLabel = computed(() => {
 	switch (tripo3dImageDetectedMode.value) {
-		case 'text_to_image': return t('aiConfig.tripo3dImageMode.textToImage')
-		case 'image_to_image': return t('aiConfig.tripo3dImageMode.imageToImage')
-		case 'image_to_multiview': return t('aiConfig.tripo3dImageMode.imageToMultiview')
-		default: return ''
+		case 'text_to_image':
+			return t('aiConfig.tripo3dImageMode.textToImage')
+		case 'image_to_image':
+			return t('aiConfig.tripo3dImageMode.imageToImage')
+		case 'image_to_multiview':
+			return t('aiConfig.tripo3dImageMode.imageToMultiview')
+		default:
+			return ''
 	}
 })
 
@@ -3092,7 +3661,9 @@ const showTripo3DNegativePrompt = computed(() => {
 })
 
 const showTripo3DStrength = computed(() => {
-	return tripo3dImageMode.value === 'image_to_image' || tripo3dImageMode.value === 'image_to_multiview'
+	return (
+		tripo3dImageMode.value === 'image_to_image' || tripo3dImageMode.value === 'image_to_multiview'
+	)
 })
 
 const showTripo3DAdvanced = computed(() => {
@@ -3613,7 +4184,9 @@ const updateTripo3DParam = (key: string, value: unknown) => {
 	font-family: inherit;
 	resize: vertical;
 	min-height: 60px;
-	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease;
 }
 
 .bp-node-chat-param-textarea textarea:focus {

@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { defineComponent, h, provide } from 'vue'
 import { mount } from '@vue/test-utils'
-import { NodeChatApiKey, provideNodeChatApi, useNodeChatApi, type NodeChatApi } from '@/ui/BluePrint/node-dialog/useNodeChatApi'
+import {
+	NodeChatApiKey,
+	provideNodeChatApi,
+	useNodeChatApi,
+	type NodeChatApi
+} from '@/ui/BluePrint/node-dialog/useNodeChatApi'
 
 function createMockApi(overrides: Partial<NodeChatApi> = {}): NodeChatApi {
 	return {
@@ -10,7 +15,7 @@ function createMockApi(overrides: Partial<NodeChatApi> = {}): NodeChatApi {
 			draft: '',
 			params: {},
 			selectedRefs: [],
-			submitting: false,
+			submitting: false
 		})),
 		open: vi.fn(),
 		close: vi.fn(),
@@ -21,7 +26,7 @@ function createMockApi(overrides: Partial<NodeChatApi> = {}): NodeChatApi {
 		submit: vi.fn(),
 		stop: vi.fn(),
 		removeParamRef: vi.fn(),
-		...overrides,
+		...overrides
 	}
 }
 
@@ -30,11 +35,9 @@ describe('useNodeChatApi', () => {
 		it('throws when no NodeChatApi is provided', () => {
 			const Child = defineComponent({
 				setup() {
-					expect(() => useNodeChatApi()).toThrow(
-						/NodeChatApi not provided/
-					)
+					expect(() => useNodeChatApi()).toThrow(/NodeChatApi not provided/)
 					return () => h('div')
-				},
+				}
 			})
 			mount(Child)
 		})
@@ -47,14 +50,14 @@ describe('useNodeChatApi', () => {
 				setup() {
 					injected = useNodeChatApi()
 					return () => h('div')
-				},
+				}
 			})
 
 			const Parent = defineComponent({
 				setup() {
 					provideNodeChatApi(mockApi)
 					return () => h(Child)
-				},
+				}
 			})
 
 			mount(Parent)
@@ -69,14 +72,14 @@ describe('useNodeChatApi', () => {
 				setup() {
 					injected = useNodeChatApi()
 					return () => h('div')
-				},
+				}
 			})
 
 			const Parent = defineComponent({
 				setup() {
 					provide(NodeChatApiKey, mockApi)
 					return () => h(Child)
-				},
+				}
 			})
 
 			mount(Parent)
@@ -91,10 +94,10 @@ describe('useNodeChatApi', () => {
 				draft: 'hello world',
 				params: { model: 'gpt-4' },
 				selectedRefs: [{ kind: 'image', label: 'ref1' }],
-				submitting: false,
+				submitting: false
 			}
 			const mockApi = createMockApi({
-				getState: vi.fn(() => expectedState),
+				getState: vi.fn(() => expectedState)
 			})
 
 			const state = mockApi.getState('node-1')
@@ -133,7 +136,7 @@ describe('useNodeChatApi', () => {
 				prompt: 'test',
 				params: {},
 				paramKey: 'aiText',
-				selectedReferences: [],
+				selectedReferences: []
 			}
 
 			mockApi.submit('node-1', payload)
@@ -161,17 +164,19 @@ describe('useNodeChatApi', () => {
 					draft: storedDrafts.get(nodeId) ?? '',
 					params: {},
 					selectedRefs: [],
-					submitting: false,
+					submitting: false
 				}),
 				open: vi.fn(),
 				close: vi.fn(),
-				saveDraft: (nodeId, draft) => { storedDrafts.set(nodeId, draft) },
+				saveDraft: (nodeId, draft) => {
+					storedDrafts.set(nodeId, draft)
+				},
 				saveParams: vi.fn(),
 				saveSelectedRefs: vi.fn(),
 				flush: vi.fn(),
 				submit: vi.fn(),
 				stop: vi.fn(),
-				removeParamRef: vi.fn(),
+				removeParamRef: vi.fn()
 			}
 
 			mockApi.saveDraft('node-a', 'my first draft')

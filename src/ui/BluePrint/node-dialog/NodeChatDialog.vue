@@ -11,7 +11,7 @@
 		@click.stop
 		@contextmenu.stop
 	>
-			<div class="bp-node-chat-dialog-inner">
+		<div class="bp-node-chat-dialog-inner">
 			<div class="bp-node-chat-surface glass-surface">
 				<span class="bp-dialog-bracket bp-dialog-bracket-tl" aria-hidden="true"></span>
 				<span class="bp-dialog-bracket bp-dialog-bracket-tr" aria-hidden="true"></span>
@@ -48,50 +48,50 @@
 						class="bp-node-chat-input-param-refs"
 					>
 						<div
-						v-for="(item, index) in inputParamPreviewRefsResolved"
-						:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
-						class="bp-node-chat-param-ref-item"
-						:class="`is-${item.kind}`"
-						:title="paramRefTitle(item)"
-					>
-						<img
-							v-if="item.previewUrl"
-							class="bp-node-chat-param-ref-thumb"
-							:src="item.previewUrl"
-							:alt="item.label || item.kind"
-							loading="lazy"
-							decoding="async"
-						/>
-						<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
-						<span class="bp-node-chat-param-ref-main">
-							<span class="bp-node-chat-param-ref-label">
-								{{ item.label }}
-							</span>
-							<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
-								{{ paramRefSubline(item) }}
-							</span>
-						</span>
-						<button
-							class="bp-node-chat-param-ref-remove"
-							type="button"
-							:title="t('aichat.nodeChat.disconnectUpstream')"
-							@click.stop="handleRemoveParamRef(item)"
+							v-for="(item, index) in inputParamPreviewRefsResolved"
+							:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
+							class="bp-node-chat-param-ref-item"
+							:class="`is-${item.kind}`"
+							:title="paramRefTitle(item)"
 						>
-							×
-						</button>
-					</div>
+							<img
+								v-if="item.previewUrl"
+								class="bp-node-chat-param-ref-thumb"
+								:src="item.previewUrl"
+								:alt="item.label || item.kind"
+								loading="lazy"
+								decoding="async"
+							/>
+							<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
+							<span class="bp-node-chat-param-ref-main">
+								<span class="bp-node-chat-param-ref-label">
+									{{ item.label }}
+								</span>
+								<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
+									{{ paramRefSubline(item) }}
+								</span>
+							</span>
+							<button
+								class="bp-node-chat-param-ref-remove"
+								type="button"
+								:title="t('aichat.nodeChat.disconnectUpstream')"
+								@click.stop="handleRemoveParamRef(item)"
+							>
+								×
+							</button>
+						</div>
 					</div>
 					<NodeChatInput
-					ref="inputRef"
-					:model-value="localDraft"
-					:placeholder="placeholder"
-					:disabled="submitting"
-					:input-param-preview-refs="inputParamPreviewRefsResolved"
-					:selected-references="selectedRefsForInput"
-					@update:model-value="onDraftInput"
-					@update:selected-references="onSelectedRefsChange"
-					@submit="handleSubmit"
-				/>
+						ref="inputRef"
+						:model-value="localDraft"
+						:placeholder="placeholder"
+						:disabled="submitting"
+						:input-param-preview-refs="inputParamPreviewRefsResolved"
+						:selected-references="selectedRefsForInput"
+						@update:model-value="onDraftInput"
+						@update:selected-references="onSelectedRefsChange"
+						@submit="handleSubmit"
+					/>
 				</div>
 
 				<div class="bp-node-chat-footer">
@@ -120,7 +120,11 @@
 							:disabled="submitting"
 							@click="toggleParams"
 						>
-							{{ showParams ? t('aichat.nodeChat.collapseParams') : t('aichat.nodeChat.paramSettings') }}
+							{{
+								showParams
+									? t('aichat.nodeChat.collapseParams')
+									: t('aichat.nodeChat.paramSettings')
+							}}
 						</button>
 						<button
 							v-if="!submitting"
@@ -144,22 +148,22 @@
 				</div>
 			</div>
 
-		<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
-			<NodeChatParamPanel
-				v-if="showParams && nodeType"
-				:key="`param-panel-${JSON.stringify(currentParams)}`"
-				class="bp-node-chat-param-popover"
-				:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
-				:node-type="nodeType"
-				:node-id="nodeId"
-				:params="currentParams"
-				:disabled="submitting"
-				:input-param-preview-refs="inputParamPreviewRefsResolved"
-				@update:params="onParamsChange"
-			/>
-		</Transition>
+			<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
+				<NodeChatParamPanel
+					v-if="showParams && nodeType"
+					:key="`param-panel-${JSON.stringify(currentParams)}`"
+					class="bp-node-chat-param-popover"
+					:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
+					:node-type="nodeType"
+					:node-id="nodeId"
+					:params="currentParams"
+					:disabled="submitting"
+					:input-param-preview-refs="inputParamPreviewRefsResolved"
+					@update:params="onParamsChange"
+				/>
+			</Transition>
 		</div>
-		</div>
+	</div>
 </template>
 
 <script setup lang="ts">
@@ -207,7 +211,7 @@ const {
 	handleStop,
 	handleClose,
 	handleRemoveParamRef,
-	toggleParams,
+	toggleParams
 } = useNodeChatSync(props)
 
 const onDraftInput = (value: string) => {
@@ -244,7 +248,8 @@ const inputParamPreviewRefsResolved = computed(() => {
 		if (item.kind === 'text') standardLabel = t('aichat.nodeChat.textLabel', { index: i })
 		else if (item.kind === 'image') standardLabel = t('aichat.nodeChat.imageLabel', { index: i })
 		else if (item.kind === 'video') standardLabel = t('aichat.nodeChat.videoLabel', { index: i })
-		else if (item.kind === 'blender') standardLabel = t('aichat.nodeChat.blenderLabel', { index: i })
+		else if (item.kind === 'blender')
+			standardLabel = t('aichat.nodeChat.blenderLabel', { index: i })
 		else standardLabel = t('aichat.nodeChat.model3dLabel', { index: i })
 		return { ...item, label: standardLabel }
 	})
