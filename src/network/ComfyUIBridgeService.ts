@@ -1176,19 +1176,36 @@ export class ComfyUIBridgeService {
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
+		console.log('[ComfyUIBridge#blueprintChatStream] CALLED with:', {
+			contentLen: payload.content.length,
+			provider: payload.provider,
+			modelId: payload.modelId,
+			refImagesCount: payload.refImages?.length || 0,
+			temperature: payload.temperature,
+			hasIpc: isThirdPartyIpcAvailable()
+		})
+		const normalizedPayload = {
+			...payload,
+			message: payload.content,
+			prompt: payload.content
+		}
 		if (isThirdPartyIpcAvailable()) {
 			try {
 				const ipcPayload = {
-					content: payload.content,
-					message: payload.content,
-					history: payload.history || [],
-					provider: payload.provider,
-					modelId: payload.modelId,
-					refImages: payload.refImages || [],
-					temperature: payload.temperature,
-					maxTokens: payload.maxTokens,
-					topP: payload.topP
+					content: normalizedPayload.content,
+					message: normalizedPayload.message,
+					history: normalizedPayload.history || [],
+					provider: normalizedPayload.provider,
+					modelId: normalizedPayload.modelId,
+					refImages: normalizedPayload.refImages || [],
+					temperature: normalizedPayload.temperature,
+					maxTokens: normalizedPayload.maxTokens,
+					topP: normalizedPayload.topP
 				}
+				console.log(
+					'[ComfyUIBridge#blueprintChatStream] Using IPC, payload provider:',
+					ipcPayload.provider
+				)
 				const generator = (window as any).dweb.thirdParty.blueprint.chatStream(ipcPayload)
 				yield* consumeThirdPartyIpcStream(generator, 'blueprint/chat:stream')
 				return
@@ -1196,13 +1213,14 @@ export class ComfyUIBridgeService {
 				console.warn('[ComfyUIBridge] blueprint/chat:stream IPC failed, falling back to HTTP:', err)
 			}
 		}
+		console.log('[ComfyUIBridge#blueprintChatStream] Using HTTP fallback')
 		const res = await this.fetchWithLog(this.url('/api/third-party/blueprint/chat:stream'), {
 			method: 'POST',
 			headers: {
 				...jsonHeaders(this.devToken),
 				Accept: 'text/event-stream'
 			},
-			body: JSON.stringify(payload ?? {}),
+			body: JSON.stringify(normalizedPayload ?? {}),
 			signal
 		})
 

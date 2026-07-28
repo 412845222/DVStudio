@@ -1488,6 +1488,15 @@ const runTextTask = async (
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
+	console.log('[runTextTask] INPUT PARAMS:', {
+		nodeId: payload.nodeId,
+		paramsKeys: Object.keys(params),
+		paramsModel: params.model,
+		paramsProvider: params.provider,
+		paramsTextModelVersion: params.textModelVersion,
+		paramsGeminiTextModelVersion: params.geminiTextModelVersion,
+		paramsModelId: params.modelId
+	})
 	const modelSelection = String(params.model ?? params.provider ?? 'bytedance').toLowerCase()
 	let provider = modelSelection
 	let modelId = ''
@@ -1504,6 +1513,12 @@ const runTextTask = async (
 			String(params.textModelVersion ?? params.modelId ?? '').trim() || 'doubao-seed-evolving'
 		providerDisplayName = '字节方舟 Doubao'
 	}
+	console.log('[runTextTask] RESOLVED PROVIDER:', {
+		provider,
+		modelId,
+		modelSelection,
+		providerDisplayName
+	})
 
 	const temperature =
 		params.temperature !== undefined && params.temperature !== null
@@ -1584,22 +1599,36 @@ const runTextTask = async (
 	}
 
 	let accumulated = ''
+	const streamRequestPayload = {
+		content: finalPrompt,
+		provider,
+		modelId,
+		refImages,
+		temperature:
+			typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
+		maxTokens:
+			typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0
+				? Math.floor(maxTokens)
+				: undefined,
+		topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
+	}
+	console.log('[runTextTask] CALLING blueprintChatStream WITH:', {
+		...streamRequestPayload,
+		content:
+			streamRequestPayload.content.slice(0, 100) +
+			(streamRequestPayload.content.length > 100 ? '...' : ''),
+		refImagesCount: refImages.length
+	})
 	try {
-		for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream({
-			content: finalPrompt,
-			provider,
-			modelId,
-			refImages,
-			temperature:
-				typeof temperature === 'number' && !Number.isNaN(temperature) ? temperature : undefined,
-			maxTokens:
-				typeof maxTokens === 'number' && !Number.isNaN(maxTokens) && maxTokens > 0
-					? Math.floor(maxTokens)
-					: undefined,
-			topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
-		})) {
-			if (ev.type === 'done') break
+		for await (const ev of (svc as ComfyUIBridgeService).blueprintChatStream(
+			streamRequestPayload
+		)) {
+			if (ev.type === 'done') {
+				console.log('[runTextTask] STREAM DONE, accumulated length:', accumulated.length)
+				break
+			}
 			if (ev.type === 'error') {
+				console.error('[runTextTask] STREAM ERROR EVENT:', ev.error)
 				throw new Error(String(ev.error?.message ?? 'unknown'))
 			}
 			const message = ev.message as Record<string, unknown>
@@ -1622,19 +1651,24 @@ const runTextTask = async (
 						? (message.payload as Record<string, unknown>)
 						: {}
 				const line = String(payload.message ?? payload.phase ?? '')
-				if (line) appendDetail(deps, task.id, line)
+				if (line) {
+					console.log('[runTextTask] TASK STATUS:', line)
+					appendDetail(deps, task.id, line)
+				}
 				continue
 			}
 		}
 	} catch (err: unknown) {
 		// Fallback: attempt simple non-streaming endpoint to keep the node task observable.
 		const fallbackMsg = getErrorMessage(err)
+		console.error('[runTextTask] STREAM CALL FAILED:', fallbackMsg, err)
 		appendDetail(deps, task.id, t('aiworkflow.runtime.streamCallFailed', { error: fallbackMsg }))
 		updateTask(deps, task.id, {
 			status: 'running',
 			statusText: t('aiworkflow.runtime.fallbackAttempt')
 		})
 		try {
+			console.log('[runTextTask] TRYING FALLBACK non-stream call')
 			const plain = await (svc as ComfyUIBridgeService).blueprintChat({
 				content: finalPrompt,
 				provider,
@@ -1648,9 +1682,19 @@ const runTextTask = async (
 						: undefined,
 				topP: typeof topP === 'number' && !Number.isNaN(topP) ? topP : undefined
 			})
+			console.log('[runTextTask] FALLBACK RESPONSE:', {
+				ok: plain.ok,
+				assistantLen: plain.ok && 'assistant' in plain ? plain.assistant?.length : 0,
+				error: !plain.ok && 'error' in plain ? plain.error : undefined
+			})
 			const text = plain.ok && typeof plain.assistant === 'string' ? plain.assistant : ''
 			if (text) accumulated = text
 		} catch (fallbackErr: unknown) {
+			console.error(
+				'[runTextTask] FALLBACK REQUEST FAILED:',
+				getErrorMessage(fallbackErr),
+				fallbackErr
+			)
 			appendDetail(
 				deps,
 				task.id,

@@ -615,27 +615,27 @@ contextBridge.exposeInMainWorld('dweb', {
 			refCache: (payload) => invoke('dweb:third-party:nanobanana:ref-cache', payload || {}),
 			generate: (payload) => invoke('dweb:third-party:nanobanana:generate', payload || {}),
 			generateStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:nanobanana:generate:stream', payload || {})
+				createIpcStreamGenerator('dweb:third-party:nanobanana:generate', payload || {})
 		},
 		seedream: {
 			refCache: (payload) => invoke('dweb:third-party:seedream:ref-cache', payload || {}),
 			generateStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:seedream:generate:stream', payload || {})
+				createIpcStreamGenerator('dweb:third-party:seedream:generate', payload || {})
 		},
 		gemini: {
 			imageGenerateStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:gemini:image:generate:stream', payload || {})
+				createIpcStreamGenerator('dweb:third-party:gemini:image:generate', payload || {})
 		},
 		jimeng: {
 			imageGenerateStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:jimeng:image:generate:stream', payload || {}),
+				createIpcStreamGenerator('dweb:third-party:jimeng:image:generate', payload || {}),
 			videoGenerateStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:jimeng:video:generate:stream', payload || {})
+				createIpcStreamGenerator('dweb:third-party:jimeng:video:generate', payload || {})
 		},
 		blueprint: {
 			chat: (payload) => invoke('dweb:third-party:blueprint:chat', payload || {}),
 			chatStream: (payload) =>
-				createIpcStreamGenerator('dweb:third-party:blueprint:chat:stream', payload || {})
+				createIpcStreamGenerator('dweb:third-party:blueprint:chat', payload || {})
 		}
 	},
 	// ===== Meshy 3D 模型生成 =====

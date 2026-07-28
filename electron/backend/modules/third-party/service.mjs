@@ -16,6 +16,18 @@ import * as geminiTaskService from '../gemini/service.mjs'
 
 const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
+const BLUEPRINT_TEXT_SYSTEM_PROMPT = `你是一个专业的AI生成提示词优化器。你的唯一任务是根据用户输入生成高质量的提示词。
+
+输出规则：
+1. 直接输出提示词内容，不要任何解释、说明、前言、后记
+2. 不要对用户说话，不要说"以下是..."、"希望对你有帮助"等任何对话性语言
+3. 不要使用Markdown格式（不要代码块、标题、列表、分割线、emoji）
+4. 不要提到DVStudio或任何软件名称
+5. 不要给出参数建议、使用教程、调整方案
+6. 根据用户需求对提示词进行润色、扩展、补充细节，使其更适合AI图像/视频生成
+7. 用户输入中文就输出中文提示词，输入英文就输出英文提示词
+8. 输出的内容就是最终可用的提示词，使用逗号分隔关键词标签，保持自然流畅`
+
 const isDevMockMode = () => {
 	return (
 		process.env.ELECTRON_DEV === '1' || process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -1602,6 +1614,18 @@ export async function* jimengVideoGenerateStream(ctx, payload) {
 export async function* blueprintChatStream(ctx, payload) {
 	const p = payload || {}
 	const message = String(p.message || p.prompt || p.content || '').trim()
+	console.log('[blueprintChatStream] INPUT:', {
+		messageLen: message.length,
+		messagePreview: message.slice(0, 100),
+		requestedProvider: p.provider,
+		modelId: p.modelId,
+		model: p.model,
+		hasRefImages: Array.isArray(p.refImages) && p.refImages.length > 0,
+		refImagesCount: Array.isArray(p.refImages) ? p.refImages.length : 0,
+		temperature: p.temperature,
+		maxTokens: p.maxTokens,
+		topP: p.topP
+	})
 	if (!message) {
 		yield wrapStreamError('message is required')
 		return
@@ -1609,7 +1633,7 @@ export async function* blueprintChatStream(ctx, payload) {
 	const messages = Array.isArray(p.messages) ? p.messages : []
 	const history = Array.isArray(p.history) ? p.history : []
 	const systemPrompt = String(
-		p.systemPrompt || p.system_prompt || '你是DVStudio蓝图助手，帮助用户构建AI工作流。'
+		p.systemPrompt || p.system_prompt || BLUEPRINT_TEXT_SYSTEM_PROMPT
 	).trim()
 	const requestedProvider = String(p.provider || '')
 		.toLowerCase()
@@ -1653,22 +1677,28 @@ export async function* blueprintChatStream(ctx, payload) {
 	let apiKey = ''
 
 	if (requestedProvider) {
+		console.log('[blueprintChatStream] Looking for API key for requested provider:', requestedProvider)
 		for (const pc of providerConfigs) {
 			if (
 				pc.prov === requestedProvider ||
 				requestedProvider.includes(pc.prov) ||
 				pc.names.some((n) => requestedProvider.includes(n))
 			) {
+				console.log('[blueprintChatStream] Matched provider config:', pc.prov, 'checking key names:', pc.names)
 				for (const name of pc.names) {
 					const k = getKeyFor(name)
 					if (k) {
+						console.log('[blueprintChatStream] Found API key for name:', name, 'key length:', k.length)
 						cfg = pc
 						provider = pc.prov
 						apiKey = k
 						break
+					} else {
+						console.log('[blueprintChatStream] No API key found for name:', name)
 					}
 				}
 				if (!cfg || !apiKey) {
+					console.error('[blueprintChatStream] No API key found for requested provider:', requestedProvider)
 					yield wrapStreamError(
 						`No API key configured for requested provider: ${requestedProvider}. Please configure it in Settings.`
 					)
@@ -1730,6 +1760,14 @@ export async function* blueprintChatStream(ctx, payload) {
 	}
 
 	const useModel = String(p.modelId || p.model || cfg.model).trim()
+	console.log('[blueprintChatStream] FINAL CONFIG:', {
+		provider,
+		useModel,
+		baseUrl: cfg.baseUrl,
+		isNative: cfg.isNative,
+		apiKeyPrefix: apiKey.slice(0, 8) + '...',
+		apiKeyLength: apiKey.length
+	})
 	const temperature =
 		p.temperature !== undefined && p.temperature !== null ? Number(p.temperature) : undefined
 	const maxTokens =
@@ -1897,24 +1935,52 @@ export async function* blueprintChatStream(ctx, payload) {
 			if (typeof topP === 'number' && !Number.isNaN(topP)) {
 				openaiBody.top_p = Math.max(0, Math.min(1, topP))
 			}
-			const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
-				headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-				body: JSON.stringify(openaiBody),
-				timeout: 120000
+			const requestUrl = `${cfg.baseUrl}/chat/completions`
+			console.log(`[${provider}:chat] SENDING REQUEST TO:`, requestUrl)
+			console.log(`[${provider}:chat] REQUEST BODY SUMMARY:`, {
+				model: openaiBody.model,
+				stream: openaiBody.stream,
+				temperature: openaiBody.temperature,
+				max_tokens: openaiBody.max_tokens,
+				top_p: openaiBody.top_p,
+				messagesCount: openaiBody.messages.length,
+				firstRole: openaiBody.messages[0]?.role
 			})
-			for await (const rawLine of stream) {
-				const line = String(rawLine || '').trim()
-				if (!line.startsWith('data:')) continue
-				const data = line.slice(5).trim()
-				if (data === '[DONE]') break
-				try {
-					const parsed = JSON.parse(data)
-					const delta = parsed?.choices?.[0]?.delta?.content
-					if (delta) {
-						fullContent += delta
-						yield wrapTextMsg(delta)
+			try {
+				const stream = client.postStream(requestUrl, {
+					headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+					body: JSON.stringify(openaiBody),
+					timeout: 120000
+				})
+				console.log(`[${provider}:chat] STREAM STARTED`)
+				let chunkCount = 0
+				for await (const rawLine of stream) {
+					const line = String(rawLine || '').trim()
+					if (!line.startsWith('data:')) continue
+					const data = line.slice(5).trim()
+					if (data === '[DONE]') {
+						console.log(`[${provider}:chat] STREAM [DONE] received, total chunks:`, chunkCount)
+						break
 					}
-				} catch {}
+					chunkCount++
+					try {
+						const parsed = JSON.parse(data)
+						const delta = parsed?.choices?.[0]?.delta?.content
+						if (delta) {
+							fullContent += delta
+							yield wrapTextMsg(delta)
+						} else if (chunkCount <= 3) {
+							console.log(`[${provider}:chat] First chunks without text delta:`, JSON.stringify(parsed).slice(0, 500))
+						}
+					} catch (parseErr) {
+						console.warn(`[${provider}:chat] Failed to parse SSE chunk:`, parseErr?.message)
+						console.warn(`[${provider}:chat] Raw chunk data:`, data?.slice(0, 500))
+					}
+				}
+				console.log(`[${provider}:chat] STREAM ENDED, fullContent length:`, fullContent.length)
+			} catch (httpErr) {
+				console.error(`[${provider}:chat] HTTP REQUEST FAILED:`, httpErr?.message, httpErr)
+				throw httpErr
 			}
 		}
 		yield wrapDone()
@@ -1942,7 +2008,7 @@ export async function blueprintChat(ctx, payload) {
 	if (!message) return { ok: false, error: 'message is required' }
 	const history = Array.isArray(p.history) ? p.history : []
 	const systemPrompt = String(
-		p.systemPrompt || p.system_prompt || '你是DVStudio蓝图助手，帮助用户构建AI工作流。'
+		p.systemPrompt || p.system_prompt || BLUEPRINT_TEXT_SYSTEM_PROMPT
 	).trim()
 	const requestedProvider = String(p.provider || '')
 		.toLowerCase()
