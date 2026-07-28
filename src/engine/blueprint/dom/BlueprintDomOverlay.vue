@@ -54,13 +54,6 @@
             @copy="onBusinessCopy"
             @delete="onBusinessDelete"
             @refresh="onBusinessRefresh"
-            @node-chat-submit="onBusinessChatSubmit"
-            @node-chat-close="onBusinessChatClose"
-            @node-chat-update-draft="onBusinessChatUpdateDraft"
-            @node-chat-update-params="onBusinessChatUpdateParams"
-            @node-chat-update-selected-refs="onBusinessChatUpdateSelectedRefs"
-            @node-chat-remove-param-ref="onBusinessChatRemoveParamRef"
-            @node-chat-stop="onBusinessChatStop"
             @preview-request="onBusinessPreviewRequest"
             @clear-resource="onBusinessClearResource"
             @upload-resource="onBusinessUploadResource"
@@ -91,7 +84,8 @@ import { CreateConnectionCommand } from '../commands/CreateConnectionCommand';
 import { ResizeNodeCommand } from '../commands/ResizeNodeCommand';
 import { SetNodeChatVisibleCommand } from '../commands/SetNodeChatVisibleCommand';
 import { UpdateNodeChatDataCommand } from '../commands/UpdateNodeChatDataCommand';
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask, WorkflowNodeChatSelectedRef } from '../../../aiworkflow/types';
+import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask, WorkflowNodeChatSelectedRef, WorkflowNodeChatType, WorkflowNodeChatParams } from '../../../aiworkflow/types';
+import { provideNodeChatApi, type NodeChatApi } from '../../../ui/BluePrint/node-dialog/useNodeChatApi';
 
 interface PortRenderData {
   id: string;
@@ -1222,6 +1216,104 @@ watch(() => [props.chatState?.visible, props.chatState?.nodeId] as const, (curre
     }
   }
 }, { immediate: true });
+
+const chatApi: NodeChatApi = {
+  getState(nodeId) {
+    if (!props.scene) {
+      return { visible: false, draft: '', params: {}, selectedRefs: [], submitting: false };
+    }
+    const node = props.scene.getBlueprintNode?.(nodeId);
+    if (!node) {
+      return { visible: false, draft: '', params: {}, selectedRefs: [], submitting: false };
+    }
+    const data = (node.data as any);
+    const cached = lastValidChatStatePerNode.get(nodeId);
+    return {
+      visible: !!data.nodeChatVisible,
+      draft: cached?.draft ?? data.nodeChatDraft ?? '',
+      params: cached?.params ?? data.nodeChatParams ?? {},
+      selectedRefs: cached?.selectedRefs ?? data.nodeChatSelectedRefs ?? [],
+      submitting: props.nodeGenerationTasks?.[nodeId]?.status === 'running' || props.nodeGenerationTasks?.[nodeId]?.status === 'submitting',
+    };
+  },
+
+  open(nodeId, nodeType) {
+    if (!props.scene) return;
+    const node = props.scene.getBlueprintNode?.(nodeId);
+    if (!node) return;
+
+    if (props.chatState?.nodeId && props.chatState.nodeId !== nodeId) {
+      const prevCached = lastValidChatStatePerNode.get(props.chatState.nodeId);
+      if (prevCached) {
+        saveChatStateToNode(
+          props.chatState.nodeId,
+          prevCached.draft,
+          prevCached.params,
+          prevCached.selectedRefs
+        );
+      }
+    }
+
+    const oldVisible = !!(node.data as any).nodeChatVisible;
+    if (!oldVisible) {
+      const cmd = new SetNodeChatVisibleCommand(props.scene, nodeId, false, true);
+      props.scene.executeCommand(cmd);
+    }
+  },
+
+  close(nodeId) {
+    onBusinessChatClose(nodeId);
+  },
+
+  saveDraft(nodeId, draft) {
+    const cached = lastValidChatStatePerNode.get(nodeId) ?? { draft: '', params: {}, selectedRefs: [] };
+    cached.draft = draft;
+    lastValidChatStatePerNode.set(nodeId, cached);
+    onBusinessChatUpdateDraft({ nodeId, draft });
+  },
+
+  saveParams(nodeId, params) {
+    const cached = lastValidChatStatePerNode.get(nodeId) ?? { draft: '', params: {}, selectedRefs: [] };
+    cached.params = params;
+    lastValidChatStatePerNode.set(nodeId, cached);
+    onBusinessChatUpdateParams({ nodeId, params });
+  },
+
+  saveSelectedRefs(nodeId, selectedRefs) {
+    const cached = lastValidChatStatePerNode.get(nodeId) ?? { draft: '', params: {}, selectedRefs: [] };
+    cached.selectedRefs = selectedRefs;
+    lastValidChatStatePerNode.set(nodeId, cached);
+    onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs });
+  },
+
+  flush(nodeId, state) {
+    if (!props.scene) return;
+    const node = props.scene.getBlueprintNode?.(nodeId);
+    if (!node) return;
+
+    const cached = lastValidChatStatePerNode.get(nodeId);
+    const finalDraft = state.draft ?? cached?.draft ?? '';
+    const finalParams = state.params ?? cached?.params ?? {};
+    const finalRefs = state.selectedRefs ?? cached?.selectedRefs ?? [];
+
+    saveChatStateToNode(nodeId, finalDraft, finalParams, finalRefs);
+    lastValidChatStatePerNode.delete(nodeId);
+  },
+
+  submit(nodeId, payload) {
+    onBusinessChatSubmit(payload);
+  },
+
+  stop(nodeId) {
+    onBusinessChatStop(nodeId);
+  },
+
+  removeParamRef(nodeId, refItem) {
+    onBusinessChatRemoveParamRef({ nodeId, refItem });
+  },
+};
+
+provideNodeChatApi(chatApi);
 </script>
 
 <style scoped>

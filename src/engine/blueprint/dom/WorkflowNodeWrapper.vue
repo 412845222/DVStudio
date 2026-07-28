@@ -17,13 +17,6 @@
       @copy="onCopy"
       @delete="onDelete"
       @refresh="onRefresh"
-      @node-chat-submit="onChatSubmit"
-      @node-chat-close="onChatClose"
-      @node-chat-update-draft="onChatUpdateDraft"
-      @node-chat-update-params="onChatUpdateParams"
-      @node-chat-update-selected-refs="onChatUpdateSelectedRefs"
-      @node-chat-remove-param-ref="onChatRemoveParamRef"
-      @node-chat-stop="onChatStop"
       @preview-request="onPreviewRequest"
       @clear-resource="onClearResource"
       @upload-resource="onUploadResource"
@@ -41,7 +34,7 @@ import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolv
 import type { BlueprintNode } from '../BlueprintNode';
 import type { LegacyResourceData } from '../types';
 import type { NodeStatus } from './DomNodeWrapper.vue';
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
+import type { WorkflowNodeGenerationTask } from '../../../aiworkflow/types';
 
 const props = defineProps<{
   node: BlueprintNode;
@@ -67,13 +60,6 @@ const emit = defineEmits<{
   (e: 'copy', nodeId: string): void;
   (e: 'delete', nodeId: string): void;
   (e: 'refresh', nodeId: string): void;
-  (e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void;
-  (e: 'node-chat-close', nodeId: string): void;
-  (e: 'node-chat-update-draft', payload: { nodeId: string; draft: string }): void;
-  (e: 'node-chat-update-params', payload: { nodeId: string; params: Record<string, any> }): void;
-  (e: 'node-chat-update-selected-refs', payload: { nodeId: string; selectedRefs: any[] }): void;
-  (e: 'node-chat-remove-param-ref', payload: { nodeId: string; refItem: any }): void;
-  (e: 'node-chat-stop', nodeId: string): void;
   (e: 'preview-request', payload: { nodeId: string; imageUrl: string }): void;
   (e: 'clear-resource', nodeId: string): void;
   (e: 'upload-resource', payload: { nodeId: string; file: File; kind: string }): void;
@@ -181,34 +167,6 @@ const onDelete = () => {
 
 const onRefresh = () => {
   emit('refresh', props.node.id);
-};
-
-const onChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
-  emit('node-chat-submit', payload);
-};
-
-const onChatClose = () => {
-  emit('node-chat-close', props.node.id);
-};
-
-const onChatUpdateDraft = (draft: string) => {
-  emit('node-chat-update-draft', { nodeId: props.node.id, draft });
-};
-
-const onChatUpdateParams = (params: Record<string, any>) => {
-  emit('node-chat-update-params', { nodeId: props.node.id, params });
-};
-
-const onChatUpdateSelectedRefs = (selectedRefs: any[]) => {
-  emit('node-chat-update-selected-refs', { nodeId: props.node.id, selectedRefs });
-};
-
-const onChatRemoveParamRef = (refItem: any) => {
-  emit('node-chat-remove-param-ref', { nodeId: props.node.id, refItem });
-};
-
-const onChatStop = () => {
-  emit('node-chat-stop', props.node.id);
 };
 
 const onPreviewRequest = (payload: { imageUrl: string }) => {

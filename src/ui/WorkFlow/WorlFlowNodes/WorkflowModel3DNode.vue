@@ -37,13 +37,6 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
-		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
-		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
-		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
-		@node-chat-close="emit('node-chat-close')"
-		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
-		@node-chat-stop="emit('node-chat-stop')"
-		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-model3d-body">
@@ -294,7 +287,7 @@ import { useI18n } from '../../../i18n'
 import { useModel3DEditor } from '../../../composables/useModel3DEditor'
 import { formatBytes, formatSpeed } from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
 import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl'
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 const { open: open3DEditor } = useModel3DEditor()
@@ -404,13 +397,6 @@ const emit = defineEmits<{
 	(e: 'three-preview-error'): void
 	(e: 'retry-meshy-fetch'): void
 	(e: 'open-meshy-task-panel'): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, any>): void
-	(e: 'node-chat-update-selected-refs', value: any[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: any): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)

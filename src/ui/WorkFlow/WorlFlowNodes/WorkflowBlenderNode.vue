@@ -44,13 +44,6 @@
 		@resize="onResize"
 		@open-node-library="() => emit('open-node-library')"
 		@auto-resize="(h) => emit('auto-resize', h)"
-		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
-		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
-		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
-		@node-chat-close="emit('node-chat-close')"
-		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
-		@node-chat-stop="emit('node-chat-stop')"
-		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-blender-body" @pointerdown.stop>
@@ -336,7 +329,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
-import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatSelectedRef, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
+import type { WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage, WorkflowNodeChatType, WorkflowNodeChatSelectedRef, WorkflowNodeGenerationTask } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from '../../BluePrint/node-dialog'
 import { useI18n } from '../../../i18n'
 
@@ -407,13 +400,6 @@ const emit = defineEmits<{
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(e: 'open-node-library'): void
 	(e: 'auto-resize', height: number): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, unknown>): void
-	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: InputParamPreviewRef): void
 	(e: 'blender-connect', payload: { host: string; port: number }): void
 	(e: 'blender-disconnect'): void
 	(e: 'blender-import'): void

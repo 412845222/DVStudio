@@ -169,13 +169,6 @@
 			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
-			@update:draft="onChatDraftUpdate"
-			@update:params="onChatParamsUpdate"
-			@update:selected-references="onChatSelectedRefsUpdate"
-			@close="onChatClose"
-			@submit="onChatSubmit"
-			@stop="emit('node-chat-stop')"
-			@remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 		/>
 
 		<div class="wf-resize wf-resize-nw" @pointerdown.stop.prevent="onResizeStart('nw', $event)" />
@@ -273,7 +266,6 @@ import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
-	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
@@ -367,13 +359,6 @@ const emit = defineEmits<{
 	): void
 	(e: 'open-node-library'): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, unknown>): void
-	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: InputParamPreviewRef): void
 	(e: 'auto-resize', height: number): void
 }>()
 
@@ -656,34 +641,6 @@ const teardownResizeObserver = () => {
 
 const onSelect = () => {
 	emit('select', props.nodeId)
-}
-
-const flushChatState = () => {
-	emit('node-chat-update-draft', nodeChatDraft.value)
-	emit('node-chat-update-params', nodeChatParams.value)
-	emit('node-chat-update-selected-refs', nodeChatSelectedRefs.value)
-}
-
-const onChatDraftUpdate = (value: string) => {
-	emit('node-chat-update-draft', value)
-}
-
-const onChatParamsUpdate = (value: Record<string, unknown>) => {
-	emit('node-chat-update-params', value)
-}
-
-const onChatSelectedRefsUpdate = (value: WorkflowNodeChatSelectedRef[]) => {
-	emit('node-chat-update-selected-refs', value)
-}
-
-const onChatClose = () => {
-	flushChatState()
-	emit('node-chat-close')
-}
-
-const onChatSubmit = (payload: WorkflowNodeChatSubmitPayload) => {
-	flushChatState()
-	emit('node-chat-submit', payload)
 }
 
 const MIN_SIZE = 80
