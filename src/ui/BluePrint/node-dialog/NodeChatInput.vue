@@ -32,14 +32,13 @@
 				引用 ·
 				<kbd>Enter</kbd>
 				发送 ·
-				<kbd>Shift</kbd>+<kbd>Enter</kbd>
+				<kbd>Shift</kbd>
+				+
+				<kbd>Enter</kbd>
 				换行
 			</span>
 		</div>
-		<div
-			class="bp-node-chat-resize-handle"
-			@mousedown="onResizeStart"
-		></div>
+		<div class="bp-node-chat-resize-handle" @mousedown="onResizeStart"></div>
 		<NodeMentionPopup
 			:visible="isMentionOpen"
 			:items="filteredItems"
@@ -108,6 +107,7 @@ const focused = ref(false)
 const isDragging = ref(false)
 const initialText = (props.modelValue ?? '').replace(new RegExp(CHIP_MARKER, 'g'), '')
 const isEmpty = ref(initialText.trim() === '' && (props.selectedReferences?.length ?? 0) === 0)
+const currentSerializedText = ref(props.modelValue ?? '')
 const currentHeight = ref(120)
 const MIN_HEIGHT = 100
 const MAX_HEIGHT = 400
@@ -143,7 +143,11 @@ const resolvedPlaceholder = computed(() => {
 	return props.placeholder || t('aichat.nodeChat.placeholder')
 })
 
-const getTextFromNodeStartToCaret = (): { text: string; atTextNode: Text; atOffset: number } | null => {
+const getTextFromNodeStartToCaret = (): {
+	text: string
+	atTextNode: Text
+	atOffset: number
+} | null => {
 	const sel = window.getSelection()
 	if (!sel || sel.rangeCount === 0 || !editorRef.value) return null
 	const range = sel.getRangeAt(0)
@@ -400,6 +404,7 @@ const syncFromDOM = () => {
 	displayText = displayText.replace(/\u00A0/g, ' ')
 	isEmpty.value = displayText.trim() === '' && refs.length === 0
 	charCount.value = displayText.length
+	currentSerializedText.value = serializedText
 	selectedRefs.value = refs
 	emit('update:modelValue', serializedText)
 	emit('update:selectedReferences', refs)
@@ -411,6 +416,7 @@ const syncFromDOM = () => {
 
 const renderFromModel = () => {
 	if (!editorRef.value || isInternalUpdate) return
+	isInternalUpdate = true
 	const editor = editorRef.value
 	const refs = selectedRefs.value
 	const serialized = props.modelValue
@@ -419,6 +425,9 @@ const renderFromModel = () => {
 		editor.innerHTML = ''
 		isEmpty.value = true
 		charCount.value = 0
+		nextTick(() => {
+			isInternalUpdate = false
+		})
 		return
 	}
 
@@ -454,6 +463,9 @@ const renderFromModel = () => {
 
 	isEmpty.value = displayLen === 0 && refs.length === 0
 	charCount.value = displayLen
+	nextTick(() => {
+		isInternalUpdate = false
+	})
 }
 
 const onEditorInput = () => {
@@ -469,7 +481,10 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault()
-				selectedMentionIndex.value = Math.min(selectedMentionIndex.value + 1, Math.max(0, filteredItems.value.length - 1))
+				selectedMentionIndex.value = Math.min(
+					selectedMentionIndex.value + 1,
+					Math.max(0, filteredItems.value.length - 1)
+				)
 				return
 			case 'ArrowUp':
 				e.preventDefault()
@@ -492,8 +507,9 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 
 	if (e.key === 'Enter' && !e.shiftKey) {
 		e.preventDefault()
+		const hasText = !isEmpty.value
 		const hasRefs = selectedRefs.value.length > 0
-		if ((props.modelValue.trim() || hasRefs) && !props.disabled) {
+		if ((hasText || hasRefs) && !props.disabled) {
 			emit('submit')
 		}
 		return
@@ -661,7 +677,9 @@ onMounted(() => {
 
 	const editor = editorRef.value
 	if (editor) {
-		editor.addEventListener('compositionstart', () => { isComposing = true })
+		editor.addEventListener('compositionstart', () => {
+			isComposing = true
+		})
 		editor.addEventListener('compositionend', () => {
 			isComposing = false
 			nextTick(() => {
@@ -675,11 +693,12 @@ onMounted(() => {
 watch(
 	() => props.modelValue,
 	() => {
-		if (isInternalUpdate) return
 		selectedRefs.value = [...(props.selectedReferences ?? [])]
 		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
+		isInternalUpdate = false
 		renderFromModel()
-	}
+	},
+	{ flush: 'post' }
 )
 
 onBeforeUnmount(() => {
@@ -722,11 +741,12 @@ const getFullText = (): string => {
 				text += label
 				return
 			}
-			if (el.classList && (
-				el.classList.contains('bp-mention-chip-remove') ||
-				el.classList.contains('bp-mention-chip-icon') ||
-				el.classList.contains('bp-mention-chip-thumb')
-			)) {
+			if (
+				el.classList &&
+				(el.classList.contains('bp-mention-chip-remove') ||
+					el.classList.contains('bp-mention-chip-icon') ||
+					el.classList.contains('bp-mention-chip-thumb'))
+			) {
 				return
 			}
 			el.childNodes.forEach(walk)

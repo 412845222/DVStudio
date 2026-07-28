@@ -8,7 +8,10 @@
 			{
 				'is-primary-selected': isPrimarySelectedResolved,
 				'is-secondary-selected': isSecondarySelectedResolved,
-				'wf-node-running': visualStatus === 'running' || taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-running':
+					visualStatus === 'running' ||
+					taskVisualStatus === 'running' ||
+					taskVisualStatus === 'submitting',
 				'wf-node-error': visualStatus === 'error' || taskVisualStatus === 'error',
 				'wf-node-task-running': taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
 				'wf-node-task-success': taskVisualStatus === 'success',
@@ -41,7 +44,12 @@
 				<span class="wf-node-type-label">{{ typeLabel }}</span>
 				<span class="wf-node-type-caret">▾</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.clearNodeContent')" @click="emit('clear-node')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.clearNodeContent')"
+				@click="emit('clear-node')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M4 5h8l-.8 8.2H4.8L4 5Z"
@@ -60,7 +68,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.clear') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.copyNode')" @click="emit('copy')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.copyNode')"
+				@click="emit('copy')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<rect
 						x="5"
@@ -85,7 +98,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.copyNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.refreshNode')" @click="emit('refresh')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.refreshNode')"
+				@click="emit('refresh')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M13.5 8a5.5 5.5 0 1 1-1.2-3.4"
@@ -105,7 +123,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.refreshNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.deleteNode')" @click="emit('delete')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.deleteNode')"
+				@click="emit('delete')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path d="M4 5h8l-1 9H5z" fill="none" stroke="currentColor" stroke-width="1.2" />
 					<path d="M3 5h10" stroke="currentColor" stroke-width="1.2" />
@@ -146,7 +169,13 @@
 					v-if="nodeGenerationTask.results && nodeGenerationTask.results.length"
 					class="wf-node-generation-results"
 				>
-					<span>{{ t('aiworkflow.nodeBase.resultsGenerated', { count: nodeGenerationTask.results.length }) }}</span>
+					<span>
+						{{
+							t('aiworkflow.nodeBase.resultsGenerated', {
+								count: nodeGenerationTask.results.length
+							})
+						}}
+					</span>
 				</div>
 			</div>
 		</div>
@@ -158,7 +187,7 @@
 		</div>
 
 		<NodeChatDialog
-			v-if="nodeChatVisibleResolved"
+			v-show="nodeChatVisibleResolved"
 			class="wf-node-inline-chat"
 			:visible="nodeChatVisibleResolved"
 			:node-id="nodeId"
@@ -169,13 +198,6 @@
 			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
-			@update:draft="(value) => emit('node-chat-update-draft', value)"
-			@update:params="(value) => emit('node-chat-update-params', value)"
-			@update:selected-references="(value) => emit('node-chat-update-selected-refs', value)"
-			@close="emit('node-chat-close')"
-			@submit="(payload) => emit('node-chat-submit', payload)"
-			@stop="emit('node-chat-stop')"
-			@remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 		/>
 
 		<div class="wf-resize wf-resize-nw" @pointerdown.stop.prevent="onResizeStart('nw', $event)" />
@@ -273,7 +295,6 @@ import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
-	WorkflowNodeChatSubmitPayload,
 	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
@@ -367,13 +388,6 @@ const emit = defineEmits<{
 	): void
 	(e: 'open-node-library'): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, unknown>): void
-	(e: 'node-chat-update-selected-refs', value: WorkflowNodeChatSelectedRef[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: InputParamPreviewRef): void
 	(e: 'auto-resize', height: number): void
 }>()
 
@@ -455,17 +469,19 @@ const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
-	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') return type
+	if (
+		type === 'text' ||
+		type === 'image' ||
+		type === 'video' ||
+		type === 'model3d' ||
+		type === 'blender'
+	)
+		return type
 	return null
 })
 
 const nodeChatVisibleResolved = computed(() => {
-	return Boolean(
-		props.nodeChatVisible &&
-		props.selected &&
-		isPrimarySelectedResolved.value &&
-		nodeChatNodeTypeResolved.value
-	)
+	return Boolean(props.nodeChatVisible && nodeChatNodeTypeResolved.value)
 })
 
 const typeLabel = computed(() => {
@@ -487,21 +503,21 @@ const typeLabel = computed(() => {
 })
 
 const NODE_TYPE_TO_ACTION_ID: Record<string, string> = {
-	'text': 'text-generation',
-	'image': 'image-generation',
+	text: 'text-generation',
+	image: 'image-generation',
 	'rotate-image': 'rotate-image',
-	'video': 'video-generation',
+	video: 'video-generation',
 	'scene-understanding': 'scene-understanding',
 	'scene-layout': 'scene-layout',
 	'scene-decompose': 'scene-decompose',
-	'comfyui': 'comfyui',
-	'model3d': 'model3d',
-	'meshy': 'meshy',
-	'blender': 'blender',
+	comfyui: 'comfyui',
+	model3d: 'model3d',
+	meshy: 'meshy',
+	blender: 'blender',
 	'unreal-export': 'unreal-export',
 	'text-merge': 'text-merge',
-	'story': 'story',
-	'base': 'base'
+	story: 'story',
+	base: 'base'
 }
 
 const DEFAULT_ALIASES_ZH = new Set([
@@ -664,6 +680,12 @@ const MIN_SIZE = 80
 
 const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 	if (e.button !== 0) return
+	console.log('[WorkflowNodeBase] onResizeStart', {
+		nodeId: props.nodeId,
+		corner,
+		nodeChatVisible: nodeChatVisibleResolved.value,
+		hasDraft: nodeChatDraft.value.length > 0
+	})
 	userResized = true
 	teardownResizeObserver()
 	emit('select', props.nodeId)
@@ -714,6 +736,10 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		})
 	}
 	const onUp = (ev: PointerEvent) => {
+		console.log('[WorkflowNodeBase] onResizeEnd', {
+			nodeId: props.nodeId,
+			nodeChatVisible: nodeChatVisibleResolved.value
+		})
 		el.removeEventListener('pointermove', onMove)
 		el.removeEventListener('pointerup', onUp)
 		el.removeEventListener('pointercancel', onUp)
@@ -817,7 +843,7 @@ onBeforeUnmount(() => {
 })
 
 defineExpose({
-	requestAutoResize,
+	requestAutoResize
 })
 </script>
 
@@ -1646,7 +1672,8 @@ defineExpose({
 }
 
 @keyframes wf-node-breath {
-	0%, 100% {
+	0%,
+	100% {
 		border-color: color-mix(in srgb, var(--wf-primary) 40%, transparent);
 		box-shadow:
 			0 0 6px color-mix(in srgb, var(--wf-primary) 15%, transparent),
@@ -1676,7 +1703,8 @@ defineExpose({
 }
 
 @keyframes wf-node-error-pulse {
-	0%, 100% {
+	0%,
+	100% {
 		border-color: color-mix(in srgb, #e74c3c 50%, transparent);
 		box-shadow:
 			0 0 6px color-mix(in srgb, #e74c3c 15%, transparent),

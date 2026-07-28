@@ -37,13 +37,6 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
-		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
-		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
-		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
-		@node-chat-close="emit('node-chat-close')"
-		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
-		@node-chat-stop="emit('node-chat-stop')"
-		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-media">
@@ -154,7 +147,7 @@ import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { exportWorkflowImageOutputPng } from '../../../aiworkflow/imageOutput'
 import { useAIWorkflowResourceCache } from '../../../views/AIWorkflow/assets/useAIWorkflowResourceCache'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -260,19 +253,42 @@ const emit = defineEmits<{
 	(e: 'media-ready'): void
 	(e: 'preview-request', payload: { imageUrl: string }): void
 	(e: 'invalidate-screenshot'): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, any>): void
-	(e: 'node-chat-update-selected-refs', value: any[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: any): void
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 let invalidateScreenshotTimer: number | null = null
 const scheduleInvalidateScreenshot = (delayMs: number = 150) => {
@@ -650,10 +666,7 @@ watch(
 )
 
 watch(
-	() => [
-		outputWidth.value,
-		outputHeight.value
-	],
+	() => [outputWidth.value, outputHeight.value],
 	async () => {
 		await nextTick()
 		scheduleInvalidateScreenshot(100)
@@ -691,8 +704,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	try {
 		ro?.disconnect()
-	} catch {
-	}
+	} catch {}
 	if (invalidateScreenshotTimer != null) {
 		clearTimeout(invalidateScreenshotTimer)
 		invalidateScreenshotTimer = null

@@ -94,6 +94,19 @@ export class BlueprintLegacySaver {
 			legacyNode.createdAt = Date.now()
 		}
 
+		if (typeof node.nodeChatDraft === 'string') {
+			legacyNode.nodeChatDraft = node.nodeChatDraft
+		}
+		if (node.nodeChatParams && typeof node.nodeChatParams === 'object') {
+			legacyNode.nodeChatParams = { ...node.nodeChatParams }
+		}
+		if (Array.isArray(node.nodeChatSelectedRefs)) {
+			legacyNode.nodeChatSelectedRefs = node.nodeChatSelectedRefs.map((r) => ({ ...r }))
+		}
+		if (typeof node.nodeChatVisible === 'boolean') {
+			legacyNode.nodeChatVisible = node.nodeChatVisible
+		}
+
 		return legacyNode
 	}
 }

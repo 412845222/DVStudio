@@ -137,10 +137,13 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		['图片节点', '四视图', 'image'],
 		20
 	),
-	'rotate-image': catalogMetadata('image', 'image2d', [], '对图片进行角度旋转，生成指定视角的新图片。', [
-		'旋转图片',
-		'rotate'
-	]),
+	'rotate-image': catalogMetadata(
+		'image',
+		'image2d',
+		[],
+		'对图片进行角度旋转，生成指定视角的新图片。',
+		['旋转图片', 'rotate']
+	),
 	'video-generation': catalogMetadata(
 		'video',
 		'video',
@@ -176,10 +179,13 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		undefined,
 		'indoor-scene'
 	),
-	comfyui: catalogMetadata('plugin', 'plugin', [], '集成 ComfyUI 工作流进行高级图像和视频生成处理。', [
-		'ComfyUI',
-		'工作流'
-	]),
+	comfyui: catalogMetadata(
+		'plugin',
+		'plugin',
+		[],
+		'集成 ComfyUI 工作流进行高级图像和视频生成处理。',
+		['ComfyUI', '工作流']
+	),
 	model3d: catalogMetadata(
 		'model3d',
 		'model3d',
@@ -188,12 +194,13 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		['3D模型', '模型预览', 'model'],
 		40
 	),
-	'unreal-export': catalogMetadata('plugin', 'model3d', [], '将场景布局和灯光设置导出到 Unreal Engine 项目中。', [
-		'Unreal',
-		'UE',
-		'导出',
-		'unreal'
-	]),
+	'unreal-export': catalogMetadata(
+		'plugin',
+		'model3d',
+		[],
+		'将场景布局和灯光设置导出到 Unreal Engine 项目中。',
+		['Unreal', 'UE', '导出', 'unreal']
+	),
 	blender: catalogMetadata(
 		'model3d',
 		'model3d',
@@ -208,7 +215,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		actionId: 'text-generation',
 		nodeType: 'text',
 		label: '文本节点',
-		inputKinds: ['text'],
+		inputKinds: ['text', 'image', 'video', 'model3d', 'audio', 'resource'],
 		outputKinds: ['text'],
 		order: 10
 	},

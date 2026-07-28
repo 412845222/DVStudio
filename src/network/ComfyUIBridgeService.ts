@@ -3,7 +3,10 @@ import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
 import { logBlueprintRequest } from './blueprintRequestLog'
 import { getErrorMessage, isRecord, isString, isArray } from '../types/utils'
-import type { ComfyObjectInfo, ComfySystemStats } from '../aiworkflow/domain/comfyui/objectInfoTypes'
+import type {
+	ComfyObjectInfo,
+	ComfySystemStats
+} from '../aiworkflow/domain/comfyui/objectInfoTypes'
 
 type ServiceOptions = {
 	baseUrl?: string | (() => string)
@@ -48,7 +51,12 @@ type PingResponse =
 	| {
 			ok: true
 			baseUrl: string
-			comfyui?: { version?: string; os?: string; deviceName?: string; devices?: Array<{ name?: string; type?: string }> }
+			comfyui?: {
+				version?: string
+				os?: string
+				deviceName?: string
+				devices?: Array<{ name?: string; type?: string }>
+			}
 			systemInfo?: ComfySystemStats & { nodeCount?: number }
 			nodeCount?: number
 	  }
@@ -661,7 +669,12 @@ const extractBodyError = (
 }
 
 function isIpcAvailable(): boolean {
-	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.meshy && !!(window as any).dweb?.seedance && !!(window as any).dweb?.tripo3d
+	return (
+		!!(window as Window).__DWEB_RUNTIME__?.isElectron &&
+		!!(window as any).dweb?.meshy &&
+		!!(window as any).dweb?.seedance &&
+		!!(window as any).dweb?.tripo3d
+	)
 }
 
 function isThirdPartyIpcAvailable(): boolean {
@@ -669,7 +682,9 @@ function isThirdPartyIpcAvailable(): boolean {
 }
 
 function isComfyRuntimeIpcAvailable(): boolean {
-	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.runtime
+	return (
+		!!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.runtime
+	)
 }
 
 function isCodexIpcAvailable(): boolean {
@@ -678,30 +693,61 @@ function isCodexIpcAvailable(): boolean {
 
 type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' }
 
-async function filesToDataUrlFiles(files: ComfyInputFile[]): Promise<Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }>> {
-	const out: Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }> = []
+async function filesToDataUrlFiles(
+	files: ComfyInputFile[]
+): Promise<
+	Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }>
+> {
+	const out: Array<{
+		name: string
+		dataUrl: string
+		mediaType: 'image' | 'video'
+		mimeType: string
+	}> = []
 	for (let i = 0; i < files.length; i++) {
 		const entry = files[i]
 		if (!entry) continue
 		const f = entry instanceof File ? entry : entry.file
 		const mediaType = entry instanceof File ? guessMediaTypeName(f.name) : entry.mediaType
 		const dataUrl = await fileToDataUrl(f)
-		out.push({ name: f.name || `input_${i}`, dataUrl, mediaType, mimeType: f.type || 'application/octet-stream' })
+		out.push({
+			name: f.name || `input_${i}`,
+			dataUrl,
+			mediaType,
+			mimeType: f.type || 'application/octet-stream'
+		})
 	}
 	return out
 }
 
 function guessMediaTypeName(filename: string): 'image' | 'video' {
-	const n = String(filename || '').trim().toLowerCase()
+	const n = String(filename || '')
+		.trim()
+		.toLowerCase()
 	if (!n) return 'image'
-	if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some(ext => n.endsWith(ext))) return 'video'
+	if (['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif'].some((ext) => n.endsWith(ext)))
+		return 'video'
 	return 'image'
 }
 
 async function formDataToObject(form: FormData): Promise<Record<string, unknown>> {
 	const obj: Record<string, unknown> = {}
-	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft'])
-	const numKeys = new Set(['duration', 'seed', 'frames', 'referenceCount', 'width', 'height', 'quantity'])
+	const boolKeys = new Set([
+		'generateAudio',
+		'watermark',
+		'cameraFixed',
+		'returnLastFrame',
+		'draft'
+	])
+	const numKeys = new Set([
+		'duration',
+		'seed',
+		'frames',
+		'referenceCount',
+		'width',
+		'height',
+		'quantity'
+	])
 	const arrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images'])
 	const refImageUrls: string[] = []
 	const formAny = form as unknown as {
@@ -772,20 +818,34 @@ async function* consumeThirdPartyIpcStream(
 		for await (const chunk of generator) {
 			let parsed = chunk
 			if (typeof chunk === 'string') {
-				try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+				try {
+					parsed = JSON.parse(chunk)
+				} catch {
+					parsed = chunk
+				}
 			}
 			if (parsed && typeof parsed === 'object') {
-				if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
-				if ((parsed as any).type === 'error') { yield parsed as any; return }
+				if ((parsed as any).type === 'done') {
+					yield { type: 'done' }
+					return
+				}
+				if ((parsed as any).type === 'error') {
+					yield parsed as any
+					return
+				}
 				if ((parsed as any).type === 'msg' && (parsed as any).message) {
-					yield { type: 'msg', message: (parsed as any).message }; continue
+					yield { type: 'msg', message: (parsed as any).message }
+					continue
 				}
 				yield parsed as any
 			}
 		}
 		yield { type: 'done' }
 	} catch (err: unknown) {
-		yield { type: 'error', error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` } }
+		yield {
+			type: 'error',
+			error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` }
+		}
 	}
 }
 
@@ -797,11 +857,18 @@ async function* consumeCodexIpcStream(
 		for await (const chunk of generator) {
 			let parsed = chunk
 			if (typeof chunk === 'string') {
-				try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+				try {
+					parsed = JSON.parse(chunk)
+				} catch {
+					parsed = chunk
+				}
 			}
 			if (parsed && typeof parsed === 'object') {
 				if ((parsed as any).type === 'error') {
-					yield { type: 'error', error: { message: (parsed as any).error?.message || 'Stream error' } }
+					yield {
+						type: 'error',
+						error: { message: (parsed as any).error?.message || 'Stream error' }
+					}
 					return
 				}
 				if ((parsed as any).event === 'done' || (parsed as any).type === 'done') {
@@ -817,7 +884,10 @@ async function* consumeCodexIpcStream(
 		}
 		yield { type: 'done' }
 	} catch (err: unknown) {
-		yield { type: 'error', error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` } }
+		yield {
+			type: 'error',
+			error: { message: getErrorMessage(err) || `${fallbackLabel} failed via IPC` }
+		}
 	}
 }
 
@@ -853,9 +923,35 @@ async function formDataToSeedancePayload(form: FormData): Promise<Record<string,
 	type VideoFileRef = { __file: true; name: string; type: string; data: ArrayBuffer }
 	const refVideoUrls: (string | VideoFileRef)[] = []
 	const refAudioUrls: string[] = []
-	const boolKeys = new Set(['generateAudio', 'watermark', 'cameraFixed', 'returnLastFrame', 'draft', 'generate_audio', 'camera_fixed', 'return_last_frame', 'enableWebSearch', 'enable_web_search'])
-	const numKeys = new Set(['duration', 'seed', 'frames', 'width', 'height', 'quantity', 'referenceCount', 'priority'])
-	const imageArrayKeys = new Set(['refImages', 'refCacheIds', 'ref_cache_ids', 'ref_images', 'imageUrls'])
+	const boolKeys = new Set([
+		'generateAudio',
+		'watermark',
+		'cameraFixed',
+		'returnLastFrame',
+		'draft',
+		'generate_audio',
+		'camera_fixed',
+		'return_last_frame',
+		'enableWebSearch',
+		'enable_web_search'
+	])
+	const numKeys = new Set([
+		'duration',
+		'seed',
+		'frames',
+		'width',
+		'height',
+		'quantity',
+		'referenceCount',
+		'priority'
+	])
+	const imageArrayKeys = new Set([
+		'refImages',
+		'refCacheIds',
+		'ref_cache_ids',
+		'ref_images',
+		'imageUrls'
+	])
 	const videoArrayKeys = new Set(['refVideos', 'ref_videos', 'videoUrls'])
 	const audioArrayKeys = new Set(['refAudios', 'ref_audios', 'audioUrls'])
 	const formAny = form as unknown as {
@@ -872,7 +968,7 @@ async function formDataToSeedancePayload(form: FormData): Promise<Record<string,
 					__file: true as const,
 					name: value.name,
 					type: value.type || 'video/mp4',
-					data: ab,
+					data: ab
 				})
 			} else {
 				const dataUrl = await fileToDataUrl(value)
@@ -1002,6 +1098,9 @@ export class ComfyUIBridgeService {
 		provider?: string
 		modelId?: string
 		refImages?: string[]
+		temperature?: number
+		maxTokens?: number
+		topP?: number
 	}): Promise<BlueprintChatResponse> {
 		if (isThirdPartyIpcAvailable()) {
 			try {
@@ -1011,7 +1110,10 @@ export class ComfyUIBridgeService {
 					history: payload.history || [],
 					provider: payload.provider,
 					modelId: payload.modelId,
-					refImages: payload.refImages || []
+					refImages: payload.refImages || [],
+					temperature: payload.temperature,
+					maxTokens: payload.maxTokens,
+					topP: payload.topP
 				}
 				const ipcResult = await (window as any).dweb.thirdParty.blueprint.chat(ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -1068,6 +1170,9 @@ export class ComfyUIBridgeService {
 			provider?: string
 			modelId?: string
 			refImages?: string[]
+			temperature?: number
+			maxTokens?: number
+			topP?: number
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<BlueprintChatStreamEvent, void, void> {
@@ -1079,7 +1184,10 @@ export class ComfyUIBridgeService {
 					history: payload.history || [],
 					provider: payload.provider,
 					modelId: payload.modelId,
-					refImages: payload.refImages || []
+					refImages: payload.refImages || [],
+					temperature: payload.temperature,
+					maxTokens: payload.maxTokens,
+					topP: payload.topP
 				}
 				const generator = (window as any).dweb.thirdParty.blueprint.chatStream(ipcPayload)
 				yield* consumeThirdPartyIpcStream(generator, 'blueprint/chat:stream')
@@ -1212,7 +1320,9 @@ export class ComfyUIBridgeService {
 	async codexListSessions(projectId: number | null): Promise<CodexListSessionsResponse> {
 		if (isCodexIpcAvailable()) {
 			try {
-				const result = await window.dweb?.codex?.listSessions?.({ projectId: projectId ?? undefined })
+				const result = await window.dweb?.codex?.listSessions?.({
+					projectId: projectId ?? undefined
+				})
 				if (result && !('error' in result)) return result as CodexListSessionsResponse
 				if (result && 'error' in result) return result as { error: string }
 			} catch (err) {
@@ -1268,7 +1378,10 @@ export class ComfyUIBridgeService {
 		if (!sid) return { error: 'sessionId is required' }
 		if (isCodexIpcAvailable()) {
 			try {
-				const result = await window.dweb?.codex?.listMessages?.({ sessionId: sid, projectId: projectId ?? undefined })
+				const result = await window.dweb?.codex?.listMessages?.({
+					sessionId: sid,
+					projectId: projectId ?? undefined
+				})
 				if (result && !('error' in result)) return result as CodexListMessagesResponse
 				if (result && 'error' in result) return result as { error: string }
 			} catch (err) {
@@ -1300,7 +1413,11 @@ export class ComfyUIBridgeService {
 		if (!sid) return { error: 'sessionId is required' }
 		if (isCodexIpcAvailable()) {
 			try {
-				const result = await window.dweb?.codex?.updateSession?.({ sessionId: sid, title: payload.title, projectId: payload.projectId ?? undefined })
+				const result = await window.dweb?.codex?.updateSession?.({
+					sessionId: sid,
+					title: payload.title,
+					projectId: payload.projectId ?? undefined
+				})
 				if (result && !('error' in result)) return result as CodexUpdateSessionResponse
 				if (result && 'error' in result) return result as { error: string }
 			} catch (err) {
@@ -1327,7 +1444,10 @@ export class ComfyUIBridgeService {
 		if (!sid) return { error: 'sessionId is required' }
 		if (isCodexIpcAvailable()) {
 			try {
-				const result = await window.dweb?.codex?.deleteSession?.({ sessionId: sid, projectId: payload.projectId ?? undefined })
+				const result = await window.dweb?.codex?.deleteSession?.({
+					sessionId: sid,
+					projectId: payload.projectId ?? undefined
+				})
 				if (result) return result as { ok?: boolean; error?: string }
 			} catch (err) {
 				console.warn('[ComfyUIBridgeService] codex.deleteSession IPC failed:', err)
@@ -1419,7 +1539,10 @@ export class ComfyUIBridgeService {
 					return
 				}
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] codex/send-message:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] codex/send-message:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const streamPath = useTestStream
@@ -1661,7 +1784,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'nanobanana/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] nanobanana/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] nanobanana/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const headers: Record<string, string> = {
@@ -1768,7 +1894,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'seedream/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] seedream/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] seedream/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const headers: Record<string, string> = {
@@ -1874,7 +2003,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'gemini/image/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] gemini/image/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] gemini/image/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const headers: Record<string, string> = {
@@ -1983,7 +2115,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'seedance/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] seedance/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] seedance/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 
@@ -2095,7 +2230,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'jimeng/image/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] jimeng/image/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] jimeng/image/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const headers: Record<string, string> = {
@@ -2206,7 +2344,10 @@ export class ComfyUIBridgeService {
 				yield* consumeThirdPartyIpcStream(generator, 'jimeng/video/generate:stream')
 				return
 			} catch (err: unknown) {
-				console.warn('[ComfyUIBridge] jimeng/video/generate:stream IPC failed, falling back to HTTP:', err)
+				console.warn(
+					'[ComfyUIBridge] jimeng/video/generate:stream IPC failed, falling back to HTTP:',
+					err
+				)
 			}
 		}
 		const headers: Record<string, string> = {
@@ -2312,7 +2453,11 @@ export class ComfyUIBridgeService {
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] ping IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'ping failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'ping failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
@@ -2321,14 +2466,21 @@ export class ComfyUIBridgeService {
 	async listWorkflows(comfyBaseUrl: string): Promise<WorkflowsListResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.list({ baseUrl: comfyBaseUrl })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.list({
+					baseUrl: comfyBaseUrl
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as WorkflowsListResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl, workflows: [] }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] workflows/list IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'workflows/list failed via IPC', baseUrl: comfyBaseUrl, workflows: [] }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'workflows/list failed via IPC',
+					baseUrl: comfyBaseUrl,
+					workflows: []
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl, workflows: [] }
@@ -2337,14 +2489,21 @@ export class ComfyUIBridgeService {
 	async getWorkflow(comfyBaseUrl: string, workflowPath: string): Promise<WorkflowGetResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.get({ baseUrl: comfyBaseUrl, workflowPath })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.get({
+					baseUrl: comfyBaseUrl,
+					workflowPath
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as WorkflowGetResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] workflows/get IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'workflows/get failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'workflows/get failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
@@ -2353,14 +2512,20 @@ export class ComfyUIBridgeService {
 	async getObjectInfo(comfyBaseUrl: string): Promise<ObjectInfoResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.objectInfo({ baseUrl: comfyBaseUrl })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.objectInfo({
+					baseUrl: comfyBaseUrl
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as ObjectInfoResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] runtime/object_info IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'object_info failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'object_info failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
@@ -2369,33 +2534,61 @@ export class ComfyUIBridgeService {
 	async getHistoryWorkflow(comfyBaseUrl: string, promptId: string): Promise<WorkflowGetResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.getHistory({ baseUrl: comfyBaseUrl, promptId })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.getHistory({
+					baseUrl: comfyBaseUrl,
+					promptId
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as WorkflowGetResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] workflows/get-history IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'workflows/get-history failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'workflows/get-history failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
-	async resolveHistory(comfyBaseUrl: string, workflowPath: string): Promise<ResolveHistoryResponse> {
+	async resolveHistory(
+		comfyBaseUrl: string,
+		workflowPath: string
+	): Promise<ResolveHistoryResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.resolveHistory({ baseUrl: comfyBaseUrl, workflowPath })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.resolveHistory({
+					baseUrl: comfyBaseUrl,
+					workflowPath
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as ResolveHistoryResponse
 				}
-				return { ok: false, error: 'Invalid IPC response', message: 'Invalid IPC response', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: 'Invalid IPC response',
+					message: 'Invalid IPC response',
+					baseUrl: comfyBaseUrl
+				}
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] workflows/resolve-history IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'resolve-history failed via IPC', message: getErrorMessage(err) || 'resolve-history failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'resolve-history failed via IPC',
+					message: getErrorMessage(err) || 'resolve-history failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
-		return { ok: false, error: 'IPC not available', message: 'IPC not available', baseUrl: comfyBaseUrl }
+		return {
+			ok: false,
+			error: 'IPC not available',
+			message: 'IPC not available',
+			baseUrl: comfyBaseUrl
+		}
 	}
 
 	async run(
@@ -2437,7 +2630,12 @@ export class ComfyUIBridgeService {
 					}
 					return ipcResult as RunResponse
 				}
-				return { ok: false, status: 500, error: 'Invalid IPC response', baseUrl: comfyBaseUrl } as RunResponse
+				return {
+					ok: false,
+					status: 500,
+					error: 'Invalid IPC response',
+					baseUrl: comfyBaseUrl
+				} as RunResponse
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] run IPC failed:', err)
 				return {
@@ -2448,20 +2646,32 @@ export class ComfyUIBridgeService {
 				} as RunResponse
 			}
 		}
-		return { ok: false, status: 500, error: 'IPC not available', baseUrl: comfyBaseUrl } as RunResponse
+		return {
+			ok: false,
+			status: 500,
+			error: 'IPC not available',
+			baseUrl: comfyBaseUrl
+		} as RunResponse
 	}
 
 	async outputs(comfyBaseUrl: string, promptId: string): Promise<OutputsResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.outputs({ baseUrl: comfyBaseUrl, promptId })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.outputs({
+					baseUrl: comfyBaseUrl,
+					promptId
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as OutputsResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] outputs IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'outputs failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'outputs failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
@@ -3075,7 +3285,9 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as Tripo3DGenerateResponse
 	}
 
-	async tripo3dGenerateTextToImage(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+	async tripo3dGenerateTextToImage(
+		payload: Record<string, unknown>
+	): Promise<Tripo3DGenerateResponse> {
 		if (isIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.tripo3d.generateTextToImage(payload)
@@ -3090,11 +3302,14 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/text-to-image'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload || {})
-		})
+		const res = await this.fetchWithLog(
+			this.url('/api/third-party/tripo3d/generate/text-to-image'),
+			{
+				method: 'POST',
+				headers: jsonHeaders(this.devToken),
+				body: JSON.stringify(payload || {})
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3106,7 +3321,9 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as Tripo3DGenerateResponse
 	}
 
-	async tripo3dGenerateImageToImage(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+	async tripo3dGenerateImageToImage(
+		payload: Record<string, unknown>
+	): Promise<Tripo3DGenerateResponse> {
 		if (isIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.tripo3d.generateImageToImage(payload)
@@ -3121,11 +3338,14 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/image-to-image'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload || {})
-		})
+		const res = await this.fetchWithLog(
+			this.url('/api/third-party/tripo3d/generate/image-to-image'),
+			{
+				method: 'POST',
+				headers: jsonHeaders(this.devToken),
+				body: JSON.stringify(payload || {})
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3137,7 +3357,9 @@ export class ComfyUIBridgeService {
 		return (await res.json()) as Tripo3DGenerateResponse
 	}
 
-	async tripo3dGenerateImageToMultiview(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {
+	async tripo3dGenerateImageToMultiview(
+		payload: Record<string, unknown>
+	): Promise<Tripo3DGenerateResponse> {
 		if (isIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.tripo3d.generateImageToMultiview(payload)
@@ -3152,11 +3374,14 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url('/api/third-party/tripo3d/generate/image-to-multiview'), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken),
-			body: JSON.stringify(payload || {})
-		})
+		const res = await this.fetchWithLog(
+			this.url('/api/third-party/tripo3d/generate/image-to-multiview'),
+			{
+				method: 'POST',
+				headers: jsonHeaders(this.devToken),
+				body: JSON.stringify(payload || {})
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3189,10 +3414,13 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3232,10 +3460,13 @@ export class ComfyUIBridgeService {
 		if (query?.status) params.set('status', query.status)
 		if (query?.limit) params.set('limit', String(query.limit))
 		const qs = params.toString()
-		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/tasks${qs ? `?${qs}` : ''}`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/tripo3d/tasks${qs ? `?${qs}` : ''}`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3268,10 +3499,13 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/detail`), {
-			method: 'GET',
-			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/detail`),
+			{
+				method: 'GET',
+				headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3304,10 +3538,13 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/stop`), {
-			method: 'POST',
-			headers: jsonHeaders(this.devToken)
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}/stop`),
+			{
+				method: 'POST',
+				headers: jsonHeaders(this.devToken)
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3340,10 +3577,13 @@ export class ComfyUIBridgeService {
 				}
 			}
 		}
-		const res = await this.fetchWithLog(this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`), {
-			method: 'DELETE',
-			headers: jsonHeaders(this.devToken)
-		})
+		const res = await this.fetchWithLog(
+			this.url(`/api/third-party/tripo3d/task/${encodeURIComponent(taskId)}`),
+			{
+				method: 'DELETE',
+				headers: jsonHeaders(this.devToken)
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -3435,14 +3675,21 @@ export class ComfyUIBridgeService {
 	async cancel(comfyBaseUrl: string, promptId: string): Promise<CancelResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.cancel({ baseUrl: comfyBaseUrl, promptId })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.cancel({
+					baseUrl: comfyBaseUrl,
+					promptId
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as CancelResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] cancel IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'cancel failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'cancel failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
@@ -3451,23 +3698,36 @@ export class ComfyUIBridgeService {
 	async job(comfyBaseUrl: string, id: string): Promise<JobResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.job({ baseUrl: comfyBaseUrl, id })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.job({
+					baseUrl: comfyBaseUrl,
+					id
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as JobResponse
 				}
 				return { ok: false, error: 'Invalid IPC response', baseUrl: comfyBaseUrl }
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] job IPC failed:', err)
-				return { ok: false, error: getErrorMessage(err) || 'job failed via IPC', baseUrl: comfyBaseUrl }
+				return {
+					ok: false,
+					error: getErrorMessage(err) || 'job failed via IPC',
+					baseUrl: comfyBaseUrl
+				}
 			}
 		}
 		return { ok: false, error: 'IPC not available', baseUrl: comfyBaseUrl }
 	}
 
-	async clearHistoryCache(comfyBaseUrl: string, workflowPath: string): Promise<{ ok: boolean; error?: string }> {
+	async clearHistoryCache(
+		comfyBaseUrl: string,
+		workflowPath: string
+	): Promise<{ ok: boolean; error?: string }> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.clearCache({ baseUrl: comfyBaseUrl, workflowPath })
+				const ipcResult = await (window as any).dweb.comfyui.runtime.clearCache({
+					baseUrl: comfyBaseUrl,
+					workflowPath
+				})
 				if (ipcResult && typeof ipcResult === 'object') {
 					return ipcResult as { ok: boolean; error?: string }
 				}

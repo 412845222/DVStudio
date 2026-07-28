@@ -27,6 +27,10 @@ const canLinkBasicMediaNodes = (
 	const fromType = normalizeNodeType(fromNode)
 	const toType = normalizeNodeType(toNode)
 	if (toType === 'video') return fromType === 'image' || fromType === 'video' || fromType === 'text'
+	if (toType === 'text')
+		return (
+			fromType === 'text' || fromType === 'image' || fromType === 'video' || fromType === 'audio'
+		)
 	return fromType === 'text' || fromType === 'image'
 }
 
@@ -38,6 +42,7 @@ const shouldRejectBasicMediaNodes = (
 	const fromType = normalizeNodeType(fromNode)
 	const toType = normalizeNodeType(toNode)
 	if (toType === 'video') return fromType !== 'image' && fromType !== 'video' && fromType !== 'text'
+	if (toType === 'text') return false
 	if (fromType === 'video') return toType !== 'video'
 	return fromType === 'audio'
 }
@@ -99,7 +104,7 @@ export const anchorKind = (
 
 	if ((node.type === 'image' || node.type === 'video') && direction === 'in') return 'resource'
 
-	if (node.type === 'text') return 'text'
+	if (node.type === 'text' && direction === 'out') return 'text'
 	if (node.type === 'image') return 'image'
 	if (node.type === 'video') return 'video'
 	if (node.type === 'model3d') return 'model3d'
@@ -141,6 +146,13 @@ export const canLinkAnchors = (
 			fromKind === 'video' ||
 			fromKind === 'model3d' ||
 			fromKind === 'audio')
+	) {
+		return true
+	}
+	if (
+		normalizeNodeType(toNode) === 'text' &&
+		toAnchorId === 'in-0' &&
+		(fromKind === 'model3d' || fromKind === 'resource')
 	) {
 		return true
 	}

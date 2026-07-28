@@ -63,7 +63,7 @@ jobs:
         id: changed
         run: |
           git fetch origin ${{ github.base_ref }} --depth=1
-          CHANGED=$(git diff --name-only --diff-filter=AM origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.css' '*.json' '*.mjs' '*.js' '*.yml' | tr '\n' ' ')
+          CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.vue' '*.css' '*.json' '*.mjs' '*.js' '*.yml' | grep -v 'package-lock.json' | tr '\n' ' ')
           echo "files=$CHANGED" >> $GITHUB_OUTPUT
           echo "Changed files to check: $CHANGED"
         shell: bash

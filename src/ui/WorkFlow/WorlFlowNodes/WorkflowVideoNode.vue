@@ -37,13 +37,6 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
-		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
-		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
-		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
-		@node-chat-close="emit('node-chat-close')"
-		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
-		@node-chat-stop="emit('node-chat-stop')"
-		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-media">
@@ -117,7 +110,11 @@
 							type="button"
 							:disabled="!resourceUrl || !screenshotEnabled"
 							@click.stop="onScreenshot"
-							:title="screenshotEnabled ? t('nodes.video.screenshot') : t('nodes.video.screenshotDisabled')"
+							:title="
+								screenshotEnabled
+									? t('nodes.video.screenshot')
+									: t('nodes.video.screenshotDisabled')
+							"
 						>
 							{{ t('nodes.video.screenshot') }}
 						</button>
@@ -128,9 +125,17 @@
 							@click.stop="onOpenVideoEditor"
 							:title="t('nodes.video.openVideoEditor')"
 						>
-							<svg class="wf-video-editor-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<polygon points="23 7 16 12 23 17 23 7"/>
-								<rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+							<svg
+								class="wf-video-editor-icon"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
+								<polygon points="23 7 16 12 23 17 23 7" />
+								<rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
 							</svg>
 							<span>{{ t('nodes.video.openVideoEditor') }}</span>
 						</button>
@@ -180,7 +185,7 @@ import VideoController from '../../UIComponent/VideoController.vue'
 import { DwebCanvasGL } from '../../../engine/webgl/canvas/DwebCanvasGL'
 import { useI18n } from '../../../i18n'
 import { useVideoEditor } from '../../../composables/useVideoEditor'
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 const { open: openVideoEditor } = useVideoEditor()
@@ -234,12 +239,40 @@ const props = defineProps<{
 	inputParamPreviewRefs?: any[]
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -295,14 +328,10 @@ const emit = defineEmits<{
 	(e: 'screenshot', payload: { dataUrl: string; width: number; height: number; time: number }): void
 	(e: 'media-ready'): void
 	(e: 'invalidate-screenshot'): void
-	(e: 'capture-preview', payload: { dataUrl: string; width: number; height: number; time: number }): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, any>): void
-	(e: 'node-chat-update-selected-refs', value: any[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: any): void
+	(
+		e: 'capture-preview',
+		payload: { dataUrl: string; width: number; height: number; time: number }
+	): void
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -623,13 +652,27 @@ const onLoadedMetadata = () => {
 			seekTime.value = pendingSeekTime
 		}
 	}
-	console.log('[WorkflowVideoNode] onLoadedMetadata: duration=', duration.value, 'pendingSeekTime=', pendingSeekTime, 'currentTime=', v.currentTime, 'readyState=', v.readyState)
+	console.log(
+		'[WorkflowVideoNode] onLoadedMetadata: duration=',
+		duration.value,
+		'pendingSeekTime=',
+		pendingSeekTime,
+		'currentTime=',
+		v.currentTime,
+		'readyState=',
+		v.readyState
+	)
 	if (pendingSeekTime != null) {
 		const target = clamp(pendingSeekTime, 0, duration.value || 0)
 		seekTime.value = target
 		try {
 			v.currentTime = target
-			console.log('[WorkflowVideoNode] onLoadedMetadata: seek to', target, 'video.currentTime=', v.currentTime)
+			console.log(
+				'[WorkflowVideoNode] onLoadedMetadata: seek to',
+				target,
+				'video.currentTime=',
+				v.currentTime
+			)
 		} catch (e) {
 			console.warn('[WorkflowVideoNode] onLoadedMetadata: seek failed', e)
 		}
@@ -699,7 +742,18 @@ const retryPendingSeek = (v: HTMLVideoElement, opts?: { force?: boolean }) => {
 	if ((v.readyState || 0) < 1 || !(Number(v.duration) > 0)) return false
 	const target = clamp(pendingSeekTime, 0, duration.value || 0)
 	const cur = Number(v.currentTime) || 0
-	console.log('[WorkflowVideoNode] retryPendingSeek: target=', target, 'cur=', cur, 'readyState=', v.readyState, 'force=', opts?.force, 'retryCount=', pendingSeekRetryCount)
+	console.log(
+		'[WorkflowVideoNode] retryPendingSeek: target=',
+		target,
+		'cur=',
+		cur,
+		'readyState=',
+		v.readyState,
+		'force=',
+		opts?.force,
+		'retryCount=',
+		pendingSeekRetryCount
+	)
 	if (Math.abs(cur - target) <= 0.08) {
 		pendingSeekTime = null
 		pendingSeekRetryCount = 0
@@ -720,7 +774,12 @@ const retryPendingSeek = (v: HTMLVideoElement, opts?: { force?: boolean }) => {
 	try {
 		v.currentTime = target
 		pendingSeekRequestedAt = nowMs()
-		console.log('[WorkflowVideoNode] retryPendingSeek: seek to', target, 'video.currentTime=', v.currentTime)
+		console.log(
+			'[WorkflowVideoNode] retryPendingSeek: seek to',
+			target,
+			'video.currentTime=',
+			v.currentTime
+		)
 		return true
 	} catch (e) {
 		console.warn('[WorkflowVideoNode] retryPendingSeek: seek failed', e)
@@ -855,7 +914,11 @@ const drawTimeline = () => {
 	const secPerPx = len > 0 ? len / Math.max(1, w) : 0
 	const precisionLabel =
 		secPerPx >= 1 ? `${secPerPx.toFixed(2)}s/px` : `${Math.max(0, secPerPx * 1000).toFixed(0)}ms/px`
-	const info = t('nodes.video.rangeInfo', { duration: len.toFixed(2), zoom: z, precision: precisionLabel })
+	const info = t('nodes.video.rangeInfo', {
+		duration: len.toFixed(2),
+		zoom: z,
+		precision: precisionLabel
+	})
 	ctx.fillStyle = muted
 	ctx.font = '11px sans-serif'
 	ctx.fillText(info, 8, h - 8)
@@ -944,13 +1007,12 @@ const coverDrawParams = (srcW: number, srcH: number, dstW: number, dstH: number)
 const onOpenVideoEditor = async () => {
 	const url = effectiveResourceUrl.value
 	if (!url) return
-	const videoName = String(props.resourceName ?? '').trim()
-		|| props.nodeId
-		|| t('nodes.video.editorTitle')
+	const videoName =
+		String(props.resourceName ?? '').trim() || props.nodeId || t('nodes.video.editorTitle')
 	await openVideoEditor({
 		nodeId: props.nodeId,
 		videoUrl: url,
-		videoName,
+		videoName
 	})
 }
 
@@ -1085,7 +1147,16 @@ watch(
 			if (savedTime == null || !Number.isFinite(savedTime) || savedTime < 0) {
 				savedTime = props.videoSettings?.currentTime
 			}
-			console.log('[WorkflowVideoNode] resource watcher: videoSettings=', JSON.stringify(props.videoSettings), 'savedTime=', savedTime, 'fromMap=', videoNodeLastTime.get(props.nodeId), 'isSelected=', isSelected)
+			console.log(
+				'[WorkflowVideoNode] resource watcher: videoSettings=',
+				JSON.stringify(props.videoSettings),
+				'savedTime=',
+				savedTime,
+				'fromMap=',
+				videoNodeLastTime.get(props.nodeId),
+				'isSelected=',
+				isSelected
+			)
 			if (savedTime != null && Number.isFinite(savedTime) && savedTime > 0.05) {
 				pendingSeekTime = Number(savedTime)
 				pendingSeekRetryCount = 0
@@ -1123,14 +1194,24 @@ watch(
 			if (pendingSeekTime !== newTime) {
 				pendingSeekTime = Number(newTime)
 				pendingSeekRetryCount = 0
-				console.log('[WorkflowVideoNode] currentTime watch (no videoEl): set pendingSeekTime=', pendingSeekTime)
+				console.log(
+					'[WorkflowVideoNode] currentTime watch (no videoEl): set pendingSeekTime=',
+					pendingSeekTime
+				)
 			}
 			return
 		}
 		const cur = Number(v.currentTime) || 0
 		const target = Math.max(0, Number(newTime))
 		if (Math.abs(cur - target) < 0.1) return
-		console.log('[WorkflowVideoNode] currentTime watch: seek from', cur, 'to', target, 'readyState=', v.readyState)
+		console.log(
+			'[WorkflowVideoNode] currentTime watch: seek from',
+			cur,
+			'to',
+			target,
+			'readyState=',
+			v.readyState
+		)
 		if ((v.readyState || 0) >= 1 && Number(v.duration) > 0) {
 			try {
 				v.currentTime = target
@@ -1165,7 +1246,12 @@ watch(
 	}
 )
 
-const captureCurrentFrame = (): { dataUrl: string; width: number; height: number; time: number } | null => {
+const captureCurrentFrame = (): {
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+} | null => {
 	const v = videoEl.value
 	if (!v || v.readyState < 2) return null
 	const ow = outputWidth.value ?? Math.max(1, Math.floor(v.videoWidth || 1))
@@ -1194,7 +1280,14 @@ const captureCurrentFrame = (): { dataUrl: string; width: number; height: number
 watch(
 	() => props.selected,
 	async (isSelected, wasSelected) => {
-		console.log('[WorkflowVideoNode] selected watcher: isSelected=', isSelected, 'wasSelected=', wasSelected, 'nodeId=', props.nodeId)
+		console.log(
+			'[WorkflowVideoNode] selected watcher: isSelected=',
+			isSelected,
+			'wasSelected=',
+			wasSelected,
+			'nodeId=',
+			props.nodeId
+		)
 		if (wasSelected && !isSelected) {
 			const v = videoEl.value
 			if (!v) return
@@ -1247,7 +1340,16 @@ watch(
 )
 
 onMounted(() => {
-	console.log('[WorkflowVideoNode] onMounted: nodeId=', props.nodeId, 'isWarmupRender=', props.isWarmupRender, 'selected=', props.selected, 'videoSettings=', JSON.stringify(props.videoSettings))
+	console.log(
+		'[WorkflowVideoNode] onMounted: nodeId=',
+		props.nodeId,
+		'isWarmupRender=',
+		props.isWarmupRender,
+		'selected=',
+		props.selected,
+		'videoSettings=',
+		JSON.stringify(props.videoSettings)
+	)
 
 	hasActiveVideo = false
 
@@ -1278,7 +1380,12 @@ onMounted(() => {
 	if (savedTime == null || !Number.isFinite(savedTime) || savedTime < 0) {
 		savedTime = props.videoSettings?.currentTime
 	}
-	console.log('[WorkflowVideoNode] onMounted: initial savedTime=', savedTime, 'fromMap=', videoNodeLastTime.get(props.nodeId))
+	console.log(
+		'[WorkflowVideoNode] onMounted: initial savedTime=',
+		savedTime,
+		'fromMap=',
+		videoNodeLastTime.get(props.nodeId)
+	)
 	if (savedTime != null && Number.isFinite(savedTime) && savedTime > 0.05) {
 		pendingSeekTime = Number(savedTime)
 		pendingSeekRetryCount = 0
@@ -1291,14 +1398,28 @@ onMounted(() => {
 	videoEl.value.addEventListener('loadedmetadata', onLoadedMetadata)
 	videoEl.value.addEventListener('loadeddata', () => {
 		const v = videoEl.value
-		console.log('[WorkflowVideoNode] loadeddata event: readyState=', v?.readyState, 'currentTime=', v?.currentTime, 'pendingSeekTime=', pendingSeekTime)
+		console.log(
+			'[WorkflowVideoNode] loadeddata event: readyState=',
+			v?.readyState,
+			'currentTime=',
+			v?.currentTime,
+			'pendingSeekTime=',
+			pendingSeekTime
+		)
 		if (v) retryPendingSeek(v, { force: true })
 		clearLocalMediaRetry()
 		tryEmitMediaReady()
 	})
 	videoEl.value.addEventListener('canplay', () => {
 		const v = videoEl.value
-		console.log('[WorkflowVideoNode] canplay event: readyState=', v?.readyState, 'currentTime=', v?.currentTime, 'pendingSeekTime=', pendingSeekTime)
+		console.log(
+			'[WorkflowVideoNode] canplay event: readyState=',
+			v?.readyState,
+			'currentTime=',
+			v?.currentTime,
+			'pendingSeekTime=',
+			pendingSeekTime
+		)
 		if (v) retryPendingSeek(v, { force: true })
 		clearLocalMediaRetry()
 		tryEmitMediaReady()
@@ -1434,7 +1555,12 @@ onBeforeUnmount(() => {
 	const v = videoEl.value
 	if (v) {
 		const curTime = Number(v.currentTime) || 0
-		console.log('[WorkflowVideoNode] onBeforeUnmount: curTime=', curTime, 'readyState=', v.readyState)
+		console.log(
+			'[WorkflowVideoNode] onBeforeUnmount: curTime=',
+			curTime,
+			'readyState=',
+			v.readyState
+		)
 
 		if (curTime > 0.1) {
 			videoNodeLastTime.set(props.nodeId, curTime)

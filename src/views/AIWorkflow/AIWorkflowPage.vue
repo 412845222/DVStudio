@@ -1091,7 +1091,7 @@ function syncEngineProjectionToStore() {
 	if (editor && typeof editor.saveBlueprint === 'function') {
 		const latest = editor.saveBlueprint()
 		if (latest) {
-			const snapshot = legacyBlueprintToWorkflowState(latest)
+			const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
 			isUpdatingFromStore = true
 			store.commit('hydrateDraft', { snapshot })
 			resetIsUpdatingFromStore()
@@ -1277,23 +1277,82 @@ const engineApi = {
 	}
 }
 
+function getEngineNodeChatPayload(nodeId: string): {
+	engineNodeChatDraft?: string
+	engineNodeChatParams?: Record<string, unknown>
+	engineNodeChatSelectedRefs?: any[]
+} {
+	const host = blueprintHostRef.value
+	const editor: any = host?.getInstance?.()
+	if (!editor) return {}
+	const scene: any = editor.scene ?? editor.blueprintScene
+	const engineNode = scene?.getBlueprintNode?.(nodeId)
+	if (!engineNode) return {}
+	return {
+		engineNodeChatDraft: (engineNode.data as any).nodeChatDraft ?? '',
+		engineNodeChatParams: (engineNode.data as any).nodeChatParams ?? {},
+		engineNodeChatSelectedRefs: (engineNode.data as any).nodeChatSelectedRefs ?? []
+	}
+}
+
 function syncNodeChatDialog(nodeIds: string[]) {
+	console.log('[DraftFlow#AIWorkflowPage syncNodeChatDialog] TRIGGER', {
+		nodeIds,
+		currentDialogNodeId: store.state.nodeChatDialog.nodeId,
+		currentDialogVisible: store.state.nodeChatDialog.visible,
+		currentDialogDraftLen: store.state.nodeChatDialog.draft?.length ?? -1
+	})
 	if (nodeIds.length === 1) {
 		const node = store.state.nodesById[nodeIds[0]]
+		const vuexDraft = (node as any)?.nodeChatDraft ?? ''
+		console.log('[DraftFlow#AIWorkflowPage syncNodeChatDialog] Single node check', {
+			nodeId: nodeIds[0],
+			foundNodeInVuex: !!node,
+			nodeType: node?.type,
+			isSupported: node ? isNodeChatTypeSupported(node.type) : false,
+			vuexDraftLen: vuexDraft.length,
+			vuexDraftPreview:
+				vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)'
+		})
 		if (node && isNodeChatTypeSupported(node.type)) {
-			store.dispatch('openNodeChatDialog', { nodeId: nodeIds[0], nodeType: node.type as any })
+			const payloadExtra = getEngineNodeChatPayload(nodeIds[0])
+			const engineDraft = payloadExtra.engineNodeChatDraft ?? ''
+			console.log('[DraftFlow#AIWorkflowPage syncNodeChatDialog] Dispatching openNodeChatDialog', {
+				nodeId: nodeIds[0],
+				nodeType: node.type,
+				engineDraftLen: engineDraft.length,
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
+				engineParamsKeys: payloadExtra.engineNodeChatParams
+					? Object.keys(payloadExtra.engineNodeChatParams)
+					: null
+			})
+			store.dispatch('openNodeChatDialog', {
+				nodeId: nodeIds[0],
+				nodeType: node.type as any,
+				...payloadExtra
+			})
 			return
 		}
 	}
 	if (store.state.nodeChatDialog?.visible) {
+		console.log('[DraftFlow#AIWorkflowPage syncNodeChatDialog] Dispatching closeNodeChatDialog', {
+			currentNodeId: store.state.nodeChatDialog.nodeId
+		})
 		store.dispatch('closeNodeChatDialog')
 	}
 }
 
 function onBlueprintEditorChange(data: LegacyBlueprintData) {
-	if (isUpdatingFromStore) {
-		return
-	}
+	const previewInfo: Record<
+		string,
+		{
+			engineDraftLen: number
+			engineDraftPreview: string
+			engineParamsKeys: string[] | null
+			engineSelectedRefsLen: number
+		}
+	> = {}
 	for (const nodeId of data.nodeOrder || Object.keys(data.nodesById || {})) {
 		const n = data.nodesById[nodeId]
 		if (n) {
@@ -1303,9 +1362,39 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
 				console.warn('[Blueprint] Invalid node position detected, skipping sync', nodeId, n)
 				return
 			}
+			const d = (n as any).nodeChatDraft
+			const p = (n as any).nodeChatParams
+			const r = (n as any).nodeChatSelectedRefs
+			if (
+				(typeof d === 'string' && d.length > 0) ||
+				(p && typeof p === 'object' && Object.keys(p).length > 0) ||
+				(Array.isArray(r) && r.length > 0)
+			) {
+				previewInfo[nodeId] = {
+					engineDraftLen: typeof d === 'string' ? d.length : -1,
+					engineDraftPreview:
+						typeof d === 'string'
+							? d.length > 40
+								? d.slice(0, 40) + '...'
+								: d || '(empty)'
+							: String(d),
+					engineParamsKeys:
+						p && typeof p === 'object' ? Object.keys(p as Record<string, unknown>) : null,
+					engineSelectedRefsLen: Array.isArray(r) ? r.length : -1
+				}
+			}
 		}
 	}
-	const snapshot = legacyBlueprintToWorkflowState(data)
+	console.log('[DraftFlow#AIWorkflowPage onBlueprintEditorChange] RECEIVED from engine', {
+		nodeCount: data.nodeOrder?.length ?? Object.keys(data.nodesById || {}).length,
+		nodesWithChatData: Object.keys(previewInfo),
+		previewInfo,
+		skippedBecauseIsUpdatingFromStore: isUpdatingFromStore
+	})
+	if (isUpdatingFromStore) {
+		return
+	}
+	const snapshot = legacyBlueprintToWorkflowState(data, store.state.nodesById)
 	isUpdatingFromStore = true
 	store.commit('hydrateDraft', { snapshot })
 	resetIsUpdatingFromStore()
@@ -1358,7 +1447,12 @@ function onBlueprintEditorNodeDblClick(nodeId: string, _event: MouseEvent) {
 	store.commit('setSelectedNode', { nodeId })
 	const node = store.state.nodesById[nodeId]
 	if (node && isNodeChatTypeSupported(node.type)) {
-		store.dispatch('openNodeChatDialog', { nodeId, nodeType: node.type as any })
+		const payloadExtra = getEngineNodeChatPayload(nodeId)
+		store.dispatch('openNodeChatDialog', {
+			nodeId,
+			nodeType: node.type as any,
+			...payloadExtra
+		})
 		return
 	}
 	if (_openInspectorFn) {
@@ -12105,7 +12199,8 @@ const canvasInteraction = useAIWorkflowCanvasInteraction({
 		scheduleVisibleNodeScreenshots()
 	},
 	onOpenNodeChat: (nodeId: string) => {
-		store.dispatch('openNodeChatDialog', { nodeId })
+		const payloadExtra = getEngineNodeChatPayload(nodeId)
+		store.dispatch('openNodeChatDialog', { nodeId, ...payloadExtra })
 	},
 	onCloseNodeChat: () => {
 		store.dispatch('closeNodeChatDialog')

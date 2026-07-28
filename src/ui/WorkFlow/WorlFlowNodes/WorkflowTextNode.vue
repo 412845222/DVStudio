@@ -36,13 +36,6 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
-		@node-chat-update-draft="(value) => emit('node-chat-update-draft', value)"
-		@node-chat-update-params="(value) => emit('node-chat-update-params', value)"
-		@node-chat-update-selected-refs="(value) => emit('node-chat-update-selected-refs', value)"
-		@node-chat-close="emit('node-chat-close')"
-		@node-chat-submit="(payload) => emit('node-chat-submit', payload)"
-		@node-chat-stop="emit('node-chat-stop')"
-		@node-chat-remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 	>
 		<template #body>
 			<div class="wf-text" @pointerdown.stop>
@@ -63,7 +56,7 @@
 import { computed, ref } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatSubmitPayload, WorkflowNodeChatType } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -102,10 +95,40 @@ const props = defineProps<{
 	inputParamPreviewRefs?: any[]
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -146,13 +169,6 @@ const emit = defineEmits<{
 	): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(e: 'update-text-value', payload: { textValue: string }): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, any>): void
-	(e: 'node-chat-update-selected-refs', value: any[]): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: any): void
 }>()
 
 const textValue = computed(() => String(props.textValue ?? ''))

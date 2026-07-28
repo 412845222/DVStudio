@@ -534,6 +534,136 @@ Host通过`editorRef.value`调用`defineExpose`暴露的engineApi。**所有业�
    - ❌ 禁止在Port连接中使用`port.id`（运行时ID），必须使用`port.spec.id`（业务稳定ID）
    - ❌ 禁止在BlueprintDomOverlay中直接操作canvas或transform，位置/尺寸完全由BlueprintEditorTool/BlueprintNode控制
 
+### 八、节点底部对话框（NodeChatDialog）三层链路架构
+
+> ⚠️ 文本/图片/视频/3D模型/Blender节点底部的AI对话框是一个跨三层的复杂状态同步链路，涉及引擎层、DOM覆盖层、Vuex页面层、组件层的多层数据传递。修改此链路前必须理解本节，否则极易引入草稿丢失、TDZ错误、状态不同步等bug。
+
+#### 8.1 三层存储与职责划分
+
+节点对话框数据在三个层级同时存在，各自承担不同职责：
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Layer 3: 组件层 (NodeChatDialog.vue)                                   │
+│  ─ localDraft / localParams / localSelectedRefs (组件本地状态)          │
+│  ─ 负责：用户输入缓冲、焦点管理、键盘事件、参数面板UI状态               │
+│  ─ 同步方向：props → local（通过immediate watchers + onMounted）        │
+│  ─          local → emit（用户输入实时向上传递）                        │
+└──────────────────────────────────┬──────────────────────────────────────┘
+                                   │ emit('update:draft'/'update:params'/'update:selected-references')
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Layer 2: Vuex页面层 (store.ts + AIWorkflowPage.vue)                    │
+│  ─ state.nodeChatDialog (浮动对话框UI状态: visible/nodeId/nodeType/    │
+│  │                        draft/params/selectedRefs/submitting)        │
+│  ─ state.nodesById[nodeId].nodeChatDraft/Params/SelectedRefs (持久投影) │
+│  ─ 负责：页面级对话框开关控制、选中节点变化时的对话框同步、              │
+│  │       跨节点草稿缓存、任务提交状态管理                               │
+│  ─ 同步方向：mutations直接双写 nodeChatDialog.* 和 nodesById[nodeId].*  │
+└──────────────────────────────────┬──────────────────────────────────────┘
+                                   │ Commit UpdateNodeChatDataCommand / SetNodeChatVisibleCommand
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Layer 1: 引擎层 (Blueprint业务层)                                      │
+│  ─ BlueprintNode.data.nodeChatDraft/Params/SelectedRefs/Visible (SSOT) │
+│  ─ BlueprintLegacySaver/Loader 负责序列化/反序列化到项目文件            │
+│  ─ SetNodeChatVisibleCommand / UpdateNodeChatDataCommand (支持undo/redo)│
+│  ─ 负责：权威数据源、持久化存储、撤销重做、跨会话恢复                    │
+│  ─ 同步方向：Command.execute() → node.data.* → emitChange() → Vuex投影  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**核心原则：引擎层 `BlueprintNode.data` 是节点对话框数据的唯一权威数据源（SSOT）**
+
+#### 8.2 关键文件索引
+
+| 文件 | 层级 | 职责 |
+|------|------|------|
+| [src/engine/blueprint/types.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/types.ts#L60-L63) | 引擎层 | `BlueprintNodeData` 类型定义，包含 `nodeChatDraft?/nodeChatParams?/nodeChatSelectedRefs?/nodeChatVisible?` 四个字段 |
+| [src/engine/blueprint/commands/SetNodeChatVisibleCommand.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/commands/SetNodeChatVisibleCommand.ts) | 引擎层 | 控制对话框可见性（`nodeChatVisible`），支持 undo/redo |
+| [src/engine/blueprint/commands/UpdateNodeChatDataCommand.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/commands/UpdateNodeChatDataCommand.ts) | 引擎层 | 更新草稿/参数/选中引用，支持 mergeable（高频输入合并为单个undo条目） |
+| [src/engine/blueprint/BlueprintLegacySaver.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/BlueprintLegacySaver.ts#L97-L107) | 引擎层 | 序列化时必须显式复制四个chat字段到legacy格式 |
+| [src/engine/blueprint/BlueprintLegacyLoader.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/BlueprintLegacyLoader.ts#L127-L129) | 引擎层 | 反序列化时从legacy格式恢复四个chat字段 |
+| [src/engine/blueprint/dom/BlueprintDomOverlay.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/dom/BlueprintDomOverlay.vue) | DOM覆盖层 | 从引擎读取chatState传递给NodeChatDialog，watch draft/params/selectedRefs实时保存到引擎；维护 `lastValidChatStatePerNode` Map缓存防止TOCTOU竞态 |
+| [src/engine/blueprint/dom/NodeComponentResolver.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/engine/blueprint/dom/NodeComponentResolver.ts#L194-L215) | DOM覆盖层 | 渲染DOM节点时读取chat数据，决定是否显示NodeChatDialog |
+| [src/store/aiworkflow/store.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/store/aiworkflow/store.ts) | Vuex层 | `openNodeChatDialog`/`closeNodeChatDialog`/`setNodeChatDraft`/`setNodeChatParams`/`setNodeChatSelectedRefs`/`hydrateDraft` mutations；三个set* mutations必须同时更新 `nodeChatDialog.*` 和 `nodesById[nodeId].*` |
+| [src/views/AIWorkflow/AIWorkflowPage.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/views/AIWorkflow/AIWorkflowPage.vue) | Vuex层 | `syncNodeChatDialog` watch 选中节点变化，调度对话框开关；`onBlueprintEditorChange` 接收引擎变更 |
+| [src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/views/AIWorkflow/blueprint-bridge/workflowStateAdapter.ts) | Vuex层 | 状态转换时保留chat字段 |
+| [src/ui/BluePrint/node-dialog/NodeChatDialog.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-text-node-functionality-hPNyNk/src/ui/BluePrint/node-dialog/NodeChatDialog.vue) | 组件层 | 对话框UI组件，immediate watchers + onMounted syncFromProps确保重挂载时恢复草稿；onKeydown处理Esc关闭 |
+
+#### 8.3 数据流方向与时序
+
+**打开对话框（选中节点）：**
+```
+用户点击节点
+  → BlueprintEditorTool进入DOM编辑模式 (SetNodeChatVisibleCommand)
+  → node.data.nodeChatVisible = true
+  → emitChange() → Vuex hydrateDraft
+  → AIWorkflowPage.syncNodeChatDialog检测到单节点选中
+  → store.dispatch('openNodeChatDialog')
+      ├─ 读取 nodeChatDialog.draft（浮动对话框残留）
+      ├─ 读取 nodesById[nodeId].nodeChatDraft（Vuex持久投影）
+      ├─ 读取 engineNodeChatDraft（引擎传来的最新数据）
+      └─ 取三者中最长非空值作为最终draft（"谁长信谁"策略）
+  → NodeChatDialog组件挂载
+  → visible watch (immediate: true) 触发 → syncFromProps()
+  → nodeType watch (immediate: true) 触发 → 应用默认参数 → syncFromProps()
+  → onMounted 若visible=true → fallback syncFromProps()
+  → draft/params/selectedRefs独立watch → 同步到local状态
+```
+
+**用户输入过程中：**
+```
+用户输入文本
+  → NodeChatDialog.localDraft更新
+  → emit('update:draft', value)
+  → WorkflowNodeBase → WorkflowNodeWrapper → DomNodeWrapper → BlueprintDomOverlay
+  → chatState.draft变化
+  → BlueprintDomOverlay draft watch (deep: true) 触发
+  → saveChatStateToNode()
+  → 执行 UpdateNodeChatDataCommand (mergeable: true)
+  → node.data.nodeChatDraft = newDraft
+  → 同时 store.commit('setNodeChatDraft') 双写Vuex
+```
+
+**关闭/切换节点：**
+```
+点击空白处/切换到其他节点
+  → closeNodeChatDialog mutation
+      ├─ 仅重置 nodeChatDialog.visible = false, nodeId = null
+      └─ ⚠️ 禁止清除 draft/params/selectedRefs（防止TOCTOU竞态）
+  → SetNodeChatVisibleCommand(false) 写入引擎
+  → BlueprintDomOverlay chatState.visible watch触发
+      ├─ 使用 lastValidChatStatePerNode 缓存保存当前草稿
+      └─ saveChatStateToNode立即持久化
+  → exitEditMode nextTick后 emitChange
+```
+
+#### 8.4 历史踩坑与防御机制
+
+| 问题 | 根因 | 防御措施 |
+|------|------|---------|
+| **TDZ: onKeydown未初始化** | visible watch设了immediate:true，setup阶段立即访问下方定义的onKeydown函数 | addEventListener条件改为 `prevVisible === false`（首次immediate时prevVisible为undefined不触发）；onMounted中补充addEventListener |
+| **TOCTOU竞态：关闭时先清state再save** | closeNodeChatDialog先同步清空draft，然后watch触发save读取已清空的值 | closeNodeChatDialog只重置visible/nodeId，不清除draft/params/refs；BlueprintDomOverlay维护`lastValidChatStatePerNode`缓存；setNodeChatDraft等mutations双写nodesById |
+| **组件unmount/remount丢失草稿** | 节点切换时TransitionGroup执行leave动画，NodeChatDialog被unmount，下次选中时remount，watch不带immediate导致不同步 | visible/draft/params/selectedRefs四个watch全部设`immediate: true`；onMounted加fallback syncFromProps() |
+| **hydrateDraft覆盖非空Vuex数据** | 引擎序列化空值时hydrateDraft用空字符串覆盖已有的非空草稿 | hydrateDraft中加入防御：若incoming为空但Vuex原有值非空，保留Vuex值 |
+| **多轨数据不同步** | 只写nodeChatDialog.draft不写nodesById或反之，导致重选节点时从错误轨道读取空值 | setNodeChatDraft/Params/SelectedRefs三个mutations必须同时更新nodeChatDialog.*和nodesById[nodeId].* |
+| **textValue/prompt双向绑定污染** | UpdateNodeChatDataCommand错误地将draft写入textValue和prompt，导致节点显示内容与对话框草稿混淆 | UpdateNodeChatDataCommand.applyData中只写入nodeChatDraft/Params/SelectedRefs，不触碰textValue/prompt |
+| **草稿恢复"谁短信谁"** | openNodeChatDialog简单取第一个非空值，可能取到引擎残留空字符串而非用户刚输入的长文本 | 采用"非空且更长内容优先"策略：比较浮动对话框/Vuex/引擎三者，取最长者；额外fallback到textValue和prompt（新节点首次打开） |
+| **resize时对话框消失** | v-if导致resize过程中组件被销毁 | BlueprintDomOverlay同时渲染`editingNodeId`和`nodeChatVisible: true`的节点，使用v-show而非v-if控制可见性 |
+
+#### 8.5 开发红线（对话框链路）
+
+1. **🔴 禁止在closeNodeChatDialog中清除draft/params/selectedRefs**——只重置visible和nodeId，否则触发TOCTOU竞态
+2. **🔴 setNodeChatDraft/Params/SelectedRefs必须双写**——同时更新`state.nodeChatDialog.*`和`state.nodesById[nodeId].*`
+3. **🔴 NodeChatDialog的四个watch必须带immediate: true**——visible、nodeType、draft、params、selectedRefs
+4. **🔴 onKeydown必须在onMounted中添加监听器**——不能仅依赖visible watch（TDZ + unmount后丢失问题）
+5. **🔴 UpdateNodeChatDataCommand不得写入textValue/prompt**——对话框草稿与节点展示内容完全分离
+6. **🔴 BlueprintLegacySaver.convertNode必须显式复制四个chat字段**——不能依赖扩展运算符默认行为（类型可能为null/undefined）
+7. **🔴 hydrateDraft必须防御空值覆盖**——incoming为空但Vuex有值时保留Vuex值
+8. **🔴 openNodeChatDialog必须使用"最长优先"策略选draft**——不能简单取第一个非空值
+9. **🔴 saveChatStateToNode在切换节点前必须立即刷新缓存**——不能依赖防抖（防抖会导致切换时保存不及时）
+
 ### 前后端通信模型
 
 - **Electron 主进程**（`electron/main.mjs`）

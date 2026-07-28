@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useNodeLibraryI18n } from '@/aiworkflow/useNodeLibraryI18n'
 import { I18nStore } from '@/store/i18n/store'
-import { NEWUI2_NODE_CATALOG_CATEGORIES, NEWUI2_NODE_TOP_CATEGORIES, NEWUI2_NODE_SPECIAL_GROUPS, NEWUI2_NODE_CATALOG } from '@/aiworkflow/nodeLibrary'
+import {
+	NEWUI2_NODE_CATALOG_CATEGORIES,
+	NEWUI2_NODE_TOP_CATEGORIES,
+	NEWUI2_NODE_SPECIAL_GROUPS,
+	NEWUI2_NODE_CATALOG
+} from '@/aiworkflow/nodeLibrary'
 
 describe('useNodeLibraryI18n', () => {
 	beforeEach(() => {
@@ -56,7 +61,9 @@ describe('useNodeLibraryI18n', () => {
 		const textNode = catalogItems.value.find((n) => n.actionId === 'text-generation')
 		expect(textNode).toBeDefined()
 		expect(textNode!.label).toBe('文本节点')
-		expect(textNode!.description).toBe('用于输入、编辑和输出提示词或说明文本。支持多语言输入，可作为其他节点的文本来源。')
+		expect(textNode!.description).toBe(
+			'用于输入、编辑和输出提示词或说明文本。支持多语言输入，可作为其他节点的文本来源。'
+		)
 		expect(textNode!.searchAliases).toEqual(['文本', 'prompt', 'llm'])
 
 		const imageNode = catalogItems.value.find((n) => n.actionId === 'image-generation')
@@ -75,7 +82,9 @@ describe('useNodeLibraryI18n', () => {
 
 		const basicCategory = categories.value.find((c) => c.id === 'basic')
 		expect(basicCategory!.label).toBe('Basic')
-		expect(basicCategory!.description).toBe('General entry nodes for text, image, video, audio, and 3D workflows.')
+		expect(basicCategory!.description).toBe(
+			'General entry nodes for text, image, video, audio, and 3D workflows.'
+		)
 
 		const inputsCategory = topCategories.value.find((c) => c.id === 'inputs')
 		expect(inputsCategory!.label).toBe('Basic')
@@ -107,7 +116,7 @@ describe('useNodeLibraryI18n', () => {
 		const textNode = catalogItems.value.find((n) => n.actionId === 'text-generation')
 		expect(textNode!.actionId).toBe('text-generation')
 		expect(textNode!.nodeType).toBe('text')
-		expect(textNode!.inputKinds).toEqual(['text'])
+		expect(textNode!.inputKinds).toEqual(['text', 'image', 'video', 'model3d', 'audio', 'resource'])
 		expect(textNode!.outputKinds).toEqual(['text'])
 		expect(textNode!.order).toBe(10)
 	})

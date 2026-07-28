@@ -263,7 +263,7 @@ describe('store/nodeChatDialog', () => {
 	})
 
 	describe('closeNodeChatDialog', () => {
-		it('closes the dialog and resets state', () => {
+		it('hides the dialog but preserves nodeId/draft/refs for data safety (TOCTOU protection)', () => {
 			store.commit('upsertNode', {
 				node: {
 					id: 'node-close',
@@ -284,10 +284,12 @@ describe('store/nodeChatDialog', () => {
 			store.commit('closeNodeChatDialog')
 
 			expect(store.state.nodeChatDialog.visible).toBe(false)
-			expect(store.state.nodeChatDialog.nodeId).toBe(null)
-			expect(store.state.nodeChatDialog.nodeType).toBe(null)
-			expect(store.state.nodeChatDialog.draft).toBe('')
-			expect(store.state.nodeChatDialog.selectedRefs).toEqual([])
+			expect(store.state.nodeChatDialog.submitting).toBe(false)
+			// close preserves nodeId/draft/params/refs so that reopening same node restores user input
+			expect(store.state.nodeChatDialog.nodeId).toBe('node-close')
+			expect(store.state.nodeChatDialog.draft).toBe('some text')
+			// draft is also persisted to the node itself
+			expect((store.state.nodesById['node-close'] as any).nodeChatDraft).toBe('some text')
 		})
 	})
 
