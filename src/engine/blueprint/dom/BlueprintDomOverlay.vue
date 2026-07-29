@@ -40,6 +40,7 @@
 						@contextmenu="handleBusinessContextMenu"
 						@update-text="onBusinessUpdateText"
 						@node-resize="onBusinessResize"
+						@node-auto-resize="onBusinessAutoResize"
 						@start-link="onBusinessStartLink"
 						@end-link="onBusinessEndLink"
 						@select="onBusinessSelect"
@@ -227,6 +228,19 @@ function onBusinessResize(payload: {
 			endHeight
 		)
 	)
+	s.updateAllConnectionEndpoints()
+	s.requestRedraw()
+}
+
+function onBusinessAutoResize(payload: { nodeId: string; height: number }) {
+	if (!props.scene) return
+	const node = prevDomMap.get(payload.nodeId)
+	if (!node) return
+	if (node.data.sizeCustomized) return
+	const s = props.scene
+	const newHeight = payload.height
+	if (Math.abs(newHeight - node.data.height) < 2) return
+	node.updateSize(node.data.width, newHeight)
 	s.updateAllConnectionEndpoints()
 	s.requestRedraw()
 }
@@ -432,6 +446,7 @@ let resizeStartWidth = 0
 let resizeStartHeight = 0
 let resizeStartNodeX = 0
 let resizeStartNodeY = 0
+let resizeAspectRatio: number | null = null
 const MIN_NODE_WIDTH_LOCAL = 120
 const MIN_NODE_HEIGHT_LOCAL = 80
 
@@ -587,6 +602,7 @@ function cleanupInteractionStates() {
 	connectFromPort = null
 	resizeNodeId = null
 	resizeCorner = null
+	resizeAspectRatio = null
 }
 
 function onDomNodeResizeStart(nodeId: string, corner: string, event: PointerEvent) {
@@ -616,6 +632,7 @@ function onDomNodeResizeStart(nodeId: string, corner: string, event: PointerEven
 	resizeStartHeight = node.data.height
 	resizeStartNodeX = node.transform.position.x
 	resizeStartNodeY = node.transform.position.y
+	resizeAspectRatio = node.getResizeAspectRatio()
 
 	isResizing = true
 	isInteractionLocked.value = true
@@ -642,27 +659,69 @@ function onDomNodeResizeMove(event: PointerEvent) {
 	let newWidth = resizeStartWidth
 	let newHeight = resizeStartHeight
 
+	const ratio = resizeAspectRatio
+
 	switch (resizeCorner) {
 		case 'se': {
 			newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth + dx)
 			newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight + dy)
+			if (ratio) {
+				const currentRatio = newWidth / newHeight
+				if (currentRatio > ratio) {
+					newHeight = newWidth / ratio
+					newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, newHeight)
+				} else {
+					newWidth = newHeight * ratio
+					newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, newWidth)
+				}
+			}
 			break
 		}
 		case 'sw': {
 			newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth - dx)
 			newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight + dy)
+			if (ratio) {
+				const currentRatio = newWidth / newHeight
+				if (currentRatio > ratio) {
+					newHeight = newWidth / ratio
+					newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, newHeight)
+				} else {
+					newWidth = newHeight * ratio
+					newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, newWidth)
+				}
+			}
 			newX = resizeStartNodeX + (resizeStartWidth - newWidth)
 			break
 		}
 		case 'ne': {
 			newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth + dx)
 			newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight - dy)
+			if (ratio) {
+				const currentRatio = newWidth / newHeight
+				if (currentRatio > ratio) {
+					newHeight = newWidth / ratio
+					newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, newHeight)
+				} else {
+					newWidth = newHeight * ratio
+					newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, newWidth)
+				}
+			}
 			newY = resizeStartNodeY + (resizeStartHeight - newHeight)
 			break
 		}
 		case 'nw': {
 			newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, resizeStartWidth - dx)
 			newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, resizeStartHeight - dy)
+			if (ratio) {
+				const currentRatio = newWidth / newHeight
+				if (currentRatio > ratio) {
+					newHeight = newWidth / ratio
+					newHeight = Math.max(MIN_NODE_HEIGHT_LOCAL, newHeight)
+				} else {
+					newWidth = newHeight * ratio
+					newWidth = Math.max(MIN_NODE_WIDTH_LOCAL, newWidth)
+				}
+			}
 			newX = resizeStartNodeX + (resizeStartWidth - newWidth)
 			newY = resizeStartNodeY + (resizeStartHeight - newHeight)
 			break

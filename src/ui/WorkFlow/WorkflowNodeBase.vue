@@ -19,6 +19,7 @@
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
 			{ 'is-auto-height': autoHeight !== false },
+			{ 'is-size-customized': sizeCustomized === true },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
@@ -620,16 +621,22 @@ let userResized = false
 const measureNaturalHeight = (): number => {
 	const el = nodeElRef.value
 	if (!el) return props.height
-	const prevHeight = el.style.height
-	const prevFlexBasis = el.style.flexBasis
-	el.style.height = 'auto'
-	el.style.flexBasis = 'auto'
+	const prevHeight = el.style.getPropertyValue('height')
+	const prevHeightPriority = el.style.getPropertyPriority('height')
+	const prevFlexBasis = el.style.getPropertyValue('flex-basis')
+	const prevFlexBasisPriority = el.style.getPropertyPriority('flex-basis')
+	el.style.setProperty('height', 'auto', 'important')
+	el.style.setProperty('flex-basis', 'auto', 'important')
 	const natural = el.getBoundingClientRect().height
-	el.style.height = prevHeight
-	if (prevFlexBasis !== undefined) {
-		el.style.flexBasis = prevFlexBasis
+	if (prevHeight) {
+		el.style.setProperty('height', prevHeight, prevHeightPriority)
 	} else {
-		el.style.flexBasis = ''
+		el.style.removeProperty('height')
+	}
+	if (prevFlexBasis) {
+		el.style.setProperty('flex-basis', prevFlexBasis, prevFlexBasisPriority)
+	} else {
+		el.style.removeProperty('flex-basis')
 	}
 	const zoom = Math.max(1e-6, props.zoom || 1)
 	const worldHeight = natural / zoom
@@ -643,6 +650,8 @@ const requestAutoResize = () => {
 		rafId = 0
 		if (userResized) return
 		if (props.autoHeight === false) return
+		// sizeCustomized模式下：节点尺寸由用户锁定，禁止autoResize（会导致无限增长反馈循环）
+		if (props.sizeCustomized) return
 		const nextHeight = measureNaturalHeight()
 		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
 		if (Math.abs(nextHeight - props.height) < HEIGHT_CHANGE_THRESHOLD) return
@@ -802,6 +811,8 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 }
 onMounted(() => {
 	if (props.autoHeight === false) return
+	// sizeCustomized模式下：节点尺寸由用户锁定，不需要autoResize observer
+	if (props.sizeCustomized) return
 	nextTick(() => {
 		setupResizeObserver()
 		requestAutoResize()
@@ -1051,6 +1062,8 @@ defineExpose({
 	align-items: stretch;
 	gap: 6px;
 	margin-bottom: 6px;
+	flex-shrink: 0;
+	min-height: 0;
 }
 
 .wf-node-header > .wf-node-title,
@@ -1169,18 +1182,19 @@ defineExpose({
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex-shrink: 0;
+	min-width: 0;
+	min-height: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	aspect-ratio: 1 / 1;
-	flex-shrink: 0;
+	flex-shrink: 1;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);
 	background: var(--wf-surface-base);
 	position: relative;
+	min-height: 0;
 }
 
 .wf-media-preview img,
@@ -1330,6 +1344,40 @@ defineExpose({
 
 .wf-node.is-auto-height .wf-node-footer {
 	overflow: visible;
+}
+
+.wf-node.is-auto-height.wf-node-image .wf-node-body,
+.wf-node.is-auto-height.wf-node-rotate-image .wf-node-body {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex: 0 0 auto;
+	min-height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-image .wf-node-footer,
+.wf-node.is-auto-height.wf-node-rotate-image .wf-node-footer {
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.wf-node.is-size-customized.wf-node-image .wf-node-body,
+.wf-node.is-size-customized.wf-node-rotate-image .wf-node-body {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex: 1;
+	min-height: 0;
+}
+
+.wf-node.is-size-customized.wf-node-image .wf-node-footer,
+.wf-node.is-size-customized.wf-node-rotate-image .wf-node-footer {
+	overflow: hidden;
+	flex-shrink: 0;
 }
 
 .wf-node.is-auto-height.wf-node-text .wf-node-body {

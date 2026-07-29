@@ -12,6 +12,7 @@
 			@start-link="onStartLink"
 			@end-link="onEndLink"
 			@resize="onResize"
+			@auto-resize="onAutoResize"
 			@update-text-value="onUpdateTextValue"
 			@select="onSelect"
 			@copy="onCopy"
@@ -57,6 +58,10 @@ const emit = defineEmits<{
 	(
 		e: 'node-resize',
 		payload: { nodeId: string; width: number; height: number; worldX: number; worldY: number }
+	): void
+	(
+		e: 'node-auto-resize',
+		payload: { nodeId: string; height: number }
 	): void
 	(
 		e: 'start-link',
@@ -164,6 +169,13 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 	emit('node-resize', {
 		nodeId: props.node.id,
 		...payload
+	})
+}
+
+const onAutoResize = (height: number) => {
+	emit('node-auto-resize', {
+		nodeId: props.node.id,
+		height
 	})
 }
 

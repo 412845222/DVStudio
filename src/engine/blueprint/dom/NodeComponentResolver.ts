@@ -186,7 +186,7 @@ export class NodeComponentResolver {
 			isSecondarySelected: false,
 			visualStatus: effectiveStatus,
 			sizeCustomized: data.sizeCustomized,
-			autoHeight: false
+			autoHeight: data.type === 'image' || data.type === 'rotate-image'
 		}
 
 		const resourceProps = this.resolveResourceProps(data, legacyResources)
@@ -228,6 +228,7 @@ export class NodeComponentResolver {
 			case 'image':
 			case 'rotate-image':
 				if (data.imageSettings) typeSpecificProps.imageSettings = data.imageSettings
+				typeSpecificProps.sizeCustomized = data.sizeCustomized
 				break
 			case 'video':
 				if (data.videoSettings) typeSpecificProps.videoSettings = data.videoSettings
