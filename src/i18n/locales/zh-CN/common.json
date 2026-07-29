@@ -48,5 +48,6 @@
   "common.disconnected": "未连接",
   "common.image": "图片",
   "common.video": "视频",
-  "common.model3d": "3D模型"
+  "common.model3d": "3D模型",
+  "common.empty": "暂无内容"
 }

@@ -26,6 +26,8 @@ import { CreateConnectionCommand } from './commands/CreateConnectionCommand'
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand'
 import { ResizeNodeCommand } from './commands/ResizeNodeCommand'
 import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand'
+import { ThemeManager, getThemeManager } from './theme'
+import { I18nManager, getI18nManager } from './i18n'
 
 interface PendingConnection {
 	fromNode: BlueprintNode
@@ -49,6 +51,18 @@ export class BlueprintScene extends Scene {
 	public isDomInteractionLocked: boolean = false
 	private _isViewportPanning: boolean = false
 	private _lastMouseWorldPos: Vector2 | null = null
+	private _themeManager: ThemeManager
+	private _i18nManager: I18nManager
+	private _unsubscribeTheme: (() => void) | null = null
+	private _unsubscribeI18n: (() => void) | null = null
+
+	get theme(): ThemeManager {
+		return this._themeManager
+	}
+
+	get i18n(): I18nManager {
+		return this._i18nManager
+	}
 
 	get isViewportPanning(): boolean {
 		return this._isViewportPanning
@@ -64,6 +78,16 @@ export class BlueprintScene extends Scene {
 
 	constructor(canvas: HTMLCanvasElement) {
 		super(canvas, { backgroundColor: null, enableDefaultTools: false })
+
+		this._themeManager = getThemeManager()
+		this._i18nManager = getI18nManager()
+
+		this._unsubscribeTheme = this._themeManager.onChange(() => {
+			this.requestRedraw()
+		})
+		this._unsubscribeI18n = this._i18nManager.onChange(() => {
+			this.requestRedraw()
+		})
 
 		this._grid = new BlueprintGrid()
 		this.addChild(this._grid)
@@ -1102,6 +1126,14 @@ export class BlueprintScene extends Scene {
 	}
 
 	dispose(): void {
+		if (this._unsubscribeTheme) {
+			this._unsubscribeTheme()
+			this._unsubscribeTheme = null
+		}
+		if (this._unsubscribeI18n) {
+			this._unsubscribeI18n()
+			this._unsubscribeI18n = null
+		}
 		for (const node of this._nodeMap.values()) {
 			node.dispose()
 		}

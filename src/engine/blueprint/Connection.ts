@@ -5,7 +5,8 @@ import type { RenderContext } from '../graphbase/renderer/RenderContext'
 import type { HitTestResult, HitTestable } from '../graphbase/scene/interfaces'
 import type { Camera } from '../graphbase/renderer/Camera'
 import type { Scene } from '../graphbase/scene/Scene'
-import { MEDIA_TYPE_COLORS, WF_PRIMARY } from './types'
+import { MEDIA_TYPE_COLORS } from './types'
+import { getThemeManager } from './theme'
 
 const LINE_WIDTH = 2.5
 const LINE_WIDTH_SELECTED = 4
@@ -74,7 +75,8 @@ export class Connection extends Node {
 	}
 
 	private getColor(): string {
-		return MEDIA_TYPE_COLORS[this._mediaType as keyof typeof MEDIA_TYPE_COLORS] || WF_PRIMARY
+		const theme = getThemeManager()
+		return MEDIA_TYPE_COLORS[this._mediaType as keyof typeof MEDIA_TYPE_COLORS] || theme.tokens.connectionLine
 	}
 
 	private hexToRgba(hex: string, alpha: number): string {
@@ -148,7 +150,9 @@ export class Connection extends Node {
 		c.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, to.x, to.y)
 		c.stroke()
 
-		c.strokeStyle = 'rgba(255,255,255,0.2)'
+		const theme = getThemeManager()
+		const highlightColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.4)'
+		c.strokeStyle = highlightColor
 		c.lineWidth = Math.max(1, baseLineWidth * 0.4)
 		c.beginPath()
 		c.moveTo(from.x, from.y)
@@ -331,8 +335,10 @@ export class TempConnection extends Node {
 		const camera = ctx.camera
 		if (!this.fromWorld || !this.toWorld) return
 
+		const theme = getThemeManager()
+		const defaultColor = theme.tokens.connectionLine
 		const color = this.valid
-			? MEDIA_TYPE_COLORS[this.mediaType as keyof typeof MEDIA_TYPE_COLORS] || WF_PRIMARY
+			? MEDIA_TYPE_COLORS[this.mediaType as keyof typeof MEDIA_TYPE_COLORS] || defaultColor
 			: '#e74c3c'
 		const dx = Math.abs(this.toWorld.x - this.fromWorld.x)
 		const dy = Math.abs(this.toWorld.y - this.fromWorld.y)

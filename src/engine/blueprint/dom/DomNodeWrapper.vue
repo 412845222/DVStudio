@@ -125,7 +125,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, useSlots } from 'vue'
+import { computed, ref, useSlots, onMounted, onBeforeUnmount } from 'vue'
+import { getI18nManager } from '../i18n'
 
 export type NodeStatus = 'idle' | 'running' | 'success' | 'error'
 
@@ -292,22 +293,42 @@ const statusDotStyle = computed(() => {
 	}
 })
 
+const i18n = getI18nManager()
+const i18nVersion = ref(0)
+let unsubscribeI18n: (() => void) | null = null
+
+onMounted(() => {
+	unsubscribeI18n = i18n.onChange(() => {
+		i18nVersion.value++
+	})
+})
+
+onBeforeUnmount(() => {
+	if (unsubscribeI18n) {
+		unsubscribeI18n()
+		unsubscribeI18n = null
+	}
+})
+
 const nodeTypeLabel = computed(() => {
+	// 依赖i18nVersion以在语言切换时触发重新计算
+	void i18nVersion.value
 	const typeMap: Record<string, string> = {
-		text: '文本',
-		image: '图片',
-		'rotate-image': '旋转图片',
-		video: '视频',
-		model3d: '3D模型',
-		comfyui: 'ComfyUI',
-		blender: 'Blender',
-		'unreal-export': 'UE导出',
-		'scene-understanding': '场景理解',
-		'scene-layout': '场景布局',
-		'scene-decompose': '场景拆解',
-		story: '故事',
-		'meshy-model': 'Meshy模型',
-		'text-merge': '文本合并'
+		text: i18n.t('aiworkflow.canvas.nodeTypes.text'),
+		image: i18n.t('aiworkflow.canvas.nodeTypes.image'),
+		'rotate-image': i18n.t('aiworkflow.canvas.nodeTypes.rotateImage'),
+		video: i18n.t('aiworkflow.canvas.nodeTypes.video'),
+		model3d: i18n.t('aiworkflow.canvas.nodeTypes.model3d'),
+		meshy: i18n.t('aiworkflow.canvas.nodeTypes.meshy'),
+		'meshy-model': i18n.t('aiworkflow.canvas.nodeTypes.meshy'),
+		comfyui: i18n.t('aiworkflow.canvas.nodeTypes.comfyui'),
+		blender: i18n.t('aiworkflow.canvas.nodeTypes.blender'),
+		'unreal-export': i18n.t('aiworkflow.canvas.nodeTypes.unrealExport'),
+		'scene-understanding': i18n.t('aiworkflow.canvas.nodeTypes.sceneUnderstanding'),
+		'scene-layout': i18n.t('aiworkflow.canvas.nodeTypes.sceneLayout'),
+		'scene-decompose': i18n.t('aiworkflow.canvas.nodeTypes.sceneDecompose'),
+		story: i18n.t('aiworkflow.canvas.nodeTypes.story'),
+		'text-merge': i18n.t('aiworkflow.canvas.nodeTypes.textMerge')
 	}
 	return typeMap[props.nodeType] || props.nodeType
 })
@@ -331,9 +352,9 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 <style scoped>
 .dom-node-wrapper {
 	position: absolute;
-	background: linear-gradient(180deg, rgba(20, 30, 28, 0.92) 0%, rgba(15, 23, 22, 0.96) 100%);
+	background: var(--wf-surface-base);
 	border-radius: 3px;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+	box-shadow: var(--aiwf-shadow-sm);
 	overflow: visible;
 	pointer-events: auto;
 	cursor: default;
@@ -418,12 +439,13 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	position: absolute;
 	width: 12px;
 	height: 12px;
-	background: rgba(10, 15, 14, 0.9);
-	border: 2px solid rgba(255, 255, 255, 0.85);
+	background: var(--theme-bg-primary);
+	border: 2px solid var(--wf-text);
 	border-radius: 2px;
 	z-index: 20;
 	pointer-events: auto;
 	box-sizing: border-box;
+	opacity: 0.85;
 }
 
 .dnw-resize-nw {
@@ -448,8 +470,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	position: absolute;
 	width: 12px;
 	height: 12px;
-	background: rgba(31, 157, 132, 0.9);
-	border: 2px solid rgba(255, 255, 255, 0.9);
+	background: var(--wf-primary);
+	border: 2px solid var(--wf-text);
 	border-radius: 2px;
 	bottom: -6px;
 	right: -6px;
@@ -457,35 +479,27 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	z-index: 20;
 	pointer-events: auto;
 	box-sizing: border-box;
-	box-shadow: 0 0 6px rgba(31, 157, 132, 0.5);
+	box-shadow: 0 0 6px color-mix(in srgb, var(--wf-primary) 50%, transparent);
+	opacity: 0.9;
 }
 
 .dom-node-wrapper.selected {
-	box-shadow:
-		0 0 0 1px rgba(31, 157, 132, 0.15),
-		0 0 12px rgba(31, 157, 132, 0.15),
-		0 4px 20px rgba(0, 0, 0, 0.5);
+	box-shadow: var(--node-selected-shadow);
 }
 
 .dom-node-wrapper.dnw-status-running.selected {
-	box-shadow:
-		0 0 0 1px rgba(52, 152, 219, 0.2),
-		0 0 16px rgba(52, 152, 219, 0.2),
-		0 4px 20px rgba(0, 0, 0, 0.5);
+	box-shadow: var(--node-running-shadow);
 }
 
 .dom-node-wrapper.dnw-status-success.selected {
 	box-shadow:
-		0 0 0 1px rgba(39, 174, 96, 0.2),
-		0 0 16px rgba(39, 174, 96, 0.2),
-		0 4px 20px rgba(0, 0, 0, 0.5);
+		0 0 0 1px color-mix(in srgb, var(--theme-success, #27ae60) 20%, transparent),
+		0 0 16px color-mix(in srgb, var(--theme-success, #27ae60) 20%, transparent),
+		var(--aiwf-shadow-sm);
 }
 
 .dom-node-wrapper.dnw-status-error.selected {
-	box-shadow:
-		0 0 0 1px rgba(231, 76, 60, 0.25),
-		0 0 20px rgba(231, 76, 60, 0.25),
-		0 4px 20px rgba(0, 0, 0, 0.5);
+	box-shadow: var(--node-error-shadow);
 }
 
 @keyframes dnw-enter {
@@ -733,7 +747,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 .dnw-title {
 	font-size: 12px;
 	font-weight: 500;
-	color: #edf2f4;
+	color: var(--wf-text);
 	font-family: -apple-system, 'Segoe UI', 'PingFang SC', sans-serif;
 	white-space: nowrap;
 	overflow: hidden;
@@ -755,15 +769,15 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border: 1px dashed rgba(255, 255, 255, 0.08);
+	border: 1px dashed var(--wf-border-subtle);
 	border-radius: 2px;
-	background: rgba(0, 0, 0, 0.15);
+	background: color-mix(in srgb, var(--theme-bg-primary) 30%, transparent);
 }
 
 .dnw-preview-label {
 	font-size: 11px;
-	color: #aeb8bd;
-	opacity: 0.6;
+	color: var(--wf-text-muted);
+	opacity: 0.7;
 }
 
 .dnw-media-wrap {
@@ -774,8 +788,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	justify-content: center;
 	overflow: hidden;
 	border-radius: 2px;
-	background: rgba(0, 0, 0, 0.3);
-	border: 1px solid rgba(255, 255, 255, 0.06);
+	background: color-mix(in srgb, var(--theme-bg-primary) 40%, transparent);
+	border: 1px solid var(--wf-border-subtle);
 }
 
 .dnw-media-img {
@@ -794,8 +808,9 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 
 .dnw-video-icon {
 	font-size: 28px;
-	color: rgba(237, 242, 244, 0.5);
-	text-shadow: 0 0 12px rgba(0, 0, 0, 0.5);
+	color: var(--wf-text-muted);
+	opacity: 0.6;
+	text-shadow: 0 0 12px var(--theme-shadow);
 }
 
 .dnw-model-wrap {
@@ -805,9 +820,9 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 .dnw-model-icon {
 	font-size: 13px;
 	font-weight: 700;
-	color: rgba(52, 152, 219, 0.8);
+	color: var(--wf-info);
 	letter-spacing: 1px;
-	text-shadow: 0 0 8px rgba(52, 152, 219, 0.4);
+	filter: drop-shadow(0 0 8px color-mix(in srgb, var(--wf-info) 40%, transparent));
 }
 
 .dnw-text-preview {
@@ -816,14 +831,15 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	padding: 10px;
 	box-sizing: border-box;
 	overflow: hidden;
-	background: rgba(0, 0, 0, 0.2);
+	background: color-mix(in srgb, var(--theme-bg-primary) 30%, transparent);
 	border-radius: 2px;
-	border: 1px solid rgba(255, 255, 255, 0.05);
+	border: 1px solid var(--wf-border-subtle);
 }
 
 .dnw-text-content {
 	font-size: 10.5px;
-	color: #c5d0d5;
+	color: var(--wf-text);
+	opacity: 0.85;
 	line-height: 1.6;
 	white-space: pre-wrap;
 	word-break: break-word;
@@ -842,21 +858,21 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	align-items: center;
 	justify-content: center;
 	gap: 8px;
-	background: rgba(0, 0, 0, 0.15);
+	background: color-mix(in srgb, var(--theme-bg-primary) 25%, transparent);
 	border-radius: 2px;
-	border: 1px dashed rgba(255, 255, 255, 0.08);
+	border: 1px dashed var(--wf-border-subtle);
 }
 
 .dnw-icon-char {
 	font-size: 32px;
-	filter: drop-shadow(0 0 8px rgba(31, 157, 132, 0.4));
+	filter: drop-shadow(0 0 8px color-mix(in srgb, var(--wf-primary) 40%, transparent));
 }
 
 .dnw-port {
 	position: absolute;
 	border-radius: 50%;
-	background: rgba(10, 15, 14, 0.9);
-	border: 2px solid rgba(255, 255, 255, 0.85);
+	background: var(--theme-bg-primary);
+	border: 2px solid var(--wf-text);
 	box-sizing: border-box;
 	z-index: 15;
 	display: flex;
@@ -869,7 +885,8 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	animation: dnw-port-enter 200ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 	animation-delay: var(--port-delay, 200ms);
 	will-change: transform, opacity;
-	box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+	box-shadow: 0 0 6px var(--theme-shadow);
+	opacity: 0.85;
 }
 
 @keyframes dnw-port-enter {

@@ -9,10 +9,10 @@ import {
 	PORT_HOVER_SCALE,
 	PORT_HIT_RADIUS,
 	MEDIA_TYPE_COLORS,
-	WF_PRIMARY,
 	type PortSpec,
 	type MediaType
 } from './types'
+import { getThemeManager } from './theme'
 
 export class Port extends Node {
 	spec: PortSpec
@@ -113,6 +113,8 @@ export class Port extends Node {
 
 	protected renderSelf(ctx: RenderContext): void {
 		const c = ctx.ctx
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 		const color = this.getColor()
 		const isHovered = this.hovered
 		const isArmed = this.armed
@@ -122,8 +124,8 @@ export class Port extends Node {
 		const halfOuter = (PORT_SIZE / 2) * scale
 		const halfInner = (PORT_INNER_SIZE / 2) * (isSnapped ? 1.15 : scale)
 
-		let borderColor = `rgba(31, 157, 132, 0.45)`
-		let glowColor = `rgba(31, 157, 132, 0.12)`
+		let borderColor = tokens.portBorder
+		let glowColor = this.hexToRgba(tokens.portInner, 0.12)
 
 		if (isSnapped) {
 			if (this.compatible === false) {
@@ -169,7 +171,7 @@ export class Port extends Node {
 		}
 
 		c.save()
-		c.fillStyle = 'rgba(21, 24, 28, 0.9)'
+		c.fillStyle = tokens.portBackground
 		c.strokeStyle = borderColor
 		c.lineWidth = 1.5
 		c.fillRect(-halfOuter, -halfOuter, halfOuter * 2, halfOuter * 2)
@@ -181,15 +183,17 @@ export class Port extends Node {
 			c.shadowColor = borderColor
 			c.shadowBlur = 10
 		}
-		c.fillStyle =
-			isSnapped && this.compatible !== false ? (this.connected ? '#ffffff' : color) : color
+		const innerColor = isSnapped && this.compatible !== false
+			? (this.connected ? (theme.mode === 'dark' ? '#ffffff' : tokens.nodeBackground) : color)
+			: color
+		c.fillStyle = innerColor
 		c.fillRect(-halfInner, -halfInner, halfInner * 2, halfInner * 2)
 		c.restore()
 
 		if (this.spec.label && ctx.camera.zoom >= 0.3) {
 			c.save()
 			c.font = `11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-			c.fillStyle = 'rgba(237, 242, 244, 0.75)'
+			c.fillStyle = tokens.nodeTextMuted
 			c.textBaseline = 'middle'
 			const labelOffset = halfOuter + 8
 			if (this.isInput) {
