@@ -60,10 +60,7 @@ const emit = defineEmits<{
 		e: 'node-resize',
 		payload: { nodeId: string; width: number; height: number; worldX: number; worldY: number }
 	): void
-	(
-		e: 'node-auto-resize',
-		payload: { nodeId: string; height: number }
-	): void
+	(e: 'node-auto-resize', payload: { nodeId: string; height: number }): void
 	(
 		e: 'start-link',
 		payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }

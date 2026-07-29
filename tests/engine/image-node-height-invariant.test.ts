@@ -39,7 +39,8 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 		it('passes autoHeight=!sizeCustomized to baseProps, linking size lock to auto-height disable', () => {
 			content = content ?? readSource(filePath)
 			// The resolver must set autoHeight to the negation of sizeCustomized
-			const hasAutoHeightBinding = /autoHeight\s*:\s*!data\.sizeCustomized/.test(content) ||
+			const hasAutoHeightBinding =
+				/autoHeight\s*:\s*!data\.sizeCustomized/.test(content) ||
 				/autoHeight\s*:\s*!\s*data\.sizeCustomized/.test(content)
 			expect(
 				hasAutoHeightBinding,
@@ -116,7 +117,9 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 			expect(watchMatch, 'autoHeight watcher must exist').toBeTruthy()
 			if (!watchMatch) return
 			const body = watchMatch[1]
-			const hasTeardown = /enabled\s*===\s*false\s*\)\s*\{[\s\S]*?teardownResizeObserver\s*\(/.test(body)
+			const hasTeardown = /enabled\s*===\s*false\s*\)\s*\{[\s\S]*?teardownResizeObserver\s*\(/.test(
+				body
+			)
 			expect(
 				hasTeardown,
 				'When autoHeight becomes false, ResizeObserver must be torn down immediately'
@@ -126,17 +129,35 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 		it('CSS: fixed-size image nodes have flex fill rules for body, media, and preview', () => {
 			content = content ?? readSource(filePath)
 			// Body: flex-direction column (selector may be grouped with comma, ending with { before the property)
-			const hasBodyFlex = /\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-node-body[\s\S]*?\{[\s\S]*?flex-direction:\s*column/.test(content)
-			const hasMediaFlex = /\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-media\s*\{[\s\S]*?flex:\s*1/.test(content)
-			const hasPreviewFlex = /\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-media-preview\s*\{[\s\S]*?flex:\s*1/.test(content)
-			expect(hasBodyFlex, 'CSS must set flex-direction:column on body for fixed-size image nodes').toBe(true)
+			const hasBodyFlex =
+				/\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-node-body[\s\S]*?\{[\s\S]*?flex-direction:\s*column/.test(
+					content
+				)
+			const hasMediaFlex =
+				/\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-media\s*\{[\s\S]*?flex:\s*1/.test(
+					content
+				)
+			const hasPreviewFlex =
+				/\.wf-node:not\(\.is-auto-height\)\.wf-node-image\s+\.wf-media-preview\s*\{[\s\S]*?flex:\s*1/.test(
+					content
+				)
+			expect(
+				hasBodyFlex,
+				'CSS must set flex-direction:column on body for fixed-size image nodes'
+			).toBe(true)
 			expect(hasMediaFlex, 'CSS must set flex:1 on .wf-media for fixed-size image nodes').toBe(true)
-			expect(hasPreviewFlex, 'CSS must set flex:1 on .wf-media-preview for fixed-size image nodes to fill available space').toBe(true)
+			expect(
+				hasPreviewFlex,
+				'CSS must set flex:1 on .wf-media-preview for fixed-size image nodes to fill available space'
+			).toBe(true)
 		})
 
 		it('CSS: fixed-size rotate nodes have flex fill rule for wrap', () => {
 			content = content ?? readSource(filePath)
-			const hasWrapFlex = /\.wf-node:not\(\.is-auto-height\)\.wf-node-rotate-image\s+\.wf-rotate-wrap\s*\{[\s\S]*?flex:\s*1/.test(content)
+			const hasWrapFlex =
+				/\.wf-node:not\(\.is-auto-height\)\.wf-node-rotate-image\s+\.wf-rotate-wrap\s*\{[\s\S]*?flex:\s*1/.test(
+					content
+				)
 			expect(
 				hasWrapFlex,
 				'CSS must set flex:1 on .wf-rotate-wrap for fixed-size rotate-image nodes'
@@ -167,7 +188,8 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 		it('does NOT compute mediaStyle/previewStyle with explicit pixel heights from props.height subtraction (deprecated approach)', () => {
 			content = content ?? readSource(filePath)
 			// The old approach computed explicit pixel heights; new approach uses CSS
-			const hasPixelHeightCalc = /const\s+mediaH\s*=/.test(content) || /height:\s*`\$\{mediaH\}px`/.test(content)
+			const hasPixelHeightCalc =
+				/const\s+mediaH\s*=/.test(content) || /height:\s*`\$\{mediaH\}px`/.test(content)
 			expect(
 				hasPixelHeightCalc,
 				'Should NOT use JS-calculated pixel heights for media (CSS aspect-ratio + flex fill handles this)'
@@ -206,10 +228,7 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 				}
 				const body = content.substring(startIdx, i - 1)
 				const callsSelf = /\btryAutoResize\s*\(/.test(body)
-				expect(
-					callsSelf,
-					'tryAutoResize must NOT call itself (infinite recursion bug)'
-				).toBe(false)
+				expect(callsSelf, 'tryAutoResize must NOT call itself (infinite recursion bug)').toBe(false)
 			}
 		})
 
@@ -219,10 +238,7 @@ describe('🟢 Image Node Height Invariant (no infinite growth bug)', () => {
 			expect(canvasStyle, '.wf-rotate-canvas CSS class must exist').toBeTruthy()
 			if (!canvasStyle) return
 			const rules = canvasStyle[1]
-			expect(
-				/width:\s*100%/.test(rules),
-				'canvas should have width:100%'
-			).toBe(true)
+			expect(/width:\s*100%/.test(rules), 'canvas should have width:100%').toBe(true)
 			expect(
 				/height:\s*100%/.test(rules),
 				'canvas should have height:100% to fill flex container'
