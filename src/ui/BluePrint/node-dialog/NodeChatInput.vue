@@ -125,6 +125,23 @@ const charCount = ref(calcDisplayLength(props.modelValue ?? '', props.selectedRe
 const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
 const selectedRefs = ref<InputParamPreviewRef[]>([...(props.selectedReferences ?? [])])
 
+const syncSelectedRefsFromProps = () => {
+	const newRefs = [...(props.selectedReferences ?? [])]
+	const changed =
+		newRefs.length !== selectedRefs.value.length ||
+		newRefs.some(
+			(r, i) =>
+				r.fromNodeId !== selectedRefs.value[i]?.fromNodeId ||
+				r.fromAnchorId !== selectedRefs.value[i]?.fromAnchorId ||
+				r.kind !== selectedRefs.value[i]?.kind
+		)
+	if (changed) {
+		selectedRefs.value = newRefs
+		return true
+	}
+	return false
+}
+
 const availableForMention = computed(() => {
 	return inputParamRefs.value
 })
@@ -247,6 +264,15 @@ const createChipElement = (item: InputParamPreviewRef): HTMLSpanElement => {
 		img.src = item.previewUrl
 		img.alt = item.label || ''
 		img.draggable = false
+		// 图片加载失败时回退到类型图标，避免显示破碎图片占位符
+		img.onerror = () => {
+			const parent = img.parentNode
+			if (!parent) return
+			const icon = document.createElement('span')
+			icon.className = 'bp-mention-chip-icon'
+			icon.textContent = getTypeIcon(item.kind)
+			parent.replaceChild(icon, img)
+		}
 		span.appendChild(img)
 	} else {
 		const icon = document.createElement('span')
@@ -288,8 +314,12 @@ const getTypeIcon = (kind: string): string => {
 }
 
 const removeChipElement = (chipEl: HTMLElement) => {
+	isInternalUpdate = true
 	const parent = chipEl.parentNode
-	if (!parent) return
+	if (!parent) {
+		isInternalUpdate = false
+		return
+	}
 	const next = chipEl.nextSibling
 
 	parent.removeChild(chipEl)
@@ -309,16 +339,24 @@ const removeChipElement = (chipEl: HTMLElement) => {
 
 	syncFromDOM()
 	nextTick(() => {
+		isInternalUpdate = false
 		editorRef.value?.focus()
 	})
 }
 
 const insertChipAtCursor = (item: InputParamPreviewRef) => {
+	isInternalUpdate = true
 	const sel = window.getSelection()
-	if (!sel || sel.rangeCount === 0 || !editorRef.value) return
+	if (!sel || sel.rangeCount === 0 || !editorRef.value) {
+		isInternalUpdate = false
+		return
+	}
 
 	const info = getTextFromNodeStartToCaret()
-	if (!info) return
+	if (!info) {
+		isInternalUpdate = false
+		return
+	}
 
 	const { atTextNode, atOffset } = info
 
@@ -354,10 +392,14 @@ const insertChipAtCursor = (item: InputParamPreviewRef) => {
 
 	closeMention()
 	syncFromDOM()
+	nextTick(() => {
+		isInternalUpdate = false
+	})
 }
 
 const syncFromDOM = () => {
 	if (!editorRef.value) return
+	const wasInternalUpdate = isInternalUpdate
 	isInternalUpdate = true
 
 	let serializedText = ''
@@ -406,18 +448,26 @@ const syncFromDOM = () => {
 	charCount.value = displayText.length
 	currentSerializedText.value = serializedText
 	selectedRefs.value = refs
-	emit('update:modelValue', serializedText)
+	// 注意：必须先emit selectedReferences再emit modelValue
+	// 因为modelValue的handler(onDraftInput)会设置isInternalUpdate=true，
+	// 导致后续selectedReferences的handler(onSelectedRefsChange)被SKIP，
+	// 造成新增的@引用无法保存到store
 	emit('update:selectedReferences', refs)
+	emit('update:modelValue', serializedText)
 
-	nextTick(() => {
-		isInternalUpdate = false
-	})
+	if (!wasInternalUpdate) {
+		nextTick(() => {
+			isInternalUpdate = false
+		})
+	}
 }
 
 const renderFromModel = () => {
 	if (!editorRef.value || isInternalUpdate) return
 	isInternalUpdate = true
 	const editor = editorRef.value
+	// Always sync refs from props before rendering to ensure we use the latest state
+	syncSelectedRefsFromProps()
 	const refs = selectedRefs.value
 	const serialized = props.modelValue
 
@@ -696,16 +746,33 @@ watch(
 		// If the new value matches what we just serialized from DOM, this update was
 		// triggered by user input -> skip re-rendering to preserve caret position.
 		if (newVal === currentSerializedText.value) {
-			selectedRefs.value = [...(props.selectedReferences ?? [])]
+			// Still sync selectedRefs from props in case they changed
+			syncSelectedRefsFromProps()
 			return
 		}
 		// External/programmatic update -> reset guard and re-render from model.
 		isInternalUpdate = false
-		selectedRefs.value = [...(props.selectedReferences ?? [])]
+		syncSelectedRefsFromProps()
 		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
 		renderFromModel()
 	},
 	{ flush: 'post' }
+)
+
+watch(
+	() => props.selectedReferences,
+	() => {
+		// When selectedReferences change externally (e.g. dialog reopens with saved refs),
+		// sync and re-render to show the chips.
+		if (isInternalUpdate) return
+		const changed = syncSelectedRefsFromProps()
+		if (changed) {
+			isInternalUpdate = false
+			charCount.value = calcDisplayLength(props.modelValue ?? '', selectedRefs.value)
+			renderFromModel()
+		}
+	},
+	{ deep: true, flush: 'post' }
 )
 
 onBeforeUnmount(() => {

@@ -15,7 +15,11 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	getSelectedEdgeId: () => string | null
 	selectAllNodes: () => void
 	pasteNodesAtCanvasCenter: () => void
-	pasteMediaData: (clipboardData: DataTransfer | null) => Promise<boolean> | boolean
+	pasteMediaData: (
+		clipboardData: DataTransfer | null,
+		position?: { worldX: number; worldY: number }
+	) => Promise<boolean> | boolean
+	getMouseWorldPos: () => { worldX: number; worldY: number } | null
 	copySelectedNodes: (primaryNodeId: string) => void
 	hasClipboardNodes: () => boolean
 	removeSelectedNodes: (nodeIds: string[]) => void
@@ -23,6 +27,177 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	scheduleAsyncEdgeRender: () => void
 	saveProject?: () => void | Promise<void>
 }) => {
+	// 辅助函数：创建一个DataTransfer-like对象用于传递文件给pasteMediaData
+	const createDataTransferFromFiles = (files: File[]): DataTransfer | null => {
+		try {
+			const dt = new DataTransfer()
+			for (const f of files) {
+				dt.items.add(f)
+			}
+			return dt
+		} catch {
+			return null
+		}
+	}
+
+	// 主动通过navigator.clipboard.read()读取剪贴板（用于keydown Ctrl+V时paste事件不触发的场景）
+	const readClipboardAndPaste = async (position?: { worldX: number; worldY: number }) => {
+		console.log(
+			'[AIWorkflow:MediaImport] readClipboardAndPaste: attempting to read clipboard via navigator.clipboard, position:',
+			position
+		)
+
+		// 首先尝试使用navigator.clipboard.read() API（现代异步剪贴板API）
+		if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+			try {
+				const items = await navigator.clipboard.read()
+				console.log(
+					'[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard items count:',
+					items.length
+				)
+				const files: File[] = []
+				let textContent = ''
+				for (const item of items) {
+					// 读取图片/视频/模型文件类型
+					for (const type of item.types) {
+						console.log(
+							'[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard item type:',
+							type
+						)
+						if (
+							type.startsWith('image/') ||
+							type.startsWith('video/') ||
+							type === 'model/gltf-binary' ||
+							type === 'model/gltf+json'
+						) {
+							try {
+								const blob = await item.getType(type)
+								const ext = type.split('/')[1]?.split(';')[0] || 'bin'
+								const fileName = `pasted-file-${Date.now()}.${ext}`
+								const file = new File([blob], fileName, { type })
+								files.push(file)
+								console.log(
+									'[AIWorkflow:MediaImport] readClipboardAndPaste: got file from clipboard:',
+									{ name: fileName, type, size: blob.size }
+								)
+							} catch (err) {
+								console.warn(
+									'[AIWorkflow:MediaImport] readClipboardAndPaste: failed to get blob for type',
+									type,
+									err
+								)
+							}
+						} else if (type === 'text/plain' || type === 'text/uri-list') {
+							try {
+								const blob = await item.getType(type)
+								textContent = await blob.text()
+							} catch {}
+						}
+					}
+				}
+				if (files.length > 0) {
+					const dt = createDataTransferFromFiles(files)
+					if (dt) {
+						console.log(
+							'[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching files to pasteMediaData, count:',
+							files.length
+						)
+						const ok = await Promise.resolve(payload.pasteMediaData(dt, position))
+						if (ok) return true
+					}
+				}
+				if (textContent) {
+					// 尝试URL
+					const isUrl = /^https?:\/\//i.test(textContent.trim())
+					if (isUrl) {
+						// 创建一个DataTransfer并写入text/uri-list
+						try {
+							const dt = new DataTransfer()
+							dt.setData('text/uri-list', textContent.trim())
+							console.log(
+								'[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching URL to pasteMediaData:',
+								textContent.slice(0, 100)
+							)
+							const ok = await Promise.resolve(payload.pasteMediaData(dt, position))
+							if (ok) return true
+						} catch {}
+					}
+				}
+			} catch (err) {
+				console.warn(
+					'[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() failed:',
+					err
+				)
+			}
+		} else {
+			console.log(
+				'[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() not available'
+			)
+		}
+
+		// Fallback：创建临时隐藏输入框来触发标准paste事件
+		console.log(
+			'[AIWorkflow:MediaImport] readClipboardAndPaste: trying fallback with hidden textarea'
+		)
+		return new Promise<boolean>((resolve) => {
+			try {
+				const textarea = document.createElement('textarea')
+				textarea.style.position = 'fixed'
+				textarea.style.left = '-9999px'
+				textarea.style.top = '-9999px'
+				textarea.style.opacity = '0'
+				textarea.setAttribute('readonly', '')
+				document.body.appendChild(textarea)
+				textarea.focus()
+
+				let resolved = false
+				const cleanup = () => {
+					if (resolved) return
+					resolved = true
+					textarea.removeEventListener('paste', onPasteFallback, true)
+					document.body.removeChild(textarea)
+				}
+				const onPasteFallback = async (pasteEv: ClipboardEvent) => {
+					console.log('[AIWorkflow:MediaImport] Fallback paste event captured on hidden textarea')
+					pasteEv.stopImmediatePropagation()
+					pasteEv.preventDefault()
+					const cd = pasteEv.clipboardData
+					try {
+						const ok = await Promise.resolve(payload.pasteMediaData(cd, position))
+						cleanup()
+						resolve(ok)
+					} catch (err) {
+						console.error('[AIWorkflow:MediaImport] Fallback pasteMediaData error:', err)
+						cleanup()
+						resolve(false)
+					}
+				}
+				textarea.addEventListener('paste', onPasteFallback, true)
+
+				// 触发粘贴命令
+				const success = document.execCommand('paste')
+				console.log('[AIWorkflow:MediaImport] Fallback execCommand paste result:', success)
+
+				// 超时兜底
+				setTimeout(() => {
+					if (!resolved) {
+						console.warn('[AIWorkflow:MediaImport] Fallback paste timed out')
+						cleanup()
+						resolve(false)
+					}
+				}, 1000)
+			} catch (err) {
+				console.error('[AIWorkflow:MediaImport] Fallback failed:', err)
+				resolve(false)
+			}
+		})
+	}
+
+	// 防重复粘贴：keydown触发后等待原生paste事件，超时则用readClipboardAndPaste兜底
+	let pasteHandled = false
+	let pasteFallbackTimer: ReturnType<typeof setTimeout> | null = null
+	const PASTE_FALLBACK_DELAY_MS = 80
+
 	const onWorkflowKeyDown = (ev: KeyboardEvent) => {
 		const key = String(ev.key || '').toLowerCase()
 		const mod = ev.ctrlKey || ev.metaKey
@@ -40,6 +215,54 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			return
 		}
 
+		// Ctrl+V / Cmd+V：先尝试让原生paste事件触发，若在Electron/Canvas焦点下paste事件不触发，
+		// 则在短延迟后通过readClipboardAndPaste主动读取剪贴板作为兜底。
+		if (mod && key === 'v' && !ev.shiftKey && !ev.altKey && !ev.repeat) {
+			const targetIsEditable = isEditableEventTarget(ev.target ?? null)
+			const mousePos = payload.getMouseWorldPos()
+			const hasInternalNodes = payload.hasClipboardNodes()
+			console.log('[AIWorkflow:MediaImport] === KeyDown Ctrl+V detected ===', {
+				targetTag: tag,
+				targetIsEditable,
+				hasClipboardNodes: hasInternalNodes,
+				mousePos,
+				note: 'Waiting for native paste event, with fallback to readClipboardAndPaste'
+			})
+
+			if (targetIsEditable) {
+				// 可编辑目标：不干预，让浏览器原生处理
+				return
+			}
+
+			if (hasInternalNodes) {
+				// 内部节点复制粘贴：直接处理
+				ev.preventDefault()
+				ev.stopImmediatePropagation()
+				payload.pasteNodesAtCanvasCenter()
+				return
+			}
+
+			// 外部媒体粘贴：先重置标志，等待原生paste事件；若超时未触发则主动读取剪贴板
+			pasteHandled = false
+			if (pasteFallbackTimer) {
+				clearTimeout(pasteFallbackTimer)
+				pasteFallbackTimer = null
+			}
+			pasteFallbackTimer = setTimeout(() => {
+				pasteFallbackTimer = null
+				if (!pasteHandled) {
+					console.log(
+						'[AIWorkflow:MediaImport] Native paste event did not fire within fallback window, using readClipboardAndPaste'
+					)
+					Promise.resolve(readClipboardAndPaste(mousePos ?? undefined)).catch((err) => {
+						console.error('[AIWorkflow:MediaImport] readClipboardAndPaste error:', err)
+					})
+				}
+			}, PASTE_FALLBACK_DELAY_MS)
+			// 不阻止默认行为，让paste事件有机会自然触发
+			return
+		}
+
 		if (isEditableEventTarget(ev.target ?? null)) {
 			return
 		}
@@ -49,15 +272,6 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			if (selected.length > 0) {
 				ev.stopImmediatePropagation()
 				payload.copySelectedNodes(selected[0])
-			}
-			return
-		}
-
-		if (mod && key === 'v') {
-			if (payload.hasClipboardNodes()) {
-				ev.preventDefault()
-				ev.stopImmediatePropagation()
-				payload.pasteNodesAtCanvasCenter()
 			}
 			return
 		}
@@ -103,58 +317,146 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	}
 
 	// 处理 Ctrl+V 粘贴：
-	// 1. 如果剪贴板包含我们的自定义标记（来自蓝图内的节点复制），粘贴节点
-	// 2. 如果剪贴板包含文件/截图/HTTP URL，导入外部资产（系统截图、文件、网页图片等）
+	// 1. 先检测外部数据（文件/截图/URL），优先导入外部资产
+	// 2. 如果有自定义标记（来自蓝图内的节点复制），粘贴节点
 	// 3. 兜底：如果没有外部数据但内部有节点剪贴板数据，粘贴节点
-	// 4. 节点粘贴后会消费（清空）内部剪贴板，不会永久拦截后续系统粘贴
+	// 注意：先检测文件/URL，再调用 cd.getData() 检测内部标记，避免 getData 干扰文件读取
 	const onWorkflowPaste = (ev: ClipboardEvent) => {
-		if (!payload.isRouteActive()) return
-		if (isEditableEventTarget(ev.target ?? null)) return
+		// 入口日志：任何情况下都打印，方便诊断为什么粘贴没反应
+		const targetEl = ev.target as HTMLElement | null
+		const mousePos = payload.getMouseWorldPos()
+		console.log('[AIWorkflow:MediaImport] === Paste event fired ===', {
+			targetTag: targetEl?.tagName,
+			targetId: targetEl?.id,
+			targetClass: targetEl?.className,
+			isEditable: isEditableEventTarget(ev.target),
+			routeActive: payload.isRouteActive(),
+			mousePos
+		})
+
+		if (!payload.isRouteActive()) {
+			console.log('[AIWorkflow:MediaImport] Paste ignored: route not active')
+			return
+		}
+		if (isEditableEventTarget(ev.target ?? null)) {
+			console.log('[AIWorkflow:MediaImport] Paste ignored: target is editable element')
+			return
+		}
+
+		// 标记已通过原生paste事件处理，取消keydown fallback定时器，防止重复处理
+		pasteHandled = true
+		if (pasteFallbackTimer) {
+			clearTimeout(pasteFallbackTimer)
+			pasteFallbackTimer = null
+		}
 
 		const cd = ev.clipboardData ?? null
-
-		// 检查是否是我们自己复制的节点
-		const isOurNodeCopy = cd && cd.getData(DVSTUDIO_NODES_MIME) === '1'
-		if (isOurNodeCopy) {
-			ev.preventDefault()
+		if (!cd) {
+			console.log('[AIWorkflow:MediaImport] Paste ignored: no clipboardData')
+			// 兜底尝试粘贴内部节点
 			if (payload.hasClipboardNodes()) {
+				console.log('[AIWorkflow:MediaImport] Fallback: pasting internal nodes (no clipboardData)')
+				ev.preventDefault()
 				payload.pasteNodesAtCanvasCenter()
 			}
 			return
 		}
 
-		// 检测系统剪贴板中是否有外部可导入数据（文件/截图/URL）
-		let hasExternalData = false
-		if (cd) {
-			const hasFiles = Array.from(cd.items ?? []).some(
-				(it) => it.kind === 'file' || (it.type && it.type.startsWith('image/'))
+		// 第一步：检测文件（同时检查 items 和 files，兼容不同Electron/浏览器场景）
+		const fileItems = Array.from(cd.items ?? []).filter((it) => it.kind === 'file')
+		const mediaFileItems = fileItems.filter((it) => {
+			const t = String(it.type || '').toLowerCase()
+			return (
+				t.startsWith('image/') ||
+				t.startsWith('video/') ||
+				t === 'model/gltf-binary' ||
+				t === 'model/gltf+json' ||
+				!t
 			)
-			if (hasFiles) {
-				hasExternalData = true
-			} else {
-				const text = (cd.getData('text') ?? '').trim()
-				if (text && /^https?:\/\//i.test(text)) {
-					hasExternalData = true
-				}
-			}
-		}
+		})
+		const hasFilesInItems = mediaFileItems.length > 0
+		const hasFilesInFiles = cd.files && cd.files.length > 0
+		const hasAnyFiles = hasFilesInItems || hasFilesInFiles
 
-		if (hasExternalData && cd) {
+		if (hasAnyFiles) {
+			console.log('[AIWorkflow:MediaImport] Paste detected files:', {
+				fromItems: mediaFileItems.length,
+				fromFiles: cd.files?.length ?? 0,
+				itemTypes: mediaFileItems.map((it) => ({ kind: it.kind, type: it.type })),
+				fileNames: Array.from(cd.files ?? []).map((f) => ({
+					name: f.name,
+					type: f.type,
+					size: f.size
+				}))
+			})
 			ev.preventDefault()
-			const handled = payload.pasteMediaData(cd)
+			console.log('[AIWorkflow:MediaImport] Processing external media paste (files)...')
+			const handled = payload.pasteMediaData(cd, mousePos ?? undefined)
 			Promise.resolve(handled).then((ok) => {
+				console.log('[AIWorkflow:MediaImport] pasteMediaData handled:', ok)
 				if (!ok && payload.hasClipboardNodes()) {
+					console.log(
+						'[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes'
+					)
 					payload.pasteNodesAtCanvasCenter()
 				}
 			})
 			return
 		}
 
-		// 系统剪贴板中没有外部数据：兜底尝试粘贴内部节点
+		// 第二步：检测URL文本（包括http/https、blob、data、file://本地文件路径）
+		const text = (cd.getData('text/uri-list') || cd.getData('text/plain') || '').trim()
+		const isHttpUrl = text && /^https?:\/\//i.test(text)
+		const isFileUrl = text && text.startsWith('file://')
+		const isDataUrl = text && text.startsWith('data:')
+		const isBlobUrl = text && text.startsWith('blob:')
+		const isUrl = isHttpUrl || isFileUrl || isDataUrl || isBlobUrl
+		if (isUrl) {
+			console.log('[AIWorkflow:MediaImport] Paste detected URL/path:', text.slice(0, 100), {
+				isHttpUrl,
+				isFileUrl,
+				isDataUrl,
+				isBlobUrl
+			})
+			ev.preventDefault()
+			console.log('[AIWorkflow:MediaImport] Processing external media paste (URL/path)...')
+			const handled = payload.pasteMediaData(cd, mousePos ?? undefined)
+			Promise.resolve(handled).then((ok) => {
+				console.log('[AIWorkflow:MediaImport] pasteMediaData handled:', ok)
+				if (!ok && payload.hasClipboardNodes()) {
+					console.log(
+						'[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes'
+					)
+					payload.pasteNodesAtCanvasCenter()
+				}
+			})
+			return
+		}
+
+		// 第三步：检测是否是我们自己复制的节点（注意：cd.getData必须在文件/URL检测之后调用，避免干扰文件读取）
+		const isOurNodeCopy = cd.getData(DVSTUDIO_NODES_MIME) === '1'
+		if (isOurNodeCopy) {
+			console.log('[AIWorkflow:MediaImport] Paste: internal node copy detected')
+			ev.preventDefault()
+			if (payload.hasClipboardNodes()) {
+				payload.pasteNodesAtCanvasCenter()
+			} else {
+				console.warn(
+					'[AIWorkflow:MediaImport] Internal node copy marker found but hasClipboardNodes() is false'
+				)
+			}
+			return
+		}
+
+		// 第四步：兜底尝试粘贴内部节点
 		if (payload.hasClipboardNodes()) {
+			console.log('[AIWorkflow:MediaImport] Fallback: pasting internal nodes (no external data)')
 			ev.preventDefault()
 			payload.pasteNodesAtCanvasCenter()
+			return
 		}
+
+		console.log('[AIWorkflow:MediaImport] Paste ignored: no actionable data in clipboard')
 	}
 
 	const onContentResize = () => {

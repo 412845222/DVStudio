@@ -1,5 +1,10 @@
 import type { Store } from 'vuex'
-import type { WorkflowState, WorkflowNode, WorkflowBlenderNodeSettings, WorkflowBlenderChatMessage } from '../aiworkflow/types'
+import type {
+	WorkflowState,
+	WorkflowNode,
+	WorkflowBlenderNodeSettings,
+	WorkflowBlenderChatMessage
+} from '../aiworkflow/types'
 import { AIWorkflowStore } from '../store/aiworkflow/store'
 import { cloneJsonSafe } from '../core/shared/cloneJsonSafe'
 
@@ -16,14 +21,10 @@ const TRANSIENT_STATE_KEYS = new Set([
 	'nodeGenerationTasksById',
 	'nodeGenerationTaskIdsByNodeId',
 	'selectionTagsByKey',
-	'nodeCheckboxVisible',
+	'nodeCheckboxVisible'
 ])
 
-const TRANSIENT_NODE_KEYS = new Set([
-	'isResponding',
-	'isSubmitting',
-	'nodeChatDraft',
-])
+const TRANSIENT_NODE_KEYS = new Set(['isResponding', 'isSubmitting'])
 
 const TRANSIENT_MUTATIONS = new Set([
 	'setViewport',
@@ -34,8 +35,6 @@ const TRANSIENT_MUTATIONS = new Set([
 	'clearSelection',
 	'toggleNodeSelection',
 	'setChatDraft',
-	'setNodeChatDraft',
-	'setNodeChatSelectedRefs',
 	'setNodeChatSubmitting',
 	'setBlenderResponding',
 	'setBlenderMcpStatus',
@@ -52,10 +51,12 @@ const TRANSIENT_MUTATIONS = new Set([
 	'setNodeCheckboxVisible',
 	'openNodeChatDialog',
 	'closeNodeChatDialog',
-	'removeSelectionTag',
+	'removeSelectionTag'
 ])
 
-const sanitizeBlenderChatMessage = (msg: WorkflowBlenderChatMessage): WorkflowBlenderChatMessage => {
+const sanitizeBlenderChatMessage = (
+	msg: WorkflowBlenderChatMessage
+): WorkflowBlenderChatMessage => {
 	return {
 		id: msg.id,
 		role: msg.role,
@@ -66,17 +67,21 @@ const sanitizeBlenderChatMessage = (msg: WorkflowBlenderChatMessage): WorkflowBl
 		status: msg.status === 'running' ? 'completed' : msg.status,
 		collapsed: true,
 		thinkingCollapsed: true,
-		command: msg.command,
+		command: msg.command
 	}
 }
 
-const sanitizeBlenderSettings = (settings: WorkflowBlenderNodeSettings | undefined): WorkflowBlenderNodeSettings | undefined => {
+const sanitizeBlenderSettings = (
+	settings: WorkflowBlenderNodeSettings | undefined
+): WorkflowBlenderNodeSettings | undefined => {
 	if (!settings) return settings
 	const out = { ...settings }
 	out.isResponding = false
 	out.isSubmitting = false
 	out.importStatus =
-		out.importStatus === 'downloading' || out.importStatus === 'importing' ? 'idle' : out.importStatus
+		out.importStatus === 'downloading' || out.importStatus === 'importing'
+			? 'idle'
+			: out.importStatus
 	out.importProgress = 0
 	out.lastOutputs = undefined
 	if (out.chatMessages && out.chatMessages.length > 0) {
@@ -85,7 +90,10 @@ const sanitizeBlenderSettings = (settings: WorkflowBlenderNodeSettings | undefin
 	return out
 }
 
-const sanitizeGenericSettings = <T extends Record<string, unknown>>(settings: T | undefined, transientKeys: Set<string>): T | undefined => {
+const sanitizeGenericSettings = <T extends Record<string, unknown>>(
+	settings: T | undefined,
+	transientKeys: Set<string>
+): T | undefined => {
 	if (!settings) return settings
 	const out = { ...settings }
 	for (const key of Object.keys(out)) {
@@ -100,7 +108,7 @@ const IMAGE_SETTINGS_TRANSIENT = new Set([
 	'lastGeneratedImageUrl',
 	'meshyImageSettings',
 	'geminiImageSettings',
-	'tripo3dImageSettings',
+	'tripo3dImageSettings'
 ])
 
 const MESHY_SETTINGS_TRANSIENT = new Set([
@@ -120,7 +128,7 @@ const MESHY_SETTINGS_TRANSIENT = new Set([
 	'meshyOutputAssetPath',
 	'meshyInputSummary',
 	'meshyOutputSummary',
-	'meshyRelationSummary',
+	'meshyRelationSummary'
 ])
 
 const TRIPO3D_SETTINGS_TRANSIENT = new Set([
@@ -146,7 +154,7 @@ const TRIPO3D_SETTINGS_TRANSIENT = new Set([
 	'tripo3dImageUrls',
 	'tripo3dUpstreamTaskId',
 	'tripo3dUpstreamTaskFamily',
-	'tripo3dUpstreamTaskStatus',
+	'tripo3dUpstreamTaskStatus'
 ])
 
 const COMFYUI_SETTINGS_TRANSIENT = new Set([
@@ -158,7 +166,7 @@ const COMFYUI_SETTINGS_TRANSIENT = new Set([
 	'progress',
 	'statusText',
 	'outputs',
-	'lastUpdateAt',
+	'lastUpdateAt'
 ])
 
 const SCENEUNDERSTANDING_SETTINGS_TRANSIENT = new Set([
@@ -172,7 +180,7 @@ const SCENEUNDERSTANDING_SETTINGS_TRANSIENT = new Set([
 	'reasoningText',
 	'lastRunAt',
 	'lastInputImageUrl',
-	'lastInputImageUrls',
+	'lastInputImageUrls'
 ])
 
 const SCENELAYOUT_SETTINGS_TRANSIENT = new Set([
@@ -181,7 +189,7 @@ const SCENELAYOUT_SETTINGS_TRANSIENT = new Set([
 	'lastRunAt',
 	'selectedLayoutItemId',
 	'selectedPlaceholderOutput',
-	'layoutItems',
+	'layoutItems'
 ])
 
 const SCENEDECOMPOSE_SETTINGS_TRANSIENT = new Set([
@@ -197,7 +205,7 @@ const SCENEDECOMPOSE_SETTINGS_TRANSIENT = new Set([
 	'lastRunAt',
 	'outputs',
 	'lastExpandedAt',
-	'lastExpandedCount',
+	'lastExpandedCount'
 ])
 
 const UNREALEXPORT_SETTINGS_TRANSIENT = new Set([
@@ -232,7 +240,7 @@ const UNREALEXPORT_SETTINGS_TRANSIENT = new Set([
 	'pluginInstallConfig',
 	'assetPathValidation',
 	'assetPathValidationError',
-	'connectedSession',
+	'connectedSession'
 ])
 
 const MODEL3D_SETTINGS_TRANSIENT = new Set([
@@ -249,7 +257,7 @@ const MODEL3D_SETTINGS_TRANSIENT = new Set([
 	'lastInputSourcePath',
 	'lastInputSourceName',
 	'lastInputPlaceholderId',
-	'lastInputPlaceholderJson',
+	'lastInputPlaceholderJson'
 ])
 
 const sanitizeNode = (node: WorkflowNode): WorkflowNode => {
@@ -273,16 +281,28 @@ const sanitizeNode = (node: WorkflowNode): WorkflowNode => {
 		out.comfyuiSettings = sanitizeGenericSettings(out.comfyuiSettings, COMFYUI_SETTINGS_TRANSIENT)
 	}
 	if (out.sceneUnderstandingSettings) {
-		out.sceneUnderstandingSettings = sanitizeGenericSettings(out.sceneUnderstandingSettings, SCENEUNDERSTANDING_SETTINGS_TRANSIENT)
+		out.sceneUnderstandingSettings = sanitizeGenericSettings(
+			out.sceneUnderstandingSettings,
+			SCENEUNDERSTANDING_SETTINGS_TRANSIENT
+		)
 	}
 	if (out.sceneLayoutSettings) {
-		out.sceneLayoutSettings = sanitizeGenericSettings(out.sceneLayoutSettings, SCENELAYOUT_SETTINGS_TRANSIENT)
+		out.sceneLayoutSettings = sanitizeGenericSettings(
+			out.sceneLayoutSettings,
+			SCENELAYOUT_SETTINGS_TRANSIENT
+		)
 	}
 	if (out.sceneDecomposeSettings) {
-		out.sceneDecomposeSettings = sanitizeGenericSettings(out.sceneDecomposeSettings, SCENEDECOMPOSE_SETTINGS_TRANSIENT)
+		out.sceneDecomposeSettings = sanitizeGenericSettings(
+			out.sceneDecomposeSettings,
+			SCENEDECOMPOSE_SETTINGS_TRANSIENT
+		)
 	}
 	if (out.unrealExportSettings) {
-		out.unrealExportSettings = sanitizeGenericSettings(out.unrealExportSettings, UNREALEXPORT_SETTINGS_TRANSIENT)
+		out.unrealExportSettings = sanitizeGenericSettings(
+			out.unrealExportSettings,
+			UNREALEXPORT_SETTINGS_TRANSIENT
+		)
 	}
 	if (out.model3dSettings) {
 		out.model3dSettings = sanitizeGenericSettings(out.model3dSettings, MODEL3D_SETTINGS_TRANSIENT)
@@ -309,7 +329,7 @@ const sanitizeStateForHistory = (state: WorkflowState): WorkflowState => {
 	}
 	return {
 		...state,
-		nodesById: sanitizedNodesById,
+		nodesById: sanitizedNodesById
 	}
 }
 
@@ -343,9 +363,11 @@ const computeFingerprint = (state: unknown): string => {
 }
 
 const scheduleIdle = (cb: () => void, timeout: number): number => {
-	const ric = (globalThis as unknown as {
-		requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
-	}).requestIdleCallback
+	const ric = (
+		globalThis as unknown as {
+			requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number
+		}
+	).requestIdleCallback
 	if (typeof ric === 'function') {
 		return ric(cb, { timeout }) as unknown as number
 	}
@@ -354,9 +376,11 @@ const scheduleIdle = (cb: () => void, timeout: number): number => {
 
 const cancelIdle = (id: number | null): void => {
 	if (id === null) return
-	const cic = (globalThis as unknown as {
-		cancelIdleCallback?: (id: number) => void
-	}).cancelIdleCallback
+	const cic = (
+		globalThis as unknown as {
+			cancelIdleCallback?: (id: number) => void
+		}
+	).cancelIdleCallback
 	if (typeof cic === 'function') {
 		cic(id)
 	} else {
@@ -450,7 +474,7 @@ const createCore = (options: AIWorkflowHistoryOptions = {}) => {
 		undo: (getSnapshot: () => unknown, applySnapshot: (snap: unknown) => void) =>
 			apply(past, future, getSnapshot, applySnapshot),
 		redo: (getSnapshot: () => unknown, applySnapshot: (snap: unknown) => void) =>
-			apply(future, past, getSnapshot, applySnapshot),
+			apply(future, past, getSnapshot, applySnapshot)
 	}
 }
 
@@ -477,7 +501,7 @@ const attach = (store: Store<WorkflowState>, options: AIWorkflowHistoryOptions =
 			core.flush(getSnapshot)
 			return core.redo(getSnapshot, applySnapshot)
 		},
-		commitCaptureNow: () => core.commitCaptureNow(getSnapshot),
+		commitCaptureNow: () => core.commitCaptureNow(getSnapshot)
 	}
 }
 
@@ -509,7 +533,7 @@ export const aiWorkflowHistory = {
 	commitCaptureNow: () => {
 		const api = ensureAIWorkflowHistory()
 		return api.commitCaptureNow()
-	},
+	}
 }
 
 export const createAIWorkflowHistoryForStore = (

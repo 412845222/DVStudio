@@ -25,6 +25,7 @@
 		:nodeChatSubmitting="nodeChatSubmitting"
 		:nodeChatParams="nodeChatParams"
 		:nodeChatSelectedRefs="nodeChatSelectedRefs"
+		:input-param-preview-refs="inputParamPreviewRefs"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"

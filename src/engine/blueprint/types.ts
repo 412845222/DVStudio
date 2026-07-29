@@ -271,11 +271,27 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 		outputs: [{ id: 'out-0', label: '出口' }]
 	},
 	text: {
-		inputs: [{ id: 'in-text', label: '文本输入', mediaType: 'text' }],
-		outputs: [{ id: 'out-text', label: '文本输出', mediaType: 'text' }]
+		inputs: [
+			{
+				id: 'in-0',
+				label: '多模态输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+				multiInput: true
+			}
+		],
+		outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 	},
 	image: {
-		inputs: [{ id: 'in-image', label: '图片输入', mediaType: 'image' }],
+		inputs: [
+			{
+				id: 'in-0',
+				label: '多模态输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+				multiInput: true
+			}
+		],
 		outputs: [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
 	},
 	'rotate-image': {
@@ -283,12 +299,26 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 		outputs: [{ id: 'out-0', label: '旋转图片', mediaType: 'image' }]
 	},
 	video: {
-		inputs: [{ id: 'in-0', label: '视频输入' }],
-		outputs: [{ id: 'out-0', label: '视频输出', mediaType: 'video' }]
+		inputs: [
+			{ id: 'in-text', label: '提示词输入', mediaType: 'text' },
+			{ id: 'in-image', label: '参考图输入', multiInput: true, mediaType: 'image' },
+			{ id: 'in-video', label: '参考视频输入', multiInput: true, mediaType: 'video' }
+		],
+		outputs: [{ id: 'out-video', label: '视频输出', mediaType: 'video' }]
 	},
 	model3d: {
-		inputs: [{ id: 'in-model', label: '模型输入', mediaType: 'model3d' }],
-		outputs: [{ id: 'out-model', label: '模型输出', mediaType: 'model3d' }]
+		inputs: [
+			{ id: 'in-model', label: '模型输入', mediaType: 'model3d' },
+			{ id: 'in-text', label: '提示词', mediaType: 'text' },
+			{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
+			{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+			{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+			{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' }
+		],
+		outputs: [
+			{ id: 'out-model', label: '模型输出', mediaType: 'model3d' },
+			{ id: 'out-image', label: '预览图', mediaType: 'image' }
+		]
 	}
 }
 
@@ -316,7 +346,8 @@ export function getDefaultNodeData(
 		height: defaultSize.height,
 		inputs: defaultPorts.inputs.map((p) => ({ ...p })),
 		outputs: defaultPorts.outputs.map((p) => ({ ...p })),
-		status: 'idle'
+		status: 'idle',
+		createdAt: Date.now()
 	}
 }
 

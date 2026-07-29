@@ -51,33 +51,55 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		if (!allowedType) return []
 		const refs = localSelectedRefs.value || []
 		const inputRefs = props.inputParamPreviewRefs || []
-		const inputEdgeKeys = new Set(inputRefs.map((r: any) => `${r.fromNodeId}:${r.fromAnchorId}`))
+		// 构建inputParamPreviewRefs的索引，用于补全@引用的previewUrl
+		// 优先级：edgeId精确匹配 > fromNodeId:fromAnchorId匹配
+		const inputRefsByEdgeId = new Map<string, any>()
+		const inputRefsBySource = new Map<string, any>()
+		for (const ir of inputRefs) {
+			if (ir.edgeId) {
+				inputRefsByEdgeId.set(ir.edgeId, ir)
+			}
+			if (ir.fromNodeId && ir.fromAnchorId) {
+				inputRefsBySource.set(`${ir.fromNodeId}:${ir.fromAnchorId}`, ir)
+			}
+		}
+		// @引用chips和输入边预览是两个独立的展示区域，不需要互斥过滤
+		// 输入边显示在对话框顶部的inputParamPreviewRefs区域
+		// @引用显示在输入框内作为chips
 		return refs
 			.filter((r: any) => {
 				if (!r) return false
 				const rKind = r.kind || r.type
-				if (rKind !== allowedType) return false
-				if (
-					r.fromNodeId &&
-					r.fromAnchorId &&
-					inputEdgeKeys.has(`${r.fromNodeId}:${r.fromAnchorId}`)
-				)
-					return false
-				return true
+				return rKind === allowedType
 			})
-			.map((r: any) => ({
-				edgeId: r.edgeId,
-				fromNodeId: r.fromNodeId,
-				fromAnchorId: r.fromAnchorId,
-				kind: r.kind || r.type || allowedType,
-				name: r.name || r.label || '',
-				label: r.label || r.name || '',
-				previewUrl: r.previewUrl
-			}))
+			.map((r: any) => {
+				// 尝试从当前连接的边引用中补全previewUrl和label
+				// 解决：1) 保存时previewUrl(blob:)失效；2) 边断开重连后预览更新；3) 首次保存时字段丢失
+				let matchedInputRef: any = null
+				if (r.edgeId && inputRefsByEdgeId.has(r.edgeId)) {
+					matchedInputRef = inputRefsByEdgeId.get(r.edgeId)
+				} else if (r.fromNodeId && r.fromAnchorId) {
+					matchedInputRef = inputRefsBySource.get(`${r.fromNodeId}:${r.fromAnchorId}`)
+				}
+				const resolvedPreviewUrl = r.previewUrl || matchedInputRef?.previewUrl || undefined
+				const resolvedLabel =
+					r.label || r.name || matchedInputRef?.label || matchedInputRef?.name || ''
+				return {
+					edgeId: r.edgeId || matchedInputRef?.edgeId,
+					fromNodeId: r.fromNodeId,
+					fromAnchorId: r.fromAnchorId,
+					kind: r.kind || r.type || allowedType,
+					name: r.name || resolvedLabel,
+					label: resolvedLabel,
+					previewUrl: resolvedPreviewUrl
+				}
+			})
 	})
 
 	const showInputParamRefs = computed(() => {
-		return !!props.nodeType && ['image', 'video', 'model3d', 'blender'].includes(props.nodeType)
+		return (
+			!!props.nodeType && ['text', 'image', 'video', 'model3d', 'blender'].includes(props.nodeType)
+		)
 	})
 
 	const isTripo3D = computed(() => {
@@ -145,6 +167,9 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 				if (myToken !== initGuardToken) return
 				nextTick(() => {
 					if (myToken !== initGuardToken) return
+					// Re-sync from props after all DOM updates to ensure we have the latest
+					// state (props may have updated during the async initialization above).
+					syncFromProps()
 					isInternalUpdate = false
 					isReady = true
 					inputRef.value?.focus()
@@ -182,7 +207,6 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	watch(
 		() => props.draft,
 		(newVal) => {
-			if (isInternalUpdate) return
 			if (newVal !== undefined) {
 				localDraft.value = newVal
 			}
@@ -193,7 +217,6 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	watch(
 		() => props.params,
 		(newVal) => {
-			if (isInternalUpdate) return
 			if (newVal !== undefined) {
 				localParams.value = mergeWithDefaultParams(props.nodeType, newVal)
 			}
@@ -204,7 +227,6 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	watch(
 		() => props.selectedReferences,
 		(newVal) => {
-			if (isInternalUpdate) return
 			if (newVal !== undefined) {
 				localSelectedRefs.value = newVal ? [...newVal] : []
 			}
@@ -213,35 +235,44 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	)
 
 	const onDraftInput = (value: string) => {
-		if (isInternalUpdate) return
+		const wasInternalUpdate = isInternalUpdate
+		// 总是更新localDraft
+		localDraft.value = value
 		if (!isReady) {
 			return
 		}
-		localDraft.value = value
 		const nid = props.nodeId
 		if (nid) {
-			isInternalUpdate = true
+			if (!wasInternalUpdate) {
+				isInternalUpdate = true
+			}
 			chatApi.saveDraft(nid, value)
-			nextTick(() => {
-				isInternalUpdate = false
-			})
+			if (!wasInternalUpdate) {
+				nextTick(() => {
+					isInternalUpdate = false
+				})
+			}
 		}
 	}
 
 	const onParamsChange = (params: Record<string, any>) => {
-		if (isInternalUpdate) return
+		const wasInternalUpdate = isInternalUpdate
+		// 总是更新localParams
+		localParams.value = { ...params }
 		if (!isReady) {
-			localParams.value = { ...params }
 			return
 		}
-		localParams.value = { ...params }
 		const nid = props.nodeId
 		if (nid) {
-			isInternalUpdate = true
+			if (!wasInternalUpdate) {
+				isInternalUpdate = true
+			}
 			chatApi.saveParams(nid, params)
-			nextTick(() => {
-				isInternalUpdate = false
-			})
+			if (!wasInternalUpdate) {
+				nextTick(() => {
+					isInternalUpdate = false
+				})
+			}
 		}
 	}
 
@@ -252,22 +283,46 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			type: r.kind || r.type || 'image',
 			fromNodeId: r.fromNodeId,
 			fromAnchorId: r.fromAnchorId,
+			edgeId: r.edgeId,
 			fromContent: r.fromContent,
 			label: r.name || r.label || '',
-			name: r.name || r.label || ''
+			name: r.name || r.label || '',
+			previewUrl: r.previewUrl
 		}))
+
+		// 总是更新localSelectedRefs，因为这是子组件从DOM中读取的真实chip状态
+		// isInternalUpdate只是防止props变化触发的回环，不能阻止用户主动操作的状态更新
+		const wasInternalUpdate = isInternalUpdate
+		localSelectedRefs.value = refsForNode
+
 		if (!isReady) {
-			localSelectedRefs.value = refsForNode
+			console.log('[NodeChatSync#onSelectedRefsChange] QUEUE before ready', {
+				nodeId: props.nodeId,
+				refsLen: refsForNode.length
+			})
 			return
 		}
-		localSelectedRefs.value = refsForNode
+
 		const nid = props.nodeId
 		if (nid) {
-			isInternalUpdate = true
-			chatApi.saveSelectedRefs(nid, refsForNode)
-			nextTick(() => {
-				isInternalUpdate = false
+			// 只有当isInternalUpdate原本是false时，才设置它并在nextTick重置
+			// 如果已经是true（比如onDraftInput先设置了），不重置，让外层负责重置
+			if (!wasInternalUpdate) {
+				isInternalUpdate = true
+			}
+			console.log('[NodeChatSync#onSelectedRefsChange] SAVE to store', {
+				nodeId: nid,
+				refsLen: refsForNode.length,
+				wasInternalUpdate,
+				firstRefHasPreviewUrl: !!(refsForNode.length > 0 && refsForNode[0].previewUrl),
+				firstRefEdgeId: refsForNode.length > 0 ? refsForNode[0].edgeId : null
 			})
+			chatApi.saveSelectedRefs(nid, refsForNode)
+			if (!wasInternalUpdate) {
+				nextTick(() => {
+					isInternalUpdate = false
+				})
+			}
 		}
 	}
 

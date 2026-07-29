@@ -67,11 +67,21 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 
 	const getNodeTripo3DSettings = (node: WorkflowNode): Record<string, unknown> => {
 		if (node.type === 'model3d' && isRecord(node.model3dSettings)) {
-			return isRecord(node.model3dSettings.tripo3dModelSettings) ? node.model3dSettings.tripo3dModelSettings : {}
+			return isRecord(node.model3dSettings.tripo3dModelSettings)
+				? node.model3dSettings.tripo3dModelSettings
+				: {}
 		}
-		if (node.type === 'image' && isRecord((node as unknown as Record<string, unknown>).imageSettings)) {
-			const imgSettings = (node as unknown as Record<string, unknown>).imageSettings as Record<string, unknown>
-			const rawImgTripo = isRecord(imgSettings.tripo3dImageSettings) ? imgSettings.tripo3dImageSettings : {}
+		if (
+			node.type === 'image' &&
+			isRecord((node as unknown as Record<string, unknown>).imageSettings)
+		) {
+			const imgSettings = (node as unknown as Record<string, unknown>).imageSettings as Record<
+				string,
+				unknown
+			>
+			const rawImgTripo = isRecord(imgSettings.tripo3dImageSettings)
+				? imgSettings.tripo3dImageSettings
+				: {}
 			const normalized: Record<string, unknown> = {}
 			for (const [key, value] of Object.entries(rawImgTripo)) {
 				normalized[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
@@ -127,7 +137,9 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 					url: connectedImageOutputUrl(fromNode, fromAnchorId)
 				}
 			})
-			.filter((item): item is { fromNode: WorkflowNode; fromAnchorId: string; url: string } => Boolean(item?.url))
+			.filter((item): item is { fromNode: WorkflowNode; fromAnchorId: string; url: string } =>
+				Boolean(item?.url)
+			)
 	}
 
 	const isPrivateTripo3DHostname = (hostname: string) => {
@@ -219,7 +231,11 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 			if (!ctx) throw new Error('create offscreen canvas context failed')
 			ctx.clearRect(0, 0, targetWidth, targetHeight)
 			ctx.drawImage(bitmap, offsetX, offsetY, width, height)
-			nextBlob = await (canvas as unknown as { convertToBlob: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob({ type: 'image/png' })
+			nextBlob = await (
+				canvas as unknown as {
+					convertToBlob: (options?: { type?: string; quality?: number }) => Promise<Blob>
+				}
+			).convertToBlob({ type: 'image/png' })
 		} else {
 			const objectUrl = URL.createObjectURL(blob)
 			try {
@@ -262,11 +278,7 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 		if (!rawUrl) return ''
 
 		const nameBase =
-			String(
-				fromNode.alias ??
-					fromNode.title ??
-					'tripo3d_ref'
-			).trim() || 'tripo3d_ref'
+			String(fromNode.alias ?? fromNode.title ?? 'tripo3d_ref').trim() || 'tripo3d_ref'
 
 		return normalizeTripo3DImageInputValue(rawUrl, nameBase)
 	}
@@ -287,7 +299,9 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 			const isMeshySource = modelSettings.modelGenerationSource === 'meshy'
 			const rawSource = String(modelSettings.modelAssetUrl ?? modelSettings.modelUrl ?? '').trim()
 			const format = modelSettings.modelFormat === 'gltf' ? 'gltf' : 'glb'
-			const tripo3dTaskId = String(tripo3dSettings.tripo3dTaskId ?? tripo3dSettings.tripo3dUpstreamTaskId ?? '').trim()
+			const tripo3dTaskId = String(
+				tripo3dSettings.tripo3dTaskId ?? tripo3dSettings.tripo3dUpstreamTaskId ?? ''
+			).trim()
 			const meshyTaskId = String(meshySettings.meshyTaskId ?? '').trim()
 			const inputTaskId = tripo3dTaskId || meshyTaskId || undefined
 			return {
@@ -316,13 +330,26 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 		if (fromNode.type === 'image' || fromNode.type === 'tripo3d') {
 			const nodeSettings = getNodeTripo3DSettings(fromNode)
 			const tripo3dTaskId = String(nodeSettings.tripo3dTaskId ?? '').trim()
-			const tripo3dTaskFamily = String(nodeSettings.tripo3dTaskFamily ?? nodeSettings.tripo3dTaskMode ?? '').trim()
-			const isModelTask = tripo3dTaskFamily === 'text_to_model' || tripo3dTaskFamily === 'image_to_model' || tripo3dTaskFamily === 'multiview_to_model'
-				|| tripo3dTaskFamily === 'texture' || tripo3dTaskFamily === 'refine' || tripo3dTaskFamily === 'mesh_segment'
-				|| tripo3dTaskFamily === 'mesh_smartsegment' || tripo3dTaskFamily === 'mesh_complete' || tripo3dTaskFamily === 'mesh_decimate'
-				|| tripo3dTaskFamily === 'models_convert'
-			const effective = options.getTripo3DEffectiveModelSource(nodeSettings as Tripo3DNodeSettingsLike)
-			const outputSummary = isRecord(nodeSettings.tripo3dOutputSummary) ? nodeSettings.tripo3dOutputSummary as Record<string, unknown> : {}
+			const tripo3dTaskFamily = String(
+				nodeSettings.tripo3dTaskFamily ?? nodeSettings.tripo3dTaskMode ?? ''
+			).trim()
+			const isModelTask =
+				tripo3dTaskFamily === 'text_to_model' ||
+				tripo3dTaskFamily === 'image_to_model' ||
+				tripo3dTaskFamily === 'multiview_to_model' ||
+				tripo3dTaskFamily === 'texture' ||
+				tripo3dTaskFamily === 'refine' ||
+				tripo3dTaskFamily === 'mesh_segment' ||
+				tripo3dTaskFamily === 'mesh_smartsegment' ||
+				tripo3dTaskFamily === 'mesh_complete' ||
+				tripo3dTaskFamily === 'mesh_decimate' ||
+				tripo3dTaskFamily === 'models_convert'
+			const effective = options.getTripo3DEffectiveModelSource(
+				nodeSettings as Tripo3DNodeSettingsLike
+			)
+			const outputSummary = isRecord(nodeSettings.tripo3dOutputSummary)
+				? (nodeSettings.tripo3dOutputSummary as Record<string, unknown>)
+				: {}
 			const fallbackUrl = String(outputSummary.preferredUrl ?? outputSummary.assetUrl ?? '').trim()
 			const sourceUrl = effective.preferredUrl || effective.assetUrl || fallbackUrl
 			return {
@@ -338,8 +365,8 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 	}
 
 	const connectedTripo3DModelInput = async (nodeId: string) => {
-		let edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
-		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-model')
+		let edge = options.getFirstIncomingEdge(nodeId, 'in-model')
+		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
 		if (!edge) return null
 		const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) return null

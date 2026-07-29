@@ -33,6 +33,7 @@
 						:selected="node.selected"
 						:accent-color="node.accentColor"
 						:legacy-resources="legacyResourcesResolved"
+						:input-param-preview-refs-by-node-id="inputParamPreviewRefsResolved"
 						:chat-state="chatState"
 						:generation-tasks="nodeGenerationTasks"
 						@edit="(id: string) => handleBusinessEdit(id)"
@@ -149,6 +150,7 @@ const props = defineProps<{
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 	legacyResources?: Record<string, LegacyResourceData>
+	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	editingNodeId?: string | null
 }>()
 
@@ -159,6 +161,12 @@ const legacyResourcesResolved = computed<Record<string, LegacyResourceData>>(() 
 	if (props.legacyResources) return props.legacyResources
 	if (!props.scene) return {}
 	return props.scene.legacyResources || {}
+})
+
+const inputParamPreviewRefsResolved = computed<Record<string, any[]>>(() => {
+	if (props.inputParamPreviewRefsByNodeId) return props.inputParamPreviewRefsByNodeId
+	if (!props.scene) return {}
+	return (props.scene as any)._inputParamPreviewRefsByNodeId || {}
 })
 
 function canUseBusinessComponent(nodeType: string): boolean {

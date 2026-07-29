@@ -167,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
@@ -194,6 +194,31 @@ const props = defineProps<{
 	nodeWidth?: number
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
+
+// 调试日志：监听inputParamPreviewRefs变化
+watch(
+	() => props.inputParamPreviewRefs,
+	(newRefs) => {
+		console.log(
+			`[NodeChatDialog] nodeId=${props.nodeId}, nodeType=${props.nodeType}, visible=${props.visible}, inputParamPreviewRefs count=${newRefs?.length || 0}`,
+			newRefs
+		)
+	},
+	{ deep: true, immediate: true }
+)
+
+watch(
+	() => props.visible,
+	(newVisible) => {
+		if (newVisible && props.nodeId) {
+			console.log(
+				`[NodeChatDialog] DIALOG OPENED: nodeId=${props.nodeId}, nodeType=${props.nodeType}, inputParamPreviewRefs count=${props.inputParamPreviewRefs?.length || 0}`,
+				props.inputParamPreviewRefs
+			)
+		}
+	},
+	{ immediate: true }
+)
 
 const {
 	inputRef,

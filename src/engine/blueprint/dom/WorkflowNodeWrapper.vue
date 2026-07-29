@@ -45,6 +45,7 @@ const props = defineProps<{
 	selected: boolean
 	accentColor: string
 	legacyResources: Record<string, LegacyResourceData>
+	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	chatState?: NodeChatState | null
 	generationTasks?: Record<string, WorkflowNodeGenerationTask>
 }>()
@@ -80,13 +81,23 @@ const businessComponent = computed(() => {
 })
 
 const resolvedProps = computed(() => {
+	const nodeId = props.node.id
+	const nodeRefs = props.inputParamPreviewRefsByNodeId?.[nodeId] || []
+	// 调试日志
+	if (nodeRefs.length > 0) {
+		console.log(
+			`[WorkflowNodeWrapper] nodeId=${nodeId}, nodeType=${props.node.nodeType}, inputParamPreviewRefs=`,
+			nodeRefs
+		)
+	}
 	return NodeComponentResolver.resolveNodeProps(
 		props.node,
 		props.zoom,
 		props.legacyResources,
 		props.selected,
 		props.chatState,
-		props.generationTasks
+		props.generationTasks,
+		nodeRefs
 	)
 })
 
