@@ -54,6 +54,7 @@
 				@node-start-link="onDomNodeStartLink"
 				@node-end-link="onDomNodeEndLink"
 				@node-preview-request="onHostNodePreviewRequest"
+				@node-screenshot="onNodeScreenshot"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -1127,8 +1128,14 @@ function syncEngineProjectionToStore() {
 }
 
 const engineApi = {
-	addNode: (type: string, x: number, y: number, data?: Record<string, any>) => {
-		return blueprintHostRef.value?.addNode?.(type, x, y, data) ?? null
+	addNode: (
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	) => {
+		return blueprintHostRef.value?.addNode?.(type, x, y, data, opts) ?? null
 	},
 	createNodeWithConnection: (params: any) => {
 		const result = blueprintHostRef.value?.createNodeWithConnection?.(params) ?? {
@@ -1137,19 +1144,28 @@ const engineApi = {
 		}
 		return result
 	},
-	updateNodeData: (nodeId: string, patch: Record<string, any>) => {
-		const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch) ?? false
+	updateNodeData: (nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }) => {
+		const ok = blueprintHostRef.value?.updateNodeData?.(nodeId, patch, opts) ?? false
 		return ok
+	},
+	setLegacyResource: (resourceId: string, resourceData: any) => {
+		blueprintHostRef.value?.setLegacyResource?.(resourceId, resourceData)
 	},
 	connectPorts: (
 		fromNodeId: string,
 		fromAnchorId: string,
 		toNodeId: string,
-		toAnchorId: string
+		toAnchorId: string,
+		opts?: { silent?: boolean }
 	) => {
 		const ok =
-			blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ??
-			false
+			blueprintHostRef.value?.connectPorts?.(
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId,
+				opts
+			) ?? false
 		return ok
 	},
 	copySelection: () => {
@@ -1303,28 +1319,76 @@ const engineApi = {
 		return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
 	},
 	// 强制从引擎同步蓝图数据到Vuex store（用于批量节点创建后确保nodesById同步）
+	// 注意：调用者必须在外层管理beginBulkUpdate/endBulkUpdate生命周期
 	forceSyncToStore: () => {
-		const editor = blueprintHostRef.value?.getInstance?.()
+		const host = blueprintHostRef.value
+		const editor = host?.getInstance?.()
 		if (!editor || typeof editor.saveBlueprint !== 'function') {
 			return Promise.resolve(false)
 		}
+
+		// 清除editor上pending的change定时器（双重保险）
+		if (editor && typeof (editor as any).clearPendingChanges === 'function') {
+			;(editor as any).clearPendingChanges()
+		}
+
 		const latest = editor.saveBlueprint()
 		if (!latest) {
 			return Promise.resolve(false)
 		}
+
+		const nodeCount = latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
+		const edgeCount = latest.edgeOrder?.length ?? Object.keys(latest.edgesById || {}).length
 		console.log(
 			'[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
-			latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
+			nodeCount,
+			'edges:',
+			edgeCount,
+			'edgeIds:',
+			latest.edgeOrder
 		)
+
 		const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
+
+		// 验证快照中确实包含edges
+		const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
+		console.log(
+			'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
+			snapshotEdgeCount
+		)
+
 		isUpdatingFromStore = true
 		store.commit('hydrateDraft', { snapshot })
+
 		return new Promise<boolean>((resolve) => {
+			// 等待Vue渲染完成+额外时间确保isUpdatingFromStore保护覆盖endBulkUpdate触发的emitChange
+			// endBulkUpdate会调度一个setTimeout(0)的emitChange，我们需要等它执行完再释放isUpdatingFromStore
 			nextTick(() => {
-				isUpdatingFromStore = false
-				// 再等一帧确保Vuex状态完全更新
 				requestAnimationFrame(() => {
-					resolve(true)
+					setTimeout(() => {
+						// 再一次确认store中的edges存在
+						const storeEdges = store.state.edgesById || {}
+						const storeEdgeCount = Object.keys(storeEdges).length
+						console.log(
+							'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
+							storeEdgeCount
+						)
+
+						// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
+						if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
+							console.warn(
+								'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
+							)
+							store.commit('hydrateDraft', { snapshot })
+						}
+
+						// 释放isUpdatingFromStore保护
+						// 使用setTimeout确保在endBulkUpdate触发的emitChange setTimeout(0)之后执行
+						setTimeout(() => {
+							isUpdatingFromStore = false
+							resolve(true)
+						}, 50)
+					}, 0)
 				})
 			})
 		})
@@ -1336,6 +1400,39 @@ const engineApi = {
 			return null
 		}
 		return editor.screenToWorld(clientX, clientY) as { x: number; y: number } | null
+	},
+	// 开启批量更新模式（阻止引擎emitChange事件，用于批量操作如创建节点+连线）
+	beginBulkUpdate: () => {
+		const host = blueprintHostRef.value
+		console.log('[AIWorkflowPage] engineApi.beginBulkUpdate called, host exists:', !!host)
+		if (host && typeof (host as any).beginBulkUpdate === 'function') {
+			console.log('[AIWorkflowPage] engineApi.beginBulkUpdate: calling host.beginBulkUpdate()')
+			;(host as any).beginBulkUpdate()
+		} else {
+			console.warn(
+				'[AIWorkflowPage] engineApi.beginBulkUpdate: host.beginBulkUpdate not available!'
+			)
+		}
+	},
+	// 结束批量更新模式（恢复引擎emitChange事件）
+	endBulkUpdate: () => {
+		const host = blueprintHostRef.value
+		console.log('[AIWorkflowPage] engineApi.endBulkUpdate called, host exists:', !!host)
+		if (host && typeof (host as any).endBulkUpdate === 'function') {
+			console.log('[AIWorkflowPage] engineApi.endBulkUpdate: calling host.endBulkUpdate()')
+			;(host as any).endBulkUpdate()
+		} else {
+			console.warn('[AIWorkflowPage] engineApi.endBulkUpdate: host.endBulkUpdate not available!')
+		}
+	},
+	// 清除pending的change定时器
+	clearPendingChanges: () => {
+		const host = blueprintHostRef.value
+		const editor = host?.getInstance?.()
+		console.log('[AIWorkflowPage] engineApi.clearPendingChanges called, editor exists:', !!editor)
+		if (editor && typeof (editor as any).clearPendingChanges === 'function') {
+			;(editor as any).clearPendingChanges()
+		}
 	}
 }
 
@@ -9977,14 +10074,19 @@ const onNodeUploadResource = async (
 	nodeId: string,
 	file: File,
 	kind: 'image' | 'video',
-	opts?: { autoDistribute?: boolean }
+	opts?: {
+		autoDistribute?: boolean
+		onAfterBind?: (payload: { resourceId: string; url: string }) => void
+	}
 ) => {
 	await uploadNodeResource(nodeId, file, kind, {
 		autoDistribute: opts?.autoDistribute,
-		onAfterBind: () => {
+		onAfterBind: (bindPayload) => {
 			if (kind === 'image' && opts?.autoDistribute === true) {
 				void autoDistributeImageOutputToConnectedNodes(nodeId)
 			}
+			// 透传调用者的onAfterBind回调
+			opts?.onAfterBind?.(bindPayload)
 		}
 	})
 }
@@ -10093,6 +10195,7 @@ const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 	getNode: (nodeId) => store.state.nodesById[nodeId],
 	getAllNodes: () =>
 		store.state.nodeOrder.map((id) => store.state.nodesById[id]).filter(Boolean) as WorkflowNode[],
+	getOutgoingEdges,
 	dataUrlToBlob,
 	onNodeUploadResource,
 	autoSizeMediaNode,
@@ -10110,13 +10213,73 @@ const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 		title?: string
 		type?: string
 	}) => {
-		return engineApi.addNode((type || 'base') as any, worldX, worldY, { title })
+		return engineApi.addNode(
+			(type || 'base') as any,
+			worldX,
+			worldY,
+			{ title },
+			{ silent: true, skipEditMode: true }
+		)
 	},
 	commitSetNodeType: ({ nodeId, type }: { nodeId: string; type: string }) => {
 		engineApi.updateNodeData(nodeId, { type })
 	},
+	connectPorts: (
+		fromNodeId: string,
+		fromAnchorId: string,
+		toNodeId: string,
+		toAnchorId: string,
+		opts?: { silent?: boolean }
+	) => {
+		return engineApi.connectPorts(fromNodeId, fromAnchorId, toNodeId, toAnchorId, opts)
+	},
+	engineApiAddNode: (
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	) => {
+		return engineApi.addNode(type, x, y, data, opts)
+	},
+	engineApiUpdateNodeData: (
+		nodeId: string,
+		patch: Record<string, any>,
+		opts?: { silent?: boolean }
+	) => {
+		return engineApi.updateNodeData(nodeId, patch, opts)
+	},
+	engineApiSetLegacyResource: (resourceId: string, resourceData: any) => {
+		engineApi.setLegacyResource(resourceId, resourceData)
+	},
+	forceSyncToStore: engineApi.forceSyncToStore,
+	beginBulkUpdate: engineApi.beginBulkUpdate,
+	endBulkUpdate: engineApi.endBulkUpdate,
+	clearPendingChanges: engineApi.clearPendingChanges,
+	getNodeResourceUrl: (nodeId: string) => {
+		const node = store.state.nodesById[nodeId]
+		if (!node || !node.resourceId) return null
+		const resource = store.state.resourcesById[node.resourceId]
+		if (!resource || !resource.url) return null
+		return String(resource.url)
+	},
 	videoScreenshotNodeTitle: t('aiworkflow.page.videoScreenshotNodeTitle')
 })
+
+const onNodeScreenshot = (payload: {
+	nodeId: string
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+}) => {
+	onVideoScreenshot(payload.nodeId, {
+		dataUrl: payload.dataUrl,
+		width: payload.width,
+		height: payload.height,
+		time: payload.time
+	})
+}
 
 const onVideoCapturePreview = (
 	nodeId: string,

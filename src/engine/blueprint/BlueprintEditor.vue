@@ -30,6 +30,7 @@
 				@node-media-ready="(id: string) => emit('nodeMediaReady', id)"
 				@node-invalidate-screenshot="(id: string) => emit('nodeInvalidateScreenshot', id)"
 				@node-preview-contextmenu="(p: any) => emit('nodePreviewContextMenu', p)"
+				@node-screenshot="(p: any) => emit('nodeScreenshot', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -132,6 +133,10 @@ interface Emits {
 	(e: 'nodeMediaReady', nodeId: string): void
 	(e: 'nodeInvalidateScreenshot', nodeId: string): void
 	(e: 'nodePreviewContextMenu', payload: { nodeId: string; clientX: number; clientY: number }): void
+	(
+		e: 'nodeScreenshot',
+		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
+	): void
 }
 
 const emit = defineEmits<Emits>()
@@ -148,6 +153,34 @@ let changeDebounceTimer: number | null = null
 let lastStructureHash: string | null = null
 let hasInitiallyLoaded = false
 let isEnteringEditMode = false
+let _bulkUpdateDepth = 0
+
+function clearPendingChanges() {
+	if (changeDebounceTimer) {
+		clearTimeout(changeDebounceTimer)
+		changeDebounceTimer = null
+	}
+}
+
+function beginBulkUpdate() {
+	_bulkUpdateDepth++
+	console.log('[BlueprintEditor] beginBulkUpdate: depth=' + _bulkUpdateDepth)
+	if (_bulkUpdateDepth === 1) {
+		// 第一次进入bulk update模式，清除所有pending changes
+		clearPendingChanges()
+	}
+}
+
+function endBulkUpdate() {
+	if (_bulkUpdateDepth > 0) {
+		_bulkUpdateDepth--
+	}
+	console.log('[BlueprintEditor] endBulkUpdate: depth=' + _bulkUpdateDepth)
+}
+
+function isBulkUpdating(): boolean {
+	return _bulkUpdateDepth > 0
+}
 
 function applyInitialData(newData: LegacyBlueprintData) {
 	if (!scene.value) return
@@ -189,6 +222,13 @@ function applyInitialData(newData: LegacyBlueprintData) {
 
 function enterEditMode(nodeId: string) {
 	if (!scene.value) return
+	if (isBulkUpdating()) {
+		console.log(
+			'[BlueprintEditor] enterEditMode: bulk update active, skipping enterEditMode for',
+			nodeId
+		)
+		return
+	}
 	const node = scene.value.getBlueprintNode(nodeId)
 	if (!node) {
 		console.warn('[BlueprintEditor] enterEditMode: node not found', nodeId)
@@ -261,6 +301,13 @@ function exitEditMode() {
 			scene.value.requestRedraw()
 			nextTick(() => {
 				if (!isUpdatingFromProps && scene.value) {
+					// 检查是否在bulk update模式下，如果是则跳过emitChange
+					if (isBulkUpdating()) {
+						console.log(
+							'[BlueprintEditor] exitEditMode nextTick: bulk update active, skipping emitChange'
+						)
+						return
+					}
 					const node2 = scene.value.getBlueprintNode(exitingId)
 					const draftAfterTick = node2 ? (node2.data as any).nodeChatDraft : '(missing)'
 					console.log('[BlueprintEditor] exitEditMode nextTick emitChange:', {
@@ -395,6 +442,10 @@ function getSelectedNodeIds(): string[] {
 function emitChange() {
 	if (!scene.value) return
 	if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return
+	if (isBulkUpdating()) {
+		clearPendingChanges()
+		return
+	}
 	if (changeDebounceTimer) {
 		clearTimeout(changeDebounceTimer)
 	}
@@ -402,6 +453,7 @@ function emitChange() {
 		changeDebounceTimer = null
 		if (!scene.value) return
 		if (scene.value.isEngineDragging || scene.value.isDomInteractionLocked) return
+		if (isBulkUpdating()) return
 		const data = scene.value.serializeLegacy()
 		emit('change', data)
 	}, 0)
@@ -577,6 +629,7 @@ onMounted(() => {
 
 	unsubSelect = s.selection.on.on('select', () => {
 		if (isUpdatingFromProps) return
+		if (isBulkUpdating()) return
 		const selectedNodes = s.selection
 			.getSelection()
 			.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
@@ -587,6 +640,7 @@ onMounted(() => {
 	})
 	unsubDeselect = s.selection.on.on('deselect', () => {
 		if (isUpdatingFromProps) return
+		if (isBulkUpdating()) return
 		const selectedNodes = s.selection
 			.getSelection()
 			.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
@@ -600,12 +654,17 @@ onMounted(() => {
 	unsubToolContextMenu = s.tools.on.on('context-menu', handleToolContextMenu)
 
 	unsubNodeClick = s.on.on('node-click', (node: unknown) => {
+		if (isBulkUpdating()) return
 		if (node instanceof BlueprintNode) {
 			handleSceneNodeClick(node)
 		}
 	})
 
 	unsubAfterCommand = s.on.on('after-command', () => {
+		if (isBulkUpdating()) {
+			clearPendingChanges()
+			return
+		}
 		emitChange()
 	})
 
@@ -788,10 +847,18 @@ defineExpose({
 		return scene.value?.hasClipboardData() ?? false
 	},
 
-	addNode(type: string, x: number, y: number, data?: Record<string, any>): string | null {
+	addNode(
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	): string | null {
 		if (!scene.value || props.readonly) return null
 		const s = scene.value
 		const nodeId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+		const silent = opts?.silent === true
+		const skipEditMode = opts?.skipEditMode === true || silent
 
 		const baseNodeData = getDefaultNodeData(type, nodeId, x, y, data?.title)
 		const nodeData: BlueprintNodeData = {
@@ -806,10 +873,17 @@ defineExpose({
 		}
 
 		s.createWorkflowNode(nodeData)
-		s.selection.setSelection([nodeId])
-		enterEditMode(nodeId)
+		if (!silent) {
+			s.selection.setSelection([nodeId])
+		}
+		if (!skipEditMode) {
+			enterEditMode(nodeId)
+		}
 		s.updateAllConnectionEndpoints()
 		s.requestRedraw()
+		if (!silent) {
+			emitChange()
+		}
 		return nodeId
 	},
 
@@ -1048,7 +1122,7 @@ defineExpose({
 		}
 	},
 
-	updateNodeData(nodeId: string, patch: Record<string, any>): boolean {
+	updateNodeData(nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }): boolean {
 		if (!scene.value || props.readonly) return false
 		const s = scene.value
 		const node = s.getBlueprintNode(nodeId)
@@ -1058,8 +1132,18 @@ defineExpose({
 			s.updateAllConnectionEndpoints()
 		}
 		s.requestRedraw()
-		emitChange()
+		if (!opts?.silent && !isBulkUpdating()) {
+			emitChange()
+		}
 		return true
+	},
+
+	setLegacyResource(resourceId: string, resourceData: Partial<LegacyResourceData>): void {
+		if (!scene.value) return
+		const s = scene.value
+		const existing = (s as any)._legacyResources[resourceId] || {}
+		;(s as any)._legacyResources[resourceId] = { ...existing, ...resourceData }
+		s.requestRedraw()
 	},
 
 	moveNode(nodeId: string, x: number, y: number): boolean {
@@ -1108,16 +1192,44 @@ defineExpose({
 		fromNodeId: string,
 		fromAnchorId: string,
 		toNodeId: string,
-		toAnchorId: string
+		toAnchorId: string,
+		opts?: { silent?: boolean }
 	): boolean {
 		if (!scene.value || props.readonly) return false
 		const conn = scene.value.connectNodes(fromNodeId, fromAnchorId, toNodeId, toAnchorId)
 		if (conn) {
 			scene.value.updateAllConnectionEndpoints()
 			scene.value.requestRedraw()
+			if (!opts?.silent && !isBulkUpdating()) {
+				emitChange()
+			}
 			return true
 		}
 		return false
+	},
+
+	clearPendingChanges(): void {
+		clearPendingChanges()
+	},
+
+	beginBulkUpdate(): void {
+		beginBulkUpdate()
+	},
+
+	endBulkUpdate(): void {
+		const wasAtDepth1 = _bulkUpdateDepth === 1
+		endBulkUpdate()
+		// 只有当完全退出bulk update模式时才触发一次emitChange
+		// 使用防抖的emitChange而非直接emit('change')，这样与其他emitChange调用一致
+		// 且isUpdatingFromStore保护机制可以正确阻止过早的同步
+		if (wasAtDepth1 && _bulkUpdateDepth === 0) {
+			console.log('[BlueprintEditor] endBulkUpdate: fully exited bulk mode, scheduling emitChange')
+			emitChange()
+		}
+	},
+
+	isBulkUpdating(): boolean {
+		return isBulkUpdating()
 	},
 
 	removeNode(nodeId: string): boolean {

@@ -24,6 +24,7 @@
 			@media-ready="onMediaReady"
 			@invalidate-screenshot="onInvalidateScreenshot"
 			@preview-contextmenu="onPreviewContextMenu"
+			@screenshot="onScreenshot"
 		/>
 	</div>
 </template>
@@ -74,6 +75,10 @@ const emit = defineEmits<{
 	(e: 'media-ready', nodeId: string): void
 	(e: 'invalidate-screenshot', nodeId: string): void
 	(e: 'preview-contextmenu', payload: { nodeId: string; clientX: number; clientY: number }): void
+	(
+		e: 'screenshot',
+		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
+	): void
 }>()
 
 const businessComponent = computed(() => {
@@ -201,6 +206,21 @@ const onPreviewContextMenu = (payload: { clientX: number; clientY: number }) => 
 		nodeId: props.node.id,
 		clientX: payload.clientX,
 		clientY: payload.clientY
+	})
+}
+
+const onScreenshot = (payload: {
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+}) => {
+	emit('screenshot', {
+		nodeId: props.node.id,
+		dataUrl: payload.dataUrl,
+		width: payload.width,
+		height: payload.height,
+		time: payload.time
 	})
 }
 </script>

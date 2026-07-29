@@ -226,6 +226,13 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 	image: {
 		inputs: [
 			{
+				id: 'in-resource',
+				label: '资源输入',
+				mediaType: 'resource',
+				acceptedMediaTypes: ['image', 'video', 'resource'],
+				multiInput: true
+			},
+			{
 				id: 'in-0',
 				label: '多模态输入',
 				mediaType: 'generic',
@@ -245,7 +252,10 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 			{ id: 'in-image', label: '参考图输入', multiInput: true, mediaType: 'image' },
 			{ id: 'in-video', label: '参考视频输入', multiInput: true, mediaType: 'video' }
 		],
-		outputs: [{ id: 'out-video', label: '视频输出', mediaType: 'video' }]
+		outputs: [
+			{ id: 'out-resource', label: '资源输出', mediaType: 'resource' },
+			{ id: 'out-video', label: '视频输出', mediaType: 'video' }
+		]
 	},
 	model3d: {
 		inputs: [

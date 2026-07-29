@@ -8,7 +8,16 @@ type WorkflowAnchorSpec = {
 	id: string
 	label?: string
 	offsetY?: number
-	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta'
+	mediaType?:
+		| 'generic'
+		| 'image'
+		| 'video'
+		| 'text'
+		| 'flow'
+		| 'model3d'
+		| 'audio'
+		| 'meta'
+		| 'resource'
 }
 
 type WorkflowNodeBaseProps = {
@@ -231,6 +240,7 @@ export class NodeComponentResolver {
 				break
 			case 'video':
 				if (data.videoSettings) typeSpecificProps.videoSettings = data.videoSettings
+				typeSpecificProps.screenshotEnabled = true
 				break
 			case 'model3d':
 				if (data.model3dSettings) typeSpecificProps.model3dSettings = data.model3dSettings
