@@ -53,6 +53,7 @@ import type {
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
 import type { LegacyResourceData } from './types'
+import { getI18nManager } from './i18n'
 
 // 通用的输入参数预览引用类型（引擎层不依赖业务层类型）
 type InputParamPreviewRefItem = {
@@ -981,7 +982,12 @@ defineExpose({
 			.getSelection()
 			.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
 		if (selectedNodes.length < 2) return null
-		const frameLabel = label || `分组 ${s.getSavedSelectionFrames().length + 1}`
+		const i18n = getI18nManager()
+		const frameLabel =
+			label ||
+			i18n.t('aiworkflow.canvas.defaultGroupName', {
+				index: s.getSavedSelectionFrames().length + 1
+			})
 		const frame = s.saveSelectionFrame(
 			selectedNodes.map((n) => n.id),
 			frameLabel

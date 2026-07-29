@@ -13,10 +13,6 @@ import {
 	PORT_SPACING,
 	PORT_MIN_MARGIN_TOP,
 	PORT_MIN_MARGIN_BOTTOM,
-	WF_TEXT,
-	WF_TEXT_MUTED,
-	WF_PRIMARY,
-	NODE_STATUS_COLORS,
 	PORT_SIZE,
 	RESIZE_HANDLE_SIZE,
 	RESIZE_HANDLE_HIT_SIZE,
@@ -28,6 +24,8 @@ import {
 	type PortSpec,
 	type ResizeCorner
 } from './types'
+import { getThemeManager } from './theme'
+import { t, translateNodeTitle, translatePortLabel } from './i18n'
 
 type TextureState = 'loading' | 'ready' | 'error'
 
@@ -488,12 +486,14 @@ export class BlueprintNode extends Node {
 	}
 
 	private getStatusColors() {
-		if (this.data.status === 'error') return NODE_STATUS_COLORS.error
-		if (this.data.status === 'success') return NODE_STATUS_COLORS.success
-		if (this.data.status === 'running') return NODE_STATUS_COLORS.running
-		if (this.selected) return NODE_STATUS_COLORS.selected
-		if (this.hovered) return NODE_STATUS_COLORS.hovered
-		return NODE_STATUS_COLORS.idle
+		const theme = getThemeManager()
+		let statusKey = 'idle'
+		if (this.data.status === 'error') statusKey = 'error'
+		else if (this.data.status === 'success') statusKey = 'success'
+		else if (this.data.status === 'running') statusKey = 'running'
+		else if (this.selected) statusKey = 'selected'
+		else if (this.hovered) statusKey = 'hovered'
+		return theme.getStatusColors(statusKey)
 	}
 
 	private _breathPhase = 0
@@ -563,9 +563,12 @@ export class BlueprintNode extends Node {
 		const w = this.data.width
 		const h = this.data.height
 		const colors = this.getStatusColors()
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 		const invZoom = 1 / ctx.camera.zoom
 		const breath = this.getBreathIntensity()
 		const isTaskActive = this.data.status === 'running' || this.data.status === 'error'
+		const accentColor = this.getNodeTypeColor()
 
 		c.save()
 
@@ -577,10 +580,7 @@ export class BlueprintNode extends Node {
 			c.shadowOffsetY = 0
 		}
 
-		const bgGradient = c.createLinearGradient(0, 0, 0, h)
-		bgGradient.addColorStop(0, 'rgba(20, 30, 28, 0.85)')
-		bgGradient.addColorStop(1, 'rgba(15, 23, 22, 0.92)')
-		c.fillStyle = bgGradient
+		c.fillStyle = tokens.nodeBackground
 		c.fillRect(0, 0, w, h)
 
 		c.shadowColor = 'transparent'
@@ -588,20 +588,20 @@ export class BlueprintNode extends Node {
 
 		const headerAccent =
 			this.data.status === 'running'
-				? `rgba(229, 181, 103, ${0.12 + breath * 0.12})`
+				? this.hexToRgba(colors.bracket, 0.12 + breath * 0.12)
 				: this.data.status === 'error'
-					? 'rgba(207, 90, 70, 0.15)'
+					? this.hexToRgba(colors.bracket, 0.15)
 					: this.data.status === 'success'
-						? 'rgba(46, 164, 79, 0.15)'
-						: 'rgba(31, 157, 132, 0.15)'
+						? this.hexToRgba(colors.bracket, 0.15)
+						: tokens.nodeHeaderBackground
 		const headerAccentBottom =
 			this.data.status === 'running'
-				? `rgba(229, 181, 103, ${0.04 + breath * 0.05})`
+				? this.hexToRgba(colors.bracket, 0.04 + breath * 0.05)
 				: this.data.status === 'error'
-					? 'rgba(207, 90, 70, 0.05)'
+					? this.hexToRgba(colors.bracket, 0.05)
 					: this.data.status === 'success'
-						? 'rgba(46, 164, 79, 0.05)'
-						: 'rgba(31, 157, 132, 0.05)'
+						? this.hexToRgba(colors.bracket, 0.05)
+						: this.hexToRgba(accentColor, 0.05)
 		const headerGradient = c.createLinearGradient(0, 0, 0, NODE_HEADER_HEIGHT)
 		headerGradient.addColorStop(0, headerAccent)
 		headerGradient.addColorStop(1, headerAccentBottom)
@@ -613,7 +613,9 @@ export class BlueprintNode extends Node {
 				? 0.45 + breath * 0.35
 				: this.data.status === 'error'
 					? 0.6
-					: 0.6
+					: this.selected
+						? 1
+						: 0.6
 		c.strokeStyle = this.hexToRgba(colors.border, borderAlpha)
 		c.lineWidth = NODE_BORDER_WIDTH + (this.data.status === 'running' ? breath * 1.5 : 0)
 		c.strokeRect(0, 0, w, h)
@@ -661,10 +663,10 @@ export class BlueprintNode extends Node {
 		)
 
 		if (this.selected) {
-			this.drawParticleDots(c, 2, 2, w - 4, h - 4, this.hexToRgba(WF_PRIMARY, 0.3))
+			this.drawParticleDots(c, 2, 2, w - 4, h - 4, this.hexToRgba(accentColor, 0.3))
 		}
 
-		c.strokeStyle = this.hexToRgba(WF_PRIMARY, 0.2)
+		c.strokeStyle = this.hexToRgba(accentColor, 0.2)
 		c.lineWidth = 1
 		c.beginPath()
 		c.moveTo(0, NODE_HEADER_HEIGHT)
@@ -672,11 +674,12 @@ export class BlueprintNode extends Node {
 		c.stroke()
 
 		const titleX = NODE_INNER_PADDING
-		c.fillStyle = WF_TEXT
+		c.fillStyle = tokens.nodeText
 		c.font = `500 12px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		c.textBaseline = 'middle'
 		c.textAlign = 'left'
-		c.fillText(this.alias || this.title, titleX, NODE_HEADER_HEIGHT / 2)
+		const displayTitle = translateNodeTitle(this.nodeType, this.title, this.alias)
+		c.fillText(displayTitle, titleX, NODE_HEADER_HEIGHT / 2)
 
 		const statusDotX = w - NODE_INNER_PADDING - 8
 		const statusDotY = NODE_HEADER_HEIGHT / 2
@@ -743,10 +746,13 @@ export class BlueprintNode extends Node {
 	): void {
 		const corners: ResizeCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
 		const handleSize = RESIZE_HANDLE_SIZE
+		const theme = getThemeManager()
+		const tokens = theme.tokens
+		const accentColor = this.getNodeTypeColor()
 
 		c.save()
-		c.fillStyle = WF_PRIMARY
-		c.strokeStyle = '#ffffff'
+		c.fillStyle = accentColor
+		c.strokeStyle = theme.mode === 'dark' ? '#ffffff' : tokens.nodeBackground
 		c.lineWidth = 1
 
 		for (const corner of corners) {
@@ -757,7 +763,7 @@ export class BlueprintNode extends Node {
 
 		if (this.hoveredResizeCorner) {
 			const hoveredRect = this.getResizeHandleRect(this.hoveredResizeCorner, invZoom)
-			c.shadowColor = WF_PRIMARY
+			c.shadowColor = accentColor
 			c.shadowBlur = 8 * invZoom
 			c.fillRect(hoveredRect.x, hoveredRect.y, hoveredRect.width, hoveredRect.height)
 			c.shadowBlur = 0
@@ -799,22 +805,26 @@ export class BlueprintNode extends Node {
 	}
 
 	private renderPortLabels(c: CanvasRenderingContext2D, invZoom: number): void {
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 		c.font = `11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		c.textBaseline = 'middle'
 
 		this.inputPorts.forEach((port) => {
 			const y = port.spec.offsetY ?? 0
-			c.fillStyle = WF_TEXT_MUTED
+			c.fillStyle = tokens.nodeTextMuted
 			c.textAlign = 'left'
-			const label = port.spec.label || port.spec.id
+			const rawLabel = port.spec.label || port.spec.id
+			const label = translatePortLabel(rawLabel, rawLabel)
 			c.fillText(label, PORT_SIZE / 2 + NODE_INNER_PADDING / 2, y)
 		})
 
 		this.outputPorts.forEach((port) => {
 			const y = port.spec.offsetY ?? 0
-			c.fillStyle = WF_TEXT_MUTED
+			c.fillStyle = tokens.nodeTextMuted
 			c.textAlign = 'right'
-			const label = port.spec.label || port.spec.id
+			const rawLabel = port.spec.label || port.spec.id
+			const label = translatePortLabel(rawLabel, rawLabel)
 			c.fillText(label, this.data.width - PORT_SIZE / 2 - NODE_INNER_PADDING / 2, y)
 		})
 	}
@@ -860,6 +870,8 @@ export class BlueprintNode extends Node {
 	}
 
 	private getNodeTypeColor(): string {
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 		switch (this.nodeType) {
 			case 'text':
 				return '#f1c40f'
@@ -879,9 +891,9 @@ export class BlueprintNode extends Node {
 			case 'scene-understanding':
 			case 'scene-layout':
 			case 'scene-decompose':
-				return '#1f9d84'
+				return tokens.portInner
 			default:
-				return WF_PRIMARY
+				return tokens.portInner
 		}
 	}
 
@@ -1026,6 +1038,8 @@ export class BlueprintNode extends Node {
 		invZoom: number,
 		accentColor: string
 	): void {
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 		const cx = x + w / 2
 		const cy = y + h / 2 - 8
 		const iconSize = Math.min(40, Math.min(w, h) * 0.45)
@@ -1043,7 +1057,7 @@ export class BlueprintNode extends Node {
 		c.fillText(icon, cx, cy)
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			c.fillStyle = tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.fillText(this.subtitle, cx, cy + iconSize * 0.5 + 16)
 		}
@@ -1059,10 +1073,12 @@ export class BlueprintNode extends Node {
 		invZoom: number
 	): void {
 		const padding = 10
-		const text = this.previewText || this.data.textValue || '暂无文本内容'
+		const text = this.previewText || this.data.textValue || t('aiworkflow.canvas.common.empty')
 		const fontSize = 11
 		const lineHeight = Math.ceil(fontSize * 1.5)
-		c.fillStyle = WF_TEXT_MUTED
+		const theme = getThemeManager()
+		const tokens = theme.tokens
+		c.fillStyle = tokens.nodeTextMuted
 		c.font = `${fontSize}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		c.textAlign = 'left'
 		c.textBaseline = 'top'
@@ -1463,7 +1479,8 @@ export class BlueprintNode extends Node {
 		c.stroke()
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1526,7 +1543,8 @@ export class BlueprintNode extends Node {
 		}
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1583,7 +1601,8 @@ export class BlueprintNode extends Node {
 		c.stroke()
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1631,7 +1650,8 @@ export class BlueprintNode extends Node {
 			c.lineWidth = 1
 			c.strokeRect(box.x, box.y, boxSize, boxSize * 0.75)
 
-			c.fillStyle = this.hexToRgba(WF_TEXT, 0.7)
+			const theme = getThemeManager()
+			c.fillStyle = this.hexToRgba(theme.tokens.nodeText, 0.7)
 			c.font = '10px sans-serif'
 			c.textAlign = 'center'
 			c.textBaseline = 'middle'
@@ -1652,7 +1672,8 @@ export class BlueprintNode extends Node {
 		c.setLineDash([])
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1719,7 +1740,8 @@ export class BlueprintNode extends Node {
 		c.fill()
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1783,7 +1805,8 @@ export class BlueprintNode extends Node {
 		c.fill()
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			const theme = getThemeManager()
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'
@@ -1851,13 +1874,14 @@ export class BlueprintNode extends Node {
 		c.lineWidth = 2
 		c.stroke()
 
-		c.fillStyle = this.hexToRgba(WF_TEXT, 0.5)
+		const theme = getThemeManager()
+		c.fillStyle = this.hexToRgba(theme.tokens.nodeText, 0.5)
 		c.font = '10px sans-serif'
 		c.textAlign = 'center'
 		c.textBaseline = 'middle'
 
 		if (this.subtitle) {
-			c.fillStyle = WF_TEXT_MUTED
+			c.fillStyle = theme.tokens.nodeTextMuted
 			c.font = `10px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			c.textAlign = 'center'
 			c.textBaseline = 'top'

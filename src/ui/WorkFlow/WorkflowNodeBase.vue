@@ -903,7 +903,7 @@ defineExpose({
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 20%, transparent),
 		0 0 10px color-mix(in srgb, var(--wf-primary) 15%, transparent),
 		0 3px 12px color-mix(in srgb, var(--theme-border) 20%, transparent),
-		inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent) !important;
+		inset 0 1px 0 var(--wf-inner-highlight) !important;
 	animation: wf-toolbar-in 160ms ease-out both;
 	z-index: 90;
 }
@@ -996,14 +996,14 @@ defineExpose({
 	z-index: 100;
 	min-width: 140px;
 	border: 1px solid color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
-	background: color-mix(in srgb, rgba(21, 24, 28, 0.92) 96%, transparent) !important;
+	background: color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent) !important;
 	backdrop-filter: blur(14px) saturate(140%);
 	-webkit-backdrop-filter: blur(14px) saturate(140%);
 	border-radius: 2px !important;
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 18%, transparent),
 		0 0 14px color-mix(in srgb, var(--wf-primary) 22%, transparent),
-		0 8px 20px rgba(0, 0, 0, 0.38) !important;
+		var(--wf-popover-shadow) !important;
 	padding: 6px;
 	display: flex;
 	flex-direction: column;
@@ -1174,7 +1174,6 @@ defineExpose({
 
 .wf-media-preview {
 	width: 100%;
-	aspect-ratio: 1 / 1;
 	flex-shrink: 0;
 	border-radius: 6px;
 	overflow: hidden;
@@ -1522,7 +1521,7 @@ defineExpose({
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.78)) 90%, transparent);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent),
-		0 2px 8px rgba(0, 0, 0, 0.18);
+		var(--wf-anchor-shadow);
 	opacity: 0.92;
 	transform: translate(-50%, -50%) scale(1) rotate(0deg);
 	transform-origin: 50% 50%;
@@ -1572,7 +1571,7 @@ defineExpose({
 .wf-anchor-hit[data-magnet-phase='dragging']::before {
 	transform: translate(-50%, -50%) scale(1.14) rotate(45deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.6),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 	animation: wf-anchor-drag-pulse 0.9s cubic-bezier(0.22, 0.8, 0.25, 1.05) infinite;
 }
@@ -1594,7 +1593,7 @@ defineExpose({
 .wf-anchor-hit.hovered::before {
 	transform: translate(-50%, -50%) scale(1.08) rotate(3deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.66),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 

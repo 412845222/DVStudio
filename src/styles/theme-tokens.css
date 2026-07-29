@@ -193,6 +193,12 @@
 	--wf-control-border-hover: var(--wf-border-focus);
 	--wf-control-text: var(--wf-text);
 
+	/* WF effects - dark mode */
+	--wf-inner-highlight: rgba(255, 255, 255, 0.4);
+	--wf-popover-shadow: 0 8px 20px rgba(0, 0, 0, 0.38);
+	--wf-anchor-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+	--wf-anchor-ring: rgba(255, 255, 255, 0.6);
+
 	/* WF states */
 	--wf-state-selected-bg: rgba(31, 157, 132, 0.16);
 	--wf-state-selected-border: rgba(31, 157, 132, 0.58);
@@ -460,6 +466,12 @@
 	--wf-control-border: var(--wf-border);
 	--wf-control-border-hover: var(--wf-border-focus);
 	--wf-control-text: var(--wf-text);
+
+	/* WF effects - light mode */
+	--wf-inner-highlight: rgba(255, 255, 255, 0.8);
+	--wf-popover-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+	--wf-anchor-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	--wf-anchor-ring: rgba(255, 255, 255, 0.9);
 
 	/* WF states (light) */
 	--wf-state-selected-bg: rgba(31, 157, 132, 0.14);

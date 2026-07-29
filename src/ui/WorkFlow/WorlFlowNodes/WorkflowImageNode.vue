@@ -401,7 +401,19 @@ const outputHeightDisplay = computed(() =>
 )
 
 const previewWrapStyle = computed(() => {
-	return {}
+	const imgW = naturalWidth.value ?? outputWidth.value
+	const imgH = naturalHeight.value ?? outputHeight.value
+	if (imgW && imgH && imgW > 0 && imgH > 0) {
+		const ratio = imgW / imgH
+		return {
+			aspectRatio: `${ratio}`,
+			width: '100%'
+		} as Record<string, string>
+	}
+	return {
+		aspectRatio: '1',
+		width: '100%'
+	} as Record<string, string>
 })
 
 type DisplayRect = { x: number; y: number; w: number; h: number }
@@ -418,14 +430,7 @@ const displayRect = computed<DisplayRect>(() => {
 })
 
 const previewImageStyle = computed(() => {
-	return {
-		left: '0px',
-		top: '0px',
-		width: '100%',
-		height: '100%',
-		objectFit: 'contain',
-		objectPosition: 'center'
-	} as Record<string, string>
+	return {} as Record<string, string>
 })
 
 const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache()
@@ -728,7 +733,6 @@ onBeforeUnmount(() => {
 .wf-media-preview {
 	width: 100%;
 	flex: 0 0 auto;
-	aspect-ratio: 1 / 1;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--vscode-border);
@@ -739,8 +743,14 @@ onBeforeUnmount(() => {
 
 .wf-media-img {
 	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
 	display: block;
 	max-width: none;
+	object-fit: contain;
+	object-position: center;
 }
 
 .wf-media-empty {
@@ -776,6 +786,7 @@ onBeforeUnmount(() => {
 .wf-media-footer {
 	width: 100%;
 	margin-top: 6px;
+	flex: 0 0 auto;
 }
 
 .wf-media-toolbar {
