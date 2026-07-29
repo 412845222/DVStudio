@@ -4,7 +4,7 @@ import { TRI_PO3D_TASK_DRAG_MIME } from '../node-business/tripo3d/useAIWorkflowT
 
 export type AIWorkflowDraggedResourceItem = {
 	resourceId: string
-	kind: 'image' | 'video'
+	kind: 'image' | 'video' | 'model3d'
 	name?: string
 	url?: string
 	sourcePath?: string
@@ -106,10 +106,10 @@ export const useAIWorkflowDropAssets = (options: {
 	makeResourceId: () => string
 	setObjectUrl: (key: string, url: string) => void
 	resolveBackendUrl: (value: string) => string
-	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
+	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video' | 'model3d') => void
 	bindMediaResourceToNode: (
 		nodeId: string,
-		kind: 'image' | 'video',
+		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
 		opts?: { posterUrl?: string; sourcePath?: string; projectRelativePath?: string }
@@ -132,7 +132,7 @@ export const useAIWorkflowDropAssets = (options: {
 	}) => boolean | void
 	persistBlobUrlToProject?: (
 		inputUrl: string,
-		kind: 'image' | 'video',
+		kind: 'image' | 'video' | 'model3d',
 		prefix?: string
 	) => Promise<{
 		url: string
@@ -204,10 +204,10 @@ export const useAIWorkflowDropAssets = (options: {
 				.trim()
 				.toLowerCase()
 			if (!resourceId) return null
-			if (kind !== 'image' && kind !== 'video') return null
+			if (kind !== 'image' && kind !== 'video' && kind !== 'model3d') return null
 			return {
 				resourceId,
-				kind,
+				kind: kind as 'image' | 'video' | 'model3d',
 				name: String(parsed?.name ?? '').trim() || undefined,
 				url: String(parsed?.url ?? '').trim() || undefined,
 				sourcePath: String(parsed?.sourcePath ?? '').trim() || undefined
@@ -283,14 +283,18 @@ export const useAIWorkflowDropAssets = (options: {
 		}
 	}
 
-	const inferMediaKindFromFile = (file: File): 'image' | 'video' | null => {
+	const inferMediaKindFromFile = (file: File): 'image' | 'video' | 'model3d' | null => {
 		const mime = String(file?.type ?? '')
 		if (mime.startsWith('image/')) return 'image'
 		if (mime.startsWith('video/')) return 'video'
+		if (mime === 'model/gltf-binary' || mime === 'model/gltf+json' || mime === 'application/octet-stream') {
+			// Check by extension for octet-stream
+		}
 		const name = String(file?.name ?? '')
 		const ext = name.toLowerCase().split('.').pop() || ''
 		if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext)) return 'image'
 		if (['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi'].includes(ext)) return 'video'
+		if (['glb', 'gltf', 'fbx', 'obj', 'stl', 'dae'].includes(ext)) return 'model3d'
 		return null
 	}
 
@@ -445,7 +449,7 @@ export const useAIWorkflowDropAssets = (options: {
 	const snapshotRemoteMediaToProjectOrObjectUrl = async (
 		inputUrl: string,
 		resourceId: string,
-		kind: 'image' | 'video'
+		kind: 'image' | 'video' | 'model3d'
 	) => {
 		const url = String(inputUrl || '').trim()
 		if (!url) return { url: '', fileName: '' }
@@ -482,7 +486,7 @@ export const useAIWorkflowDropAssets = (options: {
 					try {
 						const result = await options.fetchUrlAsArrayBuffer(url)
 						if (result?.ok && result.buffer) {
-							const mime = result.mime || (kind === 'video' ? 'video/mp4' : 'image/png')
+							const mime = result.mime || (kind === 'video' ? 'video/mp4' : kind === 'model3d' ? 'model/gltf-binary' : 'image/png')
 							const blob = new Blob([result.buffer], { type: mime })
 							const objectUrl = URL.createObjectURL(blob)
 							if (resourceId) options.setObjectUrl(resourceId, objectUrl)
@@ -519,9 +523,11 @@ export const useAIWorkflowDropAssets = (options: {
 		if (!resource) return false
 
 		const kind = payload.item.kind
+		const nodeType = kind === 'model3d' ? 'model3d' : kind
+		const title = kind === 'image' ? t('common.image') : kind === 'video' ? t('common.video') : t('nodes.type.model3d')
 		const nodeId =
-			options.engineApi?.addNode?.(kind, payload.worldX, payload.worldY, {
-				title: kind === 'image' ? t('common.image') : t('common.video')
+			options.engineApi?.addNode?.(nodeType, payload.worldX, payload.worldY, {
+				title
 			}) ?? null
 		if (!nodeId) return true
 
@@ -536,7 +542,7 @@ export const useAIWorkflowDropAssets = (options: {
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : '视频资源')
+					(kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : kind === 'video' ? '视频资源' : '3D模型')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -762,74 +768,35 @@ export const useAIWorkflowDropAssets = (options: {
 		if (dt) {
 			try {
 				const dropped = await collectDroppedFiles(dt)
+				console.log('[AIWorkflow:MediaImport] Drop files collected:', {
+					total: dropped.length,
+					files: dropped.map((x) => ({
+						name: x.file.name,
+						type: x.file.type,
+						size: x.file.size,
+						relativePath: x.relativePath,
+						hasFsHandle: !!x.fsHandle,
+						hasPath: typeof (x.file as File & { path?: string })?.path === 'string' &&
+							String((x.file as File & { path?: string }).path).trim().length > 0,
+						kind: inferMediaKindFromFile(x.file)
+					}))
+				})
 				const mediaFiles = dropped.filter((x) => !!inferMediaKindFromFile(x.file))
+				console.log('[AIWorkflow:MediaImport] Drop media files filtered:', { total: mediaFiles.length })
 				if (mediaFiles.length > 0) {
-					// 区分本地文件系统文件和网页拖拽文件
-					type FileWithPath = File & { path?: string }
-					const localFiles: AIWorkflowDroppedFile[] = []
-					const remoteFiles: Array<{ file: File; kind: 'image' | 'video' }> = []
-
-					for (const item of mediaFiles) {
-						const hasLocalPath =
-							typeof (item.file as FileWithPath)?.path === 'string' &&
-							String((item.file as FileWithPath).path).trim().length > 0
-						const hasFsHandle = !!item.fsHandle
-
-						if (hasLocalPath || hasFsHandle) {
-							localFiles.push(item)
-						} else {
-							const kind = inferMediaKindFromFile(item.file)
-							if (kind) {
-								remoteFiles.push({ file: item.file, kind })
-							}
-						}
-					}
-
-					// 处理本地文件（走批量导入流程）
-					if (localFiles.length > 0) {
-						await options.createBatchMediaNodesFromFiles({
-							files: localFiles,
-							worldX: world.worldX,
-							worldY: world.worldY
-						})
-					}
-
-					// 处理网页拖拽的远程文件（立即持久化到项目）
-					if (remoteFiles.length > 0) {
-						let offset = 0
-						for (const { file, kind } of remoteFiles) {
-							const resourceId = `wf-res-drop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-							const blobUrl = URL.createObjectURL(file)
-							options.setObjectUrl(resourceId, blobUrl)
-
-							const snap = await snapshotRemoteMediaToProjectOrObjectUrl(blobUrl, resourceId, kind)
-							const storedUrl = snap.url || blobUrl
-							const storedSourcePath = snap.sourcePath
-							const storedRelPath = snap.projectRelativePath
-							const storedFileName = snap.fileName || (kind === 'image' ? 'image.png' : 'video.mp4')
-
-							const finalUrl = options.resolveBackendUrl(storedUrl)
-
-							const nodeId =
-								options.engineApi?.addNode?.(kind, world.worldX + offset, world.worldY + offset, {
-									title: kind === 'image' ? t('common.image') : t('common.video')
-								}) ?? null
-							if (nodeId) {
-								options.bindMediaResourceToNode(nodeId, kind, finalUrl, storedFileName, {
-									sourcePath: storedSourcePath,
-									projectRelativePath: storedRelPath
-								})
-								options.autoSizeMediaNode(nodeId, finalUrl, kind)
-							}
-							offset += 40
-						}
-					}
-
-					if (localFiles.length > 0 || remoteFiles.length > 0) {
-						return
-					}
+					// 所有文件（本地文件系统和网页拖拽）统一走批量导入流程
+					// createBatchMediaNodesFromFiles中的persistFileToProject会自动处理：
+					// 1. 有本地路径的文件：通过copyFileToProjectRoot复制
+					// 2. 无本地路径的文件（网页拖拽、截图等）：通过ArrayBuffer上传
+					await options.createBatchMediaNodesFromFiles({
+						files: mediaFiles,
+						worldX: world.worldX,
+						worldY: world.worldY
+					})
+					return
 				}
 			} catch (err: unknown) {
+				console.error('[AIWorkflow:MediaImport] Drop file processing failed:', err)
 				options.pushToast(
 					t('aiworkflow.toast.dragImportFailed', { error: getErrorMessage(err) }),
 					'warn'

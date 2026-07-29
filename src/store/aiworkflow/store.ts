@@ -2619,14 +2619,51 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
 			}
 
+			// 保留当前state中存在但snapshot中不存在的节点（新创建但尚未同步到引擎的节点）
+			// 但只保留近期创建的节点（3秒内），避免阻止用户主动删除节点的同步
+			// 时间窗口判断：批量导入媒体时，新节点会在极短时间内创建并需要保留；
+			// 而用户删除节点时，被删除的节点不可能是3秒内刚创建的（除非刚创建就删除，这种情况可接受）
+			const preservedNodeIds: string[] = []
+			const now = Date.now()
+			const NEW_NODE_PRESERVE_WINDOW_MS = 3000
+			for (const [existingId, existingNode] of Object.entries(state.nodesById)) {
+				if (!nextNodesById[existingId] && existingNode) {
+					const createdAt = Number((existingNode as any).createdAt ?? 0)
+					const isRecentNew = createdAt > 0 && now - createdAt < NEW_NODE_PRESERVE_WINDOW_MS
+					if (isRecentNew) {
+						nextNodesById[existingId] = existingNode
+						preservedNodeIds.push(existingId)
+						console.log('[DraftFlow#store hydrateDraft] PRESERVE(node): keeping recently created node not in snapshot', {
+							nodeId: existingId,
+							nodeType: existingNode.type,
+							createdAt,
+							ageMs: now - createdAt
+						})
+					} else {
+						console.log('[DraftFlow#store hydrateDraft] REMOVE(node): node not in snapshot and not recent, will be deleted (sync from engine)', {
+							nodeId: existingId,
+							nodeType: existingNode.type,
+							createdAt,
+							ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+						})
+					}
+				}
+			}
+
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
 			const tempStateForOrder: WorkflowState = { ...state, nodesById: nextNodesById }
-			const nextNodeOrder = normalizeNodeIds(
+			let nextNodeOrder = normalizeNodeIds(
 				tempStateForOrder,
 				rawNodeOrder.map((x: unknown) => String(x ?? ''))
 			)
 			// if order missing, fall back to object keys
-			const nodeOrder = nextNodeOrder.length ? nextNodeOrder : Object.keys(nextNodesById)
+			let nodeOrder = nextNodeOrder.length ? nextNodeOrder : Object.keys(nextNodesById)
+			// 将保留的新节点添加到nodeOrder末尾
+			for (const nid of preservedNodeIds) {
+				if (!nodeOrder.includes(nid)) {
+					nodeOrder = [...nodeOrder, nid]
+				}
+			}
 
 			state.nodesById = nextNodesById
 			state.nodeOrder = nodeOrder
@@ -2711,6 +2748,51 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const normalized = normalizeResource(r, rid)
 				if (normalized) {
 					nextResourcesById[rid] = normalized
+					nextResourceOrder.push(rid)
+				}
+			}
+			// 保留当前state中存在但snapshot中不存在的资源（新添加但尚未同步到引擎的资源）
+			// 但只保留近期添加的资源（5秒内，窗口比节点稍长因为资源绑定可能有延迟）
+			// 使用createdAt时间戳（addResource时设置）判断，避免阻止删除同步
+			const preservedResourceIds: string[] = []
+			const NEW_RESOURCE_PRESERVE_WINDOW_MS = 5000
+			for (const [existingRid, existingRes] of Object.entries(state.resourcesById)) {
+				if (!nextResourcesById[existingRid] && existingRes) {
+					const createdAt = Number((existingRes as any).createdAt ?? 0)
+					const isRecentNew = createdAt > 0 && now - createdAt < NEW_RESOURCE_PRESERVE_WINDOW_MS
+					if (isRecentNew) {
+						nextResourcesById[existingRid] = existingRes
+						preservedResourceIds.push(existingRid)
+						console.log('[DraftFlow#store hydrateDraft] PRESERVE(resource): keeping recently added resource not in snapshot', {
+							resourceId: existingRid,
+							resourceKind: existingRes.kind,
+							hasUrl: !!existingRes.url,
+							ageMs: now - createdAt
+						})
+					} else {
+						console.log('[DraftFlow#store hydrateDraft] REMOVE(resource): resource not in snapshot and not recent, will be deleted (sync from engine)', {
+							resourceId: existingRid,
+							resourceKind: existingRes.kind,
+							hasUrl: !!existingRes.url,
+							ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+						})
+					}
+				} else if (nextResourcesById[existingRid] && existingRes) {
+					// 合并策略：如果现有资源有url而snapshot中没有，保留现有url
+					const existingResAny = existingRes as any
+					const snapshotResAny = nextResourcesById[existingRid] as any
+					if (existingResAny.url && !snapshotResAny.url) {
+						snapshotResAny.url = existingResAny.url
+						console.log('[DraftFlow#store hydrateDraft] MERGE(resource): preserving existing URL', {
+							resourceId: existingRid,
+							url: String(existingResAny.url || '').slice(0, 80)
+						})
+					}
+				}
+			}
+			// 将保留的新资源添加到resourceOrder末尾
+			for (const rid of preservedResourceIds) {
+				if (!nextResourceOrder.includes(rid)) {
 					nextResourceOrder.push(rid)
 				}
 			}
@@ -2828,7 +2910,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		addResource(state, payload: WorkflowResource) {
 			const id = String(payload?.id ?? '').trim()
 			if (!id) return
-			state.resourcesById[id] = payload
+			// 确保资源有createdAt时间戳，用于hydrateDraft判断是否为新资源
+			const createdAt = Number((payload as any).createdAt)
+			const resourceWithTs = {
+				...payload,
+				createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now()
+			}
+			state.resourcesById[id] = resourceWithTs as any
 			if (!state.resourceOrder.includes(id)) state.resourceOrder = [...state.resourceOrder, id]
 		},
 		patchResource(

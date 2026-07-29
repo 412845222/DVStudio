@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { t } from '../../../i18n'
 
 export type AIWorkflowImportResourceState = {
-	kind: 'image' | 'video'
+	kind: 'image' | 'video' | 'model3d'
 	urlReady: boolean
 	nodeReady: boolean
 	done: boolean
@@ -10,7 +10,7 @@ export type AIWorkflowImportResourceState = {
 
 export type AIWorkflowRecoveryNodeState = {
 	resourceId: string
-	kind: 'image' | 'video'
+	kind: 'image' | 'video' | 'model3d'
 	urlReady: boolean
 	nodeReady: boolean
 	done: boolean
@@ -19,7 +19,7 @@ export type AIWorkflowRecoveryNodeState = {
 export type ActiveImportSession = {
 	id: string
 	cancelled: boolean
-	resourceIdToNode: Map<string, { nodeId: string; kind: 'image' | 'video' }>
+	resourceIdToNode: Map<string, { nodeId: string; kind: 'image' | 'video' | 'model3d' }>
 	nodeIdToResourceId: Map<string, string>
 	resourceState: Map<string, AIWorkflowImportResourceState>
 	total: number

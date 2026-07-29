@@ -1296,6 +1296,39 @@ const engineApi = {
 	},
 	getSelectedNodeIds: () => {
 		return blueprintHostRef.value?.getSelectedNodeIds?.() ?? []
+	},
+	// 强制从引擎同步蓝图数据到Vuex store（用于批量节点创建后确保nodesById同步）
+	forceSyncToStore: () => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (!editor || typeof editor.saveBlueprint !== 'function') {
+			return Promise.resolve(false)
+		}
+		const latest = editor.saveBlueprint()
+		if (!latest) {
+			return Promise.resolve(false)
+		}
+		console.log('[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
+			latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length)
+		const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
+		isUpdatingFromStore = true
+		store.commit('hydrateDraft', { snapshot })
+		return new Promise<boolean>((resolve) => {
+			nextTick(() => {
+				isUpdatingFromStore = false
+				// 再等一帧确保Vuex状态完全更新
+				requestAnimationFrame(() => {
+					resolve(true)
+				})
+			})
+		})
+	},
+	// 将客户端屏幕坐标转换为蓝图世界坐标
+	screenToWorld: (clientX: number, clientY: number) => {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (!editor || typeof editor.screenToWorld !== 'function') {
+			return null
+		}
+		return editor.screenToWorld(clientX, clientY) as { x: number; y: number } | null
 	}
 }
 
@@ -4683,8 +4716,34 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 			}
 			return removeResourceByPolicyBridge(resourceId, opts)
 		},
-		performDelete: (nodeIds) => {
-			engineApi.deleteSelection()
+		performDelete: async (nodeIds) => {
+			console.log('[AIWorkflow:Delete] performDelete called for nodes:', nodeIds)
+			// 逐个从引擎删除指定节点（不依赖当前选中状态）
+			const deletedFromEngine: string[] = []
+			for (const nid of nodeIds) {
+				const ok = engineApi.removeNode(nid)
+				if (ok) {
+					deletedFromEngine.push(nid)
+					console.log('[AIWorkflow:Delete] removed from engine:', nid)
+				} else {
+					console.warn('[AIWorkflow:Delete] failed to remove from engine (may already be removed):', nid)
+				}
+			}
+			// 强制从引擎同步到store，确保Vuex中节点被删除（hydrateDraft会处理同步）
+			if (engineApi.forceSyncToStore) {
+				await engineApi.forceSyncToStore()
+				console.log('[AIWorkflow:Delete] forceSyncToStore completed after delete')
+			}
+			// 验证：检查store中是否还有这些节点
+			const remainingInStore = nodeIds.filter((nid) => store.state.nodesById[nid])
+			if (remainingInStore.length > 0) {
+				console.warn('[AIWorkflow:Delete] nodes still in store after sync, removing directly:', remainingInStore)
+				for (const nid of remainingInStore) {
+					store.commit('removeNode', { nodeId: nid })
+				}
+			} else {
+				console.log('[AIWorkflow:Delete] all nodes successfully removed from store:', deletedFromEngine)
+			}
 		}
 	})
 
@@ -4778,24 +4837,55 @@ const buildProjectAssetUrl = (projectId: number, relativePath: string): string =
 	return `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`
 }
 
-const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boolean> => {
-	if (!clipboardData) return false
+const pasteMediaData = async (clipboardData: DataTransfer | null, position?: { worldX: number; worldY: number }): Promise<boolean> => {
+	if (!clipboardData) {
+		console.log('[AIWorkflow:MediaImport] pasteMediaData: no clipboardData')
+		return false
+	}
 	const projectId = Number(currentProjectId.value ?? 0)
 	if (!(projectId > 0)) {
+		console.warn('[AIWorkflow:MediaImport] pasteMediaData: no active project, cannot paste media')
 		pushToast(t('aiworkflow.page.media.pasteNeedSaveProject'), 'warn')
 		return false
 	}
 
-	const inferMediaKindFromFileLocal = (file: File): 'image' | 'video' | null => {
+	// 等待节点出现在Vuex store中（最多20帧，约320ms）
+	const waitForNodeInStore = async (nodeId: string): Promise<boolean> => {
+		for (let i = 0; i < 20; i++) {
+			if (store.state.nodesById[nodeId]) {
+				console.log('[AIWorkflow:MediaImport] waitForNodeInStore: node found in store after', i, 'retries:', nodeId)
+				return true
+			}
+			await new Promise((resolve) => requestAnimationFrame(resolve))
+		}
+		// 最后尝试强制同步
+		console.warn('[AIWorkflow:MediaImport] waitForNodeInStore: node not found after retries, forcing sync:', nodeId)
+		try {
+			await engineApi.forceSyncToStore()
+			return !!store.state.nodesById[nodeId]
+		} catch (err) {
+			console.error('[AIWorkflow:MediaImport] waitForNodeInStore: forceSyncToStore failed:', err)
+			return !!store.state.nodesById[nodeId]
+		}
+	}
+
+	console.log('[AIWorkflow:MediaImport] pasteMediaData starting, projectId:', projectId, 'position:', position)
+
+	type FileWithPath = File & { path?: string }
+
+	const inferMediaKindFromFileLocal = (file: File): 'image' | 'video' | 'model3d' | null => {
 		const mime = String(file.type || '').toLowerCase()
 		if (mime.startsWith('image/')) return 'image'
 		if (mime.startsWith('video/')) return 'video'
+		if (mime === 'model/gltf-binary' || mime === 'model/gltf+json') return 'model3d'
 		const name = String(file.name || '').toLowerCase()
 		const ext = name.split('.').pop() || ''
 		const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
 		const vidExts = ['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv']
+		const modelExts = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'dae']
 		if (imgExts.includes(ext)) return 'image'
 		if (vidExts.includes(ext)) return 'video'
+		if (modelExts.includes(ext)) return 'model3d'
 		return null
 	}
 
@@ -4807,116 +4897,235 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 		if (file) files.push(file)
 	}
 
+	// 从clipboardData.files获取文件（某些情况下items可能为空但files有数据）
+	if (files.length === 0 && clipboardData.files && clipboardData.files.length > 0) {
+		for (let i = 0; i < clipboardData.files.length; i++) {
+			files.push(clipboardData.files[i])
+		}
+	}
+
+	console.log('[AIWorkflow:MediaImport] pasteMediaData files collected:', {
+		fromItems: items.filter((it) => it.kind === 'file').length,
+		totalFiles: files.length,
+		fileNames: files.map((f) => ({ name: f.name, type: f.type, size: f.size, hasPath: !!(f as FileWithPath).path }))
+	})
+
 	const mediaFiles = files.filter((f) => {
-		const mime = String(f.type || '').toLowerCase()
-		if (mime.startsWith('image/') || mime.startsWith('video/')) return true
 		return !!inferMediaKindFromFileLocal(f)
 	})
 
 	if (mediaFiles.length > 0) {
-		const { worldX, worldY } = getCanvasCenterWorld()
-		const createdNodeIds: string[] = []
-		let offset = 0
+		const { worldX, worldY } = position ?? getCanvasCenterWorld()
+		console.log('[AIWorkflow:MediaImport] pasteMediaData processing media files:', mediaFiles.length, 'at', { worldX, worldY }, 'fromPosition:', !!position)
+
+		// 分离本地文件（有path属性或来自文件系统）和内存文件（截图/网页复制）
+		const localFiles: Array<{ file: File; relativePath: string }> = []
+		const memoryFiles: Array<{ file: File; kind: 'image' | 'video' | 'model3d' }> = []
 
 		for (const file of mediaFiles) {
-			const mime = String(file.type || '').toLowerCase()
-			let kind: 'image' | 'video' | null = null
-			if (mime.startsWith('image/')) kind = 'image'
-			if (mime.startsWith('video/')) kind = 'video'
-			if (!kind) kind = inferMediaKindFromFileLocal(file)
+			const kind = inferMediaKindFromFileLocal(file)
 			if (!kind) continue
 
-			let assetUrl = ''
-			let assetAbsPath = ''
-			let assetRelPath = ''
-			let displayName = ''
+			const hasLocalPath =
+				typeof (file as FileWithPath)?.path === 'string' &&
+				String((file as FileWithPath).path).trim().length > 0
 
-			try {
-				const fileBuffer = await file.arrayBuffer()
-				if (kind === 'image') {
-					const pngBuffer = await transcodeImageToPng(fileBuffer)
-					const finalBuffer = pngBuffer || fileBuffer
-					const finalFileName = generateUniqueMediaFileName('paste', 'png')
-					displayName = finalFileName
-					const uploaded = await uploadProjectAsset({
-						projectId,
-						kind: 'image',
-						name: finalFileName,
-						arrayBuffer: finalBuffer,
-						contentType: 'image/png'
-					})
-					if (uploaded && uploaded.ok && uploaded.asset) {
-						assetRelPath = String(
-							uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
-						).trim()
-						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
-						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-					}
-				} else {
-					const videoMime = mime.startsWith('video/') ? mime : 'video/mp4'
-					let videoExt = 'mp4'
-					if (videoMime === 'video/webm') videoExt = 'webm'
-					else if (videoMime === 'video/quicktime') videoExt = 'mov'
-					else if (videoMime.startsWith('video/')) {
-						const extFromMime = videoMime.split('/')[1]
-						if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) videoExt = extFromMime
-					}
-					const finalFileName = generateUniqueMediaFileName('paste', videoExt)
-					displayName = finalFileName
-					const uploaded = await uploadProjectAsset({
-						projectId,
-						kind: 'video',
-						name: finalFileName,
-						arrayBuffer: fileBuffer,
-						contentType: videoMime
-					})
-					if (uploaded && uploaded.ok && uploaded.asset) {
-						assetRelPath = String(
-							uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
-						).trim()
-						assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
-						assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
-					}
-				}
-			} catch {
-				// upload failed, fall through to object url
-			}
+			// 截图通常没有name或name是'image.png'之类的，且没有path
+			const isScreenshot = kind === 'image' && !hasLocalPath && (!file.name || file.name === 'image.png' || file.name.startsWith('blob'))
 
-			let finalUrl: string
-			if (assetUrl) {
-				finalUrl = resolveBackendUrl(assetUrl)
+			if (hasLocalPath && !isScreenshot) {
+				localFiles.push({ file, relativePath: file.name })
 			} else {
-				finalUrl = URL.createObjectURL(file)
-				displayName = String(file.name || (kind === 'image' ? 'image.png' : 'video.mp4'))
+				memoryFiles.push({ file, kind })
 			}
-
-			const nodeId = engineApi.addNode(
-				kind as 'image' | 'video',
-				worldX + offset,
-				worldY + offset,
-				{
-					title:
-						kind === 'image'
-							? t('aiworkflow.page.mediaType.image')
-							: t('aiworkflow.page.mediaType.video')
-				}
-			)
-			if (nodeId) {
-				bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
-					sourcePath: assetAbsPath || undefined,
-					projectRelativePath: assetRelPath || undefined
-				})
-				autoSizeMediaNode(nodeId, finalUrl, kind)
-				createdNodeIds.push(nodeId)
-			}
-			offset += 40
 		}
 
-		if (createdNodeIds.length > 0) {
-			store.commit('setSelectedNodes', {
-				nodeIds: createdNodeIds,
-				primaryNodeId: createdNodeIds[0]
+		console.log('[AIWorkflow:MediaImport] pasteMediaData file classification:', {
+			localFiles: localFiles.length,
+			memoryFiles: memoryFiles.length,
+			localFilePaths: localFiles.map((f) => (f.file as FileWithPath).path),
+			memoryFileNames: memoryFiles.map((m) => ({ name: m.file.name, kind: m.kind, type: m.file.type }))
+		})
+
+		// 处理本地文件：使用批量导入流程，支持dweb协议和右键打开文件夹
+		if (localFiles.length > 0) {
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: importing local files via batch import:', localFiles.length)
+			await createBatchMediaNodesFromFiles({
+				files: localFiles,
+				worldX,
+				worldY
 			})
+		}
+
+		// 处理内存文件（截图/网页复制）：直接上传到项目
+		if (memoryFiles.length > 0) {
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: importing memory files (screenshot/web copy):', memoryFiles.length)
+			const createdNodeIds: string[] = []
+			let offset = localFiles.length > 0 ? localFiles.length * 80 : 0
+
+			for (const { file, kind } of memoryFiles) {
+				const mime = String(file.type || '').toLowerCase()
+				let assetUrl = ''
+				let assetAbsPath = ''
+				let assetRelPath = ''
+				let displayName = ''
+
+				console.log('[AIWorkflow:MediaImport] pasteMediaData: processing memory file:', { name: file.name, kind, mime, size: file.size })
+
+				try {
+					const fileBuffer = await file.arrayBuffer()
+					console.log('[AIWorkflow:MediaImport] pasteMediaData: file read as ArrayBuffer, size:', fileBuffer.byteLength)
+					if (kind === 'image') {
+						const pngBuffer = await transcodeImageToPng(fileBuffer)
+						const finalBuffer = pngBuffer || fileBuffer
+						const finalFileName = generateUniqueMediaFileName('paste', 'png')
+						displayName = finalFileName
+						const uploaded = await uploadProjectAsset({
+							projectId,
+							kind: 'image',
+							name: finalFileName,
+							arrayBuffer: finalBuffer,
+							contentType: 'image/png'
+						})
+						console.log('[AIWorkflow:MediaImport] pasteMediaData: image upload result:', { ok: uploaded?.ok, hasAsset: !!uploaded?.asset })
+						if (uploaded && uploaded.ok && uploaded.asset) {
+							assetRelPath = String(
+								uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+							).trim()
+							assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+						}
+					} else if (kind === 'video') {
+						const videoMime = mime.startsWith('video/') ? mime : 'video/mp4'
+						let videoExt = 'mp4'
+						if (videoMime === 'video/webm') videoExt = 'webm'
+						else if (videoMime === 'video/quicktime') videoExt = 'mov'
+						else if (videoMime.startsWith('video/')) {
+							const extFromMime = videoMime.split('/')[1]
+							if (extFromMime && /^[a-z0-9]+$/.test(extFromMime)) videoExt = extFromMime
+						}
+						const finalFileName = generateUniqueMediaFileName('paste', videoExt)
+						displayName = finalFileName
+						const uploaded = await uploadProjectAsset({
+							projectId,
+							kind: 'video',
+							name: finalFileName,
+							arrayBuffer: fileBuffer,
+							contentType: videoMime
+						})
+						console.log('[AIWorkflow:MediaImport] pasteMediaData: video upload result:', { ok: uploaded?.ok, hasAsset: !!uploaded?.asset })
+						if (uploaded && uploaded.ok && uploaded.asset) {
+							assetRelPath = String(
+								uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+							).trim()
+							assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+						}
+					} else if (kind === 'model3d') {
+						const lowerName = String(file.name || '').toLowerCase()
+						let modelExt = 'glb'
+						if (lowerName.endsWith('.gltf')) modelExt = 'gltf'
+						else if (lowerName.endsWith('.fbx')) modelExt = 'fbx'
+						else if (lowerName.endsWith('.obj')) modelExt = 'obj'
+						else if (lowerName.endsWith('.stl')) modelExt = 'stl'
+						else if (lowerName.endsWith('.dae')) modelExt = 'dae'
+						const finalFileName = generateUniqueMediaFileName('paste', modelExt)
+						displayName = finalFileName
+						const uploaded = await uploadProjectAsset({
+							projectId,
+							kind: 'model3d',
+							name: finalFileName,
+							arrayBuffer: fileBuffer,
+							contentType: mime === 'model/gltf+json' ? 'model/gltf+json' : 'model/gltf-binary'
+						})
+						console.log('[AIWorkflow:MediaImport] pasteMediaData: model3d upload result:', { ok: uploaded?.ok, hasAsset: !!uploaded?.asset })
+						if (uploaded && uploaded.ok && uploaded.asset) {
+							assetRelPath = String(
+								uploaded.asset.projectRelativePath || uploaded.asset.relativePath || ''
+							).trim()
+							assetAbsPath = String(uploaded.asset.absolutePath || '').trim()
+							assetUrl = buildProjectAssetUrl(projectId, assetRelPath)
+						}
+					}
+				} catch (err) {
+					console.warn('[AIWorkflow:MediaImport] pasteMediaData: upload failed, falling back to object URL:', err)
+				}
+
+				let finalUrl: string
+				if (assetUrl) {
+					finalUrl = resolveBackendUrl(assetUrl)
+					console.log('[AIWorkflow:MediaImport] pasteMediaData: using project asset URL:', finalUrl.slice(0, 100))
+				} else {
+					finalUrl = URL.createObjectURL(file)
+					displayName = String(file.name || (kind === 'image' ? 'image.png' : kind === 'video' ? 'video.mp4' : 'model.glb'))
+					console.warn('[AIWorkflow:MediaImport] pasteMediaData: using fallback object URL (file not persisted)')
+				}
+
+				const nodeType = kind === 'model3d' ? 'model3d' : kind
+				const title = kind === 'image' ? t('aiworkflow.page.mediaType.image') : kind === 'video' ? t('aiworkflow.page.mediaType.video') : t('nodes.type.model3d')
+				const nodeId = engineApi.addNode(
+					nodeType,
+					worldX + offset,
+					worldY + offset,
+					{ title }
+				)
+				if (nodeId) {
+					console.log('[AIWorkflow:MediaImport] pasteMediaData: node created:', { nodeId, kind, displayName, worldX: worldX + offset, worldY: worldY + offset })
+					// 等待节点同步到Vuex store后再绑定资源（bindMediaResourceToNode依赖store.nodesById）
+					const nodeInStore = await waitForNodeInStore(nodeId)
+					if (nodeInStore) {
+						console.log('[AIWorkflow:MediaImport] pasteMediaData: binding resource to node:', { nodeId, finalUrl: finalUrl.slice(0, 100) })
+						bindMediaResourceToNode(nodeId, kind, finalUrl, displayName, {
+							sourcePath: assetAbsPath || undefined,
+							projectRelativePath: assetRelPath || undefined,
+							onAfterBind: ({ resourceId }) => {
+								if (!resourceId) return
+								console.log('[AIWorkflow:MediaImport] pasteMediaData: syncing resourceId to engine node:', { nodeId, resourceId })
+								// 同步resourceId和resourcePath到引擎Scene节点，确保DOM渲染能读取到
+								engineApi.updateNodeData(nodeId, {
+									resourceId,
+									resourcePath: assetAbsPath || undefined
+								})
+							}
+						})
+					} else {
+						console.error('[AIWorkflow:MediaImport] pasteMediaData: node not found in store after wait, trying direct engine update:', nodeId)
+						// 兜底：手动创建resource并同步到引擎
+						const fallbackResourceId = makeResourceId()
+						store.commit('addResource', {
+							id: fallbackResourceId,
+							kind,
+							name: displayName,
+							url: finalUrl,
+							...(assetAbsPath ? { sourcePath: assetAbsPath } : {}),
+							...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),
+							createdAt: Date.now()
+						})
+						// 直接通过engineApi设置节点数据（resourceId是关键，DOM通过它查找legacyResources）
+						engineApi.updateNodeData(nodeId, {
+							title,
+							resourceId: fallbackResourceId,
+							resourcePath: assetAbsPath || undefined
+						})
+						autoSizeMediaNode(nodeId, finalUrl, kind)
+					}
+					createdNodeIds.push(nodeId)
+				} else {
+					console.error('[AIWorkflow:MediaImport] pasteMediaData: engineApi.addNode returned null for', kind)
+				}
+				offset += 40
+			}
+
+			if (createdNodeIds.length > 0) {
+				store.commit('setSelectedNodes', {
+					nodeIds: createdNodeIds,
+					primaryNodeId: createdNodeIds[0]
+				})
+			}
+		}
+
+		if (localFiles.length > 0 || memoryFiles.length > 0) {
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: file paste completed, returning true')
 			return true
 		}
 	}
@@ -4928,65 +5137,185 @@ const pasteMediaData = async (clipboardData: DataTransfer | null): Promise<boole
 	).trim()
 
 	if (urlText) {
+		console.log('[AIWorkflow:MediaImport] pasteMediaData: checking URL text:', urlText.slice(0, 100))
 		const isRemote =
 			urlText.startsWith('http://') ||
 			urlText.startsWith('https://') ||
 			urlText.startsWith('blob:') ||
 			urlText.startsWith('data:')
+		const isFileUrl = urlText.startsWith('file://')
+
+		// 处理file://本地文件路径（Electron文件资源管理器复制）
+		if (isFileUrl) {
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: detected file:// URL, parsing local path')
+			// 解析file://路径，支持Windows (file:///C:/...) 和 Unix (file:///path/...)
+			let filePath = urlText.replace(/^file:\/\//, '')
+			// Windows路径: file:///C:/path -> C:/path (去掉开头的/)
+			if (/^\/[A-Za-z]:\//.test(filePath)) {
+				filePath = filePath.slice(1)
+			}
+			// URL解码
+			filePath = decodeURIComponent(filePath)
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: parsed local file path:', filePath)
+
+			// 推断媒体类型
+			const inferKindFromPath = (p: string): 'image' | 'video' | 'model3d' | null => {
+				const lower = p.toLowerCase()
+				const imgExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.avif']
+				const vidExts = ['.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi', '.flv', '.wmv']
+				const modelExts = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+				if (imgExts.some(ext => lower.endsWith(ext))) return 'image'
+				if (vidExts.some(ext => lower.endsWith(ext))) return 'video'
+				if (modelExts.some(ext => lower.endsWith(ext))) return 'model3d'
+				return null
+			}
+			const fileKind = inferKindFromPath(filePath)
+			if (fileKind && projectId > 0) {
+				const center = position ?? getCanvasCenterWorld()
+				console.log('[AIWorkflow:MediaImport] pasteMediaData: copying local file to project:', { filePath, kind: fileKind })
+				try {
+					// 使用copyFileToProjectRoot复制本地文件到项目
+					const copyResult = await copyFileToProjectRoot(projectId, filePath)
+					if (copyResult && copyResult.ok && copyResult.relativePath) {
+						const fileName = filePath.split(/[\\/]/).pop() || 'pasted-file'
+						const assetUrl = buildProjectAssetUrl(projectId, copyResult.relativePath)
+						const finalUrl = resolveBackendUrl(assetUrl)
+						console.log('[AIWorkflow:MediaImport] pasteMediaData: local file copied to project:', { relPath: copyResult.relativePath, finalUrl: finalUrl.slice(0, 100) })
+
+						const nodeType = fileKind === 'model3d' ? 'model3d' : fileKind
+						const title = fileKind === 'image' ? t('aiworkflow.page.mediaType.image') : fileKind === 'video' ? t('aiworkflow.page.mediaType.video') : t('nodes.type.model3d')
+						const nodeId = engineApi.addNode(nodeType, center.worldX, center.worldY, { title })
+						if (nodeId) {
+							console.log('[AIWorkflow:MediaImport] pasteMediaData: file:// node created:', { nodeId, kind: fileKind })
+							const nodeInStore = await waitForNodeInStore(nodeId)
+							if (nodeInStore) {
+								bindMediaResourceToNode(
+									nodeId,
+									fileKind,
+									finalUrl,
+									fileName,
+									{
+										sourcePath: copyResult.absolutePath || filePath,
+										projectRelativePath: copyResult.relativePath,
+										onAfterBind: ({ resourceId }) => {
+											if (!resourceId) return
+											console.log('[AIWorkflow:MediaImport] pasteMediaData: file:// syncing resourceId to engine node:', { nodeId, resourceId })
+											engineApi.updateNodeData(nodeId, {
+												resourceId,
+												resourcePath: copyResult.absolutePath || filePath
+											})
+										}
+									}
+								)
+							}
+							autoSizeMediaNode(nodeId, finalUrl, fileKind)
+							return true
+						}
+					} else {
+						console.warn('[AIWorkflow:MediaImport] pasteMediaData: copyFileToProjectRoot failed:', copyResult)
+					}
+				} catch (err) {
+					console.error('[AIWorkflow:MediaImport] pasteMediaData: failed to copy local file:', err)
+				}
+			}
+		}
+
 		if (isRemote) {
-			const urlKind =
+			let urlKind: 'image' | 'video' | 'model3d' = 'image'
+			if (
 				urlText.startsWith('data:video/') ||
 				/\.(mp4|webm|mov|m4v|mkv|avi|flv|wmv)(\?|$)/i.test(urlText)
-					? 'video'
-					: 'image'
-			const center = getCanvasCenterWorld()
+			) {
+				urlKind = 'video'
+			} else if (
+				urlText.startsWith('data:model/') ||
+				/\.(glb|gltf|fbx|obj|stl|dae)(\?|$)/i.test(urlText)
+			) {
+				urlKind = 'model3d'
+			}
+			const center = position ?? getCanvasCenterWorld()
+			console.log('[AIWorkflow:MediaImport] pasteMediaData: processing remote URL, kind:', urlKind, 'at:', center)
 
 			let assetUrl = urlText
 			let assetAbsPath = ''
 			let assetRelPath = ''
 			let displayName = ''
 
-			const persisted = await persistBlobUrlToProject(
-				urlText,
-				urlKind as 'image' | 'video',
-				'paste'
-			)
-			if (persisted && persisted.url) {
-				assetUrl = persisted.url
-				assetAbsPath = persisted.sourcePath || ''
-				assetRelPath = persisted.projectRelativePath || ''
-				displayName = persisted.fileName || ''
+			if (urlKind !== 'model3d') {
+				const persisted = await persistBlobUrlToProject(
+					urlText,
+					urlKind as 'image' | 'video',
+					'paste'
+				)
+				if (persisted && persisted.url) {
+					assetUrl = persisted.url
+					assetAbsPath = persisted.sourcePath || ''
+					assetRelPath = persisted.projectRelativePath || ''
+					displayName = persisted.fileName || ''
+					console.log('[AIWorkflow:MediaImport] pasteMediaData: URL persisted to project:', { relPath: assetRelPath })
+				} else {
+					console.warn('[AIWorkflow:MediaImport] pasteMediaData: persistBlobUrlToProject failed, using original URL')
+				}
 			}
 
 			const finalUrl = resolveBackendUrl(assetUrl)
 			const defaultName =
 				urlKind === 'video'
 					? generateUniqueMediaFileName('paste', 'mp4')
-					: generateUniqueMediaFileName('paste', 'png')
+					: urlKind === 'model3d'
+						? generateUniqueMediaFileName('paste', 'glb')
+						: generateUniqueMediaFileName('paste', 'png')
 
-			const nodeId = engineApi.addNode(urlKind as 'image' | 'video', center.worldX, center.worldY, {
-				title:
-					urlKind === 'image'
-						? t('aiworkflow.page.mediaType.image')
-						: t('aiworkflow.page.mediaType.video')
-			})
+			const nodeType = urlKind === 'model3d' ? 'model3d' : urlKind
+			const title = urlKind === 'image' ? t('aiworkflow.page.mediaType.image') : urlKind === 'video' ? t('aiworkflow.page.mediaType.video') : t('nodes.type.model3d')
+			const nodeId = engineApi.addNode(nodeType, center.worldX, center.worldY, { title })
 			if (nodeId) {
-				bindMediaResourceToNode(
-					nodeId,
-					urlKind as 'image' | 'video',
-					finalUrl,
-					displayName || defaultName,
-					{
-						sourcePath: assetAbsPath || undefined,
-						projectRelativePath: assetRelPath || undefined
-					}
-				)
-				autoSizeMediaNode(nodeId, finalUrl, urlKind as 'image' | 'video')
+				console.log('[AIWorkflow:MediaImport] pasteMediaData: URL node created:', { nodeId, urlKind })
+				const nodeInStore = await waitForNodeInStore(nodeId)
+				if (nodeInStore) {
+					bindMediaResourceToNode(
+						nodeId,
+						urlKind,
+						finalUrl,
+						displayName || defaultName,
+						{
+							sourcePath: assetAbsPath || undefined,
+							projectRelativePath: assetRelPath || undefined,
+							onAfterBind: ({ resourceId }) => {
+								if (!resourceId) return
+								console.log('[AIWorkflow:MediaImport] pasteMediaData: URL syncing resourceId to engine node:', { nodeId, resourceId })
+								engineApi.updateNodeData(nodeId, {
+									resourceId,
+									resourcePath: assetAbsPath || undefined
+								})
+							}
+						}
+					)
+				} else {
+					console.error('[AIWorkflow:MediaImport] pasteMediaData: URL node not in store, fallback to direct engine update:', nodeId)
+					const fallbackResourceId = makeResourceId()
+					store.commit('addResource', {
+						id: fallbackResourceId,
+						kind: urlKind,
+						name: displayName || defaultName,
+						url: finalUrl,
+						...(assetAbsPath ? { sourcePath: assetAbsPath } : {}),
+						...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),
+						createdAt: Date.now()
+					})
+					engineApi.updateNodeData(nodeId, {
+						title,
+						resourceId: fallbackResourceId,
+						resourcePath: assetAbsPath || undefined
+					})
+				}
+				autoSizeMediaNode(nodeId, finalUrl, urlKind)
 				return true
 			}
 		}
 	}
 
+	console.log('[AIWorkflow:MediaImport] pasteMediaData: no media data handled, returning false')
 	return false
 }
 
@@ -5241,7 +5570,7 @@ const onCancelImportOverlay = () => {
 	pushToast(t('aiworkflow.page.media.importCancelled'), 'info')
 }
 
-const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video') => {
+const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video' | 'model3d') => {
 	const node = store.state.nodesById[nodeId]
 	if (!node || node.sizeCustomized) return
 	const targetWidth = 450
@@ -5261,9 +5590,15 @@ const autoSizeMediaNode = (nodeId: string, url: string, kind: 'image' | 'video')
 		img.src = url
 		return
 	}
-	// video: use limited-concurrency metadata queue to avoid mass <video> allocations.
-	const rid = String(store.state.nodesById[nodeId]?.resourceId ?? '').trim()
-	scheduleVideoMetadataRead({ resourceId: rid || nodeId, nodeId, url })
+	if (kind === 'video') {
+		// video: use limited-concurrency metadata queue to avoid mass <video> allocations.
+		const rid = String(store.state.nodesById[nodeId]?.resourceId ?? '').trim()
+		scheduleVideoMetadataRead({ resourceId: rid || nodeId, nodeId, url })
+		return
+	}
+	// model3d: use default 3D preview size
+	const model3dHeight = Math.max(320, 450 + chromeHeight - 40)
+	store.commit('setNodeSize', { nodeId, width: targetWidth, height: model3dHeight, customized: false })
 }
 
 const autoSizeImageNodeFromDims = (nodeId: string, w: number, h: number) => {
@@ -8594,6 +8929,17 @@ const getCanvasWrapRect = () => {
 	return el?.getBoundingClientRect() ?? null
 }
 
+// 追踪鼠标在页面上的最后位置（用于键盘快捷键触发时获取世界坐标）
+let lastMouseClientX = 0
+let lastMouseClientY = 0
+let hasLastMousePos = false
+
+const onGlobalMouseMove = (ev: MouseEvent) => {
+	lastMouseClientX = ev.clientX
+	lastMouseClientY = ev.clientY
+	hasLastMousePos = true
+}
+
 const clientToCanvasPoint = (client: { x: number; y: number }) => {
 	const r = getCanvasWrapRect()
 	if (!r) return null
@@ -9223,7 +9569,7 @@ const transcodeImageToPng = async (sourceBuffer: ArrayBuffer): Promise<ArrayBuff
 
 const persistBlobUrlToProject = async (
 	inputUrl: string,
-	kind: 'image' | 'video',
+	kind: 'image' | 'video' | 'model3d',
 	prefix = 'dragdrop'
 ): Promise<{
 	url: string
@@ -9239,6 +9585,9 @@ const persistBlobUrlToProject = async (
 	if (url.toLowerCase().startsWith('dweb://project-assets')) {
 		return null
 	}
+
+	// model3d URLs are not handled by this function (already persisted via uploadProjectAsset)
+	if (kind === 'model3d') return null
 
 	let arrayBuffer: ArrayBuffer | null = null
 	let contentType = kind === 'video' ? 'video/mp4' : 'image/png'
@@ -10454,6 +10803,23 @@ const getCanvasCenterWorld = () => {
 	return { worldX, worldY }
 }
 
+const getMouseWorldPos = (): { worldX: number; worldY: number } => {
+	if (!hasLastMousePos) {
+		const center = getCanvasCenterWorld()
+		console.log('[AIWorkflow:MediaImport] getMouseWorldPos: no last mouse pos, using canvas center:', center)
+		return center
+	}
+	const world = engineApi.screenToWorld(lastMouseClientX, lastMouseClientY)
+	if (world) {
+		const result = { worldX: world.x, worldY: world.y }
+		console.log('[AIWorkflow:MediaImport] getMouseWorldPos: converted client(' + lastMouseClientX + ',' + lastMouseClientY + ') to world:', result)
+		return result
+	}
+	const center = getCanvasCenterWorld()
+	console.warn('[AIWorkflow:MediaImport] getMouseWorldPos: screenToWorld returned null, using canvas center:', center)
+	return center
+}
+
 const noopWorkflowWorldToCanvas = (point: { x: number; y: number }) => point
 let getLinkWorkflowWorldToCanvas = () => noopWorkflowWorldToCanvas
 let scheduleLinkEdgeRender = () => {}
@@ -10468,7 +10834,8 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	pasteNodesAtCanvasCenter: () => {
 		engineApi.paste()
 	},
-	pasteMediaData: (clipboardData) => pasteMediaData(clipboardData),
+	pasteMediaData: (clipboardData, position) => pasteMediaData(clipboardData, position),
+	getMouseWorldPos: () => getMouseWorldPos(),
 	copySelectedNodes: (primaryNodeId) => {
 		engineApi.copySelection()
 		store.commit('copyNode', { nodeId: primaryNodeId })
@@ -12723,6 +13090,7 @@ onBeforeUnmount(() => {
 	}
 	window.removeEventListener('dvs:shortcut/save', onGlobalShortcutSave, true)
 	unmountWindowEvents()
+	window.removeEventListener('mousemove', onGlobalMouseMove, true)
 	window.removeEventListener('pointerup', flushPendingImageDistribute, true)
 	window.removeEventListener('pointercancel', flushPendingImageDistribute, true)
 	disposeComfyRuntime()
@@ -12771,6 +13139,7 @@ onMounted(() => {
 	// Take over global Ctrl/Cmd+S only on this page.
 	window.addEventListener('dvs:shortcut/save', onGlobalShortcutSave, true)
 	mountWindowEvents()
+	window.addEventListener('mousemove', onGlobalMouseMove, true)
 	window.addEventListener('pointerup', flushPendingImageDistribute, true)
 	window.addEventListener('pointercancel', flushPendingImageDistribute, true)
 	// 安装全局 404 错误拦截器（覆盖 img/video/script/link/fetch 错误）

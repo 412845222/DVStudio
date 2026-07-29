@@ -316,6 +316,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			sourcePath?: string
 			projectRelativePath?: string
 			posterProjectRelativePath?: string
+			onAfterBind?: (payload: { resourceId: string; url: string }) => void
 		}
 	) => {
 		const node = options.store.state.nodesById[nodeId]
@@ -341,6 +342,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					modelAssetPath: String(opts?.sourcePath ?? '').trim() || undefined
 				}
 			})
+			opts?.onAfterBind?.({ resourceId: '', url })
 			return
 		}
 
@@ -446,6 +448,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		}
 
 		options.autoSizeMediaNode(nodeId, url, kind)
+		opts?.onAfterBind?.({ resourceId, url })
 	}
 
 	const uploadNodeModel3DFile = async (nodeId: string, file: File) => {
