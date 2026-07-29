@@ -13,6 +13,7 @@ import {
 	type MediaType
 } from './types'
 import { getThemeManager } from './theme'
+import { translatePortLabel } from './i18n'
 
 export class Port extends Node {
 	spec: PortSpec
@@ -201,12 +202,13 @@ export class Port extends Node {
 			c.fillStyle = tokens.nodeTextMuted
 			c.textBaseline = 'middle'
 			const labelOffset = halfOuter + 8
+			const translatedLabel = translatePortLabel(this.spec.label, this.spec.label)
 			if (this.isInput) {
 				c.textAlign = 'right'
-				c.fillText(this.spec.label, -labelOffset, 0)
+				c.fillText(translatedLabel, -labelOffset, 0)
 			} else {
 				c.textAlign = 'left'
-				c.fillText(this.spec.label, labelOffset, 0)
+				c.fillText(translatedLabel, labelOffset, 0)
 			}
 			c.restore()
 		}

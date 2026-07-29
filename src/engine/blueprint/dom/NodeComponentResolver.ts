@@ -186,7 +186,7 @@ export class NodeComponentResolver {
 			isSecondarySelected: false,
 			visualStatus: effectiveStatus,
 			sizeCustomized: data.sizeCustomized,
-			autoHeight: false
+			autoHeight: !data.sizeCustomized
 		}
 
 		const resourceProps = this.resolveResourceProps(data, legacyResources)

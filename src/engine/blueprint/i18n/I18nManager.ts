@@ -1,12 +1,16 @@
 import { I18nStore } from '../../../store/i18n/store'
 import type { LocaleChangeCallback, TranslateParams } from './types'
 
+export type { LocaleChangeCallback, TranslateParams } from './types'
+
 export class I18nManager {
 	private static _instance: I18nManager | null = null
+	private _currentLocale: string
 	private _listeners: Set<LocaleChangeCallback> = new Set()
 	private _unsubscribe: (() => void) | null = null
 
 	private constructor() {
+		this._currentLocale = I18nStore.state.locale
 		this._setupStoreSubscription()
 	}
 
@@ -18,8 +22,12 @@ export class I18nManager {
 	}
 
 	private _setupStoreSubscription() {
-		this._unsubscribe = I18nStore.subscribe((mutation) => {
+		if (this._unsubscribe) {
+			this._unsubscribe()
+		}
+		this._unsubscribe = I18nStore.subscribe((mutation, state) => {
 			if (mutation.type === 'SET_LOCALE') {
+				this._currentLocale = state.locale
 				this._notifyListeners()
 			}
 		})
@@ -28,7 +36,7 @@ export class I18nManager {
 	private _notifyListeners() {
 		for (const callback of this._listeners) {
 			try {
-				callback()
+				callback(this._currentLocale)
 			} catch (e) {
 				console.error('[I18nManager] Listener error:', e)
 			}
@@ -45,7 +53,7 @@ export class I18nManager {
 	}
 
 	get locale(): string {
-		return I18nStore.state.locale
+		return this._currentLocale
 	}
 
 	onChange(callback: LocaleChangeCallback): () => void {
@@ -65,13 +73,8 @@ export class I18nManager {
 	}
 }
 
-let _i18nManager: I18nManager | null = null
-
 export function getI18nManager(): I18nManager {
-	if (!_i18nManager) {
-		_i18nManager = I18nManager.getInstance()
-	}
-	return _i18nManager
+	return I18nManager.getInstance()
 }
 
 export function t(key: string, params?: TranslateParams): string {

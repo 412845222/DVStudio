@@ -82,11 +82,24 @@ export class BlueprintScene extends Scene {
 		this._themeManager = getThemeManager()
 		this._i18nManager = getI18nManager()
 
+		const forceFullRedraw = () => {
+			// Mark all nodes dirty for complete redraw
+			for (const node of this._nodeMap.values()) {
+				node.markDirty(1)
+			}
+			for (const conn of this._connectionMap.values()) {
+				conn.markDirty(1)
+			}
+			this._grid.markDirty(1)
+			this._tempConnection.markDirty(1)
+			this.requestRedraw(true)
+		}
+
 		this._unsubscribeTheme = this._themeManager.onChange(() => {
-			this.requestRedraw()
+			forceFullRedraw()
 		})
 		this._unsubscribeI18n = this._i18nManager.onChange(() => {
-			this.requestRedraw()
+			forceFullRedraw()
 		})
 
 		this._grid = new BlueprintGrid()

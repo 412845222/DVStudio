@@ -25,84 +25,7 @@ import {
 	type ResizeCorner
 } from './types'
 import { getThemeManager } from './theme'
-import { t } from './i18n'
-
-const NODE_TYPE_KEY_MAP: Record<string, string> = {
-	text: 'aiworkflow.canvas.nodeTypes.text',
-	image: 'aiworkflow.canvas.nodeTypes.image',
-	'rotate-image': 'aiworkflow.canvas.nodeTypes.rotateImage',
-	video: 'aiworkflow.canvas.nodeTypes.video',
-	model3d: 'aiworkflow.canvas.nodeTypes.model3d',
-	meshy: 'aiworkflow.canvas.nodeTypes.meshy',
-	blender: 'aiworkflow.canvas.nodeTypes.blender',
-	comfyui: 'aiworkflow.canvas.nodeTypes.comfyui',
-	'unreal-export': 'aiworkflow.canvas.nodeTypes.unrealExport',
-	'scene-understanding': 'aiworkflow.canvas.nodeTypes.sceneUnderstanding',
-	'scene-layout': 'aiworkflow.canvas.nodeTypes.sceneLayout',
-	'scene-decompose': 'aiworkflow.canvas.nodeTypes.sceneDecompose',
-	story: 'aiworkflow.canvas.nodeTypes.story',
-	'text-merge': 'aiworkflow.canvas.nodeTypes.textMerge'
-}
-
-const PORT_LABEL_KEY_MAP: Record<string, string> = {
-	多模态输入: 'aiworkflow.canvas.ports.multiInput',
-	'Multi-modal Input': 'aiworkflow.canvas.ports.multiInput',
-	文本输出: 'aiworkflow.canvas.ports.textOutput',
-	'Text Output': 'aiworkflow.canvas.ports.textOutput',
-	图片输出: 'aiworkflow.canvas.ports.imageOutput',
-	'Image Output': 'aiworkflow.canvas.ports.imageOutput',
-	旋转图片: 'aiworkflow.canvas.ports.rotatedImage',
-	'Rotated Image': 'aiworkflow.canvas.ports.rotatedImage',
-	图片输入: 'aiworkflow.canvas.ports.imageInput',
-	'Image Input': 'aiworkflow.canvas.ports.imageInput',
-	提示词输入: 'aiworkflow.canvas.ports.promptInput',
-	'Prompt Input': 'aiworkflow.canvas.ports.promptInput',
-	参考图输入: 'aiworkflow.canvas.ports.referenceImageInput',
-	'Reference Image Input': 'aiworkflow.canvas.ports.referenceImageInput',
-	参考视频输入: 'aiworkflow.canvas.ports.referenceVideoInput',
-	'Reference Video Input': 'aiworkflow.canvas.ports.referenceVideoInput',
-	视频输出: 'aiworkflow.canvas.ports.videoOutput',
-	'Video Output': 'aiworkflow.canvas.ports.videoOutput',
-	模型输入: 'aiworkflow.canvas.ports.modelInput',
-	'Model Input': 'aiworkflow.canvas.ports.modelInput',
-	提示词: 'aiworkflow.canvas.ports.prompt',
-	Prompt: 'aiworkflow.canvas.ports.prompt',
-	'参考图 1': 'aiworkflow.canvas.ports.referenceImage1',
-	'Reference 1': 'aiworkflow.canvas.ports.referenceImage1',
-	'参考图 2': 'aiworkflow.canvas.ports.referenceImage2',
-	'Reference 2': 'aiworkflow.canvas.ports.referenceImage2',
-	'参考图 3': 'aiworkflow.canvas.ports.referenceImage3',
-	'Reference 3': 'aiworkflow.canvas.ports.referenceImage3',
-	'参考图 4': 'aiworkflow.canvas.ports.referenceImage4',
-	'Reference 4': 'aiworkflow.canvas.ports.referenceImage4',
-	模型输出: 'aiworkflow.canvas.ports.modelOutput',
-	'Model Output': 'aiworkflow.canvas.ports.modelOutput',
-	预览图: 'aiworkflow.canvas.ports.previewImage',
-	'Preview Image': 'aiworkflow.canvas.ports.previewImage',
-	入口: 'aiworkflow.canvas.inputAnchor',
-	Input: 'aiworkflow.canvas.inputAnchor',
-	出口: 'aiworkflow.canvas.outputAnchor',
-	Output: 'aiworkflow.canvas.outputAnchor'
-}
-
-function translateNodeType(type: string): string {
-	const key = NODE_TYPE_KEY_MAP[type]
-	if (key) {
-		const translated = t(key)
-		if (translated !== key) return translated
-	}
-	return type
-}
-
-function translatePortLabel(label: string | undefined, fallback: string): string {
-	if (!label) return fallback
-	const key = PORT_LABEL_KEY_MAP[label]
-	if (key) {
-		const translated = t(key)
-		if (translated !== key) return translated
-	}
-	return label
-}
+import { t, translateNodeTitle, translatePortLabel } from './i18n'
 
 type TextureState = 'loading' | 'ready' | 'error'
 
@@ -755,8 +678,7 @@ export class BlueprintNode extends Node {
 		c.font = `500 12px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		c.textBaseline = 'middle'
 		c.textAlign = 'left'
-		const displayTitle =
-			this.alias || (this.title === this.nodeType ? translateNodeType(this.nodeType) : this.title)
+		const displayTitle = translateNodeTitle(this.nodeType, this.title, this.alias)
 		c.fillText(displayTitle, titleX, NODE_HEADER_HEIGHT / 2)
 
 		const statusDotX = w - NODE_INNER_PADDING - 8

@@ -1174,7 +1174,6 @@ defineExpose({
 
 .wf-media-preview {
 	width: 100%;
-	aspect-ratio: 1 / 1;
 	flex-shrink: 0;
 	border-radius: 6px;
 	overflow: hidden;
