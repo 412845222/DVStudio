@@ -983,7 +983,11 @@ defineExpose({
 			.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
 		if (selectedNodes.length < 2) return null
 		const i18n = getI18nManager()
-		const frameLabel = label || i18n.t('aiworkflow.canvas.defaultGroupName', { index: s.getSavedSelectionFrames().length + 1 })
+		const frameLabel =
+			label ||
+			i18n.t('aiworkflow.canvas.defaultGroupName', {
+				index: s.getSavedSelectionFrames().length + 1
+			})
 		const frame = s.saveSelectionFrame(
 			selectedNodes.map((n) => n.id),
 			frameLabel

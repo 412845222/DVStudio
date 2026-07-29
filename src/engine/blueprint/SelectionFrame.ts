@@ -68,10 +68,12 @@ export function drawSelectionFrame(
 	const tagInputBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'
 	const tagInputBgIdle = theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.25)'
 	const tagInputBorder = theme.mode === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.5)'
-	const tagInputBorderIdle = theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)'
+	const tagInputBorderIdle =
+		theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)'
 	const tagInputText = theme.mode === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.8)'
 	const tagSaveBtnBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)'
-	const countText = nodeCount !== undefined ? t('aiworkflow.canvas.nodesCount', { count: nodeCount }) : ''
+	const countText =
+		nodeCount !== undefined ? t('aiworkflow.canvas.nodesCount', { count: nodeCount }) : ''
 	const saveText = `💾 ${t('aiworkflow.canvas.save')}`
 	const placeholder = t('aiworkflow.canvas.enterGroupName')
 

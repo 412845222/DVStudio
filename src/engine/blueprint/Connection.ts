@@ -76,7 +76,10 @@ export class Connection extends Node {
 
 	private getColor(): string {
 		const theme = getThemeManager()
-		return MEDIA_TYPE_COLORS[this._mediaType as keyof typeof MEDIA_TYPE_COLORS] || theme.tokens.connectionLine
+		return (
+			MEDIA_TYPE_COLORS[this._mediaType as keyof typeof MEDIA_TYPE_COLORS] ||
+			theme.tokens.connectionLine
+		)
 	}
 
 	private hexToRgba(hex: string, alpha: number): string {

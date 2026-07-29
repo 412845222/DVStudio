@@ -45,28 +45,28 @@ const NODE_TYPE_KEY_MAP: Record<string, string> = {
 }
 
 const PORT_LABEL_KEY_MAP: Record<string, string> = {
-	'多模态输入': 'aiworkflow.canvas.ports.multiInput',
+	多模态输入: 'aiworkflow.canvas.ports.multiInput',
 	'Multi-modal Input': 'aiworkflow.canvas.ports.multiInput',
-	'文本输出': 'aiworkflow.canvas.ports.textOutput',
+	文本输出: 'aiworkflow.canvas.ports.textOutput',
 	'Text Output': 'aiworkflow.canvas.ports.textOutput',
-	'图片输出': 'aiworkflow.canvas.ports.imageOutput',
+	图片输出: 'aiworkflow.canvas.ports.imageOutput',
 	'Image Output': 'aiworkflow.canvas.ports.imageOutput',
-	'旋转图片': 'aiworkflow.canvas.ports.rotatedImage',
+	旋转图片: 'aiworkflow.canvas.ports.rotatedImage',
 	'Rotated Image': 'aiworkflow.canvas.ports.rotatedImage',
-	'图片输入': 'aiworkflow.canvas.ports.imageInput',
+	图片输入: 'aiworkflow.canvas.ports.imageInput',
 	'Image Input': 'aiworkflow.canvas.ports.imageInput',
-	'提示词输入': 'aiworkflow.canvas.ports.promptInput',
+	提示词输入: 'aiworkflow.canvas.ports.promptInput',
 	'Prompt Input': 'aiworkflow.canvas.ports.promptInput',
-	'参考图输入': 'aiworkflow.canvas.ports.referenceImageInput',
+	参考图输入: 'aiworkflow.canvas.ports.referenceImageInput',
 	'Reference Image Input': 'aiworkflow.canvas.ports.referenceImageInput',
-	'参考视频输入': 'aiworkflow.canvas.ports.referenceVideoInput',
+	参考视频输入: 'aiworkflow.canvas.ports.referenceVideoInput',
 	'Reference Video Input': 'aiworkflow.canvas.ports.referenceVideoInput',
-	'视频输出': 'aiworkflow.canvas.ports.videoOutput',
+	视频输出: 'aiworkflow.canvas.ports.videoOutput',
 	'Video Output': 'aiworkflow.canvas.ports.videoOutput',
-	'模型输入': 'aiworkflow.canvas.ports.modelInput',
+	模型输入: 'aiworkflow.canvas.ports.modelInput',
 	'Model Input': 'aiworkflow.canvas.ports.modelInput',
-	'提示词': 'aiworkflow.canvas.ports.prompt',
-	'Prompt': 'aiworkflow.canvas.ports.prompt',
+	提示词: 'aiworkflow.canvas.ports.prompt',
+	Prompt: 'aiworkflow.canvas.ports.prompt',
 	'参考图 1': 'aiworkflow.canvas.ports.referenceImage1',
 	'Reference 1': 'aiworkflow.canvas.ports.referenceImage1',
 	'参考图 2': 'aiworkflow.canvas.ports.referenceImage2',
@@ -75,14 +75,14 @@ const PORT_LABEL_KEY_MAP: Record<string, string> = {
 	'Reference 3': 'aiworkflow.canvas.ports.referenceImage3',
 	'参考图 4': 'aiworkflow.canvas.ports.referenceImage4',
 	'Reference 4': 'aiworkflow.canvas.ports.referenceImage4',
-	'模型输出': 'aiworkflow.canvas.ports.modelOutput',
+	模型输出: 'aiworkflow.canvas.ports.modelOutput',
 	'Model Output': 'aiworkflow.canvas.ports.modelOutput',
-	'预览图': 'aiworkflow.canvas.ports.previewImage',
+	预览图: 'aiworkflow.canvas.ports.previewImage',
 	'Preview Image': 'aiworkflow.canvas.ports.previewImage',
-	'入口': 'aiworkflow.canvas.inputAnchor',
-	'Input': 'aiworkflow.canvas.inputAnchor',
-	'出口': 'aiworkflow.canvas.outputAnchor',
-	'Output': 'aiworkflow.canvas.outputAnchor'
+	入口: 'aiworkflow.canvas.inputAnchor',
+	Input: 'aiworkflow.canvas.inputAnchor',
+	出口: 'aiworkflow.canvas.outputAnchor',
+	Output: 'aiworkflow.canvas.outputAnchor'
 }
 
 function translateNodeType(type: string): string {
@@ -690,7 +690,9 @@ export class BlueprintNode extends Node {
 				? 0.45 + breath * 0.35
 				: this.data.status === 'error'
 					? 0.6
-					: this.selected ? 1 : 0.6
+					: this.selected
+						? 1
+						: 0.6
 		c.strokeStyle = this.hexToRgba(colors.border, borderAlpha)
 		c.lineWidth = NODE_BORDER_WIDTH + (this.data.status === 'running' ? breath * 1.5 : 0)
 		c.strokeRect(0, 0, w, h)
@@ -753,7 +755,8 @@ export class BlueprintNode extends Node {
 		c.font = `500 12px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		c.textBaseline = 'middle'
 		c.textAlign = 'left'
-		const displayTitle = this.alias || (this.title === this.nodeType ? translateNodeType(this.nodeType) : this.title)
+		const displayTitle =
+			this.alias || (this.title === this.nodeType ? translateNodeType(this.nodeType) : this.title)
 		c.fillText(displayTitle, titleX, NODE_HEADER_HEIGHT / 2)
 
 		const statusDotX = w - NODE_INNER_PADDING - 8

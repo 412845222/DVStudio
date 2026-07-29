@@ -38,7 +38,14 @@ function validateTokenStructure(tokens: BlueprintThemeTokens, mode: string) {
 		})
 	}
 
-	for (const status of ['statusIdle', 'statusHovered', 'statusSelected', 'statusRunning', 'statusSuccess', 'statusError']) {
+	for (const status of [
+		'statusIdle',
+		'statusHovered',
+		'statusSelected',
+		'statusRunning',
+		'statusSuccess',
+		'statusError'
+	]) {
 		for (const key of statusKeys) {
 			it(`${mode} theme ${status} has ${key}`, () => {
 				const statusColors = tokens[status as keyof BlueprintThemeTokens] as Record<string, string>

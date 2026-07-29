@@ -183,9 +183,14 @@ export class Port extends Node {
 			c.shadowColor = borderColor
 			c.shadowBlur = 10
 		}
-		const innerColor = isSnapped && this.compatible !== false
-			? (this.connected ? (theme.mode === 'dark' ? '#ffffff' : tokens.nodeBackground) : color)
-			: color
+		const innerColor =
+			isSnapped && this.compatible !== false
+				? this.connected
+					? theme.mode === 'dark'
+						? '#ffffff'
+						: tokens.nodeBackground
+					: color
+				: color
 		c.fillStyle = innerColor
 		c.fillRect(-halfInner, -halfInner, halfInner * 2, halfInner * 2)
 		c.restore()
