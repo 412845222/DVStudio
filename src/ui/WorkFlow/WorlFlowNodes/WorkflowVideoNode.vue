@@ -109,13 +109,9 @@
 						<button
 							class="wf-toolbar-btn"
 							type="button"
-							:disabled="!resourceUrl || !screenshotEnabled"
+							:disabled="!resourceUrl"
 							@click.stop="onScreenshot"
-							:title="
-								screenshotEnabled
-									? t('nodes.video.screenshot')
-									: t('nodes.video.screenshotDisabled')
-							"
+							:title="resourceUrl ? t('nodes.video.screenshot') : t('nodes.video.screenshotDisabled')"
 						>
 							{{ t('nodes.video.screenshot') }}
 						</button>
@@ -1020,7 +1016,7 @@ const onOpenVideoEditor = async () => {
 const onScreenshot = () => {
 	const v = videoEl.value
 	if (!v) return
-	if (!screenshotEnabled.value) return
+	if (!props.resourceUrl) return
 	if (v.readyState < 2) return
 	const capture = async () => {
 		const ow = outputWidth.value ?? Math.max(1, Math.floor(v.videoWidth || 1))

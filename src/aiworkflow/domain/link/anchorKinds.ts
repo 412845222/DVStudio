@@ -43,7 +43,8 @@ const shouldRejectBasicMediaNodes = (
 	const toType = normalizeNodeType(toNode)
 	if (toType === 'video') return fromType !== 'image' && fromType !== 'video' && fromType !== 'text'
 	if (toType === 'text') return false
-	if (fromType === 'video') return toType !== 'video'
+	// video节点的resource输出可以连接到image节点的resource输入（用于截图等场景）
+	if (fromType === 'video') return toType !== 'video' && toType !== 'image'
 	return fromType === 'audio'
 }
 
@@ -61,7 +62,8 @@ export const normalizeAnchorMediaType = (
 		raw === 'flow' ||
 		raw === 'model3d' ||
 		raw === 'audio' ||
-		raw === 'meta'
+		raw === 'meta' ||
+		raw === 'resource'
 	) {
 		return raw
 	}
@@ -101,6 +103,7 @@ export const anchorKind = (
 	if (mediaType === 'model3d') return 'model3d'
 	if (mediaType === 'audio') return 'audio'
 	if (mediaType === 'meta') return 'meta'
+	if (mediaType === 'resource') return 'resource'
 
 	if ((node.type === 'image' || node.type === 'video') && direction === 'in') return 'resource'
 

@@ -5,7 +5,7 @@
   "nodes.video.replaceResource": "Replace Resource",
   "nodes.video.clear": "Clear",
   "nodes.video.screenshot": "Screenshot",
-  "nodes.video.screenshotDisabled": "Available only when video output connects to image input",
+  "nodes.video.screenshotDisabled": "Please load a video first",
   "nodes.video.timeline": "Timeline",
   "nodes.video.rangeInfo": "Range {duration}s  Zoom ×{zoom}  Precision {precision}",
   "nodes.video.openVideoEditor": "Open Video Editor",

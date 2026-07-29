@@ -5,7 +5,7 @@
   "nodes.video.replaceResource": "更换资源",
   "nodes.video.clear": "清空",
   "nodes.video.screenshot": "截图",
-  "nodes.video.screenshotDisabled": "仅当视频输出连接到图片节点输入时可用",
+  "nodes.video.screenshotDisabled": "请先加载视频",
   "nodes.video.timeline": "时间轴",
   "nodes.video.rangeInfo": "范围 {duration}s  缩放×{zoom}  精度 {precision}",
   "nodes.video.openVideoEditor": "打开视频编辑器",
