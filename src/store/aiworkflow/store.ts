@@ -78,7 +78,9 @@ const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | 
 			? String((item as any).fromAnchorId)
 			: undefined
 		const name = isString((item as any).name) ? String((item as any).name) : undefined
-		const previewUrl = isString((item as any).previewUrl) ? String((item as any).previewUrl) : undefined
+		const previewUrl = isString((item as any).previewUrl)
+			? String((item as any).previewUrl)
+			: undefined
 		const fromContent = isString((item as any).fromContent)
 			? String((item as any).fromContent)
 			: undefined
@@ -294,7 +296,13 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 	if (!nextAnchorId) return nextAnchorId
 	if (nextType === 'image') {
 		// 旧ID映射到新ID: in-text/in-resource/in-image/in-0 -> in-0 (归一化为单个多模态输入)
-		if (nextAnchorId === 'in-text' || nextAnchorId === 'in-resource' || nextAnchorId === 'in-image' || nextAnchorId === 'in-0') return 'in-0'
+		if (
+			nextAnchorId === 'in-text' ||
+			nextAnchorId === 'in-resource' ||
+			nextAnchorId === 'in-image' ||
+			nextAnchorId === 'in-0'
+		)
+			return 'in-0'
 		return nextAnchorId
 	}
 	if (nextType === 'video') {
@@ -308,7 +316,8 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 	}
 	if (nextType === 'model3d') {
 		// 旧ID映射: in-0/in-resource/in-model -> in-model
-		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-resource' || nextAnchorId === 'in-model') return 'in-model'
+		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-resource' || nextAnchorId === 'in-model')
+			return 'in-model'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -346,7 +355,8 @@ const remapLegacyOutputAnchorId = (nodeType: string, anchorId: string) => {
 	}
 	if (nextType === 'model3d') {
 		// 旧的out-0/out-model/out-render映射到out-model
-		if (nextAnchorId === 'out-0' || nextAnchorId === 'out-model' || nextAnchorId === 'out-render') return 'out-model'
+		if (nextAnchorId === 'out-0' || nextAnchorId === 'out-model' || nextAnchorId === 'out-render')
+			return 'out-model'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -2636,24 +2646,32 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						if (isRecentNew) {
 							nextNodesById[existingId] = existingNode
 							preservedNodeIds.push(existingId)
-							console.log('[DraftFlow#store hydrateDraft] PRESERVE(node): keeping recently created node not in snapshot', {
-								nodeId: existingId,
-								nodeType: existingNode.type,
-								createdAt,
-								ageMs: now - createdAt
-							})
+							console.log(
+								'[DraftFlow#store hydrateDraft] PRESERVE(node): keeping recently created node not in snapshot',
+								{
+									nodeId: existingId,
+									nodeType: existingNode.type,
+									createdAt,
+									ageMs: now - createdAt
+								}
+							)
 						} else {
-							console.log('[DraftFlow#store hydrateDraft] REMOVE(node): node not in snapshot and not recent, will be deleted (sync from engine)', {
-								nodeId: existingId,
-								nodeType: existingNode.type,
-								createdAt,
-								ageMs: createdAt > 0 ? now - createdAt : 'unknown'
-							})
+							console.log(
+								'[DraftFlow#store hydrateDraft] REMOVE(node): node not in snapshot and not recent, will be deleted (sync from engine)',
+								{
+									nodeId: existingId,
+									nodeType: existingNode.type,
+									createdAt,
+									ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+								}
+							)
 						}
 					}
 				}
 			} else {
-				console.log('[DraftFlow#store hydrateDraft] CLEAR(nodes): snapshot is empty, clearing all nodes (full reset/empty canvas)')
+				console.log(
+					'[DraftFlow#store hydrateDraft] CLEAR(nodes): snapshot is empty, clearing all nodes (full reset/empty canvas)'
+				)
 			}
 
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
@@ -2772,19 +2790,25 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						if (isRecentNew) {
 							nextResourcesById[existingRid] = existingRes
 							preservedResourceIds.push(existingRid)
-							console.log('[DraftFlow#store hydrateDraft] PRESERVE(resource): keeping recently added resource not in snapshot', {
-								resourceId: existingRid,
-								resourceKind: existingRes.kind,
-								hasUrl: !!existingRes.url,
-								ageMs: now - createdAt
-							})
+							console.log(
+								'[DraftFlow#store hydrateDraft] PRESERVE(resource): keeping recently added resource not in snapshot',
+								{
+									resourceId: existingRid,
+									resourceKind: existingRes.kind,
+									hasUrl: !!existingRes.url,
+									ageMs: now - createdAt
+								}
+							)
 						} else {
-							console.log('[DraftFlow#store hydrateDraft] REMOVE(resource): resource not in snapshot and not recent, will be deleted (sync from engine)', {
-								resourceId: existingRid,
-								resourceKind: existingRes.kind,
-								hasUrl: !!existingRes.url,
-								ageMs: createdAt > 0 ? now - createdAt : 'unknown'
-							})
+							console.log(
+								'[DraftFlow#store hydrateDraft] REMOVE(resource): resource not in snapshot and not recent, will be deleted (sync from engine)',
+								{
+									resourceId: existingRid,
+									resourceKind: existingRes.kind,
+									hasUrl: !!existingRes.url,
+									ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+								}
+							)
 						}
 					} else if (nextResourcesById[existingRid] && existingRes) {
 						// 合并策略：如果现有资源有url而snapshot中没有，保留现有url
@@ -2792,15 +2816,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						const snapshotResAny = nextResourcesById[existingRid] as any
 						if (existingResAny.url && !snapshotResAny.url) {
 							snapshotResAny.url = existingResAny.url
-							console.log('[DraftFlow#store hydrateDraft] MERGE(resource): preserving existing URL', {
-								resourceId: existingRid,
-								url: String(existingResAny.url || '').slice(0, 80)
-							})
+							console.log(
+								'[DraftFlow#store hydrateDraft] MERGE(resource): preserving existing URL',
+								{
+									resourceId: existingRid,
+									url: String(existingResAny.url || '').slice(0, 80)
+								}
+							)
 						}
 					}
 				}
 			} else {
-				console.log('[DraftFlow#store hydrateDraft] CLEAR(resources): snapshot has no resources, clearing all resources (full reset)')
+				console.log(
+					'[DraftFlow#store hydrateDraft] CLEAR(resources): snapshot has no resources, clearing all resources (full reset)'
+				)
 			}
 			// 将保留的新资源添加到resourceOrder末尾
 			for (const rid of preservedResourceIds) {
@@ -3188,13 +3217,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			if (payload.type === 'image') {
 				n.imageSettings = n.imageSettings ?? { outputWidth: 1920, outputHeight: 1080 }
-				n.inputs = [{
-					id: 'in-0',
-					label: '多模态输入',
-					mediaType: 'generic',
-					acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
-					multiInput: true
-				}]
+				n.inputs = [
+					{
+						id: 'in-0',
+						label: '多模态输入',
+						mediaType: 'generic',
+						acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+						multiInput: true
+					}
+				]
 				n.outputs = [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
 			}
 			if (payload.type === 'text') {
@@ -4776,11 +4807,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				vuexRefsLen: Array.isArray(vuexRefs) ? vuexRefs.length : -1,
 				engineRefsLen: Array.isArray(engineRefs) ? engineRefs.length : -1,
 				resolvedRefsLen: state.nodeChatDialog.selectedRefs.length,
-				firstResolvedRef: state.nodeChatDialog.selectedRefs.length > 0 ? {
-					kind: state.nodeChatDialog.selectedRefs[0].kind,
-					fromNodeId: state.nodeChatDialog.selectedRefs[0].fromNodeId,
-					label: String(state.nodeChatDialog.selectedRefs[0].label ?? '').slice(0, 30)
-				} : null
+				firstResolvedRef:
+					state.nodeChatDialog.selectedRefs.length > 0
+						? {
+								kind: state.nodeChatDialog.selectedRefs[0].kind,
+								fromNodeId: state.nodeChatDialog.selectedRefs[0].fromNodeId,
+								label: String(state.nodeChatDialog.selectedRefs[0].label ?? '').slice(0, 30)
+							}
+						: null
 			})
 
 			if (payload.nodeType === 'blender') {
@@ -5048,11 +5082,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				console.log('[DraftFlow#store setNodeChatSelectedRefs] WRITE to nodesById', {
 					nodeId: curNodeId,
 					refsLen: payload.refs.length,
-					firstRefPreview: payload.refs.length > 0 ? {
-						kind: payload.refs[0].kind,
-						fromNodeId: payload.refs[0].fromNodeId,
-						label: String(payload.refs[0].label ?? '').slice(0, 30)
-					} : null
+					firstRefPreview:
+						payload.refs.length > 0
+							? {
+									kind: payload.refs[0].kind,
+									fromNodeId: payload.refs[0].fromNodeId,
+									label: String(payload.refs[0].label ?? '').slice(0, 30)
+								}
+							: null
 				})
 			}
 			console.log('[DraftFlow#store setNodeChatSelectedRefs] MUTATION', {

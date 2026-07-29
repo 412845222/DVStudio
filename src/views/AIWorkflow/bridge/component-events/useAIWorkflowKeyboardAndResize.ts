@@ -15,7 +15,10 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	getSelectedEdgeId: () => string | null
 	selectAllNodes: () => void
 	pasteNodesAtCanvasCenter: () => void
-	pasteMediaData: (clipboardData: DataTransfer | null, position?: { worldX: number; worldY: number }) => Promise<boolean> | boolean
+	pasteMediaData: (
+		clipboardData: DataTransfer | null,
+		position?: { worldX: number; worldY: number }
+	) => Promise<boolean> | boolean
 	getMouseWorldPos: () => { worldX: number; worldY: number } | null
 	copySelectedNodes: (primaryNodeId: string) => void
 	hasClipboardNodes: () => boolean
@@ -39,29 +42,50 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 
 	// 主动通过navigator.clipboard.read()读取剪贴板（用于keydown Ctrl+V时paste事件不触发的场景）
 	const readClipboardAndPaste = async (position?: { worldX: number; worldY: number }) => {
-		console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: attempting to read clipboard via navigator.clipboard, position:', position)
+		console.log(
+			'[AIWorkflow:MediaImport] readClipboardAndPaste: attempting to read clipboard via navigator.clipboard, position:',
+			position
+		)
 
 		// 首先尝试使用navigator.clipboard.read() API（现代异步剪贴板API）
 		if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
 			try {
 				const items = await navigator.clipboard.read()
-				console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard items count:', items.length)
+				console.log(
+					'[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard items count:',
+					items.length
+				)
 				const files: File[] = []
 				let textContent = ''
 				for (const item of items) {
 					// 读取图片/视频/模型文件类型
 					for (const type of item.types) {
-						console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard item type:', type)
-						if (type.startsWith('image/') || type.startsWith('video/') || type === 'model/gltf-binary' || type === 'model/gltf+json') {
+						console.log(
+							'[AIWorkflow:MediaImport] readClipboardAndPaste: clipboard item type:',
+							type
+						)
+						if (
+							type.startsWith('image/') ||
+							type.startsWith('video/') ||
+							type === 'model/gltf-binary' ||
+							type === 'model/gltf+json'
+						) {
 							try {
 								const blob = await item.getType(type)
 								const ext = type.split('/')[1]?.split(';')[0] || 'bin'
 								const fileName = `pasted-file-${Date.now()}.${ext}`
 								const file = new File([blob], fileName, { type })
 								files.push(file)
-								console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: got file from clipboard:', { name: fileName, type, size: blob.size })
+								console.log(
+									'[AIWorkflow:MediaImport] readClipboardAndPaste: got file from clipboard:',
+									{ name: fileName, type, size: blob.size }
+								)
 							} catch (err) {
-								console.warn('[AIWorkflow:MediaImport] readClipboardAndPaste: failed to get blob for type', type, err)
+								console.warn(
+									'[AIWorkflow:MediaImport] readClipboardAndPaste: failed to get blob for type',
+									type,
+									err
+								)
 							}
 						} else if (type === 'text/plain' || type === 'text/uri-list') {
 							try {
@@ -74,7 +98,10 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 				if (files.length > 0) {
 					const dt = createDataTransferFromFiles(files)
 					if (dt) {
-						console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching files to pasteMediaData, count:', files.length)
+						console.log(
+							'[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching files to pasteMediaData, count:',
+							files.length
+						)
 						const ok = await Promise.resolve(payload.pasteMediaData(dt, position))
 						if (ok) return true
 					}
@@ -87,21 +114,31 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 						try {
 							const dt = new DataTransfer()
 							dt.setData('text/uri-list', textContent.trim())
-							console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching URL to pasteMediaData:', textContent.slice(0, 100))
+							console.log(
+								'[AIWorkflow:MediaImport] readClipboardAndPaste: dispatching URL to pasteMediaData:',
+								textContent.slice(0, 100)
+							)
 							const ok = await Promise.resolve(payload.pasteMediaData(dt, position))
 							if (ok) return true
 						} catch {}
 					}
 				}
 			} catch (err) {
-				console.warn('[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() failed:', err)
+				console.warn(
+					'[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() failed:',
+					err
+				)
 			}
 		} else {
-			console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() not available')
+			console.log(
+				'[AIWorkflow:MediaImport] readClipboardAndPaste: navigator.clipboard.read() not available'
+			)
 		}
 
 		// Fallback：创建临时隐藏输入框来触发标准paste事件
-		console.log('[AIWorkflow:MediaImport] readClipboardAndPaste: trying fallback with hidden textarea')
+		console.log(
+			'[AIWorkflow:MediaImport] readClipboardAndPaste: trying fallback with hidden textarea'
+		)
 		return new Promise<boolean>((resolve) => {
 			try {
 				const textarea = document.createElement('textarea')
@@ -214,7 +251,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			pasteFallbackTimer = setTimeout(() => {
 				pasteFallbackTimer = null
 				if (!pasteHandled) {
-					console.log('[AIWorkflow:MediaImport] Native paste event did not fire within fallback window, using readClipboardAndPaste')
+					console.log(
+						'[AIWorkflow:MediaImport] Native paste event did not fire within fallback window, using readClipboardAndPaste'
+					)
 					Promise.resolve(readClipboardAndPaste(mousePos ?? undefined)).catch((err) => {
 						console.error('[AIWorkflow:MediaImport] readClipboardAndPaste error:', err)
 					})
@@ -327,7 +366,13 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		const fileItems = Array.from(cd.items ?? []).filter((it) => it.kind === 'file')
 		const mediaFileItems = fileItems.filter((it) => {
 			const t = String(it.type || '').toLowerCase()
-			return t.startsWith('image/') || t.startsWith('video/') || t === 'model/gltf-binary' || t === 'model/gltf+json' || !t
+			return (
+				t.startsWith('image/') ||
+				t.startsWith('video/') ||
+				t === 'model/gltf-binary' ||
+				t === 'model/gltf+json' ||
+				!t
+			)
 		})
 		const hasFilesInItems = mediaFileItems.length > 0
 		const hasFilesInFiles = cd.files && cd.files.length > 0
@@ -338,7 +383,11 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 				fromItems: mediaFileItems.length,
 				fromFiles: cd.files?.length ?? 0,
 				itemTypes: mediaFileItems.map((it) => ({ kind: it.kind, type: it.type })),
-				fileNames: Array.from(cd.files ?? []).map((f) => ({ name: f.name, type: f.type, size: f.size }))
+				fileNames: Array.from(cd.files ?? []).map((f) => ({
+					name: f.name,
+					type: f.type,
+					size: f.size
+				}))
 			})
 			ev.preventDefault()
 			console.log('[AIWorkflow:MediaImport] Processing external media paste (files)...')
@@ -346,7 +395,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			Promise.resolve(handled).then((ok) => {
 				console.log('[AIWorkflow:MediaImport] pasteMediaData handled:', ok)
 				if (!ok && payload.hasClipboardNodes()) {
-					console.log('[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes')
+					console.log(
+						'[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes'
+					)
 					payload.pasteNodesAtCanvasCenter()
 				}
 			})
@@ -361,14 +412,21 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		const isBlobUrl = text && text.startsWith('blob:')
 		const isUrl = isHttpUrl || isFileUrl || isDataUrl || isBlobUrl
 		if (isUrl) {
-			console.log('[AIWorkflow:MediaImport] Paste detected URL/path:', text.slice(0, 100), { isHttpUrl, isFileUrl, isDataUrl, isBlobUrl })
+			console.log('[AIWorkflow:MediaImport] Paste detected URL/path:', text.slice(0, 100), {
+				isHttpUrl,
+				isFileUrl,
+				isDataUrl,
+				isBlobUrl
+			})
 			ev.preventDefault()
 			console.log('[AIWorkflow:MediaImport] Processing external media paste (URL/path)...')
 			const handled = payload.pasteMediaData(cd, mousePos ?? undefined)
 			Promise.resolve(handled).then((ok) => {
 				console.log('[AIWorkflow:MediaImport] pasteMediaData handled:', ok)
 				if (!ok && payload.hasClipboardNodes()) {
-					console.log('[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes')
+					console.log(
+						'[AIWorkflow:MediaImport] pasteMediaData returned false, falling back to internal nodes'
+					)
 					payload.pasteNodesAtCanvasCenter()
 				}
 			})
@@ -383,7 +441,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			if (payload.hasClipboardNodes()) {
 				payload.pasteNodesAtCanvasCenter()
 			} else {
-				console.warn('[AIWorkflow:MediaImport] Internal node copy marker found but hasClipboardNodes() is false')
+				console.warn(
+					'[AIWorkflow:MediaImport] Internal node copy marker found but hasClipboardNodes() is false'
+				)
 			}
 			return
 		}

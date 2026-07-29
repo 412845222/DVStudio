@@ -85,7 +85,10 @@ const resolvedProps = computed(() => {
 	const nodeRefs = props.inputParamPreviewRefsByNodeId?.[nodeId] || []
 	// 调试日志
 	if (nodeRefs.length > 0) {
-		console.log(`[WorkflowNodeWrapper] nodeId=${nodeId}, nodeType=${props.node.nodeType}, inputParamPreviewRefs=`, nodeRefs)
+		console.log(
+			`[WorkflowNodeWrapper] nodeId=${nodeId}, nodeType=${props.node.nodeType}, inputParamPreviewRefs=`,
+			nodeRefs
+		)
 	}
 	return NodeComponentResolver.resolveNodeProps(
 		props.node,

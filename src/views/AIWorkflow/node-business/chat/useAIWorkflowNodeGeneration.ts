@@ -152,9 +152,14 @@ const getAnchorMediaType = (
 /**
  * 根据源节点类型推断其输出mediaType（用于旧节点/generic输出锚点的兼容）
  */
-const inferSourceMediaType = (sourceNode: Record<string, unknown> | undefined, fromAnchorId: string): string | null => {
+const inferSourceMediaType = (
+	sourceNode: Record<string, unknown> | undefined,
+	fromAnchorId: string
+): string | null => {
 	if (!sourceNode) return null
-	const sourceType = String(sourceNode.type ?? '').trim().toLowerCase()
+	const sourceType = String(sourceNode.type ?? '')
+		.trim()
+		.toLowerCase()
 	// 先尝试获取源输出锚点的mediaType
 	const outMediaType = getAnchorMediaType(
 		{ nodesById: { [String(sourceNode.id ?? '')]: sourceNode } } as any,
@@ -164,13 +169,20 @@ const inferSourceMediaType = (sourceNode: Record<string, unknown> | undefined, f
 	)
 	if (outMediaType && outMediaType !== 'generic') return outMediaType
 	// 根据节点类型推断默认输出类型
-	if (sourceType === 'text' || sourceType === 'text-merge' || sourceType === 'rotate-image' ||
-		sourceType === 'scene-understanding' || sourceType === 'scene-decompose' || sourceType === 'scene-layout') {
+	if (
+		sourceType === 'text' ||
+		sourceType === 'text-merge' ||
+		sourceType === 'rotate-image' ||
+		sourceType === 'scene-understanding' ||
+		sourceType === 'scene-decompose' ||
+		sourceType === 'scene-layout'
+	) {
 		return 'text'
 	}
 	if (sourceType === 'image') return 'image'
 	if (sourceType === 'video') return 'video'
-	if (sourceType === 'model3d' || sourceType === 'meshy' || sourceType === 'tripo3d') return 'model3d'
+	if (sourceType === 'model3d' || sourceType === 'meshy' || sourceType === 'tripo3d')
+		return 'model3d'
 	return null
 }
 
@@ -209,16 +221,24 @@ const isImageInputAnchor = (
 	// 向后兼容：旧ID匹配
 	if (id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNode?.type || '').trim().toLowerCase()
+		const sourceType = String(sourceNode?.type || '')
+			.trim()
+			.toLowerCase()
 		const targetNode = state.nodesById[targetNodeId]
-		const targetType = String(targetNode?.type || '').trim().toLowerCase()
+		const targetType = String(targetNode?.type || '')
+			.trim()
+			.toLowerCase()
 		if (targetType === 'text') return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'image')
 		return sourceType === 'image' || sourceType === 'blender'
 	}
 	return false
 }
 
-const sourceMediaTypeCheck = (sourceNode: Record<string, unknown> | undefined, fromAnchorId: string | undefined, expected: string): boolean => {
+const sourceMediaTypeCheck = (
+	sourceNode: Record<string, unknown> | undefined,
+	fromAnchorId: string | undefined,
+	expected: string
+): boolean => {
 	const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
 	return sourceMediaType === expected
 }
@@ -245,9 +265,13 @@ const isVideoInputAnchor = (
 	// 向后兼容
 	if (id === 'in-video' || /^in-video-\d+$/.test(id)) return true
 	if (id === 'in-0') {
-		const sourceType = String(sourceNode?.type || '').trim().toLowerCase()
+		const sourceType = String(sourceNode?.type || '')
+			.trim()
+			.toLowerCase()
 		const targetNode = state.nodesById[targetNodeId]
-		const targetType = String(targetNode?.type || '').trim().toLowerCase()
+		const targetType = String(targetNode?.type || '')
+			.trim()
+			.toLowerCase()
 		if (targetType === 'text') return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'video')
 		return sourceType === 'video'
 	}
@@ -759,7 +783,13 @@ const isTextInputAnchor = (
 		return sourceMediaType === 'text'
 	}
 	// 向后兼容
-	return id === 'in-text' || id === 'in-0' || id === 'in' || id.startsWith('in-text') || id === 'in-generic'
+	return (
+		id === 'in-text' ||
+		id === 'in-0' ||
+		id === 'in' ||
+		id.startsWith('in-text') ||
+		id === 'in-generic'
+	)
 }
 
 const getNodeEffectiveText = (node: Record<string, unknown>): string => {
@@ -1458,7 +1488,11 @@ export const runNodeGenerationTask = async (
 		}
 
 		// 合并上游文本后再验证prompt是否为空（text/video节点必须有prompt）
-		if (!String(payload.prompt ?? '').trim() && payload.nodeType !== 'model3d' && payload.nodeType !== 'image') {
+		if (
+			!String(payload.prompt ?? '').trim() &&
+			payload.nodeType !== 'model3d' &&
+			payload.nodeType !== 'image'
+		) {
 			pushToast(deps, t('aiworkflow.toast.promptRequired'), 'warn')
 			updateTask(deps, task.id, {
 				status: 'error',

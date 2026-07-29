@@ -179,10 +179,7 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			recoveryOverlayOpen.value = false
 			activeRecoverySession.value = null
 			if (missingUrl > 0) {
-				payload.pushToast(
-					t('aiworkflow.toast.recoveryMissingUrl', { count: missingUrl }),
-					'warn'
-				)
+				payload.pushToast(t('aiworkflow.toast.recoveryMissingUrl', { count: missingUrl }), 'warn')
 			}
 		}
 	}

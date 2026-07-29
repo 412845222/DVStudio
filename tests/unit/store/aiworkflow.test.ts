@@ -460,7 +460,7 @@ describe('store/aiworkflow', () => {
 			store.commit('hydrateDraft', {
 				snapshot: {
 					nodesById: {
-						'existing': {
+						existing: {
 							id: 'existing',
 							type: 'image',
 							title: 'Existing',
@@ -504,7 +504,7 @@ describe('store/aiworkflow', () => {
 			store.commit('hydrateDraft', {
 				snapshot: {
 					nodesById: {
-						'existing': {
+						existing: {
 							id: 'existing',
 							type: 'image',
 							title: 'Existing',
@@ -553,7 +553,7 @@ describe('store/aiworkflow', () => {
 			store.commit('hydrateDraft', {
 				snapshot: {
 					nodesById: {
-						'recent': {
+						recent: {
 							id: 'recent',
 							type: 'image',
 							title: 'Recent Node',

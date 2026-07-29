@@ -199,7 +199,10 @@ const props = defineProps<{
 watch(
 	() => props.inputParamPreviewRefs,
 	(newRefs) => {
-		console.log(`[NodeChatDialog] nodeId=${props.nodeId}, nodeType=${props.nodeType}, visible=${props.visible}, inputParamPreviewRefs count=${newRefs?.length || 0}`, newRefs)
+		console.log(
+			`[NodeChatDialog] nodeId=${props.nodeId}, nodeType=${props.nodeType}, visible=${props.visible}, inputParamPreviewRefs count=${newRefs?.length || 0}`,
+			newRefs
+		)
 	},
 	{ deep: true, immediate: true }
 )
@@ -208,7 +211,10 @@ watch(
 	() => props.visible,
 	(newVisible) => {
 		if (newVisible && props.nodeId) {
-			console.log(`[NodeChatDialog] DIALOG OPENED: nodeId=${props.nodeId}, nodeType=${props.nodeType}, inputParamPreviewRefs count=${props.inputParamPreviewRefs?.length || 0}`, props.inputParamPreviewRefs)
+			console.log(
+				`[NodeChatDialog] DIALOG OPENED: nodeId=${props.nodeId}, nodeType=${props.nodeType}, inputParamPreviewRefs count=${props.inputParamPreviewRefs?.length || 0}`,
+				props.inputParamPreviewRefs
+			)
 		}
 	},
 	{ immediate: true }

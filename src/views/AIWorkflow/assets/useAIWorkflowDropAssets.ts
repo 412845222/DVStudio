@@ -287,7 +287,11 @@ export const useAIWorkflowDropAssets = (options: {
 		const mime = String(file?.type ?? '')
 		if (mime.startsWith('image/')) return 'image'
 		if (mime.startsWith('video/')) return 'video'
-		if (mime === 'model/gltf-binary' || mime === 'model/gltf+json' || mime === 'application/octet-stream') {
+		if (
+			mime === 'model/gltf-binary' ||
+			mime === 'model/gltf+json' ||
+			mime === 'application/octet-stream'
+		) {
 			// Check by extension for octet-stream
 		}
 		const name = String(file?.name ?? '')
@@ -486,7 +490,13 @@ export const useAIWorkflowDropAssets = (options: {
 					try {
 						const result = await options.fetchUrlAsArrayBuffer(url)
 						if (result?.ok && result.buffer) {
-							const mime = result.mime || (kind === 'video' ? 'video/mp4' : kind === 'model3d' ? 'model/gltf-binary' : 'image/png')
+							const mime =
+								result.mime ||
+								(kind === 'video'
+									? 'video/mp4'
+									: kind === 'model3d'
+										? 'model/gltf-binary'
+										: 'image/png')
 							const blob = new Blob([result.buffer], { type: mime })
 							const objectUrl = URL.createObjectURL(blob)
 							if (resourceId) options.setObjectUrl(resourceId, objectUrl)
@@ -524,7 +534,12 @@ export const useAIWorkflowDropAssets = (options: {
 
 		const kind = payload.item.kind
 		const nodeType = kind === 'model3d' ? 'model3d' : kind
-		const title = kind === 'image' ? t('common.image') : kind === 'video' ? t('common.video') : t('nodes.type.model3d')
+		const title =
+			kind === 'image'
+				? t('common.image')
+				: kind === 'video'
+					? t('common.video')
+					: t('nodes.type.model3d')
 		const nodeId =
 			options.engineApi?.addNode?.(nodeType, payload.worldX, payload.worldY, {
 				title
@@ -542,7 +557,11 @@ export const useAIWorkflowDropAssets = (options: {
 			String(
 				resource?.name ||
 					payload.item.name ||
-					(kind === 'image' ? t('aiworkflow.toast.mediaImageResource') : kind === 'video' ? '视频资源' : '3D模型')
+					(kind === 'image'
+						? t('aiworkflow.toast.mediaImageResource')
+						: kind === 'video'
+							? '视频资源'
+							: '3D模型')
 			),
 			{
 				sourcePath: sourcePath || undefined,
@@ -776,13 +795,16 @@ export const useAIWorkflowDropAssets = (options: {
 						size: x.file.size,
 						relativePath: x.relativePath,
 						hasFsHandle: !!x.fsHandle,
-						hasPath: typeof (x.file as File & { path?: string })?.path === 'string' &&
+						hasPath:
+							typeof (x.file as File & { path?: string })?.path === 'string' &&
 							String((x.file as File & { path?: string }).path).trim().length > 0,
 						kind: inferMediaKindFromFile(x.file)
 					}))
 				})
 				const mediaFiles = dropped.filter((x) => !!inferMediaKindFromFile(x.file))
-				console.log('[AIWorkflow:MediaImport] Drop media files filtered:', { total: mediaFiles.length })
+				console.log('[AIWorkflow:MediaImport] Drop media files filtered:', {
+					total: mediaFiles.length
+				})
 				if (mediaFiles.length > 0) {
 					// 所有文件（本地文件系统和网页拖拽）统一走批量导入流程
 					// createBatchMediaNodesFromFiles中的persistFileToProject会自动处理：

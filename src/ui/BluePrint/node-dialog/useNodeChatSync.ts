@@ -82,7 +82,8 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 					matchedInputRef = inputRefsBySource.get(`${r.fromNodeId}:${r.fromAnchorId}`)
 				}
 				const resolvedPreviewUrl = r.previewUrl || matchedInputRef?.previewUrl || undefined
-				const resolvedLabel = r.label || r.name || matchedInputRef?.label || matchedInputRef?.name || ''
+				const resolvedLabel =
+					r.label || r.name || matchedInputRef?.label || matchedInputRef?.name || ''
 				return {
 					edgeId: r.edgeId || matchedInputRef?.edgeId,
 					fromNodeId: r.fromNodeId,
@@ -96,7 +97,9 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	})
 
 	const showInputParamRefs = computed(() => {
-		return !!props.nodeType && ['text', 'image', 'video', 'model3d', 'blender'].includes(props.nodeType)
+		return (
+			!!props.nodeType && ['text', 'image', 'video', 'model3d', 'blender'].includes(props.nodeType)
+		)
 	})
 
 	const isTripo3D = computed(() => {

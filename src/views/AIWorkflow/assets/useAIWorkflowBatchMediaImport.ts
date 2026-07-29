@@ -111,7 +111,11 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		arrayBuffer: ArrayBuffer
 		contentType?: string
 		bucket?: string
-	}) => Promise<{ ok: boolean; asset?: { relativePath: string; [key: string]: unknown }; error?: string } | null>
+	}) => Promise<{
+		ok: boolean
+		asset?: { relativePath: string; [key: string]: unknown }
+		error?: string
+	} | null>
 	resolveBackendUrl: (value: string) => string
 }) => {
 	/**
@@ -142,13 +146,19 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					const relPath = String(copyResult.relativePath || '').trim()
 					if (relPath) {
 						const dwebUrl = `dweb://project-assets?projectId=${projectId}&path=${encodeURIComponent(relPath)}`
-						console.log('[AIWorkflow:MediaImport] copyFileToProjectRoot succeeded:', { name: desiredName, relPath })
+						console.log('[AIWorkflow:MediaImport] copyFileToProjectRoot succeeded:', {
+							name: desiredName,
+							relPath
+						})
 						return { url: options.resolveBackendUrl(dwebUrl), relPath }
 					}
 				}
 				console.warn('[AIWorkflow:MediaImport] copyFileToProjectRoot returned not-ok:', copyResult)
 			} catch (err) {
-				console.warn('[AIWorkflow:MediaImport] copyFileToProjectRoot failed, falling back to ArrayBuffer upload:', err)
+				console.warn(
+					'[AIWorkflow:MediaImport] copyFileToProjectRoot failed, falling back to ArrayBuffer upload:',
+					err
+				)
 			}
 		}
 
@@ -156,10 +166,13 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		try {
 			const arrayBuffer = await file.arrayBuffer()
 			const contentType = file.type || 'application/octet-stream'
-			const bucket = file.type.startsWith('image/') ? 'assets'
-				: file.type.startsWith('video/') ? 'assets'
-				: file.type.startsWith('model/') ? 'assets'
-				: 'assets'
+			const bucket = file.type.startsWith('image/')
+				? 'assets'
+				: file.type.startsWith('video/')
+					? 'assets'
+					: file.type.startsWith('model/')
+						? 'assets'
+						: 'assets'
 			const uploadResult = await options.uploadProjectAsset({
 				projectId,
 				name: desiredName,
@@ -170,7 +183,11 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			if (uploadResult?.ok && uploadResult.asset?.relativePath) {
 				const relPath = String(uploadResult.asset.relativePath).trim()
 				const dwebUrl = `dweb://project-assets?projectId=${projectId}&path=${encodeURIComponent(relPath)}`
-				console.log('[AIWorkflow:MediaImport] File uploaded via ArrayBuffer:', { name: desiredName, relPath, size: arrayBuffer.byteLength })
+				console.log('[AIWorkflow:MediaImport] File uploaded via ArrayBuffer:', {
+					name: desiredName,
+					relPath,
+					size: arrayBuffer.byteLength
+				})
 				return { url: options.resolveBackendUrl(dwebUrl), relPath }
 			}
 			console.warn('[AIWorkflow:MediaImport] uploadProjectAsset returned not-ok:', uploadResult)
@@ -194,15 +211,16 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				type: f.file.type,
 				size: f.file.size,
 				hasFsHandle: !!f.fsHandle,
-				hasPath: typeof (f.file as FileWithPath)?.path === 'string' &&
+				hasPath:
+					typeof (f.file as FileWithPath)?.path === 'string' &&
 					String((f.file as FileWithPath).path).trim().length > 0
 			}))
 		})
 		const media = opts.files
 			.map((item) => ({ ...item, kind: options.inferMediaKindFromFile(item.file) }))
-			.filter((item) => item.kind === 'image' || item.kind === 'video' || item.kind === 'model3d') as Array<
-			AIWorkflowDroppedFile & { kind: 'image' | 'video' | 'model3d' }
-		>
+			.filter(
+				(item) => item.kind === 'image' || item.kind === 'video' || item.kind === 'model3d'
+			) as Array<AIWorkflowDroppedFile & { kind: 'image' | 'video' | 'model3d' }>
 		if (!media.length) return
 
 		if (media.length > options.maxBatchImportMediaCount) {
@@ -215,7 +233,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		const CELL_H = 380
 
 		const createdNodeIds: string[] = []
-		const resourceIdToNode = new Map<string, { nodeId: string; kind: 'image' | 'video' | 'model3d' }>()
+		const resourceIdToNode = new Map<
+			string,
+			{ nodeId: string; kind: 'image' | 'video' | 'model3d' }
+		>()
 		const nodeIdToResourceId = new Map<string, string>()
 		const importTasks: Array<{
 			resourceId: string
@@ -233,7 +254,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			const worldY = opts.worldY + row * CELL_H
 
 			const name = String(
-				item.relativePath || item.file.name || (item.kind === 'image' ? 'image' : item.kind === 'video' ? 'video' : 'model')
+				item.relativePath ||
+					item.file.name ||
+					(item.kind === 'image' ? 'image' : item.kind === 'video' ? 'video' : 'model')
 			)
 			const absPath =
 				typeof (item.file as FileWithPath)?.path === 'string'
@@ -273,7 +296,12 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			})
 
 			const nodeType = item.kind === 'model3d' ? 'model3d' : item.kind
-			const title = item.kind === 'image' ? t('common.image') : item.kind === 'video' ? t('common.video') : t('nodes.type.model3d')
+			const title =
+				item.kind === 'image'
+					? t('common.image')
+					: item.kind === 'video'
+						? t('common.video')
+						: t('nodes.type.model3d')
 			let nodeId: string | null | undefined = options.engineApi?.addNode?.(
 				nodeType,
 				worldX,
@@ -332,23 +360,34 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			// 主动强制同步引擎Scene到Vuex store，解决多文件批量创建时isUpdatingFromStore时序竞争
 			// 导致change事件被跳过、nodesById中找不到新节点的问题
 			if (anyUsedEngine && options.engineApi?.forceSyncToStore) {
-				console.log('[AIWorkflow:MediaImport] Forcing engine-to-store sync after batch node creation, node count:', createdNodeIds.length)
+				console.log(
+					'[AIWorkflow:MediaImport] Forcing engine-to-store sync after batch node creation, node count:',
+					createdNodeIds.length
+				)
 				try {
 					const syncOk = await options.engineApi.forceSyncToStore()
 					console.log('[AIWorkflow:MediaImport] forceSyncToStore result:', syncOk)
 					// 验证所有节点是否已在store中
 					const missingNodes = createdNodeIds.filter((id) => !options.store.state.nodesById[id])
 					if (missingNodes.length > 0) {
-						console.warn('[AIWorkflow:MediaImport] After forceSync, nodes still missing from store:', missingNodes)
+						console.warn(
+							'[AIWorkflow:MediaImport] After forceSync, nodes still missing from store:',
+							missingNodes
+						)
 					} else {
-						console.log('[AIWorkflow:MediaImport] All created nodes verified in store:', createdNodeIds.length)
+						console.log(
+							'[AIWorkflow:MediaImport] All created nodes verified in store:',
+							createdNodeIds.length
+						)
 					}
 				} catch (err) {
 					console.error('[AIWorkflow:MediaImport] forceSyncToStore error:', err)
 				}
 			} else {
 				// Fallback：等待几帧让debounced change事件完成同步
-				console.log('[AIWorkflow:MediaImport] No forceSyncToStore available, waiting for debounced sync...')
+				console.log(
+					'[AIWorkflow:MediaImport] No forceSyncToStore available, waiting for debounced sync...'
+				)
 				await new Promise<void>((resolve) => {
 					requestAnimationFrame(() => {
 						requestAnimationFrame(() => {
@@ -364,12 +403,18 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		for (const task of model3dTasks) {
 			const info = resourceIdToNode.get(task.resourceId)
 			if (!info) {
-				console.warn('[AIWorkflow:MediaImport] Model3D task: no node mapping for resourceId:', task.resourceId)
+				console.warn(
+					'[AIWorkflow:MediaImport] Model3D task: no node mapping for resourceId:',
+					task.resourceId
+				)
 				continue
 			}
 			const nodeInStore = !!options.store.state.nodesById[info.nodeId]
 			if (!nodeInStore) {
-				console.warn('[AIWorkflow:MediaImport] Model3D task: node not yet in store, proceeding via bindMediaResourceToNode:', info.nodeId)
+				console.warn(
+					'[AIWorkflow:MediaImport] Model3D task: node not yet in store, proceeding via bindMediaResourceToNode:',
+					info.nodeId
+				)
 			}
 
 			const sourcePath =
@@ -453,10 +498,13 @@ export const useAIWorkflowBatchMediaImport = (options: {
 							modelAssetPath: sourcePath || undefined
 						}
 					})
-					console.log('[AIWorkflow:MediaImport] Model3D bound via fallback setNodeModel3DSettings:', {
-						nodeId: info.nodeId,
-						modelFormat
-					})
+					console.log(
+						'[AIWorkflow:MediaImport] Model3D bound via fallback setNodeModel3DSettings:',
+						{
+							nodeId: info.nodeId,
+							modelFormat
+						}
+					)
 				}
 
 				if (options.autoSizeMediaNode) {
@@ -498,12 +546,18 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			const state = session.resourceState.get(task.resourceId)
 			const info = resourceIdToNode.get(task.resourceId)
 			if (!info) {
-				console.warn('[AIWorkflow:MediaImport] Video task: no node mapping for resourceId:', task.resourceId)
+				console.warn(
+					'[AIWorkflow:MediaImport] Video task: no node mapping for resourceId:',
+					task.resourceId
+				)
 				continue
 			}
 			const nodeInStore = !!options.store.state.nodesById[info.nodeId]
 			if (!nodeInStore) {
-				console.warn('[AIWorkflow:MediaImport] Video task: node not yet in store, proceeding:', info.nodeId)
+				console.warn(
+					'[AIWorkflow:MediaImport] Video task: node not yet in store, proceeding:',
+					info.nodeId
+				)
 			}
 
 			const sourcePath =
@@ -595,9 +649,17 @@ export const useAIWorkflowBatchMediaImport = (options: {
 						: ''
 
 				try {
-					const persisted = await persistFileToProject(projectIdForImages, task.file, task.name, sourcePath)
+					const persisted = await persistFileToProject(
+						projectIdForImages,
+						task.file,
+						task.name,
+						sourcePath
+					)
 					if (persisted) {
-						projectAssetUrlByResourceId.set(task.resourceId, { url: persisted.url, relPath: persisted.relPath })
+						projectAssetUrlByResourceId.set(task.resourceId, {
+							url: persisted.url,
+							relPath: persisted.relPath
+						})
 						console.log('[AIWorkflow:MediaImport] Image persisted to project:', {
 							name: task.name,
 							sourcePath: sourcePath || '(blob/web)',
@@ -605,7 +667,11 @@ export const useAIWorkflowBatchMediaImport = (options: {
 						})
 					}
 				} catch (err) {
-					console.warn('[AIWorkflow:MediaImport] Image persist failed, will use object URL:', task.name, err)
+					console.warn(
+						'[AIWorkflow:MediaImport] Image persist failed, will use object URL:',
+						task.name,
+						err
+					)
 				}
 			}
 		}
@@ -618,7 +684,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		console.log('[AIWorkflow:MediaImport] About to enqueue image tasks, nodesById sample check:', {
 			taskCount: imageTasks.length,
 			firstTaskNodeId: resourceIdToNode.get(imageTasks[0]?.resourceId)?.nodeId,
-			firstNodeInStore: !!(imageTasks[0] && options.store.state.nodesById[resourceIdToNode.get(imageTasks[0].resourceId)?.nodeId ?? ''])
+			firstNodeInStore: !!(
+				imageTasks[0] &&
+				options.store.state.nodesById[resourceIdToNode.get(imageTasks[0].resourceId)?.nodeId ?? '']
+			)
 		})
 
 		options.mediaImportManager.enqueue(
@@ -628,7 +697,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					const applyResultToNode = () => {
 						const session = options.getActiveImportSession()
 						if (!session || session.id !== sessionId || session.cancelled) {
-							console.log('[AIWorkflow:MediaImport] Image result received but session invalid/cancelled:', result.resourceId)
+							console.log(
+								'[AIWorkflow:MediaImport] Image result received but session invalid/cancelled:',
+								result.resourceId
+							)
 							return
 						}
 
@@ -673,7 +745,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
 
 						const info = resourceIdToNode.get(result.resourceId)
 						if (!info) {
-							console.warn('[AIWorkflow:MediaImport] Image result: no node mapping for resourceId:', result.resourceId)
+							console.warn(
+								'[AIWorkflow:MediaImport] Image result: no node mapping for resourceId:',
+								result.resourceId
+							)
 							return
 						}
 
@@ -683,7 +758,10 @@ export const useAIWorkflowBatchMediaImport = (options: {
 						// engineApi.updateNodeData 仍可直接更新蓝图节点数据。
 						const nodeInStore = !!options.store.state.nodesById[info.nodeId]
 						if (!nodeInStore) {
-							console.warn('[AIWorkflow:MediaImport] Image result: node not yet in store, will retry via engineApi:', info.nodeId)
+							console.warn(
+								'[AIWorkflow:MediaImport] Image result: node not yet in store, will retry via engineApi:',
+								info.nodeId
+							)
 						}
 
 						const sourcePath =

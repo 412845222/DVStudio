@@ -272,7 +272,10 @@ export class NodeComponentResolver {
 
 		// 调试日志
 		if (inputParamPreviewRefs && inputParamPreviewRefs.length > 0) {
-			console.log(`[NodeComponentResolver] resolveNodeProps for nodeId=${data.id}, type=${data.type}, inputParamPreviewRefs count=${inputParamPreviewRefs.length}`, inputParamPreviewRefs)
+			console.log(
+				`[NodeComponentResolver] resolveNodeProps for nodeId=${data.id}, type=${data.type}, inputParamPreviewRefs count=${inputParamPreviewRefs.length}`,
+				inputParamPreviewRefs
+			)
 		}
 
 		return {

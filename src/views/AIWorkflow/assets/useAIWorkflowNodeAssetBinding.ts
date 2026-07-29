@@ -197,7 +197,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
 		const sourcePath =
-			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
+			typeof (file as FileWithPath)?.path === 'string'
+				? String((file as FileWithPath).path).trim()
+				: ''
 
 		let finalUrl = ''
 		let assetAbsPath = ''
@@ -468,7 +470,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
 		else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
 		const sourcePath =
-			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
+			typeof (file as FileWithPath)?.path === 'string'
+				? String((file as FileWithPath).path).trim()
+				: ''
 		let assetUrl = ''
 		let assetPath = ''
 

@@ -64,7 +64,10 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 	}
 
 	const connectedTextInputValue = (nodeId: string, inputId: string) => {
-		const edge = payload.getFirstIncomingEdge(nodeId, String(inputId ?? '')) as Record<string, unknown> | null
+		const edge = payload.getFirstIncomingEdge(nodeId, String(inputId ?? '')) as Record<
+			string,
+			unknown
+		> | null
 		if (!edge) return ''
 		return getTextOutputForNode(String(edge.fromNodeId), undefined, String(edge.fromAnchorId ?? ''))
 	}
@@ -97,12 +100,14 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const n = node as Record<string, unknown>
 			const inputs = Array.isArray(n.inputs) ? n.inputs : []
 			// text节点现在是单个多模态输入in-0，优先找它
-			const inputAnchor = inputs.find(
-				(anchor: unknown) => {
-					const a = anchor as Record<string, unknown>
-					return String(a?.id ?? '') === 'in-0' || String(a?.mediaType ?? '') === 'text' || String(a?.id ?? '') === 'in-text'
-				}
-			) as Record<string, unknown> | undefined
+			const inputAnchor = inputs.find((anchor: unknown) => {
+				const a = anchor as Record<string, unknown>
+				return (
+					String(a?.id ?? '') === 'in-0' ||
+					String(a?.mediaType ?? '') === 'text' ||
+					String(a?.id ?? '') === 'in-text'
+				)
+			}) as Record<string, unknown> | undefined
 			if (inputAnchor?.id) {
 				const linkedText = connectedTextInputValue(nodeId, String(inputAnchor.id))
 				if (String(linkedText ?? '').trim()) return String(linkedText)
@@ -135,7 +140,9 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const anchorId = `in-${itemId}`
 			const edge = payload.getFirstIncomingEdge(nodeId, anchorId) as Record<string, unknown> | null
 			if (!edge) continue
-			parts.push(getTextOutputForNode(String(edge.fromNodeId), visited, String(edge.fromAnchorId ?? '')))
+			parts.push(
+				getTextOutputForNode(String(edge.fromNodeId), visited, String(edge.fromAnchorId ?? ''))
+			)
 		}
 		return parts.join('\n')
 	}
@@ -260,7 +267,8 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 				const previewUrl = resolveVideoPosterUrl(fromNode)
 				const resourceUrl = sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(fromNode)) || ''
 				if (!previewUrl && !resourceUrl) continue
-				const dedupeKey = edgeId || `${fromNodeId}:${fromAnchorId}:video:${previewUrl || resourceUrl}`
+				const dedupeKey =
+					edgeId || `${fromNodeId}:${fromAnchorId}:video:${previewUrl || resourceUrl}`
 				if (seen.has(dedupeKey)) continue
 				seen.add(dedupeKey)
 				refs.push({

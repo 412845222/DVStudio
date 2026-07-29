@@ -15,7 +15,10 @@ export type ComfyAutoWireSkipReason =
 	| 'invalid-node'
 	| 'model-format-unknown'
 
-export const COMFY_NODE_FOOTPRINT: Record<ComfySupportedMediaType, { width: number; height: number }> = {
+export const COMFY_NODE_FOOTPRINT: Record<
+	ComfySupportedMediaType,
+	{ width: number; height: number }
+> = {
 	image: { width: 360, height: 280 },
 	video: { width: 400, height: 320 },
 	model3d: { width: 420, height: 360 }
@@ -30,7 +33,10 @@ export const COMFY_TARGET_INPUT_ANCHOR: Record<ComfySupportedMediaType, string> 
 	model3d: 'in-model'
 }
 
-export const COMFY_TARGET_NODE_TYPE: Record<ComfySupportedMediaType, 'image' | 'video' | 'model3d'> = {
+export const COMFY_TARGET_NODE_TYPE: Record<
+	ComfySupportedMediaType,
+	'image' | 'video' | 'model3d'
+> = {
 	image: 'image',
 	video: 'video',
 	model3d: 'model3d'

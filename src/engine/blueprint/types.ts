@@ -271,23 +271,27 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 		outputs: [{ id: 'out-0', label: '出口' }]
 	},
 	text: {
-		inputs: [{
-			id: 'in-0',
-			label: '多模态输入',
-			mediaType: 'generic',
-			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
-			multiInput: true
-		}],
+		inputs: [
+			{
+				id: 'in-0',
+				label: '多模态输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+				multiInput: true
+			}
+		],
 		outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 	},
 	image: {
-		inputs: [{
-			id: 'in-0',
-			label: '多模态输入',
-			mediaType: 'generic',
-			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
-			multiInput: true
-		}],
+		inputs: [
+			{
+				id: 'in-0',
+				label: '多模态输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+				multiInput: true
+			}
+		],
 		outputs: [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
 	},
 	'rotate-image': {

@@ -532,7 +532,10 @@ watch(
 		if (!scene.value || !refs) return
 		;(scene.value as any)._inputParamPreviewRefsByNodeId = refs
 		const nodesWithRefs = Object.entries(refs).filter(([, r]) => r && r.length > 0)
-		console.log(`[BlueprintEditor][inputParamPreviewRefsByNodeId] updated: ${nodesWithRefs.length} nodes with refs`, nodesWithRefs.map(([id]) => id))
+		console.log(
+			`[BlueprintEditor][inputParamPreviewRefsByNodeId] updated: ${nodesWithRefs.length} nodes with refs`,
+			nodesWithRefs.map(([id]) => id)
+		)
 	},
 	{ deep: false, immediate: true }
 )

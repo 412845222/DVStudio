@@ -62,7 +62,8 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 
 	for (const t of msg.tasks) {
 		const resourceId = String(t.resourceId ?? '').trim()
-		const kind: MediaImportKind = t.kind === 'video' ? 'video' : t.kind === 'model3d' ? 'model3d' : 'image'
+		const kind: MediaImportKind =
+			t.kind === 'video' ? 'video' : t.kind === 'model3d' ? 'model3d' : 'image'
 		const file = t.file as File | undefined
 
 		if (!resourceId || !file) {

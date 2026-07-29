@@ -52,7 +52,9 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	performancePriorityMode: { value: boolean }
 	nodeCount: { value: number }
 	connectedMeshySourcePreview: (nodeId: string) => { url: string; label: string }
-	buildMeshyNodePresentationSettings: (settings: Record<string, unknown> | null | undefined) => Record<string, unknown> | null
+	buildMeshyNodePresentationSettings: (
+		settings: Record<string, unknown> | null | undefined
+	) => Record<string, unknown> | null
 	connectedMeshyPrompt: (nodeId: string) => string
 	connectedMeshyImageUrls: (nodeId: string) => string[]
 	nodeMediaReloadToken: (nodeId: string) => number
@@ -69,7 +71,9 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-image')
 		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-resource')
 		if (!edge) return null
-		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as WorkflowNode | undefined
+		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as
+			| WorkflowNode
+			| undefined
 		if (!fromNode || fromNode.type !== 'image') return null
 		if (!fromNode.resourceId) return null
 		return fromNode
@@ -166,7 +170,9 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			}
 		}
 		if (node.type === 'text-merge') {
-			const items = Array.isArray((node as Record<string, unknown>).textMergeItems) ? (node as Record<string, unknown>).textMergeItems : []
+			const items = Array.isArray((node as Record<string, unknown>).textMergeItems)
+				? (node as Record<string, unknown>).textMergeItems
+				: []
 			return {
 				mergeItems: items,
 				mergedText: payload.computeMergedText(node.id)
