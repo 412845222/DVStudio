@@ -156,6 +156,11 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		})
 	}
 
+	// 防重复粘贴：keydown触发后等待原生paste事件，超时则用readClipboardAndPaste兜底
+	let pasteHandled = false
+	let pasteFallbackTimer: ReturnType<typeof setTimeout> | null = null
+	const PASTE_FALLBACK_DELAY_MS = 80
+
 	const onWorkflowKeyDown = (ev: KeyboardEvent) => {
 		const key = String(ev.key || '').toLowerCase()
 		const mod = ev.ctrlKey || ev.metaKey
@@ -173,25 +178,49 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			return
 		}
 
-		// Ctrl+V / Cmd+V：不阻止默认行为，让原生paste事件触发并由onWorkflowPaste统一处理
-		// 之前在这里调用preventDefault/stopImmediatePropagation会导致paste事件无法触发，
-		// 而navigator.clipboard.read()在Electron中无法读取文件资源管理器复制的文件。
-		// window上已经绑定了paste事件监听器，可以正确处理所有粘贴场景。
+		// Ctrl+V / Cmd+V：先尝试让原生paste事件触发，若在Electron/Canvas焦点下paste事件不触发，
+		// 则在短延迟后通过readClipboardAndPaste主动读取剪贴板作为兜底。
 		if (mod && key === 'v' && !ev.shiftKey && !ev.altKey && !ev.repeat) {
 			const targetIsEditable = isEditableEventTarget(ev.target ?? null)
 			const mousePos = payload.getMouseWorldPos()
+			const hasInternalNodes = payload.hasClipboardNodes()
 			console.log('[AIWorkflow:MediaImport] === KeyDown Ctrl+V detected ===', {
 				targetTag: tag,
 				targetIsEditable,
-				hasClipboardNodes: payload.hasClipboardNodes(),
+				hasClipboardNodes: hasInternalNodes,
 				mousePos,
-				note: 'Letting native paste event fire for reliable file handling'
+				note: 'Waiting for native paste event, with fallback to readClipboardAndPaste'
 			})
-			// 不阻止默认行为，让paste事件自然触发
-			// paste事件处理器(onWorkflowPaste)会负责：
-			// 1. 检测外部媒体文件并导入
-			// 2. 检测URL并处理
-			// 3. 检测内部节点复制并粘贴节点
+
+			if (targetIsEditable) {
+				// 可编辑目标：不干预，让浏览器原生处理
+				return
+			}
+
+			if (hasInternalNodes) {
+				// 内部节点复制粘贴：直接处理
+				ev.preventDefault()
+				ev.stopImmediatePropagation()
+				payload.pasteNodesAtCanvasCenter()
+				return
+			}
+
+			// 外部媒体粘贴：先重置标志，等待原生paste事件；若超时未触发则主动读取剪贴板
+			pasteHandled = false
+			if (pasteFallbackTimer) {
+				clearTimeout(pasteFallbackTimer)
+				pasteFallbackTimer = null
+			}
+			pasteFallbackTimer = setTimeout(() => {
+				pasteFallbackTimer = null
+				if (!pasteHandled) {
+					console.log('[AIWorkflow:MediaImport] Native paste event did not fire within fallback window, using readClipboardAndPaste')
+					Promise.resolve(readClipboardAndPaste(mousePos ?? undefined)).catch((err) => {
+						console.error('[AIWorkflow:MediaImport] readClipboardAndPaste error:', err)
+					})
+				}
+			}, PASTE_FALLBACK_DELAY_MS)
+			// 不阻止默认行为，让paste事件有机会自然触发
 			return
 		}
 
@@ -273,6 +302,13 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		if (isEditableEventTarget(ev.target ?? null)) {
 			console.log('[AIWorkflow:MediaImport] Paste ignored: target is editable element')
 			return
+		}
+
+		// 标记已通过原生paste事件处理，取消keydown fallback定时器，防止重复处理
+		pasteHandled = true
+		if (pasteFallbackTimer) {
+			clearTimeout(pasteFallbackTimer)
+			pasteFallbackTimer = null
 		}
 
 		const cd = ev.clipboardData ?? null

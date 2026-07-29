@@ -391,4 +391,273 @@ describe('store/aiworkflow', () => {
 			expect(nanoNodes).toHaveLength(0)
 		})
 	})
+
+	describe('hydrateDraft - node deletion sync (fix: deleted nodes reappear after refresh)', () => {
+		it('should delete old nodes not present in snapshot (user deleted them, engine confirms deletion)', () => {
+			// First, set up a canvas with one old node (created 10 seconds ago)
+			const oldTimestamp = Date.now() - 10000
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {
+						'old-node': {
+							id: 'old-node',
+							type: 'image',
+							title: 'Old Node',
+							worldX: 100,
+							worldY: 100,
+							width: 280,
+							height: 180,
+							inputs: [],
+							outputs: [],
+							createdAt: oldTimestamp
+						}
+					},
+					nodeOrder: ['old-node'],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+			expect(store.state.nodesById['old-node']).toBeDefined()
+
+			// Simulate: user deleted the node, engine syncs snapshot without that node
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {
+						'other-node': {
+							id: 'other-node',
+							type: 'text',
+							title: 'Other Node',
+							worldX: 200,
+							worldY: 200,
+							width: 240,
+							height: 160,
+							inputs: [],
+							outputs: [],
+							createdAt: oldTimestamp
+						}
+					},
+					nodeOrder: ['other-node'],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// The old-node should be DELETED (it was not in the snapshot and is not recent)
+			expect(store.state.nodesById['old-node']).toBeUndefined()
+			expect(store.state.nodesById['other-node']).toBeDefined()
+		})
+
+		it('should preserve very recently created nodes (batch import scenario where engine has not synced yet)', () => {
+			// First set up an existing canvas
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {
+						'existing': {
+							id: 'existing',
+							type: 'image',
+							title: 'Existing',
+							worldX: 0,
+							worldY: 0,
+							width: 280,
+							height: 180,
+							inputs: [],
+							outputs: [],
+							createdAt: Date.now() - 60000
+						}
+					},
+					nodeOrder: ['existing'],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// Simulate: user just batch-imported media, creating new nodes in Vuex state
+			// These nodes were created 500ms ago (very recent) and are not yet in engine snapshot
+			const veryRecentTimestamp = Date.now() - 500
+			store.state.nodesById['brand-new-1'] = {
+				id: 'brand-new-1',
+				type: 'image',
+				title: 'Just Imported 1',
+				worldX: 300,
+				worldY: 100,
+				width: 280,
+				height: 180,
+				inputs: [],
+				outputs: [],
+				createdAt: veryRecentTimestamp
+			} as any
+			store.state.nodeOrder = [...store.state.nodeOrder, 'brand-new-1']
+
+			// Engine syncs snapshot (still only has the existing node, not the new ones yet)
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {
+						'existing': {
+							id: 'existing',
+							type: 'image',
+							title: 'Existing',
+							worldX: 0,
+							worldY: 0,
+							width: 280,
+							height: 180,
+							inputs: [],
+							outputs: [],
+							createdAt: Date.now() - 60000
+						}
+					},
+					nodeOrder: ['existing'],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// The brand-new node should be PRESERVED (it was created <3s ago)
+			expect(store.state.nodesById['brand-new-1']).toBeDefined()
+			expect(store.state.nodesById['existing']).toBeDefined()
+		})
+
+		it('empty snapshot (clear canvas) should remove ALL nodes regardless of recency', () => {
+			// First clear any leftover state from previous tests
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					resourcesById: {},
+					resourceOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// Set up a canvas with a very recent node
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {
+						'recent': {
+							id: 'recent',
+							type: 'image',
+							title: 'Recent Node',
+							worldX: 0,
+							worldY: 0,
+							width: 280,
+							height: 180,
+							inputs: [],
+							outputs: [],
+							createdAt: Date.now()
+						}
+					},
+					nodeOrder: ['recent'],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+			expect(Object.keys(store.state.nodesById)).toHaveLength(1)
+
+			// Empty snapshot = clear canvas operation
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// ALL nodes must be cleared, even recent ones
+			expect(Object.keys(store.state.nodesById)).toHaveLength(0)
+			expect(store.state.nodeOrder).toHaveLength(0)
+		})
+	})
+
+	describe('hydrateDraft - resource deletion sync', () => {
+		it('should clear all resources when snapshot has no resources', () => {
+			// First clear state
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					resourcesById: {},
+					resourceOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// Set up a canvas with a resource
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					resourcesById: {
+						'res-1': {
+							id: 'res-1',
+							kind: 'image',
+							name: 'test.png',
+							url: 'file:///test.png'
+						}
+					},
+					resourceOrder: ['res-1'],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+			expect(Object.keys(store.state.resourcesById)).toHaveLength(1)
+
+			// Empty resources snapshot = resources were deleted
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById: {},
+					nodeOrder: [],
+					edgesById: {},
+					edgeOrder: [],
+					resourcesById: {},
+					resourceOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: null,
+					selectedNodeIds: [],
+					selectedEdgeId: null
+				}
+			})
+
+			// All resources should be cleared
+			expect(Object.keys(store.state.resourcesById)).toHaveLength(0)
+			expect(store.state.resourceOrder).toHaveLength(0)
+		})
+	})
 })

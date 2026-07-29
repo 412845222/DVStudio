@@ -24,7 +24,7 @@ describe('image node text input anchor', () => {
 	} as WorkflowNode)
 
 	describe('default image node anchors', () => {
-		it('should have in-text anchor with mediaType text after enforceSingleIOAnchors', () => {
+		it('should have in-0 multimodal input and out-image output after enforceSingleIOAnchors', () => {
 			AIWorkflowStore.commit('hydrateDraft', {
 				snapshot: {
 					nodesById: {
@@ -55,18 +55,17 @@ describe('image node text input anchor', () => {
 			expect(imgNode).toBeDefined()
 			expect(imgNode.type).toBe('image')
 
-			const textAnchor = imgNode.inputs?.find((a: any) => a.id === 'in-text')
-			expect(textAnchor).toBeDefined()
-			expect(textAnchor?.label).toBe('提示词输入')
-			expect(textAnchor?.mediaType).toBe('text')
+			// Image node uses single multimodal input (in-0) that accepts text/image/video/model3d/audio
+			const multimodalInput = imgNode.inputs?.find((a: any) => a.id === 'in-0')
+			expect(multimodalInput).toBeDefined()
+			expect(multimodalInput?.label).toBe('多模态输入')
+			expect(multimodalInput?.mediaType).toBe('generic')
+			expect(multimodalInput?.multiInput).toBe(true)
+			expect(multimodalInput?.acceptedMediaTypes).toContain('text')
+			expect(multimodalInput?.acceptedMediaTypes).toContain('image')
 
-			const imageAnchor = imgNode.inputs?.find((a: any) => a.id === 'in-0')
-			expect(imageAnchor).toBeDefined()
-			expect(imageAnchor?.label).toBe('图片输入')
-			expect(imageAnchor?.mediaType).toBe('image')
-			expect(imageAnchor?.multiInput).toBe(true)
-
-			const outputAnchor = imgNode.outputs?.find((a: any) => a.id === 'out-0')
+			// Image node outputs image via out-image
+			const outputAnchor = imgNode.outputs?.find((a: any) => a.id === 'out-image')
 			expect(outputAnchor).toBeDefined()
 			expect(outputAnchor?.label).toBe('图片输出')
 			expect(outputAnchor?.mediaType).toBe('image')

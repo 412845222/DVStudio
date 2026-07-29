@@ -342,7 +342,8 @@ export function getDefaultNodeData(
 		height: defaultSize.height,
 		inputs: defaultPorts.inputs.map((p) => ({ ...p })),
 		outputs: defaultPorts.outputs.map((p) => ({ ...p })),
-		status: 'idle'
+		status: 'idle',
+		createdAt: Date.now()
 	}
 }
 
