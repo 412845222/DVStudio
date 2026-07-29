@@ -1,6 +1,8 @@
 import { Vector2 } from '../graphbase/core/Vector2'
 import { Rect } from '../graphbase/core/Rect'
 import type { BlueprintNode } from './BlueprintNode'
+import { getThemeManager } from './theme'
+import { t } from './i18n'
 
 export interface SavedSelectionFrame {
 	id: string
@@ -10,8 +12,6 @@ export interface SavedSelectionFrame {
 }
 
 const SELECTION_FRAME_PADDING = 12
-const TEMP_FRAME_COLOR = '#5b9bd5'
-const SAVED_FRAME_COLOR = '#1f9d84'
 const TAG_BAR_HEIGHT = 28
 const TAG_BAR_PADDING_X = 8
 const LABEL_EDIT_PADDING = 6
@@ -57,11 +57,25 @@ export function drawSelectionFrame(
 	nodeCount?: number,
 	editState?: FrameEditState
 ): void {
+	const theme = getThemeManager()
+	const tokens = theme.tokens
 	const lineWidth = isSaved ? 2 / cameraZoom : 1.5 / cameraZoom
 	const dashPattern = isSaved ? [] : [6 / cameraZoom, 4 / cameraZoom]
-	const color = isSaved ? SAVED_FRAME_COLOR : TEMP_FRAME_COLOR
+	const color = isSaved ? tokens.selectionFrame : '#5b9bd5'
 	const bgAlpha = isSaved ? 0.08 : 0.06
 	const strokeAlpha = isSaved ? 0.85 : 0.7
+	const tagTextColor = theme.mode === 'dark' ? '#ffffff' : tokens.nodeBackground
+	const tagInputBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'
+	const tagInputBgIdle = theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.25)'
+	const tagInputBorder = theme.mode === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.5)'
+	const tagInputBorderIdle =
+		theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)'
+	const tagInputText = theme.mode === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.8)'
+	const tagSaveBtnBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)'
+	const countText =
+		nodeCount !== undefined ? t('aiworkflow.canvas.nodesCount', { count: nodeCount }) : ''
+	const saveText = `💾 ${t('aiworkflow.canvas.save')}`
+	const placeholder = t('aiworkflow.canvas.enterGroupName')
 
 	ctx.save()
 
@@ -104,7 +118,7 @@ export function drawSelectionFrame(
 		ctx.fill()
 
 		if (actuallyEditing) {
-			ctx.fillStyle = hexToRgba('#ffffff', 0.2)
+			ctx.fillStyle = tagInputBg
 			roundRect(
 				ctx,
 				tagX + 4 / cameraZoom,
@@ -116,7 +130,7 @@ export function drawSelectionFrame(
 			ctx.fill()
 		}
 
-		ctx.fillStyle = '#ffffff'
+		ctx.fillStyle = tagTextColor
 		ctx.textBaseline = 'middle'
 		ctx.textAlign = 'left'
 		const displayLabel = displayText || (actuallyEditing ? '' : label)
@@ -125,7 +139,7 @@ export function drawSelectionFrame(
 		if (actuallyEditing && editState!.cursorBlink) {
 			const cursorX =
 				tagX + TAG_BAR_PADDING_X / cameraZoom + ctx.measureText(displayText).width + 1 / cameraZoom
-			ctx.strokeStyle = '#ffffff'
+			ctx.strokeStyle = tagTextColor
 			ctx.lineWidth = 1.5 / cameraZoom
 			ctx.beginPath()
 			ctx.moveTo(cursorX, tagY + 5 / cameraZoom)
@@ -147,7 +161,6 @@ export function drawSelectionFrame(
 		ctx.textBaseline = 'middle'
 		ctx.fillText('×', deleteBtnX, deleteBtnY + 1 / cameraZoom)
 	} else if (!isSaved && nodeCount !== undefined) {
-		const countText = `${nodeCount} 个节点`
 		ctx.font = `500 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		const countMetrics = ctx.measureText(countText)
 		const countWidth = countMetrics.width
@@ -156,7 +169,6 @@ export function drawSelectionFrame(
 		const saveBtnMargin = SAVE_BTN_MARGIN / cameraZoom
 		const btnPadding = 12 / cameraZoom
 		ctx.font = `600 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-		const saveText = '💾 保存'
 		const saveTextMetrics = ctx.measureText(saveText)
 		const saveBtnWidth = saveTextMetrics.width + btnPadding
 
@@ -179,7 +191,7 @@ export function drawSelectionFrame(
 		roundRect(ctx, tagX, tagY, tagW, tagH, 4 / cameraZoom)
 		ctx.fill()
 
-		ctx.fillStyle = '#ffffff'
+		ctx.fillStyle = tagTextColor
 		ctx.textBaseline = 'middle'
 		ctx.textAlign = 'left'
 		ctx.font = `500 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
@@ -189,24 +201,23 @@ export function drawSelectionFrame(
 		const inputY = tagY + 3 / cameraZoom
 		const inputH = tagH - 6 / cameraZoom
 
-		ctx.fillStyle = isEditing ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)'
+		ctx.fillStyle = isEditing ? tagInputBg : tagInputBgIdle
 		roundRect(ctx, inputX, inputY, inputWidth, inputH, 3 / cameraZoom)
 		ctx.fill()
 
-		ctx.strokeStyle = isEditing ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)'
+		ctx.strokeStyle = isEditing ? tagInputBorder : tagInputBorderIdle
 		ctx.lineWidth = 1 / cameraZoom
 		roundRect(ctx, inputX, inputY, inputWidth, inputH, 3 / cameraZoom)
 		ctx.stroke()
 
 		const editText = isEditing ? editState!.editText : ''
-		const placeholder = '输入分组名称...'
 		ctx.font = `400 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		if (isEditing && editText) {
-			ctx.fillStyle = '#ffffff'
+			ctx.fillStyle = tagTextColor
 			ctx.fillText(editText, inputX + 6 / cameraZoom, tagY + tagH / 2)
 			if (editState!.cursorBlink) {
 				const cursorX = inputX + 6 / cameraZoom + ctx.measureText(editText).width + 1 / cameraZoom
-				ctx.strokeStyle = '#ffffff'
+				ctx.strokeStyle = tagTextColor
 				ctx.lineWidth = 1.5 / cameraZoom
 				ctx.beginPath()
 				ctx.moveTo(cursorX, inputY + 3 / cameraZoom)
@@ -214,11 +225,11 @@ export function drawSelectionFrame(
 				ctx.stroke()
 			}
 		} else if (isEditing) {
-			ctx.fillStyle = 'rgba(255,255,255,0.6)'
+			ctx.fillStyle = tagInputText
 			ctx.fillText(placeholder, inputX + 6 / cameraZoom, tagY + tagH / 2)
 			if (editState!.cursorBlink) {
 				const cursorX = inputX + 6 / cameraZoom
-				ctx.strokeStyle = '#ffffff'
+				ctx.strokeStyle = tagTextColor
 				ctx.lineWidth = 1.5 / cameraZoom
 				ctx.beginPath()
 				ctx.moveTo(cursorX, inputY + 3 / cameraZoom)
@@ -226,17 +237,17 @@ export function drawSelectionFrame(
 				ctx.stroke()
 			}
 		} else {
-			ctx.fillStyle = 'rgba(255,255,255,0.5)'
+			ctx.fillStyle = tagInputText
 			ctx.fillText(placeholder, inputX + 6 / cameraZoom, tagY + tagH / 2)
 		}
 
 		const saveBtnX = inputX + inputWidth + saveBtnMargin
 		const saveBtnY = tagY + 3 / cameraZoom
 		const saveBtnH = tagH - 6 / cameraZoom
-		ctx.fillStyle = hexToRgba('#ffffff', 0.2)
+		ctx.fillStyle = tagSaveBtnBg
 		roundRect(ctx, saveBtnX, saveBtnY, saveBtnWidth, saveBtnH, 3 / cameraZoom)
 		ctx.fill()
-		ctx.fillStyle = '#ffffff'
+		ctx.fillStyle = tagTextColor
 		ctx.font = `600 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		ctx.textAlign = 'center'
 		ctx.textBaseline = 'middle'
@@ -357,12 +368,12 @@ export function pointInTempFrameInput(
 
 	const c = document.createElement('canvas').getContext('2d')!
 	c.font = `500 11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-	const countText = `${nodeCount} 个节点`
+	const countText = t('aiworkflow.canvas.nodesCount', { count: nodeCount })
 	const countWidth = c.measureText(countText).width
 	const countTagWidth = countWidth + TAG_BAR_PADDING_X * 2
 
 	c.font = `600 11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-	const saveTextWidth = c.measureText('💾 保存').width + 12
+	const saveTextWidth = c.measureText(`💾 ${t('aiworkflow.canvas.save')}`).width + 12
 
 	const fullW = worldRect.width * z
 	const inputMinWidth = INPUT_MIN_WIDTH * z
@@ -392,12 +403,12 @@ export function pointInTempFrameSaveBtn(
 
 	const c = document.createElement('canvas').getContext('2d')!
 	c.font = `500 11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-	const countText = `${nodeCount} 个节点`
+	const countText = t('aiworkflow.canvas.nodesCount', { count: nodeCount })
 	const countWidth = c.measureText(countText).width
 	const countTagWidth = countWidth + TAG_BAR_PADDING_X * 2
 
 	c.font = `600 11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-	const saveTextWidth = c.measureText('💾 保存').width + 12
+	const saveTextWidth = c.measureText(`💾 ${t('aiworkflow.canvas.save')}`).width + 12
 
 	const fullW = worldRect.width * z
 	const inputMinWidth = INPUT_MIN_WIDTH * z
@@ -417,7 +428,5 @@ export function pointInTempFrameSaveBtn(
 
 export const SELECTION_FRAME_CONSTANTS = {
 	PADDING: SELECTION_FRAME_PADDING,
-	TAG_BAR_HEIGHT,
-	TEMP_COLOR: TEMP_FRAME_COLOR,
-	SAVED_COLOR: SAVED_FRAME_COLOR
+	TAG_BAR_HEIGHT
 }

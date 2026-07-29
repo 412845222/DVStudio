@@ -175,18 +175,6 @@ export const PORT_MIN_MARGIN_BOTTOM = 16
 
 export const GRID_STEP = 80
 export const GRID_MAJOR_EVERY = 5
-export const GRID_COLOR = 'rgba(237, 242, 244, 0.12)'
-export const GRID_MAJOR_COLOR = 'rgba(237, 242, 244, 0.20)'
-export const BACKGROUND_COLOR = '#15181c'
-
-export const WF_PRIMARY = '#1f9d84'
-export const WF_RUNNING = '#e5b567'
-export const WF_ERROR = '#cf5a46'
-export const WF_SUCCESS = '#27ae60'
-export const WF_TEXT = '#edf2f4'
-export const WF_TEXT_MUTED = '#aeb8bd'
-export const WF_NODE_BG = 'rgba(21, 24, 28, 0.85)'
-export const WF_HEADER_BG = 'rgba(31, 157, 132, 0.15)'
 
 export const MEDIA_TYPE_COLORS: Record<MediaType, string> = {
 	generic: '#1f9d84',
@@ -198,53 +186,6 @@ export const MEDIA_TYPE_COLORS: Record<MediaType, string> = {
 	audio: '#e91e63',
 	meta: '#7f8c8d',
 	resource: '#3498db'
-}
-
-export const NODE_STATUS_COLORS: Record<
-	string,
-	{
-		border: string
-		bracket: string
-		glow: string
-		badge: string
-	}
-> = {
-	idle: {
-		border: 'rgba(31, 157, 132, 0.45)',
-		bracket: 'rgba(31, 157, 132, 0.55)',
-		glow: 'rgba(31, 157, 132, 0.10)',
-		badge: 'rgba(31, 157, 132, 0.25)'
-	},
-	hovered: {
-		border: 'rgba(31, 157, 132, 0.55)',
-		bracket: 'rgba(31, 157, 132, 0.85)',
-		glow: 'rgba(31, 157, 132, 0.22)',
-		badge: 'rgba(31, 157, 132, 0.35)'
-	},
-	selected: {
-		border: 'rgba(31, 157, 132, 0.75)',
-		bracket: '#1f9d84',
-		glow: 'rgba(31, 157, 132, 0.30)',
-		badge: 'rgba(31, 157, 132, 0.45)'
-	},
-	running: {
-		border: 'rgba(229, 181, 103, 0.70)',
-		bracket: 'rgba(229, 181, 103, 0.80)',
-		glow: 'rgba(229, 181, 103, 0.35)',
-		badge: 'rgba(229, 181, 103, 0.45)'
-	},
-	success: {
-		border: 'rgba(46, 164, 79, 0.70)',
-		bracket: 'rgba(46, 164, 79, 0.80)',
-		glow: 'rgba(46, 164, 79, 0.30)',
-		badge: 'rgba(46, 164, 79, 0.45)'
-	},
-	error: {
-		border: 'rgba(207, 90, 70, 0.75)',
-		bracket: 'rgba(207, 90, 70, 0.80)',
-		glow: 'rgba(207, 90, 70, 0.35)',
-		badge: 'rgba(207, 90, 70, 0.45)'
-	}
 }
 
 export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number }> = {
@@ -285,6 +226,13 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 	image: {
 		inputs: [
 			{
+				id: 'in-resource',
+				label: '资源输入',
+				mediaType: 'resource',
+				acceptedMediaTypes: ['image', 'video', 'resource'],
+				multiInput: true
+			},
+			{
 				id: 'in-0',
 				label: '多模态输入',
 				mediaType: 'generic',
@@ -304,7 +252,10 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 			{ id: 'in-image', label: '参考图输入', multiInput: true, mediaType: 'image' },
 			{ id: 'in-video', label: '参考视频输入', multiInput: true, mediaType: 'video' }
 		],
-		outputs: [{ id: 'out-video', label: '视频输出', mediaType: 'video' }]
+		outputs: [
+			{ id: 'out-resource', label: '资源输出', mediaType: 'resource' },
+			{ id: 'out-video', label: '视频输出', mediaType: 'video' }
+		]
 	},
 	model3d: {
 		inputs: [

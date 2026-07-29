@@ -8,7 +8,16 @@ type WorkflowAnchorSpec = {
 	id: string
 	label?: string
 	offsetY?: number
-	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta'
+	mediaType?:
+		| 'generic'
+		| 'image'
+		| 'video'
+		| 'text'
+		| 'flow'
+		| 'model3d'
+		| 'audio'
+		| 'meta'
+		| 'resource'
 }
 
 type WorkflowNodeBaseProps = {
@@ -186,7 +195,7 @@ export class NodeComponentResolver {
 			isSecondarySelected: false,
 			visualStatus: effectiveStatus,
 			sizeCustomized: data.sizeCustomized,
-			autoHeight: data.type === 'image' || data.type === 'rotate-image'
+			autoHeight: !data.sizeCustomized
 		}
 
 		const resourceProps = this.resolveResourceProps(data, legacyResources)
@@ -228,10 +237,10 @@ export class NodeComponentResolver {
 			case 'image':
 			case 'rotate-image':
 				if (data.imageSettings) typeSpecificProps.imageSettings = data.imageSettings
-				typeSpecificProps.sizeCustomized = data.sizeCustomized
 				break
 			case 'video':
 				if (data.videoSettings) typeSpecificProps.videoSettings = data.videoSettings
+				typeSpecificProps.screenshotEnabled = true
 				break
 			case 'model3d':
 				if (data.model3dSettings) typeSpecificProps.model3dSettings = data.model3dSettings

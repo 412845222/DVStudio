@@ -1,6 +1,5 @@
 <template>
 	<WorkflowNodeBase
-		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -30,7 +29,7 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<div ref="wrap" class="wf-rotate-wrap" :class="{ 'is-custom-sized': sizeCustomized }" :style="wrapStyle">
+			<div ref="wrap" class="wf-rotate-wrap">
 				<canvas
 					ref="canvas"
 					class="wf-rotate-canvas"
@@ -107,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
 
@@ -139,16 +138,6 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 	inputUrl?: string | null
 	rotatePromptText?: string | null
-	imageSettings?: {
-		outputWidth?: number
-		outputHeight?: number
-		naturalWidth?: number
-		naturalHeight?: number
-		cropEnabled?: boolean
-		crop?: { x: number; y: number; width: number; height: number }
-	} | null
-	sizeCustomized?: boolean
-	visualStatus?: 'idle' | 'running' | 'error'
 }>()
 
 const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
@@ -240,11 +229,6 @@ const PLACEHOLDER_SVG = computed(() =>
 
 const wrap = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
-const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
-const measuredWidth = ref(0)
-const measuredVerticalOverhead = ref(56) // header+footer+padding default estimate
-const wrapSize = ref({ w: 1, h: 1 })
-let canvasResizeRaf = 0
 
 const dpr = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1))
 
@@ -253,90 +237,9 @@ const inputSrc = computed(() => {
 	return url || PLACEHOLDER_SVG.value
 })
 
-/**
- * 测量节点垂直固定开销（header + wf-node padding + body chrome + footer）
- * 一次性测量，不使用ResizeObserver，避免反馈循环
- */
-const measureDomOverhead = () => {
-	const el = wrap.value
-	if (!el) return
-	const node = el.closest('.wf-node') as HTMLElement | null
-	if (!node) return
-	const header = node.querySelector('.wf-node-header') as HTMLElement | null
-	const footer = node.querySelector('.wf-node-footer') as HTMLElement | null
-	const headerH = header?.offsetHeight || 0
-	const footerH = footer?.offsetHeight || 0
-	const nodeVerticalPadding = 18 // wf-node padding 8+10
-	const bodyChrome = 18 // body border 2px + padding 16px
-	const overhead = headerH + footerH + nodeVerticalPadding + bodyChrome
-	if (overhead > 40 && overhead < 800) {
-		measuredVerticalOverhead.value = Math.ceil(overhead)
-	}
-	// 测量可用宽度
-	const body = node.querySelector('.wf-node-body') as HTMLElement | null
-	if (body) {
-		const bw = Math.max(1, Math.floor(body.clientWidth))
-		if (bw > 10) measuredWidth.value = bw
-	} else {
-		const rect = el.getBoundingClientRect()
-		const w = Math.max(1, Math.floor(rect.width))
-		if (w > 10) measuredWidth.value = w
-	}
-}
-
-/**
- * .wf-rotate-wrap 的内联样式
- * - sizeCustomized模式：显式height = props.height - 测量的固定开销
- * - autoHeight模式：按图片比例计算高度
- */
-const wrapStyle = computed(() => {
-	const nw = naturalWidth.value
-	const nh = naturalHeight.value
-	const cw = measuredWidth.value
-
-	if (props.sizeCustomized) {
-		const nodeH = Number(props.height) || 0
-		const wrapH = Math.max(60, Math.floor(nodeH - measuredVerticalOverhead.value))
-		return {
-			width: '100%',
-			height: `${wrapH}px`,
-			flex: '0 0 auto',
-			minHeight: `${wrapH}px`,
-			maxHeight: `${wrapH}px`,
-			overflow: 'hidden'
-		} as Record<string, string>
-	}
-
-	// autoHeight模式：按图片比例计算高度
-	let h: number
-	if (nw && nh && nw > 0 && nh > 0 && cw > 10) {
-		const ratio = nw / nh
-		h = Math.max(60, Math.floor(cw / ratio))
-	} else if (cw > 10) {
-		h = cw
-	} else {
-		h = 200
-	}
-	return {
-		width: '100%',
-		height: `${h}px`,
-		flex: '0 0 auto'
-	} as Record<string, string>
-})
-
 let img: HTMLImageElement | null = null
+let ro: ResizeObserver | null = null
 const dragging = ref(false)
-
-/** sizeCustomized模式下不触发autoResize，避免反馈循环导致节点无限增长 */
-const tryAutoResize = () => {
-	if (props.sizeCustomized) return
-	nextTick(() => {
-		baseRef.value?.requestAutoResize()
-		requestAnimationFrame(() => {
-			baseRef.value?.requestAutoResize()
-		})
-	})
-}
 
 const yaw = ref(0)
 const pitch = ref(0)
@@ -357,9 +260,6 @@ let sourceObjectUrl: string | null = null
 let imageLoadToken = 0
 let loadedImageVersion = 0
 let loadedImageKey = ''
-// 优先从props.imageSettings初始化，若没有则从图片加载中获取
-const naturalWidth = ref<number>(Math.max(1, Math.floor(Number(props.imageSettings?.naturalWidth) || 0)))
-const naturalHeight = ref<number>(Math.max(1, Math.floor(Number(props.imageSettings?.naturalHeight) || 0)))
 
 const revokeSourceObjectUrl = () => {
 	if (!sourceObjectUrl) return
@@ -378,36 +278,17 @@ const setImageElementSource = (src: string, useCrossOrigin: boolean) => {
 		if (img !== next) return
 		loadedImageVersion += 1
 		loadedImageKey = src
-		naturalWidth.value = next.naturalWidth || 0
-		naturalHeight.value = next.naturalHeight || 0
 		lastOutputKey = ''
 		draw()
 		scheduleInvalidateScreenshot(100)
-		nextTick(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-			if (!props.sizeCustomized) tryAutoResize()
-			setTimeout(() => {
-				measureDomOverhead()
-				scheduleCanvasResize()
-				if (!props.sizeCustomized) tryAutoResize()
-			}, 100)
-		})
 	}
 	next.onerror = () => {
 		if (img !== next) return
 		loadedImageVersion += 1
 		loadedImageKey = ''
-		naturalWidth.value = 0
-		naturalHeight.value = 0
 		lastOutputKey = ''
 		draw()
 		scheduleInvalidateScreenshot(100)
-		nextTick(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-			if (!props.sizeCustomized) tryAutoResize()
-		})
 	}
 	next.src = src
 	img = next
@@ -454,22 +335,7 @@ const resizeCanvasToWrap = () => {
 	const scale = dpr()
 	c.width = Math.max(1, Math.floor(w * scale))
 	c.height = Math.max(1, Math.floor(h * scale))
-	wrapSize.value = { w, h }
-	if (w > 10) measuredWidth.value = w
 	draw()
-}
-
-/**
- * 延迟多次resize canvas，替代ResizeObserver
- * 在mounted和图片加载后调用
- */
-const scheduleCanvasResize = () => {
-	if (canvasResizeRaf) cancelAnimationFrame(canvasResizeRaf)
-	canvasResizeRaf = requestAnimationFrame(() => {
-		resizeCanvasToWrap()
-		// 双保险：再延迟一帧
-		requestAnimationFrame(() => resizeCanvasToWrap())
-	})
 }
 
 type Vec2 = { x: number; y: number }
@@ -1045,8 +911,6 @@ watch(
 		lastPromptKey = ''
 		loadedImageVersion += 1
 		loadedImageKey = ''
-		naturalWidth.value = 0
-		naturalHeight.value = 0
 		img = null
 		ensureImage(src)
 		draw()
@@ -1061,40 +925,12 @@ watch(
 	}
 )
 
-watch(
-	() => [props.sizeCustomized, props.width, props.height],
-	() => {
-		nextTick(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-		})
-	}
-)
-
 onMounted(() => {
-	nextTick(() => {
-		measureDomOverhead()
-		scheduleCanvasResize()
-		requestAnimationFrame(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-			if (!props.sizeCustomized) tryAutoResize()
-		})
-		setTimeout(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-			if (!props.sizeCustomized) tryAutoResize()
-		}, 100)
-		setTimeout(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-			if (!props.sizeCustomized) tryAutoResize()
-		}, 300)
-		setTimeout(() => {
-			measureDomOverhead()
-			scheduleCanvasResize()
-		}, 500)
+	resizeCanvasToWrap()
+	ro = new ResizeObserver(() => {
+		resizeCanvasToWrap()
 	})
+	if (wrap.value) ro.observe(wrap.value)
 	draw()
 })
 
@@ -1102,10 +938,6 @@ onBeforeUnmount(() => {
 	imageLoadToken += 1
 	revokeSourceObjectUrl()
 	cancelRotateAnimation()
-	if (canvasResizeRaf) {
-		cancelAnimationFrame(canvasResizeRaf)
-		canvasResizeRaf = 0
-	}
 	if (outputEmitTimer) {
 		clearTimeout(outputEmitTimer)
 		outputEmitTimer = null
@@ -1116,24 +948,24 @@ onBeforeUnmount(() => {
 	}
 	dragging.value = false
 	dragState = null
+	if (ro) {
+		try {
+			ro.disconnect()
+		} catch {
+			// ignore
+		}
+	}
+	ro = null
 })
 </script>
 
 <style scoped>
 .wf-rotate-wrap {
 	width: 100%;
-	flex: 0 0 auto;
-	position: relative;
+	min-height: 100%;
 	display: flex;
 	align-items: stretch;
 	justify-content: stretch;
-	min-height: 80px;
-}
-
-.wf-rotate-wrap.is-custom-sized {
-	/* 高度由内联style wrapStyle显式控制（基于props.height减法计算） */
-	min-height: 0;
-	overflow: hidden;
 }
 
 .wf-rotate-canvas {
@@ -1144,8 +976,6 @@ onBeforeUnmount(() => {
 	border: 1px solid var(--vscode-border);
 	background: var(--dweb-defualt);
 	cursor: grab;
-	flex: 1 1 0%;
-	min-height: 0;
 }
 
 .wf-rotate-canvas.dragging {

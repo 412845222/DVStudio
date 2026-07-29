@@ -2,13 +2,8 @@ import { Vector2 } from '../graphbase/core/Vector2'
 import { Rect } from '../graphbase/core/Rect'
 import { Node } from '../graphbase/scene/Node'
 import type { RenderContext } from '../graphbase/renderer/RenderContext'
-import {
-	GRID_STEP,
-	GRID_MAJOR_EVERY,
-	GRID_COLOR,
-	GRID_MAJOR_COLOR,
-	BACKGROUND_COLOR
-} from './types'
+import { GRID_STEP, GRID_MAJOR_EVERY } from './types'
+import { getThemeManager } from './theme'
 
 export class BlueprintGrid extends Node {
 	constructor() {
@@ -51,8 +46,10 @@ export class BlueprintGrid extends Node {
 		const camera = ctx.camera
 		const zoom = camera.zoom
 		const worldVp = camera.getWorldViewport()
+		const theme = getThemeManager()
+		const tokens = theme.tokens
 
-		c.fillStyle = BACKGROUND_COLOR
+		c.fillStyle = tokens.canvasBackground
 		c.fillRect(worldVp.left, worldVp.top, worldVp.width, worldVp.height)
 
 		let minorStep = GRID_STEP
@@ -84,7 +81,7 @@ export class BlueprintGrid extends Node {
 		const endY = Math.ceil(worldVp.bottom / minorStep) * minorStep
 
 		if (minorStep !== majorStep) {
-			c.fillStyle = GRID_COLOR
+			c.fillStyle = tokens.gridLine
 			for (let x = startX; x <= endX; x += minorStep) {
 				const col = Math.round(x / minorStep)
 				if (col % GRID_MAJOR_EVERY === 0) continue
@@ -103,7 +100,7 @@ export class BlueprintGrid extends Node {
 		const majorStartY = Math.floor(worldVp.top / majorStep) * majorStep
 		const majorEndY = Math.ceil(worldVp.bottom / majorStep) * majorStep
 
-		c.fillStyle = GRID_MAJOR_COLOR
+		c.fillStyle = tokens.gridMajorLine
 		for (let x = majorStartX; x <= majorEndX; x += majorStep) {
 			for (let y = majorStartY; y <= majorEndY; y += majorStep) {
 				c.beginPath()

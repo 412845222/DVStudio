@@ -25,6 +25,7 @@
 			@media-ready="onMediaReady"
 			@invalidate-screenshot="onInvalidateScreenshot"
 			@preview-contextmenu="onPreviewContextMenu"
+			@screenshot="onScreenshot"
 		/>
 	</div>
 </template>
@@ -79,6 +80,10 @@ const emit = defineEmits<{
 	(e: 'media-ready', nodeId: string): void
 	(e: 'invalidate-screenshot', nodeId: string): void
 	(e: 'preview-contextmenu', payload: { nodeId: string; clientX: number; clientY: number }): void
+	(
+		e: 'screenshot',
+		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
+	): void
 }>()
 
 const businessComponent = computed(() => {
@@ -112,25 +117,7 @@ const wrapperStyle = computed(() => ({
 	'--wf-node-border-selected': props.accentColor,
 	'--wf-node-shadow': `0 0 8px color-mix(in srgb, ${props.accentColor} 15%, transparent)`,
 	'--wf-node-shadow-selected': `0 0 20px color-mix(in srgb, ${props.accentColor} 30%, transparent)`,
-	'--wf-text': 'rgba(237, 242, 244, 0.95)',
-	'--wf-text-muted': 'rgba(237, 242, 244, 0.6)',
-	'--wf-border-subtle': 'rgba(237, 242, 244, 0.15)',
-	'--wf-border': 'rgba(237, 242, 244, 0.2)',
-	'--wf-surface-base': 'rgba(15, 18, 22, 0.85)',
-	'--wf-control-border': 'rgba(237, 242, 244, 0.2)',
-	'--wf-control-bg': 'rgba(30, 34, 40, 0.6)',
-	'--wf-control-border-hover': 'rgba(237, 242, 244, 0.35)',
-	'--wf-control-bg-hover': 'rgba(40, 45, 52, 0.8)',
-	'--vscode-foreground': 'rgba(237, 242, 244, 0.9)',
-	'--vscode-border': 'rgba(237, 242, 244, 0.15)',
 	'--vscode-border-accent': props.accentColor,
-	'--dweb-defualt-dark': 'rgba(15, 18, 22, 0.9)',
-	'--dweb-blue': '#3498db',
-	'--theme-bg-elevated': 'rgba(25, 28, 33, 0.95)',
-	'--theme-bg-secondary': 'rgba(20, 23, 28, 0.9)',
-	'--theme-border': 'rgba(237, 242, 244, 0.12)',
-	'--aiwf-color-accent': '#e5b567',
-	'--aiwf-color-danger': '#cf5a46',
 	width: '100%',
 	height: '100%',
 	position: 'relative' as const,
@@ -231,6 +218,21 @@ const onPreviewContextMenu = (payload: { clientX: number; clientY: number }) => 
 		nodeId: props.node.id,
 		clientX: payload.clientX,
 		clientY: payload.clientY
+	})
+}
+
+const onScreenshot = (payload: {
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+}) => {
+	emit('screenshot', {
+		nodeId: props.node.id,
+		dataUrl: payload.dataUrl,
+		width: payload.width,
+		height: payload.height,
+		time: payload.time
 	})
 }
 </script>

@@ -54,6 +54,7 @@
 						@media-ready="onBusinessMediaReady"
 						@invalidate-screenshot="onBusinessInvalidateScreenshot"
 						@preview-contextmenu="onBusinessPreviewContextMenu"
+						@screenshot="onBusinessScreenshot"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -142,6 +143,10 @@ const emit = defineEmits<{
 	(
 		e: 'node-preview-contextmenu',
 		payload: { nodeId: string; clientX: number; clientY: number }
+	): void
+	(
+		e: 'node-screenshot',
+		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
 	): void
 }>()
 
@@ -387,6 +392,16 @@ function onBusinessPreviewContextMenu(payload: {
 	clientY: number
 }) {
 	emit('node-preview-contextmenu', payload)
+}
+
+function onBusinessScreenshot(payload: {
+	nodeId: string
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+}) {
+	emit('node-screenshot', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })
@@ -1037,7 +1052,6 @@ function syncDomNodes() {
 			const editingNode = s.getBlueprintNode(editingId)
 			if (editingNode) nodesToRender.push(editingNode)
 		}
-		// 确保聊天对话框打开时，对应的节点也被渲染
 		if (props.chatState?.visible && props.chatState?.nodeId) {
 			const chatNode = s.getBlueprintNode(props.chatState.nodeId)
 			if (chatNode && !nodesToRender.some((n) => n.id === chatNode.id)) {
@@ -1060,6 +1074,8 @@ function syncDomNodes() {
 		})
 	}
 
+	const selectedNodeIds = new Set((s.selection?.getSelection?.() || []).map((n: any) => n.id))
+
 	for (const node of nodesToRender) {
 		currentMap.set(node.id, node)
 		const wb = node.getWorldBounds()
@@ -1071,7 +1087,8 @@ function syncDomNodes() {
 			y: wb.y,
 			width: wb.width,
 			height: wb.height,
-			selected: true,
+			// 关键修复：根据实际选中状态设置，而不是全部设为true
+			selected: selectedNodeIds.has(node.id),
 			accentColor: getNodeAccentColor(node),
 			status: getNodeStatus(node),
 			inputPorts: extractPortData(node.inputPorts, wb.x, wb.y),

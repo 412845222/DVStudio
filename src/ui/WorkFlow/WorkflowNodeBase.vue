@@ -19,7 +19,6 @@
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
 			{ 'is-auto-height': autoHeight !== false },
-			{ 'is-size-customized': sizeCustomized === true },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
@@ -621,22 +620,16 @@ let userResized = false
 const measureNaturalHeight = (): number => {
 	const el = nodeElRef.value
 	if (!el) return props.height
-	const prevHeight = el.style.getPropertyValue('height')
-	const prevHeightPriority = el.style.getPropertyPriority('height')
-	const prevFlexBasis = el.style.getPropertyValue('flex-basis')
-	const prevFlexBasisPriority = el.style.getPropertyPriority('flex-basis')
-	el.style.setProperty('height', 'auto', 'important')
-	el.style.setProperty('flex-basis', 'auto', 'important')
+	const prevHeight = el.style.height
+	const prevFlexBasis = el.style.flexBasis
+	el.style.height = 'auto'
+	el.style.flexBasis = 'auto'
 	const natural = el.getBoundingClientRect().height
-	if (prevHeight) {
-		el.style.setProperty('height', prevHeight, prevHeightPriority)
+	el.style.height = prevHeight
+	if (prevFlexBasis !== undefined) {
+		el.style.flexBasis = prevFlexBasis
 	} else {
-		el.style.removeProperty('height')
-	}
-	if (prevFlexBasis) {
-		el.style.setProperty('flex-basis', prevFlexBasis, prevFlexBasisPriority)
-	} else {
-		el.style.removeProperty('flex-basis')
+		el.style.flexBasis = ''
 	}
 	const zoom = Math.max(1e-6, props.zoom || 1)
 	const worldHeight = natural / zoom
@@ -650,8 +643,6 @@ const requestAutoResize = () => {
 		rafId = 0
 		if (userResized) return
 		if (props.autoHeight === false) return
-		// sizeCustomized模式下：节点尺寸由用户锁定，禁止autoResize（会导致无限增长反馈循环）
-		if (props.sizeCustomized) return
 		const nextHeight = measureNaturalHeight()
 		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
 		if (Math.abs(nextHeight - props.height) < HEIGHT_CHANGE_THRESHOLD) return
@@ -811,8 +802,6 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 }
 onMounted(() => {
 	if (props.autoHeight === false) return
-	// sizeCustomized模式下：节点尺寸由用户锁定，不需要autoResize observer
-	if (props.sizeCustomized) return
 	nextTick(() => {
 		setupResizeObserver()
 		requestAutoResize()
@@ -914,7 +903,7 @@ defineExpose({
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 20%, transparent),
 		0 0 10px color-mix(in srgb, var(--wf-primary) 15%, transparent),
 		0 3px 12px color-mix(in srgb, var(--theme-border) 20%, transparent),
-		inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent) !important;
+		inset 0 1px 0 var(--wf-inner-highlight) !important;
 	animation: wf-toolbar-in 160ms ease-out both;
 	z-index: 90;
 }
@@ -1007,14 +996,14 @@ defineExpose({
 	z-index: 100;
 	min-width: 140px;
 	border: 1px solid color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
-	background: color-mix(in srgb, rgba(21, 24, 28, 0.92) 96%, transparent) !important;
+	background: color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent) !important;
 	backdrop-filter: blur(14px) saturate(140%);
 	-webkit-backdrop-filter: blur(14px) saturate(140%);
 	border-radius: 2px !important;
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 18%, transparent),
 		0 0 14px color-mix(in srgb, var(--wf-primary) 22%, transparent),
-		0 8px 20px rgba(0, 0, 0, 0.38) !important;
+		var(--wf-popover-shadow) !important;
 	padding: 6px;
 	display: flex;
 	flex-direction: column;
@@ -1062,8 +1051,6 @@ defineExpose({
 	align-items: stretch;
 	gap: 6px;
 	margin-bottom: 6px;
-	flex-shrink: 0;
-	min-height: 0;
 }
 
 .wf-node-header > .wf-node-title,
@@ -1182,19 +1169,17 @@ defineExpose({
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	min-width: 0;
-	min-height: 0;
+	flex-shrink: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	flex-shrink: 1;
+	flex-shrink: 0;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);
 	background: var(--wf-surface-base);
 	position: relative;
-	min-height: 0;
 }
 
 .wf-media-preview img,
@@ -1344,40 +1329,6 @@ defineExpose({
 
 .wf-node.is-auto-height .wf-node-footer {
 	overflow: visible;
-}
-
-.wf-node.is-auto-height.wf-node-image .wf-node-body,
-.wf-node.is-auto-height.wf-node-rotate-image .wf-node-body {
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	justify-content: flex-start;
-	flex: 0 0 auto;
-	min-height: auto;
-}
-
-.wf-node.is-auto-height.wf-node-image .wf-node-footer,
-.wf-node.is-auto-height.wf-node-rotate-image .wf-node-footer {
-	overflow: hidden;
-	flex-shrink: 0;
-}
-
-.wf-node.is-size-customized.wf-node-image .wf-node-body,
-.wf-node.is-size-customized.wf-node-rotate-image .wf-node-body {
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	justify-content: flex-start;
-	flex: 1;
-	min-height: 0;
-}
-
-.wf-node.is-size-customized.wf-node-image .wf-node-footer,
-.wf-node.is-size-customized.wf-node-rotate-image .wf-node-footer {
-	overflow: hidden;
-	flex-shrink: 0;
 }
 
 .wf-node.is-auto-height.wf-node-text .wf-node-body {
@@ -1570,7 +1521,7 @@ defineExpose({
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.78)) 90%, transparent);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent),
-		0 2px 8px rgba(0, 0, 0, 0.18);
+		var(--wf-anchor-shadow);
 	opacity: 0.92;
 	transform: translate(-50%, -50%) scale(1) rotate(0deg);
 	transform-origin: 50% 50%;
@@ -1620,7 +1571,7 @@ defineExpose({
 .wf-anchor-hit[data-magnet-phase='dragging']::before {
 	transform: translate(-50%, -50%) scale(1.14) rotate(45deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.6),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 	animation: wf-anchor-drag-pulse 0.9s cubic-bezier(0.22, 0.8, 0.25, 1.05) infinite;
 }
@@ -1642,7 +1593,7 @@ defineExpose({
 .wf-anchor-hit.hovered::before {
 	transform: translate(-50%, -50%) scale(1.08) rotate(3deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.66),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 

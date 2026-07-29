@@ -65,6 +65,9 @@ const emit = defineEmits<{
 	'node-media-ready': [nodeId: string]
 	'node-invalidate-screenshot': [nodeId: string]
 	'node-preview-contextmenu': [payload: { nodeId: string; clientX: number; clientY: number }]
+	'node-screenshot': [
+		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
+	]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -100,8 +103,14 @@ defineExpose({
 	getNodeScreenRect(nodeId: string) {
 		return blueprintEditorRef.value?.getNodeScreenRect?.(nodeId) ?? null
 	},
-	addNode(type: string, x: number, y: number, data?: Record<string, any>): string | null {
-		return blueprintEditorRef.value?.addNode?.(type, x, y, data) ?? null
+	addNode(
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	): string | null {
+		return blueprintEditorRef.value?.addNode?.(type, x, y, data, opts) ?? null
 	},
 	deleteSelection() {
 		blueprintEditorRef.value?.deleteSelection?.()
@@ -155,19 +164,37 @@ defineExpose({
 			}
 		)
 	},
-	updateNodeData(nodeId: string, patch: Record<string, any>): boolean {
-		return blueprintEditorRef.value?.updateNodeData?.(nodeId, patch) ?? false
+	updateNodeData(nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }): boolean {
+		return blueprintEditorRef.value?.updateNodeData?.(nodeId, patch, opts) ?? false
+	},
+	setLegacyResource(resourceId: string, resourceData: Partial<LegacyResourceData>): void {
+		blueprintEditorRef.value?.setLegacyResource?.(resourceId, resourceData)
 	},
 	connectPorts(
 		fromNodeId: string,
 		fromAnchorId: string,
 		toNodeId: string,
-		toAnchorId: string
+		toAnchorId: string,
+		opts?: { silent?: boolean }
 	): boolean {
 		return (
-			blueprintEditorRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId) ??
-			false
+			blueprintEditorRef.value?.connectPorts?.(
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId,
+				opts
+			) ?? false
 		)
+	},
+	clearPendingChanges(): void {
+		blueprintEditorRef.value?.clearPendingChanges?.()
+	},
+	beginBulkUpdate(): void {
+		blueprintEditorRef.value?.beginBulkUpdate?.()
+	},
+	endBulkUpdate(): void {
+		blueprintEditorRef.value?.endBulkUpdate?.()
 	},
 	setSelection(nodeIds: string[]) {
 		blueprintEditorRef.value?.setSelection?.(nodeIds)
@@ -337,6 +364,7 @@ watch(
 			@node-media-ready="(id: string) => emit('node-media-ready', id)"
 			@node-invalidate-screenshot="(id: string) => emit('node-invalidate-screenshot', id)"
 			@node-preview-contextmenu="(p: any) => emit('node-preview-contextmenu', p)"
+			@node-screenshot="(p: any) => emit('node-screenshot', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

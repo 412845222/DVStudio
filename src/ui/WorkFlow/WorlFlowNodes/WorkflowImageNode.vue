@@ -40,12 +40,12 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<div ref="mediaEl" class="wf-media" :class="{ 'is-custom-sized': sizeCustomized }" :style="mediaStyle">
+			<div class="wf-media">
 				<div
 					v-if="resourceUrl"
 					ref="previewWrap"
 					class="wf-media-preview"
-					:style="previewStyle"
+					:style="previewWrapStyle"
 					@contextmenu.stop.prevent="onPreviewContextMenu"
 				>
 					<img
@@ -67,7 +67,7 @@
 					<div class="wf-media-sub">{{ t('nodes.image.emptySub') }}</div>
 				</div>
 
-				<div ref="actionsEl" class="wf-media-actions" @pointerdown.stop>
+				<div class="wf-media-actions" @pointerdown.stop>
 					<button class="wf-media-btn" type="button" @click.stop="onUploadClick">
 						{{ resourceUrl ? t('nodes.image.replaceResource') : t('nodes.image.uploadResource') }}
 					</button>
@@ -179,7 +179,6 @@ const props = defineProps<{
 		cropEnabled?: boolean
 		crop?: { x: number; y: number; width: number; height: number }
 	} | null
-	sizeCustomized?: boolean
 	width: number
 	height: number
 	zoom: number
@@ -321,28 +320,11 @@ const onPreviewClick = () => {
 
 const previewWrap = ref<HTMLElement | null>(null)
 const previewImg = ref<HTMLImageElement | null>(null)
-const mediaEl = ref<HTMLElement | null>(null)
-const actionsEl = ref<HTMLElement | null>(null)
+let ro: ResizeObserver | null = null
 const lastResourceUrl = ref('')
 const pendingResourceReset = ref(false)
 const failedPreviewUrl = ref('')
 const resourceFallbackUrl = ref('')
-
-/** DOM模式下固定的水平padding开销（来自CSS：wf-node左右padding 20px + body border 2px + body左右padding 16px = 38px） */
-const HORIZONTAL_PADDING = 38
-/** sizeCustomized模式下一次性测量的垂直固定开销（header + footer + wf-node padding + body border/padding + gap） */
-const measuredVerticalOverhead = ref(130)
-/** 按钮区域高度（一次性测量后缓存） */
-const measuredActionsHeight = ref(32)
-
-/**
- * 计算媒体容器可用宽度（扣除左右padding/border）
- * sizeCustomized和autoHeight模式均使用：直接基于props.width做减法
- */
-const availableWidth = computed(() => {
-	const w = Number(props.width) || 0
-	return Math.max(60, Math.floor(w - HORIZONTAL_PADDING))
-})
 
 const normalizedResourceUrl = computed(() => String(props.resourceUrl ?? '').trim())
 const normalizedResourceSourcePath = computed(() => String(props.resourceSourcePath ?? '').trim())
@@ -384,25 +366,7 @@ const usingPreviewResource = computed(() => {
 	return displayResourceUrl.value === activePreviewUrl.value && displayResourceUrl.value !== source
 })
 
-/** 计算预览区像素高度（供wrapSize/displayRect使用） */
-const previewHeight = computed(() => {
-	const w = availableWidth.value
-	const nw = naturalWidth.value
-	const nh = naturalHeight.value
-	const gapPx = 8
-	if (props.sizeCustomized) {
-		const nodeH = Number(props.height) || 0
-		// 总开销 = 节点级固定开销 + 按钮高度 + gap（按钮始终显示）
-		const totalOverhead = measuredVerticalOverhead.value + measuredActionsHeight.value + gapPx
-		return Math.max(60, Math.floor(nodeH - totalOverhead))
-	}
-	if (nw && nh && nw > 0 && nh > 0 && w > 10) {
-		return Math.max(60, Math.floor(w / (nw / nh)))
-	}
-	return Math.max(60, w > 10 ? w : 200)
-})
-
-const wrapSize = computed(() => ({ w: availableWidth.value, h: previewHeight.value }))
+const wrapSize = ref({ w: 1, h: 1 })
 
 const outputWidth = computed(() => {
 	const v = props.imageSettings?.outputWidth
@@ -436,70 +400,19 @@ const outputHeightDisplay = computed(() =>
 	outputHeight.value != null ? String(outputHeight.value) : ''
 )
 
-/**
- * .wf-media 容器内联样式
- * - sizeCustomized模式：直接基于props.height减去固定开销设置显式高度，不使用flex:1
- * - autoHeight模式：不设固定高度，由内容撑开
- */
-const mediaStyle = computed<Record<string, string>>(() => {
-	if (props.sizeCustomized) {
-		const nodeH = Number(props.height) || 0
-		// media高度 = 节点总高度 - 节点级固定开销（header+footer+wf-node padding+body border/padding）
-		const mediaH = Math.max(60, Math.floor(nodeH - measuredVerticalOverhead.value))
+const previewWrapStyle = computed(() => {
+	const imgW = naturalWidth.value ?? outputWidth.value
+	const imgH = naturalHeight.value ?? outputHeight.value
+	if (imgW && imgH && imgW > 0 && imgH > 0) {
+		const ratio = imgW / imgH
 		return {
-			width: '100%',
-			height: `${mediaH}px`,
-			flex: '0 0 auto',
-			minHeight: `${mediaH}px`,
-			maxHeight: `${mediaH}px`,
-			overflow: 'hidden'
+			aspectRatio: `${ratio}`,
+			width: '100%'
 		} as Record<string, string>
 	}
-	return {} as Record<string, string>
-})
-
-/**
- * 预览区样式 - 直接基于props做减法计算，不使用ResizeObserver，不触发autoResize
- *
- * 两种模式：
- * 1. sizeCustomized=true（手动调整尺寸/锁定比例）：
- *    预览高度 = 节点总高度 - 固定垂直开销 - 按钮高度 - gap
- *    宽度 = 节点宽度 - 水平padding
- *    完全基于props计算，不依赖DOM测量，不会产生反馈循环
- * 2. sizeCustomized=false（自动高度模式）：
- *    预览高度 = 可用宽度 / 图片宽高比（按比例计算）
- */
-const previewStyle = computed<Record<string, string>>(() => {
-	const w = availableWidth.value
-	const nw = naturalWidth.value
-	const nh = naturalHeight.value
-	const gapPx = 8
-
-	let h: number
-
-	if (props.sizeCustomized) {
-		// 手动调整尺寸模式：直接基于props.height做减法
-		const nodeH = Number(props.height) || 0
-		const totalOverhead = measuredVerticalOverhead.value + measuredActionsHeight.value + gapPx
-		h = Math.max(60, Math.floor(nodeH - totalOverhead))
-	} else {
-		// 自动高度模式：按图片比例计算高度
-		if (nw && nh && nw > 0 && nh > 0 && w > 10) {
-			const ratio = nw / nh
-			h = Math.max(60, Math.floor(w / ratio))
-		} else if (w > 10) {
-			h = w
-		} else {
-			h = 200
-		}
-	}
-
 	return {
-		width: '100%',
-		height: `${h}px`,
-		flex: '0 0 auto',
-		minHeight: `${h}px`,
-		maxHeight: `${h}px`
+		aspectRatio: '1',
+		width: '100%'
 	} as Record<string, string>
 })
 
@@ -517,14 +430,7 @@ const displayRect = computed<DisplayRect>(() => {
 })
 
 const previewImageStyle = computed(() => {
-	return {
-		left: '0px',
-		top: '0px',
-		width: '100%',
-		height: '100%',
-		objectFit: 'contain',
-		objectPosition: 'center'
-	} as Record<string, string>
+	return {} as Record<string, string>
 })
 
 const { getCachedResource, loadResource, getResourceSize } = useAIWorkflowResourceCache()
@@ -643,56 +549,21 @@ const onFileChange = (e: Event) => {
 	input.value = ''
 }
 
-/**
- * autoHeight模式下多次触发autoResize确保节点高度正确
- * sizeCustomized模式下直接return（节点尺寸由蓝图props锁定，绝不能自动调整，否则无限增长）
- */
-const triggerAutoResizeMultiple = () => {
-	if (props.sizeCustomized) return
-	nextTick(() => {
-		baseRef.value?.requestAutoResize()
-		requestAnimationFrame(() => {
-			baseRef.value?.requestAutoResize()
-		})
-		setTimeout(() => {
-			baseRef.value?.requestAutoResize()
-		}, 30)
-		setTimeout(() => {
-			baseRef.value?.requestAutoResize()
-		}, 100)
-		setTimeout(() => {
-			baseRef.value?.requestAutoResize()
-		}, 300)
+const initPreviewLayoutObserver = () => {
+	if (!previewWrap.value) return
+	if (ro) return
+	ro = new ResizeObserver((entries) => {
+		const r = entries[0]?.contentRect
+		if (!r) return
+		const w = Math.max(1, Math.floor(r.width))
+		const h = Math.max(1, Math.floor(r.height))
+		wrapSize.value = { w, h }
 	})
-}
+	ro.observe(previewWrap.value)
 
-/**
- * 一次性测量DOM实际开销（header/footer/wf-node padding/body border+padding/按钮高度）
- * 只在mounted/resource变化后测量若干次，不使用ResizeObserver，不会产生反馈循环
- */
-const measureDomOverhead = () => {
-	if (!mediaEl.value) return
-	const node = mediaEl.value.closest('.wf-node') as HTMLElement | null
-	if (!node) return
-	const header = node.querySelector('.wf-node-header') as HTMLElement | null
-	const footer = node.querySelector('.wf-node-footer') as HTMLElement | null
-	const actions = actionsEl.value
-
-	const headerH = header?.offsetHeight || 0
-	const footerH = footer?.offsetHeight || 0
-	// wf-node padding: 8px top + 10px bottom = 18px
-	const nodeVerticalPadding = 18
-	// body border(1px*2) + padding(8px*2) = 18px
-	const bodyChrome = 18
-	// 按钮高度
-	const actionsH = actions?.offsetHeight || 32
-
-	// measuredVerticalOverhead = 节点级开销（不含.wf-media内部的按钮和gap）
-	// 用于 mediaStyle: media高度 = props.height - measuredVerticalOverhead
-	const overhead = headerH + footerH + nodeVerticalPadding + bodyChrome
-	if (overhead > 40 && overhead < 800) {
-		measuredVerticalOverhead.value = Math.ceil(overhead)
-		measuredActionsHeight.value = Math.max(20, Math.ceil(actionsH))
+	wrapSize.value = {
+		w: Math.max(1, Math.floor(previewWrap.value.clientWidth || 1)),
+		h: Math.max(1, Math.floor(previewWrap.value.clientHeight || 1))
 	}
 }
 
@@ -703,7 +574,7 @@ const onPreviewImageLoad = () => {
 			void ensureNaturalSizeFallback()
 		}
 		emit('media-ready')
-		triggerAutoResizeMultiple()
+		nextTick(() => baseRef.value?.requestAutoResize())
 		return
 	}
 
@@ -715,7 +586,7 @@ const onPreviewImageLoad = () => {
 		const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value
 		if (!needsUpdate && !pendingResourceReset.value) {
 			emit('media-ready')
-			triggerAutoResizeMultiple()
+			nextTick(() => baseRef.value?.requestAutoResize())
 			return
 		}
 
@@ -730,7 +601,7 @@ const onPreviewImageLoad = () => {
 		void ensureNaturalSizeFallback()
 	}
 	emit('media-ready')
-	triggerAutoResizeMultiple()
+	nextTick(() => baseRef.value?.requestAutoResize())
 }
 
 const onPreviewImageError = () => {
@@ -761,21 +632,6 @@ watch(
 )
 
 watch(
-	() => [naturalWidth.value, naturalHeight.value, props.sizeCustomized, props.width, props.height],
-	() => {
-		// sizeCustomized模式：高度由props.height减法得出，不需要autoResize
-		if (props.sizeCustomized) return
-		// autoHeight模式：图片尺寸/节点尺寸变化时触发autoResize
-		nextTick(() => {
-			baseRef.value?.requestAutoResize()
-			setTimeout(() => {
-				baseRef.value?.requestAutoResize()
-			}, 50)
-		})
-	}
-)
-
-watch(
 	() => props.resourceUrl,
 	async (nextUrl, prevUrl) => {
 		await nextTick()
@@ -787,9 +643,6 @@ watch(
 			failedPreviewUrl.value = ''
 			resourceFallbackUrl.value = ''
 			scheduleInvalidateScreenshot(50)
-			if (!props.sizeCustomized) {
-				nextTick(() => baseRef.value?.requestAutoResize())
-			}
 			return
 		}
 		if (next !== prev || next !== lastResourceUrl.value) {
@@ -799,15 +652,8 @@ watch(
 			resourceFallbackUrl.value = ''
 		}
 		scheduleInvalidateScreenshot(50)
-		nextTick(() => { measureDomOverhead() })
+		initPreviewLayoutObserver()
 		await ensureNaturalSizeFallback()
-		if (!props.sizeCustomized) {
-			nextTick(() => {
-				baseRef.value?.requestAutoResize()
-				setTimeout(() => baseRef.value?.requestAutoResize(), 100)
-				setTimeout(() => baseRef.value?.requestAutoResize(), 300)
-			})
-		}
 	},
 	{ immediate: true }
 )
@@ -858,25 +704,18 @@ defineExpose({
 })
 
 onMounted(() => {
-	// 挂载后多次延迟测量DOM开销（确保DOM完全渲染后header/footer高度准确）
-	// sizeCustomized模式不触发任何autoResize
-	nextTick(() => { measureDomOverhead() })
-	requestAnimationFrame(() => { measureDomOverhead() })
-	setTimeout(() => { measureDomOverhead() }, 100)
-	setTimeout(() => { measureDomOverhead() }, 300)
-	setTimeout(() => {
-		measureDomOverhead()
-		if (!props.sizeCustomized) {
-			baseRef.value?.requestAutoResize()
-		}
-	}, 500)
+	initPreviewLayoutObserver()
 })
 
 onBeforeUnmount(() => {
+	try {
+		ro?.disconnect()
+	} catch {}
 	if (invalidateScreenshotTimer != null) {
 		clearTimeout(invalidateScreenshotTimer)
 		invalidateScreenshotTimer = null
 	}
+	ro = null
 	previewImg.value = null
 })
 </script>
@@ -887,14 +726,8 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	min-width: 0;
-	min-height: 0;
-}
-
-.wf-media.is-custom-sized {
-	/* 高度由内联style mediaStyle显式控制（基于props.height减法计算） */
-	min-height: 0;
-	overflow: hidden;
+	flex-shrink: 0;
+	align-self: stretch;
 }
 
 .wf-media-preview {
@@ -906,12 +739,6 @@ onBeforeUnmount(() => {
 	background: var(--dweb-defualt);
 	position: relative;
 	display: block;
-	min-height: 80px;
-}
-
-.wf-media.is-custom-sized .wf-media-preview {
-	/* 高度由内联style previewStyle动态控制（基于.wf-media实际高度计算） */
-	min-height: 0;
 }
 
 .wf-media-img {
@@ -954,7 +781,6 @@ onBeforeUnmount(() => {
 	display: flex;
 	gap: 8px;
 	flex: 0 0 auto;
-	flex-shrink: 0;
 }
 
 .wf-media-footer {
