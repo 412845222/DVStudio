@@ -209,7 +209,12 @@ const onPreviewContextMenu = (payload: { clientX: number; clientY: number }) => 
 	})
 }
 
-const onScreenshot = (payload: { dataUrl: string; width: number; height: number; time: number }) => {
+const onScreenshot = (payload: {
+	dataUrl: string
+	width: number
+	height: number
+	time: number
+}) => {
 	emit('screenshot', {
 		nodeId: props.node.id,
 		dataUrl: payload.dataUrl,

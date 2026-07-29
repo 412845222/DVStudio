@@ -111,7 +111,9 @@
 							type="button"
 							:disabled="!resourceUrl"
 							@click.stop="onScreenshot"
-							:title="resourceUrl ? t('nodes.video.screenshot') : t('nodes.video.screenshotDisabled')"
+							:title="
+								resourceUrl ? t('nodes.video.screenshot') : t('nodes.video.screenshotDisabled')
+							"
 						>
 							{{ t('nodes.video.screenshot') }}
 						</button>

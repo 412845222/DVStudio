@@ -1,13 +1,13 @@
 {
-  "nodes.video.emptyHint": "No video uploaded",
-  "nodes.video.emptySub": "Click button to select file",
-  "nodes.video.uploadResource": "Upload Resource",
-  "nodes.video.replaceResource": "Replace Resource",
-  "nodes.video.clear": "Clear",
-  "nodes.video.screenshot": "Screenshot",
-  "nodes.video.screenshotDisabled": "Please load a video first",
-  "nodes.video.timeline": "Timeline",
-  "nodes.video.rangeInfo": "Range {duration}s  Zoom ×{zoom}  Precision {precision}",
-  "nodes.video.openVideoEditor": "Open Video Editor",
-  "nodes.video.editorTitle": "Video Editor"
+	"nodes.video.emptyHint": "No video uploaded",
+	"nodes.video.emptySub": "Click button to select file",
+	"nodes.video.uploadResource": "Upload Resource",
+	"nodes.video.replaceResource": "Replace Resource",
+	"nodes.video.clear": "Clear",
+	"nodes.video.screenshot": "Screenshot",
+	"nodes.video.screenshotDisabled": "Please load a video first",
+	"nodes.video.timeline": "Timeline",
+	"nodes.video.rangeInfo": "Range {duration}s  Zoom ×{zoom}  Precision {precision}",
+	"nodes.video.openVideoEditor": "Open Video Editor",
+	"nodes.video.editorTitle": "Video Editor"
 }

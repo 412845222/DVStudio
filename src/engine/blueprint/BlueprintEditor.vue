@@ -223,7 +223,10 @@ function applyInitialData(newData: LegacyBlueprintData) {
 function enterEditMode(nodeId: string) {
 	if (!scene.value) return
 	if (isBulkUpdating()) {
-		console.log('[BlueprintEditor] enterEditMode: bulk update active, skipping enterEditMode for', nodeId)
+		console.log(
+			'[BlueprintEditor] enterEditMode: bulk update active, skipping enterEditMode for',
+			nodeId
+		)
 		return
 	}
 	const node = scene.value.getBlueprintNode(nodeId)
@@ -300,7 +303,9 @@ function exitEditMode() {
 				if (!isUpdatingFromProps && scene.value) {
 					// 检查是否在bulk update模式下，如果是则跳过emitChange
 					if (isBulkUpdating()) {
-						console.log('[BlueprintEditor] exitEditMode nextTick: bulk update active, skipping emitChange')
+						console.log(
+							'[BlueprintEditor] exitEditMode nextTick: bulk update active, skipping emitChange'
+						)
 						return
 					}
 					const node2 = scene.value.getBlueprintNode(exitingId)
@@ -842,7 +847,13 @@ defineExpose({
 		return scene.value?.hasClipboardData() ?? false
 	},
 
-	addNode(type: string, x: number, y: number, data?: Record<string, any>, opts?: { silent?: boolean; skipEditMode?: boolean }): string | null {
+	addNode(
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	): string | null {
 		if (!scene.value || props.readonly) return null
 		const s = scene.value
 		const nodeId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`

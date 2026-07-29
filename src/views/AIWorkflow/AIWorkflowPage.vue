@@ -1128,7 +1128,13 @@ function syncEngineProjectionToStore() {
 }
 
 const engineApi = {
-	addNode: (type: string, x: number, y: number, data?: Record<string, any>, opts?: { silent?: boolean; skipEditMode?: boolean }) => {
+	addNode: (
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	) => {
 		return blueprintHostRef.value?.addNode?.(type, x, y, data, opts) ?? null
 	},
 	createNodeWithConnection: (params: any) => {
@@ -1153,8 +1159,13 @@ const engineApi = {
 		opts?: { silent?: boolean }
 	) => {
 		const ok =
-			blueprintHostRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId, opts) ??
-			false
+			blueprintHostRef.value?.connectPorts?.(
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId,
+				opts
+			) ?? false
 		return ok
 	},
 	copySelection: () => {
@@ -1341,7 +1352,10 @@ const engineApi = {
 
 		// 验证快照中确实包含edges
 		const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
-		console.log('[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:', snapshotEdgeCount)
+		console.log(
+			'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
+			snapshotEdgeCount
+		)
 
 		isUpdatingFromStore = true
 		store.commit('hydrateDraft', { snapshot })
@@ -1355,11 +1369,16 @@ const engineApi = {
 						// 再一次确认store中的edges存在
 						const storeEdges = store.state.edgesById || {}
 						const storeEdgeCount = Object.keys(storeEdges).length
-						console.log('[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:', storeEdgeCount)
+						console.log(
+							'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
+							storeEdgeCount
+						)
 
 						// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
 						if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
-							console.warn('[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...')
+							console.warn(
+								'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
+							)
 							store.commit('hydrateDraft', { snapshot })
 						}
 
@@ -1390,7 +1409,9 @@ const engineApi = {
 			console.log('[AIWorkflowPage] engineApi.beginBulkUpdate: calling host.beginBulkUpdate()')
 			;(host as any).beginBulkUpdate()
 		} else {
-			console.warn('[AIWorkflowPage] engineApi.beginBulkUpdate: host.beginBulkUpdate not available!')
+			console.warn(
+				'[AIWorkflowPage] engineApi.beginBulkUpdate: host.beginBulkUpdate not available!'
+			)
 		}
 	},
 	// 结束批量更新模式（恢复引擎emitChange事件）
@@ -10192,18 +10213,40 @@ const { onVideoScreenshot } = useAIWorkflowVideoScreenshot({
 		title?: string
 		type?: string
 	}) => {
-		return engineApi.addNode((type || 'base') as any, worldX, worldY, { title }, { silent: true, skipEditMode: true })
+		return engineApi.addNode(
+			(type || 'base') as any,
+			worldX,
+			worldY,
+			{ title },
+			{ silent: true, skipEditMode: true }
+		)
 	},
 	commitSetNodeType: ({ nodeId, type }: { nodeId: string; type: string }) => {
 		engineApi.updateNodeData(nodeId, { type })
 	},
-	connectPorts: (fromNodeId: string, fromAnchorId: string, toNodeId: string, toAnchorId: string, opts?: { silent?: boolean }) => {
+	connectPorts: (
+		fromNodeId: string,
+		fromAnchorId: string,
+		toNodeId: string,
+		toAnchorId: string,
+		opts?: { silent?: boolean }
+	) => {
 		return engineApi.connectPorts(fromNodeId, fromAnchorId, toNodeId, toAnchorId, opts)
 	},
-	engineApiAddNode: (type: string, x: number, y: number, data?: Record<string, any>, opts?: { silent?: boolean; skipEditMode?: boolean }) => {
+	engineApiAddNode: (
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	) => {
 		return engineApi.addNode(type, x, y, data, opts)
 	},
-	engineApiUpdateNodeData: (nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }) => {
+	engineApiUpdateNodeData: (
+		nodeId: string,
+		patch: Record<string, any>,
+		opts?: { silent?: boolean }
+	) => {
 		return engineApi.updateNodeData(nodeId, patch, opts)
 	},
 	engineApiSetLegacyResource: (resourceId: string, resourceData: any) => {

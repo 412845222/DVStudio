@@ -1015,9 +1015,7 @@ function syncDomNodes() {
 		})
 	}
 
-	const selectedNodeIds = new Set(
-		(s.selection?.getSelection?.() || []).map((n: any) => n.id)
-	)
+	const selectedNodeIds = new Set((s.selection?.getSelection?.() || []).map((n: any) => n.id))
 
 	for (const node of nodesToRender) {
 		currentMap.set(node.id, node)

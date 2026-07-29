@@ -12,7 +12,10 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 		nodeId: string,
 		file: File,
 		kind: 'image' | 'video',
-		opts?: { autoDistribute?: boolean; onAfterBind?: (bindPayload: { resourceId: string; url: string }) => void }
+		opts?: {
+			autoDistribute?: boolean
+			onAfterBind?: (bindPayload: { resourceId: string; url: string }) => void
+		}
 	) => Promise<void> | void
 	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
 	commitSetNodeImageSettings: (input: {
@@ -33,9 +36,25 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 		type?: string
 	}) => string | null
 	commitSetNodeType?: (payload: { nodeId: string; type: string }) => void
-	connectPorts: (fId: string, fA: string, tId: string, tA: string, opts?: { silent?: boolean }) => boolean
-	engineApiAddNode: (type: string, x: number, y: number, data?: Record<string, any>, opts?: { silent?: boolean; skipEditMode?: boolean }) => string | null
-	engineApiUpdateNodeData?: (nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }) => boolean
+	connectPorts: (
+		fId: string,
+		fA: string,
+		tId: string,
+		tA: string,
+		opts?: { silent?: boolean }
+	) => boolean
+	engineApiAddNode: (
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	) => string | null
+	engineApiUpdateNodeData?: (
+		nodeId: string,
+		patch: Record<string, any>,
+		opts?: { silent?: boolean }
+	) => boolean
 	engineApiSetLegacyResource?: (resourceId: string, resourceData: Record<string, any>) => void
 	forceSyncToStore: () => Promise<boolean>
 	beginBulkUpdate?: () => void
@@ -75,11 +94,15 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 			return toNode && toNode.type === 'image'
 		}).length
 
-		log('findNonOverlappingPosition: existing screenshot nodes from this video:', existingScreenshotCount)
+		log(
+			'findNonOverlappingPosition: existing screenshot nodes from this video:',
+			existingScreenshotCount
+		)
 
 		const baseWorldX = (videoNode.worldX || 0) + videoWidth + spacing
 		// 根据已有截图数量计算垂直偏移，每个截图节点垂直排列
-		const baseWorldY = (videoNode.worldY || 0) + existingScreenshotCount * (imageNodeHeight + spacing)
+		const baseWorldY =
+			(videoNode.worldY || 0) + existingScreenshotCount * (imageNodeHeight + spacing)
 		const allNodes = payload.getAllNodes()
 
 		const checkOverlap = (x: number, y: number): boolean => {
@@ -130,7 +153,12 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 
 	const findConnectedImageNode = (videoNodeId: string): WorkflowNode | null => {
 		const edges = payload.getOutgoingEdges(videoNodeId, VIDEO_OUTPUT_ANCHOR_ID)
-		log('findConnectedImageNode: checking outgoing edges for anchor', VIDEO_OUTPUT_ANCHOR_ID, 'edges:', edges.length)
+		log(
+			'findConnectedImageNode: checking outgoing edges for anchor',
+			VIDEO_OUTPUT_ANCHOR_ID,
+			'edges:',
+			edges.length
+		)
 		for (const edge of edges) {
 			const toNodeId = String(edge?.toNodeId ?? '').trim()
 			if (!toNodeId) continue
@@ -182,10 +210,16 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 				// 优先使用engineApi添加节点（在图形引擎层创建），使用silent模式避免触发enterEditMode和selection事件
 				let newNodeId: string | null = null
 				if (payload.engineApiAddNode) {
-					newNodeId = payload.engineApiAddNode('image', worldX, worldY, {
-						title,
-						alias: title
-					}, { silent: true, skipEditMode: true })
+					newNodeId = payload.engineApiAddNode(
+						'image',
+						worldX,
+						worldY,
+						{
+							title,
+							alias: title
+						},
+						{ silent: true, skipEditMode: true }
+					)
 					log('createTargetNode: engineApiAddNode (silent) returned', newNodeId)
 				}
 				// Fallback到store commit
@@ -200,8 +234,21 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 				return newNodeId
 			},
 			connectNodes: (targetNodeId) => {
-				log('connectNodes: connecting', videoNodeId, VIDEO_OUTPUT_ANCHOR_ID, '->', targetNodeId, IMAGE_INPUT_ANCHOR_ID)
-				const connected = payload.connectPorts(videoNodeId, VIDEO_OUTPUT_ANCHOR_ID, targetNodeId, IMAGE_INPUT_ANCHOR_ID, { silent: true })
+				log(
+					'connectNodes: connecting',
+					videoNodeId,
+					VIDEO_OUTPUT_ANCHOR_ID,
+					'->',
+					targetNodeId,
+					IMAGE_INPUT_ANCHOR_ID
+				)
+				const connected = payload.connectPorts(
+					videoNodeId,
+					VIDEO_OUTPUT_ANCHOR_ID,
+					targetNodeId,
+					IMAGE_INPUT_ANCHOR_ID,
+					{ silent: true }
+				)
 				log('connectNodes: result', connected)
 				return connected
 			},
@@ -240,7 +287,10 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 		})
 
 		if (!result.targetNodeId) {
-			error('createImageNodeWithTransaction: transaction failed, no target node created', result.error)
+			error(
+				'createImageNodeWithTransaction: transaction failed, no target node created',
+				result.error
+			)
 			return null
 		}
 
@@ -270,7 +320,11 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 
 			// Step 1: 每次截图都创建新的图片节点（支持多截图，不覆盖已有节点）
 			const existingCount = countExistingScreenshotNodes(videoNodeId)
-			log('Step 1: Creating new screenshot image node (existing screenshots from this video:', existingCount, ')')
+			log(
+				'Step 1: Creating new screenshot image node (existing screenshots from this video:',
+				existingCount,
+				')'
+			)
 			targetNodeId = await createImageNodeWithTransaction(videoNodeId, input.time)
 
 			if (!targetNodeId) {
@@ -314,7 +368,7 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 			await new Promise<void>((resolve) => {
 				const onAfterBind = (bindPayload: { resourceId: string; url: string }) => {
 					log('Step 4: Resource bound to node, resourceId:', bindPayload.resourceId)
-					
+
 					// 关键修复1：直接同步资源数据到scene._legacyResources（不依赖Vue异步props更新）
 					if (payload.engineApiSetLegacyResource) {
 						log('Step 4: Syncing resource data directly to scene legacyResources...')
@@ -327,20 +381,26 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 						})
 						log('Step 4: engineApiSetLegacyResource completed')
 					} else {
-						warn('Step 4: engineApiSetLegacyResource not provided, Canvas may not find resource immediately!')
+						warn(
+							'Step 4: engineApiSetLegacyResource not provided, Canvas may not find resource immediately!'
+						)
 					}
-					
+
 					// 关键修复2：同步resourceId到引擎节点（使用silent:true避免触发emitChange导致状态覆盖）
 					if (payload.engineApiUpdateNodeData) {
 						log('Step 4: Syncing resourceId to engine node data (silent:true)...')
-						const syncOk = payload.engineApiUpdateNodeData(finalTargetNodeId, {
-							resourceId: bindPayload.resourceId
-						}, { silent: true })
+						const syncOk = payload.engineApiUpdateNodeData(
+							finalTargetNodeId,
+							{
+								resourceId: bindPayload.resourceId
+							},
+							{ silent: true }
+						)
 						log('Step 4: engineApiUpdateNodeData result:', syncOk)
 					} else {
 						warn('Step 4: engineApiUpdateNodeData not provided, resource may not render in Canvas!')
 					}
-					
+
 					log('Step 4: Now auto-sizing media node...')
 					// 尝试从节点获取资源URL，如果失败则用绑定返回的URL或dataUrl作为fallback
 					let resourceUrl: string | null = bindPayload.url
@@ -349,11 +409,17 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 						if (nodeUrl) {
 							resourceUrl = nodeUrl
 						}
-						log('Step 4: Resource URL to use:', resourceUrl ? resourceUrl.substring(0, 60) + '...' : 'null')
+						log(
+							'Step 4: Resource URL to use:',
+							resourceUrl ? resourceUrl.substring(0, 60) + '...' : 'null'
+						)
 					}
 					// Fallback到dataUrl（虽然不理想，但至少能显示）
 					const urlToUse = resourceUrl || input.dataUrl
-					log('Step 4: Auto-sizing media node with URL type:', resourceUrl ? 'resource (dweb)' : 'dataUrl (fallback)')
+					log(
+						'Step 4: Auto-sizing media node with URL type:',
+						resourceUrl ? 'resource (dweb)' : 'dataUrl (fallback)'
+					)
 					try {
 						payload.autoSizeMediaNode(finalTargetNodeId, urlToUse, 'image')
 						log('Step 4: autoSizeMediaNode completed')

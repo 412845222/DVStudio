@@ -306,11 +306,7 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 	if (!nextAnchorId) return nextAnchorId
 	if (nextType === 'image') {
 		// 旧ID映射: in-text/in-image/in-0 -> in-0 (多模态输入), in-resource保留为资源输入
-		if (
-			nextAnchorId === 'in-text' ||
-			nextAnchorId === 'in-image' ||
-			nextAnchorId === 'in-0'
-		)
+		if (nextAnchorId === 'in-text' || nextAnchorId === 'in-image' || nextAnchorId === 'in-0')
 			return 'in-0'
 		return nextAnchorId
 	}

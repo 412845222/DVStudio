@@ -12,7 +12,16 @@ export type WorkflowAnchorSpec = {
 	id: string
 	label?: string
 	offsetY?: number
-	mediaType?: 'generic' | 'image' | 'video' | 'text' | 'flow' | 'model3d' | 'audio' | 'meta' | 'resource'
+	mediaType?:
+		| 'generic'
+		| 'image'
+		| 'video'
+		| 'text'
+		| 'flow'
+		| 'model3d'
+		| 'audio'
+		| 'meta'
+		| 'resource'
 	legacyKind?: 'generic' | 'resource' | 'flow'
 	acceptedMediaTypes?: Array<'image' | 'video' | 'text' | 'model3d' | 'audio' | 'resource'>
 	multiInput?: boolean

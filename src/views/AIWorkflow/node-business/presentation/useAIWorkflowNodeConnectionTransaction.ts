@@ -1,13 +1,13 @@
 /**
  * 通用节点连线事务工具
- * 
+ *
  * 用途：封装"创建节点→连线→强制同步到store→验证"的完整事务流程，
  *       解决图形引擎层与Vuex store层状态不一致导致的连线消失、节点数据丢失问题。
- * 
+ *
  * 使用场景：
  * - 视频截图自动创建图片节点并连线
  * - 未来可复用：音频提取自动连线、文本生成图片自动连线等类似场景
- * 
+ *
  * 设计原则：
  * - 严格遵循"开启bulk update→引擎操作→forceSyncToStore→验证→关闭bulk update"的时序
  * - 内置详细日志便于调试
@@ -46,7 +46,7 @@ export interface NodeConnectionTransactionResult {
 
 /**
  * 执行节点连线事务
- * 
+ *
  * 时序保证：
  * 1. 调用beginBulkUpdate()阻止引擎emitChange
  * 2. 调用createTargetNode()在引擎层创建节点
@@ -54,7 +54,7 @@ export interface NodeConnectionTransactionResult {
  * 4. await forceSyncToStore()将引擎状态固化到store
  * 5. 调用validate()验证状态正确性
  * 6. 调用endBulkUpdate()恢复引擎emitChange
- * 
+ *
  * @param options 事务配置
  * @returns 事务结果
  */
@@ -99,7 +99,9 @@ export async function executeNodeConnectionTransaction(
 			console.error('[NodeTransaction] Step 0: beginBulkUpdate() threw error:', err)
 		}
 	} else {
-		warn('Step 0: beginBulkUpdate callback not provided! Bulk update protection disabled - this may cause race conditions!')
+		warn(
+			'Step 0: beginBulkUpdate callback not provided! Bulk update protection disabled - this may cause race conditions!'
+		)
 	}
 	if (options.clearPendingChanges) {
 		log('Step 0: Clearing pending changes')

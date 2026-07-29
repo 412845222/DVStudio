@@ -103,7 +103,13 @@ defineExpose({
 	getNodeScreenRect(nodeId: string) {
 		return blueprintEditorRef.value?.getNodeScreenRect?.(nodeId) ?? null
 	},
-	addNode(type: string, x: number, y: number, data?: Record<string, any>, opts?: { silent?: boolean; skipEditMode?: boolean }): string | null {
+	addNode(
+		type: string,
+		x: number,
+		y: number,
+		data?: Record<string, any>,
+		opts?: { silent?: boolean; skipEditMode?: boolean }
+	): string | null {
 		return blueprintEditorRef.value?.addNode?.(type, x, y, data, opts) ?? null
 	},
 	deleteSelection() {
@@ -172,8 +178,13 @@ defineExpose({
 		opts?: { silent?: boolean }
 	): boolean {
 		return (
-			blueprintEditorRef.value?.connectPorts?.(fromNodeId, fromAnchorId, toNodeId, toAnchorId, opts) ??
-			false
+			blueprintEditorRef.value?.connectPorts?.(
+				fromNodeId,
+				fromAnchorId,
+				toNodeId,
+				toAnchorId,
+				opts
+			) ?? false
 		)
 	},
 	clearPendingChanges(): void {
