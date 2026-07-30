@@ -85,6 +85,11 @@ export class BlueprintLegacySaver {
 
 		legacyNode.x = node.worldX
 		legacyNode.y = node.worldY
+		legacyNode.worldX = node.worldX
+		legacyNode.worldY = node.worldY
+		legacyNode.width = node.width
+		legacyNode.height = node.height
+		legacyNode.sizeCustomized = node.sizeCustomized
 
 		if (node.previewContent?.kind === 'text' && node.previewContent.text) {
 			legacyNode.textValue = node.textValue ?? node.previewContent.text

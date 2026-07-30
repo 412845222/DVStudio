@@ -190,20 +190,20 @@ export const MEDIA_TYPE_COLORS: Record<MediaType, string> = {
 
 export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number }> = {
 	base: { width: 240, height: 160 },
-	text: { width: 360, height: 260 },
-	'text-merge': { width: 420, height: 320 },
-	image: { width: 450, height: 300 },
-	'rotate-image': { width: 450, height: 300 },
-	video: { width: 450, height: 300 },
-	story: { width: 450, height: 300 },
-	'scene-understanding': { width: 450, height: 360 },
-	'scene-layout': { width: 450, height: 430 },
-	'scene-decompose': { width: 450, height: 360 },
-	comfyui: { width: 450, height: 300 },
-	model3d: { width: 450, height: 420 },
-	meshy: { width: 450, height: 470 },
-	'unreal-export': { width: 450, height: 320 },
-	blender: { width: 450, height: 440 }
+	text: { width: 360, height: 320 },
+	'text-merge': { width: 420, height: 360 },
+	image: { width: 320, height: 320 },
+	'rotate-image': { width: 320, height: 320 },
+	video: { width: 480, height: 400 },
+	story: { width: 480, height: 360 },
+	'scene-understanding': { width: 480, height: 400 },
+	'scene-layout': { width: 480, height: 450 },
+	'scene-decompose': { width: 480, height: 400 },
+	comfyui: { width: 520, height: 420 },
+	model3d: { width: 480, height: 480 },
+	meshy: { width: 480, height: 500 },
+	'unreal-export': { width: 480, height: 340 },
+	blender: { width: 500, height: 520 }
 }
 
 export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: PortSpec[] }> = {
@@ -269,6 +269,84 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 		outputs: [
 			{ id: 'out-model', label: '模型输出', mediaType: 'model3d' },
 			{ id: 'out-image', label: '预览图', mediaType: 'image' }
+		]
+	},
+	'text-merge': {
+		inputs: [
+			{ id: 'in-0', label: '文本输入1', mediaType: 'text' },
+			{ id: 'in-1', label: '文本输入2', mediaType: 'text', multiInput: true }
+		],
+		outputs: [{ id: 'out-0', label: '合并文本', mediaType: 'text' }]
+	},
+	story: {
+		inputs: [
+			{ id: 'in-text', label: '剧情提示', mediaType: 'text' },
+			{ id: 'in-image', label: '参考图', mediaType: 'image', multiInput: true }
+		],
+		outputs: [{ id: 'out-text', label: '剧情输出', mediaType: 'text' }]
+	},
+	'scene-understanding': {
+		inputs: [
+			{ id: 'in-image', label: '场景图片', mediaType: 'image' },
+			{ id: 'in-text', label: '补充说明', mediaType: 'text' }
+		],
+		outputs: [{ id: 'out-text', label: '分析结果', mediaType: 'text' }]
+	},
+	'scene-layout': {
+		inputs: [
+			{ id: 'in-text', label: '布局描述', mediaType: 'text' },
+			{ id: 'in-resource', label: '资源输入', mediaType: 'resource' }
+		],
+		outputs: [
+			{ id: 'out-text', label: '布局数据', mediaType: 'text' },
+			{ id: 'out-generic', label: '通用输出', mediaType: 'generic' }
+		]
+	},
+	'scene-decompose': {
+		inputs: [
+			{ id: 'in-image', label: '场景图片', mediaType: 'image' },
+			{ id: 'in-text', label: '拆解要求', mediaType: 'text' }
+		],
+		outputs: [
+			{ id: 'out-image', label: '元素图片', mediaType: 'image', multiInput: true },
+			{ id: 'out-text', label: '拆解说明', mediaType: 'text' }
+		]
+	},
+	comfyui: {
+		inputs: [{ id: 'in-0', label: '工作流输入', mediaType: 'generic', multiInput: true }],
+		outputs: [
+			{ id: 'out-image', label: '图片输出', mediaType: 'image' },
+			{ id: 'out-video', label: '视频输出', mediaType: 'video' },
+			{ id: 'out-model3d', label: '模型输出', mediaType: 'model3d' }
+		]
+	},
+	meshy: {
+		inputs: [
+			{ id: 'in-text', label: '提示词', mediaType: 'text' },
+			{ id: 'in-image', label: '参考图', mediaType: 'image' }
+		],
+		outputs: [
+			{ id: 'out-model', label: '模型输出', mediaType: 'model3d' },
+			{ id: 'out-image', label: '预览图', mediaType: 'image' }
+		]
+	},
+	'unreal-export': {
+		inputs: [
+			{ id: 'in-scene', label: '场景数据', mediaType: 'text' },
+			{ id: 'in-settings', label: '导出设置', mediaType: 'text' }
+		],
+		outputs: []
+	},
+	blender: {
+		inputs: [
+			{ id: 'in-resource', label: '资源输入', mediaType: 'resource' },
+			{ id: 'in-image', label: '参考图', mediaType: 'image' },
+			{ id: 'in-text', label: '指令/脚本', mediaType: 'text' }
+		],
+		outputs: [
+			{ id: 'out-resource', label: '资源输出', mediaType: 'resource' },
+			{ id: 'out-image', label: '截图输出', mediaType: 'image' },
+			{ id: 'out-text', label: '结果输出', mediaType: 'text' }
 		]
 	}
 }

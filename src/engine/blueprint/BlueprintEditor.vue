@@ -337,7 +337,11 @@ function computeStructureHash(data: LegacyBlueprintData): string {
 	const nodeIds = (data.nodeOrder || Object.keys(data.nodesById || {})).slice().sort()
 	const edgeIds = (data.edgeOrder || Object.keys(data.edgesById || {})).slice().sort()
 	const resIds = (data.resourceOrder || Object.keys(data.resourcesById || {})).slice().sort()
-	return `nodes:${nodeIds.join(',')}||edges:${edgeIds.join(',')}||res:${resIds.join(',')}`
+	const nodeSignatures = nodeIds.map((id) => {
+		const node = data.nodesById[id] || ({} as any)
+		return `${id}=${node.worldX ?? node.x ?? 0},${node.worldY ?? node.y ?? 0},${node.width ?? 0},${node.height ?? 0},${node.sizeCustomized ? 1 : 0}`
+	})
+	return `nodes:${nodeSignatures.join('|')}||edges:${edgeIds.join(',')}||res:${resIds.join(',')}`
 }
 
 function viewportEquals(

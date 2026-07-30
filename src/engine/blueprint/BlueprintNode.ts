@@ -19,6 +19,7 @@ import {
 	RESIZE_HANDLE_OFFSET,
 	MIN_NODE_WIDTH,
 	MIN_NODE_HEIGHT,
+	DEFAULT_NODE_SIZES,
 	type BlueprintNodeData,
 	type LegacyResourceData,
 	type PortSpec,
@@ -206,6 +207,23 @@ export class BlueprintNode extends Node {
 	previewText?: string
 	hoveredResizeCorner: ResizeCorner | null = null
 	domMode: boolean = false
+	private _lastAutoResizeImageUrl: string | null = null
+
+	get width(): number {
+		return this.data.width
+	}
+
+	set width(value: number) {
+		this.updateSize(value, this.data.height)
+	}
+
+	get height(): number {
+		return this.data.height
+	}
+
+	set height(value: number) {
+		this.updateSize(this.data.width, value)
+	}
 
 	constructor(data: BlueprintNodeData) {
 		super('node', data.id)
@@ -271,20 +289,36 @@ export class BlueprintNode extends Node {
 		if (data.worldX !== undefined || data.worldY !== undefined) {
 			this.setPosition(newX, newY)
 		}
+		let needRebuildPorts = false
+		let needUpdatePortPositions = false
 		if (data.width !== undefined || data.height !== undefined) {
-			if (data.width !== undefined) this.data.width = data.width
-			if (data.height !== undefined) this.data.height = data.height
-			this.rebuildPorts()
+			const newWidth = data.width !== undefined ? data.width : this.data.width
+			const newHeight = data.height !== undefined ? data.height : this.data.height
+			if (newWidth !== this.data.width || newHeight !== this.data.height) {
+				this.updateSize(newWidth, newHeight)
+				needUpdatePortPositions = true
+			}
 		}
 		if (data.selected !== undefined) {
 			this.selected = data.selected
 			this.data.selected = data.selected
 		}
-		if (data.inputs !== undefined) this.data.inputs = data.inputs
-		if (data.outputs !== undefined) this.data.outputs = data.outputs
+		if (data.inputs !== undefined) {
+			this.data.inputs = data.inputs
+			needRebuildPorts = true
+		}
+		if (data.outputs !== undefined) {
+			this.data.outputs = data.outputs
+			needRebuildPorts = true
+		}
 		if (data.sizeCustomized !== undefined) this.data.sizeCustomized = data.sizeCustomized
 		if (data.resourceId !== undefined) this.data.resourceId = data.resourceId
 		if (data.resourcePath !== undefined) this.data.resourcePath = data.resourcePath
+		if (needRebuildPorts) {
+			this.rebuildPorts()
+		} else if (needUpdatePortPositions) {
+			this.updatePortPositions()
+		}
 		const knownKeys = new Set([
 			'id',
 			'type',
@@ -804,6 +838,21 @@ export class BlueprintNode extends Node {
 		}
 	}
 
+	getResizeAspectRatio(): number | null {
+		if (this.nodeType === 'image' || this.nodeType === 'rotate-image') {
+			const imgUrl = this.getResolvedImageUrl()
+			if (imgUrl) {
+				const tex = this.getCachedTexture(imgUrl)
+				if (tex && tex.naturalWidth > 0 && tex.naturalHeight > 0) {
+					const ratio = tex.naturalWidth / tex.naturalHeight
+					releaseTexture(imgUrl)
+					return ratio
+				}
+			}
+		}
+		return null
+	}
+
 	private renderPortLabels(c: CanvasRenderingContext2D, invZoom: number): void {
 		const theme = getThemeManager()
 		const tokens = theme.tokens
@@ -1157,6 +1206,70 @@ export class BlueprintNode extends Node {
 		}
 	}
 
+	private autoResizeToImage(imgUrl: string, tex: CachedBlueprintTexture): void {
+		if (this.nodeType !== 'image' && this.nodeType !== 'rotate-image') return
+		if (this.data.sizeCustomized) return
+		if (this.domMode) return
+		if (this._lastAutoResizeImageUrl === imgUrl) return
+
+		const nw = tex.naturalWidth
+		const nh = tex.naturalHeight
+		if (!nw || !nh) return
+
+		const w = this.data.width
+		const imgRatio = nw / nh
+
+		const inputDataCount = this.data.inputs.filter((p) => p.mediaType !== 'flow').length
+		const outputDataCount = this.data.outputs.filter((p) => p.mediaType !== 'flow').length
+		const maxDataCount = Math.max(inputDataCount, outputDataCount)
+
+		const dataStartY = NODE_HEADER_HEIGHT + PORT_MIN_MARGIN_TOP + PORT_SIZE / 2
+		const dataPortBottom =
+			maxDataCount > 0
+				? dataStartY + (maxDataCount - 1) * PORT_SPACING + PORT_SIZE / 2
+				: NODE_HEADER_HEIGHT
+
+		const previewAreaX = NODE_INNER_PADDING
+		const previewAreaW = w - NODE_INNER_PADDING * 2
+		const previewTop = dataPortBottom + 8
+
+		const innerMargin = 6
+		const innerW = previewAreaW - innerMargin * 2
+
+		const innerH = innerW / imgRatio
+
+		const previewAreaH = innerH + innerMargin * 2
+		const flowPortTop = previewTop + previewAreaH + 8
+		const targetHeight = flowPortTop + PORT_SIZE / 2 + PORT_MIN_MARGIN_BOTTOM
+
+		const finalHeight = Math.max(MIN_NODE_HEIGHT, Math.round(targetHeight))
+
+		if (Math.abs(finalHeight - this.data.height) > 2) {
+			this._lastAutoResizeImageUrl = imgUrl
+			this.updateSize(w, finalHeight)
+			this.on.emit('nodeautoresize', { id: this.id, width: w, height: finalHeight })
+		}
+	}
+
+	private resetToDefaultSize(): void {
+		if (this.nodeType !== 'image' && this.nodeType !== 'rotate-image') return
+		if (this.data.sizeCustomized) return
+		if (this.domMode) return
+
+		const defaultSize = DEFAULT_NODE_SIZES[this.nodeType]
+		if (!defaultSize) return
+
+		const targetWidth = defaultSize.width
+		const targetHeight = defaultSize.height
+
+		if (
+			Math.abs(targetWidth - this.data.width) > 2 ||
+			Math.abs(targetHeight - this.data.height) > 2
+		) {
+			this.updateSize(targetWidth, targetHeight)
+		}
+	}
+
 	private getCachedTexture(url: string): CachedBlueprintTexture | null {
 		const tex = BLUEPRINT_TEXTURE_POOL.get(url)
 		if (tex && tex.state === 'ready') {
@@ -1202,6 +1315,36 @@ export class BlueprintNode extends Node {
 		const scaleY = ch / nh
 
 		c.drawImage(tex.canvas, sx * scaleX, sy * scaleY, sw * scaleX, sh * scaleY, dx, dy, dw, dh)
+	}
+
+	private drawTextureContain(
+		c: CanvasRenderingContext2D,
+		tex: CachedBlueprintTexture,
+		dx: number,
+		dy: number,
+		dw: number,
+		dh: number
+	): void {
+		const nw = tex.naturalWidth
+		const nh = tex.naturalHeight
+		const imgRatio = nw / nh
+		const boxRatio = dw / dh
+		let drawW: number, drawH: number
+
+		if (imgRatio > boxRatio) {
+			drawW = dw
+			drawH = dw / imgRatio
+		} else {
+			drawH = dh
+			drawW = dh * imgRatio
+		}
+
+		const drawX = dx + (dw - drawW) / 2
+		const drawY = dy + (dh - drawH) / 2
+
+		const cw = tex.canvas.width
+		const ch = tex.canvas.height
+		c.drawImage(tex.canvas, 0, 0, cw, ch, drawX, drawY, drawW, drawH)
 	}
 
 	private drawRoundedRectPath(
@@ -1251,10 +1394,31 @@ export class BlueprintNode extends Node {
 			const tex = this.getCachedTexture(imgUrl)
 			if (tex) {
 				if (tex.canvas.width > 0) {
+					// 持久化图片自然尺寸到imageSettings，确保切换到DOM模式时立即可用
+					const snw = tex.naturalWidth
+					const snh = tex.naturalHeight
+					if (snw > 0 && snh > 0) {
+						if (!this.data.imageSettings) {
+							this.data.imageSettings = {}
+						}
+						const curNw = this.data.imageSettings.naturalWidth
+						const curNh = this.data.imageSettings.naturalHeight
+						if (curNw !== snw || curNh !== snh) {
+							this.data.imageSettings.naturalWidth = snw
+							this.data.imageSettings.naturalHeight = snh
+							if (!this.data.imageSettings.outputWidth || !this.data.imageSettings.outputHeight) {
+								this.data.imageSettings.outputWidth = snw
+								this.data.imageSettings.outputHeight = snh
+							}
+						}
+					}
+
+					this.autoResizeToImage(imgUrl, tex)
+
 					c.save()
 					this.drawRoundedRectPath(c, px, py, pw, ph, 4)
 					c.clip()
-					this.drawTextureCover(c, tex, px, py, pw, ph)
+					this.drawTextureContain(c, tex, px, py, pw, ph)
 					c.restore()
 
 					c.strokeStyle = this.hexToRgba(accentColor, 0.3)
@@ -1264,7 +1428,7 @@ export class BlueprintNode extends Node {
 					if (this.nodeType === 'rotate-image') {
 						const cx = px + pw / 2
 						c.save()
-						c.translate(cx, py + ph * 0.15)
+						c.translate(cx, py + ph * 0.08)
 						c.strokeStyle = this.hexToRgba(accentColor, 0.7)
 						c.lineWidth = 1.5
 						c.beginPath()
@@ -1284,10 +1448,12 @@ export class BlueprintNode extends Node {
 				}
 				releaseTexture(imgUrl)
 			}
+		} else {
+			this._lastAutoResizeImageUrl = null
+			this.resetToDefaultSize()
 		}
 
 		const cx = px + pw / 2
-		const cy = py + ph / 2
 		const iconSize = Math.min(pw, ph) * 0.35
 
 		c.beginPath()
@@ -1311,7 +1477,7 @@ export class BlueprintNode extends Node {
 
 		if (this.nodeType === 'rotate-image') {
 			c.save()
-			c.translate(cx, py + ph * 0.15)
+			c.translate(cx, py + ph * 0.08)
 			c.strokeStyle = this.hexToRgba(accentColor, 0.5)
 			c.lineWidth = 1.5
 			c.beginPath()

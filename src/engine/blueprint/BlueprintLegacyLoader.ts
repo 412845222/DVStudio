@@ -103,7 +103,10 @@ export class BlueprintLegacyLoader {
 			worldY: legacyNode.y ?? legacyNode.worldY ?? 0,
 			width: legacyNode.width ?? defaultSize.width,
 			height: legacyNode.height ?? defaultSize.height,
-			sizeCustomized: !!(legacyNode.width && legacyNode.height),
+			sizeCustomized:
+				legacyNode.sizeCustomized !== undefined
+					? legacyNode.sizeCustomized
+					: !!(legacyNode.width && legacyNode.height),
 			inputs: legacyNode.inputs || [],
 			outputs: legacyNode.outputs || [],
 			color: legacyNode.color,

@@ -169,7 +169,9 @@ export class BlueprintScene extends Scene {
 		for (const id of nodeIds) {
 			const node = this._nodeMap.get(id)!
 			node.syncDataFromTransform()
-			nodeEntries.push(`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)}`)
+			nodeEntries.push(
+				`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)},${Math.round(node.data.width)},${Math.round(node.data.height)},${node.data.sizeCustomized ? 1 : 0}`
+			)
 		}
 		const edgeCount = this._connectionMap.size
 		this._lastLoadSignature = `${this._nodeMap.size}:${edgeCount}:${nodeEntries.join('|')}`
@@ -243,7 +245,10 @@ export class BlueprintScene extends Scene {
 
 		const sortedIncomingNodes = [...blueprintData.nodes].sort((a, b) => a.id.localeCompare(b.id))
 		const positionSignature = sortedIncomingNodes
-			.map((n) => `${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)}`)
+			.map(
+				(n) =>
+					`${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)},${Math.round(n.width)},${Math.round(n.height)},${n.sizeCustomized ? 1 : 0}`
+			)
 			.join('|')
 		const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`
 		if (this._lastLoadSignature === signature) {

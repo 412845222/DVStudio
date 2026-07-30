@@ -24,6 +24,12 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 	const nodeCount = state.nodeOrder.length
 	const edgeCount = state.edgeOrder.length
 	const resCount = state.resourceOrder.length
+	const nodeSizeSig = state.nodeOrder
+		.map((id) => {
+			const n = state.nodesById[id]
+			return n ? `${id}:${n.width ?? 0}:${n.height ?? 0}:${n.sizeCustomized ? 1 : 0}` : id
+		})
+		.join(',')
 	const structureKey = [
 		state.nodeOrder.join(','),
 		state.edgeOrder.join(','),
@@ -34,7 +40,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 		state.savedSelectionFrames?.length ?? 0,
 		nodeCount,
 		edgeCount,
-		resCount
+		resCount,
+		nodeSizeSig
 	].join('|')
 
 	if (_cachedResult && _cacheKey === structureKey) {
@@ -56,6 +63,7 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				cachedNode.y = wfNode.worldY
 				cachedNode.width = wfNode.width
 				cachedNode.height = wfNode.height
+				cachedNode.sizeCustomized = wfNode.sizeCustomized
 				cachedNode.title = wfNode.title
 				cachedNode.subtitle = wfNode.subtitle
 				cachedNode.status = (wfNode as any).status ?? cachedNode.status

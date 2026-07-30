@@ -1370,6 +1370,28 @@ defineExpose({
 	display: none;
 }
 
+/* Fixed-size (non-auto-height) image/rotate nodes: fill available body space */
+.wf-node:not(.is-auto-height).wf-node-image .wf-node-body,
+.wf-node:not(.is-auto-height).wf-node-rotate-image .wf-node-body {
+	flex-direction: column;
+}
+
+.wf-node:not(.is-auto-height).wf-node-image .wf-media {
+	flex: 1;
+	min-height: 0;
+	flex-shrink: 1;
+}
+
+.wf-node:not(.is-auto-height).wf-node-image .wf-media-preview {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.wf-node:not(.is-auto-height).wf-node-rotate-image .wf-rotate-wrap {
+	flex: 1;
+	min-height: 0;
+}
+
 .wf-node.wf-node-blender .wf-node-body {
 	padding: 0;
 	flex-direction: column;

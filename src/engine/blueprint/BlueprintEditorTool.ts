@@ -68,6 +68,7 @@ export class BlueprintEditorTool extends Tool {
 	private resizeStartHeight: number = 0
 	private resizeStartX: number = 0
 	private resizeStartY: number = 0
+	private resizeAspectRatio: number | null = null
 	private moveStartPositions: Map<string, Vector2> = new Map()
 
 	private editingTempInput: boolean = false
@@ -357,6 +358,7 @@ export class BlueprintEditorTool extends Tool {
 				this.resizeStartHeight = resizeHit.node.data.height
 				this.resizeStartX = resizeHit.node.transform.position.x
 				this.resizeStartY = resizeHit.node.transform.position.y
+				this.resizeAspectRatio = resizeHit.node.getResizeAspectRatio()
 				this.dragMode = DragMode.RESIZE
 				this.dragging = true
 				this.dragMoved = false
@@ -679,12 +681,24 @@ export class BlueprintEditorTool extends Tool {
 			let newX: number
 			let newY: number
 
+			const ratio = this.resizeAspectRatio
+
 			switch (this.resizeCorner) {
 				case 'bottom-right': {
 					newX = this.resizeStartX
 					newY = this.resizeStartY
 					newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - this.resizeStartX)
 					newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - this.resizeStartY)
+					if (ratio) {
+						const currentRatio = newWidth / newHeight
+						if (currentRatio > ratio) {
+							newHeight = newWidth / ratio
+							newHeight = Math.max(MIN_NODE_HEIGHT, newHeight)
+						} else {
+							newWidth = newHeight * ratio
+							newWidth = Math.max(MIN_NODE_WIDTH, newWidth)
+						}
+					}
 					break
 				}
 				case 'bottom-left': {
@@ -692,6 +706,16 @@ export class BlueprintEditorTool extends Tool {
 					const rightEdge = this.resizeStartX + this.resizeStartWidth
 					newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x)
 					newHeight = Math.max(MIN_NODE_HEIGHT, mouseWorld.y - this.resizeStartY)
+					if (ratio) {
+						const currentRatio = newWidth / newHeight
+						if (currentRatio > ratio) {
+							newHeight = newWidth / ratio
+							newHeight = Math.max(MIN_NODE_HEIGHT, newHeight)
+						} else {
+							newWidth = newHeight * ratio
+							newWidth = Math.max(MIN_NODE_WIDTH, newWidth)
+						}
+					}
 					newX = rightEdge - newWidth
 					break
 				}
@@ -700,6 +724,16 @@ export class BlueprintEditorTool extends Tool {
 					const bottomEdge = this.resizeStartY + this.resizeStartHeight
 					newWidth = Math.max(MIN_NODE_WIDTH, mouseWorld.x - this.resizeStartX)
 					newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y)
+					if (ratio) {
+						const currentRatio = newWidth / newHeight
+						if (currentRatio > ratio) {
+							newHeight = newWidth / ratio
+							newHeight = Math.max(MIN_NODE_HEIGHT, newHeight)
+						} else {
+							newWidth = newHeight * ratio
+							newWidth = Math.max(MIN_NODE_WIDTH, newWidth)
+						}
+					}
 					newY = bottomEdge - newHeight
 					break
 				}
@@ -708,6 +742,16 @@ export class BlueprintEditorTool extends Tool {
 					const bottomEdge = this.resizeStartY + this.resizeStartHeight
 					newWidth = Math.max(MIN_NODE_WIDTH, rightEdge - mouseWorld.x)
 					newHeight = Math.max(MIN_NODE_HEIGHT, bottomEdge - mouseWorld.y)
+					if (ratio) {
+						const currentRatio = newWidth / newHeight
+						if (currentRatio > ratio) {
+							newHeight = newWidth / ratio
+							newHeight = Math.max(MIN_NODE_HEIGHT, newHeight)
+						} else {
+							newWidth = newHeight * ratio
+							newWidth = Math.max(MIN_NODE_WIDTH, newWidth)
+						}
+					}
 					newX = rightEdge - newWidth
 					newY = bottomEdge - newHeight
 					break
