@@ -6,6 +6,7 @@
 				:scene="scene"
 				:chat-state="chatState"
 				:node-generation-tasks="nodeGenerationTasks"
+				:node-generation-task-ids-by-node-id="nodeGenerationTaskIdsByNodeId"
 				:legacy-resources="legacyResources"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:editing-node-id="editingNodeId"
@@ -106,6 +107,7 @@ interface Props {
 	theme?: 'light' | 'dark'
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId?: Record<string, string[]>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRefItem[]>
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>

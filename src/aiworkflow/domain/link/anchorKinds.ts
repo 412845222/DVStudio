@@ -1,7 +1,7 @@
 import type { WorkflowAnchorSpec, WorkflowNode, WorkflowState } from '../../types'
 
 export type CanonicalAnchorMediaType = 'image' | 'video' | 'text' | 'model3d' | 'audio'
-export type AnchorKind = 'flow' | 'resource' | 'meta' | CanonicalAnchorMediaType
+export type AnchorKind = 'flow' | 'resource' | 'meta' | 'generic' | CanonicalAnchorMediaType
 
 const BASIC_MEDIA_NODE_TYPES = new Set<string>(['text', 'image', 'video', 'audio'])
 
@@ -63,7 +63,8 @@ export const normalizeAnchorMediaType = (
 		raw === 'model3d' ||
 		raw === 'audio' ||
 		raw === 'meta' ||
-		raw === 'resource'
+		raw === 'resource' ||
+		raw === 'generic'
 	) {
 		return raw
 	}
@@ -72,11 +73,8 @@ export const normalizeAnchorMediaType = (
 	const anchorId = String(context.anchorId ?? '')
 		.trim()
 		.toLowerCase()
-	if (raw === 'generic') {
-		if (looksLikeModelAnchor(anchorId) || nodeType === 'model3d' || nodeType === 'meshy')
-			return 'model3d'
-		return 'generic'
-	}
+	if (looksLikeModelAnchor(anchorId) || nodeType === 'model3d' || nodeType === 'meshy')
+		return 'model3d'
 	return undefined
 }
 
@@ -104,8 +102,29 @@ export const anchorKind = (
 	if (mediaType === 'audio') return 'audio'
 	if (mediaType === 'meta') return 'meta'
 	if (mediaType === 'resource') return 'resource'
+	if (mediaType === 'generic') {
+		// generic锚点根据节点类型和锚点ID判断，保持多模态兼容性
+		const nodeType = normalizeNodeType(node)
+		// image节点的in-0是多模态输入，可以接受多种类型，不默认返回resource
+		if (nodeType === 'image' && direction === 'in') return 'generic'
+		if (nodeType === 'blender' && anchorId === 'in-0') return 'generic'
+		if (nodeType === 'text' && anchorId === 'in-0') return 'generic'
+		if (nodeType === 'comfyui' && anchorId === 'in-0') return 'generic'
+		return 'generic'
+	}
 
-	if ((node.type === 'image' || node.type === 'video') && direction === 'in') return 'resource'
+	// 对于video节点的in锚点，保持原有向后兼容（video节点仍有in-image/in-video等锚点）
+	if (node.type === 'video' && direction === 'in') {
+		if (anchorId === 'in-image') return 'image'
+		if (anchorId === 'in-video') return 'video'
+		if (anchorId === 'in-text') return 'text'
+		return 'resource'
+	}
+
+	// 对于blender节点的in-resource锚点
+	if (node.type === 'blender' && direction === 'in' && anchorId === 'in-resource') {
+		return 'resource'
+	}
 
 	if (node.type === 'text' && direction === 'out') return 'text'
 	if (node.type === 'image') return 'image'
@@ -130,12 +149,30 @@ export const canLinkAnchors = (
 	if (!fromKind || !toKind) return false
 	if (canLinkBasicMediaNodes(fromNode, toNode)) return true
 	if (shouldRejectBasicMediaNodes(fromNode, toNode)) return false
-	// Blender 节点：单锚点兼容 text/image/model3d（generic 锚点默认接受 image/model3d，此处补充放行 text）
-	if (normalizeNodeType(toNode) === 'blender' && toAnchorId === 'in-0' && fromKind === 'text') {
+
+	// generic锚点（多模态输入）可以接受所有媒体类型
+	const fromType = normalizeNodeType(fromNode)
+	const toType = normalizeNodeType(toNode)
+	const isGenericTarget = toKind === 'generic'
+	const isGenericSource = fromKind === 'generic'
+
+	if (isGenericTarget) {
+		// 目标是generic锚点（如image节点in-0、text节点in-0等），接受所有媒体类型
+		return true
+	}
+	if (isGenericSource) {
+		// 源是generic锚点（如blender out-0），根据下游锚点类型判断
+		if (toKind === 'text' || toKind === 'image' || toKind === 'model3d' || toKind === 'video' || toKind === 'audio') {
+			return true
+		}
+	}
+
+	// Blender 节点：单锚点兼容 text/image/model3d（已通过generic逻辑处理，保留向后兼容）
+	if (toType === 'blender' && toAnchorId === 'in-0' && fromKind === 'text') {
 		return true
 	}
 	if (
-		normalizeNodeType(fromNode) === 'blender' &&
+		fromType === 'blender' &&
 		fromAnchorId === 'out-0' &&
 		(toKind === 'text' || toKind === 'image' || toKind === 'model3d')
 	) {
@@ -153,7 +190,7 @@ export const canLinkAnchors = (
 		return true
 	}
 	if (
-		normalizeNodeType(toNode) === 'text' &&
+		toType === 'text' &&
 		toAnchorId === 'in-0' &&
 		(fromKind === 'model3d' || fromKind === 'resource')
 	) {
@@ -171,6 +208,7 @@ export const anchorKindLabel = (kind: AnchorKind | null) => {
 	if (kind === 'audio') return 'audio'
 	if (kind === 'text') return 'text'
 	if (kind === 'meta') return 'meta'
+	if (kind === 'generic') return 'generic'
 	return 'unknown'
 }
 

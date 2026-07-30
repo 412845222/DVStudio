@@ -143,23 +143,47 @@ export class NodeComponentResolver {
 		isSelected: boolean = false,
 		chatState?: NodeChatState | null,
 		generationTasksById?: Record<string, WorkflowNodeGenerationTask>,
-		inputParamPreviewRefs?: any[]
+		inputParamPreviewRefs?: any[],
+		generationTaskIdsByNodeId?: Record<string, string[]>
 	): ResolvedWorkflowNodeProps {
 		const data = node.data
 		const isChatActive =
 			(chatState && chatState.visible && chatState.nodeId === data.id) || !!data.nodeChatVisible
 
-		const nodeTask = generationTasksById
-			? Object.values(generationTasksById).find(
-					(t) =>
-						t.nodeId === data.id &&
-						(t.status === 'submitting' ||
-							t.status === 'running' ||
-							t.status === 'error' ||
-							t.status === 'completed')
+		let nodeTask: WorkflowNodeGenerationTask | null = null
+		if (generationTasksById) {
+			const nodeId = data.id
+			const allNodeTasks = Object.values(generationTasksById).filter((t) => t.nodeId === nodeId)
+			if (allNodeTasks.length > 0) {
+				// 1. 优先找活跃任务（submitting/running）
+				const activeTask = allNodeTasks.find(
+					(t) => t.status === 'submitting' || t.status === 'running'
 				)
-			: null
-		const generationTask = nodeTask ?? null
+				if (activeTask) {
+					nodeTask = activeTask
+				} else {
+					// 2. 没有活跃任务时，按权威任务顺序取最新已结束任务
+					const taskIds = generationTaskIdsByNodeId?.[nodeId]
+					if (taskIds && taskIds.length > 0) {
+						for (const tid of taskIds) {
+							const t = generationTasksById[tid]
+							if (t && (t.status === 'error' || t.status === 'completed')) {
+								nodeTask = t
+								break
+							}
+						}
+					}
+					// 3. 回退：按startedAt降序取最新已结束任务
+					if (!nodeTask) {
+						const sorted = [...allNodeTasks]
+							.filter((t) => t.status === 'error' || t.status === 'completed')
+							.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+						nodeTask = sorted[0] || null
+					}
+				}
+			}
+		}
+		const generationTask = nodeTask
 
 		const baseStatus =
 			data.status === 'error' ? 'error' : data.status === 'running' ? 'running' : 'idle'

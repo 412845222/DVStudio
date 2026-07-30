@@ -72,6 +72,7 @@ const props = defineProps<{
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	chatState?: NodeChatState | null
 	generationTasks?: Record<string, WorkflowNodeGenerationTask>
+	generationTaskIdsByNodeId?: Record<string, string[]>
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
 }>()
 
@@ -151,7 +152,8 @@ const resolvedProps = computed(() => {
 		props.selected,
 		props.chatState,
 		props.generationTasks,
-		nodeRefs
+		nodeRefs,
+		props.generationTaskIdsByNodeId
 	)
 	let extraResolved: Record<string, unknown> = {}
 	if (props.extraPropsResolver) {

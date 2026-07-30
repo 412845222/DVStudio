@@ -243,13 +243,6 @@ const singleIOAnchorsForNodeType = (
 		return {
 			inputs: [
 				{
-					id: 'in-resource',
-					label: '资源输入',
-					mediaType: 'resource',
-					acceptedMediaTypes: ['image', 'video', 'resource'],
-					multiInput: true
-				},
-				{
 					id: 'in-0',
 					label: '多模态输入',
 					mediaType: 'generic',
@@ -305,8 +298,14 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 	const nextAnchorId = String(anchorId ?? '').trim()
 	if (!nextAnchorId) return nextAnchorId
 	if (nextType === 'image') {
-		// 旧ID映射: in-text/in-image/in-0 -> in-0 (多模态输入), in-resource保留为资源输入
-		if (nextAnchorId === 'in-text' || nextAnchorId === 'in-image' || nextAnchorId === 'in-0')
+		// 旧ID映射: in-text/in-image/in-resource/in-0 -> in-0 (多模态输入)
+		// in-resource锚点已从image节点移除，统一映射到in-0
+		if (
+			nextAnchorId === 'in-text' ||
+			nextAnchorId === 'in-image' ||
+			nextAnchorId === 'in-resource' ||
+			nextAnchorId === 'in-0'
+		)
 			return 'in-0'
 		return nextAnchorId
 	}

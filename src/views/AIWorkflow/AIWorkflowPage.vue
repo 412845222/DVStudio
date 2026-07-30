@@ -32,6 +32,7 @@
 				:theme="themeStore.state.mode === 'light' ? 'light' : 'dark'"
 				:chat-state="chatStateForHost"
 				:node-generation-tasks="store.state.nodeGenerationTasksById"
+				:node-generation-task-ids-by-node-id="store.state.nodeGenerationTaskIdsByNodeId"
 				:legacy-resources="legacyResourcesForDom"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:extra-props-resolver="nodeExtraProps"
@@ -2406,10 +2407,10 @@ const upstreamCroppedImageUrls = new Map<string, string>()
 const getUpstreamCroppedImageUrl = (node: WorkflowNode): string | null => {
 	if (node.type !== 'image') return null
 	if (node.resourceId) return null
+	// in-resource已从image节点移除，只查找in-0和in-image
 	const inEdge =
 		getFirstIncomingEdge(node.id, 'in-0') ||
-		getFirstIncomingEdge(node.id, 'in-image') ||
-		getFirstIncomingEdge(node.id, 'in-resource')
+		getFirstIncomingEdge(node.id, 'in-image')
 	if (!inEdge) return null
 	const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 	if (!fromNode || fromNode.type !== 'image') return null
@@ -2715,11 +2716,12 @@ const getNodeScreenshotVersion = (node: WorkflowNode, theme?: 'dark' | 'light'):
 
 	if (node.subtitle) parts.push(`sub:${node.subtitle}`)
 
+	// 注意：图片节点已禁用自动上游透传，此分支不再生效，但保留代码用于兼容
 	if (node.type === 'image' && !node.resourceId) {
+		// in-resource已从image节点移除
 		const inEdge =
 			getFirstIncomingEdge(node.id, 'in-0') ||
-			getFirstIncomingEdge(node.id, 'in-image') ||
-			getFirstIncomingEdge(node.id, 'in-resource')
+			getFirstIncomingEdge(node.id, 'in-image')
 		if (inEdge) {
 			const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 			if (fromNode && fromNode.type === 'image' && fromNode.resourceId) {
@@ -5926,6 +5928,29 @@ const onNodeClearResource = (nodeId: string) => {
 		})
 		return
 	}
+	if (node.type === 'image') {
+		// 图片节点清空：清除resourceId + 生成结果缓存
+		// 注意：由于已禁用自动上游透传，上游连接的图片不会自动显示在此节点，无需断开边
+		if (node.resourceId) {
+			setNodeResourceWithCleanup({ nodeId, resourceId: null })
+		}
+		// 清除生成结果临时字段（参考IMAGE_SETTINGS_TRANSIENT）
+		const currentSettings = (node.imageSettings ?? {}) as Record<string, unknown>
+		store.commit('setNodeImageSettings', {
+			nodeId,
+			imageSettings: {
+				...currentSettings,
+				// 保留裁剪和尺寸设置，清除生成相关临时字段
+				lastGeneratedImageUrl: undefined,
+				meshyImageSettings: undefined,
+				geminiImageSettings: undefined,
+				tripo3dImageSettings: undefined,
+				imageGenerationSource: undefined
+			}
+		})
+		return
+	}
+	// 其他节点类型（video等）：仅清除resourceId
 	if (!node.resourceId) return
 	setNodeResourceWithCleanup({ nodeId, resourceId: null })
 }
@@ -6932,7 +6957,12 @@ const syncModel3DInputFromUpstream = async (
 	const node = store.state.nodesById[nodeId]
 	if (!node || node.type !== 'model3d') return false
 
-	const incoming = getIncomingEdges(nodeId, 'in-resource')
+	// 查找模型输入边：in-model（专用）、in-0（多模态，现已支持model3d）、in-resource（向后兼容旧蓝图）
+	const incoming = [
+		...getIncomingEdges(nodeId, 'in-model'),
+		...getIncomingEdges(nodeId, 'in-0'),
+		...getIncomingEdges(nodeId, 'in-resource')
+	]
 	for (const edge of incoming) {
 		const fromNode = store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) continue

@@ -36,6 +36,7 @@
 						:input-param-preview-refs-by-node-id="inputParamPreviewRefsResolved"
 						:chat-state="chatState"
 						:generation-tasks="nodeGenerationTasks"
+						:generation-task-ids-by-node-id="nodeGenerationTaskIdsByNodeId"
 						:extra-props-resolver="extraPropsResolver"
 						@edit="(id: string) => handleBusinessEdit(id)"
 						@contextmenu="handleBusinessContextMenu"
@@ -212,6 +213,7 @@ const props = defineProps<{
 	showDebug?: boolean
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId?: Record<string, string[]>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	editingNodeId?: string | null
@@ -1131,15 +1133,42 @@ function getNodeStatus(node: BlueprintNode): NodeStatus {
 		return dataStatus
 	}
 	if (props.nodeGenerationTasks) {
-		const tasks = Object.values(props.nodeGenerationTasks)
-		const nodeTask = tasks.find((t) => t.nodeId === node.id)
-		if (nodeTask) {
-			if (nodeTask.status === 'submitting' || nodeTask.status === 'running') return 'running'
-			if (nodeTask.status === 'error') return 'error'
-			if (nodeTask.status === 'completed') return 'success'
+		const nodeId = node.id
+		const tasks = Object.values(props.nodeGenerationTasks).filter((t) => t.nodeId === nodeId)
+		if (tasks.length > 0) {
+			// 优先检查活跃任务
+			const activeTask = tasks.find((t) => t.status === 'submitting' || t.status === 'running')
+			if (activeTask) return 'running'
+			// 没有活跃任务，取最新已结束任务
+			const taskIds = props.nodeGenerationTaskIdsByNodeId?.[nodeId]
+			let latestFinishedTask: WorkflowNodeGenerationTask | undefined
+			if (taskIds && taskIds.length > 0) {
+				for (const tid of taskIds) {
+					const t = props.nodeGenerationTasks[tid]
+					if (t && (t.status === 'error' || t.status === 'completed')) {
+						latestFinishedTask = t
+						break
+					}
+				}
+			}
+			if (!latestFinishedTask) {
+				latestFinishedTask = [...tasks]
+					.filter((t) => t.status === 'error' || t.status === 'completed')
+					.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0]
+			}
+			if (latestFinishedTask) {
+				if (latestFinishedTask.status === 'error') return 'error'
+				if (latestFinishedTask.status === 'completed') return 'success'
+			}
 		}
 	}
 	return 'idle'
+}
+
+function isNodeTaskSubmitting(nodeId: string): boolean {
+	if (!props.nodeGenerationTasks) return false
+	const tasks = Object.values(props.nodeGenerationTasks).filter((t) => t.nodeId === nodeId)
+	return tasks.some((t) => t.status === 'submitting' || t.status === 'running')
 }
 
 function getNodeAccentColor(node: BlueprintNode): string {
@@ -1580,9 +1609,7 @@ const chatApi: NodeChatApi = {
 			draft: cached?.draft ?? data.nodeChatDraft ?? '',
 			params: cached?.params ?? data.nodeChatParams ?? {},
 			selectedRefs: cached?.selectedRefs ?? data.nodeChatSelectedRefs ?? [],
-			submitting:
-				props.nodeGenerationTasks?.[nodeId]?.status === 'running' ||
-				props.nodeGenerationTasks?.[nodeId]?.status === 'submitting'
+			submitting: isNodeTaskSubmitting(nodeId)
 		}
 	},
 

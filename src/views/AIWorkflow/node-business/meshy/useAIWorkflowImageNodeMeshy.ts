@@ -18,7 +18,8 @@ type MeshyImageNodeSettings = Record<string, unknown>
 
 const isImageInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+	// in-resource已从image节点移除，保留in-image、in-0（多模态）和in-image-N系列
+	return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
 }
 
 const getEffectiveImageUrl = (

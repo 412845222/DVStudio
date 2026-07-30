@@ -182,8 +182,9 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 	}
 
 	const storyPreview = (node: WorkflowNode) => {
+		// in-resource锚点已从image节点移除，保留in-image、in-video和in-0（多模态）
 		const resourceInput = node.inputs?.find(
-			(a) => a.id === 'in-resource' || a.id === 'in-image' || a.id === 'in-video'
+			(a) => a.id === 'in-image' || a.id === 'in-video' || a.id === 'in-0'
 		)
 		const inputId = resourceInput?.id || node.inputs?.[0]?.id
 		if (!inputId) {

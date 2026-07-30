@@ -100,40 +100,40 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		return fresh
 	}
 
-	const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
-		if (node.type !== 'image') return null
-		if (node.resourceId) return null
-		// 按优先级查找图片输入边：in-0 (新多模态) > in-image > in-resource
-		let edge = payload.getFirstIncomingEdge(node.id, 'in-0')
-		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-image')
-		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-resource')
-		if (!edge) return null
-		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as
-			| WorkflowNode
-			| undefined
-		if (!fromNode || fromNode.type !== 'image') return null
-		if (!fromNode.resourceId) return null
-		return fromNode
-	}
-
+	// 注意：根据需求，图片节点不再自动透传上游图片
+	// 图片节点只有在自身有resourceId时才显示图片
+	// 上游图片仅在API参数收集时通过输入锚点显式获取，不自动渲染到当前节点
 	const resolveImageNodeEffectiveSource = (
 		node: WorkflowNode
 	): { sourceNode: WorkflowNode; isPassThrough: boolean } | null => {
 		if (node.type !== 'image') return null
+		// 仅在节点自身有resourceId时显示图片，不再自动透传上游
 		if (node.resourceId) {
 			return { sourceNode: node, isPassThrough: false }
-		}
-		const upstream = getUpstreamPassThroughImageNode(node)
-		if (upstream) {
-			return { sourceNode: upstream, isPassThrough: true }
 		}
 		return null
 	}
 
 	const buildImageNodeProps = (node: WorkflowNode) => {
 		const effective = resolveImageNodeEffectiveSource(node)
-		const sourceNode = effective?.sourceNode ?? node
-		const isPassThrough = effective?.isPassThrough ?? false
+
+		// 当effective为null时（节点无自身resourceId），不显示任何图片资源
+		if (!effective) {
+			return {
+				resourceUrl: null,
+				resourceSourcePath: null,
+				resourcePreviewUrl320: null,
+				resourcePreviewUrl640: null,
+				resourcePreviewVersion: null,
+				resourceName: null,
+				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
+				imageSettings: node.imageSettings ?? null,
+				upstreamCroppedImageUrl: null
+			}
+		}
+
+		const sourceNode = effective.sourceNode
+		const isPassThrough = effective.isPassThrough
 
 		const rid = String(sourceNode.resourceId ?? '').trim()
 		const resource = rid ? payload.store.state.resourcesById[rid] : null
@@ -160,12 +160,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			resourceUrl:
 				upstreamCroppedImageUrl || sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(sourceNode)),
 			resourceSourcePath: resourceSourcePath || null,
-			// 始终保留预览图，不清空已加载的图片
 			resourcePreviewUrl320: imagePreviewUrl320 || null,
 			resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
 			resourcePreviewVersion: imagePreviewVersion || null,
 			resourceName: payload.nodeResourceName(sourceNode),
-			// 始终保留输入参数引用
 			inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
 			imageSettings,
 			upstreamCroppedImageUrl: upstreamCroppedImageUrl
@@ -316,7 +314,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 
 					// 1. 当前节点 inputs 定义
 					const myInputs = Array.isArray(node.inputs)
-						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType })
+						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
 						: []
 					// eslint-disable-next-line no-console
 					console.log('[SCENE-DECOMPOSE CHAIN DIAG] node.inputs =', myInputs)
@@ -532,7 +530,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 
 					// 1. 当前节点 inputs 定义
 					const myInputs = Array.isArray(node.inputs)
-						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType })
+						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
 						: []
 					// eslint-disable-next-line no-console
 					console.log('[SCENE-LAYOUT CHAIN DIAG] node.inputs =', myInputs)

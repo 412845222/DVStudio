@@ -425,7 +425,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const imagePatch: Record<string, unknown> = {
 				taskId: patch.meshyTaskId,
 				taskStatus: normalized,
-				taskFamily: String(task.mode ?? '').includes('image') ? 'text-to-image' : 'text-to-3d',
+				taskFamily: String(task.mode || '').includes('image-to-image') ? 'image-to-image' : 'text-to-image',
 				progress: patch.meshyProgress,
 				statusText: patch.meshyStatusText,
 				errorMessage: patch.meshyErrorMessage,

@@ -677,6 +677,17 @@ function isIpcAvailable(): boolean {
 	)
 }
 
+function isMeshyIpcAvailable(): boolean {
+	const dweb = (window as any).dweb
+	return Boolean(
+		!!(window as Window).__DWEB_RUNTIME__?.isElectron &&
+		dweb?.meshy &&
+		typeof dweb.meshy.balance === 'function' &&
+		typeof dweb.meshy.generate === 'function' &&
+		typeof dweb.meshy.getTask === 'function'
+	)
+}
+
 function isThirdPartyIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.thirdParty
 }
@@ -2696,20 +2707,23 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyGenerate(payload: Record<string, unknown>): Promise<MeshyGenerateResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
+				console.log('[Meshy] Using IPC for generate, payload keys:', Object.keys(payload || {}))
 				const ipcResult = await (window as any).dweb.meshy.generate(payload)
 				if (ipcResult && typeof ipcResult === 'object' && 'ok' in ipcResult) {
 					return ipcResult as MeshyGenerateResponse
 				}
 				return { ok: true, ...ipcResult } as MeshyGenerateResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC generate failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/generate failed via IPC'
 				}
 			}
 		}
+		console.warn('[Meshy] IPC not available, falling back to HTTP')
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/generate'), {
 			method: 'POST',
 			headers: jsonHeaders(this.devToken),
@@ -2786,7 +2800,7 @@ export class ComfyUIBridgeService {
 
 		console.log('[Meshy Image Generate] payload:', JSON.stringify(payload, null, 2))
 
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.generate(payload)
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -2800,6 +2814,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyGenerateResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC image generate failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/generate failed via IPC'
@@ -2824,7 +2839,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyTask(taskId: string, mode: string): Promise<MeshyTaskResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.getTask({ taskId, mode })
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -2838,6 +2853,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyTaskResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC getTask failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/task failed via IPC'
@@ -2866,7 +2882,7 @@ export class ComfyUIBridgeService {
 		family?: string
 		limit?: number
 	}): Promise<MeshyTasksListResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.listTasks(query || {})
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -2880,6 +2896,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyTasksListResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC listTasks failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/tasks failed via IPC'
@@ -2908,7 +2925,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyTaskDetail(taskId: string): Promise<MeshyTaskDetailResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.taskDetail({ taskId })
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -2922,6 +2939,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyTaskDetailResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC taskDetail failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/task-detail failed via IPC'
@@ -3163,7 +3181,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyStop(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.stop({ taskId, mode })
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -3177,6 +3195,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyTaskActionResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC stop failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/stop failed via IPC'
@@ -3200,7 +3219,7 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyDelete(taskId: string, mode: string): Promise<MeshyTaskActionResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
 				const ipcResult = await (window as any).dweb.meshy.deleteTask({ taskId, mode })
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -3214,6 +3233,7 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyTaskActionResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC delete failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/delete failed via IPC'
@@ -3237,9 +3257,11 @@ export class ComfyUIBridgeService {
 	}
 
 	async meshyBalance(): Promise<MeshyBalanceResponse> {
-		if (isIpcAvailable()) {
+		if (isMeshyIpcAvailable()) {
 			try {
+				console.log('[Meshy] Fetching balance via IPC')
 				const ipcResult = await (window as any).dweb.meshy.balance()
+				console.log('[Meshy] Balance IPC result:', ipcResult)
 				if (ipcResult && typeof ipcResult === 'object') {
 					if (ipcResult.ok === false) {
 						return {
@@ -3251,12 +3273,14 @@ export class ComfyUIBridgeService {
 				}
 				return { ok: true, ...ipcResult } as MeshyBalanceResponse
 			} catch (err: unknown) {
+				console.error('[Meshy] IPC balance failed:', err)
 				return {
 					ok: false,
 					error: getErrorMessage(err) || 'meshy/balance failed via IPC'
 				}
 			}
 		}
+		console.warn('[Meshy] IPC not available for balance, falling back to HTTP')
 		const res = await this.fetchWithLog(this.url('/api/third-party/meshy/balance'), {
 			method: 'GET',
 			headers: this.devToken ? { 'X-DEV-TOKEN': this.devToken } : undefined

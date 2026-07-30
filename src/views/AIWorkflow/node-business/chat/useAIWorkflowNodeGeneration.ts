@@ -218,8 +218,8 @@ const isImageInputAnchor = (
 		const sourceMediaType = inferSourceMediaType(sourceNode, String(fromAnchorId ?? ''))
 		return sourceMediaType === 'image'
 	}
-	// 向后兼容：旧ID匹配
-	if (id === 'in-image' || id === 'in-resource' || /^in-image-\d+$/.test(id)) return true
+	// 向后兼容：旧ID匹配（移除in-resource，image节点已不再使用该锚点）
+	if (id === 'in-image' || /^in-image-\d+$/.test(id)) return true
 	if (id === 'in-0') {
 		const sourceType = String(sourceNode?.type || '')
 			.trim()
@@ -229,7 +229,8 @@ const isImageInputAnchor = (
 			.trim()
 			.toLowerCase()
 		if (targetType === 'text') return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'image')
-		return sourceType === 'image' || sourceType === 'blender'
+		// in-0是多模态锚点，接受所有image类型输出（包括image、blender截图等）
+		return sourceMediaTypeCheck(sourceNode, fromAnchorId, 'image') || sourceType === 'blender'
 	}
 	return false
 }
@@ -282,7 +283,6 @@ const isMediaInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
 	return (
 		id === 'in-image' ||
-		id === 'in-resource' ||
 		id === 'in-0' ||
 		id === 'in-video' ||
 		/^in-image-\d+$/.test(id) ||
@@ -518,19 +518,8 @@ const collectReferenceImages = async (
 
 	const refs: Array<{ name: string; blob: Blob }> = []
 
-	// Step 1: If the current node has its own image, add it as the first reference
-	const selfUrl = getNodeEffectiveImageUrl(node, state, deps.nodeResourceUrl)
-	if (selfUrl && refs.length < maxRefs) {
-		console.log('[collectReferenceImages] 节点自身图片URL:', selfUrl)
-		const blob = await downloadImageAsBlob(deps, selfUrl)
-		if (blob) {
-			const name = `ref-self-${nodeId}-${Date.now()}.png`
-			refs.push({ name, blob })
-			console.log('[collectReferenceImages] 成功添加节点自身参考图:', name, 'size:', blob.size)
-		}
-	}
-
-	// Step 2: Collect images from connected input edges
+	// 注意：根据需求，参考图片仅从输入锚点连接的上游节点收集，不使用节点自身图片
+	// Collect images from connected input edges only
 	const incoming: Array<{ edge: Record<string, unknown>; sourceNode: Record<string, unknown> }> = []
 	for (const edgeId of state.edgeOrder) {
 		const edge = state.edgesById[edgeId]
@@ -3712,11 +3701,12 @@ const resolveModel3DInput = async (
 		})
 	}
 
+	// 查找模型输入边：in-model（专用）或in-0（多模态，现已支持model3d类型）
 	const edge = allEdges.find(
 		(e) =>
 			String(e.toNodeId ?? '') === String(nodeId) &&
 			(String(e.toAnchorId ?? '').trim() === 'in-model' ||
-				String(e.toAnchorId ?? '').trim() === 'in-resource')
+				String(e.toAnchorId ?? '').trim() === 'in-0')
 	)
 	console.log(
 		'[Tripo3D Chat]  匹配到模型输入边:',
