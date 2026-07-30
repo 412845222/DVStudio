@@ -11085,6 +11085,13 @@ const { onRequestImportProjectPackage, onRequestExportProject } = useAIWorkflowP
 	}
 })
 
+// 统一的保存函数：先从engine同步最新数据到store，再执行保存
+const saveProjectWithSync = async () => {
+	// 强制从engine同步最新节点数据（包括宽高）到store，确保保存时数据是最新的
+	syncEngineProjectionToStore()
+	await onRequestSaveProject()
+}
+
 const onGlobalShortcutSave = async (ev: Event) => {
 	// Only take over save behavior on AIWorkflow route.
 	if (route.name !== 'AIWorkflow') return
@@ -11096,7 +11103,7 @@ const onGlobalShortcutSave = async (ev: Event) => {
 	}
 
 	// Ctrl/Cmd+S: persist blueprint project to backend (DB + JSON file).
-	await onRequestSaveProject()
+	await saveProjectWithSync()
 }
 
 const getCanvasCenterWorld = () => {
@@ -11179,7 +11186,8 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 	removeSelectedEdge: (edgeId) => {
 		engineApi.removeEdge(edgeId)
 	},
-	scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender()
+	scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender(),
+	saveProject: saveProjectWithSync
 })
 
 const applyAction = (action: WorkflowAction) => {

@@ -209,6 +209,22 @@ export class BlueprintNode extends Node {
 	domMode: boolean = false
 	private _lastAutoResizeImageUrl: string | null = null
 
+	get width(): number {
+		return this.data.width
+	}
+
+	set width(value: number) {
+		this.updateSize(value, this.data.height)
+	}
+
+	get height(): number {
+		return this.data.height
+	}
+
+	set height(value: number) {
+		this.updateSize(this.data.width, value)
+	}
+
 	constructor(data: BlueprintNodeData) {
 		super('node', data.id)
 		this.data = data
@@ -273,20 +289,36 @@ export class BlueprintNode extends Node {
 		if (data.worldX !== undefined || data.worldY !== undefined) {
 			this.setPosition(newX, newY)
 		}
+		let needRebuildPorts = false
+		let needUpdatePortPositions = false
 		if (data.width !== undefined || data.height !== undefined) {
-			if (data.width !== undefined) this.data.width = data.width
-			if (data.height !== undefined) this.data.height = data.height
-			this.rebuildPorts()
+			const newWidth = data.width !== undefined ? data.width : this.data.width
+			const newHeight = data.height !== undefined ? data.height : this.data.height
+			if (newWidth !== this.data.width || newHeight !== this.data.height) {
+				this.updateSize(newWidth, newHeight)
+				needUpdatePortPositions = true
+			}
 		}
 		if (data.selected !== undefined) {
 			this.selected = data.selected
 			this.data.selected = data.selected
 		}
-		if (data.inputs !== undefined) this.data.inputs = data.inputs
-		if (data.outputs !== undefined) this.data.outputs = data.outputs
+		if (data.inputs !== undefined) {
+			this.data.inputs = data.inputs
+			needRebuildPorts = true
+		}
+		if (data.outputs !== undefined) {
+			this.data.outputs = data.outputs
+			needRebuildPorts = true
+		}
 		if (data.sizeCustomized !== undefined) this.data.sizeCustomized = data.sizeCustomized
 		if (data.resourceId !== undefined) this.data.resourceId = data.resourceId
 		if (data.resourcePath !== undefined) this.data.resourcePath = data.resourcePath
+		if (needRebuildPorts) {
+			this.rebuildPorts()
+		} else if (needUpdatePortPositions) {
+			this.updatePortPositions()
+		}
 		const knownKeys = new Set([
 			'id',
 			'type',

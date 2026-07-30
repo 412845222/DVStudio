@@ -2513,10 +2513,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					worldX: Number.isFinite(Number(n.worldX)) ? Number(n.worldX) : 0,
 					worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : 0,
 					width: Number.isFinite(Number(n.width))
-						? Math.max(80, Math.min(1000, Number(n.width)))
+						? Math.max(40, Math.min(2000, Number(n.width)))
 						: 240,
 					height: Number.isFinite(Number(n.height))
-						? Math.max(80, Math.min(1000, Number(n.height)))
+						? Math.max(40, Math.min(2000, Number(n.height)))
 						: 160,
 					sizeCustomized: Boolean(n.sizeCustomized),
 					resourceId: isString(n.resourceId) ? n.resourceId : null,
