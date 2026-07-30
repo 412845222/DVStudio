@@ -1317,6 +1317,7 @@ defineExpose({
 	flex-direction: column;
 	align-items: stretch;
 	justify-content: flex-start;
+	overflow: visible;
 }
 
 .wf-node.is-auto-height .wf-node-body {

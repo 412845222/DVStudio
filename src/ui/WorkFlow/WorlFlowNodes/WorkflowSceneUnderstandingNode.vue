@@ -29,7 +29,7 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<div class="wf-scene-understand" @pointerdown.stop>
+			<div class="wf-scene-understand" @pointerdown.stop @click="onAnyClick">
 				<div class="wf-scene-understand-hero">
 					<div class="wf-scene-understand-status" :class="`is-${status}`">
 						{{ statusLabel }}
@@ -40,7 +40,11 @@
 						:disabled="running || !canRun"
 						@click.stop="emit('run-scene-understanding')"
 					>
-						{{ running ? t('nodes.sceneUnderstanding.analyzing') : t('nodes.sceneUnderstanding.generateJson') }}
+						{{
+							running
+								? t('nodes.sceneUnderstanding.analyzing')
+								: t('nodes.sceneUnderstanding.generateJson')
+						}}
 					</button>
 					<button
 						v-if="running"
@@ -61,46 +65,82 @@
 						<span>{{ progressValue }}%</span>
 					</div>
 					<div v-if="reasoningText" ref="reasoningEl" class="wf-scene-understand-reasoning">
-						<div class="wf-scene-understand-reasoning-title">{{ t('nodes.sceneUnderstanding.modelThinking') }}</div>
+						<div class="wf-scene-understand-reasoning-title">
+							{{ t('nodes.sceneUnderstanding.modelThinking') }}
+						</div>
 						<pre class="wf-scene-understand-reasoning-content">{{ reasoningText }}</pre>
 					</div>
 				</div>
 
 				<div class="wf-scene-understand-grid">
 					<div class="wf-scene-understand-card">
-						<div class="wf-scene-understand-card-title">{{ t('nodes.sceneUnderstanding.inputImage') }}</div>
+						<div class="wf-scene-understand-card-title">
+							{{ t('nodes.sceneUnderstanding.inputImage') }}
+						</div>
 						<div class="wf-scene-understand-card-value">
-							{{ linkedImageCount > 0 ? t('nodes.sceneUnderstanding.connectedCount', { count: linkedImageCount }) : t('nodes.sceneUnderstanding.notConnected') }}
+							{{
+								linkedImageCount > 0
+									? t('nodes.sceneUnderstanding.connectedCount', { count: linkedImageCount })
+									: t('nodes.sceneUnderstanding.notConnected')
+							}}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ linkedImageHint }}</div>
 					</div>
 					<div class="wf-scene-understand-card">
 						<div class="wf-scene-understand-card-title">{{ secondaryInputTitle }}</div>
 						<div class="wf-scene-understand-card-value">
-							{{ secondaryInputConnected ? t('nodes.sceneUnderstanding.connected') : t('nodes.sceneUnderstanding.notConnected') }}
+							{{
+								secondaryInputConnected
+									? t('nodes.sceneUnderstanding.connected')
+									: t('nodes.sceneUnderstanding.notConnected')
+							}}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ secondaryInputPreview }}</div>
 					</div>
 					<div v-if="currentMode === 'scene-lighting'" class="wf-scene-understand-card">
-						<div class="wf-scene-understand-card-title">{{ t('nodes.sceneUnderstanding.supplementHint') }}</div>
+						<div class="wf-scene-understand-card-title">
+							{{ t('nodes.sceneUnderstanding.supplementHint') }}
+						</div>
 						<div class="wf-scene-understand-card-value">
-							{{ linkedPromptText ? t('nodes.sceneUnderstanding.connected') : t('nodes.sceneUnderstanding.notConnected') }}
+							{{
+								linkedPromptText
+									? t('nodes.sceneUnderstanding.connected')
+									: t('nodes.sceneUnderstanding.notConnected')
+							}}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ linkedPromptPreview }}</div>
 					</div>
 				</div>
 
 				<label class="wf-scene-understand-field">
-					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.understandMode') }}</span>
-					<select class="wf-scene-understand-input" :value="currentMode" :disabled="running" @change="onModeChange">
-						<option value="scene-layout">{{ t('nodes.sceneUnderstanding.modeSceneLayout') }}</option>
-						<option value="scene-lighting">{{ t('nodes.sceneUnderstanding.modeSceneLighting') }}</option>
+					<span class="wf-scene-understand-label">
+						{{ t('nodes.sceneUnderstanding.understandMode') }}
+					</span>
+					<select
+						class="wf-scene-understand-input"
+						:value="currentMode"
+						:disabled="running"
+						@change="onModeChange"
+					>
+						<option value="scene-layout">
+							{{ t('nodes.sceneUnderstanding.modeSceneLayout') }}
+						</option>
+						<option value="scene-lighting">
+							{{ t('nodes.sceneUnderstanding.modeSceneLighting') }}
+						</option>
 					</select>
 				</label>
 
 				<label v-if="currentMode === 'scene-layout'" class="wf-scene-understand-field">
-					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.sceneType') }}</span>
-					<select class="wf-scene-understand-input" :value="currentSceneType" :disabled="running" @change="onSceneTypeChange">
+					<span class="wf-scene-understand-label">
+						{{ t('nodes.sceneUnderstanding.sceneType') }}
+					</span>
+					<select
+						class="wf-scene-understand-input"
+						:value="currentSceneType"
+						:disabled="running"
+						@change="onSceneTypeChange"
+					>
 						<option value="auto">{{ t('nodes.sceneUnderstanding.sceneTypeAuto') }}</option>
 						<option value="indoor">{{ t('nodes.sceneUnderstanding.sceneTypeIndoor') }}</option>
 						<option value="outdoor">{{ t('nodes.sceneUnderstanding.sceneTypeOutdoor') }}</option>
@@ -111,14 +151,26 @@
 				</label>
 
 				<label class="wf-scene-understand-field">
-					<span class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.multimodalModel') }}</span>
+					<span class="wf-scene-understand-label">
+						{{ t('nodes.sceneUnderstanding.multimodalModel') }}
+					</span>
 					<div class="wf-scene-understand-model-row">
 						<select
+							ref="modelSelectRef"
 							class="wf-scene-understand-input"
 							:value="selectedModel"
 							:disabled="running"
+							@focus="onModelSelectFocus"
+							@click.stop="onModelSelectFocus"
 							@change="onModelChange"
 						>
+							<option v-if="!availableModels.length" value="" disabled>
+								{{
+									loadingModels
+										? t('nodes.sceneUnderstanding.refreshingModels')
+										: t('nodes.sceneUnderstanding.noModelsAvailable')
+								}}
+							</option>
 							<option v-for="item in availableModels" :key="item.id" :value="item.id">
 								{{ item.label }}
 							</option>
@@ -127,16 +179,22 @@
 							class="wf-scene-understand-btn ghost"
 							type="button"
 							:disabled="loadingModels || running"
-							@click.stop="emit('request-scene-models')"
+							@click.stop="requestModelsIfNeeded(true)"
 						>
-							{{ loadingModels ? t('nodes.sceneUnderstanding.refreshingModels') : t('nodes.sceneUnderstanding.refreshModels') }}
+							{{
+								loadingModels
+									? t('nodes.sceneUnderstanding.refreshingModels')
+									: t('nodes.sceneUnderstanding.refreshModels')
+							}}
 						</button>
 					</div>
 				</label>
 
 				<div class="wf-scene-understand-output-shell">
 					<div class="wf-scene-understand-output-head">
-						<div class="wf-scene-understand-label">{{ t('nodes.sceneUnderstanding.jsonOutputPreview') }}</div>
+						<div class="wf-scene-understand-label">
+							{{ t('nodes.sceneUnderstanding.jsonOutputPreview') }}
+						</div>
 						<div class="wf-scene-understand-meta">{{ resultMeta }}</div>
 					</div>
 					<textarea
@@ -152,7 +210,9 @@
 
 		<template #footer>
 			<div class="wf-scene-understand-footer" @pointerdown.stop>
-				<div class="wf-scene-understand-footer-title">{{ t('nodes.sceneUnderstanding.resultSummary') }}</div>
+				<div class="wf-scene-understand-footer-title">
+					{{ t('nodes.sceneUnderstanding.resultSummary') }}
+				</div>
 				<div class="wf-scene-understand-footer-copy" v-if="providerText">
 					{{ providerText }}
 				</div>
@@ -204,12 +264,49 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
-
+const onAnyClick = (e: MouseEvent) => {
+	console.log('[SceneUnderstanding:Component] ★ ANY CLICK on form area ★', {
+		nodeId: props.nodeId,
+		target: (e.target as HTMLElement)?.tagName,
+		availableModels: availableModels.value.length,
+		selectedModel: selectedModel.value
+	})
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -273,14 +370,14 @@ const detectedSceneType = computed(() => {
 const detectedSceneTypeLabel = computed(() => {
 	if (!detectedSceneType.value) return ''
 	const confidence = settings.value?.sceneTypeConfidence
-	const confText = typeof confidence === 'number' && confidence > 0
-		? ` (${Math.round(confidence * 100)}%)`
-		: ''
-	const typeLabel = detectedSceneType.value === 'indoor'
-		? t('nodes.sceneUnderstanding.detectedIndoor')
-		: detectedSceneType.value === 'outdoor'
-			? t('nodes.sceneUnderstanding.detectedOutdoor')
-			: t('nodes.sceneUnderstanding.detectedSemiOutdoor')
+	const confText =
+		typeof confidence === 'number' && confidence > 0 ? ` (${Math.round(confidence * 100)}%)` : ''
+	const typeLabel =
+		detectedSceneType.value === 'indoor'
+			? t('nodes.sceneUnderstanding.detectedIndoor')
+			: detectedSceneType.value === 'outdoor'
+				? t('nodes.sceneUnderstanding.detectedOutdoor')
+				: t('nodes.sceneUnderstanding.detectedSemiOutdoor')
 	return `${t('nodes.sceneUnderstanding.detectedAs')}${typeLabel}${confText}`
 })
 const availableModels = computed(
@@ -295,7 +392,11 @@ const running = computed(() => status.value === 'running')
 const loadingModels = computed(() => status.value === 'loading-models')
 const outputJson = computed(() => String(settings.value?.outputJson ?? ''))
 const messageText = computed(() =>
-	String(settings.value?.message ?? settings.value?.resultSummary ?? t('nodes.sceneUnderstanding.waitingToRun'))
+	String(
+		settings.value?.message ??
+			settings.value?.resultSummary ??
+			t('nodes.sceneUnderstanding.waitingToRun')
+	)
 )
 const statusText = computed(() =>
 	String(settings.value?.statusText ?? settings.value?.providerStatusText ?? messageText.value)
@@ -342,7 +443,9 @@ const linkedLayoutJsonPreview = computed(() => {
 })
 
 const secondaryInputTitle = computed(() =>
-	currentMode.value === 'scene-lighting' ? t('nodes.sceneUnderstanding.layoutJson') : t('nodes.sceneUnderstanding.promptInput')
+	currentMode.value === 'scene-lighting'
+		? t('nodes.sceneUnderstanding.layoutJson')
+		: t('nodes.sceneUnderstanding.promptInput')
 )
 
 const secondaryInputConnected = computed(() =>
@@ -361,7 +464,8 @@ const linkedImageHint = computed(() => {
 		: []
 	const url = String(urls[0] ?? props.linkedImageUrl ?? '').trim()
 	if (!url) return t('nodes.sceneUnderstanding.imageHintConnect')
-	if (urls.length > 1) return t('nodes.sceneUnderstanding.imageHintMultiCount', { count: urls.length })
+	if (urls.length > 1)
+		return t('nodes.sceneUnderstanding.imageHintMultiCount', { count: urls.length })
 	if (url.startsWith('data:')) return t('nodes.sceneUnderstanding.imageHintEmbedded')
 	return url.length > 44 ? `${url.slice(0, 44)}…` : url
 })
@@ -370,7 +474,10 @@ const statusLabel = computed(() => {
 	if (status.value === 'loading-models') return t('nodes.sceneUnderstanding.statusLoadingModels')
 	if (status.value === 'running') return t('nodes.sceneUnderstanding.statusAnalyzing')
 	if (status.value === 'canceled') return t('nodes.sceneUnderstanding.statusCanceled')
-	if (status.value === 'completed') return settings.value?.mock ? t('nodes.sceneUnderstanding.statusCompletedMock') : t('nodes.sceneUnderstanding.statusCompleted')
+	if (status.value === 'completed')
+		return settings.value?.mock
+			? t('nodes.sceneUnderstanding.statusCompletedMock')
+			: t('nodes.sceneUnderstanding.statusCompleted')
 	if (status.value === 'error') return t('nodes.sceneUnderstanding.statusError')
 	return t('nodes.sceneUnderstanding.statusIdle')
 })
@@ -389,13 +496,19 @@ const resultMeta = computed(() => {
 
 const onModelChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value ?? '').trim()
+	console.log('[SceneUnderstanding:Component] onModelChange', {
+		nodeId: props.nodeId,
+		selectedModel: value
+	})
 	emit('update-scene-understanding-settings', { selectedModel: value })
 }
 
 const onModeChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value ?? '').trim()
+	const newMode = value === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+	console.log('[SceneUnderstanding:Component] onModeChange', { nodeId: props.nodeId, newMode })
 	emit('update-scene-understanding-settings', {
-		mode: value === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
+		mode: newMode,
 		outputJson: '',
 		rawOutput: '',
 		resultSummary: '',
@@ -411,6 +524,10 @@ const onModeChange = (e: Event) => {
 const onSceneTypeChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value ?? '').trim()
 	const sceneType = value === 'indoor' || value === 'outdoor' ? value : 'auto'
+	console.log('[SceneUnderstanding:Component] onSceneTypeChange', {
+		nodeId: props.nodeId,
+		sceneType
+	})
 	emit('update-scene-understanding-settings', {
 		sceneType,
 		detectedSceneType: undefined,
@@ -423,6 +540,32 @@ const onSceneTypeChange = (e: Event) => {
 
 const reasoningEl = ref<HTMLDivElement | null>(null)
 const outputEl = ref<HTMLTextAreaElement | null>(null)
+const modelSelectRef = ref<HTMLSelectElement | null>(null)
+const hasRequestedModels = ref(false)
+
+const requestModelsIfNeeded = (force = false) => {
+	if (running.value) return
+	if (!force && (loadingModels.value || hasRequestedModels.value)) return
+	if (!force && availableModels.value.length > 0) return
+	console.log('[SceneUnderstanding:Component] requestModelsIfNeeded', {
+		nodeId: props.nodeId,
+		force,
+		hasRequested: hasRequestedModels.value,
+		availableCount: availableModels.value.length,
+		loading: loadingModels.value
+	})
+	hasRequestedModels.value = true
+	emit('request-scene-models')
+}
+
+const onModelSelectFocus = () => {
+	console.log('[SceneUnderstanding:Component] model select focused/clicked', {
+		nodeId: props.nodeId,
+		availableCount: availableModels.value.length,
+		loading: loadingModels.value
+	})
+	requestModelsIfNeeded(false)
+}
 
 const scrollToBottom = (el: HTMLElement | null) => {
 	if (!el) return
@@ -450,8 +593,24 @@ watch(running, (isRunning) => {
 	}
 })
 
+watch(currentMode, () => {
+	// 模式切换时，重置模型请求状态，允许重新加载对应模式的模型
+	hasRequestedModels.value = false
+	console.log('[SceneUnderstanding:Component] mode changed, reset hasRequestedModels', {
+		nodeId: props.nodeId,
+		newMode: currentMode.value
+	})
+})
+
 onMounted(() => {
-	if (!availableModels.value.length) emit('request-scene-models')
+	console.log('[SceneUnderstanding:Component] mounted', {
+		nodeId: props.nodeId,
+		availableModelsCount: availableModels.value.length,
+		currentMode: currentMode.value,
+		selectedModel: selectedModel.value,
+		currentSceneType: currentSceneType.value
+	})
+	requestModelsIfNeeded(false)
 })
 </script>
 

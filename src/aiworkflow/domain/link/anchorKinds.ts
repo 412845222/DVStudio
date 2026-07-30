@@ -209,6 +209,39 @@ export const findBestInputAnchorForOutput = (
 	const isCanonicalMediaType = (t: unknown): t is CanonicalAnchorMediaType =>
 		t === 'image' || t === 'video' || t === 'text' || t === 'model3d' || t === 'audio'
 
+	// 场景节点专属语义匹配：根据节点类型优先选择语义对应的输入锚点
+	const fromType = normalizeNodeType(fromNode)
+	const toType = normalizeNodeType(toNode)
+	if (fromMediaType === 'text') {
+		// scene-layout → scene-decompose：优先匹配in-json（场景JSON输入）
+		if (fromType === 'scene-layout' && toType === 'scene-decompose') {
+			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-json')
+			if (semanticMatch) return semanticMatch.id
+		}
+		// scene-layout → unreal-export：优先匹配in-layout-json（布局JSON输入）
+		if (fromType === 'scene-layout' && toType === 'unreal-export') {
+			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-layout-json')
+			if (semanticMatch) return semanticMatch.id
+		}
+		// scene-understanding → scene-layout：优先匹配in-json（布局JSON输入）
+		if (fromType === 'scene-understanding' && toType === 'scene-layout') {
+			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-json')
+			if (semanticMatch) return semanticMatch.id
+		}
+		// scene-understanding(灯光模式) → unreal-export：优先匹配in-lighting-json
+		if (fromType === 'scene-understanding' && toType === 'unreal-export') {
+			const isLightingMode = fromNode.sceneUnderstandingSettings?.mode === 'scene-lighting'
+			if (isLightingMode) {
+				const lightingMatch = linkableAnchors.find((a) => a.id === 'in-lighting-json')
+				if (lightingMatch) return lightingMatch.id
+			}
+			// 非灯光模式默认连布局JSON
+			const layoutMatch = linkableAnchors.find((a) => a.id === 'in-layout-json')
+			if (layoutMatch) return layoutMatch.id
+		}
+		// scene-decompose → 下游text节点：out-0输出，默认匹配
+	}
+
 	const exactMatches = linkableAnchors.filter((input) => {
 		const inputMediaType = normalizeAnchorMediaType(input.mediaType, {
 			node: toNode,

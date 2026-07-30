@@ -29,8 +29,16 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<div class="wf-scene-layout" @pointerdown.stop @click.stop="onNodeBodyClick">
-				<div class="wf-scene-layout-toolbar">
+			<div
+				class="wf-scene-layout"
+				data-wf-three-preview="true"
+				@pointerdown="onRootPointerDown"
+				@pointermove="onRootPointerMove"
+				@pointerup="onRootPointerUp"
+				@wheel.stop="onRootWheel"
+				@click.stop="onNodeBodyClick"
+			>
+				<div class="wf-scene-layout-toolbar" @pointerdown.stop @pointermove.stop @pointerup.stop>
 					<div class="wf-scene-layout-status" :class="`is-${status}`">
 						{{ statusLabel }}
 					</div>
@@ -39,25 +47,33 @@
 							class="wf-scene-layout-btn ghost"
 							type="button"
 							:disabled="running || !hasRunnableJson"
-							@click.stop="emit('refresh')"
+							@click.stop="(onClickDebug('refresh-btn'), emit('refresh'))"
 						>
 							{{ t('common.refresh') }}
 						</button>
 						<button
 							class="wf-scene-layout-btn ghost"
 							type="button"
-							@click.stop="emit('update-preview-mode', !previewMode)"
+							@click.stop="(onClickDebug('preview-mode-btn'), emit('update-preview-mode', !previewMode))"
 						>
-							{{ previewMode ? t('nodes.sceneLayout.closePreview') : t('nodes.sceneLayout.openPreview') }}
+							{{
+								previewMode
+									? t('nodes.sceneLayout.closePreview')
+									: t('nodes.sceneLayout.openPreview')
+							}}
 						</button>
-						<button class="wf-scene-layout-btn ghost" type="button" @click.stop="toggleCubeMode">
+						<button
+							class="wf-scene-layout-btn ghost"
+							type="button"
+							@click.stop="(onClickDebug('cube-mode-btn'), toggleCubeMode())"
+						>
 							{{ cubeModeLabel }}
 						</button>
 						<button
 							class="wf-scene-layout-btn ghost"
 							type="button"
 							:disabled="!canToggleSelectedScaleMode"
-							@click.stop="toggleSelectedScaleMode"
+							@click.stop="(onClickDebug('scale-mode-btn'), toggleSelectedScaleMode())"
 						>
 							{{ selectedScaleModeLabel }}
 						</button>
@@ -65,18 +81,20 @@
 							class="wf-scene-layout-btn"
 							type="button"
 							:disabled="running || !hasRunnableJson"
-							@click.stop="emit('run-scene-layout')"
+							@click.stop="(onClickDebug('run-layout-btn'), emit('run-scene-layout'))"
 						>
 							{{ running ? t('nodes.sceneLayout.processing') : t('nodes.sceneLayout.runLayout') }}
 						</button>
 					</div>
 				</div>
 
+				<!-- 参考Model3D：独立的viewer-shell，绑定完整pointer事件链和详细日志 -->
 				<div
-					class="wf-scene-layout-stage"
+					class="wf-scene-layout-viewer-shell"
+					data-wf-node-drag-ignore="true"
 					@pointerdown.stop
-					@wheel.stop.prevent
-					@contextmenu.stop.prevent
+					@wheel.stop="onStageWheel"
+					@contextmenu.prevent.stop
 				>
 					<input
 						ref="modelFileInputRef"
@@ -93,7 +111,7 @@
 						:emptyText="t('nodes.sceneLayout.previewEmptyText')"
 						:maskedTitle="t('nodes.sceneLayout.previewMaskedTitle')"
 						:maskedText="t('nodes.sceneLayout.previewMaskedText')"
-						@start="emit('start-three-preview')"
+						@start="handlePreviewStart"
 					>
 						<canvas
 							ref="canvasRef"
@@ -101,26 +119,40 @@
 							:class="{ live: previewActive }"
 							tabindex="0"
 							data-wf-scene-layout-canvas="true"
-							@contextmenu.stop.prevent
+							data-wf-node-drag-ignore="true"
+							@contextmenu.prevent.stop
 						/>
 						<template #overlay>
+							<!-- ========= 覆盖层容器：默认pointer-events:none，仅内部交互按钮恢复 ========= -->
+							<!-- 这是关键：防止覆盖层自身拦截canvas事件 -->
+							<!-- 【BUGFIX 2026-07】加 @contextmenu.prevent.stop，避免在覆盖层容器内右键冒泡到 WorkflowNodeWrapper 触发节点菜单 -->
 							<div
 								v-if="previewMode && previewInteractive && layoutItems.length"
 								class="wf-scene-layout-overlay-tools"
+								@pointerdown="onOverlayToolsPointerDown"
+								@contextmenu.prevent.stop
 							>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
 									@click.stop="togglePlaceholderVisibility"
 								>
-									{{ hidePlaceholderCubes ? t('nodes.sceneLayout.showCubes') : t('nodes.sceneLayout.hideCubes') }}
+									{{
+										hidePlaceholderCubes
+											? t('nodes.sceneLayout.showCubes')
+											: t('nodes.sceneLayout.hideCubes')
+									}}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
 									@click.stop="toggleLightingPreview"
 								>
-									{{ lightingPreviewEnabled ? t('nodes.sceneLayout.lightingPreviewOn') : t('nodes.sceneLayout.lightingPreview') }}
+									{{
+										lightingPreviewEnabled
+											? t('nodes.sceneLayout.lightingPreviewOn')
+											: t('nodes.sceneLayout.lightingPreview')
+									}}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -128,7 +160,11 @@
 									:disabled="!lightingPreviewEnabled"
 									@click.stop="toggleLightingDebug"
 								>
-									{{ lightingDebugEnabled ? t('nodes.sceneLayout.lightingDebugOn') : t('nodes.sceneLayout.lightingDebug') }}
+									{{
+										lightingDebugEnabled
+											? t('nodes.sceneLayout.lightingDebugOn')
+											: t('nodes.sceneLayout.lightingDebug')
+									}}
 								</button>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
@@ -248,14 +284,19 @@
 							<div
 								v-if="previewMode && previewInteractive && lightingPreviewEnabled"
 								class="wf-scene-layout-lighting-dock"
-								@pointerdown.stop
+								@pointerdown="onOverlayLightingDockPointerDown"
+								@contextmenu.prevent.stop
 							>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
 									@click.stop="lightingPanelCollapsed = !lightingPanelCollapsed"
 								>
-									{{ lightingPanelCollapsed ? t('nodes.sceneLayout.lightControlPanel') : t('nodes.sceneLayout.collapseLightControl') }}
+									{{
+										lightingPanelCollapsed
+											? t('nodes.sceneLayout.lightControlPanel')
+											: t('nodes.sceneLayout.collapseLightControl')
+									}}
 								</button>
 							</div>
 							<div
@@ -266,7 +307,8 @@
 									!lightingPanelCollapsed
 								"
 								class="wf-scene-layout-lighting-controls"
-								@pointerdown.stop
+								@pointerdown="onOverlayLightingControlsPointerDown"
+								@contextmenu.prevent.stop
 							>
 								<div class="wf-scene-layout-lighting-controls-header">
 									<div>{{ t('nodes.sceneLayout.lightGlobalControl') }}</div>
@@ -304,17 +346,24 @@
 								v-if="previewMode && previewInteractive"
 								class="wf-scene-layout-perf-panel"
 								:class="{ collapsed: perfPanelCollapsed }"
-								@pointerdown.stop
+								@pointerdown.stop="onOverlayPerfPanelPointerDown"
+								@contextmenu.prevent.stop
 							>
 								<button
 									class="wf-scene-layout-btn ghost wf-scene-layout-overlay-btn"
 									type="button"
 									@click.stop="perfPanelCollapsed = !perfPanelCollapsed"
 								>
-									{{ perfPanelCollapsed ? t('nodes.sceneLayout.perfPanel') : t('nodes.sceneLayout.collapsePerf') }}
+									{{
+										perfPanelCollapsed
+											? t('nodes.sceneLayout.perfPanel')
+											: t('nodes.sceneLayout.collapsePerf')
+									}}
 								</button>
 								<div v-if="!perfPanelCollapsed" class="wf-scene-layout-perf-card">
-									<div class="wf-scene-layout-perf-title">{{ t('nodes.sceneLayout.threePerf') }}</div>
+									<div class="wf-scene-layout-perf-title">
+										{{ t('nodes.sceneLayout.threePerf') }}
+									</div>
 									<div class="wf-scene-layout-perf-grid">
 										<div>FPS</div>
 										<div>{{ perfFpsText }}</div>
@@ -337,9 +386,19 @@
 									</div>
 								</div>
 							</div>
+							<div
+								v-if="previewInteractive && viewer"
+								class="wf-scene-layout-gesture-tip"
+								@pointerdown="onOverlayGestureTipPointerDown"
+								@contextmenu.prevent.stop
+							>
+								{{ t('nodes.sceneLayout.interactionHint') }}
+							</div>
 						</template>
 					</WorkflowThreePreviewShell>
+					<!-- 闭合：wf-scene-layout-viewer-shell 开始于第84行 -->
 				</div>
+				<!-- 闭合：wf-scene-layout -->
 			</div>
 		</template>
 
@@ -349,7 +408,11 @@
 					<div>{{ t('nodes.sceneLayout.previewMode') }}</div>
 					<div>{{ previewMode ? t('common.enabled') : t('common.disabled') }}</div>
 					<div>{{ t('nodes.sceneLayout.inputJson') }}</div>
-					<div>{{ hasInputJson ? t('nodes.sceneLayout.connected') : t('nodes.sceneLayout.notConnected') }}</div>
+					<div>
+						{{
+							hasInputJson ? t('nodes.sceneLayout.connected') : t('nodes.sceneLayout.notConnected')
+						}}
+					</div>
 					<div>{{ t('nodes.sceneLayout.placeholderElements') }}</div>
 					<div>{{ layoutItems.length }}</div>
 					<div>{{ t('nodes.sceneLayout.realModels') }}</div>
@@ -392,7 +455,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
 import {
@@ -409,6 +472,7 @@ import type {
 	WorkflowUnrealResolvedLayoutExport
 } from '../../../aiworkflow/types'
 import type {
+	WorkflowThreePreviewPhase,
 	WorkflowThreePreviewProgressPayload,
 	WorkflowThreePreviewState
 } from './three-preview/types'
@@ -416,6 +480,11 @@ import { isObject, isString } from '../../../types/utils'
 import { diagnoseDwebAsset } from '../../../electronBridge'
 
 const { t } = useI18n()
+
+const SCENE3D_DEBUG = true
+const sceneLog = (...args: any[]) => {
+	if (SCENE3D_DEBUG) console.log('[SceneLayout3D]', ...args)
+}
 
 type AnchorSpec = {
 	id: string
@@ -482,12 +551,40 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -580,6 +677,18 @@ let perfPollTimer: ReturnType<typeof setInterval> | null = null
 let cachedLayoutSignature = ''
 let cameraUserControlled = false
 
+const internalPreviewRequestId = ref(0)
+const internalPreviewPhase = ref<WorkflowThreePreviewPhase>('masked')
+const internalPreviewProgress = ref(0)
+const internalPreviewLabel = ref('')
+const internalPreviewState = computed<WorkflowThreePreviewState>(() => ({
+	phase: internalPreviewPhase.value,
+	canStart: true,
+	progress: internalPreviewProgress.value,
+	label: internalPreviewLabel.value,
+	requestId: internalPreviewRequestId.value
+}))
+
 const cacheSnapshot = (value: string) => {
 	if (!snapshotCacheKey) return
 	const next = String(value ?? '').trim()
@@ -615,8 +724,19 @@ const clearViewerInitSchedule = () => {
 }
 
 const settings = computed(() => props.sceneLayoutSettings ?? null)
-const threePreviewState = computed(() => props.threePreviewState ?? null)
+const threePreviewState = computed(() => {
+	const internal = internalPreviewState.value
+	const external = props.threePreviewState
+	// 内部loading/interactive优先级更高：如果内部已经启动预览，就使用内部状态
+	// 防止外部useAIWorkflowThreejsLifecycleManager（可能因activeNodeId）返回masked，
+	// 导致OrbitControls被禁用或遮罩层遮挡
+	if (internal && (internal.phase === 'loading' || internal.phase === 'interactive')) {
+		return internal
+	}
+	return external ?? internal
+})
 const previewPhase = computed(() => threePreviewState.value?.phase ?? 'masked')
+const previewRequestId = computed(() => Number(threePreviewState.value?.requestId ?? 0))
 const previewSuspended = computed(() => props.previewSuspended === true)
 const previewMode = computed(() => settings.value?.previewMode === true)
 const lightingPreviewEnabled = computed(() => settings.value?.lightingPreviewEnabled === true)
@@ -655,8 +775,12 @@ const sceneLayoutModelBindings = computed(
 			? props.sceneLayoutModelBindings
 			: []) as WorkflowSceneLayoutModelBinding[]
 )
-const messageText = computed(() => String(settings.value?.message ?? t('nodes.sceneLayout.waitingJson')))
-const cubeModeLabel = computed(() => (renderTransparent.value ? t('nodes.sceneLayout.translucent') : t('nodes.sceneLayout.opaque')))
+const messageText = computed(() =>
+	String(settings.value?.message ?? t('nodes.sceneLayout.waitingJson'))
+)
+const cubeModeLabel = computed(() =>
+	renderTransparent.value ? t('nodes.sceneLayout.translucent') : t('nodes.sceneLayout.opaque')
+)
 const connectedModelCount = computed(
 	() =>
 		sceneLayoutModelBindings.value.filter(
@@ -697,7 +821,9 @@ const selectedScaleMode = computed(() => {
 })
 const selectedScaleModeLabel = computed(() => {
 	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.placeholderScale')
-	return selectedScaleMode.value === 'model' ? t('nodes.sceneLayout.modelScale') : t('nodes.sceneLayout.placeholderScale')
+	return selectedScaleMode.value === 'model'
+		? t('nodes.sceneLayout.modelScale')
+		: t('nodes.sceneLayout.placeholderScale')
 })
 const canOutputSelectedPlaceholder = computed(
 	() => previewMode.value && !hidePlaceholderCubes.value && !!selectedPreviewItem.value
@@ -714,9 +840,13 @@ const canClearSelectedManualModel = computed(
 )
 const selectedPlaceholderStatusText = computed(() => {
 	const selected =
-		selectedPreviewItem.value?.name || selectedPreviewItem.value?.id || t('nodes.sceneLayout.noPlaceholderSelected')
+		selectedPreviewItem.value?.name ||
+		selectedPreviewItem.value?.id ||
+		t('nodes.sceneLayout.noPlaceholderSelected')
 	const output =
-		selectedPlaceholderOutputItem.value?.name || selectedPlaceholderOutputItem.value?.id || t('nodes.sceneLayout.notSpecified')
+		selectedPlaceholderOutputItem.value?.name ||
+		selectedPlaceholderOutputItem.value?.id ||
+		t('nodes.sceneLayout.notSpecified')
 	return t('nodes.sceneLayout.currentSelected', { selected, output })
 })
 const selectedPlaceholderModelStatusText = computed(() => {
@@ -732,12 +862,24 @@ const selectedPlaceholderOrientationText = computed(() => {
 	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.orientationNoPlaceholder')
 	const fix = selectedPreviewItem.value.orientationFix
 	if (!fix) return t('nodes.sceneLayout.orientationPending')
-	const modeText = fix.mode === 'manual' ? t('nodes.sceneLayout.orientationManual') : t('nodes.sceneLayout.orientationAuto')
-	const confidenceText = fix.confidence === 'high' ? t('nodes.sceneLayout.confidenceHigh') : t('nodes.sceneLayout.confidenceLow')
+	const modeText =
+		fix.mode === 'manual'
+			? t('nodes.sceneLayout.orientationManual')
+			: t('nodes.sceneLayout.orientationAuto')
+	const confidenceText =
+		fix.confidence === 'high'
+			? t('nodes.sceneLayout.confidenceHigh')
+			: t('nodes.sceneLayout.confidenceLow')
 	const yaw = Number.isFinite(Number(fix.yaw)) ? Number(fix.yaw).toFixed(1) : '0.0'
 	const pitch = Number.isFinite(Number(fix.pitch)) ? Number(fix.pitch).toFixed(1) : '0.0'
 	const roll = Number.isFinite(Number(fix.roll)) ? Number(fix.roll).toFixed(1) : '0.0'
-	return t('nodes.sceneLayout.orientationStatus', { mode: modeText, confidence: confidenceText, yaw, pitch, roll })
+	return t('nodes.sceneLayout.orientationStatus', {
+		mode: modeText,
+		confidence: confidenceText,
+		yaw,
+		pitch,
+		roll
+	})
 })
 const selectedPlaceholderFillText = computed(() => {
 	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.fillNoPlaceholder')
@@ -754,7 +896,9 @@ const selectedPlaceholderFillText = computed(() => {
 })
 const cycleFillButtonLabel = computed(() => {
 	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.cycleFill')
-	return String(selectedPreviewItem.value.fillMode ?? '').trim() ? t('nodes.sceneLayout.cancelCycle') : t('nodes.sceneLayout.cycleFill')
+	return String(selectedPreviewItem.value.fillMode ?? '').trim()
+		? t('nodes.sceneLayout.cancelCycle')
+		: t('nodes.sceneLayout.cycleFill')
 })
 const selectedPlaceholderFitText = computed(() => {
 	if (!selectedPreviewItem.value) return t('nodes.sceneLayout.fitNoPlaceholder')
@@ -771,7 +915,10 @@ const selectedPlaceholderFitText = computed(() => {
 				: fitMode === 'oriented'
 					? t('nodes.sceneLayout.fitOriented')
 					: t('nodes.sceneLayout.fitNormal')
-	return t('nodes.sceneLayout.fitStatus', { mode: fitModeLabel, message: fitMessage || t('nodes.sceneLayout.fitUpdated') })
+	return t('nodes.sceneLayout.fitStatus', {
+		mode: fitModeLabel,
+		message: fitMessage || t('nodes.sceneLayout.fitUpdated')
+	})
 })
 const actionFeedbackText = computed(() => {
 	const text = String(lastActionMessage.value ?? '').trim()
@@ -814,11 +961,16 @@ const lightingPreviewText = computed(() => {
 	const meta = lightingPreviewMeta.value
 	if (!meta?.valid) return t('nodes.sceneLayout.lightingJsonInvalid')
 	const detailParts = [
-		meta.lightsCount > 0 ? t('nodes.sceneLayout.lightingLocalLights', { count: meta.lightsCount }) : t('nodes.sceneLayout.lightingGlobalOnly'),
+		meta.lightsCount > 0
+			? t('nodes.sceneLayout.lightingLocalLights', { count: meta.lightsCount })
+			: t('nodes.sceneLayout.lightingGlobalOnly'),
 		meta.preset || meta.style || t('nodes.sceneLayout.lightingNoStyle')
 	].filter(Boolean)
 	const summaryText = meta.summary ? ` · ${meta.summary}` : ''
-	return t('nodes.sceneLayout.lightingConnected', { details: detailParts.join(' · '), summary: summaryText })
+	return t('nodes.sceneLayout.lightingConnected', {
+		details: detailParts.join(' · '),
+		summary: summaryText
+	})
 })
 const lightingControlItems = computed(() => {
 	const controls = lightingControls.value
@@ -950,9 +1102,15 @@ watch(
 			String(props.linkedLightingJsonText ?? '')
 		] as const,
 	() => {
+		// 【BUGFIX 2026-07】始终优先恢复"用户上次设置的视角"：
+		// - 之前：只有 cameraUserControlled=false 且 signature 未变化时才走缓存 → 用户每次生成布局（signature 必变）
+		//   或手动调过镜头（cameraUserControlled=true）后就再也恢复不到自己的视角，每次都从头拖
+		// - 现在：只要缓存里有就一定恢复（setLayout 内部已经会在 cachedView!=null 时 allowAutoFit=false，
+		//   不会再去自动 fit 把用户视角冲掉；只有 cache 没值时才从 settings.camera 或默认视角初始化）
+		const cachedViewForWatch = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
 		viewer?.setLayout(
 			layoutItems.value,
-			cameraUserControlled ? null : undefined,
+			cachedViewForWatch ? null : settings.value?.camera,
 			{
 				transparent: renderTransparent.value,
 				previewMode: previewMode.value,
@@ -963,7 +1121,7 @@ watch(
 				modelBindings: sceneLayoutModelBindings.value,
 				hidePlaceholderCubes: hidePlaceholderCubes.value
 			},
-			cameraUserControlled ? null : undefined
+			cachedViewForWatch
 		)
 	},
 	{ immediate: false }
@@ -1138,17 +1296,31 @@ const syncViewerState = () => {
 	if (!viewer) return
 	const effectiveHidePlaceholderCubes = previewMode.value ? hidePlaceholderCubes.value : false
 	viewer.setRenderSuspended(previewSuspended.value)
+	if (previewInteractive.value !== undefined) {
+		sceneLog('syncViewerState: setInteractive', {
+			nodeId: props.nodeId,
+			interactive: previewInteractive.value,
+			suspended: previewSuspended.value,
+			phase: previewPhase.value
+		})
+	}
 	viewer.setInteractive(previewInteractive.value)
 	viewer.setSelectedItem(effectiveHidePlaceholderCubes ? '' : selectedPreviewItemId.value)
 	const currentSignature = layoutItemsSignature.value
 	const signatureChanged = currentSignature !== cachedLayoutSignature
+	// 【BUGFIX 2026-07】syncViewerState 时也始终用缓存视角恢复（不再受 signatureChanged/cameraUserControlled 限制）：
+	// - 原先只有"签名没变化且用户没手动动过"才走缓存 → 每次生成布局（签名必变）、或者用户拖过镜头之后，
+	//   后续的重新渲染都会把视角重置为默认。
+	// - 现在只要缓存里有就恢复，与签名无关、与 cameraUserControlled 无关。
+	//   只有缓存为空（首次进入 / 从没拖过镜头）时才从 settings.camera 初始化。
+	const cachedView = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
 	if (signatureChanged) {
-		cameraUserControlled = false
+		// 仍保留 cameraUserControlled 的 reset 语义用于"从外部 settings.camera 注入新视角"的历史兼容路径：
+		// 只有当用户从来没手动保存过任何视角（cache 为空），且签名真的发生变化时，才把 cameraUserControlled 复位。
+		if (!cachedView) {
+			cameraUserControlled = false
+		}
 	}
-	const cachedView =
-		!signatureChanged && !cameraUserControlled
-			? SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
-			: null
 	viewer.setLayout(
 		layoutItems.value,
 		cachedView ? null : settings.value?.camera,
@@ -1162,7 +1334,7 @@ const syncViewerState = () => {
 			modelBindings: sceneLayoutModelBindings.value,
 			hidePlaceholderCubes: effectiveHidePlaceholderCubes
 		},
-		cameraUserControlled ? null : cachedView
+		cachedView
 	)
 	cachedLayoutSignature = currentSignature
 	if (!previewMode.value) {
@@ -1171,8 +1343,42 @@ const syncViewerState = () => {
 	refreshPerfSnapshot()
 }
 
+const setPreviewPhase = (phase: WorkflowThreePreviewPhase) => {
+	internalPreviewPhase.value = phase
+	if (phase === 'masked') {
+		internalPreviewProgress.value = 0
+		internalPreviewLabel.value = ''
+	}
+}
+const setPreviewProgress = (progress: number, label?: string) => {
+	internalPreviewProgress.value = Math.max(0, Math.min(1, progress))
+	if (label !== undefined) internalPreviewLabel.value = label
+}
+const startPreview = () => {
+	internalPreviewRequestId.value += 1
+	const newRequestId = internalPreviewRequestId.value
+	activePreviewRequestId = newRequestId
+	lastActionMessage.value = ''
+	setPreviewPhase('loading')
+	setPreviewProgress(0.12, t('nodes.sceneLayout.progressInitRenderer'))
+	void startPreviewLoad(newRequestId)
+}
+const handlePreviewStart = () => {
+	emit('start-three-preview')
+	startPreview()
+}
+const handlePreviewReady = () => {
+	setPreviewPhase('interactive')
+	emit('three-preview-ready')
+}
+const handlePreviewError = () => {
+	setPreviewPhase('masked')
+	emit('three-preview-error')
+}
+
 const emitPreviewProgress = (progress: number, label: string) => {
 	emit('three-preview-progress', { progress, label })
+	setPreviewProgress(progress, label)
 }
 
 const captureSnapshot = () => {
@@ -1214,12 +1420,415 @@ const onNodeBodyClick = () => {
 	emit('select', props.nodeId)
 }
 
+/* ============================================================
+ * 【场景布局节点 鼠标事件诊断日志系统】
+ *  包含多层级DOM的事件监听：
+ *   - L1: .wf-scene-layout（根节点）
+ *   - L2: .wf-scene-layout-viewer-shell（viewer外壳，参考Model3D）
+ *   - L3: .wf-scene-layout-stage（stage层）
+ *   - L4: <canvas> 元素自身
+ *   - L5: .wf-three-shell-* 内部覆盖层
+ *   - L6: overlay slot中的工具条容器（overlay-tools/lighting-dock等）
+ *   - Extra: document级命中测试 elementFromPoint
+ *  所有日志前缀统一为【SceneLayoutEvent】方便过滤
+ * ============================================================ */
+
+// ---------- 通用：打印事件关键信息 ----------
+function _buildEventSnippet(e: PointerEvent | WheelEvent | MouseEvent) {
+	const tgt = e.target as HTMLElement | null
+	const cur = e.currentTarget as HTMLElement | null
+	const phaseMap = ['NONE', 'CAPTURE(1)', 'AT_TARGET(2)', 'BUBBLE(3)']
+	return {
+		eventPhase: phaseMap[e.eventPhase] ?? `UNKNOWN(${e.eventPhase})`,
+		type: e.type,
+		'clientX/Y': 'clientX' in e ? `${e.clientX},${e.clientY}` : null,
+		'offsetX/Y':
+			'offsetX' in e ? `${(e as PointerEvent).offsetX},${(e as PointerEvent).offsetY}` : null,
+		button: 'button' in e ? (e as PointerEvent).button : null,
+		buttons: 'buttons' in e ? (e as PointerEvent).buttons : null,
+		pointerId: 'pointerId' in e ? (e as PointerEvent).pointerId : null,
+		pointerType: 'pointerType' in e ? (e as PointerEvent).pointerType : null,
+		targetClass: tgt?.className?.toString()?.slice(0, 160) ?? null,
+		targetTag: tgt?.tagName ?? null,
+		targetData: tgt
+			? {
+					role: tgt.getAttribute('data-wf-three-preview'),
+					canvas: tgt.getAttribute('data-wf-scene-layout-canvas'),
+					dragIgnore: tgt.getAttribute('data-wf-node-drag-ignore')
+				}
+			: null,
+		currentTargetClass: cur?.className?.toString()?.slice(0, 160) ?? null,
+		currentTargetTag: cur?.tagName ?? null,
+		bubbles: e.bubbles,
+		cancelable: e.cancelable,
+		defaultPrevented: e.defaultPrevented,
+		propagationStopped: (e as any).cancelBubble ?? false,
+		'[STATE] previewInteractive': previewInteractive.value,
+		'[STATE] previewActive': previewActive.value,
+		'[STATE] viewer.exists': !!viewer,
+		'[STATE] viewer.controls.enabled': viewer?.['controls']?.['enabled'] ?? null,
+		'[STATE] threePreviewState.phase': threePreviewState.value?.phase ?? null,
+		'[STATE] threePreviewState.canStart': threePreviewState.value?.canStart ?? null,
+		'[STATE] threePreviewState.progress': threePreviewState.value?.progress ?? null,
+		'[STATE] threePreviewState.label': threePreviewState.value?.label ?? null
+	}
+}
+
+// 带节流的日志打印，避免鼠标移动时刷屏
+const _THROTTLE_MS = 400
+const _lastMoveLogAt = { root: 0, stage: 0, canvas: 0, doc: 0 }
+
+// ---------- L1根节点日志 ----------
+const onRootPointerDown = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L1-ROOT】pointerdown',
+		'color:#d97706;font-weight:bold',
+		_buildEventSnippet(e)
+	)
+	console.log(
+		'  → root层 @pointerdown 没有 .stop，事件会继续冒泡。如果日志只到这里就停，说明冒泡到WorkflowNodeBase被stop了，需要在canvas/viewer-shell层加.stop'
+	)
+}
+const onRootPointerMove = (e: PointerEvent) => {
+	const now = Date.now()
+	if (now - _lastMoveLogAt.root < _THROTTLE_MS) return
+	_lastMoveLogAt.root = now
+	console.log('%c【SceneLayoutEvent#L1-ROOT】pointermove (节流)', 'color:#d97706', {
+		type: e.type,
+		target: (e.target as HTMLElement)?.className,
+		previewInteractive: previewInteractive.value
+	})
+}
+const onRootPointerUp = (e: PointerEvent) => {
+	console.log('%c【SceneLayoutEvent#L1-ROOT】pointerup', 'color:#d97706', _buildEventSnippet(e))
+}
+const onRootWheel = (e: WheelEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L1-ROOT】wheel (.stop已生效)',
+		'color:#d97706',
+		_buildEventSnippet(e)
+	)
+}
+
+// ---------- L2 Viewer-Shell层日志（独立shell，参考Model3D结构） ----------
+const onStagePointerDown = (e: PointerEvent) => {
+	// 带.stop的handler - 核心作用是阻止事件冒泡到WorkflowNodeBase拖拽系统
+	console.log(
+		'%c【SceneLayoutEvent#L2-VIEWERSHELL】pointerdown (.stop已触发) ✅',
+		'color:#059669;font-weight:bold',
+		_buildEventSnippet(e)
+	)
+	_hitTestAtEvent(e)
+}
+const onStagePointerDownLog = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L2-VIEWERSHELL】pointerdown 捕获记录',
+		'color:#059669',
+		_buildEventSnippet(e)
+	)
+}
+const onStagePointerMoveLog = (e: PointerEvent) => {
+	const now = Date.now()
+	if (now - _lastMoveLogAt.stage < _THROTTLE_MS) return
+	_lastMoveLogAt.stage = now
+	console.log('%c【SceneLayoutEvent#L2-VIEWERSHELL】pointermove (节流)', 'color:#059669', {
+		type: e.type,
+		target: (e.target as HTMLElement)?.className,
+		controlsEnabled: viewer?.['controls']?.['enabled'] ?? null
+	})
+}
+const onStagePointerUpLog = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L2-VIEWERSHELL】pointerup',
+		'color:#059669',
+		_buildEventSnippet(e)
+	)
+}
+const onStagePointerCancelLog = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L2-VIEWERSHELL】pointercancel ❗',
+		'color:#dc2626',
+		_buildEventSnippet(e)
+	)
+}
+const onStageWheel = (e: WheelEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L2-VIEWERSHELL】wheel (.stop已触发)',
+		'color:#059669',
+		_buildEventSnippet(e)
+	)
+}
+
+// ---------- L4 Canvas自身日志（捕获 + 冒泡双重记录） ----------
+const onCanvasPointerDownCapture = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointerdown CAPTURE ✨✨✨',
+		'color:#2563eb;background:#dbeafe;font-weight:bold;padding:2px 6px;border-radius:4px',
+		_buildEventSnippet(e)
+	)
+	// 关键：如果这里被触发了，说明事件真正到达了canvas！如果没看到，说明在上层被遮挡
+}
+const onCanvasPointerDown = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointerdown BUBBLE(.stop已阻止冒泡) ✅✅✅',
+		'color:#1d4ed8;background:#bfdbfe;font-weight:bold;padding:2px 6px;border-radius:4px',
+		_buildEventSnippet(e)
+	)
+	console.log(
+		'  → 🎯 如果您看到这条日志，意味着pointer事件已经成功到达<canvas>！OrbitControls此时应该能收到mousedown/poinerdown事件（它监听canvas的pointerdown）'
+	)
+}
+const onCanvasPointerMoveCapture = (e: PointerEvent) => {
+	const now = Date.now()
+	if (now - _lastMoveLogAt.canvas < _THROTTLE_MS) return
+	_lastMoveLogAt.canvas = now
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointermove CAPTURE (节流)',
+		'color:#2563eb',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasPointerMove = (e: PointerEvent) => {
+	// 注意：此处仅 .stop（冒泡），不再 .prevent —— 避免 OrbitControls 内部 setPointerCapture 被误伤
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointermove BUBBLE (.stop已触发, prevent已移除 → 避免OrbitControls状态残留)',
+		'color:#2563eb',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasPointerUpCapture = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointerup CAPTURE',
+		'color:#2563eb',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasPointerUp = (e: PointerEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointerup BUBBLE (.stop已触发)',
+		'color:#2563eb',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasPointerCancelCapture = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointercancel CAPTURE ❗',
+		'color:#dc2626',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasPointerCancel = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L4-CANVAS】pointercancel BUBBLE (.stop已触发) ❗ → safeEndOrbit 会被触发',
+		'color:#dc2626',
+		_buildEventSnippet(e)
+	)
+}
+const onCanvasWheel = (e: WheelEvent) => {
+	console.log(
+		'%c【SceneLayoutEvent#L4-CANVAS】wheel (.stop.prevent已触发)',
+		'color:#2563eb',
+		_buildEventSnippet(e)
+	)
+}
+
+// ---------- L6 覆盖层容器日志（用于诊断"是否被这些层遮挡"） ----------
+const onOverlayToolsPointerDown = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L6-OVERLAY】overlay-tools pointerdown （如果不是点按钮说明这个容器拦截了事件！）',
+		'color:#ea580c;background:#fff7ed;font-weight:bold',
+		_buildEventSnippet(e)
+	)
+	console.warn('  → 建议：这个容器应该设置 pointer-events: none，内部按钮设置 pointer-events: auto')
+}
+const onOverlayLightingDockPointerDown = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L6-OVERLAY】lighting-dock pointerdown （如果不是点按钮说明拦截！）',
+		'color:#ea580c;background:#fff7ed',
+		_buildEventSnippet(e)
+	)
+}
+const onOverlayLightingControlsPointerDown = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L6-OVERLAY】lighting-controls pointerdown （如果不是点内部控件说明拦截！）',
+		'color:#ea580c;background:#fff7ed',
+		_buildEventSnippet(e)
+	)
+}
+const onOverlayPerfPanelPointerDown = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L6-OVERLAY】perf-panel pointerdown (.stop已触发)',
+		'color:#ea580c;background:#fff7ed',
+		_buildEventSnippet(e)
+	)
+}
+const onOverlayGestureTipPointerDown = (e: PointerEvent) => {
+	console.warn(
+		'%c【SceneLayoutEvent#L6-OVERLAY】gesture-tip pointerdown ❗（这个元素本应pointer-events:none！）',
+		'color:#dc2626;background:#fee2e2;font-weight:bold',
+		_buildEventSnippet(e)
+	)
+}
+
+// ---------- 按钮点击调试 ----------
+const onClickDebug = (btnName: string) => {
+	console.log(`%c【SceneLayoutEvent#BTN】按钮点击: ${btnName}`, 'color:#4f46e5;font-weight:bold')
+}
+
+// ---------- 命中测试：在点击发生时，用document.elementFromPoint逐层查看z-index顺序 ----------
+function _hitTestAtEvent(e: PointerEvent | WheelEvent | MouseEvent) {
+	const cx = 'clientX' in e ? e.clientX : 0
+	const cy = 'clientY' in e ? e.clientY : 0
+	if (cx === 0 && cy === 0) return
+
+	const stack: Array<{
+		tag: string
+		cls: string
+		zIndex: string
+		pointerEvents: string
+		topLayer: boolean
+	}> = []
+	let el = document.elementFromPoint(cx, cy) as HTMLElement | null
+	let safety = 0
+	while (el && safety < 30) {
+		const cs = getComputedStyle(el)
+		stack.push({
+			tag: el.tagName,
+			cls: (el.className || '').toString().slice(0, 140),
+			zIndex: cs.zIndex,
+			pointerEvents: cs.pointerEvents,
+			topLayer:
+				el.classList.contains('wf-three-shell-overlay') ||
+				el.classList.contains('wf-three-shell-snapshot')
+		})
+		// 检查是否有覆盖层，继续找元素下面的被遮挡元素无法用elementFromPoint，但找父链有用
+		el = el.parentElement
+		safety++
+	}
+	console.log(
+		`%c【SceneLayoutEvent#HitTest】点击位置(${cx},${cy})的元素链 (${stack.length}层)：`,
+		'color:#7c3aed;font-weight:bold;background:#f5f3ff;padding:2px 6px;border-radius:4px'
+	)
+	stack.forEach((s, i) => {
+		const pad = '  '.repeat(i)
+		const mark = s.pointerEvents === 'none' ? '🔵' : s.pointerEvents === 'auto' ? '🔴(拦截!)' : '⚪'
+		console.log(
+			`   ${pad}[${i}] ${mark} <${s.tag}> class=${s.cls || '(无)'}  z=${s.zIndex || 'auto'}  pointer-events=${s.pointerEvents}  ${s.topLayer ? '⚠️THREE-INTERNAL-OVERLAY' : ''}`
+		)
+	})
+
+	// 额外判断：如果最顶层的指针事件不是auto且不是canvas，给出诊断提示
+	const tipEls = stack
+		.filter(
+			(s) =>
+				s.pointerEvents === 'auto' &&
+				!s.cls.includes('canvas') &&
+				!s.cls.includes('WorkflowThreePreviewShell-btn')
+		)
+		.filter(
+			(s) => s.cls.includes('wf-three-shell-overlay') || s.cls.includes('wf-three-shell-snapshot')
+		)
+	if (tipEls.length) {
+		console.error(
+			'%c【SceneLayoutEvent#诊断 ❗】找到 pointer-events:auto 且非canvas/btn 的覆盖层！这就是"完全遮挡"的根因，请禁用它们的pointer-events',
+			'color:#dc2626;background:#fee2e2;font-weight:bold;padding:4px 8px;border-radius:4px',
+			tipEls
+		)
+	}
+}
+
+// ---------- onMounted中：直接给canvas绑原生原生监听器（绕过Vue的事件系统），并在document监听捕获阶段 ----------
+const _nativeCanvasListenersCleanupFns: Array<() => void> = []
+function _installNativeDiagnosticListeners() {
+	const canvas = canvasRef.value as HTMLCanvasElement | null
+	if (!canvas) {
+		console.warn('%c【SceneLayoutEvent#Native】canvasRef 尚不可用，稍后重试', 'color:#9333ea')
+		return
+	}
+	const handlers: Record<string, (ev: any) => void> = {
+		pointerdown: (ev) => {
+			console.log(
+				'%c【SceneLayoutEvent#Native@canvas】pointerdown (原生addEventListener) 🌟',
+				'color:#be185d;background:#fce7f3;font-weight:bold;padding:2px 6px;border-radius:4px',
+				_buildEventSnippet(ev)
+			)
+		},
+		pointermove: (ev) => {
+			const now = Date.now()
+			if (now - _lastMoveLogAt.doc < 1200) return
+			_lastMoveLogAt.doc = now
+			console.log('%c【SceneLayoutEvent#Native@canvas】pointermove (原生节流)', 'color:#be185d', {
+				buttons: ev.buttons,
+				ctrl: ev.ctrlKey
+			})
+		},
+		pointerup: (ev) =>
+			console.log(
+				'%c【SceneLayoutEvent#Native@canvas】pointerup (原生)',
+				'color:#be185d',
+				_buildEventSnippet(ev)
+			),
+		wheel: (ev) =>
+			console.log(
+				'%c【SceneLayoutEvent#Native@canvas】wheel (原生)',
+				'color:#be185d',
+				_buildEventSnippet(ev)
+			),
+		mousedown: (ev) =>
+			console.log(
+				'%c【SceneLayoutEvent#Native@canvas】mousedown (原生，OrbitControls也会监听这个!) ⭐',
+				'color:#be185d;font-weight:bold',
+				_buildEventSnippet(ev)
+			)
+	}
+	Object.entries(handlers).forEach(([type, fn]) => {
+		canvas.addEventListener(type, fn, true) // true = 捕获阶段，最优先
+		_nativeCanvasListenersCleanupFns.push(() => canvas.removeEventListener(type, fn, true))
+	})
+
+	// ---------- Document级捕获监听：诊断事件在何时被何人stopPropagation ----------
+	// 如果到达document的捕获阶段说明没有在上层DOM树被stop
+	;['pointerdown', 'pointerup', 'mousedown'].forEach((type) => {
+		const docFn = (ev: Event) => {
+			const pe = ev as PointerEvent
+			const tgt = pe.target as HTMLElement | null
+			// 只过滤跟本节点相关的事件（canvas属于本节点或在本节点DOM范围内）
+			if (!tgt) return
+			const within = tgt.closest('.wf-scene-layout')
+			if (!within) return
+			console.log(
+				`%c【SceneLayoutEvent#DocCapture】document ${type} (捕获阶段)`,
+				'color:#334155;background:#f1f5f9;padding:2px 6px;border-radius:4px',
+				{
+					targetTag: tgt.tagName,
+					targetClass: tgt.className?.toString()?.slice(0, 120) || null,
+					'defaultPrevented?': pe.defaultPrevented,
+					'eventPhase=CAPTURE(1)?': pe.eventPhase === 1
+				}
+			)
+		}
+		document.addEventListener(type, docFn, true)
+		_nativeCanvasListenersCleanupFns.push(() => document.removeEventListener(type, docFn, true))
+	})
+
+	console.log(
+		'%c【SceneLayoutEvent#Init】✅ 原生诊断监听器已安装到canvas & document',
+		'color:#16a34a;font-weight:bold'
+	)
+}
+function _uninstallNativeDiagnosticListeners() {
+	while (_nativeCanvasListenersCleanupFns.length) {
+		const fn = _nativeCanvasListenersCleanupFns.pop()
+		if (typeof fn === 'function') fn()
+	}
+}
+
 const createViewerNow = () => {
 	const canvas = canvasRef.value
-	if (viewer || !canvas) return
-	if (!canvas.isConnected) return
+	if (viewer || !canvas) return false
+	if (!canvas.isConnected) return false
 	const rect = canvas.getBoundingClientRect()
-	if (rect.width <= 0 || rect.height <= 0) return
+	if (rect.width <= 0 || rect.height <= 0) return false
 	try {
 		viewer = new SceneLayoutPreviewViewer(canvas, {
 			onLayoutChange: (items) => emit('update-layout-items', items),
@@ -1234,8 +1843,19 @@ const createViewerNow = () => {
 			onCameraInteractionStart: () => {
 				cameraUserControlled = true
 			},
+			/**
+			 * 【BUGFIX 2026-07】
+			 * - onCameraInteractionEnd：用户松开鼠标/停止滚轮时（节流尾部）仍调用 saveViewState，保留原有兜底
+			 * - 新增 onViewStateChange：在用户拖拽镜头过程中每 ~120ms 节流通知一次，
+			 *   保证"用户正在调视角，中途立刻点生成布局"这种极端操作也能把刚调的视角写进缓存，
+			 *   下次渲染时不用再从默认位置从头拖一遍。
+			 */
 			onCameraInteractionEnd: () => {
 				saveViewState()
+			},
+			onViewStateChange: (state) => {
+				if (!snapshotCacheKey) return
+				SCENE_LAYOUT_VIEWSTATE_CACHE.set(snapshotCacheKey, state)
 			}
 		})
 		viewer.setHolePunchStateChangeCallback((state) => {
@@ -1245,13 +1865,17 @@ const createViewerNow = () => {
 			holePunchToolId.value = state.toolId
 		})
 		viewerInitCooldownUntil = 0
+		viewer.setRenderSuspended(previewSuspended.value)
+		viewer.setInteractive(false)
 		syncViewerState()
+		return true
 	} catch (err) {
 		viewer = null
 		viewerInitCooldownUntil = Date.now() + 400
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
 		lastActionMessage.value = t('nodes.sceneLayout.msgViewerInitFailed', { error: errMessage })
+		return false
 	}
 }
 
@@ -1270,15 +1894,23 @@ const ensureViewer = () => {
 			viewerInitRaf = 0
 			viewerInitPending = false
 			createViewerNow()
+			if (!viewer && canvasRef.value && canvasRef.value.isConnected) {
+				const rect = canvasRef.value.getBoundingClientRect()
+				if (rect.width <= 0 || rect.height <= 0) {
+					viewerInitCooldownUntil = Date.now() + 80
+					ensureViewer()
+				}
+			}
 		})
 	})
 }
 
-const disposeViewer = () => {
+const disposeViewer = (reason?: string) => {
 	clearViewerInitSchedule()
 	viewerInitCooldownUntil = 0
 	stopPerfPolling()
 	if (!viewer) return
+	sceneLog('disposeViewer:', { nodeId: props.nodeId, reason: reason || 'explicit' })
 	saveViewState()
 	captureSnapshot()
 	viewer.dispose()
@@ -1322,7 +1954,8 @@ const attemptRepairSceneLayoutModelUrl = async (url: string, itemId: string): Pr
 			...updatedBindings[bindingIndex],
 			modelUrl: diag.repairedAsset.url,
 			modelAssetUrl: diag.repairedAsset.url,
-			modelSourcePath: diag.repairedAsset.sourcePath || updatedBindings[bindingIndex].modelSourcePath
+			modelSourcePath:
+				diag.repairedAsset.sourcePath || updatedBindings[bindingIndex].modelSourcePath
 		}
 		emit('update-model-bindings', updatedBindings)
 	} catch {
@@ -1336,12 +1969,17 @@ const startPreviewLoad = async (requestId: number) => {
 	const ready = await waitForViewerReady()
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
-		emit('three-preview-error')
+		handlePreviewError()
 		return
 	}
 	emitPreviewProgress(0.46, t('nodes.sceneLayout.progressApplyLayout'))
 	syncViewerState()
-	emitPreviewProgress(0.78, previewMode.value ? t('nodes.sceneLayout.progressSyncModels') : t('nodes.sceneLayout.progressGenerateFrame'))
+	emitPreviewProgress(
+		0.78,
+		previewMode.value
+			? t('nodes.sceneLayout.progressSyncModels')
+			: t('nodes.sceneLayout.progressGenerateFrame')
+	)
 	await viewer.awaitPendingBindingSync(previewMode.value ? 4000 : 800)
 	if (activePreviewRequestId !== requestId || !viewer) return
 	viewer.requestStaticFrames()
@@ -1349,7 +1987,7 @@ const startPreviewLoad = async (requestId: number) => {
 	if (activePreviewRequestId !== requestId || !viewer) return
 	captureSnapshot()
 	emitPreviewProgress(0.98, t('nodes.sceneLayout.progressReady'))
-	emit('three-preview-ready')
+	handlePreviewReady()
 }
 
 watch(
@@ -1379,12 +2017,30 @@ watch(
 watch(
 	() => previewInteractive.value,
 	(active) => {
+		sceneLog('watch previewInteractive:', {
+			nodeId: props.nodeId,
+			active,
+			previewPhase: previewPhase.value,
+			previewSuspended: previewSuspended.value,
+			hasViewer: !!viewer,
+			viewerInteractiveBefore: !!(viewer as any)?.interactiveActive,
+			controlsEnabledBefore: !!(viewer as any)?.controls?.enabled,
+			renderSuspendedBefore: !!(viewer as any)?.renderSuspended
+		})
 		if (active) {
 			startPerfPolling()
 		} else {
 			stopPerfPolling()
 		}
 		viewer?.setInteractive(active)
+		// setInteractive之后记录controls状态
+		if (viewer) {
+			sceneLog('watch previewInteractive: after setInteractive:', {
+				nodeId: props.nodeId,
+				viewerInteractiveAfter: !!(viewer as any).interactiveActive,
+				controlsEnabledAfter: !!(viewer as any).controls?.enabled
+			})
+		}
 		if (active) {
 			viewer?.setRenderSuspended(previewSuspended.value)
 			if (!previewSuspended.value) viewer?.requestStaticFrames()
@@ -1413,12 +2069,19 @@ watch(previewSuspended, (suspended) => {
 
 watch(
 	() => [previewPhase.value, threePreviewState.value?.requestId ?? 0] as const,
-	([phase, requestId]) => {
+	([phase, requestId], oldValue) => {
+		const oldPhase = oldValue?.[0]
+		sceneLog('watch previewPhase:', {
+			nodeId: props.nodeId,
+			from: oldPhase,
+			to: phase,
+			requestId,
+			hasViewer: !!viewer
+		})
 		if (phase === 'masked') {
 			activePreviewRequestId = 0
-			// 在进入masked前捕获快照，保持最后一帧显示
-			if (viewer) captureSnapshot()
-			disposeViewer()
+			// 按照用户要求：移除延迟销毁，立即卸载，通过按钮重启
+			disposeViewer('masked-direct-dispose')
 			return
 		}
 		ensureViewer()
@@ -1428,16 +2091,173 @@ watch(
 			void startPreviewLoad(requestId)
 			return
 		}
+		// phase变为interactive，显式重置状态确保overlay隐藏、交互恢复
+		if (phase === 'interactive') {
+			lastActionMessage.value = ''
+			void nextTick(() => {
+				if (viewer) {
+					viewer.setInteractive(true)
+					viewer.setRenderSuspended(previewSuspended.value)
+					if (!previewSuspended.value) {
+						viewer.requestStaticFrames()
+					}
+				}
+			})
+		}
 		syncViewerState()
 	},
 	{ immediate: true, flush: 'post' }
 )
 
+onMounted(() => {
+	sceneLog('onMounted:', {
+		nodeId: props.nodeId,
+		hasCanvas: !!canvasRef.value,
+		canvasConnected: canvasRef.value?.isConnected,
+		canvasSize: canvasRef.value
+			? {
+					width: canvasRef.value.getBoundingClientRect().width,
+					height: canvasRef.value.getBoundingClientRect().height,
+					offsetWidth: canvasRef.value.offsetWidth,
+					offsetHeight: canvasRef.value.offsetHeight
+				}
+			: null,
+		previewPhase: previewPhase.value,
+		previewSuspended: previewSuspended.value,
+		threePreviewStatePhase: threePreviewState.value?.phase
+	})
+
+	const canvas = canvasRef.value
+	if (canvas) {
+		const handlePointerDown = (e: PointerEvent) => {
+			sceneLog('CANVAS pointerdown:', {
+				nodeId: props.nodeId,
+				pointerId: e.pointerId,
+				button: e.button,
+				hasViewer: !!viewer,
+				viewerInteractive: !!(viewer as any)?.interactiveActive,
+				controlsEnabled: !!(viewer as any)?.controls?.enabled,
+				previewPhase: previewPhase.value,
+				previewSuspended: previewSuspended.value
+			})
+		}
+		const handlePointerMove = (e: PointerEvent) => {
+			// 避免大量日志，只在首次移动或有viewer时记录
+			if (!viewer || (viewer as any).orbiting) {
+				sceneLog('CANVAS pointermove:', {
+					nodeId: props.nodeId,
+					hasViewer: !!viewer,
+					orbiting: !!(viewer as any)?.orbiting,
+					controlsEnabled: !!(viewer as any)?.controls?.enabled
+				})
+			}
+		}
+		const handleWheel = (e: WheelEvent) => {
+			sceneLog('CANVAS wheel:', {
+				nodeId: props.nodeId,
+				deltaY: e.deltaY,
+				hasViewer: !!viewer,
+				controlsEnabled: !!(viewer as any)?.controls?.enabled,
+				previewPhase: previewPhase.value
+			})
+		}
+		const handlePointerUp = (e: PointerEvent) => {
+			sceneLog('CANVAS pointerup:', {
+				nodeId: props.nodeId,
+				pointerId: e.pointerId,
+				hasViewer: !!viewer,
+				orbiting: !!(viewer as any)?.orbiting
+			})
+		}
+
+		canvas.addEventListener('pointerdown', handlePointerDown)
+		canvas.addEventListener('pointerup', handlePointerUp)
+		canvas.addEventListener('wheel', handleWheel, { passive: false })
+
+		// 检查canvas的CSS pointer-events
+		const computedStyle = window.getComputedStyle(canvas)
+		sceneLog('CANVAS computed style:', {
+			nodeId: props.nodeId,
+			pointerEvents: computedStyle.pointerEvents,
+			touchAction: computedStyle.touchAction,
+			display: computedStyle.display,
+			visibility: computedStyle.visibility,
+			zIndex: computedStyle.zIndex
+		})
+	}
+
+	// 开发环境：添加全局事件诊断，帮助定位事件被哪个元素拦截
+	if (import.meta.env.DEV) {
+		const diagnosePointerDown = (e: PointerEvent) => {
+			const canvas = canvasRef.value
+			if (!canvas) return
+			const target = e.target as HTMLElement | null
+			if (!target) return
+			const hitNode = target.closest('[data-wf-node-id]')
+			const hitThisNode = hitNode?.getAttribute('data-wf-node-id') === props.nodeId
+			const hitCanvas = e.composedPath().includes(canvas)
+			if (hitThisNode && !hitCanvas) {
+				sceneLog('DIAG: pointerdown on node but NOT on canvas (event intercepted)', {
+					nodeId: props.nodeId,
+					targetTag: target.tagName,
+					targetClass: target.className,
+					targetDnwIgnore: !!target.closest('[data-wf-node-drag-ignore]'),
+					targetPointerEvents: window.getComputedStyle(target).pointerEvents,
+					targetZIndex: window.getComputedStyle(target).zIndex
+				})
+			}
+		}
+		window.addEventListener('pointerdown', diagnosePointerDown, true)
+		onBeforeUnmount(() => {
+			window.removeEventListener('pointerdown', diagnosePointerDown, true)
+		})
+	}
+
+	// ============================================
+	// 安装额外的【用户定制版】多层级事件诊断监听器
+	// 带彩色标记、document级捕获监听、elementFromPoint命中测试
+	// ============================================
+	_installNativeDiagnosticListeners()
+
+	console.log(
+		'%c【SceneLayoutEvent#Init】===========================================================',
+		'color:#16a34a;font-weight:bold'
+	)
+	console.log(
+		'%c【SceneLayoutEvent#Init】✅ 场景布局节点事件诊断系统已就绪',
+		'color:#16a34a;font-weight:bold'
+	)
+	console.log('%c【SceneLayoutEvent#Init】📋 使用方法：', 'color:#16a34a;font-weight:bold')
+	console.log('%c   1. 打开浏览器DevTools → Console 面板', 'color:#16a34a')
+	console.log(
+		'%c   2. 用鼠标在【场景布局节点3D预览区】内：点击 → 拖动 → 松开 → 滚轮',
+		'color:#16a34a'
+	)
+	console.log('%c   3. 观察控制台输出中【SceneLayoutEvent】前缀的日志', 'color:#16a34a')
+	console.log('%c   4. 关键日志标记：', 'color:#16a34a')
+	console.log('%c      🟠 L1-ROOT  = 根节点层事件', 'color:#d97706')
+	console.log('%c      🟢 L2-VIEWERSHELL = viewer外壳层（事件.stop在这里）', 'color:#059669')
+	console.log(
+		'%c      🔵 L4-CANVAS CAPTURE/BUBBLE = canvas自身收到事件（最关键！⭐）',
+		'color:#2563eb'
+	)
+	console.log(
+		'%c      🟣 HitTest = elementFromPoint命中测试，🔴(拦截!) = 找到遮挡元素',
+		'color:#7c3aed'
+	)
+	console.log('%c      💗 Native@canvas = 绕过Vue直接绑原生的事件', 'color:#be185d')
+	console.log(
+		'%c【SceneLayoutEvent#Init】===========================================================',
+		'color:#16a34a;font-weight:bold'
+	)
+})
+
 onBeforeUnmount(() => {
+	_uninstallNativeDiagnosticListeners()
 	stopPerfPolling()
 	saveViewState()
 	cacheSnapshot(snapshotUrl.value)
-	disposeViewer()
+	disposeViewer('unmount')
 })
 
 const getResolvedLayoutForUnreal = async (): Promise<
@@ -1527,7 +2347,9 @@ const exportSelectedPlaceholderGLB = async (): Promise<
 	}
 	viewer.setSelectedItem(itemId)
 
-	const setViewerLog = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+	const setViewerLog = (
+		viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }
+	).setExportLogCallback
 	if (setViewerLog) {
 		setViewerLog.call(viewer, (msg: string) => {
 			lastActionMessage.value = t('nodes.sceneLayout.exportLog', { msg })
@@ -1547,7 +2369,9 @@ const exportSelectedPlaceholderGLB = async (): Promise<
 		lastActionMessage.value = t('nodes.sceneLayout.exportSuccess', { name: itemName })
 		return { ok: true, glbData, name: itemName }
 	} catch (err) {
-		const setViewerLogCleanup = (viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }).setExportLogCallback
+		const setViewerLogCleanup = (
+			viewer as unknown as { setExportLogCallback?: (cb: ((msg: string) => void) | null) => void }
+		).setExportLogCallback
 		if (setViewerLogCleanup) setViewerLogCleanup.call(viewer, null)
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
@@ -1570,6 +2394,7 @@ defineExpose({
 	flex-direction: column;
 	gap: 10px;
 	box-sizing: border-box;
+	pointer-events: auto;
 }
 
 .wf-scene-layout-toolbar {
@@ -1585,16 +2410,33 @@ defineExpose({
 	gap: 8px;
 }
 
-.wf-scene-layout-stage {
+/* ====== 参考WorkflowModel3DNode：viewer-shell 直接包 WorkflowThreePreviewShell ====== */
+/* 【BUGFIX 2026-07】不再套多余的 stage 中间层（之前4层结构：viewer-shell→stage→WorkflowThreePreviewShell→canvas），
+ * 现在和3D模型节点完全一致（3层结构：viewer-shell→WorkflowThreePreviewShell→canvas）。
+ * 多层结构在 flex:1 / min-height / overflow:hidden / border-radius 叠加下会导致
+ * canvas 实际命中矩形比视觉预览外壳小，出现"上半部分点不到、下半部分才能控镜头"的反常bug。
+ *
+ * 视觉样式（border / border-radius / overflow / background / min-height）直接放到 viewer-shell 上，
+ * 和之前 stage 的视觉效果完全一致。
+ */
+.wf-scene-layout-viewer-shell {
 	position: relative;
-	flex: 1;
+	width: 100%;
+	flex: 1 1 auto;
 	min-height: 220px;
 	border: 1px solid var(--vscode-border);
 	border-radius: 12px;
 	overflow: hidden;
 	background: var(--dweb-defualt);
+	display: block;
+	pointer-events: auto;
 }
 
+/* ======================================================================
+ * 【关键修复】所有 overlay 工具容器（z-index=3，覆盖在canvas上方）
+ *   必须设置 pointer-events: none，否则它们的矩形区域会拦截canvas事件！
+ *   只在内部具体可交互元素（button、input、label）上恢复 pointer-events: auto
+ * ====================================================================== */
 .wf-scene-layout-overlay-tools {
 	position: absolute;
 	top: 10px;
@@ -1602,6 +2444,13 @@ defineExpose({
 	display: flex;
 	gap: 8px;
 	z-index: 3;
+	pointer-events: none; /* ← 容器不拦截鼠标，事件穿透到下面的canvas */
+}
+/* 容器内部的按钮/控件恢复事件响应 */
+.wf-scene-layout-overlay-tools > button,
+.wf-scene-layout-overlay-tools .wf-scene-layout-orientation-group,
+.wf-scene-layout-overlay-tools .wf-scene-layout-orientation-dropdown {
+	pointer-events: auto;
 }
 
 .wf-scene-layout-overlay-btn {
@@ -1620,6 +2469,10 @@ defineExpose({
 	right: 10px;
 	display: flex;
 	z-index: 3;
+	pointer-events: none; /* ← 容器透明穿透 */
+}
+.wf-scene-layout-lighting-dock > button {
+	pointer-events: auto; /* ← 只有按钮响应 */
 }
 
 .wf-scene-layout-lighting-controls {
@@ -1636,6 +2489,8 @@ defineExpose({
 	background: rgba(0, 0, 0, 0.6);
 	backdrop-filter: blur(10px);
 	z-index: 3;
+	/* 注意：这个面板较大，内部有slider和button需要交互，
+	   因此面板本身保留 pointer-events:auto（它是显式打开的控制面板） */
 }
 
 .wf-scene-layout-perf-panel {
@@ -1647,6 +2502,11 @@ defineExpose({
 	align-items: flex-end;
 	gap: 8px;
 	z-index: 3;
+	pointer-events: none; /* ← 容器透明穿透（perf面板一般只看） */
+}
+.wf-scene-layout-perf-panel > button,
+.wf-scene-layout-perf-panel .wf-scene-layout-perf-card {
+	pointer-events: auto; /* 折叠按钮/展开卡片恢复响应（perf-card里只展示文本也保留auto以确保不影响） */
 }
 
 .wf-scene-layout-perf-panel.collapsed {
@@ -1725,12 +2585,28 @@ defineExpose({
 	width: 100%;
 }
 
+.wf-scene-layout-gesture-tip {
+	position: absolute;
+	left: 10px;
+	bottom: 10px;
+	z-index: 1;
+	padding: 4px 8px;
+	border: 1px solid rgb(from var(--vscode-border) r g b / 0.72);
+	background: rgb(from var(--dweb-defualt-dark) r g b / 0.58);
+	color: var(--vscode-fg-muted);
+	font-size: 11px;
+	pointer-events: none;
+}
+
 .wf-scene-layout-canvas {
 	width: 100%;
 	height: 100%;
 	display: block;
 	opacity: 0;
 	transition: opacity 120ms ease;
+	pointer-events: auto;
+	touch-action: none;
+	outline: none;
 }
 
 .wf-scene-layout-canvas.live {

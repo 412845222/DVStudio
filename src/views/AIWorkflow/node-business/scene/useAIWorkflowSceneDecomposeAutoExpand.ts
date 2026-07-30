@@ -392,10 +392,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: {
 				alias: buildNodeAlias(output, t('aiworkflow.runtime.decomposeImageAlias'))
 			})
 			if (!imageNodeId) continue
-			// 输出锚点已归一化：所有下游节点统一从场景拆解节点的 out-main 锚点连出
+			// 输出锚点已归一化：所有下游节点统一从场景拆解节点的 out-0 锚点连出
 			addEdgeIfMissing({
 				fromNodeId: sourceNode.id,
-				fromAnchorId: 'out-main',
+				fromAnchorId: 'out-0',
 				toNodeId: imageNodeId,
 				toAnchorId: 'in-image'
 			})

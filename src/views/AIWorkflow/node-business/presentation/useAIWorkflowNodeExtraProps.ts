@@ -9,6 +9,14 @@ import {
 import type { InputParamPreviewRef } from './useAIWorkflowTextOutputResolver'
 import { watch } from 'vue'
 
+const DEBUG_LOG = true
+const log = (...args: any[]) => {
+	if (DEBUG_LOG) console.log('[NodeExtraProps]', ...args)
+}
+
+const THREE_PREVIEW_TYPES = new Set<WorkflowNode['type']>(['scene-layout', 'model3d'])
+const THREE_STATE_HOLD_MS = 800
+
 export const useAIWorkflowNodeExtraProps = (payload: {
 	store: {
 		state: {
@@ -62,6 +70,31 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	getUpstreamCroppedImageUrl: (node: WorkflowNode) => string | null
 }) => {
 	const extraPropsCache = new Map<string, Record<string, unknown>>()
+	const threeStateHoldover = new Map<string, { state: WorkflowThreePreviewState; until: number }>()
+
+	const getProtectedThreePreviewState = (nodeId: string, nodeType: WorkflowNode['type']): WorkflowThreePreviewState | null => {
+		const fresh = payload.getThreePreviewState(nodeId, nodeType)
+		if (!fresh) return fresh
+		const now = Date.now()
+		const holdover = threeStateHoldover.get(nodeId)
+		if (holdover && now < holdover.until) {
+			if (fresh.phase === 'masked' && holdover.state.phase !== 'masked') {
+				log('getProtectedThreePreviewState: holding over non-masked state:', {
+					nodeId,
+					heldPhase: holdover.state.phase,
+					freshPhase: fresh.phase,
+					remainingMs: holdover.until - now
+				})
+				return holdover.state
+			}
+		}
+		if (fresh.phase !== 'masked') {
+			threeStateHoldover.set(nodeId, { state: { ...fresh }, until: now + THREE_STATE_HOLD_MS })
+		} else {
+			threeStateHoldover.delete(nodeId)
+		}
+		return fresh
+	}
 
 	const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
 		if (node.type !== 'image') return null
@@ -270,7 +303,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				sceneLayoutModelBindings: sanitizeWorkflowUrlFieldsDeep(
 					payload.connectedSceneLayoutModelBindings(node.id)
 				),
-				threePreviewState: payload.getThreePreviewState(node.id, node.type)
+				threePreviewState: getProtectedThreePreviewState(node.id, node.type)
 			}
 		}
 		if (node.type === 'unreal-export') {
@@ -288,7 +321,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		if (node.type === 'model3d') {
 			return {
 				model3dSettings: sanitizeWorkflowUrlFieldsDeep(node.model3dSettings ?? null),
-				threePreviewState: payload.getThreePreviewState(node.id, node.type),
+				threePreviewState: getProtectedThreePreviewState(node.id, node.type),
 				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
 			}
 		}
@@ -325,54 +358,72 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		if (!nodeId) return buildNodeExtraProps(node)
 
 		const isMotionActive = payload.viewportMotionActive.value
+		const isThreePreview = THREE_PREVIEW_TYPES.has(node.type)
 
 		if (isMotionActive) {
-			// 运动期间始终使用缓存，保留所有已加载资源
 			const cached = extraPropsCache.get(nodeId)
 			if (cached) {
+				if (isThreePreview) {
+					const currentFresh = getProtectedThreePreviewState(nodeId, node.type)
+					if (currentFresh) {
+						const cachedThree = (cached as Record<string, unknown>).threePreviewState as WorkflowThreePreviewState | undefined
+						if (cachedThree && currentFresh.phase !== 'masked' && cachedThree.phase === 'masked') {
+							;(cached as Record<string, unknown>).threePreviewState = currentFresh
+						} else if (currentFresh.phase === 'masked' && cachedThree && cachedThree.phase !== 'masked') {
+							// keep cached non-masked state during motion
+						}
+					}
+				}
 				return {
 					...cached,
-					previewSuspended: ['scene-layout', 'model3d'].includes(node.type)
+					previewSuspended: isThreePreview
 				}
 			}
 
-			// 缓存不存在时，构建完整 props 并缓存
 			const next = buildNodeExtraProps(node)
 			extraPropsCache.set(nodeId, next)
 			return {
 				...next,
-				previewSuspended: ['scene-layout', 'model3d'].includes(node.type)
+				previewSuspended: isThreePreview
 			}
 		}
 
-		// 非运动期间，缓存完整 props
 		const full = buildNodeExtraProps(node)
 		extraPropsCache.set(nodeId, full)
+
+		if (isThreePreview) {
+			const ts = full.threePreviewState as WorkflowThreePreviewState | null
+			log('nodeExtraProps (non-motion, three-preview):', {
+				nodeId,
+				nodeType: node.type,
+				phase: ts?.phase,
+				canStart: ts?.canStart,
+				hasViewer: !!(full as Record<string, unknown>).threePreviewState
+			})
+		}
+
 		return full
 	}
 
-	// 监听视口运动状态变化，平移开始时预填充缓存
-	// 关键：保留真实的 threePreviewState，避免被 getNodePreviewState 强制置为 masked
-	// 当非活跃的 scene-layout/model3d 节点被查询时，getNodePreviewState 会返回 phase: 'masked'
-	// 为了避免 viewer 被 dispose，需要在平移开始时缓存真实的 threePreviewState
 	watch(
 		() => payload.viewportMotionActive.value,
 		(isMotionNow, wasMotionBefore) => {
+			log('viewportMotionActive changed:', { isMotionNow, wasMotionBefore })
 			if (isMotionNow && !wasMotionBefore) {
-				// 平移开始：预填充所有节点的缓存
 				const nodes = Object.values(payload.store.state.nodesById) as WorkflowNode[]
+				let cached3d = 0
 				for (const node of nodes) {
 					const nodeId = String(node.id ?? '').trim()
 					if (!nodeId) continue
-					// 缓存已存在则跳过
 					if (extraPropsCache.has(nodeId)) continue
-					// 构建完整 props 并缓存
 					const full = buildNodeExtraProps(node)
 					extraPropsCache.set(nodeId, full)
+					if (THREE_PREVIEW_TYPES.has(node.type)) cached3d++
 				}
+				log('pre-filled cache on motion start, 3d nodes cached:', cached3d)
 			} else if (!isMotionNow && wasMotionBefore) {
-				// 平移结束：清空缓存以确保下次获取最新状态
 				extraPropsCache.clear()
+				log('cache cleared on motion end')
 			}
 		}
 	)
