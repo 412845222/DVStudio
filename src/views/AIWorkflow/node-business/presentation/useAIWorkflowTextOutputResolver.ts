@@ -97,11 +97,12 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		const node = payload.store.state.nodesById[nodeId]
 		if (!node) return ''
 
-		// 调试日志：场景节点文本输出解析
+		// 调试日志：场景节点文本输出解析（仅开发环境启用）
 		const isSceneNodeForDiag =
-			node.type === 'scene-layout' ||
-			node.type === 'scene-understanding' ||
-			node.type === 'scene-decompose'
+			import.meta.env.DEV &&
+			(node.type === 'scene-layout' ||
+				node.type === 'scene-understanding' ||
+				node.type === 'scene-decompose')
 		const DIAG_KEY_TEXTOUT = `__diag_textOut_${visitKey}`
 		if (isSceneNodeForDiag && !(window as any)[DIAG_KEY_TEXTOUT]) {
 			;(window as any)[DIAG_KEY_TEXTOUT] = true
