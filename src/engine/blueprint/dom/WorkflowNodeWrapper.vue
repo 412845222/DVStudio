@@ -26,6 +26,28 @@
 			@invalidate-screenshot="onInvalidateScreenshot"
 			@preview-contextmenu="onPreviewContextMenu"
 			@screenshot="onScreenshot"
+			@set-type="onSetType"
+			@update-scene-understanding-settings="onUpdateSceneUnderstandingSettings"
+			@request-scene-models="onRequestSceneModels"
+			@run-scene-understanding="onRunSceneUnderstanding"
+			@cancel-scene-understanding="onCancelSceneUnderstanding"
+			@run-scene-decompose="onRunSceneDecompose"
+			@run-scene-layout="onRunSceneLayout"
+			@update-preview-mode="onUpdatePreviewMode"
+			@update-layout-items="onUpdateLayoutItems"
+			@update-selected-layout-item="onUpdateSelectedLayoutItem"
+			@update-hide-placeholder-cubes="onUpdateHidePlaceholderCubes"
+			@update-lighting-preview="onUpdateLightingPreview"
+			@update-lighting-debug="onUpdateLightingDebug"
+			@update-lighting-controls="onUpdateLightingControls"
+			@set-selected-placeholder-output="onSetSelectedPlaceholderOutput"
+			@clear-scene-layout-model-binding="onClearSceneLayoutModelBinding"
+			@start-three-preview="onStartThreePreview"
+			@three-preview-ready="onThreePreviewReady"
+			@three-preview-error="onThreePreviewError"
+			@three-preview-progress="onThreePreviewProgress"
+			@upload-scene-layout-model-file="onUploadSceneLayoutModelFile"
+			@update-model-bindings="onUpdateModelBindings"
 		/>
 	</div>
 </template>
@@ -50,6 +72,7 @@ const props = defineProps<{
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	chatState?: NodeChatState | null
 	generationTasks?: Record<string, WorkflowNodeGenerationTask>
+	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
 }>()
 
 const emit = defineEmits<{
@@ -81,6 +104,37 @@ const emit = defineEmits<{
 		e: 'screenshot',
 		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
 	): void
+	(e: 'set-type', payload: { nodeId: string; type: string }): void
+	(
+		e: 'update-scene-understanding-settings',
+		payload: { nodeId: string; patch: Record<string, any> }
+	): void
+	(e: 'request-scene-models', nodeId: string): void
+	(e: 'run-scene-understanding', nodeId: string): void
+	(e: 'cancel-scene-understanding', nodeId: string): void
+	(e: 'run-scene-decompose', nodeId: string): void
+	(e: 'run-scene-layout', nodeId: string): void
+	(e: 'update-preview-mode', payload: { nodeId: string; previewMode: boolean }): void
+	(e: 'update-layout-items', payload: { nodeId: string; items: any[] }): void
+	(e: 'update-selected-layout-item', payload: { nodeId: string; itemId: string }): void
+	(e: 'update-hide-placeholder-cubes', payload: { nodeId: string; hide: boolean }): void
+	(e: 'update-lighting-preview', payload: { nodeId: string; enabled: boolean }): void
+	(e: 'update-lighting-debug', payload: { nodeId: string; enabled: boolean }): void
+	(e: 'update-lighting-controls', payload: { nodeId: string; controls: Record<string, any> }): void
+	(e: 'set-selected-placeholder-output', payload: { nodeId: string; selectedId: string }): void
+	(e: 'clear-scene-layout-model-binding', payload: { nodeId: string; objectId: string }): void
+	(e: 'start-three-preview', nodeId: string): void
+	(e: 'three-preview-ready', nodeId: string): void
+	(e: 'three-preview-error', nodeId: string): void
+	(
+		e: 'three-preview-progress',
+		payload: { nodeId: string; progress?: number; label?: string }
+	): void
+	(
+		e: 'upload-scene-layout-model-file',
+		payload: { nodeId: string; file: File; objectId?: string }
+	): void
+	(e: 'update-model-bindings', payload: { nodeId: string; bindings: any[] }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -90,14 +144,7 @@ const businessComponent = computed(() => {
 const resolvedProps = computed(() => {
 	const nodeId = props.node.id
 	const nodeRefs = props.inputParamPreviewRefsByNodeId?.[nodeId] || []
-	// 调试日志
-	if (nodeRefs.length > 0) {
-		console.log(
-			`[WorkflowNodeWrapper] nodeId=${nodeId}, nodeType=${props.node.nodeType}, inputParamPreviewRefs=`,
-			nodeRefs
-		)
-	}
-	return NodeComponentResolver.resolveNodeProps(
+	const baseProps = NodeComponentResolver.resolveNodeProps(
 		props.node,
 		props.zoom,
 		props.legacyResources,
@@ -106,6 +153,86 @@ const resolvedProps = computed(() => {
 		props.generationTasks,
 		nodeRefs
 	)
+	let extraResolved: Record<string, unknown> = {}
+	if (props.extraPropsResolver) {
+		try {
+			const businessNode = new Proxy(
+				{},
+				{
+					get: (_target, prop) => {
+						if (prop === 'id') return props.node.id
+						if (prop === 'type') return (props.node as any).nodeType
+						const data = (props.node as any).data
+						if (data && prop in data) return data[prop]
+						return (props.node as any)[prop]
+					},
+					has: (_target, prop) => {
+						if (prop === 'id' || prop === 'type') return true
+						const data = (props.node as any).data
+						if (data && prop in data) return true
+						return prop in (props.node as any)
+					}
+				}
+			)
+			extraResolved = props.extraPropsResolver(businessNode as any)
+			if ((props.node as any).nodeType === 'scene-layout') {
+				// eslint-disable-next-line no-console
+				console.info(
+					'[WORKFLOW-NODE-WRAPPER] scene-layout extraResolved keys:',
+					Object.keys(extraResolved)
+				)
+				// eslint-disable-next-line no-console
+				console.info('[WORKFLOW-NODE-WRAPPER] scene-layout extraResolved.linkedJsonText:', {
+					type: typeof (extraResolved as Record<string, unknown>).linkedJsonText,
+					len: String((extraResolved as Record<string, unknown>).linkedJsonText ?? '').length,
+					preview: (extraResolved as Record<string, unknown>).linkedJsonText
+						? `${String((extraResolved as Record<string, unknown>).linkedJsonText).slice(0, 150)}...`
+						: '(empty)'
+				})
+				const ers = (extraResolved as Record<string, unknown>).sceneLayoutSettings as Record<
+					string,
+					unknown
+				> | null
+				// eslint-disable-next-line no-console
+				console.info('[WORKFLOW-NODE-WRAPPER] extraResolved.sceneLayoutSettings:', {
+					exists: !!ers,
+					status: ers?.status ?? '(none)',
+					layoutItemsLen: Array.isArray(ers?.layoutItems)
+						? (ers!.layoutItems as unknown[]).length
+						: 'N/A',
+					inputJsonLen: String(ers?.inputJson ?? '').length,
+					keys: ers ? Object.keys(ers) : []
+				})
+				const bps = baseProps.sceneLayoutSettings as Record<string, unknown> | undefined
+				// eslint-disable-next-line no-console
+				console.info('[WORKFLOW-NODE-WRAPPER] baseProps.sceneLayoutSettings:', {
+					exists: !!bps,
+					status: bps?.status ?? '(none)',
+					layoutItemsLen: Array.isArray(bps?.layoutItems)
+						? (bps!.layoutItems as unknown[]).length
+						: 'N/A',
+					inputJsonLen: String(bps?.inputJson ?? '').length,
+					keys: bps ? Object.keys(bps) : []
+				})
+				// Also check node.data.sceneLayoutSettings directly
+				const nodeData = (props.node as any).data as Record<string, unknown> | undefined
+				const nds = nodeData?.sceneLayoutSettings as Record<string, unknown> | undefined
+				// eslint-disable-next-line no-console
+				console.info('[WORKFLOW-NODE-WRAPPER] node.data.sceneLayoutSettings:', {
+					exists: !!nds,
+					status: nds?.status ?? '(none)',
+					layoutItemsLen: Array.isArray(nds?.layoutItems)
+						? (nds!.layoutItems as unknown[]).length
+						: 'N/A',
+					inputJsonLen: String(nds?.inputJson ?? '').length,
+					keys: nds ? Object.keys(nds) : []
+				})
+			}
+		} catch (err) {
+			console.error('[WorkflowNodeWrapper] extraPropsResolver error:', err)
+		}
+	}
+	return { ...baseProps, ...extraResolved }
 })
 
 const wrapperStyle = computed(() => ({
@@ -232,6 +359,102 @@ const onScreenshot = (payload: {
 		time: payload.time
 	})
 }
+
+const onSetType = (type: string) => {
+	emit('set-type', { nodeId: props.node.id, type })
+}
+
+const onUpdateSceneUnderstandingSettings = (patch: Record<string, any>) => {
+	emit('update-scene-understanding-settings', { nodeId: props.node.id, patch })
+}
+
+const onRequestSceneModels = () => {
+	emit('request-scene-models', props.node.id)
+}
+
+const onRunSceneUnderstanding = () => {
+	emit('run-scene-understanding', props.node.id)
+}
+
+const onCancelSceneUnderstanding = () => {
+	emit('cancel-scene-understanding', props.node.id)
+}
+
+const onRunSceneDecompose = () => {
+	emit('run-scene-decompose', props.node.id)
+}
+
+const onRunSceneLayout = () => {
+	console.info(
+		'【SCENE-LAYOUT-CHAIN】① WorkflowNodeWrapper.onRunSceneLayout called, nodeId:',
+		props.node.id
+	)
+	emit('run-scene-layout', props.node.id)
+	console.info(
+		'【SCENE-LAYOUT-CHAIN】① WorkflowNodeWrapper emitted run-scene-layout with nodeId:',
+		props.node.id
+	)
+}
+
+const onUpdatePreviewMode = (previewMode: boolean) => {
+	emit('update-preview-mode', { nodeId: props.node.id, previewMode })
+}
+
+const onUpdateLayoutItems = (items: any[]) => {
+	emit('update-layout-items', { nodeId: props.node.id, items })
+}
+
+const onUpdateSelectedLayoutItem = (itemId: string) => {
+	emit('update-selected-layout-item', { nodeId: props.node.id, itemId })
+}
+
+const onUpdateHidePlaceholderCubes = (hide: boolean) => {
+	emit('update-hide-placeholder-cubes', { nodeId: props.node.id, hide })
+}
+
+const onUpdateLightingPreview = (enabled: boolean) => {
+	emit('update-lighting-preview', { nodeId: props.node.id, enabled })
+}
+
+const onUpdateLightingDebug = (enabled: boolean) => {
+	emit('update-lighting-debug', { nodeId: props.node.id, enabled })
+}
+
+const onUpdateLightingControls = (controls: Record<string, any>) => {
+	emit('update-lighting-controls', { nodeId: props.node.id, controls })
+}
+
+const onSetSelectedPlaceholderOutput = (selectedId: string) => {
+	emit('set-selected-placeholder-output', { nodeId: props.node.id, selectedId })
+}
+
+const onClearSceneLayoutModelBinding = (payload: { objectId: string }) => {
+	emit('clear-scene-layout-model-binding', { nodeId: props.node.id, objectId: payload.objectId })
+}
+
+const onStartThreePreview = () => {
+	emit('start-three-preview', props.node.id)
+}
+
+const onThreePreviewReady = () => {
+	emit('three-preview-ready', props.node.id)
+}
+
+const onThreePreviewError = () => {
+	emit('three-preview-error', props.node.id)
+}
+
+const onThreePreviewProgress = (payload?: { progress?: number; label?: string }) => {
+	emit('three-preview-progress', { nodeId: props.node.id, ...payload })
+}
+
+const onUploadSceneLayoutModelFile = (payload: { file: File; objectId?: string }) => {
+	emit('upload-scene-layout-model-file', { nodeId: props.node.id, ...payload })
+}
+
+const onUpdateModelBindings = (bindings: any[]) => {
+	emit('update-model-bindings', { nodeId: props.node.id, bindings })
+}
 </script>
 
 <style scoped>
@@ -321,7 +544,15 @@ const onScreenshot = (payload: {
 .workflow-node-wrapper :deep(.wf-param-item),
 .workflow-node-wrapper :deep(.wf-slider),
 .workflow-node-wrapper :deep(.wf-toggle),
-.workflow-node-wrapper :deep(.wf-node-status-dot) {
+.workflow-node-wrapper :deep(.wf-node-status-dot),
+.workflow-node-wrapper :deep(.wf-scene-understand),
+.workflow-node-wrapper :deep(.wf-scene-layout),
+.workflow-node-wrapper :deep(.wf-scene-layout-viewer-shell),
+.workflow-node-wrapper :deep(.wf-scene-layout-canvas),
+.workflow-node-wrapper :deep(.wf-three-shell),
+.workflow-node-wrapper :deep(.wf-three-shell-overlay),
+.workflow-node-wrapper :deep(.wf-three-shell-dock),
+.workflow-node-wrapper :deep(.wf-three-shell-start) {
 	pointer-events: auto !important;
 	cursor: pointer;
 }

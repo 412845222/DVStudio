@@ -9,6 +9,7 @@
 				:legacy-resources="legacyResources"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:editing-node-id="editingNodeId"
+				:extra-props-resolver="extraPropsResolver"
 				@node-click="handleNodeClick"
 				@node-contextmenu="handleNodeContextMenu"
 				@node-copy="handleNodeCopy"
@@ -31,6 +32,34 @@
 				@node-invalidate-screenshot="(id: string) => emit('nodeInvalidateScreenshot', id)"
 				@node-preview-contextmenu="(p: any) => emit('nodePreviewContextMenu', p)"
 				@node-screenshot="(p: any) => emit('nodeScreenshot', p)"
+				@node-set-type="(p: any) => emit('nodeSetType', p)"
+				@node-update-scene-understanding-settings="
+					(p: any) => emit('nodeUpdateSceneUnderstandingSettings', p)
+				"
+				@node-request-scene-models="(id: string) => emit('nodeRequestSceneModels', id)"
+				@node-run-scene-understanding="(id: string) => emit('nodeRunSceneUnderstanding', id)"
+				@node-cancel-scene-understanding="(id: string) => emit('nodeCancelSceneUnderstanding', id)"
+				@node-run-scene-decompose="(id: string) => emit('nodeRunSceneDecompose', id)"
+				@node-run-scene-layout="(id: string) => emit('nodeRunSceneLayout', id)"
+				@node-update-preview-mode="(p: any) => emit('nodeUpdatePreviewMode', p)"
+				@node-update-layout-items="(p: any) => emit('nodeUpdateLayoutItems', p)"
+				@node-update-selected-layout-item="(p: any) => emit('nodeUpdateSelectedLayoutItem', p)"
+				@node-update-hide-placeholder-cubes="(p: any) => emit('nodeUpdateHidePlaceholderCubes', p)"
+				@node-update-lighting-preview="(p: any) => emit('nodeUpdateLightingPreview', p)"
+				@node-update-lighting-debug="(p: any) => emit('nodeUpdateLightingDebug', p)"
+				@node-update-lighting-controls="(p: any) => emit('nodeUpdateLightingControls', p)"
+				@node-set-selected-placeholder-output="
+					(p: any) => emit('nodeSetSelectedPlaceholderOutput', p)
+				"
+				@node-clear-scene-layout-model-binding="
+					(p: any) => emit('nodeClearSceneLayoutModelBinding', p)
+				"
+				@node-start-three-preview="(id: string) => emit('nodeStartThreePreview', id)"
+				@node-three-preview-ready="(id: string) => emit('nodeThreePreviewReady', id)"
+				@node-three-preview-error="(id: string) => emit('nodeThreePreviewError', id)"
+				@node-three-preview-progress="(p: any) => emit('nodeThreePreviewProgress', p)"
+				@node-upload-scene-layout-model-file="(p: any) => emit('nodeUploadSceneLayoutModelFile', p)"
+				@node-update-model-bindings="(p: any) => emit('nodeUpdateModelBindings', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -79,6 +108,7 @@ interface Props {
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRefItem[]>
+	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -137,6 +167,40 @@ interface Emits {
 		e: 'nodeScreenshot',
 		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
 	): void
+	(e: 'nodeSetType', payload: { nodeId: string; type: string }): void
+	(
+		e: 'nodeUpdateSceneUnderstandingSettings',
+		payload: { nodeId: string; patch: Record<string, any> }
+	): void
+	(e: 'nodeRequestSceneModels', nodeId: string): void
+	(e: 'nodeRunSceneUnderstanding', nodeId: string): void
+	(e: 'nodeCancelSceneUnderstanding', nodeId: string): void
+	(e: 'nodeRunSceneDecompose', nodeId: string): void
+	(e: 'nodeRunSceneLayout', nodeId: string): void
+	(e: 'nodeUpdatePreviewMode', payload: { nodeId: string; previewMode: boolean }): void
+	(e: 'nodeUpdateLayoutItems', payload: { nodeId: string; items: any[] }): void
+	(e: 'nodeUpdateSelectedLayoutItem', payload: { nodeId: string; itemId: string }): void
+	(e: 'nodeUpdateHidePlaceholderCubes', payload: { nodeId: string; hide: boolean }): void
+	(e: 'nodeUpdateLightingPreview', payload: { nodeId: string; enabled: boolean }): void
+	(e: 'nodeUpdateLightingDebug', payload: { nodeId: string; enabled: boolean }): void
+	(
+		e: 'nodeUpdateLightingControls',
+		payload: { nodeId: string; controls: Record<string, any> }
+	): void
+	(e: 'nodeSetSelectedPlaceholderOutput', payload: { nodeId: string; selectedId: string }): void
+	(e: 'nodeClearSceneLayoutModelBinding', payload: { nodeId: string; objectId: string }): void
+	(e: 'nodeStartThreePreview', nodeId: string): void
+	(e: 'nodeThreePreviewReady', nodeId: string): void
+	(e: 'nodeThreePreviewError', nodeId: string): void
+	(
+		e: 'nodeThreePreviewProgress',
+		payload: { nodeId: string; progress?: number; label?: string }
+	): void
+	(
+		e: 'nodeUploadSceneLayoutModelFile',
+		payload: { nodeId: string; file: File; objectId?: string }
+	): void
+	(e: 'nodeUpdateModelBindings', payload: { nodeId: string; bindings: any[] }): void
 }
 
 const emit = defineEmits<Emits>()

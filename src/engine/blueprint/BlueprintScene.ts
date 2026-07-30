@@ -15,6 +15,7 @@ import type {
 	LegacyResourceData
 } from './types'
 import { CURRENT_SCHEMA_VERSION, DEFAULT_NODE_SIZES, clampZoom, clampPan } from './types'
+import type { PortSpec } from './types'
 import type { SavedSelectionFrame } from './SelectionFrame'
 import { BlueprintLegacyLoader } from './BlueprintLegacyLoader'
 import { BlueprintLegacySaver } from './BlueprintLegacySaver'
@@ -34,6 +35,24 @@ interface PendingConnection {
 	fromPort: Port
 	currentPos: Vector2
 	isValid: boolean
+}
+
+function portsChanged(a: PortSpec[] | undefined, b: PortSpec[] | undefined): boolean {
+	const arrA = Array.isArray(a) ? a : []
+	const arrB = Array.isArray(b) ? b : []
+	if (arrA.length !== arrB.length) return true
+	for (let i = 0; i < arrA.length; i++) {
+		const pa = arrA[i]
+		const pb = arrB[i]
+		if (!pa || !pb) return true
+		if (pa.id !== pb.id || pa.label !== pb.label || pa.mediaType !== pb.mediaType) return true
+	}
+	return false
+}
+
+function portSpecsSignature(ports: PortSpec[] | undefined): string {
+	const arr = Array.isArray(ports) ? ports : []
+	return arr.map((p) => `${p.id}:${p.label}:${p.mediaType}`).join(',')
 }
 
 export class BlueprintScene extends Scene {
@@ -169,8 +188,10 @@ export class BlueprintScene extends Scene {
 		for (const id of nodeIds) {
 			const node = this._nodeMap.get(id)!
 			node.syncDataFromTransform()
+			const inSig = portSpecsSignature(node.data.inputs)
+			const outSig = portSpecsSignature(node.data.outputs)
 			nodeEntries.push(
-				`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)},${Math.round(node.data.width)},${Math.round(node.data.height)},${node.data.sizeCustomized ? 1 : 0}`
+				`${node.id}=${Math.round(node.data.worldX)},${Math.round(node.data.worldY)},${Math.round(node.data.width)},${Math.round(node.data.height)},${node.data.sizeCustomized ? 1 : 0},${inSig},${outSig}`
 			)
 		}
 		const edgeCount = this._connectionMap.size
@@ -247,7 +268,7 @@ export class BlueprintScene extends Scene {
 		const positionSignature = sortedIncomingNodes
 			.map(
 				(n) =>
-					`${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)},${Math.round(n.width)},${Math.round(n.height)},${n.sizeCustomized ? 1 : 0}`
+					`${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)},${Math.round(n.width)},${Math.round(n.height)},${n.sizeCustomized ? 1 : 0},${portSpecsSignature(n.inputs)},${portSpecsSignature(n.outputs)}`
 			)
 			.join('|')
 		const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`
@@ -306,7 +327,9 @@ export class BlueprintScene extends Scene {
 						existing.data.worldX !== nodeData.worldX || existing.data.worldY !== nodeData.worldY
 					const sizeChanged =
 						existing.data.width !== nodeData.width || existing.data.height !== nodeData.height
-					if (posChanged || sizeChanged) {
+					const inputsChanged = portsChanged(existing.data.inputs, nodeData.inputs)
+					const outputsChanged = portsChanged(existing.data.outputs, nodeData.outputs)
+					if (posChanged || sizeChanged || inputsChanged || outputsChanged) {
 						existing.setData(nodeData)
 					}
 				} else {

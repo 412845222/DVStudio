@@ -17,6 +17,7 @@ interface Props {
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRef[]>
+	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -68,6 +69,32 @@ const emit = defineEmits<{
 	'node-screenshot': [
 		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
 	]
+	'node-set-type': [payload: { nodeId: string; type: string }]
+	'node-update-scene-understanding-settings': [
+		payload: { nodeId: string; patch: Record<string, any> }
+	]
+	'node-request-scene-models': [nodeId: string]
+	'node-run-scene-understanding': [nodeId: string]
+	'node-cancel-scene-understanding': [nodeId: string]
+	'node-run-scene-decompose': [nodeId: string]
+	'node-run-scene-layout': [nodeId: string]
+	'node-update-preview-mode': [payload: { nodeId: string; previewMode: boolean }]
+	'node-update-layout-items': [payload: { nodeId: string; items: any[] }]
+	'node-update-selected-layout-item': [payload: { nodeId: string; itemId: string }]
+	'node-update-hide-placeholder-cubes': [payload: { nodeId: string; hide: boolean }]
+	'node-update-lighting-preview': [payload: { nodeId: string; enabled: boolean }]
+	'node-update-lighting-debug': [payload: { nodeId: string; enabled: boolean }]
+	'node-update-lighting-controls': [payload: { nodeId: string; controls: Record<string, any> }]
+	'node-set-selected-placeholder-output': [payload: { nodeId: string; selectedId: string }]
+	'node-clear-scene-layout-model-binding': [payload: { nodeId: string; objectId: string }]
+	'node-start-three-preview': [nodeId: string]
+	'node-three-preview-ready': [nodeId: string]
+	'node-three-preview-error': [nodeId: string]
+	'node-three-preview-progress': [payload: { nodeId: string; progress?: number; label?: string }]
+	'node-upload-scene-layout-model-file': [
+		payload: { nodeId: string; file: File; objectId?: string }
+	]
+	'node-update-model-bindings': [payload: { nodeId: string; bindings: any[] }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -338,6 +365,7 @@ watch(
 			:node-generation-tasks="nodeGenerationTasks"
 			:legacy-resources="legacyResources"
 			:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
+			:extra-props-resolver="extraPropsResolver"
 			@change="onBlueprintEditorChange"
 			@selection-change="onBlueprintEditorSelectionChange"
 			@viewport-change="onBlueprintEditorViewportChange"
@@ -365,6 +393,38 @@ watch(
 			@node-invalidate-screenshot="(id: string) => emit('node-invalidate-screenshot', id)"
 			@node-preview-contextmenu="(p: any) => emit('node-preview-contextmenu', p)"
 			@node-screenshot="(p: any) => emit('node-screenshot', p)"
+			@node-set-type="(p: any) => emit('node-set-type', p)"
+			@node-update-scene-understanding-settings="
+				(p: any) => emit('node-update-scene-understanding-settings', p)
+			"
+			@node-request-scene-models="(id: string) => emit('node-request-scene-models', id)"
+			@node-run-scene-understanding="(id: string) => emit('node-run-scene-understanding', id)"
+			@node-cancel-scene-understanding="(id: string) => emit('node-cancel-scene-understanding', id)"
+			@node-run-scene-decompose="(id: string) => emit('node-run-scene-decompose', id)"
+			@node-run-scene-layout="(id: string) => emit('node-run-scene-layout', id)"
+			@node-update-preview-mode="(p: any) => emit('node-update-preview-mode', p)"
+			@node-update-layout-items="(p: any) => emit('node-update-layout-items', p)"
+			@node-update-selected-layout-item="(p: any) => emit('node-update-selected-layout-item', p)"
+			@node-update-hide-placeholder-cubes="
+				(p: any) => emit('node-update-hide-placeholder-cubes', p)
+			"
+			@node-update-lighting-preview="(p: any) => emit('node-update-lighting-preview', p)"
+			@node-update-lighting-debug="(p: any) => emit('node-update-lighting-debug', p)"
+			@node-update-lighting-controls="(p: any) => emit('node-update-lighting-controls', p)"
+			@node-set-selected-placeholder-output="
+				(p: any) => emit('node-set-selected-placeholder-output', p)
+			"
+			@node-clear-scene-layout-model-binding="
+				(p: any) => emit('node-clear-scene-layout-model-binding', p)
+			"
+			@node-start-three-preview="(id: string) => emit('node-start-three-preview', id)"
+			@node-three-preview-ready="(id: string) => emit('node-three-preview-ready', id)"
+			@node-three-preview-error="(id: string) => emit('node-three-preview-error', id)"
+			@node-three-preview-progress="(p: any) => emit('node-three-preview-progress', p)"
+			@node-upload-scene-layout-model-file="
+				(p: any) => emit('node-upload-scene-layout-model-file', p)
+			"
+			@node-update-model-bindings="(p: any) => emit('node-update-model-bindings', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

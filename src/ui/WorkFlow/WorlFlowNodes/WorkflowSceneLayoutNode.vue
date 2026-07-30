@@ -54,7 +54,9 @@
 						<button
 							class="wf-scene-layout-btn ghost"
 							type="button"
-							@click.stop="(onClickDebug('preview-mode-btn'), emit('update-preview-mode', !previewMode))"
+							@click.stop="
+								(onClickDebug('preview-mode-btn'), emit('update-preview-mode', !previewMode))
+							"
 						>
 							{{
 								previewMode
@@ -81,7 +83,7 @@
 							class="wf-scene-layout-btn"
 							type="button"
 							:disabled="running || !hasRunnableJson"
-							@click.stop="(onClickDebug('run-layout-btn'), emit('run-scene-layout'))"
+							@click.stop="handleRunLayoutClick"
 						>
 							{{ running ? t('nodes.sceneLayout.processing') : t('nodes.sceneLayout.runLayout') }}
 						</button>
@@ -1675,6 +1677,13 @@ const onClickDebug = (btnName: string) => {
 	console.log(`%c【SceneLayoutEvent#BTN】按钮点击: ${btnName}`, 'color:#4f46e5;font-weight:bold')
 }
 
+const handleRunLayoutClick = () => {
+	onClickDebug('run-layout-btn')
+	console.info('【SCENE-LAYOUT-CHAIN】⓪ WorkflowSceneLayoutNode about to emit run-scene-layout')
+	emit('run-scene-layout')
+	console.info('【SCENE-LAYOUT-CHAIN】⓪ WorkflowSceneLayoutNode emit run-scene-layout DONE')
+}
+
 // ---------- 命中测试：在点击发生时，用document.elementFromPoint逐层查看z-index顺序 ----------
 function _hitTestAtEvent(e: PointerEvent | WheelEvent | MouseEvent) {
 	const cx = 'clientX' in e ? e.clientX : 0
@@ -2110,6 +2119,38 @@ watch(
 )
 
 onMounted(() => {
+	const ljt = String(props.linkedJsonText ?? '')
+	const sls = props.sceneLayoutSettings as Record<string, unknown> | null | undefined
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] onMounted RECEIVED PROPS ==========')
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] nodeId:', props.nodeId)
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] linkedJsonText:', {
+		len: ljt.length,
+		emptyString: ljt === '',
+		allSpaces: ljt.trim() === '' && ljt.length > 0,
+		type: typeof props.linkedJsonText,
+		preview: ljt ? `${ljt.slice(0, 150)}...` : '(empty/falsy)'
+	})
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] JSON availability breakdown:', {
+		hasLinkedJson: hasLinkedJson.value,
+		hasCachedJson: hasCachedJson.value,
+		hasInputJson: hasInputJson.value,
+		hasRunnableJson: hasRunnableJson.value,
+		settingsInputJsonPreview: sls?.inputJson
+			? `${String(sls.inputJson).slice(0, 100)}...`
+			: '(null/empty)',
+		running: running.value
+	})
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] threePreviewState:', {
+		phase: props.threePreviewState?.phase,
+		canStart: props.threePreviewState?.canStart
+	})
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT NODE] =========================================')
 	sceneLog('onMounted:', {
 		nodeId: props.nodeId,
 		hasCanvas: !!canvasRef.value,
@@ -2251,6 +2292,29 @@ onMounted(() => {
 		'color:#16a34a;font-weight:bold'
 	)
 })
+
+// Watch for layoutItems and settings changes to debug rendering pipeline
+watch(
+	() => [
+		layoutItems.value.length,
+		status.value,
+		previewPhase.value,
+		settings.value ? Object.keys(settings.value) : []
+	],
+	([itemsLen, st, phase, keys]) => {
+		console.info('【SCENE-LAYOUT-CHAIN】🔵 Component reactive state changed:', {
+			layoutItemsLen: itemsLen,
+			status: st,
+			previewPhase: phase,
+			empty: !itemsLen,
+			settingsKeys: keys,
+			hasSettings: !!settings.value,
+			settingsStatus: settings.value?.status,
+			settingsLayoutItemsIsArray: Array.isArray(settings.value?.layoutItems)
+		})
+	},
+	{ immediate: false }
+)
 
 onBeforeUnmount(() => {
 	_uninstallNativeDiagnosticListeners()

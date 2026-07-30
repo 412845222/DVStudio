@@ -36,6 +36,7 @@
 						:input-param-preview-refs-by-node-id="inputParamPreviewRefsResolved"
 						:chat-state="chatState"
 						:generation-tasks="nodeGenerationTasks"
+						:extra-props-resolver="extraPropsResolver"
 						@edit="(id: string) => handleBusinessEdit(id)"
 						@contextmenu="handleBusinessContextMenu"
 						@update-text="onBusinessUpdateText"
@@ -55,6 +56,28 @@
 						@invalidate-screenshot="onBusinessInvalidateScreenshot"
 						@preview-contextmenu="onBusinessPreviewContextMenu"
 						@screenshot="onBusinessScreenshot"
+						@set-type="onBusinessSetType"
+						@update-scene-understanding-settings="onBusinessUpdateSceneUnderstandingSettings"
+						@request-scene-models="onBusinessRequestSceneModels"
+						@run-scene-understanding="onBusinessRunSceneUnderstanding"
+						@cancel-scene-understanding="onBusinessCancelSceneUnderstanding"
+						@run-scene-decompose="onBusinessRunSceneDecompose"
+						@run-scene-layout="onBusinessRunSceneLayout"
+						@update-preview-mode="onBusinessUpdatePreviewMode"
+						@update-layout-items="onBusinessUpdateLayoutItems"
+						@update-selected-layout-item="onBusinessUpdateSelectedLayoutItem"
+						@update-hide-placeholder-cubes="onBusinessUpdateHidePlaceholderCubes"
+						@update-lighting-preview="onBusinessUpdateLightingPreview"
+						@update-lighting-debug="onBusinessUpdateLightingDebug"
+						@update-lighting-controls="onBusinessUpdateLightingControls"
+						@set-selected-placeholder-output="onBusinessSetSelectedPlaceholderOutput"
+						@clear-scene-layout-model-binding="onBusinessClearSceneLayoutModelBinding"
+						@start-three-preview="onBusinessStartThreePreview"
+						@three-preview-ready="onBusinessThreePreviewReady"
+						@three-preview-error="onBusinessThreePreviewError"
+						@three-preview-progress="onBusinessThreePreviewProgress"
+						@upload-scene-layout-model-file="onBusinessUploadSceneLayoutModelFile"
+						@update-model-bindings="onBusinessUpdateModelBindings"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -148,6 +171,40 @@ const emit = defineEmits<{
 		e: 'node-screenshot',
 		payload: { nodeId: string; dataUrl: string; width: number; height: number; time: number }
 	): void
+	(e: 'node-set-type', payload: { nodeId: string; type: string }): void
+	(
+		e: 'node-update-scene-understanding-settings',
+		payload: { nodeId: string; patch: Record<string, any> }
+	): void
+	(e: 'node-request-scene-models', nodeId: string): void
+	(e: 'node-run-scene-understanding', nodeId: string): void
+	(e: 'node-cancel-scene-understanding', nodeId: string): void
+	(e: 'node-run-scene-decompose', nodeId: string): void
+	(e: 'node-run-scene-layout', nodeId: string): void
+	(e: 'node-update-preview-mode', payload: { nodeId: string; previewMode: boolean }): void
+	(e: 'node-update-layout-items', payload: { nodeId: string; items: any[] }): void
+	(e: 'node-update-selected-layout-item', payload: { nodeId: string; itemId: string }): void
+	(e: 'node-update-hide-placeholder-cubes', payload: { nodeId: string; hide: boolean }): void
+	(e: 'node-update-lighting-preview', payload: { nodeId: string; enabled: boolean }): void
+	(e: 'node-update-lighting-debug', payload: { nodeId: string; enabled: boolean }): void
+	(
+		e: 'node-update-lighting-controls',
+		payload: { nodeId: string; controls: Record<string, any> }
+	): void
+	(e: 'node-set-selected-placeholder-output', payload: { nodeId: string; selectedId: string }): void
+	(e: 'node-clear-scene-layout-model-binding', payload: { nodeId: string; objectId: string }): void
+	(e: 'node-start-three-preview', nodeId: string): void
+	(e: 'node-three-preview-ready', nodeId: string): void
+	(e: 'node-three-preview-error', nodeId: string): void
+	(
+		e: 'node-three-preview-progress',
+		payload: { nodeId: string; progress?: number; label?: string }
+	): void
+	(
+		e: 'node-upload-scene-layout-model-file',
+		payload: { nodeId: string; file: File; objectId?: string }
+	): void
+	(e: 'node-update-model-bindings', payload: { nodeId: string; bindings: any[] }): void
 }>()
 
 const props = defineProps<{
@@ -158,6 +215,7 @@ const props = defineProps<{
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	editingNodeId?: string | null
+	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
 }>()
 
 const overlayRef = ref<HTMLDivElement | null>(null)
@@ -402,6 +460,116 @@ function onBusinessScreenshot(payload: {
 	time: number
 }) {
 	emit('node-screenshot', payload)
+}
+
+function onBusinessSetType(payload: { nodeId: string; type: string }) {
+	emit('node-set-type', payload)
+}
+
+function onBusinessUpdateSceneUnderstandingSettings(payload: {
+	nodeId: string
+	patch: Record<string, any>
+}) {
+	emit('node-update-scene-understanding-settings', payload)
+}
+
+function onBusinessRequestSceneModels(nodeId: string) {
+	emit('node-request-scene-models', nodeId)
+}
+
+function onBusinessRunSceneUnderstanding(nodeId: string) {
+	emit('node-run-scene-understanding', nodeId)
+}
+
+function onBusinessCancelSceneUnderstanding(nodeId: string) {
+	emit('node-cancel-scene-understanding', nodeId)
+}
+
+function onBusinessRunSceneDecompose(nodeId: string) {
+	emit('node-run-scene-decompose', nodeId)
+}
+
+function onBusinessRunSceneLayout(nodeId: string) {
+	console.info(
+		'【SCENE-LAYOUT-CHAIN】② BlueprintDomOverlay.onBusinessRunSceneLayout called, nodeId:',
+		nodeId
+	)
+	emit('node-run-scene-layout', nodeId)
+	console.info(
+		'【SCENE-LAYOUT-CHAIN】② BlueprintDomOverlay emitted node-run-scene-layout with nodeId:',
+		nodeId
+	)
+}
+
+function onBusinessUpdatePreviewMode(payload: { nodeId: string; previewMode: boolean }) {
+	emit('node-update-preview-mode', payload)
+}
+
+function onBusinessUpdateLayoutItems(payload: { nodeId: string; items: any[] }) {
+	emit('node-update-layout-items', payload)
+}
+
+function onBusinessUpdateSelectedLayoutItem(payload: { nodeId: string; itemId: string }) {
+	emit('node-update-selected-layout-item', payload)
+}
+
+function onBusinessUpdateHidePlaceholderCubes(payload: { nodeId: string; hide: boolean }) {
+	emit('node-update-hide-placeholder-cubes', payload)
+}
+
+function onBusinessUpdateLightingPreview(payload: { nodeId: string; enabled: boolean }) {
+	emit('node-update-lighting-preview', payload)
+}
+
+function onBusinessUpdateLightingDebug(payload: { nodeId: string; enabled: boolean }) {
+	emit('node-update-lighting-debug', payload)
+}
+
+function onBusinessUpdateLightingControls(payload: {
+	nodeId: string
+	controls: Record<string, any>
+}) {
+	emit('node-update-lighting-controls', payload)
+}
+
+function onBusinessSetSelectedPlaceholderOutput(payload: { nodeId: string; selectedId: string }) {
+	emit('node-set-selected-placeholder-output', payload)
+}
+
+function onBusinessClearSceneLayoutModelBinding(payload: { nodeId: string; objectId: string }) {
+	emit('node-clear-scene-layout-model-binding', payload)
+}
+
+function onBusinessStartThreePreview(nodeId: string) {
+	emit('node-start-three-preview', nodeId)
+}
+
+function onBusinessThreePreviewReady(nodeId: string) {
+	emit('node-three-preview-ready', nodeId)
+}
+
+function onBusinessThreePreviewError(nodeId: string) {
+	emit('node-three-preview-error', nodeId)
+}
+
+function onBusinessThreePreviewProgress(payload: {
+	nodeId: string
+	progress?: number
+	label?: string
+}) {
+	emit('node-three-preview-progress', payload)
+}
+
+function onBusinessUploadSceneLayoutModelFile(payload: {
+	nodeId: string
+	file: File
+	objectId?: string
+}) {
+	emit('node-upload-scene-layout-model-file', payload)
+}
+
+function onBusinessUpdateModelBindings(payload: { nodeId: string; bindings: any[] }) {
+	emit('node-update-model-bindings', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })

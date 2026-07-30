@@ -1453,9 +1453,7 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 		...lightingInputs
 	]
 	// 输出锚点归一：单一out-0锚点，mediaType为text，可连接场景分解或虚幻导出节点
-	node.outputs = [
-		{ id: 'out-0', label: '布局输出', mediaType: 'text' }
-	]
+	node.outputs = [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
 }
 
 const syncUnrealExportAnchors = (node: WorkflowNode) => {
@@ -1481,7 +1479,11 @@ const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 	// 所有自动布线均从该锚点出发，锚点ID保持稳定不随输出状态变化，避免连线错位。
 	const hasOutputs = outputs.length > 0
 	node.outputs = [
-		{ id: 'out-0', label: hasOutputs ? '拆解输出' : '待分解', mediaType: hasOutputs ? 'image' : 'text' }
+		{
+			id: 'out-0',
+			label: hasOutputs ? '拆解输出' : '待分解',
+			mediaType: hasOutputs ? 'image' : 'text'
+		}
 	]
 }
 

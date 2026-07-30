@@ -223,7 +223,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		const currentSceneType = (currentSettings?.sceneType as 'auto' | 'indoor' | 'outdoor') || 'auto'
 		const currentMode = (currentSettings?.mode as string) || 'scene-layout'
 		const currentSelectedModel = (currentSettings?.selectedModel as string) || ''
-		const currentAvailableModels = Array.isArray(currentSettings?.availableModels) ? (currentSettings?.availableModels as any[]) : []
+		const currentAvailableModels = Array.isArray(currentSettings?.availableModels)
+			? (currentSettings?.availableModels as any[])
+			: []
 		applySettingsPatch(nodeId, {
 			status: 'idle',
 			message: t('aiworkflow.runtime.understandingWaitRun'),
@@ -268,35 +270,85 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		const normalized = String(phase || '')
 			.trim()
 			.toLowerCase()
-		if (normalized === 'start') return { progress: 5, statusText: message || t('aiworkflow.runtime.understandingPhaseStart') }
-		if (normalized === 'started') return { progress: 8, statusText: message || t('aiworkflow.runtime.understandingPhaseStarted') }
+		if (normalized === 'start')
+			return { progress: 5, statusText: message || t('aiworkflow.runtime.understandingPhaseStart') }
+		if (normalized === 'started')
+			return {
+				progress: 8,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseStarted')
+			}
 		if (normalized === 'prepare_input')
-			return { progress: 15, statusText: message || t('aiworkflow.runtime.understandingPhasePrepareInput') }
+			return {
+				progress: 15,
+				statusText: message || t('aiworkflow.runtime.understandingPhasePrepareInput')
+			}
 		if (normalized === 'connect')
-			return { progress: 25, statusText: message || t('aiworkflow.runtime.understandingPhaseConnect') }
+			return {
+				progress: 25,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseConnect')
+			}
 		if (normalized === 'submit')
-			return { progress: 35, statusText: message || t('aiworkflow.runtime.understandingPhaseSubmit') }
+			return {
+				progress: 35,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseSubmit')
+			}
 		if (normalized === 'thinking')
-			return { progress: 40, statusText: message || t('aiworkflow.runtime.understandingPhaseThinking') }
+			return {
+				progress: 40,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseThinking')
+			}
 		if (normalized === 'writing')
-			return { progress: 72, statusText: message || t('aiworkflow.runtime.understandingPhaseWriting') }
+			return {
+				progress: 72,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseWriting')
+			}
 		if (normalized === 'streaming') {
 			const estimatedProgress = Math.min(80, 78 + Math.min(12, Math.floor(contentLength / 200)))
-			return { progress: estimatedProgress, statusText: message || t('aiworkflow.runtime.understandingPhaseStreaming') }
+			return {
+				progress: estimatedProgress,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseStreaming')
+			}
 		}
 		if (normalized === 'continue')
-			return { progress: 85, statusText: message || t('aiworkflow.runtime.understandingPhaseContinue') }
+			return {
+				progress: 85,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseContinue')
+			}
 		if (normalized === 'parse')
-			return { progress: 90, statusText: message || t('aiworkflow.runtime.understandingPhaseParse') }
+			return {
+				progress: 90,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseParse')
+			}
 		if (normalized === 'rewrite')
-			return { progress: 80, statusText: message || t('aiworkflow.runtime.understandingPhaseRewrite') }
-		if (normalized === 'done') return { progress: 100, statusText: message || t('aiworkflow.runtime.understandingPhaseDone') }
-		if (normalized === 'canceled') return { progress: 0, statusText: message || t('aiworkflow.runtime.understandingPhaseCanceledStatus') }
-		if (normalized === 'error') return { progress: 100, statusText: message || t('aiworkflow.runtime.understandingPhaseError') }
-		return { progress: 40, statusText: message || t('aiworkflow.runtime.understandingPhaseWaiting') }
+			return {
+				progress: 80,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseRewrite')
+			}
+		if (normalized === 'done')
+			return {
+				progress: 100,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseDone')
+			}
+		if (normalized === 'canceled')
+			return {
+				progress: 0,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseCanceledStatus')
+			}
+		if (normalized === 'error')
+			return {
+				progress: 100,
+				statusText: message || t('aiworkflow.runtime.understandingPhaseError')
+			}
+		return {
+			progress: 40,
+			statusText: message || t('aiworkflow.runtime.understandingPhaseWaiting')
+		}
 	}
 
-	const onNodeSceneUnderstandingSettingsUpdate = (nodeId: string, payload: Record<string, unknown>) => {
+	const onNodeSceneUnderstandingSettingsUpdate = (
+		nodeId: string,
+		payload: Record<string, unknown>
+	) => {
 		const currentSettings = getNodeSceneUnderstandingSettings(nodeId)
 		const isRunning = currentSettings?.status === 'running'
 		let safePayload = { ...payload }
@@ -304,9 +356,17 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 			if ('outputJson' in safePayload) delete safePayload.outputJson
 			if ('rawOutput' in safePayload) delete safePayload.rawOutput
 			if ('resultSummary' in safePayload) delete safePayload.resultSummary
-			if ('message' in safePayload && !('statusText' in safePayload) && !('progress' in safePayload)) delete safePayload.message
+			if (
+				'message' in safePayload &&
+				!('statusText' in safePayload) &&
+				!('progress' in safePayload)
+			)
+				delete safePayload.message
 			const newStatus = safePayload.status
-			if (typeof newStatus === 'string' && !['running', 'completed', 'error', 'canceled'].includes(newStatus)) {
+			if (
+				typeof newStatus === 'string' &&
+				!['running', 'completed', 'error', 'canceled'].includes(newStatus)
+			) {
 				delete safePayload.status
 			}
 		}
@@ -336,7 +396,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 
 		applySettingsPatch(nodeId, {
 			status: 'loading-models',
-			message: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLoadingLightingModels' : 'aiworkflow.runtime.understandingLoadingModels')
+			message: t(
+				mode === 'scene-lighting'
+					? 'aiworkflow.runtime.understandingLoadingLightingModels'
+					: 'aiworkflow.runtime.understandingLoadingModels'
+			)
 		})
 
 		try {
@@ -357,7 +421,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					status: 'error',
 					message: res.error || t('aiworkflow.runtime.understandingLoadModelsFailed')
 				})
-				options.pushToast(t('aiworkflow.toast.sceneModelListFailed', { error: String(res.error || 'unknown') }), 'warn')
+				options.pushToast(
+					t('aiworkflow.toast.sceneModelListFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			const models = Array.isArray(res.models) ? res.models : []
@@ -420,7 +487,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				: 'auto'
 		if (!imageUrl) {
 			options.pushToast(
-				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLightingMissingImage' : 'aiworkflow.runtime.understandingMissingImage'),
+				t(
+					mode === 'scene-lighting'
+						? 'aiworkflow.runtime.understandingLightingMissingImage'
+						: 'aiworkflow.runtime.understandingMissingImage'
+				),
 				'warn'
 			)
 			return
@@ -431,7 +502,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 		}
 		if (!model) {
 			options.pushToast(
-				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingSelectLightingModel' : 'aiworkflow.runtime.understandingSelectModel'),
+				t(
+					mode === 'scene-lighting'
+						? 'aiworkflow.runtime.understandingSelectLightingModel'
+						: 'aiworkflow.runtime.understandingSelectModel'
+				),
 				'warn'
 			)
 			return
@@ -449,7 +524,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 
 		applySettingsPatch(nodeId, {
 			status: 'running',
-			message: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingRunningLighting' : 'aiworkflow.runtime.understandingRunning'),
+			message: t(
+				mode === 'scene-lighting'
+					? 'aiworkflow.runtime.understandingRunningLighting'
+					: 'aiworkflow.runtime.understandingRunning'
+			),
 			statusText:
 				mode === 'scene-lighting'
 					? t('aiworkflow.runtime.understandingPreparingLighting')
@@ -535,12 +614,23 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					const errorMsg = ev.error.message || 'unknown'
 					applySettingsPatch(nodeId, {
 						status: 'error',
-						message: ev.error.message || t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingPhaseLightingError' : 'aiworkflow.runtime.understandingPhaseError'),
+						message:
+							ev.error.message ||
+							t(
+								mode === 'scene-lighting'
+									? 'aiworkflow.runtime.understandingPhaseLightingError'
+									: 'aiworkflow.runtime.understandingPhaseError'
+							),
 						statusText: t('aiworkflow.runtime.understandingSseParseFailed'),
 						progress: 100
 					})
 					options.pushToast(
-						t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: errorMsg }),
+						t(
+							mode === 'scene-lighting'
+								? 'aiworkflow.runtime.lightingFailedWithError'
+								: 'aiworkflow.runtime.understandingFailedWithError',
+							{ error: errorMsg }
+						),
 						'warn'
 					)
 					break
@@ -569,9 +659,10 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						const nextReasoning = `${prevReasoning}${deltaText}`
 						sceneUnderstandReasoningBuffers.set(nodeId, nextReasoning)
 						const maxDisplayLen = 2000
-						const displayText = nextReasoning.length > maxDisplayLen
-							? `...${nextReasoning.slice(-maxDisplayLen)}`
-							: nextReasoning
+						const displayText =
+							nextReasoning.length > maxDisplayLen
+								? `...${nextReasoning.slice(-maxDisplayLen)}`
+								: nextReasoning
 						applySettingsPatch(nodeId, {
 							reasoningText: displayText
 						})
@@ -583,7 +674,9 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					const payload = msg.payload as Record<string, unknown>
 					const phase = typeof payload.phase === 'string' ? payload.phase : ''
 					const phaseMessage = typeof payload.message === 'string' ? payload.message : ''
-					const details = isRecord(payload.details) ? payload.details : ({} as Record<string, unknown>)
+					const details = isRecord(payload.details)
+						? payload.details
+						: ({} as Record<string, unknown>)
 					const resetDraft = details.resetDraft === true
 					const currentSettings = getNodeSceneUnderstandingSettings(nodeId)
 					const draftLen = sceneUnderstandDraftBuffers.get(nodeId)?.length ?? 0
@@ -616,16 +709,25 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 					flushSceneUnderstandDraft(nodeId)
 					clearSceneUnderstandDraftSchedule(nodeId)
 					const payloadErr = msg.payload as Record<string, unknown>
-					const details = isRecord(payloadErr.details) ? payloadErr.details : ({} as Record<string, unknown>)
+					const details = isRecord(payloadErr.details)
+						? payloadErr.details
+						: ({} as Record<string, unknown>)
 					const settings = getNodeSceneUnderstandingSettings(nodeId)
 					const errorMsg = String(payloadErr.message ?? 'unknown')
 					applySettingsPatch(nodeId, {
 						status: 'error',
-						message: typeof payloadErr.message === 'string' ? payloadErr.message : t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingPhaseLightingError' : 'aiworkflow.runtime.understandingPhaseError'),
+						message:
+							typeof payloadErr.message === 'string'
+								? payloadErr.message
+								: t(
+										mode === 'scene-lighting'
+											? 'aiworkflow.runtime.understandingPhaseLightingError'
+											: 'aiworkflow.runtime.understandingPhaseError'
+									),
 						statusText: String(
 							typeof details.providerStatusText === 'string'
 								? details.providerStatusText
-								: payloadErr.message ?? t('aiworkflow.runtime.understandingRemoteError')
+								: (payloadErr.message ?? t('aiworkflow.runtime.understandingRemoteError'))
 						),
 						progress: 100,
 						provider: typeof details.provider === 'string' ? details.provider : 'volcengine-ark',
@@ -633,15 +735,18 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							typeof details.providerStatusText === 'string'
 								? details.providerStatusText
 								: undefined,
-						remoteStatusCode: Number.isFinite(
-							Number(details.remoteStatusCode ?? details.status)
-						)
+						remoteStatusCode: Number.isFinite(Number(details.remoteStatusCode ?? details.status))
 							? Number(details.remoteStatusCode ?? details.status)
 							: undefined,
 						rawOutput: typeof settings?.rawOutput === 'string' ? settings.rawOutput : ''
 					})
 					options.pushToast(
-						t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: errorMsg }),
+						t(
+							mode === 'scene-lighting'
+								? 'aiworkflow.runtime.lightingFailedWithError'
+								: 'aiworkflow.runtime.understandingFailedWithError',
+							{ error: errorMsg }
+						),
 						'warn'
 					)
 					break
@@ -657,7 +762,8 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 						const isMock = payloadResult.mock === true
 						let parsedSceneType: 'indoor' | 'outdoor' | 'semi-outdoor' | undefined
 						let sceneConfidence: number | undefined
-						const outputJsonStr = typeof payloadResult.outputJson === 'string' ? payloadResult.outputJson : ''
+						const outputJsonStr =
+							typeof payloadResult.outputJson === 'string' ? payloadResult.outputJson : ''
 						if (outputJsonStr) {
 							try {
 								const parsedJson = JSON.parse(outputJsonStr) as Record<string, unknown>
@@ -682,17 +788,19 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							message:
 								typeof payloadResult.summary === 'string'
 									? payloadResult.summary
-									: t(mode === 'scene-lighting' ? 'aiworkflow.runtime.understandingLightingCompleted' : 'aiworkflow.runtime.understandingCompleted'),
+									: t(
+											mode === 'scene-lighting'
+												? 'aiworkflow.runtime.understandingLightingCompleted'
+												: 'aiworkflow.runtime.understandingCompleted'
+										),
 							statusText:
 								typeof payloadResult.providerStatusText === 'string'
 									? payloadResult.providerStatusText
 									: t('aiworkflow.runtime.understandingResultReady'),
 							progress: 100,
 							outputJson: outputJsonStr,
-							rawOutput:
-								typeof payloadResult.rawOutput === 'string' ? payloadResult.rawOutput : '',
-							resultSummary:
-								typeof payloadResult.summary === 'string' ? payloadResult.summary : '',
+							rawOutput: typeof payloadResult.rawOutput === 'string' ? payloadResult.rawOutput : '',
+							resultSummary: typeof payloadResult.summary === 'string' ? payloadResult.summary : '',
 							provider:
 								typeof payloadResult.provider === 'string'
 									? payloadResult.provider
@@ -714,7 +822,12 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							mock: isMock
 						})
 						options.pushToast(
-							t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingCompleteToast' : 'aiworkflow.runtime.understandingCompleteToast', { mock: isMock ? t('aiworkflow.runtime.mockSuffix') : '' }),
+							t(
+								mode === 'scene-lighting'
+									? 'aiworkflow.runtime.lightingCompleteToast'
+									: 'aiworkflow.runtime.understandingCompleteToast',
+								{ mock: isMock ? t('aiworkflow.runtime.mockSuffix') : '' }
+							),
 							'info'
 						)
 					} catch (parseErr: unknown) {
@@ -727,7 +840,11 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 							progress: 100
 						})
 						options.pushToast(
-							t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingParseFailedToast' : 'aiworkflow.runtime.understandingParseFailedToast'),
+							t(
+								mode === 'scene-lighting'
+									? 'aiworkflow.runtime.lightingParseFailedToast'
+									: 'aiworkflow.runtime.understandingParseFailedToast'
+							),
 							'warn'
 						)
 					}
@@ -755,7 +872,12 @@ export const useAIWorkflowSceneUnderstandingController = (options: {
 				progress: 100
 			})
 			options.pushToast(
-				t(mode === 'scene-lighting' ? 'aiworkflow.runtime.lightingFailedWithError' : 'aiworkflow.runtime.understandingFailedWithError', { error: message }),
+				t(
+					mode === 'scene-lighting'
+						? 'aiworkflow.runtime.lightingFailedWithError'
+						: 'aiworkflow.runtime.understandingFailedWithError',
+					{ error: message }
+				),
 				'warn'
 			)
 		} finally {

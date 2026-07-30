@@ -245,7 +245,8 @@ function onNodePointerDown(e: PointerEvent) {
 				tgt.closest('.wf-node3d-viewer-container') ||
 				tgt.closest('[data-wf-three-preview]') ||
 				tgt.closest('[data-wf-node-drag-ignore="true"]') ||
-				(tgt.tagName === 'CANVAS' && tgt.closest('.wf-scene-layout, .wf-model3d, .wf-three-preview')))
+				(tgt.tagName === 'CANVAS' &&
+					tgt.closest('.wf-scene-layout, .wf-model3d, .wf-three-preview')))
 		) {
 			return
 		}

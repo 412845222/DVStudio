@@ -51,7 +51,11 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		() => activeNodeId.value,
 		(newId, oldId) => {
 			if (newId !== oldId) {
-				log('activeNodeId changed:', { from: oldId || '(empty)', to: newId || '(empty)', selectedCount: payload.selectedNodeIds.value.length })
+				log('activeNodeId changed:', {
+					from: oldId || '(empty)',
+					to: newId || '(empty)',
+					selectedCount: payload.selectedNodeIds.value.length
+				})
 			}
 		}
 	)
@@ -72,15 +76,37 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		return existing
 	}
 
-	const syncExportState = (target: WorkflowThreePreviewState, source: Partial<WorkflowThreePreviewState>) => {
+	const syncExportState = (
+		target: WorkflowThreePreviewState,
+		source: Partial<WorkflowThreePreviewState>
+	) => {
 		let changed = false
-		if (source.phase !== undefined && target.phase !== source.phase) { target.phase = source.phase; changed = true }
-		if (source.canStart !== undefined && target.canStart !== source.canStart) { target.canStart = source.canStart; changed = true }
-		if (source.progress !== undefined && target.progress !== source.progress) { target.progress = source.progress; changed = true }
-		if (source.label !== undefined && target.label !== source.label) { target.label = source.label; changed = true }
-		if (source.requestId !== undefined && target.requestId !== source.requestId) { target.requestId = source.requestId; changed = true }
+		if (source.phase !== undefined && target.phase !== source.phase) {
+			target.phase = source.phase
+			changed = true
+		}
+		if (source.canStart !== undefined && target.canStart !== source.canStart) {
+			target.canStart = source.canStart
+			changed = true
+		}
+		if (source.progress !== undefined && target.progress !== source.progress) {
+			target.progress = source.progress
+			changed = true
+		}
+		if (source.label !== undefined && target.label !== source.label) {
+			target.label = source.label
+			changed = true
+		}
+		if (source.requestId !== undefined && target.requestId !== source.requestId) {
+			target.requestId = source.requestId
+			changed = true
+		}
 		if (changed && DEBUG_LOG) {
-			log('exportState synced:', { nodeId: findNodeIdByExport(target), phase: source.phase, canStart: source.canStart })
+			log('exportState synced:', {
+				nodeId: findNodeIdByExport(target),
+				phase: source.phase,
+				canStart: source.canStart
+			})
 		}
 	}
 
@@ -262,7 +288,12 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 			current.label = ''
 			current.requestId = (Number(current.requestId) || 0) + 1
 			current.phaseBeforeMasked = undefined
-			log('markPreviewContentChanged:', { nodeId: targetId, oldPhase, newPhase: 'masked', requestId: current.requestId })
+			log('markPreviewContentChanged:', {
+				nodeId: targetId,
+				oldPhase,
+				newPhase: 'masked',
+				requestId: current.requestId
+			})
 		}
 		const exportState = exportStateMap.get(targetId)
 		if (exportState) syncExportState(exportState, current)
@@ -301,8 +332,7 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		if (!current) return
 		current.activatedOnce = true
 		cancelPendingMasked(targetId, current)
-		if (current.phase === 'interactive' && current.progress === 1)
-			return
+		if (current.phase === 'interactive' && current.progress === 1) return
 		const oldPhase = current.phase
 		current.phase = 'interactive'
 		current.canStart = true
@@ -326,7 +356,12 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 		current.label = ''
 		current.requestId = (Number(current.requestId) || 0) + 1
 		current.phaseBeforeMasked = undefined
-		log('failPreviewSession:', { nodeId: targetId, oldPhase, newPhase: 'masked', requestId: current.requestId })
+		log('failPreviewSession:', {
+			nodeId: targetId,
+			oldPhase,
+			newPhase: 'masked',
+			requestId: current.requestId
+		})
 		const exportState = exportStateMap.get(targetId)
 		if (exportState) syncExportState(exportState, current)
 	}
