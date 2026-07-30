@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -16,6 +17,8 @@
 		:selected="selected"
 		:hoverInputAnchorId="hoverInputAnchorId"
 		:hoverOutputAnchorId="hoverOutputAnchorId"
+		:sizeCustomized="sizeCustomized"
+		:autoHeight="autoHeight"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"
@@ -27,6 +30,7 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
+		@auto-resize="(h: number) => emit('auto-resize', h)"
 	>
 		<template #body>
 			<div class="wf-scene-understand" @pointerdown.stop @click="onAnyClick">
@@ -262,7 +266,17 @@ const props = defineProps<{
 	selected?: boolean
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
+	sizeCustomized?: boolean
+	autoHeight?: boolean
 }>()
+
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
+const requestResize = () => {
+	nextTick(() => {
+		baseRef.value?.requestAutoResize()
+		setTimeout(() => baseRef.value?.requestAutoResize(), 50)
+	})
+}
 
 const onStartLink = (payload: {
 	nodeId: string
@@ -346,6 +360,7 @@ const emit = defineEmits<{
 			| 'blender'
 	): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
+	(e: 'auto-resize', height: number): void
 	(
 		e: 'update-scene-understanding-settings',
 		payload: Partial<WorkflowSceneUnderstandingNodeSettings>
@@ -611,7 +626,30 @@ onMounted(() => {
 		currentSceneType: currentSceneType.value
 	})
 	requestModelsIfNeeded(false)
+	requestResize()
 })
+
+watch(
+	() => [
+		status.value,
+		outputJson.value,
+		props.linkedImageUrl,
+		props.linkedImageUrls?.length,
+		props.linkedPromptText,
+		props.linkedLayoutJsonText,
+		settings.value?.status,
+		settings.value?.outputJson,
+		settings.value?.message,
+		settings.value?.resultSummary,
+		settings.value?.mode,
+		settings.value?.sceneType,
+		settings.value?.selectedModel
+	],
+	() => {
+		requestResize()
+	},
+	{ flush: 'post' }
+)
 </script>
 
 <style scoped>

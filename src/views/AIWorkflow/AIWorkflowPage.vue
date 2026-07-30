@@ -9093,7 +9093,10 @@ const {
 	runSceneLayout: ({ nodeId, inputJson }) =>
 		sceneSkillService.runSceneLayout({ nodeId, inputJson }),
 	syncConnectedModel3DTargets,
-	pushToast: (message, tone) => pushToast(message, tone)
+	pushToast: (message, tone) => pushToast(message, tone),
+	patchBlueprintNodeData,
+	engineApi,
+	hasEngine: true
 })
 
 const { autoExpandSceneDecomposeOutputs } = useAIWorkflowSceneDecomposeAutoExpand({
@@ -9107,6 +9110,10 @@ const { autoExpandSceneDecomposeOutputs } = useAIWorkflowSceneDecomposeAutoExpan
 	connectedSceneDecomposeImageInputRefAt,
 	onNodeUploadResource: (nodeId, file, kind, opts) =>
 		onNodeUploadResource(nodeId, file, kind, opts),
+	setNodeResource: (nodeId, resourceId) => {
+		store.commit('setNodeResource', { nodeId, resourceId })
+	},
+	patchBlueprintNodeData: (nodeId) => patchBlueprintNodeData(nodeId),
 	onAutoWireNodeCreated: (nodeId) => onAutoWireNodeCreated(nodeId)
 })
 

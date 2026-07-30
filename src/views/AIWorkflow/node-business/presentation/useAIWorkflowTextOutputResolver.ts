@@ -96,6 +96,24 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 
 		const node = payload.store.state.nodesById[nodeId]
 		if (!node) return ''
+
+		// 调试日志：场景节点文本输出解析
+		const isSceneNodeForDiag =
+			node.type === 'scene-layout' ||
+			node.type === 'scene-understanding' ||
+			node.type === 'scene-decompose'
+		const DIAG_KEY_TEXTOUT = `__diag_textOut_${visitKey}`
+		if (isSceneNodeForDiag && !(window as any)[DIAG_KEY_TEXTOUT]) {
+			;(window as any)[DIAG_KEY_TEXTOUT] = true
+			// eslint-disable-next-line no-console
+			console.log('[TEXT-OUTPUT DIAG] Resolving for:', {
+				nodeId,
+				nodeType: node.type,
+				fromAnchorId: fromAnchorId ?? '(none)',
+				visitKey
+			})
+		}
+
 		if (node.type === 'text') {
 			const n = node as Record<string, unknown>
 			const inputs = Array.isArray(n.inputs) ? n.inputs : []
@@ -116,15 +134,70 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		}
 		if (node.type === 'rotate-image') return String(node.rotatePromptText ?? '')
 		if (node.type === 'text-merge') return computeMergedText(nodeId, v)
-		if (node.type === 'scene-understanding')
-			return String(node.sceneUnderstandingSettings?.outputJson ?? '')
-		if (node.type === 'scene-decompose')
-			return sceneDecomposeTextOutputForAnchor(node, String(fromAnchorId ?? ''))
-		if (node.type === 'scene-layout') {
-			if (String(fromAnchorId ?? '') === 'out-selected-placeholder') {
-				return payload.serializeSceneLayoutSelectedPlaceholder(nodeId)
+		if (node.type === 'scene-understanding') {
+			const result = String(node.sceneUnderstandingSettings?.outputJson ?? '')
+			if (isSceneNodeForDiag) {
+				// eslint-disable-next-line no-console
+				console.log('[TEXT-OUTPUT DIAG] scene-understanding output:', {
+					nodeId,
+					outputJson_len: result.length,
+					outputJson_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
+					settings_exists: !!node.sceneUnderstandingSettings,
+					status: (node.sceneUnderstandingSettings as any)?.status,
+					running: (node as any).running
+				})
 			}
-			return payload.serializeSceneLayoutOutput(nodeId)
+			return result
+		}
+		if (node.type === 'scene-decompose') {
+			const result = sceneDecomposeTextOutputForAnchor(node, String(fromAnchorId ?? ''))
+			if (isSceneNodeForDiag) {
+				// eslint-disable-next-line no-console
+				console.log('[TEXT-OUTPUT DIAG] scene-decompose output:', {
+					nodeId,
+					fromAnchorId,
+					result_len: result.length,
+					result_preview: result ? `${result.slice(0, 200)}...` : '(empty)'
+				})
+			}
+			return result
+		}
+		if (node.type === 'scene-layout') {
+			let result = ''
+			if (String(fromAnchorId ?? '') === 'out-selected-placeholder') {
+				result = payload.serializeSceneLayoutSelectedPlaceholder(nodeId)
+			} else {
+				result = payload.serializeSceneLayoutOutput(nodeId)
+			}
+			// 如果serializeSceneLayoutOutput返回空（例如节点未运行，settings中无inputJson），
+			// 则回退到直接透传上游in-json连接的JSON数据
+			if (!result && String(fromAnchorId ?? '') !== 'out-selected-placeholder') {
+				const jsonEdge = payload.getFirstIncomingEdge(nodeId, 'in-json') as Record<string, unknown> | null
+				if (jsonEdge) {
+					result = getTextOutputForNode(
+						String(jsonEdge.fromNodeId),
+						v,
+						String(jsonEdge.fromAnchorId ?? '')
+					)
+				}
+			}
+			if (isSceneNodeForDiag) {
+				const sls = node.sceneLayoutSettings as any
+				// eslint-disable-next-line no-console
+				console.log('[TEXT-OUTPUT DIAG] scene-layout output:', {
+					nodeId,
+					fromAnchorId: fromAnchorId ?? '(default out)',
+					result_len: result.length,
+					result_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
+					inputJson_len: String(sls?.inputJson ?? '').length,
+					inputJson_preview: sls?.inputJson ? `${String(sls.inputJson).slice(0, 200)}...` : '(empty)',
+					layoutItems_count: Array.isArray(sls?.layoutItems) ? sls.layoutItems.length : 0,
+					status: sls?.status,
+					running: (node as any).running,
+					fellBackToUpstream: !payload.serializeSceneLayoutOutput(nodeId) && !!result
+				})
+			}
+			return result
 		}
 		return ''
 	}

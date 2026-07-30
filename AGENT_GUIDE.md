@@ -19,7 +19,8 @@
 - [10_MCP_GUIDE.md](agent_docs/10_MCP_GUIDE.md) — MCP 开发指引（DVStudioMCPServer + 双桥接 + 工具注册与执行）
 - [11_NEW_AI_MODULES_GUIDE.md](agent_docs/11_NEW_AI_MODULES_GUIDE.md) — 新增 AI 模块群指引（Tripo3D / Ark / Gemini / Blender / CloudTemplates / CLI Adapters）
 - [12_TESTING_GUIDE.md](agent_docs/12_TESTING_GUIDE.md) — 测试开发指引（tests/ 目录结构 + Vitest + Mock 策略 + 质量门禁）
-- [13_CLOUD_MODULES_GUIDE.md](agent_docs/13_CLOUD_MODULES_GUIDE.md) — 🆕 云服务与扩展模块指引（CloudFS 云存储 / Steam Workshop 工坊模板 / ComfyUI 本地服务管理增强）
+- [13_CLOUD_MODULES_GUIDE.md](agent_docs/13_CLOUD_MODULES_GUIDE.md) — 云服务与扩展模块指引（CloudFS 云存储 / Steam Workshop 工坊模板 / ComfyUI 本地服务管理增强）
+- [14_NODE_THREE_LAYER_ARCHITECTURE.md](agent_docs/14_NODE_THREE_LAYER_ARCHITECTURE.md) — 🆕 AI工作流节点开发三层链路架构指南（UI组件层→业务逻辑层→引擎核心层职责边界、数据流向标准流程、关键坑点避坑、开发Checklist）
 
 ## 🎯 快速上下文
 

@@ -1,5 +1,56 @@
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
+import { makeSyncSceneLayoutNodeToEngine, type SceneLayoutEngineApiLike } from './useAIWorkflowSceneLayoutSync'
+
+// 判断单个item是否携带合法的3D position/size字段（都存在且是有限数）
+const hasValid3DFields = (item: unknown): boolean => {
+	if (!item || typeof item !== 'object') return false
+	const obj = item as Record<string, unknown>
+	const pos = obj.position
+	const size = obj.size
+	if (!pos || typeof pos !== 'object' || !size || typeof size !== 'object') return false
+	const p = pos as Record<string, unknown>
+	const s = size as Record<string, unknown>
+	const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+	return (
+		isNum(p.x) && isNum(p.y) && isNum(p.z) &&
+		isNum(s.width) && isNum(s.height) && isNum(s.depth) &&
+		s.width > 0 && s.height > 0 && s.depth > 0
+	)
+}
+
+// 归一化layoutItems：对缺少position/size的item填充合理默认值，确保viewer可渲染占位立方体
+const normalizeLayoutItemsForPreview = (items: unknown[]): unknown[] => {
+	return (Array.isArray(items) ? items : []).map((item, index) => {
+		if (!item || typeof item !== 'object') return item
+		const obj = { ...(item as Record<string, unknown>) }
+		const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+		// 确保有id
+		if (!String(obj.id ?? '').trim()) {
+			obj.id = `object-${index}`
+		}
+		// position兜底
+		const posRaw = obj.position
+		const pos = posRaw && typeof posRaw === 'object' ? (posRaw as Record<string, unknown>) : null
+		const px = pos && isNum(pos.x) ? (pos.x as number) : index * 30
+		const py = pos && isNum(pos.y) ? (pos.y as number) : 0
+		const pz = pos && isNum(pos.z) ? (pos.z as number) : 0
+		obj.position = { x: px, y: py, z: pz }
+		// size兜底
+		const sizeRaw = obj.size
+		const size = sizeRaw && typeof sizeRaw === 'object' ? (sizeRaw as Record<string, unknown>) : null
+		const sw = size && isNum(size.width) ? (size.width as number) : 0
+		const sh = size && isNum(size.height) ? (size.height as number) : 0
+		const sd = size && isNum(size.depth) ? (size.depth as number) : 0
+		obj.size = {
+			width: sw > 0 ? sw : 20,
+			height: sh > 0 ? sh : 20,
+			depth: sd > 0 ? sd : 20
+		}
+		return obj
+	})
+}
+
 export const useAIWorkflowSceneLayoutController = (options: {
 	store: {
 		state: {
@@ -23,7 +74,17 @@ export const useAIWorkflowSceneLayoutController = (options: {
 		opts?: { forceSceneLayoutExport?: boolean }
 	) => Promise<void>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	// 同步Store→Engine：patchBlueprintNodeData优先
+	patchBlueprintNodeData?: (nodeId: string) => void
+	engineApi?: SceneLayoutEngineApiLike
+	hasEngine?: boolean
 }) => {
+	const syncSceneLayoutNodeToEngine = makeSyncSceneLayoutNodeToEngine({
+		store: options.store as any,
+		patchBlueprintNodeData: options.patchBlueprintNodeData,
+		engineApi: options.engineApi,
+		hasEngine: options.hasEngine
+	})
 	const onNodeRunSceneLayout = async (nodeId: string) => {
 		console.info('【SCENE-LAYOUT-CHAIN】③ Controller.onNodeRunSceneLayout START, nodeId:', nodeId)
 		const node = options.store.state.nodesById[nodeId] as Record<string, unknown>
@@ -77,24 +138,45 @@ export const useAIWorkflowSceneLayoutController = (options: {
 
 			const parsedObj = parsedInput as Record<string, unknown>
 			const directInputItems = options.extractSceneLayoutSourceItems(parsedInput)
-			const directHasLayout = Array.isArray(parsedObj?.layoutItems) && directInputItems.length > 0
+			// directHasLayout：输入项已有完整layoutItems数组，或者objects/items中每个item都携带合法的3D position/size
+			const directItemsAllHave3D =
+				directInputItems.length > 0 && directInputItems.every(hasValid3DFields)
+			const directHasLayout =
+				(Array.isArray(parsedObj?.layoutItems) || directItemsAllHave3D) &&
+				directInputItems.length > 0
 			const directHasCamera = parsedObj?.camera && typeof parsedObj.camera === 'object'
 			console.info(
 				'【SCENE-LAYOUT-CHAIN】③ extractSceneLayoutSourceItems result - directInputItems.length:',
 				directInputItems.length,
 				'parsedObj.layoutItems is array?',
 				Array.isArray(parsedObj?.layoutItems),
+				'directItemsAllHave3D:',
+				directItemsAllHave3D,
 				'directHasLayout:',
 				directHasLayout,
 				'directHasCamera:',
 				directHasCamera
 			)
+			// eslint-disable-next-line no-console
+			console.info('[SCENE-LAYOUT-PREVIEW] first 3 direct items sample:',
+				directInputItems.slice(0, 3).map((it) => {
+					const o = it as Record<string, unknown>
+					return { id: o.id, hasPos: !!o.position, hasSize: !!o.size, pos: o.position, size: o.size }
+				})
+			)
 			if (directHasLayout) {
 				console.info('【SCENE-LAYOUT-CHAIN】③ Branch: DIRECT LAYOUT (no API call), merging...')
-				const mergedLayoutItems = options.mergeSceneLayoutItemsWithMetadata(directInputItems, [
-					directInputItems
-				])
+				const mergedLayoutItems = normalizeLayoutItemsForPreview(
+					options.mergeSceneLayoutItemsWithMetadata(directInputItems, [directInputItems])
+				)
 				console.info('【SCENE-LAYOUT-CHAIN】③ mergedLayoutItems.length:', mergedLayoutItems.length)
+				// eslint-disable-next-line no-console
+				console.info('[SCENE-LAYOUT-PREVIEW] direct path normalized items:',
+					mergedLayoutItems.slice(0, 3).map((it) => {
+						const o = it as Record<string, unknown>
+						return { id: o.id, position: o.position, size: o.size }
+					})
+				)
 				options.store.commit('setNodeSceneLayoutSettings', {
 					nodeId,
 					sceneLayoutSettings: {
@@ -112,6 +194,8 @@ export const useAIWorkflowSceneLayoutController = (options: {
 					'【SCENE-LAYOUT-CHAIN】③ Committed COMPLETED (direct), layoutItems count:',
 					mergedLayoutItems.length
 				)
+				// 关键：生成布局后立即同步Store→Engine，避免Ctrl+S时Engine旧数据覆盖新布局
+				void syncSceneLayoutNodeToEngine(nodeId)
 				options.pushToast(t('aiworkflow.runtime.layoutLoadedDirectToast'), 'info')
 				return
 			}
@@ -142,14 +226,21 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			}
 			const inputMetadataItems = options.parseSceneLayoutMetadataItems(inputJson)
 			const resLayoutItems = Array.isArray(res.layoutItems) ? (res.layoutItems as unknown[]) : []
-			const mergedLayoutItems = options.mergeSceneLayoutItemsWithMetadata(resLayoutItems, [
-				inputMetadataItems
-			])
+			const mergedLayoutItems = normalizeLayoutItemsForPreview(
+				options.mergeSceneLayoutItemsWithMetadata(resLayoutItems, [inputMetadataItems])
+			)
 			console.info(
 				'【SCENE-LAYOUT-CHAIN】③ API success - resLayoutItems.length:',
 				resLayoutItems.length,
 				'mergedLayoutItems.length:',
 				mergedLayoutItems.length
+			)
+			// eslint-disable-next-line no-console
+			console.info('[SCENE-LAYOUT-PREVIEW] API path normalized items:',
+				mergedLayoutItems.slice(0, 3).map((it) => {
+					const o = it as Record<string, unknown>
+					return { id: o.id, position: o.position, size: o.size }
+				})
 			)
 			options.store.commit('setNodeSceneLayoutSettings', {
 				nodeId,
@@ -168,10 +259,12 @@ export const useAIWorkflowSceneLayoutController = (options: {
 				}
 			})
 			console.info(
-				'【SCENE-LAYOUT-CHAIN】③ Committed COMPLETED (API), layoutItems count:',
-				mergedLayoutItems.length
-			)
-			options.pushToast(t('aiworkflow.runtime.layoutUpdated'), 'info')
+					'【SCENE-LAYOUT-CHAIN】③ Committed COMPLETED (API), layoutItems count:',
+					mergedLayoutItems.length
+				)
+				// 关键：生成布局后立即同步Store→Engine，避免Ctrl+S时Engine旧数据覆盖新布局
+				void syncSceneLayoutNodeToEngine(nodeId)
+				options.pushToast(t('aiworkflow.runtime.layoutUpdated'), 'info')
 		} catch (err: unknown) {
 			const message = getErrorMessage(err)
 			console.error('【SCENE-LAYOUT-CHAIN】③ CAUGHT ERROR:', message, err)
@@ -198,6 +291,8 @@ export const useAIWorkflowSceneLayoutController = (options: {
 				layoutItems: options.mergeSceneLayoutItemsWithMetadata(layoutItems, [inputMetadataItems])
 			}
 		})
+		// 用户拖拽修改布局后也要同步回Engine
+		void syncSceneLayoutNodeToEngine(nodeId)
 		void options.syncConnectedModel3DTargets(nodeId)
 	}
 

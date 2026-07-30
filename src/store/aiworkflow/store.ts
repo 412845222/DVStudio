@@ -1108,29 +1108,54 @@ const normalizeUnrealExportSettings = (
 	}
 }
 
+const coerceRectLikeToObject = (val: unknown): Record<string, number> | null => {
+	if (val == null) return null
+	if (Array.isArray(val) && val.length >= 4) {
+		const nums = val.map(v => Number(v)).filter(n => Number.isFinite(n))
+		if (nums.length >= 4) {
+			const [a, b, c, d] = nums
+			// XYXY: [x1,y1,x2,y2]
+			if (c > a && d > b) {
+				return { x: a, y: b, width: c - a, height: d - b }
+			}
+			// XYWH: [x,y,w,h]
+			if (a >= 0 && b >= 0 && c > 0 && d > 0) {
+				return { x: a, y: b, width: c, height: d }
+			}
+		}
+		return null
+	}
+	if (val && typeof val === 'object') {
+		return val as Record<string, number>
+	}
+	return null
+}
+
 const normalizeWorkflowImageCrop = (rawCrop: unknown): WorkflowImageCrop | undefined => {
-	if (!rawCrop || !isRecord(rawCrop)) return undefined
+	const rect = coerceRectLikeToObject(rawCrop)
+	if (!rect) return undefined
 	return {
-		x: Number.isFinite(Number(rawCrop.x)) ? Math.max(0, Math.min(1, Number(rawCrop.x))) : 0,
-		y: Number.isFinite(Number(rawCrop.y)) ? Math.max(0, Math.min(1, Number(rawCrop.y))) : 0,
-		width: Number.isFinite(Number(rawCrop.width))
-			? Math.max(0, Math.min(1, Number(rawCrop.width)))
+		x: Number.isFinite(Number(rect.x)) ? Math.max(0, Math.min(1, Number(rect.x))) : 0,
+		y: Number.isFinite(Number(rect.y)) ? Math.max(0, Math.min(1, Number(rect.y))) : 0,
+		width: Number.isFinite(Number(rect.width))
+			? Math.max(0, Math.min(1, Number(rect.width)))
 			: 1,
-		height: Number.isFinite(Number(rawCrop.height))
-			? Math.max(0, Math.min(1, Number(rawCrop.height)))
+		height: Number.isFinite(Number(rect.height))
+			? Math.max(0, Math.min(1, Number(rect.height)))
 			: 1
 	}
 }
 
 const normalizeWorkflowPixelRect = (rawRect: unknown): WorkflowPixelRect | undefined => {
-	if (!rawRect || !isRecord(rawRect)) return undefined
-	const width = Number(rawRect.width)
-	const height = Number(rawRect.height)
+	const rect = coerceRectLikeToObject(rawRect)
+	if (!rect) return undefined
+	const width = Number(rect.width)
+	const height = Number(rect.height)
 	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
 		return undefined
 	return {
-		x: Number.isFinite(Number(rawRect.x)) ? Number(rawRect.x) : 0,
-		y: Number.isFinite(Number(rawRect.y)) ? Number(rawRect.y) : 0,
+		x: Number.isFinite(Number(rect.x)) ? Number(rect.x) : 0,
+		y: Number.isFinite(Number(rect.y)) ? Number(rect.y) : 0,
 		width,
 		height
 	}
@@ -1448,11 +1473,16 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 			? [{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' as const }]
 			: []
 	node.inputs = [
+		{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
+		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+		{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 		{ id: 'in-json', label: '布局JSON', mediaType: 'text' },
 		...modelInputs,
 		...lightingInputs
 	]
 	// 输出锚点归一：单一out-0锚点，mediaType为text，可连接场景分解或虚幻导出节点
+	// 注意：场景布局节点不输出图像，图像通过输入锚点透传给下游追溯
 	node.outputs = [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
 }
 
@@ -2631,8 +2661,52 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'scene-understanding')
 					syncSceneUnderstandAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-layout')
+				// DEFEND(scene-layout): Store中的layoutItems长度大于incoming时，保留Store中的正确布局
+				// 防止Ctrl+S时Engine端未同步的旧数据回滚覆盖新生成的布局
+				if (nextNodesById[nodeId].type === 'scene-layout') {
+					const prevSceneSettings = (prevNode as any)?.sceneLayoutSettings
+					const incomingSceneSettings = nextNodesById[nodeId].sceneLayoutSettings as any
+					const countValidItems = (items: unknown): number =>
+						Array.isArray(items) ? items.filter((i: any) => String(i?.id ?? '').trim()).length : 0
+					const prevItemsLen = countValidItems(prevSceneSettings?.layoutItems)
+					const incomingItemsLen = countValidItems(incomingSceneSettings?.layoutItems)
+					if (prevItemsLen > incomingItemsLen) {
+						// Store中有更多有效layoutItems，说明Engine数据是旧的，保留Store中的
+						const preservedSettings = {
+							...(incomingSceneSettings ?? {}),
+							...(prevSceneSettings ?? {}),
+							layoutItems: prevSceneSettings.layoutItems,
+							previewMode:
+								prevSceneSettings?.previewMode === true
+									? true
+									: (incomingSceneSettings?.previewMode as any),
+							status:
+								prevSceneSettings?.status === 'completed' ? 'completed' : (incomingSceneSettings?.status as any),
+							inputJson:
+								String(prevSceneSettings?.inputJson ?? '').length >=
+								String(incomingSceneSettings?.inputJson ?? '').length
+									? prevSceneSettings?.inputJson
+									: incomingSceneSettings?.inputJson,
+							camera: prevSceneSettings?.camera ?? incomingSceneSettings?.camera,
+							lastRunAt: Math.max(
+								Number(prevSceneSettings?.lastRunAt) || 0,
+								Number(incomingSceneSettings?.lastRunAt) || 0
+							) || undefined
+						}
+						nextNodesById[nodeId].sceneLayoutSettings = normalizeSceneLayoutSettings(preservedSettings)
+						console.log(
+							'[DraftFlow#hydrateDraft] PROTECT(scene-layout): keeping Store layoutItems (incoming shorter)',
+							{
+								nodeId,
+								prevItemsLen,
+								incomingItemsLen,
+								previewMode: preservedSettings.previewMode,
+								status: preservedSettings.status
+							}
+						)
+					}
 					syncSceneLayoutAnchors(nextNodesById[nodeId])
+				}
 				if (nextNodesById[nodeId].type === 'unreal-export')
 					syncUnrealExportAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'scene-decompose')
