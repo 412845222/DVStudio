@@ -1111,7 +1111,7 @@ const normalizeUnrealExportSettings = (
 const coerceRectLikeToObject = (val: unknown): Record<string, number> | null => {
 	if (val == null) return null
 	if (Array.isArray(val) && val.length >= 4) {
-		const nums = val.map(v => Number(v)).filter(n => Number.isFinite(n))
+		const nums = val.map((v) => Number(v)).filter((n) => Number.isFinite(n))
 		if (nums.length >= 4) {
 			const [a, b, c, d] = nums
 			// XYXY: [x1,y1,x2,y2]
@@ -1137,12 +1137,8 @@ const normalizeWorkflowImageCrop = (rawCrop: unknown): WorkflowImageCrop | undef
 	return {
 		x: Number.isFinite(Number(rect.x)) ? Math.max(0, Math.min(1, Number(rect.x))) : 0,
 		y: Number.isFinite(Number(rect.y)) ? Math.max(0, Math.min(1, Number(rect.y))) : 0,
-		width: Number.isFinite(Number(rect.width))
-			? Math.max(0, Math.min(1, Number(rect.width)))
-			: 1,
-		height: Number.isFinite(Number(rect.height))
-			? Math.max(0, Math.min(1, Number(rect.height)))
-			: 1
+		width: Number.isFinite(Number(rect.width)) ? Math.max(0, Math.min(1, Number(rect.width))) : 1,
+		height: Number.isFinite(Number(rect.height)) ? Math.max(0, Math.min(1, Number(rect.height))) : 1
 	}
 }
 
@@ -2681,19 +2677,23 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 									? true
 									: (incomingSceneSettings?.previewMode as any),
 							status:
-								prevSceneSettings?.status === 'completed' ? 'completed' : (incomingSceneSettings?.status as any),
+								prevSceneSettings?.status === 'completed'
+									? 'completed'
+									: (incomingSceneSettings?.status as any),
 							inputJson:
 								String(prevSceneSettings?.inputJson ?? '').length >=
 								String(incomingSceneSettings?.inputJson ?? '').length
 									? prevSceneSettings?.inputJson
 									: incomingSceneSettings?.inputJson,
 							camera: prevSceneSettings?.camera ?? incomingSceneSettings?.camera,
-							lastRunAt: Math.max(
-								Number(prevSceneSettings?.lastRunAt) || 0,
-								Number(incomingSceneSettings?.lastRunAt) || 0
-							) || undefined
+							lastRunAt:
+								Math.max(
+									Number(prevSceneSettings?.lastRunAt) || 0,
+									Number(incomingSceneSettings?.lastRunAt) || 0
+								) || undefined
 						}
-						nextNodesById[nodeId].sceneLayoutSettings = normalizeSceneLayoutSettings(preservedSettings)
+						nextNodesById[nodeId].sceneLayoutSettings =
+							normalizeSceneLayoutSettings(preservedSettings)
 						console.log(
 							'[DraftFlow#hydrateDraft] PROTECT(scene-layout): keeping Store layoutItems (incoming shorter)',
 							{

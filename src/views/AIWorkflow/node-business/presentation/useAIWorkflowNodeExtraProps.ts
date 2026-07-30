@@ -344,13 +344,16 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 					const upId = String(e?.fromNodeId ?? '')
 					const upNode = upId ? nodesById[upId] : null
 					// eslint-disable-next-line no-console
-					console.log(`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`, {
-						edgeId: e?.id,
-						fromAnchorId: e?.fromAnchorId,
-						upstreamNodeExists: !!upNode,
-						upstreamNodeType: upNode?.type,
-						upstreamNodeId: upId
-					})
+					console.log(
+						`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`,
+						{
+							edgeId: e?.id,
+							fromAnchorId: e?.fromAnchorId,
+							upstreamNodeExists: !!upNode,
+							upstreamNodeType: upNode?.type,
+							upstreamNodeId: upId
+						}
+					)
 					if (upNode) {
 						// 打印上游节点的相关输出字段
 						if (upNode.type === 'scene-layout') {
@@ -403,7 +406,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 								}))
 							: []
 						// eslint-disable-next-line no-console
-						console.log(`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream.outputs =`, upOutputs)
+						console.log(
+							`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream.outputs =`,
+							upOutputs
+						)
 					}
 				})
 

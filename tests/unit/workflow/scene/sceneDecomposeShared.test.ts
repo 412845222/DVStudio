@@ -104,7 +104,9 @@ describe('sceneDecomposeShared', () => {
 		})
 
 		it('should NOT skip floor/wall/ceiling if they have crop info', () => {
-			expect(shouldSkipSceneDecomposeItem({ keyElementType: 'floor', bbox: [0, 0, 100, 100] })).toBe(false)
+			expect(
+				shouldSkipSceneDecomposeItem({ keyElementType: 'floor', bbox: [0, 0, 100, 100] })
+			).toBe(false)
 		})
 
 		it('should NOT skip normal objects', () => {
@@ -116,7 +118,9 @@ describe('sceneDecomposeShared', () => {
 	describe('bbox rect validation', () => {
 		describe('hasValidSceneDecomposeImageRect', () => {
 			it('should accept valid object rect {x,y,width,height}', () => {
-				expect(hasValidSceneDecomposeImageRect({ x: 0.1, y: 0.2, width: 0.3, height: 0.4 })).toBe(true)
+				expect(hasValidSceneDecomposeImageRect({ x: 0.1, y: 0.2, width: 0.3, height: 0.4 })).toBe(
+					true
+				)
 			})
 
 			it('should accept valid array rect [x,y,w,h]', () => {
@@ -138,7 +142,9 @@ describe('sceneDecomposeShared', () => {
 
 		describe('hasValidSceneDecomposePixelRect', () => {
 			it('should accept valid pixel rect', () => {
-				expect(hasValidSceneDecomposePixelRect({ x: 10, y: 20, width: 100, height: 200 })).toBe(true)
+				expect(hasValidSceneDecomposePixelRect({ x: 10, y: 20, width: 100, height: 200 })).toBe(
+					true
+				)
 				expect(hasValidSceneDecomposePixelRect([10, 20, 100, 200])).toBe(true)
 			})
 		})
@@ -146,11 +152,15 @@ describe('sceneDecomposeShared', () => {
 
 	describe('hasAnySceneDecomposeCrop', () => {
 		it('should detect imageRect', () => {
-			expect(hasAnySceneDecomposeCrop({ imageRect: { x: 0, y: 0, width: 0.5, height: 0.5 } })).toBe(true)
+			expect(hasAnySceneDecomposeCrop({ imageRect: { x: 0, y: 0, width: 0.5, height: 0.5 } })).toBe(
+				true
+			)
 		})
 
 		it('should detect imageRectPixels', () => {
-			expect(hasAnySceneDecomposeCrop({ imageRectPixels: { x: 0, y: 0, width: 100, height: 100 } })).toBe(true)
+			expect(
+				hasAnySceneDecomposeCrop({ imageRectPixels: { x: 0, y: 0, width: 100, height: 100 } })
+			).toBe(true)
 		})
 
 		it('should detect bbox field', () => {

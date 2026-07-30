@@ -27,7 +27,11 @@ const mapInputAnchorToCorrespondingImageInput = (anchorId: string): string => {
  * 判断节点类型是否为"场景JSON处理节点"（这些节点接收JSON输入并可能有图像输入）
  */
 const isSceneJsonNode = (nodeType: string): boolean => {
-	return nodeType === 'scene-layout' || nodeType === 'scene-understanding' || nodeType === 'scene-decompose'
+	return (
+		nodeType === 'scene-layout' ||
+		nodeType === 'scene-understanding' ||
+		nodeType === 'scene-decompose'
+	)
 }
 
 /**
@@ -43,13 +47,19 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 	store: {
 		state: {
 			nodesById: Record<string, WorkflowNode>
-			resourcesById: Record<string, {
-				kind?: string
-				url?: string
-			}>
+			resourcesById: Record<
+				string,
+				{
+					kind?: string
+					url?: string
+				}
+			>
 		}
 	}
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
+	getFirstIncomingEdge: (
+		nodeId: string,
+		anchorId?: string
+	) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
 	nodeResourceUrl: (node: WorkflowNode) => string | null
 	connectedImageOutputUrl: (fromNode: WorkflowNode, fromAnchorId: string) => string
 	comfyOutputForAnchor: (
@@ -75,7 +85,12 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 	 * 判断节点是否为可直接提供图像的源节点
 	 */
 	const isDirectImageSourceNode = (node: WorkflowNode): boolean => {
-		return node.type === 'image' || node.type === 'video' || node.type === 'comfyui' || node.type === 'scene-decompose'
+		return (
+			node.type === 'image' ||
+			node.type === 'video' ||
+			node.type === 'comfyui' ||
+			node.type === 'scene-decompose'
+		)
 	}
 
 	/**
@@ -114,11 +129,17 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		const visited = new Set<string>()
 
 		// 穿透场景节点：沿JSON链路追溯，在每个场景节点查找对应的图像输入
-		while (fromNode && isSceneJsonNode(fromNode.type) && !visited.has(`${fromNode.id}:${fromAnchorId}`)) {
+		while (
+			fromNode &&
+			isSceneJsonNode(fromNode.type) &&
+			!visited.has(`${fromNode.id}:${fromAnchorId}`)
+		) {
 			visited.add(`${fromNode.id}:${fromAnchorId}`)
 
 			// 计算该场景节点中对应的图像锚点ID
-			const targetImageAnchor = mapInputAnchorToCorrespondingImageInput(fromAnchorId || startAnchorId)
+			const targetImageAnchor = mapInputAnchorToCorrespondingImageInput(
+				fromAnchorId || startAnchorId
+			)
 
 			// 先尝试查找该场景节点的图像输入锚点是否有直接连接
 			const imageEdge = payload.getFirstIncomingEdge(fromNode.id, targetImageAnchor)
@@ -126,12 +147,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 				const imageFromNode = payload.store.state.nodesById[imageEdge.fromNodeId]
 				if (imageFromNode) {
 					// 递归追溯图像输入的上游
-					const imageSource = traceImageSource(
-						fromNode.id,
-						targetImageAnchor,
-						false,
-						depth + 1
-					)
+					const imageSource = traceImageSource(fromNode.id, targetImageAnchor, false, depth + 1)
 					if (imageSource && isDirectImageSourceNode(imageSource.node)) {
 						return imageSource
 					}
@@ -194,7 +210,12 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		const fromNode = traced.node
 		const cropEnabled = !!fromNode.imageSettings?.cropEnabled
 		const crop = fromNode.type === 'image' ? (fromNode.imageSettings?.crop ?? null) : null
-		return { kind: fromNode.type as 'image' | 'video', url: payload.nodeResourceUrl(fromNode), cropEnabled, crop }
+		return {
+			kind: fromNode.type as 'image' | 'video',
+			url: payload.nodeResourceUrl(fromNode),
+			cropEnabled,
+			crop
+		}
 	}
 
 	const rotateImagePreviewUrl = (node: WorkflowNode) => {
@@ -221,11 +242,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 			const outputs = Array.isArray(fromNode.comfyuiSettings?.outputs)
 				? fromNode.comfyuiSettings!.outputs!
 				: []
-			const media = payload.comfyOutputForAnchor(
-				outputs,
-				fromAnchorId,
-				'image'
-			)
+			const media = payload.comfyOutputForAnchor(outputs, fromAnchorId, 'image')
 			const url = String(media?.url ?? '').trim()
 			if (url) return url
 		}
@@ -284,9 +301,7 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 		}
 
 		if (fromNode.type === 'comfyui') {
-			const url = String(
-				payload.connectedImageOutputUrl(fromNode, fromAnchorId) ?? ''
-			).trim()
+			const url = String(payload.connectedImageOutputUrl(fromNode, fromAnchorId) ?? '').trim()
 			if (!url) return null
 			return { url }
 		}
@@ -295,12 +310,8 @@ export const useAIWorkflowMediaPreviewSources = (payload: {
 			const settings = fromNode.sceneDecomposeSettings
 			const rawOutputs = settings?.outputs
 			const outputs: WorkflowSceneDecomposeOutput[] = Array.isArray(rawOutputs) ? rawOutputs : []
-			const item = outputs.find(
-				(entry) => String(entry?.imageAnchorId ?? '') === fromAnchorId
-			)
-			const url = String(
-				payload.connectedImageOutputUrl(fromNode, fromAnchorId) ?? ''
-			).trim()
+			const item = outputs.find((entry) => String(entry?.imageAnchorId ?? '') === fromAnchorId)
+			const url = String(payload.connectedImageOutputUrl(fromNode, fromAnchorId) ?? '').trim()
 			if (!url) return null
 			return {
 				url,

@@ -61,10 +61,11 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 
 		const jsonInputEdge = options.getIncomingEdges(sourceNode.id, 'in-json')[0] ?? null
 		const jsonSourceNodeId = String(jsonInputEdge?.fromNodeId ?? '').trim()
-		const jsonSourceAnchorId =
-			String(jsonInputEdge?.fromAnchorId ?? 'out-0').trim() || 'out-0'
+		const jsonSourceAnchorId = String(jsonInputEdge?.fromAnchorId ?? 'out-0').trim() || 'out-0'
 		const inputJson = String(options.connectedTextInputValue(sourceNode.id, 'in-json') ?? '').trim()
-		const actionableOutputs = outputs.filter((output) => generatedFiles.has(output.id) || output.generatedResourceId)
+		const actionableOutputs = outputs.filter(
+			(output) => generatedFiles.has(output.id) || output.generatedResourceId
+		)
 		const baseX = sourceNode.worldX + sourceNode.width + 180
 		const baseY = sourceNode.worldY - 30
 		const horizontalGap = 110
@@ -215,9 +216,19 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 				options.engineApi.connectPorts(fromId, fromA, toId, toA)
 			} else {
 				// Fallback: 在store中创建连线
-				const exists = options.hasExactEdge({ fromNodeId: fromId, fromAnchorId: fromA, toNodeId: toId, toAnchorId: toA })
+				const exists = options.hasExactEdge({
+					fromNodeId: fromId,
+					fromAnchorId: fromA,
+					toNodeId: toId,
+					toAnchorId: toA
+				})
 				if (!exists) {
-					options.store.commit('addEdge', { fromNodeId: fromId, fromAnchorId: fromA, toNodeId: toId, toAnchorId: toA })
+					options.store.commit('addEdge', {
+						fromNodeId: fromId,
+						fromAnchorId: fromA,
+						toNodeId: toId,
+						toAnchorId: toA
+					})
 				}
 			}
 		}
@@ -254,7 +265,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 						imageNodeData
 					)
 					if (imageNodeId && resourceId) {
-						console.log(`[SCENE-DECOMPOSE-AUTOEXPAND] setting resourceId=${resourceId} on engine-created imageNode=${imageNodeId}`)
+						console.log(
+							`[SCENE-DECOMPOSE-AUTOEXPAND] setting resourceId=${resourceId} on engine-created imageNode=${imageNodeId}`
+						)
 						options.store.commit('setNodeResource', { nodeId: imageNodeId, resourceId })
 						if (options.setNodeResource) {
 							options.setNodeResource(imageNodeId, resourceId)
@@ -316,7 +329,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 							nodeId: imagePromptNodeId,
 							alias: buildNodeAlias(output, t('aiworkflow.runtime.imagePromptAlias'))
 						})
-						options.store.commit('setNodeTextValue', { nodeId: imagePromptNodeId, textValue: imagePromptText })
+						options.store.commit('setNodeTextValue', {
+							nodeId: imagePromptNodeId,
+							textValue: imagePromptText
+						})
 					}
 				}
 				if (!imagePromptNodeId) continue
@@ -386,7 +402,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 							nodeId: modelPromptNodeId,
 							alias: buildNodeAlias(output, t('aiworkflow.runtime.modelPromptAlias'))
 						})
-						options.store.commit('setNodeTextValue', { nodeId: modelPromptNodeId, textValue: modelPromptText })
+						options.store.commit('setNodeTextValue', {
+							nodeId: modelPromptNodeId,
+							textValue: modelPromptText
+						})
 					}
 				}
 				if (!modelPromptNodeId) continue
@@ -444,7 +463,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 				if (!model3dNodeId) continue
 				createdNodeIds.push(model3dNodeId)
 				options.onAutoWireNodeCreated?.(model3dNodeId)
-				createdModelTargets.push({ objectId: String(output.objectId ?? output.id ?? ''), model3dNodeId })
+				createdModelTargets.push({
+					objectId: String(output.objectId ?? output.id ?? ''),
+					model3dNodeId
+				})
 
 				nodeGroups.push({
 					imageNodeId,
@@ -471,9 +493,17 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 				// 5. 生成图像 → 3D模型节点（参考图1）
 				connectPorts(group.generatedImageNodeId, 'out-image', group.model3dNodeId, 'in-image-1')
 				// 6. 上游参考图 → 生成图像节点（原始参考图作为额外输入）
-				const sourceRef = options.connectedSceneDecomposeImageInputRefAt(sourceNode.id, group.sourceImageIndex)
+				const sourceRef = options.connectedSceneDecomposeImageInputRefAt(
+					sourceNode.id,
+					group.sourceImageIndex
+				)
 				if (sourceRef?.fromNodeId && sourceRef?.fromAnchorId) {
-					connectPorts(sourceRef.fromNodeId, sourceRef.fromAnchorId, group.generatedImageNodeId, 'in-0')
+					connectPorts(
+						sourceRef.fromNodeId,
+						sourceRef.fromAnchorId,
+						group.generatedImageNodeId,
+						'in-0'
+					)
 				}
 			}
 		} finally {
@@ -508,7 +538,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 		for (const group of nodeGroups) {
 			if (group.imageResourceId) {
 				// 无条件重新设置resourceId，防止引擎同步覆盖
-				options.store.commit('setNodeResource', { nodeId: group.imageNodeId, resourceId: group.imageResourceId })
+				options.store.commit('setNodeResource', {
+					nodeId: group.imageNodeId,
+					resourceId: group.imageResourceId
+				})
 				if (options.setNodeResource) {
 					options.setNodeResource(group.imageNodeId, group.imageResourceId)
 				}
@@ -520,8 +553,12 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 			if (group.imageFile && !group.imageResourceId) {
 				const imgNode = options.store.state.nodesById[group.imageNodeId]
 				if (imgNode) {
-					const clonedFile = new File([group.imageFile], group.imageFile.name, { type: group.imageFile.type || 'image/png' })
-					await options.onNodeUploadResource(group.imageNodeId, clonedFile, 'image', { autoDistribute: false })
+					const clonedFile = new File([group.imageFile], group.imageFile.name, {
+						type: group.imageFile.type || 'image/png'
+					})
+					await options.onNodeUploadResource(group.imageNodeId, clonedFile, 'image', {
+						autoDistribute: false
+					})
 				}
 			}
 		}
@@ -542,9 +579,14 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 				const imgNode = options.store.state.nodesById[group.imageNodeId]
 				if (imgNode && !imgNode.resourceId) {
 					// 最终兜底：再次设置
-					options.store.commit('setNodeResource', { nodeId: group.imageNodeId, resourceId: group.imageResourceId })
+					options.store.commit('setNodeResource', {
+						nodeId: group.imageNodeId,
+						resourceId: group.imageResourceId
+					})
 					if (options.engineApi?.updateNodeData) {
-						options.engineApi.updateNodeData(group.imageNodeId, { resourceId: group.imageResourceId })
+						options.engineApi.updateNodeData(group.imageNodeId, {
+							resourceId: group.imageResourceId
+						})
 					}
 				}
 			}
@@ -558,7 +600,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 			const imgPromptNode = options.store.state.nodesById[group.imagePromptNodeId]
 			const imagePromptText = buildMeshyImagePrompt(output)
 			if (imgPromptNode && imgPromptNode.type === 'text' && !(imgPromptNode as any).textValue) {
-				options.store.commit('setNodeTextValue', { nodeId: group.imagePromptNodeId, textValue: imagePromptText })
+				options.store.commit('setNodeTextValue', {
+					nodeId: group.imagePromptNodeId,
+					textValue: imagePromptText
+				})
 				if (options.engineApi?.updateNodeData) {
 					options.engineApi.updateNodeData(group.imagePromptNodeId, { textValue: imagePromptText })
 				}
@@ -566,8 +611,15 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 			// 3D Prompt文本
 			const modelPromptNode = options.store.state.nodesById[group.modelPromptNodeId]
 			const modelPromptText = buildMeshy3dPrompt(output)
-			if (modelPromptNode && modelPromptNode.type === 'text' && !(modelPromptNode as any).textValue) {
-				options.store.commit('setNodeTextValue', { nodeId: group.modelPromptNodeId, textValue: modelPromptText })
+			if (
+				modelPromptNode &&
+				modelPromptNode.type === 'text' &&
+				!(modelPromptNode as any).textValue
+			) {
+				options.store.commit('setNodeTextValue', {
+					nodeId: group.modelPromptNodeId,
+					textValue: modelPromptText
+				})
 				if (options.engineApi?.updateNodeData) {
 					options.engineApi.updateNodeData(group.modelPromptNodeId, { textValue: modelPromptText })
 				}
@@ -595,7 +647,9 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 						model3dSettings: meshySettings
 					})
 					if (options.engineApi?.updateNodeData) {
-						options.engineApi.updateNodeData(group.model3dNodeId, { model3dSettings: meshySettings })
+						options.engineApi.updateNodeData(group.model3dNodeId, {
+							model3dSettings: meshySettings
+						})
 					}
 				}
 			}
@@ -622,10 +676,14 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 		})()
 		// 场景布局节点额外间距（比列间距更大，视觉上更分开）
 		const sceneLayoutExtraGap = horizontalGap * 2
-		const sceneLayoutTargetX = lastColumnRightEdge + sceneLayoutExtraGap + nodeFootprint.sceneLayout.width / 2
+		const sceneLayoutTargetX =
+			lastColumnRightEdge + sceneLayoutExtraGap + nodeFootprint.sceneLayout.width / 2
 		const sceneLayoutTargetY =
 			actionableOutputs.length > 1
-				? baseY + ((actionableOutputs.length - 1) * rowGap) / 2 - nodeFootprint.sceneLayout.height / 2 + nodeFootprint.model3d.height / 2
+				? baseY +
+					((actionableOutputs.length - 1) * rowGap) / 2 -
+					nodeFootprint.sceneLayout.height / 2 +
+					nodeFootprint.model3d.height / 2
 				: baseY
 
 		const ensureSceneLayoutPreviewNode = async () => {
@@ -659,7 +717,8 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 					createdAt: now
 				}
 				if (hasEngine && options.engineApi?.addNode) {
-					sceneLayoutNodeId = options.engineApi.addNode('scene-layout', targetX, targetY, sceneLayoutNodeData) ?? ''
+					sceneLayoutNodeId =
+						options.engineApi.addNode('scene-layout', targetX, targetY, sceneLayoutNodeData) ?? ''
 				}
 				if (!sceneLayoutNodeId) {
 					// Fallback: 在store中创建
@@ -728,7 +787,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 					try {
 						await options.engineApi.forceSyncToStore()
 					} catch (err) {
-						console.error('[SceneDecomposeAutoExpand] forceSyncToStore before scene layout failed:', err)
+						console.error(
+							'[SceneDecomposeAutoExpand] forceSyncToStore before scene layout failed:',
+							err
+						)
 					}
 				}
 				await new Promise((resolve) => setTimeout(resolve, 100))
@@ -746,7 +808,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 					try {
 						await options.engineApi.forceSyncToStore()
 					} catch (err) {
-						console.error('[SceneDecomposeAutoExpand] forceSyncToStore after scene layout failed:', err)
+						console.error(
+							'[SceneDecomposeAutoExpand] forceSyncToStore after scene layout failed:',
+							err
+						)
 					}
 				}
 				// 把完整的节点数据（包含新inputs数组）同步回引擎，确保画布显示动态锚点
@@ -833,10 +898,7 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 			await new Promise((resolve) => setTimeout(resolve, delay))
 			// 每次重试前先把store最新节点数据（含动态锚点）推送到引擎，再从引擎同步到store，确保引擎端锚点可见
 			await syncSceneLayoutNodeToEngine(sceneLayoutNodeId)
-			const result = autoConnectGroupsToSceneLayout(
-				sceneLayoutNodeId,
-				createdModelTargets
-			)
+			const result = autoConnectGroupsToSceneLayout(sceneLayoutNodeId, createdModelTargets)
 			sceneLayoutConnections = result.connected
 			lastMissing = result.missing
 			// eslint-disable-next-line no-console
@@ -850,7 +912,10 @@ export const useAIWorkflowSceneDecomposeAutoExpand = (options: AutoExpandOptions
 			if (result.connected >= createdModelTargets.length) break
 		}
 		if (lastMissing.length > 0) {
-			console.warn('[SCENE-LAYOUT-PREVIEW] some model anchors still missing after retries:', lastMissing)
+			console.warn(
+				'[SCENE-LAYOUT-PREVIEW] some model anchors still missing after retries:',
+				lastMissing
+			)
 		}
 
 		// 最终同步一次确保所有连线持久化

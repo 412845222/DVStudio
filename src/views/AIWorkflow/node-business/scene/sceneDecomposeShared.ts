@@ -143,26 +143,60 @@ const ID_KEYWORD_NAME_MAP: Array<{ pattern: RegExp; labelKey: string }> = [
 ]
 
 const CATEGORY_HINT_MAP: Record<string, string> = {
-	'窗': 'aiConfig.sceneElements.keyElement.window', '窗户': 'aiConfig.sceneElements.keyElement.window', 'window': 'aiConfig.sceneElements.keyElement.window',
-	'门': 'aiConfig.sceneElements.keyElement.door', 'door': 'aiConfig.sceneElements.keyElement.door',
-	'桌': 'aiConfig.sceneElements.furniture.table', '桌子': 'aiConfig.sceneElements.furniture.table', '书桌': 'aiConfig.sceneElements.furniture.deskWriting', 'desk': 'aiConfig.sceneElements.furniture.deskWriting', 'table': 'aiConfig.sceneElements.furniture.table',
-	'椅': 'aiConfig.sceneElements.furniture.chair', '椅子': 'aiConfig.sceneElements.furniture.chair', 'chair': 'aiConfig.sceneElements.furniture.chair',
-	'柜': 'aiConfig.sceneElements.furniture.cabinet', '书架': 'aiConfig.sceneElements.furniture.bookshelf', '书柜': 'aiConfig.sceneElements.furniture.bookcase', '柜架': 'aiConfig.sceneElements.furniture.shelfCabinet', 'shelf': 'aiConfig.sceneElements.furniture.shelf', 'bookshelf': 'aiConfig.sceneElements.furniture.bookshelf', 'cabinet': 'aiConfig.sceneElements.furniture.cabinet',
-	'灯': 'aiConfig.sceneElements.furniture.lamp', '灯具': 'aiConfig.sceneElements.furniture.lamp', 'lamp': 'aiConfig.sceneElements.furniture.lamp', 'light': 'aiConfig.sceneElements.furniture.lamp', 'lighting': 'aiConfig.sceneElements.furniture.lamp',
-	'沙发': 'aiConfig.sceneElements.furniture.sofa', 'sofa': 'aiConfig.sceneElements.furniture.sofa', 'couch': 'aiConfig.sceneElements.furniture.sofa',
-	'床': 'aiConfig.sceneElements.furniture.bed', 'bed': 'aiConfig.sceneElements.furniture.bed',
-	'装饰': 'aiConfig.sceneElements.decor.decoration', '植物': 'aiConfig.sceneElements.decor.plant', 'plant': 'aiConfig.sceneElements.decor.plant', '花': 'aiConfig.sceneElements.decor.flower',
-	'屏幕': 'aiConfig.sceneElements.decor.screen', '显示器': 'aiConfig.sceneElements.decor.monitor', 'monitor': 'aiConfig.sceneElements.decor.monitor', 'tv': 'aiConfig.sceneElements.decor.tv', '电视': 'aiConfig.sceneElements.decor.tv',
-	'镜子': 'aiConfig.sceneElements.decor.mirror', 'mirror': 'aiConfig.sceneElements.decor.mirror',
-	'挂画': 'aiConfig.sceneElements.decor.painting', '画': 'aiConfig.sceneElements.decor.art'
+	窗: 'aiConfig.sceneElements.keyElement.window',
+	窗户: 'aiConfig.sceneElements.keyElement.window',
+	window: 'aiConfig.sceneElements.keyElement.window',
+	门: 'aiConfig.sceneElements.keyElement.door',
+	door: 'aiConfig.sceneElements.keyElement.door',
+	桌: 'aiConfig.sceneElements.furniture.table',
+	桌子: 'aiConfig.sceneElements.furniture.table',
+	书桌: 'aiConfig.sceneElements.furniture.deskWriting',
+	desk: 'aiConfig.sceneElements.furniture.deskWriting',
+	table: 'aiConfig.sceneElements.furniture.table',
+	椅: 'aiConfig.sceneElements.furniture.chair',
+	椅子: 'aiConfig.sceneElements.furniture.chair',
+	chair: 'aiConfig.sceneElements.furniture.chair',
+	柜: 'aiConfig.sceneElements.furniture.cabinet',
+	书架: 'aiConfig.sceneElements.furniture.bookshelf',
+	书柜: 'aiConfig.sceneElements.furniture.bookcase',
+	柜架: 'aiConfig.sceneElements.furniture.shelfCabinet',
+	shelf: 'aiConfig.sceneElements.furniture.shelf',
+	bookshelf: 'aiConfig.sceneElements.furniture.bookshelf',
+	cabinet: 'aiConfig.sceneElements.furniture.cabinet',
+	灯: 'aiConfig.sceneElements.furniture.lamp',
+	灯具: 'aiConfig.sceneElements.furniture.lamp',
+	lamp: 'aiConfig.sceneElements.furniture.lamp',
+	light: 'aiConfig.sceneElements.furniture.lamp',
+	lighting: 'aiConfig.sceneElements.furniture.lamp',
+	沙发: 'aiConfig.sceneElements.furniture.sofa',
+	sofa: 'aiConfig.sceneElements.furniture.sofa',
+	couch: 'aiConfig.sceneElements.furniture.sofa',
+	床: 'aiConfig.sceneElements.furniture.bed',
+	bed: 'aiConfig.sceneElements.furniture.bed',
+	装饰: 'aiConfig.sceneElements.decor.decoration',
+	植物: 'aiConfig.sceneElements.decor.plant',
+	plant: 'aiConfig.sceneElements.decor.plant',
+	花: 'aiConfig.sceneElements.decor.flower',
+	屏幕: 'aiConfig.sceneElements.decor.screen',
+	显示器: 'aiConfig.sceneElements.decor.monitor',
+	monitor: 'aiConfig.sceneElements.decor.monitor',
+	tv: 'aiConfig.sceneElements.decor.tv',
+	电视: 'aiConfig.sceneElements.decor.tv',
+	镜子: 'aiConfig.sceneElements.decor.mirror',
+	mirror: 'aiConfig.sceneElements.decor.mirror',
+	挂画: 'aiConfig.sceneElements.decor.painting',
+	画: 'aiConfig.sceneElements.decor.art'
 }
 
 const extractMaterialHint = (material: string) => {
 	if (!material) return ''
-	if (/木|wood|oak|pine|maple|walnut/i.test(material)) return t('aiConfig.sceneElements.material.wood')
-	if (/金属|metal|steel|iron|brass|aluminum/i.test(material)) return t('aiConfig.sceneElements.material.metal')
+	if (/木|wood|oak|pine|maple|walnut/i.test(material))
+		return t('aiConfig.sceneElements.material.wood')
+	if (/金属|metal|steel|iron|brass|aluminum/i.test(material))
+		return t('aiConfig.sceneElements.material.metal')
 	if (/玻璃|glass/i.test(material)) return t('aiConfig.sceneElements.material.glass')
-	if (/布|fabric|cloth|textile|linen|cotton/i.test(material)) return t('aiConfig.sceneElements.material.fabric')
+	if (/布|fabric|cloth|textile|linen|cotton/i.test(material))
+		return t('aiConfig.sceneElements.material.fabric')
 	if (/皮|leather/i.test(material)) return t('aiConfig.sceneElements.material.leather')
 	if (/陶瓷|ceramic|porcelain/i.test(material)) return t('aiConfig.sceneElements.material.ceramic')
 	if (/塑料|plastic|pvc/i.test(material)) return t('aiConfig.sceneElements.material.plastic')
@@ -173,10 +207,19 @@ const extractMaterialHint = (material: string) => {
 const extractColorHint = (color: string, material: string) => {
 	const text = `${color || ''} ${material || ''}`
 	const colorKeywords: Array<[string, string]> = [
-		['白色|白', 'white'], ['黑色|黑', 'black'], ['灰色|灰', 'gray'],
-		['红色|红', 'red'], ['蓝色|蓝', 'blue'], ['绿色|绿', 'green'],
-		['黄色|黄', 'yellow'], ['棕色|棕|木色', 'brown'], ['米色|米', 'beige'],
-		['金色|金', 'gold'], ['银色|银', 'silver'], ['深色|dark', 'dark'], ['浅色|light', 'light'],
+		['白色|白', 'white'],
+		['黑色|黑', 'black'],
+		['灰色|灰', 'gray'],
+		['红色|红', 'red'],
+		['蓝色|蓝', 'blue'],
+		['绿色|绿', 'green'],
+		['黄色|黄', 'yellow'],
+		['棕色|棕|木色', 'brown'],
+		['米色|米', 'beige'],
+		['金色|金', 'gold'],
+		['银色|银', 'silver'],
+		['深色|dark', 'dark'],
+		['浅色|light', 'light'],
 		['暖', 'warm']
 	]
 	for (const [pat, key] of colorKeywords) {
@@ -187,7 +230,7 @@ const extractColorHint = (color: string, material: string) => {
 
 export const inferSceneDecomposeCategory = (item: SceneDecomposeInputItem): string => {
 	const direct = [item?.category, item?.subCategory]
-		.map(v => String(v ?? '').trim())
+		.map((v) => String(v ?? '').trim())
 		.filter(Boolean)[0]
 	if (direct) {
 		for (const [key, labelKey] of Object.entries(CATEGORY_HINT_MAP)) {
@@ -215,13 +258,16 @@ export const inferSceneDecomposeCategory = (item: SceneDecomposeInputItem): stri
 	if (semanticRole === 'built-in-fixture') return t('aiConfig.sceneElements.default.builtInFixture')
 
 	const materialHint = extractMaterialHint(material)
-	return materialHint ? t('aiConfig.sceneElements.default.materialObject', { material: materialHint }) : t('aiConfig.sceneElements.default.object')
+	return materialHint
+		? t('aiConfig.sceneElements.default.materialObject', { material: materialHint })
+		: t('aiConfig.sceneElements.default.object')
 }
 
-export const inferSceneDecomposeObjectName = (item: SceneDecomposeInputItem, index: number): string => {
-	const direct = [item?.name, item?.label]
-		.map(v => String(v ?? '').trim())
-		.filter(Boolean)[0]
+export const inferSceneDecomposeObjectName = (
+	item: SceneDecomposeInputItem,
+	index: number
+): string => {
+	const direct = [item?.name, item?.label].map((v) => String(v ?? '').trim()).filter(Boolean)[0]
 	if (direct && direct.length <= 12 && !/^对象?\s*\d+$|^object\s*\d+$/i.test(direct)) {
 		return direct
 	}
@@ -259,7 +305,10 @@ export const inferSceneDecomposeObjectName = (item: SceneDecomposeInputItem, ind
 	return fallback || t('aiConfig.sceneElements.default.objectFallback', { index: index + 1 })
 }
 
-export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fallbackName: string) => {
+export const buildSceneDecomposeDescription = (
+	item: SceneDecomposeInputItem,
+	fallbackName: string
+) => {
 	const lines: string[] = []
 	const name = String(item?.name ?? fallbackName).trim() || fallbackName
 	const directDesc = String(item?.description ?? '').trim()
@@ -288,28 +337,36 @@ export const buildSceneDecomposeDescription = (item: SceneDecomposeInputItem, fa
 	const mountLabel = getMountTypeLabel(mountType.toLowerCase())
 	if (mountLabel) attrParts.push(mountLabel)
 	if (placement) attrParts.push(placement.replace(/-/g, ''))
-	if (attrParts.length) lines.push(t('nodes.sceneDecompose.positionLabel', { position: attrParts.join(' · ') }))
+	if (attrParts.length)
+		lines.push(t('nodes.sceneDecompose.positionLabel', { position: attrParts.join(' · ') }))
 	const visualParts: string[] = []
 	if (color) visualParts.push(color)
 	if (material) visualParts.push(material)
-	if (visualParts.length) lines.push(t('nodes.sceneDecompose.appearanceLabel', { appearance: visualParts.join('，') }))
+	if (visualParts.length)
+		lines.push(t('nodes.sceneDecompose.appearanceLabel', { appearance: visualParts.join('，') }))
 	if (directDesc && directDesc !== name) {
 		lines.push(directDesc)
 	}
-	if (groundReason && !lines.some(l => l.includes(groundReason.slice(0, 6)))) {
+	if (groundReason && !lines.some((l) => l.includes(groundReason.slice(0, 6)))) {
 		lines.push(groundReason)
 	}
-	if (observed.length) lines.push(t('nodes.sceneDecompose.observedImagesLabel', { indices: observed.join('、') }))
+	if (observed.length)
+		lines.push(t('nodes.sceneDecompose.observedImagesLabel', { indices: observed.join('、') }))
 	return lines.join('\n').trim() || fallbackName
 }
 
-export const buildSceneDecomposePromptVisualDetails = (item: SceneDecomposeInputItem, name: string) => {
+export const buildSceneDecomposePromptVisualDetails = (
+	item: SceneDecomposeInputItem,
+	name: string
+) => {
 	const parts: string[] = []
 	const directDesc = String(item?.description ?? '').trim()
 	const category = inferSceneDecomposeCategory(item)
 	const material = String(item?.material ?? '').trim()
 	const color = String(item?.color ?? '').trim()
-	const keyElementType = String(item?.keyElementType ?? '').trim().toLowerCase()
+	const keyElementType = String(item?.keyElementType ?? '')
+		.trim()
+		.toLowerCase()
 	const wallRole = getWallRoleLabel(String(item?.wallRole ?? '').toLowerCase())
 	const groundReason = String(item?.groundReason ?? '').trim()
 
@@ -430,7 +487,7 @@ const tryParseXYXYRect = (obj: Record<string, unknown>): ExtractedRect | null =>
 
 const tryParseArrayRect = (arr: unknown): ExtractedRect | null => {
 	if (!Array.isArray(arr) || arr.length < 4) return null
-	const nums = arr.map(v => Number(v)).filter(n => Number.isFinite(n))
+	const nums = arr.map((v) => Number(v)).filter((n) => Number.isFinite(n))
 	if (nums.length < 4) return null
 	const [a, b, c, d] = nums
 
@@ -484,7 +541,14 @@ const coerceRectLikeToObject = (val: unknown): ExtractedRect | null => {
 		const y = Number(record.y)
 		const w = Number(record.width ?? record.w)
 		const h = Number(record.height ?? record.h)
-		if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+		if (
+			Number.isFinite(x) &&
+			Number.isFinite(y) &&
+			Number.isFinite(w) &&
+			Number.isFinite(h) &&
+			w > 0 &&
+			h > 0
+		) {
 			return { x, y, width: w, height: h }
 		}
 		return tryParseXYWHRect(record) ?? tryParseXYXYRect(record)
@@ -501,7 +565,10 @@ const looksLikeUVRect = (rect: ExtractedRect): boolean => {
 	)
 }
 
-const looksLikePixelRect = (rect: ExtractedRect, source?: { width?: number; height?: number }): boolean => {
+const looksLikePixelRect = (
+	rect: ExtractedRect,
+	source?: { width?: number; height?: number }
+): boolean => {
 	if (rect.width > 1.001 || rect.height > 1.001) return true
 	if (source?.width && source.width > 1 && rect.width * source.width > 1.5) return true
 	if (source?.height && source.height > 1 && rect.height * source.height > 1.5) return true
@@ -541,22 +608,33 @@ export const extractSceneDecomposeBBoxFromItem = (
 		'bounds'
 	] as const
 
-	console.log(`[SCENE-DECOMPOSE-BBOX] extractSceneDecomposeBBoxFromItem called, source dimensions: ${source.width}x${source.height}`)
+	console.log(
+		`[SCENE-DECOMPOSE-BBOX] extractSceneDecomposeBBoxFromItem called, source dimensions: ${source.width}x${source.height}`
+	)
 	for (const field of candidateFields) {
 		const val = item[field]
 		console.log(`[SCENE-DECOMPOSE-BBOX] checking field '${field}':`, val)
 		if (Array.isArray(val)) {
 			const parsed = tryParseArrayRect(val)
-			console.log(`[SCENE-DECOMPOSE-BBOX] field '${field}' is array, tryParseArrayRect result:`, parsed)
+			console.log(
+				`[SCENE-DECOMPOSE-BBOX] field '${field}' is array, tryParseArrayRect result:`,
+				parsed
+			)
 			if (parsed) {
 				console.log(`[SCENE-DECOMPOSE-BBOX] returning pixelRect from '${field}':`, parsed)
 				return { imageRectPixels: parsed }
 			}
 		} else if (val && typeof val === 'object') {
 			const extracted = extractBBoxFromObject(val, source)
-			console.log(`[SCENE-DECOMPOSE-BBOX] field '${field}' is object, extractBBoxFromObject result:`, extracted)
+			console.log(
+				`[SCENE-DECOMPOSE-BBOX] field '${field}' is object, extractBBoxFromObject result:`,
+				extracted
+			)
 			if (extracted?.pixelRect) {
-				console.log(`[SCENE-DECOMPOSE-BBOX] returning pixelRect from '${field}':`, extracted.pixelRect)
+				console.log(
+					`[SCENE-DECOMPOSE-BBOX] returning pixelRect from '${field}':`,
+					extracted.pixelRect
+				)
 				return { imageRectPixels: extracted.pixelRect }
 			}
 			if (extracted?.uvRect) {
@@ -569,11 +647,20 @@ export const extractSceneDecomposeBBoxFromItem = (
 	const rootXYWH = tryParseXYWHRect(item as Record<string, unknown>)
 	const rootXYXY = tryParseXYXYRect(item as Record<string, unknown>)
 	const rootRect = rootXYWH ?? rootXYXY
-	console.log(`[SCENE-DECOMPOSE-BBOX] trying rootXYWH:`, rootXYWH, 'rootXYXY:', rootXYXY, 'rootRect:', rootRect)
+	console.log(
+		`[SCENE-DECOMPOSE-BBOX] trying rootXYWH:`,
+		rootXYWH,
+		'rootXYXY:',
+		rootXYXY,
+		'rootRect:',
+		rootRect
+	)
 	if (rootRect) {
 		const isPixel = looksLikePixelRect(rootRect, source)
 		const isUV = looksLikeUVRect(rootRect)
-		console.log(`[SCENE-DECOMPOSE-BBOX] rootRect found, looksLikePixel=${isPixel}, looksLikeUV=${isUV}`)
+		console.log(
+			`[SCENE-DECOMPOSE-BBOX] rootRect found, looksLikePixel=${isPixel}, looksLikeUV=${isUV}`
+		)
 		if (isPixel) {
 			return { imageRectPixels: rootRect }
 		}
@@ -604,7 +691,8 @@ export const hasAnySceneDecomposeCrop = (item: SceneDecomposeInputItem) => {
 	return !!(rootXYWH ?? rootXYXY)
 }
 
-export const isSceneLayoutModelTargetItem = (item: SceneDecomposeInputItem) => !shouldSkipSceneDecomposeItem(item)
+export const isSceneLayoutModelTargetItem = (item: SceneDecomposeInputItem) =>
+	!shouldSkipSceneDecomposeItem(item)
 
 export const hasValidSceneDecomposeImageRect = (imageRect: unknown) => {
 	return !!coerceRectLikeToObject(imageRect)
@@ -675,13 +763,28 @@ export const normalizeSceneDecomposeCrop = (
 } | null => {
 	const width = Number(source.width ?? 0)
 	const height = Number(source.height ?? 0)
-	console.log(`[SCENE-DECOMPOSE-CROP] normalizeSceneDecomposeCrop START: imageRect=`, imageRect, `imageRectPixels=`, imageRectPixels, `source=`, source, `allowFullImageFallback=`, opts?.allowFullImageFallback)
+	console.log(
+		`[SCENE-DECOMPOSE-CROP] normalizeSceneDecomposeCrop START: imageRect=`,
+		imageRect,
+		`imageRectPixels=`,
+		imageRectPixels,
+		`source=`,
+		source,
+		`allowFullImageFallback=`,
+		opts?.allowFullImageFallback
+	)
 
 	let resolvedImageRect = imageRect
 	let resolvedPixelRect = imageRectPixels
 
-	if (opts?.item && (!hasValidSceneDecomposeImageRect(imageRect) || !hasValidSceneDecomposePixelRect(imageRectPixels))) {
-		console.log(`[SCENE-DECOMPOSE-CROP] calling extractSceneDecomposeBBoxFromItem because existing rects are invalid`)
+	if (
+		opts?.item &&
+		(!hasValidSceneDecomposeImageRect(imageRect) ||
+			!hasValidSceneDecomposePixelRect(imageRectPixels))
+	) {
+		console.log(
+			`[SCENE-DECOMPOSE-CROP] calling extractSceneDecomposeBBoxFromItem because existing rects are invalid`
+		)
 		const extracted = extractSceneDecomposeBBoxFromItem(opts.item, source)
 		console.log(`[SCENE-DECOMPOSE-CROP] extracted result:`, extracted)
 		if (extracted.imageRect && !hasValidSceneDecomposeImageRect(imageRect)) {
@@ -692,13 +795,29 @@ export const normalizeSceneDecomposeCrop = (
 		}
 	}
 
-	console.log(`[SCENE-DECOMPOSE-CROP] resolvedImageRect=`, resolvedImageRect, `resolvedPixelRect=`, resolvedPixelRect)
-	console.log(`[SCENE-DECOMPOSE-CROP] hasValidSceneDecomposeImageRect(resolvedImageRect)=`, hasValidSceneDecomposeImageRect(resolvedImageRect))
-	console.log(`[SCENE-DECOMPOSE-CROP] hasValidSceneDecomposePixelRect(resolvedPixelRect)=`, hasValidSceneDecomposePixelRect(resolvedPixelRect))
+	console.log(
+		`[SCENE-DECOMPOSE-CROP] resolvedImageRect=`,
+		resolvedImageRect,
+		`resolvedPixelRect=`,
+		resolvedPixelRect
+	)
+	console.log(
+		`[SCENE-DECOMPOSE-CROP] hasValidSceneDecomposeImageRect(resolvedImageRect)=`,
+		hasValidSceneDecomposeImageRect(resolvedImageRect)
+	)
+	console.log(
+		`[SCENE-DECOMPOSE-CROP] hasValidSceneDecomposePixelRect(resolvedPixelRect)=`,
+		hasValidSceneDecomposePixelRect(resolvedPixelRect)
+	)
 
 	const imageRectObj = coerceRectLikeToObject(resolvedImageRect)
 	const imageRectPixelsObj = coerceRectLikeToObject(resolvedPixelRect)
-	console.log(`[SCENE-DECOMPOSE-CROP] coerced imageRectObj=`, imageRectObj, `imageRectPixelsObj=`, imageRectPixelsObj)
+	console.log(
+		`[SCENE-DECOMPOSE-CROP] coerced imageRectObj=`,
+		imageRectObj,
+		`imageRectPixelsObj=`,
+		imageRectPixelsObj
+	)
 	if (imageRectObj) {
 		let crop: WorkflowImageCrop = {
 			x: Math.max(0, Math.min(1, Number(imageRectObj.x))),

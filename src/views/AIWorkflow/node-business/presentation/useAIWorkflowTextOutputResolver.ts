@@ -172,7 +172,10 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			// 如果serializeSceneLayoutOutput返回空（例如节点未运行，settings中无inputJson），
 			// 则回退到直接透传上游in-json连接的JSON数据
 			if (!result && String(fromAnchorId ?? '') !== 'out-selected-placeholder') {
-				const jsonEdge = payload.getFirstIncomingEdge(nodeId, 'in-json') as Record<string, unknown> | null
+				const jsonEdge = payload.getFirstIncomingEdge(nodeId, 'in-json') as Record<
+					string,
+					unknown
+				> | null
 				if (jsonEdge) {
 					result = getTextOutputForNode(
 						String(jsonEdge.fromNodeId),
@@ -190,7 +193,9 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 					result_len: result.length,
 					result_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
 					inputJson_len: String(sls?.inputJson ?? '').length,
-					inputJson_preview: sls?.inputJson ? `${String(sls.inputJson).slice(0, 200)}...` : '(empty)',
+					inputJson_preview: sls?.inputJson
+						? `${String(sls.inputJson).slice(0, 200)}...`
+						: '(empty)',
 					layoutItems_count: Array.isArray(sls?.layoutItems) ? sls.layoutItems.length : 0,
 					status: sls?.status,
 					running: (node as any).running,

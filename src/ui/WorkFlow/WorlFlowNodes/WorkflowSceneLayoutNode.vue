@@ -2017,7 +2017,10 @@ const startPreviewLoad = async (requestId: number) => {
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
 		// eslint-disable-next-line no-console
-		console.error('[SCENE-LAYOUT-PREVIEW] startPreviewLoad: viewer not ready after wait', { ready, hasViewer: !!viewer })
+		console.error('[SCENE-LAYOUT-PREVIEW] startPreviewLoad: viewer not ready after wait', {
+			ready,
+			hasViewer: !!viewer
+		})
 		handlePreviewError()
 		return
 	}

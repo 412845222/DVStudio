@@ -11,7 +11,11 @@ export interface SceneLayoutNodeStoreLike {
 }
 
 export interface SceneLayoutEngineApiLike {
-	updateNodeData?: (nodeId: string, patch: Record<string, any>, opts?: { silent?: boolean }) => boolean
+	updateNodeData?: (
+		nodeId: string,
+		patch: Record<string, any>,
+		opts?: { silent?: boolean }
+	) => boolean
 	forceSyncToStore?: () => Promise<boolean>
 }
 

@@ -150,7 +150,9 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 	const canBitmap = typeof createImageBitmap !== 'undefined'
 	const isRemote = /^https?:\/\//i.test(src)
 	const protocol = String(src).split('://')[0] || 'unknown'
-	console.log(`[IMAGE-CROP] loadImageForCrop: src protocol=${protocol}, isRemote=${isRemote}, canFetch=${canFetch}, canBitmap=${canBitmap}, OffscreenCanvas=${typeof OffscreenCanvas !== 'undefined'}`)
+	console.log(
+		`[IMAGE-CROP] loadImageForCrop: src protocol=${protocol}, isRemote=${isRemote}, canFetch=${canFetch}, canBitmap=${canBitmap}, OffscreenCanvas=${typeof OffscreenCanvas !== 'undefined'}`
+	)
 
 	if (isRemote && canFetch) {
 		try {
@@ -182,14 +184,19 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 					const img = await new Promise<HTMLImageElement | null>((resolve) => {
 						const next = new Image()
 						next.onload = () => resolve(next)
-						next.onerror = (e) => { console.warn(`[IMAGE-CROP] Image() failed to load objectUrl`, e); resolve(null) }
+						next.onerror = (e) => {
+							console.warn(`[IMAGE-CROP] Image() failed to load objectUrl`, e)
+							resolve(null)
+						}
 						next.src = objectUrl
 					})
 					if (!img) {
 						URL.revokeObjectURL(objectUrl)
 						return null
 					}
-					console.log(`[IMAGE-CROP] Image via blob URL loaded: ${img.naturalWidth}x${img.naturalHeight}`)
+					console.log(
+						`[IMAGE-CROP] Image via blob URL loaded: ${img.naturalWidth}x${img.naturalHeight}`
+					)
 					return {
 						width: Math.max(1, Math.floor(img.naturalWidth || img.width || 1)),
 						height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
@@ -250,7 +257,14 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 	const src = String(payload?.src ?? '').trim()
 	if (!src) return null
 
-	console.log(`[IMAGE-CROP] exportWorkflowImageEnforcedPng START: src=`, src.slice(0, 100), `crop=`, payload.crop, `minWidth=`, payload.minWidth)
+	console.log(
+		`[IMAGE-CROP] exportWorkflowImageEnforcedPng START: src=`,
+		src.slice(0, 100),
+		`crop=`,
+		payload.crop,
+		`minWidth=`,
+		payload.minWidth
+	)
 
 	const image = await loadImageForCrop(src)
 	if (!image) {
@@ -268,7 +282,9 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 	const outW = Math.max(1, enforced.outputWidth)
 	const outH = Math.max(1, enforced.outputHeight)
 	const { sx, sy, sw, sh } = enforced.sourceCrop
-	console.log(`[IMAGE-CROP] image loaded: ${srcW}x${srcH}, enforced crop: sx=${sx}, sy=${sy}, sw=${sw}, sh=${sh}, output=${outW}x${outH}, adjusted=${enforced.adjusted}`)
+	console.log(
+		`[IMAGE-CROP] image loaded: ${srcW}x${srcH}, enforced crop: sx=${sx}, sy=${sy}, sw=${sw}, sh=${sh}, output=${outW}x${outH}, adjusted=${enforced.adjusted}`
+	)
 
 	try {
 		if (typeof OffscreenCanvas !== 'undefined') {
@@ -281,10 +297,16 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 					ctx.clearRect(0, 0, outW, outH)
 					image.draw(ctx, sx, sy, sw, sh, 0, 0, outW, outH)
 					console.log(`[IMAGE-CROP] OffscreenCanvas drawImage done, calling convertToBlob`)
-					const toBlob = (offscreen as unknown as { convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob
+					const toBlob = (
+						offscreen as unknown as {
+							convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob>
+						}
+					).convertToBlob
 					if (typeof toBlob === 'function') {
 						const out = await toBlob.call(offscreen, { type: 'image/png' })
-						console.log(`[IMAGE-CROP] convertToBlob success: blob size=${out?.size}, type=${out?.type}`)
+						console.log(
+							`[IMAGE-CROP] convertToBlob success: blob size=${out?.size}, type=${out?.type}`
+						)
 						image.cleanup?.()
 						return out
 					} else {

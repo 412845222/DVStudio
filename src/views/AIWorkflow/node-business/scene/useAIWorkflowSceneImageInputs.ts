@@ -37,7 +37,11 @@ const mapAnchorToImageInput = (anchorId: string): string => {
  * 判断是否为场景JSON处理节点
  */
 const isSceneJsonNodeType = (nodeType: string): boolean => {
-	return nodeType === 'scene-layout' || nodeType === 'scene-understanding' || nodeType === 'scene-decompose'
+	return (
+		nodeType === 'scene-layout' ||
+		nodeType === 'scene-understanding' ||
+		nodeType === 'scene-decompose'
+	)
 }
 
 /**
@@ -53,7 +57,12 @@ const getSceneNodeJsonAnchor = (nodeType: string): string | null => {
  * 判断节点是否为直接图像源
  */
 const isDirectImageSourceType = (nodeType: string): boolean => {
-	return nodeType === 'image' || nodeType === 'video' || nodeType === 'comfyui' || nodeType === 'scene-decompose'
+	return (
+		nodeType === 'image' ||
+		nodeType === 'video' ||
+		nodeType === 'comfyui' ||
+		nodeType === 'scene-decompose'
+	)
 }
 
 export const useAIWorkflowSceneImageInputs = (payload: {
@@ -62,7 +71,10 @@ export const useAIWorkflowSceneImageInputs = (payload: {
 			nodesById: Record<string, WorkflowNode>
 		}
 	}
-	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
+	getFirstIncomingEdge: (
+		nodeId: string,
+		anchorId?: string
+	) => { fromNodeId: string; fromAnchorId?: string } | null | undefined
 	connectedImageInputSource: (nodeId: string, inputId: string) => WorkflowImageInputSource | null
 }) => {
 	/**
@@ -96,7 +108,11 @@ export const useAIWorkflowSceneImageInputs = (payload: {
 		const visited = new Set<string>()
 
 		// 穿透场景节点
-		while (fromNode && isSceneJsonNodeType(fromNode.type) && !visited.has(`${fromNode.id}:${fromAnchorId}`)) {
+		while (
+			fromNode &&
+			isSceneJsonNodeType(fromNode.type) &&
+			!visited.has(`${fromNode.id}:${fromAnchorId}`)
+		) {
 			visited.add(`${fromNode.id}:${fromAnchorId}`)
 
 			const targetImageAnchor = mapAnchorToImageInput(fromAnchorId || currentInputAnchorId)
