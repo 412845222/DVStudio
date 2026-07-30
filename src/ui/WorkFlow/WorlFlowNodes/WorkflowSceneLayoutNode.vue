@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -16,6 +17,8 @@
 		:selected="selected"
 		:hoverInputAnchorId="hoverInputAnchorId"
 		:hoverOutputAnchorId="hoverOutputAnchorId"
+		:sizeCustomized="sizeCustomized"
+		:autoHeight="autoHeight"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"
@@ -27,6 +30,7 @@
 		@delete="() => emit('delete')"
 		@set-type="onSetType"
 		@resize="onResize"
+		@auto-resize="(h: number) => emit('auto-resize', h)"
 	>
 		<template #body>
 			<div
@@ -551,7 +555,17 @@ const props = defineProps<{
 	selected?: boolean
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
+	sizeCustomized?: boolean
+	autoHeight?: boolean
 }>()
+
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
+const requestResize = () => {
+	nextTick(() => {
+		baseRef.value?.requestAutoResize()
+		setTimeout(() => baseRef.value?.requestAutoResize(), 50)
+	})
+}
 
 const onStartLink = (payload: {
 	nodeId: string
@@ -626,6 +640,7 @@ const emit = defineEmits<{
 			| 'blender'
 	): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
+	(e: 'auto-resize', height: number): void
 	(e: 'run-scene-layout'): void
 	(e: 'update-layout-items', items: WorkflowSceneLayoutItem[]): void
 	(e: 'update-preview-mode', enabled: boolean): void
@@ -683,6 +698,7 @@ const internalPreviewRequestId = ref(0)
 const internalPreviewPhase = ref<WorkflowThreePreviewPhase>('masked')
 const internalPreviewProgress = ref(0)
 const internalPreviewLabel = ref('')
+const autoStartTriggered = ref(false)
 const internalPreviewState = computed<WorkflowThreePreviewState>(() => ({
 	phase: internalPreviewPhase.value,
 	canStart: true,
@@ -1837,7 +1853,21 @@ const createViewerNow = () => {
 	if (viewer || !canvas) return false
 	if (!canvas.isConnected) return false
 	const rect = canvas.getBoundingClientRect()
-	if (rect.width <= 0 || rect.height <= 0) return false
+	if (rect.width <= 0 || rect.height <= 0) {
+		// eslint-disable-next-line no-console
+		console.info('[SCENE-LAYOUT-PREVIEW] createViewerNow: canvas size invalid', {
+			nodeId: props.nodeId,
+			width: rect.width,
+			height: rect.height,
+			isConnected: canvas.isConnected
+		})
+		return false
+	}
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT-PREVIEW] createViewerNow: creating viewer...', {
+		nodeId: props.nodeId,
+		canvasSize: { width: rect.width, height: rect.height }
+	})
 	try {
 		viewer = new SceneLayoutPreviewViewer(canvas, {
 			onLayoutChange: (items) => emit('update-layout-items', items),
@@ -1974,13 +2004,32 @@ const attemptRepairSceneLayoutModelUrl = async (url: string, itemId: string): Pr
 
 const startPreviewLoad = async (requestId: number) => {
 	activePreviewRequestId = requestId
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT-PREVIEW] startPreviewLoad begin', {
+		nodeId: props.nodeId,
+		requestId,
+		layoutItemsLen: layoutItems.value.length,
+		previewMode: previewMode.value,
+		canvasConnected: !!canvasRef.value?.isConnected
+	})
 	emitPreviewProgress(0.12, t('nodes.sceneLayout.progressInitRenderer'))
 	const ready = await waitForViewerReady()
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
+		// eslint-disable-next-line no-console
+		console.error('[SCENE-LAYOUT-PREVIEW] startPreviewLoad: viewer not ready after wait', {
+			ready,
+			hasViewer: !!viewer
+		})
 		handlePreviewError()
 		return
 	}
+	// eslint-disable-next-line no-console
+	console.info('[SCENE-LAYOUT-PREVIEW] startPreviewLoad: viewer ready, applying layout...', {
+		nodeId: props.nodeId,
+		layoutItemsLen: layoutItems.value.length,
+		modelBindings: sceneLayoutModelBindings.value.length
+	})
 	emitPreviewProgress(0.46, t('nodes.sceneLayout.progressApplyLayout'))
 	syncViewerState()
 	emitPreviewProgress(
@@ -2116,6 +2165,64 @@ watch(
 		syncViewerState()
 	},
 	{ immediate: true, flush: 'post' }
+)
+
+// [SCENE-LAYOUT-PREVIEW] 自动启动3D预览：当 previewMode + completed + layoutItems 非空 且预览尚未启动时自动触发
+watch(
+	() =>
+		[
+			previewMode.value,
+			status.value,
+			layoutItems.value.length,
+			internalPreviewPhase.value,
+			!!canvasRef.value,
+			canvasRef.value?.isConnected ?? false
+		] as const,
+	([mode, st, itemsLen, phase, hasCanvas, canvasConnected]) => {
+		const shouldAutoStart =
+			mode === true &&
+			st === 'completed' &&
+			itemsLen > 0 &&
+			phase === 'masked' &&
+			hasCanvas &&
+			canvasConnected &&
+			!autoStartTriggered.value
+		// eslint-disable-next-line no-console
+		console.info('[SCENE-LAYOUT-PREVIEW] autoStart check:', {
+			nodeId: props.nodeId,
+			mode,
+			status: st,
+			itemsLen,
+			phase,
+			hasCanvas,
+			canvasConnected,
+			autoStartTriggered: autoStartTriggered.value,
+			shouldAutoStart
+		})
+		if (!shouldAutoStart) return
+		autoStartTriggered.value = true
+		// 使用 rAF + setTimeout 延迟启动，确保 canvas 尺寸就绪、当前渲染帧完成
+		requestAnimationFrame(() => {
+			setTimeout(() => {
+				if (internalPreviewPhase.value !== 'masked') return
+				// eslint-disable-next-line no-console
+				console.info('[SCENE-LAYOUT-PREVIEW] 🚀 auto-starting preview for node:', props.nodeId)
+				emit('start-three-preview')
+				startPreview()
+			}, 80)
+		})
+	},
+	{ immediate: true, flush: 'post' }
+)
+
+// 重置 autoStart 标记：当 previewMode 关闭或 status 变回非 completed 时重置，允许下次再次自动启动
+watch(
+	() => [previewMode.value, status.value] as const,
+	([mode, st]) => {
+		if (mode !== true || st !== 'completed') {
+			autoStartTriggered.value = false
+		}
+	}
 )
 
 onMounted(() => {
@@ -2291,6 +2398,7 @@ onMounted(() => {
 		'%c【SceneLayoutEvent#Init】===========================================================',
 		'color:#16a34a;font-weight:bold'
 	)
+	requestResize()
 })
 
 // Watch for layoutItems and settings changes to debug rendering pipeline
@@ -2314,6 +2422,31 @@ watch(
 		})
 	},
 	{ immediate: false }
+)
+
+watch(
+	() => [
+		status.value,
+		previewMode.value,
+		previewPhase.value,
+		layoutItems.value.length,
+		hidePlaceholderCubes.value,
+		props.linkedJsonText,
+		settings.value?.status,
+		settings.value?.inputJson,
+		settings.value?.message,
+		settings.value?.previewMode,
+		settings.value?.hidePlaceholderCubes,
+		settings.value?.selectedLayoutItemId,
+		settings.value?.selectedPlaceholderOutput,
+		settings.value?.lightingPreviewEnabled,
+		settings.value?.lightingDebugEnabled,
+		settings.value?.layoutItems?.length
+	],
+	() => {
+		requestResize()
+	},
+	{ flush: 'post' }
 )
 
 onBeforeUnmount(() => {

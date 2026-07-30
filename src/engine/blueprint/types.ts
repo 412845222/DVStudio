@@ -196,8 +196,8 @@ export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number 
 	'rotate-image': { width: 320, height: 320 },
 	video: { width: 480, height: 400 },
 	story: { width: 480, height: 360 },
-	'scene-understanding': { width: 480, height: 400 },
-	'scene-layout': { width: 480, height: 450 },
+	'scene-understanding': { width: 520, height: 680 },
+	'scene-layout': { width: 520, height: 720 },
 	'scene-decompose': { width: 480, height: 400 },
 	comfyui: { width: 520, height: 420 },
 	model3d: { width: 480, height: 480 },
@@ -287,24 +287,33 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 	},
 	'scene-understanding': {
 		inputs: [
-			{ id: 'in-image', label: '场景图片', mediaType: 'image' },
+			{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
+			{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+			{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+			{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 			{ id: 'in-text', label: '补充说明', mediaType: 'text' }
 		],
-		outputs: [{ id: 'out-text', label: '分析结果', mediaType: 'text' }]
+		outputs: [{ id: 'out-0', label: '分析结果', mediaType: 'text' }]
 	},
 	'scene-layout': {
-		inputs: [{ id: 'in-json', label: '布局JSON', mediaType: 'text' }],
+		inputs: [
+			{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
+			{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+			{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+			{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+			{ id: 'in-json', label: '布局JSON', mediaType: 'text' }
+		],
 		outputs: [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
 	},
 	'scene-decompose': {
 		inputs: [
-			{ id: 'in-image', label: '场景图片', mediaType: 'image' },
-			{ id: 'in-text', label: '拆解要求', mediaType: 'text' }
+			{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
+			{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+			{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+			{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
+			{ id: 'in-json', label: '场景 JSON', mediaType: 'text' }
 		],
-		outputs: [
-			{ id: 'out-image', label: '元素图片', mediaType: 'image', multiInput: true },
-			{ id: 'out-text', label: '拆解说明', mediaType: 'text' }
-		]
+		outputs: [{ id: 'out-0', label: '拆解输出', mediaType: 'image' }]
 	},
 	comfyui: {
 		inputs: [{ id: 'in-0', label: '工作流输入', mediaType: 'generic', multiInput: true }],

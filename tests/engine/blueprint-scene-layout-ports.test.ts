@@ -17,13 +17,19 @@ function makeNode(overrides: Partial<BlueprintNodeData> = {}): BlueprintNodeData
 
 describe('Scene Layout Node Anchor Configuration', () => {
 	describe('DEFAULT_NODE_PORTS["scene-layout"]', () => {
-		it('should have exactly one input anchor: in-json (布局JSON)', () => {
+		it('should have 5 input anchors: 4 reference images + in-json (布局JSON)', () => {
 			const ports = DEFAULT_NODE_PORTS['scene-layout']
 			expect(ports).toBeDefined()
-			expect(ports.inputs).toHaveLength(1)
-			expect(ports.inputs[0]!.id).toBe('in-json')
-			expect(ports.inputs[0]!.label).toBe('布局JSON')
-			expect(ports.inputs[0]!.mediaType).toBe('text')
+			expect(ports.inputs).toHaveLength(5)
+			const inputIds = ports.inputs.map((p) => p.id)
+			expect(inputIds).toContain('in-image')
+			expect(inputIds).toContain('in-image-2')
+			expect(inputIds).toContain('in-image-3')
+			expect(inputIds).toContain('in-image-4')
+			expect(inputIds).toContain('in-json')
+			const jsonPort = ports.inputs.find((p) => p.id === 'in-json')!
+			expect(jsonPort.label).toBe('布局JSON')
+			expect(jsonPort.mediaType).toBe('text')
 		})
 
 		it('should NOT have in-text or in-resource input anchors by default', () => {
@@ -43,11 +49,16 @@ describe('Scene Layout Node Anchor Configuration', () => {
 	})
 
 	describe('getDefaultNodeData for scene-layout', () => {
-		it('should create scene-layout node with in-json input only', () => {
+		it('should create scene-layout node with 4 reference image inputs + in-json input', () => {
 			const node = getDefaultNodeData('scene-layout', 200, 200)
 			expect(node.type).toBe('scene-layout')
-			expect(node.inputs).toHaveLength(1)
-			expect(node.inputs[0]!.id).toBe('in-json')
+			expect(node.inputs).toHaveLength(5)
+			const inputIds = node.inputs.map((p) => p.id)
+			expect(inputIds).toContain('in-image')
+			expect(inputIds).toContain('in-image-2')
+			expect(inputIds).toContain('in-image-3')
+			expect(inputIds).toContain('in-image-4')
+			expect(inputIds).toContain('in-json')
 			expect(node.outputs).toHaveLength(1)
 			expect(node.outputs[0]!.id).toBe('out-0')
 		})
