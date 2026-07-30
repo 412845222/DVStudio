@@ -293,14 +293,8 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 		outputs: [{ id: 'out-text', label: '分析结果', mediaType: 'text' }]
 	},
 	'scene-layout': {
-		inputs: [
-			{ id: 'in-text', label: '布局描述', mediaType: 'text' },
-			{ id: 'in-resource', label: '资源输入', mediaType: 'resource' }
-		],
-		outputs: [
-			{ id: 'out-text', label: '布局数据', mediaType: 'text' },
-			{ id: 'out-generic', label: '通用输出', mediaType: 'generic' }
-		]
+		inputs: [{ id: 'in-json', label: '布局JSON', mediaType: 'text' }],
+		outputs: [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
 	},
 	'scene-decompose': {
 		inputs: [

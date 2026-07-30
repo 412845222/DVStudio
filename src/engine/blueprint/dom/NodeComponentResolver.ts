@@ -255,8 +255,13 @@ export class NodeComponentResolver {
 				if (data.storySettings) typeSpecificProps.storySettings = data.storySettings
 				break
 			case 'scene-understanding':
-				if (data.sceneUnderstandingSettings)
-					typeSpecificProps.sceneUnderstandingSettings = data.sceneUnderstandingSettings
+				typeSpecificProps.sceneUnderstandingSettings = data.sceneUnderstandingSettings || {
+					mode: 'scene-layout',
+					sceneType: 'auto',
+					status: 'idle',
+					availableModels: [],
+					selectedModel: ''
+				}
 				break
 			case 'scene-layout':
 				if (data.sceneLayoutSettings)

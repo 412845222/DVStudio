@@ -256,7 +256,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		nodeType: 'scene-layout',
 		label: '场景布局节点',
 		inputKinds: ['text', 'resource'],
-		outputKinds: ['text', 'generic'],
+		outputKinds: ['text'],
 		order: 36
 	},
 	{

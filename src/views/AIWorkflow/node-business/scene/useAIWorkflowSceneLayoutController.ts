@@ -10,8 +10,14 @@ export const useAIWorkflowSceneLayoutController = (options: {
 	connectedTextInputValue: (nodeId: string, anchorId: string) => string
 	extractSceneLayoutSourceItems: (parsed: unknown) => unknown[]
 	parseSceneLayoutMetadataItems: (inputJson: string) => unknown[]
-	mergeSceneLayoutItemsWithMetadata: (layoutItems: unknown[], metadataSources: unknown[][]) => unknown[]
-	runSceneLayout: (payload: { nodeId: string; inputJson: string }) => Promise<Record<string, unknown>>
+	mergeSceneLayoutItemsWithMetadata: (
+		layoutItems: unknown[],
+		metadataSources: unknown[][]
+	) => unknown[]
+	runSceneLayout: (payload: {
+		nodeId: string
+		inputJson: string
+	}) => Promise<Record<string, unknown>>
 	syncConnectedModel3DTargets: (
 		nodeId: string,
 		opts?: { forceSceneLayoutExport?: boolean }
@@ -19,27 +25,53 @@ export const useAIWorkflowSceneLayoutController = (options: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }) => {
 	const onNodeRunSceneLayout = async (nodeId: string) => {
+		console.info('【SCENE-LAYOUT-CHAIN】③ Controller.onNodeRunSceneLayout START, nodeId:', nodeId)
 		const node = options.store.state.nodesById[nodeId] as Record<string, unknown>
-		if (!node || node.type !== 'scene-layout') return
+		console.info('【SCENE-LAYOUT-CHAIN】③ node found?', !!node, 'node.type:', node?.type)
+		if (!node || node.type !== 'scene-layout') {
+			console.warn('【SCENE-LAYOUT-CHAIN】③ EARLY RETURN: node not found or type mismatch')
+			return
+		}
 		const linkedJson = String(options.connectedTextInputValue(nodeId, 'in-json') ?? '').trim()
 		const nodeSettings = (node.sceneLayoutSettings ?? null) as Record<string, unknown> | null
 		const cachedJson = String(nodeSettings?.inputJson ?? '').trim()
 		const inputJson = linkedJson || cachedJson
+		console.info(
+			'【SCENE-LAYOUT-CHAIN】③ JSON sources - linkedJson len:',
+			linkedJson.length,
+			'cachedJson len:',
+			cachedJson.length,
+			'inputJson len:',
+			inputJson.length
+		)
 		if (!inputJson) {
+			console.warn('【SCENE-LAYOUT-CHAIN】③ EARLY RETURN: no inputJson')
 			options.pushToast(t('aiworkflow.runtime.layoutMissingJson'), 'warn')
 			return
 		}
 
+		console.info('【SCENE-LAYOUT-CHAIN】③ Committing RUNNING status...')
 		options.store.commit('setNodeSceneLayoutSettings', {
 			nodeId,
-			sceneLayoutSettings: { status: 'running', message: t('aiworkflow.runtime.layoutGenerating'), inputJson }
+			sceneLayoutSettings: {
+				status: 'running',
+				message: t('aiworkflow.runtime.layoutGenerating'),
+				inputJson
+			}
 		})
 
 		try {
 			let parsedInput: unknown = null
 			try {
 				parsedInput = JSON.parse(inputJson)
-			} catch {
+				console.info(
+					'【SCENE-LAYOUT-CHAIN】③ JSON.parse SUCCESS, parsed keys:',
+					parsedInput && typeof parsedInput === 'object'
+						? Object.keys(parsedInput as Record<string, unknown>)
+						: '(non-object)'
+				)
+			} catch (parseErr) {
+				console.error('【SCENE-LAYOUT-CHAIN】③ JSON.parse FAILED:', parseErr)
 				parsedInput = null
 			}
 
@@ -47,32 +79,65 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			const directInputItems = options.extractSceneLayoutSourceItems(parsedInput)
 			const directHasLayout = Array.isArray(parsedObj?.layoutItems) && directInputItems.length > 0
 			const directHasCamera = parsedObj?.camera && typeof parsedObj.camera === 'object'
+			console.info(
+				'【SCENE-LAYOUT-CHAIN】③ extractSceneLayoutSourceItems result - directInputItems.length:',
+				directInputItems.length,
+				'parsedObj.layoutItems is array?',
+				Array.isArray(parsedObj?.layoutItems),
+				'directHasLayout:',
+				directHasLayout,
+				'directHasCamera:',
+				directHasCamera
+			)
 			if (directHasLayout) {
+				console.info('【SCENE-LAYOUT-CHAIN】③ Branch: DIRECT LAYOUT (no API call), merging...')
 				const mergedLayoutItems = options.mergeSceneLayoutItemsWithMetadata(directInputItems, [
 					directInputItems
 				])
+				console.info('【SCENE-LAYOUT-CHAIN】③ mergedLayoutItems.length:', mergedLayoutItems.length)
 				options.store.commit('setNodeSceneLayoutSettings', {
 					nodeId,
 					sceneLayoutSettings: {
 						status: 'completed',
-						message: t('aiworkflow.runtime.layoutLoadedDirect', { count: String(mergedLayoutItems.length) }),
+						message: t('aiworkflow.runtime.layoutLoadedDirect', {
+							count: String(mergedLayoutItems.length)
+						}),
 						inputJson,
 						layoutItems: mergedLayoutItems,
 						camera: directHasCamera ? parsedObj.camera : nodeSettings?.camera,
 						lastRunAt: Date.now()
 					}
 				})
+				console.info(
+					'【SCENE-LAYOUT-CHAIN】③ Committed COMPLETED (direct), layoutItems count:',
+					mergedLayoutItems.length
+				)
 				options.pushToast(t('aiworkflow.runtime.layoutLoadedDirectToast'), 'info')
 				return
 			}
 
+			console.info('【SCENE-LAYOUT-CHAIN】③ Branch: API CALL - calling runSceneLayout...')
 			const res = await options.runSceneLayout({ nodeId, inputJson })
+			console.info(
+				'【SCENE-LAYOUT-CHAIN】③ runSceneLayout response - ok:',
+				res.ok,
+				'keys:',
+				Object.keys(res)
+			)
 			if (!res.ok) {
+				console.error('【SCENE-LAYOUT-CHAIN】③ runSceneLayout FAILED:', res.error)
 				options.store.commit('setNodeSceneLayoutSettings', {
 					nodeId,
-					sceneLayoutSettings: { status: 'error', message: String(res.error || t('aiworkflow.runtime.layoutFailed')), inputJson }
+					sceneLayoutSettings: {
+						status: 'error',
+						message: String(res.error || t('aiworkflow.runtime.layoutFailed')),
+						inputJson
+					}
 				})
-				options.pushToast(t('aiworkflow.toast.sceneLayoutFailed', { error: String(res.error || 'unknown') }), 'warn')
+				options.pushToast(
+					t('aiworkflow.toast.sceneLayoutFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			const inputMetadataItems = options.parseSceneLayoutMetadataItems(inputJson)
@@ -80,26 +145,43 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			const mergedLayoutItems = options.mergeSceneLayoutItemsWithMetadata(resLayoutItems, [
 				inputMetadataItems
 			])
+			console.info(
+				'【SCENE-LAYOUT-CHAIN】③ API success - resLayoutItems.length:',
+				resLayoutItems.length,
+				'mergedLayoutItems.length:',
+				mergedLayoutItems.length
+			)
 			options.store.commit('setNodeSceneLayoutSettings', {
 				nodeId,
 				sceneLayoutSettings: {
 					status: 'completed',
-					message: String(res.message || t('aiworkflow.runtime.layoutGeneratedCount', { count: String(mergedLayoutItems.length) })),
+					message: String(
+						res.message ||
+							t('aiworkflow.runtime.layoutGeneratedCount', {
+								count: String(mergedLayoutItems.length)
+							})
+					),
 					inputJson,
 					layoutItems: mergedLayoutItems,
 					camera: res.camera,
 					lastRunAt: Date.now()
 				}
 			})
+			console.info(
+				'【SCENE-LAYOUT-CHAIN】③ Committed COMPLETED (API), layoutItems count:',
+				mergedLayoutItems.length
+			)
 			options.pushToast(t('aiworkflow.runtime.layoutUpdated'), 'info')
 		} catch (err: unknown) {
 			const message = getErrorMessage(err)
+			console.error('【SCENE-LAYOUT-CHAIN】③ CAUGHT ERROR:', message, err)
 			options.store.commit('setNodeSceneLayoutSettings', {
 				nodeId,
 				sceneLayoutSettings: { status: 'error', message, inputJson }
 			})
 			options.pushToast(t('aiworkflow.toast.sceneLayoutFailed', { error: message }), 'warn')
 		}
+		console.info('【SCENE-LAYOUT-CHAIN】③ Controller.onNodeRunSceneLayout END')
 	}
 
 	const onNodeSceneLayoutItemsUpdate = (nodeId: string, layoutItems: unknown[]) => {

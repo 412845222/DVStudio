@@ -34,6 +34,7 @@
 				:node-generation-tasks="store.state.nodeGenerationTasksById"
 				:legacy-resources="legacyResourcesForDom"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
+				:extra-props-resolver="nodeExtraProps"
 				@editor-ready="onHostEditorReady"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
@@ -55,6 +56,50 @@
 				@node-end-link="onDomNodeEndLink"
 				@node-preview-request="onHostNodePreviewRequest"
 				@node-screenshot="onNodeScreenshot"
+				@node-set-type="(p: any) => onNodeSetType(p.nodeId, p.type)"
+				@node-update-scene-understanding-settings="
+					(p: any) => onNodeSceneUnderstandingSettingsUpdate(p.nodeId, p.patch)
+				"
+				@node-request-scene-models="onNodeRequestSceneModels"
+				@node-run-scene-understanding="onNodeRunSceneUnderstanding"
+				@node-cancel-scene-understanding="onNodeCancelSceneUnderstanding"
+				@node-run-scene-decompose="onNodeRunSceneDecompose"
+				@node-run-scene-layout="onNodeRunSceneLayout"
+				@node-update-preview-mode="
+					(p: any) => onNodeSceneLayoutPreviewModeUpdate(p.nodeId, p.previewMode)
+				"
+				@node-update-layout-items="(p: any) => onNodeSceneLayoutItemsUpdate(p.nodeId, p.items)"
+				@node-update-selected-layout-item="
+					(p: any) => onNodeSceneLayoutSelectedItemUpdate(p.nodeId, p.itemId)
+				"
+				@node-update-hide-placeholder-cubes="
+					(p: any) => onNodeSceneLayoutHidePlaceholdersUpdate(p.nodeId, p.hide)
+				"
+				@node-update-lighting-preview="
+					(p: any) => onNodeSceneLayoutLightingPreviewUpdate(p.nodeId, p.enabled)
+				"
+				@node-update-lighting-debug="
+					(p: any) => onNodeSceneLayoutLightingDebugUpdate(p.nodeId, p.enabled)
+				"
+				@node-update-lighting-controls="
+					(p: any) => onNodeSceneLayoutLightingControlsUpdate(p.nodeId, p.controls)
+				"
+				@node-set-selected-placeholder-output="
+					(p: any) => onNodeSceneLayoutSelectedPlaceholderOutput(p.nodeId, p.selectedId)
+				"
+				@node-clear-scene-layout-model-binding="
+					(p: any) => onNodeClearSceneLayoutModelBinding(p.nodeId, p.objectId)
+				"
+				@node-upload-scene-layout-model-file="
+					(p: any) => onNodeUploadSceneLayoutModelFile(p.nodeId, p.file, p.objectId)
+				"
+				@node-update-model-bindings="
+					(p: any) => onNodeUpdateSceneLayoutModelBindings(p.nodeId, p.bindings)
+				"
+				@node-start-three-preview="onNodeStartThreePreview"
+				@node-three-preview-progress="(p: any) => onNodeThreePreviewProgress(p.nodeId, p)"
+				@node-three-preview-ready="onNodeThreePreviewReady"
+				@node-three-preview-error="onNodeThreePreviewError"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -7902,7 +7947,8 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
 	connectedMeshyImageUrls,
 	nodeMediaReloadToken,
 	getFirstIncomingEdge,
-	getUpstreamCroppedImageUrl
+	getUpstreamCroppedImageUrl,
+	getTextOutputForNode
 })
 
 const latestGenerationTaskByNodeId = (nodeId: string) => {
@@ -9667,7 +9713,8 @@ const {
 	connectedImageInputUrl,
 	connectedTextInputValue,
 	normalizeMeshyImageInputValue,
-	pushToast
+	pushToast,
+	updateNodeData: engineApi.updateNodeData
 })
 
 const { onNodeRunSceneDecompose } = useAIWorkflowSceneDecomposeController({

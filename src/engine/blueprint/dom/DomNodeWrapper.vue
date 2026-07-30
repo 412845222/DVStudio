@@ -228,7 +228,25 @@ function onNodePointerDown(e: PointerEvent) {
 				tgt.closest('.dnw-drag-handle') ||
 				tgt.closest('.dnw-header') ||
 				tgt.closest('.bp-node-chat-dialog') ||
-				tgt.closest('.bp-node-chat-param-panel'))
+				tgt.closest('.bp-node-chat-param-panel') ||
+				tgt.closest('select') ||
+				tgt.closest('input') ||
+				tgt.closest('button') ||
+				tgt.closest('textarea') ||
+				tgt.closest('label') ||
+				tgt.closest('.wf-scene-understand') ||
+				tgt.closest('.wf-image-params') ||
+				tgt.closest('.wf-three-shell') ||
+				tgt.closest('.wf-three-preview-stage') ||
+				tgt.closest('.wf-scene-layout') ||
+				tgt.closest('.wf-scene-layout-stage') ||
+				tgt.closest('.wf-scene-layout-canvas') ||
+				tgt.closest('.wf-model3d-stage') ||
+				tgt.closest('.wf-node3d-viewer-container') ||
+				tgt.closest('[data-wf-three-preview]') ||
+				tgt.closest('[data-wf-node-drag-ignore="true"]') ||
+				(tgt.tagName === 'CANVAS' &&
+					tgt.closest('.wf-scene-layout, .wf-model3d, .wf-three-preview')))
 		) {
 			return
 		}
@@ -390,7 +408,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-business-content {
-	pointer-events: none;
+	pointer-events: auto;
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-drag-handle {
@@ -408,7 +426,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-hit-area {
-	pointer-events: auto;
+	pointer-events: none;
 	border-radius: 0;
 }
 
