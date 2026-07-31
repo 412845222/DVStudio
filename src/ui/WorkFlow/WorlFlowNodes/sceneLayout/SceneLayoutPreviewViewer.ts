@@ -336,7 +336,8 @@ const cloneItem = (item: WorkflowSceneLayoutItem): WorkflowSceneLayoutItem => ({
 	size: { ...item.size },
 	rotation: item.rotation ? { ...item.rotation } : undefined,
 	scale: item.scale ? { ...item.scale } : undefined,
-	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined
+	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined,
+	holePunches: Array.isArray(item.holePunches) ? item.holePunches.map((p) => ({ ...p })) : undefined
 })
 
 export const safeNumber = (value: unknown, fallback: number) => {
@@ -441,8 +442,7 @@ export const isSameItems = (
 	b: WorkflowSceneLayoutItem[]
 ): boolean => {
 	if (a.length !== b.length) return false
-	const len = a.length
-	for (let i = 0; i < len; i++) {
+	for (let i = 0; i < a.length; i++) {
 		if (!isSameItem(a[i], b[i])) return false
 	}
 	return true
@@ -1567,11 +1567,6 @@ export class SceneLayoutPreviewViewer {
 				}
 			} else {
 				geometry = new THREE.BoxGeometry(width, height, depth)
-				;(geometry as { translate: (x: number, y: number, z: number) => void }).translate(
-					0,
-					height / 2,
-					0
-				)
 				edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
 			}
 			const inferred = item.inferred === true
@@ -1601,7 +1596,7 @@ export class SceneLayoutPreviewViewer {
 			})
 			const mesh = new THREE.Mesh(geometry as unknown, material)
 			mesh.scale.set(1, 1, 1)
-			mesh.position.set(posX, posY, posZ)
+			mesh.position.set(posX, posY + height / 2, posZ)
 			mesh.rotation.y = (yaw * Math.PI) / 180
 			mesh.rotation.x = (pitch * Math.PI) / 180
 			mesh.rotation.z = (roll * Math.PI) / 180
@@ -3939,10 +3934,11 @@ export class SceneLayoutPreviewViewer {
 						: roundOrientation(constrained.yaw)
 			const message = t('aiworkflow.scenePreview.rotatedTo', { axis: axisLabel, angle: angleLabel })
 
+			this.setFitState(item, 'oriented', message)
+
 			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
 
-			const fitChanged = this.setFitState(item, 'oriented', message)
-			if (fitChanged || item.orientationFix) this.emitLayoutChange()
+			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'oriented', message }
 		} catch {
@@ -3994,10 +3990,11 @@ export class SceneLayoutPreviewViewer {
 
 			const message = t('aiworkflow.scenePreview.rotationReset')
 
+			this.setFitState(item, 'normal', message)
+
 			await this.rebuildBoundModelForItem(this.selectedId, 'auto')
 
-			const fitChanged = this.setFitState(item, 'normal', message)
-			if (fitChanged || !item.orientationFix) this.emitLayoutChange()
+			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'normal', message }
 		} catch {
@@ -4094,23 +4091,20 @@ export class SceneLayoutPreviewViewer {
 		if (!suggestion) {
 			const hadFill = !!item.fillMode
 			this.clearFillState(item)
-			if (hadFill || this.boundModelsById.has(this.selectedId)) {
-				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
-			}
 			const message = hadFill
 				? t('aiworkflow.scenePreview.fillAxisMismatch')
 				: t('aiworkflow.scenePreview.fillTooManyUnconstrained')
-			const fitChanged = this.setFitState(
-				item,
-				item.orientationFix ? 'oriented' : 'normal',
-				message
-			)
-			if (hadFill || fitChanged) this.emitLayoutChange()
+			const nextMode = item.orientationFix ? 'oriented' : 'normal'
+			this.setFitState(item, nextMode, message)
+			if (hadFill || this.boundModelsById.has(this.selectedId)) {
+				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
+			}
+			this.emitLayoutChange()
 			this.requestRender()
 			return {
 				ok: false,
 				applied: false,
-				mode: item.orientationFix ? 'oriented' : 'normal',
+				mode: nextMode,
 				message
 			}
 		}
@@ -4118,13 +4112,13 @@ export class SceneLayoutPreviewViewer {
 		item.fillCount = suggestion.count
 		item.fillAxisScale = suggestion.axisScale
 		item.fillUpdatedAt = Date.now()
-		this.disposeBoundModel(this.selectedId)
-		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 		const message = t('aiworkflow.scenePreview.loopFilled', {
 			axis: fillAxisLabel(suggestion.axis),
 			count: suggestion.count
 		})
 		this.setFitState(item, 'filled', message)
+		this.disposeBoundModel(this.selectedId)
+		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 		this.emitLayoutChange()
 		this.requestRender()
 		return { ok: true, applied: true, mode: 'filled', message }
@@ -4167,11 +4161,9 @@ export class SceneLayoutPreviewViewer {
 		try {
 			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 			this.clearFillState(item)
-			item.fitMode = 'forced'
-			item.fitUpdatedAt = Date.now()
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			const message = t('aiworkflow.scenePreview.forceFitApplied')
 			this.setFitState(item, 'forced', message)
+			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'forced', message }
@@ -4878,7 +4870,6 @@ export class SceneLayoutPreviewViewer {
 		const edge = this.edgesById.get(this.selectedId)
 		if (!mesh || !item) return
 		item.position.x = mesh.position.x
-		item.position.y = mesh.position.y
 		item.position.z = mesh.position.z
 		item.rotation = {
 			yaw: THREE.MathUtils.radToDeg(mesh.rotation.y),
@@ -4890,6 +4881,9 @@ export class SceneLayoutPreviewViewer {
 			y: mesh.scale.y,
 			z: mesh.scale.z
 		}
+		mesh.updateMatrixWorld(true)
+		const worldBox = new THREE.Box3().setFromObject(mesh)
+		item.position.y = worldBox.min.y
 		if (edge) {
 			edge.position.copy(mesh.position)
 			edge.rotation.copy(mesh.rotation)
@@ -5334,14 +5328,6 @@ export class SceneLayoutPreviewViewer {
 			targetBox3.getCenter(fallbackDir)
 			fallbackDir.sub(toolCenter).normalize()
 			bestDir = fallbackDir
-			console.log('=== Hole Punch: No axis hit target, using fallback direction ===', bestDir)
-		} else {
-			console.log(
-				'=== Hole Punch: Detected punch direction ===',
-				bestDir,
-				'hit distance:',
-				bestHitDist
-			)
 		}
 
 		const punchDir = bestDir.normalize()
@@ -5365,7 +5351,6 @@ export class SceneLayoutPreviewViewer {
 		if (existingBoundModel) {
 			existingBoundModel.updateMatrixWorld(true)
 			geometrySource = existingBoundModel
-			console.log('=== Hole Punch: Using existing bound model from scene ===')
 		} else {
 			const modelUrl = toolBinding.modelUrl || toolBinding.modelAssetUrl
 			if (!modelUrl) {
@@ -5384,7 +5369,6 @@ export class SceneLayoutPreviewViewer {
 			toolModelRoot.updateMatrixWorld(true)
 			geometrySource = toolModelRoot
 			needsDispose = true
-			console.log('=== Hole Punch: Created new bound model for cross-section ===')
 		}
 
 		const modelGeometries: unknown[] = []
@@ -5570,26 +5554,6 @@ export class SceneLayoutPreviewViewer {
 
 		stretchedGeom.applyMatrix4(transformMatrix)
 
-		const debugModelBounds = new THREE.Box3().setFromBufferAttribute(
-			modelMergedGeom.getAttribute('position') as unknown
-		)
-		console.log('=== Stretched Tool Geometry (Convex Hull) ===')
-		console.log('Punch direction:', punchDir)
-		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
-		console.log('Model bounds min:', debugModelBounds.min, 'max:', debugModelBounds.max)
-		console.log('Model U range:', minU, 'to', maxU)
-		console.log('Model V range:', minV, 'to', maxV)
-		console.log('Model D range (along punch):', minD, 'to', maxD)
-		console.log('Target D range:', targetMinD, 'to', targetMaxD)
-		console.log('Stretch start/end D:', startD, endD, 'length:', stretchLength)
-		console.log('Projected points count:', projectedPoints2D.length)
-		console.log('Convex hull points count:', hullPoints.length)
-		console.log(
-			'Hull points (local to center):',
-			hullPoints.map((p) => ({ x: p.x - centerU, y: p.y - centerV }))
-		)
-		console.log('Start world:', startWorld)
-
 		const stretchedMesh = new THREE.Mesh(
 			stretchedGeom,
 			new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
@@ -5633,17 +5597,6 @@ export class SceneLayoutPreviewViewer {
 		).evaluate(targetBrush, toolBrush, SUBTRACTION)
 		const resultGeom = resultBrush.geometry
 
-		const targetVertexCount = (
-			targetWorldGeom as { getAttribute: (name: string) => { count: number } }
-		).getAttribute('position')
-		const resultVertexCount = (
-			resultGeom as { getAttribute: (name: string) => { count: number } }
-		).getAttribute('position')
-
-		console.log('=== Hole Punch Result ===')
-		console.log('Target vertex count:', targetVertexCount.count)
-		console.log('Result vertex count:', resultVertexCount.count)
-		console.log('CSG changed geometry:', targetVertexCount.count !== resultVertexCount.count)
 		;(
 			resultGeom as {
 				applyMatrix4: (m: unknown) => void
@@ -5790,23 +5743,6 @@ export class SceneLayoutPreviewViewer {
 		transformMatrix.multiply(basisMatrix)
 
 		stretchedBox.applyMatrix4(transformMatrix)
-
-		const resultBounds = new THREE.Box3()
-		const resultPosAttr = (
-			stretchedBox as unknown as { getAttribute: (name: string) => unknown }
-		).getAttribute('position')
-		;(
-			resultBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }
-		).setFromBufferAttribute(resultPosAttr)
-
-		console.log('=== Stretched Placeholder Debug ===')
-		console.log('Direction:', dirVec)
-		console.log('Tool center:', toolCenter)
-		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
-		console.log('Cross width/height:', crossWidth, crossHeight)
-		console.log('Stretch length:', stretchLength)
-		console.log('Result bounds min:', resultBounds.min)
-		console.log('Result bounds max:', resultBounds.max)
 		;(toolWorldGeom as { dispose?: () => void }).dispose?.()
 
 		return stretchedBox
@@ -5818,11 +5754,6 @@ export class SceneLayoutPreviewViewer {
 		distance: number,
 		localCenter: { x: number; y: number; z: number }
 	): unknown {
-		console.log('=== Stretched Tool Geometry Debug ===')
-		console.log('Direction:', direction)
-		console.log('Distance:', distance)
-		console.log('Local center:', localCenter)
-
 		const mergedGeometries: unknown[] = []
 
 		;(toolModel as unknown as { updateMatrixWorld: (force: boolean) => void }).updateMatrixWorld(
@@ -5845,10 +5776,7 @@ export class SceneLayoutPreviewViewer {
 			}
 		})
 
-		console.log('Merged geometries count:', mergedGeometries.length)
-
 		if (mergedGeometries.length === 0) {
-			console.log('No geometries found, returning fallback box')
 			return new THREE.BoxGeometry(1, 1, 1)
 		}
 
@@ -5857,7 +5785,6 @@ export class SceneLayoutPreviewViewer {
 			'position'
 		)
 		if (!posAttr) {
-			console.log('No position attribute, returning fallback box')
 			return new THREE.BoxGeometry(1, 1, 1)
 		}
 
@@ -5868,16 +5795,8 @@ export class SceneLayoutPreviewViewer {
 			geomBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }
 		).setFromBufferAttribute(posAttr)
 
-		const geomCenter = new THREE.Vector3() as unknown as Vector3Like
-		;(geomBounds as unknown as { getCenter: (target: Vector3Like) => void }).getCenter(geomCenter)
-
 		const geomSize = new THREE.Vector3() as unknown as Vector3Like
 		;(geomBounds as unknown as { getSize: (target: Vector3Like) => void }).getSize(geomSize)
-
-		console.log('Model bounds min:', (geomBounds as unknown as { min: Vector3Like }).min)
-		console.log('Model bounds max:', (geomBounds as unknown as { max: Vector3Like }).max)
-		console.log('Model center:', geomCenter)
-		console.log('Model size:', geomSize)
 
 		const crossWidth = Math.max(0.1, geomSize.x)
 		const crossHeight = Math.max(0.1, geomSize.y)
@@ -5903,23 +5822,6 @@ export class SceneLayoutPreviewViewer {
 			localCenter.x + offsetVec.x,
 			localCenter.y + offsetVec.y,
 			localCenter.z + offsetVec.z
-		)
-
-		const stretchedBounds = new THREE.Box3()
-		;(
-			stretchedBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }
-		).setFromBufferAttribute(
-			(stretchedBox as unknown as { getAttribute: (name: string) => unknown }).getAttribute(
-				'position'
-			)
-		)
-		console.log(
-			'Stretched box bounds min:',
-			(stretchedBounds as unknown as { min: Vector3Like }).min
-		)
-		console.log(
-			'Stretched box bounds max:',
-			(stretchedBounds as unknown as { max: Vector3Like }).max
 		)
 
 		return stretchedBox

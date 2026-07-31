@@ -1208,8 +1208,25 @@ const resetLightingControls = () => {
 }
 
 const outputSelectedPlaceholder = () => {
+	console.log('[SceneLayout:transfer] outputSelectedPlaceholder called')
 	const selectedId = String(selectedPreviewItemId.value ?? '').trim()
-	if (!selectedId || !canOutputSelectedPlaceholder.value) return
+	console.log(
+		'[SceneLayout:transfer] selectedId:',
+		selectedId,
+		'canOutputSelectedPlaceholder:',
+		canOutputSelectedPlaceholder.value
+	)
+	if (!selectedId || !canOutputSelectedPlaceholder.value) {
+		console.warn('[SceneLayout:transfer] outputSelectedPlaceholder early return', {
+			selectedId,
+			canOutput: canOutputSelectedPlaceholder.value
+		})
+		return
+	}
+	console.log(
+		'[SceneLayout:transfer] emitting set-selected-placeholder-output with id:',
+		selectedId
+	)
 	emit('set-selected-placeholder-output', selectedId)
 }
 
@@ -1954,6 +1971,7 @@ const disposeViewer = (reason?: string) => {
 	captureSnapshot()
 	viewer.dispose()
 	viewer = null
+	cachedLayoutSignature = '' // 重置缓存签名，下次需要重新setLayout
 }
 
 const waitForViewerReady = async () => {
@@ -2460,7 +2478,9 @@ onBeforeUnmount(() => {
 const getResolvedLayoutForUnreal = async (): Promise<
 	{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 > => {
+	console.info('[SceneLayoutNode] getResolvedLayoutForUnreal called')
 	if (!canvasRef.value) {
+		console.warn('[SceneLayoutNode] canvasRef not mounted')
 		return { ok: false, error: t('nodes.sceneLayout.errorCanvasNotMounted') }
 	}
 	ensureViewer()
@@ -2471,44 +2491,73 @@ const getResolvedLayoutForUnreal = async (): Promise<
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 	}
 	if (!viewer) {
+		console.warn('[SceneLayoutNode] viewer not ready after retries')
 		return { ok: false, error: t('nodes.sceneLayout.errorViewerNotReady') }
 	}
+	console.info('[SceneLayoutNode] viewer ready')
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
 	viewer.setSelectedItem(selectedPreviewItemId.value)
 	const currentSignature = layoutItemsSignature.value
+	const signatureChanged = currentSignature !== cachedLayoutSignature
 	const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
-	viewer.setLayout(
-		layoutItems.value,
-		cachedViewForExport ? null : settings.value?.camera,
-		{
-			transparent: renderTransparent.value,
-			previewMode: true,
-			lightingPreviewEnabled: lightingPreviewEnabled.value,
-			lightingDebugEnabled: lightingDebugEnabled.value,
-			lightingControls: lightingControls.value,
-			lightingJson: String(props.linkedLightingJsonText ?? ''),
-			modelBindings: sceneLayoutModelBindings.value,
-			hidePlaceholderCubes: hidePlaceholderCubes.value
-		},
-		cachedViewForExport
-	)
-	cachedLayoutSignature = currentSignature
+
+	// 只有当签名变化时才重新调用setLayout，避免重置模型加载过程
+	if (signatureChanged) {
+		console.info(
+			`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`
+		)
+		viewer.setLayout(
+			layoutItems.value,
+			cachedViewForExport ? null : settings.value?.camera,
+			{
+				transparent: renderTransparent.value,
+				previewMode: true,
+				lightingPreviewEnabled: lightingPreviewEnabled.value,
+				lightingDebugEnabled: lightingDebugEnabled.value,
+				lightingControls: lightingControls.value,
+				lightingJson: String(props.linkedLightingJsonText ?? ''),
+				modelBindings: sceneLayoutModelBindings.value,
+				hidePlaceholderCubes: hidePlaceholderCubes.value
+			},
+			cachedViewForExport
+		)
+		cachedLayoutSignature = currentSignature
+
+		// 等待模型绑定同步完成，给足够长的时间（8秒）
+		console.info('[SceneLayoutNode] Waiting for model bindings to sync (up to 8 seconds)...')
+		await viewer.awaitPendingBindingSync(8000)
+		console.info('[SceneLayoutNode] Model binding sync wait completed')
+	} else {
+		console.info('[SceneLayoutNode] Layout signature unchanged, reusing existing scene')
+		// 即使签名不变，也确保渲染没有暂停
+		viewer.setRenderSuspended(false)
+		await new Promise((r) => setTimeout(r, 100))
+	}
+
 	try {
+		console.info('[SceneLayoutNode] Calling viewer.exportResolvedLayoutForUnreal...')
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
+		console.info(
+			`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`
+		)
+		if (exportData.warnings.length > 0) {
+			console.warn('[SceneLayoutNode] Export warnings:', exportData.warnings)
+		}
 		if (!exportData.slots.length) {
 			const warningText = exportData.warnings[0] ?? t('nodes.sceneLayout.errorNoModelsToExport')
+			console.warn('[SceneLayoutNode] No slots to export:', warningText)
 			return { ok: false, error: warningText }
 		}
 		return { ok: true, exportData }
 	} catch (err) {
 		const errMessage =
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
+		console.error('[SceneLayoutNode] exportResolvedLayoutForUnreal threw error:', errMessage)
 		return { ok: false, error: t('nodes.sceneLayout.errorExportFailed', { error: errMessage }) }
 	} finally {
-		if (!previewActive.value) {
-			disposeViewer()
-		}
+		// 不要在这里销毁viewer - 导出重试过程中需要保持viewer存活
+		// 只有当组件真正卸载时才应该销毁viewer
 	}
 }
 

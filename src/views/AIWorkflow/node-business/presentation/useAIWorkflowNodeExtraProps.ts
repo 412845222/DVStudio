@@ -9,7 +9,7 @@ import {
 import type { InputParamPreviewRef } from './useAIWorkflowTextOutputResolver'
 import { watch } from 'vue'
 
-const DEBUG_LOG = true
+const DEBUG_LOG = import.meta.env.DEV
 const log = (...args: any[]) => {
 	if (DEBUG_LOG) console.log('[NodeExtraProps]', ...args)
 }
@@ -100,40 +100,40 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 		return fresh
 	}
 
-	const getUpstreamPassThroughImageNode = (node: WorkflowNode): WorkflowNode | null => {
-		if (node.type !== 'image') return null
-		if (node.resourceId) return null
-		// 按优先级查找图片输入边：in-0 (新多模态) > in-image > in-resource
-		let edge = payload.getFirstIncomingEdge(node.id, 'in-0')
-		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-image')
-		if (!edge) edge = payload.getFirstIncomingEdge(node.id, 'in-resource')
-		if (!edge) return null
-		const fromNode = payload.store.state.nodesById[String(edge.fromNodeId)] as
-			| WorkflowNode
-			| undefined
-		if (!fromNode || fromNode.type !== 'image') return null
-		if (!fromNode.resourceId) return null
-		return fromNode
-	}
-
+	// 注意：根据需求，图片节点不再自动透传上游图片
+	// 图片节点只有在自身有resourceId时才显示图片
+	// 上游图片仅在API参数收集时通过输入锚点显式获取，不自动渲染到当前节点
 	const resolveImageNodeEffectiveSource = (
 		node: WorkflowNode
 	): { sourceNode: WorkflowNode; isPassThrough: boolean } | null => {
 		if (node.type !== 'image') return null
+		// 仅在节点自身有resourceId时显示图片，不再自动透传上游
 		if (node.resourceId) {
 			return { sourceNode: node, isPassThrough: false }
-		}
-		const upstream = getUpstreamPassThroughImageNode(node)
-		if (upstream) {
-			return { sourceNode: upstream, isPassThrough: true }
 		}
 		return null
 	}
 
 	const buildImageNodeProps = (node: WorkflowNode) => {
 		const effective = resolveImageNodeEffectiveSource(node)
-		const sourceNode = effective?.sourceNode ?? node
-		const isPassThrough = effective?.isPassThrough ?? false
+
+		// 当effective为null时（节点无自身resourceId），不显示任何图片资源
+		if (!effective) {
+			return {
+				resourceUrl: null,
+				resourceSourcePath: null,
+				resourcePreviewUrl320: null,
+				resourcePreviewUrl640: null,
+				resourcePreviewVersion: null,
+				resourceName: null,
+				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
+				imageSettings: node.imageSettings ?? null,
+				upstreamCroppedImageUrl: null
+			}
+		}
+
+		const sourceNode = effective.sourceNode
+		const isPassThrough = effective.isPassThrough
 
 		const rid = String(sourceNode.resourceId ?? '').trim()
 		const resource = rid ? payload.store.state.resourcesById[rid] : null
@@ -160,12 +160,10 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			resourceUrl:
 				upstreamCroppedImageUrl || sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(sourceNode)),
 			resourceSourcePath: resourceSourcePath || null,
-			// 始终保留预览图，不清空已加载的图片
 			resourcePreviewUrl320: imagePreviewUrl320 || null,
 			resourcePreviewUrl640: imagePreviewUrl640 || imagePreviewUrl320 || null,
 			resourcePreviewVersion: imagePreviewVersion || null,
 			resourceName: payload.nodeResourceName(sourceNode),
-			// 始终保留输入参数引用
 			inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id),
 			imageSettings,
 			upstreamCroppedImageUrl: upstreamCroppedImageUrl
@@ -304,203 +302,205 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const linkedJsonText = payload.connectedTextInputValue(node.id, 'in-json')
 			const shedHeavyMedia = shouldShedHeavyMedia()
 
-			// ============== 场景分解节点全链路诊断 ==============
-			const DIAG_KEY_DECOMPOSE = `__diag_sceneDecompose_${node.id}`
-			if (!(window as any)[DIAG_KEY_DECOMPOSE]) {
-				;(window as any)[DIAG_KEY_DECOMPOSE] = true
-				// eslint-disable-next-line no-console
-				console.log('═══════════════════════════════════════════════════════════')
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] START for nodeId =', node.id)
+			// ============== 场景分解节点全链路诊断（仅开发环境启用 ==============
+			if (DEBUG_LOG) {
+				const DIAG_KEY_DECOMPOSE = `__diag_sceneDecompose_${node.id}`
+				if (!(window as any)[DIAG_KEY_DECOMPOSE]) {
+					;(window as any)[DIAG_KEY_DECOMPOSE] = true
+					// eslint-disable-next-line no-console
+					console.log('═══════════════════════════════════════════════════════════')
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] START for nodeId =', node.id)
 
-				// 1. 当前节点 inputs 定义
-				const myInputs = Array.isArray(node.inputs)
-					? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
-					: []
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] node.inputs =', myInputs)
+					// 1. 当前节点 inputs 定义
+					const myInputs = Array.isArray(node.inputs)
+						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
+						: []
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] node.inputs =', myInputs)
 
-				// 2. 从 store 里直接抓所有 edges
-				const storeState: any = payload.store.state
-				const allEdges: any[] = Object.values(storeState.edgesById ?? {})
-				const incomingToMe = allEdges.filter((e: any) => String(e?.toNodeId ?? '') === node.id)
-				// eslint-disable-next-line no-console
-				console.log(
-					'[SCENE-DECOMPOSE CHAIN DIAG] total edges in store =',
-					allEdges.length,
-					', edges pointing TO this scene-decompose node:',
-					incomingToMe.map((e) => ({
-						id: e.id,
-						fromNodeId: e.fromNodeId,
-						fromAnchorId: e.fromAnchorId,
-						toNodeId: e.toNodeId,
-						toAnchorId: e.toAnchorId
-					}))
-				)
-
-				// 3. 对每个 incoming edge 打印 upstream 节点信息
-				const nodesById: Record<string, any> = storeState.nodesById ?? {}
-				incomingToMe.forEach((e: any, idx: number) => {
-					const upId = String(e?.fromNodeId ?? '')
-					const upNode = upId ? nodesById[upId] : null
+					// 2. 从 store 里直接抓所有 edges
+					const storeState: any = payload.store.state
+					const allEdges: any[] = Object.values(storeState.edgesById ?? {})
+					const incomingToMe = allEdges.filter((e: any) => String(e?.toNodeId ?? '') === node.id)
 					// eslint-disable-next-line no-console
 					console.log(
-						`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`,
-						{
-							edgeId: e?.id,
-							fromAnchorId: e?.fromAnchorId,
-							upstreamNodeExists: !!upNode,
-							upstreamNodeType: upNode?.type,
-							upstreamNodeId: upId
-						}
+						'[SCENE-DECOMPOSE CHAIN DIAG] total edges in store =',
+						allEdges.length,
+						', edges pointing TO this scene-decompose node:',
+						incomingToMe.map((e) => ({
+							id: e.id,
+							fromNodeId: e.fromNodeId,
+							fromAnchorId: e.fromAnchorId,
+							toNodeId: e.toNodeId,
+							toAnchorId: e.toAnchorId
+						}))
 					)
-					if (upNode) {
-						// 打印上游节点的相关输出字段
-						if (upNode.type === 'scene-layout') {
-							const sls = upNode.sceneLayoutSettings
-							// eslint-disable-next-line no-console
-							console.log(
-								`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream sceneLayoutSettings:`,
-								{
-									status: sls?.status,
-									inputJson_len: String(sls?.inputJson ?? '').length,
-									outputJson_len: String(sls?.outputJson ?? '').length,
-									outputJson_preview: sls?.outputJson
-										? `${String(sls.outputJson).slice(0, 300)}...`
-										: '(empty/undefined)',
-									outputJson_isString: typeof sls?.outputJson === 'string',
-									running: upNode.running,
-									error: upNode.error
-								}
-							)
-						} else if (upNode.type === 'scene-understanding') {
-							const sus = upNode.sceneUnderstandingSettings
-							// eslint-disable-next-line no-console
-							console.log(
-								`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream sceneUnderstandingSettings:`,
-								{
-									mode: sus?.mode,
-									outputJson_len: String(sus?.outputJson ?? '').length,
-									outputJson_preview: sus?.outputJson
-										? `${String(sus.outputJson).slice(0, 300)}...`
-										: '(empty/undefined)',
-									outputJson_isString: typeof sus?.outputJson === 'string',
-									running: upNode.running,
-									error: upNode.error
-								}
-							)
-						} else {
-							// 其他 upstream 类型，列出主要字段
-							// eslint-disable-next-line no-console
-							console.log(
-								`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream node data keys:`,
-								Object.keys(upNode).filter((k) => /output|text|result|json/i.test(k))
-							)
-						}
-						// upstream 的 outputs 锚点
-						const upOutputs = Array.isArray(upNode.outputs)
-							? upNode.outputs.map((a: any) => ({
-									id: a.id,
-									label: a.label,
-									mediaType: a.mediaType
-								}))
-							: []
+
+					// 3. 对每个 incoming edge 打印 upstream 节点信息
+					const nodesById: Record<string, any> = storeState.nodesById ?? {}
+					incomingToMe.forEach((e: any, idx: number) => {
+						const upId = String(e?.fromNodeId ?? '')
+						const upNode = upId ? nodesById[upId] : null
 						// eslint-disable-next-line no-console
 						console.log(
-							`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream.outputs =`,
-							upOutputs
+							`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`,
+							{
+								edgeId: e?.id,
+								fromAnchorId: e?.fromAnchorId,
+								upstreamNodeExists: !!upNode,
+								upstreamNodeType: upNode?.type,
+								upstreamNodeId: upId
+							}
 						)
+						if (upNode) {
+							// 打印上游节点的相关输出字段
+							if (upNode.type === 'scene-layout') {
+								const sls = upNode.sceneLayoutSettings
+								// eslint-disable-next-line no-console
+								console.log(
+									`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream sceneLayoutSettings:`,
+									{
+										status: sls?.status,
+										inputJson_len: String(sls?.inputJson ?? '').length,
+										outputJson_len: String(sls?.outputJson ?? '').length,
+										outputJson_preview: sls?.outputJson
+											? `${String(sls.outputJson).slice(0, 300)}...`
+											: '(empty/undefined)',
+										outputJson_isString: typeof sls?.outputJson === 'string',
+										running: upNode.running,
+										error: upNode.error
+									}
+								)
+							} else if (upNode.type === 'scene-understanding') {
+								const sus = upNode.sceneUnderstandingSettings
+								// eslint-disable-next-line no-console
+								console.log(
+									`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream sceneUnderstandingSettings:`,
+									{
+										mode: sus?.mode,
+										outputJson_len: String(sus?.outputJson ?? '').length,
+										outputJson_preview: sus?.outputJson
+											? `${String(sus.outputJson).slice(0, 300)}...`
+											: '(empty/undefined)',
+										outputJson_isString: typeof sus?.outputJson === 'string',
+										running: upNode.running,
+										error: upNode.error
+									}
+								)
+							} else {
+								// 其他 upstream 类型，列出主要字段
+								// eslint-disable-next-line no-console
+								console.log(
+									`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream node data keys:`,
+									Object.keys(upNode).filter((k) => /output|text|result|json/i.test(k))
+								)
+							}
+							// upstream 的 outputs 锚点
+							const upOutputs = Array.isArray(upNode.outputs)
+								? upNode.outputs.map((a: any) => ({
+										id: a.id,
+										label: a.label,
+										mediaType: a.mediaType
+									}))
+								: []
+							// eslint-disable-next-line no-console
+							console.log(
+								`[SCENE-DECOMPOSE CHAIN DIAG] incoming#${idx} upstream.outputs =`,
+								upOutputs
+							)
+						}
+					})
+
+					// 4. getFirstIncomingEdge('in-json') 的结果
+					try {
+						const incJson = payload.getFirstIncomingEdge(node.id, 'in-json')
+						// eslint-disable-next-line no-console
+						console.log(
+							'[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-json") =',
+							incJson
+								? {
+										id: incJson.id,
+										fromNodeId: (incJson as any).fromNodeId,
+										fromAnchorId: (incJson as any).fromAnchorId,
+										toAnchorId: (incJson as any).toAnchorId
+									}
+								: null
+						)
+					} catch (err) {
+						// eslint-disable-next-line no-console
+						console.log('[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge threw:', err)
 					}
-				})
 
-				// 4. getFirstIncomingEdge('in-json') 的结果
-				try {
-					const incJson = payload.getFirstIncomingEdge(node.id, 'in-json')
+					// 5. getFirstIncomingEdge('in-image') 的结果
+					try {
+						const incImage = payload.getFirstIncomingEdge(node.id, 'in-image')
+						// eslint-disable-next-line no-console
+						console.log(
+							'[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-image") =',
+							incImage
+								? {
+										id: incImage.id,
+										fromNodeId: (incImage as any).fromNodeId,
+										fromAnchorId: (incImage as any).fromAnchorId,
+										toAnchorId: (incImage as any).toAnchorId
+									}
+								: null
+						)
+					} catch (err) {
+						// eslint-disable-next-line no-console
+						console.log('[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(in-image) threw:', err)
+					}
+
+					// 6. connectedTextInputValue 结果
 					// eslint-disable-next-line no-console
-					console.log(
-						'[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-json") =',
-						incJson
-							? {
-									id: incJson.id,
-									fromNodeId: (incJson as any).fromNodeId,
-									fromAnchorId: (incJson as any).fromAnchorId,
-									toAnchorId: (incJson as any).toAnchorId
-								}
-							: null
-					)
-				} catch (err) {
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] connectedTextInputValue("in-json") result:', {
+						type: typeof linkedJsonText,
+						len: String(linkedJsonText ?? '').length,
+						preview: linkedJsonText
+							? `${String(linkedJsonText).slice(0, 200)}...`
+							: '(empty/null/undefined)'
+					})
+
+					// 7. connectedSceneDecomposeImageInputs 结果
 					// eslint-disable-next-line no-console
-					console.log('[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge threw:', err)
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] connectedSceneDecomposeImageInputs result:', {
+						count: linkedImages.length,
+						urls: linkedImages.map((img) => ({
+							url: img.url ? `${img.url.slice(0, 100)}...` : '(empty)',
+							width: img.width,
+							height: img.height
+						}))
+					})
+
+					// 8. sceneDecomposeSettings
+					const sds = storeNode?.sceneDecomposeSettings as any
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] storeNode.sceneDecomposeSettings:', {
+						status: sds?.status,
+						message: sds?.message,
+						inputs_len: sds?.inputs ? String(sds.inputs).length : 0,
+						outputs_count: Array.isArray(sds?.outputs) ? sds.outputs.length : 0
+					})
+
+					// 9. 计算 canRun 条件
+					const linkedImageCount = Array.isArray(linkedImages)
+						? linkedImages.filter((item) => !!String(item?.url ?? '').trim()).length
+						: 0
+					const hasJsonInput = !!String(linkedJsonText ?? '').trim()
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] canRun calculation:', {
+						linkedImageCount,
+						hasJsonInput,
+						canRun: linkedImageCount > 0 && hasJsonInput,
+						running: (node as any).running
+					})
+
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-DECOMPOSE CHAIN DIAG] END')
+					// eslint-disable-next-line no-console
+					console.log('═══════════════════════════════════════════════════════════')
 				}
-
-				// 5. getFirstIncomingEdge('in-image') 的结果
-				try {
-					const incImage = payload.getFirstIncomingEdge(node.id, 'in-image')
-					// eslint-disable-next-line no-console
-					console.log(
-						'[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-image") =',
-						incImage
-							? {
-									id: incImage.id,
-									fromNodeId: (incImage as any).fromNodeId,
-									fromAnchorId: (incImage as any).fromAnchorId,
-									toAnchorId: (incImage as any).toAnchorId
-								}
-							: null
-					)
-				} catch (err) {
-					// eslint-disable-next-line no-console
-					console.log('[SCENE-DECOMPOSE CHAIN DIAG] getFirstIncomingEdge(in-image) threw:', err)
-				}
-
-				// 6. connectedTextInputValue 结果
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] connectedTextInputValue("in-json") result:', {
-					type: typeof linkedJsonText,
-					len: String(linkedJsonText ?? '').length,
-					preview: linkedJsonText
-						? `${String(linkedJsonText).slice(0, 200)}...`
-						: '(empty/null/undefined)'
-				})
-
-				// 7. connectedSceneDecomposeImageInputs 结果
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] connectedSceneDecomposeImageInputs result:', {
-					count: linkedImages.length,
-					urls: linkedImages.map((img) => ({
-						url: img.url ? `${img.url.slice(0, 100)}...` : '(empty)',
-						width: img.width,
-						height: img.height
-					}))
-				})
-
-				// 8. sceneDecomposeSettings
-				const sds = storeNode?.sceneDecomposeSettings as any
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] storeNode.sceneDecomposeSettings:', {
-					status: sds?.status,
-					message: sds?.message,
-					inputs_len: sds?.inputs ? String(sds.inputs).length : 0,
-					outputs_count: Array.isArray(sds?.outputs) ? sds.outputs.length : 0
-				})
-
-				// 9. 计算 canRun 条件
-				const linkedImageCount = Array.isArray(linkedImages)
-					? linkedImages.filter((item) => !!String(item?.url ?? '').trim()).length
-					: 0
-				const hasJsonInput = !!String(linkedJsonText ?? '').trim()
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] canRun calculation:', {
-					linkedImageCount,
-					hasJsonInput,
-					canRun: linkedImageCount > 0 && hasJsonInput,
-					running: (node as any).running
-				})
-
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-DECOMPOSE CHAIN DIAG] END')
-				// eslint-disable-next-line no-console
-				console.log('═══════════════════════════════════════════════════════════')
 			}
 
 			return {
@@ -518,134 +518,136 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			const linkedJsonText = payload.connectedTextInputValue(node.id, 'in-json')
 			const linkedLightingJsonText = payload.connectedTextInputValue(node.id, 'in-lighting-json')
 
-			// ============== 场景布局节点全链路诊断（只在首次遇到该节点时打印一次）==============
-			const DIAG_KEY = `__diag_sceneLayout_${node.id}`
-			if (!(window as any)[DIAG_KEY]) {
-				;(window as any)[DIAG_KEY] = true
-				// eslint-disable-next-line no-console
-				console.log('═══════════════════════════════════════════════════════════')
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-LAYOUT CHAIN DIAG] START for nodeId =', node.id)
-
-				// 1. 当前节点 inputs 定义
-				const myInputs = Array.isArray(node.inputs)
-					? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
-					: []
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-LAYOUT CHAIN DIAG] node.inputs =', myInputs)
-
-				// 2. 从 store 里直接抓所有 edges
-				const storeState: any = payload.store.state
-				const allEdges: any[] = Object.values(storeState.edgesById ?? {})
-				const incomingToMe = allEdges.filter((e: any) => String(e?.toNodeId ?? '') === node.id)
-				// eslint-disable-next-line no-console
-				console.log(
-					'[SCENE-LAYOUT CHAIN DIAG] total edges in store =',
-					allEdges.length,
-					', edges pointing TO this scene-layout node:',
-					incomingToMe.map((e) => ({
-						id: e.id,
-						fromNodeId: e.fromNodeId,
-						fromAnchorId: e.fromAnchorId,
-						toNodeId: e.toNodeId,
-						toAnchorId: e.toAnchorId
-					}))
-				)
-
-				// 3. 对每个 incoming edge 打印 upstream 节点信息
-				const nodesById: Record<string, any> = storeState.nodesById ?? {}
-				incomingToMe.forEach((e: any, idx: number) => {
-					const upId = String(e?.fromNodeId ?? '')
-					const upNode = upId ? nodesById[upId] : null
+			// ============== 场景布局节点全链路诊断（仅开发环境启用）==============
+			if (DEBUG_LOG) {
+				const DIAG_KEY = `__diag_sceneLayout_${node.id}`
+				if (!(window as any)[DIAG_KEY]) {
+					;(window as any)[DIAG_KEY] = true
 					// eslint-disable-next-line no-console
-					console.log(`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`, {
-						edgeId: e?.id,
-						fromAnchorId: e?.fromAnchorId,
-						upstreamNodeExists: !!upNode,
-						upstreamNodeType: upNode?.type,
-						upstreamNodeId: upId
-					})
-					if (upNode) {
-						if (upNode.type === 'scene-understanding') {
-							const sus = upNode.sceneUnderstandingSettings
-							// eslint-disable-next-line no-console
-							console.log(
-								`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream sceneUnderstandingSettings:`,
-								{
-									mode: sus?.mode,
-									outputJson_len: String(sus?.outputJson ?? '').length,
-									outputJson_preview: sus?.outputJson
-										? `${String(sus.outputJson).slice(0, 300)}...`
-										: '(empty/undefined)',
-									outputJson_isString: typeof sus?.outputJson === 'string',
-									running: upNode.running,
-									error: upNode.error
-								}
-							)
-						} else {
-							// 其他 upstream 类型，列出主要字段
-							// eslint-disable-next-line no-console
-							console.log(
-								`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream node data keys:`,
-								Object.keys(upNode).filter((k) => /output|text|result|json/i.test(k))
-							)
-						}
-						// upstream 的 outputs 锚点
-						const upOutputs = Array.isArray(upNode.outputs)
-							? upNode.outputs.map((a: any) => ({
-									id: a.id,
-									label: a.label,
-									mediaType: a.mediaType
-								}))
-							: []
-						// eslint-disable-next-line no-console
-						console.log(`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream.outputs =`, upOutputs)
-					}
-				})
+					console.log('═══════════════════════════════════════════════════════════')
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-LAYOUT CHAIN DIAG] START for nodeId =', node.id)
 
-				// 4. getFirstIncomingEdge('in-json') 的结果
-				try {
-					const incJson = payload.getFirstIncomingEdge(node.id, 'in-json')
+					// 1. 当前节点 inputs 定义
+					const myInputs = Array.isArray(node.inputs)
+						? node.inputs.map((a) => ({ id: a.id, label: a.label, mediaType: a.mediaType }))
+						: []
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-LAYOUT CHAIN DIAG] node.inputs =', myInputs)
+
+					// 2. 从 store 里直接抓所有 edges
+					const storeState: any = payload.store.state
+					const allEdges: any[] = Object.values(storeState.edgesById ?? {})
+					const incomingToMe = allEdges.filter((e: any) => String(e?.toNodeId ?? '') === node.id)
 					// eslint-disable-next-line no-console
 					console.log(
-						'[SCENE-LAYOUT CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-json") =',
-						incJson
-							? {
-									id: incJson.id,
-									fromNodeId: (incJson as any).fromNodeId,
-									fromAnchorId: (incJson as any).fromAnchorId,
-									toAnchorId: (incJson as any).toAnchorId
-								}
-							: null
+						'[SCENE-LAYOUT CHAIN DIAG] total edges in store =',
+						allEdges.length,
+						', edges pointing TO this scene-layout node:',
+						incomingToMe.map((e) => ({
+							id: e.id,
+							fromNodeId: e.fromNodeId,
+							fromAnchorId: e.fromAnchorId,
+							toNodeId: e.toNodeId,
+							toAnchorId: e.toAnchorId
+						}))
 					)
-				} catch (err) {
+
+					// 3. 对每个 incoming edge 打印 upstream 节点信息
+					const nodesById: Record<string, any> = storeState.nodesById ?? {}
+					incomingToMe.forEach((e: any, idx: number) => {
+						const upId = String(e?.fromNodeId ?? '')
+						const upNode = upId ? nodesById[upId] : null
+						// eslint-disable-next-line no-console
+						console.log(`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} toAnchorId="${e?.toAnchorId}"`, {
+							edgeId: e?.id,
+							fromAnchorId: e?.fromAnchorId,
+							upstreamNodeExists: !!upNode,
+							upstreamNodeType: upNode?.type,
+							upstreamNodeId: upId
+						})
+						if (upNode) {
+							if (upNode.type === 'scene-understanding') {
+								const sus = upNode.sceneUnderstandingSettings
+								// eslint-disable-next-line no-console
+								console.log(
+									`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream sceneUnderstandingSettings:`,
+									{
+										mode: sus?.mode,
+										outputJson_len: String(sus?.outputJson ?? '').length,
+										outputJson_preview: sus?.outputJson
+											? `${String(sus.outputJson).slice(0, 300)}...`
+											: '(empty/undefined)',
+										outputJson_isString: typeof sus?.outputJson === 'string',
+										running: upNode.running,
+										error: upNode.error
+									}
+								)
+							} else {
+								// 其他 upstream 类型，列出主要字段
+								// eslint-disable-next-line no-console
+								console.log(
+									`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream node data keys:`,
+									Object.keys(upNode).filter((k) => /output|text|result|json/i.test(k))
+								)
+							}
+							// upstream 的 outputs 锚点
+							const upOutputs = Array.isArray(upNode.outputs)
+								? upNode.outputs.map((a: any) => ({
+										id: a.id,
+										label: a.label,
+										mediaType: a.mediaType
+									}))
+								: []
+							// eslint-disable-next-line no-console
+							console.log(`[SCENE-LAYOUT CHAIN DIAG] incoming#${idx} upstream.outputs =`, upOutputs)
+						}
+					})
+
+					// 4. getFirstIncomingEdge('in-json') 的结果
+					try {
+						const incJson = payload.getFirstIncomingEdge(node.id, 'in-json')
+						// eslint-disable-next-line no-console
+						console.log(
+							'[SCENE-LAYOUT CHAIN DIAG] getFirstIncomingEdge(nodeId, "in-json") =',
+							incJson
+								? {
+										id: incJson.id,
+										fromNodeId: (incJson as any).fromNodeId,
+										fromAnchorId: (incJson as any).fromAnchorId,
+										toAnchorId: (incJson as any).toAnchorId
+									}
+								: null
+						)
+					} catch (err) {
+						// eslint-disable-next-line no-console
+						console.log('[SCENE-LAYOUT CHAIN DIAG] getFirstIncomingEdge threw:', err)
+					}
+
+					// 5. connectedTextInputValue 结果
 					// eslint-disable-next-line no-console
-					console.log('[SCENE-LAYOUT CHAIN DIAG] getFirstIncomingEdge threw:', err)
+					console.log('[SCENE-LAYOUT CHAIN DIAG] connectedTextInputValue("in-json") result:', {
+						type: typeof linkedJsonText,
+						len: String(linkedJsonText ?? '').length,
+						preview: linkedJsonText
+							? `${String(linkedJsonText).slice(0, 200)}...`
+							: '(empty/null/undefined)'
+					})
+
+					// 6. sceneLayoutSettings.inputJson（用户手动输入的兜底 JSON）
+					const sls = storeNode?.sceneLayoutSettings as any
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-LAYOUT CHAIN DIAG] storeNode.sceneLayoutSettings.inputJson:', {
+						exists: !!sls?.inputJson,
+						len: String(sls?.inputJson ?? '').length,
+						preview: sls?.inputJson ? `${String(sls.inputJson).slice(0, 200)}...` : '(empty)'
+					})
+
+					// eslint-disable-next-line no-console
+					console.log('[SCENE-LAYOUT CHAIN DIAG] END')
+					// eslint-disable-next-line no-console
+					console.log('═══════════════════════════════════════════════════════════')
 				}
-
-				// 5. connectedTextInputValue 结果
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-LAYOUT CHAIN DIAG] connectedTextInputValue("in-json") result:', {
-					type: typeof linkedJsonText,
-					len: String(linkedJsonText ?? '').length,
-					preview: linkedJsonText
-						? `${String(linkedJsonText).slice(0, 200)}...`
-						: '(empty/null/undefined)'
-				})
-
-				// 6. sceneLayoutSettings.inputJson（用户手动输入的兜底 JSON）
-				const sls = storeNode?.sceneLayoutSettings as any
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-LAYOUT CHAIN DIAG] storeNode.sceneLayoutSettings.inputJson:', {
-					exists: !!sls?.inputJson,
-					len: String(sls?.inputJson ?? '').length,
-					preview: sls?.inputJson ? `${String(sls.inputJson).slice(0, 200)}...` : '(empty)'
-				})
-
-				// eslint-disable-next-line no-console
-				console.log('[SCENE-LAYOUT CHAIN DIAG] END')
-				// eslint-disable-next-line no-console
-				console.log('═══════════════════════════════════════════════════════════')
 			}
 
 			const storeSceneLayoutSettings = (storeNode?.sceneLayoutSettings ?? null) as Record<
@@ -770,7 +772,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				canStart: ts?.canStart,
 				hasViewer: !!(full as Record<string, unknown>).threePreviewState
 			})
-			if (node.type === 'scene-layout') {
+			if (DEBUG_LOG && node.type === 'scene-layout') {
 				const f = full as Record<string, unknown>
 				// 改用 console.log + info 级别，避免 debug 级别被过滤
 				// eslint-disable-next-line no-console

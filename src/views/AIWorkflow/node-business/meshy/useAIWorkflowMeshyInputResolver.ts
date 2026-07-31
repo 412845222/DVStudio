@@ -38,7 +38,13 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		placeholderJson?: string
 		placeholderName: string
 	} | null>
-	resolveGeneratedModelTransferSource: (file: File) => Promise<{ transferUrl: string }>
+	resolveGeneratedModelTransferSource: (file: File) => Promise<{
+		transferUrl: string
+		assetUrl: string
+		backendUrl: string
+		assetPath: string
+		projectRelativePath: string
+	}>
 	captureModel3DNodeCanvasPreview: (nodeId: string) => string
 }) => {
 	const MESHY_SAFE_MIN_IMAGE_SIDE = 60
@@ -147,7 +153,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 	const isImageInEdge = (e: WorkflowEdge) => {
 		const id = String(e.toAnchorId ?? '').trim()
-		return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+		// 移除in-resource，保留in-image、in-0（多模态）和in-image-N系列锚点
+		return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
 	}
 
 	const connectedMeshyImageUrls = (nodeId: string) => {
@@ -290,9 +297,12 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const generated = await options.createSceneLayoutPlaceholderModelFile(fromNode.id)
 			if (!generated) return null
 			const transfer = await options.resolveGeneratedModelTransferSource(generated.file)
+			const rawUrl = String(transfer.backendUrl || transfer.transferUrl || '').trim()
 			return {
 				inputTaskId: undefined,
-				modelUrl: transfer.transferUrl,
+				modelUrl: rawUrl
+					? await normalizeMeshyModelInputValue(rawUrl, `scene_layout_${fromNode.id}`)
+					: '',
 				sourceName: generated.file.name
 			}
 		}
@@ -342,7 +352,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 		if (fromNode.type === 'meshy') {
 			const thumbnail = options.getMeshyDisplayThumbnailUrl(getNodeMeshySettings(fromNode))
-			const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
+			const displayName =
+				String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 			return {
 				url: thumbnail,
 				label: t('tasks.meshy.sourceMeshyNode', { name: displayName })
@@ -357,7 +368,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			}
 		}
 
-		const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
+		const displayName =
+			String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 		return {
 			url: '',
 			label: t('tasks.meshy.sourceNode', { name: displayName })
@@ -511,7 +523,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		/^out-image(?:-\d+)?$/.test(String(e.fromAnchorId ?? '')) &&
 		(() => {
 			const toAnchorId = String(e.toAnchorId ?? '').trim()
-			return toAnchorId === 'in-image' || toAnchorId === 'in-resource' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
+			return toAnchorId === 'in-image' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
 		})()
 
 	const hasConnectedMeshyConsumer = (node: WorkflowNode) => {
@@ -534,7 +546,7 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		/^out-image-(\d+)$/.test(String(e.fromAnchorId ?? '')) &&
 		(() => {
 			const toAnchorId = String(e.toAnchorId ?? '').trim()
-			return toAnchorId === 'in-image' || toAnchorId === 'in-resource' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
+			return toAnchorId === 'in-image' || toAnchorId === 'in-0' || /^in-image-\d+$/.test(toAnchorId)
 		})()
 
 	const missingMeshyImageOutputAnchors = (node: WorkflowNode) => {

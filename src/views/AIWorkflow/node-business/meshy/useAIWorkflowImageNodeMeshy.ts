@@ -18,7 +18,8 @@ type MeshyImageNodeSettings = Record<string, unknown>
 
 const isImageInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+	// in-resource已从image节点移除，保留in-image、in-0（多模态）和in-image-N系列
+	return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
 }
 
 const getEffectiveImageUrl = (
@@ -28,27 +29,33 @@ const getEffectiveImageUrl = (
 ): string | null => {
 	const resourceRid = String((node as Record<string, unknown>).resourceId ?? '').trim()
 	if (resourceRid) {
-		const resourcesById = (store.state as Record<string, unknown>).resourcesById as Record<string, Record<string, unknown>> | undefined
+		const resourcesById = (store.state as Record<string, unknown>).resourcesById as
+			| Record<string, Record<string, unknown>>
+			| undefined
 		const res = resourcesById?.[resourceRid]
 		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
 		if (resUrl) return resUrl
 	}
-	const imgSettings = typeof (node as Record<string, unknown>).imageSettings === 'object' && (node as Record<string, unknown>).imageSettings
-		? ((node as Record<string, unknown>).imageSettings as Record<string, unknown>)
-		: {}
-	const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
-		? String(imgSettings.lastGeneratedImageUrl).trim()
-		: ''
+	const imgSettings =
+		typeof (node as Record<string, unknown>).imageSettings === 'object' &&
+		(node as Record<string, unknown>).imageSettings
+			? ((node as Record<string, unknown>).imageSettings as Record<string, unknown>)
+			: {}
+	const lastGenUrl =
+		typeof imgSettings?.lastGeneratedImageUrl === 'string'
+			? String(imgSettings.lastGeneratedImageUrl).trim()
+			: ''
 	if (lastGenUrl) return lastGenUrl
-	const meshySettings = typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
-		? (imgSettings.meshyImageSettings as Record<string, unknown>)
-		: {}
-	const meshySummary = typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
-		? (meshySettings.outputSummary as Record<string, unknown>)
-		: {}
-	const meshyUrl = typeof meshySummary?.preferredUrl === 'string'
-		? String(meshySummary.preferredUrl).trim()
-		: ''
+	const meshySettings =
+		typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
+			? (imgSettings.meshyImageSettings as Record<string, unknown>)
+			: {}
+	const meshySummary =
+		typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+			? (meshySettings.outputSummary as Record<string, unknown>)
+			: {}
+	const meshyUrl =
+		typeof meshySummary?.preferredUrl === 'string' ? String(meshySummary.preferredUrl).trim() : ''
 	if (meshyUrl) return meshyUrl
 	if (typeof nodeResourceUrl === 'function') {
 		const standardUrl = nodeResourceUrl(node)
@@ -134,9 +141,9 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const node = options.getNode()
 		if (!node || !options.getIncomingEdges) return []
 
-		const incoming = options.getIncomingEdges(options.nodeId).filter((e) =>
-			isImageInputAnchor(String(e.toAnchorId ?? ''))
-		)
+		const incoming = options
+			.getIncomingEdges(options.nodeId)
+			.filter((e) => isImageInputAnchor(String(e.toAnchorId ?? '')))
 
 		const state = options.store.state as {
 			nodesById: Record<string, WorkflowNode>
@@ -215,9 +222,7 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const meshyOutputImageCount = Number(
 			chatParams.meshyOutputImageCount ?? meshyImageSettings.outputCount ?? 1
 		)
-		const meshySeed = Number(
-			chatParams.meshySeed ?? meshyImageSettings.seed ?? -1
-		)
+		const meshySeed = Number(chatParams.meshySeed ?? meshyImageSettings.seed ?? -1)
 
 		const refs = await collectReferenceImages()
 		const hasRefImages = refs.length > 0
@@ -248,8 +253,14 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 			payload.output_image_count = 4
 		} else {
 			payload.aspect_ratio = meshyAspectRatio
-			console.log(`[Meshy Image Node] ${taskType}: EXPLICITLY setting aspect_ratio=${payload.aspect_ratio}, model=${meshyAiModel}`)
-			if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+			console.log(
+				`[Meshy Image Node] ${taskType}: EXPLICITLY setting aspect_ratio=${payload.aspect_ratio}, model=${meshyAiModel}`
+			)
+			if (
+				Number.isFinite(meshyOutputImageCount) &&
+				meshyOutputImageCount > 0 &&
+				meshyOutputImageCount <= 4
+			) {
 				payload.output_image_count = Math.floor(meshyOutputImageCount)
 			}
 		}
@@ -267,7 +278,11 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 			poseMode: meshyPoseMode || 'None',
 			generateMultiView: meshyGenerateMultiView,
 			negativePrompt: meshyNegativePrompt || 'None',
-			outputCount: meshyGenerateMultiView ? 4 : (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1),
+			outputCount: meshyGenerateMultiView
+				? 4
+				: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0
+					? Math.floor(meshyOutputImageCount)
+					: 1,
 			seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
 			referenceImageCount: hasRefImages ? refs.length : 0,
 			submittedAt: new Date().toISOString()
@@ -322,7 +337,10 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 				console.log('[Meshy Image Node] 发送请求 payload:', JSON.stringify(result.payload, null, 2))
 
 				let res: MeshyGenerateResponse
-				if (result.refs.length > 0 && typeof options.getComfyService().meshyGenerateImage === 'function') {
+				if (
+					result.refs.length > 0 &&
+					typeof options.getComfyService().meshyGenerateImage === 'function'
+				) {
 					const form = new FormData()
 					for (const key of Object.keys(result.payload)) {
 						const value = (result.payload as Record<string, unknown>)[key]
@@ -339,7 +357,10 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 					for (const ref of result.refs) {
 						form.append('refImages', ref.blob, ref.name)
 					}
-					console.log('[Meshy Image Node] 使用meshyGenerateImage（FormData路径），refCount:', result.refs.length)
+					console.log(
+						'[Meshy Image Node] 使用meshyGenerateImage（FormData路径），refCount:',
+						result.refs.length
+					)
 					res = await options.getComfyService().meshyGenerateImage!(form)
 				} else {
 					res = await options.getComfyService().meshyGenerate(result.payload)
@@ -399,17 +420,25 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const node = options.getNode()
 		if (!node) return
 
-		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(
+			meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image'
+		).trim()
 		try {
 			const res = await options.getComfyService().meshyTask(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast(t('tasks.meshy.refreshStatusFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.refreshStatusFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			await applyMeshyTaskResult(options.nodeId, res)
 			options.pushToast(t('tasks.meshy.statusRefreshed'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.meshy.refreshStatusException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.refreshStatusException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 
@@ -417,11 +446,16 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const currentTaskId = taskId.value
 		if (!currentTaskId) return
 
-		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(
+			meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image'
+		).trim()
 		try {
 			const res = await options.getComfyService().meshyStop(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast(t('tasks.meshy.stopTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.stopTaskFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			stopMeshyPoll(options.nodeId)
@@ -440,11 +474,16 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 		const currentTaskId = taskId.value
 		if (!currentTaskId) return
 
-		const mode = String(meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image').trim()
+		const mode = String(
+			meshySettings.value.taskFamily ?? meshySettings.value.mode ?? 'text-to-image'
+		).trim()
 		try {
 			const res = await options.getComfyService().meshyDelete(currentTaskId, mode)
 			if (!res.ok) {
-				options.pushToast(t('tasks.meshy.deleteTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.deleteTaskFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			stopMeshyPoll(options.nodeId)
@@ -457,7 +496,10 @@ export const useAIWorkflowImageNodeMeshy = (options: {
 			})
 			options.pushToast(t('tasks.meshy.taskDeletedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.meshy.deleteTaskException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.deleteTaskException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 

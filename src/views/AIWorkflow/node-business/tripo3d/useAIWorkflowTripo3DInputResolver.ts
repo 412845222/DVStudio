@@ -108,7 +108,8 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 
 	const isImageInEdge = (e: WorkflowEdge) => {
 		const id = String(e.toAnchorId ?? '').trim()
-		return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+		// 移除in-resource，保留in-image、in-0（多模态）和in-image-N系列锚点
+		return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
 	}
 
 	const connectedTripo3DImageUrls = (nodeId: string) => {
@@ -366,7 +367,8 @@ export const useAIWorkflowTripo3DInputResolver = (options: {
 
 	const connectedTripo3DModelInput = async (nodeId: string) => {
 		let edge = options.getFirstIncomingEdge(nodeId, 'in-model')
-		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-resource')
+		// in-resource已从image节点移除，改用in-0（多模态锚点支持model3d类型输入）
+		if (!edge) edge = options.getFirstIncomingEdge(nodeId, 'in-0')
 		if (!edge) return null
 		const fromNode = options.store.state.nodesById[String(edge.fromNodeId ?? '')]
 		if (!fromNode) return null

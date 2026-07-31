@@ -64,7 +64,8 @@ export const useAIWorkflowVideoScreenshot = (payload: {
 	videoScreenshotNodeTitle: string
 }) => {
 	const VIDEO_OUTPUT_ANCHOR_ID = 'out-resource'
-	const IMAGE_INPUT_ANCHOR_ID = 'in-resource'
+	// image节点已移除in-resource锚点，改用in-0（多模态输入）
+	const IMAGE_INPUT_ANCHOR_ID = 'in-0'
 
 	const log = (message: string, ...args: unknown[]) => {
 		console.log(`${LOG_PREFIX} ${message}`, ...args)

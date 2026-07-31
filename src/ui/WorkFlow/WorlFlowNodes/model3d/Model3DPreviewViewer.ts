@@ -172,6 +172,7 @@ export class Model3DPreviewViewer {
 	private readonly controls: OrbitControlsLike
 	private readonly ambientLight: LightLike
 	private readonly directionalLight: LightLike
+	private readonly fillLight: LightLike
 	private grid: GridHelperLike
 	private axes: GridHelperLike
 	private readonly loader: GLTFLoaderLike
@@ -207,6 +208,8 @@ export class Model3DPreviewViewer {
 			preserveDrawingBuffer: true
 		}) as unknown as WebGLRendererLike
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace
+		this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+		this.renderer.toneMappingExposure = 1.1
 		this.renderer.setPixelRatio(Math.max(1, Math.min(window.devicePixelRatio || 1, 2)))
 		this.renderer.setClearColor('#0f1720', 1)
 
@@ -243,15 +246,20 @@ export class Model3DPreviewViewer {
 		canvas.addEventListener('pointermove', this.handlePointerMove, { passive: true })
 		canvas.addEventListener('wheel', this.handleWheel, { passive: true })
 
-		this.ambientLight = new THREE.HemisphereLight(
-			'#dbeafe',
-			'#233146',
-			1.15
-		) as unknown as LightLike
-		this.directionalLight = new THREE.DirectionalLight('#ffffff', 2) as unknown as LightLike
+		this.ambientLight = new THREE.HemisphereLight('#ffffff', '#4a5568', 1.2) as unknown as LightLike
+		this.directionalLight = new THREE.DirectionalLight('#ffffff', 2.0) as unknown as LightLike
 		this.directionalLight.position.set(4, 8, 5)
+		this.fillLight = new THREE.DirectionalLight('#e0f2fe', 0.8) as unknown as LightLike
+		this.fillLight.position.set(-5, 4, -4)
+		const rimLight = new THREE.DirectionalLight('#fef3c7', 0.6)
+		rimLight.position.set(0, 3, -6)
+		const topLight = new THREE.DirectionalLight('#f8fafc', 1.0)
+		topLight.position.set(0, 10, 0)
 		this.scene.add(this.ambientLight)
 		this.scene.add(this.directionalLight)
+		this.scene.add(this.fillLight)
+		this.scene.add(rimLight as unknown as Object3Dlike)
+		this.scene.add(topLight as unknown as Object3Dlike)
 
 		this.grid = new THREE.GridHelper(8, 16, '#64748b', '#334155')
 		this.grid.position.y = 0
@@ -351,11 +359,20 @@ export class Model3DPreviewViewer {
 
 	setOptions(options?: Model3DPreviewOptions) {
 		if (!options) return
-		if (options.backgroundColor) this.renderer.setClearColor(options.backgroundColor, 1)
+		if (options.backgroundColor) {
+			this.renderer.setClearColor(options.backgroundColor, 1)
+			const bg = (
+				this.scene as unknown as { background: { isColor?: boolean; set?: (c: string) => void } }
+			).background
+			if (bg && typeof bg.set === 'function') {
+				bg.set(options.backgroundColor)
+			}
+		}
 		if (options.lightIntensity != null) {
 			const next = Math.max(0, Math.min(10, Number(options.lightIntensity) || 0))
-			this.ambientLight.intensity = 0.8 * next
-			this.directionalLight.intensity = 1.35 * next
+			this.ambientLight.intensity = 1.2 * next
+			this.directionalLight.intensity = 2.0 * next
+			this.fillLight.intensity = 0.8 * next
 		}
 		if (typeof options.gridVisible === 'boolean') this.grid.visible = options.gridVisible
 		if (typeof options.axesVisible === 'boolean') this.axes.visible = options.axesVisible
@@ -460,6 +477,10 @@ export class Model3DPreviewViewer {
 		this.requestRenderBurst(6, 28)
 	}
 
+	hasModel() {
+		return this.currentObject != null
+	}
+
 	captureSnapshotDataUrl() {
 		try {
 			return this.canvas.toDataURL('image/png')
@@ -494,8 +515,43 @@ export class Model3DPreviewViewer {
 		this.clearModel()
 		this.currentObject = object
 		this.scene.add(object)
+		// 修复材质问题：确保材质设置正确，避免全黑
+		this.repairMaterials(object)
 		this.frameObject(object, cachedView)
 		this.requestRenderBurst(10, 24)
+	}
+
+	private repairMaterials(root: Object3Dlike) {
+		root.traverse((child) => {
+			if (!isMeshLike(child)) return
+			const mesh = child as unknown as {
+				isMesh: boolean
+				frustumCulled: boolean
+				material: MaterialLike | MaterialLike[]
+			}
+			if (!mesh.isMesh) return
+			mesh.frustumCulled = false
+			const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+			for (const mat of materials) {
+				if (!mat) continue
+				// 确保双面渲染避免背面剔除造成的"黑洞"
+				const anyMat = mat as unknown as Record<string, unknown>
+				if ('side' in anyMat) anyMat.side = 2 // THREE.DoubleSide = 2
+				// 对标准材质进行修复：适当调整金属度/粗糙度避免黑面
+				if (anyMat.color && typeof anyMat.color === 'object') {
+					const metalness = anyMat.metalness as number | undefined
+					const roughness = anyMat.roughness as number | undefined
+					if (typeof metalness === 'number' && typeof roughness === 'number') {
+						if (metalness > 0.9 && roughness < 0.05) {
+							anyMat.roughness = Math.max(roughness, 0.15)
+						}
+					}
+					if (typeof anyMat.needsUpdate === 'boolean') {
+						anyMat.needsUpdate = true
+					}
+				}
+			}
+		})
 	}
 
 	private updateEnvironmentScale(targetSize: number) {

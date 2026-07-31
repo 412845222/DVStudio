@@ -789,12 +789,18 @@ export type WorkflowMeshyModelSettings = {
 	statusText?: string
 	errorMessage?: string
 	outputSummary?: {
+		outputKind?: 'image' | '3d-model'
 		preferredUrl?: string
 		assetUrl?: string
 		assetPath?: string
 		thumbnailUrl?: string
 		format?: string
+		imageUrls?: string[]
 	}
+	outputAssetUrl?: string
+	outputAssetPath?: string
+	thumbnailUrl?: string
+	relationSummary?: Record<string, unknown>
 	relationKind?: 'model' | 'texture' | 'rigging' | 'animation'
 	rootTaskId?: string
 	parentTaskId?: string

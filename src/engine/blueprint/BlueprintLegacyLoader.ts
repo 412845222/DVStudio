@@ -35,7 +35,8 @@ export class BlueprintLegacyLoader {
 		for (const edgeId of edgeOrder) {
 			const legacyEdge = legacyData.edgesById[edgeId]
 			if (!legacyEdge) continue
-			edges.push({ ...legacyEdge })
+			const migratedEdge = this.migrateEdge(legacyEdge, legacyData.nodesById)
+			edges.push(migratedEdge)
 		}
 
 		if (legacyData.savedSelectionFrames) {
@@ -88,10 +89,48 @@ export class BlueprintLegacyLoader {
 		}
 	}
 
+	private static migrateEdge(
+		legacyEdge: ConnectionData,
+		nodesById: Record<string, any>
+	): ConnectionData {
+		const edge = { ...legacyEdge }
+		const toNodeId = String(edge.toNodeId ?? '')
+		const toNode = nodesById[toNodeId]
+		// 如果目标节点是image节点，且连接到in-resource锚点，重定向到in-0
+		if (
+			toNode &&
+			String(toNode.type ?? '') === 'image' &&
+			String(edge.toAnchorId ?? '') === 'in-resource'
+		) {
+			edge.toAnchorId = 'in-0'
+		}
+		return edge
+	}
+
 	private static convertNode(legacyNode: any): BlueprintNodeData {
 		const type = legacyNode.type || 'generic'
 		const defaultSize = DEFAULT_NODE_SIZES[type] ||
 			DEFAULT_NODE_SIZES.base || { width: 240, height: 160 }
+
+		// 处理image节点：移除in-resource锚点（如果存在）
+		let inputs = legacyNode.inputs || []
+		if (type === 'image' && Array.isArray(inputs)) {
+			inputs = inputs.filter((p: any) => String(p?.id ?? '') !== 'in-resource')
+			// 如果过滤后没有in-0锚点（极端情况），确保有in-0
+			const hasIn0 = inputs.some((p: any) => String(p?.id ?? '') === 'in-0')
+			if (!hasIn0) {
+				inputs = [
+					{
+						id: 'in-0',
+						label: '多模态输入',
+						mediaType: 'generic',
+						acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+						multiInput: true
+					},
+					...inputs
+				]
+			}
+		}
 
 		const node: BlueprintNodeData = {
 			id: legacyNode.id,
@@ -107,7 +146,7 @@ export class BlueprintLegacyLoader {
 				legacyNode.sizeCustomized !== undefined
 					? legacyNode.sizeCustomized
 					: !!(legacyNode.width && legacyNode.height),
-			inputs: legacyNode.inputs || [],
+			inputs,
 			outputs: legacyNode.outputs || [],
 			color: legacyNode.color,
 			icon: legacyNode.icon,

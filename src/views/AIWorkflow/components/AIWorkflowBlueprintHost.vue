@@ -15,9 +15,11 @@ interface Props {
 	theme?: 'light' | 'dark'
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId?: Record<string, string[]>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRef[]>
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
+	forceDomNodeIds?: string[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -95,6 +97,10 @@ const emit = defineEmits<{
 		payload: { nodeId: string; file: File; objectId?: string }
 	]
 	'node-update-model-bindings': [payload: { nodeId: string; bindings: any[] }]
+	'node-export-unreal-scene': [nodeId: string]
+	'node-export-unreal-lighting': [nodeId: string]
+	'node-disconnect-unreal': [nodeId: string]
+	'node-set-asset-root-path': [payload: { nodeId: string; path: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -363,9 +369,11 @@ watch(
 			:theme="theme"
 			:chat-state="chatState"
 			:node-generation-tasks="nodeGenerationTasks"
+			:node-generation-task-ids-by-node-id="nodeGenerationTaskIdsByNodeId"
 			:legacy-resources="legacyResources"
 			:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 			:extra-props-resolver="extraPropsResolver"
+			:force-dom-node-ids="forceDomNodeIds"
 			@change="onBlueprintEditorChange"
 			@selection-change="onBlueprintEditorSelectionChange"
 			@viewport-change="onBlueprintEditorViewportChange"
@@ -425,6 +433,10 @@ watch(
 				(p: any) => emit('node-upload-scene-layout-model-file', p)
 			"
 			@node-update-model-bindings="(p: any) => emit('node-update-model-bindings', p)"
+			@node-export-unreal-scene="(id: string) => emit('node-export-unreal-scene', id)"
+			@node-export-unreal-lighting="(id: string) => emit('node-export-unreal-lighting', id)"
+			@node-disconnect-unreal="(id: string) => emit('node-disconnect-unreal', id)"
+			@node-set-asset-root-path="(p: any) => emit('node-set-asset-root-path', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

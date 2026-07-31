@@ -283,96 +283,147 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						}
 					}
 				} else if (preferredModelUrl) {
-					commitMeshyDownloadProgress(nodeId, node, {
-						stage: 'downloading',
-						progress: 0,
-						loaded: 0,
-						total: 0,
-						speed: 0,
-						error: ''
-					})
-					const fileName = `meshy_${task.taskId || nodeId}.${format}`
-					const persisted = await options.persistExternalAssetToProject({
-						kind: 'file',
-						name: fileName,
-						sourceUrl: preferredModelUrl,
-						sourcePath: task.sourceModelUrl || undefined,
-						onProgress: (info: ExternalAssetProgress) => {
-							commitMeshyDownloadProgress(nodeId, node, {
-								stage: 'downloading',
-								progress: info.percentage,
-								loaded: info.loaded,
-								total: info.total,
-								speed: info.speed
-							})
-						}
-					})
-					patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
-					patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
+					const backendLocalAssetUrl = String(task.localAssetUrl ?? '').trim()
+					const backendLocalAssetPath = String(task.localAssetPath ?? '').trim()
+					const hasBackendLocalAsset =
+						!!backendLocalAssetUrl && !isMeshyRemoteUrl(backendLocalAssetUrl)
 
-					if (!resolvedThumbnailUrl && thumbnailUrl) {
-						try {
-							const thumbName = `meshy_${task.taskId || nodeId}_preview${options.fileExtensionFromUrl(thumbnailUrl, '.png')}`
-							const persistedThumb = await options.persistExternalAssetToProject({
-								kind: 'image',
-								name: thumbName,
-								sourceUrl: thumbnailUrl
-							})
-							const localThumb = String(persistedThumb?.url || '').trim()
-							if (localThumb) {
-								resolvedThumbnailUrl = localThumb
+					if (hasBackendLocalAsset) {
+						patch.meshyOutputAssetUrl = backendLocalAssetUrl
+						patch.meshyOutputAssetPath = backendLocalAssetPath || undefined
+						commitMeshyDownloadProgress(nodeId, node, { stage: 'done', progress: 100 })
+
+						if (!resolvedThumbnailUrl && thumbnailUrl) {
+							if (!isMeshyRemoteUrl(thumbnailUrl)) {
+								resolvedThumbnailUrl = thumbnailUrl
+							} else {
+								try {
+									const thumbName = `meshy_${task.taskId || nodeId}_preview${options.fileExtensionFromUrl(thumbnailUrl, '.png')}`
+									const persistedThumb = await options.persistExternalAssetToProject({
+										kind: 'image',
+										name: thumbName,
+										sourceUrl: thumbnailUrl
+									})
+									const localThumb = String(persistedThumb?.url || '').trim()
+									if (localThumb) {
+										resolvedThumbnailUrl = localThumb
+									}
+								} catch {
+									// Ignore thumbnail persistence errors
+								}
 							}
-						} catch {
-							// Ignore thumbnail persistence errors
-						}
-					}
-
-					patch.meshyOutputSummary = {
-						...(isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary : {}),
-						outputKind: '3d-model',
-						preferredUrl: preferredModelUrl,
-						imageUrls: undefined,
-						assetUrl: String(persisted?.url || preferredModelUrl),
-						assetPath: String(persisted?.absolutePath || '').trim() || undefined,
-						thumbnailUrl: resolvedThumbnailUrl || undefined,
-						format
-					}
-					patch.meshyRelationSummary = {
-						...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
-						effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
-						effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
-						effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
-					}
-					patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
-
-					if (node.type === 'model3d' && persisted?.url) {
-						const resourceId = `meshy-model-${task.taskId || nodeId}-${Date.now()}`
-						const resourceName = `meshy_model_${resourceId.slice(-8)}`
-
-						const resourceBase = {
-							id: resourceId,
-							kind: 'model3d',
-							name: resourceName,
-							url: String(persisted.url || preferredModelUrl),
-							sourcePath: String(persisted.absolutePath || '').trim() || undefined,
-							projectRelativePath: String(persisted.projectRelativePath || '').trim() || undefined,
-							posterUrl: resolvedThumbnailUrl || undefined,
-							createdAt: Date.now()
 						}
 
-						const state = options.store.state as unknown as Record<string, unknown>
-						const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
-						const existingResource =
-							resourcesById[resourceId] ||
-							(Array.isArray(state.resources) &&
-								(state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
-						if (!existingResource) {
-							options.store.commit('addResource', resourceBase)
+						patch.meshyOutputSummary = {
+							...(isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary : {}),
+							outputKind: '3d-model',
+							preferredUrl: preferredModelUrl,
+							imageUrls: undefined,
+							assetUrl: backendLocalAssetUrl,
+							assetPath: backendLocalAssetPath || undefined,
+							thumbnailUrl: resolvedThumbnailUrl || undefined,
+							format
+						}
+						patch.meshyRelationSummary = {
+							...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
+							effectiveLocalAssetUrl: backendLocalAssetUrl,
+							effectiveLocalAssetPath: backendLocalAssetPath || undefined,
+							effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
+						}
+						patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
+					} else {
+						commitMeshyDownloadProgress(nodeId, node, {
+							stage: 'downloading',
+							progress: 0,
+							loaded: 0,
+							total: 0,
+							speed: 0,
+							error: ''
+						})
+						const fileName = `meshy_${task.taskId || nodeId}.${format}`
+						const persisted = await options.persistExternalAssetToProject({
+							kind: 'file',
+							name: fileName,
+							sourceUrl: preferredModelUrl,
+							sourcePath: task.sourceModelUrl || undefined,
+							onProgress: (info: ExternalAssetProgress) => {
+								commitMeshyDownloadProgress(nodeId, node, {
+									stage: 'downloading',
+									progress: info.percentage,
+									loaded: info.loaded,
+									total: info.total,
+									speed: info.speed
+								})
+							}
+						})
+						patch.meshyOutputAssetUrl = String(persisted?.url || preferredModelUrl)
+						patch.meshyOutputAssetPath = String(persisted?.absolutePath || '').trim() || undefined
+
+						if (!resolvedThumbnailUrl && thumbnailUrl) {
+							try {
+								const thumbName = `meshy_${task.taskId || nodeId}_preview${options.fileExtensionFromUrl(thumbnailUrl, '.png')}`
+								const persistedThumb = await options.persistExternalAssetToProject({
+									kind: 'image',
+									name: thumbName,
+									sourceUrl: thumbnailUrl
+								})
+								const localThumb = String(persistedThumb?.url || '').trim()
+								if (localThumb) {
+									resolvedThumbnailUrl = localThumb
+								}
+							} catch {
+								// Ignore thumbnail persistence errors
+							}
 						}
 
-						options.store.commit('setNodeResource', { nodeId, resourceId })
+						patch.meshyOutputSummary = {
+							...(isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary : {}),
+							outputKind: '3d-model',
+							preferredUrl: preferredModelUrl,
+							imageUrls: undefined,
+							assetUrl: String(persisted?.url || preferredModelUrl),
+							assetPath: String(persisted?.absolutePath || '').trim() || undefined,
+							thumbnailUrl: resolvedThumbnailUrl || undefined,
+							format
+						}
+						patch.meshyRelationSummary = {
+							...(isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}),
+							effectiveLocalAssetUrl: String(persisted?.url || preferredModelUrl),
+							effectiveLocalAssetPath: String(persisted?.absolutePath || '').trim() || undefined,
+							effectiveThumbnailUrl: resolvedThumbnailUrl || undefined
+						}
+						patch.meshyThumbnailUrl = resolvedThumbnailUrl || undefined
+
+						if (node.type === 'model3d' && persisted?.url) {
+							const resourceId = `meshy-model-${task.taskId || nodeId}-${Date.now()}`
+							const resourceName = `meshy_model_${resourceId.slice(-8)}`
+
+							const resourceBase = {
+								id: resourceId,
+								kind: 'model3d',
+								name: resourceName,
+								url: String(persisted.url || preferredModelUrl),
+								sourcePath: String(persisted.absolutePath || '').trim() || undefined,
+								projectRelativePath:
+									String(persisted.projectRelativePath || '').trim() || undefined,
+								posterUrl: resolvedThumbnailUrl || undefined,
+								createdAt: Date.now()
+							}
+
+							const state = options.store.state as unknown as Record<string, unknown>
+							const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
+							const existingResource =
+								resourcesById[resourceId] ||
+								(Array.isArray(state.resources) &&
+									(state.resources as Array<{ id: string }>).find((r) => r.id === resourceId))
+							if (!existingResource) {
+								options.store.commit('addResource', resourceBase)
+							}
+
+							options.store.commit('setNodeResource', { nodeId, resourceId })
+						}
+						commitMeshyDownloadProgress(nodeId, node, { stage: 'done', progress: 100 })
 					}
-					commitMeshyDownloadProgress(nodeId, node, { stage: 'done', progress: 100 })
 				}
 			} catch (e: unknown) {
 				const errMsg = e instanceof Error ? e.message : String(e)
@@ -425,7 +476,9 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const imagePatch: Record<string, unknown> = {
 				taskId: patch.meshyTaskId,
 				taskStatus: normalized,
-				taskFamily: String(task.mode ?? '').includes('image') ? 'text-to-image' : 'text-to-3d',
+				taskFamily: String(task.mode || '').includes('image-to-image')
+					? 'image-to-image'
+					: 'text-to-image',
 				progress: patch.meshyProgress,
 				statusText: patch.meshyStatusText,
 				errorMessage: patch.meshyErrorMessage,
@@ -458,12 +511,18 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					statusText: patch.meshyStatusText,
 					errorMessage: patch.meshyErrorMessage,
 					outputSummary: patch.meshyOutputSummary,
+					outputAssetUrl: patch.meshyOutputAssetUrl,
+					outputAssetPath: patch.meshyOutputAssetPath,
+					thumbnailUrl: resolvedThumbnailUrl || undefined,
+					relationSummary: patch.meshyRelationSummary,
 					imageCount: Number(existingMeshy.imageCount ?? 0),
 					imageUrls: Array.isArray(existingMeshy.imageUrls) ? existingMeshy.imageUrls : [],
 					prompt: String(existingMeshy.prompt ?? '')
 				}
 			}
 
+			let finalLocalAssetUrl = ''
+			let finalLocalAssetPath = ''
 			if (normalized === 'succeeded' && patch.meshyOutputAssetUrl) {
 				const newAssetUrl = String(patch.meshyOutputAssetUrl)
 				const newIsRemote = isMeshyRemoteUrl(newAssetUrl)
@@ -472,10 +531,21 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				const existingLocalUrl = !isMeshyRemoteUrl(existingModelAssetUrl)
 					? existingModelAssetUrl
 					: !isMeshyRemoteUrl(existingModelUrl)
-					? existingModelUrl
-					: ''
+						? existingModelUrl
+						: ''
 
-				if (!newIsRemote || !existingLocalUrl) {
+				if (!newIsRemote) {
+					model3dPatch.modelUrl = newAssetUrl
+					model3dPatch.modelAssetUrl = newAssetUrl
+					model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
+					model3dPatch.modelFormat =
+						isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
+							? patch.meshyOutputSummary.format
+							: format
+					model3dPatch.modelGenerationSource = 'meshy'
+					finalLocalAssetUrl = newAssetUrl
+					finalLocalAssetPath = String(patch.meshyOutputAssetPath || '')
+				} else if (!existingLocalUrl) {
 					model3dPatch.modelUrl = newAssetUrl
 					model3dPatch.modelAssetUrl = newAssetUrl
 					model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
@@ -488,6 +558,30 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			}
 
 			options.store.commit('setNodeModel3DSettings', { nodeId, model3dSettings: model3dPatch })
+
+			if (finalLocalAssetUrl && task.taskId) {
+				const comfySvc = options.getComfyService()
+				void comfySvc
+					.meshyUpdateLocalAsset({
+						taskId: String(task.taskId),
+						localAssetUrl: finalLocalAssetUrl,
+						localAssetPath: finalLocalAssetPath || undefined,
+						lastNodeId: nodeId
+					})
+					.then((res) => {
+						if (!res.ok) {
+							console.warn('[Meshy Runtime] 回写本地资源URL到后端失败:', res.error)
+						} else {
+							console.log('[Meshy Runtime] 本地资源URL已回写到后端:', {
+								taskId: task.taskId,
+								localAssetUrl: finalLocalAssetUrl
+							})
+						}
+					})
+					.catch((err) => {
+						console.warn('[Meshy Runtime] 回写本地资源URL异常:', err)
+					})
+			}
 		} else {
 			options.store.commit('setNodeMeshySettings', { nodeId, meshySettings: patch })
 		}
@@ -651,12 +745,16 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						const finalTarget = String(mode).includes('image') ? 'image' : '3d'
 						if (finalStatus === 'succeeded') {
 							options.pushToast(
-								finalTarget === 'image' ? t('tasks.meshy.imageTaskCompleted') : t('tasks.meshy.model3dTaskCompleted'),
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskCompleted')
+									: t('tasks.meshy.model3dTaskCompleted'),
 								'info'
 							)
 						} else if (finalStatus === 'failed') {
 							options.pushToast(
-								finalTarget === 'image' ? t('tasks.meshy.imageTaskFailed') : t('tasks.meshy.model3dTaskFailed'),
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskFailed')
+									: t('tasks.meshy.model3dTaskFailed'),
 								'warn'
 							)
 						} else {
@@ -688,8 +786,24 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const n = options.store.state.nodesById[id] as WorkflowNodeLike | undefined
 			if (n && (n.type === 'image' || n.type === 'model3d')) {
 				const status = getNodeMeshyTaskStatus(n)
-				if (status === 'pending' || status === 'running' || status === 'queued' || status === 'in_progress') {
+				const taskId = getNodeMeshyTaskId(n)
+				if (
+					status === 'pending' ||
+					status === 'running' ||
+					status === 'queued' ||
+					status === 'in_progress'
+				) {
 					meshyNodes.push(n)
+				} else if (status === 'succeeded' && taskId && n.type === 'model3d') {
+					const m3dSettings = isRecord(n.model3dSettings) ? n.model3dSettings : {}
+					const modelUrl = String(m3dSettings.modelUrl ?? '').trim()
+					const modelAssetUrl = String(m3dSettings.modelAssetUrl ?? '').trim()
+					const hasLocalUrl =
+						(modelUrl && !isMeshyRemoteUrl(modelUrl)) ||
+						(modelAssetUrl && !isMeshyRemoteUrl(modelAssetUrl))
+					if (!hasLocalUrl) {
+						meshyNodes.push(n)
+					}
 				}
 			}
 		}
@@ -699,7 +813,10 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const taskId = getNodeMeshyTaskId(node)
 			const taskFamily = getNodeMeshyTaskFamily(node)
 			if (!taskId) {
-				commitMeshyTaskFailed(nodeId, node, t('tasks.meshy.taskIdLostCannotRecover'))
+				const status = getNodeMeshyTaskStatus(node)
+				if (status !== 'succeeded') {
+					commitMeshyTaskFailed(nodeId, node, t('tasks.meshy.taskIdLostCannotRecover'))
+				}
 				continue
 			}
 
@@ -707,18 +824,29 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				const res = await options.getComfyService().meshyTask(taskId, taskFamily)
 				if (!res.ok) {
 					if (!opts?.silent) {
-						options.pushToast(t('aiworkflow.toast.meshyQueryFailed', { name: node.alias || node.title || nodeId }), 'warn')
+						options.pushToast(
+							t('aiworkflow.toast.meshyQueryFailed', { name: node.alias || node.title || nodeId }),
+							'warn'
+						)
 					}
 					continue
 				}
 
 				const finalStatus = await applyMeshyTaskResult(nodeId, res)
-				if (finalStatus === 'pending' || finalStatus === 'running' || finalStatus === 'queued' || finalStatus === 'in_progress') {
+				if (
+					finalStatus === 'pending' ||
+					finalStatus === 'running' ||
+					finalStatus === 'queued' ||
+					finalStatus === 'in_progress'
+				) {
 					startMeshyPoll(nodeId, taskId, taskFamily)
 				}
 			} catch {
 				if (!opts?.silent) {
-					options.pushToast(t('aiworkflow.toast.meshyResumeFailed', { name: node.alias || node.title || nodeId }), 'warn')
+					options.pushToast(
+						t('aiworkflow.toast.meshyResumeFailed', { name: node.alias || node.title || nodeId }),
+						'warn'
+					)
 				}
 			}
 		}

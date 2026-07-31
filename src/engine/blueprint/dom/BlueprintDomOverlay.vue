@@ -36,6 +36,7 @@
 						:input-param-preview-refs-by-node-id="inputParamPreviewRefsResolved"
 						:chat-state="chatState"
 						:generation-tasks="nodeGenerationTasks"
+						:generation-task-ids-by-node-id="nodeGenerationTaskIdsByNodeId"
 						:extra-props-resolver="extraPropsResolver"
 						@edit="(id: string) => handleBusinessEdit(id)"
 						@contextmenu="handleBusinessContextMenu"
@@ -78,6 +79,10 @@
 						@three-preview-progress="onBusinessThreePreviewProgress"
 						@upload-scene-layout-model-file="onBusinessUploadSceneLayoutModelFile"
 						@update-model-bindings="onBusinessUpdateModelBindings"
+						@export-unreal-scene="onBusinessExportUnrealScene"
+						@export-unreal-lighting="onBusinessExportUnrealLighting"
+						@disconnect-unreal="onBusinessDisconnectUnreal"
+						@set-asset-root-path="onBusinessSetAssetRootPath"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -205,6 +210,10 @@ const emit = defineEmits<{
 		payload: { nodeId: string; file: File; objectId?: string }
 	): void
 	(e: 'node-update-model-bindings', payload: { nodeId: string; bindings: any[] }): void
+	(e: 'node-export-unreal-scene', nodeId: string): void
+	(e: 'node-export-unreal-lighting', nodeId: string): void
+	(e: 'node-disconnect-unreal', nodeId: string): void
+	(e: 'node-set-asset-root-path', payload: { nodeId: string; path: string }): void
 }>()
 
 const props = defineProps<{
@@ -212,10 +221,12 @@ const props = defineProps<{
 	showDebug?: boolean
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId?: Record<string, string[]>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	editingNodeId?: string | null
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
+	forceDomNodeIds?: string[]
 }>()
 
 const overlayRef = ref<HTMLDivElement | null>(null)
@@ -570,6 +581,22 @@ function onBusinessUploadSceneLayoutModelFile(payload: {
 
 function onBusinessUpdateModelBindings(payload: { nodeId: string; bindings: any[] }) {
 	emit('node-update-model-bindings', payload)
+}
+
+function onBusinessExportUnrealScene(nodeId: string) {
+	emit('node-export-unreal-scene', nodeId)
+}
+
+function onBusinessExportUnrealLighting(nodeId: string) {
+	emit('node-export-unreal-lighting', nodeId)
+}
+
+function onBusinessDisconnectUnreal(nodeId: string) {
+	emit('node-disconnect-unreal', nodeId)
+}
+
+function onBusinessSetAssetRootPath(payload: { nodeId: string; path: string }) {
+	emit('node-set-asset-root-path', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })
@@ -1131,15 +1158,42 @@ function getNodeStatus(node: BlueprintNode): NodeStatus {
 		return dataStatus
 	}
 	if (props.nodeGenerationTasks) {
-		const tasks = Object.values(props.nodeGenerationTasks)
-		const nodeTask = tasks.find((t) => t.nodeId === node.id)
-		if (nodeTask) {
-			if (nodeTask.status === 'submitting' || nodeTask.status === 'running') return 'running'
-			if (nodeTask.status === 'error') return 'error'
-			if (nodeTask.status === 'completed') return 'success'
+		const nodeId = node.id
+		const tasks = Object.values(props.nodeGenerationTasks).filter((t) => t.nodeId === nodeId)
+		if (tasks.length > 0) {
+			// 优先检查活跃任务
+			const activeTask = tasks.find((t) => t.status === 'submitting' || t.status === 'running')
+			if (activeTask) return 'running'
+			// 没有活跃任务，取最新已结束任务
+			const taskIds = props.nodeGenerationTaskIdsByNodeId?.[nodeId]
+			let latestFinishedTask: WorkflowNodeGenerationTask | undefined
+			if (taskIds && taskIds.length > 0) {
+				for (const tid of taskIds) {
+					const t = props.nodeGenerationTasks[tid]
+					if (t && (t.status === 'error' || t.status === 'completed')) {
+						latestFinishedTask = t
+						break
+					}
+				}
+			}
+			if (!latestFinishedTask) {
+				latestFinishedTask = [...tasks]
+					.filter((t) => t.status === 'error' || t.status === 'completed')
+					.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))[0]
+			}
+			if (latestFinishedTask) {
+				if (latestFinishedTask.status === 'error') return 'error'
+				if (latestFinishedTask.status === 'completed') return 'success'
+			}
 		}
 	}
 	return 'idle'
+}
+
+function isNodeTaskSubmitting(nodeId: string): boolean {
+	if (!props.nodeGenerationTasks) return false
+	const tasks = Object.values(props.nodeGenerationTasks).filter((t) => t.nodeId === nodeId)
+	return tasks.some((t) => t.status === 'submitting' || t.status === 'running')
 }
 
 function getNodeAccentColor(node: BlueprintNode): string {
@@ -1200,11 +1254,9 @@ function syncDomNodes() {
 
 	const isEngineDragging = s.isEngineDragging
 	const isDomInteracting = isInteractionLocked.value
-	const isViewportPanning = s.isViewportPanning
-	const isEngineOrDomInteracting = isDomInteracting || isEngineDragging || isViewportPanning
 
 	let nodesToRender: BlueprintNode[]
-	if (isEngineDragging || isViewportPanning) {
+	if (isEngineDragging) {
 		nodesToRender = []
 	} else if (isDomInteracting) {
 		nodesToRender = []
@@ -1224,6 +1276,18 @@ function syncDomNodes() {
 			const chatNode = s.getBlueprintNode(props.chatState.nodeId)
 			if (chatNode && !nodesToRender.some((n) => n.id === chatNode.id)) {
 				nodesToRender.push(chatNode)
+			}
+		}
+		// 强制渲染指定节点（用于需要节点DOM存在的场景，如Unreal导出需要Three.js预览）
+		if (Array.isArray(props.forceDomNodeIds) && props.forceDomNodeIds.length > 0) {
+			for (const forceId of props.forceDomNodeIds) {
+				const normalizedId = String(forceId ?? '').trim()
+				if (!normalizedId) continue
+				if (nodesToRender.some((n) => n.id === normalizedId)) continue
+				const forceNode = s.getBlueprintNode(normalizedId)
+				if (forceNode) {
+					nodesToRender.push(forceNode)
+				}
 			}
 		}
 	}
@@ -1580,9 +1644,7 @@ const chatApi: NodeChatApi = {
 			draft: cached?.draft ?? data.nodeChatDraft ?? '',
 			params: cached?.params ?? data.nodeChatParams ?? {},
 			selectedRefs: cached?.selectedRefs ?? data.nodeChatSelectedRefs ?? [],
-			submitting:
-				props.nodeGenerationTasks?.[nodeId]?.status === 'running' ||
-				props.nodeGenerationTasks?.[nodeId]?.status === 'submitting'
+			submitting: isNodeTaskSubmitting(nodeId)
 		}
 	},
 

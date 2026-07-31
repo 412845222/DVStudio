@@ -47,7 +47,9 @@
 
 				<div v-if="showAssetPathSettings" class="wf-unreal-export-asset-path">
 					<div class="wf-unreal-export-asset-path-row">
-						<label class="wf-unreal-export-asset-path-label">{{ t('nodes.unreal.assetRootPath') }}</label>
+						<label class="wf-unreal-export-asset-path-label">
+							{{ t('nodes.unreal.assetRootPath') }}
+						</label>
 						<input
 							v-model="localAssetRootPath"
 							type="text"
@@ -63,7 +65,7 @@
 						class="wf-unreal-export-btn primary"
 						type="button"
 						:disabled="isBusy"
-						@click.stop="emit('export-unreal-scene')"
+						@click.stop="onPrimaryExportClick"
 					>
 						{{ isBusy ? t('nodes.unreal.processing') : t('nodes.unreal.title') }}
 					</button>
@@ -73,7 +75,7 @@
 							class="wf-unreal-export-btn"
 							type="button"
 							:disabled="isExporting"
-							@click.stop="emit('export-unreal-scene')"
+							@click.stop="onPrimaryExportClick"
 						>
 							{{ isExporting ? t('nodes.unreal.exporting') : t('nodes.unreal.export') }}
 						</button>
@@ -81,7 +83,7 @@
 							class="wf-unreal-export-btn ghost"
 							type="button"
 							:disabled="!hasLightingInput || isExporting"
-							@click.stop="emit('export-unreal-lighting')"
+							@click.stop="onExportLightingClick"
 						>
 							{{ t('nodes.unreal.exportLights') }}
 						</button>
@@ -89,7 +91,7 @@
 							class="wf-unreal-export-btn danger"
 							type="button"
 							:disabled="isExporting"
-							@click.stop="emit('disconnect-unreal')"
+							@click.stop="onDisconnectClick"
 						>
 							{{ t('nodes.unreal.disconnect') }}
 						</button>
@@ -99,7 +101,7 @@
 						v-if="showRetryButton"
 						class="wf-unreal-export-btn"
 						type="button"
-						@click.stop="emit('export-unreal-scene')"
+						@click.stop="onPrimaryExportClick"
 					>
 						{{ t('nodes.unreal.retry') }}
 					</button>
@@ -113,7 +115,9 @@
 				</div>
 
 				<div v-if="showConnectionGuide" class="wf-unreal-export-guide">
-					<div class="wf-unreal-export-guide-title">{{ t('nodes.unreal.waitingConnectionTitle') }}</div>
+					<div class="wf-unreal-export-guide-title">
+						{{ t('nodes.unreal.waitingConnectionTitle') }}
+					</div>
 					<div class="wf-unreal-export-guide-text">
 						{{ t('nodes.unreal.waitingConnectionText1') }}
 						<br />
@@ -129,9 +133,13 @@
 			<div class="wf-unreal-export-footer" @pointerdown.stop>
 				<div class="wf-unreal-export-grid">
 					<div>{{ t('nodes.unreal.layoutInput') }}</div>
-					<div :class="hasLayoutInput ? 'is-ok' : 'is-empty'">{{ hasLayoutInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}</div>
+					<div :class="hasLayoutInput ? 'is-ok' : 'is-empty'">
+						{{ hasLayoutInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}
+					</div>
 					<div>{{ t('nodes.unreal.lightingInput') }}</div>
-					<div :class="hasLightingInput ? 'is-ok' : 'is-empty'">{{ hasLightingInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}</div>
+					<div :class="hasLightingInput ? 'is-ok' : 'is-empty'">
+						{{ hasLightingInput ? t('nodes.unreal.connected') : t('nodes.unreal.notConnected') }}
+					</div>
 					<div v-if="hasProjectName">{{ t('nodes.unreal.targetProject') }}</div>
 					<div v-if="hasProjectName">{{ projectNameDisplayText }}</div>
 					<div>{{ t('nodes.unreal.assetPath') }}</div>
@@ -184,10 +192,40 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -239,13 +277,21 @@ const hasLightingInput = computed(
 )
 
 const connectionStatus = computed(() => String(settings.value?.connectionStatus ?? 'idle'))
-const isConnected = computed(() => connectionStatus.value === 'connected' || connectionStatus.value === 'exporting')
+const isConnected = computed(
+	() => connectionStatus.value === 'connected' || connectionStatus.value === 'exporting'
+)
 const isExporting = computed(() => connectionStatus.value === 'exporting')
 const isBusy = computed(() => {
 	const s = connectionStatus.value
-	return s === 'checking-editor' || s === 'checking-plugin' || s === 'installing-plugin' ||
-		s === 'waiting-connection' || s === 'activating-upstream' || s === 'creating-job' ||
+	return (
+		s === 'checking-editor' ||
+		s === 'checking-plugin' ||
+		s === 'installing-plugin' ||
+		s === 'waiting-connection' ||
+		s === 'activating-upstream' ||
+		s === 'creating-job' ||
 		s === 'exporting'
+	)
 })
 
 const pluginStatus = computed(() => settings.value?.pluginStatus ?? 'unknown')
@@ -268,9 +314,16 @@ const statusTone = computed(() => {
 	if (s === 'connected') return 'connected'
 	if (s === 'error') return 'error'
 	if (s === 'editor-not-running') return 'error'
-	if (s === 'exporting' || s === 'checking-editor' || s === 'checking-plugin' ||
-		s === 'installing-plugin' || s === 'waiting-connection' || s === 'activating-upstream' ||
-		s === 'creating-job') return 'waiting'
+	if (
+		s === 'exporting' ||
+		s === 'checking-editor' ||
+		s === 'checking-plugin' ||
+		s === 'installing-plugin' ||
+		s === 'waiting-connection' ||
+		s === 'activating-upstream' ||
+		s === 'creating-job'
+	)
+		return 'waiting'
 	if (s === 'needs-restart') return 'waiting'
 	if (s === 'idle') return 'idle'
 	return 'idle'
@@ -279,19 +332,31 @@ const statusTone = computed(() => {
 const statusTitle = computed(() => {
 	const s = connectionStatus.value
 	switch (s) {
-		case 'connected': return t('nodes.unreal.statusConnected')
-		case 'exporting': return t('nodes.unreal.statusExporting')
-		case 'checking-editor': return t('nodes.unreal.statusCheckingEditor')
-		case 'editor-not-running': return t('nodes.unreal.statusEditorNotRunning')
-		case 'checking-plugin': return t('nodes.unreal.statusCheckingPlugin')
-		case 'installing-plugin': return t('nodes.unreal.statusInstallingPlugin')
-		case 'needs-restart': return t('nodes.unreal.statusNeedsRestart')
-		case 'waiting-connection': return t('nodes.unreal.statusWaitingConnection')
-		case 'activating-upstream': return t('nodes.unreal.statusActivatingUpstream')
-		case 'creating-job': return t('nodes.unreal.statusCreatingJob')
-		case 'error': return t('nodes.unreal.statusError')
+		case 'connected':
+			return t('nodes.unreal.statusConnected')
+		case 'exporting':
+			return t('nodes.unreal.statusExporting')
+		case 'checking-editor':
+			return t('nodes.unreal.statusCheckingEditor')
+		case 'editor-not-running':
+			return t('nodes.unreal.statusEditorNotRunning')
+		case 'checking-plugin':
+			return t('nodes.unreal.statusCheckingPlugin')
+		case 'installing-plugin':
+			return t('nodes.unreal.statusInstallingPlugin')
+		case 'needs-restart':
+			return t('nodes.unreal.statusNeedsRestart')
+		case 'waiting-connection':
+			return t('nodes.unreal.statusWaitingConnection')
+		case 'activating-upstream':
+			return t('nodes.unreal.statusActivatingUpstream')
+		case 'creating-job':
+			return t('nodes.unreal.statusCreatingJob')
+		case 'error':
+			return t('nodes.unreal.statusError')
 		case 'idle':
-		default: return t('nodes.unreal.statusReady')
+		default:
+			return t('nodes.unreal.statusReady')
 	}
 })
 
@@ -300,19 +365,31 @@ const statusCopy = computed(() => {
 	const customMsg = String(settings.value?.message ?? '').trim()
 	if (customMsg) return customMsg
 	switch (s) {
-		case 'connected': return t('nodes.unreal.detailConnected')
-		case 'exporting': return t('nodes.unreal.detailExporting')
-		case 'checking-editor': return t('nodes.unreal.detailCheckingEditor')
-		case 'editor-not-running': return t('nodes.unreal.detailEditorNotRunning')
-		case 'checking-plugin': return t('nodes.unreal.detailCheckingPlugin')
-		case 'installing-plugin': return t('nodes.unreal.detailInstallingPlugin')
-		case 'needs-restart': return t('nodes.unreal.detailNeedsRestart')
-		case 'waiting-connection': return t('nodes.unreal.detailWaitingConnection')
-		case 'activating-upstream': return t('nodes.unreal.detailActivatingUpstream')
-		case 'creating-job': return t('nodes.unreal.detailCreatingJob')
-		case 'error': return String(settings.value?.statusText ?? t('nodes.unreal.detailError'))
+		case 'connected':
+			return t('nodes.unreal.detailConnected')
+		case 'exporting':
+			return t('nodes.unreal.detailExporting')
+		case 'checking-editor':
+			return t('nodes.unreal.detailCheckingEditor')
+		case 'editor-not-running':
+			return t('nodes.unreal.detailEditorNotRunning')
+		case 'checking-plugin':
+			return t('nodes.unreal.detailCheckingPlugin')
+		case 'installing-plugin':
+			return t('nodes.unreal.detailInstallingPlugin')
+		case 'needs-restart':
+			return t('nodes.unreal.detailNeedsRestart')
+		case 'waiting-connection':
+			return t('nodes.unreal.detailWaitingConnection')
+		case 'activating-upstream':
+			return t('nodes.unreal.detailActivatingUpstream')
+		case 'creating-job':
+			return t('nodes.unreal.detailCreatingJob')
+		case 'error':
+			return String(settings.value?.statusText ?? t('nodes.unreal.detailError'))
 		case 'idle':
-		default: return t('nodes.unreal.detailIdle')
+		default:
+			return t('nodes.unreal.detailIdle')
 	}
 })
 
@@ -332,12 +409,18 @@ const showConnectionGuide = computed(() => connectionStatus.value === 'waiting-c
 
 const showAssetPathSettings = computed(() => isConnected.value || connectionStatus.value === 'idle')
 
-const projectNameRaw = computed(
-	() => String(settings.value?.connectedSession?.projectName ?? settings.value?.editorProcess?.projectName ?? '').trim()
+const projectNameRaw = computed(() =>
+	String(
+		settings.value?.connectedSession?.projectName ??
+			settings.value?.editorProcess?.projectName ??
+			''
+	).trim()
 )
 const hasProjectName = computed(() => projectNameRaw.value !== '')
 const projectNameDisplay = computed(() => projectNameRaw.value)
-const projectNameDisplayText = computed(() => hasProjectName.value ? projectNameDisplay.value : t('nodes.unreal.notConnected'))
+const projectNameDisplayText = computed(() =>
+	hasProjectName.value ? projectNameDisplay.value : t('nodes.unreal.notConnected')
+)
 
 const assetRootPathDisplay = computed(
 	() => String(settings.value?.assetRootPath ?? '').trim() || '/Game/DVStudio'
@@ -350,7 +433,10 @@ const progressPercent = computed(() => {
 const progressCopy = computed(() => {
 	const stage = String(settings.value?.lastExportStage ?? '').trim()
 	const msg = String(settings.value?.lastExportMessage ?? '').trim()
-	return t('nodes.unreal.processingProgress', { stage: stage || msg || t('common.running'), percent: progressPercent.value })
+	return t('nodes.unreal.processingProgress', {
+		stage: stage || msg || t('common.running'),
+		percent: progressPercent.value
+	})
 })
 
 const lastExportJobId = computed(() => String(settings.value?.lastExportJobId ?? '').trim())
@@ -368,7 +454,10 @@ const lastSlotCountText = computed(() => {
 const detailCopy = computed(() => {
 	const exportStatus = String(settings.value?.lastExportStatus ?? '').trim()
 	if (exportStatus === 'completed') return t('nodes.unreal.lastExportSuccess')
-	if (exportStatus === 'failed') return t('nodes.unreal.lastExportFailed', { error: String(settings.value?.lastExportMessage ?? 'unknown') })
+	if (exportStatus === 'failed')
+		return t('nodes.unreal.lastExportFailed', {
+			error: String(settings.value?.lastExportMessage ?? 'unknown')
+		})
 	if (!hasLayoutInput.value) return t('nodes.unreal.needLayoutInput')
 	if (isConnected.value) return t('nodes.unreal.readyToExport')
 	return t('nodes.unreal.detailReady')
@@ -377,6 +466,21 @@ const detailCopy = computed(() => {
 const handleSetAssetRootPath = () => {
 	const path = localAssetRootPath.value.trim()
 	emit('set-asset-root-path', path)
+}
+
+const onPrimaryExportClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 一键导出场景按钮被点击, nodeId:', props.nodeId)
+	emit('export-unreal-scene')
+}
+
+const onExportLightingClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 导出灯光按钮被点击, nodeId:', props.nodeId)
+	emit('export-unreal-lighting')
+}
+
+const onDisconnectClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 断开连接按钮被点击, nodeId:', props.nodeId)
+	emit('disconnect-unreal')
 }
 </script>
 

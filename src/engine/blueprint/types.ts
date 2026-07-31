@@ -226,13 +226,6 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 	image: {
 		inputs: [
 			{
-				id: 'in-resource',
-				label: '资源输入',
-				mediaType: 'resource',
-				acceptedMediaTypes: ['image', 'video', 'resource'],
-				multiInput: true
-			},
-			{
 				id: 'in-0',
 				label: '多模态输入',
 				mediaType: 'generic',

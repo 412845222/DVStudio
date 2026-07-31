@@ -1,4 +1,4 @@
-import { normalizeResolvedLayoutSlots, buildSlotsFromModelBindings, getUnrealConnectionPollInterval } from './unrealExportUtils'
+import { prepareResolvedSlotsForExport, getUnrealConnectionPollInterval } from './unrealExportUtils'
 import { t } from '../../../../i18n'
 
 export const useAIWorkflowUnrealExportActions = (payload: {
@@ -68,6 +68,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	activateSceneLayoutPreview?: (nodeId: string) => void
 	waitForNextTick?: () => Promise<void>
+	getThreePreviewState?: (
+		nodeId: string,
+		nodeType: string
+	) => { phase?: string; canStart?: boolean } | null
+	selectNode?: (nodeId: string) => void
+	forceNodeFullRender?: (nodeId: string, enable: boolean) => void
+	focusNode?: (nodeId: string) => void
 }) => {
 	let progressPollingTimer: ReturnType<typeof setInterval> | null = null
 	const stopProgressPolling = () => {
@@ -87,7 +94,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		})
 	}
 
-	const waitForConnection = async (nodeId: string, timeoutMs: number = 60000): Promise<string | null> => {
+	const waitForConnection = async (
+		nodeId: string,
+		timeoutMs: number = 60000
+	): Promise<string | null> => {
 		const startTime = Date.now()
 		setNodeStatus(nodeId, 'waiting-connection', {
 			statusText: t('aiworkflow.runtime.unrealWaitingConnection'),
@@ -100,7 +110,11 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			await new Promise((r) => setTimeout(r, pollInterval))
 			pollCount++
 			const sessionsRes = await payload.unrealExportService.listSessions()
-			if (sessionsRes.ok && Array.isArray(sessionsRes.sessions) && sessionsRes.sessions.length > 0) {
+			if (
+				sessionsRes.ok &&
+				Array.isArray(sessionsRes.sessions) &&
+				sessionsRes.sessions.length > 0
+			) {
 				const active = sessionsRes.sessions.find(
 					(s) => String(s?.status ?? 'connected') !== 'stale'
 				)
@@ -112,7 +126,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							unrealExportSettings: {
 								connectionStatus: 'connected',
 								statusText: t('aiworkflow.runtime.unrealConnected'),
-								message: t('aiworkflow.runtime.unrealConnectedProject', { project: String(active.projectName || '') }),
+								message: t('aiworkflow.runtime.unrealConnectedProject', {
+									project: String(active.projectName || '')
+								}),
 								connectedSession: active,
 								targetSessionId: sessionId
 							}
@@ -152,7 +168,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						unrealExportSettings: {
 							connectionStatus: 'connected',
 							statusText: t('aiworkflow.runtime.unrealExportStatusComplete'),
-							message: t('aiworkflow.runtime.unrealExportSuccessCount', { count: String(assetCount) }),
+							message: t('aiworkflow.runtime.unrealExportSuccessCount', {
+								count: String(assetCount)
+							}),
 							lastExportStatus: 'completed',
 							lastExportProgress: 100,
 							lastExportStage: t('aiworkflow.runtime.unrealExportStageComplete'),
@@ -169,7 +187,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 				if (status === 'failed') {
 					stopProgressPolling()
-					const errMsg = String(job.error ?? message ?? t('aiworkflow.runtime.unrealExportStatusFailed'))
+					const errMsg = String(
+						job.error ?? message ?? t('aiworkflow.runtime.unrealExportStatusFailed')
+					)
 					payload.store.commit('setNodeUnrealExportSettings', {
 						nodeId,
 						unrealExportSettings: {
@@ -207,13 +227,20 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 	const getStageText = (status: string): string => {
 		switch (status) {
-			case 'pending': return t('aiworkflow.runtime.unrealStagePending')
-			case 'picked': return t('aiworkflow.runtime.unrealStagePicked')
-			case 'downloading': return t('aiworkflow.runtime.unrealStageDownloading')
-			case 'importing': return t('aiworkflow.runtime.unrealStageImporting')
-			case 'assembling-actor': return t('aiworkflow.runtime.unrealStageAssemblingActor')
-			case 'applying-lighting': return t('aiworkflow.runtime.unrealStageApplyingLighting')
-			default: return t('aiworkflow.runtime.processing')
+			case 'pending':
+				return t('aiworkflow.runtime.unrealStagePending')
+			case 'picked':
+				return t('aiworkflow.runtime.unrealStagePicked')
+			case 'downloading':
+				return t('aiworkflow.runtime.unrealStageDownloading')
+			case 'importing':
+				return t('aiworkflow.runtime.unrealStageImporting')
+			case 'assembling-actor':
+				return t('aiworkflow.runtime.unrealStageAssemblingActor')
+			case 'applying-lighting':
+				return t('aiworkflow.runtime.unrealStageApplyingLighting')
+			default:
+				return t('aiworkflow.runtime.processing')
 		}
 	}
 
@@ -222,11 +249,21 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		exportMode: 'scene-layout' | 'lighting-only' = 'scene-layout'
 	) => {
 		const node = payload.store.state.nodesById[nodeId] as Record<string, unknown>
-		if (!node || node.type !== 'unreal-export') return { ok: false as const, error: t('aiworkflow.runtime.unrealNodeNotExist') }
+		if (!node || node.type !== 'unreal-export')
+			return { ok: false as const, error: t('aiworkflow.runtime.unrealNodeNotExist') }
 
-		const sourceNode = payload.getUnrealExportSourceSceneLayoutNode(nodeId) as Record<string, unknown> | null
-		const sourceSceneLayoutSettings = sourceNode?.sceneLayoutSettings as Record<string, unknown> | null
-		const modelBindings = sourceNode && sourceNode.id ? payload.connectedSceneLayoutModelBindings(String(sourceNode.id)) : []
+		const sourceNode = payload.getUnrealExportSourceSceneLayoutNode(nodeId) as Record<
+			string,
+			unknown
+		> | null
+		const sourceSceneLayoutSettings = sourceNode?.sceneLayoutSettings as Record<
+			string,
+			unknown
+		> | null
+		const modelBindings =
+			sourceNode && sourceNode.id
+				? payload.connectedSceneLayoutModelBindings(String(sourceNode.id))
+				: []
 		const sourceSceneLayoutNodeId =
 			sourceNode?.type === 'scene-layout' ? String(sourceNode.id ?? '').trim() : ''
 
@@ -259,29 +296,61 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			if (payload.validateModelBindings) {
 				const validation = payload.validateModelBindings(connectedModelBindings)
 				if (validation.invalid && validation.invalid.length > 0) {
-					const detailLines = validation.invalid.map((item, idx) => {
-						const b = item.binding as Record<string, unknown>
-						const name = String(b.objectName ?? b.objectId ?? t('aiworkflow.runtime.modelNumber', { num: String(idx + 1) })).trim()
-						const path = String(b.modelSourcePath ?? b.modelAssetPath ?? b.modelUrl ?? b.modelAssetUrl ?? t('aiworkflow.runtime.unrealNoPath')).trim()
-						return t('aiworkflow.runtime.unrealInvalidModelLine', { name, reason: item.reason, path })
-					}).join('\n')
+					const detailLines = validation.invalid
+						.map((item, idx) => {
+							const b = item.binding as Record<string, unknown>
+							const name = String(
+								b.objectName ??
+									b.objectId ??
+									t('aiworkflow.runtime.modelNumber', { num: String(idx + 1) })
+							).trim()
+							const path = String(
+								b.modelSourcePath ??
+									b.modelAssetPath ??
+									b.modelUrl ??
+									b.modelAssetUrl ??
+									t('aiworkflow.runtime.unrealNoPath')
+							).trim()
+							return t('aiworkflow.runtime.unrealInvalidModelLine', {
+								name,
+								reason: item.reason,
+								path
+							})
+						})
+						.join('\n')
 					return {
 						ok: false as const,
-						error: t('aiworkflow.runtime.unrealPrecheckFailed', { count: String(validation.invalid.length), details: detailLines })
+						error: t('aiworkflow.runtime.unrealPrecheckFailed', {
+							count: String(validation.invalid.length),
+							details: detailLines
+						})
 					}
 				}
 				if (validation.warnings && validation.warnings.length > 0) {
-					const warnMsg = t('aiworkflow.runtime.unrealValidationWarning', { warnings: validation.warnings.join('；') })
+					const warnMsg = t('aiworkflow.runtime.unrealValidationWarning', {
+						warnings: validation.warnings.join('；')
+					})
 					payload.pushToast(warnMsg, 'warn')
 				}
-				payload.pushToast(t('aiworkflow.toast.unrealPrecheckPass', { count: String(connectedModelBindings.length) }), 'info')
+				payload.pushToast(
+					t('aiworkflow.toast.unrealPrecheckPass', {
+						count: String(connectedModelBindings.length)
+					}),
+					'info'
+				)
 			}
 
 			const totalLayoutItems = Array.isArray(sourceSceneLayoutSettings?.layoutItems)
 				? sourceSceneLayoutSettings!.layoutItems.length
 				: 0
 			if (totalLayoutItems > 0 && connectedModelBindings.length < totalLayoutItems) {
-				payload.pushToast(t('aiworkflow.toast.unrealPrecheckWarning', { total: String(totalLayoutItems), bound: String(connectedModelBindings.length) }), 'warn')
+				payload.pushToast(
+					t('aiworkflow.toast.unrealPrecheckWarning', {
+						total: String(totalLayoutItems),
+						bound: String(connectedModelBindings.length)
+					}),
+					'warn'
+				)
 			}
 
 			setNodeStatus(nodeId, 'activating-upstream', {
@@ -289,58 +358,191 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				message: t('aiworkflow.runtime.unrealEnsuringPreview')
 			})
 
+			// 第一步：选中场景布局节点、强制完整DOM渲染、聚焦到节点
+			// 这确保canvas元素被挂载到DOM，WebGL环境可以初始化
+			console.info(
+				'[UnrealExport] Step 1: Selecting and focusing source scene layout node:',
+				sourceSceneLayoutNodeId
+			)
+			if (payload.forceNodeFullRender) {
+				payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+			}
+			if (payload.selectNode) {
+				payload.selectNode(sourceSceneLayoutNodeId)
+			}
+			if (payload.focusNode) {
+				payload.focusNode(sourceSceneLayoutNodeId)
+			}
+
+			// 等待Vue完成DOM更新，canvas元素挂载
+			console.info('[UnrealExport] Waiting for DOM to mount canvas element...')
+			for (let domWaitAttempt = 0; domWaitAttempt < 20; domWaitAttempt++) {
+				if (payload.waitForNextTick) {
+					await payload.waitForNextTick()
+				}
+				await new Promise((r) => setTimeout(r, 100))
+
+				const previewState = payload.getThreePreviewState
+					? payload.getThreePreviewState(sourceSceneLayoutNodeId, 'scene-layout')
+					: null
+
+				// 只要能获取到previewState（不管是什么phase），说明DOM已经挂载了
+				if (previewState) {
+					console.info(
+						`[UnrealExport] DOM ready after ${domWaitAttempt + 1} attempts, initial phase: ${previewState.phase}`
+					)
+					break
+				}
+			}
+
+			// 额外等待几帧确保DOM布局稳定
+			await new Promise((r) => setTimeout(r, 200))
+
+			// 第二步：激活预览模式
+			console.info('[UnrealExport] Step 2: Activating scene layout preview...')
 			if (payload.activateSceneLayoutPreview) {
 				payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
 			}
 
-			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null = null
+			// 第三步：等待预览进入interactive状态（模型加载完成）
+			let previewReady = false
+			for (let waitAttempt = 0; waitAttempt < 40; waitAttempt++) {
+				if (payload.waitForNextTick) {
+					await payload.waitForNextTick()
+				}
+				await new Promise((r) => setTimeout(r, 200))
+
+				const previewState = payload.getThreePreviewState
+					? payload.getThreePreviewState(sourceSceneLayoutNodeId, 'scene-layout')
+					: null
+
+				const phase = previewState?.phase ?? 'unknown'
+				console.info(`[UnrealExport] Preview wait attempt ${waitAttempt + 1}/40, phase: ${phase}`)
+
+				if (phase === 'interactive') {
+					previewReady = true
+					// 额外等待一小段时间确保模型完全加载和渲染
+					await new Promise((r) => setTimeout(r, 800))
+					break
+				}
+
+				// 如果还在masked状态，再次激活预览
+				if (
+					(phase === 'masked' || phase === 'unknown') &&
+					waitAttempt % 5 === 4 &&
+					payload.activateSceneLayoutPreview
+				) {
+					console.info('[UnrealExport] Preview still masked/unknown, re-activating...')
+					if (payload.forceNodeFullRender) {
+						payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+					}
+					payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
+				}
+			}
+
+			if (!previewReady) {
+				console.warn(
+					'[UnrealExport] Preview did not reach interactive state in time, attempting export anyway'
+				)
+			} else {
+				console.info('[UnrealExport] Preview is interactive, proceeding with export')
+			}
+
+			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null =
+				null
 			let lastResolveError = ''
-			for (let attempt = 0; attempt < 5; attempt++) {
+			for (let attempt = 0; attempt < 10; attempt++) {
+				console.info(`[UnrealExport] Export attempt ${attempt + 1}/10`)
 				if (attempt > 0) {
+					// 重试时确保节点仍然被选中和强制渲染
+					if (payload.forceNodeFullRender) {
+						payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+					}
+					if (payload.selectNode) {
+						payload.selectNode(sourceSceneLayoutNodeId)
+					}
 					if (payload.activateSceneLayoutPreview) {
 						payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
 					}
-					await new Promise((r) => setTimeout(r, 600))
 					if (payload.waitForNextTick) {
 						await payload.waitForNextTick()
 					}
+					// 渐进式等待：1s, 1.5s, 2s, ...
+					const waitTime = 1000 + attempt * 500
+					console.info(`[UnrealExport] Waiting ${waitTime}ms before retry...`)
+					await new Promise((r) => setTimeout(r, waitTime))
 				}
 				const r = await payload.getResolvedLayoutForUnreal(sourceSceneLayoutNodeId)
 				if (r.ok) {
-					resolvedResult = r
-					break
+					const exportData = r.exportData as Record<string, unknown>
+					const slotCount = Array.isArray(exportData?.slots) ? exportData.slots.length : 0
+					console.info(
+						`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}`
+					)
+					if (slotCount > 0) {
+						resolvedResult = r
+						break
+					}
+					lastResolveError = `slots empty (${slotCount} slots)`
+				} else {
+					lastResolveError = r.error || 'unknown'
+					console.warn(`[UnrealExport] Export attempt ${attempt + 1} failed:`, lastResolveError)
 				}
-				lastResolveError = r.error || 'unknown'
+			}
+
+			// 导出完成后，解除强制渲染（恢复正常性能优化）
+			if (payload.forceNodeFullRender) {
+				payload.forceNodeFullRender(sourceSceneLayoutNodeId, false)
+			}
+
+			if (!resolvedResult) {
+				console.error('[UnrealExport] All export attempts failed, last error:', lastResolveError)
+				return {
+					ok: false as const,
+					error:
+						t('aiworkflow.runtime.unrealFailedToGenerateLayout') +
+						(lastResolveError ? `: ${lastResolveError}` : '')
+				}
 			}
 
 			const exportData =
 				resolvedResult?.exportData && typeof resolvedResult.exportData === 'object'
 					? (resolvedResult.exportData as Record<string, unknown>)
 					: null
-			const rawSlots = exportData && Array.isArray(exportData.slots) ? (exportData.slots as unknown[]) : []
-			const resolvedSlotMap = normalizeResolvedLayoutSlots(rawSlots)
-			const resolvedLayoutWarnings = exportData && Array.isArray(exportData.warnings)
-				? (exportData.warnings as unknown[]).map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
-				: []
+			const rawSlots =
+				exportData && Array.isArray(exportData.slots) ? (exportData.slots as unknown[]) : []
+			console.info(`[UnrealExport] Raw slots from viewer: ${rawSlots.length}`)
+			const resolvedLayoutWarnings =
+				exportData && Array.isArray(exportData.warnings)
+					? (exportData.warnings as unknown[])
+							.map((item: unknown) => String(item ?? '').trim())
+							.filter(Boolean)
+					: []
 			const resolvedActorOrigin =
 				exportData?.actorOrigin && typeof exportData.actorOrigin === 'object'
 					? { ...(exportData.actorOrigin as Record<string, unknown>) }
 					: null
 
 			const layoutItems = Array.isArray(sourceSceneLayoutSettings?.layoutItems)
-				? (sourceSceneLayoutSettings?.layoutItems as unknown[] ?? [])
+				? ((sourceSceneLayoutSettings?.layoutItems as unknown[]) ?? [])
 				: []
 			const manualModelBindings = Array.isArray(sourceSceneLayoutSettings?.manualModelBindings)
-				? (sourceSceneLayoutSettings?.manualModelBindings as unknown[] ?? [])
+				? ((sourceSceneLayoutSettings?.manualModelBindings as unknown[]) ?? [])
 				: []
 
-			const resolvedLayoutSlots = buildSlotsFromModelBindings(connectedModelBindings, resolvedSlotMap, layoutItems)
-			const generatedSlotCount = resolvedLayoutSlots.filter((s: Record<string, unknown>) => s.generatedFromBinding).length
-			if (generatedSlotCount > 0) {
-				resolvedLayoutWarnings.push(t('aiworkflow.runtime.modelBindingGeneratedDefault', { count: String(generatedSlotCount) }))
+			// 使用prepareResolvedSlotsForExport直接使用viewer返回的slots（保留完整变换数据）
+			const { slots: resolvedLayoutSlots, warnings: slotWarnings } = prepareResolvedSlotsForExport(
+				rawSlots,
+				connectedModelBindings,
+				layoutItems
+			)
+			if (slotWarnings.length > 0) {
+				resolvedLayoutWarnings.push(...slotWarnings)
 			}
+			console.info(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
 
 			if (resolvedLayoutSlots.length <= 0) {
+				console.error('[UnrealExport] No resolved layout slots after preparation')
 				return {
 					ok: false as const,
 					error: t('aiworkflow.runtime.unrealFailedToGenerateLayout')
@@ -355,13 +557,18 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					exportMode,
 					sceneName:
 						String(
-							sourceNode?.alias ?? sourceNode?.title ?? node.alias ?? node.title ?? 'DwebSceneExport'
+							sourceNode?.alias ??
+								sourceNode?.title ??
+								node.alias ??
+								node.title ??
+								'DwebSceneExport'
 						).trim() || 'DwebSceneExport',
 					generatedAt: Date.now(),
 					sourceNodeId: String(sourceNode?.id ?? nodeId),
 					sourceSceneLayoutNodeId,
 					sourceNodeType: String(sourceNode?.type ?? 'unreal-export'),
-					dwebProjectRootPath: String(payload.store.state.projectRootPath ?? '').trim() || undefined,
+					dwebProjectRootPath:
+						String(payload.store.state.projectRootPath ?? '').trim() || undefined,
 					resolvedLayoutSlots,
 					resolvedSlotCount: resolvedLayoutSlots.length,
 					resolvedLayoutWarnings,
@@ -383,7 +590,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				exportVersion: 5,
 				layoutProtocolVersion: 4,
 				exportMode,
-				sceneName: String(node.alias ?? node.title ?? 'DwebLightingExport').trim() || 'DwebLightingExport',
+				sceneName:
+					String(node.alias ?? node.title ?? 'DwebLightingExport').trim() || 'DwebLightingExport',
 				generatedAt: Date.now(),
 				sourceNodeId: nodeId
 			}
@@ -399,7 +607,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			const sessionsRes = await payload.unrealExportService.listSessions()
 			if (sessionsRes.ok && Array.isArray(sessionsRes.sessions)) {
 				const found = sessionsRes.sessions.find(
-					(s) => String(s.sessionId ?? '') === existingSessionId && String(s.status ?? 'connected') !== 'stale'
+					(s) =>
+						String(s.sessionId ?? '') === existingSessionId &&
+						String(s.status ?? 'connected') !== 'stale'
 				)
 				if (found) return existingSessionId
 			}
@@ -407,9 +617,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 		const sessionsRes = await payload.unrealExportService.listSessions()
 		if (sessionsRes.ok && Array.isArray(sessionsRes.sessions) && sessionsRes.sessions.length > 0) {
-			const active = sessionsRes.sessions.find(
-				(s) => String(s?.status ?? 'connected') !== 'stale'
-			)
+			const active = sessionsRes.sessions.find((s) => String(s?.status ?? 'connected') !== 'stale')
 			if (active) {
 				const sid = String(active.sessionId ?? '')
 				if (sid) {
@@ -420,7 +628,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							targetSessionId: sid,
 							connectedSession: active,
 							statusText: t('aiworkflow.runtime.unrealConnected'),
-							message: t('aiworkflow.runtime.unrealConnectedProject', { project: String(active.projectName || '') })
+							message: t('aiworkflow.runtime.unrealConnectedProject', {
+								project: String(active.projectName || '')
+							})
 						}
 					})
 					return sid
@@ -472,7 +682,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				pluginInstallConfig: { targetProjectPath: pluginResult.projectRoot || projectPath }
 			})
 
-			const installResult = await payload.unrealExportService.installPlugin(pluginResult.projectRoot || projectPath)
+			const installResult = await payload.unrealExportService.installPlugin(
+				pluginResult.projectRoot || projectPath
+			)
 			if (!installResult.ok || !installResult.installed) {
 				setNodeStatus(nodeId, 'error', {
 					statusText: t('aiworkflow.runtime.unrealPluginInstallFailed'),
@@ -480,7 +692,12 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					pluginStatus: 'install-error',
 					pluginInstallError: installResult.error
 				})
-				payload.pushToast(t('aiworkflow.toast.unrealPluginInstallFailed', { error: String(installResult.error || 'unknown') }), 'error')
+				payload.pushToast(
+					t('aiworkflow.toast.unrealPluginInstallFailed', {
+						error: String(installResult.error || 'unknown')
+					}),
+					'error'
+				)
 				return null
 			}
 
@@ -522,7 +739,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		if (!node || node.type !== 'unreal-export') return
 
 		const settings = (node.unrealExportSettings as Record<string, unknown>) ?? {}
-		const assetRootPath = String(settings.assetRootPath ?? '/Game/DVStudio').trim() || '/Game/DVStudio'
+		const assetRootPath =
+			String(settings.assetRootPath ?? '/Game/DVStudio').trim() || '/Game/DVStudio'
 
 		try {
 			const sessionId = await ensureConnected(nodeId)
@@ -556,15 +774,19 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					statusText: t('aiworkflow.runtime.unrealJobCreateFailed'),
 					message: String(res.error || 'unknown')
 				})
-				payload.pushToast(t('aiworkflow.toast.unrealJobCreateFailed', { error: String(res.error || 'unknown') }), 'warn')
+				payload.pushToast(
+					t('aiworkflow.toast.unrealJobCreateFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 				return
 			}
 
 			const job = res.job as Record<string, unknown>
 			const jobId = String(job.jobId ?? '')
-			const createdToastKey = exportMode === 'lighting-only'
-				? 'aiworkflow.runtime.unrealLightingJobCreatedToast'
-				: 'aiworkflow.runtime.unrealSceneJobCreatedToast'
+			const createdToastKey =
+				exportMode === 'lighting-only'
+					? 'aiworkflow.runtime.unrealLightingJobCreatedToast'
+					: 'aiworkflow.runtime.unrealSceneJobCreatedToast'
 
 			payload.store.commit('setNodeUnrealExportSettings', {
 				nodeId,

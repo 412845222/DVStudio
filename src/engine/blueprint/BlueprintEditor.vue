@@ -6,10 +6,12 @@
 				:scene="scene"
 				:chat-state="chatState"
 				:node-generation-tasks="nodeGenerationTasks"
+				:node-generation-task-ids-by-node-id="nodeGenerationTaskIdsByNodeId"
 				:legacy-resources="legacyResources"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:editing-node-id="editingNodeId"
 				:extra-props-resolver="extraPropsResolver"
+				:force-dom-node-ids="forceDomNodeIds"
 				@node-click="handleNodeClick"
 				@node-contextmenu="handleNodeContextMenu"
 				@node-copy="handleNodeCopy"
@@ -60,6 +62,10 @@
 				@node-three-preview-progress="(p: any) => emit('nodeThreePreviewProgress', p)"
 				@node-upload-scene-layout-model-file="(p: any) => emit('nodeUploadSceneLayoutModelFile', p)"
 				@node-update-model-bindings="(p: any) => emit('nodeUpdateModelBindings', p)"
+				@node-export-unreal-scene="(id: string) => emit('nodeExportUnrealScene', id)"
+				@node-export-unreal-lighting="(id: string) => emit('nodeExportUnrealLighting', id)"
+				@node-disconnect-unreal="(id: string) => emit('nodeDisconnectUnreal', id)"
+				@node-set-asset-root-path="(p: any) => emit('nodeSetAssetRootPath', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -106,9 +112,11 @@ interface Props {
 	theme?: 'light' | 'dark'
 	chatState?: NodeChatState | null
 	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
+	nodeGenerationTaskIdsByNodeId?: Record<string, string[]>
 	legacyResources?: Record<string, LegacyResourceData>
 	inputParamPreviewRefsByNodeId?: Record<string, InputParamPreviewRefItem[]>
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
+	forceDomNodeIds?: string[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -201,6 +209,10 @@ interface Emits {
 		payload: { nodeId: string; file: File; objectId?: string }
 	): void
 	(e: 'nodeUpdateModelBindings', payload: { nodeId: string; bindings: any[] }): void
+	(e: 'nodeExportUnrealScene', nodeId: string): void
+	(e: 'nodeExportUnrealLighting', nodeId: string): void
+	(e: 'nodeDisconnectUnreal', nodeId: string): void
+	(e: 'nodeSetAssetRootPath', payload: { nodeId: string; path: string }): void
 }
 
 const emit = defineEmits<Emits>()
