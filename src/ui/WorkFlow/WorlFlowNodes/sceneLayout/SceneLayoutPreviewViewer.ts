@@ -442,16 +442,8 @@ export const isSameItems = (
 	b: WorkflowSceneLayoutItem[]
 ): boolean => {
 	if (a.length !== b.length) return false
-	const mapB = new Map<string, WorkflowSceneLayoutItem>()
-	for (const item of b) {
-		const id = String(item?.id ?? '').trim()
-		if (id) mapB.set(id, item)
-	}
-	for (const itemA of a) {
-		const idA = String(itemA?.id ?? '').trim()
-		if (!idA) return false
-		const itemB = mapB.get(idA)
-		if (!itemB || !isSameItem(itemA, itemB)) return false
+	for (let i = 0; i < a.length; i++) {
+		if (!isSameItem(a[i], b[i])) return false
 	}
 	return true
 }

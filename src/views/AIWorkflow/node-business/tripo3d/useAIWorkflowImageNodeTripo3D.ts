@@ -17,8 +17,7 @@ type Tripo3DImageNodeSettings = Record<string, unknown>
 
 export const isImageInputAnchor = (anchorId: string): boolean => {
 	const id = String(anchorId || '').trim()
-	// in-resource已从image节点移除，保留in-image、in-0（多模态）和in-image-N系列
-	return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
+	return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
 }
 
 export const getEffectiveImageUrl = (

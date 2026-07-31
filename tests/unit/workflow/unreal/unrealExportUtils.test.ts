@@ -6,7 +6,7 @@ import {
 
 describe('unrealExportUtils', () => {
 	describe('normalizeResolvedLayoutSlots', () => {
-		it('filters out invalid slots and returns a Map keyed by slotId', () => {
+		it('filters out invalid slots and returns structured result with bySlotId map', () => {
 			const slots = [
 				{ slotId: 'slot-1', sourceObjectId: 'obj-1', other: 'data' },
 				{ slotId: 'slot-2', sourceObjectId: 'obj-2' },
@@ -19,34 +19,42 @@ describe('unrealExportUtils', () => {
 			]
 
 			const result = normalizeResolvedLayoutSlots(slots)
-			expect(result).toBeInstanceOf(Map)
-			expect(result.size).toBe(3)
-			expect(result.has('slot-1')).toBe(true)
-			expect(result.has('slot-2')).toBe(true)
-			expect(result.has('slot-5')).toBe(true)
-			expect(result.get('slot-1')?.other).toBe('data')
+			expect(result.slots).toBeInstanceOf(Array)
+			expect(result.bySlotId).toBeInstanceOf(Map)
+			expect(result.bySourceObjectId).toBeInstanceOf(Map)
+			expect(result.slots).toHaveLength(3)
+			expect(result.bySlotId.size).toBe(3)
+			expect(result.bySlotId.has('slot-1')).toBe(true)
+			expect(result.bySlotId.has('slot-2')).toBe(true)
+			expect(result.bySlotId.has('slot-5')).toBe(true)
+			expect(result.bySlotId.get('slot-1')?.other).toBe('data')
 		})
 
 		it('clones slot objects to avoid mutation', () => {
 			const original = { slotId: 's1', sourceObjectId: 'o1', value: 42 }
 			const slots = [original]
 			const result = normalizeResolvedLayoutSlots(slots)
-			const cloned = result.get('s1')
+			const cloned = result.bySlotId.get('s1')
 			expect(cloned).not.toBe(original)
 			expect(cloned?.value).toBe(42)
 		})
 
 		it('trims slotId and sourceObjectId whitespace', () => {
-			const slots = [
-				{ slotId: '  my-slot  ', sourceObjectId: '  my-obj  ' }
-			]
+			const slots = [{ slotId: '  my-slot  ', sourceObjectId: '  my-obj  ' }]
 			const result = normalizeResolvedLayoutSlots(slots)
-			expect(result.has('my-slot')).toBe(true)
+			expect(result.bySlotId.has('my-slot')).toBe(true)
+			expect(result.bySourceObjectId.has('my-obj')).toBe(true)
 		})
 
-		it('returns empty map for empty input', () => {
-			expect(normalizeResolvedLayoutSlots([]).size).toBe(0)
-			expect(normalizeResolvedLayoutSlots(null as unknown as unknown[]).size).toBe(0)
+		it('returns empty result for empty/invalid input', () => {
+			const emptyResult = normalizeResolvedLayoutSlots([])
+			expect(emptyResult.slots).toHaveLength(0)
+			expect(emptyResult.bySlotId.size).toBe(0)
+			expect(emptyResult.bySourceObjectId.size).toBe(0)
+
+			const nullResult = normalizeResolvedLayoutSlots(null as unknown as unknown[])
+			expect(nullResult.slots).toHaveLength(0)
+			expect(nullResult.bySlotId.size).toBe(0)
 		})
 	})
 
@@ -108,32 +116,28 @@ describe('unrealExportUtils', () => {
 		it('uses previewInstanceTransform from existing resolved slot', () => {
 			const existingTransform = {
 				position: { x: 100, y: 0, z: 200 },
-				rotation: { x: 0, y: 90, z: 0, w: 1 },
+				rotation: { yaw: 90, pitch: 0, roll: 0 },
+				quaternion: { x: 0, y: 0.707, z: 0, w: 0.707 },
 				scale: { x: 2, y: 2, z: 2 }
 			}
 			const resolvedMap = new Map([
 				['chair-1', { slotId: 'chair-1', previewInstanceTransform: existingTransform }]
 			])
-			const bindings = [
-				{ objectId: 'chair-1', modelSourcePath: 'C:/models/chair.fbx' }
-			]
+			const bindings = [{ objectId: 'chair-1', modelSourcePath: 'C:/models/chair.fbx' }]
 			const result = buildSlotsFromModelBindings(bindings, resolvedMap, [])
-			expect(result[0].previewInstanceTransform).toBe(existingTransform)
+			expect(result[0].previewInstanceTransform).toEqual(existingTransform)
 			expect(result[0].generatedFromBinding).toBe(false)
 		})
 
 		it('uses transform from layoutItem when no resolved slot exists', () => {
 			const layoutTransform = {
 				position: { x: 50, y: 0, z: 50 },
-				rotation: { x: 0, y: 45, z: 0, w: 1 },
+				rotation: { yaw: 45, pitch: 0, roll: 0 },
+				quaternion: { x: 0, y: 0.383, z: 0, w: 0.924 },
 				scale: { x: 1, y: 1, z: 1 }
 			}
-			const layoutItems = [
-				{ id: 'lamp-1', name: 'Floor Lamp', transform: layoutTransform }
-			]
-			const bindings = [
-				{ objectId: 'lamp-1', modelAssetPath: '/assets/lamp.obj' }
-			]
+			const layoutItems = [{ id: 'lamp-1', name: 'Floor Lamp', transform: layoutTransform }]
+			const bindings = [{ objectId: 'lamp-1', modelAssetPath: '/assets/lamp.obj' }]
 			const result = buildSlotsFromModelBindings(bindings, new Map(), layoutItems)
 			expect(result[0].previewInstanceTransform).toEqual(layoutTransform)
 			expect(result[0].objectName).toBe('Floor Lamp')
@@ -166,9 +170,7 @@ describe('unrealExportUtils', () => {
 		})
 
 		it('defaults sourceNodeType to model3d when not specified', () => {
-			const bindings = [
-				{ objectId: 'obj-1', modelUrl: 'test.glb' }
-			]
+			const bindings = [{ objectId: 'obj-1', modelUrl: 'test.glb' }]
 			const result = buildSlotsFromModelBindings(bindings, new Map(), [])
 			const modelBinding = result[0].modelBinding as Record<string, unknown>
 			expect(modelBinding.sourceNodeType).toBe('model3d')

@@ -49,32 +49,47 @@ const shouldRejectBasicMediaNodes = (
 }
 
 const looksLikeModelAnchor = (anchorId: string) => /(^|[-_])model(3d)?($|[-_])|3d/i.test(anchorId)
+const looksLikeResourceAnchor = (anchorId: string) => /(^|[-_])resource($|[-_])/i.test(anchorId)
 
 export const normalizeAnchorMediaType = (
 	mediaType: unknown,
 	context: AnchorMediaContext = {}
 ): WorkflowAnchorSpec['mediaType'] | undefined => {
 	const raw = typeof mediaType === 'string' ? mediaType.trim().toLowerCase() : ''
-	if (
-		raw === 'image' ||
-		raw === 'video' ||
-		raw === 'text' ||
-		raw === 'flow' ||
-		raw === 'model3d' ||
-		raw === 'audio' ||
-		raw === 'meta' ||
-		raw === 'resource' ||
-		raw === 'generic'
-	) {
-		return raw
-	}
 
 	const nodeType = normalizeNodeType(context.node, context.nodeType)
 	const anchorId = String(context.anchorId ?? '')
 		.trim()
 		.toLowerCase()
-	if (looksLikeModelAnchor(anchorId) || nodeType === 'model3d' || nodeType === 'meshy')
+
+	// If explicit mediaType is provided (and not 'generic'), use it directly
+	if (raw && raw !== 'generic') {
+		if (
+			raw === 'image' ||
+			raw === 'video' ||
+			raw === 'text' ||
+			raw === 'flow' ||
+			raw === 'model3d' ||
+			raw === 'audio' ||
+			raw === 'meta' ||
+			raw === 'resource'
+		) {
+			return raw
+		}
+		return undefined
+	}
+
+	// For 'generic' or unspecified mediaType, infer from context
+	if (looksLikeModelAnchor(anchorId) || nodeType === 'model3d' || nodeType === 'meshy') {
 		return 'model3d'
+	}
+	if (looksLikeResourceAnchor(anchorId)) {
+		return 'resource'
+	}
+	if (raw === 'generic') {
+		return 'generic'
+	}
+
 	return undefined
 }
 
@@ -150,15 +165,37 @@ export const canLinkAnchors = (
 	if (canLinkBasicMediaNodes(fromNode, toNode)) return true
 	if (shouldRejectBasicMediaNodes(fromNode, toNode)) return false
 
-	// generic锚点（多模态输入）可以接受所有媒体类型
+	// Get anchor specs
+	const fromAnchor = fromNode?.outputs?.find((a) => a.id === fromAnchorId)
+	const toAnchor = toNode?.inputs?.find((a) => a.id === toAnchorId)
+
+	// generic锚点（多模态输入）需要检查acceptedMediaTypes或已知的多模态节点
 	const fromType = normalizeNodeType(fromNode)
 	const toType = normalizeNodeType(toNode)
 	const isGenericTarget = toKind === 'generic'
 	const isGenericSource = fromKind === 'generic'
 
 	if (isGenericTarget) {
-		// 目标是generic锚点（如image节点in-0、text节点in-0等），接受所有媒体类型
-		return true
+		// Check if the target anchor explicitly accepts this media type via acceptedMediaTypes
+		const acceptedMediaTypes = toAnchor?.acceptedMediaTypes
+		if (
+			Array.isArray(acceptedMediaTypes) &&
+			['image', 'text', 'video', 'audio', 'model3d', 'resource'].includes(fromKind) &&
+			acceptedMediaTypes.includes(fromKind as CanonicalAnchorMediaType | 'resource')
+		) {
+			return true
+		}
+		// Known multi-modal input anchors that accept all media types
+		const isKnownMultiModalInput =
+			(toType === 'image' && toAnchorId === 'in-0') ||
+			(toType === 'blender' && toAnchorId === 'in-0') ||
+			(toType === 'text' && toAnchorId === 'in-0') ||
+			(toType === 'comfyui' && toAnchorId === 'in-0')
+		if (isKnownMultiModalInput) {
+			return true
+		}
+		// Generic targets without explicit acceptedMediaTypes should NOT accept arbitrary connections
+		return false
 	}
 	if (isGenericSource) {
 		// 源是generic锚点（如blender out-0），根据下游锚点类型判断
