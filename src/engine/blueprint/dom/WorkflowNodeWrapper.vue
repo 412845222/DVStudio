@@ -49,6 +49,10 @@
 			@three-preview-progress="onThreePreviewProgress"
 			@upload-scene-layout-model-file="onUploadSceneLayoutModelFile"
 			@update-model-bindings="onUpdateModelBindings"
+			@export-unreal-scene="onNodeExportUnrealScene"
+			@export-unreal-lighting="onNodeExportUnrealLighting"
+			@disconnect-unreal="onNodeDisconnectUnreal"
+			@set-asset-root-path="onNodeSetUnrealAssetRootPath"
 		/>
 	</div>
 </template>
@@ -137,6 +141,10 @@ const emit = defineEmits<{
 		payload: { nodeId: string; file: File; objectId?: string }
 	): void
 	(e: 'update-model-bindings', payload: { nodeId: string; bindings: any[] }): void
+	(e: 'export-unreal-scene', nodeId: string): void
+	(e: 'export-unreal-lighting', nodeId: string): void
+	(e: 'disconnect-unreal', nodeId: string): void
+	(e: 'set-asset-root-path', payload: { nodeId: string; path: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -475,6 +483,26 @@ const onUploadSceneLayoutModelFile = (payload: { file: File; objectId?: string }
 const onUpdateModelBindings = (bindings: any[]) => {
 	emit('update-model-bindings', { nodeId: props.node.id, bindings })
 }
+
+const onNodeExportUnrealScene = () => {
+	console.info('[WORKFLOW-NODE-WRAPPER] onNodeExportUnrealScene called, nodeId:', props.node.id)
+	emit('export-unreal-scene', props.node.id)
+}
+
+const onNodeExportUnrealLighting = () => {
+	console.info('[WORKFLOW-NODE-WRAPPER] onNodeExportUnrealLighting called, nodeId:', props.node.id)
+	emit('export-unreal-lighting', props.node.id)
+}
+
+const onNodeDisconnectUnreal = () => {
+	console.info('[WORKFLOW-NODE-WRAPPER] onNodeDisconnectUnreal called, nodeId:', props.node.id)
+	emit('disconnect-unreal', props.node.id)
+}
+
+const onNodeSetUnrealAssetRootPath = (path: string) => {
+	console.info('[WORKFLOW-NODE-WRAPPER] onNodeSetUnrealAssetRootPath called, nodeId:', props.node.id, 'path:', path)
+	emit('set-asset-root-path', { nodeId: props.node.id, path })
+}
 </script>
 
 <style scoped>
@@ -572,7 +600,15 @@ const onUpdateModelBindings = (bindings: any[]) => {
 .workflow-node-wrapper :deep(.wf-three-shell),
 .workflow-node-wrapper :deep(.wf-three-shell-overlay),
 .workflow-node-wrapper :deep(.wf-three-shell-dock),
-.workflow-node-wrapper :deep(.wf-three-shell-start) {
+.workflow-node-wrapper :deep(.wf-three-shell-start),
+.workflow-node-wrapper :deep(.wf-unreal-export),
+.workflow-node-wrapper :deep(.wf-unreal-export-status),
+.workflow-node-wrapper :deep(.wf-unreal-export-actions),
+.workflow-node-wrapper :deep(.wf-unreal-export-btn),
+.workflow-node-wrapper :deep(.wf-unreal-export-asset-path),
+.workflow-node-wrapper :deep(.wf-unreal-export-asset-path-input),
+.workflow-node-wrapper :deep(.wf-unreal-export-footer),
+.workflow-node-wrapper :deep(.wf-unreal-export-guide) {
 	pointer-events: auto !important;
 	cursor: pointer;
 }

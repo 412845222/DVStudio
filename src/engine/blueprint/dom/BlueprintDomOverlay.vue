@@ -79,6 +79,10 @@
 						@three-preview-progress="onBusinessThreePreviewProgress"
 						@upload-scene-layout-model-file="onBusinessUploadSceneLayoutModelFile"
 						@update-model-bindings="onBusinessUpdateModelBindings"
+						@export-unreal-scene="onBusinessExportUnrealScene"
+						@export-unreal-lighting="onBusinessExportUnrealLighting"
+						@disconnect-unreal="onBusinessDisconnectUnreal"
+						@set-asset-root-path="onBusinessSetAssetRootPath"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -206,6 +210,10 @@ const emit = defineEmits<{
 		payload: { nodeId: string; file: File; objectId?: string }
 	): void
 	(e: 'node-update-model-bindings', payload: { nodeId: string; bindings: any[] }): void
+	(e: 'node-export-unreal-scene', nodeId: string): void
+	(e: 'node-export-unreal-lighting', nodeId: string): void
+	(e: 'node-disconnect-unreal', nodeId: string): void
+	(e: 'node-set-asset-root-path', payload: { nodeId: string; path: string }): void
 }>()
 
 const props = defineProps<{
@@ -218,6 +226,7 @@ const props = defineProps<{
 	inputParamPreviewRefsByNodeId?: Record<string, any[]>
 	editingNodeId?: string | null
 	extraPropsResolver?: (nodeData: any) => Record<string, unknown>
+	forceDomNodeIds?: string[]
 }>()
 
 const overlayRef = ref<HTMLDivElement | null>(null)
@@ -572,6 +581,22 @@ function onBusinessUploadSceneLayoutModelFile(payload: {
 
 function onBusinessUpdateModelBindings(payload: { nodeId: string; bindings: any[] }) {
 	emit('node-update-model-bindings', payload)
+}
+
+function onBusinessExportUnrealScene(nodeId: string) {
+	emit('node-export-unreal-scene', nodeId)
+}
+
+function onBusinessExportUnrealLighting(nodeId: string) {
+	emit('node-export-unreal-lighting', nodeId)
+}
+
+function onBusinessDisconnectUnreal(nodeId: string) {
+	emit('node-disconnect-unreal', nodeId)
+}
+
+function onBusinessSetAssetRootPath(payload: { nodeId: string; path: string }) {
+	emit('node-set-asset-root-path', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })
@@ -1251,6 +1276,18 @@ function syncDomNodes() {
 			const chatNode = s.getBlueprintNode(props.chatState.nodeId)
 			if (chatNode && !nodesToRender.some((n) => n.id === chatNode.id)) {
 				nodesToRender.push(chatNode)
+			}
+		}
+		// 强制渲染指定节点（用于需要节点DOM存在的场景，如Unreal导出需要Three.js预览）
+		if (Array.isArray(props.forceDomNodeIds) && props.forceDomNodeIds.length > 0) {
+			for (const forceId of props.forceDomNodeIds) {
+				const normalizedId = String(forceId ?? '').trim()
+				if (!normalizedId) continue
+				if (nodesToRender.some((n) => n.id === normalizedId)) continue
+				const forceNode = s.getBlueprintNode(normalizedId)
+				if (forceNode) {
+					nodesToRender.push(forceNode)
+				}
 			}
 		}
 	}

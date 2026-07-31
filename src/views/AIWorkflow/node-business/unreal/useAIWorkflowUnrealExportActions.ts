@@ -1,4 +1,4 @@
-import { normalizeResolvedLayoutSlots, buildSlotsFromModelBindings, getUnrealConnectionPollInterval } from './unrealExportUtils'
+import { prepareResolvedSlotsForExport, getUnrealConnectionPollInterval } from './unrealExportUtils'
 import { t } from '../../../../i18n'
 
 export const useAIWorkflowUnrealExportActions = (payload: {
@@ -68,6 +68,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	activateSceneLayoutPreview?: (nodeId: string) => void
 	waitForNextTick?: () => Promise<void>
+	getThreePreviewState?: (nodeId: string, nodeType: string) => { phase?: string; canStart?: boolean } | null
+	selectNode?: (nodeId: string) => void
+	forceNodeFullRender?: (nodeId: string, enable: boolean) => void
+	focusNode?: (nodeId: string) => void
 }) => {
 	let progressPollingTimer: ReturnType<typeof setInterval> | null = null
 	const stopProgressPolling = () => {
@@ -289,28 +293,135 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				message: t('aiworkflow.runtime.unrealEnsuringPreview')
 			})
 
+			// 第一步：选中场景布局节点、强制完整DOM渲染、聚焦到节点
+			// 这确保canvas元素被挂载到DOM，WebGL环境可以初始化
+			console.log('[UnrealExport] Step 1: Selecting and focusing source scene layout node:', sourceSceneLayoutNodeId)
+			if (payload.forceNodeFullRender) {
+				payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+			}
+			if (payload.selectNode) {
+				payload.selectNode(sourceSceneLayoutNodeId)
+			}
+			if (payload.focusNode) {
+				payload.focusNode(sourceSceneLayoutNodeId)
+			}
+			
+			// 等待Vue完成DOM更新，canvas元素挂载
+			console.log('[UnrealExport] Waiting for DOM to mount canvas element...')
+			for (let domWaitAttempt = 0; domWaitAttempt < 20; domWaitAttempt++) {
+				if (payload.waitForNextTick) {
+					await payload.waitForNextTick()
+				}
+				await new Promise((r) => setTimeout(r, 100))
+				
+				const previewState = payload.getThreePreviewState
+					? payload.getThreePreviewState(sourceSceneLayoutNodeId, 'scene-layout')
+					: null
+				
+				// 只要能获取到previewState（不管是什么phase），说明DOM已经挂载了
+				if (previewState) {
+					console.log(`[UnrealExport] DOM ready after ${domWaitAttempt + 1} attempts, initial phase: ${previewState.phase}`)
+					break
+				}
+			}
+			
+			// 额外等待几帧确保DOM布局稳定
+			await new Promise((r) => setTimeout(r, 200))
+
+			// 第二步：激活预览模式
+			console.log('[UnrealExport] Step 2: Activating scene layout preview...')
 			if (payload.activateSceneLayoutPreview) {
 				payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
 			}
 
+			// 第三步：等待预览进入interactive状态（模型加载完成）
+			let previewReady = false
+			for (let waitAttempt = 0; waitAttempt < 40; waitAttempt++) {
+				if (payload.waitForNextTick) {
+					await payload.waitForNextTick()
+				}
+				await new Promise((r) => setTimeout(r, 200))
+				
+				const previewState = payload.getThreePreviewState
+					? payload.getThreePreviewState(sourceSceneLayoutNodeId, 'scene-layout')
+					: null
+				
+				const phase = previewState?.phase ?? 'unknown'
+				console.log(`[UnrealExport] Preview wait attempt ${waitAttempt + 1}/40, phase: ${phase}`)
+				
+				if (phase === 'interactive') {
+					previewReady = true
+					// 额外等待一小段时间确保模型完全加载和渲染
+					await new Promise((r) => setTimeout(r, 800))
+					break
+				}
+				
+				// 如果还在masked状态，再次激活预览
+				if ((phase === 'masked' || phase === 'unknown') && waitAttempt % 5 === 4 && payload.activateSceneLayoutPreview) {
+					console.log('[UnrealExport] Preview still masked/unknown, re-activating...')
+					if (payload.forceNodeFullRender) {
+						payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+					}
+					payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
+				}
+			}
+
+			if (!previewReady) {
+				console.warn('[UnrealExport] Preview did not reach interactive state in time, attempting export anyway')
+			} else {
+				console.log('[UnrealExport] Preview is interactive, proceeding with export')
+			}
+
 			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null = null
 			let lastResolveError = ''
-			for (let attempt = 0; attempt < 5; attempt++) {
+			for (let attempt = 0; attempt < 10; attempt++) {
+				console.log(`[UnrealExport] Export attempt ${attempt + 1}/10`)
 				if (attempt > 0) {
+					// 重试时确保节点仍然被选中和强制渲染
+					if (payload.forceNodeFullRender) {
+						payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+					}
+					if (payload.selectNode) {
+						payload.selectNode(sourceSceneLayoutNodeId)
+					}
 					if (payload.activateSceneLayoutPreview) {
 						payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
 					}
-					await new Promise((r) => setTimeout(r, 600))
 					if (payload.waitForNextTick) {
 						await payload.waitForNextTick()
 					}
+					// 渐进式等待：1s, 1.5s, 2s, ...
+					const waitTime = 1000 + attempt * 500
+					console.log(`[UnrealExport] Waiting ${waitTime}ms before retry...`)
+					await new Promise((r) => setTimeout(r, waitTime))
 				}
 				const r = await payload.getResolvedLayoutForUnreal(sourceSceneLayoutNodeId)
 				if (r.ok) {
-					resolvedResult = r
-					break
+					const exportData = r.exportData as Record<string, unknown>
+					const slotCount = Array.isArray(exportData?.slots) ? exportData.slots.length : 0
+					console.log(`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}`)
+					if (slotCount > 0) {
+						resolvedResult = r
+						break
+					}
+					lastResolveError = `slots empty (${slotCount} slots)`
+				} else {
+					lastResolveError = r.error || 'unknown'
+					console.warn(`[UnrealExport] Export attempt ${attempt + 1} failed:`, lastResolveError)
 				}
-				lastResolveError = r.error || 'unknown'
+			}
+
+			// 导出完成后，解除强制渲染（恢复正常性能优化）
+			if (payload.forceNodeFullRender) {
+				payload.forceNodeFullRender(sourceSceneLayoutNodeId, false)
+			}
+
+			if (!resolvedResult) {
+				console.error('[UnrealExport] All export attempts failed, last error:', lastResolveError)
+				return {
+					ok: false as const,
+					error: t('aiworkflow.runtime.unrealFailedToGenerateLayout') + (lastResolveError ? `: ${lastResolveError}` : '')
+				}
 			}
 
 			const exportData =
@@ -318,7 +429,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					? (resolvedResult.exportData as Record<string, unknown>)
 					: null
 			const rawSlots = exportData && Array.isArray(exportData.slots) ? (exportData.slots as unknown[]) : []
-			const resolvedSlotMap = normalizeResolvedLayoutSlots(rawSlots)
+			console.log(`[UnrealExport] Raw slots from viewer: ${rawSlots.length}`)
 			const resolvedLayoutWarnings = exportData && Array.isArray(exportData.warnings)
 				? (exportData.warnings as unknown[]).map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
 				: []
@@ -334,13 +445,19 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				? (sourceSceneLayoutSettings?.manualModelBindings as unknown[] ?? [])
 				: []
 
-			const resolvedLayoutSlots = buildSlotsFromModelBindings(connectedModelBindings, resolvedSlotMap, layoutItems)
-			const generatedSlotCount = resolvedLayoutSlots.filter((s: Record<string, unknown>) => s.generatedFromBinding).length
-			if (generatedSlotCount > 0) {
-				resolvedLayoutWarnings.push(t('aiworkflow.runtime.modelBindingGeneratedDefault', { count: String(generatedSlotCount) }))
+			// 使用prepareResolvedSlotsForExport直接使用viewer返回的slots（保留完整变换数据）
+			const { slots: resolvedLayoutSlots, warnings: slotWarnings } = prepareResolvedSlotsForExport(
+				rawSlots,
+				connectedModelBindings,
+				layoutItems
+			)
+			if (slotWarnings.length > 0) {
+				resolvedLayoutWarnings.push(...slotWarnings)
 			}
+			console.log(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
 
 			if (resolvedLayoutSlots.length <= 0) {
+				console.error('[UnrealExport] No resolved layout slots after preparation')
 				return {
 					ok: false as const,
 					error: t('aiworkflow.runtime.unrealFailedToGenerateLayout')

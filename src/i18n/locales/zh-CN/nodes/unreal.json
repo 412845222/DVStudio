@@ -1,5 +1,5 @@
 {
-  "nodes.unreal.title": "虚幻导出",
+  "nodes.unreal.title": "一键导出场景",
   "nodes.unreal.export": "导出到 Unreal",
   "nodes.unreal.cancel": "取消",
   "nodes.unreal.exporting": "导出中…",

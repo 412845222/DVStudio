@@ -36,6 +36,7 @@
 				:legacy-resources="legacyResourcesForDom"
 				:input-param-preview-refs-by-node-id="inputParamPreviewRefsByNodeId"
 				:extra-props-resolver="nodeExtraProps"
+				:force-dom-node-ids="allForceDomNodeIds"
 				@editor-ready="onHostEditorReady"
 				@change="onBlueprintEditorChange"
 				@selection-change="onBlueprintEditorSelectionChange"
@@ -101,6 +102,10 @@
 				@node-three-preview-progress="(p: any) => onNodeThreePreviewProgress(p.nodeId, p)"
 				@node-three-preview-ready="onNodeThreePreviewReady"
 				@node-three-preview-error="onNodeThreePreviewError"
+				@node-export-unreal-scene="onNodeExportUnrealScene"
+				@node-export-unreal-lighting="onNodeExportUnrealLighting"
+				@node-disconnect-unreal="onNodeDisconnect"
+				@node-set-asset-root-path="(p: any) => onNodeSetAssetRootPath(p.nodeId, p.path)"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -8671,6 +8676,59 @@ const activateSceneLayoutPreview = (sceneLayoutNodeId: string) => {
 	})
 }
 
+// Unreal导出需要强制节点进入DOM模式的节点ID集合
+const unrealExportForceDomNodeIds = ref<Set<string>>(new Set())
+
+// 合并所有需要强制DOM渲染的节点ID（包括预热和Unreal导出）
+const allForceDomNodeIds = computed(() => {
+	const ids: string[] = []
+	for (const id of warmupForceRenderNodeIds.value) {
+		ids.push(id)
+	}
+	for (const id of unrealExportForceDomNodeIds.value) {
+		if (!ids.includes(id)) {
+			ids.push(id)
+		}
+	}
+	return ids
+})
+
+// Unreal导出辅助：选中场景布局节点，确保它在DOM中完整渲染
+const selectSceneLayoutNode = (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) return
+	const node = store.state.nodesById[normalizedNodeId] as Record<string, unknown> | undefined
+	if (!node) return
+	store.commit('setSelectedNode', { nodeId: normalizedNodeId })
+}
+
+// Unreal导出辅助：强制节点进入完整DOM渲染模式（让BlueprintDomOverlay渲染真实DOM而不是canvas）
+const forceSceneLayoutNodeFullRender = (sceneLayoutNodeId: string, enable: boolean) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) return
+	if (enable) {
+		unrealExportForceDomNodeIds.value.add(normalizedNodeId)
+	} else {
+		unrealExportForceDomNodeIds.value.delete(normalizedNodeId)
+	}
+	// 触发响应式更新
+	unrealExportForceDomNodeIds.value = new Set(unrealExportForceDomNodeIds.value)
+}
+
+// Unreal导出辅助：聚焦/滚动到节点位置
+const focusSceneLayoutNode = (sceneLayoutNodeId: string) => {
+	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	if (!normalizedNodeId) return
+	try {
+		const editor = blueprintHostRef.value?.getInstance?.()
+		if (editor && typeof editor.focusNode === 'function') {
+			editor.focusNode(normalizedNodeId)
+		}
+	} catch (err) {
+		console.warn('[UnrealExport] Failed to focus node:', err)
+	}
+}
+
 const projectToolbarRef = ref<InstanceType<typeof BlueprintProjectToolbar> | null>(null)
 const {
 	loadTemplatePackage,
@@ -9895,7 +9953,11 @@ const {
 	validateModelBindings,
 	pushToast,
 	activateSceneLayoutPreview,
-	waitForNextTick: () => nextTick()
+	waitForNextTick: () => nextTick(),
+	getThreePreviewState: getNodePreviewState,
+	selectNode: selectSceneLayoutNode,
+	forceNodeFullRender: forceSceneLayoutNodeFullRender,
+	focusNode: focusSceneLayoutNode
 })
 
 const {

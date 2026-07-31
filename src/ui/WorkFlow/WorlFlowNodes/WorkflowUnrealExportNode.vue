@@ -63,7 +63,7 @@
 						class="wf-unreal-export-btn primary"
 						type="button"
 						:disabled="isBusy"
-						@click.stop="emit('export-unreal-scene')"
+						@click.stop="onPrimaryExportClick"
 					>
 						{{ isBusy ? t('nodes.unreal.processing') : t('nodes.unreal.title') }}
 					</button>
@@ -73,7 +73,7 @@
 							class="wf-unreal-export-btn"
 							type="button"
 							:disabled="isExporting"
-							@click.stop="emit('export-unreal-scene')"
+							@click.stop="onPrimaryExportClick"
 						>
 							{{ isExporting ? t('nodes.unreal.exporting') : t('nodes.unreal.export') }}
 						</button>
@@ -81,7 +81,7 @@
 							class="wf-unreal-export-btn ghost"
 							type="button"
 							:disabled="!hasLightingInput || isExporting"
-							@click.stop="emit('export-unreal-lighting')"
+							@click.stop="onExportLightingClick"
 						>
 							{{ t('nodes.unreal.exportLights') }}
 						</button>
@@ -89,7 +89,7 @@
 							class="wf-unreal-export-btn danger"
 							type="button"
 							:disabled="isExporting"
-							@click.stop="emit('disconnect-unreal')"
+							@click.stop="onDisconnectClick"
 						>
 							{{ t('nodes.unreal.disconnect') }}
 						</button>
@@ -99,7 +99,7 @@
 						v-if="showRetryButton"
 						class="wf-unreal-export-btn"
 						type="button"
-						@click.stop="emit('export-unreal-scene')"
+						@click.stop="onPrimaryExportClick"
 					>
 						{{ t('nodes.unreal.retry') }}
 					</button>
@@ -377,6 +377,21 @@ const detailCopy = computed(() => {
 const handleSetAssetRootPath = () => {
 	const path = localAssetRootPath.value.trim()
 	emit('set-asset-root-path', path)
+}
+
+const onPrimaryExportClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 一键导出场景按钮被点击, nodeId:', props.nodeId)
+	emit('export-unreal-scene')
+}
+
+const onExportLightingClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 导出灯光按钮被点击, nodeId:', props.nodeId)
+	emit('export-unreal-lighting')
+}
+
+const onDisconnectClick = () => {
+	console.info('[UNREAL-EXPORT-NODE] 断开连接按钮被点击, nodeId:', props.nodeId)
+	emit('disconnect-unreal')
 }
 </script>
 
