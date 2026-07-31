@@ -295,7 +295,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 			// 第一步：选中场景布局节点、强制完整DOM渲染、聚焦到节点
 			// 这确保canvas元素被挂载到DOM，WebGL环境可以初始化
-			console.log('[UnrealExport] Step 1: Selecting and focusing source scene layout node:', sourceSceneLayoutNodeId)
+			console.info('[UnrealExport] Step 1: Selecting and focusing source scene layout node:', sourceSceneLayoutNodeId)
 			if (payload.forceNodeFullRender) {
 				payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
 			}
@@ -307,7 +307,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 			
 			// 等待Vue完成DOM更新，canvas元素挂载
-			console.log('[UnrealExport] Waiting for DOM to mount canvas element...')
+			console.info('[UnrealExport] Waiting for DOM to mount canvas element...')
 			for (let domWaitAttempt = 0; domWaitAttempt < 20; domWaitAttempt++) {
 				if (payload.waitForNextTick) {
 					await payload.waitForNextTick()
@@ -320,7 +320,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				
 				// 只要能获取到previewState（不管是什么phase），说明DOM已经挂载了
 				if (previewState) {
-					console.log(`[UnrealExport] DOM ready after ${domWaitAttempt + 1} attempts, initial phase: ${previewState.phase}`)
+					console.info(`[UnrealExport] DOM ready after ${domWaitAttempt + 1} attempts, initial phase: ${previewState.phase}`)
 					break
 				}
 			}
@@ -329,7 +329,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			await new Promise((r) => setTimeout(r, 200))
 
 			// 第二步：激活预览模式
-			console.log('[UnrealExport] Step 2: Activating scene layout preview...')
+			console.info('[UnrealExport] Step 2: Activating scene layout preview...')
 			if (payload.activateSceneLayoutPreview) {
 				payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
 			}
@@ -347,7 +347,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					: null
 				
 				const phase = previewState?.phase ?? 'unknown'
-				console.log(`[UnrealExport] Preview wait attempt ${waitAttempt + 1}/40, phase: ${phase}`)
+				console.info(`[UnrealExport] Preview wait attempt ${waitAttempt + 1}/40, phase: ${phase}`)
 				
 				if (phase === 'interactive') {
 					previewReady = true
@@ -358,7 +358,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				
 				// 如果还在masked状态，再次激活预览
 				if ((phase === 'masked' || phase === 'unknown') && waitAttempt % 5 === 4 && payload.activateSceneLayoutPreview) {
-					console.log('[UnrealExport] Preview still masked/unknown, re-activating...')
+					console.info('[UnrealExport] Preview still masked/unknown, re-activating...')
 					if (payload.forceNodeFullRender) {
 						payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
 					}
@@ -369,13 +369,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			if (!previewReady) {
 				console.warn('[UnrealExport] Preview did not reach interactive state in time, attempting export anyway')
 			} else {
-				console.log('[UnrealExport] Preview is interactive, proceeding with export')
+				console.info('[UnrealExport] Preview is interactive, proceeding with export')
 			}
 
 			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null = null
 			let lastResolveError = ''
 			for (let attempt = 0; attempt < 10; attempt++) {
-				console.log(`[UnrealExport] Export attempt ${attempt + 1}/10`)
+				console.info(`[UnrealExport] Export attempt ${attempt + 1}/10`)
 				if (attempt > 0) {
 					// 重试时确保节点仍然被选中和强制渲染
 					if (payload.forceNodeFullRender) {
@@ -392,14 +392,14 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					}
 					// 渐进式等待：1s, 1.5s, 2s, ...
 					const waitTime = 1000 + attempt * 500
-					console.log(`[UnrealExport] Waiting ${waitTime}ms before retry...`)
+					console.info(`[UnrealExport] Waiting ${waitTime}ms before retry...`)
 					await new Promise((r) => setTimeout(r, waitTime))
 				}
 				const r = await payload.getResolvedLayoutForUnreal(sourceSceneLayoutNodeId)
 				if (r.ok) {
 					const exportData = r.exportData as Record<string, unknown>
 					const slotCount = Array.isArray(exportData?.slots) ? exportData.slots.length : 0
-					console.log(`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}`)
+					console.info(`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}`)
 					if (slotCount > 0) {
 						resolvedResult = r
 						break
@@ -429,7 +429,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					? (resolvedResult.exportData as Record<string, unknown>)
 					: null
 			const rawSlots = exportData && Array.isArray(exportData.slots) ? (exportData.slots as unknown[]) : []
-			console.log(`[UnrealExport] Raw slots from viewer: ${rawSlots.length}`)
+			console.info(`[UnrealExport] Raw slots from viewer: ${rawSlots.length}`)
 			const resolvedLayoutWarnings = exportData && Array.isArray(exportData.warnings)
 				? (exportData.warnings as unknown[]).map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
 				: []
@@ -454,7 +454,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			if (slotWarnings.length > 0) {
 				resolvedLayoutWarnings.push(...slotWarnings)
 			}
-			console.log(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
+			console.info(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
 
 			if (resolvedLayoutSlots.length <= 0) {
 				console.error('[UnrealExport] No resolved layout slots after preparation')

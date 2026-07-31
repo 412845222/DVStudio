@@ -2467,7 +2467,7 @@ onBeforeUnmount(() => {
 const getResolvedLayoutForUnreal = async (): Promise<
 	{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 > => {
-	console.log('[SceneLayoutNode] getResolvedLayoutForUnreal called')
+	console.info('[SceneLayoutNode] getResolvedLayoutForUnreal called')
 	if (!canvasRef.value) {
 		console.warn('[SceneLayoutNode] canvasRef not mounted')
 		return { ok: false, error: t('nodes.sceneLayout.errorCanvasNotMounted') }
@@ -2483,7 +2483,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 		console.warn('[SceneLayoutNode] viewer not ready after retries')
 		return { ok: false, error: t('nodes.sceneLayout.errorViewerNotReady') }
 	}
-	console.log('[SceneLayoutNode] viewer ready')
+	console.info('[SceneLayoutNode] viewer ready')
 	viewer.setRenderSuspended(false)
 	viewer.setInteractive(true)
 	viewer.setSelectedItem(selectedPreviewItemId.value)
@@ -2493,7 +2493,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	
 	// 只有当签名变化时才重新调用setLayout，避免重置模型加载过程
 	if (signatureChanged) {
-		console.log(`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`)
+		console.info(`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`)
 		viewer.setLayout(
 			layoutItems.value,
 			cachedViewForExport ? null : settings.value?.camera,
@@ -2512,20 +2512,20 @@ const getResolvedLayoutForUnreal = async (): Promise<
 		cachedLayoutSignature = currentSignature
 		
 		// 等待模型绑定同步完成，给足够长的时间（8秒）
-		console.log('[SceneLayoutNode] Waiting for model bindings to sync (up to 8 seconds)...')
+		console.info('[SceneLayoutNode] Waiting for model bindings to sync (up to 8 seconds)...')
 		await viewer.awaitPendingBindingSync(8000)
-		console.log('[SceneLayoutNode] Model binding sync wait completed')
+		console.info('[SceneLayoutNode] Model binding sync wait completed')
 	} else {
-		console.log('[SceneLayoutNode] Layout signature unchanged, reusing existing scene')
+		console.info('[SceneLayoutNode] Layout signature unchanged, reusing existing scene')
 		// 即使签名不变，也确保渲染没有暂停
 		viewer.setRenderSuspended(false)
 		await new Promise(r => setTimeout(r, 100))
 	}
 	
 	try {
-		console.log('[SceneLayoutNode] Calling viewer.exportResolvedLayoutForUnreal...')
+		console.info('[SceneLayoutNode] Calling viewer.exportResolvedLayoutForUnreal...')
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
-		console.log(`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`)
+		console.info(`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`)
 		if (exportData.warnings.length > 0) {
 			console.warn('[SceneLayoutNode] Export warnings:', exportData.warnings)
 		}
