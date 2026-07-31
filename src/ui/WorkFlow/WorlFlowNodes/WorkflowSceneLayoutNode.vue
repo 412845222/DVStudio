@@ -1210,12 +1210,23 @@ const resetLightingControls = () => {
 const outputSelectedPlaceholder = () => {
 	console.log('[SceneLayout:transfer] outputSelectedPlaceholder called')
 	const selectedId = String(selectedPreviewItemId.value ?? '').trim()
-	console.log('[SceneLayout:transfer] selectedId:', selectedId, 'canOutputSelectedPlaceholder:', canOutputSelectedPlaceholder.value)
+	console.log(
+		'[SceneLayout:transfer] selectedId:',
+		selectedId,
+		'canOutputSelectedPlaceholder:',
+		canOutputSelectedPlaceholder.value
+	)
 	if (!selectedId || !canOutputSelectedPlaceholder.value) {
-		console.warn('[SceneLayout:transfer] outputSelectedPlaceholder early return', { selectedId, canOutput: canOutputSelectedPlaceholder.value })
+		console.warn('[SceneLayout:transfer] outputSelectedPlaceholder early return', {
+			selectedId,
+			canOutput: canOutputSelectedPlaceholder.value
+		})
 		return
 	}
-	console.log('[SceneLayout:transfer] emitting set-selected-placeholder-output with id:', selectedId)
+	console.log(
+		'[SceneLayout:transfer] emitting set-selected-placeholder-output with id:',
+		selectedId
+	)
 	emit('set-selected-placeholder-output', selectedId)
 }
 
@@ -2490,10 +2501,12 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	const currentSignature = layoutItemsSignature.value
 	const signatureChanged = currentSignature !== cachedLayoutSignature
 	const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
-	
+
 	// 只有当签名变化时才重新调用setLayout，避免重置模型加载过程
 	if (signatureChanged) {
-		console.info(`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`)
+		console.info(
+			`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`
+		)
 		viewer.setLayout(
 			layoutItems.value,
 			cachedViewForExport ? null : settings.value?.camera,
@@ -2510,7 +2523,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 			cachedViewForExport
 		)
 		cachedLayoutSignature = currentSignature
-		
+
 		// 等待模型绑定同步完成，给足够长的时间（8秒）
 		console.info('[SceneLayoutNode] Waiting for model bindings to sync (up to 8 seconds)...')
 		await viewer.awaitPendingBindingSync(8000)
@@ -2519,13 +2532,15 @@ const getResolvedLayoutForUnreal = async (): Promise<
 		console.info('[SceneLayoutNode] Layout signature unchanged, reusing existing scene')
 		// 即使签名不变，也确保渲染没有暂停
 		viewer.setRenderSuspended(false)
-		await new Promise(r => setTimeout(r, 100))
+		await new Promise((r) => setTimeout(r, 100))
 	}
-	
+
 	try {
 		console.info('[SceneLayoutNode] Calling viewer.exportResolvedLayoutForUnreal...')
 		const exportData = await viewer.exportResolvedLayoutForUnreal()
-		console.info(`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`)
+		console.info(
+			`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`
+		)
 		if (exportData.warnings.length > 0) {
 			console.warn('[SceneLayoutNode] Export warnings:', exportData.warnings)
 		}

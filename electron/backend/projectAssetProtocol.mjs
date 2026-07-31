@@ -1908,11 +1908,15 @@ function fetchRemoteUrl(rawUrl, targetPath) {
 		fetchRemoteUrlWithNode(rawUrl, targetPath)
 			.then(resolve)
 			.catch((nodeErr) => {
-				console.warn(`[AssetDownload] Node.js request failed for ${rawUrl}: ${nodeErr.message}, trying Electron net...`)
+				console.warn(
+					`[AssetDownload] Node.js request failed for ${rawUrl}: ${nodeErr.message}, trying Electron net...`
+				)
 				fetchRemoteUrlWithElectronNet(rawUrl, targetPath)
 					.then(resolve)
 					.catch((netErr) => {
-						console.error(`[AssetDownload] Electron net also failed for ${rawUrl}: ${netErr.message}`)
+						console.error(
+							`[AssetDownload] Electron net also failed for ${rawUrl}: ${netErr.message}`
+						)
 						reject(netErr)
 					})
 			})
@@ -1938,13 +1942,12 @@ function getProxyUrlForDownload() {
 	} catch (err) {
 		console.warn('[AssetDownload] Failed to read settings for proxy:', err.message)
 	}
-	const envProxy = (
+	const envProxy =
 		process.env.HTTPS_PROXY ||
 		process.env.HTTP_PROXY ||
 		process.env.https_proxy ||
 		process.env.http_proxy ||
 		''
-	)
 	return String(envProxy || '').trim()
 }
 
@@ -1992,13 +1995,20 @@ function fetchRemoteUrlWithNode(rawUrl, targetPath) {
 
 		const tmpPath = targetPath + '.part'
 		const handleError = (err) => {
-			try { fs.unlinkSync(tmpPath) } catch {}
+			try {
+				fs.unlinkSync(tmpPath)
+			} catch {}
 			reject(err)
 		}
 
 		const makeRequest = (requestUrl) => {
 			let reqUrlObj
-			try { reqUrlObj = new URL(requestUrl) } catch (err) { handleError(err); return }
+			try {
+				reqUrlObj = new URL(requestUrl)
+			} catch (err) {
+				handleError(err)
+				return
+			}
 			const reqIsHttps = reqUrlObj.protocol === 'https:'
 			const reqModule = reqIsHttps ? https : http
 			const reqOptions = {
@@ -2011,7 +2021,12 @@ function fetchRemoteUrlWithNode(rawUrl, targetPath) {
 				agent: getAgentForDownload(requestUrl)
 			}
 			const req = reqModule.request(reqOptions, (res) => {
-				if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+				if (
+					res.statusCode &&
+					res.statusCode >= 300 &&
+					res.statusCode < 400 &&
+					res.headers.location
+				) {
 					makeRequest(String(res.headers.location))
 					return
 				}
@@ -2025,7 +2040,9 @@ function fetchRemoteUrlWithNode(rawUrl, targetPath) {
 						try {
 							fs.renameSync(tmpPath, targetPath)
 							resolve()
-						} catch (err) { reject(err) }
+						} catch (err) {
+							reject(err)
+						}
 					})
 				})
 				file.on('error', handleError)
@@ -2062,13 +2079,22 @@ async function fetchRemoteUrlWithElectronNet(rawUrl, targetPath) {
 		await new Promise((resolve, reject) => {
 			const reader = response.body.getReader()
 			const pump = () => {
-				reader.read().then(({ done, value }) => {
-					if (done) { fileStream.end(resolve); return }
-					fileStream.write(Buffer.from(value), (err) => {
-						if (err) { reject(err); return }
-						pump()
+				reader
+					.read()
+					.then(({ done, value }) => {
+						if (done) {
+							fileStream.end(resolve)
+							return
+						}
+						fileStream.write(Buffer.from(value), (err) => {
+							if (err) {
+								reject(err)
+								return
+							}
+							pump()
+						})
 					})
-				}).catch(reject)
+					.catch(reject)
 			}
 			pump()
 			fileStream.on('error', reject)
@@ -2076,7 +2102,9 @@ async function fetchRemoteUrlWithElectronNet(rawUrl, targetPath) {
 		fs.renameSync(tmpPath, targetPath)
 	} catch (err) {
 		clearTimeout(timeoutId)
-		try { fs.unlinkSync(tmpPath) } catch {}
+		try {
+			fs.unlinkSync(tmpPath)
+		} catch {}
 		throw err
 	}
 }

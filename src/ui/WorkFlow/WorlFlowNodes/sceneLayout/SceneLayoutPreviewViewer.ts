@@ -337,9 +337,7 @@ const cloneItem = (item: WorkflowSceneLayoutItem): WorkflowSceneLayoutItem => ({
 	rotation: item.rotation ? { ...item.rotation } : undefined,
 	scale: item.scale ? { ...item.scale } : undefined,
 	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined,
-	holePunches: Array.isArray(item.holePunches)
-		? item.holePunches.map((p) => ({ ...p }))
-		: undefined
+	holePunches: Array.isArray(item.holePunches) ? item.holePunches.map((p) => ({ ...p })) : undefined
 })
 
 export const safeNumber = (value: unknown, fallback: number) => {
@@ -5753,7 +5751,6 @@ export class SceneLayoutPreviewViewer {
 		transformMatrix.multiply(basisMatrix)
 
 		stretchedBox.applyMatrix4(transformMatrix)
-
 		;(toolWorldGeom as { dispose?: () => void }).dispose?.()
 
 		return stretchedBox

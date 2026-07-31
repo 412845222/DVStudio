@@ -53,7 +53,9 @@ type UseAIWorkflowAssetPersistenceOptions = {
 	getCurrentProjectId: () => number | null | undefined
 	resolveBackendUrl: (value: string) => string
 	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportAssetResult | null | undefined>
+	importAssetIntoProjectScope: (
+		payload: ImportAssetIntoProjectScopePayload
+	) => Promise<ImportAssetResult | null | undefined>
 }
 
 export function formatBytes(bytes: number): string {
@@ -163,11 +165,11 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 
 		const safeName = sanitizeResourceName(resourceName, `${kind || 'resource'}_${Date.now()}`)
 		const file = await options.fileFromUrl(localUrl, safeName.replace(/\.[^.]+$/, ''))
-		const uploaded = await options.blueprintProjectService.uploadAsset(
+		const uploaded = (await options.blueprintProjectService.uploadAsset(
 			file,
 			kind,
 			projectId > 0 ? { projectId } : undefined
-		) as UploadAssetResult
+		)) as UploadAssetResult
 		if (!uploaded.ok) {
 			throw new Error(String(uploaded.error || 'upload failed'))
 		}
@@ -240,13 +242,9 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			if (imported) {
 				return {
 					url: options.resolveBackendUrl(String(imported.url || '')),
-					absolutePath: String(
-						imported.sourcePath || imported.absolutePath || ''
-					).trim(),
+					absolutePath: String(imported.sourcePath || imported.absolutePath || '').trim(),
 					projectRelativePath:
-						String(
-							imported.projectRelativePath || imported.relativePath || ''
-						).trim() || undefined,
+						String(imported.projectRelativePath || imported.relativePath || '').trim() || undefined,
 					size: Number(imported.size || 0) || undefined
 				}
 			}
@@ -264,8 +262,7 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 					projectRelativePath: uploaded.projectRelativePath,
 					size: uploaded.size
 				}
-			} catch {
-			}
+			} catch {}
 		}
 
 		if (payload.kind === 'image' || payload.kind === 'video') return null

@@ -69,7 +69,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			if (!res.ok) {
 				meshyTaskRemoteFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent)
-					options.pushToast(t('tasks.meshy.taskCenterLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.meshy.taskCenterLoadFailed', { error: String(res.error || 'unknown') }),
+						'warn'
+					)
 				return
 			}
 			meshyTaskRemoteItems.value = Array.isArray(res.items)
@@ -82,7 +85,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		} catch (err: unknown) {
 			meshyTaskRemoteFallbackReason.value = getErrorMessage(err)
 			if (!opts?.silent)
-				options.pushToast(t('tasks.meshy.taskCenterLoadFailed', { error: getErrorMessage(err) }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.taskCenterLoadFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 		} finally {
 			meshyTaskRemoteLoading.value = false
 		}
@@ -96,7 +102,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				meshyBalanceDetail.value = String(res.error || 'unknown')
 				meshyBalanceTone.value = 'warn'
 				if (!opts?.silent)
-					options.pushToast(t('tasks.meshy.balanceLoadFailedToast', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.meshy.balanceLoadFailedToast', { error: String(res.error || 'unknown') }),
+						'warn'
+					)
 				return
 			}
 			meshyBalanceText.value = String(res.displayText || t('tasks.meshy.balanceUnavailable'))
@@ -107,7 +116,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			meshyBalanceDetail.value = getErrorMessage(err)
 			meshyBalanceTone.value = 'warn'
 			if (!opts?.silent)
-				options.pushToast(t('tasks.meshy.balanceLoadFailedToast', { error: getErrorMessage(err) }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.balanceLoadFailedToast', { error: getErrorMessage(err) }),
+					'warn'
+				)
 		}
 	}
 
@@ -168,12 +180,17 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 									(Array.isArray(settings.imageUrls) ? settings.imageUrls.length : 0)
 							)
 				const progress = Math.max(0, Math.min(100, Number(settings.progress ?? 0)))
-				const chainLabel = target === 'image' ? t('tasks.meshy.imageChain') : t('tasks.meshy.model3dChain')
-				const statusFallback = String(settings.statusText ?? settings.errorMessage ?? '').trim() || t('tasks.meshy.pendingExecution')
+				const chainLabel =
+					target === 'image' ? t('tasks.meshy.imageChain') : t('tasks.meshy.model3dChain')
+				const statusFallback =
+					String(settings.statusText ?? settings.errorMessage ?? '').trim() ||
+					t('tasks.meshy.pendingExecution')
 				return {
 					id: `${node.id}:${String(settings.taskId ?? family)}`,
 					nodeId: node.id,
-					title: String(node.alias ?? node.title ?? t('tasks.meshy.taskNodeTitle')).trim() || t('tasks.meshy.taskNodeTitle'),
+					title:
+						String(node.alias ?? node.title ?? t('tasks.meshy.taskNodeTitle')).trim() ||
+						t('tasks.meshy.taskNodeTitle'),
 					taskId: String(settings.taskId ?? '').trim() || undefined,
 					target,
 					family,
@@ -230,7 +247,9 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			return t('tasks.meshy.backendTasksDisplayed')
 		}
 		if (meshyTaskRemoteFallbackReason.value) {
-			return t('tasks.meshy.backendLoadFailedFallback', { reason: meshyTaskRemoteFallbackReason.value })
+			return t('tasks.meshy.backendLoadFailedFallback', {
+				reason: meshyTaskRemoteFallbackReason.value
+			})
 		}
 		return t('tasks.meshy.localStateDisplayed')
 	})
@@ -356,7 +375,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 		if (!res.ok) {
-			options.pushToast(t('tasks.meshy.stopTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.stopTaskFailed', { error: String(res.error || 'unknown') }),
+				'warn'
+			)
 			return
 		}
 		options.stopMeshyPoll(nodeId)
@@ -395,7 +417,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const mode = normalizeMeshyModeForTaskAction(String(settings.taskFamily ?? 'text-to-3d'))
 		const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 		if (!res.ok) {
-			options.pushToast(t('tasks.meshy.deleteTaskFailed', { error: String(res.error || 'unknown') }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.deleteTaskFailed', { error: String(res.error || 'unknown') }),
+				'warn'
+			)
 			return
 		}
 		options.stopMeshyPoll(nodeId)
@@ -454,14 +479,20 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				if (nodeId) {
 					const refreshed = await refreshMeshyTaskToNode(nodeId, taskId, mode)
 					if (!refreshed.ok) {
-						options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: refreshed.error }), 'warn')
+						options.pushToast(
+							t('tasks.meshy.taskStatusRefreshFailed', { error: refreshed.error }),
+							'warn'
+						)
 					} else {
 						options.pushToast(t('tasks.meshy.taskStatusRefreshed'), 'info')
 					}
 				} else {
 					const res: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
 					if (!res.ok)
-						options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error || 'unknown') }), 'warn')
+						options.pushToast(
+							t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error || 'unknown') }),
+							'warn'
+						)
 				}
 			} else if (payload.action === 'import-output') {
 				let targetNodeId = nodeId
@@ -476,9 +507,14 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							if (taskRes.ok) {
 								const imageUrls = (taskRes as unknown as { imageUrls?: string[] }).imageUrls || []
 								const preferredUrl = String(
-									(taskRes as unknown as { preferredImageUrl?: string }).preferredImageUrl || imageUrls[0] || ''
+									(taskRes as unknown as { preferredImageUrl?: string }).preferredImageUrl ||
+										imageUrls[0] ||
+										''
 								).trim()
-								const newNodeId = options.createImageNodeAtCenter(preferredUrl, t('tasks.meshy.imageTaskNodeName'))
+								const newNodeId = options.createImageNodeAtCenter(
+									preferredUrl,
+									t('tasks.meshy.imageTaskNodeName')
+								)
 								if (newNodeId) {
 									targetNodeId = newNodeId
 									isNewNode = true
@@ -505,10 +541,13 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 						try {
 							const taskRes: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
 							if (taskRes.ok) {
-								const modelUrls = (taskRes as unknown as { modelUrls?: Record<string, string> }).modelUrls || {}
+								const modelUrls =
+									(taskRes as unknown as { modelUrls?: Record<string, string> }).modelUrls || {}
 								const preferredUrl = String(
 									(taskRes as unknown as { preferredModelUrl?: string }).preferredModelUrl ||
-										modelUrls.glb || modelUrls.gltf || ''
+										modelUrls.glb ||
+										modelUrls.gltf ||
+										''
 								).trim()
 								const modelFormat = modelUrls.glb ? 'glb' : modelUrls.gltf ? 'gltf' : 'glb'
 								const newNodeId = options.createModel3DNodeAtCenter(
@@ -546,19 +585,26 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 				} else {
 					const refreshed = await refreshMeshyTaskToNode(targetNodeId, taskId, mode)
 					if (!refreshed.ok) {
-						options.pushToast(t('tasks.meshy.pullArtifactsFailedGeneric', { error: refreshed.error }), 'warn')
+						options.pushToast(
+							t('tasks.meshy.pullArtifactsFailedGeneric', { error: refreshed.error }),
+							'warn'
+						)
 					} else if (refreshed.finalStatus !== 'succeeded') {
 						options.pushToast(t('tasks.meshy.taskNotCompletedCannotPull'), 'warn')
 					} else {
 						const node = options.store.state.nodesById[targetNodeId]
 						if (node?.type === 'image') {
 							options.pushToast(
-								isNewNode ? t('tasks.meshy.imagePulledBoundToNewNode') : t('tasks.meshy.imageDownloadedBoundGeneric'),
+								isNewNode
+									? t('tasks.meshy.imagePulledBoundToNewNode')
+									: t('tasks.meshy.imageDownloadedBoundGeneric'),
 								'info'
 							)
 						} else if (node?.type === 'model3d') {
 							options.pushToast(
-								isNewNode ? t('tasks.meshy.model3dPulledBoundToNewNode') : t('tasks.meshy.model3dDownloadedBoundGeneric'),
+								isNewNode
+									? t('tasks.meshy.model3dPulledBoundToNewNode')
+									: t('tasks.meshy.model3dDownloadedBoundGeneric'),
 								'info'
 							)
 						} else {
@@ -569,7 +615,13 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 			} else if (payload.action === 'stop') {
 				const res: MeshyTaskActionResponse = await options.comfyService.meshyStop(taskId, mode)
 				if (!res.ok) {
-					options.pushToast(t('tasks.meshy.taskActionFailed', { action: t('tasks.meshy.stop'), error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.meshy.taskActionFailed', {
+							action: t('tasks.meshy.stop'),
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
@@ -593,12 +645,21 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							})
 						}
 					}
-					options.pushToast(t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.stop') }), 'info')
+					options.pushToast(
+						t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.stop') }),
+						'info'
+					)
 				}
 			} else if (payload.action === 'delete') {
 				const res: MeshyTaskActionResponse = await options.comfyService.meshyDelete(taskId, mode)
 				if (!res.ok) {
-					options.pushToast(t('tasks.meshy.taskActionFailed', { action: t('tasks.meshy.delete'), error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.meshy.taskActionFailed', {
+							action: t('tasks.meshy.delete'),
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				} else {
 					if (nodeId) {
 						options.stopMeshyPoll(nodeId)
@@ -624,7 +685,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 							})
 						}
 					}
-					options.pushToast(t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.delete') }), 'info')
+					options.pushToast(
+						t('tasks.meshy.taskActionPerformed', { action: t('tasks.meshy.delete') }),
+						'info'
+					)
 				}
 			}
 			await refreshMeshyTaskItems({ silent: true })
@@ -646,14 +710,20 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		try {
 			const res: MeshyTaskDetailResponse = await options.comfyService.meshyTaskDetail(item.taskId)
 			if (!res.ok) {
-				options.pushToast(t('tasks.meshy.taskDetailLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.taskDetailLoadFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			meshyTaskDetail.value = mapMeshyMirrorItemToDetail(
 				res.item as unknown as Record<string, unknown>
 			)
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.meshy.taskDetailLoadFailed', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.taskDetailLoadFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		} finally {
 			meshyTaskDetailLoading.value = false
 		}

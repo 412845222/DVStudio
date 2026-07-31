@@ -246,11 +246,7 @@ export class Model3DPreviewViewer {
 		canvas.addEventListener('pointermove', this.handlePointerMove, { passive: true })
 		canvas.addEventListener('wheel', this.handleWheel, { passive: true })
 
-		this.ambientLight = new THREE.HemisphereLight(
-			'#ffffff',
-			'#4a5568',
-			1.2
-		) as unknown as LightLike
+		this.ambientLight = new THREE.HemisphereLight('#ffffff', '#4a5568', 1.2) as unknown as LightLike
 		this.directionalLight = new THREE.DirectionalLight('#ffffff', 2.0) as unknown as LightLike
 		this.directionalLight.position.set(4, 8, 5)
 		this.fillLight = new THREE.DirectionalLight('#e0f2fe', 0.8) as unknown as LightLike
@@ -365,7 +361,9 @@ export class Model3DPreviewViewer {
 		if (!options) return
 		if (options.backgroundColor) {
 			this.renderer.setClearColor(options.backgroundColor, 1)
-			const bg = (this.scene as unknown as { background: { isColor?: boolean; set?: (c: string) => void } }).background
+			const bg = (
+				this.scene as unknown as { background: { isColor?: boolean; set?: (c: string) => void } }
+			).background
 			if (bg && typeof bg.set === 'function') {
 				bg.set(options.backgroundColor)
 			}

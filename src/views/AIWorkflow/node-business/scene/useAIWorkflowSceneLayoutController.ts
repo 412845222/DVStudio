@@ -316,10 +316,16 @@ export const useAIWorkflowSceneLayoutController = (options: {
 	}
 
 	const onNodeSceneLayoutSelectedPlaceholderOutput = async (nodeId: string, itemId: string) => {
-		console.log('[SceneLayout:transfer] onNodeSceneLayoutSelectedPlaceholderOutput called', { nodeId, itemId })
+		console.log('[SceneLayout:transfer] onNodeSceneLayoutSelectedPlaceholderOutput called', {
+			nodeId,
+			itemId
+		})
 		const node = options.store.state.nodesById[nodeId] as Record<string, unknown>
 		if (!node || node.type !== 'scene-layout') {
-			console.warn('[SceneLayout:transfer] node not found or not scene-layout', { nodeId, nodeType: node?.type })
+			console.warn('[SceneLayout:transfer] node not found or not scene-layout', {
+				nodeId,
+				nodeType: node?.type
+			})
 			return
 		}
 		const outputId = String(itemId ?? '').trim()
@@ -335,7 +341,9 @@ export const useAIWorkflowSceneLayoutController = (options: {
 				selectedLayoutItemId: outputId
 			}
 		})
-		console.log('[SceneLayout:transfer] calling syncConnectedModel3DTargets with forceSceneLayoutExport=true')
+		console.log(
+			'[SceneLayout:transfer] calling syncConnectedModel3DTargets with forceSceneLayoutExport=true'
+		)
 		await options.syncConnectedModel3DTargets(nodeId, { forceSceneLayoutExport: true })
 		console.log('[SceneLayout:transfer] syncConnectedModel3DTargets completed')
 	}

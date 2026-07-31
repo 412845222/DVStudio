@@ -28,27 +28,35 @@ export const getEffectiveImageUrl = (
 ): string | null => {
 	const resourceRid = String((node as Record<string, unknown>).resourceId ?? '').trim()
 	if (resourceRid) {
-		const resourcesById = (store.state as Record<string, unknown>).resourcesById as Record<string, Record<string, unknown>> | undefined
+		const resourcesById = (store.state as Record<string, unknown>).resourcesById as
+			| Record<string, Record<string, unknown>>
+			| undefined
 		const res = resourcesById?.[resourceRid]
 		const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
 		if (resUrl) return resUrl
 	}
-	const imgSettings = typeof (node as Record<string, unknown>).imageSettings === 'object' && (node as Record<string, unknown>).imageSettings
-		? ((node as Record<string, unknown>).imageSettings as Record<string, unknown>)
-		: {}
-	const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
-		? String(imgSettings.lastGeneratedImageUrl).trim()
-		: ''
+	const imgSettings =
+		typeof (node as Record<string, unknown>).imageSettings === 'object' &&
+		(node as Record<string, unknown>).imageSettings
+			? ((node as Record<string, unknown>).imageSettings as Record<string, unknown>)
+			: {}
+	const lastGenUrl =
+		typeof imgSettings?.lastGeneratedImageUrl === 'string'
+			? String(imgSettings.lastGeneratedImageUrl).trim()
+			: ''
 	if (lastGenUrl) return lastGenUrl
-	const tripo3dSettings = typeof imgSettings?.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings
-		? (imgSettings.tripo3dImageSettings as Record<string, unknown>)
-		: {}
-	const tripo3dSummary = typeof tripo3dSettings?.outputSummary === 'object' && tripo3dSettings.outputSummary
-		? (tripo3dSettings.outputSummary as Record<string, unknown>)
-		: {}
-	const tripo3dUrl = typeof tripo3dSummary?.preferredUrl === 'string'
-		? String(tripo3dSummary.preferredUrl).trim()
-		: ''
+	const tripo3dSettings =
+		typeof imgSettings?.tripo3dImageSettings === 'object' && imgSettings.tripo3dImageSettings
+			? (imgSettings.tripo3dImageSettings as Record<string, unknown>)
+			: {}
+	const tripo3dSummary =
+		typeof tripo3dSettings?.outputSummary === 'object' && tripo3dSettings.outputSummary
+			? (tripo3dSettings.outputSummary as Record<string, unknown>)
+			: {}
+	const tripo3dUrl =
+		typeof tripo3dSummary?.preferredUrl === 'string'
+			? String(tripo3dSummary.preferredUrl).trim()
+			: ''
 	if (tripo3dUrl) return tripo3dUrl
 	if (typeof nodeResourceUrl === 'function') {
 		const standardUrl = nodeResourceUrl(node)
@@ -111,9 +119,9 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		const node = options.getNode()
 		if (!node || !options.getIncomingEdges) return []
 
-		const incoming = options.getIncomingEdges(options.nodeId).filter((e) =>
-			isImageInputAnchor(String(e.toAnchorId ?? ''))
-		)
+		const incoming = options
+			.getIncomingEdges(options.nodeId)
+			.filter((e) => isImageInputAnchor(String(e.toAnchorId ?? '')))
 
 		const state = options.store.state as {
 			nodesById: Record<string, WorkflowNode>
@@ -159,14 +167,23 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 			chatParams.tripo3dImageSize ?? tripo3dImgSettings.size ?? ''
 		).trim()
 		const tripo3dImageAspectRatio = String(
-			chatParams.tripo3dImageAspectRatio ?? (tripo3dImgSettings as Record<string, unknown>).aspectRatio ?? ''
+			chatParams.tripo3dImageAspectRatio ??
+				(tripo3dImgSettings as Record<string, unknown>).aspectRatio ??
+				''
 		).trim()
 		const tripo3dImageOutputFormat = String(
-			chatParams.tripo3dImageOutputFormat ?? (tripo3dImgSettings as Record<string, unknown>).outputFormat ?? 'png'
+			chatParams.tripo3dImageOutputFormat ??
+				(tripo3dImgSettings as Record<string, unknown>).outputFormat ??
+				'png'
 		).trim() as 'png' | 'jpeg'
-		const tripo3dImageWatermark = chatParams.tripo3dImageWatermark ?? (tripo3dImgSettings as Record<string, unknown>).watermark ?? false
+		const tripo3dImageWatermark =
+			chatParams.tripo3dImageWatermark ??
+			(tripo3dImgSettings as Record<string, unknown>).watermark ??
+			false
 		const tripo3dImageTemplate = String(
-			chatParams.tripo3dImageTemplate ?? (tripo3dImgSettings as Record<string, unknown>).template ?? ''
+			chatParams.tripo3dImageTemplate ??
+				(tripo3dImgSettings as Record<string, unknown>).template ??
+				''
 		).trim()
 		const tripo3dImageNumOutputs = Number(
 			chatParams.tripo3dImageNumOutputs ?? tripo3dImgSettings.numOutputs ?? 1
@@ -174,9 +191,7 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		const tripo3dImageNegativePrompt = String(
 			chatParams.tripo3dImageNegativePrompt ?? tripo3dImgSettings.negativePrompt ?? ''
 		).trim()
-		const tripo3dImageSeed = Number(
-			chatParams.tripo3dImageSeed ?? tripo3dImgSettings.seed ?? -1
-		)
+		const tripo3dImageSeed = Number(chatParams.tripo3dImageSeed ?? tripo3dImgSettings.seed ?? -1)
 		const tripo3dImageStrength = Number(
 			chatParams.tripo3dImageStrength ?? tripo3dImgSettings.strength ?? 0.7
 		)
@@ -229,9 +244,12 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		}
 
 		payload.output_format = tripo3dImageOutputFormat === 'jpeg' ? 'jpeg' : 'png'
-		payload.num_outputs = Number.isFinite(tripo3dImageNumOutputs) && tripo3dImageNumOutputs >= 1 && tripo3dImageNumOutputs <= 4
-			? Math.floor(tripo3dImageNumOutputs)
-			: 1
+		payload.num_outputs =
+			Number.isFinite(tripo3dImageNumOutputs) &&
+			tripo3dImageNumOutputs >= 1 &&
+			tripo3dImageNumOutputs <= 4
+				? Math.floor(tripo3dImageNumOutputs)
+				: 1
 
 		if (isBananaModel && tripo3dImageAspectRatio) {
 			payload.aspect_ratio = tripo3dImageAspectRatio
@@ -259,14 +277,17 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 				return { ok: false as const, error: t('tasks.tripo3d.imageToModelRequiresImage') }
 			}
 			if (effectiveMode === 'image_to_multiview' && refs.length >= 2) {
-				payload.inputs = refs.map(r => r.url)
+				payload.inputs = refs.map((r) => r.url)
 				payload.input = refs[0].url
 			} else {
 				payload.input = refs[0].url
 			}
-			const strengthValue = Number.isFinite(tripo3dImageStrength) && tripo3dImageStrength >= 0 && tripo3dImageStrength <= 1
-				? tripo3dImageStrength
-				: 0.7
+			const strengthValue =
+				Number.isFinite(tripo3dImageStrength) &&
+				tripo3dImageStrength >= 0 &&
+				tripo3dImageStrength <= 1
+					? tripo3dImageStrength
+					: 0.7
 			payload.strength = strengthValue
 		}
 
@@ -280,14 +301,23 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 			template: payload.template || 'None',
 			numOutputs: payload.num_outputs || 1,
 			negativePrompt: tripo3dImageNegativePrompt || 'None',
-			seed: Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0 ? Math.floor(tripo3dImageSeed) : 'Random',
-			strength: (effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview') ? (payload.strength ?? tripo3dImageStrength) : undefined,
+			seed:
+				Number.isFinite(tripo3dImageSeed) && tripo3dImageSeed >= 0
+					? Math.floor(tripo3dImageSeed)
+					: 'Random',
+			strength:
+				effectiveMode === 'image_to_image' || effectiveMode === 'image_to_multiview'
+					? (payload.strength ?? tripo3dImageStrength)
+					: undefined,
 			referenceImageCount: hasRefImages ? refs.length : 0,
 			submittedAt: new Date().toISOString()
 		}
 		payload.submittedParams = submittedParams
 
-		console.info(`[Tripo3D Image Node] 构建${effectiveMode}请求 payload:`, JSON.stringify(payload, null, 2))
+		console.info(
+			`[Tripo3D Image Node] 构建${effectiveMode}请求 payload:`,
+			JSON.stringify(payload, null, 2)
+		)
 
 		return {
 			ok: true as const,
@@ -332,7 +362,10 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 			})
 
 			try {
-				console.info('[Tripo3D Image Node] 发送请求 payload:', JSON.stringify(result.payload, null, 2))
+				console.info(
+					'[Tripo3D Image Node] 发送请求 payload:',
+					JSON.stringify(result.payload, null, 2)
+				)
 
 				let res: Tripo3DGenerateResponse
 				const comfyService = options.getComfyService()
@@ -405,13 +438,19 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		try {
 			const res = await options.getComfyService().tripo3dTask(currentTaskId)
 			if (!res.ok) {
-				options.pushToast(t('tasks.tripo3d.refreshStatusFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.tripo3d.refreshStatusFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			await options.applyTripo3DTaskResult(options.nodeId, res)
 			options.pushToast(t('tasks.tripo3d.statusRefreshed'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.tripo3d.refreshStatusException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.tripo3d.refreshStatusException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 
@@ -422,7 +461,10 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		try {
 			const res = await options.getComfyService().tripo3dStop(currentTaskId)
 			if (!res.ok) {
-				options.pushToast(t('tasks.tripo3d.stopTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.tripo3d.stopTaskFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			options.stopTripo3DPoll(options.nodeId)
@@ -433,7 +475,10 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 			})
 			options.pushToast(t('tasks.tripo3d.taskStoppedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.tripo3d.stopTaskException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.tripo3d.stopTaskException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 
@@ -444,7 +489,10 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 		try {
 			const res = await options.getComfyService().tripo3dDelete(currentTaskId)
 			if (!res.ok) {
-				options.pushToast(t('tasks.tripo3d.deleteTaskFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.tripo3d.deleteTaskFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			options.stopTripo3DPoll(options.nodeId)
@@ -457,7 +505,10 @@ export const useAIWorkflowImageNodeTripo3D = (options: {
 			})
 			options.pushToast(t('tasks.tripo3d.taskDeletedToast'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.tripo3d.deleteTaskException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.tripo3d.deleteTaskException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 

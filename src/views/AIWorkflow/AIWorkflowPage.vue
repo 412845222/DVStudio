@@ -651,7 +651,16 @@ import {
 	safeGetRecord
 } from '../../types/utils'
 import * as THREE from 'three'
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
+import {
+	computed,
+	nextTick,
+	onBeforeUnmount,
+	onMounted,
+	provide,
+	ref,
+	shallowRef,
+	watch
+} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -2413,9 +2422,7 @@ const getUpstreamCroppedImageUrl = (node: WorkflowNode): string | null => {
 	if (node.type !== 'image') return null
 	if (node.resourceId) return null
 	// in-resource已从image节点移除，只查找in-0和in-image
-	const inEdge =
-		getFirstIncomingEdge(node.id, 'in-0') ||
-		getFirstIncomingEdge(node.id, 'in-image')
+	const inEdge = getFirstIncomingEdge(node.id, 'in-0') || getFirstIncomingEdge(node.id, 'in-image')
 	if (!inEdge) return null
 	const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 	if (!fromNode || fromNode.type !== 'image') return null
@@ -2725,8 +2732,7 @@ const getNodeScreenshotVersion = (node: WorkflowNode, theme?: 'dark' | 'light'):
 	if (node.type === 'image' && !node.resourceId) {
 		// in-resource已从image节点移除
 		const inEdge =
-			getFirstIncomingEdge(node.id, 'in-0') ||
-			getFirstIncomingEdge(node.id, 'in-image')
+			getFirstIncomingEdge(node.id, 'in-0') || getFirstIncomingEdge(node.id, 'in-image')
 		if (inEdge) {
 			const fromNode = store.state.nodesById[inEdge.fromNodeId] as WorkflowNode | undefined
 			if (fromNode && fromNode.type === 'image' && fromNode.resourceId) {
@@ -6778,13 +6784,20 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 		String(placeholderPayload?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
-	console.log('[SceneLayout:transfer] placeholder info', { placeholderId, placeholderName, signature })
+	console.log('[SceneLayout:transfer] placeholder info', {
+		placeholderId,
+		placeholderName,
+		signature
+	})
 
 	pushToast(t('aiworkflow.page.placeholder.exporting'), 'info')
 
 	console.log('[SceneLayout:transfer] calling exportSceneLayoutPlaceholderGLB')
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
-	console.log('[SceneLayout:transfer] exportSceneLayoutPlaceholderGLB result', { ok: viewerExportResult.ok, hasGlbData: !!viewerExportResult.ok && 'glbData' in viewerExportResult })
+	console.log('[SceneLayout:transfer] exportSceneLayoutPlaceholderGLB result', {
+		ok: viewerExportResult.ok,
+		hasGlbData: !!viewerExportResult.ok && 'glbData' in viewerExportResult
+	})
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
 		const errorMsg = viewerExportResult.ok
 			? t('aiworkflow.page.placeholder.failedGetGlb')
@@ -6829,7 +6842,10 @@ const blobToDataUrl = (blob: Blob) =>
 	})
 
 const resolveGeneratedModelTransferSource = async (file: File) => {
-	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource called', { fileName: file.name, fileSize: file.size })
+	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource called', {
+		fileName: file.name,
+		fileSize: file.size
+	})
 	let assetUrl = ''
 	let assetPath = ''
 	let projectRelativePath = ''
@@ -6843,16 +6859,22 @@ const resolveGeneratedModelTransferSource = async (file: File) => {
 			const uploaded = (await blueprintProjectService.uploadAsset(file, 'file', {
 				projectId
 			})) as AssetImportResult
-			console.log('[SceneLayout:transfer] uploadAsset result', { ok: uploaded.ok, asset: uploaded.asset })
+			console.log('[SceneLayout:transfer] uploadAsset result', {
+				ok: uploaded.ok,
+				asset: uploaded.asset
+			})
 			if (uploaded.ok) {
 				const asset = uploaded.asset ?? {}
 				assetUrl = resolveBackendUrl(String(asset.url || ''))
 				assetPath = String(asset.absolutePath || '').trim()
-				projectRelativePath = String(
-					asset.projectRelativePath || asset.relativePath || ''
-				).trim()
+				projectRelativePath = String(asset.projectRelativePath || asset.relativePath || '').trim()
 				runtimeUrl = buildProjectAssetRuntimeUrl(projectId, projectRelativePath, assetUrl)
-				console.log('[SceneLayout:transfer] asset uploaded', { assetUrl, assetPath, projectRelativePath, runtimeUrl })
+				console.log('[SceneLayout:transfer] asset uploaded', {
+					assetUrl,
+					assetPath,
+					projectRelativePath,
+					runtimeUrl
+				})
 			}
 		}
 	} catch (err) {
@@ -6861,7 +6883,11 @@ const resolveGeneratedModelTransferSource = async (file: File) => {
 	}
 
 	const fallbackUrl = assetUrl || (await blobToDataUrl(file))
-	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource result', { transferUrl: runtimeUrl || fallbackUrl, assetUrl: runtimeUrl || fallbackUrl, projectRelativePath })
+	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource result', {
+		transferUrl: runtimeUrl || fallbackUrl,
+		assetUrl: runtimeUrl || fallbackUrl,
+		projectRelativePath
+	})
 	return {
 		transferUrl: runtimeUrl || fallbackUrl,
 		assetUrl: runtimeUrl || fallbackUrl,
@@ -7577,7 +7603,11 @@ const syncModel3DInputFromUpstream = async (
 		}
 
 		if (fromNode.type === 'scene-layout' && fromAnchorId === 'out-selected-placeholder') {
-			console.log('[SceneLayout:transfer] syncModel3DInputFromUpstream found scene-layout edge', { toNodeId: nodeId, fromNodeId: fromNode.id, forceSceneLayoutExport: opts?.forceSceneLayoutExport })
+			console.log('[SceneLayout:transfer] syncModel3DInputFromUpstream found scene-layout edge', {
+				toNodeId: nodeId,
+				fromNodeId: fromNode.id,
+				forceSceneLayoutExport: opts?.forceSceneLayoutExport
+			})
 			if (!opts?.forceSceneLayoutExport) {
 				console.log('[SceneLayout:transfer] forceSceneLayoutExport not set, skipping')
 				continue
@@ -7590,7 +7620,11 @@ const syncModel3DInputFromUpstream = async (
 			}
 			const nextSignature = generated.signature
 			const currentSettings = node.model3dSettings ?? {}
-			console.log('[SceneLayout:transfer] checking signature', { nextSignature, currentSignature: String(currentSettings.lastInputSignature ?? ''), hasModelUrl: !!String(currentSettings.modelUrl ?? '').trim() })
+			console.log('[SceneLayout:transfer] checking signature', {
+				nextSignature,
+				currentSignature: String(currentSettings.lastInputSignature ?? ''),
+				hasModelUrl: !!String(currentSettings.modelUrl ?? '').trim()
+			})
 			if (
 				String(currentSettings.lastInputSignature ?? '').trim() === nextSignature &&
 				String(currentSettings.modelUrl ?? '').trim()
@@ -7607,7 +7641,10 @@ const syncModel3DInputFromUpstream = async (
 			setObjectUrl(`model3d:${nodeId}`, objectUrl)
 			const persistentUrl = String(transfer.assetUrl || objectUrl).trim()
 			const projectRelativePath = String(transfer.projectRelativePath || '').trim()
-			console.log('[SceneLayout:transfer] committing model3dSettings', { persistentUrl, projectRelativePath })
+			console.log('[SceneLayout:transfer] committing model3dSettings', {
+				persistentUrl,
+				projectRelativePath
+			})
 			store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
@@ -7653,7 +7690,17 @@ const syncConnectedModel3DTargets = async (
 	// 从 out-selected-placeholder 锚点获取出边，过滤目标为 model3d 节点的 in-model/in-resource/in-0 输入锚点
 	const model3dInputAnchors = new Set(['in-model', 'in-resource', 'in-0'])
 	const outgoingEdges = getOutgoingEdges(fromNodeId, 'out-selected-placeholder')
-	console.log('[SceneLayout:transfer] outgoingEdges count:', outgoingEdges.length, 'edges:', outgoingEdges.map((e: WorkflowEdge) => ({ from: e.fromNodeId, fromAnchor: e.fromAnchorId, to: e.toNodeId, toAnchor: e.toAnchorId })))
+	console.log(
+		'[SceneLayout:transfer] outgoingEdges count:',
+		outgoingEdges.length,
+		'edges:',
+		outgoingEdges.map((e: WorkflowEdge) => ({
+			from: e.fromNodeId,
+			fromAnchor: e.fromAnchorId,
+			to: e.toNodeId,
+			toAnchor: e.toAnchorId
+		}))
+	)
 	const targets = outgoingEdges
 		.filter((e: WorkflowEdge) => {
 			if (!model3dInputAnchors.has(String(e.toAnchorId ?? ''))) return false
@@ -7702,7 +7749,10 @@ const syncConnectedModel3DTargets = async (
 		})
 		console.log('[SceneLayout:transfer] synced model3d node:', nodeId)
 	}
-	console.log('[SceneLayout:transfer] syncConnectedModel3DTargets done, total targets:', targets.length)
+	console.log(
+		'[SceneLayout:transfer] syncConnectedModel3DTargets done, total targets:',
+		targets.length
+	)
 }
 
 const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
@@ -10468,7 +10518,9 @@ const fileFromUrl = async (url: string, fileNameBase: string): Promise<File> => 
 		trimmedUrl.startsWith('data:') ||
 		trimmedUrl.startsWith('dweb:')
 	if (isExternalHttp && !isLocalOrBackend) {
-		throw new Error(`External HTTP URL must be downloaded via IPC to avoid CORS: ${trimmedUrl.slice(0, 100)}`)
+		throw new Error(
+			`External HTTP URL must be downloaded via IPC to avoid CORS: ${trimmedUrl.slice(0, 100)}`
+		)
 	}
 	const resp = await fetch(trimmedUrl)
 	if (!resp.ok) throw new Error(`fetch local url failed: ${resp.status}`)

@@ -46,12 +46,14 @@ function normalizeTransform(transform: unknown) {
 			pitch: Number(rot.pitch ?? 0) || 0,
 			roll: Number(rot.roll ?? 0) || 0
 		},
-		quaternion: quat ? {
-			x: Number(quat.x ?? 0) || 0,
-			y: Number(quat.y ?? 0) || 0,
-			z: Number(quat.z ?? 0) || 0,
-			w: Number(quat.w ?? 1) || 1
-		} : { x: 0, y: 0, z: 0, w: 1 },
+		quaternion: quat
+			? {
+					x: Number(quat.x ?? 0) || 0,
+					y: Number(quat.y ?? 0) || 0,
+					z: Number(quat.z ?? 0) || 0,
+					w: Number(quat.w ?? 1) || 1
+				}
+			: { x: 0, y: 0, z: 0, w: 1 },
 		scale: {
 			x: Number(scl.x ?? 1) || 1,
 			y: Number(scl.y ?? 1) || 1,
@@ -103,14 +105,14 @@ export const normalizeResolvedLayoutSlots = (slots: unknown[]) => {
 
 /**
  * 准备导出slots - 直接使用viewer返回的slots数据（保留所有变换字段）
- * 
+ *
  * viewer.exportResolvedLayoutForUnreal()已经：
  * 1. 从Three.js世界矩阵分解出精确的position/rotation/scale
  * 2. 处理了actorOrigin偏移
  * 3. 处理了parentReference父子引用
  * 4. 填充了modelBinding模型路径信息
  * 5. 支持了clone多实例
- * 
+ *
  * 这个函数只做：
  * - 验证和补充modelBinding
  * - 确保变换字段格式正确
@@ -165,9 +167,8 @@ export const prepareResolvedSlotsForExport = (
 		if (!String(finalSlot.objectName ?? '').trim()) {
 			const layoutItem = itemMap.get(sourceObjectId)
 			const binding = bindingByObjectId.get(sourceObjectId)
-			finalSlot.objectName = String(
-				layoutItem?.name ?? binding?.objectName ?? sourceObjectId
-			).trim() || sourceObjectId
+			finalSlot.objectName =
+				String(layoutItem?.name ?? binding?.objectName ?? sourceObjectId).trim() || sourceObjectId
 		}
 
 		// 确保displayName存在
@@ -176,9 +177,8 @@ export const prepareResolvedSlotsForExport = (
 			const cloneIndex = Number(finalSlot.cloneIndex ?? 0)
 			const cloneCount = Number(finalSlot.cloneCount ?? 1)
 			const objectName = String(finalSlot.objectName ?? sourceObjectId)
-			finalSlot.displayName = isClone && cloneCount > 1
-				? `${objectName} [${cloneIndex + 1}/${cloneCount}]`
-				: objectName
+			finalSlot.displayName =
+				isClone && cloneCount > 1 ? `${objectName} [${cloneIndex + 1}/${cloneCount}]` : objectName
 		}
 
 		// 验证/补充modelBinding
@@ -203,9 +203,15 @@ export const prepareResolvedSlotsForExport = (
 
 		// 确保所有变换字段存在且格式正确 - 优先使用relativeTransform（C++端主要使用）
 		// viewer返回的relativeTransform是相对于actorOrigin的变换，这是C++端摆放Actor的关键
-		const relativeTransform = normalizeTransform(finalSlot.relativeTransform ?? finalSlot.previewInstanceTransform)
-		const previewInstanceTransform = normalizeTransform(finalSlot.previewInstanceTransform ?? relativeTransform)
-		const worldTransform = normalizeTransform(finalSlot.worldTransform ?? finalSlot.previewInstanceWorldTransform ?? relativeTransform)
+		const relativeTransform = normalizeTransform(
+			finalSlot.relativeTransform ?? finalSlot.previewInstanceTransform
+		)
+		const previewInstanceTransform = normalizeTransform(
+			finalSlot.previewInstanceTransform ?? relativeTransform
+		)
+		const worldTransform = normalizeTransform(
+			finalSlot.worldTransform ?? finalSlot.previewInstanceWorldTransform ?? relativeTransform
+		)
 		const slotTransform = normalizeTransform(finalSlot.slotTransform ?? relativeTransform)
 		const meshTransform = normalizeTransform(finalSlot.meshTransform ?? worldTransform)
 		const placeholderTransform = finalSlot.placeholderTransform
@@ -220,7 +226,9 @@ export const prepareResolvedSlotsForExport = (
 		finalSlot.placeholderTransform = placeholderTransform
 
 		// 确保previewInstanceWorldTransform存在
-		finalSlot.previewInstanceWorldTransform = normalizeTransform(finalSlot.previewInstanceWorldTransform ?? worldTransform)
+		finalSlot.previewInstanceWorldTransform = normalizeTransform(
+			finalSlot.previewInstanceWorldTransform ?? worldTransform
+		)
 
 		// 保留其他元数据字段
 		if (finalSlot.parentReference && typeof finalSlot.parentReference === 'object') {
@@ -242,14 +250,14 @@ export const prepareResolvedSlotsForExport = (
 		if (!processedObjectIds.has(objectId)) {
 			const layoutItem = itemMap.get(objectId)
 			const name = String(binding.objectName ?? layoutItem?.name ?? objectId).trim() || objectId
-			warnings.push(`Model "${name}" has binding but was not found in 3D preview; it will not be exported`)
+			warnings.push(
+				`Model "${name}" has binding but was not found in 3D preview; it will not be exported`
+			)
 		}
 	}
 
 	// 按slotId排序
-	finalSlots.sort((a, b) =>
-		String(a.slotId ?? '').localeCompare(String(b.slotId ?? ''))
-	)
+	finalSlots.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
 
 	return { slots: finalSlots, warnings }
 }
@@ -315,8 +323,18 @@ export const buildSlotsFromModelBindings = (
 		finalSlots.push({
 			slotId,
 			sourceObjectId: objectId,
-			objectName: String(bindingObj.objectName ?? (layoutItem as Record<string, unknown> | undefined)?.name ?? objectId).trim() || objectId,
-			displayName: String(bindingObj.objectName ?? (layoutItem as Record<string, unknown> | undefined)?.name ?? objectId).trim() || objectId,
+			objectName:
+				String(
+					bindingObj.objectName ??
+						(layoutItem as Record<string, unknown> | undefined)?.name ??
+						objectId
+				).trim() || objectId,
+			displayName:
+				String(
+					bindingObj.objectName ??
+						(layoutItem as Record<string, unknown> | undefined)?.name ??
+						objectId
+				).trim() || objectId,
 			sourceSlotId: objectId,
 			cloneIndex: 0,
 			cloneCount: 1,
@@ -334,15 +352,15 @@ export const buildSlotsFromModelBindings = (
 			},
 			generatedFromBinding: !existingSlot,
 			worldBounds: existingSlot?.worldBounds ?? null,
-			placeholderTransform: existingSlot?.placeholderTransform ? normalizeTransform(existingSlot.placeholderTransform) : null,
+			placeholderTransform: existingSlot?.placeholderTransform
+				? normalizeTransform(existingSlot.placeholderTransform)
+				: null,
 			placeholderBounds: existingSlot?.placeholderBounds ?? null,
 			parentReference: existingSlot?.parentReference
 		})
 	}
 
-	return finalSlots.sort((a, b) =>
-		String(a.slotId ?? '').localeCompare(String(b.slotId ?? ''))
-	)
+	return finalSlots.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
 }
 
 export const UNREAL_CONNECTION_FAST_POLL_INTERVAL_MS = 800

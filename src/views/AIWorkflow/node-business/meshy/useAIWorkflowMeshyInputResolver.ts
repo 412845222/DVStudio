@@ -352,7 +352,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 
 		if (fromNode.type === 'meshy') {
 			const thumbnail = options.getMeshyDisplayThumbnailUrl(getNodeMeshySettings(fromNode))
-			const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
+			const displayName =
+				String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 			return {
 				url: thumbnail,
 				label: t('tasks.meshy.sourceMeshyNode', { name: displayName })
@@ -367,7 +368,8 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			}
 		}
 
-		const displayName = String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
+		const displayName =
+			String(fromNode.alias ?? fromNode.title ?? fromNode.id).trim() || fromNode.id
 		return {
 			url: '',
 			label: t('tasks.meshy.sourceNode', { name: displayName })

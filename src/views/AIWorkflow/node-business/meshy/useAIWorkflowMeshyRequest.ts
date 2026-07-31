@@ -143,7 +143,10 @@ export const useAIWorkflowMeshyRequest = (options: {
 			if (missing.length) {
 				return {
 					ok: false,
-					error: t('tasks.meshy.missingImageOutputAnchors', { count: String(outputCount), anchors: missing.join('、') })
+					error: t('tasks.meshy.missingImageOutputAnchors', {
+						count: String(outputCount),
+						anchors: missing.join('、')
+					})
 				}
 			}
 		}
@@ -364,10 +367,19 @@ export const useAIWorkflowMeshyRequest = (options: {
 				payload.reference_image_urls = refUrls.slice(0, 5)
 			}
 		} else if (mode === 'image-to-3d') {
-			if (!payload.image_url) return { ok: false, error: t('tasks.meshy.imageTo3dRequiresImageUrl') }
+			if (!payload.image_url)
+				return { ok: false, error: t('tasks.meshy.imageTo3dRequiresImageUrl') }
 		} else if (family === 'remesh' || family === 'uv-unwrap') {
 			if (!payload.preview_task_id && !payload.model_url) {
-				return { ok: false, error: t('tasks.meshy.remeshUvUnwrapRequiresPreviewOrModel', { stage: family === 'remesh' ? t('aiworkflow.runtime.modeRemesh') : t('aiworkflow.runtime.modeUvUnwrap') }) }
+				return {
+					ok: false,
+					error: t('tasks.meshy.remeshUvUnwrapRequiresPreviewOrModel', {
+						stage:
+							family === 'remesh'
+								? t('aiworkflow.runtime.modeRemesh')
+								: t('aiworkflow.runtime.modeUvUnwrap')
+					})
+				}
 			}
 		} else {
 			const imgUrls = payload.image_urls ?? []

@@ -500,7 +500,12 @@ const onNodeDisconnectUnreal = () => {
 }
 
 const onNodeSetUnrealAssetRootPath = (path: string) => {
-	console.info('[WORKFLOW-NODE-WRAPPER] onNodeSetUnrealAssetRootPath called, nodeId:', props.node.id, 'path:', path)
+	console.info(
+		'[WORKFLOW-NODE-WRAPPER] onNodeSetUnrealAssetRootPath called, nodeId:',
+		props.node.id,
+		'path:',
+		path
+	)
 	emit('set-asset-root-path', { nodeId: props.node.id, path })
 }
 </script>

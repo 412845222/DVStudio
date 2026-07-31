@@ -3,7 +3,7 @@ import {
 	isSameItem,
 	isSameItems,
 	safeNumber,
-	fillModeToAxis,
+	fillModeToAxis
 } from '@/ui/WorkFlow/WorlFlowNodes/sceneLayout/SceneLayoutPreviewViewer'
 import type { WorkflowSceneLayoutItem } from '@/types/workflow/sceneLayout'
 
@@ -28,7 +28,7 @@ const makeItem = (overrides: Partial<WorkflowSceneLayoutItem> = {}): WorkflowSce
 		fillCount: undefined,
 		fillAxisScale: undefined,
 		orientationFix: undefined,
-		...overrides,
+		...overrides
 	}) as unknown as WorkflowSceneLayoutItem
 
 describe('sceneLayoutPreview pivot centering & feature state (regression tests)', () => {
@@ -123,11 +123,11 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 					pitch: 0,
 					roll: 0,
 					confidence: 'low',
-					updatedAt: 12345,
+					updatedAt: 12345
 				},
 				fitMode: 'oriented',
 				fitMessage: 'rotated to Y: 90°',
-				fitUpdatedAt: 12345,
+				fitUpdatedAt: 12345
 			})
 			expect(isSameItem(before, after)).toBe(false)
 		})
@@ -141,9 +141,9 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 					pitch: 0,
 					roll: 0,
 					confidence: 'low',
-					updatedAt: 12345,
+					updatedAt: 12345
 				},
-				fitMode: 'oriented',
+				fitMode: 'oriented'
 			})
 			const reset = makeItem()
 			expect(isSameItem(oriented, reset)).toBe(false)
@@ -159,7 +159,7 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 				fillUpdatedAt: 12345,
 				fitMode: 'filled',
 				fitMessage: 'filled along X: 3 items',
-				fitUpdatedAt: 12345,
+				fitUpdatedAt: 12345
 			})
 			expect(isSameItem(before, after)).toBe(false)
 		})
@@ -170,13 +170,13 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 				fillMode: 'fill-x',
 				fillCount: 3,
 				fillAxisScale: 1,
-				fitMode: 'filled',
+				fitMode: 'filled'
 			})
 			const canceled = makeItem({
 				fitMode: 'normal',
 				fillMode: undefined,
 				fillCount: undefined,
-				fillAxisScale: undefined,
+				fillAxisScale: undefined
 			})
 			expect(isSameItem(filled, canceled)).toBe(false)
 		})
@@ -190,43 +190,85 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 				fitUpdatedAt: 12345,
 				fillMode: undefined,
 				fillCount: undefined,
-				fillAxisScale: undefined,
+				fillAxisScale: undefined
 			})
 			expect(isSameItem(before, after)).toBe(false)
 		})
 
 		it('detects yaw change within orientationFix', () => {
 			const a = makeItem({
-				orientationFix: { mode: 'manual', yaw: 0, pitch: 0, roll: 0, confidence: 'low', updatedAt: 1 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 0,
+					pitch: 0,
+					roll: 0,
+					confidence: 'low',
+					updatedAt: 1
+				},
+				fitMode: 'oriented'
 			})
 			const b = makeItem({
-				orientationFix: { mode: 'manual', yaw: 90, pitch: 0, roll: 0, confidence: 'low', updatedAt: 2 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 90,
+					pitch: 0,
+					roll: 0,
+					confidence: 'low',
+					updatedAt: 2
+				},
+				fitMode: 'oriented'
 			})
 			expect(isSameItem(a, b)).toBe(false)
 		})
 
 		it('detects pitch change within orientationFix', () => {
 			const a = makeItem({
-				orientationFix: { mode: 'manual', yaw: 0, pitch: 0, roll: 0, confidence: 'low', updatedAt: 1 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 0,
+					pitch: 0,
+					roll: 0,
+					confidence: 'low',
+					updatedAt: 1
+				},
+				fitMode: 'oriented'
 			})
 			const b = makeItem({
-				orientationFix: { mode: 'manual', yaw: 0, pitch: 90, roll: 0, confidence: 'low', updatedAt: 2 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 0,
+					pitch: 90,
+					roll: 0,
+					confidence: 'low',
+					updatedAt: 2
+				},
+				fitMode: 'oriented'
 			})
 			expect(isSameItem(a, b)).toBe(false)
 		})
 
 		it('detects roll change within orientationFix', () => {
 			const a = makeItem({
-				orientationFix: { mode: 'manual', yaw: 0, pitch: 0, roll: 0, confidence: 'low', updatedAt: 1 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 0,
+					pitch: 0,
+					roll: 0,
+					confidence: 'low',
+					updatedAt: 1
+				},
+				fitMode: 'oriented'
 			})
 			const b = makeItem({
-				orientationFix: { mode: 'manual', yaw: 0, pitch: 0, roll: 90, confidence: 'low', updatedAt: 2 },
-				fitMode: 'oriented',
+				orientationFix: {
+					mode: 'manual',
+					yaw: 0,
+					pitch: 0,
+					roll: 90,
+					confidence: 'low',
+					updatedAt: 2
+				},
+				fitMode: 'oriented'
 			})
 			expect(isSameItem(a, b)).toBe(false)
 		})
@@ -239,7 +281,12 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 
 		it('detects fillAxisScale change', () => {
 			const a = makeItem({ fillMode: 'fill-x', fillCount: 2, fillAxisScale: 1, fitMode: 'filled' })
-			const b = makeItem({ fillMode: 'fill-x', fillCount: 2, fillAxisScale: 1.5, fitMode: 'filled' })
+			const b = makeItem({
+				fillMode: 'fill-x',
+				fillCount: 2,
+				fillAxisScale: 1.5,
+				fitMode: 'filled'
+			})
 			expect(isSameItem(a, b)).toBe(false)
 		})
 
@@ -259,9 +306,16 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 				makeItem({ id: 'a' }),
 				makeItem({
 					id: 'b',
-					orientationFix: { mode: 'manual', yaw: 90, pitch: 0, roll: 0, confidence: 'low', updatedAt: 1 },
-					fitMode: 'oriented',
-				}),
+					orientationFix: {
+						mode: 'manual',
+						yaw: 90,
+						pitch: 0,
+						roll: 0,
+						confidence: 'low',
+						updatedAt: 1
+					},
+					fitMode: 'oriented'
+				})
 			]
 			expect(isSameItems(before, after)).toBe(false)
 		})
@@ -269,9 +323,27 @@ describe('sceneLayoutPreview pivot centering & feature state (regression tests)'
 		it('returns true when no feature state changed (same layout, same fit state)', () => {
 			const items = [
 				makeItem({ id: 'a' }),
-				makeItem({ id: 'b', fitMode: 'oriented', orientationFix: { mode: 'manual', yaw: 90, pitch: 0, roll: 0, confidence: 'low', updatedAt: 1 } }),
+				makeItem({
+					id: 'b',
+					fitMode: 'oriented',
+					orientationFix: {
+						mode: 'manual',
+						yaw: 90,
+						pitch: 0,
+						roll: 0,
+						confidence: 'low',
+						updatedAt: 1
+					}
+				})
 			]
-			const clone = items.map((i) => ({ ...i, position: { ...i.position }, size: { ...i.size }, rotation: i.rotation ? { ...i.rotation } : undefined, scale: i.scale ? { ...i.scale } : undefined, orientationFix: i.orientationFix ? { ...i.orientationFix } : undefined }))
+			const clone = items.map((i) => ({
+				...i,
+				position: { ...i.position },
+				size: { ...i.size },
+				rotation: i.rotation ? { ...i.rotation } : undefined,
+				scale: i.scale ? { ...i.scale } : undefined,
+				orientationFix: i.orientationFix ? { ...i.orientationFix } : undefined
+			}))
 			expect(isSameItems(items, clone)).toBe(true)
 		})
 	})

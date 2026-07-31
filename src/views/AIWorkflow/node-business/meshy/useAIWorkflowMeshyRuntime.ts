@@ -285,7 +285,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				} else if (preferredModelUrl) {
 					const backendLocalAssetUrl = String(task.localAssetUrl ?? '').trim()
 					const backendLocalAssetPath = String(task.localAssetPath ?? '').trim()
-					const hasBackendLocalAsset = !!backendLocalAssetUrl && !isMeshyRemoteUrl(backendLocalAssetUrl)
+					const hasBackendLocalAsset =
+						!!backendLocalAssetUrl && !isMeshyRemoteUrl(backendLocalAssetUrl)
 
 					if (hasBackendLocalAsset) {
 						patch.meshyOutputAssetUrl = backendLocalAssetUrl
@@ -403,7 +404,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 								name: resourceName,
 								url: String(persisted.url || preferredModelUrl),
 								sourcePath: String(persisted.absolutePath || '').trim() || undefined,
-								projectRelativePath: String(persisted.projectRelativePath || '').trim() || undefined,
+								projectRelativePath:
+									String(persisted.projectRelativePath || '').trim() || undefined,
 								posterUrl: resolvedThumbnailUrl || undefined,
 								createdAt: Date.now()
 							}
@@ -474,7 +476,9 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const imagePatch: Record<string, unknown> = {
 				taskId: patch.meshyTaskId,
 				taskStatus: normalized,
-				taskFamily: String(task.mode || '').includes('image-to-image') ? 'image-to-image' : 'text-to-image',
+				taskFamily: String(task.mode || '').includes('image-to-image')
+					? 'image-to-image'
+					: 'text-to-image',
 				progress: patch.meshyProgress,
 				statusText: patch.meshyStatusText,
 				errorMessage: patch.meshyErrorMessage,
@@ -527,8 +531,8 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				const existingLocalUrl = !isMeshyRemoteUrl(existingModelAssetUrl)
 					? existingModelAssetUrl
 					: !isMeshyRemoteUrl(existingModelUrl)
-					? existingModelUrl
-					: ''
+						? existingModelUrl
+						: ''
 
 				if (!newIsRemote) {
 					model3dPatch.modelUrl = newAssetUrl
@@ -741,12 +745,16 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						const finalTarget = String(mode).includes('image') ? 'image' : '3d'
 						if (finalStatus === 'succeeded') {
 							options.pushToast(
-								finalTarget === 'image' ? t('tasks.meshy.imageTaskCompleted') : t('tasks.meshy.model3dTaskCompleted'),
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskCompleted')
+									: t('tasks.meshy.model3dTaskCompleted'),
 								'info'
 							)
 						} else if (finalStatus === 'failed') {
 							options.pushToast(
-								finalTarget === 'image' ? t('tasks.meshy.imageTaskFailed') : t('tasks.meshy.model3dTaskFailed'),
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskFailed')
+									: t('tasks.meshy.model3dTaskFailed'),
 								'warn'
 							)
 						} else {
@@ -779,7 +787,12 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			if (n && (n.type === 'image' || n.type === 'model3d')) {
 				const status = getNodeMeshyTaskStatus(n)
 				const taskId = getNodeMeshyTaskId(n)
-				if (status === 'pending' || status === 'running' || status === 'queued' || status === 'in_progress') {
+				if (
+					status === 'pending' ||
+					status === 'running' ||
+					status === 'queued' ||
+					status === 'in_progress'
+				) {
 					meshyNodes.push(n)
 				} else if (status === 'succeeded' && taskId && n.type === 'model3d') {
 					const m3dSettings = isRecord(n.model3dSettings) ? n.model3dSettings : {}
@@ -811,18 +824,29 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				const res = await options.getComfyService().meshyTask(taskId, taskFamily)
 				if (!res.ok) {
 					if (!opts?.silent) {
-						options.pushToast(t('aiworkflow.toast.meshyQueryFailed', { name: node.alias || node.title || nodeId }), 'warn')
+						options.pushToast(
+							t('aiworkflow.toast.meshyQueryFailed', { name: node.alias || node.title || nodeId }),
+							'warn'
+						)
 					}
 					continue
 				}
 
 				const finalStatus = await applyMeshyTaskResult(nodeId, res)
-				if (finalStatus === 'pending' || finalStatus === 'running' || finalStatus === 'queued' || finalStatus === 'in_progress') {
+				if (
+					finalStatus === 'pending' ||
+					finalStatus === 'running' ||
+					finalStatus === 'queued' ||
+					finalStatus === 'in_progress'
+				) {
 					startMeshyPoll(nodeId, taskId, taskFamily)
 				}
 			} catch {
 				if (!opts?.silent) {
-					options.pushToast(t('aiworkflow.toast.meshyResumeFailed', { name: node.alias || node.title || nodeId }), 'warn')
+					options.pushToast(
+						t('aiworkflow.toast.meshyResumeFailed', { name: node.alias || node.title || nodeId }),
+						'warn'
+					)
 				}
 			}
 		}

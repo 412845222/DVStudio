@@ -162,7 +162,13 @@ export const canLinkAnchors = (
 	}
 	if (isGenericSource) {
 		// 源是generic锚点（如blender out-0），根据下游锚点类型判断
-		if (toKind === 'text' || toKind === 'image' || toKind === 'model3d' || toKind === 'video' || toKind === 'audio') {
+		if (
+			toKind === 'text' ||
+			toKind === 'image' ||
+			toKind === 'model3d' ||
+			toKind === 'video' ||
+			toKind === 'audio'
+		) {
 			return true
 		}
 	}

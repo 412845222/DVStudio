@@ -36,7 +36,13 @@ export type MeshyRequestMode =
 	| 'rigging'
 	| 'animation'
 
-export type MeshyRelationKind = 'model' | 'texture' | 'rigging' | 'animation' | 'remesh' | 'uv-unwrap'
+export type MeshyRelationKind =
+	| 'model'
+	| 'texture'
+	| 'rigging'
+	| 'animation'
+	| 'remesh'
+	| 'uv-unwrap'
 
 export type MeshyCapability = 'model' | 'textured' | 'rigged' | 'animated'
 

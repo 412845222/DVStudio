@@ -1497,7 +1497,11 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 	// 输出锚点：out-0为文本布局输出，out-selected-placeholder为选中占位立方体的GLB模型输出（仅预览模式）
 	node.outputs = [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
 	if (previewMode) {
-		node.outputs.push({ id: 'out-selected-placeholder', label: '选中占位体输出', mediaType: 'model3d' })
+		node.outputs.push({
+			id: 'out-selected-placeholder',
+			label: '选中占位体输出',
+			mediaType: 'model3d'
+		})
 	}
 }
 

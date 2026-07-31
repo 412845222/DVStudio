@@ -1656,7 +1656,9 @@ onBeforeUnmount(() => {
 	color: #ecfeff;
 	background: linear-gradient(135deg, rgba(13, 148, 136, 0.9), rgba(14, 116, 144, 0.88));
 	cursor: pointer;
-	transition: background 120ms ease, border-color 120ms ease;
+	transition:
+		background 120ms ease,
+		border-color 120ms ease;
 }
 
 .wf-model3d-restart-btn:hover {

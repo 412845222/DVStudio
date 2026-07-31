@@ -180,7 +180,11 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 				}
 				const current = stateMap.value[nodeId]
 				// 当activeId为空（右键平移/多选状态）时，保持已激活的预览不被卸载
-				if (!activeId && current && (current.phase === 'interactive' || current.phase === 'loading')) {
+				if (
+					!activeId &&
+					current &&
+					(current.phase === 'interactive' || current.phase === 'loading')
+				) {
 					cancelPendingMasked(nodeId, current)
 					const exportState = exportStateMap.get(nodeId)
 					if (exportState) syncExportState(exportState, current)

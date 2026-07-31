@@ -97,7 +97,11 @@ export class BlueprintLegacyLoader {
 		const toNodeId = String(edge.toNodeId ?? '')
 		const toNode = nodesById[toNodeId]
 		// 如果目标节点是image节点，且连接到in-resource锚点，重定向到in-0
-		if (toNode && String(toNode.type ?? '') === 'image' && String(edge.toAnchorId ?? '') === 'in-resource') {
+		if (
+			toNode &&
+			String(toNode.type ?? '') === 'image' &&
+			String(edge.toAnchorId ?? '') === 'in-resource'
+		) {
 			edge.toAnchorId = 'in-0'
 		}
 		return edge
