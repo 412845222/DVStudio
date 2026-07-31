@@ -1208,8 +1208,14 @@ const resetLightingControls = () => {
 }
 
 const outputSelectedPlaceholder = () => {
+	console.log('[SceneLayout:transfer] outputSelectedPlaceholder called')
 	const selectedId = String(selectedPreviewItemId.value ?? '').trim()
-	if (!selectedId || !canOutputSelectedPlaceholder.value) return
+	console.log('[SceneLayout:transfer] selectedId:', selectedId, 'canOutputSelectedPlaceholder:', canOutputSelectedPlaceholder.value)
+	if (!selectedId || !canOutputSelectedPlaceholder.value) {
+		console.warn('[SceneLayout:transfer] outputSelectedPlaceholder early return', { selectedId, canOutput: canOutputSelectedPlaceholder.value })
+		return
+	}
+	console.log('[SceneLayout:transfer] emitting set-selected-placeholder-output with id:', selectedId)
 	emit('set-selected-placeholder-output', selectedId)
 }
 

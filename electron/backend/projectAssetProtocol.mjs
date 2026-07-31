@@ -2,7 +2,9 @@ import path from 'node:path'
 import fs from 'node:fs'
 import https from 'node:https'
 import http from 'node:http'
+import { fileURLToPath } from 'node:url'
 import { protocol, net } from 'electron'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { getTempDir } from './modules/subtitle-recognition/paths.mjs'
 
 const DWEB_PROJECT_ASSET_HOST = 'project-assets'
@@ -1903,6 +1905,69 @@ export function migrateBinCacheMediaToMedia({ projectId, binFilePath, kind, pref
 
 function fetchRemoteUrl(rawUrl, targetPath) {
 	return new Promise((resolve, reject) => {
+		fetchRemoteUrlWithNode(rawUrl, targetPath)
+			.then(resolve)
+			.catch((nodeErr) => {
+				console.warn(`[AssetDownload] Node.js request failed for ${rawUrl}: ${nodeErr.message}, trying Electron net...`)
+				fetchRemoteUrlWithElectronNet(rawUrl, targetPath)
+					.then(resolve)
+					.catch((netErr) => {
+						console.error(`[AssetDownload] Electron net also failed for ${rawUrl}: ${netErr.message}`)
+						reject(netErr)
+					})
+			})
+	})
+}
+
+function getProxyUrlForDownload() {
+	try {
+		const settingsPath = path.resolve(
+			path.dirname(fileURLToPath(import.meta.url)),
+			'..',
+			'..',
+			'DVSResource',
+			'UserSettings',
+			'settings.json'
+		)
+		if (fs.existsSync(settingsPath)) {
+			const raw = fs.readFileSync(settingsPath, 'utf-8')
+			const settings = JSON.parse(raw)
+			const configuredProxy = String((settings && settings.httpProxy) || '').trim()
+			if (configuredProxy) return configuredProxy
+		}
+	} catch (err) {
+		console.warn('[AssetDownload] Failed to read settings for proxy:', err.message)
+	}
+	const envProxy = (
+		process.env.HTTPS_PROXY ||
+		process.env.HTTP_PROXY ||
+		process.env.https_proxy ||
+		process.env.http_proxy ||
+		''
+	)
+	return String(envProxy || '').trim()
+}
+
+function getAgentForDownload(url) {
+	try {
+		const u = new URL(url)
+		const isHttps = u.protocol === 'https:'
+		const proxyUrl = getProxyUrlForDownload()
+		if (proxyUrl) {
+			console.log(`[AssetDownload] Using proxy: ${proxyUrl} for ${u.hostname}`)
+			return new HttpsProxyAgent(proxyUrl, { keepAlive: true })
+		}
+		return isHttps
+			? new https.Agent({ keepAlive: true, keepAliveMsecs: 300 * 1000 })
+			: new http.Agent({ keepAlive: true, keepAliveMsecs: 300 * 1000 })
+	} catch (err) {
+		console.warn('[AssetDownload] Failed to create agent:', err.message)
+		return new https.Agent({ keepAlive: true })
+	}
+}
+
+function fetchRemoteUrlWithNode(rawUrl, targetPath) {
+	return new Promise((resolve, reject) => {
 		let urlObj
 		try {
 			urlObj = new URL(rawUrl)
@@ -1911,56 +1976,109 @@ function fetchRemoteUrl(rawUrl, targetPath) {
 			return
 		}
 
-		const module = urlObj.protocol === 'https:' ? https : http
+		const isHttps = urlObj.protocol === 'https:'
+		const module = isHttps ? https : http
 		const options = {
 			method: 'GET',
 			hostname: urlObj.hostname,
-			port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+			port: urlObj.port || (isHttps ? 443 : 80),
 			path: urlObj.pathname + urlObj.search,
 			headers: {
 				'User-Agent': 'DwebVideoStudio/1.0 (Electron)'
 			},
-			timeout: 120 * 1000
+			timeout: 120 * 1000,
+			agent: getAgentForDownload(rawUrl)
 		}
 
 		const tmpPath = targetPath + '.part'
 		const handleError = (err) => {
-			try {
-				fs.unlinkSync(tmpPath)
-			} catch {}
+			try { fs.unlinkSync(tmpPath) } catch {}
 			reject(err)
 		}
 
-		const req = module.request(options, (res) => {
-			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-				fetchRemoteUrl(String(res.headers.location), targetPath).then(resolve, reject)
-				return
+		const makeRequest = (requestUrl) => {
+			let reqUrlObj
+			try { reqUrlObj = new URL(requestUrl) } catch (err) { handleError(err); return }
+			const reqIsHttps = reqUrlObj.protocol === 'https:'
+			const reqModule = reqIsHttps ? https : http
+			const reqOptions = {
+				method: 'GET',
+				hostname: reqUrlObj.hostname,
+				port: reqUrlObj.port || (reqIsHttps ? 443 : 80),
+				path: reqUrlObj.pathname + reqUrlObj.search,
+				headers: options.headers,
+				timeout: options.timeout,
+				agent: getAgentForDownload(requestUrl)
 			}
-			if (!res.statusCode || res.statusCode >= 400) {
-				handleError(new Error(`HTTP ${res.statusCode}`))
-				return
-			}
-			const file = fs.createWriteStream(tmpPath)
-			file.on('finish', () => {
-				file.close(() => {
-					try {
-						fs.renameSync(tmpPath, targetPath)
-						resolve()
-					} catch (err) {
-						reject(err)
-					}
+			const req = reqModule.request(reqOptions, (res) => {
+				if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+					makeRequest(String(res.headers.location))
+					return
+				}
+				if (!res.statusCode || res.statusCode >= 400) {
+					handleError(new Error(`HTTP ${res.statusCode}`))
+					return
+				}
+				const file = fs.createWriteStream(tmpPath)
+				file.on('finish', () => {
+					file.close(() => {
+						try {
+							fs.renameSync(tmpPath, targetPath)
+							resolve()
+						} catch (err) { reject(err) }
+					})
 				})
+				file.on('error', handleError)
+				res.on('error', handleError)
+				res.pipe(file)
 			})
-			file.on('error', handleError)
-			res.on('error', handleError)
-			res.pipe(file)
-		})
-		req.on('error', handleError)
-		req.on('timeout', () => {
-			req.destroy(new Error('request timeout'))
-		})
-		req.end()
+			req.on('error', handleError)
+			req.on('timeout', () => req.destroy(new Error('request timeout')))
+			req.end()
+		}
+
+		makeRequest(rawUrl)
 	})
+}
+
+async function fetchRemoteUrlWithElectronNet(rawUrl, targetPath) {
+	const tmpPath = targetPath + '.part'
+	const controller = new AbortController()
+	const timeoutId = setTimeout(() => controller.abort(), 120 * 1000)
+	try {
+		const response = await net.fetch(rawUrl, {
+			method: 'GET',
+			headers: { 'User-Agent': 'DwebVideoStudio/1.0 (Electron)' },
+			signal: controller.signal
+		})
+		clearTimeout(timeoutId)
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`)
+		}
+		if (!response.body) {
+			throw new Error('empty response body')
+		}
+		const fileStream = fs.createWriteStream(tmpPath)
+		await new Promise((resolve, reject) => {
+			const reader = response.body.getReader()
+			const pump = () => {
+				reader.read().then(({ done, value }) => {
+					if (done) { fileStream.end(resolve); return }
+					fileStream.write(Buffer.from(value), (err) => {
+						if (err) { reject(err); return }
+						pump()
+					})
+				}).catch(reject)
+			}
+			pump()
+			fileStream.on('error', reject)
+		})
+		fs.renameSync(tmpPath, targetPath)
+	} catch (err) {
+		clearTimeout(timeoutId)
+		try { fs.unlinkSync(tmpPath) } catch {}
+		throw err
+	}
 }
 
 function buildAssetPayload(projectId, absolutePath, root, { kind, name, contentType, sourcePath }) {

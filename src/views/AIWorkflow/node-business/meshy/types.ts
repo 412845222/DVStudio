@@ -64,6 +64,9 @@ export type MeshyTaskResponse =
 			sourceModelUrl?: string
 			statusText?: string
 			errorMessage?: string
+			localAssetUrl?: string
+			localAssetPath?: string
+			lastNodeId?: string
 			raw?: unknown
 	  }
 	| { ok: false; error: string; status?: number; baseUrl?: string }
@@ -204,6 +207,10 @@ export type MeshyModel3DSettings = {
 	statusText?: string
 	errorMessage?: string
 	outputSummary?: MeshyOutputSummary
+	outputAssetUrl?: string
+	outputAssetPath?: string
+	thumbnailUrl?: string
+	relationSummary?: MeshyRelationSummary
 	imageCount?: number
 	imageUrls?: string[]
 	prompt?: string
@@ -297,6 +304,9 @@ export function extractMeshyTaskResultFields(raw: unknown): {
 	sourceModelUrl: string
 	statusText: string
 	errorMessage: string
+	localAssetUrl: string
+	localAssetPath: string
+	lastNodeId: string
 } {
 	const record: Record<string, unknown> = isRecord(raw) ? raw : {}
 
@@ -332,7 +342,10 @@ export function extractMeshyTaskResultFields(raw: unknown): {
 		preferredModelUrl: isString(record.preferredModelUrl) ? record.preferredModelUrl.trim() : '',
 		sourceModelUrl: isString(record.sourceModelUrl) ? record.sourceModelUrl.trim() : '',
 		statusText: isString(record.statusText) ? record.statusText.trim() : '',
-		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : ''
+		errorMessage: isString(record.errorMessage) ? record.errorMessage.trim() : '',
+		localAssetUrl: isString(record.localAssetUrl) ? record.localAssetUrl.trim() : '',
+		localAssetPath: isString(record.localAssetPath) ? record.localAssetPath.trim() : '',
+		lastNodeId: isString(record.lastNodeId) ? record.lastNodeId.trim() : ''
 	}
 }
 
@@ -362,6 +375,12 @@ export type MeshyComfyService = {
 	meshyStop: (taskId: string, mode: string) => Promise<MeshyTaskActionResponse>
 	meshyDelete: (taskId: string, mode: string) => Promise<MeshyTaskActionResponse>
 	meshyBalance: () => Promise<MeshyBalanceResponse>
+	meshyUpdateLocalAsset: (payload: {
+		taskId: string
+		localAssetUrl: string
+		localAssetPath?: string
+		lastNodeId?: string
+	}) => Promise<{ ok: boolean; error?: string }>
 }
 
 export function isMeshySettingsRecord(value: unknown): value is Record<string, unknown> {

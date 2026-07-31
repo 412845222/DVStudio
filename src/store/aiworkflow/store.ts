@@ -725,6 +725,24 @@ const normalizeSceneLayoutSettings = (
 									y: Number.isFinite(Number(scaleObj.y)) ? Number(scaleObj.y) : undefined,
 									z: Number.isFinite(Number(scaleObj.z)) ? Number(scaleObj.z) : undefined
 								}
+							: undefined,
+						holePunches: isArray(itemObj.holePunches)
+							? itemObj.holePunches
+									.map((punch: unknown) => {
+										const punchObj = isRecord(punch) ? punch : {}
+										const punchId = String(punchObj.id ?? '').trim()
+										const targetId = String(punchObj.targetItemId ?? '').trim()
+										const toolId = String(punchObj.toolItemId ?? '').trim()
+										const createdAt = Number(punchObj.createdAt)
+										if (!punchId || !targetId || !toolId) return null
+										return {
+											id: punchId,
+											targetItemId: targetId,
+											toolItemId: toolId,
+											createdAt: Number.isFinite(createdAt) ? createdAt : Date.now()
+										}
+									})
+									.filter((p): p is NonNullable<typeof p> => !!p)
 							: undefined
 					}
 				})
@@ -1476,9 +1494,11 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 		...modelInputs,
 		...lightingInputs
 	]
-	// 输出锚点归一：单一out-0锚点，mediaType为text，可连接场景分解或虚幻导出节点
-	// 注意：场景布局节点不输出图像，图像通过输入锚点透传给下游追溯
+	// 输出锚点：out-0为文本布局输出，out-selected-placeholder为选中占位立方体的GLB模型输出（仅预览模式）
 	node.outputs = [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
+	if (previewMode) {
+		node.outputs.push({ id: 'out-selected-placeholder', label: '选中占位体输出', mediaType: 'model3d' })
+	}
 }
 
 const syncUnrealExportAnchors = (node: WorkflowNode) => {
@@ -4051,6 +4071,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								meshyModelSettingsRaw.outputSummary &&
 								typeof meshyModelSettingsRaw.outputSummary === 'object'
 									? {
+											outputKind:
+												meshyModelSettingsRaw.outputSummary.outputKind === 'image' ||
+												meshyModelSettingsRaw.outputSummary.outputKind === '3d-model'
+													? meshyModelSettingsRaw.outputSummary.outputKind
+													: undefined,
 											preferredUrl:
 												typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string'
 													? meshyModelSettingsRaw.outputSummary.preferredUrl
@@ -4070,8 +4095,30 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 											format:
 												typeof meshyModelSettingsRaw.outputSummary.format === 'string'
 													? meshyModelSettingsRaw.outputSummary.format
-													: undefined
+													: undefined,
+											imageUrls: Array.isArray(meshyModelSettingsRaw.outputSummary.imageUrls)
+												? meshyModelSettingsRaw.outputSummary.imageUrls
+														.map((x: unknown) => (typeof x === 'string' ? x : ''))
+														.filter((x: string) => !!x)
+												: undefined
 										}
+									: undefined,
+							outputAssetUrl:
+								typeof meshyModelSettingsRaw.outputAssetUrl === 'string'
+									? meshyModelSettingsRaw.outputAssetUrl
+									: undefined,
+							outputAssetPath:
+								typeof meshyModelSettingsRaw.outputAssetPath === 'string'
+									? meshyModelSettingsRaw.outputAssetPath
+									: undefined,
+							thumbnailUrl:
+								typeof meshyModelSettingsRaw.thumbnailUrl === 'string'
+									? meshyModelSettingsRaw.thumbnailUrl
+									: undefined,
+							relationSummary:
+								meshyModelSettingsRaw.relationSummary &&
+								typeof meshyModelSettingsRaw.relationSummary === 'object'
+									? { ...(meshyModelSettingsRaw.relationSummary as Record<string, unknown>) }
 									: undefined,
 							relationKind:
 								meshyModelSettingsRaw.relationKind === 'model' ||

@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { getHttpClient } from '../../core/http-client.mjs'
 import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
 
@@ -20,14 +22,75 @@ function getModePath(mode) {
   return MODE_PATH_MAP[m] || null
 }
 
+function getClientRootDir() {
+  try {
+    const electron = require('electron')
+    const app = electron.app
+    if (app?.getAppPath) {
+      const appPath = app.getAppPath()
+      if (process.resourcesPath && appPath.includes('app.asar')) {
+        return path.dirname(process.execPath)
+      }
+      return appPath
+    }
+  } catch {}
+  // Fallback: use CWD if DVSResource exists there (dev mode)
+  const cwd = process.cwd()
+  if (fs.existsSync(path.join(cwd, 'DVSResource', 'UserSettings'))) {
+    return cwd
+  }
+  return process.cwd()
+}
+
+function getDvsResourceDir() {
+  const envResourceDir = String(process.env.DWEB_RESOURCE_DIR || '').trim()
+  if (envResourceDir) return path.resolve(envResourceDir)
+  // Try CWD first (dev mode)
+  const cwdResource = path.resolve(process.cwd(), 'DVSResource')
+  if (fs.existsSync(path.join(cwdResource, 'UserSettings'))) {
+    return cwdResource
+  }
+  return path.resolve(getClientRootDir(), 'DVSResource')
+}
+
+function getSettingsApiKey() {
+  try {
+    const settingsPath = path.resolve(getDvsResourceDir(), 'UserSettings', 'settings.json')
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf-8')
+      const settings = JSON.parse(raw)
+      const key = String(settings.meshyApiKey || '').trim()
+      if (key) {
+        console.log('[Meshy Backend] Loaded API key from settings.json')
+        return key
+      }
+    }
+  } catch (err) {
+    console.warn('[Meshy Backend] Failed to read settings.json:', err.message)
+  }
+  return ''
+}
+
 function getApiKey(ctx) {
+  // 1. 先尝试从localdb加密存储读取
   const repo = ctx.localdb?.apiKeys
-  if (!repo) throw internalError('apiKeys repo not available')
-  const result = repo.getPlaintext('meshy')
-  if (!result.ok) throw internalError(result.error || 'failed to read meshy api key')
-  const key = String(result.plaintext || '').trim()
-  if (!key) throw invalidParamsError('meshy api key is not configured')
-  return key
+  if (repo) {
+    try {
+      const result = repo.getPlaintext('meshy')
+      if (result.ok) {
+        const key = String(result.plaintext || '').trim()
+        if (key) return key
+      }
+    } catch (err) {
+      console.warn('[Meshy Backend] Failed to read from localdb:', err.message)
+    }
+  }
+
+  // 2. fallback: 从settings.json明文字段读取
+  const settingsKey = getSettingsApiKey()
+  if (settingsKey) return settingsKey
+
+  throw invalidParamsError('meshy api key is not configured')
 }
 
 function extractTaskId(obj) {
@@ -751,7 +814,7 @@ export async function generateModel(ctx, payload) {
     requestPayload: recordedPayload,
     responsePayload: res.body,
     projectId: payload?.projectId,
-    lastNodeId: payload?.lastNodeId || '',
+    lastNodeId: payload?.nodeId || payload?.lastNodeId || '',
     remoteCreatedAt: new Date().toISOString(),
     remoteFinishedAt: '',
   })
@@ -788,6 +851,14 @@ export async function getTask(ctx, payload) {
   const normalized = normalizeTask(mode, taskId, res.body)
 
   const [target, family] = targetAndFamily(mode, normalized.raw)
+
+  // 保留已有记录中的绑定节点和本地资产信息，不被轮询刷新覆盖
+  const existing = repo.getByTaskId(taskId)
+
+  const localAssetUrl = existing?.localAssetUrl || ''
+  const localAssetPath = existing?.localAssetPath || ''
+  const lastNodeId = existing?.lastNodeId || ''
+
   repo.upsert({
     taskId,
     mode,
@@ -802,9 +873,17 @@ export async function getTask(ctx, payload) {
     statusText: normalized.statusText,
     responsePayload: normalized.raw,
     remoteFinishedAt: ['succeeded', 'success', 'completed', 'failed', 'error'].includes(normalized.status) ? new Date().toISOString() : '',
+    lastNodeId,
+    localAssetUrl,
+    localAssetPath,
   })
 
-  return normalized
+  return {
+    ...normalized,
+    localAssetUrl,
+    localAssetPath,
+    lastNodeId,
+  }
 }
 
 export async function listTasks(ctx, payload) {
@@ -958,29 +1037,44 @@ export async function deleteTask(ctx, payload) {
 }
 
 export async function getBalance(ctx) {
-  const repo = ctx.localdb?.apiKeys
-  if (!repo) throw internalError('apiKeys repo not available')
-
-  const keyResult = repo.getPlaintext('meshy')
-  if (!keyResult.ok || !keyResult.plaintext) {
-    return { ok: true, available: false, configured: false, displayText: '未配置Meshy API Key', detail: '' }
-  }
-
-  const apiKey = keyResult.plaintext
-  const client = getHttpClient()
-  const url = `${MESHY_API_BASE}/openapi/v1/balance`
-
   try {
+    console.log('[Meshy Backend] getBalance called')
+
+    let apiKey = ''
+    try {
+      apiKey = getApiKey(ctx)
+    } catch (err) {
+      console.log('[Meshy Backend] API key not available:', err.message)
+      return { ok: true, available: false, configured: false, displayText: '未配置Meshy API Key', detail: err.message }
+    }
+
+    console.log('[Meshy Backend] api key found, key prefix:', apiKey.slice(0, 8) + '...')
+    const client = getHttpClient()
+    const url = `${MESHY_API_BASE}/openapi/v1/balance`
+    console.log('[Meshy Backend] fetching balance from:', url)
+
     const res = await client.get(url, {
       headers: { 'Authorization': `Bearer ${apiKey}` },
-      timeout: 10000,
+      timeout: 30000,
     })
 
+    console.log('[Meshy Backend] balance response status:', res.status, 'ok:', res.ok)
+
     if (!res.ok) {
-      return { ok: true, available: false, configured: true, displayText: '无法查询余额', detail: `HTTP ${res.status}` }
+      let errDetail = `HTTP ${res.status}`
+      try {
+        if (res.body && typeof res.body === 'object') {
+          errDetail = JSON.stringify(res.body)
+        } else if (typeof res.body === 'string') {
+          errDetail = res.body
+        }
+      } catch {}
+      console.warn('[Meshy Backend] balance query failed:', errDetail)
+      return { ok: true, available: false, configured: true, displayText: '无法查询余额', detail: errDetail }
     }
 
     const balance = res.body
+    console.log('[Meshy Backend] balance response body:', typeof balance === 'object' ? JSON.stringify(balance) : balance)
     const balanceValue = typeof balance === 'object' && balance !== null
       ? (typeof balance.balance === 'number' ? balance.balance : null)
       : null
@@ -990,13 +1084,36 @@ export async function getBalance(ctx) {
 
     return { ok: true, available: true, configured: true, displayText, detail: balance }
   } catch (err) {
+    console.error('[Meshy Backend] getBalance error:', err?.message || String(err), err?.stack)
     return { ok: true, available: false, configured: true, displayText: '余额查询失败', detail: err?.message || String(err) }
   }
 }
 
 export async function health(ctx) {
-  const repo = ctx.localdb?.apiKeys
-  if (!repo) return { ok: true, configured: false }
-  const keyResult = repo.getPlaintext('meshy')
-  return { ok: true, configured: !!(keyResult.ok && keyResult.plaintext) }
+  try {
+    const apiKey = getApiKey(ctx)
+    return { ok: true, configured: !!apiKey }
+  } catch {
+    return { ok: true, configured: false }
+  }
+}
+
+export async function updateTaskLocalAsset(ctx, payload) {
+  const repo = ctx.localdb?.meshyTasks
+  if (!repo) throw internalError('meshyTasks repo not available')
+
+  const taskId = String(payload?.taskId || '').trim()
+  if (!taskId) throw invalidParamsError('taskId is required')
+
+  const existing = repo.getByTaskId(taskId)
+  if (!existing) throw notFoundError('meshy task not found')
+
+  repo.upsert({
+    taskId,
+    localAssetUrl: String(payload?.localAssetUrl || existing?.localAssetUrl || ''),
+    localAssetPath: String(payload?.localAssetPath || existing?.localAssetPath || ''),
+    lastNodeId: String(payload?.lastNodeId || existing?.lastNodeId || ''),
+  })
+
+  return { ok: true, taskId }
 }

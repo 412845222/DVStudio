@@ -5,7 +5,8 @@ import {
 	sanitizeWorkflowUrlFieldsDeep,
 	sanitizeResourceName,
 	sanitizeLocalFilePath,
-	isFileProtocolUrl
+	isFileProtocolUrl,
+	buildProjectAssetRuntimeUrl as buildProjectAssetRuntimeUrlFromUtil
 } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 
 export const useAIWorkflowProjectSnapshotRuntime = (payload: {
@@ -46,6 +47,7 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 				: {}
 		const nodeOrderRaw = cloned.nodeOrder
 		const nodeOrder = Array.isArray(nodeOrderRaw) ? nodeOrderRaw : Object.keys(nodesById)
+		const runtimeProjectIdForNodes = Number(payload.currentProjectId?.value ?? 0)
 		for (const rawNodeId of nodeOrder) {
 			const nodeId = String(rawNodeId ?? '').trim()
 			if (!nodeId) continue
@@ -99,6 +101,37 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 					...(settings && typeof settings === 'object' ? settings : {}),
 					layoutItems,
 					manualModelBindings
+				}
+			}
+
+			if (nodeType === 'model3d') {
+				const settings = node.model3dSettings as Record<string, unknown> | undefined
+				if (settings && typeof settings === 'object') {
+					const modelRelPath = String(
+						settings.modelProjectRelativePath ?? settings.modelAssetProjectRelativePath ?? ''
+					).trim()
+					const modelFallbackUrl = sanitizeWorkflowMediaUrl(String(settings.modelUrl ?? ''))
+					const assetFallbackUrl = sanitizeWorkflowMediaUrl(String(settings.modelAssetUrl ?? ''))
+					let modelRuntimeUrl = ''
+					let assetRuntimeUrl = ''
+					if (payload.isElectronRuntime && modelRelPath && runtimeProjectIdForNodes > 0) {
+						const dwebUrl = buildProjectAssetRuntimeUrlFromUtil(runtimeProjectIdForNodes, modelRelPath)
+						if (dwebUrl) {
+							modelRuntimeUrl = dwebUrl
+							assetRuntimeUrl = dwebUrl
+						}
+					}
+					if (!modelRuntimeUrl) modelRuntimeUrl = isFileProtocolUrl(String(settings.modelUrl ?? '')) ? '' : modelFallbackUrl
+					if (!assetRuntimeUrl) assetRuntimeUrl = isFileProtocolUrl(String(settings.modelAssetUrl ?? '')) ? '' : assetFallbackUrl
+					node.model3dSettings = {
+						...settings,
+						modelUrl: modelRuntimeUrl || undefined,
+						modelAssetUrl: assetRuntimeUrl || undefined,
+						modelProjectRelativePath: modelRelPath || settings.modelProjectRelativePath || undefined,
+						modelAssetProjectRelativePath: modelRelPath || settings.modelAssetProjectRelativePath || undefined,
+						modelSourcePath: sanitizeLocalFilePath(settings.modelSourcePath) || undefined,
+						modelAssetPath: sanitizeLocalFilePath(settings.modelAssetPath) || undefined
+					}
 				}
 			}
 		}

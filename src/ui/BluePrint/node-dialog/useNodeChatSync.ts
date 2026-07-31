@@ -103,7 +103,7 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	})
 
 	const isTripo3D = computed(() => {
-		return props.nodeType === 'model3d' || props.nodeType === 'blender'
+		return props.nodeType === 'blender'
 	})
 
 	const submitDisabled = computed(() => {

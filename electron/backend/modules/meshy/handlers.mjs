@@ -31,3 +31,7 @@ export async function deleteTask(ctx, payload) {
 export async function balance(ctx) {
   return service.getBalance(ctx)
 }
+
+export async function updateLocalAsset(ctx, payload) {
+  return service.updateTaskLocalAsset(ctx, payload)
+}

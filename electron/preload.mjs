@@ -647,7 +647,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		taskDetail: (payload) => invoke('dweb:meshy:task-detail', payload || {}),
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
-		balance: () => invoke('dweb:meshy:balance')
+		balance: () => invoke('dweb:meshy:balance'),
+		updateLocalAsset: (payload) => invoke('dweb:meshy:update-local-asset', payload || {})
 	},
 	// ===== Tripo3D 3D 模型生成 & 图片生成 =====
 	tripo3d: {

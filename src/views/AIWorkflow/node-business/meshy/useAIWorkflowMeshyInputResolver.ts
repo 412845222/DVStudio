@@ -38,7 +38,13 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 		placeholderJson?: string
 		placeholderName: string
 	} | null>
-	resolveGeneratedModelTransferSource: (file: File) => Promise<{ transferUrl: string }>
+	resolveGeneratedModelTransferSource: (file: File) => Promise<{
+		transferUrl: string
+		assetUrl: string
+		backendUrl: string
+		assetPath: string
+		projectRelativePath: string
+	}>
 	captureModel3DNodeCanvasPreview: (nodeId: string) => string
 }) => {
 	const MESHY_SAFE_MIN_IMAGE_SIDE = 60
@@ -291,9 +297,12 @@ export const useAIWorkflowMeshyInputResolver = (options: {
 			const generated = await options.createSceneLayoutPlaceholderModelFile(fromNode.id)
 			if (!generated) return null
 			const transfer = await options.resolveGeneratedModelTransferSource(generated.file)
+			const rawUrl = String(transfer.backendUrl || transfer.transferUrl || '').trim()
 			return {
 				inputTaskId: undefined,
-				modelUrl: transfer.transferUrl,
+				modelUrl: rawUrl
+					? await normalizeMeshyModelInputValue(rawUrl, `scene_layout_${fromNode.id}`)
+					: '',
 				sourceName: generated.file.name
 			}
 		}

@@ -60,7 +60,12 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 					obj?.rotation && typeof obj.rotation === 'object'
 						? obj.rotation
 						: mergedSource.rotation,
-				scale: obj?.scale && typeof obj.scale === 'object' ? obj.scale : mergedSource.scale
+				scale: obj?.scale && typeof obj.scale === 'object' ? obj.scale : mergedSource.scale,
+				holePunches: Array.isArray(obj?.holePunches)
+					? obj.holePunches
+					: Array.isArray(mergedSource.holePunches)
+						? mergedSource.holePunches
+						: undefined
 			}
 		})
 	}

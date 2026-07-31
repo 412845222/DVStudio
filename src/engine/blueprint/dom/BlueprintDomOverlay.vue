@@ -1229,11 +1229,9 @@ function syncDomNodes() {
 
 	const isEngineDragging = s.isEngineDragging
 	const isDomInteracting = isInteractionLocked.value
-	const isViewportPanning = s.isViewportPanning
-	const isEngineOrDomInteracting = isDomInteracting || isEngineDragging || isViewportPanning
 
 	let nodesToRender: BlueprintNode[]
-	if (isEngineDragging || isViewportPanning) {
+	if (isEngineDragging) {
 		nodesToRender = []
 	} else if (isDomInteracting) {
 		nodesToRender = []

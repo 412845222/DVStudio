@@ -7,6 +7,7 @@
 	>
 		<component
 			:is="businessComponent"
+			:ref="onBusinessComponentRef"
 			v-bind="resolvedProps"
 			@update:world-position="onWorldPositionUpdate"
 			@start-link="onStartLink"
@@ -53,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, onBeforeUnmount } from 'vue'
 import { NodeComponentResolver, type NodeChatState } from './NodeComponentResolver'
 import type { BlueprintNode } from '../BlueprintNode'
 import type { LegacyResourceData } from '../types'
@@ -140,6 +141,23 @@ const emit = defineEmits<{
 
 const businessComponent = computed(() => {
 	return NodeComponentResolver.getComponent(props.node.nodeType)
+})
+
+const registerSceneLayoutNode = inject<(nodeId: string, instance: unknown | null) => void>(
+	'sceneLayoutNodeRegister',
+	() => {}
+)
+
+const onBusinessComponentRef = (instance: unknown | null) => {
+	if (props.node.nodeType === 'scene-layout') {
+		registerSceneLayoutNode(props.node.id, instance)
+	}
+}
+
+onBeforeUnmount(() => {
+	if (props.node.nodeType === 'scene-layout') {
+		registerSceneLayoutNode(props.node.id, null)
+	}
 })
 
 const resolvedProps = computed(() => {

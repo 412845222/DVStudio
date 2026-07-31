@@ -93,12 +93,23 @@
 						/>
 						<template #overlay>
 							<div
-								v-if="effectiveModelUrl && viewerLive && !errorMessage"
+								v-if="effectiveModelUrl && viewerLive && !errorMessage && !showRestartButton"
 								class="wf-model3d-gesture-tip"
 							>
 								{{ t('nodes.model3d.interactionHint') }}
 							</div>
 							<div v-if="errorMessage" class="wf-model3d-overlay error">{{ errorMessage }}</div>
+							<div v-if="showRestartButton" class="wf-model3d-restart-overlay">
+								<div class="wf-model3d-restart-title">3D预览未运行</div>
+								<div class="wf-model3d-restart-text">点击下方按钮重新启动3D渲染</div>
+								<button
+									class="wf-model3d-restart-btn"
+									type="button"
+									@click.stop="handleForceRestart"
+								>
+									{{ t('nodes.model3d.restartRender') || '重启渲染' }}
+								</button>
+							</div>
 						</template>
 					</WorkflowThreePreviewShell>
 				</div>
@@ -483,6 +494,7 @@ const snapshotUrl = ref(
 	snapshotCacheKey ? String(MODEL3D_SNAPSHOT_CACHE.get(snapshotCacheKey) ?? '') : ''
 )
 const errorMessage = ref('')
+const viewerHasModel = ref(false)
 let viewer: Model3DPreviewViewer | null = null
 let viewerInitRaf = 0
 let viewerInitPending = false
@@ -491,6 +503,7 @@ let activePreviewRequestId = 0
 let cachedModelSignature = ''
 let cameraUserControlled = false
 let initialSyncDone = false
+let silentModelLoading = false
 
 const internalPreviewRequestId = ref(0)
 const internalPreviewPhase = ref<WorkflowThreePreviewPhase>('masked')
@@ -676,6 +689,22 @@ const previewInteractive = computed(() => previewPhase.value === 'interactive')
 const viewerLive = computed(
 	() => previewPhase.value === 'loading' || previewPhase.value === 'interactive'
 )
+const showRestartButton = computed(() => {
+	if (!effectiveModelUrl.value) return false
+	if (previewPhase.value === 'loading') return false
+	if (errorMessage.value) return true
+	if (!viewer) return previewPhase.value !== 'masked'
+	return !viewerHasModel.value
+})
+const handleForceRestart = () => {
+	errorMessage.value = ''
+	disposeViewer()
+	// 先触发error重置生命周期状态到masked（startPreviewSession在interactive状态会直接return）
+	emit('three-preview-error')
+	// 再触发start开始新一轮加载（此时phase已为masked，kickoffAutoStart会执行）
+	emit('start-three-preview')
+	startPreview()
+}
 
 const setPreviewPhase = (phase: WorkflowThreePreviewPhase) => {
 	internalPreviewPhase.value = phase
@@ -693,6 +722,7 @@ const startPreview = () => {
 	internalPreviewRequestId.value += 1
 	const newRequestId = internalPreviewRequestId.value
 	activePreviewRequestId = newRequestId
+	silentModelLoading = false
 	errorMessage.value = ''
 	setPreviewPhase('loading')
 	setPreviewProgress(0.12, t('nodes.model3d.progressInitRenderer'))
@@ -754,6 +784,7 @@ const syncViewerState = () => {
 	const url = effectiveModelUrl.value
 	if (!url) {
 		viewer.clearModel()
+		viewerHasModel.value = false
 		cachedModelSignature = ''
 		cameraUserControlled = false
 		initialSyncDone = false
@@ -763,11 +794,26 @@ const syncViewerState = () => {
 	const currentUrlSignature = modelUrlSignature.value
 	const prevUrlSignature = cachedModelSignature.split('|')[0]
 	const urlChanged = currentUrlSignature !== prevUrlSignature
-	if (urlChanged || !cachedModelSignature) {
+	const hasNoModel = !viewer.hasModel()
+	if (urlChanged || !cachedModelSignature || hasNoModel) {
 		cameraUserControlled = false
 		initialSyncDone = false
 		viewer.clearModel()
+		viewerHasModel.value = false
 		cachedModelSignature = currentSignature
+		// Viewer存在但没有模型（例如DOM重建后），需要重新加载模型
+		if (!silentModelLoading) {
+			silentModelLoading = true
+			void loadModelIntoViewer()
+				.then((loaded) => {
+					if (!loaded) {
+						handlePreviewError()
+					}
+				})
+				.finally(() => {
+					silentModelLoading = false
+				})
+		}
 		return
 	}
 	if (currentSignature !== cachedModelSignature) {
@@ -805,8 +851,12 @@ const createViewerNow = () => {
 		})
 		viewerInitCooldownUntil = 0
 		viewer.setRenderSuspended(previewSuspended.value)
-		viewer.setInteractive(false)
+		const isInteractivePhase = previewPhase.value === 'interactive'
+		viewer.setInteractive(isInteractivePhase)
 		syncViewerState()
+		if (isInteractivePhase) {
+			viewer.setRenderSuspended(previewSuspended.value)
+		}
 	} catch (err) {
 		viewer = null
 		viewerInitCooldownUntil = Date.now() + 400
@@ -841,11 +891,14 @@ const ensureViewer = () => {
 const disposeViewer = () => {
 	clearViewerInitSchedule()
 	viewerInitCooldownUntil = 0
+	silentModelLoading = false
+	viewerHasModel.value = false
 	if (!viewer) return
 	saveViewState()
 	captureSnapshot()
 	viewer.dispose()
 	viewer = null
+	cachedModelSignature = ''
 	cameraUserControlled = false
 	initialSyncDone = false
 }
@@ -922,6 +975,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 	if (!viewer) return false
 	if (!url) {
 		viewer.clearModel()
+		viewerHasModel.value = false
 		cachedModelSignature = ''
 		cameraUserControlled = false
 		initialSyncDone = false
@@ -952,8 +1006,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 			const fetchResult = await fetchAsArrayBuffer(url)
 			stopProgressSim()
 			if (fetchResult?.ok && fetchResult.buffer) {
-				if (requestId == null) return true
-				if (requestId !== activePreviewRequestId) return false
+				if (requestId != null && requestId !== activePreviewRequestId) return false
 				if (requestId != null) {
 					emitPreviewProgress(0.55, t('nodes.model3d.progressParseModel'))
 				}
@@ -980,6 +1033,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 				}
 				cachedModelSignature = currentSignature
 				initialSyncDone = true
+				viewerHasModel.value = true
 				return true
 			}
 		}
@@ -1005,11 +1059,13 @@ const loadModelIntoViewer = async (requestId?: number) => {
 		}
 		cachedModelSignature = currentSignature
 		initialSyncDone = true
+		viewerHasModel.value = true
 		return true
 	} catch (err: unknown) {
 		stopProgressSim()
 		errorMessage.value = getErrorMessage(err) || t('nodes.model3d.modelLoadFailed')
 		viewer.clearModel()
+		viewerHasModel.value = false
 		cachedModelSignature = ''
 		cameraUserControlled = false
 		initialSyncDone = false
@@ -1052,6 +1108,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 						cachedModelSignature = modelSignature.value
 						cameraUserControlled = false
 						initialSyncDone = true
+						viewerHasModel.value = true
 						return true
 					}
 				}
@@ -1074,11 +1131,13 @@ const loadModelIntoViewer = async (requestId?: number) => {
 				cachedModelSignature = modelSignature.value
 				cameraUserControlled = false
 				initialSyncDone = true
+				viewerHasModel.value = true
 				return true
 			} catch {
 				stopProgressSim()
 				errorMessage.value = t('nodes.model3d.modelLoadFailed')
 				viewer.clearModel()
+				viewerHasModel.value = false
 				cachedModelSignature = ''
 				cameraUserControlled = false
 				initialSyncDone = false
@@ -1283,6 +1342,7 @@ watch(
 		ensureViewer()
 		viewer?.setRenderSuspended(previewSuspended.value)
 		if (phase === 'loading') {
+			silentModelLoading = false
 			if (requestId === activePreviewRequestId) return
 			void startPreviewLoad(requestId)
 			return
@@ -1558,6 +1618,54 @@ onBeforeUnmount(() => {
 
 .wf-model3d-overlay.error {
 	color: #fecaca;
+}
+
+.wf-model3d-restart-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 16px;
+	text-align: center;
+	background: linear-gradient(180deg, rgba(7, 12, 20, 0.5), rgba(7, 12, 20, 0.88));
+	backdrop-filter: blur(6px);
+}
+
+.wf-model3d-restart-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: rgba(241, 245, 249, 0.96);
+}
+
+.wf-model3d-restart-text {
+	font-size: 12px;
+	line-height: 1.5;
+	color: rgba(226, 232, 240, 0.72);
+}
+
+.wf-model3d-restart-btn {
+	border: 1px solid rgba(20, 184, 166, 0.5);
+	border-radius: 4px;
+	padding: 8px 20px;
+	font-size: 12px;
+	font-weight: 500;
+	color: #ecfeff;
+	background: linear-gradient(135deg, rgba(13, 148, 136, 0.9), rgba(14, 116, 144, 0.88));
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease;
+}
+
+.wf-model3d-restart-btn:hover {
+	border-color: rgba(20, 184, 166, 0.8);
+	background: linear-gradient(135deg, rgba(15, 170, 156, 0.95), rgba(16, 138, 170, 0.95));
+}
+
+.wf-model3d-restart-btn:active {
+	transform: translateY(1px);
 }
 
 .wf-model3d-actions {

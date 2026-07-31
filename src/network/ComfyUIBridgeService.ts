@@ -679,13 +679,22 @@ function isIpcAvailable(): boolean {
 
 function isMeshyIpcAvailable(): boolean {
 	const dweb = (window as any).dweb
-	return Boolean(
-		!!(window as Window).__DWEB_RUNTIME__?.isElectron &&
-		dweb?.meshy &&
-		typeof dweb.meshy.balance === 'function' &&
-		typeof dweb.meshy.generate === 'function' &&
-		typeof dweb.meshy.getTask === 'function'
-	)
+	const isElectron = !!(window as Window).__DWEB_RUNTIME__?.isElectron
+	const hasMeshy = !!dweb?.meshy
+	const hasBalance = typeof dweb?.meshy?.balance === 'function'
+	const hasGenerate = typeof dweb?.meshy?.generate === 'function'
+	const hasGetTask = typeof dweb?.meshy?.getTask === 'function'
+	const available = Boolean(isElectron && hasMeshy && hasBalance && hasGenerate && hasGetTask)
+	console.log('[Meshy] isMeshyIpcAvailable check:', {
+		isElectron,
+		hasDweb: !!dweb,
+		hasMeshy,
+		hasBalance,
+		hasGenerate,
+		hasGetTask,
+		available
+	})
+	return available
 }
 
 function isThirdPartyIpcAvailable(): boolean {
@@ -3294,6 +3303,30 @@ export class ComfyUIBridgeService {
 			}
 		}
 		return (await res.json()) as MeshyBalanceResponse
+	}
+
+	async meshyUpdateLocalAsset(payload: {
+		taskId: string
+		localAssetUrl: string
+		localAssetPath?: string
+		lastNodeId?: string
+	}): Promise<{ ok: boolean; error?: string }> {
+		if (isMeshyIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.meshy.updateLocalAsset(payload)
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'meshy/updateLocalAsset failed via IPC' }
+					}
+					return { ok: true }
+				}
+				return { ok: true }
+			} catch (err: unknown) {
+				console.error('[Meshy] IPC updateLocalAsset failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'meshy/updateLocalAsset failed via IPC' }
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
 	}
 
 	async tripo3dGenerate(payload: Record<string, unknown>): Promise<Tripo3DGenerateResponse> {

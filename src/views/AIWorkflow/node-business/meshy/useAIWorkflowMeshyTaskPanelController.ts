@@ -32,6 +32,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 	applyMeshyTaskResult: (nodeId: string, task: unknown) => Promise<string>
 	stopMeshyPoll: (nodeId: string) => void
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
+	createModel3DNodeAtCenter?: (url: string, name?: string, format?: string) => string | null
 }) => {
 	const meshyTaskDialogOpen = ref(false)
 	const meshyTaskRemoteItems = ref<MeshyTaskPanelItem[]>([])
@@ -432,7 +433,20 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 		const taskId = String(payload?.taskId ?? '').trim()
 		if (!taskId) return
 		const mode = normalizeMeshyModeForTaskAction(String(payload?.mode ?? 'text-to-3d'))
-		const nodeId = String(payload?.nodeId ?? '').trim() || findMeshyNodeIdByTaskId(taskId)
+
+		// 优先使用payload中的nodeId，然后从后端远程任务列表查找lastNodeId，最后本地遍历查找
+		let resolvedNodeId = String(payload?.nodeId ?? '').trim()
+		if (!resolvedNodeId) {
+			const remoteItem = findMeshyTaskPanelItemById(meshyTaskRemoteItems.value, `remote:${taskId}`)
+			const remoteNodeId = String(remoteItem?.nodeId ?? '').trim()
+			if (remoteNodeId && options.store.state.nodesById[remoteNodeId]) {
+				resolvedNodeId = remoteNodeId
+			}
+		}
+		if (!resolvedNodeId) {
+			resolvedNodeId = findMeshyNodeIdByTaskId(taskId)
+		}
+		const nodeId = resolvedNodeId
 		meshyTaskActionBusyTaskId.value = taskId
 		meshyTaskActionBusyType.value = payload.action
 		try {
@@ -455,6 +469,7 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 
 				if (!targetNodeId) {
 					const isImageTask = mode === 'text-to-image' || mode === 'image-to-image'
+					const is3DTask = !isImageTask
 					if (isImageTask && typeof options.createImageNodeAtCenter === 'function') {
 						try {
 							const taskRes: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
@@ -484,7 +499,44 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 								}
 							}
 						} catch (e) {
-							console.error('[Meshy Task Panel] 创建节点失败:', e)
+							console.error('[Meshy Task Panel] 创建图片节点失败:', e)
+						}
+					} else if (is3DTask && typeof options.createModel3DNodeAtCenter === 'function') {
+						try {
+							const taskRes: MeshyTaskResponse = await options.comfyService.meshyTask(taskId, mode)
+							if (taskRes.ok) {
+								const modelUrls = (taskRes as unknown as { modelUrls?: Record<string, string> }).modelUrls || {}
+								const preferredUrl = String(
+									(taskRes as unknown as { preferredModelUrl?: string }).preferredModelUrl ||
+										modelUrls.glb || modelUrls.gltf || ''
+								).trim()
+								const modelFormat = modelUrls.glb ? 'glb' : modelUrls.gltf ? 'gltf' : 'glb'
+								const newNodeId = options.createModel3DNodeAtCenter(
+									preferredUrl,
+									t('tasks.meshy.model3dTaskNodeName'),
+									modelFormat
+								)
+								if (newNodeId) {
+									targetNodeId = newNodeId
+									isNewNode = true
+									options.store.commit('setNodeModel3DSettings', {
+										nodeId: newNodeId,
+										model3dSettings: {
+											modelGenerationSource: 'meshy',
+											meshyModelSettings: {
+												taskId,
+												taskStatus: 'pending',
+												taskFamily: mode,
+												progress: 0,
+												statusText: t('tasks.meshy.pulling3dArtifacts')
+											}
+										}
+									})
+									options.pushToast(t('tasks.meshy.nodeCreatedPullingArtifacts'), 'info')
+								}
+							}
+						} catch (e) {
+							console.error('[Meshy Task Panel] 创建3D模型节点失败:', e)
 						}
 					}
 				}
@@ -505,7 +557,10 @@ export const useAIWorkflowMeshyTaskPanelController = (options: {
 								'info'
 							)
 						} else if (node?.type === 'model3d') {
-							options.pushToast(t('tasks.meshy.model3dDownloadedBoundGeneric'), 'info')
+							options.pushToast(
+								isNewNode ? t('tasks.meshy.model3dPulledBoundToNewNode') : t('tasks.meshy.model3dDownloadedBoundGeneric'),
+								'info'
+							)
 						} else {
 							options.pushToast(t('tasks.meshy.artifactsSyncedToNodeGeneric'), 'info')
 						}

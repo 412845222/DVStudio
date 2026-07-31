@@ -646,7 +646,7 @@ import {
 	safeGetRecord
 } from '../../types/utils'
 import * as THREE from 'three'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -3738,11 +3738,21 @@ const createModel3DNodeAtCenter = (opts?: {
 	name?: string
 	taskId?: string
 	mode?: string
+	modelFormat?: string
+	modelGenerationSource?: string
 }): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
+		const model3dSettings: Record<string, unknown> = {}
+		if (opts?.modelUrl) {
+			model3dSettings.modelUrl = opts.modelUrl
+			model3dSettings.modelAssetUrl = opts.modelUrl
+			model3dSettings.modelFormat = opts.modelFormat || 'glb'
+			model3dSettings.modelGenerationSource = opts.modelGenerationSource || 'meshy'
+		}
 		const newNodeId = engineApi.addNode('model3d', worldX, worldY, {
-			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName')
+			title: opts?.name || t('tasks.tripo3d.model3dTaskNodeName'),
+			...(Object.keys(model3dSettings).length > 0 ? { model3dSettings } : {})
 		})
 		return newNodeId
 	} catch (e) {
@@ -6749,20 +6759,27 @@ interface SceneLayoutPlaceholderPayload {
 }
 
 const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
+	console.log('[SceneLayout:transfer] createSceneLayoutPlaceholderModelFile called', { nodeId })
 	const placeholderPayload = getSceneLayoutSelectedPlaceholderPayload(
 		nodeId
 	) as SceneLayoutPlaceholderPayload | null
-	if (!placeholderPayload) return null
+	if (!placeholderPayload) {
+		console.warn('[SceneLayout:transfer] no placeholder payload for node', nodeId)
+		return null
+	}
 
 	const placeholderId = String(placeholderPayload?.objectId ?? '').trim()
 	const placeholderName =
 		String(placeholderPayload?.name ?? placeholderId ?? 'placeholder').trim() || 'placeholder'
 	const placeholderJson = serializeSceneLayoutSelectedPlaceholder(nodeId)
 	const signature = `${nodeId}:placeholder-glb:${placeholderId}:${placeholderJson}`
+	console.log('[SceneLayout:transfer] placeholder info', { placeholderId, placeholderName, signature })
 
 	pushToast(t('aiworkflow.page.placeholder.exporting'), 'info')
 
+	console.log('[SceneLayout:transfer] calling exportSceneLayoutPlaceholderGLB')
 	const viewerExportResult = await exportSceneLayoutPlaceholderGLB(nodeId)
+	console.log('[SceneLayout:transfer] exportSceneLayoutPlaceholderGLB result', { ok: viewerExportResult.ok, hasGlbData: !!viewerExportResult.ok && 'glbData' in viewerExportResult })
 	if (!viewerExportResult.ok || !viewerExportResult.glbData) {
 		const errorMsg = viewerExportResult.ok
 			? t('aiworkflow.page.placeholder.failedGetGlb')
@@ -6775,6 +6792,7 @@ const createSceneLayoutPlaceholderModelFile = async (nodeId: string) => {
 
 	const fileName = `${slugSceneLayoutPlaceholderModelName(`${viewerExportResult.name || placeholderName}-${placeholderId || 'placeholder'}`)}.glb`
 	const file = new File([viewerExportResult.glbData], fileName, { type: 'model/gltf-binary' })
+	console.log('[SceneLayout:transfer] created File object', { fileName, fileSize: file.size })
 	pushToast(
 		t('aiworkflow.page.placeholder.exportSuccess', {
 			name: String(viewerExportResult.name || placeholderName)
@@ -6806,29 +6824,45 @@ const blobToDataUrl = (blob: Blob) =>
 	})
 
 const resolveGeneratedModelTransferSource = async (file: File) => {
+	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource called', { fileName: file.name, fileSize: file.size })
 	let assetUrl = ''
 	let assetPath = ''
+	let projectRelativePath = ''
+	let runtimeUrl = ''
 
 	try {
 		const projectId = Number(currentProjectId.value ?? 0)
+		console.log('[SceneLayout:transfer] projectId for upload:', projectId)
 		if (projectId > 0) {
+			console.log('[SceneLayout:transfer] calling blueprintProjectService.uploadAsset')
 			const uploaded = (await blueprintProjectService.uploadAsset(file, 'file', {
 				projectId
 			})) as AssetImportResult
+			console.log('[SceneLayout:transfer] uploadAsset result', { ok: uploaded.ok, asset: uploaded.asset })
 			if (uploaded.ok) {
 				const asset = uploaded.asset ?? {}
 				assetUrl = resolveBackendUrl(String(asset.url || ''))
 				assetPath = String(asset.absolutePath || '').trim()
+				projectRelativePath = String(
+					asset.projectRelativePath || asset.relativePath || ''
+				).trim()
+				runtimeUrl = buildProjectAssetRuntimeUrl(projectId, projectRelativePath, assetUrl)
+				console.log('[SceneLayout:transfer] asset uploaded', { assetUrl, assetPath, projectRelativePath, runtimeUrl })
 			}
 		}
-	} catch {
+	} catch (err) {
+		console.error('[SceneLayout:transfer] uploadAsset failed, falling back to data URL:', err)
 		// fall back to local data url below
 	}
 
+	const fallbackUrl = assetUrl || (await blobToDataUrl(file))
+	console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource result', { transferUrl: runtimeUrl || fallbackUrl, assetUrl: runtimeUrl || fallbackUrl, projectRelativePath })
 	return {
-		transferUrl: assetUrl || (await blobToDataUrl(file)),
-		assetUrl,
-		assetPath
+		transferUrl: runtimeUrl || fallbackUrl,
+		assetUrl: runtimeUrl || fallbackUrl,
+		assetPath,
+		projectRelativePath,
+		backendUrl: assetUrl
 	}
 }
 
@@ -6950,6 +6984,45 @@ const { buildTripo3DRequestPayload } = useAIWorkflowTripo3DRequest({
 	hasConnectedTripo3DConsumer
 })
 
+/**
+ * 将Store中model3d节点的最新数据同步到Engine BlueprintNode.data
+ * 必须在每次setNodeModel3DSettings commit之后调用，确保Ctrl+S和DOM重挂载时数据不丢失
+ * 参考：syncSceneLayoutNodeToEngine (坑1/坑7修复)
+ */
+const syncModel3DNodeToEngine = async (nodeId: string): Promise<void> => {
+	if (!nodeId) return
+	// 等待Vuex mutation响应式更新完成
+	await new Promise((resolve) => setTimeout(resolve, 30))
+	await nextTick()
+
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'model3d') return
+
+	const hasModelUrl = !!String((node.model3dSettings as any)?.modelUrl ?? '').trim()
+	console.info('[MODEL3D-SYNC] syncModel3DNodeToEngine:', {
+		nodeId,
+		hasModelUrl,
+		modelUrl: String((node.model3dSettings as any)?.modelUrl ?? '').slice(0, 80),
+		modelProjectRelativePath: (node.model3dSettings as any)?.modelProjectRelativePath
+	})
+
+	// 1. 使用engineApi.updateNodeData将Store完整数据推送到BlueprintNode.data
+	if (engineApi?.updateNodeData) {
+		const patch: Record<string, any> = { ...node }
+		if (patch.resourceId === null) delete patch.resourceId
+		engineApi.updateNodeData(nodeId, patch, { silent: true })
+	}
+
+	// 2. forceSyncToStore让引擎处理更新后回写到Store，确保双向一致
+	if (engineApi?.forceSyncToStore) {
+		try {
+			await engineApi.forceSyncToStore()
+		} catch {
+			/* ignore */
+		}
+	}
+}
+
 const syncModel3DInputFromUpstream = async (
 	nodeId: string,
 	opts?: { warn?: boolean; forceSceneLayoutExport?: boolean }
@@ -7011,6 +7084,7 @@ const syncModel3DInputFromUpstream = async (
 					lastInputSourceName: name
 				}
 			})
+			await syncModel3DNodeToEngine(nodeId)
 			return true
 		}
 
@@ -7159,6 +7233,7 @@ const syncModel3DInputFromUpstream = async (
 						}
 					}
 				})
+				await syncModel3DNodeToEngine(nodeId)
 				return true
 			}
 		}
@@ -7295,6 +7370,7 @@ const syncModel3DInputFromUpstream = async (
 						}
 					}
 				})
+				await syncModel3DNodeToEngine(nodeId)
 				return true
 			}
 		}
@@ -7430,6 +7506,7 @@ const syncModel3DInputFromUpstream = async (
 						}
 					}
 				})
+				await syncModel3DNodeToEngine(nodeId)
 				return true
 			}
 		}
@@ -7490,44 +7567,65 @@ const syncModel3DInputFromUpstream = async (
 					lastInputSourceName: name
 				}
 			})
+			await syncModel3DNodeToEngine(nodeId)
 			return true
 		}
 
 		if (fromNode.type === 'scene-layout' && fromAnchorId === 'out-selected-placeholder') {
-			if (!opts?.forceSceneLayoutExport) continue
+			console.log('[SceneLayout:transfer] syncModel3DInputFromUpstream found scene-layout edge', { toNodeId: nodeId, fromNodeId: fromNode.id, forceSceneLayoutExport: opts?.forceSceneLayoutExport })
+			if (!opts?.forceSceneLayoutExport) {
+				console.log('[SceneLayout:transfer] forceSceneLayoutExport not set, skipping')
+				continue
+			}
+			console.log('[SceneLayout:transfer] calling createSceneLayoutPlaceholderModelFile')
 			const generated = await createSceneLayoutPlaceholderModelFile(fromNode.id)
-			if (!generated) continue
+			if (!generated) {
+				console.warn('[SceneLayout:transfer] createSceneLayoutPlaceholderModelFile returned null')
+				continue
+			}
 			const nextSignature = generated.signature
 			const currentSettings = node.model3dSettings ?? {}
+			console.log('[SceneLayout:transfer] checking signature', { nextSignature, currentSignature: String(currentSettings.lastInputSignature ?? ''), hasModelUrl: !!String(currentSettings.modelUrl ?? '').trim() })
 			if (
 				String(currentSettings.lastInputSignature ?? '').trim() === nextSignature &&
 				String(currentSettings.modelUrl ?? '').trim()
 			) {
+				console.log('[SceneLayout:transfer] signature matches and modelUrl exists, skipping')
 				return true
 			}
 
 			const objectUrl = URL.createObjectURL(generated.file)
+			console.log('[SceneLayout:transfer] calling resolveGeneratedModelTransferSource')
 			const transfer = await resolveGeneratedModelTransferSource(generated.file)
+			console.log('[SceneLayout:transfer] resolveGeneratedModelTransferSource returned', transfer)
 			revokeNodeModel3DObjectUrl(nodeId)
 			setObjectUrl(`model3d:${nodeId}`, objectUrl)
+			const persistentUrl = String(transfer.assetUrl || objectUrl).trim()
+			const projectRelativePath = String(transfer.projectRelativePath || '').trim()
+			console.log('[SceneLayout:transfer] committing model3dSettings', { persistentUrl, projectRelativePath })
 			store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
-					modelUrl: String(transfer.assetUrl || objectUrl),
+					modelUrl: persistentUrl,
 					modelFormat: 'glb',
 					modelSourceName: generated.file.name,
 					modelSourcePath: String(transfer.assetPath || '').trim() || undefined,
-					modelAssetUrl: transfer.transferUrl,
+					modelProjectRelativePath: projectRelativePath || undefined,
+					modelAssetUrl: persistentUrl,
 					modelAssetPath: String(transfer.assetPath || '').trim() || undefined,
+					modelAssetProjectRelativePath: projectRelativePath || undefined,
 					lastInputSignature: nextSignature,
 					lastInputNodeId: fromNode.id,
-					lastInputSourceUrl: transfer.transferUrl,
+					lastInputSourceUrl: persistentUrl,
 					lastInputSourcePath: String(transfer.assetPath || '').trim() || undefined,
 					lastInputSourceName: `${t('aiworkflow.page.placeholder.term')} ${generated.placeholderName}`,
 					lastInputPlaceholderId: generated.placeholderId || undefined,
 					lastInputPlaceholderJson: generated.placeholderJson || undefined
 				}
 			})
+			console.log('[SceneLayout:transfer] model3dSettings committed, syncing to engine')
+			await syncModel3DNodeToEngine(nodeId)
+			console.log('[SceneLayout:transfer] model3dSettings committed and synced, returning true')
 			return true
 		}
 	}
@@ -7540,16 +7638,66 @@ const syncConnectedModel3DTargets = async (
 	fromNodeId: string,
 	opts?: { forceSceneLayoutExport?: boolean }
 ) => {
-	const targets = getOutgoingEdges(fromNodeId)
-		.filter((e: WorkflowEdge) => String(e.toAnchorId ?? '') === 'in-resource')
+	console.log('[SceneLayout:transfer] syncConnectedModel3DTargets called', { fromNodeId, opts })
+	const fromNode = store.state.nodesById[fromNodeId]
+	if (!fromNode) {
+		console.warn('[SceneLayout:transfer] fromNode not found', { fromNodeId })
+		return
+	}
+
+	// 从 out-selected-placeholder 锚点获取出边，过滤目标为 model3d 节点的 in-model/in-resource/in-0 输入锚点
+	const model3dInputAnchors = new Set(['in-model', 'in-resource', 'in-0'])
+	const outgoingEdges = getOutgoingEdges(fromNodeId, 'out-selected-placeholder')
+	console.log('[SceneLayout:transfer] outgoingEdges count:', outgoingEdges.length, 'edges:', outgoingEdges.map((e: WorkflowEdge) => ({ from: e.fromNodeId, fromAnchor: e.fromAnchorId, to: e.toNodeId, toAnchor: e.toAnchorId })))
+	const targets = outgoingEdges
+		.filter((e: WorkflowEdge) => {
+			if (!model3dInputAnchors.has(String(e.toAnchorId ?? ''))) return false
+			const toNode = store.state.nodesById[String(e.toNodeId ?? '').trim()]
+			return toNode?.type === 'model3d'
+		})
 		.map((e: WorkflowEdge) => String(e.toNodeId ?? '').trim())
 		.filter((id: string, index: number, arr: string[]) => !!id && arr.indexOf(id) === index)
+	console.log('[SceneLayout:transfer] existing targets:', targets)
+
+	// 如果没有已连线的下游3D模型节点，自动创建一个
+	if (targets.length === 0 && opts?.forceSceneLayoutExport) {
+		console.log('[SceneLayout:transfer] no targets, auto-creating model3d node')
+		try {
+			const nodeWidth = Number(fromNode.width) || 240
+			const nodeX = Number(fromNode.worldX) || 0
+			const nodeY = Number(fromNode.worldY) || 0
+			const newX = nodeX + nodeWidth + 120
+			const newY = nodeY
+			const newNodeId = engineApi.addNode('model3d', newX, newY, {
+				title: t('tasks.tripo3d.model3dTaskNodeName'),
+				createdAt: Date.now()
+			})
+			console.log('[SceneLayout:transfer] addNode result:', newNodeId)
+			if (newNodeId) {
+				// 建立连线：out-selected-placeholder → in-model（引擎会自动同步边到store）
+				engineApi.connectPorts(fromNodeId, 'out-selected-placeholder', newNodeId, 'in-model')
+				targets.push(newNodeId)
+				console.log('[SceneLayout:transfer] connected ports, targets:', targets)
+			}
+		} catch (e) {
+			console.error('[syncConnectedModel3DTargets] 自动创建3D模型节点失败:', e)
+		}
+	}
+
+	// 等待引擎同步节点/边数据到store
+	if (targets.length > 0) {
+		console.log('[SceneLayout:transfer] waiting nextTick for store sync')
+		await nextTick()
+	}
 
 	for (const nodeId of targets) {
+		console.log('[SceneLayout:transfer] syncing model3d node:', nodeId)
 		await syncModel3DInputFromUpstream(nodeId, {
 			forceSceneLayoutExport: opts?.forceSceneLayoutExport
 		})
+		console.log('[SceneLayout:transfer] synced model3d node:', nodeId)
 	}
+	console.log('[SceneLayout:transfer] syncConnectedModel3DTargets done, total targets:', targets.length)
 }
 
 const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
@@ -8445,6 +8593,20 @@ type SceneLayoutNodeExpose = {
 }
 
 const sceneLayoutNodeComponentRefs = new Map<string, SceneLayoutNodeExpose>()
+
+const registerSceneLayoutNodeInstance = (nodeId: string, instance: unknown | null) => {
+	if (
+		instance &&
+		typeof (instance as SceneLayoutNodeExpose).getResolvedLayoutForUnreal === 'function' &&
+		typeof (instance as SceneLayoutNodeExpose).exportSelectedPlaceholderGLB === 'function'
+	) {
+		sceneLayoutNodeComponentRefs.set(nodeId, instance as SceneLayoutNodeExpose)
+	} else {
+		sceneLayoutNodeComponentRefs.delete(nodeId)
+	}
+}
+
+provide('sceneLayoutNodeRegister', registerSceneLayoutNodeInstance)
 
 const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 	return (instance: unknown | null) => {
@@ -10233,7 +10395,20 @@ const extFromMime = (mime: string): string => {
 }
 
 const fileFromUrl = async (url: string, fileNameBase: string): Promise<File> => {
-	const resp = await fetch(url)
+	const trimmedUrl = String(url || '').trim()
+	// For external HTTP URLs (CDN, third-party), do NOT fetch directly in browser (CORS issue).
+	// Throw error to let caller fall back to IPC download via persistExternalAssetToProject.
+	const isExternalHttp = /^https?:\/\//i.test(trimmedUrl)
+	const isLocalOrBackend =
+		trimmedUrl.includes('127.0.0.1') ||
+		trimmedUrl.includes('localhost') ||
+		trimmedUrl.startsWith('blob:') ||
+		trimmedUrl.startsWith('data:') ||
+		trimmedUrl.startsWith('dweb:')
+	if (isExternalHttp && !isLocalOrBackend) {
+		throw new Error(`External HTTP URL must be downloaded via IPC to avoid CORS: ${trimmedUrl.slice(0, 100)}`)
+	}
+	const resp = await fetch(trimmedUrl)
 	if (!resp.ok) throw new Error(`fetch local url failed: ${resp.status}`)
 	const blob = await resp.blob()
 	const ext = extFromMime(blob.type)
@@ -11971,7 +12146,25 @@ const {
 	pickMeshyEffectiveOutput,
 	applyMeshyTaskResult,
 	stopMeshyPoll,
-	createImageNodeAtCenter
+	createImageNodeAtCenter,
+	createModel3DNodeAtCenter: (url: string, name?: string, format?: string) => {
+		try {
+			const { worldX, worldY } = getCanvasCenterWorld()
+			const model3dSettings: Record<string, unknown> = {
+				modelUrl: url,
+				modelAssetUrl: url,
+				modelFormat: format || 'glb',
+				modelGenerationSource: 'meshy'
+			}
+			return engineApi.addNode('model3d', worldX, worldY, {
+				title: name || t('tasks.meshy.model3dTaskNodeName'),
+				model3dSettings
+			})
+		} catch (e) {
+			console.error('[Meshy Task Panel] 创建3D模型节点失败:', e)
+			return null
+		}
+	}
 })
 
 const onOpenMeshyTaskPanel = () => {

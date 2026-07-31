@@ -179,6 +179,13 @@ export const useAIWorkflowThreejsLifecycleManager = (payload: {
 					continue
 				}
 				const current = stateMap.value[nodeId]
+				// 当activeId为空（右键平移/多选状态）时，保持已激活的预览不被卸载
+				if (!activeId && current && (current.phase === 'interactive' || current.phase === 'loading')) {
+					cancelPendingMasked(nodeId, current)
+					const exportState = exportStateMap.get(nodeId)
+					if (exportState) syncExportState(exportState, current)
+					continue
+				}
 				if (current && current.activatedOnce) {
 					// 对于曾经成功启动过预览的节点，保持canStart=true，用户可通过按钮重启
 					queueMasked(nodeId, true)

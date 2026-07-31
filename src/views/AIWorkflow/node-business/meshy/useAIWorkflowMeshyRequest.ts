@@ -376,6 +376,8 @@ export const useAIWorkflowMeshyRequest = (options: {
 			}
 		}
 
+		payload.nodeId = node.id
+
 		return {
 			ok: true,
 			payload,
