@@ -15,11 +15,14 @@ const SELECTION_FRAME_PADDING = 12
 const TAG_BAR_HEIGHT = 28
 const TAG_BAR_PADDING_X = 8
 const LABEL_EDIT_PADDING = 6
-const DELETE_BTN_SIZE = 20
-const DELETE_BTN_MARGIN = 4
+const DELETE_BTN_SIZE = 18
+const DELETE_BTN_MARGIN = 6
 const SAVE_BTN_SIZE = 24
 const SAVE_BTN_MARGIN = 4
 const INPUT_MIN_WIDTH = 120
+const BRACKET_SIZE = 10
+const BRACKET_LINE_WIDTH = 1.5
+const PARTICLE_DOT = 2
 
 export function computeSelectionBounds(nodes: BlueprintNode[]): Rect | null {
 	if (nodes.length < 2) return null
@@ -60,9 +63,8 @@ export function drawSelectionFrame(
 	const theme = getThemeManager()
 	const tokens = theme.tokens
 	const lineWidth = isSaved ? 2 / cameraZoom : 1.5 / cameraZoom
-	const dashPattern = isSaved ? [] : [6 / cameraZoom, 4 / cameraZoom]
+	const dashPattern = isSaved ? [8 / cameraZoom, 5 / cameraZoom] : [6 / cameraZoom, 4 / cameraZoom]
 	const color = isSaved ? tokens.selectionFrame : '#5b9bd5'
-	const bgAlpha = isSaved ? 0.08 : 0.06
 	const strokeAlpha = isSaved ? 0.85 : 0.7
 	const tagTextColor = theme.mode === 'dark' ? '#ffffff' : tokens.nodeBackground
 	const tagInputBg = theme.mode === 'dark' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'
@@ -77,12 +79,11 @@ export function drawSelectionFrame(
 	const saveText = `💾 ${t('aiworkflow.canvas.save')}`
 	const placeholder = t('aiworkflow.canvas.enterGroupName')
 
-	ctx.save()
+	if (isSaved) {
+		// Green saved frame - dashed border only
+	}
 
-	ctx.lineWidth = lineWidth
-	ctx.setLineDash(dashPattern)
-	ctx.strokeStyle = hexToRgba(color, strokeAlpha)
-	ctx.fillStyle = hexToRgba(color, bgAlpha)
+	ctx.save()
 
 	const tagBarHeight = TAG_BAR_HEIGHT / cameraZoom
 	const x = worldRect.x
@@ -90,11 +91,61 @@ export function drawSelectionFrame(
 	const w = worldRect.width
 	const h = worldRect.height
 
-	roundRect(ctx, x, y + tagBarHeight, w, h - tagBarHeight, 4 / cameraZoom)
-	ctx.fill()
-	ctx.stroke()
+	// Unified outer rect (spans tag bar + frame body)
+	const outerX = x
+	const outerY = y
+	const outerW = w
+	const outerH = h
+	const frameY = y + tagBarHeight
+	const frameH = h - tagBarHeight
 
+	// Dashed outer border (one unified rect covering tag bar + frame body)
+	ctx.lineWidth = lineWidth
+	ctx.setLineDash(dashPattern)
+	ctx.strokeStyle = hexToRgba(color, strokeAlpha)
+	ctx.strokeRect(outerX, outerY, outerW, outerH)
 	ctx.setLineDash([])
+
+	// Sci-fi L-corner brackets at four outer corners (decorative, solid line)
+	const bracketLen = BRACKET_SIZE / cameraZoom
+	const bracketW = BRACKET_LINE_WIDTH / cameraZoom
+	const bracketColor = hexToRgba(color, 1)
+	drawLCorner(ctx, outerX, outerY, 1, 1, bracketLen, bracketColor, bracketW)
+	drawLCorner(ctx, outerX + outerW, outerY, -1, 1, bracketLen, bracketColor, bracketW)
+	drawLCorner(ctx, outerX, outerY + outerH, 1, -1, bracketLen, bracketColor, bracketW)
+	drawLCorner(ctx, outerX + outerW, outerY + outerH, -1, -1, bracketLen, bracketColor, bracketW)
+
+	// Vertical sci-fi side brackets (decorative, at the tag bar/frame body boundary)
+	const sideBracketOffset = bracketLen / 2
+	if (isSaved) {
+		drawLCorner(ctx, outerX, frameY, 1, -1, sideBracketOffset, bracketColor, bracketW)
+		drawLCorner(ctx, outerX + outerW, frameY, -1, -1, sideBracketOffset, bracketColor, bracketW)
+	}
+
+	// Particle dots decoration for saved frame frame body
+	if (isSaved) {
+		const dotColor = hexToRgba(color, 0.6)
+		const dotSize = PARTICLE_DOT / cameraZoom
+		ctx.fillStyle = dotColor
+		const innerX = outerX + bracketLen + 4 / cameraZoom
+		const innerY = frameY + bracketLen + 4 / cameraZoom
+		const innerRight = outerX + outerW - bracketLen - 4 / cameraZoom
+		const innerBottom = outerY + outerH - bracketLen - 4 / cameraZoom
+		// top row dots (just below tag bar)
+		for (let dx = 0; dx < 3; dx++) {
+			const px = innerX + dx * ((innerRight - innerX) / 3)
+			if (px < innerRight) ctx.fillRect(px, innerY, dotSize, dotSize)
+		}
+		// bottom row dots
+		for (let dx = 0; dx < 3; dx++) {
+			const px = innerX + dx * ((innerRight - innerX) / 3)
+			if (px < innerRight) ctx.fillRect(px, innerBottom, dotSize, dotSize)
+		}
+		// left middle
+		ctx.fillRect(innerX, innerY + (innerBottom - innerY) / 2, dotSize, dotSize)
+		// right middle
+		ctx.fillRect(innerRight, innerY + (innerBottom - innerY) / 2, dotSize, dotSize)
+	}
 
 	if (isSaved && label) {
 		const isEditing = editState?.editingFrameId !== null && editState?.editingFrameId !== undefined
@@ -102,64 +153,85 @@ export function drawSelectionFrame(
 		const actuallyEditing = isEditing && frameIdMatch !== null
 
 		ctx.font = `500 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
-		let displayText = label
-		if (actuallyEditing) {
-			displayText = editState!.editText
-		}
-		const textMetrics = ctx.measureText(displayText)
-		const labelWidth = textMetrics.width + (LABEL_EDIT_PADDING * 2) / cameraZoom
+		const labelText = actuallyEditing ? editState!.editText : label
+		const textMetrics = ctx.measureText(labelText)
+		const labelWidth = Math.max(
+			textMetrics.width + (LABEL_EDIT_PADDING * 2) / cameraZoom,
+			36 / cameraZoom
+		)
+
+		const btnSize = DELETE_BTN_SIZE / cameraZoom
+		const btnMargin = DELETE_BTN_MARGIN / cameraZoom
+		const tagW = Math.max(w, labelWidth + btnSize + btnMargin * 2 + 4 / cameraZoom)
 		const tagX = x
 		const tagY = y
-		const tagW = labelWidth + 16 / cameraZoom
-		const tagH = tagBarHeight
+		const tagWClamped = Math.min(tagW, w)
 
-		ctx.fillStyle = hexToRgba(color, 0.9)
-		roundRect(ctx, tagX, tagY, tagW, tagH, 4 / cameraZoom)
-		ctx.fill()
+		// Tag bar: dashed border for the label region only; delete btn sits to the right
+		const labelBoxX = tagX
+		const labelBoxY = tagY
+		const labelBoxW = Math.max(tagWClamped - btnSize - btnMargin * 2, 24 / cameraZoom)
+		const labelBoxH = tagBarHeight
+
+		// Label region: dashed border on left/right/bottom only (top is the outer top edge)
+		ctx.save()
+		ctx.lineWidth = lineWidth
+		ctx.setLineDash(dashPattern)
+		ctx.strokeStyle = hexToRgba(color, strokeAlpha)
+		ctx.beginPath()
+		const bx = labelBoxX
+		const by = labelBoxY
+		const bw = labelBoxW
+		const bh = labelBoxH
+		// Left side (top to bottom)
+		ctx.moveTo(bx, by)
+		ctx.lineTo(bx, by + bh)
+		// Bottom side
+		ctx.lineTo(bx + bw, by + bh)
+		// Right side (top to bottom)
+		ctx.lineTo(bx + bw, by)
+		ctx.stroke()
+		ctx.setLineDash([])
+		ctx.restore()
 
 		if (actuallyEditing) {
 			ctx.fillStyle = tagInputBg
-			roundRect(
-				ctx,
-				tagX + 4 / cameraZoom,
-				tagY + 3 / cameraZoom,
-				tagW - 8 / cameraZoom,
-				tagH - 6 / cameraZoom,
-				3 / cameraZoom
+			ctx.fillRect(
+				labelBoxX + 3 / cameraZoom,
+				labelBoxY + 2 / cameraZoom,
+				labelBoxW - 6 / cameraZoom,
+				labelBoxH - 4 / cameraZoom
 			)
-			ctx.fill()
 		}
 
 		ctx.fillStyle = tagTextColor
 		ctx.textBaseline = 'middle'
 		ctx.textAlign = 'left'
-		const displayLabel = displayText || (actuallyEditing ? '' : label)
-		ctx.fillText(displayLabel, tagX + TAG_BAR_PADDING_X / cameraZoom, tagY + tagH / 2)
+		const displayLabel = labelBoxW > 10 / cameraZoom ? labelText : ''
+		ctx.fillText(
+			displayLabel,
+			labelBoxX + TAG_BAR_PADDING_X / cameraZoom,
+			labelBoxY + labelBoxH / 2
+		)
 
 		if (actuallyEditing && editState!.cursorBlink) {
 			const cursorX =
-				tagX + TAG_BAR_PADDING_X / cameraZoom + ctx.measureText(displayText).width + 1 / cameraZoom
+				labelBoxX +
+				TAG_BAR_PADDING_X / cameraZoom +
+				ctx.measureText(labelText).width +
+				1 / cameraZoom
 			ctx.strokeStyle = tagTextColor
 			ctx.lineWidth = 1.5 / cameraZoom
 			ctx.beginPath()
-			ctx.moveTo(cursorX, tagY + 5 / cameraZoom)
-			ctx.lineTo(cursorX, tagY + tagH - 5 / cameraZoom)
+			ctx.moveTo(cursorX, labelBoxY + 4 / cameraZoom)
+			ctx.lineTo(cursorX, labelBoxY + labelBoxH - 4 / cameraZoom)
 			ctx.stroke()
 		}
 
-		const btnSize = DELETE_BTN_SIZE / cameraZoom
-		const btnMargin = DELETE_BTN_MARGIN / cameraZoom
-		const deleteBtnX = x + w - btnMargin - btnSize / 2
-		const deleteBtnY = y + tagBarHeight + btnMargin + btnSize / 2
-		ctx.beginPath()
-		ctx.arc(deleteBtnX, deleteBtnY, btnSize / 2, 0, Math.PI * 2)
-		ctx.fillStyle = 'rgba(231, 76, 60, 0.85)'
-		ctx.fill()
-		ctx.fillStyle = '#ffffff'
-		ctx.font = `bold ${12 / cameraZoom}px sans-serif`
-		ctx.textAlign = 'center'
-		ctx.textBaseline = 'middle'
-		ctx.fillText('×', deleteBtnX, deleteBtnY + 1 / cameraZoom)
+		// Delete button at top-right of tag bar
+		const deleteBtnX = tagX + tagWClamped - btnMargin - btnSize
+		const deleteBtnY = tagY + (tagBarHeight - btnSize) / 2
+		drawDeleteButton(ctx, deleteBtnX, deleteBtnY, btnSize, color, bracketW)
 	} else if (!isSaved && nodeCount !== undefined) {
 		ctx.font = `500 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		const countMetrics = ctx.measureText(countText)
@@ -187,9 +259,19 @@ export function drawSelectionFrame(
 		const countTagWidth = countWidth + (TAG_BAR_PADDING_X * 2) / cameraZoom
 		const tagW = Math.min(countTagWidth + inputWidth + saveBtnWidth + saveBtnMargin * 3, w)
 
-		ctx.fillStyle = hexToRgba(color, 0.85)
-		roundRect(ctx, tagX, tagY, tagW, tagH, 4 / cameraZoom)
-		ctx.fill()
+		// Temp tag bar: dashed border + L corners, no fill
+		ctx.save()
+		ctx.lineWidth = lineWidth
+		ctx.setLineDash(dashPattern)
+		ctx.strokeStyle = hexToRgba(color, 0.9)
+		ctx.strokeRect(tagX, tagY, tagW, tagH)
+		ctx.setLineDash([])
+		const tagBracketLen = Math.min(6 / cameraZoom, tagH / 3)
+		drawLCorner(ctx, tagX, tagY, 1, 1, tagBracketLen, hexToRgba(color, 1), bracketW)
+		drawLCorner(ctx, tagX + tagW, tagY, -1, 1, tagBracketLen, hexToRgba(color, 1), bracketW)
+		drawLCorner(ctx, tagX, tagY + tagH, 1, -1, tagBracketLen, hexToRgba(color, 1), bracketW)
+		drawLCorner(ctx, tagX + tagW, tagY + tagH, -1, -1, tagBracketLen, hexToRgba(color, 1), bracketW)
+		ctx.restore()
 
 		ctx.fillStyle = tagTextColor
 		ctx.textBaseline = 'middle'
@@ -202,13 +284,11 @@ export function drawSelectionFrame(
 		const inputH = tagH - 6 / cameraZoom
 
 		ctx.fillStyle = isEditing ? tagInputBg : tagInputBgIdle
-		roundRect(ctx, inputX, inputY, inputWidth, inputH, 3 / cameraZoom)
-		ctx.fill()
+		ctx.fillRect(inputX, inputY, inputWidth, inputH)
 
 		ctx.strokeStyle = isEditing ? tagInputBorder : tagInputBorderIdle
 		ctx.lineWidth = 1 / cameraZoom
-		roundRect(ctx, inputX, inputY, inputWidth, inputH, 3 / cameraZoom)
-		ctx.stroke()
+		ctx.strokeRect(inputX, inputY, inputWidth, inputH)
 
 		const editText = isEditing ? editState!.editText : ''
 		ctx.font = `400 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
@@ -245,8 +325,10 @@ export function drawSelectionFrame(
 		const saveBtnY = tagY + 3 / cameraZoom
 		const saveBtnH = tagH - 6 / cameraZoom
 		ctx.fillStyle = tagSaveBtnBg
-		roundRect(ctx, saveBtnX, saveBtnY, saveBtnWidth, saveBtnH, 3 / cameraZoom)
-		ctx.fill()
+		ctx.fillRect(saveBtnX, saveBtnY, saveBtnWidth, saveBtnH)
+		ctx.strokeStyle = hexToRgba(color, 0.8)
+		ctx.lineWidth = 1 / cameraZoom
+		ctx.strokeRect(saveBtnX, saveBtnY, saveBtnWidth, saveBtnH)
 		ctx.fillStyle = tagTextColor
 		ctx.font = `600 ${11 / cameraZoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 		ctx.textAlign = 'center'
@@ -257,29 +339,78 @@ export function drawSelectionFrame(
 	ctx.restore()
 }
 
-function roundRect(
+function drawLCorner(
 	ctx: CanvasRenderingContext2D,
 	x: number,
 	y: number,
-	w: number,
-	h: number,
-	r: number
+	dirX: number,
+	dirY: number,
+	length: number,
+	color: string,
+	lineWidth: number
 ): void {
+	ctx.save()
+	ctx.strokeStyle = color
+	ctx.lineWidth = lineWidth
+	ctx.lineCap = 'square'
 	ctx.beginPath()
-	ctx.moveTo(x + r, y)
-	ctx.lineTo(x + w - r, y)
-	ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-	ctx.lineTo(x + w, y + h - r)
-	ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-	ctx.lineTo(x + r, y + h)
-	ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-	ctx.lineTo(x, y + r)
-	ctx.quadraticCurveTo(x, y, x + r, y)
-	ctx.closePath()
+	ctx.moveTo(x, y + dirY * length)
+	ctx.lineTo(x, y)
+	ctx.lineTo(x + dirX * length, y)
+	ctx.stroke()
+	ctx.restore()
+}
+
+function drawDeleteButton(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	size: number,
+	color: string,
+	lineWidth: number
+): void {
+	ctx.save()
+	ctx.fillStyle = 'rgba(231, 76, 60, 0.85)'
+	ctx.fillRect(x, y, size, size)
+	ctx.strokeStyle = color
+	ctx.lineWidth = lineWidth
+	ctx.strokeRect(x, y, size, size)
+	const cLen = Math.min(size / 4, 3 * lineWidth)
+	ctx.strokeStyle = '#ffffff'
+	ctx.lineWidth = lineWidth
+	drawLCorner(ctx, x, y, 1, 1, cLen, '#ffffff', lineWidth)
+	drawLCorner(ctx, x + size, y, -1, 1, cLen, '#ffffff', lineWidth)
+	drawLCorner(ctx, x, y + size, 1, -1, cLen, '#ffffff', lineWidth)
+	drawLCorner(ctx, x + size, y + size, -1, -1, cLen, '#ffffff', lineWidth)
+	ctx.fillStyle = '#ffffff'
+	ctx.font = `bold ${Math.floor(size * 0.7)}px sans-serif`
+	ctx.textAlign = 'center'
+	ctx.textBaseline = 'middle'
+	ctx.fillText('×', x + size / 2, y + size / 2 + 0.5)
+	ctx.restore()
 }
 
 function hexToRgba(hex: string, alpha: number): string {
-	if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex
+	if (hex.startsWith('rgba')) {
+		const match = hex.match(/rgba?\(([^)]+)\)/)
+		if (match) {
+			const parts = match[1].split(',').map((s) => parseFloat(s.trim()))
+			if (parts.length >= 3) {
+				return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`
+			}
+		}
+		return hex
+	}
+	if (hex.startsWith('rgb')) {
+		const match = hex.match(/rgb\(([^)]+)\)/)
+		if (match) {
+			const parts = match[1].split(',').map((s) => parseFloat(s.trim()))
+			if (parts.length >= 3) {
+				return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`
+			}
+		}
+		return hex
+	}
 	const h = hex.replace('#', '')
 	const r = parseInt(h.substring(0, 2), 16)
 	const g = parseInt(h.substring(2, 4), 16)
@@ -327,33 +458,61 @@ export function pointInFrameDragArea(
 export function pointInSavedFrameTagBar(
 	screenPoint: Vector2,
 	worldRect: Rect,
-	labelWidth: number,
+	worldTextWidth: number,
 	camera: { zoom: number; worldToScreen(p: Vector2): Vector2 }
 ): boolean {
-	const screenTopLeft = camera.worldToScreen(new Vector2(worldRect.x, worldRect.y))
-	const tagBarH = TAG_BAR_HEIGHT * camera.zoom
-	const tagW = (labelWidth + 16 + LABEL_EDIT_PADDING * 2) * camera.zoom
-	const screenRect = new Rect(screenTopLeft.x, screenTopLeft.y, tagW, tagBarH)
+	const z = camera.zoom
+	const invZ = 1 / z
+	const x = worldRect.x
+	const y = worldRect.y
+	const w = worldRect.width
+	const tagBarH = TAG_BAR_HEIGHT * invZ
+	// Match drawSelectionFrame: labelWidth in world space
+	const labelWidth = Math.max(worldTextWidth + LABEL_EDIT_PADDING * 2 * invZ, 36 * invZ)
+	const btnSize = DELETE_BTN_SIZE * invZ
+	const btnMargin = DELETE_BTN_MARGIN * invZ
+	const tagW = Math.max(w, labelWidth + btnSize + btnMargin * 2 + 4 * invZ)
+	const tagWClamped = Math.min(tagW, w)
+	// The entire tag bar area spans tagWClamped width (includes delete button area)
+	// Convert to screen space
+	const screenPos = camera.worldToScreen(new Vector2(x, y))
+	const screenTagW = tagWClamped * z
+	const screenTagH = tagBarH * z
+	const screenRect = new Rect(screenPos.x, screenPos.y, screenTagW, screenTagH)
 	return screenRect.containsPoint(screenPoint)
 }
 
 export function pointInSavedFrameDeleteBtn(
 	screenPoint: Vector2,
 	worldRect: Rect,
-	labelWidth: number,
+	worldTextWidth: number,
 	camera: { zoom: number; worldToScreen(p: Vector2): Vector2 }
 ): boolean {
-	const screenTopLeft = camera.worldToScreen(new Vector2(worldRect.x, worldRect.y))
-	const tagBarH = TAG_BAR_HEIGHT * camera.zoom
-	const fullW = worldRect.width * camera.zoom
-	const btnSize = DELETE_BTN_SIZE * camera.zoom
-	const btnMargin = DELETE_BTN_MARGIN * camera.zoom
-	const btnX = screenTopLeft.x + fullW - btnMargin - btnSize / 2
-	const btnY = screenTopLeft.y + tagBarH + btnMargin + btnSize / 2
-	const btnRadius = btnSize / 2 + 4 * camera.zoom
-	const dx = screenPoint.x - btnX
-	const dy = screenPoint.y - btnY
-	return dx * dx + dy * dy <= btnRadius * btnRadius
+	const z = camera.zoom
+	const invZ = 1 / z
+	const x = worldRect.x
+	const y = worldRect.y
+	const w = worldRect.width
+	const tagBarH = TAG_BAR_HEIGHT * invZ
+	const labelWidth = Math.max(worldTextWidth + LABEL_EDIT_PADDING * 2 * invZ, 36 * invZ)
+	const btnSize = DELETE_BTN_SIZE * invZ
+	const btnMargin = DELETE_BTN_MARGIN * invZ
+	const tagW = Math.max(w, labelWidth + btnSize + btnMargin * 2 + 4 * invZ)
+	const tagWClamped = Math.min(tagW, w)
+	// Match drawSelectionFrame delete button position
+	const deleteBtnX = x + tagWClamped - btnMargin - btnSize
+	const deleteBtnY = y + (tagBarH - btnSize) / 2
+	// Convert to screen space with a small hit area padding (2 screen px)
+	const screenBtnPos = camera.worldToScreen(new Vector2(deleteBtnX, deleteBtnY))
+	const screenBtnSize = btnSize * z
+	const pad = 2
+	const rect = new Rect(
+		screenBtnPos.x - pad,
+		screenBtnPos.y - pad,
+		screenBtnSize + pad * 2,
+		screenBtnSize + pad * 2
+	)
+	return rect.containsPoint(screenPoint)
 }
 
 export function pointInTempFrameInput(

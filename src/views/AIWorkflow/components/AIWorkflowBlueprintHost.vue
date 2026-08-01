@@ -258,6 +258,23 @@ defineExpose({
 		endPositions: Map<string, { x: number; y: number }>
 	) {
 		blueprintEditorRef.value?.commitNodeMovement?.(startPositions, endPositions)
+	},
+	saveSelectionFrame(label?: string, nodeIds?: string[]): string | null {
+		if (nodeIds && nodeIds.length >= 2) {
+			const scene = blueprintEditorRef.value?.getScene?.()
+			if (scene) {
+				const frame = scene.saveSelectionFrame(nodeIds, label ?? '分组')
+				return frame?.id ?? null
+			}
+			return null
+		}
+		return blueprintEditorRef.value?.saveSelectionFrame?.(label) ?? null
+	},
+	deleteSavedSelectionFrame(frameId: string): boolean {
+		return blueprintEditorRef.value?.deleteSavedSelectionFrame?.(frameId) ?? false
+	},
+	getSavedSelectionFrames(): any[] {
+		return blueprintEditorRef.value?.getSavedSelectionFrames?.() ?? []
 	}
 })
 

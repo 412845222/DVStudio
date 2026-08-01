@@ -121,6 +121,7 @@ export class BlueprintEditorTool extends Tool {
 		const selectedNodes = sel
 			.getSelection()
 			.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
+
 		if (selectedNodes.length >= 2) {
 			const label = this.editText.trim() || `分组 ${scene.getSavedSelectionFrames().length + 1}`
 			scene.saveSelectionFrame(
@@ -192,13 +193,17 @@ export class BlueprintEditorTool extends Tool {
 		const frames = scene.getSavedSelectionFrames()
 		const ctx = scene.canvas.getContext('2d')
 		if (!ctx) return
+		const zoom = scene.camera.zoom
 
 		this.savedFrameLabelWidths.clear()
 		for (const frame of frames) {
 			ctx.save()
-			ctx.font = `500 11px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
+			ctx.font = `500 ${11 / zoom}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
 			const metrics = ctx.measureText(frame.label)
-			this.savedFrameLabelWidths.set(frame.id, metrics.width)
+			// Store world-space text width (matching drawSelectionFrame calculation)
+			// labelWidth in drawSelectionFrame = max(textMetrics.width + padding/zoom, 36/zoom)
+			const worldTextWidth = metrics.width
+			this.savedFrameLabelWidths.set(frame.id, worldTextWidth)
 			ctx.restore()
 		}
 	}
@@ -387,7 +392,6 @@ export class BlueprintEditorTool extends Tool {
 			if (savedFrameHit) {
 				if (savedFrameHit.hitDelete) {
 					scene.deleteSavedSelectionFrame(savedFrameHit.frameId)
-					scene.requestRedraw()
 					return
 				}
 				if (savedFrameHit.hitTagBar) {
@@ -1138,6 +1142,19 @@ export class BlueprintEditorTool extends Tool {
 			return
 		}
 
+		// When multiple nodes are selected, pressing Enter directly also triggers save (even without clicking input area)
+		if (key === 'enter' && !event.repeat && !this.editingTempInput && !this.editingSavedFrameId) {
+			const selectedNodes = sel
+				.getSelection()
+				.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
+			if (selectedNodes.length >= 2 && this.tempSelectionBounds) {
+				event.preventDefault()
+				this.commitTempEdit()
+				scene.requestRedraw()
+				return
+			}
+		}
+
 		if (key === ' ' && !event.repeat && !this.connecting) {
 			this.spacePanning = true
 			this.setCursor('grab')
@@ -1268,21 +1285,7 @@ export class BlueprintEditorTool extends Tool {
 	}
 
 	onPreRender(ctx: RenderContext): void {
-		const scene = this.bpScene
-		const camera = scene.camera
-
 		this.measureSavedFrameLabels()
-
-		const editState = this.getEditState(camera.zoom)
-
-		for (const frame of scene.getSavedSelectionFrames()) {
-			const nodes = scene.getNodesByIds(frame.nodeIds)
-			if (nodes.length < 2) continue
-			const bounds = computeSelectionBounds(nodes)
-			if (bounds) {
-				drawSelectionFrame(ctx.ctx, bounds, camera.zoom, true, frame.label, undefined, editState)
-			}
-		}
 	}
 
 	onRender(ctx: RenderContext): void {
@@ -1291,11 +1294,27 @@ export class BlueprintEditorTool extends Tool {
 		const camera = scene.camera
 		const marqueeRect = sel.getMarqueeRect()
 
+		const editState = this.getEditState(camera.zoom)
+
+		// Draw saved (green) selection frames on top of nodes (dashed border only, no fill - won't obscure content)
+		// Note: Must draw in onRender because nodes have shadowBlur glow that extends beyond bounds
+		const savedFrames = scene.getSavedSelectionFrames()
+		for (const frame of savedFrames) {
+			const nodes = scene.getNodesByIds(frame.nodeIds)
+			if (nodes.length < 2) {
+				continue
+			}
+			const bounds = computeSelectionBounds(nodes)
+			if (bounds) {
+				drawSelectionFrame(ctx.ctx, bounds, camera.zoom, true, frame.label, undefined, editState)
+			}
+		}
+
+		// Draw temp (blue) selection frame on top of saved frames
 		this.updateTempSelectionBounds()
 		if (this.tempSelectionBounds && !sel.isMarqueeing()) {
 			const selectedNodes = sel.getSelection().filter((n) => n instanceof BlueprintNode)
 			if (selectedNodes.length >= 2) {
-				const editState = this.getEditState(camera.zoom)
 				drawSelectionFrame(
 					ctx.ctx,
 					this.tempSelectionBounds,

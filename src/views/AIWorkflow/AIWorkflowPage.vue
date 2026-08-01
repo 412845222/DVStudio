@@ -1118,7 +1118,11 @@ const {
 	onViewportChange: onHostViewportChange,
 	bindHostEvents,
 	unbindHostEvents,
-	updateCanvasSize: updateHostCanvasSize
+	updateCanvasSize: updateHostCanvasSize,
+	saveSelectionFrame,
+	deleteSavedSelectionFrame,
+	getSavedSelectionFrames,
+	worldToScreen
 } = useAIWorkflowBlueprintHost()
 
 const blueprintEditorData = computed<LegacyBlueprintData>(() => {
@@ -1914,10 +1918,13 @@ const selectionFrame = useAIWorkflowSelectionFrame({
 	selectedNodeIds
 })
 
-// 标签编辑器（复用SelectionFrame的坐标）
+// 标签编辑器（复用SelectionFrame的坐标，调用引擎API保证SSOT）
 const tagEditor = useAIWorkflowTagEditor({
 	store,
-	selectedNodeIds
+	selectedNodeIds,
+	worldToScreen: (p: { x: number; y: number }) => worldToScreen(p.x, p.y),
+	saveSelectionFrame,
+	deleteSavedSelectionFrame
 })
 
 const openSelectionTagEditor = () => {
@@ -12867,6 +12874,9 @@ const onDeleteSelectionFrame = (payload?: { frameId?: string }) => {
 	if (payload?.frameId) {
 		const frame = store.state.savedSelectionFrames?.find((f) => f.id === payload.frameId)
 		if (frame) {
+			// 优先调用引擎API删除（SSOT）
+			deleteSavedSelectionFrame(payload.frameId)
+			// 引擎change事件会同步Vuex，但这里立即触发即刻响应
 			store.dispatch('removeSavedSelectionFrame', { id: payload.frameId })
 			const sortedIds = [...frame.nodeIds].sort()
 			const tagKey = `ids:${sortedIds.join('|')}`

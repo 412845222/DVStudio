@@ -26,6 +26,11 @@ import { AddNodeCommand } from './commands/AddNodeCommand'
 import { CreateConnectionCommand } from './commands/CreateConnectionCommand'
 import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand'
 import { ResizeNodeCommand } from './commands/ResizeNodeCommand'
+import {
+	SaveSelectionFrameCommand,
+	DeleteSelectionFrameCommand,
+	RenameSelectionFrameCommand
+} from './commands/SelectionFrameCommands'
 import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand'
 import { ThemeManager, getThemeManager } from './theme'
 import { I18nManager, getI18nManager } from './i18n'
@@ -779,27 +784,47 @@ export class BlueprintScene extends Scene {
 		return this._savedSelectionFrames.get(frameId) ?? null
 	}
 
-	saveSelectionFrame(nodeIds: string[], label: string): SavedSelectionFrame {
-		const id = `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+	addSelectionFrameInternal(
+		nodeIds: string[],
+		label: string,
+		existingId?: string
+	): SavedSelectionFrame {
+		const id = existingId ?? `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 		const sortedIds = [...nodeIds].sort()
 		const frame: SavedSelectionFrame = { id, nodeIds: sortedIds, label }
 		this._savedSelectionFrames.set(id, frame)
-		this.requestRedraw()
 		return frame
 	}
 
-	deleteSavedSelectionFrame(frameId: string): boolean {
-		const deleted = this._savedSelectionFrames.delete(frameId)
-		if (deleted) this.requestRedraw()
-		return deleted
+	removeSelectionFrameInternal(frameId: string): boolean {
+		return this._savedSelectionFrames.delete(frameId)
 	}
 
-	renameSavedSelectionFrame(frameId: string, newLabel: string): boolean {
+	renameSelectionFrameInternal(frameId: string, newLabel: string): boolean {
 		const frame = this._savedSelectionFrames.get(frameId)
 		if (!frame) return false
 		frame.label = newLabel
-		this.requestRedraw()
 		return true
+	}
+
+	saveSelectionFrame(nodeIds: string[], label: string): SavedSelectionFrame {
+		const id = `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+		this.executeCommand(new SaveSelectionFrameCommand(this, nodeIds, label, id))
+		return this._savedSelectionFrames.get(id)!
+	}
+
+	deleteSavedSelectionFrame(frameId: string): boolean {
+		const existing = this._savedSelectionFrames.get(frameId)
+		if (!existing) return false
+		this.executeCommand(new DeleteSelectionFrameCommand(this, frameId))
+		return !this._savedSelectionFrames.has(frameId)
+	}
+
+	renameSavedSelectionFrame(frameId: string, newLabel: string): boolean {
+		const existing = this._savedSelectionFrames.get(frameId)
+		if (!existing) return false
+		this.executeCommand(new RenameSelectionFrameCommand(this, frameId, newLabel))
+		return this._savedSelectionFrames.get(frameId)?.label === newLabel
 	}
 
 	getNodesByIds(ids: string[]): BlueprintNode[] {
