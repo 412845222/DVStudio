@@ -3,6 +3,14 @@ import { useNodeChatApi } from './useNodeChatApi'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 import type { InputParamPreviewRef } from './index'
 import { getDefaultParamsForType } from './nodeChatConfig'
+import { useNodeChatDraftSave } from './useNodeChatDraftSave'
+import {
+	areSelectedRefsEqual,
+	areParamsEqual,
+	simplifySelectedRefsForSubmit,
+	matchSelectedRefsWithSerializedDraft,
+	normalizeRefsForStorage
+} from './chatStateUtils'
 
 interface NodeChatDialogProps {
 	visible: boolean
@@ -40,19 +48,23 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	let isReady = false
 	let initGuardToken = 0
 
+	// ========== 接入脏标记 + flushSave ==========
+	const {
+		markDraftDirty,
+		markParamsDirty,
+		markRefsDirty,
+		resetSaveBaseline,
+		hasAnyDirty,
+		flushSave
+	} = useNodeChatDraftSave({ nodeId: computed(() => props.nodeId).value as string | null })
+
 	const currentParams = computed(() => {
 		return localParams.value || {}
 	})
 
 	const selectedRefsForInput = computed<any[]>(() => {
-		const map: any = { image: 'image', video: 'video', model3d: 'model3d', blender: 'model3d' }
-		const type = props.nodeType
-		const allowedType = type && map[type as keyof typeof map]
-		if (!allowedType) return []
 		const refs = localSelectedRefs.value || []
 		const inputRefs = props.inputParamPreviewRefs || []
-		// 构建inputParamPreviewRefs的索引，用于补全@引用的previewUrl
-		// 优先级：edgeId精确匹配 > fromNodeId:fromAnchorId匹配
 		const inputRefsByEdgeId = new Map<string, any>()
 		const inputRefsBySource = new Map<string, any>()
 		for (const ir of inputRefs) {
@@ -63,37 +75,33 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 				inputRefsBySource.set(`${ir.fromNodeId}:${ir.fromAnchorId}`, ir)
 			}
 		}
-		// @引用chips和输入边预览是两个独立的展示区域，不需要互斥过滤
-		// 输入边显示在对话框顶部的inputParamPreviewRefs区域
-		// @引用显示在输入框内作为chips
-		return refs
-			.filter((r: any) => {
-				if (!r) return false
-				const rKind = r.kind || r.type
-				return rKind === allowedType
-			})
-			.map((r: any) => {
-				// 尝试从当前连接的边引用中补全previewUrl和label
-				// 解决：1) 保存时previewUrl(blob:)失效；2) 边断开重连后预览更新；3) 首次保存时字段丢失
-				let matchedInputRef: any = null
-				if (r.edgeId && inputRefsByEdgeId.has(r.edgeId)) {
-					matchedInputRef = inputRefsByEdgeId.get(r.edgeId)
-				} else if (r.fromNodeId && r.fromAnchorId) {
-					matchedInputRef = inputRefsBySource.get(`${r.fromNodeId}:${r.fromAnchorId}`)
-				}
-				const resolvedPreviewUrl = r.previewUrl || matchedInputRef?.previewUrl || undefined
-				const resolvedLabel =
-					r.label || r.name || matchedInputRef?.label || matchedInputRef?.name || ''
-				return {
-					edgeId: r.edgeId || matchedInputRef?.edgeId,
-					fromNodeId: r.fromNodeId,
-					fromAnchorId: r.fromAnchorId,
-					kind: r.kind || r.type || allowedType,
-					name: r.name || resolvedLabel,
-					label: resolvedLabel,
-					previewUrl: resolvedPreviewUrl
-				}
-			})
+		// 关键修复：不再基于 nodeType 做 kind 过滤；否则 text node 引用 image/video 会被 filter 掉，
+		// 传入 NodeChatInput 的 props.selectedReferences 变空，导致 CHIP_MARKER 找不到对应 ref → 全部 fallback "引用丢失"。
+		return refs.map((r: any) => {
+			if (!r) return r
+			let matchedInputRef: any = null
+			if (r.edgeId && inputRefsByEdgeId.has(r.edgeId)) {
+				matchedInputRef = inputRefsByEdgeId.get(r.edgeId)
+			} else if (r.fromNodeId && r.fromAnchorId) {
+				const key = `${r.fromNodeId}:${r.fromAnchorId}`
+				if (inputRefsBySource.has(key)) matchedInputRef = inputRefsBySource.get(key)
+			}
+			const rAny = r as unknown as { refKey?: string }
+			const resolvedPreviewUrl = r.previewUrl || matchedInputRef?.previewUrl || undefined
+			const resolvedLabel =
+				r.label || r.name || matchedInputRef?.label || matchedInputRef?.name || ''
+			const core: any = {
+				edgeId: r.edgeId || matchedInputRef?.edgeId,
+				fromNodeId: r.fromNodeId,
+				fromAnchorId: r.fromAnchorId,
+				kind: r.kind || r.type || matchedInputRef?.kind || matchedInputRef?.type || 'text',
+				name: r.name || resolvedLabel,
+				label: resolvedLabel,
+				previewUrl: resolvedPreviewUrl
+			}
+			if (rAny?.refKey) core.refKey = rAny.refKey
+			return core
+		})
 	})
 
 	const showInputParamRefs = computed(() => {
@@ -122,27 +130,32 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 			localParams.value = mergeWithDefaultParams(props.nodeType, props.params)
 		}
 		if (props.selectedReferences !== undefined) {
-			localSelectedRefs.value = props.selectedReferences ? [...props.selectedReferences] : []
+			// 关键修复：把 props 里可能“被 sort/去冗余字段”的 selectedReferences，
+			// 对齐到当前 localDraft（含 CHIP_MARKER）的 chip 顺序，确保二次渲染不会错位/消失。
+			const aligned = matchSelectedRefsWithSerializedDraft(
+				localDraft.value,
+				props.selectedReferences
+			)
+			localSelectedRefs.value = aligned ? [...(aligned as any[])] : []
 		}
 	}
 
 	const syncFromEngine = (nodeId: string) => {
 		const state = chatApi.getState(nodeId)
-		if (props.draft === undefined || props.draft === '') {
-			localDraft.value = state.draft
-		} else {
-			localDraft.value = props.draft
-		}
+		const draftSrc = props.draft === undefined || props.draft === '' ? state.draft : props.draft
+		const refsSrc =
+			!props.selectedReferences || props.selectedReferences.length === 0
+				? state.selectedRefs
+				: props.selectedReferences
+		// 对齐：保证读取到的 refs 顺序与 draft 中 CHIP_MARKER 一致（二次打开/回读场景）
+		const alignedRefs = matchSelectedRefsWithSerializedDraft(draftSrc, refsSrc)
+		localDraft.value = draftSrc
 		if (!props.params || Object.keys(props.params).length === 0) {
 			localParams.value = mergeWithDefaultParams(props.nodeType, state.params)
 		} else {
 			localParams.value = mergeWithDefaultParams(props.nodeType, props.params)
 		}
-		if (!props.selectedReferences || props.selectedReferences.length === 0) {
-			localSelectedRefs.value = state.selectedRefs ? [...state.selectedRefs] : []
-		} else {
-			localSelectedRefs.value = [...props.selectedReferences]
-		}
+		localSelectedRefs.value = alignedRefs ? [...(alignedRefs as any[])] : []
 	}
 
 	const focusInput = () => {
@@ -167,9 +180,15 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 				if (myToken !== initGuardToken) return
 				nextTick(() => {
 					if (myToken !== initGuardToken) return
-					// Re-sync from props after all DOM updates to ensure we have the latest
-					// state (props may have updated during the async initialization above).
-					syncFromProps()
+					// 注意：这里不再调用 syncFromProps 覆盖 syncFromEngine 的结果；
+					// syncFromEngine 已经把 props.selectedReferences 与 engine.selectedRefs
+					// 与 draft 的 CHIP_MARKER 顺序对齐，避免再次被 props.selectedReferences（可能被排序）
+					// 覆盖导致二次渲染 chip 消失。
+					resetSaveBaseline({
+						draft: localDraft.value,
+						params: { ...localParams.value },
+						refs: normalizeRefsForStorage(localSelectedRefs.value) as any[]
+					})
 					isInternalUpdate = false
 					isReady = true
 					inputRef.value?.focus()
@@ -204,126 +223,99 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		}
 	)
 
+	// ========== 注意：props 的 watch 改为浅比较，无变化不触发 ==========
+	// draft 纯字符串，直接 === 比较，不需要 deep
 	watch(
 		() => props.draft,
-		(newVal) => {
-			if (newVal !== undefined) {
-				localDraft.value = newVal
-			}
-		},
-		{ immediate: true }
+		(newVal, oldVal) => {
+			if (newVal === undefined) return
+			if (newVal === oldVal) return
+			if (newVal === localDraft.value) return
+			if (isInternalUpdate) return
+			localDraft.value = newVal
+		}
 	)
 
+	// params：深比较，内容一致不更新 localParams，避免反复触发 watcher
 	watch(
 		() => props.params,
-		(newVal) => {
-			if (newVal !== undefined) {
-				localParams.value = mergeWithDefaultParams(props.nodeType, newVal)
-			}
-		},
-		{ deep: true, immediate: true }
+		(newVal, oldVal) => {
+			if (newVal === undefined) return
+			if (isInternalUpdate) return
+			if (oldVal !== undefined && areParamsEqual(newVal, oldVal)) return
+			const merged = mergeWithDefaultParams(props.nodeType, newVal)
+			if (areParamsEqual(merged, localParams.value)) return
+			localParams.value = merged
+		}
 	)
 
+	// selectedReferences：深比较，内容一致不更新 localSelectedRefs
 	watch(
 		() => props.selectedReferences,
-		(newVal) => {
-			if (newVal !== undefined) {
-				localSelectedRefs.value = newVal ? [...newVal] : []
-			}
-		},
-		{ deep: true, immediate: true }
+		(newVal, oldVal) => {
+			if (newVal === undefined) return
+			if (isInternalUpdate) return
+			if (oldVal !== undefined && areSelectedRefsEqual(newVal, oldVal)) return
+			const newArr = newVal ? [...newVal] : []
+			// 关键修复：对齐到当前 localDraft（CHIP_MARKER 顺序），避免 watcher 把正确的 refs 覆盖成排序后的
+			const aligned = matchSelectedRefsWithSerializedDraft(localDraft.value, newArr)
+			if (areSelectedRefsEqual(aligned, localSelectedRefs.value)) return
+			localSelectedRefs.value = aligned ? [...(aligned as any[])] : []
+		}
 	)
 
+	// ========== 输入：打脏标记，不再实时同步到 store/引擎 ==========
 	const onDraftInput = (value: string) => {
-		const wasInternalUpdate = isInternalUpdate
-		// 总是更新localDraft
+		// 总是更新 localDraft —— 保持 UI 响应
 		localDraft.value = value
 		if (!isReady) {
 			return
 		}
-		const nid = props.nodeId
-		if (nid) {
-			if (!wasInternalUpdate) {
-				isInternalUpdate = true
-			}
-			chatApi.saveDraft(nid, value)
-			if (!wasInternalUpdate) {
-				nextTick(() => {
-					isInternalUpdate = false
-				})
-			}
-		}
+		markDraftDirty(value)
 	}
 
+	// ========== 参数变化：打脏标记 ==========
 	const onParamsChange = (params: Record<string, any>) => {
-		const wasInternalUpdate = isInternalUpdate
-		// 总是更新localParams
+		// 总是更新 localParams
 		localParams.value = { ...params }
 		if (!isReady) {
 			return
 		}
-		const nid = props.nodeId
-		if (nid) {
-			if (!wasInternalUpdate) {
-				isInternalUpdate = true
-			}
-			chatApi.saveParams(nid, params)
-			if (!wasInternalUpdate) {
-				nextTick(() => {
-					isInternalUpdate = false
-				})
-			}
-		}
+		markParamsDirty(params)
 	}
 
+	// ========== @引用变化：打脏标记 ==========
 	const onSelectedRefsChange = (refs: any[]) => {
-		const refsForNode: any[] = refs.map((r: any) => ({
-			id: r.id,
-			kind: r.kind || r.type || 'image',
-			type: r.kind || r.type || 'image',
-			fromNodeId: r.fromNodeId,
-			fromAnchorId: r.fromAnchorId,
-			edgeId: r.edgeId,
-			fromContent: r.fromContent,
-			label: r.name || r.label || '',
-			name: r.name || r.label || '',
-			previewUrl: r.previewUrl
-		}))
+		const refsForNode: any[] = refs.map((r: any) => {
+			// 保留来自 NodeChatInput.syncFromDOM 的 refKey（edgeId 或 fromNodeId:fromAnchorId），
+			// 供存储 / 回读时对齐 CHIP_MARKER 顺序，避免二次打开 chip 消失
+			const rAny = r as unknown as { refKey?: string }
+			const core = {
+				kind: r.kind || r.type || 'image',
+				type: r.kind || r.type || 'image',
+				fromNodeId: r.fromNodeId,
+				fromAnchorId: r.fromAnchorId,
+				edgeId: r.edgeId,
+				fromContent: r.fromContent,
+				label: r.name || r.label || '',
+				name: r.name || r.label || '',
+				previewUrl: r.previewUrl,
+				// id 仅内部使用，不参与存储比对
+				id: r.id
+			}
+			if (rAny?.refKey) {
+				;(core as unknown as { refKey: string }).refKey = rAny.refKey
+			}
+			return core
+		})
 
-		// 总是更新localSelectedRefs，因为这是子组件从DOM中读取的真实chip状态
-		// isInternalUpdate只是防止props变化触发的回环，不能阻止用户主动操作的状态更新
-		const wasInternalUpdate = isInternalUpdate
+		// 总是更新 localSelectedRefs —— 子组件从 DOM 读的真实 chip 状态
 		localSelectedRefs.value = refsForNode
 
 		if (!isReady) {
-			console.log('[NodeChatSync#onSelectedRefsChange] QUEUE before ready', {
-				nodeId: props.nodeId,
-				refsLen: refsForNode.length
-			})
 			return
 		}
-
-		const nid = props.nodeId
-		if (nid) {
-			// 只有当isInternalUpdate原本是false时，才设置它并在nextTick重置
-			// 如果已经是true（比如onDraftInput先设置了），不重置，让外层负责重置
-			if (!wasInternalUpdate) {
-				isInternalUpdate = true
-			}
-			console.log('[NodeChatSync#onSelectedRefsChange] SAVE to store', {
-				nodeId: nid,
-				refsLen: refsForNode.length,
-				wasInternalUpdate,
-				firstRefHasPreviewUrl: !!(refsForNode.length > 0 && refsForNode[0].previewUrl),
-				firstRefEdgeId: refsForNode.length > 0 ? refsForNode[0].edgeId : null
-			})
-			chatApi.saveSelectedRefs(nid, refsForNode)
-			if (!wasInternalUpdate) {
-				nextTick(() => {
-					isInternalUpdate = false
-				})
-			}
-		}
+		markRefsDirty(refsForNode)
 	}
 
 	const handleSubmit = () => {
@@ -331,6 +323,13 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		const nid = props.nodeId
 		const nType = props.nodeType
 		if (!nid || !nType) return
+
+		// ========== 提交前先 flush 保存一次，确保引擎有最新草稿 ==========
+		flushSave()
+
+		// ========== 提交文本简化：把 chip 位置替换为「（参考图N）/（参考视频N）/（参考模型N）」==========
+		// 并精简 selectedReferences，仅保留锚点定位所需最小字段，不携带冗余的节点详情、fromContent、id、type 等。
+		const simplified = simplifySelectedRefsForSubmit(localDraft.value, localSelectedRefs.value)
 
 		const paramKeyMap: Record<string, string> = {
 			text: 'aiText',
@@ -342,22 +341,12 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		const payload: any = {
 			nodeId: nid,
 			nodeType: nType,
-			prompt: localDraft.value.trim(),
+			prompt: simplified.prompt.trim(),
 			params: { ...currentParams.value },
 			paramKey: paramKeyMap[nType] || 'aiText',
-			selectedReferences: localSelectedRefs.value,
+			selectedReferences: simplified.selectedReferences,
 			inputParamRefs: props.inputParamPreviewRefs || []
 		}
-		console.log('[NodeChatSync#handleSubmit] SUBMIT PAYLOAD:', {
-			nodeId: nid,
-			nodeType: nType,
-			promptLen: payload.prompt.length,
-			paramsKeys: Object.keys(payload.params),
-			paramsModel: payload.params.model,
-			paramsProvider: payload.params.provider,
-			paramsTextModelVersion: payload.params.textModelVersion,
-			paramsGeminiTextModelVersion: payload.params.geminiTextModelVersion
-		})
 		chatApi.submit(nid, payload)
 	}
 
@@ -370,6 +359,8 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 
 	const handleClose = () => {
 		if (props.submitting) return
+		// ========== 关闭前先 flushSave ==========
+		flushSave()
 		const nid = props.nodeId
 		if (nid) {
 			chatApi.close(nid)
@@ -405,6 +396,9 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 		handleStop,
 		handleClose,
 		handleRemoveParamRef,
-		toggleParams
+		toggleParams,
+		// 新增：暴露给 Dialog 层用于 blur / Ctrl+S / 页面事件等时机调用
+		flushSave,
+		hasAnyDirty
 	}
 }

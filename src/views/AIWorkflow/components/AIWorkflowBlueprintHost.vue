@@ -101,6 +101,7 @@ const emit = defineEmits<{
 	'node-export-unreal-lighting': [nodeId: string]
 	'node-disconnect-unreal': [nodeId: string]
 	'node-set-asset-root-path': [payload: { nodeId: string; path: string }]
+	'node-update-poster': [payload: { nodeId: string; posterDataUrl: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -454,6 +455,7 @@ watch(
 			@node-export-unreal-lighting="(id: string) => emit('node-export-unreal-lighting', id)"
 			@node-disconnect-unreal="(id: string) => emit('node-disconnect-unreal', id)"
 			@node-set-asset-root-path="(p: any) => emit('node-set-asset-root-path', p)"
+			@node-update-poster="(p: any) => emit('node-update-poster', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

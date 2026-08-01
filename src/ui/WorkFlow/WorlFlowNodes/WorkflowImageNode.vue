@@ -45,7 +45,7 @@
 					v-if="resourceUrl"
 					ref="previewWrap"
 					class="wf-media-preview"
-					:style="previewWrapStyle"
+					:style="{ ...previewWrapStyle, ...previewWrapExtraStyle }"
 					@contextmenu.stop.prevent="onPreviewContextMenu"
 				>
 					<img
@@ -190,6 +190,8 @@ const props = defineProps<{
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
 	visualStatus?: 'idle' | 'running' | 'error'
+	sizeCustomized?: boolean
+	autoHeight?: boolean
 	nodeChatVisible?: boolean
 	nodeChatNodeType?: WorkflowNodeChatType | null
 	nodeChatDraft?: string
@@ -321,6 +323,7 @@ const onPreviewClick = () => {
 const previewWrap = ref<HTMLElement | null>(null)
 const previewImg = ref<HTMLImageElement | null>(null)
 let ro: ResizeObserver | null = null
+let bodySizeRo: ResizeObserver | null = null
 const lastResourceUrl = ref('')
 const pendingResourceReset = ref(false)
 const failedPreviewUrl = ref('')
@@ -401,6 +404,15 @@ const outputHeightDisplay = computed(() =>
 )
 
 const previewWrapStyle = computed(() => {
+	if (props.autoHeight === false) {
+		return {
+			width: '100%',
+			// height 不通过 binding 设置，由 applyPrecisePreviewSize() 直接写入 DOM.style
+			flex: '0 0 auto',
+			minHeight: '0',
+			maxHeight: 'none'
+		} as Record<string, string>
+	}
 	const imgW = naturalWidth.value ?? outputWidth.value
 	const imgH = naturalHeight.value ?? outputHeight.value
 	if (imgW && imgH && imgW > 0 && imgH > 0) {
@@ -415,6 +427,122 @@ const previewWrapStyle = computed(() => {
 		width: '100%'
 	} as Record<string, string>
 })
+
+const previewWrapExtraStyle = computed(() => {
+	if (props.autoHeight === false) {
+		return {} as Record<string, string>
+	}
+	return {
+		flex: '0 0 auto'
+	} as Record<string, string>
+})
+
+const findNodeRootEl = (): HTMLElement | null => {
+	try {
+		const b = baseRef.value as any
+		return (b?.$el as HTMLElement) || null
+	} catch {
+		return null
+	}
+}
+
+const clearPreviewPixelSize = () => {
+	const el = previewWrap.value
+	if (!el) return
+	try {
+		el.style.height = ''
+		el.style.width = ''
+	} catch {}
+}
+
+const applyPrecisePreviewSize = () => {
+	// 只有用户 resize 过且有图片资源时才用像素级直写
+	if (props.autoHeight !== false) {
+		clearPreviewPixelSize()
+		return
+	}
+	if (!displayResourceUrl.value) {
+		clearPreviewPixelSize()
+		return
+	}
+	const root = findNodeRootEl()
+	if (!root) {
+		clearPreviewPixelSize()
+		return
+	}
+	const bodyEl = root.querySelector<HTMLElement>(':scope > .wf-node-body')
+	if (!bodyEl) {
+		clearPreviewPixelSize()
+		return
+	}
+	const actionsEl = bodyEl.querySelector<HTMLElement>(':scope .wf-media-actions')
+	const previewEl = previewWrap.value
+	if (!previewEl) return
+
+	const bodyInnerH = bodyEl.clientHeight || 0
+	// body 内部 padding 和 border：直接用 clientHeight 已经排除，无需再减
+	// 计算 actions 的实际高度（包含 margin/padding）
+	let actionsH = 0
+	if (actionsEl) {
+		const aRect = actionsEl.getBoundingClientRect()
+		actionsH = Math.ceil(aRect.height || actionsEl.offsetHeight || 0)
+	}
+	// wf-media gap = 8px（在样式里定义）
+	const gap = 8
+	const available = Math.max(0, bodyInnerH - actionsH - gap)
+	const bodyInnerW = bodyEl.clientWidth || 0
+	const targetW = Math.max(0, bodyInnerW)
+
+	if (available <= 0 || targetW <= 0) {
+		// 空间还没准备好，下一轮再算
+		return
+	}
+	try {
+		previewEl.style.height = `${available}px`
+		previewEl.style.width = `${targetW}px`
+		// 手动更新 wrapSize（原 ResizeObserver 在某些情况下可能不触发）
+		if (wrapSize.value.w !== targetW || wrapSize.value.h !== available) {
+			wrapSize.value = { w: targetW, h: available }
+		}
+	} catch {}
+}
+
+const installPreciseSizeLogic = () => {
+	const root = findNodeRootEl()
+	if (!root) {
+		// 还没渲染出来，下一个 tick 再试
+		nextTick(() => installPreciseSizeLogic())
+		return
+	}
+	const bodyEl = root.querySelector<HTMLElement>(':scope > .wf-node-body')
+	if (!bodyEl) {
+		nextTick(() => installPreciseSizeLogic())
+		return
+	}
+	// 如果 bodySizeRo 已经装好了，先断掉再重新订阅
+	try {
+		bodySizeRo?.disconnect()
+	} catch {}
+	bodySizeRo = new ResizeObserver(() => {
+		applyPrecisePreviewSize()
+	})
+	bodySizeRo.observe(bodyEl)
+
+	// 观察 previewWrap 自身也很有必要（因为 flex 布局下父级可能间接改变它）
+	const existingRo = ro
+	if (previewWrap.value && existingRo) {
+		try {
+			existingRo.disconnect()
+		} catch {}
+		try {
+			existingRo.observe(previewWrap.value)
+		} catch {}
+	}
+
+	// 首次立即应用
+	applyPrecisePreviewSize()
+	void nextTick(() => applyPrecisePreviewSize())
+}
 
 type DisplayRect = { x: number; y: number; w: number; h: number }
 
@@ -694,6 +822,36 @@ watch(
 	}
 )
 
+// 用户 resize 节点 / 切换 autoHeight / 资源变化时，重新计算预览容器尺寸
+watch(
+	() => [props.height, props.width, props.autoHeight],
+	async () => {
+		await nextTick()
+		applyPrecisePreviewSize()
+		if (props.autoHeight === false) {
+			// 首次切换到固定尺寸模式时，可能 bodyRo 还没装好
+			if (!bodySizeRo) installPreciseSizeLogic()
+			else {
+				void nextTick(() => applyPrecisePreviewSize())
+			}
+		} else {
+			clearPreviewPixelSize()
+		}
+	},
+	{ flush: 'post' }
+)
+
+// 图片加载完成后，重新核对尺寸（图片首次显示时可能改变布局）
+watch(
+	() => displayResourceUrl.value,
+	async () => {
+		await nextTick()
+		applyPrecisePreviewSize()
+		void nextTick(() => applyPrecisePreviewSize())
+	},
+	{ flush: 'post' }
+)
+
 defineExpose({
 	exportPngBlob: async () => {
 		const src = effectiveSourceUrl.value
@@ -712,17 +870,22 @@ defineExpose({
 
 onMounted(() => {
 	initPreviewLayoutObserver()
+	void nextTick(() => installPreciseSizeLogic())
 })
 
 onBeforeUnmount(() => {
 	try {
 		ro?.disconnect()
 	} catch {}
+	try {
+		bodySizeRo?.disconnect()
+	} catch {}
 	if (invalidateScreenshotTimer != null) {
 		clearTimeout(invalidateScreenshotTimer)
 		invalidateScreenshotTimer = null
 	}
 	ro = null
+	bodySizeRo = null
 	previewImg.value = null
 })
 </script>
@@ -762,7 +925,8 @@ onBeforeUnmount(() => {
 
 .wf-media-empty {
 	width: 100%;
-	aspect-ratio: 1 / 1;
+	flex: 1 1 auto;
+	min-height: 200px;
 	border: 1px dashed var(--vscode-border);
 	border-radius: 6px;
 	padding: 10px;

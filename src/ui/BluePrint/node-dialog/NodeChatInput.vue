@@ -55,10 +55,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
 import NodeMentionPopup from './components/NodeMentionPopup.vue'
 import type { InputParamPreviewRef } from './index'
+import {
+	areSelectedRefsEqual,
+	CHIP_MARKER,
+	matchSelectedRefsWithSerializedDraft,
+	type StoredNodeChatRef
+} from './chatStateUtils'
 
 const { t } = useI18n()
-
-const CHIP_MARKER = '\u0001'
 
 const calcDisplayLength = (serialized: string, refs: InputParamPreviewRef[]): number => {
 	const parts = serialized.split(CHIP_MARKER)
@@ -126,20 +130,23 @@ const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
 const selectedRefs = ref<InputParamPreviewRef[]>([...(props.selectedReferences ?? [])])
 
 const syncSelectedRefsFromProps = () => {
-	const newRefs = [...(props.selectedReferences ?? [])]
-	const changed =
-		newRefs.length !== selectedRefs.value.length ||
-		newRefs.some(
-			(r, i) =>
-				r.fromNodeId !== selectedRefs.value[i]?.fromNodeId ||
-				r.fromAnchorId !== selectedRefs.value[i]?.fromAnchorId ||
-				r.kind !== selectedRefs.value[i]?.kind
-		)
-	if (changed) {
-		selectedRefs.value = newRefs
-		return true
+	// 关键修复：不能直接把 props.selectedReferences 复制过来 —— 父层（Vuex Store / Dialog props）
+	// 可能下发的是“排序后/去重后的 refs”，顺序不一定等于 props.modelValue 中 CHIP_MARKER 的出现顺序。
+	// 必须以 serialized draft 为真源，用 matchSelectedRefsWithSerializedDraft 对齐后再赋值，
+	// 才能保证 renderFromModel 遍历 marker 时 refs[i] 不会越界或错配，最终导致全部 fallback 到 "引用丢失"。
+	const aligned = matchSelectedRefsWithSerializedDraft(
+		props.modelValue ?? currentSerializedText.value,
+		props.selectedReferences ?? []
+	)
+	const newRefs: InputParamPreviewRef[] = aligned
+		? [...(aligned as unknown as InputParamPreviewRef[])]
+		: []
+	// 使用深比较：内容一致就不更新，避免引用变化导致虚假重渲染
+	if (areSelectedRefsEqual(newRefs, selectedRefs.value)) {
+		return false
 	}
-	return false
+	selectedRefs.value = newRefs
+	return true
 }
 
 const availableForMention = computed(() => {
@@ -257,6 +264,18 @@ const createChipElement = (item: InputParamPreviewRef): HTMLSpanElement => {
 	span.setAttribute('data-anchor-id', item.fromAnchorId || '')
 	span.setAttribute('data-kind', item.kind)
 	span.setAttribute('data-label', item.label || '')
+
+	// ===== 关键修复：稳定 refKey（优先级 edgeId > fromNodeId:fromAnchorId > fallback）=====
+	// 避免存储时排序 + 仅按出现顺序索引 refs，导致 save→read 后 chip 对应错位 / 消失。
+	const rawAsAny = item as unknown as StoredNodeChatRef
+	const rawKey = typeof rawAsAny?.refKey === 'string' && rawAsAny.refKey ? rawAsAny.refKey : null
+	const fallbackKey = item.edgeId
+		? item.edgeId
+		: item.fromNodeId || item.fromAnchorId
+			? `${item.fromNodeId || ''}:${item.fromAnchorId || ''}`
+			: `__chip_${Math.random().toString(36).slice(2, 10)}__`
+	const refKey = rawKey || fallbackKey
+	span.setAttribute('data-ref-key', refKey)
 
 	if (item.previewUrl) {
 		const img = document.createElement('img')
@@ -418,6 +437,7 @@ const syncFromDOM = () => {
 				const edgeId = el.getAttribute('data-edge-id') || undefined
 				const fromNodeId = el.getAttribute('data-node-id') || undefined
 				const fromAnchorId = el.getAttribute('data-anchor-id') || undefined
+				const refKey = el.getAttribute('data-ref-key') || undefined
 				const previewImg = el.querySelector('img.bp-mention-chip-thumb') as HTMLImageElement | null
 				const previewUrl = previewImg?.src || ''
 				refs.push({
@@ -426,7 +446,8 @@ const syncFromDOM = () => {
 					edgeId: edgeId || undefined,
 					fromNodeId: fromNodeId || undefined,
 					fromAnchorId: fromAnchorId || undefined,
-					previewUrl: previewUrl || undefined
+					previewUrl: previewUrl || undefined,
+					...(refKey ? ({ refKey } as unknown as object) : {})
 				} as InputParamPreviewRef)
 				serializedText += CHIP_MARKER
 				displayText += label
@@ -483,9 +504,13 @@ const renderFromModel = () => {
 
 	editor.innerHTML = ''
 
-	let refIdx = 0
-	const parts = serialized.split(CHIP_MARKER)
+	// ===== 简化：CHIP_MARKER 本身不携带 refKey，因此只要 syncSelectedRefsFromProps
+	//       已确保 refs.length == chipCount，就可以按 refs[i] 顺序直接消耗 =====
+	// （如果用户多次 @同一个上游节点，顺序就是对齐的核心依据，靠 byKey 无法区分。）
 	let displayLen = 0
+	const parts = serialized.split(CHIP_MARKER)
+	const chipCount = Math.max(0, parts.length - 1)
+	const safeChipCount = Math.min(chipCount, refs.length)
 
 	parts.forEach((part, i) => {
 		if (part) {
@@ -501,12 +526,25 @@ const renderFromModel = () => {
 				}
 			})
 		}
-		if (i < parts.length - 1) {
-			const ref = refs[refIdx++]
-			if (ref) {
+		if (i < chipCount) {
+			if (i < safeChipCount) {
+				const ref = refs[i]
 				const chipEl = createChipElement(ref)
 				editor.appendChild(chipEl)
 				displayLen += (ref.label || '').length
+			} else {
+				// marker 比 refs 多的极端场景 → 显示"引用丢失"占位，避免静默丢失
+				const missing = {
+					kind: 'text' as any,
+					label: '引用丢失',
+					edgeId: undefined,
+					fromNodeId: undefined,
+					fromAnchorId: undefined,
+					previewUrl: undefined
+				}
+				const chipEl = createChipElement(missing)
+				editor.appendChild(chipEl)
+				displayLen += (missing.label || '').length
 			}
 		}
 	})
@@ -614,7 +652,7 @@ const onPaste = (e: ClipboardEvent) => {
 
 	let text = e.clipboardData?.getData('text/plain') || ''
 	if (!text) return
-	text = text.replace(/\u0001/g, '')
+	text = text.replace(new RegExp(CHIP_MARKER, 'g'), '')
 
 	const sel = window.getSelection()
 	if (!sel || sel.rangeCount === 0 || !editorRef.value) {

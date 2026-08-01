@@ -66,6 +66,7 @@
 				@node-export-unreal-lighting="(id: string) => emit('nodeExportUnrealLighting', id)"
 				@node-disconnect-unreal="(id: string) => emit('nodeDisconnectUnreal', id)"
 				@node-set-asset-root-path="(p: any) => emit('nodeSetAssetRootPath', p)"
+				@node-update-poster="(p: any) => emit('nodeUpdatePoster', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -213,6 +214,7 @@ interface Emits {
 	(e: 'nodeExportUnrealLighting', nodeId: string): void
 	(e: 'nodeDisconnectUnreal', nodeId: string): void
 	(e: 'nodeSetAssetRootPath', payload: { nodeId: string; path: string }): void
+	(e: 'nodeUpdatePoster', payload: { nodeId: string; posterDataUrl: string }): void
 }
 
 const emit = defineEmits<Emits>()

@@ -83,6 +83,7 @@
 						@export-unreal-lighting="onBusinessExportUnrealLighting"
 						@disconnect-unreal="onBusinessDisconnectUnreal"
 						@set-asset-root-path="onBusinessSetAssetRootPath"
+						@update-poster="onBusinessUpdatePoster"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -117,6 +118,12 @@ import {
 	provideNodeChatApi,
 	type NodeChatApi
 } from '../../../ui/BluePrint/node-dialog/useNodeChatApi'
+import {
+	areParamsEqual,
+	areSelectedRefsEqual,
+	normalizeRefsForStorage,
+	type StoredNodeChatRef
+} from '../../../ui/BluePrint/node-dialog/chatStateUtils'
 
 interface PortRenderData {
 	id: string
@@ -214,6 +221,7 @@ const emit = defineEmits<{
 	(e: 'node-export-unreal-lighting', nodeId: string): void
 	(e: 'node-disconnect-unreal', nodeId: string): void
 	(e: 'node-set-asset-root-path', payload: { nodeId: string; path: string }): void
+	(e: 'node-update-poster', payload: { nodeId: string; posterDataUrl: string }): void
 }>()
 
 const props = defineProps<{
@@ -378,7 +386,7 @@ function saveChatStateForNode(nodeId: string) {
 		nodeId,
 		props.chatState.draft ?? '',
 		props.chatState.params ?? {},
-		props.chatState.selectedRefs ?? []
+		normalizeRefsForStorage(props.chatState.selectedRefs ?? []) as unknown as any[]
 	)
 }
 
@@ -388,7 +396,7 @@ function onBusinessChatSubmit(payload: WorkflowNodeChatSubmitPayload) {
 			props.chatState.nodeId,
 			props.chatState.draft ?? '',
 			props.chatState.params ?? {},
-			props.chatState.selectedRefs ?? []
+			normalizeRefsForStorage(props.chatState.selectedRefs ?? []) as unknown as any[]
 		)
 	}
 	emit('node-chat-submit', payload)
@@ -453,6 +461,10 @@ function onBusinessMediaReady(nodeId: string) {
 
 function onBusinessInvalidateScreenshot(nodeId: string) {
 	emit('node-invalidate-screenshot', nodeId)
+}
+
+function onBusinessUpdatePoster(payload: { nodeId: string; posterDataUrl: string }) {
+	emit('node-update-poster', payload)
 }
 
 function onBusinessPreviewContextMenu(payload: {
@@ -623,7 +635,9 @@ watch(
 			lastValidChatStatePerNode.set(props.chatState.nodeId, {
 				draft: props.chatState.draft ?? '',
 				params: { ...(props.chatState.params ?? {}) },
-				selectedRefs: [...(props.chatState.selectedRefs ?? [])]
+				selectedRefs: normalizeRefsForStorage(
+					props.chatState.selectedRefs ?? []
+				) as unknown as any[]
 			})
 		}
 	},
@@ -1457,27 +1471,18 @@ function saveChatStateToNode(
 		selectedRefs: selectedRefs ?? []
 	}
 
+	// ========== 幂等深比较：内容一致就跳过，避免引擎命令栈膨胀 ==========
 	const hasChanges =
 		oldData.draft !== newData.draft ||
-		JSON.stringify(oldData.params) !== JSON.stringify(newData.params) ||
-		JSON.stringify(oldData.selectedRefs) !== JSON.stringify(newData.selectedRefs)
+		!areParamsEqual(oldData.params, newData.params) ||
+		!areSelectedRefsEqual(oldData.selectedRefs, newData.selectedRefs)
 
-	console.log('[DraftFlow#saveChatStateToNode] CALLED', {
-		nodeId,
-		hasChanges,
-		oldDraftLen: oldData.draft.length,
-		newDraftLen: newData.draft.length,
-		oldDraftPreview:
-			oldData.draft.length > 40 ? oldData.draft.slice(0, 40) + '...' : oldData.draft || '(empty)',
-		newDraftPreview:
-			newData.draft.length > 40 ? newData.draft.slice(0, 40) + '...' : newData.draft || '(empty)',
-		callStack: new Error().stack?.split('\n').slice(1, 4).join(' | ')
-	})
-
-	if (hasChanges) {
-		const cmd = new UpdateNodeChatDataCommand(props.scene, nodeId, oldData, newData)
-		props.scene.executeCommand(cmd)
+	if (!hasChanges) {
+		return
 	}
+
+	const cmd = new UpdateNodeChatDataCommand(props.scene, nodeId, oldData, newData)
+	props.scene.executeCommand(cmd)
 }
 
 const lastChatStateSnapshot = ref<{
@@ -1488,47 +1493,41 @@ const lastChatStateSnapshot = ref<{
 	selectedRefs: any[]
 } | null>(null)
 
+// ========== 关键修复：移除了之前每次输入都触发引擎保存的 deep watch
+// 之前的实现：每次输入都触发 saveChatStateToNode → 引擎命令栈 → 重绘 → 卡顿失焦
+// 新的架构：输入时只打脏标记，保存时机统一由上层（Dialog/useNodeChatDraftSave）决定
+// 保存时机：Ctrl+S / blur / 关闭对话框 / 切换节点 / 提交 / 页面卸载
+// chatState 的 draft/params/refs 变化时，仅同步到 lastValidChatStatePerNode 供读取，不立即写入引擎
+
+// ========== 轻量同步：chatState 变化时只更新缓存，不立即写入引擎 ==========
+// 这是之前卡顿 watch 的替代方案：把同步和写入解耦
 watch(
-	() => [props.chatState?.draft, props.chatState?.params, props.chatState?.selectedRefs] as const,
-	() => {
-		if (!props.scene) return
-		const chatState = props.chatState
-		let targetNodeId: string | null | undefined = chatState?.nodeId
-		let draftToUse = chatState?.draft
-		let paramsToUse = chatState?.params
-		let refsToUse = chatState?.selectedRefs
-		let saveReason = 'draftChange_whenVisible'
-		if (!targetNodeId && lastChatStateSnapshot.value?.nodeId) {
-			targetNodeId = lastChatStateSnapshot.value.nodeId
-			const cached = lastValidChatStatePerNode.get(targetNodeId)
-			if (cached) {
-				draftToUse = cached.draft
-				paramsToUse = cached.params
-				refsToUse = cached.selectedRefs
-				saveReason = 'draftChange_useLastSnapshotNodeId'
-			} else {
-				draftToUse = lastChatStateSnapshot.value.draft
-				paramsToUse = lastChatStateSnapshot.value.params
-				refsToUse = lastChatStateSnapshot.value.selectedRefs
-				saveReason = 'draftChange_useLastChatSnapshot'
-			}
+	() =>
+		[
+			props.chatState?.nodeId,
+			props.chatState?.draft,
+			props.chatState?.params,
+			props.chatState?.selectedRefs
+		] as const,
+	([nodeId, draft, params, selectedRefs]) => {
+		if (typeof nodeId !== 'string') return
+		const cached = lastValidChatStatePerNode.get(nodeId) ?? {
+			draft: '',
+			params: {} as Record<string, any>,
+			selectedRefs: [] as any[]
 		}
-		if (!targetNodeId) return
-		console.log('[DraftFlow#DomOverlay draft watch(DraftRealTimeSave)] TRIGGER', {
-			nodeId: targetNodeId,
-			visible: chatState?.visible,
-			directNodeIdIsNull: !chatState?.nodeId,
-			draftLen: (draftToUse ?? '').length,
-			paramsKeys: paramsToUse ? Object.keys(paramsToUse) : null,
-			saveReason,
-			callStack: new Error().stack?.split('\n').slice(1, 4).join(' | ')
-		})
-		saveChatStateToNode(
-			targetNodeId,
-			draftToUse ?? '',
-			(paramsToUse ?? {}) as Record<string, any>,
-			(refsToUse ?? []) as any[]
-		)
+		// 内容一致就跳过，避免引用变化触发多余更新
+		if (
+			cached.draft === draft &&
+			areParamsEqual(cached.params, params ?? {}) &&
+			areSelectedRefsEqual(cached.selectedRefs, selectedRefs ?? [])
+		) {
+			return
+		}
+		cached.draft = draft ?? ''
+		cached.params = { ...(params ?? {}) }
+		cached.selectedRefs = normalizeRefsForStorage(selectedRefs ?? []) as unknown as any[]
+		lastValidChatStatePerNode.set(nodeId, cached)
 	},
 	{ deep: true }
 )
@@ -1540,15 +1539,6 @@ watch(
 
 		const [visible, nodeId] = current
 		const [prevVisible, prevNodeId] = previous ?? [false, null]
-
-		console.log('[DraftFlow#DomOverlay visible|nodeId watch] TRANSITION', {
-			fromVisible: prevVisible,
-			toVisible: visible,
-			fromNodeId: prevNodeId,
-			toNodeId: nodeId,
-			lastSnapshotNodeId: lastChatStateSnapshot.value?.nodeId,
-			lastSnapshotDraftLen: lastChatStateSnapshot.value?.draft.length ?? -1
-		})
 
 		const nodeIdsNeedSave: { id: string; reason: string }[] = []
 		if (prevVisible && prevNodeId && prevNodeId !== nodeId) {
@@ -1602,7 +1592,7 @@ watch(
 				saveNodeId,
 				toSave.draft,
 				toSave.params as Record<string, any>,
-				toSave.selectedRefs as any
+				normalizeRefsForStorage(toSave.selectedRefs as any) as unknown as any[]
 			)
 		}
 
@@ -1611,7 +1601,7 @@ watch(
 			visible: !!visible,
 			draft: props.chatState?.draft ?? '',
 			params: { ...(props.chatState?.params ?? {}) },
-			selectedRefs: [...(props.chatState?.selectedRefs ?? [])]
+			selectedRefs: normalizeRefsForStorage(props.chatState?.selectedRefs ?? []) as unknown as any[]
 		}
 
 		if (visible && typeof nodeId === 'string') {
@@ -1639,11 +1629,13 @@ const chatApi: NodeChatApi = {
 		}
 		const data = node.data as any
 		const cached = lastValidChatStatePerNode.get(nodeId)
+		// 统一：getState 返回的 refs 一律走 normalizeRefsForStorage，保证 key/冗余字段一致
+		const rawRefs = cached?.selectedRefs ?? data.nodeChatSelectedRefs ?? []
 		return {
 			visible: !!data.nodeChatVisible,
 			draft: cached?.draft ?? data.nodeChatDraft ?? '',
 			params: cached?.params ?? data.nodeChatParams ?? {},
-			selectedRefs: cached?.selectedRefs ?? data.nodeChatSelectedRefs ?? [],
+			selectedRefs: normalizeRefsForStorage(rawRefs) as unknown as any[],
 			submitting: isNodeTaskSubmitting(nodeId)
 		}
 	},
@@ -1679,9 +1671,11 @@ const chatApi: NodeChatApi = {
 	saveDraft(nodeId, draft) {
 		const cached = lastValidChatStatePerNode.get(nodeId) ?? {
 			draft: '',
-			params: {},
-			selectedRefs: []
+			params: {} as Record<string, any>,
+			selectedRefs: [] as any[]
 		}
+		// 幂等：内容一致就不更新缓存和触发emit
+		if (cached.draft === draft) return
 		cached.draft = draft
 		lastValidChatStatePerNode.set(nodeId, cached)
 		onBusinessChatUpdateDraft({ nodeId, draft })
@@ -1690,23 +1684,29 @@ const chatApi: NodeChatApi = {
 	saveParams(nodeId, params) {
 		const cached = lastValidChatStatePerNode.get(nodeId) ?? {
 			draft: '',
-			params: {},
-			selectedRefs: []
+			params: {} as Record<string, any>,
+			selectedRefs: [] as any[]
 		}
-		cached.params = params
+		// 幂等：参数内容一致就不更新
+		if (areParamsEqual(cached.params, params)) return
+		cached.params = { ...params }
 		lastValidChatStatePerNode.set(nodeId, cached)
-		onBusinessChatUpdateParams({ nodeId, params })
+		onBusinessChatUpdateParams({ nodeId, params: cached.params })
 	},
 
 	saveSelectedRefs(nodeId, selectedRefs) {
 		const cached = lastValidChatStatePerNode.get(nodeId) ?? {
 			draft: '',
-			params: {},
-			selectedRefs: []
+			params: {} as Record<string, any>,
+			selectedRefs: [] as any[]
 		}
-		cached.selectedRefs = selectedRefs
+		// 先归一化：去除 id/name/type/fromContent 等不一致字段 + 补齐 refKey
+		const normalized = normalizeRefsForStorage(selectedRefs) as unknown as any[]
+		// 幂等：引用内容一致就不更新
+		if (areSelectedRefsEqual(cached.selectedRefs, normalized)) return
+		cached.selectedRefs = [...normalized]
 		lastValidChatStatePerNode.set(nodeId, cached)
-		onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs })
+		onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs: cached.selectedRefs })
 	},
 
 	flush(nodeId, state) {
@@ -1717,10 +1717,69 @@ const chatApi: NodeChatApi = {
 		const cached = lastValidChatStatePerNode.get(nodeId)
 		const finalDraft = state.draft ?? cached?.draft ?? ''
 		const finalParams = state.params ?? cached?.params ?? {}
-		const finalRefs = state.selectedRefs ?? cached?.selectedRefs ?? []
+		const rawFinalRefs = state.selectedRefs ?? cached?.selectedRefs ?? []
+		// 关键修复：normalize 后再进 saveChatStateToNode，保证写进引擎的 refs 与回读的 refs 同构
+		const finalRefs = normalizeRefsForStorage(rawFinalRefs) as unknown as any[]
 
+		// saveChatStateToNode 内部已做深比较幂等
 		saveChatStateToNode(nodeId, finalDraft, finalParams, finalRefs)
-		lastValidChatStatePerNode.delete(nodeId)
+		// 不删除 cache：后续 getState 仍可读取；被覆盖或切换节点时自然更新
+
+		// ===== 补齐：同步 Vuex store（与 saveDraft/saveParams/saveSelectedRefs 保持完全一致的幂等策略）=====
+		// 只有当 state 中显式传入了该字段（!== undefined）时，才视为「这一次 flush 的意图包含此字段」
+		// 避免切换节点 / 部分 flush 时用空值误覆盖 store 中的有效值。
+		const prevCached = lastValidChatStatePerNode.get(nodeId)
+		const nextCached = {
+			draft: prevCached?.draft ?? '',
+			params: prevCached?.params ?? ({} as Record<string, any>),
+			selectedRefs: prevCached?.selectedRefs ?? ([] as any[])
+		}
+
+		const hasDraft = state.draft !== undefined
+		const hasParams = state.params !== undefined
+		const hasRefs = state.selectedRefs !== undefined
+
+		// 1) draft
+		let shouldEmitDraft = false
+		if (hasDraft) {
+			if (nextCached.draft !== finalDraft) {
+				shouldEmitDraft = true
+				nextCached.draft = finalDraft
+			}
+		}
+
+		// 2) params
+		let shouldEmitParams = false
+		if (hasParams) {
+			if (!areParamsEqual(nextCached.params, finalParams)) {
+				shouldEmitParams = true
+				nextCached.params = { ...finalParams }
+			}
+		}
+
+		// 3) refs
+		let shouldEmitRefs = false
+		if (hasRefs) {
+			if (!areSelectedRefsEqual(nextCached.selectedRefs, finalRefs)) {
+				shouldEmitRefs = true
+				nextCached.selectedRefs = [...finalRefs]
+			}
+		}
+
+		// 只有发生任一变更才回写 cache（避免对未变化的字段做无意义的引用替换）
+		if (hasDraft || hasParams || hasRefs) {
+			// 额外：把 nextCached 中的 selectedRefs 再次 normalize，
+			// 避免 hasRefs=false 时从 prevCached 继承的旧 selectedRefs 仍含冗余字段
+			nextCached.selectedRefs = normalizeRefsForStorage(
+				nextCached.selectedRefs
+			) as unknown as StoredNodeChatRef[] as any[]
+			lastValidChatStatePerNode.set(nodeId, nextCached)
+		}
+
+		if (shouldEmitDraft) onBusinessChatUpdateDraft({ nodeId, draft: nextCached.draft })
+		if (shouldEmitParams) onBusinessChatUpdateParams({ nodeId, params: nextCached.params })
+		if (shouldEmitRefs)
+			onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs: nextCached.selectedRefs })
 	},
 
 	submit(nodeId, payload) {

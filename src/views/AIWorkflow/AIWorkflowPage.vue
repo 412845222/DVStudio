@@ -106,6 +106,7 @@
 				@node-export-unreal-lighting="onNodeExportUnrealLighting"
 				@node-disconnect-unreal="onNodeDisconnect"
 				@node-set-asset-root-path="(p: any) => onNodeSetAssetRootPath(p.nodeId, p.path)"
+				@node-update-poster="onNodeUpdatePoster"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -650,6 +651,7 @@ import {
 	safeGetArray,
 	safeGetRecord
 } from '../../types/utils'
+import { UpdateNodeChatDataCommand } from '../../engine/blueprint/commands/UpdateNodeChatDataCommand'
 import * as THREE from 'three'
 import {
 	computed,
@@ -972,6 +974,7 @@ interface GeneratedResourceBase {
 	kind: 'image' | 'video' | 'model3d'
 	name: string
 	url: string
+	posterUrl?: string
 	projectRelativePath?: string
 	sourcePath?: string
 	size?: number
@@ -4067,6 +4070,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						)
 						return false
 					}
+					try {
+						const posterUrl = await safeCapturePosterDataUrl(base.url)
+						if (posterUrl) base.posterUrl = posterUrl
+					} catch {
+						// ignore
+					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
 					patchBlueprintNodeData(nodeId)
@@ -4152,6 +4161,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 						'error'
 					)
 					return false
+				}
+				try {
+					const posterUrl = await safeCapturePosterDataUrl(base.url)
+					if (posterUrl) base.posterUrl = posterUrl
+				} catch {
+					// ignore
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
@@ -4516,6 +4531,41 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	// ========== 兜底保存：页面卸载前强制保存当前节点聊天对话框的草稿/参数/引用 ==========
+	const dialogState = store.state.nodeChatDialog
+	const curNodeId: string | null = (dialogState as any).nodeId ?? null
+	if (curNodeId) {
+		const editor: any = blueprintHostRef.value?.getInstance?.()
+		const scene: any = editor?.scene ?? editor?.blueprintScene
+		const node = scene?.getBlueprintNode?.(curNodeId)
+		if (node) {
+			const oldDraft = (node.data as any).nodeChatDraft ?? ''
+			const oldParams = (node.data as any).nodeChatParams ?? {}
+			const oldRefs = (node.data as any).nodeChatSelectedRefs ?? []
+			const newDraft = dialogState.draft ?? ''
+			const newParams = dialogState.params ?? {}
+			const newRefs = dialogState.selectedRefs ?? []
+			// 内容一致就不保存，避免命令栈膨胀
+			const hasChanges =
+				oldDraft !== newDraft ||
+				JSON.stringify(oldParams) !== JSON.stringify(newParams) ||
+				JSON.stringify(oldRefs) !== JSON.stringify(newRefs)
+			if (hasChanges && typeof scene.executeCommand === 'function') {
+				try {
+					const cmd = new UpdateNodeChatDataCommand(
+						scene,
+						curNodeId,
+						{ draft: oldDraft, params: oldParams, selectedRefs: oldRefs },
+						{ draft: newDraft, params: newParams, selectedRefs: newRefs }
+					)
+					scene.executeCommand(cmd)
+				} catch {
+					/* ignore save error on unmount */
+				}
+			}
+		}
+	}
+
 	clearAllBlenderRetryTimers()
 	if (blenderMcpStatusUnsub) {
 		try {
@@ -10016,6 +10066,43 @@ const {
 	forceNodeFullRender: forceSceneLayoutNodeFullRender,
 	focusNode: focusSceneLayoutNode
 })
+
+async function safeCapturePosterDataUrl(videoUrl: string): Promise<string | null> {
+	const src = String(videoUrl || '').trim()
+	if (!src) return null
+	try {
+		const result = await createVideoFirstFrameThumbnail({
+			url: src,
+			targetWidth: 480,
+			timeoutMs: 10000
+		})
+		if (!result?.blob) return null
+		return await new Promise<string>((resolve, reject) => {
+			const reader = new FileReader()
+			reader.onload = () => resolve(String(reader.result || ''))
+			reader.onerror = () => reject(reader.error || new Error('readAsDataURL failed'))
+			reader.readAsDataURL(result.blob)
+		})
+	} catch (err) {
+		console.warn('[AIWorkflowPage] safeCapturePosterDataUrl failed:', err)
+		return null
+	}
+}
+
+async function onNodeUpdatePoster(payload: { nodeId: string; posterDataUrl: string }) {
+	const nodeId = String(payload?.nodeId ?? '').trim()
+	const posterDataUrl = String(payload?.posterDataUrl ?? '').trim()
+	if (!nodeId || !posterDataUrl) return
+	const node = store.state.nodesById[nodeId]
+	const resourceId = String((node as any)?.data?.resourceId ?? '').trim()
+	if (!resourceId) return
+	try {
+		store.commit('patchResource', { resourceId, patch: { posterUrl: posterDataUrl } as any })
+		patchBlueprintNodeData(nodeId)
+	} catch (err) {
+		console.error('[AIWorkflowPage] onNodeUpdatePoster failed:', err)
+	}
+}
 
 const {
 	resetSceneUnderstandingNodeState,

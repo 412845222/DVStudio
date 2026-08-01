@@ -49,6 +49,12 @@ type ResourceRelatedProps = {
 	resourcePreviewUrl640?: string
 	posterUrl?: string
 	resourceName?: string
+	/**
+	 * 提示组件：存在 resourceUrl 但尚未生成 posterUrl，
+	 * 业务层可据此在渲染前主动触发首帧捕获。
+	 * 由 resolveResourceProps 在 video/image/model3d 类 resource 无 poster 时置位。
+	 */
+	triggerCapture?: boolean
 }
 
 export type ResolvedWorkflowNodeProps = WorkflowNodeBaseProps &
@@ -132,6 +138,29 @@ export class NodeComponentResolver {
 			props.resourcePreviewUrl320 = resolveWorkflowResourceUrl(res.previewUrl320)
 		if (res.previewUrl640)
 			props.resourcePreviewUrl640 = resolveWorkflowResourceUrl(res.previewUrl640)
+
+		// 针对拖拽时已生成海报但远程生成视频没有的场景，
+		// 如果是 video/image/model3d 且无 poster 但有 resourceUrl，则下发 triggerCapture
+		const kind = String(res.kind || '').toLowerCase()
+		if (props.resourceUrl && !props.posterUrl) {
+			if (
+				kind === 'video' ||
+				kind === 'image' ||
+				kind === 'model3d' ||
+				kind === '3d' ||
+				kind === 'scene'
+			) {
+				props.triggerCapture = true
+			} else if (
+				data.type === 'video' ||
+				data.type === 'image' ||
+				data.type === 'rotate-image' ||
+				data.type === 'model3d' ||
+				data.type === 'scene-decompose'
+			) {
+				props.triggerCapture = true
+			}
+		}
 
 		return props
 	}

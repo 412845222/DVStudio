@@ -376,7 +376,7 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 	background: var(--wf-surface-base);
 	border-radius: 3px;
 	box-shadow: var(--aiwf-shadow-sm);
-	overflow: visible;
+	overflow: hidden;
 	pointer-events: auto;
 	cursor: default;
 	opacity: 0;
