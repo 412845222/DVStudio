@@ -53,8 +53,8 @@ export const darkThemeTokens: BlueprintThemeTokens = {
 	portBackground: 'rgba(21, 24, 28, 0.9)',
 	portBorder: 'rgba(31, 157, 132, 0.6)',
 	portInner: '#1f9d84',
-	selectionFrame: 'rgba(31, 157, 132, 0.8)',
-	selectionFrameFill: 'rgba(31, 157, 132, 0.1)'
+	selectionFrame: 'rgba(31, 157, 132, 0.85)',
+	selectionFrameFill: 'rgba(31, 157, 132, 0)'
 }
 
 export const lightThemeTokens: BlueprintThemeTokens = {
@@ -111,7 +111,7 @@ export const lightThemeTokens: BlueprintThemeTokens = {
 	portBorder: 'rgba(31, 157, 132, 0.7)',
 	portInner: '#1f9d84',
 	selectionFrame: 'rgba(31, 157, 132, 0.9)',
-	selectionFrameFill: 'rgba(31, 157, 132, 0.08)'
+	selectionFrameFill: 'rgba(31, 157, 132, 0)'
 }
 
 export function getThemeTokens(mode: ThemeMode): BlueprintThemeTokens {

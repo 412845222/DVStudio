@@ -113,6 +113,18 @@ function createHostComposable() {
 		return hostRef.value?.getNodeScreenRect?.(nodeId) ?? null
 	}
 
+	function saveSelectionFrame(label?: string, nodeIds?: string[]): string | null {
+		return hostRef.value?.saveSelectionFrame?.(label, nodeIds) ?? null
+	}
+
+	function deleteSavedSelectionFrame(frameId: string): boolean {
+		return hostRef.value?.deleteSavedSelectionFrame?.(frameId) ?? false
+	}
+
+	function getSavedSelectionFrames(): any[] {
+		return hostRef.value?.getSavedSelectionFrames?.() ?? []
+	}
+
 	function onHostReady(_editor: any) {}
 
 	function onViewportChange(zoom: number, panX: number, panY: number) {
@@ -151,6 +163,9 @@ function createHostComposable() {
 		animateToViewport,
 		loadBlueprint,
 		getNodeScreenRect,
+		saveSelectionFrame,
+		deleteSavedSelectionFrame,
+		getSavedSelectionFrames,
 		onHostReady,
 		onViewportChange,
 		bindHostEvents,

@@ -573,8 +573,6 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 			!!(target && target.closest('.bp-node-chat-dialog'))
 		const key = e.key.toLowerCase()
 		const ctrl = e.ctrlKey || e.metaKey
-		const isUndoRedo = ctrl && (key === 'z' || key === 'y')
-		const isDelete = key === 'delete' || key === 'backspace'
 
 		if (isEditable) {
 			if (e.key === 'Escape' && !e.repeat && target) {
@@ -583,15 +581,39 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 			return
 		}
 
+		// Enter键：仅当编辑单个节点时拦截，其他情况（如多选框编辑）让事件传播到工具层
 		if (key === 'enter' && !ctrl && !e.shiftKey && !e.altKey && !e.repeat) {
 			const selectedNodes = s.selection
 				.getSelection()
 				.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
+			console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Received:', {
+				isEditable,
+				targetTag: tag,
+				editingNodeId: editingNodeId.value,
+				selectedCount: selectedNodes.length
+			})
+			if (isEditable) {
+				// 如果是真实的DOM input（例如 Vue DOM 层的标签编辑器），不拦截
+				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] isEditable=true, skipping.')
+				return
+			}
+			if (editingNodeId.value) {
+				e.preventDefault()
+				e.stopImmediatePropagation()
+				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: editing single node.')
+				return
+			}
 			if (selectedNodes.length === 1) {
 				e.preventDefault()
 				e.stopImmediatePropagation()
 				enterEditMode(selectedNodes[0].id)
+				console.log(
+					'[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: single node edit mode activated.'
+				)
+				return
 			}
+			// 选中多个节点或未选中节点时，让事件传播到工具层处理多选框保存等操作
+			console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Propagating to tool layer.')
 			return
 		}
 		if (key === 'escape' && !e.repeat) {
@@ -1146,8 +1168,6 @@ defineExpose({
 			selectedNodes.map((n) => n.id),
 			frameLabel
 		)
-		s.requestRedraw()
-		emitChange()
 		return frame.id
 	},
 
@@ -1157,22 +1177,12 @@ defineExpose({
 
 	deleteSavedSelectionFrame(frameId: string): boolean {
 		if (!scene.value || props.readonly) return false
-		const result = scene.value.deleteSavedSelectionFrame(frameId)
-		if (result) {
-			scene.value.requestRedraw()
-			emitChange()
-		}
-		return result
+		return scene.value.deleteSavedSelectionFrame(frameId)
 	},
 
 	renameSavedSelectionFrame(frameId: string, newLabel: string): boolean {
 		if (!scene.value || props.readonly) return false
-		const result = scene.value.renameSavedSelectionFrame(frameId, newLabel)
-		if (result) {
-			scene.value.requestRedraw()
-			emitChange()
-		}
-		return result
+		return scene.value.renameSavedSelectionFrame(frameId, newLabel)
 	},
 
 	getNodeCount(): number {
