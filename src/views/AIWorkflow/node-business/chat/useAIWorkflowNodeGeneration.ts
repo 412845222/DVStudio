@@ -3177,29 +3177,41 @@ const runVideoTask = async (
 		form.set('priority', String(Math.min(9, Math.floor(priority))))
 	}
 
-	let hasVideoReferences = false
-
 	if (kind === 'seedance') {
-		const [imageRefs, videoRefs] = await Promise.all([
-			collectReferenceImages(deps, payload.nodeId, 9),
-			collectReferenceVideos(deps, payload.nodeId, 3)
-		])
-		for (const ref of imageRefs) form.append('refImages', ref.blob, ref.name)
-		for (const ref of videoRefs) form.append('refVideos', ref.blob, ref.name)
-		hasVideoReferences = videoRefs.length > 0
+		// 收集参考图片
+		const imageRefs = await collectReferenceImages(deps, payload.nodeId, 9)
+		for (const ref of imageRefs) {
+			const imageFile = new File([ref.blob], ref.name, { type: ref.blob.type || 'image/png' })
+			form.append('refImages', imageFile, ref.name)
+		}
+
+		// 收集参考视频
+		const videoRefs = await collectReferenceVideos(deps, payload.nodeId, 3)
+		console.log(
+			'[VideoTask] collected reference videos:',
+			videoRefs.length,
+			videoRefs.map((r) => r.name)
+		)
+
+		// 只有在实际收集到视频参考时，才检查云存储配置
+		if (videoRefs.length > 0) {
+			const checkResult = await checkVideoReferencePrerequisites(true)
+			if (!checkResult.canProceed) {
+				throw new UserAbortError('需要配置云存储')
+			}
+		}
+
+		for (const ref of videoRefs) {
+			const videoFile = new File([ref.blob], ref.name, { type: ref.blob.type || 'video/mp4' })
+			form.append('refVideos', videoFile, ref.name)
+		}
+
 		const rawMode = (typeof params.mode === 'string' ? params.mode : '') as string
 		if (rawMode === 'image_to_video') form.set('refMode', 'first')
 		else if (rawMode === 'first-last') form.set('refMode', 'first-last')
 		else if (rawMode === 'reference') form.set('refMode', 'reference')
 		else if (rawMode === 'video_edit') form.set('refMode', 'video_edit')
 		else form.set('refMode', 'auto')
-	}
-
-	if (hasVideoReferences) {
-		const checkResult = await checkVideoReferencePrerequisites(true)
-		if (!checkResult.canProceed) {
-			throw new UserAbortError('需要配置云存储')
-		}
 	}
 
 	updateTask(deps, task.id, {

@@ -4,64 +4,81 @@ import { useCloudStorageConfig } from '../../../../composables/useCloudStorageCo
 let pendingPromptOpen = false
 
 export async function checkVideoReferencePrerequisites(
-  hasVideoReferences: boolean
+	hasVideoReferences: boolean
 ): Promise<{ canProceed: boolean }> {
-  if (!hasVideoReferences) {
-    return { canProceed: true }
-  }
+	if (!hasVideoReferences) {
+		return { canProceed: true }
+	}
 
-  if (pendingPromptOpen) {
-    return { canProceed: false }
-  }
+	if (pendingPromptOpen) {
+		return { canProceed: false }
+	}
 
-  const { checkConfig, isReady, navigateToCloudStorage } = useCloudStorageConfig()
-  const status = await checkConfig()
+	const { checkConfig, navigateToCloudStorage } = useCloudStorageConfig()
+	const status = await checkConfig()
 
-  if (isReady()) {
-    return { canProceed: true }
-  }
+	const isConfigured = status.configured
+	const hasActiveBucket = status.hasActiveBucket
+	const isReady = isConfigured && hasActiveBucket
 
-  pendingPromptOpen = true
+	console.log('[VideoRefCheck] cloud storage status:', {
+		isConfigured,
+		hasActiveBucket,
+		isReady,
+		providerId: status.providerId,
+		providerName: status.providerName,
+		activeBucketName: status.activeBucketName,
+		error: status.error,
+		rawStatus: status
+	})
 
-  const hasConfig = status.configured
-  const hasBucket = status.hasActiveBucket
+	if (isReady) {
+		console.log('[VideoRefCheck] cloud storage is ready, proceeding')
+		return { canProceed: true }
+	}
 
-  let title = '需要配置云存储'
-  let message = '视频参考功能需要配置云存储才能使用。请先配置您的云存储，视频文件将上传到您的默认桶中以获取公网访问URL。'
+	console.warn('[VideoRefCheck] cloud storage NOT ready, showing prompt')
 
-  if (hasConfig && !hasBucket) {
-    title = '需要设置默认桶'
-    message = '您已配置云存储账号，请先在云存储页面选择一个桶作为默认桶后再使用视频参考功能。点击桶旁的星形图标可将其设为默认桶。'
-  }
+	pendingPromptOpen = true
 
-  try {
-    await showConfirm({
-      title,
-      message,
-      tone: 'warn',
-      showCancel: false,
-      showClose: true,
-      actions: [
-        {
-          label: '取消',
-          role: 'cancel',
-        },
-        {
-          label: '去配置云存储',
-          role: 'confirm',
-          onClick: () => {
-            navigateToCloudStorage()
-          }
-        }
-      ]
-    })
-  } finally {
-    pendingPromptOpen = false
-  }
+	let title = '需要配置云存储'
+	let message =
+		'视频参考功能需要配置云存储才能使用。请先配置您的云存储，视频文件将上传到您的默认桶中以获取公网访问URL。'
 
-  return { canProceed: false }
+	if (isConfigured && !hasActiveBucket) {
+		title = '需要设置默认桶'
+		message =
+			'您已配置云存储账号，请先在云存储页面选择一个桶作为默认桶后再使用视频参考功能。点击桶旁的星形图标可将其设为默认桶。'
+	}
+
+	try {
+		await showConfirm({
+			title,
+			message,
+			tone: 'warn',
+			showCancel: false,
+			showClose: true,
+			actions: [
+				{
+					label: '取消',
+					role: 'cancel'
+				},
+				{
+					label: '去配置云存储',
+					role: 'confirm',
+					onClick: () => {
+						navigateToCloudStorage()
+					}
+				}
+			]
+		})
+	} finally {
+		pendingPromptOpen = false
+	}
+
+	return { canProceed: false }
 }
 
 export function clearPendingPrompt() {
-  pendingPromptOpen = false
+	pendingPromptOpen = false
 }
