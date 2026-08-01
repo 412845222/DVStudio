@@ -138,7 +138,9 @@ const syncSelectedRefsFromProps = () => {
 		props.modelValue ?? currentSerializedText.value,
 		props.selectedReferences ?? []
 	)
-	const newRefs: InputParamPreviewRef[] = (aligned ? [...(aligned as unknown as InputParamPreviewRef[])] : [])
+	const newRefs: InputParamPreviewRef[] = aligned
+		? [...(aligned as unknown as InputParamPreviewRef[])]
+		: []
 	// 使用深比较：内容一致就不更新，避免引用变化导致虚假重渲染
 	if (areSelectedRefsEqual(newRefs, selectedRefs.value)) {
 		return false
@@ -266,8 +268,7 @@ const createChipElement = (item: InputParamPreviewRef): HTMLSpanElement => {
 	// ===== 关键修复：稳定 refKey（优先级 edgeId > fromNodeId:fromAnchorId > fallback）=====
 	// 避免存储时排序 + 仅按出现顺序索引 refs，导致 save→read 后 chip 对应错位 / 消失。
 	const rawAsAny = item as unknown as StoredNodeChatRef
-	const rawKey =
-		typeof rawAsAny?.refKey === 'string' && rawAsAny.refKey ? rawAsAny.refKey : null
+	const rawKey = typeof rawAsAny?.refKey === 'string' && rawAsAny.refKey ? rawAsAny.refKey : null
 	const fallbackKey = item.edgeId
 		? item.edgeId
 		: item.fromNodeId || item.fromAnchorId

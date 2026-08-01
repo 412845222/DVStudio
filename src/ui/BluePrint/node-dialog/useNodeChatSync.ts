@@ -143,9 +143,10 @@ export function useNodeChatSync(props: NodeChatDialogProps) {
 	const syncFromEngine = (nodeId: string) => {
 		const state = chatApi.getState(nodeId)
 		const draftSrc = props.draft === undefined || props.draft === '' ? state.draft : props.draft
-		const refsSrc = !props.selectedReferences || props.selectedReferences.length === 0
-			? state.selectedRefs
-			: props.selectedReferences
+		const refsSrc =
+			!props.selectedReferences || props.selectedReferences.length === 0
+				? state.selectedRefs
+				: props.selectedReferences
 		// 对齐：保证读取到的 refs 顺序与 draft 中 CHIP_MARKER 一致（二次打开/回读场景）
 		const alignedRefs = matchSelectedRefsWithSerializedDraft(draftSrc, refsSrc)
 		localDraft.value = draftSrc

@@ -82,17 +82,17 @@
 						</div>
 					</div>
 					<NodeChatInput
-					ref="inputRef"
-					:model-value="localDraft"
-					:placeholder="placeholder"
-					:disabled="submitting"
-					:input-param-preview-refs="inputParamPreviewRefsResolved"
-					:selected-references="selectedRefsForInput"
-					@update:model-value="onDraftInput"
-					@update:selected-references="onSelectedRefsChange"
-					@blur="handleInputBlur"
-					@submit="handleSubmit"
-				/>
+						ref="inputRef"
+						:model-value="localDraft"
+						:placeholder="placeholder"
+						:disabled="submitting"
+						:input-param-preview-refs="inputParamPreviewRefsResolved"
+						:selected-references="selectedRefsForInput"
+						@update:model-value="onDraftInput"
+						@update:selected-references="onSelectedRefsChange"
+						@blur="handleInputBlur"
+						@submit="handleSubmit"
+					/>
 				</div>
 
 				<div class="bp-node-chat-footer">

@@ -635,7 +635,9 @@ watch(
 			lastValidChatStatePerNode.set(props.chatState.nodeId, {
 				draft: props.chatState.draft ?? '',
 				params: { ...(props.chatState.params ?? {}) },
-				selectedRefs: normalizeRefsForStorage(props.chatState.selectedRefs ?? []) as unknown as any[]
+				selectedRefs: normalizeRefsForStorage(
+					props.chatState.selectedRefs ?? []
+				) as unknown as any[]
 			})
 		}
 	},
@@ -1500,7 +1502,13 @@ const lastChatStateSnapshot = ref<{
 // ========== 轻量同步：chatState 变化时只更新缓存，不立即写入引擎 ==========
 // 这是之前卡顿 watch 的替代方案：把同步和写入解耦
 watch(
-	() => [props.chatState?.nodeId, props.chatState?.draft, props.chatState?.params, props.chatState?.selectedRefs] as const,
+	() =>
+		[
+			props.chatState?.nodeId,
+			props.chatState?.draft,
+			props.chatState?.params,
+			props.chatState?.selectedRefs
+		] as const,
 	([nodeId, draft, params, selectedRefs]) => {
 		if (typeof nodeId !== 'string') return
 		const cached = lastValidChatStatePerNode.get(nodeId) ?? {
@@ -1762,13 +1770,16 @@ const chatApi: NodeChatApi = {
 		if (hasDraft || hasParams || hasRefs) {
 			// 额外：把 nextCached 中的 selectedRefs 再次 normalize，
 			// 避免 hasRefs=false 时从 prevCached 继承的旧 selectedRefs 仍含冗余字段
-			nextCached.selectedRefs = normalizeRefsForStorage(nextCached.selectedRefs) as unknown as StoredNodeChatRef[] as any[]
+			nextCached.selectedRefs = normalizeRefsForStorage(
+				nextCached.selectedRefs
+			) as unknown as StoredNodeChatRef[] as any[]
 			lastValidChatStatePerNode.set(nodeId, nextCached)
 		}
 
 		if (shouldEmitDraft) onBusinessChatUpdateDraft({ nodeId, draft: nextCached.draft })
 		if (shouldEmitParams) onBusinessChatUpdateParams({ nodeId, params: nextCached.params })
-		if (shouldEmitRefs) onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs: nextCached.selectedRefs })
+		if (shouldEmitRefs)
+			onBusinessChatUpdateSelectedRefs({ nodeId, selectedRefs: nextCached.selectedRefs })
 	},
 
 	submit(nodeId, payload) {

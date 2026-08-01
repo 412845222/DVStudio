@@ -36,10 +36,7 @@ import type {
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
 import { isString, isNumber, isBoolean, isRecord, isArray } from '../../types/utils'
-import {
-	areParamsEqual,
-	areSelectedRefsEqual
-} from '../../ui/BluePrint/node-dialog/chatStateUtils'
+import { areParamsEqual, areSelectedRefsEqual } from '../../ui/BluePrint/node-dialog/chatStateUtils'
 
 export type AIWorkflowState = WorkflowState
 
@@ -5197,7 +5194,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 
 			// params：深比较一致就跳过
-			if (payload.params !== undefined && !areParamsEqual(state.nodeChatDialog.params, payload.params)) {
+			if (
+				payload.params !== undefined &&
+				!areParamsEqual(state.nodeChatDialog.params, payload.params)
+			) {
 				state.nodeChatDialog.params = { ...payload.params }
 				if (targetWriteNode) {
 					;(targetWriteNode as any).nodeChatParams = state.nodeChatDialog.params

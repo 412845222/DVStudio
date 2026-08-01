@@ -60,7 +60,9 @@ export function useVideoFirstFramePoster(input: {
 		if (explicit) {
 			if (localPosterUrl.value && lastLocal) {
 				// Release cached blob to avoid memory leaks
-				try { URL.revokeObjectURL(lastLocal) } catch {}
+				try {
+					URL.revokeObjectURL(lastLocal)
+				} catch {}
 			}
 			localPosterUrl.value = null
 			lastLocal = ''
@@ -70,31 +72,35 @@ export function useVideoFirstFramePoster(input: {
 		if (key === lastKey && localPosterUrl.value) return
 		lastKey = key
 		if (lastLocal) {
-			try { URL.revokeObjectURL(lastLocal) } catch {}
+			try {
+				URL.revokeObjectURL(lastLocal)
+			} catch {}
 			lastLocal = ''
 		}
 		localPosterUrl.value = null
 		capturing.value = true
 		const q = ensureQueue()
-		q.enqueue([{
-			id: key,
-			url: src,
-			maxWidth: input.options?.maxWidth,
-			timeoutMs: input.options?.timeoutMs,
-			onResult: (res) => {
-				if (key !== lastKey) return
-				capturing.value = false
-				if (res?.posterUrl) {
-					localPosterUrl.value = res.posterUrl
-					lastLocal = res.posterUrl
-					try {
-						input.onCaptured?.(res.posterUrl)
-					} catch {
-						// ignore subscriber errors
+		q.enqueue([
+			{
+				id: key,
+				url: src,
+				maxWidth: input.options?.maxWidth,
+				timeoutMs: input.options?.timeoutMs,
+				onResult: (res) => {
+					if (key !== lastKey) return
+					capturing.value = false
+					if (res?.posterUrl) {
+						localPosterUrl.value = res.posterUrl
+						lastLocal = res.posterUrl
+						try {
+							input.onCaptured?.(res.posterUrl)
+						} catch {
+							// ignore subscriber errors
+						}
 					}
 				}
-			},
-		}])
+			}
+		])
 	}
 
 	// Watch: URL changes, explicit poster changes, node changes
@@ -110,12 +116,19 @@ export function useVideoFirstFramePoster(input: {
 	tryCapture()
 
 	onBeforeUnmount(() => {
-		for (const s of stopHandlers) try { s() } catch {}
-		try { queue?.cancel() } catch {}
+		for (const s of stopHandlers)
+			try {
+				s()
+			} catch {}
+		try {
+			queue?.cancel()
+		} catch {}
 		queue = null
 		lastKey = ''
 		if (lastLocal) {
-			try { URL.revokeObjectURL(lastLocal) } catch {}
+			try {
+				URL.revokeObjectURL(lastLocal)
+			} catch {}
 			lastLocal = ''
 		}
 		localPosterUrl.value = null

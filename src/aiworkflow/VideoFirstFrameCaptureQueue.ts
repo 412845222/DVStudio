@@ -33,7 +33,11 @@ export async function firstFrameCapture(
 	if (!src) return { ok: false, error: 'empty video url' }
 	const maxWidth = Number(opts?.maxWidth ?? 480)
 	const timeoutMs = Number(opts?.timeoutMs ?? 10000)
-	const queue = new VideoFirstFrameCaptureQueue({ concurrency: 1, defaultMaxWidth: maxWidth, defaultTimeoutMs: timeoutMs })
+	const queue = new VideoFirstFrameCaptureQueue({
+		concurrency: 1,
+		defaultMaxWidth: maxWidth,
+		defaultTimeoutMs: timeoutMs
+	})
 	try {
 		return await new Promise<FirstFrameCaptureResult>((resolve) => {
 			const taskId = `first-frame-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -41,7 +45,9 @@ export async function firstFrameCapture(
 			let guardTimer: number | null = null
 			const clearGuard = () => {
 				if (guardTimer != null) {
-					try { clearTimeout(guardTimer) } catch {}
+					try {
+						clearTimeout(guardTimer)
+					} catch {}
 					guardTimer = null
 				}
 			}
@@ -49,21 +55,28 @@ export async function firstFrameCapture(
 				if (resolved) return
 				resolved = true
 				clearGuard()
-				try { queue.cancel() } catch {}
+				try {
+					queue.cancel()
+				} catch {}
 				resolve(res)
 			}
-			queue.enqueue([{
-				id: taskId,
-				url: src,
-				maxWidth,
-				timeoutMs,
-				onResult: (res) => {
-					if (res.posterUrl) finish({ ok: true, posterUrl: res.posterUrl })
-					else finish({ ok: false, error: res.error || 'capture failed' })
-				},
-			}])
+			queue.enqueue([
+				{
+					id: taskId,
+					url: src,
+					maxWidth,
+					timeoutMs,
+					onResult: (res) => {
+						if (res.posterUrl) finish({ ok: true, posterUrl: res.posterUrl })
+						else finish({ ok: false, error: res.error || 'capture failed' })
+					}
+				}
+			])
 			// 额外保护：超时兜底，避免 queue 内部异常导致不 resolve
-			guardTimer = window.setTimeout(() => finish({ ok: false, error: 'first-frame guard timeout' }), timeoutMs + 2000)
+			guardTimer = window.setTimeout(
+				() => finish({ ok: false, error: 'first-frame guard timeout' }),
+				timeoutMs + 2000
+			)
 		})
 	} catch (err) {
 		return { ok: false, error: getErrorMessage(err) }

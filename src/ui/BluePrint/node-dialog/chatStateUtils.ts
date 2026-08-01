@@ -85,8 +85,7 @@ const pickMinRef = (r: RefLike): SimplifiedNodeChatSubmitRef => {
 	return {
 		kind,
 		edgeId: typeof obj.edgeId === 'string' && obj.edgeId ? obj.edgeId : undefined,
-		fromNodeId:
-			typeof obj.fromNodeId === 'string' && obj.fromNodeId ? obj.fromNodeId : undefined,
+		fromNodeId: typeof obj.fromNodeId === 'string' && obj.fromNodeId ? obj.fromNodeId : undefined,
 		fromAnchorId:
 			typeof obj.fromAnchorId === 'string' && obj.fromAnchorId ? obj.fromAnchorId : undefined,
 		label:
@@ -95,8 +94,7 @@ const pickMinRef = (r: RefLike): SimplifiedNodeChatSubmitRef => {
 				: typeof obj.name === 'string'
 					? obj.name
 					: undefined,
-		previewUrl:
-			typeof obj.previewUrl === 'string' && obj.previewUrl ? obj.previewUrl : undefined
+		previewUrl: typeof obj.previewUrl === 'string' && obj.previewUrl ? obj.previewUrl : undefined
 	}
 }
 
@@ -184,13 +182,19 @@ const sameStr = (a: unknown, b: unknown) => normalizeStr(a) === normalizeStr(b)
  *   - 否则 fromNodeId:fromAnchorId
  *   - 最后 fallback `${idx}:${kind}:${label}` 兜底避免空 key
  */
-const computeRefKey = (r: {
-	edgeId?: unknown
-	fromNodeId?: unknown
-	fromAnchorId?: unknown
-	kind?: unknown
-	label?: unknown
-} | null | undefined, fallbackIdx = 0): string => {
+const computeRefKey = (
+	r:
+		| {
+				edgeId?: unknown
+				fromNodeId?: unknown
+				fromAnchorId?: unknown
+				kind?: unknown
+				label?: unknown
+		  }
+		| null
+		| undefined,
+	fallbackIdx = 0
+): string => {
 	if (!r || typeof r !== 'object') return `__fallback_${fallbackIdx}__`
 	const edgeId = normalizeStr((r as Record<string, unknown>).edgeId)
 	if (edgeId) return edgeId
@@ -228,11 +232,7 @@ const normalizeRef = (r: SelectedRefish | null | undefined) => {
 	}
 	const raw = r as Record<string, unknown>
 	const kind =
-		typeof raw.kind === 'string'
-			? raw.kind
-			: typeof raw.type === 'string'
-				? raw.type
-				: ''
+		typeof raw.kind === 'string' ? raw.kind : typeof raw.type === 'string' ? raw.type : ''
 	return {
 		kind,
 		edgeId: normalizeStr(raw.edgeId),
@@ -409,7 +409,9 @@ const stableJsonOf = (value: unknown, seen = new WeakSet()): string => {
 		if (seen.has(value as object)) return '"[Circular]"'
 		seen.add(value as object)
 		const keys = Object.keys(value as object).sort()
-		const parts = keys.map((k) => `${JSON.stringify(k)}:${stableJsonOf((value as Record<string, unknown>)[k], seen)}`)
+		const parts = keys.map(
+			(k) => `${JSON.stringify(k)}:${stableJsonOf((value as Record<string, unknown>)[k], seen)}`
+		)
 		return `{${parts.join(',')}}`
 	}
 	return 'null'

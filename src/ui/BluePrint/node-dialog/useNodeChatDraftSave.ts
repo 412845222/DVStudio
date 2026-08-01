@@ -1,9 +1,6 @@
 import { ref, onBeforeUnmount } from 'vue'
 import { useNodeChatApi } from './useNodeChatApi'
-import {
-	areSelectedRefsEqual,
-	areParamsEqual
-} from './chatStateUtils'
+import { areSelectedRefsEqual, areParamsEqual } from './chatStateUtils'
 
 /**
  * 草稿脏标记 + flush 保存统一封装
@@ -21,9 +18,7 @@ export interface NodeChatDraftSaveState {
 	lastSavedRefs: any[]
 }
 
-export function useNodeChatDraftSave(props: {
-	nodeId: string | null
-}) {
+export function useNodeChatDraftSave(props: { nodeId: string | null }) {
 	const chatApi = useNodeChatApi()
 
 	const draftDirty = ref(false)
@@ -73,11 +68,7 @@ export function useNodeChatDraftSave(props: {
 	/**
 	 * 用 props/引擎初始化本地基准值 —— 打开对话框时调用，避免首次 flush 误判有脏
 	 */
-	const resetSaveBaseline = (opts: {
-		draft: string
-		params: Record<string, any>
-		refs: any[]
-	}) => {
+	const resetSaveBaseline = (opts: { draft: string; params: Record<string, any>; refs: any[] }) => {
 		lastSavedDraft.value = opts.draft ?? ''
 		lastSavedParams.value = opts.params ? { ...opts.params } : {}
 		lastSavedRefs.value = opts.refs ? [...opts.refs] : []

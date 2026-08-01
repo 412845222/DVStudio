@@ -3265,7 +3265,9 @@ const runVideoTask = async (
 					}
 					const urlRaw = String(obj.videoUrl ?? obj.videoUrlRemote ?? obj.url ?? '').trim()
 					const url = deps.resolveBackendUrl(urlRaw)
-					const lastFrameRaw = String(obj.lastFrameUrl ?? obj.lastFrameUrlRemote ?? obj.coverUrl ?? '').trim()
+					const lastFrameRaw = String(
+						obj.lastFrameUrl ?? obj.lastFrameUrlRemote ?? obj.coverUrl ?? ''
+					).trim()
 					const downloadStatus = String(obj.downloadStatus ?? '').trim()
 					const progressRaw = Number(obj.downloadProgress ?? 0)
 					const progress = Number.isFinite(progressRaw)
@@ -3290,7 +3292,14 @@ const runVideoTask = async (
 						})
 						produced += 1
 					}
-					syncHelpers?.syncGlobalProgress?.({ progress, statusText: downloadStatus || (produced > 0 ? t('aiworkflow.runtime.videoResultReady') : t('aiworkflow.runtime.taskProcessing')) })
+					syncHelpers?.syncGlobalProgress?.({
+						progress,
+						statusText:
+							downloadStatus ||
+							(produced > 0
+								? t('aiworkflow.runtime.videoResultReady')
+								: t('aiworkflow.runtime.taskProcessing'))
+					})
 					updateTask(deps, task.id, {
 						status: produced > 0 ? 'completed' : 'running',
 						statusText:
@@ -3313,7 +3322,11 @@ const runVideoTask = async (
 				if (line) {
 					appendDetail(deps, task.id, line)
 					const newProgress = Math.min(80, task.progress + 2)
-					syncHelpers?.syncGlobalProgress?.({ progress: newProgress, statusText: line, status: 'running' })
+					syncHelpers?.syncGlobalProgress?.({
+						progress: newProgress,
+						statusText: line,
+						status: 'running'
+					})
 					updateTask(deps, task.id, {
 						status: 'running',
 						statusText: line,
@@ -3339,7 +3352,11 @@ const runVideoTask = async (
 			progress: 100,
 			finishedAt: Date.now()
 		})
-		syncHelpers?.syncGlobalComplete?.(lastResultUrl, lastCoverUrl || lastResultUrl, t('aiworkflow.runtime.videoGenerationComplete'))
+		syncHelpers?.syncGlobalComplete?.(
+			lastResultUrl,
+			lastCoverUrl || lastResultUrl,
+			t('aiworkflow.runtime.videoGenerationComplete')
+		)
 	} catch (err: unknown) {
 		const errMsg = getErrorMessage(err)
 		syncHelpers?.syncGlobalFail?.(errMsg)

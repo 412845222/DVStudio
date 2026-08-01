@@ -380,7 +380,7 @@ const { localPosterUrl, capturing: posterCapturing } = useVideoFirstFramePoster(
 		emit('update-poster', url)
 		// 捕获完成后，尝试让 Canvas 的预览缓存也失效，避免蓝图重绘时取旧数据
 		scheduleInvalidateScreenshot()
-	},
+	}
 })
 const _unusedPosterCapturing = posterCapturing // silence unused var
 
