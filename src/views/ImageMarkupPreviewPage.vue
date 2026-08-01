@@ -381,7 +381,7 @@ function exportMarkup() {
     return
   }
 
-  dweb.aiworkflow.exportImageMarkup({ imageDataUrl: result.dataUrl, dataUrl: result.dataUrl, width: result.width, height: result.height }).then(() => {
+  dweb.aiworkflow.exportImageMarkup({ imageDataUrl: result.dataUrl, dataUrl: result.dataUrl, width: result.width, height: result.height, exportType: 'markup' }).then(() => {
     window.close()
   })
 }
@@ -522,7 +522,7 @@ async function exportSubjectCrop() {
     if (!result) return false
     if (typeof exporter === 'function') {
       try {
-        await exporter({ imageDataUrl: result.dataUrl, dataUrl: result.dataUrl, width: result.width, height: result.height, exportType: 'screenshot' })
+        await exporter({ imageDataUrl: result.dataUrl, dataUrl: result.dataUrl, width: result.width, height: result.height, exportType: 'subject-crop' })
         return true
       } catch {
         return false

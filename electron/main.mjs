@@ -1441,9 +1441,10 @@ function registerIpc() {
 				width: Number(payload?.width || 0) || 0,
 				height: Number(payload?.height || 0) || 0,
 				sourceName: String(payload?.sourceName || ''),
-				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : 'markup',
+				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : payload?.exportType === 'subject-crop' ? 'subject-crop' : 'markup',
 			})
-			if (payload?.exportType !== 'screenshot') {
+			const keepWindowOpen = payload?.exportType === 'screenshot' || payload?.exportType === 'subject-crop'
+			if (!keepWindowOpen) {
 				if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
 					try { imageMarkupWindow.close() } catch {}
 				}

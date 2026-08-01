@@ -12110,73 +12110,108 @@ const handleImageMarkupExported = async (payload: {
 	width: number
 	height: number
 	sourceName?: string | null
-	exportType?: 'markup' | 'screenshot'
+	exportType?: 'markup' | 'screenshot' | 'subject-crop'
 }) => {
 	const fromNodeId = imageMarkupContext.value.nodeId
 	const exportType = payload.exportType || 'markup'
 	const isScreenshot = exportType === 'screenshot'
-	const typeLabel = isScreenshot
+	const isSubjectCrop = exportType === 'subject-crop'
+	const keepDialogOpen = isScreenshot || isSubjectCrop
+	const typeLabel = isSubjectCrop
 		? t('aiworkflow.page.mediaType.screenshot')
-		: t('aiworkflow.page.mediaType.markedImage')
-	const typeSuffix = isScreenshot ? 'screenshot' : 'marked'
+		: isScreenshot
+			? t('aiworkflow.page.mediaType.screenshot')
+			: t('aiworkflow.page.mediaType.markedImage')
+	const typeSuffix = isSubjectCrop ? 'subject' : isScreenshot ? 'screenshot' : 'marked'
 	const baseName = (
 		imageMarkupContext.value.name ||
 		payload.sourceName ||
 		(isScreenshot ? 'screenshot.png' : 'marked-image.png')
 	).replace(/\.[^.]+$/, '')
+
+	console.info('[ImageMarkupExport] handleImageMarkupExported called', {
+		exportType,
+		fromNodeId,
+		sourceName: payload.sourceName,
+		width: payload.width,
+		height: payload.height,
+		hasDataUrl: !!payload.dataUrl,
+		dataUrlPrefix: payload.dataUrl?.slice(0, 50)
+	})
+
 	if (!fromNodeId) {
 		pushToast(t('aiworkflow.page.markup.sourceNodeNotFound', { typeLabel }), 'warn')
 		return
 	}
 	try {
 		const fromNode = store.state.nodesById[fromNodeId]
-		if (!fromNode) return
-
-		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
-		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
-
-		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, {
-			title
-		})
-		if (!newNodeId) {
-			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
+		if (!fromNode) {
+			console.warn('[ImageMarkupExport] source node not found in store', fromNodeId)
 			return
 		}
 
+		// 步骤1：先准备资源信息并保存文件到磁盘
 		const resourceId = `res-${typeSuffix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
 		const resourceName = `${baseName}-${typeSuffix}-${Date.now()}.png`.slice(0, 200)
 
 		let resourceUrl = payload.dataUrl
 		let projectRelativePath = ''
+		let resourceAbsolutePath = ''
 
-		if (isScreenshot && currentProjectId.value && isElectron()) {
+		if (currentProjectId.value && isElectron()) {
+			console.log('[ImageMarkupExport] saving to project directory, projectId:', currentProjectId.value)
 			const dl = await downloadUrlToProjectRoot(
 				currentProjectId.value,
 				payload.dataUrl,
 				resourceName
 			)
+			console.log('[ImageMarkupExport] downloadUrlToProjectRoot result:', dl)
 			if (dl?.ok && dl.relativePath) {
 				resourceUrl = `dweb://project-assets?projectId=${currentProjectId.value}&path=${encodeURIComponent(dl.relativePath)}`
 				projectRelativePath = dl.relativePath
+				resourceAbsolutePath = dl.absolutePath || ''
+				console.log('[ImageMarkupExport] generated dweb URL:', resourceUrl)
+			} else {
+				console.warn('[ImageMarkupExport] Failed to save exported image to project directory, falling back to dataUrl', dl)
 			}
+		} else {
+			console.log('[ImageMarkupExport] not in electron or no projectId, using dataUrl directly')
 		}
 
+		// 步骤2：添加资源到 store
 		const newResource: WorkflowResource = {
 			id: resourceId,
 			kind: 'image',
 			name: resourceName,
 			url: resourceUrl,
 			projectRelativePath: projectRelativePath || undefined,
+			sourcePath: resourceAbsolutePath || undefined,
 			createdAt: Date.now()
 		}
+		console.log('[ImageMarkupExport] adding resource to store:', { resourceId, resourceName, resourceUrl: resourceUrl.slice(0, 100) })
 		store.commit('addResource', newResource)
 
-		store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+		// 步骤3：开始批量更新模式，计算位置并创建新节点（引擎层）
+		engineApi.beginBulkUpdate()
+		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
+		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
+		console.log('[ImageMarkupExport] creating new image node at position:', nextPosition)
+		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, {
+			title
+		})
+		if (!newNodeId) {
+			console.error('[ImageMarkupExport] engineApi.addNode returned falsy value')
+			engineApi.endBulkUpdate()
+			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
+			return
+		}
+		console.log('[ImageMarkupExport] new node created in engine with id:', newNodeId)
+
+		// 步骤4：设置图片尺寸到引擎
 		const w = Math.max(1, Math.floor(Number(payload.width) || 1))
 		const h = Math.max(1, Math.floor(Number(payload.height) || 1))
-		store.commit('setNodeImageSettings', {
-			nodeId: newNodeId,
+		engineApi.updateNodeData(newNodeId, {
 			imageSettings: {
 				outputWidth: w,
 				outputHeight: h,
@@ -12185,6 +12220,7 @@ const handleImageMarkupExported = async (payload: {
 			}
 		})
 
+		// 步骤5：建立连线
 		const fromAnchors = fromNode.outputs
 		const fromAnchor =
 			fromAnchors?.find(
@@ -12192,21 +12228,71 @@ const handleImageMarkupExported = async (payload: {
 			) || fromAnchors?.[0]
 		if (fromAnchor) {
 			engineApi.connectPorts(fromNodeId, String(fromAnchor.id), newNodeId, 'in-0')
+			console.log('[ImageMarkupExport] connected ports in engine')
 		}
 
-		if (exportType !== 'screenshot') {
+		// 步骤6：结束批量更新，强制同步引擎数据到 Vuex store
+		engineApi.endBulkUpdate()
+		console.log('[ImageMarkupExport] endBulkUpdate called, starting forceSyncToStore...')
+		await engineApi.forceSyncToStore()
+		console.log('[ImageMarkupExport] forceSyncToStore completed')
+
+		// 步骤7：验证节点已同步到 store，然后绑定资源
+		const newNodeInStore = store.state.nodesById[newNodeId]
+		console.log('[ImageMarkupExport] after forceSyncToStore, node exists in store:', !!newNodeInStore)
+
+		if (!newNodeInStore) {
+			console.error('[ImageMarkupExport] CRITICAL: node still not in store after forceSyncToStore!')
+			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
+			return
+		}
+
+		// 步骤8：绑定资源到节点（Vuex store）
+		store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+		if (resourceAbsolutePath) {
+			store.commit('setNodeResourcePath', { nodeId: newNodeId, resourcePath: resourceAbsolutePath })
+		}
+		console.log('[ImageMarkupExport] resource set on node in store, resourceId:', resourceId)
+
+		// 步骤9：验证绑定结果
+		const boundNode = store.state.nodesById[newNodeId]
+		console.log('[ImageMarkupExport] verification - node.resourceId:', boundNode?.resourceId)
+
+		// 步骤10：将 store 中的 resourceId 同步回引擎层
+		patchBlueprintNodeData(newNodeId)
+		console.log('[ImageMarkupExport] patchBlueprintNodeData called to sync resourceId to engine')
+
+		// 步骤11：预加载图片验证 dweb URL（如果使用了 dweb 协议）
+		if (resourceUrl.startsWith('dweb://')) {
+			const img = new Image()
+			img.onload = () => {
+				console.log('[ImageMarkupExport] dweb image preloaded successfully, size:', img.naturalWidth, 'x', img.naturalHeight)
+			}
+			img.onerror = (e) => {
+				console.error('[ImageMarkupExport] dweb image failed to preload, falling back to dataUrl', e)
+				// 降级：更新资源 URL 为原始 dataUrl
+				store.commit('patchResource', {
+					resourceId,
+					patch: { url: payload.dataUrl }
+				})
+				patchBlueprintNodeData(newNodeId)
+			}
+			img.src = resourceUrl
+		}
+
+		if (!keepDialogOpen) {
 			closeImageMarkupDialog()
 		}
 		pushToast(t('aiworkflow.page.markup.nodeCreated', { typeLabel }), 'info')
 
-		if (isScreenshot && currentProjectId.value && currentProjectName.value) {
+		if (currentProjectId.value && currentProjectName.value) {
 			void saveProjectToBackend(currentProjectName.value, { silent: true })
 		}
 
 		// 触发预热：先以完整节点显示，截图捕获后切换为 canvas 位图，避免直接显示占位 canvas
 		void warmupCropCreatedNode(newNodeId)
 	} catch (err) {
-		console.warn('[AIWorkflowPage] handleImageMarkupExported failed', err)
+		console.error('[AIWorkflowPage] handleImageMarkupExported failed', err)
 		pushToast(t('aiworkflow.page.markup.generateNodeFailed', { typeLabel }), 'error')
 	}
 }

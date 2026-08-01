@@ -604,7 +604,14 @@ const onPreviewImageLoad = () => {
 	nextTick(() => baseRef.value?.requestAutoResize())
 }
 
-const onPreviewImageError = () => {
+const onPreviewImageError = (event?: Event) => {
+	console.error('[WorkflowImageNode] Image load error for node:', props.nodeId, {
+		resourceUrl: normalizedResourceUrl.value,
+		displayUrl: displayResourceUrl.value,
+		activePreviewUrl: activePreviewUrl.value,
+		fallbackUrl: resourceFallbackUrl.value,
+		target: (event?.target as HTMLImageElement)?.src
+	})
 	scheduleInvalidateScreenshot(50)
 	if (usingPreviewResource.value) {
 		failedPreviewUrl.value = activePreviewUrl.value
