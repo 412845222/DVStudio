@@ -12159,23 +12159,29 @@ const handleImageMarkupExported = async (payload: {
 		let resourceAbsolutePath = ''
 
 		if (currentProjectId.value && isElectron()) {
-			console.log('[ImageMarkupExport] saving to project directory, projectId:', currentProjectId.value)
+			console.info(
+				'[ImageMarkupExport] saving to project directory, projectId:',
+				currentProjectId.value
+			)
 			const dl = await downloadUrlToProjectRoot(
 				currentProjectId.value,
 				payload.dataUrl,
 				resourceName
 			)
-			console.log('[ImageMarkupExport] downloadUrlToProjectRoot result:', dl)
+			console.info('[ImageMarkupExport] downloadUrlToProjectRoot result:', dl)
 			if (dl?.ok && dl.relativePath) {
 				resourceUrl = `dweb://project-assets?projectId=${currentProjectId.value}&path=${encodeURIComponent(dl.relativePath)}`
 				projectRelativePath = dl.relativePath
 				resourceAbsolutePath = dl.absolutePath || ''
-				console.log('[ImageMarkupExport] generated dweb URL:', resourceUrl)
+				console.info('[ImageMarkupExport] generated dweb URL:', resourceUrl)
 			} else {
-				console.warn('[ImageMarkupExport] Failed to save exported image to project directory, falling back to dataUrl', dl)
+				console.warn(
+					'[ImageMarkupExport] Failed to save exported image to project directory, falling back to dataUrl',
+					dl
+				)
 			}
 		} else {
-			console.log('[ImageMarkupExport] not in electron or no projectId, using dataUrl directly')
+			console.info('[ImageMarkupExport] not in electron or no projectId, using dataUrl directly')
 		}
 
 		// 步骤2：添加资源到 store
@@ -12188,7 +12194,11 @@ const handleImageMarkupExported = async (payload: {
 			sourcePath: resourceAbsolutePath || undefined,
 			createdAt: Date.now()
 		}
-		console.log('[ImageMarkupExport] adding resource to store:', { resourceId, resourceName, resourceUrl: resourceUrl.slice(0, 100) })
+		console.info('[ImageMarkupExport] adding resource to store:', {
+			resourceId,
+			resourceName,
+			resourceUrl: resourceUrl.slice(0, 100)
+		})
 		store.commit('addResource', newResource)
 
 		// 步骤3：开始批量更新模式，计算位置并创建新节点（引擎层）
@@ -12196,7 +12206,7 @@ const handleImageMarkupExported = async (payload: {
 		const nextPosition = findNextNodePositionFromSource(fromNodeId, store.state)
 		const title = `${fromNode.title ? fromNode.title + ' ' : ''}${typeLabel}`
 
-		console.log('[ImageMarkupExport] creating new image node at position:', nextPosition)
+		console.info('[ImageMarkupExport] creating new image node at position:', nextPosition)
 		const newNodeId = engineApi.addNode('image', nextPosition.worldX, nextPosition.worldY, {
 			title
 		})
@@ -12206,7 +12216,7 @@ const handleImageMarkupExported = async (payload: {
 			pushToast(t('aiworkflow.page.markup.createNodeFailed', { typeLabel }), 'error')
 			return
 		}
-		console.log('[ImageMarkupExport] new node created in engine with id:', newNodeId)
+		console.info('[ImageMarkupExport] new node created in engine with id:', newNodeId)
 
 		// 步骤4：设置图片尺寸到引擎
 		const w = Math.max(1, Math.floor(Number(payload.width) || 1))
@@ -12228,18 +12238,21 @@ const handleImageMarkupExported = async (payload: {
 			) || fromAnchors?.[0]
 		if (fromAnchor) {
 			engineApi.connectPorts(fromNodeId, String(fromAnchor.id), newNodeId, 'in-0')
-			console.log('[ImageMarkupExport] connected ports in engine')
+			console.info('[ImageMarkupExport] connected ports in engine')
 		}
 
 		// 步骤6：结束批量更新，强制同步引擎数据到 Vuex store
 		engineApi.endBulkUpdate()
-		console.log('[ImageMarkupExport] endBulkUpdate called, starting forceSyncToStore...')
+		console.info('[ImageMarkupExport] endBulkUpdate called, starting forceSyncToStore...')
 		await engineApi.forceSyncToStore()
-		console.log('[ImageMarkupExport] forceSyncToStore completed')
+		console.info('[ImageMarkupExport] forceSyncToStore completed')
 
 		// 步骤7：验证节点已同步到 store，然后绑定资源
 		const newNodeInStore = store.state.nodesById[newNodeId]
-		console.log('[ImageMarkupExport] after forceSyncToStore, node exists in store:', !!newNodeInStore)
+		console.info(
+			'[ImageMarkupExport] after forceSyncToStore, node exists in store:',
+			!!newNodeInStore
+		)
 
 		if (!newNodeInStore) {
 			console.error('[ImageMarkupExport] CRITICAL: node still not in store after forceSyncToStore!')
@@ -12252,24 +12265,32 @@ const handleImageMarkupExported = async (payload: {
 		if (resourceAbsolutePath) {
 			store.commit('setNodeResourcePath', { nodeId: newNodeId, resourcePath: resourceAbsolutePath })
 		}
-		console.log('[ImageMarkupExport] resource set on node in store, resourceId:', resourceId)
+		console.info('[ImageMarkupExport] resource set on node in store, resourceId:', resourceId)
 
 		// 步骤9：验证绑定结果
 		const boundNode = store.state.nodesById[newNodeId]
-		console.log('[ImageMarkupExport] verification - node.resourceId:', boundNode?.resourceId)
+		console.info('[ImageMarkupExport] verification - node.resourceId:', boundNode?.resourceId)
 
 		// 步骤10：将 store 中的 resourceId 同步回引擎层
 		patchBlueprintNodeData(newNodeId)
-		console.log('[ImageMarkupExport] patchBlueprintNodeData called to sync resourceId to engine')
+		console.info('[ImageMarkupExport] patchBlueprintNodeData called to sync resourceId to engine')
 
 		// 步骤11：预加载图片验证 dweb URL（如果使用了 dweb 协议）
 		if (resourceUrl.startsWith('dweb://')) {
 			const img = new Image()
 			img.onload = () => {
-				console.log('[ImageMarkupExport] dweb image preloaded successfully, size:', img.naturalWidth, 'x', img.naturalHeight)
+				console.info(
+					'[ImageMarkupExport] dweb image preloaded successfully, size:',
+					img.naturalWidth,
+					'x',
+					img.naturalHeight
+				)
 			}
 			img.onerror = (e) => {
-				console.error('[ImageMarkupExport] dweb image failed to preload, falling back to dataUrl', e)
+				console.error(
+					'[ImageMarkupExport] dweb image failed to preload, falling back to dataUrl',
+					e
+				)
 				// 降级：更新资源 URL 为原始 dataUrl
 				store.commit('patchResource', {
 					resourceId,

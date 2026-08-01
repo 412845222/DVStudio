@@ -11,7 +11,16 @@ dns.setDefaultResultOrder('ipv4first')
 
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, protocol, session } from 'electron'
 
-import { APP_NAME, APP_VERSION, APP_COPYRIGHT, APP_HOMEPAGE, APP_REPO_URL, APP_LICENSE, getRepoRoot, getWindowIconPath } from './config.mjs'
+import {
+	APP_NAME,
+	APP_VERSION,
+	APP_COPYRIGHT,
+	APP_HOMEPAGE,
+	APP_REPO_URL,
+	APP_LICENSE,
+	getRepoRoot,
+	getWindowIconPath
+} from './config.mjs'
 import { collectDiagnostics } from './backend/diagnostics.mjs'
 import { detectPythonInfo, setPythonDetectCacheDir } from './backend/python.mjs'
 import { cleanupOldRuntimeProject } from './backend/runtimeCleanup.mjs'
@@ -29,7 +38,7 @@ import {
 	diagnoseDwebAsset,
 	getAccessLogs,
 	getProjectCacheStats,
-	clearProjectCache,
+	clearProjectCache
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -37,13 +46,19 @@ import {
 	importFileProjectAsset,
 	deleteStaticProjectAsset,
 	resolveStaticProjectAsset,
-	repairAllProjectAssets,
+	repairAllProjectAssets
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
 import { initBackend, shutdownBackend } from './backend/index.mjs'
 import { getPythonBridge } from './backend/python-bridge/index.mjs'
-import { platformPreflight, platformInit, platformShutdown, registerPlatformIpc, setMainWindowForPlatform } from './platform/index.mjs'
+import {
+	platformPreflight,
+	platformInit,
+	platformShutdown,
+	registerPlatformIpc,
+	setMainWindowForPlatform
+} from './platform/index.mjs'
 
 try {
 	protocol.registerSchemesAsPrivileged([
@@ -53,9 +68,9 @@ try {
 				standard: true,
 				secure: true,
 				supportFetchAPI: true,
-				stream: true,
-			},
-		},
+				stream: true
+			}
+		}
 	])
 	console.log('[dweb-protocol] privileged scheme registered')
 } catch (err) {
@@ -65,7 +80,10 @@ try {
 function earlySetupSteamEnv() {
 	try {
 		if (process.env.SteamAppId && process.env.SteamGameId) {
-			console.log('[platform:steam] Steam environment already set by Steam client:', process.env.SteamAppId)
+			console.log(
+				'[platform:steam] Steam environment already set by Steam client:',
+				process.env.SteamAppId
+			)
 			return
 		}
 		let appId = 0
@@ -91,7 +109,9 @@ function earlySetupSteamEnv() {
 			process.env.SteamGameId = String(appId)
 			console.log('[platform:steam] Early SteamAppId set:', appId)
 		} else {
-			console.log('[platform:steam] No Steam AppID configured, Steam integration will use Mock mode')
+			console.log(
+				'[platform:steam] No Steam AppID configured, Steam integration will use Mock mode'
+			)
 		}
 	} catch (err) {
 		console.warn('[platform:steam] Early Steam env setup failed:', err.message)
@@ -107,7 +127,10 @@ let _portableWarnOnReady = false
 function isDirectoryWritable(dir) {
 	try {
 		fs.mkdirSync(dir, { recursive: true })
-		const testFile = path.join(dir, '.write-test-' + Date.now() + '-' + Math.random().toString(36).slice(2))
+		const testFile = path.join(
+			dir,
+			'.write-test-' + Date.now() + '-' + Math.random().toString(36).slice(2)
+		)
 		fs.writeFileSync(testFile, 'test')
 		fs.unlinkSync(testFile)
 		return true
@@ -126,7 +149,9 @@ function configurePortablePaths() {
 	if (isDirectoryWritable(dvsResourceDir)) {
 		app.setPath('userData', targetUserDataDir)
 		app.setPath('sessionData', path.resolve(targetUserDataDir, 'Session'))
-		try { app.setPath('crashDumps', path.resolve(targetUserDataDir, 'CrashDumps')) } catch {}
+		try {
+			app.setPath('crashDumps', path.resolve(targetUserDataDir, 'CrashDumps'))
+		} catch {}
 		_portableUserDataDir = targetUserDataDir
 		fs.mkdirSync(targetLogsDir, { recursive: true })
 	} else {
@@ -159,12 +184,17 @@ function fetchRawBuffer(rawUrl) {
 			port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
 			path: parsed.pathname + parsed.search,
 			headers: {
-				'User-Agent': 'DwebVideoStudio/1.0 (Electron)',
+				'User-Agent': 'DwebVideoStudio/1.0 (Electron)'
 			},
-			timeout: 120 * 1000,
+			timeout: 120 * 1000
 		}
 		const req = transport.request(options, (res) => {
-			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers?.location) {
+			if (
+				res.statusCode &&
+				res.statusCode >= 300 &&
+				res.statusCode < 400 &&
+				res.headers?.location
+			) {
 				fetchRawBuffer(String(res.headers.location)).then(resolve, reject)
 				return
 			}
@@ -176,7 +206,10 @@ function fetchRawBuffer(rawUrl) {
 			res.on('data', (chunk) => chunks.push(chunk))
 			res.on('end', () => {
 				const buf = Buffer.concat(chunks)
-				const mime = String(res.headers?.['content-type'] || '').split(';')[0].trim() || 'application/octet-stream'
+				const mime =
+					String(res.headers?.['content-type'] || '')
+						.split(';')[0]
+						.trim() || 'application/octet-stream'
 				resolve({ buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), mime })
 			})
 			res.on('error', reject)
@@ -208,16 +241,34 @@ let backendRuntimeState = {
 	lastError: '',
 	setupRunning: false,
 	updatedAt: 0,
-	mode: 'ipc',
+	mode: 'ipc'
 }
 
 function createDefaultSetupSteps() {
 	return [
-		{ key: 'python', label: 'Python 环境检查（>=3.11，推荐 3.11）', status: 'unknown', detail: '', progress: 0 },
+		{
+			key: 'python',
+			label: 'Python 环境检查（>=3.11，推荐 3.11）',
+			status: 'unknown',
+			detail: '',
+			progress: 0
+		},
 		{ key: 'resource', label: '创建 DVSResource 目录', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'pythonBridge', label: '初始化 Python Bridge 工作进程', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'nodeBackend', label: '初始化 Node.js IPC 后端', status: 'unknown', detail: '', progress: 0 },
-		{ key: 'ffmpeg', label: 'ffmpeg（可选）', status: 'unknown', detail: '', progress: 0 },
+		{
+			key: 'pythonBridge',
+			label: '初始化 Python Bridge 工作进程',
+			status: 'unknown',
+			detail: '',
+			progress: 0
+		},
+		{
+			key: 'nodeBackend',
+			label: '初始化 Node.js IPC 后端',
+			status: 'unknown',
+			detail: '',
+			progress: 0
+		},
+		{ key: 'ffmpeg', label: 'ffmpeg（可选）', status: 'unknown', detail: '', progress: 0 }
 	]
 }
 
@@ -239,8 +290,7 @@ function emitBackendRuntimeState() {
 	for (const win of BrowserWindow.getAllWindows()) {
 		try {
 			if (!win.isDestroyed()) win.webContents.send('dweb:backendRuntime:changed', payload)
-		} catch {
-		}
+		} catch {}
 	}
 }
 
@@ -248,7 +298,7 @@ function updateBackendRuntimeState(patch) {
 	backendRuntimeState = {
 		...backendRuntimeState,
 		...(patch || {}),
-		updatedAt: Date.now(),
+		updatedAt: Date.now()
 	}
 	emitBackendRuntimeState()
 }
@@ -262,7 +312,7 @@ function getSetupState() {
 	return {
 		running: setupRunning,
 		updatedAt: setupUpdatedAt,
-		steps: setupSteps,
+		steps: setupSteps
 	}
 }
 
@@ -299,7 +349,7 @@ function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 	const r = spawn(cmd, args, {
 		cwd,
 		windowsHide: true,
-		stdio: ['ignore', 'pipe', 'pipe'],
+		stdio: ['ignore', 'pipe', 'pipe']
 	})
 	let stdout = ''
 	let stderr = ''
@@ -316,14 +366,16 @@ function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 		clearInterval(ticker)
 		const elapsed = Math.max(1, Math.floor((Date.now() - startedAt) / 1000))
 		const ok = !!payload?.ok
-		pushBackendLog(`[cmd] ${ok ? '[##############]' : '[!!!!!FAILED!!!]'} ${displayLabel} (${elapsed}s)`)
+		pushBackendLog(
+			`[cmd] ${ok ? '[##############]' : '[!!!!!FAILED!!!]'} ${displayLabel} (${elapsed}s)`
+		)
 		return {
 			ok,
 			code: Number(payload?.code ?? 1),
 			stdout,
 			stderr,
 			error: payload?.error || '',
-			timedOut: !!payload?.timedOut,
+			timedOut: !!payload?.timedOut
 		}
 	}
 
@@ -339,7 +391,9 @@ function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 	return new Promise((resolve) => {
 		r.once('error', (err) => {
 			stderr += `\n${String(err?.message || err || 'spawn failed')}`
-			resolve(finalize({ ok: false, code: 1, error: String(err?.message || err || 'spawn failed') }))
+			resolve(
+				finalize({ ok: false, code: 1, error: String(err?.message || err || 'spawn failed') })
+			)
 		})
 		r.once('exit', (code) => {
 			resolve(finalize({ ok: code === 0, code: Number(code || 0) }))
@@ -349,8 +403,7 @@ function runSyncWithLogs(cmd, args, { cwd, label, timeoutMs = 0 } = {}) {
 			timeoutId = setTimeout(() => {
 				try {
 					r.kill('SIGKILL')
-				} catch {
-				}
+				} catch {}
 				stderr += `\nTimeout after ${timeoutMs}ms`
 				resolve(finalize({ ok: false, code: 124, timedOut: true, error: `timeout ${timeoutMs}ms` }))
 			}, Number(timeoutMs))
@@ -365,7 +418,7 @@ async function tryInstallPythonOnWindows() {
 
 	const wingetCheck = await runSyncWithLogs('winget', ['--version'], {
 		label: '检测 winget',
-		timeoutMs: 10000,
+		timeoutMs: 10000
 	})
 	if (!wingetCheck.ok) {
 		return { ok: false, reason: 'winget-not-found' }
@@ -373,8 +426,15 @@ async function tryInstallPythonOnWindows() {
 
 	const install = await runSyncWithLogs(
 		'winget',
-		['install', '-e', '--id', 'Python.Python.3.12', '--accept-source-agreements', '--accept-package-agreements'],
-		{ label: '自动安装 Python（3.12）', timeoutMs: 20 * 60 * 1000 },
+		[
+			'install',
+			'-e',
+			'--id',
+			'Python.Python.3.12',
+			'--accept-source-agreements',
+			'--accept-package-agreements'
+		],
+		{ label: '自动安装 Python（3.12）', timeoutMs: 20 * 60 * 1000 }
 	)
 	if (!install.ok) {
 		return { ok: false, reason: 'python-install-failed' }
@@ -395,7 +455,7 @@ function nowTs() {
 	const d = new Date()
 	const pad = (n) => String(n).padStart(2, '0')
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(
-		d.getSeconds(),
+		d.getSeconds()
 	)}`
 }
 
@@ -403,14 +463,13 @@ function appendRuntimeLog(line) {
 	if (!runtimeLogFile) return
 	try {
 		fs.appendFileSync(runtimeLogFile, `[${nowTs()}] ${String(line || '')}\n`, 'utf-8')
-	} catch {
-	}
+	} catch {}
 }
 
 function initRuntimeLogger() {
 	const candidates = [
 		path.resolve(getLogsDir(), 'runtime.log'),
-		path.resolve(getUserDataDir(), 'dweb-runtime.log'),
+		path.resolve(getUserDataDir(), 'dweb-runtime.log')
 	]
 	for (const p of candidates) {
 		try {
@@ -418,8 +477,7 @@ function initRuntimeLogger() {
 			fs.appendFileSync(p, `\n========== start ${nowTs()} ==========` + '\n', 'utf-8')
 			runtimeLogFile = p
 			break
-		} catch {
-		}
+		} catch {}
 	}
 	if (runtimeLogFile) {
 		appendRuntimeLog(`logger initialized: ${runtimeLogFile}`)
@@ -434,10 +492,14 @@ function registerRuntimeDiagnostics() {
 		appendRuntimeLog(`[unhandledRejection] ${String(reason)}`)
 	})
 	app.on('render-process-gone', (_event, webContents, details) => {
-		appendRuntimeLog(`[render-process-gone] id=${webContents?.id || 0} reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`)
+		appendRuntimeLog(
+			`[render-process-gone] id=${webContents?.id || 0} reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`
+		)
 	})
 	app.on('child-process-gone', (_event, details) => {
-		appendRuntimeLog(`[child-process-gone] type=${details?.type || ''} reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`)
+		appendRuntimeLog(
+			`[child-process-gone] type=${details?.type || ''} reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`
+		)
 	})
 }
 
@@ -474,7 +536,10 @@ async function runBootstrapInstaller() {
 	ensureClientResourceLayout()
 	const installer = resolveBootstrapInstaller()
 	if (!installer) {
-		return { ok: false, error: `Bootstrap installer not provided for platform: ${process.platform}` }
+		return {
+			ok: false,
+			error: `Bootstrap installer not provided for platform: ${process.platform}`
+		}
 	}
 
 	const checkPath = process.platform === 'win32' ? installer.command : installer.args[0]
@@ -485,7 +550,7 @@ async function runBootstrapInstaller() {
 	pushBackendLog(`[bootstrap] start: ${installer.command} ${installer.args.join(' ')}`)
 	bootstrapProc = spawn(installer.command, installer.args, {
 		cwd: path.dirname(checkPath),
-		windowsHide: true,
+		windowsHide: true
 	})
 
 	bootstrapProc.stdout?.on('data', (s) => onBackendChunk('bootstrap', s))
@@ -553,13 +618,13 @@ function getDefaultClientSettings() {
 		tripo3dApiKey: '',
 		githubToken: '',
 		ui: {
-			locale: '',
+			locale: ''
 		},
 		apiKeySecurityAgreement: {
 			accepted: false,
 			acceptedAt: 0,
-			acceptedVersion: '',
-		},
+			acceptedVersion: ''
+		}
 	}
 }
 
@@ -570,7 +635,11 @@ function ensureClientResourceLayout() {
 	if (!fs.existsSync(filePath)) {
 		fs.writeFileSync(filePath, JSON.stringify(getDefaultClientSettings(), null, 2), 'utf-8')
 	}
-	return { resourceDir: getDvsResourceDir(), settingsDir: getUserSettingsDir(), settingsFile: filePath }
+	return {
+		resourceDir: getDvsResourceDir(),
+		settingsDir: getUserSettingsDir(),
+		settingsFile: filePath
+	}
 }
 
 function deepMergeSettings(target, source) {
@@ -580,8 +649,12 @@ function deepMergeSettings(target, source) {
 		const sourceVal = source[key]
 		const targetVal = result[key]
 		if (
-			sourceVal && typeof sourceVal === 'object' && !Array.isArray(sourceVal) &&
-			targetVal && typeof targetVal === 'object' && !Array.isArray(targetVal)
+			sourceVal &&
+			typeof sourceVal === 'object' &&
+			!Array.isArray(sourceVal) &&
+			targetVal &&
+			typeof targetVal === 'object' &&
+			!Array.isArray(targetVal)
 		) {
 			result[key] = deepMergeSettings(targetVal, sourceVal)
 		} else {
@@ -619,7 +692,9 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 	setupRunning = true
 	updateBackendRuntimeState({ setupRunning: true })
 	resetSetupSteps()
-	pushBackendLog(`[setup] 开始执行环境准备流程（reason=${reason}${retryKey ? `, retry=${retryKey}` : ''}）`)
+	pushBackendLog(
+		`[setup] 开始执行环境准备流程（reason=${reason}${retryKey ? `, retry=${retryKey}` : ''}）`
+	)
 
 	let pyInfo = null
 	const resourceDir = getDvsResourceDir()
@@ -640,7 +715,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 					setStep('ffmpeg', {
 						status: 'warn',
 						progress: 100,
-						detail: '未检测到 ffmpeg（仅影响动画编辑器导出视频，不阻断流程）。',
+						detail: '未检测到 ffmpeg（仅影响动画编辑器导出视频，不阻断流程）。'
 					})
 				}
 				resolve(result)
@@ -653,11 +728,17 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 				let stdout = ''
 				let stderr = ''
 				const timeoutId = setTimeout(() => {
-					try { proc.kill() } catch {}
+					try {
+						proc.kill()
+					} catch {}
 					done({ ok: false })
 				}, 8000)
-				proc.stdout?.on('data', (d) => { stdout += String(d) })
-				proc.stderr?.on('data', (d) => { stderr += String(d) })
+				proc.stdout?.on('data', (d) => {
+					stdout += String(d)
+				})
+				proc.stderr?.on('data', (d) => {
+					stderr += String(d)
+				})
 				proc.on('error', () => {
 					clearTimeout(timeoutId)
 					done({ ok: false })
@@ -683,7 +764,11 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		const usingBundledPython = !!pyInfo?.isBundled
 		if (!pyInfo.ok || !pyInfo.meetsRequirement) {
 			if (usingBundledPython) {
-				setStep('python', { status: 'error', progress: 100, detail: '内置 Python 运行时损坏，请重新安装应用。' })
+				setStep('python', {
+					status: 'error',
+					progress: 100,
+					detail: '内置 Python 运行时损坏，请重新安装应用。'
+				})
 				return { ok: false, state: getSetupState(), error: 'bundled-python-corrupted' }
 			}
 			const missingPython = !pyInfo.command
@@ -692,7 +777,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 				progress: 55,
 				detail: missingPython
 					? '不存在 Python 环境，正在尝试自动安装（Windows）...'
-					: `Python 版本不满足要求（当前：${pyInfo.detail || 'unknown'}），正在尝试自动安装（Windows）...`,
+					: `Python 版本不满足要求（当前：${pyInfo.detail || 'unknown'}），正在尝试自动安装（Windows）...`
 			})
 
 			const autoInstall = await tryInstallPythonOnWindows()
@@ -706,7 +791,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 				progress: 100,
 				detail: !pyInfo.command
 					? '不存在 Python 环境。请安装 Python 3.11 及以上版本后重试。'
-					: pyInfo.detail || 'Python 版本不满足要求，请安装 Python 3.11 及以上（推荐 3.11）后重试。',
+					: pyInfo.detail || 'Python 版本不满足要求，请安装 Python 3.11 及以上（推荐 3.11）后重试。'
 			})
 			pushBackendLog('[建议] 不存在可用 Python 环境：请安装 Python 3.11+ 后重试。')
 			return { ok: false, state: getSetupState(), error: 'python-check-failed' }
@@ -716,9 +801,9 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			progress: 100,
 			detail: pyInfo.isBundled
 				? `${pyInfo.detail}（开箱即用，无需安装）${pyInfo.fromCache ? ' [cached]' : ''}`
-				: (pyInfo.recommended
+				: pyInfo.recommended
 					? `${pyInfo.detail}（推荐版本）${pyInfo.fromCache ? ' [cached]' : ''}`
-					: `${pyInfo.detail}（可用，推荐 3.11）${pyInfo.fromCache ? ' [cached]' : ''}`),
+					: `${pyInfo.detail}（可用，推荐 3.11）${pyInfo.fromCache ? ' [cached]' : ''}`
 		})
 
 		setStep('resource', { status: 'running', progress: 40, detail: '正在创建 DVSResource...' })
@@ -727,17 +812,21 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 		setStep('resource', {
 			status: 'ok',
 			progress: 100,
-			detail: `${resourceDir}（含 UserSettings / BackendData）`,
+			detail: `${resourceDir}（含 UserSettings / BackendData）`
 		})
 		if (layout.settingsFile) loadClientSettings()
 
-		setStep('pythonBridge', { status: 'running', progress: 60, detail: '正在初始化 Python Bridge...' })
+		setStep('pythonBridge', {
+			status: 'running',
+			progress: 60,
+			detail: '正在初始化 Python Bridge...'
+		})
 		try {
 			const pythonBridge = getPythonBridge()
 			setStep('pythonBridge', {
 				status: 'ok',
 				progress: 100,
-				detail: 'Python Bridge 已就绪（使用系统 Python）',
+				detail: 'Python Bridge 已就绪（使用系统 Python）'
 			})
 			pushBackendLog('[setup] Python Bridge 初始化完成')
 		} catch (e) {
@@ -745,12 +834,16 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			setStep('pythonBridge', {
 				status: 'error',
 				progress: 100,
-				detail: `Python Bridge 初始化失败：${String(e?.message || e)}`,
+				detail: `Python Bridge 初始化失败：${String(e?.message || e)}`
 			})
 			return { ok: false, state: getSetupState(), error: 'python-bridge-init-failed' }
 		}
 
-		setStep('nodeBackend', { status: 'running', progress: 80, detail: '正在初始化 Node.js IPC 后端...' })
+		setStep('nodeBackend', {
+			status: 'running',
+			progress: 80,
+			detail: '正在初始化 Node.js IPC 后端...'
+		})
 		try {
 			updateBackendRuntimeState({
 				running: true,
@@ -758,12 +851,12 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 				baseUrl: '',
 				port: 0,
 				lastError: '',
-				mode: 'ipc',
+				mode: 'ipc'
 			})
 			setStep('nodeBackend', {
 				status: 'ok',
 				progress: 100,
-				detail: 'Node.js IPC 后端已就绪',
+				detail: 'Node.js IPC 后端已就绪'
 			})
 			pushBackendLog('[setup] Node.js IPC 后端初始化完成')
 		} catch (e) {
@@ -771,7 +864,7 @@ async function runSetupWorkflow({ reason = 'init', retryKey = '' } = {}) {
 			setStep('nodeBackend', {
 				status: 'error',
 				progress: 100,
-				detail: `Node.js IPC 后端初始化失败：${String(e?.message || e)}`,
+				detail: `Node.js IPC 后端初始化失败：${String(e?.message || e)}`
 			})
 			return { ok: false, state: getSetupState(), error: 'node-backend-init-failed' }
 		}
@@ -849,18 +942,16 @@ async function animateWindowBounds(win, targetBounds) {
 					x: Math.round(currentX),
 					y: Math.round(currentY),
 					width: Math.round(currentWidth),
-					height: Math.round(currentHeight),
+					height: Math.round(currentHeight)
 				})
-			} catch {
-			}
+			} catch {}
 
 			if (t < 1) {
 				requestAnimationFrame(animate)
 			} else {
 				try {
 					win.setBounds(targetBounds)
-				} catch {
-				}
+				} catch {}
 				windowAnimating = false
 				resolve()
 			}
@@ -903,13 +994,16 @@ function registerIpc() {
 		} else {
 			lastNormalBounds = win.getBounds()
 			const screen = win.getScreen()
-			const display = screen.getDisplayNearestPoint({ x: lastNormalBounds.x, y: lastNormalBounds.y })
+			const display = screen.getDisplayNearestPoint({
+				x: lastNormalBounds.x,
+				y: lastNormalBounds.y
+			})
 			const workArea = display.workArea
 			await animateWindowBounds(win, {
 				x: workArea.x,
 				y: workArea.y,
 				width: workArea.width,
-				height: workArea.height,
+				height: workArea.height
 			})
 			win.maximize()
 			return { ok: true, maximized: true }
@@ -970,11 +1064,15 @@ function registerIpc() {
 		port: 0,
 		lastError: backendLastError,
 		logLineCount: backendLogLines.length,
-		mode: 'ipc',
+		mode: 'ipc'
 	}))
 
 	ipcMain.handle('dweb:backend:ping', async () => {
-		return { ok: backendRuntimeState.healthy, status: backendRuntimeState.healthy ? 200 : 503, mode: 'ipc' }
+		return {
+			ok: backendRuntimeState.healthy,
+			status: backendRuntimeState.healthy ? 200 : 503,
+			mode: 'ipc'
+		}
 	})
 
 	ipcMain.handle('dweb:backend:start', async () => {
@@ -1023,7 +1121,7 @@ function registerIpc() {
 			port: 0,
 			running: backendRuntimeState.running,
 			lastError: backendLastError,
-			mode: 'ipc',
+			mode: 'ipc'
 		}
 	})
 
@@ -1046,7 +1144,7 @@ function registerIpc() {
 		try {
 			return await runSetupWorkflow({
 				reason: payload?.reason || 'manual',
-				retryKey: payload?.retryKey || '',
+				retryKey: payload?.retryKey || ''
 			})
 		} catch (e) {
 			const msg = String(e?.message || e)
@@ -1059,7 +1157,7 @@ function registerIpc() {
 		try {
 			const result = cleanupOldRuntimeProject({
 				resourceDir: getDvsResourceDir(),
-				log: (line) => pushBackendLog(line),
+				log: (line) => pushBackendLog(line)
 			})
 			backendLastError = ''
 			return result
@@ -1143,8 +1241,8 @@ function registerIpc() {
 		const r = await dialog.showOpenDialog(mainWindow, {
 			properties: ['openFile', 'multiSelections'],
 			filters: options?.filters || [
-				{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'mkv'] },
-			],
+				{ name: 'Media', extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'mkv'] }
+			]
 		})
 		return r
 	})
@@ -1153,14 +1251,14 @@ function registerIpc() {
 		const parentWindow = event.sender.getOwnerBrowserWindow() || mainWindow
 		if (!parentWindow) return { canceled: true, filePaths: [] }
 		return dialog.showOpenDialog(parentWindow, {
-			properties: ['openDirectory', 'createDirectory'],
+			properties: ['openDirectory', 'createDirectory']
 		})
 	})
 
 	ipcMain.handle('dweb:videostudio:selectExportDir', async () => {
 		if (!mainWindow) return { canceled: true, filePaths: [] }
 		return dialog.showOpenDialog(mainWindow, {
-			properties: ['openDirectory', 'createDirectory'],
+			properties: ['openDirectory', 'createDirectory']
 		})
 	})
 
@@ -1218,7 +1316,8 @@ function registerIpc() {
 		const projectId = Number(payload?.projectId)
 		const url = String(payload?.url || '').trim()
 		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
-		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!Number.isFinite(projectId) || projectId <= 0)
+			return { ok: false, error: 'projectId is invalid' }
 		if (!url) return { ok: false, error: 'url is empty' }
 		try {
 			return await downloadUrlToProjectRoot(projectId, url, desiredFilename)
@@ -1231,7 +1330,8 @@ function registerIpc() {
 		const projectId = Number(payload?.projectId)
 		const sourcePath = String(payload?.sourcePath || '').trim()
 		const desiredFilename = payload?.desiredFilename ? String(payload.desiredFilename) : undefined
-		if (!Number.isFinite(projectId) || projectId <= 0) return { ok: false, error: 'projectId is invalid' }
+		if (!Number.isFinite(projectId) || projectId <= 0)
+			return { ok: false, error: 'projectId is invalid' }
 		if (!sourcePath) return { ok: false, error: 'sourcePath is empty' }
 		try {
 			return await copyFileToProjectRoot(projectId, sourcePath, desiredFilename)
@@ -1306,14 +1406,24 @@ function registerIpc() {
 		const expected = String(payload?.expectedRootPath || '').trim()
 		if (expected) {
 			const result = setProjectRoot(projectId, expected)
-			return { ok: true, reRegistered: result?.ok, registerResult: result, validation: validateProjectRoot(projectId) }
+			return {
+				ok: true,
+				reRegistered: result?.ok,
+				registerResult: result,
+				validation: validateProjectRoot(projectId)
+			}
 		}
 		return { ok: true, validation: validateProjectRoot(projectId) }
 	})
 
 	ipcMain.handle('dweb:aiworkflow:getAssetAccessLogs', async (_e, payload) => {
 		const maxEntries = Number(payload?.maxEntries)
-		return { ok: true, logs: getAccessLogs(Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100) }
+		return {
+			ok: true,
+			logs: getAccessLogs(
+				Number.isFinite(maxEntries) && maxEntries > 0 ? Math.floor(maxEntries) : 100
+			)
+		}
 	})
 
 	ipcMain.handle('dweb:project-cache:stats', async (_e, payload) => {
@@ -1351,12 +1461,11 @@ function registerIpc() {
 		}
 	})
 
-
 	try {
 		registerLocalDbIpc(ipcMain, {
 			backendDataDir: getBackendDataDir() || getUserDataDir(),
 			userDataDir: getUserDataDir(),
-			appSecret: getBackendDataDir() || getUserDataDir(),
+			appSecret: getBackendDataDir() || getUserDataDir()
 		})
 	} catch (err) {
 		console.error('[main] localdb ipc register failed:', err)
@@ -1377,12 +1486,17 @@ function registerIpc() {
 			imageMarkupInitialUrl = url
 
 			if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
-				try { imageMarkupWindow.close() } catch {}
+				try {
+					imageMarkupWindow.close()
+				} catch {}
 			}
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 			const targetUrl = isDev
 				? `${devUrl}/#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
 				: `file://${path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/')}#/image-markup-preview?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`
@@ -1397,16 +1511,20 @@ function registerIpc() {
 				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
-				preload: path.resolve(here, 'preload.mjs'),
-				contextIsolation: true,
-				nodeIntegration: false,
-				sandbox: false,
-				disableDialogs: true,
-			},
-		})
-		console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
-			try { imageMarkupWindow.setMenuBarVisibility(false) } catch {}
-			try { imageMarkupWindow.removeMenu() } catch {}
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true
+				}
+			})
+			console.log('[main] BrowserWindow created, isDestroyed:', imageMarkupWindow.isDestroyed())
+			try {
+				imageMarkupWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				imageMarkupWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1415,11 +1533,16 @@ function registerIpc() {
 				imageMarkupWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			imageMarkupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
+			imageMarkupWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(`[image-markup:${level}] ${message} (${sourceId}:${line})`)
+				}
+			)
+			imageMarkupWindow.on('closed', () => {
+				imageMarkupWindow = null
 			})
-			imageMarkupWindow.on('closed', () => { imageMarkupWindow = null })
 
 			console.log('[main] about to loadURL:', targetUrl)
 			await imageMarkupWindow.loadURL(targetUrl)
@@ -1441,12 +1564,20 @@ function registerIpc() {
 				width: Number(payload?.width || 0) || 0,
 				height: Number(payload?.height || 0) || 0,
 				sourceName: String(payload?.sourceName || ''),
-				exportType: payload?.exportType === 'screenshot' ? 'screenshot' : payload?.exportType === 'subject-crop' ? 'subject-crop' : 'markup',
+				exportType:
+					payload?.exportType === 'screenshot'
+						? 'screenshot'
+						: payload?.exportType === 'subject-crop'
+							? 'subject-crop'
+							: 'markup'
 			})
-			const keepWindowOpen = payload?.exportType === 'screenshot' || payload?.exportType === 'subject-crop'
+			const keepWindowOpen =
+				payload?.exportType === 'screenshot' || payload?.exportType === 'subject-crop'
 			if (!keepWindowOpen) {
 				if (imageMarkupWindow && !imageMarkupWindow.isDestroyed()) {
-					try { imageMarkupWindow.close() } catch {}
+					try {
+						imageMarkupWindow.close()
+					} catch {}
 				}
 			}
 			return { ok: true }
@@ -1471,7 +1602,10 @@ function registerIpc() {
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 
 			const queryParams = new URLSearchParams()
 			if (projectId != null) queryParams.set('projectId', String(projectId))
@@ -1495,16 +1629,20 @@ function registerIpc() {
 				frame: false,
 				autoHideMenuBar: true,
 				webPreferences: {
-				preload: path.resolve(here, 'preload.mjs'),
-				contextIsolation: true,
-				nodeIntegration: false,
-				sandbox: false,
-				disableDialogs: true,
-			},
-		})
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true
+				}
+			})
 
-		try { resourceManagerWindow.setMenuBarVisibility(false) } catch {}
-			try { resourceManagerWindow.removeMenu() } catch {}
+			try {
+				resourceManagerWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				resourceManagerWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1513,19 +1651,30 @@ function registerIpc() {
 				resourceManagerWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			resourceManagerWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
-			})
-			resourceManagerWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[resource-manager:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-			})
+			resourceManagerWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(`[resource-manager:${level}] ${message} (${sourceId}:${line})`)
+				}
+			)
+			resourceManagerWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						`[resource-manager:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+					)
+				}
+			)
 			resourceManagerWindow.on('closed', () => {
 				resourceManagerWindow = null
 			})
 
 			await resourceManagerWindow.loadURL(targetUrl)
-			console.log('[main][resource-manager] loadURL done, URL:', resourceManagerWindow.webContents.getURL())
+			console.log(
+				'[main][resource-manager] loadURL done, URL:',
+				resourceManagerWindow.webContents.getURL()
+			)
 			return { ok: true, focused: false }
 		} catch (err) {
 			console.error('[main][resource-manager] open failed', err)
@@ -1566,7 +1715,7 @@ function registerIpc() {
 			}
 			mainWindow.webContents.send('dweb:resource-manager:event', {
 				event,
-				data: payload?.data ?? null,
+				data: payload?.data ?? null
 			})
 			return { ok: true }
 		} catch (err) {
@@ -1583,7 +1732,7 @@ function registerIpc() {
 		try {
 			resourceManagerWindow.webContents.send('dweb:resource-manager:notify', {
 				event,
-				data: payload?.data ?? null,
+				data: payload?.data ?? null
 			})
 			return { ok: true }
 		} catch (err) {
@@ -1631,11 +1780,15 @@ function registerIpc() {
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 
 			const queryParts = []
 			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
-			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			if (payload?.projectId != null)
+				queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
 			queryParts.push(`title=${encodeURIComponent(title)}`)
 			if (models.length > 0) {
 				queryParts.push(`models=${encodeURIComponent(JSON.stringify(models))}`)
@@ -1663,12 +1816,16 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
-					disableDialogs: true,
-				},
+					disableDialogs: true
+				}
 			})
 
-			try { model3dEditorWindow.setMenuBarVisibility(false) } catch {}
-			try { model3dEditorWindow.removeMenu() } catch {}
+			try {
+				model3dEditorWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				model3dEditorWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1677,19 +1834,30 @@ function registerIpc() {
 				model3dEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			model3dEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[model3d-editor:${level}] ${message} (${sourceId}:${line})`)
-			})
-			model3dEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[model3d-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-			})
+			model3dEditorWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(`[model3d-editor:${level}] ${message} (${sourceId}:${line})`)
+				}
+			)
+			model3dEditorWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						`[model3d-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+					)
+				}
+			)
 			model3dEditorWindow.on('closed', () => {
 				model3dEditorWindow = null
 			})
 
 			await model3dEditorWindow.loadURL(targetUrl)
-			console.log('[main][model3d-editor] loadURL done, URL:', model3dEditorWindow.webContents.getURL())
+			console.log(
+				'[main][model3d-editor] loadURL done, URL:',
+				model3dEditorWindow.webContents.getURL()
+			)
 			if (isDev) {
 				model3dEditorWindow.webContents.openDevTools({ mode: 'detach', activate: false })
 			}
@@ -1714,7 +1882,10 @@ function registerIpc() {
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 
 			const queryParts = []
 			queryParts.push(`title=${encodeURIComponent(title)}`)
@@ -1743,12 +1914,16 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
-					disableDialogs: true,
-				},
+					disableDialogs: true
+				}
 			})
 
-			try { comfyuiSetupWindow.setMenuBarVisibility(false) } catch {}
-			try { comfyuiSetupWindow.removeMenu() } catch {}
+			try {
+				comfyuiSetupWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				comfyuiSetupWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1757,19 +1932,30 @@ function registerIpc() {
 				comfyuiSetupWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			comfyuiSetupWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[comfyui-setup:${level}] ${message} (${sourceId}:${line})`)
-			})
-			comfyuiSetupWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[comfyui-setup:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-			})
+			comfyuiSetupWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(`[comfyui-setup:${level}] ${message} (${sourceId}:${line})`)
+				}
+			)
+			comfyuiSetupWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						`[comfyui-setup:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+					)
+				}
+			)
 			comfyuiSetupWindow.on('closed', () => {
 				comfyuiSetupWindow = null
 			})
 
 			await comfyuiSetupWindow.loadURL(targetUrl)
-			console.log('[main][comfyui-setup] loadURL done, URL:', comfyuiSetupWindow.webContents.getURL())
+			console.log(
+				'[main][comfyui-setup] loadURL done, URL:',
+				comfyuiSetupWindow.webContents.getURL()
+			)
 			if (isDev) {
 				comfyuiSetupWindow.webContents.openDevTools({ mode: 'detach', activate: false })
 			}
@@ -1800,11 +1986,15 @@ function registerIpc() {
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 
 			const queryParts = []
 			if (nodeId) queryParts.push(`nodeId=${encodeURIComponent(nodeId)}`)
-			if (payload?.projectId != null) queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
+			if (payload?.projectId != null)
+				queryParts.push(`projectId=${encodeURIComponent(String(payload.projectId))}`)
 			if (videoUrl) queryParts.push(`videoUrl=${encodeURIComponent(videoUrl)}`)
 			if (videoName) queryParts.push(`videoName=${encodeURIComponent(videoName)}`)
 			queryParts.push(`title=${encodeURIComponent(title)}`)
@@ -1831,12 +2021,16 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
-					disableDialogs: true,
-				},
+					disableDialogs: true
+				}
 			})
 
-			try { videoEditorWindow.setMenuBarVisibility(false) } catch {}
-			try { videoEditorWindow.removeMenu() } catch {}
+			try {
+				videoEditorWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				videoEditorWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1845,13 +2039,21 @@ function registerIpc() {
 				videoEditorWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			videoEditorWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				appendRuntimeLog(`[video-editor:${level}] ${message} (${sourceId}:${line})`)
-			})
-			videoEditorWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				appendRuntimeLog(`[video-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-			})
+			videoEditorWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(`[video-editor:${level}] ${message} (${sourceId}:${line})`)
+				}
+			)
+			videoEditorWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						`[video-editor:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+					)
+				}
+			)
 			videoEditorWindow.on('closed', () => {
 				videoEditorWindow = null
 			})
@@ -1882,7 +2084,10 @@ function registerIpc() {
 
 			const here = path.dirname(fileURLToPath(import.meta.url))
 			const repoRoot = path.resolve(here, '..')
-			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(/\/+$/, '')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
 
 			const queryParams = new URLSearchParams()
 			if (projectId != null) queryParams.set('projectId', String(projectId))
@@ -1910,12 +2115,16 @@ function registerIpc() {
 					contextIsolation: true,
 					nodeIntegration: false,
 					sandbox: false,
-					disableDialogs: true,
-				},
+					disableDialogs: true
+				}
 			})
 
-			try { templateCenterWindow.setMenuBarVisibility(false) } catch {}
-			try { templateCenterWindow.removeMenu() } catch {}
+			try {
+				templateCenterWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				templateCenterWindow.removeMenu()
+			} catch {}
 
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				const [mainX, mainY] = mainWindow.getPosition()
@@ -1924,26 +2133,35 @@ function registerIpc() {
 				templateCenterWindow.setPosition(mainX + offsetX, mainY + offsetY)
 			}
 
-			templateCenterWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-				if (sourceId?.startsWith('devtools://')) return
-				const logLine = `[template-center:${level}] ${message} (${sourceId}:${line})`
-				appendRuntimeLog(logLine)
-				const levelStr = ['verbose', 'info', 'warning', 'error'][level] || 'info'
-				if (level === 2) console.warn(logLine)
-				else if (level === 3) console.error(logLine)
-				else console.log(logLine)
-			})
-			templateCenterWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-				const failLine = `[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
-				appendRuntimeLog(failLine)
-				console.error(failLine)
-			})
+			templateCenterWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					const logLine = `[template-center:${level}] ${message} (${sourceId}:${line})`
+					appendRuntimeLog(logLine)
+					const levelStr = ['verbose', 'info', 'warning', 'error'][level] || 'info'
+					if (level === 2) console.warn(logLine)
+					else if (level === 3) console.error(logLine)
+					else console.log(logLine)
+				}
+			)
+			templateCenterWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					const failLine = `[template-center:fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+					appendRuntimeLog(failLine)
+					console.error(failLine)
+				}
+			)
 			templateCenterWindow.on('closed', () => {
 				templateCenterWindow = null
 			})
 
 			await templateCenterWindow.loadURL(targetUrl)
-			console.log('[main][template-center] loadURL done, URL:', templateCenterWindow.webContents.getURL())
+			console.log(
+				'[main][template-center] loadURL done, URL:',
+				templateCenterWindow.webContents.getURL()
+			)
 			if (isDev) {
 				templateCenterWindow.webContents.openDevTools({ mode: 'detach' })
 			}
@@ -1976,7 +2194,12 @@ function registerIpc() {
 
 	ipcMain.handle('dweb:template-center:broadcast', async (_e, payload) => {
 		const event = String(payload?.event || '').trim()
-		console.log('[main][template-center:broadcast] event:', event, 'data keys:', payload?.data ? Object.keys(payload.data) : 'null')
+		console.log(
+			'[main][template-center:broadcast] event:',
+			event,
+			'data keys:',
+			payload?.data ? Object.keys(payload.data) : 'null'
+		)
 		if (!event) return { ok: false, error: 'missing event name' }
 		if (!mainWindow || mainWindow.isDestroyed()) {
 			console.error('[main][template-center:broadcast] mainWindow not available!')
@@ -1985,7 +2208,7 @@ function registerIpc() {
 		try {
 			mainWindow.webContents.send('dweb:template-center:event', {
 				event,
-				data: payload?.data ?? null,
+				data: payload?.data ?? null
 			})
 			console.log('[main][template-center:broadcast] sent to mainWindow successfully')
 			return { ok: true }
@@ -2004,7 +2227,7 @@ function registerIpc() {
 		try {
 			templateCenterWindow.webContents.send('dweb:template-center:notify', {
 				event,
-				data: payload?.data ?? null,
+				data: payload?.data ?? null
 			})
 			return { ok: true }
 		} catch (err) {
@@ -2037,14 +2260,13 @@ async function stopBackend() {
 	try {
 		const pythonBridge = getPythonBridge()
 		await pythonBridge.shutdown()
-	} catch {
-	}
+	} catch {}
 	updateBackendRuntimeState({
 		running: false,
 		healthy: false,
 		baseUrl: '',
 		port: 0,
-		lastError: backendLastError || '',
+		lastError: backendLastError || ''
 	})
 }
 
@@ -2065,7 +2287,7 @@ async function main() {
 		copyright: APP_COPYRIGHT,
 		website: APP_HOMEPAGE,
 		credits: `${APP_REPO_URL}\nLicensed under ${APP_LICENSE}`,
-		version: APP_VERSION,
+		version: APP_VERSION
 	})
 	initRuntimeLogger()
 	registerRuntimeDiagnostics()
@@ -2075,15 +2297,17 @@ async function main() {
 	_perfMark('basic setup done (logger, protocol, settings)')
 
 	if (_portableWarnOnReady && app.isPackaged) {
-		dialog.showMessageBox({
-			type: 'warning',
-			title: '安装目录权限提示',
-			message: '当前安装目录无写入权限',
-			detail: `${APP_NAME} 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录。`,
-			buttons: ['我知道了'],
-			defaultId: 0,
-			noLink: true,
-		}).catch(() => {})
+		dialog
+			.showMessageBox({
+				type: 'warning',
+				title: '安装目录权限提示',
+				message: '当前安装目录无写入权限',
+				detail: `${APP_NAME} 已安装到受系统保护的目录（如 Program Files），应用数据和日志将保存到用户目录（AppData）。\n\n如需完全便携化使用（所有文件保存在安装目录），请重新安装到非系统保护目录。`,
+				buttons: ['我知道了'],
+				defaultId: 0,
+				noLink: true
+			})
+			.catch(() => {})
 		_portableWarnOnReady = false
 	}
 
@@ -2091,18 +2315,28 @@ async function main() {
 		const userDir = getUserDataDir()
 		const backendDir = getBackendDataDir() || userDir
 		const dirOk = typeof userDir === 'string' && userDir.trim().length > 0
-		appendRuntimeLog(`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`)
+		appendRuntimeLog(
+			`[app] localdb init paths: userDir=${userDir} backendDir=${backendDir} ok=${dirOk}`
+		)
 		setPythonDetectCacheDir(backendDir)
 		initLocalDb({ backendDataDir: backendDir, userDataDir: userDir, appSecret: backendDir })
 		const repos = getRepos()
-		appendRuntimeLog(`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`)
+		appendRuntimeLog(
+			`[app] localdb initialized: ${repos.dbFilePath} (tag=${repos.tag || 'primary'} schema=${repos.schemaInfo?.currentVersion})`
+		)
 	} catch (err) {
 		appendRuntimeLog(`[app] localdb init failed: ${String(err?.message || err)}`)
 		appendRuntimeLog(`[app] 尝试回退初始化 localdb (强制使用 userDataDir)...`)
-		const retry = ensureLocalDbInitialized({ userDataDir: getUserDataDir(), backendDataDir: getUserDataDir(), appSecret: getUserDataDir() })
+		const retry = ensureLocalDbInitialized({
+			userDataDir: getUserDataDir(),
+			backendDataDir: getUserDataDir(),
+			appSecret: getUserDataDir()
+		})
 		if (!retry.ok) {
 			appendRuntimeLog(`[app] localdb fallback init also failed: ${retry.error}`)
-			appendRuntimeLog(`[app] WARNING: localdb 不可用，将使用前端 fallback 路径；项目相关功能可能异常。`)
+			appendRuntimeLog(
+				`[app] WARNING: localdb 不可用，将使用前端 fallback 路径；项目相关功能可能异常。`
+			)
 		} else {
 			const r = getReposSafe()
 			appendRuntimeLog(`[app] localdb fallback OK: ${r.ok ? r.repos.dbFilePath : 'unknown'}`)
@@ -2133,8 +2367,8 @@ async function main() {
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: false,
-			disableDialogs: true,
-		},
+			disableDialogs: true
+		}
 	})
 	_perfMark('BrowserWindow created')
 
@@ -2142,20 +2376,26 @@ async function main() {
 
 	try {
 		Menu.setApplicationMenu(null)
-	} catch {
-	}
+	} catch {}
 	mainWindow.setMenuBarVisibility(false)
 	mainWindow.removeMenu()
 
-	mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-		appendRuntimeLog(`[did-fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
-	})
+	mainWindow.webContents.on(
+		'did-fail-load',
+		(_event, errorCode, errorDescription, validatedURL) => {
+			appendRuntimeLog(
+				`[did-fail-load] code=${errorCode} desc=${errorDescription} url=${validatedURL}`
+			)
+		}
+	)
 	mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
 		if (sourceId?.startsWith('devtools://')) return
 		appendRuntimeLog(`[renderer:${level}] ${message} (${sourceId}:${line})`)
 	})
 	mainWindow.webContents.on('render-process-gone', (_event, details) => {
-		appendRuntimeLog(`[window-render-gone] reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`)
+		appendRuntimeLog(
+			`[window-render-gone] reason=${details?.reason || ''} exitCode=${details?.exitCode || 0}`
+		)
 	})
 	mainWindow.webContents.on('did-finish-load', () => {
 		appendRuntimeLog(`[did-finish-load] url=${mainWindow?.webContents?.getURL?.() || ''}`)
@@ -2169,15 +2409,21 @@ async function main() {
 		const mimeType = item.getMimeType() || ''
 		const contentDisposition = item.getContentDisposition()
 		const filename = item.getFilename()
-		appendRuntimeLog(`[will-download] url=${url}, filename=${filename}, mimeType=${mimeType}, contentDisposition=${contentDisposition}`)
+		appendRuntimeLog(
+			`[will-download] url=${url}, filename=${filename}, mimeType=${mimeType}, contentDisposition=${contentDisposition}`
+		)
 
 		const isExternalUrl = url.startsWith('http://') || url.startsWith('https://')
-		const isFromCloudStorage = url.includes('.aliyuncs.com') || url.includes('.volces.com') || url.includes('.myqcloud.com') || url.includes('.amazonaws.com')
+		const isFromCloudStorage =
+			url.includes('.aliyuncs.com') ||
+			url.includes('.volces.com') ||
+			url.includes('.myqcloud.com') ||
+			url.includes('.amazonaws.com')
 
 		if (isExternalUrl && !isFromCloudStorage) {
 			appendRuntimeLog(`[will-download] Opening external URL in system browser: ${url}`)
 			event.preventDefault()
-			shell.openExternal(url).catch(err => {
+			shell.openExternal(url).catch((err) => {
 				appendRuntimeLog(`[will-download] openExternal failed: ${err?.message || err}`)
 			})
 			return
@@ -2185,12 +2431,11 @@ async function main() {
 
 		if (isFromCloudStorage) {
 			const hasAttachment = /attachment/i.test(contentDisposition)
-			const isInlineableMedia = (
+			const isInlineableMedia =
 				mimeType.startsWith('image/') ||
 				mimeType.startsWith('video/') ||
 				mimeType.startsWith('audio/') ||
 				mimeType === 'application/pdf'
-			)
 			if (isInlineableMedia && !hasAttachment) {
 				appendRuntimeLog(`[will-download] Allowing inline cloud media: ${mimeType} ${url}`)
 			}
@@ -2199,7 +2444,7 @@ async function main() {
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
 		appendRuntimeLog(`[window-open] external url: ${url}`)
 		if (url.startsWith('http:') || url.startsWith('https:')) {
-			shell.openExternal(url).catch(err => {
+			shell.openExternal(url).catch((err) => {
 				appendRuntimeLog(`[window-open] openExternal failed: ${err?.message || err}`)
 			})
 		}
@@ -2229,7 +2474,7 @@ async function main() {
 			baseUrl: '',
 			port: 0,
 			lastError: '',
-			mode: 'ipc',
+			mode: 'ipc'
 		})
 		appendRuntimeLog('[app] Backend IPC initialized (mode=ipc)')
 	} catch (err) {
@@ -2268,25 +2513,33 @@ async function main() {
 				return mainWindow.loadURL(url.toString())
 			})
 		: mainWindow.loadFile(prodIndex)
-	pageLoadPromise.then(() => {
-		_perfMark('loadURL promise resolved')
-	}).catch((err) => {
-		appendRuntimeLog(`[renderer] loadURL error: ${String(err?.message || err)}`)
-	})
+	pageLoadPromise
+		.then(() => {
+			_perfMark('loadURL promise resolved')
+		})
+		.catch((err) => {
+			appendRuntimeLog(`[renderer] loadURL error: ${String(err?.message || err)}`)
+		})
 
 	// 平台初始化（Steam）完全异步，与页面加载并行，不阻塞主流程
-	platformInit().then((platStatus) => {
-		registerPlatformIpc()
-		if (platStatus?.available) {
-			appendRuntimeLog(`[platform] ${platStatus.activeDisplayName} connected. User: ${platStatus.user?.displayName || 'unknown'}`)
-		} else {
-			appendRuntimeLog(`[platform] Running in ${platStatus?.activeDisplayName || 'Mock'} mode`)
-		}
-	}).catch((err) => {
-		appendRuntimeLog(`[platform] init error (non-fatal): ${String(err?.message || err)}`)
-	})
+	platformInit()
+		.then((platStatus) => {
+			registerPlatformIpc()
+			if (platStatus?.available) {
+				appendRuntimeLog(
+					`[platform] ${platStatus.activeDisplayName} connected. User: ${platStatus.user?.displayName || 'unknown'}`
+				)
+			} else {
+				appendRuntimeLog(`[platform] Running in ${platStatus?.activeDisplayName || 'Mock'} mode`)
+			}
+		})
+		.catch((err) => {
+			appendRuntimeLog(`[platform] init error (non-fatal): ${String(err?.message || err)}`)
+		})
 
-	appendRuntimeLog(`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`)
+	appendRuntimeLog(
+		`[app] isPackaged=${app.isPackaged} platform=${process.platform} execPath=${process.execPath}`
+	)
 
 	if (isDev && mainWindow && !mainWindow.isDestroyed()) {
 		mainWindow.webContents.openDevTools({ mode: 'detach' })
