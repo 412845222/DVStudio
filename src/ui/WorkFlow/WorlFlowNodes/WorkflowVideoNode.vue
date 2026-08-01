@@ -90,7 +90,7 @@
 		</template>
 
 		<template #footer>
-			<div class="wf-media-footer" @pointerdown.stop>
+			<div class="wf-media-footer" @pointerdown.stop data-wf-node-drag-ignore="true">
 				<div class="wf-video-toolbar">
 					<div class="wf-video-row">
 						<VideoController

@@ -579,7 +579,7 @@ declare global {
 			cloudfs: {
 				listProviders(): Promise<{ ok: boolean; providers?: CloudStorageProviderMeta[]; error?: string }>
 				getActiveConfig(): Promise<{ configured: boolean; providerId?: string; providerMeta?: CloudStorageProviderMeta; config?: Record<string, unknown>; lastTestedAt?: string; lastTestOk?: boolean; error?: string }>
-				getConfigStatus(): Promise<{ ok: boolean; configured: boolean; hasActiveBucket: boolean; providerId?: string; providerName?: string; activeBucketName?: string; lastTestedAt?: string; lastTestOk?: boolean; error?: string }>
+				getConfigStatus(): Promise<{ ok: boolean; configured: boolean; hasActiveBucket: boolean; providerId: string; providerName: string; activeBucketName: string; lastTestedAt?: string; lastTestOk?: boolean; error: string | null }>
 				saveConfig(payload: { providerId: string; config: Record<string, unknown>; lastTestOk?: number }): Promise<{ ok: boolean; error?: string }>
 				clearConfig(): Promise<{ ok: boolean; error?: string }>
 				testConfig(payload: { providerId: string; config: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; message?: string }>
