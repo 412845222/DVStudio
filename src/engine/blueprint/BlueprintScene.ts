@@ -808,6 +808,21 @@ export class BlueprintScene extends Scene {
 	}
 
 	saveSelectionFrame(nodeIds: string[], label: string): SavedSelectionFrame {
+		// 去重保护：相同节点集合若已保存过，则返回已有的框（避免重叠的重复框）
+		const sortedInputIds = [...nodeIds].sort()
+		const sortedInputKey = sortedInputIds.join('|')
+		const existingFrames = this.getSavedSelectionFrames()
+		for (const frame of existingFrames) {
+			if (frame.nodeIds.length !== nodeIds.length) continue
+			const sortedFrameIds = [...frame.nodeIds].sort().join('|')
+			if (sortedFrameIds === sortedInputKey) {
+				// 若 label 不同，则更新已有框的标签
+				if (frame.label !== label) {
+					this.renameSavedSelectionFrame(frame.id, label)
+				}
+				return this._savedSelectionFrames.get(frame.id)!
+			}
+		}
 		const id = `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 		this.executeCommand(new SaveSelectionFrameCommand(this, nodeIds, label, id))
 		return this._savedSelectionFrames.get(id)!
