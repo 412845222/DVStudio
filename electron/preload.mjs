@@ -394,8 +394,8 @@ contextBridge.exposeInMainWorld('dweb', {
 			const wrapped = (_event, payload) => {
 				try {
 					handler(payload)
-				} catch {
-					/* ignore */
+				} catch (err) {
+					console.error('[preload] Error in dweb:image-markup:exported handler', err)
 				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
