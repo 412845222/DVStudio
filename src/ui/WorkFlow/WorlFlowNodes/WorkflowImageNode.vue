@@ -762,7 +762,8 @@ onBeforeUnmount(() => {
 
 .wf-media-empty {
 	width: 100%;
-	aspect-ratio: 1 / 1;
+	flex: 1 1 auto;
+	min-height: 200px;
 	border: 1px dashed var(--vscode-border);
 	border-radius: 6px;
 	padding: 10px;

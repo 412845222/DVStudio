@@ -861,7 +861,7 @@ defineExpose({
 	display: flex;
 	flex-direction: column;
 	z-index: 1;
-	overflow: visible;
+	overflow: hidden;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	will-change: transform, width, height;
@@ -1153,14 +1153,14 @@ defineExpose({
 	border-radius: 8px;
 	padding: 8px;
 	display: flex;
-	flex: 1;
+	flex: 1 1 auto;
 	min-height: 0;
 	align-items: stretch;
 	justify-content: flex-start;
 	color: var(--wf-text-muted);
 	background: var(--wf-surface-base);
 	font-size: 12px;
-	overflow: hidden;
+	overflow: auto;
 	box-sizing: border-box;
 }
 
@@ -1169,12 +1169,15 @@ defineExpose({
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex-shrink: 0;
+	flex: 1 1 auto;
+	min-height: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	flex-shrink: 0;
+	flex: 1 1 auto;
+	min-height: 200px;
+	max-height: 60%;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);

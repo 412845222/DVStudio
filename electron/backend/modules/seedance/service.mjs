@@ -607,6 +607,17 @@ export async function* generateVideoStream(ctx, payload) {
   const repo = ctx.localdb?.videoTasks
   if (!repo) throw internalError('videoTasks repo not available')
 
+  // 提前声明任务队列服务与全局任务ID，避免后续分支中引用undefined导致"tq is undefined"
+  const tq = (() => {
+    try {
+      return getTaskQueueService() ?? null
+    } catch (e) {
+      console.warn('[seedance] getTaskQueueService failed, degrading:', e?.message || e)
+      return null
+    }
+  })()
+  let globalTaskId = null
+
   const prompt = String(payload?.prompt || '').trim()
   const model = String(payload?.model || payload?.endpoint_id || payload?.videoModel || '').trim()
   if (!model) {
@@ -649,7 +660,11 @@ export async function* generateVideoStream(ctx, payload) {
   const refMode = String(payload?.refMode || 'auto').trim().toLowerCase() || 'auto'
   const source = String(payload?.source || 'bottom-chat').trim() || 'bottom-chat'
   const projectId = payload?.projectId ? Number(payload.projectId) || null : null
-  const clientRequestId = String(payload?.clientRequestId || '').trim()
+  const clientRequestIdRaw = String(payload?.clientRequestId || '').trim()
+  // 兜底：当前端漏传clientRequestId时自动生成一个，确保任务队列总能注册，避免"tq is undefined"
+  const effectiveClientRequestId = clientRequestIdRaw
+    || `seedance-auto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const clientRequestId = clientRequestIdRaw
   const nodeId = String(payload?.nodeId || '').trim()
 
   let refImageUrls = []
@@ -808,16 +823,14 @@ export async function* generateVideoStream(ctx, payload) {
       throw new Error(`Seedance create task failed: invalid response ${JSON.stringify(createObj).slice(0, 500)}`)
     }
 
-    const tq = getTaskQueueService()
-    let globalTaskId = null
-    if (tq && clientRequestId) {
+    if (tq && effectiveClientRequestId) {
       try {
         const regResult = tq.registerTask({
           provider: 'seedance',
           category: 'video',
           projectId,
           nodeId: nodeId || null,
-          clientRequestId,
+          clientRequestId: effectiveClientRequestId,
           remoteTaskId: taskId,
           title: (prompt || '').slice(0, 50) || 'Seedance视频生成',
           prompt,
@@ -966,9 +979,9 @@ export async function* generateVideoStream(ctx, payload) {
         }
         if (billingText) outPayload.billing = billingText
 
-        if (tq && globalTaskId) {
+        if (globalTaskId) {
           try {
-            tq.completeTask(globalTaskId, {
+            tq?.completeTask(globalTaskId, {
               resultUrl: videoUrl,
               coverUrl: lastFrameUrl || videoUrl,
               statusText: 'Seedance：完成',
@@ -1020,9 +1033,9 @@ export async function* generateVideoStream(ctx, payload) {
           remoteTaskId: taskId,
         })
 
-        if (tq && globalTaskId) {
+        if (globalTaskId) {
           try {
-            tq.failTask(globalTaskId, errMsg)
+            tq?.failTask(globalTaskId, errMsg)
           } catch (tqErr) {
             console.warn('[seedance] Failed to fail task in queue:', tqErr?.message || tqErr)
           }
@@ -1060,9 +1073,9 @@ export async function* generateVideoStream(ctx, payload) {
         remoteTaskId: taskId,
       })
 
-      if (tq && globalTaskId) {
+      if (globalTaskId) {
         try {
-          tq.updateTask(globalTaskId, {
+          tq?.updateTask(globalTaskId, {
             status: 'running',
             progress: runningProgress,
             statusText: statusMsg,
@@ -1082,9 +1095,9 @@ export async function* generateVideoStream(ctx, payload) {
     }
   } catch (err) {
     const errMsg = String(err?.message || err || 'unknown error')
-    if (tq && globalTaskId) {
+    if (globalTaskId) {
       try {
-        tq.failTask(globalTaskId, errMsg)
+        tq?.failTask(globalTaskId, errMsg)
       } catch (tqErr) {
         // ignore
       }

@@ -82,16 +82,17 @@
 						</div>
 					</div>
 					<NodeChatInput
-						ref="inputRef"
-						:model-value="localDraft"
-						:placeholder="placeholder"
-						:disabled="submitting"
-						:input-param-preview-refs="inputParamPreviewRefsResolved"
-						:selected-references="selectedRefsForInput"
-						@update:model-value="onDraftInput"
-						@update:selected-references="onSelectedRefsChange"
-						@submit="handleSubmit"
-					/>
+					ref="inputRef"
+					:model-value="localDraft"
+					:placeholder="placeholder"
+					:disabled="submitting"
+					:input-param-preview-refs="inputParamPreviewRefsResolved"
+					:selected-references="selectedRefsForInput"
+					@update:model-value="onDraftInput"
+					@update:selected-references="onSelectedRefsChange"
+					@blur="handleInputBlur"
+					@submit="handleSubmit"
+				/>
 				</div>
 
 				<div class="bp-node-chat-footer">
@@ -151,7 +152,7 @@
 			<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
 				<NodeChatParamPanel
 					v-if="showParams && nodeType"
-					:key="`param-panel-${JSON.stringify(currentParams)}`"
+					:key="paramPanelKey"
 					class="bp-node-chat-param-popover"
 					:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
 					:node-type="nodeType"
@@ -167,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
@@ -180,6 +181,7 @@ import NodeChatInput from './NodeChatInput.vue'
 import NodeChatParamPanel from './NodeChatParamPanel.vue'
 import type { InputParamPreviewRef } from './index'
 import { useNodeChatSync } from './useNodeChatSync'
+import { stableParamsKey } from './chatStateUtils'
 
 const { t } = useI18n()
 
@@ -236,7 +238,8 @@ const {
 	handleStop,
 	handleClose,
 	handleRemoveParamRef,
-	toggleParams
+	toggleParams,
+	flushSave
 } = useNodeChatSync(props)
 
 const onDraftInput = (value: string) => {
@@ -300,6 +303,34 @@ const paramRefTitle = (item: InputParamPreviewRef) => {
 }
 
 const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidth))
+
+// ========== 参数面板稳定 key：使用 stableParamsKey，避免键顺序变化导致虚假重建 ==========
+const paramPanelKey = computed(() => {
+	return `param-panel-${props.nodeType || 'unknown'}-${stableParamsKey(currentParams.value)}`
+})
+
+// ========== 输入框 blur 时保存一次 ==========
+const handleInputBlur = () => {
+	flushSave()
+}
+
+// ========== Ctrl+S 保存 ==========
+const onKeyDown = (e: KeyboardEvent) => {
+	if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+		e.preventDefault()
+		e.stopPropagation()
+		flushSave()
+		return
+	}
+}
+
+onMounted(() => {
+	window.addEventListener('keydown', onKeyDown)
+})
+
+onBeforeUnmount(() => {
+	window.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <style scoped>

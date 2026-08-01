@@ -15,6 +15,61 @@ type Options = {
 	defaultMaxWidth?: number
 }
 
+export type FirstFrameCaptureResult = {
+	ok: boolean
+	posterUrl?: string
+	error?: string
+}
+
+/**
+ * 一次性捕获视频首帧（单任务封装），便于业务层直接使用（如 bindVideoResultToNode 时立刻生成 posterUrl）。
+ * 内部使用默认共享队列，默认 maxWidth=480、timeoutMs=10000。
+ */
+export async function firstFrameCapture(
+	videoUrl: string,
+	opts?: { maxWidth?: number; timeoutMs?: number }
+): Promise<FirstFrameCaptureResult> {
+	const src = String(videoUrl || '').trim()
+	if (!src) return { ok: false, error: 'empty video url' }
+	const maxWidth = Number(opts?.maxWidth ?? 480)
+	const timeoutMs = Number(opts?.timeoutMs ?? 10000)
+	const queue = new VideoFirstFrameCaptureQueue({ concurrency: 1, defaultMaxWidth: maxWidth, defaultTimeoutMs: timeoutMs })
+	try {
+		return await new Promise<FirstFrameCaptureResult>((resolve) => {
+			const taskId = `first-frame-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+			let resolved = false
+			let guardTimer: number | null = null
+			const clearGuard = () => {
+				if (guardTimer != null) {
+					try { clearTimeout(guardTimer) } catch {}
+					guardTimer = null
+				}
+			}
+			const finish = (res: FirstFrameCaptureResult) => {
+				if (resolved) return
+				resolved = true
+				clearGuard()
+				try { queue.cancel() } catch {}
+				resolve(res)
+			}
+			queue.enqueue([{
+				id: taskId,
+				url: src,
+				maxWidth,
+				timeoutMs,
+				onResult: (res) => {
+					if (res.posterUrl) finish({ ok: true, posterUrl: res.posterUrl })
+					else finish({ ok: false, error: res.error || 'capture failed' })
+				},
+			}])
+			// 额外保护：超时兜底，避免 queue 内部异常导致不 resolve
+			guardTimer = window.setTimeout(() => finish({ ok: false, error: 'first-frame guard timeout' }), timeoutMs + 2000)
+		})
+	} catch (err) {
+		return { ok: false, error: getErrorMessage(err) }
+	}
+}
+
 export class VideoFirstFrameCaptureQueue {
 	private readonly concurrency: number
 	private readonly defaultTimeoutMs: number

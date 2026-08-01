@@ -17,6 +17,7 @@ import {
 	clearPendingPrompt
 } from '../seedance/useSeedanceVideoReferenceCheck'
 import type { useGlobalTaskBridge } from '../../../../composables/useGlobalTaskBridge'
+import { makeClientRequestId } from '../../../../composables/useGlobalTaskBridge'
 
 type GlobalTaskBridge = ReturnType<typeof useGlobalTaskBridge>
 
@@ -3143,6 +3144,13 @@ const runVideoTask = async (
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
 	const { kind, model } = normalizeVideoModel(params)
+
+	// 兜底：若上游未写入 clientRequestId（如纯文生视频入口未走全局任务注册），
+	// 则此处生成一个与节点/provider关联的稳定ID，避免后端漏注册任务队列导致"tq is undefined"
+	if (!task.clientRequestId) {
+		task.clientRequestId = makeClientRequestId(task.nodeId || payload.nodeId || '', kind || 'video')
+	}
+
 	appendDetail(deps, task.id, t('aiworkflow.runtime.detailModel', { model }))
 	appendDetail(
 		deps,
@@ -3224,97 +3232,119 @@ const runVideoTask = async (
 		kind === 'jimeng' ? svc.jimengVideoGenerateStream(form) : svc.seedanceGenerateStream(form)
 
 	let produced = 0
-	for await (const ev of stream) {
-		if (ev.type === 'done') break
-		if (ev.type === 'error') {
-			const message = String(ev.error?.message ?? 'unknown')
-			throw new Error(message)
-		}
-		const message = ev.message as Record<string, unknown>
-		if (message?.type === 'agentToUi/chatMessage') {
-			const msgPayload =
-				typeof message.payload === 'object' && message.payload
-					? (message.payload as Record<string, unknown>)
-					: {}
-			const obj: Record<string, unknown> | null = (() => {
-				try {
-					const raw = String(msgPayload.content ?? '')
-					return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
-				} catch {
-					return null
-				}
-			})()
-			if (obj) {
-				const urlRaw = String(obj.videoUrl ?? obj.videoUrlRemote ?? obj.url ?? '').trim()
-				const url = deps.resolveBackendUrl(urlRaw)
-				const downloadStatus = String(obj.downloadStatus ?? '').trim()
-				const progressRaw = Number(obj.downloadProgress ?? 0)
-				const progress = Number.isFinite(progressRaw)
-					? Math.max(0, Math.min(100, Math.round(progressRaw)))
-					: task.progress
-				if (urlRaw) {
-					let bound = true
-					if (typeof deps.bindVideoResultToNode === 'function') {
-						const bindRet = await deps.bindVideoResultToNode(payload.nodeId, urlRaw)
-						bound = bindRet !== false
-					}
-					if (!bound) {
-						appendDetail(deps, task.id, t('aiworkflow.runtime.videoImportFailed'))
-						continue
-					}
-					appendResult(deps, task.id, {
-						kind: 'video',
-						url,
-						label: t('aiworkflow.runtime.videoResultLabel')
-					})
-					produced += 1
-				}
-				updateTask(deps, task.id, {
-					status: produced > 0 ? 'completed' : 'running',
-					statusText:
-						downloadStatus ||
-						(produced > 0
-							? t('aiworkflow.runtime.videoResultReady')
-							: t('aiworkflow.runtime.taskProcessing')),
-					progress,
-					...(produced > 0 ? { finishedAt: Date.now() } : {})
-				})
-			}
-			continue
-		}
-		if (message?.type === 'agentToUi/taskStatus') {
-			const msgPayload =
-				typeof message.payload === 'object' && message.payload
-					? (message.payload as Record<string, unknown>)
-					: {}
-			const line = String(msgPayload.message ?? msgPayload.phase ?? '')
-			if (line) {
-				appendDetail(deps, task.id, line)
-				updateTask(deps, task.id, {
-					status: 'running',
-					statusText: line,
-					progress: Math.min(80, task.progress + 2)
-				})
-			}
-			continue
-		}
-		if (message?.type === 'agentToUi/error') {
-			const msgPayload =
-				typeof message.payload === 'object' && message.payload
-					? (message.payload as Record<string, unknown>)
-					: {}
-			const line = String(msgPayload.message ?? 'unknown')
-			throw new Error(line)
-		}
-	}
+	let lastResultUrl = ''
+	let lastCoverUrl = ''
+	let remoteTaskIdBound = false
 
-	if (produced === 0) throw new Error(t('aiworkflow.runtime.noVideosReceived'))
-	updateTask(deps, task.id, {
-		status: 'completed',
-		statusText: t('aiworkflow.runtime.videoGenerationComplete'),
-		progress: 100,
-		finishedAt: Date.now()
-	})
+	try {
+		for await (const ev of stream) {
+			if (ev.type === 'done') break
+			if (ev.type === 'error') {
+				const message = String(ev.error?.message ?? 'unknown')
+				throw new Error(message)
+			}
+			const message = ev.message as Record<string, unknown>
+			if (message?.type === 'agentToUi/chatMessage') {
+				const msgPayload =
+					typeof message.payload === 'object' && message.payload
+						? (message.payload as Record<string, unknown>)
+						: {}
+				const obj: Record<string, unknown> | null = (() => {
+					try {
+						const raw = String(msgPayload.content ?? '')
+						return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+					} catch {
+						return null
+					}
+				})()
+				if (obj) {
+					const rawTaskId = String(obj.taskId ?? obj.remoteTaskId ?? '').trim()
+					if (rawTaskId && !remoteTaskIdBound) {
+						remoteTaskIdBound = true
+						syncHelpers?.syncGlobalBindRemote?.(rawTaskId)
+					}
+					const urlRaw = String(obj.videoUrl ?? obj.videoUrlRemote ?? obj.url ?? '').trim()
+					const url = deps.resolveBackendUrl(urlRaw)
+					const lastFrameRaw = String(obj.lastFrameUrl ?? obj.lastFrameUrlRemote ?? obj.coverUrl ?? '').trim()
+					const downloadStatus = String(obj.downloadStatus ?? '').trim()
+					const progressRaw = Number(obj.downloadProgress ?? 0)
+					const progress = Number.isFinite(progressRaw)
+						? Math.max(0, Math.min(100, Math.round(progressRaw)))
+						: task.progress
+					if (urlRaw) {
+						lastResultUrl = urlRaw
+						lastCoverUrl = lastFrameRaw
+						let bound = true
+						if (typeof deps.bindVideoResultToNode === 'function') {
+							const bindRet = await deps.bindVideoResultToNode(payload.nodeId, urlRaw)
+							bound = bindRet !== false
+						}
+						if (!bound) {
+							appendDetail(deps, task.id, t('aiworkflow.runtime.videoImportFailed'))
+							continue
+						}
+						appendResult(deps, task.id, {
+							kind: 'video',
+							url,
+							label: t('aiworkflow.runtime.videoResultLabel')
+						})
+						produced += 1
+					}
+					syncHelpers?.syncGlobalProgress?.({ progress, statusText: downloadStatus || (produced > 0 ? t('aiworkflow.runtime.videoResultReady') : t('aiworkflow.runtime.taskProcessing')) })
+					updateTask(deps, task.id, {
+						status: produced > 0 ? 'completed' : 'running',
+						statusText:
+							downloadStatus ||
+							(produced > 0
+								? t('aiworkflow.runtime.videoResultReady')
+								: t('aiworkflow.runtime.taskProcessing')),
+						progress,
+						...(produced > 0 ? { finishedAt: Date.now() } : {})
+					})
+				}
+				continue
+			}
+			if (message?.type === 'agentToUi/taskStatus') {
+				const msgPayload =
+					typeof message.payload === 'object' && message.payload
+						? (message.payload as Record<string, unknown>)
+						: {}
+				const line = String(msgPayload.message ?? msgPayload.phase ?? '')
+				if (line) {
+					appendDetail(deps, task.id, line)
+					const newProgress = Math.min(80, task.progress + 2)
+					syncHelpers?.syncGlobalProgress?.({ progress: newProgress, statusText: line, status: 'running' })
+					updateTask(deps, task.id, {
+						status: 'running',
+						statusText: line,
+						progress: newProgress
+					})
+				}
+				continue
+			}
+			if (message?.type === 'agentToUi/error') {
+				const msgPayload =
+					typeof message.payload === 'object' && message.payload
+						? (message.payload as Record<string, unknown>)
+						: {}
+				const line = String(msgPayload.message ?? 'unknown')
+				throw new Error(line)
+			}
+		}
+
+		if (produced === 0) throw new Error(t('aiworkflow.runtime.noVideosReceived'))
+		updateTask(deps, task.id, {
+			status: 'completed',
+			statusText: t('aiworkflow.runtime.videoGenerationComplete'),
+			progress: 100,
+			finishedAt: Date.now()
+		})
+		syncHelpers?.syncGlobalComplete?.(lastResultUrl, lastCoverUrl || lastResultUrl, t('aiworkflow.runtime.videoGenerationComplete'))
+	} catch (err: unknown) {
+		const errMsg = getErrorMessage(err)
+		syncHelpers?.syncGlobalFail?.(errMsg)
+		throw err
+	}
 }
 
 const pollMeshy3DTaskStatus = async (

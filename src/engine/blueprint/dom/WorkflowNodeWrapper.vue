@@ -53,6 +53,7 @@
 			@export-unreal-lighting="onNodeExportUnrealLighting"
 			@disconnect-unreal="onNodeDisconnectUnreal"
 			@set-asset-root-path="onNodeSetUnrealAssetRootPath"
+			@update-poster="onUpdatePoster"
 		/>
 	</div>
 </template>
@@ -145,6 +146,7 @@ const emit = defineEmits<{
 	(e: 'export-unreal-lighting', nodeId: string): void
 	(e: 'disconnect-unreal', nodeId: string): void
 	(e: 'set-asset-root-path', payload: { nodeId: string; path: string }): void
+	(e: 'update-poster', payload: { nodeId: string; posterDataUrl: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -363,6 +365,10 @@ const onMediaReady = () => {
 
 const onInvalidateScreenshot = () => {
 	emit('invalidate-screenshot', props.node.id)
+}
+
+const onUpdatePoster = (posterDataUrl: string) => {
+	emit('update-poster', { nodeId: props.node.id, posterDataUrl })
 }
 
 const onPreviewContextMenu = (payload: { clientX: number; clientY: number }) => {

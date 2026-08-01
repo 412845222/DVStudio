@@ -36,6 +36,10 @@ import type {
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
 import { isString, isNumber, isBoolean, isRecord, isArray } from '../../types/utils'
+import {
+	areParamsEqual,
+	areSelectedRefsEqual
+} from '../../ui/BluePrint/node-dialog/chatStateUtils'
 
 export type AIWorkflowState = WorkflowState
 
@@ -5168,73 +5172,94 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.nodeChatDialog.visible = false
 			state.nodeChatDialog.submitting = false
 		},
+		// ========== 新的批量快照 mutation：一次设置 draft+params+refs，引用更稳定 ==========
+		setNodeChatDialogSnapshot(
+			state: WorkflowState,
+			payload: {
+				draft?: string
+				params?: Record<string, unknown>
+				selectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
+			const curNodeId = state.nodeChatDialog.nodeId
+			const targetWriteNode = curNodeId ? state.nodesById[curNodeId] : null
+
+			let changed = false
+
+			// draft：内容一致就跳过
+			if (payload.draft !== undefined && state.nodeChatDialog.draft !== payload.draft) {
+				state.nodeChatDialog.draft = payload.draft
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatDraft = payload.draft
+					;(targetWriteNode as any).prompt = payload.draft
+				}
+				changed = true
+			}
+
+			// params：深比较一致就跳过
+			if (payload.params !== undefined && !areParamsEqual(state.nodeChatDialog.params, payload.params)) {
+				state.nodeChatDialog.params = { ...payload.params }
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatParams = state.nodeChatDialog.params
+				}
+				changed = true
+			}
+
+			// selectedRefs：深比较一致就跳过
+			if (
+				payload.selectedRefs !== undefined &&
+				!areSelectedRefsEqual(state.nodeChatDialog.selectedRefs, payload.selectedRefs)
+			) {
+				state.nodeChatDialog.selectedRefs = [...payload.selectedRefs]
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatSelectedRefs =
+						state.nodeChatDialog.selectedRefs.length === 0
+							? undefined
+							: state.nodeChatDialog.selectedRefs
+				}
+				changed = true
+			}
+
+			return changed
+		},
+
 		setNodeChatDraft(state, payload: { text: string }) {
+			// 幂等：内容一致就跳过
+			if (state.nodeChatDialog.draft === payload.text) return
 			const curDialogNodeId = state.nodeChatDialog.nodeId
-			const prevLen = state.nodeChatDialog.draft.length
 			state.nodeChatDialog.draft = payload.text
-			const newLen = payload.text.length
 			const targetNodeId = curDialogNodeId
 			const tryWrite = targetNodeId && state.nodesById[targetNodeId]
 			if (tryWrite) {
 				;(state.nodesById[targetNodeId] as any).nodeChatDraft = payload.text
 				;(state.nodesById[targetNodeId] as any).prompt = payload.text
 			}
-			if (prevLen !== newLen || !tryWrite) {
-				console.log('[DraftFlow#store setNodeChatDraft] MUTATION', {
-					nodeId: curDialogNodeId,
-					targetNodeId,
-					writeSuccess: !!tryWrite,
-					prevLen,
-					newLen,
-					prevPreview:
-						prevLen > 40
-							? state.nodeChatDialog.draft.slice(0, 40) + '...'
-							: state.nodeChatDialog.draft || '(empty)',
-					newPreview: newLen > 40 ? payload.text.slice(0, 40) + '...' : payload.text || '(empty)'
-				})
-			}
 		},
 		setNodeChatParams(state: WorkflowState, payload: { params: Record<string, unknown> }) {
-			state.nodeChatDialog.params = payload.params
+			// 幂等：内容一致就跳过，避免引用变化导致的虚假更新
+			if (areParamsEqual(state.nodeChatDialog.params, payload.params)) return
+			state.nodeChatDialog.params = { ...payload.params }
 			const curNodeId = state.nodeChatDialog.nodeId
 			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
 			if (writeToNodesById) {
-				;(state.nodesById[curNodeId] as any).nodeChatParams = payload.params
+				;(state.nodesById[curNodeId] as any).nodeChatParams = state.nodeChatDialog.params
 			}
-			console.log('[DraftFlow#store setNodeChatParams] MUTATION', {
-				nodeId: curNodeId,
-				writeSuccess: !!writeToNodesById,
-				paramsKeys: Object.keys(payload.params)
-			})
 		},
 		setNodeChatSelectedRefs(
 			state: WorkflowState,
 			payload: { refs: WorkflowNodeChatSelectedRef[] }
 		) {
-			state.nodeChatDialog.selectedRefs = payload.refs
+			// 幂等：内容一致就跳过
+			if (areSelectedRefsEqual(state.nodeChatDialog.selectedRefs, payload.refs)) return
+			state.nodeChatDialog.selectedRefs = [...payload.refs]
 			const curNodeId = state.nodeChatDialog.nodeId
 			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
 			if (writeToNodesById) {
 				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs =
-					payload.refs.length === 0 ? undefined : payload.refs
-				console.log('[DraftFlow#store setNodeChatSelectedRefs] WRITE to nodesById', {
-					nodeId: curNodeId,
-					refsLen: payload.refs.length,
-					firstRefPreview:
-						payload.refs.length > 0
-							? {
-									kind: payload.refs[0].kind,
-									fromNodeId: payload.refs[0].fromNodeId,
-									label: String(payload.refs[0].label ?? '').slice(0, 30)
-								}
-							: null
-				})
+					state.nodeChatDialog.selectedRefs.length === 0
+						? undefined
+						: state.nodeChatDialog.selectedRefs
 			}
-			console.log('[DraftFlow#store setNodeChatSelectedRefs] MUTATION', {
-				nodeId: curNodeId,
-				writeSuccess: !!writeToNodesById,
-				refsLen: payload.refs.length
-			})
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
 			state.nodeChatDialog.submitting = payload.submitting
@@ -5726,6 +5751,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodeChatParams({ commit }, payload: { params: Record<string, unknown> }) {
 			commit('setNodeChatParams', payload)
+		},
+		setNodeChatDialogSnapshot(
+			{ commit },
+			payload: {
+				draft?: string
+				params?: Record<string, unknown>
+				selectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
+			commit('setNodeChatDialogSnapshot', payload)
 		},
 		submitNodeChat({ commit }, payload: WorkflowNodeChatSubmitPayload) {
 			commit('setNodeChatSubmitting', { submitting: true })

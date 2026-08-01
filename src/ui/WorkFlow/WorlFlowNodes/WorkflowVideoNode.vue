@@ -184,6 +184,7 @@ import VideoController from '../../UIComponent/VideoController.vue'
 import { DwebCanvasGL } from '../../../engine/webgl/canvas/DwebCanvasGL'
 import { useI18n } from '../../../i18n'
 import { useVideoEditor } from '../../../composables/useVideoEditor'
+import { useVideoFirstFramePoster } from '../../../composables/useVideoFirstFramePoster'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
@@ -331,6 +332,7 @@ const emit = defineEmits<{
 		e: 'capture-preview',
 		payload: { dataUrl: string; width: number; height: number; time: number }
 	): void
+	(e: 'update-poster', posterDataUrl: string): void
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -363,10 +365,24 @@ let localMediaRetryTimer: number | null = null
 let localMediaRetryCount = 0
 let hasActiveVideo = false
 const resourceFallbackUrl = ref('')
-const localPosterUrl = ref<string | null>(null)
 const effectiveResourceUrl = computed(() =>
 	String(resourceFallbackUrl.value || props.resourceUrl || '').trim()
 )
+// 自动首帧捕获：当 resourceUrl 变化且未显式给出 posterUrl 时，
+// 调用 VideoFirstFrameCaptureQueue 进行捕获，捕获后触发 update-poster 事件
+// 让业务层(AIWorkflowPage)写回 SSOT，从而让 Canvas 状态下也能取到 posterUrl。
+const { localPosterUrl, capturing: posterCapturing } = useVideoFirstFramePoster({
+	effectiveResourceUrl,
+	explicitPosterUrl: () => props.posterUrl,
+	nodeId: () => props.nodeId,
+	options: { maxWidth: 520, timeoutMs: 10000 },
+	onCaptured: (url) => {
+		emit('update-poster', url)
+		// 捕获完成后，尝试让 Canvas 的预览缓存也失效，避免蓝图重绘时取旧数据
+		scheduleInvalidateScreenshot()
+	},
+})
+const _unusedPosterCapturing = posterCapturing // silence unused var
 
 let invalidateScreenshotTimer: number | null = null
 const scheduleInvalidateScreenshot = () => {
@@ -1587,8 +1603,9 @@ onBeforeUnmount(() => {
 
 .wf-media-preview {
 	width: 100%;
-	flex: 0 0 auto;
-	aspect-ratio: 1 / 1;
+	flex: 1 1 auto;
+	min-height: 200px;
+	max-height: 60%;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--vscode-border);
@@ -1612,7 +1629,8 @@ onBeforeUnmount(() => {
 
 .wf-media-empty {
 	width: 100%;
-	aspect-ratio: 1 / 1;
+	flex: 1 1 auto;
+	min-height: 200px;
 	border: 1px dashed var(--vscode-border);
 	border-radius: 6px;
 	padding: 10px;
