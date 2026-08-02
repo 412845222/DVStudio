@@ -688,6 +688,7 @@ const perfSnapshot = ref<SceneLayoutPreviewPerfSnapshot>({
 let viewer: SceneLayoutPreviewViewer | null = null
 let viewerInitRaf = 0
 let viewerInitPending = false
+let viewerCreationInProgress = false // 新增：viewer创建中状态锁，防止竞态条件下并发创建多实例
 let viewerInitCooldownUntil = 0
 let activePreviewRequestId = 0
 let perfPollTimer: ReturnType<typeof setInterval> | null = null
@@ -1868,6 +1869,7 @@ function _uninstallNativeDiagnosticListeners() {
 const createViewerNow = () => {
 	const canvas = canvasRef.value
 	if (viewer || !canvas) return false
+	if (viewerCreationInProgress) return false // 新增：防止并发创建
 	if (!canvas.isConnected) return false
 	const rect = canvas.getBoundingClientRect()
 	if (rect.width <= 0 || rect.height <= 0) {
@@ -1885,6 +1887,7 @@ const createViewerNow = () => {
 		nodeId: props.nodeId,
 		canvasSize: { width: rect.width, height: rect.height }
 	})
+	viewerCreationInProgress = true // 新增：加锁
 	try {
 		viewer = new SceneLayoutPreviewViewer(canvas, {
 			onLayoutChange: (items) => emit('update-layout-items', items),
@@ -1932,6 +1935,8 @@ const createViewerNow = () => {
 			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
 		lastActionMessage.value = t('nodes.sceneLayout.msgViewerInitFailed', { error: errMessage })
 		return false
+	} finally {
+		viewerCreationInProgress = false // 新增：无论成功失败都释放锁
 	}
 }
 
@@ -1965,12 +1970,15 @@ const disposeViewer = (reason?: string) => {
 	clearViewerInitSchedule()
 	viewerInitCooldownUntil = 0
 	stopPerfPolling()
-	if (!viewer) return
+	if (!viewer && !viewerCreationInProgress) return
 	sceneLog('disposeViewer:', { nodeId: props.nodeId, reason: reason || 'explicit' })
 	saveViewState()
 	captureSnapshot()
-	viewer.dispose()
-	viewer = null
+	if (viewer) {
+		viewer.dispose()
+		viewer = null
+	}
+	viewerCreationInProgress = false // 新增：释放创建锁，确保下次可以正常重建
 	cachedLayoutSignature = '' // 重置缓存签名，下次需要重新setLayout
 }
 
@@ -2031,7 +2039,29 @@ const startPreviewLoad = async (requestId: number) => {
 		canvasConnected: !!canvasRef.value?.isConnected
 	})
 	emitPreviewProgress(0.12, t('nodes.sceneLayout.progressInitRenderer'))
+
+	// 【2026-08 修复·超时watchdog】
+	// waitForViewerReady() 存在"canvas尺寸始终为0 → 所有尝试失败 → phase卡在loading"的场景，
+	// 即使 waitForViewerReady 内部有 8 次重试，仍可能因 reflow 尚未结束超时失败；
+	// 此处额外加一层 1500ms 看门狗：超时后若仍未就绪且当前request未被取消，
+	// 直接调用 handlePreviewError 强制回到 masked 状态，
+	// 配合 WorkflowThreePreviewShell 的常驻启动按钮，用户可立即点击重试。
+	let watchdogFired = false
+	const watchdogTimer = window.setTimeout(() => {
+		if (activePreviewRequestId !== requestId) return
+		if (viewer) return // 已经ready了，不触发
+		watchdogFired = true
+		// eslint-disable-next-line no-console
+		console.warn('[SCENE-LAYOUT-PREVIEW] startPreviewLoad: watchdog timeout, fallback to masked', {
+			nodeId: props.nodeId,
+			requestId
+		})
+		handlePreviewError()
+	}, 1500)
+
 	const ready = await waitForViewerReady()
+	window.clearTimeout(watchdogTimer)
+	if (watchdogFired) return // watchdog已经处理过了，直接退出
 	if (activePreviewRequestId !== requestId) return
 	if (!ready || !viewer) {
 		// eslint-disable-next-line no-console
@@ -2039,6 +2069,10 @@ const startPreviewLoad = async (requestId: number) => {
 			ready,
 			hasViewer: !!viewer
 		})
+		// 调用 handlePreviewError() 会触发 failPreviewSession，
+		// 但在 useAIWorkflowThreejsLifecycleManager 中 failPreviewSession
+		// 已不再重置 activatedOnce=false，且 canStart 保持 true，
+		// 因此不会出现按钮永久消失的问题，用户可再次点击按钮重试。
 		handlePreviewError()
 		return
 	}

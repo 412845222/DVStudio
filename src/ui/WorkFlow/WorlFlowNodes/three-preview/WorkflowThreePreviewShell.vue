@@ -36,25 +36,25 @@
 		<div v-else-if="showMaskedOverlay" class="wf-three-shell-overlay masked">
 			<div class="wf-three-shell-title">{{ displayMaskedTitle }}</div>
 			<div class="wf-three-shell-text">{{ displayMaskedText }}</div>
-			<button
-				v-if="canStart"
-				class="wf-three-shell-start"
-				type="button"
-				@click.stop="emit('start')"
-			>
-				{{ displayStartLabel }}
-			</button>
 		</div>
 		<div v-else-if="showMaskedDock" class="wf-three-shell-dock masked">
-			<button
-				v-if="canStart"
-				class="wf-three-shell-start"
-				type="button"
-				@click.stop="emit('start')"
-			>
+			<div class="wf-three-shell-dock-copy">{{ displayMaskedTitle }}</div>
+		</div>
+		<!--
+			【常驻启动按钮 · 2026-08 修复】
+			独立于任何 phase（masked/loading/interactive）和 canStart 条件，只要 !empty 就永远可见：
+			- 不被 overlay 的 z-index:2 遮挡（此处 z-index:3）
+			- 右下角位置不遮挡左下角的遮罩提示信息
+			- 彻底解决"二次激活节点时 kickoffAutoStart 强制进入 loading 阶段后按钮消失"的问题
+		-->
+		<div
+			v-if="shouldShowAlwaysButton"
+			class="wf-three-shell-dock always"
+			data-wf-three-shell-always-dock="true"
+		>
+			<button class="wf-three-shell-start" type="button" @click.stop="emit('start')">
 				{{ displayStartLabel }}
 			</button>
-			<div class="wf-three-shell-dock-copy">{{ displayMaskedTitle }}</div>
 		</div>
 		<slot name="overlay" />
 	</div>
@@ -98,9 +98,13 @@ const emit = defineEmits<{
 
 const phase = computed(() => props.state?.phase ?? 'masked')
 const canStart = computed(() => {
-	if (props.state?.canStart === false) return false
+	// （保留原计算作为兼容/其他组件消费；不再是按钮显示的唯一条件——按钮已改为常驻）
+	if (props.state?.canStart === false && props.empty) return false
 	return phase.value === 'masked' && !props.empty
 })
+// 【常驻按钮显示条件】只要有内容（!empty）就显示，不依赖 phase / canStart
+// 解决"二次激活进入loading/竞态后按钮永远不渲染"的问题
+const shouldShowAlwaysButton = computed(() => !props.empty)
 const showSnapshot = computed(() => phase.value !== 'interactive')
 const hasSnapshot = computed(() => String(props.snapshotUrl ?? '').trim().length > 0)
 const showMaskedOverlay = computed(
@@ -199,6 +203,26 @@ const displayMaskedText = computed(() => props.maskedText || t('ui.preview.pause
 .wf-three-shell-dock-copy {
 	font-size: 12px;
 	color: rgba(226, 232, 240, 0.88);
+}
+
+/* 【常驻启动按钮修饰类】z-index=3 确保不被 overlay(z-index=2) 遮挡；右下角半透明显示；interactive阶段也不遮挡操作 */
+.wf-three-shell-dock.always {
+	position: absolute;
+	right: 12px;
+	left: auto;
+	bottom: 12px;
+	z-index: 3;
+	padding: 8px 10px;
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	border-radius: 14px;
+	background: rgba(7, 12, 20, 0.56);
+	backdrop-filter: blur(6px);
+	opacity: 0.88;
+	transition: opacity 140ms ease;
+}
+
+.wf-three-shell-dock.always:hover {
+	opacity: 1;
 }
 
 .wf-three-shell-title {
