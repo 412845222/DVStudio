@@ -250,9 +250,20 @@ export class BlueprintNode extends Node {
 		return this
 	}
 
+	onSelect(): void {
+		super.onSelect()
+		this.data.selected = true
+	}
+
+	onDeselect(): void {
+		super.onDeselect()
+		this.data.selected = false
+	}
+
 	syncDataFromTransform(): void {
 		this.data.worldX = this.transform.position.x
 		this.data.worldY = this.transform.position.y
+		this.data.selected = this.selected
 	}
 
 	setData(data: Partial<BlueprintNodeData>): void {

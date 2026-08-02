@@ -2999,8 +2999,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			)
 			const primaryRaw = isString(s.selectedNodeId) ? s.selectedNodeId : null
 			state.selectedNodeIds = ids
-			state.selectedNodeId =
-				primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? state.nodeOrder[0] ?? null)
+			state.selectedNodeId = primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? null)
 			state.selectedEdgeId = null
 			state.clipboardNode = null
 			state.clipboardNodes = null

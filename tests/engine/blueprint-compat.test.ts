@@ -274,4 +274,64 @@ describe('Blueprint Data Compatibility', () => {
 			expect(Array.isArray(data.outputs)).toBe(true)
 		})
 	})
+
+	describe('BlueprintLegacySaver - empty selection state serialization', () => {
+		const addNode = (sc: BlueprintScene, id: string, x = 0, y = 0) => {
+			const data = getDefaultNodeData('image', id, x, y, `Node-${id}`)
+			return sc.addBlueprintNode(data)
+		}
+
+		it('should serialize selectedNodeIds as empty array [] (not null) when no nodes are selected', () => {
+			scene = createScene()
+			addNode(scene, 'sel-a', 100, 100)
+			addNode(scene, 'sel-b', 500, 100)
+
+			// Explicitly clear selection via selection manager to ensure engine SSOT is empty
+			scene.selection.clearSelection()
+
+			const saved = scene.serializeLegacy()
+
+			// Main bug regression guard: empty selection state must be explicit [] not null
+			expect(Array.isArray(saved.selectedNodeIds)).toBe(true)
+			expect(saved.selectedNodeIds).toEqual([])
+			expect(saved.selectedNodeId).toBeNull()
+		})
+
+		it('should preserve selected nodes after explicit selection and round-trip load→save', () => {
+			scene = createScene()
+			addNode(scene, 'rt1', 0, 0)
+			addNode(scene, 'rt2', 400, 0)
+			addNode(scene, 'rt3', 800, 0)
+
+			const allNodes = scene.getAllBlueprintNodes()
+			expect(allNodes).toHaveLength(3)
+
+			// Select rt2 only
+			scene.selection.clearSelection()
+			scene.selection.select(allNodes[1])
+			expect(scene.selection.getSelection().map((n) => n.id)).toEqual(['rt2'])
+
+			const intermediate = scene.serializeLegacy()
+			expect(Array.isArray(intermediate.selectedNodeIds)).toBe(true)
+			expect(intermediate.selectedNodeIds).toContain('rt2')
+			expect(intermediate.selectedNodeId).toBe('rt2')
+
+			// Verify BlueprintScene.restoreSelection works for engine-level state
+			const engineCheck = createScene()
+			engineCheck.loadBlueprint(intermediate as any)
+			const selectedIdsAfterLoad = engineCheck.selection.getSelection().map((n) => n.id)
+			expect(selectedIdsAfterLoad).toContain('rt2')
+			expect(selectedIdsAfterLoad).toHaveLength(1)
+			engineCheck.dispose()
+
+			// Reload into a fresh scene and verify selection is respected by scene data model
+			const scene2 = createScene()
+			scene2.loadBlueprint(intermediate as any)
+			const reSaved = scene2.serializeLegacy()
+			expect(Array.isArray(reSaved.selectedNodeIds)).toBe(true)
+			expect(reSaved.selectedNodeIds).toContain('rt2')
+			expect(reSaved.selectedNodeId).toBe('rt2')
+			scene2.dispose()
+		})
+	})
 })
