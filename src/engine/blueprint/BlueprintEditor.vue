@@ -2,6 +2,26 @@
 	<div class="blueprint-editor" :class="{ 'bp-readonly': readonly }">
 		<div class="bp-canvas-container" ref="containerRef">
 			<canvas ref="canvasRef" tabindex="0" data-wf-scene-layout-canvas="true"></canvas>
+			<input
+				ref="frameLabelInputRef"
+				v-show="isFrameLabelEditing"
+				v-model="frameLabelInputValue"
+				type="text"
+				class="bp-frame-label-input"
+				tabindex="0"
+				autocomplete="off"
+				autocorrect="off"
+				autocapitalize="off"
+				spellcheck="false"
+				:style="frameLabelInputStyle"
+				@keydown.enter.prevent="onFrameLabelInputEnter"
+				@keydown.esc.prevent="onFrameLabelInputEsc"
+				@compositionstart="onFrameLabelCompositionStart"
+				@compositionupdate="onFrameLabelCompositionUpdate"
+				@compositionend="onFrameLabelCompositionEnd"
+				@blur="onFrameLabelInputBlur"
+				@select="onFrameLabelInputSelect"
+			/>
 			<BlueprintDomOverlay
 				:scene="scene"
 				:chat-state="chatState"
@@ -75,8 +95,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, watch, nextTick, reactive, computed } from 'vue'
 import { BlueprintScene, BlueprintNode } from './index'
+import type { EditingFrameLabelWorldRectResult } from './SelectionFrame'
 import type { GraphPointerEvent } from '../graphbase/input/events'
 import type { LegacyBlueprintData, NodeStatus, BlueprintNodeData, BlueprintData } from './types'
 import { DEFAULT_NODE_SIZES, getDefaultNodeData } from './types'
@@ -223,6 +244,245 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const scene = shallowRef<BlueprintScene | null>(null)
 const editingNodeId = ref<string | null>(null)
+
+// ============================================================
+// 多选框（蓝色临时框 / 绿色已保存分组框）顶部标签：透明 DOM 输入框同步层
+//
+// 设计动机：Canvas 绘制的「伪输入框」无法获得 OS 级焦点 → 导致 4 个缺陷：
+//   1) 切换输入法后无法正常上屏汉字（无 compositionstart/update/end）
+//   2) 长按 Backspace 只会触发一次（InputManager 合成事件时可能把 repeat 吞了）
+//   3) Ctrl+A 全选对 canvas 的伪编辑态不生效
+//   4) 画布/业务层大量 keydown 监听会在编辑中途抢先拦截，打断输入
+// 方案：在 canvas 上层叠一个「几乎透明」的真实 <input type=text> DOM，
+//   编辑开始时强制 focus，所有键盘/IME 走原生 input 语义，再把最终 value
+//   通过 scene.setFrameLabelEditText 同步回引擎 editText，仍由 Canvas 负责渲染。
+// ============================================================
+const frameLabelInputRef = ref<HTMLInputElement | null>(null)
+const frameLabelInputValue = ref('')
+// 当前 input 是否处于 IME 组合态（拼音/五笔候选中，尚未上屏）
+const frameLabelIsComposing = ref(false)
+// 上一次进入编辑态时用的 worldRect 指纹（x,y,w,h 拼接），用于避免重复同步位置
+let _frameLabelLastRectKey = ''
+// 是否处于编辑态。用 watch(scene) + 每帧轮询双重兜底。
+const isFrameLabelEditing = ref(false)
+// input 的绝对定位样式（每帧根据 worldRect 重新计算）
+const frameLabelPos = reactive<{
+	left: number
+	top: number
+	width: number
+	height: number
+	fontSize: number
+}>({ left: 0, top: 0, width: 0, height: 0, fontSize: 12 })
+const frameLabelInputStyle = computed(() => ({
+	position: 'absolute' as const,
+	left: `${frameLabelPos.left}px`,
+	top: `${frameLabelPos.top}px`,
+	width: `${frameLabelPos.width}px`,
+	height: `${frameLabelPos.height}px`,
+	fontSize: `${frameLabelPos.fontSize}px`,
+	// 近乎透明，只保留极淡的 caret 与原生 focus outline 的可见性
+	opacity: '0.02',
+	background: 'transparent',
+	color: '#000',
+	// 不做任何边框装饰，避免挡住 canvas 绘制的框
+	border: 'none',
+	outline: 'none',
+	padding: 0,
+	margin: 0,
+	boxSizing: 'border-box' as const,
+	// caret 用原生，用户能看到它一直在输入框里跳
+	caretColor: 'transparent',
+	// 防止被 canvas 或其它层挡
+	zIndex: 50,
+	// 防止拖拽选中文本时触发意外行为
+	userSelect: 'text' as const,
+	lineHeight: `${frameLabelPos.fontSize}px`,
+	fontFamily:
+		'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+}))
+
+function _updateFrameLabelInputFromScene(force = false): void {
+	const s = scene.value
+	if (!s) {
+		isFrameLabelEditing.value = false
+		return
+	}
+	const editing = s.isSelectionFrameEditing()
+	isFrameLabelEditing.value = editing
+	if (!editing) {
+		_frameLabelLastRectKey = ''
+		return
+	}
+	const rect: EditingFrameLabelWorldRectResult | null = s.getEditingFrameLabelWorldRect()
+	if (!rect || !containerRef.value) return
+	const cam = s.camera
+	const c = containerRef.value
+	const rectLeft = c.clientLeft ?? 0
+	const rectTop = c.clientTop ?? 0
+	// world 左上 → screen 左上
+	const topLeft = cam.worldToScreen(new Vector2(rect.inputWorldRect.x, rect.inputWorldRect.y))
+	// world 右下 → screen 右下
+	const bottomRight = cam.worldToScreen(
+		new Vector2(
+			rect.inputWorldRect.x + rect.inputWorldRect.width,
+			rect.inputWorldRect.y + rect.inputWorldRect.height
+		)
+	)
+	const w = Math.max(4, bottomRight.x - topLeft.x)
+	const h = Math.max(4, bottomRight.y - topLeft.y)
+	// 相对 bp-canvas-container 定位，不需要再加 scrollLeft（overflow:hidden）
+	const left = topLeft.x - rectLeft
+	const top = topLeft.y - rectTop
+	// 字号按 zoom 缩放（canvas 那一层用 world→screen，这里用同一值保证 caret 对齐）
+	const fontSize = Math.max(8, rect.fontSizeWorld * cam.zoom)
+	// 指纹对比，完全一致就跳过 setter，省掉响应式触发
+	const key = `${left.toFixed(3)}|${top.toFixed(3)}|${w.toFixed(3)}|${h.toFixed(3)}|${fontSize.toFixed(3)}`
+	if (!force && key === _frameLabelLastRectKey) return
+	_frameLabelLastRectKey = key
+	frameLabelPos.left = left
+	frameLabelPos.top = top
+	frameLabelPos.width = w
+	frameLabelPos.height = h
+	frameLabelPos.fontSize = fontSize
+}
+
+/**
+ * 把 DOM input 最新 value 推送到 Tool.editText。
+ * 注意：即使处于 composing（候选未上屏）也同步一份到 engine，
+ * 这样 canvas 层绘制的文本能跟随候选变化闪烁（与真实 input 视觉同步）。
+ */
+function _syncFrameLabelTextToEngine(forceFullText = false): void {
+	const s = scene.value
+	if (!s) return
+	const v = frameLabelInputValue.value
+	const cur = s.getEditingFrameText()
+	if (!forceFullText && v === cur) return
+	s.setFrameLabelEditText(v)
+}
+
+let _frameLabelRafId: number | null = null
+function _frameLabelRafLoop(): void {
+	_updateFrameLabelInputFromScene(false)
+	_frameLabelRafId = window.requestAnimationFrame(_frameLabelRafLoop)
+}
+
+// 进入编辑态：同步一次 value + 强制 focus input
+function _enterFrameLabelEditing(): void {
+	const s = scene.value
+	if (!s) return
+	// 先拉一次初始文本，避免 input 里是空字符串
+	frameLabelInputValue.value = s.getEditingFrameText()
+	frameLabelIsComposing.value = false
+	s.setFrameLabelComposing(false)
+	// 同步一次位置（nextTick 后再 focus，确保 v-show=显示）
+	nextTick(() => {
+		_updateFrameLabelInputFromScene(true)
+		const el = frameLabelInputRef.value
+		if (!el) return
+		try {
+			// 防止在 focus 前 input 里选中状态不对
+			el.focus({ preventScroll: true } as FocusOptions)
+			// 默认光标置于末尾（与「双击进入编辑态」习惯一致）
+			const len = frameLabelInputValue.value.length
+			try {
+				el.setSelectionRange(len, len)
+			} catch {
+				// 某些浏览器对不可见元素 setSelectionRange 会抛错，忽略即可
+			}
+		} catch {
+			// focus 失败不影响后续逻辑
+		}
+	})
+}
+
+function _exitFrameLabelEditing(): void {
+	frameLabelIsComposing.value = false
+	// 通知 engine 退出 IME 组合态（兜底）
+	scene.value?.setFrameLabelComposing(false)
+}
+
+// 只在编辑态切换（false→true）时执行进入/退出逻辑
+watch(
+	isFrameLabelEditing,
+	(editing, wasEditing) => {
+		if (editing && !wasEditing) {
+			_enterFrameLabelEditing()
+		} else if (!editing && wasEditing) {
+			_exitFrameLabelEditing()
+		}
+	},
+	{ flush: 'post' }
+)
+
+// 每次 scene.value 切换（初始化、重载）时重绑：确保 isFrameLabelEditing 跟 scene 一致
+watch(
+	scene,
+	() => {
+		_updateFrameLabelInputFromScene(true)
+	},
+	{ flush: 'post' }
+)
+
+// 当用户通过原生 input 输入/删除/粘贴（input 事件），同步到 engine 侧 editText。
+// IME 候选更新时 input 事件也会触发，这时 engine 侧能看到「半上屏」文本变化（可选）。
+watch(frameLabelInputValue, () => {
+	if (!isFrameLabelEditing.value) return
+	_syncFrameLabelTextToEngine(false)
+})
+
+function onFrameLabelInputEnter(e: KeyboardEvent): void {
+	// Enter 提交；如果处于 IME 组合态，浏览器会先上屏候选再触发 Enter，一般不会到这里
+	const s = scene.value
+	if (!s) return
+	e.preventDefault()
+	e.stopPropagation()
+	s.commitFrameLabelEdit()
+}
+
+function onFrameLabelInputEsc(e: KeyboardEvent): void {
+	const s = scene.value
+	if (!s) return
+	e.preventDefault()
+	e.stopPropagation()
+	s.cancelFrameLabelEdit()
+	// Esc 后把焦点还给 canvas，避免后续键盘事件都走 input（此时 v-show=false 也不再响应）
+	nextTick(() => {
+		canvasRef.value?.focus({ preventScroll: true } as FocusOptions)
+	})
+}
+
+function onFrameLabelCompositionStart(): void {
+	frameLabelIsComposing.value = true
+	scene.value?.setFrameLabelComposing(true)
+}
+
+function onFrameLabelCompositionUpdate(): void {
+	// 候选变化也同步到 engine，让 canvas 层绘制跟随「半上屏」文本
+	_syncFrameLabelTextToEngine(false)
+}
+
+function onFrameLabelCompositionEnd(): void {
+	frameLabelIsComposing.value = false
+	scene.value?.setFrameLabelComposing(false)
+	// 最终上屏文本最后强制同步一次，避免某些 IME 没有触发 input 事件
+	_syncFrameLabelTextToEngine(true)
+}
+
+function onFrameLabelInputBlur(): void {
+	// blur 提交：用户在编辑中点击画布其它区域 / 点击 DOM overlay / 点击外部
+	// 唯一例外：若此时 engine 已经自己退出编辑态（比如 Tool 内部 commit/cancel 过），则不必重复
+	const s = scene.value
+	if (!s) return
+	if (!s.isSelectionFrameEditing()) return
+	s.commitFrameLabelEdit()
+}
+
+function onFrameLabelInputSelect(): void {
+	// 留作后续扩展（如在 canvas 层同步绘制选区）；当前空实现即可
+}
+// ============================================================
+// END 多选框顶部透明输入框同步层
+// ============================================================
 
 let rafId: number | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -816,6 +1076,9 @@ onMounted(() => {
 
 	setupKeyboardShortcuts(s)
 
+	// 开启多选框透明 DOM 输入框的位置轮询（每帧同步 world→screen）
+	_frameLabelRafId = window.requestAnimationFrame(_frameLabelRafLoop)
+
 	nextTick(() => {
 		if (props.initialData?.viewport) {
 			s.setViewport(props.initialData.viewport)
@@ -834,6 +1097,7 @@ onMounted(() => {
 
 onUnmounted(() => {
 	if (rafId) cancelAnimationFrame(rafId)
+	if (_frameLabelRafId) cancelAnimationFrame(_frameLabelRafId)
 	if (resizeObserver) resizeObserver.disconnect()
 	window.removeEventListener('resize', handleResize)
 	if (ctxCaptureKeyDown) window.removeEventListener('keydown', ctxCaptureKeyDown, true)
@@ -1175,6 +1439,13 @@ defineExpose({
 
 	getSavedSelectionFrames() {
 		return scene.value?.getSavedSelectionFrames() ?? []
+	},
+
+	// 查询当前蓝色临时多选框 / 绿色已保存分组框是否处于标签编辑态。
+	// 编辑态下，Host 层业务快捷键（Backspace / Delete）不得删除节点，需让事件继续沿
+	// Window 冒泡 → InputManager → BlueprintEditorTool.onKeyDown，由 Tool 内部处理文本编辑。
+	isSelectionFrameEditing(): boolean {
+		return !!(scene.value && scene.value.isSelectionFrameEditing())
 	},
 
 	deleteSavedSelectionFrame(frameId: string): boolean {

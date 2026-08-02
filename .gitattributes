@@ -1,0 +1,3 @@
+# Ensure shell scripts / git hooks under .githooks always check out with LF line endings
+# on Windows (bash on Windows / WSL / Git Bash choke on CRLF shebang/set lines).
+.githooks/* text eol=lf

@@ -1500,6 +1500,12 @@ const engineApi = {
 		if (editor && typeof (editor as any).clearPendingChanges === 'function') {
 			;(editor as any).clearPendingChanges()
 		}
+	},
+	// 查询当前蓝图中蓝色临时多选框 / 绿色已保存分组框是否处于标签编辑态。
+	// 编辑态下，业务层快捷键（Backspace / Delete）不得直接删除节点，而应放行事件，
+	// 让图形底座 InputManager → BlueprintEditorTool.onKeyDown 负责文本编辑逻辑。
+	isSelectionFrameEditing(): boolean {
+		return !!blueprintHostRef.value?.isSelectionFrameEditing?.()
 	}
 }
 
@@ -11654,7 +11660,12 @@ const { mountWindowEvents, unmountWindowEvents } = useAIWorkflowKeyboardAndResiz
 		engineApi.removeEdge(edgeId)
 	},
 	scheduleAsyncEdgeRender: () => scheduleLinkEdgeRender(),
-	saveProject: saveProjectWithSync
+	saveProject: saveProjectWithSync,
+	// 查询 Canvas 虚拟输入框（蓝色临时多选框 / 绿色已保存分组框标签）是否处于编辑态。
+	// 编辑态下，composable 内部的 Backspace / Delete / Ctrl+C / Ctrl+V 等节点操作快捷键会被直接跳过，
+	// 事件自然沿 Window 冒泡到图形底座 InputManager → BlueprintEditorTool.onKeyDown，
+	// 由 Tool 已有的 editing 分支执行 editText.slice / commitEdit / cancelEdit 等文本编辑逻辑。
+	getCanvasEditingState: () => engineApi.isSelectionFrameEditing()
 })
 
 const applyAction = (action: WorkflowAction) => {

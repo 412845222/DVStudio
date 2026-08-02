@@ -17,6 +17,7 @@ import type {
 import { CURRENT_SCHEMA_VERSION, DEFAULT_NODE_SIZES, clampZoom, clampPan } from './types'
 import type { PortSpec } from './types'
 import type { SavedSelectionFrame } from './SelectionFrame'
+import type { EditingFrameLabelWorldRectResult } from './SelectionFrame'
 import { BlueprintLegacyLoader } from './BlueprintLegacyLoader'
 import { BlueprintLegacySaver } from './BlueprintLegacySaver'
 import { CommandStack } from '../graphbase/commands/CommandStack'
@@ -778,6 +779,63 @@ export class BlueprintScene extends Scene {
 
 	getSavedSelectionFrames(): SavedSelectionFrame[] {
 		return Array.from(this._savedSelectionFrames.values())
+	}
+
+	// 查询当前蓝图编辑器中，蓝色临时多选框或绿色已保存分组框是否处于标签编辑态。
+	// 编辑态下，Host 层业务快捷键（Backspace / Delete）应放弃删除节点，让事件继续冒泡到
+	// 图形底座 InputManager → BlueprintEditorTool.onKeyDown，由 Tool 内部处理 editText。
+	isSelectionFrameEditing(): boolean {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return !!tool?.isEditingFrameLabel
+	}
+
+	/**
+	 * 供 Vue 层透明 DOM <input> 查询当前正在编辑的标签文字（用于进入编辑态时同步 value）。
+	 * 未编辑时返回 ''（不抛错）。
+	 */
+	getEditingFrameText(): string {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return tool?.getEditingFrameText() ?? ''
+	}
+
+	/**
+	 * Vue 层 DOM <input> 触发 @input / @compositionend / 剪贴板 paste 时，把最新 value 直接同步到 Tool.editText。
+	 * 只重绘，不 commit，不进入命令栈。
+	 */
+	setFrameLabelEditText(newText: string): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.setEditTextDirectly(newText)
+	}
+
+	/**
+	 * 提交当前编辑（Enter / Blur 失焦时调用）：蓝框保存为绿框，绿框更新 label 文字。
+	 * 内部已防重复提交（未编辑时 NOP）。
+	 */
+	commitFrameLabelEdit(): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.commitEditByBlurOrEnter()
+	}
+
+	/** Esc 取消当前编辑，不保存任何修改；未编辑则 NOP。 */
+	cancelFrameLabelEdit(): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.cancelEditByEsc()
+	}
+
+	/**
+	 * 设置 IME 组合态。
+	 * compositionstart=true（进入候选/上屏未完成）→ compositionend=false。
+	 * 组合态下 keydown 分支退格/字符输入跳过，避免 DOM 与 Tool 双重修改冲突。
+	 */
+	setFrameLabelComposing(val: boolean): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.setComposing(val)
+	}
+
+	/** 查询当前标签编辑态的 world 空间矩形 + 字号；未编辑返回 null。 */
+	getEditingFrameLabelWorldRect(): EditingFrameLabelWorldRectResult | null {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return tool?.getEditingFrameLabelWorldRect() ?? null
 	}
 
 	getSavedSelectionFrame(frameId: string): SavedSelectionFrame | null {
