@@ -149,8 +149,20 @@ import { exportWorkflowImageOutputPng } from '../../../aiworkflow/imageOutput'
 import { useAIWorkflowResourceCache } from '../../../views/AIWorkflow/assets/useAIWorkflowResourceCache'
 import { useI18n } from '../../../i18n'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
+import {
+	measureActionsHeightStable,
+	readMediaVerticalGap
+} from '../../../composables/useStableMediaHeight'
 
 const { t } = useI18n()
+
+// 工具：在 DOM 节点 class 切换后计算 1~2 次高度，避免持续观察导致的循环重绘
+// 思路：放弃 ResizeObserver 持续监测，只在明确的「切换节点样式」事件之后各计算一次即可
+// 第一次 nextTick 让样式过渡生效；第二次 setTimeout(80ms) 覆盖动画过渡结束后的最终态
+const scheduleAfterClassChange = (fn: () => void) => {
+	void nextTick(fn)
+	window.setTimeout(fn, 80)
+}
 
 type AnchorSpec = {
 	id: string
@@ -323,7 +335,6 @@ const onPreviewClick = () => {
 const previewWrap = ref<HTMLElement | null>(null)
 const previewImg = ref<HTMLImageElement | null>(null)
 let ro: ResizeObserver | null = null
-let bodySizeRo: ResizeObserver | null = null
 const lastResourceUrl = ref('')
 const pendingResourceReset = ref(false)
 const failedPreviewUrl = ref('')
@@ -475,22 +486,18 @@ const applyPrecisePreviewSize = () => {
 		clearPreviewPixelSize()
 		return
 	}
-	const actionsEl = bodyEl.querySelector<HTMLElement>(':scope .wf-media-actions')
 	const previewEl = previewWrap.value
 	if (!previewEl) return
 
-	const bodyInnerH = bodyEl.clientHeight || 0
 	// body 内部 padding 和 border：直接用 clientHeight 已经排除，无需再减
-	// 计算 actions 的实际高度（包含 margin/padding）
-	let actionsH = 0
-	if (actionsEl) {
-		const aRect = actionsEl.getBoundingClientRect()
-		actionsH = Math.ceil(aRect.height || actionsEl.offsetHeight || 0)
-	}
-	// wf-media gap = 8px（在样式里定义）
-	const gap = 8
+	const bodyInnerH = Math.max(0, Math.floor(bodyEl.clientHeight || 0))
+	// 精确测量 actions 高度：优先 offsetHeight，并支持 DOM 未就绪时按按钮数量预判
+	const hasResource = !!displayResourceUrl.value
+	const actionsH = measureActionsHeightStable(bodyEl, hasResource)
+	// 从 getComputedStyle 动态读取 wf-media gap，避免与样式硬编码不同步
+	const gap = readMediaVerticalGap(bodyEl, 8)
 	const available = Math.max(0, bodyInnerH - actionsH - gap)
-	const bodyInnerW = bodyEl.clientWidth || 0
+	const bodyInnerW = Math.max(0, Math.floor(bodyEl.clientWidth || 0))
 	const targetW = Math.max(0, bodyInnerW)
 
 	if (available <= 0 || targetW <= 0) {
@@ -498,39 +505,36 @@ const applyPrecisePreviewSize = () => {
 		return
 	}
 	try {
-		previewEl.style.height = `${available}px`
-		previewEl.style.width = `${targetW}px`
-		// 手动更新 wrapSize（原 ResizeObserver 在某些情况下可能不触发）
+		const prevH = previewEl.style.height
+		const prevW = previewEl.style.width
+		const nextH = `${available}px`
+		const nextW = `${targetW}px`
+		// 完全相同就跳过，避免无意义的 DOM 写入
+		if (prevH === nextH && prevW === nextW) {
+			if (wrapSize.value.w !== targetW || wrapSize.value.h !== available) {
+				wrapSize.value = { w: targetW, h: available }
+			}
+			return
+		}
+		previewEl.style.height = nextH
+		previewEl.style.width = nextW
 		if (wrapSize.value.w !== targetW || wrapSize.value.h !== available) {
 			wrapSize.value = { w: targetW, h: available }
 		}
 	} catch {}
 }
 
+// 【关键】去掉了之前的 bodySizeRo 持续观察 —— 那是闪烁循环的根因
+// 现在只在明确事件触发后调用 scheduleAfterClassChange(applyPrecisePreviewSize) 即可：
+// 1) 选中/运行状态等 class 切换 watch 2) props.height/width 外部下发 watch
+// 3) 资源加载 displayResourceUrl 变化 watch 4) onMounted 首次挂载 5) 图片 onload
+// 这样保证「一次切换 → 1~2 次 apply → 结束」，不会触发循环
 const installPreciseSizeLogic = () => {
-	const root = findNodeRootEl()
-	if (!root) {
-		// 还没渲染出来，下一个 tick 再试
-		nextTick(() => installPreciseSizeLogic())
-		return
-	}
-	const bodyEl = root.querySelector<HTMLElement>(':scope > .wf-node-body')
-	if (!bodyEl) {
-		nextTick(() => installPreciseSizeLogic())
-		return
-	}
-	// 如果 bodySizeRo 已经装好了，先断掉再重新订阅
-	try {
-		bodySizeRo?.disconnect()
-	} catch {}
-	bodySizeRo = new ResizeObserver(() => {
-		applyPrecisePreviewSize()
-	})
-	bodySizeRo.observe(bodyEl)
-
-	// 观察 previewWrap 自身也很有必要（因为 flex 布局下父级可能间接改变它）
+	// 若 previewWrap 的尺寸同步 RO 还没安装，则安装；但它只更新 wrapSize，不会再反向 apply 高度
 	const existingRo = ro
-	if (previewWrap.value && existingRo) {
+	if (previewWrap.value && !existingRo) {
+		initPreviewLayoutObserver()
+	} else if (previewWrap.value && existingRo) {
 		try {
 			existingRo.disconnect()
 		} catch {}
@@ -538,8 +542,7 @@ const installPreciseSizeLogic = () => {
 			existingRo.observe(previewWrap.value)
 		} catch {}
 	}
-
-	// 首次立即应用
+	// 首次挂载：立即 + nextTick 各计算一次
 	applyPrecisePreviewSize()
 	void nextTick(() => applyPrecisePreviewSize())
 }
@@ -730,6 +733,8 @@ const onPreviewImageLoad = () => {
 	}
 	emit('media-ready')
 	nextTick(() => baseRef.value?.requestAutoResize())
+	// 图片加载完成后重新核对一次预览区高度（尺寸可能会影响 body 实际可用高度）
+	scheduleAfterClassChange(applyPrecisePreviewSize)
 }
 
 const onPreviewImageError = (event?: Event) => {
@@ -823,17 +828,17 @@ watch(
 )
 
 // 用户 resize 节点 / 切换 autoHeight / 资源变化时，重新计算预览容器尺寸
+// 【不使用 ResizeObserver 持续观察】只在外部下发 props 后直接 apply 1~2 次即可
 watch(
 	() => [props.height, props.width, props.autoHeight],
 	async () => {
 		await nextTick()
 		applyPrecisePreviewSize()
 		if (props.autoHeight === false) {
-			// 首次切换到固定尺寸模式时，可能 bodyRo 还没装好
-			if (!bodySizeRo) installPreciseSizeLogic()
-			else {
-				void nextTick(() => applyPrecisePreviewSize())
-			}
+			// 首次切换到固定尺寸模式时，可能尺寸还没稳定，再补一次 80ms 后的最终值
+			window.setTimeout(() => applyPrecisePreviewSize(), 80)
+			// 确保 previewWrap 的 RO 已装好（仅用于同步 wrapSize 显示尺寸，不反向 apply 高度）
+			if (!ro) initPreviewLayoutObserver()
 		} else {
 			clearPreviewPixelSize()
 		}
@@ -841,15 +846,25 @@ watch(
 	{ flush: 'post' }
 )
 
-// 图片加载完成后，重新核对尺寸（图片首次显示时可能改变布局）
+// 图片加载完成后，重新核对尺寸（图片首次显示时可能改变布局）——仅此一次，不循环
 watch(
 	() => displayResourceUrl.value,
 	async () => {
 		await nextTick()
 		applyPrecisePreviewSize()
-		void nextTick(() => applyPrecisePreviewSize())
+		// 图片 DOM 首次出现可能让布局重新计算，再补一次即可
+		window.setTimeout(() => applyPrecisePreviewSize(), 80)
 	},
 	{ flush: 'post' }
+)
+
+// 选中/任务状态类名切换：DOM 样式 class 切换之后计算 1~2 次
+// 这是本次需求「切换DOM节点样式后才重新获取高度」的核心触发源
+watch(
+	() => [props.selected, props.visualStatus],
+	() => {
+		scheduleAfterClassChange(applyPrecisePreviewSize)
+	}
 )
 
 defineExpose({
@@ -877,15 +892,11 @@ onBeforeUnmount(() => {
 	try {
 		ro?.disconnect()
 	} catch {}
-	try {
-		bodySizeRo?.disconnect()
-	} catch {}
 	if (invalidateScreenshotTimer != null) {
 		clearTimeout(invalidateScreenshotTimer)
 		invalidateScreenshotTimer = null
 	}
 	ro = null
-	bodySizeRo = null
 	previewImg.value = null
 })
 </script>
