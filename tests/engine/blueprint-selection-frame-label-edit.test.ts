@@ -1,7 +1,10 @@
 import { describe, it, expect, afterEach, vi, beforeAll, afterAll } from 'vitest'
 import { BlueprintScene } from '@/engine/blueprint/BlueprintScene'
 import { Rect } from '@/engine/graphbase/core/Rect'
-import { getEditingFrameLabelWorldRect, SELECTION_FRAME_CONSTANTS } from '@/engine/blueprint/SelectionFrame'
+import {
+	getEditingFrameLabelWorldRect,
+	SELECTION_FRAME_CONSTANTS
+} from '@/engine/blueprint/SelectionFrame'
 import type { EditingFrameLabelWorldRectResult } from '@/engine/blueprint/SelectionFrame'
 import { getI18nManager } from '@/engine/blueprint/i18n'
 
@@ -80,16 +83,7 @@ describe('SelectionFrame.getEditingFrameLabelWorldRect', () => {
 
 	it('returns null when neither tempEditing nor editingSavedFrameId', () => {
 		const ctx = createCtx()
-		const got = getEditingFrameLabelWorldRect(
-			ctx,
-			worldRect,
-			1,
-			false,
-			2,
-			null,
-			false,
-			null
-		)
+		const got = getEditingFrameLabelWorldRect(ctx, worldRect, 1, false, 2, null, false, null)
 		expect(got).toBeNull()
 	})
 
@@ -204,11 +198,8 @@ describe('SelectionFrame.getEditingFrameLabelWorldRect', () => {
 		)!
 		const btnSize = DELETE_BTN_SIZE * invZ
 		const btnMargin = DELETE_BTN_MARGIN * invZ
-		const deleteBtnStartX =
-			worldRect.x + worldRect.width - btnMargin * 2 - btnSize
-		expect(r.inputWorldRect.x + r.inputWorldRect.width).toBeLessThanOrEqual(
-			deleteBtnStartX + 1e-3
-		)
+		const deleteBtnStartX = worldRect.x + worldRect.width - btnMargin * 2 - btnSize
+		expect(r.inputWorldRect.x + r.inputWorldRect.width).toBeLessThanOrEqual(deleteBtnStartX + 1e-3)
 		// delete btn size/margin are only used to ensure no overlap — unused values voided
 		void SAVE_BTN_SIZE
 		void SAVE_BTN_MARGIN
