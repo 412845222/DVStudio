@@ -73,7 +73,7 @@ export class BlueprintLegacySaver {
 			resourcesById,
 			resourceOrder,
 			selectedNodeId,
-			selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : (null as any),
+			selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : [],
 			selectionTagsByKey,
 			savedSelectionFrames: data.savedSelectionFrames?.map((f) => ({ ...f })),
 			nodeCheckboxVisible: false

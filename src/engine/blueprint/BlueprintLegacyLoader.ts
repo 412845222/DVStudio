@@ -31,6 +31,20 @@ export class BlueprintLegacyLoader {
 			nodes.push(node)
 		}
 
+		// Restore selection state from legacy top-level metadata (selectedNodeIds/selectedNodeId).
+		// Legacy saver stores selection at the document level, not on individual nodes.
+		const legacySelectedIds = Array.isArray((legacyData as any).selectedNodeIds)
+			? (legacyData as any).selectedNodeIds
+			: (legacyData as any).selectedNodeId
+				? [(legacyData as any).selectedNodeId]
+				: []
+		if (legacySelectedIds.length > 0) {
+			const selectedSet = new Set(legacySelectedIds.map((id: any) => String(id)))
+			for (const node of nodes) {
+				node.selected = selectedSet.has(node.id)
+			}
+		}
+
 		const edgeOrder = legacyData.edgeOrder || Object.keys(legacyData.edgesById || {})
 		for (const edgeId of edgeOrder) {
 			const legacyEdge = legacyData.edgesById[edgeId]
@@ -150,7 +164,7 @@ export class BlueprintLegacyLoader {
 			outputs: legacyNode.outputs || [],
 			color: legacyNode.color,
 			icon: legacyNode.icon,
-			selected: false,
+			selected: !!legacyNode.selected,
 			status: legacyNode.status || 'idle',
 			resourceId: legacyNode.resourceId,
 			textValue: legacyNode.textValue,

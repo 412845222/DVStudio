@@ -660,4 +660,145 @@ describe('store/aiworkflow', () => {
 			expect(store.state.resourceOrder).toHaveLength(0)
 		})
 	})
+
+	describe('hydrateDraft - empty selection state preservation (fix blueprint always-selected bug)', () => {
+		const baseSnapshot = (extraNodes: any[] = []) => ({
+			nodesById: Object.fromEntries(extraNodes.map((n) => [n.id, n])),
+			nodeOrder: extraNodes.map((n) => n.id),
+			edgesById: {},
+			edgeOrder: [],
+			resourcesById: {},
+			resourceOrder: [],
+			viewport: { zoom: 1, panX: 0, panY: 0 },
+			selectedEdgeId: null
+		})
+
+		const mkNode = (id: string) => ({
+			id,
+			type: 'image',
+			title: `Node ${id}`,
+			worldX: 0,
+			worldY: 0,
+			width: 280,
+			height: 180,
+			inputs: [],
+			outputs: [],
+			createdAt: Date.now()
+		})
+
+		it('should NOT fallback to nodeOrder[0] when snapshot has empty selectedNodeIds and selectedNodeId=null', () => {
+			const nodes = [mkNode('node-first'), mkNode('node-second')]
+			// Simulates engine clearSelection → snapshot.selectedNodeId=null & selectedNodeIds=[] (or null)
+			store.commit('hydrateDraft', {
+				snapshot: {
+					...baseSnapshot(nodes),
+					selectedNodeId: null,
+					selectedNodeIds: []
+				}
+			})
+			expect(store.state.selectedNodeId).toBeNull()
+			expect(store.state.selectedNodeIds).toEqual([])
+			expect(store.state.nodeOrder[0]).toBe('node-first')
+		})
+
+		it('should keep empty selection when snapshot.selectedNodeIds is omitted/null (legacy saver compat)', () => {
+			const nodes = [mkNode('n1'), mkNode('n2'), mkNode('n3')]
+			// Legacy saver used to emit null for empty selectedNodeIds
+			store.commit('hydrateDraft', {
+				snapshot: {
+					...baseSnapshot(nodes),
+					selectedNodeId: null,
+					selectedNodeIds: null as any
+				}
+			})
+			expect(store.state.selectedNodeId).toBeNull()
+			expect(store.state.selectedNodeIds).toEqual([])
+		})
+
+		it('should still pick primary from ids[0] when there ARE selected nodes but primaryRaw is invalid', () => {
+			const nodes = [mkNode('a1'), mkNode('a2'), mkNode('a3')]
+			store.commit('hydrateDraft', {
+				snapshot: {
+					...baseSnapshot(nodes),
+					selectedNodeId: 'does-not-exist',
+					selectedNodeIds: ['a2', 'a3']
+				}
+			})
+			expect(store.state.selectedNodeIds).toEqual(['a2', 'a3'])
+			expect(store.state.selectedNodeId).toBe('a2')
+		})
+
+		it('should respect valid primaryRaw when it is inside selectedNodeIds', () => {
+			const nodes = [mkNode('p1'), mkNode('p2'), mkNode('p3')]
+			store.commit('hydrateDraft', {
+				snapshot: {
+					...baseSnapshot(nodes),
+					selectedNodeId: 'p3',
+					selectedNodeIds: ['p1', 'p2', 'p3']
+				}
+			})
+			expect(store.state.selectedNodeIds).toEqual(['p1', 'p2', 'p3'])
+			expect(store.state.selectedNodeId).toBe('p3')
+		})
+	})
+
+	describe('setSelectedNodes - empty selection state preservation', () => {
+		const baseSeed = () => {
+			const ids = ['s1', 's2', 's3']
+			const nodesById: any = {}
+			for (const id of ids) {
+				nodesById[id] = {
+					id,
+					type: 'image',
+					title: id,
+					worldX: 0,
+					worldY: 0,
+					width: 280,
+					height: 180,
+					inputs: [],
+					outputs: [],
+					createdAt: Date.now()
+				}
+			}
+			store.commit('hydrateDraft', {
+				snapshot: {
+					nodesById,
+					nodeOrder: ids,
+					edgesById: {},
+					edgeOrder: [],
+					resourcesById: {},
+					resourceOrder: [],
+					viewport: { zoom: 1, panX: 0, panY: 0 },
+					selectedNodeId: 's1',
+					selectedNodeIds: ['s1'],
+					selectedEdgeId: null
+				}
+			})
+			expect(store.state.selectedNodeId).toBe('s1')
+		}
+
+		it('should clear selection to truly empty state when nodeIds=[], without fallback to nodeOrder[0]', () => {
+			baseSeed()
+			store.commit('setSelectedNodes', { nodeIds: [], primaryNodeId: null })
+			expect(store.state.selectedNodeIds).toEqual([])
+			expect(store.state.selectedNodeId).toBeNull()
+		})
+
+		it('should still work for single node selection (non-regression)', () => {
+			baseSeed()
+			store.commit('setSelectedNodes', { nodeIds: ['s3'], primaryNodeId: 's3' })
+			expect(store.state.selectedNodeIds).toEqual(['s3'])
+			expect(store.state.selectedNodeId).toBe('s3')
+		})
+
+		it('should pick ids[0] when multi-select but invalid primaryNodeId (non-regression)', () => {
+			baseSeed()
+			store.commit('setSelectedNodes', {
+				nodeIds: ['s2', 's3'],
+				primaryNodeId: 'ghost'
+			})
+			expect(store.state.selectedNodeIds).toEqual(['s2', 's3'])
+			expect(store.state.selectedNodeId).toBe('s2')
+		})
+	})
 })

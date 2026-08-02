@@ -305,6 +305,19 @@ export class BlueprintScene extends Scene {
 			for (const edgeData of blueprintData.edges) {
 				this.addConnection(edgeData)
 			}
+
+			// Restore selection state from serialized data (preserves explicit empty state)
+			const incomingSelectedIds = new Set<string>()
+			for (const nodeData of blueprintData.nodes) {
+				if (nodeData.selected) incomingSelectedIds.add(nodeData.id)
+			}
+			if (incomingSelectedIds.size > 0) {
+				this.selection.clearSelection()
+				for (const nodeId of incomingSelectedIds) {
+					const node = this._nodeMap.get(nodeId)
+					if (node) this.selection.select(node, true)
+				}
+			}
 		} else {
 			this._legacyResources = blueprintData.legacyResources || {}
 
@@ -452,7 +465,7 @@ export class BlueprintScene extends Scene {
 				outputs: Array.isArray(raw.outputs) ? [...raw.outputs] : [],
 				color: raw.color,
 				icon: raw.icon,
-				selected: false,
+				selected: !!raw.selected,
 				status: raw.status || 'idle',
 				resourceId: raw.resourceId,
 				resourcePath: raw.resourcePath,
