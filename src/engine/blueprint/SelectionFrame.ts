@@ -585,6 +585,107 @@ export function pointInTempFrameSaveBtn(
 	return screenRect.containsPoint(screenPoint)
 }
 
+export interface EditingFrameLabelWorldRectResult {
+	/** world 坐标下的输入矩形（包含 padding 的边框）；BlueprintEditor.vue 将把透明 DOM input 定位到 world->screen 该矩形 */
+	inputWorldRect: Rect
+	/** world 坐标下的文字起始点（X）= inputWorldRect.x + 6/zoom；用于后续光标跟随（phase2） */
+	textOriginWorldX: number
+	/** world 坐标下的文字基线 Y 中心点 */
+	textBaselineCenterWorldY: number
+	/** 字号（world 单位 px，等于 11/zoom） */
+	fontSizeWorld: number
+}
+
+/**
+ * 获取当前正在编辑的标签文字框的 world 空间矩形（与 drawSelectionFrame 中蓝框 input 矩形 / 绿框编辑框 1:1 对齐）。
+ *
+ * - 蓝色临时框：位于 countTagWidth 右侧，紧贴 save 按钮左侧
+ * - 绿色已保存分组框：位于 tag bar 最左侧（label 文字框），不包含右侧 delete 按钮
+ *
+ * 未编辑或节点不足 2 个 → 返回 null
+ */
+export function getEditingFrameLabelWorldRect(
+	ctx: CanvasRenderingContext2D,
+	worldRect: Rect,
+	cameraZoom: number,
+	isSaved: boolean,
+	nodeCountOrSavedLabelWidth: number | { savedLabelTextWidth: number },
+	savedFrameId: string | null,
+	tempEditing: boolean,
+	editingSavedFrameId: string | null
+): EditingFrameLabelWorldRectResult | null {
+	if (!tempEditing && !editingSavedFrameId) return null
+
+	const invZ = 1 / cameraZoom
+	const tagBarH = TAG_BAR_HEIGHT * invZ
+	const x = worldRect.x
+	const y = worldRect.y
+	const w = worldRect.width
+
+	// ---------------- 绿色已保存分组框 ----------------
+	if (isSaved && editingSavedFrameId !== null && tempEditing === false) {
+		const worldTextWidth =
+			typeof nodeCountOrSavedLabelWidth === 'object'
+				? nodeCountOrSavedLabelWidth.savedLabelTextWidth
+				: 0
+		const labelWidth = Math.max(worldTextWidth + LABEL_EDIT_PADDING * 2 * invZ, 36 * invZ)
+		const btnSize = DELETE_BTN_SIZE * invZ
+		const btnMargin = DELETE_BTN_MARGIN * invZ
+		const tagW = Math.max(w, labelWidth + btnSize + btnMargin * 2 + 4 * invZ)
+		const tagWClamped = Math.min(tagW, w)
+		const labelBoxW = Math.max(tagWClamped - btnSize - btnMargin * 2, 24 * invZ)
+
+		const inputWorldRect = new Rect(
+			x + 3 * invZ,
+			y + 2 * invZ,
+			labelBoxW - 6 * invZ,
+			tagBarH - 4 * invZ
+		)
+		return {
+			inputWorldRect,
+			textOriginWorldX: x + TAG_BAR_PADDING_X * invZ,
+			textBaselineCenterWorldY: y + tagBarH / 2,
+			fontSizeWorld: 11 * invZ
+		}
+	}
+
+	// ---------------- 蓝色临时框 ----------------
+	if (!isSaved && tempEditing === true && typeof nodeCountOrSavedLabelWidth === 'number') {
+		const count = nodeCountOrSavedLabelWidth
+		ctx.save()
+		ctx.font = `500 ${11 * invZ}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
+		const countText = t('aiworkflow.canvas.nodesCount', { count })
+		const countWidth = ctx.measureText(countText).width
+		const countTagWidth = countWidth + TAG_BAR_PADDING_X * 2 * invZ
+
+		ctx.font = `600 ${11 * invZ}px -apple-system, "Segoe UI", "PingFang SC", sans-serif`
+		const saveBtnWidth = ctx.measureText(`💾 ${t('aiworkflow.canvas.save')}`).width + 12 * invZ
+
+		const fullW = w
+		const inputMinWidth = INPUT_MIN_WIDTH * invZ
+		const availableForInput = fullW - countTagWidth - saveBtnWidth - SAVE_BTN_MARGIN * 2 * invZ
+		const inputWidth = Math.max(
+			inputMinWidth,
+			Math.min(availableForInput > 0 ? availableForInput : inputMinWidth, fullW * 0.5)
+		)
+
+		const inputX = x + countTagWidth
+		const inputY = y + 3 * invZ
+		const inputH = tagBarH - 6 * invZ
+		ctx.restore()
+
+		const inputWorldRect = new Rect(inputX, inputY, inputWidth, inputH)
+		return {
+			inputWorldRect,
+			textOriginWorldX: inputX + 6 * invZ,
+			textBaselineCenterWorldY: y + tagBarH / 2,
+			fontSizeWorld: 11 * invZ
+		}
+	}
+
+	return null
+}
+
 export const SELECTION_FRAME_CONSTANTS = {
 	PADDING: SELECTION_FRAME_PADDING,
 	TAG_BAR_HEIGHT

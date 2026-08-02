@@ -276,6 +276,11 @@ defineExpose({
 	},
 	getSavedSelectionFrames(): any[] {
 		return blueprintEditorRef.value?.getSavedSelectionFrames?.() ?? []
+	},
+	// 查询蓝色临时多选框 / 绿色已保存分组框是否处于标签编辑态，
+	// 用于业务层在处理 Backspace/Delete 快捷键前判断是否应跳过删除节点。
+	isSelectionFrameEditing(): boolean {
+		return !!blueprintEditorRef.value?.isSelectionFrameEditing?.()
 	}
 })
 

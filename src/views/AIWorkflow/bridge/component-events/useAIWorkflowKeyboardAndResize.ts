@@ -26,6 +26,11 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	removeSelectedEdge: (edgeId: string) => void
 	scheduleAsyncEdgeRender: () => void
 	saveProject?: () => void | Promise<void>
+	// 可选：查询引擎侧 Canvas 虚拟输入框是否处于编辑态（蓝色临时框 / 绿色已保存分组框标签编辑）。
+	// 返回 true 时，Backspace/Delete/Ctrl+C/Ctrl+V 等涉及节点操作的快捷键应直接放行，
+	// 让事件继续沿 Window 冒泡阶段传递到图形底座 InputManager → BlueprintEditorTool.onKeyDown，
+	// 由已有的 editing 分支负责处理 editText 修改、Enter/Escape 提交/取消等逻辑。
+	getCanvasEditingState?: () => boolean
 }) => {
 	// 辅助函数：创建一个DataTransfer-like对象用于传递文件给pasteMediaData
 	const createDataTransferFromFiles = (files: File[]): DataTransfer | null => {
@@ -219,18 +224,23 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		// 则在短延迟后通过readClipboardAndPaste主动读取剪贴板作为兜底。
 		if (mod && key === 'v' && !ev.shiftKey && !ev.altKey && !ev.repeat) {
 			const targetIsEditable = isEditableEventTarget(ev.target ?? null)
+			// Canvas 虚拟输入框编辑中（蓝色临时框 / 绿色分组框标签编辑）：直接放行，
+			// 让浏览器按原生粘贴行为处理（粘贴文本到输入框），不触发节点剪贴板/媒体导入。
+			const canvasEditing =
+				typeof payload.getCanvasEditingState === 'function' && payload.getCanvasEditingState()
 			const mousePos = payload.getMouseWorldPos()
 			const hasInternalNodes = payload.hasClipboardNodes()
 			console.log('[AIWorkflow:MediaImport] === KeyDown Ctrl+V detected ===', {
 				targetTag: tag,
 				targetIsEditable,
+				canvasEditing,
 				hasClipboardNodes: hasInternalNodes,
 				mousePos,
 				note: 'Waiting for native paste event, with fallback to readClipboardAndPaste'
 			})
 
-			if (targetIsEditable) {
-				// 可编辑目标：不干预，让浏览器原生处理
+			if (targetIsEditable || canvasEditing) {
+				// 可编辑目标（真实DOM输入或Canvas虚拟输入框编辑态）：不干预，让浏览器原生处理
 				return
 			}
 
@@ -267,10 +277,19 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 			return
 		}
 
+		// Canvas 虚拟输入框编辑态：跳过所有涉及节点/边操作的快捷键（Ctrl+C / Backspace / Delete 等），
+		// 不 preventDefault 也不 stopPropagation，让事件自然沿 Window 冒泡到
+		// InputManager → BlueprintEditorTool.onKeyDown，由 Tool 内部处理文字编辑逻辑。
+		const canvasEditing =
+			typeof payload.getCanvasEditingState === 'function' && payload.getCanvasEditingState()
+		if (canvasEditing) {
+			return
+		}
+
 		if (mod && key === 'c') {
 			const selected = payload.getSelectedNodeIds()
 			if (selected.length > 0) {
-				ev.stopImmediatePropagation()
+				ev.stopPropagation()
 				payload.copySelectedNodes(selected[0])
 			}
 			return
@@ -287,12 +306,12 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 					return
 				}
 				ev.preventDefault()
-				ev.stopImmediatePropagation()
+				ev.stopPropagation()
 				payload.removeSelectedEdge(selectedEdgeId)
 				return
 			}
 			ev.preventDefault()
-			ev.stopImmediatePropagation()
+			ev.stopPropagation()
 			payload.removeSelectedNodes(selected)
 		}
 	}
@@ -302,6 +321,9 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 	const onWorkflowCopy = (ev: ClipboardEvent) => {
 		if (!payload.isRouteActive()) return
 		if (isEditableEventTarget(ev.target ?? null)) return
+		// Canvas 虚拟输入框编辑态：让浏览器原生处理文本复制（选中的 editText 复制）
+		if (typeof payload.getCanvasEditingState === 'function' && payload.getCanvasEditingState())
+			return
 
 		const selected = payload.getSelectedNodeIds()
 		if (selected.length === 0) return
@@ -340,6 +362,13 @@ export const useAIWorkflowKeyboardAndResize = (payload: {
 		}
 		if (isEditableEventTarget(ev.target ?? null)) {
 			console.log('[AIWorkflow:MediaImport] Paste ignored: target is editable element')
+			return
+		}
+		// Canvas 虚拟输入框编辑态：不拦截 paste 事件，让浏览器按原生文本粘贴处理
+		const canvasEditingPaste =
+			typeof payload.getCanvasEditingState === 'function' && payload.getCanvasEditingState()
+		if (canvasEditingPaste) {
+			console.log('[AIWorkflow:MediaImport] Paste ignored: canvas selection frame editing')
 			return
 		}
 

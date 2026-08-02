@@ -19,11 +19,13 @@ import { DeleteSelectionCommand } from './commands/DeleteSelectionCommand'
 import {
 	computeSelectionBounds,
 	drawSelectionFrame,
+	getEditingFrameLabelWorldRect,
 	pointInFrameDragArea,
 	pointInSavedFrameTagBar,
 	pointInSavedFrameDeleteBtn,
 	pointInTempFrameInput,
 	pointInTempFrameSaveBtn,
+	type EditingFrameLabelWorldRectResult,
 	type FrameEditState,
 	SELECTION_FRAME_CONSTANTS
 } from './SelectionFrame'
@@ -74,6 +76,8 @@ export class BlueprintEditorTool extends Tool {
 	private editingTempInput: boolean = false
 	private editingSavedFrameId: string | null = null
 	private editText: string = ''
+	/** IME 组合中：compositionstart=true，compositionend=false；为 true 期间 keydown 不处理字符输入/退格，避免打断输入法候选字 */
+	private isComposing: boolean = false
 	private lastClickTime: number = 0
 	private lastClickScreen: Vector2 = new Vector2()
 	private pendingClickNode: BlueprintNode | null = null
@@ -81,6 +85,112 @@ export class BlueprintEditorTool extends Tool {
 
 	constructor() {
 		super('blueprint_editor', 'default')
+	}
+
+	// 供外部（BlueprintScene / Host 层业务快捷键）查询当前 Canvas 虚拟输入框是否处于编辑中。
+	// 编辑中时，Backspace/Delete 应只修改输入框文字，不触发删除节点动作。
+	get isEditingFrameLabel(): boolean {
+		return this.editingTempInput || this.editingSavedFrameId !== null
+	}
+
+	/** 供 Vue 层 DOM input 查询当前编辑文本（初始化为 input.value，避免一进入编辑就丢失已输入字符） */
+	getEditingFrameText(): string {
+		return this.editText
+	}
+
+	/**
+	 * Vue 层 DOM <input> 产生 @input / @compositionend 事件时，直接把 value 同步到 Tool.editText。
+	 * 直接修改 editText 并请求重绘；不做 commit，不做 keydown 分支校验，不进入命令栈。
+	 */
+	setEditTextDirectly(newText: string): void {
+		if (typeof newText !== 'string') return
+		if (newText === this.editText) return
+		this.editText = newText
+		this.bpScene.requestRedraw()
+	}
+
+	/**
+	 * 设置 IME 组合态。compositionstart → setComposing(true)；compositionend → setComposing(false)。
+	 * 组合态期间：keydown 分支内 退格/字符输入 全部跳过（退化为 DOM <input> 原生处理，然后 setEditTextDirectly 回传）。
+	 */
+	setComposing(val: boolean): void {
+		this.isComposing = !!val
+	}
+	get isComposingFrameLabel(): boolean {
+		return this.isComposing
+	}
+
+	/**
+	 * 提交当前编辑（Blur/Enter）。
+	 * - 蓝框：保存为绿色分组
+	 * - 绿框：修改标签
+	 * - 若当前未编辑，直接 NOP（防 onPointerDown 外部 commit 后 blur 再次 commit 重复执行）
+	 */
+	commitEditByBlurOrEnter(): void {
+		if (!this.editingTempInput && !this.editingSavedFrameId) return
+		if (this.editingTempInput) {
+			this.commitTempEdit()
+		} else if (this.editingSavedFrameId) {
+			this.commitSavedFrameEdit()
+		}
+	}
+
+	/** Esc 取消当前编辑，不保存任何修改；未编辑则 NOP。 */
+	cancelEditByEsc(): void {
+		if (!this.editingTempInput && !this.editingSavedFrameId) return
+		this.cancelEdit()
+	}
+
+	/**
+	 * 计算当前编辑态下（蓝/绿）标签输入框的 world 坐标矩形。
+	 * 返回 null 表示当前没有编辑。
+	 * Vue 层会把该 worldRect 通过 camera.worldToScreen 转成 DOM <input> 的 left/top/width/height（像素单位）。
+	 */
+	getEditingFrameLabelWorldRect(): EditingFrameLabelWorldRectResult | null {
+		const scene = this.bpScene
+		if (!this.editingTempInput && !this.editingSavedFrameId) return null
+		const ctx = scene.canvas.getContext('2d')
+		if (!ctx) return null
+		const camera = scene.camera
+
+		if (this.editingSavedFrameId) {
+			const frame = scene.getSavedSelectionFrame(this.editingSavedFrameId)
+			if (!frame) return null
+			const nodes = scene.getNodesByIds(frame.nodeIds)
+			if (nodes.length < 2) return null
+			const worldRect = computeSelectionBounds(nodes)
+			if (!worldRect) return null
+			const savedTextWidth = this.savedFrameLabelWidths.get(frame.id) ?? 0
+			return getEditingFrameLabelWorldRect(
+				ctx,
+				worldRect,
+				camera.zoom,
+				true,
+				{ savedLabelTextWidth: savedTextWidth },
+				frame.id,
+				false,
+				this.editingSavedFrameId
+			)
+		}
+
+		if (this.editingTempInput) {
+			if (!this.tempSelectionBounds) return null
+			if (this.isSelectionMatchingAnySavedFrame()) return null
+			const sel = this.manager!.selection
+			const count = sel.getSelection().filter((n) => n instanceof BlueprintNode).length
+			if (count < 2) return null
+			return getEditingFrameLabelWorldRect(
+				ctx,
+				this.tempSelectionBounds,
+				camera.zoom,
+				false,
+				count,
+				null,
+				true,
+				null
+			)
+		}
+		return null
 	}
 
 	private get bpScene(): BlueprintScene {
@@ -1141,6 +1251,12 @@ export class BlueprintEditorTool extends Tool {
 		}
 
 		if (this.editingTempInput || this.editingSavedFrameId) {
+			// Ctrl+A：DOM <input> 原生全选（选中后后续 Backspace 一次全部删除）。
+			// 这里直接放行 return，不拦截，不阻止 document 其他副作用，交给透明 input 的 onSelect 或原生 select()。
+			const mod = event.ctrlKey || event.metaKey
+			if (mod && key === 'a') {
+				return
+			}
 			if (key === 'enter' && !event.repeat) {
 				event.preventDefault()
 				if (this.editingTempInput) {
@@ -1157,16 +1273,24 @@ export class BlueprintEditorTool extends Tool {
 				scene.requestRedraw()
 				return
 			}
-			if (key === 'backspace' && !event.repeat) {
+			// 组合中 (IME 候选) 不处理退格/字符，由 DOM <input> 原生走 composition -> setEditTextDirectly 回传。
+			// 同时允许 Backspace repeat=true 触发长按连删（非组合时）。
+			if (key === 'backspace' && !this.isComposing) {
 				event.preventDefault()
 				this.editText = this.editText.slice(0, -1)
 				scene.requestRedraw()
 				return
 			}
-			if (key === 'delete' && !event.repeat) {
+			if (key === 'delete') {
 				return
 			}
-			if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+			if (
+				!this.isComposing &&
+				event.key.length === 1 &&
+				!event.ctrlKey &&
+				!event.metaKey &&
+				!event.altKey
+			) {
 				this.editText += event.key
 				scene.requestRedraw()
 				return
