@@ -1545,68 +1545,64 @@ export class EditorViewer {
 		})
 	}
 
-	private loadModelFile(
+	private async loadModelFile(
 		url: string,
 		onProgress?: (loaded: number, total: number) => void
 	): Promise<any> {
-		return new Promise<any>(async (resolve, reject) => {
+		await this.verifyModelResource(url)
+		// ===== 核心修复：dweb:// 或 http(s):// 远程 CDN URL，一律先走 electron 主进程 fetchAsArrayBuffer 代理 =====
+		//  1) dweb://project-assets?path=xxx.glb：Three.js FileLoader 会当成非法 URL 去发 HTTP GET → 404
+		//  2) https://assets.meshy.ai/.../model.glb：浏览器端 CORS 直接拦截（Access-Control-Allow-Origin 缺失）
+		//  解决方案：统一交给 electron 主进程 (无 CORS 限制，有 dweb 协议处理) 拿 ArrayBuffer，再 parse 解析
+		if (isDwebOrRemoteHttpUrl(url) && typeof fetchAsArrayBuffer === 'function') {
 			try {
-				await this.verifyModelResource(url)
-			} catch (e: unknown) {
-				reject(e)
-				return
-			}
-			// ===== 核心修复：dweb:// 或 http(s):// 远程 CDN URL，一律先走 electron 主进程 fetchAsArrayBuffer 代理 =====
-			//  1) dweb://project-assets?path=xxx.glb：Three.js FileLoader 会当成非法 URL 去发 HTTP GET → 404
-			//  2) https://assets.meshy.ai/.../model.glb：浏览器端 CORS 直接拦截（Access-Control-Allow-Origin 缺失）
-			//  解决方案：统一交给 electron 主进程 (无 CORS 限制，有 dweb 协议处理) 拿 ArrayBuffer，再 parse 解析
-			if (isDwebOrRemoteHttpUrl(url) && typeof fetchAsArrayBuffer === 'function') {
-				try {
-					const shortUrl = url.length > 160 ? url.slice(0, 157) + '...' : url
-					console.debug(
-						`[Model3DEditor.loadModelFile] 使用 electron fetchAsArrayBuffer 代理加载(${isDwebOrRemoteHttpUrl(url) ? 'dweb/远程' : '本地'}): ${shortUrl}`
-					)
-					onProgress?.(0, 1)
-					const fetchResult = await fetchAsArrayBuffer(url)
-					if (fetchResult?.ok && fetchResult.buffer) {
-						const view = fetchResult.buffer as Uint8Array
-						const arrayBuffer = view.buffer.slice(
-							view.byteOffset,
-							view.byteOffset + view.byteLength
-						) as ArrayBuffer
-						const group = await this.loadModelFromArrayBuffer(arrayBuffer, url, onProgress)
-						resolve(group)
-						return
-					}
-					console.warn(
-						`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 返回非 ok，fallback 到 Three.js 原生加载：err=${
-							fetchResult?.error || String(fetchResult)
-						}`
-					)
-				} catch (e: unknown) {
-					console.warn(
-						`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 代理加载失败，fallback 到 Three.js 原生加载：`,
-						e
-					)
+				const shortUrl = url.length > 160 ? url.slice(0, 157) + '...' : url
+				console.debug(
+					`[Model3DEditor.loadModelFile] 使用 electron fetchAsArrayBuffer 代理加载(${isDwebOrRemoteHttpUrl(url) ? 'dweb/远程' : '本地'}): ${shortUrl}`
+				)
+				onProgress?.(0, 1)
+				const fetchResult = await fetchAsArrayBuffer(url)
+				if (fetchResult?.ok && fetchResult.buffer) {
+					const view = fetchResult.buffer as Uint8Array
+					const arrayBuffer = view.buffer.slice(
+						view.byteOffset,
+						view.byteOffset + view.byteLength
+					) as ArrayBuffer
+					const group = await this.loadModelFromArrayBuffer(arrayBuffer, url, onProgress)
+					return group
 				}
+				console.warn(
+					`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 返回非 ok，fallback 到 Three.js 原生加载：err=${
+						fetchResult?.error || String(fetchResult)
+					}`
+				)
+			} catch (e: unknown) {
+				console.warn(
+					`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 代理加载失败，fallback 到 Three.js 原生加载：`,
+					e
+				)
 			}
-			const ext = extractUrlExt(url) || url.split('.').pop()?.toLowerCase().split('?')[0] || ''
-			if (ext === 'obj' && this.objLoader.load) {
+		}
+		const ext = extractUrlExt(url) || url.split('.').pop()?.toLowerCase().split('?')[0] || ''
+		if (ext === 'obj' && this.objLoader.load) {
+			return new Promise<any>((resolve, reject) => {
 				this.objLoader.load(
 					url,
 					(obj: any) => resolve(obj as unknown as any),
 					(e: any) => onProgress?.(e.loaded, e.total),
 					(err: any) => reject(err)
 				)
-			} else {
+			})
+		} else {
+			return new Promise<any>((resolve, reject) => {
 				this.gltfLoader.load(
 					url,
 					(gltf: any) => resolve(gltf.scene),
 					(e: any) => onProgress?.(e.loaded, e.total),
 					(err: any) => reject(err)
 				)
-			}
-		})
+			})
+		}
 	}
 
 	unloadModel(id: string) {
