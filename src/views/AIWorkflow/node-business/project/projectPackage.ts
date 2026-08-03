@@ -180,7 +180,11 @@ const decodeJsonPointer = (pointer: string) => {
 	return raw.replace(/^\//, '').split('/').map(pointerToPathSegment)
 }
 
-export const setValueByJsonPointer = (root: Record<string, unknown>, pointer: string, value: unknown) => {
+export const setValueByJsonPointer = (
+	root: Record<string, unknown>,
+	pointer: string,
+	value: unknown
+) => {
 	const path = decodeJsonPointer(pointer)
 	if (!path.length) return false
 	let cur: Record<string, unknown> = root
@@ -256,15 +260,13 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 		)
 			continue
 		const settings = nodeObj.sceneDecomposeSettings
-		const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
-		const outputs = Array.isArray(settingsObj?.outputs)
-			? (settingsObj?.outputs as unknown[])
-			: []
+		const settingsObj =
+			settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+		const outputs = Array.isArray(settingsObj?.outputs) ? (settingsObj?.outputs as unknown[]) : []
 		for (const item of outputs) {
 			const itemObj = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
 			const generatedResourceId = String(itemObj?.generatedResourceId ?? '').trim()
-			if (generatedResourceId && resourcesById?.[generatedResourceId])
-				out.add(generatedResourceId)
+			if (generatedResourceId && resourcesById?.[generatedResourceId]) out.add(generatedResourceId)
 		}
 	}
 
@@ -274,7 +276,8 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 	const out: AIWorkflowProjectPackageSnapshotAssetCandidate[] = []
 	const seenPointer = new Set<string>()
-	const snapObj = snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
+	const snapObj =
+		snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
 	const nodeOrder = Array.isArray(snapObj?.nodeOrder) ? (snapObj?.nodeOrder as unknown[]) : []
 	const nodesById =
 		snapObj?.nodesById && typeof snapObj.nodesById === 'object'
@@ -296,7 +299,8 @@ export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 			if (!settings || typeof settings !== 'object') continue
 			const settingsObj = settings as Record<string, unknown>
 			const name =
-				String(settingsObj.modelSourceName || nodeObj.alias || nodeObj.title || nodeId).trim() || nodeId
+				String(settingsObj.modelSourceName || nodeObj.alias || nodeObj.title || nodeId).trim() ||
+				nodeId
 			pushPackageSnapshotAssetCandidate(
 				out,
 				seenPointer,
@@ -318,7 +322,8 @@ export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 
 		if (nodeType === 'scene-layout') {
 			const settings = nodeObj.sceneLayoutSettings
-			const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+			const settingsObj =
+				settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
 			const bindings = Array.isArray(settingsObj?.manualModelBindings)
 				? (settingsObj?.manualModelBindings as unknown[])
 				: []
@@ -445,8 +450,7 @@ export const fetchAssetBlobForPackage = async (
 	const guard0 = isPackageAllowedLocalUrl(raw)
 	if (!guard0.ok) {
 		console.warn(
-			`[package-export][HARD-BLOCK] 拒绝远端 URL (${guard0.reason}): ` +
-				raw.substring(0, 120)
+			`[package-export][HARD-BLOCK] 拒绝远端 URL (${guard0.reason}): ` + raw.substring(0, 120)
 		)
 		return null
 	}

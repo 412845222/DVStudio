@@ -25,8 +25,12 @@ import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence
 
 export const useAIWorkflowProjectPackageExport = (payload: {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	buildPersistableSnapshotWithOptions: (opts: { uploadLocalResources: boolean }) => Promise<AIWorkflowDraftSnapshot>
-	stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
+	buildPersistableSnapshotWithOptions: (opts: {
+		uploadLocalResources: boolean
+	}) => Promise<AIWorkflowDraftSnapshot>
+	stripUnrealExportRuntimeFromSnapshot: (
+		snapshot: AIWorkflowDraftSnapshot
+	) => AIWorkflowDraftSnapshot
 	currentProjectName: { value: string }
 }) => {
 	const packageExportProgress = ref({ active: false, progress: 0, stage: '', detail: '' })
@@ -73,7 +77,11 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 			return
 		}
 		try {
-			setPackageExportProgress(t('aiworkflow.runtime.preparingSnapshot'), 2, t('aiworkflow.runtime.packageDetailPreparingSnapshot'))
+			setPackageExportProgress(
+				t('aiworkflow.runtime.preparingSnapshot'),
+				2,
+				t('aiworkflow.runtime.packageDetailPreparingSnapshot')
+			)
 			const baseSnapshot = await payload.buildPersistableSnapshotWithOptions({
 				uploadLocalResources: true
 			})
@@ -109,10 +117,9 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 				const resource = snapshot.resourcesById[rid]
 				if (!resource) continue
 				// ============== 第 1 层：资源池 kind 修复（方案 §三 1.1） ==============
-				const rawKind = String(resource.kind || '').trim().toLowerCase() as
-					| 'image'
-					| 'video'
-					| 'model3d'
+				const rawKind = String(resource.kind || '')
+					.trim()
+					.toLowerCase() as 'image' | 'video' | 'model3d'
 				const kind: 'video' | 'image' | 'file' =
 					rawKind === 'video'
 						? 'video'
@@ -211,8 +218,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					}
 
 					// ============== 第 1 层：guess fallback 按 kind 区分（方案 §三 1.3） ==============
-					const fallbackExt =
-						kind === 'image' ? 'png' : kind === 'video' ? 'mp4' : 'glb'
+					const fallbackExt = kind === 'image' ? 'png' : kind === 'video' ? 'mp4' : 'glb'
 					const ext = guessAssetExtension(resolvedUrl, blob.type, fallbackExt)
 					const filePath = `assets/${sanitizeFileNamePart(rid)}-${target}.${ext}`
 					zip.file(filePath, blob)
@@ -299,11 +305,7 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					}
 					const guessedKind = item.kind || inferPackageAssetKind(cleanUrl, blob.type)
 					const fallbackExt =
-						guessedKind === 'image'
-							? 'png'
-							: guessedKind === 'video'
-								? 'mp4'
-								: 'glb'
+						guessedKind === 'image' ? 'png' : guessedKind === 'video' ? 'mp4' : 'glb'
 					const ext = guessAssetExtension(cleanUrl, blob.type, fallbackExt)
 					const filePath = `assets/snapshot-${snapshotAssetIndex}.${ext}`
 					snapshotAssetIndex += 1
@@ -359,7 +361,11 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 
 			zip.file(AIWF_PROJECT_PACKAGE_ENTRY, JSON.stringify(pkg, null, 2))
 			const assetCount = assets.length
-			setPackageExportProgress(t('aiworkflow.runtime.compressingPackage'), 84, t('aiworkflow.runtime.packageDetailTotalAssets', { count: String(assetCount) }))
+			setPackageExportProgress(
+				t('aiworkflow.runtime.compressingPackage'),
+				84,
+				t('aiworkflow.runtime.packageDetailTotalAssets', { count: String(assetCount) })
+			)
 			const blob = await zip.generateAsync(
 				{ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
 				(metadata) => {
@@ -367,12 +373,19 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					setPackageExportProgress(
 						t('aiworkflow.runtime.compressingPackage'),
 						percent,
-						t('aiworkflow.runtime.packageDetailCompressProgress', { percent: String(Math.round(Number(metadata.percent || 0))), count: String(assetCount) })
+						t('aiworkflow.runtime.packageDetailCompressProgress', {
+							percent: String(Math.round(Number(metadata.percent || 0))),
+							count: String(assetCount)
+						})
 					)
 				}
 			)
 			const sizeMb = Math.round(blob.size / 1024 / 1024)
-			setPackageExportProgress(t('aiworkflow.runtime.writingZip'), 99, t('aiworkflow.runtime.packageDetailSizeMb', { size: String(sizeMb) }))
+			setPackageExportProgress(
+				t('aiworkflow.runtime.writingZip'),
+				99,
+				t('aiworkflow.runtime.packageDetailSizeMb', { size: String(sizeMb) })
+			)
 			const url = URL.createObjectURL(blob)
 			const name = sanitizeFileNamePart(pkg.projectName) || 'blueprint_project'
 			const a = document.createElement('a')
@@ -384,15 +397,27 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 			URL.revokeObjectURL(url)
 
 			if (skipped > 0) {
-				finishPackageExportProgress(t('aiworkflow.runtime.exportComplete'), t('aiworkflow.runtime.packageDetailSkippedAssets', { count: String(skipped) }))
-				payload.pushToast(t('aiworkflow.toast.projectExportDone', { count: String(skipped) }), 'warn')
+				finishPackageExportProgress(
+					t('aiworkflow.runtime.exportComplete'),
+					t('aiworkflow.runtime.packageDetailSkippedAssets', { count: String(skipped) })
+				)
+				payload.pushToast(
+					t('aiworkflow.toast.projectExportDone', { count: String(skipped) }),
+					'warn'
+				)
 			} else {
-				finishPackageExportProgress(t('aiworkflow.runtime.exportComplete'), t('aiworkflow.runtime.packageDetailWrittenAssets', { count: String(assetCount) }))
+				finishPackageExportProgress(
+					t('aiworkflow.runtime.exportComplete'),
+					t('aiworkflow.runtime.packageDetailWrittenAssets', { count: String(assetCount) })
+				)
 				payload.pushToast(t('aiworkflow.toast.projectExportSuccess'), 'info')
 			}
 		} catch (err: unknown) {
 			resetPackageExportProgress()
-			payload.pushToast(t('aiworkflow.toast.projectExportFailed', { error: getErrorMessage(err) }), 'error')
+			payload.pushToast(
+				t('aiworkflow.toast.projectExportFailed', { error: getErrorMessage(err) }),
+				'error'
+			)
 		}
 	}
 
