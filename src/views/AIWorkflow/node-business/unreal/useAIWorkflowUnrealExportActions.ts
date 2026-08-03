@@ -3,7 +3,10 @@ import {
 	getUnrealConnectionPollInterval,
 	mergeViewerResolvedIntoFinalBindings,
 	isConnectedTruthy,
-	hasAnyPathExtended
+	hasAnyPathExtended,
+	detectModelFormatFromPath,
+	pickBestModelUrlFromCandidates,
+	tryBackfillBindingPathsFromStore
 } from './unrealExportUtils'
 import { t } from '../../../../i18n'
 
@@ -11,6 +14,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	store: {
 		state: {
 			nodesById: Record<string, unknown>
+			edgesById?: Record<string, unknown>
+			resourcesById?: Record<string, unknown>
 			projectRootPath?: string
 		}
 		commit: (type: string, value: unknown) => void
@@ -641,12 +646,191 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// - 回退优先级：connectedModelBindings（connectedSceneLayoutModelBindings 原始值，
 			//   仅在旧项目 viewer 未返回 sceneLayoutResolvedModelBindings 时保留兼容）
 			// ========================================================================
-			const { finalBindingsSource, usedViewerResolvedBindings } = mergeViewerResolvedIntoFinalBindings(
+			let { finalBindingsSource, usedViewerResolvedBindings } = mergeViewerResolvedIntoFinalBindings(
 				exportData,
 				Array.isArray(connectedModelBindings) ? connectedModelBindings : []
 			)
+			// ========================================================================
+			// 2026-08-03 FORCE-REBUILD BINDINGS（用户现场痛点修复）：
+			//   完全不再依赖 viewer.cache / connectedSceneLayoutModelBindings 过期的 9 条缓存，
+			//   直接从 Vuex store.state.edgesById 硬扫 sourceSceneLayoutNodeId 的全部入边，
+			//   每条 in-model-* / in-0 / in-model 入边 → 从 upstream node 硬扫 outputs / 顶层字段 / resourceId
+			//   → 直接填实 6 个路径字段 + modelFormat + connected=true。
+			//   manualModelBindings（用户手动给墙体/天花板绑定的模型）也一起收进来。
+			//
+			//   这样彻底保证："只要场景布局节点的占位体（包括墙/地板/天花板）与任何 3D 节点
+			//   真的有蓝图连线或手动绑定，就一定能在导出数组里出现"，不再会被任何中间层
+			//   过滤成只剩 9 条过期缓存。
+			// ========================================================================
+			{
+				const rebuilt: Array<Record<string, unknown>> = []
+				const seenKeys = new Set<string>()
+				const pushBinding = (obj: Record<string, unknown>) => {
+					const objectId = String(obj.objectId ?? '').trim()
+					const anchorId = String((obj as { inputAnchorId?: unknown }).inputAnchorId ?? '').trim()
+					const key = objectId || anchorId || `${Math.random()}`
+					if (seenKeys.has(key)) return
+					seenKeys.add(key)
+					rebuilt.push(obj)
+				}
+
+				// 1) 直接从 edgesById 扫所有到 sourceSceneLayoutNodeId 的入边
+				const edgesById =
+					payload.store.state.edgesById && typeof payload.store.state.edgesById === 'object'
+						? (payload.store.state.edgesById as Record<string, unknown>)
+						: {}
+				const nodesById = payload.store.state.nodesById || {}
+				const resourcesById =
+					payload.store.state.resourcesById && typeof payload.store.state.resourcesById === 'object'
+						? (payload.store.state.resourcesById as Record<string, unknown>)
+						: {}
+				const targetNode = String(sourceSceneLayoutNodeId ?? '').trim()
+				for (const edge of Object.values(edgesById)) {
+					if (!edge || typeof edge !== 'object') continue
+					const e = edge as Record<string, unknown>
+					const toNode = String(e.targetNodeId ?? e.toNodeId ?? '').trim()
+					if (!toNode || toNode !== targetNode) continue
+					const anchorId = String(e.toAnchorId ?? e.targetAnchorId ?? e.inputAnchorId ?? '').trim()
+					// 只关心 3D 模型输入相关锚（in-model-xxx / in-model / in-0）；其它 in-json / in-text / in-layout-text 直接跳过
+					const isModelAnchor =
+						anchorId === 'in-model' ||
+						anchorId === 'in-0' ||
+						/^in-model[_-]/.test(anchorId) ||
+						/^in-(?:model|resource)[_-]/.test(anchorId)
+					if (!isModelAnchor) continue
+					const fromNodeId = String(e.sourceNodeId ?? e.fromNodeId ?? '').trim()
+					if (!fromNodeId) continue
+					const fromNode = (nodesById as Record<string, unknown>)[fromNodeId] as Record<string, unknown> | undefined
+					// anchorSuffix：例如 in-model-stool_left → stool_left
+					let anchorSuffix = ''
+					const m = /^in-(?:model|resource)[_-](.+)$/.exec(anchorId)
+					if (m && m[1]) anchorSuffix = m[1]
+					// objectId 优先使用 anchorSuffix，否则 fromNodeId
+					const objectId = anchorSuffix || fromNodeId
+
+					// ——从 fromNode.outputs / 顶层字段 / resourceId 硬扫路径——
+					const candidates: Array<string | null | undefined> = []
+					let fallbackFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+					if (fromNode && typeof fromNode === 'object') {
+						const fn = fromNode
+						if (Array.isArray(fn.outputs)) {
+							for (const out of fn.outputs as unknown[]) {
+								if (!out || typeof out !== 'object') continue
+								const o = out as Record<string, unknown>
+								for (const src of [o.resolved, o.cached, o.value]) {
+									if (!src) continue
+									if (typeof src === 'string') {
+										candidates.push(src)
+									} else if (typeof src === 'object') {
+										const s = src as Record<string, unknown>
+										candidates.push(String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() || null)
+										candidates.push(String(s.modelAssetPath ?? s.modelSourcePath ?? '').trim() || null)
+										candidates.push(String(s.modelAssetUrl ?? s.modelUrl ?? '').trim() || null)
+										candidates.push(String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null)
+										candidates.push(String(s.assetUrl ?? s.preferredUrl ?? s.url ?? '').trim() || null)
+										const fmt = detectModelFormatFromPath(String(s.modelAssetProjectRelativePath ?? s.modelAssetUrl ?? s.url ?? ''))
+										if (fmt) fallbackFormat = fmt
+									}
+								}
+							}
+						}
+						const topKeys = [
+							'modelAssetProjectRelativePath', 'modelProjectRelativePath',
+							'modelAssetUrl', 'modelUrl', 'modelAssetPath', 'modelSourcePath',
+							'resolvedModelPath', 'localAssetUrl', 'localAssetPath'
+						] as const
+						for (const k of topKeys) {
+							const v = String((fn as Record<string, unknown>)[k] ?? '').trim()
+							if (v) candidates.push(v)
+							const fmt = detectModelFormatFromPath(v)
+							if (fmt) fallbackFormat = fmt
+						}
+						const fnResId = String(fn.resourceId ?? (fn.model3dSettings as Record<string, unknown> | undefined)?.resourceId ?? (fn.tripo3dSettings as Record<string, unknown> | undefined)?.resourceId ?? (fn.meshySettings as Record<string, unknown> | undefined)?.resourceId ?? '').trim()
+						if (fnResId && resourcesById[fnResId]) {
+							const r = resourcesById[fnResId] as Record<string, unknown>
+							candidates.push(String(r.projectRelativePath ?? '').trim() || null)
+							candidates.push(String(r.absolutePath ?? '').trim() || null)
+							candidates.push(String(r.sourcePath ?? '').trim() || null)
+							candidates.push(String(r.url ?? '').trim() || null)
+							candidates.push(String(r.assetUrl ?? '').trim() || null)
+							candidates.push(String(r.localUrl ?? '').trim() || null)
+							const fmt = detectModelFormatFromPath(String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? ''))
+							if (fmt) fallbackFormat = fmt
+						}
+					}
+
+					const best = pickBestModelUrlFromCandidates(candidates as Array<string | null | undefined>)
+					const b: Record<string, unknown> = {
+						objectId,
+						objectName: objectId,
+						inputAnchorId: anchorId,
+						anchorSuffix,
+						connected: true,
+						sourceNodeId: fromNodeId,
+						sourceNodeType: String(fromNode?.type ?? 'model3d') || 'model3d'
+					}
+					if (best) {
+						const overrideFormat = detectModelFormatFromPath(best) || fallbackFormat
+						const relPath = (() => {
+							const m1 = /\?(?:.*&)?(?:path|relativePath|assetPath|filePath)=([^&]+)/.exec(best)
+							if (m1 && m1[1]) {
+								try { return decodeURIComponent(m1[1]).split('?')[0].split('#')[0] } catch { /* ignore */ }
+							}
+							if (/^Content[\\/]/i.test(best)) return best.replace(/\\/g, '/')
+							const m2 = /^file:\/\/\/+([a-zA-Z]:[\\/].+)$/.exec(best)
+							if (m2 && m2[1]) return m2[1].replace(/\\/g, '/')
+							return best.replace(/\\/g, '/')
+						})()
+						const isRel = /^Content[\\/]/i.test(relPath)
+						b.modelUrl = best
+						b.modelAssetUrl = best
+						if (!isRel) {
+							b.modelSourcePath = relPath
+							b.modelAssetPath = relPath
+						} else {
+							b.modelProjectRelativePath = relPath
+							b.modelAssetProjectRelativePath = relPath
+						}
+						b.modelFormat = overrideFormat
+					}
+					// 最后再跑一次 Ultimate Backfill（万一 pickBest 没挑到但 resourcesById 里真的有）
+					const finalB = tryBackfillBindingPathsFromStore(b, nodesById, resourcesById)
+					pushBinding(finalB)
+				}
+
+				// 2) manualModelBindings（给房间壳子/墙体/天花板/地板手动绑定真实模型的那些）也一起收，
+				//    只要有 objectId 就进数组，路径兜底也通过 Ultimate Backfill 做。
+				if (Array.isArray(manualModelBindings) && manualModelBindings.length > 0) {
+					for (const mb of manualModelBindings) {
+						if (!mb || typeof mb !== 'object') continue
+						const m = tryBackfillBindingPathsFromStore(
+							{ ...(mb as Record<string, unknown>), connected: true },
+							nodesById,
+							resourcesById
+						)
+						pushBinding(m)
+					}
+				}
+
+				// 3) viewer 侧 merge 后得到的旧 finalBindingsSource 里，如果还有任何上面没覆盖的
+				//    objectId（比如极特殊的历史遗留绑定），也作为补充（不丢兼容性）。
+				if (Array.isArray(finalBindingsSource) && finalBindingsSource.length > 0) {
+					for (const raw of finalBindingsSource) {
+						if (!raw || typeof raw !== 'object') continue
+						const m = tryBackfillBindingPathsFromStore(
+							{ ...(raw as Record<string, unknown>) },
+							nodesById,
+							resourcesById
+						)
+						pushBinding(m)
+					}
+				}
+
+				finalBindingsSource = rebuilt
+				usedViewerResolvedBindings = false
+			}
 			console.info(
-				`[UnrealExport] Using ${usedViewerResolvedBindings ? 'viewer sceneLayoutResolvedModelBindings' : 'fallback connectedSceneLayoutModelBindings'}, count=${finalBindingsSource.length}`
+				`[UnrealExport] Final bindings after FORCE-REBUILD (from edgesById + manualBindings + legacy): count=${finalBindingsSource.length}, viewerUsed=${usedViewerResolvedBindings}`
 			)
 			// 2026-08-03 新链路诊断日志：每个 binding 的关键路径字段（最多前 10 条），
 			// 便于 DevTools Console 肉眼检查"模型数量是否对、贴图路径是否透传"。
@@ -693,10 +877,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			}
 			console.info(`[UnrealExport] Raw slots from viewer: ${rawSlots.length} (distinct sourceObjectId=${rawSourceObjectIds.size})`)
 
-			// Step 2 / finalConnected 过滤：**不要那么多门槛**
-			//   只要 binding 的 objectId 在 SceneLayout 实际使用白名单(rawSourceObjectIds)里
-			//   OR binding 本身任一路径字段有非空值(hasAnyPathExtended)就放行。
-			//   connected 字段仅用于日志，不再作为硬门槛。
+			// Step 2 / finalConnected 过滤：【完全不要任何门槛】
+			//   用户现场痛点：inRawWhitelist 来自 viewer 返回的 slots，viewer 经常只有 1 个，
+			//   导致 27 条真实 in-model-* 绑定被过滤到只剩 1 个。
+			//   现在规则改为 —— 【只要 binding 有 objectId 就进 finalConnected】，
+			//   路径字段空不空没关系，Ultimate Backfill 后面再兜底；
+			//   真正的出口过滤交给 prepareResolvedSlotsForExport 的 per-slot hasAnyPathExtended
+			//   （那是最后一英里，漏掉的永远是"真没任何路径"的，不会误杀）。
 			const finalConnectedModelBindings: unknown[] = []
 			const finalFilteredLog: Record<string, unknown>[] = []
 			if (Array.isArray(finalBindingsSource) && finalBindingsSource.length > 0) {
@@ -704,9 +891,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					if (!item || typeof item !== 'object') continue
 					const obj = item as Record<string, unknown>
 					const objectId = String(obj.objectId ?? '').trim()
-					const inRawWhitelist = objectId !== '' && rawSourceObjectIds.has(objectId)
+					if (!objectId) continue // 唯一门槛：必须有 objectId，否则连占位体都对不上
+					const inRawWhitelist = rawSourceObjectIds.has(objectId)
 					const hasAnyPath = hasAnyPathExtended(obj)
-					const pass = inRawWhitelist || hasAnyPath
 					finalFilteredLog.push({
 						objectId,
 						inRawWhitelist,
@@ -719,9 +906,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						modelUrl: String(obj.modelUrl ?? ''),
 						modelSourcePath: String(obj.modelSourcePath ?? ''),
 						modelProjectRelativePath: String(obj.modelProjectRelativePath ?? ''),
-						pass
+						pass: true
 					})
-					if (pass) finalConnectedModelBindings.push(item)
+					finalConnectedModelBindings.push(item)
 				}
 			}
 
@@ -805,115 +992,134 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					if (id) bindingById.set(id, b as Record<string, unknown>)
 				}
 				const synthesizedSlots: unknown[] = []
+				const synthesizedFailures: Array<{ objectId: string; error: string }> = []
 				for (const bindingObj of finalConnectedModelBindings) {
 					const b = bindingObj as Record<string, unknown>
 					const objectId = String(b.objectId ?? '').trim()
 					if (!objectId) continue
-					if (coveredByRaw.has(objectId)) continue
-					const item = itemById.get(objectId)
-					const fillModeVal: string =
-						item && (item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z')
-							? String(item.fillMode)
-							: 'single'
-					const fillCountRaw = Math.max(1, Number((item as { fillCount?: unknown })?.fillCount ?? 1) || 1)
-					const cloneCount = fillModeVal === 'single' ? 1 : fillCountRaw
-					const fillAxisScaleRaw = Number((item as { fillAxisScale?: unknown })?.fillAxisScale ?? 1) || 1
-					// 2026-08-03 修复：WorkflowSceneLayoutItem 没有 .transform 字段，
-					//   position/rotation/scale 是 item 顶层属性。否则 synthesized slot
-					//   的变换会全部变成 identity。
-					const itemPos = item && item.position && typeof item.position === 'object'
-						? (item.position as Record<string, unknown>)
-						: null
-					const itemRot = item && item.rotation && typeof item.rotation === 'object'
-						? (item.rotation as Record<string, unknown>)
-						: null
-					const itemScl = item && item.scale && typeof item.scale === 'object'
-						? (item.scale as Record<string, unknown>)
-						: null
-					const itemQat = item && item.quaternion && typeof item.quaternion === 'object'
-						? (item.quaternion as Record<string, unknown>)
-						: null
-					const basePosition = {
-						x: Number(itemPos?.x ?? 0) || 0,
-						y: Number(itemPos?.y ?? 0) || 0,
-						z: Number(itemPos?.z ?? 0) || 0
-					}
-					const baseRotation = {
-						yaw:   Number(itemRot?.yaw   ?? 0) || 0,
-						pitch: Number(itemRot?.pitch ?? 0) || 0,
-						roll:  Number(itemRot?.roll  ?? 0) || 0
-					}
-					const baseScale = {
-						x: Number(itemScl?.x ?? 1) || 1,
-						y: Number(itemScl?.y ?? 1) || 1,
-						z: Number(itemScl?.z ?? 1) || 1
-					}
-					const baseQuat = itemQat
-						? {
-								x: Number(itemQat.x ?? 0) || 0,
-								y: Number(itemQat.y ?? 0) || 0,
-								z: Number(itemQat.z ?? 0) || 0,
-								w: Number(itemQat.w ?? 1) || 1
+					try {
+						if (coveredByRaw.has(objectId)) continue
+						// 兼容 objectId 带 __clone_N 后缀的情况（CHAIN DIAG 里常见 bar_main__clone_2），
+						//   exact 找不到 layoutItem 时，去掉 clone 后缀再找一次源占位体的 transform。
+						let item: Record<string, unknown> | undefined = itemById.get(objectId)
+						if (!item) {
+							const stripped = objectId.replace(/__clone_[0-9]+$/i, '')
+							if (stripped && stripped !== objectId) {
+								item = itemById.get(stripped)
 							}
-						: { x: 0, y: 0, z: 0, w: 1 }
-					for (let index = 0; index < cloneCount; index += 1) {
-						const isClone = cloneCount > 1
-						const offsetAxis: 'x' | 'y' | 'z' =
-							fillModeVal === 'fill-x' ? 'x' : fillModeVal === 'fill-y' ? 'y' : fillModeVal === 'fill-z' ? 'z' : 'x'
-						const offsetValue = isClone ? (index - (cloneCount - 1) / 2) * fillAxisScaleRaw : 0
-						const instancePosition = {
-							...basePosition,
-							[offsetAxis]: (basePosition as Record<string, number>)[offsetAxis] + offsetValue
 						}
-						const worldT = {
-							position: instancePosition,
-							rotation: baseRotation,
-							quaternion: baseQuat,
-							scale: baseScale
+						const fillModeVal: string =
+							item && (item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z')
+								? String(item.fillMode)
+								: 'single'
+						const fillCountRaw = Math.max(1, Number((item as { fillCount?: unknown })?.fillCount ?? 1) || 1)
+						const cloneCount = fillModeVal === 'single' ? 1 : fillCountRaw
+						const fillAxisScaleRaw = Number((item as { fillAxisScale?: unknown })?.fillAxisScale ?? 1) || 1
+						const itemPos = item && item.position && typeof item.position === 'object'
+							? (item.position as Record<string, unknown>)
+							: null
+						const itemRot = item && item.rotation && typeof item.rotation === 'object'
+							? (item.rotation as Record<string, unknown>)
+							: null
+						const itemScl = item && item.scale && typeof item.scale === 'object'
+							? (item.scale as Record<string, unknown>)
+							: null
+						const itemQat = item && item.quaternion && typeof item.quaternion === 'object'
+							? (item.quaternion as Record<string, unknown>)
+							: null
+						const basePosition = {
+							x: Number(itemPos?.x ?? 0) || 0,
+							y: Number(itemPos?.y ?? 0) || 0,
+							z: Number(itemPos?.z ?? 0) || 0
 						}
-						const relativeT = {
-							position: {
-								x: instancePosition.x,
-								y: instancePosition.y,
-								z: instancePosition.z
-							},
-							rotation: baseRotation,
-							quaternion: baseQuat,
-							scale: baseScale
+						const baseRotation = {
+							yaw:   Number(itemRot?.yaw   ?? 0) || 0,
+							pitch: Number(itemRot?.pitch ?? 0) || 0,
+							roll:  Number(itemRot?.roll  ?? 0) || 0
 						}
-						const slotId = isClone ? `${objectId}__clone_${index + 1}` : objectId
-						const sourceName = String(item?.name ?? objectId).trim() || objectId
-						const displayName = isClone ? `${sourceName} [${index + 1}/${cloneCount}]` : sourceName
-						synthesizedSlots.push({
-							slotId,
-							sourceSlotId: objectId,
-							sourceObjectId: objectId,
-							objectName: sourceName,
-							displayName,
-							cloneIndex: index,
-							cloneCount,
-							isClone,
-							fitMode: (item?.fitMode ?? 'normal') as 'normal' | 'oriented' | 'filled' | 'forced',
-							fillMode: fillModeVal as 'single' | 'fill-x' | 'fill-y' | 'fill-z',
-							fillCount: fillModeVal !== 'single' ? fillCountRaw : undefined,
-							fillAxisScale: fillModeVal !== 'single' ? fillAxisScaleRaw : undefined,
-							materialOverrides: Array.isArray(item?.materialOverrides)
-								? (item?.materialOverrides as unknown[]).map((e) => ({ ...(e as Record<string, unknown>) }))
-								: undefined,
-							relationTags: item && Array.isArray(item.relationTags) ? [...(item.relationTags as unknown[])] : undefined,
-							notes: String(item?.fitMessage ?? item?.description ?? '').trim() || undefined,
-							modelBinding: { ...b },
-							slotTransform: worldT,
-							meshTransform: worldT,
-							previewInstanceTransform: relativeT,
-							previewInstanceWorldTransform: worldT,
-							worldTransform: worldT,
-							relativeTransform: relativeT,
-							worldBounds: null,
-							placeholderTransform: null,
-							placeholderBounds: null
-						})
+						const baseScale = {
+							x: Number(itemScl?.x ?? 1) || 1,
+							y: Number(itemScl?.y ?? 1) || 1,
+							z: Number(itemScl?.z ?? 1) || 1
+						}
+						const baseQuat = itemQat
+							? {
+									x: Number(itemQat.x ?? 0) || 0,
+									y: Number(itemQat.y ?? 0) || 0,
+									z: Number(itemQat.z ?? 0) || 0,
+									w: Number(itemQat.w ?? 1) || 1
+								}
+							: { x: 0, y: 0, z: 0, w: 1 }
+						for (let index = 0; index < cloneCount; index += 1) {
+							const isClone = cloneCount > 1
+							const offsetAxis: 'x' | 'y' | 'z' =
+								fillModeVal === 'fill-x' ? 'x' : fillModeVal === 'fill-y' ? 'y' : fillModeVal === 'fill-z' ? 'z' : 'x'
+							const offsetValue = isClone ? (index - (cloneCount - 1) / 2) * fillAxisScaleRaw : 0
+							const instancePosition = {
+								...basePosition,
+								[offsetAxis]: (basePosition as Record<string, number>)[offsetAxis] + offsetValue
+							}
+							const worldT = {
+								position: instancePosition,
+								rotation: baseRotation,
+								quaternion: baseQuat,
+								scale: baseScale
+							}
+							const relativeT = {
+								position: {
+									x: instancePosition.x,
+									y: instancePosition.y,
+									z: instancePosition.z
+								},
+								rotation: baseRotation,
+								quaternion: baseQuat,
+								scale: baseScale
+							}
+							const slotId = isClone ? `${objectId}__clone_${index + 1}` : objectId
+							const sourceName = String(item?.name ?? objectId).trim() || objectId
+							const displayName = isClone ? `${sourceName} [${index + 1}/${cloneCount}]` : sourceName
+							synthesizedSlots.push({
+								slotId,
+								sourceSlotId: objectId,
+								sourceObjectId: objectId,
+								objectName: sourceName,
+								displayName,
+								cloneIndex: index,
+								cloneCount,
+								isClone,
+								fitMode: (item?.fitMode ?? 'normal') as 'normal' | 'oriented' | 'filled' | 'forced',
+								fillMode: fillModeVal as 'single' | 'fill-x' | 'fill-y' | 'fill-z',
+								fillCount: fillModeVal !== 'single' ? fillCountRaw : undefined,
+								fillAxisScale: fillModeVal !== 'single' ? fillAxisScaleRaw : undefined,
+								materialOverrides: Array.isArray(item?.materialOverrides)
+									? (item?.materialOverrides as unknown[]).map((e) => ({ ...(e as Record<string, unknown>) }))
+									: undefined,
+								relationTags: item && Array.isArray(item.relationTags) ? [...(item.relationTags as unknown[])] : undefined,
+								notes: String(item?.fitMessage ?? item?.description ?? '').trim() || undefined,
+								modelBinding: { ...b },
+								slotTransform: worldT,
+								meshTransform: worldT,
+								previewInstanceTransform: relativeT,
+								previewInstanceWorldTransform: worldT,
+								worldTransform: worldT,
+								relativeTransform: relativeT,
+								worldBounds: null,
+								placeholderTransform: null,
+								placeholderBounds: null
+							})
+						}
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err ?? 'unknown')
+						console.warn(`[UnrealExport] synthesizeSlots 单条失败（跳过本条，继续其它）: objectId=${objectId}`, err)
+						synthesizedFailures.push({ objectId, error: msg })
+						continue
 					}
+				}
+				if (synthesizedFailures.length > 0) {
+					resolvedLayoutWarnings.push(
+						`synthesizedSlots per-binding failures: ${synthesizedFailures.length}. ` +
+						synthesizedFailures.map(f => `${f.objectId}=${f.error}`).join('; ')
+					)
 				}
 				if (synthesizedSlots.length > 0) {
 					console.warn(

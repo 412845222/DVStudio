@@ -1,3 +1,98 @@
+import type { WorkflowModelFormat } from '../../../../aiworkflow/types'
+
+const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz', 'dae'] as const
+type ModelExtWhitelist = (typeof MODEL_EXT_WHITELIST)[number]
+
+function getLowercasedExt(pathLike: unknown): string | null {
+	if (pathLike === null || pathLike === undefined) return null
+	const raw = String(pathLike)
+		.split('?')[0]
+		.split('#')[0]
+		.trim()
+	if (!raw) return null
+	// dweb://...?path=Content/Media/foo.glb → 取 query 里的 path 值再做 ext
+	const queryMatch = /[?&](?:path|relativePath|assetPath|filePath|name)=([^&]+)/.exec(raw)
+	const candidate = (() => {
+		if (queryMatch && queryMatch[1]) {
+			try {
+				return decodeURIComponent(queryMatch[1])
+			} catch {
+				return queryMatch[1]
+			}
+		}
+		// file:///C:/foo/bar.glb → /C:/foo/bar.glb → 直接取
+		const stripProto = raw.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/+/, '')
+		return stripProto || raw
+	})()
+	const slash = Math.max(candidate.lastIndexOf('/'), candidate.lastIndexOf('\\'))
+	const base = slash >= 0 ? candidate.slice(slash + 1) : candidate
+	if (!base) return null
+	const dot = base.lastIndexOf('.')
+	if (dot <= 0 || dot === base.length - 1) return null
+	const ext = base.slice(dot + 1).toLowerCase()
+	return ext || null
+}
+
+/**
+ * 从路径字符串尾部推断模型文件格式。
+ * 后缀必须命中 MODEL_EXT_WHITELIST（glb/gltf/fbx/obj/stl/usdz/dae）才返回。
+ * dweb://project-assets?path=xxx.glb / Content/Media/foo.glb / file:///C:/foo.glb
+ * 三种形式都能正确识别。
+ */
+export function detectModelFormatFromPath(pathLike: unknown): WorkflowModelFormat | null {
+	const ext = getLowercasedExt(pathLike)
+	if (!ext) return null
+	const hit = (MODEL_EXT_WHITELIST as readonly string[]).includes(ext)
+	if (!hit) return null
+	if (ext === 'usdz') return 'glb' // UE 侧无法直接消费 usdz；归并成 glb 由下游自行兜底
+	if (ext === 'dae') return 'fbx' // Collada → 归并到 fbx 分支（近似）
+	return ext as WorkflowModelFormat
+}
+
+/**
+ * 从一批候选路径中挑出"最可能是真实 3D 模型文件"的那一个。
+ * 优先级：
+ *   1) 后缀命中 MODEL_EXT_WHITELIST（白名单）；其中 glb/gltf 优先（当前项目主格式）
+ *   2) 任一路径里带 Content/Media/ 或 static-assets/ 或 /assets/ 的本地感路径
+ *   3) 否则第一个非空字符串
+ */
+export function pickBestModelUrlFromCandidates(
+	candidates: Array<string | null | undefined>
+): string | null {
+	const clean = (candidates ?? [])
+		.filter((c): c is string => typeof c === 'string' && !!c.trim())
+		.map((c) => c.trim())
+	if (clean.length === 0) return null
+
+	const score = (v: string): number => {
+		const ext = getLowercasedExt(v)
+		const extIdx = ext ? (MODEL_EXT_WHITELIST as readonly string[]).indexOf(ext) : -1
+		let s = 0
+		if (extIdx >= 0) {
+			// glb/gltf → 最高优先级
+			if (ext === 'glb' || ext === 'gltf') s += 10000
+			s += 1000 - extIdx
+		}
+		// 强烈偏向项目本地静态资产（Content/Media 是 UE Content 相对路径主目录）
+		if (/Content[\\/]+Media[\\/]/i.test(v)) s += 500
+		if (/static-assets|project-assets|assets[\\/]/i.test(v)) s += 200
+		if (/^file:/i.test(v) || /^[a-zA-Z]:[\\/]/.test(v)) s += 100 // 本地绝对路径
+		if (/^https?:/i.test(v)) s -= 10 // 远程 URL 降权（CORS/CDN 失效风险）
+		return s
+	}
+
+	let best = clean[0]
+	let bestScore = -Infinity
+	for (const v of clean) {
+		const sc = score(v)
+		if (sc > bestScore) {
+			bestScore = sc
+			best = v
+		}
+	}
+	return best || null
+}
+
 const identityTransform = {
 	position: { x: 0, y: 0, z: 0 },
 	rotation: { yaw: 0, pitch: 0, roll: 0 },
@@ -177,13 +272,11 @@ export const prepareResolvedSlotsForExport = (
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #5a | rawSlots=${rawSlots.length} | normalizedResolvedSlots=${resolvedSlots.length} | sourceObjectIdList=${resolvedSlots.map((s) => String(s.sourceObjectId ?? '')).filter(Boolean).join(',')} | connectedModelBindings=${safeBindings.length}[${safeBindings.map((b) => String((b as Record<string, unknown>)?.objectId ?? '')).filter(Boolean).join(',')}]`
 	)
 
-	// 建立binding索引（用户要求彻底放宽，不要过度过滤）：
-	//   取消 hasValidModelPath 作为录入门槛，改为：
-	//     a) 只要 binding 的 objectId 出现在 resolvedSlots 的 sourceObjectId 中
-	//        （这就是 SceneLayoutNode 真正渲染过的模型，即使 path 字段缺失，
-	//         下面的补齐循环也会尝试从 rawSlot.modelBinding 偷路径）
-	//     b) 或 binding 自身任一路径字段有非空值（hasAnyPathExtended）
-	//   两种方式都 OK，全量透传 modelBinding 字段，不做裁剪。
+	// 建立binding索引（【彻底不做过滤】，最后一英里 validSlots 再做 hasAnyPathExtended）：
+	//   之前的 inResolvedWhitelist || hasAnyPath 会导致：rawSlots=1（viewer只有1条），
+	//   剩下 26 个 binding 哪怕 later 能被 Ultimate Backfill 救回来，也会因为
+	//   现在还没有 path 被提前过滤掉。这里改成 ——【只要 binding 有 objectId 就入索引】，
+	//   后面补齐/合成/导出 全走 per-binding/per-slot 流程，彻底避免"1个失败跳过全部"。
 	const resolvedSourceObjectIds = new Set<string>()
 	for (const s of resolvedSlots) {
 		const id = String(s.sourceObjectId ?? '').trim()
@@ -194,12 +287,11 @@ export const prepareResolvedSlotsForExport = (
 		if (!binding || typeof binding !== 'object') continue
 		const b = binding as Record<string, unknown>
 		const objectId = String(b.objectId ?? '').trim()
-		if (!objectId) continue
-		const inResolvedWhitelist = resolvedSourceObjectIds.has(objectId)
-		const hasAnyPath = hasAnyPathExtended(b)
-		if (!inResolvedWhitelist && !hasAnyPath) continue
-		bindingByObjectId.set(objectId, b)
+		if (!objectId) continue // 唯一硬门槛：没有 objectId 对不上任何占位体，直接扔
+		// 同名 objectId 只留第一个（通常是 Force-Rebuild 从 edges 刚扫出来的那一个）
+		if (!bindingByObjectId.has(objectId)) bindingByObjectId.set(objectId, b)
 	}
+	void resolvedSourceObjectIds // 保留变量防止 unused 告警（后续 trace/log 偶尔会看）
 
 	// 建立layoutItem索引
 	const itemMap = new Map<string, Record<string, unknown>>()
@@ -213,147 +305,164 @@ export const prepareResolvedSlotsForExport = (
 	}
 
 	// 处理每个resolved slot - 保留viewer计算的所有变换数据
+	// 2026-08-03：per-slot try/catch，任一条处理失败只跳过本条，其它正常入 finalSlots
 	const finalSlots: Record<string, unknown>[] = []
 	const processedObjectIds = new Set<string>()
+	const perSlotFailures: Array<{ slotId: string; sourceObjectId: string; error: string }> = []
 
 	for (const slot of resolvedSlots) {
 		const slotId = String(slot.slotId ?? '').trim()
 		const sourceObjectId = String(slot.sourceObjectId ?? '').trim()
 		if (!slotId || !sourceObjectId) continue
+		try {
+			processedObjectIds.add(sourceObjectId)
 
-		processedObjectIds.add(sourceObjectId)
+			// 深拷贝slot，保留所有字段
+			const finalSlot: Record<string, unknown> = { ...slot }
 
-		// 深拷贝slot，保留所有字段
-		const finalSlot: Record<string, unknown> = { ...slot }
-
-		// 确保objectName存在
-		if (!String(finalSlot.objectName ?? '').trim()) {
-			const layoutItem = itemMap.get(sourceObjectId)
-			const binding = bindingByObjectId.get(sourceObjectId)
-			finalSlot.objectName =
-				String(layoutItem?.name ?? binding?.objectName ?? sourceObjectId).trim() || sourceObjectId
-		}
-
-		// 确保displayName存在
-		if (!String(finalSlot.displayName ?? '').trim()) {
-			const isClone = !!finalSlot.isClone
-			const cloneIndex = Number(finalSlot.cloneIndex ?? 0)
-			const cloneCount = Number(finalSlot.cloneCount ?? 1)
-			const objectName = String(finalSlot.objectName ?? sourceObjectId)
-			finalSlot.displayName =
-				isClone && cloneCount > 1 ? `${objectName} [${cloneIndex + 1}/${cloneCount}]` : objectName
-		}
-
-		// 验证/补充modelBinding
-		let modelBinding = finalSlot.modelBinding as Record<string, unknown> | undefined
-		const bindingHasValidPath = !!(modelBinding && typeof modelBinding === 'object' && hasValidModelPath(modelBinding))
-		// 2026-08-03：即使 slot.modelBinding 已经存在（比如 viewer 侧按旧 8 字段白名单写了），
-		//   只要它"缺少贴图完整性字段"——modelAssetProjectRelativePath/textureRefs/
-		//   modelMaterialOverrides/modelFormat/modelProjectRelativePath 中有任何 2 项缺失，
-		//   就强制用 resolvedBindings 里的全量 binding 覆盖它。这样能修复用户现场最常见的
-		//   "第一个模型能出现在导出里但贴图全白"：viewer 把 8 字段写了，
-		//   hasValidModelPath 就认为它有效，从而挡住了 fallback；导致贴图引用永远不会被补。
-		const TEXTURE_INTEGRITY_KEYS_LOCAL = TEXTURE_INTEGRITY_KEYS
-		const existingTextureKeysCount = TEXTURE_INTEGRITY_KEYS_LOCAL.filter(
-			(k) => {
-				if (!modelBinding || typeof modelBinding !== 'object') return false
-				const mb = modelBinding as Record<string, unknown>
-				const v = mb[k]
-				if (Array.isArray(v)) return v.length > 0
-				return String(v ?? '').trim() !== ''
+			// 确保objectName存在
+			if (!String(finalSlot.objectName ?? '').trim()) {
+				const layoutItem = itemMap.get(sourceObjectId)
+				const binding = bindingByObjectId.get(sourceObjectId)
+				finalSlot.objectName =
+					String(layoutItem?.name ?? binding?.objectName ?? sourceObjectId).trim() || sourceObjectId
 			}
-		).length
-		const bindingLacksTextureIntegrity = bindingHasValidPath && existingTextureKeysCount < 3
-		const fallbackBinding = bindingByObjectId.get(sourceObjectId)
-		if (!bindingHasValidPath || bindingLacksTextureIntegrity) {
-			if (fallbackBinding) {
-				// 2026-08-03 新链路：fallbackBinding 直接全量 spread 拷贝。
-				// SceneLayoutNode.vue 已经把 resolvedModelBindings 解析成预览 Three.js
-				// 真正成功加载的 binding，这里不做任何二次字段裁剪，才能保证：
-				//   ① 导出的模型数量与预览一致（不会只剩第一个）
-				//   ② 分离打包的 gltf + bin + png 的贴图引用
-				//     (textureRefs)、材质覆盖 (modelMaterialOverrides)、
-				//     项目相对路径 (modelAssetProjectRelativePath /
-				//     modelProjectRelativePath) 等不被白名单过滤掉，造成白模。
-				const copied: Record<string, unknown> = { ...fallbackBinding }
-				if (!String(copied.sourceNodeType ?? '').trim()) {
-					copied.sourceNodeType = 'model3d'
+
+			// 确保displayName存在
+			if (!String(finalSlot.displayName ?? '').trim()) {
+				const isClone = !!finalSlot.isClone
+				const cloneIndex = Number(finalSlot.cloneIndex ?? 0)
+				const cloneCount = Number(finalSlot.cloneCount ?? 1)
+				const objectName = String(finalSlot.objectName ?? sourceObjectId)
+				finalSlot.displayName =
+					isClone && cloneCount > 1 ? `${objectName} [${cloneIndex + 1}/${cloneCount}]` : objectName
+			}
+
+			// 验证/补充modelBinding
+			let modelBinding = finalSlot.modelBinding as Record<string, unknown> | undefined
+			const bindingHasValidPath = !!(modelBinding && typeof modelBinding === 'object' && hasValidModelPath(modelBinding))
+			const TEXTURE_INTEGRITY_KEYS_LOCAL = TEXTURE_INTEGRITY_KEYS
+			const existingTextureKeysCount = TEXTURE_INTEGRITY_KEYS_LOCAL.filter(
+				(k) => {
+					if (!modelBinding || typeof modelBinding !== 'object') return false
+					const mb = modelBinding as Record<string, unknown>
+					const v = mb[k]
+					if (Array.isArray(v)) return v.length > 0
+					return String(v ?? '').trim() !== ''
 				}
-				modelBinding = copied
-				finalSlot.modelBinding = modelBinding
-			} else if (!warnings.some((w) => String(w).includes(sourceObjectId))) {
-				warnings.push(
-					`Slot "${slotId}" (sourceObjectId=${sourceObjectId}) has no slot.modelBinding AND no fallback in connectedModelBindings; known keys: ${
-						[...bindingByObjectId.keys()].join(',') || '<empty>'
-					}; lacksTextureIntegrity=${String(bindingLacksTextureIntegrity)}`
-				)
+			).length
+			const bindingLacksTextureIntegrity = bindingHasValidPath && existingTextureKeysCount < 3
+			const fallbackBinding = bindingByObjectId.get(sourceObjectId)
+			if (!bindingHasValidPath || bindingLacksTextureIntegrity) {
+				if (fallbackBinding) {
+					const copied: Record<string, unknown> = { ...fallbackBinding }
+					if (!String(copied.sourceNodeType ?? '').trim()) {
+						copied.sourceNodeType = 'model3d'
+					}
+					modelBinding = copied
+					finalSlot.modelBinding = modelBinding
+				} else if (!warnings.some((w) => String(w).includes(sourceObjectId))) {
+					warnings.push(
+						`Slot "${slotId}" (sourceObjectId=${sourceObjectId}) has no slot.modelBinding AND no fallback in connectedModelBindings; known keys: ${
+							[...bindingByObjectId.keys()].join(',') || '<empty>'
+						}; lacksTextureIntegrity=${String(bindingLacksTextureIntegrity)}`
+					)
+				}
 			}
-		}
 
-		// 确保所有变换字段存在且格式正确 - 优先使用relativeTransform（C++端主要使用）
-		// viewer返回的relativeTransform是相对于actorOrigin的变换，这是C++端摆放Actor的关键
-		const relativeTransform = normalizeTransform(
-			finalSlot.relativeTransform ?? finalSlot.previewInstanceTransform
-		)
-		const previewInstanceTransform = normalizeTransform(
-			finalSlot.previewInstanceTransform ?? relativeTransform
-		)
-		const worldTransform = normalizeTransform(
-			finalSlot.worldTransform ?? finalSlot.previewInstanceWorldTransform ?? relativeTransform
-		)
-		const slotTransform = normalizeTransform(finalSlot.slotTransform ?? relativeTransform)
-		const meshTransform = normalizeTransform(finalSlot.meshTransform ?? worldTransform)
-		const placeholderTransform = finalSlot.placeholderTransform
-			? normalizeTransform(finalSlot.placeholderTransform)
-			: null
+			// 确保所有变换字段存在且格式正确 - 优先使用relativeTransform（C++端主要使用）
+			const relativeTransform = normalizeTransform(
+				finalSlot.relativeTransform ?? finalSlot.previewInstanceTransform
+			)
+			const previewInstanceTransform = normalizeTransform(
+				finalSlot.previewInstanceTransform ?? relativeTransform
+			)
+			const worldTransform = normalizeTransform(
+				finalSlot.worldTransform ?? finalSlot.previewInstanceWorldTransform ?? relativeTransform
+			)
+			const slotTransform = normalizeTransform(finalSlot.slotTransform ?? relativeTransform)
+			const meshTransform = normalizeTransform(finalSlot.meshTransform ?? worldTransform)
+			const placeholderTransform = finalSlot.placeholderTransform
+				? normalizeTransform(finalSlot.placeholderTransform)
+				: null
 
-		finalSlot.relativeTransform = relativeTransform
-		finalSlot.previewInstanceTransform = previewInstanceTransform
-		finalSlot.worldTransform = worldTransform
-		finalSlot.slotTransform = slotTransform
-		finalSlot.meshTransform = meshTransform
-		finalSlot.placeholderTransform = placeholderTransform
+			finalSlot.relativeTransform = relativeTransform
+			finalSlot.previewInstanceTransform = previewInstanceTransform
+			finalSlot.worldTransform = worldTransform
+			finalSlot.slotTransform = slotTransform
+			finalSlot.meshTransform = meshTransform
+			finalSlot.placeholderTransform = placeholderTransform
 
-		// 确保previewInstanceWorldTransform存在
-		finalSlot.previewInstanceWorldTransform = normalizeTransform(
-			finalSlot.previewInstanceWorldTransform ?? worldTransform
-		)
+			finalSlot.previewInstanceWorldTransform = normalizeTransform(
+				finalSlot.previewInstanceWorldTransform ?? worldTransform
+			)
 
-		// 保留其他元数据字段
-		if (finalSlot.parentReference && typeof finalSlot.parentReference === 'object') {
-			// parentReference中的relativeTransform也需要规范化
-			const pr = finalSlot.parentReference as Record<string, unknown>
-			if (pr.relativeTransform) {
-				pr.relativeTransform = normalizeTransform(pr.relativeTransform)
+			if (finalSlot.parentReference && typeof finalSlot.parentReference === 'object') {
+				const pr = finalSlot.parentReference as Record<string, unknown>
+				if (pr.relativeTransform) {
+					pr.relativeTransform = normalizeTransform(pr.relativeTransform)
+				}
 			}
+
+			finalSlot.generatedFromBinding = false
+
+			finalSlots.push(finalSlot)
+		} catch (err) {
+			// ——per-slot 异常隔离：本条失败，其它继续——
+			const msg = err instanceof Error ? err.message : String(err ?? 'unknown')
+			perSlotFailures.push({ slotId, sourceObjectId, error: msg })
+			console.warn(
+				`[UnrealExport] prepareResolvedSlotsForExport 单条 slot 处理失败（跳过本条，继续其它）: ` +
+					`slotId=${slotId} sourceObjectId=${sourceObjectId}`,
+				err
+			)
+			continue
 		}
-
-		// 标记不是从binding生成的（是viewer真正解析到的）
-		finalSlot.generatedFromBinding = false
-
-		finalSlots.push(finalSlot)
+	}
+	if (perSlotFailures.length > 0) {
+		warnings.push(
+			`prepareResolvedSlotsForExport per-slot failures: ${perSlotFailures.length}. ` +
+			perSlotFailures.map(f => `slot=${f.slotId}(obj=${f.sourceObjectId})=${f.error}`).join('; ')
+		)
 	}
 
 	// 检查是否有connected binding但没有对应resolved slot的情况
 	// ——2026-08-03 改为：**自动补齐**缺失的slots（不再只警告不导出）。
-	//   旧行为会导致"警告后不导出"，用户看到右下角显示 N 个但导出只剩 viewer 返回的 1 个。
+	//   单个binding合成失败 try/catch 隔离：一条合成失败不影响其它 binding。
 	const synthesizedSlots: Record<string, unknown>[] = []
+	const synthesizedFailures: Array<{ objectId: string; error: string }> = []
 	for (const [objectId, binding] of bindingByObjectId.entries()) {
 		if (!processedObjectIds.has(objectId)) {
-			const layoutItem = itemMap.get(objectId)
-			const name = String(binding.objectName ?? layoutItem?.name ?? objectId).trim() || objectId
-			warnings.push(
-				`Model "${name}" (objectId=${objectId}) has binding but was not found in viewer slots — auto-synthesizing a slot from pure data.`
-			)
-			const bySourceId = new Map<string, Record<string, unknown>>()
-			const synthesisedOne = buildSlotsFromModelBindings([binding], bySourceId, safeLayoutItems)
-			if (Array.isArray(synthesisedOne) && synthesisedOne.length > 0) {
-				for (const s of synthesisedOne) {
-					processedObjectIds.add(objectId)
-					synthesizedSlots.push(s)
+			try {
+				const layoutItem = itemMap.get(objectId)
+				const name = String(binding.objectName ?? layoutItem?.name ?? objectId).trim() || objectId
+				warnings.push(
+					`Model "${name}" (objectId=${objectId}) has binding but was not found in viewer slots — auto-synthesizing a slot from pure data.`
+				)
+				const bySourceId = new Map<string, Record<string, unknown>>()
+				const synthesisedOne = buildSlotsFromModelBindings([binding], bySourceId, safeLayoutItems)
+				if (Array.isArray(synthesisedOne) && synthesisedOne.length > 0) {
+					for (const s of synthesisedOne) {
+						processedObjectIds.add(objectId)
+						synthesizedSlots.push(s)
+					}
 				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err ?? 'unknown')
+				synthesizedFailures.push({ objectId, error: msg })
+				console.warn(
+					`[UnrealExport] prepareResolvedSlotsForExport auto-synthesize 单条失败（跳过本条，继续其它）: objectId=${objectId}`,
+					err
+				)
+				continue
 			}
 		}
+	}
+	if (synthesizedFailures.length > 0) {
+		warnings.push(
+			`prepareResolvedSlotsForExport auto-synthesized failures: ${synthesizedFailures.length}. ` +
+			synthesizedFailures.map(f => `${f.objectId}=${f.error}`).join('; ')
+		)
 	}
 	if (synthesizedSlots.length > 0) {
 		console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5b prepareResolvedSlotsForExport auto-synthesized missing slots')
