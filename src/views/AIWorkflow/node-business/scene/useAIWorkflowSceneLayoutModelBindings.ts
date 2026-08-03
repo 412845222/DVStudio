@@ -92,7 +92,12 @@ const normalizeCandidate = (u: string): string => {
 	if (!t) return ''
 	if (t.toLowerCase().startsWith('file://')) return t
 	const low = t.toLowerCase()
-	if (!low.startsWith('http') && !/^[a-zA-Z]:[\\/]/.test(t) && !t.startsWith('\\\\') && !t.startsWith('/')) {
+	if (
+		!low.startsWith('http') &&
+		!/^[a-zA-Z]:[\\/]/.test(t) &&
+		!t.startsWith('\\\\') &&
+		!t.startsWith('/')
+	) {
 		t = t.replace(/\\/g, '/')
 	}
 	return t
@@ -107,7 +112,10 @@ const recoverImageExtToModel = (input: string, targetExt: string = 'glb'): strin
 	const isBinLow = origExt === 'bin'
 	if (!isImage && !isBinLow) return results
 	try {
-		if (u.toLowerCase().startsWith('dweb://project-assets') || u.toLowerCase().startsWith('dweb:')) {
+		if (
+			u.toLowerCase().startsWith('dweb://project-assets') ||
+			u.toLowerCase().startsWith('dweb:')
+		) {
 			const qStart = u.indexOf('?')
 			if (qStart >= 0) {
 				const base = u.substring(0, qStart + 1)
@@ -129,7 +137,9 @@ const recoverImageExtToModel = (input: string, targetExt: string = 'glb'): strin
 				}
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	const withoutQuery = u.split('?')[0].split('#')[0]
 	const lastDot = withoutQuery.lastIndexOf('.')
 	if (lastDot < 0) return results
@@ -141,7 +151,9 @@ const recoverImageExtToModel = (input: string, targetExt: string = 'glb'): strin
 
 // ===== WorkflowModel3DNode 同款策略：从任意 URL / 路径里挑出优先级最高的"真实 3D 模型源，
 // 直接丢弃 meshy/tripo3d 远端 CDN URL；还会恢复被缩略图污染成 .png / .bin 的路径回退 glb 再进入候选。
-export const pickBestModelUrlFromCandidates = (rawCandidates: Array<string | null | undefined>): string => {
+export const pickBestModelUrlFromCandidates = (
+	rawCandidates: Array<string | null | undefined>
+): string => {
 	const validList: Array<{ url: string; q: CandidateQuality }> = []
 	const pushOne = (raw: string) => {
 		const u0 = String(raw ?? '').trim()
@@ -180,20 +192,19 @@ export const getTripo3DEffectiveModelSource = (
 	const relation = isRecord(value.tripo3dRelationSummary) ? value.tripo3dRelationSummary : {}
 	const modelUrls = isRecord(value.tripo3dModelUrls) ? value.tripo3dModelUrls : {}
 	const assetUrl = String(
-		relation.effectiveLocalAssetUrl ??
-		value.tripo3dOutputAssetUrl ??
-		output.assetUrl ??
-		''
+		relation.effectiveLocalAssetUrl ?? value.tripo3dOutputAssetUrl ?? output.assetUrl ?? ''
 	).trim()
 	const assetPath = String(
-		relation.effectiveLocalAssetPath ??
-		value.tripo3dOutputAssetPath ??
-		output.assetPath ??
-		''
+		relation.effectiveLocalAssetPath ?? value.tripo3dOutputAssetPath ?? output.assetPath ?? ''
 	).trim()
 	const preferredUrl =
 		String(relation.effectivePreferredModelUrl ?? output.preferredUrl ?? '').trim() || assetUrl
-	const format = String(output.format ?? '').trim().toLowerCase() === 'gltf' ? 'gltf' as const : 'glb' as const
+	const format =
+		String(output.format ?? '')
+			.trim()
+			.toLowerCase() === 'gltf'
+			? ('gltf' as const)
+			: ('glb' as const)
 	return { preferredUrl, assetUrl, assetPath, format }
 }
 
@@ -206,7 +217,10 @@ const fixDvcacheBinPath = (p: string): string => {
 	if (match) {
 		const meshyId = match[2]
 		const correctPath = `Content\\Media\\meshy-3d-${meshyId}.glb`
-		result = result.replace(/\.dvcache[\\/]bin[\\/](meshy(?:-3d)?)[_-]([a-f0-9-]+)\.bin$/i, correctPath.replace(/\\/g, p.includes('/') ? '/' : '\\'))
+		result = result.replace(
+			/\.dvcache[\\/]bin[\\/](meshy(?:-3d)?)[_-]([a-f0-9-]+)\.bin$/i,
+			correctPath.replace(/\\/g, p.includes('/') ? '/' : '\\')
+		)
 	}
 	return result
 }
@@ -239,24 +253,37 @@ const fixDwebUrlPath = (url: string): string => {
 	return url
 }
 
-const normalizeModelPaths = <T extends {
-	modelUrl?: string
-	modelAssetUrl?: string
-	modelSourcePath?: string
-	modelAssetPath?: string
-	modelProjectRelativePath?: string
-	modelAssetProjectRelativePath?: string
-	modelFormat?: WorkflowModelFormat
-}>(info: T): T => {
+// 2026-08-03 导出供 unrealExportModelSourceExtractor 复用，消除导出链路与预览链路的路径修复分叉
+export const normalizeModelPaths = <
+	T extends {
+		modelUrl?: string
+		modelAssetUrl?: string
+		modelSourcePath?: string
+		modelAssetPath?: string
+		modelProjectRelativePath?: string
+		modelAssetProjectRelativePath?: string
+		modelFormat?: WorkflowModelFormat
+	}
+>(
+	info: T
+): T => {
 	const result = { ...info }
 	if (result.modelUrl) result.modelUrl = fixDwebUrlPath(fixDvcacheBinPath(result.modelUrl))
-	if (result.modelAssetUrl) result.modelAssetUrl = fixDwebUrlPath(fixDvcacheBinPath(result.modelAssetUrl))
+	if (result.modelAssetUrl)
+		result.modelAssetUrl = fixDwebUrlPath(fixDvcacheBinPath(result.modelAssetUrl))
 	if (result.modelSourcePath) result.modelSourcePath = fixDvcacheBinPath(result.modelSourcePath)
 	if (result.modelAssetPath) result.modelAssetPath = fixDvcacheBinPath(result.modelAssetPath)
-	if (result.modelProjectRelativePath) result.modelProjectRelativePath = fixDvcacheBinPath(result.modelProjectRelativePath.replace(/\//g, '\\')).replace(/\\/g, '/')
-	if (result.modelAssetProjectRelativePath) result.modelAssetProjectRelativePath = fixDvcacheBinPath(result.modelAssetProjectRelativePath.replace(/\//g, '\\')).replace(/\\/g, '/')
-	
-	const finalPath = result.modelSourcePath || result.modelAssetPath || result.modelUrl || result.modelAssetUrl
+	if (result.modelProjectRelativePath)
+		result.modelProjectRelativePath = fixDvcacheBinPath(
+			result.modelProjectRelativePath.replace(/\//g, '\\')
+		).replace(/\\/g, '/')
+	if (result.modelAssetProjectRelativePath)
+		result.modelAssetProjectRelativePath = fixDvcacheBinPath(
+			result.modelAssetProjectRelativePath.replace(/\//g, '\\')
+		).replace(/\\/g, '/')
+
+	const finalPath =
+		result.modelSourcePath || result.modelAssetPath || result.modelUrl || result.modelAssetUrl
 	if (finalPath && !result.modelFormat) {
 		result.modelFormat = detectModelFormatFromPath(finalPath) || 'glb'
 	} else if (result.modelFormat === 'glb' && finalPath) {
@@ -292,7 +319,8 @@ export const detectModelFormatFromPath = (pathOrUrl: string): WorkflowModelForma
 			if (pathParam) {
 				const decodedPath = decodeURIComponent(pathParam).toLowerCase()
 				const pathQueryIndex = decodedPath.indexOf('?')
-				const innerPath = pathQueryIndex >= 0 ? decodedPath.substring(0, pathQueryIndex) : decodedPath
+				const innerPath =
+					pathQueryIndex >= 0 ? decodedPath.substring(0, pathQueryIndex) : decodedPath
 				return detectFromPathString(innerPath)
 			}
 		} catch {}
@@ -301,7 +329,7 @@ export const detectModelFormatFromPath = (pathOrUrl: string): WorkflowModelForma
 	return undefined
 }
 
-const extractModelInfoFromSettings = (
+export const extractModelInfoFromSettings = (
 	settings: Record<string, unknown> | null | undefined,
 	resourcesById?: Record<string, Record<string, unknown>>,
 	nodeResourceId?: string
@@ -337,7 +365,9 @@ const extractModelInfoFromSettings = (
 	}
 
 	if (!modelFormat) {
-		modelFormat = detectModelFormatFromPath(modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath)
+		modelFormat = detectModelFormatFromPath(
+			modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath
+		)
 	}
 
 	if (!modelFormat && (modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath)) {
@@ -353,7 +383,10 @@ const extractModelInfoFromSettings = (
 		modelAssetProjectRelativePath: modelAssetProjectRelativePath || undefined,
 		modelSourceName: modelSourceName || undefined,
 		modelFormat,
-		modelResourceId: String((settings as Record<string, unknown>).resourceId ?? '').trim() || String(nodeResourceId ?? '').trim() || undefined
+		modelResourceId:
+			String((settings as Record<string, unknown>).resourceId ?? '').trim() ||
+			String(nodeResourceId ?? '').trim() ||
+			undefined
 	}
 
 	const resourceId =
@@ -378,13 +411,44 @@ const extractModelInfoFromSettings = (
 			if (resourceProjectRelativePath && !result.modelAssetProjectRelativePath) {
 				result.modelAssetProjectRelativePath = resourceProjectRelativePath
 			}
-			if (!result.modelUrl && resourceUrl) {
+			// 【硬约束 2026-08-03】绝对禁止使用远端 CDN URL：
+			//   result.modelUrl / modelAssetUrl 如果是 meshy/tripo3d 远端 CDN URL（非空但无效），
+			//   也必须用本地 resourceUrl 覆盖，不能只看"是否为空"。
+			const isRemoteModelUrl = (u: string): boolean => {
+				if (!u) return false
+				if (isMeshyRemoteUrl(u)) return true
+				const lower = u.toLowerCase()
+				if (lower.includes('tripo3d.ai')) return true
+				if (lower.startsWith('http://') || lower.startsWith('https://')) {
+					try {
+						const parsed = new URL(u)
+						const host = parsed.hostname.toLowerCase()
+						return host !== 'localhost' && host !== '127.0.0.1'
+					} catch {
+						return true
+					}
+				}
+				return false
+			}
+			if (
+				(!result.modelUrl || isRemoteModelUrl(result.modelUrl)) &&
+				resourceUrl &&
+				!isRemoteModelUrl(resourceUrl)
+			) {
 				result.modelUrl = resourceUrl
 			}
-			if (!result.modelAssetUrl && resourceUrl) {
+			if (
+				(!result.modelAssetUrl || isRemoteModelUrl(result.modelAssetUrl)) &&
+				resourceUrl &&
+				!isRemoteModelUrl(resourceUrl)
+			) {
 				result.modelAssetUrl = resourceUrl
 			}
-			if ((resourceSourcePath || resourceAssetPath) && !result.modelSourcePath && !result.modelAssetPath) {
+			if (
+				(resourceSourcePath || resourceAssetPath) &&
+				!result.modelSourcePath &&
+				!result.modelAssetPath
+			) {
 				const finalSourcePath = resourceAssetPath || resourceSourcePath
 				result.modelSourcePath = finalSourcePath
 				result.modelAssetPath = finalSourcePath
@@ -407,7 +471,15 @@ const extractModelInfoFromSettings = (
 			}
 		}
 	}
-	if (resourcesById && resourceId && (!modelUrl && !modelAssetUrl && !modelSourcePath && !modelAssetPath && !modelProjectRelativePath)) {
+	if (
+		resourcesById &&
+		resourceId &&
+		!modelUrl &&
+		!modelAssetUrl &&
+		!modelSourcePath &&
+		!modelAssetPath &&
+		!modelProjectRelativePath
+	) {
 		const resource = resourcesById[resourceId]
 		if (resource) {
 			const resourceUrl = String(resource.url ?? '').trim()
@@ -439,7 +511,10 @@ const extractModelInfoFromSettings = (
 				result.modelSourceName = resourceName
 			}
 			if (!result.modelFormat) {
-				result.modelFormat = detectModelFormatFromPath(resourceUrl || resourceSourcePath || resourceAssetPath || resourceName) || 'glb'
+				result.modelFormat =
+					detectModelFormatFromPath(
+						resourceUrl || resourceSourcePath || resourceAssetPath || resourceName
+					) || 'glb'
 			}
 			if (!result.modelResourceId) {
 				result.modelResourceId = resourceId
@@ -467,7 +542,9 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 	}
 	isSceneLayoutModelTargetItem: (item: SceneDecomposeInputItem) => boolean
 	getIncomingEdges: (nodeId: string, anchorId?: string) => unknown[]
-	getMeshyEffectiveModelSource: (settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined) => {
+	getMeshyEffectiveModelSource: (
+		settings: WorkflowMeshyNodeSettings | Record<string, unknown> | null | undefined
+	) => {
 		preferredUrl?: string | null
 		assetUrl?: string | null
 		assetPath?: string | null
@@ -518,7 +595,9 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				format = rawFormat.toLowerCase() as WorkflowModelFormat
 			}
 			if (!format) {
-				format = detectModelFormatFromPath(modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath)
+				format = detectModelFormatFromPath(
+					modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath
+				)
 			}
 			manualBindingsMap.set(objectId, {
 				objectId,
@@ -528,10 +607,14 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 					typeof itemRecord?.modelSourceName === 'string' ? itemRecord.modelSourceName : undefined,
 				modelSourcePath: modelSourcePath || undefined,
 				modelAssetPath: modelAssetPath || undefined,
-				modelProjectRelativePath: typeof itemRecord?.modelProjectRelativePath === 'string'
-					? itemRecord.modelProjectRelativePath : undefined,
-				modelAssetProjectRelativePath: typeof itemRecord?.modelAssetProjectRelativePath === 'string'
-					? itemRecord.modelAssetProjectRelativePath : undefined,
+				modelProjectRelativePath:
+					typeof itemRecord?.modelProjectRelativePath === 'string'
+						? itemRecord.modelProjectRelativePath
+						: undefined,
+				modelAssetProjectRelativePath:
+					typeof itemRecord?.modelAssetProjectRelativePath === 'string'
+						? itemRecord.modelAssetProjectRelativePath
+						: undefined,
 				modelFormat: format
 			})
 		}
@@ -556,18 +639,28 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				// 合并策略：已有值优先级 > 新传入值（避免空值覆盖有效值；但 connected 只能"升级成 true"不能降级）
 				if (binding.connected === true && existing.connected !== true) existing.connected = true
 				if (!existing.modelUrl && binding.modelUrl) existing.modelUrl = binding.modelUrl
-				if (!existing.modelAssetUrl && binding.modelAssetUrl) existing.modelAssetUrl = binding.modelAssetUrl
-				if (!existing.modelSourcePath && binding.modelSourcePath) existing.modelSourcePath = binding.modelSourcePath
-				if (!existing.modelAssetPath && binding.modelAssetPath) existing.modelAssetPath = binding.modelAssetPath
-				if (!existing.modelProjectRelativePath && binding.modelProjectRelativePath) existing.modelProjectRelativePath = binding.modelProjectRelativePath
-				if (!existing.modelAssetProjectRelativePath && binding.modelAssetProjectRelativePath) existing.modelAssetProjectRelativePath = binding.modelAssetProjectRelativePath
-				if (!existing.modelSourceName && binding.modelSourceName) existing.modelSourceName = binding.modelSourceName
+				if (!existing.modelAssetUrl && binding.modelAssetUrl)
+					existing.modelAssetUrl = binding.modelAssetUrl
+				if (!existing.modelSourcePath && binding.modelSourcePath)
+					existing.modelSourcePath = binding.modelSourcePath
+				if (!existing.modelAssetPath && binding.modelAssetPath)
+					existing.modelAssetPath = binding.modelAssetPath
+				if (!existing.modelProjectRelativePath && binding.modelProjectRelativePath)
+					existing.modelProjectRelativePath = binding.modelProjectRelativePath
+				if (!existing.modelAssetProjectRelativePath && binding.modelAssetProjectRelativePath)
+					existing.modelAssetProjectRelativePath = binding.modelAssetProjectRelativePath
+				if (!existing.modelSourceName && binding.modelSourceName)
+					existing.modelSourceName = binding.modelSourceName
 				if (!existing.modelFormat && binding.modelFormat) existing.modelFormat = binding.modelFormat
 				if (!existing.objectName && binding.objectName) existing.objectName = binding.objectName
-				if (!existing.sourceNodeId && binding.sourceNodeId) existing.sourceNodeId = binding.sourceNodeId
-				if (!existing.sourceNodeType && binding.sourceNodeType) existing.sourceNodeType = binding.sourceNodeType
-				if (!existing.inputAnchorId && binding.inputAnchorId) existing.inputAnchorId = binding.inputAnchorId
-				if (!existing.modelResourceId && binding.modelResourceId) existing.modelResourceId = binding.modelResourceId
+				if (!existing.sourceNodeId && binding.sourceNodeId)
+					existing.sourceNodeId = binding.sourceNodeId
+				if (!existing.sourceNodeType && binding.sourceNodeType)
+					existing.sourceNodeType = binding.sourceNodeType
+				if (!existing.inputAnchorId && binding.inputAnchorId)
+					existing.inputAnchorId = binding.inputAnchorId
+				if (!existing.modelResourceId && binding.modelResourceId)
+					existing.modelResourceId = binding.modelResourceId
 				return
 			}
 			bindingMap.set(objectId, { ...binding })
@@ -576,12 +669,14 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 		for (const [objectId, manualBinding] of manualBindingsMap) {
 			const modelAssetUrl = String(manualBinding.modelAssetUrl ?? '').trim()
 			const modelUrl = String(manualBinding.modelUrl ?? modelAssetUrl ?? '').trim()
-			const modelSourcePath = typeof manualBinding.modelSourcePath === 'string'
-				? String(manualBinding.modelSourcePath).trim() || undefined
-				: undefined
-			const modelAssetPath = typeof manualBinding.modelAssetPath === 'string'
-				? String(manualBinding.modelAssetPath).trim() || undefined
-				: undefined
+			const modelSourcePath =
+				typeof manualBinding.modelSourcePath === 'string'
+					? String(manualBinding.modelSourcePath).trim() || undefined
+					: undefined
+			const modelAssetPath =
+				typeof manualBinding.modelAssetPath === 'string'
+					? String(manualBinding.modelAssetPath).trim() || undefined
+					: undefined
 			const hasModel = !!(modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath)
 			addOrMergeBinding({
 				objectId,
@@ -613,43 +708,52 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			if (!fromNode) continue
 
 			const fromNodeType = String(fromNode.type ?? '').trim()
-			if (fromNodeType !== 'model3d' && fromNodeType !== 'meshy' && fromNodeType !== 'tripo3d') continue
+			if (fromNodeType !== 'model3d' && fromNodeType !== 'meshy' && fromNodeType !== 'tripo3d')
+				continue
 
 			const objectId = parseObjectIdFromAnchorId(toAnchorId)
 			if (!objectId) continue
 
-			const objectName = itemNameMap.get(objectId)
-				|| String(fromNode.alias ?? fromNode.title ?? '').trim()
-				|| objectId
+			const objectName =
+				itemNameMap.get(objectId) ||
+				String(fromNode.alias ?? fromNode.title ?? '').trim() ||
+				objectId
 
 			if (fromNodeType === 'meshy') {
-				const effective = options.getMeshyEffectiveModelSource(fromNode.meshySettings as Record<string, unknown>)
+				const effective = options.getMeshyEffectiveModelSource(
+					fromNode.meshySettings as Record<string, unknown>
+				)
 				const modelAssetUrl = String(effective.assetUrl ?? '').trim()
 				const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
 				const modelAssetPath = String(effective.assetPath ?? '').trim()
 				const modelUrl = isMeshyRemoteUrl(rawModelUrl) ? '' : rawModelUrl
 				const safeAssetUrl = isMeshyRemoteUrl(modelAssetUrl) ? '' : modelAssetUrl
-				const meshyFormat = effective.format === 'gltf' ? 'gltf' as const : 'glb' as const
+				const meshyFormat = effective.format === 'gltf' ? ('gltf' as const) : ('glb' as const)
 				const hasModel = !!(modelUrl || safeAssetUrl || modelAssetPath)
-				addOrMergeBinding(normalizeModelPaths({
-					objectId,
-					objectName,
-					inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
-					connected: hasModel,
-					sourceNodeId: fromNodeId,
-					sourceNodeType: 'meshy',
-					modelUrl: modelUrl || undefined,
-					modelAssetUrl: safeAssetUrl || undefined,
-					modelSourceName: String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
-					modelSourcePath: modelAssetPath || undefined,
-					modelAssetPath: modelAssetPath || undefined,
-					modelFormat: meshyFormat
-				}))
+				addOrMergeBinding(
+					normalizeModelPaths({
+						objectId,
+						objectName,
+						inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
+						connected: hasModel,
+						sourceNodeId: fromNodeId,
+						sourceNodeType: 'meshy',
+						modelUrl: modelUrl || undefined,
+						modelAssetUrl: safeAssetUrl || undefined,
+						modelSourceName:
+							String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
+						modelSourcePath: modelAssetPath || undefined,
+						modelAssetPath: modelAssetPath || undefined,
+						modelFormat: meshyFormat
+					})
+				)
 				continue
 			}
 
 			if (fromNodeType === 'tripo3d') {
-				const effective = getTripo3DEffectiveModelSource(fromNode.tripo3dSettings as Record<string, unknown>)
+				const effective = getTripo3DEffectiveModelSource(
+					fromNode.tripo3dSettings as Record<string, unknown>
+				)
 				const modelAssetUrl = String(effective.assetUrl ?? '').trim()
 				const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
 				const modelAssetPath = String(effective.assetPath ?? '').trim()
@@ -665,22 +769,25 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				}
 				const modelUrl = isTripoRemote(rawModelUrl) ? '' : rawModelUrl
 				const safeAssetUrl = isTripoRemote(modelAssetUrl) ? '' : modelAssetUrl
-				const tripoFormat = effective.format === 'gltf' ? 'gltf' as const : 'glb' as const
+				const tripoFormat = effective.format === 'gltf' ? ('gltf' as const) : ('glb' as const)
 				const hasModel = !!(modelUrl || safeAssetUrl || modelAssetPath)
-				addOrMergeBinding(normalizeModelPaths({
-					objectId,
-					objectName,
-					inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
-					connected: hasModel,
-					sourceNodeId: fromNodeId,
-					sourceNodeType: 'tripo3d',
-					modelUrl: modelUrl || undefined,
-					modelAssetUrl: safeAssetUrl || undefined,
-					modelSourceName: String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
-					modelSourcePath: modelAssetPath || undefined,
-					modelAssetPath: modelAssetPath || undefined,
-					modelFormat: tripoFormat
-				}))
+				addOrMergeBinding(
+					normalizeModelPaths({
+						objectId,
+						objectName,
+						inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
+						connected: hasModel,
+						sourceNodeId: fromNodeId,
+						sourceNodeType: 'tripo3d',
+						modelUrl: modelUrl || undefined,
+						modelAssetUrl: safeAssetUrl || undefined,
+						modelSourceName:
+							String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
+						modelSourcePath: modelAssetPath || undefined,
+						modelAssetPath: modelAssetPath || undefined,
+						modelFormat: tripoFormat
+					})
+				)
 				continue
 			}
 
@@ -691,17 +798,29 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				fromNode.settings as Record<string, unknown> | undefined,
 				fromNode
 			]
-			
+
 			for (const settings of settingsToCheck) {
-				const info = extractModelInfoFromSettings(settings, options.store.state.resourcesById, String(fromNode.resourceId ?? ''))
-				if (info.modelUrl || info.modelAssetUrl || info.modelSourcePath || info.modelAssetPath || info.modelProjectRelativePath) {
+				const info = extractModelInfoFromSettings(
+					settings,
+					options.store.state.resourcesById,
+					String(fromNode.resourceId ?? '')
+				)
+				if (
+					info.modelUrl ||
+					info.modelAssetUrl ||
+					info.modelSourcePath ||
+					info.modelAssetPath ||
+					info.modelProjectRelativePath
+				) {
 					extractedInfo = info
 					break
 				}
 			}
 
 			if (!extractedInfo && fromNode.meshySettings) {
-				const effective = options.getMeshyEffectiveModelSource(fromNode.meshySettings as Record<string, unknown>)
+				const effective = options.getMeshyEffectiveModelSource(
+					fromNode.meshySettings as Record<string, unknown>
+				)
 				const modelAssetUrl = String(effective.assetUrl ?? '').trim()
 				const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
 				const modelAssetPath = String(effective.assetPath ?? '').trim()
@@ -782,14 +901,13 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			//     ④ 把 pickBestModelUrlFromCandidates 的结果喂回 extractModelInfoFromSettings。
 			// ========================================================================
 			const hasExtractedPaths = !!(
-				extractedInfo && (
-					extractedInfo.modelUrl ||
+				extractedInfo &&
+				(extractedInfo.modelUrl ||
 					extractedInfo.modelAssetUrl ||
 					extractedInfo.modelSourcePath ||
 					extractedInfo.modelAssetPath ||
 					extractedInfo.modelProjectRelativePath ||
-					extractedInfo.modelAssetProjectRelativePath
-				)
+					extractedInfo.modelAssetProjectRelativePath)
 			)
 			if (!hasExtractedPaths) {
 				const harderCandidates: Array<string | null | undefined> = []
@@ -811,10 +929,13 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 							} else if (typeof src === 'object') {
 								const s = src as Record<string, unknown>
 								harderCandidates.push(
-									String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() || null,
+									String(
+										s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? ''
+									).trim() || null,
 									String(s.modelAssetPath ?? s.modelSourcePath ?? '').trim() || null,
 									String(s.modelAssetUrl ?? s.modelUrl ?? '').trim() || null,
-									String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null,
+									String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() ||
+										null,
 									String(s.assetUrl ?? s.preferredUrl ?? s.url ?? '').trim() || null
 								)
 							}
@@ -838,7 +959,8 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				// ③ 再拿 resourceId 硬扫 resourcesById（这次不挑字段，全扔给 pickBestModelUrlFromCandidates）
 				const nodeResourceId = String(fromNode.resourceId ?? '').trim()
 				const ridFromSettings = String(
-					((fromNode.model3dSettings ?? fromNode.settings ?? fromNode) as Record<string, unknown>).resourceId ?? ''
+					((fromNode.model3dSettings ?? fromNode.settings ?? fromNode) as Record<string, unknown>)
+						.resourceId ?? ''
 				).trim()
 				const finalResourceId = nodeResourceId || ridFromSettings
 				if (finalResourceId && options.store.state.resourcesById) {
@@ -855,7 +977,9 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 						)
 					}
 				}
-				const best = pickBestModelUrlFromCandidates(harderCandidates as Array<string | null | undefined>)
+				const best = pickBestModelUrlFromCandidates(
+					harderCandidates as Array<string | null | undefined>
+				)
 				if (best) {
 					// 有候选 → 用 best 路径再做一次 extractModelInfoFromSettings（这次应该能命中了，
 					//   因为 pickBestModelUrlFromCandidates 已经做了 isLikely3DModelUrl + 缩略图恢复）
@@ -864,7 +988,11 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 						// 如果 best 是 dweb://...?path=Content/Media/xxx.glb → 抽成相对路径
 						const m1 = /\?(?:.*&)?(?:path|relativePath|assetPath|filePath)=([^&]+)/.exec(best)
 						if (m1 && m1[1]) {
-							try { return decodeURIComponent(m1[1]).split('?')[0].split('#')[0] } catch { /* ignore */ }
+							try {
+								return decodeURIComponent(m1[1]).split('?')[0].split('#')[0]
+							} catch {
+								/* ignore */
+							}
 						}
 						// 如果是 Content/Media/xxx.glb 相对路径就直接用
 						if (/^Content[\\/]/i.test(best)) return best.replace(/\\/g, '/')
@@ -885,7 +1013,9 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 						modelSourceName:
 							String(
 								(fromNode as Record<string, unknown>).modelSourceName ??
-								fromNode.alias ?? fromNode.title ?? objectName
+									fromNode.alias ??
+									fromNode.title ??
+									objectName
 							).trim() || undefined,
 						modelFormat: overrideFormat || 'glb',
 						modelResourceId: finalResourceId || undefined
@@ -894,34 +1024,36 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			}
 
 			const finalHasPaths = !!(
-				extractedInfo && (
-					extractedInfo.modelUrl ||
+				extractedInfo &&
+				(extractedInfo.modelUrl ||
 					extractedInfo.modelAssetUrl ||
 					extractedInfo.modelSourcePath ||
 					extractedInfo.modelAssetPath ||
 					extractedInfo.modelProjectRelativePath ||
-					extractedInfo.modelAssetProjectRelativePath
-				)
+					extractedInfo.modelAssetProjectRelativePath)
 			)
 			if (extractedInfo && finalHasPaths) {
-				addOrMergeBinding(normalizeModelPaths({
-					objectId,
-					objectName,
-					inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
-					connected: true,
-					sourceNodeId: fromNodeId,
-					sourceNodeType: 'model3d',
-					modelUrl: extractedInfo.modelUrl,
-					modelAssetUrl: extractedInfo.modelAssetUrl,
-					modelSourceName:
-						extractedInfo.modelSourceName ||
-						String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
-					modelSourcePath: extractedInfo.modelSourcePath,
-					modelAssetPath: extractedInfo.modelAssetPath,
-					modelProjectRelativePath: extractedInfo.modelProjectRelativePath,
-					modelAssetProjectRelativePath: extractedInfo.modelAssetProjectRelativePath,
-					modelFormat: extractedInfo.modelFormat
-				}))
+				addOrMergeBinding(
+					normalizeModelPaths({
+						objectId,
+						objectName,
+						inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
+						connected: true,
+						sourceNodeId: fromNodeId,
+						sourceNodeType: 'model3d',
+						modelUrl: extractedInfo.modelUrl,
+						modelAssetUrl: extractedInfo.modelAssetUrl,
+						modelSourceName:
+							extractedInfo.modelSourceName ||
+							String(fromNode.alias ?? fromNode.title ?? objectName).trim() ||
+							undefined,
+						modelSourcePath: extractedInfo.modelSourcePath,
+						modelAssetPath: extractedInfo.modelAssetPath,
+						modelProjectRelativePath: extractedInfo.modelProjectRelativePath,
+						modelAssetProjectRelativePath: extractedInfo.modelAssetProjectRelativePath,
+						modelFormat: extractedInfo.modelFormat
+					})
+				)
 				continue
 			}
 
@@ -961,9 +1093,7 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			results.push(binding)
 		}
 
-		return results.sort((a, b) =>
-			String(a.objectId ?? '').localeCompare(String(b.objectId ?? ''))
-		)
+		return results.sort((a, b) => String(a.objectId ?? '').localeCompare(String(b.objectId ?? '')))
 	}
 
 	const validateModelBindings = (
@@ -984,7 +1114,10 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			const objectName = String(binding.objectName ?? objectId).trim()
 
 			if (!binding.connected) {
-				invalid.push({ binding, reason: t('aiworkflow.runtime.modelBindingNotConnected', { name: objectName }) })
+				invalid.push({
+					binding,
+					reason: t('aiworkflow.runtime.modelBindingNotConnected', { name: objectName })
+				})
 				continue
 			}
 
@@ -995,22 +1128,38 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 
 			const anyPath = modelUrl || modelAssetUrl || modelSourcePath || modelAssetPath
 			if (!anyPath) {
-				invalid.push({ binding, reason: t('aiworkflow.runtime.modelBindingNoPath', { name: objectName }) })
+				invalid.push({
+					binding,
+					reason: t('aiworkflow.runtime.modelBindingNoPath', { name: objectName })
+				})
 				continue
 			}
 
 			const finalPath = modelSourcePath || modelAssetPath || modelUrl || modelAssetUrl
 			const format = binding.modelFormat || detectModelFormatFromPath(finalPath)
 			if (!format) {
-				warnings.push(t('aiworkflow.runtime.modelBindingUnknownFormat', { name: objectName, path: finalPath }))
+				warnings.push(
+					t('aiworkflow.runtime.modelBindingUnknownFormat', { name: objectName, path: finalPath })
+				)
 			} else if (!SUPPORTED_MODEL_EXTENSIONS.includes(`.${format}`)) {
-				warnings.push(t('aiworkflow.runtime.modelBindingUnsupportedFormat', { name: objectName, format, path: finalPath }))
+				warnings.push(
+					t('aiworkflow.runtime.modelBindingUnsupportedFormat', {
+						name: objectName,
+						format,
+						path: finalPath
+					})
+				)
 			}
 
 			const looksLikeHttp = /^https?:\/\//i.test(finalPath)
 			const looksLikeLocalFile = /[a-zA-Z]:[\\/]/.test(finalPath) || finalPath.startsWith('/')
 			if (!looksLikeHttp && !looksLikeLocalFile) {
-				warnings.push(t('aiworkflow.runtime.modelBindingUnrecognizedPath', { name: objectName, path: finalPath }))
+				warnings.push(
+					t('aiworkflow.runtime.modelBindingUnrecognizedPath', {
+						name: objectName,
+						path: finalPath
+					})
+				)
 			}
 
 			valid.push(binding)

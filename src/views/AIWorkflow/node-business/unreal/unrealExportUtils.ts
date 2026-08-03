@@ -3,12 +3,33 @@ import type { WorkflowModelFormat } from '../../../../aiworkflow/types'
 const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz', 'dae'] as const
 type ModelExtWhitelist = (typeof MODEL_EXT_WHITELIST)[number]
 
+/**
+ * 检查 URL 是否是 meshy/tripo3d 远端 CDN URL 或其他外部 http(s) URL。
+ * UE 端无法直接下载这些 URL（CORS / 签名过期 / 认证失败），
+ * 在路径对齐时必须替换为本地 relPath（Content/Media/...）。
+ */
+const isRemoteCdnUrl = (url: string): boolean => {
+	if (!url) return false
+	const lower = url.toLowerCase()
+	// 明确的 meshy / tripo3d CDN
+	if (lower.includes('meshy.ai') || lower.includes('tripo3d.ai')) return true
+	// 任何 http/https URL（非 localhost）都视为远端 CDN
+	if (lower.startsWith('http://') || lower.startsWith('https://')) {
+		try {
+			const parsed = new URL(url)
+			const host = parsed.hostname.toLowerCase()
+			if (host === 'localhost' || host === '127.0.0.1') return false
+			return true
+		} catch {
+			return true
+		}
+	}
+	return false
+}
+
 function getLowercasedExt(pathLike: unknown): string | null {
 	if (pathLike === null || pathLike === undefined) return null
-	const raw = String(pathLike)
-		.split('?')[0]
-		.split('#')[0]
-		.trim()
+	const raw = String(pathLike).split('?')[0].split('#')[0].trim()
 	if (!raw) return null
 	// dweb://...?path=Content/Media/foo.glb → 取 query 里的 path 值再做 ext
 	const queryMatch = /[?&](?:path|relativePath|assetPath|filePath|name)=([^&]+)/.exec(raw)
@@ -239,37 +260,44 @@ export const prepareResolvedSlotsForExport = (
 			sourceObjectId: s.sourceObjectId,
 			hasModelBinding: !!s.modelBinding,
 			mb_objectId:
-				(s.modelBinding && typeof s.modelBinding === 'object')
+				s.modelBinding && typeof s.modelBinding === 'object'
 					? String((s.modelBinding as Record<string, unknown>).objectId)
 					: '',
 			mb_sourceNodeType:
-				(s.modelBinding && typeof s.modelBinding === 'object')
+				s.modelBinding && typeof s.modelBinding === 'object'
 					? String((s.modelBinding as Record<string, unknown>).sourceNodeType)
 					: ''
 		}))
 	)
 	const safeBindings = Array.isArray(connectedModelBindings) ? connectedModelBindings : []
-	console.log(`connectedModelBindings (rawBindings: ${safeBindings.length}`,
+	console.log(
+		`connectedModelBindings (rawBindings: ${safeBindings.length}`,
 		safeBindings.map((b: unknown) => {
-		const obj = (b ?? {}) as Record<string, unknown>
-		return {
-			objectId: String(obj.objectId ?? ''),
-			sourceNodeType: String(obj.sourceNodeType ?? ''),
-			hasValidPath: hasValidModelPath(obj),
-			path: String(
-				obj.modelAssetUrl ??
-				obj.modelAssetProjectRelativePath ??
-				obj.modelAssetPath ??
-				obj.modelUrl ??
-				''
-			)
-		}
-	})
+			const obj = (b ?? {}) as Record<string, unknown>
+			return {
+				objectId: String(obj.objectId ?? ''),
+				sourceNodeType: String(obj.sourceNodeType ?? ''),
+				hasValidPath: hasValidModelPath(obj),
+				path: String(
+					obj.modelAssetUrl ??
+						obj.modelAssetProjectRelativePath ??
+						obj.modelAssetPath ??
+						obj.modelUrl ??
+						''
+				)
+			}
+		})
 	)
 	console.groupEnd()
 	// [单行非折叠摘要] —— 保证复制到 log.md 也能直接看，不需要展开 group
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #5a | rawSlots=${rawSlots.length} | normalizedResolvedSlots=${resolvedSlots.length} | sourceObjectIdList=${resolvedSlots.map((s) => String(s.sourceObjectId ?? '')).filter(Boolean).join(',')} | connectedModelBindings=${safeBindings.length}[${safeBindings.map((b) => String((b as Record<string, unknown>)?.objectId ?? '')).filter(Boolean).join(',')}]`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #5a | rawSlots=${rawSlots.length} | normalizedResolvedSlots=${resolvedSlots.length} | sourceObjectIdList=${resolvedSlots
+			.map((s) => String(s.sourceObjectId ?? ''))
+			.filter(Boolean)
+			.join(',')} | connectedModelBindings=${safeBindings.length}[${safeBindings
+			.map((b) => String((b as Record<string, unknown>)?.objectId ?? ''))
+			.filter(Boolean)
+			.join(',')}]`
 	)
 
 	// 建立binding索引（【彻底不做过滤】，最后一英里 validSlots 再做 hasAnyPathExtended）：
@@ -340,17 +368,19 @@ export const prepareResolvedSlotsForExport = (
 
 			// 验证/补充modelBinding
 			let modelBinding = finalSlot.modelBinding as Record<string, unknown> | undefined
-			const bindingHasValidPath = !!(modelBinding && typeof modelBinding === 'object' && hasValidModelPath(modelBinding))
+			const bindingHasValidPath = !!(
+				modelBinding &&
+				typeof modelBinding === 'object' &&
+				hasValidModelPath(modelBinding)
+			)
 			const TEXTURE_INTEGRITY_KEYS_LOCAL = TEXTURE_INTEGRITY_KEYS
-			const existingTextureKeysCount = TEXTURE_INTEGRITY_KEYS_LOCAL.filter(
-				(k) => {
-					if (!modelBinding || typeof modelBinding !== 'object') return false
-					const mb = modelBinding as Record<string, unknown>
-					const v = mb[k]
-					if (Array.isArray(v)) return v.length > 0
-					return String(v ?? '').trim() !== ''
-				}
-			).length
+			const existingTextureKeysCount = TEXTURE_INTEGRITY_KEYS_LOCAL.filter((k) => {
+				if (!modelBinding || typeof modelBinding !== 'object') return false
+				const mb = modelBinding as Record<string, unknown>
+				const v = mb[k]
+				if (Array.isArray(v)) return v.length > 0
+				return String(v ?? '').trim() !== ''
+			}).length
 			const bindingLacksTextureIntegrity = bindingHasValidPath && existingTextureKeysCount < 3
 			const fallbackBinding = bindingByObjectId.get(sourceObjectId)
 			if (!bindingHasValidPath || bindingLacksTextureIntegrity) {
@@ -422,7 +452,9 @@ export const prepareResolvedSlotsForExport = (
 	if (perSlotFailures.length > 0) {
 		warnings.push(
 			`prepareResolvedSlotsForExport per-slot failures: ${perSlotFailures.length}. ` +
-			perSlotFailures.map(f => `slot=${f.slotId}(obj=${f.sourceObjectId})=${f.error}`).join('; ')
+				perSlotFailures
+					.map((f) => `slot=${f.slotId}(obj=${f.sourceObjectId})=${f.error}`)
+					.join('; ')
 		)
 	}
 
@@ -461,11 +493,13 @@ export const prepareResolvedSlotsForExport = (
 	if (synthesizedFailures.length > 0) {
 		warnings.push(
 			`prepareResolvedSlotsForExport auto-synthesized failures: ${synthesizedFailures.length}. ` +
-			synthesizedFailures.map(f => `${f.objectId}=${f.error}`).join('; ')
+				synthesizedFailures.map((f) => `${f.objectId}=${f.error}`).join('; ')
 		)
 	}
 	if (synthesizedSlots.length > 0) {
-		console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5b prepareResolvedSlotsForExport auto-synthesized missing slots')
+		console.groupCollapsed(
+			'[UNREAL-EXPORT-TRACE] #5b prepareResolvedSlotsForExport auto-synthesized missing slots'
+		)
 		console.log(`synthesizedSlots = ${synthesizedSlots.length}`)
 		console.log(
 			`synthesizedSlots[].sourceObjectId summary:`,
@@ -479,17 +513,20 @@ export const prepareResolvedSlotsForExport = (
 					mb_objectId: mb.objectId,
 					mb_path: String(
 						mb.modelAssetUrl ??
-						mb.modelAssetProjectRelativePath ??
-						mb.modelAssetPath ??
-						mb.modelUrl ??
-						''
+							mb.modelAssetProjectRelativePath ??
+							mb.modelAssetPath ??
+							mb.modelUrl ??
+							''
 					)
 				}
 			})
 		)
 		console.groupEnd()
 		console.log(
-			`[UNREAL-EXPORT-TRACE][SUMMARY] #5b | synthesized=${synthesizedSlots.length} | sourceObjectIdList=${synthesizedSlots.map((s) => String(s.sourceObjectId ?? '')).filter(Boolean).join(',')}`
+			`[UNREAL-EXPORT-TRACE][SUMMARY] #5b | synthesized=${synthesizedSlots.length} | sourceObjectIdList=${synthesizedSlots
+				.map((s) => String(s.sourceObjectId ?? ''))
+				.filter(Boolean)
+				.join(',')}`
 		)
 		console.info(
 			`[prepareResolvedSlotsForExport] auto-synthesized ${synthesizedSlots.length} missing slots from connectedModelBindings (viewer slots before=${finalSlots.length}`
@@ -501,12 +538,17 @@ export const prepareResolvedSlotsForExport = (
 	finalSlots.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
 
 	console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5c prepareResolvedSlotsForExport FINAL OUTPUT')
-	console.log(`finalSlots = ${finalSlots.length} (bindingByObjectId.size = ${bindingByObjectId.size})`)
+	console.log(
+		`finalSlots = ${finalSlots.length} (bindingByObjectId.size = ${bindingByObjectId.size})`
+	)
 	console.log(
 		`finalSlots[].sourceObjectId + modelBinding.objectId + pos summary:`,
 		finalSlots.map((s: Record<string, unknown>) => {
 			const mb = (s.modelBinding ?? {}) as Record<string, unknown>
-			const wt = (s.worldTransform ?? s.slotTransform ?? s.relativeTransform ?? {}) as Record<string, unknown>
+			const wt = (s.worldTransform ?? s.slotTransform ?? s.relativeTransform ?? {}) as Record<
+				string,
+				unknown
+			>
 			return {
 				slotId: s.slotId,
 				sourceObjectId: s.sourceObjectId,
@@ -515,9 +557,14 @@ export const prepareResolvedSlotsForExport = (
 				mb_sourceNodeType: mb.sourceNodeType,
 				mb_modelAssetProjectRelativePath: mb.modelAssetProjectRelativePath,
 				mb_modelAssetUrl: mb.modelAssetUrl,
-				pos: (wt && typeof wt.position === 'object') ? (wt as Record<string, unknown>).position : null,
+				pos:
+					wt && typeof wt.position === 'object' ? (wt as Record<string, unknown>).position : null,
 				generatedFromBinding: s.generatedFromBinding,
-				textureIntegrity: (TEXTURE_INTEGRITY_KEYS as unknown as string[]).every(k => (k in mb) && mb[k]) ? 'COMPLETE' : 'MISSING_KEYS'
+				textureIntegrity: (TEXTURE_INTEGRITY_KEYS as unknown as string[]).every(
+					(k) => k in mb && mb[k]
+				)
+					? 'COMPLETE'
+					: 'MISSING_KEYS'
 			}
 		})
 	)
@@ -527,16 +574,30 @@ export const prepareResolvedSlotsForExport = (
 	console.groupEnd()
 	// [单行非折叠摘要] —— 关键输出
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #5c | finalSlots=${finalSlots.length} | bindingByObjectId.size=${bindingByObjectId.size} | slots[slotId,sourceObjectId,mb_path,pos]=${JSON.stringify(finalSlots.map((s) => {
-			const mb = (s.modelBinding ?? {}) as Record<string, unknown>
-			const wt = (s.worldTransform ?? s.slotTransform ?? s.relativeTransform ?? {}) as Record<string, unknown>
-			return {
-				slotId: s.slotId,
-				sourceObjectId: s.sourceObjectId,
-				mb_path: String(mb.modelAssetProjectRelativePath ?? mb.modelAssetUrl ?? mb.modelAssetPath ?? mb.modelSourcePath ?? mb.modelProjectRelativePath ?? mb.modelUrl ?? ''),
-				pos: (wt && typeof wt.position === 'object') ? (wt as Record<string, unknown>).position : null
-			}
-		}))}`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #5c | finalSlots=${finalSlots.length} | bindingByObjectId.size=${bindingByObjectId.size} | slots[slotId,sourceObjectId,mb_path,pos]=${JSON.stringify(
+			finalSlots.map((s) => {
+				const mb = (s.modelBinding ?? {}) as Record<string, unknown>
+				const wt = (s.worldTransform ?? s.slotTransform ?? s.relativeTransform ?? {}) as Record<
+					string,
+					unknown
+				>
+				return {
+					slotId: s.slotId,
+					sourceObjectId: s.sourceObjectId,
+					mb_path: String(
+						mb.modelAssetProjectRelativePath ??
+							mb.modelAssetUrl ??
+							mb.modelAssetPath ??
+							mb.modelSourcePath ??
+							mb.modelProjectRelativePath ??
+							mb.modelUrl ??
+							''
+					),
+					pos:
+						wt && typeof wt.position === 'object' ? (wt as Record<string, unknown>).position : null
+				}
+			})
+		)}`
 	)
 
 	// 2026-08-03 最后一道出口过滤：只把有真实静态资产路径的 slot 交给 UE 插件导入。
@@ -554,14 +615,12 @@ export const prepareResolvedSlotsForExport = (
 		const hasPath =
 			!!mb &&
 			typeof mb === 'object' &&
-			(
-				!!String(mb.modelAssetProjectRelativePath ?? '').trim() ||
+			(!!String(mb.modelAssetProjectRelativePath ?? '').trim() ||
 				!!String(mb.modelAssetUrl ?? '').trim() ||
 				!!String(mb.modelAssetPath ?? '').trim() ||
 				!!String(mb.modelSourcePath ?? '').trim() ||
 				!!String(mb.modelProjectRelativePath ?? '').trim() ||
-				!!String(mb.modelUrl ?? '').trim()
-			)
+				!!String(mb.modelUrl ?? '').trim())
 		if (hasPath) validSlots.push(s)
 		else skippedSlotIds.push(String(s.slotId ?? s.sourceObjectId ?? ''))
 	}
@@ -571,56 +630,76 @@ export const prepareResolvedSlotsForExport = (
 		)
 	}
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #5d | last-mile hasAnyPath filter: before=${slotsBeforeFilter}, valid(exported to UE)=${validSlots.length}, dropped(no asset path)=${skippedSlotIds.length} dropped=[${skippedSlotIds.join(',')}] validSlotIds=[${validSlots.map((s) => String(s.slotId ?? '')).filter(Boolean).join(',')}]`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #5d | last-mile hasAnyPath filter: before=${slotsBeforeFilter}, valid(exported to UE)=${validSlots.length}, dropped(no asset path)=${skippedSlotIds.length} dropped=[${skippedSlotIds.join(',')}] validSlotIds=[${validSlots
+			.map((s) => String(s.slotId ?? ''))
+			.filter(Boolean)
+			.join(',')}]`
 	)
 
-	// 2026-08-03 UE 插件路径字段对齐：
+	// 2026-08-03 UE 插件路径字段对齐（修复"始终只导入 1 个模型"现场痛点）：
 	//   项目约定 UE C++ 侧按 modelSourcePath > modelAssetPath > modelAssetUrl > modelUrl 读取路径，
 	//   但前端新链路（Tripo3D / Meshy / 通用 3D 模型）实际只填充了
 	//   modelAssetProjectRelativePath（UE 侧并不读取该字段），
 	//   导致旧链路 bar_main（已有 modelAssetPath / modelSourcePath）成功导入后，
 	//   其余 6 个新链路模型因 UE 侧取不到有效路径而跳过，现场表现为"始终只导入 1 个模型"。
-	//   ——修复：只要 modelAssetProjectRelativePath 有值，就同步回填到
-	//     modelAssetPath 与 modelSourcePath（仅当这两个字段为空时才覆盖，避免污染旧值）。
-	//   同时兜底：当 modelUrl 是 dweb:// 协议（UE 完全无法识别）时，替换为相对路径。
+	//
+	//   2026-08-03 第三轮修复（根据蓝图数据分析）：
+	//   蓝图数据中 4 个有真实模型的 source node，只有 bar_main 的 model3dSettings.modelUrl 是
+	//   dweb://（本地），其余 3 个（stool_left/stool_mid/shelves_back）的 model3dSettings.modelUrl
+	//   是 https://assets.meshy.ai/...（远端 CDN URL）。这些模型已经本地下载到 Content/Media/，
+	//   但 model3dSettings 的本地路径字段（modelSourcePath/modelAssetPath/modelProjectRelativePath）
+	//   未被填充，本地路径只存在于 resourcesById[resourceId].projectRelativePath 中。
+	//   ——硬约束：绝对禁止使用远端 CDN URL，必须使用本地静态资产路径。
+	//   修复：确保 modelAssetProjectRelativePath 有值时，同步回填全部 4 个路径字段，且
+	//     dweb:// / meshy远端 / tripo3d远端 / 空字符串 一律替换为本地 relPath。
 	const alignedSlotIds: string[] = []
 	const alignedDwebUrlCount: Record<string, number> = { n: 0 }
+	const replacedRemoteCdnCount = { modelUrl: 0, modelAssetUrl: 0 }
+	const backfilledUrlCount = { modelUrl: 0, modelAssetUrl: 0 }
 	for (const s of validSlots) {
 		const mb = (s.modelBinding ?? null) as Record<string, unknown> | null
 		if (!mb || typeof mb !== 'object') continue
 		const relPath = String(mb.modelAssetProjectRelativePath ?? '').trim()
 		let touched = false
 		if (relPath) {
+			// 回填 modelAssetPath（UE 优先级 #2）
 			if (!String(mb.modelAssetPath ?? '').trim()) {
 				mb.modelAssetPath = relPath
 				touched = true
 			}
+			// 回填 modelSourcePath（UE 优先级 #1）
 			if (!String(mb.modelSourcePath ?? '').trim()) {
 				mb.modelSourcePath = relPath
 				touched = true
 			}
-		}
-		const mUrl = String(mb.modelUrl ?? '').trim()
-		if (mUrl && mUrl.startsWith('dweb://') && relPath) {
-			mb.modelUrl = relPath
-			touched = true
-			alignedDwebUrlCount.n += 1
-		}
-		const assetUrl = String(mb.modelAssetUrl ?? '').trim()
-		if (assetUrl && assetUrl.startsWith('dweb://') && relPath && !String(mb.modelAssetPath ?? '').trim()) {
-			// 极端兜底：当 UE 侧 fallback 读 modelAssetUrl 时也拿不到 dweb://，
-			// 但前面已经把 modelAssetPath 覆盖过，这里只做日志标记就够
+			// 回填 modelAssetUrl（UE 优先级 #3）—— dweb:// / 远端CDN / 空字符串 一律替换为本地 relPath
+			const assetUrl = String(mb.modelAssetUrl ?? '').trim()
+			if (!assetUrl || assetUrl.startsWith('dweb://') || isRemoteCdnUrl(assetUrl)) {
+				mb.modelAssetUrl = relPath
+				touched = true
+				if (!assetUrl) backfilledUrlCount.modelAssetUrl++
+				else if (isRemoteCdnUrl(assetUrl)) replacedRemoteCdnCount.modelAssetUrl++
+			}
+			// 回填 modelUrl（UE 优先级 #4）—— dweb:// / 远端CDN / 空字符串 一律替换为本地 relPath
+			const mUrl = String(mb.modelUrl ?? '').trim()
+			if (!mUrl || mUrl.startsWith('dweb://') || isRemoteCdnUrl(mUrl)) {
+				mb.modelUrl = relPath
+				touched = true
+				if (mUrl.startsWith('dweb://')) alignedDwebUrlCount.n += 1
+				else if (isRemoteCdnUrl(mUrl)) replacedRemoteCdnCount.modelUrl++
+				else backfilledUrlCount.modelUrl++
+			}
 		}
 		if (touched) alignedSlotIds.push(String(s.slotId ?? s.sourceObjectId ?? ''))
 	}
 	if (alignedSlotIds.length > 0) {
 		const msg =
-			`[prepareResolvedSlotsForExport] UE-path-alignment: backfilled modelAssetPath/modelSourcePath for ${alignedSlotIds.length} slots ` +
-			`(from modelAssetProjectRelativePath; replaced dweb:// modelUrl=${alignedDwebUrlCount.n}). alignedSlotIds=[${alignedSlotIds.join(',')}]`
+			`[prepareResolvedSlotsForExport] UE-path-alignment: backfilled 4 path fields for ${alignedSlotIds.length} slots ` +
+			`(from modelAssetProjectRelativePath; replaced dweb:// modelUrl=${alignedDwebUrlCount.n}, replaced remote-CDN modelUrl=${replacedRemoteCdnCount.modelUrl}/modelAssetUrl=${replacedRemoteCdnCount.modelAssetUrl}, backfilled empty modelUrl=${backfilledUrlCount.modelUrl}/modelAssetUrl=${backfilledUrlCount.modelAssetUrl}). alignedSlotIds=[${alignedSlotIds.join(',')}]`
 		warnings.push(msg)
 	}
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #5e | UE path alignment: slots=${validSlots.length}, aligned(backfilled AssetPath/SourcePath)=${alignedSlotIds.length}, replaced-dweb-url=${alignedDwebUrlCount.n} alignedIds=[${alignedSlotIds.join(',')}]`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #5e | UE path alignment: slots=${validSlots.length}, aligned(4 fields)=${alignedSlotIds.length}, replaced-dweb-url=${alignedDwebUrlCount.n}, replaced-remote-CDN-modelUrl=${replacedRemoteCdnCount.modelUrl}, replaced-remote-CDN-modelAssetUrl=${replacedRemoteCdnCount.modelAssetUrl}, backfilled-empty-modelUrl=${backfilledUrlCount.modelUrl}, backfilled-empty-modelAssetUrl=${backfilledUrlCount.modelAssetUrl} alignedIds=[${alignedSlotIds.join(',')}]`
 	)
 
 	return { slots: validSlots, warnings }
@@ -798,8 +877,12 @@ export function mergeViewerResolvedIntoFinalBindings(
 	connectedPrecheckBindings: unknown[],
 	_strictUseViewerBindingsWhenPresent = true
 ): MergeViewerResolvedResult {
-	const viewerArr = Array.isArray((exportData as { sceneLayoutResolvedModelBindings?: unknown[] })?.sceneLayoutResolvedModelBindings)
-		? ((exportData as { sceneLayoutResolvedModelBindings: unknown[] }).sceneLayoutResolvedModelBindings as unknown[])
+	const viewerArr = Array.isArray(
+		(exportData as { sceneLayoutResolvedModelBindings?: unknown[] })
+			?.sceneLayoutResolvedModelBindings
+	)
+		? ((exportData as { sceneLayoutResolvedModelBindings: unknown[] })
+				.sceneLayoutResolvedModelBindings as unknown[])
 		: []
 	const precheckArr = Array.isArray(connectedPrecheckBindings) ? connectedPrecheckBindings : []
 
@@ -862,7 +945,7 @@ export function mergeViewerResolvedIntoFinalBindings(
 				if (Array.isArray(vVal)) {
 					if (vVal.length > 0) (precheckObj as Record<string, unknown>)[k] = [...vVal]
 				} else if (typeof vVal === 'object') {
-					(precheckObj as Record<string, unknown>)[k] = { ...(vVal as Record<string, unknown>) }
+					;(precheckObj as Record<string, unknown>)[k] = { ...(vVal as Record<string, unknown>) }
 				} else {
 					const s = String(vVal ?? '').trim()
 					if (s) (precheckObj as Record<string, unknown>)[k] = s
@@ -893,15 +976,12 @@ export function mergeViewerResolvedIntoFinalBindings(
 export function normalizeLayoutItemTransform(layoutItem: unknown) {
 	if (!layoutItem || typeof layoutItem !== 'object') return { ...identityTransform }
 	const li = layoutItem as Record<string, unknown>
-	const pos = li.position && typeof li.position === 'object'
-		? (li.position as Record<string, unknown>)
-		: null
-	const rot = li.rotation && typeof li.rotation === 'object'
-		? (li.rotation as Record<string, unknown>)
-		: null
-	const scl = li.scale && typeof li.scale === 'object'
-		? (li.scale as Record<string, unknown>)
-		: null
+	const pos =
+		li.position && typeof li.position === 'object' ? (li.position as Record<string, unknown>) : null
+	const rot =
+		li.rotation && typeof li.rotation === 'object' ? (li.rotation as Record<string, unknown>) : null
+	const scl =
+		li.scale && typeof li.scale === 'object' ? (li.scale as Record<string, unknown>) : null
 	return {
 		position: {
 			x: Number(pos?.x ?? 0) || 0,
@@ -945,10 +1025,16 @@ export function tryBackfillBindingPathsFromStore(
 	if (hasAnyPathExtended(binding)) return binding // 已经有路径就不做多余事
 	const b = binding as Record<string, unknown>
 	const sourceNodeId = String(b.sourceNodeId ?? '').trim()
-	const modelResourceId = String(b.modelResourceId ?? (b as { resourceId?: unknown }).resourceId ?? '').trim()
+	const modelResourceId = String(
+		b.modelResourceId ?? (b as { resourceId?: unknown }).resourceId ?? ''
+	).trim()
 
-	const nodesMap = nodesById && typeof nodesById === 'object' ? (nodesById as Record<string, unknown>) : {}
-	const resourcesMap = resourcesById && typeof resourcesById === 'object' ? (resourcesById as Record<string, unknown>) : {}
+	const nodesMap =
+		nodesById && typeof nodesById === 'object' ? (nodesById as Record<string, unknown>) : {}
+	const resourcesMap =
+		resourcesById && typeof resourcesById === 'object'
+			? (resourcesById as Record<string, unknown>)
+			: {}
 
 	const candidates: Array<string | null | undefined> = []
 	let fallbackFormat: WorkflowModelFormat = 'glb'
@@ -967,12 +1053,19 @@ export function tryBackfillBindingPathsFromStore(
 						candidates.push(src)
 					} else if (typeof src === 'object') {
 						const s = src as Record<string, unknown>
-						candidates.push(String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() || null)
+						candidates.push(
+							String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() ||
+								null
+						)
 						candidates.push(String(s.modelAssetPath ?? s.modelSourcePath ?? '').trim() || null)
 						candidates.push(String(s.modelAssetUrl ?? s.modelUrl ?? '').trim() || null)
-						candidates.push(String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null)
+						candidates.push(
+							String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null
+						)
 						candidates.push(String(s.assetUrl ?? s.preferredUrl ?? s.url ?? '').trim() || null)
-						const fmt = detectModelFormatFromPath(String(s.modelAssetProjectRelativePath ?? s.modelAssetUrl ?? s.url ?? ''))
+						const fmt = detectModelFormatFromPath(
+							String(s.modelAssetProjectRelativePath ?? s.modelAssetUrl ?? s.url ?? '')
+						)
 						if (fmt) fallbackFormat = fmt
 					}
 				}
@@ -980,9 +1073,15 @@ export function tryBackfillBindingPathsFromStore(
 		}
 		// ② 节点顶层任一字段（新链路 decompose 经常直接塞顶层）
 		const topKeys = [
-			'modelAssetProjectRelativePath', 'modelProjectRelativePath',
-			'modelAssetUrl', 'modelUrl', 'modelAssetPath', 'modelSourcePath',
-			'resolvedModelPath', 'localAssetUrl', 'localAssetPath'
+			'modelAssetProjectRelativePath',
+			'modelProjectRelativePath',
+			'modelAssetUrl',
+			'modelUrl',
+			'modelAssetPath',
+			'modelSourcePath',
+			'resolvedModelPath',
+			'localAssetUrl',
+			'localAssetPath'
 		] as const
 		for (const k of topKeys) {
 			const v = String((fn as Record<string, unknown>)[k] ?? '').trim()
@@ -990,8 +1089,102 @@ export function tryBackfillBindingPathsFromStore(
 			const fmt = detectModelFormatFromPath(v)
 			if (fmt) fallbackFormat = fmt
 		}
-		// ③ 从节点 .resourceId 反查 resourcesById
-		const fnResId = String(fn.resourceId ?? (fn.model3dSettings as Record<string, unknown> | undefined)?.resourceId ?? '').trim()
+		// ②b 深嵌套 settings 字段直接读取（AIPlan/02 方案 §5.4）：
+		//   与 connectedSceneLayoutModelBindings 的类型专用提取对齐，
+		//   确保出口前最后一次兜底也能读到 meshy/tripo3d/model3d 深字段真实资产路径。
+		const meshySettings = fn.meshySettings as Record<string, unknown> | undefined
+		if (meshySettings && typeof meshySettings === 'object') {
+			const relation =
+				meshySettings.meshyRelationSummary && typeof meshySettings.meshyRelationSummary === 'object'
+					? (meshySettings.meshyRelationSummary as Record<string, unknown>)
+					: {}
+			const output =
+				meshySettings.meshyOutputSummary && typeof meshySettings.meshyOutputSummary === 'object'
+					? (meshySettings.meshyOutputSummary as Record<string, unknown>)
+					: {}
+			candidates.push(
+				String(
+					relation.effectiveLocalAssetUrl ??
+						meshySettings.meshyOutputAssetUrl ??
+						output.assetUrl ??
+						''
+				).trim() || null
+			)
+			candidates.push(
+				String(
+					relation.effectiveLocalAssetPath ??
+						meshySettings.meshyOutputAssetPath ??
+						output.assetPath ??
+						''
+				).trim() || null
+			)
+			candidates.push(
+				String(relation.effectivePreferredModelUrl ?? output.preferredUrl ?? '').trim() || null
+			)
+			const fmt = detectModelFormatFromPath(
+				String(relation.effectiveLocalAssetUrl ?? output.assetUrl ?? '')
+			)
+			if (fmt) fallbackFormat = fmt
+		}
+		const tripo3dSettings = fn.tripo3dSettings as Record<string, unknown> | undefined
+		if (tripo3dSettings && typeof tripo3dSettings === 'object') {
+			const relation =
+				tripo3dSettings.tripo3dRelationSummary &&
+				typeof tripo3dSettings.tripo3dRelationSummary === 'object'
+					? (tripo3dSettings.tripo3dRelationSummary as Record<string, unknown>)
+					: {}
+			const output =
+				tripo3dSettings.tripo3dOutputSummary &&
+				typeof tripo3dSettings.tripo3dOutputSummary === 'object'
+					? (tripo3dSettings.tripo3dOutputSummary as Record<string, unknown>)
+					: {}
+			candidates.push(
+				String(
+					relation.effectiveLocalAssetUrl ??
+						tripo3dSettings.tripo3dOutputAssetUrl ??
+						output.assetUrl ??
+						''
+				).trim() || null
+			)
+			candidates.push(
+				String(
+					relation.effectiveLocalAssetPath ??
+						tripo3dSettings.tripo3dOutputAssetPath ??
+						output.assetPath ??
+						''
+				).trim() || null
+			)
+			candidates.push(
+				String(relation.effectivePreferredModelUrl ?? output.preferredUrl ?? '').trim() || null
+			)
+			const fmt = detectModelFormatFromPath(
+				String(relation.effectiveLocalAssetUrl ?? output.assetUrl ?? '')
+			)
+			if (fmt) fallbackFormat = fmt
+		}
+		const model3dSettingsDeep = fn.model3dSettings as Record<string, unknown> | undefined
+		if (model3dSettingsDeep && typeof model3dSettingsDeep === 'object') {
+			candidates.push(String(model3dSettingsDeep.modelAssetUrl ?? '').trim() || null)
+			candidates.push(String(model3dSettingsDeep.modelAssetPath ?? '').trim() || null)
+			candidates.push(String(model3dSettingsDeep.modelUrl ?? '').trim() || null)
+			candidates.push(String(model3dSettingsDeep.modelSourcePath ?? '').trim() || null)
+			candidates.push(
+				String(model3dSettingsDeep.modelAssetProjectRelativePath ?? '').trim() || null
+			)
+			candidates.push(String(model3dSettingsDeep.modelProjectRelativePath ?? '').trim() || null)
+			const fmt = detectModelFormatFromPath(
+				String(model3dSettingsDeep.modelAssetUrl ?? model3dSettingsDeep.modelAssetPath ?? '')
+			)
+			if (fmt) fallbackFormat = fmt
+		}
+		// ③ 从节点 .resourceId 反查 resourcesById（AIPlan/02 方案 §5.4：补全 meshy/tripo3d resourceId）
+		const fnResId = String(
+			fn.resourceId ??
+				(fn.model3dSettings as Record<string, unknown> | undefined)?.resourceId ??
+				(fn.meshySettings as Record<string, unknown> | undefined)?.resourceId ??
+				(fn.tripo3dSettings as Record<string, unknown> | undefined)?.resourceId ??
+				''
+		).trim()
 		if (fnResId && resourcesMap[fnResId]) {
 			const r = resourcesMap[fnResId] as Record<string, unknown>
 			candidates.push(String(r.projectRelativePath ?? '').trim() || null)
@@ -1000,7 +1193,9 @@ export function tryBackfillBindingPathsFromStore(
 			candidates.push(String(r.url ?? '').trim() || null)
 			candidates.push(String(r.assetUrl ?? '').trim() || null)
 			candidates.push(String(r.localUrl ?? '').trim() || null)
-			const fmt = detectModelFormatFromPath(String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? ''))
+			const fmt = detectModelFormatFromPath(
+				String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? '')
+			)
 			if (fmt) fallbackFormat = fmt
 		}
 	}
@@ -1013,7 +1208,9 @@ export function tryBackfillBindingPathsFromStore(
 		candidates.push(String(r.url ?? '').trim() || null)
 		candidates.push(String(r.assetUrl ?? '').trim() || null)
 		candidates.push(String(r.localUrl ?? '').trim() || null)
-		const fmt = detectModelFormatFromPath(String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? ''))
+		const fmt = detectModelFormatFromPath(
+			String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? '')
+		)
 		if (fmt) fallbackFormat = fmt
 	}
 	const best = pickBestModelUrlFromCandidates(candidates as Array<string | null | undefined>)
@@ -1023,7 +1220,11 @@ export function tryBackfillBindingPathsFromStore(
 	const relPath = (() => {
 		const m1 = /\?(?:.*&)?(?:path|relativePath|assetPath|filePath)=([^&]+)/.exec(best)
 		if (m1 && m1[1]) {
-			try { return decodeURIComponent(m1[1]).split('?')[0].split('#')[0] } catch { /* ignore */ }
+			try {
+				return decodeURIComponent(m1[1]).split('?')[0].split('#')[0]
+			} catch {
+				/* ignore */
+			}
 		}
 		if (/^Content[\\/]/i.test(best)) return best.replace(/\\/g, '/')
 		const m2 = /^file:\/\/\/+([a-zA-Z]:[\\/].+)$/.exec(best)
@@ -1038,7 +1239,8 @@ export function tryBackfillBindingPathsFromStore(
 		if (!String(b.modelAssetPath ?? '').trim()) b.modelAssetPath = relPath
 	} else {
 		if (!String(b.modelProjectRelativePath ?? '').trim()) b.modelProjectRelativePath = relPath
-		if (!String(b.modelAssetProjectRelativePath ?? '').trim()) b.modelAssetProjectRelativePath = relPath
+		if (!String(b.modelAssetProjectRelativePath ?? '').trim())
+			b.modelAssetProjectRelativePath = relPath
 	}
 	if (!String(b.modelFormat ?? '').trim()) b.modelFormat = overrideFormat
 	b.connected = true // 兜底找到路径了，connected 升级为 true（便于下游标记）
@@ -1072,9 +1274,16 @@ export function buildPureDataSlotsForUnreal(
 	//   ② hasAnyPathExtended 判定会通过；不再因 6 路径字段初值空而漏掉 18/27 个新链路模型。
 	const backfillNodes = bindingPathBackfillCtx?.nodesById
 	const backfillResources = bindingPathBackfillCtx?.resourcesById
-	const processedBindings: unknown[] = backfillNodes || backfillResources
-		? safeBindings.map((b) => tryBackfillBindingPathsFromStore((b ?? {}) as Record<string, unknown>, backfillNodes, backfillResources))
-		: safeBindings
+	const processedBindings: unknown[] =
+		backfillNodes || backfillResources
+			? safeBindings.map((b) =>
+					tryBackfillBindingPathsFromStore(
+						(b ?? {}) as Record<string, unknown>,
+						backfillNodes,
+						backfillResources
+					)
+				)
+			: safeBindings
 	for (const b of processedBindings) {
 		if (!b || typeof b !== 'object') continue
 		const bb = b as Record<string, unknown>
@@ -1084,7 +1293,7 @@ export function buildPureDataSlotsForUnreal(
 		if (anchorId) {
 			bindingByAnchorId.set(anchorId, bb)
 			const m = /^in-model-(.+)$/i.exec(anchorId)
-			const suffix = (m && m[1]) ? String(m[1]).trim() : ''
+			const suffix = m && m[1] ? String(m[1]).trim() : ''
 			if (suffix) bindingByAnchorSuffix.set(suffix, bb)
 		}
 	}
@@ -1154,10 +1363,10 @@ export function buildPureDataSlotsForUnreal(
 				hasValidPath: hasValidModelPath(obj),
 				path: String(
 					obj.modelAssetUrl ??
-					obj.modelAssetProjectRelativePath ??
-					obj.modelAssetPath ??
-					obj.modelUrl ??
-					''
+						obj.modelAssetProjectRelativePath ??
+						obj.modelAssetPath ??
+						obj.modelUrl ??
+						''
 				)
 			}
 		})
@@ -1168,14 +1377,20 @@ export function buildPureDataSlotsForUnreal(
 	const diagBindings = processedBindings
 	const backfilledCount = diagBindings.filter((b) => {
 		const obj = (b ?? {}) as Record<string, unknown>
-		return hasAnyPathExtended(obj) && safeBindings.every((orig) => {
-			const o = (orig ?? {}) as Record<string, unknown>
-			if (String(o.objectId ?? '') !== String(obj.objectId ?? '')) return true
-			return !hasAnyPathExtended(o)
-		})
+		return (
+			hasAnyPathExtended(obj) &&
+			safeBindings.every((orig) => {
+				const o = (orig ?? {}) as Record<string, unknown>
+				if (String(o.objectId ?? '') !== String(obj.objectId ?? '')) return true
+				return !hasAnyPathExtended(o)
+			})
+		)
 	}).length
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #2a | layoutItems=${Array.isArray(layoutItems) ? layoutItems.length : 0} | rawBindings=${safeBindings.length} | afterBackfill=${diagBindings.length} | backfilledNewPaths=${backfilledCount} | ids=[${diagBindings.map((b) => String((b as Record<string, unknown>)?.objectId ?? '')).filter(Boolean).join(',')}]`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #2a | layoutItems=${Array.isArray(layoutItems) ? layoutItems.length : 0} | rawBindings=${safeBindings.length} | afterBackfill=${diagBindings.length} | backfilledNewPaths=${backfilledCount} | ids=[${diagBindings
+			.map((b) => String((b as Record<string, unknown>)?.objectId ?? ''))
+			.filter(Boolean)
+			.join(',')}]`
 	)
 
 	const safeLayoutItems = Array.isArray(layoutItems) ? layoutItems : []
@@ -1207,16 +1422,18 @@ export function buildPureDataSlotsForUnreal(
 		const sourceName = String(item.name ?? binding.objectName ?? objectId).trim() || objectId
 
 		const baseT = normalizeLayoutItemTransform(item)
-		const orientationFix = item.orientationFix && typeof item.orientationFix === 'object'
-			? (item.orientationFix as Record<string, unknown>)
-			: null
+		const orientationFix =
+			item.orientationFix && typeof item.orientationFix === 'object'
+				? (item.orientationFix as Record<string, unknown>)
+				: null
 		const fitMode = (['oriented', 'filled', 'forced', 'normal'] as const).includes(
 			(item.fitMode as 'oriented' | 'filled' | 'forced' | 'normal' | undefined) ?? 'normal'
 		)
 			? ((item.fitMode as 'oriented' | 'filled' | 'forced' | 'normal') ?? 'normal')
 			: ('normal' as const)
 		let fillMode: 'single' | 'fill-x' | 'fill-y' | 'fill-z' = 'single'
-		if (item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z') fillMode = item.fillMode
+		if (item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z')
+			fillMode = item.fillMode
 		const fillCountRaw = Number(item.fillCount ?? 0) || 0
 		const fillAxisScaleRaw = Number(item.fillAxisScale ?? 1) || 1
 		const instanceCount = fillMode === 'single' ? 1 : Math.max(1, Math.floor(fillCountRaw))
@@ -1246,9 +1463,12 @@ export function buildPureDataSlotsForUnreal(
 			const materialOverrides = Array.isArray(item.materialOverrides)
 				? (item.materialOverrides as unknown[]).map((e) => ({ ...(e as Record<string, unknown>) }))
 				: undefined
-			const relationTags = Array.isArray(item.relationTags) ? [...(item.relationTags as unknown[])] : undefined
+			const relationTags = Array.isArray(item.relationTags)
+				? [...(item.relationTags as unknown[])]
+				: undefined
 			const modelBindingCopy: Record<string, unknown> = { ...binding }
-			if (!String(modelBindingCopy.sourceNodeType ?? '').trim()) modelBindingCopy.sourceNodeType = 'model3d'
+			if (!String(modelBindingCopy.sourceNodeType ?? '').trim())
+				modelBindingCopy.sourceNodeType = 'model3d'
 			if (!String(modelBindingCopy.sourceNodeId ?? '').trim()) {
 				const src = String((binding as { sourceNodeId?: unknown }).sourceNodeId ?? '').trim()
 				if (src) modelBindingCopy.sourceNodeId = src
@@ -1315,7 +1535,10 @@ export function buildPureDataSlotsForUnreal(
 	//   下一次复制到 log.md 时不需要展开 Console group 就能直接看"具体哪个 objectId 没找到 binding
 	//   / 哪个找到了 binding 但 6 路径字段全空"。否则用户每次只看到 builtSlots=7 不知道 27 个里漏了谁。
 	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #2b | builtSlots=${builtSlots.length}, boundItemCount=${boundItemCount} | skippedNoBinding(${skippedNoBinding.length})=[${skippedNoBinding.join(',')}] | skippedNoPath(${skippedNoPath.length})=[${skippedNoPath.join(',')}] | sourceObjectIdList=${builtSlots.map((s) => String(s.sourceObjectId ?? '')).filter(Boolean).join(',')}`
+		`[UNREAL-EXPORT-TRACE][SUMMARY] #2b | builtSlots=${builtSlots.length}, boundItemCount=${boundItemCount} | skippedNoBinding(${skippedNoBinding.length})=[${skippedNoBinding.join(',')}] | skippedNoPath(${skippedNoPath.length})=[${skippedNoPath.join(',')}] | sourceObjectIdList=${builtSlots
+			.map((s) => String(s.sourceObjectId ?? ''))
+			.filter(Boolean)
+			.join(',')}`
 	)
 
 	return { slots: builtSlots, bindingCount: boundItemCount }

@@ -8842,9 +8842,14 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 
 const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
-	console.groupCollapsed(`[UNREAL-EXPORT-TRACE] #0 AIWorkflowPage.getResolvedLayoutForUnreal (nodeId=${normalizedNodeId})`)
+	console.groupCollapsed(
+		`[UNREAL-EXPORT-TRACE] #0 AIWorkflowPage.getResolvedLayoutForUnreal (nodeId=${normalizedNodeId})`
+	)
 	console.log(`normalizedNodeId = ${normalizedNodeId}`)
-	console.log(`SceneLayoutNode component instance mounted?`, !!sceneLayoutNodeComponentRefs.get(normalizedNodeId))
+	console.log(
+		`SceneLayoutNode component instance mounted?`,
+		!!sceneLayoutNodeComponentRefs.get(normalizedNodeId)
+	)
 	if (!normalizedNodeId) {
 		console.log(`Result: ERROR (missingNodeId)`)
 		console.groupEnd()
@@ -8862,13 +8867,21 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 			const res = await instance.getResolvedLayoutForUnreal()
 			if (res?.ok) {
 				const okRes = res as { ok: true; exportData: WorkflowUnrealResolvedLayoutExport }
-				console.log(`Route A result: OK, slotCount=${okRes.exportData?.slotCount}, bindings=${okRes.exportData?.sceneLayoutResolvedModelBindings?.length ?? 0}`)
+				console.log(
+					`Route A result: OK, slotCount=${okRes.exportData?.slotCount}, bindings=${okRes.exportData?.sceneLayoutResolvedModelBindings?.length ?? 0}`
+				)
 				console.groupEnd()
 				return okRes
 			}
-			console.warn('[AIWorkflowPage] instance.getResolvedLayoutForUnreal returned error, falling back to pure-data store mode:', res)
+			console.warn(
+				'[AIWorkflowPage] instance.getResolvedLayoutForUnreal returned error, falling back to pure-data store mode:',
+				res
+			)
 		} catch (err: unknown) {
-			console.warn('[AIWorkflowPage] instance.getResolvedLayoutForUnreal threw, falling back to pure-data store mode:', err)
+			console.warn(
+				'[AIWorkflowPage] instance.getResolvedLayoutForUnreal threw, falling back to pure-data store mode:',
+				err
+			)
 		}
 	}
 
@@ -8879,26 +8892,30 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const node = store.state.nodesById[normalizedNodeId] as Record<string, unknown> | undefined
 	if (node && node.type === 'scene-layout') {
 		const settings = (node.sceneLayoutSettings as Record<string, unknown>) ?? {}
-		const layoutItems = Array.isArray(settings.layoutItems) ? (settings.layoutItems as unknown[]) : []
+		const layoutItems = Array.isArray(settings.layoutItems)
+			? (settings.layoutItems as unknown[])
+			: []
 		const bindings = connectedSceneLayoutModelBindings(normalizedNodeId) as unknown[]
-		console.log(`layoutItems (from store) = ${layoutItems.length}`,
+		console.log(
+			`layoutItems (from store) = ${layoutItems.length}`,
 			layoutItems.map((it: unknown) => ({
 				id: String((it as Record<string, unknown>)?.id ?? ''),
 				name: String((it as Record<string, unknown>)?.name ?? ''),
 				pos: (it as Record<string, unknown>)?.position
 			}))
 		)
-		console.log(`resolvedBindings (from connectedSceneLayoutModelBindings) = ${bindings.length}`,
+		console.log(
+			`resolvedBindings (from connectedSceneLayoutModelBindings) = ${bindings.length}`,
 			bindings.map((b: unknown) => ({
 				objectId: String((b as Record<string, unknown>)?.objectId ?? ''),
 				sourceNodeType: String((b as Record<string, unknown>)?.sourceNodeType ?? ''),
 				connected: (b as Record<string, unknown>)?.connected,
 				path: String(
 					(b as Record<string, unknown>)?.modelAssetUrl ??
-					(b as Record<string, unknown>)?.modelAssetProjectRelativePath ??
-					(b as Record<string, unknown>)?.modelAssetPath ??
-					(b as Record<string, unknown>)?.modelUrl ??
-					''
+						(b as Record<string, unknown>)?.modelAssetProjectRelativePath ??
+						(b as Record<string, unknown>)?.modelAssetPath ??
+						(b as Record<string, unknown>)?.modelUrl ??
+						''
 				)
 			}))
 		)
@@ -8909,34 +8926,48 @@ const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 			nodesById: store.state.nodesById,
 			resourcesById: store.state.resourcesById
 		}
-		const built = buildPureDataResolvedLayoutExport(layoutItems, bindings, backfillCtx) as unknown as Record<string, unknown>
-		console.log(`buildPureDataResolvedLayoutExport result: slotCount=${(built as { slotCount?: unknown }).slotCount}, sourceItemCount=${(built as { sourceItemCount?: unknown }).sourceItemCount}`)
+		const built = buildPureDataResolvedLayoutExport(
+			layoutItems,
+			bindings,
+			backfillCtx
+		) as unknown as Record<string, unknown>
+		console.log(
+			`buildPureDataResolvedLayoutExport result: slotCount=${(built as { slotCount?: unknown }).slotCount}, sourceItemCount=${(built as { sourceItemCount?: unknown }).sourceItemCount}`
+		)
 		const originalWarnings = Array.isArray((built as { warnings?: string[] }).warnings)
-			? ((built as { warnings: string[] }).warnings)
+			? (built as { warnings: string[] }).warnings
 			: []
 		const finalWarnings: string[] = [
 			`[AIWorkflowPage.getResolvedLayoutForUnreal] component instance was NOT available (node was not mounted/preview not opened); falling back to pure-data store mode. slots=${String((built as { slotCount?: unknown }).slotCount ?? 'n/a')}, sourceItemCount=${String((built as { sourceItemCount?: unknown }).sourceItemCount ?? 'n/a')}, sceneLayoutResolvedBindings=${Array.isArray((built as { sceneLayoutResolvedModelBindings?: unknown[] }).sceneLayoutResolvedModelBindings) ? (built as { sceneLayoutResolvedModelBindings: unknown[] }).sceneLayoutResolvedModelBindings.length : 0}`,
 			...originalWarnings
 		]
 		const exportData: WorkflowUnrealResolvedLayoutExport = {
-			generatedAt: Number((built as { generatedAt?: unknown }).generatedAt ?? Date.now()) || Date.now(),
+			generatedAt:
+				Number((built as { generatedAt?: unknown }).generatedAt ?? Date.now()) || Date.now(),
 			sourceItemCount: Number((built as { sourceItemCount?: unknown }).sourceItemCount ?? 0) || 0,
 			slotCount: Number((built as { slotCount?: unknown }).slotCount ?? 0) || 0,
 			actorOrigin: { x: 0, y: 0, z: 0 },
 			warnings: finalWarnings,
 			slots: Array.isArray((built as { slots?: unknown[] }).slots)
-				? ((built as { slots: WorkflowUnrealResolvedLayoutSlot[] }).slots)
+				? (built as { slots: WorkflowUnrealResolvedLayoutSlot[] }).slots
 				: [],
-			sceneLayoutResolvedModelBindings: Array.isArray((built as { sceneLayoutResolvedModelBindings?: unknown[] }).sceneLayoutResolvedModelBindings)
-				? ((built as { sceneLayoutResolvedModelBindings: WorkflowSceneLayoutModelBinding[] }).sceneLayoutResolvedModelBindings)
+			sceneLayoutResolvedModelBindings: Array.isArray(
+				(built as { sceneLayoutResolvedModelBindings?: unknown[] }).sceneLayoutResolvedModelBindings
+			)
+				? (built as { sceneLayoutResolvedModelBindings: WorkflowSceneLayoutModelBinding[] })
+						.sceneLayoutResolvedModelBindings
 				: undefined
 		}
-		console.log(`Route B final: slotCount=${exportData.slotCount}, bindingCount=${exportData.sceneLayoutResolvedModelBindings?.length ?? 0}`)
+		console.log(
+			`Route B final: slotCount=${exportData.slotCount}, bindingCount=${exportData.sceneLayoutResolvedModelBindings?.length ?? 0}`
+		)
 		console.groupEnd()
 		return { ok: true as const, exportData }
 	}
 	// 只有当节点本身不存在/不是 scene-layout 类型时才真正返回错误
-	const err = t('aiworkflow.page.sceneLayout.noPreviewInstance') + ` (node=${String(node?.type ?? 'undefined')}; expected=scene-layout; id=${normalizedNodeId})`
+	const err =
+		t('aiworkflow.page.sceneLayout.noPreviewInstance') +
+		` (node=${String(node?.type ?? 'undefined')}; expected=scene-layout; id=${normalizedNodeId})`
 	console.log(`Result: ERROR (no scene-layout node in store) = ${err}`)
 	console.groupEnd()
 	return {
@@ -10254,6 +10285,7 @@ const {
 	validateModelBindings,
 	pushToast,
 	activateSceneLayoutPreview,
+	startSceneLayoutPreview: startPreviewSession,
 	waitForNextTick: () => nextTick(),
 	getThreePreviewState: getNodePreviewState,
 	selectNode: selectSceneLayoutNode,

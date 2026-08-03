@@ -421,7 +421,7 @@ export type WorkflowUnrealResolvedConstraintDiagnostics = {
 
 export type WorkflowUnrealResolvedModelBinding = {
 	sourceNodeId?: string
-	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	sourceNodeType?: 'model3d' | 'meshy' | 'tripo3d' | 'manual'
 	modelUrl?: string
 	modelAssetUrl?: string
 	modelSourcePath?: string
@@ -430,6 +430,7 @@ export type WorkflowUnrealResolvedModelBinding = {
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
 	modelFormat?: WorkflowModelFormat
+	modelResourceId?: string
 }
 
 export type WorkflowUnrealResolvedLayoutSlot = {
@@ -593,7 +594,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	inputAnchorId: string
 	connected: boolean
 	sourceNodeId?: string
-	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	sourceNodeType?: 'model3d' | 'meshy' | 'tripo3d' | 'manual'
 	modelUrl?: string
 	modelAssetUrl?: string
 	modelSourcePath?: string
@@ -602,6 +603,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
 	modelFormat?: WorkflowModelFormat
+	modelResourceId?: string
 }
 
 export type WorkflowSceneDecomposeOutput = {

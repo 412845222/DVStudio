@@ -1101,24 +1101,24 @@ const extractProjectRelativePathFromAny = (input: string): string => {
 			if (qIdx >= 0) {
 				const q = new URLSearchParams(t.substring(qIdx + 1))
 				const p =
-					q.get('path') ||
-					q.get('relativePath') ||
-					q.get('assetPath') ||
-					q.get('filePath') ||
-					''
+					q.get('path') || q.get('relativePath') || q.get('assetPath') || q.get('filePath') || ''
 				if (p) {
-					const clean = decodeURIComponent(p)
-						.split('?')[0]
-						.split('#')[0]
-						.replace(/\\/g, '/')
+					const clean = decodeURIComponent(p).split('?')[0].split('#')[0].replace(/\\/g, '/')
 					if (LIKELY_MODEL_EXT_RE.test(clean)) return clean
 					if (/^content\//i.test(clean)) return clean
 				}
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 		return ''
 	}
-	if (isRemoteHttpUrl(t) || t.startsWith('blob:') || t.startsWith('data:') || t.startsWith('file://')) {
+	if (
+		isRemoteHttpUrl(t) ||
+		t.startsWith('blob:') ||
+		t.startsWith('data:') ||
+		t.startsWith('file://')
+	) {
 		return ''
 	}
 	if (isLocalAbsPath(t)) return ''
@@ -1144,13 +1144,14 @@ provide('sceneLayoutProjectContext', {
 })
 
 const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => {
-	const bindings = Array.isArray(props.sceneLayoutModelBindings) ? props.sceneLayoutModelBindings : []
+	const bindings = Array.isArray(props.sceneLayoutModelBindings)
+		? props.sceneLayoutModelBindings
+		: []
 	if (!bindings.length) return bindings
 
 	const pid = currentProjectIdRef.value
 	const root = currentProjectRootRef.value
-	const cacheKey =
-		`pid=${pid};root=${root};sig=${modelBindingsSignature.value}`
+	const cacheKey = `pid=${pid};root=${root};sig=${modelBindingsSignature.value}`
 	const cached = resolvedModelBindingsCache.get(cacheKey)
 	if (cached) return cached
 
@@ -1169,9 +1170,13 @@ const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => 
 		}
 
 		const rels: string[] = []
-		const fromBindingRel = String(out.modelAssetProjectRelativePath ?? out.modelProjectRelativePath ?? '').trim()
+		const fromBindingRel = String(
+			out.modelAssetProjectRelativePath ?? out.modelProjectRelativePath ?? ''
+		).trim()
 		if (fromBindingRel) rels.push(fromBindingRel)
-		const fromBindingPath = extractProjectRelativePathFromAny(String(out.modelAssetPath ?? out.modelSourcePath ?? ''))
+		const fromBindingPath = extractProjectRelativePathFromAny(
+			String(out.modelAssetPath ?? out.modelSourcePath ?? '')
+		)
 		if (fromBindingPath) rels.push(fromBindingPath)
 		const fromAssetUrl = extractProjectRelativePathFromAny(existingAssetUrl)
 		if (fromAssetUrl) rels.push(fromAssetUrl)
@@ -1179,9 +1184,13 @@ const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => 
 		if (fromModelUrl) rels.push(fromModelUrl)
 
 		const absCandidates: string[] = []
-		const absFromAssetPath = isLocalAbsPath(String(out.modelAssetPath ?? '')) ? String(out.modelAssetPath) : ''
+		const absFromAssetPath = isLocalAbsPath(String(out.modelAssetPath ?? ''))
+			? String(out.modelAssetPath)
+			: ''
 		if (absFromAssetPath) absCandidates.push(absFromAssetPath)
-		const absFromSourcePath = isLocalAbsPath(String(out.modelSourcePath ?? '')) ? String(out.modelSourcePath) : ''
+		const absFromSourcePath = isLocalAbsPath(String(out.modelSourcePath ?? ''))
+			? String(out.modelSourcePath)
+			: ''
 		if (absFromSourcePath) absCandidates.push(absFromSourcePath)
 
 		let fileUrl = ''
@@ -1253,7 +1262,7 @@ const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => 
 		sample: resolved.slice(0, 6).map((b) => {
 			const modelUrl = String(b.modelUrl ?? '')
 			const modelAssetUrl = String(b.modelAssetUrl ?? '')
-			const any = (b as unknown as Record<string, unknown>)
+			const any = b as unknown as Record<string, unknown>
 			return {
 				itemId: b.objectId,
 				modelUrl: modelUrl.slice(0, 96),
@@ -1267,11 +1276,11 @@ const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => 
 				isLocalAbsPath: /^[a-zA-Z]:[\\/]/.test(modelUrl) || modelUrl.startsWith('/'),
 				localHit: Boolean(
 					modelUrl.toLowerCase().startsWith('file://') ||
-						modelUrl.toLowerCase().startsWith('dweb:') ||
-						/^[a-zA-Z]:[\\/]/.test(modelUrl) ||
-						modelUrl.startsWith('/') ||
-						modelAssetUrl.toLowerCase().startsWith('file://') ||
-						modelAssetUrl.toLowerCase().startsWith('dweb:')
+					modelUrl.toLowerCase().startsWith('dweb:') ||
+					/^[a-zA-Z]:[\\/]/.test(modelUrl) ||
+					modelUrl.startsWith('/') ||
+					modelAssetUrl.toLowerCase().startsWith('file://') ||
+					modelAssetUrl.toLowerCase().startsWith('dweb:')
 				),
 				prevBlocked: Boolean(any._prevBlockedModelAssetUrl || any._prevBlockedModelUrl),
 				_prevBlockedModelUrl: any._prevBlockedModelUrl
@@ -2712,9 +2721,12 @@ onMounted(() => {
 					root = String(c.rootDir).trim()
 				}
 				if (!pid) {
-					const raw = typeof c?.currentProjectId !== 'undefined' ? c.currentProjectId
-						: typeof c?.projectId !== 'undefined' ? c.projectId
-						: 0
+					const raw =
+						typeof c?.currentProjectId !== 'undefined'
+							? c.currentProjectId
+							: typeof c?.projectId !== 'undefined'
+								? c.projectId
+								: 0
 					const n = Number(raw)
 					if (Number.isFinite(n) && n > 0) pid = n
 				}
@@ -2759,14 +2771,17 @@ onMounted(() => {
 		// 异步兜底：从 sceneLayoutModelBindings 或 settings 中 dweb:// URL 推导 projectId
 		// 然后调用 getProjectRootById 异步获取 rootPath
 		const scanCandidates: string[] = []
-		for (const b of Array.isArray(props.sceneLayoutModelBindings) ? props.sceneLayoutModelBindings : []) {
+		for (const b of Array.isArray(props.sceneLayoutModelBindings)
+			? props.sceneLayoutModelBindings
+			: []) {
 			if (b.modelAssetUrl) scanCandidates.push(b.modelAssetUrl)
 			if (b.modelUrl) scanCandidates.push(b.modelUrl)
 		}
 		const sceneLayoutAny = settingsAny?.inputJson as unknown
-		const sceneUrl = isObject(sceneLayoutAny) && isString((sceneLayoutAny as any).url)
-			? (sceneLayoutAny as any).url as string
-			: ''
+		const sceneUrl =
+			isObject(sceneLayoutAny) && isString((sceneLayoutAny as any).url)
+				? ((sceneLayoutAny as any).url as string)
+				: ''
 		if (sceneUrl) scanCandidates.push(sceneUrl)
 
 		let scanPid = currentProjectIdRef.value || 0
@@ -2810,12 +2825,15 @@ onMounted(() => {
 			if (viewer && previewMode.value) {
 				await nextTick()
 				const cachedViewForSync = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
-				sceneLog('[SceneLayout] project context ready, re-sync viewer with resolved model bindings', {
-					nodeId: props.nodeId,
-					pid: currentProjectIdRef.value,
-					root: currentProjectRootRef.value,
-					bindingsCount: resolvedModelBindings.value.length
-				})
+				sceneLog(
+					'[SceneLayout] project context ready, re-sync viewer with resolved model bindings',
+					{
+						nodeId: props.nodeId,
+						pid: currentProjectIdRef.value,
+						root: currentProjectRootRef.value,
+						bindingsCount: resolvedModelBindings.value.length
+					}
+				)
 				try {
 					viewer.setLayout(
 						layoutItems.value,
@@ -2959,7 +2977,9 @@ const getResolvedLayoutForUnreal = async (): Promise<
 				await nextTick()
 			}
 			if (viewer) {
-				console.info('[SceneLayoutNode] Viewer available, attempting enrich-only (no error on fail)')
+				console.info(
+					'[SceneLayoutNode] Viewer available, attempting enrich-only (no error on fail)'
+				)
 				viewer.setRenderSuspended(false)
 				viewer.setInteractive(true)
 				viewer.setSelectedItem(selectedPreviewItemId.value)
@@ -2984,10 +3004,18 @@ const getResolvedLayoutForUnreal = async (): Promise<
 					)
 					cachedLayoutSignature = currentSignature
 					// enrich 场景下绑定同步最多等 1 秒，拿不到就放弃（纯数据已是完整的）
-					if (typeof (viewer as unknown as { awaitPendingBindingSync?: (ms: number) => Promise<void> }).awaitPendingBindingSync === 'function') {
+					if (
+						typeof (
+							viewer as unknown as { awaitPendingBindingSync?: (ms: number) => Promise<void> }
+						).awaitPendingBindingSync === 'function'
+					) {
 						try {
-							await (viewer as unknown as { awaitPendingBindingSync: (ms: number) => Promise<void> }).awaitPendingBindingSync(1000)
-						} catch { /* ignore */ }
+							await (
+								viewer as unknown as { awaitPendingBindingSync: (ms: number) => Promise<void> }
+							).awaitPendingBindingSync(1000)
+						} catch {
+							/* ignore */
+						}
 					}
 				} else {
 					viewer.setRenderSuspended(false)
@@ -2999,12 +3027,19 @@ const getResolvedLayoutForUnreal = async (): Promise<
 				const viewerExportOrNull = await Promise.race([viewerExportPromise, timeoutPromise])
 				if (viewerExportOrNull && typeof viewerExportOrNull === 'object') {
 					const vExp = viewerExportOrNull as WorkflowUnrealResolvedLayoutExport
-					viewerActorOrigin = vExp.actorOrigin && typeof vExp.actorOrigin === 'object'
-						? { x: Number(vExp.actorOrigin.x ?? 0), y: Number(vExp.actorOrigin.y ?? 0), z: Number(vExp.actorOrigin.z ?? 0) }
-						: null
+					viewerActorOrigin =
+						vExp.actorOrigin && typeof vExp.actorOrigin === 'object'
+							? {
+									x: Number(vExp.actorOrigin.x ?? 0),
+									y: Number(vExp.actorOrigin.y ?? 0),
+									z: Number(vExp.actorOrigin.z ?? 0)
+								}
+							: null
 					const rawSlots = Array.isArray(vExp.slots) ? vExp.slots : []
 					for (const s of rawSlots) {
-						const sid = String((s as unknown as Record<string, unknown>)?.sourceObjectId ?? '').trim()
+						const sid = String(
+							(s as unknown as Record<string, unknown>)?.sourceObjectId ?? ''
+						).trim()
 						const isClone = Boolean((s as unknown as Record<string, unknown>)?.isClone)
 						const key = isClone
 							? `${sid}__clone_${Number((s as unknown as Record<string, unknown>)?.cloneIndex ?? 0) + 1}`
@@ -3020,16 +3055,19 @@ const getResolvedLayoutForUnreal = async (): Promise<
 					}
 					console.info(
 						`[SceneLayoutNode] Viewer enrich returned ${rawSlots.length} slots, ` +
-						`merged ${viewerSlotsBySourceId.size} unique keys for worldBounds enrichment`
+							`merged ${viewerSlotsBySourceId.size} unique keys for worldBounds enrichment`
 					)
 				} else if (viewerExportOrNull === null) {
-					console.info('[SceneLayoutNode] Viewer enrich timed out (2s) — continuing with pure-data slots')
+					console.info(
+						'[SceneLayoutNode] Viewer enrich timed out (2s) — continuing with pure-data slots'
+					)
 				}
 			}
 		} catch (viewerErr) {
-			const eMsg = isObject(viewerErr) && isString((viewerErr as Record<string, unknown>).message)
-				? String((viewerErr as Record<string, unknown>).message)
-				: String(viewerErr ?? 'unknown')
+			const eMsg =
+				isObject(viewerErr) && isString((viewerErr as Record<string, unknown>).message)
+					? String((viewerErr as Record<string, unknown>).message)
+					: String(viewerErr ?? 'unknown')
 			console.warn(
 				`[SceneLayoutNode] Viewer enrich phase failed (non-fatal; pure-data slots still valid): ${eMsg}`
 			)
@@ -3044,6 +3082,7 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	// ========================================================================
 	if (viewerSlotsBySourceId.size > 0) {
 		let enriched = 0
+		let transformReplaced = 0
 		finalSlots = finalSlots.map((pureSlot) => {
 			const key = pureSlot.isClone
 				? `${pureSlot.sourceObjectId}__clone_${Number(pureSlot.cloneIndex ?? 0) + 1}`
@@ -3051,6 +3090,23 @@ const getResolvedLayoutForUnreal = async (): Promise<
 			const vSlot = viewerSlotsBySourceId.get(key)
 			if (!vSlot) return pureSlot
 			const out: WorkflowUnrealResolvedLayoutSlot = { ...pureSlot }
+			// viewer 的 transform 从 Three.js 世界矩阵分解（captureObjectTransform →
+			// getWorldPosition/getWorldQuaternion/getWorldScale），已包含 fitMode 缩放
+			// （fitBoundModelToPlaceholderWorld 计算的 finalScale）、orientationFix 朝向修正、
+			// alignModelToTarget 对齐等全部变换。纯数据 slot 的 transform 只有 layoutItem
+			// 原始 position/rotation/scale（scale 默认 1,1,1，未做 fit 计算），直接用会导致
+			// 导出到 UE 的模型缩放/位置与预览不一致。因此 viewer 有 transform 时优先用 viewer 的。
+			if (vSlot.worldTransform) {
+				out.worldTransform = vSlot.worldTransform
+				transformReplaced++
+			}
+			if (vSlot.meshTransform) out.meshTransform = vSlot.meshTransform
+			if (vSlot.relativeTransform) out.relativeTransform = vSlot.relativeTransform
+			if (vSlot.previewInstanceTransform)
+				out.previewInstanceTransform = vSlot.previewInstanceTransform
+			if (vSlot.previewInstanceWorldTransform)
+				out.previewInstanceWorldTransform = vSlot.previewInstanceWorldTransform
+			if (vSlot.slotTransform) out.slotTransform = vSlot.slotTransform
 			if (vSlot.worldBounds && !out.worldBounds) {
 				out.worldBounds = vSlot.worldBounds
 				enriched++
@@ -3066,14 +3122,19 @@ const getResolvedLayoutForUnreal = async (): Promise<
 			}
 			return out
 		})
-		if (enriched > 0) {
-			console.info(`[SceneLayoutNode] Enriched worldBounds on ${enriched} slots from viewer`)
+		if (enriched > 0 || transformReplaced > 0) {
+			console.info(
+				`[SceneLayoutNode] Enriched from viewer: worldBounds on ${enriched} slots, ` +
+					`transform (with fit scale) replaced on ${transformReplaced} slots`
+			)
 		}
 	}
 
-	const actorOriginFinal = viewerActorOrigin && (viewerActorOrigin.x !== 0 || viewerActorOrigin.y !== 0 || viewerActorOrigin.z !== 0)
-		? viewerActorOrigin
-		: { x: 0, y: 0, z: 0 }
+	const actorOriginFinal =
+		viewerActorOrigin &&
+		(viewerActorOrigin.x !== 0 || viewerActorOrigin.y !== 0 || viewerActorOrigin.z !== 0)
+			? viewerActorOrigin
+			: { x: 0, y: 0, z: 0 }
 
 	const exportFinal: WorkflowUnrealResolvedLayoutExport = {
 		generatedAt: Date.now(),
@@ -3095,8 +3156,8 @@ const getResolvedLayoutForUnreal = async (): Promise<
 	}
 	console.info(
 		`[SceneLayoutNode] Final slots: ${withResolvedBindings.slots.length}; ` +
-		`Inject sceneLayoutResolvedModelBindings, count=${withResolvedBindings.sceneLayoutResolvedModelBindings?.length ?? 0}; ` +
-		`actorOrigin=(${actorOriginFinal.x},${actorOriginFinal.y},${actorOriginFinal.z})`
+			`Inject sceneLayoutResolvedModelBindings, count=${withResolvedBindings.sceneLayoutResolvedModelBindings?.length ?? 0}; ` +
+			`actorOrigin=(${actorOriginFinal.x},${actorOriginFinal.y},${actorOriginFinal.z})`
 	)
 	return { ok: true, exportData: withResolvedBindings }
 }

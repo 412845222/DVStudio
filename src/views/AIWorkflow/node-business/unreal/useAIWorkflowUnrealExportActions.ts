@@ -4,10 +4,9 @@ import {
 	mergeViewerResolvedIntoFinalBindings,
 	isConnectedTruthy,
 	hasAnyPathExtended,
-	detectModelFormatFromPath,
-	pickBestModelUrlFromCandidates,
 	tryBackfillBindingPathsFromStore
 } from './unrealExportUtils'
+import { extractModelSourceFromUpstreamNode } from './unrealExportModelSourceExtractor'
 import { t } from '../../../../i18n'
 
 export const useAIWorkflowUnrealExportActions = (payload: {
@@ -78,6 +77,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	activateSceneLayoutPreview?: (nodeId: string) => void
+	startSceneLayoutPreview?: (nodeId: string) => void
 	waitForNextTick?: () => Promise<void>
 	getThreePreviewState?: (
 		nodeId: string,
@@ -377,18 +377,12 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					} else {
 						warnFromLenient.push(
 							t('aiworkflow.runtime.modelBindingNotConnected', { name: objectName }) +
-							'，将在导出阶段从节点 outputs / resourceId 兜底查找路径。'
+								'，将在导出阶段从节点 outputs / resourceId 兜底查找路径。'
 						)
 					}
 				}
-				const mergedInvalid = [
-					...(validation.invalid ?? []),
-					...trulyInvalidFromLenient
-				]
-				const mergedWarnings = [
-					...(validation.warnings ?? []),
-					...warnFromLenient
-				]
+				const mergedInvalid = [...(validation.invalid ?? []), ...trulyInvalidFromLenient]
+				const mergedWarnings = [...(validation.warnings ?? []), ...warnFromLenient]
 				if (mergedInvalid.length > 0) {
 					const detailLines = mergedInvalid
 						.map((item, idx) => {
@@ -454,50 +448,66 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			})
 
 			// ========================================================================
-			// 2026-08-03 纯数据模式：SceneLayoutNode.vue 内部的 getResolvedLayoutForUnreal
-			//   已经改成"纯数据构造器永远优先执行"，
-			//   layoutItems.value + resolvedModelBindings.value → 直接生成 N 条 slots，
-			//   不依赖 Three.js viewer 渲染、不依赖 canvasRef 是否挂载、
-			//   不依赖 preview 是否进入 interactive。
+			// 2026-08-03 恢复 viewer 激活链路：
+			//   viewer 的 fitMode 缩放（fitBoundModelToPlaceholderWorld）依赖 Three.js
+			//   加载模型后的 bounding box。如果不激活 viewer，getResolvedLayoutForUnreal
+			//   内部的 viewer enrich 会被跳过（canvasRef=null），导出的 transform
+			//   只有 layoutItem 原始 scale（默认 1,1,1，无 fit 计算）。
 			//
-			// 因此这里不再执行旧链路：
-			//   forceNodeFullRender → selectNode → focusNode → activateSceneLayoutPreview
-			//   → 等待 40 次 × 200ms 轮询 phase === 'interactive'
-			// 只做：
-			//   ① 轻量确保节点被选中（方便用户肉眼看到正在导出哪个上游节点）
-			//   ② 等 1~2 个 nextTick 让 Vue 响应式稳定，立刻调用 getResolvedLayoutForUnreal
-			//     （其内部纯数据构造器会瞬间返回所有 slots，viewer 仅作为可选 enrich）
+			//   激活步骤：
+			//   ① forceNodeFullRender(nodeId, true) — 确保节点在 DOM 中完整渲染
+			//   ② selectNode — 选中节点
+			//   ③ activateSceneLayoutPreview — 设置 previewMode=true，canvas 显示
+			//   ④ startSceneLayoutPreview — 触发 lifecycle manager 的 startPreviewSession
+			//   ⑤ 轮询 getThreePreviewState 等待 phase='interactive'
 			// ========================================================================
-			console.info(
-				'[UnrealExport] Pure-data mode: skipping Three.js preview activation; ' +
-					'SceneLayoutNode.buildPureDataSlotsForUnreal will generate slots directly from ' +
-					'layoutItems × resolvedModelBindings (no render required). Source:',
-				sourceSceneLayoutNodeId
-			)
+			console.info('[UnrealExport] Activating scene layout viewer for fit scale calculation...')
+			if (payload.forceNodeFullRender) {
+				payload.forceNodeFullRender(sourceSceneLayoutNodeId, true)
+			}
+			if (payload.selectNode) {
+				payload.selectNode(sourceSceneLayoutNodeId)
+			}
+			if (payload.waitForNextTick) {
+				await payload.waitForNextTick()
+			}
+			if (payload.activateSceneLayoutPreview) {
+				payload.activateSceneLayoutPreview(sourceSceneLayoutNodeId)
+			}
+			if (payload.startSceneLayoutPreview) {
+				payload.startSceneLayoutPreview(sourceSceneLayoutNodeId)
+			}
+			// 轮询等待 viewer 进入 interactive（最多 40 次 × 200ms = 8 秒）
+			let viewerInteractive = false
+			if (payload.getThreePreviewState) {
+				for (let i = 0; i < 40; i++) {
+					await new Promise((r) => setTimeout(r, 200))
+					const state = payload.getThreePreviewState(sourceSceneLayoutNodeId, 'scene-layout')
+					if (state && state.phase === 'interactive') {
+						viewerInteractive = true
+						break
+					}
+				}
+			}
+			console.info(`[UnrealExport] Viewer activation result: interactive=${viewerInteractive}`)
 			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #1 Precheck summary')
-			console.log(`connectedModelBindings = ${connectedModelBindings.length}`,
+			console.log(
+				`connectedModelBindings = ${connectedModelBindings.length}`,
 				connectedModelBindings.map((x: unknown) => ({
 					objectId: String((x as Record<string, unknown>)?.objectId ?? ''),
 					sourceNodeType: String((x as Record<string, unknown>)?.sourceNodeType ?? ''),
 					connected: (x as Record<string, unknown>)?.connected,
 					path: String(
 						(x as Record<string, unknown>)?.modelAssetUrl ??
-						(x as Record<string, unknown>)?.modelAssetPath ??
-						(x as Record<string, unknown>)?.modelUrl ??
-						''
+							(x as Record<string, unknown>)?.modelAssetPath ??
+							(x as Record<string, unknown>)?.modelUrl ??
+							''
 					)
 				}))
 			)
 			console.log(`layoutItems (from store) = ${totalLayoutItems}`)
+			console.log(`viewerInteractive = ${viewerInteractive}`)
 			console.groupEnd()
-			if (payload.selectNode) {
-				payload.selectNode(sourceSceneLayoutNodeId)
-			}
-			// 轻量等待：等 1 个 nextTick + 50ms，保证响应式数据已经到位
-			if (payload.waitForNextTick) {
-				await payload.waitForNextTick()
-			}
-			await new Promise((r) => setTimeout(r, 50))
 
 			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null =
 				null
@@ -527,22 +537,26 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					const exportData = r.exportData as Record<string, unknown>
 					const slotCount = Array.isArray(exportData?.slots) ? exportData.slots.length : 0
 					const bindingCount = Array.isArray(
-						(exportData as { sceneLayoutResolvedModelBindings?: unknown[] })?.sceneLayoutResolvedModelBindings
+						(exportData as { sceneLayoutResolvedModelBindings?: unknown[] })
+							?.sceneLayoutResolvedModelBindings
 					)
-						? ((exportData as { sceneLayoutResolvedModelBindings: unknown[] }).sceneLayoutResolvedModelBindings
-								.length)
+						? (exportData as { sceneLayoutResolvedModelBindings: unknown[] })
+								.sceneLayoutResolvedModelBindings.length
 						: 0
 					// 2026-08-03 修复：sourceItemCount 直接读 exportData.sourceItemCount，
 					//   不再被错误的 Array.isArray(slots) 条件包住。
-					const layoutItemCount = Number(
-						(exportData as Record<string, unknown>).sourceItemCount ?? 0
-					) || 0
+					const layoutItemCount =
+						Number((exportData as Record<string, unknown>).sourceItemCount ?? 0) || 0
 					console.info(
 						`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}, ` +
 							`sceneLayoutResolvedBindings: ${bindingCount}, sourceItemCount: ${layoutItemCount}`
 					)
-					console.groupCollapsed(`[UNREAL-EXPORT-TRACE] #2 Attempt ${attempt + 1} getResolvedLayoutForUnreal result`)
-					console.log(`slotCount = ${slotCount}, bindingCount (sceneLayoutResolved) = ${bindingCount}, layoutItemCount = ${layoutItemCount}`)
+					console.groupCollapsed(
+						`[UNREAL-EXPORT-TRACE] #2 Attempt ${attempt + 1} getResolvedLayoutForUnreal result`
+					)
+					console.log(
+						`slotCount = ${slotCount}, bindingCount (sceneLayoutResolved) = ${bindingCount}, layoutItemCount = ${layoutItemCount}`
+					)
 					if (Array.isArray(exportData.slots) && exportData.slots.length > 0) {
 						console.log(
 							`slots[].objectId summary:`,
@@ -558,17 +572,19 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 									modelBinding_connected: mb.connected,
 									modelBinding_path: String(
 										mb.modelAssetUrl ??
-										mb.modelAssetProjectRelativePath ??
-										mb.modelAssetPath ??
-										mb.modelUrl ??
-										''
+											mb.modelAssetProjectRelativePath ??
+											mb.modelAssetPath ??
+											mb.modelUrl ??
+											''
 									)
 								}
 							})
 						)
 					}
-					if (Array.isArray((exportData as { warnings?: unknown[] }).warnings) &&
-						(exportData as { warnings: unknown[] }).warnings.length > 0) {
+					if (
+						Array.isArray((exportData as { warnings?: unknown[] }).warnings) &&
+						(exportData as { warnings: unknown[] }).warnings.length > 0
+					) {
 						console.log(`warnings =`, (exportData as { warnings: unknown[] }).warnings)
 					}
 					console.groupEnd()
@@ -646,160 +662,138 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// - 回退优先级：connectedModelBindings（connectedSceneLayoutModelBindings 原始值，
 			//   仅在旧项目 viewer 未返回 sceneLayoutResolvedModelBindings 时保留兼容）
 			// ========================================================================
-			let { finalBindingsSource, usedViewerResolvedBindings } = mergeViewerResolvedIntoFinalBindings(
-				exportData,
-				Array.isArray(connectedModelBindings) ? connectedModelBindings : []
-			)
+			let { finalBindingsSource, usedViewerResolvedBindings } =
+				mergeViewerResolvedIntoFinalBindings(
+					exportData,
+					Array.isArray(connectedModelBindings) ? connectedModelBindings : []
+				)
 			// ========================================================================
-			// 2026-08-03 FORCE-REBUILD BINDINGS（用户现场痛点修复）：
-			//   完全不再依赖 viewer.cache / connectedSceneLayoutModelBindings 过期的 9 条缓存，
-			//   直接从 Vuex store.state.edgesById 硬扫 sourceSceneLayoutNodeId 的全部入边，
-			//   每条 in-model-* / in-0 / in-model 入边 → 从 upstream node 硬扫 outputs / 顶层字段 / resourceId
-			//   → 直接填实 6 个路径字段 + modelFormat + connected=true。
-			//   manualModelBindings（用户手动给墙体/天花板绑定的模型）也一起收进来。
-			//
-			//   这样彻底保证："只要场景布局节点的占位体（包括墙/地板/天花板）与任何 3D 节点
-			//   真的有蓝图连线或手动绑定，就一定能在导出数组里出现"，不再会被任何中间层
-			//   过滤成只剩 9 条过期缓存。
+			// 2026-08-03 FORCE-REBUILD 重构（AIPlan/02 方案 §5.2-5.3）：
+			//   原 FORCE-REBUILD 用【通用提取】完全覆盖 finalBindingsSource，导致：
+			//     - 类别 A：不读 meshySettings/tripo3dSettings/model3dSettings 深字段 →
+			//               真实静态资产路径丢失
+			//     - 类别 B：pushBinding 按 objectId 去重 → 手动上传模型路径被丢弃
+			//   ——重构为【仅补漏 + 类型专用提取 + 路径合并】：
+			//     1. 以 Step3 的 finalBindingsSource（基底=connectedSceneLayoutModelBindings，
+			//        含类型专用提取的正确路径）为权威基底
+			//     2. manualModelBindings 优先合并（类别 B 保障）：用路径合并补充进基底
+			//     3. 扫描 edgesById 找 in-model-* 入边（类别 A 补漏）：
+			//        a. objectId 已在基底 → 跳过（不覆盖、不去重丢弃）
+			//        b. objectId 不在基底 → 用 extractModelSourceFromUpstreamNode
+			//           （类型专用提取，与预览同款）新建 binding
+			//     4. finalBindingsSource = 基底（含手动合并）+ 补漏数组（不再覆盖）
 			// ========================================================================
 			{
-				const rebuilt: Array<Record<string, unknown>> = []
-				const seenKeys = new Set<string>()
-				const pushBinding = (obj: Record<string, unknown>) => {
-					const objectId = String(obj.objectId ?? '').trim()
-					const anchorId = String((obj as { inputAnchorId?: unknown }).inputAnchorId ?? '').trim()
-					const key = objectId || anchorId || `${Math.random()}`
-					if (seenKeys.has(key)) return
-					seenKeys.add(key)
-					rebuilt.push(obj)
-				}
-
-				// 1) 直接从 edgesById 扫所有到 sourceSceneLayoutNodeId 的入边
-				const edgesById =
-					payload.store.state.edgesById && typeof payload.store.state.edgesById === 'object'
-						? (payload.store.state.edgesById as Record<string, unknown>)
-						: {}
 				const nodesById = payload.store.state.nodesById || {}
 				const resourcesById =
 					payload.store.state.resourcesById && typeof payload.store.state.resourcesById === 'object'
 						? (payload.store.state.resourcesById as Record<string, unknown>)
 						: {}
-				const targetNode = String(sourceSceneLayoutNodeId ?? '').trim()
-				for (const edge of Object.values(edgesById)) {
-					if (!edge || typeof edge !== 'object') continue
-					const e = edge as Record<string, unknown>
-					const toNode = String(e.targetNodeId ?? e.toNodeId ?? '').trim()
-					if (!toNode || toNode !== targetNode) continue
-					const anchorId = String(e.toAnchorId ?? e.targetAnchorId ?? e.inputAnchorId ?? '').trim()
-					// 只关心 3D 模型输入相关锚（in-model-xxx / in-model / in-0）；其它 in-json / in-text / in-layout-text 直接跳过
-					const isModelAnchor =
-						anchorId === 'in-model' ||
-						anchorId === 'in-0' ||
-						/^in-model[_-]/.test(anchorId) ||
-						/^in-(?:model|resource)[_-]/.test(anchorId)
-					if (!isModelAnchor) continue
-					const fromNodeId = String(e.sourceNodeId ?? e.fromNodeId ?? '').trim()
-					if (!fromNodeId) continue
-					const fromNode = (nodesById as Record<string, unknown>)[fromNodeId] as Record<string, unknown> | undefined
-					// anchorSuffix：例如 in-model-stool_left → stool_left
-					let anchorSuffix = ''
-					const m = /^in-(?:model|resource)[_-](.+)$/.exec(anchorId)
-					if (m && m[1]) anchorSuffix = m[1]
-					// objectId 优先使用 anchorSuffix，否则 fromNodeId
-					const objectId = anchorSuffix || fromNodeId
+				const edgesById =
+					payload.store.state.edgesById && typeof payload.store.state.edgesById === 'object'
+						? (payload.store.state.edgesById as Record<string, unknown>)
+						: {}
 
-					// ——从 fromNode.outputs / 顶层字段 / resourceId 硬扫路径——
-					const candidates: Array<string | null | undefined> = []
-					let fallbackFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
-					if (fromNode && typeof fromNode === 'object') {
-						const fn = fromNode
-						if (Array.isArray(fn.outputs)) {
-							for (const out of fn.outputs as unknown[]) {
-								if (!out || typeof out !== 'object') continue
-								const o = out as Record<string, unknown>
-								for (const src of [o.resolved, o.cached, o.value]) {
-									if (!src) continue
-									if (typeof src === 'string') {
-										candidates.push(src)
-									} else if (typeof src === 'object') {
-										const s = src as Record<string, unknown>
-										candidates.push(String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() || null)
-										candidates.push(String(s.modelAssetPath ?? s.modelSourcePath ?? '').trim() || null)
-										candidates.push(String(s.modelAssetUrl ?? s.modelUrl ?? '').trim() || null)
-										candidates.push(String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null)
-										candidates.push(String(s.assetUrl ?? s.preferredUrl ?? s.url ?? '').trim() || null)
-										const fmt = detectModelFormatFromPath(String(s.modelAssetProjectRelativePath ?? s.modelAssetUrl ?? s.url ?? ''))
-										if (fmt) fallbackFormat = fmt
-									}
-								}
-							}
-						}
-						const topKeys = [
-							'modelAssetProjectRelativePath', 'modelProjectRelativePath',
-							'modelAssetUrl', 'modelUrl', 'modelAssetPath', 'modelSourcePath',
-							'resolvedModelPath', 'localAssetUrl', 'localAssetPath'
-						] as const
-						for (const k of topKeys) {
-							const v = String((fn as Record<string, unknown>)[k] ?? '').trim()
-							if (v) candidates.push(v)
-							const fmt = detectModelFormatFromPath(v)
-							if (fmt) fallbackFormat = fmt
-						}
-						const fnResId = String(fn.resourceId ?? (fn.model3dSettings as Record<string, unknown> | undefined)?.resourceId ?? (fn.tripo3dSettings as Record<string, unknown> | undefined)?.resourceId ?? (fn.meshySettings as Record<string, unknown> | undefined)?.resourceId ?? '').trim()
-						if (fnResId && resourcesById[fnResId]) {
-							const r = resourcesById[fnResId] as Record<string, unknown>
-							candidates.push(String(r.projectRelativePath ?? '').trim() || null)
-							candidates.push(String(r.absolutePath ?? '').trim() || null)
-							candidates.push(String(r.sourcePath ?? '').trim() || null)
-							candidates.push(String(r.url ?? '').trim() || null)
-							candidates.push(String(r.assetUrl ?? '').trim() || null)
-							candidates.push(String(r.localUrl ?? '').trim() || null)
-							const fmt = detectModelFormatFromPath(String(r.projectRelativePath ?? r.url ?? r.absolutePath ?? ''))
-							if (fmt) fallbackFormat = fmt
-						}
-					}
-
-					const best = pickBestModelUrlFromCandidates(candidates as Array<string | null | undefined>)
-					const b: Record<string, unknown> = {
-						objectId,
-						objectName: objectId,
-						inputAnchorId: anchorId,
-						anchorSuffix,
-						connected: true,
-						sourceNodeId: fromNodeId,
-						sourceNodeType: String(fromNode?.type ?? 'model3d') || 'model3d'
-					}
-					if (best) {
-						const overrideFormat = detectModelFormatFromPath(best) || fallbackFormat
-						const relPath = (() => {
-							const m1 = /\?(?:.*&)?(?:path|relativePath|assetPath|filePath)=([^&]+)/.exec(best)
-							if (m1 && m1[1]) {
-								try { return decodeURIComponent(m1[1]).split('?')[0].split('#')[0] } catch { /* ignore */ }
-							}
-							if (/^Content[\\/]/i.test(best)) return best.replace(/\\/g, '/')
-							const m2 = /^file:\/\/\/+([a-zA-Z]:[\\/].+)$/.exec(best)
-							if (m2 && m2[1]) return m2[1].replace(/\\/g, '/')
-							return best.replace(/\\/g, '/')
-						})()
-						const isRel = /^Content[\\/]/i.test(relPath)
-						b.modelUrl = best
-						b.modelAssetUrl = best
-						if (!isRel) {
-							b.modelSourcePath = relPath
-							b.modelAssetPath = relPath
+				// 路径合并：只在 existing 的字段为空时，从 incoming 抄过来（不覆盖已有值）。
+				//   与 mergeViewerResolvedIntoFinalBindings 的 TEXTURE_COPY_KEYS 逻辑一致。
+				const PATH_MERGE_KEYS = [
+					'modelUrl',
+					'modelAssetUrl',
+					'modelSourcePath',
+					'modelAssetPath',
+					'modelProjectRelativePath',
+					'modelAssetProjectRelativePath',
+					'modelSourceName',
+					'modelFormat',
+					'modelResourceId',
+					'sourceNodeId',
+					'sourceNodeType',
+					'inputAnchorId',
+					'anchorSuffix',
+					'textureRefs',
+					'modelMaterialOverrides',
+					'objectName'
+				] as const
+				const mergePathFields = (
+					existing: Record<string, unknown>,
+					incoming: Record<string, unknown>
+				) => {
+					for (const k of PATH_MERGE_KEYS) {
+						const exVal = existing[k]
+						const exEmpty =
+							exVal === null ||
+							exVal === undefined ||
+							(Array.isArray(exVal) && exVal.length === 0) ||
+							(typeof exVal === 'string' && !String(exVal).trim())
+						if (!exEmpty) continue // existing 有值就坚决不覆盖
+						const inVal = incoming[k]
+						if (inVal === null || inVal === undefined) continue
+						if (Array.isArray(inVal)) {
+							if (inVal.length > 0) existing[k] = [...inVal]
+						} else if (typeof inVal === 'object') {
+							existing[k] = { ...(inVal as Record<string, unknown>) }
 						} else {
-							b.modelProjectRelativePath = relPath
-							b.modelAssetProjectRelativePath = relPath
+							const s = String(inVal ?? '').trim()
+							if (s) existing[k] = s
 						}
-						b.modelFormat = overrideFormat
 					}
-					// 最后再跑一次 Ultimate Backfill（万一 pickBest 没挑到但 resourcesById 里真的有）
-					const finalB = tryBackfillBindingPathsFromStore(b, nodesById, resourcesById)
-					pushBinding(finalB)
+					// connected 只能升级为 true，不能降级
+					if (!isConnectedTruthy(existing) && isConnectedTruthy(incoming)) {
+						existing.connected = true
+					}
 				}
 
-				// 2) manualModelBindings（给房间壳子/墙体/天花板/地板手动绑定真实模型的那些）也一起收，
-				//    只要有 objectId 就进数组，路径兜底也通过 Ultimate Backfill 做。
+				// 建立基底索引：finalBindingsSource（来自 Step3 mergeViewerResolvedIntoFinalBindings，
+				//   基底=connectedSceneLayoutModelBindings，含类型专用提取的正确路径）
+				const baseByObjectId = new Map<string, Record<string, unknown>>()
+				const baseBindings: Array<Record<string, unknown>> = []
+				for (const raw of Array.isArray(finalBindingsSource) ? finalBindingsSource : []) {
+					if (!raw || typeof raw !== 'object') continue
+					const b = { ...(raw as Record<string, unknown>) }
+					const objectId = String(b.objectId ?? '').trim()
+					const anchorId = String((b as { inputAnchorId?: unknown }).inputAnchorId ?? '').trim()
+					const key = objectId || anchorId
+					if (key && baseByObjectId.has(key)) {
+						// 基底内部去重也用路径合并（保留两条中各自的非空字段）
+						mergePathFields(baseByObjectId.get(key)!, b)
+					} else {
+						if (key) baseByObjectId.set(key, b)
+						baseBindings.push(b)
+					}
+				}
+
+				// 补漏数组与索引
+				const patchedBindings: Array<Record<string, unknown>> = []
+				const patchedByObjectId = new Map<string, Record<string, unknown>>()
+
+				const pushPatch = (obj: Record<string, unknown>) => {
+					const objectId = String(obj.objectId ?? '').trim()
+					const anchorId = String((obj as { inputAnchorId?: unknown }).inputAnchorId ?? '').trim()
+					const key = objectId || anchorId
+					if (!key) {
+						patchedBindings.push(obj)
+						return
+					}
+					// 若已在基底 → 路径合并（不丢弃，解决类别 B 手动上传模型被去重丢弃）
+					if (baseByObjectId.has(key)) {
+						mergePathFields(baseByObjectId.get(key)!, obj)
+						return
+					}
+					// 若已在补漏数组 → 路径合并
+					if (patchedByObjectId.has(key)) {
+						mergePathFields(patchedByObjectId.get(key)!, obj)
+						return
+					}
+					patchedByObjectId.set(key, obj)
+					patchedBindings.push(obj)
+				}
+
+				let manualMergedCount = 0
+				let edgePatchedCount = 0
+				let pathMergedCount = 0
+
+				// 1) manualModelBindings 优先合并（类别 B 保障）
+				//    占位体既有连线又有手动上传时，手动上传路径必须合并进 binding（不被 edge 无路径 binding 覆盖）
 				if (Array.isArray(manualModelBindings) && manualModelBindings.length > 0) {
 					for (const mb of manualModelBindings) {
 						if (!mb || typeof mb !== 'object') continue
@@ -808,26 +802,85 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							nodesById,
 							resourcesById
 						)
-						pushBinding(m)
+						const objectId = String(m.objectId ?? '').trim()
+						const wasInBase = objectId && baseByObjectId.has(objectId)
+						pushPatch(m)
+						if (wasInBase) {
+							manualMergedCount++
+							pathMergedCount++
+						}
 					}
 				}
 
-				// 3) viewer 侧 merge 后得到的旧 finalBindingsSource 里，如果还有任何上面没覆盖的
-				//    objectId（比如极特殊的历史遗留绑定），也作为补充（不丢兼容性）。
-				if (Array.isArray(finalBindingsSource) && finalBindingsSource.length > 0) {
-					for (const raw of finalBindingsSource) {
-						if (!raw || typeof raw !== 'object') continue
-						const m = tryBackfillBindingPathsFromStore(
-							{ ...(raw as Record<string, unknown>) },
-							nodesById,
-							resourcesById
-						)
-						pushBinding(m)
+				// 2) 扫描 edgesById 找 in-model-* 入边（类别 A 补漏 + 类型专用提取）
+				//    只为基底漏掉的 objectId 补充，且使用 extractModelSourceFromUpstreamNode
+				//    （与预览 connectedSceneLayoutModelBindings 同款类型专用提取）
+				const targetNode = String(sourceSceneLayoutNodeId ?? '').trim()
+				for (const edge of Object.values(edgesById)) {
+					if (!edge || typeof edge !== 'object') continue
+					const e = edge as Record<string, unknown>
+					const toNode = String(e.targetNodeId ?? e.toNodeId ?? '').trim()
+					if (!toNode || toNode !== targetNode) continue
+					const anchorId = String(e.toAnchorId ?? e.targetAnchorId ?? e.inputAnchorId ?? '').trim()
+					// 只关心 3D 模型输入相关锚（in-model-xxx / in-model / in-0）
+					const isModelAnchor =
+						anchorId === 'in-model' ||
+						anchorId === 'in-0' ||
+						/^in-model[_-]/.test(anchorId) ||
+						/^in-(?:model|resource)[_-]/.test(anchorId)
+					if (!isModelAnchor) continue
+					const fromNodeId = String(e.sourceNodeId ?? e.fromNodeId ?? '').trim()
+					if (!fromNodeId) continue
+					const fromNode = (nodesById as Record<string, unknown>)[fromNodeId] as
+						| Record<string, unknown>
+						| undefined
+					// anchorSuffix：例如 in-model-stool_left → stool_left
+					let anchorSuffix = ''
+					const m = /^in-(?:model|resource)[_-](.+)$/.exec(anchorId)
+					if (m && m[1]) anchorSuffix = m[1]
+					// objectId 优先使用 anchorSuffix，否则 fromNodeId
+					const objectId = anchorSuffix || fromNodeId
+
+					// 若 objectId 已在基底或补漏数组 → 跳过（不覆盖、不去重丢弃）
+					if (baseByObjectId.has(objectId) || patchedByObjectId.has(objectId)) continue
+
+					// 用类型专用提取器新建 binding（与预览 connectedSceneLayoutModelBindings 同款）
+					const source = extractModelSourceFromUpstreamNode(
+						fromNode,
+						resourcesById as Record<string, Record<string, unknown>> | undefined
+					)
+					const b: Record<string, unknown> = {
+						objectId,
+						objectName: objectId,
+						inputAnchorId: anchorId,
+						anchorSuffix,
+						connected: !!source,
+						sourceNodeId: fromNodeId,
+						sourceNodeType: String(fromNode?.type ?? 'model3d') || 'model3d'
 					}
+					if (source) {
+						b.modelUrl = source.modelUrl
+						b.modelAssetUrl = source.modelAssetUrl
+						b.modelSourcePath = source.modelSourcePath
+						b.modelAssetPath = source.modelAssetPath
+						b.modelProjectRelativePath = source.modelProjectRelativePath
+						b.modelAssetProjectRelativePath = source.modelAssetProjectRelativePath
+						b.modelSourceName = source.modelSourceName
+						b.modelFormat = source.modelFormat
+						b.modelResourceId = source.modelResourceId
+					}
+					// 最后再跑一次 Ultimate Backfill（万一提取器没挑到但 resourcesById 里真的有）
+					const finalB = tryBackfillBindingPathsFromStore(b, nodesById, resourcesById)
+					pushPatch(finalB)
+					edgePatchedCount++
 				}
 
-				finalBindingsSource = rebuilt
+				// 3) 合并基底 + 补漏数组（不再覆盖 finalBindingsSource）
+				finalBindingsSource = [...baseBindings, ...patchedBindings]
 				usedViewerResolvedBindings = false
+				console.info(
+					`[UNREAL-EXPORT-TRACE] #4a FORCE-REBUILD 补漏模式 | base=${baseBindings.length} | manualMerged=${manualMergedCount} | edgePatched=${edgePatchedCount} | pathMerged=${pathMergedCount} | final=${finalBindingsSource.length}`
+				)
 			}
 			console.info(
 				`[UnrealExport] Final bindings after FORCE-REBUILD (from edgesById + manualBindings + legacy): count=${finalBindingsSource.length}, viewerUsed=${usedViewerResolvedBindings}`
@@ -875,7 +928,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				const id = String((s as Record<string, unknown>)?.sourceObjectId ?? '').trim()
 				if (id) rawSourceObjectIds.add(id)
 			}
-			console.info(`[UnrealExport] Raw slots from viewer: ${rawSlots.length} (distinct sourceObjectId=${rawSourceObjectIds.size})`)
+			console.info(
+				`[UnrealExport] Raw slots from viewer: ${rawSlots.length} (distinct sourceObjectId=${rawSourceObjectIds.size})`
+			)
 
 			// Step 2 / finalConnected 过滤：【完全不要任何门槛】
 			//   用户现场痛点：inRawWhitelist 来自 viewer 返回的 slots，viewer 经常只有 1 个，
@@ -912,27 +967,39 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 			}
 
-			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #3 Bindings merge + finalConnected filter (放宽)')
-			console.log(`mergeViewerResolvedIntoFinalBindings: usedViewerResolvedBindings=${usedViewerResolvedBindings}, finalBindingsSource=${finalBindingsSource.length}`)
-			console.log(
-				`finalBindingsSource summary:`,
-				finalFilteredLog
+			console.groupCollapsed(
+				'[UNREAL-EXPORT-TRACE] #3 Bindings merge + finalConnected filter (放宽)'
 			)
-			console.log(`finalConnectedModelBindings (after inRawWhitelist=${rawSourceObjectIds.size} white + hasAnyPath OR filter) = ${finalConnectedModelBindings.length}`)
+			console.log(
+				`mergeViewerResolvedIntoFinalBindings: usedViewerResolvedBindings=${usedViewerResolvedBindings}, finalBindingsSource=${finalBindingsSource.length}`
+			)
+			console.log(`finalBindingsSource summary:`, finalFilteredLog)
+			console.log(
+				`finalConnectedModelBindings (after inRawWhitelist=${rawSourceObjectIds.size} white + hasAnyPath OR filter) = ${finalConnectedModelBindings.length}`
+			)
 			console.log(
 				`finalConnectedModelBindings summary:`,
 				finalConnectedModelBindings.map((x: unknown) => ({
 					objectId: String((x as Record<string, unknown>)?.objectId ?? ''),
 					sourceNodeType: String((x as Record<string, unknown>)?.sourceNodeType ?? ''),
-					modelAssetProjectRelativePath: String((x as Record<string, unknown>)?.modelAssetProjectRelativePath ?? ''),
+					modelAssetProjectRelativePath: String(
+						(x as Record<string, unknown>)?.modelAssetProjectRelativePath ?? ''
+					),
 					modelAssetUrl: String((x as Record<string, unknown>)?.modelAssetUrl ?? '')
 				}))
 			)
 			console.groupEnd()
 			// [单行非折叠摘要] —— 保证复制到 log.md 也能直接看：
-			console.log(`[UNREAL-EXPORT-TRACE][SUMMARY] #3 | finalBindingsSource=${finalBindingsSource.length} | rawSlots.distinctObjectId=${rawSourceObjectIds.size}[${Array.from(rawSourceObjectIds).join(',')}] | finalConnected=${finalConnectedModelBindings.length}[${finalConnectedModelBindings.map((x) => String((x as Record<string, unknown>)?.objectId ?? '')).filter(Boolean).join(',')}] | rawSlots.count=${rawSlots.length}`)
+			console.log(
+				`[UNREAL-EXPORT-TRACE][SUMMARY] #3 | finalBindingsSource=${finalBindingsSource.length} | rawSlots.distinctObjectId=${rawSourceObjectIds.size}[${Array.from(rawSourceObjectIds).join(',')}] | finalConnected=${finalConnectedModelBindings.length}[${finalConnectedModelBindings
+					.map((x) => String((x as Record<string, unknown>)?.objectId ?? ''))
+					.filter(Boolean)
+					.join(',')}] | rawSlots.count=${rawSlots.length}`
+			)
 
-			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #4 Raw slots (from SceneLayoutNode) + synthesized fill')
+			console.groupCollapsed(
+				'[UNREAL-EXPORT-TRACE] #4 Raw slots (from SceneLayoutNode) + synthesized fill'
+			)
 			console.log(`rawSlots = ${rawSlots.length}`)
 			console.log(
 				`rawSlots[].sourceObjectId summary:`,
@@ -947,23 +1014,27 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						mb_connected: mb.connected,
 						mb_path: String(
 							mb.modelAssetUrl ??
-							mb.modelAssetProjectRelativePath ??
-							mb.modelAssetPath ??
-							mb.modelUrl ??
-							''
+								mb.modelAssetProjectRelativePath ??
+								mb.modelAssetPath ??
+								mb.modelUrl ??
+								''
 						),
-						pos: (obj.worldTransform && typeof obj.worldTransform === 'object')
-							? (obj.worldTransform as Record<string, unknown>).position
-							: (obj.slotTransform && typeof obj.slotTransform === 'object')
-								? (obj.slotTransform as Record<string, unknown>).position
-								: null
+						pos:
+							obj.worldTransform && typeof obj.worldTransform === 'object'
+								? (obj.worldTransform as Record<string, unknown>).position
+								: obj.slotTransform && typeof obj.slotTransform === 'object'
+									? (obj.slotTransform as Record<string, unknown>).position
+									: null
 					}
 				})
 			)
 			console.groupEnd()
 			// [单行非折叠摘要]
 			console.log(
-				`[UNREAL-EXPORT-TRACE][SUMMARY] #4 | rawSlots=${rawSlots.length} | sourceObjectIdList=${Array.from(rawSourceObjectIds).join(',')} | slotIds=${rawSlots.map((s) => String((s as Record<string, unknown>)?.slotId ?? '')).filter(Boolean).join('|')}`
+				`[UNREAL-EXPORT-TRACE][SUMMARY] #4 | rawSlots=${rawSlots.length} | sourceObjectIdList=${Array.from(rawSourceObjectIds).join(',')} | slotIds=${rawSlots
+					.map((s) => String((s as Record<string, unknown>)?.slotId ?? ''))
+					.filter(Boolean)
+					.join('|')}`
 			)
 
 			// ========================================================================
@@ -1009,33 +1080,44 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							}
 						}
 						const fillModeVal: string =
-							item && (item.fillMode === 'fill-x' || item.fillMode === 'fill-y' || item.fillMode === 'fill-z')
+							item &&
+							(item.fillMode === 'fill-x' ||
+								item.fillMode === 'fill-y' ||
+								item.fillMode === 'fill-z')
 								? String(item.fillMode)
 								: 'single'
-						const fillCountRaw = Math.max(1, Number((item as { fillCount?: unknown })?.fillCount ?? 1) || 1)
+						const fillCountRaw = Math.max(
+							1,
+							Number((item as { fillCount?: unknown })?.fillCount ?? 1) || 1
+						)
 						const cloneCount = fillModeVal === 'single' ? 1 : fillCountRaw
-						const fillAxisScaleRaw = Number((item as { fillAxisScale?: unknown })?.fillAxisScale ?? 1) || 1
-						const itemPos = item && item.position && typeof item.position === 'object'
-							? (item.position as Record<string, unknown>)
-							: null
-						const itemRot = item && item.rotation && typeof item.rotation === 'object'
-							? (item.rotation as Record<string, unknown>)
-							: null
-						const itemScl = item && item.scale && typeof item.scale === 'object'
-							? (item.scale as Record<string, unknown>)
-							: null
-						const itemQat = item && item.quaternion && typeof item.quaternion === 'object'
-							? (item.quaternion as Record<string, unknown>)
-							: null
+						const fillAxisScaleRaw =
+							Number((item as { fillAxisScale?: unknown })?.fillAxisScale ?? 1) || 1
+						const itemPos =
+							item && item.position && typeof item.position === 'object'
+								? (item.position as Record<string, unknown>)
+								: null
+						const itemRot =
+							item && item.rotation && typeof item.rotation === 'object'
+								? (item.rotation as Record<string, unknown>)
+								: null
+						const itemScl =
+							item && item.scale && typeof item.scale === 'object'
+								? (item.scale as Record<string, unknown>)
+								: null
+						const itemQat =
+							item && item.quaternion && typeof item.quaternion === 'object'
+								? (item.quaternion as Record<string, unknown>)
+								: null
 						const basePosition = {
 							x: Number(itemPos?.x ?? 0) || 0,
 							y: Number(itemPos?.y ?? 0) || 0,
 							z: Number(itemPos?.z ?? 0) || 0
 						}
 						const baseRotation = {
-							yaw:   Number(itemRot?.yaw   ?? 0) || 0,
+							yaw: Number(itemRot?.yaw ?? 0) || 0,
 							pitch: Number(itemRot?.pitch ?? 0) || 0,
-							roll:  Number(itemRot?.roll  ?? 0) || 0
+							roll: Number(itemRot?.roll ?? 0) || 0
 						}
 						const baseScale = {
 							x: Number(itemScl?.x ?? 1) || 1,
@@ -1053,7 +1135,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						for (let index = 0; index < cloneCount; index += 1) {
 							const isClone = cloneCount > 1
 							const offsetAxis: 'x' | 'y' | 'z' =
-								fillModeVal === 'fill-x' ? 'x' : fillModeVal === 'fill-y' ? 'y' : fillModeVal === 'fill-z' ? 'z' : 'x'
+								fillModeVal === 'fill-x'
+									? 'x'
+									: fillModeVal === 'fill-y'
+										? 'y'
+										: fillModeVal === 'fill-z'
+											? 'z'
+											: 'x'
 							const offsetValue = isClone ? (index - (cloneCount - 1) / 2) * fillAxisScaleRaw : 0
 							const instancePosition = {
 								...basePosition,
@@ -1077,7 +1165,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							}
 							const slotId = isClone ? `${objectId}__clone_${index + 1}` : objectId
 							const sourceName = String(item?.name ?? objectId).trim() || objectId
-							const displayName = isClone ? `${sourceName} [${index + 1}/${cloneCount}]` : sourceName
+							const displayName = isClone
+								? `${sourceName} [${index + 1}/${cloneCount}]`
+								: sourceName
 							synthesizedSlots.push({
 								slotId,
 								sourceSlotId: objectId,
@@ -1092,9 +1182,14 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 								fillCount: fillModeVal !== 'single' ? fillCountRaw : undefined,
 								fillAxisScale: fillModeVal !== 'single' ? fillAxisScaleRaw : undefined,
 								materialOverrides: Array.isArray(item?.materialOverrides)
-									? (item?.materialOverrides as unknown[]).map((e) => ({ ...(e as Record<string, unknown>) }))
+									? (item?.materialOverrides as unknown[]).map((e) => ({
+											...(e as Record<string, unknown>)
+										}))
 									: undefined,
-								relationTags: item && Array.isArray(item.relationTags) ? [...(item.relationTags as unknown[])] : undefined,
+								relationTags:
+									item && Array.isArray(item.relationTags)
+										? [...(item.relationTags as unknown[])]
+										: undefined,
 								notes: String(item?.fitMessage ?? item?.description ?? '').trim() || undefined,
 								modelBinding: { ...b },
 								slotTransform: worldT,
@@ -1110,7 +1205,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						}
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err ?? 'unknown')
-						console.warn(`[UnrealExport] synthesizeSlots 单条失败（跳过本条，继续其它）: objectId=${objectId}`, err)
+						console.warn(
+							`[UnrealExport] synthesizeSlots 单条失败（跳过本条，继续其它）: objectId=${objectId}`,
+							err
+						)
 						synthesizedFailures.push({ objectId, error: msg })
 						continue
 					}
@@ -1118,7 +1216,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				if (synthesizedFailures.length > 0) {
 					resolvedLayoutWarnings.push(
 						`synthesizedSlots per-binding failures: ${synthesizedFailures.length}. ` +
-						synthesizedFailures.map(f => `${f.objectId}=${f.error}`).join('; ')
+							synthesizedFailures.map((f) => `${f.objectId}=${f.error}`).join('; ')
 					)
 				}
 				if (synthesizedSlots.length > 0) {
@@ -1127,7 +1225,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							`required-object-ids=${bindingById.size}, synthesized=${synthesizedSlots.length}); ` +
 							`filling missing slots directly from layoutItems + finalConnectedModelBindings (no render required)`
 					)
-					console.groupCollapsed('[UNREAL-EXPORT-TRACE] #4b Synthesized slots (rawSlots did not cover all bindings)')
+					console.groupCollapsed(
+						'[UNREAL-EXPORT-TRACE] #4b Synthesized slots (rawSlots did not cover all bindings)'
+					)
 					console.log(`synthesizedSlots = ${synthesizedSlots.length}`)
 					console.log(
 						`synthesizedSlots[].sourceObjectId + pos summary:`,
@@ -1145,10 +1245,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 								mb_objectId: String(mb.objectId ?? ''),
 								mb_path: String(
 									mb.modelAssetUrl ??
-									mb.modelAssetProjectRelativePath ??
-									mb.modelAssetPath ??
-									mb.modelUrl ??
-									''
+										mb.modelAssetProjectRelativePath ??
+										mb.modelAssetPath ??
+										mb.modelUrl ??
+										''
 								)
 							}
 						})
@@ -1157,7 +1257,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					rawSlots.push(...synthesizedSlots)
 				}
 			}
-			console.info(`[UnrealExport] Raw slots (with synthesized fill): ${rawSlots.length} (required bindings=${requiredBindingsCount})`)
+			console.info(
+				`[UnrealExport] Raw slots (with synthesized fill): ${rawSlots.length} (required bindings=${requiredBindingsCount})`
+			)
 
 			// 使用prepareResolvedSlotsForExport直接使用viewer返回的slots（保留完整变换数据）
 			// 传入 finalConnectedModelBindings：已对齐 SceneLayout 预览渲染真实使用的 resolvedBindings
@@ -1170,7 +1272,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				resolvedLayoutWarnings.push(...slotWarnings)
 			}
 			console.info(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
-			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5 Prepared slots (after prepareResolvedSlotsForExport)')
+			console.groupCollapsed(
+				'[UNREAL-EXPORT-TRACE] #5 Prepared slots (after prepareResolvedSlotsForExport)'
+			)
 			console.log(`resolvedLayoutSlots = ${resolvedLayoutSlots.length}`)
 			console.log(
 				`resolvedLayoutSlots[].objectId + path + pos summary:`,
@@ -1182,9 +1286,10 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						slotId: String(obj.slotId ?? ''),
 						sourceObjectId: String(obj.sourceObjectId ?? ''),
 						displayName: String(obj.displayName ?? ''),
-						pos: (wt && typeof wt.position === 'object')
-							? (wt as Record<string, unknown>).position
-							: null,
+						pos:
+							wt && typeof wt.position === 'object'
+								? (wt as Record<string, unknown>).position
+								: null,
 						mb_objectId: String(mb.objectId ?? ''),
 						mb_sourceNodeType: String(mb.sourceNodeType ?? ''),
 						mb_modelAssetProjectRelativePath: String(mb.modelAssetProjectRelativePath ?? ''),
@@ -1192,7 +1297,11 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						mb_modelAssetPath: String(mb.modelAssetPath ?? ''),
 						mb_modelUrl: String(mb.modelUrl ?? ''),
 						mb_textureRefsCount: Array.isArray(mb.textureRefs) ? mb.textureRefs.length : 0,
-						textureIntegrity: (TEXTURE_INTEGRITY_KEYS as unknown as string[]).every(k => (k in mb) && mb[k]) ? 'COMPLETE' : 'MISSING_KEYS'
+						textureIntegrity: (TEXTURE_INTEGRITY_KEYS as unknown as string[]).every(
+							(k) => k in mb && mb[k]
+						)
+							? 'COMPLETE'
+							: 'MISSING_KEYS'
 					}
 				})
 			)
@@ -1424,7 +1533,9 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// 2026-08-03 最后一英里 trace：发送到 UE 之前完整打印 resolvedLayoutSlots
 			//   和 payload 摘要。如果这里已经是 4 个但 UE 只导入 1 个，那就是 UE 插件侧问题；
 			//   如果这里就只有 1 个，那就是前端链路问题。
-			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #6 FINAL createJob payload (before sending to UE)')
+			console.groupCollapsed(
+				'[UNREAL-EXPORT-TRACE] #6 FINAL createJob payload (before sending to UE)'
+			)
 			console.log(`exportMode = ${exportMode}`)
 			console.log(`resolvedSlotCount = ${built.payload.resolvedSlotCount}`)
 			console.log(`resolvedSourceItemCount = ${built.payload.resolvedSourceItemCount}`)
@@ -1443,22 +1554,25 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						isClone: obj.isClone,
 						cloneIndex: obj.cloneIndex,
 						cloneCount: obj.cloneCount,
-						position: (wt && typeof wt.position === 'object')
-							? (wt as Record<string, unknown>).position
-							: null,
-						modelBinding: mb ? {
-							objectId: mb.objectId,
-							sourceNodeType: mb.sourceNodeType,
-							connected: mb.connected,
-							modelAssetProjectRelativePath: mb.modelAssetProjectRelativePath,
-							modelAssetUrl: mb.modelAssetUrl,
-							modelAssetPath: mb.modelAssetPath,
-							modelUrl: mb.modelUrl,
-							modelSourcePath: mb.modelSourcePath,
-							textureRefs: mb.textureRefs,
-							modelMaterialOverrides: mb.modelMaterialOverrides,
-							packagedTextureBasePath: mb.packagedTextureBasePath
-						} : null
+						position:
+							wt && typeof wt.position === 'object'
+								? (wt as Record<string, unknown>).position
+								: null,
+						modelBinding: mb
+							? {
+									objectId: mb.objectId,
+									sourceNodeType: mb.sourceNodeType,
+									connected: mb.connected,
+									modelAssetProjectRelativePath: mb.modelAssetProjectRelativePath,
+									modelAssetUrl: mb.modelAssetUrl,
+									modelAssetPath: mb.modelAssetPath,
+									modelUrl: mb.modelUrl,
+									modelSourcePath: mb.modelSourcePath,
+									textureRefs: mb.textureRefs,
+									modelMaterialOverrides: mb.modelMaterialOverrides,
+									packagedTextureBasePath: mb.packagedTextureBasePath
+								}
+							: null
 					}
 				})
 			)
