@@ -6,6 +6,7 @@ export interface UseModel3DEditorOptions {
 	nodeId: string
 	projectId?: number
 	modelUrl?: string
+	modelAssetPath?: string
 	modelName?: string
 	models?: Array<{
 		id?: string

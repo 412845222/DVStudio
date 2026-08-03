@@ -98,21 +98,23 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 		if (!node) return ''
 
 		// 调试日志：场景节点文本输出解析（仅开发环境启用）
-		const isSceneNodeForDiag =
-			import.meta.env.DEV &&
-			(node.type === 'scene-layout' ||
-				node.type === 'scene-understanding' ||
-				node.type === 'scene-decompose')
+		// 2026-08-03: 手动强制关闭，避免 console 被大量 TEXT-OUTPUT DIAG 噪声刷屏
+		//   导致排查 Unreal 导出问题时看不到关键 [UNREAL-EXPORT-TRACE] 日志。
+		//   如需恢复调试，先把 isSceneNodeForDiag 改回注释的那一行，
+		//   再把下面 4 处 console.log('[TEXT-OUTPUT DIAG] ...') 的注释去掉。
+		// const isSceneNodeForDiag =
+		//   import.meta.env.DEV && (node.type === 'scene-layout' || node.type === 'scene-understanding' || node.type === 'scene-decompose')
+		const isSceneNodeForDiag = false
 		const DIAG_KEY_TEXTOUT = `__diag_textOut_${visitKey}`
 		if (isSceneNodeForDiag && !(window as any)[DIAG_KEY_TEXTOUT]) {
 			;(window as any)[DIAG_KEY_TEXTOUT] = true
 			// eslint-disable-next-line no-console
-			console.log('[TEXT-OUTPUT DIAG] Resolving for:', {
-				nodeId,
-				nodeType: node.type,
-				fromAnchorId: fromAnchorId ?? '(none)',
-				visitKey
-			})
+			// console.log('[TEXT-OUTPUT DIAG] Resolving for:', {
+			// 	nodeId,
+			// 	nodeType: node.type,
+			// 	fromAnchorId: fromAnchorId ?? '(none)',
+			// 	visitKey
+			// })
 		}
 
 		if (node.type === 'text') {
@@ -139,14 +141,14 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const result = String(node.sceneUnderstandingSettings?.outputJson ?? '')
 			if (isSceneNodeForDiag) {
 				// eslint-disable-next-line no-console
-				console.log('[TEXT-OUTPUT DIAG] scene-understanding output:', {
-					nodeId,
-					outputJson_len: result.length,
-					outputJson_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
-					settings_exists: !!node.sceneUnderstandingSettings,
-					status: (node.sceneUnderstandingSettings as any)?.status,
-					running: (node as any).running
-				})
+				// console.log('[TEXT-OUTPUT DIAG] scene-understanding output:', {
+				// 	nodeId,
+				// 	outputJson_len: result.length,
+				// 	outputJson_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
+				// 	settings_exists: !!node.sceneUnderstandingSettings,
+				// 	status: (node.sceneUnderstandingSettings as any)?.status,
+				// 	running: (node as any).running
+				// })
 			}
 			return result
 		}
@@ -154,12 +156,12 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			const result = sceneDecomposeTextOutputForAnchor(node, String(fromAnchorId ?? ''))
 			if (isSceneNodeForDiag) {
 				// eslint-disable-next-line no-console
-				console.log('[TEXT-OUTPUT DIAG] scene-decompose output:', {
-					nodeId,
-					fromAnchorId,
-					result_len: result.length,
-					result_preview: result ? `${result.slice(0, 200)}...` : '(empty)'
-				})
+				// console.log('[TEXT-OUTPUT DIAG] scene-decompose output:', {
+				// 	nodeId,
+				// 	fromAnchorId,
+				// 	result_len: result.length,
+				// 	result_preview: result ? `${result.slice(0, 200)}...` : '(empty)'
+				// })
 			}
 			return result
 		}
@@ -188,20 +190,20 @@ export const useAIWorkflowTextOutputResolver = (payload: {
 			if (isSceneNodeForDiag) {
 				const sls = node.sceneLayoutSettings as any
 				// eslint-disable-next-line no-console
-				console.log('[TEXT-OUTPUT DIAG] scene-layout output:', {
-					nodeId,
-					fromAnchorId: fromAnchorId ?? '(default out)',
-					result_len: result.length,
-					result_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
-					inputJson_len: String(sls?.inputJson ?? '').length,
-					inputJson_preview: sls?.inputJson
-						? `${String(sls.inputJson).slice(0, 200)}...`
-						: '(empty)',
-					layoutItems_count: Array.isArray(sls?.layoutItems) ? sls.layoutItems.length : 0,
-					status: sls?.status,
-					running: (node as any).running,
-					fellBackToUpstream: !payload.serializeSceneLayoutOutput(nodeId) && !!result
-				})
+				// console.log('[TEXT-OUTPUT DIAG] scene-layout output:', {
+				// 	nodeId,
+				// 	fromAnchorId: fromAnchorId ?? '(default out)',
+				// 	result_len: result.length,
+				// 	result_preview: result ? `${result.slice(0, 200)}...` : '(empty)',
+				// 	inputJson_len: String(sls?.inputJson ?? '').length,
+				// 	inputJson_preview: sls?.inputJson
+				// 		? `${String(sls.inputJson).slice(0, 200)}...`
+				// 		: '(empty)',
+				// 	layoutItems_count: Array.isArray(sls?.layoutItems) ? sls.layoutItems.length : 0,
+				// 	status: sls?.status,
+				// 	running: (node as any).running,
+				// 	fellBackToUpstream: !payload.serializeSceneLayoutOutput(nodeId) && !!result
+				// })
 			}
 			return result
 		}

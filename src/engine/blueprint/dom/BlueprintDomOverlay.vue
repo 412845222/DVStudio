@@ -52,6 +52,7 @@
 						@preview-request="onBusinessPreviewRequest"
 						@clear-resource="onBusinessClearResource"
 						@upload-resource="onBusinessUploadResource"
+						@upload-model-file="onBusinessUploadModelFile"
 						@update-image-settings="onBusinessUpdateImageSettings"
 						@media-ready="onBusinessMediaReady"
 						@invalidate-screenshot="onBusinessInvalidateScreenshot"
@@ -172,6 +173,7 @@ const emit = defineEmits<{
 	(e: 'node-preview-request', payload: { nodeId: string; imageUrl: string }): void
 	(e: 'node-clear-resource', nodeId: string): void
 	(e: 'node-upload-resource', payload: { nodeId: string; file: File; kind: string }): void
+	(e: 'node-upload-model3d-file', payload: { nodeId: string; file: File }): void
 	(e: 'node-update-image-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'node-media-ready', nodeId: string): void
 	(e: 'node-invalidate-screenshot', nodeId: string): void
@@ -449,6 +451,10 @@ function onBusinessClearResource(nodeId: string) {
 
 function onBusinessUploadResource(payload: { nodeId: string; file: File; kind: string }) {
 	emit('node-upload-resource', payload)
+}
+
+function onBusinessUploadModelFile(payload: { nodeId: string; file: File }) {
+	emit('node-upload-model3d-file', payload)
 }
 
 function onBusinessUpdateImageSettings(payload: { nodeId: string; patch: Record<string, any> }) {

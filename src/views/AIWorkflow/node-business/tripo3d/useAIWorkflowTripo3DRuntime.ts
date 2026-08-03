@@ -10,6 +10,8 @@ import type {
 	Tripo3DImportArtifactsPayload
 } from './types'
 import { extractTripo3DTaskResultFields, isTripo3DImageMode } from './types'
+import type { PollTaskState } from '../shared/task-poll-scheduler/types'
+import { TaskPollScheduler } from '../shared/task-poll-scheduler/TaskPollScheduler'
 
 type WorkflowNodeLike = {
 	id: string
@@ -40,6 +42,68 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 }) => {
 	const normalizeText = (value: unknown) => String(value ?? '').trim()
 
+	// ===== Tripo3D Runtime 扩展名提取 + 图片后缀过滤（与 Meshy 同步） =====
+	const IMAGE_EXT_BLACKLIST_TRIPO = new Set([
+		'png',
+		'jpg',
+		'jpeg',
+		'jfif',
+		'pjpeg',
+		'pjp',
+		'gif',
+		'webp',
+		'bmp',
+		'tiff',
+		'tif',
+		'svg',
+		'ico',
+		'cur',
+		'avif',
+		'heic',
+		'heif'
+	])
+	const extractTripoRuntimeUrlOrPathExt = (input: string): string => {
+		if (!input) return ''
+		const text = String(input).trim()
+		if (!text) return ''
+		// 1. dweb://project-assets?path=assets/xxx.glb 场景：从 path 参数提取扩展名
+		const low = text.toLowerCase()
+		if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+			try {
+				const qStart = text.indexOf('?')
+				const queryStr = qStart >= 0 ? text.slice(qStart + 1) : ''
+				const params = new URLSearchParams(queryStr)
+				const p = decodeURIComponent(
+					params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
+				)
+				if (p) {
+					const clean = p.split('?')[0].split('#')[0]
+					const lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'))
+					const namePart = lastSlash >= 0 ? clean.slice(lastSlash + 1) : clean
+					const d = namePart.lastIndexOf('.')
+					if (d >= 0) return namePart.slice(d + 1).toLowerCase()
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+		// 2. 标准 URL 或 本地绝对路径 (Windows G:\... 或 Unix /...)：文件名部分提取扩展名
+		try {
+			const withoutQuery = text.split('?')[0].split('#')[0]
+			const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
+			const namePart = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+			const lastDot = namePart.lastIndexOf('.')
+			if (lastDot < 0) return ''
+			return namePart.slice(lastDot + 1).toLowerCase()
+		} catch {
+			return ''
+		}
+	}
+	const isTripoRuntimeImageUrlOrPath = (input: string): boolean => {
+		const ext = extractTripoRuntimeUrlOrPathExt(input)
+		return ext ? IMAGE_EXT_BLACKLIST_TRIPO.has(ext) : false
+	}
+
 	const tripo3dPollTimers = new Map<string, number>()
 	const tripo3dPollErrorCounts = new Map<string, number>()
 	const tripo3dTerminalNotified = new Set<string>()
@@ -51,6 +115,14 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 			tripo3dPollTimers.delete(nodeId)
 		}
 		tripo3dPollErrorCounts.delete(nodeId)
+		try {
+			const s = TaskPollScheduler.shared
+			if (s && s.taskCount() > 0) {
+				s.unregister(nodeId)
+			}
+		} catch {
+			// ignore
+		}
 	}
 
 	const getNodeFromStore = (nodeId: string): WorkflowNodeLike | null => {
@@ -381,26 +453,37 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 				})
 
 				if (persisted.ok && persisted.assetUrl) {
-					patch.tripo3dOutputAssetUrl = persisted.assetUrl
-					patch.tripo3dOutputAssetPath = persisted.assetPath
+					// ===== Tripo3D Runtime 硬防护：过滤图片后缀路径，防止缩略图污染模型字段 =====
+					const persistedAssetUrl = String(persisted.assetUrl ?? '').trim()
+					const persistedAssetPath = String(persisted.assetPath ?? '').trim()
+					const safeAssetUrl = persistedAssetUrl && !isTripoRuntimeImageUrlOrPath(persistedAssetUrl) ? persistedAssetUrl : ''
+					const safeAssetPath = persistedAssetPath && !isTripoRuntimeImageUrlOrPath(persistedAssetPath) ? persistedAssetPath : ''
+					if (persistedAssetUrl && isTripoRuntimeImageUrlOrPath(persistedAssetUrl)) {
+						console.warn('[Tripo3D Runtime] 检测到模型资产URL为图片后缀，已丢弃并保持不赋值:', persistedAssetUrl)
+					}
+					if (persistedAssetPath && isTripoRuntimeImageUrlOrPath(persistedAssetPath)) {
+						console.warn('[Tripo3D Runtime] 检测到模型资产Path为图片后缀，已丢弃并保持不赋值:', persistedAssetPath)
+					}
+					patch.tripo3dOutputAssetUrl = safeAssetUrl || undefined
+					patch.tripo3dOutputAssetPath = safeAssetPath || undefined
 					patch.tripo3dThumbnailUrl = persisted.thumbnailUrl || thumbnailUrl || primaryImageUrl || undefined
 
 					patch.tripo3dOutputSummary = {
 						...(isRecord(patch.tripo3dOutputSummary) ? patch.tripo3dOutputSummary as Record<string, unknown> : {}),
 						outputKind: isImageMode ? 'image' : '3d-model',
-						preferredUrl: persisted.assetUrl,
-						assetUrl: persisted.assetUrl,
-						assetPath: persisted.assetPath,
+						preferredUrl: safeAssetUrl || persistedAssetUrl,
+						assetUrl: safeAssetUrl || persistedAssetUrl,
+						assetPath: safeAssetPath || persistedAssetPath,
 						thumbnailUrl: patch.tripo3dThumbnailUrl,
 						format: isImageMode ? 'png' : 'glb',
 						imageUrls: isImageMode ? imageUrls : undefined
 					}
 					patch.tripo3dRelationSummary = {
 						...(isRecord(patch.tripo3dRelationSummary) ? patch.tripo3dRelationSummary as Record<string, unknown> : {}),
-						effectiveLocalAssetUrl: persisted.assetUrl,
-						effectiveLocalAssetPath: persisted.assetPath,
+						effectiveLocalAssetUrl: safeAssetUrl || persistedAssetUrl,
+						effectiveLocalAssetPath: safeAssetPath || persistedAssetPath,
 						effectiveThumbnailUrl: patch.tripo3dThumbnailUrl,
-						effectiveModelUrl: persisted.assetUrl
+						effectiveModelUrl: safeAssetUrl || persistedAssetUrl
 					}
 
 					if (isImageNode && persisted.resourceId) {
@@ -414,18 +497,21 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 						patch.thumbnailUrl = persisted.thumbnailUrl || thumbnailUrl || primaryImageUrl || undefined
 					} else if (node.type === 'model3d') {
 						const fileName = `tripo3d_${task.taskId || nodeId}.glb`
-						patch.modelUrl = persisted.assetUrl
+						// 只有不是图片后缀的 URL 才写入外层 model 字段（modelUrl/modelAssetUrl/modelSourcePath 等）
+						const finalModelUrl = safeAssetUrl || persistedAssetUrl
+						const finalModelPath = safeAssetPath || persistedAssetPath
+						patch.modelUrl = finalModelUrl
 						patch.modelFormat = 'glb'
 						patch.modelSourceName = fileName
-						patch.modelSourcePath = persisted.assetPath || undefined
-						patch.modelProjectRelativePath = persisted.projectRelativePath || undefined
-						patch.modelAssetUrl = persisted.assetUrl
-						patch.modelAssetPath = persisted.assetPath || undefined
-						patch.modelAssetProjectRelativePath = persisted.projectRelativePath || undefined
+						if (finalModelPath) patch.modelSourcePath = finalModelPath
+						if (persisted.projectRelativePath) patch.modelProjectRelativePath = persisted.projectRelativePath
+						if (finalModelUrl) patch.modelAssetUrl = finalModelUrl
+						if (finalModelPath) patch.modelAssetPath = finalModelPath
+						if (persisted.projectRelativePath) patch.modelAssetProjectRelativePath = persisted.projectRelativePath
 						patch.lastInputSignature = `tripo3d:${String(task.taskId || nodeId)}:${artifactUrl}`
 						patch.lastInputNodeId = nodeId
 						patch.lastInputSourceUrl = artifactUrl
-						patch.lastInputSourcePath = persisted.assetPath || undefined
+						if (finalModelPath) patch.lastInputSourcePath = finalModelPath
 						patch.lastInputSourceName = fileName
 					}
 				} else {
@@ -483,6 +569,12 @@ export const useAIWorkflowTripo3DRuntime = (options: {
 					}
 					if (isImageNode) {
 						patch.imageUrl = artifactUrl
+					} else if (node.type === 'model3d') {
+						const fileName = `tripo3d_${task.taskId || nodeId}.glb`
+						patch.modelUrl = artifactUrl
+						patch.modelAssetUrl = artifactUrl
+						patch.modelFormat = 'glb'
+						patch.modelSourceName = fileName
 					}
 				}
 			}
@@ -653,7 +745,7 @@ const getNodeTripo3DTaskFamily = (node: WorkflowNodeLike | null): string => {
 	return String(tripo3dSettings.tripo3dTaskFamily ?? '').trim()
 }
 
-	const startTripo3DPoll = (nodeId: string, taskId: string) => {
+	const startTripo3DPollClassic = (nodeId: string, taskId: string) => {
 		stopTripo3DPoll(nodeId)
 		tripo3dTerminalNotified.delete(nodeId)
 		tripo3dPollErrorCounts.delete(nodeId)
@@ -730,6 +822,141 @@ const getNodeTripo3DTaskFamily = (node: WorkflowNodeLike | null): string => {
 		void tick()
 		const timer = window.setInterval(() => void tick(), 2000)
 		tripo3dPollTimers.set(nodeId, timer)
+	}
+
+	const startTripo3DPoll = (nodeId: string, taskId: string) => {
+		let scheduler: TaskPollScheduler | null = null
+		try {
+			scheduler = TaskPollScheduler.shared
+			if (!scheduler.isEnabled()) {
+				startTripo3DPollClassic(nodeId, taskId)
+				return
+			}
+		} catch {
+			startTripo3DPollClassic(nodeId, taskId)
+			return
+		}
+
+		stopTripo3DPoll(nodeId)
+		tripo3dTerminalNotified.delete(nodeId)
+		tripo3dPollErrorCounts.delete(nodeId)
+
+		const handleTick = async (state: PollTaskState): Promise<PollTaskState | null> => {
+			const currentNode = getNodeFromStore(nodeId)
+			if (!currentNode) {
+				stopTripo3DPoll(nodeId)
+				return { ...state, status: 'canceled', errorCount: 0 }
+			}
+			const currentStatus = getNodeTripo3DTaskStatus(currentNode)
+			const isTerminalCurrent =
+				currentStatus === 'succeeded' ||
+				currentStatus === 'success' ||
+				currentStatus === 'failed' ||
+				currentStatus === 'cancelled' ||
+				currentStatus === 'canceled'
+			if (isTerminalCurrent) {
+				stopTripo3DPoll(nodeId)
+				return {
+					...state,
+					status: (currentStatus as PollTaskState['status']) || 'completed',
+					errorCount: state.errorCount
+				}
+			}
+
+			try {
+				const res = await options.getComfyService().tripo3dTask(taskId)
+				if (!res.ok) {
+					const nextCount = state.errorCount + 1
+					if (nextCount >= 4) {
+						stopTripo3DPoll(nodeId)
+						commitTripo3DTaskFailed(nodeId, currentNode, t('tasks.tripo3d.pollStatusFailedConsecutive'))
+						options.pushToast(t('tasks.tripo3d.pollStatusFailedConsecutiveToast'), 'warn')
+						return { ...state, status: 'failed', errorCount: nextCount }
+					}
+					return { ...state, errorCount: nextCount }
+				}
+
+				const finalStatus = await applyTripo3DTaskResult(nodeId, res)
+				const normalized = extractTripo3DTaskResultFields(res)
+				const updatedProgress =
+					typeof normalized.progress === 'number'
+						? Math.max(0, Math.min(100, normalized.progress))
+						: state.progress
+				const isTerminalFinal =
+					finalStatus === 'succeeded' ||
+					finalStatus === 'success' ||
+					finalStatus === 'failed' ||
+					finalStatus === 'cancelled' ||
+					finalStatus === 'canceled'
+				if (isTerminalFinal) {
+					if (!tripo3dTerminalNotified.has(nodeId)) {
+						tripo3dTerminalNotified.add(nodeId)
+						const isImageNode = currentNode?.type === 'image'
+						if (finalStatus === 'succeeded' || finalStatus === 'success') {
+							options.pushToast(
+								isImageNode
+									? t('tasks.tripo3d.imageTaskCompleted')
+									: t('tasks.tripo3d.model3dTaskCompleted'),
+								'info'
+							)
+						} else if (finalStatus === 'failed') {
+							options.pushToast(
+								isImageNode
+									? t('tasks.tripo3d.imageTaskFailed')
+									: t('tasks.tripo3d.model3dTaskFailed'),
+								'warn'
+							)
+						} else {
+							options.pushToast(t('tasks.tripo3d.taskCanceled'), 'warn')
+						}
+					}
+					stopTripo3DPoll(nodeId)
+					return {
+						...state,
+						status: (finalStatus as PollTaskState['status']) || 'completed',
+						progress:
+							finalStatus === 'succeeded' || finalStatus === 'success' ? 100 : updatedProgress,
+						errorCount: 0
+					}
+				}
+				return {
+					...state,
+					progress: updatedProgress,
+					errorCount: 0,
+					lastErrorText: undefined
+				}
+			} catch (err: unknown) {
+				const nextCount = state.errorCount + 1
+				if (nextCount >= 4) {
+					stopTripo3DPoll(nodeId)
+					const currentNodeForFail = getNodeFromStore(nodeId)
+					commitTripo3DTaskFailed(nodeId, currentNodeForFail, t('tasks.tripo3d.pollStatusException'))
+					options.pushToast(t('tasks.tripo3d.pollStatusExceptionToast'), 'warn')
+					return { ...state, status: 'failed', errorCount: nextCount }
+				}
+				return {
+					...state,
+					errorCount: nextCount,
+					lastErrorText:
+						err instanceof Error ? err.message : typeof err === 'string' ? err : String(err ?? '')
+				}
+			}
+		}
+
+		const currentNode = getNodeFromStore(nodeId)
+		const initStatus = getNodeTripo3DTaskStatus(currentNode) as PollTaskState['status']
+		try {
+			scheduler.register(
+				nodeId,
+				taskId,
+				'tripo3d',
+				{ onTick: handleTick },
+				(initStatus || 'pending') as PollTaskState['status'],
+				0
+			)
+		} catch {
+			startTripo3DPollClassic(nodeId, taskId)
+		}
 	}
 
 	const recoverTripo3DTaskStates = async (opts?: { silent?: boolean }) => {

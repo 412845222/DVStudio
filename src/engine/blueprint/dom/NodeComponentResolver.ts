@@ -49,6 +49,10 @@ type ResourceRelatedProps = {
 	resourcePreviewUrl640?: string
 	posterUrl?: string
 	resourceName?: string
+	/** 蓝图项目相对路径：形如 Content/Media/meshy-3d-xxx.glb，拼接 projectRoot 可得到本地绝对路径 */
+	resourceProjectRelativePath?: string
+	/** 本地绝对路径：形如 G:\DVSTestProject\复赛视频项目\Content\Media\xxx.glb */
+	resourceAbsolutePath?: string
 	/**
 	 * 提示组件：存在 resourceUrl 但尚未生成 posterUrl，
 	 * 业务层可据此在渲染前主动触发首帧捕获。
@@ -132,6 +136,11 @@ export class NodeComponentResolver {
 
 		if (res.url) props.resourceUrl = resolveWorkflowResourceUrl(res.url)
 		if (res.sourcePath) props.resourceSourcePath = res.sourcePath
+		// ===== 2026-08-03 修复：3D模型节点需要拿到 projectRelativePath 和 absolutePath
+		// 以便拼接 projectRoot → 本地绝对路径 → file:/// URL，彻底绕开 dweb 协议代理与 CORS
+		// resourcesById 中实际存储了 projectRelativePath 和 absolutePath（保存蓝图时写入）
+		if (res.projectRelativePath) props.resourceProjectRelativePath = String(res.projectRelativePath)
+		if (res.absolutePath) props.resourceAbsolutePath = String(res.absolutePath)
 		if (res.posterUrl) props.posterUrl = resolveWorkflowResourceUrl(res.posterUrl)
 		if (res.name) props.resourceName = res.name
 		if (res.previewUrl320)

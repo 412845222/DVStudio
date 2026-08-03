@@ -76,16 +76,34 @@ export const useAIWorkflowImportRecoveryState = (payload: {
 			title?: string
 		}
 	) => {
+		// 【BUGFIX 2026-08】拖拽 3D 模型时，model3d 资源在 session 启动前已经完成绑定，
+		// resourceState.done=true，但初始 processed 仍是 0，导致进度条永远达不到 total
+		// (也不会关闭遮罩)。这里先从 resourceState 统计已经 done 的条目，
+		// 把 processed / progress / detail 一次对齐，若已经全部完成就直接不弹遮罩。
+		const total = Number(session.total ?? 0)
+		let preDone = 0
+		if (session.resourceState && session.resourceState.size > 0) {
+			for (const s of session.resourceState.values()) {
+				if (s && s.done) preDone += 1
+			}
+		}
+		const initialProcessed = Math.min(total, Math.max(preDone, Number(session.processed ?? 0)))
+
 		activeImportSession.value = {
 			...session,
+			total,
 			cancelled: Boolean(session.cancelled),
-			processed: Number(session.processed ?? 0)
+			processed: initialProcessed
 		}
-		if (session.total > 0) {
+		if (total > 0) {
 			importOverlayTitle.value = String(session.title ?? t('aiworkflow.toast.importing'))
-			importOverlayOpen.value = true
-			importOverlayProgress.value = 0
-			importOverlayDetail.value = `0 / ${session.total}`
+			const allDone = initialProcessed >= total
+			importOverlayOpen.value = !allDone
+			importOverlayProgress.value = allDone ? 1 : total > 0 ? initialProcessed / total : 0
+			importOverlayDetail.value = `${Math.min(initialProcessed, total)} / ${total}`
+			if (allDone) {
+				activeImportSession.value = null
+			}
 		} else {
 			importOverlayOpen.value = false
 			importOverlayProgress.value = 0

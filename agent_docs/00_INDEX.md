@@ -106,6 +106,8 @@
 | 修改 AI 工作流节点 / 连线 / 蓝图逻辑 | [06_AI_WORKFLOW_GUIDE.md](06_AI_WORKFLOW_GUIDE.md) + **[14_NODE_THREE_LAYER_ARCHITECTURE.md](14_NODE_THREE_LAYER_ARCHITECTURE.md)** 🆕 |
 | 新增AI工作流节点类型 / 节点事件链路开发 | **[14_NODE_THREE_LAYER_ARCHITECTURE.md](14_NODE_THREE_LAYER_ARCHITECTURE.md)** 🆕（三层架构、坑点避坑、开发Checklist） |
 | 修改 3D 编辑器 / Three.js 渲染 | [08_3D_EDITOR_RENDERING_GUIDE.md](08_3D_EDITOR_RENDERING_GUIDE.md) |
+| **3D 模型节点（Meshy/Tripo3D）无法渲染 / CORS / Content-Type 误杀 / 本地 GLB 加载链路** | **[08_3D_EDITOR_RENDERING_GUIDE.md 末尾 3D模型节点加载链路章节](08_3D_EDITOR_RENDERING_GUIDE.md#️⃣️️️-3d模型节点meshytripo3d本地glb文件加载链路全解析2026-08-03-修复总结必读)** 🆕（含 5 层完整数据流、诊断脚本、8 个常见坑点速查）+ [AGENT_GUIDE.md](../AGENT_GUIDE.md#️⃣️️️-3d-模型节点meshytripo3d本地-glb-加载链路速查2026-08-03-修复总结必看) 速查 |
+| Meshy / Tripo3D 任务轮询太频繁造成蓝图页面卡顿 / TaskPollScheduler | [08_3D_EDITOR_RENDERING_GUIDE.md 轮询优化章节](08_3D_EDITOR_RENDERING_GUIDE.md#-轮询优化链路taskpollscheduler) 🆕 + Feature Flag 紧急开关见文档 |
 | 修改 Agent 对话 / LLM 接入 / 工具调用 | [09_AGENT_SYSTEM_GUIDE.md](09_AGENT_SYSTEM_GUIDE.md) |
 | 修改 MCP 工具 / 新增 MCP 工具 | [10_MCP_GUIDE.md](10_MCP_GUIDE.md) |
 | 新增 AI 提供商（3D/视频/对话） | [11_NEW_AI_MODULES_GUIDE.md](11_NEW_AI_MODULES_GUIDE.md) |

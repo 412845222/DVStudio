@@ -22,6 +22,7 @@
 			@preview-request="onPreviewRequest"
 			@clear-resource="onClearResource"
 			@upload-resource="onUploadResource"
+			@upload-model-file="onUploadModelFile"
 			@update-image-settings="onUpdateImageSettings"
 			@media-ready="onMediaReady"
 			@invalidate-screenshot="onInvalidateScreenshot"
@@ -103,6 +104,7 @@ const emit = defineEmits<{
 	(e: 'preview-request', payload: { nodeId: string; imageUrl: string }): void
 	(e: 'clear-resource', nodeId: string): void
 	(e: 'upload-resource', payload: { nodeId: string; file: File; kind: string }): void
+	(e: 'upload-model-file', payload: { nodeId: string; file: File }): void
 	(e: 'update-image-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'media-ready', nodeId: string): void
 	(e: 'invalidate-screenshot', nodeId: string): void
@@ -353,6 +355,10 @@ const onClearResource = () => {
 
 const onUploadResource = (payload: { file: File; kind: string }) => {
 	emit('upload-resource', { nodeId: props.node.id, file: payload.file, kind: payload.kind })
+}
+
+const onUploadModelFile = (payload: { file: File }) => {
+	emit('upload-model-file', { nodeId: props.node.id, file: payload.file })
 }
 
 const onUpdateImageSettings = (patch: Record<string, any>) => {

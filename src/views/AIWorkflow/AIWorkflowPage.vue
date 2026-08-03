@@ -102,6 +102,7 @@
 				@node-three-preview-progress="(p: any) => onNodeThreePreviewProgress(p.nodeId, p)"
 				@node-three-preview-ready="onNodeThreePreviewReady"
 				@node-three-preview-error="onNodeThreePreviewError"
+				@node-upload-model3d-file="(p: any) => onNodeUploadModel3DFile(p.nodeId, p.file)"
 				@node-export-unreal-scene="onNodeExportUnrealScene"
 				@node-export-unreal-lighting="onNodeExportUnrealLighting"
 				@node-disconnect-unreal="onNodeDisconnect"
@@ -747,8 +748,10 @@ import type {
 	WorkflowImageCrop,
 	WorkflowModel3DNodeSettings,
 	WorkflowSceneLayoutManualModelBinding,
+	WorkflowSceneLayoutModelBinding,
 	WorkflowUnrealExportNodeSettings,
 	WorkflowUnrealResolvedLayoutExport,
+	WorkflowUnrealResolvedLayoutSlot,
 	WorkflowNode,
 	WorkflowNodeChatParams,
 	WorkflowNodeChatSelectedRef,
@@ -891,6 +894,8 @@ import { useAIWorkflowMeshyInputResolver } from './node-business/meshy/useAIWork
 import { useAIWorkflowMeshyRequest } from './node-business/meshy/useAIWorkflowMeshyRequest'
 import { useAIWorkflowMeshyTaskPanelController } from './node-business/meshy/useAIWorkflowMeshyTaskPanelController'
 import { useAIWorkflowMeshyRuntime } from './node-business/meshy/useAIWorkflowMeshyRuntime'
+import { TaskPollScheduler } from './node-business/shared/task-poll-scheduler/TaskPollScheduler'
+import { BLUEPRINT_POLL_DEBUG } from './node-business/shared/debugFlags'
 import { useAIWorkflowTripo3DTaskPanelController } from './node-business/tripo3d/useAIWorkflowTripo3DTaskPanelController'
 import { useAIWorkflowTripo3DCommands } from './node-business/tripo3d/useAIWorkflowTripo3DCommands'
 import { useAIWorkflowTripo3DRuntime } from './node-business/tripo3d/useAIWorkflowTripo3DRuntime'
@@ -923,6 +928,7 @@ import { useAIWorkflowProjectSnapshotRuntime } from './node-business/project/use
 import { useAIWorkflowProjectTransfer } from './node-business/project/useAIWorkflowProjectTransfer'
 import { useAIWorkflowProjectUnrealSnapshot } from './node-business/project/useAIWorkflowProjectUnrealSnapshot'
 import { useAIWorkflowUnrealExportActions } from './node-business/unreal/useAIWorkflowUnrealExportActions'
+import { buildPureDataResolvedLayoutExport } from './node-business/unreal/unrealExportUtils'
 import { useAIWorkflowChatGeneration } from './node-business/chat/useAIWorkflowChatGeneration'
 import type {
 	AgentEditorMentionItem,
@@ -1148,15 +1154,39 @@ const legacyResourcesForDom = computed<Record<string, any>>(() => {
 })
 
 // 按nodeId预计算所有节点的inputParamPreviewRefs，用于注入到底层蓝图引擎
+// 🔑 模块级缓存：内容未变时返回同一个引用，避免 BlueprintEditor.watch 被轮询无意义触发
+const EMPTY_PREVIEW_REFS: InputParamPreviewRef[] = []
+let _cachedInputParamPreviewRefsByNodeId: Record<string, InputParamPreviewRef[]> | null = null
 const inputParamPreviewRefsByNodeId = computed<Record<string, InputParamPreviewRef[]>>(() => {
 	const result: Record<string, InputParamPreviewRef[]> = {}
 	const nodeIds = store.state.nodeOrder
+	const hasCache = !!_cachedInputParamPreviewRefsByNodeId
+	let anyChanged = !hasCache
+
+	// 如果有缓存，先做 key 数量级的快比较（节点数不同直接判变）
+	if (hasCache) {
+		const prevKeys = Object.keys(_cachedInputParamPreviewRefsByNodeId!)
+		if (prevKeys.length !== nodeIds.length) anyChanged = true
+	}
+
 	for (const nodeId of nodeIds) {
 		try {
 			const refs = getInputParamPreviewRefs(nodeId)
-			result[nodeId] = refs
-			// 调试日志：只在有引用时输出
-			if (refs.length > 0) {
+			// 统一把空数组用 EMPTY_PREVIEW_REFS 哨兵，保证「无变化」的返回引用是同一个
+			const stableRefs = refs.length === 0 ? EMPTY_PREVIEW_REFS : refs
+			result[nodeId] = stableRefs
+
+			if (hasCache && !anyChanged) {
+				const prev = _cachedInputParamPreviewRefsByNodeId![nodeId]
+				// 引用不同（但长度都是 0 的话不算变，因为哨兵统一了，不过双保险）
+				const bothEmpty = (prev?.length ?? 0) === 0 && stableRefs.length === 0
+				if (!bothEmpty && (prev !== stableRefs || (prev?.length ?? 0) !== stableRefs.length)) {
+					anyChanged = true
+				}
+			}
+
+			// 调试日志：只在显式打开 DEBUG 时输出（轮询期会刷屏）
+			if (BLUEPRINT_POLL_DEBUG && refs.length > 0) {
 				console.log(
 					`[AIWorkflowPage][inputParamPreviewRefs] nodeId=${nodeId}, refsCount=${refs.length}`,
 					refs
@@ -1164,12 +1194,25 @@ const inputParamPreviewRefsByNodeId = computed<Record<string, InputParamPreviewR
 			}
 		} catch (err) {
 			console.error(`[AIWorkflowPage][inputParamPreviewRefs] error for nodeId=${nodeId}:`, err)
-			result[nodeId] = []
+			result[nodeId] = EMPTY_PREVIEW_REFS
+			anyChanged = true
 		}
 	}
-	console.log(
-		`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${Object.values(result).filter((r) => r.length > 0).length}`
-	)
+
+	if (BLUEPRINT_POLL_DEBUG) {
+		console.log(
+			`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${
+				Object.values(result).filter((r) => r.length > 0).length
+			}, anyChanged=${anyChanged}`
+		)
+	}
+
+	// 🔑 内容没变就返回旧引用，彻底避免下游 watcher 触发
+	if (!anyChanged && hasCache) {
+		return _cachedInputParamPreviewRefsByNodeId!
+	}
+
+	_cachedInputParamPreviewRefsByNodeId = result
 	return result
 })
 
@@ -4600,6 +4643,26 @@ onBeforeUnmount(() => {
 		}
 		imageMarkupExportListenerId = null
 	}
+
+	// ========== Meshy / Tripo3D 轮询兜底清理 ==========
+	try {
+		clearMeshyRuntime()
+	} catch (e) {
+		console.warn('[AIWorkflowPage] clearMeshyRuntime failed:', e)
+	}
+	try {
+		clearTripo3DRuntime()
+	} catch (e) {
+		console.warn('[AIWorkflowPage] clearTripo3DRuntime failed:', e)
+	}
+	try {
+		const scheduler = TaskPollScheduler.shared
+		if (scheduler && scheduler.taskCount() > 0) {
+			scheduler.dispose()
+		}
+	} catch (e) {
+		console.warn('[AIWorkflowPage] TaskPollScheduler dispose failed:', e)
+	}
 })
 
 watch(
@@ -4957,6 +5020,19 @@ const { resourceUsed, removeSelectedNodesWithResourceCleanup, setNodeResourceWit
 		},
 		performDelete: async (nodeIds) => {
 			console.log('[AIWorkflow:Delete] performDelete called for nodes:', nodeIds)
+			// 先停止被删除节点的Meshy/Tripo3D轮询，避免定时器泄漏
+			for (const nid of nodeIds) {
+				try {
+					stopMeshyPoll(nid)
+				} catch (e) {
+					console.warn('[AIWorkflow:Delete] stopMeshyPoll failed for', nid, e)
+				}
+				try {
+					stopTripo3DPoll(nid)
+				} catch (e) {
+					console.warn('[AIWorkflow:Delete] stopTripo3DPoll failed for', nid, e)
+				}
+			}
 			// 逐个从引擎删除指定节点（不依赖当前选中状态）
 			const deletedFromEngine: string[] = []
 			for (const nid of nodeIds) {
@@ -8726,6 +8802,29 @@ const registerSceneLayoutNodeInstance = (nodeId: string, instance: unknown | nul
 
 provide('sceneLayoutNodeRegister', registerSceneLayoutNodeInstance)
 
+// 2026-08-03 修复：注入 sceneLayoutProjectContextBridge
+//   让 WorkflowSceneLayoutNode.vue 中的 resolvedModelBindings
+//   可以直接通过 currentProjectId / currentProjectRootPath
+//   把 resourcesById[resourceId].projectRelativePath → file:/// 绝对路径 URL
+//   避免 Three.js FileLoader 加载 remote CDN URL 触发 CORS。
+provide('sceneLayoutProjectContextBridge', {
+	get currentProjectId() {
+		return currentProjectId.value
+	},
+	get currentProjectRootPath() {
+		return currentProjectRootPath.value
+	},
+	get projectId() {
+		return currentProjectId.value
+	},
+	get projectRootPath() {
+		return currentProjectRootPath.value
+	},
+	get rootDir() {
+		return currentProjectRootPath.value
+	}
+})
+
 const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 	return (instance: unknown | null) => {
 		if (nodeType !== 'scene-layout') return
@@ -8743,17 +8842,106 @@ const setWorkflowNodeComponentRef = (nodeId: string, nodeType: string) => {
 
 const getResolvedLayoutForUnreal = async (sceneLayoutNodeId: string) => {
 	const normalizedNodeId = String(sceneLayoutNodeId ?? '').trim()
+	console.groupCollapsed(`[UNREAL-EXPORT-TRACE] #0 AIWorkflowPage.getResolvedLayoutForUnreal (nodeId=${normalizedNodeId})`)
+	console.log(`normalizedNodeId = ${normalizedNodeId}`)
+	console.log(`SceneLayoutNode component instance mounted?`, !!sceneLayoutNodeComponentRefs.get(normalizedNodeId))
 	if (!normalizedNodeId) {
+		console.log(`Result: ERROR (missingNodeId)`)
+		console.groupEnd()
 		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.missingNodeId') }
 	}
+	// =========================================================================
+	// 【第一优先级：Vue 组件实例】如果 SceneLayoutNode 已经被 Vue 渲染挂载，
+	//   直接调用它 expose 出来的 getResolvedLayoutForUnreal()——它内部现在
+	//   也是"纯数据优先 + viewer enrich"的逻辑，能带上 worldBounds 等数据。
+	// =========================================================================
 	const instance = sceneLayoutNodeComponentRefs.get(normalizedNodeId)
-	if (!instance || typeof instance.getResolvedLayoutForUnreal !== 'function') {
-		return { ok: false as const, error: t('aiworkflow.page.sceneLayout.noPreviewInstance') }
+	if (instance && typeof instance.getResolvedLayoutForUnreal === 'function') {
+		console.log(`Route A: using Vue component instance (SceneLayoutNode.vue exposed method)`)
+		try {
+			const res = await instance.getResolvedLayoutForUnreal()
+			if (res?.ok) {
+				const okRes = res as { ok: true; exportData: WorkflowUnrealResolvedLayoutExport }
+				console.log(`Route A result: OK, slotCount=${okRes.exportData?.slotCount}, bindings=${okRes.exportData?.sceneLayoutResolvedModelBindings?.length ?? 0}`)
+				console.groupEnd()
+				return okRes
+			}
+			console.warn('[AIWorkflowPage] instance.getResolvedLayoutForUnreal returned error, falling back to pure-data store mode:', res)
+		} catch (err: unknown) {
+			console.warn('[AIWorkflowPage] instance.getResolvedLayoutForUnreal threw, falling back to pure-data store mode:', err)
+		}
 	}
-	try {
-		return await instance.getResolvedLayoutForUnreal()
-	} catch (err: unknown) {
-		return { ok: false as const, error: getErrorMessage(err) }
+
+	// =========================================================================
+	// 【第二优先级：纯数据 fallback】（2026-08-03 新增，解决 noPreviewInstance 报错）
+	// =========================================================================
+	console.log(`Route B: using pure-data store fallback (no Vue component instance required)`)
+	const node = store.state.nodesById[normalizedNodeId] as Record<string, unknown> | undefined
+	if (node && node.type === 'scene-layout') {
+		const settings = (node.sceneLayoutSettings as Record<string, unknown>) ?? {}
+		const layoutItems = Array.isArray(settings.layoutItems) ? (settings.layoutItems as unknown[]) : []
+		const bindings = connectedSceneLayoutModelBindings(normalizedNodeId) as unknown[]
+		console.log(`layoutItems (from store) = ${layoutItems.length}`,
+			layoutItems.map((it: unknown) => ({
+				id: String((it as Record<string, unknown>)?.id ?? ''),
+				name: String((it as Record<string, unknown>)?.name ?? ''),
+				pos: (it as Record<string, unknown>)?.position
+			}))
+		)
+		console.log(`resolvedBindings (from connectedSceneLayoutModelBindings) = ${bindings.length}`,
+			bindings.map((b: unknown) => ({
+				objectId: String((b as Record<string, unknown>)?.objectId ?? ''),
+				sourceNodeType: String((b as Record<string, unknown>)?.sourceNodeType ?? ''),
+				connected: (b as Record<string, unknown>)?.connected,
+				path: String(
+					(b as Record<string, unknown>)?.modelAssetUrl ??
+					(b as Record<string, unknown>)?.modelAssetProjectRelativePath ??
+					(b as Record<string, unknown>)?.modelAssetPath ??
+					(b as Record<string, unknown>)?.modelUrl ??
+					''
+				)
+			}))
+		)
+		// 2026-08-03: 把 Vuex store 状态传给 buildPureDataResolvedLayoutExport 的
+		//   bindingPathBackfillCtx，让 Ultimate Backfill 从 nodesById / resourcesById
+		//   终极反查 18 个 connected=false 但有真实入边的新链路 decompose 模型节点。
+		const backfillCtx = {
+			nodesById: store.state.nodesById,
+			resourcesById: store.state.resourcesById
+		}
+		const built = buildPureDataResolvedLayoutExport(layoutItems, bindings, backfillCtx) as unknown as Record<string, unknown>
+		console.log(`buildPureDataResolvedLayoutExport result: slotCount=${(built as { slotCount?: unknown }).slotCount}, sourceItemCount=${(built as { sourceItemCount?: unknown }).sourceItemCount}`)
+		const originalWarnings = Array.isArray((built as { warnings?: string[] }).warnings)
+			? ((built as { warnings: string[] }).warnings)
+			: []
+		const finalWarnings: string[] = [
+			`[AIWorkflowPage.getResolvedLayoutForUnreal] component instance was NOT available (node was not mounted/preview not opened); falling back to pure-data store mode. slots=${String((built as { slotCount?: unknown }).slotCount ?? 'n/a')}, sourceItemCount=${String((built as { sourceItemCount?: unknown }).sourceItemCount ?? 'n/a')}, sceneLayoutResolvedBindings=${Array.isArray((built as { sceneLayoutResolvedModelBindings?: unknown[] }).sceneLayoutResolvedModelBindings) ? (built as { sceneLayoutResolvedModelBindings: unknown[] }).sceneLayoutResolvedModelBindings.length : 0}`,
+			...originalWarnings
+		]
+		const exportData: WorkflowUnrealResolvedLayoutExport = {
+			generatedAt: Number((built as { generatedAt?: unknown }).generatedAt ?? Date.now()) || Date.now(),
+			sourceItemCount: Number((built as { sourceItemCount?: unknown }).sourceItemCount ?? 0) || 0,
+			slotCount: Number((built as { slotCount?: unknown }).slotCount ?? 0) || 0,
+			actorOrigin: { x: 0, y: 0, z: 0 },
+			warnings: finalWarnings,
+			slots: Array.isArray((built as { slots?: unknown[] }).slots)
+				? ((built as { slots: WorkflowUnrealResolvedLayoutSlot[] }).slots)
+				: [],
+			sceneLayoutResolvedModelBindings: Array.isArray((built as { sceneLayoutResolvedModelBindings?: unknown[] }).sceneLayoutResolvedModelBindings)
+				? ((built as { sceneLayoutResolvedModelBindings: WorkflowSceneLayoutModelBinding[] }).sceneLayoutResolvedModelBindings)
+				: undefined
+		}
+		console.log(`Route B final: slotCount=${exportData.slotCount}, bindingCount=${exportData.sceneLayoutResolvedModelBindings?.length ?? 0}`)
+		console.groupEnd()
+		return { ok: true as const, exportData }
+	}
+	// 只有当节点本身不存在/不是 scene-layout 类型时才真正返回错误
+	const err = t('aiworkflow.page.sceneLayout.noPreviewInstance') + ` (node=${String(node?.type ?? 'undefined')}; expected=scene-layout; id=${normalizedNodeId})`
+	console.log(`Result: ERROR (no scene-layout node in store) = ${err}`)
+	console.groupEnd()
+	return {
+		ok: false as const,
+		error: err
 	}
 }
 

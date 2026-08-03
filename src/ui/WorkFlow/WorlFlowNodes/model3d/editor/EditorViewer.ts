@@ -16,6 +16,7 @@ import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectio
 import { ColorCorrectionShader } from 'three/examples/jsm/shaders/ColorCorrectionShader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { RenderMode, LightingPreset, EditorLoadProgress, LoadedEditorModel, OutlinerNode, TransformMode, ManualLightingParams } from './types'
+import { fetchAsArrayBuffer } from '../../../../../electronBridge'
 
 type Disposable = { dispose(): void }
 type TextureLike = Disposable & {
@@ -52,6 +53,142 @@ const disposeMaterial = (material: MaterialLike | MaterialLike[]) => {
 		}
 		item.dispose()
 	}
+}
+
+const MODEL_EXT_WHITELIST = Object.freeze([
+	'glb',
+	'gltf',
+	'fbx',
+	'obj',
+	'stl',
+	'usdz', // ===== 新增：project_memory 明确要求 usdz 在白名单中 =====
+	'dae',
+	'3ds',
+	'ply',
+	'x3d',
+	'x',
+	'json'
+])
+
+const IMAGE_EXT_BLACKLIST = Object.freeze([
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'bmp',
+	'tiff',
+	'tif',
+	'svg',
+	'ico',
+	'heic',
+	'heif'
+])
+
+const IMAGE_MAGIC_NUMBERS: ReadonlyArray<{ pattern: number[]; mask?: number[]; name: string }> = [
+	{ pattern: [0x89, 0x50, 0x4e, 0x47], name: 'PNG' },
+	{ pattern: [0xff, 0xd8, 0xff], name: 'JPEG' },
+	{ pattern: [0x47, 0x49, 0x46, 0x38], name: 'GIF' },
+	{ pattern: [0x52, 0x49, 0x46, 0x46], name: 'WEBP/RIFF' },
+	{ pattern: [0x42, 0x4d], name: 'BMP' }
+]
+
+const MODEL_MAGIC_HINTS: ReadonlyArray<{ pattern: number[]; mask?: number[]; name: string }> = [
+	{ pattern: [0x67, 0x6c, 0x54, 0x46], name: 'glTF binary (GLB)' },
+	{ pattern: [0x7b], name: 'JSON (glTF text)' }
+]
+
+const extractUrlExt = (url: string): string => {
+	if (!url) return ''
+	try {
+		const text = String(url).trim()
+		// 1. dweb://project-assets?projectId=xxx&path=assets/xxx.glb 场景：从 path 参数提取扩展名（优先）
+		const low = text.toLowerCase()
+		if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+			try {
+				const qStart = text.indexOf('?')
+				const queryStr = qStart >= 0 ? text.slice(qStart + 1) : ''
+				const params = new URLSearchParams(queryStr)
+				const p = decodeURIComponent(
+					params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
+				)
+				if (p) {
+					const clean = p.split('?')[0].split('#')[0]
+					const lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'))
+					const namePart = lastSlash >= 0 ? clean.slice(lastSlash + 1) : clean
+					const d = namePart.lastIndexOf('.')
+					if (d >= 0) return namePart.slice(d + 1).toLowerCase()
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+		// 2. 标准 URL 或 本地绝对路径 (Windows G:\... 或 Unix /...)：文件名部分提取扩展名
+		const withoutQuery = text.split('?')[0].split('#')[0]
+		const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
+		const namePart = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+		const lastDot = namePart.lastIndexOf('.')
+		if (lastDot < 0) return ''
+		return namePart.slice(lastDot + 1).toLowerCase()
+	} catch {
+		return ''
+	}
+}
+
+// 判断 URL 是否需要走 Electron 主进程 fetchAsArrayBuffer 代理加载（规避 CORS 和自定义协议处理）
+const isDwebOrRemoteHttpUrl = (input: string): boolean => {
+	if (!input) return false
+	const t = String(input).trim()
+	if (!t) return false
+	const low = t.toLowerCase()
+	if (low.startsWith('dweb://') || low.startsWith('dweb:')) return true
+	// ===== 本地绝对路径被 normalizeCandidate 转成 file:/// 后，也统一走主进程代理（部分 Electron 安全策略下 Three.js 原生 FileLoader.load 会被拦截） =====
+	if (low.startsWith('file://')) return true
+	return low.startsWith('http://') || low.startsWith('https://')
+}
+
+const isImageContentType = (ct: string): boolean => {
+	if (!ct) return false
+	const low = ct.toLowerCase()
+	return /^image\//.test(low)
+}
+
+const detectMagicFromBytes = (bytes: Uint8Array): { kind: 'image' | 'model' | 'unknown'; name: string } => {
+	if (!bytes || bytes.length === 0) return { kind: 'unknown', name: 'empty' }
+	for (const item of IMAGE_MAGIC_NUMBERS) {
+		if (bytes.length < item.pattern.length) continue
+		let match = true
+		for (let i = 0; i < item.pattern.length; i++) {
+			if (bytes[i] !== item.pattern[i]) {
+				match = false
+				break
+			}
+		}
+		if (match) return { kind: 'image', name: item.name }
+	}
+	for (const item of MODEL_MAGIC_HINTS) {
+		if (bytes.length < item.pattern.length) continue
+		let match = true
+		for (let i = 0; i < item.pattern.length; i++) {
+			if (bytes[i] !== item.pattern[i]) {
+				match = false
+				break
+			}
+		}
+		if (match) return { kind: 'model', name: item.name }
+	}
+	return { kind: 'unknown', name: 'bytes' }
+}
+
+const validateModelUrlBeforeLoad = (url: string): { ok: true } | { ok: false; reason: string } => {
+	if (!url) return { ok: false, reason: 'empty-url' }
+	const ext = extractUrlExt(url)
+	if (ext && IMAGE_EXT_BLACKLIST.includes(ext)) {
+		return { ok: false, reason: `invalid-url-extension:${ext}` }
+	}
+	if (ext && MODEL_EXT_WHITELIST.includes(ext)) return { ok: true }
+	if (!ext) return { ok: true }
+	return { ok: true }
 }
 
 interface EditorViewerOptions {
@@ -1103,6 +1240,16 @@ export class EditorViewer {
 
 		this.reportProgress({ stage: 'loading', progress: 0, message: 'Loading model...' })
 
+		const urlCheck = validateModelUrlBeforeLoad(url)
+		if (!urlCheck.ok) {
+			const reason = (urlCheck as { ok: false; reason: string }).reason
+			const err = new Error(
+				`[Model3DEditor] 拒绝加载疑似非模型资源（${reason}）。请确认URL是否指向有效的3D模型文件。`
+			)
+			;(err as Error & { code?: string }).code = 'MODEL_URL_INVALID_FORMAT'
+			throw err
+		}
+
 		const group = await this.loadModelFile(url, (loaded, total) => {
 			const ratio = total > 0 ? loaded / total : 0
 			this.reportProgress({
@@ -1168,9 +1315,251 @@ export class EditorViewer {
 		return model
 	}
 
+	/**
+	 * 资源校验：联合 Content-Type（辅助） + 文件字节 magic number（权威）判定
+	 * 决策规则（防止 CDN 误报误杀 GLB/gltf 合法模型）:
+	 *  - magic 命中 MODEL_MAGIC_HINTS → 判定为模型，直接放行（忽略 Content-Type 任何值）
+	 *  - magic 命中 IMAGE_MAGIC_NUMBERS → 判定为图片，必须拦截
+	 *  - magic 未知 + Content-Type image/* → 不拦截，仅 warn，交给 Three.js 加载器兜底
+	 *  - magic 未知 + Content-Type 正常 → 放行
+	 */
+	private async verifyModelResource(url: string): Promise<void> {
+		// ---- 0. 扩展名快速放行：扩展名明确为模型格式时跳过所有网络校验 ----
+		// 原因：dweb://project-assets?path=xxx.glb 的扩展名只能从 path 参数提取；
+		// 且用户右键文件夹能确认真实是 glb，魔数/CT 可能因为 protocol handler
+		// 返回缩略图或缓存 PNG 而误判，扩展名明确时直接交由 Three.js Loader 兜底。
+		const ext = extractUrlExt(url)
+		const urlShort = (url || '').length > 120 ? url.slice(0, 117) + '...' : url
+		if (ext && MODEL_EXT_WHITELIST.includes(ext)) {
+			console.debug(
+				`[Model3DEditor.verifyModelResource] 扩展名(${ext}) 命中白名单，跳过 Content-Type/魔数检测，交由 Three.js 真实加载。 url=${urlShort}, ext=${ext}, decision: EXT_PASS`
+			)
+			return
+		}
+		if (ext && IMAGE_EXT_BLACKLIST.includes(ext)) {
+			console.warn(
+				`[Model3DEditor.verifyModelResource] 扩展名(${ext}) 命中图片黑名单，直接拒绝。 url=${urlShort}, ext=${ext}, decision: BLOCK`
+			)
+			const msg = `文件扩展名(${ext}) 为图片格式，拒绝作为3D模型加载。`
+			const err = new Error(`[Model3DEditor] ${msg}`)
+			;(err as Error & { code?: string }).code = 'MODEL_RESPONSE_IMAGE_EXT'
+			throw err
+		}
+
+		// ---- 1. 可选 HEAD 请求（仅作参考信息，不做拦截决策，失败忽略）----
+		let headCt = ''
+		try {
+			const headResp = await fetch(url, { method: 'HEAD' })
+			if (headResp.ok) headCt = headResp.headers.get('Content-Type') || ''
+		} catch {
+			/* HEAD 失败（CDN 常见问题）完全忽略，不影响 */
+		}
+
+		// ---- 2. 唯一的一次 Range GET 请求：同时获取 Content-Type + 字节 magic ----
+		let rangeCt = ''
+		let detected: { kind: 'image' | 'model' | 'unknown'; name: string } = {
+			kind: 'unknown',
+			name: 'empty'
+		}
+		try {
+			const rangeResp = await fetch(url, {
+				method: 'GET',
+				headers: { Range: 'bytes=0-4095' }
+			})
+			if (rangeResp.ok) {
+				rangeCt = rangeResp.headers.get('Content-Type') || ''
+				const buf = await rangeResp.arrayBuffer()
+				detected = detectMagicFromBytes(new Uint8Array(buf))
+			} else {
+				// Range 请求不被支持/403/404 等 → 不拦截，交由 Three.js 加载器抛出原始错误
+				return
+			}
+		} catch (e) {
+			// fetch 抛错（CORS/网络错误）→ 不做拦截决策，让后续 loader 自行报错
+			return
+		}
+
+		// ---- 3. 最终决策：magic number 绝对权威 ----
+		const finalCt = rangeCt || headCt
+		const ctIsImage = isImageContentType(finalCt)
+
+		if (detected.kind === 'model') {
+			// 是模型：绝对放行，即使 Content-Type 误报为 image/png 也忽略
+			if (ctIsImage) {
+				console.warn(
+					`[Model3DEditor.verifyModelResource] Content-Type(${finalCt}) 疑似误报为图片，但文件魔数检测为 ${detected.name}，按模型资源放行。 url=${urlShort}, ext=${ext}, headCt=${headCt}, rangeCt=${rangeCt}, magicDetected={kind:${detected.kind},name:${detected.name}}, decision: PASS`
+				)
+			} else {
+				console.debug(
+					`[Model3DEditor.verifyModelResource] url=${urlShort}, ext=${ext}, headCt=${headCt}, rangeCt=${rangeCt}, magicDetected={kind:${detected.kind},name:${detected.name}}, decision: PASS`
+				)
+			}
+			return
+		}
+
+		if (detected.kind === 'image') {
+			// 字节 magic 是图片：绝对拦截（不管 Content-Type 是什么）
+			const msg = ctIsImage
+				? `Content-Type(${finalCt}) 和 文件魔数(${detected.name}) 均为图片格式，拒绝作为3D模型加载。`
+				: `文件魔数检测为图片格式(${detected.name})，拒绝作为3D模型加载。`
+			console.warn(
+				`[Model3DEditor.verifyModelResource] url=${urlShort}, ext=${ext}, headCt=${headCt}, rangeCt=${rangeCt}, magicDetected={kind:${detected.kind},name:${detected.name}}, decision: BLOCK`
+			)
+			const err = new Error(`[Model3DEditor] ${msg}`)
+			;(err as Error & { code?: string }).code = ctIsImage
+				? 'MODEL_RESPONSE_IMAGE_CT_MAGIC'
+				: 'MODEL_RESPONSE_IMAGE_MAGIC'
+			throw err
+		}
+
+		// detected.kind === 'unknown'
+		if (ctIsImage) {
+			// Content-Type 说是图片但 magic 未知：不要硬拦截！只打 warn，交给 Three.js 真实加载去做最终判定
+			console.warn(
+				`[Model3DEditor.verifyModelResource] Content-Type(${finalCt}) 为图片类型，但文件前 4KB 魔数未知；不拦截，交由 Three.js Loader 真实加载。 url=${urlShort}, ext=${ext}, headCt=${headCt}, rangeCt=${rangeCt}, magicDetected={kind:${detected.kind},name:${detected.name}}, decision: WARN_PASS`
+			)
+			return
+		}
+
+		console.debug(
+			`[Model3DEditor.verifyModelResource] url=${urlShort}, ext=${ext}, headCt=${headCt}, rangeCt=${rangeCt}, magicDetected={kind:${detected.kind},name:${detected.name}}, decision: PASS`
+		)
+	}
+
+	// @deprecated Use verifyModelResource() instead — this method is no-op to preserve future calls
+	private async verifyModelResourceHead(url: string): Promise<void> {
+		// 旧方法已弃用：防止误杀 Content-Type 误报的合法 GLB/gltf 模型资源
+		return
+		/* ---- 旧代码保留（不再执行）----
+		try {
+			let resp: Response | null = null
+			try {
+				resp = await fetch(url, { method: 'HEAD' })
+			} catch {
+				resp = null
+			}
+			if (!resp || !resp.ok) {
+				try {
+					resp = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-4095' } })
+				} catch {
+					resp = null
+				}
+			}
+			if (resp && resp.ok) {
+				const ct = resp.headers.get('Content-Type') || ''
+				if (isImageContentType(ct)) {
+					const err = new Error(
+						`[Model3DEditor] 资源Content-Type为图片类型(${ct})，拒绝作为3D模型加载。`
+					)
+					;(err as Error & { code?: string }).code = 'MODEL_RESPONSE_IMAGE_CT'
+					throw err
+				}
+			}
+		} catch (e: unknown) {
+			if (e instanceof Error && (e as any).code && String((e as any).code).startsWith('MODEL_')) throw e
+		}
+		*/
+	}
+
+	// @deprecated Use verifyModelResource() instead — this method is no-op to preserve future calls
+	private async verifyModelResourceMagic(url: string): Promise<void> {
+		// 旧方法已弃用：已合并进 verifyModelResource() 内统一处理，避免重复 2 次 Range 请求
+		return
+		/* ---- 旧代码保留（不再执行）----
+		try {
+			const resp = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-4095' } })
+			if (!resp.ok) return
+			const buf = await resp.arrayBuffer()
+			const bytes = new Uint8Array(buf)
+			const detected = detectMagicFromBytes(bytes)
+			if (detected.kind === 'image') {
+				const err = new Error(
+					`[Model3DEditor] 检测到文件头部魔数为图片格式(${detected.name})，拒绝作为3D模型加载。`
+				)
+				;(err as Error & { code?: string }).code = 'MODEL_RESPONSE_IMAGE_MAGIC'
+				throw err
+			}
+		} catch (e: unknown) {
+			if (e instanceof Error && (e as any).code && String((e as any).code).startsWith('MODEL_')) throw e
+		}
+		*/
+	}
+
+	/**
+	 * 直接从 ArrayBuffer 解析 3D 模型（用 GLTFLoader.parse / OBJLoader.parse）。
+	 * 用途：
+	 *   1) dweb://project-assets 等 electron 自定义协议，Three.js FileLoader 不识别；
+	 *   2) https://assets.meshy.ai CDN URL，浏览器端 CORS 拦截；
+	 *   都通过 electron 主进程 fetchAsArrayBuffer 拿到 ArrayBuffer 后再解析。
+	 */
+	async loadModelFromArrayBuffer(
+		buffer: ArrayBuffer,
+		originUrl: string,
+		onProgress?: (loaded: number, total: number) => void
+	): Promise<any> {
+		if (!buffer || buffer.byteLength === 0) {
+			throw new Error('[Model3DEditor] loadModelFromArrayBuffer 收到空 buffer')
+		}
+		onProgress?.(buffer.byteLength, buffer.byteLength)
+		const ext = extractUrlExt(originUrl) || ''
+		if (ext === 'obj' && typeof (this.objLoader as any).parse === 'function') {
+			const text = new TextDecoder('utf-8').decode(new Uint8Array(buffer))
+			return (this.objLoader as any).parse(text, '')
+		}
+		// 走 GLTFLoader.parse，通过 originUrl 作为 path 处理外部引用纹理
+		return new Promise<any>((resolve, reject) => {
+			this.gltfLoader.parse(
+				buffer,
+				'',
+				(gltf: any) => resolve(gltf.scene),
+				(err: any) => reject(err)
+			)
+		})
+	}
+
 	private loadModelFile(url: string, onProgress?: (loaded: number, total: number) => void): Promise<any> {
-		return new Promise((resolve, reject) => {
-			const ext = url.split('.').pop()?.toLowerCase().split('?')[0] || ''
+		return new Promise<any>(async (resolve, reject) => {
+			try {
+				await this.verifyModelResource(url)
+			} catch (e: unknown) {
+				reject(e)
+				return
+			}
+			// ===== 核心修复：dweb:// 或 http(s):// 远程 CDN URL，一律先走 electron 主进程 fetchAsArrayBuffer 代理 =====
+			//  1) dweb://project-assets?path=xxx.glb：Three.js FileLoader 会当成非法 URL 去发 HTTP GET → 404
+			//  2) https://assets.meshy.ai/.../model.glb：浏览器端 CORS 直接拦截（Access-Control-Allow-Origin 缺失）
+			//  解决方案：统一交给 electron 主进程 (无 CORS 限制，有 dweb 协议处理) 拿 ArrayBuffer，再 parse 解析
+			if (isDwebOrRemoteHttpUrl(url) && typeof fetchAsArrayBuffer === 'function') {
+				try {
+					const shortUrl = url.length > 160 ? url.slice(0, 157) + '...' : url
+					console.debug(
+						`[Model3DEditor.loadModelFile] 使用 electron fetchAsArrayBuffer 代理加载(${isDwebOrRemoteHttpUrl(url) ? 'dweb/远程' : '本地'}): ${shortUrl}`
+					)
+					onProgress?.(0, 1)
+					const fetchResult = await fetchAsArrayBuffer(url)
+					if (fetchResult?.ok && fetchResult.buffer) {
+						const view = fetchResult.buffer as Uint8Array
+						const arrayBuffer = view.buffer.slice(
+							view.byteOffset,
+							view.byteOffset + view.byteLength
+						) as ArrayBuffer
+						const group = await this.loadModelFromArrayBuffer(arrayBuffer, url, onProgress)
+						resolve(group)
+						return
+					}
+					console.warn(
+						`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 返回非 ok，fallback 到 Three.js 原生加载：err=${
+							fetchResult?.error || String(fetchResult)
+						}`
+					)
+				} catch (e: unknown) {
+					console.warn(
+						`[Model3DEditor.loadModelFile] fetchAsArrayBuffer 代理加载失败，fallback 到 Three.js 原生加载：`,
+						e
+					)
+				}
+			}
+			const ext = extractUrlExt(url) || url.split('.').pop()?.toLowerCase().split('?')[0] || ''
 			if (ext === 'obj' && this.objLoader.load) {
 				this.objLoader.load(
 					url,

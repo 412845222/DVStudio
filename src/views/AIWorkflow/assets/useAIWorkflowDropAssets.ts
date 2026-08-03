@@ -112,7 +112,12 @@ export const useAIWorkflowDropAssets = (options: {
 		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
-		opts?: { posterUrl?: string; sourcePath?: string; projectRelativePath?: string }
+		opts?: {
+			posterUrl?: string
+			sourcePath?: string
+			projectRelativePath?: string
+			resourceId?: string
+		}
 	) => void
 	resolveDropWorldFromEvent: (event: DragEvent) => { worldX: number; worldY: number } | null
 	createBatchMediaNodesFromFiles: (payload: {
@@ -287,18 +292,24 @@ export const useAIWorkflowDropAssets = (options: {
 		const mime = String(file?.type ?? '')
 		if (mime.startsWith('image/')) return 'image'
 		if (mime.startsWith('video/')) return 'video'
-		if (
-			mime === 'model/gltf-binary' ||
-			mime === 'model/gltf+json' ||
-			mime === 'application/octet-stream'
-		) {
-			// Check by extension for octet-stream
+		const modelMimes = [
+			'model/gltf-binary',
+			'model/gltf+json',
+			'model/obj',
+			'model/stl',
+			'application/x-truespace',
+			'application/vnd.usdz+zip',
+			'application/octet-stream'
+		]
+		if (modelMimes.includes(mime)) {
+			// fallthrough to extension check
 		}
 		const name = String(file?.name ?? '')
 		const ext = name.toLowerCase().split('.').pop() || ''
 		if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext)) return 'image'
-		if (['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi'].includes(ext)) return 'video'
-		if (['glb', 'gltf', 'fbx', 'obj', 'stl', 'dae'].includes(ext)) return 'model3d'
+		if (['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'flv', 'wmv'].includes(ext)) return 'video'
+		if (['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz', 'dae', '3ds', 'blend'].includes(ext))
+			return 'model3d'
 		return null
 	}
 
@@ -565,7 +576,8 @@ export const useAIWorkflowDropAssets = (options: {
 			),
 			{
 				sourcePath: sourcePath || undefined,
-				posterUrl: posterUrl || undefined
+				posterUrl: posterUrl || undefined,
+				resourceId: payload.item.resourceId
 			}
 		)
 

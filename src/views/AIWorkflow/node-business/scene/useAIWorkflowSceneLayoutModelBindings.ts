@@ -5,10 +5,197 @@ import type {
 	WorkflowModelFormat
 } from '../../../../aiworkflow/types'
 import type { SceneDecomposeInputItem } from './sceneDecomposeShared'
-import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
+import { isMeshyRemoteUrl, getMeshyEffectiveModelSource } from '../meshy/useAIWorkflowMeshyAssets'
+import { isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 
 export const SUPPORTED_MODEL_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+
+// ===== 参考 WorkflowModel3DNode 同款策略：候选 URL/路径必须命中模型白名单，避免被缩略图污染
+const MODEL_EXT_WHITELIST = Object.freeze([
+	'glb',
+	'gltf',
+	'fbx',
+	'obj',
+	'stl',
+	'usdz',
+	'dae',
+	'3ds',
+	'ply',
+	'x3d',
+	'x',
+	'json'
+])
+const IMAGE_EXT_BLACKLIST = Object.freeze([
+	'png',
+	'jpg',
+	'jpeg',
+	'webp',
+	'gif',
+	'bmp',
+	'tiff',
+	'tif',
+	'svg',
+	'heic',
+	'ico',
+	'webm',
+	'json'
+])
+const extractUrlExt = (urlOrPath: string | undefined | null): string => {
+	if (!urlOrPath) return ''
+	let s = String(urlOrPath).trim()
+	if (!s) return ''
+	const hashIdx = s.indexOf('#')
+	if (hashIdx >= 0) s = s.substring(0, hashIdx)
+	const qIdx = s.indexOf('?')
+	if (qIdx >= 0) s = s.substring(0, qIdx)
+	const lastDot = s.lastIndexOf('.')
+	if (lastDot < 0) return ''
+	const ext = s.substring(lastDot + 1)
+	return ext ? ext.toLowerCase() : ''
+}
+const isImageExtension = (ext: string): boolean => {
+	if (!ext) return false
+	return IMAGE_EXT_BLACKLIST.includes(ext.toLowerCase())
+}
+const isImageUrlOrPath = (input: string): boolean => isImageExtension(extractUrlExt(input))
+const isLikely3DModelUrl = (url: string): boolean => {
+	if (!url) return false
+	const ext = extractUrlExt(url)
+	if (!ext) return false
+	if (IMAGE_EXT_BLACKLIST.includes(ext)) return false
+	if (MODEL_EXT_WHITELIST.includes(ext)) return true
+	return false
+}
+const isTripo3DRemoteUrl = (url: string): boolean => {
+	if (!url) return false
+	try {
+		const parsed = new URL(url)
+		return /(^|\.)tripo3d\.ai$/i.test(parsed.hostname)
+	} catch {
+		return /https?:\/\/[^\s]*tripo3d\.ai(?:\/|$)/i.test(url)
+	}
+}
+type CandidateQuality = 1 | 2 | 3 | 4 | 5
+const candidateQuality = (u0: string): CandidateQuality => {
+	const t = String(u0 ?? '').trim()
+	if (!t) return 1
+	const low = t.toLowerCase()
+	if (low.startsWith('file://')) return 5
+	if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('\\\\') || t.startsWith('/')) return 5
+	if (low.startsWith('dweb://') || low.startsWith('dweb:')) return 4
+	if (low.startsWith('http://') || low.startsWith('https://')) return 2
+	return 3
+}
+const normalizeCandidate = (u: string): string => {
+	let t = String(u ?? '').trim()
+	if (!t) return ''
+	if (t.toLowerCase().startsWith('file://')) return t
+	const low = t.toLowerCase()
+	if (!low.startsWith('http') && !/^[a-zA-Z]:[\\/]/.test(t) && !t.startsWith('\\\\') && !t.startsWith('/')) {
+		t = t.replace(/\\/g, '/')
+	}
+	return t
+}
+
+const recoverImageExtToModel = (input: string, targetExt: string = 'glb'): string[] => {
+	const results: string[] = []
+	const u = String(input ?? '').trim()
+	if (!u) return results
+	const origExt = extractUrlExt(u)
+	const isImage = origExt ? isImageExtension(origExt) : false
+	const isBinLow = origExt === 'bin'
+	if (!isImage && !isBinLow) return results
+	try {
+		if (u.toLowerCase().startsWith('dweb://project-assets') || u.toLowerCase().startsWith('dweb:')) {
+			const qStart = u.indexOf('?')
+			if (qStart >= 0) {
+				const base = u.substring(0, qStart + 1)
+				const queryStr = u.substring(qStart + 1)
+				const origParams = new URLSearchParams(queryStr)
+				for (const key of ['path', 'relativePath', 'assetPath', 'filePath']) {
+					const raw = origParams.get(key)
+					if (!raw) continue
+					const clean = decodeURIComponent(raw).split('?')[0].split('#')[0]
+					const lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'))
+					const namePart = lastSlash >= 0 ? clean.substring(lastSlash + 1) : clean
+					const d = namePart.lastIndexOf('.')
+					if (d < 0) continue
+					const cleanPrefix = clean.slice(0, lastSlash + 1) + namePart.slice(0, d)
+					const newClean = cleanPrefix + '.' + targetExt
+					const p = new URLSearchParams(queryStr)
+					p.set(key, encodeURIComponent(newClean))
+					results.push(base + p.toString())
+				}
+			}
+		}
+	} catch { /* ignore */ }
+	const withoutQuery = u.split('?')[0].split('#')[0]
+	const lastDot = withoutQuery.lastIndexOf('.')
+	if (lastDot < 0) return results
+	const base = withoutQuery.substring(0, lastDot)
+	const rest = u.substring(withoutQuery.length)
+	for (const e of [targetExt, 'gltf']) results.push(base + '.' + e + rest)
+	return results
+}
+
+// ===== WorkflowModel3DNode 同款策略：从任意 URL / 路径里挑出优先级最高的"真实 3D 模型源，
+// 直接丢弃 meshy/tripo3d 远端 CDN URL；还会恢复被缩略图污染成 .png / .bin 的路径回退 glb 再进入候选。
+export const pickBestModelUrlFromCandidates = (rawCandidates: Array<string | null | undefined>): string => {
+	const validList: Array<{ url: string; q: CandidateQuality }> = []
+	const pushOne = (raw: string) => {
+		const u0 = String(raw ?? '').trim()
+		if (!u0) return
+		if (isMeshyRemoteUrl(u0)) return
+		if (isTripo3DRemoteUrl(u0)) return
+		const u1 = fixDwebUrlPath(fixDvcacheBinPath(u0))
+		const tryList = [u1]
+		for (const r of recoverImageExtToModel(u1)) tryList.push(r)
+		for (const u of tryList) {
+			if (!u) continue
+			if (isMeshyRemoteUrl(u) || isTripo3DRemoteUrl(u)) continue
+			if (isImageUrlOrPath(u)) continue
+			if (!isLikely3DModelUrl(u)) continue
+			const norm = normalizeCandidate(u)
+			if (!norm) continue
+			validList.push({ url: norm, q: candidateQuality(norm) })
+		}
+	}
+	for (const raw of rawCandidates) {
+		const u = String(raw ?? '').trim()
+		if (!u) continue
+		pushOne(u)
+	}
+	if (validList.length === 0) return ''
+	validList.sort((a, b) => Number(b.q) - Number(a.q))
+	return validList[0].url
+}
+
+// ===== Tripo3D 节点 settings 对应的 effective 来源（对齐 getMeshyEffectiveModelSource 同款）
+export const getTripo3DEffectiveModelSource = (
+	settings: Record<string, unknown> | null | undefined
+): { preferredUrl: string; assetUrl: string; assetPath: string; format: 'glb' | 'gltf' } => {
+	const value = isRecord(settings) ? settings : {}
+	const output = isRecord(value.tripo3dOutputSummary) ? value.tripo3dOutputSummary : {}
+	const relation = isRecord(value.tripo3dRelationSummary) ? value.tripo3dRelationSummary : {}
+	const modelUrls = isRecord(value.tripo3dModelUrls) ? value.tripo3dModelUrls : {}
+	const assetUrl = String(
+		relation.effectiveLocalAssetUrl ??
+		value.tripo3dOutputAssetUrl ??
+		output.assetUrl ??
+		''
+	).trim()
+	const assetPath = String(
+		relation.effectiveLocalAssetPath ??
+		value.tripo3dOutputAssetPath ??
+		output.assetPath ??
+		''
+	).trim()
+	const preferredUrl =
+		String(relation.effectivePreferredModelUrl ?? output.preferredUrl ?? '').trim() || assetUrl
+	const format = String(output.format ?? '').trim().toLowerCase() === 'gltf' ? 'gltf' as const : 'glb' as const
+	return { preferredUrl, assetUrl, assetPath, format }
+}
 
 const fixDvcacheBinPath = (p: string): string => {
 	if (!p) return p
@@ -116,7 +303,8 @@ export const detectModelFormatFromPath = (pathOrUrl: string): WorkflowModelForma
 
 const extractModelInfoFromSettings = (
 	settings: Record<string, unknown> | null | undefined,
-	resourcesById?: Record<string, Record<string, unknown>>
+	resourcesById?: Record<string, Record<string, unknown>>,
+	nodeResourceId?: string
 ): {
 	modelUrl?: string
 	modelAssetUrl?: string
@@ -126,6 +314,7 @@ const extractModelInfoFromSettings = (
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
 	modelFormat?: WorkflowModelFormat
+	modelResourceId?: string
 } => {
 	if (!settings) return {}
 	const modelAssetUrl = String(settings.modelAssetUrl ?? '').trim()
@@ -163,11 +352,18 @@ const extractModelInfoFromSettings = (
 		modelProjectRelativePath: modelProjectRelativePath || undefined,
 		modelAssetProjectRelativePath: modelAssetProjectRelativePath || undefined,
 		modelSourceName: modelSourceName || undefined,
-		modelFormat
+		modelFormat,
+		modelResourceId: String((settings as Record<string, unknown>).resourceId ?? '').trim() || String(nodeResourceId ?? '').trim() || undefined
 	}
 
-	const resourceId = String((settings as Record<string, unknown>).resourceId ?? '').trim()
-	if (resourcesById && resourceId && (!modelUrl && !modelAssetUrl && !modelSourcePath && !modelAssetPath)) {
+	const resourceId =
+		String(result.modelResourceId ?? '').trim() ||
+		String((settings as Record<string, unknown>).resourceId ?? '').trim()
+	// 【BUGFIX 2026-08】只要有 resourceId 就优先从 resourcesById 补全 projectRelativePath 等本地字段；
+	// 因为上游 Meshy/Tripo3D 节点的 modelUrl/modelAssetUrl 常常还残留远端 URL，
+	// 若只在"全空"时才回退 resourcesById，就会漏掉真正可用的本地项目相对路径，
+	// 导致 SceneLayoutNode 预览时只能拿到远端 URL 被 skipRemote，占位立方渲染。
+	if (resourcesById && resourceId) {
 		const resource = resourcesById[resourceId]
 		if (resource) {
 			const resourceUrl = String(resource.url ?? '').trim()
@@ -175,24 +371,78 @@ const extractModelInfoFromSettings = (
 			const resourceProjectRelativePath = String(resource.projectRelativePath ?? '').trim()
 			const resourceAssetPath = String(resource.absolutePath ?? '').trim()
 			const resourceName = String(resource.name ?? '').trim()
-			if (resourceUrl) {
+
+			if (resourceProjectRelativePath && !result.modelProjectRelativePath) {
+				result.modelProjectRelativePath = resourceProjectRelativePath
+			}
+			if (resourceProjectRelativePath && !result.modelAssetProjectRelativePath) {
+				result.modelAssetProjectRelativePath = resourceProjectRelativePath
+			}
+			if (!result.modelUrl && resourceUrl) {
 				result.modelUrl = resourceUrl
+			}
+			if (!result.modelAssetUrl && resourceUrl) {
 				result.modelAssetUrl = resourceUrl
 			}
-			if (resourceSourcePath || resourceAssetPath) {
+			if ((resourceSourcePath || resourceAssetPath) && !result.modelSourcePath && !result.modelAssetPath) {
 				const finalSourcePath = resourceAssetPath || resourceSourcePath
 				result.modelSourcePath = finalSourcePath
 				result.modelAssetPath = finalSourcePath
 			}
-			if (resourceProjectRelativePath) {
+			if (!result.modelSourceName && resourceName) {
+				result.modelSourceName = resourceName
+			}
+			if (!result.modelFormat) {
+				result.modelFormat =
+					detectModelFormatFromPath(
+						resourceProjectRelativePath ||
+							resourceUrl ||
+							resourceSourcePath ||
+							resourceAssetPath ||
+							resourceName
+					) || 'glb'
+			}
+			if (!result.modelResourceId) {
+				result.modelResourceId = resourceId
+			}
+		}
+	}
+	if (resourcesById && resourceId && (!modelUrl && !modelAssetUrl && !modelSourcePath && !modelAssetPath && !modelProjectRelativePath)) {
+		const resource = resourcesById[resourceId]
+		if (resource) {
+			const resourceUrl = String(resource.url ?? '').trim()
+			const resourceSourcePath = String(resource.sourcePath ?? '').trim()
+			const resourceProjectRelativePath = String(resource.projectRelativePath ?? '').trim()
+			const resourceAssetPath = String(resource.absolutePath ?? '').trim()
+			const resourceName = String(resource.name ?? '').trim()
+			if (resourceUrl && !result.modelUrl) {
+				result.modelUrl = resourceUrl
+			}
+			if (resourceUrl && !result.modelAssetUrl) {
+				result.modelAssetUrl = resourceUrl
+			}
+			if ((resourceSourcePath || resourceAssetPath) && !result.modelSourcePath) {
+				const finalSourcePath = resourceAssetPath || resourceSourcePath
+				result.modelSourcePath = finalSourcePath
+			}
+			if ((resourceSourcePath || resourceAssetPath) && !result.modelAssetPath) {
+				const finalSourcePath = resourceAssetPath || resourceSourcePath
+				result.modelAssetPath = finalSourcePath
+			}
+			if (resourceProjectRelativePath && !result.modelProjectRelativePath) {
 				result.modelProjectRelativePath = resourceProjectRelativePath
+			}
+			if (resourceProjectRelativePath && !result.modelAssetProjectRelativePath) {
 				result.modelAssetProjectRelativePath = resourceProjectRelativePath
 			}
-			if (resourceName) {
+			if (resourceName && !result.modelSourceName) {
 				result.modelSourceName = resourceName
 			}
 			if (!result.modelFormat) {
 				result.modelFormat = detectModelFormatFromPath(resourceUrl || resourceSourcePath || resourceAssetPath || resourceName) || 'glb'
+			}
+			if (!result.modelResourceId) {
+				result.modelResourceId = resourceId
 			}
 		}
 	}
@@ -289,18 +539,35 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 		const bindingMap = new Map<string, WorkflowSceneLayoutModelBinding>()
 
 		const addOrMergeBinding = (binding: WorkflowSceneLayoutModelBinding) => {
-			if (!binding || !binding.connected) return
+			// 2026-08-03 关键修复：移除 !binding.connected 强门槛。
+			//   用户现场：CHAIN DIAG 显示 27 条 in-model-* 真实入边（都是通过 Vuex 真正连线的），
+			//   但 18 条新链路 decompose 产出的 model3d 节点因 extractModelInfoFromSettings
+			//   初值未命中→connected=false→这里直接 return，永远不进入 bindingMap。
+			//   导致下游 buildPureDataSlots + synthesize + merge 全部只能基于 9 个过期 binding 工作，
+			//   最终 validSlots 只有 7，用户感知"虚幻只导入了第一个旧模型"。
+			//   ——修复思路：connected 只做标记，不做收录硬门槛。
+			//     只要有 objectId 就收录进 bindingMap，让下游 hasAnyPathExtended 再做
+			//     最终出口的 6 路径字段判断。这样 27 条边都有机会被 HARDER 路径兜底找到真实资源。
+			if (!binding) return
 			const objectId = String(binding.objectId ?? '').trim()
 			if (!objectId) return
 			const existing = bindingMap.get(objectId)
 			if (existing) {
+				// 合并策略：已有值优先级 > 新传入值（避免空值覆盖有效值；但 connected 只能"升级成 true"不能降级）
+				if (binding.connected === true && existing.connected !== true) existing.connected = true
 				if (!existing.modelUrl && binding.modelUrl) existing.modelUrl = binding.modelUrl
 				if (!existing.modelAssetUrl && binding.modelAssetUrl) existing.modelAssetUrl = binding.modelAssetUrl
 				if (!existing.modelSourcePath && binding.modelSourcePath) existing.modelSourcePath = binding.modelSourcePath
 				if (!existing.modelAssetPath && binding.modelAssetPath) existing.modelAssetPath = binding.modelAssetPath
+				if (!existing.modelProjectRelativePath && binding.modelProjectRelativePath) existing.modelProjectRelativePath = binding.modelProjectRelativePath
+				if (!existing.modelAssetProjectRelativePath && binding.modelAssetProjectRelativePath) existing.modelAssetProjectRelativePath = binding.modelAssetProjectRelativePath
 				if (!existing.modelSourceName && binding.modelSourceName) existing.modelSourceName = binding.modelSourceName
 				if (!existing.modelFormat && binding.modelFormat) existing.modelFormat = binding.modelFormat
 				if (!existing.objectName && binding.objectName) existing.objectName = binding.objectName
+				if (!existing.sourceNodeId && binding.sourceNodeId) existing.sourceNodeId = binding.sourceNodeId
+				if (!existing.sourceNodeType && binding.sourceNodeType) existing.sourceNodeType = binding.sourceNodeType
+				if (!existing.inputAnchorId && binding.inputAnchorId) existing.inputAnchorId = binding.inputAnchorId
+				if (!existing.modelResourceId && binding.modelResourceId) existing.modelResourceId = binding.modelResourceId
 				return
 			}
 			bindingMap.set(objectId, { ...binding })
@@ -346,7 +613,7 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			if (!fromNode) continue
 
 			const fromNodeType = String(fromNode.type ?? '').trim()
-			if (fromNodeType !== 'model3d' && fromNodeType !== 'meshy') continue
+			if (fromNodeType !== 'model3d' && fromNodeType !== 'meshy' && fromNodeType !== 'tripo3d') continue
 
 			const objectId = parseObjectIdFromAnchorId(toAnchorId)
 			if (!objectId) continue
@@ -381,6 +648,42 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				continue
 			}
 
+			if (fromNodeType === 'tripo3d') {
+				const effective = getTripo3DEffectiveModelSource(fromNode.tripo3dSettings as Record<string, unknown>)
+				const modelAssetUrl = String(effective.assetUrl ?? '').trim()
+				const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
+				const modelAssetPath = String(effective.assetPath ?? '').trim()
+				// Tripo3D 远端 CDN URL 同样屏蔽，只留本地路径
+				const isTripoRemote = (u: string) => {
+					if (!u) return false
+					try {
+						const p = new URL(u)
+						return /(^|\.)tripo3d\.ai$/i.test(p.hostname)
+					} catch {
+						return /https?:\/\/[^\s]*tripo3d\.ai(?:\/|$)/i.test(u)
+					}
+				}
+				const modelUrl = isTripoRemote(rawModelUrl) ? '' : rawModelUrl
+				const safeAssetUrl = isTripoRemote(modelAssetUrl) ? '' : modelAssetUrl
+				const tripoFormat = effective.format === 'gltf' ? 'gltf' as const : 'glb' as const
+				const hasModel = !!(modelUrl || safeAssetUrl || modelAssetPath)
+				addOrMergeBinding(normalizeModelPaths({
+					objectId,
+					objectName,
+					inputAnchorId: toAnchorId || sceneLayoutModelInputAnchorId(objectId),
+					connected: hasModel,
+					sourceNodeId: fromNodeId,
+					sourceNodeType: 'tripo3d',
+					modelUrl: modelUrl || undefined,
+					modelAssetUrl: safeAssetUrl || undefined,
+					modelSourceName: String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
+					modelSourcePath: modelAssetPath || undefined,
+					modelAssetPath: modelAssetPath || undefined,
+					modelFormat: tripoFormat
+				}))
+				continue
+			}
+
 			let extractedInfo: ReturnType<typeof extractModelInfoFromSettings> | null = null
 
 			const settingsToCheck: Array<Record<string, unknown> | null | undefined> = [
@@ -390,8 +693,8 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 			]
 			
 			for (const settings of settingsToCheck) {
-				const info = extractModelInfoFromSettings(settings, options.store.state.resourcesById)
-				if (info.modelUrl || info.modelAssetUrl || info.modelSourcePath || info.modelAssetPath) {
+				const info = extractModelInfoFromSettings(settings, options.store.state.resourcesById, String(fromNode.resourceId ?? ''))
+				if (info.modelUrl || info.modelAssetUrl || info.modelSourcePath || info.modelAssetPath || info.modelProjectRelativePath) {
 					extractedInfo = info
 					break
 				}
@@ -449,22 +752,158 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 						const resourceUrl = String(resource.url ?? '').trim()
 						const resourceSourcePath = String(resource.sourcePath ?? '').trim()
 						const resourceAssetPath = String(resource.absolutePath ?? '').trim()
+						const resourceProjectRelativePath = String(resource.projectRelativePath ?? '').trim()
 						const resourceName = String(resource.name ?? '').trim()
 						const finalPath = resourceAssetPath || resourceSourcePath
-						if (resourceUrl || finalPath) {
+						if (resourceUrl || finalPath || resourceProjectRelativePath) {
 							extractedInfo = extractModelInfoFromSettings({
 								modelUrl: resourceUrl,
 								modelAssetUrl: resourceUrl,
 								modelSourcePath: finalPath,
 								modelAssetPath: finalPath,
-								modelSourceName: resourceName
+								modelProjectRelativePath: resourceProjectRelativePath,
+								modelSourceName: resourceName,
+								resourceId: nodeResourceId
 							})
 						}
 					}
 				}
 			}
-			
-			if (extractedInfo && (extractedInfo.modelUrl || extractedInfo.modelAssetUrl || extractedInfo.modelSourcePath || extractedInfo.modelAssetPath)) {
+
+			// ========================================================================
+			// 2026-08-03 HARDER 路径兜底（对应现场：CHAIN DIAG 27 条 in-model-* 边，
+			//   标准 5 层查找后仍然只有 9 条命中 extractedInfo，剩下 18 条
+			//   decompose 产出的 model3d 节点全部走 connected:false → 以前被
+			//   addOrMergeBinding 的 connected 门槛丢弃，永远没机会被下游找到）。
+			//   ——这里不再"如果没找到就算了"，改"只要有任何模糊线索就硬试"：
+			//     ① fromNode.outputs 所有 out-* 锚点的 resolved / cached / value；
+			//     ② fromNode 顶层任一字段（modelXxxPath / assetXxx）；
+			//     ③ resourceId 再走一次 pickBestModelUrlFromCandidates（含缩略图恢复）；
+			//     ④ 把 pickBestModelUrlFromCandidates 的结果喂回 extractModelInfoFromSettings。
+			// ========================================================================
+			const hasExtractedPaths = !!(
+				extractedInfo && (
+					extractedInfo.modelUrl ||
+					extractedInfo.modelAssetUrl ||
+					extractedInfo.modelSourcePath ||
+					extractedInfo.modelAssetPath ||
+					extractedInfo.modelProjectRelativePath ||
+					extractedInfo.modelAssetProjectRelativePath
+				)
+			)
+			if (!hasExtractedPaths) {
+				const harderCandidates: Array<string | null | undefined> = []
+				// ① outputs 里的 out-* 锚点（主要是 out-model），它的 resolved / cached / value
+				if (Array.isArray(fromNode.outputs)) {
+					for (const out of fromNode.outputs as unknown[]) {
+						if (!out || typeof out !== 'object') continue
+						const o = out as Record<string, unknown>
+						const anchorId = String(o.anchorId ?? o.id ?? '').trim()
+						const isOutModel = /^out-?model/i.test(anchorId) || /model/i.test(anchorId)
+						const resolved = o.resolved
+						const cached = o.cached
+						const val = o.value
+						for (const src of [resolved, cached, val]) {
+							if (!src) continue
+							if (typeof src === 'string') {
+								if (isOutModel) harderCandidates.push(src)
+								else harderCandidates.push(src)
+							} else if (typeof src === 'object') {
+								const s = src as Record<string, unknown>
+								harderCandidates.push(
+									String(s.modelAssetProjectRelativePath ?? s.modelProjectRelativePath ?? '').trim() || null,
+									String(s.modelAssetPath ?? s.modelSourcePath ?? '').trim() || null,
+									String(s.modelAssetUrl ?? s.modelUrl ?? '').trim() || null,
+									String(s.projectRelativePath ?? s.absolutePath ?? s.sourcePath ?? '').trim() || null,
+									String(s.assetUrl ?? s.preferredUrl ?? s.url ?? '').trim() || null
+								)
+							}
+						}
+						// out-model 锚点还会额外读取 format / sourceNodeType 等（如果后面要用到）
+					}
+				}
+				// ② fromNode 顶层任一字段（兼容新链路 decompose 把路径直接塞进节点顶层）
+				const rawTopCandidates = [
+					(fromNode as Record<string, unknown>).modelAssetProjectRelativePath,
+					(fromNode as Record<string, unknown>).modelProjectRelativePath,
+					(fromNode as Record<string, unknown>).modelAssetUrl,
+					(fromNode as Record<string, unknown>).modelUrl,
+					(fromNode as Record<string, unknown>).modelAssetPath,
+					(fromNode as Record<string, unknown>).modelSourcePath,
+					(fromNode as Record<string, unknown>).resolvedModelPath,
+					(fromNode as Record<string, unknown>).localAssetUrl,
+					(fromNode as Record<string, unknown>).localAssetPath
+				]
+				for (const c of rawTopCandidates) harderCandidates.push(c ? String(c).trim() : null)
+				// ③ 再拿 resourceId 硬扫 resourcesById（这次不挑字段，全扔给 pickBestModelUrlFromCandidates）
+				const nodeResourceId = String(fromNode.resourceId ?? '').trim()
+				const ridFromSettings = String(
+					((fromNode.model3dSettings ?? fromNode.settings ?? fromNode) as Record<string, unknown>).resourceId ?? ''
+				).trim()
+				const finalResourceId = nodeResourceId || ridFromSettings
+				if (finalResourceId && options.store.state.resourcesById) {
+					const r = options.store.state.resourcesById[finalResourceId]
+					if (r) {
+						harderCandidates.push(
+							String(r.projectRelativePath ?? '').trim() || null,
+							String(r.absolutePath ?? '').trim() || null,
+							String(r.sourcePath ?? '').trim() || null,
+							String(r.url ?? '').trim() || null,
+							String(r.assetUrl ?? '').trim() || null,
+							String(r.localUrl ?? '').trim() || null,
+							String(r.name ?? '').trim() || null
+						)
+					}
+				}
+				const best = pickBestModelUrlFromCandidates(harderCandidates as Array<string | null | undefined>)
+				if (best) {
+					// 有候选 → 用 best 路径再做一次 extractModelInfoFromSettings（这次应该能命中了，
+					//   因为 pickBestModelUrlFromCandidates 已经做了 isLikely3DModelUrl + 缩略图恢复）
+					const overrideFormat = detectModelFormatFromPath(best)
+					const relPath = (() => {
+						// 如果 best 是 dweb://...?path=Content/Media/xxx.glb → 抽成相对路径
+						const m1 = /\?(?:.*&)?(?:path|relativePath|assetPath|filePath)=([^&]+)/.exec(best)
+						if (m1 && m1[1]) {
+							try { return decodeURIComponent(m1[1]).split('?')[0].split('#')[0] } catch { /* ignore */ }
+						}
+						// 如果是 Content/Media/xxx.glb 相对路径就直接用
+						if (/^Content[\\/]/i.test(best)) return best.replace(/\\/g, '/')
+						// 如果是 file:/// 去掉前缀
+						const m2 = /^file:\/\/\/+([a-zA-Z]:[\\/].+)$/.exec(best)
+						if (m2 && m2[1]) return m2[1].replace(/\\/g, '/')
+						// 绝对路径直接用
+						return best.replace(/\\/g, '/')
+					})()
+					const isRel = /^Content[\\/]/i.test(relPath)
+					extractedInfo = normalizeModelPaths({
+						modelUrl: best,
+						modelAssetUrl: best,
+						modelSourcePath: !isRel ? relPath : undefined,
+						modelAssetPath: !isRel ? relPath : undefined,
+						modelProjectRelativePath: isRel ? relPath : undefined,
+						modelAssetProjectRelativePath: isRel ? relPath : undefined,
+						modelSourceName:
+							String(
+								(fromNode as Record<string, unknown>).modelSourceName ??
+								fromNode.alias ?? fromNode.title ?? objectName
+							).trim() || undefined,
+						modelFormat: overrideFormat || 'glb',
+						modelResourceId: finalResourceId || undefined
+					})
+				}
+			}
+
+			const finalHasPaths = !!(
+				extractedInfo && (
+					extractedInfo.modelUrl ||
+					extractedInfo.modelAssetUrl ||
+					extractedInfo.modelSourcePath ||
+					extractedInfo.modelAssetPath ||
+					extractedInfo.modelProjectRelativePath ||
+					extractedInfo.modelAssetProjectRelativePath
+				)
+			)
+			if (extractedInfo && finalHasPaths) {
 				addOrMergeBinding(normalizeModelPaths({
 					objectId,
 					objectName,
@@ -486,6 +925,11 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 				continue
 			}
 
+			// 2026-08-03：就算到这里还没找到路径，也不放弃——把 binding 以 connected=false 的形式
+			//   写入 bindingMap（addOrMergeBinding 已移除 !connected 门槛）。
+			//   下游 buildPureDataSlotsForUnreal / prepareResolvedSlotsForExport 会再做
+			//   一轮 resourcesById 按 sourceNodeId / modelResourceId 的终极兜底查找，
+			//   保证"只要蓝图连线存在 → 这个 objectId 在 bindingMap 里至少有一条记录"。
 			addOrMergeBinding({
 				objectId,
 				objectName,
