@@ -12,6 +12,7 @@ import {
 	fetchAssetBlobForPackage,
 	guessAssetExtension,
 	inferPackageAssetKind,
+	isRemoteModelCdnUrl,
 	sanitizeFileNamePart,
 	setValueByJsonPointer,
 	type AIWorkflowProjectPackageAssetEntry,
@@ -107,36 +108,118 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 			for (const rid of referencedResourceIds) {
 				const resource = snapshot.resourcesById[rid]
 				if (!resource) continue
-				const kind =
-					resource.kind === 'video' ? 'video' : resource.kind === 'image' ? 'image' : null
+				// ============== 第 1 层：资源池 kind 修复（方案 §三 1.1） ==============
+				const rawKind = String(resource.kind || '').trim().toLowerCase() as
+					| 'image'
+					| 'video'
+					| 'model3d'
+				const kind: 'video' | 'image' | 'file' =
+					rawKind === 'video'
+						? 'video'
+						: rawKind === 'image'
+							? 'image'
+							: rawKind === 'model3d'
+								? 'file'
+								: (null as unknown as 'video' | 'image' | 'file')
 				if (!kind) continue
 
 				const targets: AIWorkflowProjectPackageAssetTarget[] = ['url', 'posterUrl']
 				for (const target of targets) {
-					const currentUrl = cleanupPackagedAssetUrl(resource[target as keyof typeof resource])
-					if (!currentUrl || currentUrl.startsWith('package://')) continue
+					const rawUrl = cleanupPackagedAssetUrl(resource[target as keyof typeof resource])
+					if (!rawUrl || rawUrl.startsWith('package://')) continue
+
+					// ============== 第 1 层：本地优先解析 + 远端 HARD SKIP（方案 §三 1.2） ==============
+					let resolvedUrl = rawUrl
+					const urlIsRemote = isRemoteModelCdnUrl(resolvedUrl)
+					let resolvedFromRemoteFallback = false
+
+					if (urlIsRemote) {
+						// 远端 URL：在当前 resource 内找本地替代
+						const tryLocal: string[] = []
+						// 优先：projectRelativePath / sourcePath（绝对路径 → resolveBackendUrl 会处理）
+						if (resource.projectRelativePath) {
+							tryLocal.push(String(resource.projectRelativePath))
+						}
+						if (resource.sourcePath) {
+							tryLocal.push(String(resource.sourcePath))
+						}
+						// posterUrl 专用：posterProjectRelativePath / posterSourcePath
+						if (target === 'posterUrl') {
+							if (resource.posterProjectRelativePath) {
+								tryLocal.push(String(resource.posterProjectRelativePath))
+							}
+							if (resource.posterSourcePath) {
+								tryLocal.push(String(resource.posterSourcePath))
+							}
+						}
+
+						let replaced = ''
+						for (const candidate of tryLocal) {
+							if (candidate && !isRemoteModelCdnUrl(candidate)) {
+								replaced = candidate
+								break
+							}
+						}
+
+						if (replaced) {
+							resolvedUrl = replaced
+							resolvedFromRemoteFallback = true
+							console.warn(
+								`[package-export][resource-pool] 远端 URL → 替换为本地: ${replaced.substring(0, 120)}`
+							)
+						} else {
+							// ❌ 远端 URL 且无本地替代 → 不调用 fetch，直接 skipped
+							skipped += 1
+							const resourceName = String(resource.name || rid)
+							processedFetchSteps += 1
+							updateFetchProgress(
+								t('aiworkflow.runtime.collectingPoolAssets'),
+								t('aiworkflow.runtime.packageDetailSkipped', {
+									step: String(processedFetchSteps),
+									total: String(totalFetchSteps),
+									name: resourceName
+								})
+							)
+							continue
+						}
+					}
+					// ============== 本地优先解析结束 ==============
 
 					const resourceName = String(resource.name || rid)
 					updateFetchProgress(
 						t('aiworkflow.runtime.collectingPoolAssets'),
-						t('aiworkflow.runtime.packageDetailProgress', { step: String(processedFetchSteps + 1), total: String(totalFetchSteps), name: resourceName })
+						t('aiworkflow.runtime.packageDetailProgress', {
+							step: String(processedFetchSteps + 1),
+							total: String(totalFetchSteps),
+							name: resourceName
+						})
 					)
 
-					const blob = await fetchAssetBlobForPackage(currentUrl, resolveBackendUrl)
+					const blob = await fetchAssetBlobForPackage(resolvedUrl, resolveBackendUrl)
 					processedFetchSteps += 1
 					if (!blob) {
 						skipped += 1
 						updateFetchProgress(
 							t('aiworkflow.runtime.collectingPoolAssets'),
-							t('aiworkflow.runtime.packageDetailSkipped', { step: String(processedFetchSteps), total: String(totalFetchSteps), name: resourceName })
+							t('aiworkflow.runtime.packageDetailSkipped', {
+								step: String(processedFetchSteps),
+								total: String(totalFetchSteps),
+								name: resourceName
+							})
 						)
 						continue
 					}
 
-					const ext = guessAssetExtension(currentUrl, blob.type, kind === 'image' ? 'png' : 'mp4')
+					// ============== 第 1 层：guess fallback 按 kind 区分（方案 §三 1.3） ==============
+					const fallbackExt =
+						kind === 'image' ? 'png' : kind === 'video' ? 'mp4' : 'glb'
+					const ext = guessAssetExtension(resolvedUrl, blob.type, fallbackExt)
 					const filePath = `assets/${sanitizeFileNamePart(rid)}-${target}.${ext}`
 					zip.file(filePath, blob)
-					cachedByUrl.set(currentUrl, { filePath, blob, kind })
+					cachedByUrl.set(rawUrl, { filePath, blob, kind })
+					if (resolvedFromRemoteFallback) {
+						cachedByUrl.set(resolvedUrl, { filePath, blob, kind })
+					}
 
 					assets.push({
 						resourceId: rid,
@@ -150,7 +233,11 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					;(resource as unknown as Record<string, string>)[target] = `package://${filePath}`
 					updateFetchProgress(
 						t('aiworkflow.runtime.collectingPoolAssets'),
-						t('aiworkflow.runtime.packageDetailPackaged', { step: String(processedFetchSteps), total: String(totalFetchSteps), name: resourceName })
+						t('aiworkflow.runtime.packageDetailPackaged', {
+							step: String(processedFetchSteps),
+							total: String(totalFetchSteps),
+							name: resourceName
+						})
 					)
 				}
 
@@ -167,27 +254,57 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 
 				updateFetchProgress(
 					t('aiworkflow.runtime.collectingNodeAssets'),
-					t('aiworkflow.runtime.packageDetailProgress', { step: String(processedFetchSteps + 1), total: String(totalFetchSteps), name: itemName })
+					t('aiworkflow.runtime.packageDetailProgress', {
+						step: String(processedFetchSteps + 1),
+						total: String(totalFetchSteps),
+						name: itemName
+					})
 				)
 
 				let cached = cachedByUrl.get(cleanUrl)
 				if (!cached) {
+					// ============== 节点候选：远端 URL HARD SKIP（简化版） ==============
+					// 若为远端 CDN URL 且无已缓存本地替代，则直接 skipped（避免走到 fetch 层守卫时的冗余检查）
+					// 深嵌套本地路径的候选推送会在方案第 2 层补齐，此处仅兜底不发起公网请求
+					if (isRemoteModelCdnUrl(cleanUrl)) {
+						skipped += 1
+						processedFetchSteps += 1
+						updateFetchProgress(
+							t('aiworkflow.runtime.collectingNodeAssets'),
+							t('aiworkflow.runtime.packageDetailSkipped', {
+								step: String(processedFetchSteps),
+								total: String(totalFetchSteps),
+								name: itemName
+							})
+						)
+						console.warn(
+							`[package-export][snapshot-field] 远端 URL → 无本地替代，skipped (${itemName}): ${cleanUrl.substring(0, 120)}`
+						)
+						continue
+					}
+
 					const blob = await fetchAssetBlobForPackage(cleanUrl, resolveBackendUrl)
 					processedFetchSteps += 1
 					if (!blob) {
 						skipped += 1
 						updateFetchProgress(
 							t('aiworkflow.runtime.collectingNodeAssets'),
-							t('aiworkflow.runtime.packageDetailSkipped', { step: String(processedFetchSteps), total: String(totalFetchSteps), name: itemName })
+							t('aiworkflow.runtime.packageDetailSkipped', {
+								step: String(processedFetchSteps),
+								total: String(totalFetchSteps),
+								name: itemName
+							})
 						)
 						continue
 					}
 					const guessedKind = item.kind || inferPackageAssetKind(cleanUrl, blob.type)
-					const ext = guessAssetExtension(
-						cleanUrl,
-						blob.type,
-						guessedKind === 'video' ? 'mp4' : guessedKind === 'image' ? 'png' : 'bin'
-					)
+					const fallbackExt =
+						guessedKind === 'image'
+							? 'png'
+							: guessedKind === 'video'
+								? 'mp4'
+								: 'glb'
+					const ext = guessAssetExtension(cleanUrl, blob.type, fallbackExt)
 					const filePath = `assets/snapshot-${snapshotAssetIndex}.${ext}`
 					snapshotAssetIndex += 1
 					zip.file(filePath, blob)
@@ -195,17 +312,29 @@ export const useAIWorkflowProjectPackageExport = (payload: {
 					cachedByUrl.set(cleanUrl, cached)
 					updateFetchProgress(
 						t('aiworkflow.runtime.collectingNodeAssets'),
-						t('aiworkflow.runtime.packageDetailPackaged', { step: String(processedFetchSteps), total: String(totalFetchSteps), name: itemName })
+						t('aiworkflow.runtime.packageDetailPackaged', {
+							step: String(processedFetchSteps),
+							total: String(totalFetchSteps),
+							name: itemName
+						})
 					)
 				} else {
 					processedFetchSteps += 1
 					updateFetchProgress(
 						t('aiworkflow.runtime.collectingNodeAssets'),
-						t('aiworkflow.runtime.packageDetailReused', { step: String(processedFetchSteps), total: String(totalFetchSteps), name: itemName })
+						t('aiworkflow.runtime.packageDetailReused', {
+							step: String(processedFetchSteps),
+							total: String(totalFetchSteps),
+							name: itemName
+						})
 					)
 				}
 
-				setValueByJsonPointer(snapshot as Record<string, unknown>, item.pointer, `package://${cached.filePath}`)
+				setValueByJsonPointer(
+					snapshot as Record<string, unknown>,
+					item.pointer,
+					`package://${cached.filePath}`
+				)
 				assets.push({
 					target: 'snapshotField',
 					filePath: cached.filePath,
