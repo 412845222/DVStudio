@@ -7,6 +7,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { isObject, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
+import { fetchAsArrayBuffer } from '../../../../electronBridge'
 import type {
 	WorkflowSceneLayoutItem,
 	WorkflowSceneLayoutLightingControls,
@@ -1821,22 +1822,23 @@ export class SceneLayoutPreviewViewer {
 							rawSourceType === 'model3d' || rawSourceType === 'meshy' || rawSourceType === 'manual'
 								? rawSourceType
 								: ('model3d' as const)
-						binding = {
-							objectId: itemId,
-							inputAnchorId: `in-model-${itemId}`,
-							connected: true,
-							sourceNodeId: String(sceneUserData.sourceNodeId ?? '').trim() || undefined,
-							sourceNodeType: validSourceType,
-							modelUrl: modelUrl || undefined,
-							modelAssetUrl: modelAssetUrl || undefined,
-							modelSourcePath: String(sceneUserData.modelSourcePath ?? '').trim() || undefined,
-							modelAssetPath: String(sceneUserData.modelAssetPath ?? '').trim() || undefined,
-							modelSourceName: String(sceneUserData.modelSourceName ?? '').trim() || undefined,
-							modelFormat:
-								sceneUserData.modelFormat === 'gltf' || sceneUserData.modelFormat === 'glb'
-									? sceneUserData.modelFormat
-									: undefined
+						// 2026-08-03 新链路：不要只挑 8 个字段构造 binding。
+						//   userData 里可能有 textureRefs / modelAssetProjectRelativePath /
+						//   modelMaterialOverrides / modelProjectRelativePath 等"分离打包 gltf
+						//   + png 的贴图引用和相对路径"字段"，全量 spread 拷贝，
+						//   只在必要时覆盖 connected / sourceNodeType / objectId 等归一化字段。
+						const recovered: Record<string, unknown> = { ...sceneUserData }
+						recovered.objectId = itemId
+						recovered.inputAnchorId = `in-model-${itemId}`
+						recovered.connected = true
+						if (!String(recovered.sourceNodeId ?? '').trim()) {
+							recovered.sourceNodeId = String(sceneUserData.sourceNodeId ?? '').trim() || undefined
 						}
+						recovered.sourceNodeType = validSourceType
+						if (!String(recovered.modelUrl ?? '').trim() && modelUrl) recovered.modelUrl = modelUrl
+						if (!String(recovered.modelAssetUrl ?? '').trim() && modelAssetUrl)
+							recovered.modelAssetUrl = modelAssetUrl
+						binding = recovered as unknown as WorkflowSceneLayoutModelBinding
 					}
 				}
 			}
@@ -1922,6 +1924,18 @@ export class SceneLayoutPreviewViewer {
 				const meshTransform = meshWorldTransform
 				const previewInstanceTransform = this.captureObjectTransform(instance, actorOrigin)
 				const previewInstanceWorldTransform = meshWorldTransform
+				// 2026-08-03 新链路：slot.modelBinding 必须完整保留 binding 的全部字段，
+				//   不能只挑 8 个字段白名单——否则第一个 slot 虽然有路径，但
+				//   textureRefs / modelAssetProjectRelativePath / modelMaterialOverrides
+				//   等贴图相关字段被裁掉（进入 prepareResolvedSlotsForExport 时，
+				//   slot.modelBinding 已经有路径，所以 fallback 不会触发，最终就是白模）。
+				const slotModelBinding: Record<string, unknown> | undefined =
+					binding && typeof binding === 'object'
+						? { ...(binding as Record<string, unknown>) }
+						: undefined
+				if (slotModelBinding && !String(slotModelBinding.sourceNodeType ?? '').trim()) {
+					slotModelBinding.sourceNodeType = 'model3d'
+				}
 				slots.push({
 					slotId,
 					sourceSlotId: itemId,
@@ -1954,18 +1968,7 @@ export class SceneLayoutPreviewViewer {
 					surfaceSemantics,
 					parentReference: parentReferenceResult.parentReference,
 					constraintDiagnostics,
-					modelBinding: binding
-						? {
-								sourceNodeId: binding.sourceNodeId,
-								sourceNodeType: binding.sourceNodeType,
-								modelUrl: binding.modelUrl,
-								modelAssetUrl: binding.modelAssetUrl,
-								modelSourcePath: binding.modelSourcePath,
-								modelAssetPath: binding.modelAssetPath,
-								modelSourceName: binding.modelSourceName,
-								modelFormat: binding.modelFormat
-							}
-						: undefined,
+					modelBinding: slotModelBinding as unknown as WorkflowSceneLayoutModelBinding | undefined,
 					slotTransform,
 					meshTransform,
 					previewInstanceTransform,
@@ -2927,7 +2930,36 @@ export class SceneLayoutPreviewViewer {
 	) {
 		const mesh = this.meshesById.get(itemId)
 		const item = this.currentItems.find((entry) => entry.id === itemId)
-		const sourceUrl = String(binding.modelUrl ?? binding.modelAssetUrl ?? '').trim()
+
+		// 【根因修复 2026-08】：SceneLayout 预览完全不需要走任何 meshy/tripo3d 的远端 CDN。
+		// 只从输入锚点对应的上游 3D 模型节点读取本地文件资产：
+		// 1) 只接受本地加载源：file:///、dweb:// 或 本地绝对路径（盘符开头）；
+		// 2) 任何 http(s):// 的远端 URL（尤其 assets.meshy.ai / assets.tripo3d.ai）直接拒绝，
+		//    避免 FileLoader 发起跨域/断连请求、占用网络、让用户看到 CORS/ERR_CONNECTION_CLOSED 的错误。
+		const isLocalSafeUrl = (s: string): boolean => {
+			if (!s) return false
+			const t = s.trim()
+			if (!t) return false
+			const lower = t.toLowerCase()
+			if (lower.startsWith('file://') || lower.startsWith('dweb://') || lower.startsWith('dweb:'))
+				return true
+			// Windows 本地绝对路径: C:\... 或 \\... 或 unix /...
+			if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('\\\\') || t.startsWith('/')) return true
+			return false
+		}
+		const candidates = [
+			String(binding.modelAssetUrl ?? '').trim(),
+			String(binding.modelUrl ?? '').trim(),
+			String(binding.modelAssetPath ?? '').trim(),
+			String(binding.modelSourcePath ?? '').trim()
+		].filter(Boolean) as string[]
+		const sourceUrl = (() => {
+			for (const c of candidates) {
+				if (isLocalSafeUrl(c)) return c
+			}
+			return ''
+		})()
+
 		if (!mesh || !item || !sourceUrl) return false
 		if (
 			this.disposed ||
@@ -2937,7 +2969,7 @@ export class SceneLayoutPreviewViewer {
 			return false
 
 		try {
-			const template = await this.loadModelTemplate(sourceUrl, itemId)
+			const template = await this.loadModelTemplateProxy(sourceUrl, itemId)
 			if (
 				this.disposed ||
 				revision !== this.layoutRevision ||
@@ -2967,22 +2999,110 @@ export class SceneLayoutPreviewViewer {
 		}
 	}
 
-	private loadModelTemplate(url: string, itemId: string) {
+	// ===== 【BUGFIX 2026-08】：参考 EditorViewer 同款 Electron 主进程代理兜底：
+	//  1) file:/// 开头的本地路径：部分 Electron 安全策略（webSecurity/file:// CORS）下
+	//     Three.js FileLoader 会直接被拦截 (Not allowed to load local resource)；
+	//  2) dweb://project-assets：Three.js 不识别该协议，FileLoader 会发 HTTP 404；
+	//  解决方案：先让 fetchAsArrayBuffer 从主进程拿字节(有 dweb/file 协议处理、无 CORS)，
+	//           再用 GLTFLoader.parse 直接在渲染线程解析，最终行为和 3D 模型节点预览完全一致。
+	private needsElectronFetchProxy = (input: string): boolean => {
+		const t = String(input ?? '').trim()
+		if (!t) return false
+		const low = t.toLowerCase()
+		if (low.startsWith('dweb:') || low.startsWith('http://') || low.startsWith('https://'))
+			return true
+		// ===== 关键：file:// 也统一走主进程代理（目前截图里的报错就是 file:// 被安全策略拦） =====
+		return low.startsWith('file://')
+	}
+	private async loadModelFromArrayBuffer(
+		buffer: ArrayBuffer,
+		originUrl: string
+	): Promise<Record<string, unknown> | null> {
+		if (!buffer || buffer.byteLength === 0) return null
+		const ext =
+			String(originUrl ?? '')
+				.split('?')[0]
+				.split('#')[0]
+				.split('.')
+				.pop()
+				?.toLowerCase() || ''
+		if (!ext && !originUrl.toLowerCase().includes('.gltf')) return null
+		return new Promise<Record<string, unknown> | null>((resolve, reject) => {
+			const loader = this.loader as unknown as GLTFLoaderLike
+			const parseImpl = (loader as unknown as Record<string, unknown>).parse
+			if (typeof parseImpl !== 'function') {
+				resolve(null)
+				return
+			}
+			try {
+				;(
+					parseImpl as (
+						buffer: ArrayBuffer,
+						path: string,
+						onLoad: (result: Record<string, unknown>) => void,
+						onError?: (error: unknown) => void
+					) => void | Promise<Record<string, unknown>>
+				).call(
+					loader,
+					buffer,
+					'',
+					(result) => {
+						const scene =
+							(result as Record<string, unknown>).scene ||
+							(result as unknown as { default?: { scene?: unknown } }).default?.scene
+						resolve((scene ?? null) as Record<string, unknown> | null)
+					},
+					(err) => reject(err)
+				)
+			} catch (e) {
+				reject(e)
+			}
+		})
+	}
+	private async loadModelTemplateProxy(url: string, itemId: string) {
 		const source = String(url ?? '').trim()
 		if (!source) return Promise.reject(new Error('empty model source'))
-		const cached = this.modelTemplateCache.get(source)
+		const cacheKey = `proxy:${source}`
+		const cached = this.modelTemplateCache.get(cacheKey) || this.modelTemplateCache.get(source)
 		if (cached) return cached
-		const next = this.loader
-			.loadAsync(source)
-			.then((gltf: GLTFResult) => gltf.scene)
-			.catch((err) => {
-				if (this.options.onModelLoadError) {
-					this.options.onModelLoadError(source, itemId)
-				}
-				throw err
-			})
-		this.modelTemplateCache.set(source, next)
-		return next
+		const doNative = () => {
+			const p = this.loader
+				.loadAsync(source)
+				.then((gltf) => gltf.scene as unknown as GltfTemplateLike)
+				.catch((err) => {
+					if (this.options.onModelLoadError) this.options.onModelLoadError(source, itemId)
+					throw err
+				})
+			this.modelTemplateCache.set(cacheKey, p)
+			this.modelTemplateCache.set(source, p)
+			return p
+		}
+		if (this.needsElectronFetchProxy(source) && typeof fetchAsArrayBuffer === 'function') {
+			const fetchResult = await fetchAsArrayBuffer(source).catch(() => null)
+			if (fetchResult?.ok && fetchResult.buffer) {
+				const view = fetchResult.buffer as Uint8Array
+				const arrayBuffer = view.buffer.slice(
+					view.byteOffset,
+					view.byteOffset + view.byteLength
+				) as ArrayBuffer
+				const p = Promise.resolve()
+					.then(async () => {
+						const parsed = await this.loadModelFromArrayBuffer(arrayBuffer, source)
+						if (!parsed) throw new Error('[SceneLayout] ArrayBuffer parse failed')
+						return parsed as unknown as GltfTemplateLike
+					})
+					.catch((err) => {
+						if (this.options.onModelLoadError) this.options.onModelLoadError(source, itemId)
+						throw err
+					})
+				this.modelTemplateCache.set(cacheKey, p)
+				return p
+			}
+		}
+		return doNative()
+	}
+	private loadModelTemplate(url: string, itemId: string) {
+		return this.loadModelTemplateProxy(url, itemId)
 	}
 
 	private cloneModelScene(template: GltfTemplateLike) {

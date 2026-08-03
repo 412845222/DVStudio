@@ -421,7 +421,7 @@ export type WorkflowUnrealResolvedConstraintDiagnostics = {
 
 export type WorkflowUnrealResolvedModelBinding = {
 	sourceNodeId?: string
-	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	sourceNodeType?: 'model3d' | 'meshy' | 'tripo3d' | 'manual'
 	modelUrl?: string
 	modelAssetUrl?: string
 	modelSourcePath?: string
@@ -430,6 +430,7 @@ export type WorkflowUnrealResolvedModelBinding = {
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
 	modelFormat?: WorkflowModelFormat
+	modelResourceId?: string
 }
 
 export type WorkflowUnrealResolvedLayoutSlot = {
@@ -479,6 +480,18 @@ export type WorkflowUnrealResolvedLayoutExport = {
 	actorOrigin: WorkflowResolvedVector3
 	warnings: string[]
 	slots: WorkflowUnrealResolvedLayoutSlot[]
+	/**
+	 * 2026-08-03 新链路对齐：SceneLayout 预览渲染时真正使用的、
+	 * 已经通过 resolvedModelBindings computed 完成本地路径覆盖的完整绑定集合。
+	 *
+	 * Unreal 导出侧必须优先使用它代替 connectedSceneLayoutModelBindings() 原始值，
+	 * 才能保证“预览里能看到的模型，UE 里都能按同一份静态资产路径正确导入”。
+	 *
+	 * 不使用它的后果：新链路生成的 Tripo3D / Meshy / 通用 3D 节点（已经把模型下载到本地
+	 * project-assets/Content/Media 并在预览里渲染成功），导出时仍回到旧链路 CDN URL，
+	 * 导致只有在旧链路上偶然命中的模型才能被 UE 识别。
+	 */
+	sceneLayoutResolvedModelBindings?: WorkflowSceneLayoutModelBinding[]
 }
 
 export type WorkflowUnrealExportSessionInfo = {
@@ -581,7 +594,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	inputAnchorId: string
 	connected: boolean
 	sourceNodeId?: string
-	sourceNodeType?: 'model3d' | 'meshy' | 'manual'
+	sourceNodeType?: 'model3d' | 'meshy' | 'tripo3d' | 'manual'
 	modelUrl?: string
 	modelAssetUrl?: string
 	modelSourcePath?: string
@@ -590,6 +603,7 @@ export type WorkflowSceneLayoutModelBinding = {
 	modelAssetProjectRelativePath?: string
 	modelSourceName?: string
 	modelFormat?: WorkflowModelFormat
+	modelResourceId?: string
 }
 
 export type WorkflowSceneDecomposeOutput = {

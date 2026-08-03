@@ -6,6 +6,7 @@ export interface UseModel3DEditorOptions {
 	nodeId: string
 	projectId?: number
 	modelUrl?: string
+	modelAssetPath?: string
 	modelName?: string
 	models?: Array<{
 		id?: string
@@ -24,7 +25,7 @@ export function useModel3DEditor() {
 			models.push({
 				id: `model-${options.nodeId || 'default'}`,
 				name: options.modelName || (t as any)('nodes.model3d.defaultModelName', 'Model'),
-				url: options.modelUrl,
+				url: options.modelUrl
 			})
 		}
 
@@ -35,7 +36,7 @@ export function useModel3DEditor() {
 					models.push({
 						id: m.id || `model-${options.nodeId || 'default'}-${i}`,
 						name: m.name || `${(t as any)('nodes.model3d.model', 'Model')} ${i + 1}`,
-						url: m.url,
+						url: m.url
 					})
 				}
 			}
@@ -48,11 +49,11 @@ export function useModel3DEditor() {
 		return open3DEditor({
 			nodeId: options.nodeId,
 			projectId: options.projectId,
-			models,
+			models
 		})
 	}
 
 	return {
-		open,
+		open
 	}
 }

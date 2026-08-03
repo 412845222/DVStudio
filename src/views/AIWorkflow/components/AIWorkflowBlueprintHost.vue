@@ -64,6 +64,7 @@ const emit = defineEmits<{
 	'node-preview-request': [payload: { nodeId: string; imageUrl: string }]
 	'node-clear-resource': [nodeId: string]
 	'node-upload-resource': [payload: { nodeId: string; file: File; kind: string }]
+	'node-upload-model3d-file': [payload: { nodeId: string; file: File }]
 	'node-update-image-settings': [payload: { nodeId: string; patch: Record<string, any> }]
 	'node-media-ready': [nodeId: string]
 	'node-invalidate-screenshot': [nodeId: string]
@@ -419,6 +420,7 @@ watch(
 			@node-preview-request="(p: any) => emit('node-preview-request', p)"
 			@node-clear-resource="(id: string) => emit('node-clear-resource', id)"
 			@node-upload-resource="(p: any) => emit('node-upload-resource', p)"
+			@node-upload-model3d-file="(p: any) => emit('node-upload-model3d-file', p)"
 			@node-update-image-settings="(p: any) => emit('node-update-image-settings', p)"
 			@node-media-ready="(id: string) => emit('node-media-ready', id)"
 			@node-invalidate-screenshot="(id: string) => emit('node-invalidate-screenshot', id)"

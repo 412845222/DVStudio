@@ -10,6 +10,90 @@ import {
 
 const MESHY_API_BASE = 'https://api.meshy.ai'
 
+const MODEL_EXT_WHITELIST = Object.freeze([
+	'glb',
+	'gltf',
+	'fbx',
+	'obj',
+	'stl',
+	'dae',
+	'3ds',
+	'ply',
+	'x3d',
+	'x'
+])
+const IMAGE_EXT_BLACKLIST = Object.freeze([
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'bmp',
+	'tiff',
+	'tif',
+	'svg',
+	'ico',
+	'heic',
+	'heif'
+])
+
+// 同时提取 URL / dweb 协议 (?path= 参数) / Windows/Unix 本地路径的扩展名
+const extractUrlOrPathExt = (input) => {
+	if (!input) return ''
+	const text = String(input).trim()
+	if (!text) return ''
+	const low = text.toLowerCase()
+	// 1. dweb://project-assets?projectId=xx&path=assets/meshy/xxx.glb
+	if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+		try {
+			const qStart = text.indexOf('?')
+			const queryStr = qStart >= 0 ? text.slice(qStart + 1) : ''
+			const params = new URLSearchParams(queryStr)
+			const p = decodeURIComponent(
+				params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
+			)
+			if (p) {
+				const clean = p.split('?')[0].split('#')[0]
+				const d = clean.lastIndexOf('.')
+				if (d >= 0) return clean.slice(d + 1).toLowerCase()
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+	// 2. 通用提取
+	try {
+		const withoutQuery = text.split('?')[0].split('#')[0]
+		const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
+		const namePart = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+		const lastDot = namePart.lastIndexOf('.')
+		if (lastDot < 0) return ''
+		return namePart.slice(lastDot + 1).toLowerCase()
+	} catch {
+		return ''
+	}
+}
+const isImageUrlOrPath = (input) => {
+	const ext = extractUrlOrPathExt(input)
+	return ext ? IMAGE_EXT_BLACKLIST.includes(ext) : false
+}
+const isLikely3DModelUrlOrPath = (input) => {
+	const ext = extractUrlOrPathExt(input)
+	if (!ext) {
+		const low = String(input || '')
+			.trim()
+			.toLowerCase()
+		return (
+			low.startsWith('http://') ||
+			low.startsWith('https://') ||
+			low.startsWith('dweb://') ||
+			low.startsWith('dweb:')
+		)
+	}
+	if (IMAGE_EXT_BLACKLIST.includes(ext)) return false
+	return MODEL_EXT_WHITELIST.includes(ext)
+}
+
 const MODE_PATH_MAP = {
 	'text-to-3d': '/openapi/v2/text-to-3d',
 	'image-to-3d': '/openapi/v1/image-to-3d',
@@ -237,14 +321,18 @@ function normalizeTask(mode, taskId, obj) {
 				? imageUrlsRaw.map((x) => String(x || '').trim()).filter((x) => x)
 				: []
 	const preferredImageUrl = imageUrls.length > 0 ? imageUrls[0] : ''
-	const primaryRemoteUrl = preferredModelUrl || preferredImageUrl
+	const hasModelUrls = !!preferredModelUrl
+	const resolvedPreferredModelUrl = preferredModelUrl
+	const resolvedSourceModelUrl = preferredModelUrl
+	const resolvedSourceImageUrl = preferredImageUrl
 
 	console.log(`[Meshy Backend] normalizeTask for ${mode}/${taskId}:`, {
 		status,
 		progress,
 		imageUrlsCount: imageUrls.length,
-		imageUrls: imageUrls,
-		preferredImageUrl: preferredImageUrl,
+		preferredImageUrl,
+		hasModelUrls,
+		preferredModelUrl: resolvedPreferredModelUrl,
 		hasResultObj: !!obj.result,
 		resultObjKeys: resultObj ? Object.keys(resultObj) : [],
 		topLevelKeys: Object.keys(obj).filter(
@@ -276,9 +364,10 @@ function normalizeTask(mode, taskId, obj) {
 		modelUrls,
 		imageUrls,
 		preferredImageUrl,
-		sourceImageUrl: preferredImageUrl,
-		preferredModelUrl: primaryRemoteUrl,
-		sourceModelUrl: primaryRemoteUrl,
+		sourceImageUrl: resolvedSourceImageUrl,
+		preferredModelUrl: resolvedPreferredModelUrl,
+		sourceModelUrl: resolvedSourceModelUrl,
+		hasModelUrls,
 		statusText,
 		errorMessage,
 		raw: obj
@@ -1288,10 +1377,34 @@ export async function updateTaskLocalAsset(ctx, payload) {
 	const existing = repo.getByTaskId(taskId)
 	if (!existing) throw notFoundError('meshy task not found')
 
+	// ===== 硬防护：localAssetUrl/localAssetPath 扩展名必须是模型格式，禁止缩略图(PNG等)污染 DB =====
+	const rawLocalAssetUrl = String(payload?.localAssetUrl || '').trim()
+	const rawLocalAssetPath = String(payload?.localAssetPath || '').trim()
+	const urlIsImage = rawLocalAssetUrl && isImageUrlOrPath(rawLocalAssetUrl)
+	const pathIsImage = rawLocalAssetPath && isImageUrlOrPath(rawLocalAssetPath)
+	if (urlIsImage || pathIsImage) {
+		console.warn(
+			`[Meshy Backend] updateTaskLocalAsset 收到疑似缩略图污染请求(扩展名是图片)，已拒绝写入：`,
+			{
+				taskId,
+				localAssetUrl: rawLocalAssetUrl || undefined,
+				localAssetPath: rawLocalAssetPath || undefined,
+				urlIsImage,
+				pathIsImage
+			}
+		)
+	}
+	const safeLocalAssetUrl =
+		rawLocalAssetUrl && !urlIsImage && isLikely3DModelUrlOrPath(rawLocalAssetUrl)
+			? rawLocalAssetUrl
+			: String(existing?.localAssetUrl || '')
+	const safeLocalAssetPath =
+		rawLocalAssetPath && !pathIsImage ? rawLocalAssetPath : String(existing?.localAssetPath || '')
+
 	repo.upsert({
 		taskId,
-		localAssetUrl: String(payload?.localAssetUrl || existing?.localAssetUrl || ''),
-		localAssetPath: String(payload?.localAssetPath || existing?.localAssetPath || ''),
+		localAssetUrl: safeLocalAssetUrl,
+		localAssetPath: safeLocalAssetPath,
 		lastNodeId: String(payload?.lastNodeId || existing?.lastNodeId || '')
 	})
 

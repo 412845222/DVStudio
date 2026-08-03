@@ -461,7 +461,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
 import {
@@ -475,7 +475,11 @@ import type {
 	WorkflowSceneLayoutLightingControls,
 	WorkflowSceneLayoutModelBinding,
 	WorkflowSceneLayoutNodeSettings,
-	WorkflowUnrealResolvedLayoutExport
+	WorkflowUnrealResolvedLayoutExport,
+	WorkflowUnrealResolvedLayoutSlot,
+	WorkflowUnrealResolvedModelBinding,
+	WorkflowResolvedTransform,
+	WorkflowResolvedVector3
 } from '../../../aiworkflow/types'
 import type {
 	WorkflowThreePreviewPhase,
@@ -483,7 +487,8 @@ import type {
 	WorkflowThreePreviewState
 } from './three-preview/types'
 import { isObject, isString } from '../../../types/utils'
-import { diagnoseDwebAsset } from '../../../electronBridge'
+import { diagnoseDwebAsset, getProjectRootById } from '../../../electronBridge'
+import { buildPureDataSlotsForUnreal } from '../../../views/AIWorkflow/node-business/unreal/unrealExportUtils'
 
 const { t } = useI18n()
 
@@ -1059,6 +1064,243 @@ const modelBindingsSignature = computed(() => {
 		return String(sceneLayoutModelBindings.value.length)
 	}
 })
+
+// =============================================================================================
+// 2026-08-03 修复：Scene Layout 预览模式下必须遵循新链路
+//   最高优先级渲染 URL = resourcesById[resourceId].projectRelativePath → projectRoot → file:///
+//   只有这样才能避免:
+//     1) settings/modelUrl 被缩略图/远程 CDN 回退污染（https://assets.meshy.ai 触发 CORS）
+//     2) dweb://project-assets 协议在 Three.js FileLoader 中不原生处理
+//   做法：在传入 viewer.setLayout 之前把每个 binding 解析成 file:/// URL，写入 modelAssetUrl
+// =============================================================================================
+const localAbsPathToFileUrl = (absPath: string): string => {
+	const t = String(absPath ?? '').trim()
+	if (!t) return ''
+	if (/^[a-z]:[\\/]/i.test(t)) {
+		const forward = t.replace(/\\/g, '/')
+		return 'file:///' + encodeURI(forward).replace(/#/g, '%23')
+	}
+	if (t.startsWith('/')) {
+		return 'file://' + encodeURI(t).replace(/#/g, '%23')
+	}
+	return ''
+}
+const isLocalAbsPath = (p: string) => {
+	const t = String(p ?? '').trim()
+	return !!t && (/^[a-z]:[\\/]/i.test(t) || t.startsWith('/'))
+}
+const isRemoteHttpUrl = (u: string) => /^https?:\/\//i.test(String(u ?? '').trim())
+// 【BUGFIX 2026-08】参考 WorkflowModel3DNode：Content/Media/ 相对路径、不仅 glb，gltf/fbx/obj/stl/usdz/dae 也应识别
+const LIKELY_MODEL_EXT_RE = /\.(glb|gltf|fbx|obj|stl|usdz|dae|3ds|ply|x3d)$/i
+const extractProjectRelativePathFromAny = (input: string): string => {
+	const t = String(input ?? '').trim()
+	if (!t) return ''
+	if (t.startsWith('dweb://project-assets') || t.toLowerCase().startsWith('dweb:')) {
+		try {
+			const qIdx = t.indexOf('?')
+			if (qIdx >= 0) {
+				const q = new URLSearchParams(t.substring(qIdx + 1))
+				const p =
+					q.get('path') || q.get('relativePath') || q.get('assetPath') || q.get('filePath') || ''
+				if (p) {
+					const clean = decodeURIComponent(p).split('?')[0].split('#')[0].replace(/\\/g, '/')
+					if (LIKELY_MODEL_EXT_RE.test(clean)) return clean
+					if (/^content\//i.test(clean)) return clean
+				}
+			}
+		} catch {
+			/* ignore */
+		}
+		return ''
+	}
+	if (
+		isRemoteHttpUrl(t) ||
+		t.startsWith('blob:') ||
+		t.startsWith('data:') ||
+		t.startsWith('file://')
+	) {
+		return ''
+	}
+	if (isLocalAbsPath(t)) return ''
+	const normalized = t.replace(/\\/g, '/')
+	if (LIKELY_MODEL_EXT_RE.test(normalized) || /^content\//i.test(normalized)) return normalized
+	return ''
+}
+
+const resolvedModelBindingsCache = new Map<string, WorkflowSceneLayoutModelBinding[]>()
+const currentProjectIdRef = ref<number>(0)
+const currentProjectRootRef = ref<string>('')
+const lastBindingsProjectKey = ref('')
+
+const setCurrentProjectContext = (projectId: number, projectRootPath: string) => {
+	const pid = Math.max(0, Number(projectId) || 0)
+	const root = String(projectRootPath ?? '').trim()
+	currentProjectIdRef.value = pid
+	currentProjectRootRef.value = root
+}
+
+provide('sceneLayoutProjectContext', {
+	setCurrentProjectContext
+})
+
+const resolvedModelBindings = computed<WorkflowSceneLayoutModelBinding[]>(() => {
+	const bindings = Array.isArray(props.sceneLayoutModelBindings)
+		? props.sceneLayoutModelBindings
+		: []
+	if (!bindings.length) return bindings
+
+	const pid = currentProjectIdRef.value
+	const root = currentProjectRootRef.value
+	const cacheKey = `pid=${pid};root=${root};sig=${modelBindingsSignature.value}`
+	const cached = resolvedModelBindingsCache.get(cacheKey)
+	if (cached) return cached
+
+	let reusedCount = 0
+	let resolvedCount = 0
+	let skippedRemoteCount = 0
+
+	const sep = root && (root.endsWith('\\') || root.endsWith('/')) ? '' : '\\'
+	const resolved: WorkflowSceneLayoutModelBinding[] = bindings.map((b) => {
+		const out: WorkflowSceneLayoutModelBinding = { ...b }
+
+		const existingAssetUrl = String(out.modelAssetUrl ?? '').trim()
+		if (existingAssetUrl.startsWith('file://')) {
+			reusedCount++
+			return out
+		}
+
+		const rels: string[] = []
+		const fromBindingRel = String(
+			out.modelAssetProjectRelativePath ?? out.modelProjectRelativePath ?? ''
+		).trim()
+		if (fromBindingRel) rels.push(fromBindingRel)
+		const fromBindingPath = extractProjectRelativePathFromAny(
+			String(out.modelAssetPath ?? out.modelSourcePath ?? '')
+		)
+		if (fromBindingPath) rels.push(fromBindingPath)
+		const fromAssetUrl = extractProjectRelativePathFromAny(existingAssetUrl)
+		if (fromAssetUrl) rels.push(fromAssetUrl)
+		const fromModelUrl = extractProjectRelativePathFromAny(String(out.modelUrl ?? ''))
+		if (fromModelUrl) rels.push(fromModelUrl)
+
+		const absCandidates: string[] = []
+		const absFromAssetPath = isLocalAbsPath(String(out.modelAssetPath ?? ''))
+			? String(out.modelAssetPath)
+			: ''
+		if (absFromAssetPath) absCandidates.push(absFromAssetPath)
+		const absFromSourcePath = isLocalAbsPath(String(out.modelSourcePath ?? ''))
+			? String(out.modelSourcePath)
+			: ''
+		if (absFromSourcePath) absCandidates.push(absFromSourcePath)
+
+		let fileUrl = ''
+		for (const a of absCandidates) {
+			const u = localAbsPathToFileUrl(a)
+			if (u) {
+				fileUrl = u
+				break
+			}
+		}
+		if (!fileUrl && rels.length > 0 && root && pid > 0) {
+			for (const rel of rels) {
+				const abs = root + sep + rel.replace(/\//g, '\\')
+				const u = localAbsPathToFileUrl(abs)
+				if (u) {
+					fileUrl = u
+					break
+				}
+			}
+		}
+
+		if (!fileUrl && !root) {
+			// projectRoot 还没查询到，就先跳过解析（等 watch 触发解析后重算），
+			// 但如果已有本地绝对路径也仍然保留，避免回退污染 remote
+		}
+
+		const rawModelUrl = String(out.modelUrl ?? '').trim()
+		if (fileUrl) {
+			resolvedCount++
+			// 【BUGFIX 2026-08】有本地 file:/// 就强制覆盖 modelAssetUrl 与 modelUrl 两个字段，
+			// 不管上游残留的是不是 meshy CDN URL。因为：
+			// 1) viewer 的 attachModelBinding 会先检查 localSafe，但为了兜底任何其它可能调用点，
+			//    我们直接把远端 URL 从 binding 里抹掉；
+			// 2) 即使 modelUrl/modelAssetUrl 有一个是 dweb:// 旧协议，只要已经能拼到本地 file:///
+			//    就优先让 Three.js 走 fileLoader (不受 CORS 影响、最快、最稳定)。
+			// 原数据只备份在 _prev 前缀字段用于 debug，不会进入真实加载链路。
+			if (existingAssetUrl && existingAssetUrl !== fileUrl) {
+				;(out as any)._prevBlockedModelAssetUrl = existingAssetUrl
+			}
+			if (rawModelUrl && rawModelUrl !== fileUrl) {
+				;(out as any)._prevBlockedModelUrl = rawModelUrl
+			}
+			out.modelAssetUrl = fileUrl
+			out.modelUrl = fileUrl
+		} else if (isRemoteHttpUrl(existingAssetUrl) || isRemoteHttpUrl(rawModelUrl)) {
+			// 【根因修复】：严格禁止把远程 CDN URL (assets.meshy.ai / assets.tripo3d.ai)
+			// 当作 Three.js FileLoader 的加载源。远程 CDN 会触发 CORS，而且真实 GLB 已在本地。
+			skippedRemoteCount++
+			if (isRemoteHttpUrl(existingAssetUrl)) {
+				;(out as any)._prevBlockedModelAssetUrl = existingAssetUrl
+				out.modelAssetUrl = ''
+			}
+			if (isRemoteHttpUrl(rawModelUrl)) {
+				;(out as any)._prevBlockedModelUrl = rawModelUrl
+				out.modelUrl = ''
+			}
+		}
+		return out
+	})
+
+	sceneLog('[SceneLayout3D] resolved model bindings', {
+		total: resolved.length,
+		resolved: resolvedCount,
+		reused: reusedCount,
+		skippedRemote: skippedRemoteCount,
+		pid,
+		hasRoot: !!root,
+		// 每次重算都打印前 6 条最终的 URL 状态，防止"resolved 计数对但实际没被覆盖"的回归
+		sample: resolved.slice(0, 6).map((b) => {
+			const modelUrl = String(b.modelUrl ?? '')
+			const modelAssetUrl = String(b.modelAssetUrl ?? '')
+			const any = b as unknown as Record<string, unknown>
+			return {
+				itemId: b.objectId,
+				modelUrl: modelUrl.slice(0, 96),
+				modelAssetUrl: modelAssetUrl.slice(0, 96),
+				modelProjectRelativePath:
+					b.modelProjectRelativePath ?? b.modelAssetProjectRelativePath ?? '',
+				modelAssetPath: String(b.modelAssetPath ?? '').slice(0, 80),
+				// ===== Step D 运行时诊断：直接告诉开发者 file:/// 是否命中，避免还需要肉眼判断 =====
+				isFileUrl: modelUrl.toLowerCase().startsWith('file://'),
+				isDwebUrl: modelUrl.toLowerCase().startsWith('dweb:'),
+				isLocalAbsPath: /^[a-zA-Z]:[\\/]/.test(modelUrl) || modelUrl.startsWith('/'),
+				localHit: Boolean(
+					modelUrl.toLowerCase().startsWith('file://') ||
+					modelUrl.toLowerCase().startsWith('dweb:') ||
+					/^[a-zA-Z]:[\\/]/.test(modelUrl) ||
+					modelUrl.startsWith('/') ||
+					modelAssetUrl.toLowerCase().startsWith('file://') ||
+					modelAssetUrl.toLowerCase().startsWith('dweb:')
+				),
+				prevBlocked: Boolean(any._prevBlockedModelAssetUrl || any._prevBlockedModelUrl),
+				_prevBlockedModelUrl: any._prevBlockedModelUrl
+					? String(any._prevBlockedModelUrl).slice(0, 96)
+					: '',
+				_prevBlockedModelAssetUrl: any._prevBlockedModelAssetUrl
+					? String(any._prevBlockedModelAssetUrl).slice(0, 96)
+					: ''
+			}
+		})
+	})
+
+	resolvedModelBindingsCache.set(cacheKey, resolved)
+	if (resolvedModelBindingsCache.size > 20) {
+		const keys = resolvedModelBindingsCache.keys()
+		const first = keys.next()
+		if (!first.done) resolvedModelBindingsCache.delete(first.value)
+	}
+	return resolved
+})
 const lightingControlsSignature = computed(() => {
 	try {
 		return JSON.stringify(lightingControls.value)
@@ -1137,7 +1379,7 @@ watch(
 				lightingDebugEnabled: lightingDebugEnabled.value,
 				lightingControls: lightingControls.value,
 				lightingJson: String(props.linkedLightingJsonText ?? ''),
-				modelBindings: sceneLayoutModelBindings.value,
+				modelBindings: resolvedModelBindings.value,
 				hidePlaceholderCubes: hidePlaceholderCubes.value
 			},
 			cachedViewForWatch
@@ -1367,7 +1609,7 @@ const syncViewerState = () => {
 			lightingDebugEnabled: lightingDebugEnabled.value,
 			lightingControls: lightingControls.value,
 			lightingJson: String(props.linkedLightingJsonText ?? ''),
-			modelBindings: sceneLayoutModelBindings.value,
+			modelBindings: resolvedModelBindings.value,
 			hidePlaceholderCubes: effectiveHidePlaceholderCubes
 		},
 		cachedView
@@ -2451,6 +2693,175 @@ onMounted(() => {
 		'color:#16a34a;font-weight:bold'
 	)
 	requestResize()
+
+	// ===========================================================================
+	// 2026-08-03 修复注入：初始化 projectContext
+	//   为了让 Scene Layout 预览模式也能遵循 AGENT_GUIDE 新链路
+	//   resourcesById[resourceId].projectRelativePath → projectRoot → file:///
+	//   需要让本组件在 onMounted / inject 得到 projectId / rootPath，
+	//   然后立即触发 resolvedModelBindings 的重新计算（把所有 binding 解析为 file:///）
+	//   同时在未注入时异步查询一次 getProjectRootById，保证单测/非蓝图页面场景也可用。
+	// ===========================================================================
+	const tryInjectProjectContextFromProviders = () => {
+		let pid = 0
+		let root = ''
+		try {
+			const ctx1 = inject<any>('aiworkflowPageContext', null)
+			const ctx2 = inject<any>('blueprintPageContext', null)
+			const ctx3 = inject<any>('projectContext', null)
+			const ctx4 = inject<any>('sceneLayoutProjectContextBridge', null)
+
+			const candidates = [ctx1, ctx2, ctx3, ctx4].filter(Boolean)
+			for (const c of candidates) {
+				if (!root && typeof c?.currentProjectRootPath === 'string') {
+					root = String(c.currentProjectRootPath).trim()
+				} else if (!root && typeof c?.projectRootPath === 'string') {
+					root = String(c.projectRootPath).trim()
+				} else if (!root && typeof c?.rootDir === 'string') {
+					root = String(c.rootDir).trim()
+				}
+				if (!pid) {
+					const raw =
+						typeof c?.currentProjectId !== 'undefined'
+							? c.currentProjectId
+							: typeof c?.projectId !== 'undefined'
+								? c.projectId
+								: 0
+					const n = Number(raw)
+					if (Number.isFinite(n) && n > 0) pid = n
+				}
+				if (pid > 0 && root) break
+			}
+		} catch {
+			pid = 0
+			root = ''
+		}
+		if (pid > 0 || root) {
+			setCurrentProjectContext(pid, root)
+			lastBindingsProjectKey.value = `pid=${pid};root=${root}`
+			return true
+		}
+		return false
+	}
+
+	const ensureProjectContext = async () => {
+		const injected = tryInjectProjectContextFromProviders()
+		if (injected && currentProjectRootRef.value && currentProjectIdRef.value > 0) {
+			return
+		}
+
+		// 注入路径：props 或 settings 中的 sceneLayoutProjectRootPath / sceneLayoutProjectId
+		const settingsAny = props.sceneLayoutSettings as Record<string, unknown> | null | undefined
+		let pidGuess = 0
+		const fromSettingsPid = Number(settingsAny?.projectId ?? settingsAny?.sceneLayoutProjectId)
+		if (Number.isFinite(fromSettingsPid) && fromSettingsPid > 0) pidGuess = fromSettingsPid
+		if (!currentProjectIdRef.value && pidGuess > 0) {
+			currentProjectIdRef.value = pidGuess
+		}
+		const rootGuess = String(
+			settingsAny?.projectRootPath ?? settingsAny?.sceneLayoutProjectRootPath ?? ''
+		).trim()
+		if (rootGuess && !currentProjectRootRef.value) {
+			currentProjectRootRef.value = rootGuess
+		}
+		if (currentProjectRootRef.value) {
+			return
+		}
+
+		// 异步兜底：从 sceneLayoutModelBindings 或 settings 中 dweb:// URL 推导 projectId
+		// 然后调用 getProjectRootById 异步获取 rootPath
+		const scanCandidates: string[] = []
+		for (const b of Array.isArray(props.sceneLayoutModelBindings)
+			? props.sceneLayoutModelBindings
+			: []) {
+			if (b.modelAssetUrl) scanCandidates.push(b.modelAssetUrl)
+			if (b.modelUrl) scanCandidates.push(b.modelUrl)
+		}
+		const sceneLayoutAny = settingsAny?.inputJson as unknown
+		const sceneUrl =
+			isObject(sceneLayoutAny) && isString((sceneLayoutAny as any).url)
+				? ((sceneLayoutAny as any).url as string)
+				: ''
+		if (sceneUrl) scanCandidates.push(sceneUrl)
+
+		let scanPid = currentProjectIdRef.value || 0
+		if (!scanPid) {
+			for (const c of scanCandidates) {
+				const s = String(c ?? '')
+				const m = s.match(/[?&]projectId=(\d+)/)
+				if (m) {
+					const n = Number(m[1])
+					if (Number.isFinite(n) && n > 0) {
+						scanPid = n
+						break
+					}
+				}
+			}
+		}
+
+		if (scanPid <= 0) {
+			// 无 projectId：至少把已存在的本地绝对路径转 file:///
+			setCurrentProjectContext(0, '')
+			return
+		}
+		currentProjectIdRef.value = scanPid
+		try {
+			const root = await getProjectRootById(scanPid)
+			if (root) {
+				currentProjectRootRef.value = String(root).trim()
+				lastBindingsProjectKey.value = `pid=${scanPid};root=${currentProjectRootRef.value}`
+			}
+		} catch (e) {
+			sceneLog('[SceneLayout3D] ensureProjectContext: getProjectRootById failed', e)
+		} finally {
+			if (currentProjectIdRef.value > 0 || currentProjectRootRef.value) {
+				// 触发 resolvedModelBindings 重算（projectRoot 到了）
+				currentProjectIdRef.value = currentProjectIdRef.value // touch
+			}
+			// 【BUGFIX 2026-08】蓝图加载时组件初次挂载时桥接的 pid/root 可能为空，
+			// 经过 scanCandidates / getProjectRootById 补全之后，即便 modelBindingsSignature 不变，
+			// resolvedModelBindings 中的 file:/// 本地 URL 也会新出现；
+			// 需要显式再 setLayout 一次，否则 Viewer 仍会 fallback 到占位立方。
+			if (viewer && previewMode.value) {
+				await nextTick()
+				const cachedViewForSync = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+				sceneLog(
+					'[SceneLayout] project context ready, re-sync viewer with resolved model bindings',
+					{
+						nodeId: props.nodeId,
+						pid: currentProjectIdRef.value,
+						root: currentProjectRootRef.value,
+						bindingsCount: resolvedModelBindings.value.length
+					}
+				)
+				try {
+					viewer.setLayout(
+						layoutItems.value,
+						cachedViewForSync ? null : settings.value?.camera,
+						{
+							transparent: renderTransparent.value,
+							previewMode: previewMode.value,
+							lightingPreviewEnabled: lightingPreviewEnabled.value,
+							lightingDebugEnabled: lightingDebugEnabled.value,
+							lightingControls: lightingControls.value,
+							lightingJson: String(props.linkedLightingJsonText ?? ''),
+							modelBindings: resolvedModelBindings.value,
+							hidePlaceholderCubes: hidePlaceholderCubes.value
+						},
+						cachedViewForSync
+					)
+				} catch (err) {
+					sceneLog('[SceneLayout] re-sync setLayout failed', {
+						nodeId: props.nodeId,
+						error: err instanceof Error ? err.message : String(err)
+					})
+				}
+			}
+		}
+	}
+
+	// 异步初始化 projectId / projectRootPath
+	void ensureProjectContext()
 })
 
 // Watch for layoutItems and settings changes to debug rendering pipeline
@@ -2509,90 +2920,246 @@ onBeforeUnmount(() => {
 	disposeViewer('unmount')
 })
 
+// ============================================================================
+// 2026-08-03 纯数据 slots 构造器（不依赖 Three.js / viewer / canvas）：
+//   实现已抽到公共工具 unrealExportUtils.buildPureDataSlotsForUnreal，
+//   AIWorkflowPage.vue 的外层 fallback 也用同一个函数，保证行为一致性。
+// ============================================================================
+function buildPureDataSlotsForUnrealLocal(
+	layoutItems: WorkflowSceneLayoutItem[],
+	resolvedBindings: WorkflowSceneLayoutModelBinding[]
+): { slots: WorkflowUnrealResolvedLayoutSlot[]; bindingCount: number } {
+	const raw = buildPureDataSlotsForUnreal(layoutItems as unknown[], resolvedBindings as unknown[])
+	return {
+		slots: raw.slots as WorkflowUnrealResolvedLayoutSlot[],
+		bindingCount: raw.bindingCount
+	}
+}
+
 const getResolvedLayoutForUnreal = async (): Promise<
 	{ ok: true; exportData: WorkflowUnrealResolvedLayoutExport } | { ok: false; error: string }
 > => {
-	console.info('[SceneLayoutNode] getResolvedLayoutForUnreal called')
-	if (!canvasRef.value) {
-		console.warn('[SceneLayoutNode] canvasRef not mounted')
-		return { ok: false, error: t('nodes.sceneLayout.errorCanvasNotMounted') }
-	}
-	ensureViewer()
-	if (!viewer) {
-		await nextTick()
-	}
-	if (!viewer) {
-		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-	}
-	if (!viewer) {
-		console.warn('[SceneLayoutNode] viewer not ready after retries')
-		return { ok: false, error: t('nodes.sceneLayout.errorViewerNotReady') }
-	}
-	console.info('[SceneLayoutNode] viewer ready')
-	viewer.setRenderSuspended(false)
-	viewer.setInteractive(true)
-	viewer.setSelectedItem(selectedPreviewItemId.value)
-	const currentSignature = layoutItemsSignature.value
-	const signatureChanged = currentSignature !== cachedLayoutSignature
-	const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+	console.info('[SceneLayoutNode] getResolvedLayoutForUnreal called (pure-data first)')
 
-	// 只有当签名变化时才重新调用setLayout，避免重置模型加载过程
-	if (signatureChanged) {
-		console.info(
-			`[SceneLayoutNode] Layout signature changed (old: ${cachedLayoutSignature}, new: ${currentSignature}), calling setLayout...`
-		)
-		viewer.setLayout(
-			layoutItems.value,
-			cachedViewForExport ? null : settings.value?.camera,
-			{
-				transparent: renderTransparent.value,
-				previewMode: true,
-				lightingPreviewEnabled: lightingPreviewEnabled.value,
-				lightingDebugEnabled: lightingDebugEnabled.value,
-				lightingControls: lightingControls.value,
-				lightingJson: String(props.linkedLightingJsonText ?? ''),
-				modelBindings: sceneLayoutModelBindings.value,
-				hidePlaceholderCubes: hidePlaceholderCubes.value
-			},
-			cachedViewForExport
-		)
-		cachedLayoutSignature = currentSignature
+	// ========================================================================
+	// 【第一步 · 永远先执行】纯数据构造器先生成完整 slots
+	//   这一步：不需要 canvasRef / viewer / Three.js，只依赖当前组件内
+	//   layoutItems.value（蓝图连线生成的场景配置）和
+	//   resolvedModelBindings.value（新链路解析出的 file:/// 路径绑定）。
+	//   所以无论用户是否打开预览模式，N 个模型一定会生成 N 条 slots。
+	// ========================================================================
+	const resolvedBindingsArr = Array.isArray(resolvedModelBindings.value)
+		? resolvedModelBindings.value
+		: []
+	const pureBuild = buildPureDataSlotsForUnrealLocal(layoutItems.value, resolvedBindingsArr)
+	let finalSlots: WorkflowUnrealResolvedLayoutSlot[] = pureBuild.slots
+	const finalWarnings: string[] = []
+	const msgPure =
+		`[SceneLayoutNode] Pure-data builder produced slots=${finalSlots.length} ` +
+		`(layoutItems=${layoutItems.value.length}, resolvedBindings=${resolvedBindingsArr.length}, ` +
+		`bound-items=${pureBuild.bindingCount}) — no Three.js render required`
+	console.info(msgPure)
+	finalWarnings.push(msgPure)
 
-		// 等待模型绑定同步完成，给足够长的时间（8秒）
-		console.info('[SceneLayoutNode] Waiting for model bindings to sync (up to 8 seconds)...')
-		await viewer.awaitPendingBindingSync(8000)
-		console.info('[SceneLayoutNode] Model binding sync wait completed')
-	} else {
-		console.info('[SceneLayoutNode] Layout signature unchanged, reusing existing scene')
-		// 即使签名不变，也确保渲染没有暂停
-		viewer.setRenderSuspended(false)
-		await new Promise((r) => setTimeout(r, 100))
-	}
+	// ========================================================================
+	// 【第二步 · 可选补充】如果 viewer/canvas 恰好已经初始化了，
+	//   尝试用 viewer 计算出的 worldBounds/placeholderBounds 回填 enrich
+	//   纯数据 slots（这些字段不是必须的，但能提升 UE 端的包围盒估算精度）。
+	//   这一步如果失败完全不影响结果——绝不会因为 viewer 没就绪就返回错误。
+	// ========================================================================
+	let viewerActorOrigin: { x: number; y: number; z: number } | null = null
+	const viewerSlotsBySourceId = new Map<string, WorkflowUnrealResolvedLayoutSlot>()
 
-	try {
-		console.info('[SceneLayoutNode] Calling viewer.exportResolvedLayoutForUnreal...')
-		const exportData = await viewer.exportResolvedLayoutForUnreal()
-		console.info(
-			`[SceneLayoutNode] exportResolvedLayoutForUnreal returned, slotCount: ${exportData.slots.length}, warnings: ${exportData.warnings.length}`
-		)
-		if (exportData.warnings.length > 0) {
-			console.warn('[SceneLayoutNode] Export warnings:', exportData.warnings)
+	if (canvasRef.value) {
+		try {
+			ensureViewer()
+			if (!viewer) {
+				await nextTick()
+			}
+			if (viewer) {
+				console.info(
+					'[SceneLayoutNode] Viewer available, attempting enrich-only (no error on fail)'
+				)
+				viewer.setRenderSuspended(false)
+				viewer.setInteractive(true)
+				viewer.setSelectedItem(selectedPreviewItemId.value)
+				const currentSignature = layoutItemsSignature.value
+				const signatureChanged = currentSignature !== cachedLayoutSignature
+				const cachedViewForExport = SCENE_LAYOUT_VIEWSTATE_CACHE.get(snapshotCacheKey) ?? null
+				if (signatureChanged) {
+					viewer.setLayout(
+						layoutItems.value,
+						cachedViewForExport ? null : settings.value?.camera,
+						{
+							transparent: renderTransparent.value,
+							previewMode: true,
+							lightingPreviewEnabled: lightingPreviewEnabled.value,
+							lightingDebugEnabled: lightingDebugEnabled.value,
+							lightingControls: lightingControls.value,
+							lightingJson: String(props.linkedLightingJsonText ?? ''),
+							modelBindings: resolvedModelBindings.value,
+							hidePlaceholderCubes: hidePlaceholderCubes.value
+						},
+						cachedViewForExport
+					)
+					cachedLayoutSignature = currentSignature
+					// enrich 场景下绑定同步最多等 1 秒，拿不到就放弃（纯数据已是完整的）
+					if (
+						typeof (
+							viewer as unknown as { awaitPendingBindingSync?: (ms: number) => Promise<void> }
+						).awaitPendingBindingSync === 'function'
+					) {
+						try {
+							await (
+								viewer as unknown as { awaitPendingBindingSync: (ms: number) => Promise<void> }
+							).awaitPendingBindingSync(1000)
+						} catch {
+							/* ignore */
+						}
+					}
+				} else {
+					viewer.setRenderSuspended(false)
+					await new Promise((r) => setTimeout(r, 50))
+				}
+				// 最多 2 秒尝试拿 viewer enrich 数据，超时就跳过
+				const viewerExportPromise = viewer.exportResolvedLayoutForUnreal()
+				const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 2000))
+				const viewerExportOrNull = await Promise.race([viewerExportPromise, timeoutPromise])
+				if (viewerExportOrNull && typeof viewerExportOrNull === 'object') {
+					const vExp = viewerExportOrNull as WorkflowUnrealResolvedLayoutExport
+					viewerActorOrigin =
+						vExp.actorOrigin && typeof vExp.actorOrigin === 'object'
+							? {
+									x: Number(vExp.actorOrigin.x ?? 0),
+									y: Number(vExp.actorOrigin.y ?? 0),
+									z: Number(vExp.actorOrigin.z ?? 0)
+								}
+							: null
+					const rawSlots = Array.isArray(vExp.slots) ? vExp.slots : []
+					for (const s of rawSlots) {
+						const sid = String(
+							(s as unknown as Record<string, unknown>)?.sourceObjectId ?? ''
+						).trim()
+						const isClone = Boolean((s as unknown as Record<string, unknown>)?.isClone)
+						const key = isClone
+							? `${sid}__clone_${Number((s as unknown as Record<string, unknown>)?.cloneIndex ?? 0) + 1}`
+							: sid
+						if (!viewerSlotsBySourceId.has(key)) {
+							viewerSlotsBySourceId.set(key, s)
+						}
+					}
+					if (Array.isArray(vExp.warnings)) {
+						for (const w of vExp.warnings) {
+							finalWarnings.push(`[viewer-enrich] ${String(w ?? '')}`)
+						}
+					}
+					console.info(
+						`[SceneLayoutNode] Viewer enrich returned ${rawSlots.length} slots, ` +
+							`merged ${viewerSlotsBySourceId.size} unique keys for worldBounds enrichment`
+					)
+				} else if (viewerExportOrNull === null) {
+					console.info(
+						'[SceneLayoutNode] Viewer enrich timed out (2s) — continuing with pure-data slots'
+					)
+				}
+			}
+		} catch (viewerErr) {
+			const eMsg =
+				isObject(viewerErr) && isString((viewerErr as Record<string, unknown>).message)
+					? String((viewerErr as Record<string, unknown>).message)
+					: String(viewerErr ?? 'unknown')
+			console.warn(
+				`[SceneLayoutNode] Viewer enrich phase failed (non-fatal; pure-data slots still valid): ${eMsg}`
+			)
+			finalWarnings.push(`[viewer-enrich-skipped] ${eMsg}`)
 		}
-		if (!exportData.slots.length) {
-			const warningText = exportData.warnings[0] ?? t('nodes.sceneLayout.errorNoModelsToExport')
-			console.warn('[SceneLayoutNode] No slots to export:', warningText)
-			return { ok: false, error: warningText }
-		}
-		return { ok: true, exportData }
-	} catch (err) {
-		const errMessage =
-			isObject(err) && isString(err.message) ? err.message : String(err ?? 'unknown')
-		console.error('[SceneLayoutNode] exportResolvedLayoutForUnreal threw error:', errMessage)
-		return { ok: false, error: t('nodes.sceneLayout.errorExportFailed', { error: errMessage }) }
-	} finally {
-		// 不要在这里销毁viewer - 导出重试过程中需要保持viewer存活
-		// 只有当组件真正卸载时才应该销毁viewer
 	}
+
+	// ========================================================================
+	// 【第三步】把 viewer 返回的 worldBounds/placeholderBounds 回填到
+	//   纯数据生成的 slots（如果匹配得上）。如果同一个 slot 纯数据有了，
+	//   viewer 也有就 enrich；viewer 没有也不会把纯数据 slot 删除。
+	// ========================================================================
+	if (viewerSlotsBySourceId.size > 0) {
+		let enriched = 0
+		let transformReplaced = 0
+		finalSlots = finalSlots.map((pureSlot) => {
+			const key = pureSlot.isClone
+				? `${pureSlot.sourceObjectId}__clone_${Number(pureSlot.cloneIndex ?? 0) + 1}`
+				: pureSlot.sourceObjectId
+			const vSlot = viewerSlotsBySourceId.get(key)
+			if (!vSlot) return pureSlot
+			const out: WorkflowUnrealResolvedLayoutSlot = { ...pureSlot }
+			// viewer 的 transform 从 Three.js 世界矩阵分解（captureObjectTransform →
+			// getWorldPosition/getWorldQuaternion/getWorldScale），已包含 fitMode 缩放
+			// （fitBoundModelToPlaceholderWorld 计算的 finalScale）、orientationFix 朝向修正、
+			// alignModelToTarget 对齐等全部变换。纯数据 slot 的 transform 只有 layoutItem
+			// 原始 position/rotation/scale（scale 默认 1,1,1，未做 fit 计算），直接用会导致
+			// 导出到 UE 的模型缩放/位置与预览不一致。因此 viewer 有 transform 时优先用 viewer 的。
+			if (vSlot.worldTransform) {
+				out.worldTransform = vSlot.worldTransform
+				transformReplaced++
+			}
+			if (vSlot.meshTransform) out.meshTransform = vSlot.meshTransform
+			if (vSlot.relativeTransform) out.relativeTransform = vSlot.relativeTransform
+			if (vSlot.previewInstanceTransform)
+				out.previewInstanceTransform = vSlot.previewInstanceTransform
+			if (vSlot.previewInstanceWorldTransform)
+				out.previewInstanceWorldTransform = vSlot.previewInstanceWorldTransform
+			if (vSlot.slotTransform) out.slotTransform = vSlot.slotTransform
+			if (vSlot.worldBounds && !out.worldBounds) {
+				out.worldBounds = vSlot.worldBounds
+				enriched++
+			}
+			if (vSlot.placeholderBounds && !out.placeholderBounds) {
+				out.placeholderBounds = vSlot.placeholderBounds
+			}
+			if (vSlot.placeholderTransform && !out.placeholderTransform) {
+				out.placeholderTransform = vSlot.placeholderTransform
+			}
+			if (vSlot.parentReference && !out.parentReference) {
+				out.parentReference = vSlot.parentReference
+			}
+			return out
+		})
+		if (enriched > 0 || transformReplaced > 0) {
+			console.info(
+				`[SceneLayoutNode] Enriched from viewer: worldBounds on ${enriched} slots, ` +
+					`transform (with fit scale) replaced on ${transformReplaced} slots`
+			)
+		}
+	}
+
+	const actorOriginFinal =
+		viewerActorOrigin &&
+		(viewerActorOrigin.x !== 0 || viewerActorOrigin.y !== 0 || viewerActorOrigin.z !== 0)
+			? viewerActorOrigin
+			: { x: 0, y: 0, z: 0 }
+
+	const exportFinal: WorkflowUnrealResolvedLayoutExport = {
+		generatedAt: Date.now(),
+		sourceItemCount: layoutItems.value.length,
+		slotCount: finalSlots.length,
+		actorOrigin: actorOriginFinal,
+		warnings: finalWarnings,
+		slots: finalSlots
+	}
+	const withResolvedBindings: WorkflowUnrealResolvedLayoutExport = {
+		...exportFinal,
+		sceneLayoutResolvedModelBindings: resolvedBindingsArr
+	}
+
+	if (!withResolvedBindings.slots.length) {
+		const msg = t('nodes.sceneLayout.errorNoModelsToExport')
+		console.warn('[SceneLayoutNode] No slots to export (pure-data found 0 bound models)')
+		return { ok: false, error: msg }
+	}
+	console.info(
+		`[SceneLayoutNode] Final slots: ${withResolvedBindings.slots.length}; ` +
+			`Inject sceneLayoutResolvedModelBindings, count=${withResolvedBindings.sceneLayoutResolvedModelBindings?.length ?? 0}; ` +
+			`actorOrigin=(${actorOriginFinal.x},${actorOriginFinal.y},${actorOriginFinal.z})`
+	)
+	return { ok: true, exportData: withResolvedBindings }
 }
 
 const exportSelectedPlaceholderGLB = async (): Promise<

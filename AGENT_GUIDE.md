@@ -22,6 +22,58 @@
 - [13_CLOUD_MODULES_GUIDE.md](agent_docs/13_CLOUD_MODULES_GUIDE.md) — 云服务与扩展模块指引（CloudFS 云存储 / Steam Workshop 工坊模板 / ComfyUI 本地服务管理增强）
 - [14_NODE_THREE_LAYER_ARCHITECTURE.md](agent_docs/14_NODE_THREE_LAYER_ARCHITECTURE.md) — 🆕 AI工作流节点开发三层链路架构指南（UI组件层→业务逻辑层→引擎核心层职责边界、数据流向标准流程、关键坑点避坑、开发Checklist）
 
+---
+
+## ⚠️⚠️⚠️ 3D 模型节点（Meshy/Tripo3D）本地 GLB 加载链路速查（2026-08-03 修复总结，**必看！**）
+
+> 🔴 **在修改任何 3D 模型节点相关代码前，请先完整阅读 [08_3D_EDITOR_RENDERING_GUIDE.md 末尾章节](agent_docs/08_3D_EDITOR_RENDERING_GUIDE.md#️⃣️️️-3d模型节点meshytripo3d本地glb文件加载链路全解析2026-08-03-修复总结必读)**。本段落只是速查索引，详细说明在 08 文档内。
+
+### 核心铁律（违反必出 Bug）
+1. **3D 模型节点绝不能用 Meshy/Tripo3D 远程 CDN URL 渲染**（`https://assets.meshy.ai/...` → CORS 必挂 + 毫无必要，文件已在本地）
+2. **只信任蓝图项目根目录下的本地 GLB 文件**，加载优先级：
+   `file:///G:/项目根/Content/Media/xxx.glb` > 本地绝对路径 > `dweb://project-assets/...`（fallback）> ❌ 禁止远程 URL
+3. **扩展名白名单优先**：`glb/gltf/fbx/obj/stl/usdz` 命中即放行，不再校验 Content-Type / 魔数（避免 CDN 返回错误 `Content-Type: image/png` 造成误杀）
+4. **`model*` 字段禁止写入图片后缀**：后端 `updateTaskLocalAsset` + 前端 Runtime 赋值前双重拦截 `.png/.jpg/.webp/...`
+
+### 五层完整数据流（关键文件）
+| 层 | 场景 | 关键文件 |
+|----|-----|---------|
+| 1 | Meshy/Tripo3D 任务下载 GLB 到本地 + 写入 DB | `electron/backend/modules/meshy/service.mjs`（updateTaskLocalAsset 扩展名拦截）、同目录 tripo3d |
+| 2 | Runtime 轮询同步到节点 model3dSettings | `src/views/AIWorkflow/node-business/meshy/useAIWorkflowMeshyRuntime.ts`、tripo3d 同名文件（赋值前扩展名拦截） |
+| 3 | **节点预览区渲染**（最重要！） | [src/ui/WorkFlow/WorlFlowNodes/WorkflowModel3DNode.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-3d-model-node-polling-lag-ouiwhL/src/ui/WorkFlow/WorlFlowNodes/WorkflowModel3DNode.vue)：**`forceResolvedLocalFileUrl`（取 resourcesById.projectRelativePath → 拼 rootDir → 转 file:///）→ `effectiveModelUrl` 第一优先级使用它** → `fetchAsArrayBuffer` 读本地 → `viewer.loadModelFromArrayBuffer` |
+| 4 | 3D 编辑器弹窗加载 | [electron/main.mjs](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-3d-model-node-polling-lag-ouiwhL/electron/main.mjs)（pickBestCandidate 本地优先转 file:///）、[Model3DEditorPage.vue](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-3d-model-node-polling-lag-ouiwhL/src/views/Model3DEditorPage.vue) |
+| 5 | EditorViewer 底层扩展名校验 | `src/editor/EditorViewer.ts`：`extractUrlExt()` 优先解析扩展名 → 白名单直接放行，不再检查 Content-Type |
+
+### 最可信的 GLB 路径来源（新旧节点都靠谱）
+**`resourcesById[node.resourceId].projectRelativePath`**（例如 `Content/Media/meshy-3d-019fc3fb-...glb`）。场景布局节点预览模式就是靠这个字段，不会被污染。拼上 `currentProject.rootDir` 再转 `file:///` 就是 100% 可用的加载 URL。
+
+### 诊断脚本（不需要开 Electron/Chrome）
+出问题先跑，5 秒定位是文件不存在还是代码路径选错：
+```bash
+node scripts/utils/verify-model3d-local-path.mjs        # 扫描所有 model3d 节点候选路径 + 磁盘存在性，推荐 file:/// URL
+node scripts/utils/dump-blueprint-model3d-chain.mjs     # 场景分解节点下游链路完整 dump
+node scripts/utils/inspect-blueprint-model3d-nodes.mjs  # 通用节点扫描 + resourceId 映射校验 + LocalDB 关联
+```
+脚本见：[scripts/utils/verify-model3d-local-path.mjs](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-3d-model-node-polling-lag-ouiwhL/scripts/utils/verify-model3d-local-path.mjs)
+（设计方案备份：[scripts/utils/01_3D模型节点轮询优化与模型加载修复设计方案.md](file:///c:/Users/Sugar/.trae-cn/worktrees/DVStudio/fix-3d-model-node-polling-lag-ouiwhL/scripts/utils/01_3D模型节点轮询优化与模型加载修复设计方案.md)）
+
+### 任务轮询优化（卡顿问题）
+`setInterval(1600ms)` → 已改为统一调度中心 `TaskPollScheduler`，动态间隔 + 完成即停。
+Feature Flag 紧急开关（localStorage）：
+```
+DVS_DISABLE_TASK_POLL_SCHEDULER = '1'  // 关闭新调度，回退到 setInterval
+```
+
+### 8 个常见坑点速查表（踩过不再踩！）
+完整 8 条坑 → 根因 → 正确做法对照表见 **[08_3D_EDITOR_RENDERING_GUIDE.md 末尾「常见坑点速查」章节](agent_docs/08_3D_EDITOR_RENDERING_GUIDE.md#-常见坑点速查踩过的坑不要再踩)**。核心记忆点：
+- 渲染异常 → 先跑 `verify-file-direct-path.mjs` 确认磁盘文件存在
+- 文件存在但渲染异常 → 查 `effectiveModelUrl` 是不是 `file:///`（应该最高优先用 `forceResolvedLocalFileUrl`）
+- Content-Type 误杀 → 确认 `extractUrlExt()` 返回扩展名命中白名单后直接 return 通过
+- CORS 报错 → 说明 effectiveModelUrl 还在用远程 URL，**立即改成本地路径**
+- 新旧节点行为不一致 → 旧节点 settings 污染，**改取 resourcesById.projectRelativePath**
+
+---
+
 ## 🎯 快速上下文
 
 ### 项目简介

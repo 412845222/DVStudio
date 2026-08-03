@@ -49,6 +49,9 @@
 				@node-preview-request="(p: any) => emit('nodePreviewRequest', p)"
 				@node-clear-resource="(id: string) => emit('nodeClearResource', id)"
 				@node-upload-resource="(p: any) => emit('nodeUploadResource', p)"
+				@node-upload-model3d-file="
+					(p: any) => emit('nodeUploadModel3DFile', { nodeId: p?.nodeId, file: p?.file })
+				"
 				@node-update-image-settings="(p: any) => emit('nodeUpdateImageSettings', p)"
 				@node-media-ready="(id: string) => emit('nodeMediaReady', id)"
 				@node-invalidate-screenshot="(id: string) => emit('nodeInvalidateScreenshot', id)"
@@ -112,6 +115,11 @@ import type {
 } from '../../aiworkflow/types'
 import type { LegacyResourceData } from './types'
 import { getI18nManager } from './i18n'
+
+// BlueprintEditor 内部调试开关。
+// 日常开发保持 false，避免任务轮询/节点交互期间控制台刷屏；
+// 需要排查 bulkUpdate/enterEditMode/按键 等细节时临时改为 true。
+const BLUEPRINT_EDITOR_DEBUG = false as boolean
 
 // 通用的输入参数预览引用类型（引擎层不依赖业务层类型）
 type InputParamPreviewRefItem = {
@@ -189,6 +197,7 @@ interface Emits {
 	(e: 'nodePreviewRequest', payload: { nodeId: string; imageUrl: string }): void
 	(e: 'nodeClearResource', nodeId: string): void
 	(e: 'nodeUploadResource', payload: { nodeId: string; file: File; kind: string }): void
+	(e: 'nodeUploadModel3DFile', payload: { nodeId: string; file: File }): void
 	(e: 'nodeUpdateImageSettings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'nodeMediaReady', nodeId: string): void
 	(e: 'nodeInvalidateScreenshot', nodeId: string): void
@@ -502,7 +511,9 @@ function clearPendingChanges() {
 
 function beginBulkUpdate() {
 	_bulkUpdateDepth++
-	console.log('[BlueprintEditor] beginBulkUpdate: depth=' + _bulkUpdateDepth)
+	if (BLUEPRINT_EDITOR_DEBUG) {
+		console.log('[BlueprintEditor] beginBulkUpdate: depth=' + _bulkUpdateDepth)
+	}
 	if (_bulkUpdateDepth === 1) {
 		// 第一次进入bulk update模式，清除所有pending changes
 		clearPendingChanges()
@@ -513,7 +524,9 @@ function endBulkUpdate() {
 	if (_bulkUpdateDepth > 0) {
 		_bulkUpdateDepth--
 	}
-	console.log('[BlueprintEditor] endBulkUpdate: depth=' + _bulkUpdateDepth)
+	if (BLUEPRINT_EDITOR_DEBUG) {
+		console.log('[BlueprintEditor] endBulkUpdate: depth=' + _bulkUpdateDepth)
+	}
 }
 
 function isBulkUpdating(): boolean {
@@ -561,10 +574,12 @@ function applyInitialData(newData: LegacyBlueprintData) {
 function enterEditMode(nodeId: string) {
 	if (!scene.value) return
 	if (isBulkUpdating()) {
-		console.log(
-			'[BlueprintEditor] enterEditMode: bulk update active, skipping enterEditMode for',
-			nodeId
-		)
+		if (BLUEPRINT_EDITOR_DEBUG) {
+			console.log(
+				'[BlueprintEditor] enterEditMode: bulk update active, skipping enterEditMode for',
+				nodeId
+			)
+		}
 		return
 	}
 	const node = scene.value.getBlueprintNode(nodeId)
@@ -578,29 +593,33 @@ function enterEditMode(nodeId: string) {
 	}
 
 	const nodeData = node.data as any
-	console.log('[BlueprintEditor] enterEditMode', {
-		nodeId,
-		prevEditingId: editingNodeId.value,
-		nodeChatVisible: nodeData.nodeChatVisible,
-		hasChatDraft: !!nodeData.nodeChatDraft,
-		chatDraftPreview:
-			typeof nodeData.nodeChatDraft === 'string'
-				? nodeData.nodeChatDraft.length > 40
-					? nodeData.nodeChatDraft.slice(0, 40) + '...'
-					: nodeData.nodeChatDraft || '(empty string)'
-				: String(nodeData.nodeChatDraft),
-		nodeChatParamsKeys: nodeData.nodeChatParams ? Object.keys(nodeData.nodeChatParams) : null,
-		nodeChatSelectedRefsLen: Array.isArray(nodeData.nodeChatSelectedRefs)
-			? nodeData.nodeChatSelectedRefs.length
-			: null
-	})
+	if (BLUEPRINT_EDITOR_DEBUG) {
+		console.log('[BlueprintEditor] enterEditMode', {
+			nodeId,
+			prevEditingId: editingNodeId.value,
+			nodeChatVisible: nodeData.nodeChatVisible,
+			hasChatDraft: !!nodeData.nodeChatDraft,
+			chatDraftPreview:
+				typeof nodeData.nodeChatDraft === 'string'
+					? nodeData.nodeChatDraft.length > 40
+						? nodeData.nodeChatDraft.slice(0, 40) + '...'
+						: nodeData.nodeChatDraft || '(empty string)'
+					: String(nodeData.nodeChatDraft),
+			nodeChatParamsKeys: nodeData.nodeChatParams ? Object.keys(nodeData.nodeChatParams) : null,
+			nodeChatSelectedRefsLen: Array.isArray(nodeData.nodeChatSelectedRefs)
+				? nodeData.nodeChatSelectedRefs.length
+				: null
+		})
+	}
 
 	if (editingNodeId.value && editingNodeId.value !== nodeId) {
 		const prevNode = scene.value.getBlueprintNode(editingNodeId.value)
-		console.log('[BlueprintEditor] enterEditMode switch: setting prev node DOM mode false', {
-			prevNodeId: editingNodeId.value,
-			prevChatDraft: prevNode ? (prevNode.data as any).nodeChatDraft : 'PREV_NODE_NOT_FOUND'
-		})
+		if (BLUEPRINT_EDITOR_DEBUG) {
+			console.log('[BlueprintEditor] enterEditMode switch: setting prev node DOM mode false', {
+				prevNodeId: editingNodeId.value,
+				prevChatDraft: prevNode ? (prevNode.data as any).nodeChatDraft : 'PREV_NODE_NOT_FOUND'
+			})
+		}
 		if (prevNode) prevNode.setDomMode(false)
 		editingNodeId.value = null
 	}
@@ -621,15 +640,17 @@ function exitEditMode() {
 		const exitingId = editingNodeId.value
 		const exitingNode = scene.value?.getBlueprintNode(exitingId)
 		const exitingDraft = exitingNode ? (exitingNode.data as any).nodeChatDraft : 'NODE_NOT_FOUND'
-		console.log('[BlueprintEditor] exitEditMode START', {
-			editingNodeId: exitingId,
-			engineDraftBeforeSetDomFalse:
-				typeof exitingDraft === 'string'
-					? exitingDraft.length > 40
-						? exitingDraft.slice(0, 40) + '...'
-						: exitingDraft || '(empty string)'
-					: String(exitingDraft)
-		})
+		if (BLUEPRINT_EDITOR_DEBUG) {
+			console.log('[BlueprintEditor] exitEditMode START', {
+				editingNodeId: exitingId,
+				engineDraftBeforeSetDomFalse:
+					typeof exitingDraft === 'string'
+						? exitingDraft.length > 40
+							? exitingDraft.slice(0, 40) + '...'
+							: exitingDraft || '(empty string)'
+						: String(exitingDraft)
+			})
+		}
 		if (scene.value) {
 			const node = scene.value.getBlueprintNode(exitingId)
 			if (node) node.setDomMode(false)
@@ -641,23 +662,27 @@ function exitEditMode() {
 				if (!isUpdatingFromProps && scene.value) {
 					// 检查是否在bulk update模式下，如果是则跳过emitChange
 					if (isBulkUpdating()) {
-						console.log(
-							'[BlueprintEditor] exitEditMode nextTick: bulk update active, skipping emitChange'
-						)
+						if (BLUEPRINT_EDITOR_DEBUG) {
+							console.log(
+								'[BlueprintEditor] exitEditMode nextTick: bulk update active, skipping emitChange'
+							)
+						}
 						return
 					}
 					const node2 = scene.value.getBlueprintNode(exitingId)
 					const draftAfterTick = node2 ? (node2.data as any).nodeChatDraft : '(missing)'
-					console.log('[BlueprintEditor] exitEditMode nextTick emitChange:', {
-						nodeId: exitingId,
-						engineDraftAfterTick:
-							typeof draftAfterTick === 'string'
-								? draftAfterTick.length > 40
-									? draftAfterTick.slice(0, 40) + '...'
-									: draftAfterTick || '(empty string)'
-								: String(draftAfterTick),
-						changeDebounceTimer
-					})
+					if (BLUEPRINT_EDITOR_DEBUG) {
+						console.log('[BlueprintEditor] exitEditMode nextTick emitChange:', {
+							nodeId: exitingId,
+							engineDraftAfterTick:
+								typeof draftAfterTick === 'string'
+									? draftAfterTick.length > 40
+										? draftAfterTick.slice(0, 40) + '...'
+										: draftAfterTick || '(empty string)'
+									: String(draftAfterTick),
+							changeDebounceTimer
+						})
+					}
 					emitChange()
 				}
 			})
@@ -848,34 +873,44 @@ function setupKeyboardShortcuts(s: BlueprintScene) {
 			const selectedNodes = s.selection
 				.getSelection()
 				.filter((n) => n instanceof BlueprintNode) as BlueprintNode[]
-			console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Received:', {
-				isEditable,
-				targetTag: tag,
-				editingNodeId: editingNodeId.value,
-				selectedCount: selectedNodes.length
-			})
+			if (BLUEPRINT_EDITOR_DEBUG) {
+				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Received:', {
+					isEditable,
+					targetTag: tag,
+					editingNodeId: editingNodeId.value,
+					selectedCount: selectedNodes.length
+				})
+			}
 			if (isEditable) {
 				// 如果是真实的DOM input（例如 Vue DOM 层的标签编辑器），不拦截
-				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] isEditable=true, skipping.')
+				if (BLUEPRINT_EDITOR_DEBUG) {
+					console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] isEditable=true, skipping.')
+				}
 				return
 			}
 			if (editingNodeId.value) {
 				e.preventDefault()
 				e.stopImmediatePropagation()
-				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: editing single node.')
+				if (BLUEPRINT_EDITOR_DEBUG) {
+					console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: editing single node.')
+				}
 				return
 			}
 			if (selectedNodes.length === 1) {
 				e.preventDefault()
 				e.stopImmediatePropagation()
 				enterEditMode(selectedNodes[0].id)
-				console.log(
-					'[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: single node edit mode activated.'
-				)
+				if (BLUEPRINT_EDITOR_DEBUG) {
+					console.log(
+						'[BlueprintEditor.ctxCaptureKeyDown.ENTER] Blocked: single node edit mode activated.'
+					)
+				}
 				return
 			}
 			// 选中多个节点或未选中节点时，让事件传播到工具层处理多选框保存等操作
-			console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Propagating to tool layer.')
+			if (BLUEPRINT_EDITOR_DEBUG) {
+				console.log('[BlueprintEditor.ctxCaptureKeyDown.ENTER] Propagating to tool layer.')
+			}
 			return
 		}
 		if (key === 'escape' && !e.repeat) {
@@ -943,16 +978,24 @@ watch(
 	{ deep: false }
 )
 
+// 🔑 引用稳定化：上游（AIWorkflowPage）已保证内容未变时返回相同引用；
+// 此处再加一道防线，即使引用变化也先判断「内容无差异就不写 scene」，避免轮询期的频繁副作用。
+let _lastInputParamPreviewRefsByNodeId: Record<string, InputParamPreviewRefItem[]> | null = null
 watch(
 	() => props.inputParamPreviewRefsByNodeId,
 	(refs) => {
 		if (!scene.value || !refs) return
+		// 引用相同 → 内容没变（上游缓存保证），直接跳过
+		if (_lastInputParamPreviewRefsByNodeId === refs) return
+		_lastInputParamPreviewRefsByNodeId = refs
 		;(scene.value as any)._inputParamPreviewRefsByNodeId = refs
-		const nodesWithRefs = Object.entries(refs).filter(([, r]) => r && r.length > 0)
-		console.log(
-			`[BlueprintEditor][inputParamPreviewRefsByNodeId] updated: ${nodesWithRefs.length} nodes with refs`,
-			nodesWithRefs.map(([id]) => id)
-		)
+		if (BLUEPRINT_EDITOR_DEBUG) {
+			const nodesWithRefs = Object.entries(refs).filter(([, r]) => r && r.length > 0)
+			console.log(
+				`[BlueprintEditor][inputParamPreviewRefsByNodeId] updated: ${nodesWithRefs.length} nodes with refs`,
+				nodesWithRefs.map(([id]) => id)
+			)
+		}
 	},
 	{ deep: false, immediate: true }
 )

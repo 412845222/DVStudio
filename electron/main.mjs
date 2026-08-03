@@ -168,11 +168,145 @@ let clientSettings = null
 
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 
+// 辅助：从 dweb://project-assets?projectId=xxx&path=yyy URL 中解析出真实磁盘绝对路径
+function resolveDwebAssetUrlToFilePath(rawUrl) {
+	const text = String(rawUrl || '').trim()
+	if (!text) return null
+	let u
+	try {
+		u = new URL(text)
+	} catch {
+		return null
+	}
+	if (String(u.protocol || '').toLowerCase() !== 'dweb:') return null
+	const host = String(u.hostname || '').toLowerCase()
+	// 目前只处理 project-assets 主机的 dweb 资产
+	if (host !== 'project-assets') return null
+	const projectIdRaw = String(u.searchParams.get('projectId') || '').trim()
+	const relPathRaw = String(
+		u.searchParams.get('path') ||
+			u.searchParams.get('relativePath') ||
+			u.searchParams.get('assetPath') ||
+			''
+	).trim()
+	if (!projectIdRaw || !relPathRaw) return null
+	const projectId = Number(projectIdRaw)
+	if (!Number.isFinite(projectId) || projectId <= 0) return null
+	const root = getProjectRootById(projectId)
+	if (!root) return null
+	const rel = relPathRaw.replace(/\\/g, '/').replace(/^\/+/, '')
+	if (!rel || rel.includes('..')) return null
+	let normalized
+	try {
+		normalized = path.resolve(root, ...rel.split('/').filter((seg) => seg && seg !== '.'))
+	} catch {
+		return null
+	}
+	const rootNorm = path.normalize(path.resolve(root))
+	const normNorm = path.normalize(normalized)
+	const rootWithSep = rootNorm.endsWith(path.sep) ? rootNorm : rootNorm + path.sep
+	const inside =
+		normNorm === rootNorm ||
+		normNorm.startsWith(rootWithSep) ||
+		(process.platform === 'win32' && normNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
+	if (!inside) return null
+	return normalized
+}
+// 辅助：从 MIME 猜扩展名，或从本地文件路径/URL 扩展名推断 MIME
+function guessMimeFromPath(filePath) {
+	const p = String(filePath || '')
+		.split('?')[0]
+		.split('#')[0]
+	const lastDot = p.lastIndexOf('.')
+	const ext = lastDot >= 0 ? p.slice(lastDot + 1).toLowerCase() : ''
+	switch (ext) {
+		case 'glb':
+			return 'model/gltf-binary'
+		case 'gltf':
+			return 'model/gltf+json'
+		case 'fbx':
+			return 'application/octet-stream'
+		case 'obj':
+			return 'text/plain'
+		case 'stl':
+			return 'application/octet-stream'
+		case 'usdz':
+			return 'model/vnd.usdz+zip'
+		case 'png':
+			return 'image/png'
+		case 'jpg':
+		case 'jpeg':
+			return 'image/jpeg'
+		case 'webp':
+			return 'image/webp'
+		case 'gif':
+			return 'image/gif'
+		default:
+			return 'application/octet-stream'
+	}
+}
+
 function fetchRawBuffer(rawUrl) {
+	const urlStr = String(rawUrl || '').trim()
+	if (!urlStr) return Promise.reject(new Error('url is empty'))
+	const low = urlStr.toLowerCase()
+
+	// ===== 分支 1：Windows / Unix 本地绝对路径 (G:\foo 或 /foo) =====
+	if (/^[a-z]:[\\/]/i.test(urlStr) || /^\/[^\/]/.test(urlStr)) {
+		return fs.promises
+			.readFile(urlStr)
+			.then((buf) => ({
+				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+				mime: guessMimeFromPath(urlStr)
+			}))
+			.catch((err) =>
+				Promise.reject(new Error(`read local file failed: ${String(err?.message || err)}`))
+			)
+	}
+
+	// ===== 分支 2：file:/// URL → 转成本地路径读磁盘 =====
+	if (low.startsWith('file://')) {
+		let filePath = ''
+		try {
+			filePath = fileURLToPath(urlStr)
+		} catch (err) {
+			return Promise.reject(new Error(`invalid file:// URL: ${String(err?.message || err)}`))
+		}
+		return fs.promises
+			.readFile(filePath)
+			.then((buf) => ({
+				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+				mime: guessMimeFromPath(filePath)
+			}))
+			.catch((err) =>
+				Promise.reject(new Error(`read file:// failed: ${String(err?.message || err)}`))
+			)
+	}
+
+	// ===== 分支 3：dweb://project-assets?projectId=xxx&path=yyy → 解析出真实磁盘路径读磁盘 =====
+	if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+		const resolved = resolveDwebAssetUrlToFilePath(urlStr)
+		if (!resolved) {
+			return Promise.reject(new Error(`cannot resolve dweb asset url: ${urlStr.slice(0, 120)}`))
+		}
+		return fs.promises
+			.readFile(resolved)
+			.then((buf) => ({
+				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+				mime: guessMimeFromPath(resolved)
+			}))
+			.catch((err) =>
+				Promise.reject(
+					new Error(`read dweb asset failed (${resolved}): ${String(err?.message || err)}`)
+				)
+			)
+	}
+
+	// ===== 分支 4：http(s):// → 走 Node.js 原生 transport 拿远程数据 (和旧行为一致) =====
 	return new Promise((resolve, reject) => {
 		let parsed
 		try {
-			parsed = new URL(String(rawUrl || ''))
+			parsed = new URL(urlStr)
 		} catch (err) {
 			reject(err)
 			return
@@ -209,7 +343,7 @@ function fetchRawBuffer(rawUrl) {
 				const mime =
 					String(res.headers?.['content-type'] || '')
 						.split(';')[0]
-						.trim() || 'application/octet-stream'
+						.trim() || guessMimeFromPath(urlStr)
 				resolve({ buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), mime })
 			})
 			res.on('error', reject)
@@ -1761,13 +1895,164 @@ function registerIpc() {
 		return { ok: true, data: payload }
 	})
 
+	// 将 Windows / Unix 本地绝对路径转换为标准 file:/// URL
+	const localAbsPathToFileUrl = (absPath) => {
+		if (!absPath) return ''
+		const t = String(absPath).trim()
+		if (!t) return ''
+		if (/^[a-z]:[\\/]/i.test(t)) {
+			const forward = t.replace(/\\/g, '/')
+			return 'file:///' + encodeURI(forward).replace(/#/g, '%23')
+		}
+		if (t.startsWith('/')) {
+			return 'file://' + encodeURI(t).replace(/#/g, '%23')
+		}
+		return ''
+	}
+	const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz']
+	const IMAGE_EXT_BLACKLIST = [
+		'png',
+		'jpg',
+		'jpeg',
+		'gif',
+		'webp',
+		'bmp',
+		'tiff',
+		'tif',
+		'svg',
+		'ico',
+		'heic',
+		'heif'
+	]
+	const extractUrlExt = (url) => {
+		if (!url) return ''
+		try {
+			const text = String(url).trim()
+			const low = text.toLowerCase()
+			if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+				try {
+					const qStart = text.indexOf('?')
+					const queryStr = qStart >= 0 ? text.slice(qStart + 1) : ''
+					const params = new URLSearchParams(queryStr)
+					const p = decodeURIComponent(
+						params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
+					)
+					if (p) {
+						const clean = p.split('?')[0].split('#')[0]
+						const lastSlash = Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\'))
+						const namePart = lastSlash >= 0 ? clean.slice(lastSlash + 1) : clean
+						const d = namePart.lastIndexOf('.')
+						if (d >= 0) return namePart.slice(d + 1).toLowerCase()
+					}
+				} catch {
+					/* ignore */
+				}
+			}
+			const withoutQuery = text.split('?')[0].split('#')[0]
+			const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
+			const namePart = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+			const lastDot = namePart.lastIndexOf('.')
+			if (lastDot < 0) return ''
+			return namePart.slice(lastDot + 1).toLowerCase()
+		} catch {
+			return ''
+		}
+	}
+	const isLocalAbsPath = (input) => {
+		if (!input) return false
+		const t = String(input).trim()
+		return /^[a-z]:[\\/]/i.test(t) || /^\/[^\/]/i.test(t)
+	}
+	const isRemoteHttpUrl = (input) => {
+		if (!input) return false
+		const t = String(input).trim().toLowerCase()
+		return t.startsWith('http://') || t.startsWith('https://')
+	}
+	// 为单个模型 URL 挑选最佳本地候选：本地路径优先级 > 远程CDN（有CORS风险）
+	const pickBestCandidate = (candidates) => {
+		const scored = []
+		for (const raw of candidates) {
+			const u = String(raw || '').trim()
+			if (!u) continue
+			const ext = extractUrlExt(u)
+			// 先处理被误判为图片后缀的路径：尝试把图片扩展名替换为 .glb，作为可能的真实GLB候选
+			let recovered = ''
+			if (ext && IMAGE_EXT_BLACKLIST.includes(ext)) {
+				const withoutQuery = u.split('?')[0].split('#')[0]
+				const lastDot = withoutQuery.lastIndexOf('.')
+				if (lastDot >= 0) {
+					const base = withoutQuery.slice(0, lastDot)
+					const rest = u.slice(withoutQuery.length)
+					recovered = base + '.glb' + rest
+				}
+			}
+			const processOne = (url) => {
+				const e = extractUrlExt(url)
+				if (e && IMAGE_EXT_BLACKLIST.includes(e)) return null
+				if (e && !MODEL_EXT_WHITELIST.includes(e)) return null
+				let norm = url
+				let q = 0
+				const low = String(url).toLowerCase()
+				if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+					q = 4
+				} else if (isLocalAbsPath(url)) {
+					q = 3
+					norm = localAbsPathToFileUrl(url) || url
+				} else if (!isRemoteHttpUrl(url)) {
+					q = 2
+				} else {
+					q = 1 // 远程CDN，最低优先级
+				}
+				if (!norm) return null
+				return { url: norm, q }
+			}
+			const a = processOne(u)
+			if (a) scored.push(a)
+			if (recovered) {
+				const b = processOne(recovered)
+				if (b) scored.push(b)
+			}
+		}
+		if (scored.length === 0) return ''
+		scored.sort((x, y) => y.q - x.q)
+		return scored[0].url
+	}
+
 	let model3dEditorWindow = null
 	ipcMain.handle('dweb:model3d-editor:open', async (_e, payload) => {
 		console.log('[main] dweb:model3d-editor:open payload:', JSON.stringify(payload))
 		try {
 			const nodeId = String(payload?.nodeId || '')
-			const title = String(payload?.title || '3D 模型编辑器').slice(0, 200)
-			const models = Array.isArray(payload?.models) ? payload.models : []
+			const title = String(payload?.modelName || payload?.title || '3D 模型编辑器').slice(0, 200)
+			let models = Array.isArray(payload?.models) ? payload.models.slice() : []
+			// ===== 兼容单 modelUrl 字段：前端 onOpenEditor 默认传的是 modelUrl/modelName 而非 models 数组 =====
+			if (models.length === 0) {
+				const singleUrl = String(payload?.modelUrl || '').trim()
+				const singleName = String(payload?.modelName || '').trim()
+				const singleAssetPath = String(payload?.modelAssetPath || '').trim()
+				if (singleUrl || singleAssetPath) {
+					const bestUrl = pickBestCandidate([singleAssetPath, singleUrl])
+					models.push({
+						id: nodeId || `model-${Date.now()}`,
+						name: singleName || (nodeId ? `Node ${nodeId}` : 'Model 1'),
+						url: bestUrl || singleUrl || singleAssetPath
+					})
+				}
+			} else {
+				// ===== 已有 models 数组：对每个模型 URL 也做一次本地优先替换 + 误判后缀恢复 =====
+				models = models
+					.map((m, i) => {
+						const assetPath = String(m?.assetPath || m?.localPath || m?.sourcePath || '').trim()
+						const rawUrl = String(m?.url || '').trim()
+						const bestUrl = pickBestCandidate([assetPath, rawUrl])
+						return {
+							id: String(m?.id || (nodeId ? `${nodeId}-${i}` : `model-${i}-${Date.now()}`)),
+							name: String(m?.name || `Model ${i + 1}`),
+							url: bestUrl || rawUrl || assetPath
+						}
+					})
+					.filter((m) => m.url)
+			}
 
 			if (!nodeId && models.length === 0) {
 				return { ok: false, error: 'missing nodeId or models' }

@@ -95,7 +95,12 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
-		opts?: { posterUrl?: string; sourcePath?: string; projectRelativePath?: string }
+		opts?: {
+			posterUrl?: string
+			sourcePath?: string
+			projectRelativePath?: string
+			resourceId?: string
+		}
 	) => void
 	onLimitExceeded: (count: number, limit: number) => void
 	getProjectId: () => number | null
@@ -472,7 +477,8 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				if (options.bindMediaResourceToNode) {
 					options.bindMediaResourceToNode(info.nodeId, 'model3d', finalUrl, task.name, {
 						sourcePath: sourcePath || undefined,
-						projectRelativePath: projectRelPath || undefined
+						projectRelativePath: projectRelPath || undefined,
+						resourceId: task.resourceId
 					})
 					console.log('[AIWorkflow:MediaImport] Model3D bound via bindMediaResourceToNode:', {
 						nodeId: info.nodeId,

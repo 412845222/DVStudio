@@ -8,6 +8,9 @@ import type {
 	PersistExternalAssetResult
 } from './types'
 import { extractMeshyTaskResultFields } from './types'
+import type { PollTaskState } from '../shared/task-poll-scheduler/types'
+import { TaskPollScheduler } from '../shared/task-poll-scheduler/TaskPollScheduler'
+import { NODE_BINDING_DEBUG } from '../shared/debugFlags'
 
 type WorkflowNodeLike = {
 	id: string
@@ -20,6 +23,117 @@ type WorkflowNodeLike = {
 	resourceId?: string | null
 	createdAt?: number
 	[key: string]: unknown
+}
+
+const MESHY_RUNTIME_MODEL_EXT_WHITELIST = Object.freeze([
+	'glb',
+	'gltf',
+	'fbx',
+	'obj',
+	'stl',
+	'dae',
+	'3ds',
+	'ply',
+	'x3d',
+	'x'
+])
+
+const MESHY_RUNTIME_IMAGE_EXT_BLACKLIST = Object.freeze([
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'bmp',
+	'tiff',
+	'tif',
+	'svg',
+	'ico',
+	'heic',
+	'heif'
+])
+
+// 同时兼容：
+//   1) 远端 URL https://xx/a.glb
+//   2) dweb 协议 dweb://project-assets?projectId=xx&path=assets/meshy/a.glb  (从 ?path/?relativePath 参数解析)
+//   3) 本地绝对路径  G:\xx\a.glb 或  /xx/a.glb
+const extractMeshyRuntimeUrlOrPathExt = (input: string): string => {
+	if (!input) return ''
+	const text = String(input).trim()
+	if (!text) return ''
+	// 1. 尝试从 dweb 协议的 query path 参数提取
+	const low = text.toLowerCase()
+	if (low.startsWith('dweb://') || low.startsWith('dweb:')) {
+		try {
+			const qStart = text.indexOf('?')
+			const queryStr = qStart >= 0 ? text.slice(qStart + 1) : ''
+			const params = new URLSearchParams(queryStr)
+			const p = decodeURIComponent(
+				params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
+			)
+			if (p) {
+				const clean = p.split('?')[0].split('#')[0]
+				const d = clean.lastIndexOf('.')
+				if (d >= 0) return clean.slice(d + 1).toLowerCase()
+			}
+		} catch {
+			/* ignore */
+		}
+	}
+	// 2. 正常从末尾解析 (兼容 URL 和 Windows/Unix 路径)
+	try {
+		const withoutQuery = text.split('?')[0].split('#')[0]
+		const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
+		const namePart = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+		const lastDot = namePart.lastIndexOf('.')
+		if (lastDot < 0) return ''
+		return namePart.slice(lastDot + 1).toLowerCase()
+	} catch {
+		return ''
+	}
+}
+
+// 兼容旧引用点
+const extractMeshyRuntimeUrlExt = (url: string): string => extractMeshyRuntimeUrlOrPathExt(url)
+
+const isMeshyRuntimeImageExt = (ext: string): boolean => {
+	if (!ext) return false
+	return MESHY_RUNTIME_IMAGE_EXT_BLACKLIST.includes(ext)
+}
+const isMeshyRuntimeModelExt = (ext: string): boolean => {
+	if (!ext) return false
+	return MESHY_RUNTIME_MODEL_EXT_WHITELIST.includes(ext)
+}
+
+// 检测一个 URL 或本地 Path 是否是图片：扩展名明确命中图片黑名单时返回 true；
+// 扩展名命中模型白名单时返回 false；无扩展名时假定不是图片返回 false (让后续链路决定)
+const isMeshyRuntimeImageUrlOrPath = (input: string): boolean => {
+	const ext = extractMeshyRuntimeUrlOrPathExt(input)
+	return isMeshyRuntimeImageExt(ext)
+}
+// 3D 模型 URL/Path 的硬判定：扩展名必须命中模型白名单，或者没有扩展名（如裸 API URL）。
+// 一旦扩展名命中图片黑名单，明确拒绝。
+const isMeshyRuntimeLikely3DModelUrl = (url: string): boolean => {
+	if (!url) return false
+	const ext = extractMeshyRuntimeUrlOrPathExt(url)
+	if (isMeshyRuntimeImageExt(ext)) return false
+	if (isMeshyRuntimeModelExt(ext)) return true
+	// 无明确扩展名：如果是远端 URL (http(s):// / dweb://)，认为可能是裸 3D 资源接口，交由后续链路；
+	// 本地绝对路径无扩展名不认为是模型
+	try {
+		const t = String(url).trim().toLowerCase()
+		if (
+			t.startsWith('http://') ||
+			t.startsWith('https://') ||
+			t.startsWith('dweb://') ||
+			t.startsWith('dweb:')
+		) {
+			return true
+		}
+	} catch {
+		/* ignore */
+	}
+	return false
 }
 
 export const useAIWorkflowMeshyRuntime = (options: {
@@ -39,6 +153,12 @@ export const useAIWorkflowMeshyRuntime = (options: {
 	shouldRefreshMeshyTaskItems: () => boolean
 }) => {
 	const normalizeText = (value: unknown) => String(value ?? '').trim()
+	const sanitizePreferredModelUrlCandidate = (raw: string): string => {
+		const candidate = normalizeText(raw)
+		if (!candidate) return ''
+		if (!isMeshyRuntimeLikely3DModelUrl(candidate)) return ''
+		return candidate
+	}
 	const isMeshyRemoteUrl = (value: unknown) => {
 		const text = normalizeText(value)
 		if (!text) return false
@@ -71,6 +191,14 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			meshyPollTimers.delete(nodeId)
 		}
 		meshyPollErrorCounts.delete(nodeId)
+		try {
+			const s = TaskPollScheduler.shared
+			if (s && s.taskCount() > 0) {
+				s.unregister(nodeId)
+			}
+		} catch {
+			// ignore
+		}
 	}
 
 	const getNodeFromStore = (nodeId: string): WorkflowNodeLike | null => {
@@ -144,8 +272,10 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		const modelUrls = task.modelUrls
 		const imageUrls = task.imageUrls
 		const preferredImageUrl = task.preferredImageUrl || (imageUrls[0] ?? '')
-		const preferredModelUrl =
-			task.preferredModelUrl || options.pickMeshyPreferredModelUrl(modelUrls)
+		const rawPreferredModelUrl =
+			sanitizePreferredModelUrlCandidate(task.preferredModelUrl || '') ||
+			sanitizePreferredModelUrlCandidate(options.pickMeshyPreferredModelUrl(modelUrls) || '')
+		const preferredModelUrl = rawPreferredModelUrl
 		const thumbnailUrl = task.thumbnailUrl
 		const statusText = task.statusText
 		const errorMessage = task.errorMessage
@@ -260,33 +390,51 @@ export const useAIWorkflowMeshyRuntime = (options: {
 									options.store.state as unknown as { resources: Array<{ id: string }> }
 								).resources.find((r) => r.id === resourceId)
 							if (existingResource) {
-								console.log('[Meshy Runtime] 资源已存在，跳过添加:', resourceId)
+								if (NODE_BINDING_DEBUG) {
+									console.log('[Meshy Runtime] 资源已存在，跳过添加:', resourceId)
+								}
 							} else {
 								options.store.commit('addResource', resourceBase)
-								console.log('[Meshy Runtime] 资源已添加:', resourceBase)
+								if (NODE_BINDING_DEBUG) {
+									console.log('[Meshy Runtime] 资源已添加:', resourceBase)
+								}
 							}
 
 							const currentNode = getNodeFromStore(nodeId)
 							const currentNodeResourceId = currentNode?.resourceId
-							console.log(
-								'[Meshy Runtime] 节点当前resourceId:',
-								currentNodeResourceId,
-								'新resourceId:',
-								resourceId
-							)
+							if (NODE_BINDING_DEBUG) {
+								console.log(
+									'[Meshy Runtime] 节点当前resourceId:',
+									currentNodeResourceId,
+									'新resourceId:',
+									resourceId
+								)
+							}
 
 							options.store.commit('setNodeResource', { nodeId, resourceId })
 
 							const updatedNode = getNodeFromStore(nodeId)
-							console.log('[Meshy Runtime] 绑定后节点resourceId:', updatedNode?.resourceId)
-							console.log('[Meshy Runtime] 图片资源已绑定到节点:', { nodeId, resourceId, assetUrl })
+							if (NODE_BINDING_DEBUG) {
+								console.log('[Meshy Runtime] 绑定后节点resourceId:', updatedNode?.resourceId)
+								console.log('[Meshy Runtime] 图片资源已绑定到节点:', {
+									nodeId,
+									resourceId,
+									assetUrl
+								})
+							}
 						}
 					}
 				} else if (preferredModelUrl) {
 					const backendLocalAssetUrl = String(task.localAssetUrl ?? '').trim()
 					const backendLocalAssetPath = String(task.localAssetPath ?? '').trim()
+					// ========== 硬防护：后端 DB 的 localAsset* 可能被历史数据污染成 PNG 缩略图 ==========
+					const backendAssetIsImage =
+						isMeshyRuntimeImageUrlOrPath(backendLocalAssetUrl) ||
+						isMeshyRuntimeImageUrlOrPath(backendLocalAssetPath)
 					const hasBackendLocalAsset =
-						!!backendLocalAssetUrl && !isMeshyRemoteUrl(backendLocalAssetUrl)
+						!!backendLocalAssetUrl &&
+						!isMeshyRemoteUrl(backendLocalAssetUrl) &&
+						!backendAssetIsImage
 
 					if (hasBackendLocalAsset) {
 						patch.meshyOutputAssetUrl = backendLocalAssetUrl
@@ -521,39 +669,88 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				}
 			}
 
+			// 解析 Meshy 侧的有效模型来源（与消费端 getMeshyEffectiveModelSource 对齐）
+			const meshySource = (() => {
+				const rs = isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}
+				const os = isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary : {}
+				const mus = isRecord(patch.meshyModelUrls)
+					? (patch.meshyModelUrls as Record<string, unknown>)
+					: {}
+				const rawAssetUrl = normalizeText(
+					rs.effectiveLocalAssetUrl ?? patch.meshyOutputAssetUrl ?? os.assetUrl
+				)
+				const rawAssetPath = normalizeText(
+					rs.effectiveLocalAssetPath ?? patch.meshyOutputAssetPath ?? os.assetPath
+				)
+				// ===== 硬防护：asset 字段一旦为图片后缀 (如 png缩略图 污染)，直接丢弃 =====
+				const assetUrl =
+					rawAssetUrl && !isMeshyRuntimeImageUrlOrPath(rawAssetUrl) ? rawAssetUrl : ''
+				const assetPath =
+					rawAssetPath && !isMeshyRuntimeImageUrlOrPath(rawAssetPath) ? rawAssetPath : ''
+				const preferredUrl =
+					normalizeText(rs.effectivePreferredModelUrl ?? os.preferredUrl) ||
+					assetUrl ||
+					options.pickMeshyPreferredModelUrl(mus as any)
+				const fmt =
+					normalizeText(os.format).toLowerCase() === 'gltf'
+						? 'gltf'
+						: options.pickMeshyPreferredFormat(mus as any)
+				return { assetUrl, assetPath, preferredUrl, format: fmt }
+			})()
+
+			const existingModelUrl = String(existingModel3d.modelUrl ?? '').trim()
+			const existingModelAssetUrl = String(existingModel3d.modelAssetUrl ?? '').trim()
+			const existingHasOuterUrl = !!(existingModelAssetUrl || existingModelUrl)
+
+			// 计算候选模型 URL：优先使用已持久化的 assetUrl，其次 preferredUrl
+			const candidateUrl =
+				(meshySource.assetUrl && isMeshyRuntimeLikely3DModelUrl(meshySource.assetUrl)
+					? meshySource.assetUrl
+					: '') ||
+				(meshySource.preferredUrl && isMeshyRuntimeLikely3DModelUrl(meshySource.preferredUrl)
+					? meshySource.preferredUrl
+					: '')
+
 			let finalLocalAssetUrl = ''
 			let finalLocalAssetPath = ''
-			if (normalized === 'succeeded' && patch.meshyOutputAssetUrl) {
-				const newAssetUrl = String(patch.meshyOutputAssetUrl)
-				const newIsRemote = isMeshyRemoteUrl(newAssetUrl)
-				const existingModelUrl = String(existingModel3d.modelUrl ?? '').trim()
-				const existingModelAssetUrl = String(existingModel3d.modelAssetUrl ?? '').trim()
-				const existingLocalUrl = !isMeshyRemoteUrl(existingModelAssetUrl)
-					? existingModelAssetUrl
-					: !isMeshyRemoteUrl(existingModelUrl)
-						? existingModelUrl
-						: ''
 
-				if (!newIsRemote) {
-					model3dPatch.modelUrl = newAssetUrl
-					model3dPatch.modelAssetUrl = newAssetUrl
-					model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
-					model3dPatch.modelFormat =
-						isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
-							? patch.meshyOutputSummary.format
-							: format
-					model3dPatch.modelGenerationSource = 'meshy'
-					finalLocalAssetUrl = newAssetUrl
-					finalLocalAssetPath = String(patch.meshyOutputAssetPath || '')
-				} else if (!existingLocalUrl) {
-					model3dPatch.modelUrl = newAssetUrl
-					model3dPatch.modelAssetUrl = newAssetUrl
-					model3dPatch.modelAssetPath = patch.meshyOutputAssetPath
-					model3dPatch.modelFormat =
-						isRecord(patch.meshyOutputSummary) && isString(patch.meshyOutputSummary.format)
-							? patch.meshyOutputSummary.format
-							: format
-					model3dPatch.modelGenerationSource = 'meshy'
+			// 放宽同步条件：只要有候选URL 且 (状态成功 或 有 下载资产URL 或 外层尚未有URL)，就同步外层 model3dSettings
+			// 去掉之前强制 "非远端才能同步 + 外层无本地URL才能同步远端" 的限制，消费端已兼容
+			if (
+				candidateUrl &&
+				(normalized === 'succeeded' || !existingHasOuterUrl || meshySource.assetUrl)
+			) {
+				const newIsRemote = isMeshyRemoteUrl(candidateUrl)
+				model3dPatch.modelUrl = candidateUrl
+				model3dPatch.modelAssetUrl = candidateUrl
+				// ===== 硬防护：modelAssetPath/modelSourcePath 是图片后缀直接不写 =====
+				if (meshySource.assetPath && !isMeshyRuntimeImageUrlOrPath(meshySource.assetPath)) {
+					model3dPatch.modelAssetPath = meshySource.assetPath
+				}
+				model3dPatch.modelFormat = meshySource.format
+				model3dPatch.modelGenerationSource = 'meshy'
+				// 同步 modelSourceName：从 URL 解析文件名
+				try {
+					const withoutQuery = candidateUrl.split('?')[0].split('#')[0]
+					const lastSlash = withoutQuery.lastIndexOf('/')
+					const base = lastSlash >= 0 ? withoutQuery.slice(lastSlash + 1) : withoutQuery
+					const sourceName = decodeURIComponent(base).trim()
+					if (sourceName) model3dPatch.modelSourceName = sourceName
+				} catch {
+					// ignore
+				}
+				// ===== 硬防护：modelSourcePath 只接受模型后缀 =====
+				const rawSourcePath = normalizeText(patch.meshyOutputAssetPath)
+				if (rawSourcePath && !isMeshyRuntimeImageUrlOrPath(rawSourcePath)) {
+					model3dPatch.modelSourcePath = rawSourcePath
+				}
+				if (!newIsRemote && meshySource.assetUrl) {
+					finalLocalAssetUrl = candidateUrl
+					finalLocalAssetPath = String(meshySource.assetPath || patch.meshyOutputAssetPath || '')
+					// ===== 硬防护：finalLocalAssetPath 是图片后缀时禁止回写到 DB =====
+					if (finalLocalAssetPath && isMeshyRuntimeImageUrlOrPath(finalLocalAssetPath)) {
+						finalLocalAssetPath = ''
+					}
 				}
 			}
 
@@ -571,7 +768,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					.then((res) => {
 						if (!res.ok) {
 							console.warn('[Meshy Runtime] 回写本地资源URL到后端失败:', res.error)
-						} else {
+						} else if (NODE_BINDING_DEBUG) {
 							console.log('[Meshy Runtime] 本地资源URL已回写到后端:', {
 								taskId: task.taskId,
 								localAssetUrl: finalLocalAssetUrl
@@ -703,7 +900,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		return String(meshySettings.meshyTaskFamily ?? '').trim()
 	}
 
-	const startMeshyPoll = (nodeId: string, taskId: string, mode: string) => {
+	const startMeshyPollClassic = (nodeId: string, taskId: string, mode: string) => {
 		stopMeshyPoll(nodeId)
 		meshyTerminalNotified.delete(nodeId)
 		meshyPollErrorCounts.delete(nodeId)
@@ -780,8 +977,137 @@ export const useAIWorkflowMeshyRuntime = (options: {
 		meshyPollTimers.set(nodeId, timer)
 	}
 
+	const startMeshyPoll = (nodeId: string, taskId: string, mode: string) => {
+		let scheduler: TaskPollScheduler | null = null
+		try {
+			scheduler = TaskPollScheduler.shared
+			if (!scheduler.isEnabled()) {
+				startMeshyPollClassic(nodeId, taskId, mode)
+				return
+			}
+		} catch {
+			startMeshyPollClassic(nodeId, taskId, mode)
+			return
+		}
+
+		stopMeshyPoll(nodeId)
+		meshyTerminalNotified.delete(nodeId)
+		meshyPollErrorCounts.delete(nodeId)
+		const modeCapture = String(mode || '')
+
+		const handleTick = async (state: PollTaskState): Promise<PollTaskState | null> => {
+			const currentNode = getNodeFromStore(nodeId)
+			if (!currentNode) {
+				stopMeshyPoll(nodeId)
+				return { ...state, status: 'canceled', errorCount: 0 }
+			}
+			const currentStatus = getNodeMeshyTaskStatus(currentNode)
+			if (
+				currentStatus === 'succeeded' ||
+				currentStatus === 'failed' ||
+				currentStatus === 'canceled'
+			) {
+				stopMeshyPoll(nodeId)
+				return {
+					...state,
+					status: (currentStatus as PollTaskState['status']) || 'completed',
+					errorCount: state.errorCount
+				}
+			}
+
+			try {
+				const res = await options.getComfyService().meshyTask(taskId, modeCapture)
+				if (!res.ok) {
+					const nextCount = state.errorCount + 1
+					if (nextCount >= 4) {
+						stopMeshyPoll(nodeId)
+						commitMeshyTaskFailed(nodeId, currentNode, t('tasks.meshy.pollStatusFailedConsecutive'))
+						options.pushToast(t('tasks.meshy.pollStatusFailedConsecutiveToast'), 'warn')
+						return { ...state, status: 'failed', errorCount: nextCount }
+					}
+					return { ...state, errorCount: nextCount }
+				}
+
+				const finalStatus = await applyMeshyTaskResult(nodeId, res)
+				const normalized = extractMeshyTaskResultFields(res)
+				const updatedProgress =
+					typeof normalized.progress === 'number'
+						? Math.max(0, Math.min(100, normalized.progress))
+						: state.progress
+				if (finalStatus === 'succeeded' || finalStatus === 'failed' || finalStatus === 'canceled') {
+					if (!meshyTerminalNotified.has(nodeId)) {
+						meshyTerminalNotified.add(nodeId)
+						const finalTarget = modeCapture.includes('image') ? 'image' : '3d'
+						if (finalStatus === 'succeeded') {
+							options.pushToast(
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskCompleted')
+									: t('tasks.meshy.model3dTaskCompleted'),
+								'info'
+							)
+						} else if (finalStatus === 'failed') {
+							options.pushToast(
+								finalTarget === 'image'
+									? t('tasks.meshy.imageTaskFailed')
+									: t('tasks.meshy.model3dTaskFailed'),
+								'warn'
+							)
+						} else {
+							options.pushToast(t('tasks.meshy.taskCanceled'), 'warn')
+						}
+					}
+					stopMeshyPoll(nodeId)
+					return {
+						...state,
+						status: (finalStatus as PollTaskState['status']) || 'completed',
+						progress: finalStatus === 'succeeded' ? 100 : updatedProgress,
+						errorCount: 0
+					}
+				}
+				return {
+					...state,
+					progress: updatedProgress,
+					errorCount: 0,
+					lastErrorText: undefined
+				}
+			} catch (err: unknown) {
+				const nextCount = state.errorCount + 1
+				if (nextCount >= 4) {
+					stopMeshyPoll(nodeId)
+					const currentNodeForFail = getNodeFromStore(nodeId)
+					commitMeshyTaskFailed(nodeId, currentNodeForFail, t('tasks.meshy.pollStatusException'))
+					options.pushToast(t('tasks.meshy.pollStatusExceptionToast'), 'warn')
+					return { ...state, status: 'failed', errorCount: nextCount }
+				}
+				return {
+					...state,
+					errorCount: nextCount,
+					lastErrorText:
+						err instanceof Error ? err.message : typeof err === 'string' ? err : String(err ?? '')
+				}
+			}
+		}
+
+		const currentNode = getNodeFromStore(nodeId)
+		const initStatus = getNodeMeshyTaskStatus(currentNode) as PollTaskState['status']
+		try {
+			scheduler.register(
+				nodeId,
+				taskId,
+				'meshy',
+				{ onTick: handleTick },
+				(initStatus || 'pending') as PollTaskState['status'],
+				0
+			)
+		} catch {
+			startMeshyPollClassic(nodeId, taskId, modeCapture)
+		}
+	}
+
 	const recoverMeshyTaskStates = async (opts?: { silent?: boolean }) => {
 		const meshyNodes: WorkflowNodeLike[] = []
+		const state = options.store.state as unknown as Record<string, unknown>
+		const resourcesById = isRecord(state.resourcesById) ? state.resourcesById : {}
 		for (const id of options.store.state.nodeOrder) {
 			const n = options.store.state.nodesById[id] as WorkflowNodeLike | undefined
 			if (n && (n.type === 'image' || n.type === 'model3d')) {
@@ -794,14 +1120,69 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					status === 'in_progress'
 				) {
 					meshyNodes.push(n)
-				} else if (status === 'succeeded' && taskId && n.type === 'model3d') {
+					continue
+				}
+				if (n.type === 'model3d' && status === 'succeeded' && taskId) {
 					const m3dSettings = isRecord(n.model3dSettings) ? n.model3dSettings : {}
+					const innerMeshy = isRecord(m3dSettings.meshyModelSettings)
+						? m3dSettings.meshyModelSettings
+						: {}
+					const outputSummary = isRecord(innerMeshy.outputSummary) ? innerMeshy.outputSummary : {}
+					const relationSummary = isRecord(innerMeshy.relationSummary)
+						? innerMeshy.relationSummary
+						: {}
+
 					const modelUrl = String(m3dSettings.modelUrl ?? '').trim()
 					const modelAssetUrl = String(m3dSettings.modelAssetUrl ?? '').trim()
-					const hasLocalUrl =
-						(modelUrl && !isMeshyRemoteUrl(modelUrl)) ||
-						(modelAssetUrl && !isMeshyRemoteUrl(modelAssetUrl))
-					if (!hasLocalUrl) {
+					const modelAssetPath = String(m3dSettings.modelAssetPath ?? '').trim()
+					const modelSourcePath = String(m3dSettings.modelSourcePath ?? '').trim()
+					const modelProjectRelativePath = String(m3dSettings.modelProjectRelativePath ?? '').trim()
+					const modelAssetProjectRelativePath = String(
+						m3dSettings.modelAssetProjectRelativePath ?? ''
+					).trim()
+
+					const innerAssetUrl = String(
+						outputSummary.assetUrl ??
+							relationSummary.effectiveLocalAssetUrl ??
+							innerMeshy.outputAssetUrl ??
+							''
+					).trim()
+					const innerAssetPath = String(
+						outputSummary.assetPath ??
+							relationSummary.effectiveLocalAssetPath ??
+							innerMeshy.outputAssetPath ??
+							''
+					).trim()
+
+					const nodeResourceId = String(n.resourceId ?? '').trim()
+					let resourceHasLocal = false
+					if (nodeResourceId && isRecord(resourcesById[nodeResourceId])) {
+						const res = resourcesById[nodeResourceId] as Record<string, unknown>
+						const resUrl = String(res.url ?? '').trim()
+						const resRel = String(res.projectRelativePath ?? '').trim()
+						const resAbs = String(res.sourcePath ?? res.absolutePath ?? '').trim()
+						resourceHasLocal =
+							(!!resUrl && !isMeshyRemoteUrl(resUrl) && isMeshyRuntimeLikely3DModelUrl(resUrl)) ||
+							(!!resRel && isMeshyRuntimeLikely3DModelUrl(resRel)) ||
+							(!!resAbs && isMeshyRuntimeLikely3DModelUrl(resAbs))
+					}
+
+					const candidateUrls = [modelUrl, modelAssetUrl, innerAssetUrl].filter(Boolean) as string[]
+					const candidatePaths = [
+						modelAssetPath,
+						modelSourcePath,
+						modelProjectRelativePath,
+						modelAssetProjectRelativePath,
+						innerAssetPath
+					].filter(Boolean) as string[]
+
+					const hasLocalUrl = candidateUrls.some(
+						(u) => !isMeshyRemoteUrl(u) && isMeshyRuntimeLikely3DModelUrl(u)
+					)
+					const hasLocalPath =
+						resourceHasLocal || candidatePaths.some((p) => isMeshyRuntimeLikely3DModelUrl(p))
+
+					if (!hasLocalUrl && !hasLocalPath) {
 						meshyNodes.push(n)
 					}
 				}
