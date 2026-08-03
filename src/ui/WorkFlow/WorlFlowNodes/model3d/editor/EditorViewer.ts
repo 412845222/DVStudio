@@ -15,7 +15,15 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js'
 import { ColorCorrectionShader } from 'three/examples/jsm/shaders/ColorCorrectionShader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import type { RenderMode, LightingPreset, EditorLoadProgress, LoadedEditorModel, OutlinerNode, TransformMode, ManualLightingParams } from './types'
+import type {
+	RenderMode,
+	LightingPreset,
+	EditorLoadProgress,
+	LoadedEditorModel,
+	OutlinerNode,
+	TransformMode,
+	ManualLightingParams
+} from './types'
 import { fetchAsArrayBuffer } from '../../../../../electronBridge'
 
 type Disposable = { dispose(): void }
@@ -31,7 +39,11 @@ type TextureLike = Disposable & {
 type MaterialLike = Disposable & TextureLike
 
 const isDisposable = (value: unknown): value is Disposable => {
-	return typeof value === 'object' && value !== null && typeof (value as { dispose?: unknown }).dispose === 'function'
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as { dispose?: unknown }).dispose === 'function'
+	)
 }
 
 const disposeMaterial = (material: MaterialLike | MaterialLike[]) => {
@@ -153,7 +165,9 @@ const isImageContentType = (ct: string): boolean => {
 	return /^image\//.test(low)
 }
 
-const detectMagicFromBytes = (bytes: Uint8Array): { kind: 'image' | 'model' | 'unknown'; name: string } => {
+const detectMagicFromBytes = (
+	bytes: Uint8Array
+): { kind: 'image' | 'model' | 'unknown'; name: string } => {
 	if (!bytes || bytes.length === 0) return { kind: 'unknown', name: 'empty' }
 	for (const item of IMAGE_MAGIC_NUMBERS) {
 		if (bytes.length < item.pattern.length) continue
@@ -368,9 +382,11 @@ export class EditorViewer {
 		this.transformControls.showX = true
 		this.transformControls.showY = true
 		this.transformControls.showZ = true
-		this.transformHelper = typeof (this.transformControls as unknown as { getHelper?: () => any }).getHelper === 'function'
-			? (this.transformControls as unknown as { getHelper: () => any }).getHelper()
-			: this.transformControls as unknown as any
+		this.transformHelper =
+			typeof (this.transformControls as unknown as { getHelper?: () => any }).getHelper ===
+			'function'
+				? (this.transformControls as unknown as { getHelper: () => any }).getHelper()
+				: (this.transformControls as unknown as any)
 		this.transformHelper.visible = false
 
 		this.handleTransformDraggingChanged = (event: { value: boolean }) => {
@@ -405,7 +421,10 @@ export class EditorViewer {
 		}
 		const initialWidth = canvas.clientWidth || 800
 		const initialHeight = canvas.clientHeight || 600
-		this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(initialWidth, initialHeight, renderTargetParams))
+		this.composer = new EffectComposer(
+			this.renderer,
+			new THREE.WebGLRenderTarget(initialWidth, initialHeight, renderTargetParams)
+		)
 
 		this.renderPass = new RenderPass(this.scene, this.camera)
 		this.renderPass.clear = true
@@ -470,7 +489,9 @@ export class EditorViewer {
 		this.axesHelper = new THREE.AxesHelper(2)
 		const axesMat = this.axesHelper.material as any
 		if (Array.isArray(axesMat)) {
-			axesMat.forEach((m: any) => { m.depthWrite = false })
+			axesMat.forEach((m: any) => {
+				m.depthWrite = false
+			})
 		} else {
 			axesMat.depthWrite = false
 		}
@@ -646,8 +667,7 @@ export class EditorViewer {
 		this.scene.add(this.bgMesh)
 	}
 
-	private updateBackgroundUniforms() {
-	}
+	private updateBackgroundUniforms() {}
 
 	private onKeyDown(e: KeyboardEvent) {
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -727,14 +747,23 @@ export class EditorViewer {
 	}
 
 	private resize() {
-		const width = Math.max(1, Math.floor(this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 1))
-		const height = Math.max(1, Math.floor(this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 1))
+		const width = Math.max(
+			1,
+			Math.floor(this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 1)
+		)
+		const height = Math.max(
+			1,
+			Math.floor(this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 1)
+		)
 		this.renderer.setSize(width, height, false)
 		this.composer.setSize(width, height)
 		this.camera.aspect = width / height
 		this.camera.updateProjectionMatrix()
 		const pixelRatio = this.renderer.getPixelRatio()
-		this.fxaaPass.uniforms['resolution'].value.set(1 / (width * pixelRatio), 1 / (height * pixelRatio))
+		this.fxaaPass.uniforms['resolution'].value.set(
+			1 / (width * pixelRatio),
+			1 / (height * pixelRatio)
+		)
 		if (this.bloomPass) {
 			this.bloomPass.resolution.set(width, height)
 		}
@@ -947,9 +976,7 @@ export class EditorViewer {
 							side: THREE.DoubleSide
 						})
 						if (Array.isArray(originalMat)) {
-							const maps = originalMat
-								.map((m: any) => (m as any).map)
-								.filter(Boolean) as any[]
+							const maps = originalMat.map((m: any) => (m as any).map).filter(Boolean) as any[]
 							if (maps.length > 0) unlitMat.map = maps[0]
 						} else if ((originalMat as any).map) {
 							unlitMat.map = (originalMat as any).map
@@ -1109,7 +1136,8 @@ export class EditorViewer {
 		}
 		if (params.lightAzimuth !== undefined || params.lightElevation !== undefined) {
 			const currentAzimuth = params.lightAzimuth ?? this.manualLightingParams.lightAzimuth ?? 45
-			const currentElevation = params.lightElevation ?? this.manualLightingParams.lightElevation ?? 55
+			const currentElevation =
+				params.lightElevation ?? this.manualLightingParams.lightElevation ?? 55
 			this.setMainLightDirection(currentAzimuth, currentElevation)
 		}
 
@@ -1517,7 +1545,10 @@ export class EditorViewer {
 		})
 	}
 
-	private loadModelFile(url: string, onProgress?: (loaded: number, total: number) => void): Promise<any> {
+	private loadModelFile(
+		url: string,
+		onProgress?: (loaded: number, total: number) => void
+	): Promise<any> {
 		return new Promise<any>(async (resolve, reject) => {
 			try {
 				await this.verifyModelResource(url)
@@ -1755,7 +1786,10 @@ export class EditorViewer {
 		this.controls.removeEventListener('change', this.handleControlsChange)
 		this.controls.removeEventListener('start', this.handleControlsStart)
 		this.controls.removeEventListener('end', this.handleControlsEnd)
-		this.transformControls.removeEventListener('dragging-changed', this.handleTransformDraggingChanged)
+		this.transformControls.removeEventListener(
+			'dragging-changed',
+			this.handleTransformDraggingChanged
+		)
 		this.transformControls.removeEventListener('objectChange', this.handleTransformChange)
 		this.transformControls.removeEventListener('change', this.handleTransformChange)
 		this.transformControls.removeEventListener('mouseUp', this.handleTransformMouseUp)

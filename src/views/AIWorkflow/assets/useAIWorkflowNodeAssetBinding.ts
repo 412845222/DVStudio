@@ -65,7 +65,11 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		arrayBuffer: ArrayBuffer
 		contentType?: string
 		bucket?: string
-	}) => Promise<{ ok: boolean; asset?: { relativePath: string; [k: string]: unknown }; error?: string } | null>
+	}) => Promise<{
+		ok: boolean
+		asset?: { relativePath: string; [k: string]: unknown }
+		error?: string
+	} | null>
 }) => {
 	const imageResourcePersistingIds = new Set<string>()
 	const videoResourcePersistingIds = new Set<string>()

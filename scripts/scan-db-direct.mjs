@@ -69,7 +69,7 @@ function extractJsonWindows(str, keyword, windowSize = 4000) {
 				try {
 					const sanitized = str
 						.slice(jsonStart, jsonEnd)
-						.replace(/[\x00-\x1F\x7F]/g, (c) => c === '\n' || c === '\r' || c === '\t' ? c : ' ')
+						.replace(/[\x00-\x1F\x7F]/g, (c) => (c === '\n' || c === '\r' || c === '\t' ? c : ' '))
 					const parsed = JSON.parse(sanitized)
 					results.push({ at: idx, parsed })
 				} catch {}
@@ -93,7 +93,15 @@ function deepFind(obj, predicate, path = '', acc = []) {
 	return acc
 }
 
-const keywords = ['meshyModelSettings', 'tripo3dModelSettings', 'modelAssetUrl', 'modelUrl', 'modelSourcePath', 'meshySettings', 'model3dSettings']
+const keywords = [
+	'meshyModelSettings',
+	'tripo3dModelSettings',
+	'modelAssetUrl',
+	'modelUrl',
+	'modelSourcePath',
+	'meshySettings',
+	'model3dSettings'
+]
 const allMatches = []
 for (const kw of keywords) {
 	const found = extractJsonWindows(text, kw, 6000)
@@ -137,8 +145,14 @@ for (let i = 0; i < uniqueNodes.length; i++) {
 	const s = item.raw
 	const printField = (name, val) => {
 		if (val === undefined || val === null || val === '') return
-		const display = typeof val === 'string' && val.length > 300 ? val.slice(0, 300) + `...(len=${val.length})` : val
-		console.log(`  ${name}:`, typeof display === 'object' ? JSON.stringify(display, null, 2).slice(0, 1500) : display)
+		const display =
+			typeof val === 'string' && val.length > 300
+				? val.slice(0, 300) + `...(len=${val.length})`
+				: val
+		console.log(
+			`  ${name}:`,
+			typeof display === 'object' ? JSON.stringify(display, null, 2).slice(0, 1500) : display
+		)
 	}
 	printField('nodeId/alias/title', s.nodeId || s.id || s.alias || s.title)
 	printField('type', s.type)
@@ -146,15 +160,24 @@ for (let i = 0; i < uniqueNodes.length; i++) {
 	printField('settings.modelUrl', s.modelUrl ?? s.settings?.modelUrl)
 	printField('settings.modelSourcePath', s.modelSourcePath ?? s.settings?.modelSourcePath)
 	printField('settings.modelAssetPath', s.modelAssetPath ?? s.settings?.modelAssetPath)
-	printField('settings.modelProjectRelativePath', s.modelProjectRelativePath ?? s.settings?.modelProjectRelativePath)
+	printField(
+		'settings.modelProjectRelativePath',
+		s.modelProjectRelativePath ?? s.settings?.modelProjectRelativePath
+	)
 	printField('resourceId', s.resourceId ?? s.settings?.resourceId)
 	printField('lastInputNodeId', s.lastInputNodeId ?? s.settings?.lastInputNodeId)
 	const mSettings = s.meshyModelSettings ?? s.settings?.meshyModelSettings ?? s.meshySettings
 	if (mSettings && typeof mSettings === 'object') {
 		console.log('  [meshy*Settings] 存在:', Object.keys(mSettings).slice(0, 30))
 		printField('    meshy*Settings.meshyTaskId', mSettings.meshyTaskId ?? mSettings.taskId)
-		printField('    meshy*Settings.meshyOutputAssetUrl', mSettings.meshyOutputAssetUrl ?? mSettings.assetUrl)
-		printField('    meshy*Settings.meshyOutputAssetPath', mSettings.meshyOutputAssetPath ?? mSettings.assetPath)
+		printField(
+			'    meshy*Settings.meshyOutputAssetUrl',
+			mSettings.meshyOutputAssetUrl ?? mSettings.assetUrl
+		)
+		printField(
+			'    meshy*Settings.meshyOutputAssetPath',
+			mSettings.meshyOutputAssetPath ?? mSettings.assetPath
+		)
 		const relation = mSettings.meshyRelationSummary
 		if (relation && typeof relation === 'object') {
 			printField('      relation.effectiveLocalAssetUrl', relation.effectiveLocalAssetUrl)
@@ -175,7 +198,10 @@ for (let i = 0; i < uniqueNodes.length; i++) {
 		printField('    tripo*Settings.tripo3dTaskId', tSettings.tripo3dTaskId ?? tSettings.taskId)
 		printField('    tripo*Settings.assetUrl', tSettings.assetUrl ?? tSettings.tripo3dAssetUrl)
 		printField('    tripo*Settings.assetPath', tSettings.assetPath ?? tSettings.tripo3dAssetPath)
-		printField('    tripo*Settings.preferredUrl', tSettings.preferredUrl ?? tSettings.tripo3dPreferredModelUrl)
+		printField(
+			'    tripo*Settings.preferredUrl',
+			tSettings.preferredUrl ?? tSettings.tripo3dPreferredModelUrl
+		)
 	}
 }
 
@@ -187,7 +213,10 @@ let resCount = 0
 for (const m of resourcesByIdMatches) {
 	const found = deepFind(m.parsed, (v) => {
 		if (!v || typeof v !== 'object') return false
-		return ('absolutePath' in v || 'sourcePath' in v) && ('url' in v || 'projectRelativePath' in v || 'name' in v)
+		return (
+			('absolutePath' in v || 'sourcePath' in v) &&
+			('url' in v || 'projectRelativePath' in v || 'name' in v)
+		)
 	})
 	for (const f of found) {
 		const key = JSON.stringify(f.value)
@@ -197,9 +226,19 @@ for (const m of resourcesByIdMatches) {
 		const v = f.value
 		console.log(`\n  resource #${resCount}`)
 		console.log('    path:', f.path)
-		for (const k of ['id', 'name', 'url', 'absolutePath', 'sourcePath', 'projectRelativePath', 'kind', 'mediaType']) {
+		for (const k of [
+			'id',
+			'name',
+			'url',
+			'absolutePath',
+			'sourcePath',
+			'projectRelativePath',
+			'kind',
+			'mediaType'
+		]) {
 			if (v[k] !== undefined && v[k] !== null && v[k] !== '') {
-				const val = typeof v[k] === 'string' && v[k].length > 200 ? v[k].slice(0, 200) + '...' : v[k]
+				const val =
+					typeof v[k] === 'string' && v[k].length > 200 ? v[k].slice(0, 200) + '...' : v[k]
 				console.log(`    ${k}:`, val)
 			}
 		}
@@ -211,7 +250,7 @@ console.log('\n=== 项目Content/Media实际GLB文件映射推导 ===')
 const candidateRoots = [
 	'G:\\DVSTestProject\\复赛视频项目',
 	'G:/DVSTestProject/复赛视频项目',
-	path.join(projectRoot, 'sample-project'),
+	path.join(projectRoot, 'sample-project')
 ]
 let mediaDir = null
 for (const r of candidateRoots) {
@@ -233,7 +272,9 @@ if (mediaDir) {
 		if (match) {
 			console.log(`    -> 推断 taskId: ${match[1]}`)
 			console.log(`    -> 推断相对 Content/Media 路径: Content/Media/${f}`)
-			console.log(`    -> 推断 dweb: dweb://project-assets/?projectId=1&path=${encodeURIComponent('Content/Media/' + f)}`)
+			console.log(
+				`    -> 推断 dweb: dweb://project-assets/?projectId=1&path=${encodeURIComponent('Content/Media/' + f)}`
+			)
 			console.log(`    -> 本地绝对路径: ${full}`)
 		}
 	}

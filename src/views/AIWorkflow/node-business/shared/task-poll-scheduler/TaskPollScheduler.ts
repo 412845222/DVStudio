@@ -1,4 +1,10 @@
-import type { PollTask, PollTaskCallbacks, PollTaskProvider, PollTaskState, PollTaskStatus } from './types'
+import type {
+	PollTask,
+	PollTaskCallbacks,
+	PollTaskProvider,
+	PollTaskState,
+	PollTaskStatus
+} from './types'
 import { isPollTaskTerminal } from './types'
 import { IntervalPolicy, type IntervalPolicyParams } from './IntervalPolicy'
 
@@ -64,7 +70,8 @@ export class TaskPollScheduler {
 
 	isEnabled(): boolean {
 		try {
-			const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(this.featureFlagKey) : null
+			const raw =
+				typeof localStorage !== 'undefined' ? localStorage.getItem(this.featureFlagKey) : null
 			if (raw === '0' || raw === 'false') return false
 		} catch {
 			// ignore

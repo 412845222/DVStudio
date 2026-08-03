@@ -81,10 +81,7 @@ export class IntervalPolicy {
 
 		if (ctx.errorCount > 0) {
 			const factor = Math.pow(this.errorBackoffFactor, Math.min(ctx.errorCount, 6))
-			const backoffInterval = Math.min(
-				this.baseIntervalMs * factor,
-				this.errorBackoffMaxMs
-			)
+			const backoffInterval = Math.min(this.baseIntervalMs * factor, this.errorBackoffMaxMs)
 			interval = Math.max(interval, backoffInterval)
 		}
 

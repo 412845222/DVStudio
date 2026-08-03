@@ -1836,7 +1836,8 @@ export class SceneLayoutPreviewViewer {
 						}
 						recovered.sourceNodeType = validSourceType
 						if (!String(recovered.modelUrl ?? '').trim() && modelUrl) recovered.modelUrl = modelUrl
-						if (!String(recovered.modelAssetUrl ?? '').trim() && modelAssetUrl) recovered.modelAssetUrl = modelAssetUrl
+						if (!String(recovered.modelAssetUrl ?? '').trim() && modelAssetUrl)
+							recovered.modelAssetUrl = modelAssetUrl
 						binding = recovered as unknown as WorkflowSceneLayoutModelBinding
 					}
 				}
@@ -1929,7 +1930,9 @@ export class SceneLayoutPreviewViewer {
 				//   等贴图相关字段被裁掉（进入 prepareResolvedSlotsForExport 时，
 				//   slot.modelBinding 已经有路径，所以 fallback 不会触发，最终就是白模）。
 				const slotModelBinding: Record<string, unknown> | undefined =
-					binding && typeof binding === 'object' ? { ...(binding as Record<string, unknown>) } : undefined
+					binding && typeof binding === 'object'
+						? { ...(binding as Record<string, unknown>) }
+						: undefined
 				if (slotModelBinding && !String(slotModelBinding.sourceNodeType ?? '').trim()) {
 					slotModelBinding.sourceNodeType = 'model3d'
 				}
@@ -2938,7 +2941,8 @@ export class SceneLayoutPreviewViewer {
 			const t = s.trim()
 			if (!t) return false
 			const lower = t.toLowerCase()
-			if (lower.startsWith('file://') || lower.startsWith('dweb://') || lower.startsWith('dweb:')) return true
+			if (lower.startsWith('file://') || lower.startsWith('dweb://') || lower.startsWith('dweb:'))
+				return true
 			// Windows 本地绝对路径: C:\... 或 \\... 或 unix /...
 			if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('\\\\') || t.startsWith('/')) return true
 			return false
@@ -3005,7 +3009,8 @@ export class SceneLayoutPreviewViewer {
 		const t = String(input ?? '').trim()
 		if (!t) return false
 		const low = t.toLowerCase()
-		if (low.startsWith('dweb:') || low.startsWith('http://') || low.startsWith('https://')) return true
+		if (low.startsWith('dweb:') || low.startsWith('http://') || low.startsWith('https://'))
+			return true
 		// ===== 关键：file:// 也统一走主进程代理（目前截图里的报错就是 file:// 被安全策略拦） =====
 		return low.startsWith('file://')
 	}
@@ -3014,12 +3019,13 @@ export class SceneLayoutPreviewViewer {
 		originUrl: string
 	): Promise<Record<string, unknown> | null> {
 		if (!buffer || buffer.byteLength === 0) return null
-		const ext = String(originUrl ?? '')
-			.split('?')[0]
-			.split('#')[0]
-			.split('.')
-			.pop()
-			?.toLowerCase() || ''
+		const ext =
+			String(originUrl ?? '')
+				.split('?')[0]
+				.split('#')[0]
+				.split('.')
+				.pop()
+				?.toLowerCase() || ''
 		if (!ext && !originUrl.toLowerCase().includes('.gltf')) return null
 		return new Promise<Record<string, unknown> | null>((resolve, reject) => {
 			const loader = this.loader as unknown as GLTFLoaderLike
@@ -3029,12 +3035,14 @@ export class SceneLayoutPreviewViewer {
 				return
 			}
 			try {
-				;(parseImpl as (
-					buffer: ArrayBuffer,
-					path: string,
-					onLoad: (result: Record<string, unknown>) => void,
-					onError?: (error: unknown) => void
-				) => void | Promise<Record<string, unknown>>).call(
+				;(
+					parseImpl as (
+						buffer: ArrayBuffer,
+						path: string,
+						onLoad: (result: Record<string, unknown>) => void,
+						onError?: (error: unknown) => void
+					) => void | Promise<Record<string, unknown>>
+				).call(
 					loader,
 					buffer,
 					'',

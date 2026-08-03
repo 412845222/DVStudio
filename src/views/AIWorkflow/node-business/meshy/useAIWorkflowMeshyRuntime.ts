@@ -122,7 +122,12 @@ const isMeshyRuntimeLikely3DModelUrl = (url: string): boolean => {
 	// 本地绝对路径无扩展名不认为是模型
 	try {
 		const t = String(url).trim().toLowerCase()
-		if (t.startsWith('http://') || t.startsWith('https://') || t.startsWith('dweb://') || t.startsWith('dweb:')) {
+		if (
+			t.startsWith('http://') ||
+			t.startsWith('https://') ||
+			t.startsWith('dweb://') ||
+			t.startsWith('dweb:')
+		) {
 			return true
 		}
 	} catch {
@@ -411,7 +416,11 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							const updatedNode = getNodeFromStore(nodeId)
 							if (NODE_BINDING_DEBUG) {
 								console.log('[Meshy Runtime] 绑定后节点resourceId:', updatedNode?.resourceId)
-								console.log('[Meshy Runtime] 图片资源已绑定到节点:', { nodeId, resourceId, assetUrl })
+								console.log('[Meshy Runtime] 图片资源已绑定到节点:', {
+									nodeId,
+									resourceId,
+									assetUrl
+								})
 							}
 						}
 					}
@@ -664,11 +673,15 @@ export const useAIWorkflowMeshyRuntime = (options: {
 			const meshySource = (() => {
 				const rs = isRecord(patch.meshyRelationSummary) ? patch.meshyRelationSummary : {}
 				const os = isRecord(patch.meshyOutputSummary) ? patch.meshyOutputSummary : {}
-				const mus = isRecord(patch.meshyModelUrls) ? (patch.meshyModelUrls as Record<string, unknown>) : {}
-				const rawAssetUrl =
-					normalizeText(rs.effectiveLocalAssetUrl ?? patch.meshyOutputAssetUrl ?? os.assetUrl)
-				const rawAssetPath =
-					normalizeText(rs.effectiveLocalAssetPath ?? patch.meshyOutputAssetPath ?? os.assetPath)
+				const mus = isRecord(patch.meshyModelUrls)
+					? (patch.meshyModelUrls as Record<string, unknown>)
+					: {}
+				const rawAssetUrl = normalizeText(
+					rs.effectiveLocalAssetUrl ?? patch.meshyOutputAssetUrl ?? os.assetUrl
+				)
+				const rawAssetPath = normalizeText(
+					rs.effectiveLocalAssetPath ?? patch.meshyOutputAssetPath ?? os.assetPath
+				)
 				// ===== 硬防护：asset 字段一旦为图片后缀 (如 png缩略图 污染)，直接丢弃 =====
 				const assetUrl =
 					rawAssetUrl && !isMeshyRuntimeImageUrlOrPath(rawAssetUrl) ? rawAssetUrl : ''
@@ -703,7 +716,10 @@ export const useAIWorkflowMeshyRuntime = (options: {
 
 			// 放宽同步条件：只要有候选URL 且 (状态成功 或 有 下载资产URL 或 外层尚未有URL)，就同步外层 model3dSettings
 			// 去掉之前强制 "非远端才能同步 + 外层无本地URL才能同步远端" 的限制，消费端已兼容
-			if (candidateUrl && (normalized === 'succeeded' || !existingHasOuterUrl || meshySource.assetUrl)) {
+			if (
+				candidateUrl &&
+				(normalized === 'succeeded' || !existingHasOuterUrl || meshySource.assetUrl)
+			) {
 				const newIsRemote = isMeshyRemoteUrl(candidateUrl)
 				model3dPatch.modelUrl = candidateUrl
 				model3dPatch.modelAssetUrl = candidateUrl
@@ -1108,9 +1124,13 @@ export const useAIWorkflowMeshyRuntime = (options: {
 				}
 				if (n.type === 'model3d' && status === 'succeeded' && taskId) {
 					const m3dSettings = isRecord(n.model3dSettings) ? n.model3dSettings : {}
-					const innerMeshy = isRecord(m3dSettings.meshyModelSettings) ? m3dSettings.meshyModelSettings : {}
+					const innerMeshy = isRecord(m3dSettings.meshyModelSettings)
+						? m3dSettings.meshyModelSettings
+						: {}
 					const outputSummary = isRecord(innerMeshy.outputSummary) ? innerMeshy.outputSummary : {}
-					const relationSummary = isRecord(innerMeshy.relationSummary) ? innerMeshy.relationSummary : {}
+					const relationSummary = isRecord(innerMeshy.relationSummary)
+						? innerMeshy.relationSummary
+						: {}
 
 					const modelUrl = String(m3dSettings.modelUrl ?? '').trim()
 					const modelAssetUrl = String(m3dSettings.modelAssetUrl ?? '').trim()
@@ -1122,10 +1142,16 @@ export const useAIWorkflowMeshyRuntime = (options: {
 					).trim()
 
 					const innerAssetUrl = String(
-						outputSummary.assetUrl ?? relationSummary.effectiveLocalAssetUrl ?? innerMeshy.outputAssetUrl ?? ''
+						outputSummary.assetUrl ??
+							relationSummary.effectiveLocalAssetUrl ??
+							innerMeshy.outputAssetUrl ??
+							''
 					).trim()
 					const innerAssetPath = String(
-						outputSummary.assetPath ?? relationSummary.effectiveLocalAssetPath ?? innerMeshy.outputAssetPath ?? ''
+						outputSummary.assetPath ??
+							relationSummary.effectiveLocalAssetPath ??
+							innerMeshy.outputAssetPath ??
+							''
 					).trim()
 
 					const nodeResourceId = String(n.resourceId ?? '').trim()
@@ -1141,11 +1167,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 							(!!resAbs && isMeshyRuntimeLikely3DModelUrl(resAbs))
 					}
 
-					const candidateUrls = [
-						modelUrl,
-						modelAssetUrl,
-						innerAssetUrl
-					].filter(Boolean) as string[]
+					const candidateUrls = [modelUrl, modelAssetUrl, innerAssetUrl].filter(Boolean) as string[]
 					const candidatePaths = [
 						modelAssetPath,
 						modelSourcePath,
@@ -1158,8 +1180,7 @@ export const useAIWorkflowMeshyRuntime = (options: {
 						(u) => !isMeshyRemoteUrl(u) && isMeshyRuntimeLikely3DModelUrl(u)
 					)
 					const hasLocalPath =
-						resourceHasLocal ||
-						candidatePaths.some((p) => isMeshyRuntimeLikely3DModelUrl(p))
+						resourceHasLocal || candidatePaths.some((p) => isMeshyRuntimeLikely3DModelUrl(p))
 
 					if (!hasLocalUrl && !hasLocalPath) {
 						meshyNodes.push(n)

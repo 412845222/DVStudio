@@ -80,8 +80,15 @@ const isImageUrlOrPath = (input) => {
 const isLikely3DModelUrlOrPath = (input) => {
 	const ext = extractUrlOrPathExt(input)
 	if (!ext) {
-		const low = String(input || '').trim().toLowerCase()
-		return low.startsWith('http://') || low.startsWith('https://') || low.startsWith('dweb://') || low.startsWith('dweb:')
+		const low = String(input || '')
+			.trim()
+			.toLowerCase()
+		return (
+			low.startsWith('http://') ||
+			low.startsWith('https://') ||
+			low.startsWith('dweb://') ||
+			low.startsWith('dweb:')
+		)
 	}
 	if (IMAGE_EXT_BLACKLIST.includes(ext)) return false
 	return MODEL_EXT_WHITELIST.includes(ext)
@@ -1392,9 +1399,7 @@ export async function updateTaskLocalAsset(ctx, payload) {
 			? rawLocalAssetUrl
 			: String(existing?.localAssetUrl || '')
 	const safeLocalAssetPath =
-		rawLocalAssetPath && !pathIsImage
-			? rawLocalAssetPath
-			: String(existing?.localAssetPath || '')
+		rawLocalAssetPath && !pathIsImage ? rawLocalAssetPath : String(existing?.localAssetPath || '')
 
 	repo.upsert({
 		taskId,

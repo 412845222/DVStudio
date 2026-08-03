@@ -101,12 +101,25 @@ console.log('\n=== 逐个 Model3D 节点详情 ===')
 for (const [nodeId, node] of model3dNodes) {
 	console.log(`\n--- 节点 ${nodeId}  alias="${node.alias || node.title || ''}" ---`)
 	const s = node.model3dSettings || {}
-	for (const k of ['modelAssetUrl', 'modelUrl', 'modelSourcePath', 'modelAssetPath', 'modelProjectRelativePath', 'modelFormat', 'modelSourceName', 'lastInputNodeId', 'resourceId', 'modelGenerationSource']) {
+	for (const k of [
+		'modelAssetUrl',
+		'modelUrl',
+		'modelSourcePath',
+		'modelAssetPath',
+		'modelProjectRelativePath',
+		'modelFormat',
+		'modelSourceName',
+		'lastInputNodeId',
+		'resourceId',
+		'modelGenerationSource'
+	]) {
 		if (s[k] !== undefined && s[k] !== null && s[k] !== '') {
 			const ext = extractExt(s[k])
 			const isImg = IMAGE_EXT_BLACKLIST.includes(ext)
 			const isModel = MODEL_EXT_WHITELIST.includes(ext)
-			console.log(`  settings.${k}: ${typeof s[k] === 'string' && s[k].length > 200 ? s[k].slice(0,200)+'...' : JSON.stringify(s[k])}  [ext=${ext} img=${isImg} model=${isModel}]`)
+			console.log(
+				`  settings.${k}: ${typeof s[k] === 'string' && s[k].length > 200 ? s[k].slice(0, 200) + '...' : JSON.stringify(s[k])}  [ext=${ext} img=${isImg} model=${isModel}]`
+			)
 		}
 	}
 	const meshy = s.meshyModelSettings || node.meshySettings || null
@@ -116,14 +129,29 @@ for (const [nodeId, node] of model3dNodes) {
 		if (hits.length > 0) {
 			console.log(`     内嵌taskId:`)
 			for (const h of hits.slice(0, 12)) {
-				const vShort = typeof h.value === 'string' && h.value.length > 150 ? h.value.slice(0, 150) + '...' : h.value
+				const vShort =
+					typeof h.value === 'string' && h.value.length > 150
+						? h.value.slice(0, 150) + '...'
+						: h.value
 				console.log(`       ${h.key}=${JSON.stringify(vShort)}  -> taskId=${h.taskId}`)
 			}
 		}
-		for (const k of ['meshyTaskId', 'taskId', 'meshyUpstreamTaskId', 'meshyOutputAssetUrl', 'assetUrl', 'meshyOutputAssetPath', 'assetPath', 'meshyModelUrl', 'preferredModelUrl']) {
+		for (const k of [
+			'meshyTaskId',
+			'taskId',
+			'meshyUpstreamTaskId',
+			'meshyOutputAssetUrl',
+			'assetUrl',
+			'meshyOutputAssetPath',
+			'assetPath',
+			'meshyModelUrl',
+			'preferredModelUrl'
+		]) {
 			if (meshy[k]) {
 				const ext = extractExt(meshy[k])
-				console.log(`     meshy.${k}: ${typeof meshy[k]==='string'&&meshy[k].length>150?meshy[k].slice(0,150)+'...':JSON.stringify(meshy[k])}  [ext=${ext}]`)
+				console.log(
+					`     meshy.${k}: ${typeof meshy[k] === 'string' && meshy[k].length > 150 ? meshy[k].slice(0, 150) + '...' : JSON.stringify(meshy[k])}  [ext=${ext}]`
+				)
 			}
 		}
 		const rel = meshy.meshyRelationSummary
@@ -133,7 +161,9 @@ for (const [nodeId, node] of model3dNodes) {
 				const v = rel[k]
 				if (typeof v === 'string' && v) {
 					const ext = extractExt(v)
-					console.log(`       relation.${k}: ${v.length>120?v.slice(0,120)+'...':v}  [ext=${ext}]`)
+					console.log(
+						`       relation.${k}: ${v.length > 120 ? v.slice(0, 120) + '...' : v}  [ext=${ext}]`
+					)
 				}
 			}
 		}
@@ -144,7 +174,9 @@ for (const [nodeId, node] of model3dNodes) {
 				const v = out[k]
 				if (typeof v === 'string' && v) {
 					const ext = extractExt(v)
-					console.log(`       output.${k}: ${v.length>120?v.slice(0,120)+'...':v}  [ext=${ext}]`)
+					console.log(
+						`       output.${k}: ${v.length > 120 ? v.slice(0, 120) + '...' : v}  [ext=${ext}]`
+					)
 				}
 			}
 		}
@@ -156,7 +188,10 @@ for (const [nodeId, node] of model3dNodes) {
 		if (hits.length > 0) {
 			console.log(`     内嵌taskId:`)
 			for (const h of hits.slice(0, 12)) {
-				const vShort = typeof h.value === 'string' && h.value.length > 150 ? h.value.slice(0, 150) + '...' : h.value
+				const vShort =
+					typeof h.value === 'string' && h.value.length > 150
+						? h.value.slice(0, 150) + '...'
+						: h.value
 				console.log(`       ${h.key}=${JSON.stringify(vShort)}  -> taskId=${h.taskId}`)
 			}
 		}
@@ -165,10 +200,21 @@ for (const [nodeId, node] of model3dNodes) {
 	if (resId && resources[resId]) {
 		const r = resources[resId]
 		console.log(`  [resourceId=${resId}] 资源 keys=${Object.keys(r).join(', ')}`)
-		for (const k of ['url', 'absolutePath', 'sourcePath', 'projectRelativePath', 'name', 'kind', 'mediaType', 'path']) {
+		for (const k of [
+			'url',
+			'absolutePath',
+			'sourcePath',
+			'projectRelativePath',
+			'name',
+			'kind',
+			'mediaType',
+			'path'
+		]) {
 			if (r[k] !== undefined && r[k] !== null && r[k] !== '') {
 				const ext = extractExt(r[k])
-				console.log(`     resource.${k}=${typeof r[k]==='string'&&r[k].length>150?r[k].slice(0,150)+'...':JSON.stringify(r[k])}  [ext=${ext}]`)
+				console.log(
+					`     resource.${k}=${typeof r[k] === 'string' && r[k].length > 150 ? r[k].slice(0, 150) + '...' : JSON.stringify(r[k])}  [ext=${ext}]`
+				)
 			}
 		}
 	}
@@ -181,9 +227,9 @@ for (const [nodeId, node] of model3dNodes) {
 	if (allTaskIdsInNode.size > 0) {
 		console.log(`  节点所有可提取的 taskId: ${[...allTaskIdsInNode].join(', ')}`)
 		for (const tid of allTaskIdsInNode) {
-			const matches = allGlb.filter(g => g.taskId === tid)
+			const matches = allGlb.filter((g) => g.taskId === tid)
 			if (matches.length > 0) {
-				console.log(`     -> 磁盘匹配: ${matches.map(m=>m.name).join(', ')}`)
+				console.log(`     -> 磁盘匹配: ${matches.map((m) => m.name).join(', ')}`)
 			}
 		}
 	} else {
@@ -193,7 +239,10 @@ for (const [nodeId, node] of model3dNodes) {
 	if (rawSettings.length < 4000) {
 		console.log(`  [完整 settings JSON] (${rawSettings.length} chars):`, rawSettings.slice(0, 3500))
 	} else {
-		console.log(`  [完整 settings JSON] 太长(${rawSettings.length} chars)，只打印开头1500:`, rawSettings.slice(0, 1500))
+		console.log(
+			`  [完整 settings JSON] 太长(${rawSettings.length} chars)，只打印开头1500:`,
+			rawSettings.slice(0, 1500)
+		)
 	}
 }
 
@@ -206,11 +255,18 @@ if (fs.existsSync(dbPath)) {
 	try {
 		const Database = require(path.join(projectRoot, 'node_modules', 'better-sqlite3'))
 		const db = new Database(dbPath)
-		const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%task%' OR name LIKE '%meshy%' OR name LIKE '%tripo%'").all()
-		console.log('相关表:', tables.map(t=>t.name).join(', '))
+		const tables = db
+			.prepare(
+				"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%task%' OR name LIKE '%meshy%' OR name LIKE '%tripo%'"
+			)
+			.all()
+		console.log('相关表:', tables.map((t) => t.name).join(', '))
 		for (const t of tables) {
 			try {
-				const cols = db.prepare(`PRAGMA table_info("${t.name}")`).all().map(c=>c.name)
+				const cols = db
+					.prepare(`PRAGMA table_info("${t.name}")`)
+					.all()
+					.map((c) => c.name)
 				console.log(`  ${t.name} cols: ${cols.join(', ')}`)
 				const count = db.prepare(`SELECT COUNT(*) as cnt FROM "${t.name}"`).get().cnt
 				console.log(`  ${t.name} rows: ${count}`)

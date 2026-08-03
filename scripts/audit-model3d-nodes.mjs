@@ -35,7 +35,18 @@ console.log('[audit] Blueprint:', BLUEPRINT_PATH, 'exists:', fs.existsSync(BLUEP
 console.log('[audit] Media dir:', MEDIA_DIR, 'exists:', fs.existsSync(MEDIA_DIR))
 
 const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz']
-const IMAGE_EXT_BLACKLIST = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'svg', 'avif']
+const IMAGE_EXT_BLACKLIST = [
+	'png',
+	'jpg',
+	'jpeg',
+	'gif',
+	'webp',
+	'bmp',
+	'tif',
+	'tiff',
+	'svg',
+	'avif'
+]
 
 function extractExt(urlOrPath) {
 	const s = String(urlOrPath || '').trim()
@@ -63,11 +74,15 @@ function isModelExt(ext) {
 	return ext && MODEL_EXT_WHITELIST.includes(String(ext).toLowerCase())
 }
 function isRemoteHttp(u) {
-	const s = String(u || '').toLowerCase().trim()
+	const s = String(u || '')
+		.toLowerCase()
+		.trim()
 	return s.startsWith('http://') || s.startsWith('https://')
 }
 function isDwebProjectAsset(u) {
-	const s = String(u || '').toLowerCase().trim()
+	const s = String(u || '')
+		.toLowerCase()
+		.trim()
 	return s.startsWith('dweb://project-assets') || s.startsWith('dweb:project-assets')
 }
 
@@ -111,7 +126,9 @@ function pickMediaGlbForTask(taskId) {
 	const arr = glbByTaskId.get(id)
 	if (!arr || arr.length === 0) return null
 	// 优先选文件名不含 `_` 后缀（即主文件）
-	const primary = arr.find((x) => x.name.match(/^(?:meshy-3d-|meshy[_-]|tripo3d[_-])[a-f0-9-]+\.glb$/i))
+	const primary = arr.find((x) =>
+		x.name.match(/^(?:meshy-3d-|meshy[_-]|tripo3d[_-])[a-f0-9-]+\.glb$/i)
+	)
 	return primary || arr[0]
 }
 
@@ -256,7 +273,9 @@ for (const n of model3dNodes) {
 			bestDwebUrl = dweb
 			bestLocalAbs = mediaGlb.full
 			if (!bestCandidate || bestCandidate.diskPath !== mediaGlb.full) {
-				diagnostics.push(`taskId=${taskId} 命中 Media 文件:${mediaGlb.name}，优先使用该文件，构造 dweb=${dweb}`)
+				diagnostics.push(
+					`taskId=${taskId} 命中 Media 文件:${mediaGlb.name}，优先使用该文件，构造 dweb=${dweb}`
+				)
 			}
 		} else {
 			diagnostics.push(`taskId=${taskId} 在 Content/Media 未找到对应 glb（需要先完成任务下载）`)
@@ -277,10 +296,20 @@ for (const n of model3dNodes) {
 		}
 		const ext = extractExt(v)
 		if (isImageExt(ext)) {
-			outerFieldsReport[k] = { value: v, ext, status: 'BAD_IMAGE_EXT', suggestion: '应清除或替换为模型后缀路径' }
+			outerFieldsReport[k] = {
+				value: v,
+				ext,
+				status: 'BAD_IMAGE_EXT',
+				suggestion: '应清除或替换为模型后缀路径'
+			}
 			diagnostics.push(`[严重] ${k} 被图片后缀(${ext})污染:${v}`)
 		} else if (isRemoteHttp(v)) {
-			outerFieldsReport[k] = { value: v.slice(0, 120), ext, status: 'REMOTE_URL', suggestion: '优先使用 dweb / 本地绝对路径' }
+			outerFieldsReport[k] = {
+				value: v.slice(0, 120),
+				ext,
+				status: 'REMOTE_URL',
+				suggestion: '优先使用 dweb / 本地绝对路径'
+			}
 			diagnostics.push(`[警告] ${k} 仍为远程URL:${v.slice(0, 80)}...`)
 		} else if (isModelExt(ext)) {
 			outerFieldsReport[k] = { value: v, ext, status: 'MODEL_EXT_OK' }

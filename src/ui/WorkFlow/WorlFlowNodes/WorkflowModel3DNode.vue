@@ -345,8 +345,14 @@ import {
 } from '../../../views/AIWorkflow/assets/useAIWorkflowAssetPersistence'
 import { resolveWorkflowResourceUrl } from '../../../aiworkflow/domain/resource/safeWorkflowUrl'
 import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
-import { getMeshyEffectiveModelSource, isMeshyRemoteUrl } from '../../../views/AIWorkflow/node-business/meshy/useAIWorkflowMeshyAssets'
-import { getTripo3DEffectiveModelSource, isTripo3DRemoteUrl } from '../../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DAssets'
+import {
+	getMeshyEffectiveModelSource,
+	isMeshyRemoteUrl
+} from '../../../views/AIWorkflow/node-business/meshy/useAIWorkflowMeshyAssets'
+import {
+	getTripo3DEffectiveModelSource,
+	isTripo3DRemoteUrl
+} from '../../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DAssets'
 import { getProjectRootById } from '../../../electronBridge'
 
 const { t } = useI18n()
@@ -558,15 +564,9 @@ const extractProjectRelativePathFromAny = (input: string): string => {
 			if (qStart >= 0) {
 				const params = new URLSearchParams(t.slice(qStart + 1))
 				const rawPath =
-					params.get('path') ||
-					params.get('relativePath') ||
-					params.get('assetPath') ||
-					''
+					params.get('path') || params.get('relativePath') || params.get('assetPath') || ''
 				if (rawPath) {
-					const clean = decodeURIComponent(rawPath)
-						.split('?')[0]
-						.split('#')[0]
-						.replace(/\\/g, '/')
+					const clean = decodeURIComponent(rawPath).split('?')[0].split('#')[0].replace(/\\/g, '/')
 					if (clean && clean.toLowerCase().endsWith('.glb')) return clean
 				}
 			}
@@ -670,7 +670,9 @@ const ensureResolveToLocalFileUrl = async (): Promise<string> => {
 	const seenRel = new Set<string>()
 	for (const p of probes) {
 		if (isLocalAbsPath(p.value)) continue
-		const cleaned = String(p.value || '').replace(/\\/g, '/').trim()
+		const cleaned = String(p.value || '')
+			.replace(/\\/g, '/')
+			.trim()
 		if (!cleaned || seenRel.has(cleaned.toLowerCase())) continue
 		if (/\.glb$/i.test(cleaned) || /\.gltf$/i.test(cleaned)) {
 			seenRel.add(cleaned.toLowerCase())
@@ -866,16 +868,11 @@ const deriveProjectMediaModelCandidates = (
 	if (source === 'meshy') {
 		// 真实项目中 Meshy 下载后的文件名是：meshy-3d-{taskId}.glb（中划线），严格匹配
 		const relPath = `Content/Media/meshy-3d-${taskId}.glb`
-		results.push(
-			`dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`
-		)
+		results.push(`dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(relPath)}`)
 		results.push(relPath)
 	} else if (source === 'tripo3d') {
 		// Tripo3D 实际有两种命名：tripo3d-{taskId}.glb / tripo3d_{taskId}.glb
-		const variants = [
-			`Content/Media/tripo3d-${taskId}.glb`,
-			`Content/Media/tripo3d_${taskId}.glb`
-		]
+		const variants = [`Content/Media/tripo3d-${taskId}.glb`, `Content/Media/tripo3d_${taskId}.glb`]
 		for (const rel of variants) {
 			results.push(`dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`)
 		}
@@ -1070,7 +1067,9 @@ const recoverImageExtToModel = (input: string, targetExt: string = 'glb'): Array
 				newParams.set(key, encodeURIComponent(newClean))
 				results.push(prefix + '?' + newParams.toString())
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 		return results
 	}
 	const withoutQuery = t.split('?')[0].split('#')[0]
@@ -1094,7 +1093,9 @@ const isRemoteVendorCdnUrl = (u: string): boolean => {
 	return false
 }
 
-const pickBestModelUrlFromCandidates = (rawCandidates: Array<string | null | undefined>): string => {
+const pickBestModelUrlFromCandidates = (
+	rawCandidates: Array<string | null | undefined>
+): string => {
 	const validList: Array<{ url: string; q: CandidateQuality }> = []
 	const pushOne = (raw: string) => {
 		const u0 = String(raw ?? '').trim()
@@ -1134,10 +1135,16 @@ const resolvedFallbackModelSource = computed(() => {
 	// ===== 直接从节点 settings 的 projectAssetUrl/assetPath 中提取 projectId（比依赖 store 更直接且无需传 prop）=====
 	const detectProjectIdFromCandidate = (): string | undefined => {
 		const probes = [
-			s?.modelAssetUrl, s?.modelUrl, s?.modelAssetPath, s?.modelSourcePath,
-			meshy?.meshyOutputAssetUrl, meshy?.meshyRelationSummary?.effectiveLocalAssetUrl,
-			tripo?.tripo3dAssetUrl, tripo?.tripo3dRelationSummary?.effectiveLocalAssetUrl,
-			props.resourceUrl, props.resourceSourcePath
+			s?.modelAssetUrl,
+			s?.modelUrl,
+			s?.modelAssetPath,
+			s?.modelSourcePath,
+			meshy?.outputAssetUrl,
+			meshy?.relationSummary?.effectiveLocalAssetUrl,
+			tripo?.tripo3dImageUrl,
+			tripo?.tripo3dRelationSummary?.effectiveLocalAssetUrl,
+			props.resourceUrl,
+			props.resourceSourcePath
 		]
 		for (const raw of probes) {
 			const t = String(raw ?? '').trim()
@@ -1173,7 +1180,9 @@ const resolvedFallbackModelSource = computed(() => {
 		// ===== 2026-08-03 修复：props.resourceUrl / props.resourceSourcePath 是上层
 		// NodeComponentResolver.resolveResourceProps 从 resourcesById 解析好的正确资产路径（比任何推导更可信）
 		// 必须最高优先级：它们对应蓝图项目 Content/Media 下真实存在的 glb 文件
-		const resolvedResourceUrl = props.resourceUrl ? resolveWorkflowResourceUrl(props.resourceUrl) : ''
+		const resolvedResourceUrl = props.resourceUrl
+			? resolveWorkflowResourceUrl(props.resourceUrl)
+			: ''
 		const resolvedResourceSourcePath = String(props.resourceSourcePath ?? '').trim()
 		const safeResolvedSourcePath =
 			resolvedResourceSourcePath && !isImageUrlOrPath(resolvedResourceSourcePath)
@@ -1803,9 +1812,7 @@ const loadModelIntoViewer = async (requestId?: number) => {
 			}
 			// ===== 主进程代理失败：降级为直接让 Three.js FileLoader 尝试加载（非远程CDN或file://环境可正常工作） =====
 			if (fetchResult && !fetchResult.ok && !isRemoteHttpUrl(url)) {
-				throw new Error(
-					fetchResult.error || t('nodes.model3d.previewLoadFailed')
-				)
+				throw new Error(fetchResult.error || t('nodes.model3d.previewLoadFailed'))
 			}
 		}
 

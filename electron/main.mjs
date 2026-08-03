@@ -183,7 +183,12 @@ function resolveDwebAssetUrlToFilePath(rawUrl) {
 	// 目前只处理 project-assets 主机的 dweb 资产
 	if (host !== 'project-assets') return null
 	const projectIdRaw = String(u.searchParams.get('projectId') || '').trim()
-	const relPathRaw = String(u.searchParams.get('path') || u.searchParams.get('relativePath') || u.searchParams.get('assetPath') || '').trim()
+	const relPathRaw = String(
+		u.searchParams.get('path') ||
+			u.searchParams.get('relativePath') ||
+			u.searchParams.get('assetPath') ||
+			''
+	).trim()
 	if (!projectIdRaw || !relPathRaw) return null
 	const projectId = Number(projectIdRaw)
 	if (!Number.isFinite(projectId) || projectId <= 0) return null
@@ -209,7 +214,9 @@ function resolveDwebAssetUrlToFilePath(rawUrl) {
 }
 // 辅助：从 MIME 猜扩展名，或从本地文件路径/URL 扩展名推断 MIME
 function guessMimeFromPath(filePath) {
-	const p = String(filePath || '').split('?')[0].split('#')[0]
+	const p = String(filePath || '')
+		.split('?')[0]
+		.split('#')[0]
 	const lastDot = p.lastIndexOf('.')
 	const ext = lastDot >= 0 ? p.slice(lastDot + 1).toLowerCase() : ''
 	switch (ext) {
@@ -252,7 +259,9 @@ function fetchRawBuffer(rawUrl) {
 				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
 				mime: guessMimeFromPath(urlStr)
 			}))
-			.catch((err) => Promise.reject(new Error(`read local file failed: ${String(err?.message || err)}`)))
+			.catch((err) =>
+				Promise.reject(new Error(`read local file failed: ${String(err?.message || err)}`))
+			)
 	}
 
 	// ===== 分支 2：file:/// URL → 转成本地路径读磁盘 =====
@@ -269,7 +278,9 @@ function fetchRawBuffer(rawUrl) {
 				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
 				mime: guessMimeFromPath(filePath)
 			}))
-			.catch((err) => Promise.reject(new Error(`read file:// failed: ${String(err?.message || err)}`)))
+			.catch((err) =>
+				Promise.reject(new Error(`read file:// failed: ${String(err?.message || err)}`))
+			)
 	}
 
 	// ===== 分支 3：dweb://project-assets?projectId=xxx&path=yyy → 解析出真实磁盘路径读磁盘 =====
@@ -284,7 +295,11 @@ function fetchRawBuffer(rawUrl) {
 				buffer: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
 				mime: guessMimeFromPath(resolved)
 			}))
-			.catch((err) => Promise.reject(new Error(`read dweb asset failed (${resolved}): ${String(err?.message || err)}`)))
+			.catch((err) =>
+				Promise.reject(
+					new Error(`read dweb asset failed (${resolved}): ${String(err?.message || err)}`)
+				)
+			)
 	}
 
 	// ===== 分支 4：http(s):// → 走 Node.js 原生 transport 拿远程数据 (和旧行为一致) =====
@@ -1895,7 +1910,20 @@ function registerIpc() {
 		return ''
 	}
 	const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz']
-	const IMAGE_EXT_BLACKLIST = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'svg', 'ico', 'heic', 'heif']
+	const IMAGE_EXT_BLACKLIST = [
+		'png',
+		'jpg',
+		'jpeg',
+		'gif',
+		'webp',
+		'bmp',
+		'tiff',
+		'tif',
+		'svg',
+		'ico',
+		'heic',
+		'heif'
+	]
 	const extractUrlExt = (url) => {
 		if (!url) return ''
 		try {
@@ -1916,7 +1944,9 @@ function registerIpc() {
 						const d = namePart.lastIndexOf('.')
 						if (d >= 0) return namePart.slice(d + 1).toLowerCase()
 					}
-				} catch { /* ignore */ }
+				} catch {
+					/* ignore */
+				}
 			}
 			const withoutQuery = text.split('?')[0].split('#')[0]
 			const lastSlash = Math.max(withoutQuery.lastIndexOf('/'), withoutQuery.lastIndexOf('\\'))
@@ -2010,16 +2040,18 @@ function registerIpc() {
 				}
 			} else {
 				// ===== 已有 models 数组：对每个模型 URL 也做一次本地优先替换 + 误判后缀恢复 =====
-				models = models.map((m, i) => {
-					const assetPath = String(m?.assetPath || m?.localPath || m?.sourcePath || '').trim()
-					const rawUrl = String(m?.url || '').trim()
-					const bestUrl = pickBestCandidate([assetPath, rawUrl])
-					return {
-						id: String(m?.id || (nodeId ? `${nodeId}-${i}` : `model-${i}-${Date.now()}`)),
-						name: String(m?.name || `Model ${i + 1}`),
-						url: bestUrl || rawUrl || assetPath
-					}
-				}).filter(m => m.url)
+				models = models
+					.map((m, i) => {
+						const assetPath = String(m?.assetPath || m?.localPath || m?.sourcePath || '').trim()
+						const rawUrl = String(m?.url || '').trim()
+						const bestUrl = pickBestCandidate([assetPath, rawUrl])
+						return {
+							id: String(m?.id || (nodeId ? `${nodeId}-${i}` : `model-${i}-${Date.now()}`)),
+							name: String(m?.name || `Model ${i + 1}`),
+							url: bestUrl || rawUrl || assetPath
+						}
+					})
+					.filter((m) => m.url)
 			}
 
 			if (!nodeId && models.length === 0) {
