@@ -28,15 +28,7 @@
 				@dblclick.stop="onNumberInputDblClick"
 				@focus="onNumberInputFocus"
 				@blur="onNumberInputBlur"
-				@pointerdown="
-					(e: PointerEvent) =>
-						onNumberScrubPointerDown(
-							e,
-							() => draft.fontSize,
-							(v) => (draft.fontSize = v),
-							{ step: 1, min: 1, max: 999999, onCommit: applyText }
-						)
-				"
+				@pointerdown="onFontSizePointerDown"
 			/>
 		</label>
 		<label class="vs-row">
@@ -68,10 +60,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'left' }"
 					title="左对齐"
-					@click.stop.prevent="
-						draft.textAlign = 'left'
-						applyText()
-					"
+					@click.stop.prevent="setAlign('left')"
 				>
 					L
 				</button>
@@ -80,10 +69,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'center' }"
 					title="居中"
-					@click.stop.prevent="
-						draft.textAlign = 'center'
-						applyText()
-					"
+					@click.stop.prevent="setAlign('center')"
 				>
 					C
 				</button>
@@ -92,10 +78,7 @@
 					type="button"
 					:class="{ active: draft.textAlign === 'right' }"
 					title="右对齐"
-					@click.stop.prevent="
-						draft.textAlign = 'right'
-						applyText()
-					"
+					@click.stop.prevent="setAlign('right')"
 				>
 					R
 				</button>
@@ -115,7 +98,7 @@ type DraftText = {
 	textAlign: 'left' | 'center' | 'right'
 }
 
-defineProps<{
+const props = defineProps<{
 	draft: DraftText
 	applyText: () => void
 	applyTextToAllFrames: () => void
@@ -129,6 +112,20 @@ defineProps<{
 	onNumberInputFocus: (e: FocusEvent) => void
 	onNumberInputBlur: (e: FocusEvent) => void
 }>()
+
+function setAlign(align: 'left' | 'center' | 'right') {
+	props.draft.textAlign = align
+	props.applyText()
+}
+
+function onFontSizePointerDown(e: PointerEvent) {
+	props.onNumberScrubPointerDown(
+		e,
+		() => props.draft.fontSize,
+		(v) => (props.draft.fontSize = v),
+		{ step: 1, min: 1, max: 999999, onCommit: props.applyText }
+	)
+}
 </script>
 
 <style scoped>

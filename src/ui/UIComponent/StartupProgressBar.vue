@@ -107,13 +107,16 @@ function statusIcon(status: StartupProgressStep['status']) {
 			return '■'
 		case 'ok':
 			return '■'
-		case 'warn':
-			return '■'
 		case 'error':
 			return '■'
 		default:
-			return '□'
+			return '■'
 	}
+}
+
+function onDismiss() {
+	localVisible.value = false
+	emit('dismiss')
 }
 </script>
 
@@ -124,10 +127,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 			<button
 				class="startup-progress-bar-close"
 				type="button"
-				@click="
-					localVisible = false
-					$emit('dismiss')
-				"
+				@click="onDismiss"
 				:aria-label="t('startup.close')"
 			>
 				✕

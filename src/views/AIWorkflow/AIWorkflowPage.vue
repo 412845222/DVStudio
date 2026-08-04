@@ -1201,9 +1201,7 @@ const inputParamPreviewRefsByNodeId = computed<Record<string, InputParamPreviewR
 
 	if (BLUEPRINT_POLL_DEBUG) {
 		console.log(
-			`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${
-				Object.values(result).filter((r) => r.length > 0).length
-			}, anyChanged=${anyChanged}`
+			`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${Object.values(result).filter((r) => r.length > 0).length}, anyChanged=${anyChanged}`
 		)
 	}
 

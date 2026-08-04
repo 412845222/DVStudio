@@ -1213,9 +1213,7 @@ const advancedSummaryText = computed(() =>
 )
 const imageAdvancedSummaryText = computed(() => {
 	const ratio = meshyGenerateMultiView.value ? 'auto' : meshyAspectRatio.value
-	return `${meshyAiModel.value} / ratio ${ratio} / multi-view ${
-		meshyGenerateMultiView.value ? 'on' : 'off'
-	}`
+	return `${meshyAiModel.value} / ratio ${ratio} / multi-view ${meshyGenerateMultiView.value ? 'on' : 'off'}`
 })
 
 const relationSummaryText = computed(() => {

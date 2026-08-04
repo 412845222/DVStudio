@@ -292,6 +292,24 @@ function onMaxToolCallsChange() {
 	saveAgentSettings()
 }
 
+function decrementMaxToolCalls() {
+	if (!form.agent) return
+	form.agent.maxToolCalls = Math.max(
+		AGENT_CONFIG_CONSTRAINTS.maxToolCalls.min,
+		form.agent.maxToolCalls - AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step
+	)
+	onMaxToolCallsChange()
+}
+
+function incrementMaxToolCalls() {
+	if (!form.agent) return
+	form.agent.maxToolCalls = Math.min(
+		AGENT_CONFIG_CONSTRAINTS.maxToolCalls.max,
+		form.agent.maxToolCalls + AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step
+	)
+	onMaxToolCallsChange()
+}
+
 function onAgentSwitchChange() {
 	saveAgentSettings()
 }
@@ -1550,32 +1568,10 @@ const canEnableCodex = computed(() => {
 									@change="onMaxToolCallsChange"
 								/>
 								<div class="agent-number-controls">
-									<button
-										type="button"
-										class="agent-number-btn"
-										@click="
-											form.agent &&
-												(form.agent.maxToolCalls = Math.max(
-													AGENT_CONFIG_CONSTRAINTS.maxToolCalls.min,
-													form.agent.maxToolCalls - AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step
-												))
-											onMaxToolCallsChange()
-										"
-									>
+									<button type="button" class="agent-number-btn" @click="decrementMaxToolCalls">
 										−
 									</button>
-									<button
-										type="button"
-										class="agent-number-btn"
-										@click="
-											form.agent &&
-												(form.agent.maxToolCalls = Math.min(
-													AGENT_CONFIG_CONSTRAINTS.maxToolCalls.max,
-													form.agent.maxToolCalls + AGENT_CONFIG_CONSTRAINTS.maxToolCalls.step
-												))
-											onMaxToolCallsChange()
-										"
-									>
+									<button type="button" class="agent-number-btn" @click="incrementMaxToolCalls">
 										+
 									</button>
 								</div>

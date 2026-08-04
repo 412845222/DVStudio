@@ -203,10 +203,7 @@
 								class="cs-bucket-item"
 								:class="{ active: selectedBucketName === b.name }"
 								type="button"
-								@click="
-									selectedBucketName = b.name
-									newBucketName = ''
-								"
+								@click="selectBucket(b.name)"
 							>
 								<span class="cs-bucket-corners" aria-hidden="true">
 									<span class="cs-bc tl"></span>
@@ -408,6 +405,11 @@ const verifyStatus = ref<{ type: VerifyStatusType; message: string }>({ type: ''
 const availableBuckets = ref<any[]>([])
 const selectedBucketName = ref('')
 const newBucketName = ref('')
+
+function selectBucket(name: string) {
+	selectedBucketName.value = name
+	newBucketName.value = ''
+}
 
 const credentialFields = computed(() => selectedProvider.value?.credentialFields || [])
 const accessKeyFieldKey = computed(() => {
