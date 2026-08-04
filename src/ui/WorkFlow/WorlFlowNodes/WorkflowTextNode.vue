@@ -14,8 +14,18 @@
 		:inputs="inputs"
 		:outputs="outputs"
 		:selected="selected"
+		:isPrimarySelected="selected"
+		:isSecondarySelected="false"
+		:visualStatus="visualStatus"
 		:hoverInputAnchorId="hoverInputAnchorId"
 		:hoverOutputAnchorId="hoverOutputAnchorId"
+		:nodeChatVisible="nodeChatVisible"
+		:nodeChatNodeType="nodeChatNodeType"
+		:nodeChatDraft="nodeChatDraft"
+		:nodeChatSubmitting="nodeChatSubmitting"
+		:nodeChatParams="nodeChatParams"
+		:nodeChatSelectedRefs="nodeChatSelectedRefs"
+		:input-param-preview-refs="inputParamPreviewRefs"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"
@@ -49,6 +59,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
+import type { WorkflowNodeChatType } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -77,12 +88,50 @@ const props = defineProps<{
 	hoverInputAnchorId?: string | null
 	hoverOutputAnchorId?: string | null
 	textValue?: string | null
+	visualStatus?: 'idle' | 'running' | 'error'
+	nodeChatVisible?: boolean
+	nodeChatNodeType?: WorkflowNodeChatType | null
+	nodeChatDraft?: string
+	nodeChatSubmitting?: boolean
+	nodeChatParams?: Record<string, any>
+	nodeChatSelectedRefs?: any[]
+	inputParamPreviewRefs?: any[]
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 
 

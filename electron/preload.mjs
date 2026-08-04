@@ -1,5 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { APP_NAME, APP_ID, APP_VERSION, APP_COPYRIGHT, APP_LICENSE, APP_HOMEPAGE, APP_REPO_URL, APP_BILIBILI_URL, APP_ISSUES_URL } from './config.mjs'
+import {
+	APP_NAME,
+	APP_ID,
+	APP_VERSION,
+	APP_COPYRIGHT,
+	APP_LICENSE,
+	APP_HOMEPAGE,
+	APP_REPO_URL,
+	APP_BILIBILI_URL,
+	APP_ISSUES_URL
+} from './config.mjs'
 
 function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
@@ -16,7 +26,9 @@ const builtinToolListenerMap = new Map()
 let builtinToolListenerSeed = 0
 
 function createIpcStreamGenerator(baseChannel, payload) {
-	const requestId = (payload && payload.requestId) || Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+	const requestId =
+		(payload && payload.requestId) ||
+		Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 	const dataChannel = baseChannel + ':data'
 	const endChannel = baseChannel + ':end'
 	const errorChannel = baseChannel + ':error'
@@ -97,14 +109,18 @@ function createIpcStreamGenerator(baseChannel, payload) {
 		async next() {
 			if (queue.length > 0) {
 				const item = queue.shift()
-				if (item.error) throw new Error(item.error?.error || item.error?.message || String(item.error))
+				if (item.error)
+					throw new Error(item.error?.error || item.error?.message || String(item.error))
 				return item
 			}
 			if (done) return { value: undefined, done: true }
-			await new Promise((r) => { resolvePull = r })
+			await new Promise((r) => {
+				resolvePull = r
+			})
 			if (queue.length > 0) {
 				const item = queue.shift()
-				if (item.error) throw new Error(item.error?.error || item.error?.message || String(item.error))
+				if (item.error)
+					throw new Error(item.error?.error || item.error?.message || String(item.error))
 				return item
 			}
 			return { value: undefined, done: true }
@@ -119,7 +135,7 @@ function createIpcStreamGenerator(baseChannel, payload) {
 			error = err
 			cleanup()
 			throw err
-		},
+		}
 	}
 }
 
@@ -134,11 +150,17 @@ let resourceManagerDataListenerSeed = 0
 ipcRenderer.on(RESOURCE_MANAGER_DATA_CHANNEL, (_event, payload) => {
 	try {
 		const resCount = Array.isArray(payload?.resources) ? payload.resources.length : 0
-		console.log(`[preload:resource-manager] received data: ${resCount} resources, nodesById=${payload?.nodesById ? typeof payload.nodesById : 'missing'}, nodeOrder=${Array.isArray(payload?.nodeOrder) ? payload.nodeOrder.length : 'N/A'}`)
+		console.log(
+			`[preload:resource-manager] received data: ${resCount} resources, nodesById=${payload?.nodesById ? typeof payload.nodesById : 'missing'}, nodeOrder=${Array.isArray(payload?.nodeOrder) ? payload.nodeOrder.length : 'N/A'}`
+		)
 		resourceManagerLatestData = payload
 		// 通知所有已注册的 Vue 侧处理器
 		for (const handler of resourceManagerDataHandlers.values()) {
-			try { handler(payload) } catch (err) { console.warn('[preload:resource-manager] handler error:', err) }
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:resource-manager] handler error:', err)
+			}
 		}
 	} catch (err) {
 		console.warn('[preload:resource-manager] failed to process data:', err)
@@ -156,7 +178,11 @@ ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
 		console.log(`[preload:template-center] received data:`, JSON.stringify(payload))
 		templateCenterLatestData = payload
 		for (const handler of templateCenterDataHandlers.values()) {
-			try { handler(payload) } catch (err) { console.warn('[preload:template-center] handler error:', err) }
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:template-center] handler error:', err)
+			}
 		}
 	} catch (err) {
 		console.warn('[preload:template-center] failed to process data:', err)
@@ -175,7 +201,8 @@ invoke('dweb:settings:get')
 		if (result?.ok && result.data) {
 			try {
 				const desc = Object.getOwnPropertyDescriptor(window, '__DWEB_CLIENT_SETTINGS')
-				const canAssign = !desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
+				const canAssign =
+					!desc || ('writable' in desc ? Boolean(desc.writable) : typeof desc.set === 'function')
 				if (canAssign) window.__DWEB_CLIENT_SETTINGS = result.data
 			} catch {}
 		}
@@ -183,14 +210,17 @@ invoke('dweb:settings:get')
 	.catch(() => {})
 
 contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO', process.env.DWEB_AIWF_AUTO_HELLO || '')
-contextBridge.exposeInMainWorld('__DWEB_AIWF_AUTO_HELLO_TEXT', process.env.DWEB_AIWF_AUTO_HELLO_TEXT || '')
+contextBridge.exposeInMainWorld(
+	'__DWEB_AIWF_AUTO_HELLO_TEXT',
+	process.env.DWEB_AIWF_AUTO_HELLO_TEXT || ''
+)
 
 // 运行环境标记：用于区分 Web 部署 vs Electron 客户端
 contextBridge.exposeInMainWorld('__DWEB_RUNTIME__', {
 	platform: 'electron',
 	isElectron: true,
 	appName: APP_NAME,
-	appVersion: APP_VERSION,
+	appVersion: APP_VERSION
 })
 
 // 后端模式标记：表示后端已迁移到 Electron IPC，不再依赖 Django HTTP
@@ -213,7 +243,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			homepage: APP_HOMEPAGE,
 			repoUrl: APP_REPO_URL,
 			bilibiliUrl: APP_BILIBILI_URL,
-			issuesUrl: APP_ISSUES_URL,
+			issuesUrl: APP_ISSUES_URL
 		}),
 		checkForUpdate: () => invoke('dweb:system:check-update'),
 		isSteamVersion: () => invoke('dweb:system:is-steam'),
@@ -256,7 +286,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		revealUserDataDir: () => invoke('dweb:app:revealUserDataDir'),
 		openExternalUrl: (payload) => invoke('dweb:app:openExternalUrl', payload),
 		openFolderForPath: (payload) => invoke('dweb:app:openFolderForPath', payload),
-		runBootstrapInstaller: () => invoke('dweb:bootstrap:install'),
+		runBootstrapInstaller: () => invoke('dweb:bootstrap:install')
 	},
 	window: {
 		minimize: () => invoke('dweb:window:minimize'),
@@ -267,14 +297,14 @@ contextBridge.exposeInMainWorld('dweb', {
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 		openVideoEditor: (payload) => invoke('dweb:video-editor:open', payload || {}),
-		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
+		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {})
 	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
 		save: (payload) => invoke('dweb:projects:save', payload || {}),
 		load: (payload) => invoke('dweb:projects:load', payload || {}),
 		delete: (payload) => invoke('dweb:projects:delete', payload || {}),
-		openFolder: (payload) => invoke('dweb:projects:open-folder', payload || {}),
+		openFolder: (payload) => invoke('dweb:projects:open-folder', payload || {})
 	},
 	aiworkflow: {
 		pingBackend: () => invoke('dweb:backend:ping'),
@@ -284,8 +314,10 @@ contextBridge.exposeInMainWorld('dweb', {
 		clearProjectRoot: (payload) => invoke('dweb:aiworkflow:clearProjectRoot', payload || {}),
 		getProjectRootSnapshot: () => invoke('dweb:aiworkflow:getProjectRootSnapshot'),
 		getProjectRootById: (payload) => invoke('dweb:aiworkflow:getProjectRootById', payload || {}),
-		downloadUrlToProjectRoot: (payload) => invoke('dweb:aiworkflow:downloadUrlToProjectRoot', payload || {}),
-		copyFileToProjectRoot: (payload) => invoke('dweb:aiworkflow:copyFileToProjectRoot', payload || {}),
+		downloadUrlToProjectRoot: (payload) =>
+			invoke('dweb:aiworkflow:downloadUrlToProjectRoot', payload || {}),
+		copyFileToProjectRoot: (payload) =>
+			invoke('dweb:aiworkflow:copyFileToProjectRoot', payload || {}),
 		fetchAsArrayBuffer: (payload) => invoke('dweb:aiworkflow:fetchAsArrayBuffer', payload || {}),
 
 		// ---- 静态资产管理（纯本地；取代 Django assets/* API） ----
@@ -310,43 +342,43 @@ contextBridge.exposeInMainWorld('dweb', {
 				save: (payload) => invoke('dweb:localdb:projects:save', payload || {}),
 				load: (payload) => invoke('dweb:localdb:projects:load', payload || {}),
 				delete: (payload) => invoke('dweb:localdb:projects:delete', payload || {}),
-				openFolder: (payload) => invoke('dweb:localdb:projects:openFolder', payload || {}),
+				openFolder: (payload) => invoke('dweb:localdb:projects:openFolder', payload || {})
 			},
 			meshy: {
 				list: (payload) => invoke('dweb:localdb:meshy:list', payload || {}),
 				get: (payload) => invoke('dweb:localdb:meshy:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:meshy:upsert', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:meshy:remove', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:meshy:remove', payload || {})
 			},
 			video: {
 				list: (payload) => invoke('dweb:localdb:video:list', payload || {}),
 				get: (payload) => invoke('dweb:localdb:video:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:video:upsert', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:video:remove', payload || {})
 			},
 			tripo3d: {
 				list: (payload) => invoke('dweb:localdb:tripo3d:list', payload || {}),
 				get: (payload) => invoke('dweb:localdb:tripo3d:get', payload || {}),
 				upsert: (payload) => invoke('dweb:localdb:tripo3d:upsert', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:tripo3d:remove', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:tripo3d:remove', payload || {})
 			},
 			apiKeys: {
 				list: () => invoke('dweb:localdb:apiKeys:list'),
 				get: (payload) => invoke('dweb:localdb:apiKeys:get', payload || {}),
 				set: (payload) => invoke('dweb:localdb:apiKeys:set', payload || {}),
 				getPlaintext: (payload) => invoke('dweb:localdb:apiKeys:getPlaintext', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {}),
+				remove: (payload) => invoke('dweb:localdb:apiKeys:remove', payload || {})
 			},
 			templates: {
 				list: () => invoke('dweb:localdb:aiworkflowTemplates:list'),
 				getBlob: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getBlob', payload || {}),
 				getCover: (payload) => invoke('dweb:localdb:aiworkflowTemplates:getCover', payload || {}),
 				save: (payload) => invoke('dweb:localdb:aiworkflowTemplates:save', payload || {}),
-				remove: (payload) => invoke('dweb:localdb:aiworkflowTemplates:remove', payload || {}),
-			},
+				remove: (payload) => invoke('dweb:localdb:aiworkflowTemplates:remove', payload || {})
+			}
 		},
 		projectAssets: {
-			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {}),
+			repairAll: (payload) => invoke('dweb:aiworkflow:projectAssets:repairAll', payload || {})
 		},
 		// ---- 图片预览原生窗口（Electron BrowserWindow） ----
 		openImageMarkupPreview: (payload) => {
@@ -360,7 +392,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:image-markup:exported'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch { /* ignore */ }
+				try {
+					handler(payload)
+				} catch (err) {
+					console.error('[preload] Error in dweb:image-markup:exported handler', err)
+				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -398,7 +434,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:resource-manager:event'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch { /* ignore */ }
+				try {
+					handler(payload)
+				} catch {
+					/* ignore */
+				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -420,7 +460,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:resource-manager:notify'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch { /* ignore */ }
+				try {
+					handler(payload)
+				} catch {
+					/* ignore */
+				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -442,7 +486,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			resourceManagerDataHandlers.set(id, handler)
 			// 如果已有缓存数据，立即回调一次
 			if (resourceManagerLatestData !== null) {
-				try { handler(resourceManagerLatestData) } catch { /* ignore */ }
+				try {
+					handler(resourceManagerLatestData)
+				} catch {
+					/* ignore */
+				}
 			}
 			return id
 		},
@@ -462,7 +510,8 @@ contextBridge.exposeInMainWorld('dweb', {
 		sendTemplateCenterData: (payload) => {
 			return invoke('dweb:template-center:send-data', payload || {})
 		},
-		broadcastTemplateCenterEvent: (payload) => invoke('dweb:template-center:broadcast', payload || {}),
+		broadcastTemplateCenterEvent: (payload) =>
+			invoke('dweb:template-center:broadcast', payload || {}),
 		notifyTemplateCenterEvent: (payload) => invoke('dweb:template-center:notify', payload || {}),
 		getTemplateCenterData: () => templateCenterLatestData,
 		requestTemplateCenterData: () => invoke('dweb:template-center:request-data', {}),
@@ -472,7 +521,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:template-center:event'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch (err) { console.error('[preload][template-center:event] handler error:', err) }
+				try {
+					handler(payload)
+				} catch (err) {
+					console.error('[preload][template-center:event] handler error:', err)
+				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -493,7 +546,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const CHANNEL = 'dweb:template-center:notify'
 			const id = ++backendRuntimeListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch (err) { console.error('[preload][template-center:notify] handler error:', err) }
+				try {
+					handler(payload)
+				} catch (err) {
+					console.error('[preload][template-center:notify] handler error:', err)
+				}
 			}
 			backendRuntimeListenerMap.set(id, wrapped)
 			ipcRenderer.on(CHANNEL, wrapped)
@@ -514,7 +571,11 @@ contextBridge.exposeInMainWorld('dweb', {
 			const id = ++templateCenterDataListenerSeed
 			templateCenterDataHandlers.set(id, handler)
 			if (templateCenterLatestData !== null) {
-				try { handler(templateCenterLatestData) } catch (err) { console.error('[preload][template-center:data] handler error:', err) }
+				try {
+					handler(templateCenterLatestData)
+				} catch (err) {
+					console.error('[preload][template-center:data] handler error:', err)
+				}
 			}
 			return id
 		},
@@ -523,35 +584,59 @@ contextBridge.exposeInMainWorld('dweb', {
 			if (!templateCenterDataHandlers.has(id)) return { ok: false }
 			templateCenterDataHandlers.delete(id)
 			return { ok: true }
-		},
+		}
 	},
 	videostudio: {
 		pingBackend: () => invoke('dweb:backend:ping'),
 		selectExportDir: (options) => invoke('dweb:videostudio:selectExportDir', options),
-		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {}),
+		generateFilmstrip: (payload) => invoke('dweb:video:generateFilmstrip', payload || {})
+	},
+	subtitleRecog: {
+		checkEnv: () => invoke('dweb:subtitle-recog:check-env'),
+		getBinaryConfig: (payload) => invoke('dweb:subtitle-recog:get-binary-config', payload || {}),
+		downloadBinary: (payload) =>
+			createIpcStreamGenerator('dweb:subtitle-recog:download-binary', payload || {}),
+		getFfmpegConfig: (payload) => invoke('dweb:subtitle-recog:get-ffmpeg-config', payload || {}),
+		downloadFfmpeg: (payload) =>
+			createIpcStreamGenerator('dweb:subtitle-recog:download-ffmpeg', payload || {}),
+		getAvailableModels: () => invoke('dweb:subtitle-recog:get-available-models'),
+		getModelConfig: (payload) => invoke('dweb:subtitle-recog:get-model-config', payload || {}),
+		downloadModel: (payload) =>
+			createIpcStreamGenerator('dweb:subtitle-recog:download-model', payload || {}),
+		getInstalledModels: () => invoke('dweb:subtitle-recog:get-installed-models'),
+		recognize: (payload) =>
+			createIpcStreamGenerator('dweb:subtitle-recog:recognize', payload || {}),
+		readAudioFile: (payload) => invoke('dweb:subtitle-recog:read-audio-file', payload || {}),
+		cleanupAudioFile: (payload) => invoke('dweb:subtitle-recog:cleanup-audio-file', payload || {})
 	},
 	// ===== 第三方API（图片/视频生成） =====
 	thirdParty: {
 		nanobanana: {
 			refCache: (payload) => invoke('dweb:third-party:nanobanana:ref-cache', payload || {}),
 			generate: (payload) => invoke('dweb:third-party:nanobanana:generate', payload || {}),
-			generateStream: (payload) => createIpcStreamGenerator('dweb:third-party:nanobanana:generate', payload || {}),
+			generateStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:nanobanana:generate', payload || {})
 		},
 		seedream: {
 			refCache: (payload) => invoke('dweb:third-party:seedream:ref-cache', payload || {}),
-			generateStream: (payload) => createIpcStreamGenerator('dweb:third-party:seedream:generate', payload || {}),
+			generateStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:seedream:generate', payload || {})
 		},
 		gemini: {
-			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:gemini:image:generate', payload || {}),
+			imageGenerateStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:gemini:image:generate', payload || {})
 		},
 		jimeng: {
-			imageGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:image:generate', payload || {}),
-			videoGenerateStream: (payload) => createIpcStreamGenerator('dweb:third-party:jimeng:video:generate', payload || {}),
+			imageGenerateStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:jimeng:image:generate', payload || {}),
+			videoGenerateStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:jimeng:video:generate', payload || {})
 		},
 		blueprint: {
 			chat: (payload) => invoke('dweb:third-party:blueprint:chat', payload || {}),
-			chatStream: (payload) => createIpcStreamGenerator('dweb:third-party:blueprint:chat', payload || {}),
-		},
+			chatStream: (payload) =>
+				createIpcStreamGenerator('dweb:third-party:blueprint:chat', payload || {})
+		}
 	},
 	// ===== Meshy 3D 模型生成 =====
 	meshy: {
@@ -563,21 +648,24 @@ contextBridge.exposeInMainWorld('dweb', {
 		stop: (payload) => invoke('dweb:meshy:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:meshy:delete', payload || {}),
 		balance: () => invoke('dweb:meshy:balance'),
+		updateLocalAsset: (payload) => invoke('dweb:meshy:update-local-asset', payload || {})
 	},
 	// ===== Tripo3D 3D 模型生成 & 图片生成 =====
 	tripo3d: {
 		health: () => invoke('dweb:tripo3d:health'),
 		generate: (payload) => invoke('dweb:tripo3d:generate', payload || {}),
 		generateTextToImage: (payload) => invoke('dweb:tripo3d:generate:text-to-image', payload || {}),
-		generateImageToImage: (payload) => invoke('dweb:tripo3d:generate:image-to-image', payload || {}),
-		generateImageToMultiview: (payload) => invoke('dweb:tripo3d:generate:image-to-multiview', payload || {}),
+		generateImageToImage: (payload) =>
+			invoke('dweb:tripo3d:generate:image-to-image', payload || {}),
+		generateImageToMultiview: (payload) =>
+			invoke('dweb:tripo3d:generate:image-to-multiview', payload || {}),
 		getTask: (payload) => invoke('dweb:tripo3d:get-task', payload || {}),
 		listTasks: (payload) => invoke('dweb:tripo3d:list-tasks', payload || {}),
 		taskDetail: (payload) => invoke('dweb:tripo3d:task-detail', payload || {}),
 		stop: (payload) => invoke('dweb:tripo3d:stop', payload || {}),
 		deleteTask: (payload) => invoke('dweb:tripo3d:delete', payload || {}),
 		balance: () => invoke('dweb:tripo3d:balance'),
-		uploadFile: (payload) => invoke('dweb:tripo3d:upload-file', payload || {}),
+		uploadFile: (payload) => invoke('dweb:tripo3d:upload-file', payload || {})
 	},
 	// ===== Gemini 图片生成任务 =====
 	gemini: {
@@ -587,7 +675,7 @@ contextBridge.exposeInMainWorld('dweb', {
 		cancel: (payload) => invoke('dweb:gemini:cancel', payload || {}),
 		deleteTask: (payload) => invoke('dweb:gemini:delete', payload || {}),
 		clearCompleted: (payload) => invoke('dweb:gemini:clear-completed', payload || {}),
-		getImagePath: (payload) => invoke('dweb:gemini:get-image-path', payload || {}),
+		getImagePath: (payload) => invoke('dweb:gemini:get-image-path', payload || {})
 	},
 	// ===== Seedance 视频生成 =====
 	seedance: {
@@ -598,14 +686,14 @@ contextBridge.exposeInMainWorld('dweb', {
 		sync: (payload) => invoke('dweb:seedance:sync', payload || {}),
 		taskDetailRemote: (payload) => invoke('dweb:seedance:task-detail-remote', payload || {}),
 		downloadAsset: (payload) => invoke('dweb:seedance:download-asset', payload || {}),
-		listAllRemote: (payload) => invoke('dweb:seedance:list-all-remote', payload || {}),
+		listAllRemote: (payload) => invoke('dweb:seedance:list-all-remote', payload || {})
 	},
 	// ===== 火山方舟（ARK）任务面板 =====
 	ark: {
 		listTasks: (payload) => invoke('dweb.ark.listTasks', payload || {}),
 		getTaskDetail: (payload) => invoke('dweb.ark.getTaskDetail', payload || {}),
 		deleteTask: (payload) => invoke('dweb.ark.deleteTask', payload || {}),
-		recordTask: (payload) => invoke('dweb.ark.recordTask', payload || {}),
+		recordTask: (payload) => invoke('dweb.ark.recordTask', payload || {})
 	},
 	// ===== ComfyUI =====
 	comfyui: {
@@ -615,12 +703,15 @@ contextBridge.exposeInMainWorld('dweb', {
 			workflows: {
 				list: (payload) => invoke('dweb:comfyui:runtime:workflows:list', payload || {}),
 				get: (payload) => invoke('dweb:comfyui:runtime:workflows:get', payload || {}),
-				getHistory: (payload) => invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
+				getHistory: (payload) =>
+					invoke('dweb:comfyui:runtime:workflows:get-history', payload || {}),
+				resolveHistory: (payload) =>
+					invoke('dweb:comfyui:runtime:workflows:resolve-history', payload || {})
 			},
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
-			job: (payload) => invoke('dweb:comfyui:runtime:job', payload || {}),
+			job: (payload) => invoke('dweb:comfyui:runtime:job', payload || {})
 		},
 		setup: {
 			getDefaultInstallPath: () => invoke('dweb:comfyui:setup:default-path'),
@@ -640,23 +731,30 @@ contextBridge.exposeInMainWorld('dweb', {
 			getConfig: () => invoke('dweb:comfyui:setup:get-config'),
 			saveConfig: (payload) => invoke('dweb:comfyui:setup:save-config', payload || {}),
 			addCustomModelPath: (payload) => invoke('dweb:comfyui:setup:add-model-path', payload || {}),
-			removeCustomModelPath: (payload) => invoke('dweb:comfyui:setup:remove-model-path', payload || {}),
+			removeCustomModelPath: (payload) =>
+				invoke('dweb:comfyui:setup:remove-model-path', payload || {}),
 			pingMirrors: () => invoke('dweb:comfyui:setup:ping-mirrors'),
 			getMirrorList: () => invoke('dweb:comfyui:setup:get-mirror-list'),
 			setMirror: (payload) => invoke('dweb:comfyui:setup:set-mirror', payload || {}),
-			fixPythonEnv: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:fix-python-env', payload || {}),
-			getDefaultVenvPath: (payload) => invoke('dweb:comfyui:setup:default-venv-path', payload || {}),
+			fixPythonEnv: (payload) =>
+				createIpcStreamGenerator('dweb:comfyui:setup:fix-python-env', payload || {}),
+			getDefaultVenvPath: (payload) =>
+				invoke('dweb:comfyui:setup:default-venv-path', payload || {}),
 			selectVenvPath: (payload) => invoke('dweb:comfyui:setup:select-venv-path', payload || {}),
 			setVenvPath: (payload) => invoke('dweb:comfyui:setup:set-venv-path', payload || {}),
 			getServiceLogs: () => invoke('dweb:comfyui:setup:service-logs'),
 			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
 			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
-			cloneComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
-			updateComfyUI: (payload) => createIpcStreamGenerator('dweb:comfyui:setup:update-comfyui', payload || {}),
+			cloneComfyUI: (payload) =>
+				createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
+			updateComfyUI: (payload) =>
+				createIpcStreamGenerator('dweb:comfyui:setup:update-comfyui', payload || {}),
 			onServiceLog: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-log'
 				const handler = (_evt, entry) => {
-					try { listener(entry) } catch {}
+					try {
+						listener(entry)
+					} catch {}
 				}
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
@@ -664,7 +762,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			onServiceStatusChange: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-status'
 				const handler = (_evt, status) => {
-					try { listener(status) } catch {}
+					try {
+						listener(status)
+					} catch {}
 				}
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
@@ -672,7 +772,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			onServiceExit: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-exit'
 				const handler = (_evt, payload) => {
-					try { listener(payload) } catch {}
+					try {
+						listener(payload)
+					} catch {}
 				}
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
@@ -680,12 +782,24 @@ contextBridge.exposeInMainWorld('dweb', {
 			onServiceLogsCleared: (listener) => {
 				const ch = 'dweb:comfyui:setup:service-clear'
 				const handler = (_evt, payload) => {
-					try { listener(payload) } catch {}
+					try {
+						listener(payload)
+					} catch {}
 				}
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
 			},
-		},
+			onConfigChange: (listener) => {
+				const ch = 'dweb:comfyui:setup:config-changed'
+				const handler = (_evt, payload) => {
+					try {
+						listener(payload)
+					} catch {}
+				}
+				ipcRenderer.on(ch, handler)
+				return () => ipcRenderer.removeListener(ch, handler)
+			}
+		}
 	},
 	// ===== Codex 编程助手 =====
 	codex: {
@@ -696,8 +810,9 @@ contextBridge.exposeInMainWorld('dweb', {
 		updateSession: (payload) => invoke('dweb:codex:update-session', payload || {}),
 		deleteSession: (payload) => invoke('dweb:codex:delete-session', payload || {}),
 		submitApproval: (payload) => invoke('dweb:codex:submit-approval', payload || {}),
-		sendMessageStream: (payload) => createIpcStreamGenerator('dweb:codex:send-message', payload || {}),
-		cancel: (payload) => invoke('dweb:codex:cancel', payload || {}),
+		sendMessageStream: (payload) =>
+			createIpcStreamGenerator('dweb:codex:send-message', payload || {}),
+		cancel: (payload) => invoke('dweb:codex:cancel', payload || {})
 	},
 	// ===== Agent 执行器 =====
 	agent: {
@@ -708,23 +823,27 @@ contextBridge.exposeInMainWorld('dweb', {
 		createConversation: (payload) => invoke('dweb:agent:create-conversation', payload || {}),
 		deleteConversation: (payload) => invoke('dweb:agent:delete-conversation', payload || {}),
 		renameConversation: (payload) => invoke('dweb:agent:rename-conversation', payload || {}),
-		getConversationMessages: (payload) => invoke('dweb:agent:get-conversation-messages', payload || {}),
-		addConversationMessage: (payload) => invoke('dweb:agent:add-conversation-message', payload || {}),
+		getConversationMessages: (payload) =>
+			invoke('dweb:agent:get-conversation-messages', payload || {}),
+		addConversationMessage: (payload) =>
+			invoke('dweb:agent:add-conversation-message', payload || {})
 	},
 	// ===== Agent Skills =====
 	agentSkills: {
 		sceneUnderstand: {
 			models: () => invoke('dweb:agent-skills:scene-understand:models'),
 			run: (payload) => invoke('dweb:agent-skills:scene-understand:run', payload || {}),
-			runStream: (payload) => createIpcStreamGenerator('dweb:agent-skills:scene-understand:run', payload || {}),
+			runStream: (payload) =>
+				createIpcStreamGenerator('dweb:agent-skills:scene-understand:run', payload || {})
 		},
 		sceneLighting: {
 			models: () => invoke('dweb:agent-skills:scene-lighting:models'),
 			run: (payload) => invoke('dweb:agent-skills:scene-lighting:run', payload || {}),
-			runStream: (payload) => createIpcStreamGenerator('dweb:agent-skills:scene-lighting:run', payload || {}),
+			runStream: (payload) =>
+				createIpcStreamGenerator('dweb:agent-skills:scene-lighting:run', payload || {})
 		},
 		sceneLayout: {
-			run: (payload) => invoke('dweb:agent-skills:scene-layout:run', payload || {}),
+			run: (payload) => invoke('dweb:agent-skills:scene-layout:run', payload || {})
 		},
 		unreal: {
 			sessions: () => invoke('dweb:agent-skills:unreal:sessions'),
@@ -739,8 +858,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			checkPlugin: (payload) => invoke('dweb:agent-skills:unreal:check-plugin', payload || {}),
 			installPlugin: (payload) => invoke('dweb:agent-skills:unreal:install-plugin', payload || {}),
 			getPluginInfo: () => invoke('dweb:agent-skills:unreal:get-plugin-info'),
-			disconnectSession: (payload) => invoke('dweb:agent-skills:unreal:disconnect-session', payload || {}),
-		},
+			disconnectSession: (payload) =>
+				invoke('dweb:agent-skills:unreal:disconnect-session', payload || {})
+		}
 	},
 	// ===== MCP 工具 =====
 	mcp: {
@@ -753,7 +873,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			if (typeof handler !== 'function') return -1
 			const id = ++builtinToolListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch {}
+				try {
+					handler(payload)
+				} catch {}
 			}
 			builtinToolListenerMap.set(id, wrapped)
 			ipcRenderer.on('dweb:builtin-tool:call', wrapped)
@@ -773,7 +895,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			} else {
 				ipcRenderer.send(`dweb:builtin-tool:${requestId}:response`, { result })
 			}
-		},
+		}
 	},
 	blender: {
 		checkStatus: (payload) => invoke('dweb:blender:status:check', payload || {}),
@@ -786,20 +908,29 @@ contextBridge.exposeInMainWorld('dweb', {
 		mountTools: (payload) => invoke('dweb:blender:tools:mount', payload || {}),
 		workspaceInit: (payload) => invoke('dweb:blender:workspace:init', payload || {}),
 		workspaceSaveScript: (payload) => invoke('dweb:blender:workspace:save-script', payload || {}),
-		workspaceSaveScreenshot: (payload) => invoke('dweb:blender:workspace:save-screenshot', payload || {}),
+		workspaceSaveScreenshot: (payload) =>
+			invoke('dweb:blender:workspace:save-screenshot', payload || {}),
 		workspaceClear: (payload) => invoke('dweb:blender:workspace:clear', payload || {}),
 		workspaceListScripts: (payload) => invoke('dweb:blender:workspace:list-scripts', payload || {}),
 		workspaceGetStats: (payload) => invoke('dweb:blender:workspace:get-stats', payload || {}),
 		workspaceOpenFolder: (payload) => invoke('dweb:blender:workspace:open-folder', payload || {}),
 		workspaceGetPath: (payload) => invoke('dweb:blender:workspace:get-path', payload || {}),
-		mcpListTools: (payload) => invoke('dweb:mcp:list-tools', { ...(payload || {}), serverId: payload?.serverId || 'blender' }),
+		mcpListTools: (payload) =>
+			invoke('dweb:mcp:list-tools', {
+				...(payload || {}),
+				serverId: payload?.serverId || 'blender'
+			}),
 		onMcpStatusChanged: (callback) => {
 			const listener = (_event, payload) => {
-				try { callback(payload) } catch { /* consumer error */ }
+				try {
+					callback(payload)
+				} catch {
+					/* consumer error */
+				}
 			}
 			ipcRenderer.on('dweb:blender:mcp:status-changed', listener)
 			return () => ipcRenderer.removeListener('dweb:blender:mcp:status-changed', listener)
-		},
+		}
 	},
 	// ===== CLI 适配器 =====
 	cli: {
@@ -819,9 +950,10 @@ contextBridge.exposeInMainWorld('dweb', {
 		runFix: (payload) => invoke('dweb:cli:run-fix', payload || {}),
 		cliStartSession: (payload) => invoke('dweb:cli:start-session', payload || {}),
 		cliStopSession: (payload) => invoke('dweb:cli:stop-session', payload || {}),
-		cliSendMessageStream: (payload) => createIpcStreamGenerator('dweb:cli:send-message', payload || {}),
+		cliSendMessageStream: (payload) =>
+			createIpcStreamGenerator('dweb:cli:send-message', payload || {}),
 		startAuthStream: (payload) => createIpcStreamGenerator('dweb:cli:start-auth', payload || {}),
-		cancelAuth: (payload) => invoke('dweb:cli:cancel-auth', payload || {}),
+		cancelAuth: (payload) => invoke('dweb:cli:cancel-auth', payload || {})
 	},
 	platform: {
 		getStatus: () => invoke('platform:get-status'),
@@ -838,7 +970,9 @@ contextBridge.exposeInMainWorld('dweb', {
 			if (typeof handler !== 'function') return -1
 			const id = ++platformListenerSeed
 			const wrapped = (_event, payload) => {
-				try { handler(payload) } catch {}
+				try {
+					handler(payload)
+				} catch {}
 			}
 			platformListenerMap.set(id, wrapped)
 			ipcRenderer.on('platform:event', wrapped)
@@ -852,7 +986,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			ipcRenderer.removeListener('platform:event', wrapped)
 			platformListenerMap.delete(id)
 			return { ok: true }
-		},
+		}
 	},
 	cloudTemplates: {
 		getPlatform: () => invoke('dweb:cloud-templates:get-platform'),
@@ -860,14 +994,14 @@ contextBridge.exposeInMainWorld('dweb', {
 		list: (options) => invoke('dweb:cloud-templates:list', options || {}),
 		upload: (payload) => invoke('dweb:cloud-templates:upload', payload || {}),
 		download: (payload) => invoke('dweb:cloud-templates:download', payload || {}),
-		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {}),
+		delete: (payload) => invoke('dweb:cloud-templates:delete', payload || {})
 	},
 	workshopTemplates: {
 		getPlatform: () => invoke('dweb:workshop-templates:get-platform'),
 		query: (options) => invoke('dweb:workshop-templates:query', options || {}),
 		download: (payload) => invoke('dweb:workshop-templates:download', payload || {}),
 		progress: (payload) => invoke('dweb:workshop-templates:progress', payload || {}),
-		installInfo: (payload) => invoke('dweb:workshop-templates:install-info', payload || {}),
+		installInfo: (payload) => invoke('dweb:workshop-templates:install-info', payload || {})
 	},
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
@@ -888,8 +1022,121 @@ contextBridge.exposeInMainWorld('dweb', {
 		uploadToPublicUrl: (payload) => invoke('dweb:cloudfs:upload-to-public-url', payload || {}),
 		listConfiguredBuckets: () => invoke('dweb:cloudfs:list-configured-buckets'),
 		addBucketFromCloud: (payload) => invoke('dweb:cloudfs:add-bucket-from-cloud', payload || {}),
-		removeConfiguredBucket: (payload) => invoke('dweb:cloudfs:remove-configured-bucket', payload || {}),
+		removeConfiguredBucket: (payload) =>
+			invoke('dweb:cloudfs:remove-configured-bucket', payload || {}),
 		switchActiveBucket: (payload) => invoke('dweb:cloudfs:switch-active-bucket', payload || {}),
-		fixBucketAcl: (payload) => invoke('dweb:cloudfs:fix-bucket-acl', payload || {}),
+		fixBucketAcl: (payload) => invoke('dweb:cloudfs:fix-bucket-acl', payload || {})
 	},
+	// ===== 全局任务队列 =====
+	taskQueue: {
+		list: (payload) => invoke('dweb:task-queue:list', payload || {}),
+		listByProject: (payload) => invoke('dweb:task-queue:list-by-project', payload || {}),
+		listUnbackfilledCompleted: (payload) =>
+			invoke('dweb:task-queue:list-unbackfilled-completed', payload || {}),
+		reconcile: (payload) => invoke('dweb:task-queue:reconcile', payload || {}),
+		summary: () => invoke('dweb:task-queue:summary'),
+		get: (payload) => invoke('dweb:task-queue:get', payload || {}),
+		findByUniqueKey: (payload) => invoke('dweb:task-queue:find-by-unique-key', payload || {}),
+		findActiveByNodeId: (payload) => invoke('dweb:task-queue:find-active-by-node', payload || {}),
+		cancel: (payload) => invoke('dweb:task-queue:cancel', payload || {}),
+		dismiss: (payload) => invoke('dweb:task-queue:dismiss', payload || {}),
+		delete: (payload) => invoke('dweb:task-queue:delete', payload || {}),
+		clearCompleted: () => invoke('dweb:task-queue:clear-completed'),
+		markBackfilled: (payload) => invoke('dweb:task-queue:mark-backfilled', payload || {}),
+		submit: (payload) => invoke('dweb:task-queue:submit', payload || {}),
+		create: (payload) => invoke('dweb:task-queue:create', payload || {}),
+		register: (payload) => invoke('dweb:task-queue:register', payload || {}),
+		fail: (payload) => invoke('dweb:task-queue:fail', payload || {}),
+		complete: (payload) => invoke('dweb:task-queue:complete', payload || {}),
+		bindRemoteTask: (payload) => invoke('dweb:task-queue:bind-remote-task', payload || {}),
+		update: (payload) => invoke('dweb:task-queue:update', payload || {}),
+		onUpdate: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try {
+					handler(payload)
+				} catch (err) {
+					console.warn('[preload:taskQueue:update] handler error:', err)
+				}
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:update', wrapped)
+			return id
+		},
+		offUpdate: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:update', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onSummary: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try {
+					handler(payload)
+				} catch (err) {
+					console.warn('[preload:taskQueue:summary] handler error:', err)
+				}
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:summary', wrapped)
+			return id
+		},
+		offSummary: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:summary', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onDeleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try {
+					handler(payload)
+				} catch (err) {
+					console.warn('[preload:taskQueue:deleted] handler error:', err)
+				}
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:deleted', wrapped)
+			return id
+		},
+		offDeleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:deleted', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		},
+		onCompleted: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++backendRuntimeListenerSeed
+			const wrapped = (_event, payload) => {
+				try {
+					handler(payload)
+				} catch (err) {
+					console.warn('[preload:taskQueue:completed] handler error:', err)
+				}
+			}
+			backendRuntimeListenerMap.set(id, wrapped)
+			ipcRenderer.on('dweb:task-queue:task-completed', wrapped)
+			return id
+		},
+		offCompleted: (listenerId) => {
+			const id = Number(listenerId || 0)
+			const wrapped = backendRuntimeListenerMap.get(id)
+			if (!wrapped) return { ok: false }
+			ipcRenderer.removeListener('dweb:task-queue:task-completed', wrapped)
+			backendRuntimeListenerMap.delete(id)
+			return { ok: true }
+		}
+	}
 })

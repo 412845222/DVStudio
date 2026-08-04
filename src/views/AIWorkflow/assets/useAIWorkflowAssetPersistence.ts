@@ -53,7 +53,9 @@ type UseAIWorkflowAssetPersistenceOptions = {
 	getCurrentProjectId: () => number | null | undefined
 	resolveBackendUrl: (value: string) => string
 	fileFromUrl: (url: string, fileNameBase: string) => Promise<File>
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportAssetResult | null | undefined>
+	importAssetIntoProjectScope: (
+		payload: ImportAssetIntoProjectScopePayload
+	) => Promise<ImportAssetResult | null | undefined>
 }
 
 export function formatBytes(bytes: number): string {
@@ -163,11 +165,11 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 
 		const safeName = sanitizeResourceName(resourceName, `${kind || 'resource'}_${Date.now()}`)
 		const file = await options.fileFromUrl(localUrl, safeName.replace(/\.[^.]+$/, ''))
-		const uploaded = await options.blueprintProjectService.uploadAsset(
+		const uploaded = (await options.blueprintProjectService.uploadAsset(
 			file,
 			kind,
 			projectId > 0 ? { projectId } : undefined
-		) as UploadAssetResult
+		)) as UploadAssetResult
 		if (!uploaded.ok) {
 			throw new Error(String(uploaded.error || 'upload failed'))
 		}
@@ -225,38 +227,9 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 		}
 
 		const isExternalHttp = /^https?:\/\//i.test(sourceUrl)
-		const shouldUseProgressDownload = isExternalHttp && payload.kind === 'file' && projectId > 0 && typeof payload.onProgress === 'function'
 
-		if (shouldUseProgressDownload) {
-			try {
-				const { buffer, contentType, totalBytes } = await downloadUrlWithProgress(
-					sourceUrl,
-					payload.onProgress
-				)
-				const ext = safeName.includes('.') ? '' : '.glb'
-				const uploadName = safeName + ext
-				const uploaded = await uploadProjectAsset({
-					projectId,
-					kind: 'file',
-					name: uploadName,
-					arrayBuffer: buffer,
-					contentType,
-					bucket: 'assets'
-				})
-				if (uploaded?.ok && uploaded.asset) {
-					const asset = uploaded.asset
-					return {
-						url: options.resolveBackendUrl(String(asset.url || '')),
-						absolutePath: String(asset.absolutePath || ''),
-						projectRelativePath: String(asset.projectRelativePath || asset.relativePath || '').trim() || undefined,
-						size: totalBytes
-					}
-				}
-			} catch (e) {
-				console.warn('[AssetPersistence] Progress download failed, falling back to IPC:', e)
-			}
-		}
-
+		// For external HTTP URLs (like Meshy CDN), always use IPC download to avoid CORS issues.
+		// Do NOT attempt frontend XHR/fetch download for external URLs.
 		if (projectId > 0) {
 			const imported = await options.importAssetIntoProjectScope({
 				kind: payload.kind,
@@ -269,19 +242,16 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 			if (imported) {
 				return {
 					url: options.resolveBackendUrl(String(imported.url || '')),
-					absolutePath: String(
-						imported.sourcePath || imported.absolutePath || ''
-					).trim(),
+					absolutePath: String(imported.sourcePath || imported.absolutePath || '').trim(),
 					projectRelativePath:
-						String(
-							imported.projectRelativePath || imported.relativePath || ''
-						).trim() || undefined,
+						String(imported.projectRelativePath || imported.relativePath || '').trim() || undefined,
 					size: Number(imported.size || 0) || undefined
 				}
 			}
 		}
 
-		if (sourceUrl) {
+		// Only fall back to frontend fetch for non-external URLs (local/backend URLs)
+		if (sourceUrl && !isExternalHttp) {
 			try {
 				const uploaded = await uploadLocalResourceAndGetUrl(sourceUrl, payload.kind, safeName, {
 					projectId
@@ -292,11 +262,14 @@ export const useAIWorkflowAssetPersistence = (options: UseAIWorkflowAssetPersist
 					projectRelativePath: uploaded.projectRelativePath,
 					size: uploaded.size
 				}
-			} catch {
-			}
+			} catch {}
 		}
 
 		if (payload.kind === 'image' || payload.kind === 'video') return null
+
+		// For external HTTP that failed IPC download, return null instead of the raw URL
+		// to prevent frontend from trying to fetch it directly (which causes CORS)
+		if (isExternalHttp) return null
 
 		return sourceUrl
 			? { url: sourceUrl, absolutePath: sourcePath, projectRelativePath: undefined }

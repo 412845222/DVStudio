@@ -1,6 +1,6 @@
 import { getErrorMessage } from '../types/utils'
 
-export type MediaImportKind = 'image' | 'video'
+export type MediaImportKind = 'image' | 'video' | 'model3d'
 
 export type MediaImportTask = {
 	resourceId: string
@@ -62,7 +62,8 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 
 	for (const t of msg.tasks) {
 		const resourceId = String(t.resourceId ?? '').trim()
-		const kind = t.kind === 'video' ? 'video' : 'image'
+		const kind: MediaImportKind =
+			t.kind === 'video' ? 'video' : t.kind === 'model3d' ? 'model3d' : 'image'
 		const file = t.file as File | undefined
 
 		if (!resourceId || !file) {
@@ -97,6 +98,7 @@ self.addEventListener('message', async (ev: MessageEvent<ProcessMessage>) => {
 				}
 			}
 
+			// model3d: just return object URL without size detection
 			results.push({ resourceId, kind, url, sourcePath, width, height })
 		} catch (err: unknown) {
 			results.push({ resourceId, kind, url, sourcePath, error: getErrorMessage(err) })

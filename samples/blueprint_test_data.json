@@ -1,0 +1,306 @@
+{
+  "viewport": {
+    "zoom": 0.85,
+    "panX": 80,
+    "panY": 80
+  },
+  "nodes": [
+    {
+      "id": "node_text_1",
+      "type": "text",
+      "title": "文本生成",
+      "subtitle": "提示词输入",
+      "worldX": 0,
+      "worldY": 0,
+      "width": 260,
+      "height": 240,
+      "previewContent": {
+        "kind": "text",
+        "text": "一位身穿赛博朋克风格服装的少女站在霓虹闪烁的雨夜街道上，全息广告牌在她身后投射出蓝紫色光芒，雨水在地面反射出五彩斑斓的光影，远处的飞行汽车穿梭于摩天大楼之间，空气中弥漫着未来都市的科技感与神秘感。"
+      },
+      "inputs": [
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_text", "label": "文本", "mediaType": "text" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_image_1",
+      "type": "image",
+      "title": "图片生成",
+      "subtitle": "文生图",
+      "worldX": 340,
+      "worldY": -40,
+      "width": 260,
+      "height": 300,
+      "previewContent": {
+        "kind": "image"
+      },
+      "inputs": [
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "图片", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_rotate_1",
+      "type": "rotate-image",
+      "title": "图片旋转",
+      "subtitle": "角度调整",
+      "worldX": 680,
+      "worldY": -80,
+      "width": 260,
+      "height": 300,
+      "previewContent": {
+        "kind": "image"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "图片", "mediaType": "image" },
+        { "id": "in_angle", "label": "角度", "mediaType": "generic" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "图片", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_video_1",
+      "type": "video",
+      "title": "视频生成",
+      "subtitle": "图生视频",
+      "worldX": 1020,
+      "worldY": -40,
+      "width": 280,
+      "height": 280,
+      "previewContent": {
+        "kind": "video"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "参考图", "mediaType": "image" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_video", "label": "视频", "mediaType": "video" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_scene_understanding_1",
+      "type": "scene-understanding",
+      "title": "场景理解",
+      "subtitle": "视觉分析",
+      "worldX": 0,
+      "worldY": 320,
+      "width": 240,
+      "height": 200,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "图像", "mediaType": "image" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_text", "label": "描述", "mediaType": "text" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_scene_layout_1",
+      "type": "scene-layout",
+      "title": "场景布局",
+      "subtitle": "构图规划",
+      "worldX": 300,
+      "worldY": 340,
+      "width": 240,
+      "height": 200,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_desc", "label": "描述", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_layout", "label": "布局", "mediaType": "generic" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_scene_decompose_1",
+      "type": "scene-decompose",
+      "title": "场景拆解",
+      "subtitle": "元素分离",
+      "worldX": 600,
+      "worldY": 320,
+      "width": 240,
+      "height": 220,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "图像", "mediaType": "image" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_elements", "label": "元素", "mediaType": "generic" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_comfyui_1",
+      "type": "comfyui",
+      "title": "ComfyUI工作流",
+      "subtitle": "图像处理",
+      "worldX": 0,
+      "worldY": 620,
+      "width": 280,
+      "height": 240,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "输入图像", "mediaType": "image" },
+        { "id": "in_prompt", "label": "提示词", "mediaType": "text" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "输出图像", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_model3d_1",
+      "type": "model3d",
+      "title": "3D模型生成",
+      "subtitle": "图生3D",
+      "worldX": 360,
+      "worldY": 600,
+      "width": 280,
+      "height": 300,
+      "previewContent": {
+        "kind": "model3d"
+      },
+      "inputs": [
+        { "id": "in_image", "label": "参考图", "mediaType": "image" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_model", "label": "3D模型", "mediaType": "model3d" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_blender_1",
+      "type": "blender",
+      "title": "Blender渲染",
+      "subtitle": "三维渲染",
+      "worldX": 720,
+      "worldY": 620,
+      "width": 260,
+      "height": 240,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_model", "label": "3D模型", "mediaType": "model3d" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_image", "label": "渲染图", "mediaType": "image" },
+        { "id": "out_flow", "label": "完成", "mediaType": "flow" }
+      ]
+    },
+    {
+      "id": "node_unreal_1",
+      "type": "unreal-export",
+      "title": "Unreal导出",
+      "subtitle": "引擎导出",
+      "worldX": 1060,
+      "worldY": 640,
+      "width": 240,
+      "height": 180,
+      "previewContent": {
+        "kind": "icon"
+      },
+      "inputs": [
+        { "id": "in_model", "label": "3D模型", "mediaType": "model3d" },
+        { "id": "in_flow", "label": "流程", "mediaType": "flow" }
+      ],
+      "outputs": [
+        { "id": "out_resource", "label": "资源", "mediaType": "resource" }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1",
+      "fromNodeId": "node_text_1",
+      "fromAnchorId": "out_text",
+      "toNodeId": "node_image_1",
+      "toAnchorId": "in_prompt"
+    },
+    {
+      "id": "edge_2",
+      "fromNodeId": "node_text_1",
+      "fromAnchorId": "out_flow",
+      "toNodeId": "node_image_1",
+      "toAnchorId": "in_flow"
+    },
+    {
+      "id": "edge_3",
+      "fromNodeId": "node_image_1",
+      "fromAnchorId": "out_image",
+      "toNodeId": "node_rotate_1",
+      "toAnchorId": "in_image"
+    },
+    {
+      "id": "edge_4",
+      "fromNodeId": "node_image_1",
+      "fromAnchorId": "out_flow",
+      "toNodeId": "node_rotate_1",
+      "toAnchorId": "in_flow"
+    },
+    {
+      "id": "edge_5",
+      "fromNodeId": "node_rotate_1",
+      "fromAnchorId": "out_image",
+      "toNodeId": "node_video_1",
+      "toAnchorId": "in_image"
+    },
+    {
+      "id": "edge_6",
+      "fromNodeId": "node_comfyui_1",
+      "fromAnchorId": "out_image",
+      "toNodeId": "node_model3d_1",
+      "toAnchorId": "in_image"
+    },
+    {
+      "id": "edge_7",
+      "fromNodeId": "node_model3d_1",
+      "fromAnchorId": "out_model",
+      "toNodeId": "node_blender_1",
+      "toAnchorId": "in_model"
+    },
+    {
+      "id": "edge_8",
+      "fromNodeId": "node_blender_1",
+      "fromAnchorId": "out_image",
+      "toNodeId": "node_scene_understanding_1",
+      "toAnchorId": "in_image"
+    },
+    {
+      "id": "edge_9",
+      "fromNodeId": "node_model3d_1",
+      "fromAnchorId": "out_model",
+      "toNodeId": "node_unreal_1",
+      "toAnchorId": "in_model"
+    }
+  ]
+}

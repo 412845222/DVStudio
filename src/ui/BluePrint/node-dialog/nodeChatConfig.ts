@@ -1,4 +1,8 @@
-import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord, WorkflowTripo3DMode } from '../../../aiworkflow/types'
+import type {
+	WorkflowNodeChatType,
+	WorkflowNodeChatParamRecord,
+	WorkflowTripo3DMode
+} from '../../../aiworkflow/types'
 
 export const NODE_CHAT_TYPE_LABELS: Record<WorkflowNodeChatType, string> = {
 	text: 'aiConfig.nodeType.text',
@@ -202,15 +206,37 @@ export const NODE_CHAT_IMAGE_MODEL_OPTIONS = [
 ]
 
 export const NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS = [
-	{ value: 'gemini-3.1-flash-image', label: 'Nano Banana 2 (Gemini 3.1 Flash)', badge: '推荐', description: '通用主力 - 支持512px~4K分辨率，14张参考图' },
-	{ value: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite)', description: '快速经济 - 仅1K，适合规模化场景' },
-	{ value: 'gemini-3-pro-image', label: 'Nano Banana Pro (Gemini 3 Pro)', badge: 'Pro', description: '专业质量 - 支持1K~4K，含思考流程' },
-	{ value: 'gemini-2.5-flash-image', label: 'Nano Banana (Gemini 2.5 Flash)', description: '旧版兼容 - 建议升级到Lite' }
+	{
+		value: 'gemini-3.1-flash-image',
+		label: 'Nano Banana 2 (Gemini 3.1 Flash)',
+		badge: '推荐',
+		description: '通用主力 - 支持512px~4K分辨率，14张参考图'
+	},
+	{
+		value: 'gemini-3.1-flash-lite-image',
+		label: 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite)',
+		description: '快速经济 - 仅1K，适合规模化场景'
+	},
+	{
+		value: 'gemini-3-pro-image',
+		label: 'Nano Banana Pro (Gemini 3 Pro)',
+		badge: 'Pro',
+		description: '专业质量 - 支持1K~4K，含思考流程'
+	},
+	{
+		value: 'gemini-2.5-flash-image',
+		label: 'Nano Banana (Gemini 2.5 Flash)',
+		description: '旧版兼容 - 建议升级到Lite'
+	}
 ]
 
-export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS = NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
+export const NODE_CHAT_NANOBANANA_MODEL_VERSION_OPTIONS =
+	NODE_CHAT_GEMINI_IMAGE_MODEL_VERSION_OPTIONS
 
-export const GEMINI_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value: string; label: string; description: string; isDefault?: boolean }>> = {
+export const GEMINI_IMAGE_SIZE_OPTIONS: Record<
+	string,
+	Array<{ value: string; label: string; description: string; isDefault?: boolean }>
+> = {
 	'gemini-3.1-flash-image': [
 		{ value: '512px', label: '512px', description: '快速预览 (512×512~)' },
 		{ value: '1K', label: '1K', description: '标准 (1024×1024~)' },
@@ -230,7 +256,10 @@ export const GEMINI_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value: string; la
 	]
 }
 
-export const GEMINI_ASPECT_RATIO_OPTIONS: Record<string, Array<{ value: string; label: string; labelZh: string }>> = {
+export const GEMINI_ASPECT_RATIO_OPTIONS: Record<
+	string,
+	Array<{ value: string; label: string; labelZh: string }>
+> = {
 	'gemini-3.1-flash-image': [
 		{ value: '1:1', label: '1:1', labelZh: '方形' },
 		{ value: '16:9', label: '16:9', labelZh: '横屏' },
@@ -285,7 +314,10 @@ export const GEMINI_ASPECT_RATIO_OPTIONS: Record<string, Array<{ value: string; 
 	]
 }
 
-export const GEMINI_THINKING_LEVEL_OPTIONS: Record<string, Array<{ value: string; label: string; description: string }>> = {
+export const GEMINI_THINKING_LEVEL_OPTIONS: Record<
+	string,
+	Array<{ value: string; label: string; description: string }>
+> = {
 	'gemini-3.1-flash-image': [
 		{ value: 'minimal', label: '快速', description: '平衡速度与质量' },
 		{ value: 'high', label: '深度', description: '更高质量，较慢' }
@@ -295,11 +327,16 @@ export const GEMINI_THINKING_LEVEL_OPTIONS: Record<string, Array<{ value: string
 export const GEMINI_QUANTITY_OPTIONS = [1, 2, 4]
 
 export const getGeminiImageSizeOptions = (modelVersion: string) => {
-	return GEMINI_IMAGE_SIZE_OPTIONS[modelVersion] || GEMINI_IMAGE_SIZE_OPTIONS['gemini-3.1-flash-image']
+	return (
+		GEMINI_IMAGE_SIZE_OPTIONS[modelVersion] || GEMINI_IMAGE_SIZE_OPTIONS['gemini-3.1-flash-image']
+	)
 }
 
 export const getGeminiAspectRatioOptions = (modelVersion: string) => {
-	return GEMINI_ASPECT_RATIO_OPTIONS[modelVersion] || GEMINI_ASPECT_RATIO_OPTIONS['gemini-3.1-flash-image']
+	return (
+		GEMINI_ASPECT_RATIO_OPTIONS[modelVersion] ||
+		GEMINI_ASPECT_RATIO_OPTIONS['gemini-3.1-flash-image']
+	)
 }
 
 export const getGeminiThinkingLevelOptions = (modelVersion: string) => {
@@ -308,7 +345,7 @@ export const getGeminiThinkingLevelOptions = (modelVersion: string) => {
 
 export const getDefaultGeminiImageSize = (modelVersion: string): string => {
 	const options = getGeminiImageSizeOptions(modelVersion)
-	const defaultOpt = options.find(o => o.isDefault)
+	const defaultOpt = options.find((o) => o.isDefault)
 	return defaultOpt?.value || '2K'
 }
 
@@ -425,12 +462,8 @@ export const NODE_CHAT_SEEDREAM_OUTPUT_FORMAT_OPTIONS = {
 		{ value: 'png', label: 'PNG' },
 		{ value: 'jpeg', label: 'JPEG' }
 	],
-	'doubao-seedream-4-5-251128': [
-		{ value: 'jpeg', label: 'JPEG' }
-	],
-	'doubao-seedream-4-0-250828': [
-		{ value: 'jpeg', label: 'JPEG' }
-	]
+	'doubao-seedream-4-5-251128': [{ value: 'jpeg', label: 'JPEG' }],
+	'doubao-seedream-4-0-250828': [{ value: 'jpeg', label: 'JPEG' }]
 }
 
 export const NODE_CHAT_SEEDREAM_QUANTITY_OPTIONS = [1, 2, 4]
@@ -455,7 +488,9 @@ export const supportsSeedreamOutputFormat = (modelVersion: string) => {
 	return modelVersion.includes('5-0')
 }
 
-export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [{ value: 'seedance', label: 'aiConfig.videoModel.seedance' }]
+export const NODE_CHAT_VIDEO_MODEL_OPTIONS = [
+	{ value: 'seedance', label: 'aiConfig.videoModel.seedance' }
+]
 
 export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
 	{ value: 'meshy' as const, label: 'aiConfig.model3dProvider.meshy' },
@@ -463,33 +498,82 @@ export const NODE_CHAT_MODEL3D_PROVIDER_OPTIONS = [
 ]
 
 export const NODE_CHAT_TRIPO3D_MODEL_SERIES_OPTIONS = [
-	{ value: 'h', label: 'aiConfig.tripo3dModelSeries.h', icon: '✨', badge: 'aiConfig.common.recommended' },
-	{ value: 'p', label: 'aiConfig.tripo3dModelSeries.p', icon: '🎮', badge: 'aiConfig.tripo3dBadge.game' }
+	{
+		value: 'h',
+		label: 'aiConfig.tripo3dModelSeries.h',
+		icon: '✨',
+		badge: 'aiConfig.common.recommended'
+	},
+	{
+		value: 'p',
+		label: 'aiConfig.tripo3dModelSeries.p',
+		icon: '🎮',
+		badge: 'aiConfig.tripo3dBadge.game'
+	}
 ]
 
 export const NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS = [
-	{ value: 'v3.1-20260211', label: 'v3.1', description: 'aiConfig.tripo3dModelVersion.v31', badge: 'aiConfig.common.recommended' },
+	{
+		value: 'v3.1-20260211',
+		label: 'v3.1',
+		description: 'aiConfig.tripo3dModelVersion.v31',
+		badge: 'aiConfig.common.recommended'
+	},
 	{ value: 'v3.0-20250812', label: 'v3.0', description: 'aiConfig.tripo3dModelVersion.v30' },
 	{ value: 'v2.5-20250123', label: 'v2.5', description: 'aiConfig.tripo3dModelVersion.v25' }
 ]
 
 export const NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS = [
-	{ value: 'P1-20260311', label: 'P1', description: 'aiConfig.tripo3dModelVersion.p1', badge: 'aiConfig.tripo3dBadge.game' }
+	{
+		value: 'P1-20260311',
+		label: 'P1',
+		description: 'aiConfig.tripo3dModelVersion.p1',
+		badge: 'aiConfig.tripo3dBadge.game'
+	}
 ]
 
 export const NODE_CHAT_TRIPO3D_FACE_LIMIT_PRESETS = [
-	{ value: 10000, label: 'aiConfig.tripo3dFaceLimitPresets.mobile', description: 'aiConfig.tripo3dFaceLimitPresets.mobileDesc' },
-	{ value: 30000, label: 'aiConfig.tripo3dFaceLimitPresets.web', description: 'aiConfig.tripo3dFaceLimitPresets.webDesc' },
-	{ value: 80000, label: 'aiConfig.tripo3dFaceLimitPresets.game', description: 'aiConfig.tripo3dFaceLimitPresets.gameDesc' },
-	{ value: 500000, label: 'aiConfig.tripo3dFaceLimitPresets.film', description: 'aiConfig.tripo3dFaceLimitPresets.filmDesc' },
-	{ value: 2000000, label: 'aiConfig.tripo3dFaceLimitPresets.ultra', description: 'aiConfig.tripo3dFaceLimitPresets.ultraDesc', hSeriesOnly: true },
-	{ value: 0, label: 'aiConfig.tripo3dFaceLimitPresets.adaptive', description: 'aiConfig.tripo3dFaceLimitPresets.adaptiveDesc' }
+	{
+		value: 10000,
+		label: 'aiConfig.tripo3dFaceLimitPresets.mobile',
+		description: 'aiConfig.tripo3dFaceLimitPresets.mobileDesc'
+	},
+	{
+		value: 30000,
+		label: 'aiConfig.tripo3dFaceLimitPresets.web',
+		description: 'aiConfig.tripo3dFaceLimitPresets.webDesc'
+	},
+	{
+		value: 80000,
+		label: 'aiConfig.tripo3dFaceLimitPresets.game',
+		description: 'aiConfig.tripo3dFaceLimitPresets.gameDesc'
+	},
+	{
+		value: 500000,
+		label: 'aiConfig.tripo3dFaceLimitPresets.film',
+		description: 'aiConfig.tripo3dFaceLimitPresets.filmDesc'
+	},
+	{
+		value: 2000000,
+		label: 'aiConfig.tripo3dFaceLimitPresets.ultra',
+		description: 'aiConfig.tripo3dFaceLimitPresets.ultraDesc',
+		hSeriesOnly: true
+	},
+	{
+		value: 0,
+		label: 'aiConfig.tripo3dFaceLimitPresets.adaptive',
+		description: 'aiConfig.tripo3dFaceLimitPresets.adaptiveDesc'
+	}
 ]
 
 export const NODE_CHAT_TRIPO3D_TEXTURE_QUALITY_OPTIONS = [
 	{ value: 'standard', label: 'aiConfig.tripo3dTextureQuality.standard' },
 	{ value: 'detailed', label: 'aiConfig.tripo3dTextureQuality.detailed' },
-	{ value: 'extreme', label: 'aiConfig.tripo3dTextureQuality.extreme', badge: 'aiConfig.tripo3dBadge.moreCredits' }
+	{
+		value: 'extreme',
+		label: 'aiConfig.tripo3dTextureQuality.extreme',
+		badge: 'aiConfig.tripo3dBadge.moreCredits'
+	}
 ]
 
 export const NODE_CHAT_TRIPO3D_GEOMETRY_QUALITY_OPTIONS = [
@@ -513,17 +597,47 @@ export const NODE_CHAT_TRIPO3D_ORIENTATION_OPTIONS = [
 ]
 
 export const NODE_CHAT_TRIPO3D_VIEW_OPTIONS = [
-	{ key: 'front' as const, label: 'aiConfig.tripo3dViews.front', color: '#3b82f6', required: true, order: 1 },
-	{ key: 'left' as const, label: 'aiConfig.tripo3dViews.left', color: '#22c55e', required: false, order: 2 },
-	{ key: 'back' as const, label: 'aiConfig.tripo3dViews.back', color: '#f97316', required: false, order: 3 },
-	{ key: 'right' as const, label: 'aiConfig.tripo3dViews.right', color: '#a855f7', required: false, order: 4 }
+	{
+		key: 'front' as const,
+		label: 'aiConfig.tripo3dViews.front',
+		color: '#3b82f6',
+		required: true,
+		order: 1
+	},
+	{
+		key: 'left' as const,
+		label: 'aiConfig.tripo3dViews.left',
+		color: '#22c55e',
+		required: false,
+		order: 2
+	},
+	{
+		key: 'back' as const,
+		label: 'aiConfig.tripo3dViews.back',
+		color: '#f97316',
+		required: false,
+		order: 3
+	},
+	{
+		key: 'right' as const,
+		label: 'aiConfig.tripo3dViews.right',
+		color: '#a855f7',
+		required: false,
+		order: 4
+	}
 ]
 
 export const getTripo3DModelVersionOptions = (series: 'h' | 'p') => {
-	return series === 'h' ? NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS : NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS
+	return series === 'h'
+		? NODE_CHAT_TRIPO3D_H_MODEL_VERSION_OPTIONS
+		: NODE_CHAT_TRIPO3D_P_MODEL_VERSION_OPTIONS
 }
 
-export const getTripo3DFaceLimitRange = (modelVersion: string, quad: boolean, smartLowPoly: boolean) => {
+export const getTripo3DFaceLimitRange = (
+	modelVersion: string,
+	quad: boolean,
+	smartLowPoly: boolean
+) => {
 	const isPSeries = modelVersion.startsWith('P')
 	const isV25 = modelVersion === 'v2.5-20250123'
 	const isV3OrLater = modelVersion === 'v3.1-20260211' || modelVersion === 'v3.0-20250812'
@@ -568,7 +682,9 @@ export const isTripo3DV3OrLater = (modelVersion: string) => {
 export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
 	const next = { ...params }
 	const modelVersion = String(next.tripo3dModelVersion || 'v3.1-20260211')
-	const modelSeries = String(next.tripo3dModelSeries || (isTripo3DPSeries(modelVersion) ? 'p' : 'h'))
+	const modelSeries = String(
+		next.tripo3dModelSeries || (isTripo3DPSeries(modelVersion) ? 'p' : 'h')
+	)
 	const isPSeries = isTripo3DPSeries(modelVersion)
 	const isV3OrLater = isTripo3DV3OrLater(modelVersion)
 	const isV25 = modelVersion === 'v2.5-20250123'
@@ -651,7 +767,18 @@ export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
 	}
 
 	const taskMode = String(next.tripo3dTaskMode || 'image_to_model')
-	const validTaskModes = ['text_to_model', 'image_to_model', 'multiview_to_model', 'texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+	const validTaskModes = [
+		'text_to_model',
+		'image_to_model',
+		'multiview_to_model',
+		'texture',
+		'refine',
+		'mesh_segment',
+		'mesh_smartsegment',
+		'mesh_complete',
+		'mesh_decimate',
+		'models_convert'
+	]
 	if (!validTaskModes.includes(taskMode)) {
 		next.tripo3dTaskMode = 'image_to_model'
 	} else {
@@ -662,7 +789,10 @@ export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
 		delete next.tripo3dSegType
 	}
 
-	if (next.tripo3dGranularity && !['coarse', 'medium', 'fine'].includes(String(next.tripo3dGranularity))) {
+	if (
+		next.tripo3dGranularity &&
+		!['coarse', 'medium', 'fine'].includes(String(next.tripo3dGranularity))
+	) {
 		delete next.tripo3dGranularity
 	}
 
@@ -670,7 +800,10 @@ export const normalizeTripo3DParams = (params: Record<string, unknown>) => {
 		delete next.tripo3dDecimateModel
 	}
 
-	if (next.tripo3dConvertFormat && !['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'].includes(String(next.tripo3dConvertFormat))) {
+	if (
+		next.tripo3dConvertFormat &&
+		!['GLTF', 'FBX', 'USDZ', 'OBJ', 'STL', '3MF'].includes(String(next.tripo3dConvertFormat))
+	) {
 		delete next.tripo3dConvertFormat
 	}
 
@@ -738,7 +871,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 		case 'text':
 			return {
 				modelId: undefined,
-				model: 'gemini',
+				model: 'bytedance',
 				textModelVersion: 'doubao-seed-evolving',
 				geminiTextModelVersion: 'gemini-3.5-flash',
 				speed: 'normal',
@@ -861,7 +994,7 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 				tripo3dConvertTextureSize: 2048,
 				tripo3dPartNames: [],
 				tripo3dHint: '',
-				tripo3dTransform: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
+				tripo3dTransform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 			}
 		case 'blender':
 			return {
@@ -878,27 +1011,70 @@ export const getDefaultParamsForType = (type: WorkflowNodeChatType) => {
 }
 
 export const isNodeChatTypeSupported = (type: string): boolean => {
-	return type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender'
+	return (
+		type === 'text' ||
+		type === 'image' ||
+		type === 'video' ||
+		type === 'model3d' ||
+		type === 'blender'
+	)
 }
 
 export const NODE_CHAT_TRIPO3D_IMAGE_MODE_OPTIONS = [
 	{ value: 'text_to_image', label: 'aiConfig.tripo3dImageMode.textToImage' },
 	{ value: 'image_to_image', label: 'aiConfig.tripo3dImageMode.imageToImage' },
-	{ value: 'image_to_multiview', label: 'aiConfig.tripo3dImageMode.imageToMultiview' },
+	{ value: 'image_to_multiview', label: 'aiConfig.tripo3dImageMode.imageToMultiview' }
 ]
 
 export const NODE_CHAT_TRIPO3D_IMAGE_MODEL_OPTIONS = [
-	{ value: 'seedream_v5', label: 'aiConfig.tripo3dImageModel.seedreamV5', badge: 'aiConfig.common.latest', description: 'aiConfig.tripo3dImageModel.seedreamV5Desc' },
-	{ value: 'seedream_v4', label: 'aiConfig.tripo3dImageModel.seedreamV4', description: 'aiConfig.tripo3dImageModel.seedreamV4Desc' },
-	{ value: 'banana', label: 'aiConfig.tripo3dImageModel.banana', description: 'aiConfig.tripo3dImageModel.bananaDesc' },
-	{ value: 'banana_pro', label: 'aiConfig.tripo3dImageModel.bananaPro', description: 'aiConfig.tripo3dImageModel.bananaProDesc' },
-	{ value: 'banana2', label: 'aiConfig.tripo3dImageModel.banana2', description: 'aiConfig.tripo3dImageModel.banana2Desc' },
-	{ value: 'chat_image_1', label: 'aiConfig.tripo3dImageModel.chatImage1', description: 'aiConfig.tripo3dImageModel.chatImage1Desc' },
-	{ value: 'chat_image_1.5', label: 'aiConfig.tripo3dImageModel.chatImage15', description: 'aiConfig.tripo3dImageModel.chatImage15Desc' },
-	{ value: 'chat_image_2', label: 'aiConfig.tripo3dImageModel.chatImage2', badge: 'aiConfig.common.best', description: 'aiConfig.tripo3dImageModel.chatImage2Desc' },
+	{
+		value: 'seedream_v5',
+		label: 'aiConfig.tripo3dImageModel.seedreamV5',
+		badge: 'aiConfig.common.latest',
+		description: 'aiConfig.tripo3dImageModel.seedreamV5Desc'
+	},
+	{
+		value: 'seedream_v4',
+		label: 'aiConfig.tripo3dImageModel.seedreamV4',
+		description: 'aiConfig.tripo3dImageModel.seedreamV4Desc'
+	},
+	{
+		value: 'banana',
+		label: 'aiConfig.tripo3dImageModel.banana',
+		description: 'aiConfig.tripo3dImageModel.bananaDesc'
+	},
+	{
+		value: 'banana_pro',
+		label: 'aiConfig.tripo3dImageModel.bananaPro',
+		description: 'aiConfig.tripo3dImageModel.bananaProDesc'
+	},
+	{
+		value: 'banana2',
+		label: 'aiConfig.tripo3dImageModel.banana2',
+		description: 'aiConfig.tripo3dImageModel.banana2Desc'
+	},
+	{
+		value: 'chat_image_1',
+		label: 'aiConfig.tripo3dImageModel.chatImage1',
+		description: 'aiConfig.tripo3dImageModel.chatImage1Desc'
+	},
+	{
+		value: 'chat_image_1.5',
+		label: 'aiConfig.tripo3dImageModel.chatImage15',
+		description: 'aiConfig.tripo3dImageModel.chatImage15Desc'
+	},
+	{
+		value: 'chat_image_2',
+		label: 'aiConfig.tripo3dImageModel.chatImage2',
+		badge: 'aiConfig.common.best',
+		description: 'aiConfig.tripo3dImageModel.chatImage2Desc'
+	}
 ]
 
-export const NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value: string; label: string; description?: string }>> = {
+export const NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS: Record<
+	string,
+	Array<{ value: string; label: string; description?: string }>
+> = {
 	seedream_v5: [
 		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.seedreamV5.2k' },
 		{ value: '3K', label: '3K', description: 'aiConfig.tripo3dImageSize.seedreamV5.3k' },
@@ -929,7 +1105,7 @@ export const NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value:
 		{ value: '2K', label: '2K', description: 'aiConfig.tripo3dImageSize.banana.2k' },
 		{ value: '4K', label: '4K', description: 'aiConfig.tripo3dImageSize.banana.4k' }
 	],
-	'chat_image_1': [
+	chat_image_1: [
 		{ value: '1024x1024', label: '1024×1024', description: '1:1' },
 		{ value: '1024x1536', label: '1024×1536', description: '2:3' },
 		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
@@ -941,7 +1117,7 @@ export const NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS: Record<string, Array<{ value:
 		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
 		{ value: 'auto', label: 'Auto', description: 'aiConfig.tripo3dImageSize.chatImage.auto' }
 	],
-	'chat_image_2': [
+	chat_image_2: [
 		{ value: '1024x1024', label: '1024×1024', description: '1:1' },
 		{ value: '1024x1536', label: '1024×1536', description: '2:3' },
 		{ value: '1536x1024', label: '1536×1024', description: '3:2' },
@@ -1022,7 +1198,9 @@ export const supportsTripo3DWatermark = (model: string): boolean => {
 }
 
 export const getTripo3DImageSizeOptions = (model: string) => {
-	return NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS[model] || NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS.seedream_v4
+	return (
+		NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS[model] || NODE_CHAT_TRIPO3D_IMAGE_SIZE_OPTIONS.seedream_v4
+	)
 }
 
 export const getTripo3DImageDefaultSize = (model: string): string => {
@@ -1060,23 +1238,27 @@ export const NODE_CHAT_TRIPO3D_TASK_MODE_OPTIONS = [
 	{ value: 'mesh_smartsegment', label: 'aiConfig.tripo3dTaskMode.meshSmartsegment' },
 	{ value: 'mesh_complete', label: 'aiConfig.tripo3dTaskMode.meshComplete' },
 	{ value: 'mesh_decimate', label: 'aiConfig.tripo3dTaskMode.meshDecimate' },
-	{ value: 'models_convert', label: 'aiConfig.tripo3dTaskMode.modelsConvert' },
+	{ value: 'models_convert', label: 'aiConfig.tripo3dTaskMode.modelsConvert' }
 ]
 
 export const NODE_CHAT_TRIPO3D_SEG_TYPE_OPTIONS = [
 	{ value: 'image', label: 'aiConfig.tripo3dSegType.image' },
-	{ value: 'model', label: 'aiConfig.tripo3dSegType.model' },
+	{ value: 'model', label: 'aiConfig.tripo3dSegType.model' }
 ]
 
 export const NODE_CHAT_TRIPO3D_GRANULARITY_OPTIONS = [
 	{ value: 'coarse', label: 'aiConfig.tripo3dGranularity.coarse' },
 	{ value: 'medium', label: 'aiConfig.tripo3dGranularity.medium' },
-	{ value: 'fine', label: 'aiConfig.tripo3dGranularity.fine' },
+	{ value: 'fine', label: 'aiConfig.tripo3dGranularity.fine' }
 ]
 
 export const NODE_CHAT_TRIPO3D_DECIMATE_MODEL_OPTIONS = [
 	{ value: 'v1.0', label: 'aiConfig.tripo3dDecimateModel.v10' },
-	{ value: 'v2.0', label: 'aiConfig.tripo3dDecimateModel.v20', badge: 'aiConfig.common.recommended' },
+	{
+		value: 'v2.0',
+		label: 'aiConfig.tripo3dDecimateModel.v20',
+		badge: 'aiConfig.common.recommended'
+	}
 ]
 
 export const NODE_CHAT_TRIPO3D_CONVERT_FORMAT_OPTIONS = [
@@ -1085,11 +1267,19 @@ export const NODE_CHAT_TRIPO3D_CONVERT_FORMAT_OPTIONS = [
 	{ value: 'USDZ', label: 'USDZ' },
 	{ value: 'OBJ', label: 'OBJ' },
 	{ value: 'STL', label: 'STL' },
-	{ value: '3MF', label: '3MF' },
+	{ value: '3MF', label: '3MF' }
 ]
 
 export const isTripo3DPostProcessMode = (mode: string): boolean => {
-	return ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert'].includes(mode)
+	return [
+		'texture',
+		'refine',
+		'mesh_segment',
+		'mesh_smartsegment',
+		'mesh_complete',
+		'mesh_decimate',
+		'models_convert'
+	].includes(mode)
 }
 
 export const isTripo3DGenerateMode = (mode: string): boolean => {
@@ -1097,7 +1287,13 @@ export const isTripo3DGenerateMode = (mode: string): boolean => {
 }
 
 export const normalizeNodeChatType = (type: string): WorkflowNodeChatType | null => {
-	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') {
+	if (
+		type === 'text' ||
+		type === 'image' ||
+		type === 'video' ||
+		type === 'model3d' ||
+		type === 'blender'
+	) {
 		return type as WorkflowNodeChatType
 	}
 	return null

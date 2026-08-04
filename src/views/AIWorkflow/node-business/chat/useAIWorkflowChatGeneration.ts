@@ -89,7 +89,12 @@ type ChatGenerationPayload = {
 	chatDraft: Ref<string>
 	chatModelId: Ref<string>
 	chatThinkingEffort: Ref<'disabled' | 'low' | 'medium' | 'high'>
-	chatContextUsage: Ref<{ tokenCount: number; budget: number; usage: number; truncated?: boolean } | null>
+	chatContextUsage: Ref<{
+		tokenCount: number
+		budget: number
+		usage: number
+		truncated?: boolean
+	} | null>
 	chatMessages: Ref<BottomChatMessage[]>
 	chatSending: Ref<boolean>
 	chatRunState: Ref<'idle' | 'sending' | 'stopping' | 'error'>
@@ -145,6 +150,69 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	const makeChatId = () =>
 		`aiwf-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	let activeAbortController: AbortController | null = null
+
+	const getNodePreviewUrl = (
+		node: WorkflowNode
+	): { url: string | null; kind: NodeOutputKind } | null => {
+		const nodeType = node.type
+		if (nodeType === 'image' || nodeType === 'rotate-image' || nodeType === 'video') {
+			const previewUrl = sanitizeWorkflowMediaUrl(payload.nodeImagePreviewUrl(node, 160))
+			if (previewUrl) {
+				return {
+					url: previewUrl,
+					kind: nodeType === 'video' ? 'video' : 'image'
+				}
+			}
+			const resourceUrl = sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node))
+			if (resourceUrl) {
+				return {
+					url: resourceUrl,
+					kind: nodeType === 'video' ? 'video' : 'image'
+				}
+			}
+		}
+		if (nodeType === 'text' || nodeType === 'text-merge' || nodeType === 'story') {
+			return { url: null, kind: 'text' }
+		}
+		if (nodeType === 'model3d' || nodeType === 'meshy') {
+			return { url: null, kind: 'model3d' }
+		}
+		if (nodeType === 'blender') {
+			return { url: null, kind: 'blender' }
+		}
+		return null
+	}
+
+	const {
+		items,
+		nodeOutputRefs,
+		isPickingNode,
+		allItems,
+		hasContext,
+		contextCount,
+		addImage,
+		addFile,
+		addSkill,
+		addNode,
+		addNodeOutputRef,
+		removeItem,
+		removeNodeOutputRef,
+		clearAll,
+		enterNodePickMode,
+		exitNodePickMode,
+		onNodePicked,
+		toAttachments,
+		toReferences,
+		toSkillHints,
+		getNodeContexts,
+		getNodeOutputContexts,
+		getReferencedNodeIds,
+		getActiveSkills
+	} = useChatContext({
+		getNodePreviewUrl,
+		getNodeResourceUrl: (node: WorkflowNode) =>
+			sanitizeWorkflowMediaUrl(payload.nodeResourceUrl(node))
+	})
 
 	const setTaskStatus = (text: string) => {
 		payload.chatTaskStatusText.value = text
@@ -221,7 +289,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				changed = true
 				return {
 					...tc,
-					status: updates.status ? (updates.status as 'pending' | 'running' | 'completed' | 'error') : tc.status,
+					status: updates.status
+						? (updates.status as 'pending' | 'running' | 'completed' | 'error')
+						: tc.status,
 					result: updates.result !== undefined ? updates.result : tc.result,
 					error: updates.error !== undefined ? updates.error : tc.error
 				}
@@ -250,12 +320,15 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	}
 
 	const extractChoicesFromText = (text: string): string[] => {
-		const lines = text.split('\n').map((l) => l.trim()).filter(Boolean)
+		const lines = text
+			.split('\n')
+			.map((l) => l.trim())
+			.filter(Boolean)
 		const choices: string[] = []
 		const choicePatterns = [
 			/^\d+[.、\)）]\s*(.+)$/,
 			/^[①②③④⑤⑥⑦⑧⑨⑩]\s*(.+)$/,
-			/^[a-zA-Z][.、\)）]\s*(.+)$/,
+			/^[a-zA-Z][.、\)）]\s*(.+)$/
 		]
 		for (const line of lines) {
 			for (const pattern of choicePatterns) {
@@ -289,7 +362,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 	const collectBlueprintContext = () => {
 		const nodes = typeof payload.getAllNodes === 'function' ? payload.getAllNodes() : []
 		const edges = typeof payload.getAllEdges === 'function' ? payload.getAllEdges() : []
-		const selectedNode = typeof payload.getSelectedNode === 'function' ? payload.getSelectedNode() : null
+		const selectedNode =
+			typeof payload.getSelectedNode === 'function' ? payload.getSelectedNode() : null
 
 		const nodeTypeStats: Record<string, number> = {}
 		for (const n of nodes) {
@@ -300,14 +374,16 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		const nodeSummaries = nodes.slice(0, 50).map((n) => ({
 			id: String(n.id || ''),
 			type: String(n.type || ''),
-			label: String((n as { title?: string }).title || (n as { name?: string }).name || n.type || ''),
+			label: String(
+				(n as { title?: string }).title || (n as { name?: string }).name || n.type || ''
+			)
 		}))
 
 		const edgeSummaries = edges.slice(0, 100).map((e) => ({
 			from: String(e.fromNodeId || ''),
 			to: String(e.toNodeId || ''),
 			fromPort: String(e.fromAnchorId || ''),
-			toPort: String(e.toAnchorId || ''),
+			toPort: String(e.toAnchorId || '')
 		}))
 
 		const selectedNodeSummary = selectedNode
@@ -317,9 +393,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					label: String(
 						(selectedNode as { title?: string }).title ||
 							(selectedNode as { name?: string }).name ||
-							selectedNode.type || ''
+							selectedNode.type ||
+							''
 					),
-					config: (selectedNode as { config?: unknown }).config || {},
+					config: (selectedNode as { config?: unknown }).config || {}
 				}
 			: null
 
@@ -330,11 +407,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				nodeCount: nodes.length,
 				nodeTypeStats,
 				connections: edgeSummaries,
-				edgeCount: edges.length,
+				edgeCount: edges.length
 			},
 			project: {
 				id: payload.currentProjectId.value,
-				name: payload.currentProjectName.value || '',
+				name: payload.currentProjectName.value || ''
 			},
 			availableActions: [
 				'get_blueprint_state',
@@ -344,12 +421,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				'connect_nodes',
 				'disconnect_nodes',
 				'list_node_types',
-				'get_project_info',
+				'get_project_info'
 			],
 			restrictions: {
 				maxNodes: 500,
-				disallowDeleteSystemNodes: true,
-			},
+				disallowDeleteSystemNodes: true
+			}
 		}
 	}
 
@@ -408,6 +485,35 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			executionHints?: string[]
 			agentMode?: 'agent' | 'ask' | 'plan'
 			permissionProfile?: string
+			attachments?: Array<{
+				type: string
+				name?: string
+				url?: string
+				data?: string
+				mimeType?: string
+			}>
+			references?: Array<{
+				kind?: string
+				name?: string
+				path?: string
+				content?: string
+				nodeId?: string
+				anchorId?: string
+				previewUrl?: string
+			}>
+			referencedNodeIds?: string[]
+			referencedOutputs?: Array<{
+				kind: string
+				nodeId: string
+				nodeType: string
+				anchorId: string
+				label: string
+				text?: string
+				previewUrl?: string
+				meta?: Record<string, unknown>
+			}>
+			activeSkills?: Array<{ id: string; name: string; description: string; prompt: string }>
+			agentType?: 'workflow' | 'blender' | 'video_editor' | 'node_chat' | 'general'
 		} = {}
 	) => {
 		setTaskStatus(t('aiworkflow.toast.aiTaskThinking'))
@@ -426,24 +532,35 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		const effectiveEnableToolCallWarning = globalAgentSettings.enableToolCallWarning !== false
 
 		try {
-			for await (const ev of chatBridge.sendMessage(backend, sessionId, {
-				content,
-				model: options.model,
-				history: options.history?.map(h => ({
-					role: h.role as 'user' | 'assistant' | 'system',
-					content: h.content
-				})),
-				context: options.context,
-				apiKeys: options.apiKeys,
-				apiSource: options.apiSource,
-				thinkingEffort: options.thinkingEffort,
-				maxToolCalls: effectiveMaxToolCalls,
-				enableToolCallWarning: effectiveEnableToolCallWarning,
-				skillHints: options.skillHints,
-				executionHints: options.executionHints,
-				agentMode: options.agentMode,
-				permissionProfile: options.permissionProfile,
-			}, signal)) {
+			for await (const ev of chatBridge.sendMessage(
+				backend,
+				sessionId,
+				{
+					content,
+					model: options.model,
+					history: options.history?.map((h) => ({
+						role: h.role as 'user' | 'assistant' | 'system',
+						content: h.content
+					})),
+					context: options.context,
+					apiKeys: options.apiKeys,
+					apiSource: options.apiSource,
+					thinkingEffort: options.thinkingEffort,
+					maxToolCalls: effectiveMaxToolCalls,
+					enableToolCallWarning: effectiveEnableToolCallWarning,
+					skillHints: options.skillHints,
+					executionHints: options.executionHints,
+					agentMode: options.agentMode,
+					permissionProfile: options.permissionProfile,
+					attachments: options.attachments,
+					references: options.references,
+					referencedNodeIds: options.referencedNodeIds,
+					referencedOutputs: options.referencedOutputs,
+					activeSkills: options.activeSkills,
+					agentType: options.agentType || 'workflow'
+				},
+				signal
+			)) {
 				if (ev.type === 'done' || ev.type === 'turn_done') {
 					setTaskStatus(t('aiworkflow.toast.aiTaskComplete'))
 					break
@@ -453,7 +570,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					payload.chatRunState.value = 'error'
 					setTaskStatus(t('aiworkflow.toast.aiTaskError'))
 					const isCli = backend === 'copilot' || backend === 'codex'
-					const errorKey = isCli ? 'aiworkflow.toast.copilotCliFailed' : 'aiworkflow.toast.agentChatFailed'
+					const errorKey = isCli
+						? 'aiworkflow.toast.copilotCliFailed'
+						: 'aiworkflow.toast.agentChatFailed'
 					payload.pushToast(t(errorKey, { error: ev.message }), 'warn')
 					pushLocalExecFlow({
 						kind: 'error',
@@ -468,9 +587,11 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					updateAssistantMessageContent(assistantMsgId, (prev) => prev + ev.content)
 					receivedAnyContent = true
 					const isCli = backend === 'copilot' || backend === 'codex'
-					setTaskStatus(isCli
-						? t('aiworkflow.toast.aiTaskCliGenerating')
-						: t('aiworkflow.toast.aiTaskGenerating'))
+					setTaskStatus(
+						isCli
+							? t('aiworkflow.toast.aiTaskCliGenerating')
+							: t('aiworkflow.toast.aiTaskGenerating')
+					)
 					continue
 				}
 				if (ev.type === 'thinking_delta') {
@@ -501,7 +622,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolCalling'),
 						status: 'pending',
-						source: getSourceLabel(backend),
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -517,7 +638,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolComplete'),
 						status: 'completed',
-						source: getSourceLabel(backend),
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -533,7 +654,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						title: `Tool · ${ev.tool}`,
 						detail: t('aiworkflow.toast.aiTaskToolFailed'),
 						status: 'failed',
-						source: getSourceLabel(backend),
+						source: getSourceLabel(backend)
 					})
 					continue
 				}
@@ -553,7 +674,8 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						kind: 'skill',
 						title: `Skill · ${skillName}`,
 						detail: ev.description || '',
-						status: String(ev.status || 'completed').toLowerCase() === 'failed' ? 'failed' : 'completed',
+						status:
+							String(ev.status || 'completed').toLowerCase() === 'failed' ? 'failed' : 'completed',
 						source: getSourceLabel(backend)
 					})
 					continue
@@ -587,7 +709,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						kind: 'command',
 						title: t('aiworkflow.toast.commandCompleteTitle'),
 						detail: ev.status || 'completed',
-						status: String(ev.status || 'completed').toLowerCase() === 'completed' ? 'completed' : 'failed',
+						status:
+							String(ev.status || 'completed').toLowerCase() === 'completed'
+								? 'completed'
+								: 'failed',
 						messageId: ev.messageId,
 						source: getSourceLabel(backend)
 					})
@@ -651,11 +776,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			})
 		}
 
-		const finalText =
-			payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
+		const finalText = payload.chatMessages.value.find((m) => m.id === assistantMsgId)?.content || ''
 		if (!String(finalText).trim() && !receivedError && !receivedAnyContent) {
 			const isCli = backend === 'copilot' || backend === 'codex'
-			const emptyKey = isCli ? 'aiworkflow.toast.copilotCliEmpty' : 'aiworkflow.toast.aiTaskEmptyResponse'
+			const emptyKey = isCli
+				? 'aiworkflow.toast.copilotCliEmpty'
+				: 'aiworkflow.toast.aiTaskEmptyResponse'
 			payload.pushToast(t(emptyKey), 'warn')
 		}
 		if (finalText) {
@@ -775,8 +901,27 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		if (payload.chatModelKey.value === 'nanobanana' || payload.chatModelKey.value === 'seedance')
 			return
 		if (payload.chatSending.value) return
-		const content = String(payload.chatDraft.value || '').trim()
-		if (!content) return
+		const userInput = String(payload.chatDraft.value || '').trim()
+		if (!userInput && !hasContext.value) return
+
+		const attachments = await toAttachments()
+		const skillHints = toSkillHints()
+		const referencedNodeIds = getReferencedNodeIds()
+		const activeSkills = getActiveSkills()
+		const nodeOutputContexts = getNodeOutputContexts()
+		const referencedOutputs = nodeOutputContexts.map((ref) => ({
+			kind: ref.kind,
+			nodeId: ref.nodeId,
+			nodeType: ref.nodeType,
+			anchorId: ref.anchorId,
+			label: ref.label,
+			text: ref.text,
+			previewUrl: ref.previewUrl,
+			meta: ref.meta
+		}))
+
+		const contextText = buildContextText()
+		const content = userInput + contextText
 
 		const history = payload.chatMessages.value
 			.filter(
@@ -834,8 +979,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					]
 				} else {
 					const existingSession = payload.codexSessions.value.find((s) => s.id === sessionId)
-					if (existingSession && (existingSession.title === t('aiworkflow.page.chat.newConversation') || existingSession.title === '新对话')) {
-						const newTitle = content.slice(0, 24)
+					if (
+						existingSession &&
+						(existingSession.title === t('aiworkflow.page.chat.newConversation') ||
+							existingSession.title === '新对话')
+					) {
+						const newTitle = userInput.slice(0, 24)
 						existingSession.title = newTitle
 						try {
 							const dvsagentService = chatBridge.getService('dvsagent') as any
@@ -851,7 +1000,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				try {
 					const dvsagentService = chatBridge.getService('dvsagent') as any
 					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
-						await dvsagentService.addSessionMessage(sessionId, 'user', content, payload.chatModelId.value)
+						await dvsagentService.addSessionMessage(
+							sessionId,
+							'user',
+							content,
+							payload.chatModelId.value
+						)
 					}
 				} catch {
 					// ignore message persistence failure
@@ -864,14 +1018,27 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					model: payload.chatModelId.value,
 					thinkingEffort: payload.chatThinkingEffort.value,
 					context,
+					attachments,
+					skillHints,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills,
+					agentType: 'workflow'
 				})
 
 				try {
 					const dvsagentService = chatBridge.getService('dvsagent') as any
 					if (dvsagentService && typeof dvsagentService.addSessionMessage === 'function') {
-						const assistantMsgContent = payload.chatMessages.value.find((m) => m.id === assistantMsg.id)?.content || ''
+						const assistantMsgContent =
+							payload.chatMessages.value.find((m) => m.id === assistantMsg.id)?.content || ''
 						if (assistantMsgContent.trim()) {
-							await dvsagentService.addSessionMessage(sessionId, 'assistant', assistantMsgContent, payload.chatModelId.value)
+							await dvsagentService.addSessionMessage(
+								sessionId,
+								'assistant',
+								assistantMsgContent,
+								payload.chatModelId.value
+							)
 						}
 					}
 				} catch {
@@ -902,7 +1069,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const session = await chatBridge.createSession('copilot', {
 						title: content.slice(0, 24),
 						model: payload.chatModelId.value || 'auto',
-						projectId,
+						projectId
 					})
 					sessionId = session.id
 					payload.codexActiveSessionId.value = sessionId
@@ -927,14 +1094,34 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				})
 				setTaskStatus(t('aiworkflow.toast.aiTaskSessionReady'))
 
-				await handleChatStream('copilot', parsed.content, sessionId, assistantMsg.id, {
-					history,
-					model: payload.chatModelId.value || 'auto',
-					skillHints: parsed.skillHints,
-					executionHints: parsed.executionHints,
-					agentMode: payload.agentConversationMode.value,
-					permissionProfile: 'default',
-				})
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
+
+				await handleChatStream(
+					'copilot',
+					parsed.content + contextText,
+					sessionId,
+					assistantMsg.id,
+					{
+						history,
+						model: payload.chatModelId.value || 'auto',
+						skillHints: [...parsed.skillHints, ...skillHints],
+						executionHints: parsed.executionHints,
+						agentMode: payload.agentConversationMode.value,
+						permissionProfile: 'default',
+						context,
+						attachments,
+						references: toReferences(),
+						referencedNodeIds,
+						referencedOutputs,
+						activeSkills
+					}
+				)
 				return
 			}
 
@@ -949,6 +1136,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				await handleChatStream('codex', content, session.id, assistantMsg.id, {
 					history,
 					model: payload.chatModelId.value,
+					context,
+					attachments,
+					skillHints,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
 				})
 				return
 			}
@@ -1031,7 +1225,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		payload.nanoPreviewDownloadProgresses.value = Array.from({ length: requestCount }, () => 100)
 		payload.nanoPreviewLocalReadyStates.value = Array.from({ length: requestCount }, () => true)
 		payload.nanoPreviewLoadingStates.value = Array.from({ length: requestCount }, () => true)
-		payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', { done: 0, total: requestCount })
+		payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', {
+			done: 0,
+			total: requestCount
+		})
 		try {
 			const svc = payload.getMediaService()
 
@@ -1045,28 +1242,35 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				// 优先级1: resourceId -> resourcesById (本地资产URL)
 				const resourceRid = String(node.resourceId ?? '').trim()
 				if (resourceRid) {
-					const res = payload.store.state.resourcesById?.[resourceRid] as Record<string, unknown> | undefined
+					const res = payload.store.state.resourcesById?.[resourceRid] as
+						| Record<string, unknown>
+						| undefined
 					const resUrl = typeof res?.url === 'string' ? String(res.url).trim() : ''
 					if (resUrl) return resUrl
 				}
 				// 优先级2: imageSettings.lastGeneratedImageUrl (最近生成的图片)
-				const imgSettings = typeof node.imageSettings === 'object' && node.imageSettings
-					? (node.imageSettings as Record<string, unknown>)
-					: {}
-				const lastGenUrl = typeof imgSettings?.lastGeneratedImageUrl === 'string'
-					? String(imgSettings.lastGeneratedImageUrl).trim()
-					: ''
+				const imgSettings =
+					typeof node.imageSettings === 'object' && node.imageSettings
+						? (node.imageSettings as Record<string, unknown>)
+						: {}
+				const lastGenUrl =
+					typeof imgSettings?.lastGeneratedImageUrl === 'string'
+						? String(imgSettings.lastGeneratedImageUrl).trim()
+						: ''
 				if (lastGenUrl) return lastGenUrl
 				// 优先级3: meshySettings.meshyOutputSummary.preferredUrl (Meshy生成结果)
-				const meshySettings = typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
-					? (imgSettings.meshyImageSettings as Record<string, unknown>)
-					: {}
-				const meshySummary = typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
-					? (meshySettings.outputSummary as Record<string, unknown>)
-					: {}
-				const meshyUrl = typeof meshySummary?.preferredUrl === 'string'
-					? String(meshySummary.preferredUrl).trim()
-					: ''
+				const meshySettings =
+					typeof imgSettings?.meshyImageSettings === 'object' && imgSettings.meshyImageSettings
+						? (imgSettings.meshyImageSettings as Record<string, unknown>)
+						: {}
+				const meshySummary =
+					typeof meshySettings?.outputSummary === 'object' && meshySettings.outputSummary
+						? (meshySettings.outputSummary as Record<string, unknown>)
+						: {}
+				const meshyUrl =
+					typeof meshySummary?.preferredUrl === 'string'
+						? String(meshySummary.preferredUrl).trim()
+						: ''
 				if (meshyUrl) return meshyUrl
 				// 优先级4: nodeResourceUrl (标准方法，但它可能对远程URL返回null，所以作为fallback)
 				const standardUrl = payload.nodeResourceUrl(node)
@@ -1095,10 +1299,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (!fromNode) continue
 				const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
 				if (!isImageSource) {
-					payload.pushToast(
-						t('aiworkflow.toast.imageRefNodeType', { type: fromNode.type }),
-						'warn'
-					)
+					payload.pushToast(t('aiworkflow.toast.imageRefNodeType', { type: fromNode.type }), 'warn')
 					continue
 				}
 				let url = getEffectiveImageUrl(fromNode)
@@ -1167,22 +1368,27 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 
 			// 智能检测：如果当前选中的是图片节点，收集该节点输入锚点连接的参考图
 			const selectedNode = payload.getSelectedNode?.()
-			if (selectedNode && selectedNode.type === 'image' && refFiles.length < payload.NANO_REF_IMAGE_MAX) {
+			if (
+				selectedNode &&
+				selectedNode.type === 'image' &&
+				refFiles.length < payload.NANO_REF_IMAGE_MAX
+			) {
 				const imageInputAnchors = Array.isArray(selectedNode.inputs)
 					? (selectedNode.inputs as WorkflowAnchorSpec[])
 					: ([] as WorkflowAnchorSpec[])
-				
-				// 筛选图片输入锚点：in-image, in-resource, in-image-N
+
+				// 筛选图片输入锚点：in-image, in-0（多模态）, in-image-N
+				// in-resource已从image节点移除
 				const isImageInputAnchor = (anchorId: string): boolean => {
 					const id = String(anchorId || '').trim()
-					return id === 'in-image' || id === 'in-resource' || id === 'in-0' || /^in-image-\d+$/.test(id)
+					return id === 'in-image' || id === 'in-0' || /^in-image-\d+$/.test(id)
 				}
-				
-				const imageAnchors = imageInputAnchors.filter(a => isImageInputAnchor(String(a.id ?? '')))
+
+				const imageAnchors = imageInputAnchors.filter((a) => isImageInputAnchor(String(a.id ?? '')))
 				const sortedImageAnchors = [...imageAnchors].sort(
 					(a, b) => anchorIndexFromId(a.id) - anchorIndexFromId(b.id)
 				)
-				
+
 				for (const anchor of sortedImageAnchors) {
 					if (refFiles.length >= payload.NANO_REF_IMAGE_MAX) break
 					const edge = payload.getFirstIncomingEdge(
@@ -1195,7 +1401,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					if (!fromNode) continue
 					const isImageSource = fromNode.type === 'image' || fromNode.type === 'rotate-image'
 					if (!isImageSource) continue
-					
+
 					let url = getEffectiveImageUrl(fromNode)
 					if (!url) continue
 					const nameBase =
@@ -1254,7 +1460,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						refSources.push({ idx, nodeType: fromNode.type })
 					}
 				}
-				
+
 				// 重新排序
 				refFiles.sort((a, b) => a.idx - b.idx)
 				refSources.sort((a, b) => a.idx - b.idx)
@@ -1318,11 +1524,19 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			let completedCount = 0
 			let failedCount = 0
 			const updateProgressStatus = () => {
-				payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', { done: completedCount, total: requestCount })
+				payload.nanoStatus.value = t('aiworkflow.toast.aiTaskNanoConcurrency', {
+					done: completedCount,
+					total: requestCount
+				})
 				if (completedCount >= requestCount) {
 					const successCount = requestCount - failedCount
 					payload.nanoStatus.value =
-						failedCount > 0 ? t('aiworkflow.toast.aiTaskNanoComplete', { success: successCount, failed: failedCount }) : t('aiworkflow.toast.aiTaskComplete')
+						failedCount > 0
+							? t('aiworkflow.toast.aiTaskNanoComplete', {
+									success: successCount,
+									failed: failedCount
+								})
+							: t('aiworkflow.toast.aiTaskComplete')
 				}
 			}
 
@@ -1336,9 +1550,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const meshyOutputImageCount = Number(
 					hasKey(input.config, 'meshyOutputImageCount') ? input.config.meshyOutputImageCount : 1
 				)
-				const meshySeed = Number(
-					hasKey(input.config, 'meshySeed') ? input.config.meshySeed : -1
-				)
+				const meshySeed = Number(hasKey(input.config, 'meshySeed') ? input.config.meshySeed : -1)
 
 				console.log('[Meshy Image - Chat] 原始参数:', {
 					inputConfigAspectRatio: input?.config?.aspectRatio,
@@ -1370,12 +1582,18 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					meshyPayload.generate_multi_view = true
 				} else if (meshyAspectRatio) {
 					meshyPayload.aspect_ratio = meshyAspectRatio
-					console.log(`[Meshy Image - Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`)
+					console.log(
+						`[Meshy Image - Chat] ${taskType}: EXPLICITLY setting aspect_ratio=${meshyAspectRatio}, model=${selectedMeshyAiModel}`
+					)
 				}
 
 				// 通用参数（两种模式都支持）
 				if (meshyNegativePrompt) meshyPayload.negative_prompt = meshyNegativePrompt
-				if (Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 && meshyOutputImageCount <= 4) {
+				if (
+					Number.isFinite(meshyOutputImageCount) &&
+					meshyOutputImageCount > 0 &&
+					meshyOutputImageCount <= 4
+				) {
 					meshyPayload.output_image_count = Math.floor(meshyOutputImageCount)
 				}
 				if (Number.isFinite(meshySeed) && meshySeed >= 0) {
@@ -1390,7 +1608,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					poseMode: meshyPoseMode || 'None',
 					generateMultiView: meshyGenerateMultiView,
 					negativePrompt: meshyNegativePrompt || 'None',
-					outputCount: Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0 ? Math.floor(meshyOutputImageCount) : 1,
+					outputCount:
+						Number.isFinite(meshyOutputImageCount) && meshyOutputImageCount > 0
+							? Math.floor(meshyOutputImageCount)
+							: 1,
 					seed: Number.isFinite(meshySeed) && meshySeed >= 0 ? Math.floor(meshySeed) : 'Random',
 					referenceImageCount: hasRefImages ? refFiles.length : 0,
 					submittedAt: new Date().toISOString()
@@ -1419,16 +1640,41 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				}
 
 				appendNanoDetail(t('aiworkflow.runtime.detailMeshyMode', { mode: taskType }))
-				appendNanoDetail(t('aiworkflow.runtime.detailAiModel', { model: selectedMeshyAiModel || 'nano-banana' }))
-				appendNanoDetail(t('aiworkflow.runtime.detailAspectRatio', { ratio: meshyGenerateMultiView ? t('aiworkflow.runtime.multiViewEnabled') : meshyAspectRatio }))
-				if (meshyPoseMode) appendNanoDetail(t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
+				appendNanoDetail(
+					t('aiworkflow.runtime.detailAiModel', { model: selectedMeshyAiModel || 'nano-banana' })
+				)
+				appendNanoDetail(
+					t('aiworkflow.runtime.detailAspectRatio', {
+						ratio: meshyGenerateMultiView
+							? t('aiworkflow.runtime.multiViewEnabled')
+							: meshyAspectRatio
+					})
+				)
+				if (meshyPoseMode)
+					appendNanoDetail(t('aiworkflow.runtime.detailPoseMode', { mode: meshyPoseMode }))
 				if (meshyGenerateMultiView) appendNanoDetail(t('aiworkflow.runtime.multiViewEnabled'))
-				appendNanoDetail(t('aiworkflow.runtime.detailOutputCount', { count: String(submittedParams.outputCount) }))
-				if (meshyNegativePrompt) appendNanoDetail(t('aiworkflow.runtime.detailNegativePrompt', { prompt: meshyNegativePrompt.slice(0, 80) }))
-				if (Number.isFinite(meshySeed) && meshySeed >= 0) appendNanoDetail(t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
-				if (hasRefImages) appendNanoDetail(t('aiworkflow.runtime.detailRefImageCount', { count: String(refFiles.length) }))
+				appendNanoDetail(
+					t('aiworkflow.runtime.detailOutputCount', { count: String(submittedParams.outputCount) })
+				)
+				if (meshyNegativePrompt)
+					appendNanoDetail(
+						t('aiworkflow.runtime.detailNegativePrompt', {
+							prompt: meshyNegativePrompt.slice(0, 80)
+						})
+					)
+				if (Number.isFinite(meshySeed) && meshySeed >= 0)
+					appendNanoDetail(t('aiworkflow.runtime.detailSeed', { seed: String(meshySeed) }))
+				if (hasRefImages)
+					appendNanoDetail(
+						t('aiworkflow.runtime.detailRefImageCount', { count: String(refFiles.length) })
+					)
 
-				console.log('[Meshy Image - Chat] 发送请求（统一FormData路径），hasRefImages:', hasRefImages, 'refCount:', refFiles.length)
+				console.log(
+					'[Meshy Image - Chat] 发送请求（统一FormData路径），hasRefImages:',
+					hasRefImages,
+					'refCount:',
+					refFiles.length
+				)
 				const res = await svc.meshyGenerateImage(form)
 				if (res.ok) {
 					const taskId = String(res.taskId || '').trim()
@@ -1444,7 +1690,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 									.toUpperCase()
 								const progress = Number(taskRes.progress || 0)
 								payload.nanoStatus.value =
-									status === 'SUCCEEDED' ? t('aiworkflow.runtime.statusSucceeded') : t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
+									status === 'SUCCEEDED'
+										? t('aiworkflow.runtime.statusSucceeded')
+										: t('aiworkflow.runtime.statusProgress', { status, progress: String(progress) })
 
 								if (status === 'SUCCEEDED') {
 									const imageUrl =
@@ -1458,8 +1706,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 										payload.nanoModelUsed.value = selectedMeshyAiModel
 									}
 								} else if (status === 'FAILED') {
-									const errorMsg = String(taskRes.errorMessage || t('aiworkflow.runtime.unknownError'))
-									payload.pushToast(t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }), 'warn')
+									const errorMsg = String(
+										taskRes.errorMessage || t('aiworkflow.runtime.unknownError')
+									)
+									payload.pushToast(
+										t('aiworkflow.toast.meshyGenerateFailed', { error: errorMsg }),
+										'warn'
+									)
 									appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errorMsg }))
 								} else if (status !== 'CANCELED') {
 									setTimeout(pollStatus, 2000)
@@ -1526,8 +1779,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						if (ev.type === 'error') {
 							const errMsg = String(ev.error?.message ?? 'unknown')
 							requestFailed = true
-							appendNanoDetail(t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg }))
-							payload.pushToast(t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }), 'warn')
+							appendNanoDetail(
+								t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg })
+							)
+							payload.pushToast(
+								t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }),
+								'warn'
+							)
 							break
 						}
 
@@ -1584,8 +1842,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 							const text = hasKey(msgPayload, 'message') ? msgPayload.message : 'unknown'
 							const errMsg = String(typeof text === 'string' ? text : 'unknown')
 							requestFailed = true
-							appendNanoDetail(t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg }))
-							payload.pushToast(t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }), 'warn')
+							appendNanoDetail(
+								t('aiworkflow.runtime.requestError', { no: String(requestNo), error: errMsg })
+							)
+							payload.pushToast(
+								t('aiworkflow.toast.imageGenFailed', { no: requestNo, error: errMsg }),
+								'warn'
+							)
 							break
 						}
 					}
@@ -1645,7 +1908,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			const svc = payload.getMediaService()
 			const selectedModel = String(input?.config?.model ?? 'doubao-seedance-2-0-260128').trim()
 			const isJimengVideoModel = selectedModel.startsWith('jimeng-video-')
-			const videoEngineLabel = isJimengVideoModel ? t('aiworkflow.toast.engineJimengVideo') : 'Seedance'
+			const videoEngineLabel = isJimengVideoModel
+				? t('aiworkflow.toast.engineJimengVideo')
+				: 'Seedance'
 			let observedSeedanceTaskId = ''
 
 			const anchorIndexFromId = (id: string) => {
@@ -1794,12 +2059,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 								? Math.min(2, refFiles.length)
 								: Math.min(referenceCount, refFiles.length)
 				appendNanoDetail(
-					t('aiworkflow.runtime.jimengRefStrategy', { mode: modeText, input: String(refFiles.length), effective: String(effectiveCount) })
+					t('aiworkflow.runtime.jimengRefStrategy', {
+						mode: modeText,
+						input: String(refFiles.length),
+						effective: String(effectiveCount)
+					})
 				)
 				if (refMode === 'first-last' && refFiles.length > 2) {
-					appendNanoDetail(
-						t('aiworkflow.runtime.jimengFirstLastTip')
-					)
+					appendNanoDetail(t('aiworkflow.runtime.jimengFirstLastTip'))
 				}
 				if (!hasRefs) appendNanoDetail(t('aiworkflow.runtime.jimengTextToVideoMode'))
 			}
@@ -1807,9 +2074,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (!isJimengVideoModel) {
 				form.set(
 					'generateAudio',
-					(hasKey(input.config, 'generateAudio') ? input.config.generateAudio : false)
-						? '1'
-						: '0'
+					(hasKey(input.config, 'generateAudio') ? input.config.generateAudio : false) ? '1' : '0'
 				)
 				form.set(
 					'watermark',
@@ -1817,14 +2082,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				)
 				form.set(
 					'cameraFixed',
-					(hasKey(input.config, 'cameraFixed') ? input.config.cameraFixed : false)
-						? '1'
-						: '0'
+					(hasKey(input.config, 'cameraFixed') ? input.config.cameraFixed : false) ? '1' : '0'
 				)
-				form.set(
-					'draft',
-					(hasKey(input.config, 'draft') ? input.config.draft : false) ? '1' : '0'
-				)
+				form.set('draft', (hasKey(input.config, 'draft') ? input.config.draft : false) ? '1' : '0')
 				form.set(
 					'returnLastFrame',
 					(hasKey(input.config, 'returnLastFrame') ? input.config.returnLastFrame : false)
@@ -1855,7 +2115,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const errMsg = String(ev.error?.message ?? 'unknown')
 					payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
 					appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: errMsg }))
-					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: errMsg }), 'warn')
+					payload.pushToast(
+						t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: errMsg }),
+						'warn'
+					)
 					break
 				}
 				const message = ev.message
@@ -1906,7 +2169,9 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					if (directTaskId) {
 						extractedTaskId = directTaskId
 					} else {
-						const detailsVal = hasKey(msgPayload, 'details') ? (msgPayload as Record<string, unknown>).details : {}
+						const detailsVal = hasKey(msgPayload, 'details')
+							? (msgPayload as Record<string, unknown>).details
+							: {}
 						const detailsRecord = isRecord(detailsVal) ? detailsVal : {}
 						const detailsTaskId = getStringField(detailsRecord, 'taskId').trim()
 						if (detailsTaskId) {
@@ -1918,11 +2183,17 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						}
 					}
 					if (extractedTaskId) {
-						payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', { taskId: extractedTaskId })
+						payload.nanoStatus.value = t('aiworkflow.runtime.nanoTaskCreated', {
+							taskId: extractedTaskId
+						})
 					} else if (text) {
 						payload.nanoStatus.value = text
 					}
-					if (!isJimengVideoModel && extractedTaskId && extractedTaskId !== observedSeedanceTaskId) {
+					if (
+						!isJimengVideoModel &&
+						extractedTaskId &&
+						extractedTaskId !== observedSeedanceTaskId
+					) {
 						observedSeedanceTaskId = extractedTaskId
 						payload.onSeedanceTaskObserved?.(extractedTaskId, 'created')
 					}
@@ -1933,7 +2204,10 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					const text = getStringField(msgPayload, 'message') ?? 'unknown'
 					payload.nanoStatus.value = t('aiworkflow.runtime.statusFailed')
 					appendNanoDetail(t('aiworkflow.runtime.errorPrefix', { msg: text }))
-					payload.pushToast(t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: text }), 'warn')
+					payload.pushToast(
+						t('aiworkflow.toast.videoEngineGenFailed', { engine: videoEngineLabel, error: text }),
+						'warn'
+					)
 					break
 				}
 			}

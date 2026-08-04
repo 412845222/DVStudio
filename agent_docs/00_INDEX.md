@@ -75,7 +75,18 @@
 13. [11_NEW_AI_MODULES_GUIDE.md](11_NEW_AI_MODULES_GUIDE.md)
     - **新增 AI 模块群**：tripo3d/ark/gemini/blender/cloud-templates/cli-adapters 六个模块的架构、IPC 通道、前端桥接、routes/handlers/service 结构、LocalDB 仓库对应关系、API 密钥管理、错误处理与降级策略。
 14. [12_TESTING_GUIDE.md](12_TESTING_GUIDE.md)
-    - **测试开发指引**：tests/ 目录结构（unit/components/engine/scripts 四类）、按业务域组织（agent/aiworkflow/core/electron/network/store/views/workflow）、Vitest 配置、Mock 策略（IPC Mock/Platform Mock/API Mock）、测试编写规范、运行命令、质量门禁（quality/quality:full）。
+    - **测试开发指引**：tests/ 目录结构、按业务域组织、Vitest 配置、Mock 策略、测试编写规范、运行命令、质量门禁。
+15. [13_CLOUD_MODULES_GUIDE.md](13_CLOUD_MODULES_GUIDE.md)
+    - **🆕 云服务与扩展模块（2026-07-19 新增）**：
+      - CloudFS 云存储文件系统（registry/providers 架构、aliyun-oss/volcengine-tos/custom-http 适配器、Bucket 管理、文件上传下载、ACL 修复、公共 URL、配置持久化到 cloudStorageConfig 仓库）
+      - Steam Workshop 工坊模板（adapters/factory 架构、steam/mock 适配器、查询/下载/进度/安装信息 IPC 接口）
+      - ComfyUI 本地服务管理增强（setup-service 安装流程、Python venv 管理、镜像源配置、服务启停/日志/状态事件、前端 setup 命名空间）
+16. [14_NODE_THREE_LAYER_ARCHITECTURE.md](14_NODE_THREE_LAYER_ARCHITECTURE.md)
+    - **🆕 AI工作流节点开发三层链路架构（2026-07-31 新增）**：
+      - UI组件层/业务逻辑层/引擎核心层三层职责边界与文件索引
+      - 数据流向标准流程（按钮执行、自动布线、Ctrl+S保存）
+      - 7个关键坑点避坑指南（保存重置、节点消失、锚点异步、bbox兼容、图像穿透、DOM溢出、资源绑定）
+      - 节点开发标准流程Checklist、调试日志关键字速查
 
 ## 快速查找指南
 
@@ -86,8 +97,11 @@
 | 修改前端 Vue 组件 / UI / WebGL 渲染 | [03_FRONTEND_GUIDE.md](03_FRONTEND_GUIDE.md) |
 | 修改后端模块 / 新增 IPC 通道 | [04_BACKEND_GUIDE.md](04_BACKEND_GUIDE.md) + [07_DEVELOPMENT_BOUNDARIES.md](07_DEVELOPMENT_BOUNDARIES.md) |
 | 修改 Electron 主进程 / preload / dweb:// / 平台层 | [05_ELECTRON_GUIDE.md](05_ELECTRON_GUIDE.md) |
-| 修改 AI 工作流节点 / 连线 / 蓝图逻辑 | [06_AI_WORKFLOW_GUIDE.md](06_AI_WORKFLOW_GUIDE.md) |
+| 修改 AI 工作流节点 / 连线 / 蓝图逻辑 | [06_AI_WORKFLOW_GUIDE.md](06_AI_WORKFLOW_GUIDE.md) + **[14_NODE_THREE_LAYER_ARCHITECTURE.md](14_NODE_THREE_LAYER_ARCHITECTURE.md)** 🆕 |
+| 新增AI工作流节点类型 / 节点事件链路开发 | **[14_NODE_THREE_LAYER_ARCHITECTURE.md](14_NODE_THREE_LAYER_ARCHITECTURE.md)** 🆕（三层架构、坑点避坑、开发Checklist） |
 | 修改 3D 编辑器 / Three.js 渲染 | [08_3D_EDITOR_RENDERING_GUIDE.md](08_3D_EDITOR_RENDERING_GUIDE.md) |
+| **3D 模型节点（Meshy/Tripo3D）无法渲染 / CORS / Content-Type 误杀 / 本地 GLB 加载链路** | **[08_3D_EDITOR_RENDERING_GUIDE.md 末尾 3D模型节点加载链路章节](08_3D_EDITOR_RENDERING_GUIDE.md#️⃣️️️-3d模型节点meshytripo3d本地glb文件加载链路全解析2026-08-03-修复总结必读)** 🆕（含 5 层完整数据流、诊断脚本、8 个常见坑点速查）+ [AGENT_GUIDE.md](../AGENT_GUIDE.md#️⃣️️️-3d-模型节点meshytripo3d本地-glb-加载链路速查2026-08-03-修复总结必看) 速查 |
+| Meshy / Tripo3D 任务轮询太频繁造成蓝图页面卡顿 / TaskPollScheduler | [08_3D_EDITOR_RENDERING_GUIDE.md 轮询优化章节](08_3D_EDITOR_RENDERING_GUIDE.md#-轮询优化链路taskpollscheduler) 🆕 + Feature Flag 紧急开关见文档 |
 | 修改 Agent 对话 / LLM 接入 / 工具调用 | [09_AGENT_SYSTEM_GUIDE.md](09_AGENT_SYSTEM_GUIDE.md) |
 | 修改 MCP 工具 / 新增 MCP 工具 | [10_MCP_GUIDE.md](10_MCP_GUIDE.md) |
 | 新增 AI 提供商（3D/视频/对话） | [11_NEW_AI_MODULES_GUIDE.md](11_NEW_AI_MODULES_GUIDE.md) |

@@ -34,6 +34,11 @@ export type AIWorkflowProjectPackageV1 = {
 
 export const AIWF_PROJECT_PACKAGE_ENTRY = 'aiwf-project-package.json'
 
+// ==============================================================
+// ZIP 打包离线守卫临时开关（方案 §八 回滚策略）
+// ==============================================================
+const ENABLE_PACKAGE_OFFLINE_GUARD = true
+
 const AIWF_MEDIA_EXTENSIONS = new Set([
 	'png',
 	'jpg',
@@ -54,6 +59,87 @@ const AIWF_MEDIA_EXTENSIONS = new Set([
 	'fbx',
 	'usdz'
 ])
+
+// ==============================================================
+// 第 0 层：ZIP 打包离线守卫 - 协议 / 域名白名单（方案 §三 第 0 层）
+// ==============================================================
+
+/**
+ * 判断一个 URL 是否属于"本地资源"（可用于 ZIP 打包时的 fetch）。
+ * 只有返回 ok=true 的 URL 才允许进入 fetch。
+ * 这是 §0 硬性约束的最终防线。
+ */
+const isPackageAllowedLocalUrl = (raw: string): { ok: boolean; reason?: string } => {
+	if (!ENABLE_PACKAGE_OFFLINE_GUARD) return { ok: true, reason: 'guard_disabled' }
+	const url = String(raw ?? '').trim()
+	if (!url) return { ok: false, reason: 'empty' }
+
+	// 1. 浏览器内部 blob / data URL —— 放行
+	if (url.startsWith('blob:') || url.startsWith('data:')) {
+		return { ok: true }
+	}
+	// 2. 项目本地资产协议 —— 放行
+	if (url.toLowerCase().startsWith('dweb://')) {
+		return { ok: true }
+	}
+	// 3. 本地文件协议 —— 放行
+	if (url.toLowerCase().startsWith('file:///')) {
+		return { ok: true }
+	}
+
+	// 4. http(s) 协议 → 只允许 127.0.0.1 / localhost / ::1 / 私网网段
+	if (/^https?:\/\//i.test(url)) {
+		try {
+			const u = new URL(url)
+			const host = u.hostname.toLowerCase()
+			if (
+				host === '127.0.0.1' ||
+				host === 'localhost' ||
+				host === '::1' ||
+				/^10\./.test(host) ||
+				/^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+				/^192\.168\./.test(host)
+			) {
+				return { ok: true }
+			}
+			return { ok: false, reason: `remote_http_denied:${host}` }
+		} catch {
+			return { ok: false, reason: 'malformed_http_url' }
+		}
+	}
+
+	// 5. 其他未知协议 → 交给 resolveUrl 后再判断
+	return { ok: true, reason: 'unknown_protocol_passthrough' }
+}
+
+/**
+ * Meshy/Tripo3D 远端 CDN URL 检测（用于在 push 候选时就剔除，不必走到 fetch 守卫）。
+ * 返回 true 表示"这是远端 URL，不能直接打包"。
+ */
+export const isRemoteModelCdnUrl = (value: unknown): boolean => {
+	const text = String(value ?? '').trim()
+	if (!text) return false
+	if (/assets\.meshy\.ai/i.test(text)) return true
+	if (/assets\.tripo3d\.ai/i.test(text)) return true
+	try {
+		const u = new URL(text, window.location.origin)
+		const host = u.hostname.toLowerCase()
+		if (
+			/^https?:$/i.test(u.protocol) &&
+			host !== '127.0.0.1' &&
+			host !== 'localhost' &&
+			host !== '::1' &&
+			!/^10\./.test(host) &&
+			!/^172\.(1[6-9]|2\d|3[01])\./.test(host) &&
+			!/^192\.168\./.test(host)
+		) {
+			return true
+		}
+	} catch {
+		/* ignore parse fail, 交由 isPackageAllowedLocalUrl 兜底 */
+	}
+	return false
+}
 
 const isLikelyBinaryAssetBlob = (blob: Blob) => {
 	const mt = String(blob?.type || '').toLowerCase()
@@ -94,7 +180,11 @@ const decodeJsonPointer = (pointer: string) => {
 	return raw.replace(/^\//, '').split('/').map(pointerToPathSegment)
 }
 
-export const setValueByJsonPointer = (root: Record<string, unknown>, pointer: string, value: unknown) => {
+export const setValueByJsonPointer = (
+	root: Record<string, unknown>,
+	pointer: string,
+	value: unknown
+) => {
 	const path = decodeJsonPointer(pointer)
 	if (!path.length) return false
 	let cur: Record<string, unknown> = root
@@ -170,15 +260,13 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 		)
 			continue
 		const settings = nodeObj.sceneDecomposeSettings
-		const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
-		const outputs = Array.isArray(settingsObj?.outputs)
-			? (settingsObj?.outputs as unknown[])
-			: []
+		const settingsObj =
+			settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+		const outputs = Array.isArray(settingsObj?.outputs) ? (settingsObj?.outputs as unknown[]) : []
 		for (const item of outputs) {
 			const itemObj = item && typeof item === 'object' ? (item as Record<string, unknown>) : null
 			const generatedResourceId = String(itemObj?.generatedResourceId ?? '').trim()
-			if (generatedResourceId && resourcesById?.[generatedResourceId])
-				out.add(generatedResourceId)
+			if (generatedResourceId && resourcesById?.[generatedResourceId]) out.add(generatedResourceId)
 		}
 	}
 
@@ -188,7 +276,8 @@ export const collectPackageReferencedResourceIds = (snapshot: AIWorkflowDraftSna
 export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 	const out: AIWorkflowProjectPackageSnapshotAssetCandidate[] = []
 	const seenPointer = new Set<string>()
-	const snapObj = snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
+	const snapObj =
+		snapshot && typeof snapshot === 'object' ? (snapshot as Record<string, unknown>) : null
 	const nodeOrder = Array.isArray(snapObj?.nodeOrder) ? (snapObj?.nodeOrder as unknown[]) : []
 	const nodesById =
 		snapObj?.nodesById && typeof snapObj.nodesById === 'object'
@@ -210,7 +299,8 @@ export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 			if (!settings || typeof settings !== 'object') continue
 			const settingsObj = settings as Record<string, unknown>
 			const name =
-				String(settingsObj.modelSourceName || nodeObj.alias || nodeObj.title || nodeId).trim() || nodeId
+				String(settingsObj.modelSourceName || nodeObj.alias || nodeObj.title || nodeId).trim() ||
+				nodeId
 			pushPackageSnapshotAssetCandidate(
 				out,
 				seenPointer,
@@ -232,7 +322,8 @@ export const collectPackageNodeAssetCandidates = (snapshot: unknown) => {
 
 		if (nodeType === 'scene-layout') {
 			const settings = nodeObj.sceneLayoutSettings
-			const settingsObj = settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
+			const settingsObj =
+				settings && typeof settings === 'object' ? (settings as Record<string, unknown>) : null
 			const bindings = Array.isArray(settingsObj?.manualModelBindings)
 				? (settingsObj?.manualModelBindings as unknown[])
 				: []
@@ -325,6 +416,14 @@ export const guessAssetExtension = (url: string, mimeType: string, fallback: str
 		}
 	}
 	const mt = String(mimeType || '').toLowerCase()
+	// 3D 模型 MIME → 扩展名（方案 §三 第 5 层）
+	if (mt.includes('model/gltf-binary')) return 'glb'
+	if (mt.includes('model/gltf+json')) return 'gltf'
+	if (mt.includes('model/obj')) return 'obj'
+	if (mt.includes('application/vnd.usdz+zip')) return 'usdz'
+	if (mt.includes('model/stl') || mt.includes('application/x-trimesh-stl')) return 'stl'
+	if (mt.includes('application/octet-stream') && /\.fbx(\?|#|$)/i.test(cleanUrl)) return 'fbx'
+	// image/video MIME 映射
 	if (mt.includes('png')) return 'png'
 	if (mt.includes('jpeg')) return 'jpg'
 	if (mt.includes('webp')) return 'webp'
@@ -345,17 +444,44 @@ export const fetchAssetBlobForPackage = async (
 ) => {
 	const raw = cleanupPackagedAssetUrl(url)
 	if (!raw) return null
+
+	// ============== 第 0 层：离线 HARD GUARD ==============
+	// ① 先做一次原始 URL 的白名单检查
+	const guard0 = isPackageAllowedLocalUrl(raw)
+	if (!guard0.ok) {
+		console.warn(
+			`[package-export][HARD-BLOCK] 拒绝远端 URL (${guard0.reason}): ` + raw.substring(0, 120)
+		)
+		return null
+	}
+
+	// ② 应用 resolveBackendUrl（dweb/相对路径 → 本地后端 URL）
 	const normalizedUrl =
 		/^https?:\/\//i.test(raw) || raw.startsWith('blob:') || raw.startsWith('data:')
 			? raw
 			: resolveUrl(raw)
+
+	// ③ 解析后的 URL 再次过白名单（防止 resolveUrl 意外拼出公网地址）
+	const guard1 = isPackageAllowedLocalUrl(normalizedUrl)
+	if (!guard1.ok) {
+		console.warn(
+			`[package-export][HARD-BLOCK] resolve 后仍为远端 (${guard1.reason}): ` +
+				normalizedUrl.substring(0, 120)
+		)
+		return null
+	}
+
 	try {
 		const res = await fetch(normalizedUrl, { cache: 'no-store' })
 		if (!res.ok) return null
 		const blob = await res.blob()
 		if (!isLikelyBinaryAssetBlob(blob)) return null
 		return blob
-	} catch {
+	} catch (err) {
+		console.warn(
+			`[package-export][fetch-fail] 本地资源读取失败: ${normalizedUrl.substring(0, 120)}`,
+			err
+		)
 		return null
 	}
 }

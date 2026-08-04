@@ -35,6 +35,7 @@ import type {
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
 import { isString, isNumber, isBoolean, isRecord, isArray } from '../../types/utils'
+import { areParamsEqual, areSelectedRefsEqual } from '../../ui/BluePrint/node-dialog/chatStateUtils'
 
 export type AIWorkflowState = WorkflowState
 
@@ -45,10 +46,62 @@ const clamp = (v: unknown, min: number, max: number) => {
 }
 
 const clampZoom = (v: unknown) => {
-	// 与 BlueprintCanvas 的交互 clamp 保持一致
 	const n = Number(v)
 	if (!Number.isFinite(n)) return 1
-	return Math.max(0.2, Math.min(6, n))
+	return Math.max(0.1, Math.min(10, n))
+}
+
+const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | undefined => {
+	if (!Array.isArray(v)) return undefined
+	const result: WorkflowNodeChatSelectedRef[] = []
+	for (const item of v) {
+		if (!item || typeof item !== 'object') continue
+		const kind = (item as any).kind || (item as any).type
+		if (
+			kind !== 'text' &&
+			kind !== 'image' &&
+			kind !== 'video' &&
+			kind !== 'model3d' &&
+			kind !== 'blender'
+		)
+			continue
+		const label = isString((item as any).label)
+			? String((item as any).label)
+			: isString((item as any).name)
+				? String((item as any).name)
+				: ''
+		const edgeId = isString((item as any).edgeId) ? String((item as any).edgeId) : undefined
+		const fromNodeId = isString((item as any).fromNodeId)
+			? String((item as any).fromNodeId)
+			: undefined
+		const fromAnchorId = isString((item as any).fromAnchorId)
+			? String((item as any).fromAnchorId)
+			: undefined
+		const name = isString((item as any).name) ? String((item as any).name) : undefined
+		const previewUrl = isString((item as any).previewUrl)
+			? String((item as any).previewUrl)
+			: undefined
+		const fromContent = isString((item as any).fromContent)
+			? String((item as any).fromContent)
+			: undefined
+		const id = isString((item as any).id) ? String((item as any).id) : undefined
+		const type = isString((item as any).type) ? String((item as any).type) : undefined
+		// 保留所有字段，避免previewUrl等数据在规范化时丢失
+		result.push({
+			kind,
+			label,
+			edgeId,
+			fromNodeId,
+			fromAnchorId,
+			name,
+			previewUrl,
+			fromContent,
+			id,
+			type
+		})
+	}
+	// 空数组保留为[]而非undefined，避免数据不一致
+	return result
 }
 
 const normalizeSceneLayoutLightingControls = (
@@ -73,32 +126,16 @@ const normalizeSceneLayoutLightingControls = (
 }
 
 export const createDefaultAIWorkflowState = (): WorkflowState => {
-	const demo: WorkflowNode = {
-		id: 'demo',
-		type: 'base',
-		title: '工作流节点（示意）',
-		alias: '工作流节点',
-		subtitle: '入口参数 / 出口结果',
-		worldX: 120,
-		worldY: -40,
-		width: 240,
-		height: 160,
-		sizeCustomized: false,
-		resourceId: null,
-		inputs: [{ id: 'in-0', label: '入口' }],
-		outputs: [{ id: 'out-0', label: '出口' }],
-		createdAt: Date.now()
-	}
 	return {
 		viewport: { zoom: 1, panX: 0, panY: 0 },
-		nodesById: { [demo.id]: demo },
-		nodeOrder: [demo.id],
+		nodesById: {},
+		nodeOrder: [],
 		edgesById: {},
 		edgeOrder: [],
 		resourcesById: {},
 		resourceOrder: [],
-		selectedNodeId: demo.id,
-		selectedNodeIds: [demo.id],
+		selectedNodeId: null,
+		selectedNodeIds: [],
 		selectedEdgeId: null,
 		clipboardNode: null,
 		clipboardNodes: null,
@@ -189,29 +226,49 @@ const singleIOAnchorsForNodeType = (
 ): { inputs: WorkflowAnchorSpec[]; outputs: WorkflowAnchorSpec[] } | null => {
 	if (type === 'text') {
 		return {
-			inputs: [{ id: 'in-0', label: '输入', mediaType: 'text', multiInput: true }],
+			inputs: [
+				{
+					id: 'in-0',
+					label: '多模态输入',
+					mediaType: 'generic',
+					acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+					multiInput: true
+				}
+			],
 			outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }]
 		}
 	}
 	if (type === 'image') {
 		return {
 			inputs: [
-				{ id: 'in-text', label: '提示词输入', mediaType: 'text' },
-				{ id: 'in-0', label: '图片输入', multiInput: true, mediaType: 'image' }
+				{
+					id: 'in-0',
+					label: '多模态输入',
+					mediaType: 'generic',
+					acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+					multiInput: true
+				}
 			],
-			outputs: [{ id: 'out-0', label: '图片输出', mediaType: 'image' }]
+			outputs: [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
 		}
 	}
 	if (type === 'video') {
 		return {
-			inputs: [{ id: 'in-0', label: '视频输入', multiInput: true }],
-			outputs: [{ id: 'out-0', label: '视频输出', mediaType: 'video' }]
+			inputs: [
+				{ id: 'in-text', label: '提示词输入', mediaType: 'text' },
+				{ id: 'in-image', label: '参考图输入', multiInput: true, mediaType: 'image' },
+				{ id: 'in-video', label: '参考视频输入', multiInput: true, mediaType: 'video' }
+			],
+			outputs: [
+				{ id: 'out-resource', label: '资源输出', mediaType: 'resource' },
+				{ id: 'out-video', label: '视频输出', mediaType: 'video' }
+			]
 		}
 	}
 	if (type === 'model3d') {
 		return {
 			inputs: [
-				{ id: 'in-resource', label: '资源', mediaType: 'generic' },
+				{ id: 'in-model', label: '模型输入', mediaType: 'model3d' },
 				{ id: 'in-text', label: '提示词', mediaType: 'text' },
 				{ id: 'in-image-1', label: '参考图 1', mediaType: 'image' },
 				{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
@@ -219,7 +276,7 @@ const singleIOAnchorsForNodeType = (
 				{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' }
 			],
 			outputs: [
-				{ id: 'out-0', label: '模型输出', mediaType: 'model3d' },
+				{ id: 'out-model', label: '模型输出', mediaType: 'model3d' },
 				{ id: 'out-image', label: '预览图', mediaType: 'image' }
 			]
 		}
@@ -240,11 +297,20 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 	const nextAnchorId = String(anchorId ?? '').trim()
 	if (!nextAnchorId) return nextAnchorId
 	if (nextType === 'image') {
-		if (nextAnchorId === 'in-resource' || nextAnchorId === 'in-image') return 'in-0'
+		// 旧ID映射: in-text/in-image/in-resource/in-0 -> in-0 (多模态输入)
+		// in-resource锚点已从image节点移除，统一映射到in-0
+		if (
+			nextAnchorId === 'in-text' ||
+			nextAnchorId === 'in-image' ||
+			nextAnchorId === 'in-resource' ||
+			nextAnchorId === 'in-0'
+		)
+			return 'in-0'
 		return nextAnchorId
 	}
 	if (nextType === 'video') {
-		if (nextAnchorId === 'in-video') return 'in-0'
+		// 旧的in-0/in-video是视频输入，映射到in-video；text和image是新增锚点无需旧映射
+		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-video') return 'in-video'
 		return nextAnchorId
 	}
 	if (nextType === 'text') {
@@ -252,7 +318,9 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 		return nextAnchorId
 	}
 	if (nextType === 'model3d') {
-		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-model') return 'in-resource'
+		// 旧ID映射: in-0/in-resource/in-model -> in-model
+		if (nextAnchorId === 'in-0' || nextAnchorId === 'in-resource' || nextAnchorId === 'in-model')
+			return 'in-model'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -271,11 +339,13 @@ const remapLegacyOutputAnchorId = (nodeType: string, anchorId: string) => {
 	const nextAnchorId = String(anchorId ?? '').trim()
 	if (!nextAnchorId) return nextAnchorId
 	if (nextType === 'image') {
-		if (nextAnchorId === 'out-image') return 'out-0'
+		// 旧的out-0映射到out-image
+		if (nextAnchorId === 'out-0' || nextAnchorId === 'out-image') return 'out-image'
 		return nextAnchorId
 	}
 	if (nextType === 'video') {
-		if (nextAnchorId === 'out-video') return 'out-0'
+		// 旧的out-0映射到out-video
+		if (nextAnchorId === 'out-0' || nextAnchorId === 'out-video') return 'out-video'
 		return nextAnchorId
 	}
 	if (nextType === 'text') {
@@ -283,7 +353,9 @@ const remapLegacyOutputAnchorId = (nodeType: string, anchorId: string) => {
 		return nextAnchorId
 	}
 	if (nextType === 'model3d') {
-		if (nextAnchorId === 'out-model' || nextAnchorId === 'out-render') return 'out-0'
+		// 旧的out-0/out-model/out-render映射到out-model
+		if (nextAnchorId === 'out-0' || nextAnchorId === 'out-model' || nextAnchorId === 'out-render')
+			return 'out-model'
 		return nextAnchorId
 	}
 	if (nextType === 'rotate-image') {
@@ -413,8 +485,16 @@ const comfyPromptAnchors = (): WorkflowAnchorSpec[] => {
 
 const normalizeSceneUnderstandingSettings = (
 	rawSettings: unknown
-): WorkflowSceneUnderstandingNodeSettings | undefined => {
-	if (!rawSettings || !isRecord(rawSettings)) return undefined
+): WorkflowSceneUnderstandingNodeSettings => {
+	if (!rawSettings || !isRecord(rawSettings)) {
+		return {
+			mode: 'scene-layout',
+			sceneType: 'auto',
+			status: 'idle',
+			availableModels: [],
+			selectedModel: ''
+		}
+	}
 	const raw = rawSettings
 	const availableModels = isArray(raw.availableModels)
 		? raw.availableModels
@@ -435,8 +515,7 @@ const normalizeSceneUnderstandingSettings = (
 		: undefined
 	return {
 		mode: raw.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
-		sceneType:
-			raw.sceneType === 'indoor' || raw.sceneType === 'outdoor' ? raw.sceneType : 'auto',
+		sceneType: raw.sceneType === 'indoor' || raw.sceneType === 'outdoor' ? raw.sceneType : 'auto',
 		detectedSceneType:
 			raw.detectedSceneType === 'indoor' ||
 			raw.detectedSceneType === 'outdoor' ||
@@ -446,8 +525,8 @@ const normalizeSceneUnderstandingSettings = (
 		sceneTypeConfidence: Number.isFinite(Number(raw.sceneTypeConfidence))
 			? Number(raw.sceneTypeConfidence)
 			: undefined,
-		selectedModel: isString(raw.selectedModel) ? raw.selectedModel : undefined,
-		availableModels,
+		selectedModel: isString(raw.selectedModel) ? raw.selectedModel : '',
+		availableModels: availableModels ?? [],
 		status:
 			raw.status === 'loading-models' ||
 			raw.status === 'running' ||
@@ -466,6 +545,7 @@ const normalizeSceneUnderstandingSettings = (
 			: undefined,
 		outputJson: isString(raw.outputJson) ? raw.outputJson : undefined,
 		rawOutput: isString(raw.rawOutput) ? raw.rawOutput : undefined,
+		reasoningText: isString(raw.reasoningText) ? raw.reasoningText : undefined,
 		resultSummary: isString(raw.resultSummary) ? raw.resultSummary : undefined,
 		lastRunAt: Number.isFinite(Number(raw.lastRunAt)) ? Number(raw.lastRunAt) : undefined,
 		lastInputImageUrl: isString(raw.lastInputImageUrl) ? raw.lastInputImageUrl : undefined,
@@ -627,6 +707,24 @@ const normalizeSceneLayoutSettings = (
 									y: Number.isFinite(Number(scaleObj.y)) ? Number(scaleObj.y) : undefined,
 									z: Number.isFinite(Number(scaleObj.z)) ? Number(scaleObj.z) : undefined
 								}
+							: undefined,
+						holePunches: isArray(itemObj.holePunches)
+							? itemObj.holePunches
+									.map((punch: unknown) => {
+										const punchObj = isRecord(punch) ? punch : {}
+										const punchId = String(punchObj.id ?? '').trim()
+										const targetId = String(punchObj.targetItemId ?? '').trim()
+										const toolId = String(punchObj.toolItemId ?? '').trim()
+										const createdAt = Number(punchObj.createdAt)
+										if (!punchId || !targetId || !toolId) return null
+										return {
+											id: punchId,
+											targetItemId: targetId,
+											toolItemId: toolId,
+											createdAt: Number.isFinite(createdAt) ? createdAt : Date.now()
+										}
+									})
+									.filter((p): p is NonNullable<typeof p> => !!p)
 							: undefined
 					}
 				})
@@ -993,40 +1091,66 @@ const normalizeUnrealExportSettings = (
 							: undefined
 					}
 				: undefined,
-		assetRootPath: isString(raw.assetRootPath) && raw.assetRootPath.trim() ? raw.assetRootPath.trim() : '/Game/DVStudio',
+		assetRootPath:
+			isString(raw.assetRootPath) && raw.assetRootPath.trim()
+				? raw.assetRootPath.trim()
+				: '/Game/DVStudio',
 		assetPathValidation:
 			raw.assetPathValidation === 'valid' ||
 			raw.assetPathValidation === 'invalid' ||
 			raw.assetPathValidation === 'checking'
 				? raw.assetPathValidation
 				: undefined,
-		assetPathValidationError: isString(raw.assetPathValidationError) ? raw.assetPathValidationError : undefined
+		assetPathValidationError: isString(raw.assetPathValidationError)
+			? raw.assetPathValidationError
+			: undefined
 	}
 }
 
+const coerceRectLikeToObject = (val: unknown): Record<string, number> | null => {
+	if (val == null) return null
+	if (Array.isArray(val) && val.length >= 4) {
+		const nums = val.map((v) => Number(v)).filter((n) => Number.isFinite(n))
+		if (nums.length >= 4) {
+			const [a, b, c, d] = nums
+			// XYXY: [x1,y1,x2,y2]
+			if (c > a && d > b) {
+				return { x: a, y: b, width: c - a, height: d - b }
+			}
+			// XYWH: [x,y,w,h]
+			if (a >= 0 && b >= 0 && c > 0 && d > 0) {
+				return { x: a, y: b, width: c, height: d }
+			}
+		}
+		return null
+	}
+	if (val && typeof val === 'object') {
+		return val as Record<string, number>
+	}
+	return null
+}
+
 const normalizeWorkflowImageCrop = (rawCrop: unknown): WorkflowImageCrop | undefined => {
-	if (!rawCrop || !isRecord(rawCrop)) return undefined
+	const rect = coerceRectLikeToObject(rawCrop)
+	if (!rect) return undefined
 	return {
-		x: Number.isFinite(Number(rawCrop.x)) ? Math.max(0, Math.min(1, Number(rawCrop.x))) : 0,
-		y: Number.isFinite(Number(rawCrop.y)) ? Math.max(0, Math.min(1, Number(rawCrop.y))) : 0,
-		width: Number.isFinite(Number(rawCrop.width))
-			? Math.max(0, Math.min(1, Number(rawCrop.width)))
-			: 1,
-		height: Number.isFinite(Number(rawCrop.height))
-			? Math.max(0, Math.min(1, Number(rawCrop.height)))
-			: 1
+		x: Number.isFinite(Number(rect.x)) ? Math.max(0, Math.min(1, Number(rect.x))) : 0,
+		y: Number.isFinite(Number(rect.y)) ? Math.max(0, Math.min(1, Number(rect.y))) : 0,
+		width: Number.isFinite(Number(rect.width)) ? Math.max(0, Math.min(1, Number(rect.width))) : 1,
+		height: Number.isFinite(Number(rect.height)) ? Math.max(0, Math.min(1, Number(rect.height))) : 1
 	}
 }
 
 const normalizeWorkflowPixelRect = (rawRect: unknown): WorkflowPixelRect | undefined => {
-	if (!rawRect || !isRecord(rawRect)) return undefined
-	const width = Number(rawRect.width)
-	const height = Number(rawRect.height)
+	const rect = coerceRectLikeToObject(rawRect)
+	if (!rect) return undefined
+	const width = Number(rect.width)
+	const height = Number(rect.height)
 	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
 		return undefined
 	return {
-		x: Number.isFinite(Number(rawRect.x)) ? Number(rawRect.x) : 0,
-		y: Number.isFinite(Number(rawRect.y)) ? Number(rawRect.y) : 0,
+		x: Number.isFinite(Number(rect.x)) ? Number(rect.x) : 0,
+		y: Number.isFinite(Number(rect.y)) ? Number(rect.y) : 0,
 		width,
 		height
 	}
@@ -1220,9 +1344,7 @@ const syncMeshyAnchors = (node: WorkflowNode) => {
 }
 
 const syncBlenderAnchors = (node: WorkflowNode) => {
-	const existingIn = Array.isArray(node.inputs)
-		? node.inputs.find((a) => a.id === 'in-0')
-		: null
+	const existingIn = Array.isArray(node.inputs) ? node.inputs.find((a) => a.id === 'in-0') : null
 	const existingOut = Array.isArray(node.outputs)
 		? node.outputs.find((a) => a.id === 'out-0')
 		: null
@@ -1246,7 +1368,34 @@ const syncBlenderAnchors = (node: WorkflowNode) => {
 	]
 }
 
-const syncSceneUnderstandAnchors = (node: WorkflowNode) => {
+const syncTextAnchors = (node: WorkflowNode) => {
+	const existingIn = Array.isArray(node.inputs) ? node.inputs.find((a) => a.id === 'in-0') : null
+	const existingOut = Array.isArray(node.outputs)
+		? node.outputs.find((a) => a.id === 'out-0')
+		: null
+	node.inputs = [
+		{
+			id: 'in-0',
+			label: '输入（文本/图片/视频/3D模型/音频）',
+			mediaType: 'generic' as const,
+			acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'] as Array<
+				'text' | 'image' | 'video' | 'model3d' | 'audio'
+			>,
+			...(existingIn ?? {}),
+			multiInput: true
+		}
+	]
+	node.outputs = [
+		{
+			id: 'out-0',
+			label: '文本输出',
+			mediaType: 'text' as const,
+			...(existingOut ?? {})
+		}
+	]
+}
+
+export const syncSceneUnderstandAnchors = (node: WorkflowNode) => {
 	const mode =
 		node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 	node.inputs = [
@@ -1305,8 +1454,7 @@ const isSceneLayoutModelTarget = (item: unknown): boolean => {
 const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 	const previewMode = node.sceneLayoutSettings?.previewMode === true
 	const layoutItems = Array.isArray(node.sceneLayoutSettings?.layoutItems)
-		? node
-				.sceneLayoutSettings!.layoutItems!.filter((item) => String(item?.id ?? '').trim())
+		? node.sceneLayoutSettings!.layoutItems!.filter((item) => String(item?.id ?? '').trim())
 		: []
 	const modelInputs = previewMode
 		? layoutItems.map((item) => ({
@@ -1320,16 +1468,23 @@ const syncSceneLayoutAnchors = (node: WorkflowNode) => {
 			? [{ id: 'in-lighting-json', label: '灯光 JSON', mediaType: 'text' as const }]
 			: []
 	node.inputs = [
+		{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
+		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
+		{ id: 'in-image-3', label: '参考图 3', mediaType: 'image' },
+		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 		{ id: 'in-json', label: '布局JSON', mediaType: 'text' },
 		...modelInputs,
 		...lightingInputs
 	]
-	node.outputs = [
-		{ id: 'out-0', label: '布局输出', mediaType: 'text' },
-		...(previewMode
-			? [{ id: 'out-selected-placeholder', label: '选中占位体', mediaType: 'model3d' as const }]
-			: [])
-	]
+	// 输出锚点：out-0为文本布局输出，out-selected-placeholder为选中占位立方体的GLB模型输出（仅预览模式）
+	node.outputs = [{ id: 'out-0', label: '布局输出', mediaType: 'text' }]
+	if (previewMode) {
+		node.outputs.push({
+			id: 'out-selected-placeholder',
+			label: '选中占位体输出',
+			mediaType: 'model3d'
+		})
+	}
 }
 
 const syncUnrealExportAnchors = (node: WorkflowNode) => {
@@ -1351,12 +1506,16 @@ const syncSceneDecomposeAnchors = (node: WorkflowNode) => {
 		{ id: 'in-image-4', label: '参考图 4', mediaType: 'image' },
 		{ id: 'in-json', label: '场景 JSON', mediaType: 'text' }
 	]
-	// 场景拆解节点输出锚点归一化：无论拆解出多少对象，只保留一个总输出锚点，
-	// 所有自动布线均从该锚点出发，避免多锚点位置与连线起点错位的问题。
+	// 场景拆解节点输出锚点归一化：无论拆解出多少对象，只保留一个总输出锚点out-0，
+	// 所有自动布线均从该锚点出发，锚点ID保持稳定不随输出状态变化，避免连线错位。
 	const hasOutputs = outputs.length > 0
-	node.outputs = hasOutputs
-		? [{ id: 'out-main', label: '拆解输出', mediaType: 'image' }]
-		: [{ id: 'out-empty', label: '待分解', mediaType: 'text' }]
+	node.outputs = [
+		{
+			id: 'out-0',
+			label: hasOutputs ? '拆解输出' : '待分解',
+			mediaType: hasOutputs ? 'image' : 'text'
+		}
+	]
 }
 
 const normalizeMeshyTargetFormats = (
@@ -1375,54 +1534,54 @@ const normalizeTripo3DModelSettings = (rawInput: unknown): Record<string, unknow
 	const result: Record<string, unknown> = {}
 	// 字段映射：旧无前缀字段名 -> 新带tripo3d前缀字段名
 	const legacyFieldMap: Record<string, string> = {
-		'taskId': 'tripo3dTaskId',
-		'taskStatus': 'tripo3dTaskStatus',
-		'taskFamily': 'tripo3dTaskFamily',
-		'taskMode': 'tripo3dTaskMode',
-		'statusText': 'tripo3dStatusText',
-		'errorMessage': 'tripo3dErrorMessage',
-		'prompt': 'tripo3dPrompt',
-		'negativePrompt': 'tripo3dNegativePrompt',
-		'imageUrl': 'tripo3dImageUrl',
-		'modelSeries': 'tripo3dModelSeries',
-		'modelVersion': 'tripo3dModelVersion',
-		'textureAlignment': 'tripo3dTextureAlignment',
-		'orientation': 'tripo3dOrientation',
-		'textureQuality': 'tripo3dTextureQuality',
-		'geometryQuality': 'tripo3dGeometryQuality',
-		'modelTaskId': 'tripo3dModelTaskId',
-		'rootTaskId': 'tripo3dRootTaskId',
-		'parentTaskId': 'tripo3dParentTaskId',
-		'thumbnailUrl': 'tripo3dThumbnailUrl',
-		'outputAssetUrl': 'tripo3dOutputAssetUrl',
-		'outputAssetPath': 'tripo3dOutputAssetPath',
-		'modelUrl': 'tripo3dModelUrl',
-		'mode': 'tripo3dMode',
-		'downloadStage': 'tripo3dDownloadStage',
-		'downloadError': 'tripo3dDownloadError',
-		'upstreamTaskId': 'tripo3dUpstreamTaskId',
-		'upstreamTaskFamily': 'tripo3dUpstreamTaskFamily',
-		'upstreamTaskStatus': 'tripo3dUpstreamTaskStatus',
-		'progress': 'tripo3dProgress',
-		'faceLimit': 'tripo3dFaceLimit',
-		'modelSeed': 'tripo3dModelSeed',
-		'textureSeed': 'tripo3dTextureSeed',
-		'downloadProgress': 'tripo3dDownloadProgress',
-		'downloadLoadedBytes': 'tripo3dDownloadLoadedBytes',
-		'downloadTotalBytes': 'tripo3dDownloadTotalBytes',
-		'downloadSpeedBytesPerSec': 'tripo3dDownloadSpeedBytesPerSec',
-		'imageCount': 'tripo3dImageCount',
-		'enabled': 'tripo3dEnabled',
-		'forceSingleImage': 'tripo3dForceSingleImage',
-		'texture': 'tripo3dTexture',
-		'pbr': 'tripo3dPbr',
-		'enableImageAutofix': 'tripo3dEnableImageAutofix',
-		'autoSize': 'tripo3dAutoSize',
-		'quad': 'tripo3dQuad',
-		'smartLowPoly': 'tripo3dSmartLowPoly',
-		'generateParts': 'tripo3dGenerateParts',
-		'compress': 'tripo3dCompress',
-		'exportUv': 'tripo3dExportUv'
+		taskId: 'tripo3dTaskId',
+		taskStatus: 'tripo3dTaskStatus',
+		taskFamily: 'tripo3dTaskFamily',
+		taskMode: 'tripo3dTaskMode',
+		statusText: 'tripo3dStatusText',
+		errorMessage: 'tripo3dErrorMessage',
+		prompt: 'tripo3dPrompt',
+		negativePrompt: 'tripo3dNegativePrompt',
+		imageUrl: 'tripo3dImageUrl',
+		modelSeries: 'tripo3dModelSeries',
+		modelVersion: 'tripo3dModelVersion',
+		textureAlignment: 'tripo3dTextureAlignment',
+		orientation: 'tripo3dOrientation',
+		textureQuality: 'tripo3dTextureQuality',
+		geometryQuality: 'tripo3dGeometryQuality',
+		modelTaskId: 'tripo3dModelTaskId',
+		rootTaskId: 'tripo3dRootTaskId',
+		parentTaskId: 'tripo3dParentTaskId',
+		thumbnailUrl: 'tripo3dThumbnailUrl',
+		outputAssetUrl: 'tripo3dOutputAssetUrl',
+		outputAssetPath: 'tripo3dOutputAssetPath',
+		modelUrl: 'tripo3dModelUrl',
+		mode: 'tripo3dMode',
+		downloadStage: 'tripo3dDownloadStage',
+		downloadError: 'tripo3dDownloadError',
+		upstreamTaskId: 'tripo3dUpstreamTaskId',
+		upstreamTaskFamily: 'tripo3dUpstreamTaskFamily',
+		upstreamTaskStatus: 'tripo3dUpstreamTaskStatus',
+		progress: 'tripo3dProgress',
+		faceLimit: 'tripo3dFaceLimit',
+		modelSeed: 'tripo3dModelSeed',
+		textureSeed: 'tripo3dTextureSeed',
+		downloadProgress: 'tripo3dDownloadProgress',
+		downloadLoadedBytes: 'tripo3dDownloadLoadedBytes',
+		downloadTotalBytes: 'tripo3dDownloadTotalBytes',
+		downloadSpeedBytesPerSec: 'tripo3dDownloadSpeedBytesPerSec',
+		imageCount: 'tripo3dImageCount',
+		enabled: 'tripo3dEnabled',
+		forceSingleImage: 'tripo3dForceSingleImage',
+		texture: 'tripo3dTexture',
+		pbr: 'tripo3dPbr',
+		enableImageAutofix: 'tripo3dEnableImageAutofix',
+		autoSize: 'tripo3dAutoSize',
+		quad: 'tripo3dQuad',
+		smartLowPoly: 'tripo3dSmartLowPoly',
+		generateParts: 'tripo3dGenerateParts',
+		compress: 'tripo3dCompress',
+		exportUv: 'tripo3dExportUv'
 	}
 	// 先读取旧无前缀字段
 	for (const [legacyKey, newKey] of Object.entries(legacyFieldMap)) {
@@ -1434,54 +1593,96 @@ const normalizeTripo3DModelSettings = (rawInput: unknown): Record<string, unknow
 		}
 	}
 	const stringFields = [
-		'tripo3dTaskFamily', 'tripo3dTaskId', 'tripo3dTaskStatus', 'tripo3dStatusText',
-		'tripo3dErrorMessage', 'tripo3dPrompt', 'tripo3dNegativePrompt', 'tripo3dImageUrl',
-		'tripo3dModelSeries', 'tripo3dModelVersion', 'tripo3dTextureAlignment', 'tripo3dOrientation',
-		'tripo3dTextureQuality', 'tripo3dGeometryQuality', 'tripo3dModelTaskId', 'tripo3dRootTaskId',
-		'tripo3dParentTaskId', 'tripo3dThumbnailUrl', 'tripo3dOutputAssetUrl', 'tripo3dOutputAssetPath',
-		'tripo3dModelUrl', 'tripo3dMode', 'tripo3dDownloadStage', 'tripo3dDownloadError',
-		'tripo3dUpstreamTaskId', 'tripo3dUpstreamTaskFamily', 'tripo3dUpstreamTaskStatus', 'tripo3dTaskMode'
+		'tripo3dTaskFamily',
+		'tripo3dTaskId',
+		'tripo3dTaskStatus',
+		'tripo3dStatusText',
+		'tripo3dErrorMessage',
+		'tripo3dPrompt',
+		'tripo3dNegativePrompt',
+		'tripo3dImageUrl',
+		'tripo3dModelSeries',
+		'tripo3dModelVersion',
+		'tripo3dTextureAlignment',
+		'tripo3dOrientation',
+		'tripo3dTextureQuality',
+		'tripo3dGeometryQuality',
+		'tripo3dModelTaskId',
+		'tripo3dRootTaskId',
+		'tripo3dParentTaskId',
+		'tripo3dThumbnailUrl',
+		'tripo3dOutputAssetUrl',
+		'tripo3dOutputAssetPath',
+		'tripo3dModelUrl',
+		'tripo3dMode',
+		'tripo3dDownloadStage',
+		'tripo3dDownloadError',
+		'tripo3dUpstreamTaskId',
+		'tripo3dUpstreamTaskFamily',
+		'tripo3dUpstreamTaskStatus',
+		'tripo3dTaskMode'
 	]
 	for (const key of stringFields) {
 		const val = raw[key]
 		if (isString(val)) result[key] = String(val)
 	}
 	const numberFields = [
-		'tripo3dProgress', 'tripo3dFaceLimit', 'tripo3dModelSeed', 'tripo3dTextureSeed',
-		'tripo3dDownloadProgress', 'tripo3dDownloadLoadedBytes', 'tripo3dDownloadTotalBytes',
-		'tripo3dDownloadSpeedBytesPerSec', 'tripo3dImageCount'
+		'tripo3dProgress',
+		'tripo3dFaceLimit',
+		'tripo3dModelSeed',
+		'tripo3dTextureSeed',
+		'tripo3dDownloadProgress',
+		'tripo3dDownloadLoadedBytes',
+		'tripo3dDownloadTotalBytes',
+		'tripo3dDownloadSpeedBytesPerSec',
+		'tripo3dImageCount'
 	]
 	for (const key of numberFields) {
 		const val = raw[key]
 		if (Number.isFinite(Number(val))) result[key] = Number(val)
 	}
 	const boolFields = [
-		'tripo3dEnabled', 'tripo3dForceSingleImage', 'tripo3dTexture', 'tripo3dPbr',
-		'tripo3dEnableImageAutofix', 'tripo3dAutoSize', 'tripo3dQuad', 'tripo3dSmartLowPoly',
-		'tripo3dGenerateParts', 'tripo3dCompress', 'tripo3dExportUv'
+		'tripo3dEnabled',
+		'tripo3dForceSingleImage',
+		'tripo3dTexture',
+		'tripo3dPbr',
+		'tripo3dEnableImageAutofix',
+		'tripo3dAutoSize',
+		'tripo3dQuad',
+		'tripo3dSmartLowPoly',
+		'tripo3dGenerateParts',
+		'tripo3dCompress',
+		'tripo3dExportUv'
 	]
 	for (const key of boolFields) {
 		const val = raw[key]
 		if (typeof val === 'boolean') result[key] = val
 	}
 	if (isArray(raw.tripo3dSelectedImages)) {
-		result.tripo3dSelectedImages = raw.tripo3dSelectedImages.filter((item): item is Record<string, unknown> =>
-			item != null && typeof item === 'object'
-		).map((item) => {
-			const normalized: Record<string, unknown> = {}
-			if (isString(item.url)) normalized.url = String(item.url)
-			if (isString(item.direction)) normalized.direction = String(item.direction)
-			if (isString(item.label)) normalized.label = String(item.label)
-			if (isString(item.nodeId)) normalized.nodeId = String(item.nodeId)
-			return normalized
-		})
+		result.tripo3dSelectedImages = raw.tripo3dSelectedImages
+			.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+			.map((item) => {
+				const normalized: Record<string, unknown> = {}
+				if (isString(item.url)) normalized.url = String(item.url)
+				if (isString(item.direction)) normalized.direction = String(item.direction)
+				if (isString(item.label)) normalized.label = String(item.label)
+				if (isString(item.nodeId)) normalized.nodeId = String(item.nodeId)
+				return normalized
+			})
 	}
 	if (isArray(raw.tripo3dImageUrls)) {
 		result.tripo3dImageUrls = raw.tripo3dImageUrls
-			.map((x: unknown) => isString(x) ? String(x).trim() : '')
+			.map((x: unknown) => (isString(x) ? String(x).trim() : ''))
 			.filter((x: string) => !!x)
 	}
-	const recordFields = ['tripo3dRelationKind', 'tripo3dRelationSummary', 'tripo3dOutputSummary', 'tripo3dInputSummary', 'tripo3dRequestPayload', 'tripo3dResponsePayload']
+	const recordFields = [
+		'tripo3dRelationKind',
+		'tripo3dRelationSummary',
+		'tripo3dOutputSummary',
+		'tripo3dInputSummary',
+		'tripo3dRequestPayload',
+		'tripo3dResponsePayload'
+	]
 	for (const key of recordFields) {
 		const val = raw[key]
 		if (isRecord(val)) result[key] = { ...val }
@@ -1510,24 +1711,36 @@ const normalizeModel3DSettings = (
 	const raw = rawSettings
 	const genSource = String(raw.modelGenerationSource ?? '').trim()
 	const modelGenerationSource: WorkflowModel3DNodeSettings['modelGenerationSource'] =
-		genSource === 'upload' || genSource === 'comfyui' || genSource === 'meshy' || genSource === 'tripo3d'
+		genSource === 'upload' ||
+		genSource === 'comfyui' ||
+		genSource === 'meshy' ||
+		genSource === 'tripo3d'
 			? genSource
 			: undefined
 	const tripo3dModelSettings = normalizeTripo3DModelSettings(raw.tripo3dModelSettings)
-	const meshyModelSettingsRaw = isRecord(raw.meshyModelSettings) ? raw.meshyModelSettings : undefined
+	const meshyModelSettingsRaw = isRecord(raw.meshyModelSettings)
+		? raw.meshyModelSettings
+		: undefined
 	return {
 		modelGenerationSource,
-		tripo3dModelSettings: tripo3dModelSettings as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
-		meshyModelSettings: meshyModelSettingsRaw ? ({ ...meshyModelSettingsRaw } as WorkflowModel3DNodeSettings['meshyModelSettings']) : undefined,
+		tripo3dModelSettings:
+			tripo3dModelSettings as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
+		meshyModelSettings: meshyModelSettingsRaw
+			? ({ ...meshyModelSettingsRaw } as WorkflowModel3DNodeSettings['meshyModelSettings'])
+			: undefined,
 		modelUrl: isString(raw.modelUrl) ? String(raw.modelUrl) : undefined,
-		modelProjectRelativePath: isString(raw.modelProjectRelativePath) ? String(raw.modelProjectRelativePath) : undefined,
+		modelProjectRelativePath: isString(raw.modelProjectRelativePath)
+			? String(raw.modelProjectRelativePath)
+			: undefined,
 		modelFormat:
 			raw.modelFormat === 'gltf' ? 'gltf' : raw.modelFormat === 'glb' ? 'glb' : undefined,
 		modelSourceName: isString(raw.modelSourceName) ? String(raw.modelSourceName) : undefined,
 		modelSourcePath: isString(raw.modelSourcePath) ? String(raw.modelSourcePath) : undefined,
 		modelAssetUrl: isString(raw.modelAssetUrl) ? String(raw.modelAssetUrl) : undefined,
 		modelAssetPath: isString(raw.modelAssetPath) ? String(raw.modelAssetPath) : undefined,
-		modelAssetProjectRelativePath: isString(raw.modelAssetProjectRelativePath) ? String(raw.modelAssetProjectRelativePath) : undefined,
+		modelAssetProjectRelativePath: isString(raw.modelAssetProjectRelativePath)
+			? String(raw.modelAssetProjectRelativePath)
+			: undefined,
 		backgroundColor: isString(raw.backgroundColor) ? String(raw.backgroundColor) : undefined,
 		lightIntensity: Number.isFinite(Number(raw.lightIntensity))
 			? Math.max(0, Math.min(10, Number(raw.lightIntensity)))
@@ -1746,7 +1959,22 @@ const normalizeMeshySettings = (rawSettings: unknown): WorkflowMeshyNodeSettings
 const normalizeTripo3DImageSettings = (raw: unknown): Record<string, unknown> | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const result: Record<string, unknown> = {}
-	const stringFields = ['prompt', 'negativePrompt', 'taskId', 'taskStatus', 'statusText', 'errorMessage', 'taskFamily', 'taskMode', 'mode', 'model', 'size', 'inputUrl', 'thumbnailUrl', 'outputImageUrl']
+	const stringFields = [
+		'prompt',
+		'negativePrompt',
+		'taskId',
+		'taskStatus',
+		'statusText',
+		'errorMessage',
+		'taskFamily',
+		'taskMode',
+		'mode',
+		'model',
+		'size',
+		'inputUrl',
+		'thumbnailUrl',
+		'outputImageUrl'
+	]
 	for (const key of stringFields) {
 		const val = (raw as Record<string, unknown>)[key]
 		if (isString(val)) result[key] = String(val)
@@ -1758,7 +1986,7 @@ const normalizeTripo3DImageSettings = (raw: unknown): Record<string, unknown> | 
 	}
 	if (isArray((raw as Record<string, unknown>).outputImages)) {
 		result.outputImages = ((raw as Record<string, unknown>).outputImages as unknown[])
-			.map((x: unknown) => isString(x) ? String(x).trim() : '')
+			.map((x: unknown) => (isString(x) ? String(x).trim() : ''))
 			.filter((x: string) => !!x)
 	}
 	const recordFields = ['submittedParams', 'outputSummary', 'requestPayload', 'responsePayload']
@@ -1772,7 +2000,19 @@ const normalizeTripo3DImageSettings = (raw: unknown): Record<string, unknown> | 
 const normalizeMeshyImageSettings = (raw: unknown): Record<string, unknown> | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const result: Record<string, unknown> = {}
-	const stringFields = ['prompt', 'negativePrompt', 'aiModel', 'aspectRatio', 'poseMode', 'taskId', 'taskFamily', 'mode', 'taskStatus', 'statusText', 'errorMessage']
+	const stringFields = [
+		'prompt',
+		'negativePrompt',
+		'aiModel',
+		'aspectRatio',
+		'poseMode',
+		'taskId',
+		'taskFamily',
+		'mode',
+		'taskStatus',
+		'statusText',
+		'errorMessage'
+	]
 	for (const key of stringFields) {
 		const val = (raw as Record<string, unknown>)[key]
 		if (isString(val)) result[key] = String(val)
@@ -1800,7 +2040,11 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 	const cropObj = isRecord(raw.crop) ? raw.crop : undefined
 	const genSource = String(raw.imageGenerationSource ?? '').trim()
 	const imageGenerationSource: WorkflowImageNodeSettings['imageGenerationSource'] =
-		genSource === 'upload' || genSource === 'comfyui' || genSource === 'meshy' || genSource === 'gemini' || genSource === 'tripo3d'
+		genSource === 'upload' ||
+		genSource === 'comfyui' ||
+		genSource === 'meshy' ||
+		genSource === 'gemini' ||
+		genSource === 'tripo3d'
 			? genSource
 			: undefined
 	const tripo3dImageSettings = normalizeTripo3DImageSettings(raw.tripo3dImageSettings)
@@ -1813,7 +2057,13 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 			? Math.max(1, Math.floor(Number(raw.outputHeight)))
 			: undefined,
 		outputFormat:
-			raw.outputFormat === 'png' ? 'png' : raw.outputFormat === 'jpeg' ? 'jpeg' : raw.outputFormat === 'webp' ? 'webp' : undefined,
+			raw.outputFormat === 'png'
+				? 'png'
+				: raw.outputFormat === 'jpeg'
+					? 'jpeg'
+					: raw.outputFormat === 'webp'
+						? 'webp'
+						: undefined,
 		naturalWidth: Number.isFinite(Number(raw.naturalWidth))
 			? Math.max(1, Math.floor(Number(raw.naturalWidth)))
 			: undefined,
@@ -1834,7 +2084,9 @@ const normalizeImageSettings = (raw: unknown): WorkflowImageNodeSettings | undef
 				}
 			: undefined,
 		imageGenerationSource,
-		lastGeneratedImageUrl: isString(raw.lastGeneratedImageUrl) ? String(raw.lastGeneratedImageUrl) : undefined,
+		lastGeneratedImageUrl: isString(raw.lastGeneratedImageUrl)
+			? String(raw.lastGeneratedImageUrl)
+			: undefined,
 		meshyImageSettings: meshyImageSettings as WorkflowImageNodeSettings['meshyImageSettings'],
 		tripo3dImageSettings: tripo3dImageSettings as WorkflowImageNodeSettings['tripo3dImageSettings']
 	}
@@ -2078,18 +2330,22 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								blenderVersion: isString(rawBlenderSettings?.blenderVersion)
 									? String(rawBlenderSettings!.blenderVersion)
 									: null,
-								hasBlender: typeof rawBlenderSettings?.hasBlender === 'boolean'
-									? Boolean(rawBlenderSettings!.hasBlender)
-									: undefined,
-								hasAddon: typeof rawBlenderSettings?.hasAddon === 'boolean'
-									? Boolean(rawBlenderSettings!.hasAddon)
-									: undefined,
-								blenderRunning: typeof rawBlenderSettings?.blenderRunning === 'boolean'
-									? Boolean(rawBlenderSettings!.blenderRunning)
-									: undefined,
-								addonListening: typeof rawBlenderSettings?.addonListening === 'boolean'
-									? Boolean(rawBlenderSettings!.addonListening)
-									: undefined,
+								hasBlender:
+									typeof rawBlenderSettings?.hasBlender === 'boolean'
+										? Boolean(rawBlenderSettings!.hasBlender)
+										: undefined,
+								hasAddon:
+									typeof rawBlenderSettings?.hasAddon === 'boolean'
+										? Boolean(rawBlenderSettings!.hasAddon)
+										: undefined,
+								blenderRunning:
+									typeof rawBlenderSettings?.blenderRunning === 'boolean'
+										? Boolean(rawBlenderSettings!.blenderRunning)
+										: undefined,
+								addonListening:
+									typeof rawBlenderSettings?.addonListening === 'boolean'
+										? Boolean(rawBlenderSettings!.addonListening)
+										: undefined,
 								importStatus: (isString(rawBlenderSettings?.importStatus) &&
 								['idle', 'downloading', 'importing', 'completed', 'error'].includes(
 									String(rawBlenderSettings!.importStatus)
@@ -2108,11 +2364,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 											.map((m) => {
 												const rec = m as Record<string, unknown>
 												return {
-													id: isString(rec.id) ? String(rec.id) : String(Date.now() + Math.random()),
+													id: isString(rec.id)
+														? String(rec.id)
+														: String(Date.now() + Math.random()),
 													role: (isString(rec.role) &&
-													['user', 'assistant', 'system', 'tool_call', 'tool_result', 'tool', 'thinking', 'command'].includes(
-														String(rec.role)
-													)
+													[
+														'user',
+														'assistant',
+														'system',
+														'tool_call',
+														'tool_result',
+														'tool',
+														'thinking',
+														'command'
+													].includes(String(rec.role))
 														? String(rec.role)
 														: 'user') as WorkflowBlenderChatMessage['role'],
 													content: isString(rec.content) ? String(rec.content) : '',
@@ -2134,30 +2399,58 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 													isThinking: Boolean(rec.isThinking),
 													isStreamingThinking: Boolean(rec.isStreamingThinking),
 													isError: Boolean(rec.isError),
-													collapsed: typeof rec.collapsed === 'boolean' ? Boolean(rec.collapsed) : undefined,
-													thinkingContent: isString(rec.thinkingContent) ? String(rec.thinkingContent) : undefined,
-													thinkingCollapsed: typeof rec.thinkingCollapsed === 'boolean' ? Boolean(rec.thinkingCollapsed) : undefined,
+													collapsed:
+														typeof rec.collapsed === 'boolean' ? Boolean(rec.collapsed) : undefined,
+													thinkingContent: isString(rec.thinkingContent)
+														? String(rec.thinkingContent)
+														: undefined,
+													thinkingCollapsed:
+														typeof rec.thinkingCollapsed === 'boolean'
+															? Boolean(rec.thinkingCollapsed)
+															: undefined,
 													command: isString(rec.command) ? String(rec.command) : undefined,
 													screenshots: Array.isArray(rec.screenshots)
-														? (rec.screenshots as unknown[]).filter(s => isString(s)).map(s => String(s))
+														? (rec.screenshots as unknown[])
+																.filter((s) => isString(s))
+																.map((s) => String(s))
 														: undefined
 												}
 											})
 									: [],
-								isResponding: typeof rawBlenderSettings?.isResponding === 'boolean'
-									? Boolean(rawBlenderSettings!.isResponding)
-									: false,
-								chatContextUsage: (isRecord(rawBlenderSettings?.chatContextUsage) &&
-									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).tokenCount)) &&
-									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget)) &&
-									Number.isFinite(Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage)))
-									? {
-											tokenCount: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).tokenCount),
-											budget: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget),
-											usage: Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage),
-											truncated: Boolean((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).truncated)
-										}
-									: undefined,
+								isResponding:
+									typeof rawBlenderSettings?.isResponding === 'boolean'
+										? Boolean(rawBlenderSettings!.isResponding)
+										: false,
+								chatContextUsage:
+									isRecord(rawBlenderSettings?.chatContextUsage) &&
+									Number.isFinite(
+										Number(
+											(rawBlenderSettings!.chatContextUsage as Record<string, unknown>).tokenCount
+										)
+									) &&
+									Number.isFinite(
+										Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget)
+									) &&
+									Number.isFinite(
+										Number((rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage)
+									)
+										? {
+												tokenCount: Number(
+													(rawBlenderSettings!.chatContextUsage as Record<string, unknown>)
+														.tokenCount
+												),
+												budget: Number(
+													(rawBlenderSettings!.chatContextUsage as Record<string, unknown>).budget
+												),
+												usage: Number(
+													(rawBlenderSettings!.chatContextUsage as Record<string, unknown>).usage
+												),
+												truncated: Boolean(
+													(rawBlenderSettings!.chatContextUsage as Record<string, unknown>)
+														.truncated
+												)
+											}
+										: undefined,
 								agentBackend: isString(rawBlenderSettings?.agentBackend)
 									? String(rawBlenderSettings!.agentBackend)
 									: undefined,
@@ -2181,17 +2474,33 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 									: undefined,
 								lastOutputs: isRecord(rawBlenderSettings?.lastOutputs)
 									? {
-											text: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).text)
+											text: isString(
+												(rawBlenderSettings!.lastOutputs as Record<string, unknown>).text
+											)
 												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).text)
 												: undefined,
-											imageUrl: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl)
-												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl)
+											imageUrl: isString(
+												(rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl
+											)
+												? String(
+														(rawBlenderSettings!.lastOutputs as Record<string, unknown>).imageUrl
+													)
 												: undefined,
-											modelPath: isString((rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath)
-												? String((rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath)
+											modelPath: isString(
+												(rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath
+											)
+												? String(
+														(rawBlenderSettings!.lastOutputs as Record<string, unknown>).modelPath
+													)
 												: undefined,
-											updatedAt: Number.isFinite(Number((rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt))
-												? Number((rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt)
+											updatedAt: Number.isFinite(
+												Number(
+													(rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt
+												)
+											)
+												? Number(
+														(rawBlenderSettings!.lastOutputs as Record<string, unknown>).updatedAt
+													)
 												: undefined
 										}
 									: undefined,
@@ -2215,12 +2524,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					if (Object.keys(mergedTripo).length > 0) {
 						model3dSettings = {
 							...(model3dSettings || {}),
-							tripo3dModelSettings: mergedTripo as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
-							modelGenerationSource: (model3dSettings as Record<string, unknown>)?.modelGenerationSource || (mergedTripo.tripo3dTaskId ? 'tripo3d' : undefined)
+							tripo3dModelSettings:
+								mergedTripo as WorkflowModel3DNodeSettings['tripo3dModelSettings'],
+							modelGenerationSource:
+								(model3dSettings as Record<string, unknown>)?.modelGenerationSource ||
+								(mergedTripo.tripo3dTaskId ? 'tripo3d' : undefined)
 						} as WorkflowModel3DNodeSettings
 					}
 				}
-				const tripo3dSettings = type === 'model3d' ? (model3dSettings as Record<string, unknown>)?.tripo3dModelSettings : rootTripo3dSettings
+				const tripo3dSettings =
+					type === 'model3d'
+						? (model3dSettings as Record<string, unknown>)?.tripo3dModelSettings
+						: rootTripo3dSettings
 				nextNodesById[nodeId] = {
 					id: nodeId,
 					type,
@@ -2238,10 +2553,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					worldX: Number.isFinite(Number(n.worldX)) ? Number(n.worldX) : 0,
 					worldY: Number.isFinite(Number(n.worldY)) ? Number(n.worldY) : 0,
 					width: Number.isFinite(Number(n.width))
-						? Math.max(80, Math.min(1000, Number(n.width)))
+						? Math.max(40, Math.min(2000, Number(n.width)))
 						: 240,
 					height: Number.isFinite(Number(n.height))
-						? Math.max(80, Math.min(1000, Number(n.height)))
+						? Math.max(40, Math.min(2000, Number(n.height)))
 						: 160,
 					sizeCustomized: Boolean(n.sizeCustomized),
 					resourceId: isString(n.resourceId) ? n.resourceId : null,
@@ -2261,14 +2576,142 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					comfyuiSettings: normalizeComfyUISettings(n.comfyuiSettings),
 					nodeChatDraft: isString(n.nodeChatDraft) ? String(n.nodeChatDraft) : undefined,
 					nodeChatParams: isRecord(n.nodeChatParams) ? n.nodeChatParams : undefined,
+					nodeChatSelectedRefs: normalizeChatSelectedRefs((n as any).nodeChatSelectedRefs),
+					nodeChatVisible: typeof n.nodeChatVisible === 'boolean' ? n.nodeChatVisible : false,
 					prompt: isString(n.prompt) ? String(n.prompt) : undefined
+				}
+				const prevNode = state.nodesById[nodeId]
+				const incoming = nextNodesById[nodeId] as any
+				const prevDraft = (prevNode as any)?.nodeChatDraft
+				const incomingDraft = incoming.nodeChatDraft
+				const prevDraftStr = typeof prevDraft === 'string' ? prevDraft : ''
+				const incomingDraftStr = typeof incomingDraft === 'string' ? incomingDraft : ''
+				const needPreserveDraft = prevDraftStr.length > incomingDraftStr.length
+				if (needPreserveDraft) {
+					incoming.nodeChatDraft = prevDraftStr
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatDraft): Vuex longer, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevLen: prevDraftStr.length,
+							incomingLen: incomingDraftStr.length,
+							preservedDraftPreview:
+								prevDraftStr.length > 40
+									? prevDraftStr.slice(0, 40) + '...'
+									: prevDraftStr || '(empty)',
+							incomingDraftPreview:
+								incomingDraftStr.length > 40
+									? incomingDraftStr.slice(0, 40) + '...'
+									: incomingDraftStr || '(empty)',
+							defendReason: !incomingDraftStr.length
+								? 'incoming_empty'
+								: 'vuex_longer_than_incoming'
+						}
+					)
+				}
+				const prevParams = (prevNode as any)?.nodeChatParams
+				const incomingParams = incoming.nodeChatParams
+				const prevParamsKeys =
+					prevParams && typeof prevParams === 'object'
+						? Object.keys(prevParams as Record<string, unknown>)
+						: []
+				const incomingParamsKeys =
+					incomingParams && typeof incomingParams === 'object'
+						? Object.keys(incomingParams as Record<string, unknown>)
+						: []
+				const prevParamsNestedDepth = JSON.stringify(prevParams ?? {}).length
+				const incomingParamsNestedDepth = JSON.stringify(incomingParams ?? {}).length
+				const needPreserveParams =
+					!incomingParamsKeys.length && prevParamsKeys.length
+						? true
+						: prevParamsNestedDepth > incomingParamsNestedDepth + 10
+				if (needPreserveParams) {
+					incoming.nodeChatParams = JSON.parse(JSON.stringify(prevParams ?? {}))
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatParams): Vuex has more/deeper, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevKeysLen: prevParamsKeys.length,
+							incomingKeysLen: incomingParamsKeys.length,
+							prevJsonLen: prevParamsNestedDepth,
+							incomingJsonLen: incomingParamsNestedDepth,
+							preservedKeys: prevParamsKeys.slice(0, 20)
+						}
+					)
+				}
+				const prevRefs = (prevNode as any)?.nodeChatSelectedRefs
+				const incomingRefs = incoming.nodeChatSelectedRefs
+				const prevRefsLen = Array.isArray(prevRefs) ? prevRefs.length : 0
+				const incomingRefsLen = Array.isArray(incomingRefs) ? incomingRefs.length : 0
+				const needPreserveRefs = prevRefsLen > incomingRefsLen
+				if (needPreserveRefs) {
+					incoming.nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevRefs ?? []))
+					console.log(
+						'[DraftFlow#store hydrateDraft] DEFEND(nodeChatSelectedRefs): Vuex longer, preserving Vuex',
+						{
+							nodeId,
+							nodeType: type,
+							prevLen: prevRefsLen,
+							incomingLen: incomingRefsLen
+						}
+					)
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'scene-understanding')
 					syncSceneUnderstandAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-layout')
+				// DEFEND(scene-layout): Store中的layoutItems长度大于incoming时，保留Store中的正确布局
+				// 防止Ctrl+S时Engine端未同步的旧数据回滚覆盖新生成的布局
+				if (nextNodesById[nodeId].type === 'scene-layout') {
+					const prevSceneSettings = (prevNode as any)?.sceneLayoutSettings
+					const incomingSceneSettings = nextNodesById[nodeId].sceneLayoutSettings as any
+					const countValidItems = (items: unknown): number =>
+						Array.isArray(items) ? items.filter((i: any) => String(i?.id ?? '').trim()).length : 0
+					const prevItemsLen = countValidItems(prevSceneSettings?.layoutItems)
+					const incomingItemsLen = countValidItems(incomingSceneSettings?.layoutItems)
+					if (prevItemsLen > incomingItemsLen) {
+						// Store中有更多有效layoutItems，说明Engine数据是旧的，保留Store中的
+						const preservedSettings = {
+							...(incomingSceneSettings ?? {}),
+							...(prevSceneSettings ?? {}),
+							layoutItems: prevSceneSettings.layoutItems,
+							previewMode:
+								prevSceneSettings?.previewMode === true
+									? true
+									: (incomingSceneSettings?.previewMode as any),
+							status:
+								prevSceneSettings?.status === 'completed'
+									? 'completed'
+									: (incomingSceneSettings?.status as any),
+							inputJson:
+								String(prevSceneSettings?.inputJson ?? '').length >=
+								String(incomingSceneSettings?.inputJson ?? '').length
+									? prevSceneSettings?.inputJson
+									: incomingSceneSettings?.inputJson,
+							camera: prevSceneSettings?.camera ?? incomingSceneSettings?.camera,
+							lastRunAt:
+								Math.max(
+									Number(prevSceneSettings?.lastRunAt) || 0,
+									Number(incomingSceneSettings?.lastRunAt) || 0
+								) || undefined
+						}
+						nextNodesById[nodeId].sceneLayoutSettings =
+							normalizeSceneLayoutSettings(preservedSettings)
+						console.log(
+							'[DraftFlow#hydrateDraft] PROTECT(scene-layout): keeping Store layoutItems (incoming shorter)',
+							{
+								nodeId,
+								prevItemsLen,
+								incomingItemsLen,
+								previewMode: preservedSettings.previewMode,
+								status: preservedSettings.status
+							}
+						)
+					}
 					syncSceneLayoutAnchors(nextNodesById[nodeId])
+				}
 				if (nextNodesById[nodeId].type === 'unreal-export')
 					syncUnrealExportAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'scene-decompose')
@@ -2276,19 +2719,135 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
+			}
+
+			// 保留当前state中存在但snapshot中不存在的节点（新创建但尚未同步到引擎的节点）
+			// 但只保留近期创建的节点（3秒内），避免阻止用户主动删除节点的同步
+			// 时间窗口判断：批量导入媒体时，新节点会在极短时间内创建并需要保留；
+			// 而用户删除节点时，被删除的节点不可能是3秒内刚创建的（除非刚创建就删除，这种情况可接受）
+			// 重要：如果snapshot本身是空对象（清空画布操作），则不保留任何节点
+			const snapshotHasNodes = Object.keys(rawNodesById).length > 0
+			const preservedNodeIds: string[] = []
+			const now = Date.now()
+			const NEW_NODE_PRESERVE_WINDOW_MS = 3000
+			if (snapshotHasNodes) {
+				for (const [existingId, existingNode] of Object.entries(state.nodesById)) {
+					if (!nextNodesById[existingId] && existingNode) {
+						const createdAt = Number((existingNode as any).createdAt ?? 0)
+						const isRecentNew = createdAt > 0 && now - createdAt < NEW_NODE_PRESERVE_WINDOW_MS
+						if (isRecentNew) {
+							nextNodesById[existingId] = existingNode
+							preservedNodeIds.push(existingId)
+							console.log(
+								'[DraftFlow#store hydrateDraft] PRESERVE(node): keeping recently created node not in snapshot',
+								{
+									nodeId: existingId,
+									nodeType: existingNode.type,
+									createdAt,
+									ageMs: now - createdAt
+								}
+							)
+						} else {
+							console.log(
+								'[DraftFlow#store hydrateDraft] REMOVE(node): node not in snapshot and not recent, will be deleted (sync from engine)',
+								{
+									nodeId: existingId,
+									nodeType: existingNode.type,
+									createdAt,
+									ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+								}
+							)
+						}
+					}
+				}
+			} else {
+				console.log(
+					'[DraftFlow#store hydrateDraft] CLEAR(nodes): snapshot is empty, clearing all nodes (full reset/empty canvas)'
+				)
 			}
 
 			const rawNodeOrder = isArray(s.nodeOrder) ? s.nodeOrder : []
 			const tempStateForOrder: WorkflowState = { ...state, nodesById: nextNodesById }
-			const nextNodeOrder = normalizeNodeIds(
+			let nextNodeOrder = normalizeNodeIds(
 				tempStateForOrder,
 				rawNodeOrder.map((x: unknown) => String(x ?? ''))
 			)
 			// if order missing, fall back to object keys
-			const nodeOrder = nextNodeOrder.length ? nextNodeOrder : Object.keys(nextNodesById)
+			let nodeOrder = nextNodeOrder.length ? nextNodeOrder : Object.keys(nextNodesById)
+			// 将保留的新节点添加到nodeOrder末尾
+			for (const nid of preservedNodeIds) {
+				if (!nodeOrder.includes(nid)) {
+					nodeOrder = [...nodeOrder, nid]
+				}
+			}
 
 			state.nodesById = nextNodesById
 			state.nodeOrder = nodeOrder
+
+			// ULTIMATE FALLBACK: After replacing entire nodesById, re-apply floating nodeChatDialog
+			// values (never cleared by closeNodeChatDialog) back to nodesById — guarantees that
+			// the most recent user input cannot be lost even if engine/hydrate has bugs.
+			const {
+				nodeId: dialogNodeId,
+				draft: dialogDraft,
+				params: dialogParams,
+				selectedRefs: dialogRefs
+			} = state.nodeChatDialog
+			if (dialogNodeId && state.nodesById[dialogNodeId]) {
+				const targetNode = state.nodesById[dialogNodeId] as any
+				const curDraft =
+					typeof targetNode.nodeChatDraft === 'string' ? targetNode.nodeChatDraft : ''
+				const dialogDraftStr = typeof dialogDraft === 'string' ? dialogDraft : ''
+				if (dialogDraftStr.length > curDraft.length) {
+					targetNode.nodeChatDraft = dialogDraftStr
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatDraft): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							fromNodesByIdLen: curDraft.length,
+							fromDialogLen: dialogDraftStr.length,
+							appliedPreview:
+								dialogDraftStr.length > 40
+									? dialogDraftStr.slice(0, 40) + '...'
+									: dialogDraftStr || '(empty)'
+						}
+					)
+				}
+				const curParamsKeys =
+					targetNode.nodeChatParams && typeof targetNode.nodeChatParams === 'object'
+						? Object.keys(targetNode.nodeChatParams as Record<string, unknown>)
+						: []
+				const dialogParamsKeys =
+					dialogParams && typeof dialogParams === 'object'
+						? Object.keys(dialogParams as Record<string, unknown>)
+						: []
+				if (dialogParamsKeys.length > 0 && curParamsKeys.length === 0) {
+					targetNode.nodeChatParams = JSON.parse(JSON.stringify(dialogParams ?? {}))
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatParams): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							appliedKeys: dialogParamsKeys.slice(0, 20)
+						}
+					)
+				}
+				const curRefsLen = Array.isArray(targetNode.nodeChatSelectedRefs)
+					? targetNode.nodeChatSelectedRefs.length
+					: 0
+				const dialogRefsLen = Array.isArray(dialogRefs) ? dialogRefs.length : 0
+				if (dialogRefsLen > curRefsLen) {
+					targetNode.nodeChatSelectedRefs = JSON.parse(JSON.stringify(dialogRefs ?? []))
+					console.log(
+						'[DraftFlow#store hydrateDraft] ULTIMATE_FALLBACK(nodeChatSelectedRefs): re-applied from floating dialog',
+						{
+							nodeId: dialogNodeId,
+							fromNodesByIdLen: curRefsLen,
+							fromDialogLen: dialogRefsLen
+						}
+					)
+				}
+			}
 
 			// resources
 			// Keep blob urls during hydrate so imported project packages can use in-memory assets
@@ -2306,6 +2865,68 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const normalized = normalizeResource(r, rid)
 				if (normalized) {
 					nextResourcesById[rid] = normalized
+					nextResourceOrder.push(rid)
+				}
+			}
+			// 保留当前state中存在但snapshot中不存在的资源（新添加但尚未同步到引擎的资源）
+			// 但只保留近期添加的资源（5秒内，窗口比节点稍长因为资源绑定可能有延迟）
+			// 使用createdAt时间戳（addResource时设置）判断，避免阻止删除同步
+			// 重要：如果snapshot本身没有资源（清空画布操作），则不保留任何资源
+			const snapshotHasResources = Object.keys(rawResourcesById).length > 0
+			const preservedResourceIds: string[] = []
+			const NEW_RESOURCE_PRESERVE_WINDOW_MS = 5000
+			if (snapshotHasResources) {
+				for (const [existingRid, existingRes] of Object.entries(state.resourcesById)) {
+					if (!nextResourcesById[existingRid] && existingRes) {
+						const createdAt = Number((existingRes as any).createdAt ?? 0)
+						const isRecentNew = createdAt > 0 && now - createdAt < NEW_RESOURCE_PRESERVE_WINDOW_MS
+						if (isRecentNew) {
+							nextResourcesById[existingRid] = existingRes
+							preservedResourceIds.push(existingRid)
+							console.log(
+								'[DraftFlow#store hydrateDraft] PRESERVE(resource): keeping recently added resource not in snapshot',
+								{
+									resourceId: existingRid,
+									resourceKind: existingRes.kind,
+									hasUrl: !!existingRes.url,
+									ageMs: now - createdAt
+								}
+							)
+						} else {
+							console.log(
+								'[DraftFlow#store hydrateDraft] REMOVE(resource): resource not in snapshot and not recent, will be deleted (sync from engine)',
+								{
+									resourceId: existingRid,
+									resourceKind: existingRes.kind,
+									hasUrl: !!existingRes.url,
+									ageMs: createdAt > 0 ? now - createdAt : 'unknown'
+								}
+							)
+						}
+					} else if (nextResourcesById[existingRid] && existingRes) {
+						// 合并策略：如果现有资源有url而snapshot中没有，保留现有url
+						const existingResAny = existingRes as any
+						const snapshotResAny = nextResourcesById[existingRid] as any
+						if (existingResAny.url && !snapshotResAny.url) {
+							snapshotResAny.url = existingResAny.url
+							console.log(
+								'[DraftFlow#store hydrateDraft] MERGE(resource): preserving existing URL',
+								{
+									resourceId: existingRid,
+									url: String(existingResAny.url || '').slice(0, 80)
+								}
+							)
+						}
+					}
+				}
+			} else {
+				console.log(
+					'[DraftFlow#store hydrateDraft] CLEAR(resources): snapshot has no resources, clearing all resources (full reset)'
+				)
+			}
+			// 将保留的新资源添加到resourceOrder末尾
+			for (const rid of preservedResourceIds) {
+				if (!nextResourceOrder.includes(rid)) {
 					nextResourceOrder.push(rid)
 				}
 			}
@@ -2359,8 +2980,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			)
 			const primaryRaw = isString(s.selectedNodeId) ? s.selectedNodeId : null
 			state.selectedNodeIds = ids
-			state.selectedNodeId =
-				primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? state.nodeOrder[0] ?? null)
+			state.selectedNodeId = primaryRaw && ids.includes(primaryRaw) ? primaryRaw : (ids[0] ?? null)
 			state.selectedEdgeId = null
 			state.clipboardNode = null
 			state.clipboardNodes = null
@@ -2423,8 +3043,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		addResource(state, payload: WorkflowResource) {
 			const id = String(payload?.id ?? '').trim()
 			if (!id) return
-			state.resourcesById[id] = payload
-			if (!state.resourceOrder.includes(id)) state.resourceOrder.push(id)
+			// 确保资源有createdAt时间戳，用于hydrateDraft判断是否为新资源
+			const createdAt = Number((payload as any).createdAt)
+			const resourceWithTs = {
+				...payload,
+				createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now()
+			}
+			state.resourcesById[id] = resourceWithTs as any
+			if (!state.resourceOrder.includes(id)) state.resourceOrder = [...state.resourceOrder, id]
 		},
 		patchResource(
 			state: WorkflowState,
@@ -2470,22 +3096,32 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 		) {
 			const newNodeIds: string[] = []
+			const newResourceIds: string[] = []
+			const newEdgeIds: string[] = []
 			for (const res of payload.resources) {
 				if (!res || !res.id) continue
 				state.resourcesById[res.id] = res
-				if (!state.resourceOrder.includes(res.id)) state.resourceOrder.push(res.id)
+				if (!state.resourceOrder.includes(res.id)) newResourceIds.push(res.id)
 			}
 			for (const node of payload.nodes) {
 				if (!node || !node.id) continue
 				state.nodesById[node.id] = node
-				state.nodeOrder.push(node.id)
 				newNodeIds.push(node.id)
 			}
 			for (const edge of payload.edges) {
 				if (!edge || !edge.id) continue
 				if (!state.nodesById[edge.fromNodeId] || !state.nodesById[edge.toNodeId]) continue
 				state.edgesById[edge.id] = edge
-				state.edgeOrder.push(edge.id)
+				newEdgeIds.push(edge.id)
+			}
+			if (newResourceIds.length > 0) {
+				state.resourceOrder = [...state.resourceOrder, ...newResourceIds]
+			}
+			if (newNodeIds.length > 0) {
+				state.nodeOrder = [...state.nodeOrder, ...newNodeIds]
+			}
+			if (newEdgeIds.length > 0) {
+				state.edgeOrder = [...state.edgeOrder, ...newEdgeIds]
 			}
 			state.selectedNodeIds = newNodeIds
 			state.selectedNodeId = newNodeIds[0] ?? null
@@ -2585,13 +3221,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				payload.type !== 'unreal-export' &&
 				payload.type !== 'model3d' &&
 				payload.type !== 'meshy' &&
-				payload.type !== 'blender'
+				payload.type !== 'blender' &&
+				payload.type !== 'text'
 			) {
-				n.inputs = payload.type === 'text' ? [] : [{ id: 'in-0', label: '入口' }]
-				n.outputs =
-					payload.type === 'text'
-						? [{ id: 'out-text', label: '文本', mediaType: 'text' }]
-						: [{ id: 'out-0', label: '出口' }]
+				n.inputs = [{ id: 'in-0', label: '入口' }]
+				n.outputs = [{ id: 'out-0', label: '出口' }]
 			}
 			if (payload.type === 'rotate-image') {
 				n.inputs = [{ id: 'in-0', label: '图片输入', mediaType: 'image' }]
@@ -2675,13 +3309,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			if (payload.type === 'image') {
 				n.imageSettings = n.imageSettings ?? { outputWidth: 1920, outputHeight: 1080 }
-				n.inputs = [{ id: 'in-image', label: '图片输入', mediaType: 'image' }]
+				n.inputs = [
+					{
+						id: 'in-0',
+						label: '多模态输入',
+						mediaType: 'generic',
+						acceptedMediaTypes: ['text', 'image', 'video', 'model3d', 'audio'],
+						multiInput: true
+					}
+				]
 				n.outputs = [{ id: 'out-image', label: '图片输出', mediaType: 'image' }]
 			}
 			if (payload.type === 'text') {
 				n.textValue = typeof n.textValue === 'string' ? n.textValue : ''
-				n.inputs = [{ id: 'in-text', label: '文本输入', mediaType: 'text' }]
-				n.outputs = [{ id: 'out-text', label: '文本输出', mediaType: 'text' }]
+				syncTextAnchors(n)
 			}
 			if (payload.type === 'comfyui') {
 				n.comfyuiSettings =
@@ -2700,10 +3341,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						statusText: '',
 						outputs: []
 					} as WorkflowComfyUINodeSettings)
-				const baseInputs: WorkflowAnchorSpec[] = [
-					...comfyPromptAnchors(),
-					{ id: 'in-0', label: '图片输入', mediaType: 'image' }
-				]
+				const baseInputs: WorkflowAnchorSpec[] = [...comfyInputAnchors()]
 				n.inputs = baseInputs
 				n.outputs = [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
 			}
@@ -2772,6 +3410,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			}
 			enforceSingleIOAnchors(n)
 			if (payload.type === 'blender') syncBlenderAnchors(n)
+			if (payload.type === 'text') syncTextAnchors(n)
 			if (!n.sizeCustomized) {
 				if (
 					payload.type === 'image' ||
@@ -3095,10 +3734,24 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						: { id: '' }
 				)
 				.filter((a: { id: string }) => a.id)
-			n.inputs = [...prompt, ...inputs]
-			n.outputs = outputs.length
-				? outputs
-				: [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
+			n.inputs = [...comfyInputAnchors()]
+			n.outputs = outputs.length ? outputs : comfyDefaultOutputAnchors()
+			n.comfyuiSettings = {
+				...(n.comfyuiSettings ?? {}),
+				inputRequirements: payload?.inputRequirements,
+				workflowWarnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
+				previewStale: true
+			}
+		},
+		setNodeComfyUIPreviewReady(state: WorkflowState, payload: { nodeId: string }) {
+			const id = String(payload?.nodeId ?? '').trim()
+			if (!id) return
+			const n = state.nodesById[id]
+			if (!n || n.type !== 'comfyui') return
+			n.comfyuiSettings = {
+				...(n.comfyuiSettings ?? {}),
+				previewStale: false
+			}
 		},
 		setNodeImageSettings(
 			state,
@@ -3424,6 +4077,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 								meshyModelSettingsRaw.outputSummary &&
 								typeof meshyModelSettingsRaw.outputSummary === 'object'
 									? {
+											outputKind:
+												meshyModelSettingsRaw.outputSummary.outputKind === 'image' ||
+												meshyModelSettingsRaw.outputSummary.outputKind === '3d-model'
+													? meshyModelSettingsRaw.outputSummary.outputKind
+													: undefined,
 											preferredUrl:
 												typeof meshyModelSettingsRaw.outputSummary.preferredUrl === 'string'
 													? meshyModelSettingsRaw.outputSummary.preferredUrl
@@ -3443,8 +4101,30 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 											format:
 												typeof meshyModelSettingsRaw.outputSummary.format === 'string'
 													? meshyModelSettingsRaw.outputSummary.format
-													: undefined
+													: undefined,
+											imageUrls: Array.isArray(meshyModelSettingsRaw.outputSummary.imageUrls)
+												? meshyModelSettingsRaw.outputSummary.imageUrls
+														.map((x: unknown) => (typeof x === 'string' ? x : ''))
+														.filter((x: string) => !!x)
+												: undefined
 										}
+									: undefined,
+							outputAssetUrl:
+								typeof meshyModelSettingsRaw.outputAssetUrl === 'string'
+									? meshyModelSettingsRaw.outputAssetUrl
+									: undefined,
+							outputAssetPath:
+								typeof meshyModelSettingsRaw.outputAssetPath === 'string'
+									? meshyModelSettingsRaw.outputAssetPath
+									: undefined,
+							thumbnailUrl:
+								typeof meshyModelSettingsRaw.thumbnailUrl === 'string'
+									? meshyModelSettingsRaw.thumbnailUrl
+									: undefined,
+							relationSummary:
+								meshyModelSettingsRaw.relationSummary &&
+								typeof meshyModelSettingsRaw.relationSummary === 'object'
+									? { ...(meshyModelSettingsRaw.relationSummary as Record<string, unknown>) }
 									: undefined,
 							relationKind:
 								meshyModelSettingsRaw.relationKind === 'model' ||
@@ -3468,7 +4148,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						}
 					: undefined
 
-			const patch: Partial<WorkflowModel3DNodeSettings & { meshyModelSettings?: unknown; tripo3dModelSettings?: unknown }> = {
+			const patch: Partial<
+				WorkflowModel3DNodeSettings & {
+					meshyModelSettings?: unknown
+					tripo3dModelSettings?: unknown
+				}
+			> = {
 				...next
 			}
 			if (patch.lightIntensity != null)
@@ -3507,7 +4192,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					? { meshyModelSettings: mergedMeshy as WorkflowModel3DNodeSettings['meshyModelSettings'] }
 					: {}),
 				...(mergedTripo3d
-					? { tripo3dModelSettings: mergedTripo3d as WorkflowModel3DNodeSettings['tripo3dModelSettings'] }
+					? {
+							tripo3dModelSettings:
+								mergedTripo3d as WorkflowModel3DNodeSettings['tripo3dModelSettings']
+						}
 					: {}),
 				...patch
 			}
@@ -3831,9 +4519,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						createdAt: Date.now()
 					}
 					state.nodesById[id] = node
-					state.nodeOrder.push(id)
 					newIds.push(id)
 				}
+				state.nodeOrder = [...state.nodeOrder, ...newIds]
 				state.selectedNodeIds = newIds
 				state.selectedNodeId = newIds[0] ?? null
 				state.selectedEdgeId = null
@@ -3859,7 +4547,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
-			state.nodeOrder.push(id)
+			state.nodeOrder = [...state.nodeOrder, id]
 			state.selectedNodeId = id
 			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
@@ -3992,7 +4680,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (next.type === 'scene-layout') syncSceneLayoutAnchors(next)
 			if (next.type === 'scene-decompose') syncSceneDecomposeAnchors(next)
 			enforceSingleIOAnchors(next)
-			if (!state.nodeOrder.includes(id)) state.nodeOrder.push(id)
+			if (!state.nodeOrder.includes(id)) state.nodeOrder = [...state.nodeOrder, id]
 		},
 		addNodeAt(state, payload: { worldX: number; worldY: number; title?: string }) {
 			const id = makeId('wf-node')
@@ -4014,7 +4702,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.nodesById[id] = node
-			state.nodeOrder.push(id)
+			state.nodeOrder = [...state.nodeOrder, id]
 			state.selectedNodeId = id
 			state.selectedNodeIds = [id]
 			state.selectedEdgeId = null
@@ -4103,7 +4791,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				createdAt: Date.now()
 			}
 			state.edgesById[id] = edge
-			state.edgeOrder.push(id)
+			state.edgeOrder = [...state.edgeOrder, id]
 			state.selectedEdgeId = id
 			state.selectedNodeId = null
 			state.selectedNodeIds = []
@@ -4130,119 +4818,284 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (state.selectedEdgeId && !state.edgesById[state.selectedEdgeId])
 				state.selectedEdgeId = null
 		},
-		openNodeChatDialog(state, payload: { nodeId: string; nodeType: WorkflowNodeChatType }) {
+		openNodeChatDialog(
+			state,
+			payload: {
+				nodeId: string
+				nodeType: WorkflowNodeChatType
+				engineNodeChatDraft?: string
+				engineNodeChatParams?: Record<string, unknown>
+				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
+			const prevDialogNodeId = state.nodeChatDialog.nodeId
+			const prevDialogDraft = state.nodeChatDialog.draft ?? ''
+			const prevDialogParams = state.nodeChatDialog.params ?? ({} as Record<string, unknown>)
+			const prevDialogRefs = state.nodeChatDialog.selectedRefs ?? []
+			const isReopeningSameNode = prevDialogNodeId === payload.nodeId && prevDialogDraft.length > 0
+			if (isReopeningSameNode) {
+				const targetNode = state.nodesById[payload.nodeId]
+				if (targetNode) {
+					const currentNodesByIdDraft = (targetNode as any).nodeChatDraft ?? ''
+					const recovered =
+						prevDialogDraft.length >= currentNodesByIdDraft.length
+							? prevDialogDraft
+							: currentNodesByIdDraft
+					;(targetNode as any).nodeChatDraft = recovered
+					const currentParams = (targetNode as any).nodeChatParams
+					const hasCurrentParams =
+						currentParams &&
+						typeof currentParams === 'object' &&
+						Object.keys(currentParams).length > 0
+					const hasPrevParams = Object.keys(prevDialogParams).length > 0
+					if (!hasCurrentParams && hasPrevParams) {
+						;(targetNode as any).nodeChatParams = JSON.parse(JSON.stringify(prevDialogParams))
+					}
+					const currentRefs = (targetNode as any).nodeChatSelectedRefs
+					const hasCurrentRefs = Array.isArray(currentRefs) && currentRefs.length > 0
+					const hasPrevRefs = prevDialogRefs.length > 0
+					if (!hasCurrentRefs && hasPrevRefs) {
+						;(targetNode as any).nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevDialogRefs))
+					}
+				}
+			}
+
 			state.nodeChatDialog.visible = true
 			state.nodeChatDialog.nodeId = payload.nodeId
 			state.nodeChatDialog.nodeType = payload.nodeType
 			const node = state.nodesById[payload.nodeId]
-			let draft = ''
-			if (payload.nodeType !== 'text') {
-				draft = node?.textValue ?? ''
+
+			let draft: string
+			const vuexDraft = node?.nodeChatDraft ?? ''
+			const engineDraft = payload.engineNodeChatDraft ?? ''
+			let recoveredFromPrevDialog = ''
+			if (
+				isReopeningSameNode &&
+				prevDialogDraft.length > vuexDraft.length &&
+				prevDialogDraft.length > engineDraft.length
+			) {
+				recoveredFromPrevDialog = prevDialogDraft
 			}
-			if (!draft) {
+			const candidateFromFour = [vuexDraft, engineDraft, recoveredFromPrevDialog] as const
+			draft = candidateFromFour.reduce((best, cur) => (cur.length >= best.length ? cur : best), '')
+
+			const fallbackFromTextValue: string | null = (() => {
+				if (draft) return null
+				if (payload.nodeType !== 'text') return node?.textValue ?? ''
+				return null
+			})()
+			if (fallbackFromTextValue !== null) draft = fallbackFromTextValue
+			const fallbackFromPrompt: string | null = (() => {
+				if (draft) return null
 				const nodePrompt = (node as Record<string, unknown>).prompt
-				draft = typeof nodePrompt === 'string' ? nodePrompt : ''
-			}
-			if (!draft) {
-				draft = node?.nodeChatDraft ?? ''
-			}
+				return typeof nodePrompt === 'string' ? nodePrompt : null
+			})()
+			if (fallbackFromPrompt !== null) draft = fallbackFromPrompt
 			state.nodeChatDialog.draft = draft
+
+			console.log('[DraftFlow#store openNodeChatDialog] MUTATION', {
+				nodeId: payload.nodeId,
+				nodeType: payload.nodeType,
+				isReopeningSameNode,
+				vuexDraftLen: vuexDraft.length,
+				engineDraftLen: engineDraft.length,
+				floatingDialogDraftLen: prevDialogDraft.length,
+				recoveredFromPrevDialogLen: recoveredFromPrevDialog.length,
+				vuexDraftPreview:
+					vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)',
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
+				floatingDialogDraftPreview:
+					prevDialogDraft.length > 40
+						? prevDialogDraft.slice(0, 40) + '...'
+						: prevDialogDraft || '(empty)',
+				finalDraftLen: draft.length,
+				finalDraftPreview: draft.length > 40 ? draft.slice(0, 40) + '...' : draft || '(empty)',
+				fallbackFromTextValue:
+					fallbackFromTextValue !== null ? String(fallbackFromTextValue.length) : null,
+				fallbackFromPromptUsed: fallbackFromPrompt !== null,
+				vuexNodeChatParamsKeys: node?.nodeChatParams
+					? Object.keys(node.nodeChatParams as Record<string, unknown>)
+					: null,
+				engineNodeChatParamsKeys: payload.engineNodeChatParams
+					? Object.keys(payload.engineNodeChatParams)
+					: null,
+				vuexSelectedRefsLen: Array.isArray(node?.nodeChatSelectedRefs)
+					? node.nodeChatSelectedRefs.length
+					: -1,
+				engineSelectedRefsLen: Array.isArray(payload.engineNodeChatSelectedRefs)
+					? payload.engineNodeChatSelectedRefs.length
+					: -1
+			})
+
+			const vuexRefs = node?.nodeChatSelectedRefs ?? []
+			const engineRefs = payload.engineNodeChatSelectedRefs ?? []
+			const resolvedSelectedRefs =
+				(Array.isArray(vuexRefs) ? vuexRefs.length : 0) >=
+				(Array.isArray(engineRefs) ? engineRefs.length : 0)
+					? vuexRefs
+						? JSON.parse(JSON.stringify(vuexRefs))
+						: []
+					: engineRefs
+						? JSON.parse(JSON.stringify(engineRefs))
+						: []
+			state.nodeChatDialog.selectedRefs = normalizeChatSelectedRefs(resolvedSelectedRefs) ?? []
+			console.log('[DraftFlow#store openNodeChatDialog] selectedRefs RESOLVED', {
+				nodeId: payload.nodeId,
+				vuexRefsLen: Array.isArray(vuexRefs) ? vuexRefs.length : -1,
+				engineRefsLen: Array.isArray(engineRefs) ? engineRefs.length : -1,
+				resolvedRefsLen: state.nodeChatDialog.selectedRefs.length,
+				firstResolvedRef:
+					state.nodeChatDialog.selectedRefs.length > 0
+						? {
+								kind: state.nodeChatDialog.selectedRefs[0].kind,
+								fromNodeId: state.nodeChatDialog.selectedRefs[0].fromNodeId,
+								label: String(state.nodeChatDialog.selectedRefs[0].label ?? '').slice(0, 30)
+							}
+						: null
+			})
+
 			if (payload.nodeType === 'blender') {
 				state.nodeChatDialog.submitting = Boolean(node?.blenderSettings?.isSubmitting)
 			} else {
 				state.nodeChatDialog.submitting = false
 			}
 
-			// 构建聊天参数：从nodeChatParams读取，并从imageSettings.meshyImageSettings同步meshy参数
-			const existingChatParams: Record<string, unknown> = (node?.nodeChatParams as Record<string, unknown>) ?? {}
+			const vuexParams: Record<string, unknown> =
+				(node?.nodeChatParams as Record<string, unknown>) ?? {}
+			const engineParams = payload.engineNodeChatParams ?? {}
+			const existingChatParams: Record<string, unknown> = { ...engineParams, ...vuexParams }
 			const typeKey = payload.nodeType
 			const existingTypeParams: Record<string, unknown> =
 				typeof existingChatParams[typeKey] === 'object' && existingChatParams[typeKey] !== null
 					? (existingChatParams[typeKey] as Record<string, unknown>)
 					: {}
 
-			// 从imageSettings.meshyImageSettings同步meshy参数（如果是image节点）
 			const syncedMeshyParams: Record<string, unknown> = {}
 			if (typeKey === 'image' && node) {
-				const imgSettings = (node as Record<string, unknown>).imageSettings as Record<string, unknown> | undefined
+				const imgSettings = (node as Record<string, unknown>).imageSettings as
+					| Record<string, unknown>
+					| undefined
 				const meshyImgSettings =
 					typeof imgSettings === 'object' && imgSettings !== null
 						? (imgSettings.meshyImageSettings as Record<string, unknown> | undefined)
 						: undefined
 				if (meshyImgSettings && typeof meshyImgSettings === 'object') {
-					// 从submittedParams中获取提交过的参数（优先）
 					const submittedParams =
-						typeof meshyImgSettings.submittedParams === 'object' && meshyImgSettings.submittedParams !== null
+						typeof meshyImgSettings.submittedParams === 'object' &&
+						meshyImgSettings.submittedParams !== null
 							? (meshyImgSettings.submittedParams as Record<string, unknown>)
 							: undefined
 
 					if (submittedParams) {
-						// model是meshy的AI模型名（如nano-banana），需要设置params.model='meshy'和params.meshyImageAiModel
 						if (typeof submittedParams.model === 'string' && submittedParams.model) {
 							syncedMeshyParams.model = 'meshy'
 							syncedMeshyParams.meshyImageAiModel = submittedParams.model
 						}
-						// aspectRatio：处理'1:1 (多视图)'格式
 						if (typeof submittedParams.aspectRatio === 'string') {
 							const ar = submittedParams.aspectRatio.replace(/\s*\(多视图\)\s*/g, '').trim()
 							if (ar) syncedMeshyParams.meshyAspectRatio = ar
 						}
-						// generateMultiView：布尔值
 						if (typeof submittedParams.generateMultiView === 'boolean') {
 							syncedMeshyParams.meshyGenerateMultiView = submittedParams.generateMultiView
 						}
-						// poseMode：'无'表示空
-						if (typeof submittedParams.poseMode === 'string' && submittedParams.poseMode && submittedParams.poseMode !== '无') {
+						if (
+							typeof submittedParams.poseMode === 'string' &&
+							submittedParams.poseMode &&
+							submittedParams.poseMode !== '无'
+						) {
 							syncedMeshyParams.meshyPoseMode = submittedParams.poseMode
 						}
-						// negativePrompt：'无'表示空
-						if (typeof submittedParams.negativePrompt === 'string' && submittedParams.negativePrompt && submittedParams.negativePrompt !== '无') {
+						if (
+							typeof submittedParams.negativePrompt === 'string' &&
+							submittedParams.negativePrompt &&
+							submittedParams.negativePrompt !== '无'
+						) {
 							syncedMeshyParams.meshyNegativePrompt = submittedParams.negativePrompt
 						}
-						// seed：'随机'表示-1
 						if (typeof submittedParams.seed === 'number' && submittedParams.seed >= 0) {
 							syncedMeshyParams.meshySeed = submittedParams.seed
 						}
-						// outputCount
-						if (typeof submittedParams.outputCount === 'number' && submittedParams.outputCount > 0) {
-							syncedMeshyParams.meshyOutputImageCount = Math.min(4, Math.floor(submittedParams.outputCount))
+						if (
+							typeof submittedParams.outputCount === 'number' &&
+							submittedParams.outputCount > 0
+						) {
+							syncedMeshyParams.meshyOutputImageCount = Math.min(
+								4,
+								Math.floor(submittedParams.outputCount)
+							)
 						}
 					}
 
-					// 直接从meshyImageSettings中读取（作为兜底）
-					if (typeof meshyImgSettings.aiModel === 'string' && meshyImgSettings.aiModel && !syncedMeshyParams.meshyImageAiModel) {
+					if (
+						typeof meshyImgSettings.aiModel === 'string' &&
+						meshyImgSettings.aiModel &&
+						!syncedMeshyParams.meshyImageAiModel
+					) {
 						syncedMeshyParams.meshyImageAiModel = meshyImgSettings.aiModel
 						syncedMeshyParams.model = 'meshy'
 					}
-					if (typeof meshyImgSettings.aspectRatio === 'string' && meshyImgSettings.aspectRatio && !syncedMeshyParams.meshyAspectRatio) {
+					if (
+						typeof meshyImgSettings.aspectRatio === 'string' &&
+						meshyImgSettings.aspectRatio &&
+						!syncedMeshyParams.meshyAspectRatio
+					) {
 						syncedMeshyParams.meshyAspectRatio = meshyImgSettings.aspectRatio
 					}
-					if (typeof meshyImgSettings.generateMultiView === 'boolean' && syncedMeshyParams.meshyGenerateMultiView === undefined) {
+					if (
+						typeof meshyImgSettings.generateMultiView === 'boolean' &&
+						syncedMeshyParams.meshyGenerateMultiView === undefined
+					) {
 						syncedMeshyParams.meshyGenerateMultiView = meshyImgSettings.generateMultiView
 					}
-					if (typeof meshyImgSettings.poseMode === 'string' && meshyImgSettings.poseMode && !syncedMeshyParams.meshyPoseMode) {
+					if (
+						typeof meshyImgSettings.poseMode === 'string' &&
+						meshyImgSettings.poseMode &&
+						!syncedMeshyParams.meshyPoseMode
+					) {
 						syncedMeshyParams.meshyPoseMode = meshyImgSettings.poseMode
 					}
-					if (typeof meshyImgSettings.negativePrompt === 'string' && meshyImgSettings.negativePrompt && !syncedMeshyParams.meshyNegativePrompt) {
+					if (
+						typeof meshyImgSettings.negativePrompt === 'string' &&
+						meshyImgSettings.negativePrompt &&
+						!syncedMeshyParams.meshyNegativePrompt
+					) {
 						syncedMeshyParams.meshyNegativePrompt = meshyImgSettings.negativePrompt
 					}
-					if (typeof meshyImgSettings.seed === 'number' && meshyImgSettings.seed >= 0 && syncedMeshyParams.meshySeed === undefined) {
+					if (
+						typeof meshyImgSettings.seed === 'number' &&
+						meshyImgSettings.seed >= 0 &&
+						syncedMeshyParams.meshySeed === undefined
+					) {
 						syncedMeshyParams.meshySeed = meshyImgSettings.seed
 					}
-					if (typeof meshyImgSettings.outputImageCount === 'number' && meshyImgSettings.outputImageCount > 0 && syncedMeshyParams.meshyOutputImageCount === undefined) {
-						syncedMeshyParams.meshyOutputImageCount = Math.min(4, Math.floor(meshyImgSettings.outputImageCount))
+					if (
+						typeof meshyImgSettings.outputImageCount === 'number' &&
+						meshyImgSettings.outputImageCount > 0 &&
+						syncedMeshyParams.meshyOutputImageCount === undefined
+					) {
+						syncedMeshyParams.meshyOutputImageCount = Math.min(
+							4,
+							Math.floor(meshyImgSettings.outputImageCount)
+						)
 					}
 				}
 			}
 
-			// 从blenderSettings同步参数（如果是blender节点）- 作为兜底，确保重启后参数能恢复
 			const syncedBlenderParams: Record<string, unknown> = {}
 			if (typeKey === 'blender' && node) {
-				const blenderSettings = (node as Record<string, unknown>).blenderSettings as Record<string, unknown> | undefined
+				const blenderSettings = (node as Record<string, unknown>).blenderSettings as
+					| Record<string, unknown>
+					| undefined
 				if (blenderSettings && typeof blenderSettings === 'object') {
 					const blenderFields = [
-						'agentBackend', 'agentSessionId', 'model', 'modelId',
-						'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'
+						'agentBackend',
+						'agentSessionId',
+						'model',
+						'modelId',
+						'geminiTextModelVersion',
+						'textModelVersion',
+						'thinkingEffort'
 					] as const
 					for (const field of blenderFields) {
 						if (typeof blenderSettings[field] === 'string' && blenderSettings[field]) {
@@ -4252,51 +5105,159 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 			}
 
-			// 合并参数：现有nodeChatParams优先，然后是从meshyImageSettings/blenderSettings同步的参数
-			const mergedTypeParams = { ...syncedMeshyParams, ...syncedBlenderParams, ...existingTypeParams }
+			const mergedTypeParams = {
+				...syncedMeshyParams,
+				...syncedBlenderParams,
+				...existingTypeParams
+			}
 			state.nodeChatDialog.params = {
 				...existingChatParams,
 				[typeKey]: mergedTypeParams
 			}
 		},
 		closeNodeChatDialog(state) {
+			const prevNodeId = state.nodeChatDialog.nodeId
+			const prevDraft = state.nodeChatDialog.draft ?? ''
+			const prevParams = state.nodeChatDialog.params ?? {}
+			const prevSelectedRefs = state.nodeChatDialog.selectedRefs ?? []
+			const prevDraftLen = prevDraft?.length ?? -1
+			const prevDraftPreview =
+				(prevDraft || '').length > 40
+					? (prevDraft as string).slice(0, 40) + '...'
+					: prevDraft || '(empty)'
+			console.log('[DraftFlow#store closeNodeChatDialog] MUTATION', {
+				prevNodeId,
+				prevDraftLen,
+				prevDraftPreview,
+				prevParamsKeys: Object.keys(prevParams),
+				prevSelectedRefsLen: Array.isArray(prevSelectedRefs) ? prevSelectedRefs.length : -1,
+				nodesByIdNodeChatDraft:
+					prevNodeId && state.nodesById[prevNodeId]
+						? ((state.nodesById[prevNodeId] as any).nodeChatDraft?.length ?? -1)
+						: -1,
+				nodesByIdNodeChatParamsKeys:
+					prevNodeId && state.nodesById[prevNodeId]
+						? Object.keys((state.nodesById[prevNodeId] as any).nodeChatParams ?? {})
+						: null,
+				nodesByIdNodeChatSelectedRefsLen:
+					prevNodeId && state.nodesById[prevNodeId]
+						? Array.isArray((state.nodesById[prevNodeId] as any).nodeChatSelectedRefs)
+							? (state.nodesById[prevNodeId] as any).nodeChatSelectedRefs.length
+							: -1
+						: -1,
+				willPreserveNodeIdAndDraft: true
+			})
+			// 关闭对话框前，显式将所有状态（草稿、参数、@引用）持久化到nodesById
+			if (prevNodeId && state.nodesById[prevNodeId]) {
+				const targetNode = state.nodesById[prevNodeId] as any
+				if (typeof prevDraft === 'string') {
+					targetNode.nodeChatDraft = prevDraft
+					targetNode.prompt = prevDraft
+				}
+				if (prevParams && typeof prevParams === 'object') {
+					targetNode.nodeChatParams = JSON.parse(JSON.stringify(prevParams))
+				}
+				if (Array.isArray(prevSelectedRefs)) {
+					targetNode.nodeChatSelectedRefs = JSON.parse(JSON.stringify(prevSelectedRefs))
+					console.log('[DraftFlow#store closeNodeChatDialog] PERSIST selectedRefs to nodesById', {
+						nodeId: prevNodeId,
+						refsLen: prevSelectedRefs.length
+					})
+				}
+			}
 			state.nodeChatDialog.visible = false
-			state.nodeChatDialog.nodeId = null
-			state.nodeChatDialog.nodeType = null
-			state.nodeChatDialog.draft = ''
 			state.nodeChatDialog.submitting = false
 		},
-		setNodeChatDraft(state, payload: { text: string }) {
-			state.nodeChatDialog.draft = payload.text
-			if (state.nodeChatDialog.nodeId) {
-				const node = state.nodesById[state.nodeChatDialog.nodeId]
-				if (node) {
-					node.nodeChatDraft = payload.text
-					;(node as Record<string, unknown>).prompt = payload.text
+		// ========== 新的批量快照 mutation：一次设置 draft+params+refs，引用更稳定 ==========
+		setNodeChatDialogSnapshot(
+			state: WorkflowState,
+			payload: {
+				draft?: string
+				params?: Record<string, unknown>
+				selectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
+			const curNodeId = state.nodeChatDialog.nodeId
+			const targetWriteNode = curNodeId ? state.nodesById[curNodeId] : null
+
+			let changed = false
+
+			// draft：内容一致就跳过
+			if (payload.draft !== undefined && state.nodeChatDialog.draft !== payload.draft) {
+				state.nodeChatDialog.draft = payload.draft
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatDraft = payload.draft
+					;(targetWriteNode as any).prompt = payload.draft
 				}
+				changed = true
+			}
+
+			// params：深比较一致就跳过
+			if (
+				payload.params !== undefined &&
+				!areParamsEqual(state.nodeChatDialog.params, payload.params)
+			) {
+				state.nodeChatDialog.params = { ...payload.params }
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatParams = state.nodeChatDialog.params
+				}
+				changed = true
+			}
+
+			// selectedRefs：深比较一致就跳过
+			if (
+				payload.selectedRefs !== undefined &&
+				!areSelectedRefsEqual(state.nodeChatDialog.selectedRefs, payload.selectedRefs)
+			) {
+				state.nodeChatDialog.selectedRefs = [...payload.selectedRefs]
+				if (targetWriteNode) {
+					;(targetWriteNode as any).nodeChatSelectedRefs =
+						state.nodeChatDialog.selectedRefs.length === 0
+							? undefined
+							: state.nodeChatDialog.selectedRefs
+				}
+				changed = true
+			}
+
+			return changed
+		},
+
+		setNodeChatDraft(state, payload: { text: string }) {
+			// 幂等：内容一致就跳过
+			if (state.nodeChatDialog.draft === payload.text) return
+			const curDialogNodeId = state.nodeChatDialog.nodeId
+			state.nodeChatDialog.draft = payload.text
+			const targetNodeId = curDialogNodeId
+			const tryWrite = targetNodeId && state.nodesById[targetNodeId]
+			if (tryWrite) {
+				;(state.nodesById[targetNodeId] as any).nodeChatDraft = payload.text
+				;(state.nodesById[targetNodeId] as any).prompt = payload.text
 			}
 		},
 		setNodeChatParams(state: WorkflowState, payload: { params: Record<string, unknown> }) {
-			state.nodeChatDialog.params = payload.params
-			if (state.nodeChatDialog.nodeId) {
-				const node = state.nodesById[state.nodeChatDialog.nodeId]
-				if (node) {
-					node.nodeChatParams = payload.params
-					// 对于blender节点，实时同步chat参数到blenderSettings确保持久化
-					if (node.type === 'blender') {
-						const blenderParams = payload.params?.blender
-						if (blenderParams && typeof blenderParams === 'object') {
-							node.blenderSettings = node.blenderSettings ?? ({} as WorkflowBlenderNodeSettings)
-							const fields = ['agentBackend', 'agentSessionId', 'model', 'modelId', 'geminiTextModelVersion', 'textModelVersion', 'thinkingEffort'] as const
-							for (const field of fields) {
-								const val = (blenderParams as Record<string, unknown>)[field]
-								if (typeof val === 'string') {
-									(node.blenderSettings as Record<string, unknown>)[field] = val
-								}
-							}
-						}
-					}
-				}
+			// 幂等：内容一致就跳过，避免引用变化导致的虚假更新
+			if (areParamsEqual(state.nodeChatDialog.params, payload.params)) return
+			state.nodeChatDialog.params = { ...payload.params }
+			const curNodeId = state.nodeChatDialog.nodeId
+			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
+			if (writeToNodesById) {
+				;(state.nodesById[curNodeId] as any).nodeChatParams = state.nodeChatDialog.params
+			}
+		},
+		setNodeChatSelectedRefs(
+			state: WorkflowState,
+			payload: { refs: WorkflowNodeChatSelectedRef[] }
+		) {
+			// 幂等：内容一致就跳过
+			if (areSelectedRefsEqual(state.nodeChatDialog.selectedRefs, payload.refs)) return
+			state.nodeChatDialog.selectedRefs = [...payload.refs]
+			const curNodeId = state.nodeChatDialog.nodeId
+			const writeToNodesById = curNodeId && state.nodesById[curNodeId]
+			if (writeToNodesById) {
+				;(state.nodesById[curNodeId] as any).nodeChatSelectedRefs =
+					state.nodeChatDialog.selectedRefs.length === 0
+						? undefined
+						: state.nodeChatDialog.selectedRefs
 			}
 		},
 		setNodeChatSubmitting(state, payload: { submitting: boolean }) {
@@ -4631,10 +5592,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (idx < 0) return
 			msgs[idx] = { ...msgs[idx], collapsed: !(msgs[idx] as any).collapsed }
 		},
-		removeBlenderChatMessage(
-			state: WorkflowState,
-			payload: { nodeId: string; messageId: string }
-		) {
+		removeBlenderChatMessage(state: WorkflowState, payload: { nodeId: string; messageId: string }) {
 			const node = state.nodesById[payload.nodeId]
 			if (!node) return
 			const msgs = node.blenderSettings?.chatMessages
@@ -4712,19 +5670,77 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		removeEdge({ commit }, payload: { edgeId: string }) {
 			commit('removeEdge', payload)
 		},
-		openNodeChatDialog({ commit, state }, payload: { nodeId: string }) {
+		openNodeChatDialog(
+			{ commit, state },
+			payload: {
+				nodeId: string
+				nodeType?: WorkflowNodeChatType
+				engineNodeChatDraft?: string
+				engineNodeChatParams?: Record<string, unknown>
+				engineNodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
 			const node = state.nodesById[payload.nodeId]
-			if (!node) return
-			const nodeType = node.type as WorkflowNodeChatType
+			const engineDraft = payload.engineNodeChatDraft ?? ''
+			const vuexDraft = (node as any)?.nodeChatDraft ?? ''
+			console.log('[DraftFlow#store action openNodeChatDialog] START', {
+				payloadNodeId: payload.nodeId,
+				payloadNodeType: payload.nodeType,
+				engineDraftLen: engineDraft.length,
+				engineDraftPreview:
+					engineDraft.length > 40 ? engineDraft.slice(0, 40) + '...' : engineDraft || '(empty)',
+				foundNodeInVuex: !!node,
+				vuexNodeType: node?.type,
+				vuexDraftLen: vuexDraft.length,
+				vuexDraftPreview:
+					vuexDraft.length > 40 ? vuexDraft.slice(0, 40) + '...' : vuexDraft || '(empty)'
+			})
+			if (!node) {
+				console.warn(
+					'[DraftFlow#store action openNodeChatDialog] ABORT: node not found in state.nodesById',
+					{
+						nodeId: payload.nodeId,
+						nodesByIdKeys: Object.keys(state.nodesById).slice(0, 20),
+						totalNodes: Object.keys(state.nodesById).length
+					}
+				)
+				return
+			}
+			let nodeType: WorkflowNodeChatType
 			if (
-			nodeType !== 'text' &&
-			nodeType !== 'image' &&
-			nodeType !== 'video' &&
-			nodeType !== 'model3d' &&
-			nodeType !== 'blender'
-		)
-			return
-			commit('openNodeChatDialog', { nodeId: payload.nodeId, nodeType })
+				typeof payload.nodeType === 'string' &&
+				['text', 'image', 'video', 'model3d', 'blender'].includes(payload.nodeType)
+			) {
+				nodeType = payload.nodeType
+			} else {
+				nodeType = node.type as WorkflowNodeChatType
+			}
+			if (
+				nodeType !== 'text' &&
+				nodeType !== 'image' &&
+				nodeType !== 'video' &&
+				nodeType !== 'model3d' &&
+				nodeType !== 'blender'
+			) {
+				console.warn('[DraftFlow#store action openNodeChatDialog] ABORT: unsupported nodeType', {
+					nodeId: payload.nodeId,
+					nodeType,
+					passedNodeType: payload.nodeType,
+					vuexNodeActualType: node.type
+				})
+				return
+			}
+			console.log('[DraftFlow#store action openNodeChatDialog] ABOUT TO COMMIT', {
+				nodeId: payload.nodeId,
+				resolvedNodeType: nodeType
+			})
+			commit('openNodeChatDialog', {
+				nodeId: payload.nodeId,
+				nodeType,
+				engineNodeChatDraft: payload.engineNodeChatDraft,
+				engineNodeChatParams: payload.engineNodeChatParams,
+				engineNodeChatSelectedRefs: payload.engineNodeChatSelectedRefs
+			})
 		},
 		closeNodeChatDialog({ commit }) {
 			commit('closeNodeChatDialog')
@@ -4734,6 +5750,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		},
 		setNodeChatParams({ commit }, payload: { params: Record<string, unknown> }) {
 			commit('setNodeChatParams', payload)
+		},
+		setNodeChatDialogSnapshot(
+			{ commit },
+			payload: {
+				draft?: string
+				params?: Record<string, unknown>
+				selectedRefs?: WorkflowNodeChatSelectedRef[]
+			}
+		) {
+			commit('setNodeChatDialogSnapshot', payload)
 		},
 		submitNodeChat({ commit }, payload: WorkflowNodeChatSubmitPayload) {
 			commit('setNodeChatSubmitting', { submitting: true })

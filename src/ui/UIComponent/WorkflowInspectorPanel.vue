@@ -1,15 +1,21 @@
 <template>
+	<div v-if="open" class="wf-inspector-mask" @click="emit('close')" />
 	<aside class="wf-inspector" :class="{ open: open }" @pointerdown.stop>
 		<div class="wf-inspector-header">
 			<div class="wf-inspector-title">属性配置</div>
-			<button
-				v-if="selectedNode"
-				class="wf-inspector-focus"
-				type="button"
-				@click="emit('focus-node', selectedNode!.id)"
-			>
-				定位节点
-			</button>
+			<div class="wf-inspector-header-actions">
+				<button
+					v-if="selectedNode"
+					class="wf-inspector-focus"
+					type="button"
+					@click="emit('focus-node', selectedNode!.id)"
+				>
+					定位节点
+				</button>
+				<button class="wf-inspector-close" type="button" @click="emit('close')" title="关闭面板">
+					✕
+				</button>
+			</div>
 		</div>
 
 		<div v-if="!hasSelection" class="wf-inspector-empty">未选中节点或连线</div>
@@ -169,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { WorkflowEdge, WorkflowNode } from '../../aiworkflow/types'
 import type { WorkflowAction } from '../../aiworkflow/actions'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
@@ -189,10 +195,25 @@ const emit = defineEmits<{
 	(e: 'upload-resource', nodeId: string, file: File, kind: 'image' | 'video'): void
 	(e: 'clear-resource', nodeId: string): void
 	(e: 'focus-node', nodeId: string): void
+	(e: 'close'): void
 	(e: 'add-branch', nodeId: string): void
 	(e: 'remove-branch', nodeId: string, branchId: string): void
 	(e: 'update-branch', nodeId: string, branchId: string, text: string): void
 }>()
+
+const handleKeydown = (e: KeyboardEvent) => {
+	if (e.key === 'Escape' && props.open) {
+		emit('close')
+	}
+}
+
+onMounted(() => {
+	window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+	window.removeEventListener('keydown', handleKeydown)
+})
 
 const hasSelection = computed(() => !!(props.selectedNode || props.selectedEdge))
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -407,6 +428,25 @@ const onBranchInput = (branchId: string, e: Event) => {
 </script>
 
 <style scoped>
+.wf-inspector-mask {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.3);
+	backdrop-filter: blur(2px);
+	-webkit-backdrop-filter: blur(2px);
+	z-index: calc(var(--aiwf-floating-z-index, 101) - 1);
+	animation: wf-mask-fade-in 180ms ease;
+}
+
+@keyframes wf-mask-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
 .wf-inspector {
 	position: fixed;
 	top: var(--aiwf-safe-top, 0px);
@@ -443,6 +483,12 @@ const onBranchInput = (branchId: string, e: Event) => {
 	gap: 8px;
 }
 
+.wf-inspector-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
 .wf-inspector-title {
 	font-size: 13px;
 	color: var(--vscode-fg);
@@ -460,6 +506,26 @@ const onBranchInput = (branchId: string, e: Event) => {
 .wf-inspector-focus:hover {
 	border-color: var(--vscode-hover-border);
 	background: var(--vscode-hover-bg);
+}
+
+.wf-inspector-close {
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	color: var(--vscode-fg-muted);
+	padding: 4px 8px;
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
+	min-width: 28px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.wf-inspector-close:hover {
+	border-color: var(--vscode-hover-border);
+	background: var(--vscode-hover-bg);
+	color: var(--vscode-fg);
 }
 
 .wf-inspector-empty {

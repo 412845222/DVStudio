@@ -95,7 +95,7 @@ const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/video-editor') || path.startsWith('/template-center') || path.startsWith('/comfyui-setup')
+	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/video-editor') || path.startsWith('/template-center') || path.startsWith('/comfyui-setup') || path.startsWith('/blueprint-test')
 })
 
 const isResourceManagerWindow = computed(() => {
@@ -259,6 +259,10 @@ onBeforeUnmount(() => {
 
 .app-shell.is-preview-window {
 	--titlebar-height: 36px;
+}
+
+.app-shell.is-preview-window:not(.electron) {
+	--titlebar-height: 0px;
 }
 
 .app-titlebar {

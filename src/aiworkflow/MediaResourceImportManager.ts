@@ -146,7 +146,8 @@ export class MediaResourceImportManager {
 			const failBatch = (reason: string) => {
 				for (const t of batch) {
 					const resourceId = String(t.resourceId ?? '').trim()
-					const kind = t.kind === 'video' ? 'video' : 'image'
+					const kind: 'image' | 'video' | 'model3d' =
+						t.kind === 'video' ? 'video' : t.kind === 'model3d' ? 'model3d' : 'image'
 					const cb = callbacks.get(resourceId)
 					if (!cb) continue
 					try {
