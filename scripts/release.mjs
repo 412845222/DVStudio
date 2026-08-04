@@ -214,7 +214,8 @@ function main() {
 	log('')
 	log(`Updating package.json version to ${newVersion}...`)
 	pkg.version = newVersion
-	fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+	// Use tab indentation to match .prettierrc (useTabs: true, tabWidth: 2)
+	fs.writeFileSync(PKG_PATH, JSON.stringify(pkg, null, '\t') + '\n', 'utf8')
 	success('package.json updated.')
 
 	log('')
@@ -226,6 +227,13 @@ function main() {
 	)
 	fs.writeFileSync(ELECTRON_CONFIG_PATH, updatedElectronConfig, 'utf8')
 	success('electron/config.mjs updated.')
+
+	log('')
+	log('Running Prettier on modified files to ensure format compliance...')
+	runNpm(['exec', 'prettier', '--', '--write', PKG_PATH, ELECTRON_CONFIG_PATH], {
+		stdio: 'inherit'
+	})
+	success('Prettier formatting applied.')
 
 	const tagName = `v${newVersion}`
 	const releaseBranch = `release/${tagName}`
