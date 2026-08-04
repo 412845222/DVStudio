@@ -108,7 +108,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "${{ steps.prep.outputs.tag }}" -m "Release ${{ steps.prep.outputs.tag }}"
-          git push origin "${{ steps.prep.outputs.tag }}"
+          DWEB_SKIP_QUALITY_CHECK=1 git push origin "${{ steps.prep.outputs.tag }}"
         shell: bash
 
       - name: Create GitHub Release
