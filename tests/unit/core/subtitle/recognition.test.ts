@@ -3,7 +3,7 @@ import {
 	convertRecognitionCuesToSubtitleCues,
 	formatSrtTimeFromSeconds,
 	buildSubtitleExtractedAudioUrl,
-	parseProjectIdFromVideoUrl,
+	parseProjectIdFromVideoUrl
 } from '@/core/subtitle/recognition'
 
 describe('core/subtitle/recognition', () => {
@@ -11,7 +11,7 @@ describe('core/subtitle/recognition', () => {
 		it('converts seconds-based cues to milliseconds', () => {
 			const input = [
 				{ startTime: 0, endTime: 2.5, text: 'Hello' },
-				{ startTime: 3.0, endTime: 5.123, text: 'World' },
+				{ startTime: 3.0, endTime: 5.123, text: 'World' }
 			]
 			const result = convertRecognitionCuesToSubtitleCues(input)
 			expect(result).toHaveLength(2)
@@ -41,7 +41,7 @@ describe('core/subtitle/recognition', () => {
 		it('handles missing or invalid time values gracefully', () => {
 			const input = [
 				{ startTime: null, endTime: undefined, text: 'No times' },
-				{ startTime: NaN, endTime: Infinity, text: 'Bad times' },
+				{ startTime: NaN, endTime: Infinity, text: 'Bad times' }
 			]
 			const result = convertRecognitionCuesToSubtitleCues(input)
 			expect(result).toHaveLength(2)
@@ -54,7 +54,7 @@ describe('core/subtitle/recognition', () => {
 				{ startTime: 0, endTime: 1, text: '  ' },
 				{ startTime: 1, endTime: 2, text: '' },
 				{ startTime: 2, endTime: 3, text: null as any },
-				{ startTime: 3, endTime: 4, text: 'Valid' },
+				{ startTime: 3, endTime: 4, text: 'Valid' }
 			]
 			const result = convertRecognitionCuesToSubtitleCues(input)
 			expect(result).toHaveLength(1)
@@ -84,7 +84,9 @@ describe('core/subtitle/recognition', () => {
 	describe('buildSubtitleExtractedAudioUrl', () => {
 		it('builds correct dweb URL for valid projectId', () => {
 			const url = buildSubtitleExtractedAudioUrl(42)
-			expect(url).toBe('dweb://project-assets?projectId=42&path=Content%2FMedia%2Fsubtitle_extracted_audio.wav')
+			expect(url).toBe(
+				'dweb://project-assets?projectId=42&path=Content%2FMedia%2Fsubtitle_extracted_audio.wav'
+			)
 		})
 
 		it('returns null for invalid projectId', () => {
@@ -114,8 +116,12 @@ describe('core/subtitle/recognition', () => {
 
 		it('returns null for missing or invalid projectId', () => {
 			expect(parseProjectIdFromVideoUrl('dweb://project-assets?path=video.mp4')).toBeNull()
-			expect(parseProjectIdFromVideoUrl('dweb://project-assets?projectId=abc&path=video.mp4')).toBeNull()
-			expect(parseProjectIdFromVideoUrl('dweb://project-assets?projectId=-1&path=video.mp4')).toBeNull()
+			expect(
+				parseProjectIdFromVideoUrl('dweb://project-assets?projectId=abc&path=video.mp4')
+			).toBeNull()
+			expect(
+				parseProjectIdFromVideoUrl('dweb://project-assets?projectId=-1&path=video.mp4')
+			).toBeNull()
 		})
 
 		it('returns null for empty/null/undefined input', () => {

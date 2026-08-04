@@ -3,7 +3,7 @@ import {
 	isTripo3DPSeries,
 	isTripo3DV3OrLater,
 	getTripo3DFaceLimitRange,
-	normalizeTripo3DParams,
+	normalizeTripo3DParams
 } from '@/ui/BluePrint/node-dialog/nodeChatConfig'
 
 describe('tripo3dParams', () => {
@@ -128,7 +128,7 @@ describe('tripo3dParams', () => {
 		it('should clamp faceLimit for P-series models', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'P1-20260311',
-				tripo3dFaceLimit: 66960,
+				tripo3dFaceLimit: 66960
 			})
 			expect(result.tripo3dModelSeries).toBe('p')
 			expect(result.tripo3dFaceLimit).toBe(20000)
@@ -137,7 +137,7 @@ describe('tripo3dParams', () => {
 		it('should clamp faceLimit to minimum for P-series', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'P1-20260311',
-				tripo3dFaceLimit: 10,
+				tripo3dFaceLimit: 10
 			})
 			expect(result.tripo3dFaceLimit).toBe(50)
 		})
@@ -145,7 +145,7 @@ describe('tripo3dParams', () => {
 		it('should disable smartLowPoly for P-series', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'P1-20260311',
-				tripo3dSmartLowPoly: true,
+				tripo3dSmartLowPoly: true
 			})
 			expect(result.tripo3dSmartLowPoly).toBe(false)
 		})
@@ -153,7 +153,7 @@ describe('tripo3dParams', () => {
 		it('should disable generateParts for P-series', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'P1-20260311',
-				tripo3dGenerateParts: true,
+				tripo3dGenerateParts: true
 			})
 			expect(result.tripo3dGenerateParts).toBe(false)
 		})
@@ -162,7 +162,7 @@ describe('tripo3dParams', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'P1-20260311',
 				tripo3dAutoSize: true,
-				tripo3dCompress: 'true',
+				tripo3dCompress: 'true'
 			})
 			expect(result.tripo3dAutoSize).toBe(false)
 			expect(result.tripo3dCompress).toBe(false)
@@ -175,7 +175,7 @@ describe('tripo3dParams', () => {
 				tripo3dTexture: true,
 				tripo3dPbr: true,
 				tripo3dQuad: true,
-				tripo3dSmartLowPoly: true,
+				tripo3dSmartLowPoly: true
 			})
 			expect(result.tripo3dTexture).toBe(false)
 			expect(result.tripo3dPbr).toBe(false)
@@ -187,7 +187,7 @@ describe('tripo3dParams', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'v3.1-20260211',
 				tripo3dPbr: true,
-				tripo3dTexture: false,
+				tripo3dTexture: false
 			})
 			expect(result.tripo3dTexture).toBe(true)
 		})
@@ -196,7 +196,7 @@ describe('tripo3dParams', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'v3.1-20260211',
 				tripo3dQuad: true,
-				tripo3dSmartLowPoly: true,
+				tripo3dSmartLowPoly: true
 			})
 			expect(result.tripo3dQuad).toBe(false)
 			expect(result.tripo3dSmartLowPoly).toBe(true)
@@ -208,7 +208,7 @@ describe('tripo3dParams', () => {
 				tripo3dQuad: true,
 				tripo3dSmartLowPoly: true,
 				tripo3dGenerateParts: true,
-				tripo3dAutoSize: true,
+				tripo3dAutoSize: true
 			})
 			expect(result.tripo3dQuad).toBe(false)
 			expect(result.tripo3dSmartLowPoly).toBe(false)
@@ -219,26 +219,26 @@ describe('tripo3dParams', () => {
 		it('should keep faceLimit 0 as adaptive (no clamping)', () => {
 			const result = normalizeTripo3DParams({
 				tripo3dModelVersion: 'v3.1-20260211',
-				tripo3dFaceLimit: 0,
+				tripo3dFaceLimit: 0
 			})
 			expect(result.tripo3dFaceLimit).toBe(0)
 		})
 
 		it('should infer modelSeries from modelVersion if not set', () => {
 			const pResult = normalizeTripo3DParams({
-				tripo3dModelVersion: 'P1-20260311',
+				tripo3dModelVersion: 'P1-20260311'
 			})
 			expect(pResult.tripo3dModelSeries).toBe('p')
 
 			const hResult = normalizeTripo3DParams({
-				tripo3dModelVersion: 'v3.0-20250812',
+				tripo3dModelVersion: 'v3.0-20250812'
 			})
 			expect(hResult.tripo3dModelSeries).toBe('h')
 		})
 
 		it('should reset invalid selectedImages to empty array', () => {
 			const result = normalizeTripo3DParams({
-				tripo3dSelectedImages: 'not-an-array',
+				tripo3dSelectedImages: 'not-an-array'
 			})
 			expect(Array.isArray(result.tripo3dSelectedImages)).toBe(true)
 			expect(result.tripo3dSelectedImages).toHaveLength(0)

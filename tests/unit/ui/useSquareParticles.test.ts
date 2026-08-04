@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useSquareParticles, buildSquareParticles } from '../../../src/composables/useSquareParticles'
+import {
+	useSquareParticles,
+	buildSquareParticles
+} from '../../../src/composables/useSquareParticles'
 
 describe('useSquareParticles', () => {
 	beforeEach(() => {
@@ -20,7 +23,7 @@ describe('useSquareParticles', () => {
 
 		it('generates unique ids for each particle', () => {
 			const { particles } = useSquareParticles({ count: 8 })
-			const ids = new Set(particles.map(p => p.id))
+			const ids = new Set(particles.map((p) => p.id))
 			expect(ids.size).toBe(8)
 		})
 
@@ -76,7 +79,12 @@ describe('useSquareParticles', () => {
 
 	describe('duration bounds', () => {
 		it('respects minDuration and maxDuration', () => {
-			const { particles } = useSquareParticles({ count: 20, minDuration: 4, maxDuration: 8, seed: 789 })
+			const { particles } = useSquareParticles({
+				count: 20,
+				minDuration: 4,
+				maxDuration: 8,
+				seed: 789
+			})
 			for (const p of particles) {
 				const dur = parseFloat(p.style['--sq-duration'])
 				expect(dur).toBeGreaterThanOrEqual(4)

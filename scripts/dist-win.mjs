@@ -19,7 +19,8 @@ function run(cmd, args, { env } = {}) {
 function getMirrorConfig() {
 	if (isCI) {
 		return {
-			ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
+			ELECTRON_MIRROR:
+				process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
 			ELECTRON_BUILDER_BINARIES_MIRROR:
 				process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
 				'https://github.com/electron-userland/electron-builder-binaries/releases/download/'

@@ -8,21 +8,22 @@ import {
 	type PlacementResult
 } from '@/aiworkflow/template/useTemplateMerge'
 
-const makeMockNode = (overrides: Partial<WorkflowNode> = {}): WorkflowNode => ({
-	id: 'test-node',
-	type: 'text',
-	title: 'Test Node',
-	subtitle: '',
-	worldX: 0,
-	worldY: 0,
-	width: 240,
-	height: 160,
-	sizeCustomized: false,
-	inputs: [],
-	outputs: [],
-	createdAt: Date.now(),
-	...overrides
-} as WorkflowNode)
+const makeMockNode = (overrides: Partial<WorkflowNode> = {}): WorkflowNode =>
+	({
+		id: 'test-node',
+		type: 'text',
+		title: 'Test Node',
+		subtitle: '',
+		worldX: 0,
+		worldY: 0,
+		width: 240,
+		height: 160,
+		sizeCustomized: false,
+		inputs: [],
+		outputs: [],
+		createdAt: Date.now(),
+		...overrides
+	}) as WorkflowNode
 
 describe('calculateNodeBounds', () => {
 	it('should return null for empty node list', () => {
@@ -60,7 +61,13 @@ describe('calculateNodeBounds', () => {
 	})
 
 	it('should handle nodes with default size (0/falsy values fallback to 240/160)', () => {
-		const node = makeMockNode({ id: 'n1', worldX: 50, worldY: 50, width: 0 as any, height: 0 as any })
+		const node = makeMockNode({
+			id: 'n1',
+			worldX: 50,
+			worldY: 50,
+			width: 0 as any,
+			height: 0 as any
+		})
 		const result = calculateNodeBounds(['n1'], { n1: node })
 		expect(result).not.toBeNull()
 		expect(result!.minX).toBe(50 - 120)
@@ -115,7 +122,12 @@ describe('calculateTemplatePlacement', () => {
 	const canvasSize = { width: 1920, height: 1080 }
 	const defaultViewport = { zoom: 1, panX: 0, panY: 0 }
 
-	const makeTemplateBounds = (centerX: number, centerY: number, w: number, h: number): NodeBounds => ({
+	const makeTemplateBounds = (
+		centerX: number,
+		centerY: number,
+		w: number,
+		h: number
+	): NodeBounds => ({
 		minX: centerX - w / 2,
 		minY: centerY - h / 2,
 		maxX: centerX + w / 2,
@@ -123,7 +135,7 @@ describe('calculateTemplatePlacement', () => {
 		width: w,
 		height: h,
 		centerX,
-		centerY,
+		centerY
 	})
 
 	it('should return pan values that center the template at viewport center when no overlap and template fits', () => {
@@ -177,10 +189,12 @@ describe('calculateTemplatePlacement', () => {
 			worldX: 0,
 			worldY: 0,
 			width: 400,
-			height: 300,
+			height: 300
 		})
 		const templateBounds = makeTemplateBounds(0, 0, 200, 150)
-		const result = calculateTemplatePlacement(templateBounds, defaultViewport, canvasSize, [existingNode])
+		const result = calculateTemplatePlacement(templateBounds, defaultViewport, canvasSize, [
+			existingNode
+		])
 		expect(result.boundsAfterPlacement.centerX).not.toBe(0)
 		expect(result.needsPan).toBe(true)
 	})

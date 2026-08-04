@@ -83,7 +83,7 @@ describe('useChatContext', () => {
 			const { addSkill, items, getActiveSkills } = useChatContext()
 			addSkill('scene-understand')
 			addSkill('scene-understand')
-			const skillItems = items.value.filter(i => i.type === 'skill')
+			const skillItems = items.value.filter((i) => i.type === 'skill')
 			expect(skillItems).toHaveLength(1)
 			const skills = getActiveSkills()
 			expect(skills).toHaveLength(1)
@@ -93,7 +93,7 @@ describe('useChatContext', () => {
 		it('ignores unknown skill id', () => {
 			const { addSkill, items } = useChatContext()
 			addSkill('nonexistent-skill')
-			expect(items.value.filter(i => i.type === 'skill')).toHaveLength(0)
+			expect(items.value.filter((i) => i.type === 'skill')).toHaveLength(0)
 		})
 	})
 
@@ -127,7 +127,7 @@ describe('useChatContext', () => {
 			})
 			addNode(node)
 			addNode(node)
-			expect(items.value.filter(i => i.type === 'node')).toHaveLength(1)
+			expect(items.value.filter((i) => i.type === 'node')).toHaveLength(1)
 		})
 
 		it('falls back thumbKind for image node when no preview', () => {
@@ -226,9 +226,9 @@ describe('useChatContext', () => {
 				previewUrl: 'data:,'
 			})
 			expect(ctx.contextCount.value).toBe(3)
-			const nodeItemId = ctx.items.value.find(i => i.type === 'node')!.id
+			const nodeItemId = ctx.items.value.find((i) => i.type === 'node')!.id
 			ctx.removeItem(nodeItemId)
-			expect(ctx.items.value.filter(i => i.type === 'node')).toHaveLength(0)
+			expect(ctx.items.value.filter((i) => i.type === 'node')).toHaveLength(0)
 			const nrefId = ctx.nodeOutputRefs.value[0].id
 			ctx.removeNodeOutputRef(nrefId)
 			expect(ctx.nodeOutputRefs.value).toHaveLength(0)
@@ -240,13 +240,14 @@ describe('useChatContext', () => {
 
 	describe('node pick mode', () => {
 		it('enter and exit pick mode, onNodePicked adds node and exits', () => {
-			const { enterNodePickMode, exitNodePickMode, isPickingNode, onNodePicked, items } = useChatContext()
+			const { enterNodePickMode, exitNodePickMode, isPickingNode, onNodePicked, items } =
+				useChatContext()
 			enterNodePickMode()
 			expect(isPickingNode.value).toBe(true)
 			const node = makeImageNode()
 			onNodePicked(node)
 			expect(isPickingNode.value).toBe(false)
-			expect(items.value.filter(i => i.type === 'node')).toHaveLength(1)
+			expect(items.value.filter((i) => i.type === 'node')).toHaveLength(1)
 			exitNodePickMode()
 			expect(isPickingNode.value).toBe(false)
 		})
@@ -388,7 +389,12 @@ describe('useChatContext', () => {
 		let drawImageMock: ReturnType<typeof vi.fn>
 		let toDataURLMock: ReturnType<typeof vi.fn>
 		let getContextMock: ReturnType<typeof vi.fn>
-		let imageInstances: Array<{ crossOrigin?: string; onload?: () => void; onerror?: () => void; src?: string }>
+		let imageInstances: Array<{
+			crossOrigin?: string
+			onload?: () => void
+			onerror?: () => void
+			src?: string
+		}>
 
 		beforeEach(() => {
 			originalImage = global.Image
@@ -400,14 +406,19 @@ describe('useChatContext', () => {
 				if (type === '2d') return { drawImage: drawImageMock }
 				return null
 			})
-			const FakeImage = vi.fn(function (this: { crossOrigin?: string; onload?: () => void; onerror?: () => void; src?: string }) {
+			const FakeImage = vi.fn(function (this: {
+				crossOrigin?: string
+				onload?: () => void
+				onerror?: () => void
+				src?: string
+			}) {
 				imageInstances.push(this)
 				return this
 			}) as unknown as typeof Image
 			Object.defineProperty(global, 'Image', {
 				value: FakeImage,
 				writable: true,
-				configurable: true,
+				configurable: true
 			})
 			document.createElement = vi.fn((tag: string) => {
 				if (tag === 'canvas') {
@@ -415,7 +426,7 @@ describe('useChatContext', () => {
 						width: 0,
 						height: 0,
 						getContext: getContextMock,
-						toDataURL: toDataURLMock,
+						toDataURL: toDataURLMock
 					} as unknown as HTMLCanvasElement
 				}
 				return originalCreateElement(tag)
@@ -426,7 +437,7 @@ describe('useChatContext', () => {
 			Object.defineProperty(global, 'Image', {
 				value: originalImage,
 				writable: true,
-				configurable: true,
+				configurable: true
 			})
 			document.createElement = originalCreateElement
 		})

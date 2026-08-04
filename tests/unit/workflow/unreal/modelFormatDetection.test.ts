@@ -53,7 +53,9 @@ describe('modelFormatDetection', () => {
 
 		it('handles URLs with query parameters', () => {
 			expect(detectModelFormatFromPath('https://example.com/model.glb?v=123')).toBe('glb')
-			expect(detectModelFormatFromPath('dweb://project-assets?path=models/chair.fbx&t=123456')).toBe('fbx')
+			expect(
+				detectModelFormatFromPath('dweb://project-assets?path=models/chair.fbx&t=123456')
+			).toBe('fbx')
 		})
 
 		it('returns undefined for empty or invalid input', () => {

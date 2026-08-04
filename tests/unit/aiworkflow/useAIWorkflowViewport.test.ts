@@ -87,10 +87,11 @@ describe('useAIWorkflowViewport', () => {
 	describe('forceEndViewportMotion', () => {
 		it('should immediately set viewportMotionActive to false', () => {
 			const store = createMockStore()
-			const { viewportMotionActive, markViewportMotion, forceEndViewportMotion } = useAIWorkflowViewport(store, {
-				canvasSelector: '.test-canvas',
-				motionResetMs: 140
-			})
+			const { viewportMotionActive, markViewportMotion, forceEndViewportMotion } =
+				useAIWorkflowViewport(store, {
+					canvasSelector: '.test-canvas',
+					motionResetMs: 140
+				})
 
 			markViewportMotion()
 			expect(viewportMotionActive.value).toBe(true)
@@ -101,10 +102,11 @@ describe('useAIWorkflowViewport', () => {
 
 		it('should clear all pending timers', () => {
 			const store = createMockStore()
-			const { viewportMotionActive, markViewportMotion, forceEndViewportMotion } = useAIWorkflowViewport(store, {
-				canvasSelector: '.test-canvas',
-				motionResetMs: 140
-			})
+			const { viewportMotionActive, markViewportMotion, forceEndViewportMotion } =
+				useAIWorkflowViewport(store, {
+					canvasSelector: '.test-canvas',
+					motionResetMs: 140
+				})
 
 			markViewportMotion()
 			forceEndViewportMotion()

@@ -25,7 +25,7 @@ const REPO_ROOT = path.resolve(__dirname, '..')
 const candidates = [
 	path.resolve(REPO_ROOT, '..', 'DwebSteamJS'),
 	path.resolve(REPO_ROOT, 'DwebSteamJS'),
-	process.env.DWEB_STEAMJS_PATH,
+	process.env.DWEB_STEAMJS_PATH
 ].filter(Boolean)
 
 function findDwebSteamJS() {
@@ -36,7 +36,9 @@ function findDwebSteamJS() {
 			try {
 				const json = JSON.parse(fs.readFileSync(pkg, 'utf8'))
 				if (json.name === 'dweb-steamjs') return dir
-			} catch { /* ignore */ }
+			} catch {
+				/* ignore */
+			}
 		}
 	}
 	return null
@@ -77,10 +79,16 @@ try {
 		if (appId) {
 			fs.writeFileSync(appidPath, appId, 'utf8')
 			console.log(`[setup-steam-dev] Created steam_appid.txt with AppID ${appId}`)
-			console.log('[setup-steam-dev] You can edit steam_appid.txt to use a different AppID (e.g., 480 for SpaceWar testing).')
+			console.log(
+				'[setup-steam-dev] You can edit steam_appid.txt to use a different AppID (e.g., 480 for SpaceWar testing).'
+			)
 		} else {
-			console.log('[setup-steam-dev] Warning: No Steam AppID configured, skipping steam_appid.txt creation')
-			console.log('[setup-steam-dev] Create steam.config.json with your appId first, or manually create steam_appid.txt')
+			console.log(
+				'[setup-steam-dev] Warning: No Steam AppID configured, skipping steam_appid.txt creation'
+			)
+			console.log(
+				'[setup-steam-dev] Create steam.config.json with your appId first, or manually create steam_appid.txt'
+			)
 		}
 	} else {
 		console.log('[setup-steam-dev] steam_appid.txt already exists, skipping.')
@@ -90,7 +98,9 @@ try {
 	console.log('[setup-steam-dev] SUCCESS! dweb-steamjs is linked.')
 	console.log('')
 	console.log('Next steps:')
-	console.log('  1. Configure your Steam AppID in electron/steam.config.json (copy template from electron/platform/steam.config.example.json)')
+	console.log(
+		'  1. Configure your Steam AppID in electron/steam.config.json (copy template from electron/platform/steam.config.example.json)'
+	)
 	console.log('  2. Start Steam client and log in')
 	console.log('  3. Run "npm run dev:electron" to start the app')
 	console.log('  4. Check console for "[platform:steam] initialized" message')

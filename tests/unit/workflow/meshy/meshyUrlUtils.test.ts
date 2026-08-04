@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { isMeshyRemoteUrl, getMeshyEffectiveModelSource } from '@/views/AIWorkflow/node-business/meshy/useAIWorkflowMeshyAssets'
+import {
+	isMeshyRemoteUrl,
+	getMeshyEffectiveModelSource
+} from '@/views/AIWorkflow/node-business/meshy/useAIWorkflowMeshyAssets'
 
 describe('meshyUrlUtils', () => {
 	describe('isMeshyRemoteUrl', () => {

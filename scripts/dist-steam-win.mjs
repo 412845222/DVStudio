@@ -14,7 +14,9 @@ const isCI = process.env.CI === 'true'
 const steamAppId = process.env.STEAM_APP_ID || ''
 
 if (!steamAppId) {
-	process.stderr.write('[dist:steam:win] ERROR: Steam AppID is required. Set it in steam.config.json or STEAM_APP_ID env var.\n')
+	process.stderr.write(
+		'[dist:steam:win] ERROR: Steam AppID is required. Set it in steam.config.json or STEAM_APP_ID env var.\n'
+	)
 	process.exit(1)
 }
 
@@ -35,7 +37,8 @@ function getMirrorConfig() {
 	if (isCI) {
 		return {
 			PIP_INDEX_URL: process.env.PIP_INDEX_URL || 'https://pypi.org/simple/',
-			ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
+			ELECTRON_MIRROR:
+				process.env.ELECTRON_MIRROR || 'https://github.com/electron/electron/releases/download/',
 			ELECTRON_BUILDER_BINARIES_MIRROR:
 				process.env.ELECTRON_BUILDER_BINARIES_MIRROR ||
 				'https://github.com/electron-userland/electron-builder-binaries/releases/download/'
@@ -85,7 +88,9 @@ async function main() {
 	process.stdout.write('\n[dist:steam:win] === Step 1: Deploy native modules ===\n')
 	let code = await run('node', ['scripts/setup-steam-native.mjs'])
 	if (code !== 0) {
-		process.stderr.write('[dist:steam:win] WARNING: Failed to deploy native Steam modules, continuing with Mock mode\n')
+		process.stderr.write(
+			'[dist:steam:win] WARNING: Failed to deploy native Steam modules, continuing with Mock mode\n'
+		)
 	}
 
 	process.stdout.write('\n[dist:steam:win] === Step 2: Frontend build (vite) ===\n')
@@ -110,7 +115,7 @@ async function main() {
 			'!electron/**/*.log',
 			'!electron/**/*.map',
 			'!**/steam.config.json',
-			'!**/*.local.mjs',
+			'!**/*.local.mjs'
 		],
 		asar: true,
 		asarUnpack: 'electron/platform/native/**',
@@ -134,26 +139,14 @@ async function main() {
 
 	code = await run(
 		'electron-builder',
-		[
-			'--dir',
-			'-w',
-			'--publish', 'never',
-			'--projectDir', repoRoot,
-			'--config', tempConfigPath
-		],
+		['--dir', '-w', '--publish', 'never', '--projectDir', repoRoot, '--config', tempConfigPath],
 		{ env: buildEnv }
 	)
 	if (code !== 0) {
 		process.stdout.write('[dist:steam:win] retry once...\n')
 		code = await run(
 			'electron-builder',
-			[
-				'--dir',
-				'-w',
-				'--publish', 'never',
-				'--projectDir', repoRoot,
-				'--config', tempConfigPath
-			],
+			['--dir', '-w', '--publish', 'never', '--projectDir', repoRoot, '--config', tempConfigPath],
 			{ env: buildEnv }
 		)
 	}
@@ -171,19 +164,29 @@ async function main() {
 	const actualUnpackedDir = fs.existsSync(winUnpackedDir) ? winUnpackedDir : buildUnpackedDir
 
 	if (!fs.existsSync(actualUnpackedDir)) {
-		process.stderr.write(`[dist:steam:win] FAILED: Build output not found at ${actualUnpackedDir}\n`)
+		process.stderr.write(
+			`[dist:steam:win] FAILED: Build output not found at ${actualUnpackedDir}\n`
+		)
 		process.exit(1)
 	}
 
 	const steamAppidInBuild = path.join(actualUnpackedDir, 'steam_appid.txt')
 	if (fs.existsSync(steamAppidInBuild)) {
 		fs.rmSync(steamAppidInBuild, { force: true })
-		process.stdout.write('[dist:steam:win] Removed steam_appid.txt from build root (Steam auto-generates this)\n')
+		process.stdout.write(
+			'[dist:steam:win] Removed steam_appid.txt from build root (Steam auto-generates this)\n'
+		)
 	}
 
 	const nativeUnpackedAppIdPath = path.join(
-		actualUnpackedDir, 'resources', 'app.asar.unpacked',
-		'electron', 'platform', 'native', 'win32', 'steam_appid.txt'
+		actualUnpackedDir,
+		'resources',
+		'app.asar.unpacked',
+		'electron',
+		'platform',
+		'native',
+		'win32',
+		'steam_appid.txt'
 	)
 	if (fs.existsSync(nativeUnpackedAppIdPath)) {
 		fs.writeFileSync(nativeUnpackedAppIdPath, steamAppId, 'utf8')
@@ -192,7 +195,20 @@ async function main() {
 
 	function robocopyMirror(src, dst) {
 		return new Promise((resolve) => {
-			const args = [src, dst, '/MIR', '/R:2', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/XD', '*.tmp']
+			const args = [
+				src,
+				dst,
+				'/MIR',
+				'/R:2',
+				'/W:1',
+				'/NFL',
+				'/NDL',
+				'/NJH',
+				'/NJS',
+				'/NP',
+				'/XD',
+				'*.tmp'
+			]
 			process.stdout.write(`[dist:steam:win] Mirroring build to content dir via robocopy...\n`)
 			const child = spawn('robocopy', args, {
 				stdio: 'inherit',
@@ -203,7 +219,9 @@ async function main() {
 			child.once('exit', (code) => {
 				const exitCode = Number(code || 0)
 				if (exitCode >= 8) {
-					process.stdout.write(`[dist:steam:win] robocopy exited with code ${exitCode} (non-fatal for code < 8)\n`)
+					process.stdout.write(
+						`[dist:steam:win] robocopy exited with code ${exitCode} (non-fatal for code < 8)\n`
+					)
 				}
 				resolve(exitCode)
 			})
@@ -221,12 +239,20 @@ async function main() {
 				if (entry.isDirectory() && entry.name.startsWith('win64-unpacked-')) {
 					const dirPath = path.join(buildBaseDir, entry.name)
 					if (dirPath !== buildUnpackedDir) {
-						try { fs.rmSync(dirPath, { recursive: true, force: true }) } catch (_) {}
+						try {
+							fs.rmSync(dirPath, { recursive: true, force: true })
+						} catch (_) {}
 					}
-				} else if (entry.isFile() && entry.name.startsWith('electron-builder-steam-') && entry.name.endsWith('.json')) {
+				} else if (
+					entry.isFile() &&
+					entry.name.startsWith('electron-builder-steam-') &&
+					entry.name.endsWith('.json')
+				) {
 					const filePath = path.join(buildBaseDir, entry.name)
 					if (filePath !== tempConfigPath) {
-						try { fs.rmSync(filePath, { force: true }) } catch (_) {}
+						try {
+							fs.rmSync(filePath, { force: true })
+						} catch (_) {}
 					}
 				}
 			}
@@ -236,12 +262,16 @@ async function main() {
 	fs.mkdirSync(contentDir, { recursive: true })
 	await robocopyMirror(actualUnpackedDir, contentDir)
 
-	try { fs.rmSync(tempConfigPath, { force: true }) } catch (_) {}
+	try {
+		fs.rmSync(tempConfigPath, { force: true })
+	} catch (_) {}
 	cleanupOldBuilds()
 
 	process.stdout.write('\n[dist:steam:win] === Build completed successfully! ===\n')
 	process.stdout.write(`[dist:steam:win] Content directory: ${contentDir}\n`)
-	process.stdout.write('[dist:steam:win] Note: steam_appid.txt is excluded from depot root (Steam auto-generates it on launch)\n')
+	process.stdout.write(
+		'[dist:steam:win] Note: steam_appid.txt is excluded from depot root (Steam auto-generates it on launch)\n'
+	)
 	process.stdout.write('[dist:steam:win] Next: Run "npm run upload:steam" to upload to SteamPipe\n')
 
 	process.exit(0)

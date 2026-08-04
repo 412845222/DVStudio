@@ -47,7 +47,13 @@ const primaryText = computed(() => {
 })
 
 const pixelBubbles = computed(() => {
-	const bubbles: { x: number; size: number; delay: number; duration: number; hue: number }[] = []
+	const bubbles: {
+		x: number
+		size: number
+		delay: number
+		duration: number
+		hue: number
+	}[] = []
 	for (let i = 0; i < 14; i++) {
 		bubbles.push({
 			x: (i * 7.3) % 100,

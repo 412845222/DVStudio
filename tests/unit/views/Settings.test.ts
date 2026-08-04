@@ -4,7 +4,10 @@ import type { ClientSettings } from '@/electronBridge/types'
 const FIXED_GEMINI_MODEL = 'gemini-2.5-flash-image'
 const API_KEY_AGREEMENT_VERSION = '1.0'
 
-function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSettings> = {}): ClientSettings {
+function buildSavePayload(
+	form: ClientSettings,
+	overrides: Partial<ClientSettings> = {}
+): ClientSettings {
 	const payload: ClientSettings = {
 		defaultResolution: form.defaultResolution,
 		geminiApiKey: form.geminiApiKey,
@@ -16,21 +19,21 @@ function buildSavePayload(form: ClientSettings, overrides: Partial<ClientSetting
 		tripo3dApiKey: form.tripo3dApiKey,
 		githubToken: form.githubToken,
 		ui: {
-			locale: form.ui?.locale || '',
+			locale: form.ui?.locale || ''
 		},
 		apiKeySecurityAgreement: form.apiKeySecurityAgreement
 			? {
 					accepted: form.apiKeySecurityAgreement.accepted,
 					acceptedAt: form.apiKeySecurityAgreement.acceptedAt,
-					acceptedVersion: form.apiKeySecurityAgreement.acceptedVersion,
-			  }
+					acceptedVersion: form.apiKeySecurityAgreement.acceptedVersion
+				}
 			: {
 					accepted: false,
 					acceptedAt: 0,
-					acceptedVersion: '',
-			  },
+					acceptedVersion: ''
+				},
 		cliAdapters: form.cliAdapters || {},
-		...overrides,
+		...overrides
 	}
 	return payload
 }
@@ -47,14 +50,14 @@ function createDefaultForm(): ClientSettings {
 		tripo3dApiKey: '',
 		githubToken: '',
 		ui: {
-			locale: '',
+			locale: ''
 		},
 		apiKeySecurityAgreement: {
 			accepted: false,
 			acceptedAt: 0,
-			acceptedVersion: '',
+			acceptedVersion: ''
 		},
-		cliAdapters: {},
+		cliAdapters: {}
 	}
 }
 
@@ -86,7 +89,7 @@ describe('Settings', () => {
 			form.apiKeySecurityAgreement = {
 				accepted: true,
 				acceptedAt: now,
-				acceptedVersion: '1.0',
+				acceptedVersion: '1.0'
 			}
 
 			const payload = buildSavePayload(form)
@@ -113,7 +116,7 @@ describe('Settings', () => {
 
 			const payload = buildSavePayload(form, {
 				defaultResolution: '3840x2160',
-				bytedanceApiKey: 'ark-override',
+				bytedanceApiKey: 'ark-override'
 			})
 
 			expect(payload.defaultResolution).toBe('3840x2160')
@@ -127,7 +130,7 @@ describe('Settings', () => {
 			form.apiKeySecurityAgreement = {
 				accepted: true,
 				acceptedAt: Date.now(),
-				acceptedVersion: '1.0',
+				acceptedVersion: '1.0'
 			}
 
 			const hasAccepted = Boolean(form.apiKeySecurityAgreement?.accepted)
@@ -140,7 +143,7 @@ describe('Settings', () => {
 			form.apiKeySecurityAgreement = {
 				accepted: false,
 				acceptedAt: 0,
-				acceptedVersion: '',
+				acceptedVersion: ''
 			}
 
 			const hasAccepted = Boolean(form.apiKeySecurityAgreement?.accepted)
@@ -219,7 +222,7 @@ describe('Settings', () => {
 			form.apiKeySecurityAgreement = {
 				accepted: true,
 				acceptedAt: Date.now(),
-				acceptedVersion: API_KEY_AGREEMENT_VERSION,
+				acceptedVersion: API_KEY_AGREEMENT_VERSION
 			}
 
 			securityAgreementOpen.value = false
