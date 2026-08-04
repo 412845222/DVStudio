@@ -148,11 +148,13 @@ export type Tripo3DGeneratePayload = {
 	model_task_id?: string
 	original_model_task_id?: string
 	model_url?: string
-	texture_prompt?: string | {
-		text?: string
-		image?: { file_token: string }
-		images?: Record<string, { file_token: string }>
-	}
+	texture_prompt?:
+		| string
+		| {
+				text?: string
+				image?: { file_token: string }
+				images?: Record<string, { file_token: string }>
+		  }
 	seg_type?: 'image' | 'model'
 	granularity?: 'coarse' | 'medium' | 'fine'
 	hint?: string
@@ -213,9 +215,7 @@ export type Tripo3DComfyService = {
 	tripo3dGenerate: (
 		payload: Tripo3DGeneratePayload | Record<string, unknown>
 	) => Promise<Tripo3DGenerateResponse>
-	tripo3dGenerateTextToImage: (
-		payload: Record<string, unknown>
-	) => Promise<Tripo3DGenerateResponse>
+	tripo3dGenerateTextToImage: (payload: Record<string, unknown>) => Promise<Tripo3DGenerateResponse>
 	tripo3dGenerateImageToImage: (
 		payload: Record<string, unknown>
 	) => Promise<Tripo3DGenerateResponse>
@@ -223,10 +223,7 @@ export type Tripo3DComfyService = {
 		payload: Record<string, unknown>
 	) => Promise<Tripo3DGenerateResponse>
 	tripo3dTask: (taskId: string) => Promise<Tripo3DTaskResponse>
-	tripo3dTasks: (query?: {
-		status?: string
-		limit?: number
-	}) => Promise<Tripo3DTasksListResponse>
+	tripo3dTasks: (query?: { status?: string; limit?: number }) => Promise<Tripo3DTasksListResponse>
 	tripo3dTaskDetail: (taskId: string) => Promise<Tripo3DTaskDetailResponse>
 	tripo3dStop: (taskId: string) => Promise<Tripo3DTaskActionResponse>
 	tripo3dDelete: (taskId: string) => Promise<Tripo3DTaskActionResponse>
@@ -289,12 +286,16 @@ export type CreateModel3DNodeAtCenterFn = (opts?: {
 	mode?: string
 }) => string | null
 
-export type CreateImageNodeAtCenterFn = (url: string, name?: string, opts?: {
-	taskId?: string
-	mode?: string
-	imageGenerationSource?: string
-	imageUrls?: string[]
-}) => string | null
+export type CreateImageNodeAtCenterFn = (
+	url: string,
+	name?: string,
+	opts?: {
+		taskId?: string
+		mode?: string
+		imageGenerationSource?: string
+		imageUrls?: string[]
+	}
+) => string | null
 
 export type PersistExternalAssetPayload = {
 	kind: 'image' | 'file'
@@ -317,7 +318,10 @@ export type ConnectedTripo3DImageInput = {
 	url: string
 }
 
-export type BuildTripo3DRequestPayloadFn = (node: WorkflowNode, meta?: { nodeId?: string; projectId?: number | string }) => Promise<BuildTripo3DRequestResult>
+export type BuildTripo3DRequestPayloadFn = (
+	node: WorkflowNode,
+	meta?: { nodeId?: string; projectId?: number | string }
+) => Promise<BuildTripo3DRequestResult>
 
 export type Tripo3DNodeSettingsLike =
 	| WorkflowTripo3DModelSettings
@@ -452,7 +456,13 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 		return Number.isFinite(val) ? val : defaultValue
 	}
 
-	let thumbnailUrl = getStr('thumbnailUrl', 'thumbnail_url', 'thumbnail', 'rendered_image_url', 'preview_url')
+	let thumbnailUrl = getStr(
+		'thumbnailUrl',
+		'thumbnail_url',
+		'thumbnail',
+		'rendered_image_url',
+		'preview_url'
+	)
 	if (!thumbnailUrl && isRecord(outputObj.thumbnail)) {
 		thumbnailUrl = String(outputObj.thumbnail.url ?? '').trim()
 	}
@@ -475,7 +485,8 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 		if (!str) return false
 		if (str.startsWith('http://') || str.startsWith('https://') || str.startsWith('data:image/')) {
 			if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(str)) return true
-			if (str.includes('/generation/') || str.includes('/image/') || str.includes('tripo')) return true
+			if (str.includes('/generation/') || str.includes('/image/') || str.includes('tripo'))
+				return true
 		}
 		return false
 	}
@@ -500,7 +511,18 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 		const obj = target as Record<string, unknown>
 		for (const [key, value] of Object.entries(obj)) {
 			const keyLower = key.toLowerCase()
-			if (['images', 'image_urls', 'results', 'image', 'image_url', 'output_images', 'generated_images', 'result'].includes(keyLower)) {
+			if (
+				[
+					'images',
+					'image_urls',
+					'results',
+					'image',
+					'image_url',
+					'output_images',
+					'generated_images',
+					'result'
+				].includes(keyLower)
+			) {
 				if (isArray(value)) {
 					for (const item of value) collectImageUrl(item)
 				} else {
@@ -518,7 +540,8 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 	collectFromObject(outputObj)
 
 	const mode = getStr('mode', 'type')
-	const isImageMode = mode === 'text_to_image' || mode === 'image_to_image' || mode === 'image_to_multiview'
+	const isImageMode =
+		mode === 'text_to_image' || mode === 'image_to_image' || mode === 'image_to_multiview'
 	if (isImageMode) {
 		collectFromObject(record)
 	}
@@ -537,7 +560,9 @@ export function extractTripo3DTaskResultFields(raw: unknown): {
 }
 
 export function normalizeTripo3DTaskStatus(status: unknown): Tripo3DTaskStatus {
-	const raw = String(status ?? '').trim().toLowerCase()
+	const raw = String(status ?? '')
+		.trim()
+		.toLowerCase()
 	if (raw === 'success' || raw === 'succeeded' || raw === 'completed') return 'succeeded'
 	if (raw === 'queued') return 'queued'
 	if (raw === 'pending') return 'pending'

@@ -29,12 +29,14 @@
 		@resize="onResize"
 	>
 		<template #body>
-			<canvas
-				ref="canvas"
-				class="wf-rotate-canvas"
-				:class="{ dragging: dragging }"
-				@pointerdown.stop.prevent="onDragStart"
-			/>
+			<div ref="wrap" class="wf-rotate-wrap">
+				<canvas
+					ref="canvas"
+					class="wf-rotate-canvas"
+					:class="{ dragging: dragging }"
+					@pointerdown.stop.prevent="onDragStart"
+				/>
+			</div>
 			<div class="wf-rotate-overlay" @pointerdown.stop>
 				<div class="wf-view-cube" :aria-label="t('nodes.rotateImage.cubeLabel')">
 					<div class="wf-cube-graphic">
@@ -89,7 +91,12 @@
 					</div>
 				</div>
 
-				<button type="button" class="wf-reset-btn" :title="t('nodes.rotateImage.resetToFront')" @click.stop="onResetView">
+				<button
+					type="button"
+					class="wf-reset-btn"
+					:title="t('nodes.rotateImage.resetToFront')"
+					@click.stop="onResetView"
+				>
 					{{ t('nodes.rotateImage.reset') }}
 				</button>
 			</div>
@@ -138,12 +145,40 @@ const props = defineProps<{
 	rotatePromptText?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -194,11 +229,24 @@ const emit = defineEmits<{
 			height: number
 		}
 	): void
+	(e: 'invalidate-screenshot'): void
 }>()
 
-const PLACEHOLDER_SVG = computed(() =>
-	`data:image/svg+xml;utf8,` +
-	encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
+let invalidateScreenshotTimer: number | null = null
+const scheduleInvalidateScreenshot = (delayMs: number = 200) => {
+	if (invalidateScreenshotTimer != null) {
+		clearTimeout(invalidateScreenshotTimer)
+	}
+	invalidateScreenshotTimer = window.setTimeout(() => {
+		invalidateScreenshotTimer = null
+		emit('invalidate-screenshot')
+	}, delayMs)
+}
+
+const PLACEHOLDER_SVG = computed(
+	() =>
+		`data:image/svg+xml;utf8,` +
+		encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
@@ -266,6 +314,7 @@ const setImageElementSource = (src: string, useCrossOrigin: boolean) => {
 		loadedImageKey = src
 		lastOutputKey = ''
 		draw()
+		scheduleInvalidateScreenshot(100)
 	}
 	next.onerror = () => {
 		if (img !== next) return
@@ -273,6 +322,7 @@ const setImageElementSource = (src: string, useCrossOrigin: boolean) => {
 		loadedImageKey = ''
 		lastOutputKey = ''
 		draw()
+		scheduleInvalidateScreenshot(100)
 	}
 	next.src = src
 	img = next
@@ -813,6 +863,7 @@ const animateTo = (targetYaw: number, targetPitch: number, duration = 320) => {
 			return
 		}
 		rotateAnimRaf = 0
+		scheduleInvalidateScreenshot(100)
 	}
 
 	rotateAnimRaf = requestAnimationFrame(step)
@@ -879,6 +930,7 @@ const onDragStart = (e: PointerEvent) => {
 		} catch {
 			// ignore
 		}
+		scheduleInvalidateScreenshot(150)
 	}
 
 	window.addEventListener('pointermove', onMove)
@@ -898,6 +950,13 @@ watch(
 		draw()
 	},
 	{ immediate: true }
+)
+
+watch(
+	() => props.selected,
+	() => {
+		scheduleInvalidateScreenshot(100)
+	}
 )
 
 onMounted(() => {

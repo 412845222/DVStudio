@@ -21,30 +21,111 @@
 				</span>
 				<span v-if="selectedId === provider.id" class="cs-pc-check" aria-hidden="true">
 					<svg viewBox="0 0 16 16" width="12" height="12">
-						<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+						<path
+							d="M3 8l3.5 3.5L13 5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 				</span>
-				<span v-if="!provider.available" class="cs-pc-badge">{{ t('cloudStorage.config.comingSoon') }}</span>
+				<span v-if="!provider.available" class="cs-pc-badge">
+					{{ t('cloudStorage.config.comingSoon') }}
+				</span>
 				<div class="cs-pc-icon-box">
-					<svg v-if="provider.icon === 'volcano'" viewBox="0 0 24 24" class="cs-pc-icon" aria-hidden="true">
-						<path d="M4 20L8 10L10 13L12 8L14 14L16 10L20 20H4Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-						<path d="M9 6L9.5 4L10.5 6L10 8L9 6Z" fill="currentColor" opacity="0.8"/>
+					<svg
+						v-if="provider.icon === 'volcano'"
+						viewBox="0 0 24 24"
+						class="cs-pc-icon"
+						aria-hidden="true"
+					>
+						<path
+							d="M4 20L8 10L10 13L12 8L14 14L16 10L20 20H4Z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linejoin="round"
+						/>
+						<path d="M9 6L9.5 4L10.5 6L10 8L9 6Z" fill="currentColor" opacity="0.8" />
 					</svg>
-					<svg v-else-if="provider.id === 'aliyun-oss'" viewBox="0 0 24 24" class="cs-pc-icon" aria-hidden="true">
-						<path d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2M4 8v8a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4V8M4 8h16M8 12h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+					<svg
+						v-else-if="provider.id === 'aliyun-oss'"
+						viewBox="0 0 24 24"
+						class="cs-pc-icon"
+						aria-hidden="true"
+					>
+						<path
+							d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2M4 8v8a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4V8M4 8h16M8 12h8"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
-					<svg v-else-if="provider.id === 'tencent-cos'" viewBox="0 0 24 24" class="cs-pc-icon" aria-hidden="true">
-						<path d="M12 3L21 8V16L12 21L3 16V8L12 3Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-						<path d="M12 12M8 10L16 14M16 10L8 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+					<svg
+						v-else-if="provider.id === 'tencent-cos'"
+						viewBox="0 0 24 24"
+						class="cs-pc-icon"
+						aria-hidden="true"
+					>
+						<path
+							d="M12 3L21 8V16L12 21L3 16V8L12 3Z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M12 12M8 10L16 14M16 10L8 14"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+							stroke-linecap="round"
+						/>
 					</svg>
-					<svg v-else-if="provider.id === 'aws-s3'" viewBox="0 0 24 24" class="cs-pc-icon" aria-hidden="true">
-						<ellipse cx="12" cy="6" rx="8" ry="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-						<path d="M4 6V12C4 13.657 7.582 15 12 15C16.418 15 20 13.657 20 12V6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-						<path d="M4 12V18C4 19.657 7.582 21 12 21C16.418 21 20 19.657 20 18V12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+					<svg
+						v-else-if="provider.id === 'aws-s3'"
+						viewBox="0 0 24 24"
+						class="cs-pc-icon"
+						aria-hidden="true"
+					>
+						<ellipse
+							cx="12"
+							cy="6"
+							rx="8"
+							ry="3"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						/>
+						<path
+							d="M4 6V12C4 13.657 7.582 15 12 15C16.418 15 20 13.657 20 12V6"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						/>
+						<path
+							d="M4 12V18C4 19.657 7.582 21 12 21C16.418 21 20 19.657 20 18V12"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						/>
 					</svg>
 					<svg v-else viewBox="0 0 24 24" class="cs-pc-icon" aria-hidden="true">
-						<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-						<path d="M3 10H21M8 4V20" fill="none" stroke="currentColor" stroke-width="1.5"/>
+						<rect
+							x="3"
+							y="4"
+							width="18"
+							height="16"
+							rx="2"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						/>
+						<path d="M3 10H21M8 4V20" fill="none" stroke="currentColor" stroke-width="1.5" />
 					</svg>
 				</div>
 				<div class="cs-pc-name">{{ provider.name }}</div>
@@ -76,11 +157,14 @@ const emit = defineEmits<{
 
 const selectedId = ref(props.modelValue || '')
 
-watch(() => props.modelValue, (newVal) => {
-	if (newVal !== undefined && newVal !== selectedId.value) {
-		selectedId.value = newVal
+watch(
+	() => props.modelValue,
+	(newVal) => {
+		if (newVal !== undefined && newVal !== selectedId.value) {
+			selectedId.value = newVal
+		}
 	}
-})
+)
 
 const staticProviders: DisplayProvider[] = [
 	{
@@ -94,7 +178,7 @@ const staticProviders: DisplayProvider[] = [
 		keyApplyTip: '建议使用子账号密钥，遵循最小权限原则',
 		regions: [],
 		credentialFields: [],
-		available: true,
+		available: true
 	},
 	{
 		id: 'aliyun-oss',
@@ -107,7 +191,7 @@ const staticProviders: DisplayProvider[] = [
 		keyApplyTip: '建议使用 RAM 子账号 AccessKey',
 		regions: [],
 		credentialFields: [],
-		available: false,
+		available: false
 	},
 	{
 		id: 'tencent-cos',
@@ -120,7 +204,7 @@ const staticProviders: DisplayProvider[] = [
 		keyApplyTip: '建议使用子用户密钥并授予COS权限',
 		regions: [],
 		credentialFields: [],
-		available: false,
+		available: false
 	},
 	{
 		id: 'aws-s3',
@@ -133,15 +217,15 @@ const staticProviders: DisplayProvider[] = [
 		keyApplyTip: '建议创建IAM用户并附加AmazonS3FullAccess策略',
 		regions: [],
 		credentialFields: [],
-		available: false,
-	},
+		available: false
+	}
 ]
 
 const backendProviders = ref<CloudStorageProviderMeta[]>([])
 
 const displayProviders = computed<DisplayProvider[]>(() => {
-	const backendMap = new Map(backendProviders.value.map(p => [p.id, p]))
-	return staticProviders.map(sp => {
+	const backendMap = new Map(backendProviders.value.map((p) => [p.id, p]))
+	return staticProviders.map((sp) => {
 		const backend = backendMap.get(sp.id)
 		if (backend) {
 			return {
@@ -149,7 +233,7 @@ const displayProviders = computed<DisplayProvider[]>(() => {
 				...backend,
 				name: backend.name || sp.name,
 				description: backend.description || sp.description,
-				available: true,
+				available: true
 			}
 		}
 		return sp
@@ -207,18 +291,32 @@ onMounted(async () => {
 	animation: cs-card-in 300ms ease-out backwards;
 }
 
-.cs-provider-card:nth-child(1) { animation-delay: 50ms; }
-.cs-provider-card:nth-child(2) { animation-delay: 100ms; }
-.cs-provider-card:nth-child(3) { animation-delay: 150ms; }
-.cs-provider-card:nth-child(4) { animation-delay: 200ms; }
+.cs-provider-card:nth-child(1) {
+	animation-delay: 50ms;
+}
+.cs-provider-card:nth-child(2) {
+	animation-delay: 100ms;
+}
+.cs-provider-card:nth-child(3) {
+	animation-delay: 150ms;
+}
+.cs-provider-card:nth-child(4) {
+	animation-delay: 200ms;
+}
 
 @keyframes cs-card-in {
-	from { opacity: 0; transform: translateY(6px); }
-	to { opacity: 1; transform: translateY(0); }
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .cs-provider-card::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -231,13 +329,17 @@ onMounted(async () => {
 }
 
 .cs-provider-card::after {
-	content: "";
+	content: '';
 	position: absolute;
 	bottom: 0;
 	right: 0;
 	width: 30px;
 	height: 1px;
-	background: linear-gradient(270deg, color-mix(in srgb, var(--pl-accent) 30%, transparent), transparent);
+	background: linear-gradient(
+		270deg,
+		color-mix(in srgb, var(--pl-accent) 30%, transparent),
+		transparent
+	);
 	opacity: 0;
 	transition: opacity 200ms ease;
 }
@@ -257,7 +359,8 @@ onMounted(async () => {
 .cs-provider-card.active {
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
-	box-shadow: 0 0 20px color-mix(in srgb, var(--pl-accent) 20%, transparent),
+	box-shadow:
+		0 0 20px color-mix(in srgb, var(--pl-accent) 20%, transparent),
 		inset 0 0 20px color-mix(in srgb, var(--pl-accent) 5%, transparent);
 }
 
@@ -283,7 +386,9 @@ onMounted(async () => {
 	width: 0;
 	height: 0;
 	border-color: var(--pl-accent);
-	transition: width 180ms ease, height 180ms ease;
+	transition:
+		width 180ms ease,
+		height 180ms ease;
 }
 
 .cs-provider-card.active .cs-pcc,
@@ -340,8 +445,14 @@ onMounted(async () => {
 }
 
 @keyframes cs-check-in {
-	from { opacity: 0; transform: scale(0.5); }
-	to { opacity: 1; transform: scale(1); }
+	from {
+		opacity: 0;
+		transform: scale(0.5);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
 }
 
 .cs-pc-badge {
@@ -369,7 +480,7 @@ onMounted(async () => {
 }
 
 .cs-pc-icon-box::before {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: 0;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);

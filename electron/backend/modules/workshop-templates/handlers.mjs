@@ -11,7 +11,7 @@ export async function getPlatform() {
 			ok: true,
 			platformAvailable: available,
 			platformId,
-			platformName,
+			platformName
 		}
 	} catch (err) {
 		console.error('[workshop-templates] getPlatform error:', err.message)
@@ -24,7 +24,10 @@ export async function queryTemplates(_ctx, options = {}) {
 		const service = getWorkshopTemplatesService()
 		console.log('[workshop-templates] queryTemplates called with options:', options)
 		const result = await service.queryOfficial(options)
-		console.log('[workshop-templates] queryTemplates:', result.ok ? `${result.items?.length || 0} items` : result.errMsg)
+		console.log(
+			'[workshop-templates] queryTemplates:',
+			result.ok ? `${result.items?.length || 0} items` : result.errMsg
+		)
 		return result
 	} catch (err) {
 		console.error('[workshop-templates] queryTemplates error:', err.message)
@@ -50,7 +53,10 @@ export async function downloadTemplate(_ctx, data) {
 
 		const { metadata, zipBuffer, coverBuffer } = result
 
-		console.log('[workshop-templates] downloadTemplate success:', { publishedFileId, zipSize: zipBuffer.length })
+		console.log('[workshop-templates] downloadTemplate success:', {
+			publishedFileId,
+			zipSize: zipBuffer.length
+		})
 
 		return {
 			ok: true,
@@ -60,10 +66,12 @@ export async function downloadTemplate(_ctx, data) {
 				zipBuffer.byteOffset,
 				zipBuffer.byteOffset + zipBuffer.byteLength
 			),
-			coverData: coverBuffer ? coverBuffer.buffer.slice(
-				coverBuffer.byteOffset,
-				coverBuffer.byteOffset + coverBuffer.byteLength
-			) : null,
+			coverData: coverBuffer
+				? coverBuffer.buffer.slice(
+						coverBuffer.byteOffset,
+						coverBuffer.byteOffset + coverBuffer.byteLength
+					)
+				: null
 		}
 	} catch (err) {
 		console.error('[workshop-templates] downloadTemplate error:', err.message)
@@ -85,7 +93,7 @@ export async function getDownloadProgress(_ctx, data) {
 		return {
 			ok: true,
 			publishedFileId,
-			progress,
+			progress
 		}
 	} catch (err) {
 		console.error('[workshop-templates] getDownloadProgress error:', err.message)
@@ -102,11 +110,14 @@ export async function getInstallInfo(_ctx, data) {
 
 		const service = getWorkshopTemplatesService()
 		const info = service.getItemInstallInfo(publishedFileId)
-		console.log('[workshop-templates] getInstallInfo:', { publishedFileId, installed: info.installed })
+		console.log('[workshop-templates] getInstallInfo:', {
+			publishedFileId,
+			installed: info.installed
+		})
 
 		return {
 			ok: true,
-			...info,
+			...info
 		}
 	} catch (err) {
 		console.error('[workshop-templates] getInstallInfo error:', err.message)

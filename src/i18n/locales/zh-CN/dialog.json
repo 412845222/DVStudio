@@ -1,8 +1,8 @@
 {
-  "dialog.ok": "确定",
-  "dialog.cancel": "取消",
-  "dialog.confirm": "确认",
-  "dialog.close": "关闭",
-  "dialog.dontShowAgain": "不再提示",
-  "dialog.defaultTitle": "提示"
+	"dialog.ok": "确定",
+	"dialog.cancel": "取消",
+	"dialog.confirm": "确认",
+	"dialog.close": "关闭",
+	"dialog.dontShowAgain": "不再提示",
+	"dialog.defaultTitle": "提示"
 }

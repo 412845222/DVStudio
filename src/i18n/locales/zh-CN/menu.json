@@ -1,14 +1,14 @@
 {
-  "menu.welcome": "欢迎",
-  "menu.projects": "项目列表",
-  "menu.workflow": "AI素材工作流",
-  "menu.studio": "视频编辑器",
-  "menu.cloudStorage": "云存储",
-  "menu.services": "服务",
-  "menu.settings": "设置",
-  "menu.collapse": "收起导航",
-  "menu.expand": "展开导航",
-  "menu.navAriaLabel": "全局导航",
-  "menu.comingSoon": "敬请期待",
-  "menu.switching": "切换中"
+	"menu.welcome": "欢迎",
+	"menu.projects": "项目列表",
+	"menu.workflow": "AI素材工作流",
+	"menu.studio": "视频编辑器",
+	"menu.cloudStorage": "云存储",
+	"menu.services": "服务",
+	"menu.settings": "设置",
+	"menu.collapse": "收起导航",
+	"menu.expand": "展开导航",
+	"menu.navAriaLabel": "全局导航",
+	"menu.comingSoon": "敬请期待",
+	"menu.switching": "切换中"
 }

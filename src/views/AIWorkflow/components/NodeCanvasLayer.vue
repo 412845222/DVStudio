@@ -1,8 +1,5 @@
 <template>
-	<canvas
-		ref="canvasRef"
-		class="node-canvas-layer"
-	/>
+	<canvas ref="canvasRef" class="node-canvas-layer" />
 </template>
 
 <script setup lang="ts">
@@ -115,9 +112,17 @@ const onParentPointerDownCapture = (event: PointerEvent) => {
 
 watch(
 	() => [props.viewport.zoom, props.viewport.panX, props.viewport.panY],
-	() => { markDirty() }
+	() => {
+		markDirty()
+	}
 )
-watch(() => props.nodes, () => { markDirty() }, { deep: false })
+watch(
+	() => props.nodes,
+	() => {
+		markDirty()
+	},
+	{ deep: false }
+)
 watch(
 	() => props.motionActive,
 	(active) => {
@@ -138,10 +143,7 @@ watch(
 onMounted(() => {
 	if (!canvasRef.value) return
 
-	renderer = new CanvasNodeRenderer(
-		canvasRef.value,
-		props.screenshotPoolProvider
-	)
+	renderer = new CanvasNodeRenderer(canvasRef.value, props.screenshotPoolProvider)
 
 	const initialTheme = props.theme
 	renderer.setTheme(initialTheme)

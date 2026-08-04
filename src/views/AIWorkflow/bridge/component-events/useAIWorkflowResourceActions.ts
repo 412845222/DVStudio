@@ -5,11 +5,14 @@ export const useAIWorkflowResourceActions = (payload: {
 	store: {
 		state: {
 			nodesById: Record<string, WorkflowNode>
-			resourcesById: Record<string, {
-				sourcePath?: string
-				projectRelativePath?: string
-				url?: string
-			}>
+			resourcesById: Record<
+				string,
+				{
+					sourcePath?: string
+					projectRelativePath?: string
+					url?: string
+				}
+			>
 		}
 	}
 	selectedNodeId: Ref<string | null>
@@ -67,9 +70,8 @@ export const useAIWorkflowResourceActions = (payload: {
 		if (originalBlob.type && originalBlob.type !== 'application/octet-stream') {
 			mimeType = originalBlob.type
 		}
-		const blob = originalBlob.type === mimeType
-			? originalBlob
-			: new Blob([originalBlob], { type: mimeType })
+		const blob =
+			originalBlob.type === mimeType ? originalBlob : new Blob([originalBlob], { type: mimeType })
 		const objectUrl = URL.createObjectURL(blob)
 		try {
 			triggerDownloadObjectUrl(objectUrl, filename)
@@ -117,7 +119,10 @@ export const useAIWorkflowResourceActions = (payload: {
 					const sourcePath = String(resource?.sourcePath ?? '').trim()
 					const url = String(resource?.url ?? '').trim()
 					const projectRelativePath = String(resource?.projectRelativePath ?? '').trim()
-					ext = getExtensionFromUrl(sourcePath) || getExtensionFromUrl(url) || getExtensionFromUrl(projectRelativePath)
+					ext =
+						getExtensionFromUrl(sourcePath) ||
+						getExtensionFromUrl(url) ||
+						getExtensionFromUrl(projectRelativePath)
 				}
 			}
 			if (!ext && node.imageSettings?.outputFormat) {
@@ -198,7 +203,10 @@ export const useAIWorkflowResourceActions = (payload: {
 	}
 
 	const isBinCachePath = (value: string) => {
-		const v = String(value || '').trim().toLowerCase().replace(/\\/g, '/')
+		const v = String(value || '')
+			.trim()
+			.toLowerCase()
+			.replace(/\\/g, '/')
 		if (!v) return false
 		if (v.endsWith('.bin')) return true
 		return v.includes('/.dvcache/bin/')
@@ -252,7 +260,9 @@ export const useAIWorkflowResourceActions = (payload: {
 						if (/^file:\/\//i.test(resourceUrl)) {
 							try {
 								const urlObj = new URL(resourceUrl)
-								candidates.push(decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1'))
+								candidates.push(
+									decodeURIComponent(urlObj.pathname).replace(/^\/+([a-zA-Z]:)/, '$1')
+								)
 							} catch {}
 						}
 						if (resourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
@@ -261,10 +271,14 @@ export const useAIWorkflowResourceActions = (payload: {
 						}
 					}
 
-					const localAssetPath = String((resource as Record<string, unknown>)?.localAssetPath ?? '').trim()
+					const localAssetPath = String(
+						(resource as Record<string, unknown>)?.localAssetPath ?? ''
+					).trim()
 					candidates.push(localAssetPath)
 
-					const absolutePath = String((resource as Record<string, unknown>)?.absolutePath ?? '').trim()
+					const absolutePath = String(
+						(resource as Record<string, unknown>)?.absolutePath ?? ''
+					).trim()
 					candidates.push(absolutePath)
 				}
 			}
@@ -341,7 +355,9 @@ export const useAIWorkflowResourceActions = (payload: {
 			}
 		}
 
-		const localAssetPath = String((resource as Record<string, unknown>)?.localAssetPath ?? '').trim()
+		const localAssetPath = String(
+			(resource as Record<string, unknown>)?.localAssetPath ?? ''
+		).trim()
 		candidates.push(localAssetPath)
 
 		const absolutePath = String((resource as Record<string, unknown>)?.absolutePath ?? '').trim()

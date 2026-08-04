@@ -5,7 +5,7 @@ import { t } from '../../../../i18n'
 type OutputAnchor = {
 	id?: string
 	label?: string
-	mediaType?: 'image' | 'video'
+	mediaType?: 'image' | 'video' | 'model3d'
 	[key: string]: unknown
 }
 
@@ -43,7 +43,7 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 	resolveBackendUrl: (url: string) => string
 	bindMediaResourceToNode: (
 		nodeId: string,
-		kind: 'image' | 'video',
+		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
 		meta?: { sourcePath?: string }
@@ -69,6 +69,8 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			return Promise.resolve({ alerts: [] as string[], outputs: [] as ComfyLocalizedOutput[] })
 		}
 
+		const isSingleOutAnchor = outputAnchorIds.length === 1 && outputAnchorIds[0] === 'out'
+
 		const outputAnchorIdSet = new Set(outputAnchorIds)
 		const outputAnchorMap = new Map(outputs.map((a: OutputAnchor) => [String(a?.id ?? ''), a]))
 		const outputAnchorOrder = new Map(
@@ -87,17 +89,124 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			outgoingByAnchor.set(anchorId, list)
 		}
 
-		const imageMedia = media.filter(
-			(m) => inferMediaKind(m) === 'image' && String(m.url || '').trim()
-		)
-		const videoMedia = media.filter(
-			(m) => inferMediaKind(m) === 'video' && String(m.url || '').trim()
-		)
-		const fallbackCursor = { image: 0, video: 0 }
+		const validMedia = media.filter((m) => String(m.url || '').trim() && inferMediaKind(m))
+		const imageMedia = validMedia.filter((m) => inferMediaKind(m) === 'image')
+		const videoMedia = validMedia.filter((m) => inferMediaKind(m) === 'video')
+		const model3dMedia = validMedia.filter((m) => inferMediaKind(m) === 'model3d')
 		const alerts = new Set<string>()
 
 		const mediaKey = (m: ComfyBridgeMedia) => {
 			return `${String(m?.nodeId ?? '')}|${String(m?.filename ?? '')}|${String(m?.subfolder ?? '')}|${String(m?.type ?? '')}|${String(m?.url ?? '')}`
+		}
+
+		const localizeSingleMedia = async (
+			selectedMedia: ComfyBridgeMedia,
+			anchorId: string,
+			anchorLabel: string,
+			importedByMediaKey: Map<string, ComfyLocalizedOutput>
+		): Promise<ComfyLocalizedOutput | null> => {
+			const inferredMediaType = inferMediaKind(selectedMedia)
+			if (!inferredMediaType) return null
+
+			const key = mediaKey(selectedMedia)
+			let localizedOutput: ComfyLocalizedOutput | null = importedByMediaKey.get(key) ?? null
+
+			if (localizedOutput) {
+				return { ...localizedOutput, anchorId }
+			}
+
+			const pid = Number(payload.currentProjectId.value ?? 0)
+			const selectedUrl = String(selectedMedia.url || '').trim()
+			const desiredName = String(
+				selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`
+			).trim()
+			let localizedFromElectron = false
+
+			if (
+				payload.isElectron() &&
+				Number.isFinite(pid) &&
+				pid > 0 &&
+				selectedUrl &&
+				typeof payload.downloadUrlToProjectRoot === 'function'
+			) {
+				try {
+					const dl = await payload.downloadUrlToProjectRoot(pid, selectedUrl, desiredName)
+					const rel = String(dl?.relativePath || '').trim()
+					const abs = String(dl?.absolutePath || '').trim()
+					if (dl?.ok && rel && abs) {
+						localizedOutput = {
+							kind: inferredMediaType,
+							url: `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`,
+							filename: desiredName,
+							anchorId,
+							nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
+							sourcePath: abs,
+							subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
+							type: String(selectedMedia.type || '').trim() || undefined
+						}
+						importedByMediaKey.set(key, localizedOutput)
+						localizedFromElectron = true
+					}
+				} catch {
+					// ignore and fallback
+				}
+			}
+
+			if (!localizedFromElectron && payload.isElectron()) {
+				alerts.add(t('nodes.comfyui.downloadFailed', { anchor: anchorLabel }))
+				return null
+			}
+
+			if (!localizedFromElectron) {
+				const service = payload.blueprintProjectService as {
+					importAsset: (
+						params: Record<string, unknown>
+					) => Promise<{ ok: boolean; error?: string; asset?: Record<string, unknown> }>
+				}
+				const imported = await service.importAsset({
+					kind: inferredMediaType === 'model3d' ? 'file' : inferredMediaType,
+					name: desiredName,
+					sourceUrl: selectedUrl,
+					baseUrl: String(comfyNode.comfyuiSettings?.baseUrl || '').trim() || undefined,
+					filename: String(selectedMedia.filename || '').trim() || undefined,
+					subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
+					type: String(selectedMedia.type || '').trim() || undefined,
+					projectId: payload.currentProjectId.value
+				})
+
+				if (!imported.ok) {
+					alerts.add(
+						t('nodes.comfyui.importFailed', {
+							anchor: anchorLabel,
+							error: String(imported.error || 'unknown')
+						})
+					)
+					return null
+				}
+
+				const asset = imported.asset ?? {}
+				const importedUrl = payload.resolveBackendUrl(String(asset.url || ''))
+				if (!String(importedUrl || '').trim()) {
+					alerts.add(t('nodes.comfyui.emptyUrlReturned', { anchor: anchorLabel }))
+					return null
+				}
+
+				localizedOutput = {
+					kind: inferredMediaType,
+					url: importedUrl,
+					filename: String(
+						asset.name || selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`
+					),
+					anchorId,
+					nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
+					sourcePath: String(asset.sourcePath || asset.absolutePath || '').trim() || undefined,
+					subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
+					type: String(selectedMedia.type || '').trim() || undefined
+				}
+				importedByMediaKey.set(key, localizedOutput)
+			}
+
+			return localizedOutput
 		}
 
 		const run = async () => {
@@ -114,219 +223,238 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			}
 
 			const importedByMediaKey = new Map<string, ComfyLocalizedOutput>()
+			const allLocalizedOutputs: ComfyLocalizedOutput[] = []
 
-			const sortedOutputAnchorIds = [...outputAnchorIds].sort((a, b) => {
-				const ai = Number(outputAnchorOrder.get(a) ?? Number.MAX_SAFE_INTEGER)
-				const bi = Number(outputAnchorOrder.get(b) ?? Number.MAX_SAFE_INTEGER)
-				return ai - bi
-			})
-
-			for (const anchorId of sortedOutputAnchorIds) {
-				const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
+			if (isSingleOutAnchor) {
+				const anchorId = 'out'
 				const fromAnchor = outputAnchorMap.get(anchorId)
-				const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor'))
-				const fromMediaType = fromAnchor?.mediaType as 'image' | 'video' | undefined
-
-				const targetKinds = edgesForAnchor
-					.map((e: Edge) => {
-						const toRecord = payload.store.state.nodesById[e.toNodeId ?? '']
-						const to = toRecord as { type?: string } | undefined
-						return to?.type === 'image' ? 'image' : to?.type === 'video' ? 'video' : null
-					})
-					.filter((x): x is 'image' | 'video' => x === 'image' || x === 'video')
-				const uniqueTargetKinds = Array.from(new Set(targetKinds))
-
-				if (fromMediaType === 'image' || fromMediaType === 'video') {
-					if (uniqueTargetKinds.some((k) => k !== fromMediaType)) {
-						alerts.add(
-							t('nodes.comfyui.typeMismatch', { anchor: fromAnchorLabel, mediaType: fromMediaType })
-						)
-					}
-				}
-
-				const anchorNodeIdRaw = comfyAnchorNodeIdFromAnchorId(anchorId)
-				const exactNodeCandidates: ComfyBridgeMedia[] = anchorNodeIdRaw
-					? media.filter(
-							(m: ComfyBridgeMedia) => String(m?.nodeId ?? '').trim() === anchorNodeIdRaw
-						)
-					: []
-
-				let inferredMediaType: 'image' | 'video' | null =
-					fromMediaType === 'image' || fromMediaType === 'video' ? fromMediaType : null
-
-				if (!inferredMediaType && exactNodeCandidates.length) {
-					inferredMediaType = inferMediaKind(exactNodeCandidates[0])
-				}
-				if (!inferredMediaType && uniqueTargetKinds.length === 1) {
-					inferredMediaType = uniqueTargetKinds[0]
-				}
-				if (!inferredMediaType) {
-					inferredMediaType = imageMedia.length ? 'image' : videoMedia.length ? 'video' : null
-				}
-
-				if (!inferredMediaType) {
-					alerts.add(t('nodes.comfyui.noMediaOutput', { anchor: fromAnchorLabel }))
-					continue
-				}
-
-				if (fromMediaType !== 'image' && fromMediaType !== 'video') {
-					alerts.add(
-						t('nodes.comfyui.unlabeledType', { anchor: fromAnchorLabel, mediaType: inferredMediaType })
-					)
-				}
-
-				const list = inferredMediaType === 'image' ? imageMedia : videoMedia
-				if (!list.length) {
-					const mediaTypeLabel = inferredMediaType === 'image' ? t('nodes.comfyui.imageType') : t('nodes.comfyui.videoType')
-					alerts.add(
-						t('nodes.comfyui.noMediaForAnchor', { mediaType: mediaTypeLabel, anchor: fromAnchorLabel })
-					)
-					continue
-				}
-
-				const exactByKind = exactNodeCandidates.filter(
-					(m: ComfyBridgeMedia) => inferMediaKind(m) === inferredMediaType
+				const fromAnchorLabel = String(
+					fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor')
 				)
+				const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
 
-				let selectedMedia: ComfyBridgeMedia | null
-				if (exactByKind.length) {
-					selectedMedia = exactByKind[0]
-				} else if (exactNodeCandidates.length) {
-					selectedMedia = exactNodeCandidates[0]
-				} else {
-					const idx = fallbackCursor[inferredMediaType]
-					if (idx < list.length) {
-						selectedMedia = list[idx]
-						fallbackCursor[inferredMediaType] += 1
-					} else {
-						selectedMedia = list[list.length - 1]
+				const boundNodeIds = new Set<string>()
+
+				for (const m of validMedia) {
+					const localized = await localizeSingleMedia(
+						m,
+						anchorId,
+						fromAnchorLabel,
+						importedByMediaKey
+					)
+					if (localized) {
+						allLocalizedOutputs.push(localized)
 					}
 				}
-
-				if (!selectedMedia || !String(selectedMedia.url || '').trim()) {
-					alerts.add(t('nodes.comfyui.noMatchOutput', { anchor: fromAnchorLabel }))
-					continue
-				}
-
-				const key = mediaKey(selectedMedia)
-				let localizedOutput: ComfyLocalizedOutput | null = null
-
-				if (assignMap.get(anchorId) === key) {
-					localizedOutput = localizedByAnchor.get(anchorId) ?? null
-				}
-				if (!localizedOutput) {
-					localizedOutput = importedByMediaKey.get(key) ?? null
-				}
-
-				if (!localizedOutput) {
-					const pid = Number(payload.currentProjectId.value ?? 0)
-					const selectedUrl = String(selectedMedia.url || '').trim()
-					const desiredName = String(
-						selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`
-					).trim()
-					let localizedFromElectron = false
-
-					if (
-						payload.isElectron() &&
-						Number.isFinite(pid) &&
-						pid > 0 &&
-						selectedUrl &&
-						typeof payload.downloadUrlToProjectRoot === 'function'
-					) {
-						try {
-							const dl = await payload.downloadUrlToProjectRoot(pid, selectedUrl, desiredName)
-							const rel = String(dl?.relativePath || '').trim()
-							const abs = String(dl?.absolutePath || '').trim()
-							if (dl?.ok && rel && abs) {
-								localizedOutput = {
-									kind: inferredMediaType,
-									url: `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(rel)}`,
-									filename: desiredName,
-									anchorId,
-									nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
-									sourcePath: abs,
-									subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
-									type: String(selectedMedia.type || '').trim() || undefined
-								}
-								importedByMediaKey.set(key, localizedOutput)
-								localizedFromElectron = true
-							}
-						} catch {
-							// ignore and fallback
-						}
-					}
-
-					if (!localizedFromElectron && payload.isElectron()) {
-						alerts.add(t('nodes.comfyui.downloadFailed', { anchor: fromAnchorLabel }))
-						continue
-					}
-
-					if (!localizedFromElectron) {
-						const service = payload.blueprintProjectService as {
-							importAsset: (
-								params: Record<string, unknown>
-							) => Promise<{ ok: boolean; error?: string; asset?: Record<string, unknown> }>
-						}
-						const imported = await service.importAsset({
-							kind: inferredMediaType,
-							name: desiredName,
-							sourceUrl: selectedUrl,
-							baseUrl: String(comfyNode.comfyuiSettings?.baseUrl || '').trim() || undefined,
-							filename: String(selectedMedia.filename || '').trim() || undefined,
-							subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
-							type: String(selectedMedia.type || '').trim() || undefined,
-							projectId: payload.currentProjectId.value
-						})
-
-						if (!imported.ok) {
-							alerts.add(
-								t('nodes.comfyui.importFailed', { anchor: fromAnchorLabel, error: String(imported.error || 'unknown') })
-							)
-							continue
-						}
-
-						const asset = imported.asset ?? {}
-						const importedUrl = payload.resolveBackendUrl(String(asset.url || ''))
-						if (!String(importedUrl || '').trim()) {
-							alerts.add(t('nodes.comfyui.emptyUrlReturned', { anchor: fromAnchorLabel }))
-							continue
-						}
-
-						localizedOutput = {
-							kind: inferredMediaType,
-							url: importedUrl,
-							filename: String(
-								asset.name || selectedMedia.filename || `comfy_${inferredMediaType}_${Date.now()}`
-							),
-							anchorId,
-							nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
-							sourcePath: String(asset.sourcePath || asset.absolutePath || '').trim() || undefined,
-							subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
-							type: String(selectedMedia.type || '').trim() || undefined
-						}
-						importedByMediaKey.set(key, localizedOutput)
-					}
-				}
-
-				assignMap.set(anchorId, key)
-				localizedByAnchor.set(anchorId, localizedOutput!)
 
 				for (const e of edgesForAnchor) {
 					const toRecord = payload.store.state.nodesById[e.toNodeId ?? '']
 					const to = toRecord as { id?: string; type?: string } | undefined
-					if (!to) continue
-					const targetKind = to.type === 'image' ? 'image' : to.type === 'video' ? 'video' : null
+					if (!to || !to.id) continue
+					if (boundNodeIds.has(to.id)) continue
+
+					let targetKind: 'image' | 'video' | 'model3d' | null = null
+					if (to.type === 'image') targetKind = 'image'
+					else if (to.type === 'video') targetKind = 'video'
+					else if (to.type === 'model3d') targetKind = 'model3d'
 					if (!targetKind) continue
-					if (targetKind !== localizedOutput!.kind) continue
+
+					const available = allLocalizedOutputs.filter((o) => o.kind === targetKind)
+					if (available.length === 0) continue
+
+					const output = available[0]
 					payload.bindMediaResourceToNode(
-						to.id ?? '',
-						localizedOutput!.kind,
-						localizedOutput!.url,
-						String(localizedOutput!.filename || `comfy_${localizedOutput!.kind}_${Date.now()}`),
+						to.id,
+						output.kind,
+						output.url,
+						String(output.filename || `comfy_${output.kind}_${Date.now()}`),
 						{
-							sourcePath: String(localizedOutput!.sourcePath || '').trim() || undefined
+							sourcePath: String(output.sourcePath || '').trim() || undefined
 						}
 					)
+					boundNodeIds.add(to.id)
+				}
+
+				if (allLocalizedOutputs.length > 0) {
+					localizedByAnchor.set(anchorId, allLocalizedOutputs[0])
+					assignMap.set(anchorId, mediaKey(validMedia[0]))
+				}
+			} else {
+				const sortedOutputAnchorIds = [...outputAnchorIds].sort((a, b) => {
+					const ai = Number(outputAnchorOrder.get(a) ?? Number.MAX_SAFE_INTEGER)
+					const bi = Number(outputAnchorOrder.get(b) ?? Number.MAX_SAFE_INTEGER)
+					return ai - bi
+				})
+
+				const fallbackCursor = { image: 0, video: 0, model3d: 0 }
+
+				for (const anchorId of sortedOutputAnchorIds) {
+					const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
+					const fromAnchor = outputAnchorMap.get(anchorId)
+					const fromAnchorLabel = String(
+						fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor')
+					)
+					const fromMediaType = fromAnchor?.mediaType as 'image' | 'video' | 'model3d' | undefined
+					const hasDownstream = edgesForAnchor.length > 0
+
+					const targetKinds = edgesForAnchor
+						.map((e: Edge) => {
+							const toRecord = payload.store.state.nodesById[e.toNodeId ?? '']
+							const to = toRecord as { type?: string } | undefined
+							if (to?.type === 'image') return 'image'
+							if (to?.type === 'video') return 'video'
+							if (to?.type === 'model3d') return 'model3d'
+							return null
+						})
+						.filter(
+							(x): x is 'image' | 'video' | 'model3d' =>
+								x === 'image' || x === 'video' || x === 'model3d'
+						)
+					const uniqueTargetKinds = Array.from(new Set(targetKinds))
+
+					if (
+						hasDownstream &&
+						(fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d')
+					) {
+						if (uniqueTargetKinds.some((k) => k !== fromMediaType)) {
+							alerts.add(
+								t('nodes.comfyui.typeMismatch', {
+									anchor: fromAnchorLabel,
+									mediaType: fromMediaType
+								})
+							)
+						}
+					}
+
+					const anchorNodeIdRaw = comfyAnchorNodeIdFromAnchorId(anchorId)
+					const exactNodeCandidates: ComfyBridgeMedia[] = anchorNodeIdRaw
+						? media.filter(
+								(m: ComfyBridgeMedia) => String(m?.nodeId ?? '').trim() === anchorNodeIdRaw
+							)
+						: []
+
+					let inferredMediaType: 'image' | 'video' | 'model3d' | null =
+						fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d'
+							? fromMediaType
+							: null
+
+					if (!inferredMediaType && exactNodeCandidates.length) {
+						inferredMediaType = inferMediaKind(exactNodeCandidates[0])
+					}
+					if (!inferredMediaType && uniqueTargetKinds.length === 1) {
+						inferredMediaType = uniqueTargetKinds[0]
+					}
+					if (!inferredMediaType) {
+						inferredMediaType = imageMedia.length
+							? 'image'
+							: videoMedia.length
+								? 'video'
+								: model3dMedia.length
+									? 'model3d'
+									: null
+					}
+
+					if (!inferredMediaType) {
+						if (hasDownstream) {
+							alerts.add(t('nodes.comfyui.noMediaOutput', { anchor: fromAnchorLabel }))
+						}
+						continue
+					}
+
+					if (
+						hasDownstream &&
+						fromMediaType !== 'image' &&
+						fromMediaType !== 'video' &&
+						fromMediaType !== 'model3d'
+					) {
+						alerts.add(
+							t('nodes.comfyui.unlabeledType', {
+								anchor: fromAnchorLabel,
+								mediaType: inferredMediaType
+							})
+						)
+					}
+
+					const list =
+						inferredMediaType === 'image'
+							? imageMedia
+							: inferredMediaType === 'video'
+								? videoMedia
+								: model3dMedia
+					if (!list.length) {
+						if (hasDownstream) {
+							const mediaTypeLabel =
+								inferredMediaType === 'image'
+									? t('nodes.comfyui.imageType')
+									: inferredMediaType === 'video'
+										? t('nodes.comfyui.videoType')
+										: t('common.model3d')
+							alerts.add(
+								t('nodes.comfyui.noMediaForAnchor', {
+									mediaType: mediaTypeLabel,
+									anchor: fromAnchorLabel
+								})
+							)
+						}
+						continue
+					}
+
+					const exactByKind = exactNodeCandidates.filter(
+						(m: ComfyBridgeMedia) => inferMediaKind(m) === inferredMediaType
+					)
+
+					let selectedMedia: ComfyBridgeMedia | null
+					if (exactByKind.length) {
+						selectedMedia = exactByKind[0]
+					} else if (exactNodeCandidates.length) {
+						selectedMedia = exactNodeCandidates[0]
+					} else {
+						const idx = fallbackCursor[inferredMediaType]
+						if (idx < list.length) {
+							selectedMedia = list[idx]
+							fallbackCursor[inferredMediaType] += 1
+						} else {
+							selectedMedia = list[list.length - 1]
+						}
+					}
+
+					if (!selectedMedia || !String(selectedMedia.url || '').trim()) {
+						alerts.add(t('nodes.comfyui.noMatchOutput', { anchor: fromAnchorLabel }))
+						continue
+					}
+
+					const localizedOutput = await localizeSingleMedia(
+						selectedMedia,
+						anchorId,
+						fromAnchorLabel,
+						importedByMediaKey
+					)
+					if (!localizedOutput) continue
+
+					allLocalizedOutputs.push(localizedOutput)
+					assignMap.set(anchorId, mediaKey(selectedMedia))
+					localizedByAnchor.set(anchorId, localizedOutput)
+
+					for (const e of edgesForAnchor) {
+						const toRecord = payload.store.state.nodesById[e.toNodeId ?? '']
+						const to = toRecord as { id?: string; type?: string } | undefined
+						if (!to) continue
+						let targetKind: 'image' | 'video' | 'model3d' | null = null
+						if (to.type === 'image') targetKind = 'image'
+						else if (to.type === 'video') targetKind = 'video'
+						else if (to.type === 'model3d') targetKind = 'model3d'
+						if (!targetKind) continue
+						if (targetKind !== localizedOutput.kind) continue
+						payload.bindMediaResourceToNode(
+							to.id ?? '',
+							localizedOutput.kind,
+							localizedOutput.url,
+							String(localizedOutput.filename || `comfy_${localizedOutput.kind}_${Date.now()}`),
+							{
+								sourcePath: String(localizedOutput.sourcePath || '').trim() || undefined
+							}
+						)
+					}
 				}
 			}
 
@@ -337,18 +465,11 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				if (!outputAnchorIdSet.has(key)) localizedByAnchor.delete(key)
 			}
 
-			const localizedOutputs = outputs
-				.map((a: OutputAnchor) => localizedByAnchor.get(String(a?.id ?? '')))
-				.filter(
-					(x: ComfyLocalizedOutput | undefined): x is ComfyLocalizedOutput =>
-						!!x && String(x.url || '').trim().length > 0
-				)
-
 			const alertList = Array.from(alerts)
 			if (opts?.notifyWarnings !== false && alertList.length) {
 				for (const msg of alertList) payload.pushToast(msg, 'warn')
 			}
-			return { alerts: alertList, outputs: localizedOutputs }
+			return { alerts: alertList, outputs: allLocalizedOutputs }
 		}
 
 		return run()

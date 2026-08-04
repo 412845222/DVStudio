@@ -29,7 +29,7 @@
 export function createLineParserState() {
 	return {
 		buf: '',
-		lastOverwriteMsg: '',
+		lastOverwriteMsg: ''
 	}
 }
 

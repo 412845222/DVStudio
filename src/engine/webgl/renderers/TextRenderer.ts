@@ -15,7 +15,11 @@ export class TextRenderer extends NodeRenderer {
 	private textCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D = (() => {
 		const tc = this.textCanvas
 		const ctx = tc instanceof HTMLCanvasElement ? tc.getContext('2d') : tc.getContext('2d')
-		if (!ctx || !(ctx instanceof CanvasRenderingContext2D) && !(ctx instanceof OffscreenCanvasRenderingContext2D)) {
+		if (
+			!ctx ||
+			(!(ctx instanceof CanvasRenderingContext2D) &&
+				!(ctx instanceof OffscreenCanvasRenderingContext2D))
+		) {
 			throw new Error('2D context is not available')
 		}
 		return ctx
@@ -82,7 +86,7 @@ export class TextRenderer extends NodeRenderer {
 
 		const fontColor = node.props?.fontColor ?? '#ffffff'
 		const fontStyle = node.props?.fontStyle ?? 'normal'
-		const props = node.props as Record<string, unknown> ?? {}
+		const props = (node.props as Record<string, unknown>) ?? {}
 		const textAlignRaw = String(props.textAlign ?? 'center')
 		const textAlign: CanvasTextAlign =
 			textAlignRaw === 'left' || textAlignRaw === 'right' || textAlignRaw === 'center'

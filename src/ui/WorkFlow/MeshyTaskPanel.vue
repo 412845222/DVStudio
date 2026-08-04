@@ -92,7 +92,9 @@
 					>
 						{{ refreshBusy ? t('tasks.meshy.syncing') : t('tasks.meshy.syncBackend') }}
 					</button>
-					<div class="wf-meshy-panel-stats">{{ t('tasks.meshy.totalCount', { count: visibleTaskCount }) }}</div>
+					<div class="wf-meshy-panel-stats">
+						{{ t('tasks.meshy.totalCount', { count: visibleTaskCount }) }}
+					</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-meshy-panel-empty">
@@ -109,7 +111,9 @@
 							<div class="wf-meshy-task-card-top">
 								<div class="wf-meshy-task-chip-row">
 									<span class="wf-meshy-task-chip">
-										{{ task.target === 'image' ? t('tasks.meshy.typeImage') : t('tasks.meshy.type3d') }}
+										{{
+											task.target === 'image' ? t('tasks.meshy.typeImage') : t('tasks.meshy.type3d')
+										}}
 									</span>
 									<span class="wf-meshy-task-chip subtle">{{ task.familyLabel }}</span>
 									<span v-if="relationLabelForTask(task)" class="wf-meshy-task-chip subtle">
@@ -179,7 +183,11 @@
 										:disabled="isBusy(task, 'refresh')"
 										@click="onTaskAction(task, 'refresh')"
 									>
-										{{ isBusy(task, 'refresh') ? t('tasks.meshy.refreshing') : t('tasks.meshy.refreshStatus') }}
+										{{
+											isBusy(task, 'refresh')
+												? t('tasks.meshy.refreshing')
+												: t('tasks.meshy.refreshStatus')
+										}}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn"
@@ -187,7 +195,11 @@
 										:disabled="isBusy(task, 'import-output')"
 										@click="onTaskAction(task, 'import-output')"
 									>
-										{{ isBusy(task, 'import-output') ? t('tasks.meshy.pulling') : t('tasks.meshy.pullArtifacts') }}
+										{{
+											isBusy(task, 'import-output')
+												? t('tasks.meshy.pulling')
+												: t('tasks.meshy.pullArtifacts')
+										}}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn"
@@ -195,7 +207,9 @@
 										:disabled="isBusy(task, 'stop')"
 										@click="onTaskAction(task, 'stop')"
 									>
-										{{ isBusy(task, 'stop') ? t('tasks.meshy.stopping') : t('tasks.meshy.stopTask') }}
+										{{
+											isBusy(task, 'stop') ? t('tasks.meshy.stopping') : t('tasks.meshy.stopTask')
+										}}
 									</button>
 									<button
 										class="wf-meshy-task-preview-btn danger"
@@ -203,7 +217,11 @@
 										:disabled="isBusy(task, 'delete')"
 										@click="onTaskAction(task, 'delete')"
 									>
-										{{ isBusy(task, 'delete') ? t('tasks.meshy.deleting') : t('tasks.meshy.deleteTask') }}
+										{{
+											isBusy(task, 'delete')
+												? t('tasks.meshy.deleting')
+												: t('tasks.meshy.deleteTask')
+										}}
 									</button>
 								</div>
 							</div>
@@ -346,7 +364,9 @@
 							</div>
 						</div>
 
-						<div v-if="detailLoading" class="wf-meshy-task-detail-loading">{{ t('tasks.meshy.loadingDetails') }}</div>
+						<div v-if="detailLoading" class="wf-meshy-task-detail-loading">
+							{{ t('tasks.meshy.loadingDetails') }}
+						</div>
 						<div v-else-if="detailTask" class="wf-meshy-task-detail-body">
 							<div class="wf-meshy-task-detail-grid">
 								<div class="wf-meshy-task-detail-card">
@@ -368,7 +388,9 @@
 									</div>
 								</div>
 								<div class="wf-meshy-task-detail-card">
-									<div class="wf-meshy-task-detail-label">{{ t('tasks.meshy.imageInputCount') }}</div>
+									<div class="wf-meshy-task-detail-label">
+										{{ t('tasks.meshy.imageInputCount') }}
+									</div>
 									<div class="wf-meshy-task-detail-value">
 										{{ detailTask.imageCount ?? 0 }}
 									</div>
@@ -399,9 +421,7 @@
 								</div>
 								<div v-if="detailTask.outputCount" class="wf-meshy-task-detail-card">
 									<div class="wf-meshy-task-detail-label">输出数量</div>
-									<div class="wf-meshy-task-detail-value">
-										{{ detailTask.outputCount }} 张
-									</div>
+									<div class="wf-meshy-task-detail-value">{{ detailTask.outputCount }} 张</div>
 								</div>
 								<div v-if="detailTask.poseMode" class="wf-meshy-task-detail-card">
 									<div class="wf-meshy-task-detail-label">姿态模式</div>
@@ -411,9 +431,7 @@
 								</div>
 								<div v-if="detailTask.generateMultiView" class="wf-meshy-task-detail-card">
 									<div class="wf-meshy-task-detail-label">多视图</div>
-									<div class="wf-meshy-task-detail-value highlight">
-										已启用
-									</div>
+									<div class="wf-meshy-task-detail-value highlight">已启用</div>
 								</div>
 								<div v-if="detailTask.seed != null" class="wf-meshy-task-detail-card">
 									<div class="wf-meshy-task-detail-label">随机种子</div>

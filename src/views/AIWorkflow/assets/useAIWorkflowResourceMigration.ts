@@ -46,7 +46,8 @@ type WorkflowNode = {
 	}
 	[key: string]: unknown
 }
-export type UseAIWorkflowResourceMigrationOptions = {
+
+export type UseAIWorkflowResourceMigrationOptions = {
 	store: {
 		state: {
 			resourceOrder: string[]
@@ -59,7 +60,9 @@ type WorkflowNode = {
 	resolveBackendUrl: (value: string) => string
 	normalizeSourcePathKey: (raw: unknown) => string
 	isDjangoManagedResource: (resource: unknown) => boolean
-	importAssetIntoProjectScope: (payload: ImportAssetIntoProjectScopePayload) => Promise<ImportedAssetResult | null>
+	importAssetIntoProjectScope: (
+		payload: ImportAssetIntoProjectScopePayload
+	) => Promise<ImportedAssetResult | null>
 	deleteAsset: (payload: DeleteAssetPayload) => Promise<{ ok: boolean; error?: unknown }>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 }
@@ -216,9 +219,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 					failed += 1
 				} else {
 					const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
-					const nextSourcePath = String(
-						imported.sourcePath || imported.absolutePath || ''
-					).trim()
+					const nextSourcePath = String(imported.sourcePath || imported.absolutePath || '').trim()
 					if (nextUrl || nextSourcePath) {
 						options.store.commit('patchResource', {
 							resourceId: rid,
@@ -333,9 +334,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 				})
 				if (!imported) continue
 				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
-				const nextSourcePath = String(
-					imported.sourcePath || imported.absolutePath || ''
-				).trim()
+				const nextSourcePath = String(imported.sourcePath || imported.absolutePath || '').trim()
 				if (!nextUrl && !nextSourcePath) {
 					failed += 1
 					continue
@@ -387,9 +386,7 @@ export const useAIWorkflowResourceMigration = (options: UseAIWorkflowResourceMig
 					continue
 				}
 				const nextUrl = options.resolveBackendUrl(String(imported.url || ''))
-				const nextSourcePath = String(
-					imported.sourcePath || imported.absolutePath || ''
-				).trim()
+				const nextSourcePath = String(imported.sourcePath || imported.absolutePath || '').trim()
 				if (!nextUrl && !nextSourcePath) {
 					bindingFailed = true
 					nextBindings.push(binding)

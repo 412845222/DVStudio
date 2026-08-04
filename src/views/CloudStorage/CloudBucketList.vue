@@ -3,19 +3,39 @@
 		<div class="cs-bl-header">
 			<div class="cs-bl-title">
 				<svg viewBox="0 0 16 16" class="cs-bl-title-icon" aria-hidden="true">
-					<path d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 				{{ t('cloudStorage.buckets.title') }}
 			</div>
-			<button class="cs-bl-add-btn" type="button" @click="emit('add-bucket')" :title="t('cloudStorage.buckets.addBucket')">
+			<button
+				class="cs-bl-add-btn"
+				type="button"
+				@click="emit('add-bucket')"
+				:title="t('cloudStorage.buckets.addBucket')"
+			>
 				<span class="cs-bl-add-corners" aria-hidden="true">
 					<span class="cs-bl-ac tl"></span>
 					<span class="cs-bl-ac tr"></span>
 					<span class="cs-bl-ac bl"></span>
 					<span class="cs-bl-ac br"></span>
 				</span>
-				<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-					<path d="M8 3v10M3 8h10"/>
+				<svg
+					viewBox="0 0 16 16"
+					width="14"
+					height="14"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+				>
+					<path d="M8 3v10M3 8h10" />
 				</svg>
 			</button>
 		</div>
@@ -28,12 +48,31 @@
 		<div v-else-if="!buckets.length" class="cs-bl-empty">
 			<div class="cs-bl-empty-icon">
 				<svg viewBox="0 0 64 64" aria-hidden="true">
-					<path d="M8 18l4-6h40l4 6M8 18v32a4 4 0 004 4h40a4 4 0 004-4V18M8 18h48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
-					<path d="M32 30v12M26 36h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+					<path
+						d="M8 18l4-6h40l4 6M8 18v32a4 4 0 004 4h40a4 4 0 004-4V18M8 18h48"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						opacity="0.3"
+					/>
+					<path
+						d="M32 30v12M26 36h12"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						opacity="0.5"
+					/>
 				</svg>
 			</div>
 			<p class="cs-bl-empty-text">{{ t('cloudStorage.buckets.empty') }}</p>
-			<button class="cs-btn cs-btn-primary cs-bl-empty-btn" type="button" @click="emit('add-bucket')">
+			<button
+				class="cs-btn cs-btn-primary cs-bl-empty-btn"
+				type="button"
+				@click="emit('add-bucket')"
+			>
 				<span class="cs-btn-corners" aria-hidden="true">
 					<span class="cs-btn-c tl"></span>
 					<span class="cs-btn-c tr"></span>
@@ -62,21 +101,38 @@
 				<div class="cs-bl-item-main">
 					<div class="cs-bl-item-name-row">
 						<svg viewBox="0 0 16 16" class="cs-bl-item-bucket-icon" aria-hidden="true">
-							<path d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+							<path
+								d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
 						</svg>
 						<span class="cs-bl-item-name" :title="b.bucketName">{{ b.bucketName }}</span>
 					</div>
 					<div class="cs-bl-item-meta">
 						<span v-if="b.akMask" class="cs-bl-item-ak" :title="b.akMask">
 							<svg viewBox="0 0 16 16" class="cs-bl-meta-icon" aria-hidden="true">
-								<path d="M5.5 5.5a2.5 2.5 0 015 0v2h-5v-2zM4 7.5v-2a4 4 0 118 0v2h.5a1 1 0 011 1v4a1 1 0 01-1 1h-9a1 1 0 01-1-1v-4a1 1 0 011-1H4z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+								<path
+									d="M5.5 5.5a2.5 2.5 0 015 0v2h-5v-2zM4 7.5v-2a4 4 0 118 0v2h.5a1 1 0 011 1v4a1 1 0 01-1 1h-9a1 1 0 01-1-1v-4a1 1 0 011-1H4z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+								/>
 							</svg>
 							{{ b.akMask }}
 						</span>
 						<span v-if="b.region" class="cs-bl-item-region">
 							<svg viewBox="0 0 16 16" class="cs-bl-meta-icon" aria-hidden="true">
-								<path d="M8 1C5.2 1 3 3.2 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.8-2.2-5-5-5z" fill="none" stroke="currentColor" stroke-width="1.2"/>
-								<circle cx="8" cy="6" r="1.5" fill="currentColor"/>
+								<path
+									d="M8 1C5.2 1 3 3.2 3 6c0 3.5 5 9 5 9s5-5.5 5-9c0-2.8-2.2-5-5-5z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.2"
+								/>
+								<circle cx="8" cy="6" r="1.5" fill="currentColor" />
 							</svg>
 							{{ b.region }}
 						</span>
@@ -84,29 +140,33 @@
 				</div>
 
 				<div class="cs-bl-item-status">
-					<span class="cs-bl-acl-badge" :class="b.is_public ? 'public' : 'private'">
-						<svg v-if="b.is_public" viewBox="0 0 16 16" class="cs-bl-acl-icon" aria-hidden="true">
-							<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
-							<path d="M8 5v3l2 1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+					<span v-if="b.isActive" class="cs-bl-default-badge">
+						<svg viewBox="0 0 16 16" class="cs-bl-default-icon" aria-hidden="true">
+							<path
+								d="M8 2l1.8 3.8L14 6.5l-3 2.8.7 4.1L8 11.3 4.3 13.4 5 9.3 2 6.5l4.2-.7L8 2z"
+								fill="currentColor"
+							/>
 						</svg>
-						<svg v-else viewBox="0 0 16 16" class="cs-bl-acl-icon" aria-hidden="true">
-							<rect x="3" y="7" width="10" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
-							<path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-						</svg>
-						{{ b.is_public ? t('cloudStorage.buckets.public') : t('cloudStorage.buckets.private') }}
+						默认
 					</span>
 				</div>
 
 				<div class="cs-bl-item-actions">
 					<button
-						v-if="!b.is_public"
-						class="cs-bl-action-btn fix"
+						v-if="!b.isActive"
+						class="cs-bl-action-btn set-default"
 						type="button"
-						@click.stop="emit('fix-acl', b)"
-						:title="t('cloudStorage.buckets.fixAcl')"
+						@click.stop="emit('set-default', b)"
+						title="设为默认桶"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true">
-							<path d="M13.5 4.5L11.5 2.5M5.5 12.5H3.5v-2l6-6 2 2-6 6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+							<path
+								d="M8 2l1.8 3.8L14 6.5l-3 2.8.7 4.1L8 11.3 4.3 13.4 5 9.3 2 6.5l4.2-.7L8 2z"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linejoin="round"
+							/>
 						</svg>
 					</button>
 					<button
@@ -116,7 +176,13 @@
 						:title="t('cloudStorage.buckets.remove')"
 					>
 						<svg viewBox="0 0 16 16" aria-hidden="true">
-							<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+							<path
+								d="M4 4l8 8M12 4l-8 8"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.4"
+								stroke-linecap="round"
+							/>
 						</svg>
 					</button>
 				</div>
@@ -153,7 +219,7 @@ const emit = defineEmits<{
 	(e: 'select-bucket', bucket: CloudBucket): void
 	(e: 'add-bucket'): void
 	(e: 'remove-bucket', bucket: CloudBucket): void
-	(e: 'fix-acl', bucket: CloudBucket): void
+	(e: 'set-default', bucket: CloudBucket): void
 }>()
 </script>
 
@@ -173,7 +239,11 @@ const emit = defineEmits<{
 	justify-content: space-between;
 	padding: 14px 16px 12px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-accent) 6%, transparent), transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-accent) 6%, transparent),
+		transparent
+	);
 	gap: 10px;
 }
 
@@ -237,22 +307,26 @@ const emit = defineEmits<{
 }
 
 .cs-bl-ac.tl {
-	top: 1px; left: 1px;
+	top: 1px;
+	left: 1px;
 	border-top: 1px solid currentColor;
 	border-left: 1px solid currentColor;
 }
 .cs-bl-ac.tr {
-	top: 1px; right: 1px;
+	top: 1px;
+	right: 1px;
 	border-top: 1px solid currentColor;
 	border-right: 1px solid currentColor;
 }
 .cs-bl-ac.bl {
-	bottom: 1px; left: 1px;
+	bottom: 1px;
+	left: 1px;
 	border-bottom: 1px solid currentColor;
 	border-left: 1px solid currentColor;
 }
 .cs-bl-ac.br {
-	bottom: 1px; right: 1px;
+	bottom: 1px;
+	right: 1px;
 	border-bottom: 1px solid currentColor;
 	border-right: 1px solid currentColor;
 }
@@ -278,7 +352,9 @@ const emit = defineEmits<{
 }
 
 @keyframes cs-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-bl-empty {
@@ -393,7 +469,11 @@ const emit = defineEmits<{
 }
 
 .cs-btn-primary {
-	background: linear-gradient(135deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 75%, #4fb7c5));
+	background: linear-gradient(
+		135deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 75%, #4fb7c5)
+	);
 	border-color: var(--pl-accent);
 	color: #fff;
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -401,13 +481,18 @@ const emit = defineEmits<{
 }
 
 .cs-btn-primary::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: -100%;
 	width: 100%;
 	height: 100%;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 18%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, #fff 18%, transparent),
+		transparent
+	);
 	transition: left 0.5s ease;
 }
 
@@ -471,7 +556,9 @@ const emit = defineEmits<{
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
 	color: var(--pl-fg);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 12%, transparent), inset 0 0 20px color-mix(in srgb, var(--pl-accent) 3%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 12%, transparent),
+		inset 0 0 20px color-mix(in srgb, var(--pl-accent) 3%, transparent);
 }
 
 .cs-bl-item-corners {
@@ -485,7 +572,9 @@ const emit = defineEmits<{
 	width: 0;
 	height: 0;
 	border-color: var(--pl-accent);
-	transition: width 150ms ease, height 150ms ease;
+	transition:
+		width 150ms ease,
+		height 150ms ease;
 }
 
 .cs-bl-item.active .cs-blic,
@@ -495,12 +584,14 @@ const emit = defineEmits<{
 }
 
 .cs-blic.tl {
-	top: 1px; left: 1px;
+	top: 1px;
+	left: 1px;
 	border-top: 1px solid currentColor;
 	border-left: 1px solid currentColor;
 }
 .cs-blic.br {
-	bottom: 1px; right: 1px;
+	bottom: 1px;
+	right: 1px;
 	border-bottom: 1px solid currentColor;
 	border-right: 1px solid currentColor;
 }
@@ -523,8 +614,13 @@ const emit = defineEmits<{
 }
 
 @keyframes cs-indicator-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
 }
 
 .cs-bl-item-main {
@@ -592,33 +688,24 @@ const emit = defineEmits<{
 	flex-shrink: 0;
 }
 
-.cs-bl-acl-badge {
+.cs-bl-default-badge {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
 	padding: 3px 8px;
 	font-size: 10px;
-	font-weight: 500;
+	font-weight: 600;
 	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	border: 1px solid transparent;
+	color: var(--pl-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 35%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 }
 
-.cs-bl-acl-badge.public {
-	color: #4ade80;
-	border-color: color-mix(in srgb, #4ade80 25%, transparent);
-	background: color-mix(in srgb, #4ade80 8%, transparent);
-}
-
-.cs-bl-acl-badge.private {
-	color: #fbbf24;
-	border-color: color-mix(in srgb, #fbbf24 25%, transparent);
-	background: color-mix(in srgb, #fbbf24 8%, transparent);
-}
-
-.cs-bl-acl-icon {
+.cs-bl-default-icon {
 	width: 11px;
 	height: 11px;
+	filter: drop-shadow(0 0 4px color-mix(in srgb, var(--pl-accent) 50%, transparent));
 }
 
 .cs-bl-item-actions {
@@ -654,10 +741,10 @@ const emit = defineEmits<{
 	height: 13px;
 }
 
-.cs-bl-action-btn.fix:hover {
-	color: #4ade80;
-	border-color: color-mix(in srgb, #4ade80 40%, transparent);
-	background: color-mix(in srgb, #4ade80 8%, transparent);
+.cs-bl-action-btn.set-default:hover {
+	color: var(--pl-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 40%, transparent);
+	background: color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .cs-bl-action-btn.remove:hover {

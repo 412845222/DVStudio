@@ -64,10 +64,7 @@ export class CanvasNodeRenderer {
 	private forceFullRender: boolean = true
 	private currentNodes: VisibleNodeEntry[] = []
 
-	constructor(
-		canvas: HTMLCanvasElement,
-		poolProvider: ScreenshotPoolProvider
-	) {
+	constructor(canvas: HTMLCanvasElement, poolProvider: ScreenshotPoolProvider) {
 		this.canvas = canvas
 		this.ctx = canvas.getContext('2d', { alpha: true })!
 		this.poolProvider = poolProvider
@@ -260,14 +257,20 @@ export class CanvasNodeRenderer {
 	}
 
 	private rectIntersects(
-		nodeLeft: number, nodeRight: number, nodeTop: number, nodeBottom: number,
+		nodeLeft: number,
+		nodeRight: number,
+		nodeTop: number,
+		nodeBottom: number,
 		b: ViewportBounds
 	): boolean {
-		return !(nodeRight < b.left || nodeLeft > b.right ||
-			nodeBottom < b.top || nodeTop > b.bottom)
+		return !(nodeRight < b.left || nodeLeft > b.right || nodeBottom < b.top || nodeTop > b.bottom)
 	}
 
-	private getViewportBounds(viewport: ViewportState, canvasW: number, canvasH: number): ViewportBounds {
+	private getViewportBounds(
+		viewport: ViewportState,
+		canvasW: number,
+		canvasH: number
+	): ViewportBounds {
 		const halfW = canvasW / 2
 		const halfH = canvasH / 2
 		const zoom = viewport.zoom
@@ -289,8 +292,12 @@ export class CanvasNodeRenderer {
 		const nodeTop = node.worldY - halfH
 		const nodeBottom = node.worldY + halfH
 
-		return !(nodeRight < bounds.left || nodeLeft > bounds.right ||
-			nodeBottom < bounds.top || nodeTop > bounds.bottom)
+		return !(
+			nodeRight < bounds.left ||
+			nodeLeft > bounds.right ||
+			nodeBottom < bounds.top ||
+			nodeTop > bounds.bottom
+		)
 	}
 
 	private drawRoundedRect(
@@ -332,7 +339,12 @@ export class CanvasNodeRenderer {
 		}
 	}
 
-	private drawNodePlaceholder(ctx: CanvasRenderingContext2D, node: VisibleNodeEntry, forTheme: 'dark' | 'light', alpha = 1) {
+	private drawNodePlaceholder(
+		ctx: CanvasRenderingContext2D,
+		node: VisibleNodeEntry,
+		forTheme: 'dark' | 'light',
+		alpha = 1
+	) {
 		const w = node.width
 		const h = node.height
 		const x = node.worldX - w / 2
@@ -389,8 +401,7 @@ export class CanvasNodeRenderer {
 
 		try {
 			ctx.drawImage(bmp, drawX, drawY, entry.width, entry.height)
-		} catch {
-		}
+		} catch {}
 
 		if (mode === 'compact') {
 			ctx.globalAlpha = alpha
@@ -414,9 +425,24 @@ export class CanvasNodeRenderer {
 		compactZoomThreshold: number
 	) {
 		if (this.transition && this.transition.progress < 1) {
-			this.drawNodeWithTransition(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold)
+			this.drawNodeWithTransition(
+				ctx,
+				node,
+				pool,
+				zoom,
+				placeholderZoomThreshold,
+				compactZoomThreshold
+			)
 		} else {
-			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, this.theme)
+			this.drawNodeSingleTheme(
+				ctx,
+				node,
+				pool,
+				zoom,
+				placeholderZoomThreshold,
+				compactZoomThreshold,
+				this.theme
+			)
 		}
 	}
 
@@ -461,10 +487,28 @@ export class CanvasNodeRenderer {
 		const toAlpha = progress
 
 		if (fromAlpha > 0.01) {
-			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, fromTheme, fromAlpha)
+			this.drawNodeSingleTheme(
+				ctx,
+				node,
+				pool,
+				zoom,
+				placeholderZoomThreshold,
+				compactZoomThreshold,
+				fromTheme,
+				fromAlpha
+			)
 		}
 		if (toAlpha > 0.01) {
-			this.drawNodeSingleTheme(ctx, node, pool, zoom, placeholderZoomThreshold, compactZoomThreshold, toTheme, toAlpha)
+			this.drawNodeSingleTheme(
+				ctx,
+				node,
+				pool,
+				zoom,
+				placeholderZoomThreshold,
+				compactZoomThreshold,
+				toTheme,
+				toAlpha
+			)
 		}
 	}
 

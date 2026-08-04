@@ -8,17 +8,17 @@ class MockPlatformProvider extends EventEmitter {
 		this._user = {
 			platformId: 'mock-0',
 			displayName: 'Developer',
-			avatarUrl: null,
+			avatarUrl: null
 		}
 		this._dlcs = [
 			{ appId: 481, name: 'Mock DLC 1', installed: true },
-			{ appId: 482, name: 'Mock DLC 2', installed: false },
+			{ appId: 482, name: 'Mock DLC 2', installed: false }
 		]
 		this.cloud = {
 			getQuota: () => ({
 				ok: true,
 				totalBytes: 1024 * 1024 * 100,
-				availableBytes: 1024 * 1024 * 90,
+				availableBytes: 1024 * 1024 * 90
 			}),
 			fileWrite: (_fileName, _buffer) => {
 				return { ok: true }
@@ -41,7 +41,7 @@ class MockPlatformProvider extends EventEmitter {
 			getFileCount: () => 0,
 			getFileNameAndSize: (_index) => {
 				return { name: '', size: 0 }
-			},
+			}
 		}
 
 		this.ugc = {
@@ -58,7 +58,7 @@ class MockPlatformProvider extends EventEmitter {
 						updatedAt: Date.now(),
 						previewUrl: null,
 						author: 'DVStudio Team',
-						isOfficial: true,
+						isOfficial: true
 					},
 					{
 						publishedFileId: 'mock-official-2',
@@ -70,7 +70,7 @@ class MockPlatformProvider extends EventEmitter {
 						updatedAt: Date.now() - 86400000 * 2,
 						previewUrl: null,
 						author: 'DVStudio Team',
-						isOfficial: true,
+						isOfficial: true
 					},
 					{
 						publishedFileId: 'mock-official-3',
@@ -82,17 +82,17 @@ class MockPlatformProvider extends EventEmitter {
 						updatedAt: Date.now() - 86400000,
 						previewUrl: null,
 						author: 'DVStudio Team',
-						isOfficial: true,
-					},
+						isOfficial: true
+					}
 				]
 				let items = mockItems
 				if (tag && tag !== 'official') {
-					items = mockItems.filter(t => t.tags?.includes(tag))
+					items = mockItems.filter((t) => t.tags?.includes(tag))
 				}
 				return {
 					ok: true,
 					items,
-					totalResults: items.length,
+					totalResults: items.length
 				}
 			},
 			downloadItem: (publishedFileId) => {
@@ -103,14 +103,20 @@ class MockPlatformProvider extends EventEmitter {
 			},
 			getItemInstallInfo: (publishedFileId) => {
 				return { ok: true, installed: true, installPath: `/mock-workshop/${publishedFileId}` }
-			},
+			}
 		}
 	}
 
-	get id() { return 'mock' }
-	get displayName() { return 'Mock' }
+	get id() {
+		return 'mock'
+	}
+	get displayName() {
+		return 'Mock'
+	}
 
-	preflightCheck() { return false }
+	preflightCheck() {
+		return false
+	}
 
 	async init() {
 		this._initialized = true
@@ -124,11 +130,21 @@ class MockPlatformProvider extends EventEmitter {
 
 	runCallbacks() {}
 
-	isAvailable() { return true }
-	isInitialized() { return this._initialized }
-	isLoggedIn() { return true }
-	isOwned() { return true }
-	getUserInfo() { return { ...this._user } }
+	isAvailable() {
+		return true
+	}
+	isInitialized() {
+		return this._initialized
+	}
+	isLoggedIn() {
+		return true
+	}
+	isOwned() {
+		return true
+	}
+	getUserInfo() {
+		return { ...this._user }
+	}
 
 	getUserAvatarUrl() {
 		return null
@@ -148,7 +164,9 @@ class MockPlatformProvider extends EventEmitter {
 	}
 
 	overlayActivateGameOverlay(dialog) {
-		console.log(`[platform:mock] overlayActivateGameOverlay called with dialog: ${dialog || 'default'}`)
+		console.log(
+			`[platform:mock] overlayActivateGameOverlay called with dialog: ${dialog || 'default'}`
+		)
 		this._overlayActive = true
 		this.emit('overlay-activated', { platformId: 'mock' })
 		setTimeout(() => {
@@ -159,12 +177,12 @@ class MockPlatformProvider extends EventEmitter {
 	}
 
 	isDlcInstalled(dlcAppId) {
-		const dlc = this._dlcs.find(d => d.appId === dlcAppId)
+		const dlc = this._dlcs.find((d) => d.appId === dlcAppId)
 		return dlc?.installed || false
 	}
 
 	getInstalledDlcs() {
-		return this._dlcs.filter(d => d.installed).map(d => ({ ...d }))
+		return this._dlcs.filter((d) => d.installed).map((d) => ({ ...d }))
 	}
 }
 

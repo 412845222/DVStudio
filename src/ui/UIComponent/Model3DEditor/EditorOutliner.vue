@@ -13,14 +13,30 @@
 					@dblclick="$emit('frameNode', node.id)"
 				>
 					<button class="expand-btn" @click.stop="toggleExpand(node.id)">
-						<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" :class="{ expanded: expandedNodes.has(node.id) }">
-							<polygon points="8,5 16,12 8,19"/>
+						<svg
+							viewBox="0 0 24 24"
+							width="12"
+							height="12"
+							fill="currentColor"
+							:class="{ expanded: expandedNodes.has(node.id) }"
+						>
+							<polygon points="8,5 16,12 8,19" />
 						</svg>
 					</button>
-					<svg class="node-icon model-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-						<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-						<line x1="12" y1="22.08" x2="12" y2="12"/>
+					<svg
+						class="node-icon model-icon"
+						viewBox="0 0 24 24"
+						width="14"
+						height="14"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path
+							d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+						/>
+						<polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+						<line x1="12" y1="22.08" x2="12" y2="12" />
 					</svg>
 					<span class="node-name">{{ node.name }}</span>
 					<input
@@ -29,10 +45,15 @@
 						class="visibility-toggle"
 						:checked="node.visible"
 						@click.stop
-						@change="$emit('toggleVisibility', node.id, ($event.target as HTMLInputElement).checked)"
+						@change="
+							$emit('toggleVisibility', node.id, ($event.target as HTMLInputElement).checked)
+						"
 					/>
 				</div>
-				<div v-if="expandedNodes.has(node.id) && node.children.length > 0" class="outliner-children">
+				<div
+					v-if="expandedNodes.has(node.id) && node.children.length > 0"
+					class="outliner-children"
+				>
 					<div
 						v-for="child in node.children"
 						:key="child.id"
@@ -40,9 +61,20 @@
 						:class="{ selected: selectedId === child.id }"
 						@click="$emit('selectNode', child.id)"
 					>
-						<svg class="node-icon mesh-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-							<polygon v-if="child.type === 'mesh'" points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"/>
-							<circle v-else-if="child.type === 'light'" cx="12" cy="12" r="5"/>
+						<svg
+							class="node-icon mesh-icon"
+							viewBox="0 0 24 24"
+							width="12"
+							height="12"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<polygon
+								v-if="child.type === 'mesh'"
+								points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5"
+							/>
+							<circle v-else-if="child.type === 'light'" cx="12" cy="12" r="5" />
 						</svg>
 						<span class="node-name">{{ child.name }}</span>
 						<input
@@ -50,7 +82,9 @@
 							class="visibility-toggle"
 							:checked="child.visible"
 							@click.stop
-							@change="$emit('toggleVisibility', child.id, ($event.target as HTMLInputElement).checked)"
+							@change="
+								$emit('toggleVisibility', child.id, ($event.target as HTMLInputElement).checked)
+							"
 						/>
 					</div>
 				</div>

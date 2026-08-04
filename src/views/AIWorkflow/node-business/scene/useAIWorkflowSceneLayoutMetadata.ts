@@ -35,7 +35,10 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 		}
 	}
 
-	const mergeSceneLayoutItemsWithMetadata = (layoutItems: unknown[], metadataSources: unknown[][]) => {
+	const mergeSceneLayoutItemsWithMetadata = (
+		layoutItems: unknown[],
+		metadataSources: unknown[][]
+	) => {
 		const maps = metadataSources.map((items) =>
 			buildSceneLayoutMetadataMap(Array.isArray(items) ? items : [])
 		)
@@ -52,15 +55,16 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 				...mergedSource,
 				...obj,
 				position:
-					obj?.position && typeof obj.position === 'object'
-						? obj.position
-						: mergedSource.position,
+					obj?.position && typeof obj.position === 'object' ? obj.position : mergedSource.position,
 				size: obj?.size && typeof obj.size === 'object' ? obj.size : mergedSource.size,
 				rotation:
-					obj?.rotation && typeof obj.rotation === 'object'
-						? obj.rotation
-						: mergedSource.rotation,
-				scale: obj?.scale && typeof obj.scale === 'object' ? obj.scale : mergedSource.scale
+					obj?.rotation && typeof obj.rotation === 'object' ? obj.rotation : mergedSource.rotation,
+				scale: obj?.scale && typeof obj.scale === 'object' ? obj.scale : mergedSource.scale,
+				holePunches: Array.isArray(obj?.holePunches)
+					? obj.holePunches
+					: Array.isArray(mergedSource.holePunches)
+						? mergedSource.holePunches
+						: undefined
 			}
 		})
 	}
@@ -72,14 +76,11 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 		const selectedId = String(settings?.selectedPlaceholderOutput ?? '').trim()
 		if (!selectedId) return null
 		const layoutItemsVal = settings?.layoutItems
-		const currentLayoutItems = Array.isArray(layoutItemsVal)
-			? (layoutItemsVal as unknown[])
-			: []
+		const currentLayoutItems = Array.isArray(layoutItemsVal) ? (layoutItemsVal as unknown[]) : []
 		const inputMetadataItems = parseSceneLayoutMetadataItems(String(settings?.inputJson ?? ''))
 		const mergedItems = mergeSceneLayoutItemsWithMetadata(currentLayoutItems, [inputMetadataItems])
 		const item = mergedItems.find(
-			(entry) =>
-				String((entry as Record<string, unknown>)?.id ?? '').trim() === selectedId
+			(entry) => String((entry as Record<string, unknown>)?.id ?? '').trim() === selectedId
 		)
 		if (!item) return null
 		const obj = item as Record<string, unknown>
@@ -122,9 +123,7 @@ export const useAIWorkflowSceneLayoutMetadata = (options: {
 		if (!node || node.type !== 'scene-layout') return ''
 		const settings = (node.sceneLayoutSettings ?? null) as Record<string, unknown> | null
 		const layoutItemsVal = settings?.layoutItems
-		const currentLayoutItems = Array.isArray(layoutItemsVal)
-			? (layoutItemsVal as unknown[])
-			: []
+		const currentLayoutItems = Array.isArray(layoutItemsVal) ? (layoutItemsVal as unknown[]) : []
 		const inputMetadataItems = parseSceneLayoutMetadataItems(String(settings?.inputJson ?? ''))
 		const layoutItems = mergeSceneLayoutItemsWithMetadata(currentLayoutItems, [inputMetadataItems])
 		const camera =

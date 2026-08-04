@@ -24,7 +24,9 @@
 					>
 						{{ syncBusy ? t('tasks.video.syncing') : t('tasks.video.remoteSync') }}
 					</button>
-					<button class="video-task-panel__btn" type="button" @click="$emit('close')">{{ t('common.close') }}</button>
+					<button class="video-task-panel__btn" type="button" @click="$emit('close')">
+						{{ t('common.close') }}
+					</button>
 				</div>
 			</div>
 
@@ -62,13 +64,17 @@
 				</div>
 
 				<div class="video-task-panel__detail">
-					<div v-if="detailLoading" class="video-task-panel__detail-empty">{{ t('tasks.video.loadingDetails') }}</div>
+					<div v-if="detailLoading" class="video-task-panel__detail-empty">
+						{{ t('tasks.video.loadingDetails') }}
+					</div>
 					<template v-else-if="detailTask">
 						<div class="video-task-panel__detail-head">
 							<div class="video-task-panel__detail-title">
 								{{ detailTask.model || 'Seedance' }}
 							</div>
-							<div class="video-task-panel__detail-subtitle">{{ t('tasks.video.taskId') }}{{ detailTask.taskId }}</div>
+							<div class="video-task-panel__detail-subtitle">
+								{{ t('tasks.video.taskId') }}{{ detailTask.taskId }}
+							</div>
 						</div>
 
 						<div v-if="previewVideoUrl(detailTask)" class="video-task-panel__preview-wrap">
@@ -93,9 +99,15 @@
 							<div>{{ t('tasks.video.resolution') }}</div>
 							<div>{{ detailTask.resolution || t('tasks.video.defaultRes') }}</div>
 							<div>{{ t('tasks.video.duration') }}</div>
-							<div>{{ detailTask.duration ? `${detailTask.duration}s` : t('tasks.video.notRecorded') }}</div>
+							<div>
+								{{ detailTask.duration ? `${detailTask.duration}s` : t('tasks.video.notRecorded') }}
+							</div>
 							<div>{{ t('tasks.video.audio') }}</div>
-							<div>{{ detailTask.generateAudio ? t('tasks.video.audioOn') : t('tasks.video.audioOff') }}</div>
+							<div>
+								{{
+									detailTask.generateAudio ? t('tasks.video.audioOn') : t('tasks.video.audioOff')
+								}}
+							</div>
 							<div>{{ t('tasks.video.fixedCamera') }}</div>
 							<div>{{ detailTask.cameraFixed ? t('common.yes') : t('common.no') }}</div>
 							<div>{{ t('tasks.video.lastSync') }}</div>
@@ -120,7 +132,9 @@
 						</div>
 
 						<div class="video-task-panel__section">
-							<div class="video-task-panel__section-title">{{ t('tasks.video.resourceLinks') }}</div>
+							<div class="video-task-panel__section-title">
+								{{ t('tasks.video.resourceLinks') }}
+							</div>
 							<div class="video-task-panel__section-body links">
 								<a
 									v-if="detailTask.videoUrlLocal"
@@ -158,45 +172,80 @@
 						</div>
 
 						<div
-							v-if="(detailTask.refImageUrls && detailTask.refImageUrls.length > 0) || 
-								 (detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0) ||
-								 (detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0)"
+							v-if="
+								(detailTask.refImageUrls && detailTask.refImageUrls.length > 0) ||
+								(detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0) ||
+								(detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0)
+							"
 							class="video-task-panel__section"
 						>
-							<div class="video-task-panel__section-title">{{ t('tasks.video.referenceAssets') }}</div>
+							<div class="video-task-panel__section-title">
+								{{ t('tasks.video.referenceAssets') }}
+							</div>
 							<div class="video-task-panel__section-body">
-								<div v-if="detailTask.refImageUrls && detailTask.refImageUrls.length > 0" class="video-task-panel__ref-group">
-									<div class="video-task-panel__ref-label">{{ t('tasks.video.refImages') }} ({{ detailTask.refImageUrls.length }})</div>
+								<div
+									v-if="detailTask.refImageUrls && detailTask.refImageUrls.length > 0"
+									class="video-task-panel__ref-group"
+								>
+									<div class="video-task-panel__ref-label">
+										{{ t('tasks.video.refImages') }} ({{ detailTask.refImageUrls.length }})
+									</div>
 									<div class="video-task-panel__ref-list">
-										<div v-for="(url, idx) in detailTask.refImageUrls" :key="`img-${idx}`" class="video-task-panel__ref-item">
+										<div
+											v-for="(url, idx) in detailTask.refImageUrls"
+											:key="`img-${idx}`"
+											class="video-task-panel__ref-item"
+										>
 											<img :src="url" :alt="`ref-img-${idx}`" class="video-task-panel__ref-thumb" />
 										</div>
 									</div>
 								</div>
-								<div v-if="detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0" class="video-task-panel__ref-group">
-									<div class="video-task-panel__ref-label">{{ t('tasks.video.refVideos') }} ({{ detailTask.refVideoUrls.length }})</div>
+								<div
+									v-if="detailTask.refVideoUrls && detailTask.refVideoUrls.length > 0"
+									class="video-task-panel__ref-group"
+								>
+									<div class="video-task-panel__ref-label">
+										{{ t('tasks.video.refVideos') }} ({{ detailTask.refVideoUrls.length }})
+									</div>
 									<div class="video-task-panel__ref-list">
-										<div v-for="(url, idx) in detailTask.refVideoUrls" :key="`vid-${idx}`" class="video-task-panel__ref-item">
-											<div class="video-task-panel__ref-video-thumb">
-												🎬
-											</div>
-											<span class="video-task-panel__ref-video-label">{{ t('tasks.video.refVideo') }} {{ idx + 1 }}</span>
+										<div
+											v-for="(url, idx) in detailTask.refVideoUrls"
+											:key="`vid-${idx}`"
+											class="video-task-panel__ref-item"
+										>
+											<div class="video-task-panel__ref-video-thumb">🎬</div>
+											<span class="video-task-panel__ref-video-label">
+												{{ t('tasks.video.refVideo') }} {{ idx + 1 }}
+											</span>
 										</div>
 									</div>
 								</div>
-								<div v-if="detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0" class="video-task-panel__ref-group">
-									<div class="video-task-panel__ref-label">{{ t('tasks.video.refAudio') }} ({{ detailTask.refAudioUrls.length }})</div>
+								<div
+									v-if="detailTask.refAudioUrls && detailTask.refAudioUrls.length > 0"
+									class="video-task-panel__ref-group"
+								>
+									<div class="video-task-panel__ref-label">
+										{{ t('tasks.video.refAudio') }} ({{ detailTask.refAudioUrls.length }})
+									</div>
 									<div class="video-task-panel__ref-list">
-										<div v-for="(url, idx) in detailTask.refAudioUrls" :key="`aud-${idx}`" class="video-task-panel__ref-item">
+										<div
+											v-for="(url, idx) in detailTask.refAudioUrls"
+											:key="`aud-${idx}`"
+											class="video-task-panel__ref-item"
+										>
 											<div class="video-task-panel__ref-audio-thumb">🎵</div>
-											<span class="video-task-panel__ref-audio-label">{{ t('tasks.video.refAudioItem') }} {{ idx + 1 }}</span>
+											<span class="video-task-panel__ref-audio-label">
+												{{ t('tasks.video.refAudioItem') }} {{ idx + 1 }}
+											</span>
 										</div>
 									</div>
 								</div>
 							</div>
 						</div>
 					</template>
-					<div v-else class="video-task-panel__detail-empty">{{ t('tasks.video.selectToView') }}</div>
+					<div v-else class="video-task-panel__detail-empty">
+						{{ t('tasks.video.selectToView') }}
+					</div>
 				</div>
 			</div>
 		</div>

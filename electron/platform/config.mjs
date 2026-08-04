@@ -11,7 +11,9 @@ function readJsonConfig(configPath) {
 			const raw = fs.readFileSync(configPath, 'utf8')
 			return JSON.parse(raw)
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return null
 }
 
@@ -41,15 +43,15 @@ function readUserDataConfig() {
 		const userDataPath = app.getPath('userData')
 		const configPath = path.join(userDataPath, 'steam_config.json')
 		return readJsonConfig(configPath)
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return null
 }
 
 function readSteamAppIdTxt() {
 	try {
-		const candidates = [
-			path.join(process.cwd(), 'steam_appid.txt'),
-		]
+		const candidates = [path.join(process.cwd(), 'steam_appid.txt')]
 		if (!app.isPackaged) {
 			const nativeWin32Dir = path.join(__dirname, 'native', 'win32')
 			candidates.push(path.join(nativeWin32Dir, 'steam_appid.txt'))
@@ -64,7 +66,9 @@ function readSteamAppIdTxt() {
 				if (!isNaN(id) && id > 0) return id
 			}
 		}
-	} catch { /* ignore */ }
+	} catch {
+		/* ignore */
+	}
 	return null
 }
 
@@ -76,9 +80,7 @@ export function getSteamConfig() {
 	console.log('[platform:config] SteamAppId env:', process.env.SteamAppId || '(not set)')
 	console.log('[platform:config] STEAM_APP_ID env:', process.env.STEAM_APP_ID || '(not set)')
 
-	const projectConfigCandidates = [
-		path.resolve(__dirname, '..', 'steam.config.json'),
-	]
+	const projectConfigCandidates = [path.resolve(__dirname, '..', 'steam.config.json')]
 	if (!app.isPackaged) {
 		projectConfigCandidates.push(path.resolve(__dirname, '..', '..', 'steam.config.json'))
 	}
@@ -92,7 +94,10 @@ export function getSteamConfig() {
 	}
 
 	const projectConfig = readProjectConfig()
-	console.log('[platform:config] Project config loaded:', projectConfig ? JSON.stringify(projectConfig) : '(none)')
+	console.log(
+		'[platform:config] Project config loaded:',
+		projectConfig ? JSON.stringify(projectConfig) : '(none)'
+	)
 
 	let userDataPath = '(app not ready)'
 	try {
@@ -102,11 +107,12 @@ export function getSteamConfig() {
 	} catch {}
 	console.log('[platform:config] userData path:', userDataPath)
 	const userConfig = readUserDataConfig()
-	console.log('[platform:config] User config loaded:', userConfig ? JSON.stringify(userConfig) : '(none)')
+	console.log(
+		'[platform:config] User config loaded:',
+		userConfig ? JSON.stringify(userConfig) : '(none)'
+	)
 
-	const txtCandidates = [
-		path.join(process.cwd(), 'steam_appid.txt'),
-	]
+	const txtCandidates = [path.join(process.cwd(), 'steam_appid.txt')]
 	if (!app.isPackaged) {
 		const nativeWin32Dir = path.join(__dirname, 'native', 'win32')
 		txtCandidates.push(path.join(nativeWin32Dir, 'steam_appid.txt'))
@@ -119,7 +125,9 @@ export function getSteamConfig() {
 		const exists = fs.existsSync(p)
 		let content = ''
 		if (exists) {
-			try { content = fs.readFileSync(p, 'utf8').trim() } catch {}
+			try {
+				content = fs.readFileSync(p, 'utf8').trim()
+			} catch {}
 		}
 		console.log(`[platform:config]   - ${p} (exists: ${exists}, content: ${content || '(empty)'})`)
 	}
@@ -154,7 +162,7 @@ export function getSteamConfig() {
 
 	const config = {
 		appId,
-		environment: userConfig?.environment || projectConfig?.environment || 'production',
+		environment: userConfig?.environment || projectConfig?.environment || 'production'
 	}
 
 	if (appId > 0) {

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div ref="shellRef" class="vs-shell">
 		<VideoStudioLeftPanel ref="leftPanelRef" />
 		<div ref="stageRef" class="vs-stage" :style="{ left: leftPanelWidthPx + 'px' }">
@@ -69,13 +69,30 @@
 			<div v-if="videoBuffering.isBuffering" class="vs-buffering-indicator">
 				<div class="vs-buffering-label">
 					<svg class="vs-buffering-spinner" viewBox="0 0 24 24" width="14" height="14">
-						<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.25" />
-						<path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+						<circle
+							cx="12"
+							cy="12"
+							r="10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-opacity="0.25"
+						/>
+						<path
+							d="M12 2a10 10 0 0 1 10 10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<span>缓冲中...</span>
 				</div>
 				<div class="vs-buffering-bar">
-					<div class="vs-buffering-fill" :style="{ width: (videoBuffering.bufferProgress * 100) + '%' }" />
+					<div
+						class="vs-buffering-fill"
+						:style="{ width: videoBuffering.bufferProgress * 100 + '%' }"
+					/>
 				</div>
 			</div>
 
@@ -211,11 +228,13 @@
 				"
 			/>
 
-			<LoadRecentEditDialog
-				:open="showLoadRecentEditDialog"
-				:saved-at="recentEditSavedAt"
-				@load="loadRecentEdit"
-				@discard="discardRecentEdit"
+			<SubtitleRecognitionDialog
+				:open="showSubtitleRecogDialog"
+				@close="
+					() => {
+						void VideoSceneStore.dispatch('setSubtitleRecogDialogVisible', { visible: false })
+					}
+				"
 			/>
 		</div>
 
@@ -251,7 +270,7 @@ import VideoStudioLeftPanel from './panels/VideoStudioLeftPanel.vue'
 import VideoStudioRightPanel from './panels/VideoStudioRightPanel.vue'
 import AIChatDialog from '../AIChat/AIChatDialog.vue'
 import ExportDialog from './dialogs/ExportDialog.vue'
-import LoadRecentEditDialog from './dialogs/LoadRecentEditDialog.vue'
+import SubtitleRecognitionDialog from './dialogs/SubtitleRecognitionDialog.vue'
 import { DwebCanvasGL } from '../../engine/webgl'
 import { DwebVideoScene } from '../../engine/webgl'
 import { TimelineStore } from '../../store/timeline'
@@ -259,7 +278,6 @@ import { containsFrame, type TimelineFrameSpan } from '../../store/timeline/span
 import { DwebCanvasGLKey } from './VideoSceneRuntime'
 import { applyTimelineAnimationAtFrame } from './anim/timelineAnimation'
 import { editorPersistence } from '../../adapters/editorPersistence'
-import { editorRecentCache } from '../../adapters/editorRecentCache'
 import { ExportService, type ExportFormat, type ExportQuality } from '../../network/ExportService'
 import ResizeControlPoints, { type Corner } from './parts/nodeControlPoints/ResizeControlPoints.vue'
 import LineControlPoints, {
@@ -427,6 +445,7 @@ provide(DwebCanvasGLKey, dwebCanvasRef)
 const showSizePanel = computed(() => VideoSceneStore.state.showSizePanel)
 const showBackgroundPanel = computed(() => VideoSceneStore.state.showBackgroundPanel)
 const showExportPanel = computed(() => VideoSceneStore.state.showExportPanel)
+const showSubtitleRecogDialog = computed(() => VideoSceneStore.state.showSubtitleRecogDialog)
 const shellRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const toolbarRef = ref<InstanceType<typeof VideoSceneToolbar> | null>(null)
@@ -463,9 +482,6 @@ const stageOrigin = computed(() => ({ x: -stageWidth.value / 2, y: -stageHeight.
 
 const inputWidth = ref<number>(1920)
 const inputHeight = ref<number>(1080)
-
-const showLoadRecentEditDialog = ref(false)
-const recentEditSavedAt = ref<number | null>(null)
 
 const stageBackground = computed(() => store.state.stage.background)
 const bgType = ref<'color' | 'image'>('color')
@@ -555,27 +571,6 @@ const resetRenderResultKeepFrames = () => {
 			exportStatus.value = 'framesDone'
 		}
 	}
-}
-
-const loadRecentEdit = () => {
-	const cached = editorRecentCache.read()
-	if (!cached) {
-		showLoadRecentEditDialog.value = false
-		recentEditSavedAt.value = null
-		return
-	}
-	try {
-		editorPersistence.replace(cached.snapshot)
-	} finally {
-		showLoadRecentEditDialog.value = false
-		recentEditSavedAt.value = cached.savedAt
-	}
-}
-
-const discardRecentEdit = () => {
-	editorRecentCache.clear()
-	showLoadRecentEditDialog.value = false
-	recentEditSavedAt.value = null
 }
 
 const exportFrames = async () => {
@@ -2012,13 +2007,6 @@ const queueWheelZoom = (canvas: DwebCanvasGL, p: { x: number; y: number }, delta
 }
 
 onMounted(() => {
-	// 刷新时：若检测到最近保存的编辑历史，先询问是否加载
-	const cachedAt = editorRecentCache.peekSavedAt()
-	if (cachedAt) {
-		recentEditSavedAt.value = cachedAt
-		showLoadRecentEditDialog.value = true
-	}
-
 	const shell = shellRef.value
 	const stageEl = stageRef.value
 	const canvasEl = canvasRef.value
@@ -2214,8 +2202,11 @@ watch(
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-0) 92%, transparent) 0%, color-mix(in srgb, var(--pl-bg-1) 96%, transparent) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-0) 92%, transparent) 0%,
+		color-mix(in srgb, var(--pl-bg-1) 96%, transparent) 100%
+	);
 }
 
 .vs-stage {
@@ -2294,12 +2285,14 @@ watch(
 	padding: 10px 14px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 40%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 85%, rgba(0,0,0,0.6));
+	background: color-mix(in srgb, var(--pl-bg-1) 85%, rgba(0, 0, 0, 0.6));
 	backdrop-filter: blur(10px);
 	z-index: 5;
 	pointer-events: none;
 	min-width: 160px;
-	box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	box-shadow:
+		0 4px 20px rgba(0, 0, 0, 0.5),
+		0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-buffering-indicator::before,
@@ -2341,8 +2334,12 @@ watch(
 }
 
 @keyframes vs-buffering-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .vs-buffering-bar {
@@ -2356,7 +2353,11 @@ watch(
 .vs-buffering-fill {
 	height: 100%;
 	border-radius: 1px;
-	background: linear-gradient(90deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 70%, var(--pl-cold, #3aa8b4)));
+	background: linear-gradient(
+		90deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 70%, var(--pl-cold, #3aa8b4))
+	);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 70%, transparent);
 	transition: width 0.15s ease-out;
 }
@@ -2375,12 +2376,16 @@ watch(
 	padding: 6px 12px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 70%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-1) 70%, rgba(0, 0, 0, 0.4));
 	color: var(--pl-fg);
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease,
+		transform 0.1s ease;
 	backdrop-filter: blur(6px);
 	position: relative;
 }
@@ -2388,14 +2393,18 @@ watch(
 .vs-tool:hover:not(:disabled) {
 	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
 	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
-	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .vs-tool.active {
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 15%, var(--pl-bg-1));
 	color: var(--pl-fg);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		inset 0 0 10px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-tool:disabled {
@@ -2412,10 +2421,12 @@ watch(
 	gap: 10px;
 	padding: 10px 14px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 75%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-1) 75%, rgba(0, 0, 0, 0.5));
 	border-radius: 2px;
 	backdrop-filter: blur(8px);
-	box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	box-shadow:
+		0 4px 20px rgba(0, 0, 0, 0.4),
+		0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-form::before,
@@ -2479,13 +2490,18 @@ watch(
 	color: var(--pl-fg);
 	outline: none;
 	font-size: 12px;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease,
+		background 0.15s ease;
 }
 
 .vs-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
 	background: color-mix(in srgb, var(--pl-fg) 8%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-select {
@@ -2498,12 +2514,17 @@ watch(
 	outline: none;
 	font-size: 12px;
 	cursor: pointer;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease,
+		background 0.15s ease;
 }
 
 .vs-select:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-color {
@@ -2514,7 +2535,9 @@ watch(
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	background: transparent;
 	cursor: pointer;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-color:hover {
@@ -2540,13 +2563,16 @@ watch(
 	padding: 0 12px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0, 0, 0, 0.3));
 	color: var(--pl-fg);
 	font-size: 12px;
 	line-height: 28px;
 	cursor: pointer;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-file-btn:hover {
@@ -2564,11 +2590,16 @@ watch(
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-btn:hover {
 	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

@@ -1,12 +1,12 @@
 {
-  "aichat.messages.insertedNode": "已插入舞台节点",
-  "aichat.messages.insertedNodeWithParent": "已插入舞台节点（{details}）。",
-  "aichat.messages.modifiedNode": "已修改节点：{nodeId}。",
-  "aichat.messages.deletedNodes": "已删除节点：{nodes}。",
-  "aichat.messages.appliedFilter": "已为{target}应用滤镜：{filter}。",
-  "aichat.messages.scenePlanReady": "场景计划已就绪，点击\"生成动画\"可在当前静态布局基础上写入关键帧。",
-  "aichat.messages.generatedScenePlan": "已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。",
-  "aichat.messages.savedToLibrary": "已保存到组件库：{name}",
-  "aichat.messages.jsonCopied": "场景计划 JSON 已复制到剪贴板。",
-  "aichat.messages.animationGenerated": "已生成预设动画：{count} 条计划，作用于 {nodeCount} 个节点。"
+	"aichat.messages.insertedNode": "已插入舞台节点",
+	"aichat.messages.insertedNodeWithParent": "已插入舞台节点（{details}）。",
+	"aichat.messages.modifiedNode": "已修改节点：{nodeId}。",
+	"aichat.messages.deletedNodes": "已删除节点：{nodes}。",
+	"aichat.messages.appliedFilter": "已为{target}应用滤镜：{filter}。",
+	"aichat.messages.scenePlanReady": "场景计划已就绪，点击\"生成动画\"可在当前静态布局基础上写入关键帧。",
+	"aichat.messages.generatedScenePlan": "已生成一份 VideoScene 场景计划 JSON，可用于后续动画编译。",
+	"aichat.messages.savedToLibrary": "已保存到组件库：{name}",
+	"aichat.messages.jsonCopied": "场景计划 JSON 已复制到剪贴板。",
+	"aichat.messages.animationGenerated": "已生成预设动画：{count} 条计划，作用于 {nodeCount} 个节点。"
 }

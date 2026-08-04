@@ -1,6 +1,6 @@
 /**
  * Canvas Hit Test Manager - Canvas2D碰撞检测管理器
- * 
+ *
  * 功能:
  * 1. 矩形相交快速检测
  * 2. 圆角节点精确检测
@@ -259,11 +259,7 @@ export class CanvasHitTestManager {
 	/**
 	 * 获取最近的节点
 	 */
-	findNearestNode(
-		worldX: number,
-		worldY: number,
-		maxDistance?: number
-	): HitTestResult {
+	findNearestNode(worldX: number, worldY: number, maxDistance?: number): HitTestResult {
 		let nearestId: string | null = null
 		let nearestDist = Infinity
 

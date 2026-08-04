@@ -1,12 +1,12 @@
 /**
  * Canvas Screenshot Pool - Canvas2D截图纹理池
- * 
+ *
  * 功能:
  * 1. 管理截图的Canvas/ImageBitmap对象（双主题缓存）
  * 2. 提供纹理的生命周期管理
  * 3. 支持动态加载和卸载
  * 4. 与IndexedDB缓存协同工作
- * 
+ *
  * 性能优化:
  * - ImageBitmap比HTMLCanvasElement性能更好
  * - 支持OffscreenCanvas (可选)
@@ -119,7 +119,10 @@ export class CanvasScreenshotPool {
 				try {
 					return await this.loadWithImageBitmap(entry, theme, key)
 				} catch (error) {
-					console.warn(`[CanvasScreenshotPool] createImageBitmap failed, fallback to canvas:`, error)
+					console.warn(
+						`[CanvasScreenshotPool] createImageBitmap failed, fallback to canvas:`,
+						error
+					)
 					return await this.loadWithCanvas(entry, theme, key)
 				}
 			} else {
@@ -258,9 +261,7 @@ export class CanvasScreenshotPool {
 			if (this.disposed) break
 
 			const batch = entries.slice(i, i + concurrency)
-			const batchResults = await Promise.all(
-				batch.map(entry => this.loadFromCache(entry))
-			)
+			const batchResults = await Promise.all(batch.map((entry) => this.loadFromCache(entry)))
 
 			for (const result of batchResults) {
 				if (result) {
@@ -287,7 +288,10 @@ export class CanvasScreenshotPool {
 	/**
 	 * 获取Bitmap（指定主题）
 	 */
-	getBitmapForTheme(nodeId: string, theme: 'dark' | 'light'): ImageBitmap | HTMLCanvasElement | null {
+	getBitmapForTheme(
+		nodeId: string,
+		theme: 'dark' | 'light'
+	): ImageBitmap | HTMLCanvasElement | null {
 		const entry = this.entries.get(this.getKey(nodeId, theme))
 		return entry?.status === 'ready' ? entry.bitmap : null
 	}
@@ -487,8 +491,7 @@ export class CanvasScreenshotPool {
 	 * 卸载最旧的N个条目（按主题均匀裁剪）
 	 */
 	private pruneOldest(count: number): void {
-		const entries = Array.from(this.entries.values())
-			.sort((a, b) => a.capturedAt - b.capturedAt)
+		const entries = Array.from(this.entries.values()).sort((a, b) => a.capturedAt - b.capturedAt)
 
 		const toRemove = entries.slice(0, count)
 		for (const entry of toRemove) {
@@ -501,8 +504,7 @@ export class CanvasScreenshotPool {
 	 * 清理到指定内存大小
 	 */
 	private pruneToFit(targetMemoryMB: number): void {
-		const entries = Array.from(this.entries.values())
-			.sort((a, b) => a.capturedAt - b.capturedAt)
+		const entries = Array.from(this.entries.values()).sort((a, b) => a.capturedAt - b.capturedAt)
 
 		let currentMB = this.estimateMemoryUsage()
 		for (const entry of entries) {
@@ -533,8 +535,9 @@ export class CanvasScreenshotPool {
 	 * 获取所有可视节点（当前主题）
 	 */
 	getAllVisibleEntries(): CanvasScreenshotEntry[] {
-		return Array.from(this.entries.values())
-			.filter(e => e.status === 'ready' && e.theme === this.activeTheme)
+		return Array.from(this.entries.values()).filter(
+			(e) => e.status === 'ready' && e.theme === this.activeTheme
+		)
 	}
 
 	/**
@@ -551,7 +554,7 @@ export class CanvasScreenshotPool {
 			y1: viewportRect.y1 + padding
 		}
 
-		return this.getAllVisibleEntries().filter(entry => {
+		return this.getAllVisibleEntries().filter((entry) => {
 			const halfW = entry.width / 2
 			const halfH = entry.height / 2
 

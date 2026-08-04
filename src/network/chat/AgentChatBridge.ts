@@ -38,17 +38,11 @@ export class AgentChatBridge {
 		return this.getService(backend).createSession(options)
 	}
 
-	async listSessions(
-		backend: AgentBackendType,
-		projectId?: number | null
-	): Promise<ChatSession[]> {
+	async listSessions(backend: AgentBackendType, projectId?: number | null): Promise<ChatSession[]> {
 		return this.getService(backend).listSessions(projectId)
 	}
 
-	async getSession(
-		backend: AgentBackendType,
-		sessionId: string
-	): Promise<ChatSession | null> {
+	async getSession(backend: AgentBackendType, sessionId: string): Promise<ChatSession | null> {
 		return this.getService(backend).getSession(sessionId)
 	}
 

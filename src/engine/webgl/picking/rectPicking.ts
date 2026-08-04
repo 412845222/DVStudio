@@ -31,15 +31,13 @@ export function hitTestRotatedRects(
 		const w = n.transform.width
 		const h = n.transform.height
 		const px =
-		typeof n.transform.pivotX === 'number' &&
-		Number.isFinite(n.transform.pivotX)
-			? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
-			: 0.5
-	const py =
-		typeof n.transform.pivotY === 'number' &&
-		Number.isFinite(n.transform.pivotY)
-			? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
-			: 0.5
+			typeof n.transform.pivotX === 'number' && Number.isFinite(n.transform.pivotX)
+				? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
+				: 0.5
+		const py =
+			typeof n.transform.pivotY === 'number' && Number.isFinite(n.transform.pivotY)
+				? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
+				: 0.5
 
 		// hitTest: 旋转矩形，先把点旋回局部坐标再做 AABB
 		const cos = Math.cos(-rotation)
@@ -75,15 +73,13 @@ export function queryRotatedRectsInWorldRect(
 		const w = n.transform.width
 		const h = n.transform.height
 		const px =
-		typeof n.transform.pivotX === 'number' &&
-		Number.isFinite(n.transform.pivotX)
-			? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
-			: 0.5
-	const py =
-		typeof n.transform.pivotY === 'number' &&
-		Number.isFinite(n.transform.pivotY)
-			? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
-			: 0.5
+			typeof n.transform.pivotX === 'number' && Number.isFinite(n.transform.pivotX)
+				? Math.max(0, Math.min(1, Number(n.transform.pivotX)))
+				: 0.5
+		const py =
+			typeof n.transform.pivotY === 'number' && Number.isFinite(n.transform.pivotY)
+				? Math.max(0, Math.min(1, Number(n.transform.pivotY)))
+				: 0.5
 		const dx0 = -w * px
 		const dx1 = w * (1 - px)
 		const dy0 = -h * py

@@ -191,7 +191,9 @@ export function createProjectsRepo({ backendDataDir }) {
 	const mediaRoot = mediaRootFromBackendDir(backendDataDir)
 	const db = getLocalDb()
 
-	const listStmt = db.prepare('SELECT id, name, root_path, created_at, updated_at, last_opened_at FROM projects ORDER BY updated_at DESC, id DESC')
+	const listStmt = db.prepare(
+		'SELECT id, name, root_path, created_at, updated_at, last_opened_at FROM projects ORDER BY updated_at DESC, id DESC'
+	)
 	const listFullStmt = db.prepare('SELECT * FROM projects ORDER BY updated_at DESC, id DESC')
 	const getByIdStmt = db.prepare('SELECT * FROM projects WHERE id = ?')
 	const getByRootPathStmt = db.prepare(

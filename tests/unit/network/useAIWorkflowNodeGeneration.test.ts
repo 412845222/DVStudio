@@ -15,7 +15,10 @@ const blobToBase64DataUri = async (blob: Blob): Promise<string> => {
 }
 
 const normalizeModelUrlForMeshy = async (
-	deps: { resolveBackendUrl: (url: string) => string; downloadUrlAsBlob?: (url: string) => Promise<Blob | null> },
+	deps: {
+		resolveBackendUrl: (url: string) => string
+		downloadUrlAsBlob?: (url: string) => Promise<Blob | null>
+	},
 	rawUrl: string,
 	_label?: string
 ): Promise<string> => {

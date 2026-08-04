@@ -6,7 +6,7 @@ import {
 	listCloudTemplates,
 	uploadCloudTemplate,
 	downloadCloudTemplate,
-	deleteCloudTemplate as deleteCloudTemplateApi,
+	deleteCloudTemplate as deleteCloudTemplateApi
 } from '../../electronBridge'
 
 const cloudPlatformState = ref<{
@@ -36,12 +36,19 @@ export function useCloudTemplatePersistence() {
 			const platform = await getCloudTemplatesPlatform()
 			console.log('[cloud-templates] Platform result:', platform)
 			if (!platform?.ok || platform.platformId !== 'steam') {
-				console.warn('[cloud-templates] Cloud platform not available:', platform?.errMsg || `unsupported platform: ${platform?.platformId}`)
+				console.warn(
+					'[cloud-templates] Cloud platform not available:',
+					platform?.errMsg || `unsupported platform: ${platform?.platformId}`
+				)
 				cloudPlatformState.value = null
 				return false
 			}
 			cloudPlatformState.value = platform
-			console.log('[cloud-templates] Cloud platform available:', platform.platformId, platform.platformName)
+			console.log(
+				'[cloud-templates] Cloud platform available:',
+				platform.platformId,
+				platform.platformName
+			)
 			return true
 		} catch (err) {
 			console.error('[cloud-templates] ensureCloudAvailable error:', err)
@@ -68,7 +75,9 @@ export function useCloudTemplatePersistence() {
 		}
 	}
 
-	async function loadCloudTemplates(options: { forceRefresh?: boolean } = {}): Promise<TemplateItem[]> {
+	async function loadCloudTemplates(
+		options: { forceRefresh?: boolean } = {}
+	): Promise<TemplateItem[]> {
 		const { forceRefresh = true } = options
 		loadingCloudTemplates.value = true
 		try {
@@ -83,10 +92,18 @@ export function useCloudTemplatePersistence() {
 
 			console.log('[cloud-templates] Calling listCloudTemplates with forceRefresh:', forceRefresh)
 			const result = await listCloudTemplates({ forceRefresh })
-			console.log('[cloud-templates] listCloudTemplates result:', result?.ok ? `${result.items?.length || 0} items` : `error: ${result?.errMsg || 'null result'}`)
-			
+			console.log(
+				'[cloud-templates] listCloudTemplates result:',
+				result?.ok
+					? `${result.items?.length || 0} items`
+					: `error: ${result?.errMsg || 'null result'}`
+			)
+
 			if (!result?.ok || !result.items) {
-				console.warn('[cloud-templates] listCloudTemplates failed:', result?.errMsg || 'null result')
+				console.warn(
+					'[cloud-templates] listCloudTemplates failed:',
+					result?.errMsg || 'null result'
+				)
 				cloudTemplates.value = []
 				_cloudInitialized = true
 				return []
@@ -107,7 +124,7 @@ export function useCloudTemplatePersistence() {
 				steamFileId: meta.packageFileName,
 				cloudSyncStatus: 'synced' as CloudSyncStatus,
 				lastSyncAt: meta.updatedAt,
-				author: '云端',
+				author: '云端'
 			}))
 
 			cloudTemplates.value = items
@@ -124,10 +141,22 @@ export function useCloudTemplatePersistence() {
 		}
 	}
 
-	async function uploadTemplateToCloud(template: TemplateItem, zipBlob: Blob, coverBlob?: Blob | null): Promise<boolean> {
+	async function uploadTemplateToCloud(
+		template: TemplateItem,
+		zipBlob: Blob,
+		coverBlob?: Blob | null
+	): Promise<boolean> {
 		uploadingTemplateId.value = template.id
 		const rawTemplate = toRaw(template)
-		console.log('[cloud-templates] Starting upload:', rawTemplate.id, rawTemplate.name, 'zipSize:', zipBlob.size, 'hasCover:', !!coverBlob)
+		console.log(
+			'[cloud-templates] Starting upload:',
+			rawTemplate.id,
+			rawTemplate.name,
+			'zipSize:',
+			zipBlob.size,
+			'hasCover:',
+			!!coverBlob
+		)
 		try {
 			const available = await ensureCloudAvailable()
 			if (!available) {
@@ -150,7 +179,7 @@ export function useCloudTemplatePersistence() {
 				tags: [...(rawTemplate.tags || [])],
 				nodeCount: rawTemplate.nodeCount || 0,
 				zipData,
-				coverData,
+				coverData
 			})
 
 			console.log('[cloud-templates] Upload result:', result)
@@ -181,7 +210,9 @@ export function useCloudTemplatePersistence() {
 			if (!result?.ok || !result.zipData || !result.meta) return null
 
 			const zipBlob = new Blob([result.zipData], { type: 'application/zip' })
-			const coverBlob = result.coverData ? new Blob([result.coverData], { type: 'image/png' }) : null
+			const coverBlob = result.coverData
+				? new Blob([result.coverData], { type: 'image/png' })
+				: null
 
 			const meta: TemplateItem = {
 				id: result.meta.id,
@@ -196,7 +227,7 @@ export function useCloudTemplatePersistence() {
 				steamFileId: result.meta.packageFileName,
 				cloudSyncStatus: 'synced',
 				lastSyncAt: result.meta.updatedAt,
-				author: '云端',
+				author: '云端'
 			}
 
 			return { meta, zipBlob, coverBlob }
@@ -246,6 +277,6 @@ export function useCloudTemplatePersistence() {
 		uploadTemplateToCloud,
 		downloadTemplateFromCloud,
 		deleteCloudTemplate,
-		refreshCloudSync,
+		refreshCloudSync
 	}
 }

@@ -30,7 +30,11 @@ export function saveComponent(ctx, payload) {
 	coerced.name = name
 
 	if (coerced.schemaVersion !== 1) throw invalidParamsError('template.schemaVersion must be 1')
-	if (!coerced.rootLocalId || typeof coerced.rootLocalId !== 'string' || !coerced.rootLocalId.trim()) {
+	if (
+		!coerced.rootLocalId ||
+		typeof coerced.rootLocalId !== 'string' ||
+		!coerced.rootLocalId.trim()
+	) {
 		throw invalidParamsError('template.rootLocalId must be non-empty string')
 	}
 	if (!Array.isArray(coerced.nodes)) throw invalidParamsError('template.nodes must be array')

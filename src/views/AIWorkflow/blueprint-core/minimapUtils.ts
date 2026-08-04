@@ -2,6 +2,8 @@ export const MINIMAP_WIDTH = 200
 export const MINIMAP_HEIGHT = 150
 export const MINIMAP_PADDING = 8
 export const DEFAULT_WORLD_BOUNDS = { x: -1000, y: -1000, width: 2000, height: 2000 }
+export const MIN_ZOOM = 0.2
+export const MAX_ZOOM = 6
 
 export interface MinimapNodeLike {
 	worldX?: number
@@ -28,10 +30,7 @@ export interface MinimapBounds {
 	height: number
 }
 
-export const computeWorldBounds = (
-	nodes: MinimapNodeLike[],
-	padding = 120
-): MinimapBounds => {
+export const computeWorldBounds = (nodes: MinimapNodeLike[], padding = 120): MinimapBounds => {
 	if (nodes.length === 0) return DEFAULT_WORLD_BOUNDS
 
 	let minX = Infinity
@@ -59,8 +58,8 @@ export const computeWorldBounds = (
 	return {
 		x: minX - padding,
 		y: minY - padding,
-		width: (maxX - minX) + padding * 2,
-		height: (maxY - minY) + padding * 2
+		width: maxX - minX + padding * 2,
+		height: maxY - minY + padding * 2
 	}
 }
 
@@ -115,25 +114,71 @@ export const computeViewportInMinimap = (
 
 	const centerWorldX = -panX / zoom
 	const centerWorldY = -panY / zoom
-	const halfWorldW = (canvasSize.width / 2) / zoom
-	const halfWorldH = (canvasSize.height / 2) / zoom
+	const halfWorldW = canvasSize.width / 2 / zoom
+	const halfWorldH = canvasSize.height / 2 / zoom
 
-	const tl = worldToMinimap(centerWorldX - halfWorldW, centerWorldY - halfWorldH, bounds, scale, offset)
-	const br = worldToMinimap(centerWorldX + halfWorldW, centerWorldY + halfWorldH, bounds, scale, offset)
+	const tl = worldToMinimap(
+		centerWorldX - halfWorldW,
+		centerWorldY - halfWorldH,
+		bounds,
+		scale,
+		offset
+	)
+	const br = worldToMinimap(
+		centerWorldX + halfWorldW,
+		centerWorldY + halfWorldH,
+		bounds,
+		scale,
+		offset
+	)
 
-	return {
-		x: tl.x,
-		y: tl.y,
-		width: br.x - tl.x,
-		height: br.y - tl.y
+	let x = Math.min(tl.x, br.x)
+	let y = Math.min(tl.y, br.y)
+	let width = Math.abs(br.x - tl.x)
+	let height = Math.abs(br.y - tl.y)
+
+	const minSize = 6
+	const maxX = MINIMAP_WIDTH
+	const maxY = MINIMAP_HEIGHT
+
+	if (x + width < 0) {
+		x = -minSize
+		width = minSize
+	} else if (x > maxX) {
+		x = maxX
+		width = minSize
+	} else {
+		if (x < 0) {
+			width += x
+			x = 0
+		}
+		if (x + width > maxX) {
+			width = maxX - x
+		}
 	}
+	if (y + height < 0) {
+		y = -minSize
+		height = minSize
+	} else if (y > maxY) {
+		y = maxY
+		height = minSize
+	} else {
+		if (y < 0) {
+			height += y
+			y = 0
+		}
+		if (y + height > maxY) {
+			height = maxY - y
+		}
+	}
+
+	width = Math.max(minSize, width)
+	height = Math.max(minSize, height)
+
+	return { x, y, width, height }
 }
 
-export const computePanForWorldPoint = (
-	worldX: number,
-	worldY: number,
-	zoom: number
-) => ({
+export const computePanForWorldPoint = (worldX: number, worldY: number, zoom: number) => ({
 	panX: -worldX * zoom,
 	panY: -worldY * zoom
 })
@@ -150,7 +195,7 @@ export const computeFitAllViewport = (
 	const bounds = computeWorldBounds(nodes)
 	const scaleX = (canvasSize.width * paddingRatio) / bounds.width
 	const scaleY = (canvasSize.height * paddingRatio) / bounds.height
-	const zoom = Math.max(0.2, Math.min(6, Math.min(scaleX, scaleY)))
+	const zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(scaleX, scaleY)))
 	const centerWorldX = bounds.x + bounds.width / 2
 	const centerWorldY = bounds.y + bounds.height / 2
 	const { panX, panY } = computePanForWorldPoint(centerWorldX, centerWorldY, zoom)
@@ -169,12 +214,21 @@ export const computeWheelZoomViewport = (
 	zoomFactor = 0.92
 ) => {
 	const zoom = viewport.zoom || 1
-	const z1 = Math.max(0.2, Math.min(6, zoom * (deltaY > 0 ? zoomFactor : 1 / zoomFactor)))
-	if (Math.abs(z1 - zoom) < 1e-6) return { zoom, panX: viewport.panX || 0, panY: viewport.panY || 0 }
+	const z1 = Math.max(
+		MIN_ZOOM,
+		Math.min(MAX_ZOOM, zoom * (deltaY > 0 ? zoomFactor : 1 / zoomFactor))
+	)
+	if (Math.abs(z1 - zoom) < 1e-6)
+		return { zoom, panX: viewport.panX || 0, panY: viewport.panY || 0 }
 
 	const anchorWorld = minimapToWorld(anchorMinimapX, anchorMinimapY, bounds, scale, offset)
 	const { panX, panY } = computePanForWorldPoint(anchorWorld.x, anchorWorld.y, z1)
-	return { zoom: z1, panX, panY }
+	const maxPan = 1e7
+	return {
+		zoom: z1,
+		panX: Math.max(-maxPan, Math.min(maxPan, isFinite(panX) ? panX : 0)),
+		panY: Math.max(-maxPan, Math.min(maxPan, isFinite(panY) ? panY : 0))
+	}
 }
 
 export const screenToWorld = (

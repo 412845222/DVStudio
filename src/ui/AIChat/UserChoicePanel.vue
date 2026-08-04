@@ -36,7 +36,7 @@ const props = withDefaults(
 	}>(),
 	{
 		title: '',
-		disabled: false,
+		disabled: false
 	}
 )
 

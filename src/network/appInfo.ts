@@ -35,7 +35,7 @@ const COMPILE_TIME_APP_INFO = {
 	homepage: __DWEB_HOMEPAGE_URL__,
 	repoUrl: __DWEB_REPO_URL__,
 	bilibiliUrl: __DWEB_BILIBILI_URL__,
-	issuesUrl: __DWEB_ISSUES_URL__,
+	issuesUrl: __DWEB_ISSUES_URL__
 }
 
 let cachedAppInfo: AppInfo | null = null
@@ -59,7 +59,7 @@ export function getAppInfo(): AppInfo {
 						homepage: info.homepage || COMPILE_TIME_APP_INFO.homepage,
 						repoUrl: info.repoUrl || COMPILE_TIME_APP_INFO.repoUrl,
 						bilibiliUrl: info.bilibiliUrl || COMPILE_TIME_APP_INFO.bilibiliUrl,
-						issuesUrl: info.issuesUrl || COMPILE_TIME_APP_INFO.issuesUrl,
+						issuesUrl: info.issuesUrl || COMPILE_TIME_APP_INFO.issuesUrl
 					}
 					return cachedAppInfo
 				}
@@ -73,7 +73,7 @@ export function getAppInfo(): AppInfo {
 					homepage: COMPILE_TIME_APP_INFO.homepage,
 					repoUrl: COMPILE_TIME_APP_INFO.repoUrl,
 					bilibiliUrl: COMPILE_TIME_APP_INFO.bilibiliUrl,
-					issuesUrl: COMPILE_TIME_APP_INFO.issuesUrl,
+					issuesUrl: COMPILE_TIME_APP_INFO.issuesUrl
 				}
 				return cachedAppInfo
 			}
@@ -134,7 +134,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 		return {
 			ok: false,
 			error: 'Not running in Electron',
-			currentVersion: info.appVersion,
+			currentVersion: info.appVersion
 		}
 	}
 	try {
@@ -146,13 +146,13 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 		return {
 			ok: false,
 			error: 'Update check not available',
-			currentVersion: info.appVersion,
+			currentVersion: info.appVersion
 		}
 	} catch (e: unknown) {
 		return {
 			ok: false,
 			error: e instanceof Error ? e.message : String(e),
-			currentVersion: info.appVersion,
+			currentVersion: info.appVersion
 		}
 	}
 }

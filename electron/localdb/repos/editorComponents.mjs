@@ -19,14 +19,17 @@ function nowMs() {
 
 function parseTags(raw) {
 	if (raw === null || raw === undefined) return []
-	if (Array.isArray(raw)) return raw.map(x => String(x || '').trim()).filter(Boolean)
+	if (Array.isArray(raw)) return raw.map((x) => String(x || '').trim()).filter(Boolean)
 	const text = String(raw).trim()
 	if (!text) return []
 	try {
 		const parsed = JSON.parse(text)
-		if (Array.isArray(parsed)) return parsed.map(x => String(x || '').trim()).filter(Boolean)
+		if (Array.isArray(parsed)) return parsed.map((x) => String(x || '').trim()).filter(Boolean)
 	} catch {}
-	return text.split(',').map(x => x.trim()).filter(Boolean)
+	return text
+		.split(',')
+		.map((x) => x.trim())
+		.filter(Boolean)
 }
 
 function serializeComponent(row) {
@@ -72,7 +75,9 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 	const deleteByTemplateIdStmt = db.prepare('DELETE FROM editor_components WHERE template_id = ?')
 
 	if (thumbsDir) {
-		try { fs.mkdirSync(thumbsDir, { recursive: true }) } catch {}
+		try {
+			fs.mkdirSync(thumbsDir, { recursive: true })
+		} catch {}
 	}
 
 	function resolveThumbPath(filename) {
@@ -92,7 +97,9 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 		else if (mime.includes('gif')) ext = 'gif'
 		try {
 			const buf = Buffer.from(raw, 'base64')
-			const fname = `${String(templateId || randomId()).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)}_${Date.now()}.${ext}`
+			const fname = `${String(templateId || randomId())
+				.replace(/[^a-zA-Z0-9_-]/g, '_')
+				.slice(0, 60)}_${Date.now()}.${ext}`
 			const fp = path.resolve(thumbsDir, fname)
 			fs.writeFileSync(fp, buf)
 			return fp
@@ -102,9 +109,12 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 	}
 
 	function computeThumbUrl(row) {
-		if (row.thumb_asset_id) return `dweb://project-assets?id=${encodeURIComponent(row.thumb_asset_id)}`
+		if (row.thumb_asset_id)
+			return `dweb://project-assets?id=${encodeURIComponent(row.thumb_asset_id)}`
 		if (row.thumbnail_path) {
-			const absPath = path.isAbsolute(row.thumbnail_path) ? row.thumbnail_path : resolveThumbPath(row.thumbnail_path)
+			const absPath = path.isAbsolute(row.thumbnail_path)
+				? row.thumbnail_path
+				: resolveThumbPath(row.thumbnail_path)
 			if (absPath && fs.existsSync(absPath)) {
 				return `file:///${absPath.replace(/\\/g, '/')}`
 			}
@@ -117,9 +127,14 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 		if (q) {
 			const query = String(q).trim().toLowerCase()
 			if (query) {
-				rows = rows.filter(r =>
-					String(r.name || '').toLowerCase().includes(query) ||
-					String(r.template_id || '').toLowerCase().includes(query)
+				rows = rows.filter(
+					(r) =>
+						String(r.name || '')
+							.toLowerCase()
+							.includes(query) ||
+						String(r.template_id || '')
+							.toLowerCase()
+							.includes(query)
 				)
 			}
 		}
@@ -127,7 +142,7 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 		const off = Math.max(0, Number(offset) || 0)
 		const lim = Math.max(1, Math.min(1000, Number(limit) || 200))
 		const paged = rows.slice(off, off + lim)
-		const items = paged.map(r => {
+		const items = paged.map((r) => {
 			const s = serializeComponent(r)
 			s.thumbUrl = computeThumbUrl(r)
 			return s
@@ -155,12 +170,22 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 		return s
 	}
 
-	function upsert({ id, templateId, name, template, thumbAssetId, thumbDataUrl, category, tags } = {}) {
+	function upsert({
+		id,
+		templateId,
+		name,
+		template,
+		thumbAssetId,
+		thumbDataUrl,
+		category,
+		tags
+	} = {}) {
 		const tid = String(templateId || '').trim()
 		const nameText = String(name || '').trim()
 		if (!tid) return { ok: false, error: 'templateId is required' }
 		if (!nameText) return { ok: false, error: 'name is required' }
-		if (!template || typeof template !== 'object') return { ok: false, error: 'template must be object' }
+		if (!template || typeof template !== 'object')
+			return { ok: false, error: 'template must be object' }
 
 		const coerced = { ...template }
 		coerced.templateId = tid
@@ -169,7 +194,9 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 
 		const schemaVer = Number(coerced.schemaVersion || coerced.schema_version || 1) || 1
 		const catText = String(category || '').trim()
-		const tagArr = Array.isArray(tags) ? tags.map(x => String(x || '').trim()).filter(Boolean) : parseTags(tags)
+		const tagArr = Array.isArray(tags)
+			? tags.map((x) => String(x || '').trim()).filter(Boolean)
+			: parseTags(tags)
 		const tagsJson = stringifyOptionalJson(tagArr) || '[]'
 
 		let thumbPath = ''
@@ -180,7 +207,10 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 		const existing = getByTemplateIdStmt.get(tid)
 		const now = nowMs()
 		const dataJson = stringifyOptionalJson(coerced) || '{}'
-		const tAssetId = thumbAssetId !== undefined ? String(thumbAssetId || '').trim() : (existing?.thumb_asset_id || '')
+		const tAssetId =
+			thumbAssetId !== undefined
+				? String(thumbAssetId || '').trim()
+				: existing?.thumb_asset_id || ''
 		const tPath = thumbPath || existing?.thumbnail_path || ''
 
 		if (existing) {
@@ -230,13 +260,17 @@ export function createEditorComponentsRepo({ backendDataDir } = {}) {
 			const byTid = getByTemplateIdStmt.get(cid)
 			if (!byTid) return { ok: false, error: 'component not found' }
 			if (byTid.thumbnail_path && thumbsDir) {
-				try { fs.unlinkSync(byTid.thumbnail_path) } catch {}
+				try {
+					fs.unlinkSync(byTid.thumbnail_path)
+				} catch {}
 			}
 			deleteByTemplateIdStmt.run(cid)
 			return { ok: true }
 		}
 		if (existing.thumbnail_path && thumbsDir) {
-			try { fs.unlinkSync(existing.thumbnail_path) } catch {}
+			try {
+				fs.unlinkSync(existing.thumbnail_path)
+			} catch {}
 		}
 		deleteStmt.run(cid)
 		return { ok: true }

@@ -75,7 +75,9 @@ function runNpm(args, options = {}) {
 function parseVersion(versionStr) {
 	const match = versionStr.match(/^(\d+)\.(\d+)\.(\d+)(?:-.+)?$/)
 	if (!match) {
-		throw new Error(`Invalid version format: ${versionStr}. Expected MAJOR.MINOR.PATCH (e.g. 0.1.2)`)
+		throw new Error(
+			`Invalid version format: ${versionStr}. Expected MAJOR.MINOR.PATCH (e.g. 0.1.2)`
+		)
 	}
 	return {
 		major: parseInt(match[1], 10),
@@ -132,9 +134,7 @@ function getRemoteUrl() {
 }
 
 function getRepoWebUrl(remoteUrl) {
-	return remoteUrl
-		.replace(/^git@github\.com:/, 'https://github.com/')
-		.replace(/\.git$/, '')
+	return remoteUrl.replace(/^git@github\.com:/, 'https://github.com/').replace(/\.git$/, '')
 }
 
 function main() {
@@ -204,7 +204,9 @@ function main() {
 		runNpm(['run', 'quality'], { stdio: 'inherit' })
 		success('Quality checks passed.')
 	} catch {
-		warn('Quality checks failed locally. This is advisory only - CI will run all checks before building.')
+		warn(
+			'Quality checks failed locally. This is advisory only - CI will run all checks before building.'
+		)
 		warn('If you want to debug locally, run `npm run quality` separately.')
 		warn('Continuing with release...')
 	}
@@ -248,12 +250,22 @@ function main() {
 	log('')
 	log(`Creating Pull Request: ${releaseBranch} → main...`)
 	try {
-		const prResult = run('gh', ['pr', 'create',
-			'--base', 'main',
-			'--head', releaseBranch,
-			'--title', `chore: release ${newVersion}`,
-			'--body', `Automated release PR for version ${newVersion}.\n\nOnce merged, the tag ${tagName} will trigger the official release build.`
-		], { encoding: 'utf8' })
+		const prResult = run(
+			'gh',
+			[
+				'pr',
+				'create',
+				'--base',
+				'main',
+				'--head',
+				releaseBranch,
+				'--title',
+				`chore: release ${newVersion}`,
+				'--body',
+				`Automated release PR for version ${newVersion}.\n\nOnce merged, the tag ${tagName} will trigger the official release build.`
+			],
+			{ encoding: 'utf8' }
+		)
 		success('Pull Request created.')
 	} catch {
 		warn('Could not create PR automatically (gh CLI may not be authenticated).')

@@ -1,5 +1,5 @@
 {
-  "nodes.tagEditor.placeholder": "输入标签名称...",
-  "nodes.tagEditor.save": "保存",
-  "nodes.tagEditor.hint": "Enter 确认 · Esc 取消"
+	"nodes.tagEditor.placeholder": "输入标签名称...",
+	"nodes.tagEditor.save": "保存",
+	"nodes.tagEditor.hint": "Enter 确认 · Esc 取消"
 }

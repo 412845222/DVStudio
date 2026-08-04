@@ -13,7 +13,9 @@
 					</svg>
 				</div>
 				<span>{{ t('cloudStorage.fileList.title') }}</span>
-				<span v-if="bucketName && allItems.length" class="cs-file-count">{{ allItems.length }}</span>
+				<span v-if="bucketName && allItems.length" class="cs-file-count">
+					{{ allItems.length }}
+				</span>
 			</div>
 			<div class="cs-file-actions">
 				<button
@@ -24,7 +26,14 @@
 					@click="goBack"
 				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-btn-icon">
-						<path d="M10.5 3.5L6 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+						<path
+							d="M10.5 3.5L6 8l4.5 4.5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 				</button>
 				<button
@@ -35,8 +44,19 @@
 					@click="showNewFolder = !showNewFolder"
 				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-btn-icon">
-						<path d="M2 5.5a1 1 0 0 1 1-1h3l2 2h5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6z" fill="none" stroke="currentColor" stroke-width="1.2" />
-						<path d="M8 7v4M6 9h4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+						<path
+							d="M2 5.5a1 1 0 0 1 1-1h3l2 2h5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+						/>
+						<path
+							d="M8 7v4M6 9h4"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+							stroke-linecap="round"
+						/>
 					</svg>
 					{{ t('cloudStorage.fileList.newFolder') }}
 				</button>
@@ -75,7 +95,12 @@
 						</svg>
 					</button>
 				</div>
-				<button class="cs-icon-btn" type="button" :title="t('cloudStorage.fileList.refresh')" @click="refresh">
+				<button
+					class="cs-icon-btn"
+					type="button"
+					:title="t('cloudStorage.fileList.refresh')"
+					@click="refresh"
+				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-btn-icon">
 						<path
 							d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
@@ -93,10 +118,28 @@
 						/>
 					</svg>
 				</button>
-				<button v-if="bucketName" class="cs-btn cs-btn-primary cs-upload-btn" type="button" @click="triggerUpload">
+				<button
+					v-if="bucketName"
+					class="cs-btn cs-btn-primary cs-upload-btn"
+					type="button"
+					@click="triggerUpload"
+				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-btn-icon">
-						<path d="M8 2.5v8M4.5 6L8 2.5 11.5 6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-						<path d="M2.5 13.5h11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+						<path
+							d="M8 2.5v8M4.5 6L8 2.5 11.5 6"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M2.5 13.5h11"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+						/>
 					</svg>
 					{{ t('cloudStorage.fileList.upload') }}
 				</button>
@@ -111,9 +154,21 @@
 		</div>
 
 		<div v-if="bucketName" class="cs-breadcrumb-bar">
-			<button class="cs-breadcrumb-item" :class="{ active: !currentPrefix }" type="button" @click="navigateTo('')">
+			<button
+				class="cs-breadcrumb-item"
+				:class="{ active: !currentPrefix }"
+				type="button"
+				@click="navigateTo('')"
+			>
 				<svg viewBox="0 0 16 16" class="cs-bc-home-icon" aria-hidden="true">
-					<path d="M2.5 8.5l5.5-5 5.5 5M4 7.5v5a.5.5 0 00.5.5h2v-3h3v3h2a.5.5 0 00.5-.5v-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+					<path
+						d="M2.5 8.5l5.5-5 5.5 5M4 7.5v5a.5.5 0 00.5.5h2v-3h3v3h2a.5.5 0 00.5-.5v-5"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 				{{ t('cloudStorage.fileList.breadcrumbRoot') }}
 			</button>
@@ -133,8 +188,21 @@
 		<div v-if="bucketName && !isPublic" class="cs-acl-warning">
 			<div class="cs-acl-warn-icon">
 				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M12 8v4M12 16h.01"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</div>
 			<div class="cs-acl-warn-text">
@@ -154,8 +222,19 @@
 				<span class="cs-nfc br"></span>
 			</div>
 			<svg viewBox="0 0 16 16" class="cs-nf-icon" aria-hidden="true">
-				<path d="M2 5.5a1 1 0 0 1 1-1h3l2 2h5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6z" fill="none" stroke="currentColor" stroke-width="1.2" />
-				<path d="M8 7v4M6 9h4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+				<path
+					d="M2 5.5a1 1 0 0 1 1-1h3l2 2h5a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-6z"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+				/>
+				<path
+					d="M8 7v4M6 9h4"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+				/>
 			</svg>
 			<input
 				ref="newFolderInputRef"
@@ -166,9 +245,18 @@
 				@keydown.enter="handleCreateFolder"
 				@keydown.escape="cancelNewFolder"
 			/>
-			<button class="cs-btn cs-btn-primary cs-nf-btn" type="button" :disabled="creatingFolder" @click="handleCreateFolder">
+			<button
+				class="cs-btn cs-btn-primary cs-nf-btn"
+				type="button"
+				:disabled="creatingFolder"
+				@click="handleCreateFolder"
+			>
 				<span v-if="creatingFolder" class="cs-spinner"></span>
-				{{ creatingFolder ? t('cloudStorage.fileList.creating') : t('cloudStorage.fileList.confirmCreate') }}
+				{{
+					creatingFolder
+						? t('cloudStorage.fileList.creating')
+						: t('cloudStorage.fileList.confirmCreate')
+				}}
 			</button>
 			<button class="cs-btn cs-btn-ghost cs-nf-btn" type="button" @click="cancelNewFolder">
 				{{ t('cloudStorage.fileList.cancel') }}
@@ -179,7 +267,13 @@
 			<div class="cs-search-wrap">
 				<svg viewBox="0 0 16 16" class="cs-search-icon" aria-hidden="true">
 					<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-					<path d="M10.5 10.5L13 13" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+					<path
+						d="M10.5 10.5L13 13"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.2"
+						stroke-linecap="round"
+					/>
 				</svg>
 				<input
 					v-model="searchKeyword"
@@ -207,8 +301,21 @@
 					<span class="cs-doc br"></span>
 				</div>
 				<svg viewBox="0 0 48 48" class="cs-do-icon" aria-hidden="true">
-					<path d="M24 8v20M16 20l8-8 8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M8 34h32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+					<path
+						d="M24 8v20M16 20l8-8 8 8"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M8 34h32"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+					/>
 				</svg>
 				<div class="cs-do-text">{{ t('cloudStorage.fileList.dropToUpload') }}</div>
 			</div>
@@ -231,14 +338,35 @@
 			<div v-else-if="!bucketName" class="cs-empty-state cs-no-bucket">
 				<div class="cs-empty-icon-wrap">
 					<svg viewBox="0 0 48 48" class="cs-empty-icon" aria-hidden="true">
-						<path d="M8 16l4-4h8l4 4h12a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V16z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
-						<path d="M18 28l4-4 4 4M22 24v8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-						<path d="M30 30h4M30 34h2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						<path
+							d="M8 16l4-4h8l4 4h12a4 4 0 0 1 4 4v16a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V16z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-dasharray="4 3"
+						/>
+						<path
+							d="M18 28l4-4 4 4M22 24v8"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M30 30h4M30 34h2"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<div class="cs-empty-icon-ring"></div>
 					<div class="cs-empty-icon-glow"></div>
 				</div>
-				<div class="cs-empty-text cs-empty-text-accent">{{ t('cloudStorage.fileList.noBucket') }}</div>
+				<div class="cs-empty-text cs-empty-text-accent">
+					{{ t('cloudStorage.fileList.noBucket') }}
+				</div>
 				<div class="cs-empty-hint">{{ t('cloudStorage.fileList.noBucketHint') }}</div>
 			</div>
 
@@ -259,13 +387,24 @@
 							stroke="currentColor"
 							stroke-width="1.5"
 						/>
-						<path d="M18 24l4 4 8-8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+						<path
+							d="M18 24l4 4 8-8"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					<div class="cs-empty-icon-ring"></div>
 				</div>
 				<div class="cs-empty-text">{{ t('cloudStorage.fileList.empty') }}</div>
 				<div class="cs-empty-hint">{{ t('cloudStorage.fileList.emptyHint') }}</div>
-				<button class="cs-btn cs-btn-primary cs-upload-empty-btn" type="button" @click="triggerUpload">
+				<button
+					class="cs-btn cs-btn-primary cs-upload-empty-btn"
+					type="button"
+					@click="triggerUpload"
+				>
 					{{ t('cloudStorage.fileList.upload') }}
 				</button>
 			</div>
@@ -290,21 +429,57 @@
 						<div class="cs-tile-thumb">
 							<div v-if="item.isFolder" class="cs-thumb-placeholder cs-folder-thumb">
 								<svg viewBox="0 0 24 24" class="cs-thumb-icon cs-folder-icon" aria-hidden="true">
-									<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+									<path
+										d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9z"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linejoin="round"
+									/>
 								</svg>
 							</div>
-							<div v-else-if="isImage(item.name) && item.publicUrl && !hasImageError(item.key)" class="cs-thumb-preview">
-								<img :src="item.publicUrl" :alt="item.name" class="cs-thumb-img" @error="handleImageError(item.key)" />
+							<div
+								v-else-if="isImage(item.name) && item.publicUrl && !hasImageError(item.key)"
+								class="cs-thumb-preview"
+							>
+								<img
+									:src="item.publicUrl"
+									:alt="item.name"
+									class="cs-thumb-img"
+									@error="handleImageError(item.key)"
+								/>
 							</div>
 							<div v-else-if="isImage(item.name) && hasImageError(item.key)" class="cs-thumb-error">
 								<svg viewBox="0 0 24 24" aria-hidden="true">
-									<rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-									<path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+									<rect
+										x="3"
+										y="11"
+										width="18"
+										height="11"
+										rx="2"
+										ry="2"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+									/>
+									<path
+										d="M7 11V7a5 5 0 0 1 10 0v4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+									/>
 								</svg>
 							</div>
 							<div v-else class="cs-thumb-placeholder">
 								<svg viewBox="0 0 24 24" class="cs-thumb-icon" aria-hidden="true">
-									<path :d="getFileIconPath(item.name)" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+									<path
+										:d="getFileIconPath(item.name)"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
 								</svg>
 							</div>
 							<div class="cs-tile-overlay">
@@ -316,8 +491,19 @@
 									@click.stop="copyUrl(item)"
 								>
 									<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-overlay-icon">
-										<path d="M6 4.5v-2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-										<path d="M4.5 6.5h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+										<path
+											d="M6 4.5v-2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H10"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M4.5 6.5h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+										/>
 									</svg>
 								</button>
 								<button
@@ -327,9 +513,26 @@
 									@click.stop="deleteItem(item)"
 								>
 									<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-overlay-icon">
-										<path d="M6 2.8h4M3.4 4.4h9.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-										<path d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6" fill="none" stroke="currentColor" stroke-width="1.1" />
-										<path d="M6.7 6.4v6.1M9.3 6.4v6.1" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+										<path
+											d="M6 2.8h4M3.4 4.4h9.2"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<path
+											d="M6.7 6.4v6.1M9.3 6.4v6.1"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+											stroke-linecap="round"
+										/>
 									</svg>
 								</button>
 							</div>
@@ -337,7 +540,9 @@
 						<div class="cs-tile-info">
 							<div class="cs-tile-name" :title="item.name">{{ item.name }}</div>
 							<div class="cs-tile-meta">
-								<span v-if="item.isFolder" class="cs-tile-folder-hint">{{ t('cloudStorage.fileList.enterFolder') }}</span>
+								<span v-if="item.isFolder" class="cs-tile-folder-hint">
+									{{ t('cloudStorage.fileList.enterFolder') }}
+								</span>
 								<template v-else>
 									<span class="cs-tile-size">{{ formatSize(item.size) }}</span>
 									<span class="cs-tile-date">{{ formatDate(item.lastModified) }}</span>
@@ -364,28 +569,80 @@
 					>
 						<div class="cs-list-thumb-wrap">
 							<div v-if="item.isFolder" class="cs-list-thumb-placeholder cs-folder-thumb-list">
-								<svg viewBox="0 0 24 24" class="cs-list-thumb-icon cs-folder-icon" aria-hidden="true">
-									<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+								<svg
+									viewBox="0 0 24 24"
+									class="cs-list-thumb-icon cs-folder-icon"
+									aria-hidden="true"
+								>
+									<path
+										d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9z"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linejoin="round"
+									/>
 								</svg>
 							</div>
-							<div v-else-if="isImage(item.name) && item.publicUrl && !hasImageError(item.key)" class="cs-list-thumb">
-								<img :src="item.publicUrl" :alt="item.name" class="cs-list-thumb-img" @error="handleImageError(item.key)" />
+							<div
+								v-else-if="isImage(item.name) && item.publicUrl && !hasImageError(item.key)"
+								class="cs-list-thumb"
+							>
+								<img
+									:src="item.publicUrl"
+									:alt="item.name"
+									class="cs-list-thumb-img"
+									@error="handleImageError(item.key)"
+								/>
 							</div>
-							<div v-else-if="isImage(item.name) && hasImageError(item.key)" class="cs-thumb-error" style="position:absolute;inset:0;">
-								<svg viewBox="0 0 24 24" style="width:18px;height:18px;opacity:0.6;" aria-hidden="true">
-									<rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
-									<path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+							<div
+								v-else-if="isImage(item.name) && hasImageError(item.key)"
+								class="cs-thumb-error"
+								style="position: absolute; inset: 0"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									style="width: 18px; height: 18px; opacity: 0.6"
+									aria-hidden="true"
+								>
+									<rect
+										x="3"
+										y="11"
+										width="18"
+										height="11"
+										rx="2"
+										ry="2"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+									/>
+									<path
+										d="M7 11V7a5 5 0 0 1 10 0v4"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+									/>
 								</svg>
 							</div>
 							<div v-else class="cs-list-thumb-placeholder">
 								<svg viewBox="0 0 24 24" class="cs-list-thumb-icon" aria-hidden="true">
-									<path :d="getFileIconPath(item.name)" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+									<path
+										:d="getFileIconPath(item.name)"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
 								</svg>
 							</div>
 						</div>
 						<div class="cs-list-name" :title="item.name">{{ item.name }}</div>
-						<div class="cs-list-size cs-mono">{{ item.isFolder ? '—' : formatSize(item.size) }}</div>
-						<div class="cs-list-date cs-mono">{{ item.isFolder ? '—' : formatDate(item.lastModified) }}</div>
+						<div class="cs-list-size cs-mono">
+							{{ item.isFolder ? '—' : formatSize(item.size) }}
+						</div>
+						<div class="cs-list-date cs-mono">
+							{{ item.isFolder ? '—' : formatDate(item.lastModified) }}
+						</div>
 						<div class="cs-list-actions">
 							<button
 								v-if="!item.isFolder"
@@ -395,8 +652,19 @@
 								@click.stop="copyUrl(item)"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-list-action-icon">
-									<path d="M6 4.5v-2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-									<path d="M4.5 6.5h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+									<path
+										d="M6 4.5v-2a1 1 0 0 1 1-1h4.5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H10"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+									/>
+									<path
+										d="M4.5 6.5h5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.2"
+									/>
 								</svg>
 							</button>
 							<button
@@ -406,8 +674,19 @@
 								@click.stop="deleteItem(item)"
 							>
 								<svg viewBox="0 0 16 16" aria-hidden="true" class="cs-list-action-icon">
-									<path d="M6 2.8h4M3.4 4.4h9.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-									<path d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6" fill="none" stroke="currentColor" stroke-width="1.1" />
+									<path
+										d="M6 2.8h4M3.4 4.4h9.2"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+									/>
+									<path
+										d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.1"
+									/>
 								</svg>
 							</button>
 						</div>
@@ -594,7 +873,7 @@ const onDrop = (e: DragEvent) => {
 	const files = e.dataTransfer?.files
 	if (!files || files.length === 0) return
 
-	const droppedFiles = Array.from(files).filter(f => f.size > 0)
+	const droppedFiles = Array.from(files).filter((f) => f.size > 0)
 	if (droppedFiles.length > 0) {
 		emit('upload', droppedFiles, currentPrefix.value)
 	}
@@ -646,19 +925,25 @@ watch(showNewFolder, async (val) => {
 	}
 })
 
-watch(() => props.bucketName, async () => {
-	searchKeyword.value = ''
-	selectedItem.value = null
-	await nextTick()
-	refresh()
-})
+watch(
+	() => props.bucketName,
+	async () => {
+		searchKeyword.value = ''
+		selectedItem.value = null
+		await nextTick()
+		refresh()
+	}
+)
 
-watch(() => props.currentPrefix, async () => {
-	searchKeyword.value = ''
-	selectedItem.value = null
-	await nextTick()
-	refresh()
-})
+watch(
+	() => props.currentPrefix,
+	async () => {
+		searchKeyword.value = ''
+		selectedItem.value = null
+		await nextTick()
+		refresh()
+	}
+)
 
 const isImage = (name: string): boolean => {
 	const ext = name.split('.').pop()?.toLowerCase()
@@ -731,7 +1016,11 @@ defineExpose({
 	justify-content: space-between;
 	padding: 16px 20px 14px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 15%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-accent) 10%, transparent), transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-accent) 10%, transparent),
+		transparent
+	);
 	position: relative;
 }
 
@@ -755,7 +1044,7 @@ defineExpose({
 }
 
 .cs-file-icon-box::before {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: 0;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 40%, transparent);
@@ -763,7 +1052,7 @@ defineExpose({
 }
 
 .cs-file-icon-box::after {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: -3px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 15%, transparent);
@@ -911,7 +1200,11 @@ defineExpose({
 }
 
 .cs-btn-primary {
-	background: linear-gradient(135deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 75%, #4fb7c5));
+	background: linear-gradient(
+		135deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 75%, #4fb7c5)
+	);
 	border-color: var(--pl-accent);
 	color: #fff;
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -919,13 +1212,18 @@ defineExpose({
 }
 
 .cs-btn-primary::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: -100%;
 	width: 100%;
 	height: 100%;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 18%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, #fff 18%, transparent),
+		transparent
+	);
 	transition: left 0.5s ease;
 }
 
@@ -1013,7 +1311,11 @@ defineExpose({
 	align-items: center;
 	gap: 12px;
 	padding: 10px 20px;
-	background: linear-gradient(90deg, color-mix(in srgb, #f59e0b 15%, transparent), color-mix(in srgb, #f59e0b 8%, transparent));
+	background: linear-gradient(
+		90deg,
+		color-mix(in srgb, #f59e0b 15%, transparent),
+		color-mix(in srgb, #f59e0b 8%, transparent)
+	);
 	border-bottom: 1px solid color-mix(in srgb, #f59e0b 40%, transparent);
 	animation: cs-acl-slide 200ms ease;
 }
@@ -1080,7 +1382,8 @@ defineExpose({
 	box-shadow: 0 0 18px color-mix(in srgb, #f59e0b 40%, transparent);
 }
 
-.cs-thumb-img, .cs-list-thumb-img {
+.cs-thumb-img,
+.cs-list-thumb-img {
 	transition: opacity 200ms ease;
 }
 
@@ -1179,7 +1482,10 @@ defineExpose({
 	background: color-mix(in srgb, #161d24 65%, transparent);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
 	outline: none;
-	transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+	transition:
+		border-color 200ms ease,
+		box-shadow 200ms ease,
+		background 200ms ease;
 	font-family: inherit;
 }
 
@@ -1190,7 +1496,8 @@ defineExpose({
 .cs-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
 	background: color-mix(in srgb, #161d24 80%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent),
 		0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
@@ -1215,7 +1522,9 @@ defineExpose({
 }
 
 @keyframes cs-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-file-search {
@@ -1250,7 +1559,10 @@ defineExpose({
 	background: color-mix(in srgb, #161d24 60%, transparent);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	outline: none;
-	transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+	transition:
+		border-color 200ms ease,
+		box-shadow 200ms ease,
+		background 200ms ease;
 	font-family: inherit;
 }
 
@@ -1261,7 +1573,8 @@ defineExpose({
 .cs-search-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
 	background: color-mix(in srgb, #161d24 80%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 25%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 25%, transparent),
 		0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
@@ -1273,7 +1586,9 @@ defineExpose({
 	height: 1px;
 	background: var(--pl-accent);
 	box-shadow: 0 0 8px var(--pl-accent);
-	transition: width 200ms ease, left 200ms ease;
+	transition:
+		width 200ms ease,
+		left 200ms ease;
 	pointer-events: none;
 }
 
@@ -1305,7 +1620,7 @@ defineExpose({
 	align-items: center;
 	justify-content: center;
 	gap: 16px;
-	background: color-mix(in srgb, var(--pl-accent) 8%, rgba(0,0,0,0.85));
+	background: color-mix(in srgb, var(--pl-accent) 8%, rgba(0, 0, 0, 0.85));
 	backdrop-filter: blur(4px);
 	border: 2px dashed color-mix(in srgb, var(--pl-accent) 60%, transparent);
 	pointer-events: none;
@@ -1364,8 +1679,13 @@ defineExpose({
 }
 
 @keyframes cs-do-bounce {
-	0%, 100% { transform: translateY(0); }
-	50% { transform: translateY(-8px); }
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-8px);
+	}
 }
 
 .cs-do-text {
@@ -1424,12 +1744,18 @@ defineExpose({
 .cs-empty-icon-glow {
 	position: absolute;
 	inset: -20px;
-	background: radial-gradient(circle, color-mix(in srgb, var(--pl-accent) 12%, transparent), transparent 70%);
+	background: radial-gradient(
+		circle,
+		color-mix(in srgb, var(--pl-accent) 12%, transparent),
+		transparent 70%
+	);
 	pointer-events: none;
 }
 
 @keyframes cs-ring-rotate {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-empty-text {
@@ -1521,14 +1847,16 @@ defineExpose({
 .cs-file-tile:hover {
 	border-color: color-mix(in srgb, var(--pl-accent) 55%, transparent);
 	transform: translateY(-3px);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4),
+	box-shadow:
+		0 8px 24px rgba(0, 0, 0, 0.4),
 		0 0 16px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .cs-file-tile.selected {
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent),
 		0 0 20px color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 
@@ -1548,7 +1876,9 @@ defineExpose({
 	width: 0;
 	height: 0;
 	border-color: var(--pl-accent);
-	transition: width 180ms ease, height 180ms ease;
+	transition:
+		width 180ms ease,
+		height 180ms ease;
 }
 
 .cs-file-tile:hover .cs-tc,
@@ -1675,7 +2005,7 @@ defineExpose({
 	padding: 8px;
 	opacity: 0;
 	transition: opacity 180ms ease;
-	background: linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 50%);
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, transparent 50%);
 	backdrop-filter: blur(1px);
 	pointer-events: none;
 }
@@ -1701,12 +2031,14 @@ defineExpose({
 
 .cs-overlay-btn::before,
 .cs-overlay-btn::after {
-	content: "";
+	content: '';
 	position: absolute;
 	width: 0;
 	height: 0;
 	border-color: var(--pl-accent);
-	transition: width 120ms ease, height 120ms ease;
+	transition:
+		width 120ms ease,
+		height 120ms ease;
 }
 
 .cs-overlay-btn::before {
@@ -1841,14 +2173,15 @@ defineExpose({
 	align-items: center;
 	padding: 10px 16px;
 	gap: 12px;
-	border-bottom: 1px solid color-mix(in srgb, color-mix(in srgb, var(--pl-accent) 35%, transparent) 40%, transparent);
+	border-bottom: 1px solid
+		color-mix(in srgb, color-mix(in srgb, var(--pl-accent) 35%, transparent) 40%, transparent);
 	transition: all 160ms ease;
 	cursor: pointer;
 	position: relative;
 }
 
 .cs-list-row::before {
-	content: "";
+	content: '';
 	position: absolute;
 	left: 0;
 	top: 0;

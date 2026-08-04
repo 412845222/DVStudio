@@ -2,7 +2,7 @@
  * Agent 模块路由注册
  */
 
-import * as handlers from './handlers.mjs';
+import * as handlers from './handlers.mjs'
 
 export const routes = [
 	{ channel: 'dweb:agent:stream', handler: handlers.agentStream, stream: true },
@@ -12,6 +12,9 @@ export const routes = [
 	{ channel: 'dweb:agent:create-conversation', handler: handlers.agentCreateConversation },
 	{ channel: 'dweb:agent:delete-conversation', handler: handlers.agentDeleteConversation },
 	{ channel: 'dweb:agent:rename-conversation', handler: handlers.agentRenameConversation },
-	{ channel: 'dweb:agent:get-conversation-messages', handler: handlers.agentGetConversationMessages },
-	{ channel: 'dweb:agent:add-conversation-message', handler: handlers.agentAddConversationMessage },
-];
+	{
+		channel: 'dweb:agent:get-conversation-messages',
+		handler: handlers.agentGetConversationMessages
+	},
+	{ channel: 'dweb:agent:add-conversation-message', handler: handlers.agentAddConversationMessage }
+]

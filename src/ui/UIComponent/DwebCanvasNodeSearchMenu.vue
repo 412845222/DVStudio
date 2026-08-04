@@ -289,13 +289,25 @@ const emit = defineEmits<{
 	(e: 'upload-file', file: File): void
 }>()
 
-const resolvedDialogTitle = computed(() => props.dialogTitle ?? t('aiworkflow.nodeSearch.dialogTitle'))
+const resolvedDialogTitle = computed(
+	() => props.dialogTitle ?? t('aiworkflow.nodeSearch.dialogTitle')
+)
 const resolvedCloseLabel = computed(() => props.closeLabel ?? t('aiworkflow.nodeSearch.closeLabel'))
-const resolvedSearchPlaceholder = computed(() => props.searchPlaceholder ?? t('aiworkflow.nodeSearch.searchPlaceholder'))
-const resolvedUploadLabel = computed(() => props.uploadLabel ?? t('aiworkflow.nodeSearch.uploadLabel'))
-const resolvedUploadDescription = computed(() => props.uploadDescription ?? t('aiworkflow.nodeSearch.uploadDescription'))
-const resolvedEmptyHintSearch = computed(() => props.emptyHintSearch ?? t('aiworkflow.nodeSearch.emptyHintSearch'))
-const resolvedEmptyHintCategory = computed(() => props.emptyHintCategory ?? t('aiworkflow.nodeSearch.emptyHintCategory'))
+const resolvedSearchPlaceholder = computed(
+	() => props.searchPlaceholder ?? t('aiworkflow.nodeSearch.searchPlaceholder')
+)
+const resolvedUploadLabel = computed(
+	() => props.uploadLabel ?? t('aiworkflow.nodeSearch.uploadLabel')
+)
+const resolvedUploadDescription = computed(
+	() => props.uploadDescription ?? t('aiworkflow.nodeSearch.uploadDescription')
+)
+const resolvedEmptyHintSearch = computed(
+	() => props.emptyHintSearch ?? t('aiworkflow.nodeSearch.emptyHintSearch')
+)
+const resolvedEmptyHintCategory = computed(
+	() => props.emptyHintCategory ?? t('aiworkflow.nodeSearch.emptyHintCategory')
+)
 const categoryAriaLabel = computed(() => t('aiworkflow.nodeSearch.categoryLabel'))
 
 const dialogEl = ref<HTMLElement | null>(null)

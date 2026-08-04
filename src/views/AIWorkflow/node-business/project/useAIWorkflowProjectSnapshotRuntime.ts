@@ -5,7 +5,8 @@ import {
 	sanitizeWorkflowUrlFieldsDeep,
 	sanitizeResourceName,
 	sanitizeLocalFilePath,
-	isFileProtocolUrl
+	isFileProtocolUrl,
+	buildProjectAssetRuntimeUrl as buildProjectAssetRuntimeUrlFromUtil
 } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
 
 export const useAIWorkflowProjectSnapshotRuntime = (payload: {
@@ -40,12 +41,13 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 		if (!cloned || typeof cloned !== 'object') return snapshot as AIWorkflowDraftSnapshot
 
 		const nodesByIdRaw = cloned.nodesById
-		const nodesById: Record<string, Record<string, unknown>> =
-			nodesByIdRaw && typeof nodesByIdRaw === 'object'
-				? (nodesByIdRaw as Record<string, Record<string, unknown>>)
-				: {}
+		const nodesById: Record<string, Record<string, unknown>> = nodesByIdRaw &&
+		typeof nodesByIdRaw === 'object'
+			? (nodesByIdRaw as Record<string, Record<string, unknown>>)
+			: {}
 		const nodeOrderRaw = cloned.nodeOrder
 		const nodeOrder = Array.isArray(nodeOrderRaw) ? nodeOrderRaw : Object.keys(nodesById)
+		const runtimeProjectIdForNodes = Number(payload.currentProjectId?.value ?? 0)
 		for (const rawNodeId of nodeOrder) {
 			const nodeId = String(rawNodeId ?? '').trim()
 			if (!nodeId) continue
@@ -101,13 +103,55 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 					manualModelBindings
 				}
 			}
+
+			if (nodeType === 'model3d') {
+				const settings = node.model3dSettings as Record<string, unknown> | undefined
+				if (settings && typeof settings === 'object') {
+					const modelRelPath = String(
+						settings.modelProjectRelativePath ?? settings.modelAssetProjectRelativePath ?? ''
+					).trim()
+					const modelFallbackUrl = sanitizeWorkflowMediaUrl(String(settings.modelUrl ?? ''))
+					const assetFallbackUrl = sanitizeWorkflowMediaUrl(String(settings.modelAssetUrl ?? ''))
+					let modelRuntimeUrl = ''
+					let assetRuntimeUrl = ''
+					if (payload.isElectronRuntime && modelRelPath && runtimeProjectIdForNodes > 0) {
+						const dwebUrl = buildProjectAssetRuntimeUrlFromUtil(
+							runtimeProjectIdForNodes,
+							modelRelPath
+						)
+						if (dwebUrl) {
+							modelRuntimeUrl = dwebUrl
+							assetRuntimeUrl = dwebUrl
+						}
+					}
+					if (!modelRuntimeUrl)
+						modelRuntimeUrl = isFileProtocolUrl(String(settings.modelUrl ?? ''))
+							? ''
+							: modelFallbackUrl
+					if (!assetRuntimeUrl)
+						assetRuntimeUrl = isFileProtocolUrl(String(settings.modelAssetUrl ?? ''))
+							? ''
+							: assetFallbackUrl
+					node.model3dSettings = {
+						...settings,
+						modelUrl: modelRuntimeUrl || undefined,
+						modelAssetUrl: assetRuntimeUrl || undefined,
+						modelProjectRelativePath:
+							modelRelPath || settings.modelProjectRelativePath || undefined,
+						modelAssetProjectRelativePath:
+							modelRelPath || settings.modelAssetProjectRelativePath || undefined,
+						modelSourcePath: sanitizeLocalFilePath(settings.modelSourcePath) || undefined,
+						modelAssetPath: sanitizeLocalFilePath(settings.modelAssetPath) || undefined
+					}
+				}
+			}
 		}
 
 		const resourcesByIdRaw = cloned.resourcesById
-		const resourcesById: Record<string, Record<string, unknown>> =
-			resourcesByIdRaw && typeof resourcesByIdRaw === 'object'
-				? (resourcesByIdRaw as Record<string, Record<string, unknown>>)
-				: {}
+		const resourcesById: Record<string, Record<string, unknown>> = resourcesByIdRaw &&
+		typeof resourcesByIdRaw === 'object'
+			? (resourcesByIdRaw as Record<string, Record<string, unknown>>)
+			: {}
 		const runtimeProjectId = Number(payload.currentProjectId?.value ?? 0)
 
 		// 清洗与规范化所有资源引用
@@ -117,8 +161,7 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 		for (const [resourceId, resource] of Object.entries(resourcesById)) {
 			if (!resource || typeof resource !== 'object') continue
 
-			const kind =
-				String(resource.kind ?? '').toLowerCase() === 'video' ? 'video' : 'image'
+			const kind = String(resource.kind ?? '').toLowerCase() === 'video' ? 'video' : 'image'
 
 			// 清洗资源名称：去除中文等非法字符
 			const safeName = sanitizeResourceName(String(resource.name ?? ''), `${kind}_${resourceId}`)
@@ -126,9 +169,7 @@ export const useAIWorkflowProjectSnapshotRuntime = (payload: {
 			const projectRelativePath = String(
 				resource.projectRelativePath ?? resource.relativePath ?? ''
 			).trim()
-			const posterProjectRelativePath = String(
-				resource.posterProjectRelativePath ?? ''
-			).trim()
+			const posterProjectRelativePath = String(resource.posterProjectRelativePath ?? '').trim()
 			const sourcePath = sanitizeLocalFilePath(String(resource.sourcePath ?? ''))
 			const rawUrl = String(resource.url ?? '').trim()
 

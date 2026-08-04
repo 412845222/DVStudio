@@ -48,7 +48,7 @@ export function useTemplatePersistence() {
 				updatedAt: item.updatedAt,
 				nodeCount: item.nodeCount,
 				coverPath: item.coverPath || '',
-				author: 'User',
+				author: 'User'
 			}))
 			templateItems.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
 			userTemplates.value = templateItems
@@ -88,7 +88,7 @@ export function useTemplatePersistence() {
 				tags: options.tags,
 				nodeCount: options.nodeCount,
 				zipBuffer: arrayBuffer,
-				coverBuffer: coverArrayBuffer,
+				coverBuffer: coverArrayBuffer
 			})
 			if (!result?.ok || !result.template) return null
 			const t = result.template as {
@@ -113,7 +113,7 @@ export function useTemplatePersistence() {
 				updatedAt: t.updatedAt,
 				nodeCount: t.nodeCount,
 				coverPath: t.coverPath || '',
-				author: 'User',
+				author: 'User'
 			}
 			userTemplates.value = [newTemplate, ...userTemplates.value]
 			return newTemplate
@@ -169,6 +169,6 @@ export function useTemplatePersistence() {
 		saveUserTemplate,
 		deleteUserTemplate,
 		loadTemplateBlob,
-		loadTemplateCoverBlob,
+		loadTemplateCoverBlob
 	}
 }

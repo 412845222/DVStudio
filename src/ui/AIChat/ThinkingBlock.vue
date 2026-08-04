@@ -1,13 +1,23 @@
 <template>
 	<div class="thinking-block" :class="{ 'is-thinking': isThinking, 'is-collapsed': collapsed }">
-		<button
-			class="thinking-block__header"
-			type="button"
-			@click="toggleCollapsed"
-		>
+		<button class="thinking-block__header" type="button" @click="toggleCollapsed">
 			<span class="thinking-block__icon">
-				<svg v-if="isThinking" class="thinking-block__spinner" viewBox="0 0 24 24" aria-hidden="true">
-					<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="30 70" stroke-linecap="round" />
+				<svg
+					v-if="isThinking"
+					class="thinking-block__spinner"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<circle
+						cx="12"
+						cy="12"
+						r="10"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-dasharray="30 70"
+						stroke-linecap="round"
+					/>
 				</svg>
 				<span v-else class="thinking-block__icon-text">💭</span>
 			</span>
@@ -15,8 +25,15 @@
 				{{ isThinking ? t('aichat.thinking.thinking') : t('aichat.thinking.process') }}
 			</span>
 			<span class="thinking-block__toggle">
-				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'expanded': !collapsed }">
-					<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ expanded: !collapsed }">
+					<path
+						d="M6 9l6 6 6-6"
+						stroke="currentColor"
+						stroke-width="2"
+						fill="none"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</span>
 		</button>
@@ -48,7 +65,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
 	content: '',
 	isThinking: false,
-	defaultCollapsed: true,
+	defaultCollapsed: true
 })
 
 const collapsed = ref(props.defaultCollapsed)
@@ -57,17 +74,24 @@ const toggleCollapsed = () => {
 	collapsed.value = !collapsed.value
 }
 
-watch(() => props.isThinking, (val) => {
-	if (val) {
-		collapsed.value = false
+watch(
+	() => props.isThinking,
+	(val) => {
+		if (val) {
+			collapsed.value = false
+		}
 	}
-})
+)
 
-watch(() => props.defaultCollapsed, (val) => {
-	if (!props.isThinking) {
-		collapsed.value = val
-	}
-}, { immediate: true })
+watch(
+	() => props.defaultCollapsed,
+	(val) => {
+		if (!props.isThinking) {
+			collapsed.value = val
+		}
+	},
+	{ immediate: true }
+)
 </script>
 
 <style scoped>
@@ -128,8 +152,12 @@ watch(() => props.defaultCollapsed, (val) => {
 }
 
 @keyframes thinking-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .thinking-block__title {
@@ -196,7 +224,9 @@ watch(() => props.defaultCollapsed, (val) => {
 }
 
 @keyframes thinking-typing {
-	0%, 60%, 100% {
+	0%,
+	60%,
+	100% {
 		opacity: 0.3;
 		transform: translateY(0);
 	}

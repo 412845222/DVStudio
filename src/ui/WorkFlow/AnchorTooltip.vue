@@ -20,7 +20,11 @@
 					<div v-if="hasAcceptedTypes" class="wf-anchor-tooltip__accepted-types">
 						<div class="wf-anchor-tooltip__accepted-title">{{ acceptedTypesTitle }}</div>
 						<div class="wf-anchor-tooltip__accepted-list">
-							<span v-for="type in acceptedTypes" :key="type" class="wf-anchor-tooltip__accepted-tag">
+							<span
+								v-for="type in acceptedTypes"
+								:key="type"
+								class="wf-anchor-tooltip__accepted-tag"
+							>
 								{{ type }}
 							</span>
 						</div>
@@ -85,7 +89,9 @@ const typeIcon = computed(() => typeIconMap[props.type] || '📌')
 const typeName = computed(() => typeNameMap[props.type] || props.type)
 const hasAcceptedTypes = computed(() => props.acceptedTypes && props.acceptedTypes.length > 0)
 const acceptedTypesTitle = computed(() => t('aichat.dock.acceptedTypes'))
-const compatibleText = computed(() => props.compatible ? t('aichat.dock.compatible') : t('aichat.dock.incompatible'))
+const compatibleText = computed(() =>
+	props.compatible ? t('aichat.dock.compatible') : t('aichat.dock.incompatible')
+)
 
 const tooltipStyle = computed(() => {
 	return {

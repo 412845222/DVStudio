@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 12
+const TARGET_VERSION = 15
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -147,7 +147,9 @@ function runV2(db) {
       updated_at INTEGER NOT NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC);`
+	)
 
 	db.exec(`
     CREATE TABLE IF NOT EXISTS chat_messages (
@@ -160,7 +162,9 @@ function runV2(db) {
       created_at INTEGER NOT NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, created_at);`
+	)
 
 	db.exec(`
     CREATE TABLE IF NOT EXISTS export_jobs (
@@ -250,7 +254,9 @@ function runV2(db) {
       created_at INTEGER NOT NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_codex_messages_session ON codex_messages(session_id, created_at);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_codex_messages_session ON codex_messages(session_id, created_at);`
+	)
 
 	db.exec(`
     CREATE TABLE IF NOT EXISTS ref_image_cache (
@@ -284,14 +290,18 @@ function runV2(db) {
       updated_at INTEGER NOT NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_unreal_jobs_session ON unreal_export_jobs(session_id, status);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_unreal_jobs_session ON unreal_export_jobs(session_id, status);`
+	)
 }
 
 function runV3(db) {
 	db.exec(`ALTER TABLE editor_components ADD COLUMN template_id TEXT`)
 	db.exec(`ALTER TABLE editor_components ADD COLUMN thumb_asset_id TEXT`)
 	db.exec(`ALTER TABLE editor_components ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1`)
-	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_editor_components_template_id ON editor_components(template_id)`)
+	db.exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_editor_components_template_id ON editor_components(template_id)`
+	)
 }
 
 function runV4(db) {
@@ -332,7 +342,9 @@ function runV4(db) {
 function runV5(db) {
 	// 为 chat_conversations 添加 project_path 字段，支持按项目路径存储会话
 	db.exec(`ALTER TABLE chat_conversations ADD COLUMN project_path TEXT NOT NULL DEFAULT ''`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_conversations_project_path ON chat_conversations(project_path)`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_chat_conversations_project_path ON chat_conversations(project_path)`
+	)
 }
 
 function runV6(db) {
@@ -368,7 +380,9 @@ function runV6(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_task_id ON gemini_tasks(task_id);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_project_id ON gemini_tasks(project_id);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_status ON gemini_tasks(status);`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_updated_at ON gemini_tasks(updated_at DESC);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_gemini_tasks_updated_at ON gemini_tasks(updated_at DESC);`
+	)
 }
 
 function runV7(db) {
@@ -386,9 +400,15 @@ function runV7(db) {
       updated_at INTEGER NOT NULL
     );
   `)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_updated_at ON aiworkflow_templates(updated_at DESC);`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_category ON aiworkflow_templates(category);`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_source ON aiworkflow_templates(source);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_updated_at ON aiworkflow_templates(updated_at DESC);`
+	)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_category ON aiworkflow_templates(category);`
+	)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_aiworkflow_templates_source ON aiworkflow_templates(source);`
+	)
 }
 
 function runV8(db) {
@@ -429,7 +449,9 @@ function runV9(db) {
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_task_id ON tripo3d_tasks(task_id);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_project_id ON tripo3d_tasks(project_id);`)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_status ON tripo3d_tasks(status);`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_updated_at ON tripo3d_tasks(updated_at DESC);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_tripo3d_tasks_updated_at ON tripo3d_tasks(updated_at DESC);`
+	)
 }
 
 function runV10(db) {
@@ -452,8 +474,12 @@ function runV11(db) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
-	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_storage_active ON cloud_storage_config(is_active) WHERE is_active = 1`)
-	db.exec(`CREATE INDEX IF NOT EXISTS idx_cloud_storage_provider ON cloud_storage_config(provider_id)`)
+	db.exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_storage_active ON cloud_storage_config(is_active) WHERE is_active = 1`
+	)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_cloud_storage_provider ON cloud_storage_config(provider_id)`
+	)
 }
 
 function runV12(db) {
@@ -472,10 +498,80 @@ function runV12(db) {
     );
   `)
 	db.exec(`CREATE INDEX IF NOT EXISTS idx_cloud_buckets_config ON cloud_storage_buckets(config_id)`)
-	db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_buckets_active ON cloud_storage_buckets(is_active) WHERE is_active = 1`)
+	db.exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_cloud_buckets_active ON cloud_storage_buckets(is_active) WHERE is_active = 1`
+	)
 }
 
-const MIGRATIONS = [runV1, runV2, runV3, runV4, runV5, runV6, runV7, runV8, runV9, runV10, runV11, runV12]
+function runV13(db) {
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS global_tasks (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      task_type TEXT NOT NULL DEFAULT '',
+      project_id INTEGER,
+      node_id TEXT NOT NULL DEFAULT '',
+      remote_task_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      progress INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL DEFAULT '',
+      prompt TEXT NOT NULL DEFAULT '',
+      error_message TEXT NOT NULL DEFAULT '',
+      status_text TEXT NOT NULL DEFAULT '',
+      result_assets TEXT,
+      extra_data TEXT,
+      started_at INTEGER,
+      completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+  `)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_provider ON global_tasks(provider);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_status ON global_tasks(status);`)
+	db.exec(`CREATE INDEX IF NOT EXISTS idx_global_tasks_project_id ON global_tasks(project_id);`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_global_tasks_created_at ON global_tasks(created_at DESC);`
+	)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_global_tasks_remote_task_id ON global_tasks(remote_task_id);`
+	)
+}
+
+function runV14(db) {
+	db.exec(`ALTER TABLE global_tasks ADD COLUMN backfilled INTEGER NOT NULL DEFAULT 0`)
+	db.exec(
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_global_tasks_unique ON global_tasks(project_id, provider, remote_task_id) WHERE remote_task_id != ''`
+	)
+	db.exec(
+		`DELETE FROM global_tasks WHERE remote_task_id = '' AND status IN ('failed', 'cancelled') AND created_at < (strftime('%s','now') - 86400) * 1000`
+	)
+}
+
+function runV15(db) {
+	db.exec(`ALTER TABLE global_tasks ADD COLUMN client_request_id TEXT NOT NULL DEFAULT ''`)
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_global_tasks_client_req ON global_tasks(project_id, client_request_id) WHERE client_request_id != ''`
+	)
+}
+
+const MIGRATIONS = [
+	runV1,
+	runV2,
+	runV3,
+	runV4,
+	runV5,
+	runV6,
+	runV7,
+	runV8,
+	runV9,
+	runV10,
+	runV11,
+	runV12,
+	runV13,
+	runV14,
+	runV15
+]
 
 export function ensureSchema(db) {
 	const current = readUserVersion(db)

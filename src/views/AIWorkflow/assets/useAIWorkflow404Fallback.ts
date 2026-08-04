@@ -131,7 +131,12 @@ export interface AIWorkflow404FallbackOptions {
 	/** 从 url 查找绑定该 url 的节点/资源（来源定位） */
 	findBindingSources?: (url: string) => ResourceBindingSource[]
 	/** 恢复成功回调（重新加载资源、刷新节点显示） */
-	onRecovered?: (result: { url: string; newUrl: string; assetName: string; newAsset?: unknown }) => void
+	onRecovered?: (result: {
+		url: string
+		newUrl: string
+		assetName: string
+		newAsset?: unknown
+	}) => void
 	/** 找到缺失资产（文件确实不存在）回调，通常用于弹确认框 */
 	onMissingAsset?: (pending: PendingMissingAsset) => void
 	/** Toast 通知函数 */
@@ -273,7 +278,10 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 								const diag2 = await diagnoseDwebAsset({ url: trimmed })
 								if (diag2?.fileExists && diag2?.repairedAsset) {
 									autoRecoveredUrls.add(trimmed)
-									notify(t('aiworkflow.toast.projectRootRecovered', { name: diag2.repairedAsset.name }), 'info')
+									notify(
+										t('aiworkflow.toast.projectRootRecovered', { name: diag2.repairedAsset.name }),
+										'info'
+									)
 									if (typeof onRecovered === 'function') {
 										try {
 											onRecovered({
@@ -423,7 +431,9 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const nodesById = store.state.nodesById || {}
 
 		// 1) 清理 resourcesById 中对该 url 的直接引用（备份后删除）
-		for (const [rid, res] of Object.entries(resourcesById) as Array<[string, WorkflowResource | undefined]>) {
+		for (const [rid, res] of Object.entries(resourcesById) as Array<
+			[string, WorkflowResource | undefined]
+		>) {
 			if (!res) continue
 			const touchesUrl = res.url === url || res.previewUrl === url || res.posterUrl === url
 			if (touchesUrl) {
@@ -434,7 +444,9 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		}
 
 		// 2) 清理 nodesById 中对该 url 的字段引用
-		for (const [nid, node] of Object.entries(nodesById) as Array<[string, WorkflowNodeLike | undefined]>) {
+		for (const [nid, node] of Object.entries(nodesById) as Array<
+			[string, WorkflowNodeLike | undefined]
+		>) {
 			if (!node) continue
 			const fieldsToClean: string[] = []
 			// 检查常见资源字段
@@ -642,7 +654,9 @@ function defaultFindBindingSources(
 	const state = store.state
 
 	const resourcesById = state.resourcesById || {}
-	for (const [rid, res] of Object.entries(resourcesById) as Array<[string, WorkflowResource | undefined]>) {
+	for (const [rid, res] of Object.entries(resourcesById) as Array<
+		[string, WorkflowResource | undefined]
+	>) {
 		if (!res) continue
 		if (res.url === url) {
 			sources.push({
@@ -666,7 +680,9 @@ function defaultFindBindingSources(
 	}
 
 	const nodesById = state.nodesById || {}
-	for (const [nid, node] of Object.entries(nodesById) as Array<[string, WorkflowNodeLike | undefined]>) {
+	for (const [nid, node] of Object.entries(nodesById) as Array<
+		[string, WorkflowNodeLike | undefined]
+	>) {
 		if (!node) continue
 		const nodeType = String(node.type || node.nodeType || '')
 		for (const field of ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url']) {

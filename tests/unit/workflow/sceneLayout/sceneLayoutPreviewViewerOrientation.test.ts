@@ -59,7 +59,9 @@ describe('constrainManualOrientation', () => {
 	})
 
 	it('preserves extra properties on the offset object', () => {
-		const input = { yaw: 45, pitch: 30, roll: -60, extra: 'kept' } as OrientationOffset & { extra: string }
+		const input = { yaw: 45, pitch: 30, roll: -60, extra: 'kept' } as OrientationOffset & {
+			extra: string
+		}
 		const result = constrainManualOrientation(input) as OrientationOffset & { extra: string }
 		expect(result.extra).toBe('kept')
 		expect(result.yaw).toBe(45)

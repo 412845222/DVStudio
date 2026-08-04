@@ -6,7 +6,16 @@
 //
 // 性能优化：添加缓存机制，避免每次开发启动都启动 Electron 进程做 probe
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, writeFileSync, mkdtempSync, rmSync, readdirSync, readFileSync, mkdirSync, statSync } from 'node:fs'
+import {
+	existsSync,
+	writeFileSync,
+	mkdtempSync,
+	rmSync,
+	readdirSync,
+	readFileSync,
+	mkdirSync,
+	statSync
+} from 'node:fs'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import crypto from 'node:crypto'
@@ -26,7 +35,10 @@ function fail(reason) {
 function getFileHash(filePath) {
 	try {
 		const stat = statSync(filePath)
-		return crypto.createHash('sha256').update(String(stat.mtimeMs) + stat.size).digest('hex')
+		return crypto
+			.createHash('sha256')
+			.update(String(stat.mtimeMs) + stat.size)
+			.digest('hex')
 	} catch {
 		return null
 	}
@@ -65,7 +77,7 @@ function saveProbeCache(electronVersion, binariesHash, ok) {
 					ok: !!ok,
 					timestamp: Date.now(),
 					nodeVersion: process.version,
-					modulesVersion: process.versions.modules,
+					modulesVersion: process.versions.modules
 				},
 				null,
 				2
@@ -307,11 +319,15 @@ if (
 if (electronProbe.ok) {
 	if (usedCache) {
 		console.log(
-			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' + electronVersion + ' 兼容（来自缓存）。'
+			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' +
+				electronVersion +
+				' 兼容（来自缓存）。'
 		)
 	} else {
 		console.log(
-			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' + electronVersion + ' 兼容，跳过重建。'
+			'[rebuild-better-sqlite3] better-sqlite3 已与 Electron ' +
+				electronVersion +
+				' 兼容，跳过重建。'
 		)
 	}
 	process.exit(0)

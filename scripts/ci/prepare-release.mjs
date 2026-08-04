@@ -1,127 +1,135 @@
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
+import fs from 'fs'
+import path from 'path'
+import { execSync } from 'child_process'
 
-const NOTES_PATH = '.release-notes.md';
+const NOTES_PATH = '.release-notes.md'
 
 function getBuildVersion() {
-  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-  const baseVersion = pkg.version;
-  const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-  const ref = process.env.GITHUB_REF || '';
-  const runNumber = process.env.GITHUB_RUN_NUMBER || '0';
+	const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+	const baseVersion = pkg.version
+	const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+	const ref = process.env.GITHUB_REF || ''
+	const runNumber = process.env.GITHUB_RUN_NUMBER || '0'
 
-  if (ref.startsWith('refs/tags/v')) {
-    const tagVersion = ref.replace('refs/tags/v', '');
-    return {
-      version: tagVersion,
-      tag: `v${tagVersion}`,
-      isPrerelease: false,
-      releaseName: `DVStudio v${tagVersion}`,
-      sha
-    };
-  }
+	if (ref.startsWith('refs/tags/v')) {
+		const tagVersion = ref.replace('refs/tags/v', '')
+		return {
+			version: tagVersion,
+			tag: `v${tagVersion}`,
+			isPrerelease: false,
+			releaseName: `DVStudio v${tagVersion}`,
+			sha
+		}
+	}
 
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  return {
-    version: `${baseVersion}-dev.${date}.${runNumber}`,
-    tag: `v${baseVersion}-dev.${date}.${runNumber}`,
-    isPrerelease: true,
-    releaseName: `DVStudio v${baseVersion}-dev.${date}.${runNumber} (Dev Preview)`,
-    sha,
-    baseVersion
-  };
+	const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+	return {
+		version: `${baseVersion}-dev.${date}.${runNumber}`,
+		tag: `v${baseVersion}-dev.${date}.${runNumber}`,
+		isPrerelease: true,
+		releaseName: `DVStudio v${baseVersion}-dev.${date}.${runNumber} (Dev Preview)`,
+		sha,
+		baseVersion
+	}
 }
 
 function findInstaller() {
-  const cwd = process.cwd();
-  const entries = fs.readdirSync(cwd);
-  const releaseDirs = entries
-    .filter(f => f.startsWith('release-') && fs.statSync(path.join(cwd, f)).isDirectory())
-    .sort()
-    .reverse();
+	const cwd = process.cwd()
+	const entries = fs.readdirSync(cwd)
+	const releaseDirs = entries
+		.filter((f) => f.startsWith('release-') && fs.statSync(path.join(cwd, f)).isDirectory())
+		.sort()
+		.reverse()
 
-  for (const dir of releaseDirs) {
-    const dirPath = path.join(cwd, dir);
-    const files = fs.readdirSync(dirPath);
-    const installer = files.find(f => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap'));
-    if (installer) {
-      return path.join(dir, installer);
-    }
-  }
+	for (const dir of releaseDirs) {
+		const dirPath = path.join(cwd, dir)
+		const files = fs.readdirSync(dirPath)
+		const installer = files.find(
+			(f) => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap')
+		)
+		if (installer) {
+			return path.join(dir, installer)
+		}
+	}
 
-  if (fs.existsSync('dist')) {
-    const distFiles = fs.readdirSync('dist');
-    const installer = distFiles.find(f => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap'));
-    if (installer) {
-      return path.join('dist', installer);
-    }
-  }
+	if (fs.existsSync('dist')) {
+		const distFiles = fs.readdirSync('dist')
+		const installer = distFiles.find(
+			(f) => f.endsWith('.exe') && f.includes('Setup') && !f.includes('blockmap')
+		)
+		if (installer) {
+			return path.join('dist', installer)
+		}
+	}
 
-  const allDirs = entries.filter(f => fs.statSync(path.join(cwd, f)).isDirectory());
-  console.error('[prepare-release] No .exe Setup installer found. Looked in release-* dirs and dist/.');
-  console.error('Root dirs:', allDirs);
-  process.exit(1);
+	const allDirs = entries.filter((f) => fs.statSync(path.join(cwd, f)).isDirectory())
+	console.error(
+		'[prepare-release] No .exe Setup installer found. Looked in release-* dirs and dist/.'
+	)
+	console.error('Root dirs:', allDirs)
+	process.exit(1)
 }
 
 function getRecentCommits(sha) {
-  try {
-    const prevTag = execSync('git describe --tags --abbrev=0 2>nul', { encoding: 'utf8' }).trim();
-    const range = `${prevTag}..HEAD`;
-    const log = execSync(`git log ${range} --oneline -20`, { encoding: 'utf8' }).trim();
-    return log || 'No commits since last tag.';
-  } catch {
-    try {
-      const log = execSync(`git log -10 --oneline`, { encoding: 'utf8' }).trim();
-      return log;
-    } catch {
-      return 'Could not fetch commit history.';
-    }
-  }
+	try {
+		const prevTag = execSync('git describe --tags --abbrev=0 2>nul', { encoding: 'utf8' }).trim()
+		const range = `${prevTag}..HEAD`
+		const log = execSync(`git log ${range} --oneline -20`, { encoding: 'utf8' }).trim()
+		return log || 'No commits since last tag.'
+	} catch {
+		try {
+			const log = execSync(`git log -10 --oneline`, { encoding: 'utf8' }).trim()
+			return log
+		} catch {
+			return 'Could not fetch commit history.'
+		}
+	}
 }
 
 function getNextDevNumber(baseVersion, date) {
-  const prefix = `v${baseVersion}-dev.${date}.`;
-  try {
-    const tagsOutput = execSync(`git ls-remote --tags origin "${prefix}*"`, { encoding: 'utf8' }).trim();
-    if (!tagsOutput) return 1;
-    const lines = tagsOutput.split('\n').filter(l => l.trim());
-    let maxNum = 0;
-    for (const line of lines) {
-      const parts = line.split('\t');
-      const ref = parts[1] || '';
-      const tagName = ref.replace('refs/tags/', '').replace('^{}', '');
-      if (tagName.startsWith(prefix)) {
-        const numStr = tagName.slice(prefix.length);
-        const n = parseInt(numStr, 10);
-        if (!isNaN(n) && n > maxNum) maxNum = n;
-      }
-    }
-    return maxNum + 1;
-  } catch {
-    return 1;
-  }
+	const prefix = `v${baseVersion}-dev.${date}.`
+	try {
+		const tagsOutput = execSync(`git ls-remote --tags origin "${prefix}*"`, {
+			encoding: 'utf8'
+		}).trim()
+		if (!tagsOutput) return 1
+		const lines = tagsOutput.split('\n').filter((l) => l.trim())
+		let maxNum = 0
+		for (const line of lines) {
+			const parts = line.split('\t')
+			const ref = parts[1] || ''
+			const tagName = ref.replace('refs/tags/', '').replace('^{}', '')
+			if (tagName.startsWith(prefix)) {
+				const numStr = tagName.slice(prefix.length)
+				const n = parseInt(numStr, 10)
+				if (!isNaN(n) && n > maxNum) maxNum = n
+			}
+		}
+		return maxNum + 1
+	} catch {
+		return 1
+	}
 }
 
 async function main() {
-  const installer = findInstaller();
-  const absoluteInstaller = path.resolve(installer);
-  let versionInfo = getBuildVersion();
+	const installer = findInstaller()
+	const absoluteInstaller = path.resolve(installer)
+	let versionInfo = getBuildVersion()
 
-  if (versionInfo.isPrerelease) {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const devNumber = getNextDevNumber(versionInfo.baseVersion, date);
-    versionInfo.version = `${versionInfo.baseVersion}-dev.${date}.${devNumber}`;
-    versionInfo.tag = `v${versionInfo.baseVersion}-dev.${date}.${devNumber}`;
-    versionInfo.releaseName = `DVStudio v${versionInfo.baseVersion}-dev.${date}.${devNumber} (Dev Preview)`;
-  }
+	if (versionInfo.isPrerelease) {
+		const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+		const devNumber = getNextDevNumber(versionInfo.baseVersion, date)
+		versionInfo.version = `${versionInfo.baseVersion}-dev.${date}.${devNumber}`
+		versionInfo.tag = `v${versionInfo.baseVersion}-dev.${date}.${devNumber}`
+		versionInfo.releaseName = `DVStudio v${versionInfo.baseVersion}-dev.${date}.${devNumber} (Dev Preview)`
+	}
 
-  const commitLog = getRecentCommits(versionInfo.sha);
-  const buildTime = new Date().toISOString();
+	const commitLog = getRecentCommits(versionInfo.sha)
+	const buildTime = new Date().toISOString()
 
-  const releaseType = versionInfo.isPrerelease ? '🔴 Dev Preview' : '🟢 Official Release';
+	const releaseType = versionInfo.isPrerelease ? '🔴 Dev Preview' : '🟢 Official Release'
 
-  const notes = `## ${versionInfo.releaseName}
+	const notes = `## ${versionInfo.releaseName}
 
 ${releaseType}
 
@@ -149,36 +157,36 @@ ${commitLog}
 Download and run \`${path.basename(installer)}\` to install.
 
 ⚠️ **Note**: This is a Windows x64 build signed with self-signed certificate. You may see a Windows Defender SmartScreen warning. Click "More info" → "Run anyway" to proceed.
-`;
+`
 
-  fs.writeFileSync(NOTES_PATH, notes);
+	fs.writeFileSync(NOTES_PATH, notes)
 
-  const output = {
-    tag: versionInfo.tag,
-    release_name: versionInfo.releaseName,
-    version: versionInfo.version,
-    is_prerelease: versionInfo.isPrerelease ? 'true' : 'false',
-    installer_path: absoluteInstaller,
-    notes_path: path.resolve(NOTES_PATH)
-  };
+	const output = {
+		tag: versionInfo.tag,
+		release_name: versionInfo.releaseName,
+		version: versionInfo.version,
+		is_prerelease: versionInfo.isPrerelease ? 'true' : 'false',
+		installer_path: absoluteInstaller,
+		notes_path: path.resolve(NOTES_PATH)
+	}
 
-  console.log('[prepare-release] Release info:');
-  for (const [k, v] of Object.entries(output)) {
-    console.log(`  ${k}: ${v}`);
-  }
+	console.log('[prepare-release] Release info:')
+	for (const [k, v] of Object.entries(output)) {
+		console.log(`  ${k}: ${v}`)
+	}
 
-  const outputs = Object.entries(output)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n');
+	const outputs = Object.entries(output)
+		.map(([k, v]) => `${k}=${v}`)
+		.join('\n')
 
-  const githubOutput = process.env.GITHUB_OUTPUT;
-  if (githubOutput) {
-    fs.appendFileSync(githubOutput, outputs + '\n');
-    console.log('[prepare-release] Outputs written to GITHUB_OUTPUT');
-  }
+	const githubOutput = process.env.GITHUB_OUTPUT
+	if (githubOutput) {
+		fs.appendFileSync(githubOutput, outputs + '\n')
+		console.log('[prepare-release] Outputs written to GITHUB_OUTPUT')
+	}
 }
 
-main().catch(err => {
-  console.error('[prepare-release] Error:', err);
-  process.exit(1);
-});
+main().catch((err) => {
+	console.error('[prepare-release] Error:', err)
+	process.exit(1)
+})

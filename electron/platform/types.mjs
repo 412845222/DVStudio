@@ -112,7 +112,9 @@ export const PlatformCloud = {
 	 * 获取配额信息
 	 * @returns {PlatformCloudQuotaResult}
 	 */
-	getQuota() { return { ok: false } },
+	getQuota() {
+		return { ok: false }
+	},
 
 	/**
 	 * 写入文件
@@ -120,55 +122,71 @@ export const PlatformCloud = {
 	 * @param {Buffer} buffer
 	 * @returns {PlatformCloudResult}
 	 */
-	fileWrite(fileName, buffer) { return { ok: false, errMsg: 'Not supported' } },
+	fileWrite(fileName, buffer) {
+		return { ok: false, errMsg: 'Not supported' }
+	},
 
 	/**
 	 * 读取文件
 	 * @param {string} fileName
 	 * @returns {PlatformCloudReadResult}
 	 */
-	fileRead(fileName) { return { ok: false } },
+	fileRead(fileName) {
+		return { ok: false }
+	},
 
 	/**
 	 * 删除文件
 	 * @param {string} fileName
 	 * @returns {PlatformCloudResult}
 	 */
-	fileDelete(fileName) { return { ok: false } },
+	fileDelete(fileName) {
+		return { ok: false }
+	},
 
 	/**
 	 * 检查文件是否存在
 	 * @param {string} fileName
 	 * @returns {PlatformCloudExistsResult}
 	 */
-	fileExists(fileName) { return { ok: false, exists: false } },
+	fileExists(fileName) {
+		return { ok: false, exists: false }
+	},
 
 	/**
 	 * 获取文件大小
 	 * @param {string} fileName
 	 * @returns {PlatformCloudSizeResult}
 	 */
-	getFileSize(fileName) { return { ok: false, size: 0 } },
+	getFileSize(fileName) {
+		return { ok: false, size: 0 }
+	},
 
 	/**
 	 * 获取文件时间戳
 	 * @param {string} fileName
 	 * @returns {PlatformCloudTimestampResult}
 	 */
-	getFileTimestamp(fileName) { return { ok: false, timestamp: 0 } },
+	getFileTimestamp(fileName) {
+		return { ok: false, timestamp: 0 }
+	},
 
 	/**
 	 * 获取文件数量
 	 * @returns {number}
 	 */
-	getFileCount() { return 0 },
+	getFileCount() {
+		return 0
+	},
 
 	/**
 	 * 获取文件名和大小
 	 * @param {number} index
 	 * @returns {PlatformCloudFileEntry}
 	 */
-	getFileNameAndSize(index) { return { name: '', size: 0 } },
+	getFileNameAndSize(index) {
+		return { name: '', size: 0 }
+	}
 }
 
 /**
@@ -242,7 +260,7 @@ export const PlatformUGC = {
 	 */
 	getItemInstallInfo(publishedFileId) {
 		return { ok: false, installed: false }
-	},
+	}
 }
 
 /**
@@ -278,13 +296,17 @@ export const PlatformProvider = {
 	 * 预启动检查 - 在app.whenReady前调用
 	 * @returns {boolean} 返回true表示需要重启应用（如未通过Steam启动）
 	 */
-	preflightCheck() { return false },
+	preflightCheck() {
+		return false
+	},
 
 	/**
 	 * 初始化平台
 	 * @returns {Promise<PlatformInitResult>}
 	 */
-	async init() { return { ok: true } },
+	async init() {
+		return { ok: true }
+	},
 
 	/**
 	 * 关闭平台
@@ -300,77 +322,101 @@ export const PlatformProvider = {
 	 * 平台客户端是否可用/运行中
 	 * @returns {boolean}
 	 */
-	isAvailable() { return false },
+	isAvailable() {
+		return false
+	},
 
 	/**
 	 * 是否已初始化
 	 * @returns {boolean}
 	 */
-	isInitialized() { return false },
+	isInitialized() {
+		return false
+	},
 
 	/**
 	 * 用户是否已登录
 	 * @returns {boolean}
 	 */
-	isLoggedIn() { return false },
+	isLoggedIn() {
+		return false
+	},
 
 	/**
 	 * 是否拥有指定App
 	 * @param {number} [appId]
 	 * @returns {boolean}
 	 */
-	isOwned(appId) { return false },
+	isOwned(appId) {
+		return false
+	},
 
 	/**
 	 * 获取当前用户信息
 	 * @returns {PlatformUser|null}
 	 */
-	getUserInfo() { return null },
+	getUserInfo() {
+		return null
+	},
 
 	/**
 	 * 获取用户头像URL
 	 * @returns {string|null}
 	 */
-	getUserAvatarUrl() { return null },
+	getUserAvatarUrl() {
+		return null
+	},
 
 	/**
 	 * Overlay是否可用
 	 * @returns {boolean}
 	 */
-	isOverlayEnabled() { return false },
+	isOverlayEnabled() {
+		return false
+	},
 
 	/**
 	 * Overlay是否当前激活
 	 * @returns {boolean}
 	 */
-	isOverlayActive() { return false },
+	isOverlayActive() {
+		return false
+	},
 
 	/**
 	 * 在Overlay中打开URL
 	 * @param {string} url
 	 * @returns {PlatformOverlayResult}
 	 */
-	overlayOpenUrl(url) { return { ok: false, errMsg: 'Not supported' } },
+	overlayOpenUrl(url) {
+		return { ok: false, errMsg: 'Not supported' }
+	},
 
 	/**
 	 * 激活游戏Overlay
 	 * @param {string} [dialog] - 打开指定对话框（如'friends', 'achievements'等）
 	 * @returns {PlatformOverlayResult}
 	 */
-	overlayActivateGameOverlay(dialog) { return { ok: false, errMsg: 'Not supported' } },
+	overlayActivateGameOverlay(dialog) {
+		return { ok: false, errMsg: 'Not supported' }
+	},
 
 	/**
 	 * 查询指定DLC是否已安装
 	 * @param {number} dlcAppId
 	 * @returns {boolean}
 	 */
-	isDlcInstalled(dlcAppId) { return false },
+	isDlcInstalled(dlcAppId) {
+		return false
+	},
 
 	/**
 	 * 获取所有已安装DLC列表
 	 * @returns {PlatformDlcInfo[]}
 	 */
-	getInstalledDlcs() { return [] },
+	getInstalledDlcs() {
+		return []
+	},
 
 	/**
 	 * 添加事件监听
@@ -378,7 +424,9 @@ export const PlatformProvider = {
 	 * @param {Function} listener
 	 * @returns {this}
 	 */
-	on(event, listener) { return this },
+	on(event, listener) {
+		return this
+	},
 
 	/**
 	 * 移除事件监听
@@ -386,12 +434,14 @@ export const PlatformProvider = {
 	 * @param {Function} listener
 	 * @returns {this}
 	 */
-	off(event, listener) { return this },
+	off(event, listener) {
+		return this
+	}
 }
 
 export const PlatformEvents = {
 	OVERLAY_ACTIVATED: 'overlay-activated',
 	OVERLAY_DEACTIVATED: 'overlay-deactivated',
 	DISCONNECTED: 'disconnected',
-	USER_CHANGED: 'user-changed',
+	USER_CHANGED: 'user-changed'
 }

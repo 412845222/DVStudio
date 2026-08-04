@@ -18,7 +18,13 @@ export type ChatStreamEvent =
 	| { type: 'thinking_delta'; content: string }
 	| { type: 'thought'; content: string }
 	| { type: 'tool_call_start'; toolCallId: string; tool: string; input?: unknown }
-	| { type: 'tool_call_end'; toolCallId: string; tool: string; output?: unknown; images?: Array<{ mimeType: string; dataUrl: string; fileName?: string }> }
+	| {
+			type: 'tool_call_end'
+			toolCallId: string
+			tool: string
+			output?: unknown
+			images?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>
+	  }
 	| { type: 'tool_call_error'; toolCallId: string; tool: string; error: string }
 	| { type: 'plan_update'; explanation: string }
 	| { type: 'skill_call'; name: string; status: string; description?: string }
@@ -30,7 +36,13 @@ export type ChatStreamEvent =
 	| { type: 'approval_requested'; requestId: string; messageId: string }
 	| { type: 'assistant_done'; content: string }
 	| { type: 'turn_done' }
-	| { type: 'context_usage'; tokenCount: number; budget: number; usage: number; truncated?: boolean }
+	| {
+			type: 'context_usage'
+			tokenCount: number
+			budget: number
+			usage: number
+			truncated?: boolean
+	  }
 	| { type: 'error'; message: string; details?: unknown }
 	| { type: 'done' }
 
@@ -46,12 +58,41 @@ export interface ChatAttachment {
 	name?: string
 	url?: string
 	data?: string
+	mimeType?: string
+}
+
+export interface ChatReference {
+	path?: string
+	kind?: string
+	name?: string
+	content?: string
+	nodeId?: string
+	anchorId?: string
+	previewUrl?: string
+}
+
+export interface ReferencedOutput {
+	kind: string
+	nodeId: string
+	anchorId: string
+	label: string
+	text?: string
+	previewUrl?: string
+	meta?: Record<string, unknown>
+	nodeType: string
+}
+
+export interface ActiveSkill {
+	id: string
+	name: string
+	description: string
+	prompt: string
 }
 
 export interface SendMessageOptions {
 	content: string
 	model?: string
-	references?: Array<{ path: string; kind?: string; name?: string }>
+	references?: ChatReference[]
 	attachments?: ChatAttachment[]
 	skillHints?: string[]
 	executionHints?: string[]
@@ -66,6 +107,10 @@ export interface SendMessageOptions {
 	apiSource?: string
 	systemPrompt?: string
 	tools?: string[]
+	referencedNodeIds?: string[]
+	referencedOutputs?: ReferencedOutput[]
+	activeSkills?: ActiveSkill[]
+	agentType?: 'workflow' | 'blender' | 'video_editor' | 'node_chat' | 'general'
 }
 
 export interface ChatModelInfo {

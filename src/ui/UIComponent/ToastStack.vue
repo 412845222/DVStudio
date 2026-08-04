@@ -38,7 +38,9 @@
 						</button>
 					</div>
 				</div>
-				<button class="wf-toast-close" type="button" @click="emit('close', item.id)">{{ t('toast.close') }}</button>
+				<button class="wf-toast-close" type="button" @click="emit('close', item.id)">
+					{{ t('toast.close') }}
+				</button>
 			</div>
 		</div>
 	</Teleport>

@@ -19,7 +19,8 @@ export const createDefaultVideoSceneState = (): VideoSceneState => ({
 	showSizePanel: false,
 	showBackgroundPanel: false,
 	showExportPanel: false,
-	leftPanel: { open: false, mode: null, layerId: null, refreshToken: 0 },
+	showSubtitleRecogDialog: false,
+	leftPanel: { open: false, mode: null, layerId: null, videoPath: null, refreshToken: 0 },
 	layers: [
 		{
 			id: 'layer-1',

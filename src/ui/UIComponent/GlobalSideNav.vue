@@ -25,8 +25,13 @@
 				:title="t('menu.expand')"
 			>
 				<svg viewBox="0 0 24 24" fill="none">
-					<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8"
-						stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M5 12h14M13 6l6 6-6 6"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</button>
 			<UserButton
@@ -49,8 +54,13 @@
 				:title="t('menu.collapse')"
 			>
 				<svg viewBox="0 0 24 24" fill="none">
-					<path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="1.8"
-						stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M19 12H5M11 6l-6 6 6 6"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</button>
 
@@ -76,26 +86,77 @@
 						<circle cx="6" cy="6" r="2" stroke="currentColor" stroke-width="1.8" />
 						<circle cx="18" cy="6" r="2" stroke="currentColor" stroke-width="1.8" />
 						<circle cx="12" cy="18" r="2" stroke="currentColor" stroke-width="1.8" />
-						<path d="M8 7.2L10.6 16.8M16 7.2L13.4 16.8M8 6h8"
-							stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+						<path
+							d="M8 7.2L10.6 16.8M16 7.2L13.4 16.8M8 6h8"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else-if="item.key === 'studio'" viewBox="0 0 24 24" fill="none">
-						<rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" />
-						<path d="M8 20h8M10 18v2M14 18v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-						<path d="M7.5 9.5h9M7.5 13h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+						<rect
+							x="3"
+							y="4"
+							width="18"
+							height="14"
+							rx="2"
+							stroke="currentColor"
+							stroke-width="1.8"
+						/>
+						<path
+							d="M8 20h8M10 18v2M14 18v2"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
+						<path
+							d="M7.5 9.5h9M7.5 13h6"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else-if="item.key === 'cloud-storage'" viewBox="0 0 24 24" fill="none">
-						<path d="M7 18a4 4 0 0 1-.8-7.9A5 5 0 0 1 16 8.5a4.5 4.5 0 0 1 .5 8.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-						<path d="M12 13v6M9 16l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+						<path
+							d="M7 18a4 4 0 0 1-.8-7.9A5 5 0 0 1 16 8.5a4.5 4.5 0 0 1 .5 8.9"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M12 13v6M9 16l3-3 3 3"
+							stroke="currentColor"
+							stroke-width="1.6"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					<svg v-else-if="item.key === 'services'" viewBox="0 0 24 24" fill="none">
-						<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/>
-						<path d="M7 9l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+						<rect
+							x="3"
+							y="4"
+							width="18"
+							height="16"
+							rx="2"
+							stroke="currentColor"
+							stroke-width="1.7"
+						/>
+						<path
+							d="M7 9l3 3-3 3M12 15h5"
+							stroke="currentColor"
+							stroke-width="1.7"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					<svg v-else viewBox="0 0 24 24" fill="none">
 						<path
 							d="M12 3.5l2 1.2 2.3-.3.9 2.1 2.1.9-.3 2.3 1.2 2-1.2 2 .3 2.3-2.1.9-.9 2.1-2.3-.3-2 1.2-2-1.2-2.3.3-.9-2.1-2.1-.9.3-2.3-1.2-2 1.2-2-.3-2.3 2.1-.9.9-2.1 2.3.3 2-1.2z"
-							stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+							stroke="currentColor"
+							stroke-width="1.4"
+							stroke-linejoin="round"
+						/>
 						<circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6" />
 					</svg>
 				</span>
@@ -158,8 +219,18 @@ const userMenuOpen = ref(false)
 const expandedState = ref(props.expanded)
 const isCollapsed = ref(props.collapsed)
 
-watch(() => props.expanded, v => { expandedState.value = v })
-watch(() => props.collapsed, v => { isCollapsed.value = v })
+watch(
+	() => props.expanded,
+	(v) => {
+		expandedState.value = v
+	}
+)
+watch(
+	() => props.collapsed,
+	(v) => {
+		isCollapsed.value = v
+	}
+)
 
 const sideNavParticles = useSquareParticles({ count: 10, seed: 42, baseOpacity: 0.6 })
 
@@ -168,7 +239,7 @@ const items = computed(() => [
 	{ key: 'workflow', label: t('menu.workflow'), active: route.name === 'AIWorkflow' },
 	{ key: 'cloud-storage', label: t('menu.cloudStorage'), active: route.name === 'CloudStorage' },
 	{ key: 'services', label: t('menu.services'), active: route.name === 'ServiceCenter' },
-	{ key: 'settings', label: t('menu.settings'), active: route.name === 'Settings' },
+	{ key: 'settings', label: t('menu.settings'), active: route.name === 'Settings' }
 ])
 
 function onHover(v: boolean) {
@@ -224,7 +295,7 @@ function handleUserMenuAction(actionId: string) {
 </script>
 
 <style scoped>
-@import "../../styles/square-particles.css";
+@import '../../styles/square-particles.css';
 
 .global-side-nav {
 	position: fixed;
@@ -316,7 +387,10 @@ function handleUserMenuAction(actionId: string) {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: background 160ms ease, border-color 160ms ease, transform 140ms ease;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		transform 140ms ease;
 	border-radius: 0;
 }
 
@@ -362,7 +436,11 @@ function handleUserMenuAction(actionId: string) {
 	margin: 0;
 	cursor: pointer;
 	overflow: hidden;
-	transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		color 160ms ease;
 	border-radius: 0;
 }
 
@@ -406,7 +484,9 @@ function handleUserMenuAction(actionId: string) {
 	max-width: 0;
 	opacity: 0;
 	white-space: nowrap;
-	transition: max-width 180ms ease, opacity 140ms ease;
+	transition:
+		max-width 180ms ease,
+		opacity 140ms ease;
 	font-size: 12.5px;
 	color: inherit;
 	flex: 0 0 auto;

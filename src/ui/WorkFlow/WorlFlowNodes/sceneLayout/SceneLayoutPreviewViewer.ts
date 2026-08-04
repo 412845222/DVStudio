@@ -7,6 +7,7 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
 import { isObject, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
+import { fetchAsArrayBuffer } from '../../../../electronBridge'
 import type {
 	WorkflowSceneLayoutItem,
 	WorkflowSceneLayoutLightingControls,
@@ -261,6 +262,14 @@ type ViewerOptions = {
 	onModelLoadError?: (url: string, itemId: string) => void
 	onCameraInteractionStart?: () => void
 	onCameraInteractionEnd?: () => void
+	/**
+	 * 【BUGFIX 2026-07】节流视角状态变更通知（每 ~120ms 最多一次）。
+	 * - 相比之前只在 onCameraInteractionEnd（用户松开鼠标/滚轮停止）时才通知，
+	 *   这个回调会在用户拖拽镜头过程中持续产生通知，保证"拖拽到一半立刻点生成布局"
+	 *   等极端场景下也能把当前镜头写进缓存，下次恢复时不会跳回默认视角。
+	 * - 为避免每帧都造成缓存写入，这里在内部使用 leading+trailing 节流。
+	 */
+	onViewStateChange?: (state: SceneLayoutViewState) => void
 }
 
 type SceneLayoutRenderOptions = {
@@ -328,7 +337,8 @@ const cloneItem = (item: WorkflowSceneLayoutItem): WorkflowSceneLayoutItem => ({
 	size: { ...item.size },
 	rotation: item.rotation ? { ...item.rotation } : undefined,
 	scale: item.scale ? { ...item.scale } : undefined,
-	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined
+	orientationFix: item.orientationFix ? { ...item.orientationFix } : undefined,
+	holePunches: Array.isArray(item.holePunches) ? item.holePunches.map((p) => ({ ...p })) : undefined
 })
 
 export const safeNumber = (value: unknown, fallback: number) => {
@@ -417,16 +427,23 @@ export const isSameItem = (a: WorkflowSceneLayoutItem, b: WorkflowSceneLayoutIte
 		for (let i = 0; i < aHoles; i++) {
 			const ah = a.holePunches![i]
 			const bh = b.holePunches![i]
-			if (ah?.id !== bh?.id || ah?.targetItemId !== bh?.targetItemId || ah?.toolItemId !== bh?.toolItemId) return false
+			if (
+				ah?.id !== bh?.id ||
+				ah?.targetItemId !== bh?.targetItemId ||
+				ah?.toolItemId !== bh?.toolItemId
+			)
+				return false
 		}
 	}
 	return true
 }
 
-export const isSameItems = (a: WorkflowSceneLayoutItem[], b: WorkflowSceneLayoutItem[]): boolean => {
+export const isSameItems = (
+	a: WorkflowSceneLayoutItem[],
+	b: WorkflowSceneLayoutItem[]
+): boolean => {
 	if (a.length !== b.length) return false
-	const len = a.length
-	for (let i = 0; i < len; i++) {
+	for (let i = 0; i < a.length; i++) {
 		if (!isSameItem(a[i], b[i])) return false
 	}
 	return true
@@ -904,6 +921,8 @@ export class SceneLayoutPreviewViewer {
 	private readonly handlePointerMove: (event: PointerEvent) => void
 	private readonly handleWheel: (event: WheelEvent) => void
 	private readonly handleKeyDown: (event: KeyboardEvent) => void
+	/** 兜底：当 window 级 up/cancel/blur 发生但事件未到达canvas时，强制重置 OrbitControls 内部状态 */
+	private readonly handleWindowForceEndOrbit: (event?: PointerEvent, cancel?: boolean) => void
 	private disposed = false
 	private raf = 0
 	private lastRenderTs = 0
@@ -932,6 +951,10 @@ export class SceneLayoutPreviewViewer {
 	private rightClickPickCache: { ts: number; x: number; y: number; itemId: string } | null = null
 	private onCameraInteractionStart: (() => void) | null = null
 	private onCameraInteractionEnd: (() => void) | null = null
+	private onViewStateChange: ((state: SceneLayoutViewState) => void) | null = null
+	private viewStateThrottleTimer: ReturnType<typeof setTimeout> | null = null
+	private viewStateThrottlePending = false
+	private readonly VIEWSTATE_THROTTLE_MS = 120
 	private readonly baseHemisphereLight: HemisphereLightLike
 	private readonly baseDirectionalLight: LightLike
 	private readonly baseDirectionalTarget: Object3Dlike
@@ -940,13 +963,18 @@ export class SceneLayoutPreviewViewer {
 	private holePunchTargetId = ''
 	private holePunchToolId = ''
 	private readonly holePunchHighlightMeshes = new Map<string, MeshLike>()
-	private readonly holedGeometryCache = new Map<string, { geometry: unknown; edgeGeometry: unknown }>()
-	private onHolePunchStateChange: ((state: {
-		mode: boolean
-		step: 'select-target' | 'select-tool'
-		targetId: string
-		toolId: string
-	}) => void) | null = null
+	private readonly holedGeometryCache = new Map<
+		string,
+		{ geometry: unknown; edgeGeometry: unknown }
+	>()
+	private onHolePunchStateChange:
+		| ((state: {
+				mode: boolean
+				step: 'select-target' | 'select-tool'
+				targetId: string
+				toolId: string
+		  }) => void)
+		| null = null
 	private exportLogCallback: ((message: string) => void) | null = null
 
 	constructor(
@@ -991,6 +1019,8 @@ export class SceneLayoutPreviewViewer {
 		this.transformControls.showX = true
 		this.transformControls.showY = true
 		this.transformControls.showZ = true
+		this.transformControls.enabled = false
+		this.transformControls.visible = false
 		this.transformHelper =
 			typeof this.transformControls.getHelper === 'function'
 				? this.transformControls.getHelper()
@@ -1049,16 +1079,20 @@ export class SceneLayoutPreviewViewer {
 		this.pointer = new THREE.Vector2() as unknown as Vector2Like
 		this.loader = new GLTFLoader() as unknown as GLTFLoaderLike
 
+		/**
+		 * [BUGFIX 2026-07] 关键：pointerdown/move/wheel 一律使用 capture:true + 完全不碰 setPointerCapture。
+		 * 对齐 EditorViewer（3DModelNode 的 viewer）的做法：
+		 *  - setPointerCapture / release 完全由 OrbitControls 内部管理
+		 *  - 我们不抢捕获，避免 OrbitControls 内部的 onPointerDown / onPointerUp 流程出现 "它自己没成功捕获" 的错误分支
+		 *  - 这样才能保证：按下左键即进入 rotate 拖拽、松开立即停止、不会出现"鼠标已抬起但hover仍跟随移动"的状态泄漏
+		 * 唯一例外：window 级别的 up/cancel/blur 兜底（见下方）
+		 */
 		this.handlePointerDown = (event: PointerEvent) => {
 			this.canvas.focus({ preventScroll: true })
 			if (this.transformControls.dragging) return
 			const button = Number(event.button)
-			if (button === 2) {
-				return
-			}
-			if (button === 1) {
-				return
-			}
+			if (button === 2) return
+			if (button === 1) return
 			if (button !== 0) return
 			this.pickObject(event)
 			this.requestRender()
@@ -1079,11 +1113,74 @@ export class SceneLayoutPreviewViewer {
 			event.stopPropagation()
 			this.deleteSelectedItem()
 		}
+		/**
+		 * [BUGFIX 兜底] 用户把鼠标拖出 canvas 甚至拖出 Electron 窗口时松开鼠标左键，OrbitControls 内部
+		 * 的 onPointerUp 可能不会被触发（它绑在 canvas 上 + 它依赖 pointer capture，
+		 * 但 capture 在 Electron 场景下会被系统层或外层 DOM 吃掉）。
+		 *
+		 * 修复方案：在 window 级捕获阶段监听 pointerup / pointercancel / blur，
+		 * 直接调用 OrbitControls 自身暴露的 onPointerUp / onPointerCancel 伪造一个与 pointerId 对应的事件，
+		 * 让它立即把内部的 buttons 位、_state 等变量全部重置回 "未按下" 的初始态。
+		 * 这是 Three.js OrbitControls 官方文档推荐的强制收敛输入态的做法。
+		 */
+		this.handleWindowForceEndOrbit = (event, cancel) => {
+			this.orbiting = false
+			if (!this.controls) return
+			try {
+				// 如果此时 OrbitControls 已经是 NONE 态就跳过（无需伪造事件，避免副作用）
+				const anyCtl = this.controls as unknown as {
+					onPointerUp?: (e: Event) => void
+					onPointerCancel?: (e: Event) => void
+					_state?: unknown
+					update?: () => void
+				}
+				// 优先走它自带的处理器，而不是切 enabled（enabled 切换会让 transform-placeholder 的连续拖拽被打断）
+				const synthetic: Partial<PointerEvent> & {
+					type: string
+					pointerId: number
+					pointerType: string
+				} = {
+					type: cancel ? 'pointercancel' : 'pointerup',
+					pointerId: event && typeof event.pointerId === 'number' ? event.pointerId : 1,
+					pointerType:
+						event && typeof (event as unknown as { pointerType?: unknown }).pointerType === 'string'
+							? (event as unknown as { pointerType: string }).pointerType
+							: 'mouse',
+					button: 0,
+					buttons: 0,
+					bubbles: true,
+					cancelable: true,
+					clientX: event && typeof event.clientX === 'number' ? event.clientX : 0,
+					clientY: event && typeof event.clientY === 'number' ? event.clientY : 0
+				}
+				if (cancel && typeof anyCtl.onPointerCancel === 'function') {
+					anyCtl.onPointerCancel(new PointerEvent('pointercancel', synthetic as PointerEventInit))
+				} else if (!cancel && typeof anyCtl.onPointerUp === 'function') {
+					anyCtl.onPointerUp(new PointerEvent('pointerup', synthetic as PointerEventInit))
+				}
+				try {
+					anyCtl.update?.()
+				} catch (_err) {
+					/* ignore */
+				}
+			} catch (_err) {
+				/* ignore */
+			}
+			this.requestRender()
+		}
 
-		this.canvas.addEventListener('pointerdown', this.handlePointerDown)
-		this.canvas.addEventListener('pointermove', this.handlePointerMove, { passive: true })
-		this.canvas.addEventListener('wheel', this.handleWheel, { passive: true })
+		/* 参照 EditorViewer: capture:true —— 优先于 OrbitControls 的冒泡绑定执行，保证拾取和 transform 优先级 */
+		this.canvas.addEventListener('pointerdown', this.handlePointerDown, true)
+		this.canvas.addEventListener('pointermove', this.handlePointerMove, {
+			passive: true,
+			capture: true
+		})
+		this.canvas.addEventListener('wheel', this.handleWheel, { passive: true, capture: true })
 		this.canvas.addEventListener('keydown', this.handleKeyDown)
+		/* window 级 capture，确保松开发生在窗口任意处（包括节点外）都能收敛 OrbitControls 状态 */
+		window.addEventListener('pointerup', (e) => this.handleWindowForceEndOrbit(e, false), true)
+		window.addEventListener('pointercancel', (e) => this.handleWindowForceEndOrbit(e, true), true)
+		window.addEventListener('blur', () => this.handleWindowForceEndOrbit(undefined, true), true)
 
 		this.resize()
 		this.requestRender()
@@ -1093,11 +1190,56 @@ export class SceneLayoutPreviewViewer {
 
 		this.onCameraInteractionStart = options.onCameraInteractionStart ?? null
 		this.onCameraInteractionEnd = options.onCameraInteractionEnd ?? null
+		this.onViewStateChange = options.onViewStateChange ?? null
+	}
+
+	/**
+	 * 【BUGFIX 2026-07】在 controls.change 过程中通知外部 ViewState 变化（leading+trailing 节流）。
+	 *  - 第一次变化：立即通知（leading）
+	 *  - 之后 120ms 窗口内：只保留最后一次变化，窗口结束时再通知一次（trailing）
+	 *  - dispose 时清理定时器，避免内存泄漏
+	 *  - 空状态 / dispose 状态直接忽略，不通知
+	 */
+	private emitViewStateChangeThrottled() {
+		if (this.disposed) return
+		if (!this.onViewStateChange) return
+		const state = this.getViewState()
+		if (!state) return
+		if (!this.viewStateThrottleTimer) {
+			// 窗口为空：立即执行（leading），并开启窗口
+			this.onViewStateChange(state)
+			this.viewStateThrottlePending = false
+			this.viewStateThrottleTimer = setTimeout(() => {
+				this.viewStateThrottleTimer = null
+				if (this.viewStateThrottlePending) {
+					// 窗口内有新变化：再取一次最新值并执行（trailing）
+					this.viewStateThrottlePending = false
+					const trailing = this.getViewState()
+					if (trailing && !this.disposed && this.onViewStateChange) {
+						this.onViewStateChange(trailing)
+					}
+				}
+			}, this.VIEWSTATE_THROTTLE_MS)
+		} else {
+			// 窗口内：标记为有未决变化，由trailing处理
+			this.viewStateThrottlePending = true
+		}
+	}
+
+	private clearViewStateThrottle() {
+		if (this.viewStateThrottleTimer) {
+			clearTimeout(this.viewStateThrottleTimer)
+			this.viewStateThrottleTimer = null
+		}
+		this.viewStateThrottlePending = false
 	}
 
 	private handleControlsChange = () => {
 		if (!this.interactiveActive) return
 		this.requestRender()
+		// 【BUGFIX 2026-07】用户任何镜头交互（旋转、平移、缩放）过程中都节流保存视角，
+		// 保证"生成布局 / 重新渲染"后仍能恢复到用户刚调整的位置
+		this.emitViewStateChangeThrottled()
 	}
 
 	private handleControlsStart = () => {
@@ -1333,7 +1475,10 @@ export class SceneLayoutPreviewViewer {
 	) {
 		const previousSelection = this.selectedId
 
-		const normalizedNewItems = this.normalizeItemsForPreview((items ?? []).map(cloneItem), renderOptions?.previewMode === true)
+		const normalizedNewItems = this.normalizeItemsForPreview(
+			(items ?? []).map(cloneItem),
+			renderOptions?.previewMode === true
+		)
 		const itemsSame = this.isSameItems(normalizedNewItems)
 		const bindingsSame = this.isSameBindings(renderOptions?.modelBindings)
 
@@ -1397,7 +1542,9 @@ export class SceneLayoutPreviewViewer {
 			const roll = safeNumber(item.rotation?.roll ?? 0, 0)
 			const hasBoundModel = previewMode && bindingMap.has(String(item.id ?? '').trim())
 			const hasHolePunches = Array.isArray(item.holePunches) && item.holePunches.length > 0
-			const cachedHoled = hasHolePunches ? this.holedGeometryCache.get(String(item.id ?? '').trim()) : null
+			const cachedHoled = hasHolePunches
+				? this.holedGeometryCache.get(String(item.id ?? '').trim())
+				: null
 			const displaySize = resolvePreviewDisplaySize(item)
 			const width = displaySize.width * scaleX
 			const height = displaySize.height * scaleY
@@ -1405,17 +1552,22 @@ export class SceneLayoutPreviewViewer {
 			let geometry: unknown
 			let edgeGeometry: unknown
 			if (cachedHoled && cachedHoled.geometry) {
-				const geomCloneFn = (cachedHoled.geometry as Record<string, unknown>).clone as (() => unknown) | undefined
+				const geomCloneFn = (cachedHoled.geometry as Record<string, unknown>).clone as
+					| (() => unknown)
+					| undefined
 				geometry = geomCloneFn ? geomCloneFn.call(cachedHoled.geometry) : cachedHoled.geometry
 				if (cachedHoled.edgeGeometry) {
-					const edgeCloneFn = (cachedHoled.edgeGeometry as Record<string, unknown>).clone as (() => unknown) | undefined
-					edgeGeometry = edgeCloneFn ? edgeCloneFn.call(cachedHoled.edgeGeometry) : cachedHoled.edgeGeometry
+					const edgeCloneFn = (cachedHoled.edgeGeometry as Record<string, unknown>).clone as
+						| (() => unknown)
+						| undefined
+					edgeGeometry = edgeCloneFn
+						? edgeCloneFn.call(cachedHoled.edgeGeometry)
+						: cachedHoled.edgeGeometry
 				} else {
 					edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
 				}
 			} else {
 				geometry = new THREE.BoxGeometry(width, height, depth)
-				;(geometry as { translate: (x: number, y: number, z: number) => void }).translate(0, height / 2, 0)
 				edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
 			}
 			const inferred = item.inferred === true
@@ -1445,7 +1597,7 @@ export class SceneLayoutPreviewViewer {
 			})
 			const mesh = new THREE.Mesh(geometry as unknown, material)
 			mesh.scale.set(1, 1, 1)
-			mesh.position.set(posX, posY, posZ)
+			mesh.position.set(posX, posY + height / 2, posZ)
 			mesh.rotation.y = (yaw * Math.PI) / 180
 			mesh.rotation.x = (pitch * Math.PI) / 180
 			mesh.rotation.z = (roll * Math.PI) / 180
@@ -1531,13 +1683,18 @@ export class SceneLayoutPreviewViewer {
 		// 5. 从userData中恢复模型源信息(modelUrl等)
 		const sceneBoundModels = new Map<string, GroupLike>()
 		const sceneModelUserData = new Map<string, Record<string, unknown>>()
-		
+
 		const isLineObject = (obj: unknown): boolean => {
 			if (!obj) return true
 			const o = obj as { isLine?: boolean; isLineSegments?: boolean; type?: string }
-			return o.isLine === true || o.isLineSegments === true || o.type === 'Line' || o.type === 'LineSegments'
+			return (
+				o.isLine === true ||
+				o.isLineSegments === true ||
+				o.type === 'Line' ||
+				o.type === 'LineSegments'
+			)
 		}
-		
+
 		const hasGeometry = (obj: unknown): boolean => {
 			if (!obj) return false
 			const o = obj as { isMesh?: boolean; geometry?: unknown; children?: unknown[] }
@@ -1547,15 +1704,15 @@ export class SceneLayoutPreviewViewer {
 			}
 			return false
 		}
-		
+
 		for (const child of this.group.children as unknown as BoundModelChild[]) {
 			if (!child) continue
 			if (child.userData?.isPlaceholder === true) continue
 			if (isLineObject(child)) continue
-			
+
 			let modelRoot: BoundModelChild | null = null
 			let modelItemId = ''
-			
+
 			// 首先查找isBoundModel标记
 			if (child.userData?.isBoundModel === true) {
 				modelRoot = child
@@ -1570,7 +1727,7 @@ export class SceneLayoutPreviewViewer {
 					}
 				})
 			}
-			
+
 			// 如果没找到isBoundModel标记，但该对象包含Mesh几何体，也视为真实模型
 			if (!modelRoot && hasGeometry(child)) {
 				modelRoot = child
@@ -1585,7 +1742,7 @@ export class SceneLayoutPreviewViewer {
 					modelItemId = `__scene_model_${sceneBoundModels.size}`
 				}
 			}
-			
+
 			if (modelRoot && modelItemId) {
 				// 找到最上层的模型根节点
 				let rootNode = modelRoot
@@ -1623,18 +1780,18 @@ export class SceneLayoutPreviewViewer {
 		// 收集所有需要处理的itemId：currentItems中的 + 场景中发现的额外模型
 		const processedItemIds = new Set<string>()
 		const itemsToProcess: Array<{ item: WorkflowSceneLayoutItem | null; itemId: string }> = []
-		
+
 		for (const item of this.currentItems) {
 			const itemId = String(item.id ?? '').trim()
 			if (!itemId) continue
 			itemsToProcess.push({ item, itemId })
 			processedItemIds.add(itemId)
 		}
-		
+
 		// 添加场景中发现但currentItems中没有的模型
 		for (const itemId of sceneBoundModels.keys()) {
 			if (!processedItemIds.has(itemId)) {
-				const existingItem = this.currentItems.find(i => String(i.id ?? '').trim() === itemId)
+				const existingItem = this.currentItems.find((i) => String(i.id ?? '').trim() === itemId)
 				itemsToProcess.push({ item: existingItem ?? null, itemId })
 				processedItemIds.add(itemId)
 			}
@@ -1643,14 +1800,16 @@ export class SceneLayoutPreviewViewer {
 		for (const { item, itemId } of itemsToProcess) {
 			let binding = this.bindingById.get(itemId)
 			const boundModel = allBoundModels.get(itemId)
-			
+
 			if (!boundModel) {
 				if (item) {
-					warnings.push(t('aiworkflow.scenePreview.warningPlaceholderNoResult', { name: item.name || itemId }))
+					warnings.push(
+						t('aiworkflow.scenePreview.warningPlaceholderNoResult', { name: item.name || itemId })
+					)
 				}
 				continue
 			}
-			
+
 			// 如果bindingById中没有有效的binding，尝试从场景模型userData中恢复
 			if (!binding?.connected) {
 				const sceneUserData = sceneModelUserData.get(itemId)
@@ -1659,35 +1818,40 @@ export class SceneLayoutPreviewViewer {
 					const modelAssetUrl = String(sceneUserData.modelAssetUrl ?? '').trim()
 					if (modelUrl || modelAssetUrl) {
 						const rawSourceType = String(sceneUserData.sourceNodeType ?? '').trim()
-						const validSourceType = (rawSourceType === 'model3d' || rawSourceType === 'meshy' || rawSourceType === 'manual')
-							? rawSourceType
-							: 'model3d' as const
-						binding = {
-							objectId: itemId,
-							inputAnchorId: `in-model-${itemId}`,
-							connected: true,
-							sourceNodeId: String(sceneUserData.sourceNodeId ?? '').trim() || undefined,
-							sourceNodeType: validSourceType,
-							modelUrl: modelUrl || undefined,
-							modelAssetUrl: modelAssetUrl || undefined,
-							modelSourcePath: String(sceneUserData.modelSourcePath ?? '').trim() || undefined,
-							modelAssetPath: String(sceneUserData.modelAssetPath ?? '').trim() || undefined,
-							modelSourceName: String(sceneUserData.modelSourceName ?? '').trim() || undefined,
-							modelFormat: sceneUserData.modelFormat === 'gltf' || sceneUserData.modelFormat === 'glb'
-								? sceneUserData.modelFormat
-								: undefined
+						const validSourceType =
+							rawSourceType === 'model3d' || rawSourceType === 'meshy' || rawSourceType === 'manual'
+								? rawSourceType
+								: ('model3d' as const)
+						// 2026-08-03 新链路：不要只挑 8 个字段构造 binding。
+						//   userData 里可能有 textureRefs / modelAssetProjectRelativePath /
+						//   modelMaterialOverrides / modelProjectRelativePath 等"分离打包 gltf
+						//   + png 的贴图引用和相对路径"字段"，全量 spread 拷贝，
+						//   只在必要时覆盖 connected / sourceNodeType / objectId 等归一化字段。
+						const recovered: Record<string, unknown> = { ...sceneUserData }
+						recovered.objectId = itemId
+						recovered.inputAnchorId = `in-model-${itemId}`
+						recovered.connected = true
+						if (!String(recovered.sourceNodeId ?? '').trim()) {
+							recovered.sourceNodeId = String(sceneUserData.sourceNodeId ?? '').trim() || undefined
 						}
+						recovered.sourceNodeType = validSourceType
+						if (!String(recovered.modelUrl ?? '').trim() && modelUrl) recovered.modelUrl = modelUrl
+						if (!String(recovered.modelAssetUrl ?? '').trim() && modelAssetUrl)
+							recovered.modelAssetUrl = modelAssetUrl
+						binding = recovered as unknown as WorkflowSceneLayoutModelBinding
 					}
 				}
 			}
-			
+
 			if (!binding?.connected) {
 				// 如果模型在场景中存在但没有绑定信息，我们仍然导出它，因为它确实在Three.js中渲染了
 				// 但需要记录警告
 				const displayName = item?.name || itemId
-				warnings.push(t('aiworkflow.scenePreview.warningModelIncompleteBinding', { name: displayName }))
+				warnings.push(
+					t('aiworkflow.scenePreview.warningModelIncompleteBinding', { name: displayName })
+				)
 			}
-			
+
 			const placeholderMesh = this.meshesById.get(itemId)
 			const placeholderTransform = placeholderMesh
 				? this.captureObjectTransform(placeholderMesh)
@@ -1698,9 +1862,15 @@ export class SceneLayoutPreviewViewer {
 					? boundModel.children.slice()
 					: [boundModel]
 			const cloneCount = Math.max(instances.length, 1)
-			const parentReferenceResult = item 
+			const parentReferenceResult = item
 				? this.buildParentReference(item, boundModel, actorOrigin)
-				: { warnings: [], parentReference: { mode: 'root' as const, relativeTransform: this.captureObjectTransform(boundModel, actorOrigin) } }
+				: {
+						warnings: [],
+						parentReference: {
+							mode: 'root' as const,
+							relativeTransform: this.captureObjectTransform(boundModel, actorOrigin)
+						}
+					}
 			if (parentReferenceResult.warnings.length) warnings.push(...parentReferenceResult.warnings)
 			const slotTransform =
 				parentReferenceResult.parentReference.relativeTransform ??
@@ -1726,7 +1896,7 @@ export class SceneLayoutPreviewViewer {
 			for (let index = 0; index < instances.length; index += 1) {
 				const instance = instances[index]
 				const slotId = cloneCount > 1 ? `${itemId}__clone_${index + 1}` : itemId
-				const sourceName = item ? (String(item.name ?? itemId).trim() || itemId) : itemId
+				const sourceName = item ? String(item.name ?? itemId).trim() || itemId : itemId
 				const orientationMode =
 					item?.orientationFix?.mode === 'manual' ? ('manual' as const) : ('auto' as const)
 				const fitMode = item
@@ -1754,6 +1924,18 @@ export class SceneLayoutPreviewViewer {
 				const meshTransform = meshWorldTransform
 				const previewInstanceTransform = this.captureObjectTransform(instance, actorOrigin)
 				const previewInstanceWorldTransform = meshWorldTransform
+				// 2026-08-03 新链路：slot.modelBinding 必须完整保留 binding 的全部字段，
+				//   不能只挑 8 个字段白名单——否则第一个 slot 虽然有路径，但
+				//   textureRefs / modelAssetProjectRelativePath / modelMaterialOverrides
+				//   等贴图相关字段被裁掉（进入 prepareResolvedSlotsForExport 时，
+				//   slot.modelBinding 已经有路径，所以 fallback 不会触发，最终就是白模）。
+				const slotModelBinding: Record<string, unknown> | undefined =
+					binding && typeof binding === 'object'
+						? { ...(binding as Record<string, unknown>) }
+						: undefined
+				if (slotModelBinding && !String(slotModelBinding.sourceNodeType ?? '').trim()) {
+					slotModelBinding.sourceNodeType = 'model3d'
+				}
 				slots.push({
 					slotId,
 					sourceSlotId: itemId,
@@ -1768,28 +1950,25 @@ export class SceneLayoutPreviewViewer {
 					previewScaleMode: item?.previewScaleMode,
 					fitMode: item?.fitMode,
 					fillMode: item?.fillMode,
-					fillCount: item && Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
-					fillAxisScale: item && Number.isFinite(Number(item.fillAxisScale))
-						? Number(item.fillAxisScale)
+					fillCount:
+						item && Number.isFinite(Number(item.fillCount)) ? Number(item.fillCount) : undefined,
+					fillAxisScale:
+						item && Number.isFinite(Number(item.fillAxisScale))
+							? Number(item.fillAxisScale)
+							: undefined,
+					materialOverrides:
+						item && Array.isArray(item.materialOverrides)
+							? item.materialOverrides.map((entry) => ({ ...entry }))
+							: undefined,
+					relationTags:
+						item && Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
+					notes: item
+						? String(item.fitMessage ?? item.description ?? '').trim() || undefined
 						: undefined,
-					materialOverrides: item && Array.isArray(item.materialOverrides)
-						? item.materialOverrides.map((entry) => ({ ...entry }))
-						: undefined,
-					relationTags: item && Array.isArray(item.relationTags) ? [...item.relationTags] : undefined,
-					notes: item ? (String(item.fitMessage ?? item.description ?? '').trim() || undefined) : undefined,
 					surfaceSemantics,
 					parentReference: parentReferenceResult.parentReference,
 					constraintDiagnostics,
-					modelBinding: binding ? {
-						sourceNodeId: binding.sourceNodeId,
-						sourceNodeType: binding.sourceNodeType,
-						modelUrl: binding.modelUrl,
-						modelAssetUrl: binding.modelAssetUrl,
-						modelSourcePath: binding.modelSourcePath,
-						modelAssetPath: binding.modelAssetPath,
-						modelSourceName: binding.modelSourceName,
-						modelFormat: binding.modelFormat
-					} : undefined,
+					modelBinding: slotModelBinding as unknown as WorkflowSceneLayoutModelBinding | undefined,
 					slotTransform,
 					meshTransform,
 					previewInstanceTransform,
@@ -2543,10 +2722,12 @@ export class SceneLayoutPreviewViewer {
 		this.requestRender()
 	}
 
-	private hasUsableCamera(cameraCfg?: {
-		position?: { x: number; y: number; z: number }
-		target?: { x: number; y: number; z: number }
-	} | null) {
+	private hasUsableCamera(
+		cameraCfg?: {
+			position?: { x: number; y: number; z: number }
+			target?: { x: number; y: number; z: number }
+		} | null
+	) {
 		return !!(
 			cameraCfg?.position &&
 			cameraCfg?.target &&
@@ -2749,7 +2930,36 @@ export class SceneLayoutPreviewViewer {
 	) {
 		const mesh = this.meshesById.get(itemId)
 		const item = this.currentItems.find((entry) => entry.id === itemId)
-		const sourceUrl = String(binding.modelUrl ?? binding.modelAssetUrl ?? '').trim()
+
+		// 【根因修复 2026-08】：SceneLayout 预览完全不需要走任何 meshy/tripo3d 的远端 CDN。
+		// 只从输入锚点对应的上游 3D 模型节点读取本地文件资产：
+		// 1) 只接受本地加载源：file:///、dweb:// 或 本地绝对路径（盘符开头）；
+		// 2) 任何 http(s):// 的远端 URL（尤其 assets.meshy.ai / assets.tripo3d.ai）直接拒绝，
+		//    避免 FileLoader 发起跨域/断连请求、占用网络、让用户看到 CORS/ERR_CONNECTION_CLOSED 的错误。
+		const isLocalSafeUrl = (s: string): boolean => {
+			if (!s) return false
+			const t = s.trim()
+			if (!t) return false
+			const lower = t.toLowerCase()
+			if (lower.startsWith('file://') || lower.startsWith('dweb://') || lower.startsWith('dweb:'))
+				return true
+			// Windows 本地绝对路径: C:\... 或 \\... 或 unix /...
+			if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('\\\\') || t.startsWith('/')) return true
+			return false
+		}
+		const candidates = [
+			String(binding.modelAssetUrl ?? '').trim(),
+			String(binding.modelUrl ?? '').trim(),
+			String(binding.modelAssetPath ?? '').trim(),
+			String(binding.modelSourcePath ?? '').trim()
+		].filter(Boolean) as string[]
+		const sourceUrl = (() => {
+			for (const c of candidates) {
+				if (isLocalSafeUrl(c)) return c
+			}
+			return ''
+		})()
+
 		if (!mesh || !item || !sourceUrl) return false
 		if (
 			this.disposed ||
@@ -2759,7 +2969,7 @@ export class SceneLayoutPreviewViewer {
 			return false
 
 		try {
-			const template = await this.loadModelTemplate(sourceUrl, itemId)
+			const template = await this.loadModelTemplateProxy(sourceUrl, itemId)
 			if (
 				this.disposed ||
 				revision !== this.layoutRevision ||
@@ -2779,11 +2989,7 @@ export class SceneLayoutPreviewViewer {
 			)
 			latestMesh.userData.itemId = item.id
 			const fitChanged = !item.fitMode
-				? this.setFitState(
-						item,
-						'normal',
-						t('aiworkflow.scenePreview.boxPreviewHint')
-					)
+				? this.setFitState(item, 'normal', t('aiworkflow.scenePreview.boxPreviewHint'))
 				: false
 			this.requestRender()
 			return changed || fitChanged
@@ -2793,19 +2999,110 @@ export class SceneLayoutPreviewViewer {
 		}
 	}
 
-	private loadModelTemplate(url: string, itemId: string) {
+	// ===== 【BUGFIX 2026-08】：参考 EditorViewer 同款 Electron 主进程代理兜底：
+	//  1) file:/// 开头的本地路径：部分 Electron 安全策略（webSecurity/file:// CORS）下
+	//     Three.js FileLoader 会直接被拦截 (Not allowed to load local resource)；
+	//  2) dweb://project-assets：Three.js 不识别该协议，FileLoader 会发 HTTP 404；
+	//  解决方案：先让 fetchAsArrayBuffer 从主进程拿字节(有 dweb/file 协议处理、无 CORS)，
+	//           再用 GLTFLoader.parse 直接在渲染线程解析，最终行为和 3D 模型节点预览完全一致。
+	private needsElectronFetchProxy = (input: string): boolean => {
+		const t = String(input ?? '').trim()
+		if (!t) return false
+		const low = t.toLowerCase()
+		if (low.startsWith('dweb:') || low.startsWith('http://') || low.startsWith('https://'))
+			return true
+		// ===== 关键：file:// 也统一走主进程代理（目前截图里的报错就是 file:// 被安全策略拦） =====
+		return low.startsWith('file://')
+	}
+	private async loadModelFromArrayBuffer(
+		buffer: ArrayBuffer,
+		originUrl: string
+	): Promise<Record<string, unknown> | null> {
+		if (!buffer || buffer.byteLength === 0) return null
+		const ext =
+			String(originUrl ?? '')
+				.split('?')[0]
+				.split('#')[0]
+				.split('.')
+				.pop()
+				?.toLowerCase() || ''
+		if (!ext && !originUrl.toLowerCase().includes('.gltf')) return null
+		return new Promise<Record<string, unknown> | null>((resolve, reject) => {
+			const loader = this.loader as unknown as GLTFLoaderLike
+			const parseImpl = (loader as unknown as Record<string, unknown>).parse
+			if (typeof parseImpl !== 'function') {
+				resolve(null)
+				return
+			}
+			try {
+				;(
+					parseImpl as (
+						buffer: ArrayBuffer,
+						path: string,
+						onLoad: (result: Record<string, unknown>) => void,
+						onError?: (error: unknown) => void
+					) => void | Promise<Record<string, unknown>>
+				).call(
+					loader,
+					buffer,
+					'',
+					(result) => {
+						const scene =
+							(result as Record<string, unknown>).scene ||
+							(result as unknown as { default?: { scene?: unknown } }).default?.scene
+						resolve((scene ?? null) as Record<string, unknown> | null)
+					},
+					(err) => reject(err)
+				)
+			} catch (e) {
+				reject(e)
+			}
+		})
+	}
+	private async loadModelTemplateProxy(url: string, itemId: string) {
 		const source = String(url ?? '').trim()
 		if (!source) return Promise.reject(new Error('empty model source'))
-		const cached = this.modelTemplateCache.get(source)
+		const cacheKey = `proxy:${source}`
+		const cached = this.modelTemplateCache.get(cacheKey) || this.modelTemplateCache.get(source)
 		if (cached) return cached
-		const next = this.loader.loadAsync(source).then((gltf: GLTFResult) => gltf.scene).catch((err) => {
-			if (this.options.onModelLoadError) {
-				this.options.onModelLoadError(source, itemId)
+		const doNative = () => {
+			const p = this.loader
+				.loadAsync(source)
+				.then((gltf) => gltf.scene as unknown as GltfTemplateLike)
+				.catch((err) => {
+					if (this.options.onModelLoadError) this.options.onModelLoadError(source, itemId)
+					throw err
+				})
+			this.modelTemplateCache.set(cacheKey, p)
+			this.modelTemplateCache.set(source, p)
+			return p
+		}
+		if (this.needsElectronFetchProxy(source) && typeof fetchAsArrayBuffer === 'function') {
+			const fetchResult = await fetchAsArrayBuffer(source).catch(() => null)
+			if (fetchResult?.ok && fetchResult.buffer) {
+				const view = fetchResult.buffer as Uint8Array
+				const arrayBuffer = view.buffer.slice(
+					view.byteOffset,
+					view.byteOffset + view.byteLength
+				) as ArrayBuffer
+				const p = Promise.resolve()
+					.then(async () => {
+						const parsed = await this.loadModelFromArrayBuffer(arrayBuffer, source)
+						if (!parsed) throw new Error('[SceneLayout] ArrayBuffer parse failed')
+						return parsed as unknown as GltfTemplateLike
+					})
+					.catch((err) => {
+						if (this.options.onModelLoadError) this.options.onModelLoadError(source, itemId)
+						throw err
+					})
+				this.modelTemplateCache.set(cacheKey, p)
+				return p
 			}
-			throw err
-		})
-		this.modelTemplateCache.set(source, next)
-		return next
+		}
+		return doNative()
+	}
+	private loadModelTemplate(url: string, itemId: string) {
+		return this.loadModelTemplateProxy(url, itemId)
 	}
 
 	private cloneModelScene(template: GltfTemplateLike) {
@@ -2903,7 +3200,9 @@ export class SceneLayoutPreviewViewer {
 		const targetId = String(itemId ?? '').trim()
 		if (!targetId) return
 		for (let index = this.group.children.length - 1; index >= 0; index -= 1) {
-			const child: BoundModelChild | undefined = this.group.children[index] as BoundModelChild | undefined
+			const child: BoundModelChild | undefined = this.group.children[index] as
+				| BoundModelChild
+				| undefined
 			if (!child) continue
 			const directItemId = String(child.userData?.itemId ?? '').trim()
 			const directIsBoundModel = child.userData?.isBoundModel === true
@@ -2913,7 +3212,8 @@ export class SceneLayoutPreviewViewer {
 					if (matched) return
 					const entryChild = entry as unknown as BoundModelChild
 					const entryItemId = String(entryChild?.userData?.itemId ?? '').trim()
-					if (entryItemId === targetId && entryChild?.userData?.isBoundModel === true) matched = true
+					if (entryItemId === targetId && entryChild?.userData?.isBoundModel === true)
+						matched = true
 				})
 			}
 			if (!matched) continue
@@ -2968,16 +3268,18 @@ export class SceneLayoutPreviewViewer {
 			mode
 		)
 		const modelRoot = this.createBoundModelRoot(modelContent, mesh, item) as unknown as GroupLike
-		const bindingSourceInfo = binding ? {
-			modelUrl: binding.modelUrl,
-			modelAssetUrl: binding.modelAssetUrl,
-			modelSourcePath: binding.modelSourcePath,
-			modelAssetPath: binding.modelAssetPath,
-			modelSourceName: binding.modelSourceName,
-			modelFormat: binding.modelFormat,
-			sourceNodeId: binding.sourceNodeId,
-			sourceNodeType: binding.sourceNodeType
-		} : {}
+		const bindingSourceInfo = binding
+			? {
+					modelUrl: binding.modelUrl,
+					modelAssetUrl: binding.modelAssetUrl,
+					modelSourcePath: binding.modelSourcePath,
+					modelAssetPath: binding.modelAssetPath,
+					modelSourceName: binding.modelSourceName,
+					modelFormat: binding.modelFormat,
+					sourceNodeId: binding.sourceNodeId,
+					sourceNodeType: binding.sourceNodeType
+				}
+			: {}
 		modelRoot.userData = {
 			...(modelRoot.userData ?? {}),
 			itemId: item.id,
@@ -3242,9 +3544,7 @@ export class SceneLayoutPreviewViewer {
 			item.shouldTouchGround === true
 
 		const isExplicitlyWallMounted =
-			mountType.includes('wall') ||
-			placement.includes('wall') ||
-			supportSurface.includes('wall')
+			mountType.includes('wall') || placement.includes('wall') || supportSurface.includes('wall')
 
 		const tokens = [
 			String(item.name ?? ''),
@@ -3278,9 +3578,7 @@ export class SceneLayoutPreviewViewer {
 			return 'surface-placed'
 		}
 
-		if (
-			/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)
-		) {
+		if (/(lamp|light|chandelier|pendant|灯|吊灯|吸顶灯)/.test(tokens)) {
 			if (mountType.includes('ceiling') || /ceiling|pendant|chandelier|吊|吸顶/.test(tokens)) {
 				return 'ceiling-mounted'
 			}
@@ -3417,7 +3715,7 @@ export class SceneLayoutPreviewViewer {
 		const basePosition = object.position.clone()
 
 		const existingOffset = this.resolveExistingOrientationOffset(item)
-		
+
 		const decision = this.resolveOrientationDecision(
 			object,
 			baseScale,
@@ -3543,9 +3841,7 @@ export class SceneLayoutPreviewViewer {
 		boundRoot.scale.set(1, 1, 1)
 		boundRoot.updateMatrixWorld(true)
 
-		const placeholderSize = new THREE.Vector3(
-			...this.resolvePlaceholderWorldSize(item).toArray()
-		)
+		const placeholderSize = new THREE.Vector3(...this.resolvePlaceholderWorldSize(item).toArray())
 		const axisLength = placeholderSize[fillAxis] / Math.max(count, 1)
 		const semanticClass = this.classifyObjectSemantics(item)
 		const alignmentRule = this.getAlignmentRule(item, semanticClass)
@@ -3629,9 +3925,7 @@ export class SceneLayoutPreviewViewer {
 		const modelBox = new THREE.Box3().setFromObject(boundRoot)
 		const modelSize = modelBox.getSize(new THREE.Vector3())
 
-		const placeholderSize = new THREE.Vector3(
-			...this.resolvePlaceholderWorldSize(item).toArray()
-		)
+		const placeholderSize = new THREE.Vector3(...this.resolvePlaceholderWorldSize(item).toArray())
 
 		const fillAxis = fillModeToAxis(item.fillMode)
 		const isForced = item.fitMode === 'forced'
@@ -3661,20 +3955,12 @@ export class SceneLayoutPreviewViewer {
 				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
 				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
 				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
-				finalScale.set(
-					Math.max(0.0001, sx),
-					Math.max(0.0001, sy),
-					Math.max(0.0001, sz)
-				)
+				finalScale.set(Math.max(0.0001, sx), Math.max(0.0001, sy), Math.max(0.0001, sz))
 			} else if (usePlaceholderScale) {
 				const sx = placeholderSize.x / Math.max(modelSize.x, 0.001)
 				const sy = placeholderSize.y / Math.max(modelSize.y, 0.001)
 				const sz = placeholderSize.z / Math.max(modelSize.z, 0.001)
-				finalScale.set(
-					Math.max(0.0001, sx),
-					Math.max(0.0001, sy),
-					Math.max(0.0001, sz)
-				)
+				finalScale.set(Math.max(0.0001, sx), Math.max(0.0001, sy), Math.max(0.0001, sz))
 			} else {
 				const scaleFactor = this.calculateUniformScaleToFit(
 					{ x: modelSize.x, y: modelSize.y, z: modelSize.z },
@@ -3703,7 +3989,12 @@ export class SceneLayoutPreviewViewer {
 
 	async rotateSelectedModelByAxis(axis: 'x' | 'y' | 'z'): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: t('aiworkflow.scenePreview.selectPlaceholderFirst')
+			}
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3763,14 +4054,19 @@ export class SceneLayoutPreviewViewer {
 						: roundOrientation(constrained.yaw)
 			const message = t('aiworkflow.scenePreview.rotatedTo', { axis: axisLabel, angle: angleLabel })
 
+			this.setFitState(item, 'oriented', message)
+
 			await this.rebuildBoundModelForItem(this.selectedId, 'keep')
 
-			const fitChanged = this.setFitState(item, 'oriented', message)
-			if (fitChanged || item.orientationFix) this.emitLayoutChange()
+			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'oriented', message }
 		} catch {
-			const fitChanged = this.setFitState(item, 'normal', t('aiworkflow.scenePreview.rotationModelLoadFailed'))
+			const fitChanged = this.setFitState(
+				item,
+				'normal',
+				t('aiworkflow.scenePreview.rotationModelLoadFailed')
+			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
@@ -3783,7 +4079,12 @@ export class SceneLayoutPreviewViewer {
 
 	async resetSelectedModelOrientation(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: t('aiworkflow.scenePreview.selectPlaceholderFirst')
+			}
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		if (!item || !binding) {
@@ -3809,10 +4110,11 @@ export class SceneLayoutPreviewViewer {
 
 			const message = t('aiworkflow.scenePreview.rotationReset')
 
+			this.setFitState(item, 'normal', message)
+
 			await this.rebuildBoundModelForItem(this.selectedId, 'auto')
 
-			const fitChanged = this.setFitState(item, 'normal', message)
-			if (fitChanged || !item.orientationFix) this.emitLayoutChange()
+			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'normal', message }
 		} catch {
@@ -3827,7 +4129,12 @@ export class SceneLayoutPreviewViewer {
 
 	async cycleFillSelectedModel(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: t('aiworkflow.scenePreview.selectPlaceholderFirst')
+			}
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3904,23 +4211,20 @@ export class SceneLayoutPreviewViewer {
 		if (!suggestion) {
 			const hadFill = !!item.fillMode
 			this.clearFillState(item)
-			if (hadFill || this.boundModelsById.has(this.selectedId)) {
-				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
-			}
 			const message = hadFill
 				? t('aiworkflow.scenePreview.fillAxisMismatch')
 				: t('aiworkflow.scenePreview.fillTooManyUnconstrained')
-			const fitChanged = this.setFitState(
-				item,
-				item.orientationFix ? 'oriented' : 'normal',
-				message
-			)
-			if (hadFill || fitChanged) this.emitLayoutChange()
+			const nextMode = item.orientationFix ? 'oriented' : 'normal'
+			this.setFitState(item, nextMode, message)
+			if (hadFill || this.boundModelsById.has(this.selectedId)) {
+				this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
+			}
+			this.emitLayoutChange()
 			this.requestRender()
 			return {
 				ok: false,
 				applied: false,
-				mode: item.orientationFix ? 'oriented' : 'normal',
+				mode: nextMode,
 				message
 			}
 		}
@@ -3928,10 +4232,13 @@ export class SceneLayoutPreviewViewer {
 		item.fillCount = suggestion.count
 		item.fillAxisScale = suggestion.axisScale
 		item.fillUpdatedAt = Date.now()
+		const message = t('aiworkflow.scenePreview.loopFilled', {
+			axis: fillAxisLabel(suggestion.axis),
+			count: suggestion.count
+		})
+		this.setFitState(item, 'filled', message)
 		this.disposeBoundModel(this.selectedId)
 		this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
-		const message = t('aiworkflow.scenePreview.loopFilled', { axis: fillAxisLabel(suggestion.axis), count: suggestion.count })
-		this.setFitState(item, 'filled', message)
 		this.emitLayoutChange()
 		this.requestRender()
 		return { ok: true, applied: true, mode: 'filled', message }
@@ -3939,7 +4246,12 @@ export class SceneLayoutPreviewViewer {
 
 	async forceFitSelectedModel(): Promise<SceneLayoutActionResult> {
 		if (!this.selectedId)
-			return { ok: false, applied: false, mode: 'normal', message: t('aiworkflow.scenePreview.selectPlaceholderFirst') }
+			return {
+				ok: false,
+				applied: false,
+				mode: 'normal',
+				message: t('aiworkflow.scenePreview.selectPlaceholderFirst')
+			}
 		const item = this.currentItems.find((entry) => entry.id === this.selectedId)
 		const binding = this.bindingById.get(this.selectedId)
 		const mesh = this.meshesById.get(this.selectedId)
@@ -3969,16 +4281,18 @@ export class SceneLayoutPreviewViewer {
 		try {
 			const template = await this.loadModelTemplate(sourceUrl, this.selectedId)
 			this.clearFillState(item)
-			item.fitMode = 'forced'
-			item.fitUpdatedAt = Date.now()
-			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			const message = t('aiworkflow.scenePreview.forceFitApplied')
 			this.setFitState(item, 'forced', message)
+			this.mountBoundModel(this.selectedId, item, mesh, template, 'keep', binding)
 			this.emitLayoutChange()
 			this.requestRender()
 			return { ok: true, applied: true, mode: 'forced', message }
 		} catch {
-			const fitChanged = this.setFitState(item, 'normal', t('aiworkflow.scenePreview.fitModelLoadFailed'))
+			const fitChanged = this.setFitState(
+				item,
+				'normal',
+				t('aiworkflow.scenePreview.fitModelLoadFailed')
+			)
 			if (fitChanged) this.emitLayoutChange()
 			return {
 				ok: false,
@@ -4441,7 +4755,10 @@ export class SceneLayoutPreviewViewer {
 		const parentBoundModel = this.boundModelsById.get(parentId)
 		if (!parentBoundModel) {
 			warnings.push(
-				t('aiworkflow.scenePreview.warningParentNotGenerated', { name: item.name || item.id, parent: parentId })
+				t('aiworkflow.scenePreview.warningParentNotGenerated', {
+					name: item.name || item.id,
+					parent: parentId
+				})
 			)
 			return {
 				parentReference: {
@@ -4673,7 +4990,6 @@ export class SceneLayoutPreviewViewer {
 		const edge = this.edgesById.get(this.selectedId)
 		if (!mesh || !item) return
 		item.position.x = mesh.position.x
-		item.position.y = mesh.position.y
 		item.position.z = mesh.position.z
 		item.rotation = {
 			yaw: THREE.MathUtils.radToDeg(mesh.rotation.y),
@@ -4685,6 +5001,9 @@ export class SceneLayoutPreviewViewer {
 			y: mesh.scale.y,
 			z: mesh.scale.z
 		}
+		mesh.updateMatrixWorld(true)
+		const worldBox = new THREE.Box3().setFromObject(mesh)
+		item.position.y = worldBox.min.y
 		if (edge) {
 			edge.position.copy(mesh.position)
 			edge.rotation.copy(mesh.rotation)
@@ -4802,7 +5121,8 @@ export class SceneLayoutPreviewViewer {
 					const meshEntry = entry as unknown as DisposableMesh
 					const geom = meshEntry.geometry as Disposable | undefined
 					if (geom && typeof geom.dispose === 'function') geom.dispose()
-					if (meshEntry.material) disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
+					if (meshEntry.material)
+						disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
 				}
 			})
 		}
@@ -4822,7 +5142,8 @@ export class SceneLayoutPreviewViewer {
 					const meshEntry = entry as unknown as DisposableMesh
 					const geom = meshEntry.geometry as Disposable | undefined
 					if (geom && typeof geom.dispose === 'function') geom.dispose()
-					if (meshEntry.material) disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
+					if (meshEntry.material)
+						disposeMaterial(meshEntry.material as MaterialWithMaps | MaterialWithMaps[])
 				}
 			})
 		}
@@ -4899,12 +5220,14 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	setHolePunchStateChangeCallback(
-		callback: ((state: {
-			mode: boolean
-			step: 'select-target' | 'select-tool'
-			targetId: string
-			toolId: string
-		}) => void) | null
+		callback:
+			| ((state: {
+					mode: boolean
+					step: 'select-target' | 'select-tool'
+					targetId: string
+					toolId: string
+			  }) => void)
+			| null
 	) {
 		this.onHolePunchStateChange = callback
 	}
@@ -4999,7 +5322,8 @@ export class SceneLayoutPreviewViewer {
 		highlight.rotation.copy(meshAny.rotation as unknown as { x: number; y: number; z: number })
 		highlight.scale.copy(meshAny.scale as unknown as Vector3Like)
 		highlight.renderOrder = 3
-		;(highlight as unknown as { userData: Record<string, unknown> }).userData.isHolePunchHighlight = true
+		;(highlight as unknown as { userData: Record<string, unknown> }).userData.isHolePunchHighlight =
+			true
 		this.group.add(highlight as unknown as Object3Dlike)
 		this.holePunchHighlightMeshes.set(itemId, highlight as unknown as MeshLike)
 	}
@@ -5009,20 +5333,25 @@ export class SceneLayoutPreviewViewer {
 			this.group.remove(highlight)
 			const geom = (highlight as unknown as { geometry?: Disposable }).geometry
 			if (geom && typeof geom.dispose === 'function') geom.dispose()
-			const mat = (highlight as unknown as { material?: MaterialWithMaps | MaterialWithMaps[] }).material
+			const mat = (highlight as unknown as { material?: MaterialWithMaps | MaterialWithMaps[] })
+				.material
 			if (mat) disposeMaterial(mat)
 		}
 		this.holePunchHighlightMeshes.clear()
 	}
 
 	async confirmHolePunch(): Promise<{ ok: boolean; message: string }> {
-		if (!this.holePunchMode) return { ok: false, message: t('aiworkflow.scenePreview.notInHolePunchMode') }
-		if (!this.holePunchTargetId) return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTarget') }
-		if (!this.holePunchToolId) return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTool') }
+		if (!this.holePunchMode)
+			return { ok: false, message: t('aiworkflow.scenePreview.notInHolePunchMode') }
+		if (!this.holePunchTargetId)
+			return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTarget') }
+		if (!this.holePunchToolId)
+			return { ok: false, message: t('aiworkflow.scenePreview.selectHoleTool') }
 
 		const targetItem = this.currentItems.find((item) => item.id === this.holePunchTargetId)
 		const toolItem = this.currentItems.find((item) => item.id === this.holePunchToolId)
-		if (!targetItem || !toolItem) return { ok: false, message: t('aiworkflow.scenePreview.placeholderNotFound') }
+		if (!targetItem || !toolItem)
+			return { ok: false, message: t('aiworkflow.scenePreview.placeholderNotFound') }
 
 		const toolBinding = this.bindingById.get(this.holePunchToolId)
 		if (!toolBinding) {
@@ -5047,7 +5376,10 @@ export class SceneLayoutPreviewViewer {
 				isObject(err) && isString((err as { message?: unknown }).message)
 					? (err as { message: string }).message
 					: String(err ?? 'unknown')
-			return { ok: false, message: t('aiworkflow.scenePreview.holePunchFailed', { error: errMessage }) }
+			return {
+				ok: false,
+				message: t('aiworkflow.scenePreview.holePunchFailed', { error: errMessage })
+			}
 		}
 	}
 
@@ -5074,7 +5406,11 @@ export class SceneLayoutPreviewViewer {
 		const toolQuat = new THREE.Quaternion()
 		const toolPosVec = new THREE.Vector3()
 		const toolScaleVec = new THREE.Vector3()
-		;(toolMesh.matrixWorld as unknown as { decompose: (pos: unknown, quat: unknown, scale: unknown) => void }).decompose(toolPosVec, toolQuat, toolScaleVec)
+		;(
+			toolMesh.matrixWorld as unknown as {
+				decompose: (pos: unknown, quat: unknown, scale: unknown) => void
+			}
+		).decompose(toolPosVec, toolQuat, toolScaleVec)
 
 		const toolCenter = new THREE.Vector3()
 		const toolBox3 = new THREE.Box3()
@@ -5112,9 +5448,6 @@ export class SceneLayoutPreviewViewer {
 			targetBox3.getCenter(fallbackDir)
 			fallbackDir.sub(toolCenter).normalize()
 			bestDir = fallbackDir
-			console.log('=== Hole Punch: No axis hit target, using fallback direction ===', bestDir)
-		} else {
-			console.log('=== Hole Punch: Detected punch direction ===', bestDir, 'hit distance:', bestHitDist)
 		}
 
 		const punchDir = bestDir.normalize()
@@ -5138,7 +5471,6 @@ export class SceneLayoutPreviewViewer {
 		if (existingBoundModel) {
 			existingBoundModel.updateMatrixWorld(true)
 			geometrySource = existingBoundModel
-			console.log('=== Hole Punch: Using existing bound model from scene ===')
 		} else {
 			const modelUrl = toolBinding.modelUrl || toolBinding.modelAssetUrl
 			if (!modelUrl) {
@@ -5146,40 +5478,66 @@ export class SceneLayoutPreviewViewer {
 			}
 			const template = await this.loadModelTemplate(modelUrl, toolItem.id)
 			const modelContent = this.cloneModelScene(template)
-			const toolModelRoot = this.createBoundModelRoot(modelContent, toolMesh, toolItem) as unknown as { traverse: (cb: (child: unknown) => void) => void; updateMatrixWorld: (force: boolean) => void }
+			const toolModelRoot = this.createBoundModelRoot(
+				modelContent,
+				toolMesh,
+				toolItem
+			) as unknown as {
+				traverse: (cb: (child: unknown) => void) => void
+				updateMatrixWorld: (force: boolean) => void
+			}
 			toolModelRoot.updateMatrixWorld(true)
 			geometrySource = toolModelRoot
 			needsDispose = true
-			console.log('=== Hole Punch: Created new bound model for cross-section ===')
 		}
 
 		const modelGeometries: unknown[] = []
-		;(geometrySource as { traverse: (cb: (child: unknown) => void) => void }).traverse((child: unknown) => {
-			const childAny = child as Record<string, unknown>
-			if (childAny.isMesh && childAny.geometry) {
-				const geomAny = childAny.geometry as Record<string, unknown>
-				const cloned = (geomAny.clone as () => unknown)()
-				const clonedAny = cloned as Record<string, unknown>
-				;(clonedAny.applyMatrix4 as (m: unknown) => void)(childAny.matrixWorld)
-				modelGeometries.push(cloned)
+		;(geometrySource as { traverse: (cb: (child: unknown) => void) => void }).traverse(
+			(child: unknown) => {
+				const childAny = child as Record<string, unknown>
+				if (childAny.isMesh && childAny.geometry) {
+					const geomAny = childAny.geometry as Record<string, unknown>
+					const cloned = (geomAny.clone as () => unknown)()
+					const clonedAny = cloned as Record<string, unknown>
+					;(clonedAny.applyMatrix4 as (m: unknown) => void)(childAny.matrixWorld)
+					modelGeometries.push(cloned)
+				}
 			}
-		})
+		)
 
 		if (modelGeometries.length === 0) {
-			const placeholderGeom = (toolMesh as unknown as { geometry: Record<string, unknown> }).geometry
+			const placeholderGeom = (toolMesh as unknown as { geometry: Record<string, unknown> })
+				.geometry
 			const placeholderCloned = (placeholderGeom.clone as () => unknown)()
 			const placeholderClonedAny = placeholderCloned as Record<string, unknown>
 			;(placeholderClonedAny.applyMatrix4 as (m: unknown) => void)(toolMesh.matrixWorld)
 			modelGeometries.push(placeholderCloned)
 		}
 
-		const modelMergedGeom = this.mergeGeometries(modelGeometries) as { getAttribute: (name: string) => unknown; dispose?: () => void }
-		modelGeometries.forEach(g => ((g as { dispose?: () => void }).dispose?.()))
+		const modelMergedGeom = this.mergeGeometries(modelGeometries) as {
+			getAttribute: (name: string) => unknown
+			dispose?: () => void
+		}
+		modelGeometries.forEach((g) => (g as { dispose?: () => void }).dispose?.())
 
-		const modelPosAttr = (modelMergedGeom as { getAttribute: (name: string) => unknown }).getAttribute('position') as { count: number; getX: (i: number) => number; getY: (i: number) => number; getZ: (i: number) => number } | undefined
+		const modelPosAttr = (
+			modelMergedGeom as { getAttribute: (name: string) => unknown }
+		).getAttribute('position') as
+			| {
+					count: number
+					getX: (i: number) => number
+					getY: (i: number) => number
+					getZ: (i: number) => number
+			  }
+			| undefined
 
 		const projectedPoints2D: { u: number; v: number; d: number }[] = []
-		let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity, minD = Infinity, maxD = -Infinity
+		let minU = Infinity,
+			maxU = -Infinity,
+			minV = Infinity,
+			maxV = -Infinity,
+			minD = Infinity,
+			maxD = -Infinity
 
 		if (modelPosAttr) {
 			for (let i = 0; i < modelPosAttr.count; i++) {
@@ -5209,9 +5567,12 @@ export class SceneLayoutPreviewViewer {
 				{ u: toolCenter.x - 0.5, v: toolCenter.y + 0.5, d: toolCenter.z + 0.5 }
 			]
 			projectedPoints2D.push(...fallbackPoints)
-			minU = toolCenter.x - 0.5; maxU = toolCenter.x + 0.5
-			minV = toolCenter.y - 0.5; maxV = toolCenter.y + 0.5
-			minD = toolCenter.z - 0.5; maxD = toolCenter.z + 0.5
+			minU = toolCenter.x - 0.5
+			maxU = toolCenter.x + 0.5
+			minV = toolCenter.y - 0.5
+			maxV = toolCenter.y + 0.5
+			minD = toolCenter.z - 0.5
+			maxD = toolCenter.z + 0.5
 		}
 
 		const centerU = (minU + maxU) * 0.5
@@ -5221,17 +5582,20 @@ export class SceneLayoutPreviewViewer {
 		type Point2D = { x: number; y: number }
 		const convexHull = (points: Point2D[]): Point2D[] => {
 			if (points.length <= 1) return points
-			const sorted = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x)
-			const cross = (o: Point2D, a: Point2D, b: Point2D) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+			const sorted = points.slice().sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
+			const cross = (o: Point2D, a: Point2D, b: Point2D) =>
+				(a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
 			const lower: Point2D[] = []
 			for (const p of sorted) {
-				while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+				while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0)
+					lower.pop()
 				lower.push(p)
 			}
 			const upper: Point2D[] = []
 			for (let i = sorted.length - 1; i >= 0; i--) {
 				const p = sorted[i]
-				while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+				while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0)
+					upper.pop()
 				upper.push(p)
 			}
 			lower.pop()
@@ -5239,9 +5603,9 @@ export class SceneLayoutPreviewViewer {
 			return lower.concat(upper)
 		}
 
-		const rawHullPoints = convexHull(projectedPoints2D.map(p => ({ x: p.u, y: p.v })))
+		const rawHullPoints = convexHull(projectedPoints2D.map((p) => ({ x: p.u, y: p.v })))
 		const shrinkFactor = 0.92
-		const hullPoints: Point2D[] = rawHullPoints.map(p => ({
+		const hullPoints: Point2D[] = rawHullPoints.map((p) => ({
 			x: centerU + (p.x - centerU) * shrinkFactor,
 			y: centerV + (p.y - centerV) * shrinkFactor
 		}))
@@ -5256,7 +5620,8 @@ export class SceneLayoutPreviewViewer {
 			new THREE.Vector3(targetBox3.max.x, targetBox3.max.y, targetBox3.min.z),
 			new THREE.Vector3(targetBox3.max.x, targetBox3.max.y, targetBox3.max.z)
 		]
-		let targetMinD = Infinity, targetMaxD = -Infinity
+		let targetMinD = Infinity,
+			targetMaxD = -Infinity
 		for (const corner of targetCorners) {
 			const d = corner.dot(punchDir)
 			targetMinD = Math.min(targetMinD, d)
@@ -5309,21 +5674,6 @@ export class SceneLayoutPreviewViewer {
 
 		stretchedGeom.applyMatrix4(transformMatrix)
 
-		const debugModelBounds = new THREE.Box3().setFromBufferAttribute(modelMergedGeom.getAttribute('position') as unknown)
-		console.log('=== Stretched Tool Geometry (Convex Hull) ===')
-		console.log('Punch direction:', punchDir)
-		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
-		console.log('Model bounds min:', debugModelBounds.min, 'max:', debugModelBounds.max)
-		console.log('Model U range:', minU, 'to', maxU)
-		console.log('Model V range:', minV, 'to', maxV)
-		console.log('Model D range (along punch):', minD, 'to', maxD)
-		console.log('Target D range:', targetMinD, 'to', targetMaxD)
-		console.log('Stretch start/end D:', startD, endD, 'length:', stretchLength)
-		console.log('Projected points count:', projectedPoints2D.length)
-		console.log('Convex hull points count:', hullPoints.length)
-		console.log('Hull points (local to center):', hullPoints.map(p => ({ x: p.x - centerU, y: p.y - centerV })))
-		console.log('Start world:', startWorld)
-
 		const stretchedMesh = new THREE.Mesh(
 			stretchedGeom,
 			new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
@@ -5342,28 +5692,39 @@ export class SceneLayoutPreviewViewer {
 		const { Brush, Evaluator, SUBTRACTION } = csgModule
 		const evaluator = new Evaluator()
 
-		const targetBrush = new Brush() as unknown as { geometry: unknown; material: unknown; markUpdated: () => void }
+		const targetBrush = new Brush() as unknown as {
+			geometry: unknown
+			material: unknown
+			markUpdated: () => void
+		}
 		targetBrush.geometry = targetWorldGeom
 		targetBrush.material = new THREE.MeshBasicMaterial()
 		targetBrush.markUpdated()
 
-		const toolBrush = new Brush() as unknown as { geometry: unknown; material: unknown; markUpdated: () => void }
+		const toolBrush = new Brush() as unknown as {
+			geometry: unknown
+			material: unknown
+			markUpdated: () => void
+		}
 		toolBrush.geometry = stretchedMesh.geometry
 		toolBrush.material = stretchedMesh.material
 		toolBrush.markUpdated()
 
-		const resultBrush = (evaluator as unknown as { evaluate: (a: unknown, b: unknown, c: unknown) => { geometry: Record<string, unknown> } }).evaluate(targetBrush, toolBrush, SUBTRACTION)
+		const resultBrush = (
+			evaluator as unknown as {
+				evaluate: (a: unknown, b: unknown, c: unknown) => { geometry: Record<string, unknown> }
+			}
+		).evaluate(targetBrush, toolBrush, SUBTRACTION)
 		const resultGeom = resultBrush.geometry
 
-		const targetVertexCount = (targetWorldGeom as { getAttribute: (name: string) => { count: number } }).getAttribute('position')
-		const resultVertexCount = (resultGeom as { getAttribute: (name: string) => { count: number } }).getAttribute('position')
-
-		console.log('=== Hole Punch Result ===')
-		console.log('Target vertex count:', targetVertexCount.count)
-		console.log('Result vertex count:', resultVertexCount.count)
-		console.log('CSG changed geometry:', targetVertexCount.count !== resultVertexCount.count)
-
-		;(resultGeom as { applyMatrix4: (m: unknown) => void; computeBoundingBox: () => void; computeBoundingSphere: () => void; computeVertexNormals: () => void }).applyMatrix4(inverseTargetMatrix)
+		;(
+			resultGeom as {
+				applyMatrix4: (m: unknown) => void
+				computeBoundingBox: () => void
+				computeBoundingSphere: () => void
+				computeVertexNormals: () => void
+			}
+		).applyMatrix4(inverseTargetMatrix)
 		;(resultGeom as { computeBoundingBox: () => void }).computeBoundingBox()
 		;(resultGeom as { computeBoundingSphere: () => void }).computeBoundingSphere()
 		;(resultGeom as { computeVertexNormals: () => void }).computeVertexNormals()
@@ -5389,23 +5750,26 @@ export class SceneLayoutPreviewViewer {
 		const geomCloneFn = (resultGeom as Record<string, unknown>).clone as (() => unknown) | undefined
 		const cachedGeom = geomCloneFn ? geomCloneFn.call(resultGeom) : resultGeom
 		const cachedEdgeGeom = newEdgeGeom
-			? ((newEdgeGeom as Record<string, unknown>).clone as (() => unknown) | undefined)?.call(newEdgeGeom) ?? newEdgeGeom
+			? (((newEdgeGeom as Record<string, unknown>).clone as (() => unknown) | undefined)?.call(
+					newEdgeGeom
+				) ?? newEdgeGeom)
 			: null
 		const cacheKey = String(targetItem.id ?? '').trim()
 		this.holedGeometryCache.set(cacheKey, { geometry: cachedGeom, edgeGeometry: cachedEdgeGeom })
-
 		;(modelMergedGeom as { dispose?: () => void }).dispose?.()
 		stretchedGeom.dispose()
 		stretchedMesh.geometry.dispose()
 		;(stretchedMesh.material as { dispose?: () => void }).dispose?.()
-		;((targetBrush as unknown as { geometry?: { dispose?: () => void } }).geometry)?.dispose?.()
-		;((toolBrush as unknown as { geometry?: { dispose?: () => void } }).geometry)?.dispose?.()
+		;(targetBrush as unknown as { geometry?: { dispose?: () => void } }).geometry?.dispose?.()
+		;(toolBrush as unknown as { geometry?: { dispose?: () => void } }).geometry?.dispose?.()
 
 		if (needsDispose && geometrySource) {
-			(geometrySource as unknown as { traverse?: (cb: (child: unknown) => void) => void }).traverse?.((child: unknown) => {
+			;(
+				geometrySource as unknown as { traverse?: (cb: (child: unknown) => void) => void }
+			).traverse?.((child: unknown) => {
 				const childAny = child as Record<string, unknown>
 				if (childAny.isMesh && childAny.geometry) {
-					((childAny.geometry as { dispose?: () => void }).dispose?.())
+					;(childAny.geometry as { dispose?: () => void }).dispose?.()
 				}
 			})
 		}
@@ -5419,14 +5783,18 @@ export class SceneLayoutPreviewViewer {
 	): unknown {
 		const dirVec = new THREE.Vector3(direction.x, direction.y, direction.z).normalize()
 
-		const toolWorldGeom = ((toolMesh as unknown as { geometry: { clone?: () => unknown } }).geometry.clone?.() ?? (toolMesh as unknown as { geometry: unknown }).geometry)
+		const toolWorldGeom =
+			(toolMesh as unknown as { geometry: { clone?: () => unknown } }).geometry.clone?.() ??
+			(toolMesh as unknown as { geometry: unknown }).geometry
 		const toolMatrixWorld = (toolMesh as unknown as { matrixWorld: unknown }).matrixWorld
 		;(toolWorldGeom as { applyMatrix4?: (m: unknown) => void }).applyMatrix4?.(toolMatrixWorld)
 
 		const toolQuat = new THREE.Quaternion()
 		const toolPosVec = new THREE.Vector3()
 		const toolScaleVec = new THREE.Vector3()
-		;(toolMatrixWorld as { decompose: (pos: unknown, quat: unknown, scale: unknown) => void }).decompose(toolPosVec, toolQuat, toolScaleVec)
+		;(
+			toolMatrixWorld as { decompose: (pos: unknown, quat: unknown, scale: unknown) => void }
+		).decompose(toolPosVec, toolQuat, toolScaleVec)
 
 		const toolLocalY = new THREE.Vector3(0, 1, 0).applyQuaternion(toolQuat)
 
@@ -5442,11 +5810,21 @@ export class SceneLayoutPreviewViewer {
 
 		const uAxis = new THREE.Vector3().crossVectors(dirVec, vAxis).normalize()
 
-		const posAttr = (toolWorldGeom as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
-		let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity
+		const posAttr = (
+			toolWorldGeom as unknown as { getAttribute: (name: string) => unknown }
+		).getAttribute('position')
+		let minU = Infinity,
+			maxU = -Infinity,
+			minV = Infinity,
+			maxV = -Infinity
 
 		if (posAttr) {
-			const positions = posAttr as unknown as { count: number; getX: (i: number) => number; getY: (i: number) => number; getZ: (i: number) => number }
+			const positions = posAttr as unknown as {
+				count: number
+				getX: (i: number) => number
+				getY: (i: number) => number
+				getZ: (i: number) => number
+			}
 			for (let i = 0; i < positions.count; i++) {
 				const px = positions.getX(i)
 				const py = positions.getY(i)
@@ -5466,33 +5844,25 @@ export class SceneLayoutPreviewViewer {
 
 		const stretchedBox = new THREE.BoxGeometry(crossWidth, crossHeight, stretchLength)
 
-		;(stretchedBox as { translate?: (x: number, y: number, z: number) => void }).translate?.(0, 0, stretchLength * 0.5)
+		;(stretchedBox as { translate?: (x: number, y: number, z: number) => void }).translate?.(
+			0,
+			0,
+			stretchLength * 0.5
+		)
 
 		const basisMatrix = new THREE.Matrix4()
 		basisMatrix.makeBasis(uAxis, vAxis, dirVec)
 
 		const positionMatrix = new THREE.Matrix4()
-		;(positionMatrix as unknown as { makeTranslation: (x: number, y: number, z: number) => void }).makeTranslation(toolCenter.x, toolCenter.y, toolCenter.z)
+		;(
+			positionMatrix as unknown as { makeTranslation: (x: number, y: number, z: number) => void }
+		).makeTranslation(toolCenter.x, toolCenter.y, toolCenter.z)
 
 		const transformMatrix = new THREE.Matrix4()
 		transformMatrix.multiply(positionMatrix)
 		transformMatrix.multiply(basisMatrix)
 
 		stretchedBox.applyMatrix4(transformMatrix)
-
-		const resultBounds = new THREE.Box3()
-		const resultPosAttr = (stretchedBox as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
-		;(resultBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute(resultPosAttr)
-
-		console.log('=== Stretched Placeholder Debug ===')
-		console.log('Direction:', dirVec)
-		console.log('Tool center:', toolCenter)
-		console.log('uAxis:', uAxis, 'vAxis:', vAxis)
-		console.log('Cross width/height:', crossWidth, crossHeight)
-		console.log('Stretch length:', stretchLength)
-		console.log('Result bounds min:', resultBounds.min)
-		console.log('Result bounds max:', resultBounds.max)
-
 		;(toolWorldGeom as { dispose?: () => void }).dispose?.()
 
 		return stretchedBox
@@ -5504,17 +5874,18 @@ export class SceneLayoutPreviewViewer {
 		distance: number,
 		localCenter: { x: number; y: number; z: number }
 	): unknown {
-		console.log('=== Stretched Tool Geometry Debug ===')
-		console.log('Direction:', direction)
-		console.log('Distance:', distance)
-		console.log('Local center:', localCenter)
-
 		const mergedGeometries: unknown[] = []
 
-		;(toolModel as unknown as { updateMatrixWorld: (force: boolean) => void }).updateMatrixWorld(true)
+		;(toolModel as unknown as { updateMatrixWorld: (force: boolean) => void }).updateMatrixWorld(
+			true
+		)
 
 		toolModel.traverse((child: Object3Dlike) => {
-			const childMesh = child as unknown as { isMesh?: boolean; geometry?: unknown; matrixWorld?: unknown }
+			const childMesh = child as unknown as {
+				isMesh?: boolean
+				geometry?: unknown
+				matrixWorld?: unknown
+			}
 			if (childMesh.isMesh && childMesh.geometry) {
 				const geom = (childMesh.geometry as { clone?: () => unknown }).clone?.()
 				if (!geom) return
@@ -5525,35 +5896,27 @@ export class SceneLayoutPreviewViewer {
 			}
 		})
 
-		console.log('Merged geometries count:', mergedGeometries.length)
-
 		if (mergedGeometries.length === 0) {
-			console.log('No geometries found, returning fallback box')
 			return new THREE.BoxGeometry(1, 1, 1)
 		}
 
 		const merged = this.mergeGeometries(mergedGeometries as unknown[])
-		const posAttr = (merged as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position')
+		const posAttr = (merged as unknown as { getAttribute: (name: string) => unknown }).getAttribute(
+			'position'
+		)
 		if (!posAttr) {
-			console.log('No position attribute, returning fallback box')
 			return new THREE.BoxGeometry(1, 1, 1)
 		}
 
 		const dirVec = new THREE.Vector3(direction.x, direction.y, direction.z).normalize()
 
 		const geomBounds = new THREE.Box3()
-		;(geomBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute(posAttr)
-
-		const geomCenter = new THREE.Vector3() as unknown as Vector3Like
-		;(geomBounds as unknown as { getCenter: (target: Vector3Like) => void }).getCenter(geomCenter)
+		;(
+			geomBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }
+		).setFromBufferAttribute(posAttr)
 
 		const geomSize = new THREE.Vector3() as unknown as Vector3Like
 		;(geomBounds as unknown as { getSize: (target: Vector3Like) => void }).getSize(geomSize)
-
-		console.log('Model bounds min:', (geomBounds as unknown as { min: Vector3Like }).min)
-		console.log('Model bounds max:', (geomBounds as unknown as { max: Vector3Like }).max)
-		console.log('Model center:', geomCenter)
-		console.log('Model size:', geomSize)
 
 		const crossWidth = Math.max(0.1, geomSize.x)
 		const crossHeight = Math.max(0.1, geomSize.y)
@@ -5563,26 +5926,23 @@ export class SceneLayoutPreviewViewer {
 
 		const zAxis = new THREE.Vector3(0, 0, 1)
 		const quaternion = new THREE.Quaternion()
-		;(quaternion as unknown as { setFromUnitVectors: (a: unknown, b: unknown) => void }).setFromUnitVectors(zAxis, dirVec)
+		;(
+			quaternion as unknown as { setFromUnitVectors: (a: unknown, b: unknown) => void }
+		).setFromUnitVectors(zAxis, dirVec)
 
 		const rotationMatrix = new THREE.Matrix4()
-		;(rotationMatrix as unknown as { makeRotationFromQuaternion: (q: unknown) => void }).makeRotationFromQuaternion(quaternion)
-
+		;(
+			rotationMatrix as unknown as { makeRotationFromQuaternion: (q: unknown) => void }
+		).makeRotationFromQuaternion(quaternion)
 		;(stretchedBox as { applyMatrix4?: (m: unknown) => void }).applyMatrix4?.(rotationMatrix)
 
 		const offsetVec = new THREE.Vector3(dirVec.x, dirVec.y, dirVec.z) as unknown as Vector3Like
 		offsetVec.multiplyScalar(stretchLength * 0.5)
-
 		;(stretchedBox as { translate?: (x: number, y: number, z: number) => void }).translate?.(
 			localCenter.x + offsetVec.x,
 			localCenter.y + offsetVec.y,
 			localCenter.z + offsetVec.z
 		)
-
-		const stretchedBounds = new THREE.Box3()
-		;(stretchedBounds as unknown as { setFromBufferAttribute: (attr: unknown) => void }).setFromBufferAttribute((stretchedBox as unknown as { getAttribute: (name: string) => unknown }).getAttribute('position'))
-		console.log('Stretched box bounds min:', (stretchedBounds as unknown as { min: Vector3Like }).min)
-		console.log('Stretched box bounds max:', (stretchedBounds as unknown as { max: Vector3Like }).max)
 
 		return stretchedBox
 	}
@@ -5603,25 +5963,31 @@ export class SceneLayoutPreviewViewer {
 				getAttribute?: (name: string) => unknown
 				index?: unknown
 			}
-			const posAttr = geomAny.getAttribute?.('position') as {
-				count: number
-				getX: (i: number) => number
-				getY: (i: number) => number
-				getZ: (i: number) => number
-			} | undefined
+			const posAttr = geomAny.getAttribute?.('position') as
+				| {
+						count: number
+						getX: (i: number) => number
+						getY: (i: number) => number
+						getZ: (i: number) => number
+				  }
+				| undefined
 			if (!posAttr) continue
 
-			const normAttr = geomAny.getAttribute?.('normal') as {
-				count: number
-				getX: (i: number) => number
-				getY: (i: number) => number
-				getZ: (i: number) => number
-			} | undefined
-			const uvAttr = geomAny.getAttribute?.('uv') as {
-				count: number
-				getX: (i: number) => number
-				getY: (i: number) => number
-			} | undefined
+			const normAttr = geomAny.getAttribute?.('normal') as
+				| {
+						count: number
+						getX: (i: number) => number
+						getY: (i: number) => number
+						getZ: (i: number) => number
+				  }
+				| undefined
+			const uvAttr = geomAny.getAttribute?.('uv') as
+				| {
+						count: number
+						getX: (i: number) => number
+						getY: (i: number) => number
+				  }
+				| undefined
 
 			for (let i = 0; i < posAttr.count; i++) {
 				positions.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i))
@@ -5633,10 +5999,12 @@ export class SceneLayoutPreviewViewer {
 				}
 			}
 
-			const indexAttr = geomAny.index as {
-				count: number
-				getX: (i: number) => number
-			} | undefined
+			const indexAttr = geomAny.index as
+				| {
+						count: number
+						getX: (i: number) => number
+				  }
+				| undefined
 			if (indexAttr) {
 				for (let i = 0; i < indexAttr.count; i++) {
 					indices.push(indexAttr.getX(i) + indexOffset)
@@ -5674,17 +6042,20 @@ export class SceneLayoutPreviewViewer {
 	private sanitizeGeometry(geom: Record<string, unknown>): Record<string, unknown> {
 		try {
 			const getAttributeFn = geom.getAttribute as ((name: string) => unknown) | undefined
-			const posAttr = getAttributeFn?.call(geom, 'position') as {
-				count: number
-				getX: (i: number) => number
-				getY: (i: number) => number
-				getZ: (i: number) => number
-				setXYZ: (i: number, x: number, y: number, z: number) => void
-			} | undefined
+			const posAttr = getAttributeFn?.call(geom, 'position') as
+				| {
+						count: number
+						getX: (i: number) => number
+						getY: (i: number) => number
+						getZ: (i: number) => number
+						setXYZ: (i: number, x: number, y: number, z: number) => void
+				  }
+				| undefined
 			if (!posAttr || !posAttr.count) return geom
 
 			let badVertices = 0
-			const isFiniteNumber = (v: number) => typeof v === 'number' && Number.isFinite(v) && !Number.isNaN(v)
+			const isFiniteNumber = (v: number) =>
+				typeof v === 'number' && Number.isFinite(v) && !Number.isNaN(v)
 			for (let i = 0; i < posAttr.count; i++) {
 				const x = posAttr.getX(i)
 				const y = posAttr.getY(i)
@@ -5705,7 +6076,11 @@ export class SceneLayoutPreviewViewer {
 			const computeBoundingSphere = geom.computeBoundingSphere as (() => void) | undefined
 			computeBoundingSphere?.call(geom)
 		} catch (err) {
-			this.logExport(t('aiworkflow.scenePreview.exportLog.vertexCleanupError', { error: err instanceof Error ? err.message : String(err) }))
+			this.logExport(
+				t('aiworkflow.scenePreview.exportLog.vertexCleanupError', {
+					error: err instanceof Error ? err.message : String(err)
+				})
+			)
 		}
 		return geom
 	}
@@ -5740,7 +6115,9 @@ export class SceneLayoutPreviewViewer {
 			try {
 				const cachedGeom = cachedEntry.geometry
 				const cachedVertexCount = getPositionCount(cachedGeom as unknown as Record<string, unknown>)
-				this.logExport(t('aiworkflow.scenePreview.exportLog.cachedVertexCount', { count: cachedVertexCount }))
+				this.logExport(
+					t('aiworkflow.scenePreview.exportLog.cachedVertexCount', { count: cachedVertexCount })
+				)
 				if (cachedVertexCount > 24) {
 					sourceGeom = cachedGeom
 					this.logExport(t('aiworkflow.scenePreview.exportLog.usingCachedCopy'))
@@ -5754,7 +6131,10 @@ export class SceneLayoutPreviewViewer {
 		let exportGeometry: Record<string, unknown>
 		try {
 			const newGeom = new THREE.BufferGeometry() as unknown as Record<string, unknown>
-			const sourceAny = sourceGeom as unknown as { attributes: Record<string, { array: Float32Array; itemSize: number; normalized: boolean }>; index?: { array: Uint16Array | Uint32Array } | null }
+			const sourceAny = sourceGeom as unknown as {
+				attributes: Record<string, { array: Float32Array; itemSize: number; normalized: boolean }>
+				index?: { array: Uint16Array | Uint32Array } | null
+			}
 			const srcAttrs = sourceAny.attributes
 			const srcIndex = sourceAny.index
 			for (const attrName in srcAttrs) {
@@ -5766,7 +6146,9 @@ export class SceneLayoutPreviewViewer {
 				setAttrFn.call(newGeom, attrName, newAttr)
 			}
 			if (srcIndex) {
-				const IndexArrayCtor = srcIndex.array.constructor as Uint16ArrayConstructor | Uint32ArrayConstructor
+				const IndexArrayCtor = srcIndex.array.constructor as
+					| Uint16ArrayConstructor
+					| Uint32ArrayConstructor
 				const indexArray = new IndexArrayCtor(srcIndex.array.length)
 				indexArray.set(srcIndex.array)
 				const newIndexAttr = new THREE.BufferAttribute(indexArray, 1)
@@ -5775,12 +6157,22 @@ export class SceneLayoutPreviewViewer {
 			}
 			exportGeometry = newGeom
 		} catch (err) {
-			this.logExport(t('aiworkflow.scenePreview.exportLog.copyFailed', { error: err instanceof Error ? err.message : String(err) }))
+			this.logExport(
+				t('aiworkflow.scenePreview.exportLog.copyFailed', {
+					error: err instanceof Error ? err.message : String(err)
+				})
+			)
 			const cloneFn = (sourceGeom as Record<string, unknown>).clone as (() => unknown) | undefined
-			exportGeometry = (cloneFn?.call(sourceGeom) as Record<string, unknown>) ?? (sourceGeom as Record<string, unknown>)
+			exportGeometry =
+				(cloneFn?.call(sourceGeom) as Record<string, unknown>) ??
+				(sourceGeom as Record<string, unknown>)
 		}
 
-		this.logExport(t('aiworkflow.scenePreview.exportLog.exportVertexCount', { count: getPositionCount(exportGeometry) }))
+		this.logExport(
+			t('aiworkflow.scenePreview.exportLog.exportVertexCount', {
+				count: getPositionCount(exportGeometry)
+			})
+		)
 
 		exportGeometry = this.sanitizeGeometry(exportGeometry)
 
@@ -5791,30 +6183,50 @@ export class SceneLayoutPreviewViewer {
 		this.logExport(t('aiworkflow.scenePreview.exportLog.computingBBox'))
 		const computeBBoxFn = exportGeometry.computeBoundingBox as (() => void) | undefined
 		computeBBoxFn?.call(exportGeometry)
-		const bbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		const bbox = exportGeometry.boundingBox as
+			| { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }
+			| null
+			| undefined
 		if (!bbox || !bbox.min || !bbox.max) {
 			this.logExport(t('aiworkflow.scenePreview.exportLog.bboxFailed'))
 			return null
 		}
 
-		this.logExport(t('aiworkflow.scenePreview.exportLog.bboxResult', {
-			x1: bbox.min.x.toFixed(2), y1: bbox.min.y.toFixed(2), z1: bbox.min.z.toFixed(2),
-			x2: bbox.max.x.toFixed(2), y2: bbox.max.y.toFixed(2), z2: bbox.max.z.toFixed(2)
-		}))
+		this.logExport(
+			t('aiworkflow.scenePreview.exportLog.bboxResult', {
+				x1: bbox.min.x.toFixed(2),
+				y1: bbox.min.y.toFixed(2),
+				z1: bbox.min.z.toFixed(2),
+				x2: bbox.max.x.toFixed(2),
+				y2: bbox.max.y.toFixed(2),
+				z2: bbox.max.z.toFixed(2)
+			})
+		)
 
 		const centerX = (bbox.min.x + bbox.max.x) / 2
 		const centerZ = (bbox.min.z + bbox.max.z) / 2
 		this.logExport(t('aiworkflow.scenePreview.exportLog.translatingOrigin'))
-		const translateFn = exportGeometry.translate as ((x: number, y: number, z: number) => void) | undefined
+		const translateFn = exportGeometry.translate as
+			| ((x: number, y: number, z: number) => void)
+			| undefined
 		translateFn?.call(exportGeometry, -centerX, -bbox.min.y, -centerZ)
 		computeBBoxFn?.call(exportGeometry)
 
-		const finalBbox = exportGeometry.boundingBox as { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null | undefined
+		const finalBbox = exportGeometry.boundingBox as
+			| { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }
+			| null
+			| undefined
 		if (finalBbox?.min && finalBbox?.max) {
-			this.logExport(t('aiworkflow.scenePreview.exportLog.translatedBBox', {
-				x1: finalBbox.min.x.toFixed(2), y1: finalBbox.min.y.toFixed(2), z1: finalBbox.min.z.toFixed(2),
-				x2: finalBbox.max.x.toFixed(2), y2: finalBbox.max.y.toFixed(2), z2: finalBbox.max.z.toFixed(2)
-			}))
+			this.logExport(
+				t('aiworkflow.scenePreview.exportLog.translatedBBox', {
+					x1: finalBbox.min.x.toFixed(2),
+					y1: finalBbox.min.y.toFixed(2),
+					z1: finalBbox.min.z.toFixed(2),
+					x2: finalBbox.max.x.toFixed(2),
+					y2: finalBbox.max.y.toFixed(2),
+					z2: finalBbox.max.z.toFixed(2)
+				})
+			)
 		}
 
 		this.logExport(t('aiworkflow.scenePreview.exportLog.preparingMaterials'))
@@ -5829,7 +6241,10 @@ export class SceneLayoutPreviewViewer {
 
 		this.logExport(t('aiworkflow.scenePreview.exportLog.creatingMesh'))
 		const exportMesh = new THREE.Mesh(exportGeometry as unknown, exportMaterial)
-		const meshName = String(name || (mesh.userData as Record<string, unknown>)?.label || itemId || 'placeholder').trim() || 'placeholder'
+		const meshName =
+			String(
+				name || (mesh.userData as Record<string, unknown>)?.label || itemId || 'placeholder'
+			).trim() || 'placeholder'
 		exportMesh.name = meshName
 		exportMesh.position.set(0, 0, 0)
 		exportMesh.rotation.set(0, 0, 0)
@@ -5851,22 +6266,33 @@ export class SceneLayoutPreviewViewer {
 					root as unknown,
 					(result: unknown) => {
 						if (result instanceof ArrayBuffer) {
-							this.logExport(t('aiworkflow.scenePreview.exportLog.glbSuccess', { size: (result.byteLength / 1024).toFixed(1) }))
+							this.logExport(
+								t('aiworkflow.scenePreview.exportLog.glbSuccess', {
+									size: (result.byteLength / 1024).toFixed(1)
+								})
+							)
 							resolve(result)
 							return
 						}
 						reject(new Error('GLB export returned non-binary payload'))
 					},
-					(error: unknown) => reject(error instanceof Error ? error : new Error(String(error ?? 'GLB export failed'))),
+					(error: unknown) =>
+						reject(
+							error instanceof Error ? error : new Error(String(error ?? 'GLB export failed'))
+						),
 					{ binary: true, onlyVisible: true }
 				)
 			})
 			return arrayBuffer
 		} catch (err) {
-			this.logExport(t('aiworkflow.scenePreview.exportLog.glbFailed', { error: err instanceof Error ? err.message : String(err) }))
+			this.logExport(
+				t('aiworkflow.scenePreview.exportLog.glbFailed', {
+					error: err instanceof Error ? err.message : String(err)
+				})
+			)
 			throw err
 		} finally {
-			(exportMaterial as unknown as { dispose: () => void }).dispose()
+			;(exportMaterial as unknown as { dispose: () => void }).dispose()
 		}
 	}
 
@@ -5874,13 +6300,36 @@ export class SceneLayoutPreviewViewer {
 		if (this.disposed) return
 		this.disposed = true
 		this.stopIdleLoop()
+		// dispose 时立刻清理节流定时器，并强制最后通知一次（如果有 pending），
+		// 保证组件卸载瞬间的最后一个视角也能被外部缓存捕获
+		this.clearViewStateThrottle()
+		if (this.onViewStateChange) {
+			const finalState = this.getViewState()
+			if (finalState) this.onViewStateChange(finalState)
+		}
 		this.pendingBindingRevision += 1
 		this.pendingBindingSync = null
 		if (this.raf) cancelAnimationFrame(this.raf)
-		this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
-		this.canvas.removeEventListener('pointermove', this.handlePointerMove)
-		this.canvas.removeEventListener('wheel', this.handleWheel)
+		/**
+		 * [BUGFIX 2026-07] dispose 时强制收尾 OrbitControls 输入态（防止组件卸载瞬间它仍 pending
+		 * 指针事件而导致下一次挂载时出现 "没按也转" 的状态）。
+		 */
+		try {
+			this.handleWindowForceEndOrbit(undefined, true)
+		} catch (_err) {
+			/* ignore */
+		}
+		this.canvas.removeEventListener('pointerdown', this.handlePointerDown, true)
+		this.canvas.removeEventListener('pointermove', this.handlePointerMove, true)
+		this.canvas.removeEventListener('wheel', this.handleWheel, true)
 		this.canvas.removeEventListener('keydown', this.handleKeyDown)
+		window.removeEventListener('pointerup', (e) => this.handleWindowForceEndOrbit(e, false), true)
+		window.removeEventListener(
+			'pointercancel',
+			(e) => this.handleWindowForceEndOrbit(e, true),
+			true
+		)
+		window.removeEventListener('blur', () => this.handleWindowForceEndOrbit(undefined, true), true)
 		this.resizeObserver?.disconnect()
 		for (const cached of this.holedGeometryCache.values()) {
 			const geom = cached.geometry as { dispose?: () => void } | undefined

@@ -40,7 +40,7 @@ export function createComfyuiJobsRepo() {
 		'INSERT INTO comfyui_jobs (id, project_id, status, progress, outputs, error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
 	)
 	const updateStmt = db.prepare(
-		"UPDATE comfyui_jobs SET status = ?, progress = ?, outputs = ?, error = ?, updated_at = ? WHERE id = ?"
+		'UPDATE comfyui_jobs SET status = ?, progress = ?, outputs = ?, error = ?, updated_at = ? WHERE id = ?'
 	)
 	const deleteStmt = db.prepare('DELETE FROM comfyui_jobs WHERE id = ?')
 

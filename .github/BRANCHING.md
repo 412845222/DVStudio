@@ -12,14 +12,14 @@ release/*     ← 发布准备分支，从 dev 创建
 
 ## 分支命名规范
 
-| 前缀 | 用途 | 示例 |
-|------|------|------|
-| `feature/` | 新功能开发 | `feature/add-ai-assistant` |
-| `hotfix/` | 紧急bug修复 | `hotfix/fix-crash-on-startup` |
-| `release/` | 发布准备 | `release/v1.0.0` |
-| `refactor/` | 代码重构 | `refactor/improve-performance` |
-| `docs/` | 文档更新 | `docs/update-readme` |
-| `test/` | 测试相关 | `test/add-unit-tests` |
+| 前缀        | 用途        | 示例                           |
+| ----------- | ----------- | ------------------------------ |
+| `feature/`  | 新功能开发  | `feature/add-ai-assistant`     |
+| `hotfix/`   | 紧急bug修复 | `hotfix/fix-crash-on-startup`  |
+| `release/`  | 发布准备    | `release/v1.0.0`               |
+| `refactor/` | 代码重构    | `refactor/improve-performance` |
+| `docs/`     | 文档更新    | `docs/update-readme`           |
+| `test/`     | 测试相关    | `test/add-unit-tests`          |
 
 ## 工作流程
 
@@ -73,12 +73,12 @@ git push origin hotfix/fix-urgent-bug
 
 ## 分支保护规则
 
-| 分支 | 保护策略 |
-|------|---------|
-| `main` | ✅ 禁止直接推送，需 PR 合并 |
-| `dev` | ✅ 禁止直接推送，需 PR 合并 |
-| `feature/*` | ❌ 无保护，可直接推送 |
-| `hotfix/*` | ❌ 无保护，可直接推送 |
+| 分支        | 保护策略                    |
+| ----------- | --------------------------- |
+| `main`      | ✅ 禁止直接推送，需 PR 合并 |
+| `dev`       | ✅ 禁止直接推送，需 PR 合并 |
+| `feature/*` | ❌ 无保护，可直接推送       |
+| `hotfix/*`  | ❌ 无保护，可直接推送       |
 
 ## Commit 规范
 
@@ -94,18 +94,18 @@ git push origin hotfix/fix-urgent-bug
 
 ### Type 类型
 
-| 类型 | 说明 |
-|------|------|
-| `feat` | 新功能 |
-| `fix` | bug修复 |
-| `docs` | 文档更新 |
-| `style` | 代码格式（不影响逻辑） |
+| 类型       | 说明                            |
+| ---------- | ------------------------------- |
+| `feat`     | 新功能                          |
+| `fix`      | bug修复                         |
+| `docs`     | 文档更新                        |
+| `style`    | 代码格式（不影响逻辑）          |
 | `refactor` | 重构（既不新增功能也不修复bug） |
-| `perf` | 性能优化 |
-| `test` | 测试相关 |
-| `build` | 构建/打包相关 |
-| `ci` | CI/CD配置 |
-| `chore` | 其他杂项 |
+| `perf`     | 性能优化                        |
+| `test`     | 测试相关                        |
+| `build`    | 构建/打包相关                   |
+| `ci`       | CI/CD配置                       |
+| `chore`    | 其他杂项                        |
 
 ## PR 规范
 
@@ -146,11 +146,11 @@ git push origin hotfix/fix-urgent-bug
 
 ## 标签管理
 
-| 标签格式 | 用途 |
-|---------|------|
-| `vX.Y.Z` | 正式版本发布 |
-| `vX.Y.Z-beta.N` | 测试版本 |
-| `vX.Y.Z-rc.N` | 候选版本 |
+| 标签格式        | 用途         |
+| --------------- | ------------ |
+| `vX.Y.Z`        | 正式版本发布 |
+| `vX.Y.Z-beta.N` | 测试版本     |
+| `vX.Y.Z-rc.N`   | 候选版本     |
 
 ## 冲突处理
 

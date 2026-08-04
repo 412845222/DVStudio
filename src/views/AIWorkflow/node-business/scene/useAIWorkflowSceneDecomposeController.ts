@@ -1,9 +1,14 @@
 import { nextTick } from 'vue'
-import type { WorkflowImageCrop, WorkflowNode, WorkflowSceneDecomposeOutput } from '../../../../aiworkflow/types'
+import type {
+	WorkflowImageCrop,
+	WorkflowNode,
+	WorkflowSceneDecomposeOutput
+} from '../../../../aiworkflow/types'
 import {
 	buildSceneDecomposeDescription,
 	buildSceneDecomposePromptVisualDetails,
 	extractSceneDecomposeItems,
+	hasAnySceneDecomposeCrop,
 	hasValidSceneDecomposeImageRect,
 	hasValidSceneDecomposePixelRect,
 	inferSceneDecomposeCategory,
@@ -66,7 +71,10 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 		if (!inputJson) {
 			options.store.commit('setNodeSceneDecomposeSettings', {
 				nodeId,
-				sceneDecomposeSettings: { status: 'error', message: t('aiworkflow.runtime.decomposeMissingJson') }
+				sceneDecomposeSettings: {
+					status: 'error',
+					message: t('aiworkflow.runtime.decomposeMissingJson')
+				}
 			})
 			options.pushToast(t('aiworkflow.runtime.decomposeMissingJson'), 'warn')
 			return
@@ -74,7 +82,10 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 		if (!imageInputs.length) {
 			options.store.commit('setNodeSceneDecomposeSettings', {
 				nodeId,
-				sceneDecomposeSettings: { status: 'error', message: t('aiworkflow.runtime.decomposeMissingImage') }
+				sceneDecomposeSettings: {
+					status: 'error',
+					message: t('aiworkflow.runtime.decomposeMissingImage')
+				}
 			})
 			options.pushToast(t('aiworkflow.runtime.decomposeMissingImage'), 'warn')
 			return
@@ -105,7 +116,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					}
 				})
 				options.pushToast(
-					t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsFound') }),
+					t('aiworkflow.runtime.decomposeFailed', {
+						error: t('aiworkflow.runtime.decomposeNoItemsFound')
+					}),
 					'warn'
 				)
 				return
@@ -128,7 +141,12 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 						fallbackCount: 0
 					}
 				})
-				options.pushToast(t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsToProcess') }), 'warn')
+				options.pushToast(
+					t('aiworkflow.runtime.decomposeFailed', {
+						error: t('aiworkflow.runtime.decomposeNoItemsToProcess')
+					}),
+					'warn'
+				)
 				return
 			}
 
@@ -136,7 +154,10 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				nodeId,
 				sceneDecomposeSettings: {
 					status: 'running',
-					message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: '0', total: String(totalTasks) }),
+					message: t('aiworkflow.runtime.decomposeProcessingProgress', {
+						completed: '0',
+						total: String(totalTasks)
+					}),
 					currentStep: t('aiworkflow.runtime.decomposePreparingCrop'),
 					progress: 0,
 					totalTasks,
@@ -169,12 +190,44 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				const objectName = inferSceneDecomposeObjectName(item, index)
 				const objectCategory = inferSceneDecomposeCategory(item)
 				const objectMaterial = String(item?.material ?? '').trim()
-				const taskLabel = t('aiworkflow.runtime.decomposeTaskLabel', { name: objectName, index: String(sourceImageIndex) })
+				const taskLabel = t('aiworkflow.runtime.decomposeTaskLabel', {
+					name: objectName,
+					index: String(sourceImageIndex)
+				})
+
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} keys:`,
+					Object.keys(item as Record<string, unknown>)
+				)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} imageRect=`,
+					item?.imageRect,
+					'imageRectPixels=',
+					item?.imageRectPixels
+				)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} bbox=`,
+					item?.bbox,
+					'bbox_2d=',
+					item?.bbox_2d,
+					'box=',
+					item?.box,
+					'rect=',
+					item?.rect
+				)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} sourceImageIndex=${sourceImageIndex}, source=`,
+					source?.url ? `${String(source.url).slice(0, 80)}...` : 'NO URL'
+				)
+
 				options.store.commit('setNodeSceneDecomposeSettings', {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'running',
-						message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: String(completedTasks), total: String(totalTasks) }),
+						message: t('aiworkflow.runtime.decomposeProcessingProgress', {
+							completed: String(completedTasks),
+							total: String(totalTasks)
+						}),
 						currentStep: t('aiworkflow.runtime.decomposeCroppingItem', { label: taskLabel }),
 						progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
 						totalTasks,
@@ -193,18 +246,38 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					continue
 				}
 
-				const hasExplicitCropInfo =
-					hasValidSceneDecomposeImageRect(item?.imageRect) ||
-					hasValidSceneDecomposePixelRect(item?.imageRectPixels)
+				const hasExplicitCropInfo = hasAnySceneDecomposeCrop(item)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} hasExplicitCropInfo=`,
+					hasExplicitCropInfo
+				)
 				const normalizedSource = await ensureSceneDecomposeSourceDimensions(source)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} normalizedSource dimensions:`,
+					normalizedSource.width,
+					'x',
+					normalizedSource.height
+				)
 
 				const cropInfo = normalizeSceneDecomposeCrop(
 					item?.imageRect,
 					item?.imageRectPixels,
 					normalizedSource,
 					{
-						allowFullImageFallback: !hasExplicitCropInfo
+						allowFullImageFallback: !hasExplicitCropInfo,
+						item
 					}
+				)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} cropInfo:`,
+					cropInfo
+						? {
+								cropMode: cropInfo.cropMode,
+								crop: cropInfo.crop,
+								outputW: cropInfo.outputWidth,
+								outputH: cropInfo.outputHeight
+							}
+						: 'NULL'
 				)
 				if (!cropInfo) {
 					skippedCount += 1
@@ -225,6 +298,19 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 
 				const description = buildSceneDecomposeDescription(item, objectName)
 				const visualDetails = buildSceneDecomposePromptVisualDetails(item, objectName)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} calling buildImageTransferFileFromCrop with sourceUrl=`,
+					source.url,
+					'crop=',
+					cropInfo.crop,
+					'enforcedCrop=',
+					{
+						sx: enforced.sourceCrop.sx,
+						sy: enforced.sourceCrop.sy,
+						sw: enforced.sourceCrop.sw,
+						sh: enforced.sourceCrop.sh
+					}
+				)
 				const transferFile = await options.buildImageTransferFileFromCrop({
 					sourceUrl: source.url,
 					sourceName: objectName,
@@ -236,6 +322,10 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					sourceHeight: srcH,
 					enforceLandscape: true
 				})
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} buildImageTransferFileFromCrop result:`,
+					transferFile ? `File size=${transferFile.size} name=${transferFile.name}` : 'NULL'
+				)
 				if (!transferFile) {
 					skippedCount += 1
 					completedTasks += 1
@@ -250,6 +340,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				}
 
 				const generated = options.addGeneratedImageResource(transferFile)
+				console.log(
+					`[SCENE-DECOMPOSE CROP] item#${index} generated resource: resourceId=${generated.resourceId}, blobUrl=${generated.url?.slice(0, 60)}...`
+				)
 				generatedFiles.set(outputId, transferFile)
 				if (cropInfo.cropMode === 'fallback') fallbackCount += 1
 				else croppedCount += 1
@@ -282,7 +375,10 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 					nodeId,
 					sceneDecomposeSettings: {
 						status: 'running',
-						message: t('aiworkflow.runtime.decomposeProcessingProgress', { completed: String(completedTasks), total: String(totalTasks) }),
+						message: t('aiworkflow.runtime.decomposeProcessingProgress', {
+							completed: String(completedTasks),
+							total: String(totalTasks)
+						}),
 						currentStep: t('aiworkflow.runtime.decomposeCompletedItem', { label: taskLabel }),
 						progress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 100,
 						totalTasks,
@@ -311,7 +407,12 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 						fallbackCount
 					}
 				})
-				options.pushToast(t('aiworkflow.runtime.decomposeFailed', { error: t('aiworkflow.runtime.decomposeNoItemsToGenerate') }), 'warn')
+				options.pushToast(
+					t('aiworkflow.runtime.decomposeFailed', {
+						error: t('aiworkflow.runtime.decomposeNoItemsToGenerate')
+					}),
+					'warn'
+				)
 				return
 			}
 
@@ -321,7 +422,9 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 				nodeId,
 				sceneDecomposeSettings: {
 					status: 'running',
-					message: t('aiworkflow.runtime.decomposeGeneratingNodes', { count: String(outputs.length) }),
+					message: t('aiworkflow.runtime.decomposeGeneratingNodes', {
+						count: String(outputs.length)
+					}),
 					currentStep: t('aiworkflow.runtime.decomposePreparingAutowire'),
 					progress: 100,
 					totalTasks,
@@ -363,7 +466,12 @@ export const useAIWorkflowSceneDecomposeController = (options: {
 							cropped: String(croppedCount),
 							fallback: String(fallbackCount),
 							nodes: String(createdNodeIds.length),
-							layoutMsg: sceneLayoutConnections > 0 ? t('aiworkflow.runtime.decomposeLayoutConnectionMessage', { count: String(sceneLayoutConnections) }) : ''
+							layoutMsg:
+								sceneLayoutConnections > 0
+									? t('aiworkflow.runtime.decomposeLayoutConnectionMessage', {
+											count: String(sceneLayoutConnections)
+										})
+									: ''
 						})
 
 			options.store.commit('setNodeSceneDecomposeSettings', {

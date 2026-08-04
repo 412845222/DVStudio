@@ -14,6 +14,6 @@ export function useAboutDialog() {
 	return {
 		aboutOpen,
 		openAboutDialog,
-		closeAboutDialog,
+		closeAboutDialog
 	}
 }

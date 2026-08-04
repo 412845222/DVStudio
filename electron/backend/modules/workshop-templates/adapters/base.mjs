@@ -36,11 +36,17 @@ export class UgcAdapter {
 		this._provider = options.provider || null
 	}
 
-	getPlatformId() { return 'base' }
+	getPlatformId() {
+		return 'base'
+	}
 
-	getPlatformName() { return 'Base' }
+	getPlatformName() {
+		return 'Base'
+	}
 
-	isAvailable() { return false }
+	isAvailable() {
+		return false
+	}
 
 	async queryAll(options = {}) {
 		return { ok: false, items: [], totalResults: 0, errMsg: 'Not implemented' }

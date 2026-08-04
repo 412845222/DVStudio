@@ -19,6 +19,7 @@
 				@blur="onBlur"
 				@mousedown="onEditorMouseDown"
 				@mouseup="onEditorMouseUp"
+				@paste="onPaste"
 			></div>
 			<div v-if="isEmpty" class="bp-node-chat-placeholder">{{ resolvedPlaceholder }}</div>
 		</div>
@@ -31,14 +32,13 @@
 				引用 ·
 				<kbd>Enter</kbd>
 				发送 ·
-				<kbd>Shift</kbd>+<kbd>Enter</kbd>
+				<kbd>Shift</kbd>
+				+
+				<kbd>Enter</kbd>
 				换行
 			</span>
 		</div>
-		<div
-			class="bp-node-chat-resize-handle"
-			@mousedown="onResizeStart"
-		></div>
+		<div class="bp-node-chat-resize-handle" @mousedown="onResizeStart"></div>
 		<NodeMentionPopup
 			:visible="isMentionOpen"
 			:items="filteredItems"
@@ -55,8 +55,28 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '../../../i18n'
 import NodeMentionPopup from './components/NodeMentionPopup.vue'
 import type { InputParamPreviewRef } from './index'
+import {
+	areSelectedRefsEqual,
+	CHIP_MARKER,
+	matchSelectedRefsWithSerializedDraft,
+	type StoredNodeChatRef
+} from './chatStateUtils'
 
 const { t } = useI18n()
+
+const calcDisplayLength = (serialized: string, refs: InputParamPreviewRef[]): number => {
+	const parts = serialized.split(CHIP_MARKER)
+	let len = 0
+	let refIdx = 0
+	for (let i = 0; i < parts.length; i++) {
+		len += parts[i].length
+		if (i < parts.length - 1) {
+			const ref = refs[refIdx++]
+			if (ref) len += (ref.label || '').length
+		}
+	}
+	return len
+}
 
 const props = withDefaults(
 	defineProps<{
@@ -89,7 +109,9 @@ const innerRef = ref<HTMLDivElement | null>(null)
 const editorRef = ref<HTMLDivElement | null>(null)
 const focused = ref(false)
 const isDragging = ref(false)
-const isEmpty = ref(true)
+const initialText = (props.modelValue ?? '').replace(new RegExp(CHIP_MARKER, 'g'), '')
+const isEmpty = ref(initialText.trim() === '' && (props.selectedReferences?.length ?? 0) === 0)
+const currentSerializedText = ref(props.modelValue ?? '')
 const currentHeight = ref(120)
 const MIN_HEIGHT = 100
 const MAX_HEIGHT = 400
@@ -103,22 +125,32 @@ const isMentionOpen = ref(false)
 const mentionFilter = ref('')
 const selectedMentionIndex = ref(0)
 
-const charCount = computed(() => props.modelValue.length)
+const charCount = ref(calcDisplayLength(props.modelValue ?? '', props.selectedReferences ?? []))
 const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
-const selectedRefs = computed(() => props.selectedReferences ?? [])
+const selectedRefs = ref<InputParamPreviewRef[]>([...(props.selectedReferences ?? [])])
+
+const syncSelectedRefsFromProps = () => {
+	// 关键修复：不能直接把 props.selectedReferences 复制过来 —— 父层（Vuex Store / Dialog props）
+	// 可能下发的是“排序后/去重后的 refs”，顺序不一定等于 props.modelValue 中 CHIP_MARKER 的出现顺序。
+	// 必须以 serialized draft 为真源，用 matchSelectedRefsWithSerializedDraft 对齐后再赋值，
+	// 才能保证 renderFromModel 遍历 marker 时 refs[i] 不会越界或错配，最终导致全部 fallback 到 "引用丢失"。
+	const aligned = matchSelectedRefsWithSerializedDraft(
+		props.modelValue ?? currentSerializedText.value,
+		props.selectedReferences ?? []
+	)
+	const newRefs: InputParamPreviewRef[] = aligned
+		? [...(aligned as unknown as InputParamPreviewRef[])]
+		: []
+	// 使用深比较：内容一致就不更新，避免引用变化导致虚假重渲染
+	if (areSelectedRefsEqual(newRefs, selectedRefs.value)) {
+		return false
+	}
+	selectedRefs.value = newRefs
+	return true
+}
 
 const availableForMention = computed(() => {
-	const selectedEdgeIds = new Set(selectedRefs.value.map(r => r.edgeId).filter(Boolean))
-	const selectedNodeAnchorPairs = new Set(
-		selectedRefs.value
-			.filter(r => r.fromNodeId && r.fromAnchorId)
-			.map(r => `${r.fromNodeId}:${r.fromAnchorId}`)
-	)
-	return inputParamRefs.value.filter(item => {
-		if (item.edgeId && selectedEdgeIds.has(item.edgeId)) return false
-		if (item.fromNodeId && item.fromAnchorId && selectedNodeAnchorPairs.has(`${item.fromNodeId}:${item.fromAnchorId}`)) return false
-		return true
-	})
+	return inputParamRefs.value
 })
 
 const filteredItems = computed(() => {
@@ -135,7 +167,11 @@ const resolvedPlaceholder = computed(() => {
 	return props.placeholder || t('aichat.nodeChat.placeholder')
 })
 
-const getTextFromNodeStartToCaret = (): { text: string; atTextNode: Text; atOffset: number } | null => {
+const getTextFromNodeStartToCaret = (): {
+	text: string
+	atTextNode: Text
+	atOffset: number
+} | null => {
 	const sel = window.getSelection()
 	if (!sel || sel.rangeCount === 0 || !editorRef.value) return null
 	const range = sel.getRangeAt(0)
@@ -229,12 +265,33 @@ const createChipElement = (item: InputParamPreviewRef): HTMLSpanElement => {
 	span.setAttribute('data-kind', item.kind)
 	span.setAttribute('data-label', item.label || '')
 
+	// ===== 关键修复：稳定 refKey（优先级 edgeId > fromNodeId:fromAnchorId > fallback）=====
+	// 避免存储时排序 + 仅按出现顺序索引 refs，导致 save→read 后 chip 对应错位 / 消失。
+	const rawAsAny = item as unknown as StoredNodeChatRef
+	const rawKey = typeof rawAsAny?.refKey === 'string' && rawAsAny.refKey ? rawAsAny.refKey : null
+	const fallbackKey = item.edgeId
+		? item.edgeId
+		: item.fromNodeId || item.fromAnchorId
+			? `${item.fromNodeId || ''}:${item.fromAnchorId || ''}`
+			: `__chip_${Math.random().toString(36).slice(2, 10)}__`
+	const refKey = rawKey || fallbackKey
+	span.setAttribute('data-ref-key', refKey)
+
 	if (item.previewUrl) {
 		const img = document.createElement('img')
 		img.className = 'bp-mention-chip-thumb'
 		img.src = item.previewUrl
 		img.alt = item.label || ''
 		img.draggable = false
+		// 图片加载失败时回退到类型图标，避免显示破碎图片占位符
+		img.onerror = () => {
+			const parent = img.parentNode
+			if (!parent) return
+			const icon = document.createElement('span')
+			icon.className = 'bp-mention-chip-icon'
+			icon.textContent = getTypeIcon(item.kind)
+			parent.replaceChild(icon, img)
+		}
 		span.appendChild(img)
 	} else {
 		const icon = document.createElement('span')
@@ -276,8 +333,12 @@ const getTypeIcon = (kind: string): string => {
 }
 
 const removeChipElement = (chipEl: HTMLElement) => {
+	isInternalUpdate = true
 	const parent = chipEl.parentNode
-	if (!parent) return
+	if (!parent) {
+		isInternalUpdate = false
+		return
+	}
 	const next = chipEl.nextSibling
 
 	parent.removeChild(chipEl)
@@ -297,16 +358,24 @@ const removeChipElement = (chipEl: HTMLElement) => {
 
 	syncFromDOM()
 	nextTick(() => {
+		isInternalUpdate = false
 		editorRef.value?.focus()
 	})
 }
 
 const insertChipAtCursor = (item: InputParamPreviewRef) => {
+	isInternalUpdate = true
 	const sel = window.getSelection()
-	if (!sel || sel.rangeCount === 0 || !editorRef.value) return
+	if (!sel || sel.rangeCount === 0 || !editorRef.value) {
+		isInternalUpdate = false
+		return
+	}
 
 	const info = getTextFromNodeStartToCaret()
-	if (!info) return
+	if (!info) {
+		isInternalUpdate = false
+		return
+	}
 
 	const { atTextNode, atOffset } = info
 
@@ -342,17 +411,24 @@ const insertChipAtCursor = (item: InputParamPreviewRef) => {
 
 	closeMention()
 	syncFromDOM()
+	nextTick(() => {
+		isInternalUpdate = false
+	})
 }
 
 const syncFromDOM = () => {
 	if (!editorRef.value) return
+	const wasInternalUpdate = isInternalUpdate
 	isInternalUpdate = true
 
-	let text = ''
+	let serializedText = ''
+	let displayText = ''
 	const refs: InputParamPreviewRef[] = []
 	const processNode = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			text += node.textContent || ''
+			const t = node.textContent || ''
+			serializedText += t
+			displayText += t
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const el = node as HTMLElement
 			if (el.classList && el.classList.contains('bp-mention-chip')) {
@@ -361,6 +437,7 @@ const syncFromDOM = () => {
 				const edgeId = el.getAttribute('data-edge-id') || undefined
 				const fromNodeId = el.getAttribute('data-node-id') || undefined
 				const fromAnchorId = el.getAttribute('data-anchor-id') || undefined
+				const refKey = el.getAttribute('data-ref-key') || undefined
 				const previewImg = el.querySelector('img.bp-mention-chip-thumb') as HTMLImageElement | null
 				const previewUrl = previewImg?.src || ''
 				refs.push({
@@ -369,51 +446,114 @@ const syncFromDOM = () => {
 					edgeId: edgeId || undefined,
 					fromNodeId: fromNodeId || undefined,
 					fromAnchorId: fromAnchorId || undefined,
-					previewUrl: previewUrl || undefined
+					previewUrl: previewUrl || undefined,
+					...(refKey ? ({ refKey } as unknown as object) : {})
 				} as InputParamPreviewRef)
-			} else if (el.tagName !== 'BR') {
+				serializedText += CHIP_MARKER
+				displayText += label
+			} else if (el.classList && el.classList.contains('bp-mention-chip-remove')) {
+				return
+			} else if (el.tagName === 'BR') {
+				serializedText += '\n'
+				displayText += '\n'
+			} else {
 				el.childNodes.forEach(processNode)
 			}
 		}
 	}
 	editorRef.value.childNodes.forEach(processNode)
 
-	text = text.replace(/\u00A0/g, ' ')
-	isEmpty.value = text.trim() === '' && refs.length === 0
-	emit('update:modelValue', text)
+	serializedText = serializedText.replace(/\u00A0/g, ' ')
+	displayText = displayText.replace(/\u00A0/g, ' ')
+	isEmpty.value = displayText.trim() === '' && refs.length === 0
+	charCount.value = displayText.length
+	currentSerializedText.value = serializedText
+	selectedRefs.value = refs
+	// 注意：必须先emit selectedReferences再emit modelValue
+	// 因为modelValue的handler(onDraftInput)会设置isInternalUpdate=true，
+	// 导致后续selectedReferences的handler(onSelectedRefsChange)被SKIP，
+	// 造成新增的@引用无法保存到store
 	emit('update:selectedReferences', refs)
+	emit('update:modelValue', serializedText)
 
-	nextTick(() => {
-		isInternalUpdate = false
-	})
+	if (!wasInternalUpdate) {
+		nextTick(() => {
+			isInternalUpdate = false
+		})
+	}
 }
 
 const renderFromModel = () => {
 	if (!editorRef.value || isInternalUpdate) return
+	isInternalUpdate = true
 	const editor = editorRef.value
+	// Always sync refs from props before rendering to ensure we use the latest state
+	syncSelectedRefsFromProps()
 	const refs = selectedRefs.value
-	const text = props.modelValue
+	const serialized = props.modelValue
 
-	if (refs.length === 0 && !text) {
+	if (refs.length === 0 && !serialized) {
 		editor.innerHTML = ''
 		isEmpty.value = true
+		charCount.value = 0
+		nextTick(() => {
+			isInternalUpdate = false
+		})
 		return
 	}
 
 	editor.innerHTML = ''
 
-	refs.forEach((item) => {
-		const chipEl = createChipElement(item)
-		editor.appendChild(chipEl)
-		editor.appendChild(document.createTextNode(' '))
+	// ===== 简化：CHIP_MARKER 本身不携带 refKey，因此只要 syncSelectedRefsFromProps
+	//       已确保 refs.length == chipCount，就可以按 refs[i] 顺序直接消耗 =====
+	// （如果用户多次 @同一个上游节点，顺序就是对齐的核心依据，靠 byKey 无法区分。）
+	let displayLen = 0
+	const parts = serialized.split(CHIP_MARKER)
+	const chipCount = Math.max(0, parts.length - 1)
+	const safeChipCount = Math.min(chipCount, refs.length)
+
+	parts.forEach((part, i) => {
+		if (part) {
+			const lines = part.split('\n')
+			lines.forEach((line, li) => {
+				if (li > 0) {
+					editor.appendChild(document.createElement('br'))
+					displayLen += 1
+				}
+				if (line) {
+					editor.appendChild(document.createTextNode(line))
+					displayLen += line.length
+				}
+			})
+		}
+		if (i < chipCount) {
+			if (i < safeChipCount) {
+				const ref = refs[i]
+				const chipEl = createChipElement(ref)
+				editor.appendChild(chipEl)
+				displayLen += (ref.label || '').length
+			} else {
+				// marker 比 refs 多的极端场景 → 显示"引用丢失"占位，避免静默丢失
+				const missing = {
+					kind: 'text' as any,
+					label: '引用丢失',
+					edgeId: undefined,
+					fromNodeId: undefined,
+					fromAnchorId: undefined,
+					previewUrl: undefined
+				}
+				const chipEl = createChipElement(missing)
+				editor.appendChild(chipEl)
+				displayLen += (missing.label || '').length
+			}
+		}
 	})
 
-	if (text) {
-		const textNode = document.createTextNode(text)
-		editor.appendChild(textNode)
-	}
-
-	isEmpty.value = refs.length === 0 && !text.trim()
+	isEmpty.value = displayLen === 0 && refs.length === 0
+	charCount.value = displayLen
+	nextTick(() => {
+		isInternalUpdate = false
+	})
 }
 
 const onEditorInput = () => {
@@ -429,7 +569,10 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault()
-				selectedMentionIndex.value = Math.min(selectedMentionIndex.value + 1, Math.max(0, filteredItems.value.length - 1))
+				selectedMentionIndex.value = Math.min(
+					selectedMentionIndex.value + 1,
+					Math.max(0, filteredItems.value.length - 1)
+				)
 				return
 			case 'ArrowUp':
 				e.preventDefault()
@@ -452,8 +595,9 @@ const onEditorKeydown = (e: KeyboardEvent) => {
 
 	if (e.key === 'Enter' && !e.shiftKey) {
 		e.preventDefault()
+		const hasText = !isEmpty.value
 		const hasRefs = selectedRefs.value.length > 0
-		if ((props.modelValue.trim() || hasRefs) && !props.disabled) {
+		if ((hasText || hasRefs) && !props.disabled) {
 			emit('submit')
 		}
 		return
@@ -500,6 +644,51 @@ const getNodeBeforeCursor = (range: Range): Node | null => {
 const onEditorMouseDown = () => {}
 const onEditorMouseUp = () => {
 	detectMention()
+}
+
+const onPaste = (e: ClipboardEvent) => {
+	if (isComposing) return
+	e.preventDefault()
+
+	let text = e.clipboardData?.getData('text/plain') || ''
+	if (!text) return
+	text = text.replace(new RegExp(CHIP_MARKER, 'g'), '')
+
+	const sel = window.getSelection()
+	if (!sel || sel.rangeCount === 0 || !editorRef.value) {
+		document.execCommand('insertText', false, text)
+		syncFromDOM()
+		return
+	}
+
+	const range = sel.getRangeAt(0)
+	range.deleteContents()
+
+	const lines = text.split(/\r?\n/)
+	const fragment = document.createDocumentFragment()
+
+	lines.forEach((line, index) => {
+		if (index > 0) {
+			fragment.appendChild(document.createElement('br'))
+		}
+		if (line) {
+			fragment.appendChild(document.createTextNode(line))
+		}
+	})
+
+	const lastNode = fragment.lastChild
+	range.insertNode(fragment)
+
+	if (lastNode) {
+		const newRange = document.createRange()
+		newRange.setStartAfter(lastNode)
+		newRange.collapse(true)
+		sel.removeAllRanges()
+		sel.addRange(newRange)
+	}
+
+	syncFromDOM()
+	editorRef.value?.focus()
 }
 
 const onInnerMouseDown = (e: MouseEvent) => {
@@ -571,11 +760,14 @@ const onResizeEnd = () => {
 
 onMounted(() => {
 	currentHeight.value = MIN_HEIGHT + 20
+	selectedRefs.value = [...(props.selectedReferences ?? [])]
 	renderFromModel()
 
 	const editor = editorRef.value
 	if (editor) {
-		editor.addEventListener('compositionstart', () => { isComposing = true })
+		editor.addEventListener('compositionstart', () => {
+			isComposing = true
+		})
 		editor.addEventListener('compositionend', () => {
 			isComposing = false
 			nextTick(() => {
@@ -587,12 +779,38 @@ onMounted(() => {
 })
 
 watch(
-	() => [props.modelValue, props.selectedReferences],
-	() => {
-		if (isInternalUpdate) return
+	() => props.modelValue,
+	(newVal) => {
+		// If the new value matches what we just serialized from DOM, this update was
+		// triggered by user input -> skip re-rendering to preserve caret position.
+		if (newVal === currentSerializedText.value) {
+			// Still sync selectedRefs from props in case they changed
+			syncSelectedRefsFromProps()
+			return
+		}
+		// External/programmatic update -> reset guard and re-render from model.
+		isInternalUpdate = false
+		syncSelectedRefsFromProps()
+		charCount.value = calcDisplayLength(props.modelValue, selectedRefs.value)
 		renderFromModel()
 	},
-	{ deep: true }
+	{ flush: 'post' }
+)
+
+watch(
+	() => props.selectedReferences,
+	() => {
+		// When selectedReferences change externally (e.g. dialog reopens with saved refs),
+		// sync and re-render to show the chips.
+		if (isInternalUpdate) return
+		const changed = syncSelectedRefsFromProps()
+		if (changed) {
+			isInternalUpdate = false
+			charCount.value = calcDisplayLength(props.modelValue ?? '', selectedRefs.value)
+			renderFromModel()
+		}
+	},
+	{ deep: true, flush: 'post' }
 )
 
 onBeforeUnmount(() => {
@@ -619,7 +837,38 @@ const blur = () => {
 	editorRef.value?.blur()
 }
 
-defineExpose({ focus, blur })
+const getFullText = (): string => {
+	if (!editorRef.value) return props.modelValue
+	let text = ''
+	const walk = (node: Node) => {
+		if (node.nodeType === Node.TEXT_NODE) {
+			text += node.textContent || ''
+		} else if (node.nodeType === Node.ELEMENT_NODE) {
+			const el = node as HTMLElement
+			if (el.tagName === 'BR') {
+				return
+			}
+			if (el.classList && el.classList.contains('bp-mention-chip')) {
+				const label = el.getAttribute('data-label') || ''
+				text += label
+				return
+			}
+			if (
+				el.classList &&
+				(el.classList.contains('bp-mention-chip-remove') ||
+					el.classList.contains('bp-mention-chip-icon') ||
+					el.classList.contains('bp-mention-chip-thumb'))
+			) {
+				return
+			}
+			el.childNodes.forEach(walk)
+		}
+	}
+	editorRef.value.childNodes.forEach(walk)
+	return text.replace(/\u00A0/g, ' ')
+}
+
+defineExpose({ focus, blur, getFullText })
 </script>
 
 <style scoped>

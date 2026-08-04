@@ -260,7 +260,9 @@ export class BlueprintProjectService {
 		const api = bridge.dweb?.projects
 		if (typeof api !== 'object' || api === null) return null
 		try {
-			return await Promise.resolve(fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projects']>))
+			return await Promise.resolve(
+				fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projects']>)
+			)
 		} catch {
 			return null
 		}
@@ -273,7 +275,9 @@ export class BlueprintProjectService {
 		const api = bridge.dweb?.projectAssets
 		if (typeof api !== 'object' || api === null) return null
 		try {
-			return await Promise.resolve(fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projectAssets']>))
+			return await Promise.resolve(
+				fn(api as NonNullable<NonNullable<ElectronBridge['dweb']>['projectAssets']>)
+			)
 		} catch {
 			return null
 		}
@@ -392,9 +396,7 @@ export class BlueprintProjectService {
 		if (newResult !== null && newResult !== undefined) {
 			let rows: BlueprintProjectItem[] = []
 			if (isArray(newResult)) {
-				rows = newResult
-					.map(coerceProjectItem)
-					.filter((p): p is BlueprintProjectItem => p !== null)
+				rows = newResult.map(coerceProjectItem).filter((p): p is BlueprintProjectItem => p !== null)
 			} else if (isRecord(newResult) && isArray(newResult.projects)) {
 				rows = newResult.projects
 					.map(coerceProjectItem)
@@ -714,10 +716,15 @@ export class BlueprintProjectService {
 					projectId: opts?.projectId ? Number(opts.projectId) : null,
 					bucket: opts?.bucket
 				}
-				const newResult = await this.electronNewAssets<unknown>((api) => api.upload?.(normalizeForIpc(uploadPayload)))
+				const newResult = await this.electronNewAssets<unknown>((api) =>
+					api.upload?.(normalizeForIpc(uploadPayload))
+				)
 				let resultRecord = isRecord(newResult) ? newResult : null
 				if (!resultRecord) {
-					const legacyResult = await this.electronAsset<unknown>('uploadProjectAsset', uploadPayload)
+					const legacyResult = await this.electronAsset<unknown>(
+						'uploadProjectAsset',
+						uploadPayload
+					)
 					resultRecord = isRecord(legacyResult) ? legacyResult : null
 				}
 				if (resultRecord && resultRecord.ok === true) {
@@ -782,7 +789,9 @@ export class BlueprintProjectService {
 				sourceUrl: payload.sourceUrl,
 				bucket: payload.bucket
 			}
-			const newResult = await this.electronNewAssets<unknown>((api) => api.import?.(normalizeForIpc(importPayload)))
+			const newResult = await this.electronNewAssets<unknown>((api) =>
+				api.import?.(normalizeForIpc(importPayload))
+			)
 			let resultRecord = isRecord(newResult) ? newResult : null
 			if (!resultRecord) {
 				const legacyResult = await this.electronAsset<unknown>('importProjectAsset', importPayload)
@@ -835,7 +844,9 @@ export class BlueprintProjectService {
 				url: payload.url,
 				sourcePath: payload.sourcePath
 			}
-			const newResult = await this.electronNewAssets<unknown>((api) => api.delete?.(normalizeForIpc(deletePayload)))
+			const newResult = await this.electronNewAssets<unknown>((api) =>
+				api.delete?.(normalizeForIpc(deletePayload))
+			)
 			let resultRecord = isRecord(newResult) ? newResult : null
 			if (!resultRecord) {
 				const legacyResult = await this.electronAsset<unknown>('deleteProjectAsset', {
@@ -896,7 +907,9 @@ export class BlueprintProjectService {
 				sourcePath: payload.sourcePath,
 				sourceUrl: payload.sourceUrl
 			}
-			const newResult = await this.electronNewAssets<unknown>((api) => api.resolve?.(normalizeForIpc(resolvePayload)))
+			const newResult = await this.electronNewAssets<unknown>((api) =>
+				api.resolve?.(normalizeForIpc(resolvePayload))
+			)
 			let resultRecord = isRecord(newResult) ? newResult : null
 			if (!resultRecord) {
 				const legacyResult = await this.electronAsset<unknown>('resolveProjectAsset', {
@@ -957,7 +970,9 @@ export class BlueprintProjectService {
 				name: payload.name,
 				relPath: payload.projectRelativePath
 			}
-			const newResult = await this.electronNewAssets<unknown>((api) => api.repair?.(normalizeForIpc(repairPayload)))
+			const newResult = await this.electronNewAssets<unknown>((api) =>
+				api.repair?.(normalizeForIpc(repairPayload))
+			)
 			let resultRecord = isRecord(newResult) ? newResult : null
 			if (!resultRecord) {
 				const legacyResult = await this.electronAsset<unknown>('repairProjectAsset', {

@@ -48,7 +48,8 @@ export function canonicalProjectRelativePath(rawPath) {
 		rel = rel.replace(/^content\/media\//i, '')
 	}
 	if (/^media\//i.test(rel)) rel = rel.replace(/^media\//i, '')
-	const isKnownRootPath = /^(?:content\/media|content\/generated|generated-assets|\.dvcache)\//i.test(rel)
+	const isKnownRootPath =
+		/^(?:content\/media|content\/generated|generated-assets|\.dvcache)\//i.test(rel)
 	if (!isKnownRootPath) rel = `${PROJECT_MEDIA_RELATIVE_DIR}/${rel}`
 	const parts = rel.split('/').filter(Boolean)
 	if (!parts.length) return ''
@@ -81,7 +82,8 @@ export function safeResolveProjectRelative(projectRoot, relPath) {
 	const isInside =
 		candidateNorm === rootNorm ||
 		candidateNorm.startsWith(rootWithSep) ||
-		(process.platform === 'win32' && candidateNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
+		(process.platform === 'win32' &&
+			candidateNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
 	if (!isInside) return null
 	return candidate
 }

@@ -10,7 +10,16 @@
 				:title="t('aiworkflow.canvas.minimapExpand')"
 			>
 				<div class="wf-minimap-toggle-glow" />
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
 					<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
 					<line x1="8" y1="2" x2="8" y2="18" />
 					<line x1="16" y1="6" x2="16" y2="22" />
@@ -30,7 +39,16 @@
 							@click="fitToAllNodes"
 							:title="t('aiworkflow.canvas.minimapFitAll')"
 						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<svg
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
 								<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
 							</svg>
 						</button>
@@ -40,7 +58,16 @@
 							@click="collapsed = true"
 							:title="t('aiworkflow.canvas.minimapCollapse')"
 						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<svg
+								width="14"
+								height="14"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							>
 								<path d="M19 12H5M12 19l-7-7 7-7" />
 							</svg>
 						</button>
@@ -129,6 +156,20 @@ let isDraggingViewport = false
 let dragStartMinimap = { x: 0, y: 0 }
 let dragStartPan = { x: 0, y: 0 }
 let themeObserver: MutationObserver | null = null
+let isUpdatingFromMinimap = false
+
+function resetIsUpdatingFromMinimap() {
+	requestAnimationFrame(() => {
+		requestAnimationFrame(() => {
+			isUpdatingFromMinimap = false
+		})
+	})
+}
+
+function clampPan(v: number): number {
+	if (!isFinite(v)) return 0
+	return Math.round(Math.max(-1e7, Math.min(1e7, v)))
+}
 
 const getNodeColor = (type: string): string => {
 	const colors = NODE_TYPE_COLORS[type] || { dark: '#1f9d84', light: '#0f766e' }
@@ -172,7 +213,7 @@ const nodesList = computed(() => Object.values(props.nodesById || {}))
 
 const nodesHash = computed(() => {
 	const nodes = nodesList.value
-	return nodes.map(n => `${n.id}:${n.worldX},${n.worldY},${n.width},${n.height}`).join('|')
+	return nodes.map((n) => `${n.id}:${n.worldX},${n.worldY},${n.width},${n.height}`).join('|')
 })
 
 const worldBounds = computed(() => computeWorldBounds(nodesList.value))
@@ -188,7 +229,13 @@ const minimapToWorld = (mx: number, my: number) =>
 	_minimapToWorld(mx, my, worldBounds.value, minimapScale.value, minimapOffset.value)
 
 const viewportInMinimap = computed(() =>
-	computeViewportInMinimap(props.viewport, props.canvasSize, worldBounds.value, minimapScale.value, minimapOffset.value)
+	computeViewportInMinimap(
+		props.viewport,
+		props.canvasSize,
+		worldBounds.value,
+		minimapScale.value,
+		minimapOffset.value
+	)
 )
 
 const scheduleRender = () => {
@@ -275,9 +322,13 @@ const onCanvasPointerDown = (e: PointerEvent) => {
 	const local = toCanvasLocal(e)
 	canvas.setPointerCapture(e.pointerId)
 
-	const world = minimapToWorld(local.x, local.y)
 	const zoom = props.viewport.zoom || 1
-	const { panX: targetPanX, panY: targetPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const world = minimapToWorld(local.x, local.y)
+	const { panX: rawPanX, panY: rawPanY } = computePanForWorldPoint(world.x, world.y, zoom)
+	const targetPanX = clampPan(rawPanX)
+	const targetPanY = clampPan(rawPanY)
+
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX: targetPanX, panY: targetPanY })
 	isDraggingViewport = true
 	dragStartMinimap = local
@@ -299,9 +350,10 @@ const onCanvasPointerMove = (e: PointerEvent) => {
 	const dxWorld = dxMinimap / scale
 	const dyWorld = dyMinimap / scale
 
-	const panX = dragStartPan.x - dxWorld * zoom
-	const panY = dragStartPan.y - dyWorld * zoom
+	const panX = clampPan(dragStartPan.x - dxWorld * zoom)
+	const panY = clampPan(dragStartPan.y - dyWorld * zoom)
 
+	isUpdatingFromMinimap = true
 	emit('update:viewport', { zoom, panX, panY })
 }
 
@@ -317,6 +369,7 @@ const onCanvasPointerUp = (e: PointerEvent) => {
 			}
 		}
 	}
+	resetIsUpdatingFromMinimap()
 }
 
 const onCanvasWheel = (e: WheelEvent) => {
@@ -337,12 +390,21 @@ const onCanvasWheel = (e: WheelEvent) => {
 		minimapOffset.value,
 		e.deltaY
 	)
-	emit('update:viewport', result)
+	const clamped = {
+		zoom: Math.round(result.zoom * 10000) / 10000,
+		panX: clampPan(result.panX),
+		panY: clampPan(result.panY)
+	}
+	isUpdatingFromMinimap = true
+	emit('update:viewport', clamped)
+	resetIsUpdatingFromMinimap()
 }
 
 const fitToAllNodes = () => {
 	const result = computeFitAllViewport(nodesList.value, props.canvasSize)
+	isUpdatingFromMinimap = true
 	emit('update:viewport', result)
+	resetIsUpdatingFromMinimap()
 }
 
 watch(
@@ -428,13 +490,20 @@ onBeforeUnmount(() => {
 	border-color: rgba(31, 157, 132, 0.8);
 	color: #6ee7b7;
 	background: rgba(8, 11, 16, 0.35);
-	box-shadow: 0 0 12px rgba(31, 157, 132, 0.3), inset 0 0 8px rgba(31, 157, 132, 0.1);
+	box-shadow:
+		0 0 12px rgba(31, 157, 132, 0.3),
+		inset 0 0 8px rgba(31, 157, 132, 0.1);
 }
 
 .wf-minimap-toggle-glow {
 	position: absolute;
 	inset: 0;
-	background: linear-gradient(135deg, rgba(31, 157, 132, 0.15) 0%, transparent 50%, rgba(31, 157, 132, 0.08) 100%);
+	background: linear-gradient(
+		135deg,
+		rgba(31, 157, 132, 0.15) 0%,
+		transparent 50%,
+		rgba(31, 157, 132, 0.08) 100%
+	);
 	pointer-events: none;
 	animation: wf-minimap-pulse 2.5s ease-in-out infinite;
 }
@@ -449,7 +518,9 @@ onBeforeUnmount(() => {
 	border-color: rgba(15, 118, 110, 0.7);
 	color: #0f766e;
 	background: rgba(255, 255, 255, 0.4);
-	box-shadow: 0 0 12px rgba(15, 118, 110, 0.25), inset 0 0 8px rgba(15, 118, 110, 0.08);
+	box-shadow:
+		0 0 12px rgba(15, 118, 110, 0.25),
+		inset 0 0 8px rgba(15, 118, 110, 0.08);
 }
 
 .wf-minimap-panel {
@@ -491,9 +562,20 @@ onBeforeUnmount(() => {
 	position: absolute;
 	inset: -1px;
 	border: 1px solid transparent;
-	background: linear-gradient(135deg, rgba(31, 157, 132, 0.3) 0%, transparent 40%, transparent 60%, rgba(31, 157, 132, 0.2) 100%) border-box;
-	-webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
-	mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+	background: linear-gradient(
+			135deg,
+			rgba(31, 157, 132, 0.3) 0%,
+			transparent 40%,
+			transparent 60%,
+			rgba(31, 157, 132, 0.2) 100%
+		)
+		border-box;
+	-webkit-mask:
+		linear-gradient(#fff 0 0) padding-box,
+		linear-gradient(#fff 0 0);
+	mask:
+		linear-gradient(#fff 0 0) padding-box,
+		linear-gradient(#fff 0 0);
 	-webkit-mask-composite: xor;
 	mask-composite: exclude;
 	pointer-events: none;
@@ -502,7 +584,14 @@ onBeforeUnmount(() => {
 }
 
 .wf-minimap--light .wf-minimap-border-glow {
-	background: linear-gradient(135deg, rgba(15, 118, 110, 0.25) 0%, transparent 40%, transparent 60%, rgba(15, 118, 110, 0.2) 100%) border-box;
+	background: linear-gradient(
+			135deg,
+			rgba(15, 118, 110, 0.25) 0%,
+			transparent 40%,
+			transparent 60%,
+			rgba(15, 118, 110, 0.2) 100%
+		)
+		border-box;
 }
 
 .wf-minimap-header {
@@ -651,19 +740,39 @@ onBeforeUnmount(() => {
 }
 
 @keyframes wf-minimap-pulse {
-	0%, 100% { opacity: 0.5; }
-	50% { opacity: 1; }
+	0%,
+	100% {
+		opacity: 0.5;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 @keyframes wf-minimap-border-pulse {
-	0%, 100% { opacity: 0.5; }
-	50% { opacity: 0.9; }
+	0%,
+	100% {
+		opacity: 0.5;
+	}
+	50% {
+		opacity: 0.9;
+	}
 }
 
 @keyframes wf-minimap-scan {
-	0% { transform: translateY(0); opacity: 0; }
-	10% { opacity: 0.6; }
-	90% { opacity: 0.6; }
-	100% { transform: translateY(173px); opacity: 0; }
+	0% {
+		transform: translateY(0);
+		opacity: 0;
+	}
+	10% {
+		opacity: 0.6;
+	}
+	90% {
+		opacity: 0.6;
+	}
+	100% {
+		transform: translateY(173px);
+		opacity: 0;
+	}
 }
 </style>

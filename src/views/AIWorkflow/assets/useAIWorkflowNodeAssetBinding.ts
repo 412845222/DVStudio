@@ -42,7 +42,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		resourceId: string | null
 		resourcePath?: string
 	}) => void
-	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video') => void
+	autoSizeMediaNode: (nodeId: string, url: string, kind: 'image' | 'video' | 'model3d') => void
 	autoSizeImageNodeFromDims: (nodeId: string, width: number, height: number) => void
 	scheduleVideoMetadataRead: (payload: {
 		sessionId?: string
@@ -53,6 +53,23 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 	ensureVideoResourcePoster: (resourceId: string, url: string) => Promise<void>
 	revokeNodeModel3DObjectUrl: (nodeId: string) => void
 	isDjangoManagedResource: (resource: WorkflowResource | null | undefined) => boolean
+	copyFileToProjectRoot?: (
+		projectId: number,
+		sourcePath: string,
+		desiredFilename: string
+	) => Promise<{ ok: boolean; relativePath?: string; size?: number } | null>
+	uploadProjectAsset?: (payload: {
+		projectId: number
+		kind?: string
+		name?: string
+		arrayBuffer: ArrayBuffer
+		contentType?: string
+		bucket?: string
+	}) => Promise<{
+		ok: boolean
+		asset?: { relativePath: string; [k: string]: unknown }
+		error?: string
+	} | null>
 }) => {
 	const imageResourcePersistingIds = new Set<string>()
 	const videoResourcePersistingIds = new Set<string>()
@@ -197,7 +214,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
 		const sourcePath =
-			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
+			typeof (file as FileWithPath)?.path === 'string'
+				? String((file as FileWithPath).path).trim()
+				: ''
 
 		let finalUrl = ''
 		let assetAbsPath = ''
@@ -308,7 +327,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 	const bindMediaResourceToNode = (
 		nodeId: string,
-		kind: 'image' | 'video',
+		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
 		opts?: {
@@ -316,26 +335,115 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			sourcePath?: string
 			projectRelativePath?: string
 			posterProjectRelativePath?: string
+			/** When provided, reuse this existing resourceId instead of creating a new one. */
+			resourceId?: string
+			onAfterBind?: (payload: { resourceId: string; url: string }) => void
 		}
 	) => {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
-		const resourceId = options.makeResourceId()
-		options.store.commit('addResource', {
-			id: resourceId,
-			kind,
-			name,
-			url,
-			...(opts?.posterUrl ? { posterUrl: String(opts.posterUrl) } : {}),
-			...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
-			...(opts?.projectRelativePath
-				? { projectRelativePath: String(opts.projectRelativePath) }
-				: {}),
-			...(opts?.posterProjectRelativePath
-				? { posterProjectRelativePath: String(opts.posterProjectRelativePath) }
-				: {}),
-			createdAt: Date.now()
-		})
+
+		if (kind === 'model3d') {
+			options.revokeNodeModel3DObjectUrl(nodeId)
+
+			const resourceId = String(opts?.resourceId ?? '').trim() || options.makeResourceId()
+			const existing = options.store.state.resourcesById?.[resourceId]
+			if (existing) {
+				options.store.commit('patchResource', {
+					resourceId,
+					patch: {
+						kind: 'model3d',
+						name,
+						url,
+						...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
+						...(opts?.projectRelativePath
+							? { projectRelativePath: String(opts.projectRelativePath) }
+							: {})
+					}
+				})
+			} else {
+				options.store.commit('addResource', {
+					id: resourceId,
+					kind: 'model3d',
+					name,
+					url,
+					...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
+					...(opts?.projectRelativePath
+						? { projectRelativePath: String(opts.projectRelativePath) }
+						: {}),
+					createdAt: Date.now()
+				})
+			}
+			options.setNodeResourceWithCleanup({
+				nodeId,
+				resourceId,
+				resourcePath: String(opts?.sourcePath ?? '').trim() || undefined
+			})
+
+			const lowerName = String(name || url || '').toLowerCase()
+			let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+			if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
+			else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
+			else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
+			else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
+			else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					modelUrl: url,
+					modelFormat,
+					modelSourceName: String(name || 'model'),
+					modelSourcePath: opts?.sourcePath || undefined,
+					modelAssetUrl: url,
+					modelAssetPath: opts?.projectRelativePath || opts?.sourcePath || undefined
+				}
+			})
+
+			try {
+				options.autoSizeMediaNode?.(nodeId, url, 'model3d')
+			} catch {
+				// ignore
+			}
+
+			opts?.onAfterBind?.({ resourceId, url })
+			return
+		}
+
+		const resourceId = String(opts?.resourceId ?? '').trim() || options.makeResourceId()
+		if (options.store.state.resourcesById?.[resourceId]) {
+			options.store.commit('patchResource', {
+				resourceId,
+				patch: {
+					kind,
+					name,
+					url,
+					...(opts?.posterUrl ? { posterUrl: String(opts.posterUrl) } : {}),
+					...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
+					...(opts?.projectRelativePath
+						? { projectRelativePath: String(opts.projectRelativePath) }
+						: {}),
+					...(opts?.posterProjectRelativePath
+						? { posterProjectRelativePath: String(opts.posterProjectRelativePath) }
+						: {})
+				}
+			})
+		} else {
+			options.store.commit('addResource', {
+				id: resourceId,
+				kind,
+				name,
+				url,
+				...(opts?.posterUrl ? { posterUrl: String(opts.posterUrl) } : {}),
+				...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
+				...(opts?.projectRelativePath
+					? { projectRelativePath: String(opts.projectRelativePath) }
+					: {}),
+				...(opts?.posterProjectRelativePath
+					? { posterProjectRelativePath: String(opts.posterProjectRelativePath) }
+					: {}),
+				createdAt: Date.now()
+			})
+		}
 		options.setNodeResourceWithCleanup({
 			nodeId,
 			resourceId,
@@ -422,6 +530,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		}
 
 		options.autoSizeMediaNode(nodeId, url, kind)
+		opts?.onAfterBind?.({ resourceId, url })
 	}
 
 	const uploadNodeModel3DFile = async (nodeId: string, file: File) => {
@@ -430,48 +539,102 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 		options.revokeNodeModel3DObjectUrl(nodeId)
 
-		const url = URL.createObjectURL(file)
-		const objectKey = `model3d:${nodeId}`
-		options.setObjectUrl(objectKey, url)
-		const lowerName = String(file.name || '').toLowerCase()
-		let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
-		if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
-		else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
-		else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
-		else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
-		else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
 		const sourcePath =
-			typeof (file as FileWithPath)?.path === 'string' ? String((file as FileWithPath).path).trim() : ''
-		let assetUrl = ''
-		let assetPath = ''
+			typeof (file as FileWithPath)?.path === 'string'
+				? String((file as FileWithPath).path).trim()
+				: ''
 
-		try {
-			const currentProjectId = Number(options.getCurrentProjectId() ?? 0)
-			if (currentProjectId > 0) {
-				const uploaded = await options.blueprintProjectService.uploadAsset(file, 'file', {
-					projectId: currentProjectId
-				})
-				if (uploaded.ok) {
-					const asset = (uploaded as UploadAssetResult).asset ?? {}
-					assetUrl = options.resolveBackendUrl(String(asset.url || ''))
-					assetPath = String(asset.absolutePath || '').trim()
+		type Persisted = { url: string; relPath: string }
+		let persisted: Persisted | null = null
+		const currentProjectId = Number(options.getCurrentProjectId?.() ?? 0)
+		if (currentProjectId > 0) {
+			try {
+				if (sourcePath && typeof options.copyFileToProjectRoot === 'function') {
+					const r = await options.copyFileToProjectRoot(currentProjectId, sourcePath, file.name)
+					if (r && r.ok && r.relativePath) {
+						const rel = String(r.relativePath)
+						persisted = {
+							relPath: rel,
+							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`
+						}
+					}
 				}
+				if (!persisted && typeof options.uploadProjectAsset === 'function') {
+					const buf = await file.arrayBuffer()
+					const r = await options.uploadProjectAsset({
+						projectId: currentProjectId,
+						kind: 'model3d',
+						name: file.name,
+						arrayBuffer: buf,
+						contentType: file.type || 'application/octet-stream',
+						bucket: 'assets'
+					})
+					if (r && r.ok && (r.asset as { relativePath?: string } | undefined)?.relativePath) {
+						const rel = String((r.asset as { relativePath: string }).relativePath)
+						persisted = {
+							relPath: rel,
+							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`
+						}
+					}
+				}
+				if (!persisted) {
+					// 最后兜底：走原有 uploadAsset API
+					const uploaded = await options.blueprintProjectService.uploadAsset(file, 'file', {
+						projectId: currentProjectId
+					})
+					if (uploaded.ok) {
+						const asset = (uploaded as UploadAssetResult).asset ?? {}
+						const dwebUrl = options.resolveBackendUrl(String(asset.url || ''))
+						const rel = String(asset.projectRelativePath || asset.relativePath || '').trim()
+						if (dwebUrl && rel) {
+							persisted = { url: dwebUrl, relPath: rel }
+						} else if (dwebUrl) {
+							// 没有相对路径时仍然尝试绑定 url（至少避免渲染失败）
+							persisted = { url: dwebUrl, relPath: String(asset.absolutePath || '').trim() }
+						}
+					}
+				}
+			} catch (e) {
+				console.warn(
+					'[uploadNodeModel3DFile] persist to project failed, falling back to object url preview:',
+					e
+				)
 			}
-		} catch {
-			// ignore immediate asset persistence failure; local object url preview still works
 		}
 
-		options.store.commit('setNodeModel3DSettings', {
-			nodeId,
-			model3dSettings: {
-				modelUrl: assetUrl || url,
-				modelFormat,
-				modelSourceName: String(file.name || 'model'),
-				modelSourcePath: assetPath || sourcePath || undefined,
-				modelAssetUrl: assetUrl || undefined,
-				modelAssetPath: assetPath || undefined
-			}
-		})
+		let objectUrl = ''
+		if (!persisted) {
+			objectUrl = URL.createObjectURL(file)
+			const objectKey = `model3d:${nodeId}`
+			options.setObjectUrl(objectKey, objectUrl)
+		}
+
+		const finalUrl = persisted?.url || objectUrl
+		const finalRel = persisted?.relPath || ''
+
+		if (persisted) {
+			bindMediaResourceToNode(nodeId, 'model3d', finalUrl, file.name, {
+				sourcePath: sourcePath || undefined,
+				projectRelativePath: finalRel
+			})
+		} else {
+			const lowerName = String(file.name || '').toLowerCase()
+			let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+			if (lowerName.endsWith('.gltf')) modelFormat = 'gltf'
+			else if (lowerName.endsWith('.fbx')) modelFormat = 'fbx'
+			else if (lowerName.endsWith('.obj')) modelFormat = 'obj'
+			else if (lowerName.endsWith('.stl')) modelFormat = 'stl'
+			else if (lowerName.endsWith('.dae')) modelFormat = 'dae'
+			options.store.commit('setNodeModel3DSettings', {
+				nodeId,
+				model3dSettings: {
+					modelUrl: finalUrl,
+					modelFormat,
+					modelSourceName: String(file.name || 'model'),
+					modelSourcePath: sourcePath || undefined
+				}
+			})
+		}
 	}
 
 	return {

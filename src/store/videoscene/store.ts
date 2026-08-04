@@ -64,10 +64,11 @@ const normalizeNodeIdentityInPlace = (node: unknown) => {
 	if (!node || typeof node !== 'object') return
 	const n = node as Record<string, unknown>
 	if (typeof n.id !== 'string' || !String(n.id).trim()) {
-		(n as Record<string, unknown>).id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		;(n as Record<string, unknown>).id =
+			`node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	}
 	if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt as number)) {
-		(n as Record<string, unknown>).createdAt = Date.now()
+		;(n as Record<string, unknown>).createdAt = Date.now()
 	}
 	if (Array.isArray(n.children)) {
 		for (const c of n.children) normalizeNodeIdentityInPlace(c)
@@ -120,7 +121,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			if (!id) return
 			delete state.imageAssets[id]
 		},
-		upsertVideoAsset(state, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+		upsertVideoAsset(
+			state,
+			payload: {
+				id: string
+				url: string
+				name?: string
+				videoWidth?: number
+				videoHeight?: number
+				duration?: number
+			}
+		) {
 			const id = String(payload.id || '').trim()
 			const url = String(payload.url || '').trim()
 			if (!id || !url) return
@@ -181,6 +192,22 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				state.showBackgroundPanel = false
 			}
 		},
+		toggleSubtitleRecogDialog(state) {
+			state.showSubtitleRecogDialog = !state.showSubtitleRecogDialog
+			if (state.showSubtitleRecogDialog) {
+				state.showSizePanel = false
+				state.showBackgroundPanel = false
+				state.showExportPanel = false
+			}
+		},
+		setSubtitleRecogDialogVisible(state, payload: { visible: boolean }) {
+			state.showSubtitleRecogDialog = !!payload.visible
+			if (state.showSubtitleRecogDialog) {
+				state.showSizePanel = false
+				state.showBackgroundPanel = false
+				state.showExportPanel = false
+			}
+		},
 		setActiveLayer(state, payload: { layerId: string }) {
 			const layer = findLayer(state, payload.layerId)
 			if (!layer) return
@@ -224,16 +251,21 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				)
 			}
 		},
-		openLeftPanel(state, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
+		openLeftPanel(
+			state,
+			payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }
+		) {
 			state.leftPanel.open = true
 			state.leftPanel.mode = payload.mode
 			state.leftPanel.layerId = payload.layerId ? String(payload.layerId) : null
+			state.leftPanel.videoPath = payload.videoPath ? String(payload.videoPath) : null
 			state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
 		},
 		closeLeftPanel(state) {
 			state.leftPanel.open = false
 			state.leftPanel.mode = null
 			state.leftPanel.layerId = null
+			state.leftPanel.videoPath = null
 			state.leftPanel.refreshToken = (state.leftPanel.refreshToken ?? 0) + 1
 		},
 		addLayer(state, payload: { layerId: string; name: string }) {
@@ -315,7 +347,8 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const rawIds = Array.isArray(payload.nodeIds) ? payload.nodeIds : []
 			const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
 			if (!ids.length) return
-			const patch = payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as NodePropsPatch)
+			const patch =
+				payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as NodePropsPatch)
 			for (const nodeId of ids) updateUserNodeProps(layer, nodeId, patch)
 		},
 		pasteNodeTreeAsSibling(
@@ -487,7 +520,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		removeImageAsset({ commit }, payload: { id: string }) {
 			commit('removeImageAsset', payload)
 		},
-		upsertVideoAsset({ commit }, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+		upsertVideoAsset(
+			{ commit },
+			payload: {
+				id: string
+				url: string
+				name?: string
+				videoWidth?: number
+				videoHeight?: number
+				duration?: number
+			}
+		) {
 			commit('upsertVideoAsset', payload)
 		},
 		removeVideoAsset({ commit }, payload: { id: string }) {
@@ -510,6 +553,12 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		},
 		setExportPanelVisible({ commit }, payload: { visible: boolean }) {
 			commit('setExportPanelVisible', payload)
+		},
+		toggleSubtitleRecogDialog({ commit }) {
+			commit('toggleSubtitleRecogDialog')
+		},
+		setSubtitleRecogDialogVisible({ commit }, payload: { visible: boolean }) {
+			commit('setSubtitleRecogDialogVisible', payload)
 		},
 		setActiveLayer({ commit }, payload: { layerId: string }) {
 			commit('setActiveLayer', payload)
@@ -539,7 +588,10 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
 			commit('setLayoutInsets', payload)
 		},
-		openLeftPanel({ commit }, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null }) {
+		openLeftPanel(
+			{ commit },
+			payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }
+		) {
 			commit('openLeftPanel', payload)
 		},
 		closeLeftPanel({ commit }) {

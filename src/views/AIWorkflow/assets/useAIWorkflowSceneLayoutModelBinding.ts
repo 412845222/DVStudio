@@ -40,7 +40,7 @@ export const useAIWorkflowSceneLayoutModelBinding = (payload: {
 
 		const lowerName = String(file.name || '').toLowerCase()
 		const SUPPORTED_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
-		const isSupported = SUPPORTED_EXTS.some(ext => lowerName.endsWith(ext))
+		const isSupported = SUPPORTED_EXTS.some((ext) => lowerName.endsWith(ext))
 		if (!isSupported) {
 			payload.pushToast(t('aiworkflow.toast.modelImportFormats'), 'warn')
 			return

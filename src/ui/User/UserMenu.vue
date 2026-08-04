@@ -2,14 +2,13 @@
 	<Transition name="user-menu">
 		<div v-if="visible" class="user-menu-container">
 			<div class="user-menu-backdrop" @click="handleBackdropClick"></div>
-			<div class="user-menu" :class="{ 'is-mock': !isRealPlatform, 'is-collapsed': collapsed }" ref="menuEl">
+			<div
+				class="user-menu"
+				:class="{ 'is-mock': !isRealPlatform, 'is-collapsed': collapsed }"
+				ref="menuEl"
+			>
 				<div class="menu-particles" aria-hidden="true">
-					<span
-						v-for="p in particles"
-						:key="p.id"
-						class="sq-particle"
-						:style="p.style"
-					></span>
+					<span v-for="p in particles" :key="p.id" class="sq-particle" :style="p.style"></span>
 				</div>
 
 				<div class="menu-corner-decoration top-left" aria-hidden="true"></div>
@@ -60,24 +59,44 @@
 					>
 						<span class="menu-item-icon">
 							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
-								<path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8" />
+								<path
+									d="M23 21v-2a4 4 0 0 0-3-3.87"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+								<path
+									d="M16 3.13a4 4 0 0 1 0 7.75"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 						</span>
 						<span class="menu-item-label">{{ t('userMenu.friendsList') }}</span>
 					</button>
 
-					<button
-						class="menu-item is-disabled"
-						type="button"
-						disabled
-					>
+					<button class="menu-item is-disabled" type="button" disabled>
 						<span class="menu-item-icon">
 							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 								<circle cx="12" cy="8" r="6" stroke="currentColor" stroke-width="1.8" />
-								<path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 						</span>
 						<span class="menu-item-label">{{ t('userMenu.achievements') }}</span>
@@ -86,15 +105,17 @@
 
 					<div class="menu-divider"></div>
 
-					<button
-						class="menu-item is-disabled"
-						type="button"
-						disabled
-					>
+					<button class="menu-item is-disabled" type="button" disabled>
 						<span class="menu-item-icon">
 							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 								<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" />
-								<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 						</span>
 						<span class="menu-item-label">{{ t('userMenu.steamSettings') }}</span>
@@ -123,7 +144,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	collapsed: false,
+	collapsed: false
 })
 
 const emit = defineEmits<{
@@ -161,7 +182,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-@import "../../styles/square-particles.css";
+@import '../../styles/square-particles.css';
 
 .user-menu-container {
 	position: absolute;

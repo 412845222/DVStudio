@@ -164,7 +164,15 @@ export const useAIWorkflowEdgeRenderer = (payload: {
 			edgePathWorker = new Worker(new URL('./workers/edgePathWorker.ts', import.meta.url), {
 				type: 'module'
 			})
-			edgePathWorker.onmessage = (ev: MessageEvent<{ type: string; version?: number; mutationVersion?: number; edges?: unknown[]; stats?: { culledCount?: number; renderedCount?: number; inputCount?: number } }>) => {
+			edgePathWorker.onmessage = (
+				ev: MessageEvent<{
+					type: string
+					version?: number
+					mutationVersion?: number
+					edges?: unknown[]
+					stats?: { culledCount?: number; renderedCount?: number; inputCount?: number }
+				}>
+			) => {
 				if (disposed) return
 				const msg = ev?.data
 				if (!msg || msg.type !== 'result') return
@@ -299,9 +307,12 @@ export const useAIWorkflowEdgeRenderer = (payload: {
 				if (!edgeRenderRaf) {
 					edgeRenderRaf = requestAnimationFrame(() => {
 						edgeRenderRaf = 0
-						const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - lastSyncEdgeRenderAt
+						const elapsed =
+							(typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+							lastSyncEdgeRenderAt
 						if (elapsed >= minInterval) {
-							lastSyncEdgeRenderAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+							lastSyncEdgeRenderAt =
+								typeof performance !== 'undefined' ? performance.now() : Date.now()
 							rebuildSyncEdgeRenders()
 						} else {
 							scheduleAsyncEdgeRender()

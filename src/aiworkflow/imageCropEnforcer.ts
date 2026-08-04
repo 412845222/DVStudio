@@ -149,14 +149,21 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 	const canFetch = typeof fetch !== 'undefined'
 	const canBitmap = typeof createImageBitmap !== 'undefined'
 	const isRemote = /^https?:\/\//i.test(src)
+	const protocol = String(src).split('://')[0] || 'unknown'
+	console.log(
+		`[IMAGE-CROP] loadImageForCrop: src protocol=${protocol}, isRemote=${isRemote}, canFetch=${canFetch}, canBitmap=${canBitmap}, OffscreenCanvas=${typeof OffscreenCanvas !== 'undefined'}`
+	)
 
 	if (isRemote && canFetch) {
 		try {
+			console.log(`[IMAGE-CROP] trying fetch+createImageBitmap for remote URL`)
 			const resp = await fetch(src, { credentials: 'include' })
 			if (resp.ok) {
 				const blob = await resp.blob()
+				console.log(`[IMAGE-CROP] fetch ok, blob size=${blob.size}, type=${blob.type}`)
 				if (canBitmap) {
 					const bitmap = await createImageBitmap(blob)
+					console.log(`[IMAGE-CROP] createImageBitmap success: ${bitmap.width}x${bitmap.height}`)
 					return {
 						width: Math.max(1, Math.floor(bitmap.width || 1)),
 						height: Math.max(1, Math.floor(bitmap.height || 1)),
@@ -177,13 +184,19 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 					const img = await new Promise<HTMLImageElement | null>((resolve) => {
 						const next = new Image()
 						next.onload = () => resolve(next)
-						next.onerror = () => resolve(null)
+						next.onerror = (e) => {
+							console.warn(`[IMAGE-CROP] Image() failed to load objectUrl`, e)
+							resolve(null)
+						}
 						next.src = objectUrl
 					})
 					if (!img) {
 						URL.revokeObjectURL(objectUrl)
 						return null
 					}
+					console.log(
+						`[IMAGE-CROP] Image via blob URL loaded: ${img.naturalWidth}x${img.naturalHeight}`
+					)
 					return {
 						width: Math.max(1, Math.floor(img.naturalWidth || img.width || 1)),
 						height: Math.max(1, Math.floor(img.naturalHeight || img.height || 1)),
@@ -199,18 +212,31 @@ const loadImageForCrop = async (src: string): Promise<LoadedImage | null> => {
 						}
 					}
 				}
+			} else {
+				console.warn(`[IMAGE-CROP] fetch failed with status ${resp.status}`)
 			}
-		} catch {
+		} catch (err) {
+			console.warn(`[IMAGE-CROP] fetch path failed:`, err)
 			// fall through
 		}
 	}
 
-	if (typeof Image === 'undefined') return null
+	if (typeof Image === 'undefined') {
+		console.warn(`[IMAGE-CROP] Image constructor not available`)
+		return null
+	}
+	console.log(`[IMAGE-CROP] trying direct new Image() with src=`, src.slice(0, 100))
 	const img = await new Promise<HTMLImageElement | null>((resolve) => {
 		const next = new Image()
 		if (isRemote) next.crossOrigin = 'anonymous'
-		next.onload = () => resolve(next)
-		next.onerror = () => resolve(null)
+		next.onload = () => {
+			console.log(`[IMAGE-CROP] new Image() loaded: ${next.naturalWidth}x${next.naturalHeight}`)
+			resolve(next)
+		}
+		next.onerror = (e) => {
+			console.warn(`[IMAGE-CROP] new Image() onerror`, e)
+			resolve(null)
+		}
 		next.src = src
 	})
 	if (!img) return null
@@ -231,8 +257,20 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 	const src = String(payload?.src ?? '').trim()
 	if (!src) return null
 
+	console.log(
+		`[IMAGE-CROP] exportWorkflowImageEnforcedPng START: src=`,
+		src.slice(0, 100),
+		`crop=`,
+		payload.crop,
+		`minWidth=`,
+		payload.minWidth
+	)
+
 	const image = await loadImageForCrop(src)
-	if (!image) return null
+	if (!image) {
+		console.warn(`[IMAGE-CROP] loadImageForCrop returned NULL, cannot crop`)
+		return null
+	}
 
 	const srcW = Math.max(1, Math.floor(image.width || 1))
 	const srcH = Math.max(1, Math.floor(image.height || 1))
@@ -244,6 +282,9 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 	const outW = Math.max(1, enforced.outputWidth)
 	const outH = Math.max(1, enforced.outputHeight)
 	const { sx, sy, sw, sh } = enforced.sourceCrop
+	console.log(
+		`[IMAGE-CROP] image loaded: ${srcW}x${srcH}, enforced crop: sx=${sx}, sy=${sy}, sw=${sw}, sh=${sh}, output=${outW}x${outH}, adjusted=${enforced.adjusted}`
+	)
 
 	try {
 		if (typeof OffscreenCanvas !== 'undefined') {
@@ -255,42 +296,61 @@ export const exportWorkflowImageEnforcedPng = async (payload: {
 					ctx.imageSmoothingQuality = 'high'
 					ctx.clearRect(0, 0, outW, outH)
 					image.draw(ctx, sx, sy, sw, sh, 0, 0, outW, outH)
-					const toBlob = (offscreen as unknown as { convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob
+					console.log(`[IMAGE-CROP] OffscreenCanvas drawImage done, calling convertToBlob`)
+					const toBlob = (
+						offscreen as unknown as {
+							convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob>
+						}
+					).convertToBlob
 					if (typeof toBlob === 'function') {
 						const out = await toBlob.call(offscreen, { type: 'image/png' })
+						console.log(
+							`[IMAGE-CROP] convertToBlob success: blob size=${out?.size}, type=${out?.type}`
+						)
 						image.cleanup?.()
 						return out
+					} else {
+						console.warn(`[IMAGE-CROP] OffscreenCanvas.convertToBlob not available`)
 					}
+				} else {
+					console.warn(`[IMAGE-CROP] OffscreenCanvas.getContext('2d') returned NULL`)
 				}
-			} catch {
+			} catch (err) {
+				console.warn(`[IMAGE-CROP] OffscreenCanvas path failed:`, err)
 				// fallback to HTMLCanvasElement
 			}
 		}
 
 		if (typeof document === 'undefined') {
+			console.warn(`[IMAGE-CROP] document not available, cannot use HTMLCanvasElement fallback`)
 			image.cleanup?.()
 			return null
 		}
 
+		console.log(`[IMAGE-CROP] falling back to HTMLCanvasElement (${outW}x${outH})`)
 		const canvasEl = document.createElement('canvas')
 		canvasEl.width = outW
 		canvasEl.height = outH
 		const ctx = canvasEl.getContext('2d') as CanvasRenderingContext2D | null
 		if (!ctx) {
+			console.warn(`[IMAGE-CROP] canvas.getContext('2d') returned NULL`)
 			image.cleanup?.()
 			return null
 		}
 		ctx.imageSmoothingEnabled = true
 		ctx.clearRect(0, 0, outW, outH)
 		image.draw(ctx, sx, sy, sw, sh, 0, 0, outW, outH)
+		console.log(`[IMAGE-CROP] HTMLCanvasElement drawImage done, calling toBlob`)
 
 		return await new Promise<Blob | null>((resolve) => {
 			try {
 				canvasEl.toBlob((b) => {
+					console.log(`[IMAGE-CROP] toBlob callback: blob size=${b?.size}, type=${b?.type}`)
 					image.cleanup?.()
 					resolve(b)
 				}, 'image/png')
-			} catch {
+			} catch (err) {
+				console.warn(`[IMAGE-CROP] toBlob threw:`, err)
 				image.cleanup?.()
 				resolve(null)
 			}

@@ -158,9 +158,12 @@ onBeforeUnmount(() => {
 	padding: 4px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	border-radius: 2px;
-	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0,0,0,0.55));
+	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0, 0, 0, 0.55));
 	backdrop-filter: blur(12px);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 12%, transparent), 0 8px 24px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--pl-accent) 14%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 12%, transparent),
+		0 8px 24px rgba(0, 0, 0, 0.5),
+		0 0 16px color-mix(in srgb, var(--pl-accent) 14%, transparent);
 }
 
 .tl-menu-item {
@@ -174,7 +177,9 @@ onBeforeUnmount(() => {
 	font-size: 12px;
 	text-align: left;
 	cursor: pointer;
-	transition: background 0.12s ease, color 0.12s ease;
+	transition:
+		background 0.12s ease,
+		color 0.12s ease;
 }
 
 .tl-menu-item:hover {

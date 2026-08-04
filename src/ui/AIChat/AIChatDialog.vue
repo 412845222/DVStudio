@@ -21,11 +21,26 @@
 				>
 					{{ deepMode ? t('aichat.dialog.deepModeShortOn') : t('aichat.dialog.deepModeShortOff') }}
 				</button>
-				<button v-if="sending" class="ai-chat__icon" type="button" :title="t('common.stop')" @click="stopTask">
+				<button
+					v-if="sending"
+					class="ai-chat__icon"
+					type="button"
+					:title="t('common.stop')"
+					@click="stopTask"
+				>
 					⏹
 				</button>
-				<button class="ai-chat__icon" type="button" :title="t('aichat.dialog.minimize')" @click="onMinimize">—</button>
-			<button class="ai-chat__icon" type="button" :title="t('common.close')" @click="onClose">×</button>
+				<button
+					class="ai-chat__icon"
+					type="button"
+					:title="t('aichat.dialog.minimize')"
+					@click="onMinimize"
+				>
+					—
+				</button>
+				<button class="ai-chat__icon" type="button" :title="t('common.close')" @click="onClose">
+					×
+				</button>
 			</div>
 		</div>
 		<div
@@ -57,7 +72,9 @@
 					class="ai-chat__select"
 					:disabled="sending || !textModelOptions.length"
 				>
-					<option v-if="!textModelOptions.length" value="">{{ t('aichat.dialog.noModelAvailable') }}</option>
+					<option v-if="!textModelOptions.length" value="">
+						{{ t('aichat.dialog.noModelAvailable') }}
+					</option>
 					<option v-for="model in textModelOptions" :key="model.id" :value="model.id">
 						{{ model.label }}
 					</option>
@@ -69,12 +86,18 @@
 			<div ref="listRef" class="ai-chat__list" @scroll.passive="onListScroll">
 				<div v-for="m in messages" :key="m.id" class="ai-chat__msg" :class="[m.role]">
 					<div class="ai-chat__bubble">
-						<div class="ai-chat__role">{{ m.role === 'user' ? t('aichat.dialog.roleUser') : t('aichat.dialog.roleAi') }}</div>
+						<div class="ai-chat__role">
+							{{ m.role === 'user' ? t('aichat.dialog.roleUser') : t('aichat.dialog.roleAi') }}
+						</div>
 						<div class="ai-chat__text">{{ m.text }}</div>
 						<div v-if="isRunning(m) && taskStatusLabel" class="ai-chat__phase">
 							{{ taskStatusLabel }}
 						</div>
-						<div v-if="isRunning(m)" class="ai-chat__typing" :aria-label="t('aichat.dialog.aiProcessing')">
+						<div
+							v-if="isRunning(m)"
+							class="ai-chat__typing"
+							:aria-label="t('aichat.dialog.aiProcessing')"
+						>
 							<span class="ai-chat__dot" />
 							<span class="ai-chat__dot" />
 							<span class="ai-chat__dot" />
@@ -140,13 +163,24 @@
 				:disabled="sending"
 				@keydown.enter.exact.prevent="send"
 			/>
-			<button class="ai-chat__send" type="submit" :disabled="!canSend">{{ t('aichat.dialog.send') }}</button>
+			<button class="ai-chat__send" type="submit" :disabled="!canSend">
+				{{ t('aichat.dialog.send') }}
+			</button>
 		</form>
 
-		<div class="ai-chat__thought" :class="{ open: thoughtOpen }" :aria-label="t('aichat.dialog.thoughtPanel')">
+		<div
+			class="ai-chat__thought"
+			:class="{ open: thoughtOpen }"
+			:aria-label="t('aichat.dialog.thoughtPanel')"
+		>
 			<div class="ai-chat__thought-head">
 				<div class="ai-chat__thought-title">{{ t('aichat.dialog.thoughtTitle') }}</div>
-				<button class="ai-chat__thought-close" type="button" :title="t('aichat.dialog.closeThought')" @click="closeThought">
+				<button
+					class="ai-chat__thought-close"
+					type="button"
+					:title="t('aichat.dialog.closeThought')"
+					@click="closeThought"
+				>
 					×
 				</button>
 			</div>
@@ -443,9 +477,7 @@ const persistModelPrefs = () => {
 
 const textApiSourceOptions = computed(() => getChatApiSourceOptions())
 
-const textModelOptions = computed(() =>
-	getChatModelOptions('text', modelApiSource.value)
-)
+const textModelOptions = computed(() => getChatModelOptions('text', modelApiSource.value))
 
 const activeTextModel = computed(() => getChatModelById(textModelId.value))
 const activeProvider = computed(() => {
@@ -1260,505 +1292,341 @@ const sendText = async (text: string) => {
 				messages.value[idx].text = currentText || t('aichat.errors.emptyResponse')
 			}
 		} else {
-		if (!conversationId.value) {
-			const conv = await aiChatService.createConversation()
-			conversationId.value = conv.id
-		}
+			if (!conversationId.value) {
+				const conv = await aiChatService.createConversation()
+				conversationId.value = conv.id
+			}
 
-		for await (const ev of aiChatService.streamMessage({
-			conversationId: conversationId.value,
-			content: text,
-			contextPack: buildContextPack(),
-			provider: activeProvider.value,
-			model: textModelId.value || undefined,
-			responseMode: 'agentToUi-jsonl',
-			promptPreset: 'video_scene_plan_v1',
-			promptInput: buildVideoGuiPromptInput(text),
-			viewport: getViewportContext() ?? undefined,
-			signal: aborter.signal
-		})) {
-			if (ev.type === 'msg') {
-				const m = ev.message as AgentToUiMessage
-				if (debugAgentToUi) {
-					try {
-						console.debug('[AIChat] AgentToUI msg:', m.type, m)
-					} catch {
-						// ignore
-					}
-				}
-				if (m.type === 'agentToUi/applyFilter') {
-					taskPhase.value = 'template'
-					try {
-						const payload = m.payload
-						const filter = payload.filter as Record<string, JsonValue>
-						const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
-						if (payload.target === 'nodeId' && isString(payload.nodeId)) {
-							const layerId = isString(payload.layerId) ? payload.layerId : undefined
-							await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
-							lastStageOps.value.filters.push({
-								target: 'nodeId',
-								nodeId: payload.nodeId,
-								layerId,
-								mode,
-								filter
-							})
-						} else {
-							await applyFilterToSelection(filter, mode)
-							lastStageOps.value.filters.push({ target: 'selection', mode, filter })
-						}
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) {
-							const ft = String(filter.type ?? '')
-							const targetLabel =
-								payload.target === 'nodeId' && isString(payload.nodeId)
-									? t('aichat.dialog.targetNode', { nodeId: payload.nodeId })
-									: t('aichat.dialog.targetSelection')
-							messages.value[idx].text =
-								(messages.value[idx].text || '') +
-								'\n\n' + t('aichat.messages.appliedFilter', { target: targetLabel, filter: ft || 'filter' })
-						}
-					} catch (err) {
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0)
-							messages.value[idx].text =
-								(messages.value[idx].text || '') +
-								'\n\n' + t('aichat.errors.filterFailed', { error: err instanceof Error ? err.message : String(err) })
-					}
-					continue
-				}
-				if (m.type === 'agentToUi/taskStatus') {
-					const payload = m.payload
-					const phase = payload.phase
-					const msg = payload.message
-					if (isString(msg)) taskPhaseMessage.value = msg
-					{
-						const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
-						if (text) {
-							thoughtText.value = text
-							if (!thoughtDismissed.value) thoughtOpen.value = true
-						}
-					}
-					if (phase === 'started') taskPhase.value = 'started'
-					else if (phase === 'streaming') taskPhase.value = 'streaming'
-					else if (phase === 'writing') taskPhase.value = 'writing'
-					else if (phase === 'template') taskPhase.value = 'template'
-					else if (phase === 'done') taskPhase.value = 'done'
-					else if (phase === 'error') taskPhase.value = 'error'
-					else if (phase === 'canceled') taskPhase.value = 'stopped'
-					continue
-				}
-				if (m.type === 'agentToUi/text') {
-					taskPhase.value = 'writing'
-					pushStreamText(assistantId, m.payload.text)
-					continue
-				}
-				if (m.type === 'agentToUi/insertNode') {
-					taskPhase.value = 'template'
-					receivedAnyText.value = true
-					try {
-						const payload = m.payload
-						const targetLayerId =
-							isString(payload.layerId) && payload.layerId.trim()
-								? payload.layerId.trim()
-								: undefined
-						const rawParentId = payload.parentId
-						const targetParentId: string | null | undefined =
-							rawParentId === null
-								? null
-								: isString(rawParentId) && rawParentId.trim()
-									? rawParentId.trim()
-									: undefined
-						const nodeUnknown = payload.node
-						if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
-						const nodeRecord = nodeUnknown as Record<string, unknown>
-
-						let finalLayerId = targetLayerId
-						if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-							if (debugAgentToUi)
-								console.warn(
-									'[AIChat] insertNode: layerId not found, fallback to activeLayer:',
-									finalLayerId
-								)
-							finalLayerId = undefined
-						}
-						let finalParentId: string | null | undefined = targetParentId
-						if (isString(finalParentId) && finalParentId !== 'root') {
-							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-							const exists = layer
-								? !!findNode(layer.nodeTree, finalParentId)
-								: nodeExistsInAnyLayer(store.state.layers, finalParentId)
-							if (!exists) {
-								if (debugAgentToUi)
-									console.warn(
-										'[AIChat] insertNode: parentId not found, fallback to root:',
-										finalParentId
-									)
-								finalParentId = undefined
-							}
-						}
-
-						const n: Record<string, unknown> = { ...nodeRecord }
-						if (!isRecord(n.props)) n.props = {}
-						if (!isString(n.category)) n.category = 'user'
-						if (n.category === 'user') {
-							if (!isString(n.userType)) {
-								if (isString(n.type)) n.userType = n.type
-							}
-							if (!isRecord(n.transform))
-								n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
-						}
-						await store.dispatch('addNodeTree', {
-							node: n as unknown as VideoSceneTreeNode,
-							layerId: finalLayerId,
-							parentId: finalParentId
-						})
-
+			for await (const ev of aiChatService.streamMessage({
+				conversationId: conversationId.value,
+				content: text,
+				contextPack: buildContextPack(),
+				provider: activeProvider.value,
+				model: textModelId.value || undefined,
+				responseMode: 'agentToUi-jsonl',
+				promptPreset: 'video_scene_plan_v1',
+				promptInput: buildVideoGuiPromptInput(text),
+				viewport: getViewportContext() ?? undefined,
+				signal: aborter.signal
+			})) {
+				if (ev.type === 'msg') {
+					const m = ev.message as AgentToUiMessage
+					if (debugAgentToUi) {
 						try {
-							const inserted = collectNodeIds(n)
-							lastStageOps.value.insertedNodeIds.push(...inserted)
-							const idx2 = messages.value.findIndex((x) => x.id === assistantId)
-							if (idx2 >= 0) {
-								const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
-								ops.insertedNodeIds.push(...inserted)
-								messages.value[idx2].stageOps = ops
-							}
+							console.debug('[AIChat] AgentToUI msg:', m.type, m)
 						} catch {
 							// ignore
 						}
-
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) {
-							messages.value[idx].hasStageResult = true
-							const parts = ['insertNode']
-							if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
-							if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
-							const details = parts.join(', ')
-							messages.value[idx].text =
-								(messages.value[idx].text || '') +
-								'\n\n' + t('aichat.messages.insertedNodeWithParent', { details })
-						}
-					} catch (err) {
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0)
-							messages.value[idx].text =
-								t('aichat.errors.nodeInsertFailed', { error: err instanceof Error ? err.message : String(err) })
 					}
-					continue
-				}
-				if (m.type === 'agentToUi/patchNode') {
-					taskPhase.value = 'template'
-					receivedAnyText.value = true
-					try {
-						const payload = m.payload
-						const nodeId = isString(payload.nodeId) ? payload.nodeId.trim() : ''
-						if (!nodeId) throw new Error('patchNode.payload.nodeId 必须是非空字符串')
-						const patch = payload.patch
-						if (!isRecord(patch)) throw new Error('patchNode.payload.patch 必须是对象')
-						const layerId =
-							isString(payload.layerId) && payload.layerId.trim()
-								? payload.layerId.trim()
-								: undefined
-						dispatchDvsEditorNodePatched({
-							nodeId,
-							layerId,
-							patch: patch as Record<string, JsonValue>
-						})
-
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) {
-							messages.value[idx].hasStageResult = true
-							messages.value[idx].text =
-								(messages.value[idx].text || '') + '\n\n' + t('aichat.messages.modifiedNode', { nodeId })
+					if (m.type === 'agentToUi/applyFilter') {
+						taskPhase.value = 'template'
+						try {
+							const payload = m.payload
+							const filter = payload.filter as Record<string, JsonValue>
+							const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
+							if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+								const layerId = isString(payload.layerId) ? payload.layerId : undefined
+								await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
+								lastStageOps.value.filters.push({
+									target: 'nodeId',
+									nodeId: payload.nodeId,
+									layerId,
+									mode,
+									filter
+								})
+							} else {
+								await applyFilterToSelection(filter, mode)
+								lastStageOps.value.filters.push({ target: 'selection', mode, filter })
+							}
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0) {
+								const ft = String(filter.type ?? '')
+								const targetLabel =
+									payload.target === 'nodeId' && isString(payload.nodeId)
+										? t('aichat.dialog.targetNode', { nodeId: payload.nodeId })
+										: t('aichat.dialog.targetSelection')
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									'\n\n' +
+									t('aichat.messages.appliedFilter', {
+										target: targetLabel,
+										filter: ft || 'filter'
+									})
+							}
+						} catch (err) {
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0)
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									'\n\n' +
+									t('aichat.errors.filterFailed', {
+										error: err instanceof Error ? err.message : String(err)
+									})
 						}
-					} catch (err) {
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0)
-							messages.value[idx].text =
-								t('aichat.errors.nodeModifyFailed', { error: err instanceof Error ? err.message : String(err) })
+						continue
 					}
-					continue
-				}
-				if (m.type === 'agentToUi/deleteNode') {
-					taskPhase.value = 'template'
-					receivedAnyText.value = true
-					try {
+					if (m.type === 'agentToUi/taskStatus') {
 						const payload = m.payload
-						const layerId =
-							isString(payload.layerId) && payload.layerId.trim()
-								? payload.layerId.trim()
-								: undefined
-						const ids: string[] = []
-						if (isString(payload.nodeId) && payload.nodeId.trim()) ids.push(payload.nodeId.trim())
-						if (isArray(payload.nodeIds, isString)) {
-							for (const s of payload.nodeIds) {
-								if (s.trim()) ids.push(s.trim())
+						const phase = payload.phase
+						const msg = payload.message
+						if (isString(msg)) taskPhaseMessage.value = msg
+						{
+							const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
+							if (text) {
+								thoughtText.value = text
+								if (!thoughtDismissed.value) thoughtOpen.value = true
 							}
 						}
-						const uniq = Array.from(new Set(ids))
-						if (!uniq.length) throw new Error('deleteNode.payload.nodeId/nodeIds 至少提供一个')
-						for (const nodeId of uniq) dispatchDvsEditorNodeDeleted({ nodeId, layerId })
-
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) {
-							messages.value[idx].hasStageResult = true
-							messages.value[idx].text =
-								(messages.value[idx].text || '') + '\n\n' + t('aichat.messages.deletedNodes', { nodes: uniq.join(', ') })
-						}
-					} catch (err) {
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0)
-							messages.value[idx].text =
-								t('aichat.errors.nodeDeleteFailed', { error: err instanceof Error ? err.message : String(err) })
+						if (phase === 'started') taskPhase.value = 'started'
+						else if (phase === 'streaming') taskPhase.value = 'streaming'
+						else if (phase === 'writing') taskPhase.value = 'writing'
+						else if (phase === 'template') taskPhase.value = 'template'
+						else if (phase === 'done') taskPhase.value = 'done'
+						else if (phase === 'error') taskPhase.value = 'error'
+						else if (phase === 'canceled') taskPhase.value = 'stopped'
+						continue
 					}
-					continue
-				}
-				if (m.type === 'agentToUi/chatMessage') {
-					taskPhase.value = 'writing'
-					const content = m.payload.content
-					if (isString(content)) pushStreamText(assistantId, content)
-					continue
-				}
-				if (m.type === 'agentToUi/videoScenePlan') {
-					taskPhase.value = 'template'
-					receivedAnyText.value = true
-					const payload = m.payload
-					const normalizedPlan = normalizeVideoScenePlan(payload.plan)
-					const summary =
-						isString(payload.summary) && payload.summary.trim()
-							? payload.summary.trim()
-							: t('aichat.messages.generatedScenePlan')
-					let scenePlanJson = ''
-					try {
-						scenePlanJson = JSON.stringify(payload.plan ?? null, null, 2)
-					} catch {
-						scenePlanJson = ''
+					if (m.type === 'agentToUi/text') {
+						taskPhase.value = 'writing'
+						pushStreamText(assistantId, m.payload.text)
+						continue
 					}
-					const idx = messages.value.findIndex((x) => x.id === assistantId)
-					if (idx >= 0) {
-						messages.value[idx].scenePlanJson = scenePlanJson || undefined
-						messages.value[idx].scenePlanData = normalizedPlan ?? undefined
-						messages.value[idx].scenePlanApplyStatus = normalizedPlan ? 'pending' : 'skipped'
-						messages.value[idx].text = (messages.value[idx].text || '') + `\n\n${summary}`
-					}
-					updateScenePlanReadyHint(assistantId)
-					continue
-				}
-				if (m.type === 'agentToUi/error') {
-					taskPhase.value = 'error'
-					stopTyping()
-					const idx = messages.value.findIndex((x) => x.id === assistantId)
-					if (idx >= 0)
-						messages.value[idx].text = t('aichat.errors.backendError', { code: m.payload.code, message: m.payload.message })
-					break
-				}
-				if (m.type === 'agentToUi/componentTemplate') {
-					taskPhase.value = 'template'
-					receivedAnyText.value = true
-					try {
-						const payload = m.payload
-						const targetLayerId =
-							isString(payload.layerId) && payload.layerId.trim()
-								? payload.layerId.trim()
-								: undefined
-						const rawParentId = payload.parentId
-						const targetParentId: string | null | undefined =
-							rawParentId === null
-								? null
-								: isString(rawParentId) && rawParentId.trim()
-									? rawParentId.trim()
+					if (m.type === 'agentToUi/insertNode') {
+						taskPhase.value = 'template'
+						receivedAnyText.value = true
+						try {
+							const payload = m.payload
+							const targetLayerId =
+								isString(payload.layerId) && payload.layerId.trim()
+									? payload.layerId.trim()
 									: undefined
+							const rawParentId = payload.parentId
+							const targetParentId: string | null | undefined =
+								rawParentId === null
+									? null
+									: isString(rawParentId) && rawParentId.trim()
+										? rawParentId.trim()
+										: undefined
+							const nodeUnknown = payload.node
+							if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+							const nodeRecord = nodeUnknown as Record<string, unknown>
 
-						let template: unknown = payload.template
-						if (debugAgentToUi) {
+							let finalLayerId = targetLayerId
+							if (finalLayerId && !findLayer(store.state, finalLayerId)) {
+								if (debugAgentToUi)
+									console.warn(
+										'[AIChat] insertNode: layerId not found, fallback to activeLayer:',
+										finalLayerId
+									)
+								finalLayerId = undefined
+							}
+							let finalParentId: string | null | undefined = targetParentId
+							if (isString(finalParentId) && finalParentId !== 'root') {
+								const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
+								const exists = layer
+									? !!findNode(layer.nodeTree, finalParentId)
+									: nodeExistsInAnyLayer(store.state.layers, finalParentId)
+								if (!exists) {
+									if (debugAgentToUi)
+										console.warn(
+											'[AIChat] insertNode: parentId not found, fallback to root:',
+											finalParentId
+										)
+									finalParentId = undefined
+								}
+							}
+
+							const n: Record<string, unknown> = { ...nodeRecord }
+							if (!isRecord(n.props)) n.props = {}
+							if (!isString(n.category)) n.category = 'user'
+							if (n.category === 'user') {
+								if (!isString(n.userType)) {
+									if (isString(n.type)) n.userType = n.type
+								}
+								if (!isRecord(n.transform))
+									n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
+							}
+							await store.dispatch('addNodeTree', {
+								node: n as unknown as VideoSceneTreeNode,
+								layerId: finalLayerId,
+								parentId: finalParentId
+							})
+
 							try {
-								console.debug('[AIChat] componentTemplate raw:', template)
+								const inserted = collectNodeIds(n)
+								lastStageOps.value.insertedNodeIds.push(...inserted)
+								const idx2 = messages.value.findIndex((x) => x.id === assistantId)
+								if (idx2 >= 0) {
+									const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
+									ops.insertedNodeIds.push(...inserted)
+									messages.value[idx2].stageOps = ops
+								}
 							} catch {
 								// ignore
 							}
+
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0) {
+								messages.value[idx].hasStageResult = true
+								const parts = ['insertNode']
+								if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
+								if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
+								const details = parts.join(', ')
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									'\n\n' +
+									t('aichat.messages.insertedNodeWithParent', { details })
+							}
+						} catch (err) {
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0)
+								messages.value[idx].text = t('aichat.errors.nodeInsertFailed', {
+									error: err instanceof Error ? err.message : String(err)
+								})
 						}
+						continue
+					}
+					if (m.type === 'agentToUi/patchNode') {
+						taskPhase.value = 'template'
+						receivedAnyText.value = true
 						try {
-							const vp = getViewportContext()
-							const center =
-								vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y)
-									? vp.centerWorld
+							const payload = m.payload
+							const nodeId = isString(payload.nodeId) ? payload.nodeId.trim() : ''
+							if (!nodeId) throw new Error('patchNode.payload.nodeId 必须是非空字符串')
+							const patch = payload.patch
+							if (!isRecord(patch)) throw new Error('patchNode.payload.patch 必须是对象')
+							const layerId =
+								isString(payload.layerId) && payload.layerId.trim()
+									? payload.layerId.trim()
 									: undefined
-							template = toComponentTemplateLike(template, { defaultCenterWorld: center })
-							template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
-							template = sanitizeComponentTemplate(template)
+							dispatchDvsEditorNodePatched({
+								nodeId,
+								layerId,
+								patch: patch as Record<string, JsonValue>
+							})
+
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0) {
+								messages.value[idx].hasStageResult = true
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									'\n\n' +
+									t('aichat.messages.modifiedNode', { nodeId })
+							}
+						} catch (err) {
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0)
+								messages.value[idx].text = t('aichat.errors.nodeModifyFailed', {
+									error: err instanceof Error ? err.message : String(err)
+								})
+						}
+						continue
+					}
+					if (m.type === 'agentToUi/deleteNode') {
+						taskPhase.value = 'template'
+						receivedAnyText.value = true
+						try {
+							const payload = m.payload
+							const layerId =
+								isString(payload.layerId) && payload.layerId.trim()
+									? payload.layerId.trim()
+									: undefined
+							const ids: string[] = []
+							if (isString(payload.nodeId) && payload.nodeId.trim()) ids.push(payload.nodeId.trim())
+							if (isArray(payload.nodeIds, isString)) {
+								for (const s of payload.nodeIds) {
+									if (s.trim()) ids.push(s.trim())
+								}
+							}
+							const uniq = Array.from(new Set(ids))
+							if (!uniq.length) throw new Error('deleteNode.payload.nodeId/nodeIds 至少提供一个')
+							for (const nodeId of uniq) dispatchDvsEditorNodeDeleted({ nodeId, layerId })
+
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0) {
+								messages.value[idx].hasStageResult = true
+								messages.value[idx].text =
+									(messages.value[idx].text || '') +
+									'\n\n' +
+									t('aichat.messages.deletedNodes', { nodes: uniq.join(', ') })
+							}
+						} catch (err) {
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0)
+								messages.value[idx].text = t('aichat.errors.nodeDeleteFailed', {
+									error: err instanceof Error ? err.message : String(err)
+								})
+						}
+						continue
+					}
+					if (m.type === 'agentToUi/chatMessage') {
+						taskPhase.value = 'writing'
+						const content = m.payload.content
+						if (isString(content)) pushStreamText(assistantId, content)
+						continue
+					}
+					if (m.type === 'agentToUi/videoScenePlan') {
+						taskPhase.value = 'template'
+						receivedAnyText.value = true
+						const payload = m.payload
+						const normalizedPlan = normalizeVideoScenePlan(payload.plan)
+						const summary =
+							isString(payload.summary) && payload.summary.trim()
+								? payload.summary.trim()
+								: t('aichat.messages.generatedScenePlan')
+						let scenePlanJson = ''
+						try {
+							scenePlanJson = JSON.stringify(payload.plan ?? null, null, 2)
+						} catch {
+							scenePlanJson = ''
+						}
+						const idx = messages.value.findIndex((x) => x.id === assistantId)
+						if (idx >= 0) {
+							messages.value[idx].scenePlanJson = scenePlanJson || undefined
+							messages.value[idx].scenePlanData = normalizedPlan ?? undefined
+							messages.value[idx].scenePlanApplyStatus = normalizedPlan ? 'pending' : 'skipped'
+							messages.value[idx].text = (messages.value[idx].text || '') + `\n\n${summary}`
+						}
+						updateScenePlanReadyHint(assistantId)
+						continue
+					}
+					if (m.type === 'agentToUi/error') {
+						taskPhase.value = 'error'
+						stopTyping()
+						const idx = messages.value.findIndex((x) => x.id === assistantId)
+						if (idx >= 0)
+							messages.value[idx].text = t('aichat.errors.backendError', {
+								code: m.payload.code,
+								message: m.payload.message
+							})
+						break
+					}
+					if (m.type === 'agentToUi/componentTemplate') {
+						taskPhase.value = 'template'
+						receivedAnyText.value = true
+						try {
+							const payload = m.payload
+							const targetLayerId =
+								isString(payload.layerId) && payload.layerId.trim()
+									? payload.layerId.trim()
+									: undefined
+							const rawParentId = payload.parentId
+							const targetParentId: string | null | undefined =
+								rawParentId === null
+									? null
+									: isString(rawParentId) && rawParentId.trim()
+										? rawParentId.trim()
+										: undefined
+
+							let template: unknown = payload.template
 							if (debugAgentToUi) {
 								try {
-									console.debug('[AIChat] componentTemplate normalized:', template)
+									console.debug('[AIChat] componentTemplate raw:', template)
 								} catch {
 									// ignore
 								}
 							}
-						} catch {
-							// ignore and let instantiateTemplate throw
-						}
-						const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-						const instantiated = componentTemplateApi.instantiateTemplate(
-							template as ComponentTemplate,
-							{},
-							{
-								getNodeId: ({ templateId, localId }) => {
-									const base = safeIdPart(`${templateId}:${localId}`)
-									let id = base
-									let i = 1
-									while (nodeExistsInAnyLayer(store.state.layers, id)) {
-										id = `${base}__${i++}`
-									}
-									return id
-								}
-							}
-						)
-						let finalLayerId = targetLayerId
-						if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-							if (debugAgentToUi)
-								console.warn(
-									'[AIChat] componentTemplate: layerId not found, fallback to activeLayer:',
-									finalLayerId
-								)
-							finalLayerId = undefined
-						}
-						let finalParentId: string | null | undefined = targetParentId
-						if (isString(finalParentId) && finalParentId !== 'root') {
-							const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-							const exists = layer
-								? !!findNode(layer.nodeTree, finalParentId)
-								: nodeExistsInAnyLayer(store.state.layers, finalParentId)
-							if (!exists) {
-								if (debugAgentToUi)
-									console.warn(
-										'[AIChat] componentTemplate: parentId not found, fallback to root:',
-										finalParentId
-									)
-								finalParentId = undefined
-							}
-						}
-						await store.dispatch('addNodeTree', {
-							node: instantiated.root,
-							layerId: finalLayerId,
-							parentId: finalParentId
-						})
-						{
-							const inserted = collectNodeIds(instantiated.root)
-							lastStageOps.value.insertedNodeIds.push(...inserted)
-							const idx2 = messages.value.findIndex((x) => x.id === assistantId)
-							if (idx2 >= 0) {
-								const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
-								ops.insertedNodeIds.push(...inserted)
-								messages.value[idx2].stageOps = ops
-							}
-						}
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0) {
-							messages.value[idx].hasStageResult = true
-							const parts = [`intent=${payload.intent ?? 'insert'}`]
-							if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
-							if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
-							const details = parts.join(', ')
-							messages.value[idx].text =
-								(messages.value[idx].text || '') +
-								'\n\n' + t('aichat.messages.insertedNodeWithParent', { details })
-						}
-						updateScenePlanReadyHint(assistantId)
-					} catch (err) {
-						const idx = messages.value.findIndex((x) => x.id === assistantId)
-						if (idx >= 0)
-							messages.value[idx].text =
-								t('aichat.errors.templateInsertFailed', { error: err instanceof Error ? err.message : String(err) })
-					}
-					continue
-				}
-			}
-			if (ev.type === 'error') {
-				if (stoppedByUser.value) break
-				stopTyping()
-				const idx = messages.value.findIndex((x) => x.id === assistantId)
-				if (idx >= 0) messages.value[idx].text = t('aichat.errors.requestFailed', { message: ev.error.message })
-				break
-			}
-			if (ev.type === 'done') break
-		}
-
-		// Auto self-check round (single pass) when stage was changed.
-		if (!stoppedByUser.value && taskPhase.value !== 'error') {
-			const didMutateStage =
-				lastStageOps.value.insertedNodeIds.length > 0 || lastStageOps.value.filters.length > 0
-			if (didMutateStage) {
-				selfCheckActive.value = true
-				// 不新增"思考/自检"气泡，避免与流式反馈重复；复用主 assistant 消息。
-				taskPhase.value = 'writing'
-				taskPhaseMessage.value = t('aichat.stages.selfChecking')
-				thoughtText.value = t('aichat.stages.selfChecking')
-				if (!thoughtDismissed.value) thoughtOpen.value = true
-				for await (const ev2 of aiChatService.streamMessage({
-					conversationId: conversationId.value,
-					content:
-						'【自检回合】请基于 contextPack.stage 与 lastStageOps，对刚才插入/修改的节点做一致性检查：\n' +
-						'1) 字段名与类型是否符合编辑器（尤其是 text.props.textAlign）。\n' +
-						'2) 文本节点是否会被裁切：text 节点通常不需要强行写 transform.width/height；如果写了也要足够容纳 textContent（含\\n换行）。\n' +
-						'3) 如果发现问题：优先使用 agentToUi/patchNode 或 agentToUi/deleteNode 按 nodeId 精确修改/删除（避免新建导致错乱）；仅在确实需要新增内容时才用 agentToUi/insertNode 或 agentToUi/componentTemplate(intent="insert")；也可用 agentToUi/applyFilter 做轻量修正；如果无需修改，输出一条 chatMessage 说明“自检通过”。',
-					contextPack: buildContextPack(),
-					provider: activeProvider.value,
-					model: textModelId.value || undefined,
-					responseMode: 'agentToUi-jsonl',
-					viewport: getViewportContext() ?? undefined,
-					signal: aborter.signal
-				})) {
-					if (ev2.type === 'msg') {
-						const m2 = ev2.message as AgentToUiMessage
-						if (m2.type === 'agentToUi/taskStatus') {
-							const payload = m2.payload
-							const phase = payload.phase
-							const msg = payload.message
-							if (isString(msg)) taskPhaseMessage.value = msg
-							{
-								const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
-								if (text) {
-									thoughtText.value = text
-									if (!thoughtDismissed.value) thoughtOpen.value = true
-								}
-							}
-							if (phase === 'started') taskPhase.value = 'started'
-							else if (phase === 'streaming') taskPhase.value = 'streaming'
-							else if (phase === 'writing') taskPhase.value = 'writing'
-							else if (phase === 'template') taskPhase.value = 'template'
-							else if (phase === 'done') taskPhase.value = 'done'
-							else if (phase === 'error') taskPhase.value = 'error'
-							else if (phase === 'canceled') taskPhase.value = 'stopped'
-							continue
-						}
-						if (m2.type === 'agentToUi/applyFilter') {
-							const payload = m2.payload
-							const filter = payload.filter as Record<string, JsonValue>
-							const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
-							if (isRecord(filter)) {
-								if (payload.target === 'nodeId' && isString(payload.nodeId)) {
-									const layerId = isString(payload.layerId) ? payload.layerId : undefined
-									await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
-								} else {
-									await applyFilterToSelection(filter, mode)
-								}
-							}
-							continue
-						}
-						if (m2.type === 'agentToUi/componentTemplate') {
 							try {
-								const payload = m2.payload
-								const targetLayerId =
-									isString(payload.layerId) && payload.layerId.trim()
-										? payload.layerId.trim()
-										: undefined
-								const rawParentId = payload.parentId
-								const targetParentId: string | null | undefined =
-									rawParentId === null
-										? null
-										: isString(rawParentId) && rawParentId.trim()
-											? rawParentId.trim()
-											: undefined
-
-								let template: unknown = payload.template
 								const vp = getViewportContext()
 								const center =
 									vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y)
@@ -1767,144 +1635,335 @@ const sendText = async (text: string) => {
 								template = toComponentTemplateLike(template, { defaultCenterWorld: center })
 								template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
 								template = sanitizeComponentTemplate(template)
-								const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
-								const instantiated = componentTemplateApi.instantiateTemplate(
-									template as ComponentTemplate,
-									{},
-									{
-										getNodeId: ({ templateId, localId }) => {
-											const base = safeIdPart(`${templateId}:${localId}`)
-											let id = base
-											let i = 1
-											while (nodeExistsInAnyLayer(store.state.layers, id)) {
-												id = `${base}__${i++}`
-											}
-											return id
+								if (debugAgentToUi) {
+									try {
+										console.debug('[AIChat] componentTemplate normalized:', template)
+									} catch {
+										// ignore
+									}
+								}
+							} catch {
+								// ignore and let instantiateTemplate throw
+							}
+							const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
+							const instantiated = componentTemplateApi.instantiateTemplate(
+								template as ComponentTemplate,
+								{},
+								{
+									getNodeId: ({ templateId, localId }) => {
+										const base = safeIdPart(`${templateId}:${localId}`)
+										let id = base
+										let i = 1
+										while (nodeExistsInAnyLayer(store.state.layers, id)) {
+											id = `${base}__${i++}`
 										}
+										return id
 									}
-								)
-								let finalLayerId = targetLayerId
-								if (finalLayerId && !findLayer(store.state, finalLayerId)) {
+								}
+							)
+							let finalLayerId = targetLayerId
+							if (finalLayerId && !findLayer(store.state, finalLayerId)) {
+								if (debugAgentToUi)
+									console.warn(
+										'[AIChat] componentTemplate: layerId not found, fallback to activeLayer:',
+										finalLayerId
+									)
+								finalLayerId = undefined
+							}
+							let finalParentId: string | null | undefined = targetParentId
+							if (isString(finalParentId) && finalParentId !== 'root') {
+								const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
+								const exists = layer
+									? !!findNode(layer.nodeTree, finalParentId)
+									: nodeExistsInAnyLayer(store.state.layers, finalParentId)
+								if (!exists) {
 									if (debugAgentToUi)
 										console.warn(
-											'[AIChat] self-check componentTemplate: layerId not found, fallback to activeLayer:',
-											finalLayerId
+											'[AIChat] componentTemplate: parentId not found, fallback to root:',
+											finalParentId
 										)
-									finalLayerId = undefined
+									finalParentId = undefined
 								}
-								let finalParentId: string | null | undefined = targetParentId
-								if (isString(finalParentId) && finalParentId !== 'root') {
-									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-									const exists = layer
-										? !!findNode(layer.nodeTree, finalParentId)
-										: nodeExistsInAnyLayer(store.state.layers, finalParentId)
-									if (!exists) {
-										if (debugAgentToUi)
-											console.warn(
-												'[AIChat] self-check componentTemplate: parentId not found, fallback to root:',
-												finalParentId
-											)
-										finalParentId = undefined
-									}
-								}
-								await store.dispatch('addNodeTree', {
-									node: instantiated.root,
-									layerId: finalLayerId,
-									parentId: finalParentId
-								})
-							} catch {
-								// ignore
 							}
-							continue
-						}
-						if (m2.type === 'agentToUi/insertNode') {
-							try {
-								const payload = m2.payload
-								const targetLayerId =
-									isString(payload.layerId) && payload.layerId.trim()
-										? payload.layerId.trim()
-										: undefined
-								const rawParentId = payload.parentId
-								const targetParentId: string | null | undefined =
-									rawParentId === null
-										? null
-										: isString(rawParentId) && rawParentId.trim()
-											? rawParentId.trim()
-											: undefined
-								const nodeUnknown = payload.node
-								if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
-								const nodeRecord = nodeUnknown as Record<string, unknown>
-
-								let finalLayerId = targetLayerId
-								if (finalLayerId && !findLayer(store.state, finalLayerId)) {
-									if (debugAgentToUi)
-										console.warn(
-											'[AIChat] self-check insertNode: layerId not found, fallback to activeLayer:',
-											finalLayerId
-										)
-									finalLayerId = undefined
+							await store.dispatch('addNodeTree', {
+								node: instantiated.root,
+								layerId: finalLayerId,
+								parentId: finalParentId
+							})
+							{
+								const inserted = collectNodeIds(instantiated.root)
+								lastStageOps.value.insertedNodeIds.push(...inserted)
+								const idx2 = messages.value.findIndex((x) => x.id === assistantId)
+								if (idx2 >= 0) {
+									const ops = messages.value[idx2].stageOps ?? { insertedNodeIds: [] }
+									ops.insertedNodeIds.push(...inserted)
+									messages.value[idx2].stageOps = ops
 								}
-								let finalParentId: string | null | undefined = targetParentId
-								if (isString(finalParentId) && finalParentId !== 'root') {
-									const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
-									const exists = layer
-										? !!findNode(layer.nodeTree, finalParentId)
-										: nodeExistsInAnyLayer(store.state.layers, finalParentId)
-									if (!exists) {
-										if (debugAgentToUi)
-											console.warn(
-												'[AIChat] self-check insertNode: parentId not found, fallback to root:',
-												finalParentId
-											)
-										finalParentId = undefined
-									}
-								}
-
-								const n: Record<string, unknown> = { ...nodeRecord }
-								if (!isRecord(n.props)) n.props = {}
-								if (!isString(n.category)) n.category = 'user'
-								if (n.category === 'user') {
-									if (!isString(n.userType)) {
-										if (isString(n.type)) n.userType = n.type
-									}
-									if (!isRecord(n.transform))
-										n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
-								}
-								await store.dispatch('addNodeTree', {
-									node: n as unknown as VideoSceneTreeNode,
-									layerId: finalLayerId,
-									parentId: finalParentId
-								})
-							} catch {
-								// ignore
 							}
-							continue
-						}
-						if (m2.type === 'agentToUi/text') {
-							pushStreamText(assistantId, m2.payload.text)
-							continue
-						}
-						if (m2.type === 'agentToUi/chatMessage') {
-							const content = m2.payload.content
-							if (isString(content)) pushStreamText(assistantId, content)
-							continue
-						}
-						if (m2.type === 'agentToUi/error') {
-							stopTyping()
 							const idx = messages.value.findIndex((x) => x.id === assistantId)
-							if (idx >= 0)
+							if (idx >= 0) {
+								messages.value[idx].hasStageResult = true
+								const parts = [`intent=${payload.intent ?? 'insert'}`]
+								if (finalParentId !== undefined) parts.push(`parentId=${String(finalParentId)}`)
+								if (finalLayerId) parts.push(`layerId=${finalLayerId}`)
+								const details = parts.join(', ')
 								messages.value[idx].text =
 									(messages.value[idx].text || '') +
-									'\n\n' + t('aichat.errors.selfCheckFailed', { code: m2.payload.code, message: m2.payload.message })
-							break
+									'\n\n' +
+									t('aichat.messages.insertedNodeWithParent', { details })
+							}
+							updateScenePlanReadyHint(assistantId)
+						} catch (err) {
+							const idx = messages.value.findIndex((x) => x.id === assistantId)
+							if (idx >= 0)
+								messages.value[idx].text = t('aichat.errors.templateInsertFailed', {
+									error: err instanceof Error ? err.message : String(err)
+								})
 						}
+						continue
 					}
-					if (ev2.type === 'error') break
-					if (ev2.type === 'done') break
 				}
-				selfCheckActive.value = false
+				if (ev.type === 'error') {
+					if (stoppedByUser.value) break
+					stopTyping()
+					const idx = messages.value.findIndex((x) => x.id === assistantId)
+					if (idx >= 0)
+						messages.value[idx].text = t('aichat.errors.requestFailed', {
+							message: ev.error.message
+						})
+					break
+				}
+				if (ev.type === 'done') break
 			}
-		}
+
+			// Auto self-check round (single pass) when stage was changed.
+			if (!stoppedByUser.value && taskPhase.value !== 'error') {
+				const didMutateStage =
+					lastStageOps.value.insertedNodeIds.length > 0 || lastStageOps.value.filters.length > 0
+				if (didMutateStage) {
+					selfCheckActive.value = true
+					// 不新增"思考/自检"气泡，避免与流式反馈重复；复用主 assistant 消息。
+					taskPhase.value = 'writing'
+					taskPhaseMessage.value = t('aichat.stages.selfChecking')
+					thoughtText.value = t('aichat.stages.selfChecking')
+					if (!thoughtDismissed.value) thoughtOpen.value = true
+					for await (const ev2 of aiChatService.streamMessage({
+						conversationId: conversationId.value,
+						content:
+							'【自检回合】请基于 contextPack.stage 与 lastStageOps，对刚才插入/修改的节点做一致性检查：\n' +
+							'1) 字段名与类型是否符合编辑器（尤其是 text.props.textAlign）。\n' +
+							'2) 文本节点是否会被裁切：text 节点通常不需要强行写 transform.width/height；如果写了也要足够容纳 textContent（含\\n换行）。\n' +
+							'3) 如果发现问题：优先使用 agentToUi/patchNode 或 agentToUi/deleteNode 按 nodeId 精确修改/删除（避免新建导致错乱）；仅在确实需要新增内容时才用 agentToUi/insertNode 或 agentToUi/componentTemplate(intent="insert")；也可用 agentToUi/applyFilter 做轻量修正；如果无需修改，输出一条 chatMessage 说明“自检通过”。',
+						contextPack: buildContextPack(),
+						provider: activeProvider.value,
+						model: textModelId.value || undefined,
+						responseMode: 'agentToUi-jsonl',
+						viewport: getViewportContext() ?? undefined,
+						signal: aborter.signal
+					})) {
+						if (ev2.type === 'msg') {
+							const m2 = ev2.message as AgentToUiMessage
+							if (m2.type === 'agentToUi/taskStatus') {
+								const payload = m2.payload
+								const phase = payload.phase
+								const msg = payload.message
+								if (isString(msg)) taskPhaseMessage.value = msg
+								{
+									const text = isString(msg) && msg.trim() ? msg.trim() : String(phase ?? '').trim()
+									if (text) {
+										thoughtText.value = text
+										if (!thoughtDismissed.value) thoughtOpen.value = true
+									}
+								}
+								if (phase === 'started') taskPhase.value = 'started'
+								else if (phase === 'streaming') taskPhase.value = 'streaming'
+								else if (phase === 'writing') taskPhase.value = 'writing'
+								else if (phase === 'template') taskPhase.value = 'template'
+								else if (phase === 'done') taskPhase.value = 'done'
+								else if (phase === 'error') taskPhase.value = 'error'
+								else if (phase === 'canceled') taskPhase.value = 'stopped'
+								continue
+							}
+							if (m2.type === 'agentToUi/applyFilter') {
+								const payload = m2.payload
+								const filter = payload.filter as Record<string, JsonValue>
+								const mode: 'append' | 'replace' = payload.mode === 'replace' ? 'replace' : 'append'
+								if (isRecord(filter)) {
+									if (payload.target === 'nodeId' && isString(payload.nodeId)) {
+										const layerId = isString(payload.layerId) ? payload.layerId : undefined
+										await applyFilterToNodeId(payload.nodeId, filter, mode, layerId)
+									} else {
+										await applyFilterToSelection(filter, mode)
+									}
+								}
+								continue
+							}
+							if (m2.type === 'agentToUi/componentTemplate') {
+								try {
+									const payload = m2.payload
+									const targetLayerId =
+										isString(payload.layerId) && payload.layerId.trim()
+											? payload.layerId.trim()
+											: undefined
+									const rawParentId = payload.parentId
+									const targetParentId: string | null | undefined =
+										rawParentId === null
+											? null
+											: isString(rawParentId) && rawParentId.trim()
+												? rawParentId.trim()
+												: undefined
+
+									let template: unknown = payload.template
+									const vp = getViewportContext()
+									const center =
+										vp?.centerWorld && isNumber(vp.centerWorld.x) && isNumber(vp.centerWorld.y)
+											? vp.centerWorld
+											: undefined
+									template = toComponentTemplateLike(template, { defaultCenterWorld: center })
+									template = normalizeTemplateForViewport(template, { defaultCenterWorld: center })
+									template = sanitizeComponentTemplate(template)
+									const safeIdPart = (s: string) => String(s).replace(/[^a-zA-Z0-9:_\-]/g, '_')
+									const instantiated = componentTemplateApi.instantiateTemplate(
+										template as ComponentTemplate,
+										{},
+										{
+											getNodeId: ({ templateId, localId }) => {
+												const base = safeIdPart(`${templateId}:${localId}`)
+												let id = base
+												let i = 1
+												while (nodeExistsInAnyLayer(store.state.layers, id)) {
+													id = `${base}__${i++}`
+												}
+												return id
+											}
+										}
+									)
+									let finalLayerId = targetLayerId
+									if (finalLayerId && !findLayer(store.state, finalLayerId)) {
+										if (debugAgentToUi)
+											console.warn(
+												'[AIChat] self-check componentTemplate: layerId not found, fallback to activeLayer:',
+												finalLayerId
+											)
+										finalLayerId = undefined
+									}
+									let finalParentId: string | null | undefined = targetParentId
+									if (isString(finalParentId) && finalParentId !== 'root') {
+										const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
+										const exists = layer
+											? !!findNode(layer.nodeTree, finalParentId)
+											: nodeExistsInAnyLayer(store.state.layers, finalParentId)
+										if (!exists) {
+											if (debugAgentToUi)
+												console.warn(
+													'[AIChat] self-check componentTemplate: parentId not found, fallback to root:',
+													finalParentId
+												)
+											finalParentId = undefined
+										}
+									}
+									await store.dispatch('addNodeTree', {
+										node: instantiated.root,
+										layerId: finalLayerId,
+										parentId: finalParentId
+									})
+								} catch {
+									// ignore
+								}
+								continue
+							}
+							if (m2.type === 'agentToUi/insertNode') {
+								try {
+									const payload = m2.payload
+									const targetLayerId =
+										isString(payload.layerId) && payload.layerId.trim()
+											? payload.layerId.trim()
+											: undefined
+									const rawParentId = payload.parentId
+									const targetParentId: string | null | undefined =
+										rawParentId === null
+											? null
+											: isString(rawParentId) && rawParentId.trim()
+												? rawParentId.trim()
+												: undefined
+									const nodeUnknown = payload.node
+									if (!isRecord(nodeUnknown)) throw new Error('insertNode.payload.node 必须是对象')
+									const nodeRecord = nodeUnknown as Record<string, unknown>
+
+									let finalLayerId = targetLayerId
+									if (finalLayerId && !findLayer(store.state, finalLayerId)) {
+										if (debugAgentToUi)
+											console.warn(
+												'[AIChat] self-check insertNode: layerId not found, fallback to activeLayer:',
+												finalLayerId
+											)
+										finalLayerId = undefined
+									}
+									let finalParentId: string | null | undefined = targetParentId
+									if (isString(finalParentId) && finalParentId !== 'root') {
+										const layer = findLayer(store.state, finalLayerId ?? store.state.activeLayerId)
+										const exists = layer
+											? !!findNode(layer.nodeTree, finalParentId)
+											: nodeExistsInAnyLayer(store.state.layers, finalParentId)
+										if (!exists) {
+											if (debugAgentToUi)
+												console.warn(
+													'[AIChat] self-check insertNode: parentId not found, fallback to root:',
+													finalParentId
+												)
+											finalParentId = undefined
+										}
+									}
+
+									const n: Record<string, unknown> = { ...nodeRecord }
+									if (!isRecord(n.props)) n.props = {}
+									if (!isString(n.category)) n.category = 'user'
+									if (n.category === 'user') {
+										if (!isString(n.userType)) {
+											if (isString(n.type)) n.userType = n.type
+										}
+										if (!isRecord(n.transform))
+											n.transform = { x: 0, y: 0, width: 200, height: 120, rotation: 0, opacity: 1 }
+									}
+									await store.dispatch('addNodeTree', {
+										node: n as unknown as VideoSceneTreeNode,
+										layerId: finalLayerId,
+										parentId: finalParentId
+									})
+								} catch {
+									// ignore
+								}
+								continue
+							}
+							if (m2.type === 'agentToUi/text') {
+								pushStreamText(assistantId, m2.payload.text)
+								continue
+							}
+							if (m2.type === 'agentToUi/chatMessage') {
+								const content = m2.payload.content
+								if (isString(content)) pushStreamText(assistantId, content)
+								continue
+							}
+							if (m2.type === 'agentToUi/error') {
+								stopTyping()
+								const idx = messages.value.findIndex((x) => x.id === assistantId)
+								if (idx >= 0)
+									messages.value[idx].text =
+										(messages.value[idx].text || '') +
+										'\n\n' +
+										t('aichat.errors.selfCheckFailed', {
+											code: m2.payload.code,
+											message: m2.payload.message
+										})
+								break
+							}
+						}
+						if (ev2.type === 'error') break
+						if (ev2.type === 'done') break
+					}
+					selfCheckActive.value = false
+				}
+			}
 		}
 	} catch (e) {
 		if (stoppedByUser.value || isAbortError(e)) {
@@ -2033,10 +2092,7 @@ const updateScenePlanReadyHint = (assistantId: string) => {
 	if (idx < 0) return
 	const message = messages.value[idx]
 	if (!canGenerateScenePlanAnimation(message)) return
-	appendUniqueMessageNote(
-		message,
-		t('aichat.messages.scenePlanReady')
-	)
+	appendUniqueMessageNote(message, t('aichat.messages.scenePlanReady'))
 }
 
 const generateScenePlanAnimations = async (message: ChatMessage) => {
@@ -2061,20 +2117,14 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	)
 	if (layerIds.length !== 1) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(
-			message,
-			t('aichat.errors.animationMultiLayer')
-		)
+		appendUniqueMessageNote(message, t('aichat.errors.animationMultiLayer'))
 		return
 	}
 
 	const layerId = layerIds[0]
 	if (layerHasExistingTimelineData(layerId)) {
 		message.scenePlanApplyStatus = 'skipped'
-		appendUniqueMessageNote(
-			message,
-			t('aichat.errors.animationTimelineExists')
-		)
+		appendUniqueMessageNote(message, t('aichat.errors.animationTimelineExists'))
 		return
 	}
 
@@ -2130,7 +2180,10 @@ const generateScenePlanAnimations = async (message: ChatMessage) => {
 	message.hasStageResult = true
 	appendUniqueMessageNote(
 		message,
-		t('aichat.messages.animationGenerated', { count: compiled.appliedPlanCount, nodeCount: compiled.appliedTargetNodeIds.length })
+		t('aichat.messages.animationGenerated', {
+			count: compiled.appliedPlanCount,
+			nodeCount: compiled.appliedTargetNodeIds.length
+		})
 	)
 }
 
@@ -2384,7 +2437,10 @@ const saveToComponentLibrary = async (m: ChatMessage, ev?: MouseEvent) => {
 		)
 		m.text = (m.text || '') + '\n\n' + t('aichat.messages.savedToLibrary', { name })
 	} catch (e) {
-		m.text = (m.text || '') + '\n\n' + t('aichat.errors.saveFailed', { error: e instanceof Error ? e.message : String(e) })
+		m.text =
+			(m.text || '') +
+			'\n\n' +
+			t('aichat.errors.saveFailed', { error: e instanceof Error ? e.message : String(e) })
 	}
 }
 

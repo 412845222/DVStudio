@@ -33,6 +33,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
+import { TimelineStore } from '../../../store/timeline'
 import SubtitleEditorPanel from './SubtitleEditorPanel.vue'
 import AiSubtitleUnderstandingPanel from './AiSubtitleUnderstandingPanel.vue'
 import ComponentLibraryPanel from './ComponentLibraryPanel.vue'
@@ -47,6 +48,7 @@ defineExpose({ rootEl })
 const open = computed(() => !!store.state.leftPanel?.open)
 const mode = computed(() => store.state.leftPanel?.mode ?? null)
 const layerId = computed(() => store.state.leftPanel?.layerId ?? null)
+const videoPath = computed(() => store.state.leftPanel?.videoPath ?? null)
 const refreshToken = computed(() => store.state.leftPanel?.refreshToken ?? 0)
 
 const title = computed(() => {
@@ -159,14 +161,20 @@ const close = () => {
 	bottom: 0;
 	width: 40vw;
 	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.3)) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0, 0, 0, 0.2)) 0%,
+		color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0, 0, 0, 0.3)) 100%
+	);
 	backdrop-filter: blur(12px);
 	z-index: 3;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
 	padding-right: 6px;
-	box-shadow: 4px 0 20px rgba(0,0,0,0.4), inset -1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	box-shadow:
+		4px 0 20px rgba(0, 0, 0, 0.4),
+		inset -1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-left-splitter {
@@ -179,7 +187,9 @@ const close = () => {
 	background: color-mix(in srgb, var(--pl-accent) 6%, var(--pl-bg-1));
 	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	user-select: none;
-	transition: background 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		background 0.2s ease,
+		box-shadow 0.2s ease;
 }
 
 .vs-left-splitter::after {
@@ -226,7 +236,12 @@ const close = () => {
 	right: 0;
 	bottom: -1px;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 60%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 60%, transparent),
+		transparent
+	);
 }
 
 .vs-left-title {
@@ -240,7 +255,7 @@ const close = () => {
 .vs-left-close {
 	margin-left: auto;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0, 0, 0, 0.3));
 	color: var(--pl-fg);
 	font-size: 12px;
 	height: 24px;
@@ -248,7 +263,10 @@ const close = () => {
 	cursor: pointer;
 	border-radius: 2px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-left-close:hover {

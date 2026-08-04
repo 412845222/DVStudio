@@ -1,7 +1,5 @@
 import type { Ref } from 'vue'
-import type { Store } from 'vuex'
 import { hitTestNodesInWorldRect } from '../../../../aiworkflow/domain/selection/hitTestNodesInWorldRect'
-import type { WorkflowState } from '../../../../aiworkflow/types'
 
 export type ScreenToWorldFn = (point: { x: number; y: number }) => { x: number; y: number }
 
@@ -9,8 +7,40 @@ const FOCUS_ANIMATION_DURATION = 300
 
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
 
+type EngineApi = {
+	moveNodesByDelta: (nodeIds: string[], dx: number, dy: number) => void
+	setNodePosition: (nodeId: string, worldX: number, worldY: number) => void
+	setNodeSize: (nodeId: string, width?: number, height?: number) => void
+	deleteSelection: () => void
+	setSelectedNode: (nodeId: string | null) => void
+	setSelectedNodes: (nodeIds: string[], primaryNodeId?: string | null) => void
+	clearSelection: () => void
+	setEngineViewport: (zoom: number, panX: number, panY: number) => void
+	focusNode: (nodeId: string) => boolean
+	updateNodePositionDirect: (nodeId: string, worldX: number, worldY: number) => void
+	updateNodesPositionDirect: (positions: Map<string, { x: number; y: number }>) => void
+	commitNodeMovement: (
+		startPositions: Map<string, { x: number; y: number }>,
+		endPositions: Map<string, { x: number; y: number }>
+	) => void
+	getNode?: (nodeId: string) => { data: { worldX: number; worldY: number } } | null
+}
+
+type StoreLike = {
+	state: {
+		nodesById: Record<string, any>
+		nodeOrder: string[]
+		viewport: { zoom: number; panX: number; panY: number }
+		selectedNodeId?: string | null
+		nodeChatDialog?: { visible: boolean; nodeId?: string | null }
+	}
+	dispatch?: (action: string, payload?: any) => any
+	commit?: (mutation: string, payload?: any) => any
+}
+
 export const useAIWorkflowCanvasInteraction = (payload: {
-	store: Store<WorkflowState>
+	store: StoreLike
+	engineApi: EngineApi
 	selectedNodeIds: Ref<string[]>
 	inspectorOpen: Ref<boolean>
 	chatModelKey: Ref<string>
@@ -19,10 +49,17 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	forceEndViewportMotion?: () => void
 	scheduleAsyncEdgeRender: () => void
 	canvasViewportSize: Ref<{ width: number; height: number }>
+	flushCanvasNodeLayer?: () => void
 	onNodeDragStart?: (nodeIds: string[]) => void
 	onNodeDragMove?: (nodeIds: string[]) => void
 	onNodeDragEnd?: (nodeIds: string[]) => void
+	onOpenNodeChat?: (nodeId: string) => void
+	onCloseNodeChat?: () => void
+	onSetInspectorOpen?: (open: boolean) => void
+	onSetChatCollapsed?: (collapsed: boolean) => void
 }) => {
+	const { engineApi } = payload
+
 	const onCanvasPointerDown = (event: PointerEvent) => {
 		if (event.button !== 0) return
 		const target = event.target as HTMLElement | null
@@ -31,10 +68,18 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			'.wf-node, .wf-resource-panel, .wf-inspector, .ctx-menu, .aiwf-toolbar, .aiwf-inspector-toggle, .wf-sel-frame-tag-bar'
 		)
 		if (inUi) return
-		payload.store.commit('clearSelection')
-		payload.inspectorOpen.value = false
+		engineApi.clearSelection()
+		if (payload.onSetInspectorOpen) {
+			payload.onSetInspectorOpen(false)
+		} else {
+			payload.inspectorOpen.value = false
+		}
 		if (payload.chatModelKey.value !== 'nanobanana' && payload.chatModelKey.value !== 'seedance') {
-			payload.chatCollapsed.value = true
+			if (payload.onSetChatCollapsed) {
+				payload.onSetChatCollapsed(true)
+			} else {
+				payload.chatCollapsed.value = true
+			}
 		}
 	}
 
@@ -44,16 +89,17 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		if (!node) return
 		const next = Number(value)
 		if (!Number.isFinite(next)) return
+		const dy = 0
 		const dx = next - node.worldX
 		if (
 			payload.selectedNodeIds.value.length > 1 &&
 			payload.selectedNodeIds.value.includes(nodeId)
 		) {
-			payload.store.commit('moveSelectedNodesByDelta', { dx, dy: 0 })
+			engineApi.moveNodesByDelta(payload.selectedNodeIds.value, dx, dy)
 			payload.scheduleAsyncEdgeRender()
 			return
 		}
-		payload.store.commit('setNodePosition', { nodeId, worldX: next })
+		engineApi.setNodePosition(nodeId, next, node.worldY)
 		payload.scheduleAsyncEdgeRender()
 	}
 
@@ -68,11 +114,11 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			payload.selectedNodeIds.value.length > 1 &&
 			payload.selectedNodeIds.value.includes(nodeId)
 		) {
-			payload.store.commit('moveSelectedNodesByDelta', { dx: 0, dy })
+			engineApi.moveNodesByDelta(payload.selectedNodeIds.value, 0, dy)
 			payload.scheduleAsyncEdgeRender()
 			return
 		}
-		payload.store.commit('setNodePosition', { nodeId, worldY: next })
+		engineApi.setNodePosition(nodeId, node.worldX, next)
 		payload.scheduleAsyncEdgeRender()
 	}
 
@@ -90,53 +136,51 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 			payload.selectedNodeIds.value.includes(nodeId)
 		) {
 			if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) {
-				payload.store.commit('moveSelectedNodesByDelta', { dx, dy })
+				engineApi.moveNodesByDelta(payload.selectedNodeIds.value, dx, dy)
 			}
 			payload.scheduleAsyncEdgeRender()
 			return
 		}
-		payload.store.commit('setNodePosition', { nodeId, worldX: nextX, worldY: nextY })
+		engineApi.setNodePosition(nodeId, nextX, nextY)
 		payload.scheduleAsyncEdgeRender()
 	}
 
 	const onSelectNode = (nodeId: string) => {
+		const selectedIds = payload.selectedNodeIds.value
 		if (
-			payload.selectedNodeIds.value.length === 1 &&
-			payload.selectedNodeIds.value[0] === nodeId &&
+			selectedIds.length === 1 &&
+			selectedIds[0] === nodeId &&
 			payload.store.state.selectedNodeId === nodeId
 		) {
 			const node = payload.store.state.nodesById[nodeId]
 			if (node) {
 				const nodeType = node.type
-			if (
-				nodeType === 'text' ||
-				nodeType === 'image' ||
-				nodeType === 'video' ||
-				nodeType === 'model3d' ||
-				nodeType === 'blender'
-			) {
 				if (
-					!payload.store.state.nodeChatDialog.visible ||
-					payload.store.state.nodeChatDialog.nodeId !== nodeId
+					nodeType === 'text' ||
+					nodeType === 'image' ||
+					nodeType === 'video' ||
+					nodeType === 'model3d' ||
+					nodeType === 'blender'
 				) {
-					payload.store.dispatch('openNodeChatDialog', { nodeId })
+					if (payload.onOpenNodeChat) {
+						payload.onOpenNodeChat(nodeId)
+					} else if (payload.store.dispatch) {
+						payload.store.dispatch('openNodeChatDialog', { nodeId })
+					}
 				}
 			}
+			return
+		}
+		if (selectedIds.length > 1 && selectedIds.includes(nodeId)) {
+			engineApi.setSelectedNodes(selectedIds, nodeId)
+			if (payload.onCloseNodeChat) {
+				payload.onCloseNodeChat()
+			} else if (payload.store.dispatch) {
+				payload.store.dispatch('closeNodeChatDialog')
 			}
 			return
 		}
-		if (
-			payload.selectedNodeIds.value.length > 1 &&
-			payload.selectedNodeIds.value.includes(nodeId)
-		) {
-			payload.store.commit('setSelectedNodes', {
-				nodeIds: payload.selectedNodeIds.value,
-				primaryNodeId: nodeId
-			})
-			payload.store.dispatch('closeNodeChatDialog')
-			return
-		}
-		payload.store.commit('setSelectedNode', { nodeId })
+		engineApi.setSelectedNode(nodeId)
 		const node = payload.store.state.nodesById[nodeId]
 		if (node) {
 			const nodeType = node.type
@@ -147,15 +191,23 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				nodeType === 'model3d' ||
 				nodeType === 'blender'
 			) {
-				payload.store.dispatch('openNodeChatDialog', { nodeId })
+				if (payload.onOpenNodeChat) {
+					payload.onOpenNodeChat(nodeId)
+				} else if (payload.store.dispatch) {
+					payload.store.dispatch('openNodeChatDialog', { nodeId })
+				}
 			} else {
-				payload.store.dispatch('closeNodeChatDialog')
+				if (payload.onCloseNodeChat) {
+					payload.onCloseNodeChat()
+				} else if (payload.store.dispatch) {
+					payload.store.dispatch('closeNodeChatDialog')
+				}
 			}
 		}
 	}
 
 	const onSelectEdge = (edgeId: string) => {
-		payload.store.commit('setSelectedEdge', { edgeId })
+		// Edge selection is handled via engine selection in future
 	}
 
 	const onCompactNodePointerDown = (
@@ -181,23 +233,49 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		}
 
 		const startClient = { x: event.clientX, y: event.clientY }
-		const startWorld = { x: node.worldX, y: node.worldY }
+		const startWorldPositions = new Map<string, { x: number; y: number }>()
+		const primaryStartWorld = (() => {
+			const engineNode = engineApi.getNode?.(nodeId)
+			return engineNode
+				? { x: engineNode.data.worldX, y: engineNode.data.worldY }
+				: { x: node.worldX, y: node.worldY }
+		})()
+		startWorldPositions.set(nodeId, primaryStartWorld)
+
 		const moveGroup =
 			payload.selectedNodeIds.value.length > 1 && payload.selectedNodeIds.value.includes(nodeId)
-		let prevDx = 0
-		let prevDy = 0
 		let hasMoved = false
 		let dragNodeIds: string[] = []
 		let dragMoveRafId: number | null = null
+		let latestDx = 0
+		let latestDy = 0
+		let pendingPositions: Map<string, { x: number; y: number }> | null = null
 
 		const scheduleDragMove = () => {
 			if (dragMoveRafId !== null) return
 			dragMoveRafId = requestAnimationFrame(() => {
 				dragMoveRafId = null
-				if (hasMoved && dragNodeIds.length > 0) {
+				if (hasMoved && pendingPositions && pendingPositions.size > 0) {
+					engineApi.updateNodesPositionDirect(pendingPositions)
+					payload.scheduleAsyncEdgeRender()
 					payload.onNodeDragMove?.(dragNodeIds)
+					payload.flushCanvasNodeLayer?.()
 				}
 			})
+		}
+
+		const initDragGroup = () => {
+			dragNodeIds = moveGroup ? payload.selectedNodeIds.value.slice() : [nodeId]
+			startWorldPositions.clear()
+			for (const id of dragNodeIds) {
+				const engineN = engineApi.getNode?.(id)
+				const storeN = payload.store.state.nodesById[id]
+				if (engineN) {
+					startWorldPositions.set(id, { x: engineN.data.worldX, y: engineN.data.worldY })
+				} else if (storeN) {
+					startWorldPositions.set(id, { x: storeN.worldX, y: storeN.worldY })
+				}
+			}
 		}
 
 		const onMove = (moveEvent: PointerEvent) => {
@@ -210,29 +288,26 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 
 			if (!hasMoved && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
 				hasMoved = true
-				dragNodeIds = moveGroup
-					? payload.selectedNodeIds.value.slice()
-					: [nodeId]
+				initDragGroup()
 				payload.onNodeDragStart?.(dragNodeIds)
 			}
 
-			if (moveGroup) {
-				const stepDx = dx - prevDx
-				const stepDy = dy - prevDy
-				prevDx = dx
-				prevDy = dy
-				if (Math.abs(stepDx) > 0 || Math.abs(stepDy) > 0) {
-					payload.store.commit('moveSelectedNodesByDelta', { dx: stepDx, dy: stepDy })
+			if (hasMoved) {
+				latestDx = dx
+				latestDy = dy
+				pendingPositions = new Map()
+				for (const [id, startPos] of startWorldPositions) {
+					pendingPositions.set(id, { x: startPos.x + dx, y: startPos.y + dy })
 				}
-			} else {
-				payload.store.commit('setNodePosition', {
-					nodeId,
-					worldX: startWorld.x + dx,
-					worldY: startWorld.y + dy
-				})
+				scheduleDragMove()
 			}
-			scheduleDragMove()
-			payload.scheduleAsyncEdgeRender()
+		}
+
+		const flushPendingDragUpdate = () => {
+			if (dragMoveRafId !== null) {
+				cancelAnimationFrame(dragMoveRafId)
+				dragMoveRafId = null
+			}
 		}
 
 		const cleanup = () => {
@@ -240,6 +315,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				cancelAnimationFrame(dragMoveRafId)
 				dragMoveRafId = null
 			}
+			flushPendingDragUpdate()
 			window.removeEventListener('pointermove', onMove, true)
 			window.removeEventListener('pointerup', onUp, true)
 			window.removeEventListener('pointercancel', onUp, true)
@@ -255,6 +331,14 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		const onUp = () => {
 			cleanup()
 			if (hasMoved && dragNodeIds.length > 0) {
+				if (Math.abs(latestDx) > 0.001 || Math.abs(latestDy) > 0.001) {
+					const endPositions = new Map<string, { x: number; y: number }>()
+					for (const [id, startPos] of startWorldPositions) {
+						endPositions.set(id, { x: startPos.x + latestDx, y: startPos.y + latestDy })
+					}
+					engineApi.commitNodeMovement(startWorldPositions, endPositions)
+					payload.scheduleAsyncEdgeRender()
+				}
 				payload.onNodeDragEnd?.(dragNodeIds)
 			}
 		}
@@ -270,11 +354,11 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 		const worldRect = boxPayload?.worldRect
 		if (!worldRect) return
 		const hits = hitTestNodesInWorldRect(payload.store.state, worldRect)
-		payload.store.commit('setSelectedNodes', { nodeIds: hits, primaryNodeId: hits[0] ?? null })
+		engineApi.setSelectedNodes(hits, hits[0] ?? null)
 	}
 
 	const onNodeSizeChange = (nodeId: string, width?: number, height?: number) => {
-		payload.store.commit('setNodeSize', { nodeId, width, height })
+		engineApi.setNodeSize(nodeId, width, height)
 		payload.scheduleAsyncEdgeRender()
 	}
 
@@ -288,53 +372,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	}
 
 	const onFocusNode = (nodeId: string): boolean => {
-		const node = payload.store.state.nodesById[nodeId]
-		if (!node) return false
-
-		cancelFocusAnimation()
-
-		const vp = payload.store.state.viewport
-		const zoom = Math.max(0.01, Number(vp.zoom) || 1)
-
-		const nodeCenterX = node.worldX as number
-		const nodeCenterY = node.worldY as number
-
-		const targetPanX = -nodeCenterX * zoom
-		const targetPanY = -nodeCenterY * zoom
-
-		const startPanX = Number(vp.panX) || 0
-		const startPanY = Number(vp.panY) || 0
-		const dx = targetPanX - startPanX
-		const dy = targetPanY - startPanY
-
-		if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-			payload.store.commit('setViewport', { zoom, panX: targetPanX, panY: targetPanY })
-			return true
-		}
-
-		const startTime = performance.now()
-
-		const animate = (now: number) => {
-			const elapsed = now - startTime
-			const rawT = Math.min(1, elapsed / FOCUS_ANIMATION_DURATION)
-			const t = easeOutCubic(rawT)
-
-			const panX = startPanX + dx * t
-			const panY = startPanY + dy * t
-
-			payload.store.commit('setViewport', { zoom, panX, panY })
-
-			if (rawT < 1) {
-				payload.markViewportMotion()
-				focusAnimationFrameId = requestAnimationFrame(animate)
-			} else {
-				payload.forceEndViewportMotion?.()
-				focusAnimationFrameId = null
-			}
-		}
-
-		focusAnimationFrameId = requestAnimationFrame(animate)
-		return true
+		return engineApi.focusNode(nodeId)
 	}
 
 	return {

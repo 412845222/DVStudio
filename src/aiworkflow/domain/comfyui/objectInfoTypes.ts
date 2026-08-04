@@ -123,7 +123,9 @@ export function getObjectInfoNodeTypes(objectInfo: unknown): Set<string> {
 	return new Set(Object.keys(objectInfo as Record<string, unknown>))
 }
 
-export function extractInputDefs(info: unknown): Record<string, ComfyWidgetInputDef | [ComfySocketType]> {
+export function extractInputDefs(
+	info: unknown
+): Record<string, ComfyWidgetInputDef | [ComfySocketType]> {
 	if (!info || typeof info !== 'object') return {}
 	const entry = info as ComfyObjectInfoEntry
 	const out: Record<string, ComfyWidgetInputDef | [ComfySocketType]> = {}
@@ -156,7 +158,8 @@ export function detectMediaTypeFromObjectInfo(
 	if (!entry || typeof entry !== 'object') {
 		const t = nodeType.toLowerCase()
 		if (/save\s*video|load\s*video|savevideo|loadvideo|video/i.test(t)) return 'video'
-		if (/save\s*image|load\s*image|preview\s*image|saveimage|loadimage|previewimage/i.test(t)) return 'image'
+		if (/save\s*image|load\s*image|preview\s*image|saveimage|loadimage|previewimage/i.test(t))
+			return 'image'
 		return 'generic'
 	}
 	const info = entry as ComfyObjectInfoEntry
@@ -171,6 +174,7 @@ export function detectMediaTypeFromObjectInfo(
 	}
 	const t = nodeType.toLowerCase()
 	if (/save\s*video|load\s*video|savevideo|loadvideo/i.test(t)) return 'video'
-	if (/save\s*image|load\s*image|preview\s*image|saveimage|loadimage|previewimage/i.test(t)) return 'image'
+	if (/save\s*image|load\s*image|preview\s*image|saveimage|loadimage|previewimage/i.test(t))
+		return 'image'
 	return 'generic'
 }

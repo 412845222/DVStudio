@@ -19,8 +19,12 @@
 					/>
 				</label>
 				<div class="dialog-actions">
-					<button type="button" @click="newProjectDialog?.close()">{{ t('projectList.dialogCancel') }}</button>
-					<button type="submit" :disabled="!newProjectName.trim()">{{ t('projectList.dialogCreate') }}</button>
+					<button type="button" @click="newProjectDialog?.close()">
+						{{ t('projectList.dialogCancel') }}
+					</button>
+					<button type="submit" :disabled="!newProjectName.trim()">
+						{{ t('projectList.dialogCreate') }}
+					</button>
 				</div>
 			</form>
 		</dialog>
@@ -345,9 +349,7 @@ function formatTime(t: unknown) {
 	if (!Number.isFinite(num) || num <= 0) return '-'
 	const d = new Date(num)
 	if (Number.isNaN(d.getTime())) return '-'
-	return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(
-		d.getDate()
-	)} ${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`
+	return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(d.getDate())} ${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`
 }
 
 function normalizeProjectItem(item: unknown): ProjectCardItem {
@@ -489,8 +491,9 @@ async function onNewProjectDialogConfirm() {
 			if (!initState?.ok) {
 				const retry = await dbBridge._ensureInitialized?.({})
 				if (!retry?.ok) {
-					loadError.value =
-						t('projectList.error.dbNotReady', { error: String(retry?.error || initState?.error || t('projectList.error.createFailed')) })
+					loadError.value = t('projectList.error.dbNotReady', {
+						error: String(retry?.error || initState?.error || t('projectList.error.createFailed'))
+					})
 					return
 				}
 			}

@@ -4,12 +4,7 @@
 			<div class="steam-entry-backdrop" @click="handleBackdropClick"></div>
 			<div class="steam-entry-card" :class="{ 'is-connected': isConnected }">
 				<div class="card-particles" aria-hidden="true">
-					<span
-						v-for="p in particles"
-						:key="p.id"
-						class="sq-particle"
-						:style="p.style"
-					></span>
+					<span v-for="p in particles" :key="p.id" class="sq-particle" :style="p.style"></span>
 				</div>
 
 				<div class="steam-entry-header">
@@ -21,7 +16,9 @@
 						</svg>
 					</div>
 					<div class="steam-title">
-						<div class="steam-title-main">{{ isConnected ? '已连接 Steam' : '正在连接 Steam' }}</div>
+						<div class="steam-title-main">
+							{{ isConnected ? '已连接 Steam' : '正在连接 Steam' }}
+						</div>
 						<div class="steam-title-sub">{{ statusText }}</div>
 					</div>
 				</div>
@@ -32,7 +29,9 @@
 					</div>
 					<div class="steam-user-details">
 						<div class="steam-user-name">{{ user.displayName }}</div>
-						<div class="steam-user-id">{{ user.platformId ? `SteamID: ${user.platformId}` : '' }}</div>
+						<div class="steam-user-id">
+							{{ user.platformId ? `SteamID: ${user.platformId}` : '' }}
+						</div>
 					</div>
 				</div>
 
@@ -44,15 +43,18 @@
 				</div>
 
 				<div v-if="isConnected" class="steam-actions">
-					<button class="steam-btn steam-btn-primary" @click="closeOverlay">
-						开始使用
-					</button>
+					<button class="steam-btn steam-btn-primary" @click="closeOverlay">开始使用</button>
 				</div>
 
 				<div v-if="error" class="steam-error">
 					<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 						<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8" />
-						<path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+						<path
+							d="M12 8v4M12 16h.01"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<span>{{ error }}</span>
 				</div>
@@ -92,7 +94,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
 	autoDismiss: true,
 	error: null,
-	user: null,
+	user: null
 })
 
 const emit = defineEmits<{
@@ -120,7 +122,7 @@ function closeOverlay() {
 </script>
 
 <style scoped>
-@import "../../styles/square-particles.css";
+@import '../../styles/square-particles.css';
 
 .steam-entry-overlay {
 	position: fixed;
@@ -211,7 +213,8 @@ function closeOverlay() {
 }
 
 @keyframes steam-card-pulse {
-	0%, 100% {
+	0%,
+	100% {
 		border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);
 		box-shadow:
 			0 24px 80px rgba(0, 0, 0, 0.7),
@@ -241,7 +244,11 @@ function closeOverlay() {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: linear-gradient(135deg, var(--theme-accent, #1f9d84) 0%, var(--pl-cold, #3aa8b4) 100%);
+	background: linear-gradient(
+		135deg,
+		var(--theme-accent, #1f9d84) 0%,
+		var(--pl-cold, #3aa8b4) 100%
+	);
 	color: white;
 	flex-shrink: 0;
 	border: 2px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 60%, transparent);
@@ -390,7 +397,11 @@ function closeOverlay() {
 }
 
 .steam-btn-primary {
-	background: linear-gradient(135deg, var(--theme-accent, #1f9d84) 0%, var(--pl-cold, #3aa8b4) 100%);
+	background: linear-gradient(
+		135deg,
+		var(--theme-accent, #1f9d84) 0%,
+		var(--pl-cold, #3aa8b4) 100%
+	);
 	color: white;
 	border-color: color-mix(in srgb, var(--theme-accent, #1f9d84) 70%, transparent);
 	box-shadow: 0 0 20px color-mix(in srgb, var(--theme-accent, #1f9d84) 25%, transparent);

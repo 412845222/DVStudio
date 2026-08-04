@@ -26,16 +26,19 @@
 import { computed } from 'vue'
 import { useI18n } from '../../i18n'
 
-const props = withDefaults(defineProps<{
-	open: boolean
-	title: string
-	progress: number
-	detail?: string
-	cancellable?: boolean
-	cancelText?: string
-}>(), {
-	cancellable: false,
-})
+const props = withDefaults(
+	defineProps<{
+		open: boolean
+		title: string
+		progress: number
+		detail?: string
+		cancellable?: boolean
+		cancelText?: string
+	}>(),
+	{
+		cancellable: false
+	}
+)
 
 const emit = defineEmits<{ (e: 'cancel'): void }>()
 

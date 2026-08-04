@@ -108,6 +108,9 @@
 					<path d="M5 7h6M5 9h4" />
 				</svg>
 				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.tasks') }}</span>
+				<span v-if="runningTaskCount > 0" class="aiwf-floating-rail__badge">
+					{{ runningTaskCount }}
+				</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 		</nav>
@@ -165,7 +168,11 @@
 						type="button"
 						@click="emitThenClose('request-toggle-performance-priority')"
 					>
-						{{ performancePriorityMode ? t('aiworkflow.toolbar.performancePriorityOn') : t('aiworkflow.toolbar.performancePriorityOff') }}
+						{{
+							performancePriorityMode
+								? t('aiworkflow.toolbar.performancePriorityOn')
+								: t('aiworkflow.toolbar.performancePriorityOff')
+						}}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -193,7 +200,14 @@
 				<template v-else-if="activePanel === 'resources'">
 					<div class="aiwf-floating-rail-popover__head">
 						<span>{{ t('aiworkflow.toolbar.currentBlueprintResources') }}</span>
-						<small>{{ t('aiworkflow.toolbar.resourceCount', { total: resourceList.length, used: usedResourceCount }) }}</small>
+						<small>
+							{{
+								t('aiworkflow.toolbar.resourceCount', {
+									total: resourceList.length,
+									used: usedResourceCount
+								})
+							}}
+						</small>
 					</div>
 					<div v-if="!enrichedResources.length" class="aiwf-floating-rail-popover__empty">
 						{{ t('aiworkflow.toolbar.noResources') }}
@@ -213,7 +227,11 @@
 							<button
 								class="aiwf-resource-item__cover"
 								type="button"
-								:title="r.usageCount > 0 ? t('aiworkflow.toolbar.locateReferencingNode') : t('aiworkflow.toolbar.resourceNotReferenced')"
+								:title="
+									r.usageCount > 0
+										? t('aiworkflow.toolbar.locateReferencingNode')
+										: t('aiworkflow.toolbar.resourceNotReferenced')
+								"
 								:disabled="r.usageCount === 0"
 								@click.stop="onResourceCoverClick(r)"
 							>
@@ -256,7 +274,11 @@
 											<button
 												class="aiwf-resource-item__node-link"
 												type="button"
-												:title="t('aiworkflow.toolbar.locateNode', { name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId })"
+												:title="
+													t('aiworkflow.toolbar.locateNode', {
+														name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId
+													})
+												"
 												@click.stop="onResourceNodeClick(r.usedBy[0].nodeId)"
 											>
 												{{ r.usedBy[0].nodeTitle || r.usedBy[0].nodeId }}
@@ -266,7 +288,9 @@
 											</span>
 										</template>
 									</span>
-									<span v-else class="aiwf-resource-item__unused-label">{{ t('aiworkflow.toolbar.unusedResource') }}</span>
+									<span v-else class="aiwf-resource-item__unused-label">
+										{{ t('aiworkflow.toolbar.unusedResource') }}
+									</span>
 								</div>
 							</div>
 						</div>
@@ -293,35 +317,67 @@
 					<div class="aiwf-floating-rail-popover__head">
 						<span>{{ t('aiworkflow.toolbar.taskManagement') }}</span>
 					</div>
+					<div v-if="recentGenerationTasks.length > 0" class="aiwf-task-list">
+						<div
+							v-for="task in recentGenerationTasks"
+							:key="task.id"
+							class="aiwf-task-list__item"
+							:class="`is-${task.status}`"
+						>
+							<div class="aiwf-task-list__item-head">
+								<span class="aiwf-task-list__type">{{ nodeTypeLabel(task.nodeType) }}</span>
+								<span class="aiwf-task-list__status">{{ taskStatusLabel(task.status) }}</span>
+							</div>
+							<div class="aiwf-task-list__prompt" :title="task.prompt || ''">
+								{{ task.prompt || task.statusText }}
+							</div>
+							<div
+								v-if="task.status === 'running' || task.status === 'submitting'"
+								class="aiwf-task-list__progress"
+							>
+								<div
+									class="aiwf-task-list__progress-bar"
+									:style="{ width: `${Math.min(100, task.progress || 0)}%` }"
+								></div>
+							</div>
+							<div v-if="task.errorMessage" class="aiwf-task-list__error">
+								{{ task.errorMessage }}
+							</div>
+						</div>
+					</div>
+					<div v-else class="aiwf-floating-rail-popover__item is-disabled">
+						<span>暂无任务</span>
+					</div>
+					<div class="aiwf-floating-rail-popover__sep"></div>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('open-meshy-task-panel')"
 					>
-						<span>Meshy</span>
+						<span>Meshy 任务面板</span>
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
 						type="button"
 						@click="emitThenClose('open-gemini-task-panel')"
 					>
-						<span>Gemini</span>
+						<span>Gemini 任务面板</span>
 					</button>
 					<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-ark-task-panel')"
-				>
-					<span>{{ t('tasks.ark.volcArk') }}</span>
-				</button>
-				<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-tripo3d-task-panel')"
-				>
-					<span>Tripo3D</span>
-				</button>
-			</template>
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-ark-task-panel')"
+					>
+						<span>{{ t('tasks.ark.volcArk') }} 任务面板</span>
+					</button>
+					<button
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-tripo3d-task-panel')"
+					>
+						<span>Tripo3D 任务面板</span>
+					</button>
+				</template>
 			</section>
 		</Transition>
 
@@ -363,7 +419,9 @@
 					<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
-					<div class="aiwf-rail-dialog__title">{{ t('aiworkflow.toolbar.loadBlueprintProject') }}</div>
+					<div class="aiwf-rail-dialog__title">
+						{{ t('aiworkflow.toolbar.loadBlueprintProject') }}
+					</div>
 
 					<!-- 搜索框 -->
 					<div class="aiwf-rail-search-wrap">
@@ -411,7 +469,11 @@
 							</button>
 						</div>
 						<div v-if="!filteredProjects.length" class="aiwf-rail-empty">
-							{{ searchKeyword ? t('aiworkflow.toolbar.noMatchingProjects') : t('aiworkflow.toolbar.noProjects') }}
+							{{
+								searchKeyword
+									? t('aiworkflow.toolbar.noMatchingProjects')
+									: t('aiworkflow.toolbar.noProjects')
+							}}
 						</div>
 					</div>
 					<div class="aiwf-rail-dialog__actions">
@@ -457,7 +519,7 @@ import { useI18n } from '../../i18n'
 import { sanitizeWorkflowMediaUrl } from '../../aiworkflow/domain/resource/safeWorkflowUrl'
 import { analyzeResourceUsage, getUsageInfo } from '../../aiworkflow/resource/usage'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
-import type { WorkflowNode } from '../../aiworkflow/types'
+import type { WorkflowNode, WorkflowNodeGenerationTask } from '../../aiworkflow/types'
 
 const { t } = useI18n()
 
@@ -477,6 +539,7 @@ const props = defineProps<{
 	nodeLibraryOpen?: boolean
 	backendLogOpen?: boolean
 	showRepairAssets?: boolean
+	nodeGenerationTasks?: Record<string, WorkflowNodeGenerationTask>
 }>()
 
 const emit = defineEmits<{
@@ -519,8 +582,46 @@ const nodeLibraryOpen = computed(() => props.nodeLibraryOpen === true)
 const backendLogOpen = computed(() => props.backendLogOpen === true)
 const showRepairAssets = computed(() => props.showRepairAssets === true)
 
+const recentGenerationTasks = computed(() => {
+	const tasks = props.nodeGenerationTasks ?? {}
+	return Object.values(tasks)
+		.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+		.slice(0, 10)
+})
+
+const runningTaskCount = computed(() => {
+	return recentGenerationTasks.value.filter(
+		(t) => t.status === 'running' || t.status === 'submitting'
+	).length
+})
+
+const nodeTypeLabel = (nodeType: string) => {
+	const map: Record<string, string> = {
+		text: '文本',
+		image: '图片',
+		video: '视频',
+		model3d: '3D模型',
+		blender: 'Blender'
+	}
+	return map[nodeType] || nodeType
+}
+
+const taskStatusLabel = (status: string) => {
+	const map: Record<string, string> = {
+		idle: '等待中',
+		submitting: '提交中',
+		running: '生成中',
+		completed: '已完成',
+		error: '失败',
+		cancelled: '已取消'
+	}
+	return map[status] || status
+}
+
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
-const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject'))
+const projectTitle = computed(
+	() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject')
+)
 const statusTitle = computed(() => {
 	if (!hasProjectName.value) return t('aiworkflow.toolbar.projectNotSaved')
 	return t('aiworkflow.toolbar.currentProject', { name: projectTitle.value })
@@ -571,10 +672,14 @@ const emitThenClose = (
 }
 
 const anchorsToggleLabel = computed(() =>
-	props.screenshotAnchorsEnabled === false ? t('aiworkflow.toolbar.anchorsOff') : t('aiworkflow.toolbar.anchorsOn')
+	props.screenshotAnchorsEnabled === false
+		? t('aiworkflow.toolbar.anchorsOff')
+		: t('aiworkflow.toolbar.anchorsOn')
 )
 const particlesToggleLabel = computed(() =>
-	props.screenshotParticlesEnabled === false ? t('aiworkflow.toolbar.particlesOff') : t('aiworkflow.toolbar.particlesOn')
+	props.screenshotParticlesEnabled === false
+		? t('aiworkflow.toolbar.particlesOff')
+		: t('aiworkflow.toolbar.particlesOn')
 )
 
 const handleSaveProject = () => {
@@ -595,7 +700,9 @@ const confirmLoad = () => {
 }
 
 const onDeleteProject = (projectId: number, projectName: string) => {
-	const ok = window.confirm(t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` }))
+	const ok = window.confirm(
+		t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` })
+	)
 	if (!ok) return
 	emit('request-delete-project', { projectId })
 }
@@ -1036,6 +1143,111 @@ onBeforeUnmount(() => {
 	opacity: 0.65;
 }
 
+.aiwf-floating-rail__badge {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 3px;
+	border-radius: 7px;
+	background: var(--theme-accent, #1f9d84);
+	color: #fff;
+	font-size: 9px;
+	font-weight: 600;
+	line-height: 14px;
+	text-align: center;
+	pointer-events: none;
+}
+
+/* ── Task List ── */
+.aiwf-task-list {
+	max-height: 240px;
+	overflow-y: auto;
+	padding: 2px 0;
+}
+
+.aiwf-task-list__item {
+	padding: 8px 10px;
+	margin-bottom: 4px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--theme-bg-secondary, #222) 80%, transparent);
+}
+
+.aiwf-task-list__item.is-completed {
+	opacity: 0.7;
+}
+
+.aiwf-task-list__item.is-error {
+	border-left: 2px solid #e5484d;
+}
+
+.aiwf-task-list__item.is-running,
+.aiwf-task-list__item.is-submitting {
+	border-left: 2px solid var(--theme-accent, #1f9d84);
+}
+
+.aiwf-task-list__item-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.aiwf-task-list__type {
+	font-size: 10px;
+	font-weight: 600;
+	padding: 1px 5px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--theme-accent, #1f9d84) 20%, transparent);
+	color: var(--theme-accent, #1f9d84);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.aiwf-task-list__status {
+	font-size: 10px;
+	opacity: 0.7;
+}
+
+.aiwf-task-list__prompt {
+	font-size: 11px;
+	line-height: 1.4;
+	opacity: 0.85;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	margin-bottom: 4px;
+}
+
+.aiwf-task-list__progress {
+	height: 3px;
+	background: color-mix(in srgb, var(--theme-bg-tertiary, #333) 80%, transparent);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.aiwf-task-list__progress-bar {
+	height: 100%;
+	background: var(--theme-accent, #1f9d84);
+	border-radius: 2px;
+	transition: width 0.3s ease;
+}
+
+.aiwf-task-list__error {
+	font-size: 10px;
+	color: #e5484d;
+	margin-top: 4px;
+	opacity: 0.8;
+}
+
+.aiwf-floating-rail-popover__sep {
+	height: 1px;
+	margin: 4px 0;
+	background: color-mix(in srgb, var(--theme-border, #333) 60%, transparent);
+}
+
 /* ── Popover ── */
 .aiwf-floating-rail-popover {
 	position: absolute;
@@ -1186,7 +1398,10 @@ onBeforeUnmount(() => {
 	height: 48px;
 	border-radius: 3px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent)
+	);
 	overflow: hidden;
 	cursor: pointer;
 	padding: 0;
@@ -1449,7 +1664,10 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px;
 	font-size: 12px;
@@ -1478,7 +1696,10 @@ onBeforeUnmount(() => {
 	padding: 6px 12px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	font-size: 12px;
 	cursor: pointer;
@@ -1528,7 +1749,10 @@ onBeforeUnmount(() => {
 .aiwf-rail-project-item {
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 6px;
 	display: flex;
@@ -1615,7 +1839,10 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px 10px;
 	font-size: 12px;
@@ -1886,21 +2113,13 @@ onBeforeUnmount(() => {
 
 [data-theme='light'] .aiwf-rail-dialog-mask {
 	background:
-		radial-gradient(
-			ellipse at 50% 40%,
-			rgba(31, 157, 132, 0.05) 0%,
-			transparent 60%
-		),
+		radial-gradient(ellipse at 50% 40%, rgba(31, 157, 132, 0.05) 0%, transparent 60%),
 		rgba(180, 190, 200, 0.4) !important;
 }
 
 [data-theme='light'] .aiwf-rail-dialog {
 	background:
-		linear-gradient(
-			180deg,
-			rgba(255, 255, 255, 0.98),
-			rgba(245, 248, 250, 0.96)
-		),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 248, 250, 0.96)),
 		rgba(255, 255, 255, 0.98) !important;
 	border-color: rgba(31, 157, 132, 0.35) !important;
 	box-shadow:

@@ -1,9 +1,14 @@
-import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+import {
+	internalError,
+	invalidParamsError,
+	notFoundError,
+	upstreamError
+} from '../../core/errors.mjs'
 
 // 适配器
-import { OpenAICompatibleAdapter } from './adapters/openai-compatible.mjs';
-import { BytedanceAdapter } from './adapters/bytedance.mjs';
-import { GeminiAdapter } from './adapters/gemini.mjs';
+import { OpenAICompatibleAdapter } from './adapters/openai-compatible.mjs'
+import { BytedanceAdapter } from './adapters/bytedance.mjs'
+import { GeminiAdapter } from './adapters/gemini.mjs'
 
 /**
  * 获取 API 适配器
@@ -12,16 +17,16 @@ import { GeminiAdapter } from './adapters/gemini.mjs';
  * @returns {BaseAdapter}
  */
 function getAdapter(apiSource, config = {}) {
-  switch (apiSource) {
-    case 'bytedance':
-      return new BytedanceAdapter(config);
-    case 'gemini':
-      return new GeminiAdapter(config);
-    case 'openai':
-      return new OpenAICompatibleAdapter({ ...config, baseUrl: 'https://api.openai.com/v1' });
-    default:
-      return new BytedanceAdapter(config);
-  }
+	switch (apiSource) {
+		case 'bytedance':
+			return new BytedanceAdapter(config)
+		case 'gemini':
+			return new GeminiAdapter(config)
+		case 'openai':
+			return new OpenAICompatibleAdapter({ ...config, baseUrl: 'https://api.openai.com/v1' })
+		default:
+			return new BytedanceAdapter(config)
+	}
 }
 
 function getConversationsRepo(ctx) {
@@ -37,7 +42,9 @@ function getApiKeyRepo(ctx) {
 }
 
 function getProviderConfig(provider, apiKey) {
-	const p = String(provider || 'bytedance').trim().toLowerCase()
+	const p = String(provider || 'bytedance')
+		.trim()
+		.toLowerCase()
 	if (p === 'openai') {
 		return {
 			baseUrl: 'https://api.openai.com/v1',
@@ -64,10 +71,19 @@ function resolveProviderAndKey(ctx, requestedModel) {
 	let provider = 'bytedance'
 	let apiKey = ''
 
-	const modelStr = String(requestedModel || '').trim().toLowerCase()
+	const modelStr = String(requestedModel || '')
+		.trim()
+		.toLowerCase()
 	if (modelStr.startsWith('gpt-')) provider = 'openai'
 	else if (modelStr.startsWith('gemini-')) provider = 'gemini'
-	else if (modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) provider = 'bytedance'
+	else if (
+		modelStr.startsWith('doubao-') ||
+		modelStr.startsWith('glm-') ||
+		modelStr.startsWith('deepseek-') ||
+		modelStr.startsWith('kimi-') ||
+		modelStr.startsWith('qwen-')
+	)
+		provider = 'bytedance'
 
 	const providers = ['gemini', 'bytedance', 'openai']
 	for (const prov of providers) {
@@ -78,7 +94,15 @@ function resolveProviderAndKey(ctx, requestedModel) {
 			if (modelStr) {
 				if (modelStr.startsWith('gpt-') && prov === 'openai') break
 				if (modelStr.startsWith('gemini-') && prov === 'gemini') break
-				if ((modelStr.startsWith('doubao-') || modelStr.startsWith('glm-') || modelStr.startsWith('deepseek-') || modelStr.startsWith('kimi-') || modelStr.startsWith('qwen-')) && prov === 'bytedance') break
+				if (
+					(modelStr.startsWith('doubao-') ||
+						modelStr.startsWith('glm-') ||
+						modelStr.startsWith('deepseek-') ||
+						modelStr.startsWith('kimi-') ||
+						modelStr.startsWith('qwen-')) &&
+					prov === 'bytedance'
+				)
+					break
 			}
 			if (!modelStr && prov === 'bytedance') break
 		}
@@ -167,18 +191,23 @@ export async function sendMessage(ctx, payload) {
 	messages.push({ role: 'user', content })
 
 	try {
-		const res = await client.post(`${cfg.baseUrl}/chat/completions`, {
-			model: useModel,
-			messages,
-			stream: false
-		}, {
-			headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
-			timeout: 120000
-		})
+		const res = await client.post(
+			`${cfg.baseUrl}/chat/completions`,
+			{
+				model: useModel,
+				messages,
+				stream: false
+			},
+			{
+				headers: { Authorization: `Bearer ${cfg.apiKey}` },
+				timeout: 120000
+			}
+		)
 		if (!res.ok) {
-			const errMsg = typeof res.body === 'object' && res.body?.error?.message
-				? res.body.error.message
-				: `HTTP ${res.status}`
+			const errMsg =
+				typeof res.body === 'object' && res.body?.error?.message
+					? res.body.error.message
+					: `HTTP ${res.status}`
 			throw upstreamError(`chat completion failed: ${errMsg}`)
 		}
 		const choice = res.body?.choices?.[0]
@@ -248,7 +277,7 @@ export async function* streamMessage(ctx, payload) {
 	try {
 		const stream = client.postStream(`${cfg.baseUrl}/chat/completions`, {
 			headers: {
-				'Authorization': `Bearer ${cfg.apiKey}`,
+				Authorization: `Bearer ${cfg.apiKey}`,
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
@@ -291,7 +320,12 @@ export async function* streamMessage(ctx, payload) {
 		yield JSON.stringify({ type: 'done', message: addedMsg.message, reasoning: reasoningContent })
 	} catch (err) {
 		const errMsg = String(err?.message || err)
-		repo.addMessage({ conversationId, role: 'assistant', content: `[Error] ${errMsg}`, model: useModel })
+		repo.addMessage({
+			conversationId,
+			role: 'assistant',
+			content: `[Error] ${errMsg}`,
+			model: useModel
+		})
 		yield JSON.stringify({ type: 'error', error: errMsg })
 	}
 }
@@ -363,7 +397,12 @@ export async function* streamMessageWithTools(ctx, payload) {
 			yield JSON.stringify({ type: 'thinking_delta', content: event.delta })
 		} else if (event.type === 'tool_call') {
 			toolCalls.push(event)
-			yield JSON.stringify({ type: 'tool_call', id: event.id, name: event.name, arguments: event.arguments })
+			yield JSON.stringify({
+				type: 'tool_call',
+				id: event.id,
+				name: event.name,
+				arguments: event.arguments
+			})
 		} else if (event.type === 'done') {
 			assistantContent = event.content
 			if (event.thinking) reasoningContent = event.thinking

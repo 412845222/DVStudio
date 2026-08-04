@@ -9,7 +9,7 @@ import {
 	openIssues,
 	openExternalUrl,
 	checkForUpdate,
-	isSteamVersion,
+	isSteamVersion
 } from '@/network/appInfo'
 
 describe('appInfo', () => {
@@ -126,9 +126,18 @@ describe('appInfo', () => {
 			const mockOpenExternal = vi.fn()
 			vi.stubGlobal('dweb', {
 				common: {
-					getAppInfo: () => ({ appName: 'Test', appVersion: '1.0.0', copyright: '', license: '', homepage: 'https://test.com', repoUrl: 'https://github.com/test/test', bilibiliUrl: 'https://bilibili.com', issuesUrl: 'https://github.com/test/test/issues' }),
-					openExternalUrl: mockOpenExternal,
-				},
+					getAppInfo: () => ({
+						appName: 'Test',
+						appVersion: '1.0.0',
+						copyright: '',
+						license: '',
+						homepage: 'https://test.com',
+						repoUrl: 'https://github.com/test/test',
+						bilibiliUrl: 'https://bilibili.com',
+						issuesUrl: 'https://github.com/test/test/issues'
+					}),
+					openExternalUrl: mockOpenExternal
+				}
 			})
 			const testUrl = 'https://example.com'
 			openExternalUrl(testUrl)
@@ -153,8 +162,8 @@ describe('appInfo', () => {
 			vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'electron', isElectron: true })
 			vi.stubGlobal('dweb', {
 				common: {
-					isSteamVersion: vi.fn().mockResolvedValue({ ok: true, isSteam: true }),
-				},
+					isSteamVersion: vi.fn().mockResolvedValue({ ok: true, isSteam: true })
+				}
 			})
 			const result = await isSteamVersion()
 			expect(result).toBe(true)
@@ -164,8 +173,8 @@ describe('appInfo', () => {
 			vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'electron', isElectron: true })
 			vi.stubGlobal('dweb', {
 				common: {
-					isSteamVersion: vi.fn().mockResolvedValue({ ok: true, isSteam: false }),
-				},
+					isSteamVersion: vi.fn().mockResolvedValue({ ok: true, isSteam: false })
+				}
 			})
 			const result = await isSteamVersion()
 			expect(result).toBe(false)
@@ -175,8 +184,8 @@ describe('appInfo', () => {
 			vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'electron', isElectron: true })
 			vi.stubGlobal('dweb', {
 				common: {
-					isSteamVersion: vi.fn().mockRejectedValue(new Error('test error')),
-				},
+					isSteamVersion: vi.fn().mockRejectedValue(new Error('test error'))
+				}
 			})
 			const result = await isSteamVersion()
 			expect(result).toBe(false)
@@ -206,12 +215,12 @@ describe('appInfo', () => {
 				hasUpdate: true,
 				currentVersion: '0.1.0',
 				latestVersion: '0.2.0',
-				releaseUrl: 'https://github.com/test/test/releases/tag/v0.2.0',
+				releaseUrl: 'https://github.com/test/test/releases/tag/v0.2.0'
 			}
 			vi.stubGlobal('dweb', {
 				common: {
-					checkForUpdate: vi.fn().mockResolvedValue(mockResult),
-				},
+					checkForUpdate: vi.fn().mockResolvedValue(mockResult)
+				}
 			})
 			const result = await checkForUpdate()
 			expect(result.ok).toBe(true)
@@ -226,12 +235,12 @@ describe('appInfo', () => {
 				ok: true,
 				hasUpdate: false,
 				currentVersion: '0.1.0',
-				latestVersion: '0.1.0',
+				latestVersion: '0.1.0'
 			}
 			vi.stubGlobal('dweb', {
 				common: {
-					checkForUpdate: vi.fn().mockResolvedValue(mockResult),
-				},
+					checkForUpdate: vi.fn().mockResolvedValue(mockResult)
+				}
 			})
 			const result = await checkForUpdate()
 			expect(result.ok).toBe(true)
@@ -244,12 +253,12 @@ describe('appInfo', () => {
 				ok: true,
 				skipped: true,
 				reason: 'steam',
-				currentVersion: '0.1.0',
+				currentVersion: '0.1.0'
 			}
 			vi.stubGlobal('dweb', {
 				common: {
-					checkForUpdate: vi.fn().mockResolvedValue(mockResult),
-				},
+					checkForUpdate: vi.fn().mockResolvedValue(mockResult)
+				}
 			})
 			const result = await checkForUpdate()
 			expect(result.ok).toBe(true)
@@ -261,8 +270,8 @@ describe('appInfo', () => {
 			vi.stubGlobal('__DWEB_RUNTIME__', { platform: 'electron', isElectron: true })
 			vi.stubGlobal('dweb', {
 				common: {
-					checkForUpdate: vi.fn().mockRejectedValue(new Error('network error')),
-				},
+					checkForUpdate: vi.fn().mockRejectedValue(new Error('network error'))
+				}
 			})
 			const result = await checkForUpdate()
 			expect(result.ok).toBe(false)

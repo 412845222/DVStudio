@@ -14,10 +14,10 @@ DVStudio 是一款面向 AI 创作者的桌面端创作工具。从文本描述�
 
 ## ✨ 核心能力
 
-| 能力 | 说明 |
-|---|---|
+| 能力                 | 说明                                           |
+| -------------------- | ---------------------------------------------- |
 | 🧩 **AI 工作流编排** | 节点式 AI 流程设计，像搭积木一样编排创作流水线 |
-| 🧠 **Agent Skills** | 场景理解、场景布局、场景拆解、Unreal 导出 |
+| 🧠 **Agent Skills**  | 场景理解、场景布局、场景拆解、Unreal 导出      |
 
 ---
 
@@ -69,30 +69,30 @@ flowchart LR
 
 #### 📥 资源输入节点
 
-| 节点 | 功能 | 使用场景 |
-|---|---|---|
-| **文本输入 (text-input)** | 创建文本输入节点 | 输入提示词、描述文本 |
-| **文本节点 (text-generation)** | 保存提示词、文案 | 输入给 AI 节点作为生成提示词 |
-| **图片节点 (image)** | 承载图片资源 | 作为参考图、底图或 ComfyUI 输入 |
-| **视频节点 (video)** | 承载视频资源 | 视频处理、转场、抽帧等 |
-| **3D 模型节点 (model3d)** | 预览、承接和输出 3D 模型资源 | 管理和展示生成的 3D 模型 |
-| **场景理解 (scene-understanding)** | 对图片或文本做场景结构化理解 | 提取场景信息、物体关系 |
-| **场景拆解 (scene-decompose)** | 拆解场景图片并输出图片与结构化信息 | 分解场景为多个元素 |
+| 节点                               | 功能                               | 使用场景                        |
+| ---------------------------------- | ---------------------------------- | ------------------------------- |
+| **文本输入 (text-input)**          | 创建文本输入节点                   | 输入提示词、描述文本            |
+| **文本节点 (text-generation)**     | 保存提示词、文案                   | 输入给 AI 节点作为生成提示词    |
+| **图片节点 (image)**               | 承载图片资源                       | 作为参考图、底图或 ComfyUI 输入 |
+| **视频节点 (video)**               | 承载视频资源                       | 视频处理、转场、抽帧等          |
+| **3D 模型节点 (model3d)**          | 预览、承接和输出 3D 模型资源       | 管理和展示生成的 3D 模型        |
+| **场景理解 (scene-understanding)** | 对图片或文本做场景结构化理解       | 提取场景信息、物体关系          |
+| **场景拆解 (scene-decompose)**     | 拆解场景图片并输出图片与结构化信息 | 分解场景为多个元素              |
 
 #### ⚙️ 处理编排节点
 
-| 节点 | 功能 | 使用场景 |
-|---|---|---|
-| **文本整合 (text-merge)** | 将多个文本输入整合为单一输出 | 组合多条提示词、添加前缀后缀 |
-| **剧情分支 (story)** | 创建分支流程 | 实现多结局、分支剧情、并行处理 |
-| **旋转图片 (rotate-image)** | 旋转图片并生成新视角 | 图片角度调整、多视角生成 |
+| 节点                        | 功能                         | 使用场景                       |
+| --------------------------- | ---------------------------- | ------------------------------ |
+| **文本整合 (text-merge)**   | 将多个文本输入整合为单一输出 | 组合多条提示词、添加前缀后缀   |
+| **剧情分支 (story)**        | 创建分支流程                 | 实现多结局、分支剧情、并行处理 |
+| **旋转图片 (rotate-image)** | 旋转图片并生成新视角         | 图片角度调整、多视角生成       |
 
 #### ✨ AI 生成节点
 
-| 节点 | 功能 | 使用场景 |
-|---|---|---|
-| **ComfyUI** | 集成 ComfyUI 工作流 | 调用本地 ComfyUI 执行自定义 AI 图像生成 |
-| **场景布局 (scene-layout)** | 生成或编辑可导向 3D 场景的布局信息 | 定义物体位置、光照、相机角度等 |
+| 节点                        | 功能                               | 使用场景                                |
+| --------------------------- | ---------------------------------- | --------------------------------------- |
+| **ComfyUI**                 | 集成 ComfyUI 工作流                | 调用本地 ComfyUI 执行自定义 AI 图像生成 |
+| **场景布局 (scene-layout)** | 生成或编辑可导向 3D 场景的布局信息 | 定义物体位置、光照、相机角度等          |
 
 ### 典型创作路径
 
@@ -143,10 +143,10 @@ DVStudio is a desktop creation tool for AI creators. From text descriptions to i
 
 ## ✨ Core Capabilities
 
-| Capability | Description |
-|---|---|
+| Capability                       | Description                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------- |
 | 🧩 **AI Workflow Orchestration** | Node-based AI process design, orchestrate creation pipelines like building blocks |
-| 🧠 **Agent Skills** | Scene Understanding, Scene Layout, Scene Decompose, Unreal Export |
+| 🧠 **Agent Skills**              | Scene Understanding, Scene Layout, Scene Decompose, Unreal Export                 |
 
 ---
 
@@ -198,29 +198,29 @@ flowchart LR
 
 #### 📥 Resource Input Nodes
 
-| Node | Function | Use Case |
-|---|---|---|
-| **Text Input (text-input)** | Create a text input node | Enter prompts, descriptive text |
-| **Text Node (text-generation)** | Save prompts, copy | Feed as generation prompt to AI nodes |
-| **Image Node (image)** | Carry image resources | As reference image, base image, or ComfyUI input |
-| **Video Node (video)** | Carry video resources | Video processing, transitions, frame extraction |
-| **3D Model Node (model3d)** | Preview, carry and output 3D model resources | Manage and display generated 3D models |
-| **Scene Understanding (scene-understanding)** | Structured understanding of scenes from images or text | Extract scene info, object relationships |
-| **Scene Decompose (scene-decompose)** | Decompose scene images and output images with structured info | Break down scenes into multiple elements |
+| Node                                          | Function                                                      | Use Case                                         |
+| --------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------ |
+| **Text Input (text-input)**                   | Create a text input node                                      | Enter prompts, descriptive text                  |
+| **Text Node (text-generation)**               | Save prompts, copy                                            | Feed as generation prompt to AI nodes            |
+| **Image Node (image)**                        | Carry image resources                                         | As reference image, base image, or ComfyUI input |
+| **Video Node (video)**                        | Carry video resources                                         | Video processing, transitions, frame extraction  |
+| **3D Model Node (model3d)**                   | Preview, carry and output 3D model resources                  | Manage and display generated 3D models           |
+| **Scene Understanding (scene-understanding)** | Structured understanding of scenes from images or text        | Extract scene info, object relationships         |
+| **Scene Decompose (scene-decompose)**         | Decompose scene images and output images with structured info | Break down scenes into multiple elements         |
 
 #### ⚙️ Processing & Orchestration Nodes
 
-| Node | Function | Use Case |
-|---|---|---|
-| **Text Merge (text-merge)** | Merge multiple text inputs into a single output | Combine multiple prompts, add prefix/suffix |
-| **Story Branch (story)** | Create branching workflows | Multi-ending stories, branch plots, parallel processing |
-| **Rotate Image (rotate-image)** | Rotate image and generate new viewpoints | Image angle adjustment, multi-view generation |
+| Node                            | Function                                        | Use Case                                                |
+| ------------------------------- | ----------------------------------------------- | ------------------------------------------------------- |
+| **Text Merge (text-merge)**     | Merge multiple text inputs into a single output | Combine multiple prompts, add prefix/suffix             |
+| **Story Branch (story)**        | Create branching workflows                      | Multi-ending stories, branch plots, parallel processing |
+| **Rotate Image (rotate-image)** | Rotate image and generate new viewpoints        | Image angle adjustment, multi-view generation           |
 
 #### ✨ AI Generation Nodes
 
-| Node | Function | Use Case |
-|---|---|---|
-| **ComfyUI** | Integrate ComfyUI workflows | Call local ComfyUI for custom AI image generation |
+| Node                            | Function                                                       | Use Case                                               |
+| ------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------ |
+| **ComfyUI**                     | Integrate ComfyUI workflows                                    | Call local ComfyUI for custom AI image generation      |
 | **Scene Layout (scene-layout)** | Generate or edit layout info that can be directed to 3D scenes | Define object positions, lighting, camera angles, etc. |
 
 ### Typical Creation Paths

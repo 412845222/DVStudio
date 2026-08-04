@@ -120,7 +120,10 @@ export interface MeshyImageConfig {
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { NODE_CHAT_MESHY_IMAGE_OPTIONS, getMeshyImageAspectRatioOptions } from '../BluePrint/node-dialog/nodeChatConfig'
+import {
+	NODE_CHAT_MESHY_IMAGE_OPTIONS,
+	getMeshyImageAspectRatioOptions
+} from '../BluePrint/node-dialog/nodeChatConfig'
 
 const props = defineProps<{
 	config: MeshyImageConfig
@@ -143,7 +146,7 @@ watch(
 		const model = newModel || 'nano-banana'
 		const supportedRatios = getMeshyImageAspectRatioOptions(model)
 		const currentRatio = props.config.aspectRatio || '1:1'
-		const isRatioSupported = supportedRatios.some(opt => opt.value === currentRatio)
+		const isRatioSupported = supportedRatios.some((opt) => opt.value === currentRatio)
 		if (!isRatioSupported && supportedRatios.length > 0) {
 			updateConfig('aspectRatio', supportedRatios[0].value)
 		}

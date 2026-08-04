@@ -82,9 +82,21 @@ const DEPOT_BUILD_LINUX_VDF_TEMPLATE = `"depotbuild"
 }`
 
 const DEPOT_TEMPLATES = {
-	win: { template: DEPOT_BUILD_WIN_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_WIN}}', contentKey: 'content/win64' },
-	mac: { template: DEPOT_BUILD_MAC_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_MAC}}', contentKey: 'content/mac' },
-	linux: { template: DEPOT_BUILD_LINUX_VDF_TEMPLATE, placeholder: '{{DEPOT_ID_LINUX}}', contentKey: 'content/linux' },
+	win: {
+		template: DEPOT_BUILD_WIN_VDF_TEMPLATE,
+		placeholder: '{{DEPOT_ID_WIN}}',
+		contentKey: 'content/win64'
+	},
+	mac: {
+		template: DEPOT_BUILD_MAC_VDF_TEMPLATE,
+		placeholder: '{{DEPOT_ID_MAC}}',
+		contentKey: 'content/mac'
+	},
+	linux: {
+		template: DEPOT_BUILD_LINUX_VDF_TEMPLATE,
+		placeholder: '{{DEPOT_ID_LINUX}}',
+		contentKey: 'content/linux'
+	}
 }
 
 export function parseCliArgs(argv) {
@@ -96,7 +108,10 @@ export function parseCliArgs(argv) {
 			if (eqIdx !== -1) {
 				const key = arg.slice(2, eqIdx)
 				let val = arg.slice(eqIdx + 1)
-				if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+				if (
+					(val.startsWith('"') && val.endsWith('"')) ||
+					(val.startsWith("'") && val.endsWith("'"))
+				) {
 					val = val.slice(1, -1)
 				}
 				args[key] = val
@@ -124,7 +139,8 @@ export function resolveConfigValue(cliArgs, cliKey, envValue, fallback = '') {
 }
 
 export function renderAppBuildVdf(template, config) {
-	const { appId, version, buildOutput, contentRoot, branch, depotEntries, description, setLive } = config
+	const { appId, version, buildOutput, contentRoot, branch, depotEntries, description, setLive } =
+		config
 	let content = template
 	content = content.replace('{{APP_ID}}', String(appId))
 	content = content.replace(/\{\{VERSION\}\}/g, String(version))
@@ -199,7 +215,9 @@ async function main() {
 
 	if (!steamAppId || steamAppId === '0') {
 		process.stderr.write('[upload:steam] ERROR: Steam AppID is required\n')
-		process.stderr.write(`[upload:steam] Set via --appid=<id> or STEAM_APP_ID env var or ${getSteamEnvPath()}\n`)
+		process.stderr.write(
+			`[upload:steam] Set via --appid=<id> or STEAM_APP_ID env var or ${getSteamEnvPath()}\n`
+		)
 		process.exit(1)
 	}
 
@@ -209,7 +227,9 @@ async function main() {
 
 	if (!fs.existsSync(winContentDir)) {
 		process.stderr.write(`[upload:steam] ERROR: Content directory not found: ${winContentDir}\n`)
-		process.stderr.write('[upload:steam] Run "npm run dist:steam:win" first to build the Steam version\n')
+		process.stderr.write(
+			'[upload:steam] Run "npm run dist:steam:win" first to build the Steam version\n'
+		)
 		process.exit(1)
 	}
 
@@ -229,7 +249,9 @@ async function main() {
 	process.stdout.write(`  Mac Depot:  ${steamDepotIdMac || '(not set)'}\n`)
 	process.stdout.write(`  Linux Depot:${steamDepotIdLinux || '(not set)'}\n`)
 	process.stdout.write(`  Username:   ${steamUsername || '(not set, anonymous login)'}\n`)
-	process.stdout.write(`  Guard Code: ${steamGuardCode ? '***' + steamGuardCode.slice(-2) : '(not needed if sentry cached)'}\n`)
+	process.stdout.write(
+		`  Guard Code: ${steamGuardCode ? '***' + steamGuardCode.slice(-2) : '(not needed if sentry cached)'}\n`
+	)
 	process.stdout.write(`  Dry Run:    ${dryRun ? 'YES (will not actually upload)' : 'NO'}\n`)
 	if (description) process.stdout.write(`  Description:${description}\n`)
 	process.stdout.write('\n')
@@ -257,7 +279,11 @@ async function main() {
 
 	const winDepotFile = generateDepotVdf('win', 'depot_build_win_generated.vdf', steamDepotIdWin)
 	const macDepotFile = generateDepotVdf('mac', 'depot_build_mac_generated.vdf', steamDepotIdMac)
-	const linuxDepotFile = generateDepotVdf('linux', 'depot_build_linux_generated.vdf', steamDepotIdLinux)
+	const linuxDepotFile = generateDepotVdf(
+		'linux',
+		'depot_build_linux_generated.vdf',
+		steamDepotIdLinux
+	)
 
 	const appOutputPath = path.join(steamPipeDir, 'app_build_generated.vdf')
 
@@ -277,7 +303,7 @@ async function main() {
 		branch: steamBranch,
 		depotEntries: depotEntries.join('\n'),
 		description: description || '',
-		setLive,
+		setLive
 	})
 
 	fs.writeFileSync(appOutputPath, appContent, 'utf8')
@@ -307,7 +333,9 @@ async function main() {
 	function cleanup() {
 		for (const f of generatedFiles) {
 			if (fs.existsSync(f)) {
-				try { fs.rmSync(f, { force: true }) } catch (_) {}
+				try {
+					fs.rmSync(f, { force: true })
+				} catch (_) {}
 			}
 		}
 	}
@@ -320,7 +348,9 @@ async function main() {
 		process.exit(0)
 	}
 
-	process.stdout.write('\n[upload:steam] === Step 2/3: Authenticating & Uploading to SteamPipe ===\n')
+	process.stdout.write(
+		'\n[upload:steam] === Step 2/3: Authenticating & Uploading to SteamPipe ===\n'
+	)
 	process.stdout.write('─'.repeat(56) + '\n')
 
 	if (!steamUsername) {
@@ -352,11 +382,9 @@ async function main() {
 	}
 
 	try {
-		await run(steamcmdPath, [
-			...loginArgs,
-			'+run_app_build', appBuildVdfAbsPath,
-			'+quit'
-		], { cwd: steamPipeDir })
+		await run(steamcmdPath, [...loginArgs, '+run_app_build', appBuildVdfAbsPath, '+quit'], {
+			cwd: steamPipeDir
+		})
 
 		process.stdout.write('\n')
 		process.stdout.write('╔══════════════════════════════════════════════════╗\n')
@@ -371,9 +399,15 @@ async function main() {
 		} else {
 			process.stdout.write(`  1. Go to Steamworks Partner backend:\n`)
 			process.stdout.write('     https://partner.steamgames.com/\n')
-			process.stdout.write(`  2. Navigate to: Apps → ${steamAppId} → Edit Steamworks Settings → SteamPipe → Builds\n`)
-			process.stdout.write(`  3. Find the new build (v${pkg.version}) and click "Promote" → select "${steamBranch}"\n`)
-			process.stdout.write(`  4. Wait for CDN propagation (5-15 min), then test with beta branch access\n`)
+			process.stdout.write(
+				`  2. Navigate to: Apps → ${steamAppId} → Edit Steamworks Settings → SteamPipe → Builds\n`
+			)
+			process.stdout.write(
+				`  3. Find the new build (v${pkg.version}) and click "Promote" → select "${steamBranch}"\n`
+			)
+			process.stdout.write(
+				`  4. Wait for CDN propagation (5-15 min), then test with beta branch access\n`
+			)
 			process.stdout.write(`\n`)
 			process.stdout.write(`  💡 To auto-publish in one step, add --set-live flag:\n`)
 			process.stdout.write(`     npm run release:steam -- --guard=XXXXX --set-live\n`)
@@ -382,7 +416,9 @@ async function main() {
 		process.stdout.write(`\n`)
 		process.stdout.write(`  📂 Build logs: steam-pipe/output/\n`)
 		process.stdout.write(`  🔍 Test the build:\n`)
-		process.stdout.write(`     - Switch Steam client DVStudio → Properties → Betas → "${steamBranch}"\n`)
+		process.stdout.write(
+			`     - Switch Steam client DVStudio → Properties → Betas → "${steamBranch}"\n`
+		)
 		process.stdout.write(`     - Or for default branch, no beta password needed\n`)
 
 		cleanup()
@@ -390,7 +426,9 @@ async function main() {
 		process.stderr.write(`\n[upload:steam] ❌ Upload failed: ${err.message}\n\n`)
 		process.stderr.write('[upload:steam] === Troubleshooting ===\n\n')
 		process.stderr.write('  1. Authentication issues:\n')
-		process.stderr.write('     - Double-check STEAM_USERNAME and STEAM_PASSWORD in steam-pipe/.env\n')
+		process.stderr.write(
+			'     - Double-check STEAM_USERNAME and STEAM_PASSWORD in steam-pipe/.env\n'
+		)
 		process.stderr.write('     - Get a fresh Steam Guard code from Steam Mobile App and pass it:\n')
 		process.stderr.write('       npm run upload:steam -- --guard=XXXXX\n')
 		process.stderr.write('     - If login keeps failing, try running steamcmd directly first:\n')

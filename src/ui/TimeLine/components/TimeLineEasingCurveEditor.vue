@@ -151,7 +151,7 @@ watch(
 	height: 110px;
 	box-sizing: border-box;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0, 0, 0, 0.4));
 	border-radius: 2px;
 	overflow: hidden;
 	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 12%, transparent);
@@ -164,13 +164,13 @@ watch(
 	gap: 8px;
 	padding: 0 8px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0, 0, 0, 0.3));
 }
 
 .tl-easing-select {
 	height: 22px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0, 0, 0, 0.5));
 	color: var(--pl-fg);
 	border-radius: 2px;
 	font-size: 11px;
@@ -193,7 +193,10 @@ watch(
 	font-size: 11px;
 	padding: 0 8px;
 	cursor: pointer;
-	transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		color 0.15s ease;
 }
 
 .tl-easing-close:hover {

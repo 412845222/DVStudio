@@ -23,17 +23,23 @@ export class LocalCloudAdapter extends CloudAdapter {
 		return path.join(this._storageDir, safeName)
 	}
 
-	getPlatformId() { return 'local' }
-	getPlatformName() { return 'Local Storage' }
-	isAvailable() { return true }
+	getPlatformId() {
+		return 'local'
+	}
+	getPlatformName() {
+		return 'Local Storage'
+	}
+	isAvailable() {
+		return true
+	}
 
 	async getQuota() {
 		return {
 			ok: true,
 			quota: {
 				totalBytes: 1024 * 1024 * 1000,
-				availableBytes: 1024 * 1024 * 500,
-			},
+				availableBytes: 1024 * 1024 * 500
+			}
 		}
 	}
 
@@ -136,7 +142,7 @@ export class LocalCloudAdapter extends CloudAdapter {
 					items.push({
 						name: file,
 						size: stat.size,
-						timestamp: Math.floor(stat.mtimeMs),
+						timestamp: Math.floor(stat.mtimeMs)
 					})
 				} catch {}
 			}

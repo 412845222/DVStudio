@@ -97,7 +97,9 @@ describe('minimapUtils', () => {
 			const br = worldToMinimap(
 				testBounds.x + testBounds.width,
 				testBounds.y + testBounds.height,
-				testBounds, scale, offset
+				testBounds,
+				scale,
+				offset
 			)
 			expect(br.x).toBeCloseTo(offset.x + testBounds.width * scale)
 			expect(br.y).toBeCloseTo(offset.y + testBounds.height * scale)
@@ -172,9 +174,13 @@ describe('minimapUtils', () => {
 			const anchorMinimap = worldToMinimap(anchorWorld.x, anchorWorld.y, testBounds, scale, offset)
 
 			const result = computeWheelZoomViewport(
-				initialViewport, canvasSize,
-				anchorMinimap.x, anchorMinimap.y,
-				testBounds, scale, offset,
+				initialViewport,
+				canvasSize,
+				anchorMinimap.x,
+				anchorMinimap.y,
+				testBounds,
+				scale,
+				offset,
 				-100
 			)
 
@@ -191,9 +197,13 @@ describe('minimapUtils', () => {
 			const anchorMinimap = worldToMinimap(anchorWorld.x, anchorWorld.y, testBounds, scale, offset)
 
 			const result = computeWheelZoomViewport(
-				initialViewport, canvasSize,
-				anchorMinimap.x, anchorMinimap.y,
-				testBounds, scale, offset,
+				initialViewport,
+				canvasSize,
+				anchorMinimap.x,
+				anchorMinimap.y,
+				testBounds,
+				scale,
+				offset,
 				100
 			)
 
@@ -209,15 +219,27 @@ describe('minimapUtils', () => {
 			const farInViewport = { zoom: 5.8, panX: 0, panY: 0 }
 			const anchorMinimap = worldToMinimap(0, 0, testBounds, scale, offset)
 			const resultIn = computeWheelZoomViewport(
-				farInViewport, canvasSize, anchorMinimap.x, anchorMinimap.y,
-				testBounds, scale, offset, -1000
+				farInViewport,
+				canvasSize,
+				anchorMinimap.x,
+				anchorMinimap.y,
+				testBounds,
+				scale,
+				offset,
+				-1000
 			)
 			expect(resultIn.zoom).toBeLessThanOrEqual(6)
 
 			const farOutViewport = { zoom: 0.25, panX: 0, panY: 0 }
 			const resultOut = computeWheelZoomViewport(
-				farOutViewport, canvasSize, anchorMinimap.x, anchorMinimap.y,
-				testBounds, scale, offset, 1000
+				farOutViewport,
+				canvasSize,
+				anchorMinimap.x,
+				anchorMinimap.y,
+				testBounds,
+				scale,
+				offset,
+				1000
 			)
 			expect(resultOut.zoom).toBeGreaterThanOrEqual(0.2)
 		})
@@ -231,9 +253,13 @@ describe('minimapUtils', () => {
 			let viewport = { ...initialViewport }
 			for (let i = 0; i < 5; i++) {
 				viewport = computeWheelZoomViewport(
-					viewport, canvasSize2,
-					centerMM.x, centerMM.y,
-					testBounds, scale, offset,
+					viewport,
+					canvasSize2,
+					centerMM.x,
+					centerMM.y,
+					testBounds,
+					scale,
+					offset,
 					-100
 				)
 			}

@@ -51,7 +51,11 @@
 						:disabled="actionBusyType === 'clear-completed'"
 						@click="onClearCompleted"
 					>
-						{{ actionBusyType === 'clear-completed' ? t('tasks.gemini.clearing') : t('tasks.gemini.clearCompleted') }}
+						{{
+							actionBusyType === 'clear-completed'
+								? t('tasks.gemini.clearing')
+								: t('tasks.gemini.clearCompleted')
+						}}
 					</button>
 					<button class="wf-gemini-panel-btn" type="button" @click="toggleMinimize">-</button>
 					<button class="wf-gemini-panel-btn" type="button" @click="toggleMaximize">[]</button>
@@ -78,7 +82,9 @@
 					>
 						{{ refreshBusy ? t('tasks.gemini.syncing') : t('tasks.gemini.syncBackend') }}
 					</button>
-					<div class="wf-gemini-panel-stats">{{ t('tasks.gemini.totalCount', { count: visibleTaskCount }) }}</div>
+					<div class="wf-gemini-panel-stats">
+						{{ t('tasks.gemini.totalCount', { count: visibleTaskCount }) }}
+					</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-gemini-panel-empty">
@@ -134,7 +140,13 @@
 
 							<div class="wf-gemini-task-foot">
 								<div class="wf-gemini-task-footnote">
-									{{ task.status === 'completed' ? t('tasks.gemini.footnoteCompleted') : task.status === 'failed' ? t('tasks.gemini.footnoteFailed') : t('tasks.gemini.footnoteProcessing') }}
+									{{
+										task.status === 'completed'
+											? t('tasks.gemini.footnoteCompleted')
+											: task.status === 'failed'
+												? t('tasks.gemini.footnoteFailed')
+												: t('tasks.gemini.footnoteProcessing')
+									}}
 								</div>
 								<div class="wf-gemini-task-action-row">
 									<button
@@ -150,15 +162,25 @@
 										:disabled="!task.taskId || isBusy(task, 'refresh')"
 										@click="onTaskAction(task, 'refresh')"
 									>
-										{{ isBusy(task, 'refresh') ? t('tasks.gemini.refreshing') : t('tasks.gemini.refreshStatus') }}
+										{{
+											isBusy(task, 'refresh')
+												? t('tasks.gemini.refreshing')
+												: t('tasks.gemini.refreshStatus')
+										}}
 									</button>
 									<button
 										class="wf-gemini-task-preview-btn"
 										type="button"
-										:disabled="!task.taskId || task.status !== 'completed' || isBusy(task, 'import-output')"
+										:disabled="
+											!task.taskId || task.status !== 'completed' || isBusy(task, 'import-output')
+										"
 										@click="onTaskAction(task, 'import-output')"
 									>
-										{{ isBusy(task, 'import-output') ? t('tasks.gemini.pulling') : t('tasks.gemini.pullArtifacts') }}
+										{{
+											isBusy(task, 'import-output')
+												? t('tasks.gemini.pulling')
+												: t('tasks.gemini.pullArtifacts')
+										}}
 									</button>
 									<button
 										class="wf-gemini-task-preview-btn danger"
@@ -166,7 +188,11 @@
 										:disabled="!task.taskId || isBusy(task, 'delete')"
 										@click="onTaskAction(task, 'delete')"
 									>
-										{{ isBusy(task, 'delete') ? t('tasks.gemini.deleting') : t('tasks.gemini.deleteTask') }}
+										{{
+											isBusy(task, 'delete')
+												? t('tasks.gemini.deleting')
+												: t('tasks.gemini.deleteTask')
+										}}
 									</button>
 								</div>
 							</div>
@@ -217,23 +243,24 @@
 							</div>
 						</div>
 
-						<div v-if="detailLoading" class="wf-gemini-task-detail-loading">{{ t('tasks.gemini.loadingDetails') }}</div>
+						<div v-if="detailLoading" class="wf-gemini-task-detail-loading">
+							{{ t('tasks.gemini.loadingDetails') }}
+						</div>
 						<div v-else-if="detailTask" class="wf-gemini-task-detail-body">
 							<div v-if="detailTaskThumbSrc" class="wf-gemini-task-detail-thumb-section">
-								<img
-									class="wf-gemini-task-detail-thumb"
-									:src="detailTaskThumbSrc"
-									alt="result"
-								/>
+								<img class="wf-gemini-task-detail-thumb" :src="detailTaskThumbSrc" alt="result" />
 							</div>
-							<div v-if="detailTask.resultImages && detailTask.resultImages.length > 1" class="wf-gemini-task-detail-images">
+							<div
+								v-if="detailTask.resultImages && detailTask.resultImages.length > 1"
+								class="wf-gemini-task-detail-images"
+							>
 								<div
 									v-for="(img, idx) in detailTask.resultImages"
 									:key="idx"
 									class="wf-gemini-task-detail-image-item"
 								>
 									<img
-										:src="getResultImageUrl(img as Record<string, unknown>)"
+										:src="getResultImageUrl(img)"
 										:alt="`result-${idx}`"
 										class="wf-gemini-task-detail-image-thumb"
 									/>
@@ -249,7 +276,11 @@
 								<div class="wf-gemini-task-detail-card">
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.source') }}</div>
 									<div class="wf-gemini-task-detail-value">
-										{{ detailTask.nodeId ? t('tasks.gemini.localNode') : t('tasks.gemini.backendRecord') }}
+										{{
+											detailTask.nodeId
+												? t('tasks.gemini.localNode')
+												: t('tasks.gemini.backendRecord')
+										}}
 									</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
@@ -260,9 +291,7 @@
 								</div>
 								<div class="wf-gemini-task-detail-card">
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.imageCount') }}</div>
-									<div class="wf-gemini-task-detail-value">
-										{{ detailTask.numImages ?? 1 }} 张
-									</div>
+									<div class="wf-gemini-task-detail-value">{{ detailTask.numImages ?? 1 }} 张</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.aspectRatio') }}</div>
@@ -277,16 +306,16 @@
 									</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
-									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.thinkingLevel') }}</div>
+									<div class="wf-gemini-task-detail-label">
+										{{ t('tasks.gemini.thinkingLevel') }}
+									</div>
 									<div class="wf-gemini-task-detail-value">
 										{{ detailTask.thinkingLevel || 'minimal' }}
 									</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.progress') }}</div>
-									<div class="wf-gemini-task-detail-value">
-										{{ detailTask.progress }}%
-									</div>
+									<div class="wf-gemini-task-detail-value">{{ detailTask.progress }}%</div>
 								</div>
 								<div class="wf-gemini-task-detail-card">
 									<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.createdAt') }}</div>
@@ -307,7 +336,9 @@
 								<div class="wf-gemini-task-detail-block">{{ detailTask.prompt }}</div>
 							</div>
 							<div v-if="detailTask.negativePrompt" class="wf-gemini-task-detail-section">
-								<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.negativePrompt') }}</div>
+								<div class="wf-gemini-task-detail-label">
+									{{ t('tasks.gemini.negativePrompt') }}
+								</div>
 								<div class="wf-gemini-task-detail-block">
 									{{ detailTask.negativePrompt }}
 								</div>
@@ -322,7 +353,10 @@
 									{{ detailTask.errorMessage }}
 								</div>
 							</div>
-							<div v-if="detailTask.resultImages && detailTask.resultImages.length > 0" class="wf-gemini-task-detail-section">
+							<div
+								v-if="detailTask.resultImages && detailTask.resultImages.length > 0"
+								class="wf-gemini-task-detail-section"
+							>
 								<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.artifacts') }}</div>
 								<div class="wf-gemini-task-detail-links">
 									<div
@@ -330,16 +364,20 @@
 										:key="idx"
 										class="wf-gemini-task-detail-block monospace"
 									>
-										[{{ idx + 1 }}] {{ String((img as Record<string, unknown>).filename || (img as Record<string, unknown>).relativePath || (img as Record<string, unknown>).localPath || '') }}
+										[{{ idx + 1 }}] {{ getImageLabel(img) }}
 									</div>
 								</div>
 							</div>
 							<div v-if="detailRequestJson" class="wf-gemini-task-detail-section">
-								<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.requestPayload') }}</div>
+								<div class="wf-gemini-task-detail-label">
+									{{ t('tasks.gemini.requestPayload') }}
+								</div>
 								<pre class="wf-gemini-task-detail-code">{{ detailRequestJson }}</pre>
 							</div>
 							<div v-if="detailResponseJson" class="wf-gemini-task-detail-section">
-								<div class="wf-gemini-task-detail-label">{{ t('tasks.gemini.responsePayload') }}</div>
+								<div class="wf-gemini-task-detail-label">
+									{{ t('tasks.gemini.responsePayload') }}
+								</div>
 								<pre class="wf-gemini-task-detail-code">{{ detailResponseJson }}</pre>
 							</div>
 						</div>
@@ -485,12 +523,18 @@ const sortMode = ref<'date-desc' | 'date-asc'>('date-desc')
 const openedDetailTaskId = ref('')
 const failedTaskThumbIds = ref<Set<string>>(new Set())
 
-const getResultImageUrl = (img: Record<string, unknown>): string => {
-	const dwebUrl = String(img?.dwebUrl || '').trim()
+const getResultImageUrl = (img: unknown): string => {
+	const r = img as Record<string, unknown>
+	const dwebUrl = String(r?.dwebUrl || '').trim()
 	if (dwebUrl) return dwebUrl
-	const localPath = String(img?.localPath || '').trim()
+	const localPath = String(r?.localPath || '').trim()
 	if (localPath) return `file://${localPath.replace(/\\/g, '/')}`
 	return ''
+}
+
+const getImageLabel = (img: unknown): string => {
+	const r = img as Record<string, unknown>
+	return String(r?.filename || r?.relativePath || r?.localPath || '')
 }
 
 const taskThumbSrc = (task: GeminiTaskPanelItem) => {
@@ -501,7 +545,7 @@ const taskThumbSrc = (task: GeminiTaskPanelItem) => {
 	if (thumb) return thumb
 	const resultImages = Array.isArray(task?.resultImages) ? task.resultImages : []
 	if (resultImages.length > 0) {
-		return getResultImageUrl(resultImages[0] as Record<string, unknown>)
+		return getResultImageUrl(resultImages[0])
 	}
 	return ''
 }
@@ -634,7 +678,7 @@ const detailTaskThumbSrc = computed(() => {
 	if (thumb) return thumb
 	const resultImages = Array.isArray(task.resultImages) ? task.resultImages : []
 	if (resultImages.length > 0) {
-		return getResultImageUrl(resultImages[0] as Record<string, unknown>)
+		return getResultImageUrl(resultImages[0])
 	}
 	return ''
 })

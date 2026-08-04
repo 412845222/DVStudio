@@ -1,8 +1,12 @@
 interface FileSystemHandleLike {
 	kind: 'file' | 'directory'
 	name: string
-	queryPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>
-	requestPermission?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<'granted' | 'denied' | 'prompt'>
+	queryPermission?: (options?: {
+		mode?: 'read' | 'readwrite'
+	}) => Promise<'granted' | 'denied' | 'prompt'>
+	requestPermission?: (options?: {
+		mode?: 'read' | 'readwrite'
+	}) => Promise<'granted' | 'denied' | 'prompt'>
 }
 
 type ShowOpenFilePickerFn = () => Promise<FileSystemHandleLike[]>
@@ -30,7 +34,10 @@ const openDb = (): Promise<IDBDatabase> => {
 }
 
 export const canUseFileSystemHandles = (): boolean => {
-	return typeof (window as unknown as { showOpenFilePicker?: ShowOpenFilePickerFn }).showOpenFilePicker === 'function'
+	return (
+		typeof (window as unknown as { showOpenFilePicker?: ShowOpenFilePickerFn })
+			.showOpenFilePicker === 'function'
+	)
 }
 
 export const putLocalFileHandle = async (key: string, handle: unknown): Promise<boolean> => {

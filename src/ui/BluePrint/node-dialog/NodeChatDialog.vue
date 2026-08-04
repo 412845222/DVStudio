@@ -1,18 +1,17 @@
 <template>
-	<Transition name="bp-dialog-fade">
-		<div
-			v-if="visible && nodeId && nodeType"
-			class="bp-node-chat-dialog"
-			:class="[`bp-node-chat-${nodeType}`, { 'is-submitting': submitting }]"
-			:style="dialogPositionStyle"
-			data-wf-node-drag-ignore="true"
-			@wheel.stop
-			@pointerdown.stop
-			@mousedown.stop
-			@click.stop
-			@contextmenu.stop
-		>
-			<div class="bp-node-chat-dialog-inner">
+	<div
+		v-show="visible && nodeId && nodeType"
+		class="bp-node-chat-dialog"
+		:class="[`bp-node-chat-${nodeType}`, { 'is-submitting': submitting }]"
+		:style="dialogPositionStyle"
+		data-wf-node-drag-ignore="true"
+		@wheel.stop
+		@pointerdown.stop
+		@mousedown.stop
+		@click.stop
+		@contextmenu.stop
+	>
+		<div class="bp-node-chat-dialog-inner">
 			<div class="bp-node-chat-surface glass-surface">
 				<span class="bp-dialog-bracket bp-dialog-bracket-tl" aria-hidden="true"></span>
 				<span class="bp-dialog-bracket bp-dialog-bracket-tr" aria-hidden="true"></span>
@@ -49,51 +48,51 @@
 						class="bp-node-chat-input-param-refs"
 					>
 						<div
-						v-for="(item, index) in inputParamPreviewRefsResolved"
-						:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
-						class="bp-node-chat-param-ref-item"
-						:class="`is-${item.kind}`"
-						:title="paramRefTitle(item)"
-					>
-						<img
-							v-if="item.previewUrl"
-							class="bp-node-chat-param-ref-thumb"
-							:src="item.previewUrl"
-							:alt="item.label || item.kind"
-							loading="lazy"
-							decoding="async"
-						/>
-						<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
-						<span class="bp-node-chat-param-ref-main">
-							<span class="bp-node-chat-param-ref-label">
-								{{ item.label }}
-							</span>
-							<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
-								{{ paramRefSubline(item) }}
-							</span>
-						</span>
-						<button
-							class="bp-node-chat-param-ref-remove"
-							type="button"
-							:title="t('aichat.nodeChat.disconnectUpstream')"
-							@click.stop="handleRemoveParamRef(item)"
+							v-for="(item, index) in inputParamPreviewRefsResolved"
+							:key="`param-ref-${item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}:${item.kind}` || index}`"
+							class="bp-node-chat-param-ref-item"
+							:class="`is-${item.kind}`"
+							:title="paramRefTitle(item)"
 						>
-							×
-						</button>
-					</div>
+							<img
+								v-if="item.previewUrl"
+								class="bp-node-chat-param-ref-thumb"
+								:src="item.previewUrl"
+								:alt="item.label || item.kind"
+								loading="lazy"
+								decoding="async"
+							/>
+							<span v-else class="bp-node-chat-param-ref-icon">{{ paramRefIcon(item) }}</span>
+							<span class="bp-node-chat-param-ref-main">
+								<span class="bp-node-chat-param-ref-label">
+									{{ item.label }}
+								</span>
+								<span v-if="paramRefSubline(item)" class="bp-node-chat-param-ref-sub">
+									{{ paramRefSubline(item) }}
+								</span>
+							</span>
+							<button
+								class="bp-node-chat-param-ref-remove"
+								type="button"
+								:title="t('aichat.nodeChat.disconnectUpstream')"
+								@click.stop="handleRemoveParamRef(item)"
+							>
+								×
+							</button>
+						</div>
 					</div>
 					<NodeChatInput
-					ref="inputRef"
-					:model-value="draft"
-					:placeholder="placeholder"
-					:disabled="submitting"
-					:can-submit-empty="canSubmitEmpty"
-					:input-param-preview-refs="inputParamPreviewRefsResolved"
-					:selected-references="selectedReferences"
-					@update:model-value="onDraftUpdate"
-					@update:selected-references="onSelectedReferencesUpdate"
-					@submit="handleSubmit"
-				/>
+						ref="inputRef"
+						:model-value="localDraft"
+						:placeholder="placeholder"
+						:disabled="submitting"
+						:input-param-preview-refs="inputParamPreviewRefsResolved"
+						:selected-references="selectedRefsForInput"
+						@update:model-value="onDraftInput"
+						@update:selected-references="onSelectedRefsChange"
+						@blur="handleInputBlur"
+						@submit="handleSubmit"
+					/>
 				</div>
 
 				<div class="bp-node-chat-footer">
@@ -122,7 +121,11 @@
 							:disabled="submitting"
 							@click="toggleParams"
 						>
-							{{ showParams ? t('aichat.nodeChat.collapseParams') : t('aichat.nodeChat.paramSettings') }}
+							{{
+								showParams
+									? t('aichat.nodeChat.collapseParams')
+									: t('aichat.nodeChat.paramSettings')
+							}}
 						</button>
 						<button
 							v-if="!submitting"
@@ -146,40 +149,39 @@
 				</div>
 			</div>
 
-		<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
-			<NodeChatParamPanel
-				v-if="showParams"
-				:key="`param-panel-${JSON.stringify(currentParams)}`"
-				class="bp-node-chat-param-popover"
-				:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
-				:node-type="nodeType"
-				:node-id="nodeId"
-				:params="currentParams"
-				:disabled="submitting"
-				:input-param-preview-refs="inputParamPreviewRefsResolved"
-				@update:params="onParamsUpdate"
-			/>
-		</Transition>
+			<Transition :name="isTripo3D ? 'bp-dialog-fade' : 'bp-param-slide-h'">
+				<NodeChatParamPanel
+					v-if="showParams && nodeType"
+					:key="paramPanelKey"
+					class="bp-node-chat-param-popover"
+					:class="{ 'is-horizontal': !isTripo3D, 'is-vertical': isTripo3D }"
+					:node-type="nodeType"
+					:node-id="nodeId"
+					:params="currentParams"
+					:disabled="submitting"
+					:input-param-preview-refs="inputParamPreviewRefsResolved"
+					@update:params="onParamsChange"
+				/>
+			</Transition>
 		</div>
-		</div>
-	</Transition>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from '../../../i18n'
-import type { WorkflowNodeChatType, WorkflowNodeChatSubmitPayload, WorkflowNodeChatParams, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
+import type { WorkflowNodeChatType, WorkflowNodeChatParamRecord } from '../../../aiworkflow/types'
 import {
 	NODE_CHAT_TYPE_LABELS,
 	NODE_CHAT_TYPE_ICONS,
 	NODE_CHAT_PLACEHOLDERS,
-	NODE_CHAT_TYPE_DESCRIPTIONS,
-	getDefaultParamsForType,
 	calcNodeDialogPosition
 } from './nodeChatConfig'
 import NodeChatInput from './NodeChatInput.vue'
 import NodeChatParamPanel from './NodeChatParamPanel.vue'
 import type { InputParamPreviewRef } from './index'
+import { useNodeChatSync } from './useNodeChatSync'
+import { stableParamsKey } from './chatStateUtils'
 
 const { t } = useI18n()
 
@@ -187,25 +189,66 @@ const props = defineProps<{
 	visible: boolean
 	nodeId: string | null
 	nodeType: WorkflowNodeChatType | null
-	draft: string
+	draft?: string
 	submitting: boolean
-	params: WorkflowNodeChatParams
+	params?: Record<string, any>
+	selectedReferences?: any[]
 	nodeWidth?: number
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 }>()
 
-const emit = defineEmits<{
-	(e: 'close'): void
-	(e: 'update:draft', value: string): void
-	(e: 'update:params', params: WorkflowNodeChatParams): void
-	(e: 'submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'stop'): void
-	(e: 'remove-param-ref', item: InputParamPreviewRef): void
-}>()
+// 调试日志：监听inputParamPreviewRefs变化
+watch(
+	() => props.inputParamPreviewRefs,
+	(newRefs) => {
+		console.log(
+			`[NodeChatDialog] nodeId=${props.nodeId}, nodeType=${props.nodeType}, visible=${props.visible}, inputParamPreviewRefs count=${newRefs?.length || 0}`,
+			newRefs
+		)
+	},
+	{ deep: true, immediate: true }
+)
 
-const inputRef = ref<InstanceType<typeof NodeChatInput> | null>(null)
-const showParams = ref(false)
-const selectedReferences = ref<InputParamPreviewRef[]>([])
+watch(
+	() => props.visible,
+	(newVisible) => {
+		if (newVisible && props.nodeId) {
+			console.log(
+				`[NodeChatDialog] DIALOG OPENED: nodeId=${props.nodeId}, nodeType=${props.nodeType}, inputParamPreviewRefs count=${props.inputParamPreviewRefs?.length || 0}`,
+				props.inputParamPreviewRefs
+			)
+		}
+	},
+	{ immediate: true }
+)
+
+const {
+	inputRef,
+	localDraft,
+	showParams,
+	currentParams,
+	selectedRefsForInput,
+	showInputParamRefs,
+	isTripo3D,
+	submitDisabled,
+	onDraftInput: onDraftInputRaw,
+	onParamsChange: onParamsChangeRaw,
+	onSelectedRefsChange,
+	handleSubmit,
+	handleStop,
+	handleClose,
+	handleRemoveParamRef,
+	toggleParams,
+	flushSave
+} = useNodeChatSync(props)
+
+const onDraftInput = (value: string) => {
+	onDraftInputRaw(value)
+}
+
+const onParamsChange = (params: WorkflowNodeChatParamRecord) => {
+	onParamsChangeRaw(params)
+}
 
 const typeLabel = computed(() => {
 	if (!props.nodeType) return ''
@@ -222,29 +265,6 @@ const placeholder = computed(() => {
 	return t(NODE_CHAT_PLACEHOLDERS[props.nodeType])
 })
 
-const typeDescription = computed(() => {
-	if (!props.nodeType) return ''
-	return t(NODE_CHAT_TYPE_DESCRIPTIONS[props.nodeType])
-})
-
-const currentParams = computed<WorkflowNodeChatParamRecord>(() => {
-	if (!props.nodeType) return {}
-	const defaults = getDefaultParamsForType(props.nodeType) as WorkflowNodeChatParamRecord
-	const saved = (props.params[props.nodeType] ?? {}) as WorkflowNodeChatParamRecord
-	return { ...defaults, ...saved }
-})
-
-const showInputParamRefs = computed(() => {
-	const type = props.nodeType
-	return type === 'image' || type === 'text' || type === 'video' || type === 'model3d' || type === 'blender'
-})
-
-const isTripo3D = computed(() => {
-	if (!props.nodeType || props.nodeType !== 'model3d') return false
-	const model3dParams = (props.params.model3d ?? {}) as any
-	return model3dParams.model === 'tripo3d'
-})
-
 const inputParamPreviewRefsResolved = computed(() => {
 	const raw = props.inputParamPreviewRefs ?? []
 	const typeCounter: Record<string, number> = {}
@@ -256,19 +276,11 @@ const inputParamPreviewRefsResolved = computed(() => {
 		if (item.kind === 'text') standardLabel = t('aichat.nodeChat.textLabel', { index: i })
 		else if (item.kind === 'image') standardLabel = t('aichat.nodeChat.imageLabel', { index: i })
 		else if (item.kind === 'video') standardLabel = t('aichat.nodeChat.videoLabel', { index: i })
-		else if (item.kind === 'blender') standardLabel = t('aichat.nodeChat.blenderLabel', { index: i })
+		else if (item.kind === 'blender')
+			standardLabel = t('aichat.nodeChat.blenderLabel', { index: i })
 		else standardLabel = t('aichat.nodeChat.model3dLabel', { index: i })
 		return { ...item, label: standardLabel }
 	})
-})
-
-const hasConnectedParams = computed(() => inputParamPreviewRefsResolved.value.length > 0)
-const hasSelectedRefs = computed(() => selectedReferences.value.length > 0)
-
-const canSubmitEmpty = computed(() => hasConnectedParams.value || hasSelectedRefs.value)
-
-const submitDisabled = computed(() => {
-	return props.submitting || (!props.draft.trim() && !hasConnectedParams.value && !hasSelectedRefs.value)
 })
 
 const paramRefIcon = (item: InputParamPreviewRef) => {
@@ -290,108 +302,34 @@ const paramRefTitle = (item: InputParamPreviewRef) => {
 	return subline ? `${header}\n\n${subline}` : header
 }
 
-const handleRemoveParamRef = (item: InputParamPreviewRef) => {
-	emit('remove-param-ref', item)
-}
-
 const dialogPositionStyle = computed(() => calcNodeDialogPosition(props.nodeWidth))
 
-const handleClose = () => {
-	if (props.submitting) return
-	selectedReferences.value = []
-	emit('close')
+// ========== 参数面板稳定 key：使用 stableParamsKey，避免键顺序变化导致虚假重建 ==========
+const paramPanelKey = computed(() => {
+	return `param-panel-${props.nodeType || 'unknown'}-${stableParamsKey(currentParams.value)}`
+})
+
+// ========== 输入框 blur 时保存一次 ==========
+const handleInputBlur = () => {
+	flushSave()
 }
 
-const onDraftUpdate = (value: string) => {
-	emit('update:draft', value)
-}
-
-const onSelectedReferencesUpdate = (refs: InputParamPreviewRef[]) => {
-	selectedReferences.value = refs
-}
-
-const getRefLabel = (item: InputParamPreviewRef) => {
-	return item.label || ''
-}
-
-const handleSubmit = () => {
-	if (submitDisabled.value || !props.nodeId || !props.nodeType) return
-	const references = selectedReferences.value.map((item) => ({
-		refId: item.edgeId || `${item.fromNodeId}:${item.fromAnchorId}`,
-		nodeId: item.fromNodeId || item.nodeId || '',
-		edgeId: item.edgeId,
-		type: item.kind as any,
-		label: getRefLabel(item)
-	}))
-	const payload: WorkflowNodeChatSubmitPayload = {
-		nodeId: props.nodeId,
-		nodeType: props.nodeType,
-		prompt: props.draft.trim(),
-		params: currentParams.value,
-		references
-	}
-	emit('submit', payload)
-	selectedReferences.value = []
-}
-
-const handleStop = () => {
-	emit('stop')
-}
-
-const onParamsUpdate = (nextParams: WorkflowNodeChatParamRecord) => {
-	if (!props.nodeType) return
-	const merged: WorkflowNodeChatParams = { ...props.params, [props.nodeType]: nextParams }
-	emit('update:params', merged)
-}
-
-const toggleParams = () => {
-	showParams.value = !showParams.value
-}
-
-const onKeydown = (e: KeyboardEvent) => {
-	if (e.key === 'Escape' && props.visible) {
-		handleClose()
+// ========== Ctrl+S 保存 ==========
+const onKeyDown = (e: KeyboardEvent) => {
+	if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+		e.preventDefault()
+		e.stopPropagation()
+		flushSave()
+		return
 	}
 }
 
-watch(
-	() => props.visible,
-	(visible) => {
-		if (visible) {
-			showParams.value = false
-			selectedReferences.value = []
-			nextTick(() => {
-				inputRef.value?.focus()
-			})
-		} else {
-			selectedReferences.value = []
-		}
-	}
-)
-
-watch(
-	() => props.nodeType,
-	(type) => {
-		if (type && !props.params[type]) {
-			const defaults = getDefaultParamsForType(type)
-			const merged = { ...props.params, [type]: defaults }
-			emit('update:params', merged)
-		}
-	},
-	{ immediate: true }
-)
-
-watch(
-	() => props.visible,
-	(visible, previous) => {
-		if (visible && !previous) window.addEventListener('keydown', onKeydown)
-		if (!visible && previous) window.removeEventListener('keydown', onKeydown)
-	},
-	{ immediate: true }
-)
+onMounted(() => {
+	window.addEventListener('keydown', onKeyDown)
+})
 
 onBeforeUnmount(() => {
-	window.removeEventListener('keydown', onKeydown)
+	window.removeEventListener('keydown', onKeyDown)
 })
 </script>
 

@@ -3,7 +3,7 @@ import type { WorkflowNode } from '@/aiworkflow/types'
 import {
 	normalizeText,
 	isImageInputAnchor,
-	getEffectiveImageUrl,
+	getEffectiveImageUrl
 } from '@/views/AIWorkflow/node-business/tripo3d/useAIWorkflowImageNodeTripo3D'
 import type { Tripo3DStoreLike } from '@/views/AIWorkflow/node-business/tripo3d/types'
 
@@ -53,17 +53,20 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 	})
 
 	describe('getEffectiveImageUrl', () => {
-		const createMockStore = (resourcesById: Record<string, Record<string, unknown>> = {}): Tripo3DStoreLike => ({
-			state: {
-				nodesById: {},
-				resourcesById,
-			},
-		} as unknown as Tripo3DStoreLike)
+		const createMockStore = (
+			resourcesById: Record<string, Record<string, unknown>> = {}
+		): Tripo3DStoreLike =>
+			({
+				state: {
+					nodesById: {},
+					resourcesById
+				}
+			}) as unknown as Tripo3DStoreLike
 
 		it('should return resource URL when resourceId is present', () => {
 			const node = { resourceId: 'res-123' } as unknown as WorkflowNode
 			const store = createMockStore({
-				'res-123': { url: 'https://example.com/resource.png' },
+				'res-123': { url: 'https://example.com/resource.png' }
 			})
 			expect(getEffectiveImageUrl(node, store)).toBe('https://example.com/resource.png')
 		})
@@ -71,8 +74,8 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 		it('should return lastGeneratedImageUrl when no resourceId', () => {
 			const node = {
 				imageSettings: {
-					lastGeneratedImageUrl: 'https://example.com/last-gen.png',
-				},
+					lastGeneratedImageUrl: 'https://example.com/last-gen.png'
+				}
 			} as unknown as WorkflowNode
 			const store = createMockStore()
 			expect(getEffectiveImageUrl(node, store)).toBe('https://example.com/last-gen.png')
@@ -83,10 +86,10 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 				imageSettings: {
 					tripo3dImageSettings: {
 						outputSummary: {
-							preferredUrl: 'https://example.com/tripo3d.png',
-						},
-					},
-				},
+							preferredUrl: 'https://example.com/tripo3d.png'
+						}
+					}
+				}
 			} as unknown as WorkflowNode
 			const store = createMockStore()
 			expect(getEffectiveImageUrl(node, store)).toBe('https://example.com/tripo3d.png')
@@ -96,7 +99,9 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 			const node = {} as WorkflowNode
 			const store = createMockStore()
 			const nodeResourceUrl = (n: WorkflowNode) => 'https://example.com/fallback.png'
-			expect(getEffectiveImageUrl(node, store, nodeResourceUrl)).toBe('https://example.com/fallback.png')
+			expect(getEffectiveImageUrl(node, store, nodeResourceUrl)).toBe(
+				'https://example.com/fallback.png'
+			)
 		})
 
 		it('should return null when no URL is available', () => {
@@ -109,11 +114,11 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 			const node = {
 				resourceId: 'res-123',
 				imageSettings: {
-					lastGeneratedImageUrl: 'https://example.com/last-gen.png',
-				},
+					lastGeneratedImageUrl: 'https://example.com/last-gen.png'
+				}
 			} as unknown as WorkflowNode
 			const store = createMockStore({
-				'res-123': { url: 'https://example.com/resource.png' },
+				'res-123': { url: 'https://example.com/resource.png' }
 			})
 			expect(getEffectiveImageUrl(node, store)).toBe('https://example.com/resource.png')
 		})
@@ -124,10 +129,10 @@ describe('useAIWorkflowImageNodeTripo3D pure functions', () => {
 					lastGeneratedImageUrl: 'https://example.com/last-gen.png',
 					tripo3dImageSettings: {
 						outputSummary: {
-							preferredUrl: 'https://example.com/tripo3d.png',
-						},
-					},
-				},
+							preferredUrl: 'https://example.com/tripo3d.png'
+						}
+					}
+				}
 			} as unknown as WorkflowNode
 			const store = createMockStore()
 			expect(getEffectiveImageUrl(node, store)).toBe('https://example.com/last-gen.png')

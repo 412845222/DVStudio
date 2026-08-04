@@ -26,7 +26,9 @@ function parseDwebAssetUrl(rawUrl) {
 function safeResolveProjectFile(root, relPath) {
 	const rootStr = String(root || '').trim()
 	if (!rootStr) return null
-	const rel = String(relPath || '').trim().replace(/\\/g, '/')
+	const rel = String(relPath || '')
+		.trim()
+		.replace(/\\/g, '/')
 	if (!rel || rel.startsWith('/') || rel.includes('..')) return null
 	try {
 		const normalized = path.resolve(rootStr, ...rel.split('/').filter((seg) => seg && seg !== '.'))
@@ -36,7 +38,8 @@ function safeResolveProjectFile(root, relPath) {
 		const isInside =
 			normalizedNorm === resolvedRoot ||
 			normalizedNorm.startsWith(rootWithSep) ||
-			(process.platform === 'win32' && normalizedNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
+			(process.platform === 'win32' &&
+				normalizedNorm.toLowerCase().startsWith(rootWithSep.toLowerCase()))
 		if (!isInside) return null
 		return normalized
 	} catch {
@@ -48,7 +51,8 @@ function resolveVideoPath(dwebUrl) {
 	const parsed = parseDwebAssetUrl(dwebUrl)
 	if (!parsed) return { ok: false, error: 'invalid dweb:// URL' }
 	const root = getProjectRootById(parsed.projectId)
-	if (!root) return { ok: false, error: `project root not registered for projectId=${parsed.projectId}` }
+	if (!root)
+		return { ok: false, error: `project root not registered for projectId=${parsed.projectId}` }
 
 	const candidates = new Set()
 	const rel = parsed.relPath.replace(/\\/g, '/')
@@ -120,11 +124,16 @@ async function probeVideoDuration(filePath) {
 			stdio: ['ignore', 'ignore', 'pipe']
 		})
 		let stderr = ''
-		proc.stderr?.on('data', (d) => { stderr += String(d) })
+		proc.stderr?.on('data', (d) => {
+			stderr += String(d)
+		})
 		proc.on('error', () => resolve(null))
 		proc.on('exit', () => {
 			const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/)
-			if (!match) { resolve(null); return }
+			if (!match) {
+				resolve(null)
+				return
+			}
 			const h = parseInt(match[1], 10)
 			const m = parseInt(match[2], 10)
 			const s = parseFloat(match[3])
@@ -158,11 +167,16 @@ export async function generateFilmstrip(dwebUrl, options = {}) {
 	const filter = `fps=${fps},scale=${thumbWidth}:-1,tile=${columns}x${rows}`
 	const args = [
 		'-y',
-		'-i', filePath,
-		'-vf', filter,
-		'-frames:v', '1',
-		'-q:v', '5',
-		'-f', 'image2',
+		'-i',
+		filePath,
+		'-vf',
+		filter,
+		'-frames:v',
+		'1',
+		'-q:v',
+		'5',
+		'-f',
+		'image2',
 		outPath
 	]
 
@@ -172,18 +186,24 @@ export async function generateFilmstrip(dwebUrl, options = {}) {
 			stdio: ['ignore', 'pipe', 'pipe']
 		})
 		let stderr = ''
-		proc.stderr?.on('data', (d) => { stderr += String(d) })
+		proc.stderr?.on('data', (d) => {
+			stderr += String(d)
+		})
 		let killed = false
 		const timeout = setTimeout(() => {
 			killed = true
-			try { proc.kill() } catch {}
+			try {
+				proc.kill()
+			} catch {}
 			cleanup()
 			resolve({ ok: false, error: 'ffmpeg timeout' })
 		}, 30000)
 
 		const cleanup = () => {
 			clearTimeout(timeout)
-			try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {}
+			try {
+				fs.rmSync(tmpDir, { recursive: true, force: true })
+			} catch {}
 		}
 
 		proc.on('error', (err) => {
@@ -237,10 +257,14 @@ export async function checkFfmpegAvailable() {
 			})
 			let stdout = ''
 			const timeout = setTimeout(() => {
-				try { proc.kill() } catch {}
+				try {
+					proc.kill()
+				} catch {}
 				resolve(false)
 			}, 5000)
-			proc.stdout?.on('data', (d) => { stdout += String(d) })
+			proc.stdout?.on('data', (d) => {
+				stdout += String(d)
+			})
 			proc.on('error', () => {
 				clearTimeout(timeout)
 				resolve(false)

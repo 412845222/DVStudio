@@ -14,11 +14,19 @@ export const routes = [
 	{ channel: 'dweb:comfyui:runtime:object_info', handler: handlers.runtimeGetObjectInfo },
 	{ channel: 'dweb:comfyui:runtime:workflows:list', handler: handlers.runtimeListWorkflowFiles },
 	{ channel: 'dweb:comfyui:runtime:workflows:get', handler: handlers.runtimeGetWorkflowFile },
-	{ channel: 'dweb:comfyui:runtime:workflows:get-history', handler: handlers.runtimeGetHistoryWorkflow },
+	{
+		channel: 'dweb:comfyui:runtime:workflows:get-history',
+		handler: handlers.runtimeGetHistoryWorkflow
+	},
+	{
+		channel: 'dweb:comfyui:runtime:workflows:resolve-history',
+		handler: handlers.runtimeResolveHistoryPrompt
+	},
 	{ channel: 'dweb:comfyui:runtime:run', handler: handlers.runtimeRunWorkflow },
 	{ channel: 'dweb:comfyui:runtime:outputs', handler: handlers.runtimeGetOutputs },
 	{ channel: 'dweb:comfyui:runtime:cancel', handler: handlers.runtimeCancelRun },
 	{ channel: 'dweb:comfyui:runtime:job', handler: handlers.runtimeGetJobStatus },
+	{ channel: 'dweb:comfyui:runtime:clear-cache', handler: handlers.runtimeClearHistoryCache },
 	// Setup routes
 	{ channel: 'dweb:comfyui:setup:default-path', handler: handlers.setupGetDefaultInstallPath },
 	{ channel: 'dweb:comfyui:setup:select-path', handler: handlers.setupSelectPath },
@@ -41,15 +49,31 @@ export const routes = [
 	{ channel: 'dweb:comfyui:setup:ping-mirrors', handler: handlers.setupPingMirrors },
 	{ channel: 'dweb:comfyui:setup:get-mirror-list', handler: handlers.setupGetMirrorList },
 	{ channel: 'dweb:comfyui:setup:set-mirror', handler: handlers.setupSetMirror },
-	{ channel: 'dweb:comfyui:setup:fix-python-env:stream', handler: handlers.setupFixPythonEnv, stream: true },
+	{
+		channel: 'dweb:comfyui:setup:fix-python-env:stream',
+		handler: handlers.setupFixPythonEnv,
+		stream: true
+	},
 	{ channel: 'dweb:comfyui:setup:default-venv-path', handler: handlers.setupGetDefaultVenvPath },
 	{ channel: 'dweb:comfyui:setup:select-venv-path', handler: handlers.setupSelectVenvPath },
 	{ channel: 'dweb:comfyui:setup:set-venv-path', handler: handlers.setupSetVenvPath },
 	{ channel: 'dweb:comfyui:setup:service-logs', handler: handlers.setupGetServiceLogs },
 	{ channel: 'dweb:comfyui:setup:clear-logs', handler: handlers.setupClearServiceLogs },
 	{ channel: 'dweb:comfyui:setup:restart-service', handler: handlers.setupRestartService },
-	{ channel: 'dweb:comfyui:setup:clone-comfyui:stream', handler: handlers.setupCloneComfyUI, stream: true },
-	{ channel: 'dweb:comfyui:setup:update-comfyui:stream', handler: handlers.setupUpdateComfyUI, stream: true },
-	{ channel: 'dweb:comfyui:setup:auto-install-torch:stream', handler: handlers.setupAutoInstallTorch, stream: true },
-	{ channel: 'dweb:comfyui:setup:clear-venv', handler: handlers.setupClearVenv },
+	{
+		channel: 'dweb:comfyui:setup:clone-comfyui:stream',
+		handler: handlers.setupCloneComfyUI,
+		stream: true
+	},
+	{
+		channel: 'dweb:comfyui:setup:update-comfyui:stream',
+		handler: handlers.setupUpdateComfyUI,
+		stream: true
+	},
+	{
+		channel: 'dweb:comfyui:setup:auto-install-torch:stream',
+		handler: handlers.setupAutoInstallTorch,
+		stream: true
+	},
+	{ channel: 'dweb:comfyui:setup:clear-venv', handler: handlers.setupClearVenv }
 ]

@@ -1,9 +1,9 @@
 {
-  "aichat.stages.stopped": "已停止",
-  "aichat.stages.started": "已开始…",
-  "aichat.stages.connecting": "连接模型…",
-  "aichat.stages.generating": "生成说明…",
-  "aichat.stages.templating": "生成组件…",
-  "aichat.stages.inProgress": "任务进行中…",
-  "aichat.stages.selfChecking": "自检中…"
+	"aichat.stages.stopped": "已停止",
+	"aichat.stages.started": "已开始…",
+	"aichat.stages.connecting": "连接模型…",
+	"aichat.stages.generating": "生成说明…",
+	"aichat.stages.templating": "生成组件…",
+	"aichat.stages.inProgress": "任务进行中…",
+	"aichat.stages.selfChecking": "自检中…"
 }

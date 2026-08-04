@@ -37,15 +37,16 @@ function restoreFocus() {
 	if (typeof document === 'undefined' || !lastFocusedElement) return
 	try {
 		lastFocusedElement.focus()
-	} catch {
-	}
+	} catch {}
 	lastFocusedElement = null
 }
 
 function moveFocusToPanel() {
 	nextTick(() => {
 		if (typeof document === 'undefined') return
-		const panelCloseButton = document.querySelector('.steam-panel .panel-close-btn') as HTMLElement | null
+		const panelCloseButton = document.querySelector(
+			'.steam-panel .panel-close-btn'
+		) as HTMLElement | null
 		if (panelCloseButton) {
 			panelCloseButton.focus()
 		}
@@ -62,10 +63,10 @@ function getPanelFocusableElements(): HTMLElement[] {
 		'input:not([disabled])',
 		'select:not([disabled])',
 		'textarea:not([disabled])',
-		'[tabindex]:not([tabindex="-1"])',
+		'[tabindex]:not([tabindex="-1"])'
 	]
 	const elements = panel.querySelectorAll(focusableSelectors.join(','))
-	return Array.from(elements).filter(el => {
+	return Array.from(elements).filter((el) => {
 		const htmlEl = el as HTMLElement
 		return htmlEl.offsetParent !== null && !htmlEl.hasAttribute('disabled')
 	}) as HTMLElement[]
@@ -147,7 +148,7 @@ function ensureListener() {
 
 	document.addEventListener('keydown', boundKeydownHandler, {
 		capture: true,
-		passive: false,
+		passive: false
 	})
 
 	listenerBound = true
@@ -185,6 +186,6 @@ export function useSteamHotkeys(enabled?: Ref<boolean>) {
 		isAnimating,
 		open: openPanel,
 		close: closePanel,
-		toggle: togglePanel,
+		toggle: togglePanel
 	}
 }

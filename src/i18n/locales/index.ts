@@ -4,7 +4,7 @@ import enUS from './en-US'
 
 const locales: Record<LocaleCode, LocalePackage> = {
 	'zh-CN': zhCN,
-	'en-US': enUS,
+	'en-US': enUS
 }
 
 export function getLocalePackage(code: LocaleCode): LocalePackage {

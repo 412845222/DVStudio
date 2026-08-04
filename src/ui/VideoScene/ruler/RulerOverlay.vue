@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
 	top: 0;
 	width: var(--ruler-size);
 	height: var(--ruler-size);
-	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2));
+	background: color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0, 0, 0, 0.2));
 	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 50%, transparent);
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 50%, transparent);
 	box-sizing: border-box;

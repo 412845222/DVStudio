@@ -8,15 +8,20 @@
 			{
 				'is-primary-selected': isPrimarySelectedResolved,
 				'is-secondary-selected': isSecondarySelectedResolved,
-				'wf-node-running': visualStatus === 'running',
-				'wf-node-error': visualStatus === 'error'
+				'wf-node-running':
+					visualStatus === 'running' ||
+					taskVisualStatus === 'running' ||
+					taskVisualStatus === 'submitting',
+				'wf-node-error': visualStatus === 'error' || taskVisualStatus === 'error',
+				'wf-node-task-running': taskVisualStatus === 'running' || taskVisualStatus === 'submitting',
+				'wf-node-task-success': taskVisualStatus === 'success',
+				'wf-node-task-error': taskVisualStatus === 'error'
 			},
 			{ 'wf-node-chat-open': nodeChatVisibleResolved },
-			{ 'is-auto-height': autoHeight },
+			{ 'is-auto-height': autoHeight !== false },
 			`wf-node-${nodeType}`
 		]"
 		:style="style"
-		@pointerdown.stop.prevent="onPointerDown"
 		@click.stop="onSelect"
 	>
 		<div v-if="selected && isPrimarySelectedResolved" class="wf-node-toolbar" @pointerdown.stop>
@@ -39,7 +44,12 @@
 				<span class="wf-node-type-label">{{ typeLabel }}</span>
 				<span class="wf-node-type-caret">▾</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.clearNodeContent')" @click="emit('clear-node')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.clearNodeContent')"
+				@click="emit('clear-node')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M4 5h8l-.8 8.2H4.8L4 5Z"
@@ -58,7 +68,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.clear') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.copyNode')" @click="emit('copy')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.copyNode')"
+				@click="emit('copy')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<rect
 						x="5"
@@ -83,7 +98,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.copyNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.refreshNode')" @click="emit('refresh')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.refreshNode')"
+				@click="emit('refresh')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path
 						d="M13.5 8a5.5 5.5 0 1 1-1.2-3.4"
@@ -103,7 +123,12 @@
 				</svg>
 				<span class="wf-node-btn-label">{{ t('aiworkflow.nodeBase.refreshNode') }}</span>
 			</button>
-			<button class="wf-node-btn" type="button" :title="t('aiworkflow.nodeBase.deleteNode')" @click="emit('delete')">
+			<button
+				class="wf-node-btn"
+				type="button"
+				:title="t('aiworkflow.nodeBase.deleteNode')"
+				@click="emit('delete')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-node-icon">
 					<path d="M4 5h8l-1 9H5z" fill="none" stroke="currentColor" stroke-width="1.2" />
 					<path d="M3 5h10" stroke="currentColor" stroke-width="1.2" />
@@ -144,7 +169,13 @@
 					v-if="nodeGenerationTask.results && nodeGenerationTask.results.length"
 					class="wf-node-generation-results"
 				>
-					<span>{{ t('aiworkflow.nodeBase.resultsGenerated', { count: nodeGenerationTask.results.length }) }}</span>
+					<span>
+						{{
+							t('aiworkflow.nodeBase.resultsGenerated', {
+								count: nodeGenerationTask.results.length
+							})
+						}}
+					</span>
 				</div>
 			</div>
 		</div>
@@ -156,7 +187,7 @@
 		</div>
 
 		<NodeChatDialog
-			v-if="nodeChatVisibleResolved"
+			v-show="nodeChatVisibleResolved"
 			class="wf-node-inline-chat"
 			:visible="nodeChatVisibleResolved"
 			:node-id="nodeId"
@@ -164,14 +195,9 @@
 			:draft="nodeChatDraft"
 			:submitting="nodeChatSubmitting"
 			:params="nodeChatParams"
+			:selected-references="nodeChatSelectedRefs"
 			:node-width="width"
 			:input-param-preview-refs="inputParamPreviewRefs"
-			@update:draft="(value) => emit('node-chat-update-draft', value)"
-			@update:params="(value) => emit('node-chat-update-params', value)"
-			@close="emit('node-chat-close')"
-			@submit="(payload) => emit('node-chat-submit', payload)"
-			@stop="emit('node-chat-stop')"
-			@remove-param-ref="(item) => emit('node-chat-remove-param-ref', item)"
 		/>
 
 		<div class="wf-resize wf-resize-nw" @pointerdown.stop.prevent="onResizeStart('nw', $event)" />
@@ -269,7 +295,7 @@ import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import type {
 	WorkflowNodeChatType,
-	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask
 } from '../../aiworkflow/types'
 import { NodeChatDialog, type InputParamPreviewRef } from '../BluePrint/node-dialog'
@@ -313,6 +339,7 @@ const props = defineProps<{
 	nodeChatDraft?: string
 	nodeChatSubmitting?: boolean
 	nodeChatParams?: Record<string, unknown>
+	nodeChatSelectedRefs?: WorkflowNodeChatSelectedRef[]
 	inputParamPreviewRefs?: InputParamPreviewRef[]
 	nodeGenerationTask?: WorkflowNodeGenerationTask | null
 	anchorCompatibility?: Record<string, boolean | null>
@@ -361,12 +388,6 @@ const emit = defineEmits<{
 	): void
 	(e: 'open-node-library'): void
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
-	(e: 'node-chat-update-draft', value: string): void
-	(e: 'node-chat-update-params', value: Record<string, unknown>): void
-	(e: 'node-chat-close'): void
-	(e: 'node-chat-submit', payload: WorkflowNodeChatSubmitPayload): void
-	(e: 'node-chat-stop'): void
-	(e: 'node-chat-remove-param-ref', item: InputParamPreviewRef): void
 	(e: 'auto-resize', height: number): void
 }>()
 
@@ -433,23 +454,34 @@ const visualStatus = computed<'idle' | 'running' | 'error'>(() => {
 	return 'idle'
 })
 
+const taskVisualStatus = computed<'idle' | 'submitting' | 'running' | 'success' | 'error'>(() => {
+	const task = props.nodeGenerationTask
+	if (!task) return 'idle'
+	if (task.status === 'completed') return 'success'
+	if (task.status === 'cancelled' || task.status === 'idle') return 'idle'
+	return task.status as 'submitting' | 'running' | 'error'
+})
+
 const nodeChatDraft = computed(() => String(props.nodeChatDraft ?? ''))
 const nodeChatSubmitting = computed(() => props.nodeChatSubmitting === true)
 const nodeChatParams = computed(() => props.nodeChatParams ?? {})
+const nodeChatSelectedRefs = computed(() => props.nodeChatSelectedRefs ?? [])
 
 const nodeChatNodeTypeResolved = computed<WorkflowNodeChatType | null>(() => {
 	const type = props.nodeChatNodeType ?? props.nodeType
-	if (type === 'text' || type === 'image' || type === 'video' || type === 'model3d' || type === 'blender') return type
+	if (
+		type === 'text' ||
+		type === 'image' ||
+		type === 'video' ||
+		type === 'model3d' ||
+		type === 'blender'
+	)
+		return type
 	return null
 })
 
 const nodeChatVisibleResolved = computed(() => {
-	return Boolean(
-		props.nodeChatVisible &&
-		props.selected &&
-		isPrimarySelectedResolved.value &&
-		nodeChatNodeTypeResolved.value
-	)
+	return Boolean(props.nodeChatVisible && nodeChatNodeTypeResolved.value)
 })
 
 const typeLabel = computed(() => {
@@ -471,21 +503,21 @@ const typeLabel = computed(() => {
 })
 
 const NODE_TYPE_TO_ACTION_ID: Record<string, string> = {
-	'text': 'text-generation',
-	'image': 'image-generation',
+	text: 'text-generation',
+	image: 'image-generation',
 	'rotate-image': 'rotate-image',
-	'video': 'video-generation',
+	video: 'video-generation',
 	'scene-understanding': 'scene-understanding',
 	'scene-layout': 'scene-layout',
 	'scene-decompose': 'scene-decompose',
-	'comfyui': 'comfyui',
-	'model3d': 'model3d',
-	'meshy': 'meshy',
-	'blender': 'blender',
+	comfyui: 'comfyui',
+	model3d: 'model3d',
+	meshy: 'meshy',
+	blender: 'blender',
 	'unreal-export': 'unreal-export',
 	'text-merge': 'text-merge',
-	'story': 'story',
-	'base': 'base'
+	story: 'story',
+	base: 'base'
 }
 
 const DEFAULT_ALIASES_ZH = new Set([
@@ -577,7 +609,7 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 const nodeElRef = ref<HTMLElement | null>(null)
 
 const MIN_AUTO_HEIGHT = 120
-const MAX_AUTO_HEIGHT = 800
+const MAX_AUTO_HEIGHT = 10000
 const HEIGHT_CHANGE_THRESHOLD = 2
 
 let resizeObserver: ResizeObserver | null = null
@@ -610,7 +642,6 @@ const requestAutoResize = () => {
 	rafId = requestAnimationFrame(() => {
 		rafId = 0
 		if (userResized) return
-		if (props.sizeCustomized) return
 		if (props.autoHeight === false) return
 		const nextHeight = measureNaturalHeight()
 		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
@@ -641,15 +672,20 @@ const teardownResizeObserver = () => {
 	}
 }
 
-let drag: null | {
-	startClient: { x: number; y: number }
-	startWorld: { x: number; y: number }
-} = null
+const onSelect = () => {
+	emit('select', props.nodeId)
+}
 
 const MIN_SIZE = 80
 
 const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 	if (e.button !== 0) return
+	console.log('[WorkflowNodeBase] onResizeStart', {
+		nodeId: props.nodeId,
+		corner,
+		nodeChatVisible: nodeChatVisibleResolved.value,
+		hasDraft: nodeChatDraft.value.length > 0
+	})
 	userResized = true
 	teardownResizeObserver()
 	emit('select', props.nodeId)
@@ -700,6 +736,10 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		})
 	}
 	const onUp = (ev: PointerEvent) => {
+		console.log('[WorkflowNodeBase] onResizeEnd', {
+			nodeId: props.nodeId,
+			nodeChatVisible: nodeChatVisibleResolved.value
+		})
 		el.removeEventListener('pointermove', onMove)
 		el.removeEventListener('pointerup', onUp)
 		el.removeEventListener('pointercancel', onUp)
@@ -708,54 +748,19 @@ const onResizeStart = (corner: 'nw' | 'ne' | 'sw' | 'se', e: PointerEvent) => {
 		} catch {
 			// ignore
 		}
-	}
-	el.addEventListener('pointermove', onMove)
-	el.addEventListener('pointerup', onUp, { once: true })
-	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onPointerDown = (e: PointerEvent) => {
-	if (e.button !== 0) return
-	emit('select', props.nodeId)
-	const targetEl = e.target as HTMLElement | null
-	if (targetEl?.closest('[data-wf-node-drag-ignore="true"]')) {
-		return
-	}
-	const el = e.currentTarget as HTMLElement
-	const z = Math.max(1e-6, props.zoom)
-	drag = {
-		startClient: { x: e.clientX, y: e.clientY },
-		startWorld: { x: props.worldX, y: props.worldY }
-	}
-	el.setPointerCapture(e.pointerId)
-
-	const onMove = (ev: PointerEvent) => {
-		if (!drag) return
-		ev.preventDefault()
-		const dx = ev.clientX - drag.startClient.x
-		const dy = ev.clientY - drag.startClient.y
-		const worldX = drag.startWorld.x + dx / z
-		const worldY = drag.startWorld.y + dy / z
-		emit('update:worldPosition', { worldX, worldY })
-	}
-	const onUp = (ev: PointerEvent) => {
-		drag = null
-		el.removeEventListener('pointermove', onMove)
-		el.removeEventListener('pointerup', onUp)
-		el.removeEventListener('pointercancel', onUp)
-		try {
-			el.releasePointerCapture(ev.pointerId)
-		} catch {
-			// ignore
+		if (props.autoHeight !== false) {
+			userResized = false
+			nextTick(() => {
+				setupResizeObserver()
+				requestAutoResize()
+				setTimeout(requestAutoResize, 50)
+				setTimeout(requestAutoResize, 200)
+			})
 		}
 	}
 	el.addEventListener('pointermove', onMove)
 	el.addEventListener('pointerup', onUp, { once: true })
 	el.addEventListener('pointercancel', onUp, { once: true })
-}
-
-const onSelect = () => {
-	emit('select', props.nodeId)
 }
 
 const onStartLink = (anchorId: string, anchorIndex: number, event: PointerEvent) => {
@@ -797,7 +802,6 @@ const isAnchorIncompatible = (anchorId: string, direction: 'in' | 'out') => {
 }
 onMounted(() => {
 	if (props.autoHeight === false) return
-	if (props.sizeCustomized) return
 	nextTick(() => {
 		setupResizeObserver()
 		requestAutoResize()
@@ -811,7 +815,7 @@ watch(
 	(customized) => {
 		if (customized) {
 			teardownResizeObserver()
-		} else if (!userResized && props.autoHeight !== false) {
+		} else if (props.autoHeight !== false) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -825,7 +829,7 @@ watch(
 	(enabled) => {
 		if (enabled === false) {
 			teardownResizeObserver()
-		} else if (!userResized && !props.sizeCustomized) {
+		} else if (!props.sizeCustomized) {
 			nextTick(() => {
 				setupResizeObserver()
 				requestAutoResize()
@@ -836,6 +840,10 @@ watch(
 
 onBeforeUnmount(() => {
 	teardownResizeObserver()
+})
+
+defineExpose({
+	requestAutoResize
 })
 </script>
 
@@ -849,12 +857,11 @@ onBeforeUnmount(() => {
 	box-shadow: var(--wf-node-shadow);
 	box-sizing: border-box;
 	padding: 8px 10px 10px;
-	cursor: grab;
+	cursor: default;
 	display: flex;
 	flex-direction: column;
 	z-index: 1;
-	overflow: visible;
-	touch-action: none;
+	overflow: hidden;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	will-change: transform, width, height;
@@ -896,7 +903,7 @@ onBeforeUnmount(() => {
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 20%, transparent),
 		0 0 10px color-mix(in srgb, var(--wf-primary) 15%, transparent),
 		0 3px 12px color-mix(in srgb, var(--theme-border) 20%, transparent),
-		inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent) !important;
+		inset 0 1px 0 var(--wf-inner-highlight) !important;
 	animation: wf-toolbar-in 160ms ease-out both;
 	z-index: 90;
 }
@@ -989,14 +996,14 @@ onBeforeUnmount(() => {
 	z-index: 100;
 	min-width: 140px;
 	border: 1px solid color-mix(in srgb, var(--wf-primary) 55%, transparent) !important;
-	background: color-mix(in srgb, rgba(21, 24, 28, 0.92) 96%, transparent) !important;
+	background: color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent) !important;
 	backdrop-filter: blur(14px) saturate(140%);
 	-webkit-backdrop-filter: blur(14px) saturate(140%);
 	border-radius: 2px !important;
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary) 18%, transparent),
 		0 0 14px color-mix(in srgb, var(--wf-primary) 22%, transparent),
-		0 8px 20px rgba(0, 0, 0, 0.38) !important;
+		var(--wf-popover-shadow) !important;
 	padding: 6px;
 	display: flex;
 	flex-direction: column;
@@ -1035,10 +1042,6 @@ onBeforeUnmount(() => {
 		opacity: 1;
 		transform: translateX(-50%) translateY(0);
 	}
-}
-
-.wf-node:active {
-	cursor: grabbing;
 }
 
 .wf-node-header {
@@ -1150,14 +1153,15 @@ onBeforeUnmount(() => {
 	border-radius: 8px;
 	padding: 8px;
 	display: flex;
-	flex: 1;
+	flex: 1 1 auto;
 	min-height: 0;
-	align-items: center;
-	justify-content: center;
+	align-items: stretch;
+	justify-content: flex-start;
 	color: var(--wf-text-muted);
 	background: var(--wf-surface-base);
 	font-size: 12px;
-	overflow: hidden;
+	overflow: auto;
+	box-sizing: border-box;
 }
 
 .wf-media {
@@ -1165,25 +1169,27 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 1;
+	flex: 1 1 auto;
 	min-height: 0;
 }
 
 .wf-media-preview {
 	width: 100%;
-	flex: 1;
-	min-height: 0;
+	flex: 1 1 auto;
+	min-height: 200px;
+	max-height: 60%;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--wf-border-subtle);
 	background: var(--wf-surface-base);
+	position: relative;
 }
 
 .wf-media-preview img,
 .wf-media-preview video {
 	width: 100%;
 	height: 100%;
-	object-fit: cover;
+	object-fit: contain;
 	display: block;
 }
 
@@ -1287,6 +1293,8 @@ onBeforeUnmount(() => {
 .wf-node-footer {
 	font-size: 11px;
 	color: var(--wf-text-muted);
+	flex-shrink: 0;
+	min-height: 0;
 }
 
 .wf-node.wf-node-meshy {
@@ -1312,6 +1320,7 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	align-items: stretch;
 	justify-content: flex-start;
+	overflow: visible;
 }
 
 .wf-node.is-auto-height .wf-node-body {
@@ -1326,9 +1335,7 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
-.wf-node.wf-node-text .wf-node-body,
-.wf-node.wf-node-text-merge .wf-node-body,
-.wf-node.wf-node-blender .wf-node-body {
+.wf-node.is-auto-height.wf-node-text .wf-node-body {
 	overflow: hidden;
 	align-items: stretch;
 	justify-content: flex-start;
@@ -1337,18 +1344,85 @@ onBeforeUnmount(() => {
 	min-height: 0;
 }
 
+.wf-node.is-auto-height.wf-node-text-merge .wf-node-body {
+	overflow: visible;
+	align-items: stretch;
+	justify-content: flex-start;
+	flex-direction: column;
+	flex: 0 0 auto;
+	min-height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-text {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+}
+
+.wf-node.is-auto-height.wf-node-text-merge .wf-merge {
+	flex: 0 0 auto;
+	min-height: auto;
+	height: auto;
+}
+
+.wf-node.is-auto-height.wf-node-text .wf-textarea {
+	flex: 1;
+	min-height: 0;
+}
+
 .wf-node.wf-node-text .wf-node-footer {
 	display: none;
 }
 
+/* Fixed-size (non-auto-height) image/rotate nodes: fill available body space */
+.wf-node:not(.is-auto-height).wf-node-image .wf-node-body,
+.wf-node:not(.is-auto-height).wf-node-rotate-image .wf-node-body {
+	flex-direction: column;
+}
+
+.wf-node:not(.is-auto-height).wf-node-image .wf-media {
+	flex: 1;
+	min-height: 0;
+	flex-shrink: 1;
+}
+
+.wf-node:not(.is-auto-height).wf-node-image .wf-media-preview {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.wf-node:not(.is-auto-height).wf-node-rotate-image .wf-rotate-wrap {
+	flex: 1;
+	min-height: 0;
+}
+
 .wf-node.wf-node-blender .wf-node-body {
 	padding: 0;
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	overflow: hidden;
+	flex: 1;
+	min-height: 0;
 }
 
 .wf-node.wf-node-blender .wf-node-footer {
-	overflow: visible;
+	overflow: hidden;
 	flex-shrink: 0;
 	padding: 0;
+}
+
+.wf-node.wf-node-blender .wf-blender-body {
+	flex: 1;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+.wf-node.wf-node-blender .wf-blender-chat-panel {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
 }
 
 .wf-node.wf-node-comfyui .wf-node-body {
@@ -1473,7 +1547,7 @@ onBeforeUnmount(() => {
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.78)) 90%, transparent);
 	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent),
-		0 2px 8px rgba(0, 0, 0, 0.18);
+		var(--wf-anchor-shadow);
 	opacity: 0.92;
 	transform: translate(-50%, -50%) scale(1) rotate(0deg);
 	transform-origin: 50% 50%;
@@ -1523,7 +1597,7 @@ onBeforeUnmount(() => {
 .wf-anchor-hit[data-magnet-phase='dragging']::before {
 	transform: translate(-50%, -50%) scale(1.14) rotate(45deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.6),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 10px color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 	animation: wf-anchor-drag-pulse 0.9s cubic-bezier(0.22, 0.8, 0.25, 1.05) infinite;
 }
@@ -1545,7 +1619,7 @@ onBeforeUnmount(() => {
 .wf-anchor-hit.hovered::before {
 	transform: translate(-50%, -50%) scale(1.08) rotate(3deg);
 	box-shadow:
-		0 0 0 1px rgba(255, 255, 255, 0.66),
+		0 0 0 1px var(--wf-anchor-ring),
 		0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
@@ -1595,6 +1669,77 @@ onBeforeUnmount(() => {
 	.wf-anchor-hit::after {
 		transition: none !important;
 		animation: none !important;
+	}
+}
+
+.wf-node-task-running {
+	animation: wf-node-breath 2s ease-in-out infinite;
+	border-color: color-mix(in srgb, var(--wf-primary) 60%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--wf-primary) 30%, transparent),
+		0 0 28px color-mix(in srgb, var(--wf-primary) 15%, transparent) !important;
+}
+
+.wf-node-task-success {
+	animation: wf-node-success-flash 0.8s ease-out;
+	border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+		0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+}
+
+.wf-node-task-error {
+	border-color: color-mix(in srgb, #e74c3c 65%, transparent) !important;
+	box-shadow:
+		0 0 12px color-mix(in srgb, #e74c3c 30%, transparent),
+		0 0 24px color-mix(in srgb, #e74c3c 15%, transparent) !important;
+	animation: wf-node-error-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wf-node-breath {
+	0%,
+	100% {
+		border-color: color-mix(in srgb, var(--wf-primary) 40%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, var(--wf-primary) 15%, transparent),
+			0 0 14px color-mix(in srgb, var(--wf-primary) 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, var(--wf-primary) 80%, transparent);
+		box-shadow:
+			0 0 16px color-mix(in srgb, var(--wf-primary) 40%, transparent),
+			0 0 36px color-mix(in srgb, var(--wf-primary) 20%, transparent);
+	}
+}
+
+@keyframes wf-node-success-flash {
+	0% {
+		border-color: #2ea44f !important;
+		box-shadow:
+			0 0 24px color-mix(in srgb, #2ea44f 60%, transparent),
+			0 0 48px color-mix(in srgb, #2ea44f 30%, transparent) !important;
+	}
+	100% {
+		border-color: color-mix(in srgb, #2ea44f 65%, transparent) !important;
+		box-shadow:
+			0 0 12px color-mix(in srgb, #2ea44f 30%, transparent),
+			0 0 24px color-mix(in srgb, #2ea44f 15%, transparent) !important;
+	}
+}
+
+@keyframes wf-node-error-pulse {
+	0%,
+	100% {
+		border-color: color-mix(in srgb, #e74c3c 50%, transparent);
+		box-shadow:
+			0 0 6px color-mix(in srgb, #e74c3c 15%, transparent),
+			0 0 14px color-mix(in srgb, #e74c3c 8%, transparent);
+	}
+	50% {
+		border-color: color-mix(in srgb, #e74c3c 90%, transparent);
+		box-shadow:
+			0 0 18px color-mix(in srgb, #e74c3c 45%, transparent),
+			0 0 36px color-mix(in srgb, #e74c3c 22%, transparent);
 	}
 }
 </style>
