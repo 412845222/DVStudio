@@ -12,9 +12,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 		commit: (type: string, value: unknown) => void
 	}
 	comfyService: {
-		ping: (
-			baseUrl: string
-		) => Promise<{
+		ping: (baseUrl: string) => Promise<{
 			ok: boolean
 			error?: string
 			systemInfo?: unknown

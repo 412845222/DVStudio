@@ -24,10 +24,7 @@ type GeminiService = {
 	clearCompleted: (
 		payload?: Record<string, unknown>
 	) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
-	getImagePath: (payload: {
-		taskId: string
-		imageIndex?: number
-	}) => Promise<{
+	getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{
 		ok: boolean
 		path?: string
 		filename?: string

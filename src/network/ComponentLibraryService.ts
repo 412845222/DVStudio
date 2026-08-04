@@ -59,9 +59,7 @@ type EditorIpcBridge = {
 					| { items?: ComponentLibraryItem[]; total?: number; limit?: number; offset?: number }
 				>
 				get?: (payload: { id: string }) => Promise<{ item: ComponentLibraryItem }>
-				save?: (
-					payload: unknown
-				) => Promise<{
+				save?: (payload: unknown) => Promise<{
 					ok?: boolean
 					item?: ComponentLibraryItem
 					upserted?: boolean
