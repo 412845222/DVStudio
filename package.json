@@ -1,232 +1,232 @@
 {
-	"name": "dweb-video-studio",
-	"private": true,
-	"version": "0.1.9",
-	"main": "electron/main.mjs",
-	"description": "DVStudio - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
-	"license": "MPL-2.0",
-	"author": "DwebStudio",
-	"copyright": "Copyright (c) 2026 DwebStudio",
-	"homepage": "https://www.dweb.club/",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/412845222/DVStudio.git"
-	},
-	"bugs": {
-		"url": "https://github.com/412845222/DVStudio/issues"
-	},
-	"funding": {
-		"type": "url",
-		"url": "https://space.bilibili.com/22690066"
-	},
-	"keywords": [
-		"DVStudio",
-		"dweb",
-		"video",
-		"animation",
-		"editor",
-		"timeline",
-		"keyframes",
-		"webgl2",
-		"vue",
-		"vite",
-		"typescript"
-	],
-	"engines": {
-		"node": ">=16"
-	},
-	"type": "module",
-	"scripts": {
-		"dev": "node scripts/clean-ports.mjs 5173 && vite",
-		"dev:vite:5173": "node scripts/clean-ports.mjs 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
-		"dev:web": "node scripts/clean-ports.mjs 5173 && cross-env VITE_PLATFORM=web DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
-		"dev:web:empty": "node scripts/clean-ports.mjs 5173 && cross-env VITE_PLATFORM=web DWEB_SIMULATE_EMPTY_ENV=1 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
-		"check:copilot-sse": "node scripts/check-copilot-sse.mjs",
-		"smoke:copilot-dev": "node scripts/run-copilot-dev-smoke.mjs",
-		"dev:electron:app": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs",
-		"dev:electron:app:empty": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs",
-		"dev:electron": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/setup-steam-native.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 DWEB_STEAMJS_DEBUG=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
-		"dev:electron:steam": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/setup-steam-native.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
-		"dev:electron:empty": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
-		"install:better-sqlite3": "cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs",
-		"setup:steam": "node scripts/setup-steam-dev.mjs",
-		"clean:runtime-legacy": "node scripts/clean-runtime-django.mjs",
-		"build": "vue-tsc && vite build",
-		"gen:win-icon": "node scripts/gen-win-icon.mjs",
-		"gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
-		"gen:logo": "node scripts/gen-logo-assets.mjs",
-		"prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
-		"pack:unreal-plugin": "node scripts/pack-unreal-plugin.mjs",
-		"clean:source-pack": "node scripts/remove-dir.mjs release-source",
-		"pack:source": "node scripts/pack-source.mjs",
-		"clean:lan-pack": "node scripts/remove-dir.mjs release-transfer",
-		"pack:lan": "node scripts/pack-lan-transfer.mjs",
-		"pack:lan:with-dvs": "node scripts/pack-lan-transfer.mjs --include-dvs-resource",
-		"pack:git-bundle": "node scripts/create-git-bundle.mjs",
-		"clean:sample-pack": "node scripts/remove-dir.mjs release-sample",
-		"pack:sample": "node scripts/pack-sample.mjs",
-		"perf:analyze:chrome": "node scripts/perf/analyze-chrome-perf.mjs",
-		"perf:scan:large": "node scripts/perf/scan-large-text.mjs",
-		"perf:aiwf:generate": "node scripts/perf/aiwf-generate-image-blueprint.mjs",
-		"perf:aiwf:audit-preview": "node scripts/perf/aiwf-asset-preview-audit.mjs",
-		"perf:aiwf:smoke": "node scripts/perf/aiwf-pan-perf-smoke.mjs",
-		"perf:aiwf:smoke:batch": "node scripts/perf/aiwf-pan-perf-smoke.mjs --batch S0,S1,S2,S3",
-		"prepack:win": "npm run gen:win-icon",
-		"pack:win": "npm run build && electron-builder --dir -w",
-		"pack:mac": "npm run build && electron-builder --dir -m",
-		"predist:win": "npm run prepare:python-runtime && npm run gen:logo",
-		"dist:win": "node scripts/dist-win.mjs",
-		"dist:mac": "node scripts/dist-mac.mjs",
-		"dist:steam:win": "node scripts/dist-steam-win.mjs",
-		"config:steam": "node scripts/config-steam.mjs",
-		"upload:steam": "node scripts/upload-steam.mjs",
-		"release:steam": "node scripts/dist-steam-win.mjs && node scripts/upload-steam.mjs",
-		"release:steam:live": "node scripts/dist-steam-win.mjs && node scripts/upload-steam.mjs --set-live",
-		"build:steam": "node scripts/dist-steam-win.mjs",
-		"preview": "vite preview",
-		"git:setup-hooks": "git config core.hooksPath .githooks",
-		"git:unset-hooks": "git config --unset core.hooksPath",
-		"git:protect-on": "npm run git:setup-hooks",
-		"git:protect-off": "npm run git:unset-hooks",
-		"postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\"",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage",
-		"test:architecture": "vitest run tests/engine/blueprint-architecture.test.ts",
-		"typecheck": "vue-tsc --noEmit",
-		"typecheck:strict": "vue-tsc --noEmit --strict",
-		"typecheck:watch": "vue-tsc --noEmit --watch",
-		"lint": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\"",
-		"lint:fix": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\" --fix",
-		"format": "prettier --write \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
-		"format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
-		"quality": "npm run typecheck && npm run test:architecture && npm run test",
-		"quality:full": "npm run typecheck && npm run lint && npm run test:architecture && npm run test",
-		"release": "node scripts/release.mjs"
-	},
-	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.29.0",
-		"@volcengine/tos-sdk": "^2.9.1",
-		"ali-oss": "^6.23.0",
-		"better-sqlite3": "^12.11.1",
-		"html2canvas": "^1.4.1",
-		"https-proxy-agent": "^9.1.0",
-		"js-yaml": "^4.1.1",
-		"jszip": "^3.10.1",
-		"markdown-it": "^14.1.0",
-		"three": "^0.183.2",
-		"three-bvh-csg": "^0.0.18",
-		"vue": "^3.2.41",
-		"vue-router": "^4.5.0",
-		"vuex": "^4.1.0"
-	},
-	"devDependencies": {
-		"@electron/rebuild": "^3.6.2",
-		"@eslint/js": "^10.0.1",
-		"@types/js-yaml": "^4.0.9",
-		"@types/markdown-it": "^14.1.2",
-		"@types/node": "^20.0.0",
-		"@typescript-eslint/eslint-plugin": "^8.62.0",
-		"@typescript-eslint/parser": "^8.62.0",
-		"@vitejs/plugin-vue": "^3.2.0",
-		"@vitest/coverage-v8": "^2.0.0",
-		"@vue/test-utils": "^2.4.0",
-		"concurrently": "^9.1.2",
-		"cross-env": "^7.0.3",
-		"electron": "33.4.11",
-		"electron-builder": "^25.1.8",
-		"eslint": "^10.5.0",
-		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-prettier": "^5.5.6",
-		"eslint-plugin-vue": "^10.9.2",
-		"globals": "^17.7.0",
-		"jsdom": "^24.0.0",
-		"png-to-ico": "^2.1.8",
-		"prettier": "^3.8.4",
-		"sharp": "^0.35.2",
-		"typescript": "^4.6.4",
-		"vite": "^3.2.3",
-		"vitest": "^2.0.0",
-		"vue-eslint-parser": "^10.4.1",
-		"vue-tsc": "^1.8.27",
-		"wait-on": "^8.0.4"
-	},
-	"build": {
-		"appId": "club.dweb.dvstudio",
-		"productName": "DVStudio",
-		"asar": true,
-		"directories": {
-			"output": "release"
-		},
-		"files": [
-			"dist/**",
-			"electron/**",
-			"!electron/static/runtime/**",
-			"!electron/steam.config.json",
-			"!electron/**/steam.config.example.json",
-			"!electron/**/*.log",
-			"!electron/**/*.map",
-			"public/favicon.ico"
-		],
-		"extraResources": [
-			{
-				"from": "electron/backend/python-bridge/scripts",
-				"to": "python-bridge-scripts"
-			},
-			{
-				"from": "electron/static",
-				"to": "static",
-				"filter": [
-					"**/*",
-					"!runtime/**"
-				]
-			},
-			{
-				"from": "electron/static/runtime",
-				"to": "runtime",
-				"filter": [
-					"**/*"
-				]
-			}
-		],
-		"win": {
-			"target": [
-				{
-					"target": "nsis",
-					"arch": [
-						"x64"
-					]
-				}
-			],
-			"icon": "build/icon.ico"
-		},
-		"mac": {
-			"target": [
-				"zip",
-				"dmg"
-			],
-			"category": "public.app-category.video"
-		},
-		"nsis": {
-			"oneClick": false,
-			"perMachine": false,
-			"allowElevation": true,
-			"allowToChangeInstallationDirectory": true,
-			"createDesktopShortcut": true,
-			"createStartMenuShortcut": true,
-			"shortcutName": "DVStudio",
-			"installerIcon": "build/icon.ico",
-			"uninstallerIcon": "build/icon.ico",
-			"installerHeaderIcon": "build/icon.ico",
-			"installerSidebar": "build/installer-sidebar.bmp",
-			"uninstallerSidebar": "build/uninstaller-sidebar.bmp",
-			"include": "build/installer.nsh",
-			"installerLanguages": [
-				"zh-CN",
-				"en-US"
-			],
-			"language": "2052",
-			"deleteAppDataOnUninstall": false
-		}
-	}
+  "name": "dweb-video-studio",
+  "private": true,
+  "version": "0.2.0",
+  "main": "electron/main.mjs",
+  "description": "DVStudio - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
+  "license": "MPL-2.0",
+  "author": "DwebStudio",
+  "copyright": "Copyright (c) 2026 DwebStudio",
+  "homepage": "https://www.dweb.club/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/412845222/DVStudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/412845222/DVStudio/issues"
+  },
+  "funding": {
+    "type": "url",
+    "url": "https://space.bilibili.com/22690066"
+  },
+  "keywords": [
+    "DVStudio",
+    "dweb",
+    "video",
+    "animation",
+    "editor",
+    "timeline",
+    "keyframes",
+    "webgl2",
+    "vue",
+    "vite",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/clean-ports.mjs 5173 && vite",
+    "dev:vite:5173": "node scripts/clean-ports.mjs 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:web": "node scripts/clean-ports.mjs 5173 && cross-env VITE_PLATFORM=web DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:web:empty": "node scripts/clean-ports.mjs 5173 && cross-env VITE_PLATFORM=web DWEB_SIMULATE_EMPTY_ENV=1 DWEB_RESOURCE_DIR=DVSResource vite --host 127.0.0.1 --port 5173 --strictPort",
+    "check:copilot-sse": "node scripts/check-copilot-sse.mjs",
+    "smoke:copilot-dev": "node scripts/run-copilot-dev-smoke.mjs",
+    "dev:electron:app": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs",
+    "dev:electron:app:empty": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs",
+    "dev:electron": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/setup-steam-native.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 DWEB_STEAMJS_DEBUG=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
+    "dev:electron:steam": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/setup-steam-native.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
+    "dev:electron:empty": "node scripts/sync-version.mjs && cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs && node scripts/clean-ports.mjs 5173 && concurrently -k -n vite,electron \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"npx --no-install wait-on --timeout 30000 tcp:127.0.0.1:5173 && cross-env DWEB_RESOURCE_DIR=DVSResource DWEB_SIMULATE_EMPTY_ENV=1 ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://127.0.0.1:5173/ npx --no-install electron electron/main.mjs\"",
+    "install:better-sqlite3": "cross-env DWEB_FAIL_ON_REBUILD_ERROR=1 node scripts/rebuild-better-sqlite3.mjs",
+    "setup:steam": "node scripts/setup-steam-dev.mjs",
+    "clean:runtime-legacy": "node scripts/clean-runtime-django.mjs",
+    "build": "vue-tsc && vite build",
+    "gen:win-icon": "node scripts/gen-win-icon.mjs",
+    "gen:installer-bitmaps": "node scripts/gen-installer-bitmaps.mjs",
+    "gen:logo": "node scripts/gen-logo-assets.mjs",
+    "prepare:python-runtime": "node scripts/prepare-python-runtime.mjs",
+    "pack:unreal-plugin": "node scripts/pack-unreal-plugin.mjs",
+    "clean:source-pack": "node scripts/remove-dir.mjs release-source",
+    "pack:source": "node scripts/pack-source.mjs",
+    "clean:lan-pack": "node scripts/remove-dir.mjs release-transfer",
+    "pack:lan": "node scripts/pack-lan-transfer.mjs",
+    "pack:lan:with-dvs": "node scripts/pack-lan-transfer.mjs --include-dvs-resource",
+    "pack:git-bundle": "node scripts/create-git-bundle.mjs",
+    "clean:sample-pack": "node scripts/remove-dir.mjs release-sample",
+    "pack:sample": "node scripts/pack-sample.mjs",
+    "perf:analyze:chrome": "node scripts/perf/analyze-chrome-perf.mjs",
+    "perf:scan:large": "node scripts/perf/scan-large-text.mjs",
+    "perf:aiwf:generate": "node scripts/perf/aiwf-generate-image-blueprint.mjs",
+    "perf:aiwf:audit-preview": "node scripts/perf/aiwf-asset-preview-audit.mjs",
+    "perf:aiwf:smoke": "node scripts/perf/aiwf-pan-perf-smoke.mjs",
+    "perf:aiwf:smoke:batch": "node scripts/perf/aiwf-pan-perf-smoke.mjs --batch S0,S1,S2,S3",
+    "prepack:win": "npm run gen:win-icon",
+    "pack:win": "npm run build && electron-builder --dir -w",
+    "pack:mac": "npm run build && electron-builder --dir -m",
+    "predist:win": "npm run prepare:python-runtime && npm run gen:logo",
+    "dist:win": "node scripts/dist-win.mjs",
+    "dist:mac": "node scripts/dist-mac.mjs",
+    "dist:steam:win": "node scripts/dist-steam-win.mjs",
+    "config:steam": "node scripts/config-steam.mjs",
+    "upload:steam": "node scripts/upload-steam.mjs",
+    "release:steam": "node scripts/dist-steam-win.mjs && node scripts/upload-steam.mjs",
+    "release:steam:live": "node scripts/dist-steam-win.mjs && node scripts/upload-steam.mjs --set-live",
+    "build:steam": "node scripts/dist-steam-win.mjs",
+    "preview": "vite preview",
+    "git:setup-hooks": "git config core.hooksPath .githooks",
+    "git:unset-hooks": "git config --unset core.hooksPath",
+    "git:protect-on": "npm run git:setup-hooks",
+    "git:protect-off": "npm run git:unset-hooks",
+    "postinstall": "node scripts/rebuild-better-sqlite3.mjs && node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:architecture": "vitest run tests/engine/blueprint-architecture.test.ts",
+    "typecheck": "vue-tsc --noEmit",
+    "typecheck:strict": "vue-tsc --noEmit --strict",
+    "typecheck:watch": "vue-tsc --noEmit --watch",
+    "lint": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\"",
+    "lint:fix": "eslint \"src/**/*.{ts,vue}\" \"electron/**/*.{mjs,js}\" --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
+    "quality": "npm run typecheck && npm run test:architecture && npm run test",
+    "quality:full": "npm run typecheck && npm run lint && npm run test:architecture && npm run test",
+    "release": "node scripts/release.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@volcengine/tos-sdk": "^2.9.1",
+    "ali-oss": "^6.23.0",
+    "better-sqlite3": "^12.11.1",
+    "html2canvas": "^1.4.1",
+    "https-proxy-agent": "^9.1.0",
+    "js-yaml": "^4.1.1",
+    "jszip": "^3.10.1",
+    "markdown-it": "^14.1.0",
+    "three": "^0.183.2",
+    "three-bvh-csg": "^0.0.18",
+    "vue": "^3.2.41",
+    "vue-router": "^4.5.0",
+    "vuex": "^4.1.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.2",
+    "@eslint/js": "^10.0.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "@vitejs/plugin-vue": "^3.2.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "@vue/test-utils": "^2.4.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "eslint-plugin-vue": "^10.9.2",
+    "globals": "^17.7.0",
+    "jsdom": "^24.0.0",
+    "png-to-ico": "^2.1.8",
+    "prettier": "^3.8.4",
+    "sharp": "^0.35.2",
+    "typescript": "^4.6.4",
+    "vite": "^3.2.3",
+    "vitest": "^2.0.0",
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^1.8.27",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "club.dweb.dvstudio",
+    "productName": "DVStudio",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "!electron/static/runtime/**",
+      "!electron/steam.config.json",
+      "!electron/**/steam.config.example.json",
+      "!electron/**/*.log",
+      "!electron/**/*.map",
+      "public/favicon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/backend/python-bridge/scripts",
+        "to": "python-bridge-scripts"
+      },
+      {
+        "from": "electron/static",
+        "to": "static",
+        "filter": [
+          "**/*",
+          "!runtime/**"
+        ]
+      },
+      {
+        "from": "electron/static/runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "zip",
+        "dmg"
+      ],
+      "category": "public.app-category.video"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DVStudio",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "uninstallerSidebar": "build/uninstaller-sidebar.bmp",
+      "include": "build/installer.nsh",
+      "installerLanguages": [
+        "zh-CN",
+        "en-US"
+      ],
+      "language": "2052",
+      "deleteAppDataOnUninstall": false
+    }
+  }
 }
