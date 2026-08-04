@@ -1,14 +1,13 @@
 import type { WorkflowModelFormat } from '../../../../aiworkflow/types'
 
 const MODEL_EXT_WHITELIST = ['glb', 'gltf', 'fbx', 'obj', 'stl', 'usdz', 'dae'] as const
-type ModelExtWhitelist = (typeof MODEL_EXT_WHITELIST)[number]
 
 /**
  * 检查 URL 是否是 meshy/tripo3d 远端 CDN URL 或其他外部 http(s) URL。
  * UE 端无法直接下载这些 URL（CORS / 签名过期 / 认证失败），
  * 在路径对齐时必须替换为本地 relPath（Content/Media/...）。
  */
-const isRemoteCdnUrl = (url: string): boolean => {
+export const isRemoteCdnUrl = (url: string): boolean => {
 	if (!url) return false
 	const lower = url.toLowerCase()
 	// 明确的 meshy / tripo3d CDN
@@ -238,7 +237,7 @@ export const prepareResolvedSlotsForExport = (
 	rawSlots: unknown[],
 	connectedModelBindings: unknown[],
 	layoutItems: unknown[]
-): { slots: Record<string, unknown>[]; warnings: string[] } => {
+): { slots: Record<string, unknown>[]; warnings: string[]; placeholderCount: number } => {
 	// 2026-08-03 贴图完整性关键字段（提升到函数作用域，便于最终 trace 也能使用）
 	const TEXTURE_INTEGRITY_KEYS = [
 		'modelAssetProjectRelativePath',
@@ -248,12 +247,12 @@ export const prepareResolvedSlotsForExport = (
 		'modelFormat'
 	] as const
 	const warnings: string[] = []
-	const { slots: resolvedSlots, bySourceObjectId } = normalizeResolvedLayoutSlots(rawSlots)
+	const { slots: resolvedSlots } = normalizeResolvedLayoutSlots(rawSlots)
 
-	console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5a prepareResolvedSlotsForExport entry')
-	console.log(`rawSlots = ${rawSlots.length}`)
-	console.log(`resolvedSlots (after normalizeResolvedLayoutSlots) = ${resolvedSlots.length}`)
-	console.log(
+	console.warn('[UNREAL-EXPORT-TRACE] #5a prepareResolvedSlotsForExport entry')
+	console.warn(`rawSlots = ${rawSlots.length}`)
+	console.warn(`resolvedSlots (after normalizeResolvedLayoutSlots) = ${resolvedSlots.length}`)
+	console.warn(
 		`normalized resolvedSlots[].sourceObjectId summary:`,
 		resolvedSlots.map((s: Record<string, unknown>) => ({
 			slotId: s.slotId,
@@ -270,7 +269,7 @@ export const prepareResolvedSlotsForExport = (
 		}))
 	)
 	const safeBindings = Array.isArray(connectedModelBindings) ? connectedModelBindings : []
-	console.log(
+	console.warn(
 		`connectedModelBindings (rawBindings: ${safeBindings.length}`,
 		safeBindings.map((b: unknown) => {
 			const obj = (b ?? {}) as Record<string, unknown>
@@ -288,9 +287,8 @@ export const prepareResolvedSlotsForExport = (
 			}
 		})
 	)
-	console.groupEnd()
 	// [单行非折叠摘要] —— 保证复制到 log.md 也能直接看，不需要展开 group
-	console.log(
+	console.warn(
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #5a | rawSlots=${rawSlots.length} | normalizedResolvedSlots=${resolvedSlots.length} | sourceObjectIdList=${resolvedSlots
 			.map((s) => String(s.sourceObjectId ?? ''))
 			.filter(Boolean)
@@ -497,11 +495,11 @@ export const prepareResolvedSlotsForExport = (
 		)
 	}
 	if (synthesizedSlots.length > 0) {
-		console.groupCollapsed(
+		console.warn(
 			'[UNREAL-EXPORT-TRACE] #5b prepareResolvedSlotsForExport auto-synthesized missing slots'
 		)
-		console.log(`synthesizedSlots = ${synthesizedSlots.length}`)
-		console.log(
+		console.warn(`synthesizedSlots = ${synthesizedSlots.length}`)
+		console.warn(
 			`synthesizedSlots[].sourceObjectId summary:`,
 			synthesizedSlots.map((s: Record<string, unknown>) => {
 				const mb = (s.modelBinding ?? {}) as Record<string, unknown>
@@ -521,8 +519,7 @@ export const prepareResolvedSlotsForExport = (
 				}
 			})
 		)
-		console.groupEnd()
-		console.log(
+		console.warn(
 			`[UNREAL-EXPORT-TRACE][SUMMARY] #5b | synthesized=${synthesizedSlots.length} | sourceObjectIdList=${synthesizedSlots
 				.map((s) => String(s.sourceObjectId ?? ''))
 				.filter(Boolean)
@@ -537,11 +534,11 @@ export const prepareResolvedSlotsForExport = (
 	// 按slotId排序
 	finalSlots.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
 
-	console.groupCollapsed('[UNREAL-EXPORT-TRACE] #5c prepareResolvedSlotsForExport FINAL OUTPUT')
-	console.log(
+	console.warn('[UNREAL-EXPORT-TRACE] #5c prepareResolvedSlotsForExport FINAL OUTPUT')
+	console.warn(
 		`finalSlots = ${finalSlots.length} (bindingByObjectId.size = ${bindingByObjectId.size})`
 	)
-	console.log(
+	console.warn(
 		`finalSlots[].sourceObjectId + modelBinding.objectId + pos summary:`,
 		finalSlots.map((s: Record<string, unknown>) => {
 			const mb = (s.modelBinding ?? {}) as Record<string, unknown>
@@ -569,11 +566,10 @@ export const prepareResolvedSlotsForExport = (
 		})
 	)
 	if (warnings.length > 0) {
-		console.log(`warnings[] =`, warnings)
+		console.warn(`warnings[] =`, warnings)
 	}
-	console.groupEnd()
 	// [单行非折叠摘要] —— 关键输出
-	console.log(
+	console.warn(
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #5c | finalSlots=${finalSlots.length} | bindingByObjectId.size=${bindingByObjectId.size} | slots[slotId,sourceObjectId,mb_path,pos]=${JSON.stringify(
 			finalSlots.map((s) => {
 				const mb = (s.modelBinding ?? {}) as Record<string, unknown>
@@ -600,16 +596,16 @@ export const prepareResolvedSlotsForExport = (
 		)}`
 	)
 
-	// 2026-08-03 最后一道出口过滤：只把有真实静态资产路径的 slot 交给 UE 插件导入。
-	//   ——现场发现 SceneLayout 会把 ceiling/floor/wall_* 这些"房间壳子占位项"
-	//     也注入到 resolvedModelBindings 里（objectId=ceiling_main/floor_main/wall_back/...），
-	//     这些项没有任何上游 3D 模型节点产出的真实静态资源文件，
-	//     UE 插件导入遇到空 mb_path 的 slot 可能报错打断 / 直接整体终止，
-	//     导致后面有真实路径的 4 个模型也只导入第 1 个 bar_main。
-	//   ——hasAnyPathExtended 与 #3 过滤器对齐（6 个路径字段任一非空就放行）。
+	// 2026-08-04 第 1 层修复：占位 slot 保留策略
+	//   ——原逻辑：无模型路径的 slot 直接丢弃，导致墙/地/天花/灯等占位体在 UE 中完全不出现。
+	//   ——新逻辑：无模型路径的 slot 标记 isPlaceholder=true 并保留发给 UE，
+	//     UE 端根据 isPlaceholder 标记创建 Cube 占位 Actor，保障布局完整性。
+	//   ——6 个路径字段任一非空即视为有模型 slot，否则标记为占位 slot。
+	const ENABLE_PLACEHOLDER_SLOTS = true // 方案 §六 回滚开关
 	const slotsBeforeFilter = finalSlots.length
 	const validSlots: Record<string, unknown>[] = []
 	const skippedSlotIds: string[] = []
+	let placeholderCount = 0
 	for (const s of finalSlots) {
 		const mb = (s.modelBinding ?? null) as Record<string, unknown> | null
 		const hasPath =
@@ -621,16 +617,34 @@ export const prepareResolvedSlotsForExport = (
 				!!String(mb.modelSourcePath ?? '').trim() ||
 				!!String(mb.modelProjectRelativePath ?? '').trim() ||
 				!!String(mb.modelUrl ?? '').trim())
-		if (hasPath) validSlots.push(s)
-		else skippedSlotIds.push(String(s.slotId ?? s.sourceObjectId ?? ''))
+		if (hasPath) {
+			validSlots.push(s)
+		} else if (ENABLE_PLACEHOLDER_SLOTS) {
+			// 无模型路径的 slot 标记为占位并保留发给 UE
+			s.isPlaceholder = true
+			s.placeholderReason = 'no-model-binding'
+			placeholderCount += 1
+			validSlots.push(s)
+		} else {
+			skippedSlotIds.push(String(s.slotId ?? s.sourceObjectId ?? ''))
+		}
 	}
-	if (validSlots.length !== slotsBeforeFilter) {
+	if (skippedSlotIds.length > 0) {
 		warnings.push(
-			`[prepareResolvedSlotsForExport] Last-mile path-filter: dropped ${slotsBeforeFilter - validSlots.length} slots with no asset path (they are likely room-shell placeholders with no upstream 3D model node resources). droppedSlotIds=[${skippedSlotIds.join(',')}]. validSlots=${validSlots.length}`
+			`[prepareResolvedSlotsForExport] Last-mile path-filter: dropped ${skippedSlotIds.length} slots with no asset path (they are likely room-shell placeholders with no upstream 3D model node resources). droppedSlotIds=[${skippedSlotIds.join(',')}]. validSlots=${validSlots.length}`
 		)
 	}
-	console.log(
-		`[UNREAL-EXPORT-TRACE][SUMMARY] #5d | last-mile hasAnyPath filter: before=${slotsBeforeFilter}, valid(exported to UE)=${validSlots.length}, dropped(no asset path)=${skippedSlotIds.length} dropped=[${skippedSlotIds.join(',')}] validSlotIds=[${validSlots
+	if (placeholderCount > 0) {
+		warnings.push(
+			`[prepareResolvedSlotsForExport] Placeholder slots preserved: ${placeholderCount} slots marked as placeholder (no model binding, will create Cube placeholder Actor in UE).`
+		)
+	}
+	console.warn(
+		`[UNREAL-EXPORT-TRACE][SUMMARY] last-mile filter: before=${slotsBeforeFilter}, valid(exported to UE)=${validSlots.length}, placeholder=${placeholderCount}, dropped(no asset path)=${skippedSlotIds.length} dropped=[${skippedSlotIds.join(',')}] placeholderIds=[${validSlots
+			.filter((s) => s.isPlaceholder === true)
+			.map((s) => String(s.slotId ?? s.sourceObjectId ?? ''))
+			.join(',')}] validModelSlotIds=[${validSlots
+			.filter((s) => s.isPlaceholder !== true)
 			.map((s) => String(s.slotId ?? ''))
 			.filter(Boolean)
 			.join(',')}]`
@@ -657,6 +671,8 @@ export const prepareResolvedSlotsForExport = (
 	const replacedRemoteCdnCount = { modelUrl: 0, modelAssetUrl: 0 }
 	const backfilledUrlCount = { modelUrl: 0, modelAssetUrl: 0 }
 	for (const s of validSlots) {
+		// 占位 slot 跳过路径回填（无模型路径需要回填）
+		if (s.isPlaceholder === true) continue
 		const mb = (s.modelBinding ?? null) as Record<string, unknown> | null
 		if (!mb || typeof mb !== 'object') continue
 		const relPath = String(mb.modelAssetProjectRelativePath ?? '').trim()
@@ -698,11 +714,87 @@ export const prepareResolvedSlotsForExport = (
 			`(from modelAssetProjectRelativePath; replaced dweb:// modelUrl=${alignedDwebUrlCount.n}, replaced remote-CDN modelUrl=${replacedRemoteCdnCount.modelUrl}/modelAssetUrl=${replacedRemoteCdnCount.modelAssetUrl}, backfilled empty modelUrl=${backfilledUrlCount.modelUrl}/modelAssetUrl=${backfilledUrlCount.modelAssetUrl}). alignedSlotIds=[${alignedSlotIds.join(',')}]`
 		warnings.push(msg)
 	}
-	console.log(
+	console.warn(
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #5e | UE path alignment: slots=${validSlots.length}, aligned(4 fields)=${alignedSlotIds.length}, replaced-dweb-url=${alignedDwebUrlCount.n}, replaced-remote-CDN-modelUrl=${replacedRemoteCdnCount.modelUrl}, replaced-remote-CDN-modelAssetUrl=${replacedRemoteCdnCount.modelAssetUrl}, backfilled-empty-modelUrl=${backfilledUrlCount.modelUrl}, backfilled-empty-modelAssetUrl=${backfilledUrlCount.modelAssetUrl} alignedIds=[${alignedSlotIds.join(',')}]`
 	)
 
-	return { slots: validSlots, warnings }
+	return { slots: validSlots, warnings, placeholderCount }
+}
+
+/**
+ * 蓝图直扫：完全绕过 model3dSettings 的路径声明，直接从蓝图边表反推每个
+ * 占位 objectId 对应的真实本地静态网格绝对路径。
+ *
+ * 数据流：
+ *   edgesById → 筛选 toNodeId===sourceSceneLayoutNodeId 且 toAnchorId 以 `in-model-` 开头的边
+ *   → 从 toAnchorId 解析出 objectId（去掉 `in-model-` 前缀）
+ *   → fromNodeId → nodesById[fromNodeId]
+ *   → 校验 fromNode.type ∈ {model3d, meshy, tripo3d}
+ *   → fromNode.resourceId → resourcesById[rid].projectRelativePath
+ *   → projectRootPath + relPath 拼接成绝对路径（正斜杠统一转换为反斜杠）
+ *
+ * 同一 objectId 多条入边时，保留首次解析到的绝对路径（与导出链路"先到先得"一致）。
+ *
+ * 用户硬约束：不要理会 3D 模型节点对模型来源的声明（远端 URL / 空字段），
+ *   按照静态文件落盘位置直接导入静态网格。本函数只负责建立 objectId → 绝对路径 映射，
+ *   调用方负责把映射覆盖到 binding 的 4 个标准路径字段。
+ *
+ * @returns Map<objectId, absoluteFilePath>
+ */
+export const buildDirectScanAbsPathByObjectId = (params: {
+	edgesById: Record<string, unknown> | null | undefined
+	nodesById: Record<string, unknown> | null | undefined
+	resourcesById: Record<string, unknown> | null | undefined
+	sourceSceneLayoutNodeId: string
+	projectRootPath: string
+}): Map<string, string> => {
+	const { sourceSceneLayoutNodeId, projectRootPath } = params
+	const result = new Map<string, string>()
+	const targetNodeId = String(sourceSceneLayoutNodeId ?? '').trim()
+	const root = String(projectRootPath ?? '').trim()
+	if (!targetNodeId || !root) return result
+
+	const edgesById = (params.edgesById ?? {}) as Record<string, Record<string, unknown>>
+	const nodesById = (params.nodesById ?? {}) as Record<string, Record<string, unknown>>
+	const resById = (params.resourcesById ?? {}) as Record<string, Record<string, unknown>>
+
+	const parseObjectIdFromAnchor = (anchorId: string): string => {
+		const t = String(anchorId ?? '').trim()
+		if (t.startsWith('in-model-')) return t.slice('in-model-'.length)
+		return t
+	}
+
+	for (const edge of Object.values(edgesById)) {
+		if (!edge || typeof edge !== 'object') continue
+		const toNodeId = String(edge.toNodeId ?? '').trim()
+		if (toNodeId !== targetNodeId) continue
+		const toAnchorId = String(edge.toAnchorId ?? '').trim()
+		if (!toAnchorId.startsWith('in-model-')) continue
+		const objectId = parseObjectIdFromAnchor(toAnchorId)
+		if (!objectId) continue
+		// 同一 objectId 已有映射时跳过（保留首次解析结果）
+		if (result.has(objectId)) continue
+		const fromNodeId = String(edge.fromNodeId ?? '').trim()
+		if (!fromNodeId) continue
+		const fromNode = nodesById[fromNodeId]
+		if (!fromNode) continue
+		const fromNodeType = String(fromNode.type ?? '').trim()
+		if (fromNodeType !== 'model3d' && fromNodeType !== 'meshy' && fromNodeType !== 'tripo3d')
+			continue
+		// 从节点 resourceId 查 resourcesById
+		const rid = String(fromNode.resourceId ?? '').trim()
+		if (!rid) continue
+		const resource = resById[rid]
+		if (!resource) continue
+		const relPath = String(resource.projectRelativePath ?? '').trim()
+		if (!relPath) continue
+		// 相对路径 → 绝对路径（反斜杠规范化，适配 UE 端 FPaths::FileExists）
+		const cleanRoot = root.replace(/[\\/]+$/, '')
+		const cleanRel = relPath.replace(/^[\\/]+/, '').replace(/\//g, '\\')
+		const absPath = cleanRoot + '\\' + cleanRel
+		result.set(objectId, absPath)
+	}
+	return result
 }
 
 /**
@@ -1346,13 +1438,13 @@ export function buildPureDataSlotsForUnreal(
 	const builtSlots: Record<string, unknown>[] = []
 	let boundItemCount = 0
 
-	console.groupCollapsed('[UNREAL-EXPORT-TRACE] #2a buildPureDataSlotsForUnreal entry')
-	console.log(`layoutItems (input) = ${Array.isArray(layoutItems) ? layoutItems.length : 0}`)
-	console.log(`resolvedBindings (input) = ${safeBindings.length}`)
-	console.log(
+	console.warn('[UNREAL-EXPORT-TRACE] #2a buildPureDataSlotsForUnreal entry')
+	console.warn(`layoutItems (input) = ${Array.isArray(layoutItems) ? layoutItems.length : 0}`)
+	console.warn(`resolvedBindings (input) = ${safeBindings.length}`)
+	console.warn(
 		`indexes: bindingByObjectId=${bindingByObjectId.size}, bindingByAnchorId=${bindingByAnchorId.size}, bindingByAnchorSuffix=${bindingByAnchorSuffix.size}`
 	)
-	console.log(
+	console.warn(
 		`resolvedBindings[].objectId summary (hasValidPath):`,
 		safeBindings.map((b: unknown) => {
 			const obj = (b ?? {}) as Record<string, unknown>
@@ -1371,7 +1463,6 @@ export function buildPureDataSlotsForUnreal(
 			}
 		})
 	)
-	console.groupEnd()
 	// 2026-08-03: 用 processedBindings（已跑 Ultimate Backfill）打印，不是 safeBindings（初值），
 	//   这样用户在 log.md 里看 #2a 的 hasValidPath 比例就能直接知道"这次兜底到底救回了多少个模型"。
 	const diagBindings = processedBindings
@@ -1386,7 +1477,7 @@ export function buildPureDataSlotsForUnreal(
 			})
 		)
 	}).length
-	console.log(
+	console.warn(
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #2a | layoutItems=${Array.isArray(layoutItems) ? layoutItems.length : 0} | rawBindings=${safeBindings.length} | afterBackfill=${diagBindings.length} | backfilledNewPaths=${backfilledCount} | ids=[${diagBindings
 			.map((b) => String((b as Record<string, unknown>)?.objectId ?? ''))
 			.filter(Boolean)
@@ -1508,9 +1599,9 @@ export function buildPureDataSlotsForUnreal(
 	}
 	builtSlots.sort((a, b) => String(a.slotId ?? '').localeCompare(String(b.slotId ?? '')))
 
-	console.groupCollapsed('[UNREAL-EXPORT-TRACE] #2b buildPureDataSlotsForUnreal output')
-	console.log(`builtSlots = ${builtSlots.length}, boundItemCount = ${boundItemCount}`)
-	console.log(
+	console.warn('[UNREAL-EXPORT-TRACE] #2b buildPureDataSlotsForUnreal output')
+	console.warn(`builtSlots = ${builtSlots.length}, boundItemCount = ${boundItemCount}`)
+	console.warn(
 		`builtSlots[].sourceObjectId + pos + mb summary:`,
 		builtSlots.map((s: Record<string, unknown>) => {
 			const mb = (s.modelBinding ?? {}) as Record<string, unknown>
@@ -1530,11 +1621,10 @@ export function buildPureDataSlotsForUnreal(
 			}
 		})
 	)
-	console.groupEnd()
 	// 2026-08-03 现场可观测性：把 skippedNoBinding / skippedNoPath 的明细也打进单行 SUMMARY 日志，
 	//   下一次复制到 log.md 时不需要展开 Console group 就能直接看"具体哪个 objectId 没找到 binding
 	//   / 哪个找到了 binding 但 6 路径字段全空"。否则用户每次只看到 builtSlots=7 不知道 27 个里漏了谁。
-	console.log(
+	console.warn(
 		`[UNREAL-EXPORT-TRACE][SUMMARY] #2b | builtSlots=${builtSlots.length}, boundItemCount=${boundItemCount} | skippedNoBinding(${skippedNoBinding.length})=[${skippedNoBinding.join(',')}] | skippedNoPath(${skippedNoPath.length})=[${skippedNoPath.join(',')}] | sourceObjectIdList=${builtSlots
 			.map((s) => String(s.sourceObjectId ?? ''))
 			.filter(Boolean)

@@ -10,7 +10,8 @@ import {
 	mergeViewerResolvedIntoFinalBindings,
 	tryBackfillBindingPathsFromStore,
 	prepareResolvedSlotsForExport,
-	getUnrealConnectionPollInterval
+	getUnrealConnectionPollInterval,
+	buildDirectScanAbsPathByObjectId
 } from '@/views/AIWorkflow/node-business/unreal/unrealExportUtils'
 
 describe('unrealExportUtils', () => {
@@ -529,6 +530,279 @@ describe('unrealExportUtils', () => {
 			const { slots, warnings } = prepareResolvedSlotsForExport([], bindings, [])
 			expect(slots.length).toBeGreaterThanOrEqual(1)
 			expect(warnings.some((w) => String(w).includes('auto-synthesizing'))).toBe(true)
+		})
+
+		// 2026-08-04 第 1 层修复：占位 slot 保留策略
+		//   无模型路径的 slot（墙/地/天花/灯等占位体）应被标记 isPlaceholder=true 并保留，
+		//   而非直接丢弃，以保障 UE 端布局完整性（UE 端会为占位 slot 创建 Cube 占位 Actor）。
+		it('marks slots without model path as placeholder and retains them', () => {
+			const rawSlots = [
+				{
+					slotId: 'slot-1',
+					sourceObjectId: 'obj-1',
+					modelBinding: {
+						objectId: 'obj-1',
+						modelAssetProjectRelativePath: 'Content/Media/has-path.glb',
+						modelFormat: 'glb'
+					}
+				},
+				{
+					slotId: 'slot-2',
+					sourceObjectId: 'obj-2',
+					modelBinding: {
+						objectId: 'obj-2'
+						// 无任何路径字段 → 占位 slot
+					}
+				},
+				{
+					slotId: 'slot-3',
+					sourceObjectId: 'obj-3',
+					modelBinding: {
+						objectId: 'obj-3',
+						modelUrl: '   '
+						// 空白字符串路径 → 占位 slot
+					}
+				}
+			]
+			const { slots, placeholderCount } = prepareResolvedSlotsForExport(rawSlots, [], [])
+			// 3 个 slot 全部保留（1 个有模型 + 2 个占位）
+			expect(slots).toHaveLength(3)
+			expect(placeholderCount).toBe(2)
+			// 有模型的 slot 不应被标记为占位
+			const slot1 = slots.find((s) => s.slotId === 'slot-1') as Record<string, unknown>
+			expect(slot1.isPlaceholder).not.toBe(true)
+			// 无模型路径的 slot 应被标记 isPlaceholder + placeholderReason
+			const slot2 = slots.find((s) => s.slotId === 'slot-2') as Record<string, unknown>
+			expect(slot2.isPlaceholder).toBe(true)
+			expect(slot2.placeholderReason).toBe('no-model-binding')
+			const slot3 = slots.find((s) => s.slotId === 'slot-3') as Record<string, unknown>
+			expect(slot3.isPlaceholder).toBe(true)
+			expect(slot3.placeholderReason).toBe('no-model-binding')
+		})
+
+		it('does not mark slots as placeholder when any of 6 path fields is non-empty', () => {
+			// 验证 6 个路径字段任一非空都不应判为占位
+			const pathFields = [
+				'modelAssetProjectRelativePath',
+				'modelAssetUrl',
+				'modelAssetPath',
+				'modelSourcePath',
+				'modelProjectRelativePath',
+				'modelUrl'
+			]
+			for (const field of pathFields) {
+				const rawSlots = [
+					{
+						slotId: `slot-${field}`,
+						sourceObjectId: `obj-${field}`,
+						modelBinding: {
+							objectId: `obj-${field}`,
+							[field]: 'Content/Media/foo.glb',
+							modelFormat: 'glb'
+						}
+					}
+				]
+				const { slots, placeholderCount } = prepareResolvedSlotsForExport(rawSlots, [], [])
+				expect(slots).toHaveLength(1)
+				expect(placeholderCount).toBe(0)
+				expect(slots[0].isPlaceholder).not.toBe(true)
+			}
+		})
+
+		it('emits placeholder preservation warning when placeholder slots exist', () => {
+			const rawSlots = [
+				{
+					slotId: 'slot-ph',
+					sourceObjectId: 'obj-ph',
+					modelBinding: { objectId: 'obj-ph' }
+				}
+			]
+			const { warnings } = prepareResolvedSlotsForExport(rawSlots, [], [])
+			expect(warnings.some((w) => String(w).includes('Placeholder slots preserved: 1'))).toBe(true)
+		})
+	})
+
+	describe('buildDirectScanAbsPathByObjectId', () => {
+		// 2026-08-04 ④ 蓝图直扫机制测试
+		//   直接从 edgesById → model3d 节点 → resourceId → resourcesById → 绝对路径，
+		//   完全绕过 model3dSettings 的路径声明（用户硬约束）。
+		const baseNodes = {
+			'model-node-1': { type: 'model3d', resourceId: 'res-1' },
+			'meshy-node-2': { type: 'meshy', resourceId: 'res-2' },
+			'tripo-node-3': { type: 'tripo3d', resourceId: 'res-3' },
+			'image-node-4': { type: 'image', resourceId: 'res-4' }
+		}
+		const baseResources = {
+			'res-1': { projectRelativePath: 'Content/Media/bar_main.glb' },
+			'res-2': { projectRelativePath: 'Content/Media/stool_left.glb' },
+			'res-3': { projectRelativePath: 'Content/Media/shelf.glb' },
+			'res-4': { projectRelativePath: 'Content/Media/poster.png' }
+		}
+		const baseEdges = {
+			'edge-1': {
+				toNodeId: 'scene-layout-1',
+				toAnchorId: 'in-model-bar_main',
+				fromNodeId: 'model-node-1'
+			},
+			'edge-2': {
+				toNodeId: 'scene-layout-1',
+				toAnchorId: 'in-model-stool_left',
+				fromNodeId: 'meshy-node-2'
+			},
+			'edge-3': {
+				toNodeId: 'scene-layout-1',
+				toAnchorId: 'in-model-shelf',
+				fromNodeId: 'tripo-node-3'
+			},
+			// 指向其他场景布局节点的边（应被过滤）
+			'edge-4': {
+				toNodeId: 'other-scene-layout',
+				toAnchorId: 'in-model-foo',
+				fromNodeId: 'model-node-1'
+			},
+			// 非 in-model-* 入边（应被过滤）
+			'edge-5': {
+				toNodeId: 'scene-layout-1',
+				toAnchorId: 'in-text-caption',
+				fromNodeId: 'model-node-1'
+			},
+			// 上游是 image 节点（应被过滤，非 model3d/meshy/tripo3d）
+			'edge-6': {
+				toNodeId: 'scene-layout-1',
+				toAnchorId: 'in-model-poster',
+				fromNodeId: 'image-node-4'
+			}
+		}
+
+		it('builds objectId → absolute path map from edges → model3d → resourcesById', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: baseEdges,
+				nodesById: baseNodes,
+				resourcesById: baseResources,
+				sourceSceneLayoutNodeId: 'scene-layout-1',
+				projectRootPath: 'G:\\DVSTestProject\\测试19'
+			})
+			expect(result.size).toBe(3)
+			expect(result.get('bar_main')).toBe(
+				'G:\\DVSTestProject\\测试19\\Content\\Media\\bar_main.glb'
+			)
+			expect(result.get('stool_left')).toBe(
+				'G:\\DVSTestProject\\测试19\\Content\\Media\\stool_left.glb'
+			)
+			expect(result.get('shelf')).toBe('G:\\DVSTestProject\\测试19\\Content\\Media\\shelf.glb')
+			// image 节点的边应被过滤
+			expect(result.has('poster')).toBe(false)
+		})
+
+		it('normalizes forward slashes in relative path to backslashes', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: {
+					e1: {
+						toNodeId: 'sl-1',
+						toAnchorId: 'in-model-foo',
+						fromNodeId: 'm-1'
+					}
+				},
+				nodesById: { 'm-1': { type: 'model3d', resourceId: 'r-1' } },
+				resourcesById: { 'r-1': { projectRelativePath: 'Content/Media/foo.glb' } },
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:/Projects/MyProj'
+			})
+			expect(result.get('foo')).toBe('C:/Projects/MyProj\\Content\\Media\\foo.glb')
+		})
+
+		it('strips trailing slashes from projectRootPath', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: {
+					e1: { toNodeId: 'sl-1', toAnchorId: 'in-model-foo', fromNodeId: 'm-1' }
+				},
+				nodesById: { 'm-1': { type: 'model3d', resourceId: 'r-1' } },
+				resourcesById: { 'r-1': { projectRelativePath: 'Content/Media/foo.glb' } },
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:\\Projects\\MyProj\\\\'
+			})
+			expect(result.get('foo')).toBe('C:\\Projects\\MyProj\\Content\\Media\\foo.glb')
+		})
+
+		it('keeps first resolved path when multiple edges target same objectId', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: {
+					e1: { toNodeId: 'sl-1', toAnchorId: 'in-model-foo', fromNodeId: 'm-1' },
+					e2: { toNodeId: 'sl-1', toAnchorId: 'in-model-foo', fromNodeId: 'm-2' }
+				},
+				nodesById: {
+					'm-1': { type: 'model3d', resourceId: 'r-1' },
+					'm-2': { type: 'model3d', resourceId: 'r-2' }
+				},
+				resourcesById: {
+					'r-1': { projectRelativePath: 'Content/Media/first.glb' },
+					'r-2': { projectRelativePath: 'Content/Media/second.glb' }
+				},
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:\\Proj'
+			})
+			expect(result.size).toBe(1)
+			// 保留首次解析结果（e1 先于 e2）
+			expect(result.get('foo')).toBe('C:\\Proj\\Content\\Media\\first.glb')
+		})
+
+		it('returns empty map when sourceSceneLayoutNodeId is empty', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: baseEdges,
+				nodesById: baseNodes,
+				resourcesById: baseResources,
+				sourceSceneLayoutNodeId: '',
+				projectRootPath: 'C:\\Proj'
+			})
+			expect(result.size).toBe(0)
+		})
+
+		it('returns empty map when projectRootPath is empty', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: baseEdges,
+				nodesById: baseNodes,
+				resourcesById: baseResources,
+				sourceSceneLayoutNodeId: 'scene-layout-1',
+				projectRootPath: ''
+			})
+			expect(result.size).toBe(0)
+		})
+
+		it('handles null/undefined inputs gracefully', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: null,
+				nodesById: undefined,
+				resourcesById: null,
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:\\Proj'
+			})
+			expect(result.size).toBe(0)
+		})
+
+		it('skips edges whose fromNode has no resourceId', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: {
+					e1: { toNodeId: 'sl-1', toAnchorId: 'in-model-foo', fromNodeId: 'm-1' }
+				},
+				nodesById: { 'm-1': { type: 'model3d' } },
+				resourcesById: {},
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:\\Proj'
+			})
+			expect(result.size).toBe(0)
+		})
+
+		it('skips edges whose resource has no projectRelativePath', () => {
+			const result = buildDirectScanAbsPathByObjectId({
+				edgesById: {
+					e1: { toNodeId: 'sl-1', toAnchorId: 'in-model-foo', fromNodeId: 'm-1' }
+				},
+				nodesById: { 'm-1': { type: 'model3d', resourceId: 'r-1' } },
+				resourcesById: { 'r-1': { name: 'foo.glb' } },
+				sourceSceneLayoutNodeId: 'sl-1',
+				projectRootPath: 'C:\\Proj'
+			})
+			expect(result.size).toBe(0)
 		})
 	})
 
