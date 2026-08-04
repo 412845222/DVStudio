@@ -4,7 +4,9 @@ import {
 	mergeViewerResolvedIntoFinalBindings,
 	isConnectedTruthy,
 	hasAnyPathExtended,
-	tryBackfillBindingPathsFromStore
+	tryBackfillBindingPathsFromStore,
+	isRemoteCdnUrl,
+	buildDirectScanAbsPathByObjectId
 } from './unrealExportUtils'
 import { extractModelSourceFromUpstreamNode } from './unrealExportModelSourceExtractor'
 import { t } from '../../../../i18n'
@@ -19,6 +21,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 		}
 		commit: (type: string, value: unknown) => void
 	}
+	getCurrentProjectRootPath?: () => string | null
 	unrealExportService: {
 		listSessions: () => Promise<{
 			ok: boolean
@@ -490,8 +493,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 			}
 			console.info(`[UnrealExport] Viewer activation result: interactive=${viewerInteractive}`)
-			console.groupCollapsed('[UNREAL-EXPORT-TRACE] #1 Precheck summary')
-			console.log(
+			console.warn('[UNREAL-EXPORT-TRACE] #1 Precheck summary')
+			console.warn(
 				`connectedModelBindings = ${connectedModelBindings.length}`,
 				connectedModelBindings.map((x: unknown) => ({
 					objectId: String((x as Record<string, unknown>)?.objectId ?? ''),
@@ -505,9 +508,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					)
 				}))
 			)
-			console.log(`layoutItems (from store) = ${totalLayoutItems}`)
-			console.log(`viewerInteractive = ${viewerInteractive}`)
-			console.groupEnd()
+			console.warn(`layoutItems (from store) = ${totalLayoutItems}`)
+			console.warn(`viewerInteractive = ${viewerInteractive}`)
 
 			let resolvedResult: Awaited<ReturnType<typeof payload.getResolvedLayoutForUnreal>> | null =
 				null
@@ -551,14 +553,14 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						`[UnrealExport] Export attempt ${attempt + 1} succeeded, slotCount: ${slotCount}, ` +
 							`sceneLayoutResolvedBindings: ${bindingCount}, sourceItemCount: ${layoutItemCount}`
 					)
-					console.groupCollapsed(
+					console.warn(
 						`[UNREAL-EXPORT-TRACE] #2 Attempt ${attempt + 1} getResolvedLayoutForUnreal result`
 					)
-					console.log(
+					console.warn(
 						`slotCount = ${slotCount}, bindingCount (sceneLayoutResolved) = ${bindingCount}, layoutItemCount = ${layoutItemCount}`
 					)
 					if (Array.isArray(exportData.slots) && exportData.slots.length > 0) {
-						console.log(
+						console.warn(
 							`slots[].objectId summary:`,
 							(exportData.slots as unknown[]).map((s: unknown) => {
 								const obj = (s ?? {}) as Record<string, unknown>
@@ -585,9 +587,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						Array.isArray((exportData as { warnings?: unknown[] }).warnings) &&
 						(exportData as { warnings: unknown[] }).warnings.length > 0
 					) {
-						console.log(`warnings =`, (exportData as { warnings: unknown[] }).warnings)
+						console.warn(`warnings =`, (exportData as { warnings: unknown[] }).warnings)
 					}
-					console.groupEnd()
 					// 合格标准：slotCount ≥ max(绑定模型数的下限, layoutItems数)。
 					//   注意 bindingCount 可能包含未 connected/未 path 的 binding，
 					//   所以这里也允许 slotCount >= layoutItemCount (只导出已绑定模型)。
@@ -662,11 +663,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// - 回退优先级：connectedModelBindings（connectedSceneLayoutModelBindings 原始值，
 			//   仅在旧项目 viewer 未返回 sceneLayoutResolvedModelBindings 时保留兼容）
 			// ========================================================================
-			let { finalBindingsSource, usedViewerResolvedBindings } =
-				mergeViewerResolvedIntoFinalBindings(
-					exportData,
-					Array.isArray(connectedModelBindings) ? connectedModelBindings : []
-				)
+			let { finalBindingsSource } = mergeViewerResolvedIntoFinalBindings(
+				exportData,
+				Array.isArray(connectedModelBindings) ? connectedModelBindings : []
+			)
+			// usedViewerResolvedBindings 在下方 FORCE-REBUILD 块中固定为 false
+			// （FORCE-REBUILD 完全覆盖 viewer resolved，不再使用 viewer 返回的绑定）
+			let usedViewerResolvedBindings = false
 			// ========================================================================
 			// 2026-08-03 FORCE-REBUILD 重构（AIPlan/02 方案 §5.2-5.3）：
 			//   原 FORCE-REBUILD 用【通用提取】完全覆盖 finalBindingsSource，导致：
@@ -876,8 +879,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 
 				// 3) 合并基底 + 补漏数组（不再覆盖 finalBindingsSource）
+				// usedViewerResolvedBindings 保持初始 false（FORCE-REBUILD 完全覆盖 viewer resolved）
 				finalBindingsSource = [...baseBindings, ...patchedBindings]
-				usedViewerResolvedBindings = false
 				console.info(
 					`[UNREAL-EXPORT-TRACE] #4a FORCE-REBUILD 补漏模式 | base=${baseBindings.length} | manualMerged=${manualMergedCount} | edgePatched=${edgePatchedCount} | pathMerged=${pathMergedCount} | final=${finalBindingsSource.length}`
 				)
@@ -888,7 +891,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// 2026-08-03 新链路诊断日志：每个 binding 的关键路径字段（最多前 10 条），
 			// 便于 DevTools Console 肉眼检查"模型数量是否对、贴图路径是否透传"。
 			if (Array.isArray(finalBindingsSource) && finalBindingsSource.length > 0) {
-				console.groupCollapsed(
+				console.warn(
 					`[UnrealExport] finalBindingsSource[0..${Math.min(finalBindingsSource.length - 1, 9)}]`
 				)
 				finalBindingsSource.slice(0, 10).forEach((b, i) => {
@@ -904,7 +907,6 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							: 0
 					})
 				})
-				console.groupEnd()
 			}
 			// 2026-08-03 贴图完整性 trace 用常量（与 unrealExportUtils.prepareResolvedSlotsForExport 对齐）
 			const TEXTURE_INTEGRITY_KEYS = [
@@ -967,17 +969,15 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 			}
 
-			console.groupCollapsed(
-				'[UNREAL-EXPORT-TRACE] #3 Bindings merge + finalConnected filter (放宽)'
-			)
-			console.log(
+			console.warn('[UNREAL-EXPORT-TRACE] #3 Bindings merge + finalConnected filter (放宽)')
+			console.warn(
 				`mergeViewerResolvedIntoFinalBindings: usedViewerResolvedBindings=${usedViewerResolvedBindings}, finalBindingsSource=${finalBindingsSource.length}`
 			)
-			console.log(`finalBindingsSource summary:`, finalFilteredLog)
-			console.log(
+			console.warn(`finalBindingsSource summary:`, finalFilteredLog)
+			console.warn(
 				`finalConnectedModelBindings (after inRawWhitelist=${rawSourceObjectIds.size} white + hasAnyPath OR filter) = ${finalConnectedModelBindings.length}`
 			)
-			console.log(
+			console.warn(
 				`finalConnectedModelBindings summary:`,
 				finalConnectedModelBindings.map((x: unknown) => ({
 					objectId: String((x as Record<string, unknown>)?.objectId ?? ''),
@@ -988,20 +988,17 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					modelAssetUrl: String((x as Record<string, unknown>)?.modelAssetUrl ?? '')
 				}))
 			)
-			console.groupEnd()
 			// [单行非折叠摘要] —— 保证复制到 log.md 也能直接看：
-			console.log(
+			console.warn(
 				`[UNREAL-EXPORT-TRACE][SUMMARY] #3 | finalBindingsSource=${finalBindingsSource.length} | rawSlots.distinctObjectId=${rawSourceObjectIds.size}[${Array.from(rawSourceObjectIds).join(',')}] | finalConnected=${finalConnectedModelBindings.length}[${finalConnectedModelBindings
 					.map((x) => String((x as Record<string, unknown>)?.objectId ?? ''))
 					.filter(Boolean)
 					.join(',')}] | rawSlots.count=${rawSlots.length}`
 			)
 
-			console.groupCollapsed(
-				'[UNREAL-EXPORT-TRACE] #4 Raw slots (from SceneLayoutNode) + synthesized fill'
-			)
-			console.log(`rawSlots = ${rawSlots.length}`)
-			console.log(
+			console.warn('[UNREAL-EXPORT-TRACE] #4 Raw slots (from SceneLayoutNode) + synthesized fill')
+			console.warn(`rawSlots = ${rawSlots.length}`)
+			console.warn(
 				`rawSlots[].sourceObjectId summary:`,
 				rawSlots.map((s: unknown) => {
 					const obj = (s ?? {}) as Record<string, unknown>
@@ -1028,9 +1025,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					}
 				})
 			)
-			console.groupEnd()
 			// [单行非折叠摘要]
-			console.log(
+			console.warn(
 				`[UNREAL-EXPORT-TRACE][SUMMARY] #4 | rawSlots=${rawSlots.length} | sourceObjectIdList=${Array.from(rawSourceObjectIds).join(',')} | slotIds=${rawSlots
 					.map((s) => String((s as Record<string, unknown>)?.slotId ?? ''))
 					.filter(Boolean)
@@ -1225,11 +1221,11 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							`required-object-ids=${bindingById.size}, synthesized=${synthesizedSlots.length}); ` +
 							`filling missing slots directly from layoutItems + finalConnectedModelBindings (no render required)`
 					)
-					console.groupCollapsed(
+					console.warn(
 						'[UNREAL-EXPORT-TRACE] #4b Synthesized slots (rawSlots did not cover all bindings)'
 					)
-					console.log(`synthesizedSlots = ${synthesizedSlots.length}`)
-					console.log(
+					console.warn(`synthesizedSlots = ${synthesizedSlots.length}`)
+					console.warn(
 						`synthesizedSlots[].sourceObjectId + pos summary:`,
 						synthesizedSlots.map((s: unknown) => {
 							const obj = (s ?? {}) as Record<string, unknown>
@@ -1253,7 +1249,6 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 							}
 						})
 					)
-					console.groupEnd()
 					rawSlots.push(...synthesizedSlots)
 				}
 			}
@@ -1263,20 +1258,18 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 
 			// 使用prepareResolvedSlotsForExport直接使用viewer返回的slots（保留完整变换数据）
 			// 传入 finalConnectedModelBindings：已对齐 SceneLayout 预览渲染真实使用的 resolvedBindings
-			const { slots: resolvedLayoutSlots, warnings: slotWarnings } = prepareResolvedSlotsForExport(
-				rawSlots,
-				finalConnectedModelBindings,
-				layoutItems
-			)
+			const {
+				slots: resolvedLayoutSlots,
+				warnings: slotWarnings,
+				placeholderCount
+			} = prepareResolvedSlotsForExport(rawSlots, finalConnectedModelBindings, layoutItems)
 			if (slotWarnings.length > 0) {
 				resolvedLayoutWarnings.push(...slotWarnings)
 			}
 			console.info(`[UnrealExport] Prepared slots for export: ${resolvedLayoutSlots.length}`)
-			console.groupCollapsed(
-				'[UNREAL-EXPORT-TRACE] #5 Prepared slots (after prepareResolvedSlotsForExport)'
-			)
-			console.log(`resolvedLayoutSlots = ${resolvedLayoutSlots.length}`)
-			console.log(
+			console.warn('[UNREAL-EXPORT-TRACE] #5 Prepared slots (after prepareResolvedSlotsForExport)')
+			console.warn(`resolvedLayoutSlots = ${resolvedLayoutSlots.length}`)
+			console.warn(
 				`resolvedLayoutSlots[].objectId + path + pos summary:`,
 				resolvedLayoutSlots.map((s: unknown) => {
 					const obj = (s ?? {}) as Record<string, unknown>
@@ -1306,9 +1299,8 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				})
 			)
 			if (resolvedLayoutWarnings.length > 0) {
-				console.log(`resolvedLayoutWarnings[] =`, resolvedLayoutWarnings)
+				console.warn(`resolvedLayoutWarnings[] =`, resolvedLayoutWarnings)
 			}
-			console.groupEnd()
 
 			if (resolvedLayoutSlots.length <= 0) {
 				console.error('[UnrealExport] No resolved layout slots after preparation')
@@ -1318,11 +1310,245 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 				}
 			}
 
+			// 2026-08-04 CRITICAL FIX：payload 顶层 modelBindings（UE 端用来导入 StaticMesh 资产的主数据源）
+			//   之前完全没有做路径对齐回填，导致 4 个 UE 识别路径字段（modelSourcePath/modelAssetPath/modelAssetUrl/modelUrl）
+			//   仍然是 meshy 远端 CDN URL / dweb:// / 空字符串，
+			//   UE 端 ResolveBindingLocalModelSourcePath 无法匹配到 Content/Media/ 下本地模型文件，
+			//   最终表现为「成功导入 0 个资产」—— 这是本次用户截图的根因。
+			//
+			//   修复（三层）：
+			//   ① 拿 prepareResolvedSlotsForExport 已经对齐过的 slot.modelBinding 作为权威数据源，
+			//     用 objectId 做 key，把对齐后的 4 个路径字段同步回 finalConnectedModelBindings。
+			//   ② 终极兜底：如果路径仍然为空，用 modelResourceId 查 resourcesById，
+			//     获取 projectRelativePath（Content/Media/xxx.glb）。
+			//   ③ 绝对路径转换：把相对路径用 projectRootPath 拼接成绝对路径，
+			//     直接写入 4 个标准字段 —— 这样 UE 端 TrySetValidSourcePath → FPaths::FileExists
+			//     直接命中，完全不依赖 dwebProjectRootPath / TryResolvePathWithProjectRoot。
+			const slotAlignedBindingByObjectId = new Map<string, Record<string, unknown>>()
+			for (const s of resolvedLayoutSlots) {
+				const mb = (s.modelBinding ?? null) as Record<string, unknown> | null
+				if (!mb || typeof mb !== 'object') continue
+				const oid = String(mb.objectId ?? '').trim()
+				if (!oid) continue
+				if (!slotAlignedBindingByObjectId.has(oid)) {
+					slotAlignedBindingByObjectId.set(oid, mb)
+				}
+			}
+			const UE_4_PATH_FIELDS = [
+				'modelSourcePath',
+				'modelAssetPath',
+				'modelAssetUrl',
+				'modelUrl'
+			] as const
+			const projectRootPath =
+				String(payload.store.state.projectRootPath ?? '').trim() ||
+				String(payload.getCurrentProjectRootPath?.() ?? '').trim()
+			const payloadResourcesById = (payload.store.state.resourcesById ?? {}) as Record<
+				string,
+				Record<string, unknown>
+			>
+			const isRemoteOrDwebUrl = (u: string): boolean => {
+				if (!u) return false
+				const low = u.toLowerCase()
+				if (low.startsWith('http://') || low.startsWith('https://')) return true
+				if (low.startsWith('dweb://')) return true
+				return false
+			}
+			const isAbsolutePath = (p: string): boolean => {
+				if (!p) return false
+				if (/^[a-zA-Z]:[\\/]/.test(p)) return true
+				if (p.startsWith('\\\\') || p.startsWith('/')) return true
+				return false
+			}
+			let syncAlignedCount = 0
+			let resourceIdBackfillCount = 0
+			let absPathConvertCount = 0
+			for (const rawBinding of finalConnectedModelBindings) {
+				if (!rawBinding || typeof rawBinding !== 'object') continue
+				const rb = rawBinding as Record<string, unknown>
+				const oid = String(rb.objectId ?? '').trim()
+				if (!oid) continue
+				const aligned = slotAlignedBindingByObjectId.get(oid)
+				let touched = false
+				// ① 从 aligned slot.modelBinding 同步路径
+				if (aligned) {
+					for (const f of UE_4_PATH_FIELDS) {
+						const alignedVal = String(aligned[f] ?? '').trim()
+						if (alignedVal) {
+							const before = String(rb[f] ?? '').trim()
+							if (before !== alignedVal) {
+								rb[f] = alignedVal
+								touched = true
+							}
+						}
+					}
+					const relAligned = String(aligned.modelAssetProjectRelativePath ?? '').trim()
+					if (relAligned) {
+						const beforeRel = String(rb.modelAssetProjectRelativePath ?? '').trim()
+						if (beforeRel !== relAligned) {
+							rb.modelAssetProjectRelativePath = relAligned
+							touched = true
+						}
+					}
+				}
+				// ② 终极兜底：如果 modelAssetProjectRelativePath 仍为空，用 modelResourceId 查 resourcesById
+				let relPath = String(rb.modelAssetProjectRelativePath ?? '').trim()
+				if (!relPath) {
+					const rid =
+						String(rb.modelResourceId ?? '').trim() || String(aligned?.modelResourceId ?? '').trim()
+					if (rid && payloadResourcesById) {
+						const resource = payloadResourcesById[rid]
+						if (resource) {
+							relPath = String(resource.projectRelativePath ?? '').trim()
+							if (relPath) {
+								rb.modelAssetProjectRelativePath = relPath
+								rb.modelProjectRelativePath = relPath
+								touched = true
+								resourceIdBackfillCount++
+							}
+						}
+					}
+				}
+				// ③ 绝对路径转换：把相对路径用 projectRootPath 拼接成绝对路径，写入 4 个标准字段
+				//   UE 端 TrySetValidSourcePath → NormalizeLocalFilePath → FPaths::FileExists 直接命中
+				if (relPath && projectRootPath) {
+					const cleanRoot = projectRootPath.replace(/[\\/]+$/, '')
+					const cleanRel = relPath.replace(/^[\\/]+/, '').replace(/\//g, '\\')
+					const absPath = cleanRoot + '\\' + cleanRel
+					// 把 4 个标准字段中"空 / 远端URL / dweb:// / 相对路径"的统一替换为绝对路径
+					for (const f of UE_4_PATH_FIELDS) {
+						const cur = String(rb[f] ?? '').trim()
+						if (!cur || isRemoteOrDwebUrl(cur) || !isAbsolutePath(cur)) {
+							rb[f] = absPath
+							touched = true
+						}
+					}
+					absPathConvertCount++
+				}
+				if (touched) syncAlignedCount++
+			}
+
+			// 2026-08-04 ④ 蓝图直扫：完全绕过 model3dSettings 的路径声明，
+			//   直接从 edgesById 找场景布局节点的 in-model-* 入边 → 上游 model3d 节点 →
+			//   nodeId.resourceId → resourcesById[resourceId].projectRelativePath →
+			//   projectRootPath 拼接成绝对路径 → 直接覆盖 binding 的 4 个标准字段。
+			//   用户要求：不要理会 3D 模型节点对模型来源的声明（远端 URL / 空字段），
+			//   按照静态文件落盘位置直接导入静态网格。
+			{
+				// 直扫映射建立委托给纯函数 buildDirectScanAbsPathByObjectId（便于单测）
+				const directAbsPathByObjectId = buildDirectScanAbsPathByObjectId({
+					edgesById: payload.store.state.edgesById,
+					nodesById: payload.store.state.nodesById,
+					resourcesById: payload.store.state.resourcesById,
+					sourceSceneLayoutNodeId,
+					projectRootPath
+				})
+				// 用直扫结果直接覆盖 finalConnectedModelBindings 的 4 个标准字段
+				let directScanCount = 0
+				for (const rawBinding of finalConnectedModelBindings) {
+					if (!rawBinding || typeof rawBinding !== 'object') continue
+					const rb = rawBinding as Record<string, unknown>
+					const oid = String(rb.objectId ?? '').trim()
+					if (!oid) continue
+					const absPath = directAbsPathByObjectId.get(oid)
+					if (!absPath) continue
+					// 直接覆盖 4 个标准字段为绝对路径，不管之前是什么值
+					for (const f of UE_4_PATH_FIELDS) {
+						rb[f] = absPath
+					}
+					directScanCount++
+				}
+				console.warn(
+					`[UNREAL-EXPORT-TRACE][SUMMARY] ④ DIRECT-SCAN | edges→model3d→resourcesById→absPath: ${directAbsPathByObjectId.size} objectIds found, ${directScanCount} bindings updated with absolute local file path`
+				)
+			}
+			console.warn(
+				`[UNREAL-EXPORT-TRACE][SUMMARY] CRITICAL FIX | slot-sync=${syncAlignedCount}/${finalConnectedModelBindings.length} | resourceId-backfill=${resourceIdBackfillCount} | absPath-convert=${absPathConvertCount} | projectRoot=${projectRootPath || '(empty)'}`
+			)
+
+			// 2026-08-04 第 4 层：离线守卫 — 清理 modelBindings 中的远端 URL
+			// 确保发给 UE 的 payload 中没有任何公网 URL（meshy/tripo3d CDN 等）。
+			// 远端 URL 有本地替代时替换为本地路径；无本地替代时标记 binding 为占位。
+			const ENABLE_OFFLINE_GUARD = true
+			let offlineGuardReplaced = 0
+			let offlineGuardBlocked = 0
+			const finalModelBindings = ENABLE_OFFLINE_GUARD
+				? (finalConnectedModelBindings as Record<string, unknown>[]).map((binding) => {
+						const cleaned = { ...binding }
+						const pathFields = ['modelUrl', 'modelAssetUrl', 'modelSourcePath', 'modelAssetPath']
+						let hasRemote = false
+						let hasLocalAlt = false
+						for (const field of pathFields) {
+							const value = String(cleaned[field] ?? '').trim()
+							if (value && isRemoteCdnUrl(value)) {
+								hasRemote = true
+								// 尝试用 modelAssetProjectRelativePath 替换
+								const relPath = String(cleaned.modelAssetProjectRelativePath ?? '').trim()
+								if (relPath && !isRemoteCdnUrl(relPath)) {
+									cleaned[field] = relPath
+									hasLocalAlt = true
+								} else {
+									// 尝试用 modelResourceId 查 resourcesById
+									const rid = String(cleaned.modelResourceId ?? '').trim()
+									if (rid && payload.store.state.resourcesById) {
+										const resource = payload.store.state.resourcesById[rid] as
+											| Record<string, unknown>
+											| undefined
+										if (resource) {
+											const resUrl = String(resource.url ?? '').trim()
+											const resRelPath = String(resource.projectRelativePath ?? '').trim()
+											if (resUrl && !isRemoteCdnUrl(resUrl)) {
+												cleaned[field] = resUrl
+												hasLocalAlt = true
+											} else if (resRelPath && !isRemoteCdnUrl(resRelPath)) {
+												cleaned[field] = resRelPath
+												hasLocalAlt = true
+											}
+										}
+									}
+								}
+								if (!hasLocalAlt) {
+									cleaned[field] = '' // 清空远端 URL，UE 端会标记为占位
+								}
+							}
+						}
+						if (hasRemote && hasLocalAlt) {
+							offlineGuardReplaced += 1
+							console.warn(
+								`[unreal-export][offline-guard] 远端 URL 已替换为本地: ${String(cleaned.objectId ?? '')}`
+							)
+						} else if (hasRemote && !hasLocalAlt) {
+							offlineGuardBlocked += 1
+							cleaned.isPlaceholder = true
+							cleaned.placeholderReason = 'remote-url-no-local'
+							console.warn(
+								`[unreal-export][offline-guard] 远端 URL 无本地替代，标记为占位: ${String(cleaned.objectId ?? '')}`
+							)
+						}
+						return cleaned
+					})
+				: (finalConnectedModelBindings as Record<string, unknown>[])
+
+			if (offlineGuardBlocked > 0) {
+				resolvedLayoutWarnings.push(
+					`离线守卫: ${offlineGuardBlocked} 个 binding 因远端 URL 无本地替代被标记为占位`
+				)
+			}
+			if (offlineGuardReplaced > 0) {
+				resolvedLayoutWarnings.push(
+					`离线守卫: ${offlineGuardReplaced} 个 binding 的远端 URL 已替换为本地路径`
+				)
+			}
+
+			// 2026-08-04 第 2 层：payload 结构增强
+			// exportVersion 6→7：新增占位 slot 支持
+			// layoutProtocolVersion 4→5：占位 slot 协议
+			const modelSlotCount = resolvedLayoutSlots.length - placeholderCount
 			return {
 				ok: true as const,
 				payload: {
-					exportVersion: 6,
-					layoutProtocolVersion: 4,
+					exportVersion: 7,
+					layoutProtocolVersion: 5,
 					exportMode,
 					sceneName:
 						String(
@@ -1340,15 +1566,21 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 						String(payload.store.state.projectRootPath ?? '').trim() || undefined,
 					resolvedLayoutSlots,
 					resolvedSlotCount: resolvedLayoutSlots.length,
+					placeholderSlotCount: placeholderCount,
+					modelSlotCount,
 					resolvedLayoutWarnings,
 					resolvedActorOrigin,
-					resolvedSourceItemCount: finalConnectedModelBindings.length,
+					resolvedSourceItemCount: finalModelBindings.length,
 					layoutItems,
-					modelBindings: finalConnectedModelBindings,
+					modelBindings: finalModelBindings,
 					manualModelBindings,
 					layoutItemCount: layoutItems.length,
-					modelBindingCount: finalConnectedModelBindings.length,
-					manualModelBindingCount: manualModelBindings.length
+					modelBindingCount: finalModelBindings.length,
+					manualModelBindingCount: manualModelBindings.length,
+					offlineGuardSummary: {
+						replaced: offlineGuardReplaced,
+						blocked: offlineGuardBlocked
+					}
 				}
 			}
 		}
@@ -1533,15 +1765,13 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 			// 2026-08-03 最后一英里 trace：发送到 UE 之前完整打印 resolvedLayoutSlots
 			//   和 payload 摘要。如果这里已经是 4 个但 UE 只导入 1 个，那就是 UE 插件侧问题；
 			//   如果这里就只有 1 个，那就是前端链路问题。
-			console.groupCollapsed(
-				'[UNREAL-EXPORT-TRACE] #6 FINAL createJob payload (before sending to UE)'
-			)
-			console.log(`exportMode = ${exportMode}`)
-			console.log(`resolvedSlotCount = ${built.payload.resolvedSlotCount}`)
-			console.log(`resolvedSourceItemCount = ${built.payload.resolvedSourceItemCount}`)
-			console.log(`layoutItemCount = ${built.payload.layoutItemCount}`)
-			console.log(`modelBindingCount = ${built.payload.modelBindingCount}`)
-			console.log(
+			console.warn('[UNREAL-EXPORT-TRACE] #6 FINAL createJob payload (before sending to UE)')
+			console.warn(`exportMode = ${exportMode}`)
+			console.warn(`resolvedSlotCount = ${built.payload.resolvedSlotCount}`)
+			console.warn(`resolvedSourceItemCount = ${built.payload.resolvedSourceItemCount}`)
+			console.warn(`layoutItemCount = ${built.payload.layoutItemCount}`)
+			console.warn(`modelBindingCount = ${built.payload.modelBindingCount}`)
+			console.warn(
 				`resolvedLayoutSlots[${built.payload.resolvedSlotCount}] FULL DUMP:`,
 				(built.payload.resolvedLayoutSlots as unknown[]).map((s: unknown) => {
 					const obj = (s ?? {}) as Record<string, unknown>
@@ -1576,8 +1806,7 @@ export const useAIWorkflowUnrealExportActions = (payload: {
 					}
 				})
 			)
-			console.log(`exportPayload (raw, for deep inspection) =`, built.payload)
-			console.groupEnd()
+			console.warn(`exportPayload (raw, for deep inspection) =`, built.payload)
 
 			const res = (await payload.unrealExportService.createJob({
 				targetSessionId: sessionId,

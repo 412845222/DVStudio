@@ -10277,6 +10277,7 @@ const {
 	onNodeSetAssetRootPath
 } = useAIWorkflowUnrealExportActions({
 	store,
+	getCurrentProjectRootPath: () => currentProjectRootPath.value || null,
 	unrealExportService,
 	connectedTextInputValue,
 	getUnrealExportSourceSceneLayoutNode,

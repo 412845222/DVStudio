@@ -5,8 +5,8 @@ import type {
 	WorkflowModelFormat
 } from '../../../../aiworkflow/types'
 import type { SceneDecomposeInputItem } from './sceneDecomposeShared'
-import { isMeshyRemoteUrl, getMeshyEffectiveModelSource } from '../meshy/useAIWorkflowMeshyAssets'
-import { isRecord, isString } from '../../../../types/utils'
+import { isMeshyRemoteUrl } from '../meshy/useAIWorkflowMeshyAssets'
+import { isRecord } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 
 export const SUPPORTED_MODEL_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
@@ -190,7 +190,6 @@ export const getTripo3DEffectiveModelSource = (
 	const value = isRecord(settings) ? settings : {}
 	const output = isRecord(value.tripo3dOutputSummary) ? value.tripo3dOutputSummary : {}
 	const relation = isRecord(value.tripo3dRelationSummary) ? value.tripo3dRelationSummary : {}
-	const modelUrls = isRecord(value.tripo3dModelUrls) ? value.tripo3dModelUrls : {}
 	const assetUrl = String(
 		relation.effectiveLocalAssetUrl ?? value.tripo3dOutputAssetUrl ?? output.assetUrl ?? ''
 	).trim()
@@ -849,6 +848,44 @@ export const useAIWorkflowSceneLayoutModelBindings = (options: {
 					const modelAssetPath = String(effective.assetPath ?? '').trim()
 					const modelUrl = isMeshyRemoteUrl(rawModelUrl) ? '' : rawModelUrl
 					const safeAssetUrl = isMeshyRemoteUrl(modelAssetUrl) ? '' : modelAssetUrl
+					if (modelUrl || safeAssetUrl || modelAssetPath) {
+						extractedInfo = normalizeModelPaths({
+							modelUrl: modelUrl || undefined,
+							modelAssetUrl: safeAssetUrl || undefined,
+							modelSourcePath: modelAssetPath || undefined,
+							modelAssetPath: modelAssetPath || undefined,
+							modelSourceName:
+								String(fromNode.alias ?? fromNode.title ?? objectName).trim() || undefined,
+							modelFormat: effective.format === 'gltf' ? 'gltf' : 'glb'
+						})
+					}
+				}
+			}
+
+			// 2026-08-04 第 0 层修复：model3d 节点嵌套 tripo3dModelSettings 兜底
+			// 与 meshyModelSettings 兜底对称，覆盖 scene-decompose 把 tripo3d 模型
+			// 塞进 model3d 节点 tripo3dModelSettings 子结构的场景。
+			if (!extractedInfo) {
+				const m3dSettings = fromNode.model3dSettings as Record<string, unknown> | undefined
+				const innerTripo3d = m3dSettings?.tripo3dModelSettings as
+					| Record<string, unknown>
+					| undefined
+				if (innerTripo3d) {
+					const effective = getTripo3DEffectiveModelSource(innerTripo3d)
+					const modelAssetUrl = String(effective.assetUrl ?? '').trim()
+					const rawModelUrl = String(effective.preferredUrl ?? modelAssetUrl ?? '').trim()
+					const modelAssetPath = String(effective.assetPath ?? '').trim()
+					const isTripoRemote = (u: string) => {
+						if (!u) return false
+						try {
+							const p = new URL(u)
+							return /(^|\.)tripo3d\.ai$/i.test(p.hostname)
+						} catch {
+							return /https?:\/\/[^\s]*tripo3d\.ai(?:\/|$)/i.test(u)
+						}
+					}
+					const modelUrl = isTripoRemote(rawModelUrl) ? '' : rawModelUrl
+					const safeAssetUrl = isTripoRemote(modelAssetUrl) ? '' : modelAssetUrl
 					if (modelUrl || safeAssetUrl || modelAssetPath) {
 						extractedInfo = normalizeModelPaths({
 							modelUrl: modelUrl || undefined,
