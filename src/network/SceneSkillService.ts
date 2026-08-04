@@ -93,7 +93,9 @@ export type SceneLayoutRunResponse =
 	| { ok: false; error: string; status?: number }
 
 function isAgentSkillsIpcAvailable(): boolean {
-	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+	return (
+		isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+	)
 }
 
 const jsonHeaders = {
@@ -406,13 +408,24 @@ export class SceneSkillService {
 					for await (const chunk of generator) {
 						let parsed = chunk
 						if (typeof chunk === 'string') {
-							try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+							try {
+								parsed = JSON.parse(chunk)
+							} catch {
+								parsed = chunk
+							}
 						}
 						if (parsed && typeof parsed === 'object') {
-							if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
-							if ((parsed as any).type === 'error') { yield parsed as any; return }
+							if ((parsed as any).type === 'done') {
+								yield { type: 'done' }
+								return
+							}
+							if ((parsed as any).type === 'error') {
+								yield parsed as any
+								return
+							}
 							if ((parsed as any).type === 'msg' && isAgentToUiMessage((parsed as any).message)) {
-								yield { type: 'msg', message: (parsed as any).message }; continue
+								yield { type: 'msg', message: (parsed as any).message }
+								continue
 							}
 						}
 					}
@@ -445,13 +458,24 @@ export class SceneSkillService {
 					for await (const chunk of generator) {
 						let parsed = chunk
 						if (typeof chunk === 'string') {
-							try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+							try {
+								parsed = JSON.parse(chunk)
+							} catch {
+								parsed = chunk
+							}
 						}
 						if (parsed && typeof parsed === 'object') {
-							if ((parsed as any).type === 'done') { yield { type: 'done' }; return }
-							if ((parsed as any).type === 'error') { yield parsed as any; return }
+							if ((parsed as any).type === 'done') {
+								yield { type: 'done' }
+								return
+							}
+							if ((parsed as any).type === 'error') {
+								yield parsed as any
+								return
+							}
 							if ((parsed as any).type === 'msg' && isAgentToUiMessage((parsed as any).message)) {
-								yield { type: 'msg', message: (parsed as any).message }; continue
+								yield { type: 'msg', message: (parsed as any).message }
+								continue
 							}
 						}
 					}

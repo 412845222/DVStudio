@@ -91,7 +91,9 @@ const safeJson = async (res: Response) => {
 }
 
 function isAgentSkillsIpcAvailable(): boolean {
-	return isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+	return (
+		isMigrationMode() && hasIpcModule('agentSkills') && typeof window.dweb?.agentSkills === 'object'
+	)
 }
 
 type UnrealIpcApi = {
@@ -182,21 +184,23 @@ export class UnrealExportService {
 				const result = await unrealIpc.sessions()
 				if (result) {
 					const r = result as any
-					const sessions = Array.isArray(r.sessions) ? r.sessions.map((s: any) => ({
-						sessionId: s.id || s.sessionId,
-						displayName: s.clientInfo?.displayName || s.displayName,
-						projectName: s.clientInfo?.projectName || s.projectName,
-						projectPath: s.clientInfo?.projectPath || s.projectPath,
-						saveDirectory: s.clientInfo?.saveDirectory || s.saveDirectory,
-						assetRootPath: s.clientInfo?.assetRootPath || s.assetRootPath,
-						pluginVersion: s.clientInfo?.pluginVersion || s.pluginVersion,
-						engineVersion: s.clientInfo?.engineVersion || s.engineVersion,
-						hostName: s.clientInfo?.hostName || s.hostName,
-						connectedAt: s.createdAt || s.connectedAt,
-						lastSeenAt: s.lastHeartbeat || s.lastSeenAt,
-						activeJobId: s.jobs?.[s.jobs.length - 1] || s.activeJobId,
-						status: Date.now() - (s.lastHeartbeat || 0) > 30000 ? 'stale' : 'connected'
-					})) : []
+					const sessions = Array.isArray(r.sessions)
+						? r.sessions.map((s: any) => ({
+								sessionId: s.id || s.sessionId,
+								displayName: s.clientInfo?.displayName || s.displayName,
+								projectName: s.clientInfo?.projectName || s.projectName,
+								projectPath: s.clientInfo?.projectPath || s.projectPath,
+								saveDirectory: s.clientInfo?.saveDirectory || s.saveDirectory,
+								assetRootPath: s.clientInfo?.assetRootPath || s.assetRootPath,
+								pluginVersion: s.clientInfo?.pluginVersion || s.pluginVersion,
+								engineVersion: s.clientInfo?.engineVersion || s.engineVersion,
+								hostName: s.clientInfo?.hostName || s.hostName,
+								connectedAt: s.createdAt || s.connectedAt,
+								lastSeenAt: s.lastHeartbeat || s.lastSeenAt,
+								activeJobId: s.jobs?.[s.jobs.length - 1] || s.activeJobId,
+								status: Date.now() - (s.lastHeartbeat || 0) > 30000 ? 'stale' : 'connected'
+							}))
+						: []
 					return { ok: true, sessions }
 				}
 			} catch (err) {
@@ -318,7 +322,7 @@ export class UnrealExportService {
 				error: `unreal-export/jobs/${normalizedJobId} failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
-		const raw = await res.json() as any
+		const raw = (await res.json()) as any
 		if (!raw || !raw.ok) {
 			return { ok: false, error: raw?.error || 'getJob failed', status: res.status }
 		}
@@ -473,7 +477,12 @@ export class UnrealExportService {
 				console.warn('[UnrealExportService] unreal.getPluginInfo IPC failed:', err)
 			}
 		}
-		return { ok: false, pluginName: 'DwebWorkflowBridge', pluginVersion: '', error: 'IPC not available' }
+		return {
+			ok: false,
+			pluginName: 'DwebWorkflowBridge',
+			pluginVersion: '',
+			error: 'IPC not available'
+		}
 	}
 
 	async disconnectSession(sessionId: string): Promise<{ ok: boolean; error?: string }> {
@@ -493,11 +502,14 @@ export class UnrealExportService {
 			}
 		}
 
-		const res = await this.fetchWithLog(this.url('/api/agent-skills/unreal-export/sessions/disconnect'), {
-			method: 'POST',
-			headers: jsonHeaders,
-			body: JSON.stringify({ sessionId: normalizedSessionId })
-		})
+		const res = await this.fetchWithLog(
+			this.url('/api/agent-skills/unreal-export/sessions/disconnect'),
+			{
+				method: 'POST',
+				headers: jsonHeaders,
+				body: JSON.stringify({ sessionId: normalizedSessionId })
+			}
+		)
 		if (!res.ok) {
 			const body = await safeJson(res)
 			return {
@@ -505,7 +517,7 @@ export class UnrealExportService {
 				error: `disconnect failed: ${res.status} ${body.ok ? JSON.stringify(body.value) : body.text}`
 			}
 		}
-		const raw = await res.json() as any
+		const raw = (await res.json()) as any
 		return { ok: raw?.ok === true, error: raw?.error }
 	}
 }

@@ -101,8 +101,14 @@ export type AgentToUiReasoningPayload = {
 }
 
 export type AgentToUiTextMessage = AgentToUiEnvelope<'agentToUi/text', AgentToUiTextPayload>
-export type AgentToUiAssistantTextMessage = AgentToUiEnvelope<'agentToUi/assistantText', AgentToUiTextPayload>
-export type AgentToUiReasoningMessage = AgentToUiEnvelope<'agentToUi/reasoning', AgentToUiReasoningPayload>
+export type AgentToUiAssistantTextMessage = AgentToUiEnvelope<
+	'agentToUi/assistantText',
+	AgentToUiTextPayload
+>
+export type AgentToUiReasoningMessage = AgentToUiEnvelope<
+	'agentToUi/reasoning',
+	AgentToUiReasoningPayload
+>
 export type AgentToUiChatMessage = AgentToUiEnvelope<
 	'agentToUi/chatMessage',
 	AgentToUiChatMessagePayload

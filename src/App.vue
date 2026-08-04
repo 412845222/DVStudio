@@ -13,7 +13,11 @@
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
 		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
-		<DialogTitleBar v-if="isElectronRuntime && isPreviewWindow" class="app-titlebar" :title="dialogTitle" />
+		<DialogTitleBar
+			v-if="isElectronRuntime && isPreviewWindow"
+			class="app-titlebar"
+			:title="dialogTitle"
+		/>
 		<GlobalSideNav
 			v-if="!isPreviewWindow"
 			class="app-side-nav"
@@ -55,6 +59,7 @@
 		/>
 		<AboutDialog />
 		<SciFiFeedback />
+		<GlobalTaskPanel v-if="isElectronRuntime && !isPreviewWindow" />
 	</div>
 </template>
 
@@ -76,6 +81,8 @@ import SteamEntryOverlay from './ui/UIComponent/SteamEntryOverlay.vue'
 import SteamPanel from './ui/Steam/SteamPanel.vue'
 import AboutDialog from './ui/UIComponent/AboutDialog.vue'
 import SciFiFeedback from './ui/UIComponent/SciFiFeedback.vue'
+import GlobalTaskPanel from './ui/UIComponent/GlobalTaskPanel.vue'
+import { TaskQueueKey, TaskQueueStore } from './store/taskqueue'
 import { useStartupProgress } from './composables/useStartupProgress'
 import { usePlatform, useSteamEntry } from './platformBridge'
 import { useSteamPanel } from './composables/useSteamPanel'
@@ -86,16 +93,30 @@ provide(TimelineKey, TimelineStore)
 provide(AIWorkflowKey, AIWorkflowStore)
 provide(ThemeKey, ThemeStore)
 provide(I18nStoreKey, I18nStore)
+provide(TaskQueueKey, TaskQueueStore)
 
 const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
 const navExpanded = ref(false)
 const navCollapsed = ref(false)
-const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB_RUNTIME__ as { isElectron?: boolean } | undefined)?.isElectron === true
+const isElectronRuntime =
+	(
+		(window as unknown as Record<string, unknown>).__DWEB_RUNTIME__ as
+			| { isElectron?: boolean }
+			| undefined
+	)?.isElectron === true
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/video-editor') || path.startsWith('/template-center') || path.startsWith('/comfyui-setup') || path.startsWith('/blueprint-test')
+	return (
+		path.startsWith('/image-markup-preview') ||
+		path.startsWith('/resource-manager') ||
+		path.startsWith('/3d-editor') ||
+		path.startsWith('/video-editor') ||
+		path.startsWith('/template-center') ||
+		path.startsWith('/comfyui-setup') ||
+		path.startsWith('/blueprint-test')
+	)
 })
 
 const isResourceManagerWindow = computed(() => {
@@ -160,7 +181,12 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
 const { isRealPlatform, user: platformUser, overlayActivate } = usePlatform()
-const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
+const {
+	isOpen: steamPanelOpen,
+	open: openSteamPanel,
+	close: closeSteamPanel,
+	toggle: toggleSteamPanel
+} = useSteamPanel(isRealPlatform)
 
 const {
 	showOverlay: steamEntryVisible,
@@ -168,7 +194,7 @@ const {
 	isConnected: steamEntryConnected,
 	user: steamEntryUser,
 	error: steamEntryError,
-	hideOverlay: hideSteamEntry,
+	hideOverlay: hideSteamEntry
 } = useSteamEntry()
 
 function openExternalUrl(url: string) {
@@ -238,6 +264,7 @@ onMounted(() => {
 	void I18nStore.dispatch('initLocale')
 	void initCopilotConfig()
 	void initCodexConfig()
+	void TaskQueueStore.dispatch('init')
 	window.addEventListener('storage', onStorageChange)
 })
 

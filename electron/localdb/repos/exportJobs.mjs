@@ -55,7 +55,7 @@ export function createExportJobsRepo({ backendDataDir } = {}) {
 		'INSERT INTO export_jobs (id, project_id, status, config, progress, error, output_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
 	)
 	const updateStatusStmt = db.prepare(
-		"UPDATE export_jobs SET status = ?, progress = ?, error = ?, output_path = ?, updated_at = ? WHERE id = ?"
+		'UPDATE export_jobs SET status = ?, progress = ?, error = ?, output_path = ?, updated_at = ? WHERE id = ?'
 	)
 	const deleteFramesStmt = db.prepare('DELETE FROM export_frames WHERE job_id = ?')
 	const deleteJobStmt = db.prepare('DELETE FROM export_jobs WHERE id = ?')
@@ -91,7 +91,9 @@ export function createExportJobsRepo({ backendDataDir } = {}) {
 			now
 		)
 		if (exportDir) {
-			try { fs.mkdirSync(path.resolve(exportDir, jid), { recursive: true }) } catch {}
+			try {
+				fs.mkdirSync(path.resolve(exportDir, jid), { recursive: true })
+			} catch {}
 		}
 		return { ok: true, job: serializeJob(getJobStmt.get(jid)) }
 	}
@@ -149,7 +151,9 @@ export function createExportJobsRepo({ backendDataDir } = {}) {
 		})
 		run()
 		if (exportDir) {
-			try { fs.rmSync(path.resolve(exportDir, jid), { recursive: true, force: true }) } catch {}
+			try {
+				fs.rmSync(path.resolve(exportDir, jid), { recursive: true, force: true })
+			} catch {}
 		}
 		return { ok: true, id: jid }
 	}

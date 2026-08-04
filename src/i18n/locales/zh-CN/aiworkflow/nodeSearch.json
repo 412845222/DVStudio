@@ -1,10 +1,10 @@
 {
-  "aiworkflow.nodeSearch.categoryLabel": "节点分类",
-  "aiworkflow.nodeSearch.dialogTitle": "添加节点",
-  "aiworkflow.nodeSearch.closeLabel": "关闭",
-  "aiworkflow.nodeSearch.searchPlaceholder": "搜索节点、类型或能力",
-  "aiworkflow.nodeSearch.uploadLabel": "上传文件",
-  "aiworkflow.nodeSearch.uploadDescription": "从本地选择图片、视频、音频或文本文件创建对应资源节点。",
-  "aiworkflow.nodeSearch.emptyHintSearch": "没有匹配的节点",
-  "aiworkflow.nodeSearch.emptyHintCategory": "该分类暂无节点"
+	"aiworkflow.nodeSearch.categoryLabel": "节点分类",
+	"aiworkflow.nodeSearch.dialogTitle": "添加节点",
+	"aiworkflow.nodeSearch.closeLabel": "关闭",
+	"aiworkflow.nodeSearch.searchPlaceholder": "搜索节点、类型或能力",
+	"aiworkflow.nodeSearch.uploadLabel": "上传文件",
+	"aiworkflow.nodeSearch.uploadDescription": "从本地选择图片、视频、音频或文本文件创建对应资源节点。",
+	"aiworkflow.nodeSearch.emptyHintSearch": "没有匹配的节点",
+	"aiworkflow.nodeSearch.emptyHintCategory": "该分类暂无节点"
 }

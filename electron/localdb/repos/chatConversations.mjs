@@ -43,14 +43,18 @@ function serializeMessage(row) {
 export function createChatConversationsRepo() {
 	const db = getLocalDb()
 
-	const listConvsStmt = db.prepare('SELECT * FROM chat_conversations ORDER BY updated_at DESC, created_at DESC')
-	const listConvsByProjectStmt = db.prepare('SELECT * FROM chat_conversations WHERE project_path = ? ORDER BY updated_at DESC, created_at DESC')
+	const listConvsStmt = db.prepare(
+		'SELECT * FROM chat_conversations ORDER BY updated_at DESC, created_at DESC'
+	)
+	const listConvsByProjectStmt = db.prepare(
+		'SELECT * FROM chat_conversations WHERE project_path = ? ORDER BY updated_at DESC, created_at DESC'
+	)
 	const getConvStmt = db.prepare('SELECT * FROM chat_conversations WHERE id = ?')
 	const insertConvStmt = db.prepare(
 		'INSERT INTO chat_conversations (id, title, model, system_prompt, project_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
 	)
 	const updateConvTitleStmt = db.prepare(
-		"UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?"
+		'UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?'
 	)
 	const deleteConvStmt = db.prepare('DELETE FROM chat_conversations WHERE id = ?')
 
@@ -126,8 +130,11 @@ export function createChatConversationsRepo() {
 		const tokens = Number(tokensUsed) || 0
 		const now = nowMs()
 		insertMsgStmt.run(mid, cid, roleText, contentText, modelText, tokens, now)
-		db.prepare("UPDATE chat_conversations SET updated_at = ? WHERE id = ?").run(now, cid)
-		return { ok: true, message: serializeMessage(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(mid)) }
+		db.prepare('UPDATE chat_conversations SET updated_at = ? WHERE id = ?').run(now, cid)
+		return {
+			ok: true,
+			message: serializeMessage(db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(mid))
+		}
 	}
 
 	function getMessages(conversationId, { limit } = {}) {

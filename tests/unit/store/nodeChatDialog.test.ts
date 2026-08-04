@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AIWorkflowStore } from '@/store/aiworkflow/store'
-import type { WorkflowState } from '@/aiworkflow/types'
+import type { WorkflowState, WorkflowNodeChatSelectedRef } from '@/aiworkflow/types'
 
 describe('store/nodeChatDialog', () => {
 	let store: typeof AIWorkflowStore
@@ -20,7 +20,8 @@ describe('store/nodeChatDialog', () => {
 					nodeType: null,
 					draft: '',
 					submitting: false,
-					params: {}
+					params: {},
+					selectedRefs: []
 				},
 				viewport: { zoom: 1, panX: 0, panY: 0 },
 				selectedNodeId: null,

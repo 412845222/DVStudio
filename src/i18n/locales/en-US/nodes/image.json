@@ -1,12 +1,12 @@
 {
-  "nodes.image.emptyHint": "No image uploaded",
-  "nodes.image.emptySub": "Click button to select file",
-  "nodes.image.uploadResource": "Upload Resource",
-  "nodes.image.replaceResource": "Replace Resource",
-  "nodes.image.clear": "Clear",
-  "nodes.image.screenshot": "Screenshot",
-  "nodes.image.screenshotDisabled": "Available only when video output connects to image input",
-  "nodes.image.timeline": "Timeline",
-  "nodes.image.previewTooltip": "Original image preview: opens in Electron window, supports zoom, rotate, red brush markup, screenshot and export as new node",
-  "nodes.image.originalImage": "Original"
+	"nodes.image.emptyHint": "No image uploaded",
+	"nodes.image.emptySub": "Click button to select file",
+	"nodes.image.uploadResource": "Upload Resource",
+	"nodes.image.replaceResource": "Replace Resource",
+	"nodes.image.clear": "Clear",
+	"nodes.image.screenshot": "Screenshot",
+	"nodes.image.screenshotDisabled": "Available only when video output connects to image input",
+	"nodes.image.timeline": "Timeline",
+	"nodes.image.previewTooltip": "Original image preview: opens in Electron window, supports zoom, rotate, red brush markup, screenshot and export as new node",
+	"nodes.image.originalImage": "Original"
 }

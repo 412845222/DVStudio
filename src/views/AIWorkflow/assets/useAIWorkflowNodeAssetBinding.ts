@@ -327,7 +327,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 	const bindMediaResourceToNode = (
 		nodeId: string,
-		kind: 'image' | 'video',
+		kind: 'image' | 'video' | 'model3d',
 		url: string,
 		name: string,
 		opts?: {

@@ -34,11 +34,17 @@
 					>
 						<div class="rmw-confirm-header" id="rmw-confirm-title">
 							<span class="rmw-confirm-icon">⚠</span>
-							<span class="rmw-confirm-title-text">{{ t('aiworkflow.page.resourceManager.confirmTitle') }}</span>
+							<span class="rmw-confirm-title-text">
+								{{ t('aiworkflow.page.resourceManager.confirmTitle') }}
+							</span>
 						</div>
 						<div class="rmw-confirm-body">
 							<p>
-								{{ t('aiworkflow.page.resourceManager.usedBy', { count: String(confirmDialog.usedBy.length) }) }}
+								{{
+									t('aiworkflow.page.resourceManager.usedBy', {
+										count: String(confirmDialog.usedBy.length)
+									})
+								}}
 							</p>
 							<ul class="rmw-confirm-list">
 								<li v-for="(u, idx) in confirmDialog.usedBy.slice(0, 10)" :key="idx">
@@ -49,7 +55,11 @@
 									</span>
 								</li>
 								<li v-if="confirmDialog.usedBy.length > 10" class="rmw-confirm-more">
-									{{ t('aiworkflow.page.resourceManager.andMoreNodes', { count: String(confirmDialog.usedBy.length - 10) }) }}
+									{{
+										t('aiworkflow.page.resourceManager.andMoreNodes', {
+											count: String(confirmDialog.usedBy.length - 10)
+										})
+									}}
 								</li>
 							</ul>
 							<p class="rmw-confirm-hint">{{ t('aiworkflow.page.resourceManager.deleteHint') }}</p>
@@ -528,7 +538,9 @@ onMounted(async () => {
 	}
 
 	const readStatus = dataReceived.value
-		? t('aiworkflow.page.resourceManager.statusReadCount', { count: String(localResources.value.length) })
+		? t('aiworkflow.page.resourceManager.statusReadCount', {
+				count: String(localResources.value.length)
+			})
 		: readFromCache
 			? t('aiworkflow.page.resourceManager.statusNoCache')
 			: t('aiworkflow.page.resourceManager.statusNoData')
@@ -537,7 +549,10 @@ onMounted(async () => {
 	// Step 5: 解析资源记录
 	beginStep('resolve-assets', t('aiworkflow.page.resourceManager.stepResolveAssets'))
 	const total = resources.value.length
-	markStepOk('resolve-assets', t('aiworkflow.page.resourceManager.statusTotalCount', { count: String(total) }))
+	markStepOk(
+		'resolve-assets',
+		t('aiworkflow.page.resourceManager.statusTotalCount', { count: String(total) })
+	)
 
 	// Step 6: 等待首帧渲染（DOM ready）
 	beginStep('render', t('aiworkflow.page.resourceManager.stepRender'))

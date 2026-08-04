@@ -8,6 +8,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { getTempDir } from './modules/subtitle-recognition/paths.mjs'
 
 const DWEB_PROJECT_ASSET_HOST = 'project-assets'
+const DWEB_SUBTITLE_TEMP_HOST = 'subtitle-temp'
 const CACHE_DIR = '.dvcache'
 const CACHE_BIN_DIR = '.dvcache/bin'
 
@@ -998,6 +999,9 @@ export function registerDwebProjectAssetProtocol() {
 				if (host === DWEB_PROJECT_ASSET_HOST) {
 					return handleProjectAssetRequest(request)
 				}
+				if (host === DWEB_SUBTITLE_TEMP_HOST) {
+					return handleSubtitleTempRequest(request)
+				}
 				return new Response('Not Found', { status: 404 })
 			} catch (err) {
 				console.error('[dweb-protocol] request error:', err)
@@ -1019,6 +1023,9 @@ export function registerDwebProjectAssetProtocol() {
 					const host = String(new URL(request.url).hostname || '').toLowerCase()
 					if (host === DWEB_PROJECT_ASSET_HOST) {
 						return handleProjectAssetRequest(request)
+					}
+					if (host === DWEB_SUBTITLE_TEMP_HOST) {
+						return handleSubtitleTempRequest(request)
 					}
 					return new Response('Not Found', { status: 404 })
 				} catch (err) {

@@ -35,17 +35,11 @@ export class LineRenderer extends NodeRenderer {
 		const sx = Number.isFinite(sx0) ? Math.max(0, Math.min(100, sx0)) : 1
 		const sy = Number.isFinite(sy0) ? Math.max(0, Math.min(100, sy0)) : 1
 		const sAvg = Math.max(0, (sx + sy) / 2)
-		const px =
-			typeof t.pivotX === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotX)))
-				: 0.5
-		const py =
-			typeof t.pivotY === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotY)))
-				: 0.5
+		const px = typeof t.pivotX === 'number' ? Math.max(0, Math.min(1, Number(t.pivotX))) : 0.5
+		const py = typeof t.pivotY === 'number' ? Math.max(0, Math.min(1, Number(t.pivotY))) : 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
-		const pObj = node.props as Record<string, unknown> ?? {}
+		const pObj = (node.props as Record<string, unknown>) ?? {}
 		const local = normalizeLineLocalPoints({ props: pObj, width: w, height: h })
 		const scaled = scaleLineLocalPoints(local, sx, sy)
 		const startX = scaled.startX
@@ -56,10 +50,7 @@ export class LineRenderer extends NodeRenderer {
 		const anchorY = scaled.anchorY
 		const lineWidthPx = Math.max(1, Number(pObj.lineWidth ?? 4))
 		const lineStyle = String(pObj.lineStyle ?? 'solid')
-		const color = canvas.parseHexColor(
-			String(pObj.lineColor ?? '#ffffff'),
-			ctx.opacity
-		)
+		const color = canvas.parseHexColor(String(pObj.lineColor ?? '#ffffff'), ctx.opacity)
 		// For offscreen filter rendering, the effective pixels-per-world-unit may be clamped.
 		// Using viewport.zoom directly can make dash segments explode in count under extreme zoom,
 		// which is a common crash vector when combined with glow/blur.

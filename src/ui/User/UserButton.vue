@@ -6,7 +6,7 @@
 			'is-logged-in': isLoggedIn,
 			'is-connecting': isConnecting,
 			'is-mock': !isRealPlatform,
-			'is-active': menuOpen,
+			'is-active': menuOpen
 		}"
 		type="button"
 		@click="handleClick"
@@ -24,7 +24,13 @@
 		</span>
 		<span v-if="!collapsed" class="user-menu-indicator">
 			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-				<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+				<path
+					d="M6 9l6 6 6-6"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 		</span>
 	</button>
@@ -50,7 +56,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
 	collapsed: false,
 	isConnecting: false,
-	menuOpen: false,
+	menuOpen: false
 })
 
 const emit = defineEmits<{
@@ -81,7 +87,8 @@ const statusText = computed(() => {
 const buttonTitle = computed(() => {
 	if (!props.isRealPlatform) return t('steam.userButton.titleNotConnected')
 	if (props.isConnecting) return t('steam.userButton.titleConnecting')
-	if (props.isLoggedIn && props.user) return t('steam.userButton.titleLoggedIn', { name: props.user.displayName })
+	if (props.isLoggedIn && props.user)
+		return t('steam.userButton.titleLoggedIn', { name: props.user.displayName })
 	return t('steam.userButton.titleOpenMenu')
 })
 
@@ -112,7 +119,11 @@ function handleClick(e: MouseEvent) {
 	margin: 0;
 	cursor: pointer;
 	overflow: hidden;
-	transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		box-shadow 160ms ease,
+		color 160ms ease;
 	border-radius: 0;
 }
 
@@ -208,7 +219,9 @@ function handleClick(e: MouseEvent) {
 	justify-content: center;
 	flex-shrink: 0;
 	opacity: 0.5;
-	transition: transform 160ms ease, opacity 160ms ease;
+	transition:
+		transform 160ms ease,
+		opacity 160ms ease;
 }
 
 .user-button.is-active .user-menu-indicator {

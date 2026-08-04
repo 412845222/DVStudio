@@ -2,7 +2,7 @@
  * CLI 适配器模块路由注册
  */
 
-import * as handlers from './handlers.mjs';
+import * as handlers from './handlers.mjs'
 
 export const routes = [
 	{ channel: 'dweb:cli:check-availability', handler: handlers.cliCheckAvailability },
@@ -20,5 +20,5 @@ export const routes = [
 	{ channel: 'dweb:cli:reset-config', handler: handlers.cliResetConfig },
 	{ channel: 'dweb:cli:run-fix', handler: handlers.cliRunFix },
 	{ channel: 'dweb:cli:start-auth:stream', handler: handlers.cliStartAuth, stream: true },
-	{ channel: 'dweb:cli:cancel-auth', handler: handlers.cliCancelAuth },
-];
+	{ channel: 'dweb:cli:cancel-auth', handler: handlers.cliCancelAuth }
+]

@@ -142,7 +142,8 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 			)
 			if (ok) {
 				try {
-					const showDirectoryPicker = (window as unknown as Record<string, unknown>).showDirectoryPicker as (() => Promise<FileSystemDirectoryHandle>) | undefined
+					const showDirectoryPicker = (window as unknown as Record<string, unknown>)
+						.showDirectoryPicker as (() => Promise<FileSystemDirectoryHandle>) | undefined
 					const dir = await showDirectoryPicker?.()
 					if (dir) {
 						const dropped = await payload.collectDroppedFilesFromHandle(dir, '')
@@ -184,7 +185,10 @@ export const useAIWorkflowLocalResourceRecovery = (payload: {
 			(stats.missingHandle || stats.permissionDenied)
 		) {
 			payload.pushToast(
-				t('aiworkflow.toast.localResourceNotRecovered', { handle: stats.missingHandle, perm: stats.permissionDenied }),
+				t('aiworkflow.toast.localResourceNotRecovered', {
+					handle: stats.missingHandle,
+					perm: stats.permissionDenied
+				}),
 				'warn'
 			)
 		}

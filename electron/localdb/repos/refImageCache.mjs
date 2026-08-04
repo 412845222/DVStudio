@@ -25,9 +25,7 @@ export function createRefImageCacheRepo() {
 		'INSERT OR REPLACE INTO ref_image_cache (id, provider, original_path, cache_key, created_at) VALUES (?, ?, ?, ?, ?)'
 	)
 	const deleteByProviderStmt = db.prepare('DELETE FROM ref_image_cache WHERE provider = ?')
-	const deleteOldStmt = db.prepare(
-		'DELETE FROM ref_image_cache WHERE created_at < ?'
-	)
+	const deleteOldStmt = db.prepare('DELETE FROM ref_image_cache WHERE created_at < ?')
 
 	function makeId(provider, cacheKey) {
 		return `${String(provider)}::${String(cacheKey)}`

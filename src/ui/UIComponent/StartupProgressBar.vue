@@ -118,7 +118,10 @@ function statusIcon(status: StartupProgressStep['status']) {
 			<button
 				class="startup-progress-bar-close"
 				type="button"
-				@click="localVisible = false; $emit('dismiss')"
+				@click="
+					localVisible = false
+					$emit('dismiss')
+				"
 				:aria-label="t('startup.close')"
 			>
 				✕
@@ -224,7 +227,9 @@ function statusIcon(status: StartupProgressStep['status']) {
 	cursor: pointer;
 	padding: 4px;
 	border-radius: 4px;
-	transition: color 160ms ease, background 120ms ease;
+	transition:
+		color 160ms ease,
+		background 120ms ease;
 	font-family: inherit;
 	width: 22px;
 	height: 22px;

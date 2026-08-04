@@ -1,5 +1,8 @@
 import { DwebCanvasGL, DwebVideoScene } from '../engine/webgl'
-import { computeSceneStateAtFrame, TimelineStateLike } from '../core/export/computeSceneStateAtFrame'
+import {
+	computeSceneStateAtFrame,
+	TimelineStateLike
+} from '../core/export/computeSceneStateAtFrame'
 import type { VideoSceneState } from '../core/scene'
 
 type InitMsg = {

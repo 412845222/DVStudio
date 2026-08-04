@@ -12,12 +12,28 @@ type GeminiNodeSettingsLike = Record<string, unknown>
 
 type GeminiService = {
 	health: () => Promise<{ ok: boolean; configured?: boolean }>
-	getTask: (payload: { taskId: string }) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
-	listTasks: (payload?: { limit?: number; status?: string }) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
+	getTask: (payload: {
+		taskId: string
+	}) => Promise<{ ok: boolean; task?: Record<string, unknown>; error?: string }>
+	listTasks: (payload?: {
+		limit?: number
+		status?: string
+	}) => Promise<{ ok: boolean; items?: Record<string, unknown>[]; error?: string }>
 	cancel: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
 	deleteTask: (payload: { taskId: string }) => Promise<{ ok: boolean; error?: string }>
-	clearCompleted: (payload?: Record<string, unknown>) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
-	getImagePath: (payload: { taskId: string; imageIndex?: number }) => Promise<{ ok: boolean; path?: string; filename?: string; mimeType?: string; error?: string }>
+	clearCompleted: (
+		payload?: Record<string, unknown>
+	) => Promise<{ ok: boolean; deletedCount?: number; error?: string }>
+	getImagePath: (payload: {
+		taskId: string
+		imageIndex?: number
+	}) => Promise<{
+		ok: boolean
+		path?: string
+		filename?: string
+		mimeType?: string
+		error?: string
+	}>
 }
 
 export const useAIWorkflowGeminiTaskPanelController = (options: {
@@ -47,7 +63,10 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 	const NODE_SPACING_X = 80
 	const DEFAULT_NODE_WIDTH = 280
 
-	const getImageNodePosition = (imageIndex: number, baseNode: { worldX: number; worldY: number; width?: number }) => {
+	const getImageNodePosition = (
+		imageIndex: number,
+		baseNode: { worldX: number; worldY: number; width?: number }
+	) => {
 		const nodeWidth = baseNode.width || DEFAULT_NODE_WIDTH
 		const offsetX = imageIndex * (nodeWidth + NODE_SPACING_X)
 		return {
@@ -145,7 +164,9 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 			statusText,
 			createdAt: formatDate(item.createdAt as string | number | undefined),
 			createdAtLabel: formatDateLabel(item.createdAt as string | number | undefined),
-			updatedAtLabel: formatDateLabel((item.updatedAt || item.completedAt) as string | number | undefined),
+			updatedAtLabel: formatDateLabel(
+				(item.updatedAt || item.completedAt) as string | number | undefined
+			),
 			payload: item
 		}
 	}
@@ -191,9 +212,13 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 				const submittedParams = isRecord(settings.submittedParams) ? settings.submittedParams : {}
 				const modelId = String(submittedParams.model || settings.model || '').trim()
 				const modelLabel = String(settings.modelLabel || modelId || 'Gemini').trim()
-				const aspectRatio = String(submittedParams.aspectRatio || settings.aspectRatio || '1:1').trim()
+				const aspectRatio = String(
+					submittedParams.aspectRatio || settings.aspectRatio || '1:1'
+				).trim()
 				const numImages = Number(submittedParams.outputCount || settings.numImages || 1)
-				const taskStatus = String(settings.taskStatus || 'idle').trim() as GeminiTaskPanelItem['status']
+				const taskStatus = String(
+					settings.taskStatus || 'idle'
+				).trim() as GeminiTaskPanelItem['status']
 				const progress = Math.max(0, Math.min(100, Number(settings.progress || 0)))
 				const prompt = String(settings.prompt || '').trim()
 				const errorMessage = String(settings.errorMessage || '').trim()
@@ -204,17 +229,23 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 
 				let mappedStatus: GeminiTaskPanelItem['status'] = 'submitting'
 				const taskStatusStr = String(taskStatus)
-				if (taskStatusStr === 'completed' || taskStatusStr === 'succeeded') mappedStatus = 'completed'
+				if (taskStatusStr === 'completed' || taskStatusStr === 'succeeded')
+					mappedStatus = 'completed'
 				else if (taskStatusStr === 'failed' || taskStatusStr === 'error') mappedStatus = 'failed'
-				else if (taskStatusStr === 'cancelled' || taskStatusStr === 'canceled') mappedStatus = 'cancelled'
-				else if (taskStatusStr === 'processing' || taskStatusStr === 'running') mappedStatus = 'processing'
-				else if (taskStatusStr === 'submitting' || taskStatusStr === 'pending') mappedStatus = 'submitting'
+				else if (taskStatusStr === 'cancelled' || taskStatusStr === 'canceled')
+					mappedStatus = 'cancelled'
+				else if (taskStatusStr === 'processing' || taskStatusStr === 'running')
+					mappedStatus = 'processing'
+				else if (taskStatusStr === 'submitting' || taskStatusStr === 'pending')
+					mappedStatus = 'submitting'
 
 				return {
 					id: taskId || `local-${node.id}`,
 					taskId: taskId || undefined,
 					nodeId: node.id,
-					title: String(node.alias || node.title || t('tasks.gemini.taskNodeTitle')).trim() || t('tasks.gemini.taskNodeTitle'),
+					title:
+						String(node.alias || node.title || t('tasks.gemini.taskNodeTitle')).trim() ||
+						t('tasks.gemini.taskNodeTitle'),
 					model: modelLabel,
 					modelId,
 					status: mappedStatus,
@@ -225,7 +256,9 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 					thumbnailUrl: thumbnailUrl || undefined,
 					aspectRatio,
 					numImages,
-					negativePrompt: String(submittedParams.negativePrompt || settings.negativePrompt || '').trim(),
+					negativePrompt: String(
+						submittedParams.negativePrompt || settings.negativePrompt || ''
+					).trim(),
 					resultImages: [],
 					errorMessage,
 					statusText,
@@ -269,7 +302,10 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 			if (!res.ok) {
 				geminiTaskFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent)
-					options.pushToast(t('tasks.gemini.taskCenterLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.gemini.taskCenterLoadFailed', { error: String(res.error || 'unknown') }),
+						'warn'
+					)
 				return
 			}
 			geminiTaskItems.value = Array.isArray(res.items)
@@ -280,7 +316,10 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		} catch (err: unknown) {
 			geminiTaskFallbackReason.value = getErrorMessage(err)
 			if (!opts?.silent)
-				options.pushToast(t('tasks.gemini.taskCenterLoadFailed', { error: getErrorMessage(err) }), 'warn')
+				options.pushToast(
+					t('tasks.gemini.taskCenterLoadFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 		} finally {
 			geminiTaskLoading.value = false
 		}
@@ -314,10 +353,7 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 	}
 
 	const onRefreshGeminiTaskPanel = async () => {
-		await Promise.all([
-			refreshGeminiTasks({ silent: false }),
-			checkGeminiHealth({ silent: false })
-		])
+		await Promise.all([refreshGeminiTasks({ silent: false }), checkGeminiHealth({ silent: false })])
 	}
 
 	const mapPanelItemToDetail = (item: GeminiTaskPanelItem): GeminiTaskPanelDetail => ({
@@ -342,8 +378,12 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		createdAtLabel: item.createdAtLabel,
 		updatedAtLabel: item.updatedAtLabel,
 		resultImages: item.resultImages,
-		requestPayload: isRecord(item.payload?.requestPayload) ? item.payload.requestPayload : undefined,
-		responsePayload: isRecord(item.payload?.responsePayload) ? item.payload.responsePayload : undefined
+		requestPayload: isRecord(item.payload?.requestPayload)
+			? item.payload.requestPayload
+			: undefined,
+		responsePayload: isRecord(item.payload?.responsePayload)
+			? item.payload.responsePayload
+			: undefined
 	})
 
 	const onPreviewGeminiTask = async (taskItemId: string) => {
@@ -356,7 +396,10 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 		try {
 			const res = await options.geminiService.getTask({ taskId: item.taskId })
 			if (!res.ok) {
-				options.pushToast(t('tasks.gemini.taskDetailLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.gemini.taskDetailLoadFailed', { error: String(res.error || 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			if (res.task) {
@@ -365,13 +408,19 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 				await refreshGeminiTasks({ silent: true })
 			}
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.gemini.taskDetailLoadFailed', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.gemini.taskDetailLoadFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		} finally {
 			geminiTaskDetailLoading.value = false
 		}
 	}
 
-	const applyGeminiTaskResultToNode = async (nodeId: string, task: Record<string, unknown>): Promise<boolean> => {
+	const applyGeminiTaskResultToNode = async (
+		nodeId: string,
+		task: Record<string, unknown>
+	): Promise<boolean> => {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node || node.type !== 'image') return false
 
@@ -537,10 +586,18 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 							await applyGeminiTaskResultToNode(nodeId, res.task)
 							options.pushToast(t('tasks.gemini.taskStatusRefreshed'), 'info')
 						} else {
-							options.pushToast(t('tasks.gemini.taskStatusRefreshFailed', { error: String(res.error || 'unknown') }), 'warn')
+							options.pushToast(
+								t('tasks.gemini.taskStatusRefreshFailed', {
+									error: String(res.error || 'unknown')
+								}),
+								'warn'
+							)
 						}
 					} catch (err: unknown) {
-						options.pushToast(t('tasks.gemini.taskStatusRefreshFailed', { error: getErrorMessage(err) }), 'warn')
+						options.pushToast(
+							t('tasks.gemini.taskStatusRefreshFailed', { error: getErrorMessage(err) }),
+							'warn'
+						)
 					}
 				} else {
 					await refreshGeminiTasks({ silent: false })
@@ -558,7 +615,10 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 				}
 
 				if (!taskData) {
-					options.pushToast(t('tasks.gemini.pullArtifactsFailed', { error: 'task not found' }), 'warn')
+					options.pushToast(
+						t('tasks.gemini.pullArtifactsFailed', { error: 'task not found' }),
+						'warn'
+					)
 					return
 				}
 
@@ -579,7 +639,9 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 				if (createdNodes.length > 0) {
 					if (createdNodes.length === 1) {
 						options.pushToast(
-							nodeId ? t('tasks.gemini.imageDownloadedBound') : t('tasks.gemini.imageImportedToNewNode'),
+							nodeId
+								? t('tasks.gemini.imageDownloadedBound')
+								: t('tasks.gemini.imageImportedToNewNode'),
 							'info'
 						)
 					} else {
@@ -594,7 +656,13 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 			} else if (payload.action === 'delete') {
 				const res = await options.geminiService.deleteTask({ taskId })
 				if (!res.ok) {
-					options.pushToast(t('tasks.gemini.taskActionFailed', { action: t('tasks.gemini.delete'), error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.gemini.taskActionFailed', {
+							action: t('tasks.gemini.delete'),
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				} else {
 					if (nodeId) {
 						options.store.commit('setNodeImageSettings', {
@@ -610,14 +678,23 @@ export const useAIWorkflowGeminiTaskPanelController = (options: {
 							}
 						})
 					}
-					options.pushToast(t('tasks.gemini.taskActionPerformed', { action: t('tasks.gemini.delete') }), 'info')
+					options.pushToast(
+						t('tasks.gemini.taskActionPerformed', { action: t('tasks.gemini.delete') }),
+						'info'
+					)
 				}
 			} else if (payload.action === 'clear-completed') {
 				const res = await options.geminiService.clearCompleted({})
 				if (!res.ok) {
-					options.pushToast(t('tasks.gemini.clearCompletedFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('tasks.gemini.clearCompletedFailed', { error: String(res.error || 'unknown') }),
+						'warn'
+					)
 				} else {
-					options.pushToast(t('tasks.gemini.clearCompletedSuccess', { count: res.deletedCount || 0 }), 'info')
+					options.pushToast(
+						t('tasks.gemini.clearCompletedSuccess', { count: res.deletedCount || 0 }),
+						'info'
+					)
 				}
 			}
 			await refreshGeminiTasks({ silent: true })

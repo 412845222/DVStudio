@@ -38,7 +38,7 @@ const savedAtText = computed(() => {
 .dvs-recent-overlay {
 	position: absolute;
 	inset: 0;
-	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0,0,0,0.6));
+	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0, 0, 0, 0.6));
 	backdrop-filter: blur(4px);
 	display: flex;
 	align-items: center;
@@ -49,11 +49,13 @@ const savedAtText = computed(() => {
 .dvs-recent-dialog {
 	width: 420px;
 	max-width: calc(100% - 32px);
-	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0, 0, 0, 0.4));
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 32%, transparent);
 	border-radius: 4px;
 	padding: 16px 18px;
-	box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
+	box-shadow:
+		0 16px 48px rgba(0, 0, 0, 0.6),
+		0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
 	position: relative;
 	overflow: hidden;
 }
@@ -121,11 +123,16 @@ const savedAtText = computed(() => {
 	font-size: 12px;
 	letter-spacing: 0.3px;
 	cursor: pointer;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .dvs-recent-actions .vs-btn:hover {
 	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

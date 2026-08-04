@@ -4,7 +4,7 @@ import { useI18n } from '../../../../i18n'
 import type { WorkflowAction } from '../../../../aiworkflow/actions'
 import type { WorkflowNode, WorkflowState } from '../../../../aiworkflow/types'
 import type { ContextMenuSection } from '../../../../ui/UIComponent/ContextMenu.vue'
-import { canLinkAnchors } from '../../../../aiworkflow/domain/link/anchorKinds'
+import { findBestInputAnchorForOutput } from '../../../../aiworkflow/domain/link/anchorKinds'
 import {
 	NEWUI2_NODE_CATALOG,
 	NEWUI2_NODE_CATALOG_CATEGORIES,

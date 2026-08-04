@@ -33,7 +33,7 @@ const DEFAULT_COPILOT_MODELS: ChatModelCatalogItem[] = [
 		needType: 'text',
 		apiSource: 'copilot',
 		legacyModelKey: 'copilot',
-		vendor: 'GitHub Copilot',
+		vendor: 'GitHub Copilot'
 	},
 	{
 		id: 'gpt-5.4',
@@ -62,7 +62,7 @@ const DEFAULT_CODEX_MODELS: ChatModelCatalogItem[] = [
 		needType: 'text',
 		apiSource: 'codex',
 		legacyModelKey: 'codex',
-		vendor: 'OpenAI Codex',
+		vendor: 'OpenAI Codex'
 	},
 	{
 		id: 'gpt-5-mini',
@@ -70,7 +70,7 @@ const DEFAULT_CODEX_MODELS: ChatModelCatalogItem[] = [
 		needType: 'text',
 		apiSource: 'codex',
 		legacyModelKey: 'codex',
-		vendor: 'OpenAI Codex',
+		vendor: 'OpenAI Codex'
 	},
 	{
 		id: 'gpt-5-nano',
@@ -78,7 +78,7 @@ const DEFAULT_CODEX_MODELS: ChatModelCatalogItem[] = [
 		needType: 'text',
 		apiSource: 'codex',
 		legacyModelKey: 'codex',
-		vendor: 'OpenAI Codex',
+		vendor: 'OpenAI Codex'
 	},
 	{
 		id: 'o4-mini',
@@ -86,7 +86,7 @@ const DEFAULT_CODEX_MODELS: ChatModelCatalogItem[] = [
 		needType: 'text',
 		apiSource: 'codex',
 		legacyModelKey: 'codex',
-		vendor: 'OpenAI Codex',
+		vendor: 'OpenAI Codex'
 	}
 ]
 
@@ -98,10 +98,13 @@ const dynamicCodexModels = ref<ChatModelCatalogItem[]>([])
 const codexEnabled = ref(false)
 const codexModelsLoaded = ref(false)
 
-export function convertCliModelsToCatalog(cliModels: CliModelInfo[], apiSource: 'copilot' | 'codex' = 'copilot'): ChatModelCatalogItem[] {
+export function convertCliModelsToCatalog(
+	cliModels: CliModelInfo[],
+	apiSource: 'copilot' | 'codex' = 'copilot'
+): ChatModelCatalogItem[] {
 	const legacyKey: ChatLegacyModelKey = apiSource === 'codex' ? 'codex' : 'copilot'
 	const vendor = apiSource === 'codex' ? 'OpenAI Codex' : 'GitHub Copilot'
-	return cliModels.map(m => ({
+	return cliModels.map((m) => ({
 		id: m.id,
 		label: m.label || m.id,
 		needType: 'text' as const,
@@ -128,7 +131,9 @@ export function isCopilotEnabled(): boolean {
 
 export function getCopilotModels(): ChatModelCatalogItem[] {
 	if (copilotModelsLoaded.value && dynamicCopilotModels.value.length > 0) {
-		const validModels = dynamicCopilotModels.value.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
+		const validModels = dynamicCopilotModels.value.filter(
+			(m) => m && typeof m === 'object' && m.id && typeof m.id === 'string'
+		)
 		if (validModels.length > 0) {
 			return validModels
 		}
@@ -137,7 +142,9 @@ export function getCopilotModels(): ChatModelCatalogItem[] {
 }
 
 export function setDynamicCodexModels(models: ChatModelCatalogItem[]) {
-	dynamicCodexModels.value = models.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
+	dynamicCodexModels.value = models.filter(
+		(m) => m && typeof m === 'object' && m.id && typeof m.id === 'string'
+	)
 	codexModelsLoaded.value = true
 }
 
@@ -151,7 +158,9 @@ export function isCodexEnabled(): boolean {
 
 export function getCodexModels(): ChatModelCatalogItem[] {
 	if (codexModelsLoaded.value && dynamicCodexModels.value.length > 0) {
-		const validModels = dynamicCodexModels.value.filter(m => m && typeof m === 'object' && m.id && typeof m.id === 'string')
+		const validModels = dynamicCodexModels.value.filter(
+			(m) => m && typeof m === 'object' && m.id && typeof m.id === 'string'
+		)
 		if (validModels.length > 0) {
 			return validModels
 		}
@@ -162,15 +171,17 @@ export function getCodexModels(): ChatModelCatalogItem[] {
 function buildCatalog(): ChatModelCatalogItem[] {
 	const models: ChatModelCatalogItem[] = []
 	if (copilotEnabled.value) {
-		const copilotModels = copilotModelsLoaded.value && dynamicCopilotModels.value.length > 0
-			? dynamicCopilotModels.value
-			: DEFAULT_COPILOT_MODELS
+		const copilotModels =
+			copilotModelsLoaded.value && dynamicCopilotModels.value.length > 0
+				? dynamicCopilotModels.value
+				: DEFAULT_COPILOT_MODELS
 		models.push(...copilotModels)
 	}
 	if (codexEnabled.value) {
-		const codexModels = codexModelsLoaded.value && dynamicCodexModels.value.length > 0
-			? dynamicCodexModels.value
-			: DEFAULT_CODEX_MODELS
+		const codexModels =
+			codexModelsLoaded.value && dynamicCodexModels.value.length > 0
+				? dynamicCodexModels.value
+				: DEFAULT_CODEX_MODELS
 		models.push(...codexModels)
 	}
 	models.push(
@@ -639,16 +650,18 @@ const CHAT_API_SOURCE_OPTIONS_BASE: Array<{ value: ChatApiSource; label: string 
 	{ value: 'bytedance', label: '火山方舟' }
 ]
 
-export const CHAT_API_SOURCE_OPTIONS = computed<Array<{ value: ChatApiSource; label: string }>>(() => {
-	const options = [...CHAT_API_SOURCE_OPTIONS_BASE]
-	if (copilotEnabled.value) {
-		options.push({ value: 'copilot', label: 'GitHub Copilot' })
+export const CHAT_API_SOURCE_OPTIONS = computed<Array<{ value: ChatApiSource; label: string }>>(
+	() => {
+		const options = [...CHAT_API_SOURCE_OPTIONS_BASE]
+		if (copilotEnabled.value) {
+			options.push({ value: 'copilot', label: 'GitHub Copilot' })
+		}
+		if (codexEnabled.value) {
+			options.push({ value: 'codex', label: 'OpenAI Codex' })
+		}
+		return options
 	}
-	if (codexEnabled.value) {
-		options.push({ value: 'codex', label: 'OpenAI Codex' })
-	}
-	return options
-})
+)
 
 export function getChatApiSourceOptions(): Array<{ value: ChatApiSource; label: string }> {
 	return CHAT_API_SOURCE_OPTIONS.value

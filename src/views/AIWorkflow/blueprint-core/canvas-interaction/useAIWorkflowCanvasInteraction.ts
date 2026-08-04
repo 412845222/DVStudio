@@ -49,6 +49,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 	forceEndViewportMotion?: () => void
 	scheduleAsyncEdgeRender: () => void
 	canvasViewportSize: Ref<{ width: number; height: number }>
+	flushCanvasNodeLayer?: () => void
 	onNodeDragStart?: (nodeIds: string[]) => void
 	onNodeDragMove?: (nodeIds: string[]) => void
 	onNodeDragEnd?: (nodeIds: string[]) => void
@@ -243,8 +244,6 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 
 		const moveGroup =
 			payload.selectedNodeIds.value.length > 1 && payload.selectedNodeIds.value.includes(nodeId)
-		let prevDx = 0
-		let prevDy = 0
 		let hasMoved = false
 		let dragNodeIds: string[] = []
 		let dragMoveRafId: number | null = null
@@ -260,6 +259,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 					engineApi.updateNodesPositionDirect(pendingPositions)
 					payload.scheduleAsyncEdgeRender()
 					payload.onNodeDragMove?.(dragNodeIds)
+					payload.flushCanvasNodeLayer?.()
 				}
 			})
 		}
@@ -315,6 +315,7 @@ export const useAIWorkflowCanvasInteraction = (payload: {
 				cancelAnimationFrame(dragMoveRafId)
 				dragMoveRafId = null
 			}
+			flushPendingDragUpdate()
 			window.removeEventListener('pointermove', onMove, true)
 			window.removeEventListener('pointerup', onUp, true)
 			window.removeEventListener('pointercancel', onUp, true)

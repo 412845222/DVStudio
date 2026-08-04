@@ -15,7 +15,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.startX,
 							(v) => (draft.startX = v),
@@ -37,7 +37,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.startY,
 							(v) => (draft.startY = v),
@@ -60,7 +60,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.endX,
 							(v) => (draft.endX = v),
@@ -82,7 +82,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.endY,
 							(v) => (draft.endY = v),
@@ -105,7 +105,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.anchorX,
 							(v) => (draft.anchorX = v),
@@ -127,7 +127,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.anchorY,
 							(v) => (draft.anchorY = v),
@@ -163,7 +163,7 @@
 				@blur="onNumberInputBlur"
 				@pointerdown="
 					(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+						onNumberScrubPointerDown(
 							e,
 							() => draft.lineWidth,
 							(v) => (draft.lineWidth = v),

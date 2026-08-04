@@ -108,7 +108,9 @@
 					<path d="M5 7h6M5 9h4" />
 				</svg>
 				<span class="aiwf-floating-rail__label">{{ t('aiworkflow.toolbar.tasks') }}</span>
-				<span v-if="runningTaskCount > 0" class="aiwf-floating-rail__badge">{{ runningTaskCount }}</span>
+				<span v-if="runningTaskCount > 0" class="aiwf-floating-rail__badge">
+					{{ runningTaskCount }}
+				</span>
 				<span class="aiwf-floating-rail__caret" aria-hidden="true">▾</span>
 			</button>
 		</nav>
@@ -166,7 +168,11 @@
 						type="button"
 						@click="emitThenClose('request-toggle-performance-priority')"
 					>
-						{{ performancePriorityMode ? t('aiworkflow.toolbar.performancePriorityOn') : t('aiworkflow.toolbar.performancePriorityOff') }}
+						{{
+							performancePriorityMode
+								? t('aiworkflow.toolbar.performancePriorityOn')
+								: t('aiworkflow.toolbar.performancePriorityOff')
+						}}
 					</button>
 					<button
 						class="aiwf-floating-rail-popover__item"
@@ -194,7 +200,14 @@
 				<template v-else-if="activePanel === 'resources'">
 					<div class="aiwf-floating-rail-popover__head">
 						<span>{{ t('aiworkflow.toolbar.currentBlueprintResources') }}</span>
-						<small>{{ t('aiworkflow.toolbar.resourceCount', { total: resourceList.length, used: usedResourceCount }) }}</small>
+						<small>
+							{{
+								t('aiworkflow.toolbar.resourceCount', {
+									total: resourceList.length,
+									used: usedResourceCount
+								})
+							}}
+						</small>
 					</div>
 					<div v-if="!enrichedResources.length" class="aiwf-floating-rail-popover__empty">
 						{{ t('aiworkflow.toolbar.noResources') }}
@@ -214,7 +227,11 @@
 							<button
 								class="aiwf-resource-item__cover"
 								type="button"
-								:title="r.usageCount > 0 ? t('aiworkflow.toolbar.locateReferencingNode') : t('aiworkflow.toolbar.resourceNotReferenced')"
+								:title="
+									r.usageCount > 0
+										? t('aiworkflow.toolbar.locateReferencingNode')
+										: t('aiworkflow.toolbar.resourceNotReferenced')
+								"
 								:disabled="r.usageCount === 0"
 								@click.stop="onResourceCoverClick(r)"
 							>
@@ -257,7 +274,11 @@
 											<button
 												class="aiwf-resource-item__node-link"
 												type="button"
-												:title="t('aiworkflow.toolbar.locateNode', { name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId })"
+												:title="
+													t('aiworkflow.toolbar.locateNode', {
+														name: r.usedBy[0].nodeTitle || r.usedBy[0].nodeId
+													})
+												"
 												@click.stop="onResourceNodeClick(r.usedBy[0].nodeId)"
 											>
 												{{ r.usedBy[0].nodeTitle || r.usedBy[0].nodeId }}
@@ -267,7 +288,9 @@
 											</span>
 										</template>
 									</span>
-									<span v-else class="aiwf-resource-item__unused-label">{{ t('aiworkflow.toolbar.unusedResource') }}</span>
+									<span v-else class="aiwf-resource-item__unused-label">
+										{{ t('aiworkflow.toolbar.unusedResource') }}
+									</span>
 								</div>
 							</div>
 						</div>
@@ -308,10 +331,18 @@
 							<div class="aiwf-task-list__prompt" :title="task.prompt || ''">
 								{{ task.prompt || task.statusText }}
 							</div>
-							<div v-if="task.status === 'running' || task.status === 'submitting'" class="aiwf-task-list__progress">
-								<div class="aiwf-task-list__progress-bar" :style="{ width: `${Math.min(100, task.progress || 0)}%` }"></div>
+							<div
+								v-if="task.status === 'running' || task.status === 'submitting'"
+								class="aiwf-task-list__progress"
+							>
+								<div
+									class="aiwf-task-list__progress-bar"
+									:style="{ width: `${Math.min(100, task.progress || 0)}%` }"
+								></div>
 							</div>
-							<div v-if="task.errorMessage" class="aiwf-task-list__error">{{ task.errorMessage }}</div>
+							<div v-if="task.errorMessage" class="aiwf-task-list__error">
+								{{ task.errorMessage }}
+							</div>
 						</div>
 					</div>
 					<div v-else class="aiwf-floating-rail-popover__item is-disabled">
@@ -333,20 +364,20 @@
 						<span>Gemini 任务面板</span>
 					</button>
 					<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-ark-task-panel')"
-				>
-					<span>{{ t('tasks.ark.volcArk') }} 任务面板</span>
-				</button>
-				<button
-					class="aiwf-floating-rail-popover__item"
-					type="button"
-					@click="emitThenClose('open-tripo3d-task-panel')"
-				>
-					<span>Tripo3D 任务面板</span>
-				</button>
-			</template>
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-ark-task-panel')"
+					>
+						<span>{{ t('tasks.ark.volcArk') }} 任务面板</span>
+					</button>
+					<button
+						class="aiwf-floating-rail-popover__item"
+						type="button"
+						@click="emitThenClose('open-tripo3d-task-panel')"
+					>
+						<span>Tripo3D 任务面板</span>
+					</button>
+				</template>
 			</section>
 		</Transition>
 
@@ -388,7 +419,9 @@
 					<span class="rail-bracket rail-bracket-tr" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-bl" aria-hidden="true"></span>
 					<span class="rail-bracket rail-bracket-br" aria-hidden="true"></span>
-					<div class="aiwf-rail-dialog__title">{{ t('aiworkflow.toolbar.loadBlueprintProject') }}</div>
+					<div class="aiwf-rail-dialog__title">
+						{{ t('aiworkflow.toolbar.loadBlueprintProject') }}
+					</div>
 
 					<!-- 搜索框 -->
 					<div class="aiwf-rail-search-wrap">
@@ -436,7 +469,11 @@
 							</button>
 						</div>
 						<div v-if="!filteredProjects.length" class="aiwf-rail-empty">
-							{{ searchKeyword ? t('aiworkflow.toolbar.noMatchingProjects') : t('aiworkflow.toolbar.noProjects') }}
+							{{
+								searchKeyword
+									? t('aiworkflow.toolbar.noMatchingProjects')
+									: t('aiworkflow.toolbar.noProjects')
+							}}
 						</div>
 					</div>
 					<div class="aiwf-rail-dialog__actions">
@@ -553,7 +590,9 @@ const recentGenerationTasks = computed(() => {
 })
 
 const runningTaskCount = computed(() => {
-	return recentGenerationTasks.value.filter(t => t.status === 'running' || t.status === 'submitting').length
+	return recentGenerationTasks.value.filter(
+		(t) => t.status === 'running' || t.status === 'submitting'
+	).length
 })
 
 const nodeTypeLabel = (nodeType: string) => {
@@ -580,7 +619,9 @@ const taskStatusLabel = (status: string) => {
 }
 
 const hasProjectName = computed(() => String(props.currentProjectName ?? '').trim().length > 0)
-const projectTitle = computed(() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject'))
+const projectTitle = computed(
+	() => String(props.currentProjectName ?? '').trim() || t('aiworkflow.toolbar.unsavedProject')
+)
 const statusTitle = computed(() => {
 	if (!hasProjectName.value) return t('aiworkflow.toolbar.projectNotSaved')
 	return t('aiworkflow.toolbar.currentProject', { name: projectTitle.value })
@@ -631,10 +672,14 @@ const emitThenClose = (
 }
 
 const anchorsToggleLabel = computed(() =>
-	props.screenshotAnchorsEnabled === false ? t('aiworkflow.toolbar.anchorsOff') : t('aiworkflow.toolbar.anchorsOn')
+	props.screenshotAnchorsEnabled === false
+		? t('aiworkflow.toolbar.anchorsOff')
+		: t('aiworkflow.toolbar.anchorsOn')
 )
 const particlesToggleLabel = computed(() =>
-	props.screenshotParticlesEnabled === false ? t('aiworkflow.toolbar.particlesOff') : t('aiworkflow.toolbar.particlesOn')
+	props.screenshotParticlesEnabled === false
+		? t('aiworkflow.toolbar.particlesOff')
+		: t('aiworkflow.toolbar.particlesOn')
 )
 
 const handleSaveProject = () => {
@@ -655,7 +700,9 @@ const confirmLoad = () => {
 }
 
 const onDeleteProject = (projectId: number, projectName: string) => {
-	const ok = window.confirm(t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` }))
+	const ok = window.confirm(
+		t('aiworkflow.toolbar.confirmDeleteProject', { name: projectName || `#${projectId}` })
+	)
 	if (!ok) return
 	emit('request-delete-project', { projectId })
 }
@@ -1351,7 +1398,10 @@ onBeforeUnmount(() => {
 	height: 48px;
 	border-radius: 3px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent)
+	);
 	overflow: hidden;
 	cursor: pointer;
 	padding: 0;
@@ -1614,7 +1664,10 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px;
 	font-size: 12px;
@@ -1643,7 +1696,10 @@ onBeforeUnmount(() => {
 	padding: 6px 12px;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	font-size: 12px;
 	cursor: pointer;
@@ -1693,7 +1749,10 @@ onBeforeUnmount(() => {
 .aiwf-rail-project-item {
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 18%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 80%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 6px;
 	display: flex;
@@ -1780,7 +1839,10 @@ onBeforeUnmount(() => {
 	min-width: 0;
 	border: 1px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 30%, transparent);
 	border-radius: 2px;
-	background: var(--theme-input-bg, color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent));
+	background: var(
+		--theme-input-bg,
+		color-mix(in srgb, var(--theme-bg-primary, #181818) 85%, transparent)
+	);
 	color: var(--theme-text-primary, #d4d4d4);
 	padding: 8px 10px;
 	font-size: 12px;
@@ -2051,21 +2113,13 @@ onBeforeUnmount(() => {
 
 [data-theme='light'] .aiwf-rail-dialog-mask {
 	background:
-		radial-gradient(
-			ellipse at 50% 40%,
-			rgba(31, 157, 132, 0.05) 0%,
-			transparent 60%
-		),
+		radial-gradient(ellipse at 50% 40%, rgba(31, 157, 132, 0.05) 0%, transparent 60%),
 		rgba(180, 190, 200, 0.4) !important;
 }
 
 [data-theme='light'] .aiwf-rail-dialog {
 	background:
-		linear-gradient(
-			180deg,
-			rgba(255, 255, 255, 0.98),
-			rgba(245, 248, 250, 0.96)
-		),
+		linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 248, 250, 0.96)),
 		rgba(255, 255, 255, 0.98) !important;
 	border-color: rgba(31, 157, 132, 0.35) !important;
 	box-shadow:

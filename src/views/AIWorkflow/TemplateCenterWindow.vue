@@ -44,13 +44,25 @@ const pushToast = (text: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 }
 
 const broadcastToMainWindow = async (event: string, data?: unknown) => {
-	console.log('[TemplateCenterWindow] broadcastToMainWindow, event:', event, 'has dweb.aiworkflow:', !!window.dweb?.aiworkflow, 'has broadcast:', typeof window.dweb?.aiworkflow?.broadcastTemplateCenterEvent)
+	console.log(
+		'[TemplateCenterWindow] broadcastToMainWindow, event:',
+		event,
+		'has dweb.aiworkflow:',
+		!!window.dweb?.aiworkflow,
+		'has broadcast:',
+		typeof window.dweb?.aiworkflow?.broadcastTemplateCenterEvent
+	)
 	try {
-		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.broadcastTemplateCenterEvent === 'function') {
+		if (
+			window.dweb?.aiworkflow &&
+			typeof window.dweb.aiworkflow.broadcastTemplateCenterEvent === 'function'
+		) {
 			const result = await window.dweb.aiworkflow.broadcastTemplateCenterEvent({ event, data })
 			console.log('[TemplateCenterWindow] broadcast result:', result)
 		} else {
-			console.error('[TemplateCenterWindow] broadcastTemplateCenterEvent not available on window.dweb.aiworkflow')
+			console.error(
+				'[TemplateCenterWindow] broadcastTemplateCenterEvent not available on window.dweb.aiworkflow'
+			)
 		}
 	} catch (err) {
 		console.error('[TemplateCenterWindow] broadcast failed:', err)
@@ -59,16 +71,17 @@ const broadcastToMainWindow = async (event: string, data?: unknown) => {
 
 const handleClose = async () => {
 	try {
-		if (window.dweb?.aiworkflow && typeof window.dweb.aiworkflow.closeTemplateCenter === 'function') {
+		if (
+			window.dweb?.aiworkflow &&
+			typeof window.dweb.aiworkflow.closeTemplateCenter === 'function'
+		) {
 			await window.dweb.aiworkflow.closeTemplateCenter()
 			return
 		}
-	} catch {
-	}
+	} catch {}
 	try {
 		window.close()
-	} catch {
-	}
+	} catch {}
 }
 
 const handleSaveTemplate = async (payload: unknown) => {
@@ -77,7 +90,10 @@ const handleSaveTemplate = async (payload: unknown) => {
 }
 
 const handleApplyTemplateConfirm = async (payload: unknown) => {
-	console.log('[TemplateCenterWindow] handleApplyTemplateConfirm received, payload type:', typeof payload)
+	console.log(
+		'[TemplateCenterWindow] handleApplyTemplateConfirm received, payload type:',
+		typeof payload
+	)
 	if (!payload || typeof payload !== 'object') {
 		console.error('[TemplateCenterWindow] handleApplyTemplateConfirm: invalid payload')
 		return
@@ -102,23 +118,31 @@ const handleApplyTemplateConfirm = async (payload: unknown) => {
 		updatedAt: template.updatedAt as number | undefined,
 		author: template.author as string | undefined,
 		version: template.version as string | undefined,
-		tags: Array.isArray(template.tags) ? [...template.tags] as string[] : undefined,
+		tags: Array.isArray(template.tags) ? ([...template.tags] as string[]) : undefined,
 		nodeCount: template.nodeCount as number | undefined,
 		resourceCount: template.resourceCount as number | undefined,
 		steamFileId: template.steamFileId as string | undefined,
 		cloudSyncStatus: template.cloudSyncStatus as string | undefined,
 		lastSyncAt: template.lastSyncAt as number | undefined,
 		workshopItemId: template.workshopItemId as string | undefined,
-		subscribed: template.subscribed as boolean | undefined,
+		subscribed: template.subscribed as boolean | undefined
 	}
-	console.log('[TemplateCenterWindow] safe plain template:', { id: plainTemplate.id, name: plainTemplate.name, source: plainTemplate.source, packagePath: plainTemplate.packagePath })
+	console.log('[TemplateCenterWindow] safe plain template:', {
+		id: plainTemplate.id,
+		name: plainTemplate.name,
+		source: plainTemplate.source,
+		packagePath: plainTemplate.packagePath
+	})
 	const safePayload = {
 		template: plainTemplate,
 		target: p.target as string,
 		newProjectName: p.newProjectName as string | undefined,
-		newProjectPath: p.newProjectPath as string | undefined,
+		newProjectPath: p.newProjectPath as string | undefined
 	}
-	console.log('[TemplateCenterWindow] broadcasting apply-template-confirm with safe payload:', { target: safePayload.target, templateId: safePayload.template.id })
+	console.log('[TemplateCenterWindow] broadcasting apply-template-confirm with safe payload:', {
+		target: safePayload.target,
+		templateId: safePayload.template.id
+	})
 	await broadcastToMainWindow('apply-template-confirm', safePayload)
 }
 
@@ -268,7 +292,9 @@ onBeforeUnmount(() => {
 	font-weight: 500;
 	letter-spacing: 0.02em;
 	z-index: 9999;
-	animation: tcw-toast-in 200ms ease, tcw-toast-out 200ms ease 3300ms forwards;
+	animation:
+		tcw-toast-in 200ms ease,
+		tcw-toast-out 200ms ease 3300ms forwards;
 }
 
 .tcw-toast-info {
@@ -290,12 +316,24 @@ onBeforeUnmount(() => {
 }
 
 @keyframes tcw-toast-in {
-	from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-	to { opacity: 1; transform: translateX(-50%) translateY(0); }
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
 }
 
 @keyframes tcw-toast-out {
-	from { opacity: 1; transform: translateX(-50%) translateY(0); }
-	to { opacity: 0; transform: translateX(-50%) translateY(10px); }
+	from {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateX(-50%) translateY(10px);
+	}
 }
 </style>

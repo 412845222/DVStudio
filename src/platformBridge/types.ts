@@ -33,7 +33,12 @@ export interface DwebPlatformStatus {
 	allPlatforms: DwebPlatformProviderInfo[]
 }
 
-export type PlatformEventName = 'disconnected' | 'user-changed' | 'overlay-activated' | 'overlay-deactivated' | 'status-changed'
+export type PlatformEventName =
+	| 'disconnected'
+	| 'user-changed'
+	| 'overlay-activated'
+	| 'overlay-deactivated'
+	| 'status-changed'
 
 export interface PlatformEventPayload {
 	event: PlatformEventName
@@ -43,7 +48,7 @@ export interface PlatformEventPayload {
 export type PlatformEventMap = {
 	'overlay-activated': { platformId: PlatformId }
 	'overlay-deactivated': { platformId: PlatformId }
-	'disconnected': { platformId: PlatformId; reason: string }
+	disconnected: { platformId: PlatformId; reason: string }
 	'user-changed': { user: DwebPlatformUser | null }
 	'status-changed': DwebPlatformStatus
 }

@@ -1,7 +1,18 @@
 <template>
-	<button v-if="visible" class="wf-save-template-btn" type="button" :style="btnStyle" @click="emit('save-as-template')">
+	<button
+		v-if="visible"
+		class="wf-save-template-btn"
+		type="button"
+		:style="btnStyle"
+		@click="emit('save-as-template')"
+	>
 		<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-btn-icon">
-			<path d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+			<path
+				d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.2"
+			/>
 			<path d="M9 2v4h4" fill="none" stroke="currentColor" stroke-width="1.2" />
 		</svg>
 		{{ t('aiworkflow.toolbar.saveAsTemplate') }}
@@ -14,14 +25,17 @@ import { useI18n } from '../../i18n'
 
 const { t } = useI18n()
 
-const props = withDefaults(defineProps<{
-	visible: boolean
-	anchorX?: number
-	anchorY?: number
-}>(), {
-	anchorX: -1,
-	anchorY: -1
-})
+const props = withDefaults(
+	defineProps<{
+		visible: boolean
+		anchorX?: number
+		anchorY?: number
+	}>(),
+	{
+		anchorX: -1,
+		anchorY: -1
+	}
+)
 
 const emit = defineEmits<{
 	(e: 'save-as-template'): void

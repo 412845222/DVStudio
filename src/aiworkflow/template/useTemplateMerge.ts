@@ -69,7 +69,10 @@ export interface PlacementResult {
 	boundsAfterPlacement: NodeBounds
 }
 
-export function calculateNodeBounds(nodeIds: string[], nodesById: Record<string, WorkflowNode>): NodeBounds | null {
+export function calculateNodeBounds(
+	nodeIds: string[],
+	nodesById: Record<string, WorkflowNode>
+): NodeBounds | null {
 	let minX = Infinity
 	let minY = Infinity
 	let maxX = -Infinity
@@ -88,7 +91,10 @@ export function calculateNodeBounds(nodeIds: string[], nodesById: Record<string,
 	}
 	if (!found) return null
 	return {
-		minX, minY, maxX, maxY,
+		minX,
+		minY,
+		maxX,
+		maxY,
 		width: maxX - minX,
 		height: maxY - minY,
 		centerX: (minX + maxX) / 2,
@@ -126,8 +132,14 @@ export function calculateTemplatePlacement(
 	const effVisibleH = canvasSize.height / targetZoom
 
 	function rectsOverlap(
-		ax: number, ay: number, aw: number, ah: number,
-		bx: number, by: number, bw: number, bh: number
+		ax: number,
+		ay: number,
+		aw: number,
+		ah: number,
+		bx: number,
+		by: number,
+		bw: number,
+		bh: number
 	): boolean {
 		return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
 	}
@@ -140,10 +152,18 @@ export function calculateTemplatePlacement(
 		for (const node of existingNodes) {
 			const nodeHalfW = (node.width || 240) / 2
 			const nodeHalfH = (node.height || 160) / 2
-			if (rectsOverlap(
-				placedMinX, placedMinY, placedW, placedH,
-				node.worldX - nodeHalfW, node.worldY - nodeHalfH, node.width || 240, node.height || 160
-			)) {
+			if (
+				rectsOverlap(
+					placedMinX,
+					placedMinY,
+					placedW,
+					placedH,
+					node.worldX - nodeHalfW,
+					node.worldY - nodeHalfH,
+					node.width || 240,
+					node.height || 160
+				)
+			) {
 				return true
 			}
 		}
@@ -157,9 +177,12 @@ export function calculateTemplatePlacement(
 		const effVCy = needsZoomOut ? cy : viewCenterWorldY
 		const vL = effVCx - effVisibleW / 2
 		const vT = effVCy - effVisibleH / 2
-		return placedMinX >= vL - 50 && placedMinY >= vT - 50 &&
+		return (
+			placedMinX >= vL - 50 &&
+			placedMinY >= vT - 50 &&
 			placedMinX + templateBounds.width <= vL + effVisibleW + 50 &&
 			placedMinY + templateBounds.height <= vT + effVisibleH + 50
+		)
 	}
 
 	let bestCX = viewCenterWorldX
@@ -173,7 +196,7 @@ export function calculateTemplatePlacement(
 			{ dx: -1, dy: 0 },
 			{ dx: 0, dy: -1 },
 			{ dx: 1, dy: 1 },
-			{ dx: -1, dy: 1 },
+			{ dx: -1, dy: 1 }
 		]
 		let found = false
 		for (let step = 1; step <= maxSearchSteps && !found; step++) {
@@ -210,7 +233,8 @@ export function calculateTemplatePlacement(
 
 	const targetPanX = -bestCX * targetZoom
 	const targetPanY = -bestCY * targetZoom
-	const needsPan = Math.abs(targetPanX - viewport.panX) > 15 || Math.abs(targetPanY - viewport.panY) > 15
+	const needsPan =
+		Math.abs(targetPanX - viewport.panX) > 15 || Math.abs(targetPanY - viewport.panY) > 15
 
 	return {
 		offsetX,
@@ -225,7 +249,16 @@ export function calculateTemplatePlacement(
 }
 
 export function buildSnapshotFromSelection(
-	state: Pick<WorkflowState, 'nodesById' | 'nodeOrder' | 'edgesById' | 'edgeOrder' | 'resourcesById' | 'resourceOrder' | 'viewport'>,
+	state: Pick<
+		WorkflowState,
+		| 'nodesById'
+		| 'nodeOrder'
+		| 'edgesById'
+		| 'edgeOrder'
+		| 'resourcesById'
+		| 'resourceOrder'
+		| 'viewport'
+	>,
 	selectedNodeIds: string[]
 ): AIWorkflowDraftSnapshot {
 	const nodeIds = new Set(selectedNodeIds.filter((id) => state.nodesById[id]))
@@ -313,7 +346,21 @@ export function buildSnapshotFromSelection(
 }
 
 export function buildFullSnapshot(
-	state: Pick<WorkflowState, 'nodesById' | 'nodeOrder' | 'edgesById' | 'edgeOrder' | 'resourcesById' | 'resourceOrder' | 'viewport' | 'selectedNodeId' | 'selectedNodeIds' | 'selectionTagsByKey' | 'savedSelectionFrames' | 'nodeCheckboxVisible'>
+	state: Pick<
+		WorkflowState,
+		| 'nodesById'
+		| 'nodeOrder'
+		| 'edgesById'
+		| 'edgeOrder'
+		| 'resourcesById'
+		| 'resourceOrder'
+		| 'viewport'
+		| 'selectedNodeId'
+		| 'selectedNodeIds'
+		| 'selectionTagsByKey'
+		| 'savedSelectionFrames'
+		| 'nodeCheckboxVisible'
+	>
 ): AIWorkflowDraftSnapshot {
 	const snapshot: AIWorkflowDraftSnapshot = {
 		schemaVersion: AIWF_BLUEPRINT_SNAPSHOT_SCHEMA_VERSION,
@@ -349,9 +396,15 @@ export function mergeTemplateSnapshot(
 	const nodeIdMap = new Map<string, string>()
 	const resourceIdMap = new Map<string, string>()
 
-	const templateNodeIds = Array.isArray(snapshot.nodeOrder) ? snapshot.nodeOrder : Object.keys(snapshot.nodesById || {})
-	const templateResourceIds = Array.isArray(snapshot.resourceOrder) ? snapshot.resourceOrder : Object.keys(snapshot.resourcesById || {})
-	const templateEdgeIds = Array.isArray(snapshot.edgeOrder) ? snapshot.edgeOrder : Object.keys(snapshot.edgesById || {})
+	const templateNodeIds = Array.isArray(snapshot.nodeOrder)
+		? snapshot.nodeOrder
+		: Object.keys(snapshot.nodesById || {})
+	const templateResourceIds = Array.isArray(snapshot.resourceOrder)
+		? snapshot.resourceOrder
+		: Object.keys(snapshot.resourcesById || {})
+	const templateEdgeIds = Array.isArray(snapshot.edgeOrder)
+		? snapshot.edgeOrder
+		: Object.keys(snapshot.edgesById || {})
 
 	for (const oldId of templateNodeIds) {
 		if (!snapshot.nodesById[oldId]) continue
@@ -389,7 +442,10 @@ export function mergeTemplateSnapshot(
 	}
 
 	const templateBounds: NodeBounds = {
-		minX, minY, maxX, maxY,
+		minX,
+		minY,
+		maxX,
+		maxY,
 		width: maxX - minX,
 		height: maxY - minY,
 		centerX: (minX + maxX) / 2,
@@ -512,15 +568,16 @@ function stripCloudAssetReferences(snapshot: AIWorkflowDraftSnapshot) {
 
 	const deepSnapshotAssetCandidates = collectPackageNodeAssetCandidates(snapshot)
 	for (const item of deepSnapshotAssetCandidates) {
-		setValueByJsonPointer(
-			snapshot as unknown as Record<string, unknown>,
-			item.pointer,
-			''
-		)
+		setValueByJsonPointer(snapshot as unknown as Record<string, unknown>, item.pointer, '')
 	}
 }
 
-function buildPackageBase(snapshot: AIWorkflowDraftSnapshot, templateName: string, templateCode?: string, forCloud = false): {
+function buildPackageBase(
+	snapshot: AIWorkflowDraftSnapshot,
+	templateName: string,
+	templateCode?: string,
+	forCloud = false
+): {
 	pkg: AIWorkflowProjectPackageV1
 	cleanedSnapshot: AIWorkflowDraftSnapshot
 } {
@@ -562,7 +619,11 @@ export async function createTemplatePackageZip(
 	templateCode?: string,
 	onProgress?: (progress: TemplatePackProgress) => void
 ): Promise<Blob> {
-	const reportProgress = (percent: number, stage: TemplatePackProgress['stage'], detail?: string) => {
+	const reportProgress = (
+		percent: number,
+		stage: TemplatePackProgress['stage'],
+		detail?: string
+	) => {
 		if (onProgress) {
 			onProgress({ percent: Math.min(100, Math.max(0, Math.round(percent))), stage, detail })
 		}
@@ -706,16 +767,19 @@ export async function createTemplatePackageZip(
 	}
 
 	reportProgress(85, 'compressing')
-	return zip.generateAsync({
-		type: 'blob',
-		compression: 'DEFLATE',
-		compressionOptions: { level: 6 }
-	}, (metadata) => {
-		if (onProgress) {
-			const zipPercent = metadata.percent || 0
-			reportProgress(85 + zipPercent * 0.15, 'compressing')
+	return zip.generateAsync(
+		{
+			type: 'blob',
+			compression: 'DEFLATE',
+			compressionOptions: { level: 6 }
+		},
+		(metadata) => {
+			if (onProgress) {
+				const zipPercent = metadata.percent || 0
+				reportProgress(85 + zipPercent * 0.15, 'compressing')
+			}
 		}
-	})
+	)
 }
 
 export async function createCloudTemplatePackageZip(
@@ -751,7 +815,8 @@ export async function parseTemplatePackageBlob(blob: Blob): Promise<ParsedTempla
 	try {
 		const zip = await JSZip.loadAsync(await blob.arrayBuffer())
 		const packageFile = zip.file(AIWF_PROJECT_PACKAGE_ENTRY)
-		if (!packageFile) return { snapshot: null, coverBlob: null, templateCode: '', assets: [], zip: null }
+		if (!packageFile)
+			return { snapshot: null, coverBlob: null, templateCode: '', assets: [], zip: null }
 
 		const raw = await packageFile.async('text')
 		const parsed = JSON.parse(raw) as AIWorkflowProjectPackageV1
@@ -790,7 +855,14 @@ export interface TemplateAssetImportResult {
 }
 
 export interface ImportAssetFromBufferFn {
-	(projectId: number, buffer: ArrayBuffer, fileName: string, mimeType?: string, subPath?: string, bucket?: string): Promise<{ url: string; relativePath: string; absolutePath?: string } | null>
+	(
+		projectId: number,
+		buffer: ArrayBuffer,
+		fileName: string,
+		mimeType?: string,
+		subPath?: string,
+		bucket?: string
+	): Promise<{ url: string; relativePath: string; absolutePath?: string } | null>
 }
 
 export async function importTemplateAssetsToProject(
@@ -876,7 +948,7 @@ export function remapTemplateAssetUrls(
 			const resource = snapshot.resourcesById?.[asset.resourceId]
 			if (resource) {
 				if (asset.target === 'url' || asset.target === 'posterUrl') {
-					(resource as unknown as Record<string, string>)[asset.target] = resolvedUrl
+					;(resource as unknown as Record<string, string>)[asset.target] = resolvedUrl
 				}
 				const relPath = filePathMap.get(filePath)
 				const absPath = fileAbsPathMap?.get(filePath)

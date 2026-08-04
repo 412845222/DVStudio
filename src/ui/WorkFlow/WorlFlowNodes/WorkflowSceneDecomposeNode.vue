@@ -40,37 +40,64 @@
 						:disabled="running || !canRun"
 						@click.stop="emit('run-scene-decompose')"
 					>
-						{{ running ? t('nodes.sceneDecompose.processing') : t('nodes.sceneDecompose.runDecompose') }}
+						{{
+							running
+								? t('nodes.sceneDecompose.processing')
+								: t('nodes.sceneDecompose.runDecompose')
+						}}
 					</button>
 				</div>
 
 				<div class="wf-scene-decompose-grid">
 					<div class="wf-scene-decompose-card">
-						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.inputImage') }}</div>
+						<div class="wf-scene-decompose-card-title">
+							{{ t('nodes.sceneDecompose.inputImage') }}
+						</div>
 						<div class="wf-scene-decompose-card-value">
-							{{ linkedImageCount > 0 ? t('nodes.sceneDecompose.connected') : t('nodes.sceneDecompose.notConnected') }}
+							{{
+								linkedImageCount > 0
+									? t('nodes.sceneDecompose.connected')
+									: t('nodes.sceneDecompose.notConnected')
+							}}
 						</div>
 						<div class="wf-scene-decompose-card-copy">{{ linkedImageHint }}</div>
 					</div>
 					<div class="wf-scene-decompose-card">
-						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.inputLayoutJson') }}</div>
+						<div class="wf-scene-decompose-card-title">
+							{{ t('nodes.sceneDecompose.inputLayoutJson') }}
+						</div>
 						<div class="wf-scene-decompose-card-value">
-							{{ hasJsonInput ? t('nodes.sceneDecompose.connected') : t('nodes.sceneDecompose.notConnected') }}
+							{{
+								hasJsonInput
+									? t('nodes.sceneDecompose.connected')
+									: t('nodes.sceneDecompose.notConnected')
+							}}
 						</div>
 						<div class="wf-scene-decompose-card-copy">{{ jsonHint }}</div>
 					</div>
 					<div class="wf-scene-decompose-card accent">
-						<div class="wf-scene-decompose-card-title">{{ t('nodes.sceneDecompose.outputItems') }}</div>
-						<div class="wf-scene-decompose-card-value">{{ t('nodes.sceneDecompose.itemCount', { count: outputCount }) }}</div>
+						<div class="wf-scene-decompose-card-title">
+							{{ t('nodes.sceneDecompose.outputItems') }}
+						</div>
+						<div class="wf-scene-decompose-card-value">
+							{{ t('nodes.sceneDecompose.itemCount', { count: outputCount }) }}
+						</div>
 						<div class="wf-scene-decompose-card-copy">
-							{{ t('nodes.sceneDecompose.cropCount', { cropped: croppedCount, fallback: fallbackCount }) }}
+							{{
+								t('nodes.sceneDecompose.cropCount', {
+									cropped: croppedCount,
+									fallback: fallbackCount
+								})
+							}}
 						</div>
 					</div>
 				</div>
 
 				<div class="wf-scene-decompose-progress-shell">
 					<div class="wf-scene-decompose-output-head">
-						<div class="wf-scene-decompose-label">{{ t('nodes.sceneDecompose.autoCropProgress') }}</div>
+						<div class="wf-scene-decompose-label">
+							{{ t('nodes.sceneDecompose.autoCropProgress') }}
+						</div>
 						<div class="wf-scene-decompose-meta">{{ progressText }}</div>
 					</div>
 					<div class="wf-scene-decompose-progress-bar">
@@ -81,7 +108,9 @@
 
 				<div class="wf-scene-decompose-output-shell">
 					<div class="wf-scene-decompose-output-head">
-						<div class="wf-scene-decompose-label">{{ t('nodes.sceneDecompose.outputPreview') }}</div>
+						<div class="wf-scene-decompose-label">
+							{{ t('nodes.sceneDecompose.outputPreview') }}
+						</div>
 						<div class="wf-scene-decompose-meta">{{ outputMeta }}</div>
 					</div>
 					<div
@@ -96,10 +125,16 @@
 							class="wf-scene-decompose-preview-item"
 						>
 							<div class="wf-scene-decompose-preview-top">
-								<span class="wf-scene-decompose-preview-name">{{ item.name || t('nodes.sceneDecompose.defaultObject') }}</span>
+								<span class="wf-scene-decompose-preview-name">
+									{{ item.name || t('nodes.sceneDecompose.defaultObject') }}
+								</span>
 								<span class="wf-scene-decompose-preview-tag">
 									{{ t('nodes.sceneDecompose.imageNum', { index: item.sourceImageIndex }) }} ·
-									{{ item.cropMode === 'fallback' ? t('nodes.sceneDecompose.fullImage') : t('nodes.sceneDecompose.crop') }}
+									{{
+										item.cropMode === 'fallback'
+											? t('nodes.sceneDecompose.fullImage')
+											: t('nodes.sceneDecompose.crop')
+									}}
 								</span>
 							</div>
 							<div class="wf-scene-decompose-preview-copy">
@@ -116,7 +151,9 @@
 
 		<template #footer>
 			<div class="wf-scene-decompose-footer" @pointerdown.stop>
-				<div class="wf-scene-decompose-footer-title">{{ t('nodes.sceneDecompose.runSummary') }}</div>
+				<div class="wf-scene-decompose-footer-title">
+					{{ t('nodes.sceneDecompose.runSummary') }}
+				</div>
 				<div class="wf-scene-decompose-footer-copy">{{ messageText }}</div>
 			</div>
 		</template>
@@ -163,12 +200,40 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -250,7 +315,9 @@ const outputMeta = computed(() => {
 	if (!outputCount.value) return t('nodes.sceneDecompose.noOutputYet')
 	return t('nodes.sceneDecompose.outputGenerated', { count: outputCount.value })
 })
-const messageText = computed(() => String(settings.value?.message ?? t('nodes.sceneDecompose.waiting')))
+const messageText = computed(() =>
+	String(settings.value?.message ?? t('nodes.sceneDecompose.waiting'))
+)
 const progressValue = computed(() =>
 	Math.max(0, Math.min(100, Number(settings.value?.progress ?? 0)))
 )

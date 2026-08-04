@@ -145,7 +145,14 @@
 						</svg>
 					</button>
 				</template>
-				<button class="wf-resource-btn" type="button" :title="t('resources.panel.close')" @click="emit('close')">x</button>
+				<button
+					class="wf-resource-btn"
+					type="button"
+					:title="t('resources.panel.close')"
+					@click="emit('close')"
+				>
+					x
+				</button>
 			</div>
 		</div>
 		<div ref="scrollBodyEl" class="wf-resource-body">
@@ -159,7 +166,13 @@
 							stroke-width="2"
 							stroke-linecap="round"
 						/>
-						<path d="M24 22v8M24 34v.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+						<path
+							d="M24 22v8M24 34v.5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<div class="wf-cloud-setup-title">{{ t('resources.panel.cloudNotConfigured') }}</div>
 					<div class="wf-cloud-setup-desc">{{ t('resources.panel.cloudSetupDesc') }}</div>
@@ -180,397 +193,433 @@
 			</template>
 
 			<template v-else>
-			<!-- 筛选 + 搜索栏 -->
-			<div v-if="resources.length" class="wf-resource-filter-bar">
-				<div class="wf-resource-filter-group">
-					<button
-						class="wf-resource-filter-btn"
-						:class="{ active: filterMode === 'all' }"
-						@click="onFilterChange('all')"
-						:title="t('resources.panel.filterAllTitle')"
-					>
-						{{ t('resources.panel.filterAll') }}
-						<span class="wf-resource-filter-num">({{ counts.total }})</span>
-					</button>
-					<button
-						class="wf-resource-filter-btn"
-						:class="{ active: filterMode === 'used' }"
-						@click="onFilterChange('used')"
-						:title="t('resources.panel.filterUsedTitle')"
-					>
-						{{ t('resources.panel.filterUsed') }}
-						<span class="wf-resource-filter-num">({{ counts.used }})</span>
-					</button>
-					<button
-						class="wf-resource-filter-btn"
-						:class="{ active: filterMode === 'unused' }"
-						@click="onFilterChange('unused')"
-						:title="t('resources.panel.filterUnusedTitle')"
-					>
-						{{ t('resources.panel.filterUnused') }}
-						<span class="wf-resource-filter-num">({{ counts.unused }})</span>
-					</button>
-				</div>
-				<div class="wf-resource-filter-divider" />
-				<div class="wf-resource-type-group">
-					<button
-						v-for="tk in typeFilters"
-						:key="tk.key"
-						class="wf-resource-type-btn"
-						:class="{ active: typeFilter === tk.key }"
-						:title="tk.label"
-						@click="typeFilter = typeFilter === tk.key ? null : tk.key"
-					>
-						{{ tk.shortLabel }}
-					</button>
-				</div>
-				<div class="wf-resource-search-wrap">
-					<svg viewBox="0 0 16 16" class="wf-resource-search-icon" aria-hidden="true">
-						<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-						<path
-							d="M10.5 10.5L13 13"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.2"
-							stroke-linecap="round"
-						/>
-					</svg>
-					<input
-						v-model="searchKeyword"
-						class="wf-resource-search-input"
-						type="text"
-						:placeholder="t('resources.panel.searchPlaceholder')"
-					/>
-				</div>
-			</div>
-
-			<div v-if="!resources.length" class="wf-resource-empty">{{ t('resources.panel.empty') }}</div>
-			<div v-else class="wf-resource-stats">
-				{{ t('resources.panel.statsTotal', { total: counts.total }) }} · {{ t('resources.panel.statsUsed', { used: counts.used }) }} · {{ t('resources.panel.statsUnused', { unused: counts.unused }) }}
-				<template v-if="visibleCount < sortedResources.length">
-					· {{ t('resources.panel.statsVisible', { visible: visibleCount, total: sortedResources.length }) }}
-				</template>
-			</div>
-
-			<!-- 网格视图 -->
-			<div
-				v-if="resources.length && viewMode === 'grid'"
-				class="wf-resource-grid"
-				:class="[thumbSize === 'lg' ? 'thumb-lg' : 'thumb-sm', { reflowing: gridReflowing }]"
-			>
-				<div
-					v-for="r in visibleResources"
-					:key="`${String(r.id)}:${layoutEpoch}`"
-					class="wf-resource-tile"
-					:class="isResourceUsed(r.id) ? 'is-used' : 'is-unused'"
-					draggable="true"
-					@dragstart="onTileDragStart($event, r)"
-				>
-					<div class="wf-resource-tile__thumb-area">
-						<div
-							v-if="isResourceUsed(r.id)"
-							class="wf-resource-used-badge"
-							:title="getUsageSummary(r.id)"
+				<!-- 筛选 + 搜索栏 -->
+				<div v-if="resources.length" class="wf-resource-filter-bar">
+					<div class="wf-resource-filter-group">
+						<button
+							class="wf-resource-filter-btn"
+							:class="{ active: filterMode === 'all' }"
+							@click="onFilterChange('all')"
+							:title="t('resources.panel.filterAllTitle')"
 						>
-							✔ {{ getUsageCount(r.id) }}
-						</div>
-						<div v-else class="wf-resource-unused-badge" :title="t('resources.panel.unreferencedInBlueprint')">{{ t('resources.panel.unusedBadge') }}</div>
-
-						<img
-							v-if="thumbSrc(r) && !hasThumbFailed(String(r.id))"
-							class="wf-resource-thumb"
-							:src="thumbSrc(r)"
-							:alt="r.name"
-							loading="lazy"
-							draggable="false"
-							@error="onThumbError(String(r.id))"
+							{{ t('resources.panel.filterAll') }}
+							<span class="wf-resource-filter-num">({{ counts.total }})</span>
+						</button>
+						<button
+							class="wf-resource-filter-btn"
+							:class="{ active: filterMode === 'used' }"
+							@click="onFilterChange('used')"
+							:title="t('resources.panel.filterUsedTitle')"
+						>
+							{{ t('resources.panel.filterUsed') }}
+							<span class="wf-resource-filter-num">({{ counts.used }})</span>
+						</button>
+						<button
+							class="wf-resource-filter-btn"
+							:class="{ active: filterMode === 'unused' }"
+							@click="onFilterChange('unused')"
+							:title="t('resources.panel.filterUnusedTitle')"
+						>
+							{{ t('resources.panel.filterUnused') }}
+							<span class="wf-resource-filter-num">({{ counts.unused }})</span>
+						</button>
+					</div>
+					<div class="wf-resource-filter-divider" />
+					<div class="wf-resource-type-group">
+						<button
+							v-for="tk in typeFilters"
+							:key="tk.key"
+							class="wf-resource-type-btn"
+							:class="{ active: typeFilter === tk.key }"
+							:title="tk.label"
+							@click="typeFilter = typeFilter === tk.key ? null : tk.key"
+						>
+							{{ tk.shortLabel }}
+						</button>
+					</div>
+					<div class="wf-resource-search-wrap">
+						<svg viewBox="0 0 16 16" class="wf-resource-search-icon" aria-hidden="true">
+							<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+							<path
+								d="M10.5 10.5L13 13"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+							/>
+						</svg>
+						<input
+							v-model="searchKeyword"
+							class="wf-resource-search-input"
+							type="text"
+							:placeholder="t('resources.panel.searchPlaceholder')"
 						/>
-						<div v-else class="wf-resource-thumb-placeholder">
-							<svg
-								viewBox="0 0 24 24"
-								class="wf-resource-thumb-placeholder-icon"
-								aria-hidden="true"
+					</div>
+				</div>
+
+				<div v-if="!resources.length" class="wf-resource-empty">
+					{{ t('resources.panel.empty') }}
+				</div>
+				<div v-else class="wf-resource-stats">
+					{{ t('resources.panel.statsTotal', { total: counts.total }) }} ·
+					{{ t('resources.panel.statsUsed', { used: counts.used }) }} ·
+					{{ t('resources.panel.statsUnused', { unused: counts.unused }) }}
+					<template v-if="visibleCount < sortedResources.length">
+						·
+						{{
+							t('resources.panel.statsVisible', {
+								visible: visibleCount,
+								total: sortedResources.length
+							})
+						}}
+					</template>
+				</div>
+
+				<!-- 网格视图 -->
+				<div
+					v-if="resources.length && viewMode === 'grid'"
+					class="wf-resource-grid"
+					:class="[thumbSize === 'lg' ? 'thumb-lg' : 'thumb-sm', { reflowing: gridReflowing }]"
+				>
+					<div
+						v-for="r in visibleResources"
+						:key="`${String(r.id)}:${layoutEpoch}`"
+						class="wf-resource-tile"
+						:class="isResourceUsed(r.id) ? 'is-used' : 'is-unused'"
+						draggable="true"
+						@dragstart="onTileDragStart($event, r)"
+					>
+						<div class="wf-resource-tile__thumb-area">
+							<div
+								v-if="isResourceUsed(r.id)"
+								class="wf-resource-used-badge"
+								:title="getUsageSummary(r.id)"
 							>
-								<path
-									:d="resourceKindIconPath(r.kind)"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.4"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
+								✔ {{ getUsageCount(r.id) }}
+							</div>
+							<div
+								v-else
+								class="wf-resource-unused-badge"
+								:title="t('resources.panel.unreferencedInBlueprint')"
+							>
+								{{ t('resources.panel.unusedBadge') }}
+							</div>
+
+							<img
+								v-if="thumbSrc(r) && !hasThumbFailed(String(r.id))"
+								class="wf-resource-thumb"
+								:src="thumbSrc(r)"
+								:alt="r.name"
+								loading="lazy"
+								draggable="false"
+								@error="onThumbError(String(r.id))"
+							/>
+							<div v-else class="wf-resource-thumb-placeholder">
+								<svg
+									viewBox="0 0 24 24"
+									class="wf-resource-thumb-placeholder-icon"
+									aria-hidden="true"
+								>
+									<path
+										:d="resourceKindIconPath(r.kind)"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</div>
+
+							<div class="wf-resource-overlay">
+								<button
+									class="wf-resource-overlay-btn"
+									type="button"
+									:title="t('resources.panel.preview')"
+									@click.stop="emit('preview', String(r.id))"
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+										<path
+											d="M8 3c-3.2 0-5.8 2.3-7 5 1.2 2.7 3.8 5 7 5s5.8-2.3 7-5c-1.2-2.7-3.8-5-7-5z"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<circle cx="8" cy="8" r="1.9" fill="currentColor" opacity="0.9" />
+									</svg>
+								</button>
+								<button
+									class="wf-resource-overlay-btn"
+									type="button"
+									:title="t('resources.panel.addToBlueprint')"
+									@click.stop="emit('drop-to-node', String(r.id))"
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+										<rect
+											x="2.5"
+											y="2.5"
+											width="4"
+											height="4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<rect
+											x="9.5"
+											y="2.5"
+											width="4"
+											height="4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<rect
+											x="2.5"
+											y="9.5"
+											width="4"
+											height="4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<path
+											d="M11 9.5v4M9 11.5h4"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+									</svg>
+								</button>
+								<button
+									v-if="isResourceUsed(r.id)"
+									class="wf-resource-overlay-btn wf-resource-overlay-btn--focus"
+									type="button"
+									:title="getFocusTooltip(r.id)"
+									@click.stop="onFocusResourceClick(r)"
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+										<path
+											d="M2 8h3M11 8h3M8 2v3M8 11v3"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<circle
+											cx="8"
+											cy="8"
+											r="2.5"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+									</svg>
+								</button>
+								<button
+									class="wf-resource-overlay-btn danger"
+									type="button"
+									:title="
+										isResourceUsed(r.id)
+											? t('resources.panel.deleteUsedWarning')
+											: t('resources.panel.delete')
+									"
+									@click.stop="onRemoveClick(String(r.id))"
+								>
+									<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+										<path
+											d="M6 2.8h4M3.4 4.4h9.2"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+										/>
+										<path
+											d="M6.7 6.4v6.1M9.3 6.4v6.1"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.1"
+											stroke-linecap="round"
+										/>
+									</svg>
+								</button>
+							</div>
 						</div>
 
-						<div class="wf-resource-overlay">
-							<button
-								class="wf-resource-overlay-btn"
-								type="button"
-								:title="t('resources.panel.preview')"
-								@click.stop="emit('preview', String(r.id))"
-							>
-								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
-									<path
-										d="M8 3c-3.2 0-5.8 2.3-7 5 1.2 2.7 3.8 5 7 5s5.8-2.3 7-5c-1.2-2.7-3.8-5-7-5z"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-									<circle cx="8" cy="8" r="1.9" fill="currentColor" opacity="0.9" />
-								</svg>
-							</button>
-							<button
-								class="wf-resource-overlay-btn"
-								type="button"
-								:title="t('resources.panel.addToBlueprint')"
-								@click.stop="emit('drop-to-node', String(r.id))"
-							>
-								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
-									<rect
-										x="2.5"
-										y="2.5"
-										width="4"
-										height="4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-									<rect
-										x="9.5"
-										y="2.5"
-										width="4"
-										height="4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-									<rect
-										x="2.5"
-										y="9.5"
-										width="4"
-										height="4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-									<path
-										d="M11 9.5v4M9 11.5h4"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.2"
-										stroke-linecap="round"
-									/>
-								</svg>
-							</button>
+						<div class="wf-resource-tile__info">
+							<div class="wf-resource-tile__name" :title="r.name || ''">
+								{{ r.name || t('resources.panel.unnamedResource') }}
+							</div>
+							<div class="wf-resource-tile__meta-row">
+								<span class="wf-resource-tile__kind" :data-kind="r.kind">
+									{{ resourceKindLabel(r.kind) }}
+								</span>
+								<span v-if="isResourceUsed(r.id)" class="wf-resource-tile__usage">
+									{{ t('resources.panel.nodeCount', { count: getUsageCount(r.id) }) }}
+								</span>
+								<span v-else class="wf-resource-tile__unused">
+									{{ t('resources.panel.unreferenced') }}
+								</span>
+							</div>
+							<div class="wf-resource-tile__date">{{ formatDate(r.createdAt) }}</div>
+						</div>
+					</div>
+
+					<div ref="gridSentinelEl" class="wf-resource-sentinel" />
+				</div>
+
+				<!-- 列表视图 -->
+				<div v-if="resources.length && viewMode === 'list'" class="wf-resource-list">
+					<div class="wf-resource-list__header">
+						<div class="wf-resource-list__h-name">{{ t('resources.panel.colName') }}</div>
+						<div class="wf-resource-list__h-kind">{{ t('resources.panel.colType') }}</div>
+						<div class="wf-resource-list__h-usage">{{ t('resources.panel.colUsage') }}</div>
+						<div class="wf-resource-list__h-date">{{ t('resources.panel.colDate') }}</div>
+						<div class="wf-resource-list__h-actions">{{ t('resources.panel.colActions') }}</div>
+					</div>
+					<div
+						v-for="r in visibleResources"
+						:key="`list-${String(r.id)}`"
+						class="wf-resource-list__row"
+						:class="isResourceUsed(r.id) ? 'is-used' : 'is-unused'"
+						draggable="true"
+						@dragstart="onTileDragStart($event, r)"
+					>
+						<div class="wf-resource-list__thumb-wrap">
 							<button
 								v-if="isResourceUsed(r.id)"
-								class="wf-resource-overlay-btn wf-resource-overlay-btn--focus"
+								class="wf-resource-list__thumb-focus"
 								type="button"
 								:title="getFocusTooltip(r.id)"
 								@click.stop="onFocusResourceClick(r)"
 							>
-								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
+								<svg
+									viewBox="0 0 16 16"
+									aria-hidden="true"
+									class="wf-resource-list__thumb-focus-icon"
+								>
 									<path
 										d="M2 8h3M11 8h3M8 2v3M8 11v3"
 										fill="none"
 										stroke="currentColor"
-										stroke-width="1.2"
+										stroke-width="1.4"
 										stroke-linecap="round"
 									/>
 									<circle
 										cx="8"
 										cy="8"
-										r="2.5"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-								</svg>
-							</button>
-							<button
-								class="wf-resource-overlay-btn danger"
-								type="button"
-								:title="isResourceUsed(r.id) ? t('resources.panel.deleteUsedWarning') : t('resources.panel.delete')"
-								@click.stop="onRemoveClick(String(r.id))"
-							>
-								<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-resource-overlay-icon">
-									<path
-										d="M6 2.8h4M3.4 4.4h9.2"
+										r="2.2"
 										fill="none"
 										stroke="currentColor"
 										stroke-width="1.2"
-										stroke-linecap="round"
-									/>
-									<path
-										d="M5.2 4.6v8.6c0 .6.5 1 1 1h3.6c.6 0 1-.4 1-1V4.6"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-									/>
-									<path
-										d="M6.7 6.4v6.1M9.3 6.4v6.1"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.1"
-										stroke-linecap="round"
 									/>
 								</svg>
 							</button>
+							<img
+								v-if="thumbSrc(r) && !hasThumbFailed(String(r.id))"
+								class="wf-resource-list__thumb"
+								:src="thumbSrc(r)"
+								:alt="r.name"
+								loading="lazy"
+								draggable="false"
+								@error="onThumbError(String(r.id))"
+							/>
+							<div v-else class="wf-resource-list__thumb-placeholder">
+								<svg
+									viewBox="0 0 24 24"
+									class="wf-resource-list__thumb-placeholder-icon"
+									aria-hidden="true"
+								>
+									<path
+										:d="resourceKindIconPath(r.kind)"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</div>
+							<span v-if="isResourceUsed(r.id)" class="wf-resource-list__badge is-used">
+								✔ {{ getUsageCount(r.id) }}
+							</span>
+							<span v-else class="wf-resource-list__badge is-unused">
+								{{ t('resources.panel.unusedBadge') }}
+							</span>
 						</div>
-					</div>
-
-					<div class="wf-resource-tile__info">
-						<div class="wf-resource-tile__name" :title="r.name || ''">
+						<div class="wf-resource-list__name" :title="r.name || ''">
 							{{ r.name || t('resources.panel.unnamedResource') }}
 						</div>
-						<div class="wf-resource-tile__meta-row">
-							<span class="wf-resource-tile__kind" :data-kind="r.kind">
+						<div class="wf-resource-list__kind">
+							<span class="wf-resource-list__kind-tag" :data-kind="r.kind">
 								{{ resourceKindLabel(r.kind) }}
 							</span>
-							<span v-if="isResourceUsed(r.id)" class="wf-resource-tile__usage">
-								{{ t('resources.panel.nodeCount', { count: getUsageCount(r.id) }) }}
+						</div>
+						<div class="wf-resource-list__usage">
+							<template
+								v-if="isResourceUsed(r.id) && getUsageInfoForResource(r.id)?.usedBy?.length"
+							>
+								<button
+									class="wf-resource-list__node-link"
+									type="button"
+									:title="
+										t('resources.panel.locateToNodeTitle', {
+											nodeTitle: getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle
+										})
+									"
+									@click.stop="onFocusResourceClick(r)"
+								>
+									{{ getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle }}
+								</button>
+								<span v-if="getUsageCount(r.id) > 1" class="wf-resource-list__more">
+									+{{ getUsageCount(r.id) - 1 }}
+								</span>
+							</template>
+							<span v-else class="wf-resource-list__unused-text">
+								{{ t('resources.panel.unreferenced') }}
 							</span>
-							<span v-else class="wf-resource-tile__unused">{{ t('resources.panel.unreferenced') }}</span>
 						</div>
-						<div class="wf-resource-tile__date">{{ formatDate(r.createdAt) }}</div>
-					</div>
-				</div>
-
-				<div ref="gridSentinelEl" class="wf-resource-sentinel" />
-			</div>
-
-			<!-- 列表视图 -->
-			<div v-if="resources.length && viewMode === 'list'" class="wf-resource-list">
-				<div class="wf-resource-list__header">
-					<div class="wf-resource-list__h-name">{{ t('resources.panel.colName') }}</div>
-					<div class="wf-resource-list__h-kind">{{ t('resources.panel.colType') }}</div>
-					<div class="wf-resource-list__h-usage">{{ t('resources.panel.colUsage') }}</div>
-					<div class="wf-resource-list__h-date">{{ t('resources.panel.colDate') }}</div>
-					<div class="wf-resource-list__h-actions">{{ t('resources.panel.colActions') }}</div>
-				</div>
-				<div
-					v-for="r in visibleResources"
-					:key="`list-${String(r.id)}`"
-					class="wf-resource-list__row"
-					:class="isResourceUsed(r.id) ? 'is-used' : 'is-unused'"
-					draggable="true"
-					@dragstart="onTileDragStart($event, r)"
-				>
-					<div class="wf-resource-list__thumb-wrap">
-						<button
-							v-if="isResourceUsed(r.id)"
-							class="wf-resource-list__thumb-focus"
-							type="button"
-							:title="getFocusTooltip(r.id)"
-							@click.stop="onFocusResourceClick(r)"
-						>
-							<svg
-								viewBox="0 0 16 16"
-								aria-hidden="true"
-								class="wf-resource-list__thumb-focus-icon"
-							>
-								<path
-									d="M2 8h3M11 8h3M8 2v3M8 11v3"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.4"
-									stroke-linecap="round"
-								/>
-								<circle
-									cx="8"
-									cy="8"
-									r="2.2"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.2"
-								/>
-							</svg>
-						</button>
-						<img
-							v-if="thumbSrc(r) && !hasThumbFailed(String(r.id))"
-							class="wf-resource-list__thumb"
-							:src="thumbSrc(r)"
-							:alt="r.name"
-							loading="lazy"
-							draggable="false"
-							@error="onThumbError(String(r.id))"
-						/>
-						<div v-else class="wf-resource-list__thumb-placeholder">
-							<svg
-								viewBox="0 0 24 24"
-								class="wf-resource-list__thumb-placeholder-icon"
-								aria-hidden="true"
-							>
-								<path
-									:d="resourceKindIconPath(r.kind)"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.4"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-						</div>
-						<span v-if="isResourceUsed(r.id)" class="wf-resource-list__badge is-used">
-							✔ {{ getUsageCount(r.id) }}
-						</span>
-						<span v-else class="wf-resource-list__badge is-unused">{{ t('resources.panel.unusedBadge') }}</span>
-					</div>
-					<div class="wf-resource-list__name" :title="r.name || ''">
-						{{ r.name || t('resources.panel.unnamedResource') }}
-					</div>
-					<div class="wf-resource-list__kind">
-						<span class="wf-resource-list__kind-tag" :data-kind="r.kind">
-							{{ resourceKindLabel(r.kind) }}
-						</span>
-					</div>
-					<div class="wf-resource-list__usage">
-						<template v-if="isResourceUsed(r.id) && getUsageInfoForResource(r.id)?.usedBy?.length">
+						<div class="wf-resource-list__date">{{ formatDate(r.createdAt) }}</div>
+						<div class="wf-resource-list__actions">
 							<button
-								class="wf-resource-list__node-link"
+								class="wf-resource-list__action-btn"
 								type="button"
-								:title="t('resources.panel.locateToNodeTitle', { nodeTitle: getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle })"
+								:title="t('resources.panel.preview')"
+								@click.stop="emit('preview', String(r.id))"
+							>
+								👁
+							</button>
+							<button
+								v-if="isResourceUsed(r.id)"
+								class="wf-resource-list__action-btn"
+								type="button"
+								:title="t('resources.panel.locateNode')"
 								@click.stop="onFocusResourceClick(r)"
 							>
-								{{ getUsageInfoForResource(r.id)!.usedBy[0].nodeTitle }}
+								◎
 							</button>
-							<span v-if="getUsageCount(r.id) > 1" class="wf-resource-list__more">
-								+{{ getUsageCount(r.id) - 1 }}
-							</span>
-						</template>
-						<span v-else class="wf-resource-list__unused-text">{{ t('resources.panel.unreferenced') }}</span>
+							<button
+								class="wf-resource-list__action-btn danger"
+								type="button"
+								:title="
+									isResourceUsed(r.id)
+										? t('resources.panel.deleteUsedWarning')
+										: t('resources.panel.delete')
+								"
+								@click.stop="onRemoveClick(String(r.id))"
+							>
+								✕
+							</button>
+						</div>
 					</div>
-					<div class="wf-resource-list__date">{{ formatDate(r.createdAt) }}</div>
-					<div class="wf-resource-list__actions">
-						<button
-							class="wf-resource-list__action-btn"
-							type="button"
-							:title="t('resources.panel.preview')"
-							@click.stop="emit('preview', String(r.id))"
-						>
-							👁
-						</button>
-						<button
-							v-if="isResourceUsed(r.id)"
-							class="wf-resource-list__action-btn"
-							type="button"
-							:title="t('resources.panel.locateNode')"
-							@click.stop="onFocusResourceClick(r)"
-						>
-							◎
-						</button>
-						<button
-							class="wf-resource-list__action-btn danger"
-							type="button"
-							:title="isResourceUsed(r.id) ? t('resources.panel.deleteUsedWarning') : t('resources.panel.delete')"
-							@click.stop="onRemoveClick(String(r.id))"
-						>
-							✕
-						</button>
-					</div>
+					<div ref="listSentinelEl" class="wf-resource-sentinel" />
 				</div>
-				<div ref="listSentinelEl" class="wf-resource-sentinel" />
-			</div>
 			</template>
 		</div>
 	</div>
@@ -652,8 +701,7 @@ const goToCloudSettings = () => {
 	router.push({ name: 'CloudStorage' })
 }
 
-const onCloudRefresh = () => {
-}
+const onCloudRefresh = () => {}
 
 const onCloudUpload = async (files: File[]) => {
 	if (!cloudConfig.value || !files.length) return
@@ -669,8 +717,7 @@ const onCloudUpload = async (files: File[]) => {
 		if (cloudFileListRef.value) {
 			await cloudFileListRef.value.refresh()
 		}
-	} catch {
-	}
+	} catch {}
 }
 
 const onCloudDelete = async (file: any) => {
@@ -683,8 +730,7 @@ const onCloudDelete = async (file: any) => {
 		if (cloudFileListRef.value) {
 			await cloudFileListRef.value.refresh()
 		}
-	} catch {
-	}
+	} catch {}
 }
 
 watch(storageMode, (mode) => {
@@ -700,9 +746,21 @@ const searchKeyword = ref('')
 const typeFilter = ref<string | null>(null)
 
 const typeFilters = computed(() => [
-	{ key: 'image', label: t('resources.panel.typeImage'), shortLabel: t('resources.panel.typeImageShort') },
-	{ key: 'video', label: t('resources.panel.typeVideo'), shortLabel: t('resources.panel.typeVideoShort') },
-	{ key: 'model3d', label: t('resources.panel.typeModel3d'), shortLabel: t('resources.panel.typeModel3dShort') }
+	{
+		key: 'image',
+		label: t('resources.panel.typeImage'),
+		shortLabel: t('resources.panel.typeImageShort')
+	},
+	{
+		key: 'video',
+		label: t('resources.panel.typeVideo'),
+		shortLabel: t('resources.panel.typeVideoShort')
+	},
+	{
+		key: 'model3d',
+		label: t('resources.panel.typeModel3d'),
+		shortLabel: t('resources.panel.typeModel3dShort')
+	}
 ])
 
 const onFilterChange = (m: FilterMode) => {
@@ -742,7 +800,10 @@ const getUsageSummary = (rid: string): string => {
 	if (!info || !info.isUsed) return t('resources.panel.notUsed')
 	const refs = info.usedBy.slice(0, 5).map((u) => `· ${u.nodeTitle} (${u.nodeType})`)
 	const head = t('resources.panel.usedByNodes', { count: info.usageCount }) + '\n'
-	const tail = info.usedBy.length > 5 ? `\n` + t('resources.panel.moreNodes', { count: info.usedBy.length - 5 }) : ''
+	const tail =
+		info.usedBy.length > 5
+			? `\n` + t('resources.panel.moreNodes', { count: info.usedBy.length - 5 })
+			: ''
 	return head + refs.join('\n') + tail
 }
 
@@ -942,7 +1003,9 @@ const totalCount = computed(() => sortedResources.value.length)
 const visibleCount = computed(() => visibleResources.value.length)
 
 const thumbSizeTitle = computed(() =>
-	thumbSize.value === 'sm' ? t('resources.panel.thumbSizeSmall') : t('resources.panel.thumbSizeLarge')
+	thumbSize.value === 'sm'
+		? t('resources.panel.thumbSizeSmall')
+		: t('resources.panel.thumbSizeLarge')
 )
 
 const thumbSrc = (r: WorkflowResource) => {
@@ -1442,7 +1505,11 @@ onBeforeUnmount(() => {
 	font-weight: 700;
 	line-height: 1.3;
 	color: #ffffff;
-	background: linear-gradient(135deg, var(--theme-accent), color-mix(in srgb, var(--theme-accent) 80%, #000));
+	background: linear-gradient(
+		135deg,
+		var(--theme-accent),
+		color-mix(in srgb, var(--theme-accent) 80%, #000)
+	);
 	border-radius: 3px;
 	user-select: none;
 	pointer-events: none;

@@ -1,5 +1,12 @@
 import { isRecord, isString, getErrorMessage } from '../types/utils'
-import { isMigrationMode, hasIpcApi, ipcOrHttp, ipcStreamOrHttp, unwrapIpcResult, type IpcResult } from './ipcClient'
+import {
+	isMigrationMode,
+	hasIpcApi,
+	ipcOrHttp,
+	ipcStreamOrHttp,
+	unwrapIpcResult,
+	type IpcResult
+} from './ipcClient'
 import { getBackendBaseUrl } from './backendConfig'
 
 export type ExportFormat = 'mp4' | 'mov'
@@ -83,7 +90,7 @@ function normalizeJob(raw: unknown): ExportJobInfo {
 		fileName: r.fileName ? String(r.fileName) : undefined,
 		downloadUrl: r.downloadUrl ? String(r.downloadUrl) : undefined,
 		serverPath: r.serverPath || r.outputPath ? String(r.serverPath || r.outputPath) : undefined,
-		error: r.error ? String(r.error) : undefined,
+		error: r.error ? String(r.error) : undefined
 	}
 }
 
@@ -147,7 +154,11 @@ async function httpCreateJob(req: CreateExportJobRequest): Promise<ExportJobInfo
 	return (await safeJson(res)) as ExportJobInfo
 }
 
-async function httpUploadFrame(jobId: string, frameIndex: number, blob: Blob): Promise<ExportJobInfo> {
+async function httpUploadFrame(
+	jobId: string,
+	frameIndex: number,
+	blob: Blob
+): Promise<ExportJobInfo> {
 	const base = getBackendBaseUrl()
 	const fd = new FormData()
 	fd.set('frameIndex', String(Math.floor(frameIndex)))
@@ -186,7 +197,7 @@ async function httpFinalize(
 			format: opts?.format,
 			quality: opts?.quality,
 			ignoreStageBackground: opts?.ignoreStageBackground,
-			outputPath: opts?.outputPath,
+			outputPath: opts?.outputPath
 		})
 	})
 	if (!res.ok) {
@@ -208,7 +219,7 @@ async function* httpOpenJobStream(jobId: string): AsyncGenerator<ExportJobInfo> 
 	const response = await fetch(url, {
 		method: 'GET',
 		headers: { Accept: 'text/event-stream' },
-		cache: 'no-store',
+		cache: 'no-store'
 	})
 	if (!response.ok || !response.body) {
 		throw new Error(`SSE stream failed: ${response.status}`)
@@ -282,15 +293,18 @@ export const ExportService = {
 			async () => {
 				const bridge = getIpcBridge()
 				const uploadFn = bridge.dweb?.export?.frames?.upload
-				if (typeof uploadFn !== 'function') throw new Error('IPC export.frames.upload not available')
+				if (typeof uploadFn !== 'function')
+					throw new Error('IPC export.frames.upload not available')
 				const base64 = await blobToBase64(blob)
 				const result = await uploadFn({
 					jobId,
 					frameIndex: Math.floor(frameIndex),
 					data: base64,
-					filename: `frame_${String(Math.floor(frameIndex)).padStart(6, '0')}.png`,
+					filename: `frame_${String(Math.floor(frameIndex)).padStart(6, '0')}.png`
 				})
-				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
+				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(
+					result as IpcResult<{ job?: ExportJobInfo }>
+				)
 				if (unwrapped?.job) return normalizeJob(unwrapped.job)
 				return normalizeJob(unwrapped)
 			},
@@ -298,14 +312,21 @@ export const ExportService = {
 		)
 	},
 
-	async uploadFrameRaw(jobId: string, frameIndex: number, filePath: string): Promise<ExportJobInfo> {
+	async uploadFrameRaw(
+		jobId: string,
+		frameIndex: number,
+		filePath: string
+	): Promise<ExportJobInfo> {
 		return ipcOrHttp(
 			async () => {
 				const bridge = getIpcBridge()
 				const uploadFn = bridge.dweb?.export?.frames?.uploadRaw
-				if (typeof uploadFn !== 'function') throw new Error('IPC export.frames.uploadRaw not available')
+				if (typeof uploadFn !== 'function')
+					throw new Error('IPC export.frames.uploadRaw not available')
 				const result = await uploadFn({ jobId, frameIndex: Math.floor(frameIndex), filePath })
-				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
+				const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(
+					result as IpcResult<{ job?: ExportJobInfo }>
+				)
 				if (unwrapped?.job) return normalizeJob(unwrapped.job)
 				return normalizeJob(unwrapped)
 			},
@@ -336,9 +357,11 @@ export const ExportService = {
 						jobId,
 						frameIndex: idx,
 						data: base64,
-						filename: `frame_${String(idx).padStart(6, '0')}.png`,
+						filename: `frame_${String(idx).padStart(6, '0')}.png`
 					})
-					const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(result as IpcResult<{ job?: ExportJobInfo }>)
+					const unwrapped = unwrapIpcResult<{ job?: ExportJobInfo }>(
+						result as IpcResult<{ job?: ExportJobInfo }>
+					)
 					if (unwrapped?.job) lastJob = normalizeJob(unwrapped.job)
 					else lastJob = normalizeJob(unwrapped)
 				}
@@ -385,12 +408,13 @@ export const ExportService = {
 			async () => {
 				const bridge = getIpcBridge()
 				const finalizeFn = bridge.dweb?.export?.jobs?.finalize
-				if (typeof finalizeFn !== 'function') throw new Error('IPC export.jobs.finalize not available')
+				if (typeof finalizeFn !== 'function')
+					throw new Error('IPC export.jobs.finalize not available')
 				const result = await finalizeFn({
 					id: jobId,
 					jobId,
 					outputPath: opts?.outputPath,
-					...opts,
+					...opts
 				})
 				return normalizeJob(unwrapIpcResult(result as IpcResult<ExportJobInfo>))
 			},
@@ -413,7 +437,11 @@ export const ExportService = {
 					if (stop || closed) break
 					let parsed = chunk
 					if (typeof chunk === 'string') {
-						try { parsed = JSON.parse(chunk) } catch { parsed = chunk }
+						try {
+							parsed = JSON.parse(chunk)
+						} catch {
+							parsed = chunk
+						}
 					}
 					if (parsed && typeof parsed === 'object') {
 						const r = parsed as Record<string, unknown>
@@ -483,19 +511,21 @@ export const ExportService = {
 				const fileFn = bridge.dweb?.export?.jobs?.file
 				if (typeof fileFn !== 'function') throw new Error('IPC export.jobs.file not available')
 				const result = await fileFn({ id: jobId })
-				const unwrapped = unwrapIpcResult<{ filePath?: string; fileName?: string }>(result as IpcResult<{ filePath?: string; fileName?: string }>)
+				const unwrapped = unwrapIpcResult<{ filePath?: string; fileName?: string }>(
+					result as IpcResult<{ filePath?: string; fileName?: string }>
+				)
 				return {
 					filePath: String(unwrapped?.filePath || ''),
-					fileName: String(unwrapped?.fileName || ''),
+					fileName: String(unwrapped?.fileName || '')
 				}
 			},
 			async () => {
 				const job = await httpGetJob(jobId)
 				return {
 					filePath: job.serverPath || '',
-					fileName: job.fileName || '',
+					fileName: job.fileName || ''
 				}
 			}
 		)
-	},
+	}
 }

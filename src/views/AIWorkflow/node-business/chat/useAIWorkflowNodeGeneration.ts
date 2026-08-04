@@ -62,6 +62,7 @@ export type NodeGenerationApiDeps = {
 		absolutePath: string
 		projectRelativePath?: string
 	} | null>
+	globalTaskBridge?: GlobalTaskBridge
 }
 
 // Loose alias for store action callers that don't want to import types directly.
@@ -77,12 +78,23 @@ class FatalTaskError extends Error {
 	}
 }
 
+class UserAbortError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'UserAbortError'
+	}
+}
+
 const throwFatal = (message: string): never => {
 	throw new FatalTaskError(message)
 }
 
-const isFatalError = (err: unknown): boolean => {
+const isFatalError = (err: unknown): err is FatalTaskError => {
 	return err instanceof FatalTaskError
+}
+
+const isUserAbortError = (err: unknown): err is UserAbortError => {
+	return err instanceof UserAbortError
 }
 
 const getComfyService = (deps: NodeGenerationApiDeps) => {
@@ -1183,7 +1195,7 @@ const handleMeshyTaskStatus = async (
 	})
 
 	updateTask(deps, generationTaskId, {
-		statusText: t('aiworkflow.runtime.meshyTaskStatus', { taskType, status, progress: String(progress) }),
+		statusText: pollStatusText,
 		progress: progressPct
 	})
 
@@ -1351,12 +1363,14 @@ const createTask = (payload: WorkflowNodeChatSubmitPayload): WorkflowNodeGenerat
 	id: makeTaskId(),
 	nodeId: payload.nodeId,
 	nodeType: payload.nodeType,
+	provider: inferTaskProvider(payload.nodeType, payload.params ?? {}),
 	status: 'submitting',
 	statusText: t('aiworkflow.runtime.submittingTask'),
 	progress: 5,
 	startedAt: Date.now(),
 	results: [],
-	detailLines: []
+	detailLines: [],
+	prompt: payload.prompt || ''
 })
 
 export type NodeGenerationResult = {
@@ -1526,8 +1540,8 @@ export const runNodeGenerationTask = async (
 					ok: res.ok,
 					taskId: res.taskId,
 					taskType: 'meshy-3d',
-					mode: result.mode,
-					error: result.error
+					mode: res.mode,
+					error: res.error
 				}
 			} else if (provider === 'tripo3d') {
 				const res = await runModel3dTripo3dTask(deps, task, payload, {
@@ -1540,15 +1554,21 @@ export const runNodeGenerationTask = async (
 					ok: res.ok,
 					taskId: res.taskId,
 					taskType: 'other',
-					mode: result.mode,
-					error: result.error
+					mode: res.mode,
+					error: res.error
 				}
 			} else {
 				runModel3dStub(deps, task, payload)
-				return { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
+				result = { ok: false, error: t('aiworkflow.runtime.unsupported3dProvider') }
 			}
+		} else {
+			result = { ok: true, taskType: 'other' }
 		}
-		return { ok: true, taskType: 'other' }
+
+		if (result.ok) {
+			syncGlobalComplete(undefined, undefined, t('aiworkflow.runtime.completedStatus'))
+		}
+		return result
 	} catch (err: unknown) {
 		if (isUserAbortError(err)) {
 			clearPendingPrompt()
@@ -1602,10 +1622,18 @@ const labelForType = (nodeType: WorkflowNodeGenerationTask['nodeType']) => {
 	return t('aiworkflow.toast.nodeTypeModel3d')
 }
 
+type GlobalTaskSyncHelpers = {
+	syncGlobalProgress?: (patch: { progress?: number; statusText?: string; status?: string }) => void
+	syncGlobalComplete?: (resultUrl?: string, coverUrl?: string, statusText?: string) => void
+	syncGlobalFail?: (errorMessage: string) => void
+	syncGlobalBindRemote?: (remoteTaskId: string) => void
+}
+
 const runTextTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -1689,6 +1717,14 @@ const runTextTask = async (
 			if (dataUri) refImages.push(dataUri)
 		} catch {
 			// skip failed images
+		}
+	}
+	// Add user @mentioned attachments
+	if (payload.attachments && payload.attachments.length > 0) {
+		for (const att of payload.attachments) {
+			if (att.type === 'image_url' && att.data && att.data.startsWith('data:image/')) {
+				refImages.push(att.data)
+			}
 		}
 	}
 	if (refImages.length > 0) {
@@ -1822,7 +1858,8 @@ const runTextTask = async (
 const runImageTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -1844,6 +1881,9 @@ const runImageTask = async (
 	form.set('imageModel', model)
 	const imgProjectId = deps.getProjectId?.() ?? null
 	if (imgProjectId != null) form.set('projectId', String(imgProjectId))
+	if (task.clientRequestId) form.set('clientRequestId', task.clientRequestId)
+	if (task.nodeId) form.set('nodeId', task.nodeId)
+	if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
 
 	const isSeedream = kind === 'seedream'
 
@@ -2076,6 +2116,7 @@ const runImageTask = async (
 					}
 				}
 			})
+			syncHelpers?.syncGlobalBindRemote?.(newTaskId)
 
 			// 轮询任务状态
 			await pollMeshyTaskStatus(deps, svc, newTaskId, task.id, payload.nodeId, taskType)
@@ -3097,7 +3138,8 @@ const runImageTask = async (
 const runVideoTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -3121,6 +3163,9 @@ const runVideoTask = async (
 	form.set('model', model)
 	const projectId = deps.getProjectId?.() ?? null
 	if (projectId != null) form.set('projectId', String(projectId))
+	if (task.clientRequestId) form.set('clientRequestId', task.clientRequestId)
+	if (task.nodeId) form.set('nodeId', task.nodeId)
+	if (task.globalTaskId) form.set('globalTaskId', task.globalTaskId)
 	if (typeof params.mode === 'string' && params.mode) form.set('mode', params.mode)
 	if (typeof params.ratio === 'string' && params.ratio) form.set('ratio', params.ratio)
 	if (typeof params.resolution === 'string' && params.resolution)
@@ -3889,7 +3934,8 @@ const resolveModel3DInput = async (
 const runModel3dMeshyTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -4082,6 +4128,12 @@ const runModel3dMeshyTask = async (
 			progress: 15
 		})
 
+		const projectIdFor3d = deps.getProjectId?.() ?? null
+		if (projectIdFor3d != null) meshyPayload.projectId = String(projectIdFor3d)
+		if (task.clientRequestId) meshyPayload.clientRequestId = task.clientRequestId
+		if (task.nodeId) meshyPayload.nodeId = task.nodeId
+		if (task.globalTaskId) meshyPayload.globalTaskId = task.globalTaskId
+
 		const createRes = await svc.meshyGenerate(meshyPayload)
 
 		if (!createRes.ok) {
@@ -4109,6 +4161,7 @@ const runModel3dMeshyTask = async (
 				}
 			}
 		})
+		syncHelpers?.syncGlobalBindRemote?.(meshyTaskId)
 
 		updateTask(deps, task.id, {
 			status: 'running',
@@ -4144,7 +4197,8 @@ const runModel3dMeshyTask = async (
 const runModel3dTripo3dTask = async (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	syncHelpers?: GlobalTaskSyncHelpers
 ): Promise<{ ok: boolean; taskId?: string; mode?: string; error?: string }> => {
 	const svc = getComfyService(deps)
 	const params = payload.params ?? {}
@@ -4615,6 +4669,8 @@ const runModel3dTripo3dTask = async (
 		const projectIdVal = deps.getProjectId?.() ?? null
 		tripo3dPayload.nodeId = payload.nodeId
 		if (projectIdVal != null) tripo3dPayload.projectId = projectIdVal
+		if (task.clientRequestId) tripo3dPayload.clientRequestId = task.clientRequestId
+		if (task.globalTaskId) tripo3dPayload.globalTaskId = task.globalTaskId
 
 		updateTask(deps, task.id, {
 			statusText: t('aiworkflow.runtime.submittingTripo3DTask'),
@@ -4959,7 +5015,8 @@ const pollTripo3DTaskStatus = async (
 const runModel3dStub = (
 	deps: NodeGenerationApiDeps,
 	task: WorkflowNodeGenerationTask,
-	payload: WorkflowNodeChatSubmitPayload
+	payload: WorkflowNodeChatSubmitPayload,
+	_syncHelpers?: GlobalTaskSyncHelpers
 ) => {
 	appendDetail(deps, task.id, t('aiworkflow.runtime.model3dStubDetail'))
 	updateTask(deps, task.id, {

@@ -1,9 +1,5 @@
 <template>
-	<div
-		v-if="visible && items.length > 0"
-		class="bp-mention-popup"
-		@mousedown.prevent.stop
-	>
+	<div v-if="visible && items.length > 0" class="bp-mention-popup" @mousedown.prevent.stop>
 		<div class="bp-mention-popup-list">
 			<div
 				v-for="(item, index) in items"
@@ -32,50 +28,48 @@
 					</span>
 				</div>
 			</div>
-			<div v-if="items.length === 0" class="bp-mention-empty">
-				无匹配节点
-			</div>
+			<div v-if="items.length === 0" class="bp-mention-empty">无匹配节点</div>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import type { InputParamPreviewRef } from '../index';
+import type { InputParamPreviewRef } from '../index'
 
 interface Props {
-	visible: boolean;
-	items: InputParamPreviewRef[];
-	selectedIndex: number;
+	visible: boolean
+	items: InputParamPreviewRef[]
+	selectedIndex: number
 }
 
-const props = defineProps<Props>();
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
-	select: [item: InputParamPreviewRef];
-	'update:selectedIndex': [index: number];
-}>();
+	select: [item: InputParamPreviewRef]
+	'update:selectedIndex': [index: number]
+}>()
 
 const getTypeIcon = (kind: string) => {
-	if (kind === 'image') return '🖼';
-	if (kind === 'video') return '🎬';
-	if (kind === 'model3d') return '3D';
-	if (kind === 'blender') return '🎨';
-	if (kind === 'audio') return '🎵';
-	return '📝';
-};
+	if (kind === 'image') return '🖼'
+	if (kind === 'video') return '🎬'
+	if (kind === 'model3d') return '3D'
+	if (kind === 'blender') return '🎨'
+	if (kind === 'audio') return '🎵'
+	return '📝'
+}
 
 const getSubline = (item: InputParamPreviewRef) => {
-	if (item.kind === 'text') return item.text ? item.text.slice(0, 20) : '';
-	return item.name || item.meta || '';
-};
+	if (item.kind === 'text') return item.text ? item.text.slice(0, 20) : ''
+	return item.name || item.meta || ''
+}
 
 const onMouseEnter = (index: number) => {
-	emit('update:selectedIndex', index);
-};
+	emit('update:selectedIndex', index)
+}
 
 const handleSelect = (item: InputParamPreviewRef) => {
-	emit('select', item);
-};
+	emit('select', item)
+}
 </script>
 
 <style scoped>

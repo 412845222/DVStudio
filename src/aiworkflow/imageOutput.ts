@@ -154,7 +154,11 @@ export const exportWorkflowImageOutputPng = async (payload: {
 			ctx.imageSmoothingEnabled = true
 			ctx.clearRect(0, 0, cropW, cropH)
 			image.draw(ctx, sx, sy, sw, sh, 0, 0, cropW, cropH)
-			const toBlob = (offscreen as unknown as { convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob> }).convertToBlob
+			const toBlob = (
+				offscreen as unknown as {
+					convertToBlob?: (options?: { type?: string; quality?: number }) => Promise<Blob>
+				}
+			).convertToBlob
 			if (typeof toBlob === 'function') {
 				const out = await toBlob.call(offscreen, { type: 'image/png' })
 				image.cleanup?.()

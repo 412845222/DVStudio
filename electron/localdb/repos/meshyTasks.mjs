@@ -172,34 +172,74 @@ export function createMeshyTasksRepo() {
 		if (existing) {
 			// 更新时保留已有值，仅覆盖用户在 input 中显式提供的字段
 			const existingParams = existingRowToParams(existing)
-			const hasKey = (camel, snake) => (camel in raw) || (snake in raw)
+			const hasKey = (camel, snake) => camel in raw || snake in raw
 			const merged = {
 				taskId: params.taskId,
 				mode: hasKey('mode', 'mode') ? params.mode : existingParams.mode,
-				taskTarget: hasKey('taskTarget', 'task_target') ? params.taskTarget : existingParams.taskTarget,
-				taskFamily: hasKey('taskFamily', 'task_family') ? params.taskFamily : existingParams.taskFamily,
-				relationKind: hasKey('relationKind', 'relation_kind') ? params.relationKind : existingParams.relationKind,
-				rootTaskId: hasKey('rootTaskId', 'root_task_id') ? params.rootTaskId : existingParams.rootTaskId,
-				parentTaskId: hasKey('parentTaskId', 'parent_task_id') ? params.parentTaskId : existingParams.parentTaskId,
-				capabilities: hasKey('capabilities', 'capabilities') ? params.capabilities : existingParams.capabilities,
+				taskTarget: hasKey('taskTarget', 'task_target')
+					? params.taskTarget
+					: existingParams.taskTarget,
+				taskFamily: hasKey('taskFamily', 'task_family')
+					? params.taskFamily
+					: existingParams.taskFamily,
+				relationKind: hasKey('relationKind', 'relation_kind')
+					? params.relationKind
+					: existingParams.relationKind,
+				rootTaskId: hasKey('rootTaskId', 'root_task_id')
+					? params.rootTaskId
+					: existingParams.rootTaskId,
+				parentTaskId: hasKey('parentTaskId', 'parent_task_id')
+					? params.parentTaskId
+					: existingParams.parentTaskId,
+				capabilities: hasKey('capabilities', 'capabilities')
+					? params.capabilities
+					: existingParams.capabilities,
 				status: hasKey('status', 'status') ? params.status : existingParams.status,
 				progress: hasKey('progress', 'progress') ? params.progress : existingParams.progress,
 				prompt: hasKey('prompt', 'prompt') ? params.prompt : existingParams.prompt,
-				negativePrompt: hasKey('negativePrompt', 'negative_prompt') ? params.negativePrompt : existingParams.negativePrompt,
-				imageCount: hasKey('imageCount', 'image_count') ? params.imageCount : existingParams.imageCount,
-				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url') ? params.thumbnailUrl : existingParams.thumbnailUrl,
-				preferredModelUrl: hasKey('preferredModelUrl', 'preferred_model_url') ? params.preferredModelUrl : existingParams.preferredModelUrl,
-				localAssetUrl: hasKey('localAssetUrl', 'local_asset_url') ? params.localAssetUrl : existingParams.localAssetUrl,
-				localAssetPath: hasKey('localAssetPath', 'local_asset_path') ? params.localAssetPath : existingParams.localAssetPath,
-				sourceModelUrl: hasKey('sourceModelUrl', 'source_model_url') ? params.sourceModelUrl : existingParams.sourceModelUrl,
-				errorMessage: hasKey('errorMessage', 'error_message') ? params.errorMessage : existingParams.errorMessage,
-				statusText: hasKey('statusText', 'status_text') ? params.statusText : existingParams.statusText,
-				requestPayload: hasKey('requestPayload', 'request_payload') ? params.requestPayload : existingParams.requestPayload,
-				responsePayload: hasKey('responsePayload', 'response_payload') ? params.responsePayload : existingParams.responsePayload,
+				negativePrompt: hasKey('negativePrompt', 'negative_prompt')
+					? params.negativePrompt
+					: existingParams.negativePrompt,
+				imageCount: hasKey('imageCount', 'image_count')
+					? params.imageCount
+					: existingParams.imageCount,
+				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url')
+					? params.thumbnailUrl
+					: existingParams.thumbnailUrl,
+				preferredModelUrl: hasKey('preferredModelUrl', 'preferred_model_url')
+					? params.preferredModelUrl
+					: existingParams.preferredModelUrl,
+				localAssetUrl: hasKey('localAssetUrl', 'local_asset_url')
+					? params.localAssetUrl
+					: existingParams.localAssetUrl,
+				localAssetPath: hasKey('localAssetPath', 'local_asset_path')
+					? params.localAssetPath
+					: existingParams.localAssetPath,
+				sourceModelUrl: hasKey('sourceModelUrl', 'source_model_url')
+					? params.sourceModelUrl
+					: existingParams.sourceModelUrl,
+				errorMessage: hasKey('errorMessage', 'error_message')
+					? params.errorMessage
+					: existingParams.errorMessage,
+				statusText: hasKey('statusText', 'status_text')
+					? params.statusText
+					: existingParams.statusText,
+				requestPayload: hasKey('requestPayload', 'request_payload')
+					? params.requestPayload
+					: existingParams.requestPayload,
+				responsePayload: hasKey('responsePayload', 'response_payload')
+					? params.responsePayload
+					: existingParams.responsePayload,
 				projectId: hasKey('projectId', 'project_id') ? params.projectId : existingParams.projectId,
-				lastNodeId: hasKey('lastNodeId', 'last_node_id') ? params.lastNodeId : existingParams.lastNodeId,
-				remoteCreatedAt: hasKey('remoteCreatedAt', 'remote_created_at') ? params.remoteCreatedAt : existingParams.remoteCreatedAt,
-				remoteFinishedAt: hasKey('remoteFinishedAt', 'remote_finished_at') ? params.remoteFinishedAt : existingParams.remoteFinishedAt
+				lastNodeId: hasKey('lastNodeId', 'last_node_id')
+					? params.lastNodeId
+					: existingParams.lastNodeId,
+				remoteCreatedAt: hasKey('remoteCreatedAt', 'remote_created_at')
+					? params.remoteCreatedAt
+					: existingParams.remoteCreatedAt,
+				remoteFinishedAt: hasKey('remoteFinishedAt', 'remote_finished_at')
+					? params.remoteFinishedAt
+					: existingParams.remoteFinishedAt
 			}
 			updateStmt.run(merged)
 		} else {

@@ -1,10 +1,6 @@
 import { t } from '../../../../i18n'
 import { getErrorMessage, isRecord } from '../../../../types/utils'
-import type {
-	Tripo3DComfyService,
-	Tripo3DStoreLike,
-	BuildTripo3DRequestPayloadFn
-} from './types'
+import type { Tripo3DComfyService, Tripo3DStoreLike, BuildTripo3DRequestPayloadFn } from './types'
 
 export const useAIWorkflowTripo3DCommands = (options: {
 	store: Tripo3DStoreLike
@@ -23,8 +19,12 @@ export const useAIWorkflowTripo3DCommands = (options: {
 		const node = options.store.state.nodesById[nodeId]
 		if (!node) return
 		if (node.type === 'model3d') {
-			const existingM3d = isRecord(node.model3dSettings) ? node.model3dSettings as Record<string, unknown> : {}
-			const existingTripo = isRecord(existingM3d.tripo3dModelSettings) ? existingM3d.tripo3dModelSettings as Record<string, unknown> : {}
+			const existingM3d = isRecord(node.model3dSettings)
+				? (node.model3dSettings as Record<string, unknown>)
+				: {}
+			const existingTripo = isRecord(existingM3d.tripo3dModelSettings)
+				? (existingM3d.tripo3dModelSettings as Record<string, unknown>)
+				: {}
 			options.store.commit('setNodeModel3DSettings', {
 				nodeId,
 				model3dSettings: {
@@ -59,10 +59,14 @@ export const useAIWorkflowTripo3DCommands = (options: {
 		const n = node as Record<string, unknown> | null | undefined
 		if (!n) return {}
 		if (n.type === 'model3d' && isRecord(n.model3dSettings)) {
-			return isRecord(n.model3dSettings.tripo3dModelSettings) ? n.model3dSettings.tripo3dModelSettings : {}
+			return isRecord(n.model3dSettings.tripo3dModelSettings)
+				? n.model3dSettings.tripo3dModelSettings
+				: {}
 		}
 		if (n.type === 'image' && isRecord(n.imageSettings)) {
-			const imgSettings = isRecord(n.imageSettings.tripo3dImageSettings) ? n.imageSettings.tripo3dImageSettings : {}
+			const imgSettings = isRecord(n.imageSettings.tripo3dImageSettings)
+				? n.imageSettings.tripo3dImageSettings
+				: {}
 			const normalized: Record<string, unknown> = {}
 			for (const [key, value] of Object.entries(imgSettings)) {
 				normalized[`tripo3d${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value
@@ -96,7 +100,8 @@ export const useAIWorkflowTripo3DCommands = (options: {
 		})
 
 		try {
-			const currentProjectId = typeof options.getProjectId === 'function' ? options.getProjectId() : null
+			const currentProjectId =
+				typeof options.getProjectId === 'function' ? options.getProjectId() : null
 			const requestPayload = {
 				...prepared.payload,
 				nodeId,

@@ -36,7 +36,7 @@ export function collectDiagnostics() {
 		return {
 			python: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
 			pythonBridge: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
-			ffmpeg: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' },
+			ffmpeg: { ok: false, detail: 'Simulated empty env (DWEB_SIMULATE_EMPTY_ENV=1).' }
 		}
 	}
 
@@ -67,6 +67,6 @@ export function collectDiagnostics() {
 	return {
 		python,
 		pythonBridge,
-		ffmpeg,
+		ffmpeg
 	}
 }

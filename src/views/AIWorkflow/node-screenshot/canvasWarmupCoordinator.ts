@@ -1,6 +1,6 @@
 /**
  * Canvas Warmup Coordinator - Canvas2D预热协调器
- * 
+ *
  * 职责:
  * 1. 协调DOM截图 → Canvas2D ImageBitmap 流水线
  * 2. 控制批量预加载并发
@@ -293,7 +293,7 @@ export class CanvasWarmupCoordinator {
 	async warmup(): Promise<void> {
 		if (this.disposed) return
 
-		const pendingTasks = Array.from(this.tasks.values()).filter(task => task.status === 'pending')
+		const pendingTasks = Array.from(this.tasks.values()).filter((task) => task.status === 'pending')
 		const total = pendingTasks.length
 
 		if (total === 0) {
@@ -319,7 +319,10 @@ export class CanvasWarmupCoordinator {
 				await this.loadTask(task)
 				completed++
 				const progress = total > 0 ? completed / total : 1
-				this.options.onProgress?.(progress, t('aiworkflow.runtime.warmingUp', { completed: String(completed), total: String(total) }))
+				this.options.onProgress?.(
+					progress,
+					t('aiworkflow.runtime.warmingUp', { completed: String(completed), total: String(total) })
+				)
 			}
 		}
 
@@ -334,7 +337,13 @@ export class CanvasWarmupCoordinator {
 		this.phase = status.error > 0 ? 'error' : 'complete'
 
 		if (status.error > 0) {
-			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupCompleteWithErrors', { ready: String(status.ready), error: String(status.error) }))
+			this.options.onProgress?.(
+				1,
+				t('aiworkflow.runtime.warmupCompleteWithErrors', {
+					ready: String(status.ready),
+					error: String(status.error)
+				})
+			)
 		} else {
 			this.options.onProgress?.(1, t('aiworkflow.runtime.warmupComplete', { count: String(total) }))
 		}
@@ -363,7 +372,7 @@ export class CanvasWarmupCoordinator {
 	scheduleBackgroundWarmup(deadlineMs = 50): void {
 		if (this.disposed) return
 
-		const pendingTasks = Array.from(this.tasks.values()).filter(t => t.status === 'pending')
+		const pendingTasks = Array.from(this.tasks.values()).filter((t) => t.status === 'pending')
 		if (pendingTasks.length === 0) return
 
 		const loadNext = () => {
@@ -392,10 +401,10 @@ export class CanvasWarmupCoordinator {
 	getStatus(): WarmupStatus {
 		const tasks = Array.from(this.tasks.values())
 		const total = tasks.length
-		const pending = tasks.filter(t => t.status === 'pending').length
-		const loading = tasks.filter(t => t.status === 'loading').length
-		const ready = tasks.filter(t => t.status === 'ready').length
-		const error = tasks.filter(t => t.status === 'error').length
+		const pending = tasks.filter((t) => t.status === 'pending').length
+		const loading = tasks.filter((t) => t.status === 'loading').length
+		const ready = tasks.filter((t) => t.status === 'ready').length
+		const error = tasks.filter((t) => t.status === 'error').length
 		const completed = ready + error
 
 		return {
@@ -412,11 +421,18 @@ export class CanvasWarmupCoordinator {
 	/**
 	 * 获取指定主题的预热状态
 	 */
-	getThemeStatus(theme: 'dark' | 'light'): { total: number; ready: number; pending: number; progress: number } {
-		const themeTasks = Array.from(this.tasks.values()).filter(t => t.theme === theme)
+	getThemeStatus(theme: 'dark' | 'light'): {
+		total: number
+		ready: number
+		pending: number
+		progress: number
+	} {
+		const themeTasks = Array.from(this.tasks.values()).filter((t) => t.theme === theme)
 		const total = themeTasks.length
-		const ready = themeTasks.filter(t => t.status === 'ready').length
-		const pending = themeTasks.filter(t => t.status === 'pending' || t.status === 'loading').length
+		const ready = themeTasks.filter((t) => t.status === 'ready').length
+		const pending = themeTasks.filter(
+			(t) => t.status === 'pending' || t.status === 'loading'
+		).length
 		return {
 			total,
 			ready,
@@ -430,8 +446,8 @@ export class CanvasWarmupCoordinator {
 	 */
 	getFailedNodeIds(): string[] {
 		return Array.from(this.tasks.values())
-			.filter(t => t.status === 'error')
-			.map(t => t.nodeId)
+			.filter((t) => t.status === 'error')
+			.map((t) => t.nodeId)
 	}
 
 	/**
@@ -462,7 +478,7 @@ export class CanvasWarmupCoordinator {
 	 * 重试失败的任务
 	 */
 	async retryFailed(): Promise<void> {
-		const failedTasks = Array.from(this.tasks.values()).filter(t => t.status === 'error')
+		const failedTasks = Array.from(this.tasks.values()).filter((t) => t.status === 'error')
 
 		for (const task of failedTasks) {
 			task.status = 'pending'
@@ -482,7 +498,9 @@ export class CanvasWarmupCoordinator {
 	 * 是否有待处理的任务
 	 */
 	hasPendingTasks(): boolean {
-		return Array.from(this.tasks.values()).some(t => t.status === 'pending' || t.status === 'loading')
+		return Array.from(this.tasks.values()).some(
+			(t) => t.status === 'pending' || t.status === 'loading'
+		)
 	}
 
 	/**
@@ -490,7 +508,7 @@ export class CanvasWarmupCoordinator {
 	 */
 	hasPendingTasksForTheme(theme: 'dark' | 'light'): boolean {
 		return Array.from(this.tasks.values()).some(
-			t => t.theme === theme && (t.status === 'pending' || t.status === 'loading')
+			(t) => t.theme === theme && (t.status === 'pending' || t.status === 'loading')
 		)
 	}
 
@@ -542,10 +560,19 @@ export const formatWarmupDetail = (
 ): string => {
 	switch (phase) {
 		case 'dom-screenshot':
-			return t('aiworkflow.runtime.domScreenshotProgress', { completed: String(domCompleted), total: String(domTotal) })
+			return t('aiworkflow.runtime.domScreenshotProgress', {
+				completed: String(domCompleted),
+				total: String(domTotal)
+			})
 		case 'canvas-texture':
-			return t('aiworkflow.runtime.canvasTextureProgress', { completed: String(canvasCompleted), total: String(canvasTotal) })
+			return t('aiworkflow.runtime.canvasTextureProgress', {
+				completed: String(canvasCompleted),
+				total: String(canvasTotal)
+			})
 		case 'complete':
-			return t('aiworkflow.runtime.warmupFinalProgress', { domTotal: String(domTotal), canvasTotal: String(canvasTotal) })
+			return t('aiworkflow.runtime.warmupFinalProgress', {
+				domTotal: String(domTotal),
+				canvasTotal: String(canvasTotal)
+			})
 	}
 }

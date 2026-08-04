@@ -8,14 +8,22 @@
 import { computed } from 'vue'
 import { useI18n } from '../../i18n'
 
-type SteamStatus = 'online' | 'away' | 'busy' | 'snooze' | 'looking-to-trade' | 'looking-to-play' | 'offline' | 'in-game'
+type SteamStatus =
+	| 'online'
+	| 'away'
+	| 'busy'
+	| 'snooze'
+	| 'looking-to-trade'
+	| 'looking-to-play'
+	| 'offline'
+	| 'in-game'
 
 interface Props {
 	status?: SteamStatus
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	status: 'offline',
+	status: 'offline'
 })
 
 const { t } = useI18n()
@@ -24,14 +32,14 @@ const statusClass = computed(() => `status-${props.status}`)
 
 const statusLabel = computed(() => {
 	const labels: Record<SteamStatus, string> = {
-		'online': t('steam.friendStatus.online'),
-		'away': t('steam.friendStatus.away'),
-		'busy': t('steam.friendStatus.busy'),
-		'snooze': t('steam.friendStatus.snooze'),
+		online: t('steam.friendStatus.online'),
+		away: t('steam.friendStatus.away'),
+		busy: t('steam.friendStatus.busy'),
+		snooze: t('steam.friendStatus.snooze'),
 		'looking-to-trade': t('steam.friendStatus.lookingToTrade'),
 		'looking-to-play': t('steam.friendStatus.lookingToPlay'),
-		'offline': t('steam.friendStatus.offline'),
-		'in-game': t('steam.friendStatus.inGame'),
+		offline: t('steam.friendStatus.offline'),
+		'in-game': t('steam.friendStatus.inGame')
 	}
 	return labels[props.status] || t('steam.status.unknown')
 })
@@ -51,7 +59,9 @@ const statusLabel = computed(() => {
 	border-radius: 50%;
 	background: var(--theme-text-muted, #6e6e6e);
 	border: 2px solid var(--theme-bg-primary, #181818);
-	transition: background 200ms ease, box-shadow 200ms ease;
+	transition:
+		background 200ms ease,
+		box-shadow 200ms ease;
 }
 
 .status-online .badge-dot {

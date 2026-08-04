@@ -3,7 +3,8 @@ import {
 	anchorKind,
 	canLinkAnchors,
 	normalizeAnchorMediaType,
-	anchorKindLabel
+	anchorKindLabel,
+	findBestInputAnchorForOutput
 } from '../../../../src/aiworkflow/domain/link/anchorKinds'
 import type { WorkflowNode } from '../../../../src/aiworkflow/types'
 

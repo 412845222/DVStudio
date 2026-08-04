@@ -52,7 +52,9 @@ function saveImageToProject(projectId, tempImageInfo, filename) {
 
 	const projectRoot = getProjectRootById(pid)
 	if (!projectRoot) {
-		console.warn(`[gemini] Project root not found for projectId=${pid}, cannot save to project directory`)
+		console.warn(
+			`[gemini] Project root not found for projectId=${pid}, cannot save to project directory`
+		)
 		return null
 	}
 
@@ -139,9 +141,10 @@ export function createTaskRecord(ctx, payload) {
 	const imageSize = String(payload?.imageSize || '2K').trim()
 	const thinkingLevel = String(payload?.thinkingLevel || 'minimal').trim()
 	const numImages = Number(payload?.numImages || 1)
-	const projectId = payload?.projectId !== undefined && payload?.projectId !== null && payload?.projectId !== ''
-		? Number(payload.projectId) || null
-		: null
+	const projectId =
+		payload?.projectId !== undefined && payload?.projectId !== null && payload?.projectId !== ''
+			? Number(payload.projectId) || null
+			: null
 	const nodeId = String(payload?.nodeId || '').trim()
 
 	const result = repo.upsert({
@@ -185,14 +188,17 @@ export function updateTaskStatus(ctx, taskId, patch) {
 
 	const updates = { taskId: key }
 	if (patch.status !== undefined) updates.status = String(patch.status)
-	if (patch.progress !== undefined) updates.progress = Math.max(0, Math.min(100, Number(patch.progress) || 0))
+	if (patch.progress !== undefined)
+		updates.progress = Math.max(0, Math.min(100, Number(patch.progress) || 0))
 	if (patch.errorMessage !== undefined) updates.errorMessage = String(patch.errorMessage)
 	if (patch.errorCode !== undefined) updates.errorCode = String(patch.errorCode)
 	if (patch.statusText !== undefined) updates.statusText = String(patch.statusText)
-	if (patch.resultImages !== undefined) updates.resultImages = Array.isArray(patch.resultImages) ? patch.resultImages : []
+	if (patch.resultImages !== undefined)
+		updates.resultImages = Array.isArray(patch.resultImages) ? patch.resultImages : []
 	if (patch.thumbnailUrl !== undefined) updates.thumbnailUrl = String(patch.thumbnailUrl)
 	if (patch.responsePayload !== undefined) updates.responsePayload = patch.responsePayload
-	if (patch.completedAt !== undefined) updates.completedAt = patch.completedAt || new Date().toISOString()
+	if (patch.completedAt !== undefined)
+		updates.completedAt = patch.completedAt || new Date().toISOString()
 
 	const result = repo.upsert(updates)
 	if (!result.ok) {
@@ -350,8 +356,7 @@ export function deleteTask(ctx, payload) {
 			if (img.localPath && fs.existsSync(img.localPath)) {
 				try {
 					fs.unlinkSync(img.localPath)
-				} catch {
-				}
+				} catch {}
 			}
 		}
 	}
@@ -380,8 +385,7 @@ export function clearCompleted(ctx, payload) {
 				if (img.localPath && fs.existsSync(img.localPath)) {
 					try {
 						fs.unlinkSync(img.localPath)
-					} catch {
-					}
+					} catch {}
 				}
 			}
 		}

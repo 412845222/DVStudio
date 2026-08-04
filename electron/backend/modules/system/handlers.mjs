@@ -10,8 +10,10 @@ import { getManager } from '../../../platform/manager.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function parseVersion(versionStr) {
-	const cleaned = String(versionStr || '').replace(/^[vV]/, '').trim()
-	const parts = cleaned.split('.').map(p => {
+	const cleaned = String(versionStr || '')
+		.replace(/^[vV]/, '')
+		.trim()
+	const parts = cleaned.split('.').map((p) => {
 		const num = parseInt(p, 10)
 		return isNaN(num) ? 0 : num
 	})
@@ -20,7 +22,7 @@ function parseVersion(versionStr) {
 		major: parts[0],
 		minor: parts[1],
 		patch: parts[2],
-		raw: cleaned,
+		raw: cleaned
 	}
 }
 
@@ -33,76 +35,80 @@ function compareVersions(v1, v2) {
 }
 
 export async function health(ctx) {
-  return {
-    status: 'ok',
-    timestamp: Date.now(),
-    localdb: !!ctx.localdb,
-    db: !!ctx.db,
-  }
+	return {
+		status: 'ok',
+		timestamp: Date.now(),
+		localdb: !!ctx.localdb,
+		db: !!ctx.db
+	}
 }
 
 export async function echo(ctx, payload) {
-  return {
-    echo: payload,
-    timestamp: Date.now(),
-  }
+	return {
+		echo: payload,
+		timestamp: Date.now()
+	}
 }
 
 export async function userAgreement() {
-  const agreementPath = path.resolve(__dirname, '../../../dwebapp/user_agreement_and_security.md')
-  try {
-    if (fs.existsSync(agreementPath)) {
-      const content = fs.readFileSync(agreementPath, 'utf-8')
-      return { content }
-    }
-  } catch {}
-  
-  return { content: '# User Agreement\n\nWelcome to DVStudio.' }
+	const agreementPath = path.resolve(__dirname, '../../../dwebapp/user_agreement_and_security.md')
+	try {
+		if (fs.existsSync(agreementPath)) {
+			const content = fs.readFileSync(agreementPath, 'utf-8')
+			return { content }
+		}
+	} catch {}
+
+	return { content: '# User Agreement\n\nWelcome to DVStudio.' }
 }
 
 export async function migrationStatus(ctx) {
-  const checklist = getMigrationSummary()
-  
-  const registeredChannels = getBackendRouter()?.getRegisteredChannels() || []
-  
-  const dbTables = []
-  if (ctx.db) {
-    try {
-      const rows = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
-      for (const row of rows) dbTables.push(row.name)
-    } catch {}
-  }
+	const checklist = getMigrationSummary()
 
-  for (const [modKey, mod] of Object.entries(checklist.modules)) {
-    for (const item of mod.items) {
-      if (item.ipcChannel && item.ipcChannel.includes('*')) {
-        const prefix = item.ipcChannel.replace('*', '')
-        item.runtimeRegistered = registeredChannels.some(ch => ch.startsWith(prefix))
-      } else if (item.ipcChannel) {
-        item.runtimeRegistered = registeredChannels.includes(item.ipcChannel)
-      } else {
-        item.runtimeRegistered = null
-      }
+	const registeredChannels = getBackendRouter()?.getRegisteredChannels() || []
 
-      if (item.status === 'done') {
-        item.verified = item.runtimeRegistered !== false
-      } else {
-        item.verified = false
-      }
-    }
-  }
+	const dbTables = []
+	if (ctx.db) {
+		try {
+			const rows = ctx.db
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+				)
+				.all()
+			for (const row of rows) dbTables.push(row.name)
+		} catch {}
+	}
 
-  return {
-    ...checklist,
-    runtime: {
-      registeredChannels,
-      dbTables,
-      backendRunning: !!getBackendRouter(),
-      localdbConnected: !!ctx.db,
-      djangoRunning: false,
-      mode: 'migration',
-    },
-  }
+	for (const [modKey, mod] of Object.entries(checklist.modules)) {
+		for (const item of mod.items) {
+			if (item.ipcChannel && item.ipcChannel.includes('*')) {
+				const prefix = item.ipcChannel.replace('*', '')
+				item.runtimeRegistered = registeredChannels.some((ch) => ch.startsWith(prefix))
+			} else if (item.ipcChannel) {
+				item.runtimeRegistered = registeredChannels.includes(item.ipcChannel)
+			} else {
+				item.runtimeRegistered = null
+			}
+
+			if (item.status === 'done') {
+				item.verified = item.runtimeRegistered !== false
+			} else {
+				item.verified = false
+			}
+		}
+	}
+
+	return {
+		...checklist,
+		runtime: {
+			registeredChannels,
+			dbTables,
+			backendRunning: !!getBackendRouter(),
+			localdbConnected: !!ctx.db,
+			djangoRunning: false,
+			mode: 'migration'
+		}
+	}
 }
 
 export async function isSteam() {
@@ -111,12 +117,12 @@ export async function isSteam() {
 		const status = mgr.getStatus()
 		return {
 			ok: true,
-			isSteam: status.activePlatform === 'steam',
+			isSteam: status.activePlatform === 'steam'
 		}
 	} catch {
 		return {
 			ok: true,
-			isSteam: false,
+			isSteam: false
 		}
 	}
 }
@@ -132,7 +138,7 @@ export async function checkUpdate() {
 				ok: true,
 				skipped: true,
 				reason: 'steam',
-				currentVersion: APP_VERSION,
+				currentVersion: APP_VERSION
 			}
 		}
 
@@ -141,7 +147,7 @@ export async function checkUpdate() {
 			return {
 				ok: false,
 				error: 'Invalid repository URL',
-				currentVersion: APP_VERSION,
+				currentVersion: APP_VERSION
 			}
 		}
 
@@ -152,17 +158,17 @@ export async function checkUpdate() {
 		const httpClient = getHttpClient()
 		const response = await httpClient.get(apiUrl, {
 			headers: {
-				'Accept': 'application/vnd.github.v3+json',
-				'User-Agent': 'DVStudio-UpdateChecker',
+				Accept: 'application/vnd.github.v3+json',
+				'User-Agent': 'DVStudio-UpdateChecker'
 			},
-			timeout: 10000,
+			timeout: 10000
 		})
 
 		if (!response.ok) {
 			return {
 				ok: false,
 				error: `GitHub API request failed with status ${response.status}`,
-				currentVersion: APP_VERSION,
+				currentVersion: APP_VERSION
 			}
 		}
 
@@ -176,7 +182,7 @@ export async function checkUpdate() {
 			return {
 				ok: false,
 				error: 'Could not parse version from release',
-				currentVersion: APP_VERSION,
+				currentVersion: APP_VERSION
 			}
 		}
 
@@ -191,13 +197,13 @@ export async function checkUpdate() {
 			releaseNotes,
 			publishedAt,
 			isPrerelease: !!releaseData.prerelease,
-			isDraft: !!releaseData.draft,
+			isDraft: !!releaseData.draft
 		}
 	} catch (err) {
 		return {
 			ok: false,
 			error: err?.message || String(err),
-			currentVersion: APP_VERSION,
+			currentVersion: APP_VERSION
 		}
 	}
 }

@@ -3,10 +3,18 @@ import * as handlers from './handlers.mjs'
 export const routes = [
 	{ channel: 'dweb:agent-skills:scene-understand:models', handler: handlers.sceneUnderstandModels },
 	{ channel: 'dweb:agent-skills:scene-understand:run', handler: handlers.sceneUnderstandRun },
-	{ channel: 'dweb:agent-skills:scene-understand:run:stream', handler: handlers.sceneUnderstandRunStream, stream: true },
+	{
+		channel: 'dweb:agent-skills:scene-understand:run:stream',
+		handler: handlers.sceneUnderstandRunStream,
+		stream: true
+	},
 	{ channel: 'dweb:agent-skills:scene-lighting:models', handler: handlers.sceneLightingModels },
 	{ channel: 'dweb:agent-skills:scene-lighting:run', handler: handlers.sceneLightingRun },
-	{ channel: 'dweb:agent-skills:scene-lighting:run:stream', handler: handlers.sceneLightingRunStream, stream: true },
+	{
+		channel: 'dweb:agent-skills:scene-lighting:run:stream',
+		handler: handlers.sceneLightingRunStream,
+		stream: true
+	},
 	{ channel: 'dweb:agent-skills:scene-layout:run', handler: handlers.sceneLayoutRun },
 	{ channel: 'dweb:agent-skills:unreal:sessions', handler: handlers.unrealSessions },
 	{ channel: 'dweb:agent-skills:unreal:register', handler: handlers.unrealRegister },
@@ -20,5 +28,8 @@ export const routes = [
 	{ channel: 'dweb:agent-skills:unreal:check-plugin', handler: handlers.unrealCheckPlugin },
 	{ channel: 'dweb:agent-skills:unreal:install-plugin', handler: handlers.unrealInstallPlugin },
 	{ channel: 'dweb:agent-skills:unreal:get-plugin-info', handler: handlers.unrealGetPluginInfo },
-	{ channel: 'dweb:agent-skills:unreal:disconnect-session', handler: handlers.unrealDisconnectSession },
+	{
+		channel: 'dweb:agent-skills:unreal:disconnect-session',
+		handler: handlers.unrealDisconnectSession
+	}
 ]

@@ -47,7 +47,9 @@
 					</button>
 					<button class="wf-tripo3d-panel-btn" type="button" @click="toggleMinimize">-</button>
 					<button class="wf-tripo3d-panel-btn" type="button" @click="toggleMaximize">[]</button>
-					<button class="wf-tripo3d-panel-btn danger" type="button" @click="emit('close')">x</button>
+					<button class="wf-tripo3d-panel-btn danger" type="button" @click="emit('close')">
+						x
+					</button>
 				</div>
 			</div>
 
@@ -70,7 +72,9 @@
 					>
 						{{ refreshBusy ? t('tasks.tripo3d.syncing') : t('tasks.tripo3d.syncBackend') }}
 					</button>
-					<div class="wf-tripo3d-panel-stats">{{ t('tasks.tripo3d.totalCount', { count: filteredTasks.length }) }}</div>
+					<div class="wf-tripo3d-panel-stats">
+						{{ t('tasks.tripo3d.totalCount', { count: filteredTasks.length }) }}
+					</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-tripo3d-panel-empty">
@@ -86,7 +90,10 @@
 						>
 							<div class="wf-tripo3d-task-card-top">
 								<div class="wf-tripo3d-task-chip-row">
-									<span class="wf-tripo3d-task-chip" :class="{ 'is-image': task.taskType === 'image' }">
+									<span
+										class="wf-tripo3d-task-chip"
+										:class="{ 'is-image': task.taskType === 'image' }"
+									>
 										{{ task.typeLabel }}
 									</span>
 									<span class="wf-tripo3d-task-chip subtle">{{ task.modeLabel }}</span>
@@ -140,7 +147,11 @@
 										:disabled="isBusy(task, 'refresh')"
 										@click="onTaskAction(task, 'refresh')"
 									>
-										{{ isBusy(task, 'refresh') ? t('tasks.tripo3d.refreshing') : t('tasks.tripo3d.refreshStatus') }}
+										{{
+											isBusy(task, 'refresh')
+												? t('tasks.tripo3d.refreshing')
+												: t('tasks.tripo3d.refreshStatus')
+										}}
 									</button>
 									<button
 										class="wf-tripo3d-task-preview-btn"
@@ -148,7 +159,11 @@
 										:disabled="isBusy(task, 'import-output')"
 										@click="onTaskAction(task, 'import-output')"
 									>
-										{{ isBusy(task, 'import-output') ? t('tasks.tripo3d.pulling') : t('tasks.tripo3d.pullArtifacts') }}
+										{{
+											isBusy(task, 'import-output')
+												? t('tasks.tripo3d.pulling')
+												: t('tasks.tripo3d.pullArtifacts')
+										}}
 									</button>
 									<button
 										class="wf-tripo3d-task-preview-btn"
@@ -156,7 +171,11 @@
 										:disabled="isBusy(task, 'stop')"
 										@click="onTaskAction(task, 'stop')"
 									>
-										{{ isBusy(task, 'stop') ? t('tasks.tripo3d.stopping') : t('tasks.tripo3d.stopTask') }}
+										{{
+											isBusy(task, 'stop')
+												? t('tasks.tripo3d.stopping')
+												: t('tasks.tripo3d.stopTask')
+										}}
 									</button>
 									<button
 										class="wf-tripo3d-task-preview-btn danger"
@@ -164,7 +183,11 @@
 										:disabled="isBusy(task, 'delete')"
 										@click="onTaskAction(task, 'delete')"
 									>
-										{{ isBusy(task, 'delete') ? t('tasks.tripo3d.deleting') : t('tasks.tripo3d.deleteTask') }}
+										{{
+											isBusy(task, 'delete')
+												? t('tasks.tripo3d.deleting')
+												: t('tasks.tripo3d.deleteTask')
+										}}
 									</button>
 								</div>
 							</div>
@@ -223,7 +246,9 @@
 							</div>
 						</div>
 
-						<div v-if="detailLoading" class="wf-tripo3d-task-detail-loading">{{ t('tasks.tripo3d.loadingDetails') }}</div>
+						<div v-if="detailLoading" class="wf-tripo3d-task-detail-loading">
+							{{ t('tasks.tripo3d.loadingDetails') }}
+						</div>
 						<div v-else-if="detailTask" class="wf-tripo3d-task-detail-body">
 							<div class="wf-tripo3d-task-detail-grid">
 								<div class="wf-tripo3d-task-detail-card">
@@ -257,7 +282,9 @@
 									</div>
 								</div>
 								<div v-if="detailTask.modelVersion" class="wf-tripo3d-task-detail-card">
-									<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.modelVersion') }}</div>
+									<div class="wf-tripo3d-task-detail-label">
+										{{ t('tasks.tripo3d.modelVersion') }}
+									</div>
 									<div class="wf-tripo3d-task-detail-value highlight">
 										{{ detailTask.modelVersion }}
 									</div>
@@ -265,7 +292,9 @@
 								<div v-if="detailTask.texture != null" class="wf-tripo3d-task-detail-card">
 									<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.texture') }}</div>
 									<div class="wf-tripo3d-task-detail-value">
-										{{ detailTask.texture ? t('tasks.tripo3d.enabled') : t('tasks.tripo3d.disabled') }}
+										{{
+											detailTask.texture ? t('tasks.tripo3d.enabled') : t('tasks.tripo3d.disabled')
+										}}
 									</div>
 								</div>
 								<div v-if="detailTask.pbr != null" class="wf-tripo3d-task-detail-card">
@@ -287,7 +316,9 @@
 								<div class="wf-tripo3d-task-detail-block">{{ detailTask.prompt }}</div>
 							</div>
 							<div v-if="detailTask.negativePrompt" class="wf-tripo3d-task-detail-section">
-								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.negativePrompt') }}</div>
+								<div class="wf-tripo3d-task-detail-label">
+									{{ t('tasks.tripo3d.negativePrompt') }}
+								</div>
 								<div class="wf-tripo3d-task-detail-block">
 									{{ detailTask.negativePrompt }}
 								</div>
@@ -297,13 +328,20 @@
 								<div class="wf-tripo3d-task-detail-block">{{ detailTask.statusText }}</div>
 							</div>
 							<div v-if="detailTask.errorMessage" class="wf-tripo3d-task-detail-section">
-								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.errorMessage') }}</div>
+								<div class="wf-tripo3d-task-detail-label">
+									{{ t('tasks.tripo3d.errorMessage') }}
+								</div>
 								<div class="wf-tripo3d-task-detail-block error">
 									{{ detailTask.errorMessage }}
 								</div>
 							</div>
 							<div
-								v-if="detailTask.modelUrl || detailTask.imageUrls?.length || detailTask.assetUrl || detailTask.assetPath"
+								v-if="
+									detailTask.modelUrl ||
+									detailTask.imageUrls?.length ||
+									detailTask.assetUrl ||
+									detailTask.assetPath
+								"
 								class="wf-tripo3d-task-detail-section"
 							>
 								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.artifacts') }}</div>
@@ -314,8 +352,14 @@
 											:key="imgIdx"
 											class="wf-tripo3d-task-detail-block"
 										>
-											<img :src="imgUrl" :alt="`Generated image ${imgIdx + 1}`" style="max-width: 100%; height: auto;" />
-											<div class="monospace" style="margin-top: 6px; word-break: break-all;">{{ imgUrl }}</div>
+											<img
+												:src="imgUrl"
+												:alt="`Generated image ${imgIdx + 1}`"
+												style="max-width: 100%; height: auto"
+											/>
+											<div class="monospace" style="margin-top: 6px; word-break: break-all">
+												{{ imgUrl }}
+											</div>
 										</div>
 									</template>
 									<div
@@ -333,15 +377,21 @@
 								</div>
 							</div>
 							<div v-if="detailRequestJson" class="wf-tripo3d-task-detail-section">
-								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.requestPayload') }}</div>
+								<div class="wf-tripo3d-task-detail-label">
+									{{ t('tasks.tripo3d.requestPayload') }}
+								</div>
 								<pre class="wf-tripo3d-task-detail-code">{{ detailRequestJson }}</pre>
 							</div>
 							<div v-if="detailResponseJson" class="wf-tripo3d-task-detail-section">
-								<div class="wf-tripo3d-task-detail-label">{{ t('tasks.tripo3d.responsePayload') }}</div>
+								<div class="wf-tripo3d-task-detail-label">
+									{{ t('tasks.tripo3d.responsePayload') }}
+								</div>
 								<pre class="wf-tripo3d-task-detail-code">{{ detailResponseJson }}</pre>
 							</div>
 						</div>
-						<div v-else class="wf-tripo3d-task-detail-empty">{{ t('tasks.tripo3d.noDetails') }}</div>
+						<div v-else class="wf-tripo3d-task-detail-empty">
+							{{ t('tasks.tripo3d.noDetails') }}
+						</div>
 					</div>
 				</div>
 			</div>
@@ -390,7 +440,10 @@ import type {
 	Tripo3DTaskPanelDetail,
 	Tripo3DTaskPanelItem
 } from '../../views/AIWorkflow/node-business/tripo3d/types'
-import { buildTripo3DDragDataTransfer, TRI_PO3D_TASK_DRAG_MIME } from '../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DDrop'
+import {
+	buildTripo3DDragDataTransfer,
+	TRI_PO3D_TASK_DRAG_MIME
+} from '../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DDrop'
 
 const { t } = useI18n()
 
@@ -533,13 +586,7 @@ const filteredTasks = computed(() => {
 	let list = Array.isArray(props.tasks) ? props.tasks.slice() : []
 
 	const matchesKeyword = (item: Tripo3DTaskPanelItem) => {
-		const hay = [
-			item.title,
-			item.modeLabel,
-			item.promptPreview,
-			item.metaText,
-			item.taskId
-		]
+		const hay = [item.title, item.modeLabel, item.promptPreview, item.metaText, item.taskId]
 			.map((x) => String(x ?? '').toLowerCase())
 			.join('\n')
 		return hay.includes(keyword)

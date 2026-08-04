@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -266,6 +267,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'media-ready'): void
 	(e: 'preview-request', payload: { imageUrl: string }): void
+	(e: 'invalidate-screenshot'): void
 }>()
 
 const onStartLink = (payload: {
@@ -303,7 +305,19 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 	emit('resize', payload)
 }
 
+let invalidateScreenshotTimer: number | null = null
+const scheduleInvalidateScreenshot = (delayMs: number = 150) => {
+	if (invalidateScreenshotTimer != null) {
+		clearTimeout(invalidateScreenshotTimer)
+	}
+	invalidateScreenshotTimer = window.setTimeout(() => {
+		invalidateScreenshotTimer = null
+		emit('invalidate-screenshot')
+	}, delayMs)
+}
+
 const fileInput = ref<HTMLInputElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 
 const onPreviewContextMenu = (e: MouseEvent) => {
 	emit('select', props.nodeId)
@@ -685,11 +699,13 @@ const initPreviewLayoutObserver = () => {
 }
 
 const onPreviewImageLoad = () => {
+	scheduleInvalidateScreenshot(50)
 	if (usingPreviewResource.value) {
 		if (!naturalWidth.value || !naturalHeight.value || pendingResourceReset.value) {
 			void ensureNaturalSizeFallback()
 		}
 		emit('media-ready')
+		nextTick(() => baseRef.value?.requestAutoResize())
 		return
 	}
 
@@ -701,6 +717,7 @@ const onPreviewImageLoad = () => {
 		const needsUpdate = w !== naturalWidth.value || h !== naturalHeight.value
 		if (!needsUpdate && !pendingResourceReset.value) {
 			emit('media-ready')
+			nextTick(() => baseRef.value?.requestAutoResize())
 			return
 		}
 
@@ -731,6 +748,7 @@ const onPreviewImageError = (event?: Event) => {
 	scheduleInvalidateScreenshot(50)
 	if (usingPreviewResource.value) {
 		failedPreviewUrl.value = activePreviewUrl.value
+		scheduleInvalidateScreenshot(100)
 		return
 	}
 	const sourceFilePath = normalizedResourceSourcePath.value
@@ -738,6 +756,7 @@ const onPreviewImageError = (event?: Event) => {
 		const fileUrl = toFileUrl(sourceFilePath)
 		if (fileUrl) {
 			resourceFallbackUrl.value = fileUrl
+			scheduleInvalidateScreenshot(100)
 			return
 		}
 	}
@@ -748,6 +767,7 @@ watch(
 	() => [props.resourcePreviewUrl320, props.resourcePreviewUrl640],
 	() => {
 		failedPreviewUrl.value = ''
+		scheduleInvalidateScreenshot(100)
 	}
 )
 
@@ -762,6 +782,7 @@ watch(
 			lastResourceUrl.value = ''
 			failedPreviewUrl.value = ''
 			resourceFallbackUrl.value = ''
+			scheduleInvalidateScreenshot(50)
 			return
 		}
 		if (next !== prev || next !== lastResourceUrl.value) {
@@ -770,6 +791,7 @@ watch(
 			failedPreviewUrl.value = ''
 			resourceFallbackUrl.value = ''
 		}
+		scheduleInvalidateScreenshot(50)
 		initPreviewLayoutObserver()
 		await ensureNaturalSizeFallback()
 	},
@@ -793,6 +815,7 @@ watch(
 	() => [outputWidth.value, outputHeight.value],
 	async () => {
 		await nextTick()
+		scheduleInvalidateScreenshot(100)
 	},
 	{ flush: 'post' }
 )
@@ -884,8 +907,7 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex: 1;
-	min-height: 0;
+	flex-shrink: 0;
 	align-self: stretch;
 }
 
@@ -917,7 +939,7 @@ onBeforeUnmount(() => {
 	flex: 1 1 auto;
 	min-height: 200px;
 	border: 1px dashed var(--vscode-border);
-	border-radius: 0;
+	border-radius: 6px;
 	padding: 10px;
 	text-align: center;
 	color: var(--vscode-fg-muted);

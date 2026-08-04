@@ -4,7 +4,9 @@
 			<div class="wf-inspector-title">{{ t('aiworkflow.inspector.title') }}</div>
 		</div>
 
-		<div v-if="!hasSelection" class="wf-inspector-empty">{{ t('aiworkflow.inspector.noSelection') }}</div>
+		<div v-if="!hasSelection" class="wf-inspector-empty">
+			{{ t('aiworkflow.inspector.noSelection') }}
+		</div>
 
 		<div v-else class="wf-inspector-body">
 			<div class="wf-section">

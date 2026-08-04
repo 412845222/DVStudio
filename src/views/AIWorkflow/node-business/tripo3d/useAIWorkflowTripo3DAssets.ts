@@ -18,7 +18,7 @@ const getImageUrlsFromSettings = (settings: Record<string, unknown>): string[] =
 	const outputImages = settings.tripo3dOutputImages ?? settings.outputImages
 	if (isArray(outputImages)) {
 		const urls = outputImages.filter((u): u is string => typeof u === 'string' && !!u.trim())
-		if (urls.length > 0) return urls.map(u => u.trim())
+		if (urls.length > 0) return urls.map((u) => u.trim())
 	}
 	const outputSummary = isRecord(settings.tripo3dOutputSummary)
 		? settings.tripo3dOutputSummary
@@ -28,13 +28,13 @@ const getImageUrlsFromSettings = (settings: Record<string, unknown>): string[] =
 	const summaryImageUrls = outputSummary.imageUrls
 	if (isArray(summaryImageUrls)) {
 		const urls = summaryImageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim())
-		if (urls.length > 0) return urls.map(u => u.trim())
+		if (urls.length > 0) return urls.map((u) => u.trim())
 	}
 	const singleImage = normalizeText(
 		settings.tripo3dOutputImageUrl ??
-		settings.outputImageUrl ??
-		outputSummary.preferredUrl ??
-		settings.imageUrl
+			settings.outputImageUrl ??
+			outputSummary.preferredUrl ??
+			settings.imageUrl
 	)
 	return singleImage ? [singleImage] : []
 }
@@ -98,10 +98,10 @@ export const getTripo3DDisplayThumbnailUrl = (
 
 	const mode = normalizeText(
 		value.tripo3dTaskFamily ??
-		value.taskFamily ??
-		value.tripo3dTaskMode ??
-		value.taskMode ??
-		outputSummary.mode
+			value.taskFamily ??
+			value.tripo3dTaskMode ??
+			value.taskMode ??
+			outputSummary.mode
 	)
 
 	if (isTripo3DImageMode(mode)) {
@@ -231,29 +231,38 @@ const normalizeTripo3DTaskStatus = (value: unknown): Tripo3DTaskStatus => {
 	return 'idle'
 }
 
-export const pickTripo3DEffectiveOutput = (item: Record<string, unknown>): Tripo3DEffectiveOutput => {
+export const pickTripo3DEffectiveOutput = (
+	item: Record<string, unknown>
+): Tripo3DEffectiveOutput => {
 	const mode = normalizeText(item.mode ?? item.tripo3dTaskFamily ?? item.taskFamily)
 	const isImageTask = isTripo3DImageMode(mode)
 
 	const imageUrlsFromItem = (() => {
 		if (isArray(item.imageUrls)) {
-			return item.imageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+			return item.imageUrls
+				.filter((u): u is string => typeof u === 'string' && !!u.trim())
+				.map((u) => u.trim())
 		}
-		const outputSummary = isRecord(item.outputSummary) ? item.outputSummary :
-			isRecord(item.tripo3dOutputSummary) ? item.tripo3dOutputSummary : {}
+		const outputSummary = isRecord(item.outputSummary)
+			? item.outputSummary
+			: isRecord(item.tripo3dOutputSummary)
+				? item.tripo3dOutputSummary
+				: {}
 		if (isArray(outputSummary.imageUrls)) {
-			return outputSummary.imageUrls.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+			return outputSummary.imageUrls
+				.filter((u): u is string => typeof u === 'string' && !!u.trim())
+				.map((u) => u.trim())
 		}
 		const outputImages = item.tripo3dOutputImages ?? item.outputImages
 		if (isArray(outputImages)) {
-			return outputImages.filter((u): u is string => typeof u === 'string' && !!u.trim()).map(u => u.trim())
+			return outputImages
+				.filter((u): u is string => typeof u === 'string' && !!u.trim())
+				.map((u) => u.trim())
 		}
 		return []
 	})()
 
-	let thumbnailUrl = sanitizeTripo3DPreviewUrl(
-		item.effectiveThumbnailUrl ?? item.thumbnailUrl
-	)
+	let thumbnailUrl = sanitizeTripo3DPreviewUrl(item.effectiveThumbnailUrl ?? item.thumbnailUrl)
 	if (isImageTask && imageUrlsFromItem.length > 0 && !thumbnailUrl) {
 		thumbnailUrl = sanitizeTripo3DPreviewUrl(imageUrlsFromItem[0])
 	}
@@ -265,7 +274,7 @@ export const pickTripo3DEffectiveOutput = (item: Record<string, unknown>): Tripo
 	const localAssetPath = normalizeText(item.effectiveLocalAssetPath ?? item.localAssetPath)
 
 	return {
-		modelUrl: isImageTask ? (imageUrlsFromItem[0] || modelUrl) : modelUrl,
+		modelUrl: isImageTask ? imageUrlsFromItem[0] || modelUrl : modelUrl,
 		thumbnailUrl,
 		imageUrls: isImageTask ? imageUrlsFromItem : [],
 		localAssetUrl,

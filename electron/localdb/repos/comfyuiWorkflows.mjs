@@ -35,7 +35,7 @@ export function createComfyuiWorkflowsRepo() {
 		'INSERT INTO comfyui_workflows (id, name, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
 	)
 	const updateStmt = db.prepare(
-		"UPDATE comfyui_workflows SET name = ?, data = ?, updated_at = ? WHERE id = ?"
+		'UPDATE comfyui_workflows SET name = ?, data = ?, updated_at = ? WHERE id = ?'
 	)
 	const deleteStmt = db.prepare('DELETE FROM comfyui_workflows WHERE id = ?')
 
@@ -65,7 +65,7 @@ export function createComfyuiWorkflowsRepo() {
 		const existing = getStmt.get(wid)
 		if (!existing) return { ok: false, error: 'workflow not found' }
 		const newName = name !== undefined ? String(name).trim() : existing.name
-		const newData = data !== undefined ? (stringifyOptionalJson(data) || '{}') : existing.data
+		const newData = data !== undefined ? stringifyOptionalJson(data) || '{}' : existing.data
 		updateStmt.run(newName, newData, nowMs(), wid)
 		return { ok: true, workflow: serializeWorkflow(getStmt.get(wid)) }
 	}

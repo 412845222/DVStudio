@@ -1,11 +1,20 @@
 <template>
 	<div class="steam-user-card" v-if="user">
 		<div class="user-avatar-wrapper">
-			<div v-if="user.avatarUrl" class="user-avatar" :style="{ backgroundImage: `url(${user.avatarUrl})` }"></div>
+			<div
+				v-if="user.avatarUrl"
+				class="user-avatar"
+				:style="{ backgroundImage: `url(${user.avatarUrl})` }"
+			></div>
 			<div v-else class="user-avatar user-avatar-placeholder">
 				<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 					<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8" />
-					<path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+					<path
+						d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+					/>
 				</svg>
 			</div>
 			<SteamStatusBadge v-if="status" class="avatar-status" :status="status" />
@@ -24,11 +33,19 @@ import SteamStatusBadge from './SteamStatusBadge.vue'
 
 interface Props {
 	user: DwebPlatformUser | null
-	status?: 'online' | 'away' | 'busy' | 'snooze' | 'looking-to-trade' | 'looking-to-play' | 'offline' | 'in-game'
+	status?:
+		| 'online'
+		| 'away'
+		| 'busy'
+		| 'snooze'
+		| 'looking-to-trade'
+		| 'looking-to-play'
+		| 'offline'
+		| 'in-game'
 }
 
 withDefaults(defineProps<Props>(), {
-	status: 'online',
+	status: 'online'
 })
 
 const { t } = useI18n()

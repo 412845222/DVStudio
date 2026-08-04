@@ -1,14 +1,14 @@
 {
-  "aiworkflow.perfMonitor.lowFpsStreak": "连续 {count} 帧低于 {threshold} FPS",
-  "aiworkflow.perfMonitor.longTask": "长任务 {duration}ms",
-  "aiworkflow.perfMonitor.stable": "稳定",
-  "aiworkflow.perfMonitor.slowFrames": "轻微掉帧",
-  "aiworkflow.perfMonitor.significantDrop": "明显掉帧",
-  "aiworkflow.perfMonitor.zeroTimes": "0 次",
-  "aiworkflow.perfMonitor.timesWithMs": "{count} 次 / {ms}ms",
-  "aiworkflow.perfMonitor.nodesCount": "{visible} 可见 / {total} 总",
-  "aiworkflow.perfMonitor.edgesVisible": "{visible} 可见 / {total} 总",
-  "aiworkflow.perfMonitor.anomalyCountWithDetail": "{count} 次 / {detail}",
-  "aiworkflow.perfMonitor.nodesCountDetailed": "{visible} 可见 / {total} 总 / {compact} 轻量 / {full} 完整",
-  "aiworkflow.perfMonitor.itemCount": "{count} 条"
+	"aiworkflow.perfMonitor.lowFpsStreak": "连续 {count} 帧低于 {threshold} FPS",
+	"aiworkflow.perfMonitor.longTask": "长任务 {duration}ms",
+	"aiworkflow.perfMonitor.stable": "稳定",
+	"aiworkflow.perfMonitor.slowFrames": "轻微掉帧",
+	"aiworkflow.perfMonitor.significantDrop": "明显掉帧",
+	"aiworkflow.perfMonitor.zeroTimes": "0 次",
+	"aiworkflow.perfMonitor.timesWithMs": "{count} 次 / {ms}ms",
+	"aiworkflow.perfMonitor.nodesCount": "{visible} 可见 / {total} 总",
+	"aiworkflow.perfMonitor.edgesVisible": "{visible} 可见 / {total} 总",
+	"aiworkflow.perfMonitor.anomalyCountWithDetail": "{count} 次 / {detail}",
+	"aiworkflow.perfMonitor.nodesCountDetailed": "{visible} 可见 / {total} 总 / {compact} 轻量 / {full} 完整",
+	"aiworkflow.perfMonitor.itemCount": "{count} 条"
 }

@@ -254,22 +254,30 @@ let gridCacheColors: { bg: string; border: string; accent: string; muted: string
 const getGridColors = () => {
 	const style = getComputedStyle(document.documentElement)
 	return {
-		bg: style.getPropertyValue('--wf-page-bg').trim() ||
+		bg:
+			style.getPropertyValue('--wf-page-bg').trim() ||
 			style.getPropertyValue('--dweb-defualt').trim() ||
 			'#1e1e1e',
-		border: style.getPropertyValue('--wf-border').trim() ||
+		border:
+			style.getPropertyValue('--wf-border').trim() ||
 			style.getPropertyValue('--vscode-border').trim() ||
 			'rgba(0, 0, 0, 0.12)',
-		accent: style.getPropertyValue('--wf-primary').trim() ||
+		accent:
+			style.getPropertyValue('--wf-primary').trim() ||
 			style.getPropertyValue('--vscode-border-accent').trim() ||
 			'#1f9d84',
-		muted: style.getPropertyValue('--wf-text-muted').trim() ||
+		muted:
+			style.getPropertyValue('--wf-text-muted').trim() ||
 			style.getPropertyValue('--vscode-fg-muted').trim() ||
 			'#aeb8bd'
 	}
 }
 
-const buildGridPattern = (stepPx: number, majorStepPx: number, colors: { bg: string; border: string }) => {
+const buildGridPattern = (
+	stepPx: number,
+	majorStepPx: number,
+	colors: { bg: string; border: string }
+) => {
 	const tileSize = majorStepPx
 	const patternCanvas = document.createElement('canvas')
 	const dpr = GRID_DPR
@@ -359,7 +367,8 @@ const drawGrid = () => {
 	let stepPx = Math.max(16, stepWorld * z)
 	let majorStepPx = stepPx * 5
 
-	const needRebuildPattern = !gridPatternCache ||
+	const needRebuildPattern =
+		!gridPatternCache ||
 		gridPatternZoom !== z ||
 		!gridCacheColors ||
 		gridCacheColors.border !== colors.border ||

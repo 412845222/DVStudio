@@ -24,11 +24,15 @@ export const useAIWorkflowProjectTransfer = (payload: {
 	revokeTrackedObjectUrlsForResource: (resourceId: string) => void
 	getTrackedObjectUrlEntries: () => Array<[string, string]>
 	revokeObjectUrl: (key: string) => void
-	stripUnrealExportRuntimeFromSnapshot: (snapshot: AIWorkflowDraftSnapshot) => AIWorkflowDraftSnapshot
+	stripUnrealExportRuntimeFromSnapshot: (
+		snapshot: AIWorkflowDraftSnapshot
+	) => AIWorkflowDraftSnapshot
 	getObjectUrl: (key: string) => string | undefined
 	setObjectUrl: (key: string, url: string) => void
 	setValueByJsonPointer: (root: Record<string, unknown>, pointer: string, value: unknown) => boolean
-	sanitizeBlueprintSnapshotForRuntime: (snapshot: Record<string, unknown>) => AIWorkflowDraftSnapshot
+	sanitizeBlueprintSnapshotForRuntime: (
+		snapshot: Record<string, unknown>
+	) => AIWorkflowDraftSnapshot
 	hydrateBlueprintSnapshotSafely: (
 		snapshot: AIWorkflowDraftSnapshot,
 		sourceLabel: string
@@ -52,7 +56,11 @@ export const useAIWorkflowProjectTransfer = (payload: {
 	sanitizeFileNamePart: (value: string) => string
 	recoverComfyUIRunStates: (opts?: { silent?: boolean }) => Promise<void>
 }) => {
-	const onRequestImportProjectPackage = async (request: { file: File; templateCode?: string; subPath?: string }) => {
+	const onRequestImportProjectPackage = async (request: {
+		file: File
+		templateCode?: string
+		subPath?: string
+	}) => {
 		const file = request?.file
 		if (!file) return
 
@@ -92,7 +100,8 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			const missingAssets: string[] = []
 			const assetList = Array.isArray(parsed.assets) ? parsed.assets : []
 
-			const resolvedSubPath = request.subPath || (parsed.templateCode ? `template/${parsed.templateCode}` : undefined)
+			const resolvedSubPath =
+				request.subPath || (parsed.templateCode ? `template/${parsed.templateCode}` : undefined)
 			const resolvedBucket = 'assets'
 
 			for (const asset of assetList) {
@@ -125,7 +134,9 @@ export const useAIWorkflowProjectTransfer = (payload: {
 				if (shouldPersistAsset) {
 					// ── 落盘路径：写入项目文件夹并通过 IPC 注册 dweb:// URL ──
 					const arrayBuffer = await blob.arrayBuffer()
-					const assetFileName = filePath.startsWith('assets/') ? filePath.slice(7) : `${rid}-${target}.${guessExtFromBlob(blob, target)}`
+					const assetFileName = filePath.startsWith('assets/')
+						? filePath.slice(7)
+						: `${rid}-${target}.${guessExtFromBlob(blob, target)}`
 					const imported = await payload.importAssetFromBuffer!(
 						activeProjectId!,
 						arrayBuffer,
@@ -148,7 +159,11 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						const resolvedUrl = imported?.url ?? `package://${filePath}`
 						if (
 							!snapshotPointer ||
-							!payload.setValueByJsonPointer(nextSnapshot as Record<string, unknown>, snapshotPointer, resolvedUrl)
+							!payload.setValueByJsonPointer(
+								nextSnapshot as Record<string, unknown>,
+								snapshotPointer,
+								resolvedUrl
+							)
 						) {
 							missingAssets.push(`${filePath}#${snapshotPointer || 'pointer-missing'}`)
 							continue
@@ -172,7 +187,8 @@ export const useAIWorkflowProjectTransfer = (payload: {
 								resource.sourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
 								resource.projectRelativePath = imported?.relativePath ?? undefined
 							} else if (target === 'posterUrl') {
-								resource.posterSourcePath = imported?.absolutePath ?? imported?.relativePath ?? undefined
+								resource.posterSourcePath =
+									imported?.absolutePath ?? imported?.relativePath ?? undefined
 							}
 							resource.localFileKey = undefined
 						}
@@ -192,7 +208,11 @@ export const useAIWorkflowProjectTransfer = (payload: {
 						}
 						if (
 							!snapshotPointer ||
-							!payload.setValueByJsonPointer(nextSnapshot as Record<string, unknown>, snapshotPointer, objectUrl)
+							!payload.setValueByJsonPointer(
+								nextSnapshot as Record<string, unknown>,
+								snapshotPointer,
+								objectUrl
+							)
 						) {
 							try {
 								URL.revokeObjectURL(objectUrl)
@@ -265,18 +285,30 @@ export const useAIWorkflowProjectTransfer = (payload: {
 
 			// 此时 currentProjectId 已是最终值 → 运行时清洗能构建正确的 dweb:// URL
 			const runtimeSafeSnapshot = payload.sanitizeBlueprintSnapshotForRuntime(nextSnapshot)
-			if (!payload.hydrateBlueprintSnapshotSafely(runtimeSafeSnapshot, t('aiworkflow.runtime.importProjectPackageSource'))) return
+			if (
+				!payload.hydrateBlueprintSnapshotSafely(
+					runtimeSafeSnapshot,
+					t('aiworkflow.runtime.importProjectPackageSource')
+				)
+			)
+				return
 			payload.resetCurrentUnrealExportNodeRuntimeState()
 
 			await payload.recoverComfyUIRunStates({ silent: true })
 
 			if (missingAssets.length > 0) {
-				payload.pushToast(t('aiworkflow.toast.projectImportIncomplete', { count: missingAssets.length }), 'warn')
+				payload.pushToast(
+					t('aiworkflow.toast.projectImportIncomplete', { count: missingAssets.length }),
+					'warn'
+				)
 			} else {
 				payload.pushToast(t('aiworkflow.runtime.projectPackageImportSuccess'), 'info')
 			}
 		} catch (err: unknown) {
-			payload.pushToast(t('aiworkflow.runtime.projectPackageImportFailed', { error: getErrorMessage(err) }), 'error')
+			payload.pushToast(
+				t('aiworkflow.runtime.projectPackageImportFailed', { error: getErrorMessage(err) }),
+				'error'
+			)
 		}
 	}
 
@@ -300,7 +332,10 @@ export const useAIWorkflowProjectTransfer = (payload: {
 			URL.revokeObjectURL(url)
 			payload.pushToast(t('aiworkflow.runtime.blueprintJsonExported'), 'info')
 		} catch (err: unknown) {
-			payload.pushToast(t('aiworkflow.runtime.exportFailedWithError', { error: getErrorMessage(err) }), 'error')
+			payload.pushToast(
+				t('aiworkflow.runtime.exportFailedWithError', { error: getErrorMessage(err) }),
+				'error'
+			)
 		}
 	}
 

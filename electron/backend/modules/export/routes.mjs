@@ -9,5 +9,5 @@ export const routes = [
 	{ channel: 'dweb:export:frames:upload', handler: handlers.uploadFrame },
 	{ channel: 'dweb:export:frames:upload-raw', handler: handlers.uploadFrameRaw },
 	{ channel: 'dweb:export:frames:upload-batch', handler: handlers.uploadFramesBatch },
-	{ channel: 'dweb:export:jobs:stream', handler: handlers.streamJob, stream: true },
+	{ channel: 'dweb:export:jobs:stream', handler: handlers.streamJob, stream: true }
 ]

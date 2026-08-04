@@ -1,5 +1,6 @@
 <template>
 	<WorkflowNodeBase
+		ref="baseRef"
 		:nodeId="nodeId"
 		:title="title"
 		:alias="alias"
@@ -506,6 +507,7 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
 const snapshotCacheKey = String(props.nodeId ?? '').trim()
 const snapshotUrl = ref(
 	snapshotCacheKey ? String(MODEL3D_SNAPSHOT_CACHE.get(snapshotCacheKey) ?? '') : ''
@@ -2141,7 +2143,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .wf-model3d-body {
 	width: 100%;
-	display: grid;
+	display: flex;
+	flex-direction: column;
 	gap: 10px;
 	flex: 1;
 	min-height: 0;
@@ -2156,6 +2159,7 @@ onBeforeUnmount(() => {
 	border: 1px solid rgb(239 68 68 / 0.45);
 	background: rgb(239 68 68 / 0.08);
 	border-radius: 6px;
+	flex-shrink: 0;
 }
 
 .wf-model3d-fetch-error-icon {
@@ -2231,18 +2235,20 @@ onBeforeUnmount(() => {
 	flex: 1;
 	min-height: 200px;
 	border: 1px solid var(--vscode-border);
-	border-radius: 0;
+	border-radius: 6px;
 	background: #0f1720;
 	overflow: hidden;
 }
 
 .wf-model3d-download-progress {
-	display: grid;
+	display: flex;
+	flex-direction: column;
 	gap: 8px;
 	padding: 10px 12px;
 	border: 1px solid rgb(from var(--vscode-border) r g b / 0.85);
 	background: rgb(from var(--dweb-defualt-dark) r g b / 0.54);
-	border-radius: 0;
+	border-radius: 6px;
+	flex-shrink: 0;
 }
 
 .wf-model3d-download-header {

@@ -5,11 +5,14 @@ import {
 	queryWorkshopTemplates,
 	downloadWorkshopTemplate,
 	getWorkshopTemplatesDownloadProgress,
-	getWorkshopTemplatesInstallInfo,
+	getWorkshopTemplatesInstallInfo
 } from '../../electronBridge'
 import { useTemplatePersistence } from './useTemplatePersistence'
 
-console.log('[workshop-templates] Module loaded, electronBridge available:', !!window?.dweb?.workshopTemplates)
+console.log(
+	'[workshop-templates] Module loaded, electronBridge available:',
+	!!window?.dweb?.workshopTemplates
+)
 
 const workshopPlatformState = ref<{
 	ok: boolean
@@ -34,12 +37,21 @@ export function useWorkshopTemplates() {
 			const platform = await getWorkshopTemplatesPlatform()
 			console.log('[workshop-templates] Platform result:', platform)
 			if (!platform?.ok) {
-				console.warn('[workshop-templates] Workshop platform query failed:', platform?.errMsg || 'unknown error')
+				console.warn(
+					'[workshop-templates] Workshop platform query failed:',
+					platform?.errMsg || 'unknown error'
+				)
 				workshopPlatformState.value = null
 				return false
 			}
 			workshopPlatformState.value = platform
-			console.log('[workshop-templates] Workshop platform info:', platform.platformId, platform.platformName, 'available:', platform.platformAvailable)
+			console.log(
+				'[workshop-templates] Workshop platform info:',
+				platform.platformId,
+				platform.platformName,
+				'available:',
+				platform.platformAvailable
+			)
 			return true
 		} catch (err) {
 			console.error('[workshop-templates] ensureWorkshopAvailable error:', err)
@@ -48,7 +60,9 @@ export function useWorkshopTemplates() {
 		}
 	}
 
-	async function loadWorkshopTemplates(options: { tag?: string; limit?: number; offset?: number } = {}): Promise<TemplateItem[]> {
+	async function loadWorkshopTemplates(
+		options: { tag?: string; limit?: number; offset?: number } = {}
+	): Promise<TemplateItem[]> {
 		loadingWorkshopTemplates.value = true
 		try {
 			const available = await ensureWorkshopAvailable()
@@ -60,10 +74,18 @@ export function useWorkshopTemplates() {
 
 			console.log('[workshop-templates] Calling queryWorkshopTemplates with options:', options)
 			const result = await queryWorkshopTemplates(options)
-			console.log('[workshop-templates] queryWorkshopTemplates result:', result?.ok ? `${result.items?.length || 0} items` : `error: ${result?.errMsg || 'null result'}`)
+			console.log(
+				'[workshop-templates] queryWorkshopTemplates result:',
+				result?.ok
+					? `${result.items?.length || 0} items`
+					: `error: ${result?.errMsg || 'null result'}`
+			)
 
 			if (!result?.ok || !result.items) {
-				console.warn('[workshop-templates] queryWorkshopTemplates failed:', result?.errMsg || 'null result')
+				console.warn(
+					'[workshop-templates] queryWorkshopTemplates failed:',
+					result?.errMsg || 'null result'
+				)
 				workshopTemplates.value = []
 				_workshopInitialized = true
 				return []
@@ -73,7 +95,7 @@ export function useWorkshopTemplates() {
 				id: item.publishedFileId,
 				name: item.title,
 				description: item.description || '',
-				category: (item.tags?.find(t => t !== 'official') || 'other') as TemplateCategory,
+				category: (item.tags?.find((t) => t !== 'official') || 'other') as TemplateCategory,
 				source: 'steam-workshop',
 				tags: item.tags || [],
 				createdAt: item.createdAt,
@@ -82,7 +104,7 @@ export function useWorkshopTemplates() {
 				isOfficial: item.isOfficial,
 				workshopAuthor: item.author,
 				workshopItemId: item.publishedFileId,
-				thumbnail: item.previewUrl,
+				thumbnail: item.previewUrl
 			}))
 
 			workshopTemplates.value = items
@@ -109,7 +131,10 @@ export function useWorkshopTemplates() {
 		try {
 			console.log('[workshop-templates] Starting download:', publishedFileId)
 			const result = await downloadWorkshopTemplate({ publishedFileId })
-			console.log('[workshop-templates] downloadWorkshopTemplate result:', result?.ok ? 'success' : `error: ${result?.errMsg || 'unknown'}`)
+			console.log(
+				'[workshop-templates] downloadWorkshopTemplate result:',
+				result?.ok ? 'success' : `error: ${result?.errMsg || 'unknown'}`
+			)
 
 			if (!result?.ok || !result.zipData) {
 				console.error('[workshop-templates] Download failed:', result?.errMsg || 'no zip data')
@@ -117,9 +142,11 @@ export function useWorkshopTemplates() {
 			}
 
 			const zipBlob = new Blob([result.zipData], { type: 'application/zip' })
-			const coverBlob = result.coverData ? new Blob([result.coverData], { type: 'image/png' }) : null
+			const coverBlob = result.coverData
+				? new Blob([result.coverData], { type: 'image/png' })
+				: null
 
-			const templateItem = workshopTemplates.value.find(t => t.id === publishedFileId)
+			const templateItem = workshopTemplates.value.find((t) => t.id === publishedFileId)
 			const metaData = result.metadata as Record<string, string> | undefined
 
 			const meta: TemplateItem = {
@@ -133,7 +160,7 @@ export function useWorkshopTemplates() {
 				updatedAt: Date.now(),
 				author: templateItem?.author || metaData?.author || '官方',
 				isOfficial: templateItem?.isOfficial || true,
-				workshopItemId: result.publishedFileId,
+				workshopItemId: result.publishedFileId
 			}
 
 			console.log('[workshop-templates] Saving downloaded template to local database:', meta.name)
@@ -143,10 +170,13 @@ export function useWorkshopTemplates() {
 				category: meta.category,
 				tags: meta.tags,
 				blob: zipBlob,
-				coverBlob,
+				coverBlob
 			})
 
-			console.log('[workshop-templates] Template saved to local database:', savedTemplate ? savedTemplate.id : 'failed')
+			console.log(
+				'[workshop-templates] Template saved to local database:',
+				savedTemplate ? savedTemplate.id : 'failed'
+			)
 
 			return { meta, zipBlob, coverBlob, savedTemplate }
 		} catch (err) {
@@ -158,7 +188,9 @@ export function useWorkshopTemplates() {
 		}
 	}
 
-	async function getDownloadProgress(publishedFileId: string): Promise<{ progress: number; state: string } | null> {
+	async function getDownloadProgress(
+		publishedFileId: string
+	): Promise<{ progress: number; state: string } | null> {
 		try {
 			const result = await getWorkshopTemplatesDownloadProgress({ publishedFileId })
 			if (!result?.ok) return null
@@ -169,7 +201,9 @@ export function useWorkshopTemplates() {
 		}
 	}
 
-	async function getInstallInfo(publishedFileId: string): Promise<{ installed: boolean; installPath?: string } | null> {
+	async function getInstallInfo(
+		publishedFileId: string
+	): Promise<{ installed: boolean; installPath?: string } | null> {
 		try {
 			const result = await getWorkshopTemplatesInstallInfo({ publishedFileId })
 			if (!result?.ok) return null
@@ -191,6 +225,6 @@ export function useWorkshopTemplates() {
 		loadWorkshopTemplates,
 		downloadTemplateFromWorkshop,
 		getDownloadProgress,
-		getInstallInfo,
+		getInstallInfo
 	}
 }

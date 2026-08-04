@@ -79,7 +79,12 @@ const safeGetString = (obj: unknown, key: string, fallback: string): string => {
 }
 
 const safeGetRecord = (obj: unknown, key: string): Record<string, unknown> | undefined => {
-	if (!isRecord(obj) || typeof obj[key] !== 'object' || obj[key] === null || Array.isArray(obj[key]))
+	if (
+		!isRecord(obj) ||
+		typeof obj[key] !== 'object' ||
+		obj[key] === null ||
+		Array.isArray(obj[key])
+	)
 		return undefined
 	return obj[key] as Record<string, unknown>
 }
@@ -169,7 +174,8 @@ export const applySubtitleSummaryDelta = (
 	}
 	if (section === 'templates' && Array.isArray(data))
 		return { ...state, templates: data as SubtitleTemplateSuggestion[] }
-	if (section === 'plans' && Array.isArray(data)) return { ...state, plans: data as SubtitlePlanItem[] }
+	if (section === 'plans' && Array.isArray(data))
+		return { ...state, plans: data as SubtitlePlanItem[] }
 
 	return state
 }

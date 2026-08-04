@@ -17,7 +17,11 @@
 					@keydown.enter="onSave"
 					@keydown.esc="onCancelEdit"
 				/>
-				<button class="wf-sel-frame-btn wf-sel-frame-save" :title="t('aiworkflow.canvas.save')" @click.stop="onSave">
+				<button
+					class="wf-sel-frame-btn wf-sel-frame-save"
+					:title="t('aiworkflow.canvas.save')"
+					@click.stop="onSave"
+				>
 					{{ t('aiworkflow.canvas.save') }}
 				</button>
 				<button
@@ -30,18 +34,29 @@
 			</template>
 			<!-- 显示模式 -->
 			<template v-else>
-				<button class="wf-sel-frame-btn" :title="t('aiworkflow.canvas.editTag')" @click.stop="onStartEdit">
+				<button
+					class="wf-sel-frame-btn"
+					:title="t('aiworkflow.canvas.editTag')"
+					@click.stop="onStartEdit"
+				>
 					<span class="wf-sel-frame-tag-icon">🏷</span>
 					<span class="wf-sel-frame-tag-text">{{ displayLabel }}</span>
 				</button>
-				<span class="wf-sel-frame-count">{{ t('aiworkflow.canvas.nodesSelected', { count: nodeCount }) }}</span>
+				<span class="wf-sel-frame-count">
+					{{ t('aiworkflow.canvas.nodesSelected', { count: nodeCount }) }}
+				</span>
 				<button
 					class="wf-sel-frame-btn wf-sel-frame-template"
 					:title="t('aiworkflow.toolbar.saveAsTemplate')"
 					@click.stop="emit('save-template')"
 				>
 					<svg viewBox="0 0 16 16" aria-hidden="true" class="wf-sel-frame-template-icon">
-						<path d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="1.2" />
+						<path
+							d="M2 3a1 1 0 0 1 1-1h7l4 4v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.2"
+						/>
 						<path d="M9 2v4h4" fill="none" stroke="currentColor" stroke-width="1.2" />
 					</svg>
 					{{ t('aiworkflow.toolbar.saveAsTemplate') }}
@@ -57,10 +72,7 @@
 		</div>
 
 		<!-- 透明可拖拽区域 -->
-		<div
-			class="wf-sel-frame-drag-area"
-			@pointerdown="onDragAreaPointerDown"
-		/>
+		<div class="wf-sel-frame-drag-area" @pointerdown="onDragAreaPointerDown" />
 	</div>
 </template>
 
@@ -94,7 +106,9 @@ const emit = defineEmits<{
 // 本地维护的已保存标签（优先于 props.label）
 const savedLabel = ref<string>('')
 
-const displayLabel = computed(() => savedLabel.value || props.label || t('aiworkflow.canvas.editLabel'))
+const displayLabel = computed(
+	() => savedLabel.value || props.label || t('aiworkflow.canvas.editLabel')
+)
 
 // 编辑状态
 const isEditing = ref(false)

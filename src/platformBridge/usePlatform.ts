@@ -1,5 +1,12 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { getPlatformStatus, onPlatformEvent, offPlatformEvent, overlayIsActive as checkOverlayActive, overlayOpenUrl, overlayActivate } from './platform'
+import {
+	getPlatformStatus,
+	onPlatformEvent,
+	offPlatformEvent,
+	overlayIsActive as checkOverlayActive,
+	overlayOpenUrl,
+	overlayActivate
+} from './platform'
 import type { DwebPlatformStatus, DwebPlatformUser, DwebPlatformDlcInfo } from './types'
 
 let initCount = 0
@@ -65,14 +72,18 @@ export function usePlatform() {
 				console.log('[usePlatform] platform disconnected:', data)
 			}
 			for (const cb of onDisconnectedCallbacks) {
-				try { cb() } catch {}
+				try {
+					cb()
+				} catch {}
 			}
 			refresh()
 		})
 
 		onPlatformEvent('user-changed', (data) => {
 			for (const cb of onUserChangedCallbacks) {
-				try { cb(data?.user || null) } catch {}
+				try {
+					cb(data?.user || null)
+				} catch {}
 			}
 			refresh()
 		})
@@ -80,20 +91,26 @@ export function usePlatform() {
 		overlayActivatedListenerId = onPlatformEvent('overlay-activated', () => {
 			overlayActiveState.value = true
 			for (const cb of onOverlayActivatedCallbacks) {
-				try { cb() } catch {}
+				try {
+					cb()
+				} catch {}
 			}
 		})
 
 		overlayDeactivatedListenerId = onPlatformEvent('overlay-deactivated', () => {
 			overlayActiveState.value = false
 			for (const cb of onOverlayDeactivatedCallbacks) {
-				try { cb() } catch {}
+				try {
+					cb()
+				} catch {}
 			}
 		})
 
-		checkOverlayActive().then((active) => {
-			overlayActiveState.value = active
-		}).catch(() => {})
+		checkOverlayActive()
+			.then((active) => {
+				overlayActiveState.value = active
+			})
+			.catch(() => {})
 
 		if (isFirstInit) {
 			intervalId = setInterval(refresh, 15000)
@@ -142,6 +159,6 @@ export function usePlatform() {
 		onDisconnected,
 		onUserChanged,
 		onOverlayActivated,
-		onOverlayDeactivated,
+		onOverlayDeactivated
 	}
 }

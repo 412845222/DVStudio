@@ -15,7 +15,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.x,
 								(v) => (draft.x = v),
@@ -37,7 +37,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.y,
 								(v) => (draft.y = v),
@@ -61,7 +61,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.scaleX,
 								(v) => (draft.scaleX = v),
@@ -85,7 +85,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.scaleY,
 								(v) => (draft.scaleY = v),
@@ -108,7 +108,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.width,
 								(v) => (draft.width = v),
@@ -131,7 +131,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.height,
 								(v) => (draft.height = v),
@@ -153,7 +153,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.rotation,
 								(v) => (draft.rotation = v),
@@ -177,7 +177,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.opacity,
 								(v) => (draft.opacity = v),
@@ -201,7 +201,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.pivotX,
 								(v) => (draft.pivotX = v),
@@ -225,7 +225,7 @@
 					@blur="onNumberInputBlur"
 					@pointerdown="
 						(e: PointerEvent) =>
-					onNumberScrubPointerDown(
+							onNumberScrubPointerDown(
 								e,
 								() => draft.pivotY,
 								(v) => (draft.pivotY = v),

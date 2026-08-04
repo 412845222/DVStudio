@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div ref="shellRef" class="tl-shell">
 		<div class="tl-toolbar">
 			<div class="tl-play-controls">
@@ -595,7 +595,6 @@ const removeLayer = async (layerId: string) => {
 const openSubtitlePanel = (layerId: string) => {
 	void VideoSceneStore.dispatch('openLeftPanel', { mode: 'subtitle', layerId })
 }
-
 const applyFrameCount = () => {
 	const next = Math.max(1, Math.floor(Number(inputFrameCount.value) || 1))
 	store.dispatch('setFrameCount', { frameCount: next })
@@ -1431,7 +1430,7 @@ const drawOverview = () => {
 	ctx.shadowBlur = 0
 
 	// 窗口填充
-	ctx.fillStyle = mixRgba(accent, 0.10)
+	ctx.fillStyle = mixRgba(accent, 0.1)
 	ctx.fillRect(winX, 0, winW, h)
 
 	// 播放头
@@ -1501,12 +1500,12 @@ const onOverviewPointerDown = (ev: PointerEvent) => {
 			// 拖拽左边缘 → 缩放：用左边缘新位置换算 frameWidth
 			const newWinX = winX + dx
 			const newWinW = Math.max(20, winX + winW - newWinX)
-			const newFrameWidth = (vw / newWinW) * w / frameCount.value
+			const newFrameWidth = ((vw / newWinW) * w) / frameCount.value
 			const clamped = Math.max(0.05, Math.min(30, newFrameWidth))
 			store.dispatch('setFrameWidth', { frameWidth: clamped })
 		} else if (overviewDrag === 'right') {
 			const newWinW = Math.max(20, winW + dx)
-			const newFrameWidth = (vw / newWinW) * w / frameCount.value
+			const newFrameWidth = ((vw / newWinW) * w) / frameCount.value
 			const clamped = Math.max(0.05, Math.min(30, newFrameWidth))
 			store.dispatch('setFrameWidth', { frameWidth: clamped })
 		}
@@ -2078,7 +2077,12 @@ onMounted(() => {
 	if ('ResizeObserver' in window) {
 		tracksResizeObserver = new ResizeObserver(onAnyResize)
 		// 观察多个层级的容器：最外层 shell、tracks 容器、可视区域 viewport、图层滚动容器
-		const observeTargets = [shellRef.value, tracksRef.value, viewportRef.value, layersScrollRef.value]
+		const observeTargets = [
+			shellRef.value,
+			tracksRef.value,
+			viewportRef.value,
+			layersScrollRef.value
+		]
 		for (const el of observeTargets) {
 			if (el) tracksResizeObserver.observe(el)
 		}
@@ -2198,7 +2202,11 @@ watch(
 	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.3)) 0%, color-mix(in srgb, var(--pl-bg-0) 92%, rgba(0,0,0,0.4)) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0, 0, 0, 0.3)) 0%,
+		color-mix(in srgb, var(--pl-bg-0) 92%, rgba(0, 0, 0, 0.4)) 100%
+	);
 	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
 	user-select: none;
 	-webkit-user-select: none;
@@ -2212,7 +2220,7 @@ watch(
 	gap: 12px;
 	padding: 0 12px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 90%, rgba(0,0,0,0.45));
+	background: color-mix(in srgb, var(--pl-bg-1) 90%, rgba(0, 0, 0, 0.45));
 	backdrop-filter: blur(8px);
 	position: relative;
 }
@@ -2224,7 +2232,12 @@ watch(
 	right: 0;
 	bottom: -1px;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 55%, transparent),
+		transparent
+	);
 	pointer-events: none;
 }
 
@@ -2237,7 +2250,10 @@ watch(
 	border-radius: 2px;
 	cursor: pointer;
 	font-size: 12px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .tl-btn:hover {
@@ -2267,17 +2283,21 @@ watch(
 	padding: 0 5px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0, 0, 0, 0.5));
 	color: var(--pl-fg);
 	font-size: 12px;
-	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 	outline: none;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .tl-time-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent),
+		0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-time-sep {
@@ -2319,23 +2339,48 @@ watch(
 	color: color-mix(in srgb, var(--pl-accent) 50%, transparent);
 }
 
+.tl-tools {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 12px;
+	padding-left: 12px;
+	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
+}
+
+.tl-subtitle-btn {
+	display: flex;
+	align-items: center;
+	color: var(--pl-accent);
+	border-color: color-mix(in srgb, var(--pl-accent) 40%, transparent);
+}
+
+.tl-subtitle-btn:hover {
+	background: color-mix(in srgb, var(--pl-accent) 15%, transparent);
+	border-color: var(--pl-accent);
+}
+
 .tl-input {
 	width: 78px;
 	height: 26px;
 	padding: 0 7px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-0) 85%, rgba(0, 0, 0, 0.5));
 	color: var(--pl-fg);
 	font-size: 12px;
-	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 	outline: none;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .tl-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent),
+		0 0 10px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
 .tl-body {
@@ -2440,7 +2485,9 @@ watch(
 	left: 0;
 	width: 1px;
 	background: var(--pl-accent);
-	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent), 0 0 2px var(--pl-accent);
+	box-shadow:
+		0 0 6px color-mix(in srgb, var(--pl-accent) 60%, transparent),
+		0 0 2px var(--pl-accent);
 }
 
 .tl-row {
@@ -2452,7 +2499,7 @@ watch(
 }
 
 .tl-manage {
-	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.35));
+	background: color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0, 0, 0, 0.35));
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 
@@ -2465,7 +2512,7 @@ watch(
 	color: var(--pl-fg-soft);
 	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	box-sizing: border-box;
-	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 94%, rgba(0, 0, 0, 0.3));
 }
 
 .tl-left.selected {
@@ -2489,7 +2536,7 @@ watch(
 	box-sizing: border-box;
 	position: relative;
 	overflow: hidden;
-	background: color-mix(in srgb, var(--pl-bg-0) 95%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-0) 95%, rgba(0, 0, 0, 0.4));
 }
 
 .tl-frames-viewport {
@@ -2542,7 +2589,7 @@ watch(
 	top: 2px;
 	left: 2px;
 	font-size: 10px;
-	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 	color: color-mix(in srgb, var(--pl-accent) 55%, var(--pl-fg-soft));
 	white-space: nowrap;
 	text-shadow: 0 0 4px color-mix(in srgb, var(--pl-accent) 30%, transparent);
@@ -2570,7 +2617,10 @@ watch(
 	padding: 0 8px;
 	cursor: pointer;
 	border-radius: 2px;
-	transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		color 0.15s ease,
+		background 0.15s ease;
 }
 
 .tl-subtitle {
@@ -2582,7 +2632,10 @@ watch(
 	padding: 0 8px;
 	cursor: pointer;
 	border-radius: 2px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .tl-subtitle:hover {
@@ -2619,7 +2672,10 @@ watch(
 	padding: 0 10px;
 	cursor: pointer;
 	border-radius: 2px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .tl-mini-btn:hover {
@@ -2650,7 +2706,7 @@ watch(
 	min-width: 92px;
 	font-size: 12px;
 	color: var(--pl-fg);
-	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 	white-space: nowrap;
 	text-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
@@ -2662,7 +2718,11 @@ watch(
 	padding: 4px 10px;
 	gap: 10px;
 	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0,0,0,0.45)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.55)) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-1) 92%, rgba(0, 0, 0, 0.45)) 0%,
+		color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0, 0, 0, 0.55)) 100%
+	);
 	position: relative;
 }
 
@@ -2673,7 +2733,12 @@ watch(
 	right: 0;
 	top: -1px;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 55%, transparent),
+		transparent
+	);
 	pointer-events: none;
 }
 
@@ -2692,7 +2757,9 @@ watch(
 }
 
 .tl-overview-canvas:hover {
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent), 0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent),
+		0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .tl-overview-hud {
@@ -2702,7 +2769,7 @@ watch(
 	padding: 0 6px;
 	height: 20px;
 	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+	font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
 	font-size: 10px;
 	color: color-mix(in srgb, var(--pl-accent) 75%, var(--pl-fg-soft));
 	text-shadow: 0 0 4px color-mix(in srgb, var(--pl-accent) 35%, transparent);

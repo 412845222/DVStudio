@@ -25,10 +25,17 @@ export class WorkshopTemplatesService {
 					const activeProvider = this._platformManager.getActiveProvider()
 					const newPlatformId = activeProvider?.id || 'mock'
 					const currentPlatformId = this._adapter?.getPlatformId?.()
-					const shouldSwitch = (newPlatformId === 'steam' && currentPlatformId !== 'steam') ||
+					const shouldSwitch =
+						(newPlatformId === 'steam' && currentPlatformId !== 'steam') ||
 						(newPlatformId !== 'steam' && currentPlatformId === 'steam')
 					if (shouldSwitch) {
-						console.log('[workshop-templates] Platform changed from', currentPlatformId, 'to', newPlatformId, '- reinitializing adapter')
+						console.log(
+							'[workshop-templates] Platform changed from',
+							currentPlatformId,
+							'to',
+							newPlatformId,
+							'- reinitializing adapter'
+						)
 						this._adapter = null
 					}
 				}
@@ -48,7 +55,12 @@ export class WorkshopTemplatesService {
 	_initAdapter() {
 		const mgr = this._ensureManager()
 		this._adapter = getActiveUgcAdapter(mgr)
-		console.log('[workshop-templates] adapter initialized:', this._adapter?.getPlatformId?.(), 'available:', this._adapter?.isAvailable?.())
+		console.log(
+			'[workshop-templates] adapter initialized:',
+			this._adapter?.getPlatformId?.(),
+			'available:',
+			this._adapter?.isAvailable?.()
+		)
 	}
 
 	_shouldReinitAdapter() {
@@ -62,7 +74,11 @@ export class WorkshopTemplatesService {
 		if (activeId === 'steam' && currentId !== 'steam') {
 			const steamProvider = mgr._providers?.get('steam')
 			if (steamProvider && steamProvider.isAvailable() && steamProvider.isInitialized()) {
-				console.log('[workshop-templates] Steam is now available, switching from', currentId, 'to steam')
+				console.log(
+					'[workshop-templates] Steam is now available, switching from',
+					currentId,
+					'to steam'
+				)
 				return true
 			}
 		}
@@ -70,7 +86,10 @@ export class WorkshopTemplatesService {
 		if (activeId !== 'steam' && currentId === 'steam') {
 			const steamProvider = mgr._providers?.get('steam')
 			if (!steamProvider || !steamProvider.isAvailable() || !steamProvider.isInitialized()) {
-				console.log('[workshop-templates] Steam is no longer available, switching from steam to', activeId)
+				console.log(
+					'[workshop-templates] Steam is no longer available, switching from steam to',
+					activeId
+				)
 				return true
 			}
 		}
@@ -117,7 +136,7 @@ export class WorkshopTemplatesService {
 				{ queryType: 19, matchingType: 2, allowCachedResponse: 0 },
 				{ queryType: 19, matchingType: 0, allowCachedResponse: 0 },
 				{ queryType: 2, matchingType: 2, allowCachedResponse: 0 },
-				{ queryType: 0, matchingType: 2, allowCachedResponse: 0 },
+				{ queryType: 0, matchingType: 2, allowCachedResponse: 0 }
 			]
 
 			let foundAnyItems = false
@@ -138,18 +157,39 @@ export class WorkshopTemplatesService {
 			}
 
 			if (!foundAnyItems) {
-				console.log('[workshop-templates] Public queries found 0 official items, checking user published items...')
+				console.log(
+					'[workshop-templates] Public queries found 0 official items, checking user published items...'
+				)
 				try {
 					const userItemsResult = await adapter.queryUserItems('published')
 					if (userItemsResult.ok && userItemsResult.items && userItemsResult.items.length > 0) {
-						console.log('[workshop-templates] User published', userItemsResult.items.length, 'items:')
+						console.log(
+							'[workshop-templates] User published',
+							userItemsResult.items.length,
+							'items:'
+						)
 						for (const item of userItemsResult.items) {
-							console.log('  -', item.publishedFileId + ':', '"' + item.title + '"',
-								'tags=', JSON.stringify(item.tags), 'isOfficial=', item.isOfficial, 'visibility=', item.visibility)
+							console.log(
+								'  -',
+								item.publishedFileId + ':',
+								'"' + item.title + '"',
+								'tags=',
+								JSON.stringify(item.tags),
+								'isOfficial=',
+								item.isOfficial,
+								'visibility=',
+								item.visibility
+							)
 						}
-						const officialItems = userItemsResult.items.filter(i => i.tags?.includes('official') || i.isOfficial)
+						const officialItems = userItemsResult.items.filter(
+							(i) => i.tags?.includes('official') || i.isOfficial
+						)
 						if (officialItems.length > 0) {
-							console.log('[workshop-templates] Found', officialItems.length, 'official items in user inventory')
+							console.log(
+								'[workshop-templates] Found',
+								officialItems.length,
+								'official items in user inventory'
+							)
 							result = { ok: true, items: officialItems, totalResults: officialItems.length }
 							foundAnyItems = true
 						}
@@ -160,12 +200,19 @@ export class WorkshopTemplatesService {
 			}
 
 			if (!foundAnyItems && isDev) {
-				console.log('[workshop-templates] All Steam queries returned 0 official items, falling back to Mock data')
+				console.log(
+					'[workshop-templates] All Steam queries returned 0 official items, falling back to Mock data'
+				)
 				adapter = createMockUgcAdapter()
 				result = await adapter.queryAll({ ...baseOptions })
 			}
 
-			console.log('[workshop-templates] Final result:', result.ok ? `${result.items?.length || 0} items` : `error: ${result.errMsg || lastError || 'unknown'}`)
+			console.log(
+				'[workshop-templates] Final result:',
+				result.ok
+					? `${result.items?.length || 0} items`
+					: `error: ${result.errMsg || lastError || 'unknown'}`
+			)
 			return result
 		} catch (err) {
 			console.error('[workshop-templates] queryOfficial error:', err.message)
@@ -216,12 +263,17 @@ export class WorkshopTemplatesService {
 		for (const entry of entries) {
 			if (entry.type === 'file' && entry.path.endsWith(packageFileName)) {
 				const contentRoot = path.dirname(entry.fullPath)
-				console.log('[workshop-templates] Found package file in subdirectory, content root:', contentRoot)
+				console.log(
+					'[workshop-templates] Found package file in subdirectory, content root:',
+					contentRoot
+				)
 				return contentRoot
 			}
 		}
 
-		console.log('[workshop-templates] Package file not found in any subdirectory, using startPath as root')
+		console.log(
+			'[workshop-templates] Package file not found in any subdirectory, using startPath as root'
+		)
 		return startPath
 	}
 
@@ -233,12 +285,15 @@ export class WorkshopTemplatesService {
 
 			console.log('[workshop-templates] Checking existing install before download...')
 			const preInstallInfo = adapter.getItemInstallInfo(publishedFileId)
-			console.log('[workshop-templates] Pre-download install info:', JSON.stringify({
-				ok: preInstallInfo?.ok,
-				installed: preInstallInfo?.installed,
-				installPath: preInstallInfo?.installPath,
-				errMsg: preInstallInfo?.errMsg
-			}))
+			console.log(
+				'[workshop-templates] Pre-download install info:',
+				JSON.stringify({
+					ok: preInstallInfo?.ok,
+					installed: preInstallInfo?.installed,
+					installPath: preInstallInfo?.installPath,
+					errMsg: preInstallInfo?.errMsg
+				})
+			)
 
 			const downloadResult = await adapter.downloadItem(publishedFileId)
 			if (!downloadResult.ok) {
@@ -247,26 +302,35 @@ export class WorkshopTemplatesService {
 			}
 
 			if (downloadResult.zipBuffer) {
-				console.log('[workshop-templates] downloadItem using direct buffer from adapter, size:', downloadResult.zipBuffer.length)
+				console.log(
+					'[workshop-templates] downloadItem using direct buffer from adapter, size:',
+					downloadResult.zipBuffer.length
+				)
 				return {
 					ok: true,
 					publishedFileId,
 					metadata: downloadResult.metadata,
 					zipBuffer: downloadResult.zipBuffer,
-					coverBuffer: downloadResult.coverBuffer,
+					coverBuffer: downloadResult.coverBuffer
 				}
 			}
 
 			const installInfo = await adapter.getItemInstallInfo(publishedFileId)
-			console.log('[workshop-templates] Post-download install info:', JSON.stringify({
-				ok: installInfo?.ok,
-				installed: installInfo?.installed,
-				installPath: installInfo?.installPath,
-				errMsg: installInfo?.errMsg
-			}))
+			console.log(
+				'[workshop-templates] Post-download install info:',
+				JSON.stringify({
+					ok: installInfo?.ok,
+					installed: installInfo?.installed,
+					installPath: installInfo?.installPath,
+					errMsg: installInfo?.errMsg
+				})
+			)
 
 			if (!installInfo.ok || !installInfo.installPath) {
-				console.error('[workshop-templates] downloadItem failed to get install path:', installInfo.errMsg)
+				console.error(
+					'[workshop-templates] downloadItem failed to get install path:',
+					installInfo.errMsg
+				)
 				return { ok: false, errMsg: 'Failed to get install path' }
 			}
 
@@ -310,9 +374,15 @@ export class WorkshopTemplatesService {
 					try {
 						const metadataContent = fs.readFileSync(altMetadataPath, 'utf8')
 						metadata = JSON.parse(metadataContent)
-						console.log('[workshop-templates] downloadItem metadata (from installPath root):', metadata)
+						console.log(
+							'[workshop-templates] downloadItem metadata (from installPath root):',
+							metadata
+						)
 					} catch (err) {
-						console.warn('[workshop-templates] Failed to read metadata.json from root:', err.message)
+						console.warn(
+							'[workshop-templates] Failed to read metadata.json from root:',
+							err.message
+						)
 					}
 				}
 			}
@@ -323,7 +393,10 @@ export class WorkshopTemplatesService {
 			if (fs.existsSync(zipPath)) {
 				try {
 					zipBuffer = fs.readFileSync(zipPath)
-					console.log('[workshop-templates] downloadItem found pre-built template.zip, size:', zipBuffer.length)
+					console.log(
+						'[workshop-templates] downloadItem found pre-built template.zip, size:',
+						zipBuffer.length
+					)
 				} catch (err) {
 					console.warn('[workshop-templates] Failed to read template.zip:', err.message)
 				}
@@ -332,17 +405,27 @@ export class WorkshopTemplatesService {
 			if (!zipBuffer) {
 				const packageJsonPath = path.join(contentRoot, 'aiwf-project-package.json')
 				const hasPackageJson = fs.existsSync(packageJsonPath)
-				console.log('[workshop-templates] Checking for aiwf-project-package.json at:', packageJsonPath, 'exists:', hasPackageJson)
+				console.log(
+					'[workshop-templates] Checking for aiwf-project-package.json at:',
+					packageJsonPath,
+					'exists:',
+					hasPackageJson
+				)
 
 				if (hasPackageJson) {
-					console.log('[workshop-templates] Found aiwf-project-package.json, packing directory contents into zip...')
+					console.log(
+						'[workshop-templates] Found aiwf-project-package.json, packing directory contents into zip...'
+					)
 					try {
 						let JSZip
 						try {
 							JSZip = require('jszip')
 							console.log('[workshop-templates] Loaded jszip via local require')
 						} catch (requireErr) {
-							console.warn('[workshop-templates] Failed to require jszip locally:', requireErr.message)
+							console.warn(
+								'[workshop-templates] Failed to require jszip locally:',
+								requireErr.message
+							)
 							try {
 								const rootPackagePath = path.resolve(__dirname, '../../../../package.json')
 								console.log('[workshop-templates] Trying root package.json at:', rootPackagePath)
@@ -350,7 +433,10 @@ export class WorkshopTemplatesService {
 								JSZip = rootRequire('jszip')
 								console.log('[workshop-templates] Loaded jszip via root require')
 							} catch (rootRequireErr) {
-								console.error('[workshop-templates] Failed to require jszip from root:', rootRequireErr.message)
+								console.error(
+									'[workshop-templates] Failed to require jszip from root:',
+									rootRequireErr.message
+								)
 								throw requireErr
 							}
 						}
@@ -367,7 +453,12 @@ export class WorkshopTemplatesService {
 								} else {
 									const content = fs.readFileSync(fullPath)
 									zipFolder.file(entry.name, content)
-									console.log('[workshop-templates]  added to zip:', entry.name, content.length, 'bytes')
+									console.log(
+										'[workshop-templates]  added to zip:',
+										entry.name,
+										content.length,
+										'bytes'
+									)
 								}
 							}
 						}
@@ -386,8 +477,11 @@ export class WorkshopTemplatesService {
 				} else {
 					console.error('[workshop-templates] aiwf-project-package.json not found in content root!')
 					const allFiles = this._listDirectoryRecursive(installPath)
-					const jsonFiles = allFiles.filter(e => e.type === 'file' && e.path.endsWith('.json'))
-					console.log('[workshop-templates] JSON files in install path:', jsonFiles.map(f => f.path))
+					const jsonFiles = allFiles.filter((e) => e.type === 'file' && e.path.endsWith('.json'))
+					console.log(
+						'[workshop-templates] JSON files in install path:',
+						jsonFiles.map((f) => f.path)
+					)
 				}
 			}
 
@@ -396,13 +490,18 @@ export class WorkshopTemplatesService {
 				path.join(contentRoot, 'preview.png'),
 				path.join(contentRoot, 'cover.png'),
 				path.join(installPath, 'preview.png'),
-				path.join(installPath, 'cover.png'),
+				path.join(installPath, 'cover.png')
 			]
 			for (const coverPath of possibleCoverPaths) {
 				if (fs.existsSync(coverPath)) {
 					try {
 						coverBuffer = fs.readFileSync(coverPath)
-						console.log('[workshop-templates] downloadItem cover found at:', coverPath, 'size:', coverBuffer.length)
+						console.log(
+							'[workshop-templates] downloadItem cover found at:',
+							coverPath,
+							'size:',
+							coverBuffer.length
+						)
 						break
 					} catch (err) {
 						console.warn('[workshop-templates] Failed to read cover:', coverPath, err.message)
@@ -420,7 +519,7 @@ export class WorkshopTemplatesService {
 				publishedFileId,
 				metadata,
 				zipBuffer,
-				coverBuffer,
+				coverBuffer
 			}
 		} catch (err) {
 			console.error('[workshop-templates] downloadItem error:', err.message)

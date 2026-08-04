@@ -23,7 +23,9 @@ export function getPluginPackagePath() {
 
 function parseWmicOutput(stdout) {
 	const processes = []
-	const blocks = String(stdout || '').trim().split(/\r?\n\r?\n/)
+	const blocks = String(stdout || '')
+		.trim()
+		.split(/\r?\n\r?\n/)
 	for (const block of blocks) {
 		const lines = block.split(/\r?\n/).filter((l) => l.trim().length > 0)
 		if (lines.length < 2) continue
@@ -146,7 +148,14 @@ export async function detectUnrealEditorProcesses() {
 	try {
 		const { stdout } = await execFileAsync(
 			'wmic',
-			['process', 'where', "name='UnrealEditor.exe'", 'get', 'commandline,processid', '/FORMAT:LIST'],
+			[
+				'process',
+				'where',
+				"name='UnrealEditor.exe'",
+				'get',
+				'commandline,processid',
+				'/FORMAT:LIST'
+			],
 			{ timeout: 10000, windowsHide: true }
 		)
 
@@ -179,7 +188,9 @@ export async function detectUnrealEditorProcesses() {
 				['/FI', 'IMAGENAME eq UnrealEditor.exe', '/FO', 'CSV', '/NH'],
 				{ timeout: 8000, windowsHide: true }
 			)
-			const lines = String(tasklistOut || '').split(/\r?\n/).filter((l) => l.trim().length > 0)
+			const lines = String(tasklistOut || '')
+				.split(/\r?\n/)
+				.filter((l) => l.trim().length > 0)
 			const running = lines.length > 0 && !lines[0].toLowerCase().includes('no tasks')
 			if (!running) {
 				return { ok: true, running: false, processes: [] }
@@ -203,14 +214,22 @@ export async function detectUnrealEditorProcesses() {
 
 export function detectProjectRootFromUserInput(inputPath) {
 	const trimmed = String(inputPath || '').trim()
-	if (!trimmed) return { ok: false, error: 'Project path is empty. Please provide a valid .uproject file path or project root directory.' }
+	if (!trimmed)
+		return {
+			ok: false,
+			error:
+				'Project path is empty. Please provide a valid .uproject file path or project root directory.'
+		}
 
 	// Resolve relative paths to absolute paths
 	let candidate = path.resolve(trimmed)
 
 	if (candidate.toLowerCase().endsWith('.uproject')) {
 		if (!fs.existsSync(candidate)) {
-			return { ok: false, error: `Uproject file not found: ${candidate}. Please check the path and try again.` }
+			return {
+				ok: false,
+				error: `Uproject file not found: ${candidate}. Please check the path and try again.`
+			}
 		}
 		const projectRoot = path.dirname(candidate)
 		return {
@@ -232,10 +251,16 @@ export function detectProjectRootFromUserInput(inputPath) {
 				projectName: extractProjectName(uprojectFile)
 			}
 		}
-		return { ok: false, error: `No .uproject file found in directory: ${candidate}. Please provide the project root directory containing a .uproject file.` }
+		return {
+			ok: false,
+			error: `No .uproject file found in directory: ${candidate}. Please provide the project root directory containing a .uproject file.`
+		}
 	}
 
-	return { ok: false, error: `Path is invalid or does not exist: ${candidate}. Please provide a valid absolute path to the Unreal project.` }
+	return {
+		ok: false,
+		error: `Path is invalid or does not exist: ${candidate}. Please provide a valid absolute path to the Unreal project.`
+	}
 }
 
 export function checkPluginInstalled(projectPath) {
@@ -337,7 +362,9 @@ export async function installPluginToProject(projectPath) {
 				if (fs.existsSync(misplacedResources)) {
 					fs.renameSync(misplacedResources, path.join(pluginDir, 'Resources'))
 				}
-			} catch { /* ignore cleanup errors */ }
+			} catch {
+				/* ignore cleanup errors */
+			}
 		}
 
 		await extractZipWithPowershell(zipPath, pluginsDir)
@@ -360,24 +387,37 @@ export async function installPluginToProject(projectPath) {
 						const stat = fs.statSync(srcPath)
 						if (stat.isDirectory()) {
 							fs.renameSync(srcPath, destPath)
-						} else if (entry.toLowerCase().endsWith('.uplugin') || entry.toLowerCase() === 'source') {
+						} else if (
+							entry.toLowerCase().endsWith('.uplugin') ||
+							entry.toLowerCase() === 'source'
+						) {
 							fs.renameSync(srcPath, destPath)
 						}
 					}
-				} catch { /* ignore recovery errors */ }
+				} catch {
+					/* ignore recovery errors */
+				}
 			}
 		}
 
 		upluginPath = path.join(pluginDir, PLUGIN_DESCRIPTOR)
 		if (!fs.existsSync(upluginPath)) {
 			if (backupDir && fs.existsSync(backupDir)) {
-				try { fs.renameSync(backupDir, pluginDir) } catch { /* ignore */ }
+				try {
+					fs.renameSync(backupDir, pluginDir)
+				} catch {
+					/* ignore */
+				}
 			}
 			return { ok: false, installed: false, error: '插件解压失败，未找到 .uplugin 文件' }
 		}
 
 		if (backupDir && fs.existsSync(backupDir)) {
-			try { fs.rmSync(backupDir, { recursive: true, force: true }) } catch { /* ignore */ }
+			try {
+				fs.rmSync(backupDir, { recursive: true, force: true })
+			} catch {
+				/* ignore */
+			}
 		}
 
 		let pluginVersion = ''
@@ -385,7 +425,9 @@ export async function installPluginToProject(projectPath) {
 			const raw = fs.readFileSync(upluginPath, 'utf-8')
 			const json = JSON.parse(raw)
 			pluginVersion = String(json.VersionName || json.Version || '').trim()
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 
 		const enableResult = ensurePluginEnabledInUproject(resolved.uprojectPath)
 		if (!enableResult.ok) {
@@ -409,7 +451,11 @@ export async function installPluginToProject(projectPath) {
 		}
 	} catch (err) {
 		if (backupDir && fs.existsSync(backupDir) && !fs.existsSync(pluginDir)) {
-			try { fs.renameSync(backupDir, pluginDir) } catch { /* ignore */ }
+			try {
+				fs.renameSync(backupDir, pluginDir)
+			} catch {
+				/* ignore */
+			}
 		}
 		return {
 			ok: false,
@@ -452,11 +498,11 @@ export function writePluginConnectionConfig(projectPath, port) {
 function extractZipWithPowershell(zipPath, destDir) {
 	return new Promise((resolve, reject) => {
 		const psCommand = `Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force`
-		execFileAsync('powershell', [
-			'-NoProfile',
-			'-ExecutionPolicy', 'Bypass',
-			'-Command', psCommand
-		], { timeout: 60000, windowsHide: true })
+		execFileAsync(
+			'powershell',
+			['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand],
+			{ timeout: 60000, windowsHide: true }
+		)
 			.then(({ stdout, stderr }) => {
 				if (stderr && stderr.trim().length > 0) {
 					console.warn('[unreal-editor-detector] powershell stderr:', stderr)
@@ -470,7 +516,12 @@ function extractZipWithPowershell(zipPath, destDir) {
 export function getPluginInfo() {
 	const zipPath = getPluginPackagePath()
 	if (!fs.existsSync(zipPath)) {
-		return { ok: false, pluginName: PLUGIN_NAME, pluginVersion: '', error: `插件安装包不存在: ${zipPath}` }
+		return {
+			ok: false,
+			pluginName: PLUGIN_NAME,
+			pluginVersion: '',
+			error: `插件安装包不存在: ${zipPath}`
+		}
 	}
 
 	const stat = fs.statSync(zipPath)

@@ -1,5 +1,8 @@
 import { getManager } from './manager.mjs'
-import { registerPlatformIpc as _registerPlatformIpc, setMainWindowForPlatform as _setMainWindowForPlatform } from './ipc.mjs'
+import {
+	registerPlatformIpc as _registerPlatformIpc,
+	setMainWindowForPlatform as _setMainWindowForPlatform
+} from './ipc.mjs'
 
 export function platformPreflight() {
 	const mgr = getManager()
@@ -17,7 +20,9 @@ export async function platformInit() {
 	await mgr.initializeAll()
 	mgr.startCallbackPump()
 	const status = mgr.getStatus()
-	console.log(`[platform] initialized. Active: ${status.activeDisplayName}, User: ${status.user?.displayName || 'N/A'}`)
+	console.log(
+		`[platform] initialized. Active: ${status.activeDisplayName}, User: ${status.user?.displayName || 'N/A'}`
+	)
 	return status
 }
 

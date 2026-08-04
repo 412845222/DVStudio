@@ -12,7 +12,9 @@
 		@pointerdown.stop
 		@wheel.stop
 	>
-		<button class="chat-collapsed-handle" type="button" @click="requestExpand">{{ t('aichat.dock.handleLabel') }}</button>
+		<button class="chat-collapsed-handle" type="button" @click="requestExpand">
+			{{ t('aichat.dock.handleLabel') }}
+		</button>
 
 		<div class="chat-content" :aria-hidden="collapsed ? 'true' : 'false'">
 			<div class="chat-history">
@@ -122,12 +124,8 @@
 						</svg>
 					</button>
 				</div>
-				<div
-					ref="historyBodyRef"
-					class="chat-history-body"
-				>
+				<div ref="historyBodyRef" class="chat-history-body">
 					<div class="agent-panel">
-
 						<div class="agent-content-area">
 							<div class="agent-chat-area">
 								<div v-if="!messages?.length" class="agent-empty-state">
@@ -144,13 +142,23 @@
 									>
 										<div class="chat-msg-bubble">
 											<div class="chat-msg-role">
-												{{ m.role === 'user' ? t('aichat.dock.roleUser') : m.role === 'assistant' ? t('aichat.dock.roleAgent') : t('aichat.dock.roleSystem') }}
+												{{
+													m.role === 'user'
+														? t('aichat.dock.roleUser')
+														: m.role === 'assistant'
+															? t('aichat.dock.roleAgent')
+															: t('aichat.dock.roleSystem')
+												}}
 											</div>
 											<template v-if="m.role === 'assistant'">
 												<ThinkingBlock
 													v-if="m.thinkingContent"
 													:content="m.thinkingContent || ''"
-													:is-thinking="!m.content && (!m.toolCalls?.length || m.toolCalls.every(t => t.status === 'pending'))"
+													:is-thinking="
+														!m.content &&
+														(!m.toolCalls?.length ||
+															m.toolCalls.every((t) => t.status === 'pending'))
+													"
 													:default-collapsed="!!m.content"
 												/>
 												<div v-if="m.toolCalls?.length" class="agent-tool-calls">
@@ -220,30 +228,83 @@
 					</div>
 					<div class="chat-dock-context-usage-text">
 						{{ formatTokens(contextUsage.tokenCount) }} / {{ formatTokens(contextUsage.budget) }}
-						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">{{ t('aichat.dock.truncated') }}</span>
+						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">
+							{{ t('aichat.dock.truncated') }}
+						</span>
 					</div>
 				</div>
 
-				<textarea
-					ref="inputRef"
-					:value="modelValue"
-					class="chat-dock-input"
-					rows="2"
-					:placeholder="t('aichat.dock.inputPlaceholder')"
-					:disabled="sending"
-					@focus="emit('focus-input')"
-					@input="onInput"
-					@keydown.enter.exact.prevent="onEnterSend"
-					@keydown.enter.shift.exact.stop
-					@keydown.exact="onInputKeyDown"
-					@keydown.escape="onEscapeKeyDown"
-				/>
+				<div v-if="props.isPickingNode" class="chat-dock-pick-hint">
+					<span>点击选择一个节点作为上下文</span>
+					<button class="chat-dock-pick-cancel" @click="emit('cancel-node-pick-mode')">取消</button>
+				</div>
 
 				<div
-					v-if="showSkillPicker"
-					class="chat-dock-skill-picker"
-					ref="skillPickerRef"
+					v-if="(props.contextItems && props.contextItems.length > 0) || mentionIsOpen"
+					class="chat-dock-context-area"
+					:class="{
+						'is-drag-over': props.isDragOver || isDragOverInternal,
+						'is-link-drag-over': props.isLinkDragOver
+					}"
+					@dragover.prevent="onDragOver"
+					@dragleave.prevent="onDragLeave"
+					@drop.prevent="onDrop"
 				>
+					<AgentMentionPopup
+						:visible="mentionIsOpen"
+						:items="mentionFilteredItems"
+						:selected-index="mentionSelectedIndex"
+						@select="
+							(item: AgentEditorMentionItem) =>
+								selectMentionItem(mentionFilteredItems.indexOf(item))
+						"
+						@update:selected-index="mentionSelectedIndex = $event"
+					/>
+
+					<div
+						v-if="props.contextItems && props.contextItems.length > 0"
+						class="chat-dock-context-chips"
+					>
+						<ChatContextItemComp
+							v-for="item in props.contextItems"
+							:key="item.id"
+							:item="item"
+							@remove="(id: string) => emit('remove-context-item', id)"
+						/>
+					</div>
+
+					<div v-else-if="mentionIsOpen" class="chat-dock-context-hint">
+						输入关键词筛选已添加的资源...
+					</div>
+					<div v-else class="chat-dock-context-hint">拖拽文件、图片或节点输出到此处作为上下文</div>
+				</div>
+
+				<div v-if="props.isLinkDragOver" class="chat-dock-link-drag-hint">
+					<span>{{ t('aichat.dock.linkDragHint') }}</span>
+				</div>
+
+				<div class="chat-dock-editor-wrap" :class="{ 'is-link-drag-over': props.isLinkDragOver }">
+					<div
+						ref="editorRef"
+						class="chat-dock-editor"
+						:class="{ 'is-disabled': sending }"
+						contenteditable="true"
+						@focus="emit('focus-input')"
+						@input="editor.onEditorInput()"
+						@keydown="onEditorKeydown"
+						@keyup="editor.onEditorKeyup()"
+						@compositionstart="editor.onCompositionStart()"
+						@compositionend="editor.onCompositionEnd()"
+						@blur="onEditorBlur"
+						@mousedown="onEditorMouseDown"
+						@paste="onPaste"
+					></div>
+					<div v-if="isEmpty && !props.isLinkDragOver" class="chat-dock-editor-placeholder">
+						{{ t('aichat.dock.inputPlaceholder') }}
+					</div>
+				</div>
+
+				<div v-if="showSkillPicker" class="chat-dock-skill-picker" ref="skillPickerRef">
 					<div class="chat-dock-skill-picker-header">{{ t('aichat.dock.skillPickerTitle') }}</div>
 					<div class="chat-dock-skill-picker-list">
 						<div
@@ -265,6 +326,16 @@
 
 				<div class="chat-dock-footer">
 					<div class="chat-dock-footer-left">
+						<button
+							class="chat-dock-toolbar-btn"
+							type="button"
+							:title="t('aichat.dock.pickNode')"
+							:class="{ active: props.isPickingNode }"
+							:disabled="sending"
+							@click="onPickNodeClick"
+						>
+							📦
+						</button>
 						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-agent-backend">
 							<select
 								class="chat-dock-toolbar-select agent-backend-select"
@@ -313,7 +384,9 @@
 								:disabled="sending || !supportsThinking"
 								@change="onThinkingEffortChange"
 							>
-								<option v-if="!supportsThinking" value="disabled">{{ t('aichat.dock.thinkingNotSupported') }}</option>
+								<option v-if="!supportsThinking" value="disabled">
+									{{ t('aichat.dock.thinkingNotSupported') }}
+								</option>
 								<option value="disabled">{{ t('aichat.dock.thinkingDisabled') }}</option>
 								<option value="low">{{ t('aichat.dock.thinkingLow') }}</option>
 								<option value="medium">{{ t('aichat.dock.thinkingMedium') }}</option>
@@ -356,7 +429,9 @@
 						type="file"
 						class="chat-dock-file-input"
 						multiple
-						accept="image/*,video/*"
+						accept="image/*,video/*,.txt,.md,.json,.js,.ts,.jsx,.tsx,.vue,.css,.scss,.less,.html,.xml,.yaml,.yml,.py,.java,.c,.cpp,.h,.go,.rs,.sh,.bat,.ps1,.mjs,.cjs"
+						:webkitdirectory="false"
+						:directory="false"
 						@change="onFileSelect"
 					/>
 				</div>
@@ -456,6 +531,14 @@ import ToolCallCard from '../AIChat/ToolCallCard.vue'
 import NodeLocationCard from '../AIChat/NodeLocationCard.vue'
 import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
 import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
+import ChatContextItemComp from '../AIChat/ChatContextItem.vue'
+import AgentMentionPopup from '../AIChat/AgentMentionPopup.vue'
+import {
+	useAgentEditor,
+	type AgentEditorMentionItem,
+	type AgentEditorChipData
+} from '../../views/AIWorkflow/node-business/chat/useAgentEditor'
+import type { ChatContextItem } from '../../types/agentMention'
 import {
 	getChatApiSourceOptions,
 	getChatModelCatalog,
@@ -475,40 +558,45 @@ import {
 const { t } = useI18n()
 
 const props = defineProps<{
-		modelValue: string
-		messages?: BottomChatMessage[]
-		sending?: boolean
-		runState?: 'idle' | 'sending' | 'stopping' | 'error'
-		collapsed?: boolean
-		taskStatus?: string
-		placement?: 'bottom' | 'right-drawer'
-		agentBackend?: AgentBackendType
-		agentMode?: AgentConversationMode
-		localExecStreamMode?: 'real' | 'mock'
-		agentWorkingDirectory?: string
-		modelKey?: ChatLegacyModelKey
-		nanoPreviewUrls?: string[]
-		nanoPreviewFallbackUrls?: string[]
-		nanoPreviewSourcePaths?: string[]
-		nanoPreviewLoadingStates?: boolean[]
-		nanoPreviewDownloadStatuses?: string[]
-		nanoPreviewDownloadProgresses?: number[]
-		nanoPreviewLocalReadyStates?: boolean[]
-		nanoPreviewUrl?: string
-		nanoStatus?: string
-		nanoDetail?: string
-		nanoBilling?: string
-		nanoModelUsed?: string
+	modelValue: string
+	messages?: BottomChatMessage[]
+	sending?: boolean
+	runState?: 'idle' | 'sending' | 'stopping' | 'error'
+	collapsed?: boolean
+	taskStatus?: string
+	placement?: 'bottom' | 'right-drawer'
+	agentBackend?: AgentBackendType
+	agentMode?: AgentConversationMode
+	localExecStreamMode?: 'real' | 'mock'
+	agentWorkingDirectory?: string
+	modelKey?: ChatLegacyModelKey
+	nanoPreviewUrls?: string[]
+	nanoPreviewFallbackUrls?: string[]
+	nanoPreviewSourcePaths?: string[]
+	nanoPreviewLoadingStates?: boolean[]
+	nanoPreviewDownloadStatuses?: string[]
+	nanoPreviewDownloadProgresses?: number[]
+	nanoPreviewLocalReadyStates?: boolean[]
+	nanoPreviewUrl?: string
+	nanoStatus?: string
+	nanoDetail?: string
+	nanoBilling?: string
+	nanoModelUsed?: string
 
-		nanoAnchorNodeId?: string
-		nanoRefAnchors?: NanoBananaRefAnchor[]
-		nanoHoverAnchorId?: string | null
-		codexSessions?: CodexSessionItem[]
-		codexActiveSessionId?: string
-		codexFlowEvents?: CodexFlowEvent[]
-		thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
-		contextUsage?: { tokenCount: number; budget: number; usage: number; truncated?: boolean } | null
-	}>()
+	nanoAnchorNodeId?: string
+	nanoRefAnchors?: NanoBananaRefAnchor[]
+	nanoHoverAnchorId?: string | null
+	codexSessions?: CodexSessionItem[]
+	codexActiveSessionId?: string
+	codexFlowEvents?: CodexFlowEvent[]
+	thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+	contextUsage?: { tokenCount: number; budget: number; usage: number; truncated?: boolean } | null
+	contextItems?: ChatContextItem[]
+	isPickingNode?: boolean
+	mentionItemsData?: AgentEditorMentionItem[]
+	isDragOver?: boolean
+	isLinkDragOver?: boolean
+}>()
 
 const emit = defineEmits<{
 	(e: 'update:modelValue', v: string): void
@@ -533,17 +621,30 @@ const emit = defineEmits<{
 	(e: 'user-choice-select', v: { messageId: string; choiceIndex: number; choiceText: string }): void
 	(e: 'layout-changed'): void
 	(e: 'update:thinkingEffort', v: 'disabled' | 'low' | 'medium' | 'high'): void
-	(e: 'file-upload', files: Array<{ name: string; type: string; size: number; dataUrl?: string }>): void
+	(
+		e: 'file-upload',
+		files: Array<{ name: string; type: string; size: number; dataUrl?: string }>
+	): void
 	(e: 'locate-node', nodeId: string): void
 	(
 		e: 'safe-area-changed',
 		rect: { width: number; height: number; right: number; top: number }
 	): void
+	(e: 'add-image', file: File): void
+	(e: 'add-file', file: File): void
+	(e: 'add-skill', skillId: string): void
+	(e: 'remove-context-item', id: string): void
+	(e: 'enter-node-pick-mode'): void
+	(e: 'cancel-node-pick-mode'): void
+	(e: 'mention-item-selected', item: AgentEditorMentionItem): void
+	(e: 'update:selectedReferences', refs: AgentEditorChipData[]): void
+	(e: 'files-dropped', files: File[]): void
+	(e: 'node-output-dropped', data: unknown): void
 }>()
 
 const historyExpanded = ref(false)
 const historyBodyRef = ref<HTMLElement | null>(null)
-const inputRef = ref<HTMLTextAreaElement | null>(null)
+const editorRef = ref<HTMLDivElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const skillPickerRef = ref<HTMLElement | null>(null)
 const chatListRef = ref<HTMLElement | null>(null)
@@ -551,13 +652,56 @@ const pendingFocus = ref(false)
 
 const showSkillPicker = ref(false)
 const selectedSkillIndex = ref(0)
+const isDragOverInternal = ref(false)
+const editorChips = ref<AgentEditorChipData[]>([])
+
+const editor = useAgentEditor(
+	editorRef,
+	() => props.mentionItemsData || [],
+	(text, chips) => {
+		emit('update:modelValue', text)
+		editorChips.value = chips
+		emit('update:selectedReferences', chips)
+	}
+)
+const {
+	isMentionOpen: mentionIsOpen,
+	filteredItems: mentionFilteredItems,
+	selectedMentionIndex: mentionSelectedIndex,
+	selectMentionItem
+} = editor
 
 const availableSkills = computed(() => [
-	{ id: 'scene-understand', name: t('aichat.dock.skillSceneUnderstand'), description: t('aichat.dock.skillSceneUnderstandDesc'), icon: '🖼️' },
-	{ id: 'scene-lighting', name: t('aichat.dock.skillSceneLighting'), description: t('aichat.dock.skillSceneLightingDesc'), icon: '💡' },
-	{ id: 'node-create', name: t('aichat.dock.skillNodeCreate'), description: t('aichat.dock.skillNodeCreateDesc'), icon: '➕' },
-	{ id: 'node-config', name: t('aichat.dock.skillNodeConfig'), description: t('aichat.dock.skillNodeConfigDesc'), icon: '⚙️' },
-	{ id: 'workflow-plan', name: t('aichat.dock.skillWorkflowPlan'), description: t('aichat.dock.skillWorkflowPlanDesc'), icon: '📋' },
+	{
+		id: 'scene-understand',
+		name: t('aichat.dock.skillSceneUnderstand'),
+		description: t('aichat.dock.skillSceneUnderstandDesc'),
+		icon: '🖼️'
+	},
+	{
+		id: 'scene-lighting',
+		name: t('aichat.dock.skillSceneLighting'),
+		description: t('aichat.dock.skillSceneLightingDesc'),
+		icon: '💡'
+	},
+	{
+		id: 'node-create',
+		name: t('aichat.dock.skillNodeCreate'),
+		description: t('aichat.dock.skillNodeCreateDesc'),
+		icon: '➕'
+	},
+	{
+		id: 'node-config',
+		name: t('aichat.dock.skillNodeConfig'),
+		description: t('aichat.dock.skillNodeConfigDesc'),
+		icon: '⚙️'
+	},
+	{
+		id: 'workflow-plan',
+		name: t('aichat.dock.skillWorkflowPlan'),
+		description: t('aichat.dock.skillWorkflowPlanDesc'),
+		icon: '📋'
+	}
 ])
 
 const dockRef = ref<HTMLElement | null>(null)
@@ -691,6 +835,12 @@ const sendButtonLabel = computed(() => {
 	return t('aichat.dock.buttonSend')
 })
 
+const isEmpty = computed(() => {
+	const text = String(props.modelValue || '').trim()
+	const hasChips = editorChips.value.length > 0
+	return !text && !hasChips
+})
+
 const agentMode = computed<AgentConversationMode>(() => {
 	const mode = String(props.agentMode || '')
 		.trim()
@@ -755,15 +905,19 @@ const textModel = ref('auto')
 const modelOptions = computed(() => {
 	if (agentBackend.value === 'dvsagent') {
 		const allTextModels = getChatModelCatalog().filter(
-			(m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot' && m.apiSource !== 'codex'
+			(m) =>
+				m.needType === 'text' &&
+				m.apiSource !== 'local-exec' &&
+				m.apiSource !== 'copilot' &&
+				m.apiSource !== 'codex'
 		)
 		return allTextModels
 	}
 	if (agentBackend.value === 'copilot') {
-		return getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
+		return getChatModelOptions('text', 'copilot').filter((m) => m.apiSource === 'copilot')
 	}
 	if (agentBackend.value === 'codex') {
-		return getChatModelOptions('text', 'codex').filter(m => m.apiSource === 'codex')
+		return getChatModelOptions('text', 'codex').filter((m) => m.apiSource === 'codex')
 	}
 	return []
 })
@@ -797,7 +951,9 @@ const activeModelOption = computed(() => {
 })
 
 const thinkingEffort = computed<'disabled' | 'low' | 'medium' | 'high'>(() => {
-	const effort = String(props.thinkingEffort || '').trim().toLowerCase()
+	const effort = String(props.thinkingEffort || '')
+		.trim()
+		.toLowerCase()
 	if (effort === 'disabled' || effort === 'low' || effort === 'high') {
 		return effort
 	}
@@ -1108,7 +1264,17 @@ watch(
 		if (v) return
 		if (!pendingFocus.value) return
 		pendingFocus.value = false
-		void nextTick().then(() => inputRef.value?.focus())
+		void nextTick().then(() => editor.focus())
+	}
+)
+
+watch(
+	() => props.modelValue,
+	(v) => {
+		if (!v && editorChips.value.length > 0) {
+			editor.clear()
+			editorChips.value = []
+		}
 	}
 )
 
@@ -1123,9 +1289,44 @@ const requestCollapse = () => {
 	void nextTick().then(() => emitLayoutChanged())
 }
 
-const onInput = (e: Event) => {
-	const v = (e.target as HTMLTextAreaElement).value
-	emit('update:modelValue', v)
+const onEditorKeydown = (e: KeyboardEvent) => {
+	if (e.key === 'Escape') {
+		if (mentionIsOpen.value) {
+			e.preventDefault()
+			editor.closeMention()
+			return
+		}
+		if (showSkillPicker.value) {
+			e.preventDefault()
+			showSkillPicker.value = false
+			return
+		}
+	}
+	if (editor.onEditorKeydown(e)) return
+	if (e.key === 'Enter' && !e.shiftKey) {
+		e.preventDefault()
+		onEnterSend()
+		return
+	}
+	if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+		const text = String(props.modelValue || '').trim()
+		if (text === '' && editorChips.value.length === 0) {
+			e.preventDefault()
+			showSkillPicker.value = true
+			selectedSkillIndex.value = 0
+		}
+	}
+}
+
+const onEditorBlur = () => {
+	editor.closeMention()
+}
+
+const onEditorMouseDown = (e: MouseEvent) => {
+	const target = e.target as HTMLElement
+	if (target.classList.contains('agent-mention-chip-remove')) return
+	if (target.closest('.agent-mention-chip')) return
+	setTimeout(() => editor.onEditorInput(), 0)
 }
 
 const onNeedTypeChange = (e: Event) => {
@@ -1140,12 +1341,7 @@ const onNeedTypeChange = (e: Event) => {
 const onApiSourceChange = (e: Event) => {
 	if (!isRegularMode.value) return
 	const v = String((e.target as HTMLSelectElement).value || 'all')
-	apiSource.value =
-		v === 'gemini'
-			? 'gemini'
-			: v === 'bytedance'
-				? 'bytedance'
-				: 'all'
+	apiSource.value = v === 'gemini' ? 'gemini' : v === 'bytedance' ? 'bytedance' : 'all'
 	normalizeModelSelection()
 }
 
@@ -1168,7 +1364,10 @@ const onAgentModelSelectionChange = (e: Event) => {
 	if (selected) {
 		emit('update:modelKey', selected.legacyModelKey)
 	} else {
-		emit('update:modelKey', agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text')
+		emit(
+			'update:modelKey',
+			agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text'
+		)
 	}
 }
 
@@ -1219,7 +1418,6 @@ const emitGenerate = () => {
 		})
 		return
 	}
-	// Meshy 图片生成分支
 	if (modelKey.value === 'meshy') {
 		const quantity = normalizedNanoQuantity.value as 1 | 2 | 3 | 4
 		emit('nanobanana-generate', {
@@ -1233,7 +1431,10 @@ const emitGenerate = () => {
 				meshyPoseMode: meshyImageConfig.value.poseMode || '',
 				meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
 				meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
-				meshySeed: meshyImageConfig.value.seed && meshyImageConfig.value.seed > 0 ? meshyImageConfig.value.seed : -1,
+				meshySeed:
+					meshyImageConfig.value.seed && meshyImageConfig.value.seed > 0
+						? meshyImageConfig.value.seed
+						: -1,
 				quantity
 			}
 		})
@@ -1265,6 +1466,7 @@ const emitGenerate = () => {
 }
 
 const onEnterSend = () => {
+	if (mentionIsOpen.value) return
 	if (isSendingState.value) {
 		if (!isStoppingState.value) emit('stop')
 		return
@@ -1280,23 +1482,23 @@ const onClickSend = () => {
 	emit('send')
 }
 
-const onInputKeyDown = (e: KeyboardEvent) => {
-	if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
-		if (props.modelValue.trim() === '') {
-			e.preventDefault()
-			showSkillPicker.value = true
-			selectedSkillIndex.value = 0
-		}
-	}
-}
-
 const getToolResultField = (result: unknown, field: string): string => {
 	if (!result || typeof result !== 'object') return ''
 	return String((result as Record<string, unknown>)[field] ?? '')
 }
 
-const isCreateNodeToolResult = (tc: { name: string; status: string; result?: unknown }): boolean => {
-	return tc.name === 'create_node' && tc.status === 'completed' && !!tc.result && typeof tc.result === 'object' && 'nodeId' in (tc.result as object)
+const isCreateNodeToolResult = (tc: {
+	name: string
+	status: string
+	result?: unknown
+}): boolean => {
+	return (
+		tc.name === 'create_node' &&
+		tc.status === 'completed' &&
+		!!tc.result &&
+		typeof tc.result === 'object' &&
+		'nodeId' in (tc.result as object)
+	)
 }
 
 const onLocateNode = (nodeId: string) => {
@@ -1319,17 +1521,17 @@ watch(
 	{ deep: true }
 )
 
-const onEscapeKeyDown = () => {
-	if (showSkillPicker.value) {
-		showSkillPicker.value = false
-	}
-}
-
 const onSkillSelect = (skill: { id: string; name: string; description: string; icon: string }) => {
+	if (props.contextItems) {
+		emit('add-skill', skill.id)
+		showSkillPicker.value = false
+		editor.focus()
+		return
+	}
 	const skillPrompt = `[${skill.name}] ${skill.description}\n\n`
 	emit('update:modelValue', skillPrompt)
 	showSkillPicker.value = false
-	inputRef.value?.focus()
+	editor.focus()
 }
 
 const onUploadClick = () => {
@@ -1340,6 +1542,19 @@ const onFileSelect = (event: Event) => {
 	const target = event.target as HTMLInputElement
 	const files = target.files
 	if (!files || files.length === 0) return
+
+	if (props.contextItems) {
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i]
+			if (file.type.startsWith('image/')) {
+				emit('add-image', file)
+			} else {
+				emit('add-file', file)
+			}
+		}
+		target.value = ''
+		return
+	}
 
 	const uploadedFiles: Array<{ name: string; type: string; size: number; dataUrl?: string }> = []
 
@@ -1374,6 +1589,66 @@ const onFileSelect = (event: Event) => {
 	}
 
 	target.value = ''
+}
+
+const onPickNodeClick = () => {
+	if (props.isPickingNode) {
+		emit('cancel-node-pick-mode')
+	} else {
+		emit('enter-node-pick-mode')
+	}
+}
+
+const onPaste = (e: ClipboardEvent) => {
+	if (!props.contextItems) return
+	const items = e.clipboardData?.items
+	if (!items) return
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i]
+		if (item.type.startsWith('image/')) {
+			const file = item.getAsFile()
+			if (file) {
+				e.preventDefault()
+				emit('add-image', file)
+				return
+			}
+		}
+	}
+}
+
+const onDragOver = (e: DragEvent) => {
+	if (!props.contextItems) return
+	e.dataTransfer!.dropEffect = 'copy'
+	isDragOverInternal.value = true
+}
+
+const onDragLeave = () => {
+	isDragOverInternal.value = false
+}
+
+const onDrop = (e: DragEvent) => {
+	isDragOverInternal.value = false
+	if (!props.contextItems) return
+	const files = e.dataTransfer?.files
+	if (files && files.length > 0) {
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i]
+			if (file.type.startsWith('image/')) {
+				emit('add-image', file)
+			} else {
+				emit('add-file', file)
+			}
+		}
+		return
+	}
+	const nodeOutputData = e.dataTransfer?.getData('application/x-dweb-node-output')
+	if (nodeOutputData) {
+		try {
+			const data = JSON.parse(nodeOutputData)
+			emit('node-output-dropped', data)
+		} catch {}
+		return
+	}
 }
 
 const visualPanelTitle = computed(() =>
@@ -1519,7 +1794,8 @@ const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
 	renamingSessionId.value = id
-	renamingSessionTitle.value = String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
+	renamingSessionTitle.value =
+		String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
 	isRenamingSession.value = true
 	nextTick(() => {
 		renameInputRef.value?.focus()
@@ -1591,6 +1867,13 @@ const onWindowResize = () => {
 	emitLayoutChanged()
 }
 
+watch(
+	() => props.isPickingNode,
+	(val) => {
+		if (val) editor.closeMention()
+	}
+)
+
 onMounted(() => {
 	window.addEventListener('resize', onWindowResize, { passive: true })
 	emitLayoutChanged()
@@ -1634,6 +1917,28 @@ watch(
 		}
 	}
 )
+
+function getInputDropRect(): DOMRect | null {
+	if (!dockRef.value) return null
+	const contextArea = dockRef.value.querySelector('.chat-dock-context-area') as HTMLElement | null
+	const editorWrap = dockRef.value.querySelector('.chat-dock-editor-wrap') as HTMLElement | null
+	if (contextArea && editorWrap) {
+		const r1 = contextArea.getBoundingClientRect()
+		const r2 = editorWrap.getBoundingClientRect()
+		return new DOMRect(
+			Math.min(r1.left, r2.left),
+			r1.top,
+			Math.max(r1.right, r2.right) - Math.min(r1.left, r2.left),
+			r2.bottom - r1.top
+		)
+	}
+	if (editorWrap) return editorWrap.getBoundingClientRect()
+	return dockRef.value.getBoundingClientRect()
+}
+
+defineExpose({
+	getInputDropRect
+})
 </script>
 
 <style scoped>
@@ -3115,8 +3420,15 @@ watch(
 	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
 }
 
-.chat-dock-input {
-	resize: none;
+.chat-dock-editor-wrap {
+	position: relative;
+	width: 100%;
+}
+
+.chat-dock-editor {
+	min-height: 48px;
+	max-height: 140px;
+	overflow-y: auto;
 	width: 100%;
 	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent);
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 88%, transparent);
@@ -3125,17 +3437,153 @@ watch(
 	outline: none;
 	border-radius: 2px;
 	font-size: 12px;
-	line-height: 1.35;
+	line-height: 1.5;
+	word-break: break-word;
+	white-space: pre-wrap;
 	transition:
 		border-color 220ms ease,
 		box-shadow 220ms ease,
 		background-color 220ms ease;
 }
 
-.chat-dock-input:focus {
+:deep(.chat-dock-editor img) {
+	max-width: 18px !important;
+	max-height: 18px !important;
+	width: 14px !important;
+	height: 14px !important;
+	object-fit: cover !important;
+	vertical-align: middle !important;
+	border-radius: 2px !important;
+	display: inline-block !important;
+}
+
+.chat-dock-editor.is-disabled {
+	opacity: 0.7;
+	cursor: not-allowed;
+}
+
+.chat-dock-editor:focus {
 	border-color: var(--wf-primary, #1f9d84);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
 	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
+}
+
+.chat-dock-editor-placeholder {
+	position: absolute;
+	left: 11px;
+	top: 9px;
+	font-size: 12px;
+	color: color-mix(in srgb, var(--wf-text, #edf2f4) 45%, transparent);
+	pointer-events: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: calc(100% - 22px);
+}
+
+:deep(.agent-mention-chip) {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 4px !important;
+	height: 20px !important;
+	padding: 0 4px 0 2px !important;
+	border-radius: 3px !important;
+	font-size: 11px !important;
+	line-height: 20px !important;
+	vertical-align: middle !important;
+	user-select: none !important;
+	white-space: nowrap !important;
+	cursor: default !important;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent) !important;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent) !important;
+	color: var(--wf-primary, #1f9d84) !important;
+	margin: 0 2px !important;
+	box-sizing: border-box !important;
+	max-width: 160px !important;
+	overflow: hidden !important;
+}
+
+:deep(.agent-mention-chip.is-image) {
+	background: color-mix(in srgb, #60a5fa 15%, transparent) !important;
+	border-color: color-mix(in srgb, #60a5fa 35%, transparent) !important;
+	color: #60a5fa !important;
+}
+:deep(.agent-mention-chip.is-video) {
+	background: color-mix(in srgb, #4ade80 15%, transparent) !important;
+	border-color: color-mix(in srgb, #4ade80 35%, transparent) !important;
+	color: #4ade80 !important;
+}
+:deep(.agent-mention-chip.is-model3d) {
+	background: color-mix(in srgb, #c084fc 15%, transparent) !important;
+	border-color: color-mix(in srgb, #c084fc 35%, transparent) !important;
+	color: #c084fc !important;
+}
+:deep(.agent-mention-chip.is-file) {
+	background: color-mix(in srgb, #fbbf24 15%, transparent) !important;
+	border-color: color-mix(in srgb, #fbbf24 35%, transparent) !important;
+	color: #fbbf24 !important;
+}
+:deep(.agent-mention-chip.is-skill) {
+	background: color-mix(in srgb, #c084fc 15%, transparent) !important;
+	border-color: color-mix(in srgb, #c084fc 35%, transparent) !important;
+	color: #c084fc !important;
+}
+:deep(.agent-mention-chip.is-text),
+:deep(.agent-mention-chip.is-node),
+:deep(.agent-mention-chip.is-nodeOutput) {
+	background: color-mix(in srgb, #f59e0b 15%, transparent) !important;
+	border-color: color-mix(in srgb, #f59e0b 35%, transparent) !important;
+	color: #f59e0b !important;
+}
+
+:deep(.agent-mention-chip-thumb) {
+	width: 14px !important;
+	height: 14px !important;
+	object-fit: cover !important;
+	border-radius: 2px !important;
+	flex-shrink: 0 !important;
+	display: block !important;
+}
+
+:deep(.agent-mention-chip-icon) {
+	width: 14px !important;
+	height: 14px !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	font-size: 10px !important;
+	flex-shrink: 0 !important;
+}
+
+:deep(.agent-mention-chip-label) {
+	max-width: 100px !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	white-space: nowrap !important;
+	flex-shrink: 1 !important;
+}
+
+:deep(.agent-mention-chip-remove) {
+	width: 12px !important;
+	height: 12px !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	justify-content: center !important;
+	border-radius: 2px !important;
+	cursor: pointer !important;
+	font-size: 11px !important;
+	line-height: 1 !important;
+	flex-shrink: 0 !important;
+	margin-left: 1px !important;
+	opacity: 0.7 !important;
+	transition:
+		opacity 150ms ease,
+		background-color 150ms ease !important;
+}
+
+:deep(.agent-mention-chip-remove:hover) {
+	opacity: 1 !important;
+	background: color-mix(in srgb, currentColor 25%, transparent) !important;
 }
 
 .chat-dock-send {
@@ -3168,8 +3616,7 @@ watch(
 	box-shadow: 0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
 }
 
-.chat-dock-send:disabled,
-.chat-dock-input:disabled {
+.chat-dock-send:disabled {
 	opacity: 0.7;
 	cursor: not-allowed;
 }
@@ -3293,5 +3740,146 @@ watch(
 		opacity: 1;
 		transform: translateY(-1px);
 	}
+}
+
+.chat-dock-pick-hint {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 10px;
+	margin-bottom: 4px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+	border-radius: 4px;
+	font-size: 12px;
+	color: var(--wf-primary, #1f9d84);
+}
+
+.chat-dock-pick-cancel {
+	background: transparent;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+	color: var(--wf-primary, #1f9d84);
+	border-radius: 3px;
+	padding: 2px 8px;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.chat-dock-pick-cancel:hover {
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 20%, transparent);
+}
+
+.chat-dock-context-area {
+	position: relative;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 8px;
+	margin-bottom: 4px;
+	min-height: 32px;
+	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.9)) 80%, transparent);
+	border: 1px dashed color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+	border-radius: 4px;
+	transition: all 0.2s ease;
+}
+
+.chat-dock-context-area.is-drag-over {
+	border-color: var(--wf-primary, #1f9d84);
+	border-style: solid;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 10%, transparent);
+	box-shadow: 0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 25%, transparent);
+}
+
+.chat-dock-context-area.is-link-drag-over {
+	border-color: var(--wf-primary, #1f9d84);
+	border-style: solid;
+	border-width: 2px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+	box-shadow:
+		0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent),
+		inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
+}
+
+.chat-dock-link-drag-hint {
+	padding: 6px 10px;
+	text-align: center;
+	font-size: 12px;
+	color: var(--wf-primary, #1f9d84);
+	font-weight: 500;
+	letter-spacing: 0.3px;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+	animation: chatDockLinkPulse 1s ease-in-out infinite;
+	pointer-events: none;
+}
+
+@keyframes chatDockLinkPulse {
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+.chat-dock-editor-wrap.is-link-drag-over {
+	border-color: var(--wf-primary, #1f9d84);
+	border-style: solid;
+	border-width: 2px;
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
+	box-shadow:
+		0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent),
+		inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 5%, transparent);
+}
+
+.chat-dock-editor-wrap.is-link-drag-over .chat-dock-editor {
+	background: transparent;
+}
+
+.chat-dock-context-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: center;
+}
+
+.chat-dock-context-hint {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--wf-text-muted, #aeb8bd) 70%, transparent);
+	pointer-events: none;
+}
+
+.chat-dock-toolbar-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 3px;
+	color: var(--wf-text-muted, #aeb8bd);
+	font-size: 14px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.chat-dock-toolbar-btn:hover:not(:disabled) {
+	color: var(--wf-primary, #1f9d84);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
+	border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent);
+}
+
+.chat-dock-toolbar-btn.active {
+	color: var(--wf-primary, #1f9d84);
+	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 18%, transparent);
+	border-color: color-mix(in srgb, var(--wf-primary, #1f9d84) 40%, transparent);
+}
+
+.chat-dock-toolbar-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 </style>

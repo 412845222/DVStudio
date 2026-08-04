@@ -9,7 +9,13 @@ import type {
 } from './types'
 import { extractMeshyTaskResultFields } from './types'
 
-type Meshy3DTaskMode = 'text-to-3d' | 'image-to-3d' | 'multi-image-to-3d' | 'retexture' | 'remesh' | 'uv-unwrap'
+type Meshy3DTaskMode =
+	| 'text-to-3d'
+	| 'image-to-3d'
+	| 'multi-image-to-3d'
+	| 'retexture'
+	| 'remesh'
+	| 'uv-unwrap'
 
 type Meshy3DSettings = {
 	meshyTaskTarget?: string
@@ -514,12 +520,18 @@ export const useAIWorkflowModel3DNodeMeshy = (options: UseAIWorkflowModel3DNodeM
 		try {
 			const res = await options.getComfyService().meshyTask(taskId, mode)
 			if (!res.ok) {
-				options.pushToast(t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error ?? 'unknown') }), 'warn')
+				options.pushToast(
+					t('tasks.meshy.taskStatusRefreshFailed', { error: String(res.error ?? 'unknown') }),
+					'warn'
+				)
 				return
 			}
 			await applyMeshyTaskResult(nodeId, res)
 		} catch (err: unknown) {
-			options.pushToast(t('tasks.meshy.refreshTaskException', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('tasks.meshy.refreshTaskException', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		}
 	}
 

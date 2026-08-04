@@ -1,11 +1,10 @@
 <template>
-	<div ref="layerRef" class="aiwf-canvas-anchor-layer" :class="{ 'aiwf-anchor-layer-hidden': hideVisuals, 'aiwf-anchor-layer-paused': motionActive }">
-		<div
-			v-for="node in nodes"
-			:key="node.id"
-			class="wf-node-shell"
-			:style="nodeShellStyle(node)"
-		>
+	<div
+		ref="layerRef"
+		class="aiwf-canvas-anchor-layer"
+		:class="{ 'aiwf-anchor-layer-hidden': hideVisuals, 'aiwf-anchor-layer-paused': motionActive }"
+	>
+		<div v-for="node in nodes" :key="node.id" class="wf-node-shell" :style="nodeShellStyle(node)">
 			<div class="wf-anchors wf-anchors-in" :aria-label="t('aiworkflow.canvas.inputAnchors')">
 				<div
 					v-for="a in getInputAnchors(node)"
@@ -82,10 +81,7 @@ const emit = defineEmits<{
 		e: 'start-link',
 		payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }
 	): void
-	(
-		e: 'end-link',
-		payload: { nodeId: string; anchorId: string; anchorIndex: number }
-	): void
+	(e: 'end-link', payload: { nodeId: string; anchorId: string; anchorIndex: number }): void
 }>()
 
 const layerRef = ref<HTMLDivElement | null>(null)
@@ -161,26 +157,26 @@ const defaultAnchorOffset = (idx: number, count: number): number => {
 	return start + idx * gap
 }
 
-const normalizeAnchors = (
-	anchors: WorkflowAnchorSpec[] | undefined,
-	fallbackId: string
-) => {
+const normalizeAnchors = (anchors: WorkflowAnchorSpec[] | undefined, fallbackId: string) => {
 	if (Array.isArray(anchors) && anchors.length > 0) {
 		return anchors.map((a, index) => ({
 			id: String(a.id ?? `${fallbackId}-${index}`),
 			index,
-			offsetY: typeof a.offsetY === 'number' ? a.offsetY : defaultAnchorOffset(index, anchors.length),
+			offsetY:
+				typeof a.offsetY === 'number' ? a.offsetY : defaultAnchorOffset(index, anchors.length),
 			mediaType: (a.mediaType ?? 'resource') as string,
 			label: a.label ? String(a.label) : ''
 		}))
 	}
-	return [{
-		id: fallbackId,
-		index: 0,
-		offsetY: 0,
-		mediaType: 'resource' as string,
-		label: ''
-	}]
+	return [
+		{
+			id: fallbackId,
+			index: 0,
+			offsetY: 0,
+			mediaType: 'resource' as string,
+			label: ''
+		}
+	]
 }
 
 const getInputAnchors = (node: CanvasAnchorNode) => normalizeAnchors(node.inputs, 'in')
@@ -201,15 +197,16 @@ const anchorClass = (mediaType: string | undefined) => {
 	return 'wf-anchor-resource'
 }
 
-const onStartLink = (nodeId: string, anchorId: string, anchorIndex: number, event: PointerEvent) => {
+const onStartLink = (
+	nodeId: string,
+	anchorId: string,
+	anchorIndex: number,
+	event: PointerEvent
+) => {
 	emit('start-link', { nodeId, anchorId, anchorIndex, event })
 }
 
-const onInputAnchorPointerUp = (
-	nodeId: string,
-	anchorId: string,
-	anchorIndex: number
-) => {
+const onInputAnchorPointerUp = (nodeId: string, anchorId: string, anchorIndex: number) => {
 	emit('end-link', { nodeId, anchorId, anchorIndex })
 }
 </script>

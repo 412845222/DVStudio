@@ -6,15 +6,16 @@
 			{ 'has-status': !!status, 'is-placeholder': !src, 'no-border': noBorder }
 		]"
 	>
-		<div
-			v-if="src"
-			class="avatar-image"
-			:style="{ backgroundImage: `url(${src})` }"
-		></div>
+		<div v-if="src" class="avatar-image" :style="{ backgroundImage: `url(${src})` }"></div>
 		<div v-else class="avatar-placeholder">
 			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
 				<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8" />
-				<path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+				<path
+					d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+				/>
 			</svg>
 		</div>
 		<span v-if="status" class="status-indicator" :class="`status-${status}`"></span>
@@ -34,7 +35,7 @@ withDefaults(defineProps<Props>(), {
 	size: 'md',
 	status: undefined,
 	platform: 'steam',
-	noBorder: false,
+	noBorder: false
 })
 </script>
 
@@ -136,7 +137,12 @@ withDefaults(defineProps<Props>(), {
 }
 
 @keyframes status-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.5; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
 }
 </style>

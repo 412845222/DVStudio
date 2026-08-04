@@ -48,11 +48,7 @@
 								stroke-width="1.2"
 								stroke-linecap="round"
 							/>
-							<path
-								v-if="sortMode === 'date-desc'"
-								d="M12 12l-2-2h4z"
-								fill="currentColor"
-							/>
+							<path v-if="sortMode === 'date-desc'" d="M12 12l-2-2h4z" fill="currentColor" />
 							<path v-else d="M12 10l-2 2h4z" fill="currentColor" />
 						</svg>
 					</button>
@@ -81,7 +77,9 @@
 					>
 						{{ refreshBusy ? t('tasks.ark.refreshing') : t('tasks.ark.refresh') }}
 					</button>
-					<div class="wf-ark-panel-stats">{{ t('tasks.ark.totalCount', { count: filteredTasks.length }) }}</div>
+					<div class="wf-ark-panel-stats">
+						{{ t('tasks.ark.totalCount', { count: filteredTasks.length }) }}
+					</div>
 				</div>
 
 				<div v-if="!filteredTasks.length" class="wf-ark-panel-empty">
@@ -153,7 +151,9 @@
 										:disabled="isDownloading(task.id)"
 										@click="onDownloadAsset(task.taskId, 'video')"
 									>
-										{{ isDownloading(task.id) ? t('tasks.ark.downloading') : t('tasks.ark.download') }}
+										{{
+											isDownloading(task.id) ? t('tasks.ark.downloading') : t('tasks.ark.download')
+										}}
 									</button>
 									<button
 										class="wf-ark-task-preview-btn"
@@ -189,11 +189,7 @@
 								</div>
 							</div>
 							<div class="wf-ark-task-action-row">
-								<button
-									class="wf-ark-panel-btn danger"
-									type="button"
-									@click="closeDetail"
-								>
+								<button class="wf-ark-panel-btn danger" type="button" @click="closeDetail">
 									{{ t('common.close') }}
 								</button>
 							</div>
@@ -276,28 +272,34 @@
 							</div>
 							<div v-if="detailTask.apiType === 'seedance'" class="wf-ark-task-detail-section">
 								<div class="wf-ark-task-detail-label">{{ t('tasks.ark.resourceStatus') }}</div>
-								<div class="wf-ark-task-detail-block" :class="{ error: !detailTask.resourceAvailable }">
+								<div
+									class="wf-ark-task-detail-block"
+									:class="{ error: !detailTask.resourceAvailable }"
+								>
 									<template v-if="detailTask.resourceAvailable === true">
 										<span style="color: #bbf7d0">✓ {{ t('tasks.ark.resourceAvailable') }}</span>
 									</template>
 									<template v-else-if="detailTask.resourceAvailable === false">
-										<span style="color: #fecaca">✗ {{ detailTask.resourceUnavailableReason || t('tasks.ark.noResource') }}</span>
+										<span style="color: #fecaca">
+											✗ {{ detailTask.resourceUnavailableReason || t('tasks.ark.noResource') }}
+										</span>
 									</template>
 									<template v-else>
 										<span>{{ t('tasks.ark.resourceLoading') }}</span>
 									</template>
 								</div>
-								<div
-									v-if="detailTask.resourceAvailable"
-									class="wf-ark-task-detail-action-row"
-								>
+								<div v-if="detailTask.resourceAvailable" class="wf-ark-task-detail-action-row">
 									<button
 										class="wf-ark-panel-btn primary"
 										type="button"
 										:disabled="detailTask && isDownloading(detailTask.id)"
 										@click="detailTask && onDownloadAsset(detailTask.taskId, 'video')"
 									>
-										{{ detailTask && isDownloading(detailTask.id) ? t('tasks.ark.downloadingVideo') : t('tasks.ark.downloadVideo') }}
+										{{
+											detailTask && isDownloading(detailTask.id)
+												? t('tasks.ark.downloadingVideo')
+												: t('tasks.ark.downloadVideo')
+										}}
 									</button>
 									<button
 										class="wf-ark-panel-btn primary"
@@ -305,7 +307,11 @@
 										:disabled="detailTask && isDownloading(detailTask.id)"
 										@click="detailTask && onImportToNode(detailTask.taskId, 'video')"
 									>
-										{{ detailTask && isDownloading(detailTask.id) ? t('tasks.ark.importingVideo') : t('tasks.ark.importVideo') }}
+										{{
+											detailTask && isDownloading(detailTask.id)
+												? t('tasks.ark.importingVideo')
+												: t('tasks.ark.importVideo')
+										}}
 									</button>
 								</div>
 							</div>
@@ -335,38 +341,14 @@
 				</div>
 			</div>
 
-			<div
-				class="wf-ark-resize wf-ark-resize-n"
-				@pointerdown.stop="onResizeStart('n', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-s"
-				@pointerdown.stop="onResizeStart('s', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-e"
-				@pointerdown.stop="onResizeStart('e', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-w"
-				@pointerdown.stop="onResizeStart('w', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-ne"
-				@pointerdown.stop="onResizeStart('ne', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-nw"
-				@pointerdown.stop="onResizeStart('nw', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-se"
-				@pointerdown.stop="onResizeStart('se', $event)"
-			/>
-			<div
-				class="wf-ark-resize wf-ark-resize-sw"
-				@pointerdown.stop="onResizeStart('sw', $event)"
-			/>
+			<div class="wf-ark-resize wf-ark-resize-n" @pointerdown.stop="onResizeStart('n', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-s" @pointerdown.stop="onResizeStart('s', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-e" @pointerdown.stop="onResizeStart('e', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-w" @pointerdown.stop="onResizeStart('w', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-ne" @pointerdown.stop="onResizeStart('ne', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-nw" @pointerdown.stop="onResizeStart('nw', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-se" @pointerdown.stop="onResizeStart('se', $event)" />
+			<div class="wf-ark-resize wf-ark-resize-sw" @pointerdown.stop="onResizeStart('sw', $event)" />
 		</div>
 	</teleport>
 </template>

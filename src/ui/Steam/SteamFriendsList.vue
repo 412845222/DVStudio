@@ -16,9 +16,19 @@
 						<UserAvatar
 							:src="friend.avatarUrl"
 							size="sm"
-							:status="friend.status === 'in-game' || friend.status === 'online' ? 'online' : friend.status === 'offline' ? 'offline' : undefined"
+							:status="
+								friend.status === 'in-game' || friend.status === 'online'
+									? 'online'
+									: friend.status === 'offline'
+										? 'offline'
+										: undefined
+							"
 						/>
-						<SteamStatusBadge v-if="friend.status === 'in-game'" :status="friend.status" class="friend-status-badge" />
+						<SteamStatusBadge
+							v-if="friend.status === 'in-game'"
+							:status="friend.status"
+							class="friend-status-badge"
+						/>
 					</div>
 					<div class="friend-info">
 						<div class="friend-name">{{ friend.name }}</div>
@@ -36,11 +46,7 @@
 				<span class="section-label">离线好友 ({{ offlineFriends.length }})</span>
 			</div>
 			<div class="friends-items">
-				<div
-					v-for="friend in offlineFriends"
-					:key="friend.id"
-					class="friend-item status-offline"
-				>
+				<div v-for="friend in offlineFriends" :key="friend.id" class="friend-item status-offline">
 					<div class="friend-avatar-wrapper">
 						<UserAvatar :src="friend.avatarUrl" size="sm" status="offline" />
 					</div>
@@ -54,10 +60,28 @@
 
 		<div v-if="onlineFriends.length === 0 && offlineFriends.length === 0" class="friends-empty">
 			<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-				<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-				<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
-				<path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-				<path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8" />
+				<path
+					d="M23 21v-2a4 4 0 0 0-3-3.87"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
+				<path
+					d="M16 3.13a4 4 0 0 1 0 7.75"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 			<span>暂无好友数据</span>
 		</div>
@@ -69,7 +93,15 @@ import { computed } from 'vue'
 import { UserAvatar } from '../User'
 import SteamStatusBadge from './SteamStatusBadge.vue'
 
-type FriendStatus = 'online' | 'away' | 'busy' | 'snooze' | 'looking-to-trade' | 'looking-to-play' | 'offline' | 'in-game'
+type FriendStatus =
+	| 'online'
+	| 'away'
+	| 'busy'
+	| 'snooze'
+	| 'looking-to-trade'
+	| 'looking-to-play'
+	| 'offline'
+	| 'in-game'
 
 interface Friend {
 	id: string
@@ -84,22 +116,22 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-	friends: () => [],
+	friends: () => []
 })
 
-const onlineFriends = computed(() => props.friends.filter(f => f.status !== 'offline'))
-const offlineFriends = computed(() => props.friends.filter(f => f.status === 'offline'))
+const onlineFriends = computed(() => props.friends.filter((f) => f.status !== 'offline'))
+const offlineFriends = computed(() => props.friends.filter((f) => f.status === 'offline'))
 
 function getStatusText(status: FriendStatus): string {
 	const labels: Record<FriendStatus, string> = {
-		'online': '在线',
-		'away': '离开',
-		'busy': '忙碌',
-		'snooze': '打盹',
+		online: '在线',
+		away: '离开',
+		busy: '忙碌',
+		snooze: '打盹',
 		'looking-to-trade': '想交易',
 		'looking-to-play': '想玩游戏',
-		'offline': '离线',
-		'in-game': '游戏中',
+		offline: '离线',
+		'in-game': '游戏中'
 	}
 	return labels[status] || '未知'
 }

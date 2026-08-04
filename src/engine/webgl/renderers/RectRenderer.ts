@@ -18,14 +18,8 @@ export class RectRenderer extends NodeRenderer {
 		const w = node.transform.width
 		const h = node.transform.height
 		const t = node.transform as VideoSceneNodeTransform
-		const px =
-			typeof t.pivotX === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotX)))
-				: 0.5
-		const py =
-			typeof t.pivotY === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotY)))
-				: 0.5
+		const px = typeof t.pivotX === 'number' ? Math.max(0, Math.min(1, Number(t.pivotX))) : 0.5
+		const py = typeof t.pivotY === 'number' ? Math.max(0, Math.min(1, Number(t.pivotY))) : 0.5
 		// Canvas drawRect API is center-based; convert pivot-based (x,y) to center.
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
@@ -89,14 +83,8 @@ export class RectRenderer extends NodeRenderer {
 		const nodeW = Math.max(1, Number(node.transform.width ?? 1))
 		const nodeH = Math.max(1, Number(node.transform.height ?? 1))
 		const t = node.transform as VideoSceneNodeTransform
-		const px =
-			typeof t.pivotX === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotX)))
-				: 0.5
-		const py =
-			typeof t.pivotY === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotY)))
-				: 0.5
+		const px = typeof t.pivotX === 'number' ? Math.max(0, Math.min(1, Number(t.pivotX))) : 0.5
+		const py = typeof t.pivotY === 'number' ? Math.max(0, Math.min(1, Number(t.pivotY))) : 0.5
 		const cx = node.transform.x + (0.5 - px) * nodeW
 		const cy = node.transform.y + (0.5 - py) * nodeH
 

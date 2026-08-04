@@ -44,7 +44,9 @@
 									<span>此操作将清空所有现有 ComfyUI 配置，开始全新安装流程。</span>
 								</div>
 								<div class="fresh-form-hint">
-									请填写以下必填项（带 <span class="required-mark">*</span> 标记）以开始配置：
+									请填写以下必填项（带
+									<span class="required-mark">*</span>
+									标记）以开始配置：
 								</div>
 								<div class="fresh-form-row">
 									<label class="fresh-form-label">
@@ -95,14 +97,12 @@
 										<span class="probe-item-label">检测到版本</span>
 										<span class="probe-item-value">{{ probeResult.version }}</span>
 										<span v-if="versionChecking" class="probe-version-checking">
-											<span class="spinner-sm" /> 检查更新中
+											<span class="spinner-sm" />
+											检查更新中
 										</span>
-										<button
-											v-else
-											type="button"
-											class="probe-mini-btn"
-											@click="checkVersionUpdate"
-										>{{ versionUpdateInfo ? '重新检查' : '检查更新' }}</button>
+										<button v-else type="button" class="probe-mini-btn" @click="checkVersionUpdate">
+											{{ versionUpdateInfo ? '重新检查' : '检查更新' }}
+										</button>
 									</div>
 									<div v-if="versionUpdateInfo" class="probe-version-update">
 										<template v-if="versionUpdateInfo.error">
@@ -113,34 +113,52 @@
 										<template v-else-if="versionUpdateInfo.updateAvailable">
 											<div class="probe-msg probe-msg-update">
 												🎉 发现新版本！
-												<span v-if="versionUpdateInfo.latestTag">最新版本：<strong>{{ versionUpdateInfo.latestTag }}</strong></span>
-												<span v-if="versionUpdateInfo.currentVersion">当前版本：{{ versionUpdateInfo.currentVersion }}</span>
+												<span v-if="versionUpdateInfo.latestTag">
+													最新版本：
+													<strong>{{ versionUpdateInfo.latestTag }}</strong>
+												</span>
+												<span v-if="versionUpdateInfo.currentVersion">
+													当前版本：{{ versionUpdateInfo.currentVersion }}
+												</span>
 												<a
 													v-if="versionUpdateInfo.releaseUrl"
 													class="probe-update-link"
 													@click.prevent="openUrl(versionUpdateInfo.releaseUrl!)"
-												>查看发布说明</a>
+												>
+													查看发布说明
+												</a>
 												<button
 													v-if="!updatingComfyUI && !updateDone"
 													type="button"
 													class="probe-mini-btn probe-update-btn"
 													@click="updateComfyUI"
-												>⬇ 立即更新</button>
+												>
+													⬇ 立即更新
+												</button>
 											</div>
 										</template>
 										<template v-else>
 											<div class="probe-msg probe-msg-ok">
 												✓ 当前已是最新版本
-												<span v-if="versionUpdateInfo.latestTag">（{{ versionUpdateInfo.latestTag }}）</span>
+												<span v-if="versionUpdateInfo.latestTag">
+													（{{ versionUpdateInfo.latestTag }}）
+												</span>
 											</div>
 										</template>
 									</div>
 									<div class="fresh-probe-item">
 										<span class="probe-item-label">Python</span>
-										<span class="probe-item-value" :class="probeResult.pythonInfo?.hasTorch ? '' : 'probe-value-error'">
+										<span
+											class="probe-item-value"
+											:class="probeResult.pythonInfo?.hasTorch ? '' : 'probe-value-error'"
+										>
 											<template v-if="probeResult.pythonInfo?.version">
 												{{ probeResult.pythonInfo.version }}
-												<span v-if="probeResult.pythonInfo?.hasTorch" class="probe-tag" :class="probeResult.pythonInfo.torchCuda ? 'tag-cuda' : 'tag-cpu'">
+												<span
+													v-if="probeResult.pythonInfo?.hasTorch"
+													class="probe-tag"
+													:class="probeResult.pythonInfo.torchCuda ? 'tag-cuda' : 'tag-cpu'"
+												>
 													{{ probeResult.pythonInfo.torchCuda ? 'CUDA' : 'CPU' }}
 												</span>
 											</template>
@@ -197,7 +215,9 @@
 						<div class="setup-card-body">
 							<div class="card-section-head">
 								<h3 class="setup-card-title">ComfyUI 路径</h3>
-								<span v-if="probeResult?.isComfyUI" class="compat-badge compat-full">已检测到有效安装</span>
+								<span v-if="probeResult?.isComfyUI" class="compat-badge compat-full">
+									已检测到有效安装
+								</span>
 								<span v-else-if="probing" class="compat-badge compat-checking">
 									<span class="spinner-sm" />
 									检测中
@@ -231,9 +251,15 @@
 									</button>
 								</div>
 								<div v-if="pathValidation" class="path-hint">
-									<span v-if="pathValidation.error" class="hint-error">{{ pathValidation.error }}</span>
-									<span v-else-if="pathValidation.warning" class="hint-warn">{{ pathValidation.warning }}</span>
-									<span v-else-if="pathValidation.isComfyUI" class="hint-ok">检测到有效的 ComfyUI 目录</span>
+									<span v-if="pathValidation.error" class="hint-error">
+										{{ pathValidation.error }}
+									</span>
+									<span v-else-if="pathValidation.warning" class="hint-warn">
+										{{ pathValidation.warning }}
+									</span>
+									<span v-else-if="pathValidation.isComfyUI" class="hint-ok">
+										检测到有效的 ComfyUI 目录
+									</span>
 								</div>
 							</div>
 
@@ -245,9 +271,14 @@
 							<div v-if="probeResult && probeResult.isComfyUI" class="probe-result">
 								<div class="probe-head">
 									<span class="probe-title">环境信息</span>
-									<span class="probe-compat" :class="`compat-${probeResult.launchCompatibility.status}`">
+									<span
+										class="probe-compat"
+										:class="`compat-${probeResult.launchCompatibility.status}`"
+									>
 										<span v-if="probeResult.launchCompatibility.status === 'full'">可启动</span>
-										<span v-else-if="probeResult.launchCompatibility.status === 'partial'">可启动（有警告）</span>
+										<span v-else-if="probeResult.launchCompatibility.status === 'partial'">
+											可启动（有警告）
+										</span>
 										<span v-else>不可启动</span>
 									</span>
 									<span v-if="probeResult.isDesktop" class="probe-badge badge-desktop">桌面版</span>
@@ -263,33 +294,48 @@
 												class="probe-mini-btn probe-version-check-btn"
 												@click="checkVersionUpdate"
 												title="检查更新"
-											>{{ versionUpdateInfo ? '重新检查' : '检查更新' }}</button>
+											>
+												{{ versionUpdateInfo ? '重新检查' : '检查更新' }}
+											</button>
 											<span v-else class="probe-version-checking">
-												<span class="spinner-sm" /> 检查中
+												<span class="spinner-sm" />
+												检查中
 											</span>
 										</span>
 									</div>
 									<div v-if="probeResult.commitHash" class="probe-item">
 										<span class="probe-item-label">Commit</span>
-										<span class="probe-item-value probe-mono">{{ probeResult.commitHash.slice(0, 10) }}</span>
+										<span class="probe-item-value probe-mono">
+											{{ probeResult.commitHash.slice(0, 10) }}
+										</span>
 									</div>
 									<div class="probe-item">
 										<span class="probe-item-label">安装类型</span>
-										<span class="probe-item-value">{{ installTypeLabel(probeResult.installType) }}</span>
+										<span class="probe-item-value">
+											{{ installTypeLabel(probeResult.installType) }}
+										</span>
 									</div>
 									<div v-if="probeResult.pythonInfo?.version" class="probe-item">
 										<span class="probe-item-label">Python</span>
 										<span class="probe-item-value">
 											{{ probeResult.pythonInfo.version }}
-											<span class="probe-tag">{{ pythonTypeLabel(probeResult.pythonInfo.type) }}</span>
+											<span class="probe-tag">
+												{{ pythonTypeLabel(probeResult.pythonInfo.type) }}
+											</span>
 										</span>
 									</div>
 									<div v-if="probeResult.pythonInfo" class="probe-item">
 										<span class="probe-item-label">PyTorch</span>
-										<span class="probe-item-value" :class="probeResult.pythonInfo.hasTorch ? '' : 'probe-value-error'">
+										<span
+											class="probe-item-value"
+											:class="probeResult.pythonInfo.hasTorch ? '' : 'probe-value-error'"
+										>
 											<template v-if="probeResult.pythonInfo.hasTorch">
 												{{ probeResult.pythonInfo.torchVersion || '已安装' }}
-												<span class="probe-tag" :class="probeResult.pythonInfo.torchCuda ? 'tag-cuda' : 'tag-cpu'">
+												<span
+													class="probe-tag"
+													:class="probeResult.pythonInfo.torchCuda ? 'tag-cuda' : 'tag-cpu'"
+												>
 													{{ probeResult.pythonInfo.torchCuda ? 'CUDA' : 'CPU' }}
 												</span>
 											</template>
@@ -298,9 +344,25 @@
 									</div>
 									<div v-if="probeResult.pythonInfo" class="probe-item">
 										<span class="probe-item-label">启动链路</span>
-										<span class="probe-item-value" :class="probeResult.pythonInfo.canImportComfy && probeResult.pythonInfo.canStartComfy !== false ? '' : 'probe-value-error'">
-											<template v-if="!probeResult.pythonInfo.canImportComfy">comfy 导入失败</template>
-											<template v-else-if="probeResult.pythonInfo.canStartComfy === false">依赖不完整{{ probeResult.pythonInfo.importError ? '（' + probeResult.pythonInfo.importError + '）' : '' }}</template>
+										<span
+											class="probe-item-value"
+											:class="
+												probeResult.pythonInfo.canImportComfy &&
+												probeResult.pythonInfo.canStartComfy !== false
+													? ''
+													: 'probe-value-error'
+											"
+										>
+											<template v-if="!probeResult.pythonInfo.canImportComfy">
+												comfy 导入失败
+											</template>
+											<template v-else-if="probeResult.pythonInfo.canStartComfy === false">
+												依赖不完整{{
+													probeResult.pythonInfo.importError
+														? '（' + probeResult.pythonInfo.importError + '）'
+														: ''
+												}}
+											</template>
 											<template v-else>可正常启动</template>
 										</span>
 									</div>
@@ -308,9 +370,14 @@
 										<span class="probe-item-label">自定义节点</span>
 										<span class="probe-item-value">{{ probeResult.customNodeCount }} 个</span>
 									</div>
-									<div v-if="probeResult.totalModelCount !== undefined" class="probe-item probe-item-wide">
+									<div
+										v-if="probeResult.totalModelCount !== undefined"
+										class="probe-item probe-item-wide"
+									>
 										<span class="probe-item-label">模型总计</span>
-										<span class="probe-item-value">{{ probeResult.totalModelCount }} 个模型文件</span>
+										<span class="probe-item-value">
+											{{ probeResult.totalModelCount }} 个模型文件
+										</span>
 									</div>
 								</div>
 
@@ -318,21 +385,43 @@
 									<div class="probe-section-title model-section-head">
 										<span>模型路径配置</span>
 										<span class="probe-badges">
-											<span v-if="probeResult.hasExtraModelConfig" class="probe-badge badge-extra">extra_model_paths.yaml</span>
-											<span v-if="customModelPaths.length > 0" class="probe-badge badge-custom">自定义 {{ customModelPaths.length }}</span>
+											<span v-if="probeResult.hasExtraModelConfig" class="probe-badge badge-extra">
+												extra_model_paths.yaml
+											</span>
+											<span v-if="customModelPaths.length > 0" class="probe-badge badge-custom">
+												自定义 {{ customModelPaths.length }}
+											</span>
 										</span>
-										<button type="button" class="probe-mini-btn" @click="addCustomModelPath" title="添加模型目录">+ 添加模型目录</button>
+										<button
+											type="button"
+											class="probe-mini-btn"
+											@click="addCustomModelPath"
+											title="添加模型目录"
+										>
+											+ 添加模型目录
+										</button>
 									</div>
 
 									<div v-if="customModelPaths.length > 0" class="custom-model-paths">
 										<div v-for="mp in customModelPaths" :key="mp" class="custom-model-path-item">
 											<span class="custom-model-path-text" :title="mp">{{ shortenPath(mp) }}</span>
-											<button type="button" class="custom-model-path-remove" @click="removeCustomModelPath(mp)" title="移除">×</button>
+											<button
+												type="button"
+												class="custom-model-path-remove"
+												@click="removeCustomModelPath(mp)"
+												title="移除"
+											>
+												×
+											</button>
 										</div>
 									</div>
 
-									<div v-if="!probeResult.models || (probeResult.totalModelCount || 0) === 0" class="probe-msg probe-msg-warn model-empty-hint">
-										未在默认路径下扫描到模型文件。如果您的模型存放在其他位置，请点击上方「+ 添加模型目录」手动添加。
+									<div
+										v-if="!probeResult.models || (probeResult.totalModelCount || 0) === 0"
+										class="probe-msg probe-msg-warn model-empty-hint"
+									>
+										未在默认路径下扫描到模型文件。如果您的模型存放在其他位置，请点击上方「+
+										添加模型目录」手动添加。
 									</div>
 								</div>
 
@@ -344,7 +433,9 @@
 										<template v-for="(info, type) in probeResult.models" :key="type">
 											<div v-if="info.total > 0 || type === 'checkpoints'" class="model-row">
 												<span class="model-name">{{ modelTypeLabel(String(type)) }}</span>
-												<span class="model-count" :class="info.total > 0 ? '' : 'model-count-zero'">{{ info.total }}</span>
+												<span class="model-count" :class="info.total > 0 ? '' : 'model-count-zero'">
+													{{ info.total }}
+												</span>
 												<div v-if="info.sources.length > 0" class="model-sources">
 													<div v-for="(src, si) in info.sources" :key="si" class="model-source">
 														<span class="model-source-path">{{ shortenPath(src.path) }}</span>
@@ -365,52 +456,86 @@
 									<template v-if="versionUpdateInfo.error">
 										<div class="probe-msg probe-msg-warn">
 											版本检查失败：{{ versionUpdateInfo.error }}
-											<button type="button" class="probe-mini-btn" @click="checkVersionUpdate" style="margin-left:8px">重试</button>
+											<button
+												type="button"
+												class="probe-mini-btn"
+												@click="checkVersionUpdate"
+												style="margin-left: 8px"
+											>
+												重试
+											</button>
 										</div>
 									</template>
 									<template v-else-if="versionUpdateInfo.updateAvailable">
 										<div class="probe-msg probe-msg-update">
 											🎉 发现新版本！
-											<span v-if="versionUpdateInfo.latestTag">最新版本：<strong>{{ versionUpdateInfo.latestTag }}</strong></span>
-											<span v-if="versionUpdateInfo.currentVersion">当前版本：{{ versionUpdateInfo.currentVersion }}</span>
+											<span v-if="versionUpdateInfo.latestTag">
+												最新版本：
+												<strong>{{ versionUpdateInfo.latestTag }}</strong>
+											</span>
+											<span v-if="versionUpdateInfo.currentVersion">
+												当前版本：{{ versionUpdateInfo.currentVersion }}
+											</span>
 											<a
 												v-if="versionUpdateInfo.releaseUrl"
 												class="probe-update-link"
 												@click.prevent="openUrl(versionUpdateInfo.releaseUrl!)"
-											>查看发布说明</a>
+											>
+												查看发布说明
+											</a>
 											<button
 												v-if="!updatingComfyUI && !updateDone"
 												type="button"
 												class="probe-mini-btn probe-update-btn"
 												@click="updateComfyUI"
-											>⬇ 立即更新</button>
+											>
+												⬇ 立即更新
+											</button>
 										</div>
 									</template>
 									<template v-else>
 										<div class="probe-msg probe-msg-ok">
 											✓ 当前已是最新版本
-											<span v-if="versionUpdateInfo.latestTag">（{{ versionUpdateInfo.latestTag }}）</span>
+											<span v-if="versionUpdateInfo.latestTag">
+												（{{ versionUpdateInfo.latestTag }}）
+											</span>
 										</div>
 									</template>
 								</div>
 
 								<div v-if="probeResult.launchCompatibility.warnings?.length" class="probe-messages">
-									<div v-for="w in probeResult.launchCompatibility.warnings" :key="w" class="probe-msg probe-msg-warn">
+									<div
+										v-for="w in probeResult.launchCompatibility.warnings"
+										:key="w"
+										class="probe-msg probe-msg-warn"
+									>
 										{{ w }}
 									</div>
 								</div>
 								<div v-if="probeResult.launchCompatibility.needsFix?.length" class="probe-messages">
-									<div v-for="f in probeResult.launchCompatibility.needsFix" :key="f" class="probe-msg probe-msg-error">
+									<div
+										v-for="f in probeResult.launchCompatibility.needsFix"
+										:key="f"
+										class="probe-msg probe-msg-error"
+									>
 										{{ f }}
 									</div>
 								</div>
 							</div>
 
-							<div v-else-if="probeResult && !probeResult.isComfyUI" class="probe-result probe-error">
+							<div
+								v-else-if="probeResult && !probeResult.isComfyUI"
+								class="probe-result probe-error"
+							>
 								<div class="probe-head">
 									<span class="probe-title">未检测到 ComfyUI</span>
 								</div>
-								<div class="probe-error-msg">{{ probeResult.error || '该目录不是有效的 ComfyUI 安装，请选择正确目录或在下方配置 Python 环境后启动。' }}</div>
+								<div class="probe-error-msg">
+									{{
+										probeResult.error ||
+										'该目录不是有效的 ComfyUI 安装，请选择正确目录或在下方配置 Python 环境后启动。'
+									}}
+								</div>
 							</div>
 						</div>
 					</section>
@@ -462,7 +587,10 @@
 									class="env-row"
 									:class="`env-${item.status}`"
 								>
-									<span class="env-status-dot" :style="{ backgroundColor: getStatusColor(item.status) }" />
+									<span
+										class="env-status-dot"
+										:style="{ backgroundColor: getStatusColor(item.status) }"
+									/>
 									<span class="env-name">{{ item.label }}</span>
 									<span class="env-detail">{{ item.detail }}</span>
 									<span v-if="item.version" class="env-version">{{ item.version }}</span>
@@ -502,7 +630,12 @@
 								v-for="p in pythonCardParticles.particles"
 								:key="p.id"
 								class="sq-particle"
-								:class="pythonCardParticles.buildHoverStateClass(pythonCardHovered, { running: cloningComfyUI, error: !!cloneError })"
+								:class="
+									pythonCardParticles.buildHoverStateClass(pythonCardHovered, {
+										running: cloningComfyUI,
+										error: !!cloneError
+									})
+								"
 								:style="p.style"
 							></span>
 						</div>
@@ -519,7 +652,7 @@
 
 							<div v-if="cloneError" class="python-error-box">
 								<div class="cmd-tip error">
-													<span>{{ cloneError }}</span>
+									<span>{{ cloneError }}</span>
 								</div>
 								<div class="python-error-actions">
 									<button
@@ -535,7 +668,7 @@
 
 							<div v-else-if="cloneDone" class="python-success-box">
 								<div class="cmd-tip success">
-													<span>✓ {{ cloneMessage || '源码安装完成！' }}</span>
+									<span>✓ {{ cloneMessage || '源码安装完成！' }}</span>
 								</div>
 							</div>
 
@@ -560,7 +693,9 @@
 										class="python-log-line"
 										:class="log.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
 									>
-										<span class="log-stream-tag">{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}</span>
+										<span class="log-stream-tag">
+											{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}
+										</span>
 										<span class="log-text">{{ log.message }}</span>
 									</div>
 								</div>
@@ -580,9 +715,14 @@
 						<div class="sq-container" aria-hidden="true">
 							<span
 								v-for="p in pythonCardParticles.particles"
-								:key="'u'+p.id"
+								:key="'u' + p.id"
 								class="sq-particle"
-								:class="pythonCardParticles.buildHoverStateClass(pythonCardHovered, { running: updatingComfyUI, error: !!updateError })"
+								:class="
+									pythonCardParticles.buildHoverStateClass(pythonCardHovered, {
+										running: updatingComfyUI,
+										error: !!updateError
+									})
+								"
 								:style="p.style"
 							></span>
 						</div>
@@ -617,7 +757,7 @@
 								<div class="cmd-tip success">
 									<span>✓ {{ updateMessage || '更新完成！' }}</span>
 								</div>
-								<div v-if="updateNeedDepUpdate" class="cmd-tip warn" style="margin-top:8px">
+								<div v-if="updateNeedDepUpdate" class="cmd-tip warn" style="margin-top: 8px">
 									<span>💡 更新完成，正在自动检查Python依赖兼容性...</span>
 								</div>
 							</div>
@@ -635,7 +775,9 @@
 										class="python-log-line"
 										:class="log.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
 									>
-										<span class="log-stream-tag">{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}</span>
+										<span class="log-stream-tag">
+											{{ log.stream === 'stderr' ? 'ERR' : 'LOG' }}
+										</span>
 										<span class="log-text">{{ log.message }}</span>
 									</div>
 								</div>
@@ -686,15 +828,19 @@
 										<input type="radio" value="auto" v-model="selectedPypiMirror" />
 										<span class="mirror-option-label">自动选择</span>
 									</label>
-									<label
-										v-for="m in pypiMirrorsWithLatency"
-										:key="m.key"
-										class="mirror-option"
-									>
+									<label v-for="m in pypiMirrorsWithLatency" :key="m.key" class="mirror-option">
 										<input type="radio" :value="m.key" v-model="selectedPypiMirror" />
 										<span class="mirror-option-label">{{ m.name }}</span>
 										<span class="mirror-latency" :class="latencyClass(m.latency, m.reachable)">
-											{{ m.reachable === null ? '—' : (m.reachable ? (m.latency !== null ? m.latency + 'ms' : '—') : '不可达') }}
+											{{
+												m.reachable === null
+													? '—'
+													: m.reachable
+														? m.latency !== null
+															? m.latency + 'ms'
+															: '—'
+														: '不可达'
+											}}
 										</span>
 									</label>
 									<label class="mirror-option">
@@ -718,15 +864,19 @@
 										<input type="radio" value="auto" v-model="selectedTorchMirror" />
 										<span class="mirror-option-label">自动选择</span>
 									</label>
-									<label
-										v-for="m in torchMirrorsWithLatency"
-										:key="m.key"
-										class="mirror-option"
-									>
+									<label v-for="m in torchMirrorsWithLatency" :key="m.key" class="mirror-option">
 										<input type="radio" :value="m.key" v-model="selectedTorchMirror" />
 										<span class="mirror-option-label">{{ m.name }}</span>
 										<span class="mirror-latency" :class="latencyClass(m.latency, m.reachable)">
-											{{ m.reachable === null ? '—' : (m.reachable ? (m.latency !== null ? m.latency + 'ms' : '—') : '不可达') }}
+											{{
+												m.reachable === null
+													? '—'
+													: m.reachable
+														? m.latency !== null
+															? m.latency + 'ms'
+															: '—'
+														: '不可达'
+											}}
 										</span>
 									</label>
 									<label class="mirror-option">
@@ -753,8 +903,12 @@
 									{{ mirrorSaving ? '保存中...' : '保存镜像设置' }}
 								</button>
 								<span v-if="mirrorSaveMessage === 'ok'" class="mirror-tip mirror-ok">✓ 已保存</span>
-								<span v-else-if="mirrorSaveMessage" class="mirror-tip mirror-error">{{ mirrorSaveMessage }}</span>
-								<span v-else class="mirror-tip">配置镜像源可加速 Python 依赖下载，建议大陆用户选择国内镜像。</span>
+								<span v-else-if="mirrorSaveMessage" class="mirror-tip mirror-error">
+									{{ mirrorSaveMessage }}
+								</span>
+								<span v-else class="mirror-tip">
+									配置镜像源可加速 Python 依赖下载，建议大陆用户选择国内镜像。
+								</span>
 							</div>
 						</div>
 					</section>
@@ -773,7 +927,12 @@
 								v-for="p in pythonCardParticles.particles"
 								:key="p.id"
 								class="sq-particle"
-								:class="pythonCardParticles.buildHoverStateClass(pythonCardHovered, { running: fixingPython, error: !!pythonFixError })"
+								:class="
+									pythonCardParticles.buildHoverStateClass(pythonCardHovered, {
+										running: fixingPython,
+										error: !!pythonFixError
+									})
+								"
 								:style="p.style"
 							></span>
 						</div>
@@ -787,49 +946,55 @@
 							<div class="card-section-head">
 								<h3 class="setup-card-title">Python 环境配置</h3>
 							</div>
-							<div v-if="!fixingPython && !pythonFixDone && !pythonFixError" class="python-fix-prompt">
+							<div
+								v-if="!fixingPython && !pythonFixDone && !pythonFixError"
+								class="python-fix-prompt"
+							>
 								<div class="info-note">
-									客户端将创建独立的 Python 虚拟环境，安装 PyTorch（CUDA 版本）和 ComfyUI 依赖，并使用该环境启动 ComfyUI。
+									客户端将创建独立的 Python 虚拟环境，安装 PyTorch（CUDA 版本）和 ComfyUI
+									依赖，并使用该环境启动 ComfyUI。
 								</div>
 								<div class="venv-path-section">
 									<label class="venv-path-label">虚拟环境安装位置</label>
 									<div class="venv-path-row">
-									<input
-										type="text"
-										class="path-input"
-										:value="venvPath || defaultVenvPath"
-										readonly
-										placeholder="使用默认位置"
-									/>
-									<button
-										type="button"
-										class="card-action card-action-sm"
-										@click="selectVenvPath"
-										:disabled="selectingVenvPath"
-									>
-										{{ selectingVenvPath ? '选择中...' : '📁 更换目录' }}
-									</button>
-									<button
-										v-if="venvPath && venvPath !== defaultVenvPath"
-										type="button"
-										class="card-action card-action-ghost card-action-sm"
-										@click="resetVenvPath"
-									>
-										恢复默认
-									</button>
-									<button
-										type="button"
-										class="card-action card-action-danger card-action-sm"
-										@click="onClearVenv"
-										:disabled="clearingVenv || fixingPython"
-										title="清空当前虚拟环境（不会影响ComfyUI源码和用户数据）"
-									>
-										{{ clearingVenv ? '清空中...' : '🗑 清空环境' }}
-									</button>
-								</div>
+										<input
+											type="text"
+											class="path-input"
+											:value="venvPath || defaultVenvPath"
+											readonly
+											placeholder="使用默认位置"
+										/>
+										<button
+											type="button"
+											class="card-action card-action-sm"
+											@click="selectVenvPath"
+											:disabled="selectingVenvPath"
+										>
+											{{ selectingVenvPath ? '选择中...' : '📁 更换目录' }}
+										</button>
+										<button
+											v-if="venvPath && venvPath !== defaultVenvPath"
+											type="button"
+											class="card-action card-action-ghost card-action-sm"
+											@click="resetVenvPath"
+										>
+											恢复默认
+										</button>
+										<button
+											type="button"
+											class="card-action card-action-danger card-action-sm"
+											@click="onClearVenv"
+											:disabled="clearingVenv || fixingPython"
+											title="清空当前虚拟环境（不会影响ComfyUI源码和用户数据）"
+										>
+											{{ clearingVenv ? '清空中...' : '🗑 清空环境' }}
+										</button>
+									</div>
 									<div class="venv-size-hint">
 										<span class="size-hint-icon">💾</span>
-										<span class="size-hint-text">预计所需磁盘空间：GPU 版本约 6-8 GB，CPU 版本约 2-3 GB</span>
+										<span class="size-hint-text">
+											预计所需磁盘空间：GPU 版本约 6-8 GB，CPU 版本约 2-3 GB
+										</span>
 									</div>
 								</div>
 								<button
@@ -846,7 +1011,9 @@
 									<span v-if="fixingPython" class="spinner" />
 									<span v-else-if="pythonFixError" class="python-fix-icon error">✗</span>
 									<span v-else-if="pythonFixDone" class="python-fix-icon ok">✓</span>
-									<span class="python-fix-step-text">{{ pythonFixMessage || (pythonFixDone ? '配置完成' : '配置中...') }}</span>
+									<span class="python-fix-step-text">
+										{{ pythonFixMessage || (pythonFixDone ? '配置完成' : '配置中...') }}
+									</span>
 								</div>
 								<div class="python-fix-logs" ref="pythonLogsRef">
 									<div
@@ -854,13 +1021,17 @@
 										:key="log.id"
 										class="python-log-line"
 										:class="log.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
-									>{{ log.message }}</div>
+									>
+										{{ log.message }}
+									</div>
 									<div
 										v-if="pythonProgressLine"
 										:key="'progress-' + pythonProgressLine.id"
 										class="python-log-line"
 										:class="pythonProgressLine.stream === 'stderr' ? 'log-stderr' : 'log-stdout'"
-									>{{ pythonProgressLine.message }}</div>
+									>
+										{{ pythonProgressLine.message }}
+									</div>
 								</div>
 								<div v-if="pythonFixError" class="python-fix-error">
 									<div class="python-error-header">
@@ -875,20 +1046,30 @@
 											<span class="env-badge">{{ pythonCudaVersion || 'cu124' }}</span>
 											<span class="env-badge">PyTorch {{ pythonTorchVersion || '?' }}</span>
 										</div>
-										
+
 										<div class="solution-section recommended">
 											<div class="solution-tip">
 												<span class="solution-icon">⚡</span>
-												<span class="solution-text"><strong>推荐方案：一键命令安装（最简单）</strong></span>
+												<span class="solution-text">
+													<strong>推荐方案：一键命令安装（最简单）</strong>
+												</span>
 											</div>
-											<p class="solution-desc">复制下方命令，打开任意命令行窗口（CMD或PowerShell），粘贴后回车执行即可自动从阿里云镜像下载安装：</p>
-											<div class="code-block with-copy one-click-cmd" @click="copyText(pythonOneClickInstallCmd)">
+											<p class="solution-desc">
+												复制下方命令，打开任意命令行窗口（CMD或PowerShell），粘贴后回车执行即可自动从阿里云镜像下载安装：
+											</p>
+											<div
+												class="code-block with-copy one-click-cmd"
+												@click="copyText(pythonOneClickInstallCmd)"
+											>
 												<code>{{ pythonOneClickInstallCmd }}</code>
 												<span class="copy-hint">点击复制</span>
 											</div>
-											<div class="cmd-tip success">💡 此命令会自动下载并安装PyTorch GPU版本及其依赖，使用国内阿里云镜像加速。执行完成后点击「检测并修复」按钮即可继续，不会删除已安装环境。</div>
+											<div class="cmd-tip success">
+												💡 此命令会自动下载并安装PyTorch
+												GPU版本及其依赖，使用国内阿里云镜像加速。执行完成后点击「检测并修复」按钮即可继续，不会删除已安装环境。
+											</div>
 										</div>
-										
+
 										<details class="solution-section fallback">
 											<summary class="fallback-summary">
 												<span class="solution-icon">📥</span>
@@ -896,121 +1077,184 @@
 											</summary>
 											<ol class="solution-list ordered">
 												<li>
-													<strong>下载3个whl文件</strong>（点击按钮直接用浏览器打开下载，推荐阿里云源速度快）：
+													<strong>下载3个whl文件</strong>
+													（点击按钮直接用浏览器打开下载，推荐阿里云源速度快）：
 													<div class="wheel-download-list">
 														<div class="wheel-item">
 															<span class="wheel-name">torch (~2.4GB)</span>
-															<span class="wheel-file" :title="pythonTorchWheel">{{ pythonTorchWheel }}</span>
+															<span class="wheel-file" :title="pythonTorchWheel">
+																{{ pythonTorchWheel }}
+															</span>
 															<div class="wheel-links">
-																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchUrl)">⬇ 阿里云下载</button>
-																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchUrl)">⬇ 官方下载</button>
+																<button
+																	type="button"
+																	class="wheel-link primary"
+																	@click="openUrl(pythonAliyunTorchUrl)"
+																>
+																	⬇ 阿里云下载
+																</button>
+																<button
+																	type="button"
+																	class="wheel-link"
+																	@click="openUrl(pythonOfficialTorchUrl)"
+																>
+																	⬇ 官方下载
+																</button>
 															</div>
 														</div>
 														<div class="wheel-item">
 															<span class="wheel-name">torchvision (~6MB)</span>
-															<span class="wheel-file" :title="pythonTorchvisionWheel">{{ pythonTorchvisionWheel }}</span>
+															<span class="wheel-file" :title="pythonTorchvisionWheel">
+																{{ pythonTorchvisionWheel }}
+															</span>
 															<div class="wheel-links">
-																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchvisionUrl)">⬇ 阿里云下载</button>
-																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchvisionUrl)">⬇ 官方下载</button>
+																<button
+																	type="button"
+																	class="wheel-link primary"
+																	@click="openUrl(pythonAliyunTorchvisionUrl)"
+																>
+																	⬇ 阿里云下载
+																</button>
+																<button
+																	type="button"
+																	class="wheel-link"
+																	@click="openUrl(pythonOfficialTorchvisionUrl)"
+																>
+																	⬇ 官方下载
+																</button>
 															</div>
 														</div>
 														<div class="wheel-item">
 															<span class="wheel-name">torchaudio (~4MB)</span>
-															<span class="wheel-file" :title="pythonTorchaudioWheel">{{ pythonTorchaudioWheel }}</span>
+															<span class="wheel-file" :title="pythonTorchaudioWheel">
+																{{ pythonTorchaudioWheel }}
+															</span>
 															<div class="wheel-links">
-																<button type="button" class="wheel-link primary" @click="openUrl(pythonAliyunTorchaudioUrl)">⬇ 阿里云下载</button>
-																<button type="button" class="wheel-link" @click="openUrl(pythonOfficialTorchaudioUrl)">⬇ 官方下载</button>
+																<button
+																	type="button"
+																	class="wheel-link primary"
+																	@click="openUrl(pythonAliyunTorchaudioUrl)"
+																>
+																	⬇ 阿里云下载
+																</button>
+																<button
+																	type="button"
+																	class="wheel-link"
+																	@click="openUrl(pythonOfficialTorchaudioUrl)"
+																>
+																	⬇ 官方下载
+																</button>
 															</div>
 														</div>
 													</div>
 												</li>
 												<li>
-													<strong>打开命令行</strong>：打开文件资源管理器，找到刚下载的3个whl文件所在文件夹，在文件夹空白处按住 <code>Shift</code> 键 + 鼠标右键，选择「在此处打开PowerShell窗口」或「在终端中打开」。
+													<strong>打开命令行</strong>
+													：打开文件资源管理器，找到刚下载的3个whl文件所在文件夹，在文件夹空白处按住
+													<code>Shift</code>
+													键 + 鼠标右键，选择「在此处打开PowerShell窗口」或「在终端中打开」。
 												</li>
 												<li>
-													<strong>执行本地安装命令</strong>：点击下方「复制本地安装命令」按钮，然后在打开的命令行窗口中右键粘贴并回车执行：
-													<div class="code-block with-copy" @click="copyText(pythonManualInstallCmd)">
+													<strong>执行本地安装命令</strong>
+													：点击下方「复制本地安装命令」按钮，然后在打开的命令行窗口中右键粘贴并回车执行：
+													<div
+														class="code-block with-copy"
+														@click="copyText(pythonManualInstallCmd)"
+													>
 														<code>{{ pythonManualInstallCmd }}</code>
 														<span class="copy-hint">点击复制</span>
 													</div>
 												</li>
 												<li>
-													<strong>安装依赖包</strong>：whl安装完成后，执行以下命令安装依赖：
+													<strong>安装依赖包</strong>
+													：whl安装完成后，执行以下命令安装依赖：
 													<div class="code-block with-copy" @click="copyText(pythonInstallDepsCmd)">
 														<code>{{ pythonInstallDepsCmd }}</code>
 														<span class="copy-hint">点击复制</span>
 													</div>
 												</li>
 												<li>
-													<strong>安装完成后</strong>，点击下方「检测并修复」按钮继续（不会删除已安装环境）。
+													<strong>安装完成后</strong>
+													，点击下方「检测并修复」按钮继续（不会删除已安装环境）。
 												</li>
 											</ol>
 										</details>
 									</div>
 									<div class="python-error-actions">
-									<button
-										v-if="pythonAutoInstallAvailable && !autoInstallingTorch"
-										type="button"
-										class="card-action card-action-success card-action-sm"
-										@click="autoInstallTorch"
-										:disabled="fixingPython"
-									>
-										⚡ 一键自动安装
-									</button>
-									<button
-										v-if="autoInstallingTorch"
-										type="button"
-										class="card-action card-action-success card-action-sm"
-										disabled
-									>
-										<span class="spinner" /> 正在自动安装...
-									</button>
-									<button
-										v-if="pythonNeedsManualInstall && pythonOneClickInstallCmd && !pythonAutoInstallAvailable"
-										type="button"
-										class="card-action card-action-primary card-action-sm"
-										@click="copyText(pythonOneClickInstallCmd)"
-									>
-										📋 复制一键安装命令
-									</button>
-									<button
-										v-if="pythonNeedsManualInstall && pythonAliyunDirUrl"
-										type="button"
-										class="card-action card-action-link card-action-sm"
-										@click="openUrl(pythonAliyunDirUrl)"
-									>
-										📂 浏览阿里云镜像目录
-									</button>
-									<button
-										type="button"
-										class="card-action card-action-primary card-action-sm"
-										@click="fixPythonEnv(false)"
-										:disabled="fixingPython || autoInstallingTorch"
-									>
-										{{ fixingPython ? '检测中...' : '🔍 检测并修复' }}
-									</button>
-									<button
-										type="button"
-										class="card-action card-action-warn card-action-sm"
-										@click="onRebuildEnv"
-										:disabled="fixingPython || autoInstallingTorch"
-										title="警告：这将删除虚拟环境并完全重新安装，仅在环境彻底损坏时使用"
-									>
-										🔄 彻底重建
-									</button>
-									<button
-										type="button"
-										class="card-action card-action-danger card-action-sm"
-										@click="onClearVenv"
-										:disabled="clearingVenv || fixingPython || autoInstallingTorch"
-										title="清空当前虚拟环境，之后可重新配置"
-									>
-										{{ clearingVenv ? '清空中...' : '🗑 清空虚拟环境' }}
-									</button>
-								</div>
+										<button
+											v-if="pythonAutoInstallAvailable && !autoInstallingTorch"
+											type="button"
+											class="card-action card-action-success card-action-sm"
+											@click="autoInstallTorch"
+											:disabled="fixingPython"
+										>
+											⚡ 一键自动安装
+										</button>
+										<button
+											v-if="autoInstallingTorch"
+											type="button"
+											class="card-action card-action-success card-action-sm"
+											disabled
+										>
+											<span class="spinner" />
+											正在自动安装...
+										</button>
+										<button
+											v-if="
+												pythonNeedsManualInstall &&
+												pythonOneClickInstallCmd &&
+												!pythonAutoInstallAvailable
+											"
+											type="button"
+											class="card-action card-action-primary card-action-sm"
+											@click="copyText(pythonOneClickInstallCmd)"
+										>
+											📋 复制一键安装命令
+										</button>
+										<button
+											v-if="pythonNeedsManualInstall && pythonAliyunDirUrl"
+											type="button"
+											class="card-action card-action-link card-action-sm"
+											@click="openUrl(pythonAliyunDirUrl)"
+										>
+											📂 浏览阿里云镜像目录
+										</button>
+										<button
+											type="button"
+											class="card-action card-action-primary card-action-sm"
+											@click="fixPythonEnv(false)"
+											:disabled="fixingPython || autoInstallingTorch"
+										>
+											{{ fixingPython ? '检测中...' : '🔍 检测并修复' }}
+										</button>
+										<button
+											type="button"
+											class="card-action card-action-warn card-action-sm"
+											@click="onRebuildEnv"
+											:disabled="fixingPython || autoInstallingTorch"
+											title="警告：这将删除虚拟环境并完全重新安装，仅在环境彻底损坏时使用"
+										>
+											🔄 彻底重建
+										</button>
+										<button
+											type="button"
+											class="card-action card-action-danger card-action-sm"
+											@click="onClearVenv"
+											:disabled="clearingVenv || fixingPython || autoInstallingTorch"
+											title="清空当前虚拟环境，之后可重新配置"
+										>
+											{{ clearingVenv ? '清空中...' : '🗑 清空虚拟环境' }}
+										</button>
+									</div>
 								</div>
 								<div v-if="pythonFixDone && !fixingPython" class="python-fix-done">
-									<button type="button" class="card-action card-action-primary card-action-sm" @click="checkEnv">刷新检测</button>
+									<button
+										type="button"
+										class="card-action card-action-primary card-action-sm"
+										@click="checkEnv"
+									>
+										刷新检测
+									</button>
 								</div>
 							</div>
 						</div>
@@ -1030,7 +1274,12 @@
 								v-for="p in serviceCardParticles.particles"
 								:key="p.id"
 								class="sq-particle"
-								:class="serviceCardParticles.buildHoverStateClass(serviceCardHovered, { running: serviceRunning, error: false })"
+								:class="
+									serviceCardParticles.buildHoverStateClass(serviceCardHovered, {
+										running: serviceRunning,
+										error: false
+									})
+								"
 								:style="p.style"
 							></span>
 						</div>
@@ -1090,7 +1339,9 @@
 			</div>
 
 			<footer class="setup-footer">
-				<button type="button" class="card-action card-action-primary" @click="closeWindow">关闭</button>
+				<button type="button" class="card-action card-action-primary" @click="closeWindow">
+					关闭
+				</button>
 			</footer>
 		</div>
 	</div>
@@ -1105,35 +1356,106 @@ import GlobalPageBackground from '../ui/UIComponent/GlobalPageBackground.vue'
 import '../styles/square-particles.css'
 
 const {
-	installPath, defaultInstallPath, pathValidation,
-	probeResult, probing, pathChanging,
-	checking, envResult,
-	serviceRunning, serviceStarting,
+	installPath,
+	defaultInstallPath,
+	pathValidation,
+	probeResult,
+	probing,
+	pathChanging,
+	checking,
+	envResult,
+	serviceRunning,
+	serviceStarting,
 	customModelPaths,
-	pingingMirrors, mirrorPingResults, pypiMirrorList, torchMirrorList,
-	selectedPypiMirror, selectedTorchMirror,
-	customPypiUrl, customTorchUrl, mirrorSaving, mirrorSaveMessage,
-	fixingPython, pythonFixMessage, pythonFixLogs, pythonProgressLine, pythonFixError, pythonFixDone,
-	pythonNeedsManualInstall, pythonAutoInstallAvailable, pythonManualDownloadUrl, pythonOfficialDownloadUrl, pythonCudaVersion,
-	pythonDetectedVersion, pythonPlatformTag, pythonAbiTag, pythonTorchVersion,
-	pythonTorchWheel, pythonTorchvisionWheel, pythonTorchaudioWheel,
-	pythonAliyunTorchUrl, pythonAliyunTorchvisionUrl, pythonAliyunTorchaudioUrl,
-	pythonOfficialTorchUrl, pythonOfficialTorchvisionUrl, pythonOfficialTorchaudioUrl,
-	pythonVenvPythonPath, pythonOneClickInstallCmd, pythonManualInstallCmd, pythonInstallDepsCmd,
-	pythonAliyunDirUrl, pythonOfficialDirUrl,
-	autoInstallingTorch, clearingVenv,
+	pingingMirrors,
+	mirrorPingResults,
+	pypiMirrorList,
+	torchMirrorList,
+	selectedPypiMirror,
+	selectedTorchMirror,
+	customPypiUrl,
+	customTorchUrl,
+	mirrorSaving,
+	mirrorSaveMessage,
+	fixingPython,
+	pythonFixMessage,
+	pythonFixLogs,
+	pythonProgressLine,
+	pythonFixError,
+	pythonFixDone,
+	pythonNeedsManualInstall,
+	pythonAutoInstallAvailable,
+	pythonManualDownloadUrl,
+	pythonOfficialDownloadUrl,
+	pythonCudaVersion,
+	pythonDetectedVersion,
+	pythonPlatformTag,
+	pythonAbiTag,
+	pythonTorchVersion,
+	pythonTorchWheel,
+	pythonTorchvisionWheel,
+	pythonTorchaudioWheel,
+	pythonAliyunTorchUrl,
+	pythonAliyunTorchvisionUrl,
+	pythonAliyunTorchaudioUrl,
+	pythonOfficialTorchUrl,
+	pythonOfficialTorchvisionUrl,
+	pythonOfficialTorchaudioUrl,
+	pythonVenvPythonPath,
+	pythonOneClickInstallCmd,
+	pythonManualInstallCmd,
+	pythonInstallDepsCmd,
+	pythonAliyunDirUrl,
+	pythonOfficialDirUrl,
+	autoInstallingTorch,
+	clearingVenv,
 	logsUpdated,
-	venvPath, defaultVenvPath, selectingVenvPath,
-	cloningComfyUI, cloneStep, cloneMessage, cloneLogs, cloneError, cloneDone,
-	updatingComfyUI, updateStep, updateMessage, updateLogs, updateError, updateDone, updateNeedDepUpdate,
-	versionChecking, versionUpdateInfo, freshInstallMode,
-	loadDefaultPath, loadDefaultVenvPath, selectPath, selectVenvPath, resetVenvPath, setInstallPath,
-	checkVersionUpdate, resetForFreshInstall, exitFreshInstallMode, confirmFreshInstall,
-	checkEnv, openInstallFolder, loadConfig, loadMirrorList, saveConfig,
-	addCustomModelPath, removeCustomModelPath,
-	startService, stopService,
-	pingMirrors, saveMirrorConfig, fixPythonEnv, cloneComfyUI, updateComfyUI, autoInstallTorch, clearVenv,
-	getStatusColor,
+	venvPath,
+	defaultVenvPath,
+	selectingVenvPath,
+	cloningComfyUI,
+	cloneStep,
+	cloneMessage,
+	cloneLogs,
+	cloneError,
+	cloneDone,
+	updatingComfyUI,
+	updateStep,
+	updateMessage,
+	updateLogs,
+	updateError,
+	updateDone,
+	updateNeedDepUpdate,
+	versionChecking,
+	versionUpdateInfo,
+	freshInstallMode,
+	loadDefaultPath,
+	loadDefaultVenvPath,
+	selectPath,
+	selectVenvPath,
+	resetVenvPath,
+	setInstallPath,
+	checkVersionUpdate,
+	resetForFreshInstall,
+	exitFreshInstallMode,
+	confirmFreshInstall,
+	checkEnv,
+	openInstallFolder,
+	loadConfig,
+	loadMirrorList,
+	saveConfig,
+	addCustomModelPath,
+	removeCustomModelPath,
+	startService,
+	stopService,
+	pingMirrors,
+	saveMirrorConfig,
+	fixPythonEnv,
+	cloneComfyUI,
+	updateComfyUI,
+	autoInstallTorch,
+	clearVenv,
+	getStatusColor
 } = useComfyUISetup()
 
 const pathCardParticles = useSquareParticles({ count: 6, seed: 101 })
@@ -1155,7 +1477,7 @@ const pypiMirrorsWithLatency = computed(() => {
 	for (const r of mirrorPingResults.value) {
 		if (r.kind === 'pypi') pingMap.set(r.key, { reachable: r.reachable, latency: r.latency })
 	}
-	return pypiMirrorList.value.map(m => {
+	return pypiMirrorList.value.map((m) => {
 		const p = pingMap.get(m.key)
 		return { ...m, reachable: p?.reachable ?? null, latency: p?.latency ?? null }
 	})
@@ -1166,7 +1488,7 @@ const torchMirrorsWithLatency = computed(() => {
 	for (const r of mirrorPingResults.value) {
 		if (r.kind === 'torch') pingMap.set(r.key, { reachable: r.reachable, latency: r.latency })
 	}
-	return torchMirrorList.value.map(m => {
+	return torchMirrorList.value.map((m) => {
 		const p = pingMap.get(m.key)
 		return { ...m, reachable: p?.reachable ?? null, latency: p?.latency ?? null }
 	})
@@ -1195,7 +1517,13 @@ const showUpdateSection = computed(() => {
 
 const isNetworkError = computed(() => {
 	const err = pythonFixError.value || ''
-	return err.includes('IncompleteRead') || err.includes('timeout') || err.includes('Connection') || err.includes('网络下载中断') || err.includes('网络下载中断问题')
+	return (
+		err.includes('IncompleteRead') ||
+		err.includes('timeout') ||
+		err.includes('Connection') ||
+		err.includes('网络下载中断') ||
+		err.includes('网络下载中断问题')
+	)
 })
 
 async function openUrl(url: string) {
@@ -1215,7 +1543,9 @@ async function copyText(text: string) {
 		ta.style.opacity = '0'
 		document.body.appendChild(ta)
 		ta.select()
-		try { document.execCommand('copy') } catch {}
+		try {
+			document.execCommand('copy')
+		} catch {}
 		document.body.removeChild(ta)
 	}
 }
@@ -1243,22 +1573,33 @@ onMounted(async () => {
 
 function installTypeLabel(type: string) {
 	switch (type) {
-		case 'portable': return '便携版'
-		case 'venv': return '虚拟环境 (venv)'
-		case 'standard': return '标准安装'
-		default: return '未知'
+		case 'portable':
+			return '便携版'
+		case 'venv':
+			return '虚拟环境 (venv)'
+		case 'standard':
+			return '标准安装'
+		default:
+			return '未知'
 	}
 }
 
 function pythonTypeLabel(type: string) {
 	switch (type) {
-		case 'managed_venv': return '客户端托管'
-		case 'portable': return '便携版'
-		case 'venv': return 'venv'
-		case 'desktop_bundled': return '桌面版内置'
-		case 'system': return '系统 Python'
-		case 'py_launcher': return 'py 启动器'
-		default: return type
+		case 'managed_venv':
+			return '客户端托管'
+		case 'portable':
+			return '便携版'
+		case 'venv':
+			return 'venv'
+		case 'desktop_bundled':
+			return '桌面版内置'
+		case 'system':
+			return '系统 Python'
+		case 'py_launcher':
+			return 'py 启动器'
+		default:
+			return type
 	}
 }
 
@@ -1273,7 +1614,7 @@ function modelTypeLabel(type: string) {
 		clip: 'CLIP',
 		clip_vision: 'CLIP Vision',
 		text_encoders: '文本编码器',
-		diffusion_models: '扩散模型',
+		diffusion_models: '扩散模型'
 	}
 	return labels[type] || type
 }
@@ -1297,13 +1638,21 @@ function handleFix(key: string) {
 }
 
 function onRebuildEnv() {
-	if (window.confirm('⚠️ 确定要彻底重建 Python 环境吗？\n\n这将删除现有的虚拟环境并重新安装所有依赖（约 6-8 GB）。\n\n如果您手动通过命令行安装了 PyTorch，这些安装将会丢失。\n\n通常情况下，请使用「检测并修复」按钮，它不会删除已安装的环境。\n\n只有在环境彻底损坏无法修复时，才建议使用此选项。')) {
+	if (
+		window.confirm(
+			'⚠️ 确定要彻底重建 Python 环境吗？\n\n这将删除现有的虚拟环境并重新安装所有依赖（约 6-8 GB）。\n\n如果您手动通过命令行安装了 PyTorch，这些安装将会丢失。\n\n通常情况下，请使用「检测并修复」按钮，它不会删除已安装的环境。\n\n只有在环境彻底损坏无法修复时，才建议使用此选项。'
+		)
+	) {
 		fixPythonEnv(true)
 	}
 }
 
 function onClearVenv() {
-	if (window.confirm('⚠️ 确定要清空虚拟环境吗？\n\n这将删除当前的 Python 虚拟环境（包括已安装的 PyTorch 和所有依赖包），但不会影响 ComfyUI 源码、模型、工作流等用户数据。\n\n清空后您需要重新配置 Python 环境。')) {
+	if (
+		window.confirm(
+			'⚠️ 确定要清空虚拟环境吗？\n\n这将删除当前的 Python 虚拟环境（包括已安装的 PyTorch 和所有依赖包），但不会影响 ComfyUI 源码、模型、工作流等用户数据。\n\n清空后您需要重新配置 Python 环境。'
+		)
+	) {
 		clearVenv(true)
 	}
 }
@@ -1374,7 +1723,7 @@ function closeWindow() {
 }
 
 .setup-sub::before {
-	content: "";
+	content: '';
 	display: inline-block;
 	width: 6px;
 	height: 6px;
@@ -1409,10 +1758,14 @@ function closeWindow() {
 	);
 	border: 1px solid var(--pl-card-border);
 	box-sizing: border-box;
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25),
+	box-shadow:
+		0 2px 10px rgba(0, 0, 0, 0.25),
 		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
-		box-shadow 220ms ease, border-color 220ms ease, filter 220ms ease;
+	transition:
+		transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+		box-shadow 220ms ease,
+		border-color 220ms ease,
+		filter 220ms ease;
 	border-radius: 2px;
 }
 
@@ -1421,7 +1774,8 @@ function closeWindow() {
 	transform: translateY(-2px);
 	filter: brightness(1.08);
 	border-color: color-mix(in srgb, var(--pl-accent) 55%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 45%, transparent),
 		0 14px 40px rgba(0, 0, 0, 0.45);
 }
 
@@ -1456,7 +1810,8 @@ function closeWindow() {
 	width: 10px;
 	height: 10px;
 	border-color: var(--pl-accent);
-	transition: width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+	transition:
+		width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		height 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -1547,7 +1902,10 @@ function closeWindow() {
 	font-family: 'JetBrains Mono', 'Consolas', 'Microsoft YaHei', monospace;
 	outline: none;
 	border-radius: 2px;
-	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		box-shadow 200ms ease;
 	min-width: 0;
 }
 
@@ -1558,7 +1916,8 @@ function closeWindow() {
 .path-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
 	background: color-mix(in srgb, var(--pl-fg) 6%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 30%, transparent),
 		0 0 20px color-mix(in srgb, var(--pl-accent) 18%, transparent);
 }
 
@@ -1566,9 +1925,15 @@ function closeWindow() {
 	font-size: 12px;
 }
 
-.hint-ok { color: #4ade80; }
-.hint-warn { color: #facc15; }
-.hint-error { color: #f87171; }
+.hint-ok {
+	color: #4ade80;
+}
+.hint-warn {
+	color: #facc15;
+}
+.hint-error {
+	color: #f87171;
+}
 
 .compat-badge {
 	display: inline-flex;
@@ -1618,7 +1983,11 @@ function closeWindow() {
 
 .probe-result {
 	padding: 14px 16px;
-	background: color-mix(in srgb, var(--pl-accent) 5%, color-mix(in srgb, var(--pl-bg-1) 60%, transparent));
+	background: color-mix(
+		in srgb,
+		var(--pl-accent) 5%,
+		color-mix(in srgb, var(--pl-bg-1) 60%, transparent)
+	);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 20%, var(--pl-card-border));
 	border-radius: 2px;
 }
@@ -1864,7 +2233,10 @@ function closeWindow() {
 	background: color-mix(in srgb, var(--pl-accent) 6%, transparent);
 	color: var(--pl-glow-1);
 	cursor: pointer;
-	transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+	transition:
+		background 200ms ease,
+		border-color 200ms ease,
+		box-shadow 200ms ease;
 	margin-left: auto;
 	text-transform: none;
 	letter-spacing: normal;
@@ -1894,8 +2266,13 @@ function closeWindow() {
 }
 
 @keyframes pulse-update {
-	0%, 100% { box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 12%, transparent); }
-	50% { box-shadow: 0 0 16px color-mix(in srgb, var(--pl-accent) 28%, transparent); }
+	0%,
+	100% {
+		box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	}
+	50% {
+		box-shadow: 0 0 16px color-mix(in srgb, var(--pl-accent) 28%, transparent);
+	}
 }
 
 .cmd-tip.warn {
@@ -2028,7 +2405,8 @@ function closeWindow() {
 	color: #fca5a5;
 }
 
-.setup-loading, .setup-empty {
+.setup-loading,
+.setup-empty {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -2056,9 +2434,18 @@ function closeWindow() {
 	transition: background 200ms ease;
 }
 
-.env-row.env-ok { background: color-mix(in srgb, #4ade80 4%, transparent); border-color: color-mix(in srgb, #4ade80 12%, transparent); }
-.env-row.env-warn { background: color-mix(in srgb, #facc15 4%, transparent); border-color: color-mix(in srgb, #facc15 12%, transparent); }
-.env-row.env-error { background: color-mix(in srgb, #f87171 4%, transparent); border-color: color-mix(in srgb, #f87171 12%, transparent); }
+.env-row.env-ok {
+	background: color-mix(in srgb, #4ade80 4%, transparent);
+	border-color: color-mix(in srgb, #4ade80 12%, transparent);
+}
+.env-row.env-warn {
+	background: color-mix(in srgb, #facc15 4%, transparent);
+	border-color: color-mix(in srgb, #facc15 12%, transparent);
+}
+.env-row.env-error {
+	background: color-mix(in srgb, #f87171 4%, transparent);
+	border-color: color-mix(in srgb, #f87171 12%, transparent);
+}
 
 .env-status-dot {
 	width: 8px;
@@ -2181,7 +2568,10 @@ function closeWindow() {
 	letter-spacing: 0.04em;
 	cursor: pointer;
 	border-radius: 2px;
-	transition: border-color 200ms ease, background 200ms ease, transform 160ms ease,
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		transform 160ms ease,
 		box-shadow 200ms ease;
 	font-family: inherit;
 }
@@ -2304,7 +2694,9 @@ function closeWindow() {
 }
 
 @keyframes spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .mirror-section {
@@ -2337,7 +2729,7 @@ function closeWindow() {
 	cursor: pointer;
 }
 
-.mirror-option input[type="radio"] {
+.mirror-option input[type='radio'] {
 	accent-color: var(--pl-accent);
 	margin: 0;
 	cursor: pointer;
@@ -2357,11 +2749,31 @@ function closeWindow() {
 	border: 1px solid color-mix(in srgb, var(--pl-fg) 6%, transparent);
 }
 
-.mirror-latency.latency-good { background: color-mix(in srgb, #4ade80 10%, transparent); color: #4ade80; border-color: color-mix(in srgb, #4ade80 25%, transparent); }
-.mirror-latency.latency-ok { background: color-mix(in srgb, #4ade80 8%, transparent); color: #86efac; border-color: color-mix(in srgb, #4ade80 20%, transparent); }
-.mirror-latency.latency-slow { background: color-mix(in srgb, #facc15 10%, transparent); color: #fde047; border-color: color-mix(in srgb, #facc15 25%, transparent); }
-.mirror-latency.latency-fail { background: color-mix(in srgb, #f87171 10%, transparent); color: #fca5a5; border-color: color-mix(in srgb, #f87171 25%, transparent); }
-.mirror-latency.latency-unknown { background: color-mix(in srgb, var(--pl-fg) 3%, transparent); color: var(--pl-fg-soft); border-color: color-mix(in srgb, var(--pl-fg) 6%, transparent); }
+.mirror-latency.latency-good {
+	background: color-mix(in srgb, #4ade80 10%, transparent);
+	color: #4ade80;
+	border-color: color-mix(in srgb, #4ade80 25%, transparent);
+}
+.mirror-latency.latency-ok {
+	background: color-mix(in srgb, #4ade80 8%, transparent);
+	color: #86efac;
+	border-color: color-mix(in srgb, #4ade80 20%, transparent);
+}
+.mirror-latency.latency-slow {
+	background: color-mix(in srgb, #facc15 10%, transparent);
+	color: #fde047;
+	border-color: color-mix(in srgb, #facc15 25%, transparent);
+}
+.mirror-latency.latency-fail {
+	background: color-mix(in srgb, #f87171 10%, transparent);
+	color: #fca5a5;
+	border-color: color-mix(in srgb, #f87171 25%, transparent);
+}
+.mirror-latency.latency-unknown {
+	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
+	color: var(--pl-fg-soft);
+	border-color: color-mix(in srgb, var(--pl-fg) 6%, transparent);
+}
 
 .mirror-custom-input {
 	display: block;
@@ -2375,14 +2787,18 @@ function closeWindow() {
 	font-size: 11px;
 	font-family: 'JetBrains Mono', 'Consolas', monospace;
 	outline: none;
-	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		box-shadow 200ms ease;
 	box-sizing: border-box;
 }
 
 .mirror-custom-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
 	background: color-mix(in srgb, var(--pl-fg) 6%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 25%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 25%, transparent),
 		0 0 14px color-mix(in srgb, var(--pl-accent) 15%, transparent);
 }
 
@@ -2903,7 +3319,8 @@ function closeWindow() {
 		color-mix(in srgb, var(--pl-accent) 8%, color-mix(in srgb, var(--pl-bg-1) 70%, transparent)),
 		color-mix(in srgb, var(--pl-accent) 4%, color-mix(in srgb, var(--pl-bg-0) 85%, transparent))
 	);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent),
 		0 4px 20px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
@@ -2940,7 +3357,7 @@ function closeWindow() {
 }
 
 .fresh-form-label.required::after {
-	content: "*";
+	content: '*';
 	color: #f87171;
 	font-weight: 700;
 	margin-left: 2px;
@@ -2989,7 +3406,11 @@ function closeWindow() {
 	flex-direction: column;
 	gap: 8px;
 	padding: 12px 14px;
-	background: color-mix(in srgb, var(--pl-accent) 5%, color-mix(in srgb, var(--pl-bg-1) 60%, transparent));
+	background: color-mix(
+		in srgb,
+		var(--pl-accent) 5%,
+		color-mix(in srgb, var(--pl-bg-1) 60%, transparent)
+	);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 20%, var(--pl-card-border));
 	border-radius: 2px;
 }

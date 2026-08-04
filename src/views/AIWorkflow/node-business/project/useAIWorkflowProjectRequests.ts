@@ -12,7 +12,6 @@ export const useAIWorkflowProjectRequests = (payload: {
 		commit: (type: string, value: unknown) => void
 	}
 	setUnsavedProject: (name?: string) => void
-	reuseRecordConfirm: Ref<unknown>
 	resetComfyRuntime: () => void
 	comfyAnchorAssignments: Map<string, Map<string, string>>
 	comfyAnchorLocalizedOutputs: Map<string, Map<string, unknown>>
@@ -44,7 +43,11 @@ export const useAIWorkflowProjectRequests = (payload: {
 		const result = await (bridge.selectProjectFolder as () => Promise<Record<string, unknown>>)()
 		const canceled = Boolean(result?.canceled)
 		if (canceled)
-			return { ok: false as const, canceled: true as const, error: t('aiworkflow.runtime.folderPickCanceled') }
+			return {
+				ok: false as const,
+				canceled: true as const,
+				error: t('aiworkflow.runtime.folderPickCanceled')
+			}
 		const filePaths = result.filePaths as unknown[] | undefined
 		const path = String(filePaths?.[0] || '').trim()
 		if (!path) return { ok: false as const, error: t('aiworkflow.runtime.folderPickInvalid') }
@@ -84,20 +87,24 @@ export const useAIWorkflowProjectRequests = (payload: {
 		payload.cancelActiveRecoverySession()
 		payload.store.commit('hydrateDraft', { snapshot: payload.createEmptyDraftSnapshot() })
 		payload.setUnsavedProject('')
-		payload.reuseRecordConfirm.value = null
 
 		payload.resetComfyRuntime()
 		payload.comfyAnchorAssignments.clear()
 		payload.comfyAnchorLocalizedOutputs.clear()
 
-		const fallbackName = String(payload.currentProjectName.value || '').trim() || t('aiworkflow.runtime.untitledProject')
-		const opened = await payload.blueprintProjectService.openProjectFolder({
+		const fallbackName =
+			String(payload.currentProjectName.value || '').trim() ||
+			t('aiworkflow.runtime.untitledProject')
+		const opened = (await payload.blueprintProjectService.openProjectFolder({
 			rootPath: trimmedRoot,
 			name: fallbackName,
 			create: true
-		}) as { ok: boolean; error?: string; project?: { id?: number; name?: string } }
+		})) as { ok: boolean; error?: string; project?: { id?: number; name?: string } }
 		if (!opened?.ok) {
-			payload.pushToast(t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }), 'error')
+			payload.pushToast(
+				t('aiworkflow.toast.projectCreateFailed', { error: String(opened?.error || 'unknown') }),
+				'error'
+			)
 			return
 		}
 
@@ -116,7 +123,10 @@ export const useAIWorkflowProjectRequests = (payload: {
 
 		await payload.recoverComfyUIRunStates({ silent: true })
 		await payload.refreshProjectList()
-		payload.pushToast(t('aiworkflow.toast.projectCreated', { name: String(project?.name || fallbackName) }), 'info')
+		payload.pushToast(
+			t('aiworkflow.toast.projectCreated', { name: String(project?.name || fallbackName) }),
+			'info'
+		)
 	}
 
 	const onRequestNewProjectFromPath = async (rootPath: string) => {
@@ -146,9 +156,15 @@ export const useAIWorkflowProjectRequests = (payload: {
 		const id = Number(request?.projectId)
 		if (!Number.isFinite(id) || id <= 0) return
 
-		const res = await payload.blueprintProjectService.deleteProject(id) as { ok: boolean; error?: string }
+		const res = (await payload.blueprintProjectService.deleteProject(id)) as {
+			ok: boolean
+			error?: string
+		}
 		if (!res.ok) {
-			payload.pushToast(t('aiworkflow.runtime.deleteProjectFailed', { error: String(res.error || 'unknown') }), 'error')
+			payload.pushToast(
+				t('aiworkflow.runtime.deleteProjectFailed', { error: String(res.error || 'unknown') }),
+				'error'
+			)
 			return
 		}
 

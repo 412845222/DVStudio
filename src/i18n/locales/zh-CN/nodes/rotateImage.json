@@ -1,14 +1,14 @@
 {
-  "nodes.rotateImage.cubeLabel": "方向立方体",
-  "nodes.rotateImage.backFace": "-Z（背面）",
-  "nodes.rotateImage.frontFace": "+Z（正面）",
-  "nodes.rotateImage.resetToFront": "复位到正面",
-  "nodes.rotateImage.reset": "复位",
-  "nodes.rotateImage.rotateHint": "按住并拖拽图片进行 360° 旋转查看（伪 3D 透视）。",
-  "nodes.rotateImage.left": "左",
-  "nodes.rotateImage.right": "右",
-  "nodes.rotateImage.top": "上",
-  "nodes.rotateImage.bottom": "下",
-  "nodes.rotateImage.placeholderText": "示例图片（未连接输入）",
-  "nodes.rotateImage.placeholderSubText": "rotate-image node preview"
+	"nodes.rotateImage.cubeLabel": "方向立方体",
+	"nodes.rotateImage.backFace": "-Z（背面）",
+	"nodes.rotateImage.frontFace": "+Z（正面）",
+	"nodes.rotateImage.resetToFront": "复位到正面",
+	"nodes.rotateImage.reset": "复位",
+	"nodes.rotateImage.rotateHint": "按住并拖拽图片进行 360° 旋转查看（伪 3D 透视）。",
+	"nodes.rotateImage.left": "左",
+	"nodes.rotateImage.right": "右",
+	"nodes.rotateImage.top": "上",
+	"nodes.rotateImage.bottom": "下",
+	"nodes.rotateImage.placeholderText": "示例图片（未连接输入）",
+	"nodes.rotateImage.placeholderSubText": "rotate-image node preview"
 }

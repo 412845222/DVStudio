@@ -94,7 +94,7 @@
 						@blur="onNumberInputBlur"
 						@pointerdown="
 							(e: PointerEvent) =>
-						onFilterNumberScrubPointerDown(
+								onFilterNumberScrubPointerDown(
 									e,
 									() => f.blurX,
 									(v) => patchFilter(f.id, { blurX: v }),
@@ -119,7 +119,7 @@
 						@blur="onNumberInputBlur"
 						@pointerdown="
 							(e: PointerEvent) =>
-						onFilterNumberScrubPointerDown(
+								onFilterNumberScrubPointerDown(
 									e,
 									() => f.blurY,
 									(v) => patchFilter(f.id, { blurY: v }),
@@ -152,13 +152,17 @@
 						class="vs-input"
 						type="text"
 						placeholder="#ffffff"
-						@change="(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })"
+						@change="
+							(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })
+						"
 					/>
 					<input
 						:value="f.color"
 						class="vs-color"
 						type="color"
-						@input="(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })"
+						@input="
+							(e: Event) => patchFilter(f.id, { color: (e.target as HTMLInputElement).value })
+						"
 					/>
 				</label>
 				<label class="vs-row">
@@ -170,14 +174,15 @@
 						min="0"
 						step="0.01"
 						@change="
-							(e: Event) => patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)
+							(e: Event) =>
+								patchFilterNumber(f.id, 'intensity', (e.target as HTMLInputElement).value)
 						"
 						@dblclick.stop="onNumberInputDblClick"
 						@focus="onNumberInputFocus"
 						@blur="onNumberInputBlur"
 						@pointerdown="
 							(e: PointerEvent) =>
-						onFilterNumberScrubPointerDown(
+								onFilterNumberScrubPointerDown(
 									e,
 									() => f.intensity,
 									(v) => patchFilter(f.id, { intensity: v }),
@@ -202,7 +207,7 @@
 						@blur="onNumberInputBlur"
 						@pointerdown="
 							(e: PointerEvent) =>
-						onFilterNumberScrubPointerDown(
+								onFilterNumberScrubPointerDown(
 									e,
 									() => f.blurX,
 									(v) => patchFilter(f.id, { blurX: v }),
@@ -227,7 +232,7 @@
 						@blur="onNumberInputBlur"
 						@pointerdown="
 							(e: PointerEvent) =>
-						onFilterNumberScrubPointerDown(
+								onFilterNumberScrubPointerDown(
 									e,
 									() => f.blurY,
 									(v) => patchFilter(f.id, { blurY: v }),

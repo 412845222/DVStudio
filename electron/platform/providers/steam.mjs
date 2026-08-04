@@ -16,7 +16,9 @@ function tryLoadLocal() {
 		_localModule = require(localPath)
 		console.log('[platform:steam] Loaded local Steam provider implementation')
 	} catch (err) {
-		console.log('[platform:steam] Local Steam provider (steam.local.cjs) not found, Steam integration disabled')
+		console.log(
+			'[platform:steam] Local Steam provider (steam.local.cjs) not found, Steam integration disabled'
+		)
 		_localModule = null
 	}
 	return _localModule

@@ -9,7 +9,10 @@ function getRepo(ctx) {
 }
 
 function extFromFilename(filename) {
-	const ext = path.extname(String(filename || '')).toLowerCase().replace('.', '')
+	const ext = path
+		.extname(String(filename || ''))
+		.toLowerCase()
+		.replace('.', '')
 	if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)) return '.' + ext
 	return '.png'
 }
@@ -24,7 +27,7 @@ const STATUS_MAP = {
 	processing: 'running',
 	completed: 'done',
 	failed: 'error',
-	cancelled: 'error',
+	cancelled: 'error'
 }
 
 function serializeJobForFrontend(job, frames = []) {
@@ -55,7 +58,7 @@ function serializeJobForFrontend(job, frames = []) {
 		error: String(job.error || '') || undefined,
 		projectId: job.projectId || undefined,
 		createdAt: job.createdAt,
-		updatedAt: job.updatedAt,
+		updatedAt: job.updatedAt
 	}
 }
 
@@ -73,7 +76,7 @@ function normalizeCreatePayload(payload) {
 		quality: p.quality || 'high',
 		uploadMode: p.uploadMode,
 		ignoreStageBackground: !!p.ignoreStageBackground,
-		snapshot: p.snapshot || null,
+		snapshot: p.snapshot || null
 	}
 	if (p.expectedFrames) config.expectedFrames = Number(p.expectedFrames)
 	return { projectId: p.projectId, config }
@@ -136,7 +139,7 @@ export function listJobsByProject(ctx, payload) {
 	const pid = Number(payload?.projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return { items: [] }
 	const jobs = repo.listByProject(pid)
-	const items = jobs.map(j => {
+	const items = jobs.map((j) => {
 		const frames = repo.getFrames(j.id)
 		return serializeJobForFrontend(j, frames)
 	})
@@ -169,7 +172,7 @@ function writeFrame(repo, jobId, frameIndex, data, filename) {
 		frameIndex,
 		progress,
 		totalFrames: frames.length,
-		job: serializeJobForFrontend(updatedJob, frames),
+		job: serializeJobForFrontend(updatedJob, frames)
 	}
 }
 
@@ -254,7 +257,7 @@ export async function* streamJob(ctx, payload) {
 	let attempts = 0
 	const maxAttempts = 3600
 	while (attempts < maxAttempts) {
-		await new Promise(r => setTimeout(r, 500))
+		await new Promise((r) => setTimeout(r, 500))
 		attempts++
 		job = repo.get(id)
 		if (!job) break
@@ -264,5 +267,8 @@ export async function* streamJob(ctx, payload) {
 	}
 	const finalJob = repo.get(id)
 	const finalFrames = finalJob ? repo.getFrames(id) : []
-	yield JSON.stringify({ type: 'done', job: finalJob ? serializeJobForFrontend(finalJob, finalFrames) : null })
+	yield JSON.stringify({
+		type: 'done',
+		job: finalJob ? serializeJobForFrontend(finalJob, finalFrames) : null
+	})
 }

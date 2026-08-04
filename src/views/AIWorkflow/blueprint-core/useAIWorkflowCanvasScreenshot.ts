@@ -1,6 +1,6 @@
 /**
  * useAIWorkflowCanvasScreenshot - AI工作流Canvas2D截图预热集成
- * 
+ *
  * 职责:
  * 1. 封装CanvasScreenshotPool和CanvasWarmupCoordinator
  * 2. 与DOM截图系统协同工作
@@ -50,7 +50,9 @@ export interface CanvasScreenshotState {
 /**
  * AI工作流Canvas2D截图预热Composable
  */
-export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreenshotOptions = {}) => {
+export const useAIWorkflowCanvasScreenshot = (
+	options: UseAIWorkflowCanvasScreenshotOptions = {}
+) => {
 	// Canvas截图池
 	const canvasPool = shallowRef<CanvasScreenshotPool | null>(null)
 
@@ -149,7 +151,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 			// TODO: 需要传入节点位置信息
 		} else {
 			warmupCoordinator.addBatch(
-				entries.map(entry => ({
+				entries.map((entry) => ({
 					nodeId: entry.nodeId,
 					entry
 				}))
@@ -188,7 +190,7 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 		warmupDetail.value = t('aiworkflow.toast.warmupInProgress', { count: newEntries.length })
 
 		warmupCoordinator.addBatch(
-			newEntries.map(entry => ({
+			newEntries.map((entry) => ({
 				nodeId: entry.nodeId,
 				entry,
 				priority: 'high' as const // 新节点高优先级
@@ -260,9 +262,12 @@ export const useAIWorkflowCanvasScreenshot = (options: UseAIWorkflowCanvasScreen
 	}
 
 	// 获取视口内的节点
-	const getEntriesInViewport = (
-		viewportRect: { x0: number; y0: number; x1: number; y1: number }
-	) => {
+	const getEntriesInViewport = (viewportRect: {
+		x0: number
+		y0: number
+		x1: number
+		y1: number
+	}) => {
 		return canvasPool.value?.getEntriesInViewport(viewportRect) ?? []
 	}
 

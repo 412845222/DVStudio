@@ -9,7 +9,14 @@
 			@contextmenu.prevent.stop
 			@click.self="$emit('update:open', false)"
 		>
-			<div class="tc-dialog" data-bp-ui-overlay="true" @pointerdown.stop @mousedown.stop @click.stop @contextmenu.prevent.stop>
+			<div
+				class="tc-dialog"
+				data-bp-ui-overlay="true"
+				@pointerdown.stop
+				@mousedown.stop
+				@click.stop
+				@contextmenu.prevent.stop
+			>
 				<div class="tc-bg-layer" aria-hidden="true">
 					<div class="tc-bg-gradient"></div>
 					<div class="tc-bg-grid"></div>
@@ -18,12 +25,7 @@
 				</div>
 				<div class="tc-scanline" aria-hidden="true"></div>
 				<div class="sq-container tc-particles" aria-hidden="true">
-					<span
-						v-for="p in particles"
-						:key="p.id"
-						class="sq-particle"
-						:style="p.style"
-					></span>
+					<span v-for="p in particles" :key="p.id" class="sq-particle" :style="p.style"></span>
 				</div>
 				<span class="tc-corner tc-corner-tl" aria-hidden="true"></span>
 				<span class="tc-corner tc-corner-tr" aria-hidden="true"></span>
@@ -36,15 +38,33 @@
 						<div class="tc-title-sub">{{ t('aiworkflow.templateCenter.subtitle') }}</div>
 					</div>
 					<div class="tc-header-actions">
-						<button class="tc-btn tc-btn-primary" type="button" @click="$emit('save-template', { scope: 'full' })">
+						<button
+							class="tc-btn tc-btn-primary"
+							type="button"
+							@click="$emit('save-template', { scope: 'full' })"
+						>
 							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-								<path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+								<path
+									d="M8 2v12M2 8h12"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 							{{ t('aiworkflow.templateCenter.newTemplate') }}
 						</button>
-						<button class="tc-btn tc-btn-icon tc-btn-close" type="button" @click="$emit('update:open', false)">
+						<button
+							class="tc-btn tc-btn-icon tc-btn-close"
+							type="button"
+							@click="$emit('update:open', false)"
+						>
 							<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
-								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+								<path
+									d="M4 4l8 8M12 4l-8 8"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</button>
 					</div>
@@ -59,14 +79,23 @@
 						type="button"
 						@click="switchTab(tab.id)"
 					>
-						<svg v-if="tab.icon" :viewBox="tab.icon.viewBox" width="14" height="14" aria-hidden="true">
+						<svg
+							v-if="tab.icon"
+							:viewBox="tab.icon.viewBox"
+							width="14"
+							height="14"
+							aria-hidden="true"
+						>
 							<path :d="tab.icon.d" fill="currentColor" />
 						</svg>
 						<span>{{ tab.label }}</span>
 						<span v-if="cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge">
 							{{ t('aiworkflow.templateCenter.cloudConnected') }}
 						</span>
-						<span v-else-if="!cloudAvailable && tab.id === 'cloud'" class="tc-tab-badge tc-tab-badge-offline">
+						<span
+							v-else-if="!cloudAvailable && tab.id === 'cloud'"
+							class="tc-tab-badge tc-tab-badge-offline"
+						>
 							{{ t('aiworkflow.templateCenter.noCloudConnection') }}
 						</span>
 					</button>
@@ -75,17 +104,26 @@
 				<div class="tc-quota-bar-wrap">
 					<div v-if="cloudAvailable && activeTab === 'cloud'" class="tc-quota-bar-inner">
 						<div class="tc-quota-bar">
-							<div v-if="cloudQuota" class="tc-quota-bar-fill" :style="{ width: cloudQuotaPercent + '%' }"></div>
+							<div
+								v-if="cloudQuota"
+								class="tc-quota-bar-fill"
+								:style="{ width: cloudQuotaPercent + '%' }"
+							></div>
 							<div v-else class="tc-quota-bar-loading"></div>
 							<div class="tc-quota-bar-text">
 								<span v-if="cloudQuota">{{ cloudQuotaText }}</span>
-								<span v-else class="tc-quota-loading-text">{{ t('aiworkflow.templateCenter.syncing') }}</span>
+								<span v-else class="tc-quota-loading-text">
+									{{ t('aiworkflow.templateCenter.syncing') }}
+								</span>
 							</div>
 						</div>
 					</div>
 					<div v-else-if="activeTab === 'cloud'" class="tc-quota-bar-inner tc-quota-offline">
 						<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-							<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
+							<path
+								d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z"
+								fill="currentColor"
+							/>
 						</svg>
 						<span>{{ t('aiworkflow.templateCenter.noCloudConnection') }}</span>
 					</div>
@@ -93,9 +131,20 @@
 
 				<div class="tc-toolbar">
 					<div class="tc-search-wrap">
-						<svg class="tc-search-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+						<svg
+							class="tc-search-icon"
+							viewBox="0 0 16 16"
+							width="14"
+							height="14"
+							aria-hidden="true"
+						>
 							<circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-							<path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+							<path
+								d="M10.5 10.5L14 14"
+								stroke="currentColor"
+								stroke-width="1.2"
+								stroke-linecap="round"
+							/>
 						</svg>
 						<input
 							v-model="searchKeyword"
@@ -111,9 +160,28 @@
 							@click="handleRefreshCloud"
 							:title="t('aiworkflow.templateCenter.refresh')"
 						>
-							<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" :class="{ 'tc-refresh-spin': cloudSyncing }">
-								<path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-								<path d="M12.5 1v3h-3M3.5 15v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+							<svg
+								viewBox="0 0 16 16"
+								width="14"
+								height="14"
+								aria-hidden="true"
+								:class="{ 'tc-refresh-spin': cloudSyncing }"
+							>
+								<path
+									d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linecap="round"
+								/>
+								<path
+									d="M12.5 1v3h-3M3.5 15v-3h3"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 						</button>
 					</div>
@@ -122,9 +190,15 @@
 						<select v-model="selectedCategory" class="tc-select">
 							<option value="all">{{ t('aiworkflow.templateCenter.allCategories') }}</option>
 							<option value="basic">{{ t('aiworkflow.templateCategory.basic') }}</option>
-							<option value="video-generation">{{ t('aiworkflow.templateCategory.video-generation') }}</option>
-							<option value="image-to-video">{{ t('aiworkflow.templateCategory.image-to-video') }}</option>
-							<option value="text-to-image">{{ t('aiworkflow.templateCategory.text-to-image') }}</option>
+							<option value="video-generation">
+								{{ t('aiworkflow.templateCategory.video-generation') }}
+							</option>
+							<option value="image-to-video">
+								{{ t('aiworkflow.templateCategory.image-to-video') }}
+							</option>
+							<option value="text-to-image">
+								{{ t('aiworkflow.templateCategory.text-to-image') }}
+							</option>
 							<option value="model3d">{{ t('aiworkflow.templateCategory.model3d') }}</option>
 							<option value="comfyui">{{ t('aiworkflow.templateCategory.comfyui') }}</option>
 							<option value="other">{{ t('aiworkflow.templateCategory.other') }}</option>
@@ -188,21 +262,57 @@
 						</button>
 					</div>
 
-					<button class="tc-btn tc-btn-primary tc-new-template-btn" type="button" @click="$emit('save-template', { scope: 'full' })">
+					<button
+						class="tc-btn tc-btn-primary tc-new-template-btn"
+						type="button"
+						@click="$emit('save-template', { scope: 'full' })"
+					>
 						<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-							<path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+							<path
+								d="M8 2v12M2 8h12"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
 						</svg>
 						{{ t('aiworkflow.templateCenter.newTemplate') }}
 					</button>
 				</div>
 
 				<div class="tc-content">
-					<div v-if="activeTab === 'workshop' && !workshopPlatform?.ok" class="tc-workshop-placeholder">
+					<div
+						v-if="activeTab === 'workshop' && !workshopPlatform?.ok"
+						class="tc-workshop-placeholder"
+					>
 						<div class="tc-workshop-icon">
 							<svg viewBox="0 0 64 64" width="80" height="80" aria-hidden="true">
-								<rect x="8" y="8" width="48" height="48" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-								<path d="M24 28v-8a8 8 0 1 1 16 0v8" fill="none" stroke="currentColor" stroke-width="1.5" />
-								<rect x="16" y="28" width="32" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<rect
+									x="8"
+									y="8"
+									width="48"
+									height="48"
+									rx="2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.3"
+								/>
+								<path
+									d="M24 28v-8a8 8 0 1 1 16 0v8"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+								/>
+								<rect
+									x="16"
+									y="28"
+									width="32"
+									height="24"
+									rx="2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+								/>
 								<circle cx="32" cy="40" r="4" fill="currentColor" opacity="0.5" />
 							</svg>
 						</div>
@@ -210,17 +320,35 @@
 						<p>{{ t('aiworkflow.templateCenter.workshopDesc') }}</p>
 						<div class="tc-workshop-hint">
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor" />
+								<path
+									d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z"
+									fill="currentColor"
+								/>
 							</svg>
 							<span>{{ t('aiworkflow.templateCenter.steamRequired') }}</span>
 						</div>
 					</div>
 
-					<div v-else-if="activeTab === 'cloud' && !cloudAvailable" class="tc-workshop-placeholder tc-cloud-offline">
+					<div
+						v-else-if="activeTab === 'cloud' && !cloudAvailable"
+						class="tc-workshop-placeholder tc-cloud-offline"
+					>
 						<div class="tc-workshop-icon">
 							<svg viewBox="0 0 64 64" width="80" height="80" aria-hidden="true">
-								<path d="M20 42a10 10 0 0 1-1.3-19.9A14 14 0 0 1 46 22h.1A10 10 0 0 1 44 42H20z" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3" />
-								<path d="M22 52l20-20M42 52L22 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.6" />
+								<path
+									d="M20 42a10 10 0 0 1-1.3-19.9A14 14 0 0 1 46 22h.1A10 10 0 0 1 44 42H20z"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									opacity="0.3"
+								/>
+								<path
+									d="M22 52l20-20M42 52L22 32"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									opacity="0.6"
+								/>
 							</svg>
 						</div>
 						<h3>{{ t('aiworkflow.templateCenter.noCloudAccess') }}</h3>
@@ -228,16 +356,55 @@
 					</div>
 
 					<template v-else>
-						<div v-if="loading || (activeTab === 'workshop' && loadingWorkshopTemplates)" class="tc-loading">
+						<div
+							v-if="loading || (activeTab === 'workshop' && loadingWorkshopTemplates)"
+							class="tc-loading"
+						>
 							<div class="tc-spinner"></div>
 						</div>
 
 						<div v-else-if="displayTemplates.length === 0" class="tc-empty">
 							<svg viewBox="0 0 48 48" width="64" height="64" aria-hidden="true">
-								<rect x="8" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-								<rect x="26" y="8" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-								<rect x="8" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
-								<rect x="26" y="26" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3" />
+								<rect
+									x="8"
+									y="8"
+									width="14"
+									height="14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.3"
+								/>
+								<rect
+									x="26"
+									y="8"
+									width="14"
+									height="14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.3"
+								/>
+								<rect
+									x="8"
+									y="26"
+									width="14"
+									height="14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.3"
+								/>
+								<rect
+									x="26"
+									y="26"
+									width="14"
+									height="14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									opacity="0.3"
+								/>
 							</svg>
 							<p>{{ currentTabEmptyText }}</p>
 						</div>
@@ -250,7 +417,9 @@
 								:selected="selectedTemplate?.id === template.id"
 								:size="cardSize"
 								:uploading="uploadingTemplateId === template.id"
-								:downloading="(cloudDownloadingId === template.id) || (workshopDownloadingId === template.id)"
+								:downloading="
+									cloudDownloadingId === template.id || workshopDownloadingId === template.id
+								"
 								@select="selectTemplate"
 								@preview="handlePreview"
 								@apply="handleApply"
@@ -279,12 +448,25 @@ import TemplateApplyDialog from './TemplateApplyDialog.vue'
 import { useTemplateCenter } from '../../aiworkflow/template/useTemplateCenter'
 import { useWorkshopTemplates } from '../../aiworkflow/template/useWorkshopTemplates'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
-import type { TemplateItem, SaveTemplateOptions, TemplateSource, TemplateApplyOptions } from '../../aiworkflow/template/types'
+import type {
+	TemplateItem,
+	SaveTemplateOptions,
+	TemplateSource,
+	TemplateApplyOptions
+} from '../../aiworkflow/template/types'
 import { useI18n } from '../../i18n'
-import { toastSuccess, toastError, toastInfo, confirmDelete } from '../UIComponent/useGlobalFeedback'
+import {
+	toastSuccess,
+	toastError,
+	toastInfo,
+	confirmDelete
+} from '../UIComponent/useGlobalFeedback'
 import { usePlatform } from '../../platformBridge/usePlatform'
 
-console.log('[TemplateCenterDialog] Component script setup executing, workshopTemplates API available:', !!window?.dweb?.workshopTemplates)
+console.log(
+	'[TemplateCenterDialog] Component script setup executing, workshopTemplates API available:',
+	!!window?.dweb?.workshopTemplates
+)
 
 type TabId = 'user' | 'cloud' | 'workshop'
 
@@ -325,7 +507,7 @@ const {
 	deleteTemplate,
 	uploadToCloud,
 	downloadFromCloud,
-	refreshCloud,
+	refreshCloud
 } = useTemplateCenter()
 
 const {
@@ -335,7 +517,7 @@ const {
 	ensureWorkshopAvailable,
 	loadWorkshopTemplates,
 	downloadTemplateFromWorkshop,
-	downloadingTemplateId: workshopDownloadingId,
+	downloadingTemplateId: workshopDownloadingId
 } = useWorkshopTemplates()
 
 const { isSteam, isLoggedIn: isPlatformLoggedIn } = usePlatform()
@@ -349,7 +531,7 @@ async function initializeWhenOpen() {
 	_steamConnectedHandled = false
 	await Promise.all([
 		loadTemplates({ forceCloudRefresh: true }),
-		loadWorkshopTemplates({ tag: 'official' }),
+		loadWorkshopTemplates({ tag: 'official' })
 	])
 	selectTemplate(null)
 
@@ -405,24 +587,27 @@ const tabs = computed(() => [
 	{
 		id: 'user' as TabId,
 		label: t('aiworkflow.templateCenter.tabUser'),
-		icon: { viewBox: '0 0 16 16', d: 'M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 14s1-4 5-4 5 4 5 4H3z' },
+		icon: { viewBox: '0 0 16 16', d: 'M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 14s1-4 5-4 5 4 5 4H3z' }
 	},
 	{
 		id: 'cloud' as TabId,
 		label: t('aiworkflow.templateCenter.tabCloud'),
-		icon: { viewBox: '0 0 16 16', d: 'M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z' },
+		icon: {
+			viewBox: '0 0 16 16',
+			d: 'M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z'
+		}
 	},
 	{
 		id: 'workshop' as TabId,
 		label: t('aiworkflow.templateCenter.tabWorkshop'),
-		icon: { viewBox: '0 0 16 16', d: 'M8 1l2 5h5l-4 3.5L12.5 15 8 11.5 3.5 15 5 9.5 1 6h5L8 1z' },
-	},
+		icon: { viewBox: '0 0 16 16', d: 'M8 1l2 5h5l-4 3.5L12.5 15 8 11.5 3.5 15 5 9.5 1 6h5L8 1z' }
+	}
 ])
 
 const tabSourceMap: Record<TabId, TemplateSource | null> = {
 	user: 'user',
 	cloud: 'steam-user',
-	workshop: null,
+	workshop: null
 }
 
 const displayTemplates = computed(() => {
@@ -531,7 +716,11 @@ function handleApply(template: TemplateItem) {
 }
 
 function handleApplyConfirm(options: TemplateApplyOptions) {
-	console.log('[TemplateCenterDialog] handleApplyConfirm, options:', { target: options.target, templateId: options.template?.id, templateName: options.template?.name })
+	console.log('[TemplateCenterDialog] handleApplyConfirm, options:', {
+		target: options.target,
+		templateId: options.template?.id,
+		templateName: options.template?.name
+	})
 	applyDialogOpen.value = false
 	templateForApply.value = null
 	console.log('[TemplateCenterDialog] emitting apply-template-confirm')
@@ -544,7 +733,7 @@ async function handleDelete(template: TemplateItem) {
 		t('aiworkflow.templateCenter.deleteConfirmMessage'),
 		{
 			confirmText: t('aiworkflow.templateCenter.delete'),
-			cancelText: t('aiworkflow.templateCenter.cancel'),
+			cancelText: t('aiworkflow.templateCenter.cancel')
 		}
 	)
 	if (!confirmed) return
@@ -570,10 +759,19 @@ async function handleUpload(template: TemplateItem) {
 }
 
 async function handleDownload(template: TemplateItem) {
-	console.log('[template-center-dialog] handleDownload clicked for:', template.id, template.name, 'source:', template.source)
+	console.log(
+		'[template-center-dialog] handleDownload clicked for:',
+		template.id,
+		template.name,
+		'source:',
+		template.source
+	)
 	if (template.source === 'steam-workshop') {
 		const result = await downloadTemplateFromWorkshop(template.id)
-		console.log('[template-center-dialog] workshop download result:', result ? `success, saved: ${result.savedTemplate?.id || 'no'}` : 'failed')
+		console.log(
+			'[template-center-dialog] workshop download result:',
+			result ? `success, saved: ${result.savedTemplate?.id || 'no'}` : 'failed'
+		)
 		if (result?.savedTemplate) {
 			toastSuccess(t('aiworkflow.templateCenter.downloadSuccess'))
 			emit('download-template', template)
@@ -651,8 +849,16 @@ async function handleDownload(template: TemplateItem) {
 	position: absolute;
 	inset: 0;
 	background:
-		radial-gradient(ellipse 80% 60% at 20% 15%, color-mix(in srgb, var(--tc-accent) 12%, transparent), transparent 60%),
-		radial-gradient(ellipse 60% 50% at 85% 90%, color-mix(in srgb, var(--tc-cold) 10%, transparent), transparent 55%),
+		radial-gradient(
+			ellipse 80% 60% at 20% 15%,
+			color-mix(in srgb, var(--tc-accent) 12%, transparent),
+			transparent 60%
+		),
+		radial-gradient(
+			ellipse 60% 50% at 85% 90%,
+			color-mix(in srgb, var(--tc-cold) 10%, transparent),
+			transparent 55%
+		),
 		linear-gradient(180deg, var(--tc-bg-0) 0%, var(--tc-bg-1) 100%);
 }
 
@@ -660,8 +866,16 @@ async function handleDownload(template: TemplateItem) {
 	position: absolute;
 	inset: 0;
 	background-image:
-		linear-gradient(to right, color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px, transparent 1px),
-		linear-gradient(to bottom, color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px, transparent 1px);
+		linear-gradient(
+			to right,
+			color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			to bottom,
+			color-mix(in srgb, var(--tc-accent) 5%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 48px 48px;
 	opacity: 0.4;
 	mask-image: radial-gradient(ellipse at 50% 40%, #000 40%, transparent 100%);
@@ -681,7 +895,11 @@ async function handleDownload(template: TemplateItem) {
 	left: 10%;
 	width: 500px;
 	height: 280px;
-	background: linear-gradient(135deg, color-mix(in srgb, var(--tc-accent) 30%, transparent), transparent 70%);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--tc-accent) 30%, transparent),
+		transparent 70%
+	);
 	animation: tc-drift-1 18s ease-in-out infinite;
 }
 
@@ -690,18 +908,32 @@ async function handleDownload(template: TemplateItem) {
 	right: 5%;
 	width: 560px;
 	height: 340px;
-	background: linear-gradient(135deg, color-mix(in srgb, var(--tc-cold) 22%, transparent), transparent 70%);
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--tc-cold) 22%, transparent),
+		transparent 70%
+	);
 	animation: tc-drift-2 22s ease-in-out infinite;
 }
 
 @keyframes tc-drift-1 {
-	0%, 100% { transform: translate3d(0, 0, 0); }
-	50% { transform: translate3d(30px, -20px, 0); }
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(30px, -20px, 0);
+	}
 }
 
 @keyframes tc-drift-2 {
-	0%, 100% { transform: translate3d(0, 0, 0); }
-	50% { transform: translate3d(-25px, 20px, 0); }
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(-25px, 20px, 0);
+	}
 }
 
 .tc-scanline {
@@ -723,8 +955,13 @@ async function handleDownload(template: TemplateItem) {
 }
 
 @keyframes tc-scan-pulse {
-	0%, 100% { opacity: 0.5; }
-	50% { opacity: 1; }
+	0%,
+	100% {
+		opacity: 0.5;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .tc-particles {
@@ -742,7 +979,8 @@ async function handleDownload(template: TemplateItem) {
 	border-style: solid;
 	border-width: 0;
 	opacity: 0.8;
-	transition: width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+	transition:
+		width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		height 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -809,7 +1047,7 @@ async function handleDownload(template: TemplateItem) {
 	gap: 6px;
 }
 .tc-title-sub::before {
-	content: "";
+	content: '';
 	display: inline-block;
 	width: 5px;
 	height: 5px;
@@ -836,7 +1074,11 @@ async function handleDownload(template: TemplateItem) {
 	letter-spacing: 0.03em;
 	cursor: pointer;
 	border-radius: 2px;
-	transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease, transform 160ms ease;
+	transition:
+		background 200ms ease,
+		border-color 200ms ease,
+		box-shadow 200ms ease,
+		transform 160ms ease;
 	font-family: inherit;
 }
 
@@ -897,7 +1139,10 @@ async function handleDownload(template: TemplateItem) {
 	letter-spacing: 0.03em;
 	cursor: pointer;
 	border-bottom: 2px solid transparent;
-	transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+	transition:
+		color 200ms ease,
+		border-color 200ms ease,
+		background 200ms ease;
 	font-family: inherit;
 	position: relative;
 }
@@ -942,21 +1187,24 @@ async function handleDownload(template: TemplateItem) {
 	border-radius: 3px;
 	overflow: hidden;
 	position: relative;
-	box-shadow: inset 0 1px 3px rgba(0,0,0,0.3), 0 0 6px color-mix(in srgb, var(--tc-accent) 8%, transparent);
+	box-shadow:
+		inset 0 1px 3px rgba(0, 0, 0, 0.3),
+		0 0 6px color-mix(in srgb, var(--tc-accent) 8%, transparent);
 }
 
 .tc-quota-bar-fill {
 	height: 100%;
-	background: linear-gradient(90deg, 
+	background: linear-gradient(
+		90deg,
 		color-mix(in srgb, var(--tc-accent) 70%, transparent),
 		var(--tc-accent),
 		color-mix(in srgb, var(--tc-cold) 80%, var(--tc-accent))
 	);
 	border-radius: 2px;
 	transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
-	box-shadow: 
+	box-shadow:
 		0 0 12px color-mix(in srgb, var(--tc-accent) 50%, transparent),
-		inset 0 1px 0 rgba(255,255,255,0.15);
+		inset 0 1px 0 rgba(255, 255, 255, 0.15);
 	position: relative;
 }
 
@@ -967,7 +1215,7 @@ async function handleDownload(template: TemplateItem) {
 	right: 0;
 	bottom: 0;
 	width: 20px;
-	background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12));
+	background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12));
 	border-radius: 0 2px 2px 0;
 }
 
@@ -984,7 +1232,9 @@ async function handleDownload(template: TemplateItem) {
 	font-weight: 600;
 	letter-spacing: 0.02em;
 	color: #fff;
-	text-shadow: 0 1px 3px rgba(0,0,0,0.7), 0 0 8px rgba(0,0,0,0.4);
+	text-shadow:
+		0 1px 3px rgba(0, 0, 0, 0.7),
+		0 0 8px rgba(0, 0, 0, 0.4);
 	z-index: 2;
 	pointer-events: none;
 	white-space: nowrap;
@@ -997,7 +1247,8 @@ async function handleDownload(template: TemplateItem) {
 .tc-quota-bar-loading {
 	height: 100%;
 	width: 30%;
-	background: linear-gradient(90deg, 
+	background: linear-gradient(
+		90deg,
 		transparent,
 		color-mix(in srgb, var(--tc-accent) 40%, transparent),
 		var(--tc-accent),
@@ -1011,8 +1262,12 @@ async function handleDownload(template: TemplateItem) {
 }
 
 @keyframes tc-quota-loading {
-	0% { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
 }
 
 .tc-tab-badge-offline {
@@ -1075,8 +1330,12 @@ async function handleDownload(template: TemplateItem) {
 }
 
 @keyframes tc-refresh-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .tc-sync-hint {
@@ -1098,8 +1357,12 @@ async function handleDownload(template: TemplateItem) {
 }
 
 @keyframes tc-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 /* Workshop placeholder */
@@ -1188,7 +1451,10 @@ async function handleDownload(template: TemplateItem) {
 	font-size: 12px;
 	outline: none;
 	box-sizing: border-box;
-	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		box-shadow 200ms ease;
 	font-family: inherit;
 }
 
@@ -1199,7 +1465,8 @@ async function handleDownload(template: TemplateItem) {
 .tc-search-input:focus {
 	border-color: color-mix(in srgb, var(--tc-accent) 65%, transparent);
 	background: color-mix(in srgb, var(--tc-fg) 5%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--tc-accent) 25%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--tc-accent) 25%, transparent),
 		0 0 16px color-mix(in srgb, var(--tc-accent) 12%, transparent);
 }
 
@@ -1223,7 +1490,10 @@ async function handleDownload(template: TemplateItem) {
 	outline: none;
 	cursor: pointer;
 	appearance: none;
-	transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
+	transition:
+		border-color 200ms ease,
+		box-shadow 200ms ease,
+		background-color 200ms ease;
 	font-family: inherit;
 }
 
@@ -1311,7 +1581,9 @@ async function handleDownload(template: TemplateItem) {
 }
 
 @keyframes tc-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .tc-empty p {
@@ -1341,7 +1613,9 @@ async function handleDownload(template: TemplateItem) {
 /* Transition */
 .tc-dialog-enter-active,
 .tc-dialog-leave-active {
-	transition: opacity 220ms ease, transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+	transition:
+		opacity 220ms ease,
+		transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .tc-dialog-enter-from,
@@ -1357,9 +1631,15 @@ async function handleDownload(template: TemplateItem) {
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-	.tc-bg-glow { animation: none !important; }
-	.tc-scanline { animation: none !important; }
-	.tc-corner { transition: none !important; }
+	.tc-bg-glow {
+		animation: none !important;
+	}
+	.tc-scanline {
+		animation: none !important;
+	}
+	.tc-corner {
+		transition: none !important;
+	}
 	.tc-dialog-enter-active,
 	.tc-dialog-leave-active {
 		transition: opacity 150ms ease;
@@ -1483,7 +1763,9 @@ async function handleDownload(template: TemplateItem) {
 [data-theme='light'] .tc-select:focus {
 	border-color: rgba(31, 157, 132, 0.55) !important;
 	background-color: #fff !important;
-	box-shadow: 0 0 0 1px rgba(31, 157, 132, 0.2), 0 0 12px rgba(31, 157, 132, 0.08) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.2),
+		0 0 12px rgba(31, 157, 132, 0.08) !important;
 }
 [data-theme='light'] .tc-select {
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5L5 6.5L8 3.5' stroke='%234a5058' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") !important;
@@ -1528,15 +1810,24 @@ async function handleDownload(template: TemplateItem) {
 [data-theme='light'] .tc-quota-bar {
 	background: rgba(0, 0, 0, 0.04) !important;
 	border-color: rgba(31, 157, 132, 0.25) !important;
-	box-shadow: inset 0 1px 2px rgba(0,0,0,0.06), 0 0 4px rgba(31, 157, 132, 0.06) !important;
+	box-shadow:
+		inset 0 1px 2px rgba(0, 0, 0, 0.06),
+		0 0 4px rgba(31, 157, 132, 0.06) !important;
 }
 [data-theme='light'] .tc-quota-bar-fill {
-	background: linear-gradient(90deg, rgba(31, 157, 132, 0.8), #1f9d84, rgba(59, 130, 246, 0.7)) !important;
-	box-shadow: 0 0 8px rgba(31, 157, 132, 0.35), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+	background: linear-gradient(
+		90deg,
+		rgba(31, 157, 132, 0.8),
+		#1f9d84,
+		rgba(59, 130, 246, 0.7)
+	) !important;
+	box-shadow:
+		0 0 8px rgba(31, 157, 132, 0.35),
+		inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
 }
 [data-theme='light'] .tc-quota-bar-text {
 	color: #fff !important;
-	text-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
 }
 [data-theme='light'] .tc-refresh-btn {
 	border-color: rgba(31, 157, 132, 0.25) !important;

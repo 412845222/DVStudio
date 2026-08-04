@@ -25,6 +25,7 @@ import type {
 	WorkflowMeshyTaskTarget,
 	WorkflowNodeChatType,
 	WorkflowNodeChatSubmitPayload,
+	WorkflowNodeChatSelectedRef,
 	WorkflowNodeGenerationTask,
 	WorkflowSelectionTag,
 	SavedSelectionFrame,
@@ -147,7 +148,8 @@ export const createDefaultAIWorkflowState = (): WorkflowState => {
 			nodeType: null,
 			draft: '',
 			submitting: false,
-			params: {}
+			params: {},
+			selectedRefs: [] as WorkflowNodeChatSelectedRef[]
 		},
 		nodeGenerationTasksById: {},
 		nodeGenerationTaskIdsByNodeId: {},
@@ -331,6 +333,10 @@ const remapLegacyInputAnchorId = (nodeType: string, anchorId: string) => {
 		if (nextAnchorId === 'in-model') return 'in-0'
 		return nextAnchorId
 	}
+	if (nextType === 'comfyui') {
+		if (nextAnchorId === 'in-resource' || nextAnchorId === 'in-text') return 'in'
+		if (nextAnchorId.startsWith('in-') && nextAnchorId !== 'in') return 'in'
+	}
 	return nextAnchorId
 }
 
@@ -369,6 +375,11 @@ const remapLegacyOutputAnchorId = (nodeType: string, anchorId: string) => {
 	}
 	if (nextType === 'scene-layout') {
 		if (nextAnchorId === 'out-json') return 'out-0'
+		return nextAnchorId
+	}
+	if (nextType === 'comfyui') {
+		if (nextAnchorId === 'out-media') return 'out'
+		if (nextAnchorId.startsWith('out-') && nextAnchorId !== 'out') return 'out'
 		return nextAnchorId
 	}
 	return nextAnchorId
@@ -473,14 +484,22 @@ const syncStoryAnchors = (node: WorkflowNode) => {
 	}))
 }
 
-const COMFY_PROMPT_POSITIVE_ANCHOR_ID = 'in-positive'
-const COMFY_PROMPT_NEGATIVE_ANCHOR_ID = 'in-negative'
+const COMFY_INPUT_ANCHOR_ID = 'in'
 
-const comfyPromptAnchors = (): WorkflowAnchorSpec[] => {
+const comfyInputAnchors = (): WorkflowAnchorSpec[] => {
 	return [
-		{ id: COMFY_PROMPT_POSITIVE_ANCHOR_ID, label: '正向提示词', mediaType: 'text' },
-		{ id: COMFY_PROMPT_NEGATIVE_ANCHOR_ID, label: '负向提示词', mediaType: 'text' }
+		{
+			id: COMFY_INPUT_ANCHOR_ID,
+			label: '输入',
+			mediaType: 'generic',
+			acceptedMediaTypes: ['text', 'image', 'video', 'model3d'],
+			multiInput: true
+		}
 	]
+}
+
+const comfyDefaultOutputAnchors = (): WorkflowAnchorSpec[] => {
+	return [{ id: 'out', label: '输出', mediaType: 'generic' }]
 }
 
 const normalizeSceneUnderstandingSettings = (
@@ -3343,7 +3362,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					} as WorkflowComfyUINodeSettings)
 				const baseInputs: WorkflowAnchorSpec[] = [...comfyInputAnchors()]
 				n.inputs = baseInputs
-				n.outputs = [{ id: 'out-0', label: '产物输出', mediaType: 'generic' }]
+				n.outputs = comfyDefaultOutputAnchors()
 			}
 			if (payload.type === 'model3d') {
 				n.model3dSettings = n.model3dSettings ?? {
@@ -3688,37 +3707,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			payload: {
 				nodeId: string
 				workflowPath: string
-				inputs: WorkflowAnchorSpec[]
 				outputs: WorkflowAnchorSpec[]
+				warnings?: string[]
+				inputRequirements?: import('../../aiworkflow/domain/comfyui/parseWorkflowIO').ComfyInputRequirements
 			}
 		) {
 			const id = String(payload?.nodeId ?? '').trim()
 			if (!id) return
 			const n = state.nodesById[id]
 			if (!n || n.type !== 'comfyui') return
-			const inputsRaw = Array.isArray(payload?.inputs) ? payload.inputs : []
 			const outputsRaw = Array.isArray(payload?.outputs) ? payload.outputs : []
-			const prompt = comfyPromptAnchors()
-			const inputs = inputsRaw
-				.map((a: unknown) =>
-					isRecord(a)
-						? {
-								id: String(a.id ?? '').trim(),
-								label: isString(a.label) ? a.label : undefined,
-								offsetY: isNumber(a.offsetY) ? a.offsetY : undefined,
-								mediaType: normalizeMediaType(a.mediaType, {
-									nodeType: 'comfyui',
-									anchorId: String(a.id ?? '')
-								})
-							}
-						: { id: '' }
-				)
-				.filter(
-					(a: { id: string }) =>
-						a.id &&
-						a.id !== COMFY_PROMPT_POSITIVE_ANCHOR_ID &&
-						a.id !== COMFY_PROMPT_NEGATIVE_ANCHOR_ID
-				)
 			const outputs = outputsRaw
 				.map((a: unknown) =>
 					isRecord(a)
@@ -4424,11 +4422,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n) return
 			if (payload.width != null) {
 				const w = Number(payload.width)
-				if (Number.isFinite(w)) n.width = Math.max(80, Math.min(1000, w))
+				if (Number.isFinite(w)) n.width = Math.max(80, Math.min(2000, w))
 			}
 			if (payload.height != null) {
 				const h = Number(payload.height)
-				if (Number.isFinite(h)) n.height = Math.max(80, Math.min(1000, h))
+				if (Number.isFinite(h)) n.height = Math.max(80, h)
 			}
 			if (payload.customized !== false) n.sizeCustomized = true
 			if (n.type === 'story') syncStoryAnchors(n)
@@ -4594,7 +4592,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					nodeType: dialog.nodeType ?? null,
 					draft: typeof dialog.draft === 'string' ? dialog.draft : '',
 					submitting: Boolean(dialog.submitting),
-					params: dialog.params && typeof dialog.params === 'object' ? dialog.params : {}
+					params: dialog.params && typeof dialog.params === 'object' ? dialog.params : {},
+					selectedRefs: Array.isArray(dialog.selectedRefs) ? dialog.selectedRefs : []
 				}
 			}
 			if (snap.nodeGenerationTasksById && typeof snap.nodeGenerationTasksById === 'object') {
@@ -4769,7 +4768,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				: null
 			const supportsMultiInput =
 				inputAnchor?.multiInput === true ||
-				(toNode.type === 'blender' && toAnchorId === 'in-0')
+				(toNode.type === 'blender' && toAnchorId === 'in-0') ||
+				(toNode.type === 'comfyui' && toAnchorId === 'in')
 			// Only replace existing connection if multiInput is not enabled
 			if (!supportsMultiInput) {
 				for (const edgeId of state.edgeOrder.slice()) {

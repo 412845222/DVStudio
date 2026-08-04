@@ -3,7 +3,12 @@ import type { InjectionKey } from 'vue'
 import type { LocaleCode, LocaleMeta, TranslateParams } from '../../i18n/types'
 import { DEFAULT_LOCALE } from '../../i18n/types'
 import { getLocalePackage, getAvailableLocales } from '../../i18n/locales'
-import { translate, detectSystemLocale, normalizeLocale, isSupportedLocale } from '../../i18n/helpers'
+import {
+	translate,
+	detectSystemLocale,
+	normalizeLocale,
+	isSupportedLocale
+} from '../../i18n/helpers'
 
 export interface I18nState {
 	locale: LocaleCode
@@ -56,8 +61,8 @@ async function persistToSettings(locale: LocaleCode) {
 				...settings,
 				ui: {
 					...(settings?.ui || {}),
-					locale,
-				},
+					locale
+				}
 			}
 			await dweb.common.saveClientSettings(updated)
 		}
@@ -68,24 +73,26 @@ async function persistToSettings(locale: LocaleCode) {
 
 export const I18nStore = createStore<I18nState>({
 	state: (): I18nState => ({
-		locale: DEFAULT_LOCALE,
+		locale: DEFAULT_LOCALE
 	}),
 
 	getters: {
 		currentLocale: (state): LocaleCode => state.locale,
 		currentLocaleMeta: (state): LocaleMeta => getLocalePackage(state.locale).meta,
 		availableLocales: (): LocaleMeta[] => getAvailableLocales(),
-		t: (state) => (key: string, params?: TranslateParams): string => {
-			const messages = getLocalePackage(state.locale).messages
-			return translate(messages, key, params)
-		},
+		t:
+			(state) =>
+			(key: string, params?: TranslateParams): string => {
+				const messages = getLocalePackage(state.locale).messages
+				return translate(messages, key, params)
+			}
 	},
 
 	mutations: {
 		SET_LOCALE(state, locale: LocaleCode) {
 			state.locale = locale
 			persistLocale(locale)
-		},
+		}
 	},
 
 	actions: {
@@ -114,8 +121,8 @@ export const I18nStore = createStore<I18nState>({
 			}
 			commit('SET_LOCALE', locale)
 			await persistToSettings(locale)
-		},
-	},
+		}
+	}
 })
 
 export function t(key: string, params?: TranslateParams): string {

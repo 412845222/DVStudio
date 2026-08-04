@@ -13,6 +13,9 @@ import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/u
 import { getChatModelById } from '../../../../ai/models/chatModels'
 import { t } from '../../../../i18n'
 import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
+import { sanitizeWorkflowMediaUrl } from '../../../../aiworkflow/domain/resource/safeWorkflowUrl'
+import useChatContext from './useChatContext'
+import type { NodeOutputKind } from '../../../../types/agentMention'
 
 type CacheRefImagesResult = {
 	ok?: unknown
@@ -125,6 +128,7 @@ type ChatGenerationPayload = {
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	getFirstIncomingEdge: (nodeId: string, anchorId?: string) => WorkflowEdge | null | undefined
 	nodeResourceUrl: (node: WorkflowNode) => string | null
+	nodeImagePreviewUrl: (node: WorkflowNode, maxSize: number) => string | null
 	nodeResourceName: (node: WorkflowNode) => string | null
 	buildCroppedImageTransferFile: (
 		fromNode: WorkflowNode,
@@ -897,6 +901,32 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		return []
 	}
 
+	const buildContextText = () => {
+		let text = ''
+		for (const item of items.value) {
+			if (item.type === 'file' && item.content) {
+				text += `\n\n## 参考文件：${item.name}\n\`\`\`\n${item.content}\n\`\`\`\n`
+			}
+		}
+		for (const item of items.value) {
+			if (item.type === 'skill' && item.prompt) {
+				text += `\n\n## 激活技能：${item.name}\n${item.prompt}\n`
+			}
+		}
+		for (const item of items.value) {
+			if (item.type === 'node') {
+				text += `\n\n## 引用节点详情：${item.label} (${item.nodeType})\n节点ID: ${item.nodeId}\n配置:\n\`\`\`json\n${JSON.stringify(item.config, null, 2)}\n\`\`\`\n`
+			}
+		}
+		for (const ref of nodeOutputRefs.value) {
+			if (ref.kind === 'text' && ref.text) {
+				const truncatedText = ref.text.length > 2000 ? ref.text.slice(0, 2000) + '...' : ref.text
+				text += `\n\n## 引用节点输出：[${ref.kind}] ${ref.label}\n\`\`\`\n${truncatedText}\n\`\`\`\n`
+			}
+		}
+		return text
+	}
+
 	const onSend = async () => {
 		if (payload.chatModelKey.value === 'nanobanana' || payload.chatModelKey.value === 'seedance')
 			return
@@ -952,7 +982,13 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				} catch {
 					// ignore frontend api key failure, backend reads from localdb
 				}
-				const context = collectBlueprintContext()
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
 
 				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 				const chatBridge = getAgentChatBridge()
@@ -961,7 +997,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				if (!sessionId) {
 					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 					const session = await chatBridge.createSession('dvsagent', {
-						title: content.slice(0, 24),
+						title: userInput.slice(0, 24),
 						model: payload.chatModelId.value,
 						cwd: undefined,
 						projectId: payload.currentProjectId.value
@@ -1060,14 +1096,14 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 					return
 				}
 
-				const parsed = parseLocalExecSlashCommand(content)
+				const parsed = parseLocalExecSlashCommand(userInput)
 				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
 
 				const chatBridge = getAgentChatBridge()
 				if (!sessionId) {
 					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 					const session = await chatBridge.createSession('copilot', {
-						title: content.slice(0, 24),
+						title: userInput.slice(0, 24),
 						model: payload.chatModelId.value || 'auto',
 						projectId
 					})
@@ -1129,10 +1165,17 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 				const chatBridge = getAgentChatBridge()
 				setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
 				const session = await chatBridge.createSession('codex', {
-					title: content.slice(0, 24),
+					title: userInput.slice(0, 24),
 					model: payload.chatModelId.value,
 					projectId: payload.currentProjectId.value
 				})
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
 				await handleChatStream('codex', content, session.id, assistantMsg.id, {
 					history,
 					model: payload.chatModelId.value,
@@ -1164,6 +1207,7 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 			if (activeAbortController === abortController) activeAbortController = null
 			payload.chatSending.value = false
 			if (payload.chatRunState.value !== 'error') payload.chatRunState.value = 'idle'
+			clearAll()
 		}
 	}
 
@@ -2242,6 +2286,23 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		onStop,
 		onNanoBananaGenerate,
 		onSeedanceGenerate,
-		handleUserChoiceSelect
+		handleUserChoiceSelect,
+		contextItems: items,
+		nodeOutputRefs,
+		isPickingNode,
+		allContextItems: allItems,
+		hasContext,
+		contextCount,
+		addImage,
+		addFile,
+		addSkill,
+		addNode,
+		addNodeOutputRef,
+		removeContextItem: removeItem,
+		removeNodeOutputRef,
+		clearAllContext: clearAll,
+		enterNodePickMode,
+		exitNodePickMode,
+		onNodePicked
 	}
 }

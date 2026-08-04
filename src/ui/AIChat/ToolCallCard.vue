@@ -1,31 +1,88 @@
 <template>
 	<div class="tool-call-card" :class="[`status-${status}`]">
-		<button
-			class="tool-call-card__header"
-			type="button"
-			@click="toggleExpanded"
-		>
+		<button class="tool-call-card__header" type="button" @click="toggleExpanded">
 			<span class="tool-call-card__status-icon">
-				<svg v-if="status === 'pending'" class="tool-call-card__spinner" viewBox="0 0 24 24" aria-hidden="true">
-					<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="30 70" stroke-linecap="round" />
+				<svg
+					v-if="status === 'pending'"
+					class="tool-call-card__spinner"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<circle
+						cx="12"
+						cy="12"
+						r="10"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-dasharray="30 70"
+						stroke-linecap="round"
+					/>
 				</svg>
-				<svg v-else-if="status === 'running'" class="tool-call-card__spinner" viewBox="0 0 24 24" aria-hidden="true">
-					<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="30 70" stroke-linecap="round" />
+				<svg
+					v-else-if="status === 'running'"
+					class="tool-call-card__spinner"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<circle
+						cx="12"
+						cy="12"
+						r="10"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-dasharray="30 70"
+						stroke-linecap="round"
+					/>
 				</svg>
-				<svg v-else-if="status === 'completed'" class="tool-call-card__icon-check" viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+				<svg
+					v-else-if="status === 'completed'"
+					class="tool-call-card__icon-check"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<path
+						d="M5 12l5 5L20 7"
+						stroke="currentColor"
+						stroke-width="2"
+						fill="none"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
-				<svg v-else-if="status === 'error'" class="tool-call-card__icon-error" viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M12 8v5M12 16.5v.5M5 19h14M6 19l1-11a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3l1 11" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+				<svg
+					v-else-if="status === 'error'"
+					class="tool-call-card__icon-error"
+					viewBox="0 0 24 24"
+					aria-hidden="true"
+				>
+					<path
+						d="M12 8v5M12 16.5v.5M5 19h14M6 19l1-11a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3l1 11"
+						stroke="currentColor"
+						stroke-width="2"
+						fill="none"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 				<span v-else class="tool-call-card__icon-dot" />
 			</span>
 			<span class="tool-call-card__name">{{ displayToolName }}</span>
-			<span v-if="executionDescription" class="tool-call-card__description">{{ executionDescription }}</span>
+			<span v-if="executionDescription" class="tool-call-card__description">
+				{{ executionDescription }}
+			</span>
 			<span class="tool-call-card__status-text">{{ statusLabel }}</span>
 			<span class="tool-call-card__toggle">
-				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'expanded': expanded }">
-					<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+				<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ expanded: expanded }">
+					<path
+						d="M6 9l6 6 6-6"
+						stroke="currentColor"
+						stroke-width="2"
+						fill="none"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</span>
 		</button>
@@ -68,7 +125,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
 	defaultExpanded: false,
-	autoCollapsed: false,
+	autoCollapsed: false
 })
 
 const expanded = ref(props.defaultExpanded && !props.autoCollapsed)
@@ -95,22 +152,29 @@ const displayToolName = computed(() => {
 
 const statusLabel = computed(() => {
 	switch (props.status) {
-		case 'pending': return t('aichat.tools.status.pending')
-		case 'running': return t('aichat.tools.status.running')
-		case 'completed': return t('aichat.tools.status.completed')
-		case 'error': return t('aichat.tools.status.failed')
-		default: return props.status
+		case 'pending':
+			return t('aichat.tools.status.pending')
+		case 'running':
+			return t('aichat.tools.status.running')
+		case 'completed':
+			return t('aichat.tools.status.completed')
+		case 'error':
+			return t('aichat.tools.status.failed')
+		default:
+			return props.status
 	}
 })
 
 const executionDescription = computed(() => {
 	if (props.status !== 'completed') return ''
-	
+
 	const toolDescMap: Record<string, (args: Record<string, unknown>) => string> = {
 		create_node: (args) => {
 			const type = String(args.type || '')
 			const title = String(args.title || '')
-			return title ? t('aichat.tools.action.createNode', { title }) : t('aichat.tools.action.createNodeByType', { type: type.replace(/_/g, ' ') })
+			return title
+				? t('aichat.tools.action.createNode', { title })
+				: t('aichat.tools.action.createNodeByType', { type: type.replace(/_/g, ' ') })
 		},
 		update_node_config: (args) => {
 			const nodeId = String(args.nodeId || '')
@@ -128,14 +192,14 @@ const executionDescription = computed(() => {
 		set_node_text: () => t('aichat.tools.action.setNodeText'),
 		list_node_types: () => t('aichat.tools.action.listNodeTypes'),
 		get_blueprint_state: () => t('aichat.tools.action.getBlueprintState'),
-		get_project_info: () => t('aichat.tools.action.getProjectInfo'),
+		get_project_info: () => t('aichat.tools.action.getProjectInfo')
 	}
-	
+
 	const descFn = toolDescMap[props.toolName]
 	if (descFn && props.args) {
 		return descFn(props.args)
 	}
-	
+
 	return ''
 })
 
@@ -233,8 +297,12 @@ const formattedResult = computed(() => {
 }
 
 @keyframes tool-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .tool-call-card__icon-check {

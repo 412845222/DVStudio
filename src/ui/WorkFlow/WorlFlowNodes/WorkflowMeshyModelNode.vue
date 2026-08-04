@@ -34,7 +34,7 @@
 					<div class="wf-meshy-hero-copy">
 						<div class="wf-meshy-badge-row">
 							<div class="wf-meshy-badge">Meshy</div>
-						<div class="wf-meshy-badge subtle">{{ t('nodes.meshy.workstationBadge') }}</div>
+							<div class="wf-meshy-badge subtle">{{ t('nodes.meshy.workstationBadge') }}</div>
 						</div>
 						<div class="wf-meshy-title">{{ targetTitle }}</div>
 						<div class="wf-meshy-subtitle">{{ targetSubtitle }}</div>
@@ -99,7 +99,9 @@
 							alt="meshy source preview"
 							@error="onSourcePreviewError"
 						/>
-						<div v-else class="wf-meshy-preview-empty">{{ t('nodes.meshy.sourcePreviewEmpty') }}</div>
+						<div v-else class="wf-meshy-preview-empty">
+							{{ t('nodes.meshy.sourcePreviewEmpty') }}
+						</div>
 					</div>
 					<div class="wf-meshy-thumb-shell wf-meshy-preview-card">
 						<div class="wf-meshy-preview-label">{{ t('nodes.meshy.meshyPreviewLabel') }}</div>
@@ -111,7 +113,9 @@
 							alt="meshy output preview"
 							@error="onThumbnailError"
 						/>
-						<div v-else class="wf-meshy-preview-empty">{{ t('nodes.meshy.meshyPreviewEmpty') }}</div>
+						<div v-else class="wf-meshy-preview-empty">
+							{{ t('nodes.meshy.meshyPreviewEmpty') }}
+						</div>
 					</div>
 				</div>
 				<div v-else-if="safeDisplayThumbnailUrl" class="wf-meshy-thumb-shell">
@@ -155,8 +159,12 @@
 												:value="meshyAiModel"
 												@change="onAiModelChange"
 											>
-												<option value="nano-banana">{{ t('aiConfig.meshModes.modelNanoBanana') }}</option>
-												<option value="nano-banana-pro">{{ t('aiConfig.meshModes.modelNanoBananaPro') }}</option>
+												<option value="nano-banana">
+													{{ t('aiConfig.meshModes.modelNanoBanana') }}
+												</option>
+												<option value="nano-banana-pro">
+													{{ t('aiConfig.meshModes.modelNanoBananaPro') }}
+												</option>
 											</select>
 										</td>
 									</tr>
@@ -185,7 +193,12 @@
 										<th>{{ t('nodes.meshy.creditEstimate') }}</th>
 										<td>
 											<div class="wf-meshy-static-value">
-												{{ t('nodes.meshy.creditCost', { price: imageUnitPrice, cost: imageEstimatedCost }) }}
+												{{
+													t('nodes.meshy.creditCost', {
+														price: imageUnitPrice,
+														cost: imageEstimatedCost
+													})
+												}}
 											</div>
 										</td>
 									</tr>
@@ -198,7 +211,13 @@
 													:checked="meshyGenerateMultiView"
 													@change="onGenerateMultiViewToggle"
 												/>
-												<span>{{ meshyGenerateMultiView ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyGenerateMultiView
+															? t('nodes.meshy.enabled')
+															: t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 										</td>
 									</tr>
@@ -351,7 +370,9 @@
 												<option value="on">on</option>
 												<option value="off">off</option>
 											</select>
-											<div class="wf-meshy-config-inline">{{ t('nodes.meshy.symmetryModeNote') }}</div>
+											<div class="wf-meshy-config-inline">
+												{{ t('nodes.meshy.symmetryModeNote') }}
+											</div>
 										</td>
 									</tr>
 									<tr>
@@ -364,7 +385,11 @@
 													:checked="meshyShouldRemesh"
 													@change="onShouldRemeshToggle"
 												/>
-												<span>{{ meshyShouldRemesh ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyShouldRemesh ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.shouldRemeshNote') }}
@@ -381,7 +406,13 @@
 													:checked="meshySavePreRemeshedModel"
 													@change="onSavePreRemeshedToggle"
 												/>
-												<span>{{ meshySavePreRemeshedModel ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshySavePreRemeshedModel
+															? t('nodes.meshy.enabled')
+															: t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.savePreRemeshedNote') }}
@@ -397,7 +428,13 @@
 													:checked="meshyShouldTexture"
 													@change="onShouldTextureToggle"
 												/>
-												<span>{{ meshyShouldTexture ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyShouldTexture
+															? t('nodes.meshy.enabled')
+															: t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.shouldTextureNote') }}
@@ -414,7 +451,11 @@
 													:checked="meshyEnablePbr"
 													@change="onEnablePbrToggle"
 												/>
-												<span>{{ meshyEnablePbr ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyEnablePbr ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.enablePbrNote') }}
@@ -477,7 +518,9 @@
 													:checked="meshyAutoSize"
 													@change="onAutoSizeToggle"
 												/>
-												<span>{{ meshyAutoSize ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{ meshyAutoSize ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">{{ t('nodes.meshy.autoSizeNote') }}</div>
 										</td>
@@ -508,7 +551,11 @@
 													:checked="meshyModeration"
 													@change="onModerationToggle"
 												/>
-												<span>{{ meshyModeration ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyModeration ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.moderationNote') }}
@@ -524,7 +571,13 @@
 													:checked="meshyImageEnhancement"
 													@change="onImageEnhancementToggle"
 												/>
-												<span>{{ meshyImageEnhancement ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyImageEnhancement
+															? t('nodes.meshy.enabled')
+															: t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.imageEnhancementNote') }}
@@ -540,7 +593,13 @@
 													:checked="meshyRemoveLighting"
 													@change="onRemoveLightingToggle"
 												/>
-												<span>{{ meshyRemoveLighting ? t('nodes.meshy.enabled') : t('nodes.meshy.disabled') }}</span>
+												<span>
+													{{
+														meshyRemoveLighting
+															? t('nodes.meshy.enabled')
+															: t('nodes.meshy.disabled')
+													}}
+												</span>
 											</label>
 											<div class="wf-meshy-config-inline">
 												{{ t('nodes.meshy.removeLightingNote') }}
@@ -769,12 +828,40 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -1000,7 +1087,9 @@ watch(
 	}
 )
 const sourcePreviewLabelText = computed(
-	() => String(props.sourcePreviewLabel ?? t('nodes.meshy.sourceNotConnected')).trim() || t('nodes.meshy.sourceNotConnected')
+	() =>
+		String(props.sourcePreviewLabel ?? t('nodes.meshy.sourceNotConnected')).trim() ||
+		t('nodes.meshy.sourceNotConnected')
 )
 const targetFormats = computed(() =>
 	Array.isArray(settings.value?.meshyTargetFormats) && settings.value?.meshyTargetFormats?.length
@@ -1046,7 +1135,9 @@ const familyLabel = computed(() => {
 	return map[meshyTaskFamily.value] ?? meshyTaskFamily.value
 })
 const targetTitle = computed(() =>
-	meshyTaskTarget.value === 'image' ? t('nodes.meshy.targetTitleImage') : t('nodes.meshy.targetTitle3d')
+	meshyTaskTarget.value === 'image'
+		? t('nodes.meshy.targetTitleImage')
+		: t('nodes.meshy.targetTitle3d')
 )
 const targetSubtitle = computed(() =>
 	meshyTaskTarget.value === 'image'
@@ -1133,9 +1224,12 @@ const relationSummaryText = computed(() => {
 	else if (relationKind.value === 'rigging') parts.push(t('nodes.meshy.relationRigged'))
 	else if (relationKind.value === 'animation') parts.push(t('nodes.meshy.relationAnimated'))
 	else parts.push(t('nodes.meshy.relationBaseModel'))
-	if (hasTextureChild.value && relationKind.value !== 'texture') parts.push(t('nodes.meshy.hasTextureChild'))
-	if (hasRiggingChild.value && relationKind.value !== 'rigging') parts.push(t('nodes.meshy.hasRiggingChild'))
-	if (hasAnimationChild.value && relationKind.value !== 'animation') parts.push(t('nodes.meshy.hasAnimationChild'))
+	if (hasTextureChild.value && relationKind.value !== 'texture')
+		parts.push(t('nodes.meshy.hasTextureChild'))
+	if (hasRiggingChild.value && relationKind.value !== 'rigging')
+		parts.push(t('nodes.meshy.hasRiggingChild'))
+	if (hasAnimationChild.value && relationKind.value !== 'animation')
+		parts.push(t('nodes.meshy.hasAnimationChild'))
 	return parts.join(' / ')
 })
 
@@ -1174,7 +1268,8 @@ const unsupportedReason = computed(() => {
 })
 
 const generateDisabledReason = computed(() => {
-	if (taskStatus.value === 'pending' || taskStatus.value === 'running') return t('nodes.meshy.errorTaskInProgress')
+	if (taskStatus.value === 'pending' || taskStatus.value === 'running')
+		return t('nodes.meshy.errorTaskInProgress')
 	if (unsupportedReason.value) return unsupportedReason.value
 	if (!connectedPromptText.value && !meshyPrompt.value.trim()) return t('nodes.meshy.errorNoPrompt')
 	if (meshyTaskFamily.value === 'text-to-image' || meshyTaskFamily.value === 'image-to-image') {
@@ -1236,7 +1331,9 @@ const canPullOutput = computed(
 const canRestartAsNewTask = computed(
 	() => !!taskId.value && taskStatus.value !== 'pending' && taskStatus.value !== 'running'
 )
-const textureFollowupLabel = computed(() => (hasTextureChild.value ? t('nodes.meshy.textureAgain') : t('nodes.meshy.generateTexture')))
+const textureFollowupLabel = computed(() =>
+	hasTextureChild.value ? t('nodes.meshy.textureAgain') : t('nodes.meshy.generateTexture')
+)
 const textureFollowupHint = computed(() => {
 	if (relationKind.value !== 'model') return t('nodes.meshy.textureHintNotBase')
 	if (taskStatus.value !== 'succeeded') return t('nodes.meshy.textureHintNotSucceeded')
@@ -1248,8 +1345,7 @@ const actionHint = computed(() => {
 	if (taskStatus.value === 'failed')
 		return String(settings.value?.meshyErrorMessage ?? t('nodes.meshy.actionHintFailed'))
 	if (unsupportedReason.value) return unsupportedReason.value
-	if (relationKind.value === 'texture')
-		return t('nodes.meshy.actionHintTexture')
+	if (relationKind.value === 'texture') return t('nodes.meshy.actionHintTexture')
 	return meshyTaskTarget.value === 'image'
 		? t('nodes.meshy.actionHintImage')
 		: t('nodes.meshy.actionHint3d')

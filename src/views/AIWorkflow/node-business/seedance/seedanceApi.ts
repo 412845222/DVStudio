@@ -69,10 +69,16 @@ export interface SeedanceSyncOptions {
 }
 
 export interface SeedanceApiClient {
-	generateVideo(request: SeedanceGenerationRequest): Promise<{ ok: boolean; error?: string; taskId?: string }>
-	getTasks(query?: SeedanceTaskQuery): Promise<{ ok: boolean; error?: string; items?: SeedanceTaskDetail[] }>
+	generateVideo(
+		request: SeedanceGenerationRequest
+	): Promise<{ ok: boolean; error?: string; taskId?: string }>
+	getTasks(
+		query?: SeedanceTaskQuery
+	): Promise<{ ok: boolean; error?: string; items?: SeedanceTaskDetail[] }>
 	getTaskDetail(taskId: string): Promise<{ ok: boolean; error?: string; item?: SeedanceTaskDetail }>
-	syncTasks(options?: SeedanceSyncOptions): Promise<{ ok: boolean; error?: string; item?: SeedanceTaskDetail }>
+	syncTasks(
+		options?: SeedanceSyncOptions
+	): Promise<{ ok: boolean; error?: string; item?: SeedanceTaskDetail }>
 }
 
 export function buildSeedanceContent(

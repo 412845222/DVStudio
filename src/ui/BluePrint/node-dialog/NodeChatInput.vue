@@ -19,6 +19,7 @@
 				@blur="onBlur"
 				@mousedown="onEditorMouseDown"
 				@mouseup="onEditorMouseUp"
+				@paste="onPaste"
 			></div>
 			<div v-if="isEmpty" class="bp-node-chat-placeholder">{{ resolvedPlaceholder }}</div>
 		</div>
@@ -124,9 +125,9 @@ const isMentionOpen = ref(false)
 const mentionFilter = ref('')
 const selectedMentionIndex = ref(0)
 
-const charCount = computed(() => props.modelValue.length)
+const charCount = ref(calcDisplayLength(props.modelValue ?? '', props.selectedReferences ?? []))
 const inputParamRefs = computed(() => props.inputParamPreviewRefs ?? [])
-const selectedRefs = computed(() => props.selectedReferences ?? [])
+const selectedRefs = ref<InputParamPreviewRef[]>([...(props.selectedReferences ?? [])])
 
 const syncSelectedRefsFromProps = () => {
 	// 关键修复：不能直接把 props.selectedReferences 复制过来 —— 父层（Vuex Store / Dialog props）
@@ -149,17 +150,7 @@ const syncSelectedRefsFromProps = () => {
 }
 
 const availableForMention = computed(() => {
-	const selectedEdgeIds = new Set(selectedRefs.value.map(r => r.edgeId).filter(Boolean))
-	const selectedNodeAnchorPairs = new Set(
-		selectedRefs.value
-			.filter(r => r.fromNodeId && r.fromAnchorId)
-			.map(r => `${r.fromNodeId}:${r.fromAnchorId}`)
-	)
-	return inputParamRefs.value.filter(item => {
-		if (item.edgeId && selectedEdgeIds.has(item.edgeId)) return false
-		if (item.fromNodeId && item.fromAnchorId && selectedNodeAnchorPairs.has(`${item.fromNodeId}:${item.fromAnchorId}`)) return false
-		return true
-	})
+	return inputParamRefs.value
 })
 
 const filteredItems = computed(() => {
@@ -430,11 +421,14 @@ const syncFromDOM = () => {
 	const wasInternalUpdate = isInternalUpdate
 	isInternalUpdate = true
 
-	let text = ''
+	let serializedText = ''
+	let displayText = ''
 	const refs: InputParamPreviewRef[] = []
 	const processNode = (node: Node) => {
 		if (node.nodeType === Node.TEXT_NODE) {
-			text += node.textContent || ''
+			const t = node.textContent || ''
+			serializedText += t
+			displayText += t
 		} else if (node.nodeType === Node.ELEMENT_NODE) {
 			const el = node as HTMLElement
 			if (el.classList && el.classList.contains('bp-mention-chip')) {
@@ -455,7 +449,14 @@ const syncFromDOM = () => {
 					previewUrl: previewUrl || undefined,
 					...(refKey ? ({ refKey } as unknown as object) : {})
 				} as InputParamPreviewRef)
-			} else if (el.tagName !== 'BR') {
+				serializedText += CHIP_MARKER
+				displayText += label
+			} else if (el.classList && el.classList.contains('bp-mention-chip-remove')) {
+				return
+			} else if (el.tagName === 'BR') {
+				serializedText += '\n'
+				displayText += '\n'
+			} else {
 				el.childNodes.forEach(processNode)
 			}
 		}
@@ -489,9 +490,9 @@ const renderFromModel = () => {
 	// Always sync refs from props before rendering to ensure we use the latest state
 	syncSelectedRefsFromProps()
 	const refs = selectedRefs.value
-	const text = props.modelValue
+	const serialized = props.modelValue
 
-	if (refs.length === 0 && !text) {
+	if (refs.length === 0 && !serialized) {
 		editor.innerHTML = ''
 		isEmpty.value = true
 		charCount.value = 0
@@ -759,6 +760,7 @@ const onResizeEnd = () => {
 
 onMounted(() => {
 	currentHeight.value = MIN_HEIGHT + 20
+	selectedRefs.value = [...(props.selectedReferences ?? [])]
 	renderFromModel()
 
 	const editor = editorRef.value

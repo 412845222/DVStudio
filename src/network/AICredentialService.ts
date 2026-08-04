@@ -37,19 +37,26 @@ type LocalDbBridge = {
 			db?: {
 				apiKeys?: {
 					list?: () => Promise<ApiKeyEntry[]>
-					set?: (payload: { provider: string; plaintext: string }) => Promise<{ ok?: boolean; error?: string }>
+					set?: (payload: {
+						provider: string
+						plaintext: string
+					}) => Promise<{ ok?: boolean; error?: string }>
 				}
 			}
 		}
 	}
 }
 
-const PROVIDER_FIELDS: Array<{ field: keyof SaveCredentialRequest; provider: string; statusKey: keyof CredentialProvidersStatus }> = [
+const PROVIDER_FIELDS: Array<{
+	field: keyof SaveCredentialRequest
+	provider: string
+	statusKey: keyof CredentialProvidersStatus
+}> = [
 	{ field: 'geminiApiKey', provider: 'gemini', statusKey: 'gemini' },
 	{ field: 'bytedanceApiKey', provider: 'bytedance', statusKey: 'bytedance' },
 	{ field: 'meshyApiKey', provider: 'meshy', statusKey: 'meshy' },
 	{ field: 'tripo3dApiKey', provider: 'tripo3d', statusKey: 'tripo3d' },
-	{ field: 'githubToken', provider: 'github', statusKey: 'github' },
+	{ field: 'githubToken', provider: 'github', statusKey: 'github' }
 ]
 
 function emptyStatus(): CredentialProvidersStatus {
@@ -58,7 +65,7 @@ function emptyStatus(): CredentialProvidersStatus {
 		bytedance: { hasKey: false, fingerprint: '', updatedAt: null },
 		meshy: { hasKey: false, fingerprint: '', updatedAt: null },
 		tripo3d: { hasKey: false, fingerprint: '', updatedAt: null },
-		github: { hasKey: false, fingerprint: '', updatedAt: null },
+		github: { hasKey: false, fingerprint: '', updatedAt: null }
 	}
 }
 
@@ -77,12 +84,12 @@ async function getProvidersStatusIpc(): Promise<CredentialProvidersStatus> {
 	if (Array.isArray(list)) {
 		for (const entry of list) {
 			const provider = String(entry?.provider || '')
-			const mapping = PROVIDER_FIELDS.find(p => p.provider === provider)
+			const mapping = PROVIDER_FIELDS.find((p) => p.provider === provider)
 			if (mapping) {
 				status[mapping.statusKey] = {
 					hasKey: Boolean(entry?.hasKey),
 					fingerprint: String(entry?.keyFingerprint || ''),
-					updatedAt: normalizeTimestamp(entry?.updatedAt as number | string | undefined) || null,
+					updatedAt: normalizeTimestamp(entry?.updatedAt as number | string | undefined) || null
 				}
 			}
 		}
@@ -154,7 +161,11 @@ async function saveEncryptedAICredentialsHttp(
 	}
 }
 
-export async function getCredentialStatus(): Promise<{ ok: boolean; providers?: CredentialProvidersStatus; error?: string }> {
+export async function getCredentialStatus(): Promise<{
+	ok: boolean
+	providers?: CredentialProvidersStatus
+	error?: string
+}> {
 	if (isMigrationMode() && hasIpcApi()) {
 		try {
 			const providers = await getProvidersStatusIpc()

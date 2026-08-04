@@ -1,5 +1,5 @@
 {
-  "aiworkflow.selectionToolbar.copy": "Copy",
-  "aiworkflow.selectionToolbar.paste": "Paste",
-  "aiworkflow.selectionToolbar.delete": "Delete"
+	"aiworkflow.selectionToolbar.copy": "Copy",
+	"aiworkflow.selectionToolbar.paste": "Paste",
+	"aiworkflow.selectionToolbar.delete": "Delete"
 }

@@ -107,7 +107,10 @@ class PlatformManager extends EventEmitter {
 		} else {
 			console.warn('[platform] Steam provider creation returned null - Steam will not be available')
 		}
-		console.log('[platform] === discover: registered providers:', Array.from(this._providers.keys()))
+		console.log(
+			'[platform] === discover: registered providers:',
+			Array.from(this._providers.keys())
+		)
 	}
 
 	preflightAll() {
@@ -161,7 +164,9 @@ class PlatformManager extends EventEmitter {
 			const isInit = p.isInitialized()
 			const isLogged = p.isLoggedIn()
 
-			console.log(`[platform] Checking ${id}: available=${isAvail}, initialized=${isInit}, loggedIn=${isLogged}`)
+			console.log(
+				`[platform] Checking ${id}: available=${isAvail}, initialized=${isInit}, loggedIn=${isLogged}`
+			)
 
 			if (id !== 'mock' && isAvail) {
 				availableNonMock = p
@@ -177,7 +182,9 @@ class PlatformManager extends EventEmitter {
 
 		if (availableNonMock) {
 			this._activeId = availableNonMock.id
-			console.log(`[platform] Selected active platform: ${availableNonMock.id} (available, waiting for login)`)
+			console.log(
+				`[platform] Selected active platform: ${availableNonMock.id} (available, waiting for login)`
+			)
 			return
 		}
 
@@ -197,13 +204,17 @@ class PlatformManager extends EventEmitter {
 				id: p.id,
 				displayName: p.displayName,
 				available: p.isAvailable(),
-				initialized: p.isInitialized(),
+				initialized: p.isInitialized()
 			})
 		}
 		let installedDlcs = []
-		try { installedDlcs = active?.getInstalledDlcs?.() || [] } catch {}
+		try {
+			installedDlcs = active?.getInstalledDlcs?.() || []
+		} catch {}
 		let avatarUrl = null
-		try { avatarUrl = active?.getUserAvatarUrl?.() || null } catch {}
+		try {
+			avatarUrl = active?.getUserAvatarUrl?.() || null
+		} catch {}
 		const user = active?.getUserInfo() || null
 		if (user && avatarUrl) {
 			user.avatarUrl = avatarUrl
@@ -218,7 +229,7 @@ class PlatformManager extends EventEmitter {
 			overlayEnabled: active?.isOverlayEnabled?.() || false,
 			overlayActive: active?.isOverlayActive?.() || false,
 			installedDlcs,
-			allPlatforms,
+			allPlatforms
 		}
 	}
 
@@ -226,7 +237,9 @@ class PlatformManager extends EventEmitter {
 		const active = this.getActiveProvider()
 		const user = active?.getUserInfo() || null
 		if (user) {
-			try { user.avatarUrl = active?.getUserAvatarUrl?.() || null } catch {}
+			try {
+				user.avatarUrl = active?.getUserAvatarUrl?.() || null
+			} catch {}
 		}
 		return user
 	}
@@ -271,7 +284,9 @@ class PlatformManager extends EventEmitter {
 		this.stopCallbackPump()
 		this._callbackTimer = setInterval(() => {
 			for (const p of this._providers.values()) {
-				try { p.runCallbacks() } catch {}
+				try {
+					p.runCallbacks()
+				} catch {}
 			}
 		}, intervalMs)
 		if (this._callbackTimer.unref) this._callbackTimer.unref()
@@ -287,7 +302,9 @@ class PlatformManager extends EventEmitter {
 	shutdownAll() {
 		this.stopCallbackPump()
 		for (const p of this._providers.values()) {
-			try { p.shutdown() } catch {}
+			try {
+				p.shutdown()
+			} catch {}
 		}
 	}
 }

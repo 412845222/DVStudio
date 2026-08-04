@@ -79,8 +79,8 @@ export function createTripo3dTasksRepo() {
 			negativePrompt: String(raw.negativePrompt || raw.negative_prompt || '').trim(),
 			modelVersion: String(raw.modelVersion || raw.model_version || '').trim(),
 			faceLimit: Number(raw.faceLimit || raw.face_limit) || 0,
-			texture: raw.texture === undefined || raw.texture === null ? 1 : (raw.texture ? 1 : 0),
-			pbr: raw.pbr === undefined || raw.pbr === null ? 1 : (raw.pbr ? 1 : 0),
+			texture: raw.texture === undefined || raw.texture === null ? 1 : raw.texture ? 1 : 0,
+			pbr: raw.pbr === undefined || raw.pbr === null ? 1 : raw.pbr ? 1 : 0,
 			thumbnailUrl: String(raw.thumbnailUrl || raw.thumbnail_url || '').trim(),
 			modelUrl: String(raw.modelUrl || raw.model_url || '').trim(),
 			localAssetUrl: String(raw.localAssetUrl || raw.local_asset_url || '').trim(),
@@ -151,30 +151,50 @@ export function createTripo3dTasksRepo() {
 		const existing = getByTaskIdStmt.get(params.taskId)
 		if (existing) {
 			const existingParams = existingRowToParams(existing)
-			const hasKey = (camel, snake) => (camel in raw) || (snake in raw)
+			const hasKey = (camel, snake) => camel in raw || snake in raw
 			const merged = {
 				taskId: params.taskId,
 				mode: hasKey('mode', 'mode') ? params.mode : existingParams.mode,
 				status: hasKey('status', 'status') ? params.status : existingParams.status,
 				progress: hasKey('progress', 'progress') ? params.progress : existingParams.progress,
 				prompt: hasKey('prompt', 'prompt') ? params.prompt : existingParams.prompt,
-				negativePrompt: hasKey('negativePrompt', 'negative_prompt') ? params.negativePrompt : existingParams.negativePrompt,
-				modelVersion: hasKey('modelVersion', 'model_version') ? params.modelVersion : existingParams.modelVersion,
+				negativePrompt: hasKey('negativePrompt', 'negative_prompt')
+					? params.negativePrompt
+					: existingParams.negativePrompt,
+				modelVersion: hasKey('modelVersion', 'model_version')
+					? params.modelVersion
+					: existingParams.modelVersion,
 				faceLimit: hasKey('faceLimit', 'face_limit') ? params.faceLimit : existingParams.faceLimit,
 				texture: hasKey('texture', 'texture') ? params.texture : existingParams.texture,
 				pbr: hasKey('pbr', 'pbr') ? params.pbr : existingParams.pbr,
-				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url') ? params.thumbnailUrl : existingParams.thumbnailUrl,
+				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url')
+					? params.thumbnailUrl
+					: existingParams.thumbnailUrl,
 				modelUrl: hasKey('modelUrl', 'model_url') ? params.modelUrl : existingParams.modelUrl,
-				localAssetUrl: hasKey('localAssetUrl', 'local_asset_url') ? params.localAssetUrl : existingParams.localAssetUrl,
-				localAssetPath: hasKey('localAssetPath', 'local_asset_path') ? params.localAssetPath : existingParams.localAssetPath,
-				errorMessage: hasKey('errorMessage', 'error_message') ? params.errorMessage : existingParams.errorMessage,
-				statusText: hasKey('statusText', 'status_text') ? params.statusText : existingParams.statusText,
-				requestPayload: hasKey('requestPayload', 'request_payload') ? params.requestPayload : existingParams.requestPayload,
-				responsePayload: hasKey('responsePayload', 'response_payload') ? params.responsePayload : existingParams.responsePayload,
+				localAssetUrl: hasKey('localAssetUrl', 'local_asset_url')
+					? params.localAssetUrl
+					: existingParams.localAssetUrl,
+				localAssetPath: hasKey('localAssetPath', 'local_asset_path')
+					? params.localAssetPath
+					: existingParams.localAssetPath,
+				errorMessage: hasKey('errorMessage', 'error_message')
+					? params.errorMessage
+					: existingParams.errorMessage,
+				statusText: hasKey('statusText', 'status_text')
+					? params.statusText
+					: existingParams.statusText,
+				requestPayload: hasKey('requestPayload', 'request_payload')
+					? params.requestPayload
+					: existingParams.requestPayload,
+				responsePayload: hasKey('responsePayload', 'response_payload')
+					? params.responsePayload
+					: existingParams.responsePayload,
 				projectId: hasKey('projectId', 'project_id') ? params.projectId : existingParams.projectId,
 				nodeId: hasKey('nodeId', 'node_id') ? params.nodeId : existingParams.nodeId,
 				startedAt: hasKey('startedAt', 'started_at') ? params.startedAt : existingParams.startedAt,
-				completedAt: hasKey('completedAt', 'completed_at') ? params.completedAt : existingParams.completedAt
+				completedAt: hasKey('completedAt', 'completed_at')
+					? params.completedAt
+					: existingParams.completedAt
 			}
 			updateStmt.run(merged)
 		} else {

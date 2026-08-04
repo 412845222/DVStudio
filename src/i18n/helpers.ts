@@ -8,7 +8,11 @@ export function interpolate(template: string, params?: TranslateParams): string 
 	})
 }
 
-export function translate(messages: TranslateMessages, key: string, params?: TranslateParams): string {
+export function translate(
+	messages: TranslateMessages,
+	key: string,
+	params?: TranslateParams
+): string {
 	const raw = messages[key]
 	if (raw === undefined || raw === null) {
 		if (import.meta.env?.DEV) {
@@ -37,7 +41,11 @@ export function normalizeLocale(locale: string | undefined | null): string {
 	if (!locale) return ''
 	const normalized = locale.replace(/_/g, '-')
 	if (normalized.toLowerCase().startsWith('zh')) {
-		if (normalized.toLowerCase().includes('tw') || normalized.toLowerCase().includes('hk') || normalized.toLowerCase().includes('mo')) {
+		if (
+			normalized.toLowerCase().includes('tw') ||
+			normalized.toLowerCase().includes('hk') ||
+			normalized.toLowerCase().includes('mo')
+		) {
 			return 'zh-TW'
 		}
 		return 'zh-CN'

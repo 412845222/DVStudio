@@ -708,6 +708,7 @@ contextBridge.exposeInMainWorld('dweb', {
 				resolveHistory: (payload) =>
 					invoke('dweb:comfyui:runtime:workflows:resolve-history', payload || {})
 			},
+			clearCache: (payload) => invoke('dweb:comfyui:runtime:clear-cache', payload || {}),
 			run: (payload) => invoke('dweb:comfyui:runtime:run', payload || {}),
 			outputs: (payload) => invoke('dweb:comfyui:runtime:outputs', payload || {}),
 			cancel: (payload) => invoke('dweb:comfyui:runtime:cancel', payload || {}),
@@ -1006,6 +1007,7 @@ contextBridge.exposeInMainWorld('dweb', {
 	cloudfs: {
 		listProviders: () => invoke('dweb:cloudfs:list-providers'),
 		getActiveConfig: () => invoke('dweb:cloudfs:get-active-config'),
+		getConfigStatus: () => invoke('dweb:cloudfs:get-config-status'),
 		saveConfig: (payload) => invoke('dweb:cloudfs:save-config', payload || {}),
 		clearConfig: () => invoke('dweb:cloudfs:clear-config'),
 		testConfig: (payload) => invoke('dweb:cloudfs:test-config', payload || {}),

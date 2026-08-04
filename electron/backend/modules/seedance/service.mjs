@@ -13,6 +13,7 @@ import {
 import { getRepos } from '../../../localdb/index.mjs'
 import { downloadUrlToProjectRoot } from '../../projectAssetProtocol.mjs'
 import * as cloudfsService from '../cloudfs/service.mjs'
+import { getTaskQueueService } from '../task-queue/handlers.mjs'
 
 const SEEDANCE_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128'

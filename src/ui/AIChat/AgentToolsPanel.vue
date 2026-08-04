@@ -3,14 +3,27 @@
 		<div class="agent-tools-header">
 			<div class="agent-tools-icon">
 				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M9 9h6M9 15h6M9 12h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M4 4h16v16H4z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M9 9h6M9 15h6M9 12h6"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</div>
 			<span class="agent-tools-title">{{ t('aichat.toolsPanel.title') }}</span>
 			<span class="agent-tools-count">{{ tools.length }}</span>
 		</div>
-		
+
 		<div class="agent-tools-list">
 			<div
 				v-for="tool in tools"
@@ -19,51 +32,120 @@
 				:class="[`status-${tool.status}`]"
 			>
 				<div class="agent-tool-icon">
-					<svg v-if="tool.status === 'running'" class="agent-tool-spinner" viewBox="0 0 24 24" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="25 75" stroke-linecap="round"/>
+					<svg
+						v-if="tool.status === 'running'"
+						class="agent-tool-spinner"
+						viewBox="0 0 24 24"
+						aria-hidden="true"
+					>
+						<circle
+							cx="12"
+							cy="12"
+							r="10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-dasharray="25 75"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else-if="tool.status === 'completed'" viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M5 12l5 5L20 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+						<path
+							d="M5 12l5 5L20 7"
+							stroke="currentColor"
+							stroke-width="2"
+							fill="none"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					<svg v-else-if="tool.status === 'error'" viewBox="0 0 24 24" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-						<path d="M12 8v5M12 16v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+						<circle
+							cx="12"
+							cy="12"
+							r="10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
+						<path
+							d="M12 8v5M12 16v.5"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<svg v-else viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-						<path d="M9 9h6M9 15h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+						<path
+							d="M4 4h16v16H4z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M9 9h6M9 15h6"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
 					</svg>
 				</div>
-				
+
 				<div class="agent-tool-info">
 					<div class="agent-tool-name">{{ tool.name }}</div>
 					<div class="agent-tool-status">{{ statusLabel(tool.status) }}</div>
 				</div>
-				
+
 				<button
 					v-if="tool.hasDetails"
 					class="agent-tool-toggle"
 					type="button"
 					@click="toggleTool(tool.id)"
 				>
-					<svg viewBox="0 0 24 24" aria-hidden="true" :class="{ 'expanded': expandedTools.has(tool.id) }">
-						<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+					<svg
+						viewBox="0 0 24 24"
+						aria-hidden="true"
+						:class="{ expanded: expandedTools.has(tool.id) }"
+					>
+						<path
+							d="M6 9l6 6 6-6"
+							stroke="currentColor"
+							stroke-width="2"
+							fill="none"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 				</button>
 			</div>
-			
+
 			<div v-if="tools.length === 0" class="agent-tools-empty">
 				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M4 4h16v16H4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M9 9h6M9 15h6M9 12h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+					<path
+						d="M4 4h16v16H4z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M9 9h6M9 15h6M9 12h6"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+					/>
 				</svg>
 				<span>{{ t('aichat.toolsPanel.empty') }}</span>
 			</div>
 		</div>
-		
+
 		<div v-if="expandedTools.size" class="agent-tools-details">
 			<div
-				v-for="tool in tools.filter(t => expandedTools.has(t.id))"
+				v-for="tool in tools.filter((t) => expandedTools.has(t.id))"
 				:key="tool.id"
 				class="agent-tool-detail"
 			>
@@ -71,21 +153,29 @@
 					<span class="agent-tool-detail-title">{{ tool.name }}</span>
 					<button class="agent-tool-detail-close" type="button" @click="toggleTool(tool.id)">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+							<path
+								d="M18 6L6 18M6 6l12 12"
+								stroke="currentColor"
+								stroke-width="2"
+								fill="none"
+								stroke-linecap="round"
+							/>
 						</svg>
 					</button>
 				</div>
-				
+
 				<div v-if="tool.args" class="agent-tool-detail-section">
 					<div class="agent-tool-detail-label">{{ t('aichat.tools.params') }}</div>
 					<pre class="agent-tool-detail-code">{{ formatJson(tool.args) }}</pre>
 				</div>
-				
+
 				<div v-if="tool.result" class="agent-tool-detail-section">
 					<div class="agent-tool-detail-label">{{ t('aichat.tools.result') }}</div>
-					<pre class="agent-tool-detail-code agent-tool-detail-code--result">{{ formatJson(tool.result) }}</pre>
+					<pre class="agent-tool-detail-code agent-tool-detail-code--result">{{
+						formatJson(tool.result)
+					}}</pre>
 				</div>
-				
+
 				<div v-if="tool.error" class="agent-tool-detail-section">
 					<div class="agent-tool-detail-label">{{ t('aichat.tools.errorInfo') }}</div>
 					<pre class="agent-tool-detail-code agent-tool-detail-code--error">{{ tool.error }}</pre>
@@ -127,11 +217,16 @@ const toggleTool = (id: string) => {
 
 const statusLabel = (status: string) => {
 	switch (status) {
-		case 'pending': return t('aichat.tools.status.pending')
-		case 'running': return t('aichat.tools.status.running')
-		case 'completed': return t('aichat.tools.status.completed')
-		case 'error': return t('aichat.tools.status.failed')
-		default: return status
+		case 'pending':
+			return t('aichat.tools.status.pending')
+		case 'running':
+			return t('aichat.tools.status.running')
+		case 'completed':
+			return t('aichat.tools.status.completed')
+		case 'error':
+			return t('aichat.tools.status.failed')
+		default:
+			return status
 	}
 }
 
@@ -253,8 +348,12 @@ const formatJson = (data: unknown) => {
 }
 
 @keyframes tool-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .agent-tool-info {

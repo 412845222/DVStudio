@@ -186,13 +186,19 @@ onBeforeUnmount(() => {
 	right: 0;
 	width: 240px;
 	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0,0,0,0.2)) 0%, color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0,0,0,0.3)) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-1) 95%, rgba(0, 0, 0, 0.2)) 0%,
+		color-mix(in srgb, var(--pl-bg-0) 90%, rgba(0, 0, 0, 0.3)) 100%
+	);
 	backdrop-filter: blur(12px);
 	z-index: 3;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	box-shadow: -4px 0 20px rgba(0,0,0,0.4), inset 1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	box-shadow:
+		-4px 0 20px rgba(0, 0, 0, 0.4),
+		inset 1px 0 0 color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-vsplitter {
@@ -206,7 +212,9 @@ onBeforeUnmount(() => {
 	border-right: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	user-select: none;
 	z-index: 2;
-	transition: background 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		background 0.2s ease,
+		box-shadow 0.2s ease;
 }
 
 .vs-vsplitter::after {
@@ -250,7 +258,9 @@ onBeforeUnmount(() => {
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	position: relative;
 	user-select: none;
-	transition: background 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		background 0.2s ease,
+		box-shadow 0.2s ease;
 }
 
 .vs-splitter::after {

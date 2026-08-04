@@ -680,7 +680,7 @@ export type WorkflowComfyUINodeSettings = {
 	statusText?: string
 	/** extracted output media urls from history */
 	outputs?: Array<{
-		kind: 'image' | 'video'
+		kind: 'image' | 'video' | 'model3d'
 		url: string
 		filename?: string
 		anchorId?: string
@@ -1474,6 +1474,12 @@ export type WorkflowNodeChatSubmitPayload = {
 		type: 'text' | 'image' | 'video' | 'model3d' | 'blender'
 		label: string
 	}>
+	attachments?: Array<{
+		type?: string
+		name?: string
+		url?: string
+		data?: string
+	}>
 }
 
 export type WorkflowNodeGenerationStatus =
@@ -1488,6 +1494,7 @@ export type WorkflowNodeGenerationTask = {
 	id: string
 	nodeId: string
 	nodeType: WorkflowNodeChatType
+	provider?: string
 	status: WorkflowNodeGenerationStatus
 	statusText: string
 	progress: number
@@ -1496,6 +1503,9 @@ export type WorkflowNodeGenerationTask = {
 	errorMessage?: string
 	results: Array<{ url: string; label?: string; kind: 'image' | 'video' | 'text' | 'model3d' }>
 	detailLines: string[]
+	prompt?: string
+	globalTaskId?: string
+	clientRequestId?: string
 }
 
 export type WorkflowNodeChatDialog = {
@@ -1505,6 +1515,7 @@ export type WorkflowNodeChatDialog = {
 	draft: string
 	submitting: boolean
 	params: WorkflowNodeChatParams
+	selectedRefs: WorkflowNodeChatSelectedRef[]
 }
 
 export type WorkflowState = {

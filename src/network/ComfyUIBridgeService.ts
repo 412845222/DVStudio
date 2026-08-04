@@ -116,6 +116,7 @@ type RunResponse =
 			ok: true
 			baseUrl: string
 			promptId: string
+			promptSource?: string
 			result: Record<string, unknown>
 			snapshot?: Record<string, unknown>
 	  }
@@ -124,14 +125,9 @@ type RunResponse =
 			error: string
 			status?: number
 			baseUrl?: string
-			requiresConfirm?: boolean
-			fallbackRecord?: {
-				workflowName?: string
-				workflowPath?: string
-				workflowId?: string
-				savedAt?: number
-				runDir?: string
-			}
+			requiresHistorySetup?: boolean
+			message?: string
+			comfyuiError?: Record<string, unknown>
 	  }
 
 type OutputsResponse =
@@ -547,6 +543,70 @@ type JobResponse =
 			baseUrl?: string
 	  }
 
+export type ResolvedInputNode = {
+	nodeId: string
+	classType: string
+	inputKey: string
+	originalValue?: string
+	displayName?: string
+}
+
+export type ResolvedTextNode = {
+	nodeId: string
+	classType: string
+	originalText?: string
+	inputKey?: string
+	allTextKeys?: string[]
+}
+
+export type ComfyInputMappings = {
+	imageInputs: ResolvedInputNode[]
+	videoInputs: ResolvedInputNode[]
+	textNodes: {
+		positive: ResolvedTextNode[]
+		negative: ResolvedTextNode[]
+	}
+	seedNodes: Array<{ nodeId: string; classType: string; inputKey: string }>
+}
+
+export type ResolvedOutputNode = {
+	nodeId: string
+	classType: string
+	mediaKind: 'image' | 'video' | 'model3d'
+	displayName?: string
+}
+
+export type ResolveHistoryResponse =
+	| {
+			ok: true
+			baseUrl: string
+			hasHistory: true
+			promptGraph: Record<string, any>
+			promptId: string
+			matchType: 'exact' | 'fuzzy' | 'direct'
+			timestamp?: number
+			nodeCount: number
+			imageInputs: ResolvedInputNode[]
+			videoInputs: ResolvedInputNode[]
+			textNodes: ComfyInputMappings['textNodes']
+			seedNodes: ComfyInputMappings['seedNodes']
+			outputs?: ResolvedOutputNode[]
+			hasImageInput?: boolean
+			hasVideoInput?: boolean
+			hasTextPrompt: boolean
+			hasImageOutput?: boolean
+			hasVideoOutput?: boolean
+			hasModel3dOutput?: boolean
+			source?: string
+	  }
+	| {
+			ok: false
+			error: 'NO_HISTORY' | string
+			message?: string
+			baseUrl?: string
+			requiresHistorySetup?: boolean
+	  }
+
 const jsonHeaders = (devToken?: string) => {
 	const h: Record<string, string> = {
 		'Content-Type': 'application/json'
@@ -665,8 +725,10 @@ async function filesToDataUrlFiles(
 		mimeType: string
 	}> = []
 	for (let i = 0; i < files.length; i++) {
-		const f = files[i]
-		if (!f) continue
+		const entry = files[i]
+		if (!entry) continue
+		const f = entry instanceof File ? entry : entry.file
+		const mediaType = entry instanceof File ? guessMediaTypeName(f.name) : entry.mediaType
 		const dataUrl = await fileToDataUrl(f)
 		out.push({
 			name: f.name || `input_${i}`,
@@ -2570,20 +2632,27 @@ export class ComfyUIBridgeService {
 	async run(
 		comfyBaseUrl: string,
 		workflowPath: string,
-		files: File[] = [],
-		overrides?: { positivePrompt?: string; negativePrompt?: string; confirmReuseRecord?: boolean }
+		files: ComfyInputFile[] = [],
+		overrides?: {
+			positivePrompt?: string
+			negativePrompt?: string
+			historyPromptId?: string
+			inputMappings?: ComfyInputMappings
+		}
 	): Promise<RunResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
 				const dataUrlFiles = await filesToDataUrlFiles(files)
-				const ipcPayload = {
+				const rawPayload = {
 					baseUrl: comfyBaseUrl,
 					workflowPath,
 					positivePrompt: overrides?.positivePrompt,
 					negativePrompt: overrides?.negativePrompt,
-					confirmReuseRecord: overrides?.confirmReuseRecord,
+					historyPromptId: overrides?.historyPromptId,
+					inputMappings: overrides?.inputMappings,
 					files: dataUrlFiles
 				}
+				const ipcPayload = JSON.parse(JSON.stringify(rawPayload))
 				const ipcResult = await (window as any).dweb.comfyui.runtime.run(ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
 					if (ipcResult.ok === false) {
@@ -2592,8 +2661,8 @@ export class ComfyUIBridgeService {
 							status: ipcResult.status || 500,
 							baseUrl: comfyBaseUrl,
 							error: ipcResult.error || 'run failed via IPC',
-							requiresConfirm: ipcResult.requiresConfirm,
-							fallbackRecord: ipcResult.fallbackRecord,
+							requiresHistorySetup: ipcResult.requiresHistorySetup,
+							message: ipcResult.message,
 							comfyuiError: ipcResult.comfyuiError
 						} as RunResponse
 					}

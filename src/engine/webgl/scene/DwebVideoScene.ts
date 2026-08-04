@@ -83,7 +83,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		const baseW = Math.max(1, Number(node.transform?.width ?? 1))
 		const baseH = Math.max(1, Number(node.transform?.height ?? 1))
 
-		const props = node.props as Record<string, unknown> ?? {}
+		const props = (node.props as Record<string, unknown>) ?? {}
 		const p = normalizeLineLocalPoints({ props, width: baseW, height: baseH })
 		const startX = p.startX
 		const startY = p.startY
@@ -207,7 +207,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		const out = new Map<string, { id: string; src: string }>()
 		for (const n of this.renderOrder) {
 			if (n.type !== 'video') continue
-			const props = n.props as Record<string, unknown> ?? {}
+			const props = (n.props as Record<string, unknown>) ?? {}
 			const videoId = String(props.videoId ?? n.id ?? '').trim()
 			const src = (n.imageSrc ?? String(props.videoPath ?? '')).trim()
 			if (!videoId || !src) continue
@@ -221,7 +221,10 @@ export class DwebVideoScene implements IDwebGLScene {
 		const sigParts: string[] = []
 		for (const v of videos) sigParts.push(v.id + '=' + v.src)
 		const sig = sigParts.join('|')
-		if (sig === this.videoSourcesSignature && videos.every(v => !!videoTexturePool.getEntry(v.id))) {
+		if (
+			sig === this.videoSourcesSignature &&
+			videos.every((v) => !!videoTexturePool.getEntry(v.id))
+		) {
 			return
 		}
 		this.videoSourcesSignature = sig
@@ -278,7 +281,11 @@ export class DwebVideoScene implements IDwebGLScene {
 		return videoTexturePool.getCurrentTime(id)
 	}
 
-	getVideoBufferingState(id: string): { isBuffering: boolean; bufferProgress: number; readyState: number } {
+	getVideoBufferingState(id: string): {
+		isBuffering: boolean
+		bufferProgress: number
+		readyState: number
+	} {
 		return videoTexturePool.getVideoBufferingState(id)
 	}
 
@@ -293,7 +300,7 @@ export class DwebVideoScene implements IDwebGLScene {
 	getFirstVideoNode(): { id: string; videoId: string } | null {
 		for (const n of this.renderOrder) {
 			if (n.type !== 'video') continue
-			const props = n.props as Record<string, unknown> ?? {}
+			const props = (n.props as Record<string, unknown>) ?? {}
 			const videoId = String(props.videoId ?? n.id ?? '').trim()
 			if (videoId) return { id: n.id, videoId }
 		}
@@ -313,7 +320,7 @@ export class DwebVideoScene implements IDwebGLScene {
 			if (n.type !== 'image') continue
 			const src = (n.imageSrc || '').trim()
 			if (!src) continue
-			const props = n.props as Record<string, unknown> ?? {}
+			const props = (n.props as Record<string, unknown>) ?? {}
 			const wrap = props.repeat ? 'repeat' : 'clamp'
 			out.set(`${wrap}|${src}`, { src, wrap })
 		}
@@ -420,7 +427,9 @@ export class DwebVideoScene implements IDwebGLScene {
 		)
 	}
 
-	private resolveFilterQuality(filter: Record<string, unknown> | undefined): 'low' | 'mid' | 'high' {
+	private resolveFilterQuality(
+		filter: Record<string, unknown> | undefined
+	): 'low' | 'mid' | 'high' {
 		const q = String(filter?.quality ?? '')
 		const v2 = !!filter?.qualityV2
 		if (v2) {
@@ -470,13 +479,11 @@ export class DwebVideoScene implements IDwebGLScene {
 
 		const dx = hasTransform ? Number(node.transform?.x ?? 0) : 0
 		const dy = hasTransform ? Number(node.transform?.y ?? 0) : 0
-		const localScaleLegacy = hasTransform ? this.clampScale(Number(node.transform?.scale ?? 1), 1) : 1
-		const localScaleX = hasTransform
-			? this.clampScale(node.transform?.scaleX, localScaleLegacy)
+		const localScaleLegacy = hasTransform
+			? this.clampScale(Number(node.transform?.scale ?? 1), 1)
 			: 1
-		const localScaleY = hasTransform
-			? this.clampScale(node.transform?.scaleY, localScaleLegacy)
-			: 1
+		const localScaleX = hasTransform ? this.clampScale(node.transform?.scaleX, localScaleLegacy) : 1
+		const localScaleY = hasTransform ? this.clampScale(node.transform?.scaleY, localScaleLegacy) : 1
 		const localOpacity = hasTransform ? this.clampOpacity(node.transform?.opacity, 1) : 1
 
 		const nodeWorld = hasTransform
@@ -494,7 +501,7 @@ export class DwebVideoScene implements IDwebGLScene {
 
 		if (node.category === 'user' && node.transform) {
 			const type = (node.userType ?? 'base') as VideoSceneUserNodeType
-			const props = node.props as Record<string, unknown> ?? {}
+			const props = (node.props as Record<string, unknown>) ?? {}
 			const textContent =
 				typeof node.props?.textContent === 'string' ? node.props.textContent : undefined
 			const rawFontSize = Number(node.props?.fontSize)
@@ -581,7 +588,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		// Frame filter pressure: used to auto-downgrade quality for stability.
 		let filterNodeCount = 0
 		for (const n of this.renderOrder) {
-			const props = n.props as Record<string, unknown> ?? {}
+			const props = (n.props as Record<string, unknown>) ?? {}
 			const list = Array.isArray(props.filters) ? props.filters : []
 			if (!list.length) continue
 			if (
@@ -691,7 +698,7 @@ export class DwebVideoScene implements IDwebGLScene {
 				this.markDescendantsSkipped(n.id, skipped)
 				continue
 			}
-			const props = n.props as Record<string, unknown> ?? {}
+			const props = (n.props as Record<string, unknown>) ?? {}
 			const nodeFilters = Array.isArray(props.filters) ? props.filters : []
 			const contentSize = this.getFilterContentSize(n, zoom)
 			const nodeW = contentSize.w
@@ -909,16 +916,10 @@ export class DwebVideoScene implements IDwebGLScene {
 				width: localW,
 				height: localH,
 				scaleX: Number(
-					overrideTransform?.scaleX ??
-						entry.transform.scaleX ??
-						entry.localTransform.scaleX ??
-						1
+					overrideTransform?.scaleX ?? entry.transform.scaleX ?? entry.localTransform.scaleX ?? 1
 				),
 				scaleY: Number(
-					overrideTransform?.scaleY ??
-						entry.transform.scaleY ??
-						entry.localTransform.scaleY ??
-						1
+					overrideTransform?.scaleY ?? entry.transform.scaleY ?? entry.localTransform.scaleY ?? 1
 				),
 				rotation: visualRotation,
 				opacity: visualOpacity
@@ -978,13 +979,17 @@ export class DwebVideoScene implements IDwebGLScene {
 		// For lines, the visual path can extend outside the default node box.
 		// When applying glow/blur, allocate offscreen targets based on the real path bounds.
 		const filterContentSize = this.getFilterContentSize(
-			{ type: entry.type, transform: { width: localW, height: localH }, props: entry.props as Record<string, unknown> },
+			{
+				type: entry.type,
+				transform: { width: localW, height: localH },
+				props: entry.props as Record<string, unknown>
+			},
 			zoom
 		)
 		const filterW = filterContentSize.w
 		const filterH = filterContentSize.h
 
-		const props = entry.props as Record<string, unknown> ?? {}
+		const props = (entry.props as Record<string, unknown>) ?? {}
 		const childFilters = Array.isArray(props.filters) ? props.filters : []
 		const normalizedChildFilters = childFilters
 			.map((f) => (f && typeof f === 'object' ? { ...(f as Record<string, unknown>) } : f))
@@ -1093,14 +1098,8 @@ export class DwebVideoScene implements IDwebGLScene {
 					)
 				}
 			)
-			const px =
-				typeof entry.localTransform.pivotX === 'number'
-					? entry.localTransform.pivotX
-					: 0.5
-			const py =
-				typeof entry.localTransform.pivotY === 'number'
-					? entry.localTransform.pivotY
-					: 0.5
+			const px = typeof entry.localTransform.pivotX === 'number' ? entry.localTransform.pivotX : 0.5
+			const py = typeof entry.localTransform.pivotY === 'number' ? entry.localTransform.pivotY : 0.5
 			const cx = x + (0.5 - px) * filterW
 			const cy = y + (0.5 - py) * filterH
 			this.drawFilteredTextureToLocal(
@@ -1170,7 +1169,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		const parentW = Math.max(1, Number(parent.transform.width ?? 1))
 		const parentH = Math.max(1, Number(parent.transform.height ?? 1))
 		const parentCenter = this.getPivotCenter(parent.transform)
-		const parentProps = parent.props as Record<string, unknown> ?? {}
+		const parentProps = (parent.props as Record<string, unknown>) ?? {}
 		const baseRadius = Math.max(0, Number(parentProps.cornerRadius ?? 0))
 		const sx = Number(parent.transform.scaleX ?? 1)
 		const sy = Number(parent.transform.scaleY ?? 1)
@@ -1206,7 +1205,7 @@ export class DwebVideoScene implements IDwebGLScene {
 		const parentBaseY = Number(parent.localTransform.y ?? 0)
 		const parentCx = parentBaseX + deltaX + (0.5 - parentPivotX) * parentW
 		const parentCy = parentBaseY + deltaY + (0.5 - parentPivotY) * parentH
-		const parentProps = parent.props as Record<string, unknown> ?? {}
+		const parentProps = (parent.props as Record<string, unknown>) ?? {}
 		const radius = Math.max(0, Number(parentProps.cornerRadius ?? 0))
 		return { cx: parentCx, cy: parentCy, width: parentW, height: parentH, radius }
 	}
