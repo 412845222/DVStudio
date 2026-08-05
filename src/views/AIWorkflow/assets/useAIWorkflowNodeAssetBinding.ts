@@ -380,9 +380,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 							? { projectRelativePath: String(opts.projectRelativePath) }
 							: {}),
 						// ===== 2026-08-03 修复：传递 absolutePath 供资源解析 =====
-						...(opts?.absolutePath
-							? { absolutePath: String(opts.absolutePath) }
-							: {})
+						...(opts?.absolutePath ? { absolutePath: String(opts.absolutePath) } : {})
 					}
 				})
 			} else {
@@ -396,9 +394,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 						? { projectRelativePath: String(opts.projectRelativePath) }
 						: {}),
 					// ===== 2026-08-03 修复：传递 absolutePath 供资源解析 =====
-					...(opts?.absolutePath
-						? { absolutePath: String(opts.absolutePath) }
-						: {}),
+					...(opts?.absolutePath ? { absolutePath: String(opts.absolutePath) } : {}),
 					createdAt: Date.now()
 				})
 			}
@@ -442,7 +438,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			opts?.onAfterBind?.({ resourceId, url })
 			// P1-2：所有 Store commits 完成后同步回引擎（SSOT 反向写入，使 NodeComponentResolver 读到最新 data）
 			options.patchBlueprintNodeData?.(nodeId)
-			console.log('[AIWorkflow:BindResource] model3d engine sync (patchBlueprintNodeData) completed')
+			console.log(
+				'[AIWorkflow:BindResource] model3d engine sync (patchBlueprintNodeData) completed'
+			)
 			return
 		}
 
@@ -665,7 +663,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 				}
 				// ===== 路径 3：最后兜底：走原有 uploadAsset API =====
 				if (!persisted) {
-					console.log('[AIWorkflow:UploadModel3D] Falling back to blueprintProjectService.uploadAsset...')
+					console.log(
+						'[AIWorkflow:UploadModel3D] Falling back to blueprintProjectService.uploadAsset...'
+					)
 					const uploaded = await options.blueprintProjectService.uploadAsset(file, 'file', {
 						projectId: currentProjectId
 					})
@@ -683,7 +683,11 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 						if (dwebUrl && rel) {
 							persisted = { url: dwebUrl, relPath: rel, ...(abs ? { absPath: abs } : {}) }
 						} else if (dwebUrl) {
-							persisted = { url: dwebUrl, relPath: String(abs || '').trim(), ...(abs ? { absPath: abs } : {}) }
+							persisted = {
+								url: dwebUrl,
+								relPath: String(abs || '').trim(),
+								...(abs ? { absPath: abs } : {})
+							}
 						}
 					}
 				}
@@ -733,7 +737,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 				projectRelativePath: finalRel,
 				absolutePath: finalAbs || undefined
 			})
-			console.log('[AIWorkflow:UploadModel3D] bindMediaResourceToNode completed (engine synced via patchBlueprintNodeData)')
+			console.log(
+				'[AIWorkflow:UploadModel3D] bindMediaResourceToNode completed (engine synced via patchBlueprintNodeData)'
+			)
 		} else {
 			const lowerName = String(file.name || '').toLowerCase()
 			let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
@@ -751,14 +757,19 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					modelSourcePath: sourcePath || undefined
 				}
 			})
-			console.log('[AIWorkflow:UploadModel3D] Object URL fallback: setNodeModel3DSettings committed', {
-				nodeId,
-				modelFormat,
-				modelUrl: finalUrl.slice(0, 80)
-			})
+			console.log(
+				'[AIWorkflow:UploadModel3D] Object URL fallback: setNodeModel3DSettings committed',
+				{
+					nodeId,
+					modelFormat,
+					modelUrl: finalUrl.slice(0, 80)
+				}
+			)
 			// P1-3：objectUrl 兜底分支同样同步回引擎
 			options.patchBlueprintNodeData?.(nodeId)
-			console.log('[AIWorkflow:UploadModel3D] patchBlueprintNodeData completed for object URL fallback')
+			console.log(
+				'[AIWorkflow:UploadModel3D] patchBlueprintNodeData completed for object URL fallback'
+			)
 		}
 
 		// ===== 2026-08-05 关键修复：与拖拽导入保持一致 —— 资源绑定完成后强制将完整数据再次同步回引擎 =====

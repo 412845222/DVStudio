@@ -124,7 +124,10 @@ describe('useAIWorkflowNodeAssetBinding - patchBlueprintNodeData sync', () => {
 		}
 	}
 
-	const makeBinding = (store: any, extra: { patchBlueprintNodeData?: any; projectId?: number } = {}) => {
+	const makeBinding = (
+		store: any,
+		extra: { patchBlueprintNodeData?: any; projectId?: number } = {}
+	) => {
 		const patchBlueprintNodeData = extra.patchBlueprintNodeData ?? vi.fn()
 		const binding = useAIWorkflowNodeAssetBinding({
 			store,

@@ -17,8 +17,7 @@ import { describe, it, expect } from 'vitest'
 // ====================================================================
 
 // ---- 从组件内联引入的纯函数（与 WorkflowModel3DNode.vue 保持同步）----
-const isRemoteHttpUrl = (u: string): boolean =>
-	/^https?:\/\//i.test(String(u).trim())
+const isRemoteHttpUrl = (u: string): boolean => /^https?:\/\//i.test(String(u).trim())
 const isRemoteVendorCdnUrl = (u: string): boolean => {
 	const t = String(u).trim().toLowerCase()
 	if (!t) return false
@@ -33,7 +32,17 @@ const isImageUrlOrPath = (u: string): boolean => {
 	return /\.(png|jpe?g|webp|gif|bmp|svg|avif|ico)$/.test(t)
 }
 const MODEL_EXT_WHITELIST = new Set(['glb', 'gltf', 'fbx', 'obj', 'stl', 'dae', 'usdz'])
-const IMAGE_EXT_BLACKLIST = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'avif', 'ico'])
+const IMAGE_EXT_BLACKLIST = new Set([
+	'png',
+	'jpg',
+	'jpeg',
+	'webp',
+	'gif',
+	'bmp',
+	'svg',
+	'avif',
+	'ico'
+])
 // 与组件中 extractUrlExt 保持一致：从 URL 的 path 部分或 dweb query.path 参数中提取扩展名
 const extractUrlExt = (u: string): string => {
 	const t = String(u ?? '').trim()
@@ -116,7 +125,9 @@ const normalizeCandidate = (input: string): string => {
 	}
 	return t
 }
-const pickBestModelUrlFromCandidates = (rawCandidates: Array<string | null | undefined>): string => {
+const pickBestModelUrlFromCandidates = (
+	rawCandidates: Array<string | null | undefined>
+): string => {
 	const validList: Array<{ url: string; q: CandidateQuality }> = []
 	const pushOne = (raw: string) => {
 		const u0 = String(raw ?? '').trim()
@@ -312,8 +323,7 @@ describe('WorkflowModel3DNode effectiveModelUrl 决策语义', () => {
 				modelAssetPath: ''
 			}
 			const fallback = { url: DWEB_OLD, assetPath: LOCAL_OLD }
-			const expectedFileUrl =
-				'file:///G:/DVSTestProject/test/Content/Media/new-model.glb'
+			const expectedFileUrl = 'file:///G:/DVSTestProject/test/Content/Media/new-model.glb'
 			expect(decideEffectiveModelUrl(s, fallback)).toBe(expectedFileUrl)
 		})
 

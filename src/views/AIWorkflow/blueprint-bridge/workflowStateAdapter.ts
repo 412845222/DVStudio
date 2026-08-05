@@ -81,10 +81,13 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				}
 				if ('imageSettings' in wfNode) cachedNode.imageSettings = (wfNode as any).imageSettings
 				if ('videoSettings' in wfNode) cachedNode.videoSettings = (wfNode as any).videoSettings
-				if ('model3dSettings' in wfNode) cachedNode.model3dSettings = (wfNode as any).model3dSettings
+				if ('model3dSettings' in wfNode)
+					cachedNode.model3dSettings = (wfNode as any).model3dSettings
 				if ('meshySettings' in wfNode) cachedNode.meshySettings = (wfNode as any).meshySettings
-				if ('tripo3dSettings' in wfNode) cachedNode.tripo3dSettings = (wfNode as any).tripo3dSettings
-				if ('blenderSettings' in wfNode) cachedNode.blenderSettings = (wfNode as any).blenderSettings
+				if ('tripo3dSettings' in wfNode)
+					cachedNode.tripo3dSettings = (wfNode as any).tripo3dSettings
+				if ('blenderSettings' in wfNode)
+					cachedNode.blenderSettings = (wfNode as any).blenderSettings
 				if ('storySettings' in wfNode) cachedNode.storySettings = (wfNode as any).storySettings
 				if ('sceneUnderstandingSettings' in wfNode)
 					cachedNode.sceneUnderstandingSettings = (wfNode as any).sceneUnderstandingSettings
@@ -94,7 +97,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 					cachedNode.sceneDecomposeSettings = (wfNode as any).sceneDecomposeSettings
 				if ('unrealExportSettings' in wfNode)
 					cachedNode.unrealExportSettings = (wfNode as any).unrealExportSettings
-				if ('comfyuiSettings' in wfNode) cachedNode.comfyuiSettings = (wfNode as any).comfyuiSettings
+				if ('comfyuiSettings' in wfNode)
+					cachedNode.comfyuiSettings = (wfNode as any).comfyuiSettings
 			}
 		}
 		// ===== 新增：同步所有资源（resource）数据到缓存，确保 legacyResourcesForDom 计算属性能拿到最新值 =====

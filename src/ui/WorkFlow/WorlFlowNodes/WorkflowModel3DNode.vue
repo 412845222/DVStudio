@@ -1094,37 +1094,37 @@ const isRemoteVendorCdnUrl = (u: string): boolean => {
 }
 
 const pickBestModelUrlFromCandidates = (
-		rawCandidates: Array<string | null | undefined>
-	): string => {
-		const validList: Array<{ url: string; q: CandidateQuality }> = []
-		const pushOne = (raw: string) => {
-			const u0 = String(raw ?? '').trim()
-			if (!u0) return
-			// ===== 场景布局节点同款策略：直接丢弃 meshy.ai / tripo3d.ai 远程 CDN URL，避免 CORS + 过期 URL =====
-			if (isRemoteVendorCdnUrl(u0)) return
-			// ===== 2026-08-05 修复：blob: URL 来自用户通过 file input 选择的模型文件，始终允许通过 =====
-			// 原因：blob URL 没有文件扩展名，isLikely3DModelUrl 会返回 false 导致被过滤，
-			// 但这些 URL 是从 <input accept=".glb,.gltf,..."> 选择的真实模型文件创建的，
-			// settings.modelFormat 也已确认是模型格式，可以安全加载
-			if (u0.toLowerCase().startsWith('blob:')) {
-				validList.push({ url: u0, q: 2 })
-				return
-			}
-			// ===== 场景布局节点同款修复：进入候选池前先修正 dvcache bin 路径
-			const u1 = fixDwebUrlPath(fixDvcacheBinPath(u0))
-			const tryList = [u1]
-			// 再尝试恢复被误判为图片后缀的路径为模型后缀（真实磁盘上是 GLB，数据库里扩展名被污染）
-			for (const r of recoverImageExtToModel(u1)) tryList.push(r)
-			for (const u of tryList) {
-				if (!u) continue
-				if (isRemoteVendorCdnUrl(u)) continue
-				if (isImageUrlOrPath(u)) continue
-				if (!isLikely3DModelUrl(u)) continue
-				const norm = normalizeCandidate(u)
-				if (!norm) continue
-				validList.push({ url: norm, q: candidateQuality(norm) })
-			}
+	rawCandidates: Array<string | null | undefined>
+): string => {
+	const validList: Array<{ url: string; q: CandidateQuality }> = []
+	const pushOne = (raw: string) => {
+		const u0 = String(raw ?? '').trim()
+		if (!u0) return
+		// ===== 场景布局节点同款策略：直接丢弃 meshy.ai / tripo3d.ai 远程 CDN URL，避免 CORS + 过期 URL =====
+		if (isRemoteVendorCdnUrl(u0)) return
+		// ===== 2026-08-05 修复：blob: URL 来自用户通过 file input 选择的模型文件，始终允许通过 =====
+		// 原因：blob URL 没有文件扩展名，isLikely3DModelUrl 会返回 false 导致被过滤，
+		// 但这些 URL 是从 <input accept=".glb,.gltf,..."> 选择的真实模型文件创建的，
+		// settings.modelFormat 也已确认是模型格式，可以安全加载
+		if (u0.toLowerCase().startsWith('blob:')) {
+			validList.push({ url: u0, q: 2 })
+			return
 		}
+		// ===== 场景布局节点同款修复：进入候选池前先修正 dvcache bin 路径
+		const u1 = fixDwebUrlPath(fixDvcacheBinPath(u0))
+		const tryList = [u1]
+		// 再尝试恢复被误判为图片后缀的路径为模型后缀（真实磁盘上是 GLB，数据库里扩展名被污染）
+		for (const r of recoverImageExtToModel(u1)) tryList.push(r)
+		for (const u of tryList) {
+			if (!u) continue
+			if (isRemoteVendorCdnUrl(u)) continue
+			if (isImageUrlOrPath(u)) continue
+			if (!isLikely3DModelUrl(u)) continue
+			const norm = normalizeCandidate(u)
+			if (!norm) continue
+			validList.push({ url: norm, q: candidateQuality(norm) })
+		}
+	}
 	for (const raw of rawCandidates) {
 		const u = String(raw ?? '').trim()
 		if (!u) continue
@@ -1281,9 +1281,9 @@ const resolvedFallbackModelSource = computed(() => {
 		const uploadCandidates: string[] = [
 			// ===== 0. 绝对最高优先级：上层 NodeComponentResolver 从 resourcesById 解析好注入的真实路径 =====
 			resolvedResourceUrl, // 已经是 resolveWorkflowResourceUrl 后的 dweb / http(s) / file URL
-			safeResSourcePath,   // 本地绝对路径（例：G:\DVSTestProject\...\xxx.glb）→ 内部会转 file:///
-			safeResAbsPath,      // resourceAbsolutePath（兜底本地绝对）
-			resRelAsDweb,        // resourceProjectRelativePath 合成（兜底项目相对）
+			safeResSourcePath, // 本地绝对路径（例：G:\DVSTestProject\...\xxx.glb）→ 内部会转 file:///
+			safeResAbsPath, // resourceAbsolutePath（兜底本地绝对）
+			resRelAsDweb, // resourceProjectRelativePath 合成（兜底项目相对）
 			// ===== 1. 其次才是节点 settings 的资产 URL/路径 =====
 			rawModelAssetUrl ? resolveWorkflowResourceUrl(rawModelAssetUrl) : '',
 			safeAssetPath2,
@@ -1293,7 +1293,7 @@ const resolvedFallbackModelSource = computed(() => {
 		const uploadUrl = pickBestModelUrlFromCandidates(uploadCandidates)
 		if (uploadUrl) {
 			// 从文件名/URL 后缀推导 format（与 bindMediaResourceToNode 保持一致）
-			const lower = (uploadUrl.split('?')[0]).toLowerCase()
+			const lower = uploadUrl.split('?')[0].toLowerCase()
 			let uploadFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
 			if (lower.endsWith('.gltf')) uploadFormat = 'gltf'
 			else if (lower.endsWith('.fbx')) uploadFormat = 'fbx'
@@ -1338,17 +1338,35 @@ const effectiveModelUrl = computed(() => {
 	const hasTripoData = !!(tripo && (tripo.tripo3dImageUrl || tripo.tripo3dRelationSummary))
 
 	// ===== 清空场景：settings 中所有 URL 字段为空，且无 meshy/tripo 生成数据 → 模型已被显式清空 =====
-	if (s && !rawPrimaryUrl && !rawAssetUrl && !outerSourcePath && !outerAssetPath && !hasMeshyData && !hasTripoData) {
-		console.log('[Model3DNode] effectiveModelUrl: all settings URL fields empty, model cleared → returning empty')
+	if (
+		s &&
+		!rawPrimaryUrl &&
+		!rawAssetUrl &&
+		!outerSourcePath &&
+		!outerAssetPath &&
+		!hasMeshyData &&
+		!hasTripoData
+	) {
+		console.log(
+			'[Model3DNode] effectiveModelUrl: all settings URL fields empty, model cleared → returning empty'
+		)
 		return ''
 	}
 
 	// ===== 更换场景：settings 中有非空 URL → 优先使用 REACTIVE 的 settings URL =====
 	// （绕过非响应式的 resolvedFallbackModelSource，避免 props.resourceUrl 持有旧值导致选中过期 URL）
 	if (primaryUrl || assetUrl || outerSourcePath || outerAssetPath) {
-		const settingsUrl = pickBestModelUrlFromCandidates([primaryUrl, assetUrl, outerSourcePath, outerAssetPath])
+		const settingsUrl = pickBestModelUrlFromCandidates([
+			primaryUrl,
+			assetUrl,
+			outerSourcePath,
+			outerAssetPath
+		])
 		if (settingsUrl) {
-			console.log('[Model3DNode] effectiveModelUrl: using reactive settings URL:', settingsUrl.slice(0, 80))
+			console.log(
+				'[Model3DNode] effectiveModelUrl: using reactive settings URL:',
+				settingsUrl.slice(0, 80)
+			)
 			return settingsUrl
 		}
 		// settings URL 被过滤掉了（例如不是有效的模型 URL），继续走 fallback
@@ -2099,7 +2117,10 @@ const startPreviewLoad = async (requestId: number) => {
 }
 
 const onUploadClick = () => {
-	console.log('[Model3DNode] onUploadClick: button clicked, fileInputRef exists:', !!fileInputRef.value)
+	console.log(
+		'[Model3DNode] onUploadClick: button clicked, fileInputRef exists:',
+		!!fileInputRef.value
+	)
 	fileInputRef.value?.click()
 }
 const onFileChange = (e: Event) => {
@@ -2113,7 +2134,10 @@ const onFileChange = (e: Event) => {
 		fileSize: file?.size
 	})
 	if (!file) return
-	console.log('[Model3DNode] Emitting upload-model-file with:', { fileName: file.name, fileSize: file.size })
+	console.log('[Model3DNode] Emitting upload-model-file with:', {
+		fileName: file.name,
+		fileSize: file.size
+	})
 	emit('upload-model-file', { file })
 	if (input) input.value = ''
 }

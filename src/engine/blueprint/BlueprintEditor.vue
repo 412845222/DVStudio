@@ -51,7 +51,10 @@
 				@node-upload-resource="(p: any) => emit('nodeUploadResource', p)"
 				@node-upload-model3d-file="
 					(p: any) => {
-						console.log('[BlueprintEditor] node-upload-model3d-file received, forwarding:', { nodeId: p?.nodeId, fileName: p?.file?.name })
+						console.log('[BlueprintEditor] node-upload-model3d-file received, forwarding:', {
+							nodeId: p?.nodeId,
+							fileName: p?.file?.name
+						})
 						emit('nodeUploadModel3dFile', { nodeId: p?.nodeId, file: p?.file })
 					}
 				"

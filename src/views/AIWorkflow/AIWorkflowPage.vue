@@ -6071,7 +6071,10 @@ const onNodeClearResource = (nodeId: string) => {
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
 	if (node.type === 'model3d') {
-		console.log('[AIWorkflowPage] Clearing model3d resource:', { nodeId, hasResourceId: !!node.resourceId })
+		console.log('[AIWorkflowPage] Clearing model3d resource:', {
+			nodeId,
+			hasResourceId: !!node.resourceId
+		})
 		revokeNodeModel3DObjectUrl(nodeId)
 		// 清除资源关系（resourceId + resourcePath），防止引擎端仍持有旧资源引用
 		if (node.resourceId) {
@@ -10419,8 +10422,7 @@ const { uploadNodeResource, bindMediaResourceToNode, uploadNodeModel3DFile } =
 		copyFileToProjectRoot: (projectId: number, sourcePath: string, desiredFilename: string) =>
 			copyFileToProjectRoot(projectId, sourcePath, desiredFilename),
 		uploadProjectAsset
-	}
-)
+	})
 
 const { onNodeUploadSceneLayoutModelFile, onNodeClearSceneLayoutModelBinding } =
 	useAIWorkflowSceneLayoutModelBinding({

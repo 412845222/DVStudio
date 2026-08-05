@@ -594,16 +594,13 @@ export const useAIWorkflowBatchMediaImport = (options: {
 							}
 						}
 						const syncOk = options.engineApi.updateNodeData(info.nodeId, patchPayload)
-						console.log(
-							'[AIWorkflow:MediaImport] Model3D data force-synced to engine:',
-							{
-								nodeId: info.nodeId,
-								resourceId: task.resourceId,
-								syncOk,
-								hasUrl: !!finalUrl,
-								hasAbsPath: !!projectAbsPath
-							}
-						)
+						console.log('[AIWorkflow:MediaImport] Model3D data force-synced to engine:', {
+							nodeId: info.nodeId,
+							resourceId: task.resourceId,
+							syncOk,
+							hasUrl: !!finalUrl,
+							hasAbsPath: !!projectAbsPath
+						})
 					} catch (syncErr) {
 						console.error(
 							'[AIWorkflow:MediaImport] Model3D data force-sync to engine FAILED:',
