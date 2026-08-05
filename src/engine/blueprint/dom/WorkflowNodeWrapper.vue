@@ -358,6 +358,11 @@ const onUploadResource = (payload: { file: File; kind: string }) => {
 }
 
 const onUploadModelFile = (payload: { file: File }) => {
+	console.log('[WorkflowNodeWrapper] onUploadModelFile:', {
+		nodeId: props.node.id,
+		fileName: payload.file?.name,
+		fileSize: payload.file?.size
+	})
 	emit('upload-model-file', { nodeId: props.node.id, file: payload.file })
 }
 

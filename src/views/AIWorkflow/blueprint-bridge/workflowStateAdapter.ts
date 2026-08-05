@@ -53,6 +53,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 			_cachedResult.viewport.panX = state.viewport.panX
 			_cachedResult.viewport.panY = state.viewport.panY
 		}
+		// ===== 2026-08-03 修复：缓存路径必须同步所有节点的设置字段（model3dSettings, resourceId 等），
+		// 否则当结构不变（仅 settings/resource 变化）时，引擎端 BlueprintNode.data 永远读不到最新值。
 		for (const nodeId of state.nodeOrder) {
 			const wfNode = state.nodesById[nodeId]
 			const cachedNode = _cachedResult.nodesById[nodeId]
@@ -72,6 +74,38 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				cachedNode.nodeChatSelectedRefs = (wfNode as any).nodeChatSelectedRefs
 				cachedNode.nodeChatVisible = (wfNode as any).nodeChatVisible
 				cachedNode.textValue = (wfNode as any).textValue
+				// ===== 新增：同步所有节点的 settings 字段（SSOT → 引擎的关键）=====
+				if ('resourceId' in wfNode) cachedNode.resourceId = wfNode.resourceId ?? undefined
+				if ('resourcePath' in wfNode) {
+					;(cachedNode as any).resourcePath = (wfNode as any).resourcePath ?? undefined
+				}
+				if ('imageSettings' in wfNode) cachedNode.imageSettings = (wfNode as any).imageSettings
+				if ('videoSettings' in wfNode) cachedNode.videoSettings = (wfNode as any).videoSettings
+				if ('model3dSettings' in wfNode)
+					cachedNode.model3dSettings = (wfNode as any).model3dSettings
+				if ('meshySettings' in wfNode) cachedNode.meshySettings = (wfNode as any).meshySettings
+				if ('tripo3dSettings' in wfNode)
+					cachedNode.tripo3dSettings = (wfNode as any).tripo3dSettings
+				if ('blenderSettings' in wfNode)
+					cachedNode.blenderSettings = (wfNode as any).blenderSettings
+				if ('storySettings' in wfNode) cachedNode.storySettings = (wfNode as any).storySettings
+				if ('sceneUnderstandingSettings' in wfNode)
+					cachedNode.sceneUnderstandingSettings = (wfNode as any).sceneUnderstandingSettings
+				if ('sceneLayoutSettings' in wfNode)
+					cachedNode.sceneLayoutSettings = (wfNode as any).sceneLayoutSettings
+				if ('sceneDecomposeSettings' in wfNode)
+					cachedNode.sceneDecomposeSettings = (wfNode as any).sceneDecomposeSettings
+				if ('unrealExportSettings' in wfNode)
+					cachedNode.unrealExportSettings = (wfNode as any).unrealExportSettings
+				if ('comfyuiSettings' in wfNode)
+					cachedNode.comfyuiSettings = (wfNode as any).comfyuiSettings
+			}
+		}
+		// ===== 新增：同步所有资源（resource）数据到缓存，确保 legacyResourcesForDom 计算属性能拿到最新值 =====
+		for (const resId of state.resourceOrder) {
+			const wfRes = state.resourcesById[resId]
+			if (wfRes && _cachedResult.resourcesById) {
+				_cachedResult.resourcesById[resId] = convertWorkflowResourceToLegacy(wfRes)
 			}
 		}
 		_cachedResult.savedAt = Date.now()
@@ -378,7 +412,12 @@ function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceD
 		sourceSize: res.sourceSize,
 		sourceLastModified: res.sourceLastModified,
 		localFileKey: res.localFileKey,
-		createdAt: res.createdAt
+		createdAt: res.createdAt,
+		// ===== 2026-08-03 修复：显式透传 absolutePath / relativePath / size，
+		// 供 NodeComponentResolver.resolveResourceProps 读取 resourceAbsolutePath 等 props
+		absolutePath: (res as any).absolutePath ?? undefined,
+		relativePath: (res as any).relativePath ?? undefined,
+		size: (res as any).size ?? res.sourceSize
 	}
 }
 

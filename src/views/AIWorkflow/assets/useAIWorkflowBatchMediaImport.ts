@@ -99,6 +99,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			posterUrl?: string
 			sourcePath?: string
 			projectRelativePath?: string
+			absolutePath?: string
 			resourceId?: string
 		}
 	) => void
@@ -134,7 +135,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		file: File,
 		desiredName: string,
 		sourcePath: string
-	): Promise<{ url: string; relPath: string } | null> => {
+	): Promise<{ url: string; relPath: string; absPath?: string } | null> => {
 		console.log('[AIWorkflow:MediaImport] persistFileToProject called:', {
 			name: desiredName,
 			type: file.type,
@@ -155,7 +156,13 @@ export const useAIWorkflowBatchMediaImport = (options: {
 							name: desiredName,
 							relPath
 						})
-						return { url: options.resolveBackendUrl(dwebUrl), relPath }
+						// ===== 2026-08-03 修复：copyFileToProjectRoot 可能返回 absolutePath，优先提取 =====
+						const abs = String((copyResult as any)?.absolutePath || '').trim()
+						return {
+							url: options.resolveBackendUrl(dwebUrl),
+							relPath,
+							...(abs ? { absPath: abs } : {})
+						}
 					}
 				}
 				console.warn('[AIWorkflow:MediaImport] copyFileToProjectRoot returned not-ok:', copyResult)
@@ -193,7 +200,13 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					relPath,
 					size: arrayBuffer.byteLength
 				})
-				return { url: options.resolveBackendUrl(dwebUrl), relPath }
+				// ===== 2026-08-03 修复：尝试从 uploadProjectAsset 结果中提取 absolutePath =====
+				const abs = String((uploadResult.asset as any)?.absolutePath || '').trim()
+				return {
+					url: options.resolveBackendUrl(dwebUrl),
+					relPath,
+					...(abs ? { absPath: abs } : {})
+				}
 			}
 			console.warn('[AIWorkflow:MediaImport] uploadProjectAsset returned not-ok:', uploadResult)
 		} catch (err) {
@@ -307,15 +320,48 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					: item.kind === 'video'
 						? t('common.video')
 						: t('nodes.type.model3d')
+
+			// 计算初始 model3dSettings，用于在引擎创建节点时就绑定资源关系，防止 hydrateDraft 覆盖
+			const lowerNameInit = String(name || '').toLowerCase()
+			let initModelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+			if (lowerNameInit.endsWith('.gltf')) initModelFormat = 'gltf'
+			else if (lowerNameInit.endsWith('.fbx')) initModelFormat = 'fbx'
+			else if (lowerNameInit.endsWith('.obj')) initModelFormat = 'obj'
+			else if (lowerNameInit.endsWith('.stl')) initModelFormat = 'stl'
+			else if (lowerNameInit.endsWith('.dae')) initModelFormat = 'dae'
+
+			const nodeCreateData: Record<string, any> = {
+				title,
+				resourceId: resourceId
+			}
+			// 对于 model3d，同时传递初始 model3dSettings，确保引擎节点创建时即有数据
+			if (item.kind === 'model3d') {
+				nodeCreateData.model3dSettings = {
+					modelUrl: '',
+					modelFormat: initModelFormat,
+					modelSourceName: name,
+					modelSourcePath: absPath || undefined
+				}
+				console.log('[AIWorkflow:MediaImport] Creating model3d node with initial data:', {
+					resourceId,
+					name,
+					initModelFormat,
+					absPath
+				})
+			}
+
 			let nodeId: string | null | undefined = options.engineApi?.addNode?.(
 				nodeType,
 				worldX,
 				worldY,
-				{
-					title,
-					resourceId: item.kind !== 'model3d' ? resourceId : undefined
-				}
+				nodeCreateData
 			)
+			console.log('[AIWorkflow:MediaImport] addNode result:', {
+				nodeType,
+				nodeId,
+				resourceId,
+				usedEngine: Boolean(nodeId)
+			})
 			const usedEngine = Boolean(nodeId)
 			if (usedEngine) anyUsedEngine = true
 			if (!nodeId) {
@@ -431,6 +477,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			const projectId = options.getProjectId?.()
 			let projectAssetUrl = ''
 			let projectRelPath = ''
+			let projectAbsPath = ''
 			let fallbackObjectUrl = ''
 
 			if (projectId) {
@@ -438,6 +485,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				if (persisted) {
 					projectAssetUrl = persisted.url
 					projectRelPath = persisted.relPath
+					projectAbsPath = persisted.absPath || ''
 				}
 			}
 
@@ -469,7 +517,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					patch: {
 						url: finalUrl,
 						...(sourcePath ? { sourcePath } : {}),
-						...(projectRelPath ? { projectRelativePath: projectRelPath } : {})
+						...(projectRelPath ? { projectRelativePath: projectRelPath } : {}),
+						// ===== 2026-08-03 修复：同时传递 absolutePath =====
+						...(projectAbsPath ? { absolutePath: projectAbsPath } : {})
 					}
 				})
 
@@ -478,6 +528,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					options.bindMediaResourceToNode(info.nodeId, 'model3d', finalUrl, task.name, {
 						sourcePath: sourcePath || undefined,
 						projectRelativePath: projectRelPath || undefined,
+						absolutePath: projectAbsPath || undefined,
 						resourceId: task.resourceId
 					})
 					console.log('[AIWorkflow:MediaImport] Model3D bound via bindMediaResourceToNode:', {
@@ -515,6 +566,47 @@ export const useAIWorkflowBatchMediaImport = (options: {
 
 				if (options.autoSizeMediaNode) {
 					options.autoSizeMediaNode(info.nodeId, finalUrl, 'model3d')
+				}
+
+				// ===== 关键修复：在资源绑定完成后，立即将最终数据（URL、Path等）强制同步回引擎 =====
+				// 防止后续操作（如移动、保存、切换节点）触发 hydrateDraft 时，引擎端空数据覆盖 Store 中的绑定信息
+				if (options.engineApi?.updateNodeData) {
+					try {
+						const finalModelFormat = (() => {
+							const lower = String(task.name || '').toLowerCase()
+							if (lower.endsWith('.gltf')) return 'gltf'
+							if (lower.endsWith('.fbx')) return 'fbx'
+							if (lower.endsWith('.obj')) return 'obj'
+							if (lower.endsWith('.stl')) return 'stl'
+							if (lower.endsWith('.dae')) return 'dae'
+							return 'glb'
+						})()
+						const patchPayload = {
+							resourceId: task.resourceId,
+							resourcePath: projectAbsPath || sourcePath || undefined,
+							model3dSettings: {
+								modelUrl: finalUrl,
+								modelFormat: finalModelFormat,
+								modelSourceName: task.name,
+								modelSourcePath: sourcePath || undefined,
+								modelAssetUrl: projectAssetUrl || undefined,
+								modelAssetPath: projectRelPath || sourcePath || undefined
+							}
+						}
+						const syncOk = options.engineApi.updateNodeData(info.nodeId, patchPayload)
+						console.log('[AIWorkflow:MediaImport] Model3D data force-synced to engine:', {
+							nodeId: info.nodeId,
+							resourceId: task.resourceId,
+							syncOk,
+							hasUrl: !!finalUrl,
+							hasAbsPath: !!projectAbsPath
+						})
+					} catch (syncErr) {
+						console.error(
+							'[AIWorkflow:MediaImport] Model3D data force-sync to engine FAILED:',
+							syncErr
+						)
+					}
 				}
 			} else {
 				console.warn('[AIWorkflow:MediaImport] Model3D task failed: no finalUrl:', task.name)

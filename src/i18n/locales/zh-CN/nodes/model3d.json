@@ -108,5 +108,8 @@
 	"nodes.model3d.lightElevation": "高度角",
 	"nodes.model3d.resetPreset": "重置为预设",
 	"nodes.model3d.tripo3dPostProcessAvailable": "支持 Tripo3D 后处理",
-	"nodes.model3d.tripo3dPostProcessBadge": "Tripo3D 可后处理"
+	"nodes.model3d.tripo3dPostProcessBadge": "Tripo3D 可后处理",
+	"nodes.model3d.uploadFailed": "模型上传失败",
+	"nodes.model3d.previewLoading": "预览加载中…",
+	"nodes.model3d.uploadSuccess": "模型上传成功"
 }
