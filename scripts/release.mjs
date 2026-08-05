@@ -35,18 +35,29 @@ function resolveCmd(cmd) {
 	return cmd
 }
 
+// Windows 上 npm/npx 实际是 .cmd/.ps1 脚本：shell:false 既无法解析无扩展名的 'npm'
+// （ENOENT），Node.js 安全更新后也禁止 shell:false 直接执行 .bat/.cmd。
+// git/gh 在 Windows 上是真正的 .exe，shell:false 可正常执行，且能避免参数被 shell
+// 错误转义（例如 gh pr create --body 中的换行符）。
+function needsShell(cmd) {
+	if (process.platform === 'win32' && (cmd === 'npm' || cmd === 'npx')) {
+		return true
+	}
+	return false
+}
+
 function run(cmd, args, options = {}) {
 	const resolvedCmd = resolveCmd(cmd)
 	log(`$ ${resolvedCmd} ${args.join(' ')}`)
 	const result = spawnSync(resolvedCmd, args, {
 		cwd: ROOT,
 		stdio: 'inherit',
-		shell: false,
 		env: {
 			...process.env,
 			...(options.env || {})
 		},
-		...options
+		...options,
+		shell: options.shell ?? needsShell(resolvedCmd)
 	})
 	if (result.error) {
 		throw new Error(`Failed to execute ${resolvedCmd}: ${result.error.message}`)
