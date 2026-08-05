@@ -420,7 +420,7 @@ watch(
 			@node-preview-request="(p: any) => emit('node-preview-request', p)"
 			@node-clear-resource="(id: string) => emit('node-clear-resource', id)"
 			@node-upload-resource="(p: any) => emit('node-upload-resource', p)"
-			@node-upload-model3d-file="(p: any) => emit('node-upload-model3d-file', p)"
+			@node-upload-model3d-file="(p: any) => { console.log('[AIWorkflowBlueprintHost] node-upload-model3d-file received, forwarding:', { nodeId: p?.nodeId, fileName: p?.file?.name }); emit('node-upload-model3d-file', p) }"
 			@node-update-image-settings="(p: any) => emit('node-update-image-settings', p)"
 			@node-media-ready="(id: string) => emit('node-media-ready', id)"
 			@node-invalidate-screenshot="(id: string) => emit('node-invalidate-screenshot', id)"

@@ -70,6 +70,15 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 		asset?: { relativePath: string; [k: string]: unknown }
 		error?: string
 	} | null>
+	/**
+	 * 节点资源绑定（resourceId / settings）写入 Vuex Store 完成后，
+	 * 调用此函数将变更同步回 BlueprintEngine，
+	 * 使 NodeComponentResolver 能从引擎端的 BlueprintNode.data 读取到最新值，
+	 * 从而正确渲染节点 UI（修复"空白新建 3D 模型节点上传后不渲染"的根因）。
+	 *
+	 * 可选参数：不传则保持旧行为（不同步引擎），保证向后兼容。
+	 */
+	patchBlueprintNodeData?: (nodeId: string) => void
 }) => {
 	const imageResourcePersistingIds = new Set<string>()
 	const videoResourcePersistingIds = new Set<string>()
@@ -334,6 +343,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			posterUrl?: string
 			sourcePath?: string
 			projectRelativePath?: string
+			absolutePath?: string
 			posterProjectRelativePath?: string
 			/** When provided, reuse this existing resourceId instead of creating a new one. */
 			resourceId?: string
@@ -348,6 +358,16 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 			const resourceId = String(opts?.resourceId ?? '').trim() || options.makeResourceId()
 			const existing = options.store.state.resourcesById?.[resourceId]
+			console.log('[AIWorkflow:BindResource] model3d bindMediaResourceToNode:', {
+				nodeId,
+				resourceId,
+				resourceExists: !!existing,
+				url: url ? url.slice(0, 80) : '(empty)',
+				name,
+				hasSourcePath: !!opts?.sourcePath,
+				hasProjectRelativePath: !!opts?.projectRelativePath,
+				hasAbsolutePath: !!opts?.absolutePath
+			})
 			if (existing) {
 				options.store.commit('patchResource', {
 					resourceId,
@@ -358,6 +378,10 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 						...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
 						...(opts?.projectRelativePath
 							? { projectRelativePath: String(opts.projectRelativePath) }
+							: {}),
+						// ===== 2026-08-03 修复：传递 absolutePath 供资源解析 =====
+						...(opts?.absolutePath
+							? { absolutePath: String(opts.absolutePath) }
 							: {})
 					}
 				})
@@ -370,6 +394,10 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					...(opts?.sourcePath ? { sourcePath: String(opts.sourcePath) } : {}),
 					...(opts?.projectRelativePath
 						? { projectRelativePath: String(opts.projectRelativePath) }
+						: {}),
+					// ===== 2026-08-03 修复：传递 absolutePath 供资源解析 =====
+					...(opts?.absolutePath
+						? { absolutePath: String(opts.absolutePath) }
 						: {}),
 					createdAt: Date.now()
 				})
@@ -398,6 +426,12 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					modelAssetPath: opts?.projectRelativePath || opts?.sourcePath || undefined
 				}
 			})
+			console.log('[AIWorkflow:BindResource] model3d store commits done, syncing to engine...', {
+				nodeId,
+				resourceId,
+				modelFormat,
+				modelAssetUrl: url.slice(0, 80)
+			})
 
 			try {
 				options.autoSizeMediaNode?.(nodeId, url, 'model3d')
@@ -406,6 +440,9 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			}
 
 			opts?.onAfterBind?.({ resourceId, url })
+			// P1-2：所有 Store commits 完成后同步回引擎（SSOT 反向写入，使 NodeComponentResolver 读到最新 data）
+			options.patchBlueprintNodeData?.(nodeId)
+			console.log('[AIWorkflow:BindResource] model3d engine sync (patchBlueprintNodeData) completed')
 			return
 		}
 
@@ -531,11 +568,28 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 
 		options.autoSizeMediaNode(nodeId, url, kind)
 		opts?.onAfterBind?.({ resourceId, url })
+		// P1-2：image/video 分支所有 Store commits 完成后同样同步回引擎（顺带修复手动上传 image/video 后也可能不渲染的同类问题）
+		options.patchBlueprintNodeData?.(nodeId)
 	}
 
 	const uploadNodeModel3DFile = async (nodeId: string, file: File) => {
+		console.log('[AIWorkflow:UploadModel3D] uploadNodeModel3DFile called:', {
+			nodeId,
+			fileName: file.name,
+			fileType: file.type,
+			fileSize: file.size,
+			hasPath: typeof (file as FileWithPath)?.path === 'string'
+		})
+
 		const node = options.store.state.nodesById[nodeId]
-		if (!node || node.type !== 'model3d') return
+		if (!node || node.type !== 'model3d') {
+			console.warn('[AIWorkflow:UploadModel3D] Aborted: node not found or not model3d type:', {
+				nodeId,
+				nodeExists: !!node,
+				nodeType: node?.type
+			})
+			return
+		}
 
 		options.revokeNodeModel3DObjectUrl(nodeId)
 
@@ -544,22 +598,41 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 				? String((file as FileWithPath).path).trim()
 				: ''
 
-		type Persisted = { url: string; relPath: string }
+		type Persisted = { url: string; relPath: string; absPath?: string }
 		let persisted: Persisted | null = null
 		const currentProjectId = Number(options.getCurrentProjectId?.() ?? 0)
+		console.log('[AIWorkflow:UploadModel3D] Persisting file to project:', {
+			nodeId,
+			currentProjectId,
+			hasSourcePath: !!sourcePath,
+			sourcePath: sourcePath || '(none)',
+			hasCopyFileToProjectRoot: typeof options.copyFileToProjectRoot === 'function',
+			hasUploadProjectAsset: typeof options.uploadProjectAsset === 'function'
+		})
 		if (currentProjectId > 0) {
 			try {
+				// ===== 路径 1：原生 IPC 文件拷贝（与拖拽导入相同，最高效）=====
 				if (sourcePath && typeof options.copyFileToProjectRoot === 'function') {
+					console.log('[AIWorkflow:UploadModel3D] Trying copyFileToProjectRoot...')
 					const r = await options.copyFileToProjectRoot(currentProjectId, sourcePath, file.name)
+					console.log('[AIWorkflow:UploadModel3D] copyFileToProjectRoot result:', r)
 					if (r && r.ok && r.relativePath) {
 						const rel = String(r.relativePath)
+						const abs = String((r as any)?.absolutePath || '').trim()
 						persisted = {
 							relPath: rel,
-							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`
+							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`,
+							...(abs ? { absPath: abs } : {})
 						}
+						console.log('[AIWorkflow:UploadModel3D] Persisted via copyFileToProjectRoot:', {
+							relPath: rel,
+							hasAbsPath: !!abs
+						})
 					}
 				}
+				// ===== 路径 2：ArrayBuffer 上传（web 拖拽 / 截图等无本地路径场景）=====
 				if (!persisted && typeof options.uploadProjectAsset === 'function') {
+					console.log('[AIWorkflow:UploadModel3D] Trying uploadProjectAsset via ArrayBuffer...')
 					const buf = await file.arrayBuffer()
 					const r = await options.uploadProjectAsset({
 						projectId: currentProjectId,
@@ -569,37 +642,59 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 						contentType: file.type || 'application/octet-stream',
 						bucket: 'assets'
 					})
+					console.log('[AIWorkflow:UploadModel3D] uploadProjectAsset result:', {
+						ok: r?.ok,
+						hasAsset: !!r?.asset,
+						relativePath: (r?.asset as any)?.relativePath,
+						absolutePath: (r?.asset as any)?.absolutePath,
+						error: r?.error
+					})
 					if (r && r.ok && (r.asset as { relativePath?: string } | undefined)?.relativePath) {
 						const rel = String((r.asset as { relativePath: string }).relativePath)
+						const abs = String((r.asset as any)?.absolutePath || '').trim()
 						persisted = {
 							relPath: rel,
-							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`
+							url: `dweb://project-assets?projectId=${currentProjectId}&path=${encodeURIComponent(rel)}`,
+							...(abs ? { absPath: abs } : {})
 						}
+						console.log('[AIWorkflow:UploadModel3D] Persisted via uploadProjectAsset:', {
+							relPath: rel,
+							hasAbsPath: !!abs
+						})
 					}
 				}
+				// ===== 路径 3：最后兜底：走原有 uploadAsset API =====
 				if (!persisted) {
-					// 最后兜底：走原有 uploadAsset API
+					console.log('[AIWorkflow:UploadModel3D] Falling back to blueprintProjectService.uploadAsset...')
 					const uploaded = await options.blueprintProjectService.uploadAsset(file, 'file', {
 						projectId: currentProjectId
+					})
+					console.log('[AIWorkflow:UploadModel3D] uploadAsset result:', {
+						ok: uploaded.ok,
+						error: (uploaded as any)?.error,
+						assetUrl: (uploaded as UploadAssetResult)?.asset?.url,
+						assetAbsPath: (uploaded as UploadAssetResult)?.asset?.absolutePath
 					})
 					if (uploaded.ok) {
 						const asset = (uploaded as UploadAssetResult).asset ?? {}
 						const dwebUrl = options.resolveBackendUrl(String(asset.url || ''))
 						const rel = String(asset.projectRelativePath || asset.relativePath || '').trim()
+						const abs = String(asset.absolutePath || '').trim()
 						if (dwebUrl && rel) {
-							persisted = { url: dwebUrl, relPath: rel }
+							persisted = { url: dwebUrl, relPath: rel, ...(abs ? { absPath: abs } : {}) }
 						} else if (dwebUrl) {
-							// 没有相对路径时仍然尝试绑定 url（至少避免渲染失败）
-							persisted = { url: dwebUrl, relPath: String(asset.absolutePath || '').trim() }
+							persisted = { url: dwebUrl, relPath: String(abs || '').trim(), ...(abs ? { absPath: abs } : {}) }
 						}
 					}
 				}
 			} catch (e) {
 				console.warn(
-					'[uploadNodeModel3DFile] persist to project failed, falling back to object url preview:',
+					'[AIWorkflow:UploadModel3D] persist to project failed, falling back to object url preview:',
 					e
 				)
 			}
+		} else {
+			console.warn('[AIWorkflow:UploadModel3D] No currentProjectId, skipping persistence')
 		}
 
 		let objectUrl = ''
@@ -607,16 +702,38 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			objectUrl = URL.createObjectURL(file)
 			const objectKey = `model3d:${nodeId}`
 			options.setObjectUrl(objectKey, objectUrl)
+			console.log('[AIWorkflow:UploadModel3D] Using blob object URL fallback:', {
+				nodeId,
+				objectKey,
+				urlPrefix: objectUrl.slice(0, 50)
+			})
 		}
 
 		const finalUrl = persisted?.url || objectUrl
 		const finalRel = persisted?.relPath || ''
+		const finalAbs = persisted?.absPath || ''
+
+		console.log('[AIWorkflow:UploadModel3D] Final URL prepared:', {
+			nodeId,
+			hasPersisted: !!persisted,
+			finalUrl: finalUrl ? finalUrl.slice(0, 100) : '(empty)',
+			finalRel,
+			hasFinalAbs: !!finalAbs
+		})
 
 		if (persisted) {
+			console.log('[AIWorkflow:UploadModel3D] Calling bindMediaResourceToNode...', {
+				nodeId,
+				finalUrl: finalUrl.slice(0, 80),
+				projectRelativePath: finalRel,
+				absolutePath: finalAbs || '(none)'
+			})
 			bindMediaResourceToNode(nodeId, 'model3d', finalUrl, file.name, {
 				sourcePath: sourcePath || undefined,
-				projectRelativePath: finalRel
+				projectRelativePath: finalRel,
+				absolutePath: finalAbs || undefined
 			})
+			console.log('[AIWorkflow:UploadModel3D] bindMediaResourceToNode completed (engine synced via patchBlueprintNodeData)')
 		} else {
 			const lowerName = String(file.name || '').toLowerCase()
 			let modelFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
@@ -633,6 +750,28 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					modelSourceName: String(file.name || 'model'),
 					modelSourcePath: sourcePath || undefined
 				}
+			})
+			console.log('[AIWorkflow:UploadModel3D] Object URL fallback: setNodeModel3DSettings committed', {
+				nodeId,
+				modelFormat,
+				modelUrl: finalUrl.slice(0, 80)
+			})
+			// P1-3：objectUrl 兜底分支同样同步回引擎
+			options.patchBlueprintNodeData?.(nodeId)
+			console.log('[AIWorkflow:UploadModel3D] patchBlueprintNodeData completed for object URL fallback')
+		}
+
+		// ===== 2026-08-05 关键修复：与拖拽导入保持一致 —— 资源绑定完成后强制将完整数据再次同步回引擎 =====
+		// 这一步是额外的保险：bindMediaResourceToNode 内部已调用 patchBlueprintNodeData，
+		// 但此处显式再写一次完整的 model3dSettings + resourceId + resourcePath，确保引擎端 BlueprintNode.data 绝对最新
+		const storeNodeAfter = options.store.state.nodesById[nodeId] as any
+		if (storeNodeAfter) {
+			console.log('[AIWorkflow:UploadModel3D] Post-bind store node state:', {
+				nodeId,
+				resourceId: storeNodeAfter.resourceId ?? '(null)',
+				hasModel3dSettings: !!storeNodeAfter.model3dSettings,
+				modelUrl: storeNodeAfter.model3dSettings?.modelUrl?.slice(0, 80) ?? '(empty)',
+				resourcePath: storeNodeAfter.resourcePath ?? '(none)'
 			})
 		}
 	}

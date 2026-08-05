@@ -50,7 +50,10 @@
 				@node-clear-resource="(id: string) => emit('nodeClearResource', id)"
 				@node-upload-resource="(p: any) => emit('nodeUploadResource', p)"
 				@node-upload-model3d-file="
-					(p: any) => emit('nodeUploadModel3DFile', { nodeId: p?.nodeId, file: p?.file })
+					(p: any) => {
+						console.log('[BlueprintEditor] node-upload-model3d-file received, forwarding:', { nodeId: p?.nodeId, fileName: p?.file?.name })
+						emit('nodeUploadModel3dFile', { nodeId: p?.nodeId, file: p?.file })
+					}
 				"
 				@node-update-image-settings="(p: any) => emit('nodeUpdateImageSettings', p)"
 				@node-media-ready="(id: string) => emit('nodeMediaReady', id)"
@@ -197,7 +200,7 @@ interface Emits {
 	(e: 'nodePreviewRequest', payload: { nodeId: string; imageUrl: string }): void
 	(e: 'nodeClearResource', nodeId: string): void
 	(e: 'nodeUploadResource', payload: { nodeId: string; file: File; kind: string }): void
-	(e: 'nodeUploadModel3DFile', payload: { nodeId: string; file: File }): void
+	(e: 'nodeUploadModel3dFile', payload: { nodeId: string; file: File }): void
 	(e: 'nodeUpdateImageSettings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'nodeMediaReady', nodeId: string): void
 	(e: 'nodeInvalidateScreenshot', nodeId: string): void

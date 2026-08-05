@@ -1094,29 +1094,37 @@ const isRemoteVendorCdnUrl = (u: string): boolean => {
 }
 
 const pickBestModelUrlFromCandidates = (
-	rawCandidates: Array<string | null | undefined>
-): string => {
-	const validList: Array<{ url: string; q: CandidateQuality }> = []
-	const pushOne = (raw: string) => {
-		const u0 = String(raw ?? '').trim()
-		if (!u0) return
-		// ===== 场景布局节点同款策略：直接丢弃 meshy.ai / tripo3d.ai 远程 CDN URL，避免 CORS + 过期 URL =====
-		if (isRemoteVendorCdnUrl(u0)) return
-		// ===== 场景布局节点同款修复：进入候选池前先修正 dvcache bin 路径
-		const u1 = fixDwebUrlPath(fixDvcacheBinPath(u0))
-		const tryList = [u1]
-		// 再尝试恢复被误判为图片后缀的路径为模型后缀（真实磁盘上是 GLB，数据库里扩展名被污染）
-		for (const r of recoverImageExtToModel(u1)) tryList.push(r)
-		for (const u of tryList) {
-			if (!u) continue
-			if (isRemoteVendorCdnUrl(u)) continue
-			if (isImageUrlOrPath(u)) continue
-			if (!isLikely3DModelUrl(u)) continue
-			const norm = normalizeCandidate(u)
-			if (!norm) continue
-			validList.push({ url: norm, q: candidateQuality(norm) })
+		rawCandidates: Array<string | null | undefined>
+	): string => {
+		const validList: Array<{ url: string; q: CandidateQuality }> = []
+		const pushOne = (raw: string) => {
+			const u0 = String(raw ?? '').trim()
+			if (!u0) return
+			// ===== 场景布局节点同款策略：直接丢弃 meshy.ai / tripo3d.ai 远程 CDN URL，避免 CORS + 过期 URL =====
+			if (isRemoteVendorCdnUrl(u0)) return
+			// ===== 2026-08-05 修复：blob: URL 来自用户通过 file input 选择的模型文件，始终允许通过 =====
+			// 原因：blob URL 没有文件扩展名，isLikely3DModelUrl 会返回 false 导致被过滤，
+			// 但这些 URL 是从 <input accept=".glb,.gltf,..."> 选择的真实模型文件创建的，
+			// settings.modelFormat 也已确认是模型格式，可以安全加载
+			if (u0.toLowerCase().startsWith('blob:')) {
+				validList.push({ url: u0, q: 2 })
+				return
+			}
+			// ===== 场景布局节点同款修复：进入候选池前先修正 dvcache bin 路径
+			const u1 = fixDwebUrlPath(fixDvcacheBinPath(u0))
+			const tryList = [u1]
+			// 再尝试恢复被误判为图片后缀的路径为模型后缀（真实磁盘上是 GLB，数据库里扩展名被污染）
+			for (const r of recoverImageExtToModel(u1)) tryList.push(r)
+			for (const u of tryList) {
+				if (!u) continue
+				if (isRemoteVendorCdnUrl(u)) continue
+				if (isImageUrlOrPath(u)) continue
+				if (!isLikely3DModelUrl(u)) continue
+				const norm = normalizeCandidate(u)
+				if (!norm) continue
+				validList.push({ url: norm, q: candidateQuality(norm) })
+			}
 		}
-	}
 	for (const raw of rawCandidates) {
 		const u = String(raw ?? '').trim()
 		if (!u) continue
@@ -1239,6 +1247,69 @@ const resolvedFallbackModelSource = computed(() => {
 			}
 		}
 	}
+
+	// ===== P3-1：纯手动上传（无 meshy / 无 tripo）的兜底分支 =====
+	// 场景：空白新建 3D 模型节点，仅通过节点上传按钮直接选择 GLB/GLTF
+	//      （不经过 Meshy/Tripo3D 生成链路）
+	// 逻辑：与 meshy 分支保持一致，上层从 resourcesById 解析注入的 props.* 路径优先级最高
+	{
+		const s2 = settings.value
+		const rawModelAssetUrl = String(s2?.modelAssetUrl ?? '').trim()
+		const rawModelUrl = String(s2?.modelUrl ?? '').trim()
+		const rawAssetPath = String(s2?.modelAssetPath ?? '').trim()
+		const safeAssetPath2 = rawAssetPath && !isImageUrlOrPath(rawAssetPath) ? rawAssetPath : ''
+
+		const resolvedResourceUrl = props.resourceUrl
+			? resolveWorkflowResourceUrl(props.resourceUrl)
+			: ''
+		const resolvedResourceSourcePath = String(props.resourceSourcePath ?? '').trim()
+		const safeResSourcePath =
+			resolvedResourceSourcePath && !isImageUrlOrPath(resolvedResourceSourcePath)
+				? resolvedResourceSourcePath
+				: ''
+		const resAbsPath = String(props.resourceAbsolutePath ?? '').trim()
+		const safeResAbsPath = resAbsPath && !isImageUrlOrPath(resAbsPath) ? resAbsPath : ''
+
+		// 若能推导 projectId，把 resourceProjectRelativePath 合成 dweb URL 候选
+		const resRelPath = String(props.resourceProjectRelativePath ?? '').trim()
+		const pid = inferredProjectId
+		const resRelAsDweb =
+			resRelPath && pid
+				? `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(resRelPath)}`
+				: ''
+
+		const uploadCandidates: string[] = [
+			// ===== 0. 绝对最高优先级：上层 NodeComponentResolver 从 resourcesById 解析好注入的真实路径 =====
+			resolvedResourceUrl, // 已经是 resolveWorkflowResourceUrl 后的 dweb / http(s) / file URL
+			safeResSourcePath,   // 本地绝对路径（例：G:\DVSTestProject\...\xxx.glb）→ 内部会转 file:///
+			safeResAbsPath,      // resourceAbsolutePath（兜底本地绝对）
+			resRelAsDweb,        // resourceProjectRelativePath 合成（兜底项目相对）
+			// ===== 1. 其次才是节点 settings 的资产 URL/路径 =====
+			rawModelAssetUrl ? resolveWorkflowResourceUrl(rawModelAssetUrl) : '',
+			safeAssetPath2,
+			rawModelUrl ? resolveWorkflowResourceUrl(rawModelUrl) : ''
+		]
+
+		const uploadUrl = pickBestModelUrlFromCandidates(uploadCandidates)
+		if (uploadUrl) {
+			// 从文件名/URL 后缀推导 format（与 bindMediaResourceToNode 保持一致）
+			const lower = (uploadUrl.split('?')[0]).toLowerCase()
+			let uploadFormat: 'glb' | 'gltf' | 'fbx' | 'obj' | 'stl' | 'dae' = 'glb'
+			if (lower.endsWith('.gltf')) uploadFormat = 'gltf'
+			else if (lower.endsWith('.fbx')) uploadFormat = 'fbx'
+			else if (lower.endsWith('.obj')) uploadFormat = 'obj'
+			else if (lower.endsWith('.stl')) uploadFormat = 'stl'
+			else if (lower.endsWith('.dae')) uploadFormat = 'dae'
+
+			return {
+				url: uploadUrl,
+				assetPath: safeAssetPath2 || safeResSourcePath || safeResAbsPath || resRelPath || '',
+				format: uploadFormat,
+				source: 'upload' as const
+			}
+		}
+	}
+
 	return null
 })
 
@@ -1251,21 +1322,46 @@ const effectiveModelUrl = computed(() => {
 	const assetUrl = rawAssetUrl ? resolveWorkflowResourceUrl(rawAssetUrl) : ''
 	const primaryUrl = rawPrimaryUrl ? resolveWorkflowResourceUrl(rawPrimaryUrl) : ''
 
-	// ===== 消费端最严防线（彻底根除缩略图污染问题）：
-	// 1. 内层 fallback 中的本地绝对路径 (G:\DVSTestProject\...\xxx.glb) 优先级最高（自动转 file:///）
-	//    → 完全绕开外层可能被 PNG 缩略图污染的字段
-	// 2. 其次才是内层 fallback 的合成 url（dweb / remote CDN）
-	// 3. 外层字段只做兜底（缩略图污染在 pickBest 中会被严格过滤）
+	// ===== 2026-08-05 修复：settings 中的 URL 字段是 REACTIVE 的（通过 extraPropsResolver 从 Store 注入），
+	// 而 resolvedFallbackModelSource 中的 props.resourceUrl 等是 NON-REACTIVE 的（来自 NodeComponentResolver
+	// 读取引擎端 BlueprintNode.data，Vue 检测不到变化）。
+	//
+	// 当更换/清空模型时，Store 中的 modelUrl/modelAssetUrl 会立即更新，但 props.resourceUrl 仍持有旧值，
+	// 导致 effectiveModelUrl 返回过期的 URL，模型不重新加载。
+	//
+	// 修复策略：
+	// 1. 清空场景：当 settings 中所有 URL 字段都为空且无 meshy/tripo 生成数据时，直接返回空
+	// 2. 更换场景：当 settings 中有非空 URL 时，优先使用 REACTIVE 的 settings URL（绕过非响应式 fallback）
+	const meshy = s?.meshyModelSettings as Record<string, unknown> | undefined
+	const tripo = s?.tripo3dModelSettings as Record<string, unknown> | undefined
+	const hasMeshyData = !!(meshy && (meshy.outputAssetUrl || meshy.meshyRelationSummary))
+	const hasTripoData = !!(tripo && (tripo.tripo3dImageUrl || tripo.tripo3dRelationSummary))
+
+	// ===== 清空场景：settings 中所有 URL 字段为空，且无 meshy/tripo 生成数据 → 模型已被显式清空 =====
+	if (s && !rawPrimaryUrl && !rawAssetUrl && !outerSourcePath && !outerAssetPath && !hasMeshyData && !hasTripoData) {
+		console.log('[Model3DNode] effectiveModelUrl: all settings URL fields empty, model cleared → returning empty')
+		return ''
+	}
+
+	// ===== 更换场景：settings 中有非空 URL → 优先使用 REACTIVE 的 settings URL =====
+	// （绕过非响应式的 resolvedFallbackModelSource，避免 props.resourceUrl 持有旧值导致选中过期 URL）
+	if (primaryUrl || assetUrl || outerSourcePath || outerAssetPath) {
+		const settingsUrl = pickBestModelUrlFromCandidates([primaryUrl, assetUrl, outerSourcePath, outerAssetPath])
+		if (settingsUrl) {
+			console.log('[Model3DNode] effectiveModelUrl: using reactive settings URL:', settingsUrl.slice(0, 80))
+			return settingsUrl
+		}
+		// settings URL 被过滤掉了（例如不是有效的模型 URL），继续走 fallback
+	}
+
+	// ===== 兜底：使用 fallback（适用于 meshy/tripo 生成模型或 settings URL 无效的情况） =====
 	const fallback = resolvedFallbackModelSource.value
 	const fallbackLocalAbsPath =
 		fallback?.assetPath && isLikely3DModelUrl(fallback.assetPath) ? fallback.assetPath : ''
 
 	const url = pickBestModelUrlFromCandidates([
-		// ===== 优先级 1：内层 meshy/tripo 真实下载到本地的绝对路径（最可信，转 file:/// 可直接被 Three.js 加载） =====
 		fallbackLocalAbsPath,
-		// ===== 优先级 2：内层 fallback 合成的 url（assetUrl > assetPath > preferredUrl 再次经过 pickBest） =====
 		fallback?.url,
-		// ===== 优先级 3：外层字段（仅作为兜底，严格命中模型白名单才会进入候选池） =====
 		assetUrl,
 		primaryUrl,
 		outerSourcePath,
@@ -2002,11 +2098,22 @@ const startPreviewLoad = async (requestId: number) => {
 	}
 }
 
-const onUploadClick = () => fileInputRef.value?.click()
+const onUploadClick = () => {
+	console.log('[Model3DNode] onUploadClick: button clicked, fileInputRef exists:', !!fileInputRef.value)
+	fileInputRef.value?.click()
+}
 const onFileChange = (e: Event) => {
 	const input = e.target as HTMLInputElement | null
 	const file = input?.files?.[0]
+	console.log('[Model3DNode] onFileChange triggered:', {
+		hasInput: !!input,
+		fileCount: input?.files?.length ?? 0,
+		hasFile: !!file,
+		fileName: file?.name,
+		fileSize: file?.size
+	})
 	if (!file) return
+	console.log('[Model3DNode] Emitting upload-model-file with:', { fileName: file.name, fileSize: file.size })
 	emit('upload-model-file', { file })
 	if (input) input.value = ''
 }
@@ -2084,8 +2191,15 @@ watch(modelSignature, () => {
 	if (!viewer) return
 	if (previewPhase.value === 'masked') return
 	if (previewPhase.value === 'loading') return
+	console.log('[Model3DNode] modelSignature changed, calling syncViewerState:', {
+		url: effectiveModelUrl.value ? effectiveModelUrl.value.slice(0, 80) : '(empty)',
+		phase: previewPhase.value
+	})
 	saveViewState()
-	applyViewerOptions()
+	// ===== 2026-08-05 修复：更换/清空操作时 effectiveModelUrl 会变化，
+	// 但 previewPhase 不变（仍为 'interactive'），原 watcher 只保存视图状态不重新加载模型。
+	// 调用 syncViewerState 会自动检测 URL 变化并重新加载模型，或当 URL 为空时清空模型。
+	syncViewerState()
 })
 
 watch(
