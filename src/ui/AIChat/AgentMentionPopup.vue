@@ -1,9 +1,5 @@
 <template>
-	<div
-		v-if="visible && items.length > 0"
-		class="agent-mention-popup"
-		@mousedown.prevent.stop
-	>
+	<div v-if="visible && items.length > 0" class="agent-mention-popup" @mousedown.prevent.stop>
 		<div class="agent-mention-header">{{ t('aichat.mention.title') }}</div>
 		<div class="agent-mention-list">
 			<div
@@ -28,7 +24,9 @@
 					<span class="agent-mention-label">{{ item.label }}</span>
 					<span class="agent-mention-sub">{{ getSubline(item) }}</span>
 				</div>
-				<span class="agent-mention-type" :class="`kind-${item.kind}`">{{ getKindLabel(item.kind) }}</span>
+				<span class="agent-mention-type" :class="`kind-${item.kind}`">
+					{{ getKindLabel(item.kind) }}
+				</span>
 			</div>
 			<div v-if="items.length === 0" class="agent-mention-empty">
 				{{ t('aichat.mention.noMatch') }}
@@ -125,7 +123,9 @@ const getSubline = (item: MentionItem): string => {
 	background: color-mix(in srgb, var(--wf-surface-base, rgba(21, 24, 28, 0.98)) 98%, transparent);
 	border: 1px solid color-mix(in srgb, var(--wf-primary, #1f9d84) 50%, transparent);
 	border-radius: 6px;
-	box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4), 0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
+	box-shadow:
+		0 -4px 20px rgba(0, 0, 0, 0.4),
+		0 0 12px color-mix(in srgb, var(--wf-primary, #1f9d84) 15%, transparent);
 	backdrop-filter: blur(12px);
 	max-height: 260px;
 	overflow: hidden;
@@ -229,12 +229,33 @@ const getSubline = (item: MentionItem): string => {
 	color: color-mix(in srgb, var(--wf-text, #edf2f4) 50%, transparent);
 }
 
-.agent-mention-type.kind-image { color: #60a5fa; background: color-mix(in srgb, #60a5fa 15%, transparent); }
-.agent-mention-type.kind-video { color: #4ade80; background: color-mix(in srgb, #4ade80 15%, transparent); }
-.agent-mention-type.kind-model3d { color: #c084fc; background: color-mix(in srgb, #c084fc 15%, transparent); }
-.agent-mention-type.kind-file { color: #fbbf24; background: color-mix(in srgb, #fbbf24 15%, transparent); }
-.agent-mention-type.kind-skill { color: #c084fc; background: color-mix(in srgb, #c084fc 15%, transparent); }
-.agent-mention-type.kind-text { color: #f59e0b; background: color-mix(in srgb, #f59e0b 15%, transparent); }
+.agent-mention-type.kind-image {
+	color: #60a5fa;
+	background: color-mix(in srgb, #60a5fa 15%, transparent);
+}
+.agent-mention-type.kind-video {
+	color: #4ade80;
+	background: color-mix(in srgb, #4ade80 15%, transparent);
+}
+.agent-mention-type.kind-model3d {
+	color: #c084fc;
+	background: color-mix(in srgb, #c084fc 15%, transparent);
+}
+.agent-mention-type.kind-file {
+	color: #fbbf24;
+	background: color-mix(in srgb, #fbbf24 15%, transparent);
+}
+.agent-mention-type.kind-skill {
+	color: #c084fc;
+	background: color-mix(in srgb, #c084fc 15%, transparent);
+}
+.agent-mention-type.kind-text {
+	color: #f59e0b;
+	background: color-mix(in srgb, #f59e0b 15%, transparent);
+}
 .agent-mention-type.kind-node,
-.agent-mention-type.kind-nodeOutput { color: #f59e0b; background: color-mix(in srgb, #f59e0b 15%, transparent); }
+.agent-mention-type.kind-nodeOutput {
+	color: #f59e0b;
+	background: color-mix(in srgb, #f59e0b 15%, transparent);
+}
 </style>

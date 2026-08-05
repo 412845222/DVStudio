@@ -142,7 +142,12 @@ export class ImageEditorEngine implements IEditorEngine {
 	private clickEraseApplyTimer: number | null = null
 
 	private stateChangeListeners: Set<() => void> = new Set()
-	private dragState: { startX: number; startY: number; origOffsetX: number; origOffsetY: number } | null = null
+	private dragState: {
+		startX: number
+		startY: number
+		origOffsetX: number
+		origOffsetY: number
+	} | null = null
 
 	constructor(baseCanvas: HTMLCanvasElement, overlayCanvas: HTMLCanvasElement) {
 		this.baseCanvas = baseCanvas
@@ -460,7 +465,12 @@ export class ImageEditorEngine implements IEditorEngine {
 			return
 		}
 
-		if (this.tool === 'eraser' && this.eraser.mode === 'rect-bg-remove' && this.isDrawingEraseRect && this.eraseRectStart) {
+		if (
+			this.tool === 'eraser' &&
+			this.eraser.mode === 'rect-bg-remove' &&
+			this.isDrawingEraseRect &&
+			this.eraseRectStart
+		) {
 			const pt = this.pointerToImageCoords(e.clientX, e.clientY, viewport)
 			if (!pt) return
 			const x = Math.min(pt.x, this.eraseRectStart.x)
@@ -489,14 +499,18 @@ export class ImageEditorEngine implements IEditorEngine {
 			return
 		}
 
-		if (!this.isDrawing && !this.dragState && (this.tool !== 'screenshot' && this.tool !== 'crop')) {
+		if (!this.isDrawing && !this.dragState && this.tool !== 'screenshot' && this.tool !== 'crop') {
 			return
 		}
 
 		const pt = this.pointerToImageCoords(e.clientX, e.clientY, viewport)
 		if (!pt) return
 
-		if ((this.tool === 'brush' || (this.tool === 'eraser' && this.eraser.mode === 'brush')) && this.isDrawing && this.lastPoint) {
+		if (
+			(this.tool === 'brush' || (this.tool === 'eraser' && this.eraser.mode === 'brush')) &&
+			this.isDrawing &&
+			this.lastPoint
+		) {
 			this.drawLineTo(this.lastPoint, pt)
 			this.currentStroke.push(pt)
 			this.lastPoint = pt
@@ -511,7 +525,11 @@ export class ImageEditorEngine implements IEditorEngine {
 			this.dragState = null
 		}
 
-		if (this.tool === 'eraser' && this.eraser.mode === 'rect-bg-remove' && this.isDrawingEraseRect) {
+		if (
+			this.tool === 'eraser' &&
+			this.eraser.mode === 'rect-bg-remove' &&
+			this.isDrawingEraseRect
+		) {
 			this.isDrawingEraseRect = false
 			this.eraseRectStart = null
 			if (this.eraseRect && this.eraseRect.w > 5 && this.eraseRect.h > 5) {
@@ -524,13 +542,21 @@ export class ImageEditorEngine implements IEditorEngine {
 			return
 		}
 
-		if (this.tool === 'eraser' && this.eraser.mode === 'click-bg-remove' && this.clickEraseStart && viewport) {
+		if (
+			this.tool === 'eraser' &&
+			this.eraser.mode === 'click-bg-remove' &&
+			this.clickEraseStart &&
+			viewport
+		) {
 			const pt = this.pointerToImageCoords(e.clientX, e.clientY, viewport)
 			if (pt) {
 				const dx = pt.x - this.clickEraseStart.x
 				const dy = pt.y - this.clickEraseStart.y
 				if (dx * dx + dy * dy < 25) {
-					this.executeClickBgRemove(Math.round(this.clickEraseStart.x), Math.round(this.clickEraseStart.y))
+					this.executeClickBgRemove(
+						Math.round(this.clickEraseStart.x),
+						Math.round(this.clickEraseStart.y)
+					)
 				}
 			}
 			this.clickEraseStart = null
@@ -569,15 +595,39 @@ export class ImageEditorEngine implements IEditorEngine {
 
 	private applyBrushAt(pt: Point) {
 		if (this.tool === 'brush') {
-			this.drawSoftCircle(this.baseCtx, pt.x, pt.y, this.brush.size, this.brush.color, this.brush.hardness, 'source-over')
+			this.drawSoftCircle(
+				this.baseCtx,
+				pt.x,
+				pt.y,
+				this.brush.size,
+				this.brush.color,
+				this.brush.hardness,
+				'source-over'
+			)
 		} else if (this.tool === 'eraser' && this.eraser.mode === 'brush') {
-			this.drawSoftCircle(this.baseCtx, pt.x, pt.y, this.eraser.size, '#000000', 0.5, 'destination-out')
+			this.drawSoftCircle(
+				this.baseCtx,
+				pt.x,
+				pt.y,
+				this.eraser.size,
+				'#000000',
+				0.5,
+				'destination-out'
+			)
 		}
 	}
 
 	private drawLineTo(from: Point, to: Point) {
 		if (this.tool === 'brush') {
-			this.drawSoftLine(this.baseCtx, from, to, this.brush.size, this.brush.color, this.brush.hardness, 'source-over')
+			this.drawSoftLine(
+				this.baseCtx,
+				from,
+				to,
+				this.brush.size,
+				this.brush.color,
+				this.brush.hardness,
+				'source-over'
+			)
 		} else if (this.tool === 'eraser' && this.eraser.mode === 'brush') {
 			this.drawSoftLine(this.baseCtx, from, to, this.eraser.size, '#000000', 0.5, 'destination-out')
 		}
@@ -660,13 +710,13 @@ export class ImageEditorEngine implements IEditorEngine {
 		const dr = r - br
 		const dg = g - bg
 		const db = b - bb
-		const rw = 0.30
+		const rw = 0.3
 		const gw = 0.59
 		const bw = 0.11
 		let distSq = rw * dr * dr + gw * dg * dg + bw * db * db
 		if (alphaAware && a < 128) {
 			const alphaFactor = a / 255
-			distSq *= (0.2 + 0.8 * alphaFactor)
+			distSq *= 0.2 + 0.8 * alphaFactor
 		}
 		const normalizedThreshold = threshold / 3
 		return distSq <= normalizedThreshold
@@ -732,7 +782,10 @@ export class ImageEditorEngine implements IEditorEngine {
 		}
 
 		const D4: Array<[number, number]> = [
-			[1, 0], [-1, 0], [0, 1], [0, -1]
+			[1, 0],
+			[-1, 0],
+			[0, 1],
+			[0, -1]
 		]
 
 		let head = 0
@@ -807,8 +860,12 @@ export class ImageEditorEngine implements IEditorEngine {
 		const r = data[idx]
 		const g = data[idx + 1]
 		const b = data[idx + 2]
-		const rw = 0.30, gw = 0.59, bw = 0.11
-		const dr = r - br, dg = g - bg, db = b - bb
+		const rw = 0.3,
+			gw = 0.59,
+			bw = 0.11
+		const dr = r - br,
+			dg = g - bg,
+			db = b - bb
 		return Math.sqrt(rw * dr * dr + gw * dg * dg + bw * db * db)
 	}
 
@@ -829,99 +886,139 @@ export class ImageEditorEngine implements IEditorEngine {
 		const SOFT = 3
 		const I = (lx: number, ly: number) => ly * w + lx
 		const inB = (lx: number, ly: number) => lx >= 0 && lx < w && ly >= 0 && ly < h
-		const RW=0.30, GW=0.59, BW=0.11
+		const RW = 0.3,
+			GW = 0.59,
+			BW = 0.11
 
 		for (const i of toErase) {
 			mask[i] = ERASED
-			data[i*4+3] = 0
+			data[i * 4 + 3] = 0
 		}
 
-		const m = (lx:number, ly:number) => inB(lx,ly) ? mask[I(lx,ly)] : -1
-		const isE = (lx:number, ly:number) => m(lx,ly) === ERASED
-		const isS = (lx:number, ly:number) => m(lx,ly) === SOFT
-		const isGone = (lx:number, ly:number) => m(lx,ly) === ERASED || m(lx,ly) === SOFT
-		const isFg = (lx:number, ly:number) => m(lx,ly) === 0
+		const m = (lx: number, ly: number) => (inB(lx, ly) ? mask[I(lx, ly)] : -1)
+		const isE = (lx: number, ly: number) => m(lx, ly) === ERASED
+		const isS = (lx: number, ly: number) => m(lx, ly) === SOFT
+		const isGone = (lx: number, ly: number) => m(lx, ly) === ERASED || m(lx, ly) === SOFT
+		const isFg = (lx: number, ly: number) => m(lx, ly) === 0
 
-		const distToBg = (lx:number, ly:number): number => {
-			const i = I(lx,ly)
-			const dr=data[i*4]-bgR, dg=data[i*4+1]-bgG, db=data[i*4+2]-bgB
-			return Math.sqrt(RW*dr*dr + GW*dg*dg + BW*db*db)
+		const distToBg = (lx: number, ly: number): number => {
+			const i = I(lx, ly)
+			const dr = data[i * 4] - bgR,
+				dg = data[i * 4 + 1] - bgG,
+				db = data[i * 4 + 2] - bgB
+			return Math.sqrt(RW * dr * dr + GW * dg * dg + BW * db * db)
 		}
 
-		const sampleLocalFg = (lx:number, ly:number): {r:number;g:number;b:number;valid:boolean} => {
-			let sr=0, sg=0, sb=0, cnt=0
-			const D4: Array<[number,number]> = [[1,0],[-1,0],[0,1],[0,-1]]
-			let goneDx=0, goneDy=0
-			for (const [dx,dy] of D4) {
-				if (isGone(lx+dx,ly+dy)) { goneDx-=dx; goneDy-=dy }
+		const sampleLocalFg = (
+			lx: number,
+			ly: number
+		): { r: number; g: number; b: number; valid: boolean } => {
+			let sr = 0,
+				sg = 0,
+				sb = 0,
+				cnt = 0
+			const D4: Array<[number, number]> = [
+				[1, 0],
+				[-1, 0],
+				[0, 1],
+				[0, -1]
+			]
+			let goneDx = 0,
+				goneDy = 0
+			for (const [dx, dy] of D4) {
+				if (isGone(lx + dx, ly + dy)) {
+					goneDx -= dx
+					goneDy -= dy
+				}
 			}
-			const tryAdd = (nx:number, ny:number) => {
-				if (isFg(nx,ny)) {
-					const ni = I(nx,ny)
-					sr+=data[ni*4]; sg+=data[ni*4+1]; sb+=data[ni*4+2]; cnt++
+			const tryAdd = (nx: number, ny: number) => {
+				if (isFg(nx, ny)) {
+					const ni = I(nx, ny)
+					sr += data[ni * 4]
+					sg += data[ni * 4 + 1]
+					sb += data[ni * 4 + 2]
+					cnt++
 				}
 			}
 			if (goneDx !== 0 || goneDy !== 0) {
-				const ax = goneDx>0?1:-1, ay = goneDy>0?1:-1
-				tryAdd(lx+ax,ly)
-				tryAdd(lx,ly+ay)
-				tryAdd(lx+ax,ly+ay)
+				const ax = goneDx > 0 ? 1 : -1,
+					ay = goneDy > 0 ? 1 : -1
+				tryAdd(lx + ax, ly)
+				tryAdd(lx, ly + ay)
+				tryAdd(lx + ax, ly + ay)
 			}
-			for (const [dx,dy] of D4) tryAdd(lx+dx,ly+dy)
-			for (let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-				if(dx===0&&dy===0)continue; tryAdd(lx+dx,ly+dy)
-			}
-			if (cnt === 0) return {r:0,g:0,b:0,valid:false}
-			return {r:sr/cnt, g:sg/cnt, b:sb/cnt, valid:true}
+			for (const [dx, dy] of D4) tryAdd(lx + dx, ly + dy)
+			for (let dy = -1; dy <= 1; dy++)
+				for (let dx = -1; dx <= 1; dx++) {
+					if (dx === 0 && dy === 0) continue
+					tryAdd(lx + dx, ly + dy)
+				}
+			if (cnt === 0) return { r: 0, g: 0, b: 0, valid: false }
+			return { r: sr / cnt, g: sg / cnt, b: sb / cnt, valid: true }
 		}
 
-		const distToLocalFg = (lx:number, ly:number, fg:{r:number;g:number;b:number}): number => {
-			const i = I(lx,ly)
-			const dr=data[i*4]-fg.r, dg=data[i*4+1]-fg.g, db=data[i*4+2]-fg.b
-			return Math.sqrt(RW*dr*dr + GW*dg*dg + BW*db*db)
+		const distToLocalFg = (
+			lx: number,
+			ly: number,
+			fg: { r: number; g: number; b: number }
+		): number => {
+			const i = I(lx, ly)
+			const dr = data[i * 4] - fg.r,
+				dg = data[i * 4 + 1] - fg.g,
+				db = data[i * 4 + 2] - fg.b
+			return Math.sqrt(RW * dr * dr + GW * dg * dg + BW * db * db)
 		}
 
 		const MAX_ITER = Math.max(4, Math.round(feather) + 4)
 		for (let iter = 0; iter < MAX_ITER; iter++) {
-			const updates: Array<{i:number; a:number}> = []
+			const updates: Array<{ i: number; a: number }> = []
 			const iterStrict = normStrict * Math.pow(0.85, iter)
 
 			for (let ly = 0; ly < h; ly++) {
 				for (let lx = 0; lx < w; lx++) {
-					const i = I(lx,ly)
-					if (isE(lx,ly) || isS(lx,ly)) continue
-					const origA = data[i*4+3]
-					if (origA < 5) { updates.push({i, a:0}); continue }
-
-					let d4E=0, d4G=0, d8E=0, d8G=0
-					for (let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-						if(dx===0&&dy===0)continue
-						const g = isGone(lx+dx,ly+dy)
-						const e = isE(lx+dx,ly+dy)
-						if(g){
-							d8G++
-							if(dx===0||dy===0) d4G++
-						}
-						if(e){
-							d8E++
-							if(dx===0||dy===0) d4E++
-						}
+					const i = I(lx, ly)
+					if (isE(lx, ly) || isS(lx, ly)) continue
+					const origA = data[i * 4 + 3]
+					if (origA < 5) {
+						updates.push({ i, a: 0 })
+						continue
 					}
+
+					let d4E = 0,
+						d4G = 0,
+						d8E = 0,
+						d8G = 0
+					for (let dy = -1; dy <= 1; dy++)
+						for (let dx = -1; dx <= 1; dx++) {
+							if (dx === 0 && dy === 0) continue
+							const g = isGone(lx + dx, ly + dy)
+							const e = isE(lx + dx, ly + dy)
+							if (g) {
+								d8G++
+								if (dx === 0 || dy === 0) d4G++
+							}
+							if (e) {
+								d8E++
+								if (dx === 0 || dy === 0) d4E++
+							}
+						}
 					if (d8G === 0) continue
 
 					const convexCorner =
-						(isE(lx-1,ly)&&isE(lx,ly-1))||(isE(lx+1,ly)&&isE(lx,ly-1))||
-						(isE(lx-1,ly)&&isE(lx,ly+1))||(isE(lx+1,ly)&&isE(lx,ly+1))
+						(isE(lx - 1, ly) && isE(lx, ly - 1)) ||
+						(isE(lx + 1, ly) && isE(lx, ly - 1)) ||
+						(isE(lx - 1, ly) && isE(lx, ly + 1)) ||
+						(isE(lx + 1, ly) && isE(lx, ly + 1))
 
 					const touchErased = d8E > 0
 					if (!convexCorner && !touchErased && d4G === 0) {
 						if (d8G < 3) continue
 					}
 
-					const dBg = distToBg(lx,ly)
-					const fg = sampleLocalFg(lx,ly)
+					const dBg = distToBg(lx, ly)
+					const fg = sampleLocalFg(lx, ly)
 					if (!fg.valid) continue
-					const dFg = distToLocalFg(lx,ly,fg)
+					const dFg = distToLocalFg(lx, ly, fg)
 
 					const totalD = dBg + dFg
 					if (totalD < 1) continue
@@ -931,16 +1028,22 @@ export class ImageEditorEngine implements IEditorEngine {
 					const opaque = origA >= 240
 
 					if (convexCorner) {
-						if (bgRatio > 0.72) { continue }
+						if (bgRatio > 0.72) {
+							continue
+						}
 						const fgFrac = Math.max(0.15, bgRatio)
 						alpha = Math.round(220 * fgFrac * fgFrac)
 						alpha = Math.max(2, alpha)
 					} else {
-						if (bgRatio > 0.68) { continue }
+						if (bgRatio > 0.68) {
+							continue
+						}
 
 						if (!touchErased && d4G === 0) {
 							if (d8G < 2) continue
-							if (bgRatio > 0.4) { continue }
+							if (bgRatio > 0.4) {
+								continue
+							}
 						}
 
 						const fgFrac = bgRatio
@@ -954,64 +1057,85 @@ export class ImageEditorEngine implements IEditorEngine {
 
 					if (dBg < iterStrict * 0.2) alpha = 0
 					if (alpha < origA) {
-						updates.push({i, a: alpha})
+						updates.push({ i, a: alpha })
 					}
 				}
 			}
 
 			if (updates.length === 0) break
-			for (const {i, a} of updates) {
+			for (const { i, a } of updates) {
 				if (a <= 2) {
 					mask[i] = ERASED
 					toErase.add(i)
-					data[i*4+3] = 0
+					data[i * 4 + 3] = 0
 				} else {
 					mask[i] = SOFT
-					data[i*4+3] = a
+					data[i * 4 + 3] = a
 				}
 			}
 		}
 
 		if (feather > 0) {
-			const D4: Array<[number, number]> = [[1,0],[-1,0],[0,1],[0,-1]]
+			const D4: Array<[number, number]> = [
+				[1, 0],
+				[-1, 0],
+				[0, 1],
+				[0, -1]
+			]
 			const fr = Math.max(1, Math.round(feather))
-			const vD = new Float32Array(w*h).fill(Infinity)
+			const vD = new Float32Array(w * h).fill(Infinity)
 			const vQ: number[] = []
 			for (let ly = 0; ly < h; ly++) {
 				for (let lx = 0; lx < w; lx++) {
 					const i = I(lx, ly)
 					if (mask[i] !== ERASED) continue
 					let bd = false
-					for (const [dx,dy] of D4) {
-						const nx=lx+dx,ny=ly+dy
-						if(!inB(nx,ny)){bd=true;break}
-						if(mask[I(nx,ny)]!==ERASED){bd=true;break}
+					for (const [dx, dy] of D4) {
+						const nx = lx + dx,
+							ny = ly + dy
+						if (!inB(nx, ny)) {
+							bd = true
+							break
+						}
+						if (mask[I(nx, ny)] !== ERASED) {
+							bd = true
+							break
+						}
 					}
-					if(bd){vD[i]=0;vQ.push(i)}
+					if (bd) {
+						vD[i] = 0
+						vQ.push(i)
+					}
 				}
 			}
 			let vh = 0
-			while(vh<vQ.length){
-				const i=vQ[vh++], d=vD[i]
-				const lx=i%w, ly=Math.floor(i/w)
-				for(const [dx,dy] of D4){
-					const nx=lx+dx,ny=ly+dy
-					if(!inB(nx,ny))continue
-					const ni=I(nx,ny)
-					if(mask[ni]!==ERASED)continue
-					const nd=d+1
-					if(nd<vD[ni]){vD[ni]=nd;vQ.push(ni)}
+			while (vh < vQ.length) {
+				const i = vQ[vh++],
+					d = vD[i]
+				const lx = i % w,
+					ly = Math.floor(i / w)
+				for (const [dx, dy] of D4) {
+					const nx = lx + dx,
+						ny = ly + dy
+					if (!inB(nx, ny)) continue
+					const ni = I(nx, ny)
+					if (mask[ni] !== ERASED) continue
+					const nd = d + 1
+					if (nd < vD[ni]) {
+						vD[ni] = nd
+						vQ.push(ni)
+					}
 				}
 			}
-			for(let i=0;i<w*h;i++){
-				if(mask[i]!==ERASED)continue
-				const d=vD[i]
-				if(d<fr&&isFinite(d)){
-					const t=d/fr
-					const fa=Math.round(18*(1-t)*(1-t))
-					if(fa>data[i*4+3])data[i*4+3]=fa
-				}else{
-					data[i*4+3]=0
+			for (let i = 0; i < w * h; i++) {
+				if (mask[i] !== ERASED) continue
+				const d = vD[i]
+				if (d < fr && isFinite(d)) {
+					const t = d / fr
+					const fa = Math.round(18 * (1 - t) * (1 - t))
+					if (fa > data[i * 4 + 3]) data[i * 4 + 3] = fa
+				} else {
+					data[i * 4 + 3] = 0
 				}
 			}
 		}
@@ -1046,7 +1170,9 @@ export class ImageEditorEngine implements IEditorEngine {
 				bg = { r: data[idx], g: data[idx + 1], b: data[idx + 2] }
 			}
 		}
-		const bgR = bg.r, bgG = bg.g, bgB = bg.b
+		const bgR = bg.r,
+			bgG = bg.g,
+			bgB = bg.b
 
 		const mask = new Uint8Array(w * h)
 		let toErase: Set<number>
@@ -1109,9 +1235,17 @@ export class ImageEditorEngine implements IEditorEngine {
 
 		const seeds = edgeSeeds
 		this.applyErasePipeline(
-			imgData, 0, 0, rw, rh,
-			seeds, bg, samplePoints,
-			this.eraser.tolerance, this.eraser.contiguous, this.eraser.feather,
+			imgData,
+			0,
+			0,
+			rw,
+			rh,
+			seeds,
+			bg,
+			samplePoints,
+			this.eraser.tolerance,
+			this.eraser.contiguous,
+			this.eraser.feather,
 			{ x: 0, y: 0, w: rw, h: rh }
 		)
 
@@ -1151,14 +1285,25 @@ export class ImageEditorEngine implements IEditorEngine {
 		const samplePts: Array<[number, number]> = [[cx, cy]]
 
 		const mask = this.applyErasePipeline(
-			imgData, 0, 0, w, h,
-			seeds, null, samplePts,
-			this.eraser.tolerance, this.eraser.contiguous, this.eraser.feather
+			imgData,
+			0,
+			0,
+			w,
+			h,
+			seeds,
+			null,
+			samplePts,
+			this.eraser.tolerance,
+			this.eraser.contiguous,
+			this.eraser.feather
 		)
 
 		const VISITED = 2
 		const EDGE_SOFT = 3
-		let minX = w, minY = h, maxX = 0, maxY = 0
+		let minX = w,
+			minY = h,
+			maxX = 0,
+			maxY = 0
 		let found = false
 		for (let y = 0; y < h; y++) {
 			for (let x = 0; x < w; x++) {
@@ -1253,8 +1398,23 @@ export class ImageEditorEngine implements IEditorEngine {
 		}
 	}
 
-	private screenshotDragMode: 'new' | 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | null = null
-	private screenshotDragStart: { clientX: number; clientY: number; startRect: { x: number; y: number; w: number; h: number } } | null = null
+	private screenshotDragMode:
+		| 'new'
+		| 'move'
+		| 'nw'
+		| 'n'
+		| 'ne'
+		| 'e'
+		| 'se'
+		| 's'
+		| 'sw'
+		| 'w'
+		| null = null
+	private screenshotDragStart: {
+		clientX: number
+		clientY: number
+		startRect: { x: number; y: number; w: number; h: number }
+	} | null = null
 	private readonly HANDLE_SIZE = 14
 
 	private getScreenshotHandleAt(px: number, py: number): typeof this.screenshotDragMode {
@@ -1537,17 +1697,42 @@ export class ImageEditorEngine implements IEditorEngine {
 		this.clearOverlay()
 		if (!this.imageLoaded) return
 
-		if (this.currentStroke.length > 0 && (this.tool === 'brush' || (this.tool === 'eraser' && this.eraser.mode === 'brush'))) {
+		if (
+			this.currentStroke.length > 0 &&
+			(this.tool === 'brush' || (this.tool === 'eraser' && this.eraser.mode === 'brush'))
+		) {
 			for (const pt of this.currentStroke) {
 				if (this.tool === 'brush') {
-					this.drawSoftCircle(this.overlayCtx, pt.x, pt.y, this.brush.size, this.brush.color, this.brush.hardness, 'source-over')
+					this.drawSoftCircle(
+						this.overlayCtx,
+						pt.x,
+						pt.y,
+						this.brush.size,
+						this.brush.color,
+						this.brush.hardness,
+						'source-over'
+					)
 				} else {
-					this.drawSoftCircle(this.overlayCtx, pt.x, pt.y, this.eraser.size, 'rgba(255,255,255,0.5)', 0.5, 'source-over')
+					this.drawSoftCircle(
+						this.overlayCtx,
+						pt.x,
+						pt.y,
+						this.eraser.size,
+						'rgba(255,255,255,0.5)',
+						0.5,
+						'source-over'
+					)
 				}
 			}
 		}
 
-		if (this.tool === 'eraser' && this.eraser.mode === 'rect-bg-remove' && this.eraseRect && this.eraseRect.w > 0 && this.eraseRect.h > 0) {
+		if (
+			this.tool === 'eraser' &&
+			this.eraser.mode === 'rect-bg-remove' &&
+			this.eraseRect &&
+			this.eraseRect.w > 0 &&
+			this.eraseRect.h > 0
+		) {
 			const ctx = this.overlayCtx
 			ctx.save()
 			ctx.strokeStyle = '#f97316'
@@ -1585,8 +1770,14 @@ export class ImageEditorEngine implements IEditorEngine {
 			ctx.drawImage(this.subjectOverlayCache, 0, 0)
 		}
 
-		const drawSubjectHighlight = (s: DetectedSubject, fillAlpha: number, edgeAlpha: number, outsetPx: number) => {
-			const bw = s.fillMaskW, bh = s.fillMaskH
+		const drawSubjectHighlight = (
+			s: DetectedSubject,
+			fillAlpha: number,
+			edgeAlpha: number,
+			outsetPx: number
+		) => {
+			const bw = s.fillMaskW,
+				bh = s.fillMaskH
 			const pen = Math.max(0, Math.floor(outsetPx))
 			const pad = pen + 1
 			const cw = bw + pad * 2
@@ -1640,9 +1831,17 @@ export class ImageEditorEngine implements IEditorEngine {
 		const margin = this.subjectSelect.tightFit ? 0 : this.subjectSelect.margin
 		const outset = margin
 
-		if (this.hoverSubjectIdx >= 0 && this.hoverSubjectIdx !== this.selectedSubjectIdx
-			&& this.hoverSubjectIdx < this.detectedSubjects.length) {
-			drawSubjectHighlight(this.detectedSubjects[this.hoverSubjectIdx], 25, 140, Math.max(1, Math.round(outset * 0.6)))
+		if (
+			this.hoverSubjectIdx >= 0 &&
+			this.hoverSubjectIdx !== this.selectedSubjectIdx &&
+			this.hoverSubjectIdx < this.detectedSubjects.length
+		) {
+			drawSubjectHighlight(
+				this.detectedSubjects[this.hoverSubjectIdx],
+				25,
+				140,
+				Math.max(1, Math.round(outset * 0.6))
+			)
 		}
 
 		if (this.selectedSubjectIdx >= 0 && this.selectedSubjectIdx < this.detectedSubjects.length) {
@@ -1702,7 +1901,8 @@ export class ImageEditorEngine implements IEditorEngine {
 			return
 		}
 		const subj = this.detectedSubjects[this.selectedSubjectIdx]
-		const w = this.naturalWidth, h = this.naturalHeight
+		const w = this.naturalWidth,
+			h = this.naturalHeight
 		const margin = this.subjectSelect.tightFit ? 0 : this.subjectSelect.margin
 		const rx = Math.max(0, subj.minX - margin)
 		const ry = Math.max(0, subj.minY - margin)
@@ -1742,9 +1942,13 @@ export class ImageEditorEngine implements IEditorEngine {
 			this.emitStateChange()
 			return
 		}
-		const bgR = bg.r, bgG = bg.g, bgB = bg.b
+		const bgR = bg.r,
+			bgG = bg.g,
+			bgB = bg.b
 
-		const RW = 0.30, GW = 0.59, BW = 0.11
+		const RW = 0.3,
+			GW = 0.59,
+			BW = 0.11
 		const strictTolFactor = 0.22
 		const strictThreshSq = strictTolFactor * strictTolFactor * 255 * 255
 
@@ -1753,8 +1957,12 @@ export class ImageEditorEngine implements IEditorEngine {
 			const idx = (py * w + px) * 4
 			const a = data[idx + 3]
 			if (a < 20) return true
-			const r = data[idx], g = data[idx + 1], b = data[idx + 2]
-			const dr = r - bgR, dg = g - bgG, db = b - bgB
+			const r = data[idx],
+				g = data[idx + 1],
+				b = data[idx + 2]
+			const dr = r - bgR,
+				dg = g - bgG,
+				db = b - bgB
 			const distSq = RW * dr * dr + GW * dg * dg + BW * db * db
 			return distSq <= strictThreshSq
 		}
@@ -1762,7 +1970,12 @@ export class ImageEditorEngine implements IEditorEngine {
 		const BG_MASK = 1
 		const bgMask = new Uint8Array(w * h)
 		const queue: Array<number> = []
-		const D4: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+		const D4: Array<[number, number]> = [
+			[1, 0],
+			[-1, 0],
+			[0, 1],
+			[0, -1]
+		]
 
 		for (let x = 0; x < w; x++) {
 			for (const y of [0, h - 1]) {
@@ -1787,7 +2000,8 @@ export class ImageEditorEngine implements IEditorEngine {
 			const mx = midx % w
 			const my = (midx - mx) / w
 			for (const [dx, dy] of D4) {
-				const nx = mx + dx, ny = my + dy
+				const nx = mx + dx,
+					ny = my + dy
 				if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue
 				const nidx = ny * w + nx
 				if (bgMask[nidx] !== 0) continue
@@ -1800,7 +2014,16 @@ export class ImageEditorEngine implements IEditorEngine {
 		const FG_VISITED = 2
 		const fgVisited = new Uint8Array(w * h)
 		const subjects: DetectedSubject[] = []
-		const D8: Array<[number, number]> = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]
+		const D8: Array<[number, number]> = [
+			[1, 0],
+			[-1, 0],
+			[0, 1],
+			[0, -1],
+			[1, 1],
+			[1, -1],
+			[-1, 1],
+			[-1, -1]
+		]
 
 		for (let y = 0; y < h; y++) {
 			for (let x = 0; x < w; x++) {
@@ -1812,7 +2035,10 @@ export class ImageEditorEngine implements IEditorEngine {
 
 				const fgPixels: Array<number> = [idx]
 				fgVisited[idx] = FG_VISITED
-				let minX = x, minY = y, maxX = x, maxY = y
+				let minX = x,
+					minY = y,
+					maxX = x,
+					maxY = y
 				let pixelCount = 0
 				let fhead = 0
 
@@ -1827,7 +2053,8 @@ export class ImageEditorEngine implements IEditorEngine {
 					if (my > maxY) maxY = my
 
 					for (const [dx, dy] of D4) {
-						const nx = mx + dx, ny = my + dy
+						const nx = mx + dx,
+							ny = my + dy
 						if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue
 						const nidx = ny * w + nx
 						if (fgVisited[nidx] === FG_VISITED) continue
@@ -1858,7 +2085,8 @@ export class ImageEditorEngine implements IEditorEngine {
 					const my = (midx - mx) / w
 					let isEdge = false
 					for (const [dx, dy] of D8) {
-						const nx = mx + dx, ny = my + dy
+						const nx = mx + dx,
+							ny = my + dy
 						if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
 							isEdge = true
 							break
@@ -1878,7 +2106,17 @@ export class ImageEditorEngine implements IEditorEngine {
 					}
 				}
 
-				subjects.push({ minX, minY, maxX, maxY, pixelCount, edgePixels, fillMask, fillMaskW: bw, fillMaskH: bh })
+				subjects.push({
+					minX,
+					minY,
+					maxX,
+					maxY,
+					pixelCount,
+					edgePixels,
+					fillMask,
+					fillMaskW: bw,
+					fillMaskH: bh
+				})
 			}
 		}
 
@@ -1898,14 +2136,17 @@ export class ImageEditorEngine implements IEditorEngine {
 	}
 
 	private buildSubjectOverlayCache() {
-		const w = this.naturalWidth, h = this.naturalHeight
+		const w = this.naturalWidth,
+			h = this.naturalHeight
 		if (w === 0 || h === 0) {
 			this.subjectOverlayCache = null
 			return
 		}
-		if (!this.subjectOverlayCache
-			|| this.subjectOverlayCache.width !== w
-			|| this.subjectOverlayCache.height !== h) {
+		if (
+			!this.subjectOverlayCache ||
+			this.subjectOverlayCache.width !== w ||
+			this.subjectOverlayCache.height !== h
+		) {
 			this.subjectOverlayCache = document.createElement('canvas')
 			this.subjectOverlayCache.width = w
 			this.subjectOverlayCache.height = h
@@ -1916,7 +2157,8 @@ export class ImageEditorEngine implements IEditorEngine {
 
 		for (let i = 0; i < this.detectedSubjects.length; i++) {
 			const s = this.detectedSubjects[i]
-			const bw = s.fillMaskW, bh = s.fillMaskH
+			const bw = s.fillMaskW,
+				bh = s.fillMaskH
 
 			const tmp = document.createElement('canvas')
 			tmp.width = bw
@@ -2041,12 +2283,15 @@ export class ImageEditorEngine implements IEditorEngine {
 		return this.subjectSelect.margin
 	}
 
-	composeSubjectCropDataUrl(subjectIdx?: number): { dataUrl: string; width: number; height: number } | null {
+	composeSubjectCropDataUrl(
+		subjectIdx?: number
+	): { dataUrl: string; width: number; height: number } | null {
 		if (!this.imageLoaded || !this.sourceImage) return null
 		const idx = subjectIdx != null ? subjectIdx : this.selectedSubjectIdx
 		if (idx < 0 || idx >= this.detectedSubjects.length) return null
 		const subj = this.detectedSubjects[idx]
-		const w = this.naturalWidth, h = this.naturalHeight
+		const w = this.naturalWidth,
+			h = this.naturalHeight
 
 		const exportPad = 3
 		const sx = Math.max(0, subj.minX - exportPad)
@@ -2079,8 +2324,12 @@ export class ImageEditorEngine implements IEditorEngine {
 				const di = (py * sw + px) * 4
 				const mx = sx + px - subj.minX
 				const my = sy + py - subj.minY
-				const inMask = mx >= 0 && mx < subj.fillMaskW && my >= 0 && my < subj.fillMaskH
-					&& subj.fillMask[my * subj.fillMaskW + mx]
+				const inMask =
+					mx >= 0 &&
+					mx < subj.fillMaskW &&
+					my >= 0 &&
+					my < subj.fillMaskH &&
+					subj.fillMask[my * subj.fillMaskW + mx]
 				if (!inMask) {
 					rd[di] = 255
 					rd[di + 1] = 255

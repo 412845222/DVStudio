@@ -7,7 +7,10 @@
 						v-for="toast in toasts"
 						:key="toast.id"
 						class="scifi-toast"
-						:class="[`scifi-toast--${toast.tone || 'info'}`, { 'scifi-toast--persistent': toast.persistent }]"
+						:class="[
+							`scifi-toast--${toast.tone || 'info'}`,
+							{ 'scifi-toast--persistent': toast.persistent }
+						]"
 						@mouseenter="onHover(true)"
 						@mouseleave="onHover(false)"
 					>
@@ -19,23 +22,41 @@
 						</div>
 						<div class="scifi-toast-glow"></div>
 						<div class="scifi-toast-scanline"></div>
-						
+
 						<div class="scifi-toast-icon">
 							<svg v-if="toast.tone === 'success'" viewBox="0 0 16 16" width="16" height="16">
-								<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M3 8l3.5 3.5L13 5"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 							<svg v-else-if="toast.tone === 'error'" viewBox="0 0 16 16" width="16" height="16">
-								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
+								<path
+									d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z"
+									fill="currentColor"
+								/>
 							</svg>
 							<svg v-else-if="toast.tone === 'warn'" viewBox="0 0 16 16" width="16" height="16">
-								<path d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z" fill="currentColor"/>
+								<path
+									d="M8 2L2 14h12L8 2zm0 3l4.5 8h-9L8 5zm-0.5 3v3h1V8h-1zm0 4v1h1v-1h-1z"
+									fill="currentColor"
+								/>
 							</svg>
 							<svg v-else viewBox="0 0 16 16" width="16" height="16">
-								<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
-								<path d="M8 5v4M8 11v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+								<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<path
+									d="M8 5v4M8 11v1"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</div>
-						
+
 						<div class="scifi-toast-content">
 							<div class="scifi-toast-message">{{ toast.message }}</div>
 							<div v-if="toast.actions && toast.actions.length > 0" class="scifi-toast-actions">
@@ -49,20 +70,36 @@
 								</button>
 							</div>
 						</div>
-						
-						<button v-if="!toast.persistent || toast.showClose" class="scifi-toast-close" @click="removeToast(toast.id)" aria-label="Close">
+
+						<button
+							v-if="!toast.persistent || toast.showClose"
+							class="scifi-toast-close"
+							@click="removeToast(toast.id)"
+							aria-label="Close"
+						>
 							<svg viewBox="0 0 16 16" width="12" height="12">
-								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+								<path
+									d="M4 4l8 8M12 4l-8 8"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</button>
-						
+
 						<div v-if="!toast.persistent" class="scifi-toast-progress">
-							<div class="scifi-toast-progress-fill" :style="{ animationDuration: `${toast.duration || 2600}ms`, animationPlayState: isHovering ? 'paused' : 'running' }"></div>
+							<div
+								class="scifi-toast-progress-fill"
+								:style="{
+									animationDuration: `${toast.duration || 2600}ms`,
+									animationPlayState: isHovering ? 'paused' : 'running'
+								}"
+							></div>
 						</div>
 					</div>
 				</TransitionGroup>
 			</div>
-			
+
 			<Transition name="scifi-modal">
 				<div v-if="activeModal" class="scifi-modal-mask" @click.self="handleModalCancel">
 					<div class="scifi-modal">
@@ -75,32 +112,75 @@
 						<div class="scifi-modal-glow"></div>
 						<div class="scifi-modal-scanline"></div>
 
-						<button v-if="activeModal.showClose !== false" class="scifi-modal-close" @click="handleModalCancel" aria-label="Close">
+						<button
+							v-if="activeModal.showClose !== false"
+							class="scifi-modal-close"
+							@click="handleModalCancel"
+							aria-label="Close"
+						>
 							<svg viewBox="0 0 16 16" width="14" height="14">
-								<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+								<path
+									d="M4 4l8 8M12 4l-8 8"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</button>
-						
-						<div class="scifi-modal-icon" :class="[`scifi-modal-icon--${activeModal.tone || 'info'}`]">
+
+						<div
+							class="scifi-modal-icon"
+							:class="[`scifi-modal-icon--${activeModal.tone || 'info'}`]"
+						>
 							<svg v-if="activeModal.tone === 'success'" viewBox="0 0 24 24" width="28" height="28">
-								<path d="M5 12l5 5L20 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M5 12l5 5L20 7"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
-							<svg v-else-if="activeModal.tone === 'error'" viewBox="0 0 24 24" width="28" height="28">
-								<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
-								<path d="M12 7v6M12 16v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+							<svg
+								v-else-if="activeModal.tone === 'error'"
+								viewBox="0 0 24 24"
+								width="28"
+								height="28"
+							>
+								<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" />
+								<path
+									d="M12 7v6M12 16v1"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
 							</svg>
-							<svg v-else-if="activeModal.tone === 'warn'" viewBox="0 0 24 24" width="28" height="28">
-								<path d="M12 3L2 21h20L12 3zm0 4l7 13H5l7-13zm-1 5v4h2v-4h-2zm0 6v1h2v-1h-2z" fill="currentColor"/>
+							<svg
+								v-else-if="activeModal.tone === 'warn'"
+								viewBox="0 0 24 24"
+								width="28"
+								height="28"
+							>
+								<path
+									d="M12 3L2 21h20L12 3zm0 4l7 13H5l7-13zm-1 5v4h2v-4h-2zm0 6v1h2v-1h-2z"
+									fill="currentColor"
+								/>
 							</svg>
 							<svg v-else viewBox="0 0 24 24" width="28" height="28">
-								<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
-								<path d="M12 8v5M12 16v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+								<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+								<path
+									d="M12 8v5M12 16v1"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</div>
-						
+
 						<h3 class="scifi-modal-title">{{ activeModal.title }}</h3>
 						<p v-if="activeModal.message" class="scifi-modal-message">{{ activeModal.message }}</p>
-						
+
 						<div class="scifi-modal-buttons">
 							<template v-if="activeModal.actions && activeModal.actions.length > 0">
 								<button
@@ -149,14 +229,17 @@ const {
 	handleAction: handleToastAction,
 	confirmModal,
 	cancelModal,
-	setToastHovering,
+	setToastHovering
 } = useGlobalFeedback()
 
 function onHover(hovering: boolean) {
 	setToastHovering(hovering)
 }
 
-function handleAction(toast: (typeof toasts.value)[number], action: { label: string; onClick?: () => void }) {
+function handleAction(
+	toast: (typeof toasts.value)[number],
+	action: { label: string; onClick?: () => void }
+) {
 	handleToastAction(toast.id, action)
 }
 
@@ -258,10 +341,30 @@ function getModalActionClass(action: ModalAction): string {
 	border-width: 0;
 	opacity: 0.8;
 }
-.scifi-toast-corner-tl { top: 3px; left: 3px; border-top-width: 1.5px; border-left-width: 1.5px; }
-.scifi-toast-corner-tr { top: 3px; right: 3px; border-top-width: 1.5px; border-right-width: 1.5px; }
-.scifi-toast-corner-bl { bottom: 3px; left: 3px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
-.scifi-toast-corner-br { bottom: 3px; right: 3px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.scifi-toast-corner-tl {
+	top: 3px;
+	left: 3px;
+	border-top-width: 1.5px;
+	border-left-width: 1.5px;
+}
+.scifi-toast-corner-tr {
+	top: 3px;
+	right: 3px;
+	border-top-width: 1.5px;
+	border-right-width: 1.5px;
+}
+.scifi-toast-corner-bl {
+	bottom: 3px;
+	left: 3px;
+	border-bottom-width: 1.5px;
+	border-left-width: 1.5px;
+}
+.scifi-toast-corner-br {
+	bottom: 3px;
+	right: 3px;
+	border-bottom-width: 1.5px;
+	border-right-width: 1.5px;
+}
 
 .scifi-toast-glow {
 	position: absolute;
@@ -364,14 +467,22 @@ function getModalActionClass(action: ModalAction): string {
 
 .scifi-toast-progress-fill {
 	height: 100%;
-	background: linear-gradient(90deg, var(--sc-accent), color-mix(in srgb, var(--sc-accent) 60%, white));
+	background: linear-gradient(
+		90deg,
+		var(--sc-accent),
+		color-mix(in srgb, var(--sc-accent) 60%, white)
+	);
 	animation: scifi-toast-progress linear forwards;
 	box-shadow: 0 0 6px var(--sc-accent-glow);
 }
 
 @keyframes scifi-toast-progress {
-	from { width: 100%; }
-	to { width: 0%; }
+	from {
+		width: 100%;
+	}
+	to {
+		width: 0%;
+	}
 }
 
 /* TOAST TRANSITIONS */
@@ -465,9 +576,21 @@ function getModalActionClass(action: ModalAction): string {
 	background: color-mix(in srgb, var(--sc-modal-fg) 10%, transparent);
 }
 
-.scifi-modal-icon--success { --sc-modal-accent: #2ec27e; --sc-modal-accent-glow: rgba(46, 194, 126, 0.3); --sc-modal-border: rgba(46, 194, 126, 0.35); }
-.scifi-modal-icon--error { --sc-modal-accent: #e05b5b; --sc-modal-accent-glow: rgba(224, 91, 91, 0.3); --sc-modal-border: rgba(224, 91, 91, 0.35); }
-.scifi-modal-icon--warn { --sc-modal-accent: #e5b567; --sc-modal-accent-glow: rgba(229, 181, 103, 0.3); --sc-modal-border: rgba(229, 181, 103, 0.35); }
+.scifi-modal-icon--success {
+	--sc-modal-accent: #2ec27e;
+	--sc-modal-accent-glow: rgba(46, 194, 126, 0.3);
+	--sc-modal-border: rgba(46, 194, 126, 0.35);
+}
+.scifi-modal-icon--error {
+	--sc-modal-accent: #e05b5b;
+	--sc-modal-accent-glow: rgba(224, 91, 91, 0.3);
+	--sc-modal-border: rgba(224, 91, 91, 0.35);
+}
+.scifi-modal-icon--warn {
+	--sc-modal-accent: #e5b567;
+	--sc-modal-accent-glow: rgba(229, 181, 103, 0.3);
+	--sc-modal-border: rgba(229, 181, 103, 0.35);
+}
 
 .scifi-modal-border {
 	position: absolute;
@@ -484,10 +607,30 @@ function getModalActionClass(action: ModalAction): string {
 	border-width: 0;
 	opacity: 0.9;
 }
-.scifi-modal-corner-tl { top: 5px; left: 5px; border-top-width: 2px; border-left-width: 2px; }
-.scifi-modal-corner-tr { top: 5px; right: 5px; border-top-width: 2px; border-right-width: 2px; }
-.scifi-modal-corner-bl { bottom: 5px; left: 5px; border-bottom-width: 2px; border-left-width: 2px; }
-.scifi-modal-corner-br { bottom: 5px; right: 5px; border-bottom-width: 2px; border-right-width: 2px; }
+.scifi-modal-corner-tl {
+	top: 5px;
+	left: 5px;
+	border-top-width: 2px;
+	border-left-width: 2px;
+}
+.scifi-modal-corner-tr {
+	top: 5px;
+	right: 5px;
+	border-top-width: 2px;
+	border-right-width: 2px;
+}
+.scifi-modal-corner-bl {
+	bottom: 5px;
+	left: 5px;
+	border-bottom-width: 2px;
+	border-left-width: 2px;
+}
+.scifi-modal-corner-br {
+	bottom: 5px;
+	right: 5px;
+	border-bottom-width: 2px;
+	border-right-width: 2px;
+}
 
 .scifi-modal-glow {
 	position: absolute;
@@ -587,9 +730,18 @@ function getModalActionClass(action: ModalAction): string {
 	border-color: color-mix(in srgb, var(--sc-modal-accent) 50%, transparent);
 }
 
-.scifi-modal-btn--success { --sc-modal-accent: #2ec27e; --sc-modal-accent-glow: rgba(46, 194, 126, 0.3); }
-.scifi-modal-btn--error { --sc-modal-accent: #e05b5b; --sc-modal-accent-glow: rgba(224, 91, 91, 0.3); }
-.scifi-modal-btn--warn { --sc-modal-accent: #e5b567; --sc-modal-accent-glow: rgba(229, 181, 103, 0.3); }
+.scifi-modal-btn--success {
+	--sc-modal-accent: #2ec27e;
+	--sc-modal-accent-glow: rgba(46, 194, 126, 0.3);
+}
+.scifi-modal-btn--error {
+	--sc-modal-accent: #e05b5b;
+	--sc-modal-accent-glow: rgba(224, 91, 91, 0.3);
+}
+.scifi-modal-btn--warn {
+	--sc-modal-accent: #e5b567;
+	--sc-modal-accent-glow: rgba(229, 181, 103, 0.3);
+}
 
 /* MODAL TRANSITIONS */
 .scifi-modal-enter-active {
@@ -599,12 +751,24 @@ function getModalActionClass(action: ModalAction): string {
 	animation: scifi-modal-out 160ms ease-in forwards;
 }
 @keyframes scifi-modal-in {
-	from { opacity: 0; transform: scale(0.92) translateY(10px); }
-	to { opacity: 1; transform: scale(1) translateY(0); }
+	from {
+		opacity: 0;
+		transform: scale(0.92) translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 @keyframes scifi-modal-out {
-	from { opacity: 1; transform: scale(1); }
-	to { opacity: 0; transform: scale(0.95); }
+	from {
+		opacity: 1;
+		transform: scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: scale(0.95);
+	}
 }
 
 /* LIGHT THEME */

@@ -5,7 +5,7 @@
 			`tcard--${size}`,
 			{ 'tcard--selected': selected },
 			{ 'tcard--uploading': uploading },
-			{ 'tcard--downloading': downloading },
+			{ 'tcard--downloading': downloading }
 		]"
 		@click="$emit('select', template)"
 	>
@@ -14,9 +14,34 @@
 				<img v-if="coverUrl" :src="coverUrl" class="tcard-cover-img" alt="" @error="onCoverError" />
 				<div v-else class="tcard-cover-placeholder">
 					<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
-						<rect x="10" y="8" width="28" height="32" rx="1" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.35" />
-						<path d="M10 28l8-8 10 10 10-10" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.35" stroke-linecap="round" />
-						<circle cx="19" cy="19" r="3.5" fill="none" stroke="currentColor" stroke-width="1.3" opacity="0.35" />
+						<rect
+							x="10"
+							y="8"
+							width="28"
+							height="32"
+							rx="1"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							opacity="0.35"
+						/>
+						<path
+							d="M10 28l8-8 10 10 10-10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							opacity="0.35"
+							stroke-linecap="round"
+						/>
+						<circle
+							cx="19"
+							cy="19"
+							r="3.5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							opacity="0.35"
+						/>
 					</svg>
 				</div>
 				<div v-if="coverLoading || uploading || downloading" class="tcard-cover-loading">
@@ -24,28 +49,61 @@
 				</div>
 			</div>
 
-			<span v-if="isSynced" class="tcard-badge tcard-badge--synced" :title="t('aiworkflow.templateCenter.syncedTooltip')">
+			<span
+				v-if="isSynced"
+				class="tcard-badge tcard-badge--synced"
+				:title="t('aiworkflow.templateCenter.syncedTooltip')"
+			>
 				<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
-					<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-					<path d="M10 2v3h-3M6 14v-3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.3"
+						stroke-linecap="round"
+					/>
+					<path
+						d="M10 2v3h-3M6 14v-3h3"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.3"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</span>
 
 			<span v-if="template.source === 'steam-user'" class="tcard-badge tcard-badge--cloud">
 				<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
-					<path d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z" fill="currentColor"/>
+					<path
+						d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z"
+						fill="currentColor"
+					/>
 				</svg>
 			</span>
 
 			<div class="tcard-cover-overlay">
-				<button class="tcard-action-btn tcard-action-btn--apply" type="button" @click.stop="$emit('apply', template)">
+				<button
+					class="tcard-action-btn tcard-action-btn--apply"
+					type="button"
+					@click.stop="$emit('apply', template)"
+				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
 						<path d="M4 3l9 5-9 5V3z" fill="currentColor" />
 					</svg>
 				</button>
-				<button class="tcard-action-btn tcard-action-btn--preview" type="button" @click.stop="$emit('preview', template)">
+				<button
+					class="tcard-action-btn tcard-action-btn--preview"
+					type="button"
+					@click.stop="$emit('preview', template)"
+				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-						<path d="M2 8s2.5-4.5 6-4.5S14 8 14 8s-2.5 4.5-6 4.5S2 8 2 8z" fill="none" stroke="currentColor" stroke-width="1.3" />
+						<path
+							d="M2 8s2.5-4.5 6-4.5S14 8 14 8s-2.5 4.5-6 4.5S2 8 2 8z"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+						/>
 						<circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3" />
 					</svg>
 				</button>
@@ -58,8 +116,21 @@
 					:title="t('aiworkflow.templateCenter.uploadToCloud')"
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-						<path d="M8 11V3M8 3l-3 3M8 3l3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-						<path d="M2 12v1h12v-1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+						<path
+							d="M8 11V3M8 3l-3 3M8 3l3 3"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M2 12v1h12v-1"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+						/>
 					</svg>
 				</button>
 				<button
@@ -68,11 +139,28 @@
 					type="button"
 					:disabled="downloading"
 					@click.stop="$emit('download', template)"
-					:title="template.source === 'steam-workshop' ? '保存到我的模板' : t('aiworkflow.templateCenter.downloadToLocal')"
+					:title="
+						template.source === 'steam-workshop'
+							? '保存到我的模板'
+							: t('aiworkflow.templateCenter.downloadToLocal')
+					"
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-						<path d="M8 5v8M8 13l-3-3M8 13l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-						<path d="M2 4V3h12v1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+						<path
+							d="M8 5v8M8 13l-3-3M8 13l3-3"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M2 4V3h12v1"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+						/>
 					</svg>
 				</button>
 				<button
@@ -82,7 +170,14 @@
 					@click.stop="$emit('delete', template)"
 				>
 					<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-						<path d="M3 4h10M6 4V3h4v1M5 4l.6 8h4.8L11 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+						<path
+							d="M3 4h10M6 4V3h4v1M5 4l.6 8h4.8L11 4"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 				</button>
 			</div>
@@ -94,31 +189,74 @@
 					<img v-if="coverUrl" :src="coverUrl" alt="" @error="onCoverError" />
 					<div v-else class="tcard-list-cover-placeholder">
 						<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
-							<rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.35" />
-							<path d="M2 11l4-4 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.35" stroke-linecap="round" />
+							<rect
+								x="2"
+								y="2"
+								width="12"
+								height="12"
+								rx="1"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								opacity="0.35"
+							/>
+							<path
+								d="M2 11l4-4 4 4 4-4"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.2"
+								opacity="0.35"
+								stroke-linecap="round"
+							/>
 						</svg>
 					</div>
 				</div>
 				<div class="tcard-list-info">
 					<div class="tcard-title-row">
 						<div class="tcard-title">{{ template.name }}</div>
-						<span v-if="isSynced" class="tcard-badge tcard-badge--synced tcard-badge--small" :title="t('aiworkflow.templateCenter.syncedTooltip')">
+						<span
+							v-if="isSynced"
+							class="tcard-badge tcard-badge--synced tcard-badge--small"
+							:title="t('aiworkflow.templateCenter.syncedTooltip')"
+						>
 							<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
-								<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+								<path
+									d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.3"
+									stroke-linecap="round"
+								/>
 							</svg>
 							{{ t('aiworkflow.templateCenter.syncedTag') }}
 						</span>
-						<span v-if="template.source === 'steam-user'" class="tcard-badge tcard-badge--cloud tcard-badge--small">
+						<span
+							v-if="template.source === 'steam-user'"
+							class="tcard-badge tcard-badge--cloud tcard-badge--small"
+						>
 							<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
-								<path d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z" fill="currentColor"/>
+								<path
+									d="M8 3a4 4 0 0 0-3.87 3H4a3 3 0 0 0 0 6h8a2.5 2.5 0 0 0 .5-4.95A4 4 0 0 0 8 3z"
+									fill="currentColor"
+								/>
 							</svg>
 						</span>
 					</div>
 					<div v-if="template.description" class="tcard-desc">{{ template.description }}</div>
 					<div v-if="template.source === 'steam-workshop'" class="tcard-meta">
 						<span class="tcard-meta-item tcard-meta-official">
-							<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="margin-right:3px;vertical-align:-2px">
-								<path d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z" fill="currentColor" opacity="0.9"/>
+							<svg
+								viewBox="0 0 16 16"
+								width="11"
+								height="11"
+								aria-hidden="true"
+								style="margin-right: 3px; vertical-align: -2px"
+							>
+								<path
+									d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z"
+									fill="currentColor"
+									opacity="0.9"
+								/>
 							</svg>
 							官方推荐蓝图模板
 						</span>
@@ -126,15 +264,23 @@
 					<div v-else class="tcard-meta">
 						<span class="tcard-meta-item">{{ getCategoryLabel(template.category) }}</span>
 						<span class="tcard-meta-dot"></span>
-						<span class="tcard-meta-item">{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}</span>
+						<span class="tcard-meta-item">
+							{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}
+						</span>
 						<span v-if="template.tags && template.tags.length > 0" class="tcard-meta-dot"></span>
 						<span v-if="template.tags && template.tags.length > 0" class="tcard-tags-inline">
-							<span v-for="tag in template.tags.slice(0, 3)" :key="tag" class="tcard-tag">{{ tag }}</span>
+							<span v-for="tag in template.tags.slice(0, 3)" :key="tag" class="tcard-tag">
+								{{ tag }}
+							</span>
 						</span>
 					</div>
 				</div>
 				<div class="tcard-list-actions">
-					<button class="tcard-list-btn tcard-list-btn--apply" type="button" @click.stop="$emit('apply', template)">
+					<button
+						class="tcard-list-btn tcard-list-btn--apply"
+						type="button"
+						@click.stop="$emit('apply', template)"
+					>
 						<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
 							<path d="M4 3l9 5-9 5V3z" fill="currentColor" />
 						</svg>
@@ -151,11 +297,28 @@
 						@click.stop="$emit('upload', template)"
 					>
 						<svg v-if="!uploading" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-							<path d="M8 11V3M8 3l-3 3M8 3l3 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M2 12v1h12v-1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+							<path
+								d="M8 11V3M8 3l-3 3M8 3l3 3"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.3"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+							<path
+								d="M2 12v1h12v-1"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.3"
+								stroke-linecap="round"
+							/>
 						</svg>
 						<span v-if="uploading" class="tcard-mini-spinner"></span>
-						{{ uploading ? t('aiworkflow.templateCenter.uploading') : t('aiworkflow.templateCenter.uploadToCloud') }}
+						{{
+							uploading
+								? t('aiworkflow.templateCenter.uploading')
+								: t('aiworkflow.templateCenter.uploadToCloud')
+						}}
 					</button>
 					<button
 						v-if="template.source === 'steam-user' || template.source === 'steam-workshop'"
@@ -165,11 +328,30 @@
 						@click.stop="$emit('download', template)"
 					>
 						<svg v-if="!downloading" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-							<path d="M8 5v8M8 13l-3-3M8 13l3-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M2 4V3h12v1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+							<path
+								d="M8 5v8M8 13l-3-3M8 13l3-3"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.3"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+							<path
+								d="M2 4V3h12v1"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.3"
+								stroke-linecap="round"
+							/>
 						</svg>
 						<span v-if="downloading" class="tcard-mini-spinner"></span>
-						{{ downloading ? t('aiworkflow.templateCenter.downloading') : (template.source === 'steam-workshop' ? '保存到我的模板' : t('aiworkflow.templateCenter.downloadToLocal')) }}
+						{{
+							downloading
+								? t('aiworkflow.templateCenter.downloading')
+								: template.source === 'steam-workshop'
+									? '保存到我的模板'
+									: t('aiworkflow.templateCenter.downloadToLocal')
+						}}
 					</button>
 					<button
 						v-if="template.source !== 'builtin' && template.source !== 'steam-workshop'"
@@ -191,8 +373,18 @@
 				</div>
 				<div v-if="template.source === 'steam-workshop'" class="tcard-meta">
 					<span class="tcard-meta-item tcard-meta-official">
-						<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" style="margin-right:3px;vertical-align:-2px">
-							<path d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z" fill="currentColor" opacity="0.9"/>
+						<svg
+							viewBox="0 0 16 16"
+							width="11"
+							height="11"
+							aria-hidden="true"
+							style="margin-right: 3px; vertical-align: -2px"
+						>
+							<path
+								d="M8 1l2 4.5L15 6l-3.5 3.5L12.5 15 8 12.5 3.5 15l1-5.5L1 6l5-.5L8 1z"
+								fill="currentColor"
+								opacity="0.9"
+							/>
 						</svg>
 						官方推荐蓝图模板
 					</span>
@@ -200,17 +392,27 @@
 				<div v-else class="tcard-meta">
 					<span class="tcard-meta-item">{{ getCategoryLabel(template.category) }}</span>
 					<span class="tcard-meta-dot"></span>
-					<span class="tcard-meta-item">{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}</span>
+					<span class="tcard-meta-item">
+						{{ t('aiworkflow.templateCenter.nodeCount', { count: template.nodeCount || 0 }) }}
+					</span>
 					<span v-if="isSynced" class="tcard-meta-dot"></span>
 					<span v-if="isSynced" class="tcard-meta-item tcard-meta-synced">
 						<svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
-							<path d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+							<path
+								d="M3 6.5a3.5 3.5 0 0 1 6.5-1.8l.8.4M13 9.5a3.5 3.5 0 0 1-6.5 1.8l-.8-.4"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.3"
+								stroke-linecap="round"
+							/>
 						</svg>
 						{{ t('aiworkflow.templateCenter.syncedTag') }}
 					</span>
 				</div>
 				<div v-if="template.tags && template.tags.length > 0" class="tcard-tags">
-					<span v-for="tag in template.tags.slice(0, 3)" :key="tag" class="tcard-tag">{{ tag }}</span>
+					<span v-for="tag in template.tags.slice(0, 3)" :key="tag" class="tcard-tag">
+						{{ tag }}
+					</span>
 				</div>
 			</template>
 		</div>
@@ -281,10 +483,13 @@ onMounted(() => {
 	void ensureCover()
 })
 
-watch(() => props.template.id, () => {
-	cleanup()
-	void ensureCover()
-})
+watch(
+	() => props.template.id,
+	() => {
+		cleanup()
+		void ensureCover()
+	}
+)
 
 onUnmounted(() => {
 	cleanup()
@@ -315,7 +520,7 @@ onUnmounted(() => {
 }
 
 .tcard::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -363,7 +568,8 @@ onUnmounted(() => {
 .tcard--selected {
 	border-color: color-mix(in srgb, var(--tcard-accent) 70%, transparent);
 	background: color-mix(in srgb, var(--tcard-accent) 6%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--tcard-accent) 25%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--tcard-accent) 25%, transparent),
 		0 0 24px color-mix(in srgb, var(--tcard-accent) 14%, transparent);
 }
 
@@ -411,8 +617,11 @@ onUnmounted(() => {
 	align-items: center;
 	justify-content: center;
 	color: var(--tcard-fg-soft);
-	background:
-		linear-gradient(135deg, color-mix(in srgb, var(--tcard-accent) 6%, transparent), color-mix(in srgb, var(--tcard-accent) 2%, transparent));
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--tcard-accent) 6%, transparent),
+		color-mix(in srgb, var(--tcard-accent) 2%, transparent)
+	);
 }
 
 .tcard-cover-loading {
@@ -434,7 +643,9 @@ onUnmounted(() => {
 }
 
 @keyframes tcard-spin-anim {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .tcard-mini-spinner {
@@ -703,7 +914,11 @@ onUnmounted(() => {
 	align-items: center;
 	justify-content: center;
 	color: var(--tcard-fg-soft);
-	background: linear-gradient(135deg, color-mix(in srgb, var(--tcard-accent) 6%, transparent), color-mix(in srgb, var(--tcard-accent) 2%, transparent));
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--tcard-accent) 6%, transparent),
+		color-mix(in srgb, var(--tcard-accent) 2%, transparent)
+	);
 }
 
 .tcard-list-info {
@@ -841,8 +1056,13 @@ onUnmounted(() => {
 	.tcard-list-btn {
 		transition: none !important;
 	}
-	.tcard-spinner, .tcard-mini-spinner { animation: none !important; }
-	.tcard:hover { transform: none; }
+	.tcard-spinner,
+	.tcard-mini-spinner {
+		animation: none !important;
+	}
+	.tcard:hover {
+		transform: none;
+	}
 }
 </style>
 
@@ -866,7 +1086,8 @@ onUnmounted(() => {
 [data-theme='light'] .tcard--selected {
 	border-color: rgba(31, 157, 132, 0.55) !important;
 	background: rgba(31, 157, 132, 0.06) !important;
-	box-shadow: 0 0 0 1px rgba(31, 157, 132, 0.2),
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.2),
 		0 0 18px rgba(31, 157, 132, 0.1) !important;
 }
 [data-theme='light'] .tcard-cover {
@@ -875,7 +1096,11 @@ onUnmounted(() => {
 [data-theme='light'] .tcard-cover-placeholder,
 [data-theme='light'] .tcard-list-cover-placeholder {
 	color: #8a9099 !important;
-	background: linear-gradient(135deg, rgba(31, 157, 132, 0.04), rgba(31, 157, 132, 0.01)) !important;
+	background: linear-gradient(
+		135deg,
+		rgba(31, 157, 132, 0.04),
+		rgba(31, 157, 132, 0.01)
+	) !important;
 }
 [data-theme='light'] .tcard-cover-placeholder svg,
 [data-theme='light'] .tcard-list-cover-placeholder svg {

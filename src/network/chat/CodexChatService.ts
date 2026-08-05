@@ -56,7 +56,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_start',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			input: raw.input || raw.arguments,
+			input: raw.input || raw.arguments
 		}
 	}
 	if (type === 'tool_call_end') {
@@ -65,7 +65,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
 			output: raw.output || raw.result,
-			images: Array.isArray(raw.images) ? raw.images : undefined,
+			images: Array.isArray(raw.images) ? raw.images : undefined
 		}
 	}
 	if (type === 'tool_call_error') {
@@ -73,13 +73,18 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_error',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			error: String(raw.error || raw.message || ''),
+			error: String(raw.error || raw.message || '')
 		}
 	}
 	if (type === 'error') {
 		return { type: 'error', message: String(raw.message || raw.error || 'Unknown error') }
 	}
-	if (type === 'done' || type === 'end' || type === 'turn.completed' || type === 'thread.completed') {
+	if (
+		type === 'done' ||
+		type === 'end' ||
+		type === 'turn.completed' ||
+		type === 'thread.completed'
+	) {
 		return { type: 'done' }
 	}
 	if (type === 'context_usage') {
@@ -88,7 +93,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			tokenCount: Number(raw.tokenCount || 0),
 			budget: Number(raw.budget || 0),
 			usage: Number(raw.usage || 0),
-			truncated: Boolean(raw.truncated),
+			truncated: Boolean(raw.truncated)
 		}
 	}
 	if (isString(raw)) {
@@ -186,7 +191,7 @@ export class CodexChatService implements IChatService {
 			executionHints: options.executionHints || [],
 			agentMode: options.agentMode,
 			permissionProfile: options.permissionProfile,
-			sessionId,
+			sessionId
 		})
 
 		const onAbort = () => {
@@ -222,9 +227,10 @@ export class CodexChatService implements IChatService {
 			if (signal?.aborted) {
 				yield { type: 'error', message: '请求已取消' }
 			} else {
-				const msg = err && typeof err === 'object' && 'message' in err
-					? String((err as { message: unknown }).message)
-					: String(err)
+				const msg =
+					err && typeof err === 'object' && 'message' in err
+						? String((err as { message: unknown }).message)
+						: String(err)
 				yield { type: 'error', message: `Codex 调用失败: ${msg}` }
 			}
 		} finally {
@@ -239,7 +245,11 @@ export class CodexChatService implements IChatService {
 		}
 		try {
 			const result = await ipcCall(
-				() => bridge.dweb!.cli!.listModels!({ adapter: ADAPTER_NAME, forceRefresh: !!forceRefresh }) as Promise<IpcResult>
+				() =>
+					bridge.dweb!.cli!.listModels!({
+						adapter: ADAPTER_NAME,
+						forceRefresh: !!forceRefresh
+					}) as Promise<IpcResult>
 			)
 			const models = isRecord(result) ? (result as Record<string, unknown>).models : null
 			if (Array.isArray(models) && models.length > 0) {
@@ -248,18 +258,21 @@ export class CodexChatService implements IChatService {
 						if (!isRecord(m)) return { id: DEFAULT_MODEL, name: 'Codex Mini' }
 						return {
 							id: String((m as Record<string, unknown>).id || DEFAULT_MODEL),
-							name: String((m as Record<string, unknown>).label || (m as Record<string, unknown>).id || 'Codex Mini'),
+							name: String(
+								(m as Record<string, unknown>).label ||
+									(m as Record<string, unknown>).id ||
+									'Codex Mini'
+							),
 							vendor: String((m as Record<string, unknown>).vendor || 'OpenAI Codex'),
 							capabilities: Array.isArray((m as Record<string, unknown>).capabilities)
-								? (m as Record<string, unknown>).capabilities as string[]
+								? ((m as Record<string, unknown>).capabilities as string[])
 								: undefined,
 							recommended: Boolean((m as Record<string, unknown>).recommended)
 						}
 					})
 				}
 			}
-		} catch {
-		}
+		} catch {}
 		return { models: this.getFallbackModels() }
 	}
 
@@ -269,20 +282,24 @@ export class CodexChatService implements IChatService {
 		if (hasIpcApi() && bridge.dweb?.agent?.abort) {
 			try {
 				await bridge.dweb.agent.abort({ sessionId })
-			} catch {
-			}
+			} catch {}
 		}
 		if (hasIpcApi() && bridge.dweb?.cli?.cancel) {
 			try {
 				await bridge.dweb.cli.cancel({ sessionId })
-			} catch {
-			}
+			} catch {}
 		}
 	}
 
 	private getFallbackModels(): ChatModelInfo[] {
 		return [
-			{ id: 'codex-mini', name: 'Codex Mini', vendor: 'OpenAI Codex', recommended: true, capabilities: ['chat', 'code'] },
+			{
+				id: 'codex-mini',
+				name: 'Codex Mini',
+				vendor: 'OpenAI Codex',
+				recommended: true,
+				capabilities: ['chat', 'code']
+			}
 		]
 	}
 }

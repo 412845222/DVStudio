@@ -50,7 +50,11 @@
 						:title="svcStartTitle"
 						@click.stop="onServiceStart"
 					>
-						{{ svcPendingOp === 'starting' ? t('nodes.comfyui.serviceStarting') : t('nodes.comfyui.serviceStart') }}
+						{{
+							svcPendingOp === 'starting'
+								? t('nodes.comfyui.serviceStarting')
+								: t('nodes.comfyui.serviceStart')
+						}}
 					</button>
 					<button
 						class="wf-comfy-btn wf-comfy-btn-sm"
@@ -58,7 +62,11 @@
 						:disabled="svcStopDisabled"
 						@click.stop="onServiceStop"
 					>
-						{{ svcPendingOp === 'stopping' ? t('nodes.comfyui.serviceStopping') : t('nodes.comfyui.serviceStop') }}
+						{{
+							svcPendingOp === 'stopping'
+								? t('nodes.comfyui.serviceStopping')
+								: t('nodes.comfyui.serviceStop')
+						}}
 					</button>
 					<button
 						class="wf-comfy-btn wf-comfy-btn-sm wf-comfy-btn-ghost"
@@ -107,7 +115,9 @@
 						:disabled="!baseUrlTrimmed || status === 'connecting'"
 						@click.stop="onConnect"
 					>
-						{{ status === 'connecting' ? t('nodes.comfyui.connecting') : t('nodes.comfyui.connect') }}
+						{{
+							status === 'connecting' ? t('nodes.comfyui.connecting') : t('nodes.comfyui.connect')
+						}}
 					</button>
 					<div class="wf-comfy-status" :class="statusClass">
 						{{ connectedStatusText }}
@@ -120,10 +130,14 @@
 						<span class="wf-comfy-info-value">{{ comfyUIVersion }}</span>
 					</div>
 					<div v-if="nodeCount > 0" class="wf-comfy-info-item">
-						<span class="wf-comfy-info-label">{{ t('nodes.comfyui.nodeCount', { count: nodeCount }) }}</span>
+						<span class="wf-comfy-info-label">
+							{{ t('nodes.comfyui.nodeCount', { count: nodeCount }) }}
+						</span>
 					</div>
 					<div v-if="checkpoints.length > 0" class="wf-comfy-info-item">
-						<span class="wf-comfy-info-label">{{ t('nodes.comfyui.availableCheckpoints', { count: checkpoints.length }) }}</span>
+						<span class="wf-comfy-info-label">
+							{{ t('nodes.comfyui.availableCheckpoints', { count: checkpoints.length }) }}
+						</span>
 					</div>
 				</div>
 
@@ -136,7 +150,11 @@
 						@change="onWorkflowChange"
 					>
 						<option value="" disabled>
-							{{ workflows.length ? t('nodes.comfyui.selectWorkflow') : t('nodes.comfyui.noWorkflowsFound') }}
+							{{
+								workflows.length
+									? t('nodes.comfyui.selectWorkflow')
+									: t('nodes.comfyui.noWorkflowsFound')
+							}}
 						</option>
 						<option v-for="wf in workflows" :key="wf.path" :value="wf.path">
 							{{ wf.name || wf.path }}
@@ -162,13 +180,23 @@
 						</button>
 					</div>
 					<div v-else class="wf-comfy-history-guide">
-						<div class="wf-comfy-history-guide-title">⚠️ {{ t('nodes.comfyui.noHistoryTitle') }}</div>
+						<div class="wf-comfy-history-guide-title">
+							⚠️ {{ t('nodes.comfyui.noHistoryTitle') }}
+						</div>
 						<div class="wf-comfy-history-guide-desc">{{ historyStatusText }}</div>
 						<div class="wf-comfy-history-guide-actions">
-							<button class="wf-comfy-btn wf-comfy-btn-sm" type="button" @click.stop="onOpenComfyUI">
+							<button
+								class="wf-comfy-btn wf-comfy-btn-sm"
+								type="button"
+								@click.stop="onOpenComfyUI"
+							>
 								{{ t('nodes.comfyui.openComfyUI') }}
 							</button>
-							<button class="wf-comfy-btn wf-comfy-btn-sm wf-comfy-btn-ghost" type="button" @click.stop="onRefreshHistory">
+							<button
+								class="wf-comfy-btn wf-comfy-btn-sm wf-comfy-btn-ghost"
+								type="button"
+								@click.stop="onRefreshHistory"
+							>
 								{{ t('nodes.comfyui.refreshHistoryCheck') }}
 							</button>
 						</div>
@@ -252,7 +280,9 @@
 
 				<div v-if="showLogs" class="wf-comfy-logs-section">
 					<div class="wf-comfy-logs-header">
-						<span class="wf-comfy-logs-title">{{ t('nodes.comfyui.serviceLogsHeader', { count: svcLogs.length }) }}</span>
+						<span class="wf-comfy-logs-title">
+							{{ t('nodes.comfyui.serviceLogsHeader', { count: svcLogs.length }) }}
+						</span>
 						<button
 							class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost"
 							type="button"
@@ -287,7 +317,14 @@
 						rel="noreferrer"
 						@click.stop
 					>
-						{{ m.kind === 'video' ? t('common.video') : m.kind === 'model3d' ? t('common.model3d') : t('common.image') }} · {{ m.filename || `#${idx + 1}` }}
+						{{
+							m.kind === 'video'
+								? t('common.video')
+								: m.kind === 'model3d'
+									? t('common.model3d')
+									: t('common.image')
+						}}
+						· {{ m.filename || `#${idx + 1}` }}
 					</a>
 				</div>
 			</div>
@@ -339,7 +376,12 @@ const svcRuntime = ref<ServiceRuntimeStatus | null>(null)
 const svcPendingOp = ref<'starting' | 'stopping' | null>(null)
 const svcLastError = ref('')
 const svcLogs = ref<ServiceLogEntry[]>([])
-const svcConfig = ref<{ installPath?: string; pythonPath?: string; port?: number; extraArgs?: string[] } | null>(null)
+const svcConfig = ref<{
+	installPath?: string
+	pythonPath?: string
+	port?: number
+	extraArgs?: string[]
+} | null>(null)
 const svcConfigured = ref(false)
 const logContainerRef = ref<HTMLElement | null>(null)
 const baseRef = ref<InstanceType<typeof WorkflowNodeBase> | null>(null)
@@ -401,7 +443,7 @@ async function refreshServiceStatus() {
 				pid: typeof r.pid === 'number' ? r.pid : null,
 				port: typeof r.port === 'number' ? r.port : 8188,
 				startTime: typeof r.startTime === 'number' ? r.startTime : null,
-				exitCode: typeof r.exitCode === 'number' ? r.exitCode : null,
+				exitCode: typeof r.exitCode === 'number' ? r.exitCode : null
 			}
 			if (r.running) {
 				svcPendingOp.value = null
@@ -509,7 +551,7 @@ async function onServiceStart() {
 		const r = await setup.startService({
 			installPath: cfg.installPath || '',
 			port,
-			extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
+			extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : []
 		})
 		if (r?.ok) {
 			scheduleAutoConnect(port)
@@ -555,7 +597,7 @@ async function onServiceRestart() {
 		const r = await setup.restartService({
 			installPath: cfg.installPath || '',
 			port,
-			extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
+			extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : []
 		})
 		if (r?.ok) {
 			scheduleAutoConnect(port)
@@ -597,9 +639,8 @@ async function waitForServiceReady(port: number, timeoutMs = 30000): Promise<boo
 		try {
 			const r = ping ? await ping({ baseUrl }) : null
 			if (r?.ok) return true
-		} catch {
-		}
-		await new Promise(r => setTimeout(r, 1500))
+		} catch {}
+		await new Promise((r) => setTimeout(r, 1500))
 	}
 	return false
 }
@@ -612,7 +653,7 @@ function scheduleAutoConnect(port?: number) {
 		emit('update-comfyui-settings', { baseUrl: expectedUrl })
 	}
 	appendServiceSystemLog(`[连接] 等待ComfyUI服务就绪 (端口 ${runningPort})...`)
-	waitForServiceReady(runningPort).then(ready => {
+	waitForServiceReady(runningPort).then((ready) => {
 		if (ready) {
 			appendServiceSystemLog(`[连接] ComfyUI服务已就绪，正在连接...`)
 			if (status.value !== 'connected' && status.value !== 'connecting') {
@@ -720,10 +761,40 @@ const props = defineProps<{
 	hoverOutputAnchorId?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 let resizeRafId: number | null = null
 function requestResize() {
@@ -774,7 +845,12 @@ const emit = defineEmits<{
 	(e: 'resize', payload: { width: number; height: number; worldX: number; worldY: number }): void
 	(
 		e: 'update-comfyui-settings',
-		payload: { baseUrl?: string; positivePrompt?: string; negativePrompt?: string; autoWireEnabled?: boolean }
+		payload: {
+			baseUrl?: string
+			positivePrompt?: string
+			negativePrompt?: string
+			autoWireEnabled?: boolean
+		}
 	): void
 	(e: 'connect-comfyui', payload: { baseUrl: string }): void
 	(e: 'select-workflow', payload: { workflowPath: string }): void
@@ -801,9 +877,7 @@ const allInputs = computed(() => (Array.isArray(props.inputs) ? props.inputs : [
 const renderInputs = computed(() => allInputs.value)
 const displayInputs = computed(() => renderInputs.value)
 
-const inputAnchorIndex = computed(() =>
-	allInputs.value.findIndex((a) => a.id === 'in')
-)
+const inputAnchorIndex = computed(() => allInputs.value.findIndex((a) => a.id === 'in'))
 
 type ComfyUiOutput = {
 	kind: 'image' | 'video' | 'model3d'
@@ -878,7 +952,7 @@ const imageInputCount = computed(() => {
 })
 const videoInputCount = computed(() => {
 	const n = Number(props.comfyuiSettings?.videoInputCount)
-return Number.isFinite(n) ? n : 0
+	return Number.isFinite(n) ? n : 0
 })
 const hasTextPromptInput = computed(() => props.comfyuiSettings?.hasTextPromptInput === true)
 
@@ -887,7 +961,7 @@ const historyStatusText = computed(() => {
 	if (hasHistory.value) {
 		if (historyTimestamp.value) {
 			const d = new Date(historyTimestamp.value)
-			const pad = (n: number) => n < 10 ? '0' + n : String(n)
+			const pad = (n: number) => (n < 10 ? '0' + n : String(n))
 			const timeStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 			return t('nodes.comfyui.historyReady', { time: timeStr })
 		}
@@ -898,8 +972,10 @@ const historyStatusText = computed(() => {
 
 const historyInputSummary = computed(() => {
 	const parts: string[] = []
-	if (imageInputCount.value > 0) parts.push(t('nodes.comfyui.imageInputCount', { count: imageInputCount.value }))
-	if (videoInputCount.value > 0) parts.push(t('nodes.comfyui.videoInputCount', { count: videoInputCount.value }))
+	if (imageInputCount.value > 0)
+		parts.push(t('nodes.comfyui.imageInputCount', { count: imageInputCount.value }))
+	if (videoInputCount.value > 0)
+		parts.push(t('nodes.comfyui.videoInputCount', { count: videoInputCount.value }))
 	if (hasTextPromptInput.value) parts.push(t('nodes.comfyui.promptInputRequired'))
 	return parts.join(' · ')
 })
@@ -907,7 +983,7 @@ const historyInputSummary = computed(() => {
 function formatHistoryTime(ts: number | null) {
 	if (!ts) return ''
 	const d = new Date(ts)
-	const pad = (n: number) => n < 10 ? '0' + n : String(n)
+	const pad = (n: number) => (n < 10 ? '0' + n : String(n))
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
@@ -964,7 +1040,10 @@ const connectedStatusText = computed(() => {
 			? t('nodes.comfyui.connectedInfo', { version: comfyUIVersion.value })
 			: t('nodes.comfyui.connConnected')
 	}
-	if (status.value === 'error') return message.value ? t('nodes.comfyui.connFailed', { message: message.value }) : t('nodes.comfyui.connFailed', { message: '' })
+	if (status.value === 'error')
+		return message.value
+			? t('nodes.comfyui.connFailed', { message: message.value })
+			: t('nodes.comfyui.connFailed', { message: '' })
 	return t('nodes.comfyui.connNotConnected')
 })
 
@@ -1242,14 +1321,28 @@ onBeforeUnmount(() => {
 	flex-shrink: 0;
 }
 
-.wf-comfy-svc-status.ok .wf-comfy-svc-dot { background: #4caf50; }
-.wf-comfy-svc-status.pending .wf-comfy-svc-dot { background: #ffc107; animation: wf-comfy-pulse 1s infinite; }
-.wf-comfy-svc-status.err .wf-comfy-svc-dot { background: #f44336; }
-.wf-comfy-svc-status.idle .wf-comfy-svc-dot { background: #888; }
+.wf-comfy-svc-status.ok .wf-comfy-svc-dot {
+	background: #4caf50;
+}
+.wf-comfy-svc-status.pending .wf-comfy-svc-dot {
+	background: #ffc107;
+	animation: wf-comfy-pulse 1s infinite;
+}
+.wf-comfy-svc-status.err .wf-comfy-svc-dot {
+	background: #f44336;
+}
+.wf-comfy-svc-status.idle .wf-comfy-svc-dot {
+	background: #888;
+}
 
 @keyframes wf-comfy-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
 }
 
 .wf-comfy-svc-text {
@@ -1257,9 +1350,15 @@ onBeforeUnmount(() => {
 	opacity: 0.9;
 }
 
-.wf-comfy-svc-status.ok .wf-comfy-svc-text { color: #4caf50; }
-.wf-comfy-svc-status.pending .wf-comfy-svc-text { color: #ffc107; }
-.wf-comfy-svc-status.err .wf-comfy-svc-text { color: #f44336; }
+.wf-comfy-svc-status.ok .wf-comfy-svc-text {
+	color: #4caf50;
+}
+.wf-comfy-svc-status.pending .wf-comfy-svc-text {
+	color: #ffc107;
+}
+.wf-comfy-svc-status.err .wf-comfy-svc-text {
+	color: #f44336;
+}
 
 .wf-comfy-svc-meta {
 	color: var(--vscode-fg-muted);
@@ -1403,12 +1502,24 @@ onBeforeUnmount(() => {
 	user-select: none;
 }
 
-.wf-comfy-log-stdout .wf-comfy-log-msg { color: #d4d4d4; }
-.wf-comfy-log-stdout .wf-comfy-log-src { color: #9cdcfe; }
-.wf-comfy-log-stderr .wf-comfy-log-msg { color: #f48771; }
-.wf-comfy-log-stderr .wf-comfy-log-src { color: #f48771; }
-.wf-comfy-log-system .wf-comfy-log-msg { color: #6a9955; }
-.wf-comfy-log-system .wf-comfy-log-src { color: #6a9955; }
+.wf-comfy-log-stdout .wf-comfy-log-msg {
+	color: #d4d4d4;
+}
+.wf-comfy-log-stdout .wf-comfy-log-src {
+	color: #9cdcfe;
+}
+.wf-comfy-log-stderr .wf-comfy-log-msg {
+	color: #f48771;
+}
+.wf-comfy-log-stderr .wf-comfy-log-src {
+	color: #f48771;
+}
+.wf-comfy-log-system .wf-comfy-log-msg {
+	color: #6a9955;
+}
+.wf-comfy-log-system .wf-comfy-log-src {
+	color: #6a9955;
+}
 
 .wf-comfy-outputs {
 	display: flex;
@@ -1613,7 +1724,10 @@ onBeforeUnmount(() => {
 	line-height: 1;
 	padding: 0;
 	opacity: 0.6;
-	transition: opacity 0.15s, background 0.15s, color 0.15s;
+	transition:
+		opacity 0.15s,
+		background 0.15s,
+		color 0.15s;
 }
 
 .wf-comfy-clear-history-btn:hover {
@@ -1644,8 +1758,13 @@ onBeforeUnmount(() => {
 }
 
 @keyframes wf-comfy-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
 }
 
 .wf-comfy-history-guide {

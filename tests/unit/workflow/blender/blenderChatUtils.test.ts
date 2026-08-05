@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-function scaleImageDimensions(width: number, height: number, maxDim: number): { width: number; height: number } {
+function scaleImageDimensions(
+	width: number,
+	height: number,
+	maxDim: number
+): { width: number; height: number } {
 	let w = width
 	let h = height
 	if (w > maxDim || h > maxDim) {
@@ -81,7 +85,7 @@ describe('ChatAttachment type usage', () => {
 			type: 'image_url',
 			name: 'screenshot.png',
 			data: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
-			url: 'dweb://resource/screenshot.png',
+			url: 'dweb://resource/screenshot.png'
 		}
 		expect(attachment.type).toBe('image_url')
 		expect(attachment.data).toMatch(/^data:image\/jpeg;base64,/)
@@ -91,7 +95,7 @@ describe('ChatAttachment type usage', () => {
 		const attachment = {
 			type: 'image_url',
 			name: 'reference.jpg',
-			url: 'https://example.com/image.jpg',
+			url: 'https://example.com/image.jpg'
 		}
 		expect(attachment.data).toBeUndefined()
 		expect(attachment.url).toBe('https://example.com/image.jpg')
@@ -100,22 +104,22 @@ describe('ChatAttachment type usage', () => {
 
 describe('Blender tool display names', () => {
 	const TOOL_DISPLAY_NAMES: Record<string, string> = {
-		'blender_execute_blender_code': '执行Blender代码',
-		'blender_get_objects_summary': '获取场景对象概览',
-		'blender_get_object_detail_summary': '获取对象详情',
-		'blender_get_blendfile_summary_datablocks': '数据块统计',
-		'blender_get_blendfile_summary_missing_files': '检查缺失文件',
-		'blender_get_blendfile_summary_of_linked_libraries': '链接库信息',
-		'blender_get_blendfile_summary_path_info': '文件路径信息',
-		'blender_get_blendfile_summary_usage_guess': '用途猜测',
-		'blender_get_screenshot_of_area_as_image': '区域截图',
-		'blender_get_screenshot_of_window_as_image': '窗口截图',
-		'blender_get_screenshot_of_window_as_json': '窗口布局JSON',
-		'blender_jump_to_tab_by_name': '切换工作区',
-		'blender_jump_to_tab_by_space_type': '按类型切换工作区',
-		'blender_jump_to_view3d_object_by_name': '聚焦对象',
-		'blender_jump_to_view3d_object_data_by_name': '按数据名聚焦对象',
-		'blender_import_model': '导入模型',
+		blender_execute_blender_code: '执行Blender代码',
+		blender_get_objects_summary: '获取场景对象概览',
+		blender_get_object_detail_summary: '获取对象详情',
+		blender_get_blendfile_summary_datablocks: '数据块统计',
+		blender_get_blendfile_summary_missing_files: '检查缺失文件',
+		blender_get_blendfile_summary_of_linked_libraries: '链接库信息',
+		blender_get_blendfile_summary_path_info: '文件路径信息',
+		blender_get_blendfile_summary_usage_guess: '用途猜测',
+		blender_get_screenshot_of_area_as_image: '区域截图',
+		blender_get_screenshot_of_window_as_image: '窗口截图',
+		blender_get_screenshot_of_window_as_json: '窗口布局JSON',
+		blender_jump_to_tab_by_name: '切换工作区',
+		blender_jump_to_tab_by_space_type: '按类型切换工作区',
+		blender_jump_to_view3d_object_by_name: '聚焦对象',
+		blender_jump_to_view3d_object_data_by_name: '按数据名聚焦对象',
+		blender_import_model: '导入模型'
 	}
 
 	function getToolDisplayName(toolName: string): string {
@@ -171,7 +175,7 @@ describe('BLENDER MODE provider selection', () => {
 		const selectedProviders: Record<string, string> = {}
 
 		for (const backend of backends) {
-			const providerId = (backend === 'dvsagent' || useCustomSystemPromptOnly) ? 'dvsagent' : backend
+			const providerId = backend === 'dvsagent' || useCustomSystemPromptOnly ? 'dvsagent' : backend
 			selectedProviders[backend] = providerId
 		}
 
@@ -186,7 +190,7 @@ describe('BLENDER MODE provider selection', () => {
 		const selectedProviders: Record<string, string> = {}
 
 		for (const backend of backends) {
-			const providerId = (backend === 'dvsagent' || useCustomSystemPromptOnly) ? 'dvsagent' : backend
+			const providerId = backend === 'dvsagent' || useCustomSystemPromptOnly ? 'dvsagent' : backend
 			selectedProviders[backend] = providerId
 		}
 

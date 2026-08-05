@@ -1,11 +1,7 @@
 import type { WorkflowAnchorSpec } from '../../types'
 import { isString, isNumber, isRecord, isArray, hasKey } from '../../../types/utils'
 import type { ComfyObjectInfo } from './objectInfoTypes'
-import {
-	detectMediaTypeFromObjectInfo,
-	extractInputDefs,
-	isWidgetDef
-} from './objectInfoTypes'
+import { detectMediaTypeFromObjectInfo, extractInputDefs, isWidgetDef } from './objectInfoTypes'
 
 export type ComfyInputRequirement = {
 	min: number
@@ -70,7 +66,11 @@ const detectComfyNodeMediaType = (node: unknown): WorkflowAnchorSpec['mediaType'
 	if (/save\s*video|load\s*video|savevideo|loadvideo/.test(text)) return 'video'
 	if (/save\s*image|load\s*image|preview\s*image|saveimage|loadimage|previewimage/.test(text))
 		return 'image'
-	if (/save\s*3d|load\s*3d|save.*glb|load.*glb|save.*fbx|load.*fbx|save.*gltf|load.*gltf|save.*obj|load.*obj/.test(text))
+	if (
+		/save\s*3d|load\s*3d|save.*glb|load.*glb|save.*fbx|load.*fbx|save.*gltf|load.*gltf|save.*obj|load.*obj/.test(
+			text
+		)
+	)
 		return 'model3d'
 	return 'generic'
 }
@@ -139,7 +139,10 @@ const getIncomingOutgoingCount = (workflow: unknown) => {
 	return { incoming, outgoing }
 }
 
-const isFileInputNode = (nodeType: string, objectInfo: ComfyObjectInfo | null): 'image' | 'video' | 'model3d' | null => {
+const isFileInputNode = (
+	nodeType: string,
+	objectInfo: ComfyObjectInfo | null
+): 'image' | 'video' | 'model3d' | null => {
 	if (!objectInfo) return null
 	const entry = objectInfo[nodeType]
 	if (!entry) return null
@@ -170,7 +173,10 @@ const isFileInputNode = (nodeType: string, objectInfo: ComfyObjectInfo | null): 
 	return detected
 }
 
-const isOutputNodeByObjectInfo = (nodeType: string, objectInfo: ComfyObjectInfo | null): boolean => {
+const isOutputNodeByObjectInfo = (
+	nodeType: string,
+	objectInfo: ComfyObjectInfo | null
+): boolean => {
 	if (!objectInfo) return false
 	const entry = objectInfo[nodeType]
 	return entry?.output_node === true
@@ -193,12 +199,28 @@ export const parseComfyWorkflowIO = (
 	const warnings: string[] = []
 
 	const FRONTEND_ONLY = new Set([
-		'MarkdownNote', 'Note', 'Reroute', 'PrimitiveNode',
-		'GroupNode', 'SubgraphNode', 'ComfyNote', 'NoteNode',
-		'NodeNote', 'Comment', 'Annotation', 'Label',
-		'WidgetNode', 'Converter', 'RelayNode', 'RerouteNode',
-		'FrontendNode', 'VirtualNode', 'PlaceholderNode',
-		'QuickNodes', 'TextNote', 'StickyNote'
+		'MarkdownNote',
+		'Note',
+		'Reroute',
+		'PrimitiveNode',
+		'GroupNode',
+		'SubgraphNode',
+		'ComfyNote',
+		'NoteNode',
+		'NodeNote',
+		'Comment',
+		'Annotation',
+		'Label',
+		'WidgetNode',
+		'Converter',
+		'RelayNode',
+		'RerouteNode',
+		'FrontendNode',
+		'VirtualNode',
+		'PlaceholderNode',
+		'QuickNodes',
+		'TextNote',
+		'StickyNote'
 	])
 
 	const isImageInputType = (nodeType: string): boolean => {
@@ -213,7 +235,9 @@ export const parseComfyWorkflowIO = (
 
 	const isModelInputType = (nodeType: string): boolean => {
 		const t = nodeType.toLowerCase()
-		return /loadglb|load_gltf|load3d|load_3d|loadmodel|load_model|trellisload|loadmesh|load_mesh|loadfbx|loadobj/.test(t)
+		return /loadglb|load_gltf|load3d|load_3d|loadmodel|load_model|trellisload|loadmesh|load_mesh|loadfbx|loadobj/.test(
+			t
+		)
 	}
 
 	const isPositiveTextNode = (title: string): boolean => {
@@ -221,9 +245,27 @@ export const parseComfyWorkflowIO = (
 		return !tl.includes('negative') && !tl.includes('负')
 	}
 
-	const imageNodes: Array<{ nodeId: string; classType: string; title: string; inputKey: string; pos: [number, number] }> = []
-	const videoNodes: Array<{ nodeId: string; classType: string; title: string; inputKey: string; pos: [number, number] }> = []
-	const modelNodes: Array<{ nodeId: string; classType: string; title: string; inputKey: string; pos: [number, number] }> = []
+	const imageNodes: Array<{
+		nodeId: string
+		classType: string
+		title: string
+		inputKey: string
+		pos: [number, number]
+	}> = []
+	const videoNodes: Array<{
+		nodeId: string
+		classType: string
+		title: string
+		inputKey: string
+		pos: [number, number]
+	}> = []
+	const modelNodes: Array<{
+		nodeId: string
+		classType: string
+		title: string
+		inputKey: string
+		pos: [number, number]
+	}> = []
 	const positiveTextNodes: Array<{ nodeId: string; title: string; pos: [number, number] }> = []
 	const negativeTextNodes: Array<{ nodeId: string; title: string; pos: [number, number] }> = []
 
@@ -235,7 +277,7 @@ export const parseComfyWorkflowIO = (
 		if (!idStr) continue
 		const pos = getNodePos(node)
 		const titleVal = node.title
-		const title = isString(titleVal) ? titleVal : (nodeType || '')
+		const title = isString(titleVal) ? titleVal : nodeType || ''
 		const text = getNodeText(node)
 		const inCount = incoming.get(idStr) ?? 0
 
@@ -269,9 +311,10 @@ export const parseComfyWorkflowIO = (
 		}
 
 		if (!detectedKind && inCount === 0) {
-			const mediaType = objectInfo && nodeType
-				? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
-				: detectMediaTypeFromPorts(node)
+			const mediaType =
+				objectInfo && nodeType
+					? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
+					: detectMediaTypeFromPorts(node)
 			const inputsArr = isArray(node.inputs) ? node.inputs : []
 			const hasPathLikeWidget = inputsArr.some((i: unknown) => {
 				if (!isRecord(i)) return false
@@ -315,7 +358,10 @@ export const parseComfyWorkflowIO = (
 		const text = getNodeText(node)
 		if (/save\s*image|saveimage|preview\s*image/.test(text)) return true
 		if (/save\s*video|savevideo|video\s*combine|vhs/.test(text)) return true
-		if (/save\s*3d|export.*model|save.*glb|save.*fbx|preview.*3d|export.*glb|export.*fbx/.test(text)) return true
+		if (
+			/save\s*3d|export.*model|save.*glb|save.*fbx|preview.*3d|export.*glb|export.*fbx/.test(text)
+		)
+			return true
 
 		if (objectInfo && nodeType && isOutputNodeByObjectInfo(nodeType, objectInfo)) {
 			return true
@@ -324,9 +370,10 @@ export const parseComfyWorkflowIO = (
 		const idStr = getNodeIdStr(node)
 		const outCount = idStr ? (outgoing.get(idStr) ?? 0) : 0
 		if (outCount === 0) {
-			const mediaType = objectInfo && nodeType
-				? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
-				: detectMediaTypeFromPorts(node)
+			const mediaType =
+				objectInfo && nodeType
+					? detectMediaTypeFromObjectInfo(objectInfo[nodeType], nodeType)
+					: detectMediaTypeFromPorts(node)
 			if (mediaType === 'image' || mediaType === 'video' || mediaType === 'model3d') return true
 		}
 
@@ -335,39 +382,47 @@ export const parseComfyWorkflowIO = (
 
 	const outputNodes = nodes.filter((n: unknown) => isOutputNode(n))
 
-	const outputs = [{
-		id: 'out',
-		label: '输出',
-		mediaType: 'generic' as WorkflowAnchorSpec['mediaType']
-	}]
+	const outputs = [
+		{
+			id: 'out',
+			label: '输出',
+			mediaType: 'generic' as WorkflowAnchorSpec['mediaType']
+		}
+	]
 
 	let outputTypeSummary = 'generic'
 	const imageOutputCount = outputNodes.filter((n: unknown) => {
 		if (!isRecord(n)) return false
 		const t = getNodeType(n)
 		const text = getNodeText(n)
-		const mt = objectInfo && t
-			? detectMediaTypeFromObjectInfo(objectInfo[t], t)
-			: detectMediaTypeFromPorts(n)
+		const mt =
+			objectInfo && t
+				? detectMediaTypeFromObjectInfo(objectInfo[t], t)
+				: detectMediaTypeFromPorts(n)
 		return mt === 'image' || /save\s*image|saveimage|preview\s*image/.test(text)
 	}).length
 	const videoOutputCount = outputNodes.filter((n: unknown) => {
 		if (!isRecord(n)) return false
 		const t = getNodeType(n)
 		const text = getNodeText(n)
-		const mt = objectInfo && t
-			? detectMediaTypeFromObjectInfo(objectInfo[t], t)
-			: detectMediaTypeFromPorts(n)
+		const mt =
+			objectInfo && t
+				? detectMediaTypeFromObjectInfo(objectInfo[t], t)
+				: detectMediaTypeFromPorts(n)
 		return mt === 'video' || /save\s*video|savevideo|video\s*combine|vhs/.test(text)
 	}).length
 	const modelOutputCount = outputNodes.filter((n: unknown) => {
 		if (!isRecord(n)) return false
 		const t = getNodeType(n)
 		const text = getNodeText(n)
-		const mt = objectInfo && t
-			? detectMediaTypeFromObjectInfo(objectInfo[t], t)
-			: detectMediaTypeFromPorts(n)
-		return mt === 'model3d' || /save\s*3d|export.*model|save.*glb|export.*glb|save.*fbx|export.*fbx/.test(text)
+		const mt =
+			objectInfo && t
+				? detectMediaTypeFromObjectInfo(objectInfo[t], t)
+				: detectMediaTypeFromPorts(n)
+		return (
+			mt === 'model3d' ||
+			/save\s*3d|export.*model|save.*glb|export.*glb|save.*fbx|export.*fbx/.test(text)
+		)
 	}).length
 
 	if (imageOutputCount > 0 && videoOutputCount === 0 && modelOutputCount === 0) {
@@ -383,34 +438,32 @@ export const parseComfyWorkflowIO = (
 	}
 
 	if (outputNodes.length > 1) {
-		warnings.push(
-			`检测到 ${outputNodes.length} 个输出节点，工作流执行后将自动导入所有产物。`
-		)
+		warnings.push(`检测到 ${outputNodes.length} 个输出节点，工作流执行后将自动导入所有产物。`)
 	}
 
 	const inputRequirements = {
 		images: {
 			min: 0,
 			max: sortedImageNodes.length,
-			nodeIds: sortedImageNodes.map(n => n.nodeId)
+			nodeIds: sortedImageNodes.map((n) => n.nodeId)
 		},
 		videos: {
 			min: 0,
 			max: sortedVideoNodes.length,
-			nodeIds: sortedVideoNodes.map(n => n.nodeId)
+			nodeIds: sortedVideoNodes.map((n) => n.nodeId)
 		},
 		models: {
 			min: 0,
 			max: sortedModelNodes.length,
-			nodeIds: sortedModelNodes.map(n => n.nodeId)
+			nodeIds: sortedModelNodes.map((n) => n.nodeId)
 		},
 		positivePrompt: {
 			required: sortedPositiveText.length > 0,
-			nodeIds: sortedPositiveText.map(n => n.nodeId)
+			nodeIds: sortedPositiveText.map((n) => n.nodeId)
 		},
 		negativePrompt: {
 			required: sortedNegativeText.length > 0,
-			nodeIds: sortedNegativeText.map(n => n.nodeId)
+			nodeIds: sortedNegativeText.map((n) => n.nodeId)
 		}
 	}
 

@@ -191,7 +191,8 @@ export class DwebCanvasGL {
 			try {
 				if (this.rafKind === 'raf' && typeof cancelAnimationFrame !== 'undefined')
 					cancelAnimationFrame(this.rafId as number)
-				else if (this.rafKind === 'timeout') clearTimeout(this.rafId as ReturnType<typeof setTimeout>)
+				else if (this.rafKind === 'timeout')
+					clearTimeout(this.rafId as ReturnType<typeof setTimeout>)
 			} catch {
 				// ignore
 			}
@@ -574,12 +575,16 @@ export class DwebCanvasGL {
 			try {
 				const canvasWithConvert = outCanvas as unknown as Record<string, unknown>
 				if (typeof canvasWithConvert.convertToBlob === 'function') {
-					return await (canvasWithConvert.convertToBlob as (opts?: { type?: string }) => Promise<Blob>)({ type: 'image/png' })
+					return await (
+						canvasWithConvert.convertToBlob as (opts?: { type?: string }) => Promise<Blob>
+					)({ type: 'image/png' })
 				}
 				const canvasWithToBlob = outCanvas as unknown as Record<string, unknown>
 				if (typeof canvasWithToBlob.toBlob === 'function') {
 					return await new Promise<Blob | null>((resolve) => {
-						(canvasWithToBlob.toBlob as (callback: (b: Blob | null) => void, type?: string) => void)((b) => resolve(b), 'image/png')
+						;(
+							canvasWithToBlob.toBlob as (callback: (b: Blob | null) => void, type?: string) => void
+						)((b) => resolve(b), 'image/png')
 					})
 				}
 				return null

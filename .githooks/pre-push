@@ -52,7 +52,12 @@ check_prettier_format() {
   fi
 
   echo_info "运行 Prettier 格式检查 (变更文件)..."
-  if npx prettier --check $changed_files 2>&1; then
+  # Use xargs to avoid "command line too long" errors on Windows when
+  # there are many changed files. xargs automatically batches arguments
+  # to fit within the platform's command-line length limit.
+  local prettier_failed=0
+  echo "$changed_files" | tr ' ' '\n' | grep -v '^$' | xargs npx prettier --check 2>&1 || prettier_failed=1
+  if [ "$prettier_failed" = "0" ]; then
     echo_success "Prettier 格式检查通过。"
     return 0
   else
@@ -138,6 +143,16 @@ fi
 
 if [ "$SKIP_QUALITY" = "1" ]; then
   echo_warn "DWEB_SKIP_QUALITY_CHECK=1 检测到：跳过质量检查。"
+  echo_info "未命中受保护分支 (main/dev)，推送继续。"
+  exit 0
+fi
+
+# Skip quality checks in CI environments — CI workflows (pull-request.yml,
+# release.yml) have their own dedicated quality check jobs (lint, typecheck,
+# test, build). Running pre-push quality checks in CI is redundant and can
+# fail on Windows runners due to command-line length limits with many files.
+if [ "${CI:-false}" = "true" ]; then
+  echo_info "CI 环境检测到：跳过 pre-push 质量检查（CI 有独立的质量检查任务）。"
   echo_info "未命中受保护分支 (main/dev)，推送继续。"
   exit 0
 fi

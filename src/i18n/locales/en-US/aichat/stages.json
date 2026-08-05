@@ -1,9 +1,9 @@
 {
-  "aichat.stages.stopped": "Stopped",
-  "aichat.stages.started": "Started…",
-  "aichat.stages.connecting": "Connecting to model…",
-  "aichat.stages.generating": "Generating description…",
-  "aichat.stages.templating": "Generating components…",
-  "aichat.stages.inProgress": "Task in progress…",
-  "aichat.stages.selfChecking": "Self-checking…"
+	"aichat.stages.stopped": "Stopped",
+	"aichat.stages.started": "Started…",
+	"aichat.stages.connecting": "Connecting to model…",
+	"aichat.stages.generating": "Generating description…",
+	"aichat.stages.templating": "Generating components…",
+	"aichat.stages.inProgress": "Task in progress…",
+	"aichat.stages.selfChecking": "Self-checking…"
 }

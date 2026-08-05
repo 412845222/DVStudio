@@ -10,7 +10,7 @@ import type {
 	ComfyMirrorPingResult,
 	ComfyMirrorSource,
 	ComfyMirrorListResult,
-	PythonEnvSetupEvent,
+	PythonEnvSetupEvent
 } from '../electronBridge/types'
 
 const dweb = (window as any).dweb
@@ -27,7 +27,7 @@ function getDefaultConfig(): ComfySetupConfig {
 		port: 8188,
 		autoStart: false,
 		mirror: 'github',
-		extraArgs: [],
+		extraArgs: []
 	}
 }
 
@@ -67,7 +67,9 @@ export function useComfyUISetup() {
 	const fixingPython = ref(false)
 	const pythonFixStep = ref<string>('')
 	const pythonFixMessage = ref<string>('')
-	const pythonFixLogs = ref<Array<{ id: number; stream: string; message: string; overwrite?: boolean }>>([])
+	const pythonFixLogs = ref<
+		Array<{ id: number; stream: string; message: string; overwrite?: boolean }>
+	>([])
 	const pythonProgressLine = ref<{ id: number; stream: string; message: string } | null>(null)
 	const pythonFixError = ref<string>('')
 	const pythonFixDone = ref(false)
@@ -150,7 +152,7 @@ export function useComfyUISetup() {
 	async function loadDefaultVenvPath() {
 		try {
 			const r = await dweb.comfyui.setup.getDefaultVenvPath({
-				installPath: installPath.value,
+				installPath: installPath.value
 			})
 			if (r?.ok) {
 				defaultVenvPath.value = r.path
@@ -166,7 +168,7 @@ export function useComfyUISetup() {
 		try {
 			const r = await dweb.comfyui.setup.selectVenvPath({
 				installPath: installPath.value,
-				defaultPath: venvPath.value || defaultVenvPath.value,
+				defaultPath: venvPath.value || defaultVenvPath.value
 			})
 			if (!r.canceled && r.path) {
 				const setR = await dweb.comfyui.setup.setVenvPath({ path: r.path })
@@ -190,7 +192,7 @@ export function useComfyUISetup() {
 		pathChanging.value = true
 		try {
 			const selectOptions: any = {
-				title: freshInstallMode.value ? '选择 ComfyUI 安装目录' : '选择 ComfyUI 目录',
+				title: freshInstallMode.value ? '选择 ComfyUI 安装目录' : '选择 ComfyUI 目录'
 			}
 			if (!freshInstallMode.value && defaultInstallPath.value) {
 				selectOptions.defaultPath = defaultInstallPath.value
@@ -272,7 +274,11 @@ export function useComfyUISetup() {
 			if (r?.ok) {
 				versionUpdateInfo.value = r
 			} else {
-				versionUpdateInfo.value = { updateAvailable: false, isGitRepo: false, error: r?.error || '检查失败' }
+				versionUpdateInfo.value = {
+					updateAvailable: false,
+					isGitRepo: false,
+					error: r?.error || '检查失败'
+				}
 			}
 		} catch (e) {
 			versionUpdateInfo.value = { updateAvailable: false, isGitRepo: false, error: '检查更新失败' }
@@ -307,7 +313,7 @@ export function useComfyUISetup() {
 	async function confirmFreshInstall() {
 		if (!installPath.value) return
 		await dweb.comfyui.setup.saveConfig({
-			installPath: installPath.value,
+			installPath: installPath.value
 		})
 		freshInstallMode.value = false
 		await saveConfig()
@@ -367,7 +373,7 @@ export function useComfyUISetup() {
 
 	async function loadMirrorList() {
 		try {
-			const r = await dweb.comfyui.setup.getMirrorList() as ComfyMirrorListResult
+			const r = (await dweb.comfyui.setup.getMirrorList()) as ComfyMirrorListResult
 			if (r?.ok) {
 				pypiMirrorList.value = r.pypiMirrors || []
 				torchMirrorList.value = r.torchMirrors || []
@@ -411,7 +417,7 @@ export function useComfyUISetup() {
 		saving.value = true
 		try {
 			await dweb.comfyui.setup.saveConfig({
-				installPath: installPath.value,
+				installPath: installPath.value
 			})
 		} finally {
 			saving.value = false
@@ -425,7 +431,7 @@ export function useComfyUISetup() {
 			const payload = cloneValue({
 				installPath: installPath.value,
 				port: config.value.port,
-				extraArgs: config.value.extraArgs,
+				extraArgs: config.value.extraArgs
 			})
 			const r = await dweb.comfyui.setup.startService(payload)
 			if (r?.ok) {
@@ -471,15 +477,21 @@ export function useComfyUISetup() {
 		mirrorSaving.value = true
 		mirrorSaveMessage.value = ''
 		try {
-			const r = await dweb.comfyui.setup.setMirror(cloneValue({
-				pypiMirror: selectedPypiMirror.value,
-				torchMirror: selectedTorchMirror.value,
-				customPypiMirrorUrl: selectedPypiMirror.value === 'custom' ? customPypiUrl.value : undefined,
-				customTorchMirrorUrl: selectedTorchMirror.value === 'custom' ? customTorchUrl.value : undefined,
-			}))
+			const r = await dweb.comfyui.setup.setMirror(
+				cloneValue({
+					pypiMirror: selectedPypiMirror.value,
+					torchMirror: selectedTorchMirror.value,
+					customPypiMirrorUrl:
+						selectedPypiMirror.value === 'custom' ? customPypiUrl.value : undefined,
+					customTorchMirrorUrl:
+						selectedTorchMirror.value === 'custom' ? customTorchUrl.value : undefined
+				})
+			)
 			if (r?.ok) {
 				mirrorSaveMessage.value = 'ok'
-				setTimeout(() => { mirrorSaveMessage.value = '' }, 2000)
+				setTimeout(() => {
+					mirrorSaveMessage.value = ''
+				}, 2000)
 			} else {
 				mirrorSaveMessage.value = r?.error || '保存失败'
 			}
@@ -524,11 +536,13 @@ export function useComfyUISetup() {
 		pythonOfficialDirUrl.value = ''
 		logIdCounter = 0
 		try {
-			const gen = dweb.comfyui.setup.fixPythonEnv(cloneValue({
-				installPath: installPath.value,
-				forceRecreate,
-				venvPath: venvPath.value || undefined,
-			}))
+			const gen = dweb.comfyui.setup.fixPythonEnv(
+				cloneValue({
+					installPath: installPath.value,
+					forceRecreate,
+					venvPath: venvPath.value || undefined
+				})
+			)
 			for await (const event of gen as AsyncIterable<PythonEnvSetupEvent>) {
 				if (event.type === 'step') {
 					pythonFixStep.value = event.step || ''
@@ -538,7 +552,11 @@ export function useComfyUISetup() {
 						pythonProgressLine.value = null
 					}
 				} else if (event.type === 'log') {
-					const entry = { id: ++logIdCounter, stream: event.stream || 'stdout', message: event.message || '' }
+					const entry = {
+						id: ++logIdCounter,
+						stream: event.stream || 'stdout',
+						message: event.message || ''
+					}
 					if (event.overwrite) {
 						pythonProgressLine.value = entry
 					} else {
@@ -556,7 +574,8 @@ export function useComfyUISetup() {
 					}
 					pythonFixError.value = event.message || '配置失败'
 					pythonNeedsManualInstall.value = !!event.needsManualInstall
-					pythonAutoInstallAvailable.value = event.autoInstallAvailable !== false && !!event.needsManualInstall
+					pythonAutoInstallAvailable.value =
+						event.autoInstallAvailable !== false && !!event.needsManualInstall
 					pythonManualDownloadUrl.value = event.manualDownloadUrl || ''
 					pythonOfficialDownloadUrl.value = event.officialDownloadUrl || ''
 					pythonCudaVersion.value = event.cudaVersion || ''
@@ -596,7 +615,7 @@ export function useComfyUISetup() {
 			fixingPython.value = false
 			await checkEnv()
 			if (installPath.value) {
-				await new Promise(r => setTimeout(r, 500))
+				await new Promise((r) => setTimeout(r, 500))
 				await probePath(installPath.value)
 			}
 		}
@@ -613,7 +632,7 @@ export function useComfyUISetup() {
 		logIdCounter = 0
 		try {
 			const gen = dweb.comfyui.setup.cloneComfyUI({
-				installPath: installPath.value,
+				installPath: installPath.value
 			})
 			for await (const event of gen as AsyncIterable<{
 				type: string
@@ -629,7 +648,7 @@ export function useComfyUISetup() {
 					cloneLogs.value.push({
 						id: ++logIdCounter,
 						stream: event.stream || 'stdout',
-						message: event.message || '',
+						message: event.message || ''
 					})
 					logsUpdated.value++
 				} else if (event.type === 'error') {
@@ -648,7 +667,7 @@ export function useComfyUISetup() {
 			await loadConfig()
 			await checkEnv()
 			if (installPath.value) {
-				await new Promise(r => setTimeout(r, 500))
+				await new Promise((r) => setTimeout(r, 500))
 				await probePath(installPath.value)
 				if (envResult.value?.comfyUIFound) {
 					await checkVersionUpdate()
@@ -672,7 +691,7 @@ export function useComfyUISetup() {
 		logIdCounter = 0
 		try {
 			const gen = dweb.comfyui.setup.updateComfyUI({
-				installPath: installPath.value,
+				installPath: installPath.value
 			})
 			for await (const event of gen as AsyncIterable<{
 				type: string
@@ -689,7 +708,7 @@ export function useComfyUISetup() {
 					updateLogs.value.push({
 						id: ++logIdCounter,
 						stream: event.stream || 'stdout',
-						message: event.message || '',
+						message: event.message || ''
 					})
 					logsUpdated.value++
 				} else if (event.type === 'error') {
@@ -709,7 +728,7 @@ export function useComfyUISetup() {
 			await loadConfig()
 			await checkEnv()
 			if (installPath.value) {
-				await new Promise(r => setTimeout(r, 500))
+				await new Promise((r) => setTimeout(r, 500))
 				await probePath(installPath.value)
 				await checkVersionUpdate()
 				if (updateNeedDepUpdate.value && !updateError.value) {
@@ -731,7 +750,7 @@ export function useComfyUISetup() {
 		logIdCounter = pythonFixLogs.value.length
 		try {
 			const gen = dweb.comfyui.setup.autoInstallTorch({
-				installPath: installPath.value,
+				installPath: installPath.value
 			})
 			for await (const event of gen as AsyncIterable<{
 				type: string
@@ -752,7 +771,11 @@ export function useComfyUISetup() {
 						pythonProgressLine.value = null
 					}
 				} else if (event.type === 'log') {
-					const entry = { id: ++logIdCounter, stream: event.stream || 'stdout', message: event.message || '' }
+					const entry = {
+						id: ++logIdCounter,
+						stream: event.stream || 'stdout',
+						message: event.message || ''
+					}
 					if (event.overwrite) {
 						pythonProgressLine.value = entry
 					} else {
@@ -792,7 +815,7 @@ export function useComfyUISetup() {
 			autoInstallingTorch.value = false
 			await checkEnv()
 			if (installPath.value) {
-				await new Promise(r => setTimeout(r, 500))
+				await new Promise((r) => setTimeout(r, 500))
 				await probePath(installPath.value)
 			}
 		}
@@ -804,7 +827,7 @@ export function useComfyUISetup() {
 		try {
 			const r = await dweb.comfyui.setup.clearVenv({
 				venvPath: venvPath.value,
-				resetToDefault,
+				resetToDefault
 			})
 			if (r?.ok) {
 				if (r.venvPath) {
@@ -827,55 +850,143 @@ export function useComfyUISetup() {
 
 	function getStatusIcon(status: string) {
 		switch (status) {
-			case 'ok': return '✓'
-			case 'warn': return '⚠'
-			case 'error': return '✗'
-			case 'checking': return '⋯'
-			default: return '?'
+			case 'ok':
+				return '✓'
+			case 'warn':
+				return '⚠'
+			case 'error':
+				return '✗'
+			case 'checking':
+				return '⋯'
+			default:
+				return '?'
 		}
 	}
 
 	function getStatusColor(status: string) {
 		switch (status) {
-			case 'ok': return '#4ade80'
-			case 'warn': return '#facc15'
-			case 'error': return '#f87171'
-			case 'checking': return '#60a5fa'
-			default: return '#6b7280'
+			case 'ok':
+				return '#4ade80'
+			case 'warn':
+				return '#facc15'
+			case 'error':
+				return '#f87171'
+			case 'checking':
+				return '#60a5fa'
+			default:
+				return '#6b7280'
 		}
 	}
 
 	return {
-		installPath, defaultInstallPath, pathValidation,
-		probeResult, probing, pathChanging,
-		checking, envResult,
-		logs, installing,
-		serviceRunning, serviceStarting, serviceStartingError,
-		config, saving,
+		installPath,
+		defaultInstallPath,
+		pathValidation,
+		probeResult,
+		probing,
+		pathChanging,
+		checking,
+		envResult,
+		logs,
+		installing,
+		serviceRunning,
+		serviceStarting,
+		serviceStartingError,
+		config,
+		saving,
 		customModelPaths,
-		pingingMirrors, mirrorPingResults, pypiMirrorList, torchMirrorList,
-		selectedPypiMirror, selectedTorchMirror,
-		customPypiUrl, customTorchUrl, mirrorSaving, mirrorSaveMessage,
-		fixingPython, pythonFixStep, pythonFixMessage, pythonFixLogs, pythonProgressLine, pythonFixError, pythonFixDone,
-		pythonNeedsManualInstall, pythonAutoInstallAvailable, pythonManualDownloadUrl, pythonOfficialDownloadUrl, pythonCudaVersion,
-		pythonDetectedVersion, pythonPlatformTag, pythonAbiTag, pythonTorchVersion,
-		pythonTorchWheel, pythonTorchvisionWheel, pythonTorchaudioWheel,
-		pythonAliyunTorchUrl, pythonAliyunTorchvisionUrl, pythonAliyunTorchaudioUrl,
-		pythonOfficialTorchUrl, pythonOfficialTorchvisionUrl, pythonOfficialTorchaudioUrl,
-		pythonVenvPythonPath, pythonOneClickInstallCmd, pythonManualInstallCmd, pythonInstallDepsCmd,
-		pythonAliyunDirUrl, pythonOfficialDirUrl,
-		autoInstallingTorch, clearingVenv,
+		pingingMirrors,
+		mirrorPingResults,
+		pypiMirrorList,
+		torchMirrorList,
+		selectedPypiMirror,
+		selectedTorchMirror,
+		customPypiUrl,
+		customTorchUrl,
+		mirrorSaving,
+		mirrorSaveMessage,
+		fixingPython,
+		pythonFixStep,
+		pythonFixMessage,
+		pythonFixLogs,
+		pythonProgressLine,
+		pythonFixError,
+		pythonFixDone,
+		pythonNeedsManualInstall,
+		pythonAutoInstallAvailable,
+		pythonManualDownloadUrl,
+		pythonOfficialDownloadUrl,
+		pythonCudaVersion,
+		pythonDetectedVersion,
+		pythonPlatformTag,
+		pythonAbiTag,
+		pythonTorchVersion,
+		pythonTorchWheel,
+		pythonTorchvisionWheel,
+		pythonTorchaudioWheel,
+		pythonAliyunTorchUrl,
+		pythonAliyunTorchvisionUrl,
+		pythonAliyunTorchaudioUrl,
+		pythonOfficialTorchUrl,
+		pythonOfficialTorchvisionUrl,
+		pythonOfficialTorchaudioUrl,
+		pythonVenvPythonPath,
+		pythonOneClickInstallCmd,
+		pythonManualInstallCmd,
+		pythonInstallDepsCmd,
+		pythonAliyunDirUrl,
+		pythonOfficialDirUrl,
+		autoInstallingTorch,
+		clearingVenv,
 		logsUpdated,
-		venvPath, defaultVenvPath, selectingVenvPath,
-		cloningComfyUI, cloneStep, cloneMessage, cloneLogs, cloneError, cloneDone,
-		updatingComfyUI, updateStep, updateMessage, updateLogs, updateError, updateDone, updateNeedDepUpdate,
-		versionChecking, versionUpdateInfo, freshInstallMode,
-		loadDefaultPath, loadDefaultVenvPath, selectPath, selectVenvPath, resetVenvPath, setInstallPath, setFreshInstallPath, probePath,
-		checkVersionUpdate, resetForFreshInstall, exitFreshInstallMode, confirmFreshInstall,
-		checkEnv, openInstallFolder, loadConfig, loadMirrorList, saveConfig,
-		addCustomModelPath, removeCustomModelPath,
-		startService, stopService,
-		pingMirrors, saveMirrorConfig, fixPythonEnv, cloneComfyUI, updateComfyUI, autoInstallTorch, clearVenv,
-		getStatusIcon, getStatusColor,
+		venvPath,
+		defaultVenvPath,
+		selectingVenvPath,
+		cloningComfyUI,
+		cloneStep,
+		cloneMessage,
+		cloneLogs,
+		cloneError,
+		cloneDone,
+		updatingComfyUI,
+		updateStep,
+		updateMessage,
+		updateLogs,
+		updateError,
+		updateDone,
+		updateNeedDepUpdate,
+		versionChecking,
+		versionUpdateInfo,
+		freshInstallMode,
+		loadDefaultPath,
+		loadDefaultVenvPath,
+		selectPath,
+		selectVenvPath,
+		resetVenvPath,
+		setInstallPath,
+		setFreshInstallPath,
+		probePath,
+		checkVersionUpdate,
+		resetForFreshInstall,
+		exitFreshInstallMode,
+		confirmFreshInstall,
+		checkEnv,
+		openInstallFolder,
+		loadConfig,
+		loadMirrorList,
+		saveConfig,
+		addCustomModelPath,
+		removeCustomModelPath,
+		startService,
+		stopService,
+		pingMirrors,
+		saveMirrorConfig,
+		fixPythonEnv,
+		cloneComfyUI,
+		updateComfyUI,
+		autoInstallTorch,
+		clearVenv,
+		getStatusIcon,
+		getStatusColor
 	}
 }

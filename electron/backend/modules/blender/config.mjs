@@ -11,12 +11,6 @@ export const BLENDER_DEFAULT_PATHS = {
 		'C:\\Program Files\\Blender Foundation\\Blender.exe',
 		'C:\\Program Files (x86)\\Blender Foundation\\Blender.exe'
 	],
-	darwin: [
-		'/Applications/Blender.app/Contents/MacOS/Blender'
-	],
-	linux: [
-		'/usr/bin/blender',
-		'/usr/local/bin/blender',
-		'/snap/bin/blender'
-	]
+	darwin: ['/Applications/Blender.app/Contents/MacOS/Blender'],
+	linux: ['/usr/bin/blender', '/usr/local/bin/blender', '/snap/bin/blender']
 }

@@ -6,4 +6,4 @@
  * 为工作流操作提供完整 Agent 能力。
  */
 
-export { DVSAgentEnhancedProvider as DVSAgentProvider } from '../dvsagent/DVSAgentEnhancedProvider.mjs';
+export { DVSAgentEnhancedProvider as DVSAgentProvider } from '../dvsagent/DVSAgentEnhancedProvider.mjs'

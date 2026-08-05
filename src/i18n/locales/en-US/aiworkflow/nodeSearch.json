@@ -1,10 +1,10 @@
 {
-  "aiworkflow.nodeSearch.categoryLabel": "Node Categories",
-  "aiworkflow.nodeSearch.dialogTitle": "Add Node",
-  "aiworkflow.nodeSearch.closeLabel": "Close",
-  "aiworkflow.nodeSearch.searchPlaceholder": "Search nodes, types or capabilities",
-  "aiworkflow.nodeSearch.uploadLabel": "Upload File",
-  "aiworkflow.nodeSearch.uploadDescription": "Select local image, video, audio or text files to create corresponding resource nodes.",
-  "aiworkflow.nodeSearch.emptyHintSearch": "No matching nodes",
-  "aiworkflow.nodeSearch.emptyHintCategory": "No nodes in this category"
+	"aiworkflow.nodeSearch.categoryLabel": "Node Categories",
+	"aiworkflow.nodeSearch.dialogTitle": "Add Node",
+	"aiworkflow.nodeSearch.closeLabel": "Close",
+	"aiworkflow.nodeSearch.searchPlaceholder": "Search nodes, types or capabilities",
+	"aiworkflow.nodeSearch.uploadLabel": "Upload File",
+	"aiworkflow.nodeSearch.uploadDescription": "Select local image, video, audio or text files to create corresponding resource nodes.",
+	"aiworkflow.nodeSearch.emptyHintSearch": "No matching nodes",
+	"aiworkflow.nodeSearch.emptyHintCategory": "No nodes in this category"
 }

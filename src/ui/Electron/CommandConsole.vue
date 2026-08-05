@@ -98,7 +98,9 @@ watch(
 	padding: 5px 12px;
 	font-size: 12px;
 	cursor: pointer;
-	transition: background 120ms ease, border-color 120ms ease;
+	transition:
+		background 120ms ease,
+		border-color 120ms ease;
 }
 
 .btn:hover {

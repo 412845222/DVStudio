@@ -1,716 +1,716 @@
 export const MIGRATION_CHECKLIST = {
-  infrastructure: {
-    label: '基础设施层',
-    items: [
-      {
-        key: 'core-errors',
-        label: 'core/errors.mjs - 统一错误类',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'core-logger',
-        label: 'core/logger.mjs - 分级日志系统',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'core-http-client',
-        label: 'core/http-client.mjs - HTTP/SSE客户端',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'core-sse-parser',
-        label: 'core/sse-parser.mjs - SSE流解析器',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'core-stream',
-        label: 'core/stream.mjs - IPC流式传输',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'router',
-        label: 'router.mjs + context.mjs - IPC路由与DI',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'compat-proxy',
-        label: 'compat/django-proxy.mjs - Django兼容代理',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'python-bridge',
-        label: 'python-bridge/ - JS-Python桥接层',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-        notes: 'runtime.mjs + rpc.mjs + pip.mjs + index.mjs + Python worker.py',
-      },
-    ],
-  },
-  localdb: {
-    label: '本地数据库（已迁移）',
-    items: [
-      {
-        key: 'localdb-projects',
-        label: '项目CRUD (projects表)',
-        status: 'done',
-        ipcChannel: 'dweb:localdb:projects:*',
-        djangoUrl: '/api/workflow/projects/',
-        notes: '已由electron/localdb/实现，无需重复',
-      },
-      {
-        key: 'localdb-meshy',
-        label: 'Meshy任务记录 (meshy_tasks表)',
-        status: 'done',
-        ipcChannel: 'dweb:localdb:meshy:*',
-        djangoUrl: '/api/third-party/',
-        notes: '已由electron/localdb/实现，无需重复',
-      },
-      {
-        key: 'localdb-video',
-        label: '视频生成任务 (video_tasks表)',
-        status: 'done',
-        ipcChannel: 'dweb:localdb:video:*',
-        djangoUrl: '/api/third-party/',
-        notes: '已由electron/localdb/实现，无需重复',
-      },
-      {
-        key: 'localdb-apikeys',
-        label: 'API密钥加密存储 (api_keys表)',
-        status: 'done',
-        ipcChannel: 'dweb:localdb:apiKeys:*',
-        djangoUrl: '/api/ai/credentials/',
-        notes: '已由electron/localdb/实现，无需重复',
-      },
-      {
-        key: 'localdb-v2-tables',
-        label: 'v2迁移：chat/export/editor/codex/comfyui等新表',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'localdb-v3-tables',
-        label: 'v3迁移：ref_image_cache + editor_components.template_id等补充列',
-        status: 'done',
-        ipcChannel: null,
-        djangoUrl: null,
-      },
-      {
-        key: 'localdb-project-assets',
-        label: '项目资产文件服务（projectAssetProtocol）',
-        status: 'done',
-        ipcChannel: 'dweb:aiworkflow:* (asset相关)',
-        djangoUrl: '/api/workflow/projects/assets/',
-        notes: '已由projectAssetProtocol.mjs + projectStaticAssets/实现',
-      },
-    ],
-  },
-  projects: {
-    label: '项目CRUD与资产管理（projects + project-assets）',
-    items: [
-      {
-        key: 'projects-list',
-        label: '项目列表',
-        status: 'done',
-        ipcChannel: 'dweb:projects:list',
-        djangoUrl: 'GET /api/workflow/projects/list',
-        notes: '复用localdb projects repo',
-      },
-      {
-        key: 'projects-save',
-        label: '保存/创建项目',
-        status: 'done',
-        ipcChannel: 'dweb:projects:save',
-        djangoUrl: 'POST /api/workflow/projects/save',
-        notes: '事务化写入snapshot + projects表',
-      },
-      {
-        key: 'projects-load',
-        label: '加载项目（含snapshot）',
-        status: 'done',
-        ipcChannel: 'dweb:projects:load',
-        djangoUrl: 'GET /api/workflow/projects/load',
-      },
-      {
-        key: 'projects-delete',
-        label: '删除项目（清理关联任务引用）',
-        status: 'done',
-        ipcChannel: 'dweb:projects:delete',
-        djangoUrl: 'POST /api/workflow/projects/delete',
-        notes: '事务内清理meshy_tasks/video_tasks引用',
-      },
-      {
-        key: 'projects-open-folder',
-        label: '从文件夹打开/导入项目',
-        status: 'done',
-        ipcChannel: 'dweb:projects:open-folder',
-        djangoUrl: 'POST /api/workflow/projects/folder/open',
-      },
-      {
-        key: 'project-assets-upload',
-        label: '上传资产文件',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:upload',
-        djangoUrl: 'POST /api/workflow/projects/assets/upload',
-        notes: '复用projectStaticAssets/service.mjs',
-      },
-      {
-        key: 'project-assets-import',
-        label: '导入资产（URL/本地文件）',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:import',
-        djangoUrl: 'POST /api/workflow/projects/assets/import',
-      },
-      {
-        key: 'project-assets-delete',
-        label: '删除资产文件',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:delete',
-        djangoUrl: 'POST /api/workflow/projects/assets/delete',
-      },
-      {
-        key: 'project-assets-resolve',
-        label: '解析/重定向资产URL',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:resolve',
-        djangoUrl: 'POST /api/workflow/projects/assets/resolve',
-      },
-      {
-        key: 'project-assets-repair',
-        label: '修复单个资产',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:repair',
-        djangoUrl: 'POST /api/workflow/projects/assets/repair',
-      },
-      {
-        key: 'project-assets-repair-all',
-        label: '批量修复项目资产',
-        status: 'done',
-        ipcChannel: 'dweb:project-assets:repair-all',
-        djangoUrl: null,
-      },
-      {
-        key: 'frontend-adapt',
-        label: '前端BlueprintProjectService适配IPC优先',
-        status: 'done',
-        ipcChannel: 'window.dweb.projects / window.dweb.projectAssets',
-        djangoUrl: null,
-        notes: '迁移模式下禁止HTTP回退',
-      },
-    ],
-  },
-  system: {
-    label: '系统模块（system）',
-    items: [
-      {
-        key: 'system-health',
-        label: '健康检查',
-        status: 'done',
-        ipcChannel: 'dweb:system:health',
-        djangoUrl: '/api/health/',
-      },
-      {
-        key: 'system-echo',
-        label: 'Echo测试',
-        status: 'done',
-        ipcChannel: 'dweb:system:echo',
-        djangoUrl: '/api/echo/',
-      },
-      {
-        key: 'system-legal',
-        label: '用户协议文档',
-        status: 'done',
-        ipcChannel: 'dweb:system:legal:agreement',
-        djangoUrl: '/api/legal/user-agreement-and-security.md',
-      },
-      {
-        key: 'system-migration-status',
-        label: '迁移状态检查API',
-        status: 'done',
-        ipcChannel: 'dweb:system:migration-status',
-        djangoUrl: null,
-      },
-    ],
-  },
-  chat: {
-    label: 'AI对话模块（chat）',
-    items: [
-      {
-        key: 'chat-conversations-list',
-        label: '获取对话列表',
-        status: 'done',
-        ipcChannel: 'dweb:chat:conversations:list',
-        djangoUrl: null,
-      },
-      {
-        key: 'chat-conversations-create',
-        label: '创建对话',
-        status: 'done',
-        ipcChannel: 'dweb:chat:conversations:create',
-        djangoUrl: 'POST /api/chat/conversations',
-      },
-      {
-        key: 'chat-conversations-get',
-        label: '获取对话详情（含历史消息）',
-        status: 'done',
-        ipcChannel: 'dweb:chat:conversations:get',
-        djangoUrl: null,
-      },
-      {
-        key: 'chat-conversations-delete',
-        label: '删除对话',
-        status: 'done',
-        ipcChannel: 'dweb:chat:conversations:delete',
-        djangoUrl: null,
-      },
-      {
-        key: 'chat-conversations-update-title',
-        label: '更新对话标题',
-        status: 'done',
-        ipcChannel: 'dweb:chat:conversations:update-title',
-        djangoUrl: null,
-      },
-      {
-        key: 'chat-messages-send',
-        label: '发送消息（非流式）',
-        status: 'done',
-        ipcChannel: 'dweb:chat:messages:send',
-        djangoUrl: 'POST /api/chat/conversations/{id}/messages',
-        notes: '支持deepseek/openai双provider，自动选key',
-      },
-      {
-        key: 'chat-messages-stream',
-        label: '发送消息（SSE流式）',
-        status: 'done',
-        ipcChannel: 'dweb:chat:messages:stream',
-        djangoUrl: 'POST /api/chat/conversations/{id}/messages:stream',
-        notes: '使用core/http-client SSE流 + IPC stream通道',
-      },
-    ],
-  },
-  subtitle: {
-    label: '字幕理解模块（subtitle）',
-    items: [
-      {
-        key: 'subtitle-ping',
-        label: '字幕AI服务Ping',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:ping',
-        djangoUrl: 'GET /api/ai/ping',
-        notes: 'Python Bridge实现，返回Python worker状态',
-      },
-      {
-        key: 'subtitle-understand-stream',
-        label: '字幕理解（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:understand:stream',
-        djangoUrl: 'POST /api/ai/subtitle/understand:stream',
-        notes: 'Python Bridge实现，支持scope=overall快速理解',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-style-stream',
-        label: '风格分析（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:style:stream',
-        djangoUrl: 'POST /api/ai/subtitle/style:stream',
-        notes: 'Python Bridge实现',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-templates-stream',
-        label: '模板生成（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:templates:stream',
-        djangoUrl: 'POST /api/ai/subtitle/templates:stream',
-        notes: 'Python Bridge实现',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-chat-stream',
-        label: '字幕对话（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:chat:stream',
-        djangoUrl: 'POST /api/ai/subtitle/chat:stream',
-        notes: 'Python Bridge实现',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-panel-chat-stream',
-        label: '面板对话（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:panel-chat:stream',
-        djangoUrl: 'POST /api/ai/subtitle/panel-chat:stream',
-        notes: 'Python Bridge实现，支持style/templates面板修改',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-palette-stream',
-        label: '调色板生成（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:palette:stream',
-        djangoUrl: 'POST /api/ai/subtitle/palette:stream',
-        notes: 'Python Bridge实现',
-        dependsOn: ['python-bridge'],
-      },
-      {
-        key: 'subtitle-template-stream',
-        label: '单模板生成（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:subtitle:template:stream',
-        djangoUrl: 'POST /api/ai/subtitle/template:stream',
-        notes: 'Python Bridge实现，默认模板+postprocess',
-        dependsOn: ['python-bridge'],
-      },
-    ],
-  },
-  export: {
-    label: '导出模块（export）',
-    items: [
-      {
-        key: 'export-jobs-create',
-        label: '创建导出任务',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:create',
-        djangoUrl: 'POST /api/export/jobs',
-      },
-      {
-        key: 'export-jobs-get',
-        label: '查询导出任务状态',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:get',
-        djangoUrl: 'GET /api/export/jobs/{id}',
-      },
-      {
-        key: 'export-jobs-list-by-project',
-        label: '按项目查询导出任务列表',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:list-by-project',
-        djangoUrl: null,
-      },
-      {
-        key: 'export-jobs-stream',
-        label: '导出进度SSE流',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:stream',
-        djangoUrl: 'GET /api/export/jobs/{id}:stream',
-      },
-      {
-        key: 'export-frames-upload',
-        label: '上传帧（base64）',
-        status: 'done',
-        ipcChannel: 'dweb:export:frames:upload',
-        djangoUrl: 'POST /api/export/jobs/{id}/frames',
-      },
-      {
-        key: 'export-frames-upload-raw',
-        label: '上传帧（本地文件路径）',
-        status: 'done',
-        ipcChannel: 'dweb:export:frames:upload-raw',
-        djangoUrl: 'POST /api/export/jobs/{id}/frames:raw',
-      },
-      {
-        key: 'export-frames-upload-batch',
-        label: '批量上传帧',
-        status: 'done',
-        ipcChannel: 'dweb:export:frames:upload-batch',
-        djangoUrl: 'POST /api/export/jobs/{id}/frames:raw-batch',
-      },
-      {
-        key: 'export-jobs-finalize',
-        label: '完成导出任务',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:finalize',
-        djangoUrl: 'POST /api/export/jobs/{id}/finalize',
-      },
-      {
-        key: 'export-jobs-file',
-        label: '获取导出文件路径',
-        status: 'done',
-        ipcChannel: 'dweb:export:jobs:file',
-        djangoUrl: 'GET /api/export/jobs/{id}/file',
-      },
-    ],
-  },
-  editor: {
-    label: '编辑器组件库（editor）',
-    items: [
-      {
-        key: 'editor-components-list',
-        label: '获取组件列表',
-        status: 'done',
-        ipcChannel: 'dweb:editor:components:list',
-        djangoUrl: '/api/editor/components/',
-      },
-      {
-        key: 'editor-components-save',
-        label: '保存组件',
-        status: 'done',
-        ipcChannel: 'dweb:editor:components:save',
-        djangoUrl: 'POST /api/editor/components/',
-      },
-      {
-        key: 'editor-components-delete',
-        label: '删除组件',
-        status: 'done',
-        ipcChannel: 'dweb:editor:components:delete',
-        djangoUrl: null,
-      },
-      {
-        key: 'editor-components-get',
-        label: '获取单个组件',
-        status: 'done',
-        ipcChannel: 'dweb:editor:components:get',
-        djangoUrl: null,
-      },
-      {
-        key: 'editor-components-get-by-template',
-        label: '按模板获取组件',
-        status: 'done',
-        ipcChannel: 'dweb:editor:components:get-by-template',
-        djangoUrl: null,
-      },
-      {
-        key: 'editor-thumbnail',
-        label: '组件缩略图服务',
-        status: 'done',
-        ipcChannel: 'dweb://协议提供静态文件访问',
-        djangoUrl: null,
-        notes: '通过projectAssetProtocol提供缩略图文件访问',
-      },
-    ],
-  },
-  comfyui: {
-    label: 'ComfyUI桥接（comfyui）',
-    items: [
-      {
-        key: 'comfyui-proxy',
-        label: 'ComfyUI API代理（工作流执行）',
-        status: 'done',
-        ipcChannel: 'dweb:comfyui:proxy',
-        djangoUrl: '/api/workflow/*',
-        notes: 'core/http-client代理到本地ComfyUI，支持GET/POST',
-      },
-      {
-        key: 'comfyui-workflows-crud',
-        label: '工作流模板CRUD',
-        status: 'done',
-        ipcChannel: 'dweb:comfyui:workflows:*',
-        djangoUrl: null,
-        notes: 'localdb:comfyuiWorkflows CRUD',
-      },
-      {
-        key: 'comfyui-jobs',
-        label: 'ComfyUI任务队列与进度轮询',
-        status: 'done',
-        ipcChannel: 'dweb:comfyui:jobs:*',
-        djangoUrl: null,
-        notes: 'localdb:comfyuiJobs + 后台轮询/prompt提交/interrupt',
-      },
-      {
-        key: 'comfyui-runtime',
-        label: 'ComfyUI运行时API（ping/run/job/outputs/cancel）',
-        status: 'done',
-        ipcChannel: 'dweb:comfyui:runtime:*',
-        djangoUrl: '/api/workflow/runtime/*',
-        notes: 'AIWorkflow页核心ComfyUI运行时功能已迁移到IPC',
-      },
-    ],
-  },
-  'third-party': {
-    label: '第三方API代理（third-party）',
-    items: [
-      {
-        key: 'thirdparty-meshy',
-        label: 'Meshy API代理（3D模型生成）',
-        status: 'done',
-        ipcChannel: 'dweb:meshy:*',
-        djangoUrl: '/api/third-party/meshy/*',
-        notes: '任务记录复用localdb:meshy:*，前端IPC优先已适配',
-      },
-      {
-        key: 'thirdparty-seedance',
-        label: 'Seedance视频生成（video_tasks已有）',
-        status: 'done',
-        ipcChannel: 'dweb:seedance:*',
-        djangoUrl: '/api/third-party/seedance/*',
-        notes: '任务记录复用localdb:video:*，流式IPC已适配',
-      },
-      {
-        key: 'thirdparty-nanobanana',
-        label: 'NanoBanana图片生成',
-        status: 'done',
-        ipcChannel: 'dweb:third-party:nanobanana:*',
-        djangoUrl: '/api/third-party/nanobanana/*',
-        notes: 'ref-cache + generate + generate:stream（复用Meshy API nano-banana模型）',
-      },
-      {
-        key: 'thirdparty-seedream',
-        label: 'Seedream图片生成',
-        status: 'done',
-        ipcChannel: 'dweb:third-party:seedream:*',
-        djangoUrl: '/api/third-party/seedream/*',
-        notes: 'ref-cache + generate:stream（火山引擎ark API）',
-      },
-      {
-        key: 'thirdparty-jimeng',
-        label: '即梦API代理（图片/视频生成）',
-        status: 'done',
-        ipcChannel: 'dweb:third-party:jimeng:*',
-        djangoUrl: '/api/third-party/jimeng/*',
-        notes: 'jimeng/image+video generate:stream（火山引擎HMAC V4签名）',
-      },
-      {
-        key: 'thirdparty-blueprint-chat',
-        label: '蓝图对话（blueprint chat:stream）',
-        status: 'done',
-        ipcChannel: 'dweb:third-party:blueprint:chat:stream',
-        djangoUrl: '/api/third-party/blueprint/chat:stream',
-        notes: '复用LLM流式对话（deepseek/openai）',
-      },
-      {
-        key: 'thirdparty-kling',
-        label: '可灵API代理（视频生成）',
-        status: 'skipped',
-        ipcChannel: 'dweb:third-party:kling:*',
-        djangoUrl: '/api/third-party/kling/*',
-        notes: 'Django中无此实现，属新增功能非迁移项',
-      },
-      {
-        key: 'thirdparty-runway',
-        label: 'Runway API代理',
-        status: 'skipped',
-        ipcChannel: 'dweb:third-party:runway:*',
-        djangoUrl: '/api/third-party/runway/*',
-        notes: 'Django中无此实现，属新增功能非迁移项',
-      },
-    ],
-  },
-  codex: {
-    label: 'Codex/Copilot桥接（codex）',
-    items: [
-      {
-        key: 'codex-health',
-        label: 'Codex健康检查',
-        status: 'done',
-        ipcChannel: 'dweb:codex:health',
-        djangoUrl: 'GET /api/workflow/codex/health',
-        notes: '内存模式实现，无需Python依赖',
-      },
-      {
-        key: 'codex-sessions',
-        label: 'Codex会话管理（CRUD）',
-        status: 'done',
-        ipcChannel: 'dweb:codex:list-sessions/create-session/update-session/delete-session',
-        djangoUrl: '/api/workflow/codex/sessions/*',
-        notes: '内存会话管理，前端IPC优先已适配',
-      },
-      {
-        key: 'codex-messages',
-        label: 'Codex消息列表与审批',
-        status: 'done',
-        ipcChannel: 'dweb:codex:list-messages/submit-approval/cancel',
-        djangoUrl: '/api/workflow/codex/sessions/{id}/messages',
-        notes: '内存消息存储与审批处理',
-      },
-      {
-        key: 'codex-messages-stream',
-        label: 'Codex消息交互（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:codex:send-message:stream',
-        djangoUrl: 'POST /api/workflow/codex/sessions/{id}/messages:stream',
-        notes: '流式响应实现（当前为mock响应，后续接入CLI子进程）',
-      },
-    ],
-  },
-  'agent-skills': {
-    label: 'AI Agent技能（agent-skills）',
-    items: [
-      {
-        key: 'scene-understand',
-        label: '场景理解（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:agent-skills:scene-understand:*',
-        djangoUrl: '/api/agent-skills/scene-understand/*',
-        notes: '火山引擎Ark API集成，场景理解模型列表+运行+流式',
-      },
-      {
-        key: 'scene-lighting',
-        label: '灯光分析（流式）',
-        status: 'done',
-        ipcChannel: 'dweb:agent-skills:scene-lighting:*',
-        djangoUrl: '/api/agent-skills/scene-lighting/*',
-        notes: '火山引擎Ark API集成，灯光分析模型列表+运行+流式',
-      },
-      {
-        key: 'scene-layout',
-        label: '布局处理',
-        status: 'done',
-        ipcChannel: 'dweb:agent-skills:scene-layout:run',
-        djangoUrl: '/api/agent-skills/scene-layout/run',
-        notes: '布局规范化与分组颜色应用',
-      },
-      {
-        key: 'unreal-export',
-        label: 'UE导出服务（会话/任务/HTTP服务）',
-        status: 'done',
-        ipcChannel: 'dweb:agent-skills:unreal:*',
-        djangoUrl: '/api/agent-skills/unreal-export/*',
-        notes: '内存会话管理 + 嵌入式HTTP服务器供UE插件通信，前端IPC优先已适配',
-      },
-    ],
-  },
+	infrastructure: {
+		label: '基础设施层',
+		items: [
+			{
+				key: 'core-errors',
+				label: 'core/errors.mjs - 统一错误类',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'core-logger',
+				label: 'core/logger.mjs - 分级日志系统',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'core-http-client',
+				label: 'core/http-client.mjs - HTTP/SSE客户端',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'core-sse-parser',
+				label: 'core/sse-parser.mjs - SSE流解析器',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'core-stream',
+				label: 'core/stream.mjs - IPC流式传输',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'router',
+				label: 'router.mjs + context.mjs - IPC路由与DI',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'compat-proxy',
+				label: 'compat/django-proxy.mjs - Django兼容代理',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'python-bridge',
+				label: 'python-bridge/ - JS-Python桥接层',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null,
+				notes: 'runtime.mjs + rpc.mjs + pip.mjs + index.mjs + Python worker.py'
+			}
+		]
+	},
+	localdb: {
+		label: '本地数据库（已迁移）',
+		items: [
+			{
+				key: 'localdb-projects',
+				label: '项目CRUD (projects表)',
+				status: 'done',
+				ipcChannel: 'dweb:localdb:projects:*',
+				djangoUrl: '/api/workflow/projects/',
+				notes: '已由electron/localdb/实现，无需重复'
+			},
+			{
+				key: 'localdb-meshy',
+				label: 'Meshy任务记录 (meshy_tasks表)',
+				status: 'done',
+				ipcChannel: 'dweb:localdb:meshy:*',
+				djangoUrl: '/api/third-party/',
+				notes: '已由electron/localdb/实现，无需重复'
+			},
+			{
+				key: 'localdb-video',
+				label: '视频生成任务 (video_tasks表)',
+				status: 'done',
+				ipcChannel: 'dweb:localdb:video:*',
+				djangoUrl: '/api/third-party/',
+				notes: '已由electron/localdb/实现，无需重复'
+			},
+			{
+				key: 'localdb-apikeys',
+				label: 'API密钥加密存储 (api_keys表)',
+				status: 'done',
+				ipcChannel: 'dweb:localdb:apiKeys:*',
+				djangoUrl: '/api/ai/credentials/',
+				notes: '已由electron/localdb/实现，无需重复'
+			},
+			{
+				key: 'localdb-v2-tables',
+				label: 'v2迁移：chat/export/editor/codex/comfyui等新表',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'localdb-v3-tables',
+				label: 'v3迁移：ref_image_cache + editor_components.template_id等补充列',
+				status: 'done',
+				ipcChannel: null,
+				djangoUrl: null
+			},
+			{
+				key: 'localdb-project-assets',
+				label: '项目资产文件服务（projectAssetProtocol）',
+				status: 'done',
+				ipcChannel: 'dweb:aiworkflow:* (asset相关)',
+				djangoUrl: '/api/workflow/projects/assets/',
+				notes: '已由projectAssetProtocol.mjs + projectStaticAssets/实现'
+			}
+		]
+	},
+	projects: {
+		label: '项目CRUD与资产管理（projects + project-assets）',
+		items: [
+			{
+				key: 'projects-list',
+				label: '项目列表',
+				status: 'done',
+				ipcChannel: 'dweb:projects:list',
+				djangoUrl: 'GET /api/workflow/projects/list',
+				notes: '复用localdb projects repo'
+			},
+			{
+				key: 'projects-save',
+				label: '保存/创建项目',
+				status: 'done',
+				ipcChannel: 'dweb:projects:save',
+				djangoUrl: 'POST /api/workflow/projects/save',
+				notes: '事务化写入snapshot + projects表'
+			},
+			{
+				key: 'projects-load',
+				label: '加载项目（含snapshot）',
+				status: 'done',
+				ipcChannel: 'dweb:projects:load',
+				djangoUrl: 'GET /api/workflow/projects/load'
+			},
+			{
+				key: 'projects-delete',
+				label: '删除项目（清理关联任务引用）',
+				status: 'done',
+				ipcChannel: 'dweb:projects:delete',
+				djangoUrl: 'POST /api/workflow/projects/delete',
+				notes: '事务内清理meshy_tasks/video_tasks引用'
+			},
+			{
+				key: 'projects-open-folder',
+				label: '从文件夹打开/导入项目',
+				status: 'done',
+				ipcChannel: 'dweb:projects:open-folder',
+				djangoUrl: 'POST /api/workflow/projects/folder/open'
+			},
+			{
+				key: 'project-assets-upload',
+				label: '上传资产文件',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:upload',
+				djangoUrl: 'POST /api/workflow/projects/assets/upload',
+				notes: '复用projectStaticAssets/service.mjs'
+			},
+			{
+				key: 'project-assets-import',
+				label: '导入资产（URL/本地文件）',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:import',
+				djangoUrl: 'POST /api/workflow/projects/assets/import'
+			},
+			{
+				key: 'project-assets-delete',
+				label: '删除资产文件',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:delete',
+				djangoUrl: 'POST /api/workflow/projects/assets/delete'
+			},
+			{
+				key: 'project-assets-resolve',
+				label: '解析/重定向资产URL',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:resolve',
+				djangoUrl: 'POST /api/workflow/projects/assets/resolve'
+			},
+			{
+				key: 'project-assets-repair',
+				label: '修复单个资产',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:repair',
+				djangoUrl: 'POST /api/workflow/projects/assets/repair'
+			},
+			{
+				key: 'project-assets-repair-all',
+				label: '批量修复项目资产',
+				status: 'done',
+				ipcChannel: 'dweb:project-assets:repair-all',
+				djangoUrl: null
+			},
+			{
+				key: 'frontend-adapt',
+				label: '前端BlueprintProjectService适配IPC优先',
+				status: 'done',
+				ipcChannel: 'window.dweb.projects / window.dweb.projectAssets',
+				djangoUrl: null,
+				notes: '迁移模式下禁止HTTP回退'
+			}
+		]
+	},
+	system: {
+		label: '系统模块（system）',
+		items: [
+			{
+				key: 'system-health',
+				label: '健康检查',
+				status: 'done',
+				ipcChannel: 'dweb:system:health',
+				djangoUrl: '/api/health/'
+			},
+			{
+				key: 'system-echo',
+				label: 'Echo测试',
+				status: 'done',
+				ipcChannel: 'dweb:system:echo',
+				djangoUrl: '/api/echo/'
+			},
+			{
+				key: 'system-legal',
+				label: '用户协议文档',
+				status: 'done',
+				ipcChannel: 'dweb:system:legal:agreement',
+				djangoUrl: '/api/legal/user-agreement-and-security.md'
+			},
+			{
+				key: 'system-migration-status',
+				label: '迁移状态检查API',
+				status: 'done',
+				ipcChannel: 'dweb:system:migration-status',
+				djangoUrl: null
+			}
+		]
+	},
+	chat: {
+		label: 'AI对话模块（chat）',
+		items: [
+			{
+				key: 'chat-conversations-list',
+				label: '获取对话列表',
+				status: 'done',
+				ipcChannel: 'dweb:chat:conversations:list',
+				djangoUrl: null
+			},
+			{
+				key: 'chat-conversations-create',
+				label: '创建对话',
+				status: 'done',
+				ipcChannel: 'dweb:chat:conversations:create',
+				djangoUrl: 'POST /api/chat/conversations'
+			},
+			{
+				key: 'chat-conversations-get',
+				label: '获取对话详情（含历史消息）',
+				status: 'done',
+				ipcChannel: 'dweb:chat:conversations:get',
+				djangoUrl: null
+			},
+			{
+				key: 'chat-conversations-delete',
+				label: '删除对话',
+				status: 'done',
+				ipcChannel: 'dweb:chat:conversations:delete',
+				djangoUrl: null
+			},
+			{
+				key: 'chat-conversations-update-title',
+				label: '更新对话标题',
+				status: 'done',
+				ipcChannel: 'dweb:chat:conversations:update-title',
+				djangoUrl: null
+			},
+			{
+				key: 'chat-messages-send',
+				label: '发送消息（非流式）',
+				status: 'done',
+				ipcChannel: 'dweb:chat:messages:send',
+				djangoUrl: 'POST /api/chat/conversations/{id}/messages',
+				notes: '支持deepseek/openai双provider，自动选key'
+			},
+			{
+				key: 'chat-messages-stream',
+				label: '发送消息（SSE流式）',
+				status: 'done',
+				ipcChannel: 'dweb:chat:messages:stream',
+				djangoUrl: 'POST /api/chat/conversations/{id}/messages:stream',
+				notes: '使用core/http-client SSE流 + IPC stream通道'
+			}
+		]
+	},
+	subtitle: {
+		label: '字幕理解模块（subtitle）',
+		items: [
+			{
+				key: 'subtitle-ping',
+				label: '字幕AI服务Ping',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:ping',
+				djangoUrl: 'GET /api/ai/ping',
+				notes: 'Python Bridge实现，返回Python worker状态'
+			},
+			{
+				key: 'subtitle-understand-stream',
+				label: '字幕理解（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:understand:stream',
+				djangoUrl: 'POST /api/ai/subtitle/understand:stream',
+				notes: 'Python Bridge实现，支持scope=overall快速理解',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-style-stream',
+				label: '风格分析（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:style:stream',
+				djangoUrl: 'POST /api/ai/subtitle/style:stream',
+				notes: 'Python Bridge实现',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-templates-stream',
+				label: '模板生成（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:templates:stream',
+				djangoUrl: 'POST /api/ai/subtitle/templates:stream',
+				notes: 'Python Bridge实现',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-chat-stream',
+				label: '字幕对话（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:chat:stream',
+				djangoUrl: 'POST /api/ai/subtitle/chat:stream',
+				notes: 'Python Bridge实现',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-panel-chat-stream',
+				label: '面板对话（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:panel-chat:stream',
+				djangoUrl: 'POST /api/ai/subtitle/panel-chat:stream',
+				notes: 'Python Bridge实现，支持style/templates面板修改',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-palette-stream',
+				label: '调色板生成（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:palette:stream',
+				djangoUrl: 'POST /api/ai/subtitle/palette:stream',
+				notes: 'Python Bridge实现',
+				dependsOn: ['python-bridge']
+			},
+			{
+				key: 'subtitle-template-stream',
+				label: '单模板生成（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:subtitle:template:stream',
+				djangoUrl: 'POST /api/ai/subtitle/template:stream',
+				notes: 'Python Bridge实现，默认模板+postprocess',
+				dependsOn: ['python-bridge']
+			}
+		]
+	},
+	export: {
+		label: '导出模块（export）',
+		items: [
+			{
+				key: 'export-jobs-create',
+				label: '创建导出任务',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:create',
+				djangoUrl: 'POST /api/export/jobs'
+			},
+			{
+				key: 'export-jobs-get',
+				label: '查询导出任务状态',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:get',
+				djangoUrl: 'GET /api/export/jobs/{id}'
+			},
+			{
+				key: 'export-jobs-list-by-project',
+				label: '按项目查询导出任务列表',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:list-by-project',
+				djangoUrl: null
+			},
+			{
+				key: 'export-jobs-stream',
+				label: '导出进度SSE流',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:stream',
+				djangoUrl: 'GET /api/export/jobs/{id}:stream'
+			},
+			{
+				key: 'export-frames-upload',
+				label: '上传帧（base64）',
+				status: 'done',
+				ipcChannel: 'dweb:export:frames:upload',
+				djangoUrl: 'POST /api/export/jobs/{id}/frames'
+			},
+			{
+				key: 'export-frames-upload-raw',
+				label: '上传帧（本地文件路径）',
+				status: 'done',
+				ipcChannel: 'dweb:export:frames:upload-raw',
+				djangoUrl: 'POST /api/export/jobs/{id}/frames:raw'
+			},
+			{
+				key: 'export-frames-upload-batch',
+				label: '批量上传帧',
+				status: 'done',
+				ipcChannel: 'dweb:export:frames:upload-batch',
+				djangoUrl: 'POST /api/export/jobs/{id}/frames:raw-batch'
+			},
+			{
+				key: 'export-jobs-finalize',
+				label: '完成导出任务',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:finalize',
+				djangoUrl: 'POST /api/export/jobs/{id}/finalize'
+			},
+			{
+				key: 'export-jobs-file',
+				label: '获取导出文件路径',
+				status: 'done',
+				ipcChannel: 'dweb:export:jobs:file',
+				djangoUrl: 'GET /api/export/jobs/{id}/file'
+			}
+		]
+	},
+	editor: {
+		label: '编辑器组件库（editor）',
+		items: [
+			{
+				key: 'editor-components-list',
+				label: '获取组件列表',
+				status: 'done',
+				ipcChannel: 'dweb:editor:components:list',
+				djangoUrl: '/api/editor/components/'
+			},
+			{
+				key: 'editor-components-save',
+				label: '保存组件',
+				status: 'done',
+				ipcChannel: 'dweb:editor:components:save',
+				djangoUrl: 'POST /api/editor/components/'
+			},
+			{
+				key: 'editor-components-delete',
+				label: '删除组件',
+				status: 'done',
+				ipcChannel: 'dweb:editor:components:delete',
+				djangoUrl: null
+			},
+			{
+				key: 'editor-components-get',
+				label: '获取单个组件',
+				status: 'done',
+				ipcChannel: 'dweb:editor:components:get',
+				djangoUrl: null
+			},
+			{
+				key: 'editor-components-get-by-template',
+				label: '按模板获取组件',
+				status: 'done',
+				ipcChannel: 'dweb:editor:components:get-by-template',
+				djangoUrl: null
+			},
+			{
+				key: 'editor-thumbnail',
+				label: '组件缩略图服务',
+				status: 'done',
+				ipcChannel: 'dweb://协议提供静态文件访问',
+				djangoUrl: null,
+				notes: '通过projectAssetProtocol提供缩略图文件访问'
+			}
+		]
+	},
+	comfyui: {
+		label: 'ComfyUI桥接（comfyui）',
+		items: [
+			{
+				key: 'comfyui-proxy',
+				label: 'ComfyUI API代理（工作流执行）',
+				status: 'done',
+				ipcChannel: 'dweb:comfyui:proxy',
+				djangoUrl: '/api/workflow/*',
+				notes: 'core/http-client代理到本地ComfyUI，支持GET/POST'
+			},
+			{
+				key: 'comfyui-workflows-crud',
+				label: '工作流模板CRUD',
+				status: 'done',
+				ipcChannel: 'dweb:comfyui:workflows:*',
+				djangoUrl: null,
+				notes: 'localdb:comfyuiWorkflows CRUD'
+			},
+			{
+				key: 'comfyui-jobs',
+				label: 'ComfyUI任务队列与进度轮询',
+				status: 'done',
+				ipcChannel: 'dweb:comfyui:jobs:*',
+				djangoUrl: null,
+				notes: 'localdb:comfyuiJobs + 后台轮询/prompt提交/interrupt'
+			},
+			{
+				key: 'comfyui-runtime',
+				label: 'ComfyUI运行时API（ping/run/job/outputs/cancel）',
+				status: 'done',
+				ipcChannel: 'dweb:comfyui:runtime:*',
+				djangoUrl: '/api/workflow/runtime/*',
+				notes: 'AIWorkflow页核心ComfyUI运行时功能已迁移到IPC'
+			}
+		]
+	},
+	'third-party': {
+		label: '第三方API代理（third-party）',
+		items: [
+			{
+				key: 'thirdparty-meshy',
+				label: 'Meshy API代理（3D模型生成）',
+				status: 'done',
+				ipcChannel: 'dweb:meshy:*',
+				djangoUrl: '/api/third-party/meshy/*',
+				notes: '任务记录复用localdb:meshy:*，前端IPC优先已适配'
+			},
+			{
+				key: 'thirdparty-seedance',
+				label: 'Seedance视频生成（video_tasks已有）',
+				status: 'done',
+				ipcChannel: 'dweb:seedance:*',
+				djangoUrl: '/api/third-party/seedance/*',
+				notes: '任务记录复用localdb:video:*，流式IPC已适配'
+			},
+			{
+				key: 'thirdparty-nanobanana',
+				label: 'NanoBanana图片生成',
+				status: 'done',
+				ipcChannel: 'dweb:third-party:nanobanana:*',
+				djangoUrl: '/api/third-party/nanobanana/*',
+				notes: 'ref-cache + generate + generate:stream（复用Meshy API nano-banana模型）'
+			},
+			{
+				key: 'thirdparty-seedream',
+				label: 'Seedream图片生成',
+				status: 'done',
+				ipcChannel: 'dweb:third-party:seedream:*',
+				djangoUrl: '/api/third-party/seedream/*',
+				notes: 'ref-cache + generate:stream（火山引擎ark API）'
+			},
+			{
+				key: 'thirdparty-jimeng',
+				label: '即梦API代理（图片/视频生成）',
+				status: 'done',
+				ipcChannel: 'dweb:third-party:jimeng:*',
+				djangoUrl: '/api/third-party/jimeng/*',
+				notes: 'jimeng/image+video generate:stream（火山引擎HMAC V4签名）'
+			},
+			{
+				key: 'thirdparty-blueprint-chat',
+				label: '蓝图对话（blueprint chat:stream）',
+				status: 'done',
+				ipcChannel: 'dweb:third-party:blueprint:chat:stream',
+				djangoUrl: '/api/third-party/blueprint/chat:stream',
+				notes: '复用LLM流式对话（deepseek/openai）'
+			},
+			{
+				key: 'thirdparty-kling',
+				label: '可灵API代理（视频生成）',
+				status: 'skipped',
+				ipcChannel: 'dweb:third-party:kling:*',
+				djangoUrl: '/api/third-party/kling/*',
+				notes: 'Django中无此实现，属新增功能非迁移项'
+			},
+			{
+				key: 'thirdparty-runway',
+				label: 'Runway API代理',
+				status: 'skipped',
+				ipcChannel: 'dweb:third-party:runway:*',
+				djangoUrl: '/api/third-party/runway/*',
+				notes: 'Django中无此实现，属新增功能非迁移项'
+			}
+		]
+	},
+	codex: {
+		label: 'Codex/Copilot桥接（codex）',
+		items: [
+			{
+				key: 'codex-health',
+				label: 'Codex健康检查',
+				status: 'done',
+				ipcChannel: 'dweb:codex:health',
+				djangoUrl: 'GET /api/workflow/codex/health',
+				notes: '内存模式实现，无需Python依赖'
+			},
+			{
+				key: 'codex-sessions',
+				label: 'Codex会话管理（CRUD）',
+				status: 'done',
+				ipcChannel: 'dweb:codex:list-sessions/create-session/update-session/delete-session',
+				djangoUrl: '/api/workflow/codex/sessions/*',
+				notes: '内存会话管理，前端IPC优先已适配'
+			},
+			{
+				key: 'codex-messages',
+				label: 'Codex消息列表与审批',
+				status: 'done',
+				ipcChannel: 'dweb:codex:list-messages/submit-approval/cancel',
+				djangoUrl: '/api/workflow/codex/sessions/{id}/messages',
+				notes: '内存消息存储与审批处理'
+			},
+			{
+				key: 'codex-messages-stream',
+				label: 'Codex消息交互（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:codex:send-message:stream',
+				djangoUrl: 'POST /api/workflow/codex/sessions/{id}/messages:stream',
+				notes: '流式响应实现（当前为mock响应，后续接入CLI子进程）'
+			}
+		]
+	},
+	'agent-skills': {
+		label: 'AI Agent技能（agent-skills）',
+		items: [
+			{
+				key: 'scene-understand',
+				label: '场景理解（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:agent-skills:scene-understand:*',
+				djangoUrl: '/api/agent-skills/scene-understand/*',
+				notes: '火山引擎Ark API集成，场景理解模型列表+运行+流式'
+			},
+			{
+				key: 'scene-lighting',
+				label: '灯光分析（流式）',
+				status: 'done',
+				ipcChannel: 'dweb:agent-skills:scene-lighting:*',
+				djangoUrl: '/api/agent-skills/scene-lighting/*',
+				notes: '火山引擎Ark API集成，灯光分析模型列表+运行+流式'
+			},
+			{
+				key: 'scene-layout',
+				label: '布局处理',
+				status: 'done',
+				ipcChannel: 'dweb:agent-skills:scene-layout:run',
+				djangoUrl: '/api/agent-skills/scene-layout/run',
+				notes: '布局规范化与分组颜色应用'
+			},
+			{
+				key: 'unreal-export',
+				label: 'UE导出服务（会话/任务/HTTP服务）',
+				status: 'done',
+				ipcChannel: 'dweb:agent-skills:unreal:*',
+				djangoUrl: '/api/agent-skills/unreal-export/*',
+				notes: '内存会话管理 + 嵌入式HTTP服务器供UE插件通信，前端IPC优先已适配'
+			}
+		]
+	}
 }
 
 export function getMigrationSummary() {
-  let total = 0
-  let done = 0
-  let inProgress = 0
-  let pending = 0
-  const modules = {}
+	let total = 0
+	let done = 0
+	let inProgress = 0
+	let pending = 0
+	const modules = {}
 
-  for (const [moduleKey, module] of Object.entries(MIGRATION_CHECKLIST)) {
-    const moduleItems = []
-    for (const item of module.items) {
-      total++
-      moduleItems.push({ ...item })
-      if (item.status === 'done') done++
-      else if (item.status === 'in-progress') inProgress++
-      else pending++
-    }
-    modules[moduleKey] = {
-      label: module.label,
-      items: moduleItems,
-      total: module.items.length,
-      done: module.items.filter(i => i.status === 'done').length,
-      inProgress: module.items.filter(i => i.status === 'in-progress').length,
-      pending: module.items.filter(i => i.status === 'pending').length,
-    }
-  }
+	for (const [moduleKey, module] of Object.entries(MIGRATION_CHECKLIST)) {
+		const moduleItems = []
+		for (const item of module.items) {
+			total++
+			moduleItems.push({ ...item })
+			if (item.status === 'done') done++
+			else if (item.status === 'in-progress') inProgress++
+			else pending++
+		}
+		modules[moduleKey] = {
+			label: module.label,
+			items: moduleItems,
+			total: module.items.length,
+			done: module.items.filter((i) => i.status === 'done').length,
+			inProgress: module.items.filter((i) => i.status === 'in-progress').length,
+			pending: module.items.filter((i) => i.status === 'pending').length
+		}
+	}
 
-  return {
-    summary: {
-      total,
-      done,
-      inProgress,
-      pending,
-      progress: total > 0 ? Math.round((done / total) * 100) : 0,
-    },
-    modules,
-  }
+	return {
+		summary: {
+			total,
+			done,
+			inProgress,
+			pending,
+			progress: total > 0 ? Math.round((done / total) * 100) : 0
+		},
+		modules
+	}
 }

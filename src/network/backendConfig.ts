@@ -22,7 +22,8 @@ export const getBackendBaseUrl = (): string => {
 
 	const fromWindow =
 		typeof window?.__DWEB_BACKEND_BASE_URL__ === 'string' ? window.__DWEB_BACKEND_BASE_URL__ : ''
-	const backendMode = typeof window?.__DWEB_BACKEND_MODE__ === 'string' ? window.__DWEB_BACKEND_MODE__ : ''
+	const backendMode =
+		typeof window?.__DWEB_BACKEND_MODE__ === 'string' ? window.__DWEB_BACKEND_MODE__ : ''
 	const fromEnv = import.meta.env.VITE_BACKEND_BASE_URL ?? ''
 	const fromStorage = localStorage.getItem(STORAGE_KEY) ?? ''
 

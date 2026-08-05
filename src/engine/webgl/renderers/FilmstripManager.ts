@@ -36,7 +36,12 @@ export class FilmstripManager {
 		}
 	}
 
-	async requestFilmstrip(videoId: string, videoUrl: string, _videoWidth: number, _videoHeight: number): Promise<boolean> {
+	async requestFilmstrip(
+		videoId: string,
+		videoUrl: string,
+		_videoWidth: number,
+		_videoHeight: number
+	): Promise<boolean> {
 		let entry = this.entries.get(videoId)
 		if (!entry) {
 			entry = {
@@ -115,7 +120,16 @@ export class FilmstripManager {
 			entry.image = img
 			entry.loaded = true
 			entry.loading = false
-			console.log('[FilmstripManager] loaded for:', videoId, 'frames:', data.totalFrames, 'thumb:', actualThumbW + 'x' + actualThumbH, 'interval:', data.frameIntervalSec.toFixed(3) + 's')
+			console.log(
+				'[FilmstripManager] loaded for:',
+				videoId,
+				'frames:',
+				data.totalFrames,
+				'thumb:',
+				actualThumbW + 'x' + actualThumbH,
+				'interval:',
+				data.frameIntervalSec.toFixed(3) + 's'
+			)
 			return true
 		} catch (err) {
 			entry.loading = false

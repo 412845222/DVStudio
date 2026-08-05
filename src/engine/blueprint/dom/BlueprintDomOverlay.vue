@@ -454,6 +454,11 @@ function onBusinessUploadResource(payload: { nodeId: string; file: File; kind: s
 }
 
 function onBusinessUploadModelFile(payload: { nodeId: string; file: File }) {
+	console.log('[BlueprintDomOverlay] onBusinessUploadModelFile:', {
+		nodeId: payload.nodeId,
+		fileName: payload.file?.name,
+		fileSize: payload.file?.size
+	})
 	emit('node-upload-model3d-file', payload)
 }
 

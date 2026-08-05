@@ -1118,9 +1118,7 @@ async function initEditor() {
 			// 代理拿到真实 ArrayBuffer 后，再用 GLTFLoader.parse(buffer, '') 解析，完全规避 CORS / 自定义协议 问题。
 			// 不再通过 proxyUrlToBlobIfNeeded 中转 Blob URL，避免丢失 dweb path 参数等上下文。
 			console.debug(
-				`[Model3DEditor] 开始加载模型 #${i + 1}/${models.length}: id=${m.id}, name=${m.name}, url=${
-					m.url.length > 200 ? m.url.slice(0, 197) + '...' : m.url
-				}`
+				`[Model3DEditor] 开始加载模型 #${i + 1}/${models.length}: id=${m.id}, name=${m.name}, url=${m.url.length > 200 ? m.url.slice(0, 197) + '...' : m.url}`
 			)
 			await viewer.loadModel(m.url, m.id, m.name)
 		}

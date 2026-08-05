@@ -88,26 +88,131 @@ function wrapDone() {
 const ARK_API_BASE = 'https://ark.cn-beijing.volces.com/api/v3'
 
 export const SCENE_UNDERSTAND_MODEL_OPTIONS = [
-	{ id: 'doubao-seed-evolving', label: '豆包 Seed 快速迭代版', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-1-pro-260628', label: '豆包 Seed 2.1 Pro', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-1-turbo-260628', label: '豆包 Seed 2.1 Turbo', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-0-pro-260215', label: '豆包 Seed 2.0 Pro', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-0-lite-260215', label: '豆包 Seed 2.0 Lite', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-0-mini-260215', label: '豆包 Seed 2.0 Mini', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-0-code-preview-260215', label: '豆包 Seed 2.0 Code Preview', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-1-6-vision-250815', label: '豆包 Seed 1.6 Vision', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-1-6-flash-250828', label: '豆包 Seed 1.6 Flash', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-1-6-lite-251015', label: '豆包 Seed 1.6 Lite', supportsVision: true, supportsStructuredOutput: false, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-1-8-251228', label: '豆包 Seed 1.8', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
+	{
+		id: 'doubao-seed-evolving',
+		label: '豆包 Seed 快速迭代版',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-1-pro-260628',
+		label: '豆包 Seed 2.1 Pro',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-1-turbo-260628',
+		label: '豆包 Seed 2.1 Turbo',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-0-pro-260215',
+		label: '豆包 Seed 2.0 Pro',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-0-lite-260215',
+		label: '豆包 Seed 2.0 Lite',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-0-mini-260215',
+		label: '豆包 Seed 2.0 Mini',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-0-code-preview-260215',
+		label: '豆包 Seed 2.0 Code Preview',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-1-6-vision-250815',
+		label: '豆包 Seed 1.6 Vision',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-1-6-flash-250828',
+		label: '豆包 Seed 1.6 Flash',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-1-6-lite-251015',
+		label: '豆包 Seed 1.6 Lite',
+		supportsVision: true,
+		supportsStructuredOutput: false,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-1-8-251228',
+		label: '豆包 Seed 1.8',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	}
 ]
 
 export const DEFAULT_SCENE_UNDERSTAND_MODEL = 'doubao-seed-2-1-pro-260628'
 
 export const SCENE_LIGHTING_MODEL_OPTIONS = [
-	{ id: 'doubao-seed-evolving', label: '豆包 Seed 快速迭代版', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-1-pro-260628', label: '豆包 Seed 2.1 Pro', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-1-turbo-260628', label: '豆包 Seed 2.1 Turbo', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
-	{ id: 'doubao-seed-2-0-pro-260215', label: '豆包 Seed 2.0 Pro', supportsVision: true, supportsStructuredOutput: true, recommended: true, vendor: '字节方舟' },
+	{
+		id: 'doubao-seed-evolving',
+		label: '豆包 Seed 快速迭代版',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-1-pro-260628',
+		label: '豆包 Seed 2.1 Pro',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-1-turbo-260628',
+		label: '豆包 Seed 2.1 Turbo',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	},
+	{
+		id: 'doubao-seed-2-0-pro-260215',
+		label: '豆包 Seed 2.0 Pro',
+		supportsVision: true,
+		supportsStructuredOutput: true,
+		recommended: true,
+		vendor: '字节方舟'
+	}
 ]
 
 export const DEFAULT_SCENE_LIGHTING_MODEL = 'doubao-seed-2-1-pro-260628'
@@ -296,9 +401,10 @@ const AUTO_SCENE_UNDERSTAND_SYSTEM_PROMPT = `你是一个通用场景理解技�
 
 function buildIndoorSceneUnderstandUserPrompt(userText, imageCount) {
 	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行场景理解。'
-	const multiViewText = imageCount > 1
-		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室内空间的不同视角。请先综合全部参考图建立统一房屋结构，再补全全部内容。`
-		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室内结构。'
+	const multiViewText =
+		imageCount > 1
+			? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室内空间的不同视角。请先综合全部参考图建立统一房屋结构，再补全全部内容。`
+			: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室内结构。'
 	return `请基于输入图片完成室内场景理解，识别主要物体并估算布局关系。优先识别墙面、桌面、柜体、地面这些大结构。
 ${multiViewText}
 请先确定主地面并建立场景原点，再输出墙面与地面的正交关系。
@@ -351,9 +457,10 @@ ${multiViewText}
 
 function buildOutdoorSceneUnderstandUserPrompt(userText, imageCount) {
 	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行室外场景理解。'
-	const multiViewText = imageCount > 1
-		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室外场景的不同视角。请综合全部参考图建立统一室外空间结构。`
-		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室外场景结构。'
+	const multiViewText =
+		imageCount > 1
+			? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一室外场景的不同视角。请综合全部参考图建立统一室外空间结构。`
+			: '本次仅输入 1 张参考图，请直接基于当前图像建立完整室外场景结构。'
 	return `请基于输入图片完成室外场景理解，识别主要物体并估算空间布局关系。
 ${multiViewText}
 
@@ -391,7 +498,9 @@ ${multiViewText}
 }
 
 function buildSceneUnderstandUserPrompt(userText, imageCount, sceneType) {
-	const st = String(sceneType || 'auto').trim().toLowerCase()
+	const st = String(sceneType || 'auto')
+		.trim()
+		.toLowerCase()
 	if (st === 'indoor') {
 		return buildIndoorSceneUnderstandUserPrompt(userText, imageCount)
 	}
@@ -399,9 +508,10 @@ function buildSceneUnderstandUserPrompt(userText, imageCount, sceneType) {
 		return buildOutdoorSceneUnderstandUserPrompt(userText, imageCount)
 	}
 	const extra = (userText || '').trim() || '未提供额外文本提示，请直接基于图像进行场景理解。'
-	const multiViewText = imageCount > 1
-		? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一场景的不同视角。请先综合全部参考图建立统一空间结构，再补全全部内容。`
-		: '本次仅输入 1 张参考图，请直接基于当前图像建立完整场景结构。'
+	const multiViewText =
+		imageCount > 1
+			? `本次共输入 ${Math.max(1, imageCount)} 张参考图，它们共同描述同一场景的不同视角。请先综合全部参考图建立统一空间结构，再补全全部内容。`
+			: '本次仅输入 1 张参考图，请直接基于当前图像建立完整场景结构。'
 	return `请基于输入图片完成场景理解（支持室内/室外自动识别），识别主要物体并估算布局关系。
 ${multiViewText}
 
@@ -427,7 +537,9 @@ ${multiViewText}
 }
 
 function getSceneUnderstandSystemPrompt(sceneType) {
-	const st = String(sceneType || 'auto').trim().toLowerCase()
+	const st = String(sceneType || 'auto')
+		.trim()
+		.toLowerCase()
 	if (st === 'indoor') return INDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
 	if (st === 'outdoor') return OUTDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
 	return AUTO_SCENE_UNDERSTAND_SYSTEM_PROMPT
@@ -485,7 +597,15 @@ function tryGetKey(ctx, ...names) {
 }
 
 function resolveArkApiKey(ctx) {
-	return tryGetKey(ctx, 'bytedance_ark', 'bytedance_text', 'bytedance', 'doubao', 'ark', 'volcengine')
+	return tryGetKey(
+		ctx,
+		'bytedance_ark',
+		'bytedance_text',
+		'bytedance',
+		'doubao',
+		'ark',
+		'volcengine'
+	)
 }
 
 function toFloatNum(value, defaultValue) {
@@ -596,8 +716,15 @@ function createJsonDeltaScanner() {
 			}
 			return false
 		},
-		isClosed() { return rootClosed },
-		reset() { depth = 0; inString = false; escape = false; rootClosed = false }
+		isClosed() {
+			return rootClosed
+		},
+		reset() {
+			depth = 0
+			inString = false
+			escape = false
+			rootClosed = false
+		}
 	}
 }
 
@@ -655,23 +782,24 @@ async function callArkChatCompletion(client, apiKey, model, messages, stream = f
 		messages,
 		stream,
 		temperature: 0.1,
-		max_tokens: 16384,
+		max_tokens: 16384
 	}
 	if (stream) {
 		return client.postStream(endpoint, {
-			headers: { 'Authorization': `Bearer ${apiKey}` },
+			headers: { Authorization: `Bearer ${apiKey}` },
 			body,
 			timeout: 600000
 		})
 	}
 	const res = await client.post(endpoint, body, {
-		headers: { 'Authorization': `Bearer ${apiKey}` },
+		headers: { Authorization: `Bearer ${apiKey}` },
 		timeout: 600000
 	})
 	if (!res.ok) {
-		const errMsg = typeof res.body === 'object' && res.body?.error?.message
-			? res.body.error.message
-			: `HTTP ${res.status}`
+		const errMsg =
+			typeof res.body === 'object' && res.body?.error?.message
+				? res.body.error.message
+				: `HTTP ${res.status}`
 		throw upstreamError(`Ark API call failed: ${errMsg}`)
 	}
 	return res
@@ -706,11 +834,13 @@ export async function sceneUnderstandRun(ctx, payload) {
 	if (!apiKey) throw invalidParamsError('ByteDance Ark API key is not configured')
 
 	const client = getHttpClient()
-	const messages = [
-		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }
-	]
+	const messages = [{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }]
 
-	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
+	const imageCount = Array.isArray(imageInputs)
+		? imageInputs.length
+		: imageUrl || imageDataUrl
+			? 1
+			: 0
 	const userContent = [
 		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
 	]
@@ -770,11 +900,13 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 	yield wrapTaskStatusMsg('任务已启动，正在准备输入图片...', 'start')
 
 	const client = getHttpClient()
-	let messages = [
-		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }
-	]
+	let messages = [{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }]
 
-	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
+	const imageCount = Array.isArray(imageInputs)
+		? imageInputs.length
+		: imageUrl || imageDataUrl
+			? 1
+			: 0
 	const userContent = [
 		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
 	]
@@ -815,7 +947,10 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 				if (continuationCount > 0) {
 					yield wrapTaskStatusMsg(`输出较长，正在续写第 ${continuationCount} 段...`, 'continue')
 				} else if (repairCount > 0) {
-					yield wrapTaskStatusMsg(`JSON格式有误，正在请求模型修复（第${repairCount}次）...`, 'rewrite')
+					yield wrapTaskStatusMsg(
+						`JSON格式有误，正在请求模型修复（第${repairCount}次）...`,
+						'rewrite'
+					)
 				} else {
 					yield wrapTaskStatusMsg('正在连接模型服务...', 'connect')
 				}
@@ -823,7 +958,9 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 				const stream = await callArkChatCompletion(client, apiKey, model, messages, true)
 				const submitMsg = isRepairRound
 					? '修复请求已提交，等待模型重新输出正确JSON...'
-					: (continuationCount > 0 ? '继续请求已提交，等待响应...' : '已提交请求，模型正在深度思考分析图片...')
+					: continuationCount > 0
+						? '继续请求已提交，等待响应...'
+						: '已提交请求，模型正在深度思考分析图片...'
 				yield wrapTaskStatusMsg(submitMsg, isRepairRound ? 'rewrite' : 'thinking')
 
 				let lastStatusTime = Date.now()
@@ -842,7 +979,12 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 					const now = Date.now()
 					if (now - lastStatusTime > HEARTBEAT_INTERVAL) {
 						if (!hasStartedContent) {
-							yield wrapTaskStatusMsg(isRepairRound ? '模型正在重新生成JSON...' : '模型正在思考中，分析空间结构与物体关系...', isRepairRound ? 'writing' : 'thinking')
+							yield wrapTaskStatusMsg(
+								isRepairRound
+									? '模型正在重新生成JSON...'
+									: '模型正在思考中，分析空间结构与物体关系...',
+								isRepairRound ? 'writing' : 'thinking'
+							)
 						} else if (jsonScanner.isClosed()) {
 							yield wrapTaskStatusMsg('JSON输出完成，正在等待响应结束...', 'streaming')
 						} else {
@@ -870,7 +1012,10 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 						if (delta) {
 							if (!hasStartedContent) {
 								hasStartedContent = true
-								yield wrapTaskStatusMsg(isRepairRound ? '正在输出修复后的JSON...' : '思考完成，正在输出结构化JSON...', 'writing')
+								yield wrapTaskStatusMsg(
+									isRepairRound ? '正在输出修复后的JSON...' : '思考完成，正在输出结构化JSON...',
+									'writing'
+								)
 							}
 
 							if (jsonScanner.isClosed()) {
@@ -925,8 +1070,15 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 					if (prefixLen > 0) {
 						fullAccumulatedContent = fullAccumulatedContent.slice(0, prefixLen)
 					}
-				} else if (isContinuationRound && thisRoundContent.length > 0 && fullAccumulatedContent.length > thisRoundContent.length) {
-					const oldPart = fullAccumulatedContent.slice(0, fullAccumulatedContent.length - thisRoundContent.length)
+				} else if (
+					isContinuationRound &&
+					thisRoundContent.length > 0 &&
+					fullAccumulatedContent.length > thisRoundContent.length
+				) {
+					const oldPart = fullAccumulatedContent.slice(
+						0,
+						fullAccumulatedContent.length - thisRoundContent.length
+					)
 					const overlap = findOverlap(oldPart, thisRoundContent)
 					if (overlap > 0) {
 						fullAccumulatedContent = oldPart + thisRoundContent.slice(overlap)
@@ -935,7 +1087,11 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 				}
 
 				const alreadyComplete = hasCompleteRootJson(fullAccumulatedContent)
-				if (finishReason === 'length' && continuationCount < MAX_CONTINUATIONS && !alreadyComplete) {
+				if (
+					finishReason === 'length' &&
+					continuationCount < MAX_CONTINUATIONS &&
+					!alreadyComplete
+				) {
 					continuationCount++
 					const anchor = fullAccumulatedContent.slice(-ANCHOR_SUFFIX_LEN)
 					messages.push({ role: 'assistant', content: fullAccumulatedContent })
@@ -1013,11 +1169,13 @@ export async function sceneLightingRun(ctx, payload) {
 	if (!apiKey) throw invalidParamsError('ByteDance Ark API key is not configured')
 
 	const client = getHttpClient()
-	const messages = [
-		{ role: 'system', content: SCENE_LIGHTING_SYSTEM_PROMPT }
-	]
+	const messages = [{ role: 'system', content: SCENE_LIGHTING_SYSTEM_PROMPT }]
 
-	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
+	const imageCount = Array.isArray(imageInputs)
+		? imageInputs.length
+		: imageUrl || imageDataUrl
+			? 1
+			: 0
 	const userContent = [
 		{ type: 'text', text: buildSceneLightingUserPrompt(promptText, layoutJson, imageCount) }
 	]
@@ -1082,11 +1240,13 @@ export async function* sceneLightingRunStream(ctx, payload) {
 	yield wrapTaskStatusMsg('任务已启动，正在准备参考图和布局JSON...', 'start')
 
 	const client = getHttpClient()
-	let messages = [
-		{ role: 'system', content: SCENE_LIGHTING_SYSTEM_PROMPT }
-	]
+	let messages = [{ role: 'system', content: SCENE_LIGHTING_SYSTEM_PROMPT }]
 
-	const imageCount = Array.isArray(imageInputs) ? imageInputs.length : (imageUrl || imageDataUrl ? 1 : 0)
+	const imageCount = Array.isArray(imageInputs)
+		? imageInputs.length
+		: imageUrl || imageDataUrl
+			? 1
+			: 0
 	const userContent = [
 		{ type: 'text', text: buildSceneLightingUserPrompt(promptText, layoutJson, imageCount) }
 	]
@@ -1127,7 +1287,10 @@ export async function* sceneLightingRunStream(ctx, payload) {
 				if (continuationCount > 0) {
 					yield wrapTaskStatusMsg(`输出较长，正在续写第 ${continuationCount} 段...`, 'continue')
 				} else if (repairCount > 0) {
-					yield wrapTaskStatusMsg(`JSON格式有误，正在请求模型修复（第${repairCount}次）...`, 'rewrite')
+					yield wrapTaskStatusMsg(
+						`JSON格式有误，正在请求模型修复（第${repairCount}次）...`,
+						'rewrite'
+					)
 				} else {
 					yield wrapTaskStatusMsg('正在连接模型服务...', 'connect')
 				}
@@ -1135,7 +1298,9 @@ export async function* sceneLightingRunStream(ctx, payload) {
 				const stream = await callArkChatCompletion(client, apiKey, model, messages, true)
 				const submitMsg = isRepairRound
 					? '修复请求已提交，等待模型重新输出正确JSON...'
-					: (continuationCount > 0 ? '继续请求已提交，等待响应...' : '已提交请求，模型正在深度思考分析光照条件...')
+					: continuationCount > 0
+						? '继续请求已提交，等待响应...'
+						: '已提交请求，模型正在深度思考分析光照条件...'
 				yield wrapTaskStatusMsg(submitMsg, isRepairRound ? 'rewrite' : 'thinking')
 
 				let lastStatusTime = Date.now()
@@ -1154,7 +1319,10 @@ export async function* sceneLightingRunStream(ctx, payload) {
 					const now = Date.now()
 					if (now - lastStatusTime > HEARTBEAT_INTERVAL) {
 						if (!hasStartedContent) {
-							yield wrapTaskStatusMsg(isRepairRound ? '模型正在重新生成JSON...' : '模型正在思考中，分析光照条件...', isRepairRound ? 'writing' : 'thinking')
+							yield wrapTaskStatusMsg(
+								isRepairRound ? '模型正在重新生成JSON...' : '模型正在思考中，分析光照条件...',
+								isRepairRound ? 'writing' : 'thinking'
+							)
 						} else if (jsonScanner.isClosed()) {
 							yield wrapTaskStatusMsg('JSON输出完成，正在等待响应结束...', 'streaming')
 						} else {
@@ -1182,7 +1350,10 @@ export async function* sceneLightingRunStream(ctx, payload) {
 						if (delta) {
 							if (!hasStartedContent) {
 								hasStartedContent = true
-								yield wrapTaskStatusMsg(isRepairRound ? '正在输出修复后的JSON...' : '思考完成，正在输出灯光配置JSON...', 'writing')
+								yield wrapTaskStatusMsg(
+									isRepairRound ? '正在输出修复后的JSON...' : '思考完成，正在输出灯光配置JSON...',
+									'writing'
+								)
 							}
 
 							if (jsonScanner.isClosed()) {
@@ -1237,8 +1408,15 @@ export async function* sceneLightingRunStream(ctx, payload) {
 					if (prefixLen > 0) {
 						fullAccumulatedContent = fullAccumulatedContent.slice(0, prefixLen)
 					}
-				} else if (isContinuationRound && thisRoundContent.length > 0 && fullAccumulatedContent.length > thisRoundContent.length) {
-					const oldPart = fullAccumulatedContent.slice(0, fullAccumulatedContent.length - thisRoundContent.length)
+				} else if (
+					isContinuationRound &&
+					thisRoundContent.length > 0 &&
+					fullAccumulatedContent.length > thisRoundContent.length
+				) {
+					const oldPart = fullAccumulatedContent.slice(
+						0,
+						fullAccumulatedContent.length - thisRoundContent.length
+					)
 					const overlap = findOverlap(oldPart, thisRoundContent)
 					if (overlap > 0) {
 						fullAccumulatedContent = oldPart + thisRoundContent.slice(overlap)
@@ -1247,7 +1425,11 @@ export async function* sceneLightingRunStream(ctx, payload) {
 				}
 
 				const alreadyComplete = hasCompleteRootJson(fullAccumulatedContent)
-				if (finishReason === 'length' && continuationCount < MAX_CONTINUATIONS && !alreadyComplete) {
+				if (
+					finishReason === 'length' &&
+					continuationCount < MAX_CONTINUATIONS &&
+					!alreadyComplete
+				) {
 					continuationCount++
 					const anchor = fullAccumulatedContent.slice(-ANCHOR_SUFFIX_LEN)
 					messages.push({ role: 'assistant', content: fullAccumulatedContent })
@@ -1315,16 +1497,27 @@ function asDict(raw) {
 }
 
 function canonicalWallRole(value) {
-	const raw = String(value || '').trim().toLowerCase()
+	const raw = String(value || '')
+		.trim()
+		.toLowerCase()
 	if (!raw) return ''
-	if (['left', '左墙', '左侧墙', '左侧墙面'].some(t => raw.includes(t))) return 'left'
-	if (['right', '右墙', '右侧墙', '右侧墙面'].some(t => raw.includes(t))) return 'right'
-	if (['back', 'rear', '后墙', '后侧墙', '后侧墙面'].some(t => raw.includes(t))) return 'back'
-	if (['front', '前墙', '前侧墙', '前侧墙面'].some(t => raw.includes(t))) return 'front'
+	if (['left', '左墙', '左侧墙', '左侧墙面'].some((t) => raw.includes(t))) return 'left'
+	if (['right', '右墙', '右侧墙', '右侧墙面'].some((t) => raw.includes(t))) return 'right'
+	if (['back', 'rear', '后墙', '后侧墙', '后侧墙面'].some((t) => raw.includes(t))) return 'back'
+	if (['front', '前墙', '前侧墙', '前侧墙面'].some((t) => raw.includes(t))) return 'front'
 	return raw
 }
 
-const GROUP_COLORS = ['#60a5fa', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#f87171', '#22d3ee', '#facc15']
+const GROUP_COLORS = [
+	'#60a5fa',
+	'#f59e0b',
+	'#34d399',
+	'#f472b6',
+	'#a78bfa',
+	'#f87171',
+	'#22d3ee',
+	'#facc15'
+]
 
 function normalizeLayoutItem(item) {
 	const obj = asDict(item)
@@ -1372,7 +1565,7 @@ function normalizeLayoutItem(item) {
 		},
 		sourceImageIndex: Math.max(1, Math.floor(toFloatNum(obj.sourceImageIndex, 1))),
 		observedImageIndices: Array.isArray(obj.observedImageIndices)
-			? [...new Set(obj.observedImageIndices.map(v => Math.max(1, Math.floor(toFloatNum(v, 1)))))]
+			? [...new Set(obj.observedImageIndices.map((v) => Math.max(1, Math.floor(toFloatNum(v, 1)))))]
 			: [],
 		isKeyElement: Boolean(obj.isKeyElement),
 		keyElementType: String(obj.keyElementType || '').toLowerCase(),
@@ -1380,11 +1573,17 @@ function normalizeLayoutItem(item) {
 		semanticRole: String(obj.semanticRole || '').toLowerCase(),
 		mountType: String(obj.mountType || '').toLowerCase(),
 		relationTags: Array.isArray(obj.relationTags)
-			? obj.relationTags.map(t => String(t || '').trim().toLowerCase()).filter(Boolean)
+			? obj.relationTags
+					.map((t) =>
+						String(t || '')
+							.trim()
+							.toLowerCase()
+					)
+					.filter(Boolean)
 			: [],
 		shouldTouchGround: obj.shouldTouchGround !== false,
 		groundReason: String(obj.groundReason || ''),
-		imageRect: asDict(obj.imageRect),
+		imageRect: asDict(obj.imageRect)
 	}
 }
 
@@ -1522,7 +1721,13 @@ export function unrealRegister(ctx, payload) {
 		nextJobIndex: 0
 	}
 	unrealSessionsMap.set(sessionId, session)
-	return { ok: true, sessionId, projectId, reused: false, session: { id: sessionId, projectId, createdAt: now } }
+	return {
+		ok: true,
+		sessionId,
+		projectId,
+		reused: false,
+		session: { id: sessionId, projectId, createdAt: now }
+	}
 }
 
 function formatJobForPlugin(job) {
@@ -1557,7 +1762,7 @@ export function unrealSessionDetail(ctx, payload) {
 			clientInfo: session.clientInfo,
 			lastHeartbeat: session.lastHeartbeat,
 			createdAt: session.createdAt,
-			jobs: session.jobs.map(jid => unrealJobsMap.get(jid)).filter(Boolean)
+			jobs: session.jobs.map((jid) => unrealJobsMap.get(jid)).filter(Boolean)
 		}
 	}
 }
@@ -1721,7 +1926,13 @@ export function unrealPickJob(ctx, payload) {
 			job.updatedAt = Date.now()
 			return { ok: true, job: formatJobForPlugin(job) }
 		}
-		if (job.status === 'picked' || job.status === 'importing' || job.status === 'downloading' || job.status === 'assembling-actor' || job.status === 'applying-lighting') {
+		if (
+			job.status === 'picked' ||
+			job.status === 'importing' ||
+			job.status === 'downloading' ||
+			job.status === 'assembling-actor' ||
+			job.status === 'applying-lighting'
+		) {
 			job.updatedAt = Date.now()
 			return { ok: true, job: formatJobForPlugin(job) }
 		}
@@ -1739,7 +1950,15 @@ function getUnrealBridgeConfigPaths() {
 		if (appData) paths.push(path.join(appData, 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
 		paths.push(path.join(homeDir, 'AppData', 'Roaming', 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
 	} else if (process.platform === 'darwin') {
-		paths.push(path.join(homeDir, 'Library', 'Application Support', 'DVStudio', UNREAL_BRIDGE_CONFIG_FILENAME))
+		paths.push(
+			path.join(
+				homeDir,
+				'Library',
+				'Application Support',
+				'DVStudio',
+				UNREAL_BRIDGE_CONFIG_FILENAME
+			)
+		)
 	} else {
 		const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config')
 		paths.push(path.join(xdgConfig, 'dvstudio', UNREAL_BRIDGE_CONFIG_FILENAME))
@@ -1810,10 +2029,16 @@ function sendJson(res, statusCode, data) {
 function readJsonBody(req) {
 	return new Promise((resolve, reject) => {
 		let body = ''
-		req.on('data', chunk => { body += chunk })
+		req.on('data', (chunk) => {
+			body += chunk
+		})
 		req.on('end', () => {
 			if (!body) return resolve({})
-			try { resolve(JSON.parse(body)) } catch (err) { reject(err) }
+			try {
+				resolve(JSON.parse(body))
+			} catch (err) {
+				reject(err)
+			}
 		})
 		req.on('error', reject)
 	})
@@ -1860,7 +2085,11 @@ export function startUnrealHttpServer() {
 					return sendJson(res, result.ok ? 200 : 400, result)
 				}
 
-				if (req.method === 'POST' && pathname.startsWith('/api/agent-skills/unreal/jobs/') && pathname.endsWith('/update')) {
+				if (
+					req.method === 'POST' &&
+					pathname.startsWith('/api/agent-skills/unreal/jobs/') &&
+					pathname.endsWith('/update')
+				) {
 					const jobId = pathname.split('/').slice(-2, -1)[0]
 					const body = await readJsonBody(req)
 					const result = unrealJobDetail(null, { jobId, ...body })
@@ -1901,7 +2130,10 @@ export function startUnrealHttpServer() {
 					return sendJson(res, result.ok ? 200 : 404, result)
 				}
 
-				if (req.method === 'POST' && pathname === '/api/agent-skills/unreal-export/sessions/disconnect') {
+				if (
+					req.method === 'POST' &&
+					pathname === '/api/agent-skills/unreal-export/sessions/disconnect'
+				) {
 					const body = await readJsonBody(req)
 					const result = unrealDisconnectSession(null, body)
 					return sendJson(res, result.ok ? 200 : 404, result)

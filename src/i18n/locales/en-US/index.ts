@@ -138,7 +138,7 @@ const messages = {
 	...aiworkflowPage,
 	...aiworkflowTemplateCenter,
 	...cloudStorage,
-	...taskQueue,
+	...taskQueue
 }
 
 const locale: LocalePackage = {
@@ -146,9 +146,9 @@ const locale: LocalePackage = {
 		code: 'en-US',
 		name: 'English',
 		englishName: 'English',
-		flag: '🇺🇸',
+		flag: '🇺🇸'
 	},
-	messages,
+	messages
 }
 
 export default locale

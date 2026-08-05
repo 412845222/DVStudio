@@ -3,12 +3,7 @@
 		<div v-if="visible" class="steam-panel-overlay" @click.self="handleBackdropClick">
 			<div class="steam-panel" :class="{ 'is-real-platform': isRealPlatform }" ref="panelEl">
 				<div class="panel-particles" aria-hidden="true">
-					<span
-						v-for="p in particles"
-						:key="p.id"
-						class="sq-particle"
-						:style="p.style"
-					></span>
+					<span v-for="p in particles" :key="p.id" class="sq-particle" :style="p.style"></span>
 				</div>
 
 				<div class="panel-corner-decoration top-left" aria-hidden="true"></div>
@@ -28,9 +23,19 @@
 							<div class="panel-subtitle">{{ statusText }}</div>
 						</div>
 					</div>
-					<button class="panel-close-btn" type="button" @click="emit('close')" :title="t('steam.closePanel')">
+					<button
+						class="panel-close-btn"
+						type="button"
+						@click="emit('close')"
+						:title="t('steam.closePanel')"
+					>
 						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+							<path
+								d="M18 6L6 18M6 6l12 12"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+							/>
 						</svg>
 					</button>
 				</div>
@@ -42,7 +47,12 @@
 
 					<div v-else-if="!isRealPlatform" class="panel-section mock-notice">
 						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-							<path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+							<path
+								d="M12 9v4M12 17h.01"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+							/>
 							<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8" />
 						</svg>
 						<span>{{ t('steam.mockNotice') }}</span>
@@ -55,17 +65,41 @@
 					<div v-if="isRealPlatform" class="panel-section friends-section" ref="friendsSectionEl">
 						<div class="section-title">
 							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
+								<path
+									d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8" />
 							</svg>
 							<span>{{ t('steam.friendsList') }}</span>
 						</div>
 						<div class="friends-placeholder" @click="handleFriendsClick">
 							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/>
-								<path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+								<path
+									d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+								<circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8" />
+								<path
+									d="M23 21v-2a4 4 0 0 0-3-3.87"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+								<path
+									d="M16 3.13a4 4 0 0 1 0 7.75"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 							<span class="placeholder-text">点击上方「好友」按钮</span>
 							<span class="placeholder-sub">打开 Steam 好友列表面板</span>
@@ -134,7 +168,7 @@ function handleFriendsClick() {
 </script>
 
 <style scoped>
-@import "../../styles/square-particles.css";
+@import '../../styles/square-particles.css';
 
 .steam-panel-overlay {
 	position: fixed;
@@ -222,7 +256,11 @@ function handleFriendsClick() {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: linear-gradient(135deg, var(--theme-accent, #1f9d84) 0%, var(--pl-cold, #3aa8b4) 100%);
+	background: linear-gradient(
+		135deg,
+		var(--theme-accent, #1f9d84) 0%,
+		var(--pl-cold, #3aa8b4) 100%
+	);
 	color: white;
 	flex-shrink: 0;
 	border: 2px solid color-mix(in srgb, var(--theme-accent, #1f9d84) 60%, transparent);

@@ -18,11 +18,11 @@ import {
 	isSameBinding,
 	isSameBindings,
 	type OrientationOffset,
-	type FillAxis,
+	type FillAxis
 } from '@/ui/WorkFlow/WorlFlowNodes/sceneLayout/SceneLayoutPreviewViewer'
 import type {
 	WorkflowSceneLayoutItem,
-	WorkflowSceneLayoutModelBinding,
+	WorkflowSceneLayoutModelBinding
 } from '@/types/workflow/sceneLayout'
 
 const makeItem = (overrides: Partial<WorkflowSceneLayoutItem> = {}): WorkflowSceneLayoutItem =>
@@ -44,7 +44,7 @@ const makeItem = (overrides: Partial<WorkflowSceneLayoutItem> = {}): WorkflowSce
 		fillMode: 'none',
 		fillCount: 1,
 		fitMode: 'normal',
-		...overrides,
+		...overrides
 	}) as unknown as WorkflowSceneLayoutItem
 
 describe('sceneLayoutPreviewUtils', () => {
@@ -251,7 +251,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const item = makeItem({
 				name: '壁挂桌',
 				placement: 'attached-to-wall',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isWallMountedSupportSurface(item)).toBe(true)
 			expect(isWallSurfaceLike(item)).toBe(false)
@@ -291,7 +291,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const item = makeItem({
 				name: '壁挂桌',
 				placement: 'attached-to-wall',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isDeskLikeSurface(item)).toBe(true)
 		})
@@ -327,7 +327,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const item = makeItem({
 				name: '壁挂桌',
 				placement: 'attached-to-wall',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isWallMountedSupportSurface(item)).toBe(true)
 		})
@@ -336,7 +336,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const item = makeItem({
 				semanticRole: 'wall-fixture-shelf',
 				placement: 'attached-to-wall',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isWallMountedSupportSurface(item)).toBe(false)
 		})
@@ -346,7 +346,7 @@ describe('sceneLayoutPreviewUtils', () => {
 				name: '嵌入式搁板',
 				placement: 'attached-to-wall',
 				mountType: 'embedded',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isWallMountedSupportSurface(item)).toBe(false)
 		})
@@ -358,7 +358,7 @@ describe('sceneLayoutPreviewUtils', () => {
 				name: '书架',
 				category: 'furniture',
 				wallRole: 'back',
-				placement: 'on-floor',
+				placement: 'on-floor'
 			})
 			expect(isWallSurfaceLike(item)).toBe(true)
 		})
@@ -367,7 +367,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const item = makeItem({
 				name: '壁挂工作台',
 				placement: 'attached-to-wall',
-				wallRole: 'back',
+				wallRole: 'back'
 			})
 			expect(isWallMountedSupportSurface(item)).toBe(true)
 			expect(isDeskLikeSurface(item)).toBe(true)
@@ -401,11 +401,15 @@ describe('sceneLayoutPreviewUtils', () => {
 
 	describe('isSameSize', () => {
 		it('returns true for identical sizes', () => {
-			expect(isSameSize({ width: 1, height: 2, depth: 3 }, { width: 1, height: 2, depth: 3 })).toBe(true)
+			expect(isSameSize({ width: 1, height: 2, depth: 3 }, { width: 1, height: 2, depth: 3 })).toBe(
+				true
+			)
 		})
 
 		it('returns false for different sizes', () => {
-			expect(isSameSize({ width: 1, height: 2, depth: 3 }, { width: 1, height: 2, depth: 4 })).toBe(false)
+			expect(isSameSize({ width: 1, height: 2, depth: 3 }, { width: 1, height: 2, depth: 4 })).toBe(
+				false
+			)
 		})
 
 		it('treats undefined fields as 0', () => {
@@ -419,11 +423,15 @@ describe('sceneLayoutPreviewUtils', () => {
 
 	describe('isSameRotation', () => {
 		it('returns true for identical rotations', () => {
-			expect(isSameRotation({ yaw: 10, pitch: 20, roll: 30 }, { yaw: 10, pitch: 20, roll: 30 })).toBe(true)
+			expect(
+				isSameRotation({ yaw: 10, pitch: 20, roll: 30 }, { yaw: 10, pitch: 20, roll: 30 })
+			).toBe(true)
 		})
 
 		it('returns false for different rotations', () => {
-			expect(isSameRotation({ yaw: 10, pitch: 20, roll: 30 }, { yaw: 10, pitch: 20, roll: 31 })).toBe(false)
+			expect(
+				isSameRotation({ yaw: 10, pitch: 20, roll: 30 }, { yaw: 10, pitch: 20, roll: 31 })
+			).toBe(false)
 		})
 
 		it('treats undefined fields as 0', () => {
@@ -446,19 +454,39 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns false for different positions', () => {
-			expect(isSameItem(makeItem({ position: { x: 1, y: 0, z: 0 } }), makeItem({ position: { x: 2, y: 0, z: 0 } }))).toBe(false)
+			expect(
+				isSameItem(
+					makeItem({ position: { x: 1, y: 0, z: 0 } }),
+					makeItem({ position: { x: 2, y: 0, z: 0 } })
+				)
+			).toBe(false)
 		})
 
 		it('returns false for different sizes', () => {
-			expect(isSameItem(makeItem({ size: { width: 1, height: 1, depth: 1 } }), makeItem({ size: { width: 2, height: 1, depth: 1 } }))).toBe(false)
+			expect(
+				isSameItem(
+					makeItem({ size: { width: 1, height: 1, depth: 1 } }),
+					makeItem({ size: { width: 2, height: 1, depth: 1 } })
+				)
+			).toBe(false)
 		})
 
 		it('returns false for different rotations', () => {
-			expect(isSameItem(makeItem({ rotation: { yaw: 10, pitch: 0, roll: 0 } }), makeItem({ rotation: { yaw: 20, pitch: 0, roll: 0 } }))).toBe(false)
+			expect(
+				isSameItem(
+					makeItem({ rotation: { yaw: 10, pitch: 0, roll: 0 } }),
+					makeItem({ rotation: { yaw: 20, pitch: 0, roll: 0 } })
+				)
+			).toBe(false)
 		})
 
 		it('returns false for different scales', () => {
-			expect(isSameItem(makeItem({ scale: { x: 1, y: 1, z: 1 } }), makeItem({ scale: { x: 2, y: 1, z: 1 } }))).toBe(false)
+			expect(
+				isSameItem(
+					makeItem({ scale: { x: 1, y: 1, z: 1 } }),
+					makeItem({ scale: { x: 2, y: 1, z: 1 } })
+				)
+			).toBe(false)
 		})
 
 		it('returns false for different orientationFix', () => {
@@ -475,11 +503,15 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns false for different placement', () => {
-			expect(isSameItem(makeItem({ placement: 'on-floor' }), makeItem({ placement: 'on-surface' }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ placement: 'on-floor' }), makeItem({ placement: 'on-surface' }))
+			).toBe(false)
 		})
 
 		it('returns false for different supportSurface', () => {
-			expect(isSameItem(makeItem({ supportSurface: 'floor' }), makeItem({ supportSurface: 'desk' }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ supportSurface: 'floor' }), makeItem({ supportSurface: 'desk' }))
+			).toBe(false)
 		})
 
 		it('returns false for different wallRole', () => {
@@ -487,31 +519,45 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns false for different semanticRole', () => {
-			expect(isSameItem(makeItem({ semanticRole: 'storage' }), makeItem({ semanticRole: 'seating' }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ semanticRole: 'storage' }), makeItem({ semanticRole: 'seating' }))
+			).toBe(false)
 		})
 
 		it('returns false for different keyElementType', () => {
-			expect(isSameItem(makeItem({ keyElementType: 'wall' }), makeItem({ keyElementType: 'floor' }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ keyElementType: 'wall' }), makeItem({ keyElementType: 'floor' }))
+			).toBe(false)
 		})
 
 		it('returns false for different mountType', () => {
-			expect(isSameItem(makeItem({ mountType: 'wall' }), makeItem({ mountType: 'floor' }))).toBe(false)
+			expect(isSameItem(makeItem({ mountType: 'wall' }), makeItem({ mountType: 'floor' }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different isKeyElement', () => {
-			expect(isSameItem(makeItem({ isKeyElement: true }), makeItem({ isKeyElement: false }))).toBe(false)
+			expect(isSameItem(makeItem({ isKeyElement: true }), makeItem({ isKeyElement: false }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different fixedInRoom', () => {
-			expect(isSameItem(makeItem({ fixedInRoom: true }), makeItem({ fixedInRoom: false }))).toBe(false)
+			expect(isSameItem(makeItem({ fixedInRoom: true }), makeItem({ fixedInRoom: false }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different shouldTouchGround', () => {
-			expect(isSameItem(makeItem({ shouldTouchGround: true }), makeItem({ shouldTouchGround: false }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ shouldTouchGround: true }), makeItem({ shouldTouchGround: false }))
+			).toBe(false)
 		})
 
 		it('returns false for different fitMode', () => {
-			expect(isSameItem(makeItem({ fitMode: 'normal' }), makeItem({ fitMode: 'oriented' }))).toBe(false)
+			expect(isSameItem(makeItem({ fitMode: 'normal' }), makeItem({ fitMode: 'oriented' }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different fitMessage', () => {
@@ -519,11 +565,18 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns false for different previewScaleMode', () => {
-			expect(isSameItem(makeItem({ previewScaleMode: 'placeholder' }), makeItem({ previewScaleMode: 'model' }))).toBe(false)
+			expect(
+				isSameItem(
+					makeItem({ previewScaleMode: 'placeholder' }),
+					makeItem({ previewScaleMode: 'model' })
+				)
+			).toBe(false)
 		})
 
 		it('returns false for different fillMode', () => {
-			expect(isSameItem(makeItem({ fillMode: 'single' }), makeItem({ fillMode: 'fill-x' }))).toBe(false)
+			expect(isSameItem(makeItem({ fillMode: 'single' }), makeItem({ fillMode: 'fill-x' }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different fillCount', () => {
@@ -536,13 +589,19 @@ describe('sceneLayoutPreviewUtils', () => {
 
 		it('returns true when both items have no holePunches', () => {
 			expect(isSameItem(makeItem(), makeItem())).toBe(true)
-			expect(isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: undefined }))).toBe(true)
+			expect(
+				isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: undefined }))
+			).toBe(true)
 		})
 
 		it('returns false when only one item has holePunches', () => {
 			const holes = [{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 }]
-			expect(isSameItem(makeItem({ holePunches: holes }), makeItem({ holePunches: undefined }))).toBe(false)
-			expect(isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: holes }))).toBe(false)
+			expect(
+				isSameItem(makeItem({ holePunches: holes }), makeItem({ holePunches: undefined }))
+			).toBe(false)
+			expect(
+				isSameItem(makeItem({ holePunches: undefined }), makeItem({ holePunches: holes }))
+			).toBe(false)
 		})
 
 		it('returns false when holePunches counts differ', () => {
@@ -551,7 +610,9 @@ describe('sceneLayoutPreviewUtils', () => {
 				{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 },
 				{ id: 'h2', targetItemId: 't2', toolItemId: 'tool2', createdAt: 0 }
 			]
-			expect(isSameItem(makeItem({ holePunches: holes1 }), makeItem({ holePunches: holes2 }))).toBe(false)
+			expect(isSameItem(makeItem({ holePunches: holes1 }), makeItem({ holePunches: holes2 }))).toBe(
+				false
+			)
 		})
 
 		it('returns false when holePunches id differs', () => {
@@ -583,7 +644,12 @@ describe('sceneLayoutPreviewUtils', () => {
 				{ id: 'h1', targetItemId: 't1', toolItemId: 'tool1', createdAt: 0 },
 				{ id: 'h2', targetItemId: 't2', toolItemId: 'tool2', createdAt: 0 }
 			]
-			expect(isSameItem(makeItem({ holePunches: holes }), makeItem({ holePunches: holes.map((h) => ({ ...h })) }))).toBe(true)
+			expect(
+				isSameItem(
+					makeItem({ holePunches: holes }),
+					makeItem({ holePunches: holes.map((h) => ({ ...h })) })
+				)
+			).toBe(true)
 		})
 
 		it('returns true for same object reference', () => {
@@ -599,7 +665,12 @@ describe('sceneLayoutPreviewUtils', () => {
 
 		it('returns true for identical item arrays', () => {
 			const items = [makeItem({ id: 'a' }), makeItem({ id: 'b' })]
-			expect(isSameItems(items, items.map((i) => ({ ...i })))).toBe(true)
+			expect(
+				isSameItems(
+					items,
+					items.map((i) => ({ ...i }))
+				)
+			).toBe(true)
 		})
 
 		it('returns false for different lengths', () => {
@@ -619,14 +690,16 @@ describe('sceneLayoutPreviewUtils', () => {
 	})
 
 	describe('isSameBinding', () => {
-		const makeBinding = (overrides: Partial<WorkflowSceneLayoutModelBinding> = {}): WorkflowSceneLayoutModelBinding => ({
+		const makeBinding = (
+			overrides: Partial<WorkflowSceneLayoutModelBinding> = {}
+		): WorkflowSceneLayoutModelBinding => ({
 			objectId: 'obj-1',
 			connected: true,
 			modelUrl: 'https://example.com/model.glb',
 			modelAssetUrl: '',
 			sourceNodeId: 'node-1',
 			sourceNodeType: 'model3d',
-			...overrides,
+			...overrides
 		})
 
 		it('returns true for identical bindings', () => {
@@ -634,27 +707,42 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns false for different objectId', () => {
-			expect(isSameBinding(makeBinding({ objectId: 'a' }), makeBinding({ objectId: 'b' }))).toBe(false)
+			expect(isSameBinding(makeBinding({ objectId: 'a' }), makeBinding({ objectId: 'b' }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different connected', () => {
-			expect(isSameBinding(makeBinding({ connected: true }), makeBinding({ connected: false }))).toBe(false)
+			expect(
+				isSameBinding(makeBinding({ connected: true }), makeBinding({ connected: false }))
+			).toBe(false)
 		})
 
 		it('returns false for different modelUrl', () => {
-			expect(isSameBinding(makeBinding({ modelUrl: 'a' }), makeBinding({ modelUrl: 'b' }))).toBe(false)
+			expect(isSameBinding(makeBinding({ modelUrl: 'a' }), makeBinding({ modelUrl: 'b' }))).toBe(
+				false
+			)
 		})
 
 		it('returns false for different modelAssetUrl', () => {
-			expect(isSameBinding(makeBinding({ modelAssetUrl: 'a' }), makeBinding({ modelAssetUrl: 'b' }))).toBe(false)
+			expect(
+				isSameBinding(makeBinding({ modelAssetUrl: 'a' }), makeBinding({ modelAssetUrl: 'b' }))
+			).toBe(false)
 		})
 
 		it('returns false for different sourceNodeId', () => {
-			expect(isSameBinding(makeBinding({ sourceNodeId: 'a' }), makeBinding({ sourceNodeId: 'b' }))).toBe(false)
+			expect(
+				isSameBinding(makeBinding({ sourceNodeId: 'a' }), makeBinding({ sourceNodeId: 'b' }))
+			).toBe(false)
 		})
 
 		it('returns false for different sourceNodeType', () => {
-			expect(isSameBinding(makeBinding({ sourceNodeType: 'model3d' }), makeBinding({ sourceNodeType: 'meshy' }))).toBe(false)
+			expect(
+				isSameBinding(
+					makeBinding({ sourceNodeType: 'model3d' }),
+					makeBinding({ sourceNodeType: 'meshy' })
+				)
+			).toBe(false)
 		})
 
 		it('returns true when both are undefined', () => {
@@ -673,14 +761,16 @@ describe('sceneLayoutPreviewUtils', () => {
 	})
 
 	describe('isSameBindings', () => {
-		const makeBinding = (overrides: Partial<WorkflowSceneLayoutModelBinding> = {}): WorkflowSceneLayoutModelBinding => ({
+		const makeBinding = (
+			overrides: Partial<WorkflowSceneLayoutModelBinding> = {}
+		): WorkflowSceneLayoutModelBinding => ({
 			objectId: 'obj-1',
 			connected: true,
 			modelUrl: '',
 			modelAssetUrl: '',
 			sourceNodeId: '',
 			sourceNodeType: 'model3d',
-			...overrides,
+			...overrides
 		})
 
 		it('returns true for both undefined', () => {
@@ -693,18 +783,20 @@ describe('sceneLayoutPreviewUtils', () => {
 		})
 
 		it('returns true for identical binding arrays', () => {
-			const bindings = [
-				makeBinding({ objectId: 'a' }),
-				makeBinding({ objectId: 'b' }),
-			]
-			expect(isSameBindings(bindings, bindings.map((b) => ({ ...b })))).toBe(true)
+			const bindings = [makeBinding({ objectId: 'a' }), makeBinding({ objectId: 'b' })]
+			expect(
+				isSameBindings(
+					bindings,
+					bindings.map((b) => ({ ...b }))
+				)
+			).toBe(true)
 		})
 
 		it('ignores disconnected bindings', () => {
 			const connected = [makeBinding({ objectId: 'a', connected: true })]
 			const withDisconnected = [
 				makeBinding({ objectId: 'a', connected: true }),
-				makeBinding({ objectId: 'b', connected: false }),
+				makeBinding({ objectId: 'b', connected: false })
 			]
 			expect(isSameBindings(connected, withDisconnected)).toBe(true)
 		})
@@ -713,7 +805,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const valid = [makeBinding({ objectId: 'a', connected: true })]
 			const withEmpty = [
 				makeBinding({ objectId: 'a', connected: true }),
-				makeBinding({ objectId: '', connected: true }),
+				makeBinding({ objectId: '', connected: true })
 			]
 			expect(isSameBindings(valid, withEmpty)).toBe(true)
 		})
@@ -722,7 +814,7 @@ describe('sceneLayoutPreviewUtils', () => {
 			const a = [makeBinding({ objectId: 'a', connected: true })]
 			const b = [
 				makeBinding({ objectId: 'a', connected: true }),
-				makeBinding({ objectId: 'b', connected: true }),
+				makeBinding({ objectId: 'b', connected: true })
 			]
 			expect(isSameBindings(a, b)).toBe(false)
 		})
@@ -736,11 +828,11 @@ describe('sceneLayoutPreviewUtils', () => {
 		it('matches bindings by objectId regardless of order', () => {
 			const a = [
 				makeBinding({ objectId: 'a', connected: true }),
-				makeBinding({ objectId: 'b', connected: true }),
+				makeBinding({ objectId: 'b', connected: true })
 			]
 			const b = [
 				makeBinding({ objectId: 'b', connected: true }),
-				makeBinding({ objectId: 'a', connected: true }),
+				makeBinding({ objectId: 'a', connected: true })
 			]
 			expect(isSameBindings(a, b)).toBe(true)
 		})

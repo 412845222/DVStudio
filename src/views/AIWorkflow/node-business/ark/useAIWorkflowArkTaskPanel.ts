@@ -37,13 +37,20 @@ interface ArkRawTask {
 }
 
 interface ArkApi {
-	listTasks(payload?: { projectId?: number | null }): Promise<{ ok: boolean; tasks?: ArkRawTask[]; error?: string }>
-	getTaskDetail(payload: { taskId: string }): Promise<{ ok: boolean; task?: ArkRawTask; error?: string }>
+	listTasks(payload?: {
+		projectId?: number | null
+	}): Promise<{ ok: boolean; tasks?: ArkRawTask[]; error?: string }>
+	getTaskDetail(payload: {
+		taskId: string
+	}): Promise<{ ok: boolean; task?: ArkRawTask; error?: string }>
 	deleteTask(payload: { taskId: string }): Promise<{ ok: boolean; error?: string }>
 }
 
 interface SeedanceApi {
-	taskDetailRemote(payload: { taskId: string; projectId?: number }): Promise<SeedanceTaskDetailRemoteResponse>
+	taskDetailRemote(payload: {
+		taskId: string
+		projectId?: number
+	}): Promise<SeedanceTaskDetailRemoteResponse>
 	downloadAsset(payload: {
 		taskId: string
 		projectId: number
@@ -78,10 +85,20 @@ const getStatusLabel = (status: ArkTaskPanelItem['status'] | 'not_found'): strin
 }
 
 const normalizeStatus = (raw: string): ArkTaskPanelItem['status'] => {
-	const value = String(raw ?? '').trim().toLowerCase()
+	const value = String(raw ?? '')
+		.trim()
+		.toLowerCase()
 	if (value === 'queued') return 'queued'
 	if (value === 'running' || value === 'processing' || value === 'in_progress') return 'running'
-	if (value === 'succeeded' || value === 'success' || value === 'completed' || value === 'processed' || value === 'ready' || value === 'active') return 'succeeded'
+	if (
+		value === 'succeeded' ||
+		value === 'success' ||
+		value === 'completed' ||
+		value === 'processed' ||
+		value === 'ready' ||
+		value === 'active'
+	)
+		return 'succeeded'
 	if (value === 'failed' || value === 'error' || value === 'expired') return 'failed'
 	if (value === 'canceled' || value === 'cancelled') return 'canceled'
 	if (value === 'not_found') return 'canceled'
@@ -91,7 +108,9 @@ const normalizeStatus = (raw: string): ArkTaskPanelItem['status'] => {
 const normalizeStatusLabel = (status: string, rawLabel: string): string => {
 	const label = String(rawLabel ?? '').trim()
 	if (label) return label
-	const rawStatus = String(status ?? '').trim().toLowerCase()
+	const rawStatus = String(status ?? '')
+		.trim()
+		.toLowerCase()
 	if (rawStatus === 'not_found') return getStatusLabel('not_found')
 	return getStatusLabel(normalizeStatus(status))
 }
@@ -114,7 +133,8 @@ const parseStringArray = (value: unknown): string[] => {
 	if (typeof value === 'string') {
 		try {
 			const parsed = JSON.parse(value)
-			if (Array.isArray(parsed)) return parsed.map((v: unknown) => String(v ?? '').trim()).filter(Boolean)
+			if (Array.isArray(parsed))
+				return parsed.map((v: unknown) => String(v ?? '').trim()).filter(Boolean)
 		} catch {
 			return value.trim() ? [value.trim()] : []
 		}
@@ -128,12 +148,14 @@ const seedanceItemToArkTask = (item: SeedanceTaskMirrorItem): ArkRawTask => {
 	if (item.videoUrlRemote) resultUrls.push(item.videoUrlRemote)
 	if (item.lastFrameUrlRemote) resultUrls.push(item.lastFrameUrlRemote)
 	const fallbackNow = Date.now()
-	const createdMs = typeof item.remoteCreatedAt === 'number' && item.remoteCreatedAt > 0
-		? item.remoteCreatedAt
-		: (new Date(item.createdAt || fallbackNow).getTime() || fallbackNow)
-	const updatedMs = typeof item.remoteUpdatedAt === 'number' && item.remoteUpdatedAt > 0
-		? item.remoteUpdatedAt
-		: (new Date(item.updatedAt || fallbackNow).getTime() || fallbackNow)
+	const createdMs =
+		typeof item.remoteCreatedAt === 'number' && item.remoteCreatedAt > 0
+			? item.remoteCreatedAt
+			: new Date(item.createdAt || fallbackNow).getTime() || fallbackNow
+	const updatedMs =
+		typeof item.remoteUpdatedAt === 'number' && item.remoteUpdatedAt > 0
+			? item.remoteUpdatedAt
+			: new Date(item.updatedAt || fallbackNow).getTime() || fallbackNow
 	return {
 		id: String(item.taskId || '').trim(),
 		taskId: `seedance-${item.taskId}`,
@@ -162,7 +184,8 @@ const seedanceItemToArkTask = (item: SeedanceTaskMirrorItem): ArkRawTask => {
 const mapRawTaskToPanelItem = (raw: ArkRawTask): ArkTaskPanelItem => {
 	const status = normalizeStatus(raw.status)
 	const resultUrls = parseStringArray(raw.resultUrls)
-	const thumbnailUrl = String(raw.thumbnailUrl ?? '').trim() || (resultUrls.length > 0 ? resultUrls[0] : '')
+	const thumbnailUrl =
+		String(raw.thumbnailUrl ?? '').trim() || (resultUrls.length > 0 ? resultUrls[0] : '')
 	return {
 		id: String(raw.id ?? raw.taskId ?? '').trim(),
 		taskId: String(raw.taskId ?? raw.id ?? '').trim(),
@@ -188,7 +211,8 @@ const mapRawTaskToPanelItem = (raw: ArkRawTask): ArkTaskPanelItem => {
 
 const mapRawTaskToDetail = (raw: ArkRawTask): ArkTaskPanelDetail => {
 	const resultUrls = parseStringArray(raw.resultUrls)
-	const thumbnailUrl = String(raw.thumbnailUrl ?? '').trim() || (resultUrls.length > 0 ? resultUrls[0] : '')
+	const thumbnailUrl =
+		String(raw.thumbnailUrl ?? '').trim() || (resultUrls.length > 0 ? resultUrls[0] : '')
 	return {
 		id: String(raw.id ?? raw.taskId ?? '').trim(),
 		taskId: String(raw.taskId ?? raw.id ?? '').trim(),
@@ -247,7 +271,10 @@ export const useAIWorkflowArkTaskPanel = (
 	projectId: Ref<number | null>,
 	options?: {
 		comfyService?: {
-			seedanceTaskDetailRemote: (payload: { taskId: string; projectId?: number }) => Promise<SeedanceTaskDetailRemoteResponse>
+			seedanceTaskDetailRemote: (payload: {
+				taskId: string
+				projectId?: number
+			}) => Promise<SeedanceTaskDetailRemoteResponse>
 			seedanceDownloadAsset: (payload: {
 				taskId: string
 				projectId: number
@@ -261,10 +288,21 @@ export const useAIWorkflowArkTaskPanel = (
 				model?: string
 			}) => Promise<SeedanceListAllRemoteResponse>
 		}
-		pushToast?: (message: string, tone?: 'info' | 'warn' | 'error', opts?: ArkTaskPanelPushToastOptions) => void
+		pushToast?: (
+			message: string,
+			tone?: 'info' | 'warn' | 'error',
+			opts?: ArkTaskPanelPushToastOptions
+		) => void
 		findVideoNodeByTaskId?: (remoteTaskId: string) => { nodeId: string } | null
-		bindVideoResultToNode?: (nodeId: string, url: string) => boolean | void | Promise<boolean | void>
-		createMediaNodeWithAsset?: (url: string, kind: 'image' | 'video', prompt?: string) => string | Promise<string>
+		bindVideoResultToNode?: (
+			nodeId: string,
+			url: string
+		) => boolean | void | Promise<boolean | void>
+		createMediaNodeWithAsset?: (
+			url: string,
+			kind: 'image' | 'video',
+			prompt?: string
+		) => string | Promise<string>
 	}
 ) => {
 	const arkTaskDialogOpen = ref(false)
@@ -376,7 +414,9 @@ export const useAIWorkflowArkTaskPanel = (
 			const seedanceApi = getSeedanceApi()
 			const arkApi = getArkApi()
 
-			const isSeedance = id.startsWith('seedance-') || String((arkTaskItems.value.find((t) => t.taskId === id)?.apiType) || '').trim() === 'seedance'
+			const isSeedance =
+				id.startsWith('seedance-') ||
+				String(arkTaskItems.value.find((t) => t.taskId === id)?.apiType || '').trim() === 'seedance'
 
 			let rawDetail: ArkRawTask | null = null
 
@@ -525,7 +565,8 @@ export const useAIWorkflowArkTaskPanel = (
 				return { ok: false, error: res.error }
 			}
 
-			const successMsg = kind === 'lastFrame' ? t('tasks.ark.firstFrameDownloaded') : t('tasks.ark.videoDownloaded')
+			const successMsg =
+				kind === 'lastFrame' ? t('tasks.ark.firstFrameDownloaded') : t('tasks.ark.videoDownloaded')
 			const folderPath = res.sourcePath || res.projectRelativePath
 			if (folderPath) {
 				pushMsg(successMsg, 'info', {
@@ -605,7 +646,10 @@ export const useAIWorkflowArkTaskPanel = (
 					created = true
 				}
 			} catch (e: unknown) {
-				pushMsg(t('tasks.ark.createNodeFailed', { type: mediaLabel, error: getErrorMessage(e) }), 'error')
+				pushMsg(
+					t('tasks.ark.createNodeFailed', { type: mediaLabel, error: getErrorMessage(e) }),
+					'error'
+				)
 				return false
 			}
 		}
@@ -621,7 +665,12 @@ export const useAIWorkflowArkTaskPanel = (
 				pushMsg(t('tasks.ark.nodeBackfillFailedWithError', { error: getErrorMessage(e) }), 'error')
 				return false
 			}
-			pushMsg(created ? t('tasks.ark.nodeCreatedAndFilled', { type: mediaLabel }) : t('tasks.ark.nodeFilled', { type: mediaLabel }), 'info')
+			pushMsg(
+				created
+					? t('tasks.ark.nodeCreatedAndFilled', { type: mediaLabel })
+					: t('tasks.ark.nodeFilled', { type: mediaLabel }),
+				'info'
+			)
 			return true
 		}
 

@@ -9,6 +9,6 @@ export function useSteamPanel(enabled?: Ref<boolean>) {
 		isAnimating,
 		open,
 		close,
-		toggle,
+		toggle
 	}
 }

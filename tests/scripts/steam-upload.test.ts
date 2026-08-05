@@ -29,7 +29,8 @@ describe('steam upload: parseCliArgs', () => {
 		const result = parseCliArgs([
 			'--guard=7G7QM',
 			'--set-live',
-			'--branch', 'public',
+			'--branch',
+			'public',
 			'--desc=v0.1.2 release'
 		])
 		expect(result.guard).toBe('7G7QM')
@@ -167,7 +168,7 @@ describe('steam upload: renderAppBuildVdf', () => {
 			setLive: false
 		})
 		const lines = result.split('\n')
-		const setLiveLines = lines.filter(l => l.includes('SetLive'))
+		const setLiveLines = lines.filter((l) => l.includes('SetLive'))
 		expect(setLiveLines.length).toBe(0)
 	})
 

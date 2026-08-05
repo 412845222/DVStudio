@@ -209,7 +209,10 @@ export const useAIWorkflowNodeRefresh = (payload: {
 						resourcePath: sourcePath || undefined
 					})
 					if (url) payload.autoSizeMediaNode(nodeId, url, expectedKind)
-					const kindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
+					const kindLabel =
+						expectedKind === 'image'
+							? t('aiworkflow.runtime.imageResource')
+							: t('aiworkflow.runtime.videoResource')
 					payload.pushToast(
 						t('aiworkflow.runtime.mediaResourceRefreshed', { kind: kindLabel }),
 						'info'
@@ -217,7 +220,12 @@ export const useAIWorkflowNodeRefresh = (payload: {
 					return
 				}
 				if (isRecord(r) && rKind !== expectedKind) {
-					reasons.push(t('aiworkflow.runtime.upstreamTypeMismatch', { sourceKind: rKind, targetKind: expectedKind }))
+					reasons.push(
+						t('aiworkflow.runtime.upstreamTypeMismatch', {
+							sourceKind: rKind,
+							targetKind: expectedKind
+						})
+					)
 				}
 			}
 
@@ -241,14 +249,23 @@ export const useAIWorkflowNodeRefresh = (payload: {
 						}
 					)
 					const anchorLabel = String(e.fromAnchorId || t('aiworkflow.runtime.outputAnchor'))
-					const mediaKindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
+					const mediaKindLabel =
+						expectedKind === 'image'
+							? t('aiworkflow.runtime.imageResource')
+							: t('aiworkflow.runtime.videoResource')
 					payload.pushToast(
-						t('aiworkflow.runtime.comfyMediaRefreshed', { anchor: anchorLabel, kind: mediaKindLabel }),
+						t('aiworkflow.runtime.comfyMediaRefreshed', {
+							anchor: anchorLabel,
+							kind: mediaKindLabel
+						}),
 						'info'
 					)
 					return
 				}
-				const noOutputKindLabel = expectedKind === 'image' ? t('aiworkflow.runtime.imageResource') : t('aiworkflow.runtime.videoResource')
+				const noOutputKindLabel =
+					expectedKind === 'image'
+						? t('aiworkflow.runtime.imageResource')
+						: t('aiworkflow.runtime.videoResource')
 				reasons.push(t('aiworkflow.runtime.comfyNoOutput', { kind: noOutputKindLabel }))
 			}
 
@@ -277,7 +294,9 @@ export const useAIWorkflowNodeRefresh = (payload: {
 		}
 
 		payload.pushToast(
-			reasons.length ? t('aiworkflow.runtime.refreshFailed', { reason: reasons[0] }) : t('aiworkflow.runtime.refreshFailedNoMatch'),
+			reasons.length
+				? t('aiworkflow.runtime.refreshFailed', { reason: reasons[0] })
+				: t('aiworkflow.runtime.refreshFailedNoMatch'),
 			'warn'
 		)
 	}

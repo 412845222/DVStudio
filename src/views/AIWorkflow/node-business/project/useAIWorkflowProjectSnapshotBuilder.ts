@@ -32,7 +32,9 @@ type UseAIWorkflowProjectSnapshotBuilderOptions = {
 		projectRelativePath?: string
 	} | null>
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
-	stripUnrealExportRuntimeFromNodes?: (nodesById: WorkflowState['nodesById']) => WorkflowState['nodesById']
+	stripUnrealExportRuntimeFromNodes?: (
+		nodesById: WorkflowState['nodesById']
+	) => WorkflowState['nodesById']
 }
 
 export const useAIWorkflowProjectSnapshotBuilder = (
@@ -61,17 +63,13 @@ export const useAIWorkflowProjectSnapshotBuilder = (
 			if (!resource) continue
 			const rawUrl = typeof resource.url === 'string' ? String(resource.url) : ''
 			const sourcePath =
-				typeof resource.sourcePath === 'string'
-					? String(resource.sourcePath).trim()
-					: ''
+				typeof resource.sourcePath === 'string' ? String(resource.sourcePath).trim() : ''
 			const projectRelativePath =
 				typeof resource.projectRelativePath === 'string'
 					? String(resource.projectRelativePath).trim()
 					: ''
 			const localFileKey =
-				typeof resource.localFileKey === 'string'
-					? String(resource.localFileKey).trim()
-					: ''
+				typeof resource.localFileKey === 'string' ? String(resource.localFileKey).trim() : ''
 
 			// Skip resources that have projectRelativePath but no sourcePath and no valid URL
 			// This handles the case where the file was deleted or never existed on disk

@@ -105,9 +105,13 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 				limit: payload?.limit
 			})
 		),
-		'dweb:localdb:tripo3d:get': safe((payload) => getRepos().tripo3dTasks.getByTaskId(payload?.taskId)),
+		'dweb:localdb:tripo3d:get': safe((payload) =>
+			getRepos().tripo3dTasks.getByTaskId(payload?.taskId)
+		),
 		'dweb:localdb:tripo3d:upsert': safe((payload) => getRepos().tripo3dTasks.upsert(payload)),
-		'dweb:localdb:tripo3d:remove': safe((payload) => getRepos().tripo3dTasks.remove(payload?.taskId)),
+		'dweb:localdb:tripo3d:remove': safe((payload) =>
+			getRepos().tripo3dTasks.remove(payload?.taskId)
+		),
 		// ---- api keys ----
 		'dweb:localdb:apiKeys:list': safe(() => getRepos().apiKeys.list()),
 		'dweb:localdb:apiKeys:get': safe((payload) => getRepos().apiKeys.get(payload?.provider)),
@@ -130,7 +134,11 @@ export function registerLocalDbIpc(ipcMain, initOptions = {}) {
 			const r = getRepos().aiworkflowTemplates.getCoverBlob(payload?.id)
 			if (!r.ok) return r
 			const buf = r.buffer
-			return { ok: true, buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), mimeType: r.mimeType }
+			return {
+				ok: true,
+				buffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+				mimeType: r.mimeType
+			}
 		}),
 		'dweb:localdb:aiworkflowTemplates:save': safe((payload) => {
 			let zipBuf = payload?.zipBuffer

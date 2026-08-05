@@ -15,12 +15,14 @@ const envPath = path.join(steamPipeDir, '.env')
 function readSteamConfigJson() {
 	const candidates = [
 		path.join(repoRoot, 'steam.config.json'),
-		path.join(repoRoot, 'electron', 'steam.config.json'),
+		path.join(repoRoot, 'electron', 'steam.config.json')
 	]
 	for (const p of candidates) {
 		try {
 			if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'))
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 	return {}
 }
@@ -208,9 +210,18 @@ async function main() {
 	const defaultAppId = defaults.STEAM_APP_ID || configAppId || ''
 	const steamAppId = await question('Steam App ID', defaultAppId)
 	const steamDepotIdWin = await question('Windows Depot ID', defaults.STEAM_DEPOT_ID_WIN || '')
-	const steamDepotIdMac = await question('Mac Depot ID (不发布 Mac 可留空)', defaults.STEAM_DEPOT_ID_MAC || '')
-	const steamDepotIdLinux = await question('Linux Depot ID (不发布 Linux 可留空)', defaults.STEAM_DEPOT_ID_LINUX || '')
-	const steamBranch = await question('发布分支 (beta=测试, 空=正式)', defaults.STEAM_BRANCH || 'beta')
+	const steamDepotIdMac = await question(
+		'Mac Depot ID (不发布 Mac 可留空)',
+		defaults.STEAM_DEPOT_ID_MAC || ''
+	)
+	const steamDepotIdLinux = await question(
+		'Linux Depot ID (不发布 Linux 可留空)',
+		defaults.STEAM_DEPOT_ID_LINUX || ''
+	)
+	const steamBranch = await question(
+		'发布分支 (beta=测试, 空=正式)',
+		defaults.STEAM_BRANCH || 'beta'
+	)
 
 	process.stdout.write('\n--- Steam 账号信息 ---\n')
 	process.stdout.write('提示：建议使用专用构建账号，仅授予 SteamPipe 上传权限。\n')
@@ -229,7 +240,10 @@ async function main() {
 		process.stdout.write('\n--- Steam Guard 验证码 ---\n')
 		process.stdout.write('如果这是首次在此机器上登录，Steam 会向你的邮箱/手机发送验证码。\n')
 		process.stdout.write('如果之前已成功登录过（有 Sentry 文件），可以直接留空跳过。\n\n')
-		steamGuardCode = await question('Steam Guard 验证码 (首次登录需要)', defaults.STEAM_GUARD_CODE || '')
+		steamGuardCode = await question(
+			'Steam Guard 验证码 (首次登录需要)',
+			defaults.STEAM_GUARD_CODE || ''
+		)
 	}
 
 	const config = {
@@ -280,7 +294,15 @@ async function main() {
 	}
 
 	const appAsarPath = path.join(winContentDir, 'resources', 'app.asar')
-	const nativeDir = path.join(winContentDir, 'resources', 'app.asar.unpacked', 'electron', 'platform', 'native', 'win32')
+	const nativeDir = path.join(
+		winContentDir,
+		'resources',
+		'app.asar.unpacked',
+		'electron',
+		'platform',
+		'native',
+		'win32'
+	)
 	if (fs.existsSync(appAsarPath) && fs.existsSync(nativeDir)) {
 		process.stdout.write('✅ 原生模块已正确解压到 asarUnpacked\n')
 	} else if (fs.existsSync(winContentDir)) {
@@ -295,7 +317,9 @@ async function main() {
 	}
 
 	if (steamAppId && steamDepotIdWin) {
-		process.stdout.write(`✅ AppID=${steamAppId}, WinDepot=${steamDepotIdWin}, 分支=${steamBranch || '默认'}\n`)
+		process.stdout.write(
+			`✅ AppID=${steamAppId}, WinDepot=${steamDepotIdWin}, 分支=${steamBranch || '默认'}\n`
+		)
 	} else {
 		process.stdout.write('❌ AppID 或 Depot ID 未配置\n')
 		ok = false
@@ -311,7 +335,9 @@ async function main() {
 		if (fs.existsSync(winContentDir) && steamUsername && finalPassword) {
 			process.stdout.write('下一步：运行 "npm run upload:steam" 上传构建到 SteamPipe。\n')
 		} else if (fs.existsSync(winContentDir)) {
-			process.stdout.write('下一步：配置 Steam 账号密码后，运行 "npm run upload:steam" 上传构建。\n')
+			process.stdout.write(
+				'下一步：配置 Steam 账号密码后，运行 "npm run upload:steam" 上传构建。\n'
+			)
 		} else {
 			process.stdout.write('下一步：运行 "npm run dist:steam:win" 构建 Steam 版本，然后上传。\n')
 		}

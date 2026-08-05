@@ -11,8 +11,21 @@
 				<div class="cs-ud-header">
 					<div class="cs-ud-title-row">
 						<svg viewBox="0 0 24 24" class="cs-ud-icon" aria-hidden="true">
-							<path d="M12 2.5v12M7.5 7l4.5-4.5L16.5 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M4.5 18.5h15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+							<path
+								d="M12 2.5v12M7.5 7l4.5-4.5L16.5 7"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
+							<path
+								d="M4.5 18.5h15"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+							/>
 						</svg>
 						<h3 class="cs-ud-title">{{ t('cloudStorage.uploadQueue.title') }}</h3>
 						<span class="cs-ud-count">{{ completedCount }}/{{ totalCount }}</span>
@@ -26,9 +39,20 @@
 						>
 							{{ t('cloudStorage.uploadQueue.clearCompleted') }}
 						</button>
-						<button class="cs-ud-close" type="button" @click="$emit('close')" :title="t('common.close')">
+						<button
+							class="cs-ud-close"
+							type="button"
+							@click="$emit('close')"
+							:title="t('common.close')"
+						>
 							<svg viewBox="0 0 16 16" aria-hidden="true">
-								<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+								<path
+									d="M4 4l8 8M12 4l-8 8"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+								/>
 							</svg>
 						</button>
 					</div>
@@ -41,8 +65,20 @@
 				<div class="cs-ud-body">
 					<div v-if="!tasks.length" class="cs-ud-empty">
 						<svg viewBox="0 0 48 48" class="cs-ud-empty-icon" aria-hidden="true">
-							<path d="M12 8h16l8 8v20a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
-							<path d="M20 20h8M20 26h8M20 32h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+							<path
+								d="M12 8h16l8 8v20a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-dasharray="4 3"
+							/>
+							<path
+								d="M20 20h8M20 26h8M20 32h5"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
 						</svg>
 						<p>{{ t('cloudStorage.uploadQueue.empty') }}</p>
 					</div>
@@ -53,23 +89,60 @@
 							:key="task.id"
 							class="cs-ud-item"
 							:class="{
-								'uploading': task.status === 'uploading',
-								'completed': task.status === 'completed',
-								'error': task.status === 'error',
-								'pending': task.status === 'pending'
+								uploading: task.status === 'uploading',
+								completed: task.status === 'completed',
+								error: task.status === 'error',
+								pending: task.status === 'pending'
 							}"
 						>
 							<div class="cs-ud-item-icon">
-								<svg v-if="task.status === 'completed'" viewBox="0 0 16 16" class="cs-udi-status success" aria-hidden="true">
-									<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+								<svg
+									v-if="task.status === 'completed'"
+									viewBox="0 0 16 16"
+									class="cs-udi-status success"
+									aria-hidden="true"
+								>
+									<path
+										d="M3 8l3.5 3.5L13 5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
 								</svg>
-								<svg v-else-if="task.status === 'error'" viewBox="0 0 16 16" class="cs-udi-status error" aria-hidden="true">
-									<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
-									<path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+								<svg
+									v-else-if="task.status === 'error'"
+									viewBox="0 0 16 16"
+									class="cs-udi-status error"
+									aria-hidden="true"
+								>
+									<circle
+										cx="8"
+										cy="8"
+										r="6"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.3"
+									/>
+									<path
+										d="M5.5 5.5l5 5M10.5 5.5l-5 5"
+										stroke="currentColor"
+										stroke-width="1.3"
+										stroke-linecap="round"
+									/>
 								</svg>
 								<div v-else-if="task.status === 'uploading'" class="cs-udi-spinner"></div>
 								<svg v-else viewBox="0 0 16 16" class="cs-udi-status pending" aria-hidden="true">
-									<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 2"/>
+									<circle
+										cx="8"
+										cy="8"
+										r="6"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.3"
+										stroke-dasharray="2 2"
+									/>
 								</svg>
 							</div>
 							<div class="cs-ud-item-info">
@@ -77,11 +150,18 @@
 								<div class="cs-ud-item-meta">
 									<span class="cs-ud-item-size">{{ formatSize(task.size) }}</span>
 									<span v-if="task.prefix" class="cs-ud-item-prefix">{{ task.prefix }}</span>
-									<span v-if="task.status === 'uploading'" class="cs-ud-item-percent">{{ Math.round(task.progress) }}%</span>
-									<span v-else-if="task.status === 'error'" class="cs-ud-item-error">{{ task.error }}</span>
+									<span v-if="task.status === 'uploading'" class="cs-ud-item-percent">
+										{{ Math.round(task.progress) }}%
+									</span>
+									<span v-else-if="task.status === 'error'" class="cs-ud-item-error">
+										{{ task.error }}
+									</span>
 								</div>
 								<div v-if="task.status === 'uploading'" class="cs-ud-item-progress">
-									<div class="cs-ud-item-progress-fill" :style="{ width: task.progress + '%' }"></div>
+									<div
+										class="cs-ud-item-progress-fill"
+										:style="{ width: task.progress + '%' }"
+									></div>
 								</div>
 							</div>
 							<div class="cs-ud-item-actions">
@@ -93,8 +173,20 @@
 									@click="retryTask(task.id)"
 								>
 									<svg viewBox="0 0 16 16" aria-hidden="true">
-										<path d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-										<path d="M10.7 2.7h3v3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+										<path
+											d="M13.5 8a5.5 5.5 0 1 1-1.3-3.6"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M10.7 2.7h3v3"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
 									</svg>
 								</button>
 								<button
@@ -104,7 +196,13 @@
 									@click="removeTask(task.id)"
 								>
 									<svg viewBox="0 0 16 16" aria-hidden="true">
-										<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+										<path
+											d="M4 4l8 8M12 4l-8 8"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
 									</svg>
 								</button>
 							</div>
@@ -139,7 +237,7 @@ const {
 	retryTask,
 	removeTask,
 	clearCompleted,
-	formatSize,
+	formatSize
 } = useUploadQueue()
 </script>
 
@@ -167,7 +265,8 @@ const {
 		color-mix(in srgb, var(--pl-bg-0) 98%, transparent)
 	);
 	border-left: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5),
+	box-shadow:
+		-8px 0 32px rgba(0, 0, 0, 0.5),
 		-4px 0 16px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 	display: flex;
 	flex-direction: column;
@@ -229,7 +328,11 @@ const {
 	flex-shrink: 0;
 	padding: 20px 20px 16px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 15%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-accent) 8%, transparent), transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-accent) 8%, transparent),
+		transparent
+	);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -444,7 +547,9 @@ const {
 }
 
 @keyframes cs-udi-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-ud-item-info {

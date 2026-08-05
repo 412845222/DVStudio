@@ -9,19 +9,21 @@
 			@contextmenu.prevent.stop
 			@click.self="$emit('update:open', false)"
 		>
-			<div class="tad-dialog" data-bp-ui-overlay="true" @pointerdown.stop @mousedown.stop @click.stop @contextmenu.prevent.stop>
+			<div
+				class="tad-dialog"
+				data-bp-ui-overlay="true"
+				@pointerdown.stop
+				@mousedown.stop
+				@click.stop
+				@contextmenu.prevent.stop
+			>
 				<div class="tad-bg-layer" aria-hidden="true">
 					<div class="tad-bg-gradient"></div>
 					<div class="tad-bg-grid"></div>
 				</div>
 				<div class="tad-scanline" aria-hidden="true"></div>
 				<div class="sq-container tad-particles" aria-hidden="true">
-					<span
-						v-for="p in particles"
-						:key="p.id"
-						class="sq-particle"
-						:style="p.style"
-					></span>
+					<span v-for="p in particles" :key="p.id" class="sq-particle" :style="p.style"></span>
 				</div>
 				<span class="tad-corner tad-corner-tl" aria-hidden="true"></span>
 				<span class="tad-corner tad-corner-tr" aria-hidden="true"></span>
@@ -35,9 +37,18 @@
 							<template v-if="template">{{ template.name }}</template>
 						</div>
 					</div>
-					<button class="tad-btn tad-btn-icon tad-btn-close" type="button" @click="$emit('update:open', false)">
+					<button
+						class="tad-btn tad-btn-icon tad-btn-close"
+						type="button"
+						@click="$emit('update:open', false)"
+					>
 						<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true">
-							<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+							<path
+								d="M4 4l8 8M12 4l-8 8"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
 						</svg>
 					</button>
 				</div>
@@ -55,10 +66,21 @@
 							@click="applyTarget = 'current'"
 						>
 							<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-								<rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<rect
+									x="3"
+									y="3"
+									width="18"
+									height="18"
+									rx="2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+								/>
 								<path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="1.5" />
 							</svg>
-							<div class="tad-target-label">{{ t('aiworkflow.templateCenter.applyToCurrent') }}</div>
+							<div class="tad-target-label">
+								{{ t('aiworkflow.templateCenter.applyToCurrent') }}
+							</div>
 						</button>
 						<button
 							class="tad-target-option"
@@ -67,8 +89,22 @@
 							@click="applyTarget = 'new-project'"
 						>
 							<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-								<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-								<rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<path
+									d="M12 5v14M5 12h14"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
+								<rect
+									x="3"
+									y="3"
+									width="18"
+									height="18"
+									rx="2"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+								/>
 							</svg>
 							<div class="tad-target-label">{{ t('aiworkflow.templateCenter.applyToNew') }}</div>
 						</button>
@@ -77,14 +113,21 @@
 					<div v-if="applyTarget === 'current'" class="tad-info-tip">
 						<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
 							<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.2" />
-							<path d="M8 7v4M8 5h0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+							<path
+								d="M8 7v4M8 5h0"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
 						</svg>
 						{{ t('aiworkflow.templateCenter.currentProjectInfo') }}
 					</div>
 
 					<div v-if="applyTarget === 'new-project'" class="tad-form">
 						<div class="tad-form-row">
-							<label class="tad-label" for="tad-name">{{ t('aiworkflow.templateCenter.newProjectName') }}</label>
+							<label class="tad-label" for="tad-name">
+								{{ t('aiworkflow.templateCenter.newProjectName') }}
+							</label>
 							<input
 								id="tad-name"
 								v-model="newProjectName"
@@ -97,7 +140,9 @@
 						</div>
 
 						<div class="tad-form-row">
-							<label class="tad-label" for="tad-path">{{ t('aiworkflow.templateCenter.newProjectPath') }}</label>
+							<label class="tad-label" for="tad-path">
+								{{ t('aiworkflow.templateCenter.newProjectPath') }}
+							</label>
 							<div class="tad-path-row">
 								<input
 									id="tad-path"
@@ -109,7 +154,13 @@
 								/>
 								<button class="tad-btn tad-btn-sm" type="button" @click="selectFolder">
 									<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-										<path d="M1.5 4.5l2-2h3l2 2h6v8h-11v-8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+										<path
+											d="M1.5 4.5l2-2h3l2 2h6v8h-11v-8z"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.3"
+											stroke-linejoin="round"
+										/>
 									</svg>
 									{{ t('aiworkflow.templateCenter.selectPath') }}
 								</button>
@@ -122,12 +173,23 @@
 				<div class="tad-footer">
 					<div class="tad-footer-info"></div>
 					<div class="tad-footer-actions">
-						<button class="tad-btn tad-btn-ghost" type="button" @click="$emit('update:open', false)">
+						<button
+							class="tad-btn tad-btn-ghost"
+							type="button"
+							@click="$emit('update:open', false)"
+						>
 							{{ t('common.cancel') }}
 						</button>
 						<button class="tad-btn tad-btn-primary" type="button" @click="handleConfirm">
 							<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-								<path d="M3 8.5l3 3L13 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+								<path
+									d="M3 8.5l3 3L13 5"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.6"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
 							</svg>
 							{{ t('aiworkflow.templateCenter.apply') }}
 						</button>
@@ -143,7 +205,11 @@ import { computed, ref, watch } from 'vue'
 import { buildSquareParticles } from '../../composables/useSquareParticles'
 import { useI18n } from '../../i18n'
 import { isElectron, selectProjectFolder } from '../../electronBridge'
-import type { TemplateItem, ApplyTarget, TemplateApplyOptions } from '../../aiworkflow/template/types'
+import type {
+	TemplateItem,
+	ApplyTarget,
+	TemplateApplyOptions
+} from '../../aiworkflow/template/types'
 
 const props = defineProps<{
 	open: boolean
@@ -222,7 +288,13 @@ function validate(): boolean {
 }
 
 function handleConfirm() {
-	console.log('[TemplateApplyDialog] handleConfirm called, template:', props.template?.id, props.template?.name, 'target:', applyTarget.value)
+	console.log(
+		'[TemplateApplyDialog] handleConfirm called, template:',
+		props.template?.id,
+		props.template?.name,
+		'target:',
+		applyTarget.value
+	)
 	if (!props.template) {
 		console.warn('[TemplateApplyDialog] handleConfirm: no template, returning')
 		return
@@ -236,9 +308,13 @@ function handleConfirm() {
 		template: props.template,
 		target: applyTarget.value,
 		newProjectName: applyTarget.value === 'new-project' ? newProjectName.value.trim() : undefined,
-		newProjectPath: applyTarget.value === 'new-project' ? newProjectPath.value.trim() || undefined : undefined,
+		newProjectPath:
+			applyTarget.value === 'new-project' ? newProjectPath.value.trim() || undefined : undefined
 	}
-	console.log('[TemplateApplyDialog] emitting confirm with options:', { ...options, template: { id: options.template.id, name: options.template.name } })
+	console.log('[TemplateApplyDialog] emitting confirm with options:', {
+		...options,
+		template: { id: options.template.id, name: options.template.name }
+	})
 	emit('confirm', options)
 	emit('update:open', false)
 }
@@ -299,8 +375,16 @@ function handleConfirm() {
 	position: absolute;
 	inset: 0;
 	background:
-		radial-gradient(ellipse 70% 50% at 80% 10%, color-mix(in srgb, var(--tad-accent) 10%, transparent), transparent 60%),
-		radial-gradient(ellipse 60% 50% at 10% 90%, color-mix(in srgb, var(--tad-cold) 8%, transparent), transparent 55%),
+		radial-gradient(
+			ellipse 70% 50% at 80% 10%,
+			color-mix(in srgb, var(--tad-accent) 10%, transparent),
+			transparent 60%
+		),
+		radial-gradient(
+			ellipse 60% 50% at 10% 90%,
+			color-mix(in srgb, var(--tad-cold) 8%, transparent),
+			transparent 55%
+		),
 		linear-gradient(180deg, var(--tad-bg-0) 0%, var(--tad-bg-1) 100%);
 }
 
@@ -308,8 +392,16 @@ function handleConfirm() {
 	position: absolute;
 	inset: 0;
 	background-image:
-		linear-gradient(to right, color-mix(in srgb, var(--tad-accent) 4%, transparent) 1px, transparent 1px),
-		linear-gradient(to bottom, color-mix(in srgb, var(--tad-accent) 4%, transparent) 1px, transparent 1px);
+		linear-gradient(
+			to right,
+			color-mix(in srgb, var(--tad-accent) 4%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			to bottom,
+			color-mix(in srgb, var(--tad-accent) 4%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 32px 32px;
 	opacity: 0.35;
 	mask-image: radial-gradient(ellipse at 50% 30%, #000 40%, transparent 100%);
@@ -333,7 +425,9 @@ function handleConfirm() {
 	pointer-events: none;
 }
 
-.tad-particles { z-index: 2; }
+.tad-particles {
+	z-index: 2;
+}
 
 .tad-corner {
 	position: absolute;
@@ -347,10 +441,30 @@ function handleConfirm() {
 	opacity: 0.8;
 }
 
-.tad-corner-tl { top: 6px; left: 6px; border-top-width: 2px; border-left-width: 2px; }
-.tad-corner-tr { top: 6px; right: 6px; border-top-width: 2px; border-right-width: 2px; }
-.tad-corner-bl { bottom: 6px; left: 6px; border-bottom-width: 2px; border-left-width: 2px; }
-.tad-corner-br { bottom: 6px; right: 6px; border-bottom-width: 2px; border-right-width: 2px; }
+.tad-corner-tl {
+	top: 6px;
+	left: 6px;
+	border-top-width: 2px;
+	border-left-width: 2px;
+}
+.tad-corner-tr {
+	top: 6px;
+	right: 6px;
+	border-top-width: 2px;
+	border-right-width: 2px;
+}
+.tad-corner-bl {
+	bottom: 6px;
+	left: 6px;
+	border-bottom-width: 2px;
+	border-left-width: 2px;
+}
+.tad-corner-br {
+	bottom: 6px;
+	right: 6px;
+	border-bottom-width: 2px;
+	border-right-width: 2px;
+}
 
 /* Header */
 .tad-header {
@@ -386,7 +500,7 @@ function handleConfirm() {
 	gap: 6px;
 }
 .tad-title-sub::before {
-	content: "";
+	content: '';
 	display: inline-block;
 	width: 5px;
 	height: 5px;
@@ -440,7 +554,11 @@ function handleConfirm() {
 	background: color-mix(in srgb, var(--tad-fg) 2%, transparent);
 	color: var(--tad-fg-soft);
 	cursor: pointer;
-	transition: border-color 200ms ease, background 200ms ease, color 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		color 200ms ease,
+		box-shadow 200ms ease;
 	font-family: inherit;
 }
 
@@ -454,7 +572,8 @@ function handleConfirm() {
 	border-color: var(--tad-accent);
 	background: color-mix(in srgb, var(--tad-accent) 12%, transparent);
 	color: var(--tad-fg);
-	box-shadow: 0 0 14px color-mix(in srgb, var(--tad-accent) 18%, transparent),
+	box-shadow:
+		0 0 14px color-mix(in srgb, var(--tad-accent) 18%, transparent),
 		inset 0 0 20px color-mix(in srgb, var(--tad-accent) 5%, transparent);
 }
 
@@ -515,7 +634,10 @@ function handleConfirm() {
 	font-size: 13px;
 	outline: none;
 	box-sizing: border-box;
-	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		box-shadow 200ms ease;
 	font-family: inherit;
 	line-height: 1.5;
 }
@@ -527,7 +649,8 @@ function handleConfirm() {
 .tad-input:focus {
 	border-color: color-mix(in srgb, var(--tad-accent) 65%, transparent);
 	background: color-mix(in srgb, var(--tad-fg) 5%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--tad-accent) 25%, transparent),
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--tad-accent) 25%, transparent),
 		0 0 14px color-mix(in srgb, var(--tad-accent) 10%, transparent);
 }
 
@@ -639,7 +762,9 @@ function handleConfirm() {
 /* Transition */
 .tad-dialog-enter-active,
 .tad-dialog-leave-active {
-	transition: opacity 220ms ease, transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+	transition:
+		opacity 220ms ease,
+		transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .tad-dialog-enter-from,
@@ -746,7 +871,8 @@ function handleConfirm() {
 	border-color: #1f9d84 !important;
 	background: rgba(31, 157, 132, 0.1) !important;
 	color: #1a1d21 !important;
-	box-shadow: 0 0 12px rgba(31, 157, 132, 0.12),
+	box-shadow:
+		0 0 12px rgba(31, 157, 132, 0.12),
 		inset 0 0 16px rgba(31, 157, 132, 0.04) !important;
 }
 [data-theme='light'] .tad-info-tip {
@@ -768,7 +894,9 @@ function handleConfirm() {
 [data-theme='light'] .tad-input:focus {
 	border-color: rgba(31, 157, 132, 0.55) !important;
 	background: #fff !important;
-	box-shadow: 0 0 0 1px rgba(31, 157, 132, 0.2), 0 0 12px rgba(31, 157, 132, 0.08) !important;
+	box-shadow:
+		0 0 0 1px rgba(31, 157, 132, 0.2),
+		0 0 12px rgba(31, 157, 132, 0.08) !important;
 }
 [data-theme='light'] .tad-form-error {
 	color: #d63030 !important;

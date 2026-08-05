@@ -94,7 +94,8 @@ export function createTaskQueueService(deps = {}) {
 				const patch = { ...input }
 				delete patch.id
 				if (input.nodeId && !existing.nodeId) patch.nodeId = input.nodeId
-				if (input.clientRequestId && !existing.clientRequestId) patch.clientRequestId = input.clientRequestId
+				if (input.clientRequestId && !existing.clientRequestId)
+					patch.clientRequestId = input.clientRequestId
 				const result = repo.update(existing.id, patch)
 				if (result.ok) {
 					broadcastUpdate(result.task)
@@ -109,7 +110,8 @@ export function createTaskQueueService(deps = {}) {
 			if (existingByClient) {
 				const patch = { ...input }
 				delete patch.id
-				if (input.remoteTaskId && !existingByClient.remoteTaskId) patch.remoteTaskId = input.remoteTaskId
+				if (input.remoteTaskId && !existingByClient.remoteTaskId)
+					patch.remoteTaskId = input.remoteTaskId
 				const result = repo.update(existingByClient.id, patch)
 				if (result.ok) {
 					broadcastUpdate(result.task)
@@ -135,7 +137,7 @@ export function createTaskQueueService(deps = {}) {
 			progress: input.progress || 0,
 			createdAt: Date.now(),
 			updatedAt: Date.now(),
-			backfilled: false,
+			backfilled: false
 		}
 
 		const result = repo.upsert(taskData)
@@ -144,7 +146,9 @@ export function createTaskQueueService(deps = {}) {
 			return result
 		}
 
-		logger.info(`[TaskQueue] Registered task ${result.task.id} (provider=${input.provider}, project=${input.projectId}, node=${input.nodeId}, clientReq=${input.clientRequestId || 'none'})`)
+		logger.info(
+			`[TaskQueue] Registered task ${result.task.id} (provider=${input.provider}, project=${input.projectId}, node=${input.nodeId}, clientReq=${input.clientRequestId || 'none'})`
+		)
 		broadcastUpdate(result.task)
 		startPollingIfNeeded()
 		return result
@@ -169,7 +173,7 @@ export function createTaskQueueService(deps = {}) {
 			prompt: input.prompt || '',
 			extraData: input.extraData || {},
 			status: 'submitting',
-			category: input.category,
+			category: input.category
 		})
 
 		if (!createResult.ok) return createResult
@@ -179,7 +183,7 @@ export function createTaskQueueService(deps = {}) {
 			if (!submitResult.ok) {
 				await updateTask(createResult.task.id, {
 					status: 'failed',
-					errorMessage: submitResult.error || 'Submit failed',
+					errorMessage: submitResult.error || 'Submit failed'
 				})
 				return submitResult
 			}
@@ -188,7 +192,7 @@ export function createTaskQueueService(deps = {}) {
 				status: 'running',
 				remoteTaskId: submitResult.remoteTaskId || '',
 				statusText: submitResult.statusText || 'Running',
-				extraData: { ...createResult.task.extraData, submitResult: submitResult.data },
+				extraData: { ...createResult.task.extraData, submitResult: submitResult.data }
 			}
 			const updateResult = await updateTask(createResult.task.id, patch)
 			return { ok: true, task: updateResult.task }
@@ -196,7 +200,7 @@ export function createTaskQueueService(deps = {}) {
 			logger.error(`[TaskQueue] Submit error for ${createResult.task.id}: ${err.message}`)
 			await updateTask(createResult.task.id, {
 				status: 'failed',
-				errorMessage: err.message || String(err),
+				errorMessage: err.message || String(err)
 			})
 			return { ok: false, error: err.message || String(err) }
 		}
@@ -223,12 +227,13 @@ export function createTaskQueueService(deps = {}) {
 		return updateTask(taskId, {
 			status: 'failed',
 			errorMessage: errorMessage || 'Unknown error',
-			statusText: errorMessage || 'Failed',
+			statusText: errorMessage || 'Failed'
 		})
 	}
 
 	async function bindRemoteTask(taskId, remoteTaskId) {
-		if (!taskId || !remoteTaskId) return { ok: false, error: 'taskId and remoteTaskId are required' }
+		if (!taskId || !remoteTaskId)
+			return { ok: false, error: 'taskId and remoteTaskId are required' }
 		const repo = getRepo()
 		const existing = repo.getById(taskId)
 		if (!existing) return { ok: false, error: 'Task not found' }
@@ -244,7 +249,7 @@ export function createTaskQueueService(deps = {}) {
 			remoteTaskId: String(remoteTaskId),
 			status: existing.status === 'submitting' ? 'running' : existing.status,
 			statusText: existing.status === 'submitting' ? '运行中...' : existing.statusText,
-			startedAt: existing.startedAt || Date.now(),
+			startedAt: existing.startedAt || Date.now()
 		})
 	}
 
@@ -258,7 +263,7 @@ export function createTaskQueueService(deps = {}) {
 			status: 'completed',
 			progress: 100,
 			statusText: result.statusText || '已完成',
-			completedAt: Date.now(),
+			completedAt: Date.now()
 		}
 
 		if (result.resultUrl) patch.resultUrl = result.resultUrl
@@ -315,7 +320,12 @@ export function createTaskQueueService(deps = {}) {
 		const tasks = repo.list()
 		let deleted = 0
 		for (const task of tasks) {
-			if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled' || task.status === 'dismissed') {
+			if (
+				task.status === 'completed' ||
+				task.status === 'failed' ||
+				task.status === 'cancelled' ||
+				task.status === 'dismissed'
+			) {
 				repo.delete(task.id)
 				deleted++
 			}
@@ -369,12 +379,12 @@ export function createTaskQueueService(deps = {}) {
 		const repo = getRepo()
 		const tasks = repo.list({ limit: 500 })
 		const activeStatuses = ['pending', 'submitting', 'queued', 'running']
-		const active = tasks.filter(t => activeStatuses.includes(t.status))
-		const running = tasks.filter(t => t.status === 'running')
-		const submitting = tasks.filter(t => t.status === 'submitting')
-		const completed = tasks.filter(t => t.status === 'completed')
-		const failed = tasks.filter(t => t.status === 'failed')
-		const cancelled = tasks.filter(t => t.status === 'cancelled' || t.status === 'dismissed')
+		const active = tasks.filter((t) => activeStatuses.includes(t.status))
+		const running = tasks.filter((t) => t.status === 'running')
+		const submitting = tasks.filter((t) => t.status === 'submitting')
+		const completed = tasks.filter((t) => t.status === 'completed')
+		const failed = tasks.filter((t) => t.status === 'failed')
+		const cancelled = tasks.filter((t) => t.status === 'cancelled' || t.status === 'dismissed')
 
 		let overallProgress = 0
 		if (active.length > 0) {
@@ -391,7 +401,7 @@ export function createTaskQueueService(deps = {}) {
 			failedCount: failed.length,
 			cancelledCount: cancelled.length,
 			overallProgress,
-			tasks: tasks.slice(0, 100),
+			tasks: tasks.slice(0, 100)
 		}
 	}
 
@@ -435,7 +445,13 @@ export function createTaskQueueService(deps = {}) {
 		const provider = providers.get(task.provider)
 		if (!provider || typeof provider.poll !== 'function') return false
 		if (!task.remoteTaskId) return false
-		if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled' || task.status === 'dismissed') return false
+		if (
+			task.status === 'completed' ||
+			task.status === 'failed' ||
+			task.status === 'cancelled' ||
+			task.status === 'dismissed'
+		)
+			return false
 		return true
 	}
 
@@ -458,7 +474,7 @@ export function createTaskQueueService(deps = {}) {
 
 			const toPoll = pollable.slice(0, MAX_CONCURRENT_POLLS)
 			activePolls = toPoll.length
-			await Promise.allSettled(toPoll.map(t => pollTask(t)))
+			await Promise.allSettled(toPoll.map((t) => pollTask(t)))
 		} catch (err) {
 			logger.error(`[TaskQueue] Poll tick error: ${err.message}`)
 		} finally {
@@ -535,6 +551,6 @@ export function createTaskQueueService(deps = {}) {
 		restoreTasks,
 		shutdown,
 		onTaskCompleted,
-		getProviders: () => Array.from(providers.keys()),
+		getProviders: () => Array.from(providers.keys())
 	}
 }

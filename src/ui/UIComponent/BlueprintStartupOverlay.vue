@@ -31,7 +31,11 @@
 				<div class="bso-percent">{{ Math.round(clampedProgress * 100) }}%</div>
 			</div>
 
-			<div class="bso-bar-wrap" role="progressbar" :aria-valuenow="Math.round(clampedProgress * 100)">
+			<div
+				class="bso-bar-wrap"
+				role="progressbar"
+				:aria-valuenow="Math.round(clampedProgress * 100)"
+			>
 				<div class="bso-bar" :style="{ width: Math.round(clampedProgress * 100) + '%' }">
 					<div class="bso-bar-glow"></div>
 				</div>
@@ -61,7 +65,12 @@
 
 			<div v-if="error" class="bso-error">
 				<div class="bso-error-text">{{ error }}</div>
-				<button v-if="canSkipError" class="bso-skip-btn" type="button" @click.stop="emit('skip-error')">
+				<button
+					v-if="canSkipError"
+					class="bso-skip-btn"
+					type="button"
+					@click.stop="emit('skip-error')"
+				>
 					{{ skipText }}
 				</button>
 			</div>
@@ -243,8 +252,15 @@ const clampedProgress = computed(() => {
 }
 
 @keyframes bso-scan {
-	0%, 100% { transform: translateY(0); opacity: 0.4; }
-	50% { transform: translateY(calc(var(--panel-height, 400px) - 2px)); opacity: 0.8; }
+	0%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.4;
+	}
+	50% {
+		transform: translateY(calc(var(--panel-height, 400px) - 2px));
+		opacity: 0.8;
+	}
 }
 
 .bso-header {
@@ -279,8 +295,15 @@ const clampedProgress = computed(() => {
 }
 
 @keyframes bso-pulse {
-	0%, 100% { opacity: 1; transform: scale(1); }
-	50% { opacity: 0.6; transform: scale(0.85); }
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.6;
+		transform: scale(0.85);
+	}
 }
 
 .bso-percent {
@@ -305,12 +328,7 @@ const clampedProgress = computed(() => {
 .bso-bar {
 	position: relative;
 	height: 100%;
-	background: linear-gradient(
-		90deg,
-		var(--vscode-charts-green, #1f9d84),
-		#27b99c 50%,
-		#3aa8b4
-	);
+	background: linear-gradient(90deg, var(--vscode-charts-green, #1f9d84), #27b99c 50%, #3aa8b4);
 	transition: width 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
 	box-shadow: 0 0 12px color-mix(in srgb, var(--vscode-charts-green, #27b99c) 60%, transparent);
 }
@@ -332,8 +350,13 @@ const clampedProgress = computed(() => {
 }
 
 @keyframes bso-bar-shimmer {
-	0%, 100% { opacity: 0.7; }
-	50% { opacity: 1; }
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .bso-steps {
@@ -367,7 +390,9 @@ const clampedProgress = computed(() => {
 	padding: 8px 10px;
 	font-size: 13px;
 	color: color-mix(in srgb, rgba(232, 245, 242, 0.5) 100%, transparent);
-	transition: color 200ms ease, background 200ms ease;
+	transition:
+		color 200ms ease,
+		background 200ms ease;
 	border-radius: 2px;
 }
 
@@ -434,7 +459,9 @@ const clampedProgress = computed(() => {
 }
 
 @keyframes bso-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .bso-icon-warn {
@@ -498,7 +525,9 @@ const clampedProgress = computed(() => {
 	cursor: pointer;
 	border-radius: 2px;
 	letter-spacing: 0.03em;
-	transition: background 200ms ease, border-color 200ms ease;
+	transition:
+		background 200ms ease,
+		border-color 200ms ease;
 }
 
 .bso-skip-btn:hover {

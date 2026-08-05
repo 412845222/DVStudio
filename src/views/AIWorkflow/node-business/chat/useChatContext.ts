@@ -18,10 +18,33 @@ import type { WorkflowNode } from '../../../../aiworkflow/types'
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 const MAX_FILE_CONTENT_CHARS = 50000
 const TEXT_FILE_EXTENSIONS = [
-	'.txt', '.md', '.json', '.js', '.ts', '.jsx', '.tsx', '.vue',
-	'.css', '.scss', '.less', '.html', '.xml', '.yaml', '.yml',
-	'.py', '.java', '.c', '.cpp', '.h', '.go', '.rs', '.sh',
-	'.bat', '.ps1', '.mjs', '.cjs'
+	'.txt',
+	'.md',
+	'.json',
+	'.js',
+	'.ts',
+	'.jsx',
+	'.tsx',
+	'.vue',
+	'.css',
+	'.scss',
+	'.less',
+	'.html',
+	'.xml',
+	'.yaml',
+	'.yml',
+	'.py',
+	'.java',
+	'.c',
+	'.cpp',
+	'.h',
+	'.go',
+	'.rs',
+	'.sh',
+	'.bat',
+	'.ps1',
+	'.mjs',
+	'.cjs'
 ]
 const MAX_CONTEXT_ITEMS = 20
 
@@ -49,7 +72,7 @@ function readFileAsText(file: File): Promise<string> {
 
 function isTextFile(file: File): boolean {
 	const name = file.name.toLowerCase()
-	return TEXT_FILE_EXTENSIONS.some(ext => name.endsWith(ext))
+	return TEXT_FILE_EXTENSIONS.some((ext) => name.endsWith(ext))
 }
 
 function formatFileSize(bytes: number): string {
@@ -77,7 +100,7 @@ function getNodeConnections(
 ): NodeContextItem['connections'] {
 	if (!nodes || !edges) return []
 	const connections: NonNullable<NodeContextItem['connections']> = []
-	const nodesById = new Map(nodes.map(n => [n.id, n]))
+	const nodesById = new Map(nodes.map((n) => [n.id, n]))
 
 	for (const edge of edges) {
 		if (connections.length >= 20) break
@@ -119,7 +142,18 @@ export function useChatContext(options?: {
 
 	const contextCount: ComputedRef<number> = computed(() => allItems.value.length)
 
-	async function addImage(fileOrData: File | { name: string; mimeType?: string; size?: number; dataUrl?: string; url?: string; thumbnailUrl?: string }): Promise<void> {
+	async function addImage(
+		fileOrData:
+			| File
+			| {
+					name: string
+					mimeType?: string
+					size?: number
+					dataUrl?: string
+					url?: string
+					thumbnailUrl?: string
+			  }
+	): Promise<void> {
 		if (items.value.length >= MAX_CONTEXT_ITEMS) return
 		let item: ImageContextItem
 		if (fileOrData instanceof File) {
@@ -150,7 +184,19 @@ export function useChatContext(options?: {
 		items.value.push(item)
 	}
 
-	async function addFile(fileOrData: File | { name: string; mimeType?: string; size?: number; path?: string; content?: string; truncated?: boolean; lines?: number }): Promise<void> {
+	async function addFile(
+		fileOrData:
+			| File
+			| {
+					name: string
+					mimeType?: string
+					size?: number
+					path?: string
+					content?: string
+					truncated?: boolean
+					lines?: number
+			  }
+	): Promise<void> {
 		if (items.value.length >= MAX_CONTEXT_ITEMS) return
 		let item: FileContextItem
 		if (fileOrData instanceof File) {
@@ -199,7 +245,7 @@ export function useChatContext(options?: {
 	function addSkill(skillId: string): void {
 		const skill = BUILTIN_SKILLS.find((s: SkillDefinition) => s.id === skillId)
 		if (!skill) return
-		if (items.value.some(item => item.type === 'skill' && item.skillId === skillId)) return
+		if (items.value.some((item) => item.type === 'skill' && item.skillId === skillId)) return
 		const item: SkillContextItem = {
 			id: generateId('skill'),
 			type: 'skill',
@@ -219,19 +265,25 @@ export function useChatContext(options?: {
 		addOptions?: {
 			includeConnections?: boolean
 			allNodes?: WorkflowNode[]
-			allEdges?: { source?: string; target?: string; sourceHandle?: string; targetHandle?: string }[]
+			allEdges?: {
+				source?: string
+				target?: string
+				sourceHandle?: string
+				targetHandle?: string
+			}[]
 		}
 	): void {
-		if (items.value.some(item => item.type === 'node' && item.nodeId === node.id)) return
+		if (items.value.some((item) => item.type === 'node' && item.nodeId === node.id)) return
 		const includeConnections = addOptions?.includeConnections ?? false
 		const connections = includeConnections
 			? getNodeConnections(node.id, addOptions?.allNodes, addOptions?.allEdges)
 			: undefined
-		const label = isString(node.title) && node.title.length > 0
-			? node.title
-			: isString(node.alias) && node.alias.length > 0
-				? node.alias
-				: node.type
+		const label =
+			isString(node.title) && node.title.length > 0
+				? node.title
+				: isString(node.alias) && node.alias.length > 0
+					? node.alias
+					: node.type
 
 		let previewUrl: string | undefined
 		let resourceUrl: string | undefined
@@ -338,7 +390,7 @@ export function useChatContext(options?: {
 
 	function addNodeOutputRef(data: NodeOutputDragData): NodeOutputContextItem | null {
 		const exists = nodeOutputRefs.value.some(
-			item => item.nodeId === data.nodeId && item.anchorId === data.anchorId
+			(item) => item.nodeId === data.nodeId && item.anchorId === data.anchorId
 		)
 		if (exists) return null
 		const item: NodeOutputContextItem = {
@@ -360,11 +412,11 @@ export function useChatContext(options?: {
 	}
 
 	function removeItem(itemId: string): void {
-		items.value = items.value.filter(item => item.id !== itemId)
+		items.value = items.value.filter((item) => item.id !== itemId)
 	}
 
 	function removeNodeOutputRef(itemId: string): void {
-		nodeOutputRefs.value = nodeOutputRefs.value.filter(item => item.id !== itemId)
+		nodeOutputRefs.value = nodeOutputRefs.value.filter((item) => item.id !== itemId)
 	}
 
 	function clearAll(): void {
@@ -381,10 +433,7 @@ export function useChatContext(options?: {
 		isPickingNode.value = false
 	}
 
-	function onNodePicked(
-		node: WorkflowNode,
-		options?: Parameters<typeof addNode>[1]
-	): void {
+	function onNodePicked(node: WorkflowNode, options?: Parameters<typeof addNode>[1]): void {
 		addNode(node, options)
 		exitNodePickMode()
 	}
@@ -417,8 +466,16 @@ export function useChatContext(options?: {
 		})
 	}
 
-	async function toAttachments(): Promise<{ type: string; name?: string; url?: string; data?: string; mimeType?: string }[]> {
-		const attachments: { type: string; name?: string; url?: string; data?: string; mimeType?: string }[] = []
+	async function toAttachments(): Promise<
+		{ type: string; name?: string; url?: string; data?: string; mimeType?: string }[]
+	> {
+		const attachments: {
+			type: string
+			name?: string
+			url?: string
+			data?: string
+			mimeType?: string
+		}[] = []
 		for (const item of items.value) {
 			if (item.type === 'image' && item.dataUrl) {
 				attachments.push({
@@ -476,8 +533,24 @@ export function useChatContext(options?: {
 		return attachments
 	}
 
-	function toReferences(): { kind?: string; name?: string; path?: string; content?: string; nodeId?: string; anchorId?: string; previewUrl?: string }[] {
-		const references: { kind?: string; name?: string; path?: string; content?: string; nodeId?: string; anchorId?: string; previewUrl?: string }[] = []
+	function toReferences(): {
+		kind?: string
+		name?: string
+		path?: string
+		content?: string
+		nodeId?: string
+		anchorId?: string
+		previewUrl?: string
+	}[] {
+		const references: {
+			kind?: string
+			name?: string
+			path?: string
+			content?: string
+			nodeId?: string
+			anchorId?: string
+			previewUrl?: string
+		}[] = []
 		for (const item of items.value) {
 			if (item.type === 'file') {
 				references.push({
@@ -504,7 +577,7 @@ export function useChatContext(options?: {
 	function toSkillHints(): string[] {
 		return items.value
 			.filter((item): item is SkillContextItem => item.type === 'skill')
-			.map(item => item.skillId)
+			.map((item) => item.skillId)
 	}
 
 	function getNodeContexts(): NodeContextItem[] {
@@ -518,13 +591,13 @@ export function useChatContext(options?: {
 	function getReferencedNodeIds(): string[] {
 		return items.value
 			.filter((item): item is NodeContextItem => item.type === 'node')
-			.map(item => item.nodeId)
+			.map((item) => item.nodeId)
 	}
 
 	function getActiveSkills(): { id: string; name: string; description: string; prompt: string }[] {
 		return items.value
 			.filter((item): item is SkillContextItem => item.type === 'skill')
-			.map(item => ({
+			.map((item) => ({
 				id: item.skillId,
 				name: item.name,
 				description: item.description || '',

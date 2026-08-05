@@ -127,10 +127,31 @@ export const loadScreenshotFromDisk = async (
 export const loadAllScreenshotsForBlueprint = async (
 	projectId: string,
 	blueprintId: string
-): Promise<Map<string, { dataUrl: string; version: string; width: number; height: number; theme: 'dark' | 'light'; nodeId: string; capturedAt: number }>> => {
+): Promise<
+	Map<
+		string,
+		{
+			dataUrl: string
+			version: string
+			width: number
+			height: number
+			theme: 'dark' | 'light'
+			nodeId: string
+			capturedAt: number
+		}
+	>
+> => {
 	const result = new Map<
 		string,
-		{ dataUrl: string; version: string; width: number; height: number; theme: 'dark' | 'light'; nodeId: string; capturedAt: number }
+		{
+			dataUrl: string
+			version: string
+			width: number
+			height: number
+			theme: 'dark' | 'light'
+			nodeId: string
+			capturedAt: number
+		}
 	>()
 	try {
 		const db = await openDb()

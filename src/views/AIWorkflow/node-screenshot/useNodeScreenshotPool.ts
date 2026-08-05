@@ -15,7 +15,11 @@
  */
 
 import { ref } from 'vue'
-import { enhancedWaitForAllImages, enhancedConvertImagesToDataUrls, prepareClonedImages } from './imageScreenshotHelper'
+import {
+	enhancedWaitForAllImages,
+	enhancedConvertImagesToDataUrls,
+	prepareClonedImages
+} from './imageScreenshotHelper'
 
 export interface ScreenshotCacheEntry {
 	nodeId: string
@@ -421,10 +425,14 @@ const convertImagesToDataUrls = async (root: HTMLElement, signal?: AbortSignal):
 						doConvert()
 					} else {
 						img.addEventListener('load', doConvert, { once: true })
-						img.addEventListener('error', () => {
-							if (signal) signal.removeEventListener('abort', onAbort)
-							resolve()
-						}, { once: true })
+						img.addEventListener(
+							'error',
+							() => {
+								if (signal) signal.removeEventListener('abort', onAbort)
+								resolve()
+							},
+							{ once: true }
+						)
 						setTimeout(() => {
 							if (signal) signal.removeEventListener('abort', onAbort)
 							resolve()
@@ -520,7 +528,11 @@ export const createNodeScreenshotPool = () => {
 	const lowPriorityQueue: ScreenshotTask[] = []
 	const inFlight = new Map<
 		string,
-		{ version: string; resolves: Array<(e: ScreenshotCacheEntry | null) => void>; abortController: AbortController }
+		{
+			version: string
+			resolves: Array<(e: ScreenshotCacheEntry | null) => void>
+			abortController: AbortController
+		}
 	>()
 
 	let processing = false
@@ -547,7 +559,10 @@ export const createNodeScreenshotPool = () => {
 		return cache.has(key)
 	}
 
-	const getCachedForTheme = (nodeId: string, theme: 'dark' | 'light'): ScreenshotCacheEntry | null => {
+	const getCachedForTheme = (
+		nodeId: string,
+		theme: 'dark' | 'light'
+	): ScreenshotCacheEntry | null => {
 		const key = getCacheKey(nodeId, theme)
 		return cache.get(key) || null
 	}
@@ -880,7 +895,11 @@ export const createNodeScreenshotPool = () => {
 
 		const inflightKey = `${task.nodeId}::${task.theme}`
 		const inflightResolves: Array<(e: ScreenshotCacheEntry | null) => void> = []
-		inFlight.set(inflightKey, { version: task.version, resolves: inflightResolves, abortController: taskAbortController })
+		inFlight.set(inflightKey, {
+			version: task.version,
+			resolves: inflightResolves,
+			abortController: taskAbortController
+		})
 		inflightResolves.push(task.resolve)
 		;(async () => {
 			const startTime = performance.now()

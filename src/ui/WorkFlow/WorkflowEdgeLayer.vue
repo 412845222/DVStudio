@@ -47,7 +47,16 @@ const props = withDefaults(
 
 const emit = defineEmits<{
 	(e: 'select-edge', id: string): void
-	(e: 'anchor-pointerdown', payload: { nodeId: string; anchorId: string; anchorIndex: number; direction: 'in' | 'out'; event: PointerEvent }): void
+	(
+		e: 'anchor-pointerdown',
+		payload: {
+			nodeId: string
+			anchorId: string
+			anchorIndex: number
+			direction: 'in' | 'out'
+			event: PointerEvent
+		}
+	): void
 }>()
 
 const ANCHOR_COLORS: Record<string, string> = {
@@ -220,7 +229,13 @@ const drawRoundedRect = (
 
 const hexToRgba = (hex: string, alpha: number) => {
 	const h = hex.replace('#', '')
-	const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+	const full =
+		h.length === 3
+			? h
+					.split('')
+					.map((c) => c + c)
+					.join('')
+			: h
 	const r = parseInt(full.substring(0, 2), 16)
 	const g = parseInt(full.substring(2, 4), 16)
 	const b = parseInt(full.substring(4, 6), 16)
@@ -238,7 +253,8 @@ const drawAnchor = (
 	const my = anchor.magnetY ?? 0
 	const cx = anchor.x + mx
 	const cy = anchor.y + my
-	const mediaType = anchor.mediaType && ANCHOR_COLORS[anchor.mediaType] ? anchor.mediaType : 'default'
+	const mediaType =
+		anchor.mediaType && ANCHOR_COLORS[anchor.mediaType] ? anchor.mediaType : 'default'
 	const color = ANCHOR_COLORS[mediaType] ?? ANCHOR_COLORS.default
 
 	let dotSize = ANCHOR_DOT_SIZE

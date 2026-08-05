@@ -1,8 +1,8 @@
 {
-  "dialog.ok": "OK",
-  "dialog.cancel": "Cancel",
-  "dialog.confirm": "Confirm",
-  "dialog.close": "Close",
-  "dialog.dontShowAgain": "Don't show again",
-  "dialog.defaultTitle": "Notice"
+	"dialog.ok": "OK",
+	"dialog.cancel": "Cancel",
+	"dialog.confirm": "Confirm",
+	"dialog.close": "Close",
+	"dialog.dontShowAgain": "Don't show again",
+	"dialog.defaultTitle": "Notice"
 }

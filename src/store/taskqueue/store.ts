@@ -12,7 +12,7 @@ function createDefaultSummary(): TaskQueueSummary {
 		failedCount: 0,
 		cancelledCount: 0,
 		overallProgress: 0,
-		tasks: [],
+		tasks: []
 	}
 }
 
@@ -22,7 +22,7 @@ function createDefaultState(): TaskQueueState {
 		summary: createDefaultSummary(),
 		panelVisible: false,
 		listenerIds: {},
-		initialized: false,
+		initialized: false
 	}
 }
 
@@ -64,7 +64,7 @@ export const TaskQueueStore = createStore<TaskQueueState>({
 					state.tasks.delete(id)
 				}
 			}
-		},
+		}
 	},
 
 	getters: {
@@ -94,7 +94,7 @@ export const TaskQueueStore = createStore<TaskQueueState>({
 		},
 		overallProgress(state): number {
 			return state.summary.overallProgress || 0
-		},
+		}
 	},
 
 	actions: {
@@ -219,6 +219,6 @@ export const TaskQueueStore = createStore<TaskQueueState>({
 				commit('setTask', result.task)
 			}
 			return result
-		},
-	},
+		}
+	}
 })

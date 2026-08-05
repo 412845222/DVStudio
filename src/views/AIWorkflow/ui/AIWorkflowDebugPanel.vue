@@ -27,11 +27,16 @@ const lastBackendCheck = ref<number | null>(null)
 
 const backendStatusLabel = computed(() => {
 	switch (backendPingStatus.value) {
-		case 'idle': return t('aiworkflow.page.debugPanel.statusIdle')
-		case 'checking': return t('aiworkflow.page.debugPanel.statusChecking')
-		case 'reachable': return t('aiworkflow.page.debugPanel.statusReachable')
-		case 'unreachable': return t('aiworkflow.page.debugPanel.statusUnreachable')
-		default: return backendPingStatus.value
+		case 'idle':
+			return t('aiworkflow.page.debugPanel.statusIdle')
+		case 'checking':
+			return t('aiworkflow.page.debugPanel.statusChecking')
+		case 'reachable':
+			return t('aiworkflow.page.debugPanel.statusReachable')
+		case 'unreachable':
+			return t('aiworkflow.page.debugPanel.statusUnreachable')
+		default:
+			return backendPingStatus.value
 	}
 })
 
@@ -52,10 +57,16 @@ const checkBackend = async () => {
 		})
 		if (res.ok) {
 			backendPingStatus.value = 'reachable'
-			backendPingMessage.value = t('aiworkflow.page.debugPanel.reachable', { status: String(res.status), ms: String(Date.now() - start) })
+			backendPingMessage.value = t('aiworkflow.page.debugPanel.reachable', {
+				status: String(res.status),
+				ms: String(Date.now() - start)
+			})
 		} else {
 			backendPingStatus.value = 'unreachable'
-			backendPingMessage.value = t('aiworkflow.page.debugPanel.httpError', { status: String(res.status), ms: String(Date.now() - start) })
+			backendPingMessage.value = t('aiworkflow.page.debugPanel.httpError', {
+				status: String(res.status),
+				ms: String(Date.now() - start)
+			})
 		}
 	} catch (err: unknown) {
 		backendPingStatus.value = 'unreachable'
@@ -172,12 +183,17 @@ const toggleCollapsed = () => {
 						@click.stop="checkBackend"
 						:disabled="backendPingStatus === 'checking'"
 					>
-						{{ backendPingStatus === 'checking' ? t('aiworkflow.page.debugPanel.checking') : t('aiworkflow.page.debugPanel.recheck') }}
+						{{
+							backendPingStatus === 'checking'
+								? t('aiworkflow.page.debugPanel.checking')
+								: t('aiworkflow.page.debugPanel.recheck')
+						}}
 					</button>
 				</div>
 				<div class="dv-debug-backend-hint">
 					{{ t('aiworkflow.page.debugPanel.webModeHint') }}
-					<code>/api/* → http://127.0.0.1:5800</code>。
+					<code>/api/* → http://127.0.0.1:5800</code>
+					。
 					{{ t('aiworkflow.page.debugPanel.confirmRunning') }}
 					<code>python django-app/manage.py runserver 5800</code>
 					{{ t('aiworkflow.page.debugPanel.or') }}
@@ -200,15 +216,23 @@ const toggleCollapsed = () => {
 			</div>
 			<div class="dv-debug-section">
 				<h4>{{ t('aiworkflow.page.debugPanel.nodeTasks', { count: String(taskCount) }) }}</h4>
-				<div v-if="!taskList.length" class="dv-debug-empty">{{ t('aiworkflow.page.debugPanel.noTasks') }}</div>
-				<div v-for="task in taskList" :key="`${task.nodeId}-${task.startedAt}`" class="dv-debug-task-row">
+				<div v-if="!taskList.length" class="dv-debug-empty">
+					{{ t('aiworkflow.page.debugPanel.noTasks') }}
+				</div>
+				<div
+					v-for="task in taskList"
+					:key="`${task.nodeId}-${task.startedAt}`"
+					class="dv-debug-task-row"
+				>
 					<div class="dv-debug-task-head">
 						<span class="dv-debug-task-kind">{{ task.kind }}</span>
 						<span class="dv-debug-task-nodeid">({{ task.nodeId.slice(0, 8) }}…)</span>
 						<span class="dv-debug-task-status" :class="`dv-debug-task-status-${task.status}`">
 							{{ task.status }}
 						</span>
-						<span class="dv-debug-task-time">{{ t('aiworkflow.page.debugPanel.start') }} {{ fmtTime(task.startedAt) }}</span>
+						<span class="dv-debug-task-time">
+							{{ t('aiworkflow.page.debugPanel.start') }} {{ fmtTime(task.startedAt) }}
+						</span>
 					</div>
 					<div v-if="task.statusText" class="dv-debug-task-text">{{ task.statusText }}</div>
 					<div class="dv-debug-task-bar">
@@ -218,7 +242,9 @@ const toggleCollapsed = () => {
 						></div>
 					</div>
 					<div class="dv-debug-task-meta">
-						{{ t('aiworkflow.page.debugPanel.progress') }} {{ Math.round(task.progress) }}% · {{ t('aiworkflow.page.debugPanel.results') }} {{ task.results }} {{ t('aiworkflow.page.debugPanel.items') }}
+						{{ t('aiworkflow.page.debugPanel.progress') }} {{ Math.round(task.progress) }}% ·
+						{{ t('aiworkflow.page.debugPanel.results') }} {{ task.results }}
+						{{ t('aiworkflow.page.debugPanel.items') }}
 					</div>
 					<div v-if="task.errorMessage" class="dv-debug-task-error">{{ task.errorMessage }}</div>
 				</div>

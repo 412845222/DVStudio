@@ -40,10 +40,14 @@ export function detectCategoryFromNodeType(nodeType: string): TaskCategory {
 	return 'image'
 }
 
-export function getLabelForCategory(category: TaskCategory, provider: string, t?: TranslateFunction): string {
+export function getLabelForCategory(
+	category: TaskCategory,
+	provider: string,
+	t?: TranslateFunction
+): string {
 	const providerKey = provider ? `taskQueue.provider.${provider}` : ''
 	const categoryKey = `taskQueue.category.${category}`
-	
+
 	const providerNames: Record<string, string> = {
 		meshy: t?.('taskQueue.provider.meshy') || 'Meshy',
 		gemini: t?.('taskQueue.provider.gemini') || 'Gemini',
@@ -54,24 +58,24 @@ export function getLabelForCategory(category: TaskCategory, provider: string, t?
 		seedance: t?.('taskQueue.provider.seedance') || 'Seedance',
 		kling: t?.('taskQueue.provider.kling') || 'Kling',
 		luma: t?.('taskQueue.provider.luma') || 'Luma',
-		bytedance: t?.('taskQueue.provider.bytedance') || 'Doubao',
+		bytedance: t?.('taskQueue.provider.bytedance') || 'Doubao'
 	}
-	
+
 	const categoryLabels: Record<string, string> = {
 		image: t?.('taskQueue.category.image') || '图片',
 		'3d': t?.('taskQueue.category.model3d') || '3D模型',
 		video: t?.('taskQueue.category.video') || '视频',
-		custom: t?.('taskQueue.category.custom') || '文本',
+		custom: t?.('taskQueue.category.custom') || '文本'
 	}
-	
+
 	const providerName = providerNames[provider] || provider
 	const categoryLabel = categoryLabels[category] || 'Task'
-	
+
 	if (category === '3d' && (provider === 'meshy' || provider === 'tripo3d')) {
 		if (provider === 'tripo3d') return providerName
 		return `${providerName} 3D`
 	}
-	
+
 	if (providerName) return `${providerName}${categoryLabel}`
 	return categoryLabel
 }
@@ -100,7 +104,7 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 			bindRemoteTask: async () => ({ ok: false }),
 			failTask: async () => ({ ok: false }),
 			completeTask: async () => ({ ok: false }),
-			dismissTask: async () => ({ ok: false }),
+			dismissTask: async () => ({ ok: false })
 		}
 	}
 
@@ -113,7 +117,9 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 	let syncScheduled = false
 	const pendingSyncNodes = new Set<string>()
 
-	async function registerTask(input: RegisterTaskInput): Promise<{ ok: boolean; taskId?: string; clientRequestId?: string; error?: string }> {
+	async function registerTask(
+		input: RegisterTaskInput
+	): Promise<{ ok: boolean; taskId?: string; clientRequestId?: string; error?: string }> {
 		try {
 			const state = store.state
 			const projectId = state?.projectId != null ? Number(state.projectId) : null
@@ -131,7 +137,7 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 				nodeId,
 				provider,
 				category,
-				title: input.title || (label + (nodeName ? ` · ${nodeName}` : '')),
+				title: input.title || label + (nodeName ? ` · ${nodeName}` : ''),
 				label,
 				prompt: input.prompt || '',
 				coverUrl: input.coverUrl || '',
@@ -139,7 +145,7 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 				status: 'submitting',
 				progress: 0,
 				statusText: t?.('taskQueue.statusPreparing') || '准备中...',
-				canCancel: true,
+				canCancel: true
 			})
 
 			if (result?.ok && result.task) {
@@ -193,7 +199,10 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 		}
 	}
 
-	async function completeTask(taskId: string, result: { resultUrl?: string; coverUrl?: string; statusText?: string } = {}) {
+	async function completeTask(
+		taskId: string,
+		result: { resultUrl?: string; coverUrl?: string; statusText?: string } = {}
+	) {
 		if (!taskId || !registeredTasks.has(taskId)) {
 			return { ok: false, error: 'Unknown task' }
 		}
@@ -223,50 +232,92 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 		if (!node) return null
 
 		const videoSettings = node.videoSettings
-		if (videoSettings?.seedanceSettings && (videoSettings.seedanceSettings.taskId || videoSettings.seedanceSettings.taskStatus || videoSettings.seedanceSettings.progress !== undefined)) {
+		if (
+			videoSettings?.seedanceSettings &&
+			(videoSettings.seedanceSettings.taskId ||
+				videoSettings.seedanceSettings.taskStatus ||
+				videoSettings.seedanceSettings.progress !== undefined)
+		) {
 			return { settings: videoSettings.seedanceSettings, provider: 'seedance' }
 		}
 
 		const imageSettings = node.imageSettings
 		if (imageSettings) {
-			if (imageSettings.meshyImageSettings && (imageSettings.meshyImageSettings.taskId || imageSettings.meshyImageSettings.taskStatus)) {
+			if (
+				imageSettings.meshyImageSettings &&
+				(imageSettings.meshyImageSettings.taskId || imageSettings.meshyImageSettings.taskStatus)
+			) {
 				return { settings: imageSettings.meshyImageSettings, provider: 'meshy' }
 			}
-			if (imageSettings.geminiImageSettings && (imageSettings.geminiImageSettings.taskStatus || imageSettings.geminiImageSettings.progress !== undefined)) {
+			if (
+				imageSettings.geminiImageSettings &&
+				(imageSettings.geminiImageSettings.taskStatus ||
+					imageSettings.geminiImageSettings.progress !== undefined)
+			) {
 				return { settings: imageSettings.geminiImageSettings, provider: 'gemini' }
 			}
-			if (imageSettings.seedreamImageSettings && (imageSettings.seedreamImageSettings.taskStatus || imageSettings.seedreamImageSettings.progress !== undefined)) {
+			if (
+				imageSettings.seedreamImageSettings &&
+				(imageSettings.seedreamImageSettings.taskStatus ||
+					imageSettings.seedreamImageSettings.progress !== undefined)
+			) {
 				return { settings: imageSettings.seedreamImageSettings, provider: 'seedream' }
 			}
-			if (imageSettings.jimengImageSettings && (imageSettings.jimengImageSettings.taskStatus || imageSettings.jimengImageSettings.progress !== undefined)) {
+			if (
+				imageSettings.jimengImageSettings &&
+				(imageSettings.jimengImageSettings.taskStatus ||
+					imageSettings.jimengImageSettings.progress !== undefined)
+			) {
 				return { settings: imageSettings.jimengImageSettings, provider: 'jimeng' }
 			}
-			if (imageSettings.tripo3dImageSettings && (imageSettings.tripo3dImageSettings.taskId || imageSettings.tripo3dImageSettings.taskStatus)) {
+			if (
+				imageSettings.tripo3dImageSettings &&
+				(imageSettings.tripo3dImageSettings.taskId || imageSettings.tripo3dImageSettings.taskStatus)
+			) {
 				return { settings: imageSettings.tripo3dImageSettings, provider: 'tripo3d' }
 			}
 		}
 
-		if (node.meshyImageSettings && (node.meshyImageSettings.taskId || node.meshyImageSettings.taskStatus)) {
+		if (
+			node.meshyImageSettings &&
+			(node.meshyImageSettings.taskId || node.meshyImageSettings.taskStatus)
+		) {
 			return { settings: node.meshyImageSettings, provider: 'meshy' }
 		}
-		if (node.tripo3dImageSettings && (node.tripo3dImageSettings.taskId || node.tripo3dImageSettings.taskStatus)) {
+		if (
+			node.tripo3dImageSettings &&
+			(node.tripo3dImageSettings.taskId || node.tripo3dImageSettings.taskStatus)
+		) {
 			return { settings: node.tripo3dImageSettings, provider: 'tripo3d' }
 		}
 
 		const model3dSettings = node.model3dSettings
 		if (model3dSettings) {
-			if (model3dSettings.meshyModelSettings && (model3dSettings.meshyModelSettings.taskId || model3dSettings.meshyModelSettings.taskStatus)) {
+			if (
+				model3dSettings.meshyModelSettings &&
+				(model3dSettings.meshyModelSettings.taskId || model3dSettings.meshyModelSettings.taskStatus)
+			) {
 				return { settings: model3dSettings.meshyModelSettings, provider: 'meshy' }
 			}
-			if (model3dSettings.tripo3dModelSettings && (model3dSettings.tripo3dModelSettings.taskId || model3dSettings.tripo3dModelSettings.taskStatus)) {
+			if (
+				model3dSettings.tripo3dModelSettings &&
+				(model3dSettings.tripo3dModelSettings.taskId ||
+					model3dSettings.tripo3dModelSettings.taskStatus)
+			) {
 				return { settings: model3dSettings.tripo3dModelSettings, provider: 'tripo3d' }
 			}
 		}
 
-		if (node.meshyModelSettings && (node.meshyModelSettings.taskId || node.meshyModelSettings.taskStatus)) {
+		if (
+			node.meshyModelSettings &&
+			(node.meshyModelSettings.taskId || node.meshyModelSettings.taskStatus)
+		) {
 			return { settings: node.meshyModelSettings, provider: 'meshy' }
 		}
-		if (node.tripo3dModelSettings && (node.tripo3dModelSettings.taskId || node.tripo3dModelSettings.taskStatus)) {
+		if (
+			node.tripo3dModelSettings &&
+			(node.tripo3dModelSettings.taskId || node.tripo3dModelSettings.taskStatus)
+		) {
 			return { settings: node.tripo3dModelSettings, provider: 'tripo3d' }
 		}
 
@@ -274,12 +325,15 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 	}
 
 	function mapStatus(raw: string): string {
-		const s = String(raw || '').toLowerCase().trim()
+		const s = String(raw || '')
+			.toLowerCase()
+			.trim()
 		if (['succeeded', 'completed', 'success'].includes(s)) return 'completed'
 		if (['failed', 'canceled', 'cancelled', 'error'].includes(s)) return 'failed'
 		if (['cancelling', 'canceling', 'aborting'].includes(s)) return 'cancelled'
 		if (['submitting'].includes(s)) return 'submitting'
-		if (['queued', 'in_progress', 'in-progress', 'running', 'polling', 'pending'].includes(s)) return 'running'
+		if (['queued', 'in_progress', 'in-progress', 'running', 'polling', 'pending'].includes(s))
+			return 'running'
 		return ''
 	}
 
@@ -346,8 +400,13 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 				if (!statusText) statusText = safeStr(settings.statusText, '')
 				if (!errorMessage) errorMessage = safeStr(settings.errorMessage || settings.error, '')
 				if (!status) status = safeStr(settings.taskStatus, '')
-				if (!resultUrl) resultUrl = safeStr(settings.resultUrl || settings.videoUrl || settings.modelUrl || settings.preferredUrl, '')
-				if (!coverUrl) coverUrl = safeStr(settings.coverUrl || settings.thumbnailUrl || settings.posterUrl, '')
+				if (!resultUrl)
+					resultUrl = safeStr(
+						settings.resultUrl || settings.videoUrl || settings.modelUrl || settings.preferredUrl,
+						''
+					)
+				if (!coverUrl)
+					coverUrl = safeStr(settings.coverUrl || settings.thumbnailUrl || settings.posterUrl, '')
 				if (settings.outputSummary) {
 					if (!resultUrl) resultUrl = safeStr(settings.outputSummary.preferredUrl, '')
 					if (!coverUrl) coverUrl = safeStr(settings.outputSummary.thumbnailUrl, '')
@@ -362,11 +421,18 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 			const mappedStatus = mapStatus(status)
 			if (mappedStatus && TERMINAL_TASK_STATUSES.has(mappedStatus)) {
 				if (mappedStatus === 'completed' && resultUrl) {
-					await completeTask(taskId, { resultUrl, coverUrl: coverUrl || resultUrl, statusText: statusText || (t?.('taskQueue.statusCompletedDefault') || '已完成') })
+					await completeTask(taskId, {
+						resultUrl,
+						coverUrl: coverUrl || resultUrl,
+						statusText: statusText || t?.('taskQueue.statusCompletedDefault') || '已完成'
+					})
 				} else if (mappedStatus === 'failed' && errorMessage) {
 					await failTask(taskId, errorMessage)
 				} else if (mappedStatus === 'cancelled') {
-					await updateTask(taskId, { status: 'cancelled', statusText: statusText || (t?.('taskQueue.statusCancelledDefault') || '已取消') })
+					await updateTask(taskId, {
+						status: 'cancelled',
+						statusText: statusText || t?.('taskQueue.statusCancelledDefault') || '已取消'
+					})
 				}
 			} else if (progress > 0 || statusText || mappedStatus) {
 				await updateTask(taskId, {
@@ -375,7 +441,7 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 					status: mappedStatus || undefined,
 					errorMessage: errorMessage || undefined,
 					coverUrl: coverUrl || undefined,
-					resultUrl: resultUrl || undefined,
+					resultUrl: resultUrl || undefined
 				})
 			}
 		} catch (err) {
@@ -391,7 +457,7 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 				const state = store.state
 				return {
 					nodesById: state?.nodesById,
-					nodeGenerationTasksById: state?.nodeGenerationTasksById,
+					nodeGenerationTasksById: state?.nodeGenerationTasksById
 				}
 			},
 			() => {
@@ -430,6 +496,6 @@ export function useGlobalTaskBridge(store: Store<any>, t?: TranslateFunction) {
 		failTask,
 		completeTask,
 		dismissTask,
-		syncSingleNode,
+		syncSingleNode
 	}
 }

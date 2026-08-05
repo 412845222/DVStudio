@@ -12,7 +12,9 @@
 		@pointerdown.stop
 		@wheel.stop
 	>
-		<button class="chat-collapsed-handle" type="button" @click="requestExpand">{{ t('aichat.dock.handleLabel') }}</button>
+		<button class="chat-collapsed-handle" type="button" @click="requestExpand">
+			{{ t('aichat.dock.handleLabel') }}
+		</button>
 
 		<div class="chat-content" :aria-hidden="collapsed ? 'true' : 'false'">
 			<div class="chat-history">
@@ -122,12 +124,8 @@
 						</svg>
 					</button>
 				</div>
-				<div
-					ref="historyBodyRef"
-					class="chat-history-body"
-				>
+				<div ref="historyBodyRef" class="chat-history-body">
 					<div class="agent-panel">
-
 						<div class="agent-content-area">
 							<div class="agent-chat-area">
 								<div v-if="!messages?.length" class="agent-empty-state">
@@ -144,13 +142,23 @@
 									>
 										<div class="chat-msg-bubble">
 											<div class="chat-msg-role">
-												{{ m.role === 'user' ? t('aichat.dock.roleUser') : m.role === 'assistant' ? t('aichat.dock.roleAgent') : t('aichat.dock.roleSystem') }}
+												{{
+													m.role === 'user'
+														? t('aichat.dock.roleUser')
+														: m.role === 'assistant'
+															? t('aichat.dock.roleAgent')
+															: t('aichat.dock.roleSystem')
+												}}
 											</div>
 											<template v-if="m.role === 'assistant'">
 												<ThinkingBlock
 													v-if="m.thinkingContent"
 													:content="m.thinkingContent || ''"
-													:is-thinking="!m.content && (!m.toolCalls?.length || m.toolCalls.every(t => t.status === 'pending'))"
+													:is-thinking="
+														!m.content &&
+														(!m.toolCalls?.length ||
+															m.toolCalls.every((t) => t.status === 'pending'))
+													"
 													:default-collapsed="!!m.content"
 												/>
 												<div v-if="m.toolCalls?.length" class="agent-tool-calls">
@@ -220,7 +228,9 @@
 					</div>
 					<div class="chat-dock-context-usage-text">
 						{{ formatTokens(contextUsage.tokenCount) }} / {{ formatTokens(contextUsage.budget) }}
-						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">{{ t('aichat.dock.truncated') }}</span>
+						<span v-if="contextUsage.truncated" class="chat-dock-context-usage-truncated">
+							{{ t('aichat.dock.truncated') }}
+						</span>
 					</div>
 				</div>
 
@@ -230,62 +240,71 @@
 				</div>
 
 				<div
-				v-if="(props.contextItems && props.contextItems.length > 0) || mentionIsOpen"
-				class="chat-dock-context-area"
-				:class="{ 'is-drag-over': props.isDragOver || isDragOverInternal, 'is-link-drag-over': props.isLinkDragOver }"
-				@dragover.prevent="onDragOver"
-				@dragleave.prevent="onDragLeave"
-				@drop.prevent="onDrop"
-			>
-				<AgentMentionPopup
-					:visible="mentionIsOpen"
-					:items="mentionFilteredItems"
-					:selected-index="mentionSelectedIndex"
-					@select="(item: AgentEditorMentionItem) => selectMentionItem(mentionFilteredItems.indexOf(item))"
-					@update:selected-index="mentionSelectedIndex = $event"
-				/>
-
-				<div v-if="props.contextItems && props.contextItems.length > 0" class="chat-dock-context-chips">
-					<ChatContextItemComp
-						v-for="item in props.contextItems"
-						:key="item.id"
-						:item="item"
-						@remove="(id: string) => emit('remove-context-item', id)"
+					v-if="(props.contextItems && props.contextItems.length > 0) || mentionIsOpen"
+					class="chat-dock-context-area"
+					:class="{
+						'is-drag-over': props.isDragOver || isDragOverInternal,
+						'is-link-drag-over': props.isLinkDragOver
+					}"
+					@dragover.prevent="onDragOver"
+					@dragleave.prevent="onDragLeave"
+					@drop.prevent="onDrop"
+				>
+					<AgentMentionPopup
+						:visible="mentionIsOpen"
+						:items="mentionFilteredItems"
+						:selected-index="mentionSelectedIndex"
+						@select="
+							(item: AgentEditorMentionItem) =>
+								selectMentionItem(mentionFilteredItems.indexOf(item))
+						"
+						@update:selected-index="mentionSelectedIndex = $event"
 					/>
-				</div>
 
-				<div v-else-if="mentionIsOpen" class="chat-dock-context-hint">输入关键词筛选已添加的资源...</div>
-				<div v-else class="chat-dock-context-hint">拖拽文件、图片或节点输出到此处作为上下文</div>
-			</div>
+					<div
+						v-if="props.contextItems && props.contextItems.length > 0"
+						class="chat-dock-context-chips"
+					>
+						<ChatContextItemComp
+							v-for="item in props.contextItems"
+							:key="item.id"
+							:item="item"
+							@remove="(id: string) => emit('remove-context-item', id)"
+						/>
+					</div>
+
+					<div v-else-if="mentionIsOpen" class="chat-dock-context-hint">
+						输入关键词筛选已添加的资源...
+					</div>
+					<div v-else class="chat-dock-context-hint">拖拽文件、图片或节点输出到此处作为上下文</div>
+				</div>
 
 				<div v-if="props.isLinkDragOver" class="chat-dock-link-drag-hint">
 					<span>{{ t('aichat.dock.linkDragHint') }}</span>
 				</div>
 
 				<div class="chat-dock-editor-wrap" :class="{ 'is-link-drag-over': props.isLinkDragOver }">
-				<div
-					ref="editorRef"
-					class="chat-dock-editor"
-					:class="{ 'is-disabled': sending }"
-					contenteditable="true"
-					@focus="emit('focus-input')"
-					@input="editor.onEditorInput()"
-					@keydown="onEditorKeydown"
-					@keyup="editor.onEditorKeyup()"
-					@compositionstart="editor.onCompositionStart()"
-					@compositionend="editor.onCompositionEnd()"
-					@blur="onEditorBlur"
-					@mousedown="onEditorMouseDown"
-					@paste="onPaste"
-				></div>
-				<div v-if="isEmpty && !props.isLinkDragOver" class="chat-dock-editor-placeholder">{{ t('aichat.dock.inputPlaceholder') }}</div>
-			</div>
+					<div
+						ref="editorRef"
+						class="chat-dock-editor"
+						:class="{ 'is-disabled': sending }"
+						contenteditable="true"
+						@focus="emit('focus-input')"
+						@input="editor.onEditorInput()"
+						@keydown="onEditorKeydown"
+						@keyup="editor.onEditorKeyup()"
+						@compositionstart="editor.onCompositionStart()"
+						@compositionend="editor.onCompositionEnd()"
+						@blur="onEditorBlur"
+						@mousedown="onEditorMouseDown"
+						@paste="onPaste"
+					></div>
+					<div v-if="isEmpty && !props.isLinkDragOver" class="chat-dock-editor-placeholder">
+						{{ t('aichat.dock.inputPlaceholder') }}
+					</div>
+				</div>
 
-				<div
-					v-if="showSkillPicker"
-					class="chat-dock-skill-picker"
-					ref="skillPickerRef"
-				>
+				<div v-if="showSkillPicker" class="chat-dock-skill-picker" ref="skillPickerRef">
 					<div class="chat-dock-skill-picker-header">{{ t('aichat.dock.skillPickerTitle') }}</div>
 					<div class="chat-dock-skill-picker-list">
 						<div
@@ -365,7 +384,9 @@
 								:disabled="sending || !supportsThinking"
 								@change="onThinkingEffortChange"
 							>
-								<option v-if="!supportsThinking" value="disabled">{{ t('aichat.dock.thinkingNotSupported') }}</option>
+								<option v-if="!supportsThinking" value="disabled">
+									{{ t('aichat.dock.thinkingNotSupported') }}
+								</option>
 								<option value="disabled">{{ t('aichat.dock.thinkingDisabled') }}</option>
 								<option value="low">{{ t('aichat.dock.thinkingLow') }}</option>
 								<option value="medium">{{ t('aichat.dock.thinkingMedium') }}</option>
@@ -512,7 +533,11 @@ import UserChoicePanel from '../AIChat/UserChoicePanel.vue'
 import AgentToolsPanel from '../AIChat/AgentToolsPanel.vue'
 import ChatContextItemComp from '../AIChat/ChatContextItem.vue'
 import AgentMentionPopup from '../AIChat/AgentMentionPopup.vue'
-import { useAgentEditor, type AgentEditorMentionItem, type AgentEditorChipData } from '../../views/AIWorkflow/node-business/chat/useAgentEditor'
+import {
+	useAgentEditor,
+	type AgentEditorMentionItem,
+	type AgentEditorChipData
+} from '../../views/AIWorkflow/node-business/chat/useAgentEditor'
 import type { ChatContextItem } from '../../types/agentMention'
 import {
 	getChatApiSourceOptions,
@@ -533,39 +558,39 @@ import {
 const { t } = useI18n()
 
 const props = defineProps<{
-		modelValue: string
-		messages?: BottomChatMessage[]
-		sending?: boolean
-		runState?: 'idle' | 'sending' | 'stopping' | 'error'
-		collapsed?: boolean
-		taskStatus?: string
-		placement?: 'bottom' | 'right-drawer'
-		agentBackend?: AgentBackendType
-		agentMode?: AgentConversationMode
-		localExecStreamMode?: 'real' | 'mock'
-		agentWorkingDirectory?: string
-		modelKey?: ChatLegacyModelKey
-		nanoPreviewUrls?: string[]
-		nanoPreviewFallbackUrls?: string[]
-		nanoPreviewSourcePaths?: string[]
-		nanoPreviewLoadingStates?: boolean[]
-		nanoPreviewDownloadStatuses?: string[]
-		nanoPreviewDownloadProgresses?: number[]
-		nanoPreviewLocalReadyStates?: boolean[]
-		nanoPreviewUrl?: string
-		nanoStatus?: string
-		nanoDetail?: string
-		nanoBilling?: string
-		nanoModelUsed?: string
+	modelValue: string
+	messages?: BottomChatMessage[]
+	sending?: boolean
+	runState?: 'idle' | 'sending' | 'stopping' | 'error'
+	collapsed?: boolean
+	taskStatus?: string
+	placement?: 'bottom' | 'right-drawer'
+	agentBackend?: AgentBackendType
+	agentMode?: AgentConversationMode
+	localExecStreamMode?: 'real' | 'mock'
+	agentWorkingDirectory?: string
+	modelKey?: ChatLegacyModelKey
+	nanoPreviewUrls?: string[]
+	nanoPreviewFallbackUrls?: string[]
+	nanoPreviewSourcePaths?: string[]
+	nanoPreviewLoadingStates?: boolean[]
+	nanoPreviewDownloadStatuses?: string[]
+	nanoPreviewDownloadProgresses?: number[]
+	nanoPreviewLocalReadyStates?: boolean[]
+	nanoPreviewUrl?: string
+	nanoStatus?: string
+	nanoDetail?: string
+	nanoBilling?: string
+	nanoModelUsed?: string
 
-		nanoAnchorNodeId?: string
-		nanoRefAnchors?: NanoBananaRefAnchor[]
-		nanoHoverAnchorId?: string | null
-		codexSessions?: CodexSessionItem[]
-		codexActiveSessionId?: string
-		codexFlowEvents?: CodexFlowEvent[]
-		thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
-		contextUsage?: { tokenCount: number; budget: number; usage: number; truncated?: boolean } | null
+	nanoAnchorNodeId?: string
+	nanoRefAnchors?: NanoBananaRefAnchor[]
+	nanoHoverAnchorId?: string | null
+	codexSessions?: CodexSessionItem[]
+	codexActiveSessionId?: string
+	codexFlowEvents?: CodexFlowEvent[]
+	thinkingEffort?: 'disabled' | 'low' | 'medium' | 'high'
+	contextUsage?: { tokenCount: number; budget: number; usage: number; truncated?: boolean } | null
 	contextItems?: ChatContextItem[]
 	isPickingNode?: boolean
 	mentionItemsData?: AgentEditorMentionItem[]
@@ -596,7 +621,10 @@ const emit = defineEmits<{
 	(e: 'user-choice-select', v: { messageId: string; choiceIndex: number; choiceText: string }): void
 	(e: 'layout-changed'): void
 	(e: 'update:thinkingEffort', v: 'disabled' | 'low' | 'medium' | 'high'): void
-	(e: 'file-upload', files: Array<{ name: string; type: string; size: number; dataUrl?: string }>): void
+	(
+		e: 'file-upload',
+		files: Array<{ name: string; type: string; size: number; dataUrl?: string }>
+	): void
 	(e: 'locate-node', nodeId: string): void
 	(
 		e: 'safe-area-changed',
@@ -636,14 +664,44 @@ const editor = useAgentEditor(
 		emit('update:selectedReferences', chips)
 	}
 )
-const { isMentionOpen: mentionIsOpen, filteredItems: mentionFilteredItems, selectedMentionIndex: mentionSelectedIndex, selectMentionItem } = editor
+const {
+	isMentionOpen: mentionIsOpen,
+	filteredItems: mentionFilteredItems,
+	selectedMentionIndex: mentionSelectedIndex,
+	selectMentionItem
+} = editor
 
 const availableSkills = computed(() => [
-	{ id: 'scene-understand', name: t('aichat.dock.skillSceneUnderstand'), description: t('aichat.dock.skillSceneUnderstandDesc'), icon: '🖼️' },
-	{ id: 'scene-lighting', name: t('aichat.dock.skillSceneLighting'), description: t('aichat.dock.skillSceneLightingDesc'), icon: '💡' },
-	{ id: 'node-create', name: t('aichat.dock.skillNodeCreate'), description: t('aichat.dock.skillNodeCreateDesc'), icon: '➕' },
-	{ id: 'node-config', name: t('aichat.dock.skillNodeConfig'), description: t('aichat.dock.skillNodeConfigDesc'), icon: '⚙️' },
-	{ id: 'workflow-plan', name: t('aichat.dock.skillWorkflowPlan'), description: t('aichat.dock.skillWorkflowPlanDesc'), icon: '📋' },
+	{
+		id: 'scene-understand',
+		name: t('aichat.dock.skillSceneUnderstand'),
+		description: t('aichat.dock.skillSceneUnderstandDesc'),
+		icon: '🖼️'
+	},
+	{
+		id: 'scene-lighting',
+		name: t('aichat.dock.skillSceneLighting'),
+		description: t('aichat.dock.skillSceneLightingDesc'),
+		icon: '💡'
+	},
+	{
+		id: 'node-create',
+		name: t('aichat.dock.skillNodeCreate'),
+		description: t('aichat.dock.skillNodeCreateDesc'),
+		icon: '➕'
+	},
+	{
+		id: 'node-config',
+		name: t('aichat.dock.skillNodeConfig'),
+		description: t('aichat.dock.skillNodeConfigDesc'),
+		icon: '⚙️'
+	},
+	{
+		id: 'workflow-plan',
+		name: t('aichat.dock.skillWorkflowPlan'),
+		description: t('aichat.dock.skillWorkflowPlanDesc'),
+		icon: '📋'
+	}
 ])
 
 const dockRef = ref<HTMLElement | null>(null)
@@ -847,15 +905,19 @@ const textModel = ref('auto')
 const modelOptions = computed(() => {
 	if (agentBackend.value === 'dvsagent') {
 		const allTextModels = getChatModelCatalog().filter(
-			(m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot' && m.apiSource !== 'codex'
+			(m) =>
+				m.needType === 'text' &&
+				m.apiSource !== 'local-exec' &&
+				m.apiSource !== 'copilot' &&
+				m.apiSource !== 'codex'
 		)
 		return allTextModels
 	}
 	if (agentBackend.value === 'copilot') {
-		return getChatModelOptions('text', 'copilot').filter(m => m.apiSource === 'copilot')
+		return getChatModelOptions('text', 'copilot').filter((m) => m.apiSource === 'copilot')
 	}
 	if (agentBackend.value === 'codex') {
-		return getChatModelOptions('text', 'codex').filter(m => m.apiSource === 'codex')
+		return getChatModelOptions('text', 'codex').filter((m) => m.apiSource === 'codex')
 	}
 	return []
 })
@@ -889,7 +951,9 @@ const activeModelOption = computed(() => {
 })
 
 const thinkingEffort = computed<'disabled' | 'low' | 'medium' | 'high'>(() => {
-	const effort = String(props.thinkingEffort || '').trim().toLowerCase()
+	const effort = String(props.thinkingEffort || '')
+		.trim()
+		.toLowerCase()
 	if (effort === 'disabled' || effort === 'low' || effort === 'high') {
 		return effort
 	}
@@ -1277,12 +1341,7 @@ const onNeedTypeChange = (e: Event) => {
 const onApiSourceChange = (e: Event) => {
 	if (!isRegularMode.value) return
 	const v = String((e.target as HTMLSelectElement).value || 'all')
-	apiSource.value =
-		v === 'gemini'
-			? 'gemini'
-			: v === 'bytedance'
-				? 'bytedance'
-				: 'all'
+	apiSource.value = v === 'gemini' ? 'gemini' : v === 'bytedance' ? 'bytedance' : 'all'
 	normalizeModelSelection()
 }
 
@@ -1305,7 +1364,10 @@ const onAgentModelSelectionChange = (e: Event) => {
 	if (selected) {
 		emit('update:modelKey', selected.legacyModelKey)
 	} else {
-		emit('update:modelKey', agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text')
+		emit(
+			'update:modelKey',
+			agentBackend.value === 'copilot' || agentBackend.value === 'codex' ? 'codex' : 'text'
+		)
 	}
 }
 
@@ -1369,7 +1431,10 @@ const emitGenerate = () => {
 				meshyPoseMode: meshyImageConfig.value.poseMode || '',
 				meshyGenerateMultiView: meshyImageConfig.value.generateMultiView || false,
 				meshyOutputImageCount: meshyImageConfig.value.outputImageCount || 1,
-				meshySeed: meshyImageConfig.value.seed && meshyImageConfig.value.seed > 0 ? meshyImageConfig.value.seed : -1,
+				meshySeed:
+					meshyImageConfig.value.seed && meshyImageConfig.value.seed > 0
+						? meshyImageConfig.value.seed
+						: -1,
 				quantity
 			}
 		})
@@ -1422,8 +1487,18 @@ const getToolResultField = (result: unknown, field: string): string => {
 	return String((result as Record<string, unknown>)[field] ?? '')
 }
 
-const isCreateNodeToolResult = (tc: { name: string; status: string; result?: unknown }): boolean => {
-	return tc.name === 'create_node' && tc.status === 'completed' && !!tc.result && typeof tc.result === 'object' && 'nodeId' in (tc.result as object)
+const isCreateNodeToolResult = (tc: {
+	name: string
+	status: string
+	result?: unknown
+}): boolean => {
+	return (
+		tc.name === 'create_node' &&
+		tc.status === 'completed' &&
+		!!tc.result &&
+		typeof tc.result === 'object' &&
+		'nodeId' in (tc.result as object)
+	)
 }
 
 const onLocateNode = (nodeId: string) => {
@@ -1719,7 +1794,8 @@ const onRenameCodexSession = (sessionId: string, currentTitle: string) => {
 	const id = String(sessionId || '').trim()
 	if (!id) return
 	renamingSessionId.value = id
-	renamingSessionTitle.value = String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
+	renamingSessionTitle.value =
+		String(currentTitle || '').trim() || t('aichat.dock.defaultSessionName')
 	isRenamingSession.value = true
 	nextTick(() => {
 		renameInputRef.value?.focus()
@@ -1791,9 +1867,12 @@ const onWindowResize = () => {
 	emitLayoutChanged()
 }
 
-watch(() => props.isPickingNode, (val) => {
-	if (val) editor.closeMention()
-})
+watch(
+	() => props.isPickingNode,
+	(val) => {
+		if (val) editor.closeMention()
+	}
+)
 
 onMounted(() => {
 	window.addEventListener('resize', onWindowResize, { passive: true })
@@ -3424,14 +3503,38 @@ defineExpose({
 	overflow: hidden !important;
 }
 
-:deep(.agent-mention-chip.is-image) { background: color-mix(in srgb, #60a5fa 15%, transparent) !important; border-color: color-mix(in srgb, #60a5fa 35%, transparent) !important; color: #60a5fa !important; }
-:deep(.agent-mention-chip.is-video) { background: color-mix(in srgb, #4ade80 15%, transparent) !important; border-color: color-mix(in srgb, #4ade80 35%, transparent) !important; color: #4ade80 !important; }
-:deep(.agent-mention-chip.is-model3d) { background: color-mix(in srgb, #c084fc 15%, transparent) !important; border-color: color-mix(in srgb, #c084fc 35%, transparent) !important; color: #c084fc !important; }
-:deep(.agent-mention-chip.is-file) { background: color-mix(in srgb, #fbbf24 15%, transparent) !important; border-color: color-mix(in srgb, #fbbf24 35%, transparent) !important; color: #fbbf24 !important; }
-:deep(.agent-mention-chip.is-skill) { background: color-mix(in srgb, #c084fc 15%, transparent) !important; border-color: color-mix(in srgb, #c084fc 35%, transparent) !important; color: #c084fc !important; }
+:deep(.agent-mention-chip.is-image) {
+	background: color-mix(in srgb, #60a5fa 15%, transparent) !important;
+	border-color: color-mix(in srgb, #60a5fa 35%, transparent) !important;
+	color: #60a5fa !important;
+}
+:deep(.agent-mention-chip.is-video) {
+	background: color-mix(in srgb, #4ade80 15%, transparent) !important;
+	border-color: color-mix(in srgb, #4ade80 35%, transparent) !important;
+	color: #4ade80 !important;
+}
+:deep(.agent-mention-chip.is-model3d) {
+	background: color-mix(in srgb, #c084fc 15%, transparent) !important;
+	border-color: color-mix(in srgb, #c084fc 35%, transparent) !important;
+	color: #c084fc !important;
+}
+:deep(.agent-mention-chip.is-file) {
+	background: color-mix(in srgb, #fbbf24 15%, transparent) !important;
+	border-color: color-mix(in srgb, #fbbf24 35%, transparent) !important;
+	color: #fbbf24 !important;
+}
+:deep(.agent-mention-chip.is-skill) {
+	background: color-mix(in srgb, #c084fc 15%, transparent) !important;
+	border-color: color-mix(in srgb, #c084fc 35%, transparent) !important;
+	color: #c084fc !important;
+}
 :deep(.agent-mention-chip.is-text),
 :deep(.agent-mention-chip.is-node),
-:deep(.agent-mention-chip.is-nodeOutput) { background: color-mix(in srgb, #f59e0b 15%, transparent) !important; border-color: color-mix(in srgb, #f59e0b 35%, transparent) !important; color: #f59e0b !important; }
+:deep(.agent-mention-chip.is-nodeOutput) {
+	background: color-mix(in srgb, #f59e0b 15%, transparent) !important;
+	border-color: color-mix(in srgb, #f59e0b 35%, transparent) !important;
+	color: #f59e0b !important;
+}
 
 :deep(.agent-mention-chip-thumb) {
 	width: 14px !important;
@@ -3473,7 +3576,9 @@ defineExpose({
 	flex-shrink: 0 !important;
 	margin-left: 1px !important;
 	opacity: 0.7 !important;
-	transition: opacity 150ms ease, background-color 150ms ease !important;
+	transition:
+		opacity 150ms ease,
+		background-color 150ms ease !important;
 }
 
 :deep(.agent-mention-chip-remove:hover) {
@@ -3691,7 +3796,9 @@ defineExpose({
 	border-style: solid;
 	border-width: 2px;
 	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 12%, transparent);
-	box-shadow: 0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent), inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
+	box-shadow:
+		0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 35%, transparent),
+		inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
 }
 
 .chat-dock-link-drag-hint {
@@ -3707,8 +3814,13 @@ defineExpose({
 }
 
 @keyframes chatDockLinkPulse {
-	0%, 100% { opacity: 0.7; }
-	50% { opacity: 1; }
+	0%,
+	100% {
+		opacity: 0.7;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .chat-dock-editor-wrap.is-link-drag-over {
@@ -3716,7 +3828,9 @@ defineExpose({
 	border-style: solid;
 	border-width: 2px;
 	background: color-mix(in srgb, var(--wf-primary, #1f9d84) 8%, transparent);
-	box-shadow: 0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent), inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 5%, transparent);
+	box-shadow:
+		0 0 16px color-mix(in srgb, var(--wf-primary, #1f9d84) 30%, transparent),
+		inset 0 0 20px color-mix(in srgb, var(--wf-primary, #1f9d84) 5%, transparent);
 }
 
 .chat-dock-editor-wrap.is-link-drag-over .chat-dock-editor {

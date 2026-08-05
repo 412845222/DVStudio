@@ -186,15 +186,9 @@ export class CanvasPostProcess {
 			if (f.type === 'blur') {
 				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
 				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
-				const iterations = Math.max(
-					1,
-					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
-				)
+				const iterations = Math.max(1, Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1))
 				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
-				const maxIterations = Math.max(
-					1,
-					Math.floor(Number(f.__maxIterations ?? 12) || 12)
-				)
+				const maxIterations = Math.max(1, Math.floor(Number(f.__maxIterations ?? 12) || 12))
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
 				maxStepPx *= scaleAdjust
@@ -252,15 +246,9 @@ export class CanvasPostProcess {
 				if (intensity <= 1e-4) continue
 				let blurX = Math.max(0, Number(f.__blurX ?? f.blurX ?? 0) || 0)
 				let blurY = Math.max(0, Number(f.__blurY ?? f.blurY ?? 0) || 0)
-				const iterations = Math.max(
-					1,
-					Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1)
-				)
+				const iterations = Math.max(1, Math.floor(Number(f.__iterations ?? f.iterations ?? 1) || 1))
 				let maxStepPx = Math.max(1e-3, Number(f.__maxStepPx ?? 8) || 8)
-				const maxIterations = Math.max(
-					1,
-					Math.floor(Number(f.__maxIterations ?? 12) || 12)
-				)
+				const maxIterations = Math.max(1, Math.floor(Number(f.__maxIterations ?? 12) || 12))
 				blurX *= scaleAdjust
 				blurY *= scaleAdjust
 				maxStepPx *= scaleAdjust

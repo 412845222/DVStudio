@@ -50,9 +50,21 @@ type EditorIpcBridge = {
 	dweb?: {
 		editor?: {
 			components?: {
-				list?: (payload?: { q?: string; limit?: number; offset?: number }) => Promise<ListComponentsResponse | { items?: ComponentLibraryItem[]; total?: number; limit?: number; offset?: number }>
+				list?: (payload?: {
+					q?: string
+					limit?: number
+					offset?: number
+				}) => Promise<
+					| ListComponentsResponse
+					| { items?: ComponentLibraryItem[]; total?: number; limit?: number; offset?: number }
+				>
 				get?: (payload: { id: string }) => Promise<{ item: ComponentLibraryItem }>
-				save?: (payload: unknown) => Promise<{ ok?: boolean; item?: ComponentLibraryItem; upserted?: boolean; error?: string }>
+				save?: (payload: unknown) => Promise<{
+					ok?: boolean
+					item?: ComponentLibraryItem
+					upserted?: boolean
+					error?: string
+				}>
 				delete?: (payload: { id: string }) => Promise<{ ok?: boolean; error?: string }>
 				import?: (payload: { items: ImportComponentItem[] }) => Promise<ImportComponentsResponse>
 			}
@@ -95,11 +107,13 @@ function normalizeComponentItem(raw: unknown): ComponentLibraryItem | null {
 		name,
 		template: r.template || {},
 		createdAt: normalizeTimestamp(r.createdAt as number | string | undefined),
-		savedAt: normalizeTimestamp(r.savedAt as number | string | undefined) || normalizeTimestamp(r.updatedAt as number | string | undefined),
+		savedAt:
+			normalizeTimestamp(r.savedAt as number | string | undefined) ||
+			normalizeTimestamp(r.updatedAt as number | string | undefined),
 		thumbAssetId: r.thumbAssetId ? String(r.thumbAssetId) : undefined,
 		thumbUrl: r.thumbUrl ? String(r.thumbUrl) : undefined,
 		category: r.category ? String(r.category) : undefined,
-		tags: Array.isArray(r.tags) ? r.tags.map(String) : undefined,
+		tags: Array.isArray(r.tags) ? r.tags.map(String) : undefined
 	}
 }
 
@@ -129,9 +143,11 @@ export class ComponentLibraryService {
 		return `${base}/${path}`
 	}
 
-	private async listComponentsIpc(
-		params?: { q?: string; limit?: number; offset?: number }
-	): Promise<ListComponentsResponse> {
+	private async listComponentsIpc(params?: {
+		q?: string
+		limit?: number
+		offset?: number
+	}): Promise<ListComponentsResponse> {
 		const bridge = getIpcBridge()
 		const listFn = bridge.dweb?.editor?.components?.list
 		if (typeof listFn !== 'function') throw new Error('IPC editor.components.list not available')
@@ -141,7 +157,7 @@ export class ComponentLibraryService {
 			items: items.map(normalizeComponentItem).filter((i): i is ComponentLibraryItem => i !== null),
 			total: Number(result?.total) || items.length,
 			limit: Number(result?.limit) || items.length,
-			offset: Number(result?.offset) || 0,
+			offset: Number(result?.offset) || 0
 		}
 	}
 
@@ -154,7 +170,10 @@ export class ComponentLibraryService {
 			try {
 				return await this.listComponentsIpc(params)
 			} catch (e) {
-				console.warn('[ComponentLibraryService] IPC listComponents failed, falling back to HTTP:', e)
+				console.warn(
+					'[ComponentLibraryService] IPC listComponents failed, falling back to HTTP:',
+					e
+				)
 			}
 		}
 		const q = params?.q ? `q=${encodeURIComponent(params.q)}` : ''
@@ -209,7 +228,10 @@ export class ComponentLibraryService {
 			try {
 				return await this.upsertComponentIpc(payload)
 			} catch (e) {
-				console.warn('[ComponentLibraryService] IPC upsertComponent failed, falling back to HTTP:', e)
+				console.warn(
+					'[ComponentLibraryService] IPC upsertComponent failed, falling back to HTTP:',
+					e
+				)
 			}
 		}
 		const res = await fetch(this.url('/api/editor/component-library/components'), {
@@ -229,7 +251,8 @@ export class ComponentLibraryService {
 	private async deleteComponentIpc(id: string): Promise<{ ok: boolean }> {
 		const bridge = getIpcBridge()
 		const deleteFn = bridge.dweb?.editor?.components?.delete
-		if (typeof deleteFn !== 'function') throw new Error('IPC editor.components.delete not available')
+		if (typeof deleteFn !== 'function')
+			throw new Error('IPC editor.components.delete not available')
 		const result = await deleteFn({ id })
 		if (result?.ok === false) throw new Error(result.error || 'delete failed')
 		return { ok: true }
@@ -240,7 +263,10 @@ export class ComponentLibraryService {
 			try {
 				return await this.deleteComponentIpc(id)
 			} catch (e) {
-				console.warn('[ComponentLibraryService] IPC deleteComponent failed, falling back to HTTP:', e)
+				console.warn(
+					'[ComponentLibraryService] IPC deleteComponent failed, falling back to HTTP:',
+					e
+				)
 			}
 		}
 		const res = await fetch(
@@ -259,10 +285,13 @@ export class ComponentLibraryService {
 		return (await res.json()) as { ok: boolean }
 	}
 
-	private async importComponentsIpc(items: ImportComponentItem[]): Promise<ImportComponentsResponse> {
+	private async importComponentsIpc(
+		items: ImportComponentItem[]
+	): Promise<ImportComponentsResponse> {
 		const bridge = getIpcBridge()
 		const importFn = bridge.dweb?.editor?.components?.import
-		if (typeof importFn !== 'function') throw new Error('IPC editor.components.import not available')
+		if (typeof importFn !== 'function')
+			throw new Error('IPC editor.components.import not available')
 		return await importFn({ items })
 	}
 
@@ -271,7 +300,10 @@ export class ComponentLibraryService {
 			try {
 				return await this.importComponentsIpc(items)
 			} catch (e) {
-				console.warn('[ComponentLibraryService] IPC importComponents failed, falling back to HTTP:', e)
+				console.warn(
+					'[ComponentLibraryService] IPC importComponents failed, falling back to HTTP:',
+					e
+				)
 			}
 		}
 		const res = await fetch(this.url('/api/editor/component-library/import'), {

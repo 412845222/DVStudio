@@ -103,6 +103,8 @@
 				@node-three-preview-ready="onNodeThreePreviewReady"
 				@node-three-preview-error="onNodeThreePreviewError"
 				@node-upload-model3d-file="(p: any) => onNodeUploadModel3DFile(p.nodeId, p.file)"
+				@node-clear-resource="(id: string) => onNodeClearResource(id)"
+				@node-upload-resource="(p: any) => onNodeUploadResource(p.nodeId, p.file, p.kind)"
 				@node-export-unreal-scene="onNodeExportUnrealScene"
 				@node-export-unreal-lighting="onNodeExportUnrealLighting"
 				@node-disconnect-unreal="onNodeDisconnect"
@@ -1201,9 +1203,7 @@ const inputParamPreviewRefsByNodeId = computed<Record<string, InputParamPreviewR
 
 	if (BLUEPRINT_POLL_DEBUG) {
 		console.log(
-			`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${
-				Object.values(result).filter((r) => r.length > 0).length
-			}, anyChanged=${anyChanged}`
+			`[AIWorkflowPage][inputParamPreviewRefsByNodeId] total nodes=${nodeIds.length}, nodes with refs=${Object.values(result).filter((r) => r.length > 0).length}, anyChanged=${anyChanged}`
 		)
 	}
 
@@ -6067,14 +6067,24 @@ const autoSizeImageNodeFromDims = (nodeId: string, w: number, h: number) => {
 }
 
 const onNodeClearResource = (nodeId: string) => {
+	console.log('[AIWorkflowPage] onNodeClearResource called:', { nodeId })
 	const node = store.state.nodesById[nodeId]
 	if (!node) return
 	if (node.type === 'model3d') {
+		console.log('[AIWorkflowPage] Clearing model3d resource:', {
+			nodeId,
+			hasResourceId: !!node.resourceId
+		})
 		revokeNodeModel3DObjectUrl(nodeId)
+		// 清除资源关系（resourceId + resourcePath），防止引擎端仍持有旧资源引用
+		if (node.resourceId) {
+			setNodeResourceWithCleanup({ nodeId, resourceId: null })
+		}
 		store.commit('setNodeModel3DSettings', {
 			nodeId,
 			model3dSettings: {
 				modelUrl: '',
+				modelFormat: 'glb',
 				modelSourceName: '',
 				modelSourcePath: '',
 				modelAssetUrl: '',
@@ -6086,6 +6096,9 @@ const onNodeClearResource = (nodeId: string) => {
 				lastInputSourceName: ''
 			}
 		})
+		// 关键：同步到引擎，防止 hydrateDraft 用引擎端旧数据覆盖 Store 中的清空状态
+		patchBlueprintNodeData(nodeId)
+		console.log('[AIWorkflowPage] model3d resource cleared and synced to engine:', { nodeId })
 		return
 	}
 	if (node.type === 'image') {
@@ -10400,7 +10413,15 @@ const { uploadNodeResource, bindMediaResourceToNode, uploadNodeModel3DFile } =
 		scheduleVideoMetadataRead,
 		ensureVideoResourcePoster,
 		revokeNodeModel3DObjectUrl,
-		isDjangoManagedResource
+		isDjangoManagedResource,
+		// P2-1：注入引擎同步回调（SSOT 反向写入，修复空白新建 3D 模型节点上传后仍不渲染的根因）
+		patchBlueprintNodeData: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		// ===== 2026-08-05 修复：接入与拖拽导入相同的文件持久化能力（copyFileToProjectRoot / uploadProjectAsset），
+		// 使上传按钮走与拖拽完全相同的 IPC 原生拷贝 + ArrayBuffer 上传兜底链路，
+		// 而非仅依赖 blueprintProjectService.uploadAsset（该链路在 Electron 中可能因 coerce 字段缺失而失败）。
+		copyFileToProjectRoot: (projectId: number, sourcePath: string, desiredFilename: string) =>
+			copyFileToProjectRoot(projectId, sourcePath, desiredFilename),
+		uploadProjectAsset
 	})
 
 const { onNodeUploadSceneLayoutModelFile, onNodeClearSceneLayoutModelBinding } =
@@ -10771,7 +10792,29 @@ const onNodeUploadResource = async (
 }
 
 const onNodeUploadModel3DFile = async (nodeId: string, file: File) => {
-	await uploadNodeModel3DFile(nodeId, file)
+	console.log('[AIWorkflowPage] onNodeUploadModel3DFile called:', {
+		nodeId,
+		fileName: file?.name,
+		fileSize: file?.size,
+		nodeExists: !!store.state.nodesById[nodeId],
+		nodeType: (store.state.nodesById[nodeId] as any)?.type
+	})
+	// P2-2：补 try/catch + pushToast 反馈（修复根因 C：无错误提示让用户误以为没响应）
+	const startName = String(file?.name ?? '').trim()
+	try {
+		await uploadNodeModel3DFile(nodeId, file)
+		// 轻提示：仅当有文件名时提示"上传成功 + 预览加载中"
+		if (startName) {
+			const okMsg = t('aiworkflow.page.media.uploadSuccessWithName', { name: startName })
+			const previewMsg = t('nodes.model3d.previewLoading')
+			pushToast(`${okMsg} · ${previewMsg}`, 'info')
+		}
+	} catch (err: unknown) {
+		console.error('[AIWorkflowPage] onNodeUploadModel3DFile failed:', err)
+		const failMsg = t('nodes.model3d.uploadFailed')
+		const detail = getErrorMessage(err)
+		pushToast(detail ? `${failMsg} · ${detail}` : failMsg, 'error')
+	}
 }
 
 const onConfirmImportLimitAlert = () => {

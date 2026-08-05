@@ -1,4 +1,13 @@
-import type { DwebPlatformStatus, DwebPlatformUser, DwebPlatformDlcInfo, PlatformId, PlatformEventPayload, PlatformEventName, PlatformEventListener, PlatformEventMap } from './types'
+import type {
+	DwebPlatformStatus,
+	DwebPlatformUser,
+	DwebPlatformDlcInfo,
+	PlatformId,
+	PlatformEventPayload,
+	PlatformEventName,
+	PlatformEventListener,
+	PlatformEventMap
+} from './types'
 
 const w = window as unknown as Record<string, unknown>
 
@@ -34,7 +43,9 @@ function dispatchEventToListeners(payload: PlatformEventPayload) {
 	for (const listener of eventListeners.values()) {
 		try {
 			listener(payload)
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 }
 
@@ -56,7 +67,7 @@ function getDefaultStatus(): DwebPlatformStatus {
 		overlayEnabled: false,
 		overlayActive: false,
 		installedDlcs: [],
-		allPlatforms: [{ id: 'mock', displayName: 'Mock', available: true, initialized: true }],
+		allPlatforms: [{ id: 'mock', displayName: 'Mock', available: true, initialized: true }]
 	}
 }
 
@@ -179,10 +190,10 @@ export function onPlatformEvent<T extends PlatformEventName>(
 	ensureGlobalListener()
 	const id = ++eventSeed
 	const wrapped = (payload: PlatformEventPayload) => {
-			if (event === '*' || payload.event === event) {
-				listener(payload.data as unknown as Parameters<PlatformEventListener<T>>[0])
-			}
+		if (event === '*' || payload.event === event) {
+			listener(payload.data as unknown as Parameters<PlatformEventListener<T>>[0])
 		}
+	}
 	eventListeners.set(id, wrapped)
 	return id
 }

@@ -21,7 +21,8 @@ export const inferMediaKind = (
 	const ref = `${String(media.filename ?? '')} ${filenameFromQuery} ${url}`.toLowerCase()
 	if (/\.(mp4|webm|mov|mkv|avi|gif|m4v|wmv|flv)([?#&]|$)/.test(ref)) return 'video'
 	if (/\.(png|jpg|jpeg|webp|bmp|tiff?)([?#&]|$)/.test(ref)) return 'image'
-	if (/\.(glb|gltf|fbx|obj|stl|dae|ply|3ds|usdz?|blend|step|iges)([?#&]|$)/.test(ref)) return 'model3d'
+	if (/\.(glb|gltf|fbx|obj|stl|dae|ply|3ds|usdz?|blend|step|iges)([?#&]|$)/.test(ref))
+		return 'model3d'
 	return null
 }
 

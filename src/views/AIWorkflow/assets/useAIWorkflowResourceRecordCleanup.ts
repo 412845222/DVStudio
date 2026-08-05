@@ -48,7 +48,10 @@ export const useAIWorkflowResourceRecordCleanup = (payload: {
 			})
 
 			if (!resp.ok && !opts?.silent) {
-				payload.pushToast(t('aiworkflow.toast.thumbDeleteFailed', { error: String(resp.error || 'unknown') }), 'warn')
+				payload.pushToast(
+					t('aiworkflow.toast.thumbDeleteFailed', { error: String(resp.error || 'unknown') }),
+					'warn'
+				)
 			}
 		}
 
@@ -74,7 +77,10 @@ export const useAIWorkflowResourceRecordCleanup = (payload: {
 
 		if (!resp.ok) {
 			if (!opts?.silent)
-				payload.pushToast(t('aiworkflow.toast.resourceDeleteFailed', { error: String(resp.error || 'unknown') }), 'error')
+				payload.pushToast(
+					t('aiworkflow.toast.resourceDeleteFailed', { error: String(resp.error || 'unknown') }),
+					'error'
+				)
 			return { removed: false, reason: 'error' }
 		}
 
@@ -101,7 +107,10 @@ export const useAIWorkflowResourceRecordCleanup = (payload: {
 			const result = await removeResourceByPolicy(rid, { silent: true })
 			if (result.removed) removed += 1
 		}
-		payload.pushToast(t('aiworkflow.toast.thumblessCleaned', { removed, total: ids.length }), 'info')
+		payload.pushToast(
+			t('aiworkflow.toast.thumblessCleaned', { removed, total: ids.length }),
+			'info'
+		)
 	}
 
 	return {

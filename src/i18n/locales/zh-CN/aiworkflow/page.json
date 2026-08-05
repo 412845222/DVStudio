@@ -178,6 +178,7 @@
 	"aiworkflow.page.media.pasteNeedSaveProject": "请先保存项目后，再粘贴媒体资源到蓝图。",
 	"aiworkflow.page.media.importCancelled": "已取消导入：保留已完成的节点/资源，清理未完成项。",
 	"aiworkflow.page.media.videoProjectNotActive": "当前项目未激活，无法导入视频。",
+	"aiworkflow.page.media.uploadSuccessWithName": "{name} 已上传",
 	"aiworkflow.page.unreal.resetCleared": "已清除旧项目中的 Unreal 会话与任务状态，请重新点击「等待连接」。",
 	"aiworkflow.page.unreal.listSessionsFailed": "读取虚幻连接列表失败：{error}",
 	"aiworkflow.page.unreal.exportFailed": "导出任务执行失败",

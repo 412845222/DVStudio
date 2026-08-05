@@ -27,7 +27,7 @@ export class VideoRenderer extends NodeRenderer {
 		space: 'world' | 'local',
 		target?: LocalTargetSize
 	) {
-		const props = node.props as Record<string, unknown> ?? {}
+		const props = (node.props as Record<string, unknown>) ?? {}
 		const videoId = String(props.videoId ?? node.id ?? '').trim()
 		if (!videoId) return
 
@@ -40,21 +40,19 @@ export class VideoRenderer extends NodeRenderer {
 
 		const imageFitRaw = String(props.imageFit ?? props.fit ?? 'contain')
 		const fit: 'contain' | 'cover' | 'fill' | 'none' | 'scale-down' =
-			imageFitRaw === 'contain' || imageFitRaw === 'cover' || imageFitRaw === 'fill' || imageFitRaw === 'none' || imageFitRaw === 'scale-down'
+			imageFitRaw === 'contain' ||
+			imageFitRaw === 'cover' ||
+			imageFitRaw === 'fill' ||
+			imageFitRaw === 'none' ||
+			imageFitRaw === 'scale-down'
 				? imageFitRaw
 				: 'contain'
 
 		const w = Math.max(1, Number(node.transform.width ?? vidW))
 		const h = Math.max(1, Number(node.transform.height ?? vidH))
 		const t = node.transform as VideoSceneNodeTransform
-		const px =
-			typeof t.pivotX === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotX)))
-				: 0.5
-		const py =
-			typeof t.pivotY === 'number'
-				? Math.max(0, Math.min(1, Number(t.pivotY)))
-				: 0.5
+		const px = typeof t.pivotX === 'number' ? Math.max(0, Math.min(1, Number(t.pivotX))) : 0.5
+		const py = typeof t.pivotY === 'number' ? Math.max(0, Math.min(1, Number(t.pivotY))) : 0.5
 		const cx = node.transform.x + (0.5 - px) * w
 		const cy = node.transform.y + (0.5 - py) * h
 		const rotation = ctx.rotation
@@ -65,8 +63,7 @@ export class VideoRenderer extends NodeRenderer {
 		}
 
 		const drawTexUv = (uv: { u0: number; v0: number; u1: number; v1: number }) => {
-			if (space === 'world')
-				canvas.drawTexturedRectUv(cx, cy, w, h, tex, ctx.opacity, rotation, uv)
+			if (space === 'world') canvas.drawTexturedRectUv(cx, cy, w, h, tex, ctx.opacity, rotation, uv)
 			else canvas.drawLocalTexturedRectUv(target!, cx, cy, w, h, tex, ctx.opacity, rotation, uv)
 		}
 

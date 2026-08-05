@@ -25,17 +25,53 @@
 						{{ t('nodes.imageMarkup.brush') }}
 					</button>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="zoomBy(1.2)" :title="t('nodes.imageMarkup.zoomIn')">{{ t('nodes.imageMarkup.zoomIn') }}</button>
-					<button class="imd-btn" type="button" @click="zoomBy(1 / 1.2)" :title="t('nodes.imageMarkup.zoomOut')">{{ t('nodes.imageMarkup.zoomOut') }}</button>
-					<button class="imd-btn" type="button" @click="resetTransform" :title="t('nodes.imageMarkup.resetTransform')">
+					<button
+						class="imd-btn"
+						type="button"
+						@click="zoomBy(1.2)"
+						:title="t('nodes.imageMarkup.zoomIn')"
+					>
+						{{ t('nodes.imageMarkup.zoomIn') }}
+					</button>
+					<button
+						class="imd-btn"
+						type="button"
+						@click="zoomBy(1 / 1.2)"
+						:title="t('nodes.imageMarkup.zoomOut')"
+					>
+						{{ t('nodes.imageMarkup.zoomOut') }}
+					</button>
+					<button
+						class="imd-btn"
+						type="button"
+						@click="resetTransform"
+						:title="t('nodes.imageMarkup.resetTransform')"
+					>
 						{{ t('nodes.imageMarkup.reset') }}
 					</button>
-					<button class="imd-btn" type="button" @click="fitToView" :title="t('nodes.imageMarkup.fitToView')">{{ t('nodes.imageMarkup.fitToView') }}</button>
+					<button
+						class="imd-btn"
+						type="button"
+						@click="fitToView"
+						:title="t('nodes.imageMarkup.fitToView')"
+					>
+						{{ t('nodes.imageMarkup.fitToView') }}
+					</button>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="rotateBy(-90)" :title="t('nodes.imageMarkup.rotateLeft')">
+					<button
+						class="imd-btn"
+						type="button"
+						@click="rotateBy(-90)"
+						:title="t('nodes.imageMarkup.rotateLeft')"
+					>
 						{{ t('nodes.imageMarkup.rotateLeftShort') }}
 					</button>
-					<button class="imd-btn" type="button" @click="rotateBy(90)" :title="t('nodes.imageMarkup.rotateRight')">
+					<button
+						class="imd-btn"
+						type="button"
+						@click="rotateBy(90)"
+						:title="t('nodes.imageMarkup.rotateRight')"
+					>
 						{{ t('nodes.imageMarkup.rotateRightShort') }}
 					</button>
 					<span class="imd-sep"></span>
@@ -52,7 +88,12 @@
 						<span class="imd-brush-size">{{ brushSize }}px</span>
 					</label>
 					<span class="imd-sep"></span>
-					<button class="imd-btn" type="button" @click="clearBrush" :title="t('nodes.imageMarkup.clearBrush')">
+					<button
+						class="imd-btn"
+						type="button"
+						@click="clearBrush"
+						:title="t('nodes.imageMarkup.clearBrush')"
+					>
 						{{ t('nodes.imageMarkup.clearMarkup') }}
 					</button>
 					<button
@@ -63,7 +104,14 @@
 					>
 						{{ t('nodes.imageMarkup.exportMarkup') }}
 					</button>
-					<button class="imd-btn" type="button" @click="onClose" :title="t('nodes.imageMarkup.close')">{{ t('nodes.imageMarkup.close') }}</button>
+					<button
+						class="imd-btn"
+						type="button"
+						@click="onClose"
+						:title="t('nodes.imageMarkup.close')"
+					>
+						{{ t('nodes.imageMarkup.close') }}
+					</button>
 				</div>
 			</div>
 
@@ -83,7 +131,8 @@
 					<div class="imd-loading-text">{{ t('nodes.imageMarkup.loading') }}</div>
 				</div>
 				<div v-if="imageLoaded && naturalWidth" class="imd-info">
-					{{ t('nodes.imageMarkup.originalSize') }}：{{ naturalWidth }} × {{ naturalHeight }} | {{ t('nodes.imageMarkup.zoom') }}：{{ Math.round(zoom * 100) }}% |
+					{{ t('nodes.imageMarkup.originalSize') }}：{{ naturalWidth }} × {{ naturalHeight }} |
+					{{ t('nodes.imageMarkup.zoom') }}：{{ Math.round(zoom * 100) }}% |
 					{{ t('nodes.imageMarkup.rotation') }}：{{ rotation }}°
 				</div>
 			</div>

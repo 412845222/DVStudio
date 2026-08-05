@@ -48,12 +48,16 @@ const hasModelExt = (p: string): boolean => {
 			const u = new URL(p)
 			const dwebPath = u.searchParams.get('path')
 			if (dwebPath) testPath = dwebPath
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	} else if (/^file:\/\//i.test(p)) {
 		try {
 			const u = new URL(p)
 			testPath = decodeURIComponent(u.pathname)
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 	const lower = testPath.split('?')[0].split('#')[0].toLowerCase()
 	return MODEL_EXTS.some((ext) => lower.endsWith(ext))
@@ -115,9 +119,7 @@ const resolveUpstreamImageUrl = (
 		if (resUrl) return { url: resUrl, resourceId: resourceRid }
 	}
 	const imageSettings = (node as { imageSettings?: Record<string, unknown> }).imageSettings ?? {}
-	const lastGenerated = String(
-		(imageSettings.lastGeneratedImageUrl as string) ?? ''
-	).trim()
+	const lastGenerated = String((imageSettings.lastGeneratedImageUrl as string) ?? '').trim()
 	if (lastGenerated) return { url: lastGenerated }
 	return { url: '' }
 }
@@ -130,7 +132,9 @@ const resolveDwebToLocalPath = (url: string, projectRoot: string | undefined): s
 			let p = decodeURIComponent(u.pathname)
 			if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1)
 			return p
-		} catch { return '' }
+		} catch {
+			return ''
+		}
 	}
 	if (url.startsWith('dweb://')) {
 		try {
@@ -141,7 +145,9 @@ const resolveDwebToLocalPath = (url: string, projectRoot: string | undefined): s
 				const normalizedRel = decodeURIComponent(p).replace(/^[/\\]+/, '')
 				return `${normalizedRoot}/${normalizedRel}`
 			}
-		} catch { /* ignore */ }
+		} catch {
+			/* ignore */
+		}
 	}
 	return ''
 }
@@ -149,10 +155,7 @@ const resolveDwebToLocalPath = (url: string, projectRoot: string | undefined): s
 /** 从上游节点解析 3D 模型产物路径。
  *  候选字段仅限真正的模型输出路径；输入图片路径（lastInputSourcePath/localPath等）
  *  会被排除，最终通过扩展名校验确认文件为 3D 模型格式。 */
-const resolveUpstreamModelPath = (
-	store: Store<WorkflowState>,
-	node: WorkflowNode
-): string => {
+const resolveUpstreamModelPath = (store: Store<WorkflowState>, node: WorkflowNode): string => {
 	const state = store.state
 	const projectRoot = (state as { projectRootPath?: string }).projectRootPath
 
@@ -211,8 +214,9 @@ const resolveUpstreamModelPath = (
 	let candidate = trySettingsCandidates(settings)
 	if (!candidate && node.type === 'model3d' && settings) {
 		const m3d = settings as any
-		candidate = trySettingsCandidates(m3d.meshyModelSettings)
-			|| trySettingsCandidates(m3d.tripo3dModelSettings)
+		candidate =
+			trySettingsCandidates(m3d.meshyModelSettings) ||
+			trySettingsCandidates(m3d.tripo3dModelSettings)
 	}
 	if (candidate) return candidate
 
@@ -221,7 +225,7 @@ const resolveUpstreamModelPath = (
 		const resource = state.resourcesById[resourceRid]
 		if (resource) {
 			const resCandidates: (string | null | undefined)[] = [
-				(resource as { sourcePath?: string }).sourcePath,
+				(resource as { sourcePath?: string }).sourcePath
 			]
 			const rel = String(
 				(resource as { projectRelativePath?: string }).projectRelativePath ?? ''

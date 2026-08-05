@@ -2,13 +2,20 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
-import { internalError, invalidParamsError, notFoundError, upstreamError } from '../../core/errors.mjs'
+import {
+	internalError,
+	invalidParamsError,
+	notFoundError,
+	upstreamError
+} from '../../core/errors.mjs'
 
 const DEFAULT_COMFYUI_BASE = 'http://127.0.0.1:8188'
 
 function getHistoryCacheDir() {
 	const dir = path.join(app.getPath('userData'), 'comfyui_history_cache')
-	try { fs.mkdirSync(dir, { recursive: true }) } catch {}
+	try {
+		fs.mkdirSync(dir, { recursive: true })
+	} catch {}
 	return dir
 }
 
@@ -25,7 +32,12 @@ function readHistoryCache(baseUrl, workflowPath) {
 		const raw = fs.readFileSync(filePath, 'utf-8')
 		const data = JSON.parse(raw)
 		if (!data || typeof data !== 'object' || Array.isArray(data)) return null
-		if (!data.promptGraph || typeof data.promptGraph !== 'object' || Array.isArray(data.promptGraph)) return null
+		if (
+			!data.promptGraph ||
+			typeof data.promptGraph !== 'object' ||
+			Array.isArray(data.promptGraph)
+		)
+			return null
 		return data
 	} catch {
 		return null
@@ -97,7 +109,8 @@ function normalizeBaseUrl(raw) {
 	if (!v.includes('://')) v = 'http://' + v
 	try {
 		const u = new URL(v)
-		if (u.protocol !== 'http:' && u.protocol !== 'https:') return { error: 'baseUrl must be http or https' }
+		if (u.protocol !== 'http:' && u.protocol !== 'https:')
+			return { error: 'baseUrl must be http or https' }
 		if (!u.hostname) return { error: 'baseUrl host is missing' }
 		return { base: v.replace(/\/+$/, '') }
 	} catch {
@@ -108,7 +121,9 @@ function normalizeBaseUrl(raw) {
 function coerceBool(v) {
 	if (typeof v === 'boolean') return v
 	if (typeof v === 'number') return v !== 0
-	const s = String(v || '').trim().toLowerCase()
+	const s = String(v || '')
+		.trim()
+		.toLowerCase()
 	return s === '1' || s === 'true' || s === 'yes' || s === 'on' || s === 'y'
 }
 
@@ -131,7 +146,11 @@ function isPromptGraphJson(v) {
 }
 
 function buildProxyViewUrl(base, filename, subfolder, folderType) {
-	const params = new URLSearchParams({ filename, subfolder: subfolder || '', type: folderType || 'output' })
+	const params = new URLSearchParams({
+		filename,
+		subfolder: subfolder || '',
+		type: folderType || 'output'
+	})
 	return `${base}/view?${params.toString()}`
 }
 
@@ -199,7 +218,9 @@ export function deleteWorkflow(ctx, payload) {
 export async function proxyRequest(ctx, payload) {
 	const client = ctx.httpClient
 	const base = getBaseUrl(ctx)
-	const method = String(payload?.method || 'GET').toUpperCase().trim()
+	const method = String(payload?.method || 'GET')
+		.toUpperCase()
+		.trim()
 	const reqPath = String(payload?.path || '').trim()
 	if (!reqPath) throw invalidParamsError('path is required')
 	let url = `${base}${reqPath.startsWith('/') ? '' : '/'}${reqPath}`
@@ -250,7 +271,7 @@ async function pollJobCompletion(ctx, jobId, promptId, baseUrl) {
 		let attempts = 0
 		const maxAttempts = 600
 		while (attempts < maxAttempts) {
-			await new Promise(r => setTimeout(r, 1000))
+			await new Promise((r) => setTimeout(r, 1000))
 			attempts++
 			if (cancelled.has('stop')) break
 			try {
@@ -281,13 +302,24 @@ async function pollJobCompletion(ctx, jobId, promptId, baseUrl) {
 						const status = historyData.status
 						if (status && status.status_str === 'error') {
 							const errMsg = Array.isArray(status.messages)
-								? status.messages.map(m => Array.isArray(m) ? m.join(': ') : String(m)).join('; ')
+								? status.messages
+										.map((m) => (Array.isArray(m) ? m.join(': ') : String(m)))
+										.join('; ')
 								: 'execution failed'
-							jobsRepo.updateStatus(jobId, { status: 'failed', error: errMsg, progress: 100, outputs: { promptId, images } })
+							jobsRepo.updateStatus(jobId, {
+								status: 'failed',
+								error: errMsg,
+								progress: 100,
+								outputs: { promptId, images }
+							})
 							return
 						}
 						if (images.length > 0 || Object.keys(outputs).length > 0) {
-							jobsRepo.updateStatus(jobId, { status: 'succeeded', progress: 100, outputs: { promptId, images } })
+							jobsRepo.updateStatus(jobId, {
+								status: 'succeeded',
+								progress: 100,
+								outputs: { promptId, images }
+							})
 							return
 						}
 					}
@@ -320,7 +352,10 @@ export async function createJob(ctx, payload) {
 		const promptUrl = `${base}/prompt`
 		const res = await client.post(promptUrl, { prompt: workflow }, { timeout: 30000 })
 		if (!res.ok) {
-			const errMsg = typeof res.body === 'object' && res.body?.error ? String(res.body.error.message || res.body.error) : `HTTP ${res.status}`
+			const errMsg =
+				typeof res.body === 'object' && res.body?.error
+					? String(res.body.error.message || res.body.error)
+					: `HTTP ${res.status}`
 			jobsRepo.updateStatus(jobId, { status: 'failed', error: errMsg })
 			return { ok: true, job: jobsRepo.get(jobId), promptId: '' }
 		}
@@ -364,7 +399,9 @@ async function comfyJsonGet(client, url, timeout = 10000) {
 	try {
 		const res = await client.get(url, { timeout })
 		if (!res.ok) {
-			return { error: `http ${res.status}: ${typeof res.body === 'string' ? res.body.slice(0, 200) : JSON.stringify(res.body).slice(0, 200)}` }
+			return {
+				error: `http ${res.status}: ${typeof res.body === 'string' ? res.body.slice(0, 200) : JSON.stringify(res.body).slice(0, 200)}`
+			}
 		}
 		return { data: res.body }
 	} catch (err) {
@@ -376,9 +413,10 @@ async function comfyJsonPost(client, url, body, timeout = 30000) {
 	try {
 		const res = await client.post(url, body, { timeout })
 		if (!res.ok) {
-			const errMsg = typeof res.body === 'object' && res.body?.error
-				? String(res.body.error?.message || JSON.stringify(res.body.error))
-				: `http ${res.status}`
+			const errMsg =
+				typeof res.body === 'object' && res.body?.error
+					? String(res.body.error?.message || JSON.stringify(res.body.error))
+					: `http ${res.status}`
 			return { error: errMsg, status: res.status, body: res.body }
 		}
 		return { data: res.body }
@@ -405,7 +443,11 @@ function encodeMultipartForm(fields, files) {
 		const contentType = f.contentType || 'application/octet-stream'
 		const content = f.content || Buffer.alloc(0)
 		chunks.push(Buffer.from(`--${boundary}${crlf}`))
-		chunks.push(Buffer.from(`Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"${crlf}`))
+		chunks.push(
+			Buffer.from(
+				`Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"${crlf}`
+			)
+		)
 		chunks.push(Buffer.from(`Content-Type: ${contentType}${crlf}${crlf}`))
 		chunks.push(Buffer.isBuffer(content) ? content : Buffer.from(content))
 		chunks.push(Buffer.from(crlf))
@@ -415,36 +457,53 @@ function encodeMultipartForm(fields, files) {
 	const body = Buffer.concat(chunks)
 	return {
 		body,
-		headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': String(body.length) }
+		headers: {
+			'Content-Type': `multipart/form-data; boundary=${boundary}`,
+			'Content-Length': String(body.length)
+		}
 	}
 }
 
 async function uploadImageToComfyui(client, base, filename, content, contentType) {
 	const url = `${base}/upload/image`
 	const mp = encodeMultipartForm({ type: 'input' }, [
-		{ fieldName: 'image', filename: filename || 'input.png', content, contentType: contentType || 'application/octet-stream' }
+		{
+			fieldName: 'image',
+			filename: filename || 'input.png',
+			content,
+			contentType: contentType || 'application/octet-stream'
+		}
 	])
 	try {
 		const parsedUrl = new URL(url)
-		const transport = parsedUrl.protocol === 'https:' ? (await import('node:https')).default : (await import('node:http')).default
+		const transport =
+			parsedUrl.protocol === 'https:'
+				? (await import('node:https')).default
+				: (await import('node:http')).default
 		const result = await new Promise((resolve, reject) => {
-			const req = transport.request({
-				hostname: parsedUrl.hostname,
-				port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-				path: parsedUrl.pathname + parsedUrl.search,
-				method: 'POST',
-				headers: mp.headers,
-				timeout: 30000
-			}, (res) => {
-				const chunks = []
-				res.on('data', c => chunks.push(c))
-				res.on('end', () => {
-					const raw = Buffer.concat(chunks).toString('utf-8')
-					try { resolve({ status: res.statusCode, body: JSON.parse(raw) }) }
-					catch { resolve({ status: res.statusCode, body: raw }) }
-				})
-				res.on('error', reject)
-			})
+			const req = transport.request(
+				{
+					hostname: parsedUrl.hostname,
+					port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+					path: parsedUrl.pathname + parsedUrl.search,
+					method: 'POST',
+					headers: mp.headers,
+					timeout: 30000
+				},
+				(res) => {
+					const chunks = []
+					res.on('data', (c) => chunks.push(c))
+					res.on('end', () => {
+						const raw = Buffer.concat(chunks).toString('utf-8')
+						try {
+							resolve({ status: res.statusCode, body: JSON.parse(raw) })
+						} catch {
+							resolve({ status: res.statusCode, body: raw })
+						}
+					})
+					res.on('error', reject)
+				}
+			)
 			req.on('error', reject)
 			req.on('timeout', () => req.destroy(new Error('timeout')))
 			req.write(mp.body)
@@ -460,24 +519,36 @@ async function uploadImageToComfyui(client, base, filename, content, contentType
 }
 
 const IMAGE_INPUT_CLASS_TYPES = new Set([
-	'LoadImage', 'LoadImageFromUrl', 'LoadImageMask',
+	'LoadImage',
+	'LoadImageFromUrl',
+	'LoadImageMask',
 	'LoadImageOutput'
 ])
 
 const VIDEO_INPUT_CLASS_TYPES = new Set([
-	'VHS_LoadVideo', 'VHS_LoadAudio', 'LoadVideo', 'VideoLoad'
+	'VHS_LoadVideo',
+	'VHS_LoadAudio',
+	'LoadVideo',
+	'VideoLoad'
 ])
 
 const MODEL3D_INPUT_CLASS_TYPES = new Set([
-	'LoadGLB', 'LoadGLTF', 'LoadFBX', 'LoadOBJ', 'Load3DModel',
-	'TripoLoadGLB', 'MeshyLoadModel', 'LoadModel3D'
+	'LoadGLB',
+	'LoadGLTF',
+	'LoadFBX',
+	'LoadOBJ',
+	'Load3DModel',
+	'TripoLoadGLB',
+	'MeshyLoadModel',
+	'LoadModel3D'
 ])
 
 function getNodePosition(node) {
 	if (!isRecord(node)) return [0, 0]
 	const pos = node._meta?.pos
 	if (Array.isArray(pos) && pos.length >= 2) {
-		const x = Number(pos[0]), y = Number(pos[1])
+		const x = Number(pos[0]),
+			y = Number(pos[1])
 		if (Number.isFinite(x) && Number.isFinite(y)) return [x, y]
 	}
 	return [0, 0]
@@ -505,7 +576,12 @@ function classifyInputNode(classType) {
 }
 
 function isSocketValue(v) {
-	return Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number'
+	return (
+		Array.isArray(v) &&
+		v.length === 2 &&
+		(typeof v[0] === 'string' || typeof v[0] === 'number') &&
+		typeof v[1] === 'number'
+	)
 }
 
 function detectFileInputKindFromParamName(name) {
@@ -513,7 +589,8 @@ function detectFileInputKindFromParamName(name) {
 	if (!n) return null
 	if (/\bvideo\b|\bvhs\b|\bmp4\b|\bwebm\b|\bmov\b|\bgif\b/.test(n)) return 'video'
 	if (/\bmodel\b|\bglb\b|\bgltf\b|\bfbx\b|\bobj\b|\bmesh\b|\b3d\b/.test(n)) return 'model3d'
-	if (/\bimage\b|\bimg\b|\bphoto\b|\bpicture\b|\bfile\b|\bpath\b|\bfilename\b|\bupload\b/.test(n)) return 'image'
+	if (/\bimage\b|\bimg\b|\bphoto\b|\bpicture\b|\bfile\b|\bpath\b|\bfilename\b|\bupload\b/.test(n))
+		return 'image'
 	return null
 }
 
@@ -527,7 +604,11 @@ function detectFileInputKeyForNode(node, objectInfo) {
 	for (const [key, val] of Object.entries(inputs)) {
 		if (isSocketValue(val)) continue
 		if (isObjectInfoWidgetDef(defs[key])) {
-			candidates.push({ key, kind: detectFileInputKindFromParamName(key), order: candidates.length })
+			candidates.push({
+				key,
+				kind: detectFileInputKindFromParamName(key),
+				order: candidates.length
+			})
 			continue
 		}
 		if (typeof val === 'string') {
@@ -540,7 +621,13 @@ function detectFileInputKeyForNode(node, objectInfo) {
 
 	const nodeKind = classifyInputNode(classType)
 	const nodeNameLower = classType.toLowerCase()
-	const preferredKind = nodeKind || (/\bvideo\b|vhs/.test(nodeNameLower) ? 'video' : /\bmodel\b|3d|glb|gltf|fbx|obj|mesh/.test(nodeNameLower) ? 'model3d' : 'image')
+	const preferredKind =
+		nodeKind ||
+		(/\bvideo\b|vhs/.test(nodeNameLower)
+			? 'video'
+			: /\bmodel\b|3d|glb|gltf|fbx|obj|mesh/.test(nodeNameLower)
+				? 'model3d'
+				: 'image')
 
 	for (const c of candidates) {
 		if (c.kind === preferredKind) return { key: c.key, kind: c.kind }
@@ -548,7 +635,13 @@ function detectFileInputKeyForNode(node, objectInfo) {
 	return { key: candidates[0].key, kind: candidates[0].kind || preferredKind }
 }
 
-function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, uploadedModels, objectInfo) {
+function patchPromptGraphInputs(
+	promptGraph,
+	uploadedImages,
+	uploadedVideos,
+	uploadedModels,
+	objectInfo
+) {
 	const imageNodes = []
 	const videoNodes = []
 	const modelNodes = []
@@ -580,7 +673,12 @@ function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, upl
 		if (!fileInput) {
 			const fallbackCategory = classifyInputNode(classType)
 			if (fallbackCategory) {
-				const fallbackKey = fallbackCategory === 'image' ? 'image' : fallbackCategory === 'video' ? 'video' : 'model_file'
+				const fallbackKey =
+					fallbackCategory === 'image'
+						? 'image'
+						: fallbackCategory === 'video'
+							? 'video'
+							: 'model_file'
 				fileInput = { key: fallbackKey, kind: fallbackCategory }
 			}
 		}
@@ -589,7 +687,15 @@ function patchPromptGraphInputs(promptGraph, uploadedImages, uploadedVideos, upl
 		}
 		if (!fileInput) continue
 
-		const entry = { id: k, node: v, title, pos, classType, inputKey: fileInput.key, kind: fileInput.kind }
+		const entry = {
+			id: k,
+			node: v,
+			title,
+			pos,
+			classType,
+			inputKey: fileInput.key,
+			kind: fileInput.kind
+		}
 		if (fileInput.kind === 'image') imageNodes.push(entry)
 		else if (fileInput.kind === 'video') videoNodes.push(entry)
 		else if (fileInput.kind === 'model3d') modelNodes.push(entry)
@@ -655,7 +761,9 @@ function filterWorkflowFiles(items) {
 		if (name.toLowerCase().endsWith('.json')) name = name.slice(0, -5)
 		out.push({ path: `workflows/${rel}`, name })
 	}
-	out.sort((a, b) => (a.name === b.name ? a.path.localeCompare(b.path) : a.name.localeCompare(b.name)))
+	out.sort((a, b) =>
+		a.name === b.name ? a.path.localeCompare(b.path) : a.name.localeCompare(b.name)
+	)
 	return out
 }
 
@@ -679,7 +787,20 @@ function isObjectInfoWidgetDef(defn) {
 	const t = defn[0]
 	if (Array.isArray(t)) return true
 	if (typeof t === 'string') {
-		const socketTypes = new Set(['MODEL', 'CLIP', 'VAE', 'CONDITIONING', 'LATENT', 'IMAGE', 'MASK', 'SAMPLER', 'SIGMAS', 'AUDIO', 'VIDEO', 'CLIP_VISION_OUTPUT'])
+		const socketTypes = new Set([
+			'MODEL',
+			'CLIP',
+			'VAE',
+			'CONDITIONING',
+			'LATENT',
+			'IMAGE',
+			'MASK',
+			'SAMPLER',
+			'SIGMAS',
+			'AUDIO',
+			'VIDEO',
+			'CLIP_VISION_OUTPUT'
+		])
 		if (socketTypes.has(t)) return false
 		return true
 	}
@@ -698,19 +819,31 @@ function objectInfoValueFits(defn, value) {
 	if (tt === 'INT') {
 		if (typeof value === 'boolean') return false
 		if (typeof value === 'number' && Number.isInteger(value)) return true
-		if (typeof value === 'string') { const s = value.trim(); return /^-?\d+$/.test(s) }
+		if (typeof value === 'string') {
+			const s = value.trim()
+			return /^-?\d+$/.test(s)
+		}
 		return false
 	}
 	if (tt === 'FLOAT') {
 		if (typeof value === 'boolean') return false
 		if (typeof value === 'number') return true
-		if (typeof value === 'string') { try { return !isNaN(parseFloat(value.trim())) } catch { return false } }
+		if (typeof value === 'string') {
+			try {
+				return !isNaN(parseFloat(value.trim()))
+			} catch {
+				return false
+			}
+		}
 		return false
 	}
 	if (tt === 'BOOLEAN' || tt === 'BOOL') {
 		if (typeof value === 'boolean') return true
 		if (typeof value === 'number') return true
-		if (typeof value === 'string') { const v = value.trim().toLowerCase(); return ['true', 'false', 'enable', 'disable', 'enabled', 'disabled', '1', '0'].includes(v) }
+		if (typeof value === 'string') {
+			const v = value.trim().toLowerCase()
+			return ['true', 'false', 'enable', 'disable', 'enabled', 'disabled', '1', '0'].includes(v)
+		}
 		return false
 	}
 	if (tt === 'STRING') return typeof value === 'string'
@@ -728,34 +861,84 @@ function objectInfoCoerceValue(defn, value) {
 	if (typeof t !== 'string') return value
 	const tt = t.toUpperCase()
 	if (tt === 'INT') {
-		if (typeof value === 'number' && !Number.isNaN(value) && Number.isFinite(value) && typeof value !== 'boolean') return Math.trunc(value)
-		if (typeof value === 'string') { try { const n = parseInt(value.trim(), 10); if (!isNaN(n)) return n } catch {} }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (
+			typeof value === 'number' &&
+			!Number.isNaN(value) &&
+			Number.isFinite(value) &&
+			typeof value !== 'boolean'
+		)
+			return Math.trunc(value)
+		if (typeof value === 'string') {
+			try {
+				const n = parseInt(value.trim(), 10)
+				if (!isNaN(n)) return n
+			} catch {}
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'FLOAT') {
-		if (typeof value === 'number' && !Number.isNaN(value) && Number.isFinite(value) && typeof value !== 'boolean') return value
-		if (typeof value === 'string') { try { const n = parseFloat(value.trim()); if (!isNaN(n)) return n } catch {} }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (
+			typeof value === 'number' &&
+			!Number.isNaN(value) &&
+			Number.isFinite(value) &&
+			typeof value !== 'boolean'
+		)
+			return value
+		if (typeof value === 'string') {
+			try {
+				const n = parseFloat(value.trim())
+				if (!isNaN(n)) return n
+			} catch {}
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'BOOLEAN' || tt === 'BOOL') {
 		if (typeof value === 'boolean') return value
 		if (typeof value === 'number') return Boolean(value)
-		if (typeof value === 'string') { const v = value.trim().toLowerCase(); if (['true', 'enable', 'enabled', '1'].includes(v)) return true; if (['false', 'disable', 'disabled', '0'].includes(v)) return false }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (typeof value === 'string') {
+			const v = value.trim().toLowerCase()
+			if (['true', 'enable', 'enabled', '1'].includes(v)) return true
+			if (['false', 'disable', 'disabled', '0'].includes(v)) return false
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'STRING') return String(value)
 	return value
 }
 
 const FRONTEND_ONLY_NODE_TYPES = new Set([
-	'MarkdownNote', 'Note', 'Reroute', 'PrimitiveNode',
-	'PrimitiveString', 'PrimitiveStringMultiline', 'PrimitiveNumber', 'PrimitiveBoolean',
-	'PrimitiveInteger', 'PrimitiveFloat', 'PrimitiveText',
-	'GroupNode', 'SubgraphNode', 'ComfyNote', 'NoteNode',
-	'NodeNote', 'Comment', 'Annotation', 'Label',
-	'WidgetNode', 'Converter', 'RelayNode', 'RerouteNode',
-	'FrontendNode', 'VirtualNode', 'PlaceholderNode',
-	'QuickNodes', 'TextNote', 'StickyNote'
+	'MarkdownNote',
+	'Note',
+	'Reroute',
+	'PrimitiveNode',
+	'PrimitiveString',
+	'PrimitiveStringMultiline',
+	'PrimitiveNumber',
+	'PrimitiveBoolean',
+	'PrimitiveInteger',
+	'PrimitiveFloat',
+	'PrimitiveText',
+	'GroupNode',
+	'SubgraphNode',
+	'ComfyNote',
+	'NoteNode',
+	'NodeNote',
+	'Comment',
+	'Annotation',
+	'Label',
+	'WidgetNode',
+	'Converter',
+	'RelayNode',
+	'RerouteNode',
+	'FrontendNode',
+	'VirtualNode',
+	'PlaceholderNode',
+	'QuickNodes',
+	'TextNote',
+	'StickyNote'
 ])
 
 function isPrimitiveNodeType(typeStr) {
@@ -817,9 +1000,13 @@ function resolveNodeClassType(node) {
 	if (t) return t
 	const props = isRecord(node.properties) ? node.properties : {}
 	const candidates = [
-		props.comfyClass, props.class_type, props.classType,
-		props.node_type, props.nodeType,
-		node.class_type, node.classType
+		props.comfyClass,
+		props.class_type,
+		props.classType,
+		props.node_type,
+		props.nodeType,
+		node.class_type,
+		node.classType
 	]
 	for (const c of candidates) {
 		const s = String(c || '').trim()
@@ -852,7 +1039,9 @@ function structurallyLooksLikePrimitive(node) {
 		return true
 	}
 	if (inputs.length === 0 && outputs.length === 1 && isRecord(outputs[0])) {
-		const outType = String(outputs[0].type || '*').trim().toUpperCase()
+		const outType = String(outputs[0].type || '*')
+			.trim()
+			.toUpperCase()
 		if (['*', 'STRING', 'INT', 'FLOAT', 'NUMBER', 'BOOLEAN', 'BOOL'].includes(outType)) {
 			return true
 		}
@@ -863,7 +1052,8 @@ function structurallyLooksLikePrimitive(node) {
 function structurallyLooksLikeNote(node) {
 	if (!isRecord(node)) return false
 	const ct = String(node.type || '').trim()
-	if (FRONTEND_ONLY_NODE_TYPES.has(ct) && !isPrimitiveNodeType(ct) && !isRerouteLikeNode(node)) return true
+	if (FRONTEND_ONLY_NODE_TYPES.has(ct) && !isPrimitiveNodeType(ct) && !isRerouteLikeNode(node))
+		return true
 	const inputs = Array.isArray(node.inputs) ? node.inputs : []
 	const outputs = Array.isArray(node.outputs) ? node.outputs : []
 	if (inputs.length === 0 && outputs.length === 0) return true
@@ -896,18 +1086,54 @@ function findSubgraphDefsInObject(obj, depth, results) {
 function looksLikeSubgraphDef(v) {
 	if (!isRecord(v)) return false
 	if (Array.isArray(v.nodes) && v.nodes.length > 0 && Array.isArray(v.links)) return true
-	if (isRecord(v.data) && Array.isArray(v.data.nodes) && v.data.nodes.length > 0 && Array.isArray(v.data.links)) return true
-	if (isRecord(v.graph) && Array.isArray(v.graph.nodes) && v.graph.nodes.length > 0 && Array.isArray(v.graph.links)) return true
-	if (isRecord(v.subgraph) && Array.isArray(v.subgraph.nodes) && v.subgraph.nodes.length > 0 && Array.isArray(v.subgraph.links)) return true
+	if (
+		isRecord(v.data) &&
+		Array.isArray(v.data.nodes) &&
+		v.data.nodes.length > 0 &&
+		Array.isArray(v.data.links)
+	)
+		return true
+	if (
+		isRecord(v.graph) &&
+		Array.isArray(v.graph.nodes) &&
+		v.graph.nodes.length > 0 &&
+		Array.isArray(v.graph.links)
+	)
+		return true
+	if (
+		isRecord(v.subgraph) &&
+		Array.isArray(v.subgraph.nodes) &&
+		v.subgraph.nodes.length > 0 &&
+		Array.isArray(v.subgraph.links)
+	)
+		return true
 	return false
 }
 
 function extractSubgraphContent(v) {
 	if (!isRecord(v)) return null
 	if (Array.isArray(v.nodes) && v.nodes.length > 0 && Array.isArray(v.links)) return v
-	if (isRecord(v.data) && Array.isArray(v.data.nodes) && v.data.nodes.length > 0 && Array.isArray(v.data.links)) return v.data
-	if (isRecord(v.graph) && Array.isArray(v.graph.nodes) && v.graph.nodes.length > 0 && Array.isArray(v.graph.links)) return v.graph
-	if (isRecord(v.subgraph) && Array.isArray(v.subgraph.nodes) && v.subgraph.nodes.length > 0 && Array.isArray(v.subgraph.links)) return v.subgraph
+	if (
+		isRecord(v.data) &&
+		Array.isArray(v.data.nodes) &&
+		v.data.nodes.length > 0 &&
+		Array.isArray(v.data.links)
+	)
+		return v.data
+	if (
+		isRecord(v.graph) &&
+		Array.isArray(v.graph.nodes) &&
+		v.graph.nodes.length > 0 &&
+		Array.isArray(v.graph.links)
+	)
+		return v.graph
+	if (
+		isRecord(v.subgraph) &&
+		Array.isArray(v.subgraph.nodes) &&
+		v.subgraph.nodes.length > 0 &&
+		Array.isArray(v.subgraph.links)
+	)
+		return v.subgraph
 	return null
 }
 
@@ -919,13 +1145,21 @@ function findSubgraphDefinitions(workflow) {
 	for (const sg of subgraphsArr) {
 		if (!isRecord(sg)) continue
 		let content = sg
-		if (isRecord(sg.data) && Array.isArray(sg.data.nodes) && Array.isArray(sg.data.links)) content = sg.data
-		else if (isRecord(sg.graph) && Array.isArray(sg.graph.nodes) && Array.isArray(sg.graph.links)) content = sg.graph
-		else if (isRecord(sg.subgraph) && Array.isArray(sg.subgraph.nodes) && Array.isArray(sg.subgraph.links)) content = sg.subgraph
+		if (isRecord(sg.data) && Array.isArray(sg.data.nodes) && Array.isArray(sg.data.links))
+			content = sg.data
+		else if (isRecord(sg.graph) && Array.isArray(sg.graph.nodes) && Array.isArray(sg.graph.links))
+			content = sg.graph
+		else if (
+			isRecord(sg.subgraph) &&
+			Array.isArray(sg.subgraph.nodes) &&
+			Array.isArray(sg.subgraph.links)
+		)
+			content = sg.subgraph
 		if (!Array.isArray(content.nodes) || !Array.isArray(content.links)) continue
 		const sgId = normalizeNodeId(sg.id ?? sg.uuid)
 		if (!sgId) continue
-		let vInId = null, vOutId = null
+		let vInId = null,
+			vOutId = null
 		if (isRecord(sg.inputNode)) vInId = normalizeNodeId(sg.inputNode.id)
 		else if (sg.inputNode != null) vInId = normalizeNodeId(sg.inputNode)
 		if (isRecord(sg.outputNode)) vOutId = normalizeNodeId(sg.outputNode.id)
@@ -944,12 +1178,22 @@ function findSubgraphDefinitions(workflow) {
 
 function parseLinkEndpoint(l, which) {
 	if (Array.isArray(l) && l.length >= 5) {
-		if (which === 'from') return { id: normalizeNodeId(l[1]), slot: Number(l[2]), type: String(l[5] || '*') }
+		if (which === 'from')
+			return { id: normalizeNodeId(l[1]), slot: Number(l[2]), type: String(l[5] || '*') }
 		return { id: normalizeNodeId(l[3]), slot: Number(l[4]), type: String(l[5] || '*') }
 	}
 	if (isRecord(l)) {
-		if (which === 'from') return { id: normalizeNodeId(l.origin_id ?? l.fromId ?? l.sourceId), slot: Number(l.origin_slot ?? l.fromSlot ?? l.sourceSlot ?? 0), type: String(l.type || l.dataType || '*') }
-		return { id: normalizeNodeId(l.target_id ?? l.toId ?? l.targetId), slot: Number(l.target_slot ?? l.toSlot ?? l.targetSlot ?? 0), type: String(l.type || l.dataType || '*') }
+		if (which === 'from')
+			return {
+				id: normalizeNodeId(l.origin_id ?? l.fromId ?? l.sourceId),
+				slot: Number(l.origin_slot ?? l.fromSlot ?? l.sourceSlot ?? 0),
+				type: String(l.type || l.dataType || '*')
+			}
+		return {
+			id: normalizeNodeId(l.target_id ?? l.toId ?? l.targetId),
+			slot: Number(l.target_slot ?? l.toSlot ?? l.targetSlot ?? 0),
+			type: String(l.type || l.dataType || '*')
+		}
 	}
 	return null
 }
@@ -993,10 +1237,16 @@ function expandSubgraphsInWorkflow(workflow) {
 
 		for (let ni = 0; ni < nodes.length; ni++) {
 			const n = nodes[ni]
-			if (!isRecord(n)) { newNodes.push(n); continue }
+			if (!isRecord(n)) {
+				newNodes.push(n)
+				continue
+			}
 			const nid = normalizeNodeId(n.id)
 			const ntype = String(n.type || '').trim()
-			if (!nid) { newNodes.push(n); continue }
+			if (!nid) {
+				newNodes.push(n)
+				continue
+			}
 
 			const def = defs.get(ntype)
 			if (!def || !isUuidLikeType(ntype)) {
@@ -1011,7 +1261,9 @@ function expandSubgraphsInWorkflow(workflow) {
 			const internalLinks = deepCloneJson(def.links)
 			const vInId = def.inputNodeId
 			const vOutId = def.outputNodeId
-			console.log(`[subgraph]   virtual in=${vInId}, out=${vOutId}, internal nodes=${internalNodes.length}, links=${internalLinks.length}`)
+			console.log(
+				`[subgraph]   virtual in=${vInId}, out=${vOutId}, internal nodes=${internalNodes.length}, links=${internalLinks.length}`
+			)
 
 			const idRemap = new Map()
 			const keptInternal = []
@@ -1038,12 +1290,17 @@ function expandSubgraphsInWorkflow(workflow) {
 				inNode.id = newId
 				if (Array.isArray(inNode.inputs)) {
 					for (const inp of inNode.inputs) {
-						if (isRecord(inp)) { inp.link = null; if (Array.isArray(inp.links)) inp.links = [] }
+						if (isRecord(inp)) {
+							inp.link = null
+							if (Array.isArray(inp.links)) inp.links = []
+						}
 					}
 				}
 				if (Array.isArray(inNode.outputs)) {
 					for (const out of inNode.outputs) {
-						if (isRecord(out)) { if (Array.isArray(out.links)) out.links = [] }
+						if (isRecord(out)) {
+							if (Array.isArray(out.links)) out.links = []
+						}
 					}
 				}
 				keptInternal.push(inNode)
@@ -1068,7 +1325,9 @@ function expandSubgraphsInWorkflow(workflow) {
 					if (!outputBridges.has(slot)) outputBridges.set(slot, [])
 					const newSrcId = idRemap.get(from.id)
 					if (newSrcId && newSrcId !== '__VIRTUAL__') {
-						outputBridges.get(slot).push({ sourceId: newSrcId, sourceSlot: from.slot, type: from.type })
+						outputBridges
+							.get(slot)
+							.push({ sourceId: newSrcId, sourceSlot: from.slot, type: from.type })
 					}
 				}
 			}
@@ -1079,7 +1338,10 @@ function expandSubgraphsInWorkflow(workflow) {
 			for (const l of links) {
 				const from = parseLinkEndpoint(l, 'from')
 				const to = parseLinkEndpoint(l, 'to')
-				if (!from || !to) { remainingLinks.push(l); continue }
+				if (!from || !to) {
+					remainingLinks.push(l)
+					continue
+				}
 				if (to.id === nid) {
 					const slot = to.slot
 					if (!extInLinks.has(slot)) extInLinks.set(slot, [])
@@ -1107,13 +1369,21 @@ function expandSubgraphsInWorkflow(workflow) {
 				newLinks.push([crypto.randomUUID(), newFrom, from.slot, newTo, to.slot, ltype])
 			}
 
-			let rewireIn = 0, rewireOut = 0
+			let rewireIn = 0,
+				rewireOut = 0
 			for (const [slot, sources] of extInLinks) {
 				const bridges = inputBridges.get(slot) || []
 				for (const src of sources) {
 					for (const br of bridges) {
 						const ltype = br.type !== '*' ? br.type : src.type
-						newLinks.push([crypto.randomUUID(), src.id, src.slot, br.targetId, br.targetSlot, ltype])
+						newLinks.push([
+							crypto.randomUUID(),
+							src.id,
+							src.slot,
+							br.targetId,
+							br.targetSlot,
+							ltype
+						])
 						rewireIn++
 					}
 				}
@@ -1123,23 +1393,36 @@ function expandSubgraphsInWorkflow(workflow) {
 				for (const tgt of targets) {
 					for (const br of bridges) {
 						const ltype = br.type !== '*' ? br.type : tgt.type
-						newLinks.push([crypto.randomUUID(), br.sourceId, br.sourceSlot, tgt.id, tgt.slot, ltype])
+						newLinks.push([
+							crypto.randomUUID(),
+							br.sourceId,
+							br.sourceSlot,
+							tgt.id,
+							tgt.slot,
+							ltype
+						])
 						rewireOut++
 					}
 				}
 			}
 
-			console.log(`[subgraph]   rewired in=${rewireIn}, out=${rewireOut}, internal links=${newLinks.length}, added ${keptInternal.length} nodes`)
+			console.log(
+				`[subgraph]   rewired in=${rewireIn}, out=${rewireOut}, internal links=${newLinks.length}, added ${keptInternal.length} nodes`
+			)
 
 			for (const kn of keptInternal) newNodes.push(kn)
 			for (const nl of newLinks) links.push(nl)
 		}
 		nodes = newNodes
 	}
-	console.log(`[subgraph] Expansion complete after ${passCount} passes. Nodes: ${nodes.length}, Links: ${links.length}`)
+	console.log(
+		`[subgraph] Expansion complete after ${passCount} passes. Nodes: ${nodes.length}, Links: ${links.length}`
+	)
 
 	const resolved = resolveAllReroutes(nodes, links)
-	console.log(`[subgraph] After Reroute resolution: nodes=${resolved.nodes.length}, links=${resolved.links.length}`)
+	console.log(
+		`[subgraph] After Reroute resolution: nodes=${resolved.nodes.length}, links=${resolved.links.length}`
+	)
 	return resolved
 }
 
@@ -1153,7 +1436,11 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		if (k === 'extra' && isRecord(v)) {
 			console.log(`  extra keys:`, Object.keys(v))
 			for (const [ek, ev] of Object.entries(v)) {
-				const evtype = Array.isArray(ev) ? `array[${ev.length}]` : (isRecord(ev) ? `object{keys:${Object.keys(ev).join(',')}}` : typeof ev)
+				const evtype = Array.isArray(ev)
+					? `array[${ev.length}]`
+					: isRecord(ev)
+						? `object{keys:${Object.keys(ev).join(',')}}`
+						: typeof ev
 				console.log(`    extra["${ek}"]: ${evtype}`)
 				if (isRecord(ev) && ('nodes' in ev || 'links' in ev)) {
 					console.log(`    >>> extra["${ek}"] CONTAINS nodes/links - POSSIBLE SUBGRAPH!`)
@@ -1199,7 +1486,8 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 	const expanded = expandSubgraphsInWorkflow(workflow)
 	const nodes = expanded.nodes
 	const links = expanded.links
-	if (!Array.isArray(nodes) || !Array.isArray(links)) return { error: 'workflow.nodes/workflow.links missing' }
+	if (!Array.isArray(nodes) || !Array.isArray(links))
+		return { error: 'workflow.nodes/workflow.links missing' }
 
 	console.log('[ComfyUI workflowToPrompt] nodes count:', nodes.length, 'links count:', links.length)
 	const remainingUuidNodes = []
@@ -1208,25 +1496,45 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		if (isRecord(n)) {
 			const ct = String(n.type || '').trim()
 			const nodeKeys = Object.keys(n)
-			console.log(`  node[${i}] id=`, n.id, 'type=', n.type, 'title=', n.title, 'keys=[', nodeKeys.join(','), ']')
+			console.log(
+				`  node[${i}] id=`,
+				n.id,
+				'type=',
+				n.type,
+				'title=',
+				n.title,
+				'keys=[',
+				nodeKeys.join(','),
+				']'
+			)
 			if (isUuidLikeType(ct)) {
 				remainingUuidNodes.push({ index: i, id: n.id, type: ct, title: n.title, keys: nodeKeys })
-				console.log(`    [UUID NODE FULL JSON - AFTER EXPANSION]:`, JSON.stringify(n, null, 2).substring(0, 8000))
+				console.log(
+					`    [UUID NODE FULL JSON - AFTER EXPANSION]:`,
+					JSON.stringify(n, null, 2).substring(0, 8000)
+				)
 				if (n.properties && isRecord(n.properties)) {
 					console.log(`    [UUID NODE PROPERTIES KEYS]:`, Object.keys(n.properties))
 					for (const [pk, pv] of Object.entries(n.properties)) {
 						const pvt = Array.isArray(pv) ? `array[${pv.length}]` : typeof pv
-						console.log(`      property "${pk}": ${pvt}${isRecord(pv) ? ` keys=[${Object.keys(pv).join(',')}]` : ''}`)
+						console.log(
+							`      property "${pk}": ${pvt}${isRecord(pv) ? ` keys=[${Object.keys(pv).join(',')}]` : ''}`
+						)
 					}
 				}
 				if (n.widgets_values) {
-					console.log(`    [UUID NODE WIDGETS_VALUES]:`, JSON.stringify(n.widgets_values, null, 2).substring(0, 3000))
+					console.log(
+						`    [UUID NODE WIDGETS_VALUES]:`,
+						JSON.stringify(n.widgets_values, null, 2).substring(0, 3000)
+					)
 				}
 			}
 		}
 	}
 	if (remainingUuidNodes.length > 0) {
-		console.log(`[ComfyUI workflowToPrompt] WARNING: ${remainingUuidNodes.length} UUID-type nodes remain after expansion. These may cause ComfyUI errors:`)
+		console.log(
+			`[ComfyUI workflowToPrompt] WARNING: ${remainingUuidNodes.length} UUID-type nodes remain after expansion. These may cause ComfyUI errors:`
+		)
 		for (const un of remainingUuidNodes) {
 			console.log(`  - Node id=${un.id}, type=${un.type}, title=${un.title}`)
 		}
@@ -1234,15 +1542,21 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs type: ${sgType}`)
 		if (workflow.subgraphs) {
 			if (Array.isArray(workflow.subgraphs)) {
-				console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs is array with ${workflow.subgraphs.length} entries`)
+				console.log(
+					`[ComfyUI workflowToPrompt] workflow.subgraphs is array with ${workflow.subgraphs.length} entries`
+				)
 				for (let si = 0; si < workflow.subgraphs.length; si++) {
 					const sg = workflow.subgraphs[si]
 					if (isRecord(sg)) {
-						console.log(`  subgraphs[${si}]: id=${sg.id}, type=${sg.type}, nodes=${Array.isArray(sg.nodes)?sg.nodes.length:'N/A'}, links=${Array.isArray(sg.links)?sg.links.length:'N/A'}`)
+						console.log(
+							`  subgraphs[${si}]: id=${sg.id}, type=${sg.type}, nodes=${Array.isArray(sg.nodes) ? sg.nodes.length : 'N/A'}, links=${Array.isArray(sg.links) ? sg.links.length : 'N/A'}`
+						)
 					}
 				}
 			} else if (isRecord(workflow.subgraphs)) {
-				console.log(`[ComfyUI workflowToPrompt] workflow.subgraphs is object with keys: ${Object.keys(workflow.subgraphs).join(',')}`)
+				console.log(
+					`[ComfyUI workflowToPrompt] workflow.subgraphs is object with keys: ${Object.keys(workflow.subgraphs).join(',')}`
+				)
 			}
 		}
 	}
@@ -1280,12 +1594,24 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		allNodeIds.add(nid)
 		nodeById.set(nid, node)
 		const outputsArr = Array.isArray(node.outputs) ? node.outputs : []
-		nodeOutputsMap.set(nid, outputsArr.map((o, i) => isRecord(o) ? { name: String(o.name || '').trim(), type: String(o.type || '*').trim(), links: Array.isArray(o.links) ? o.links : [], slot_index: typeof o.slot_index === 'number' ? o.slot_index : i } : { name: '', type: '*', links: [], slot_index: i }))
+		nodeOutputsMap.set(
+			nid,
+			outputsArr.map((o, i) =>
+				isRecord(o)
+					? {
+							name: String(o.name || '').trim(),
+							type: String(o.type || '*').trim(),
+							links: Array.isArray(o.links) ? o.links : [],
+							slot_index: typeof o.slot_index === 'number' ? o.slot_index : i
+						}
+					: { name: '', type: '*', links: [], slot_index: i }
+			)
+		)
 	}
 
 	for (const l of links) {
 		let linkId, fromNodeId, toNodeId, fromSlot, toSlot
-		
+
 		if (Array.isArray(l)) {
 			if (l.length < 5) continue
 			linkId = normalizeNodeId(l[0])
@@ -1310,9 +1636,15 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 			}
 		} else if (isRecord(l)) {
 			linkId = normalizeNodeId(l.id ?? l.linkId ?? l.link_id)
-			fromNodeId = normalizeNodeId(l.origin_id ?? l.fromId ?? l.from_node_id ?? l.sourceId ?? l.source_node_id)
-			fromSlot = Number(l.origin_slot ?? l.fromSlot ?? l.from_slot ?? l.sourceSlot ?? l.source_slot ?? 0)
-			toNodeId = normalizeNodeId(l.target_id ?? l.toId ?? l.to_node_id ?? l.targetId ?? l.target_node_id)
+			fromNodeId = normalizeNodeId(
+				l.origin_id ?? l.fromId ?? l.from_node_id ?? l.sourceId ?? l.source_node_id
+			)
+			fromSlot = Number(
+				l.origin_slot ?? l.fromSlot ?? l.from_slot ?? l.sourceSlot ?? l.source_slot ?? 0
+			)
+			toNodeId = normalizeNodeId(
+				l.target_id ?? l.toId ?? l.to_node_id ?? l.targetId ?? l.target_node_id
+			)
 			toSlot = Number(l.target_slot ?? l.toSlot ?? l.to_slot ?? l.targetSlot ?? l.target_slot ?? 0)
 			if (!linkId) {
 				linkId = crypto.randomUUID()
@@ -1320,15 +1652,15 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		} else {
 			continue
 		}
-		
+
 		if (!linkId || !fromNodeId || !toNodeId) continue
 		if (!Number.isFinite(fromSlot) || !Number.isFinite(toSlot)) continue
-		
+
 		linkFromById.set(linkId, { origin_id: fromNodeId, origin_slot: fromSlot })
 		linkToById.set(linkId, { target_id: toNodeId, target_slot: toSlot })
 		usedNodeIds.add(fromNodeId)
 		usedNodeIds.add(toNodeId)
-		
+
 		if (!nodeInputLinksMap.has(toNodeId)) {
 			nodeInputLinksMap.set(toNodeId, [])
 		}
@@ -1385,7 +1717,11 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 			skippedNodeIds.add(nid)
 			continue
 		}
-		if (structurallyLooksLikeNote(node) || structurallyLooksLikePrimitive(node) || structurallyLooksLikeReroute(node)) {
+		if (
+			structurallyLooksLikeNote(node) ||
+			structurallyLooksLikePrimitive(node) ||
+			structurallyLooksLikeReroute(node)
+		) {
 			skippedNodeIds.add(nid)
 			continue
 		}
@@ -1418,13 +1754,21 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		let targetInputIndex = -1
 		const targetOutput = relayOutputs[origin_slot]
 		if (isRecord(targetOutput)) {
-			const targetOutType = String(targetOutput.type || '*').trim().toUpperCase()
-			const targetOutName = String(targetOutput.name || '').trim().toLowerCase()
+			const targetOutType = String(targetOutput.type || '*')
+				.trim()
+				.toUpperCase()
+			const targetOutName = String(targetOutput.name || '')
+				.trim()
+				.toLowerCase()
 			for (let i = 0; i < relayInputs.length; i++) {
 				const inp = relayInputs[i]
 				if (!isRecord(inp)) continue
-				const inType = String(inp.type || '*').trim().toUpperCase()
-				const inName = String(inp.name || '').trim().toLowerCase()
+				const inType = String(inp.type || '*')
+					.trim()
+					.toUpperCase()
+				const inName = String(inp.name || '')
+					.trim()
+					.toLowerCase()
 				if (inType === targetOutType || inName === targetOutName) {
 					const hasLink = inp.link != null || (Array.isArray(inp.links) && inp.links.length > 0)
 					if (hasLink) {
@@ -1435,7 +1779,10 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 			}
 			if (targetInputIndex < 0 && origin_slot < relayInputs.length) {
 				const candidate = relayInputs[origin_slot]
-				if (isRecord(candidate) && (candidate.link != null || (Array.isArray(candidate.links) && candidate.links.length > 0))) {
+				if (
+					isRecord(candidate) &&
+					(candidate.link != null || (Array.isArray(candidate.links) && candidate.links.length > 0))
+				) {
 					targetInputIndex = origin_slot
 				}
 			}
@@ -1585,7 +1932,8 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		if (node.title && !nodeMeta.title) nodeMeta.title = String(node.title)
 		if (node.type && !nodeMeta.node_type) nodeMeta.node_type = String(node.type)
 		if (Array.isArray(node.pos) && node.pos.length >= 2) {
-			const px = Number(node.pos[0]), py = Number(node.pos[1])
+			const px = Number(node.pos[0]),
+				py = Number(node.pos[1])
 			if (Number.isFinite(px) && Number.isFinite(py)) nodeMeta.pos = [px, py]
 		}
 		prompt[nid] = { class_type: classType, inputs, _meta: nodeMeta }
@@ -1600,13 +1948,21 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 		const inKnown = knownNodeTypes ? knownNodeTypes.has(ct) : 'N/A (no objectInfo)'
 		console.log(`  [${pid}] ${ct}${isUuid ? ' [UUID]' : ''} (known=${inKnown}): inputs=`, inputKeys)
 		if (ct.includes('SaveImage') || ct.includes('Save')) {
-			console.log(`    [SaveImage DEBUG] inputs detail:`, JSON.stringify(pnode.inputs, null, 2).substring(0, 500))
+			console.log(
+				`    [SaveImage DEBUG] inputs detail:`,
+				JSON.stringify(pnode.inputs, null, 2).substring(0, 500)
+			)
 		}
 	}
 	console.log('[ComfyUI workflowToPrompt] rerouteNodeIds:', [...rerouteNodeIds])
 	console.log('[ComfyUI workflowToPrompt] valueProviderNodes:', [...valueProviderNodes.keys()])
 	console.log('[ComfyUI workflowToPrompt] skippedNodeIds:', [...skippedNodeIds])
-	console.log('[ComfyUI workflowToPrompt] total nodes in workflow:', nodes.length, '→ final prompt nodes:', Object.keys(prompt).length)
+	console.log(
+		'[ComfyUI workflowToPrompt] total nodes in workflow:',
+		nodes.length,
+		'→ final prompt nodes:',
+		Object.keys(prompt).length
+	)
 
 	return { prompt }
 }
@@ -1617,15 +1973,30 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 	if (!pp && !np) return
 
 	const textNodes = []
-	const TEXT_ENCODE_TYPE_RE = /TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
-	const TEXT_INPUT_KEYS = ['text', 'text_g', 'text_l', 'prompt', 'positive', 'negative', 'caption', 'description', 'instruction']
+	const TEXT_ENCODE_TYPE_RE =
+		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+	const TEXT_INPUT_KEYS = [
+		'text',
+		'text_g',
+		'text_l',
+		'prompt',
+		'positive',
+		'negative',
+		'caption',
+		'description',
+		'instruction'
+	]
 	for (const [k, v] of Object.entries(promptGraph)) {
 		if (!isRecord(v)) continue
 		const ct = String(v.class_type || '')
 		const inputs = isRecord(v.inputs) ? v.inputs : {}
 		let isTextNode = false
 		let primaryKey = 'text'
-		if (ct === 'CLIPTextEncode' || ct === 'BNK_CLIPTextEncodeAdvanced' || TEXT_ENCODE_TYPE_RE.test(ct)) {
+		if (
+			ct === 'CLIPTextEncode' ||
+			ct === 'BNK_CLIPTextEncodeAdvanced' ||
+			TEXT_ENCODE_TYPE_RE.test(ct)
+		) {
 			isTextNode = true
 		} else {
 			for (const tk of TEXT_INPUT_KEYS) {
@@ -1662,9 +2033,16 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 		let isNeg = false
 		for (const key of tn.textKeys) {
 			const val = String(tn.node.inputs?.[key] || '').toLowerCase()
-			if (key.includes('negative') || t.includes('negative') || t.includes('负') ||
-				val.includes('negative') || val.includes('nsfw') || val.includes('worst quality') ||
-				val.includes('low quality') || val.includes('bad anatomy')) {
+			if (
+				key.includes('negative') ||
+				t.includes('negative') ||
+				t.includes('负') ||
+				val.includes('negative') ||
+				val.includes('nsfw') ||
+				val.includes('worst quality') ||
+				val.includes('low quality') ||
+				val.includes('bad anatomy')
+			) {
 				isNeg = true
 				break
 			}
@@ -1707,14 +2085,39 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 
 function normalizePromptGraphForRuntime(promptGraph, objectInfo) {
 	const knownSocketTypes = new Set([
-		'MODEL', 'CLIP', 'VAE', 'CONDITIONING', 'LATENT', 'IMAGE', 'MASK',
-		'SAMPLER', 'SIGMAS', 'AUDIO', 'VIDEO', 'CLIP_VISION_OUTPUT',
-		'CONTROL_NET', 'STYLE_MODEL', 'CLIP_VISION', 'UPSCALE_MODEL',
-		'GLIGEN', 'NOISE', 'GUIDER', 'BOOST', 'WEBCAM',
-		'IPADAPTER', 'FACEID', 'INSTANTID', 'FACEMASK'
+		'MODEL',
+		'CLIP',
+		'VAE',
+		'CONDITIONING',
+		'LATENT',
+		'IMAGE',
+		'MASK',
+		'SAMPLER',
+		'SIGMAS',
+		'AUDIO',
+		'VIDEO',
+		'CLIP_VISION_OUTPUT',
+		'CONTROL_NET',
+		'STYLE_MODEL',
+		'CLIP_VISION',
+		'UPSCALE_MODEL',
+		'GLIGEN',
+		'NOISE',
+		'GUIDER',
+		'BOOST',
+		'WEBCAM',
+		'IPADAPTER',
+		'FACEID',
+		'INSTANTID',
+		'FACEMASK'
 	])
-	const isValidLinkRef = v => Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number'
-	const isPrimitiveValue = v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+	const isValidLinkRef = (v) =>
+		Array.isArray(v) &&
+		v.length === 2 &&
+		(typeof v[0] === 'string' || typeof v[0] === 'number') &&
+		typeof v[1] === 'number'
+	const isPrimitiveValue = (v) =>
+		typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
 
 	for (const node of Object.values(promptGraph)) {
 		if (!isRecord(node)) continue
@@ -1737,7 +2140,8 @@ function normalizePromptGraphForRuntime(promptGraph, objectInfo) {
 		}
 
 		for (const key of ['clip_vision_output', 'audio']) {
-			if (key in inputs && !isValidLinkRef(inputs[key]) && !isPrimitiveValue(inputs[key])) delete inputs[key]
+			if (key in inputs && !isValidLinkRef(inputs[key]) && !isPrimitiveValue(inputs[key]))
+				delete inputs[key]
 		}
 		node.inputs = inputs
 	}
@@ -1759,23 +2163,40 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 	const media = []
 	const VIDEO_EXTS = ['.mp4', '.webm', '.mov', '.mkv', '.avi', '.gif', '.m4v', '.wmv', '.flv']
 	const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif', '.gif']
-	const MODEL3D_EXTS = ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae', '.ply', '.3ds', '.usdz', '.usd', '.blend', '.step', '.iges']
-	const kindByFilename = name => {
-		const n = String(name || '').trim().toLowerCase()
+	const MODEL3D_EXTS = [
+		'.glb',
+		'.gltf',
+		'.fbx',
+		'.obj',
+		'.stl',
+		'.dae',
+		'.ply',
+		'.3ds',
+		'.usdz',
+		'.usd',
+		'.blend',
+		'.step',
+		'.iges'
+	]
+	const kindByFilename = (name) => {
+		const n = String(name || '')
+			.trim()
+			.toLowerCase()
 		if (!n) return null
-		if (VIDEO_EXTS.some(ext => n.endsWith(ext))) return 'video'
-		if (IMAGE_EXTS.some(ext => n.endsWith(ext))) return 'image'
-		if (MODEL3D_EXTS.some(ext => n.endsWith(ext))) return 'model3d'
+		if (VIDEO_EXTS.some((ext) => n.endsWith(ext))) return 'video'
+		if (IMAGE_EXTS.some((ext) => n.endsWith(ext))) return 'image'
+		if (MODEL3D_EXTS.some((ext) => n.endsWith(ext))) return 'model3d'
 		return null
 	}
-	const nodeSortKey = v => {
+	const nodeSortKey = (v) => {
 		const s = String(v || '').trim()
 		const n = Number(s)
 		return Number.isFinite(n) ? [0, n] : [1, s]
 	}
 
 	const sortedNodes = Object.entries(outputs).sort((a, b) => {
-		const ka = nodeSortKey(a[0]), kb = nodeSortKey(b[0])
+		const ka = nodeSortKey(a[0]),
+			kb = nodeSortKey(b[0])
 		if (ka[0] !== kb[0]) return ka[0] - kb[0]
 		if (ka[0] === 0) return ka[1] - kb[1]
 		return String(ka[1]).localeCompare(String(kb[1]))
@@ -1796,7 +2217,14 @@ function extractMediaFromHistoryResult(base, result, promptId) {
 				const lkey = String(key || '').toLowerCase()
 				if (lkey === 'gifs' || lkey === 'videos') kind = 'video'
 				else if (lkey === 'images') kind = 'image'
-				else if (lkey === 'meshes' || lkey === 'models' || lkey === 'models3d' || lkey === 'files' || lkey === 'results') kind = 'model3d'
+				else if (
+					lkey === 'meshes' ||
+					lkey === 'models' ||
+					lkey === 'models3d' ||
+					lkey === 'files' ||
+					lkey === 'results'
+				)
+					kind = 'model3d'
 				const inferred = kindByFilename(filename)
 				if (inferred) kind = inferred
 				if (!kind) continue
@@ -1835,7 +2263,12 @@ function extractCreateTimeFromExtra(extra) {
 	if (!isRecord(extra)) return 0
 	const raw = extra.create_time
 	if (raw == null) return 0
-	try { const v = Number(String(raw).trim()); return v > 0 ? v : 0 } catch { return 0 }
+	try {
+		const v = Number(String(raw).trim())
+		return v > 0 ? v : 0
+	} catch {
+		return 0
+	}
 }
 
 function extractEntryTimestamp(entry) {
@@ -1896,7 +2329,12 @@ function buildWorkflowFingerprintFromWorkflowJson(workflow) {
 	return types.join('|')
 }
 
-async function findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint) {
+async function findLatestSuccessfulPromptByWorkflowId(
+	client,
+	base,
+	workflowId,
+	workflowFingerprint
+) {
 	const maxItems = 200
 	const histResult = await comfyJsonGet(client, `${base}/history?max_items=${maxItems}`, 15000)
 	if (histResult.error || !isRecord(histResult.data)) return { error: 'failed to fetch history' }
@@ -1915,12 +2353,24 @@ async function findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, 
 		const entryWorkflowId = extractWorkflowIdFromExtra(extra)
 		const timestamp = extractEntryTimestamp(entry)
 		const successful = isEntrySuccessful(entry)
-		const candidate = { promptId, promptGraph, extra, workflow: isRecord(extra?.extra_pnginfo) && isRecord(extra.extra_pnginfo.workflow) ? extra.extra_pnginfo.workflow : null, timestamp, successful }
+		const candidate = {
+			promptId,
+			promptGraph,
+			extra,
+			workflow:
+				isRecord(extra?.extra_pnginfo) && isRecord(extra.extra_pnginfo.workflow)
+					? extra.extra_pnginfo.workflow
+					: null,
+			timestamp,
+			successful
+		}
 
 		if (entryWorkflowId && workflowId && entryWorkflowId === workflowId) {
 			if (successful) exactMatches.push(candidate)
 		} else if (workflowFingerprint && successful) {
-			const histWorkflowFp = candidate.workflow ? buildWorkflowFingerprintFromWorkflowJson(candidate.workflow) : buildWorkflowFingerprint(promptGraph)
+			const histWorkflowFp = candidate.workflow
+				? buildWorkflowFingerprintFromWorkflowJson(candidate.workflow)
+				: buildWorkflowFingerprint(promptGraph)
 			if (histWorkflowFp === workflowFingerprint) fuzzyMatches.push(candidate)
 		}
 	}
@@ -1948,7 +2398,12 @@ async function findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, 
 
 function randomizeSeedInPrompt(promptGraph) {
 	if (!isRecord(promptGraph)) return
-	const samplerTypes = new Set(['KSampler', 'KSamplerAdvanced', 'KSampler (Efficient)', 'BNK_CLIPTextEncodeAdvanced'])
+	const samplerTypes = new Set([
+		'KSampler',
+		'KSamplerAdvanced',
+		'KSampler (Efficient)',
+		'BNK_CLIPTextEncodeAdvanced'
+	])
 	const seedKeyNames = ['noise_seed', 'seed', 'seed_num']
 	for (const node of Object.values(promptGraph)) {
 		if (!isRecord(node)) continue
@@ -1984,7 +2439,7 @@ async function findPromptGraphFromComfyState(client, base, workflowId) {
 		rank++
 	}
 	if (candidates.length === 0) return { error: 'no reusable prompt in history' }
-	candidates.sort((a, b) => (b[0] - a[0]) || (b[1] - a[1]))
+	candidates.sort((a, b) => b[0] - a[0] || b[1] - a[1])
 	return { prompt: candidates[0][2] }
 }
 
@@ -2053,7 +2508,13 @@ export async function runtimeGetObjectInfo(ctx, payload) {
 	if (!forceRefresh) {
 		const cached = getCachedObjectInfo(base)
 		if (cached && isRecord(cached)) {
-			return { ok: true, baseUrl: base, objectInfo: cached, nodeCount: Object.keys(cached).length, cached: true }
+			return {
+				ok: true,
+				baseUrl: base,
+				objectInfo: cached,
+				nodeCount: Object.keys(cached).length,
+				cached: true
+			}
 		}
 	}
 
@@ -2062,7 +2523,13 @@ export async function runtimeGetObjectInfo(ctx, payload) {
 		return { ok: false, error: `failed to fetch object_info: ${oiResult.error || 'unknown error'}` }
 	}
 	setCachedObjectInfo(base, oiResult.data)
-	return { ok: true, baseUrl: base, objectInfo: oiResult.data, nodeCount: Object.keys(oiResult.data).length, cached: false }
+	return {
+		ok: true,
+		baseUrl: base,
+		objectInfo: oiResult.data,
+		nodeCount: Object.keys(oiResult.data).length,
+		cached: false
+	}
 }
 
 function extractHistoryWorkflows(historyData, maxItems) {
@@ -2086,7 +2553,12 @@ function extractHistoryWorkflows(historyData, maxItems) {
 		let timestamp = 0
 		try {
 			const status = entry.status
-			if (isRecord(status) && status.messages && Array.isArray(status.messages) && status.messages.length > 0) {
+			if (
+				isRecord(status) &&
+				status.messages &&
+				Array.isArray(status.messages) &&
+				status.messages.length > 0
+			) {
 				const firstMsg = status.messages[0]
 				if (Array.isArray(firstMsg) && firstMsg.length > 0) {
 					const ts = Number(firstMsg[0])
@@ -2099,14 +2571,25 @@ function extractHistoryWorkflows(historyData, maxItems) {
 		for (const node of nodes) {
 			if (isRecord(node) && typeof node.class_type === 'string' && node.class_type.trim()) {
 				const ct = node.class_type.trim()
-				if (ct !== 'CLIPTextEncode' && ct !== 'LoadImage' && ct !== 'SaveImage' && ct !== 'KSampler' && ct !== 'VAEDecode' && ct !== 'VAEEncode' && ct !== 'CheckpointLoaderSimple') {
+				if (
+					ct !== 'CLIPTextEncode' &&
+					ct !== 'LoadImage' &&
+					ct !== 'SaveImage' &&
+					ct !== 'KSampler' &&
+					ct !== 'VAEDecode' &&
+					ct !== 'VAEEncode' &&
+					ct !== 'CheckpointLoaderSimple'
+				) {
 					classType = ct
 					break
 				}
 			}
 		}
 
-		const timeStr = timestamp > 0 ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : promptId.slice(0, 8)
+		const timeStr =
+			timestamp > 0
+				? new Date(timestamp).toLocaleString('zh-CN', { hour12: false })
+				: promptId.slice(0, 8)
 		entries.push({
 			path: `history://${promptId}`,
 			name: `[历史] ${classType} - ${timeStr}`,
@@ -2219,7 +2702,12 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 			const inputDefs = nodeData.inputs
 			if (isRecord(inputDefs)) {
 				for (const [inputName, inputVal] of Object.entries(inputDefs)) {
-					if (Array.isArray(inputVal) && inputVal.length === 2 && (typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') && typeof inputVal[1] === 'number') {
+					if (
+						Array.isArray(inputVal) &&
+						inputVal.length === 2 &&
+						(typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') &&
+						typeof inputVal[1] === 'number'
+					) {
 						inputs.push({ name: inputName, type: '*', link: null })
 					} else {
 						inputs.push({ name: inputName, type: '*', link: null, widget: { name: inputName } })
@@ -2253,17 +2741,28 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 			if (!isRecord(inputDefs)) continue
 			let slotIdx = 0
 			for (const [inputName, inputVal] of Object.entries(inputDefs)) {
-				if (Array.isArray(inputVal) && inputVal.length === 2 && (typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') && typeof inputVal[1] === 'number') {
+				if (
+					Array.isArray(inputVal) &&
+					inputVal.length === 2 &&
+					(typeof inputVal[0] === 'string' || typeof inputVal[0] === 'number') &&
+					typeof inputVal[1] === 'number'
+				) {
 					const fromNodeId = normalizeNodeId(inputVal[0])
 					const fromSlot = Number(inputVal[1])
 					const toIdx = idToIdx.get(fromNodeId)
 					if (toIdx !== undefined) {
 						const fromNode = nodes[fromIdx]
 						if (!fromNode.outputs[slotIdx]) {
-							fromNode.outputs.push({ name: `OUTPUT_${slotIdx}`, type: '*', links: [], slot_index: slotIdx, shape: 6 })
+							fromNode.outputs.push({
+								name: `OUTPUT_${slotIdx}`,
+								type: '*',
+								links: [],
+								slot_index: slotIdx,
+								shape: 6
+							})
 						}
 						links.push([String(linkId), fromNodeId, fromSlot, nid, slotIdx, '*'])
-						const toInput = fromNode.inputs.find(i => i.name === inputName)
+						const toInput = fromNode.inputs.find((i) => i.name === inputName)
 						if (toInput) toInput.link = String(linkId)
 						linkId++
 					}
@@ -2332,7 +2831,11 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 		if (cached) {
 			return { ...cached, fromCache: true, source: 'cache-direct' }
 		}
-		return { ok: false, error: 'NO_HISTORY', message: '历史记录已不存在，请重新在ComfyUI中运行该工作流' }
+		return {
+			ok: false,
+			error: 'NO_HISTORY',
+			message: '历史记录已不存在，请重新在ComfyUI中运行该工作流'
+		}
 	}
 
 	const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
@@ -2341,7 +2844,12 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 	const workflowId = isRecord(workflowAny) ? String(workflowAny.id || '').trim() : ''
 	const workflowFingerprint = buildWorkflowFingerprintFromWorkflowJson(workflowAny)
 
-	const historyResult = await findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint || null)
+	const historyResult = await findLatestSuccessfulPromptByWorkflowId(
+		client,
+		base,
+		workflowId,
+		workflowFingerprint || null
+	)
 	if (historyResult.error || !isRecord(historyResult.promptGraph)) {
 		const cached = readHistoryCache(base, workflowPath)
 		if (cached) {
@@ -2392,12 +2900,32 @@ function analyzeInputNodes(promptGraph) {
 	const seedNodes = []
 	const IMAGE_EXTS = /\.(png|jpg|jpeg|webp|gif|bmp|tiff)$/i
 	const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv)$/i
-	const IMAGE_LOADER_TYPES = new Set(['LoadImage', 'LoadImageFromPath', 'Load Image', 'ImageLoader', 'LoadImageMasked'])
+	const IMAGE_LOADER_TYPES = new Set([
+		'LoadImage',
+		'LoadImageFromPath',
+		'Load Image',
+		'ImageLoader',
+		'LoadImageMasked'
+	])
 	const VIDEO_LOADER_TYPES = new Set(['LoadVideo', 'Load Video', 'VHS_LoadVideo', 'VideoLoader'])
-	const TEXT_ENCODE_TYPE_RE = /TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
-	const SAMPLER_TYPE_RE = /sampler|KSampler|KSamplerSelect|BasicScheduler|FlowSampler|CausalVideoSampler|WanSampler|WanImageToVideo|WanI2V|WanTextToVideo|WanT2V|HunyuanVideoSampler|CogVideoSampler|VideoSampler|LTXVSampler|MochiSampler|SVD_img2vid/i
+	const TEXT_ENCODE_TYPE_RE =
+		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+	const SAMPLER_TYPE_RE =
+		/sampler|KSampler|KSamplerSelect|BasicScheduler|FlowSampler|CausalVideoSampler|WanSampler|WanImageToVideo|WanI2V|WanTextToVideo|WanT2V|HunyuanVideoSampler|CogVideoSampler|VideoSampler|LTXVSampler|MochiSampler|SVD_img2vid/i
 	const SEED_KEYS = ['noise_seed', 'seed', 'seed_num', 'rand_seed']
-	const TEXT_INPUT_KEYS = ['text', 'text_g', 'text_l', 'prompt', 'positive', 'negative', 'caption', 'description', 'instruction', 'text_positive', 'text_negative']
+	const TEXT_INPUT_KEYS = [
+		'text',
+		'text_g',
+		'text_l',
+		'prompt',
+		'positive',
+		'negative',
+		'caption',
+		'description',
+		'instruction',
+		'text_positive',
+		'text_negative'
+	]
 
 	function detectFileKind(classType, key, val) {
 		if (isSocketValue(val)) return null
@@ -2405,8 +2933,16 @@ function analyzeInputNodes(promptGraph) {
 		const base = val.split(/[\\/]/).pop() || val
 		if (IMAGE_EXTS.test(base)) return 'image'
 		if (VIDEO_EXTS.test(base)) return 'video'
-		if (IMAGE_LOADER_TYPES.has(classType) && (key === 'image' || key === 'image_path' || key === 'path')) return 'image'
-		if (VIDEO_LOADER_TYPES.has(classType) && (key === 'video' || key === 'video_path' || key === 'path')) return 'video'
+		if (
+			IMAGE_LOADER_TYPES.has(classType) &&
+			(key === 'image' || key === 'image_path' || key === 'path')
+		)
+			return 'image'
+		if (
+			VIDEO_LOADER_TYPES.has(classType) &&
+			(key === 'video' || key === 'video_path' || key === 'path')
+		)
+			return 'video'
 		if (/LoadImage|Load.*Image/i.test(classType) && key === 'image') return 'image'
 		if (/LoadVideo|Load.*Video/i.test(classType) && key === 'video') return 'video'
 		return null
@@ -2481,9 +3017,21 @@ function analyzeInputNodes(promptGraph) {
 		for (const [key, val] of Object.entries(inputs)) {
 			const kind = detectFileKind(ct, key, val)
 			if (kind === 'image') {
-				images.push({ nodeId: nid, classType: ct, inputKey: key, originalValue: String(val), displayName: `${ct}.${key}` })
+				images.push({
+					nodeId: nid,
+					classType: ct,
+					inputKey: key,
+					originalValue: String(val),
+					displayName: `${ct}.${key}`
+				})
 			} else if (kind === 'video') {
-				videos.push({ nodeId: nid, classType: ct, inputKey: key, originalValue: String(val), displayName: `${ct}.${key}` })
+				videos.push({
+					nodeId: nid,
+					classType: ct,
+					inputKey: key,
+					originalValue: String(val),
+					displayName: `${ct}.${key}`
+				})
 			}
 		}
 	}
@@ -2497,7 +3045,19 @@ function analyzeInputNodes(promptGraph) {
 		if (SAMPLER_TYPE_RE.test(ct) && inputs) {
 			samplerNodes.push({ nodeId: nid, inputs })
 		}
-		if (isRecord(inputs) && ('positive' in inputs || 'negative' in inputs || 'positive_conditioning' in inputs || 'negative_conditioning' in inputs || 'positive_embeds' in inputs || 'negative_embeds' in inputs || 'positive_embeddings' in inputs || 'negative_embeddings' in inputs || 'cond_positive' in inputs || 'cond_negative' in inputs)) {
+		if (
+			isRecord(inputs) &&
+			('positive' in inputs ||
+				'negative' in inputs ||
+				'positive_conditioning' in inputs ||
+				'negative_conditioning' in inputs ||
+				'positive_embeds' in inputs ||
+				'negative_embeds' in inputs ||
+				'positive_embeddings' in inputs ||
+				'negative_embeddings' in inputs ||
+				'cond_positive' in inputs ||
+				'cond_negative' in inputs)
+		) {
 			conditioningNodes.push({ nodeId: nid, inputs, ct })
 		}
 	}
@@ -2541,9 +3101,13 @@ function analyzeInputNodes(promptGraph) {
 		const key = (tn.inputKey || '').toLowerCase()
 		const isNegative =
 			key.includes('negative') ||
-			title.includes('negative') || title.includes('负') ||
-			text.includes('negative') || text.includes('nsfw') || text.includes('worst quality') ||
-			text.includes('low quality') || text.includes('bad anatomy')
+			title.includes('negative') ||
+			title.includes('负') ||
+			text.includes('negative') ||
+			text.includes('nsfw') ||
+			text.includes('worst quality') ||
+			text.includes('low quality') ||
+			text.includes('bad anatomy')
 		if (isNegative) {
 			classifiedNegative.push(tn)
 		} else {
@@ -2551,7 +3115,11 @@ function analyzeInputNodes(promptGraph) {
 		}
 	}
 
-	if (classifiedPositive.length === 0 && classifiedNegative.length === 0 && allTextNodes.length > 0) {
+	if (
+		classifiedPositive.length === 0 &&
+		classifiedNegative.length === 0 &&
+		allTextNodes.length > 0
+	) {
 		if (allTextNodes.length === 1) {
 			classifiedPositive.push(allTextNodes[0])
 		} else {
@@ -2562,11 +3130,24 @@ function analyzeInputNodes(promptGraph) {
 		}
 	}
 
-	const SAVE_IMAGE_TYPES = new Set(['SaveImage', 'PreviewImage', 'SaveImageNoPreview', 'SaveImageWebp'])
-	const SAVE_VIDEO_TYPES = new Set(['VHS_VideoCombine', 'SaveVideo', 'SaveAnimatedWEBP', 'SaveAnimatedPNG', 'SaveGif'])
-	const SAVE_VIDEO_TYPE_RE = /SaveVideo|VHS_VideoCombine|AnimateCombine|SaveAnimated|VideoCombine|VHS_Save/i
+	const SAVE_IMAGE_TYPES = new Set([
+		'SaveImage',
+		'PreviewImage',
+		'SaveImageNoPreview',
+		'SaveImageWebp'
+	])
+	const SAVE_VIDEO_TYPES = new Set([
+		'VHS_VideoCombine',
+		'SaveVideo',
+		'SaveAnimatedWEBP',
+		'SaveAnimatedPNG',
+		'SaveGif'
+	])
+	const SAVE_VIDEO_TYPE_RE =
+		/SaveVideo|VHS_VideoCombine|AnimateCombine|SaveAnimated|VideoCombine|VHS_Save/i
 	const SAVE_IMAGE_TYPE_RE = /SaveImage|PreviewImage|SaveImageNoPreview/i
-	const SAVE_MODEL_TYPE_RE = /SaveGLB|SaveModel3D|SaveMesh|ExportModel|ExportMesh|SaveGltf|Save3D|SaveOBJ|SaveFBX|SaveSTL|SavePLY/i
+	const SAVE_MODEL_TYPE_RE =
+		/SaveGLB|SaveModel3D|SaveMesh|ExportModel|ExportMesh|SaveGltf|Save3D|SaveOBJ|SaveFBX|SaveSTL|SavePLY/i
 	const VIDEO_EXTS_OUTPUT = /\.(mp4|webm|mov|mkv|avi|gif|m4v|wmv|flv)$/i
 	const IMAGE_EXTS_OUTPUT = /\.(png|jpg|jpeg|webp|bmp|tiff?)$/i
 	const MODEL3D_EXTS_OUTPUT = /\.(glb|gltf|fbx|obj|stl|dae|ply|3ds|usdz?|blend|step|iges)$/i
@@ -2584,7 +3165,8 @@ function analyzeInputNodes(promptGraph) {
 				if (VIDEO_EXTS_OUTPUT.test(base)) return 'video'
 				if (MODEL3D_EXTS_OUTPUT.test(base)) return 'model3d'
 			}
-			const filename_prefix = typeof inputs.filename_prefix === 'string' ? inputs.filename_prefix.toLowerCase() : ''
+			const filename_prefix =
+				typeof inputs.filename_prefix === 'string' ? inputs.filename_prefix.toLowerCase() : ''
 			if (filename_prefix.includes('video') || filename_prefix.includes('animate')) return 'video'
 		}
 		return null
@@ -2608,7 +3190,7 @@ function analyzeInputNodes(promptGraph) {
 		}
 	}
 
-	const outputKinds = new Set(outputs.map(o => o.mediaKind))
+	const outputKinds = new Set(outputs.map((o) => o.mediaKind))
 	const hasImageOutput = outputKinds.has('image')
 	const hasVideoOutput = outputKinds.has('video')
 	const hasModel3dOutput = outputKinds.has('model3d')
@@ -2654,7 +3236,9 @@ function applyExactInputMappings(promptGraph, mappings, uploadedImages, uploaded
 	assignPaths(vidMappings, uploadedVideos, 'video')
 
 	if (missingNodes.length > 0) {
-		throw new Error(`Input nodes not found in prompt graph: ${missingNodes.join(', ')}. The workflow history may be outdated, please re-run in ComfyUI.`)
+		throw new Error(
+			`Input nodes not found in prompt graph: ${missingNodes.join(', ')}. The workflow history may be outdated, please re-run in ComfyUI.`
+		)
 	}
 }
 
@@ -2667,12 +3251,25 @@ function applyTextOverridesWithMappings(promptGraph, mappings, positivePrompt, n
 
 	function writeTextToNode(node, mapping, textValue, isNegative) {
 		if (!node || !isRecord(node.inputs)) return
-		const keys = mapping && Array.isArray(mapping.allTextKeys) && mapping.allTextKeys.length > 0
-			? mapping.allTextKeys
-			: (mapping && mapping.inputKey ? [mapping.inputKey] : ['text'])
+		const keys =
+			mapping && Array.isArray(mapping.allTextKeys) && mapping.allTextKeys.length > 0
+				? mapping.allTextKeys
+				: mapping && mapping.inputKey
+					? [mapping.inputKey]
+					: ['text']
 		const commonKeys = isNegative
 			? ['text', 'text_l', 'negative', 'caption', 'description', 'text_negative']
-			: ['text', 'text_g', 'text_l', 'prompt', 'positive', 'caption', 'description', 'instruction', 'text_positive']
+			: [
+					'text',
+					'text_g',
+					'text_l',
+					'prompt',
+					'positive',
+					'caption',
+					'description',
+					'instruction',
+					'text_positive'
+				]
 		let written = false
 		for (const key of [...new Set([...keys, ...commonKeys])]) {
 			if (key in node.inputs && typeof node.inputs[key] === 'string') {
@@ -2681,12 +3278,43 @@ function applyTextOverridesWithMappings(promptGraph, mappings, positivePrompt, n
 			}
 		}
 		if (!written) {
-			const skipKeys = new Set(['filename_prefix', 'image', 'video', 'model', 'clip', 'vae', 'samples', 'latent_image', 'noise_seed', 'seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise', 'width', 'height', 'ckpt_name', 'vae_name', 'clip_name', 'lora_name', 'control_net_name', 'style', 'strength', 'ratio'])
+			const skipKeys = new Set([
+				'filename_prefix',
+				'image',
+				'video',
+				'model',
+				'clip',
+				'vae',
+				'samples',
+				'latent_image',
+				'noise_seed',
+				'seed',
+				'steps',
+				'cfg',
+				'sampler_name',
+				'scheduler',
+				'denoise',
+				'width',
+				'height',
+				'ckpt_name',
+				'vae_name',
+				'clip_name',
+				'lora_name',
+				'control_net_name',
+				'style',
+				'strength',
+				'ratio'
+			])
 			const antiKey = isNegative ? /positive/i : /negative/i
 			for (const [key, val] of Object.entries(node.inputs)) {
 				if (skipKeys.has(key)) continue
 				if (antiKey.test(key)) continue
-				if (typeof val === 'string' && !/^https?:\/\//.test(val) && !isSocketValue(val) && !/\.(png|jpg|jpeg|webp|mp4|webm|mov|avi|mkv|safetensors|ckpt|pt|bin)$/i.test(val)) {
+				if (
+					typeof val === 'string' &&
+					!/^https?:\/\//.test(val) &&
+					!isSocketValue(val) &&
+					!/\.(png|jpg|jpeg|webp|mp4|webm|mov|avi|mkv|safetensors|ckpt|pt|bin)$/i.test(val)
+				) {
 					node.inputs[key] = textValue
 					written = true
 					break
@@ -2753,7 +3381,12 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 			return { ok: false, error: `ComfyUI /userdata/{file} http ${res.status}` }
 		}
 		let workflow
-		if (res.body && typeof res.body === 'object' && !Array.isArray(res.body) && !Buffer.isBuffer(res.body)) {
+		if (
+			res.body &&
+			typeof res.body === 'object' &&
+			!Array.isArray(res.body) &&
+			!Buffer.isBuffer(res.body)
+		) {
 			workflow = res.body
 		} else {
 			let text
@@ -2761,12 +3394,15 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 				text = res.body
 			} else if (Buffer.isBuffer(res.rawBody)) {
 				text = res.rawBody.toString('utf-8')
-				if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1)
+				if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
 			} else {
 				text = String(res.body ?? res.rawBody ?? '')
 			}
-			try { workflow = JSON.parse(text) }
-			catch { return { ok: false, error: 'invalid workflow json' } }
+			try {
+				workflow = JSON.parse(text)
+			} catch {
+				return { ok: false, error: 'invalid workflow json' }
+			}
 		}
 
 		return { ok: true, baseUrl: base, workflowPath, workflow, source: 'userdata' }
@@ -2809,12 +3445,19 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		if (!fileBuf) continue
 		const mediaType = String(f.mediaType || 'image').toLowerCase()
 		fileName = String(f.name || f.filename || `input_${i}.png`)
-		fileMime = fileMime || f.contentType || f.mimeType || (mediaType === 'video' ? 'video/mp4' : 'image/png')
+		fileMime =
+			fileMime || f.contentType || f.mimeType || (mediaType === 'video' ? 'video/mp4' : 'image/png')
 
 		const upResult = await uploadImageToComfyui(client, base, fileName, fileBuf, fileMime)
-		if (upResult.error) return { ok: false, error: `上传${mediaType === 'video' ? '视频' : '图片'}失败：${upResult.error}` }
+		if (upResult.error)
+			return {
+				ok: false,
+				error: `上传${mediaType === 'video' ? '视频' : '图片'}失败：${upResult.error}`
+			}
 		const name = String(upResult.data?.name || '').trim()
-		const subfolder = String(upResult.data?.subfolder || '').trim().replace(/\\/g, '/')
+		const subfolder = String(upResult.data?.subfolder || '')
+			.trim()
+			.replace(/\\/g, '/')
 		const upPath = subfolder ? `${subfolder}/${name}` : name
 		if (!upPath) continue
 
@@ -2902,21 +3545,26 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		resolvedWorkflow = wfResult.workflow
 		const workflowId = isRecord(resolvedWorkflow) ? String(resolvedWorkflow.id || '').trim() : ''
 		const workflowFingerprint = buildWorkflowFingerprintFromWorkflowJson(resolvedWorkflow)
-		const histResult = await findLatestSuccessfulPromptByWorkflowId(client, base, workflowId, workflowFingerprint || null)
+		const histResult = await findLatestSuccessfulPromptByWorkflowId(
+			client,
+			base,
+			workflowId,
+			workflowFingerprint || null
+		)
 		if (isRecord(histResult.promptGraph)) {
-				promptGraph = histResult.promptGraph
-				matchType = histResult.matchType || 'exact'
-				promptSource = `history-${matchType}`
-				if (!effectiveMappings) {
-					const analyzed = analyzeInputNodes(promptGraph)
-					effectiveMappings = {
-						imageInputs: analyzed.images,
-						videoInputs: analyzed.videos,
-						textNodes: analyzed.textNodes,
-						seedNodes: analyzed.seedNodes
-					}
+			promptGraph = histResult.promptGraph
+			matchType = histResult.matchType || 'exact'
+			promptSource = `history-${matchType}`
+			if (!effectiveMappings) {
+				const analyzed = analyzeInputNodes(promptGraph)
+				effectiveMappings = {
+					imageInputs: analyzed.images,
+					videoInputs: analyzed.videos,
+					textNodes: analyzed.textNodes,
+					seedNodes: analyzed.seedNodes
 				}
 			}
+		}
 		if (!isRecord(promptGraph)) {
 			const cached = readHistoryCache(base, workflowPath)
 			if (cached && isRecord(cached.promptGraph)) {
@@ -2955,12 +3603,30 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 	}
 
-	try { promptGraph = JSON.parse(JSON.stringify(promptGraph)) } catch {}
+	try {
+		promptGraph = JSON.parse(JSON.stringify(promptGraph))
+	} catch {}
 
-	console.log(`[ComfyUI] Using history prompt (source=${promptSource}, match=${matchType}), nodes:`, Object.keys(promptGraph).length)
-	console.log(`[ComfyUI] Positive prompt: "${positivePrompt.slice(0, 100)}${positivePrompt.length > 100 ? '...' : ''}"`)
-	console.log(`[ComfyUI] Negative prompt: "${negativePrompt.slice(0, 100)}${negativePrompt.length > 100 ? '...' : ''}"`)
-	console.log(`[ComfyUI] Text node mappings - positive:`, (effectiveMappings?.textNodes?.positive || []).map((n) => `${n.nodeId}(${n.classType}).${n.inputKey}`), 'negative:', (effectiveMappings?.textNodes?.negative || []).map((n) => `${n.nodeId}(${n.classType}).${n.inputKey}`))
+	console.log(
+		`[ComfyUI] Using history prompt (source=${promptSource}, match=${matchType}), nodes:`,
+		Object.keys(promptGraph).length
+	)
+	console.log(
+		`[ComfyUI] Positive prompt: "${positivePrompt.slice(0, 100)}${positivePrompt.length > 100 ? '...' : ''}"`
+	)
+	console.log(
+		`[ComfyUI] Negative prompt: "${negativePrompt.slice(0, 100)}${negativePrompt.length > 100 ? '...' : ''}"`
+	)
+	console.log(
+		`[ComfyUI] Text node mappings - positive:`,
+		(effectiveMappings?.textNodes?.positive || []).map(
+			(n) => `${n.nodeId}(${n.classType}).${n.inputKey}`
+		),
+		'negative:',
+		(effectiveMappings?.textNodes?.negative || []).map(
+			(n) => `${n.nodeId}(${n.classType}).${n.inputKey}`
+		)
+	)
 
 	try {
 		applyExactInputMappings(promptGraph, effectiveMappings, uploadedImages, uploadedVideos)
@@ -2983,13 +3649,23 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 	}
 
-	console.log('[ComfyUI] Submitting prompt, nodes:', Object.keys(promptGraph).length, 'source:', promptSource)
+	console.log(
+		'[ComfyUI] Submitting prompt, nodes:',
+		Object.keys(promptGraph).length,
+		'source:',
+		promptSource
+	)
 	for (const [nid, node] of Object.entries(promptGraph)) {
 		if (!isRecord(node)) continue
 		const inputs = isRecord(node.inputs) ? node.inputs : {}
 		const inputSummary = {}
 		for (const [k, v] of Object.entries(inputs)) {
-			if (Array.isArray(v) && v.length === 2 && (typeof v[0] === 'string' || typeof v[0] === 'number') && typeof v[1] === 'number') {
+			if (
+				Array.isArray(v) &&
+				v.length === 2 &&
+				(typeof v[0] === 'string' || typeof v[0] === 'number') &&
+				typeof v[1] === 'number'
+			) {
 				inputSummary[k] = `[link ${v[0]}:${v[1]}]`
 			} else if (typeof v === 'string' && v.length > 80) {
 				inputSummary[k] = `${v.slice(0, 80)}...`
@@ -2997,7 +3673,10 @@ export async function runtimeRunWorkflow(ctx, payload) {
 				inputSummary[k] = v
 			}
 		}
-		console.log(`  node[${nid}] class_type=${node.class_type}, inputs:`, JSON.stringify(inputSummary))
+		console.log(
+			`  node[${nid}] class_type=${node.class_type}, inputs:`,
+			JSON.stringify(inputSummary)
+		)
 	}
 
 	const submitResult = await comfyJsonPost(client, `${base}/prompt`, comfyPayload, 30000)
@@ -3041,7 +3720,11 @@ export async function runtimeGetOutputs(ctx, payload) {
 	const promptId = String(p.promptId || p.id || '').trim()
 	if (!promptId) return { ok: false, error: 'promptId is required' }
 
-	const result = await comfyJsonGet(client, `${base}/history/${encodeURIComponent(promptId)}`, 10000)
+	const result = await comfyJsonGet(
+		client,
+		`${base}/history/${encodeURIComponent(promptId)}`,
+		10000
+	)
 	if (result.error || !isRecord(result.data)) {
 		return { ok: false, error: `ComfyUI /history failed: ${result.error || 'unknown error'}` }
 	}
@@ -3073,10 +3756,18 @@ export async function runtimeGetJobStatus(ctx, payload) {
 	if (!jobId) return { ok: false, error: 'id is required' }
 
 	// Try /api/jobs/{id} first
-	const jobsResult = await comfyJsonGet(client, `${base}/api/jobs/${encodeURIComponent(jobId)}`, 10000)
+	const jobsResult = await comfyJsonGet(
+		client,
+		`${base}/api/jobs/${encodeURIComponent(jobId)}`,
+		10000
+	)
 	if (!jobsResult.error && isRecord(jobsResult.data)) {
-		const statusText = String(jobsResult.data.status || '').trim().toLowerCase()
-		const detailText = String(jobsResult.data.detail || jobsResult.data.error || '').trim().toLowerCase()
+		const statusText = String(jobsResult.data.status || '')
+			.trim()
+			.toLowerCase()
+		const detailText = String(jobsResult.data.detail || jobsResult.data.error || '')
+			.trim()
+			.toLowerCase()
 		if (!statusText && (detailText.includes('not found') || detailText.includes('missing'))) {
 			return { ok: true, baseUrl: base, result: { id: jobId, status: 'not_found' } }
 		}
@@ -3084,12 +3775,24 @@ export async function runtimeGetJobStatus(ctx, payload) {
 	}
 
 	// Fallback to /history/{id}
-	const histResult = await comfyJsonGet(client, `${base}/history/${encodeURIComponent(jobId)}`, 10000)
+	const histResult = await comfyJsonGet(
+		client,
+		`${base}/history/${encodeURIComponent(jobId)}`,
+		10000
+	)
 	if (histResult.error || !isRecord(histResult.data)) {
-		return { ok: false, error: `job status failed: ${jobsResult.error || histResult.error || 'unknown error'}` }
+		return {
+			ok: false,
+			error: `job status failed: ${jobsResult.error || histResult.error || 'unknown error'}`
+		}
 	}
 	if (!(jobId in histResult.data)) {
-		return { ok: true, baseUrl: base, fallback: 'history', result: { id: jobId, status: 'not_found' } }
+		return {
+			ok: true,
+			baseUrl: base,
+			fallback: 'history',
+			result: { id: jobId, status: 'not_found' }
+		}
 	}
 	return { ok: true, baseUrl: base, fallback: 'history', result: histResult.data }
 }

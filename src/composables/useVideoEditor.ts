@@ -29,11 +29,11 @@ export function useVideoEditor() {
 			projectId: options.projectId,
 			videoUrl: options.videoUrl,
 			videoName: options.videoName,
-			title,
+			title
 		})
 	}
 
 	return {
-		open,
+		open
 	}
 }

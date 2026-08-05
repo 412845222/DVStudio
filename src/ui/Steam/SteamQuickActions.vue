@@ -11,25 +11,59 @@
 			:title="action.label"
 		>
 			<span class="action-icon">
-				<svg v-if="action.id === 'friends'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-					<circle cx="9" cy="7" r="4"/>
-					<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-					<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+				<svg
+					v-if="action.id === 'friends'"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+					<circle cx="9" cy="7" r="4" />
+					<path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+					<path d="M16 3.13a4 4 0 0 1 0 7.75" />
 				</svg>
-				<svg v-else-if="action.id === 'store'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-					<line x1="3" y1="6" x2="21" y2="6"/>
-					<path d="M16 10a4 4 0 0 1-8 0"/>
+				<svg
+					v-else-if="action.id === 'store'"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+					<line x1="3" y1="6" x2="21" y2="6" />
+					<path d="M16 10a4 4 0 0 1-8 0" />
 				</svg>
-				<svg v-else-if="action.id === 'community'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="12" cy="12" r="10"/>
-					<line x1="2" y1="12" x2="22" y2="12"/>
-					<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+				<svg
+					v-else-if="action.id === 'community'"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<circle cx="12" cy="12" r="10" />
+					<line x1="2" y1="12" x2="22" y2="12" />
+					<path
+						d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+					/>
 				</svg>
-				<svg v-else-if="action.id === 'achievements'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="12" cy="8" r="6"/>
-					<path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+				<svg
+					v-else-if="action.id === 'achievements'"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<circle cx="12" cy="8" r="6" />
+					<path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" />
 				</svg>
 			</span>
 			<span class="action-label">{{ action.label }}</span>
@@ -51,11 +85,11 @@ const actions = computed(() => [
 	{ id: 'friends', label: t('steam.actions.friends'), disabled: false },
 	{ id: 'store', label: t('steam.actions.store'), disabled: false },
 	{ id: 'community', label: t('steam.actions.community'), disabled: false },
-	{ id: 'achievements', label: t('steam.actions.achievements'), disabled: true },
+	{ id: 'achievements', label: t('steam.actions.achievements'), disabled: true }
 ])
 
 function handleAction(actionId: string) {
-	const action = actions.value.find(a => a.id === actionId)
+	const action = actions.value.find((a) => a.id === actionId)
 	if (action?.disabled) return
 	emit('action', actionId)
 }

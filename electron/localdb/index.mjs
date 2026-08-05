@@ -69,8 +69,30 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 		const aiworkflowTemplates = createAiworkflowTemplatesRepo({ backendDataDir: baseDir })
 		const tripo3dTasks = createTripo3dTasksRepo()
 		const globalTasks = createGlobalTasksRepo()
-		const cloudStorageConfig = createCloudStorageConfigRepo({ appSecret: appSecret || baseDir || 'localdb' })
-		reposSnapshot = { projects, meshyTasks, videoTasks, arkTasks, geminiTasks, tripo3dTasks, globalTasks, apiKeys, chatConversations, exportJobs, editorComponents, comfyuiWorkflows, comfyuiJobs, refImageCache, aiworkflowTemplates, cloudStorageConfig, dbFilePath, schemaInfo, tag }
+		const cloudStorageConfig = createCloudStorageConfigRepo({
+			appSecret: appSecret || baseDir || 'localdb'
+		})
+		reposSnapshot = {
+			projects,
+			meshyTasks,
+			videoTasks,
+			arkTasks,
+			geminiTasks,
+			tripo3dTasks,
+			globalTasks,
+			apiKeys,
+			chatConversations,
+			exportJobs,
+			editorComponents,
+			comfyuiWorkflows,
+			comfyuiJobs,
+			refImageCache,
+			aiworkflowTemplates,
+			cloudStorageConfig,
+			dbFilePath,
+			schemaInfo,
+			tag
+		}
 		lastInitError = null
 		return { ok: true, tag, dbFilePath, schemaInfo }
 	} catch (err) {

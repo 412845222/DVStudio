@@ -18,7 +18,7 @@ function makeTask(overrides: Partial<GlobalTask> = {}): GlobalTask {
 		statusText: 'Generating...',
 		createdAt: now,
 		updatedAt: now,
-		...overrides,
+		...overrides
 	}
 }
 
@@ -35,11 +35,11 @@ describe('TaskQueueStore', () => {
 				failedCount: 0,
 				cancelledCount: 0,
 				overallProgress: 0,
-				tasks: [],
+				tasks: []
 			},
 			panelVisible: false,
 			listenerIds: {},
-			initialized: false,
+			initialized: false
 		})
 		vi.clearAllMocks()
 	})
@@ -69,7 +69,7 @@ describe('TaskQueueStore', () => {
 				failedCount: 0,
 				cancelledCount: 0,
 				overallProgress: 50,
-				tasks: [task],
+				tasks: [task]
 			})
 			expect(TaskQueueStore.state.summary.total).toBe(1)
 			expect(TaskQueueStore.state.tasks.get('s1')).toEqual(task)

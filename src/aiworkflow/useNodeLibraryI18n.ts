@@ -4,13 +4,13 @@ import {
 	NEWUI2_NODE_CATALOG,
 	NEWUI2_NODE_CATALOG_CATEGORIES,
 	NEWUI2_NODE_SPECIAL_GROUPS,
-	NEWUI2_NODE_TOP_CATEGORIES,
+	NEWUI2_NODE_TOP_CATEGORIES
 } from './nodeLibrary'
 import type {
 	Newui2NodeCatalogCategory,
 	Newui2NodeCatalogItem,
 	Newui2NodeSpecialGroup,
-	Newui2NodeTopCategory,
+	Newui2NodeTopCategory
 } from '../ui/UIComponent/DwebCanvasMenu.types'
 import type { TranslateMessages } from '../i18n/types'
 
@@ -48,7 +48,7 @@ export function useNodeLibraryI18n() {
 				label: getTranslatedString(t, labelKey, cat.label),
 				description: cat.description
 					? getTranslatedString(t, descKey, cat.description)
-					: cat.description,
+					: cat.description
 			}
 		})
 	})
@@ -64,7 +64,7 @@ export function useNodeLibraryI18n() {
 				label: getTranslatedString(t, labelKey, cat.label),
 				description: cat.description
 					? getTranslatedString(t, descKey, cat.description)
-					: cat.description,
+					: cat.description
 			}
 		})
 	})
@@ -80,7 +80,7 @@ export function useNodeLibraryI18n() {
 				label: getTranslatedString(t, labelKey, group.label),
 				description: group.description
 					? getTranslatedString(t, descKey, group.description)
-					: group.description,
+					: group.description
 			}
 		})
 	})
@@ -99,7 +99,7 @@ export function useNodeLibraryI18n() {
 				description: item.description
 					? getTranslatedString(t, descKey, item.description)
 					: item.description,
-				searchAliases: getTranslatedStringArray(msgs, aliasesKey, item.searchAliases),
+				searchAliases: getTranslatedStringArray(msgs, aliasesKey, item.searchAliases)
 			}
 		})
 	})
@@ -108,6 +108,6 @@ export function useNodeLibraryI18n() {
 		categories,
 		topCategories,
 		specialGroups,
-		catalogItems,
+		catalogItems
 	}
 }

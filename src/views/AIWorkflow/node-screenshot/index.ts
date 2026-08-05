@@ -81,8 +81,4 @@ export {
 } from './nodeScreenshotHooks'
 
 // 未预热节点提示
-export {
-	useWarmupPrompt,
-	warmupPromptState,
-	type WarmupPromptState
-} from './warmupPromptManager'
+export { useWarmupPrompt, warmupPromptState, type WarmupPromptState } from './warmupPromptManager'

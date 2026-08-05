@@ -1,7 +1,15 @@
 <template>
-	<div class="chat-context-chip" :class="[`is-${item.type}`, `is-${(item as any).kind || (item as any).thumbKind || ''}`]">
+	<div
+		class="chat-context-chip"
+		:class="[`is-${item.type}`, `is-${(item as any).kind || (item as any).thumbKind || ''}`]"
+	>
 		<template v-if="item.type === 'image'">
-			<img v-if="item.dataUrl || item.url" class="chat-context-chip-thumb" :src="item.dataUrl || item.url" :alt="item.name" />
+			<img
+				v-if="item.dataUrl || item.url"
+				class="chat-context-chip-thumb"
+				:src="item.dataUrl || item.url"
+				:alt="item.name"
+			/>
 			<span v-else class="chat-context-chip-icon">🖼️</span>
 			<span class="chat-context-chip-label">{{ item.name }}</span>
 		</template>
@@ -9,7 +17,13 @@
 		<template v-else-if="item.type === 'file'">
 			<span class="chat-context-chip-icon">{{ getFileIcon(item.name, item.mimeType) }}</span>
 			<span class="chat-context-chip-label">{{ item.name }}</span>
-			<span v-if="item.truncated" class="chat-context-chip-badge" :title="t('aichat.dock.contentTruncated')">…</span>
+			<span
+				v-if="item.truncated"
+				class="chat-context-chip-badge"
+				:title="t('aichat.dock.contentTruncated')"
+			>
+				…
+			</span>
 		</template>
 
 		<template v-else-if="item.type === 'skill'">
@@ -18,19 +32,35 @@
 		</template>
 
 		<template v-else-if="item.type === 'node'">
-			<img v-if="(item.thumbKind === 'image' || item.thumbKind === 'video') && item.previewUrl" class="chat-context-chip-thumb" :src="item.previewUrl" :alt="item.label" />
+			<img
+				v-if="(item.thumbKind === 'image' || item.thumbKind === 'video') && item.previewUrl"
+				class="chat-context-chip-thumb"
+				:src="item.previewUrl"
+				:alt="item.label"
+			/>
 			<span v-else class="chat-context-chip-icon">{{ getNodeKindIcon(item.thumbKind) }}</span>
 			<span class="chat-context-chip-label">{{ item.label }}</span>
 		</template>
 
 		<template v-else-if="item.type === 'nodeOutput'">
-			<img v-if="(item.kind === 'image' || item.kind === 'video') && item.previewUrl" class="chat-context-chip-thumb" :src="item.previewUrl" :alt="item.label" />
+			<img
+				v-if="(item.kind === 'image' || item.kind === 'video') && item.previewUrl"
+				class="chat-context-chip-thumb"
+				:src="item.previewUrl"
+				:alt="item.label"
+			/>
 			<span v-else class="chat-context-chip-icon">{{ getKindIcon(item.kind) }}</span>
 			<span class="chat-context-chip-label">{{ item.label }}</span>
 			<span class="chat-context-chip-type">@</span>
 		</template>
 
-		<button class="chat-context-chip-remove" @click="emit('remove', item.id)" :title="t('aichat.dock.remove')">×</button>
+		<button
+			class="chat-context-chip-remove"
+			@click="emit('remove', item.id)"
+			:title="t('aichat.dock.remove')"
+		>
+			×
+		</button>
 	</div>
 </template>
 
@@ -52,7 +82,8 @@ const getFileIcon = (name: string, mimeType?: string): string => {
 	if (mimeType?.startsWith('image/')) return '🖼️'
 	if (mimeType?.startsWith('video/')) return '🎬'
 	if (mimeType?.startsWith('audio/')) return '🎵'
-	if (['json', 'js', 'ts', 'jsx', 'tsx', 'vue', 'css', 'scss', 'less', 'html', 'xml'].includes(ext)) return '📄'
+	if (['json', 'js', 'ts', 'jsx', 'tsx', 'vue', 'css', 'scss', 'less', 'html', 'xml'].includes(ext))
+		return '📄'
 	if (['md', 'txt'].includes(ext)) return '📝'
 	if (['py', 'java', 'c', 'cpp', 'h', 'go', 'rs', 'sh'].includes(ext)) return '💻'
 	if (['yaml', 'yml'].includes(ext)) return '⚙️'

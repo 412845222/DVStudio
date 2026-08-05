@@ -349,9 +349,7 @@ function formatTime(t: unknown) {
 	if (!Number.isFinite(num) || num <= 0) return '-'
 	const d = new Date(num)
 	if (Number.isNaN(d.getTime())) return '-'
-	return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(
-		d.getDate()
-	)} ${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`
+	return `${d.getFullYear()}-${padTwo(d.getMonth() + 1)}-${padTwo(d.getDate())} ${padTwo(d.getHours())}:${padTwo(d.getMinutes())}`
 }
 
 function normalizeProjectItem(item: unknown): ProjectCardItem {

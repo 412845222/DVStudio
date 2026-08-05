@@ -18,7 +18,10 @@ export function convertRecognitionCuesToSubtitleCues(recogCues: RecognitionCue[]
 		.map((c) => {
 			const startSec = Number(c?.startTime)
 			const endSec = Number(c?.endTime)
-			const startMs = Math.max(0, Math.round((Number.isFinite(startSec) ? startSec : 0) * SECONDS_TO_MS))
+			const startMs = Math.max(
+				0,
+				Math.round((Number.isFinite(startSec) ? startSec : 0) * SECONDS_TO_MS)
+			)
 			let endMs = Math.max(0, Math.round((Number.isFinite(endSec) ? endSec : 0) * SECONDS_TO_MS))
 			if (!(endMs > startMs)) {
 				endMs = startMs + 1

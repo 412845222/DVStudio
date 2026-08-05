@@ -1,14 +1,14 @@
 {
-  "aiConfig.watermark.enabled": "Watermark Enabled",
-  "aiConfig.watermark.text": "Watermark Text",
-  "aiConfig.watermark.opacity": "Opacity",
-  "aiConfig.watermark.position": "Position",
-  "aiConfig.watermark.positionTopLeft": "Top Left",
-  "aiConfig.watermark.positionTopRight": "Top Right",
-  "aiConfig.watermark.positionBottomLeft": "Bottom Left",
-  "aiConfig.watermark.positionBottomRight": "Bottom Right",
-  "aiConfig.watermark.positionCenter": "Center",
-  "aiConfig.watermark.fontSize": "Font Size",
-  "aiConfig.watermark.color": "Color",
-  "aiConfig.watermark.preview": "Watermark Preview"
+	"aiConfig.watermark.enabled": "Watermark Enabled",
+	"aiConfig.watermark.text": "Watermark Text",
+	"aiConfig.watermark.opacity": "Opacity",
+	"aiConfig.watermark.position": "Position",
+	"aiConfig.watermark.positionTopLeft": "Top Left",
+	"aiConfig.watermark.positionTopRight": "Top Right",
+	"aiConfig.watermark.positionBottomLeft": "Bottom Left",
+	"aiConfig.watermark.positionBottomRight": "Bottom Right",
+	"aiConfig.watermark.positionCenter": "Center",
+	"aiConfig.watermark.fontSize": "Font Size",
+	"aiConfig.watermark.color": "Color",
+	"aiConfig.watermark.preview": "Watermark Preview"
 }

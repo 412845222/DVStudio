@@ -35,7 +35,7 @@ import type {
 	WorkshopTemplatesDownloadPayload,
 	WorkshopTemplatesDownloadResult,
 	WorkshopTemplatesProgressResult,
-	WorkshopTemplatesInstallInfoResult,
+	WorkshopTemplatesInstallInfoResult
 } from './types'
 
 import { setBackendBaseUrl } from '../network/backendConfig'
@@ -571,7 +571,9 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
-export async function openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult> {
+export async function openVideoEditor(
+	payload: OpenVideoEditorPayload
+): Promise<OpenVideoEditorResult> {
 	if (!window?.dweb?.window?.openVideoEditor) {
 		return { ok: false, error: 'Not running in Electron.' }
 	}
@@ -583,7 +585,9 @@ export async function openVideoEditor(payload: OpenVideoEditorPayload): Promise<
 	}
 }
 
-export async function openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult> {
+export async function openComfySetup(
+	payload?: OpenComfySetupPayload
+): Promise<OpenComfySetupResult> {
 	if (!window?.dweb?.window?.openComfySetup) {
 		return { ok: false, error: 'Not running in Electron.' }
 	}
@@ -613,7 +617,9 @@ export async function getCloudTemplatesQuota(): Promise<CloudTemplatesQuotaResul
 	}
 }
 
-export async function listCloudTemplates(options: { forceRefresh?: boolean } = {}): Promise<CloudTemplatesListResult | null> {
+export async function listCloudTemplates(
+	options: { forceRefresh?: boolean } = {}
+): Promise<CloudTemplatesListResult | null> {
 	if (!window?.dweb?.cloudTemplates?.list) return null
 	try {
 		return await window.dweb.cloudTemplates.list(options)
@@ -664,7 +670,9 @@ export async function getWorkshopTemplatesPlatform(): Promise<WorkshopTemplatesP
 	}
 }
 
-export async function queryWorkshopTemplates(options: { tag?: string; limit?: number; offset?: number } = {}): Promise<WorkshopTemplatesQueryResult | null> {
+export async function queryWorkshopTemplates(
+	options: { tag?: string; limit?: number; offset?: number } = {}
+): Promise<WorkshopTemplatesQueryResult | null> {
 	if (!window?.dweb?.workshopTemplates?.query) return null
 	try {
 		return await window.dweb.workshopTemplates.query(options)
@@ -684,9 +692,9 @@ export async function downloadWorkshopTemplate(
 	}
 }
 
-export async function getWorkshopTemplatesDownloadProgress(
-	payload: { publishedFileId: string }
-): Promise<WorkshopTemplatesProgressResult | null> {
+export async function getWorkshopTemplatesDownloadProgress(payload: {
+	publishedFileId: string
+}): Promise<WorkshopTemplatesProgressResult | null> {
 	if (!window?.dweb?.workshopTemplates?.progress) return null
 	try {
 		return await window.dweb.workshopTemplates.progress(payload)
@@ -695,9 +703,9 @@ export async function getWorkshopTemplatesDownloadProgress(
 	}
 }
 
-export async function getWorkshopTemplatesInstallInfo(
-	payload: { publishedFileId: string }
-): Promise<WorkshopTemplatesInstallInfoResult | null> {
+export async function getWorkshopTemplatesInstallInfo(payload: {
+	publishedFileId: string
+}): Promise<WorkshopTemplatesInstallInfoResult | null> {
 	if (!window?.dweb?.workshopTemplates?.installInfo) return null
 	try {
 		return await window.dweb.workshopTemplates.installInfo(payload)

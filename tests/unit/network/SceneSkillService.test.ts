@@ -36,9 +36,12 @@ describe('SceneSkillService', () => {
 				ok: true,
 				json: vi.fn().mockResolvedValue({
 					ok: true,
-					models: [{ id: 'model-1', label: 'Model 1' }, { id: 'model-2', label: 'Model 2' }],
+					models: [
+						{ id: 'model-1', label: 'Model 1' },
+						{ id: 'model-2', label: 'Model 2' }
+					],
 					defaultModel: 'model-1'
-				}),
+				})
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -58,7 +61,7 @@ describe('SceneSkillService', () => {
 			const mockResponse = {
 				ok: false,
 				status: 500,
-				text: vi.fn().mockResolvedValue('Server Error'),
+				text: vi.fn().mockResolvedValue('Server Error')
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -79,7 +82,7 @@ describe('SceneSkillService', () => {
 					model: 'test-model',
 					outputJson: '{"test": "result"}',
 					summary: 'Test summary'
-				}),
+				})
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -103,7 +106,7 @@ describe('SceneSkillService', () => {
 			const mockResponse = {
 				ok: false,
 				status: 400,
-				text: vi.fn().mockResolvedValue('Bad Request'),
+				text: vi.fn().mockResolvedValue('Bad Request')
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -126,7 +129,7 @@ describe('SceneSkillService', () => {
 					ok: true,
 					models: [{ id: 'lighting-1', label: 'Lighting Model 1' }],
 					defaultModel: 'lighting-1'
-				}),
+				})
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -150,7 +153,7 @@ describe('SceneSkillService', () => {
 					model: 'lighting-model',
 					outputJson: '{"lighting": "result"}',
 					summary: 'Lighting summary'
-				}),
+				})
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -177,9 +180,15 @@ describe('SceneSkillService', () => {
 				ok: true,
 				json: vi.fn().mockResolvedValue({
 					ok: true,
-					layoutItems: [{ id: 'item-1', position: { x: 0, y: 0, z: 0 }, size: { width: 1, height: 1, depth: 1 } }],
+					layoutItems: [
+						{
+							id: 'item-1',
+							position: { x: 0, y: 0, z: 0 },
+							size: { width: 1, height: 1, depth: 1 }
+						}
+					],
 					message: 'Layout generated'
-				}),
+				})
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 
@@ -200,7 +209,7 @@ describe('SceneSkillService', () => {
 			const mockResponse = {
 				ok: false,
 				status: 500,
-				text: vi.fn().mockResolvedValue('Server Error'),
+				text: vi.fn().mockResolvedValue('Server Error')
 			}
 			mockFetch.mockResolvedValue(mockResponse)
 

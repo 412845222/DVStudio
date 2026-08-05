@@ -14,7 +14,7 @@ export class MockUgcAdapter extends UgcAdapter {
 				updatedAt: Date.now(),
 				previewUrl: null,
 				author: 'DVStudio Team',
-				isOfficial: true,
+				isOfficial: true
 			},
 			{
 				publishedFileId: 'mock-official-2',
@@ -26,7 +26,7 @@ export class MockUgcAdapter extends UgcAdapter {
 				updatedAt: Date.now() - 86400000 * 2,
 				previewUrl: null,
 				author: 'DVStudio Team',
-				isOfficial: true,
+				isOfficial: true
 			},
 			{
 				publishedFileId: 'mock-official-3',
@@ -38,7 +38,7 @@ export class MockUgcAdapter extends UgcAdapter {
 				updatedAt: Date.now() - 86400000,
 				previewUrl: null,
 				author: 'DVStudio Team',
-				isOfficial: true,
+				isOfficial: true
 			},
 			{
 				publishedFileId: 'mock-official-4',
@@ -50,33 +50,39 @@ export class MockUgcAdapter extends UgcAdapter {
 				updatedAt: Date.now() - 86400000 * 1,
 				previewUrl: null,
 				author: 'DVStudio Team',
-				isOfficial: true,
-			},
+				isOfficial: true
+			}
 		]
 	}
 
-	getPlatformId() { return 'mock' }
+	getPlatformId() {
+		return 'mock'
+	}
 
-	getPlatformName() { return 'Mock Workshop' }
+	getPlatformName() {
+		return 'Mock Workshop'
+	}
 
-	isAvailable() { return true }
+	isAvailable() {
+		return true
+	}
 
 	async queryAll(options = {}) {
 		const { tag } = options
 		let items = this._templates
 		if (tag && tag !== 'official') {
-			items = this._templates.filter(t => t.tags?.includes(tag))
+			items = this._templates.filter((t) => t.tags?.includes(tag))
 		}
 		return {
 			ok: true,
 			items,
-			totalResults: items.length,
+			totalResults: items.length
 		}
 	}
 
 	async downloadItem(publishedFileId) {
-		await new Promise(r => setTimeout(r, 1500))
-		const template = this._templates.find(t => t.publishedFileId === publishedFileId)
+		await new Promise((r) => setTimeout(r, 1500))
+		const template = this._templates.find((t) => t.publishedFileId === publishedFileId)
 		if (!template) {
 			return { ok: false, errMsg: 'Template not found' }
 		}
@@ -85,17 +91,20 @@ export class MockUgcAdapter extends UgcAdapter {
 			description: template.description,
 			category: 'other',
 			author: template.author,
-			tags: template.tags,
+			tags: template.tags
 		}
 		const mockZipContent = `{"template":"${template.title}","publishedFileId":"${publishedFileId}"}`
 		const zipBuffer = Buffer.from(mockZipContent, 'utf8')
-		const coverBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+		const coverBuffer = Buffer.from(
+			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+			'base64'
+		)
 		return {
 			ok: true,
 			publishedFileId,
 			metadata: mockMetadata,
 			zipBuffer,
-			coverBuffer,
+			coverBuffer
 		}
 	}
 

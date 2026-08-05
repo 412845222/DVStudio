@@ -49,7 +49,7 @@ function rowToVideoTask(row) {
 		updatedAt: isoToMs(row.updated_at),
 		refImageUrls: parseOptionalJson(row.ref_image_urls),
 		refVideoUrls: parseOptionalJson(row.ref_video_urls),
-		refAudioUrls: parseOptionalJson(row.ref_audio_urls),
+		refAudioUrls: parseOptionalJson(row.ref_audio_urls)
 	}
 }
 
@@ -158,7 +158,7 @@ export function createVideoTasksRepo() {
 			remoteUpdatedAt: toNullableInt(raw.remoteUpdatedAt || raw.remote_updated_at),
 			refImageUrls: toJsonArray(raw.refImageUrls || raw.ref_image_urls),
 			refVideoUrls: toJsonArray(raw.refVideoUrls || raw.ref_video_urls),
-			refAudioUrls: toJsonArray(raw.refAudioUrls || raw.ref_audio_urls),
+			refAudioUrls: toJsonArray(raw.refAudioUrls || raw.ref_audio_urls)
 		}
 	}
 
@@ -199,31 +199,90 @@ export function createVideoTasksRepo() {
 				resolution: raw.resolution !== undefined ? raw.resolution : existing.resolution,
 				duration: raw.duration !== undefined ? raw.duration : existing.duration,
 				seed: raw.seed !== undefined ? raw.seed : existing.seed,
-				generateAudio: raw.generateAudio !== undefined ? raw.generateAudio : Boolean(existing.generate_audio),
+				generateAudio:
+					raw.generateAudio !== undefined ? raw.generateAudio : Boolean(existing.generate_audio),
 				watermark: raw.watermark !== undefined ? raw.watermark : Boolean(existing.watermark),
-				cameraFixed: raw.cameraFixed !== undefined ? raw.cameraFixed : Boolean(existing.camera_fixed),
+				cameraFixed:
+					raw.cameraFixed !== undefined ? raw.cameraFixed : Boolean(existing.camera_fixed),
 				serviceTier: raw.serviceTier !== undefined ? raw.serviceTier : existing.service_tier,
 				tools: raw.tools !== undefined ? raw.tools : parseOptionalJson(existing.tools),
 				usage: raw.usage !== undefined ? raw.usage : parseOptionalJson(existing.usage),
-				requestPayload: raw.requestPayload !== undefined ? raw.requestPayload : (raw.request_payload !== undefined ? raw.request_payload : parseOptionalJson(existing.request_payload)),
-				responsePayload: raw.responsePayload !== undefined ? raw.responsePayload : (raw.response_payload !== undefined ? raw.response_payload : parseOptionalJson(existing.response_payload)),
-				videoUrlRemote: raw.videoUrlRemote !== undefined ? raw.videoUrlRemote : existing.video_url_remote,
-				videoUrlLocal: raw.videoUrlLocal !== undefined ? raw.videoUrlLocal : existing.video_url_local,
-				videoSourcePathLocal: raw.videoSourcePathLocal !== undefined ? raw.videoSourcePathLocal : existing.video_source_path_local,
-				lastFrameUrlRemote: raw.lastFrameUrlRemote !== undefined ? raw.lastFrameUrlRemote : existing.last_frame_url_remote,
-				lastFrameUrlLocal: raw.lastFrameUrlLocal !== undefined ? raw.lastFrameUrlLocal : existing.last_frame_url_local,
-				lastFrameSourcePathLocal: raw.lastFrameSourcePathLocal !== undefined ? raw.lastFrameSourcePathLocal : existing.last_frame_source_path_local,
-				downloadStatus: raw.downloadStatus !== undefined ? raw.downloadStatus : existing.download_status,
-				downloadProgress: raw.downloadProgress !== undefined ? raw.downloadProgress : existing.download_progress,
-				downloadError: raw.downloadError !== undefined ? raw.downloadError : existing.download_error,
+				requestPayload:
+					raw.requestPayload !== undefined
+						? raw.requestPayload
+						: raw.request_payload !== undefined
+							? raw.request_payload
+							: parseOptionalJson(existing.request_payload),
+				responsePayload:
+					raw.responsePayload !== undefined
+						? raw.responsePayload
+						: raw.response_payload !== undefined
+							? raw.response_payload
+							: parseOptionalJson(existing.response_payload),
+				videoUrlRemote:
+					raw.videoUrlRemote !== undefined ? raw.videoUrlRemote : existing.video_url_remote,
+				videoUrlLocal:
+					raw.videoUrlLocal !== undefined ? raw.videoUrlLocal : existing.video_url_local,
+				videoSourcePathLocal:
+					raw.videoSourcePathLocal !== undefined
+						? raw.videoSourcePathLocal
+						: existing.video_source_path_local,
+				lastFrameUrlRemote:
+					raw.lastFrameUrlRemote !== undefined
+						? raw.lastFrameUrlRemote
+						: existing.last_frame_url_remote,
+				lastFrameUrlLocal:
+					raw.lastFrameUrlLocal !== undefined
+						? raw.lastFrameUrlLocal
+						: existing.last_frame_url_local,
+				lastFrameSourcePathLocal:
+					raw.lastFrameSourcePathLocal !== undefined
+						? raw.lastFrameSourcePathLocal
+						: existing.last_frame_source_path_local,
+				downloadStatus:
+					raw.downloadStatus !== undefined ? raw.downloadStatus : existing.download_status,
+				downloadProgress:
+					raw.downloadProgress !== undefined ? raw.downloadProgress : existing.download_progress,
+				downloadError:
+					raw.downloadError !== undefined ? raw.downloadError : existing.download_error,
 				errorMessage: raw.errorMessage !== undefined ? raw.errorMessage : existing.error_message,
 				statusText: raw.statusText !== undefined ? raw.statusText : existing.status_text,
-				projectId: raw.projectId !== undefined ? raw.projectId : (existing.project_id ? Number(existing.project_id) : null),
-				remoteCreatedAt: raw.remoteCreatedAt !== undefined ? raw.remoteCreatedAt : (existing.remote_created_at ? Number(existing.remote_created_at) : null),
-				remoteUpdatedAt: raw.remoteUpdatedAt !== undefined ? raw.remoteUpdatedAt : (existing.remote_updated_at ? Number(existing.remote_updated_at) : null),
-				refImageUrls: raw.refImageUrls !== undefined ? raw.refImageUrls : (raw.ref_image_urls !== undefined ? raw.ref_image_urls : parseOptionalJson(existing.ref_image_urls)),
-				refVideoUrls: raw.refVideoUrls !== undefined ? raw.refVideoUrls : (raw.ref_video_urls !== undefined ? raw.ref_video_urls : parseOptionalJson(existing.ref_video_urls)),
-				refAudioUrls: raw.refAudioUrls !== undefined ? raw.refAudioUrls : (raw.ref_audio_urls !== undefined ? raw.ref_audio_urls : parseOptionalJson(existing.ref_audio_urls)),
+				projectId:
+					raw.projectId !== undefined
+						? raw.projectId
+						: existing.project_id
+							? Number(existing.project_id)
+							: null,
+				remoteCreatedAt:
+					raw.remoteCreatedAt !== undefined
+						? raw.remoteCreatedAt
+						: existing.remote_created_at
+							? Number(existing.remote_created_at)
+							: null,
+				remoteUpdatedAt:
+					raw.remoteUpdatedAt !== undefined
+						? raw.remoteUpdatedAt
+						: existing.remote_updated_at
+							? Number(existing.remote_updated_at)
+							: null,
+				refImageUrls:
+					raw.refImageUrls !== undefined
+						? raw.refImageUrls
+						: raw.ref_image_urls !== undefined
+							? raw.ref_image_urls
+							: parseOptionalJson(existing.ref_image_urls),
+				refVideoUrls:
+					raw.refVideoUrls !== undefined
+						? raw.refVideoUrls
+						: raw.ref_video_urls !== undefined
+							? raw.ref_video_urls
+							: parseOptionalJson(existing.ref_video_urls),
+				refAudioUrls:
+					raw.refAudioUrls !== undefined
+						? raw.refAudioUrls
+						: raw.ref_audio_urls !== undefined
+							? raw.ref_audio_urls
+							: parseOptionalJson(existing.ref_audio_urls)
 			}
 			params = normalize(merged)
 			updateStmt.run(params)

@@ -163,9 +163,7 @@ describe('nodeLibrary', () => {
 		})
 
 		it('3D相关节点应该有1个', () => {
-			const model3dNodes = NEWUI2_NODE_CATALOG.filter((n) =>
-				['model3d'].includes(n.nodeType)
-			)
+			const model3dNodes = NEWUI2_NODE_CATALOG.filter((n) => ['model3d'].includes(n.nodeType))
 			expect(model3dNodes).toHaveLength(1)
 		})
 

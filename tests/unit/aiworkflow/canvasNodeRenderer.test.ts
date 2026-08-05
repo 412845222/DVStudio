@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { CanvasNodeRenderer } from '@/views/AIWorkflow/node-screenshot/canvasNodeRenderer'
-import type { VisibleNodeEntry, ScreenshotPoolProvider } from '@/views/AIWorkflow/node-screenshot/canvasNodeRenderer'
+import type {
+	VisibleNodeEntry,
+	ScreenshotPoolProvider
+} from '@/views/AIWorkflow/node-screenshot/canvasNodeRenderer'
 
 const createMockCtx = () => ({
 	clearRect: vi.fn(),
@@ -48,14 +51,22 @@ const createMockCanvas = (ctx: ReturnType<typeof createMockCtx>) => {
 	return canvas
 }
 
-const createMockPoolProvider = (entries: Map<string, { bitmap: any; width: number; height: number }> = new Map()): ScreenshotPoolProvider => {
+const createMockPoolProvider = (
+	entries: Map<string, { bitmap: any; width: number; height: number }> = new Map()
+): ScreenshotPoolProvider => {
 	return () => ({
 		getEntry: (nodeId: string, _theme?: 'dark' | 'light') => entries.get(nodeId) || null,
 		setActiveTheme: () => {}
 	})
 }
 
-const createMockNode = (id: string, worldX: number, worldY: number, width = 200, height = 160): VisibleNodeEntry => ({
+const createMockNode = (
+	id: string,
+	worldX: number,
+	worldY: number,
+	width = 200,
+	height = 160
+): VisibleNodeEntry => ({
 	id,
 	worldX,
 	worldY,
@@ -214,10 +225,7 @@ describe('CanvasNodeRenderer', () => {
 
 			renderer.setLowQualityMode(false)
 			renderer.setViewport({ panX: 0, panY: 0, zoom: 1 })
-			renderer.setNodes([
-				createMockNode('visible', 0, 0),
-				createMockNode('outside', 5000, 5000)
-			])
+			renderer.setNodes([createMockNode('visible', 0, 0), createMockNode('outside', 5000, 5000)])
 
 			const beforeCount = ctx.drawImage.mock.calls.length
 

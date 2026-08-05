@@ -9,7 +9,7 @@ export async function getPlatform() {
 		return {
 			ok: true,
 			platformId,
-			platformName,
+			platformName
 		}
 	} catch (err) {
 		console.error('[cloud-templates] getPlatform error:', err.message)
@@ -34,7 +34,10 @@ export async function listTemplates(_ctx, options = {}) {
 		const service = getCloudTemplatesService()
 		console.log('[cloud-templates] listTemplates called with options:', options)
 		const result = await service.listTemplates(options)
-		console.log('[cloud-templates] listTemplates:', result.ok ? `${result.items?.length || 0} items` : result.errMsg)
+		console.log(
+			'[cloud-templates] listTemplates:',
+			result.ok ? `${result.items?.length || 0} items` : result.errMsg
+		)
 		return result
 	} catch (err) {
 		console.error('[cloud-templates] listTemplates error:', err.message)
@@ -71,13 +74,18 @@ export async function uploadTemplate(_ctx, data) {
 			}
 		}
 
-		console.log('[cloud-templates] uploadTemplate start:', { id: data.id, name: data.name, zipSize: zipBuffer.length, hasCover: !!coverBuffer })
+		console.log('[cloud-templates] uploadTemplate start:', {
+			id: data.id,
+			name: data.name,
+			zipSize: zipBuffer.length,
+			hasCover: !!coverBuffer
+		})
 		const result = await service.uploadTemplate({
 			...data,
 			tags: Array.isArray(data.tags) ? [...data.tags] : [],
 			nodeCount: data.nodeCount || 0,
 			zipBuffer,
-			coverBuffer,
+			coverBuffer
 		})
 		console.log('[cloud-templates] uploadTemplate result:', result.ok ? 'success' : result.errMsg)
 		return result
@@ -100,7 +108,10 @@ export async function downloadTemplate(_ctx, data) {
 		const zipBuffer = result.zipBuffer
 		const coverBuffer = result.coverBuffer
 
-		console.log('[cloud-templates] downloadTemplate success:', { id: data.id, zipSize: zipBuffer.length })
+		console.log('[cloud-templates] downloadTemplate success:', {
+			id: data.id,
+			zipSize: zipBuffer.length
+		})
 		return {
 			ok: true,
 			meta: result.meta,
@@ -108,10 +119,12 @@ export async function downloadTemplate(_ctx, data) {
 				zipBuffer.byteOffset,
 				zipBuffer.byteOffset + zipBuffer.byteLength
 			),
-			coverData: coverBuffer ? coverBuffer.buffer.slice(
-				coverBuffer.byteOffset,
-				coverBuffer.byteOffset + coverBuffer.byteLength
-			) : null,
+			coverData: coverBuffer
+				? coverBuffer.buffer.slice(
+						coverBuffer.byteOffset,
+						coverBuffer.byteOffset + coverBuffer.byteLength
+					)
+				: null
 		}
 	} catch (err) {
 		console.error('[cloud-templates] downloadTemplate error:', err.message)

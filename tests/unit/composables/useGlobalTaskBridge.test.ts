@@ -5,7 +5,7 @@ import {
 	getLabelForCategory,
 	safeStr,
 	getErrorMessage,
-	TERMINAL_TASK_STATUSES,
+	TERMINAL_TASK_STATUSES
 } from '../../../src/composables/useGlobalTaskBridge'
 
 describe('useGlobalTaskBridge pure functions', () => {

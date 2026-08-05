@@ -6,4 +6,4 @@ export const DVSAgentType = {
 	GENERAL: 'general'
 } as const
 
-export type DVSAgentTypeValue = typeof DVSAgentType[keyof typeof DVSAgentType]
+export type DVSAgentTypeValue = (typeof DVSAgentType)[keyof typeof DVSAgentType]

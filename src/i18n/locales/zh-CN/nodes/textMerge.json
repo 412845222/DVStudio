@@ -1,12 +1,12 @@
 {
-  "nodes.textMerge.mergedLabel": "整合后的文本（只读）",
-  "nodes.textMerge.placeholder": "连接下方的文本输入后，这里会显示拼接结果…",
-  "nodes.textMerge.title": "文本拼接",
-  "nodes.textMerge.add": "添加",
-  "nodes.textMerge.itemLabel": "拼接 {index}",
-  "nodes.textMerge.moveUp": "上移",
-  "nodes.textMerge.moveDown": "下移",
-  "nodes.textMerge.delete": "删除",
-  "nodes.textMerge.entryAnchors": "入口锚点",
-  "nodes.textMerge.exit": "出口"
+	"nodes.textMerge.mergedLabel": "整合后的文本（只读）",
+	"nodes.textMerge.placeholder": "连接下方的文本输入后，这里会显示拼接结果…",
+	"nodes.textMerge.title": "文本拼接",
+	"nodes.textMerge.add": "添加",
+	"nodes.textMerge.itemLabel": "拼接 {index}",
+	"nodes.textMerge.moveUp": "上移",
+	"nodes.textMerge.moveDown": "下移",
+	"nodes.textMerge.delete": "删除",
+	"nodes.textMerge.entryAnchors": "入口锚点",
+	"nodes.textMerge.exit": "出口"
 }

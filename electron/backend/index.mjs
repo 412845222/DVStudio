@@ -33,110 +33,110 @@ import { registerBuiltinTools } from './modules/mcp/builtinTools.mjs'
 import { initMCPModule } from './modules/mcp/routes.mjs'
 
 function restoreProjectRoots() {
-  try {
-    const repos = getRepos()
-    const projectsRepo = repos?.projects
-    if (!projectsRepo || typeof projectsRepo.list !== 'function') {
-      logger.warn('Cannot restore project roots: projects repo not available')
-      return 0
-    }
-    const projects = projectsRepo.list()
-    let restored = 0
-    for (const project of projects) {
-      const id = project?.id
-      const rootPath = project?.rootPath
-      if (id && rootPath && typeof rootPath === 'string' && rootPath.trim()) {
-        try {
-          const result = setProjectRoot(id, rootPath.trim())
-          if (result?.ok) restored++
-        } catch (err) {
-          logger.debug(`Failed to restore root for project ${id}: ${String(err?.message || err)}`)
-        }
-      }
-    }
-    if (restored > 0) {
-      logger.info(`Restored project root registrations for ${restored} folder-backed projects`)
-    }
-    return restored
-  } catch (err) {
-    logger.warn(`Failed to restore project roots: ${String(err?.message || err)}`)
-    return 0
-  }
+	try {
+		const repos = getRepos()
+		const projectsRepo = repos?.projects
+		if (!projectsRepo || typeof projectsRepo.list !== 'function') {
+			logger.warn('Cannot restore project roots: projects repo not available')
+			return 0
+		}
+		const projects = projectsRepo.list()
+		let restored = 0
+		for (const project of projects) {
+			const id = project?.id
+			const rootPath = project?.rootPath
+			if (id && rootPath && typeof rootPath === 'string' && rootPath.trim()) {
+				try {
+					const result = setProjectRoot(id, rootPath.trim())
+					if (result?.ok) restored++
+				} catch (err) {
+					logger.debug(`Failed to restore root for project ${id}: ${String(err?.message || err)}`)
+				}
+			}
+		}
+		if (restored > 0) {
+			logger.info(`Restored project root registrations for ${restored} folder-backed projects`)
+		}
+		return restored
+	} catch (err) {
+		logger.warn(`Failed to restore project roots: ${String(err?.message || err)}`)
+		return 0
+	}
 }
 
 let _router = null
 
 export function initBackend(mainWindow, deps = {}) {
-  if (_router) {
-    logger.warn('Backend already initialized, skipping')
-    return _router
-  }
+	if (_router) {
+		logger.warn('Backend already initialized, skipping')
+		return _router
+	}
 
-  logger.info('Initializing new backend...')
+	logger.info('Initializing new backend...')
 
-  const allRoutes = [
-    ...systemRoutes,
-    ...projectsRoutes,
-    ...projectAssetsRoutes,
-    ...meshyRoutes,
-    ...tripo3dRoutes,
-    ...seedanceRoutes,
-    ...arkRoutes,
-    ...geminiRoutes,
-    ...editorRoutes,
-    ...chatRoutes,
-    ...exportRoutes,
-    ...comfyuiRoutes,
-    ...thirdPartyRoutes,
-    ...agentSkillsRoutes,
-    ...mcpRoutes,
-    ...agentRoutes,
-    ...cliAdapterRoutes,
-    ...subtitleRoutes,
-    ...subtitleRecognitionRoutes,
-    ...cloudTemplatesRoutes,
-    ...workshopTemplatesRoutes,
-    ...blenderRoutes,
-    ...cloudfsRoutes,
-    ...taskQueueRoutes,
-  ]
+	const allRoutes = [
+		...systemRoutes,
+		...projectsRoutes,
+		...projectAssetsRoutes,
+		...meshyRoutes,
+		...tripo3dRoutes,
+		...seedanceRoutes,
+		...arkRoutes,
+		...geminiRoutes,
+		...editorRoutes,
+		...chatRoutes,
+		...exportRoutes,
+		...comfyuiRoutes,
+		...thirdPartyRoutes,
+		...agentSkillsRoutes,
+		...mcpRoutes,
+		...agentRoutes,
+		...cliAdapterRoutes,
+		...subtitleRoutes,
+		...subtitleRecognitionRoutes,
+		...cloudTemplatesRoutes,
+		...workshopTemplatesRoutes,
+		...blenderRoutes,
+		...cloudfsRoutes,
+		...taskQueueRoutes
+	]
 
-  _router = createRouter({
-    routes: allRoutes,
-    contextFactory: () => createContext(mainWindow, deps),
-    mainWindow,
-  })
+	_router = createRouter({
+		routes: allRoutes,
+		contextFactory: () => createContext(mainWindow, deps),
+		mainWindow
+	})
 
-  _router.register()
+	_router.register()
 
-  restoreProjectRoots()
+	restoreProjectRoots()
 
-  registerBuiltinTools()
-  initMCPModule()
+	registerBuiltinTools()
+	initMCPModule()
 
-  initTaskQueue(mainWindow)
+	initTaskQueue(mainWindow)
 
-  startUnrealHttpServer().then(result => {
-    if (result.ok) {
-      logger.info(`Unreal HTTP server listening on port ${result.port}`)
-    } else {
-      logger.warn(`Failed to start Unreal HTTP server: ${result.error}`)
-    }
-  })
+	startUnrealHttpServer().then((result) => {
+		if (result.ok) {
+			logger.info(`Unreal HTTP server listening on port ${result.port}`)
+		} else {
+			logger.warn(`Failed to start Unreal HTTP server: ${result.error}`)
+		}
+	})
 
-  logger.info(`New backend initialized with ${allRoutes.length} routes`)
-  return _router
+	logger.info(`New backend initialized with ${allRoutes.length} routes`)
+	return _router
 }
 
 export function getBackendRouter() {
-  return _router
+	return _router
 }
 
 export function shutdownBackend() {
-  if (_router) {
-    _router.unregister()
-    _router = null
-    stopUnrealHttpServer()
-    logger.info('Backend shut down')
-  }
+	if (_router) {
+		_router.unregister()
+		_router = null
+		stopUnrealHttpServer()
+		logger.info('Backend shut down')
+	}
 }

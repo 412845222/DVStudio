@@ -157,28 +157,48 @@ export function createGeminiTasksRepo() {
 		const existing = getByTaskIdStmt.get(params.taskId)
 		if (existing) {
 			const existingParams = existingRowToParams(existing)
-			const hasKey = (camel, snake) => (camel in raw) || (snake in raw)
+			const hasKey = (camel, snake) => camel in raw || snake in raw
 			const merged = {
 				taskId: params.taskId,
 				model: hasKey('model', 'model') ? params.model : existingParams.model,
-				modelLabel: hasKey('modelLabel', 'model_label') ? params.modelLabel : existingParams.modelLabel,
+				modelLabel: hasKey('modelLabel', 'model_label')
+					? params.modelLabel
+					: existingParams.modelLabel,
 				status: hasKey('status', 'status') ? params.status : existingParams.status,
 				progress: hasKey('progress', 'progress') ? params.progress : existingParams.progress,
 				prompt: hasKey('prompt', 'prompt') ? params.prompt : existingParams.prompt,
-				negativePrompt: hasKey('negativePrompt', 'negative_prompt') ? params.negativePrompt : existingParams.negativePrompt,
-				aspectRatio: hasKey('aspectRatio', 'aspect_ratio') ? params.aspectRatio : existingParams.aspectRatio,
+				negativePrompt: hasKey('negativePrompt', 'negative_prompt')
+					? params.negativePrompt
+					: existingParams.negativePrompt,
+				aspectRatio: hasKey('aspectRatio', 'aspect_ratio')
+					? params.aspectRatio
+					: existingParams.aspectRatio,
 				numImages: hasKey('numImages', 'num_images') ? params.numImages : existingParams.numImages,
-				resultImages: hasKey('resultImages', 'result_images') ? params.resultImages : existingParams.resultImages,
-				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url') ? params.thumbnailUrl : existingParams.thumbnailUrl,
-				errorMessage: hasKey('errorMessage', 'error_message') ? params.errorMessage : existingParams.errorMessage,
+				resultImages: hasKey('resultImages', 'result_images')
+					? params.resultImages
+					: existingParams.resultImages,
+				thumbnailUrl: hasKey('thumbnailUrl', 'thumbnail_url')
+					? params.thumbnailUrl
+					: existingParams.thumbnailUrl,
+				errorMessage: hasKey('errorMessage', 'error_message')
+					? params.errorMessage
+					: existingParams.errorMessage,
 				errorCode: hasKey('errorCode', 'error_code') ? params.errorCode : existingParams.errorCode,
-				statusText: hasKey('statusText', 'status_text') ? params.statusText : existingParams.statusText,
-				requestPayload: hasKey('requestPayload', 'request_payload') ? params.requestPayload : existingParams.requestPayload,
-				responsePayload: hasKey('responsePayload', 'response_payload') ? params.responsePayload : existingParams.responsePayload,
+				statusText: hasKey('statusText', 'status_text')
+					? params.statusText
+					: existingParams.statusText,
+				requestPayload: hasKey('requestPayload', 'request_payload')
+					? params.requestPayload
+					: existingParams.requestPayload,
+				responsePayload: hasKey('responsePayload', 'response_payload')
+					? params.responsePayload
+					: existingParams.responsePayload,
 				projectId: hasKey('projectId', 'project_id') ? params.projectId : existingParams.projectId,
 				nodeId: hasKey('nodeId', 'node_id') ? params.nodeId : existingParams.nodeId,
 				startedAt: hasKey('startedAt', 'started_at') ? params.startedAt : existingParams.startedAt,
-				completedAt: hasKey('completedAt', 'completed_at') ? params.completedAt : existingParams.completedAt
+				completedAt: hasKey('completedAt', 'completed_at')
+					? params.completedAt
+					: existingParams.completedAt
 			}
 			updateStmt.run(merged)
 		} else {

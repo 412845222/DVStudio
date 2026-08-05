@@ -6,9 +6,21 @@ import { resolveBackendUrl } from '../../../../network/backendConfig'
 import { getErrorMessage } from '../../../../types/utils'
 
 const mapVideoTaskItem = (item: SeedanceTaskMirrorItem): VideoTaskPanelItem => {
-	const refImageUrls = Array.isArray(item.refImageUrls) ? item.refImageUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
-	const refVideoUrls = Array.isArray(item.refVideoUrls) ? item.refVideoUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
-	const refAudioUrls = Array.isArray(item.refAudioUrls) ? item.refAudioUrls.map((u: string) => resolveBackendUrl(String(u || '').trim())).filter(Boolean) : undefined
+	const refImageUrls = Array.isArray(item.refImageUrls)
+		? item.refImageUrls
+				.map((u: string) => resolveBackendUrl(String(u || '').trim()))
+				.filter(Boolean)
+		: undefined
+	const refVideoUrls = Array.isArray(item.refVideoUrls)
+		? item.refVideoUrls
+				.map((u: string) => resolveBackendUrl(String(u || '').trim()))
+				.filter(Boolean)
+		: undefined
+	const refAudioUrls = Array.isArray(item.refAudioUrls)
+		? item.refAudioUrls
+				.map((u: string) => resolveBackendUrl(String(u || '').trim()))
+				.filter(Boolean)
+		: undefined
 	return {
 		taskId: String(item.taskId || '').trim(),
 		model: String(item.model || '').trim(),
@@ -46,7 +58,11 @@ type SeedanceSyncResult = { ok: boolean; error?: string; item?: SeedanceTaskMirr
 
 export const useAIWorkflowVideoTaskPanelController = (options: {
 	comfyService: {
-		seedanceTasks: (query?: { status?: string; model?: string; limit?: number }) => Promise<SeedanceTaskListResult>
+		seedanceTasks: (query?: {
+			status?: string
+			model?: string
+			limit?: number
+		}) => Promise<SeedanceTaskListResult>
 		seedanceTaskDetail: (taskId: string) => Promise<SeedanceTaskDetailResult>
 		seedanceSyncTasks: (payload?: {
 			taskId?: string
@@ -95,22 +111,33 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			})
 			if (!res.ok || !res.item) {
 				if (!opts?.silent)
-					options.pushToast(t('aiworkflow.runtime.videoTaskLocalSaveFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('aiworkflow.runtime.videoTaskLocalSaveFailed', {
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				return item
 			}
 			const nextItem = mapVideoTaskItem(res.item as SeedanceTaskMirrorItem)
 			patchTaskItem(nextItem)
 			return nextItem
 		} catch (err: unknown) {
-			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskLocalSaveFailed', { error: getErrorMessage(err) }), 'warn')
+			if (!opts?.silent)
+				options.pushToast(
+					t('aiworkflow.runtime.videoTaskLocalSaveFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 			return item
 		}
 	}
 
 	const videoTaskPanelStatusText = computed(() => {
-		if (videoTaskLoading.value && !videoTaskLoaded.value) return t('aiworkflow.runtime.videoTaskLoadingLocal')
+		if (videoTaskLoading.value && !videoTaskLoaded.value)
+			return t('aiworkflow.runtime.videoTaskLoadingLocal')
 		if (videoTaskSyncing.value) return t('aiworkflow.runtime.videoTaskSyncingRemote')
-		if (videoTaskFallbackReason.value) return t('aiworkflow.runtime.videoTaskLoadFailed', { reason: videoTaskFallbackReason.value })
+		if (videoTaskFallbackReason.value)
+			return t('aiworkflow.runtime.videoTaskLoadFailed', { reason: videoTaskFallbackReason.value })
 		return t('aiworkflow.runtime.videoTaskLocalMirrorHint')
 	})
 
@@ -122,7 +149,12 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			if (!res.ok) {
 				videoTaskFallbackReason.value = String(res.error || 'unknown')
 				if (!opts?.silent)
-					options.pushToast(t('aiworkflow.runtime.videoTaskListLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('aiworkflow.runtime.videoTaskListLoadFailed', {
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				return
 			}
 			videoTaskItems.value = Array.isArray(res.items)
@@ -135,7 +167,11 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			}
 		} catch (err: unknown) {
 			videoTaskFallbackReason.value = getErrorMessage(err)
-			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskListLoadFailed', { error: getErrorMessage(err) }), 'warn')
+			if (!opts?.silent)
+				options.pushToast(
+					t('aiworkflow.runtime.videoTaskListLoadFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 		} finally {
 			videoTaskLoading.value = false
 		}
@@ -150,14 +186,23 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			const res = await options.comfyService.seedanceTaskDetail(nextTaskId)
 			if (!res.ok) {
 				if (!opts?.silent)
-					options.pushToast(t('aiworkflow.runtime.videoTaskDetailLoadFailed', { error: String(res.error || 'unknown') }), 'warn')
+					options.pushToast(
+						t('aiworkflow.runtime.videoTaskDetailLoadFailed', {
+							error: String(res.error || 'unknown')
+						}),
+						'warn'
+					)
 				return
 			}
 			const mapped = res.item ? mapVideoTaskItem(res.item as SeedanceTaskMirrorItem) : null
 			videoTaskDetail.value = await ensureLocalMediaForTask(mapped, opts)
 			patchTaskItem(videoTaskDetail.value)
 		} catch (err: unknown) {
-			if (!opts?.silent) options.pushToast(t('aiworkflow.runtime.videoTaskDetailLoadFailed', { error: getErrorMessage(err) }), 'warn')
+			if (!opts?.silent)
+				options.pushToast(
+					t('aiworkflow.runtime.videoTaskDetailLoadFailed', { error: getErrorMessage(err) }),
+					'warn'
+				)
 		} finally {
 			videoTaskDetailLoading.value = false
 		}
@@ -175,7 +220,12 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 				saveMedia: false
 			})
 			if (!res.ok) {
-				options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncFailed', { error: String(res.error || 'unknown') }), 'warn')
+				options.pushToast(
+					t('aiworkflow.runtime.videoTaskRemoteSyncFailed', {
+						error: String(res.error || 'unknown')
+					}),
+					'warn'
+				)
 				return
 			}
 			await refreshVideoTaskItems({ silent: true })
@@ -184,7 +234,10 @@ export const useAIWorkflowVideoTaskPanelController = (options: {
 			}
 			options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncSuccess'), 'info')
 		} catch (err: unknown) {
-			options.pushToast(t('aiworkflow.runtime.videoTaskRemoteSyncFailed', { error: getErrorMessage(err) }), 'warn')
+			options.pushToast(
+				t('aiworkflow.runtime.videoTaskRemoteSyncFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
 		} finally {
 			videoTaskSyncing.value = false
 		}

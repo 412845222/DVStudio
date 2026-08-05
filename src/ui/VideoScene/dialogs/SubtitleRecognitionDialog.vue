@@ -21,17 +21,23 @@
 						<div class="env-item" :class="envStatus?.ffmpeg?.ok ? 'ok' : 'error'">
 							<span class="env-icon">{{ envStatus?.ffmpeg?.ok ? '✓' : '○' }}</span>
 							<span class="env-name">FFmpeg</span>
-							<span class="env-detail">{{ envStatus?.ffmpeg?.detail || (checkingEnv ? '检查中...' : '未安装') }}</span>
+							<span class="env-detail">
+								{{ envStatus?.ffmpeg?.detail || (checkingEnv ? '检查中...' : '未安装') }}
+							</span>
 						</div>
 						<div class="env-item" :class="envStatus?.binary?.ok ? 'ok' : 'error'">
 							<span class="env-icon">{{ envStatus?.binary?.ok ? '✓' : '○' }}</span>
 							<span class="env-name">Whisper 引擎</span>
-							<span class="env-detail">{{ envStatus?.binary?.detail || (checkingEnv ? '检查中...' : '未安装') }}</span>
+							<span class="env-detail">
+								{{ envStatus?.binary?.detail || (checkingEnv ? '检查中...' : '未安装') }}
+							</span>
 						</div>
 						<div class="env-item" :class="envStatus?.defaultModel ? 'ok' : 'error'">
 							<span class="env-icon">{{ envStatus?.defaultModel ? '✓' : '○' }}</span>
 							<span class="env-name">识别模型</span>
-							<span class="env-detail">{{ envStatus?.defaultModel || (checkingEnv ? '检查中...' : '未安装') }}</span>
+							<span class="env-detail">
+								{{ envStatus?.defaultModel || (checkingEnv ? '检查中...' : '未安装') }}
+							</span>
 						</div>
 					</div>
 
@@ -42,23 +48,39 @@
 						<div class="install-desc">FFmpeg 用于从视频中提取音频（约120MB）</div>
 						<div v-if="downloadingFfmpeg" class="download-progress">
 							<div class="progress-bar">
-								<div class="progress-fill" :class="{ indeterminate: ffmpegIndeterminate }" :style="{ width: ffmpegIndeterminate ? '100%' : ffmpegProgress + '%' }" />
+								<div
+									class="progress-fill"
+									:class="{ indeterminate: ffmpegIndeterminate }"
+									:style="{ width: ffmpegIndeterminate ? '100%' : ffmpegProgress + '%' }"
+								/>
 							</div>
-							<div class="progress-text">{{ ffmpegStatus || ffmpegMessage }} {{ !ffmpegIndeterminate ? ffmpegProgress + '%' : '' }}</div>
+							<div class="progress-text">
+								{{ ffmpegStatus || ffmpegMessage }}
+								{{ !ffmpegIndeterminate ? ffmpegProgress + '%' : '' }}
+							</div>
 						</div>
 						<div class="install-actions">
 							<label class="mirror-label">
 								<input type="checkbox" v-model="useMirror" />
 								使用国内镜像加速
 							</label>
-							<button class="vs-btn primary" type="button" :disabled="downloadingFfmpeg || !ffmpegConfig?.supported" @click="startDownloadFfmpeg">
+							<button
+								class="vs-btn primary"
+								type="button"
+								:disabled="downloadingFfmpeg || !ffmpegConfig?.supported"
+								@click="startDownloadFfmpeg"
+							>
 								{{ downloadingFfmpeg ? '下载中...' : '自动下载 FFmpeg' }}
 							</button>
 							<button class="vs-btn" type="button" @click="openFfmpegGuide">查看安装指南</button>
 							<button class="vs-btn" type="button" @click="recheckEnv">重新检查</button>
 						</div>
-						<div v-if="!ffmpegConfig?.supported" class="setup-hint">{{ ffmpegConfig?.message || '当前平台暂不支持自动下载' }}</div>
-						<div v-if="ffmpegConfig?.supported" class="setup-hint">提示：如下载失败，请检查网络或在设置中配置HTTP代理后重试</div>
+						<div v-if="!ffmpegConfig?.supported" class="setup-hint">
+							{{ ffmpegConfig?.message || '当前平台暂不支持自动下载' }}
+						</div>
+						<div v-if="ffmpegConfig?.supported" class="setup-hint">
+							提示：如下载失败，请检查网络或在设置中配置HTTP代理后重试
+						</div>
 					</div>
 
 					<template v-else-if="!envStatus?.binary?.ok">
@@ -67,16 +89,28 @@
 							<div class="install-desc">约 8MB，本地语音识别引擎</div>
 							<div v-if="downloadingBinary" class="download-progress">
 								<div class="progress-bar">
-									<div class="progress-fill" :class="{ indeterminate: binaryIndeterminate }" :style="{ width: binaryIndeterminate ? '100%' : binaryProgress + '%' }" />
+									<div
+										class="progress-fill"
+										:class="{ indeterminate: binaryIndeterminate }"
+										:style="{ width: binaryIndeterminate ? '100%' : binaryProgress + '%' }"
+									/>
 								</div>
-								<div class="progress-text">{{ binaryStatus || binaryMessage }} {{ !binaryIndeterminate ? binaryProgress + '%' : '' }}</div>
+								<div class="progress-text">
+									{{ binaryStatus || binaryMessage }}
+									{{ !binaryIndeterminate ? binaryProgress + '%' : '' }}
+								</div>
 							</div>
 							<div class="install-actions">
 								<label class="mirror-label">
 									<input type="checkbox" v-model="useMirror" />
 									使用国内镜像加速
 								</label>
-								<button class="vs-btn primary" type="button" :disabled="downloadingBinary" @click="startDownloadBinary">
+								<button
+									class="vs-btn primary"
+									type="button"
+									:disabled="downloadingBinary"
+									@click="startDownloadBinary"
+								>
 									{{ downloadingBinary ? '下载中...' : '下载 Whisper 引擎' }}
 								</button>
 							</div>
@@ -89,8 +123,18 @@
 							<div class="install-title">下载识别模型</div>
 							<div class="install-desc">选择模型规格（越大越准确但越慢）</div>
 							<div class="model-select">
-								<label v-for="m in availableModels" :key="m.size" class="model-option" :class="{ selected: selectedModelSize === m.size }">
-									<input type="radio" :value="m.size" v-model="selectedModelSize" :disabled="downloadingModel" />
+								<label
+									v-for="m in availableModels"
+									:key="m.size"
+									class="model-option"
+									:class="{ selected: selectedModelSize === m.size }"
+								>
+									<input
+										type="radio"
+										:value="m.size"
+										v-model="selectedModelSize"
+										:disabled="downloadingModel"
+									/>
 									<span class="model-name">{{ m.name }}</span>
 									<span class="model-size">{{ m.diskSize }}</span>
 									<span class="model-desc">{{ m.description }}</span>
@@ -98,16 +142,28 @@
 							</div>
 							<div v-if="downloadingModel" class="download-progress">
 								<div class="progress-bar">
-									<div class="progress-fill" :class="{ indeterminate: modelIndeterminate }" :style="{ width: modelIndeterminate ? '100%' : modelProgress + '%' }" />
+									<div
+										class="progress-fill"
+										:class="{ indeterminate: modelIndeterminate }"
+										:style="{ width: modelIndeterminate ? '100%' : modelProgress + '%' }"
+									/>
 								</div>
-								<div class="progress-text">{{ modelStatus || modelMessage }} {{ !modelIndeterminate ? modelProgress + '%' : '' }}</div>
+								<div class="progress-text">
+									{{ modelStatus || modelMessage }}
+									{{ !modelIndeterminate ? modelProgress + '%' : '' }}
+								</div>
 							</div>
 							<div class="install-actions">
 								<label class="mirror-label">
 									<input type="checkbox" v-model="useMirror" />
 									使用国内镜像加速
 								</label>
-								<button class="vs-btn primary" type="button" :disabled="downloadingModel" @click="startDownloadModel">
+								<button
+									class="vs-btn primary"
+									type="button"
+									:disabled="downloadingModel"
+									@click="startDownloadModel"
+								>
 									{{ downloadingModel ? '下载中...' : '下载模型' }}
 								</button>
 							</div>
@@ -122,7 +178,9 @@
 					<div class="config-row">
 						<label class="config-label">识别模型</label>
 						<select v-model="selectedModel" class="vs-select" :disabled="recognizing">
-							<option v-for="m in effectiveInstalledModels" :key="m.size" :value="m.size">{{ formatModelOption(m) }}</option>
+							<option v-for="m in effectiveInstalledModels" :key="m.size" :value="m.size">
+								{{ formatModelOption(m) }}
+							</option>
 						</select>
 					</div>
 					<div class="config-row">
@@ -145,7 +203,9 @@
 					<div class="progress-bar">
 						<div class="progress-fill" :style="{ width: progress.percent + '%' }" />
 					</div>
-					<div class="progress-text">{{ progress.message }} {{ Math.round(progress.percent) }}%</div>
+					<div class="progress-text">
+						{{ progress.message }} {{ Math.round(progress.percent) }}%
+					</div>
 				</div>
 
 				<div v-if="recogError" class="recog-error">{{ recogError }}</div>
@@ -162,12 +222,27 @@
 			</div>
 
 			<div class="dvs-subtitle-foot">
-				<button v-if="!envReady" class="vs-btn" type="button" @click="recheckEnv" :disabled="checkingEnv">
+				<button
+					v-if="!envReady"
+					class="vs-btn"
+					type="button"
+					@click="recheckEnv"
+					:disabled="checkingEnv"
+				>
 					{{ checkingEnv ? '检查中...' : '重新检查环境' }}
 				</button>
 				<template v-else>
-					<button v-if="recogError" class="vs-btn" type="button" @click="resetRecog">重新识别</button>
-					<button v-if="!recognizing && !hasResult && !recogError" class="vs-btn" type="button" @click="$emit('close')">取消</button>
+					<button v-if="recogError" class="vs-btn" type="button" @click="resetRecog">
+						重新识别
+					</button>
+					<button
+						v-if="!recognizing && !hasResult && !recogError"
+						class="vs-btn"
+						type="button"
+						@click="$emit('close')"
+					>
+						取消
+					</button>
 					<button
 						v-if="!recognizing"
 						class="vs-btn primary"
@@ -187,14 +262,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import type { SubtitleRecogCue, SubtitleRecogModelSize, SubtitleRecogInstalledModel, SubtitleRecogModelInfo } from '../../../types/electron-bridge'
+import type {
+	SubtitleRecogCue,
+	SubtitleRecogModelSize,
+	SubtitleRecogInstalledModel,
+	SubtitleRecogModelInfo
+} from '../../../types/electron-bridge'
 import { msToFrameRangeInclusive } from '../../../core/subtitle/srt'
 import { convertRecognitionCuesToSubtitleCues } from '../../../core/subtitle/recognition'
 import { buildSubtitleGeneratedKeyframes } from '../../../core/subtitle/subtitleKeyframes'
 import { TimelineStore } from '../../../store/timeline'
 import { VideoSceneStore, VideoSceneKey, type VideoSceneState } from '../../../store/videoscene'
 import { VideoStudioKey, type VideoStudioState } from '../../../store/videostudio'
-import type { SubtitleCue, SubtitleCueRange, SubtitleTextStyle, TimelineFrameSpan } from '../../../core/timeline/types'
+import type {
+	SubtitleCue,
+	SubtitleCueRange,
+	SubtitleTextStyle,
+	TimelineFrameSpan
+} from '../../../core/timeline/types'
 import { parseDwebProjectAssetUrl } from '../../../network/backendConfig'
 
 const dweb = (window as any).dweb
@@ -283,8 +368,15 @@ const recognizedAudioPath = ref<string | null>(null)
 
 const currentVideoPath = computed(() => {
 	const videoAssets = (VideoSceneStore.state as any).videoAssets
-	const entries = Object.values(videoAssets || {}) as Array<{ id: string; url: string; name: string }>
-	console.log('[SubtitleRecog] videoAssets entries:', entries.map(e => ({ id: e.id, url: e.url, name: e.name })))
+	const entries = Object.values(videoAssets || {}) as Array<{
+		id: string
+		url: string
+		name: string
+	}>
+	console.log(
+		'[SubtitleRecog] videoAssets entries:',
+		entries.map((e) => ({ id: e.id, url: e.url, name: e.name }))
+	)
 	if (entries.length > 0) return entries[0].url
 	return ''
 })
@@ -297,13 +389,20 @@ const currentVideoProjectId = computed(() => {
 		console.log('[SubtitleRecog] parsed projectId from video URL:', parsed.projectId)
 		return parsed.projectId
 	}
-	console.warn('[SubtitleRecog] video URL is not a dweb project-assets URL, cannot get projectId:', url?.substring(0, 100))
+	console.warn(
+		'[SubtitleRecog] video URL is not a dweb project-assets URL, cannot get projectId:',
+		url?.substring(0, 100)
+	)
 	return null
 })
 
 const currentVideoName = computed(() => {
 	const videoAssets = (VideoSceneStore.state as any).videoAssets
-	const entries = Object.values(videoAssets || {}) as Array<{ id: string; url: string; name: string }>
+	const entries = Object.values(videoAssets || {}) as Array<{
+		id: string
+		url: string
+		name: string
+	}>
 	if (entries.length > 0) return entries[0].name
 	return ''
 })
@@ -331,7 +430,11 @@ function getModelSizeText(size: SubtitleRecogModelSize | string): string {
 function formatModelOption(m: SubtitleRecogInstalledModel): string {
 	const name = getModelName(m.size)
 	const sizeText = getModelSizeText(m.size)
-	const sizeMB = m.fileSize ? ` (${(m.fileSize / 1024 / 1024).toFixed(0)} MB)` : (sizeText ? ` (${sizeText})` : '')
+	const sizeMB = m.fileSize
+		? ` (${(m.fileSize / 1024 / 1024).toFixed(0)} MB)`
+		: sizeText
+			? ` (${sizeText})`
+			: ''
 	return `${name}${sizeMB}`
 }
 
@@ -343,7 +446,7 @@ const phaseText = computed(() => {
 		recognizing: '语音识别中',
 		parsing: '解析结果',
 		done: '完成',
-		error: '出错',
+		error: '出错'
 	}
 	return phaseMap[progress.value.phase] || progress.value.phase
 })
@@ -494,7 +597,10 @@ async function startDownloadModel() {
 	modelIndeterminate.value = true
 	setupError.value = ''
 	try {
-		const generator = dweb.subtitleRecog.downloadModel({ size: selectedModelSize.value, useMirror: useMirror.value })
+		const generator = dweb.subtitleRecog.downloadModel({
+			size: selectedModelSize.value,
+			useMirror: useMirror.value
+		})
 		for await (const chunk of generator) {
 			if (chunk.type === 'progress') {
 				modelProgress.value = chunk.percent || 0
@@ -546,7 +652,7 @@ async function startRecognize() {
 			modelSize: selectedModel.value,
 			language: language.value,
 			useMirror: useMirror.value,
-			projectId: currentVideoProjectId.value,
+			projectId: currentVideoProjectId.value
 		})
 
 		for await (const chunk of generator) {
@@ -555,7 +661,7 @@ async function startRecognize() {
 					phase: chunk.phase || 'recognizing',
 					percent: chunk.percent || 0,
 					message: chunk.message || '',
-					cueCount: 0,
+					cueCount: 0
 				}
 			} else if (chunk.type === 'progress') {
 				progress.value.percent = chunk.percent || 0
@@ -575,7 +681,7 @@ async function startRecognize() {
 		}
 
 		if (cues.value.length > 0 && !recogError.value) {
-			await new Promise(resolve => setTimeout(resolve, 300))
+			await new Promise((resolve) => setTimeout(resolve, 300))
 			await importCues()
 			emit('close')
 		}
@@ -635,7 +741,12 @@ function computeAudioPeaks(audioBuffer: AudioBuffer, pointsPerSecond: number) {
 async function importExtractedAudio() {
 	const audioUrl = recognizedAudioUrl.value
 	const tempAudioPath = recognizedAudioPath.value
-	console.log('[SubtitleRecog] importExtractedAudio called, audioUrl:', audioUrl, 'tempAudioPath:', tempAudioPath)
+	console.log(
+		'[SubtitleRecog] importExtractedAudio called, audioUrl:',
+		audioUrl,
+		'tempAudioPath:',
+		tempAudioPath
+	)
 
 	if (!audioUrl && !tempAudioPath) {
 		console.warn('[SubtitleRecog] no audio URL or path to import')
@@ -692,7 +803,9 @@ async function importExtractedAudio() {
 		try {
 			audioBuffer = await ac.decodeAudioData(arrayBuffer.slice(0))
 		} finally {
-			try { await ac.close() } catch {}
+			try {
+				await ac.close()
+			} catch {}
 		}
 		console.log('[SubtitleRecog] step 2 done: audio decoded, duration:', audioBuffer.duration, 's')
 
@@ -732,7 +845,12 @@ async function importExtractedAudio() {
 			window.alert('音频导入失败：无法创建音频图层')
 			return false
 		}
-		console.log('[SubtitleRecog] step 5 done: audio layer created, id:', layer.id, 'name:', layer.name)
+		console.log(
+			'[SubtitleRecog] step 5 done: audio layer created, id:',
+			layer.id,
+			'name:',
+			layer.name
+		)
 
 		console.log('[SubtitleRecog] step 6: setting audio track...')
 		await TimelineStore.dispatch('setAudioTrack', {
@@ -747,7 +865,12 @@ async function importExtractedAudio() {
 		})
 		console.log('[SubtitleRecog] step 6 done: audio track set')
 
-		console.log('[SubtitleRecog] audio imported successfully! Layer:', layer.id, 'Name:', layer.name)
+		console.log(
+			'[SubtitleRecog] audio imported successfully! Layer:',
+			layer.id,
+			'Name:',
+			layer.name
+		)
 
 		if (tempAudioPath) {
 			try {
@@ -838,9 +961,13 @@ async function importCues() {
 			const boxH = Math.max(80, Math.floor(stageH * 0.18))
 			const boxY = stageH / 2 - boxH / 2 - 24
 
-			const rawDefaultStyle: SubtitleTextStyle = (TimelineStore.state as any).subtitleDefaultStyleByLayer?.[
-				layer.id
-			] ?? { fontSize: 36, fontColor: '#ffffff', fontStyle: 'normal', textAlign: 'center' }
+			const rawDefaultStyle: SubtitleTextStyle = (TimelineStore.state as any)
+				.subtitleDefaultStyleByLayer?.[layer.id] ?? {
+				fontSize: 36,
+				fontColor: '#ffffff',
+				fontStyle: 'normal',
+				textAlign: 'center'
+			}
 			const defaultStyle: SubtitleTextStyle = {
 				...rawDefaultStyle,
 				fontSize: Math.max(6, Number(rawDefaultStyle.fontSize ?? 36) || 36)
@@ -884,7 +1011,8 @@ async function importCues() {
 				cues: cuesList,
 				cueRanges,
 				defaultStyle,
-				overridesByCueIndex: (TimelineStore.state as any).subtitleOverrideStyleByLayer?.[layer.id] ?? {},
+				overridesByCueIndex:
+					(TimelineStore.state as any).subtitleOverrideStyleByLayer?.[layer.id] ?? {},
 				nodeTransform
 			})
 			await TimelineStore.dispatch('setSubtitleGeneratedKeyframes', {
@@ -908,13 +1036,16 @@ async function importCues() {
 	}
 }
 
-watch(() => props.open, (v) => {
-	if (v) {
-		checkEnv()
-		loadAvailableModels()
-		resetRecog()
+watch(
+	() => props.open,
+	(v) => {
+		if (v) {
+			checkEnv()
+			loadAvailableModels()
+			resetRecog()
+		}
 	}
-})
+)
 
 onMounted(() => {
 	if (props.open) {
@@ -1030,8 +1161,12 @@ onMounted(() => {
 	font-size: 12px;
 }
 
-.env-item.ok .env-icon { color: #5ec47f; }
-.env-item.error .env-icon { color: #f0ad4e; }
+.env-item.ok .env-icon {
+	color: #5ec47f;
+}
+.env-item.error .env-icon {
+	color: #f0ad4e;
+}
 
 .env-name {
 	font-weight: 500;
@@ -1112,14 +1247,23 @@ onMounted(() => {
 }
 
 .progress-fill.indeterminate {
-	background: linear-gradient(90deg, rgba(60,148,255,0.3) 0%, var(--pl-accent, #3c94ff) 50%, rgba(60,148,255,0.3) 100%);
+	background: linear-gradient(
+		90deg,
+		rgba(60, 148, 255, 0.3) 0%,
+		var(--pl-accent, #3c94ff) 50%,
+		rgba(60, 148, 255, 0.3) 100%
+	);
 	background-size: 200% 100%;
 	animation: indeterminate 1.5s ease-in-out infinite;
 }
 
 @keyframes indeterminate {
-	0% { background-position: 200% 0; }
-	100% { background-position: -200% 0; }
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
 }
 
 .progress-text {
@@ -1164,7 +1308,7 @@ onMounted(() => {
 	background: rgba(60, 148, 255, 0.15);
 }
 
-.model-option input[type="radio"] {
+.model-option input[type='radio'] {
 	margin: 0;
 	width: 16px;
 	height: 16px;

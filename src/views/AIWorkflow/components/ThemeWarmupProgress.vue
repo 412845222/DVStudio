@@ -3,7 +3,15 @@
 		<div v-if="visible" class="theme-warmup-progress">
 			<div class="twp-icon">
 				<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-					<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2" class="twp-spin" />
+					<circle
+						cx="8"
+						cy="8"
+						r="6.5"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-dasharray="3 2"
+						class="twp-spin"
+					/>
 				</svg>
 			</div>
 			<div class="twp-body">
@@ -36,7 +44,11 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { t } = useI18n()
 
-const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmup.title', { theme: t('aiworkflow.page.themeWarmup.darkLabel') }))
+const displayTitle = computed(
+	() =>
+		props.title ||
+		t('aiworkflow.page.themeWarmup.title', { theme: t('aiworkflow.page.themeWarmup.darkLabel') })
+)
 </script>
 
 <style scoped>
@@ -76,8 +88,12 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 }
 
 @keyframes twp-spin-anim {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .twp-body {
@@ -117,7 +133,9 @@ const displayTitle = computed(() => props.title || t('aiworkflow.page.themeWarmu
 
 .twp-fade-enter-active,
 .twp-fade-leave-active {
-	transition: opacity 200ms ease, transform 200ms ease;
+	transition:
+		opacity 200ms ease,
+		transform 200ms ease;
 }
 
 .twp-fade-enter-from,

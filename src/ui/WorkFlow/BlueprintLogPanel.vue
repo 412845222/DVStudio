@@ -14,7 +14,11 @@
 						:placeholder="t('tasks.log.searchPlaceholder')"
 						@keydown.esc="keywordFilter = ''"
 					/>
-					<div class="aiwf-log-panel__chip-group" role="group" :aria-label="t('tasks.log.levelFilter')">
+					<div
+						class="aiwf-log-panel__chip-group"
+						role="group"
+						:aria-label="t('tasks.log.levelFilter')"
+					>
 						<button
 							v-for="level in ALL_LEVELS"
 							:key="level"
@@ -27,7 +31,11 @@
 							{{ level }}
 						</button>
 					</div>
-					<div class="aiwf-log-panel__chip-group" role="group" :aria-label="t('tasks.log.categoryFilter')">
+					<div
+						class="aiwf-log-panel__chip-group"
+						role="group"
+						:aria-label="t('tasks.log.categoryFilter')"
+					>
 						<button
 							v-for="category in ALL_CATEGORIES"
 							:key="category"
@@ -44,7 +52,9 @@
 						<input v-model="autoScroll" type="checkbox" />
 						<span>{{ t('tasks.log.autoScroll') }}</span>
 					</label>
-					<button class="aiwf-log-panel__btn" type="button" @click="onClear">{{ t('common.clear') }}</button>
+					<button class="aiwf-log-panel__btn" type="button" @click="onClear">
+						{{ t('common.clear') }}
+					</button>
 					<button class="aiwf-log-panel__btn" type="button" @click="onExport('text')">
 						{{ t('tasks.log.exportTxt') }}
 					</button>

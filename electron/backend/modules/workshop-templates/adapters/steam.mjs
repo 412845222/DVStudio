@@ -17,24 +17,32 @@ export class SteamUgcAdapter extends UgcAdapter {
 
 		const userInfo = this._provider.getUserInfo?.()
 		const hasUserInfo = userInfo && userInfo.displayName
-		const isLogged = typeof this._provider.isLoggedIn === 'function' ? this._provider.isLoggedIn() : false
+		const isLogged =
+			typeof this._provider.isLoggedIn === 'function' ? this._provider.isLoggedIn() : false
 
 		const now = Date.now()
 		if (now - this._lastGetUgcLogged > 3000) {
 			this._lastGetUgcLogged = now
-			console.log('[SteamUgcAdapter] _getUGC: isLoggedIn=' + isLogged + ', hasUserInfo=' + !!hasUserInfo)
+			console.log(
+				'[SteamUgcAdapter] _getUGC: isLoggedIn=' + isLogged + ', hasUserInfo=' + !!hasUserInfo
+			)
 		}
 
 		if (!isLogged && !hasUserInfo) return null
 		return this._provider.ugc
 	}
 
-	getPlatformId() { return 'steam' }
-	getPlatformName() { return 'Steam Workshop' }
+	getPlatformId() {
+		return 'steam'
+	}
+	getPlatformName() {
+		return 'Steam Workshop'
+	}
 
 	isAvailable() {
 		if (!this._provider) return false
-		if (typeof this._provider.isAvailable === 'function' && !this._provider.isAvailable()) return false
+		if (typeof this._provider.isAvailable === 'function' && !this._provider.isAvailable())
+			return false
 		if (!this._provider.ugc) return false
 		return typeof this._provider.ugc.queryAll === 'function'
 	}
@@ -67,10 +75,12 @@ export class SteamUgcAdapter extends UgcAdapter {
 						if (fs.existsSync(installInfo.installPath)) {
 							const entries = fs.readdirSync(installInfo.installPath)
 							if (entries.length > 0) {
-								const hasActualFile = entries.some(e => {
+								const hasActualFile = entries.some((e) => {
 									try {
 										return fs.statSync(path.join(installInfo.installPath, e)).size > 0
-									} catch { return false }
+									} catch {
+										return false
+									}
 								})
 								if (hasActualFile || Date.now() - postDownloadWaitStart >= postDownloadWaitMs) {
 									resolve(true)
@@ -122,10 +132,17 @@ export class SteamUgcAdapter extends UgcAdapter {
 			if (result.items.length > 0) {
 				console.log('[SteamUgcAdapter] Native query returned', result.items.length, 'items:')
 				for (const item of result.items) {
-					console.log('  -', item.publishedFileId + ':', '"' + item.title + '"',
-						'tags=', JSON.stringify(item.tags),
-						'isOfficial=', item.isOfficial,
-						'visibility=', item.visibility)
+					console.log(
+						'  -',
+						item.publishedFileId + ':',
+						'"' + item.title + '"',
+						'tags=',
+						JSON.stringify(item.tags),
+						'isOfficial=',
+						item.isOfficial,
+						'visibility=',
+						item.visibility
+					)
 				}
 			}
 
@@ -136,10 +153,20 @@ export class SteamUgcAdapter extends UgcAdapter {
 					for (const item of filtered) {
 						item.isOfficial = true
 					}
-					console.log('[SteamUgcAdapter] Tag filter "official": returning all', filtered.length, 'Steam items as official (admin-publisher only channel)')
+					console.log(
+						'[SteamUgcAdapter] Tag filter "official": returning all',
+						filtered.length,
+						'Steam items as official (admin-publisher only channel)'
+					)
 				} else {
-					filtered = result.items.filter(i => i.tags?.includes(tag))
-					console.log('[SteamUgcAdapter] Tag filter "' + tag + '":', filtered.length, 'of', result.items.length, 'items matched')
+					filtered = result.items.filter((i) => i.tags?.includes(tag))
+					console.log(
+						'[SteamUgcAdapter] Tag filter "' + tag + '":',
+						filtered.length,
+						'of',
+						result.items.length,
+						'items matched'
+					)
 				}
 				return { ok: true, items: filtered, totalResults: filtered.length }
 			}
@@ -163,9 +190,12 @@ export class SteamUgcAdapter extends UgcAdapter {
 				if (fs.existsSync(existingInstall.installPath)) {
 					const entries = fs.readdirSync(existingInstall.installPath)
 					if (entries.length > 0) {
-						const hasContent = entries.some(e => {
-							try { return fs.statSync(path.join(existingInstall.installPath, e)).size > 0 }
-							catch { return false }
+						const hasContent = entries.some((e) => {
+							try {
+								return fs.statSync(path.join(existingInstall.installPath, e)).size > 0
+							} catch {
+								return false
+							}
 						})
 						if (hasContent) needsDownload = false
 					}

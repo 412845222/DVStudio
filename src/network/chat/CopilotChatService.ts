@@ -54,7 +54,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_start',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			input: raw.input || raw.arguments,
+			input: raw.input || raw.arguments
 		}
 	}
 	if (type === 'tool_call_end') {
@@ -63,7 +63,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
 			output: raw.output || raw.result,
-			images: Array.isArray(raw.images) ? raw.images : undefined,
+			images: Array.isArray(raw.images) ? raw.images : undefined
 		}
 	}
 	if (type === 'tool_call_error') {
@@ -71,7 +71,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_error',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			error: String(raw.error || raw.message || ''),
+			error: String(raw.error || raw.message || '')
 		}
 	}
 	if (type === 'error') {
@@ -86,7 +86,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			tokenCount: Number(raw.tokenCount || 0),
 			budget: Number(raw.budget || 0),
 			usage: Number(raw.usage || 0),
-			truncated: Boolean(raw.truncated),
+			truncated: Boolean(raw.truncated)
 		}
 	}
 	if (isString(raw)) {
@@ -184,7 +184,7 @@ export class CopilotChatService implements IChatService {
 			executionHints: options.executionHints || [],
 			agentMode: options.agentMode,
 			permissionProfile: options.permissionProfile,
-			sessionId,
+			sessionId
 		})
 
 		const onAbort = () => {
@@ -220,9 +220,10 @@ export class CopilotChatService implements IChatService {
 			if (signal?.aborted) {
 				yield { type: 'error', message: '请求已取消' }
 			} else {
-				const msg = err && typeof err === 'object' && 'message' in err
-					? String((err as { message: unknown }).message)
-					: String(err)
+				const msg =
+					err && typeof err === 'object' && 'message' in err
+						? String((err as { message: unknown }).message)
+						: String(err)
 				yield { type: 'error', message: `Copilot 调用失败: ${msg}` }
 			}
 		} finally {
@@ -237,7 +238,11 @@ export class CopilotChatService implements IChatService {
 		}
 		try {
 			const result = await ipcCall(
-				() => bridge.dweb!.cli!.listModels!({ adapter: ADAPTER_NAME, forceRefresh: !!forceRefresh }) as Promise<IpcResult>
+				() =>
+					bridge.dweb!.cli!.listModels!({
+						adapter: ADAPTER_NAME,
+						forceRefresh: !!forceRefresh
+					}) as Promise<IpcResult>
 			)
 			const models = isRecord(result) ? (result as Record<string, unknown>).models : null
 			if (Array.isArray(models) && models.length > 0) {
@@ -246,10 +251,12 @@ export class CopilotChatService implements IChatService {
 						if (!isRecord(m)) return { id: 'auto', name: 'Auto' }
 						return {
 							id: String((m as Record<string, unknown>).id || 'auto'),
-							name: String((m as Record<string, unknown>).label || (m as Record<string, unknown>).id || 'Auto'),
+							name: String(
+								(m as Record<string, unknown>).label || (m as Record<string, unknown>).id || 'Auto'
+							),
 							vendor: String((m as Record<string, unknown>).vendor || 'GitHub Copilot'),
 							capabilities: Array.isArray((m as Record<string, unknown>).capabilities)
-								? (m as Record<string, unknown>).capabilities as string[]
+								? ((m as Record<string, unknown>).capabilities as string[])
 								: undefined,
 							recommended: Boolean((m as Record<string, unknown>).recommended)
 						}
@@ -279,11 +286,37 @@ export class CopilotChatService implements IChatService {
 
 	private getFallbackModels(): ChatModelInfo[] {
 		return [
-			{ id: 'auto', name: 'Auto (推荐)', vendor: 'GitHub Copilot', recommended: true, capabilities: ['chat', 'code'] },
-			{ id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', vendor: 'GitHub Copilot', capabilities: ['chat', 'code'] },
-			{ id: 'gpt-5.4', name: 'GPT-5.4', vendor: 'GitHub Copilot', capabilities: ['chat', 'code', 'reasoning'] },
-			{ id: 'claude-sonnet-4.5', name: 'Claude Sonnet 4.5', vendor: 'GitHub Copilot', capabilities: ['chat', 'code'] },
-			{ id: 'o4-mini', name: 'o4-mini', vendor: 'GitHub Copilot', capabilities: ['chat', 'code', 'reasoning'] },
+			{
+				id: 'auto',
+				name: 'Auto (推荐)',
+				vendor: 'GitHub Copilot',
+				recommended: true,
+				capabilities: ['chat', 'code']
+			},
+			{
+				id: 'gpt-5.4-mini',
+				name: 'GPT-5.4 Mini',
+				vendor: 'GitHub Copilot',
+				capabilities: ['chat', 'code']
+			},
+			{
+				id: 'gpt-5.4',
+				name: 'GPT-5.4',
+				vendor: 'GitHub Copilot',
+				capabilities: ['chat', 'code', 'reasoning']
+			},
+			{
+				id: 'claude-sonnet-4.5',
+				name: 'Claude Sonnet 4.5',
+				vendor: 'GitHub Copilot',
+				capabilities: ['chat', 'code']
+			},
+			{
+				id: 'o4-mini',
+				name: 'o4-mini',
+				vendor: 'GitHub Copilot',
+				capabilities: ['chat', 'code', 'reasoning']
+			}
 		]
 	}
 }

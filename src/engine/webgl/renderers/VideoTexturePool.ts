@@ -194,7 +194,10 @@ class VideoTexturePoolImpl {
 		}
 	}
 
-	private createVideoElement(src: string, opts: { muted: boolean; loop: boolean }): HTMLVideoElement {
+	private createVideoElement(
+		src: string,
+		opts: { muted: boolean; loop: boolean }
+	): HTMLVideoElement {
 		const video = document.createElement('video')
 		video.preload = 'auto'
 		video.muted = opts.muted
@@ -233,7 +236,13 @@ class VideoTexturePoolImpl {
 
 		entry.loadedmetadataHandler = () => {
 			if (resolved || !entry.video) return
-			console.log('[VideoTexturePool] loadedmetadata:', entry.id, entry.video.videoWidth, entry.video.videoHeight, entry.video.duration)
+			console.log(
+				'[VideoTexturePool] loadedmetadata:',
+				entry.id,
+				entry.video.videoWidth,
+				entry.video.videoHeight,
+				entry.video.duration
+			)
 			entry.width = entry.video.videoWidth || 0
 			entry.height = entry.video.videoHeight || 0
 			if (Number.isFinite(entry.video.duration)) {
@@ -260,7 +269,16 @@ class VideoTexturePoolImpl {
 					entry.duration = entry.video.duration
 				}
 				resolved = true
-				console.log('[VideoTexturePool] video ready:', entry.id, 'size:', entry.width, 'x', entry.height, 'duration:', entry.duration)
+				console.log(
+					'[VideoTexturePool] video ready:',
+					entry.id,
+					'size:',
+					entry.width,
+					'x',
+					entry.height,
+					'duration:',
+					entry.duration
+				)
 				try {
 					canvas.updateTextureFromImage(entry.texture, entry.video)
 				} catch (e) {
@@ -283,7 +301,9 @@ class VideoTexturePoolImpl {
 			const err = entry.video?.error
 			console.error('[VideoTexturePool] video error:', entry.id, err?.code, err?.message)
 			if (entry.pendingSeek) {
-				entry.pendingSeek.reject(new Error('video load error: ' + (err?.message || err?.code || 'unknown')))
+				entry.pendingSeek.reject(
+					new Error('video load error: ' + (err?.message || err?.code || 'unknown'))
+				)
 				entry.pendingSeek = null
 			}
 		}
@@ -313,7 +333,14 @@ class VideoTexturePoolImpl {
 		if (existing) {
 			existing.lastUsedTime = performance.now()
 			if (existing.src !== src) {
-				console.log('[VideoTexturePool] getOrCreate src changed for:', id, 'old:', existing.src, 'new:', src)
+				console.log(
+					'[VideoTexturePool] getOrCreate src changed for:',
+					id,
+					'old:',
+					existing.src,
+					'new:',
+					src
+				)
 				if (existing.video) {
 					this.cleanupEntry(existing, this.canvas)
 				}
@@ -323,7 +350,12 @@ class VideoTexturePoolImpl {
 				const canvas = this.canvas
 				if (canvas) this.initEntry(existing, canvas)
 			} else if (!existing.video) {
-				console.log('[VideoTexturePool] getOrCreate init existing (no video):', id, 'status:', existing.status)
+				console.log(
+					'[VideoTexturePool] getOrCreate init existing (no video):',
+					id,
+					'status:',
+					existing.status
+				)
 				const canvas = this.canvas
 				if (canvas) this.initEntry(existing, canvas)
 			}
@@ -462,7 +494,9 @@ class VideoTexturePoolImpl {
 
 		entry.pendingFastSeek = { time: target }
 		try {
-			if (typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function') {
+			if (
+				typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function'
+			) {
 				;(v as HTMLVideoElement & { fastSeek: (t: number) => void }).fastSeek(target)
 			} else {
 				v.currentTime = target
@@ -486,7 +520,9 @@ class VideoTexturePoolImpl {
 
 		entry.pendingFastSeek = { time: target }
 		try {
-			if (typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function') {
+			if (
+				typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function'
+			) {
 				;(v as HTMLVideoElement & { fastSeek: (t: number) => void }).fastSeek(target)
 			} else {
 				v.currentTime = target
@@ -529,7 +565,9 @@ class VideoTexturePoolImpl {
 
 		entry.pendingFastSeek = { time: target }
 		try {
-			if (typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function') {
+			if (
+				typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === 'function'
+			) {
 				;(v as HTMLVideoElement & { fastSeek: (t: number) => void }).fastSeek(target)
 			} else {
 				v.currentTime = target
@@ -567,7 +605,11 @@ class VideoTexturePoolImpl {
 		entry.video.pause()
 	}
 
-	getVideoBufferingState(id: string): { isBuffering: boolean; bufferProgress: number; readyState: number } {
+	getVideoBufferingState(id: string): {
+		isBuffering: boolean
+		bufferProgress: number
+		readyState: number
+	} {
 		const entry = this.videos.get(id)
 		if (!entry || !entry.video) {
 			return { isBuffering: false, bufferProgress: 1, readyState: 0 }
@@ -590,7 +632,11 @@ class VideoTexturePoolImpl {
 				bufferProgress = 1
 			}
 		} catch {}
-		const isBuffering = readyState < 4 && (entry.pendingSeek != null || entry.pendingFastSeek != null || v.paused === false && readyState < 3)
+		const isBuffering =
+			readyState < 4 &&
+			(entry.pendingSeek != null ||
+				entry.pendingFastSeek != null ||
+				(v.paused === false && readyState < 3))
 		return { isBuffering, bufferProgress, readyState }
 	}
 }

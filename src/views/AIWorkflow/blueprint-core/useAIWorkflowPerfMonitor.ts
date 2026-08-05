@@ -230,7 +230,10 @@ export const useAIWorkflowPerfMonitor = (payload: {
 					recordPerfAnomaly(
 						ts,
 						'low-fps-streak',
-						t('aiworkflow.perfMonitor.lowFpsStreak', { count: perfLowFpsStreak, threshold: PERF_LOW_FPS_THRESHOLD })
+						t('aiworkflow.perfMonitor.lowFpsStreak', {
+							count: perfLowFpsStreak,
+							threshold: PERF_LOW_FPS_THRESHOLD
+						})
 					)
 				}
 				const dropped = Math.max(0, Math.round(dt / 16.67) - 1)
@@ -262,9 +265,7 @@ export const useAIWorkflowPerfMonitor = (payload: {
 			typeof window !== 'undefined' &&
 			'PerformanceObserver' in window
 		) {
-			const PerfObserver = window.PerformanceObserver as
-				| typeof PerformanceObserver
-				| undefined
+			const PerfObserver = window.PerformanceObserver as typeof PerformanceObserver | undefined
 			const supported =
 				typeof PerfObserver?.supportedEntryTypes !== 'undefined'
 					? PerfObserver!.supportedEntryTypes.includes('longtask')
@@ -277,7 +278,11 @@ export const useAIWorkflowPerfMonitor = (payload: {
 						const nextSamples = entries.map((entry) => ({ time: now, duration: entry.duration }))
 						for (const entry of entries) {
 							if (entry.duration >= PERF_LONGTASK_ALERT_THRESHOLD_MS) {
-								recordPerfAnomaly(now, 'longtask', t('aiworkflow.perfMonitor.longTask', { duration: entry.duration.toFixed(1) }))
+								recordPerfAnomaly(
+									now,
+									'longtask',
+									t('aiworkflow.perfMonitor.longTask', { duration: entry.duration.toFixed(1) })
+								)
 							}
 						}
 						perfLongTasks.push(...nextSamples)
@@ -319,17 +324,23 @@ export const useAIWorkflowPerfMonitor = (payload: {
 
 	const perfHealthLabel = computed(() => {
 		switch (perfHealthState.value) {
-			case 'stable': return t('aiworkflow.perfMonitor.stable')
-			case 'slow': return t('aiworkflow.perfMonitor.slowFrames')
-			default: return t('aiworkflow.perfMonitor.significantDrop')
+			case 'stable':
+				return t('aiworkflow.perfMonitor.stable')
+			case 'slow':
+				return t('aiworkflow.perfMonitor.slowFrames')
+			default:
+				return t('aiworkflow.perfMonitor.significantDrop')
 		}
 	})
 
 	const perfHealthClass = computed(() => {
 		switch (perfHealthState.value) {
-			case 'stable': return 'is-good'
-			case 'slow': return 'is-warn'
-			default: return 'is-bad'
+			case 'stable':
+				return 'is-good'
+			case 'slow':
+				return 'is-warn'
+			default:
+				return 'is-bad'
 		}
 	})
 
@@ -345,31 +356,51 @@ export const useAIWorkflowPerfMonitor = (payload: {
 	)
 	const perfLongTaskSummary = computed(() => {
 		if (!perfLongTaskCount.value) return t('aiworkflow.perfMonitor.zeroTimes')
-		return t('aiworkflow.perfMonitor.timesWithMs', { count: perfLongTaskCount.value, ms: perfLongTaskDuration.value.toFixed(0) })
+		return t('aiworkflow.perfMonitor.timesWithMs', {
+			count: perfLongTaskCount.value,
+			ms: perfLongTaskDuration.value.toFixed(0)
+		})
 	})
 	const perfAnomalySummary = computed(() => {
 		if (!perfAnomalyCount.value) return t('aiworkflow.perfMonitor.zeroTimes')
-		return t('aiworkflow.perfMonitor.anomalyCountWithDetail', { count: String(perfAnomalyCount.value), detail: perfAnomalyLatestDetail.value || '--' })
+		return t('aiworkflow.perfMonitor.anomalyCountWithDetail', {
+			count: String(perfAnomalyCount.value),
+			detail: perfAnomalyLatestDetail.value || '--'
+		})
 	})
 
-	const perfNodeSummary = computed(
-		() =>
-			t('aiworkflow.perfMonitor.nodesCountDetailed', {
-				total: String(payload.nodesCount.value),
-				visible: String(payload.visibleNodesCount.value),
-				compact: String(payload.compactVisibleNodeCount.value),
-				full: String(payload.fullVisibleNodeCount.value)
-			})
+	const perfNodeSummary = computed(() =>
+		t('aiworkflow.perfMonitor.nodesCountDetailed', {
+			total: String(payload.nodesCount.value),
+			visible: String(payload.visibleNodesCount.value),
+			compact: String(payload.compactVisibleNodeCount.value),
+			full: String(payload.fullVisibleNodeCount.value)
+		})
 	)
-	const perfEdgeSummary = computed(
-		() => t('aiworkflow.perfMonitor.edgesVisible', { total: payload.edgesCount.value, visible: payload.renderEdgesCount.value })
+	const perfEdgeSummary = computed(() =>
+		t('aiworkflow.perfMonitor.edgesVisible', {
+			total: payload.edgesCount.value,
+			visible: payload.renderEdgesCount.value
+		})
 	)
 	const perfEdgeComputeText = computed(() =>
 		payload.edgeComputeMs.value > 0 ? `${payload.edgeComputeMs.value.toFixed(2)} ms` : '--'
 	)
-	const perfEdgeInputCountText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeInputCount?.value ?? 0)) }))
-	const perfEdgeRenderedText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeRenderedCount?.value ?? 0)) }))
-	const perfEdgeCulledText = computed(() => t('aiworkflow.perfMonitor.itemCount', { count: String(Number(payload.edgeCulledCount?.value ?? 0)) }))
+	const perfEdgeInputCountText = computed(() =>
+		t('aiworkflow.perfMonitor.itemCount', {
+			count: String(Number(payload.edgeInputCount?.value ?? 0))
+		})
+	)
+	const perfEdgeRenderedText = computed(() =>
+		t('aiworkflow.perfMonitor.itemCount', {
+			count: String(Number(payload.edgeRenderedCount?.value ?? 0))
+		})
+	)
+	const perfEdgeCulledText = computed(() =>
+		t('aiworkflow.perfMonitor.itemCount', {
+			count: String(Number(payload.edgeCulledCount?.value ?? 0))
+		})
+	)
 	const perfEdgeCullHitRateText = computed(() => {
 		const input = Number(payload.edgeInputCount?.value ?? 0)
 		const culled = Number(payload.edgeCulledCount?.value ?? 0)

@@ -20,8 +20,8 @@ function createBlenderNode(id: string, overrides: Record<string, unknown> = {}) 
 			port: 9876,
 			chatMessages: [],
 			isSubmitting: false,
-			...overrides,
-		},
+			...overrides
+		}
 	}
 }
 
@@ -38,13 +38,13 @@ function resetStore() {
 				nodeType: null,
 				draft: '',
 				submitting: false,
-				params: {},
+				params: {}
 			},
 			viewport: { zoom: 1, panX: 0, panY: 0 },
 			selectedNodeId: null,
 			selectedNodeIds: [],
-			selectedEdgeId: null,
-		},
+			selectedEdgeId: null
+		}
 	})
 }
 
@@ -85,8 +85,8 @@ describe('store/aiworkflow - Blender node isSubmitting persistence', () => {
 				height: 180,
 				inputs: [],
 				outputs: [],
-				createdAt: Date.now(),
-			},
+				createdAt: Date.now()
+			}
 		})
 
 		AIWorkflowStore.commit('openNodeChatDialog', { nodeId: 'img-1', nodeType: 'image' })
@@ -131,8 +131,8 @@ describe('store/aiworkflow - Blender node isSubmitting persistence', () => {
 				height: 180,
 				inputs: [],
 				outputs: [],
-				createdAt: Date.now(),
-			},
+				createdAt: Date.now()
+			}
 		})
 		AIWorkflowStore.commit('openNodeChatDialog', { nodeId: 'text-1', nodeType: 'text' })
 
@@ -160,7 +160,7 @@ describe('store/aiworkflow - compressBlenderChatContext', () => {
 			id,
 			role: role as WorkflowBlenderChatMessage['role'],
 			content,
-			timestamp: Date.now(),
+			timestamp: Date.now()
 		}
 	}
 
@@ -201,7 +201,7 @@ describe('store/aiworkflow - compressBlenderChatContext', () => {
 		}
 		const node = createBlenderNode('blender-c3', {
 			chatMessages: msgs,
-			chatContextUsage: { tokenCount: 5000, budget: 8000, usage: 62.5 },
+			chatContextUsage: { tokenCount: 5000, budget: 8000, usage: 62.5 }
 		})
 		AIWorkflowStore.commit('upsertNode', { node })
 
@@ -239,7 +239,11 @@ describe('store/aiworkflow - compressBlenderChatContext', () => {
 })
 
 describe('Blender screenshot width-based scaling', () => {
-	function scaleImageWidth(width: number, height: number, maxWidth: number): { width: number; height: number } {
+	function scaleImageWidth(
+		width: number,
+		height: number,
+		maxWidth: number
+	): { width: number; height: number } {
 		let w = width
 		let h = height
 		if (w > maxWidth) {
@@ -272,7 +276,8 @@ describe('Blender screenshot width-based scaling', () => {
 	})
 
 	it('preserves aspect ratio when scaling', () => {
-		const w = 1920, h = 1080
+		const w = 1920,
+			h = 1080
 		const result = scaleImageWidth(w, h, 960)
 		const originalRatio = w / h
 		const newRatio = result.width / result.height
@@ -282,11 +287,13 @@ describe('Blender screenshot width-based scaling', () => {
 	it('width-limited scaling allows taller images than max-dimension approach', () => {
 		const maxWidth = 960
 		const oldMaxDim = 640
-		const portraitW = 1080, portraitH = 1920
+		const portraitW = 1080,
+			portraitH = 1920
 
 		const widthResult = scaleImageWidth(portraitW, portraitH, maxWidth)
 		const oldResult = (() => {
-			let w = portraitW, h = portraitH
+			let w = portraitW,
+				h = portraitH
 			if (Math.max(w, h) > oldMaxDim) {
 				const scale = oldMaxDim / Math.max(w, h)
 				w = Math.round(w * scale)
@@ -303,7 +310,7 @@ describe('Blender screenshot width-based scaling', () => {
 describe('Blender screenshot tools are uncacheable', () => {
 	const UNCACHEABLE_TOOLS = new Set([
 		'blender_get_screenshot_of_area_as_image',
-		'blender_get_screenshot_of_window_as_image',
+		'blender_get_screenshot_of_window_as_image'
 	])
 
 	function shouldUseCache(toolName: string, toolCallCount: number): boolean {
@@ -408,9 +415,9 @@ describe('Image token estimation for vision context', () => {
 				role: 'user',
 				content: [
 					{ type: 'text', text: '请看截图' },
-					{ type: 'image_url', image_url: { url: largeB64, detail: 'high' } },
-				],
-			},
+					{ type: 'image_url', image_url: { url: largeB64, detail: 'high' } }
+				]
+			}
 		]
 
 		let totalTokens = 0
@@ -420,7 +427,10 @@ describe('Image token estimation for vision context', () => {
 					if (part.type === 'text') {
 						totalTokens += estimateTokens(part.text || '')
 					} else if (part.type === 'image_url') {
-						totalTokens += estimateImageTokens(part.image_url?.url || '', part.image_url?.detail || 'auto')
+						totalTokens += estimateImageTokens(
+							part.image_url?.url || '',
+							part.image_url?.detail || 'auto'
+						)
 					}
 				}
 			}
@@ -432,7 +442,7 @@ describe('Image token estimation for vision context', () => {
 		const msg = {
 			role: 'assistant',
 			content: '',
-			tool_calls: [{ id: '1', type: 'function', function: { name: 'test', arguments: '{}' } }],
+			tool_calls: [{ id: '1', type: 'function', function: { name: 'test', arguments: '{}' } }]
 		}
 		let tokens = 0
 		if (msg.tool_calls) {
@@ -450,17 +460,17 @@ describe('MCP request queue serialization', () => {
 		function enqueueRequest(fn: () => Promise<void>, id: number): Promise<void> {
 			queue = queue.then(
 				() => fn().then(() => executionOrder.push(id)),
-				() => fn().then(() => executionOrder.push(id)),
+				() => fn().then(() => executionOrder.push(id))
 			)
 			return queue
 		}
 
-		const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+		const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 		await Promise.all([
 			enqueueRequest(() => delay(30), 1),
 			enqueueRequest(() => delay(20), 2),
-			enqueueRequest(() => delay(10), 3),
+			enqueueRequest(() => delay(10), 3)
 		])
 
 		expect(executionOrder).toEqual([1, 2, 3])
@@ -471,7 +481,12 @@ describe('MCP request queue serialization', () => {
 			return Array.isArray(message)
 		}
 
-		expect(isBatchRequest([{ id: 1, method: 'test' }, { id: 2, method: 'test2' }])).toBe(true)
+		expect(
+			isBatchRequest([
+				{ id: 1, method: 'test' },
+				{ id: 2, method: 'test2' }
+			])
+		).toBe(true)
 		expect(isBatchRequest({ id: 1, method: 'test' })).toBe(false)
 		expect(isBatchRequest('not an array')).toBe(false)
 	})
@@ -500,7 +515,7 @@ describe('ToolImageProcessor generates dataUrl alongside fileUrl', () => {
 		const img = {
 			dataUrl: 'data:image/png;base64,abc123',
 			fileUrl: 'file:///tmp/screenshot.png',
-			fileName: 'screenshot.png',
+			fileName: 'screenshot.png'
 		}
 		const imageUrl = img.dataUrl || img.fileUrl
 		expect(imageUrl).toBe('data:image/png;base64,abc123')
@@ -510,7 +525,7 @@ describe('ToolImageProcessor generates dataUrl alongside fileUrl', () => {
 		const img = {
 			dataUrl: undefined as string | undefined,
 			fileUrl: 'dweb://screenshots/test.png?t=123',
-			fileName: 'test.png',
+			fileName: 'test.png'
 		}
 		const imageUrl = img.dataUrl || img.fileUrl
 		expect(imageUrl).toBe('dweb://screenshots/test.png?t=123')
@@ -518,7 +533,11 @@ describe('ToolImageProcessor generates dataUrl alongside fileUrl', () => {
 })
 
 describe('Screenshot filename generation with millisecond precision', () => {
-	function generateScreenshotFilename(timestamp: number, screenshotId: string, ext: string = 'png'): string {
+	function generateScreenshotFilename(
+		timestamp: number,
+		screenshotId: string,
+		ext: string = 'png'
+	): string {
 		const ts = new Date(timestamp)
 		const pad = (n: number) => String(n).padStart(2, '0')
 		const timestampSlug = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`
@@ -548,7 +567,7 @@ describe('Workspace image read strips query parameters and warns for screenshots
 	const mockPath = {
 		normalize: (p: string) => p.replace(/\//g, '\\'),
 		join: (...parts: string[]) => parts.join('\\'),
-		sep: '\\',
+		sep: '\\'
 	}
 
 	function stripQueryParams(inputPath: string): string {
@@ -561,7 +580,10 @@ describe('Workspace image read strips query parameters and warns for screenshots
 
 	function isInScreenshotsDir(resolvedPath: string, workspacePath: string): boolean {
 		const normalizedScreenshots = mockPath.normalize(mockPath.join(workspacePath, 'screenshots'))
-		return resolvedPath.startsWith(normalizedScreenshots + mockPath.sep) || resolvedPath === normalizedScreenshots
+		return (
+			resolvedPath.startsWith(normalizedScreenshots + mockPath.sep) ||
+			resolvedPath === normalizedScreenshots
+		)
 	}
 
 	it('strips query parameters (cache busting) from image paths', () => {
@@ -571,7 +593,11 @@ describe('Workspace image read strips query parameters and warns for screenshots
 
 	it('detects paths in screenshots directory', () => {
 		const ws = 'C:\\projects\\test\\blender-workspace'
-		expect(isInScreenshotsDir('C:\\projects\\test\\blender-workspace\\screenshots\\shot.png', ws)).toBe(true)
-		expect(isInScreenshotsDir('C:\\projects\\test\\blender-workspace\\references\\ref.png', ws)).toBe(false)
+		expect(
+			isInScreenshotsDir('C:\\projects\\test\\blender-workspace\\screenshots\\shot.png', ws)
+		).toBe(true)
+		expect(
+			isInScreenshotsDir('C:\\projects\\test\\blender-workspace\\references\\ref.png', ws)
+		).toBe(false)
 	})
 })

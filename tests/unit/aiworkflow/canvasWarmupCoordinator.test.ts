@@ -7,7 +7,12 @@ import {
 import type { ScreenshotCacheEntry } from '@/views/AIWorkflow/node-screenshot/useNodeScreenshotPool'
 import type { CanvasScreenshotPool } from '@/views/AIWorkflow/node-screenshot/canvasScreenshotPool'
 
-const createMockEntry = (nodeId: string, width = 200, height = 100, theme: 'dark' | 'light' = 'dark'): ScreenshotCacheEntry => ({
+const createMockEntry = (
+	nodeId: string,
+	width = 200,
+	height = 100,
+	theme: 'dark' | 'light' = 'dark'
+): ScreenshotCacheEntry => ({
 	nodeId,
 	version: `theme:${theme}|v1`,
 	theme,
@@ -20,11 +25,13 @@ const createMockEntry = (nodeId: string, width = 200, height = 100, theme: 'dark
 
 const makeKey = (nodeId: string, theme: 'dark' | 'light' = 'dark') => `${nodeId}::${theme}`
 
-const createMockCanvasPool = (options: {
-	hasBitmapSet?: Set<string>
-	loadResult?: boolean
-	loadDelay?: number
-} = {}): CanvasScreenshotPool => {
+const createMockCanvasPool = (
+	options: {
+		hasBitmapSet?: Set<string>
+		loadResult?: boolean
+		loadDelay?: number
+	} = {}
+): CanvasScreenshotPool => {
 	const { hasBitmapSet = new Set(), loadResult = true, loadDelay = 0 } = options
 	return {
 		hasBitmap: vi.fn((nodeId: string, theme?: 'dark' | 'light') => {
@@ -35,7 +42,16 @@ const createMockCanvasPool = (options: {
 			if (loadDelay > 0) {
 				await new Promise((resolve) => setTimeout(resolve, loadDelay))
 			}
-			return loadResult ? { nodeId: _entry.nodeId, bitmap: {} as any, width: _entry.width, height: _entry.height, worldX: 0, worldY: 0 } : null
+			return loadResult
+				? {
+						nodeId: _entry.nodeId,
+						bitmap: {} as any,
+						width: _entry.width,
+						height: _entry.height,
+						worldX: 0,
+						worldY: 0
+					}
+				: null
 		}),
 		getBitmap: vi.fn(),
 		setBitmap: vi.fn(),
@@ -82,7 +98,7 @@ describe('CanvasWarmupCoordinator', () => {
 			coordinator.setConcurrency(0)
 			coordinator.addTask('node1', createMockEntry('node1'))
 			await coordinator.warmup()
-			expect((mockPool.loadFromCache as any)).toHaveBeenCalledTimes(1)
+			expect(mockPool.loadFromCache as any).toHaveBeenCalledTimes(1)
 		})
 
 		it('should cap concurrency at maximum of 16', async () => {
@@ -92,7 +108,7 @@ describe('CanvasWarmupCoordinator', () => {
 				coordinator.addTask(`node${i}`, createMockEntry(`node${i}`))
 			}
 			await coordinator.warmup()
-			expect((mockPool.loadFromCache as any)).toHaveBeenCalledTimes(20)
+			expect(mockPool.loadFromCache as any).toHaveBeenCalledTimes(20)
 		})
 	})
 
@@ -206,7 +222,14 @@ describe('CanvasWarmupCoordinator', () => {
 			})
 			poolWithOrder.loadFromCache = vi.fn(async (entry: ScreenshotCacheEntry) => {
 				loadOrder.push(entry.nodeId)
-				return { nodeId: entry.nodeId, bitmap: {} as any, width: entry.width, height: entry.height, worldX: 0, worldY: 0 }
+				return {
+					nodeId: entry.nodeId,
+					bitmap: {} as any,
+					width: entry.width,
+					height: entry.height,
+					worldX: 0,
+					worldY: 0
+				}
 			})
 
 			const coordinator = new CanvasWarmupCoordinator(poolWithOrder, { concurrency: 1 })
@@ -270,7 +293,7 @@ describe('CanvasWarmupCoordinator', () => {
 			await coordinator.warmup()
 
 			expect(onComplete).toHaveBeenCalled()
-			expect((mockPool.loadFromCache as any)).toHaveBeenCalledTimes(10)
+			expect(mockPool.loadFromCache as any).toHaveBeenCalledTimes(10)
 			const status = coordinator.getStatus()
 			expect(status.ready).toBe(10)
 			expect(status.error).toBe(0)
@@ -318,7 +341,7 @@ describe('CanvasWarmupCoordinator', () => {
 			coordinator.dispose()
 			await coordinator.warmup()
 
-			expect((mockPool.loadFromCache as any)).not.toHaveBeenCalled()
+			expect(mockPool.loadFromCache as any).not.toHaveBeenCalled()
 		})
 	})
 
@@ -366,7 +389,14 @@ describe('CanvasWarmupCoordinator', () => {
 			flakyPool.loadFromCache = vi.fn(async () => {
 				callCount++
 				if (callCount > 1) {
-					return { nodeId: 'node1', bitmap: {} as any, width: 200, height: 100, worldX: 0, worldY: 0 }
+					return {
+						nodeId: 'node1',
+						bitmap: {} as any,
+						width: 200,
+						height: 100,
+						worldX: 0,
+						worldY: 0
+					}
 				}
 				throw new Error('First attempt fails')
 			})
@@ -455,7 +485,7 @@ describe('CanvasWarmupCoordinator', () => {
 			expect(status.total).toBe(3)
 
 			await coordinator.warmup()
-			expect((mockPool.loadFromCache as any)).toHaveBeenCalledTimes(3)
+			expect(mockPool.loadFromCache as any).toHaveBeenCalledTimes(3)
 		})
 
 		it('should cancel tasks for a specific theme', () => {

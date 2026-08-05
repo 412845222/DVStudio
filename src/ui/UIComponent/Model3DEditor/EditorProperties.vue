@@ -5,10 +5,20 @@
 		</div>
 		<div class="properties-content">
 			<div v-if="!selectedObject" class="properties-empty">
-				<svg class="empty-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-					<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-					<line x1="12" y1="22.08" x2="12" y2="12"/>
+				<svg
+					class="empty-icon"
+					viewBox="0 0 24 24"
+					width="32"
+					height="32"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+				>
+					<path
+						d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+					/>
+					<polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+					<line x1="12" y1="22.08" x2="12" y2="12" />
 				</svg>
 				<span class="empty-text">选择一个物体查看属性</span>
 			</div>
@@ -20,25 +30,82 @@
 						<div class="prop-row">
 							<span class="prop-label">位置</span>
 							<div class="prop-vector3">
-								<input type="number" class="prop-input" step="0.1" :value="position.x" @change="onPositionChange('x', $event)" />
-								<input type="number" class="prop-input" step="0.1" :value="position.y" @change="onPositionChange('y', $event)" />
-								<input type="number" class="prop-input" step="0.1" :value="position.z" @change="onPositionChange('z', $event)" />
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									:value="position.x"
+									@change="onPositionChange('x', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									:value="position.y"
+									@change="onPositionChange('y', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									:value="position.z"
+									@change="onPositionChange('z', $event)"
+								/>
 							</div>
 						</div>
 						<div class="prop-row">
 							<span class="prop-label">旋转</span>
 							<div class="prop-vector3">
-								<input type="number" class="prop-input" step="1" :value="rotation.x" @change="onRotationChange('x', $event)" />
-								<input type="number" class="prop-input" step="1" :value="rotation.y" @change="onRotationChange('y', $event)" />
-								<input type="number" class="prop-input" step="1" :value="rotation.z" @change="onRotationChange('z', $event)" />
+								<input
+									type="number"
+									class="prop-input"
+									step="1"
+									:value="rotation.x"
+									@change="onRotationChange('x', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="1"
+									:value="rotation.y"
+									@change="onRotationChange('y', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="1"
+									:value="rotation.z"
+									@change="onRotationChange('z', $event)"
+								/>
 							</div>
 						</div>
 						<div class="prop-row">
 							<span class="prop-label">缩放</span>
 							<div class="prop-vector3">
-								<input type="number" class="prop-input" step="0.1" min="0.01" :value="scale.x" @change="onScaleChange('x', $event)" />
-								<input type="number" class="prop-input" step="0.1" min="0.01" :value="scale.y" @change="onScaleChange('y', $event)" />
-								<input type="number" class="prop-input" step="0.1" min="0.01" :value="scale.z" @change="onScaleChange('z', $event)" />
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									min="0.01"
+									:value="scale.x"
+									@change="onScaleChange('x', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									min="0.01"
+									:value="scale.y"
+									@change="onScaleChange('y', $event)"
+								/>
+								<input
+									type="number"
+									class="prop-input"
+									step="0.1"
+									min="0.01"
+									:value="scale.z"
+									@change="onScaleChange('z', $event)"
+								/>
 							</div>
 						</div>
 					</div>
@@ -48,11 +115,19 @@
 					<div class="prop-section-title">可见性</div>
 					<div class="prop-grid">
 						<label class="prop-toggle">
-							<input type="checkbox" :checked="visible" @change="$emit('setVisibility', ($event.target as HTMLInputElement).checked)" />
+							<input
+								type="checkbox"
+								:checked="visible"
+								@change="$emit('setVisibility', ($event.target as HTMLInputElement).checked)"
+							/>
 							<span>显示物体</span>
 						</label>
 						<label class="prop-toggle">
-							<input type="checkbox" :checked="wireframe" @change="$emit('setWireframe', ($event.target as HTMLInputElement).checked)" />
+							<input
+								type="checkbox"
+								:checked="wireframe"
+								@change="$emit('setWireframe', ($event.target as HTMLInputElement).checked)"
+							/>
 							<span>线框模式</span>
 						</label>
 					</div>
@@ -63,16 +138,41 @@
 					<div class="prop-grid">
 						<div class="prop-row">
 							<span class="prop-label">颜色</span>
-							<input type="color" class="prop-color" :value="materialInfo.color" @change="$emit('setColor', ($event.target as HTMLInputElement).value)" />
+							<input
+								type="color"
+								class="prop-color"
+								:value="materialInfo.color"
+								@change="$emit('setColor', ($event.target as HTMLInputElement).value)"
+							/>
 						</div>
 						<div class="prop-row" v-if="materialInfo.metalness !== undefined">
 							<span class="prop-label">金属度</span>
-							<input type="range" class="prop-slider" min="0" max="1" step="0.01" :value="materialInfo.metalness" @input="$emit('setMetalness', parseFloat(($event.target as HTMLInputElement).value))" />
+							<input
+								type="range"
+								class="prop-slider"
+								min="0"
+								max="1"
+								step="0.01"
+								:value="materialInfo.metalness"
+								@input="
+									$emit('setMetalness', parseFloat(($event.target as HTMLInputElement).value))
+								"
+							/>
 							<span class="prop-value">{{ materialInfo.metalness.toFixed(2) }}</span>
 						</div>
 						<div class="prop-row" v-if="materialInfo.roughness !== undefined">
 							<span class="prop-label">粗糙度</span>
-							<input type="range" class="prop-slider" min="0" max="1" step="0.01" :value="materialInfo.roughness" @input="$emit('setRoughness', parseFloat(($event.target as HTMLInputElement).value))" />
+							<input
+								type="range"
+								class="prop-slider"
+								min="0"
+								max="1"
+								step="0.01"
+								:value="materialInfo.roughness"
+								@input="
+									$emit('setRoughness', parseFloat(($event.target as HTMLInputElement).value))
+								"
+							/>
 							<span class="prop-value">{{ materialInfo.roughness.toFixed(2) }}</span>
 						</div>
 					</div>
@@ -299,7 +399,7 @@ function formatNumber(n: number): string {
 	user-select: none;
 }
 
-.prop-toggle input[type="checkbox"] {
+.prop-toggle input[type='checkbox'] {
 	accent-color: var(--theme-success, #38b98c);
 	width: 13px;
 	height: 13px;

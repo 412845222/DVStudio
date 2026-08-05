@@ -170,7 +170,8 @@ export const useAIWorkflowNodeVisibility = (payload: {
 	const compactNodeMeta = (node: WorkflowNode) => {
 		const inputCount = Array.isArray(node.inputs) ? node.inputs.length : 0
 		const outputCount = Array.isArray(node.outputs) ? node.outputs.length : 0
-		if (node.type === 'model3d' || node.type === 'scene-layout') return t('aiworkflow.toast.heavyPreviewCollapsed')
+		if (node.type === 'model3d' || node.type === 'scene-layout')
+			return t('aiworkflow.toast.heavyPreviewCollapsed')
 		if (node.type === 'image' || node.type === 'video')
 			return t('aiworkflow.toast.nodeAnchorsInOut', { input: inputCount, output: outputCount })
 		if (node.type === 'scene-understanding' || node.type === 'scene-decompose')
@@ -245,7 +246,11 @@ export const useAIWorkflowNodeVisibility = (payload: {
 				selectedInViewport.push(id)
 			}
 		})
-		for (let i = 0; i < selectedInViewport.length && addedSelected < MAX_SELECTED_NODES_FOR_FULL_RENDER; i++) {
+		for (
+			let i = 0;
+			i < selectedInViewport.length && addedSelected < MAX_SELECTED_NODES_FOR_FULL_RENDER;
+			i++
+		) {
 			out.push(selectedInViewport[i])
 			addedSelected++
 		}

@@ -80,17 +80,21 @@ function scheduleToastRemoval(id: string, duration: number) {
 	toastTimers.set(id, timerId)
 }
 
-export function pushToast(message: string, tone: ToastTone = 'info', options?: Partial<Omit<ToastItem, 'id' | 'message' | 'tone'>>) {
+export function pushToast(
+	message: string,
+	tone: ToastTone = 'info',
+	options?: Partial<Omit<ToastItem, 'id' | 'message' | 'tone'>>
+) {
 	const id = generateId()
 	const toast: ToastItem = {
 		id,
 		message,
 		tone,
-		duration: options?.persistent ? undefined : (options?.duration || 2600),
+		duration: options?.persistent ? undefined : options?.duration || 2600,
 		persistent: options?.persistent || false,
 		showClose: options?.showClose !== false,
 		actions: options?.actions,
-		onClose: options?.onClose,
+		onClose: options?.onClose
 	}
 	toasts.value.push(toast)
 	if (!toast.persistent) {
@@ -110,7 +114,7 @@ export function removeToast(id: string) {
 		;(toastTimers as any)._startTimes.delete(id)
 		;(toastTimers as any)._durations.delete(id)
 	}
-	const idx = toasts.value.findIndex(t => t.id === id)
+	const idx = toasts.value.findIndex((t) => t.id === id)
 	if (idx >= 0) {
 		const toast = toasts.value[idx]
 		toasts.value.splice(idx, 1)
@@ -139,7 +143,7 @@ export function showConfirm(options: ModalOptions): Promise<boolean> {
 		}
 		activeModal.value = {
 			...options,
-			resolve,
+			resolve
 		}
 	})
 }
@@ -162,7 +166,10 @@ export function toastSuccess(message: string, duration?: number) {
 	return pushToast(message, 'success', { duration })
 }
 
-export function toastError(message: string, options?: Partial<Omit<ToastItem, 'id' | 'message' | 'tone'>>) {
+export function toastError(
+	message: string,
+	options?: Partial<Omit<ToastItem, 'id' | 'message' | 'tone'>>
+) {
 	return pushToast(message, 'error', { persistent: true, ...options })
 }
 
@@ -174,13 +181,17 @@ export function toastInfo(message: string, duration?: number) {
 	return pushToast(message, 'info', { duration })
 }
 
-export async function confirmDelete(title: string, message?: string, options?: { confirmText?: string; cancelText?: string }): Promise<boolean> {
+export async function confirmDelete(
+	title: string,
+	message?: string,
+	options?: { confirmText?: string; cancelText?: string }
+): Promise<boolean> {
 	return showConfirm({
 		title,
 		message,
 		tone: 'warn',
 		confirmText: options?.confirmText || 'Delete',
-		cancelText: options?.cancelText || 'Cancel',
+		cancelText: options?.cancelText || 'Cancel'
 	})
 }
 
@@ -200,6 +211,6 @@ export function useGlobalFeedback() {
 		toastError,
 		toastWarn,
 		toastInfo,
-		confirmDelete,
+		confirmDelete
 	}
 }

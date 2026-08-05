@@ -63,7 +63,7 @@ const cloneJsonSafe = <T>(v: T): T => {
 		try {
 			return globalThis.structuredClone
 				? (globalThis.structuredClone(v) as T)
-				: deepCloneFallback(v as JsonValue) as T
+				: (deepCloneFallback(v as JsonValue) as T)
 		} catch {
 			return deepCloneFallback(v as JsonValue) as T
 		}
@@ -287,8 +287,10 @@ export class VuexTimelineDataManager extends TimelineDataManager {
 		const walkPatch = (nodes: VideoSceneTreeNode[]) => {
 			for (const n of nodes) {
 				if (n && typeof n === 'object') {
-					if (n.props && typeof n.props === 'object') n.props = remapRefs(n.props) as VideoSceneNodeProps
-					if (n.transform && typeof n.transform === 'object') n.transform = remapRefs(n.transform) as VideoSceneNodeTransform
+					if (n.props && typeof n.props === 'object')
+						n.props = remapRefs(n.props) as VideoSceneNodeProps
+					if (n.transform && typeof n.transform === 'object')
+						n.transform = remapRefs(n.transform) as VideoSceneNodeTransform
 					if (Array.isArray(n.children) && n.children.length) walkPatch(n.children)
 				}
 			}

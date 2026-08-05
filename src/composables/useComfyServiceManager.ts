@@ -3,7 +3,7 @@ import type {
 	ComfyServiceInfo,
 	ComfyServiceLogEntry,
 	ComfyServiceLifecycle,
-	ComfyServiceRuntimeStatus,
+	ComfyServiceRuntimeStatus
 } from '../electronBridge/types'
 
 const dweb = (window as any).dweb
@@ -23,7 +23,10 @@ function cloneValue<T>(v: T): T {
 	return JSON.parse(JSON.stringify(v))
 }
 
-function pickLifecycle(status: ComfyServiceRuntimeStatus | null, pending: 'starting' | 'stopping' | null): ComfyServiceLifecycle {
+function pickLifecycle(
+	status: ComfyServiceRuntimeStatus | null,
+	pending: 'starting' | 'stopping' | null
+): ComfyServiceLifecycle {
 	if (pending) return pending
 	if (!status) return 'stopped'
 	if (status.running) return 'running'
@@ -40,8 +43,8 @@ export function useComfyServiceManager() {
 			pid: null,
 			port: 8188,
 			startTime: null,
-			exitCode: null,
-		},
+			exitCode: null
+		}
 	])
 	const selectedKey = ref<string>('comfyui')
 	const logs = ref<ComfyServiceLogEntry[]>([])
@@ -58,7 +61,7 @@ export function useComfyServiceManager() {
 	})
 
 	const selected = computed<ComfyServiceInfo>(() => {
-		return services.value.find(s => s.key === selectedKey.value) || services.value[0]
+		return services.value.find((s) => s.key === selectedKey.value) || services.value[0]
 	})
 
 	let _unsubLog: (() => void) | null = null
@@ -69,7 +72,7 @@ export function useComfyServiceManager() {
 
 	function applyRuntimeStatus(status: ComfyServiceRuntimeStatus) {
 		runtimeStatus.value = status
-		const svc = services.value.find(s => s.key === 'comfyui')
+		const svc = services.value.find((s) => s.key === 'comfyui')
 		if (!svc) return
 		svc.running = status.running
 		svc.pid = status.pid
@@ -106,7 +109,7 @@ export function useComfyServiceManager() {
 			}
 			const cfg = await setup.getConfig()
 			config.value = cfg?.config || cfg || null
-			const svc = services.value.find(s => s.key === 'comfyui')
+			const svc = services.value.find((s) => s.key === 'comfyui')
 			if (svc && config.value?.port && typeof config.value.port === 'number') {
 				svc.port = config.value.port
 			}
@@ -152,11 +155,13 @@ export function useComfyServiceManager() {
 			await refreshConfig()
 			const setup = dweb?.comfyui?.setup
 			const cfg = config.value || {}
-			const r = await setup.startService(cloneValue({
-				installPath: cfg.installPath || '',
-				port: typeof cfg.port === 'number' ? cfg.port : 8188,
-				extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
-			}))
+			const r = await setup.startService(
+				cloneValue({
+					installPath: cfg.installPath || '',
+					port: typeof cfg.port === 'number' ? cfg.port : 8188,
+					extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : []
+				})
+			)
 			if (r?.ok) {
 				await refreshStatus()
 			} else {
@@ -187,11 +192,13 @@ export function useComfyServiceManager() {
 			await refreshConfig()
 			const setup = dweb?.comfyui?.setup
 			const cfg = config.value || {}
-			const r = await setup.restartService(cloneValue({
-				installPath: cfg.installPath || '',
-				port: typeof cfg.port === 'number' ? cfg.port : 8188,
-				extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : [],
-			}))
+			const r = await setup.restartService(
+				cloneValue({
+					installPath: cfg.installPath || '',
+					port: typeof cfg.port === 'number' ? cfg.port : 8188,
+					extraArgs: Array.isArray(cfg.extraArgs) ? [...cfg.extraArgs] : []
+				})
+			)
 			if (r?.ok) {
 				await refreshStatus()
 			} else {
@@ -287,6 +294,6 @@ export function useComfyServiceManager() {
 		clearLogs,
 		refreshConfig,
 		refreshStatus,
-		scrollToBottom,
+		scrollToBottom
 	}
 }

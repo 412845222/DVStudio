@@ -56,19 +56,25 @@ export class CloudAdapter {
 	 * 获取平台标识
 	 * @returns {string}
 	 */
-	getPlatformId() { return 'base' }
+	getPlatformId() {
+		return 'base'
+	}
 
 	/**
 	 * 获取平台显示名称
 	 * @returns {string}
 	 */
-	getPlatformName() { return 'Base' }
+	getPlatformName() {
+		return 'Base'
+	}
 
 	/**
 	 * 云存储是否可用
 	 * @returns {boolean}
 	 */
-	isAvailable() { return false }
+	isAvailable() {
+		return false
+	}
 
 	/**
 	 * 获取云存储配额信息

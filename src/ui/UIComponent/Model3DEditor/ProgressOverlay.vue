@@ -3,10 +3,18 @@
 		<div class="progress-container">
 			<div class="progress-glow"></div>
 			<div class="progress-header">
-				<svg class="progress-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-					<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-					<line x1="12" y1="22.08" x2="12" y2="12"/>
+				<svg
+					class="progress-icon"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+				>
+					<path
+						d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
+					/>
+					<polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+					<line x1="12" y1="22.08" x2="12" y2="12" />
 				</svg>
 				<span class="progress-title">{{ title }}</span>
 			</div>
@@ -46,8 +54,16 @@ defineProps<{
 	width: 320px;
 	padding: 28px 32px;
 	position: relative;
-	background: var(--wf-surface-glass, linear-gradient(135deg, color-mix(in srgb, var(--wf-primary, #27b99c) 4%, rgba(21,24,28,0.9)), rgba(21,24,28,0.95)));
-	border: 1px solid color-mix(in srgb, var(--wf-primary, #27b99c) 25%, var(--wf-border-subtle, transparent));
+	background: var(
+		--wf-surface-glass,
+		linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--wf-primary, #27b99c) 4%, rgba(21, 24, 28, 0.9)),
+			rgba(21, 24, 28, 0.95)
+		)
+	);
+	border: 1px solid
+		color-mix(in srgb, var(--wf-primary, #27b99c) 25%, var(--wf-border-subtle, transparent));
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 	box-shadow: var(--wf-panel-shadow-strong, 0 12px 36px rgba(0, 0, 0, 0.18));
@@ -56,7 +72,11 @@ defineProps<{
 .progress-glow {
 	position: absolute;
 	inset: -20px;
-	background: radial-gradient(ellipse at center, color-mix(in srgb, var(--wf-primary, #27b99c) 8%, transparent) 0%, transparent 70%);
+	background: radial-gradient(
+		ellipse at center,
+		color-mix(in srgb, var(--wf-primary, #27b99c) 8%, transparent) 0%,
+		transparent 70%
+	);
 	pointer-events: none;
 }
 
@@ -76,8 +96,13 @@ defineProps<{
 }
 
 @keyframes float {
-	0%, 100% { transform: translateY(0); }
-	50% { transform: translateY(-3px); }
+	0%,
+	100% {
+		transform: translateY(0);
+	}
+	50% {
+		transform: translateY(-3px);
+	}
 }
 
 .progress-title {
@@ -91,7 +116,7 @@ defineProps<{
 .progress-bar-track {
 	position: relative;
 	height: 3px;
-	background: color-mix(in srgb, var(--wf-primary, #27b99c) 10%, rgba(255,255,255,0.04));
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 10%, rgba(255, 255, 255, 0.04));
 	overflow: hidden;
 	margin-bottom: 12px;
 }
@@ -111,7 +136,11 @@ defineProps<{
 	top: -4px;
 	width: 16px;
 	height: 11px;
-	background: radial-gradient(ellipse, color-mix(in srgb, #fff 70%, transparent) 0%, transparent 70%);
+	background: radial-gradient(
+		ellipse,
+		color-mix(in srgb, #fff 70%, transparent) 0%,
+		transparent 70%
+	);
 	transform: translateX(-50%);
 	transition: left 0.3s ease-out;
 	filter: blur(2px);

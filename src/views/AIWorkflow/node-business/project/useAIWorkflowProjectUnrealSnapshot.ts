@@ -2,7 +2,9 @@ import type { AIWorkflowDraftSnapshot } from '../../../../aiworkflow/persistence
 import type { WorkflowState, WorkflowNode } from '../../../../aiworkflow/types'
 
 export const useAIWorkflowProjectUnrealSnapshot = (payload: {
-	buildResetUnrealExportSettings: (settings?: Record<string, unknown> | null) => Record<string, unknown>
+	buildResetUnrealExportSettings: (
+		settings?: Record<string, unknown> | null
+	) => Record<string, unknown>
 }) => {
 	const stripUnrealExportRuntimeFromNodes = (
 		nodesById: WorkflowState['nodesById']

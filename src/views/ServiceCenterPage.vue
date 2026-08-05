@@ -17,9 +17,7 @@
 						{{ anyRunning ? '运行中' : '空闲' }}
 					</span>
 				</div>
-				<p class="sc-sub">
-					管理本地 AI 后端进程（ComfyUI 等），实时查看日志与状态。
-				</p>
+				<p class="sc-sub">管理本地 AI 后端进程（ComfyUI 等），实时查看日志与状态。</p>
 			</div>
 
 			<div class="sc-layout">
@@ -83,7 +81,11 @@
 							<div class="sc-head-actions">
 								<button
 									class="sc-btn sc-btn-primary"
-									:disabled="pendingOp !== null || selected.status === 'running' || selected.status === 'starting'"
+									:disabled="
+										pendingOp !== null ||
+										selected.status === 'running' ||
+										selected.status === 'starting'
+									"
 									@click="startService"
 								>
 									<span class="sc-btn-icon">▶</span>
@@ -99,7 +101,11 @@
 								</button>
 								<button
 									class="sc-btn sc-btn-danger"
-									:disabled="pendingOp !== null || selected.status === 'stopped' || selected.status === 'stopping'"
+									:disabled="
+										pendingOp !== null ||
+										selected.status === 'stopped' ||
+										selected.status === 'stopping'
+									"
 									@click="stopService"
 								>
 									<span class="sc-btn-icon">■</span>
@@ -109,7 +115,11 @@
 									<span class="sc-btn-icon">⚙</span>
 									配置
 								</button>
-								<button class="sc-btn sc-btn-ghost" @click="clearLogs" :disabled="logs.length === 0">
+								<button
+									class="sc-btn sc-btn-ghost"
+									@click="clearLogs"
+									:disabled="logs.length === 0"
+								>
 									清空日志
 								</button>
 							</div>
@@ -172,7 +182,13 @@
 							<div v-else-if="logs.length === 0" class="sc-log-empty">
 								服务未启动，暂无日志输出。点击「启动」开始运行 ComfyUI。
 							</div>
-							<pre v-for="(line, idx) in logs" :key="idx" class="sc-log-line" :class="`log-${line.stream}`">{{ line.message }}</pre>
+							<pre
+								v-for="(line, idx) in logs"
+								:key="idx"
+								class="sc-log-line"
+								:class="`log-${line.stream}`"
+								>{{ line.message }}</pre
+							>
 						</div>
 					</div>
 				</section>
@@ -200,12 +216,12 @@ const {
 	startService,
 	stopService,
 	restartService,
-	clearLogs,
+	clearLogs
 } = useComfyServiceManager()
 
 const terminalEl = ref<HTMLElement | null>(null)
 
-const anyRunning = computed(() => services.value.some(s => s.status === 'running'))
+const anyRunning = computed(() => services.value.some((s) => s.status === 'running'))
 
 const uptimeText = computed(() => {
 	const st = selected.value.startTime
@@ -231,11 +247,16 @@ function formatTime(t: number | null | undefined) {
 
 function statusLabel(s: ComfyServiceLifecycle) {
 	switch (s) {
-		case 'running': return '运行中'
-		case 'starting': return '启动中'
-		case 'stopping': return '停止中'
-		case 'stopped': return '已停止'
-		default: return s
+		case 'running':
+			return '运行中'
+		case 'starting':
+			return '启动中'
+		case 'stopping':
+			return '停止中'
+		case 'stopped':
+			return '已停止'
+		default:
+			return s
 	}
 }
 
@@ -289,17 +310,35 @@ watch(logs, () => {
 	overflow: hidden;
 }
 .sc-bg-bg {
-	position: absolute; inset: 0;
+	position: absolute;
+	inset: 0;
 	background:
-		radial-gradient(ellipse 80% 60% at 20% 15%, color-mix(in srgb, var(--pl-accent) 18%, transparent), transparent 60%),
-		radial-gradient(ellipse 60% 50% at 85% 90%, color-mix(in srgb, var(--pl-cold) 14%, transparent), transparent 55%),
+		radial-gradient(
+			ellipse 80% 60% at 20% 15%,
+			color-mix(in srgb, var(--pl-accent) 18%, transparent),
+			transparent 60%
+		),
+		radial-gradient(
+			ellipse 60% 50% at 85% 90%,
+			color-mix(in srgb, var(--pl-cold) 14%, transparent),
+			transparent 55%
+		),
 		linear-gradient(180deg, var(--pl-bg-0) 0%, var(--pl-bg-1) 100%);
 }
 .sc-bg-grid {
-	position: absolute; inset: 0;
+	position: absolute;
+	inset: 0;
 	background-image:
-		linear-gradient(to right, color-mix(in srgb, var(--pl-accent) 8%, transparent) 1px, transparent 1px),
-		linear-gradient(to bottom, color-mix(in srgb, var(--pl-accent) 8%, transparent) 1px, transparent 1px);
+		linear-gradient(
+			to right,
+			color-mix(in srgb, var(--pl-accent) 8%, transparent) 1px,
+			transparent 1px
+		),
+		linear-gradient(
+			to bottom,
+			color-mix(in srgb, var(--pl-accent) 8%, transparent) 1px,
+			transparent 1px
+		);
 	background-size: 64px 64px;
 	opacity: 0.55;
 	mask-image: radial-gradient(ellipse at 50% 40%, #000 55%, transparent 100%);
@@ -313,28 +352,54 @@ watch(logs, () => {
 	animation: sc-drift 20s ease-in-out infinite alternate;
 }
 .sc-bg-glow-1 {
-	top: 8%; left: 10%; width: 520px; height: 320px;
-	background: linear-gradient(135deg, color-mix(in srgb, var(--pl-accent) 35%, transparent), transparent 70%);
+	top: 8%;
+	left: 10%;
+	width: 520px;
+	height: 320px;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		transparent 70%
+	);
 }
 .sc-bg-glow-2 {
-	bottom: 10%; right: 8%; width: 620px; height: 380px;
-	background: linear-gradient(135deg, color-mix(in srgb, var(--pl-cold) 28%, transparent), transparent 70%);
+	bottom: 10%;
+	right: 8%;
+	width: 620px;
+	height: 380px;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--pl-cold) 28%, transparent),
+		transparent 70%
+	);
 	animation-duration: 24s;
 }
 @keyframes sc-drift {
-	0% { transform: translate3d(0,0,0); }
-	100% { transform: translate3d(30px,-20px,0); }
+	0% {
+		transform: translate3d(0, 0, 0);
+	}
+	100% {
+		transform: translate3d(30px, -20px, 0);
+	}
 }
 .sc-scanline-top {
 	position: absolute;
-	top: 0; left: 0; right: 0;
+	top: 0;
+	left: 0;
+	right: 0;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent) 50%, transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 55%, transparent) 50%,
+		transparent
+	);
 	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 
 .sc-shell {
-	position: relative; z-index: 1;
+	position: relative;
+	z-index: 1;
 	max-width: 1400px;
 	width: 100%;
 	margin: 0 auto;
@@ -346,22 +411,29 @@ watch(logs, () => {
 }
 
 .sc-header {
-	display: flex; flex-direction: column; gap: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
 	padding-bottom: 18px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 .sc-title-row {
-	display: flex; align-items: center; gap: 16px;
+	display: flex;
+	align-items: center;
+	gap: 16px;
 }
 .sc-title {
 	margin: 0;
-	font-size: 22px; font-weight: 700;
+	font-size: 22px;
+	font-weight: 700;
 	color: var(--pl-fg);
 	text-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	letter-spacing: 0.02em;
 }
 .sc-status-indicator {
-	display: inline-flex; align-items: center; gap: 8px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
 	padding: 4px 12px;
 	font-size: 11px;
 	letter-spacing: 0.06em;
@@ -370,7 +442,9 @@ watch(logs, () => {
 	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
 }
 .sc-status-dot {
-	width: 8px; height: 8px; border-radius: 50%;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
 	background: var(--pl-fg-soft);
 	box-shadow: 0 0 6px currentColor;
 }
@@ -382,10 +456,19 @@ watch(logs, () => {
 	background: #66ff99;
 	animation: sc-pulse-dot 1.6s ease-in-out infinite;
 }
-.sc-status-indicator.is-idle { color: var(--pl-fg-soft); }
+.sc-status-indicator.is-idle {
+	color: var(--pl-fg-soft);
+}
 @keyframes sc-pulse-dot {
-	0%, 100% { opacity: 1; box-shadow: 0 0 6px #66ff99; }
-	50% { opacity: 0.5; box-shadow: 0 0 12px #66ff99; }
+	0%,
+	100% {
+		opacity: 1;
+		box-shadow: 0 0 6px #66ff99;
+	}
+	50% {
+		opacity: 0.5;
+		box-shadow: 0 0 12px #66ff99;
+	}
 }
 .sc-sub {
 	margin: 0;
@@ -394,9 +477,10 @@ watch(logs, () => {
 	line-height: 1.6;
 }
 .sc-sub::before {
-	content: "";
+	content: '';
 	display: inline-block;
-	width: 6px; height: 6px;
+	width: 6px;
+	height: 6px;
 	margin-right: 8px;
 	background: var(--pl-accent);
 	box-shadow: 0 0 8px var(--pl-accent);
@@ -412,7 +496,8 @@ watch(logs, () => {
 }
 
 .sc-sidebar {
-	display: flex; flex-direction: column;
+	display: flex;
+	flex-direction: column;
 	gap: 10px;
 	min-height: 0;
 	overflow: hidden;
@@ -425,7 +510,8 @@ watch(logs, () => {
 	text-transform: uppercase;
 }
 .sc-service-list {
-	display: flex; flex-direction: column;
+	display: flex;
+	flex-direction: column;
 	gap: 10px;
 	overflow-y: auto;
 	flex: 1;
@@ -436,13 +522,21 @@ watch(logs, () => {
 	position: relative;
 	padding: 14px;
 	cursor: pointer;
-	background: linear-gradient(135deg,
+	background: linear-gradient(
+		135deg,
 		color-mix(in srgb, var(--pl-bg-1) 70%, transparent),
-		color-mix(in srgb, var(--pl-bg-0) 85%, transparent));
+		color-mix(in srgb, var(--pl-bg-0) 85%, transparent)
+	);
 	border: 1px solid var(--pl-card-border);
 	border-radius: 2px;
-	box-shadow: 0 2px 10px rgba(0,0,0,0.25), inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	transition: transform 220ms cubic-bezier(.22,.61,.36,1), box-shadow 220ms ease, border-color 220ms ease, filter 220ms ease;
+	box-shadow:
+		0 2px 10px rgba(0, 0, 0, 0.25),
+		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	transition:
+		transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+		box-shadow 220ms ease,
+		border-color 220ms ease,
+		filter 220ms ease;
 }
 .sc-service-item:hover {
 	transform: translateY(-1px);
@@ -451,13 +545,16 @@ watch(logs, () => {
 }
 .sc-service-item.active {
 	border-color: color-mix(in srgb, var(--pl-accent) 70%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
-		0 8px 28px rgba(0,0,0,0.45), inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 30%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 8px 28px rgba(0, 0, 0, 0.45),
+		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 30%, transparent);
 }
 .sc-service-item.running {
 	border-left: 2px solid #66ff99;
 }
-.sc-service-item.error, .sc-service-item.stopped:not(.active) {
+.sc-service-item.error,
+.sc-service-item.stopped:not(.active) {
 	opacity: 0.85;
 }
 
@@ -468,27 +565,60 @@ watch(logs, () => {
 }
 .sc-service-item-frame .corner {
 	position: absolute;
-	width: 8px; height: 8px;
+	width: 8px;
+	height: 8px;
 	border-color: var(--pl-accent);
 }
-.sc-service-item-frame .corner.tl { top: 3px; left: 3px; border-top: 1px solid currentColor; border-left: 1px solid currentColor; color: var(--pl-accent); }
-.sc-service-item-frame .corner.tr { top: 3px; right: 3px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; color: var(--pl-accent); }
-.sc-service-item-frame .corner.bl { bottom: 3px; left: 3px; border-bottom: 1px solid currentColor; border-left: 1px solid currentColor; color: var(--pl-accent); }
-.sc-service-item-frame .corner.br { bottom: 3px; right: 3px; border-bottom: 1px solid currentColor; border-right: 1px solid currentColor; color: var(--pl-accent); }
+.sc-service-item-frame .corner.tl {
+	top: 3px;
+	left: 3px;
+	border-top: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-service-item-frame .corner.tr {
+	top: 3px;
+	right: 3px;
+	border-top: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-service-item-frame .corner.bl {
+	bottom: 3px;
+	left: 3px;
+	border-bottom: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-service-item-frame .corner.br {
+	bottom: 3px;
+	right: 3px;
+	border-bottom: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
 
 .sc-service-item-body {
-	position: relative; z-index: 2;
-	display: flex; flex-direction: column; gap: 8px;
+	position: relative;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 .sc-service-item-head {
-	display: flex; align-items: center; gap: 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 }
 .sc-service-icon {
-	font-size: 14px; color: var(--pl-accent);
+	font-size: 14px;
+	color: var(--pl-accent);
 	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 .sc-service-name {
-	font-size: 14px; font-weight: 600; color: var(--pl-fg);
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--pl-fg);
 	flex: 1;
 }
 .sc-service-badge {
@@ -500,10 +630,24 @@ watch(logs, () => {
 	color: var(--pl-fg-soft);
 	border: 1px solid color-mix(in srgb, var(--pl-fg-soft) 30%, transparent);
 }
-.sc-service-badge.running { color: #66ff99; background: color-mix(in srgb, #66ff99 12%, transparent); border-color: color-mix(in srgb, #66ff99 40%, transparent); }
-.sc-service-badge.starting { color: #ffd166; background: color-mix(in srgb, #ffd166 12%, transparent); border-color: color-mix(in srgb, #ffd166 40%, transparent); }
-.sc-service-badge.stopping { color: #ff9f6b; background: color-mix(in srgb, #ff9f6b 12%, transparent); border-color: color-mix(in srgb, #ff9f6b 40%, transparent); }
-.sc-service-badge.stopped { color: var(--pl-fg-soft); }
+.sc-service-badge.running {
+	color: #66ff99;
+	background: color-mix(in srgb, #66ff99 12%, transparent);
+	border-color: color-mix(in srgb, #66ff99 40%, transparent);
+}
+.sc-service-badge.starting {
+	color: #ffd166;
+	background: color-mix(in srgb, #ffd166 12%, transparent);
+	border-color: color-mix(in srgb, #ffd166 40%, transparent);
+}
+.sc-service-badge.stopping {
+	color: #ff9f6b;
+	background: color-mix(in srgb, #ff9f6b 12%, transparent);
+	border-color: color-mix(in srgb, #ff9f6b 40%, transparent);
+}
+.sc-service-badge.stopped {
+	color: var(--pl-fg-soft);
+}
 
 .sc-service-desc {
 	font-size: 11px;
@@ -511,20 +655,23 @@ watch(logs, () => {
 	line-height: 1.5;
 }
 .sc-service-meta {
-	display: flex; flex-wrap: wrap; gap: 6px 12px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 12px;
 	font-size: 10px;
 	color: color-mix(in srgb, var(--pl-fg-soft) 80%, transparent);
 	letter-spacing: 0.02em;
 }
 .sc-service-meta span::before {
-	content: "›";
+	content: '›';
 	margin-right: 4px;
 	color: var(--pl-accent);
 	opacity: 0.7;
 }
 
 .sc-main {
-	display: flex; flex-direction: column;
+	display: flex;
+	flex-direction: column;
 	gap: 18px;
 	min-height: 0;
 	overflow: hidden;
@@ -533,24 +680,56 @@ watch(logs, () => {
 .sc-panel {
 	position: relative;
 	padding: 18px;
-	background: linear-gradient(135deg,
+	background: linear-gradient(
+		135deg,
 		color-mix(in srgb, var(--pl-bg-1) 60%, transparent),
-		color-mix(in srgb, var(--pl-bg-0) 80%, transparent));
+		color-mix(in srgb, var(--pl-bg-0) 80%, transparent)
+	);
 	border: 1px solid var(--pl-card-border);
 	border-radius: 2px;
-	box-shadow: 0 2px 10px rgba(0,0,0,0.25), inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 22%, transparent);
+	box-shadow:
+		0 2px 10px rgba(0, 0, 0, 0.25),
+		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
 .sc-panel-frame {
-	position: absolute; inset: 0; pointer-events: none;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
 }
 .sc-panel-frame .corner {
-	position: absolute; width: 10px; height: 10px;
+	position: absolute;
+	width: 10px;
+	height: 10px;
 	border-color: var(--pl-accent);
 }
-.sc-panel-frame .corner.tl { top: 4px; left: 4px; border-top: 1px solid currentColor; border-left: 1px solid currentColor; color: var(--pl-accent); }
-.sc-panel-frame .corner.tr { top: 4px; right: 4px; border-top: 1px solid currentColor; border-right: 1px solid currentColor; color: var(--pl-accent); }
-.sc-panel-frame .corner.bl { bottom: 4px; left: 4px; border-bottom: 1px solid currentColor; border-left: 1px solid currentColor; color: var(--pl-accent); }
-.sc-panel-frame .corner.br { bottom: 4px; right: 4px; border-bottom: 1px solid currentColor; border-right: 1px solid currentColor; color: var(--pl-accent); }
+.sc-panel-frame .corner.tl {
+	top: 4px;
+	left: 4px;
+	border-top: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-panel-frame .corner.tr {
+	top: 4px;
+	right: 4px;
+	border-top: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-panel-frame .corner.bl {
+	bottom: 4px;
+	left: 4px;
+	border-bottom: 1px solid currentColor;
+	border-left: 1px solid currentColor;
+	color: var(--pl-accent);
+}
+.sc-panel-frame .corner.br {
+	bottom: 4px;
+	right: 4px;
+	border-bottom: 1px solid currentColor;
+	border-right: 1px solid currentColor;
+	color: var(--pl-accent);
+}
 
 .sc-panel-head {
 	flex-shrink: 0;
@@ -562,15 +741,31 @@ watch(logs, () => {
 	gap: 16px;
 	flex-wrap: wrap;
 }
-.sc-head-info { display: flex; flex-direction: column; gap: 4px; }
-.sc-head-name { font-size: 16px; font-weight: 700; color: var(--pl-fg); text-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 30%, transparent); }
-.sc-head-desc { font-size: 12px; color: var(--pl-fg-soft); }
+.sc-head-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.sc-head-name {
+	font-size: 16px;
+	font-weight: 700;
+	color: var(--pl-fg);
+	text-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 30%, transparent);
+}
+.sc-head-desc {
+	font-size: 12px;
+	color: var(--pl-fg-soft);
+}
 
 .sc-head-actions {
-	display: flex; gap: 8px; flex-wrap: wrap;
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
 }
 .sc-btn {
-	display: inline-flex; align-items: center; gap: 6px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	height: 34px;
 	padding: 0 14px;
 	font-size: 12px;
@@ -580,28 +775,43 @@ watch(logs, () => {
 	background: color-mix(in srgb, var(--pl-fg) 4%, transparent);
 	color: var(--pl-fg);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
-	transition: border-color 200ms ease, background 200ms ease, box-shadow 200ms ease, transform 160ms ease;
+	transition:
+		border-color 200ms ease,
+		background 200ms ease,
+		box-shadow 200ms ease,
+		transform 160ms ease;
 }
 .sc-btn:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--pl-accent) 10%, transparent);
 	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
 	box-shadow: 0 0 16px color-mix(in srgb, var(--pl-accent) 22%, transparent);
 }
-.sc-btn:active:not(:disabled) { transform: translateY(1px); }
-.sc-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.sc-btn-icon { font-size: 10px; }
+.sc-btn:active:not(:disabled) {
+	transform: translateY(1px);
+}
+.sc-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.sc-btn-icon {
+	font-size: 10px;
+}
 .sc-btn-primary {
-	background: linear-gradient(135deg,
+	background: linear-gradient(
+		135deg,
 		color-mix(in srgb, var(--pl-accent) 30%, transparent),
-		color-mix(in srgb, var(--pl-accent) 15%, transparent));
+		color-mix(in srgb, var(--pl-accent) 15%, transparent)
+	);
 	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
 	color: #fff;
 	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 .sc-btn-primary:hover:not(:disabled) {
-	background: linear-gradient(135deg,
+	background: linear-gradient(
+		135deg,
 		color-mix(in srgb, var(--pl-accent) 45%, transparent),
-		color-mix(in srgb, var(--pl-accent) 25%, transparent));
+		color-mix(in srgb, var(--pl-accent) 25%, transparent)
+	);
 	box-shadow: 0 0 20px color-mix(in srgb, var(--pl-accent) 35%, transparent);
 }
 .sc-btn-warn {
@@ -627,7 +837,9 @@ watch(logs, () => {
 
 .sc-error-banner {
 	margin-top: 12px;
-	display: flex; align-items: center; gap: 10px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
 	padding: 10px 14px;
 	font-size: 12px;
 	color: color-mix(in srgb, #ff6b6b 90%, #fff);
@@ -636,12 +848,16 @@ watch(logs, () => {
 	border-radius: 2px;
 }
 .sc-error-icon {
-	display: inline-flex; align-items: center; justify-content: center;
-	width: 18px; height: 18px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
 	border-radius: 50%;
 	background: #ff6b6b;
 	color: #fff;
-	font-weight: 700; font-size: 12px;
+	font-weight: 700;
+	font-size: 12px;
 	flex-shrink: 0;
 }
 
@@ -652,7 +868,9 @@ watch(logs, () => {
 	gap: 12px;
 }
 .sc-stat {
-	display: flex; flex-direction: column; gap: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 	padding: 10px 12px;
 	background: color-mix(in srgb, var(--pl-fg) 3%, transparent);
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
@@ -670,43 +888,63 @@ watch(logs, () => {
 	color: var(--pl-fg);
 	font-variant-numeric: tabular-nums;
 }
-.sc-stat-value.running { color: #66ff99; text-shadow: 0 0 8px color-mix(in srgb, #66ff99 40%, transparent); }
-.sc-stat-value.starting { color: #ffd166; }
-.sc-stat-value.stopping { color: #ff9f6b; }
-.sc-stat-value.stopped { color: var(--pl-fg-soft); }
+.sc-stat-value.running {
+	color: #66ff99;
+	text-shadow: 0 0 8px color-mix(in srgb, #66ff99 40%, transparent);
+}
+.sc-stat-value.starting {
+	color: #ffd166;
+}
+.sc-stat-value.stopping {
+	color: #ff9f6b;
+}
+.sc-stat-value.stopped {
+	color: var(--pl-fg-soft);
+}
 
 .sc-panel-log {
 	flex: 1;
 	min-height: 0;
-	display: flex; flex-direction: column;
+	display: flex;
+	flex-direction: column;
 	padding: 14px;
 }
 .sc-log-header {
-	display: flex; align-items: center; justify-content: space-between;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	padding: 4px 8px 10px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
 	margin-bottom: 8px;
 }
 .sc-log-title {
-	display: inline-flex; align-items: center; gap: 8px;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
 	font-size: 12px;
 	color: var(--pl-fg);
 	letter-spacing: 0.06em;
 }
 .sc-log-dot {
-	width: 8px; height: 8px; border-radius: 50%;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
 	background: var(--pl-accent);
 	box-shadow: 0 0 8px var(--pl-accent);
 	animation: sc-pulse-dot 2s ease-in-out infinite;
 }
 .sc-log-autoscroll {
-	display: inline-flex; align-items: center; gap: 6px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	font-size: 11px;
 	color: var(--pl-fg-soft);
 	cursor: pointer;
 	user-select: none;
 }
-.sc-log-autoscroll input { accent-color: var(--pl-accent); }
+.sc-log-autoscroll input {
+	accent-color: var(--pl-accent);
+}
 
 .sc-log-terminal {
 	flex: 1;
@@ -721,8 +959,12 @@ watch(logs, () => {
 	scrollbar-width: thin;
 	scrollbar-color: color-mix(in srgb, var(--pl-accent) 40%, transparent) transparent;
 }
-.sc-log-terminal::-webkit-scrollbar { width: 8px; }
-.sc-log-terminal::-webkit-scrollbar-track { background: transparent; }
+.sc-log-terminal::-webkit-scrollbar {
+	width: 8px;
+}
+.sc-log-terminal::-webkit-scrollbar-track {
+	background: transparent;
+}
 .sc-log-terminal::-webkit-scrollbar-thumb {
 	background: color-mix(in srgb, var(--pl-accent) 40%, transparent);
 	border-radius: 4px;
@@ -740,7 +982,13 @@ watch(logs, () => {
 	word-break: break-all;
 	color: #cfe8ff;
 }
-.sc-log-line.log-stdout { color: #cfe8ff; }
-.sc-log-line.log-stderr { color: #ff8a8a; }
-.sc-log-line.log-system { color: color-mix(in srgb, var(--pl-accent) 80%, #fff); }
+.sc-log-line.log-stdout {
+	color: #cfe8ff;
+}
+.sc-log-line.log-stderr {
+	color: #ff8a8a;
+}
+.sc-log-line.log-system {
+	color: color-mix(in srgb, var(--pl-accent) 80%, #fff);
+}
 </style>

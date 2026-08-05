@@ -64,10 +64,11 @@ const normalizeNodeIdentityInPlace = (node: unknown) => {
 	if (!node || typeof node !== 'object') return
 	const n = node as Record<string, unknown>
 	if (typeof n.id !== 'string' || !String(n.id).trim()) {
-		(n as Record<string, unknown>).id = `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+		;(n as Record<string, unknown>).id =
+			`node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 	}
 	if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt as number)) {
-		(n as Record<string, unknown>).createdAt = Date.now()
+		;(n as Record<string, unknown>).createdAt = Date.now()
 	}
 	if (Array.isArray(n.children)) {
 		for (const c of n.children) normalizeNodeIdentityInPlace(c)
@@ -120,7 +121,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			if (!id) return
 			delete state.imageAssets[id]
 		},
-		upsertVideoAsset(state, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+		upsertVideoAsset(
+			state,
+			payload: {
+				id: string
+				url: string
+				name?: string
+				videoWidth?: number
+				videoHeight?: number
+				duration?: number
+			}
+		) {
 			const id = String(payload.id || '').trim()
 			const url = String(payload.url || '').trim()
 			if (!id || !url) return
@@ -240,7 +251,10 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 				)
 			}
 		},
-		openLeftPanel(state, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }) {
+		openLeftPanel(
+			state,
+			payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }
+		) {
 			state.leftPanel.open = true
 			state.leftPanel.mode = payload.mode
 			state.leftPanel.layerId = payload.layerId ? String(payload.layerId) : null
@@ -333,7 +347,8 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 			const rawIds = Array.isArray(payload.nodeIds) ? payload.nodeIds : []
 			const ids = Array.from(new Set(rawIds.map((s) => String(s || '').trim()).filter(Boolean)))
 			if (!ids.length) return
-			const patch = payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as NodePropsPatch)
+			const patch =
+				payload.patch && typeof payload.patch === 'object' ? payload.patch : ({} as NodePropsPatch)
 			for (const nodeId of ids) updateUserNodeProps(layer, nodeId, patch)
 		},
 		pasteNodeTreeAsSibling(
@@ -505,7 +520,17 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		removeImageAsset({ commit }, payload: { id: string }) {
 			commit('removeImageAsset', payload)
 		},
-		upsertVideoAsset({ commit }, payload: { id: string; url: string; name?: string; videoWidth?: number; videoHeight?: number; duration?: number }) {
+		upsertVideoAsset(
+			{ commit },
+			payload: {
+				id: string
+				url: string
+				name?: string
+				videoWidth?: number
+				videoHeight?: number
+				duration?: number
+			}
+		) {
 			commit('upsertVideoAsset', payload)
 		},
 		removeVideoAsset({ commit }, payload: { id: string }) {
@@ -563,7 +588,10 @@ export const VideoSceneStore = createStore<VideoSceneState>({
 		setLayoutInsets({ commit }, payload: Partial<VideoSceneLayoutInsets>) {
 			commit('setLayoutInsets', payload)
 		},
-		openLeftPanel({ commit }, payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }) {
+		openLeftPanel(
+			{ commit },
+			payload: { mode: VideoSceneLeftPanelMode; layerId?: string | null; videoPath?: string | null }
+		) {
 			commit('openLeftPanel', payload)
 		},
 		closeLeftPanel({ commit }) {

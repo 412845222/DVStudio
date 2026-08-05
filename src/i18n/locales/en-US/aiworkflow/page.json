@@ -178,6 +178,7 @@
 	"aiworkflow.page.media.pasteNeedSaveProject": "Please save the project before pasting media resources to the blueprint.",
 	"aiworkflow.page.media.importCancelled": "Import cancelled: Completed nodes/resources kept, unfinished items cleaned up.",
 	"aiworkflow.page.media.videoProjectNotActive": "Current project is not active; cannot import video.",
+	"aiworkflow.page.media.uploadSuccessWithName": "{name} uploaded",
 	"aiworkflow.page.unreal.resetCleared": "Unreal sessions and task status from old project cleared. Please click \"Wait for Connection\" again.",
 	"aiworkflow.page.unreal.listSessionsFailed": "Failed to read Unreal connection list: {error}",
 	"aiworkflow.page.unreal.exportFailed": "Export task execution failed",

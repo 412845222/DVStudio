@@ -78,7 +78,9 @@ export const calculateNodeScreenshotVersion = (ctx: NodeVersionContext): string 
 			parts.push(`ce:${imgNode.imageSettings?.cropEnabled ? '1' : '0'}`)
 			if (imgNode.imageSettings?.crop) {
 				const c = imgNode.imageSettings.crop
-				parts.push(`crop:${Math.round(c.x || 0)},${Math.round(c.y || 0)},${Math.round(c.width || 0)},${Math.round(c.height || 0)}`)
+				parts.push(
+					`crop:${Math.round(c.x || 0)},${Math.round(c.y || 0)},${Math.round(c.width || 0)},${Math.round(c.height || 0)}`
+				)
 			}
 			const resKey = imgNode.resourceUrl || imgNode.resourceId || ''
 			if (resourceStates && resKey) {

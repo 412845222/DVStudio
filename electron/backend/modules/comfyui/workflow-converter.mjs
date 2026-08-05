@@ -24,7 +24,14 @@ function normalizeNodeId(id) {
 function parseLink(l) {
 	if (!l) return null
 	if (Array.isArray(l) && l.length >= 5) {
-		return { id: String(l[0]), fromId: String(l[1]), fromSlot: l[2], toId: String(l[3]), toSlot: l[4], type: l[5] || '*' }
+		return {
+			id: String(l[0]),
+			fromId: String(l[1]),
+			fromSlot: l[2],
+			toId: String(l[3]),
+			toSlot: l[4],
+			type: l[5] || '*'
+		}
 	}
 	if (isRecord(l)) {
 		return {
@@ -40,7 +47,8 @@ function parseLink(l) {
 }
 
 function getSubgraphContent(def) {
-	if (Array.isArray(def.nodes) && Array.isArray(def.links)) return { nodes: def.nodes, links: def.links }
+	if (Array.isArray(def.nodes) && Array.isArray(def.links))
+		return { nodes: def.nodes, links: def.links }
 	if (def.data?.nodes) return { nodes: def.data.nodes, links: def.data.links || [] }
 	if (def.graph?.nodes) return { nodes: def.graph.nodes, links: def.graph.links || [] }
 	if (def.subgraph?.nodes) return { nodes: def.subgraph.nodes, links: def.subgraph.links || [] }
@@ -48,38 +56,92 @@ function getSubgraphContent(def) {
 }
 
 const FRONTEND_ONLY_NODE_TYPES = new Set([
-	'MarkdownNote', 'Note', 'Reroute', 'PrimitiveNode',
-	'PrimitiveString', 'PrimitiveStringMultiline', 'PrimitiveNumber', 'PrimitiveBoolean',
-	'PrimitiveInteger', 'PrimitiveFloat', 'PrimitiveText',
-	'GroupNode', 'SubgraphNode', 'ComfyNote', 'NoteNode',
-	'NodeNote', 'Comment', 'Annotation', 'Label',
-	'WidgetNode', 'Converter', 'RelayNode', 'RerouteNode',
-	'FrontendNode', 'VirtualNode', 'PlaceholderNode',
-	'QuickNodes', 'TextNote', 'StickyNote'
+	'MarkdownNote',
+	'Note',
+	'Reroute',
+	'PrimitiveNode',
+	'PrimitiveString',
+	'PrimitiveStringMultiline',
+	'PrimitiveNumber',
+	'PrimitiveBoolean',
+	'PrimitiveInteger',
+	'PrimitiveFloat',
+	'PrimitiveText',
+	'GroupNode',
+	'SubgraphNode',
+	'ComfyNote',
+	'NoteNode',
+	'NodeNote',
+	'Comment',
+	'Annotation',
+	'Label',
+	'WidgetNode',
+	'Converter',
+	'RelayNode',
+	'RerouteNode',
+	'FrontendNode',
+	'VirtualNode',
+	'PlaceholderNode',
+	'QuickNodes',
+	'TextNote',
+	'StickyNote'
 ])
 
 const SOCKET_TYPES = new Set([
-	'MODEL', 'CLIP', 'VAE', 'CONDITIONING', 'LATENT', 'IMAGE', 'MASK',
-	'SAMPLER', 'SIGMAS', 'AUDIO', 'VIDEO', 'CLIP_VISION_OUTPUT',
-	'CONTROL_NET', 'STYLE_MODEL', 'CLIP_VISION', 'GLIGEN',
-	'BOOLEAN', 'STRING', 'INT', 'FLOAT', 'NUMBER'
+	'MODEL',
+	'CLIP',
+	'VAE',
+	'CONDITIONING',
+	'LATENT',
+	'IMAGE',
+	'MASK',
+	'SAMPLER',
+	'SIGMAS',
+	'AUDIO',
+	'VIDEO',
+	'CLIP_VISION_OUTPUT',
+	'CONTROL_NET',
+	'STYLE_MODEL',
+	'CLIP_VISION',
+	'GLIGEN',
+	'BOOLEAN',
+	'STRING',
+	'INT',
+	'FLOAT',
+	'NUMBER'
 ])
 
 function isVirtualOrIgnorableNode(ntype, nid) {
 	if (Number(nid) < 0) return true
-	if (ntype === 'Note' || ntype === 'MarkdownNote' || ntype === 'StickyNote' || ntype === 'TextNote' || ntype === 'ComfyNote' || ntype === 'NoteNode' || ntype === 'NodeNote') return true
-	if (ntype === 'Comment' || ntype === 'Annotation' || ntype === 'Label' || ntype === 'QuickNodes') return true
-	if (ntype === 'FrontendNode' || ntype === 'VirtualNode' || ntype === 'PlaceholderNode') return true
-	return ntype === 'SubgraphInput' || ntype === 'SubgraphOutput' ||
-		ntype === 'ComponentInput' || ntype === 'ComponentOutput' ||
-		ntype === 'GraphInput' || ntype === 'GraphOutput' ||
-		ntype === 'NodeInput' || ntype === 'NodeOutput' ||
-		ntype === 'InputNode' || ntype === 'OutputNode'
+	if (
+		ntype === 'Note' ||
+		ntype === 'MarkdownNote' ||
+		ntype === 'StickyNote' ||
+		ntype === 'TextNote' ||
+		ntype === 'ComfyNote' ||
+		ntype === 'NoteNode' ||
+		ntype === 'NodeNote'
+	)
+		return true
+	if (ntype === 'Comment' || ntype === 'Annotation' || ntype === 'Label' || ntype === 'QuickNodes')
+		return true
+	if (ntype === 'FrontendNode' || ntype === 'VirtualNode' || ntype === 'PlaceholderNode')
+		return true
+	return (
+		ntype === 'SubgraphInput' ||
+		ntype === 'SubgraphOutput' ||
+		ntype === 'ComponentInput' ||
+		ntype === 'ComponentOutput' ||
+		ntype === 'GraphInput' ||
+		ntype === 'GraphOutput' ||
+		ntype === 'NodeInput' ||
+		ntype === 'NodeOutput' ||
+		ntype === 'InputNode' ||
+		ntype === 'OutputNode'
+	)
 }
 
-const RELAY_NODE_TYPES = new Set([
-	'Reroute', 'RerouteNode', 'RelayNode', 'Converter', 'WidgetNode'
-])
+const RELAY_NODE_TYPES = new Set(['Reroute', 'RerouteNode', 'RelayNode', 'Converter', 'WidgetNode'])
 
 function isRelayNodeType(ntype) {
 	return RELAY_NODE_TYPES.has(ntype)
@@ -102,15 +164,18 @@ function isRerouteType(ntype) {
 }
 
 function isPrimitiveType(ntype) {
-	return ntype.startsWith('Primitive') || FRONTEND_ONLY_NODE_TYPES.has(ntype) && (
-		ntype === 'PrimitiveNode' || ntype.startsWith('Primitive')
+	return (
+		ntype.startsWith('Primitive') ||
+		(FRONTEND_ONLY_NODE_TYPES.has(ntype) &&
+			(ntype === 'PrimitiveNode' || ntype.startsWith('Primitive')))
 	)
 }
 
 function structurallyLooksLikeNote(node) {
 	if (!isRecord(node)) return false
 	const ct = String(node.type || '').trim()
-	if (ct === 'Note' || ct === 'MarkdownNote' || ct === 'StickyNote' || ct === 'TextNote') return true
+	if (ct === 'Note' || ct === 'MarkdownNote' || ct === 'StickyNote' || ct === 'TextNote')
+		return true
 	return false
 }
 
@@ -139,7 +204,9 @@ function structurallyLooksLikePrimitive(node) {
 		return true
 	}
 	if (inputs.length === 0 && outputs.length === 1 && isRecord(outputs[0])) {
-		const outType = String(outputs[0].type || '*').trim().toUpperCase()
+		const outType = String(outputs[0].type || '*')
+			.trim()
+			.toUpperCase()
 		if (['*', 'STRING', 'INT', 'FLOAT', 'NUMBER', 'BOOLEAN', 'BOOL'].includes(outType)) {
 			return true
 		}
@@ -197,7 +264,8 @@ function isObjectInfoWidgetDef(defn) {
 	if (typeof t === 'string') {
 		const tt = t.toUpperCase()
 		if (SOCKET_TYPES.has(tt)) {
-			if (tt === 'BOOLEAN' || tt === 'STRING' || tt === 'INT' || tt === 'FLOAT' || tt === 'NUMBER') return true
+			if (tt === 'BOOLEAN' || tt === 'STRING' || tt === 'INT' || tt === 'FLOAT' || tt === 'NUMBER')
+				return true
 			return false
 		}
 		return true
@@ -217,19 +285,31 @@ function objectInfoValueFits(defn, value) {
 	if (tt === 'INT') {
 		if (typeof value === 'boolean') return false
 		if (typeof value === 'number' && Number.isInteger(value)) return true
-		if (typeof value === 'string') { const s = value.trim(); return /^-?\d+$/.test(s) }
+		if (typeof value === 'string') {
+			const s = value.trim()
+			return /^-?\d+$/.test(s)
+		}
 		return false
 	}
 	if (tt === 'FLOAT' || tt === 'NUMBER') {
 		if (typeof value === 'boolean') return false
 		if (typeof value === 'number') return true
-		if (typeof value === 'string') { try { return !isNaN(parseFloat(value.trim())) } catch { return false } }
+		if (typeof value === 'string') {
+			try {
+				return !isNaN(parseFloat(value.trim()))
+			} catch {
+				return false
+			}
+		}
 		return false
 	}
 	if (tt === 'BOOLEAN' || tt === 'BOOL') {
 		if (typeof value === 'boolean') return true
 		if (typeof value === 'number') return true
-		if (typeof value === 'string') { const v = value.trim().toLowerCase(); return ['true', 'false', 'enable', 'disable', 'enabled', 'disabled', '1', '0'].includes(v) }
+		if (typeof value === 'string') {
+			const v = value.trim().toLowerCase()
+			return ['true', 'false', 'enable', 'disable', 'enabled', 'disabled', '1', '0'].includes(v)
+		}
 		return false
 	}
 	if (tt === 'STRING') return typeof value === 'string'
@@ -247,20 +327,49 @@ function objectInfoCoerceValue(defn, value) {
 	if (typeof t !== 'string') return value
 	const tt = t.toUpperCase()
 	if (tt === 'INT') {
-		if (typeof value === 'number' && !Number.isNaN(value) && Number.isFinite(value) && typeof value !== 'boolean') return Math.trunc(value)
-		if (typeof value === 'string') { try { const n = parseInt(value.trim(), 10); if (!isNaN(n)) return n } catch {} }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (
+			typeof value === 'number' &&
+			!Number.isNaN(value) &&
+			Number.isFinite(value) &&
+			typeof value !== 'boolean'
+		)
+			return Math.trunc(value)
+		if (typeof value === 'string') {
+			try {
+				const n = parseInt(value.trim(), 10)
+				if (!isNaN(n)) return n
+			} catch {}
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'FLOAT' || tt === 'NUMBER') {
-		if (typeof value === 'number' && !Number.isNaN(value) && Number.isFinite(value) && typeof value !== 'boolean') return value
-		if (typeof value === 'string') { try { const n = parseFloat(value.trim()); if (!isNaN(n)) return n } catch {} }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (
+			typeof value === 'number' &&
+			!Number.isNaN(value) &&
+			Number.isFinite(value) &&
+			typeof value !== 'boolean'
+		)
+			return value
+		if (typeof value === 'string') {
+			try {
+				const n = parseFloat(value.trim())
+				if (!isNaN(n)) return n
+			} catch {}
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'BOOLEAN' || tt === 'BOOL') {
 		if (typeof value === 'boolean') return value
 		if (typeof value === 'number') return Boolean(value)
-		if (typeof value === 'string') { const v = value.trim().toLowerCase(); if (['true', 'enable', 'enabled', '1'].includes(v)) return true; if (['false', 'disable', 'disabled', '0'].includes(v)) return false }
-		const d = defn[1]?.default; return d !== undefined ? d : value
+		if (typeof value === 'string') {
+			const v = value.trim().toLowerCase()
+			if (['true', 'enable', 'enabled', '1'].includes(v)) return true
+			if (['false', 'disable', 'disabled', '0'].includes(v)) return false
+		}
+		const d = defn[1]?.default
+		return d !== undefined ? d : value
 	}
 	if (tt === 'STRING') return String(value)
 	return value
@@ -270,7 +379,10 @@ function collectAllSubgraphDefs(workflow) {
 	const defs = new Map()
 	function walk(obj) {
 		if (!obj || typeof obj !== 'object') return
-		if (Array.isArray(obj)) { for (const x of obj) walk(x); return }
+		if (Array.isArray(obj)) {
+			for (const x of obj) walk(x)
+			return
+		}
 		if (Array.isArray(obj.definitions?.subgraphs)) {
 			for (const sg of obj.definitions.subgraphs) {
 				if (!sg || typeof sg !== 'object') continue
@@ -281,8 +393,18 @@ function collectAllSubgraphDefs(workflow) {
 					defs.set(sgId, {
 						id: sgId,
 						name: String(sg.name || ''),
-						inputNodeId: sg.inputNode?.id != null ? String(sg.inputNode.id) : (sg.inputNode != null ? String(sg.inputNode) : null),
-						outputNodeId: sg.outputNode?.id != null ? String(sg.outputNode.id) : (sg.outputNode != null ? String(sg.outputNode) : null),
+						inputNodeId:
+							sg.inputNode?.id != null
+								? String(sg.inputNode.id)
+								: sg.inputNode != null
+									? String(sg.inputNode)
+									: null,
+						outputNodeId:
+							sg.outputNode?.id != null
+								? String(sg.outputNode.id)
+								: sg.outputNode != null
+									? String(sg.outputNode)
+									: null,
 						nodes: content.nodes,
 						links: content.links
 					})
@@ -318,7 +440,18 @@ function traceOutputs(nodeId, slot, intNodeMap, intOutLinks, vInId, vOutId, visi
 		if (outSlots) {
 			for (const [outSlot, linkArr] of outSlots) {
 				for (const l of linkArr) {
-					results.push(...traceOutputs(l.toId, l.toSlot, intNodeMap, intOutLinks, vInId, vOutId, visited, idMap))
+					results.push(
+						...traceOutputs(
+							l.toId,
+							l.toSlot,
+							intNodeMap,
+							intOutLinks,
+							vInId,
+							vOutId,
+							visited,
+							idMap
+						)
+					)
 				}
 			}
 		}
@@ -354,7 +487,18 @@ function traceInputs(nodeId, slot, intNodeMap, intInLinks, vInId, vOutId, visite
 		if (inSlots) {
 			for (const [inSlot, linkArr] of inSlots) {
 				for (const l of linkArr) {
-					results.push(...traceInputs(l.fromId, l.fromSlot, intNodeMap, intInLinks, vInId, vOutId, visited, idMap))
+					results.push(
+						...traceInputs(
+							l.fromId,
+							l.fromSlot,
+							intNodeMap,
+							intInLinks,
+							vInId,
+							vOutId,
+							visited,
+							idMap
+						)
+					)
 				}
 			}
 		}
@@ -434,7 +578,10 @@ export function flattenWorkflow(workflow) {
 
 		let foundUuid = null
 		for (const n of nodes) {
-			if (!n || typeof n !== 'object') { newNodes.push(n); continue }
+			if (!n || typeof n !== 'object') {
+				newNodes.push(n)
+				continue
+			}
 			const nid = String(n.id)
 			const ntype = String(n.type || '').trim()
 
@@ -461,7 +608,11 @@ export function flattenWorkflow(workflow) {
 			const vInId = def.inputNodeId
 			const vOutId = def.outputNodeId
 
-			const { nodeMap: intNodeMap, outLinks: intOutLinks, inLinks: intInLinks } = buildInternalConnMaps(defNodes, defLinks)
+			const {
+				nodeMap: intNodeMap,
+				outLinks: intOutLinks,
+				inLinks: intInLinks
+			} = buildInternalConnMaps(defNodes, defLinks)
 
 			const idMap = new Map()
 			const keptNodes = []
@@ -478,12 +629,17 @@ export function flattenWorkflow(workflow) {
 				inNode.id = newId
 				if (Array.isArray(inNode.inputs)) {
 					for (const inp of inNode.inputs) {
-						if (inp && typeof inp === 'object') { inp.link = null; if (Array.isArray(inp.links)) inp.links = [] }
+						if (inp && typeof inp === 'object') {
+							inp.link = null
+							if (Array.isArray(inp.links)) inp.links = []
+						}
 					}
 				}
 				if (Array.isArray(inNode.outputs)) {
 					for (const out of inNode.outputs) {
-						if (out && typeof out === 'object') { if (Array.isArray(out.links)) out.links = [] }
+						if (out && typeof out === 'object') {
+							if (Array.isArray(out.links)) out.links = []
+						}
 					}
 				}
 				keptNodes.push(inNode)
@@ -496,7 +652,16 @@ export function flattenWorkflow(workflow) {
 					for (const [slot, linkArr] of vOutConns) {
 						const targets = []
 						for (const l of linkArr) {
-							const t = traceOutputs(l.toId, l.toSlot, intNodeMap, intOutLinks, vInId, vOutId, new Set(), idMap)
+							const t = traceOutputs(
+								l.toId,
+								l.toSlot,
+								intNodeMap,
+								intOutLinks,
+								vInId,
+								vOutId,
+								new Set(),
+								idMap
+							)
 							targets.push(...t)
 						}
 						inputBridges.set(slot, targets)
@@ -511,7 +676,16 @@ export function flattenWorkflow(workflow) {
 					for (const [slot, linkArr] of vInConns) {
 						const sources = []
 						for (const l of linkArr) {
-							const s = traceInputs(l.fromId, l.fromSlot, intNodeMap, intInLinks, vInId, vOutId, new Set(), idMap)
+							const s = traceInputs(
+								l.fromId,
+								l.fromSlot,
+								intNodeMap,
+								intInLinks,
+								vInId,
+								vOutId,
+								new Set(),
+								idMap
+							)
 							sources.push(...s)
 						}
 						outputBridges.set(slot, sources)
@@ -519,7 +693,7 @@ export function flattenWorkflow(workflow) {
 				}
 			}
 
-			links = links.filter(l => {
+			links = links.filter((l) => {
 				const p = parseLink(l)
 				if (!p) return true
 				return p.fromId !== nid && p.toId !== nid
@@ -537,7 +711,16 @@ export function flattenWorkflow(workflow) {
 					for (const l of linkArr) {
 						if (vInId && l.fromId === vInId) continue
 						if (vOutId && l.fromId === vOutId) continue
-						const srcs = traceInputs(l.fromId, l.fromSlot, intNodeMap, intInLinks, vInId, vOutId, new Set(), idMap)
+						const srcs = traceInputs(
+							l.fromId,
+							l.fromSlot,
+							intNodeMap,
+							intInLinks,
+							vInId,
+							vOutId,
+							new Set(),
+							idMap
+						)
 						for (const s of srcs) {
 							if (s.nodeId === iNid) continue
 							const lk = `${s.nodeId}:${s.slot}->${iNid}:${slot}`
@@ -602,7 +785,9 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		linkFromById.set(p.id, { origin_id: p.fromId, origin_slot: p.fromSlot })
 		linkToById.set(p.id, { target_id: p.toId, target_slot: p.toSlot })
 		if (!nodeInputLinksMap.has(p.toId)) nodeInputLinksMap.set(p.toId, [])
-		nodeInputLinksMap.get(p.toId).push({ linkId: p.id, fromNodeId: p.fromId, fromSlot: p.fromSlot, toSlot: p.toSlot })
+		nodeInputLinksMap
+			.get(p.toId)
+			.push({ linkId: p.id, fromNodeId: p.fromId, fromSlot: p.fromSlot, toSlot: p.toSlot })
 		const connKey = `${p.toId}:${p.toSlot}`
 		if (!connsByTo.has(connKey)) connsByTo.set(connKey, [])
 		connsByTo.get(connKey).push(p)
@@ -647,7 +832,12 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		if (rerouteNodeIds.has(nid) || valueProviderNodes.has(nid)) continue
 		const ct = String(node.type || '').trim()
 		if (!ct) continue
-		if (structurallyLooksLikeNote(node) || structurallyLooksLikePrimitive(node) || structurallyLooksLikeReroute(node)) continue
+		if (
+			structurallyLooksLikeNote(node) ||
+			structurallyLooksLikePrimitive(node) ||
+			structurallyLooksLikeReroute(node)
+		)
+			continue
 		if (FRONTEND_ONLY_NODE_TYPES.has(ct)) continue
 		finalPromptNodeIds.add(nid)
 		if (!validTypes.has(ct)) {
@@ -694,13 +884,21 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		let targetInputIndex = -1
 		const targetOutput = relayOutputs[origin_slot]
 		if (isRecord(targetOutput)) {
-			const targetOutType = String(targetOutput.type || '*').trim().toUpperCase()
-			const targetOutName = String(targetOutput.name || '').trim().toLowerCase()
+			const targetOutType = String(targetOutput.type || '*')
+				.trim()
+				.toUpperCase()
+			const targetOutName = String(targetOutput.name || '')
+				.trim()
+				.toLowerCase()
 			for (let i = 0; i < relayInputs.length; i++) {
 				const inp = relayInputs[i]
 				if (!isRecord(inp)) continue
-				const inType = String(inp.type || '*').trim().toUpperCase()
-				const inName = String(inp.name || '').trim().toLowerCase()
+				const inType = String(inp.type || '*')
+					.trim()
+					.toUpperCase()
+				const inName = String(inp.name || '')
+					.trim()
+					.toLowerCase()
 				if (inType === targetOutType || inName === targetOutName) {
 					if (inputHasConnection(inp, relayNodeId, i)) {
 						targetInputIndex = i
@@ -795,7 +993,11 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 					const fromInfo = linkFromById.get(inputLinkId)
 					const connKey = `${nid}:${si}`
 					const slotConns = connsByTo.get(connKey)
-					const connsSummary = slotConns ? slotConns.map(c => `[${c.fromId}:${c.fromSlot}→${c.toId}:${c.toSlot} id=${c.id}]`).join(', ') : 'none'
+					const connsSummary = slotConns
+						? slotConns
+								.map((c) => `[${c.fromId}:${c.fromSlot}→${c.toId}:${c.toSlot} id=${c.id}]`)
+								.join(', ')
+						: 'none'
 					unresolvedConnections.push({
 						targetNodeId: nid,
 						targetClassType: classType,
@@ -867,8 +1069,13 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 				const name = String(inp.name || '').trim()
 				if (!name || name in inputs) continue
 				if (inputHasConnection(inp, nid, si)) continue
-				const inpType = String(inp.type || '').trim().toUpperCase()
-				const isKnownSocket = /^(MODEL|CLIP|VAE|CONDITIONING|LATENT|IMAGE|MASK|SAMPLER|SIGMAS|AUDIO|VIDEO|CLIP_VISION_OUTPUT|CONTROL_NET|STYLE_MODEL|CLIP_VISION|UPSCALE_MODEL|GLIGEN|NOISE|GUIDER|BOOST|WEBCAM|IPADAPTER|FACEID|INSTANTID|FACEMASK)$/.test(inpType)
+				const inpType = String(inp.type || '')
+					.trim()
+					.toUpperCase()
+				const isKnownSocket =
+					/^(MODEL|CLIP|VAE|CONDITIONING|LATENT|IMAGE|MASK|SAMPLER|SIGMAS|AUDIO|VIDEO|CLIP_VISION_OUTPUT|CONTROL_NET|STYLE_MODEL|CLIP_VISION|UPSCALE_MODEL|GLIGEN|NOISE|GUIDER|BOOST|WEBCAM|IPADAPTER|FACEID|INSTANTID|FACEMASK)$/.test(
+						inpType
+					)
 				if (isKnownSocket) continue
 				if (valueIdx < widgetValues.length) {
 					inputs[name] = widgetValues[valueIdx]
@@ -881,7 +1088,8 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		if (node.title && !nodeMeta.title) nodeMeta.title = String(node.title)
 		if (node.type && !nodeMeta.node_type) nodeMeta.node_type = String(node.type)
 		if (Array.isArray(node.pos) && node.pos.length >= 2) {
-			const px = Number(node.pos[0]), py = Number(node.pos[1])
+			const px = Number(node.pos[0]),
+				py = Number(node.pos[1])
 			if (Number.isFinite(px) && Number.isFinite(py)) nodeMeta.pos = [px, py]
 		}
 		prompt[nid] = { class_type: classType, inputs, _meta: nodeMeta }
@@ -892,9 +1100,13 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		error = 'workflow contains no executable nodes'
 	}
 
-	const warnings = unresolvedConnections.length > 0
-		? unresolvedConnections.map(c => `unresolved link ${c.linkId}: ${c.targetClassType}[${c.targetNodeId}].${c.targetInputName} (slot ${c.targetSlotIndex}) <- source[${c.sourceNodeId}:${c.sourceSlotIndex}] connsByTo[${c.connsByToSlot}] inp.link=${c.inpLink} inp.links=${JSON.stringify(c.inpLinks)}`)
-		: undefined
+	const warnings =
+		unresolvedConnections.length > 0
+			? unresolvedConnections.map(
+					(c) =>
+						`unresolved link ${c.linkId}: ${c.targetClassType}[${c.targetNodeId}].${c.targetInputName} (slot ${c.targetSlotIndex}) <- source[${c.sourceNodeId}:${c.sourceSlotIndex}] connsByTo[${c.connsByToSlot}] inp.link=${c.inpLink} inp.links=${JSON.stringify(c.inpLinks)}`
+				)
+			: undefined
 
 	return { prompt, error, warnings }
 }
@@ -905,26 +1117,32 @@ export function workflowToPrompt(workflow, objectInfo) {
 	for (const n of flatNodes) {
 		if (n?.id != null) flatNodeMap.set(String(n.id), n)
 	}
-	const saveVideoNodes = flatNodes.filter(n => String(n?.type || '').includes('SaveVideo'))
+	const saveVideoNodes = flatNodes.filter((n) => String(n?.type || '').includes('SaveVideo'))
 	if (saveVideoNodes.length > 0) {
 		console.log('[ComfyUI workflow-converter] After flattening:')
 		console.log(`  total flatNodes: ${flatNodes.length}, total flatLinks: ${flatLinks.length}`)
 		for (const sv of saveVideoNodes) {
 			const svId = String(sv.id)
 			const svInputs = Array.isArray(sv.inputs) ? sv.inputs : []
-			console.log(`  SaveVideo[${svId}] inputs:`, svInputs.map((i, idx) => {
-				if (!i || typeof i !== 'object') return `[${idx}] <invalid>`
-				return `[${idx}] ${i.name} (type=${i.type}, link=${i.link}, links=${JSON.stringify(i.links)})`
-			}))
-			const incomingLinks = flatLinks.filter(l => {
+			console.log(
+				`  SaveVideo[${svId}] inputs:`,
+				svInputs.map((i, idx) => {
+					if (!i || typeof i !== 'object') return `[${idx}] <invalid>`
+					return `[${idx}] ${i.name} (type=${i.type}, link=${i.link}, links=${JSON.stringify(i.links)})`
+				})
+			)
+			const incomingLinks = flatLinks.filter((l) => {
 				const p = parseLink(l)
 				return p && p.toId === svId
 			})
-			console.log(`  SaveVideo[${svId}] incoming flatLinks:`, incomingLinks.map(l => {
-				const p = parseLink(l)
-				const srcNode = flatNodeMap.get(p.fromId)
-				return `id=${p.id} ${p.fromId}(${srcNode?.type || 'unknown'}):${p.fromSlot} → ${p.toId}:${p.toSlot} type=${p.type}`
-			}))
+			console.log(
+				`  SaveVideo[${svId}] incoming flatLinks:`,
+				incomingLinks.map((l) => {
+					const p = parseLink(l)
+					const srcNode = flatNodeMap.get(p.fromId)
+					return `id=${p.id} ${p.fromId}(${srcNode?.type || 'unknown'}):${p.fromSlot} → ${p.toId}:${p.toSlot} type=${p.type}`
+				})
+			)
 		}
 	}
 	return buildPromptFromFlat(flatNodes, flatLinks, objectInfo)

@@ -16,11 +16,13 @@ const ENDPOINT_MAP = {
 	models_convert: '/models/convert',
 	text_to_image: '/generation/text-to-image',
 	image_to_image: '/generation/image-to-image',
-	image_to_multiview: '/generation/multiview-to-image',
+	image_to_multiview: '/generation/multiview-to-image'
 }
 
 function normalizeTripoStatus(rawStatus, progress) {
-	const status = String(rawStatus || '').trim().toLowerCase()
+	const status = String(rawStatus || '')
+		.trim()
+		.toLowerCase()
 	if (status === 'success' || status === 'succeeded' || status === 'completed') return 'completed'
 	if (status === 'failed' || status === 'error') return 'failed'
 	if (status === 'cancelled' || status === 'canceled') return 'cancelled'
@@ -41,7 +43,7 @@ function extractResultAssets(taskData) {
 					type: 'model',
 					format: fmt,
 					url: modelUrls[fmt].trim(),
-					thumbnailUrl: taskData.rendered_image?.url || taskData.thumbnail || '',
+					thumbnailUrl: taskData.rendered_image?.url || taskData.thumbnail || ''
 				})
 				break
 			}
@@ -50,13 +52,17 @@ function extractResultAssets(taskData) {
 			assets.push({
 				type: 'model',
 				url: modelUrls.url,
-				thumbnailUrl: taskData.rendered_image?.url || taskData.thumbnail || '',
+				thumbnailUrl: taskData.rendered_image?.url || taskData.thumbnail || ''
 			})
 		}
 	}
 
 	if (taskData.rendered_image?.url) {
-		assets.push({ type: 'image', url: taskData.rendered_image.url, thumbnailUrl: taskData.rendered_image.url })
+		assets.push({
+			type: 'image',
+			url: taskData.rendered_image.url,
+			thumbnailUrl: taskData.rendered_image.url
+		})
 	}
 
 	if (Array.isArray(taskData.images)) {
@@ -95,14 +101,16 @@ export class Tripo3DProvider extends BaseTaskProvider {
 			if (!apiKey) return { ok: false, error: 'Tripo3D API key not configured' }
 
 			const client = getHttpClient()
-			const mode = String(input.mode || 'text_to_model').trim().toLowerCase()
+			const mode = String(input.mode || 'text_to_model')
+				.trim()
+				.toLowerCase()
 			const endpoint = ENDPOINT_MAP[mode] || ENDPOINT_MAP.text_to_model
 			const url = `${TRIPO3D_API_BASE}${endpoint}`
 
 			const body = {
 				prompt: input.prompt || '',
 				negative_prompt: input.negativePrompt || input.negative_prompt || '',
-				...(input.requestBody || {}),
+				...(input.requestBody || {})
 			}
 			if (body.model_version && !body.model) {
 				body.model = body.model_version
@@ -111,7 +119,7 @@ export class Tripo3DProvider extends BaseTaskProvider {
 
 			const res = await client.post(url, body, {
 				headers: { Authorization: `Bearer ${apiKey}` },
-				timeout: 60000,
+				timeout: 60000
 			})
 
 			if (!res.ok) {
@@ -138,7 +146,7 @@ export class Tripo3DProvider extends BaseTaskProvider {
 				ok: true,
 				remoteTaskId: taskId,
 				statusText: 'Tripo3D：任务已提交',
-				data: { mode, requestBody: body },
+				data: { mode, requestBody: body }
 			}
 		} catch (err) {
 			return { ok: false, error: err.message || String(err) }
@@ -157,11 +165,12 @@ export class Tripo3DProvider extends BaseTaskProvider {
 
 			const res = await client.get(url, {
 				headers: { Authorization: `Bearer ${apiKey}` },
-				timeout: 30000,
+				timeout: 30000
 			})
 
 			if (!res.ok) {
-				if (res.status === 404) return { ok: true, status: 'failed', errorMessage: 'Task not found' }
+				if (res.status === 404)
+					return { ok: true, status: 'failed', errorMessage: 'Task not found' }
 				let errMsg = `HTTP ${res.status}`
 				if (typeof res.body === 'object' && res.body) {
 					errMsg = res.body.message || res.body.error || errMsg
@@ -174,17 +183,22 @@ export class Tripo3DProvider extends BaseTaskProvider {
 				taskData = taskData.data
 			}
 
-			const rawStatus = String(taskData.status || '').trim().toLowerCase()
+			const rawStatus = String(taskData.status || '')
+				.trim()
+				.toLowerCase()
 			let progress = 0
 			try {
 				progress = Math.max(0, Math.min(100, parseInt(String(taskData.progress || '0'), 10)))
 			} catch {
 				progress = 0
 			}
-			if (rawStatus === 'success' || rawStatus === 'succeeded' || rawStatus === 'completed') progress = 100
+			if (rawStatus === 'success' || rawStatus === 'succeeded' || rawStatus === 'completed')
+				progress = 100
 
 			const status = normalizeTripoStatus(rawStatus, progress)
-			const errorMessage = String(taskData.error?.message || taskData.error_message || taskData.message || '').trim()
+			const errorMessage = String(
+				taskData.error?.message || taskData.error_message || taskData.message || ''
+			).trim()
 
 			let statusText = ''
 			if (status === 'completed') statusText = 'Tripo3D：生成完成'
@@ -201,7 +215,7 @@ export class Tripo3DProvider extends BaseTaskProvider {
 				progress: status === 'completed' ? 100 : progress,
 				statusText,
 				errorMessage: status === 'failed' ? errorMessage : '',
-				resultAssets: resultAssets.length > 0 ? resultAssets : undefined,
+				resultAssets: resultAssets.length > 0 ? resultAssets : undefined
 			}
 		} catch (err) {
 			return { ok: false, error: err.message || String(err) }
@@ -215,10 +229,14 @@ export class Tripo3DProvider extends BaseTaskProvider {
 
 			const client = getHttpClient()
 			const url = `${TRIPO3D_API_BASE}/tasks/${encodeURIComponent(task.remoteTaskId)}/cancel`
-			await client.post(url, {}, {
-				headers: { Authorization: `Bearer ${apiKey}` },
-				timeout: 15000,
-			})
+			await client.post(
+				url,
+				{},
+				{
+					headers: { Authorization: `Bearer ${apiKey}` },
+					timeout: 15000
+				}
+			)
 			return { ok: true }
 		} catch {
 			return { ok: true }

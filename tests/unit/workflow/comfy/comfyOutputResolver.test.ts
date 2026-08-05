@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
 	inferMediaKind,
 	comfyAnchorNodeIdFromAnchorId,
-	comfyOutputForAnchor,
+	comfyOutputForAnchor
 } from '@/views/AIWorkflow/node-business/comfy/comfyOutputResolver'
 import type { ComfyLocalizedOutput } from '@/views/AIWorkflow/node-business/comfy/comfyOutputResolver'
 
@@ -26,14 +26,20 @@ describe('comfyOutputResolver', () => {
 		})
 
 		it('infers image from URL with image extension', () => {
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=result.png&subfolder=' })).toBe('image')
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=output.jpg' })).toBe('image')
+			expect(
+				inferMediaKind({ url: 'http://localhost:8188/view?filename=result.png&subfolder=' })
+			).toBe('image')
+			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=output.jpg' })).toBe(
+				'image'
+			)
 			expect(inferMediaKind({ url: 'http://example.com/path/frame.jpeg' })).toBe('image')
 			expect(inferMediaKind({ url: 'http://example.com/preview.webp' })).toBe('image')
 		})
 
 		it('infers video from URL with video extension', () => {
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=result.mp4&subfolder=' })).toBe('video')
+			expect(
+				inferMediaKind({ url: 'http://localhost:8188/view?filename=result.mp4&subfolder=' })
+			).toBe('video')
 			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=anim.webm' })).toBe('video')
 			expect(inferMediaKind({ url: 'http://example.com/clip.mov' })).toBe('video')
 			expect(inferMediaKind({ url: 'http://example.com/video.mkv' })).toBe('video')
@@ -41,7 +47,9 @@ describe('comfyOutputResolver', () => {
 		})
 
 		it('infers model3d from URL with 3d extension', () => {
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=model.glb' })).toBe('model3d')
+			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=model.glb' })).toBe(
+				'model3d'
+			)
 			expect(inferMediaKind({ url: 'http://example.com/mesh.gltf' })).toBe('model3d')
 			expect(inferMediaKind({ url: 'http://example.com/object.fbx' })).toBe('model3d')
 			expect(inferMediaKind({ url: 'http://example.com/mesh.obj' })).toBe('model3d')
@@ -49,8 +57,14 @@ describe('comfyOutputResolver', () => {
 		})
 
 		it('extracts filename from URL query parameter and infers kind', () => {
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=VHS_00001.mp4&type=output&subfolder=' })).toBe('video')
-			expect(inferMediaKind({ url: 'http://localhost:8188/view?filename=ComfyUI_00001.png&type=output' })).toBe('image')
+			expect(
+				inferMediaKind({
+					url: 'http://localhost:8188/view?filename=VHS_00001.mp4&type=output&subfolder='
+				})
+			).toBe('video')
+			expect(
+				inferMediaKind({ url: 'http://localhost:8188/view?filename=ComfyUI_00001.png&type=output' })
+			).toBe('image')
 		})
 
 		it('handles URL query parameters after extension', () => {
@@ -75,7 +89,9 @@ describe('comfyOutputResolver', () => {
 		it('extracts nodeId from out-{nodeId} format', () => {
 			expect(comfyAnchorNodeIdFromAnchorId('out-5')).toBe('5')
 			expect(comfyAnchorNodeIdFromAnchorId('out-123')).toBe('123')
-			expect(comfyAnchorNodeIdFromAnchorId('out-save_image_websafe_001')).toBe('save_image_websafe_001')
+			expect(comfyAnchorNodeIdFromAnchorId('out-save_image_websafe_001')).toBe(
+				'save_image_websafe_001'
+			)
 		})
 
 		it('returns empty string for generic "out" anchor', () => {
@@ -101,7 +117,7 @@ describe('comfyOutputResolver', () => {
 			filename: 'img.png',
 			anchorId: 'out-5',
 			nodeId: '5',
-			...overrides,
+			...overrides
 		})
 
 		const makeVideo = (overrides: Partial<ComfyLocalizedOutput> = {}): ComfyLocalizedOutput => ({
@@ -110,7 +126,7 @@ describe('comfyOutputResolver', () => {
 			filename: 'vid.mp4',
 			anchorId: 'out-9',
 			nodeId: '9',
-			...overrides,
+			...overrides
 		})
 
 		it('returns media matching anchorId and expected kind', () => {
@@ -145,7 +161,12 @@ describe('comfyOutputResolver', () => {
 
 		it('skips media with empty url', () => {
 			const emptyUrl = makeImage({ url: '' })
-			const validImage = makeImage({ anchorId: 'out-7', nodeId: '7', filename: 'ok.png', url: 'http://localhost/ok.png' })
+			const validImage = makeImage({
+				anchorId: 'out-7',
+				nodeId: '7',
+				filename: 'ok.png',
+				url: 'http://localhost/ok.png'
+			})
 			const result = comfyOutputForAnchor([emptyUrl, validImage], 'out-5', 'image')
 			expect(result).toBe(validImage)
 		})

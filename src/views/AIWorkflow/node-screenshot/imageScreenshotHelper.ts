@@ -26,7 +26,10 @@ const isRemoteUrl = (src: string): boolean => {
 	return REMOTE_URL_PATTERN.test(src) && !isLocalUrl(src)
 }
 
-const waitForImageReady = (img: HTMLImageElement, timeoutMs: number = IMAGE_LOAD_TIMEOUT): Promise<boolean> => {
+const waitForImageReady = (
+	img: HTMLImageElement,
+	timeoutMs: number = IMAGE_LOAD_TIMEOUT
+): Promise<boolean> => {
 	return new Promise((resolve) => {
 		if (img.complete && img.naturalWidth > 0) {
 			resolve(true)
@@ -62,7 +65,10 @@ const waitForImageReady = (img: HTMLImageElement, timeoutMs: number = IMAGE_LOAD
 	})
 }
 
-const tryConvertImageToDataUrl = (img: HTMLImageElement, useCors: boolean = true): Promise<boolean> => {
+const tryConvertImageToDataUrl = (
+	img: HTMLImageElement,
+	useCors: boolean = true
+): Promise<boolean> => {
 	return new Promise((resolve) => {
 		try {
 			const src = img.src
@@ -203,7 +209,9 @@ export const prepareClonedImages = (source: HTMLElement, clone: HTMLElement): vo
 	}
 }
 
-export const getImageLoadState = (img: HTMLImageElement): { loaded: boolean; error: boolean; naturalWidth: number; naturalHeight: number } => {
+export const getImageLoadState = (
+	img: HTMLImageElement
+): { loaded: boolean; error: boolean; naturalWidth: number; naturalHeight: number } => {
 	return {
 		loaded: img.complete && img.naturalWidth > 0,
 		error: img.complete && img.naturalWidth === 0,

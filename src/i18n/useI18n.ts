@@ -41,7 +41,7 @@ export function useI18n() {
 		localeMeta,
 		availableLocales,
 		setLocale,
-		messages,
+		messages
 	}
 }
 
@@ -55,10 +55,10 @@ const VueI18nPlugin = {
 		app.config.globalProperties.$i18n = {
 			locale: computed(() => I18nStore.state.locale),
 			availableLocales: I18nStore.getters.availableLocales,
-			setLocale: (loc: LocaleCode) => I18nStore.dispatch('setLocale', loc),
+			setLocale: (loc: LocaleCode) => I18nStore.dispatch('setLocale', loc)
 		}
 		app.provide(I18nStoreKey, I18nStore)
-	},
+	}
 }
 
 export function createI18n() {

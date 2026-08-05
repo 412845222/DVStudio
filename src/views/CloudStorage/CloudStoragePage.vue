@@ -24,7 +24,14 @@
 								stroke-linecap="round"
 								stroke-linejoin="round"
 							/>
-							<path d="M12 13v6M9 16l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+							<path
+								d="M12 13v6M9 16l3-3 3 3"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.8"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
 						</svg>
 					</div>
 					<div class="cs-title-text">
@@ -41,7 +48,11 @@
 
 			<div class="cs-content">
 				<aside class="cs-sidebar">
-					<div class="cs-panel" @mouseenter="sidebarHovered = true" @mouseleave="sidebarHovered = false">
+					<div
+						class="cs-panel"
+						@mouseenter="sidebarHovered = true"
+						@mouseleave="sidebarHovered = false"
+					>
 						<div class="panel-scan-h" aria-hidden="true"></div>
 						<div class="panel-scan-v" aria-hidden="true"></div>
 						<div class="card-glow" aria-hidden="true"></div>
@@ -73,11 +84,7 @@
 							@remove-bucket="onRemoveBucket"
 							@set-default="onSetDefaultBucket"
 						/>
-						<CloudStorageConfigPanel
-							v-else
-							@cancel="hideAddBucket"
-							@bucket-added="onBucketAdded"
-						/>
+						<CloudStorageConfigPanel v-else @cancel="hideAddBucket" @bucket-added="onBucketAdded" />
 					</div>
 				</aside>
 				<main class="cs-main">
@@ -125,7 +132,12 @@
 
 		<CloudUploadQueue :visible="showQueuePanel" @close="showQueuePanel = false" />
 
-		<div v-if="showUploadIndicator" class="cs-upload-indicator" :class="{ 'has-error': hasErrors }" @click="showQueuePanel = true">
+		<div
+			v-if="showUploadIndicator"
+			class="cs-upload-indicator"
+			:class="{ 'has-error': hasErrors }"
+			@click="showQueuePanel = true"
+		>
 			<div class="cs-ui-corners" aria-hidden="true">
 				<span class="cs-uic tl"></span>
 				<span class="cs-uic tr"></span>
@@ -133,29 +145,70 @@
 				<span class="cs-uic br"></span>
 			</div>
 			<svg v-if="isActive" viewBox="0 0 16 16" class="cs-ui-spinner-icon" aria-hidden="true">
-				<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="20 10" stroke-linecap="round"/>
+				<circle
+					cx="8"
+					cy="8"
+					r="6"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-dasharray="20 10"
+					stroke-linecap="round"
+				/>
 			</svg>
 			<svg v-else-if="hasErrors" viewBox="0 0 16 16" class="cs-ui-error-icon" aria-hidden="true">
-				<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
-				<path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+				<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3" />
+				<path
+					d="M5.5 5.5l5 5M10.5 5.5l-5 5"
+					stroke="currentColor"
+					stroke-width="1.3"
+					stroke-linecap="round"
+				/>
 			</svg>
 			<svg v-else viewBox="0 0 16 16" class="cs-ui-done-icon" aria-hidden="true">
-				<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M3 8l3.5 3.5L13 5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 			<div class="cs-ui-info">
 				<div class="cs-ui-text">
 					<span v-if="isActive">{{ t('cloudStorage.uploadQueue.uploading') }}</span>
-					<span v-else-if="hasErrors">{{ t('cloudStorage.uploadQueue.someFailed', { failed: errorCount, total: totalCount }) }}</span>
+					<span v-else-if="hasErrors">
+						{{
+							t('cloudStorage.uploadQueue.someFailed', { failed: errorCount, total: totalCount })
+						}}
+					</span>
 					<span v-else>{{ t('cloudStorage.uploadQueue.completed') }}</span>
 					<span class="cs-ui-count">{{ completedCount }}/{{ totalCount }}</span>
 				</div>
 				<div class="cs-ui-mini-bar">
-					<div class="cs-ui-mini-fill" :class="{ 'has-error': hasErrors && isAllDone }" :style="{ width: overallProgress + '%' }"></div>
+					<div
+						class="cs-ui-mini-fill"
+						:class="{ 'has-error': hasErrors && isAllDone }"
+						:style="{ width: overallProgress + '%' }"
+					></div>
 				</div>
 			</div>
-			<button class="cs-ui-expand" type="button" @click.stop="showQueuePanel = true" :title="t('cloudStorage.uploadQueue.viewDetails')">
+			<button
+				class="cs-ui-expand"
+				type="button"
+				@click.stop="showQueuePanel = true"
+				:title="t('cloudStorage.uploadQueue.viewDetails')"
+			>
 				<svg viewBox="0 0 16 16" aria-hidden="true">
-					<path d="M5.5 3.5l5 4.5-5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+					<path
+						d="M5.5 3.5l5 4.5-5 4.5"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</button>
 		</div>
@@ -218,7 +271,7 @@ const {
 	isActive,
 	hasErrors,
 	isAllDone,
-	addFiles,
+	addFiles
 } = uploadQueue
 
 const showUploadIndicator = computed(() => totalCount.value > 0)
@@ -350,9 +403,7 @@ const onNavigate = (prefix: string) => {
 
 const onCreateFolder = async (folderName: string) => {
 	if (!activeBucket.value) return
-	const fullPath = currentPrefix.value
-		? `${currentPrefix.value}${folderName}/`
-		: `${folderName}/`
+	const fullPath = currentPrefix.value ? `${currentPrefix.value}${folderName}/` : `${folderName}/`
 	console.log('[CloudStoragePage] createFolder:', fullPath)
 	try {
 		const cloudfs = (window as any).dweb?.cloudfs
@@ -399,8 +450,7 @@ const handleDelete = async (file: CloudFile) => {
 			await cloudfs.deleteFile({ key: file.key })
 		}
 		await loadFiles()
-	} catch {
-	}
+	} catch {}
 }
 
 onMounted(async () => {
@@ -456,8 +506,13 @@ onMounted(async () => {
 }
 
 @keyframes cs-scanline-pulse {
-	0%, 100% { opacity: 0.4; }
-	50% { opacity: 1; }
+	0%,
+	100% {
+		opacity: 0.4;
+	}
+	50% {
+		opacity: 1;
+	}
 }
 
 .cs-page-shell {
@@ -573,7 +628,7 @@ onMounted(async () => {
 }
 
 .cs-title::after {
-	content: "";
+	content: '';
 	display: inline-block;
 	width: 3px;
 	height: 18px;
@@ -585,8 +640,13 @@ onMounted(async () => {
 }
 
 @keyframes cs-cursor-blink {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
 }
 
 .cs-subtitle {
@@ -599,7 +659,7 @@ onMounted(async () => {
 }
 
 .cs-subtitle::before {
-	content: "";
+	content: '';
 	display: inline-block;
 	width: 6px;
 	height: 6px;
@@ -611,8 +671,15 @@ onMounted(async () => {
 }
 
 @keyframes cs-dot-pulse {
-	0%, 100% { opacity: 1; transform: scale(1); }
-	50% { opacity: 0.5; transform: scale(0.7); }
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.5;
+		transform: scale(0.7);
+	}
 }
 
 .cs-header-line {
@@ -644,12 +711,7 @@ onMounted(async () => {
 .cs-hl-center {
 	width: 80px;
 	height: 2px;
-	background: linear-gradient(
-		90deg,
-		transparent,
-		var(--pl-accent),
-		transparent
-	);
+	background: linear-gradient(90deg, transparent, var(--pl-accent), transparent);
 	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 50%, transparent);
 	position: relative;
 }
@@ -695,18 +757,25 @@ onMounted(async () => {
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
 	min-height: 0;
 	box-sizing: border-box;
-	box-shadow: 
+	box-shadow:
 		0 4px 16px rgba(0, 0, 0, 0.3),
 		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	transition: border-color 260ms ease, box-shadow 260ms ease, transform 260ms ease;
+	transition:
+		border-color 260ms ease,
+		box-shadow 260ms ease,
+		transform 260ms ease;
 }
 
 .cs-panel::before {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: 0;
-	background: 
-		linear-gradient(90deg, color-mix(in srgb, var(--pl-accent) 3%, transparent) 1px, transparent 1px),
+	background:
+		linear-gradient(
+			90deg,
+			color-mix(in srgb, var(--pl-accent) 3%, transparent) 1px,
+			transparent 1px
+		),
 		linear-gradient(color-mix(in srgb, var(--pl-accent) 3%, transparent) 1px, transparent 1px);
 	background-size: 32px 32px;
 	opacity: 0.3;
@@ -718,7 +787,7 @@ onMounted(async () => {
 
 .cs-panel:hover {
 	border-color: color-mix(in srgb, var(--pl-accent) 50%, transparent);
-	box-shadow: 
+	box-shadow:
 		0 0 0 1px color-mix(in srgb, var(--pl-accent) 35%, transparent),
 		0 18px 48px rgba(0, 0, 0, 0.5),
 		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 35%, transparent);
@@ -769,13 +838,27 @@ onMounted(async () => {
 }
 
 @keyframes cs-panel-scan-h {
-	0%, 100% { transform: translateY(0); opacity: 0.3; }
-	50% { transform: translateY(100%); opacity: 0.8; }
+	0%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.3;
+	}
+	50% {
+		transform: translateY(100%);
+		opacity: 0.8;
+	}
 }
 
 @keyframes cs-panel-scan-v {
-	0%, 100% { transform: translateX(0); opacity: 0.3; }
-	50% { transform: translateX(-100%); opacity: 0.6; }
+	0%,
+	100% {
+		transform: translateX(0);
+		opacity: 0.3;
+	}
+	50% {
+		transform: translateX(-100%);
+		opacity: 0.6;
+	}
 }
 
 .card-glow {
@@ -809,7 +892,8 @@ onMounted(async () => {
 	width: 12px;
 	height: 12px;
 	border-color: var(--pl-accent);
-	transition: width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+	transition:
+		width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
 		height 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -993,7 +1077,9 @@ onMounted(async () => {
 }
 
 @keyframes cs-ui-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-ui-done-icon {

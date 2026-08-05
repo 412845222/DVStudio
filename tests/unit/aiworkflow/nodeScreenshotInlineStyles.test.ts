@@ -83,7 +83,8 @@ describe('__test__inlineAllStyles', () => {
 	it('should set crossOrigin on cloned images', async () => {
 		const container = document.createElement('div')
 		const img = document.createElement('img')
-		img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+		img.src =
+			'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
 		container.appendChild(img)
 		document.body.appendChild(container)
 

@@ -33,12 +33,12 @@ export function initTaskQueue(mainWindow) {
 
 	try {
 		const meshyProvider = new MeshyProvider({
-			getApiKey: createGetApiKey('meshy'),
+			getApiKey: createGetApiKey('meshy')
 		})
 		svc.registerProvider(meshyProvider)
 
 		const tripo3dProvider = new Tripo3DProvider({
-			getApiKey: createGetApiKey('tripo3d'),
+			getApiKey: createGetApiKey('tripo3d')
 		})
 		svc.registerProvider(tripo3dProvider)
 	} catch (err) {

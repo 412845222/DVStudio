@@ -3,7 +3,7 @@ import { createMockUgcAdapter } from './mock.mjs'
 
 const ADAPTER_MAP = {
 	steam: createSteamUgcAdapter,
-	mock: createMockUgcAdapter,
+	mock: createMockUgcAdapter
 }
 
 export function createUgcAdapter(platformId, options = {}) {
@@ -21,10 +21,10 @@ export { createMockUgcAdapter }
 
 export function getActiveUgcAdapter(platformManager, options = {}) {
 	const activeProvider = platformManager.getActiveProvider()
-	
+
 	let targetProvider = activeProvider
 	let platformId = activeProvider?.id || 'mock'
-	
+
 	if (activeProvider?.id === 'mock') {
 		const steamProvider = platformManager._providers?.get('steam')
 		if (steamProvider && steamProvider.isAvailable()) {
@@ -32,17 +32,21 @@ export function getActiveUgcAdapter(platformManager, options = {}) {
 			platformId = 'steam'
 		}
 	}
-	
+
 	let adapter = createUgcAdapter(platformId, { ...options, provider: targetProvider })
-	
+
 	if (adapter.isAvailable()) {
 		return adapter
 	}
-	
+
 	if (platformId !== 'mock') {
-		console.log('[workshop-templates] Platform', platformId, 'does not support UGC, falling back to Mock')
+		console.log(
+			'[workshop-templates] Platform',
+			platformId,
+			'does not support UGC, falling back to Mock'
+		)
 		adapter = createMockUgcAdapter(options)
 	}
-	
+
 	return adapter
 }

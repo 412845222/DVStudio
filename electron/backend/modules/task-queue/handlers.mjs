@@ -54,7 +54,8 @@ export async function findByUniqueKey(ctx, payload) {
 	const projectId = payload?.projectId != null ? Number(payload.projectId) : null
 	const provider = String(payload?.provider || '').trim()
 	const remoteTaskId = String(payload?.remoteTaskId || '').trim()
-	if (!provider || !remoteTaskId) return { ok: false, error: 'provider and remoteTaskId are required' }
+	if (!provider || !remoteTaskId)
+		return { ok: false, error: 'provider and remoteTaskId are required' }
 	const task = _taskQueueService.findTaskByUniqueKey(projectId, provider, remoteTaskId)
 	return { ok: true, task: task || null }
 }

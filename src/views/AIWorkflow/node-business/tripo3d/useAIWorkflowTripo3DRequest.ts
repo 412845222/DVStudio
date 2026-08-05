@@ -30,25 +30,43 @@ const getSettingValue = (
 	return settings[prefixedKey]
 }
 
-const getSettingString = (settings: Record<string, unknown>, plainKey: string, prefixedKey: string): string => {
+const getSettingString = (
+	settings: Record<string, unknown>,
+	plainKey: string,
+	prefixedKey: string
+): string => {
 	const val = getSettingValue(settings, plainKey, prefixedKey)
 	return typeof val === 'string' ? val.trim() : ''
 }
 
-const getSettingNumber = (settings: Record<string, unknown>, plainKey: string, prefixedKey: string, defaultValue = 0): number => {
+const getSettingNumber = (
+	settings: Record<string, unknown>,
+	plainKey: string,
+	prefixedKey: string,
+	defaultValue = 0
+): number => {
 	const val = getSettingValue(settings, plainKey, prefixedKey)
 	const num = Number(val)
 	return Number.isFinite(num) ? num : defaultValue
 }
 
-const getSettingBoolean = (settings: Record<string, unknown>, plainKey: string, prefixedKey: string, defaultValue = false): boolean => {
+const getSettingBoolean = (
+	settings: Record<string, unknown>,
+	plainKey: string,
+	prefixedKey: string,
+	defaultValue = false
+): boolean => {
 	const val = getSettingValue(settings, plainKey, prefixedKey)
 	if (typeof val === 'boolean') return val
 	if (typeof val === 'string') return val.toLowerCase() === 'true'
 	return defaultValue
 }
 
-const getSettingArray = <T>(settings: Record<string, unknown>, plainKey: string, prefixedKey: string): T[] => {
+const getSettingArray = <T>(
+	settings: Record<string, unknown>,
+	plainKey: string,
+	prefixedKey: string
+): T[] => {
 	const val = getSettingValue(settings, plainKey, prefixedKey)
 	return Array.isArray(val) ? (val as T[]) : []
 }
@@ -61,9 +79,13 @@ export const useAIWorkflowTripo3DRequest = (options: {
 	normalizeTripo3DImageInputValue: (rawValue: string, label: string) => Promise<string>
 	hasConnectedTripo3DConsumer: (node: WorkflowNode) => boolean
 }) => {
-	const buildTripo3DRequestPayload = async (node: WorkflowNode): Promise<BuildTripo3DRequestResult> => {
+	const buildTripo3DRequestPayload = async (
+		node: WorkflowNode
+	): Promise<BuildTripo3DRequestResult> => {
 		const model3dSettings = isRecord(node.model3dSettings) ? node.model3dSettings : {}
-		const settings = (isRecord(model3dSettings.tripo3dModelSettings) ? model3dSettings.tripo3dModelSettings : {}) as Record<string, unknown>
+		const settings = (
+			isRecord(model3dSettings.tripo3dModelSettings) ? model3dSettings.tripo3dModelSettings : {}
+		) as Record<string, unknown>
 		const tripo3dSettings = isRecord((node as unknown as Record<string, unknown>).tripo3dSettings)
 			? ((node as unknown as Record<string, unknown>).tripo3dSettings as Record<string, unknown>)
 			: {}
@@ -116,14 +138,21 @@ export const useAIWorkflowTripo3DRequest = (options: {
 		}
 
 		const forceSingleImage = getBool('forceSingleImage', 'tripo3dForceSingleImage', false)
-		const selectedImages = getArr<{nodeId: string; view: string; order: number}>('selectedImages', 'tripo3dSelectedImages')
+		const selectedImages = getArr<{ nodeId: string; view: string; order: number }>(
+			'selectedImages',
+			'tripo3dSelectedImages'
+		)
 		const taskMode = getStr('taskMode', 'tripo3dTaskMode')
 
-		const selfTripo3dTaskId = String(settings.tripo3dTaskId ?? settings.tripo3dUpstreamTaskId ?? '').trim()
-		const selfModelUrl = String(model3dSettings.modelAssetUrl ?? model3dSettings.modelUrl ?? '').trim()
+		const selfTripo3dTaskId = String(
+			settings.tripo3dTaskId ?? settings.tripo3dUpstreamTaskId ?? ''
+		).trim()
+		const selfModelUrl = String(
+			model3dSettings.modelAssetUrl ?? model3dSettings.modelUrl ?? ''
+		).trim()
 		const effectiveModelInput: LinkedModelInput = linkedModelInput?.inputTaskId
 			? linkedModelInput
-			: (selfTripo3dTaskId || selfModelUrl)
+			: selfTripo3dTaskId || selfModelUrl
 				? {
 						modelUrl: selfModelUrl || linkedModelInput?.modelUrl || '',
 						sourceName: linkedModelInput?.sourceName,
@@ -135,22 +164,38 @@ export const useAIWorkflowTripo3DRequest = (options: {
 		console.log('[Tripo3D Request] 模型输入解析:', {
 			nodeId: node.id,
 			taskMode,
-			linkedModelInput: linkedModelInput ? {
-				hasInputTaskId: !!linkedModelInput.inputTaskId,
-				inputTaskId: linkedModelInput.inputTaskId,
-				modelUrl: linkedModelInput.modelUrl ? linkedModelInput.modelUrl.slice(0, 80) + '...' : '',
-				isTripo3DGenerated: linkedModelInput.isTripo3DGenerated
-			} : null,
+			linkedModelInput: linkedModelInput
+				? {
+						hasInputTaskId: !!linkedModelInput.inputTaskId,
+						inputTaskId: linkedModelInput.inputTaskId,
+						modelUrl: linkedModelInput.modelUrl
+							? linkedModelInput.modelUrl.slice(0, 80) + '...'
+							: '',
+						isTripo3DGenerated: linkedModelInput.isTripo3DGenerated
+					}
+				: null,
 			selfTripo3dTaskId,
 			selfModelUrl: selfModelUrl ? selfModelUrl.slice(0, 80) + '...' : '',
-			effectiveModelInput: effectiveModelInput ? {
-				hasInputTaskId: !!effectiveModelInput.inputTaskId,
-				inputTaskId: effectiveModelInput.inputTaskId,
-				modelUrl: effectiveModelInput.modelUrl ? effectiveModelInput.modelUrl.slice(0, 80) + '...' : ''
-			} : null
+			effectiveModelInput: effectiveModelInput
+				? {
+						hasInputTaskId: !!effectiveModelInput.inputTaskId,
+						inputTaskId: effectiveModelInput.inputTaskId,
+						modelUrl: effectiveModelInput.modelUrl
+							? effectiveModelInput.modelUrl.slice(0, 80) + '...'
+							: ''
+					}
+				: null
 		})
 
-		const postProcessModes = ['texture', 'refine', 'mesh_segment', 'mesh_smartsegment', 'mesh_complete', 'mesh_decimate', 'models_convert']
+		const postProcessModes = [
+			'texture',
+			'refine',
+			'mesh_segment',
+			'mesh_smartsegment',
+			'mesh_complete',
+			'mesh_decimate',
+			'models_convert'
+		]
 		const isPostProcess = postProcessModes.includes(taskMode)
 
 		let mode: Tripo3DMode
@@ -200,10 +245,23 @@ export const useAIWorkflowTripo3DRequest = (options: {
 		const smartLowPoly = getBool('smartLowPoly', 'tripo3dSmartLowPoly', false)
 		const generateParts = getBool('generateParts', 'tripo3dGenerateParts', false)
 		const enableImageAutofix = getBool('enableImageAutofix', 'tripo3dEnableImageAutofix', true)
-		const textureAlignment = getStr('textureAlignment', 'tripo3dTextureAlignment') as 'original_image' | 'geometry' | ''
-		const orientation = getStr('orientation', 'tripo3dOrientation') as 'default' | 'align_image' | ''
-		const textureQuality = getStr('textureQuality', 'tripo3dTextureQuality') as 'standard' | 'detailed' | 'extreme' | ''
-		const geometryQuality = getStr('geometryQuality', 'tripo3dGeometryQuality') as 'standard' | 'detailed' | ''
+		const textureAlignment = getStr('textureAlignment', 'tripo3dTextureAlignment') as
+			| 'original_image'
+			| 'geometry'
+			| ''
+		const orientation = getStr('orientation', 'tripo3dOrientation') as
+			| 'default'
+			| 'align_image'
+			| ''
+		const textureQuality = getStr('textureQuality', 'tripo3dTextureQuality') as
+			| 'standard'
+			| 'detailed'
+			| 'extreme'
+			| ''
+		const geometryQuality = getStr('geometryQuality', 'tripo3dGeometryQuality') as
+			| 'standard'
+			| 'detailed'
+			| ''
 		const autoSize = getBool('autoSize', 'tripo3dAutoSize', true)
 		const compress = getBool('compress', 'tripo3dCompress', false)
 		const exportUv = getBool('exportUv', 'tripo3dExportUv', false)
@@ -220,38 +278,53 @@ export const useAIWorkflowTripo3DRequest = (options: {
 		const modelSeed = getNum('modelSeed', 'tripo3dModelSeed', -1)
 		const textureSeed = getNum('textureSeed', 'tripo3dTextureSeed', -1)
 		const negativePrompt = getStr('negativePrompt', 'tripo3dNegativePrompt')
-		const textureModelVersion = getStr('textureModelVersion', 'tripo3dTextureModelVersion') || 'v3.0-20250812'
-		const textureForceSingleImage = getBool('textureForceSingleImage', 'tripo3dTextureForceSingleImage', false)
-		const textureSelectedImages = getArr<{nodeId: string; view: string; order: number}>('textureSelectedImages', 'tripo3dTextureSelectedImages')
+		const textureModelVersion =
+			getStr('textureModelVersion', 'tripo3dTextureModelVersion') || 'v3.0-20250812'
+		const textureForceSingleImage = getBool(
+			'textureForceSingleImage',
+			'tripo3dTextureForceSingleImage',
+			false
+		)
+		const textureSelectedImages = getArr<{ nodeId: string; view: string; order: number }>(
+			'textureSelectedImages',
+			'tripo3dTextureSelectedImages'
+		)
 		const textureBake = getBool('textureBake', 'tripo3dTextureBake', true)
 
 		const rawPrompt = linkedPrompt || getStr('prompt', 'tripo3dPrompt')
 
 		const payload: Tripo3DGeneratePayload = {
 			mode,
-			...(isPostProcess ? {} : {
-				model_version: modelVersion,
-				prompt: (rawPrompt && mode === 'text_to_model') ? rawPrompt : (rawPrompt || undefined),
-				negative_prompt: negativePrompt || undefined,
-				face_limit: Number.isFinite(faceLimit) && faceLimit > 0 ? Math.floor(faceLimit) : undefined,
-				texture,
-				enable_image_autofix: enableImageAutofix,
-				orientation: orientation || undefined,
-				geometry_quality: geometryQuality || undefined,
-				auto_size: autoSize,
-				quad,
-				smart_low_poly: smartLowPoly,
-				generate_parts: generateParts,
-				export_uv: exportUv,
-				model_seed: Number.isFinite(modelSeed) && modelSeed >= 0 ? Math.floor(modelSeed) : undefined
-			}),
-			...(!isPostProcess || mode === 'texture' ? {
-				pbr,
-				texture_alignment: textureAlignment || undefined,
-				texture_quality: textureQuality || undefined,
-				compress: compress ? 'geometry' : undefined
-			} : {}),
-			texture_seed: Number.isFinite(textureSeed) && textureSeed >= 0 ? Math.floor(textureSeed) : undefined
+			...(isPostProcess
+				? {}
+				: {
+						model_version: modelVersion,
+						prompt: rawPrompt && mode === 'text_to_model' ? rawPrompt : rawPrompt || undefined,
+						negative_prompt: negativePrompt || undefined,
+						face_limit:
+							Number.isFinite(faceLimit) && faceLimit > 0 ? Math.floor(faceLimit) : undefined,
+						texture,
+						enable_image_autofix: enableImageAutofix,
+						orientation: orientation || undefined,
+						geometry_quality: geometryQuality || undefined,
+						auto_size: autoSize,
+						quad,
+						smart_low_poly: smartLowPoly,
+						generate_parts: generateParts,
+						export_uv: exportUv,
+						model_seed:
+							Number.isFinite(modelSeed) && modelSeed >= 0 ? Math.floor(modelSeed) : undefined
+					}),
+			...(!isPostProcess || mode === 'texture'
+				? {
+						pbr,
+						texture_alignment: textureAlignment || undefined,
+						texture_quality: textureQuality || undefined,
+						compress: compress ? 'geometry' : undefined
+					}
+				: {}),
+			texture_seed:
+				Number.isFinite(textureSeed) && textureSeed >= 0 ? Math.floor(textureSeed) : undefined
 		}
 
 		let imageCount = 0
@@ -260,7 +333,7 @@ export const useAIWorkflowTripo3DRequest = (options: {
 		} else if (mode === 'image_to_model') {
 			let selectedImageUrl = ''
 			if (selectedImages.length > 0) {
-				const selected = selectedImages.find(s => linkedImagesMap.has(s.nodeId))
+				const selected = selectedImages.find((s) => linkedImagesMap.has(s.nodeId))
 				if (selected) {
 					selectedImageUrl = linkedImagesMap.get(selected.nodeId) || ''
 				}
@@ -278,7 +351,9 @@ export const useAIWorkflowTripo3DRequest = (options: {
 				} catch (err: unknown) {
 					return {
 						ok: false,
-						error: t('tasks.tripo3d.singleReferenceImageReadFailed', { error: getErrorMessage(err) })
+						error: t('tasks.tripo3d.singleReferenceImageReadFailed', {
+							error: getErrorMessage(err)
+						})
 					}
 				}
 			}
@@ -293,7 +368,7 @@ export const useAIWorkflowTripo3DRequest = (options: {
 			const selectedByView = new Map<string, string>()
 
 			const sortedSelected = [...selectedImages]
-				.filter(s => linkedImagesMap.has(s.nodeId))
+				.filter((s) => linkedImagesMap.has(s.nodeId))
 				.sort((a, b) => a.order - b.order)
 
 			for (const selected of sortedSelected) {
@@ -318,15 +393,19 @@ export const useAIWorkflowTripo3DRequest = (options: {
 
 			imageCount = multiviewImageCount
 			payload.inputs = viewKeyInputs
-			payload.selectedImages = sortedSelected.map(s => ({
+			payload.selectedImages = sortedSelected.map((s) => ({
 				nodeId: s.nodeId,
 				view: s.view,
 				order: s.order
 			}))
 		} else if (mode === 'texture') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.textureRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.textureRequiresModel') }
 			payload.input = modelTaskId || modelUrl
 			payload.model = textureModelVersion
 
@@ -351,7 +430,7 @@ export const useAIWorkflowTripo3DRequest = (options: {
 				let mapped = 0
 				for (const sel of textureSelectedImages) {
 					const token = linkedImagesMap.get(sel.nodeId)
-					if (token && viewOrder.includes(sel.view as typeof viewOrder[number])) {
+					if (token && viewOrder.includes(sel.view as (typeof viewOrder)[number])) {
 						imagesObj[sel.view] = { file_token: token }
 						mapped++
 					}
@@ -381,39 +460,55 @@ export const useAIWorkflowTripo3DRequest = (options: {
 			delete payload.texture
 			imageCount = textureImageCount
 		} else if (mode === 'refine') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.refineRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.refineRequiresModel') }
 			payload.input = modelTaskId || modelUrl
 			payload.prompt = getStr('hint', 'tripo3dHint') || rawPrompt || undefined
 			delete payload.model_version
 			delete payload.texture
 		} else if (mode === 'mesh_segment') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
 			payload.input = modelTaskId || modelUrl
 			payload.model = getStr('modelVersion', 'tripo3dModelVersion') || undefined
 		} else if (mode === 'mesh_smartsegment') {
-			const segType = getStr('segType', 'tripo3dSegType') as 'image' | 'model' || 'image'
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const segType = (getStr('segType', 'tripo3dSegType') as 'image' | 'model') || 'image'
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
 			payload.seg_type = segType
 			payload.input = modelTaskId || modelUrl
 			payload.model = getStr('modelVersion', 'tripo3dModelVersion') || undefined
-			payload.granularity = (getStr('granularity', 'tripo3dGranularity') as 'coarse' | 'medium' | 'fine') || undefined
+			payload.granularity =
+				(getStr('granularity', 'tripo3dGranularity') as 'coarse' | 'medium' | 'fine') || undefined
 			payload.hint = getStr('hint', 'tripo3dHint') || undefined
 			if (segType === 'model') {
 				const transform = getArr<number>('transform', 'tripo3dTransform')
 				if (transform.length === 16) {
 					payload.transform = transform.map(Number)
 				} else {
-					payload.transform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
+					payload.transform = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 				}
 			}
 		} else if (mode === 'mesh_complete') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			if (!modelTaskId) return { ok: false, error: t('tasks.tripo3d.meshCompleteRequiresSegment') }
 			payload.input = modelTaskId
 			payload.model = getStr('modelVersion', 'tripo3dModelVersion') || undefined
@@ -422,20 +517,35 @@ export const useAIWorkflowTripo3DRequest = (options: {
 				payload.part_names = partNames.map(String)
 			}
 		} else if (mode === 'mesh_decimate') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
 			payload.input = modelTaskId || modelUrl
 			payload.model = getStr('decimateModel', 'tripo3dDecimateModel') || 'v2.0'
 			const faceLimit = getNum('convertFaceLimit', 'tripo3dConvertFaceLimit', 0)
 			if (faceLimit > 0) payload.face_limit = Math.floor(faceLimit)
 			payload.quad = getBool('convertQuad', 'tripo3dConvertQuad', false)
 		} else if (mode === 'models_convert') {
-			const modelTaskId = effectiveModelInput?.inputTaskId || getStr('modelTaskId', 'tripo3dModelTaskId') || getStr('taskId', 'tripo3dTaskId')
+			const modelTaskId =
+				effectiveModelInput?.inputTaskId ||
+				getStr('modelTaskId', 'tripo3dModelTaskId') ||
+				getStr('taskId', 'tripo3dTaskId')
 			const modelUrl = String(effectiveModelInput?.modelUrl ?? '').trim()
-			if (!modelTaskId && !modelUrl) return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
+			if (!modelTaskId && !modelUrl)
+				return { ok: false, error: t('tasks.tripo3d.postProcessRequiresModel') }
 			payload.input = modelTaskId || modelUrl
-			const format = getStr('convertFormat', 'tripo3dConvertFormat') as 'GLTF' | 'FBX' | 'USDZ' | 'OBJ' | 'STL' | '3MF' || 'GLTF'
+			const format =
+				(getStr('convertFormat', 'tripo3dConvertFormat') as
+					| 'GLTF'
+					| 'FBX'
+					| 'USDZ'
+					| 'OBJ'
+					| 'STL'
+					| '3MF') || 'GLTF'
 			const convertQuad = getBool('convertQuad', 'tripo3dConvertQuad', false)
 			payload.format = convertQuad ? 'FBX' : format
 			payload.quad = convertQuad
@@ -446,17 +556,16 @@ export const useAIWorkflowTripo3DRequest = (options: {
 			if (textureSize > 0) payload.texture_size = Math.floor(textureSize)
 		}
 
-		console.log('[Tripo3D Request] 最终payload (mode=' + mode + '):', JSON.stringify(payload, null, 2))
+		console.log(
+			'[Tripo3D Request] 最终payload (mode=' + mode + '):',
+			JSON.stringify(payload, null, 2)
+		)
 
 		return {
 			ok: true,
 			payload,
 			promptText: String(payload.prompt ?? '').trim(),
-			promptSource: linkedPrompt
-				? 'linked'
-				: getStr('prompt', 'tripo3dPrompt')
-					? 'manual'
-					: 'none',
+			promptSource: linkedPrompt ? 'linked' : getStr('prompt', 'tripo3dPrompt') ? 'manual' : 'none',
 			imageCount
 		}
 	}

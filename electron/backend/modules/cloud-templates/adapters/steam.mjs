@@ -20,8 +20,12 @@ export class SteamCloudAdapter extends CloudAdapter {
 		return this._provider.cloud || null
 	}
 
-	getPlatformId() { return 'steam' }
-	getPlatformName() { return 'Steam Cloud' }
+	getPlatformId() {
+		return 'steam'
+	}
+	getPlatformName() {
+		return 'Steam Cloud'
+	}
 
 	isAvailable() {
 		const cloud = this._getCloud()
@@ -50,8 +54,8 @@ export class SteamCloudAdapter extends CloudAdapter {
 				ok: true,
 				quota: {
 					totalBytes,
-					availableBytes,
-				},
+					availableBytes
+				}
 			}
 		} catch (err) {
 			console.error('[cloud-templates:steam] getQuota error:', err)
@@ -84,17 +88,21 @@ export class SteamCloudAdapter extends CloudAdapter {
 		try {
 			console.log('[cloud-templates:steam] fileRead:', fileName)
 			const result = cloud.fileRead(fileName)
-			console.log('[cloud-templates:steam] fileRead raw result:', JSON.stringify({
-				ok: result?.ok,
-				hasBuffer: !!result?.buffer,
-				bufferType: result?.buffer ? typeof result.buffer : 'none',
-				bufferIsBuffer: Buffer.isBuffer(result?.buffer),
-				bufferLength: result?.buffer?.length ?? (result?.data?.length) ?? (result?.content?.length) ?? -1,
-				hasData: !!result?.data,
-				hasContent: !!result?.content,
-				errMsg: result?.errMsg
-			}))
-			
+			console.log(
+				'[cloud-templates:steam] fileRead raw result:',
+				JSON.stringify({
+					ok: result?.ok,
+					hasBuffer: !!result?.buffer,
+					bufferType: result?.buffer ? typeof result.buffer : 'none',
+					bufferIsBuffer: Buffer.isBuffer(result?.buffer),
+					bufferLength:
+						result?.buffer?.length ?? result?.data?.length ?? result?.content?.length ?? -1,
+					hasData: !!result?.data,
+					hasContent: !!result?.content,
+					errMsg: result?.errMsg
+				})
+			)
+
 			if (!result || result.ok === false) {
 				return { ok: false, errMsg: result?.errMsg || 'File read failed' }
 			}
@@ -116,7 +124,11 @@ export class SteamCloudAdapter extends CloudAdapter {
 
 			// Convert ArrayBuffer/Uint8Array to Node.js Buffer if needed
 			if (buf && !Buffer.isBuffer(buf)) {
-				console.log('[cloud-templates:steam] Converting buffer from', buf.constructor?.name || typeof buf, 'to Node.js Buffer')
+				console.log(
+					'[cloud-templates:steam] Converting buffer from',
+					buf.constructor?.name || typeof buf,
+					'to Node.js Buffer'
+				)
 				if (buf instanceof ArrayBuffer) {
 					buf = Buffer.from(buf)
 				} else if (buf instanceof Uint8Array) {
@@ -131,42 +143,62 @@ export class SteamCloudAdapter extends CloudAdapter {
 			// If buffer is still empty but file exists, try to read file size first and retry
 			if (!buf || buf.length === 0) {
 				console.warn('[cloud-templates:steam] Buffer is empty, trying alternative read method...')
-				
+
 				// Check if cloud has getFileSize and try to get size first
 				if (typeof cloud.getFileSize === 'function') {
 					const sizeResult = cloud.getFileSize(fileName)
 					console.log('[cloud-templates:steam] getFileSize result:', JSON.stringify(sizeResult))
 					if (sizeResult && sizeResult.ok && sizeResult.size > 0) {
-						console.log('[cloud-templates:steam] File size is', sizeResult.size, 'but buffer empty, attempting read again')
+						console.log(
+							'[cloud-templates:steam] File size is',
+							sizeResult.size,
+							'but buffer empty, attempting read again'
+						)
 						// Some implementations require size hint or return data differently
 						const retryResult = cloud.fileRead(fileName, sizeResult.size)
-						console.log('[cloud-templates:steam] Retry result keys:', retryResult ? Object.keys(retryResult) : 'null')
+						console.log(
+							'[cloud-templates:steam] Retry result keys:',
+							retryResult ? Object.keys(retryResult) : 'null'
+						)
 						if (retryResult?.buffer && retryResult.buffer.length > 0) {
 							buf = retryResult.buffer
 							if (!Buffer.isBuffer(buf)) {
 								if (buf instanceof ArrayBuffer) buf = Buffer.from(buf)
-								else if (buf instanceof Uint8Array) buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
+								else if (buf instanceof Uint8Array)
+									buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
 							}
 						} else if (retryResult?.data && retryResult.data.length > 0) {
 							buf = retryResult.data
 							if (!Buffer.isBuffer(buf)) {
 								if (buf instanceof ArrayBuffer) buf = Buffer.from(buf)
-								else if (buf instanceof Uint8Array) buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
+								else if (buf instanceof Uint8Array)
+									buf = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength)
 							}
 						}
 					}
 				}
 			}
 
-			console.log('[cloud-templates:steam] Final buffer for', fileName, ':', buf ? `${buf.length} bytes, isBuffer:${Buffer.isBuffer(buf)}` : 'null/undefined')
-			
+			console.log(
+				'[cloud-templates:steam] Final buffer for',
+				fileName,
+				':',
+				buf ? `${buf.length} bytes, isBuffer:${Buffer.isBuffer(buf)}` : 'null/undefined'
+			)
+
 			if (!buf || buf.length === 0) {
 				return { ok: false, errMsg: 'Read returned empty buffer' }
 			}
 
 			return { ok: true, buffer: buf }
 		} catch (err) {
-			console.error('[cloud-templates:steam] fileRead error for', fileName, ':', err.message, err.stack)
+			console.error(
+				'[cloud-templates:steam] fileRead error for',
+				fileName,
+				':',
+				err.message,
+				err.stack
+			)
 			return { ok: false, errMsg: err.message }
 		}
 	}
@@ -261,7 +293,7 @@ export class SteamCloudAdapter extends CloudAdapter {
 					items.push({
 						name: entry.name,
 						size: entry.size || 0,
-						timestamp: 0,
+						timestamp: 0
 					})
 				}
 			}

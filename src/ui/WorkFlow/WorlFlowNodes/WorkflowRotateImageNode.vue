@@ -91,7 +91,12 @@
 					</div>
 				</div>
 
-				<button type="button" class="wf-reset-btn" :title="t('nodes.rotateImage.resetToFront')" @click.stop="onResetView">
+				<button
+					type="button"
+					class="wf-reset-btn"
+					:title="t('nodes.rotateImage.resetToFront')"
+					@click.stop="onResetView"
+				>
 					{{ t('nodes.rotateImage.reset') }}
 				</button>
 			</div>
@@ -140,12 +145,40 @@ const props = defineProps<{
 	rotatePromptText?: string | null
 }>()
 
-const onStartLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number; event: PointerEvent }) => { emit('start-link', payload) }
-const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => { emit('end-link', payload) }
-const onSetType = (type: 'base' | 'text' | 'text-merge' | 'image' | 'rotate-image' | 'video' | 'scene-understanding' | 'scene-decompose' | 'scene-layout' | 'unreal-export' | 'story' | 'comfyui' | 'model3d' | 'meshy' | 'blender') => { emit('set-type', type) }
-const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => { emit('resize', payload) }
-
-
+const onStartLink = (payload: {
+	nodeId: string
+	anchorId: string
+	anchorIndex: number
+	event: PointerEvent
+}) => {
+	emit('start-link', payload)
+}
+const onEndLink = (payload: { nodeId: string; anchorId: string; anchorIndex: number }) => {
+	emit('end-link', payload)
+}
+const onSetType = (
+	type:
+		| 'base'
+		| 'text'
+		| 'text-merge'
+		| 'image'
+		| 'rotate-image'
+		| 'video'
+		| 'scene-understanding'
+		| 'scene-decompose'
+		| 'scene-layout'
+		| 'unreal-export'
+		| 'story'
+		| 'comfyui'
+		| 'model3d'
+		| 'meshy'
+		| 'blender'
+) => {
+	emit('set-type', type)
+}
+const onResize = (payload: { width: number; height: number; worldX: number; worldY: number }) => {
+	emit('resize', payload)
+}
 
 const emit = defineEmits<{
 	(e: 'update:worldX', v: number): void
@@ -210,9 +243,10 @@ const scheduleInvalidateScreenshot = (delayMs: number = 200) => {
 	}, delayMs)
 }
 
-const PLACEHOLDER_SVG = computed(() =>
-	`data:image/svg+xml;utf8,` +
-	encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
+const PLACEHOLDER_SVG = computed(
+	() =>
+		`data:image/svg+xml;utf8,` +
+		encodeURIComponent(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">

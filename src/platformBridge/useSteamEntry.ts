@@ -72,13 +72,17 @@ export function useSteamEntry() {
 		}
 	})
 
-	watch([isRealPlatform, isSteam, isLoggedIn], ([real, steam, loggedIn], [oldReal, oldSteam, oldLoggedIn]) => {
-		if (!hasCheckedOnce.value && real && steam) {
-			if (!connectionStarted.value) {
-				startConnecting()
+	watch(
+		[isRealPlatform, isSteam, isLoggedIn],
+		([real, steam, loggedIn], [oldReal, oldSteam, oldLoggedIn]) => {
+			if (!hasCheckedOnce.value && real && steam) {
+				if (!connectionStarted.value) {
+					startConnecting()
+				}
 			}
-		}
-	}, { immediate: true })
+		},
+		{ immediate: true }
+	)
 
 	onMounted(() => {
 		setTimeout(() => {
@@ -101,6 +105,6 @@ export function useSteamEntry() {
 		user,
 		error,
 		hideOverlay,
-		isSteam,
+		isSteam
 	}
 }

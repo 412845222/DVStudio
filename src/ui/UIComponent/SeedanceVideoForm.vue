@@ -79,7 +79,8 @@
 					<option value="video_edit" :disabled="!isSeedance20Series">视频编辑</option>
 				</select>
 				<div class="seedance-hint">
-					提示词里请显式描述主体、镜头、动作与氛围；若接入多张图/视频，建议使用“素材1/素材2”这种编号叙述。多模态参考支持图片、视频、音频组合输入，仅 Seedance 2.0 系列支持。
+					提示词里请显式描述主体、镜头、动作与氛围；若接入多张图/视频，建议使用“素材1/素材2”这种编号叙述。多模态参考支持图片、视频、音频组合输入，仅
+					Seedance 2.0 系列支持。
 				</div>
 			</div>
 

@@ -275,7 +275,7 @@ const onOpenOrCopy = async () => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0,0,0,0.6));
+	background: color-mix(in srgb, var(--pl-bg-0) 75%, rgba(0, 0, 0, 0.6));
 	backdrop-filter: blur(4px);
 }
 
@@ -283,9 +283,11 @@ const onOpenOrCopy = async () => {
 	position: relative;
 	width: 520px;
 	max-width: calc(100vw - 24px);
-	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-1) 96%, rgba(0, 0, 0, 0.4));
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 32%, transparent);
-	box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
+	box-shadow:
+		0 16px 48px rgba(0, 0, 0, 0.6),
+		0 0 28px color-mix(in srgb, var(--pl-accent) 14%, transparent);
 	padding: 16px 18px;
 	border-radius: 4px;
 	box-sizing: border-box;
@@ -334,7 +336,12 @@ const onOpenOrCopy = async () => {
 	right: 0;
 	bottom: -1px;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 55%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 55%, transparent),
+		transparent
+	);
 }
 
 .dvs-export-title {
@@ -354,12 +361,17 @@ const onOpenOrCopy = async () => {
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-btn:hover {
 	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .vs-btn:disabled {
@@ -401,7 +413,9 @@ const onOpenOrCopy = async () => {
 	outline: none;
 	box-sizing: border-box;
 	font-size: 12px;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-select:hover {
@@ -410,7 +424,9 @@ const onOpenOrCopy = async () => {
 
 .vs-select:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-select:disabled {
@@ -478,12 +494,20 @@ const onOpenOrCopy = async () => {
 }
 
 .dvs-export-progress-bar.is-upload {
-	background: linear-gradient(90deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 60%, var(--pl-cold, #3aa8b4)));
+	background: linear-gradient(
+		90deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 60%, var(--pl-cold, #3aa8b4))
+	);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 60%, transparent);
 }
 
 .dvs-export-progress-bar.is-encode {
-	background: linear-gradient(90deg, var(--pl-cold, #3aa8b4), color-mix(in srgb, var(--pl-cold, #3aa8b4) 70%, var(--pl-accent)));
+	background: linear-gradient(
+		90deg,
+		var(--pl-cold, #3aa8b4),
+		color-mix(in srgb, var(--pl-cold, #3aa8b4) 70%, var(--pl-accent))
+	);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-cold, #3aa8b4) 60%, transparent);
 }
 

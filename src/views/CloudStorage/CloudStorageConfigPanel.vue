@@ -1,9 +1,22 @@
 <template>
 	<div class="cs-config">
 		<div class="cs-config-header">
-			<button class="cs-back-btn" @click="handleBack" :title="currentStep === 'credentials' ? t('cloudStorage.config.changeProvider') : t('common.back')">
-				<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-					<polyline points="15 18 9 12 15 6"/>
+			<button
+				class="cs-back-btn"
+				@click="handleBack"
+				:title="
+					currentStep === 'credentials' ? t('cloudStorage.config.changeProvider') : t('common.back')
+				"
+			>
+				<svg
+					viewBox="0 0 24 24"
+					width="16"
+					height="16"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<polyline points="15 18 9 12 15 6" />
 				</svg>
 			</button>
 			<div class="cs-header-deco left" aria-hidden="true"></div>
@@ -16,7 +29,13 @@
 							stroke="currentColor"
 							stroke-width="1.5"
 						/>
-						<path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						<path
+							d="M12 8v8M8 12h8"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
 					</svg>
 				</div>
 				<span>{{ t('cloudStorage.config.addBucket') }}</span>
@@ -41,7 +60,12 @@
 				<CloudProviderSelector v-model="tempProviderId" @selected="onProviderSelected" />
 
 				<div class="cs-form-actions">
-					<button class="cs-btn cs-btn-primary" type="button" :disabled="!tempProviderId" @click="goToCredentials">
+					<button
+						class="cs-btn cs-btn-primary"
+						type="button"
+						:disabled="!tempProviderId"
+						@click="goToCredentials"
+					>
 						<span class="cs-btn-corners" aria-hidden="true">
 							<span class="cs-btn-c tl"></span>
 							<span class="cs-btn-c tr"></span>
@@ -49,8 +73,15 @@
 							<span class="cs-btn-c br"></span>
 						</span>
 						{{ t('cloudStorage.config.nextStep') }}
-						<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
-							<polyline points="6 4 10 8 6 12"/>
+						<svg
+							viewBox="0 0 16 16"
+							width="12"
+							height="12"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						>
+							<polyline points="6 4 10 8 6 12" />
 						</svg>
 					</button>
 					<button class="cs-btn cs-btn-ghost" type="button" @click="$emit('cancel')">
@@ -69,7 +100,9 @@
 					</div>
 					<div class="cs-section-header">
 						<div class="cs-section-indicator"></div>
-						<span class="cs-section-label">{{ selectedProvider?.name || t('cloudStorage.config.provider') }}</span>
+						<span class="cs-section-label">
+							{{ selectedProvider?.name || t('cloudStorage.config.provider') }}
+						</span>
 						<div class="cs-section-line"></div>
 					</div>
 
@@ -86,7 +119,9 @@
 							<div class="cs-input-wrap">
 								<span class="cs-input-deco left" aria-hidden="true"></span>
 								<select v-model="credentialValues[field.key]" class="cs-input cs-select">
-									<option v-for="opt in field.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+									<option v-for="opt in field.options" :key="opt.value" :value="opt.value">
+										{{ opt.label }}
+									</option>
 								</select>
 								<span class="cs-input-focus-line" aria-hidden="true"></span>
 							</div>
@@ -94,10 +129,28 @@
 						<div v-else class="cs-field">
 							<div class="cs-field-label-row">
 								<label class="cs-field-label">{{ field.label }}</label>
-								<button v-if="field.key === accessKeyFieldKey && selectedProvider?.keyApplyUrl" class="cs-link-btn" type="button" @click="openApplyUrl">
+								<button
+									v-if="field.key === accessKeyFieldKey && selectedProvider?.keyApplyUrl"
+									class="cs-link-btn"
+									type="button"
+									@click="openApplyUrl"
+								>
 									<svg viewBox="0 0 16 16" class="cs-link-icon" aria-hidden="true">
-										<path d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-										<path d="M9.5 3.5h3v3M13 3l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+										<path
+											d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M9.5 3.5h3v3M13 3l-5.5 5.5"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
 									</svg>
 									{{ t('cloudStorage.config.tos.getKeyLink') }}
 								</button>
@@ -121,7 +174,9 @@
 						<div class="cs-input-wrap">
 							<span class="cs-input-deco left" aria-hidden="true"></span>
 							<select v-model="selectedRegion" class="cs-input cs-select" @change="onRegionChange">
-								<option v-for="r in selectedProvider?.regions || []" :key="r.id" :value="r.id">{{ r.name }} ({{ r.id }})</option>
+								<option v-for="r in selectedProvider?.regions || []" :key="r.id" :value="r.id">
+									{{ r.name }} ({{ r.id }})
+								</option>
 							</select>
 							<span class="cs-input-focus-line" aria-hidden="true"></span>
 						</div>
@@ -148,7 +203,7 @@
 								class="cs-bucket-item"
 								:class="{ active: selectedBucketName === b.name }"
 								type="button"
-								@click="selectedBucketName = b.name; newBucketName = ''"
+								@click="selectBucket(b.name)"
 							>
 								<span class="cs-bucket-corners" aria-hidden="true">
 									<span class="cs-bc tl"></span>
@@ -156,7 +211,14 @@
 								</span>
 								<span class="cs-bucket-indicator"></span>
 								<svg viewBox="0 0 16 16" class="cs-bucket-icon" aria-hidden="true">
-									<path d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+									<path
+										d="M2 4.5l1.5-2h9l1.5 2M2 4.5v8a1 1 0 001 1h10a1 1 0 001-1v-8M2 4.5h12"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
 								</svg>
 								{{ b.name }}
 							</button>
@@ -197,17 +259,36 @@
 									<span class="cs-btn-c br"></span>
 								</span>
 								<span v-if="creatingBucket" class="cs-spinner"></span>
-								<svg v-else viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-									<path d="M8 3v10M3 8h10"/>
+								<svg
+									v-else
+									viewBox="0 0 16 16"
+									width="14"
+									height="14"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+								>
+									<path d="M8 3v10M3 8h10" />
 								</svg>
-								{{ creatingBucket ? t('cloudStorage.fileList.creating') : t('cloudStorage.config.createBucket') }}
+								{{
+									creatingBucket
+										? t('cloudStorage.fileList.creating')
+										: t('cloudStorage.config.createBucket')
+								}}
 							</button>
 						</div>
 					</div>
 				</div>
 
 				<div class="cs-form-actions">
-					<button v-if="!credentialsVerified" class="cs-btn cs-btn-primary" type="button" :disabled="verifying || !canVerify" @click="verifyCredentials">
+					<button
+						v-if="!credentialsVerified"
+						class="cs-btn cs-btn-primary"
+						type="button"
+						:disabled="verifying || !canVerify"
+						@click="verifyCredentials"
+					>
 						<span class="cs-btn-corners" aria-hidden="true">
 							<span class="cs-btn-c tl"></span>
 							<span class="cs-btn-c tr"></span>
@@ -215,9 +296,19 @@
 							<span class="cs-btn-c br"></span>
 						</span>
 						<span v-if="verifying" class="cs-spinner"></span>
-						{{ verifying ? t('cloudStorage.config.verifying') : t('cloudStorage.config.verifyAndList') }}
+						{{
+							verifying
+								? t('cloudStorage.config.verifying')
+								: t('cloudStorage.config.verifyAndList')
+						}}
 					</button>
-					<button v-else class="cs-btn cs-btn-primary" type="button" :disabled="(!selectedBucketName && !canCreateBucket) || adding || creatingBucket" @click="addBucket">
+					<button
+						v-else
+						class="cs-btn cs-btn-primary"
+						type="button"
+						:disabled="(!selectedBucketName && !canCreateBucket) || adding || creatingBucket"
+						@click="addBucket"
+					>
 						<span class="cs-btn-corners" aria-hidden="true">
 							<span class="cs-btn-c tl"></span>
 							<span class="cs-btn-c tr"></span>
@@ -225,14 +316,20 @@
 							<span class="cs-btn-c br"></span>
 						</span>
 						<span v-if="adding" class="cs-spinner"></span>
-						{{ adding ? t('cloudStorage.config.adding') : t('cloudStorage.config.addBucketConfirm') }}
+						{{
+							adding ? t('cloudStorage.config.adding') : t('cloudStorage.config.addBucketConfirm')
+						}}
 					</button>
 					<button class="cs-btn cs-btn-ghost" type="button" @click="$emit('cancel')">
 						{{ t('common.cancel') }}
 					</button>
 				</div>
 
-				<div v-if="verifyStatus.type && verifyStatus.message" class="cs-status" :class="verifyStatus.type">
+				<div
+					v-if="verifyStatus.type && verifyStatus.message"
+					class="cs-status"
+					:class="verifyStatus.type"
+				>
 					<div class="cs-status-corners" aria-hidden="true">
 						<span class="cs-stc tl"></span>
 						<span class="cs-stc tr"></span>
@@ -240,12 +337,30 @@
 						<span class="cs-stc br"></span>
 					</div>
 					<div class="cs-status-bar" aria-hidden="true"></div>
-					<svg v-if="verifyStatus.type === 'success'" viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
-						<path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+					<svg
+						v-if="verifyStatus.type === 'success'"
+						viewBox="0 0 16 16"
+						class="cs-status-icon"
+						aria-hidden="true"
+					>
+						<path
+							d="M3 8l3.5 3.5L13 5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					<svg v-else viewBox="0 0 16 16" class="cs-status-icon" aria-hidden="true">
 						<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
-						<path d="M8 5v4M8 11v.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+						<path
+							d="M8 5v4M8 11v.5"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<span class="cs-status-message">{{ verifyStatus.message }}</span>
 				</div>
@@ -291,18 +406,25 @@ const availableBuckets = ref<any[]>([])
 const selectedBucketName = ref('')
 const newBucketName = ref('')
 
+function selectBucket(name: string) {
+	selectedBucketName.value = name
+	newBucketName.value = ''
+}
+
 const credentialFields = computed(() => selectedProvider.value?.credentialFields || [])
 const accessKeyFieldKey = computed(() => {
 	const fields = credentialFields.value
 	if (!fields.length) return ''
-	const idField = fields.find(f => f.key.toLowerCase().includes('accesskey') && !f.key.toLowerCase().includes('secret'))
+	const idField = fields.find(
+		(f) => f.key.toLowerCase().includes('accesskey') && !f.key.toLowerCase().includes('secret')
+	)
 	return idField?.key || fields[0]?.key || ''
 })
 const hasRegions = computed(() => (selectedProvider.value?.regions?.length || 0) > 0)
 
 const canVerify = computed(() => {
 	const fields = credentialFields.value
-	return fields.every(f => {
+	return fields.every((f) => {
 		if (!f.required) return true
 		return credentialValues[f.key]?.trim()
 	})
@@ -328,8 +450,12 @@ const loadProviders = async () => {
 		if (cloudfs?.listProviders) {
 			const result = await cloudfs.listProviders()
 			if (result?.ok && Array.isArray(result.providers)) {
-				providers.value = result.providers.filter((p: CloudStorageProviderMeta) => p.id !== 'custom-http')
-				const volc = providers.value.find((p: CloudStorageProviderMeta) => p.id === 'volcengine-tos')
+				providers.value = result.providers.filter(
+					(p: CloudStorageProviderMeta) => p.id !== 'custom-http'
+				)
+				const volc = providers.value.find(
+					(p: CloudStorageProviderMeta) => p.id === 'volcengine-tos'
+				)
 				if (volc && !tempProviderId.value) {
 					tempProviderId.value = 'volcengine-tos'
 				}
@@ -342,7 +468,7 @@ const loadProviders = async () => {
 
 const initCredentialsForm = () => {
 	const fields = credentialFields.value
-	fields.forEach(f => {
+	fields.forEach((f) => {
 		credentialValues[f.key] = ''
 	})
 	if (hasRegions.value && selectedProvider.value?.regions?.length) {
@@ -373,7 +499,7 @@ const onProviderSelected = (provider: CloudStorageProviderMeta) => {
 const goToCredentials = () => {
 	if (!tempProviderId.value) return
 	selectedProviderId.value = tempProviderId.value
-	selectedProvider.value = providers.value.find(p => p.id === tempProviderId.value) || null
+	selectedProvider.value = providers.value.find((p) => p.id === tempProviderId.value) || null
 	if (!selectedProvider.value) return
 	initCredentialsForm()
 	credentialsVerified.value = false
@@ -398,7 +524,7 @@ const updateField = (key: string, value: string) => {
 }
 
 const onRegionChange = () => {
-	const region = selectedProvider.value?.regions?.find(r => r.id === selectedRegion.value)
+	const region = selectedProvider.value?.regions?.find((r) => r.id === selectedRegion.value)
 	if (region) {
 		selectedEndpoint.value = region.endpoint || getDefaultEndpoint(region.id)
 	}
@@ -414,7 +540,7 @@ const buildConfig = () => {
 	return {
 		credentials: { ...credentialValues },
 		region: selectedRegion.value,
-		endpoint: selectedEndpoint.value,
+		endpoint: selectedEndpoint.value
 	}
 }
 
@@ -428,22 +554,28 @@ const listBucketsForProvider = async () => {
 			providerId: selectedProviderId.value,
 			region: selectedRegion.value,
 			endpoint: selectedEndpoint.value,
-			credentials: { ...credentialValues },
+			credentials: { ...credentialValues }
 		})
 		if (result?.ok && Array.isArray(result.buckets)) {
 			availableBuckets.value = result.buckets.map((b: any) => ({
 				name: b.name || b,
 				location: b.location || b.region || selectedRegion.value,
-				extranetEndpoint: b.extranetEndpoint || b.endpoint || selectedEndpoint.value,
+				extranetEndpoint: b.extranetEndpoint || b.endpoint || selectedEndpoint.value
 			}))
 			return true
 		} else if (result?.ok === false) {
-			verifyStatus.value = { type: 'error', message: result.error || t('cloudStorage.config.verifyFailed') }
+			verifyStatus.value = {
+				type: 'error',
+				message: result.error || t('cloudStorage.config.verifyFailed')
+			}
 			return false
 		}
 		return false
 	} catch (e: any) {
-		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.config.verifyFailed') }
+		verifyStatus.value = {
+			type: 'error',
+			message: e?.message || t('cloudStorage.config.verifyFailed')
+		}
 		return false
 	} finally {
 		listingBuckets.value = false
@@ -459,7 +591,7 @@ const verifyCredentials = async () => {
 		if (cloudfs?.testConfig) {
 			const result = await cloudfs.testConfig({
 				providerId: selectedProviderId.value,
-				config,
+				config
 			})
 			if (result?.ok) {
 				credentialsVerified.value = true
@@ -467,7 +599,10 @@ const verifyCredentials = async () => {
 				await listBucketsForProvider()
 			} else {
 				credentialsVerified.value = false
-				verifyStatus.value = { type: 'error', message: result?.error || t('cloudStorage.config.verifyFailed') }
+				verifyStatus.value = {
+					type: 'error',
+					message: result?.error || t('cloudStorage.config.verifyFailed')
+				}
 			}
 		} else {
 			credentialsVerified.value = true
@@ -477,7 +612,10 @@ const verifyCredentials = async () => {
 	} catch (e: any) {
 		console.error('[CloudFS] verifyCredentials error:', e)
 		credentialsVerified.value = false
-		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.config.verifyFailed') }
+		verifyStatus.value = {
+			type: 'error',
+			message: e?.message || t('cloudStorage.config.verifyFailed')
+		}
 	} finally {
 		verifying.value = false
 	}
@@ -505,7 +643,7 @@ const createNewBucket = async (): Promise<boolean> => {
 			credentials: { ...credentialValues },
 			region: selectedRegion.value,
 			bucketName: bucketName,
-			options: { publicRead: true, lifecycleDays: 7, endpoint: selectedEndpoint.value },
+			options: { publicRead: true, lifecycleDays: 7, endpoint: selectedEndpoint.value }
 		})
 		if (result?.ok) {
 			verifyStatus.value = { type: 'success', message: `桶 "${bucketName}" 创建成功！` }
@@ -514,12 +652,18 @@ const createNewBucket = async (): Promise<boolean> => {
 			newBucketName.value = ''
 			return true
 		} else {
-			verifyStatus.value = { type: 'error', message: result?.error || t('cloudStorage.fileList.bucketCreateError') }
+			verifyStatus.value = {
+				type: 'error',
+				message: result?.error || t('cloudStorage.fileList.bucketCreateError')
+			}
 			return false
 		}
 	} catch (e: any) {
 		console.error('[CloudFS] createNewBucket error:', e)
-		verifyStatus.value = { type: 'error', message: e?.message || t('cloudStorage.fileList.bucketCreateError') }
+		verifyStatus.value = {
+			type: 'error',
+			message: e?.message || t('cloudStorage.fileList.bucketCreateError')
+		}
 		return false
 	} finally {
 		creatingBucket.value = false
@@ -543,14 +687,14 @@ const addBucket = async () => {
 
 		const cloudfs = getCloudfs()
 		if (!cloudfs?.addBucketFromCloud) throw new Error('API not available')
-		const bucket = availableBuckets.value.find(b => b.name === selectedBucketName.value)
+		const bucket = availableBuckets.value.find((b) => b.name === selectedBucketName.value)
 		const bucketEndpoint = bucket?.extranetEndpoint || selectedEndpoint.value
 		const result = await cloudfs.addBucketFromCloud({
 			bucketName: selectedBucketName.value,
 			providerId: selectedProviderId.value,
 			region: bucket?.location || selectedRegion.value,
 			endpoint: bucketEndpoint,
-			credentials: { ...credentialValues },
+			credentials: { ...credentialValues }
 		})
 		if (result?.ok) {
 			emit('bucket-added', result.bucket)
@@ -584,7 +728,11 @@ onMounted(() => {
 	flex-shrink: 0;
 	padding: 16px 20px 14px;
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 20%, transparent);
-	background: linear-gradient(180deg, color-mix(in srgb, var(--pl-accent) 8%, transparent), transparent);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-accent) 8%, transparent),
+		transparent
+	);
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -650,7 +798,7 @@ onMounted(() => {
 }
 
 .cs-title-icon-box::before {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: 0;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 45%, transparent);
@@ -659,7 +807,7 @@ onMounted(() => {
 }
 
 .cs-title-icon-box::after {
-	content: "";
+	content: '';
 	position: absolute;
 	inset: -4px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 15%, transparent);
@@ -711,7 +859,9 @@ onMounted(() => {
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 12%, transparent);
 	background: color-mix(in srgb, var(--pl-fg) 1.5%, transparent);
 	position: relative;
-	transition: border-color 200ms ease, box-shadow 200ms ease;
+	transition:
+		border-color 200ms ease,
+		box-shadow 200ms ease;
 }
 
 .cs-form-section:hover {
@@ -720,7 +870,7 @@ onMounted(() => {
 }
 
 .cs-form-section::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -731,13 +881,17 @@ onMounted(() => {
 }
 
 .cs-form-section::after {
-	content: "";
+	content: '';
 	position: absolute;
 	bottom: 0;
 	right: 0;
 	width: 40px;
 	height: 1px;
-	background: linear-gradient(270deg, color-mix(in srgb, var(--pl-accent) 30%, transparent), transparent);
+	background: linear-gradient(
+		270deg,
+		color-mix(in srgb, var(--pl-accent) 30%, transparent),
+		transparent
+	);
 }
 
 .cs-section-corners {
@@ -795,7 +949,11 @@ onMounted(() => {
 .cs-section-indicator {
 	width: 3px;
 	height: 14px;
-	background: linear-gradient(180deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 50%, transparent));
+	background: linear-gradient(
+		180deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 50%, transparent)
+	);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 
@@ -910,7 +1068,10 @@ onMounted(() => {
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
 	border-left: none;
 	outline: none;
-	transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+	transition:
+		border-color 200ms ease,
+		box-shadow 200ms ease,
+		background 200ms ease;
 	font-family: inherit;
 	position: relative;
 }
@@ -936,7 +1097,8 @@ onMounted(() => {
 .cs-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 60%, transparent);
 	background: color-mix(in srgb, #161d24 80%, transparent);
-	box-shadow: inset 0 0 12px color-mix(in srgb, var(--pl-accent) 6%, transparent),
+	box-shadow:
+		inset 0 0 12px color-mix(in srgb, var(--pl-accent) 6%, transparent),
 		0 0 0 1px color-mix(in srgb, var(--pl-accent) 20%, transparent);
 }
 
@@ -1033,7 +1195,11 @@ onMounted(() => {
 }
 
 .cs-btn-primary {
-	background: linear-gradient(135deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 70%, #4fb7c5));
+	background: linear-gradient(
+		135deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 70%, #4fb7c5)
+	);
 	border-color: var(--pl-accent);
 	color: #fff;
 	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -1041,13 +1207,18 @@ onMounted(() => {
 }
 
 .cs-btn-primary::before {
-	content: "";
+	content: '';
 	position: absolute;
 	top: 0;
 	left: -100%;
 	width: 100%;
 	height: 100%;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 25%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, #fff 25%, transparent),
+		transparent
+	);
 	transition: left 0.5s ease;
 }
 
@@ -1088,7 +1259,9 @@ onMounted(() => {
 }
 
 @keyframes cs-spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .cs-loading-buckets {
@@ -1167,7 +1340,9 @@ onMounted(() => {
 	width: 0;
 	height: 0;
 	border-color: var(--pl-accent);
-	transition: width 150ms ease, height 150ms ease;
+	transition:
+		width 150ms ease,
+		height 150ms ease;
 }
 
 .cs-bucket-item.active .cs-bc,
@@ -1209,8 +1384,13 @@ onMounted(() => {
 }
 
 @keyframes cs-indicator-blink {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
 }
 
 .cs-form-actions {

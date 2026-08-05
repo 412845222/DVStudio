@@ -58,12 +58,7 @@ describe('blender anchor linking', () => {
 		})
 
 		it('accepts model3d node output', () => {
-			const model = createNode(
-				'model3d-1',
-				'model3d',
-				[],
-				[{ id: 'out-0', mediaType: 'model3d' }]
-			)
+			const model = createNode('model3d-1', 'model3d', [], [{ id: 'out-0', mediaType: 'model3d' }])
 			const blender = blenderNode()
 			const nodesById = nodesMap(model, blender)
 			expect(canLinkAnchors(nodesById, 'model3d-1', 'out-0', 'blender-1', 'in-0')).toBe(true)

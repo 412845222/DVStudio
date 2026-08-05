@@ -7,7 +7,7 @@ import {
 	readVersionFromPackageJson,
 	readVersionFromElectronConfig,
 	updateElectronConfigVersion,
-	syncVersion,
+	syncVersion
 } from '../../scripts/sync-version.mjs'
 
 function createTempDir() {

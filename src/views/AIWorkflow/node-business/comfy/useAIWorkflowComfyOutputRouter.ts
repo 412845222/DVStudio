@@ -176,7 +176,10 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 
 				if (!imported.ok) {
 					alerts.add(
-						t('nodes.comfyui.importFailed', { anchor: anchorLabel, error: String(imported.error || 'unknown') })
+						t('nodes.comfyui.importFailed', {
+							anchor: anchorLabel,
+							error: String(imported.error || 'unknown')
+						})
 					)
 					return null
 				}
@@ -225,13 +228,20 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			if (isSingleOutAnchor) {
 				const anchorId = 'out'
 				const fromAnchor = outputAnchorMap.get(anchorId)
-				const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor'))
+				const fromAnchorLabel = String(
+					fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor')
+				)
 				const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
 
 				const boundNodeIds = new Set<string>()
 
 				for (const m of validMedia) {
-					const localized = await localizeSingleMedia(m, anchorId, fromAnchorLabel, importedByMediaKey)
+					const localized = await localizeSingleMedia(
+						m,
+						anchorId,
+						fromAnchorLabel,
+						importedByMediaKey
+					)
 					if (localized) {
 						allLocalizedOutputs.push(localized)
 					}
@@ -281,7 +291,9 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				for (const anchorId of sortedOutputAnchorIds) {
 					const edgesForAnchor = outgoingByAnchor.get(anchorId) ?? []
 					const fromAnchor = outputAnchorMap.get(anchorId)
-					const fromAnchorLabel = String(fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor'))
+					const fromAnchorLabel = String(
+						fromAnchor?.label ?? anchorId ?? t('aiworkflow.runtime.outputAnchor')
+					)
 					const fromMediaType = fromAnchor?.mediaType as 'image' | 'video' | 'model3d' | undefined
 					const hasDownstream = edgesForAnchor.length > 0
 
@@ -294,13 +306,22 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 							if (to?.type === 'model3d') return 'model3d'
 							return null
 						})
-						.filter((x): x is 'image' | 'video' | 'model3d' => x === 'image' || x === 'video' || x === 'model3d')
+						.filter(
+							(x): x is 'image' | 'video' | 'model3d' =>
+								x === 'image' || x === 'video' || x === 'model3d'
+						)
 					const uniqueTargetKinds = Array.from(new Set(targetKinds))
 
-					if (hasDownstream && (fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d')) {
+					if (
+						hasDownstream &&
+						(fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d')
+					) {
 						if (uniqueTargetKinds.some((k) => k !== fromMediaType)) {
 							alerts.add(
-								t('nodes.comfyui.typeMismatch', { anchor: fromAnchorLabel, mediaType: fromMediaType })
+								t('nodes.comfyui.typeMismatch', {
+									anchor: fromAnchorLabel,
+									mediaType: fromMediaType
+								})
 							)
 						}
 					}
@@ -313,7 +334,9 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						: []
 
 					let inferredMediaType: 'image' | 'video' | 'model3d' | null =
-						fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d' ? fromMediaType : null
+						fromMediaType === 'image' || fromMediaType === 'video' || fromMediaType === 'model3d'
+							? fromMediaType
+							: null
 
 					if (!inferredMediaType && exactNodeCandidates.length) {
 						inferredMediaType = inferMediaKind(exactNodeCandidates[0])
@@ -322,7 +345,13 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						inferredMediaType = uniqueTargetKinds[0]
 					}
 					if (!inferredMediaType) {
-						inferredMediaType = imageMedia.length ? 'image' : videoMedia.length ? 'video' : model3dMedia.length ? 'model3d' : null
+						inferredMediaType = imageMedia.length
+							? 'image'
+							: videoMedia.length
+								? 'video'
+								: model3dMedia.length
+									? 'model3d'
+									: null
 					}
 
 					if (!inferredMediaType) {
@@ -332,18 +361,39 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						continue
 					}
 
-					if (hasDownstream && fromMediaType !== 'image' && fromMediaType !== 'video' && fromMediaType !== 'model3d') {
+					if (
+						hasDownstream &&
+						fromMediaType !== 'image' &&
+						fromMediaType !== 'video' &&
+						fromMediaType !== 'model3d'
+					) {
 						alerts.add(
-							t('nodes.comfyui.unlabeledType', { anchor: fromAnchorLabel, mediaType: inferredMediaType })
+							t('nodes.comfyui.unlabeledType', {
+								anchor: fromAnchorLabel,
+								mediaType: inferredMediaType
+							})
 						)
 					}
 
-					const list = inferredMediaType === 'image' ? imageMedia : inferredMediaType === 'video' ? videoMedia : model3dMedia
+					const list =
+						inferredMediaType === 'image'
+							? imageMedia
+							: inferredMediaType === 'video'
+								? videoMedia
+								: model3dMedia
 					if (!list.length) {
 						if (hasDownstream) {
-							const mediaTypeLabel = inferredMediaType === 'image' ? t('nodes.comfyui.imageType') : inferredMediaType === 'video' ? t('nodes.comfyui.videoType') : t('common.model3d')
+							const mediaTypeLabel =
+								inferredMediaType === 'image'
+									? t('nodes.comfyui.imageType')
+									: inferredMediaType === 'video'
+										? t('nodes.comfyui.videoType')
+										: t('common.model3d')
 							alerts.add(
-								t('nodes.comfyui.noMediaForAnchor', { mediaType: mediaTypeLabel, anchor: fromAnchorLabel })
+								t('nodes.comfyui.noMediaForAnchor', {
+									mediaType: mediaTypeLabel,
+									anchor: fromAnchorLabel
+								})
 							)
 						}
 						continue
@@ -373,7 +423,12 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 						continue
 					}
 
-					const localizedOutput = await localizeSingleMedia(selectedMedia, anchorId, fromAnchorLabel, importedByMediaKey)
+					const localizedOutput = await localizeSingleMedia(
+						selectedMedia,
+						anchorId,
+						fromAnchorLabel,
+						importedByMediaKey
+					)
 					if (!localizedOutput) continue
 
 					allLocalizedOutputs.push(localizedOutput)

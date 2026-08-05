@@ -16,11 +16,12 @@ const CN_PYTHON_URLS = [
 	`https://mirrors.aliyun.com/python-release/windows/python-${PYTHON_VERSION}-embed-amd64.zip`
 ]
 
-const PYTHON_EMBED_URLS = (process.env.PYTHON_EMBED_MIRROR
-	? [process.env.PYTHON_EMBED_MIRROR]
-	: isCI
-		? [OFFICIAL_PYTHON_URL, ...CN_PYTHON_URLS]
-		: [...CN_PYTHON_URLS, OFFICIAL_PYTHON_URL]
+const PYTHON_EMBED_URLS = (
+	process.env.PYTHON_EMBED_MIRROR
+		? [process.env.PYTHON_EMBED_MIRROR]
+		: isCI
+			? [OFFICIAL_PYTHON_URL, ...CN_PYTHON_URLS]
+			: [...CN_PYTHON_URLS, OFFICIAL_PYTHON_URL]
 ).filter(Boolean)
 
 const REPO_ROOT = path.resolve(process.cwd())
@@ -94,7 +95,9 @@ function downloadFile(urls, destPath, filename) {
 						}
 						if (res.statusCode !== 200) {
 							res.resume()
-							log(`Download failed: HTTP ${res.statusCode} for ${downloadUrl}, trying next mirror...`)
+							log(
+								`Download failed: HTTP ${res.statusCode} for ${downloadUrl}, trying next mirror...`
+							)
 							tryDownload(urlIndex + 1)
 							return
 						}

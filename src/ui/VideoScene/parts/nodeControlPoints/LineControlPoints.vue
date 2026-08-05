@@ -40,18 +40,22 @@ const onPointDown = (kind: LinePointKind, ev: PointerEvent) => {
 	width: 12px;
 	height: 12px;
 	border-radius: 50%;
-	background: color-mix(in srgb, var(--pl-bg-1) 80%, rgba(0,0,0,0.6));
+	background: color-mix(in srgb, var(--pl-bg-1) 80%, rgba(0, 0, 0, 0.6));
 	border: 2px solid var(--pl-accent);
 	transform: translate(-50%, -50%);
 	pointer-events: auto;
 	touch-action: none;
 	z-index: 10;
 	box-shadow: 0 0 6px color-mix(in srgb, var(--pl-accent) 50%, transparent);
-	transition: box-shadow 0.15s ease, transform 0.1s ease;
+	transition:
+		box-shadow 0.15s ease,
+		transform 0.1s ease;
 }
 
 .vs-handle:hover {
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 80%, transparent), 0 0 4px color-mix(in srgb, var(--pl-accent) 100%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 80%, transparent),
+		0 0 4px color-mix(in srgb, var(--pl-accent) 100%, transparent);
 	transform: translate(-50%, -50%) scale(1.2);
 }
 

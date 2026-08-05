@@ -42,14 +42,19 @@ export function useAgentEditor(
 		const items = getMentionItems()
 		if (!mentionFilter.value) return items
 		const lower = mentionFilter.value.toLowerCase()
-		return items.filter(item =>
-			item.label.toLowerCase().includes(lower) ||
-			(item.name && item.name.toLowerCase().includes(lower)) ||
-			item.kind.toLowerCase().includes(lower)
+		return items.filter(
+			(item) =>
+				item.label.toLowerCase().includes(lower) ||
+				(item.name && item.name.toLowerCase().includes(lower)) ||
+				item.kind.toLowerCase().includes(lower)
 		)
 	})
 
-	const getTextFromNodeStartToCaret = (): { text: string; atTextNode: Text; atOffset: number } | null => {
+	const getTextFromNodeStartToCaret = (): {
+		text: string
+		atTextNode: Text
+		atOffset: number
+	} | null => {
 		const sel = window.getSelection()
 		if (!sel || sel.rangeCount === 0 || !editorRef.value) return null
 		const range = sel.getRangeAt(0)
@@ -333,7 +338,9 @@ export function useAgentEditor(
 					const label = el.getAttribute('data-label') || ''
 					const kind = el.getAttribute('data-kind') || ''
 					const contextItemId = el.getAttribute('data-context-id') || undefined
-					const previewImg = el.querySelector('img.agent-mention-chip-thumb') as HTMLImageElement | null
+					const previewImg = el.querySelector(
+						'img.agent-mention-chip-thumb'
+					) as HTMLImageElement | null
 					const previewUrl = previewImg?.src || ''
 					chips.push({
 						id: `chip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -415,7 +422,10 @@ export function useAgentEditor(
 			switch (e.key) {
 				case 'ArrowDown':
 					e.preventDefault()
-					selectedMentionIndex.value = Math.min(selectedMentionIndex.value + 1, Math.max(0, filteredItems.value.length - 1))
+					selectedMentionIndex.value = Math.min(
+						selectedMentionIndex.value + 1,
+						Math.max(0, filteredItems.value.length - 1)
+					)
 					return true
 				case 'ArrowUp':
 					e.preventDefault()

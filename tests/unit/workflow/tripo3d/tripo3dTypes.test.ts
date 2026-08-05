@@ -6,7 +6,7 @@ import {
 	getTripo3DSettingNumber,
 	getTripo3DSettingBoolean,
 	extractTripo3DTaskResultFields,
-	normalizeTripo3DTaskStatus,
+	normalizeTripo3DTaskStatus
 } from '@/views/AIWorkflow/node-business/tripo3d/types'
 
 describe('tripo3dTypes', () => {
@@ -145,7 +145,7 @@ describe('tripo3dTypes', () => {
 				thumbnailUrl: 'https://example.com/thumb.jpg',
 				modelUrl: 'https://example.com/model.glb',
 				statusText: 'Done',
-				errorMessage: '',
+				errorMessage: ''
 			}
 			const result = extractTripo3DTaskResultFields(raw)
 			expect(result.taskId).toBe('task-001')
@@ -165,8 +165,8 @@ describe('tripo3dTypes', () => {
 					status: 'succeeded',
 					progress: 100,
 					thumbnail: { url: 'https://example.com/tex-thumb.png' },
-					model: { url: 'https://example.com/textured.glb', glb: 'https://example.com/tex.glb' },
-				},
+					model: { url: 'https://example.com/textured.glb', glb: 'https://example.com/tex.glb' }
+				}
 			}
 			const result = extractTripo3DTaskResultFields(raw)
 			expect(result.taskId).toBe('task-002')
@@ -191,11 +191,8 @@ describe('tripo3dTypes', () => {
 				status: 'success',
 				progress: 100,
 				output: {
-					images: [
-						{ url: 'https://example.com/img1.png' },
-						{ url: 'https://example.com/img2.jpg' },
-					],
-				},
+					images: [{ url: 'https://example.com/img1.png' }, { url: 'https://example.com/img2.jpg' }]
+				}
 			}
 			const result = extractTripo3DTaskResultFields(raw)
 			expect(result.taskId).toBe('img-001')
@@ -211,11 +208,11 @@ describe('tripo3dTypes', () => {
 				status: 'success',
 				progress: 100,
 				output: {
-					image_urls: ['https://example.com/dup.png', 'https://example.com/dup.png'],
-				},
+					image_urls: ['https://example.com/dup.png', 'https://example.com/dup.png']
+				}
 			}
 			const result = extractTripo3DTaskResultFields(raw)
-			const dupCount = result.imageUrls.filter(u => u === 'https://example.com/dup.png').length
+			const dupCount = result.imageUrls.filter((u) => u === 'https://example.com/dup.png').length
 			expect(dupCount).toBe(1)
 		})
 	})

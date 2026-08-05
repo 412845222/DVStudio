@@ -13,7 +13,11 @@
 	>
 		<GlobalPageBackground v-if="!isPreviewWindow" :variant="currentPageVariant" />
 		<GlobalTitleBar v-if="isElectronRuntime && !isPreviewWindow" class="app-titlebar" />
-		<DialogTitleBar v-if="isElectronRuntime && isPreviewWindow" class="app-titlebar" :title="dialogTitle" />
+		<DialogTitleBar
+			v-if="isElectronRuntime && isPreviewWindow"
+			class="app-titlebar"
+			:title="dialogTitle"
+		/>
 		<GlobalSideNav
 			v-if="!isPreviewWindow"
 			class="app-side-nav"
@@ -95,11 +99,24 @@ const route = useRoute()
 const contentEl = ref<HTMLElement | null>(null)
 const navExpanded = ref(false)
 const navCollapsed = ref(false)
-const isElectronRuntime = ((window as unknown as Record<string, unknown>).__DWEB_RUNTIME__ as { isElectron?: boolean } | undefined)?.isElectron === true
+const isElectronRuntime =
+	(
+		(window as unknown as Record<string, unknown>).__DWEB_RUNTIME__ as
+			| { isElectron?: boolean }
+			| undefined
+	)?.isElectron === true
 
 const isPreviewWindow = computed(() => {
 	const path = String(route.path || '')
-	return path.startsWith('/image-markup-preview') || path.startsWith('/resource-manager') || path.startsWith('/3d-editor') || path.startsWith('/video-editor') || path.startsWith('/template-center') || path.startsWith('/comfyui-setup') || path.startsWith('/blueprint-test')
+	return (
+		path.startsWith('/image-markup-preview') ||
+		path.startsWith('/resource-manager') ||
+		path.startsWith('/3d-editor') ||
+		path.startsWith('/video-editor') ||
+		path.startsWith('/template-center') ||
+		path.startsWith('/comfyui-setup') ||
+		path.startsWith('/blueprint-test')
+	)
 })
 
 const isResourceManagerWindow = computed(() => {
@@ -164,7 +181,12 @@ const currentPageVariant = computed<'default' | 'workflow' | 'project-list'>(() 
 const { state: startupProgressState, hide: hideStartupProgress } = useStartupProgress()
 
 const { isRealPlatform, user: platformUser, overlayActivate } = usePlatform()
-const { isOpen: steamPanelOpen, open: openSteamPanel, close: closeSteamPanel, toggle: toggleSteamPanel } = useSteamPanel(isRealPlatform)
+const {
+	isOpen: steamPanelOpen,
+	open: openSteamPanel,
+	close: closeSteamPanel,
+	toggle: toggleSteamPanel
+} = useSteamPanel(isRealPlatform)
 
 const {
 	showOverlay: steamEntryVisible,
@@ -172,7 +194,7 @@ const {
 	isConnected: steamEntryConnected,
 	user: steamEntryUser,
 	error: steamEntryError,
-	hideOverlay: hideSteamEntry,
+	hideOverlay: hideSteamEntry
 } = useSteamEntry()
 
 function openExternalUrl(url: string) {

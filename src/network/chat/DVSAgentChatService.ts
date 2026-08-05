@@ -53,7 +53,7 @@ export class DVSAgentChatService implements IChatService {
 				model: options?.model,
 				status: 'active',
 				createdAt: new Date().toISOString(),
-				projectId: options?.projectId,
+				projectId: options?.projectId
 			}
 			this.activeSessions.set(sessionId, session)
 			return session
@@ -62,10 +62,13 @@ export class DVSAgentChatService implements IChatService {
 		const result = await bridge.dweb.agent.createConversation({
 			title: options?.title || 'DVS Agent 对话',
 			model: options?.model || '',
-			projectPath: String(options?.projectId || ''),
+			projectPath: String(options?.projectId || '')
 		})
 
-		const typedResult = result as { ok?: boolean; conversation?: Record<string, unknown> } | null | undefined
+		const typedResult = result as
+			| { ok?: boolean; conversation?: Record<string, unknown> }
+			| null
+			| undefined
 
 		if (!typedResult || !typedResult.ok || !typedResult.conversation) {
 			const sessionId = `dvsagent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -76,7 +79,7 @@ export class DVSAgentChatService implements IChatService {
 				model: options?.model,
 				status: 'active',
 				createdAt: new Date().toISOString(),
-				projectId: options?.projectId,
+				projectId: options?.projectId
 			}
 			this.activeSessions.set(sessionId, session)
 			return session
@@ -91,8 +94,10 @@ export class DVSAgentChatService implements IChatService {
 			backend: 'dvsagent',
 			model: String(conv.model || options?.model || ''),
 			status: 'active',
-			createdAt: conv.createdAt ? new Date(Number(conv.createdAt)).toISOString() : new Date().toISOString(),
-			projectId: Number.isFinite(projectId) ? projectId : options?.projectId,
+			createdAt: conv.createdAt
+				? new Date(Number(conv.createdAt)).toISOString()
+				: new Date().toISOString(),
+			projectId: Number.isFinite(projectId) ? projectId : options?.projectId
 		}
 		this.activeSessions.set(session.id, session)
 		return session
@@ -105,7 +110,7 @@ export class DVSAgentChatService implements IChatService {
 		}
 
 		const result = await bridge.dweb.agent.listConversations({
-			projectPath: String(projectId || ''),
+			projectPath: String(projectId || '')
 		})
 
 		const typedResult = result as { ok?: boolean; conversations?: unknown[] } | null | undefined
@@ -124,8 +129,10 @@ export class DVSAgentChatService implements IChatService {
 				backend: 'dvsagent',
 				model: String(c.model || ''),
 				status: 'active',
-				createdAt: c.createdAt ? new Date(Number(c.createdAt)).toISOString() : new Date().toISOString(),
-				projectId: Number.isFinite(pid) ? pid : projectId,
+				createdAt: c.createdAt
+					? new Date(Number(c.createdAt)).toISOString()
+					: new Date().toISOString(),
+				projectId: Number.isFinite(pid) ? pid : projectId
 			}
 		})
 	}
@@ -146,7 +153,9 @@ export class DVSAgentChatService implements IChatService {
 			return null
 		}
 
-		const conv = typedResult.conversations.find((c: unknown) => String((c as Record<string, unknown>).id) === sessionId)
+		const conv = typedResult.conversations.find(
+			(c: unknown) => String((c as Record<string, unknown>).id) === sessionId
+		)
 		if (!conv) return null
 
 		const c = conv as Record<string, unknown>
@@ -158,8 +167,10 @@ export class DVSAgentChatService implements IChatService {
 			backend: 'dvsagent',
 			model: String(c.model || ''),
 			status: 'active',
-			createdAt: c.createdAt ? new Date(Number(c.createdAt)).toISOString() : new Date().toISOString(),
-			projectId: Number.isFinite(pid) ? pid : null,
+			createdAt: c.createdAt
+				? new Date(Number(c.createdAt)).toISOString()
+				: new Date().toISOString(),
+			projectId: Number.isFinite(pid) ? pid : null
 		}
 		this.activeSessions.set(sessionId, session)
 		return session
@@ -195,7 +206,9 @@ export class DVSAgentChatService implements IChatService {
 		return typedResult && typedResult.ok ? { ok: true } : { ok: false }
 	}
 
-	async getSessionMessages(sessionId: string): Promise<Array<{ role: string; content: string; model?: string }>> {
+	async getSessionMessages(
+		sessionId: string
+	): Promise<Array<{ role: string; content: string; model?: string }>> {
 		const bridge = getIpcBridge()
 		if (!hasIpcApi() || !bridge.dweb?.agent?.getConversationMessages) {
 			return []
@@ -213,12 +226,17 @@ export class DVSAgentChatService implements IChatService {
 			return {
 				role: String(m.role || 'user'),
 				content: String(m.content || ''),
-				model: String(m.model || ''),
+				model: String(m.model || '')
 			}
 		})
 	}
 
-	async addSessionMessage(sessionId: string, role: string, content: string, model?: string): Promise<{ ok: boolean }> {
+	async addSessionMessage(
+		sessionId: string,
+		role: string,
+		content: string,
+		model?: string
+	): Promise<{ ok: boolean }> {
 		const bridge = getIpcBridge()
 		if (!hasIpcApi() || !bridge.dweb?.agent?.addConversationMessage) {
 			return { ok: true }
@@ -228,7 +246,7 @@ export class DVSAgentChatService implements IChatService {
 			conversationId: sessionId,
 			role,
 			content,
-			model: model || '',
+			model: model || ''
 		})
 		const typedResult = result as { ok?: boolean } | null | undefined
 		return typedResult && typedResult.ok ? { ok: true } : { ok: false }
@@ -271,7 +289,7 @@ export class DVSAgentChatService implements IChatService {
 			agentMode: options.agentMode,
 			permissionProfile: options.permissionProfile,
 			agentType: options.agentType || 'workflow',
-			sessionId,
+			sessionId
 		})
 
 		const onAbort = () => {
@@ -304,9 +322,10 @@ export class DVSAgentChatService implements IChatService {
 			if (signal?.aborted) {
 				yield { type: 'error', message: '请求已取消' }
 			} else {
-				const msg = err && typeof err === 'object' && 'message' in err
-					? String((err as { message: unknown }).message)
-					: String(err)
+				const msg =
+					err && typeof err === 'object' && 'message' in err
+						? String((err as { message: unknown }).message)
+						: String(err)
 				yield { type: 'error', message: `Agent 调用失败: ${msg}` }
 			}
 		} finally {
@@ -316,12 +335,14 @@ export class DVSAgentChatService implements IChatService {
 
 	async listModels(_forceRefresh?: boolean): Promise<{ models: ChatModelInfo[] }> {
 		const models = getChatModelCatalog()
-			.filter((m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot')
+			.filter(
+				(m) => m.needType === 'text' && m.apiSource !== 'local-exec' && m.apiSource !== 'copilot'
+			)
 			.map((m) => ({
 				id: m.id,
 				name: m.label,
 				vendor: m.vendor,
-				recommended: m.recommended,
+				recommended: m.recommended
 			}))
 		return { models }
 	}
@@ -333,8 +354,7 @@ export class DVSAgentChatService implements IChatService {
 			if (bridge.dweb?.agent?.abort) {
 				await bridge.dweb.agent.abort({ sessionId })
 			}
-		} catch {
-		}
+		} catch {}
 	}
 }
 
@@ -358,7 +378,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_start',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			input: raw.input || raw.arguments,
+			input: raw.input || raw.arguments
 		}
 	}
 	if (type === 'tool_call_end') {
@@ -367,7 +387,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
 			output: raw.output || raw.result,
-			images: Array.isArray(raw.images) ? raw.images : undefined,
+			images: Array.isArray(raw.images) ? raw.images : undefined
 		}
 	}
 	if (type === 'tool_call_error') {
@@ -375,7 +395,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			type: 'tool_call_error',
 			toolCallId: String(raw.toolCallId || raw.id || ''),
 			tool: String(raw.tool || raw.name || ''),
-			error: String(raw.error || raw.message || ''),
+			error: String(raw.error || raw.message || '')
 		}
 	}
 	if (type === 'error') {
@@ -390,7 +410,7 @@ function normalizeToChatEvent(raw: unknown): ChatStreamEvent | null {
 			tokenCount: Number(raw.tokenCount || 0),
 			budget: Number(raw.budget || 0),
 			usage: Number(raw.usage || 0),
-			truncated: Boolean(raw.truncated),
+			truncated: Boolean(raw.truncated)
 		}
 	}
 	if (isString(raw)) {

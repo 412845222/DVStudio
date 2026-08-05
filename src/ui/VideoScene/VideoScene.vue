@@ -69,13 +69,30 @@
 			<div v-if="videoBuffering.isBuffering" class="vs-buffering-indicator">
 				<div class="vs-buffering-label">
 					<svg class="vs-buffering-spinner" viewBox="0 0 24 24" width="14" height="14">
-						<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.25" />
-						<path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+						<circle
+							cx="12"
+							cy="12"
+							r="10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-opacity="0.25"
+						/>
+						<path
+							d="M12 2a10 10 0 0 1 10 10"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
 					</svg>
 					<span>缓冲中...</span>
 				</div>
 				<div class="vs-buffering-bar">
-					<div class="vs-buffering-fill" :style="{ width: (videoBuffering.bufferProgress * 100) + '%' }" />
+					<div
+						class="vs-buffering-fill"
+						:style="{ width: videoBuffering.bufferProgress * 100 + '%' }"
+					/>
 				</div>
 			</div>
 
@@ -2185,8 +2202,11 @@ watch(
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
-	background:
-		linear-gradient(180deg, color-mix(in srgb, var(--pl-bg-0) 92%, transparent) 0%, color-mix(in srgb, var(--pl-bg-1) 96%, transparent) 100%);
+	background: linear-gradient(
+		180deg,
+		color-mix(in srgb, var(--pl-bg-0) 92%, transparent) 0%,
+		color-mix(in srgb, var(--pl-bg-1) 96%, transparent) 100%
+	);
 }
 
 .vs-stage {
@@ -2265,12 +2285,14 @@ watch(
 	padding: 10px 14px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 40%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 85%, rgba(0,0,0,0.6));
+	background: color-mix(in srgb, var(--pl-bg-1) 85%, rgba(0, 0, 0, 0.6));
 	backdrop-filter: blur(10px);
 	z-index: 5;
 	pointer-events: none;
 	min-width: 160px;
-	box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	box-shadow:
+		0 4px 20px rgba(0, 0, 0, 0.5),
+		0 0 16px color-mix(in srgb, var(--pl-accent) 12%, transparent);
 }
 
 .vs-buffering-indicator::before,
@@ -2312,8 +2334,12 @@ watch(
 }
 
 @keyframes vs-buffering-spin {
-	from { transform: rotate(0deg); }
-	to { transform: rotate(360deg); }
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .vs-buffering-bar {
@@ -2327,7 +2353,11 @@ watch(
 .vs-buffering-fill {
 	height: 100%;
 	border-radius: 1px;
-	background: linear-gradient(90deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 70%, var(--pl-cold, #3aa8b4)));
+	background: linear-gradient(
+		90deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 70%, var(--pl-cold, #3aa8b4))
+	);
 	box-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 70%, transparent);
 	transition: width 0.15s ease-out;
 }
@@ -2346,12 +2376,16 @@ watch(
 	padding: 6px 12px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 70%, rgba(0,0,0,0.4));
+	background: color-mix(in srgb, var(--pl-bg-1) 70%, rgba(0, 0, 0, 0.4));
 	color: var(--pl-fg);
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease,
+		transform 0.1s ease;
 	backdrop-filter: blur(6px);
 	position: relative;
 }
@@ -2359,14 +2393,18 @@ watch(
 .vs-tool:hover:not(:disabled) {
 	border-color: color-mix(in srgb, var(--pl-accent) 65%, transparent);
 	background: color-mix(in srgb, var(--pl-accent) 8%, var(--pl-bg-1));
-	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 10px color-mix(in srgb, var(--pl-accent) 25%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 
 .vs-tool.active {
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 15%, var(--pl-bg-1));
 	color: var(--pl-fg);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent), inset 0 0 10px color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		inset 0 0 10px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-tool:disabled {
@@ -2383,10 +2421,12 @@ watch(
 	gap: 10px;
 	padding: 10px 14px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 75%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-1) 75%, rgba(0, 0, 0, 0.5));
 	border-radius: 2px;
 	backdrop-filter: blur(8px);
-	box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	box-shadow:
+		0 4px 20px rgba(0, 0, 0, 0.4),
+		0 0 12px color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-form::before,
@@ -2450,13 +2490,18 @@ watch(
 	color: var(--pl-fg);
 	outline: none;
 	font-size: 12px;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease,
+		background 0.15s ease;
 }
 
 .vs-input:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
 	background: color-mix(in srgb, var(--pl-fg) 8%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-select {
@@ -2469,12 +2514,17 @@ watch(
 	outline: none;
 	font-size: 12px;
 	cursor: pointer;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease,
+		background 0.15s ease;
 }
 
 .vs-select:focus {
 	border-color: color-mix(in srgb, var(--pl-accent) 75%, transparent);
-	box-shadow: 0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent), 0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--pl-accent) 40%, transparent),
+		0 0 8px color-mix(in srgb, var(--pl-accent) 25%, transparent);
 }
 
 .vs-color {
@@ -2485,7 +2535,9 @@ watch(
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 35%, transparent);
 	background: transparent;
 	cursor: pointer;
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-color:hover {
@@ -2511,13 +2563,16 @@ watch(
 	padding: 0 12px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 30%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 60%, rgba(0, 0, 0, 0.3));
 	color: var(--pl-fg);
 	font-size: 12px;
 	line-height: 28px;
 	cursor: pointer;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-file-btn:hover {
@@ -2535,11 +2590,16 @@ watch(
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-btn:hover {
 	background: color-mix(in srgb, var(--pl-accent) 22%, transparent);
-	box-shadow: 0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 12px color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

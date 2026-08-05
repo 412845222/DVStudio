@@ -1,5 +1,5 @@
 {
-  "appId": 0,
-  "environment": "production",
-  "_comment": "Copy this file to electron/steam.config.json and fill in your Steam AppID. steam.config.json is gitignored and must NOT be committed anywhere in the repository."
+	"appId": 0,
+	"environment": "production",
+	"_comment": "Copy this file to electron/steam.config.json and fill in your Steam AppID. steam.config.json is gitignored and must NOT be committed anywhere in the repository."
 }

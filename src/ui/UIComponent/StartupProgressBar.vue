@@ -47,7 +47,13 @@ const primaryText = computed(() => {
 })
 
 const pixelBubbles = computed(() => {
-	const bubbles: { x: number; size: number; delay: number; duration: number; hue: number }[] = []
+	const bubbles: {
+		x: number
+		size: number
+		delay: number
+		duration: number
+		hue: number
+	}[] = []
 	for (let i = 0; i < 14; i++) {
 		bubbles.push({
 			x: (i * 7.3) % 100,
@@ -101,13 +107,16 @@ function statusIcon(status: StartupProgressStep['status']) {
 			return '■'
 		case 'ok':
 			return '■'
-		case 'warn':
-			return '■'
 		case 'error':
 			return '■'
 		default:
-			return '□'
+			return '■'
 	}
+}
+
+function onDismiss() {
+	localVisible.value = false
+	emit('dismiss')
 }
 </script>
 
@@ -118,7 +127,7 @@ function statusIcon(status: StartupProgressStep['status']) {
 			<button
 				class="startup-progress-bar-close"
 				type="button"
-				@click="localVisible = false; $emit('dismiss')"
+				@click="onDismiss"
 				:aria-label="t('startup.close')"
 			>
 				✕
@@ -224,7 +233,9 @@ function statusIcon(status: StartupProgressStep['status']) {
 	cursor: pointer;
 	padding: 4px;
 	border-radius: 4px;
-	transition: color 160ms ease, background 120ms ease;
+	transition:
+		color 160ms ease,
+		background 120ms ease;
 	font-family: inherit;
 	width: 22px;
 	height: 22px;

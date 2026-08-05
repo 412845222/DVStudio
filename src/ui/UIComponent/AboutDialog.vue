@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import ModalDialog from './ModalDialog.vue'
-import { getAppInfo, openHomepage, openRepoUrl, openBilibili, openIssues, openExternalUrl, checkForUpdate, isSteamVersion } from '../../network/appInfo'
+import {
+	getAppInfo,
+	openHomepage,
+	openRepoUrl,
+	openBilibili,
+	openIssues,
+	openExternalUrl,
+	checkForUpdate,
+	isSteamVersion
+} from '../../network/appInfo'
 import { useAboutDialog } from './aboutDialogStore'
 import { useI18n } from '../../i18n'
 import type { UpdateCheckResult } from '../../network/appInfo'
@@ -33,7 +42,9 @@ const updateStatusText = computed(() => {
 	}
 })
 
-const hasUpdate = computed(() => updateStatus.value === 'available' && updateResult.value?.hasUpdate)
+const hasUpdate = computed(
+	() => updateStatus.value === 'available' && updateResult.value?.hasUpdate
+)
 const isChecking = computed(() => updateStatus.value === 'checking')
 
 async function handleCheckUpdate() {
@@ -57,7 +68,7 @@ async function handleCheckUpdate() {
 		updateResult.value = {
 			ok: false,
 			error: e instanceof Error ? e.message : String(e),
-			currentVersion: info.appVersion,
+			currentVersion: info.appVersion
 		}
 	}
 }

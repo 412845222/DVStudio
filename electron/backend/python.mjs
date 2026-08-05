@@ -44,13 +44,20 @@ function _saveCache(result) {
 		const cacheFile = _getCacheFilePath()
 		if (!cacheFile) return
 		fs.mkdirSync(path.dirname(cacheFile), { recursive: true })
-		fs.writeFileSync(cacheFile, JSON.stringify({
-			timestamp: Date.now(),
-			platform: process.platform,
-			result
-		}, null, 2), 'utf8')
-	} catch {
-	}
+		fs.writeFileSync(
+			cacheFile,
+			JSON.stringify(
+				{
+					timestamp: Date.now(),
+					platform: process.platform,
+					result
+				},
+				null,
+				2
+			),
+			'utf8'
+		)
+	} catch {}
 }
 
 function _getBundledPythonDir() {

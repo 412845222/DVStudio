@@ -16,7 +16,9 @@
 					@keydown.enter="commit"
 					@keydown.esc="cancel"
 				/>
-				<button class="wf-tag-save-btn" @click.stop="commit">{{ t('nodes.tagEditor.save') }}</button>
+				<button class="wf-tag-save-btn" @click.stop="commit">
+					{{ t('nodes.tagEditor.save') }}
+				</button>
 				<div class="wf-tag-editor-hint">{{ t('nodes.tagEditor.hint') }}</div>
 			</div>
 		</div>

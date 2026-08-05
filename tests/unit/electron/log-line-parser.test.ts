@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { processStreamData, createLineParserState } from '../../../electron/backend/modules/comfyui/log-line-parser.mjs'
+import {
+	processStreamData,
+	createLineParserState
+} from '../../../electron/backend/modules/comfyui/log-line-parser.mjs'
 
 describe('log-line-parser: createLineParserState', () => {
 	it('creates empty state', () => {
@@ -22,7 +25,7 @@ describe('log-line-parser: processStreamData', () => {
 		it('emits a complete line ending with newline', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'Hello world\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(1)
 			expect(normalEvents[0]).toEqual({
 				type: 'log',
@@ -45,7 +48,7 @@ describe('log-line-parser: processStreamData', () => {
 			const state = createLineParserState()
 			processStreamData('stdout', 'Hello ', state)
 			const events = processStreamData('stdout', 'World\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(1)
 			expect(normalEvents[0].message).toBe('Hello World')
 		})
@@ -53,7 +56,7 @@ describe('log-line-parser: processStreamData', () => {
 		it('handles multiple lines in one chunk', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'line1\nline2\nline3\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(3)
 			expect(normalEvents[0].message).toBe('line1')
 			expect(normalEvents[1].message).toBe('line2')
@@ -65,14 +68,14 @@ describe('log-line-parser: processStreamData', () => {
 		it('marks events as stdout', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'stdout msg\n', state)
-			const normalEvent = events.find(e => !e.overwrite)
+			const normalEvent = events.find((e) => !e.overwrite)
 			expect(normalEvent.stream).toBe('stdout')
 		})
 
 		it('marks events as stderr', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stderr', 'stderr msg\n', state)
-			const normalEvent = events.find(e => !e.overwrite)
+			const normalEvent = events.find((e) => !e.overwrite)
 			expect(normalEvent.stream).toBe('stderr')
 		})
 
@@ -90,15 +93,20 @@ describe('log-line-parser: processStreamData', () => {
 		it('handles \\r\\n line endings', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'line with crlf\r\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(1)
 			expect(normalEvents[0].message).toBe('line with crlf')
 		})
 
 		it('emits overwrite event for \\r progress updates', () => {
 			const state = createLineParserState()
-			const events = processStreamData('stdout', 'Progress: 10%\rProgress: 20%\rProgress: 30%', state, false)
-			const overwriteEvents = events.filter(e => e.overwrite)
+			const events = processStreamData(
+				'stdout',
+				'Progress: 10%\rProgress: 20%\rProgress: 30%',
+				state,
+				false
+			)
+			const overwriteEvents = events.filter((e) => e.overwrite)
 			expect(overwriteEvents.length).toBeGreaterThanOrEqual(1)
 			expect(overwriteEvents[overwriteEvents.length - 1].message).toBe('Progress: 30%')
 		})
@@ -117,7 +125,7 @@ describe('log-line-parser: processStreamData', () => {
 			state.buf = ''
 			state.lastOverwriteMsg = 'Progress: 50%'
 			const events2 = processStreamData('stdout', 'Progress: 50%', state)
-			const totalOverwrites = [...events1, ...events2].filter(e => e.overwrite).length
+			const totalOverwrites = [...events1, ...events2].filter((e) => e.overwrite).length
 			expect(totalOverwrites).toBe(1)
 		})
 	})
@@ -155,7 +163,7 @@ describe('log-line-parser: processStreamData', () => {
 		it('skips empty lines', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'a\n\nb\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(2)
 			expect(normalEvents[0].message).toBe('a')
 			expect(normalEvents[1].message).toBe('b')
@@ -164,7 +172,7 @@ describe('log-line-parser: processStreamData', () => {
 		it('skips whitespace-only lines', () => {
 			const state = createLineParserState()
 			const events = processStreamData('stdout', 'a\n   \nb\n', state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(2)
 		})
 	})
@@ -174,7 +182,7 @@ describe('log-line-parser: processStreamData', () => {
 			const state = createLineParserState()
 			const buf = Buffer.from('from buffer\n', 'utf-8')
 			const events = processStreamData('stdout', buf, state)
-			const normalEvents = events.filter(e => !e.overwrite)
+			const normalEvents = events.filter((e) => !e.overwrite)
 			expect(normalEvents).toHaveLength(1)
 			expect(normalEvents[0].message).toBe('from buffer')
 		})
@@ -186,19 +194,35 @@ describe('log-line-parser: processStreamData', () => {
 			let allEvents = []
 
 			allEvents = allEvents.concat(processStreamData('stdout', 'Collecting torch\n', state))
-			allEvents = allEvents.concat(processStreamData('stdout', '  Downloading torch-2.5.0-cp311-cp311-win_amd64.whl (200 MB)\n', state))
+			allEvents = allEvents.concat(
+				processStreamData(
+					'stdout',
+					'  Downloading torch-2.5.0-cp311-cp311-win_amd64.whl (200 MB)\n',
+					state
+				)
+			)
 			allEvents = allEvents.concat(processStreamData('stdout', '   0%|', state))
-			allEvents = allEvents.concat(processStreamData('stdout', '          | 0.00/200M [00:00<?, ?B/s]\r  50%|#####     | 100M/200M [00:05<00:05, 20MB/s]\r 100%|##########| 200M/200M [00:10<00:00, 20MB/s]\n', state))
-			allEvents = allEvents.concat(processStreamData('stdout', 'Installing collected packages: torch\n', state))
+			allEvents = allEvents.concat(
+				processStreamData(
+					'stdout',
+					'          | 0.00/200M [00:00<?, ?B/s]\r  50%|#####     | 100M/200M [00:05<00:05, 20MB/s]\r 100%|##########| 200M/200M [00:10<00:00, 20MB/s]\n',
+					state
+				)
+			)
+			allEvents = allEvents.concat(
+				processStreamData('stdout', 'Installing collected packages: torch\n', state)
+			)
 			allEvents = allEvents.concat(processStreamData('stdout', '', state, true))
 
-			const normalLogs = allEvents.filter(e => !e.overwrite)
-			const progressUpdates = allEvents.filter(e => e.overwrite)
+			const normalLogs = allEvents.filter((e) => !e.overwrite)
+			const progressUpdates = allEvents.filter((e) => e.overwrite)
 
-			expect(normalLogs.find(e => e.message.includes('Collecting torch'))).toBeTruthy()
-			expect(normalLogs.find(e => e.message.includes('Downloading torch'))).toBeTruthy()
-			expect(normalLogs.find(e => e.message.includes('Installing collected packages'))).toBeTruthy()
-			expect(normalLogs.find(e => e.message.includes('100%'))).toBeTruthy()
+			expect(normalLogs.find((e) => e.message.includes('Collecting torch'))).toBeTruthy()
+			expect(normalLogs.find((e) => e.message.includes('Downloading torch'))).toBeTruthy()
+			expect(
+				normalLogs.find((e) => e.message.includes('Installing collected packages'))
+			).toBeTruthy()
+			expect(normalLogs.find((e) => e.message.includes('100%'))).toBeTruthy()
 
 			expect(progressUpdates.length).toBeGreaterThanOrEqual(1)
 		})

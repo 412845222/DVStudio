@@ -139,9 +139,20 @@ export type CliFixResult = {
 	command?: string
 }
 
-export type Tripo3DMode = 'text_to_model' | 'image_to_model' | 'multiview_to_model' | 'texture' | 'refine'
+export type Tripo3DMode =
+	| 'text_to_model'
+	| 'image_to_model'
+	| 'multiview_to_model'
+	| 'texture'
+	| 'refine'
 
-export type Tripo3DTaskStatus = 'queued' | 'running' | 'success' | 'failed' | 'cancelled' | 'canceled'
+export type Tripo3DTaskStatus =
+	| 'queued'
+	| 'running'
+	| 'success'
+	| 'failed'
+	| 'cancelled'
+	| 'canceled'
 
 export interface Tripo3DGenerateParams {
 	mode: Tripo3DMode
@@ -154,7 +165,11 @@ export interface Tripo3DGenerateParams {
 	modelVersion?: string
 	model_version?: string
 	forceSingleImage?: boolean
-	selectedImages?: Array<{ nodeId: string; view: 'front' | 'left' | 'back' | 'right'; order: number }>
+	selectedImages?: Array<{
+		nodeId: string
+		view: 'front' | 'left' | 'back' | 'right'
+		order: number
+	}>
 	enableImageAutofix?: boolean
 	textureAlignment?: 'original_image' | 'geometry'
 	orientation?: 'default' | 'align_image'
@@ -273,15 +288,15 @@ export interface Tripo3DTaskDetailResult {
 	error?: string
 }
 
-export type AgentThinkingEffort = 'disabled' | 'low' | 'medium' | 'high';
+export type AgentThinkingEffort = 'disabled' | 'low' | 'medium' | 'high'
 
 export type AgentSettings = {
-	maxToolCalls: number;
-	defaultThinkingEffort: AgentThinkingEffort;
-	enableToolCallWarning: boolean;
-	autoScrollToBottom: boolean;
-	showThoughtProcess: boolean;
-};
+	maxToolCalls: number
+	defaultThinkingEffort: AgentThinkingEffort
+	enableToolCallWarning: boolean
+	autoScrollToBottom: boolean
+	showThoughtProcess: boolean
+}
 
 export type ClientSettings = {
 	defaultResolution: string
@@ -304,7 +319,7 @@ export type ClientSettings = {
 	cliAdapters?: {
 		[adapterName: string]: CliAdapterSavedConfig
 	}
-	agent?: AgentSettings;
+	agent?: AgentSettings
 }
 
 export type ClientSettingsResult = {
@@ -546,7 +561,14 @@ export interface ComfyPathValidation {
 	isComfyUI?: boolean
 }
 
-export type ComfyPythonCandidateType = 'managed_venv' | 'venv' | 'portable' | 'desktop_bundled' | 'system' | 'py_launcher' | 'none'
+export type ComfyPythonCandidateType =
+	| 'managed_venv'
+	| 'venv'
+	| 'portable'
+	| 'desktop_bundled'
+	| 'system'
+	| 'py_launcher'
+	| 'none'
 
 export interface ComfyPythonCandidate {
 	path: string

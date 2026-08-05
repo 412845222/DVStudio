@@ -25,7 +25,10 @@ export const invalidateNodeScreenshot = (nodeId: string): void => {
 	}
 }
 
-export const scheduleInvalidateNodeScreenshot = (nodeId: string, debounceMs: number = 150): void => {
+export const scheduleInvalidateNodeScreenshot = (
+	nodeId: string,
+	debounceMs: number = 150
+): void => {
 	const existingTimer = nodeTimers.get(nodeId)
 	if (existingTimer !== undefined) {
 		clearTimeout(existingTimer)
@@ -94,10 +97,17 @@ export const useNodeScreenshotInvalidation = (
 		}
 	}
 
-	const autoInvalidateOnChange = <T>(source: WatchSource<T> | (() => T), customDebounce?: number): WatchStopHandle => {
-		const stop = watch(source, () => {
-			scheduleInvalidate(customDebounce)
-		}, { deep: true })
+	const autoInvalidateOnChange = <T>(
+		source: WatchSource<T> | (() => T),
+		customDebounce?: number
+	): WatchStopHandle => {
+		const stop = watch(
+			source,
+			() => {
+				scheduleInvalidate(customDebounce)
+			},
+			{ deep: true }
+		)
 		stopHandles.push(stop)
 		return stop
 	}

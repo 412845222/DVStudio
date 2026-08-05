@@ -1,9 +1,6 @@
 <template>
 	<div ref="rootEl" class="videostudio-page bg-vscode">
-		<div
-			class="videostudio-stage"
-			@pointerdown.capture="onStagePointerDown"
-		>
+		<div class="videostudio-stage" @pointerdown.capture="onStagePointerDown">
 			<VideoScene />
 		</div>
 		<div
@@ -70,7 +67,7 @@ const onTimelinePointerDown = () => {
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
 function waitForSceneReady(maxWaitMs = 8000): Promise<boolean> {
-	return new Promise(resolve => {
+	return new Promise((resolve) => {
 		if (isUnmounted) {
 			resolve(false)
 			return
@@ -83,7 +80,12 @@ function waitForSceneReady(maxWaitMs = 8000): Promise<boolean> {
 			}
 			const state = VideoSceneStore.state
 			if (state?.layers?.length > 0 && (state.activeLayerId || state.layers[0]?.id)) {
-				console.log('[VideoStudio] scene ready, layers:', state.layers.length, 'activeLayer:', state.activeLayerId || state.layers[0]?.id)
+				console.log(
+					'[VideoStudio] scene ready, layers:',
+					state.layers.length,
+					'activeLayer:',
+					state.activeLayerId || state.layers[0]?.id
+				)
 				resolve(true)
 				return
 			}
@@ -98,8 +100,10 @@ function waitForSceneReady(maxWaitMs = 8000): Promise<boolean> {
 	})
 }
 
-function loadVideoMetadata(url: string): Promise<{ width: number; height: number; duration: number }> {
-	return new Promise(resolve => {
+function loadVideoMetadata(
+	url: string
+): Promise<{ width: number; height: number; duration: number }> {
+	return new Promise((resolve) => {
 		console.log('[VideoStudio] loadVideoMetadata, url:', url)
 		const video = document.createElement('video')
 		video.preload = 'metadata'
@@ -128,17 +132,34 @@ function loadVideoMetadata(url: string): Promise<{ width: number; height: number
 			finish()
 		}, 5000)
 
-		video.addEventListener('loadedmetadata', () => {
-			clearTimeout(timeoutId)
-			console.log('[VideoStudio] loadedmetadata:', video.videoWidth, video.videoHeight, video.duration)
-			finish(video.videoWidth || 1920, video.videoHeight || 1080, Number.isFinite(video.duration) ? video.duration : 0)
-		}, { once: true })
+		video.addEventListener(
+			'loadedmetadata',
+			() => {
+				clearTimeout(timeoutId)
+				console.log(
+					'[VideoStudio] loadedmetadata:',
+					video.videoWidth,
+					video.videoHeight,
+					video.duration
+				)
+				finish(
+					video.videoWidth || 1920,
+					video.videoHeight || 1080,
+					Number.isFinite(video.duration) ? video.duration : 0
+				)
+			},
+			{ once: true }
+		)
 
-		video.addEventListener('error', (e) => {
-			clearTimeout(timeoutId)
-			console.error('[VideoStudio] video error event:', video.error, e)
-			finish()
-		}, { once: true })
+		video.addEventListener(
+			'error',
+			(e) => {
+				clearTimeout(timeoutId)
+				console.error('[VideoStudio] video error event:', video.error, e)
+				finish()
+			},
+			{ once: true }
+		)
 
 		video.src = url
 	})
@@ -159,15 +180,20 @@ function addVideoNode(width: number, height: number, duration: number) {
 		return
 	}
 
-	console.log('[VideoStudio] addVideoNode:', { width, height, duration, videoUrl, nodeId: props.initialNodeId })
+	console.log('[VideoStudio] addVideoNode:', {
+		width,
+		height,
+		duration,
+		videoUrl,
+		nodeId: props.initialNodeId
+	})
 
 	const videoId = props.initialNodeId || `video-${Date.now()}`
 	const videoName = props.initialVideoName || 'Video'
 
 	const fps = TimelineStore.state.fps || 30
-	const frameCount = duration > 0
-		? Math.max(1, Math.ceil(duration * fps))
-		: Math.max(1, Math.ceil(30 * fps))
+	const frameCount =
+		duration > 0 ? Math.max(1, Math.ceil(duration * fps)) : Math.max(1, Math.ceil(30 * fps))
 	TimelineStore.dispatch('setFrameCount', { frameCount })
 
 	VideoSceneStore.dispatch('upsertVideoAsset', {
@@ -195,7 +221,14 @@ function addVideoNode(width: number, height: number, duration: number) {
 		const nodeW = width * scale
 		const nodeH = height * scale
 
-		console.log('[VideoStudio] updating props/transform/name for node:', newNodeId, 'videoId:', videoId, 'videoPath:', videoUrl)
+		console.log(
+			'[VideoStudio] updating props/transform/name for node:',
+			newNodeId,
+			'videoId:',
+			videoId,
+			'videoPath:',
+			videoUrl
+		)
 
 		VideoSceneStore.dispatch('updateNodeProps', {
 			nodeId: newNodeId,
@@ -301,7 +334,7 @@ onMounted(async () => {
 		if (rootEl.value) ro.observe(rootEl.value)
 	}
 	TimelineStore.dispatch('setUiFocus', { focus: 'timeline' })
-	await new Promise(r => setTimeout(r, 300))
+	await new Promise((r) => setTimeout(r, 300))
 	if (!isUnmounted) {
 		initVideo()
 	}
@@ -343,7 +376,9 @@ onBeforeUnmount(() => {
 	border-bottom: 1px solid color-mix(in srgb, var(--pl-accent) 22%, transparent);
 	position: relative;
 	user-select: none;
-	transition: background 0.2s ease, box-shadow 0.2s ease;
+	transition:
+		background 0.2s ease,
+		box-shadow 0.2s ease;
 }
 
 .videostudio-splitter::after {

@@ -33,7 +33,7 @@ function normalizeRow(row) {
 		startedAt: row.started_at != null ? Number(row.started_at) : null,
 		completedAt: row.completed_at != null ? Number(row.completed_at) : null,
 		createdAt: Number(row.created_at) || Date.now(),
-		updatedAt: Number(row.updated_at) || Date.now(),
+		updatedAt: Number(row.updated_at) || Date.now()
 	}
 }
 
@@ -45,7 +45,7 @@ function serialize(task) {
 		label: task.label || '',
 		coverUrl: task.coverUrl || '',
 		resultUrl: task.resultUrl || '',
-		canCancel: task.canCancel !== false,
+		canCancel: task.canCancel !== false
 	}
 	return {
 		id: task.id,
@@ -67,7 +67,7 @@ function serialize(task) {
 		started_at: task.startedAt != null ? Number(task.startedAt) : null,
 		completed_at: task.completedAt != null ? Number(task.completedAt) : null,
 		created_at: task.createdAt || now,
-		updated_at: now,
+		updated_at: now
 	}
 }
 
@@ -114,17 +114,31 @@ export function createGlobalTasksRepo() {
   `)
 
 	const getByIdStmt = db.prepare('SELECT * FROM global_tasks WHERE id = ?')
-	const getByRemoteTaskIdStmt = db.prepare('SELECT * FROM global_tasks WHERE project_id = ? AND provider = ? AND remote_task_id = ? LIMIT 1')
-	const getByRemoteTaskIdAnyProjectStmt = db.prepare('SELECT * FROM global_tasks WHERE provider = ? AND remote_task_id = ? LIMIT 1')
-	const getByClientRequestIdStmt = db.prepare('SELECT * FROM global_tasks WHERE project_id = ? AND client_request_id = ? LIMIT 1')
-	const getByClientRequestIdAnyProjectStmt = db.prepare('SELECT * FROM global_tasks WHERE client_request_id = ? LIMIT 1')
-	const getByNodeIdStmt = db.prepare("SELECT * FROM global_tasks WHERE node_id = ? AND status IN ('submitting', 'queued', 'running') ORDER BY created_at DESC LIMIT 1")
+	const getByRemoteTaskIdStmt = db.prepare(
+		'SELECT * FROM global_tasks WHERE project_id = ? AND provider = ? AND remote_task_id = ? LIMIT 1'
+	)
+	const getByRemoteTaskIdAnyProjectStmt = db.prepare(
+		'SELECT * FROM global_tasks WHERE provider = ? AND remote_task_id = ? LIMIT 1'
+	)
+	const getByClientRequestIdStmt = db.prepare(
+		'SELECT * FROM global_tasks WHERE project_id = ? AND client_request_id = ? LIMIT 1'
+	)
+	const getByClientRequestIdAnyProjectStmt = db.prepare(
+		'SELECT * FROM global_tasks WHERE client_request_id = ? LIMIT 1'
+	)
+	const getByNodeIdStmt = db.prepare(
+		"SELECT * FROM global_tasks WHERE node_id = ? AND status IN ('submitting', 'queued', 'running') ORDER BY created_at DESC LIMIT 1"
+	)
 	const deleteStmt = db.prepare('DELETE FROM global_tasks WHERE id = ?')
-	const countActiveStmt = db.prepare("SELECT COUNT(*) as count FROM global_tasks WHERE status IN ('pending', 'submitting', 'queued', 'running')")
+	const countActiveStmt = db.prepare(
+		"SELECT COUNT(*) as count FROM global_tasks WHERE status IN ('pending', 'submitting', 'queued', 'running')"
+	)
 	const listActiveStmt = db.prepare(
 		"SELECT * FROM global_tasks WHERE status IN ('pending', 'submitting', 'queued', 'running') AND backfilled = 0 ORDER BY created_at DESC"
 	)
-	const listAllStmt = db.prepare('SELECT * FROM global_tasks ORDER BY created_at DESC LIMIT ? OFFSET ?')
+	const listAllStmt = db.prepare(
+		'SELECT * FROM global_tasks ORDER BY created_at DESC LIMIT ? OFFSET ?'
+	)
 	const listFilteredStmt = db.prepare(
 		'SELECT * FROM global_tasks WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
 	)
@@ -134,8 +148,12 @@ export function createGlobalTasksRepo() {
 	const listUnbackfilledCompletedStmt = db.prepare(
 		"SELECT * FROM global_tasks WHERE project_id = ? AND status = 'completed' AND backfilled = 0 ORDER BY completed_at DESC"
 	)
-	const dismissStmt = db.prepare("UPDATE global_tasks SET status = 'dismissed', updated_at = ? WHERE id = ?")
-	const markBackfilledStmt = db.prepare('UPDATE global_tasks SET backfilled = 1, updated_at = ? WHERE id = ?')
+	const dismissStmt = db.prepare(
+		"UPDATE global_tasks SET status = 'dismissed', updated_at = ? WHERE id = ?"
+	)
+	const markBackfilledStmt = db.prepare(
+		'UPDATE global_tasks SET backfilled = 1, updated_at = ? WHERE id = ?'
+	)
 
 	function findExistingByUniqueKey(projectId, provider, remoteTaskId) {
 		if (!provider || !remoteTaskId) return null
@@ -165,7 +183,12 @@ export function createGlobalTasksRepo() {
 			if (existing) {
 				const merged = { ...existing, ...input, id: existing.id }
 				if (merged.status === 'running' && !merged.startedAt) merged.startedAt = Date.now()
-				if ((merged.status === 'completed' || merged.status === 'failed' || merged.status === 'cancelled') && !merged.completedAt) {
+				if (
+					(merged.status === 'completed' ||
+						merged.status === 'failed' ||
+						merged.status === 'cancelled') &&
+					!merged.completedAt
+				) {
 					merged.completedAt = Date.now()
 				}
 				if (merged.status === 'completed') merged.progress = 100
@@ -180,13 +203,22 @@ export function createGlobalTasksRepo() {
 			if (existingByClient) {
 				const merged = { ...existingByClient, ...input, id: existingByClient.id }
 				if (merged.status === 'running' && !merged.startedAt) merged.startedAt = Date.now()
-				if ((merged.status === 'completed' || merged.status === 'failed' || merged.status === 'cancelled') && !merged.completedAt) {
+				if (
+					(merged.status === 'completed' ||
+						merged.status === 'failed' ||
+						merged.status === 'cancelled') &&
+					!merged.completedAt
+				) {
 					merged.completedAt = Date.now()
 				}
 				if (merged.status === 'completed') merged.progress = 100
 				const params = serialize(merged)
 				updateStmt.run(params)
-				return { ok: true, task: normalizeRow(getByIdStmt.get(existingByClient.id)), created: false }
+				return {
+					ok: true,
+					task: normalizeRow(getByIdStmt.get(existingByClient.id)),
+					created: false
+				}
 			}
 		}
 
@@ -198,7 +230,7 @@ export function createGlobalTasksRepo() {
 			status: 'pending',
 			backfilled: false,
 			...input,
-			id,
+			id
 		}
 		if (task.status === 'running' && !task.startedAt) task.startedAt = now
 		const params = serialize(task)
@@ -206,7 +238,11 @@ export function createGlobalTasksRepo() {
 			insertStmt.run(params)
 		} catch (err) {
 			if (String(err?.message || '').includes('UNIQUE')) {
-				const existing = findExistingByUniqueKey(input.projectId, input.provider, input.remoteTaskId)
+				const existing = findExistingByUniqueKey(
+					input.projectId,
+					input.provider,
+					input.remoteTaskId
+				)
 				if (existing) {
 					const merged = { ...existing, ...input, id: existing.id }
 					const upParams = serialize(merged)
@@ -219,7 +255,11 @@ export function createGlobalTasksRepo() {
 						const merged = { ...existingByClient, ...input, id: existingByClient.id }
 						const upParams = serialize(merged)
 						updateStmt.run(upParams)
-						return { ok: true, task: normalizeRow(getByIdStmt.get(existingByClient.id)), created: false }
+						return {
+							ok: true,
+							task: normalizeRow(getByIdStmt.get(existingByClient.id)),
+							created: false
+						}
 					}
 				}
 			}
@@ -245,7 +285,13 @@ export function createGlobalTasksRepo() {
 			const current = normalizeRow(existing)
 			const merged = { ...current, ...patch, id }
 			if (merged.status === 'running' && !merged.startedAt) merged.startedAt = Date.now()
-			if ((merged.status === 'completed' || merged.status === 'failed' || merged.status === 'cancelled' || merged.status === 'dismissed') && !merged.completedAt) {
+			if (
+				(merged.status === 'completed' ||
+					merged.status === 'failed' ||
+					merged.status === 'cancelled' ||
+					merged.status === 'dismissed') &&
+				!merged.completedAt
+			) {
 				merged.completedAt = Date.now()
 			}
 			if (merged.status === 'completed') merged.progress = 100
@@ -332,6 +378,6 @@ export function createGlobalTasksRepo() {
 		countActive() {
 			const row = countActiveStmt.get()
 			return Number(row?.count) || 0
-		},
+		}
 	}
 }

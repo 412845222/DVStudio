@@ -22,7 +22,7 @@ describe('vite.config.ts: startup performance optimization', () => {
 			'**/steam-pipe/**',
 			'**/DVSResource/**',
 			'**/node_modules/.cache/**',
-			'**/.git/**',
+			'**/.git/**'
 		]
 		for (const pattern of requiredExclusions) {
 			expect(ignored).toContain(pattern)

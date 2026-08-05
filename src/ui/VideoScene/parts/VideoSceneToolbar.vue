@@ -13,10 +13,25 @@
 		</button>
 		<button class="vs-tool-btn" type="button" @click="addBase">添加</button>
 		<button class="vs-tool-btn" type="button" @click="onImportSubtitle">导入字幕</button>
-		<button class="vs-tool-btn vs-subtitle-recog-btn" type="button" @click="onSubtitleRecog" title="自动字幕识别">
-			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle">
-				<rect x="2" y="4" width="20" height="16" rx="2"/>
-				<path d="M7 15h4M13 15h4M7 11h10"/>
+		<button
+			class="vs-tool-btn vs-subtitle-recog-btn"
+			type="button"
+			@click="onSubtitleRecog"
+			title="自动字幕识别"
+		>
+			<svg
+				width="12"
+				height="12"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				style="margin-right: 4px; vertical-align: middle"
+			>
+				<rect x="2" y="4" width="20" height="16" rx="2" />
+				<path d="M7 15h4M13 15h4M7 11h10" />
 			</svg>
 			字幕识别
 		</button>
@@ -476,10 +491,12 @@ const redo = () => {
 	gap: 6px;
 	padding: 0 12px;
 	border-top: 1px solid color-mix(in srgb, var(--pl-accent) 25%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 88%, rgba(0,0,0,0.5));
+	background: color-mix(in srgb, var(--pl-bg-1) 88%, rgba(0, 0, 0, 0.5));
 	backdrop-filter: blur(10px);
 	z-index: 3;
-	box-shadow: 0 -2px 16px rgba(0,0,0,0.4), inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 10%, transparent);
+	box-shadow:
+		0 -2px 16px rgba(0, 0, 0, 0.4),
+		inset 0 1px 0 color-mix(in srgb, var(--pl-accent) 10%, transparent);
 }
 
 .vs-toolbar::before {
@@ -489,7 +506,12 @@ const redo = () => {
 	right: 0;
 	top: -1px;
 	height: 1px;
-	background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--pl-accent) 50%, transparent), transparent);
+	background: linear-gradient(
+		90deg,
+		transparent,
+		color-mix(in srgb, var(--pl-accent) 50%, transparent),
+		transparent
+	);
 	pointer-events: none;
 }
 
@@ -520,12 +542,15 @@ const redo = () => {
 	padding: 0 12px;
 	border-radius: 2px;
 	border: 1px solid color-mix(in srgb, var(--pl-accent) 28%, transparent);
-	background: color-mix(in srgb, var(--pl-bg-1) 50%, rgba(0,0,0,0.3));
+	background: color-mix(in srgb, var(--pl-bg-1) 50%, rgba(0, 0, 0, 0.3));
 	color: var(--pl-fg);
 	cursor: pointer;
 	font-size: 12px;
 	letter-spacing: 0.3px;
-	transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		background 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 .vs-tool-btn:hover:not(:disabled) {
@@ -546,6 +571,8 @@ const redo = () => {
 .vs-tool-btn.active {
 	border-color: var(--pl-accent);
 	background: color-mix(in srgb, var(--pl-accent) 15%, var(--pl-bg-1));
-	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 35%, transparent), inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
+	box-shadow:
+		0 0 10px color-mix(in srgb, var(--pl-accent) 35%, transparent),
+		inset 0 0 8px color-mix(in srgb, var(--pl-accent) 8%, transparent);
 }
 </style>

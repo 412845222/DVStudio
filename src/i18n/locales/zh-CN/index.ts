@@ -138,7 +138,7 @@ const messages = {
 	...aiworkflowPage,
 	...aiworkflowTemplateCenter,
 	...cloudStorage,
-	...taskQueue,
+	...taskQueue
 }
 
 const locale: LocalePackage = {
@@ -146,9 +146,9 @@ const locale: LocalePackage = {
 		code: 'zh-CN',
 		name: '简体中文',
 		englishName: 'Chinese (Simplified)',
-		flag: '🇨🇳',
+		flag: '🇨🇳'
 	},
-	messages,
+	messages
 }
 
 export default locale

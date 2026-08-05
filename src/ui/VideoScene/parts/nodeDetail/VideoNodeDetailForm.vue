@@ -379,9 +379,7 @@ const syncFromStore = () => {
 	draft.imageName = assetName || getStringFromProps(p, 'imageName', '').trim()
 	draft.imageFit = getImageFit(p, draft.imageFit)
 	draft.videoId = getStringFromProps(p, 'videoId', draft.videoId)
-	const fromVideoAsset = draft.videoId
-		? store.state.videoAssets[draft.videoId]
-		: undefined
+	const fromVideoAsset = draft.videoId ? store.state.videoAssets[draft.videoId] : undefined
 	const videoAssetUrl = String(fromVideoAsset?.url ?? '').trim()
 	const videoAssetName = String(fromVideoAsset?.name ?? '').trim()
 	draft.videoPath = videoAssetUrl || getStringFromProps(p, 'videoPath', '').trim()

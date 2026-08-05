@@ -18,7 +18,13 @@ export type ChatStreamEvent =
 	| { type: 'thinking_delta'; content: string }
 	| { type: 'thought'; content: string }
 	| { type: 'tool_call_start'; toolCallId: string; tool: string; input?: unknown }
-	| { type: 'tool_call_end'; toolCallId: string; tool: string; output?: unknown; images?: Array<{ mimeType: string; dataUrl: string; fileName?: string }> }
+	| {
+			type: 'tool_call_end'
+			toolCallId: string
+			tool: string
+			output?: unknown
+			images?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>
+	  }
 	| { type: 'tool_call_error'; toolCallId: string; tool: string; error: string }
 	| { type: 'plan_update'; explanation: string }
 	| { type: 'skill_call'; name: string; status: string; description?: string }
@@ -30,7 +36,13 @@ export type ChatStreamEvent =
 	| { type: 'approval_requested'; requestId: string; messageId: string }
 	| { type: 'assistant_done'; content: string }
 	| { type: 'turn_done' }
-	| { type: 'context_usage'; tokenCount: number; budget: number; usage: number; truncated?: boolean }
+	| {
+			type: 'context_usage'
+			tokenCount: number
+			budget: number
+			usage: number
+			truncated?: boolean
+	  }
 	| { type: 'error'; message: string; details?: unknown }
 	| { type: 'done' }
 

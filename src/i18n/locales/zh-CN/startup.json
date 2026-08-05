@@ -1,6 +1,6 @@
 {
-  "startup.errorOccurred": "启动过程中出现异常",
-  "startup.checkComplete": "启动检查完成",
-  "startup.checking": "启动检查中…",
-  "startup.close": "关闭"
+	"startup.errorOccurred": "启动过程中出现异常",
+	"startup.checkComplete": "启动检查完成",
+	"startup.checking": "启动检查中…",
+	"startup.close": "关闭"
 }

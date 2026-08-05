@@ -9,17 +9,38 @@
 		<div class="cs-tip-bar" aria-hidden="true"></div>
 		<svg viewBox="0 0 16 16" class="cs-tip-icon" aria-hidden="true">
 			<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
-			<path d="M8 7v3M8 5v.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+			<path
+				d="M8 7v3M8 5v.5"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.5"
+				stroke-linecap="round"
+			/>
 		</svg>
 		<div class="cs-tip-content">
-			<div class="cs-tip-text">{{ t('cloudStorage.config.keyTip', { provider: providerName }) }}</div>
+			<div class="cs-tip-text">
+				{{ t('cloudStorage.config.keyTip', { provider: providerName }) }}
+			</div>
 			<div v-if="tipText" class="cs-tip-sub">{{ tipText }}</div>
 			<div v-else class="cs-tip-sub">{{ t('cloudStorage.config.keyTipSub') }}</div>
 		</div>
 		<button class="cs-tip-btn" type="button" @click="openApplyUrl">
 			<svg viewBox="0 0 16 16" class="cs-tip-btn-icon" aria-hidden="true">
-				<path d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-				<path d="M9.5 3.5h3v3M13 3l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+				<path
+					d="M6.5 3.5H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+				/>
+				<path
+					d="M9.5 3.5h3v3M13 3l-5.5 5.5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 			{{ t('cloudStorage.config.applyKey') }}
 		</button>
@@ -60,8 +81,14 @@ const openApplyUrl = () => {
 }
 
 @keyframes cs-tip-in {
-	from { opacity: 0; transform: translateY(-4px); }
-	to { opacity: 1; transform: translateY(0); }
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .cs-tip-corners {
@@ -115,7 +142,11 @@ const openApplyUrl = () => {
 	top: 0;
 	bottom: 0;
 	width: 3px;
-	background: linear-gradient(180deg, var(--pl-accent), color-mix(in srgb, var(--pl-accent) 40%, transparent));
+	background: linear-gradient(
+		180deg,
+		var(--pl-accent),
+		color-mix(in srgb, var(--pl-accent) 40%, transparent)
+	);
 	box-shadow: 0 0 10px color-mix(in srgb, var(--pl-accent) 40%, transparent);
 }
 

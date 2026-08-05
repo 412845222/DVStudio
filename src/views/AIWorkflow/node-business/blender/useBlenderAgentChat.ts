@@ -1,17 +1,19 @@
 import type { Store } from 'vuex'
-import type {
-	WorkflowState,
-	WorkflowBlenderChatMessage
-} from '../../../../aiworkflow/types'
+import type { WorkflowState, WorkflowBlenderChatMessage } from '../../../../aiworkflow/types'
 import { getAgentChatBridge } from '../../../../network/chat/AgentChatBridge'
-import type { AgentBackendType, ChatAttachment, ChatStreamEvent } from '../../../../network/chat/types'
+import type {
+	AgentBackendType,
+	ChatAttachment,
+	ChatStreamEvent
+} from '../../../../network/chat/types'
 import {
 	collectBlenderUpstreamInputs,
 	type BlenderUpstreamInputs
 } from './useBlenderUpstreamInputs'
 import { getCachedAgentSettings, loadAgentSettings } from '../../../../core/agent/agentConfig'
 
-const makeMsgId = () => `blender-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const makeMsgId = () =>
+	`blender-chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 const BLENDER_TOOL_NAMES = [
 	'blender_execute_blender_code',
@@ -31,28 +33,28 @@ const BLENDER_TOOL_NAMES = [
 	'blender_jump_to_view3d_object_data_by_name',
 	'blender_import_model',
 	'blender_read_workspace_image',
-	'blender_list_workspace_images',
+	'blender_list_workspace_images'
 ] as const
 
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
-	'blender_execute_blender_code': '执行Blender代码',
-	'blender_get_objects_summary': '获取场景对象概览',
-	'blender_get_object_detail_summary': '获取对象详情',
-	'blender_get_blendfile_summary_datablocks': '数据块统计',
-	'blender_get_blendfile_summary_missing_files': '检查缺失文件',
-	'blender_get_blendfile_summary_of_linked_libraries': '链接库信息',
-	'blender_get_blendfile_summary_path_info': '文件路径信息',
-	'blender_get_blendfile_summary_usage_guess': '用途猜测',
-	'blender_get_screenshot_of_area_as_image': '区域截图',
-	'blender_get_screenshot_of_window_as_image': '窗口截图',
-	'blender_get_screenshot_of_window_as_json': '窗口布局JSON',
-	'blender_jump_to_tab_by_name': '切换工作区',
-	'blender_jump_to_tab_by_space_type': '按类型切换工作区',
-	'blender_jump_to_view3d_object_by_name': '聚焦对象',
-	'blender_jump_to_view3d_object_data_by_name': '按数据名聚焦对象',
-	'blender_import_model': '导入模型',
-	'blender_read_workspace_image': '读取工作区图片',
-	'blender_list_workspace_images': '列出工作区图片',
+	blender_execute_blender_code: '执行Blender代码',
+	blender_get_objects_summary: '获取场景对象概览',
+	blender_get_object_detail_summary: '获取对象详情',
+	blender_get_blendfile_summary_datablocks: '数据块统计',
+	blender_get_blendfile_summary_missing_files: '检查缺失文件',
+	blender_get_blendfile_summary_of_linked_libraries: '链接库信息',
+	blender_get_blendfile_summary_path_info: '文件路径信息',
+	blender_get_blendfile_summary_usage_guess: '用途猜测',
+	blender_get_screenshot_of_area_as_image: '区域截图',
+	blender_get_screenshot_of_window_as_image: '窗口截图',
+	blender_get_screenshot_of_window_as_json: '窗口布局JSON',
+	blender_jump_to_tab_by_name: '切换工作区',
+	blender_jump_to_tab_by_space_type: '按类型切换工作区',
+	blender_jump_to_view3d_object_by_name: '聚焦对象',
+	blender_jump_to_view3d_object_data_by_name: '按数据名聚焦对象',
+	blender_import_model: '导入模型',
+	blender_read_workspace_image: '读取工作区图片',
+	blender_list_workspace_images: '列出工作区图片'
 }
 
 function getToolDisplayName(toolName: string): string {
@@ -65,7 +67,11 @@ const MAX_IMAGE_WIDTH = 960
 const IMAGE_QUALITY = 0.85
 const MAX_IMAGE_BASE64_CHARS = 500 * 1024
 
-async function compressImageToDataUrl(blob: Blob, maxWidth: number = MAX_IMAGE_WIDTH, quality: number = IMAGE_QUALITY): Promise<string> {
+async function compressImageToDataUrl(
+	blob: Blob,
+	maxWidth: number = MAX_IMAGE_WIDTH,
+	quality: number = IMAGE_QUALITY
+): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const img = new Image()
 		img.onload = () => {
@@ -95,7 +101,9 @@ async function compressImageToDataUrl(blob: Blob, maxWidth: number = MAX_IMAGE_W
 		}
 		img.onerror = () => reject(new Error('Image load failed'))
 		const reader = new FileReader()
-		reader.onload = () => { img.src = reader.result as string }
+		reader.onload = () => {
+			img.src = reader.result as string
+		}
 		reader.onerror = () => reject(new Error('File read failed'))
 		reader.readAsDataURL(blob)
 	})
@@ -126,7 +134,9 @@ async function urlToBase64Attachment(url: string, name?: string): Promise<ChatAt
 	}
 }
 
-async function upstreamImagesToAttachments(images: BlenderUpstreamInputs['images']): Promise<ChatAttachment[]> {
+async function upstreamImagesToAttachments(
+	images: BlenderUpstreamInputs['images']
+): Promise<ChatAttachment[]> {
 	const attachments: ChatAttachment[] = []
 	for (const img of images.slice(0, 3)) {
 		const name = img.url.split('/').pop()?.split('?')[0] || `image_${attachments.length + 1}.jpg`
@@ -155,7 +165,12 @@ function buildBlenderContext(
 		workspacePath?: string
 		screenshotsDir?: string
 		referencesDir?: string
-		savedReferences?: Array<{ fileName: string; absolutePath: string; relativePath: string; sourceAlias?: string }>
+		savedReferences?: Array<{
+			fileName: string
+			absolutePath: string
+			relativePath: string
+			sourceAlias?: string
+		}>
 	}
 ) {
 	const state = store.state
@@ -188,7 +203,15 @@ function buildBlenderContext(
 	}
 }
 
-async function getBlenderStatus(): Promise<{ connected: boolean; toolsReady: boolean; availableToolCount: number; missingToolCount: number; missingTools?: string[]; host?: string; port?: number }> {
+async function getBlenderStatus(): Promise<{
+	connected: boolean
+	toolsReady: boolean
+	availableToolCount: number
+	missingToolCount: number
+	missingTools?: string[]
+	host?: string
+	port?: number
+}> {
 	try {
 		const statusResult = await window.dweb?.blender?.mcpStatus?.()
 		const connected = statusResult?.ok === true && statusResult.status === 'connected'
@@ -206,26 +229,46 @@ async function getBlenderStatus(): Promise<{ connected: boolean; toolsReady: boo
 	}
 }
 
-function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext>, toolNames: string[]): string {
+function buildBlenderSystemPrompt(
+	context: ReturnType<typeof buildBlenderContext>,
+	toolNames: string[]
+): string {
 	const parts: string[] = []
-	parts.push('你是一个Blender 3D控制助手，通过官方Blender MCP协议控制Blender实例。你拥有完整的blender_*工具集来查看和修改3D场景。')
+	parts.push(
+		'你是一个Blender 3D控制助手，通过官方Blender MCP协议控制Blender实例。你拥有完整的blender_*工具集来查看和修改3D场景。'
+	)
 	parts.push('')
 
 	if (context.blender.workspace?.workspacePath) {
 		parts.push('## 📂 当前工作区')
 		parts.push(`工作区绝对路径: ${context.blender.workspace.workspacePath}`)
-		parts.push(`- 截图保存目录: ${context.blender.workspace.screenshotsDir || context.blender.workspace.workspacePath + '/screenshots'}`)
-		parts.push(`- 参考图保存目录: ${context.blender.workspace.referencesDir || context.blender.workspace.workspacePath + '/references'}`)
+		parts.push(
+			`- 截图保存目录: ${context.blender.workspace.screenshotsDir || context.blender.workspace.workspacePath + '/screenshots'}`
+		)
+		parts.push(
+			`- 参考图保存目录: ${context.blender.workspace.referencesDir || context.blender.workspace.workspacePath + '/references'}`
+		)
 		parts.push('')
-		parts.push('**重要**：所有截图都会自动保存到上述screenshots目录。截图工具返回的文本中会包含截图的绝对路径。')
-		parts.push('如需重新查看之前的截图，使用 **blender_read_workspace_image** 工具，传入相对路径（如 "screenshots/文件名.png"）即可。')
-		parts.push('使用 **blender_list_workspace_images** 工具可以列出工作区中所有可用的图片（截图和参考图）。')
+		parts.push(
+			'**重要**：所有截图都会自动保存到上述screenshots目录。截图工具返回的文本中会包含截图的绝对路径。'
+		)
+		parts.push(
+			'如需重新查看之前的截图，使用 **blender_read_workspace_image** 工具，传入相对路径（如 "screenshots/文件名.png"）即可。'
+		)
+		parts.push(
+			'使用 **blender_list_workspace_images** 工具可以列出工作区中所有可用的图片（截图和参考图）。'
+		)
 		parts.push('')
 	}
 
-	if (context.blender.workspace?.savedReferences && context.blender.workspace.savedReferences.length > 0) {
+	if (
+		context.blender.workspace?.savedReferences &&
+		context.blender.workspace.savedReferences.length > 0
+	) {
 		parts.push(`## 🖼️ 已保存参考图（共 ${context.blender.workspace.savedReferences.length} 张）`)
-		parts.push('以下参考图已保存到工作区references目录，你可以通过 blender_read_workspace_image 工具读取它们：')
+		parts.push(
+			'以下参考图已保存到工作区references目录，你可以通过 blender_read_workspace_image 工具读取它们：'
+		)
 		for (const ref of context.blender.workspace.savedReferences) {
 			const srcInfo = ref.sourceAlias ? `（来自节点: ${ref.sourceAlias}）` : ''
 			parts.push(`- ${ref.fileName}${srcInfo}`)
@@ -237,27 +280,47 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	}
 
 	if (context.blender.connected) {
-		parts.push(`✅ 当前Blender已连接（${context.blender.host}:${context.blender.port}），可以直接调用工具执行操作。`)
+		parts.push(
+			`✅ 当前Blender已连接（${context.blender.host}:${context.blender.port}），可以直接调用工具执行操作。`
+		)
 	} else {
-		parts.push('⚠️ 当前Blender尚未连接。你仍然拥有所有blender_*工具，但调用工具会返回"未连接"错误。请告诉用户：需要先在节点UI上点击"连接"按钮连接到正在运行的Blender实例（确保Blender已启动且MCP插件已启用），连接成功后你即可立即执行所有操作。不要说"没有可用工具"，工具是存在的，只是Blender未连接。')
+		parts.push(
+			'⚠️ 当前Blender尚未连接。你仍然拥有所有blender_*工具，但调用工具会返回"未连接"错误。请告诉用户：需要先在节点UI上点击"连接"按钮连接到正在运行的Blender实例（确保Blender已启动且MCP插件已启用），连接成功后你即可立即执行所有操作。不要说"没有可用工具"，工具是存在的，只是Blender未连接。'
+		)
 	}
 	parts.push('')
 	parts.push('## 核心工具')
-	parts.push('- **blender_execute_blender_code**: 执行任意bpy Python代码。当其他专用工具无法满足需求时使用此工具。代码执行后必须设置result字典。')
+	parts.push(
+		'- **blender_execute_blender_code**: 执行任意bpy Python代码。当其他专用工具无法满足需求时使用此工具。代码执行后必须设置result字典。'
+	)
 	parts.push('')
 	parts.push('## 场景信息工具')
-	parts.push('- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。')
-	parts.push('- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。修改对象后，优先用此工具验证参数，比截图更高效。')
-	parts.push('- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。')
-	parts.push('- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。')
+	parts.push(
+		'- **blender_get_objects_summary**: 获取集合层级树和所有对象列表、材质/相机/灯光名称。开始操作前优先调用。'
+	)
+	parts.push(
+		'- **blender_get_object_detail_summary**: 获取指定对象的完整详细信息（变换、修改器、约束、材质、可见性、集合等）。修改对象后，优先用此工具验证参数，比截图更高效。'
+	)
+	parts.push(
+		'- **blender_get_screenshot_of_window_as_json**: 获取窗口布局、区域分布、活动对象、选中对象的JSON描述。'
+	)
+	parts.push(
+		'- **blender_get_blendfile_summary_datablocks**: 获取数据块统计、渲染引擎、工作区信息。'
+	)
 	parts.push('- **blender_get_blendfile_summary_path_info**: 获取文件路径、保存状态、备份信息。')
 	parts.push('- **blender_get_blendfile_summary_missing_files**: 检查缺失的外部文件引用。')
 	parts.push('- **blender_get_blendfile_summary_of_linked_libraries**: 查看链接库依赖。')
-	parts.push('- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。')
+	parts.push(
+		'- **blender_get_blendfile_summary_usage_guess**: 猜测文件用途（建模/渲染/动画等评分）。'
+	)
 	parts.push('')
 	parts.push('## 截图工具（按需使用，避免频繁截图浪费token）')
-	parts.push('- **blender_get_screenshot_of_area_as_image**: 截取指定区域最新截图（默认VIEW_3D），返回base64 PNG并自动保存到工作区。')
-	parts.push('- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口最新截图并自动保存到工作区。')
+	parts.push(
+		'- **blender_get_screenshot_of_area_as_image**: 截取指定区域最新截图（默认VIEW_3D），返回base64 PNG并自动保存到工作区。'
+	)
+	parts.push(
+		'- **blender_get_screenshot_of_window_as_image**: 截取整个Blender窗口最新截图并自动保存到工作区。'
+	)
 	parts.push('')
 	parts.push('📸 **截图策略（智能使用，节省token）**：')
 	parts.push('1. **不需要截图的场景**（优先使用结构化工具验证）：')
@@ -278,31 +341,43 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('')
 	parts.push('## ⚠️ Blender 5.1 版本专属注意事项（极其重要，不要用旧API）')
 	parts.push('')
-	parts.push('你运行在 **Blender 5.1** 环境中，大量API相对于3.x/4.x版本已变更。以下是高频错误清单：')
+	parts.push(
+		'你运行在 **Blender 5.1** 环境中，大量API相对于3.x/4.x版本已变更。以下是高频错误清单：'
+	)
 	parts.push('')
 	parts.push('### 渲染引擎枚举（必须使用正确值）')
 	parts.push('- ✅ 正确：`bpy.context.scene.render.engine = "BLENDER_EEVEE"`')
 	parts.push('- ❌ 错误：`"BLENDER_EEVEE_NEXT"`（已废弃，不存在）')
-	parts.push('- ❌ 错误：不要直接设置 `eevee.use_bloom`，EEVEE设置在5.1中已重构路径，设置前应先查询属性是否存在')
+	parts.push(
+		'- ❌ 错误：不要直接设置 `eevee.use_bloom`，EEVEE设置在5.1中已重构路径，设置前应先查询属性是否存在'
+	)
 	parts.push('')
 	parts.push('### 颜色值（必须4通道RGBA）')
 	parts.push('- ✅ 正确：所有颜色输入（Base Color/Emission等）必须用4通道：`(r, g, b, 1.0)`')
-	parts.push('- ❌ 错误：3通道RGB `(1, 0, 0)` 会报错 "sequences of dimension 0 should contain 4 items"')
+	parts.push(
+		'- ❌ 错误：3通道RGB `(1, 0, 0)` 会报错 "sequences of dimension 0 should contain 4 items"'
+	)
 	parts.push('')
 	parts.push('### 旋转模式枚举')
 	parts.push('- ✅ 正确：`obj.rotation_mode = "XYZ"`')
 	parts.push('- ❌ 错误：`"EULER_XYZ"`（不存在）')
 	parts.push('')
 	parts.push('### bmesh API使用')
-	parts.push('- ✅ 正确：`bm = bmesh.new(); bm.from_mesh(mesh)` 或编辑模式下 `bm = bmesh.from_edit_mesh(mesh)`')
+	parts.push(
+		'- ✅ 正确：`bm = bmesh.new(); bm.from_mesh(mesh)` 或编辑模式下 `bm = bmesh.from_edit_mesh(mesh)`'
+	)
 	parts.push('- ❌ 错误：`bmesh.from_mesh(mesh)`（这是模块级函数，不存在）')
 	parts.push('')
 	parts.push('### 视图覆盖层属性改名')
 	parts.push('- ❌ `overlay.show_bounds` → ✅ `overlay.show_object_bounds`')
-	parts.push('- ❌ `overlay.show_camera` 等属性在5.1中已改名，使用前先检查 `hasattr(overlay, "property_name")`')
+	parts.push(
+		'- ❌ `overlay.show_camera` 等属性在5.1中已改名，使用前先检查 `hasattr(overlay, "property_name")`'
+	)
 	parts.push('')
 	parts.push('### 对象操作安全检查')
-	parts.push('- 设置原点前必须检查类型：`if obj.type != "CAMERA"` 才能调用 `bpy.ops.object.origin_set()`，相机会报错')
+	parts.push(
+		'- 设置原点前必须检查类型：`if obj.type != "CAMERA"` 才能调用 `bpy.ops.object.origin_set()`，相机会报错'
+	)
 	parts.push('- 链接到集合前检查：`if obj.name not in col.objects: col.objects.link(obj)`')
 	parts.push('- 访问对象前检查：`obj = bpy.data.objects.get("Name")`，判断 `if obj is None`')
 	parts.push('- 创建节点前检查节点类型是否存在，Blender 5.1中部分几何节点ID已变更或移除')
@@ -313,7 +388,9 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('')
 	parts.push('### 材质设置（Blender 5.x已变更）')
 	parts.push('- ❌ `material.shadow_method` 属性在Blender 5.x中已移除/重构，不要设置')
-	parts.push('- ❌ Principled BSDF节点：不要使用 `bsdf.inputs["Emission"]`，Emission在Blender 5.x中需要添加独立的"Emission"节点并连接到Material Output的Surface端口')
+	parts.push(
+		'- ❌ Principled BSDF节点：不要使用 `bsdf.inputs["Emission"]`，Emission在Blender 5.x中需要添加独立的"Emission"节点并连接到Material Output的Surface端口'
+	)
 	parts.push('')
 	parts.push('### 3D视图背景图（API已重构）')
 	parts.push('- ❌ `space.background_images` - 已移除，不要遍历')
@@ -321,7 +398,9 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('- 背景图相关操作如果不确定，先查询可用属性')
 	parts.push('')
 	parts.push('### 错误记忆规则（避免重复犯同样错误）')
-	parts.push('- **同一个API错误绝对不要犯第二次！** 如果某个属性/方法报错了，记住这个错误，换一种方式实现，不要重复尝试相同写法')
+	parts.push(
+		'- **同一个API错误绝对不要犯第二次！** 如果某个属性/方法报错了，记住这个错误，换一种方式实现，不要重复尝试相同写法'
+	)
 	parts.push('- 如果不确定API是否存在，先用极小代码段测试 `hasattr(obj, "property")` 再使用')
 	parts.push('- 代码报错时，先仔细阅读stderr错误信息，根据错误信息直接修正，不要盲目重试')
 	parts.push('')
@@ -331,16 +410,22 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('1. **永远不要执行 `bpy.ops.object.delete()` 不带选择**（可能删除所有对象）')
 	parts.push('2. **永远不要执行 `bpy.data.objects.remove(obj)` 除非用户明确要求删除**')
 	parts.push('3. **优先使用隐藏 `obj.hide_set(True)` 代替删除，可恢复**')
-	parts.push('4. **高风险操作前先调用：`bpy.ops.ed.undo_push(message="Before AI Operation")`**，用户出错可按Ctrl+Z撤销')
+	parts.push(
+		'4. **高风险操作前先调用：`bpy.ops.ed.undo_push(message="Before AI Operation")`**，用户出错可按Ctrl+Z撤销'
+	)
 	parts.push('5. **每次只修改一个对象/一个参数**，验证后再继续')
 	parts.push('')
 	parts.push('### 通用安全编码规范')
-	parts.push('1. 任何操作前先检查对象是否存在：`obj = bpy.data.objects.get("Name"); if obj is None: return error`')
+	parts.push(
+		'1. 任何操作前先检查对象是否存在：`obj = bpy.data.objects.get("Name"); if obj is None: return error`'
+	)
 	parts.push('2. 任何属性设置前先检查属性是否存在：`if hasattr(obj, "property_name")`')
 	parts.push('3. 访问集合前检查索引/键是否存在：`if 0 < len(col) or "key" in col`')
 	parts.push('4. 不要批量删除/修改用户未明确要求的内容')
 	parts.push('5. 如果不确定API是否存在，先用小代码段测试属性是否存在，再执行完整操作')
-	parts.push('6. **同一个错误不要重复犯**：如果代码报错了，分析错误原因后换方法，不要反复尝试相同写法')
+	parts.push(
+		'6. **同一个错误不要重复犯**：如果代码报错了，分析错误原因后换方法，不要反复尝试相同写法'
+	)
 	parts.push('')
 	parts.push('## 📸 截图节流规则（强制执行，避免token浪费）')
 	parts.push('1. **两次截图之间至少间隔30秒**，除非用户明确要求"现在截图看看"')
@@ -420,17 +505,27 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('- 失败时：result = {"status": "error", "message": "错误描述"}')
 	parts.push('')
 	parts.push('## 工作区图片工具')
-	parts.push('- **blender_list_workspace_images**: 列出工作区中所有已保存的图片（截图和参考图），包含绝对路径。')
-	parts.push('- **blender_read_workspace_image**: 读取工作区中的图片文件返回给你查看（传入相对路径，如 "screenshots/xxx.png" 或 "references/xxx.png"）。')
+	parts.push(
+		'- **blender_list_workspace_images**: 列出工作区中所有已保存的图片（截图和参考图），包含绝对路径。'
+	)
+	parts.push(
+		'- **blender_read_workspace_image**: 读取工作区中的图片文件返回给你查看（传入相对路径，如 "screenshots/xxx.png" 或 "references/xxx.png"）。'
+	)
 	parts.push('')
 	parts.push('## 导航工具')
-	parts.push('- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。')
+	parts.push(
+		'- **blender_jump_to_tab_by_name**: 按名称切换工作区标签（Modeling/Rendering/Animation等）。'
+	)
 	parts.push('- **blender_jump_to_tab_by_space_type**: 按空间类型切换工作区。')
-	parts.push('- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象（自动显示隐藏对象）。')
+	parts.push(
+		'- **blender_jump_to_view3d_object_by_name**: 在3D视口中选中并框选聚焦到指定对象（自动显示隐藏对象）。'
+	)
 	parts.push('- **blender_jump_to_view3d_object_data_by_name**: 按数据块名称聚焦对象。')
 	parts.push('')
 	parts.push('## 其他')
-	parts.push('- **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl/.usd/.usdz/.blend等）。')
+	parts.push(
+		'- **blender_import_model**: 导入3D模型文件（.glb/.gltf/.fbx/.obj/.stl/.usd/.usdz/.blend等）。'
+	)
 	parts.push('')
 	parts.push('## 使用规则')
 	parts.push('1. **操作前先调用 blender_get_objects_summary 了解场景**')
@@ -438,10 +533,16 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	parts.push('3. **复杂操作拆分步骤**，每次少量代码')
 	parts.push('4. **验证策略**：优先用结构化工具验证参数，视觉效果再用截图验证')
 	parts.push('5. **截图节流**：两次截图间隔至少30秒，连续操作完成后再统一截图，代码错误先看stderr')
-	parts.push('6. **避免N+1查询**：先从get_objects_summary获取足够信息（name/type/location），不要逐个查询所有对象详情')
-	parts.push('7. **只查询需要修改的对象**：只对你要操作的对象调用get_object_detail_summary，不要查询所有对象')
+	parts.push(
+		'6. **避免N+1查询**：先从get_objects_summary获取足够信息（name/type/location），不要逐个查询所有对象详情'
+	)
+	parts.push(
+		'7. **只查询需要修改的对象**：只对你要操作的对象调用get_object_detail_summary，不要查询所有对象'
+	)
 	parts.push('8. **安全第一**：所有操作遵循安全编码规范，高风险操作前先push undo点')
-	parts.push('9. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查，不要重复犯同样错误')
+	parts.push(
+		'9. **Blender 5.1**：API与旧版本不同，遇到不确认的属性先hasattr检查，不要重复犯同样错误'
+	)
 	parts.push('10. **错误记忆**：同一个API错误不要犯第二次，报错后换方法实现')
 	parts.push('11. **参考图已保存在工作区**，需要查看参考图时调用 blender_read_workspace_image 工具')
 	parts.push('12. 代码执行后必须设置result = {...}字典')
@@ -449,7 +550,7 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 	if (toolNames.length > 0) {
 		parts.push('')
 		parts.push('## 当前会话可用工具列表（白名单）')
-		parts.push(toolNames.map(t => `- ${t}（${getToolDisplayName(t)}）`).join('\n'))
+		parts.push(toolNames.map((t) => `- ${t}（${getToolDisplayName(t)}）`).join('\n'))
 	}
 	if (context.blender.connected && context.blender.upstream.models.length > 0) {
 		parts.push('')
@@ -457,15 +558,23 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 		for (const m of context.blender.upstream.models) {
 			parts.push(`- 来源节点：${m.sourceAlias}，文件路径：${m.filePath}，格式：${m.format}`)
 		}
-		parts.push('当用户说"导入上游模型"或类似要求时，直接使用blender_import_model工具依次传入上述路径。')
+		parts.push(
+			'当用户说"导入上游模型"或类似要求时，直接使用blender_import_model工具依次传入上述路径。'
+		)
 	}
-	if (context.blender.upstream.images.length > 0 && (!context.blender.workspace?.savedReferences || context.blender.workspace.savedReferences.length === 0)) {
+	if (
+		context.blender.upstream.images.length > 0 &&
+		(!context.blender.workspace?.savedReferences ||
+			context.blender.workspace.savedReferences.length === 0)
+	) {
 		parts.push('')
 		parts.push(`## 上游参考图（共 ${context.blender.upstream.images.length} 张）`)
 		for (const img of context.blender.upstream.images) {
 			parts.push(`- 来源节点：${img.sourceAlias}，URL：${img.url}`)
 		}
-		parts.push('用户连接了上述参考图作为建模/材质参考。这些图片将作为附件随消息发送给你。建模时尽量贴合参考图描述的形态与风格。')
+		parts.push(
+			'用户连接了上述参考图作为建模/材质参考。这些图片将作为附件随消息发送给你。建模时尽量贴合参考图描述的形态与风格。'
+		)
 	}
 	if (context.blender.upstream.texts.length > 0) {
 		parts.push('')
@@ -477,7 +586,9 @@ function buildBlenderSystemPrompt(context: ReturnType<typeof buildBlenderContext
 		parts.push('上述文本是用户通过蓝图连线提供的上下文，执行操作时优先参考。')
 	}
 	parts.push('')
-	parts.push('重要：不要询问用户任何关于工作流、蓝图、其他节点的问题，不要尝试读取或修改工作流/蓝图。专注于Blender场景操作。')
+	parts.push(
+		'重要：不要询问用户任何关于工作流、蓝图、其他节点的问题，不要尝试读取或修改工作流/蓝图。专注于Blender场景操作。'
+	)
 	return parts.join('\n')
 }
 
@@ -518,7 +629,11 @@ function formatToolResultDisplay(output: unknown): { summary: string; detail: st
 	if (!output) return { summary: '', detail: '' }
 
 	if (typeof output === 'object' && output !== null) {
-		const out = output as Record<string, unknown> & { content?: unknown[]; ok?: boolean; error?: unknown }
+		const out = output as Record<string, unknown> & {
+			content?: unknown[]
+			ok?: boolean
+			error?: unknown
+		}
 		if (Array.isArray(out.content)) {
 			const textParts: string[] = []
 			for (const part of out.content) {
@@ -589,9 +704,8 @@ export async function runBlenderAgentChat(
 	const projectId = deps.getProjectId?.() ?? store.state.projectId ?? null
 
 	const preUpstream = collectBlenderUpstreamInputs(store, nodeId)
-	const referenceAttachments = preUpstream.images.length > 0
-		? await upstreamImagesToAttachments(preUpstream.images)
-		: []
+	const referenceAttachments =
+		preUpstream.images.length > 0 ? await upstreamImagesToAttachments(preUpstream.images) : []
 
 	const mergedAttachments = [...referenceAttachments, ...(userAttachments || [])]
 
@@ -599,27 +713,35 @@ export async function runBlenderAgentChat(
 		workspacePath?: string
 		screenshotsDir?: string
 		referencesDir?: string
-		savedReferences?: Array<{ fileName: string; absolutePath: string; relativePath: string; sourceAlias?: string }>
+		savedReferences?: Array<{
+			fileName: string
+			absolutePath: string
+			relativePath: string
+			sourceAlias?: string
+		}>
 	} = {}
 
 	if (projectId && window.dweb?.blender?.workspaceInit) {
 		try {
-			const references = mergedAttachments.map((att, idx) => {
-				const data = att.data || ''
-				const base64Match = data.match(/^data:(image\/[^;]+);base64,(.+)$/)
-				const isFromUpstream = idx < preUpstream.images.length
-				return {
-					base64: base64Match ? base64Match[2] : '',
-					mimeType: base64Match ? base64Match[1] : 'image/png',
-					fileName: att.name || `reference_${idx + 1}.png`,
-					sourceAlias: isFromUpstream ? (preUpstream.images[idx]?.sourceAlias || '') : '用户上传'
-				}
-			}).filter(ref => ref.base64)
+			const references = mergedAttachments
+				.map((att, idx) => {
+					const data = att.data || ''
+					const base64Match = data.match(/^data:(image\/[^;]+);base64,(.+)$/)
+					const isFromUpstream = idx < preUpstream.images.length
+					return {
+						base64: base64Match ? base64Match[2] : '',
+						mimeType: base64Match ? base64Match[1] : 'image/png',
+						fileName: att.name || `reference_${idx + 1}.png`,
+						sourceAlias: isFromUpstream ? preUpstream.images[idx]?.sourceAlias || '' : '用户上传'
+					}
+				})
+				.filter((ref) => ref.base64)
 			const wsResult = await window.dweb.blender.workspaceInit({ nodeId, projectId, references })
 			if (wsResult?.ok && wsResult.workspacePath) {
 				node.blenderSettings = node.blenderSettings ?? {}
 				;(node.blenderSettings as Record<string, unknown>).workspacePath = wsResult.workspacePath
-				;(node.blenderSettings as Record<string, unknown>).workspaceRelativePath = wsResult.relativePath
+				;(node.blenderSettings as Record<string, unknown>).workspaceRelativePath =
+					wsResult.relativePath
 				workspaceInfo = {
 					workspacePath: wsResult.workspacePath,
 					screenshotsDir: wsResult.screenshotsDir,
@@ -705,9 +827,7 @@ export async function runBlenderAgentChat(
 		return
 	}
 
-	const backendCandidate = String(
-		deps.backend || settings.agentBackend || 'dvsagent'
-	).trim()
+	const backendCandidate = String(deps.backend || settings.agentBackend || 'dvsagent').trim()
 	const backend = (
 		backendCandidate === 'codex' || backendCandidate === 'copilot' ? backendCandidate : 'dvsagent'
 	) as AgentBackendType
@@ -723,7 +843,7 @@ export async function runBlenderAgentChat(
 		return String(settings.modelId || '').trim()
 	}
 	const rawModel = deps.model || resolveModelFromSettings()
-	const model = (!rawModel || rawModel === 'auto') ? undefined : rawModel
+	const model = !rawModel || rawModel === 'auto' ? undefined : rawModel
 
 	const history: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = []
 	const existingChat = Array.isArray(settings.chatMessages) ? settings.chatMessages : []
@@ -775,7 +895,9 @@ export async function runBlenderAgentChat(
 
 	let disconnected = false
 
-	let prevStatus: string | undefined = String(store.state.nodesById[nodeId]?.blenderSettings?.mcpStatus || '')
+	let prevStatus: string | undefined = String(
+		store.state.nodesById[nodeId]?.blenderSettings?.mcpStatus || ''
+	)
 	const unsubscribeWatch = store.watch(
 		(state) => state.nodesById[nodeId]?.blenderSettings?.mcpStatus,
 		(newStatus: string | undefined) => {
@@ -807,12 +929,24 @@ export async function runBlenderAgentChat(
 	}
 
 	const toolMsgMap = new Map<string, string>()
-	const activeToolCalls = new Map<string, { msgId: string; name: string; args: Record<string, unknown> }>()
+	const activeToolCalls = new Map<
+		string,
+		{ msgId: string; name: string; args: Record<string, unknown> }
+	>()
 
-	const autoSaveToWorkspace = async (toolName: string, inputArgs: Record<string, unknown>, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>): Promise<string[]> => {
+	const autoSaveToWorkspace = async (
+		toolName: string,
+		inputArgs: Record<string, unknown>,
+		output: unknown,
+		eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>
+	): Promise<string[]> => {
 		const savedUrls: string[] = []
 		try {
-			if (!window.dweb?.blender?.workspaceSaveScript && !window.dweb?.blender?.workspaceSaveScreenshot) return savedUrls
+			if (
+				!window.dweb?.blender?.workspaceSaveScript &&
+				!window.dweb?.blender?.workspaceSaveScreenshot
+			)
+				return savedUrls
 			if (!projectId) return savedUrls
 
 			if (toolName === 'blender_execute_blender_code' && inputArgs.code) {
@@ -834,8 +968,10 @@ export async function runBlenderAgentChat(
 					for (const img of eventImages) {
 						const base64Match = img.dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/)
 						const base64Data = base64Match ? base64Match[2] : img.dataUrl
-						const mimeType = base64Match ? base64Match[1] : (img.mimeType || 'image/png')
-						console.log(`[BlenderWorkspace] Saving screenshot from event.images to workspace, mimeType=${mimeType}, dataLen=${base64Data.length}`)
+						const mimeType = base64Match ? base64Match[1] : img.mimeType || 'image/png'
+						console.log(
+							`[BlenderWorkspace] Saving screenshot from event.images to workspace, mimeType=${mimeType}, dataLen=${base64Data.length}`
+						)
 						const saveResult = await window.dweb.blender.workspaceSaveScreenshot({
 							nodeId,
 							projectId,
@@ -851,7 +987,9 @@ export async function runBlenderAgentChat(
 				if (!saved) {
 					const imageData = extractImageFromToolOutput(output)
 					if (imageData) {
-						console.log(`[BlenderWorkspace] Saving screenshot (fallback from output) to workspace, mimeType=${imageData.mimeType}, dataLen=${imageData.base64Data.length}`)
+						console.log(
+							`[BlenderWorkspace] Saving screenshot (fallback from output) to workspace, mimeType=${imageData.mimeType}, dataLen=${imageData.base64Data.length}`
+						)
 						const saveResult = await window.dweb.blender.workspaceSaveScreenshot({
 							nodeId,
 							projectId,
@@ -865,9 +1003,14 @@ export async function runBlenderAgentChat(
 					}
 				}
 				if (!saved) {
-					console.warn('[BlenderWorkspace] Screenshot tool returned no extractable image data. Output keys:',
-						output && typeof output === 'object' ? Object.keys(output as Record<string, unknown>) : typeof output,
-						'eventImages:', eventImages?.length || 0)
+					console.warn(
+						'[BlenderWorkspace] Screenshot tool returned no extractable image data. Output keys:',
+						output && typeof output === 'object'
+							? Object.keys(output as Record<string, unknown>)
+							: typeof output,
+						'eventImages:',
+						eventImages?.length || 0
+					)
 				}
 			}
 		} catch (err) {
@@ -876,7 +1019,9 @@ export async function runBlenderAgentChat(
 		return savedUrls
 	}
 
-	function extractImageFromToolOutput(output: unknown): { base64Data: string; mimeType: string } | null {
+	function extractImageFromToolOutput(
+		output: unknown
+	): { base64Data: string; mimeType: string } | null {
 		if (!output || typeof output !== 'object') return null
 
 		const out = output as Record<string, unknown>
@@ -891,7 +1036,11 @@ export async function runBlenderAgentChat(
 							mimeType: String(p.mimeType || 'image/png')
 						}
 					}
-					if (p.type === 'image_url' && typeof p.url === 'string' && p.url.startsWith('data:image')) {
+					if (
+						p.type === 'image_url' &&
+						typeof p.url === 'string' &&
+						p.url.startsWith('data:image')
+					) {
 						const match = p.url.match(/^data:(image\/[^;]+);base64,(.+)$/)
 						if (match) {
 							return { base64Data: match[2], mimeType: match[1] }
@@ -948,7 +1097,11 @@ export async function runBlenderAgentChat(
 
 	// 产物捕获（设计文档 §4.5）：视口截图 + 最终文本，会话结束写入 lastOutputs
 	let capturedScreenshotUrl = ''
-	const tryCaptureScreenshot = (_toolName: string, output: unknown, eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>) => {
+	const tryCaptureScreenshot = (
+		_toolName: string,
+		output: unknown,
+		eventImages?: Array<{ mimeType: string; dataUrl: string; fileName?: string }>
+	) => {
 		if (eventImages && eventImages.length > 0) {
 			const img = eventImages[0]
 			if (img.dataUrl.startsWith('data:image')) {
@@ -979,9 +1132,9 @@ export async function runBlenderAgentChat(
 		} catch {}
 
 		const rawThinking = String(settings.thinkingEffort || '').trim()
-		const thinkingEffort = (['disabled', 'low', 'medium', 'high'].includes(rawThinking)
-			? rawThinking
-			: 'medium') as 'disabled' | 'low' | 'medium' | 'high'
+		const thinkingEffort = (
+			['disabled', 'low', 'medium', 'high'].includes(rawThinking) ? rawThinking : 'medium'
+		) as 'disabled' | 'low' | 'medium' | 'high'
 
 		const session = await chatBridge.createSession(backend, {
 			title: prompt.slice(0, 24),
@@ -993,7 +1146,12 @@ export async function runBlenderAgentChat(
 		let receivedAnyContent = false
 		let receivedError = false
 		let aborted = false
-		let lastContextUsage: { tokenCount: number; budget: number; usage: number; truncated: boolean } | null = null
+		let lastContextUsage: {
+			tokenCount: number
+			budget: number
+			usage: number
+			truncated: boolean
+		} | null = null
 
 		for await (const ev of chatBridge.sendMessage(
 			backend,
@@ -1008,7 +1166,7 @@ export async function runBlenderAgentChat(
 				thinkingEffort,
 				maxToolCalls: globalAgentSettings.maxToolCalls,
 				enableToolCallWarning: globalAgentSettings.enableToolCallWarning !== false,
-				agentType: 'blender',
+				agentType: 'blender'
 			},
 			abortController.signal
 		) as AsyncGenerator<ChatStreamEvent, void, void>) {
@@ -1032,7 +1190,12 @@ export async function runBlenderAgentChat(
 				store.commit('updateBlenderChatMessage', {
 					nodeId,
 					messageId: currentAssistantMsgId,
-					patch: { content: currentContent, isThinking: false, isStreaming: true, isStreamingThinking: false }
+					patch: {
+						content: currentContent,
+						isThinking: false,
+						isStreaming: true,
+						isStreamingThinking: false
+					}
 				})
 				continue
 			}
@@ -1094,7 +1257,8 @@ export async function runBlenderAgentChat(
 				continue
 			}
 			if (ev.type === 'tool_call_start') {
-				const tcId = ev.toolCallId || `tool-${ev.tool}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+				const tcId =
+					ev.toolCallId || `tool-${ev.tool}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 				const toolName = ev.tool || 'unknown'
 				const toolDisplay = getToolDisplayName(toolName)
 				const toolMsgId = makeMsgId()
@@ -1128,15 +1292,17 @@ export async function runBlenderAgentChat(
 				const activeTc = tcId ? activeToolCalls.get(tcId) : null
 				const toolName = ev.tool || activeTc?.name || 'unknown'
 				const toolDisplay = getToolDisplayName(toolName)
-				const toolArgs = activeTc?.args || (ev as unknown as { input?: Record<string, unknown> }).input || {}
+				const toolArgs =
+					activeTc?.args || (ev as unknown as { input?: Record<string, unknown> }).input || {}
 				const eventImages = ev.images
 				tryCaptureScreenshot(toolName, ev.output, eventImages)
 				const { summary, detail } = formatToolResultDisplay(ev.output)
-				const outRec = (ev.output && typeof ev.output === 'object') ? ev.output as Record<string, unknown> : null
-				const hasError = !!(outRec && (
-					('isError' in outRec && outRec.isError) ||
-					('ok' in outRec && outRec.ok === false)
-				))
+				const outRec =
+					ev.output && typeof ev.output === 'object' ? (ev.output as Record<string, unknown>) : null
+				const hasError = !!(
+					outRec &&
+					(('isError' in outRec && outRec.isError) || ('ok' in outRec && outRec.ok === false))
+				)
 				if (toolMsgId) {
 					const hasScreenshot = eventImages && eventImages.length > 0
 					store.commit('updateBlenderChatMessage', {
@@ -1145,7 +1311,7 @@ export async function runBlenderAgentChat(
 						patch: {
 							content: `${hasError ? '❌' : '✅'} ${toolDisplay}${summary ? ' — ' + summary : ''}`,
 							toolResult: ev.output,
-							toolError: hasError ? (detail || '执行出错') : undefined,
+							toolError: hasError ? detail || '执行出错' : undefined,
 							status: hasError ? 'error' : 'completed',
 							isError: hasError,
 							collapsed: !hasError,
@@ -1262,7 +1428,12 @@ export async function runBlenderAgentChat(
 				store.commit('updateBlenderChatMessage', {
 					nodeId,
 					messageId: info.msgId,
-					patch: { content: `⏹ ${info.name} 已中止`, status: 'error', isError: true, collapsed: false }
+					patch: {
+						content: `⏹ ${info.name} 已中止`,
+						status: 'error',
+						isError: true,
+						collapsed: false
+					}
 				})
 			}
 			activeToolCalls.clear()
@@ -1309,7 +1480,12 @@ export async function runBlenderAgentChat(
 				store.commit('updateBlenderChatMessage', {
 					nodeId,
 					messageId: info.msgId,
-					patch: { content: `⏹ ${info.name} 已中止`, status: 'error', isError: true, collapsed: false }
+					patch: {
+						content: `⏹ ${info.name} 已中止`,
+						status: 'error',
+						isError: true,
+						collapsed: false
+					}
 				})
 			}
 			activeToolCalls.clear()
