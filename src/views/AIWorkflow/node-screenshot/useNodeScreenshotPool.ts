@@ -20,6 +20,8 @@ import {
 	enhancedConvertImagesToDataUrls,
 	prepareClonedImages
 } from './imageScreenshotHelper'
+import { isLegacyScreenshotWarmupEnabled } from '../deprecation'
+import { createNoopNodeScreenshotPool } from '../deprecation/ScreenshotWarmupDeprecation'
 
 export interface ScreenshotCacheEntry {
 	nodeId: string
@@ -521,6 +523,16 @@ export interface WarmupProgressInfo {
 }
 
 export const createNodeScreenshotPool = () => {
+	// Feature Flag: 默认禁用旧截图预热系统（走 noop 实现）
+	// 如需紧急回退：localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
+	if (!isLegacyScreenshotWarmupEnabled()) {
+		return createNoopNodeScreenshotPool() as unknown as ReturnType<typeof _createFullNodeScreenshotPool>
+	}
+	return _createFullNodeScreenshotPool()
+}
+
+/** 内部：完整实现（旧系统，仅用于回退） */
+const _createFullNodeScreenshotPool = () => {
 	const maxConcurrency = ref<number>(1)
 	const cache = new Map<string, ScreenshotCacheEntry>()
 	const highPriorityQueue: ScreenshotTask[] = []

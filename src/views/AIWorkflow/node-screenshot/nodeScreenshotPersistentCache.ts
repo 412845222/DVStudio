@@ -3,7 +3,12 @@
  *
  * 跨刷新/重启保留截图缓存，避免每次进入蓝图都重新预热截图。
  * 按项目ID和蓝图ID隔离缓存，使用版本hash失效机制。
+ *
+ * @deprecated 新架构不再使用截图预热系统。本模块默认走 noop 实现，
+ *             仅当 DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP='1' 时恢复旧逻辑。
  */
+
+import { isLegacyScreenshotWarmupEnabled } from '../deprecation'
 
 const DB_NAME = 'dvs_node_screenshots'
 const DB_VERSION = 1
@@ -75,6 +80,19 @@ export const saveScreenshotToDisk = async (
 	width: number,
 	height: number
 ): Promise<void> => {
+	if (!isLegacyScreenshotWarmupEnabled()) return Promise.resolve()
+	return _legacy_saveScreenshotToDisk(projectId, blueprintId, nodeId, version, dataUrl, width, height)
+}
+
+const _legacy_saveScreenshotToDisk = async (
+	projectId: string,
+	blueprintId: string,
+	nodeId: string,
+	version: string,
+	dataUrl: string,
+	width: number,
+	height: number
+): Promise<void> => {
 	try {
 		const db = await openDb()
 		const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -107,6 +125,16 @@ export const loadScreenshotFromDisk = async (
 	nodeId: string,
 	version: string
 ): Promise<string | null> => {
+	if (!isLegacyScreenshotWarmupEnabled()) return Promise.resolve(null)
+	return _legacy_loadScreenshotFromDisk(projectId, blueprintId, nodeId, version)
+}
+
+const _legacy_loadScreenshotFromDisk = async (
+	projectId: string,
+	blueprintId: string,
+	nodeId: string,
+	version: string
+): Promise<string | null> => {
 	try {
 		const db = await openDb()
 		const tx = db.transaction(STORE_NAME, 'readonly')
@@ -125,6 +153,27 @@ export const loadScreenshotFromDisk = async (
 }
 
 export const loadAllScreenshotsForBlueprint = async (
+	projectId: string,
+	blueprintId: string
+): Promise<
+	Map<
+		string,
+		{
+			dataUrl: string
+			version: string
+			width: number
+			height: number
+			theme: 'dark' | 'light'
+			nodeId: string
+			capturedAt: number
+		}
+	>
+> => {
+	if (!isLegacyScreenshotWarmupEnabled()) return Promise.resolve(new Map())
+	return _legacy_loadAllScreenshotsForBlueprint(projectId, blueprintId)
+}
+
+const _legacy_loadAllScreenshotsForBlueprint = async (
 	projectId: string,
 	blueprintId: string
 ): Promise<
@@ -193,6 +242,13 @@ export const loadAllScreenshotsForBlueprint = async (
 }
 
 export const cleanupOldScreenshots = async (
+	maxAgeMs: number = 7 * 24 * 60 * 60 * 1000
+): Promise<void> => {
+	if (!isLegacyScreenshotWarmupEnabled()) return Promise.resolve()
+	return _legacy_cleanupOldScreenshots(maxAgeMs)
+}
+
+const _legacy_cleanupOldScreenshots = async (
 	maxAgeMs: number = 7 * 24 * 60 * 60 * 1000
 ): Promise<void> => {
 	try {

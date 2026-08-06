@@ -527,7 +527,9 @@
 				:cancellable="false"
 			/>
 
+			<!-- 新架构：截图预热已停用，v-if="false" 强制隐藏。保留组件定义避免删除导致未知引用。 -->
 			<ThemeWarmupProgress
+				v-if="false"
 				:visible="themeWarmupOpen"
 				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
 				:detail="themeWarmupDetail"
@@ -636,7 +638,8 @@
 			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
 
-		<WarmupPromptDialog />
+		<!-- 新架构：截图预热已停用，v-if="false" 强制隐藏。保留组件定义避免删除导致未知引用。 -->
+		<WarmupPromptDialog v-if="false" />
 	</div>
 </template>
 
@@ -2254,6 +2257,10 @@ const screenshotPool = createNodeScreenshotPool()
 const { checkUnwarmedNodes, showPrompt } = useWarmupPrompt()
 
 const checkAndShowWarmupPrompt = () => {
+	// 新架构：截图预热系统已停用，不再需要对话框提示。
+	// 如需紧急回退：localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
+	return
+	/* eslint-disable no-unreachable */
 	const projectId = String(currentProjectId.value || '').trim()
 	const blueprintId = String(currentProjectName.value || '').trim()
 	if (!projectId || !blueprintId) return
@@ -3177,19 +3184,23 @@ watch(
 
 		if (fromTheme === toTheme) return
 
-		screenshotPool.setActiveTheme(toTheme)
+		// 新架构：不再触发截图预热，仅设置CSS变量+Canvas过渡动画
 		setCanvasActiveTheme(toTheme)
 
 		nextTick(() => {
 			nodeCanvasLayerRef.value?.setTheme(toTheme)
 			refreshCanvasNodeLayer()
-			void startThemeWarmup(toTheme, fromTheme)
+			// ❌ 已移除：startThemeWarmup(toTheme, fromTheme)
 		})
 	},
 	{ flush: 'post' }
 )
 
 const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 'light') => {
+	// 新架构：截图预热系统已停用。如需紧急回退，请设置：
+	// localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
+	return
+	/* eslint-disable no-unreachable */
 	const allNodes = nodes.value.filter((n) => {
 		const nid = String(n?.id ?? '').trim()
 		return nid && !selectedNodeIds.value.includes(nid)
@@ -3212,11 +3223,11 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 			const nid = String(node.id)
 			const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
 			if (cachedEntry) {
-				newMap.set(nid, cachedEntry)
+				newMap.set(nid, cachedEntry!)
 			}
 			if (!hasBitmap(nid, toTheme) && cachedEntry) {
 				try {
-					await loadScreenshotToCanvas(cachedEntry)
+					await loadScreenshotToCanvas(cachedEntry!)
 				} catch {}
 			}
 		}
@@ -3227,7 +3238,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	}
 
 	themeWarmupAbortController = new AbortController()
-	const signal = themeWarmupAbortController.signal
+	const signal = themeWarmupAbortController!.signal
 
 	themeWarmupTargetTheme.value = toTheme
 	themeWarmupOpen.value = true
