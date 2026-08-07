@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { getHttpClient } from '../../core/http-client.mjs'
 import {
 	internalError,
@@ -7,6 +8,11 @@ import {
 	notFoundError,
 	upstreamError
 } from '../../core/errors.mjs'
+
+// ESM 模块中 require 并非全局函数，需通过 createRequire 创建，
+// 否则打包后 require('electron') 会抛 ReferenceError 被 try/catch 静默吞掉，
+// 导致 getClientRootDir 失效，进而使 DVSResource 路径与 settings.json 读取失败。
+const require = createRequire(import.meta.url)
 
 const MESHY_API_BASE = 'https://api.meshy.ai'
 
