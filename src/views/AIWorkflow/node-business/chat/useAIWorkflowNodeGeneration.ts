@@ -1074,8 +1074,35 @@ const handleMeshySuccess = async (
 			}
 		}
 
+		// 等待新节点同步到 Vuex store（engineApi.addNode 只写引擎，Vuex 通过 emitChange 异步同步）
+		if (isNewNode && bindNodeId) {
+			const waitStart = Date.now()
+			const WAIT_TIMEOUT = 2000
+			while (Date.now() - waitStart < WAIT_TIMEOUT) {
+				if (state.nodesById[bindNodeId]) break
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+			const inStore = !!state.nodesById[bindNodeId]
+			console.log('[Meshy Poll] 新节点 store 同步等待结果:', {
+				nodeId: bindNodeId,
+				inStore,
+				elapsed: Date.now() - waitStart
+			})
+			if (!inStore) {
+				console.warn(
+					'[Meshy Poll] 新节点未能在超时内同步到 Vuex store，跳过资源绑定',
+					bindNodeId
+				)
+				continue
+			}
+		}
+
 		if (bindNodeId && typeof deps.bindImageResultToNode === 'function') {
 			const bindRet = await deps.bindImageResultToNode(bindNodeId, finalUrl)
+			console.log('[Meshy Poll] bindImageResultToNode 返回:', {
+				nodeId: bindNodeId,
+				bindRet: bindRet === false ? 'false' : bindRet ? '(url)' : '(falsy)'
+			})
 			const bound = bindRet !== false
 			if (bound) {
 				appendResult(deps, generationTaskId, {

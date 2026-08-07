@@ -3958,7 +3958,19 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			bindImageResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]
-				if (!node) return false
+				console.log('[MeshyPoll#bindImageResultToNode] ENTER', {
+					nodeId,
+					url: url ? url.slice(0, 120) : '(empty)',
+					nodeExistsInStore: !!node,
+					nodeType: (node as any)?.type
+				})
+				if (!node) {
+					console.warn(
+						'[MeshyPoll#bindImageResultToNode] 节点不在 Vuex store 中，资源绑定被跳过',
+						nodeId
+					)
+					return false
+				}
 				const resourceId = `gen-img-${nodeId}-${Date.now()}`
 				const resourceName = `gen_image_${resourceId.slice(-6)}`
 				const base: GeneratedResourceBase = {
@@ -3985,11 +3997,15 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
-					if (
-						!base.url ||
-						!isStrictLocalRenderableUrl(base.url) ||
-						!isWorkflowLocalAssetUrl(base.url)
-					) {
+					const urlOk = !!base.url && isStrictLocalRenderableUrl(base.url) && isWorkflowLocalAssetUrl(base.url)
+					console.log('[MeshyPoll#bindImageResultToNode] dweb path validation', {
+						nodeId,
+						finalUrl: base.url ? base.url.slice(0, 120) : '(empty)',
+						isStrictLocalRenderable: !!base.url && isStrictLocalRenderableUrl(base.url),
+						isWorkflowLocalAsset: !!base.url && isWorkflowLocalAssetUrl(base.url),
+						urlOk
+					})
+					if (!urlOk) {
 						pushToast(
 							t('aiworkflow.page.media.importFailedNoLocalUrl', {
 								mediaType: t('aiworkflow.page.mediaType.image')
@@ -4001,6 +4017,11 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
 					patchBlueprintNodeData(nodeId)
+					console.log('[MeshyPoll#bindImageResultToNode] SUCCESS', {
+						nodeId,
+						resourceId,
+						url: base.url.slice(0, 120)
+					})
 					return base.url
 				}
 
@@ -7966,7 +7987,11 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 			(toAnchorId === 'in-0' || toAnchorId === 'in-image' || toAnchorId === 'in-resource')
 		)
 	})
-	if (!outputEdges.length) return false
+	// 多视图无连线时，自动在源节点右侧新建图片节点接收剩余图片
+	if (!outputEdges.length) {
+		if (imageUrls.length <= 1) return false
+		return await autoCreateImageNodesForMultiView(fromNodeId, imageUrls, settings)
+	}
 
 	const resolveOutputUrlByAnchor = (fromAnchorId: string) => {
 		const m = /^out-image-(\d+)$/.exec(String(fromAnchorId))
@@ -8030,6 +8055,186 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 		onNodeUploadResource(targetNodeId, cloned, 'image', { autoDistribute: false })
 	}
 	return true
+}
+
+/**
+ * 多视图任务完成且无下游连线时，在源节点右侧自动新建图片节点接收剩余图片。
+ * 源节点（imageUrls[0]）由 applyMeshyTaskResult 绑定到自身，此处为 imageUrls[1..N] 新建节点。
+ * 新建节点在源节点右侧按纵向堆叠排列，建立 out-image-{i+1} → in-0 连线，保持数据流可追溯。
+ */
+const autoCreateImageNodesForMultiView = async (
+	fromNodeId: string,
+	imageUrls: string[],
+	settings: Record<string, unknown>
+): Promise<boolean> => {
+	const fromNode = store.state.nodesById[fromNodeId]
+	if (!fromNode) return false
+
+	// 输出数量上限 4（与多视图 output_image_count 对齐）
+	const outputCount = Math.min(4, Math.max(1, imageUrls.length))
+	if (outputCount <= 1) return false
+
+	const baseTitle = String(
+		fromNode.alias?.toString() || fromNode.title?.toString() || 'Meshy Image'
+	).trim()
+	const taskId = String(
+		settings.taskId ||
+			settings.meshyTaskId ||
+			((settings.outputSummary as Record<string, unknown>)?.rootTaskId as string) ||
+			fromNodeId
+	).trim()
+
+	// 阶段 1：bulk 内只做同步结构变更（addNode + connectPorts），收集节点信息供阶段 3 使用
+	type PendingNode = {
+		nodeId: string
+		imageUrl: string
+		viewIndex: number
+		fileName: string
+		fileNameBase: string
+	}
+	const pendingNodes: PendingNode[] = []
+
+	try {
+		engineApi.beginBulkUpdate()
+
+		// 为 imageUrls[1..outputCount-1] 创建图片节点
+		// imageUrls[0] 已绑定到源节点，从第 2 张（索引 1）开始
+		for (let i = 1; i < outputCount; i++) {
+			const imageUrl = String(imageUrls[i] || '').trim()
+			if (!imageUrl) continue
+
+			// 位置：源节点右侧 + 纵向堆叠偏移
+			const basePos = findNextNodePositionFromSource(fromNodeId, store.state)
+			const worldX = basePos.worldX
+			const worldY = basePos.worldY + (i - 1) * 200 // NODE_SPACING_Y = 200
+
+			const viewIndex = i + 1
+			const newNodeId = engineApi.addNode('image', worldX, worldY, {
+				title: `${baseTitle}_view_${viewIndex}`
+			})
+			if (!newNodeId) continue
+
+			// 建立连线：源节点 out-image-{viewIndex} → 新节点 in-0
+			try {
+				engineApi.connectPorts(
+					fromNodeId,
+					`out-image-${viewIndex}`,
+					newNodeId,
+					'in-0'
+				)
+			} catch (err) {
+				console.warn(
+					`[MultiViewAutoCreate] 建立连线失败 from=${fromNodeId}:out-image-${viewIndex} to=${newNodeId}:in-0`,
+					err
+				)
+			}
+
+			const ext = fileExtensionFromUrl(imageUrl, '.png')
+			const anchorSuffix = `out-image-${viewIndex}`
+			const fileName = `meshy_${taskId}_${anchorSuffix}_${newNodeId}${ext}`
+			const fileNameBase = fileName.replace(ext, '')
+
+			pendingNodes.push({ nodeId: newNodeId, imageUrl, viewIndex, fileName, fileNameBase })
+		}
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] 阶段 1 建节点失败:', err)
+		try {
+			engineApi.endBulkUpdate()
+		} catch {
+			/* ignore */
+		}
+		return false
+	}
+
+	// 阶段 2：结束 bulk 并强制同步引擎 → Vuex store，确保 nodesById 包含新节点
+	// 修复根因 A：缺少 forceSyncToStore，导致 nodesById[newNodeId] 不存在，
+	//             bindMediaResourceToNode / onNodeUploadResource 内部守卫静默 return
+	try {
+		engineApi.endBulkUpdate()
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] endBulkUpdate 失败:', err)
+	}
+
+	try {
+		await engineApi.forceSyncToStore()
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] forceSyncToStore 失败:', err)
+	}
+
+	// 验证新节点是否已同步到 Vuex store
+	const validNodes = pendingNodes.filter((p) => {
+		const exists = Boolean(store.state.nodesById[p.nodeId])
+		if (!exists) {
+			console.warn(
+				`[MultiViewAutoCreate] 节点 ${p.nodeId} 未同步到 store，跳过资源绑定`
+			)
+		}
+		return exists
+	})
+
+	if (validNodes.length === 0) {
+		console.error('[MultiViewAutoCreate] 所有新节点均未同步到 store')
+		return false
+	}
+
+	// 阶段 3：bulk 外逐个下载并绑定资源（节点已在 store 中，bindMediaResourceToNode 守卫可通过）
+	// 修复根因 B：异步 I/O 不再包裹在 beginBulkUpdate 内
+	for (const pending of validNodes) {
+		const { nodeId, imageUrl, fileName, fileNameBase } = pending
+
+		let cloned: File | null = null
+		try {
+			cloned = await fileFromUrl(imageUrl, fileNameBase)
+		} catch {
+			cloned = null
+		}
+
+		if (cloned) {
+			await onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
+			// 修复根因 C：资源绑定后显式同步引擎
+			patchBlueprintNodeData(nodeId)
+			continue
+		}
+
+		// 兜底：持久化到项目本地后绑定
+		const persisted = (await persistExternalAssetToProject({
+			kind: 'image',
+			name: fileName,
+			sourceUrl: imageUrl,
+			sourcePath:
+				String((settings.outputSummary as Record<string, unknown>)?.assetPath || '').trim() ||
+				String(settings.outputAssetPath || '').trim() ||
+				undefined
+		})) as PersistedAsset | null
+		const outputUrl = String(persisted?.url || imageUrl).trim()
+		const outputPath = String(
+			persisted?.absolutePath ||
+				((settings.outputSummary as Record<string, unknown>)?.assetPath as string) ||
+				''
+		).trim()
+		if (!outputUrl) continue
+
+		try {
+			cloned = await fileFromUrl(outputUrl, fileNameBase)
+		} catch {
+			cloned = null
+		}
+
+		if (cloned) {
+			await onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
+		} else {
+			bindMediaResourceToNode(nodeId, 'image', outputUrl, fileName, {
+				sourcePath: outputPath || undefined,
+				projectRelativePath: String(persisted?.projectRelativePath || '').trim() || undefined
+			})
+			autoSizeMediaNode(nodeId, outputUrl, 'image')
+		}
+
+		// 修复根因 C：资源绑定后显式同步引擎
+		patchBlueprintNodeData(nodeId)
+	}
+
+	return validNodes.length > 0
 }
 
 const mediaReadyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
