@@ -129,9 +129,7 @@ type LocalWorkflowSaveResponse =
 	| { ok: true; workflow: LocalComfyWorkflow }
 	| { ok: false; error: string }
 
-type LocalWorkflowDeleteResponse =
-	| { ok: true; id: string }
-	| { ok: false; error: string }
+type LocalWorkflowDeleteResponse = { ok: true; id: string } | { ok: false; error: string }
 
 type WorkflowGetResponse =
 	| {

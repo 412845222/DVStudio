@@ -6,8 +6,7 @@ import { describe, it, expect } from 'vitest'
  * 不兼容：in-foo、out、in0 (无短横线)
  */
 describe('FX5 - COMFY_INPUT_ANCHOR_PATTERN RegExp Compatibility', () => {
-	const COMFY_INPUT_ANCHOR_PATTERN =
-		/^in(-(text|image|video|audio|model3d|resource|[0-9]+))?$/
+	const COMFY_INPUT_ANCHOR_PATTERN = /^in(-(text|image|video|audio|model3d|resource|[0-9]+))?$/
 
 	it('should match legacy single anchor "in"', () => {
 		expect(COMFY_INPUT_ANCHOR_PATTERN.test('in')).toBe(true)

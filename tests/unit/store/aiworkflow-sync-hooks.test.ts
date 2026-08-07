@@ -21,26 +21,50 @@ import type { WorkflowEdge, WorkflowNode } from '@/aiworkflow/types'
  */
 describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)', () => {
 	const COMFY_SNAPSHOT_DEFAULTS = () => ({
-		baseUrl: '', positivePrompt: '', negativePrompt: '', autoWireEnabled: true,
-		imageInputCount: 0, videoInputCount: 0, hasTextPromptInput: false,
-		historyChecked: false, hasHistory: false,
+		baseUrl: '',
+		positivePrompt: '',
+		negativePrompt: '',
+		autoWireEnabled: true,
+		imageInputCount: 0,
+		videoInputCount: 0,
+		hasTextPromptInput: false,
+		historyChecked: false,
+		hasHistory: false,
 		workflowPath: undefined,
 		historyInputMappings: {} as Record<string, string>,
 		historyOutputNodes: [] as any[]
 	})
 
 	const mkComfySnapshot = (id: string) => ({
-		id, type: 'comfyui', title: 'ComfyUI Node',
-		worldX: 0, worldY: 0, width: 280, height: 220,
-		inputs: [{ id: 'in', label: '输入', mediaType: 'generic', acceptedMediaTypes: ['text', 'image', 'video', 'model3d'], multiInput: true }],
+		id,
+		type: 'comfyui',
+		title: 'ComfyUI Node',
+		worldX: 0,
+		worldY: 0,
+		width: 280,
+		height: 220,
+		inputs: [
+			{
+				id: 'in',
+				label: '输入',
+				mediaType: 'generic',
+				acceptedMediaTypes: ['text', 'image', 'video', 'model3d'],
+				multiInput: true
+			}
+		],
 		outputs: [],
 		comfyuiSettings: COMFY_SNAPSHOT_DEFAULTS(),
 		createdAt: Date.now()
 	})
 
 	const mkImageSnapshot = (id: string) => ({
-		id, type: 'image', title: 'Image Node',
-		worldX: -300, worldY: 0, width: 280, height: 180,
+		id,
+		type: 'image',
+		title: 'Image Node',
+		worldX: -300,
+		worldY: 0,
+		width: 280,
+		height: 180,
 		inputs: [],
 		// 注意：singleIOAnchorsForNodeType('image') 规定 outputs 的 id 是 'out-image'（不是 'out'）
 		// 并且 addEdge mutation 内部 canLinkAnchors 也用这个 id
@@ -49,8 +73,13 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 	})
 
 	const mkTextSnapshot = (id: string) => ({
-		id, type: 'text', title: 'Text Node',
-		worldX: -300, worldY: 200, width: 280, height: 140,
+		id,
+		type: 'text',
+		title: 'Text Node',
+		worldX: -300,
+		worldY: 200,
+		width: 280,
+		height: 140,
 		inputs: [],
 		// singleIOAnchorsForNodeType('text') 规定 outputs 的 id 是 'out-0'
 		outputs: [{ id: 'out-0', label: '文本输出', mediaType: 'text' }],
@@ -59,8 +88,13 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 	})
 
 	const mkVideoSnapshot = (id: string) => ({
-		id, type: 'video', title: 'Video Node',
-		worldX: -300, worldY: -200, width: 280, height: 200,
+		id,
+		type: 'video',
+		title: 'Video Node',
+		worldX: -300,
+		worldY: -200,
+		width: 280,
+		height: 200,
 		inputs: [],
 		// singleIOAnchorsForNodeType('video') 规定 outputs 的 id 是 'out-video'
 		outputs: [{ id: 'out-video', label: '视频输出', mediaType: 'video' }],
@@ -76,7 +110,9 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 		})
 		const cleanState = createDefaultAIWorkflowState()
 		const st = AIWorkflowStore.state as any
-		for (const k of Object.keys(cleanState) as (keyof ReturnType<typeof createDefaultAIWorkflowState>)[]) {
+		for (const k of Object.keys(cleanState) as (keyof ReturnType<
+			typeof createDefaultAIWorkflowState
+		>)[]) {
 			st[k] = (cleanState as any)[k]
 		}
 	}
@@ -93,10 +129,13 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 		for (const s of nodeSpecs) nodesById[s.id] = s.mk(s.id)
 		const nodeOrder = nodeSpecs.map((s) => s.id)
 		const snap = {
-			nodesById, nodeOrder,
-			edgesById: {}, edgeOrder: [],
+			nodesById,
+			nodeOrder,
+			edgesById: {},
+			edgeOrder: [],
 			viewport: { zoom: 1, panX: 0, panY: 0 },
-			resourcesById: {}, resourceOrder: []
+			resourcesById: {},
+			resourceOrder: []
 		}
 		AIWorkflowStore.commit('hydrateDraft', { snapshot: snap })
 		// 第二步：通过 addEdge mutation 加边（经过 canLinkAnchors 校验保证合法）
@@ -106,7 +145,12 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 			const fromAnchor = e.from[1]
 			const toId = e.to[0]
 			const toAnchor = e.to[1]
-			AIWorkflowStore.commit('addEdge', { fromNodeId: fromId, fromAnchorId: fromAnchor, toNodeId: toId, toAnchorId: toAnchor })
+			AIWorkflowStore.commit('addEdge', {
+				fromNodeId: fromId,
+				fromAnchorId: fromAnchor,
+				toNodeId: toId,
+				toAnchorId: toAnchor
+			})
 			// 查最后加入的边（因为 addEdge 内部生成 id 或用 edgeOrder 最后一个）
 			const lastId = AIWorkflowStore.state.edgeOrder[AIWorkflowStore.state.edgeOrder.length - 1]
 			addedIds.push(lastId)
@@ -135,7 +179,10 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 			store.commit('hydrateDraft', { snapshot: savedSnapshot })
 			const mockFn = vi.fn()
 			setEngineSyncHooks({ syncComfyUISettings: mockFn })
-			store.commit('setNodeComfyUISettings', { nodeId: 'c1', comfyuiSettings: { positivePrompt: 'new prompt' } })
+			store.commit('setNodeComfyUISettings', {
+				nodeId: 'c1',
+				comfyuiSettings: { positivePrompt: 'new prompt' }
+			})
 			await new Promise((r) => setTimeout(r, 10))
 			expect(mockFn).toHaveBeenCalledWith('c1')
 		})
@@ -165,8 +212,10 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 			expect(mockAdd).toHaveBeenCalledTimes(1)
 			const edgeArg = mockAdd.mock.calls[0][0] as WorkflowEdge
 			expect(edgeArg).toMatchObject({
-				fromNodeId: 'from-1', fromAnchorId: 'out-image',
-				toNodeId: 'to-1', toAnchorId: 'in'
+				fromNodeId: 'from-1',
+				fromAnchorId: 'out-image',
+				toNodeId: 'to-1',
+				toAnchorId: 'in'
 			})
 		})
 
@@ -177,10 +226,9 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 				{ id: 'from-x', mk: mkImageSnapshot },
 				{ id: 'to-x', mk: mkComfySnapshot }
 			]
-			const { savedSnapshot, edgeIds } = buildSaveSnapshotWithEdges(
-				nodes,
-				[{ from: ['from-x', 'out-image'], to: ['to-x', 'in'] }]
-			)
+			const { savedSnapshot, edgeIds } = buildSaveSnapshotWithEdges(nodes, [
+				{ from: ['from-x', 'out-image'], to: ['to-x', 'in'] }
+			])
 			const edgeId = edgeIds[0]
 			expect(edgeId).toBeDefined()
 			// 用快照重置 store，因为 buildSaveSnapshotWithEdges 已经建了边
@@ -202,10 +250,9 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 				{ id: 'img-a', mk: mkImageSnapshot },
 				{ id: 'comfy-a', mk: mkComfySnapshot }
 			]
-			const { savedSnapshot, edgeIds } = buildSaveSnapshotWithEdges(
-				nodes,
-				[{ from: ['img-a', 'out-image'], to: ['comfy-a', 'in'] }]
-			)
+			const { savedSnapshot, edgeIds } = buildSaveSnapshotWithEdges(nodes, [
+				{ from: ['img-a', 'out-image'], to: ['comfy-a', 'in'] }
+			])
 			const singleEdgeId = edgeIds[0]
 			expect(singleEdgeId).toBeDefined()
 			// 模拟 Refresh → 清空 state
@@ -222,15 +269,15 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 		it('multi-modal edges (text, image, video → comfyui) all survive Save→Refresh→Reload cycle', () => {
 			const store = AIWorkflowStore
 			const nodes = [
-				{ id: 'img-multi',  mk: mkImageSnapshot },
-				{ id: 'txt-multi',  mk: mkTextSnapshot },
-				{ id: 'vid-multi',  mk: mkVideoSnapshot },
+				{ id: 'img-multi', mk: mkImageSnapshot },
+				{ id: 'txt-multi', mk: mkTextSnapshot },
+				{ id: 'vid-multi', mk: mkVideoSnapshot },
 				{ id: 'comfy-multi', mk: mkComfySnapshot }
 			]
 			const edgeSpecs = [
-				{ from: ['img-multi',  'out-image'], to: ['comfy-multi', 'in'] },
-				{ from: ['txt-multi',  'out-0'],    to: ['comfy-multi', 'in'] },
-				{ from: ['vid-multi',  'out-video'], to: ['comfy-multi', 'in'] }
+				{ from: ['img-multi', 'out-image'], to: ['comfy-multi', 'in'] },
+				{ from: ['txt-multi', 'out-0'], to: ['comfy-multi', 'in'] },
+				{ from: ['vid-multi', 'out-video'], to: ['comfy-multi', 'in'] }
 			]
 			const { savedSnapshot, edgeIds } = buildSaveSnapshotWithEdges(nodes, edgeSpecs)
 			expect(edgeIds).toHaveLength(3)

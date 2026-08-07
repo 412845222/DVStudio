@@ -81,19 +81,19 @@
 						@upload-scene-layout-model-file="onBusinessUploadSceneLayoutModelFile"
 						@update-model-bindings="onBusinessUpdateModelBindings"
 						@export-unreal-scene="onBusinessExportUnrealScene"
-					@export-unreal-lighting="onBusinessExportUnrealLighting"
-					@disconnect-unreal="onBusinessDisconnectUnreal"
-					@set-asset-root-path="onBusinessSetAssetRootPath"
-					@update-poster="onBusinessUpdatePoster"
-					@connect-comfyui="onBusinessConnectComfyUI"
-					@select-workflow="onBusinessSelectWorkflow"
-					@run-comfyui="onBusinessRunComfyUI"
-					@cancel-comfyui="onBusinessCancelComfyUI"
-					@refresh-history-check="onBusinessRefreshHistoryCheck"
-					@clear-history-cache="onBusinessClearHistoryCache"
-					@update-comfyui-settings="onBusinessUpdateComfyUISettings"
-					@manage-local-workflows="onBusinessManageLocalWorkflows"
-				/>
+						@export-unreal-lighting="onBusinessExportUnrealLighting"
+						@disconnect-unreal="onBusinessDisconnectUnreal"
+						@set-asset-root-path="onBusinessSetAssetRootPath"
+						@update-poster="onBusinessUpdatePoster"
+						@connect-comfyui="onBusinessConnectComfyUI"
+						@select-workflow="onBusinessSelectWorkflow"
+						@run-comfyui="onBusinessRunComfyUI"
+						@cancel-comfyui="onBusinessCancelComfyUI"
+						@refresh-history-check="onBusinessRefreshHistoryCheck"
+						@clear-history-cache="onBusinessClearHistoryCache"
+						@update-comfyui-settings="onBusinessUpdateComfyUISettings"
+						@manage-local-workflows="onBusinessManageLocalWorkflows"
+					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
 		</div>
@@ -238,10 +238,7 @@ const emit = defineEmits<{
 	(e: 'node-cancel-comfyui', nodeId: string): void
 	(e: 'node-refresh-history-check', nodeId: string): void
 	(e: 'node-clear-history-cache', nodeId: string): void
-	(
-		e: 'node-update-comfyui-settings',
-		payload: { nodeId: string; patch: Record<string, any> }
-	): void
+	(e: 'node-update-comfyui-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'node-manage-local-workflows', nodeId: string): void
 }>()
 
@@ -665,10 +662,7 @@ function onBusinessClearHistoryCache(nodeId: string) {
 	emit('node-clear-history-cache', nodeId)
 }
 
-function onBusinessUpdateComfyUISettings(payload: {
-	nodeId: string
-	patch: Record<string, any>
-}) {
+function onBusinessUpdateComfyUISettings(payload: { nodeId: string; patch: Record<string, any> }) {
 	emit('node-update-comfyui-settings', payload)
 }
 

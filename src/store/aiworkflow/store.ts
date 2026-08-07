@@ -2245,13 +2245,19 @@ const normalizeComfyHistoryInputMappings = (
 		}
 	}
 	const imageInputs = isArray(im.imageInputs)
-		? im.imageInputs.map(mapInputEntry).filter(Boolean) as NonNullable<NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['imageInputs']>
+		? (im.imageInputs.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['imageInputs']
+			>)
 		: []
 	const videoInputs = isArray(im.videoInputs)
-		? im.videoInputs.map(mapInputEntry).filter(Boolean) as NonNullable<NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['videoInputs']>
+		? (im.videoInputs.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['videoInputs']
+			>)
 		: []
 	const seedNodes = isArray(im.seedNodes)
-		? im.seedNodes.map(mapInputEntry).filter(Boolean) as NonNullable<NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['seedNodes']>
+		? (im.seedNodes.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['seedNodes']
+			>)
 		: []
 	const rawTextNodes = isRecord(im.textNodes) ? im.textNodes : undefined
 	const mapTextNode = (x: unknown) => {
@@ -2267,17 +2273,26 @@ const normalizeComfyHistoryInputMappings = (
 	const textNodes = rawTextNodes
 		? {
 				positive: isArray(rawTextNodes.positive)
-					? rawTextNodes.positive.map(mapTextNode).filter(Boolean) as NonNullable<NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']>['positive']
+					? (rawTextNodes.positive.map(mapTextNode).filter(Boolean) as NonNullable<
+							NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']
+						>['positive'])
 					: [],
 				negative: isArray(rawTextNodes.negative)
-					? rawTextNodes.negative.map(mapTextNode).filter(Boolean) as NonNullable<NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']>['negative']
+					? (rawTextNodes.negative.map(mapTextNode).filter(Boolean) as NonNullable<
+							NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']
+						>['negative'])
 					: []
 			}
 		: undefined
 	if (!imageInputs.length && !videoInputs.length && !seedNodes.length && !textNodes) {
 		return undefined
 	}
-	return { imageInputs, videoInputs, textNodes: textNodes ?? { positive: [], negative: [] }, seedNodes }
+	return {
+		imageInputs,
+		videoInputs,
+		textNodes: textNodes ?? { positive: [], negative: [] },
+		seedNodes
+	}
 }
 
 const normalizeComfyHistoryOutputNodes = (
@@ -2288,8 +2303,7 @@ const normalizeComfyHistoryOutputNodes = (
 	for (const o of raw) {
 		if (!isRecord(o)) continue
 		const mk = o.mediaKind
-		const mediaKind =
-			mk === 'image' || mk === 'video' || mk === 'model3d' ? mk : ('image' as const)
+		const mediaKind = mk === 'image' || mk === 'video' || mk === 'model3d' ? mk : ('image' as const)
 		result.push({
 			nodeId: String(o.nodeId ?? ''),
 			classType: String(o.classType ?? ''),
@@ -2397,12 +2411,8 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 		hasHistory: isBoolean(raw.hasHistory) ? raw.hasHistory : undefined,
 		historyChecked: isBoolean(raw.historyChecked) ? raw.historyChecked : undefined,
 		historyError: isString(raw.historyError) ? raw.historyError : undefined,
-		historyGuideMessage: isString(raw.historyGuideMessage)
-			? raw.historyGuideMessage
-			: undefined,
-		historyGuideBaseUrl: isString(raw.historyGuideBaseUrl)
-			? raw.historyGuideBaseUrl
-			: undefined,
+		historyGuideMessage: isString(raw.historyGuideMessage) ? raw.historyGuideMessage : undefined,
+		historyGuideBaseUrl: isString(raw.historyGuideBaseUrl) ? raw.historyGuideBaseUrl : undefined,
 		historyPromptId: isString(raw.historyPromptId) ? raw.historyPromptId : undefined,
 		historyTimestamp: Number.isFinite(Number(raw.historyTimestamp))
 			? Number(raw.historyTimestamp)
@@ -2419,9 +2429,7 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 		videoInputCount: Number.isFinite(Number(raw.videoInputCount))
 			? Number(raw.videoInputCount)
 			: undefined,
-		hasTextPromptInput: isBoolean(raw.hasTextPromptInput)
-			? raw.hasTextPromptInput
-			: undefined,
+		hasTextPromptInput: isBoolean(raw.hasTextPromptInput) ? raw.hasTextPromptInput : undefined,
 		historyNodeCount: Number.isFinite(Number(raw.historyNodeCount))
 			? Number(raw.historyNodeCount)
 			: undefined,
@@ -2923,72 +2931,82 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					syncSceneDecomposeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
-			if (nextNodesById[nodeId].type === 'comfyui') {
-				const comfyNode = nextNodesById[nodeId]
-				const hasInAnchor =
-					Array.isArray(comfyNode.inputs) &&
-					comfyNode.inputs.some((a) => a.id === COMFY_INPUT_ANCHOR_ID)
-				if (!hasInAnchor) {
-					comfyNode.inputs = [...comfyInputAnchors()]
-				}
-				// F2: PROTECT(comfyui) — 防止 Ctrl+S 时 Engine 旧快照覆盖 Store 中的用户输入
-				// 对照 scene-layout 的 PROTECT 模式，保留 Store 中已更新的业务数据
-				const prevComfySettings = (prevNode as any)?.comfyuiSettings
-				const incomingComfySettings = comfyNode.comfyuiSettings as any
-				if (prevComfySettings && typeof prevComfySettings === 'object') {
-					const shouldProtectWorkflowPath =
-						Boolean(prevComfySettings.workflowPath) && !Boolean(incomingComfySettings?.workflowPath)
-					const shouldProtectPrompts =
-						(Boolean(prevComfySettings.positivePrompt) &&
-							!Boolean(incomingComfySettings?.positivePrompt)) ||
-						(Boolean(prevComfySettings.negativePrompt) &&
-							!Boolean(incomingComfySettings?.negativePrompt))
-					const shouldProtectHistory = prevComfySettings.historyChecked === true &&
-						incomingComfySettings?.historyChecked !== true
-					const shouldProtectInputCounts =
-						(typeof prevComfySettings.imageInputCount === 'number' &&
-							prevComfySettings.imageInputCount > 0 &&
-							!incomingComfySettings?.imageInputCount) ||
-						(typeof prevComfySettings.videoInputCount === 'number' &&
-							prevComfySettings.videoInputCount > 0 &&
-							!incomingComfySettings?.videoInputCount)
-					if (
-						shouldProtectWorkflowPath ||
-						shouldProtectPrompts ||
-						shouldProtectHistory ||
-						shouldProtectInputCounts
-					) {
-						comfyNode.comfyuiSettings = {
-							...(incomingComfySettings ?? {}),
-							...prevComfySettings,
-							workflowPath: prevComfySettings.workflowPath ?? incomingComfySettings?.workflowPath,
-							positivePrompt: prevComfySettings.positivePrompt ?? incomingComfySettings?.positivePrompt,
-							negativePrompt: prevComfySettings.negativePrompt ?? incomingComfySettings?.negativePrompt,
-							historyChecked: prevComfySettings.historyChecked ?? incomingComfySettings?.historyChecked,
-							hasHistory: prevComfySettings.hasHistory ?? incomingComfySettings?.hasHistory,
-							historyPromptId: prevComfySettings.historyPromptId ?? incomingComfySettings?.historyPromptId,
-							historyTimestamp: prevComfySettings.historyTimestamp ?? incomingComfySettings?.historyTimestamp,
-							imageInputCount: prevComfySettings.imageInputCount ?? incomingComfySettings?.imageInputCount,
-							videoInputCount: prevComfySettings.videoInputCount ?? incomingComfySettings?.videoInputCount,
-							hasTextPromptInput: prevComfySettings.hasTextPromptInput ?? incomingComfySettings?.hasTextPromptInput,
-							historyInputMappings: prevComfySettings.historyInputMappings ?? incomingComfySettings?.historyInputMappings,
-							historyOutputNodes: prevComfySettings.historyOutputNodes ?? incomingComfySettings?.historyOutputNodes
-						} as any
-						console.log(
-							'[DraftFlow#hydrateDraft] PROTECT(comfyui): keeping Store settings',
-							{
+				if (nextNodesById[nodeId].type === 'comfyui') {
+					const comfyNode = nextNodesById[nodeId]
+					const hasInAnchor =
+						Array.isArray(comfyNode.inputs) &&
+						comfyNode.inputs.some((a) => a.id === COMFY_INPUT_ANCHOR_ID)
+					if (!hasInAnchor) {
+						comfyNode.inputs = [...comfyInputAnchors()]
+					}
+					// F2: PROTECT(comfyui) — 防止 Ctrl+S 时 Engine 旧快照覆盖 Store 中的用户输入
+					// 对照 scene-layout 的 PROTECT 模式，保留 Store 中已更新的业务数据
+					const prevComfySettings = (prevNode as any)?.comfyuiSettings
+					const incomingComfySettings = comfyNode.comfyuiSettings as any
+					if (prevComfySettings && typeof prevComfySettings === 'object') {
+						const shouldProtectWorkflowPath =
+							Boolean(prevComfySettings.workflowPath) &&
+							!Boolean(incomingComfySettings?.workflowPath)
+						const shouldProtectPrompts =
+							(Boolean(prevComfySettings.positivePrompt) &&
+								!Boolean(incomingComfySettings?.positivePrompt)) ||
+							(Boolean(prevComfySettings.negativePrompt) &&
+								!Boolean(incomingComfySettings?.negativePrompt))
+						const shouldProtectHistory =
+							prevComfySettings.historyChecked === true &&
+							incomingComfySettings?.historyChecked !== true
+						const shouldProtectInputCounts =
+							(typeof prevComfySettings.imageInputCount === 'number' &&
+								prevComfySettings.imageInputCount > 0 &&
+								!incomingComfySettings?.imageInputCount) ||
+							(typeof prevComfySettings.videoInputCount === 'number' &&
+								prevComfySettings.videoInputCount > 0 &&
+								!incomingComfySettings?.videoInputCount)
+						if (
+							shouldProtectWorkflowPath ||
+							shouldProtectPrompts ||
+							shouldProtectHistory ||
+							shouldProtectInputCounts
+						) {
+							comfyNode.comfyuiSettings = {
+								...(incomingComfySettings ?? {}),
+								...prevComfySettings,
+								workflowPath: prevComfySettings.workflowPath ?? incomingComfySettings?.workflowPath,
+								positivePrompt:
+									prevComfySettings.positivePrompt ?? incomingComfySettings?.positivePrompt,
+								negativePrompt:
+									prevComfySettings.negativePrompt ?? incomingComfySettings?.negativePrompt,
+								historyChecked:
+									prevComfySettings.historyChecked ?? incomingComfySettings?.historyChecked,
+								hasHistory: prevComfySettings.hasHistory ?? incomingComfySettings?.hasHistory,
+								historyPromptId:
+									prevComfySettings.historyPromptId ?? incomingComfySettings?.historyPromptId,
+								historyTimestamp:
+									prevComfySettings.historyTimestamp ?? incomingComfySettings?.historyTimestamp,
+								imageInputCount:
+									prevComfySettings.imageInputCount ?? incomingComfySettings?.imageInputCount,
+								videoInputCount:
+									prevComfySettings.videoInputCount ?? incomingComfySettings?.videoInputCount,
+								hasTextPromptInput:
+									prevComfySettings.hasTextPromptInput ?? incomingComfySettings?.hasTextPromptInput,
+								historyInputMappings:
+									prevComfySettings.historyInputMappings ??
+									incomingComfySettings?.historyInputMappings,
+								historyOutputNodes:
+									prevComfySettings.historyOutputNodes ?? incomingComfySettings?.historyOutputNodes
+							} as any
+							console.log('[DraftFlow#hydrateDraft] PROTECT(comfyui): keeping Store settings', {
 								nodeId,
 								workflowPath: shouldProtectWorkflowPath,
 								prompts: shouldProtectPrompts,
 								history: shouldProtectHistory,
 								inputCounts: shouldProtectInputCounts
-							}
-						)
+							})
+						}
 					}
 				}
-			}
-			if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
-			if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
 			}
 
 			// 保留当前state中存在但snapshot中不存在的节点（新创建但尚未同步到引擎的节点）
@@ -3214,15 +3232,15 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						if (!nextResourceOrder.includes(nn.resourceId)) {
 							nextResourceOrder.push(nn.resourceId)
 						}
-						console.debug(
-							'[DraftFlow#hydrateDraft] F5: Migrated missing resource from Store',
-							{ resourceId: nn.resourceId, nodeId: nid }
-						)
+						console.debug('[DraftFlow#hydrateDraft] F5: Migrated missing resource from Store', {
+							resourceId: nn.resourceId,
+							nodeId: nid
+						})
 					} else {
-						console.warn(
-							'[DraftFlow#hydrateDraft] F5: Orphan resource reference',
-							{ nodeId: nid, resourceId: nn.resourceId }
-						)
+						console.warn('[DraftFlow#hydrateDraft] F5: Orphan resource reference', {
+							nodeId: nid,
+							resourceId: nn.resourceId
+						})
 					}
 				}
 			}
@@ -4000,7 +4018,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (_syncComfyUISettingsFn) {
 				const fn = _syncComfyUISettingsFn
 				queueMicrotask(() => {
-					try { fn(id) } catch (e) { console.error('[ComfyUI][Sync] post-commit sync failed:', e) }
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[ComfyUI][Sync] post-commit sync failed:', e)
+					}
 				})
 			}
 		},
@@ -4713,7 +4735,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (_syncNodeResourceFn) {
 				const fn = _syncNodeResourceFn
 				queueMicrotask(() => {
-					try { fn(id) } catch (e) { console.error('[NodeResource][Sync] post-commit sync failed:', e) }
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[NodeResource][Sync] post-commit sync failed:', e)
+					}
 				})
 			}
 		},
@@ -5114,7 +5140,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const fn = _syncAddEdgeFn
 				const addedEdge = edge
 				queueMicrotask(() => {
-					try { fn(addedEdge) } catch (e) { console.error('[EdgeSync][add] failed:', e) }
+					try {
+						fn(addedEdge)
+					} catch (e) {
+						console.error('[EdgeSync][add] failed:', e)
+					}
 				})
 			}
 		},
@@ -5128,7 +5158,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (_syncRemoveEdgeFn) {
 				const fn = _syncRemoveEdgeFn
 				queueMicrotask(() => {
-					try { fn(id) } catch (e) { console.error('[EdgeSync][remove] failed:', e) }
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[EdgeSync][remove] failed:', e)
+					}
 				})
 			}
 		},

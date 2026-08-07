@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-	canLinkAnchors,
-	anchorKind
-} from '../../../../src/aiworkflow/domain/link/anchorKinds'
+import { canLinkAnchors, anchorKind } from '../../../../src/aiworkflow/domain/link/anchorKinds'
 import type { WorkflowNode } from '../../../../src/aiworkflow/types'
 
 /**

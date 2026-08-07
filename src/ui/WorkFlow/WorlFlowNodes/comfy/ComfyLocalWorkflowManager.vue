@@ -113,7 +113,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from '../../../../i18n'
-import type { ComfyUIBridgeService, LocalComfyWorkflow } from '../../../../network/ComfyUIBridgeService'
+import type {
+	ComfyUIBridgeService,
+	LocalComfyWorkflow
+} from '../../../../network/ComfyUIBridgeService'
 
 const { t } = useI18n()
 

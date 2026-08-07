@@ -2,7 +2,10 @@ import { extractCheckpointsFromObjectInfo } from '../../../../aiworkflow/domain/
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import type { ComfyObjectInfo } from '../../../../aiworkflow/domain/comfyui/objectInfoTypes'
-import type { LocalComfyWorkflow, ResolveHistoryResponse } from '../../../../network/ComfyUIBridgeService'
+import type {
+	LocalComfyWorkflow,
+	ResolveHistoryResponse
+} from '../../../../network/ComfyUIBridgeService'
 
 type ComfyWorkflowSource = 'local' | 'userdata' | 'history'
 
@@ -63,78 +66,77 @@ export const useAIWorkflowComfyConnection = (payload: {
 			workflowPath: string
 		) => Promise<{ ok: boolean; error?: string }>
 		listLocalWorkflows: () => Promise<
-			| { ok: true; items: LocalComfyWorkflow[] }
-			| { ok: false; error: string }
+			{ ok: true; items: LocalComfyWorkflow[] } | { ok: false; error: string }
 		>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	onWorkflowChanged?: (nodeId: string, workflowPath: string) => void
 }) => {
-// 将本地模板列表映射为下拉项
-const mapLocalWorkflowsToListItems = (
-	items: LocalComfyWorkflow[]
-): ComfyWorkflowListItemLite[] => {
-	return (items || []).map((w) => ({
-		path: `local://${w.id}`,
-		name: w.name || '未命名工作流',
-		source: 'local',
-		localId: w.id,
-		updatedAt: Number(w.updatedAt) || 0
-	}))
-}
-
-// 从 store 节点状态读取已缓存的本地模板列表项
-const readCachedLocalWorkflowItems = (nodeId: string): ComfyWorkflowListItemLite[] => {
-	const nodeRecord = payload.store.state.nodesById[nodeId]
-	const node = nodeRecord as
-		| { comfyuiSettings?: { localWorkflows?: LocalComfyWorkflow[] } }
-		| undefined
-	const localItems = node?.comfyuiSettings?.localWorkflows
-	return localItems ? mapLocalWorkflowsToListItems(localItems) : []
-}
-
-// 节点是否已存在非空的 workflows 列表（含 userdata/history/任意远程项）
-// 用于失败路径下判断是否需要"用本地模板兜底覆盖"，避免把已成功获取的远程列表清空
-const hasExistingWorkflows = (nodeId: string): boolean => {
-	const nodeRecord = payload.store.state.nodesById[nodeId]
-	const node = nodeRecord as { comfyuiSettings?: { workflows?: unknown[] } } | undefined
-	const workflows = node?.comfyuiSettings?.workflows
-	return Array.isArray(workflows) && workflows.length > 0
-}
-
-// 失败兜底：仅在节点 workflows 列表原本为空时，才用本地模板列表填充；
-// 已有 userdata/history 等远程列表项时保留原值不动，只让上层 pushToast 提示错误
-const applyLocalWorkflowsFallbackIfEmpty = (nodeId: string) => {
-	if (hasExistingWorkflows(nodeId)) return
-	payload.store.commit('setNodeComfyUISettings', {
-		nodeId,
-		comfyuiSettings: { workflows: readCachedLocalWorkflowItems(nodeId) }
-	})
-}
-
-// 预加载本地模板：在 ping 前填充下拉框，确保离线可浏览
-const preloadLocalWorkflows = async (nodeId: string) => {
-	try {
-		const localWf = await payload.comfyService.listLocalWorkflows()
-		if (localWf.ok) {
-			const items = localWf.items || []
-			payload.store.commit('setNodeComfyUISettings', {
-				nodeId,
-				comfyuiSettings: { localWorkflows: items }
-			})
-			// 同步把合并列表（仅本地）写入 workflows，避免下拉框为空
-			payload.store.commit('setNodeComfyUISettings', {
-				nodeId,
-				comfyuiSettings: { workflows: mapLocalWorkflowsToListItems(items) }
-			})
-		}
-	} catch (err: unknown) {
-		payload.pushToast(
-			t('nodes.comfyui.listLocalWorkflowsFailed', { error: getErrorMessage(err) }),
-			'warn'
-		)
+	// 将本地模板列表映射为下拉项
+	const mapLocalWorkflowsToListItems = (
+		items: LocalComfyWorkflow[]
+	): ComfyWorkflowListItemLite[] => {
+		return (items || []).map((w) => ({
+			path: `local://${w.id}`,
+			name: w.name || '未命名工作流',
+			source: 'local',
+			localId: w.id,
+			updatedAt: Number(w.updatedAt) || 0
+		}))
 	}
-}
+
+	// 从 store 节点状态读取已缓存的本地模板列表项
+	const readCachedLocalWorkflowItems = (nodeId: string): ComfyWorkflowListItemLite[] => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as
+			| { comfyuiSettings?: { localWorkflows?: LocalComfyWorkflow[] } }
+			| undefined
+		const localItems = node?.comfyuiSettings?.localWorkflows
+		return localItems ? mapLocalWorkflowsToListItems(localItems) : []
+	}
+
+	// 节点是否已存在非空的 workflows 列表（含 userdata/history/任意远程项）
+	// 用于失败路径下判断是否需要"用本地模板兜底覆盖"，避免把已成功获取的远程列表清空
+	const hasExistingWorkflows = (nodeId: string): boolean => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as { comfyuiSettings?: { workflows?: unknown[] } } | undefined
+		const workflows = node?.comfyuiSettings?.workflows
+		return Array.isArray(workflows) && workflows.length > 0
+	}
+
+	// 失败兜底：仅在节点 workflows 列表原本为空时，才用本地模板列表填充；
+	// 已有 userdata/history 等远程列表项时保留原值不动，只让上层 pushToast 提示错误
+	const applyLocalWorkflowsFallbackIfEmpty = (nodeId: string) => {
+		if (hasExistingWorkflows(nodeId)) return
+		payload.store.commit('setNodeComfyUISettings', {
+			nodeId,
+			comfyuiSettings: { workflows: readCachedLocalWorkflowItems(nodeId) }
+		})
+	}
+
+	// 预加载本地模板：在 ping 前填充下拉框，确保离线可浏览
+	const preloadLocalWorkflows = async (nodeId: string) => {
+		try {
+			const localWf = await payload.comfyService.listLocalWorkflows()
+			if (localWf.ok) {
+				const items = localWf.items || []
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: { localWorkflows: items }
+				})
+				// 同步把合并列表（仅本地）写入 workflows，避免下拉框为空
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: { workflows: mapLocalWorkflowsToListItems(items) }
+				})
+			}
+		} catch (err: unknown) {
+			payload.pushToast(
+				t('nodes.comfyui.listLocalWorkflowsFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
+		}
+	}
 	const onComfyUISettingsUpdate = (
 		nodeId: string,
 		input: {
@@ -222,18 +224,18 @@ const preloadLocalWorkflows = async (nodeId: string) => {
 							comfyuiSettings: { workflows: merged }
 						})
 					} else if (wf.error) {
-					payload.pushToast(t('nodes.comfyui.listWorkflowsFailed', { error: wf.error }), 'warn')
-					// 失败兜底：仅当 workflows 原本为空时才用本地模板填充，
-					// 已有 userdata/history 列表时保留不动，避免把远程工作流清空
+						payload.pushToast(t('nodes.comfyui.listWorkflowsFailed', { error: wf.error }), 'warn')
+						// 失败兜底：仅当 workflows 原本为空时才用本地模板填充，
+						// 已有 userdata/history 列表时保留不动，避免把远程工作流清空
+						applyLocalWorkflowsFallbackIfEmpty(nodeId)
+					}
+				} catch (err: unknown) {
+					payload.pushToast(
+						t('nodes.comfyui.listWorkflowsFailed', { error: getErrorMessage(err) }),
+						'warn'
+					)
 					applyLocalWorkflowsFallbackIfEmpty(nodeId)
 				}
-			} catch (err: unknown) {
-				payload.pushToast(
-					t('nodes.comfyui.listWorkflowsFailed', { error: getErrorMessage(err) }),
-					'warn'
-				)
-				applyLocalWorkflowsFallbackIfEmpty(nodeId)
-			}
 			} else {
 				payload.store.commit('setNodeComfyUISettings', {
 					nodeId,

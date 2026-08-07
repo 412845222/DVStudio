@@ -475,19 +475,19 @@ watch(
 			"
 			@node-update-model-bindings="(p: any) => emit('node-update-model-bindings', p)"
 			@node-export-unreal-scene="(id: string) => emit('node-export-unreal-scene', id)"
-		@node-export-unreal-lighting="(id: string) => emit('node-export-unreal-lighting', id)"
-		@node-disconnect-unreal="(id: string) => emit('node-disconnect-unreal', id)"
-		@node-set-asset-root-path="(p: any) => emit('node-set-asset-root-path', p)"
-		@node-update-poster="(p: any) => emit('node-update-poster', p)"
-		@node-connect-comfyui="(p: any) => emit('node-connect-comfyui', p)"
-		@node-select-workflow="(p: any) => emit('node-select-workflow', p)"
-		@node-run-comfyui="(id: string) => emit('node-run-comfyui', id)"
-		@node-cancel-comfyui="(id: string) => emit('node-cancel-comfyui', id)"
-		@node-refresh-history-check="(id: string) => emit('node-refresh-history-check', id)"
-		@node-clear-history-cache="(id: string) => emit('node-clear-history-cache', id)"
-		@node-update-comfyui-settings="(p: any) => emit('node-update-comfyui-settings', p)"
-		@node-manage-local-workflows="(id: string) => emit('node-manage-local-workflows', id)"
-	/>
+			@node-export-unreal-lighting="(id: string) => emit('node-export-unreal-lighting', id)"
+			@node-disconnect-unreal="(id: string) => emit('node-disconnect-unreal', id)"
+			@node-set-asset-root-path="(p: any) => emit('node-set-asset-root-path', p)"
+			@node-update-poster="(p: any) => emit('node-update-poster', p)"
+			@node-connect-comfyui="(p: any) => emit('node-connect-comfyui', p)"
+			@node-select-workflow="(p: any) => emit('node-select-workflow', p)"
+			@node-run-comfyui="(id: string) => emit('node-run-comfyui', id)"
+			@node-cancel-comfyui="(id: string) => emit('node-cancel-comfyui', id)"
+			@node-refresh-history-check="(id: string) => emit('node-refresh-history-check', id)"
+			@node-clear-history-cache="(id: string) => emit('node-clear-history-cache', id)"
+			@node-update-comfyui-settings="(p: any) => emit('node-update-comfyui-settings', p)"
+			@node-manage-local-workflows="(id: string) => emit('node-manage-local-workflows', id)"
+		/>
 		<div class="bp-overlay-layer">
 			<slot />
 		</div>

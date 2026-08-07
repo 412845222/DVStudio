@@ -109,16 +109,18 @@
 				@node-export-unreal-lighting="onNodeExportUnrealLighting"
 				@node-disconnect-unreal="onNodeDisconnect"
 				@node-set-asset-root-path="(p: any) => onNodeSetAssetRootPath(p.nodeId, p.path)"
-			@node-update-poster="onNodeUpdatePoster"
-			@node-connect-comfyui="(p: any) => onComfyUIConnect(p.nodeId, { baseUrl: p.baseUrl })"
-			@node-select-workflow="(p: any) => onComfyUISelectWorkflow(p.nodeId, { workflowPath: p.workflowPath })"
-			@node-run-comfyui="(id: string) => onComfyUIRun(id)"
-			@node-cancel-comfyui="(id: string) => onComfyUICancel(id)"
-			@node-refresh-history-check="(id: string) => onRefreshHistoryCheck(id)"
-			@node-clear-history-cache="(id: string) => onClearHistoryCache(id)"
-			@node-update-comfyui-settings="(p: any) => onComfyUISettingsUpdate(p.nodeId, p.patch)"
-			@node-manage-local-workflows="(id: string) => openComfyLocalWorkflowManager(id)"
-		>
+				@node-update-poster="onNodeUpdatePoster"
+				@node-connect-comfyui="(p: any) => onComfyUIConnect(p.nodeId, { baseUrl: p.baseUrl })"
+				@node-select-workflow="
+					(p: any) => onComfyUISelectWorkflow(p.nodeId, { workflowPath: p.workflowPath })
+				"
+				@node-run-comfyui="(id: string) => onComfyUIRun(id)"
+				@node-cancel-comfyui="(id: string) => onComfyUICancel(id)"
+				@node-refresh-history-check="(id: string) => onRefreshHistoryCheck(id)"
+				@node-clear-history-cache="(id: string) => onClearHistoryCache(id)"
+				@node-update-comfyui-settings="(p: any) => onComfyUISettingsUpdate(p.nodeId, p.patch)"
+				@node-manage-local-workflows="(id: string) => openComfyLocalWorkflowManager(id)"
+			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
 					:visible="contextMenu.open"
@@ -1934,7 +1936,7 @@ watchEffect(() => {
 		},
 		syncRemoveEdge: (edgeId: string) => {
 			if (typeof (editor as any).removeEdge === 'function') {
-				(editor as any).removeEdge(edgeId)
+				;(editor as any).removeEdge(edgeId)
 			}
 		}
 	})

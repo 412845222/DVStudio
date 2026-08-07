@@ -375,17 +375,26 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	): Promise<File | null> => {
 		const url = String(resource.url ?? '').trim()
 		if (!url) {
-			console.warn('[ComfyUI][Resource] resource.url is empty', { resourceId: (resource as any).id })
+			console.warn('[ComfyUI][Resource] resource.url is empty', {
+				resourceId: (resource as any).id
+			})
 			return null
 		}
 		const fileName = String(resource.name ?? fallbackName) || fallbackName
 		// 根据扩展名推断 MIME type（兜底方案）
 		const ext = fileName.split('.').pop()?.toLowerCase()
 		const extToMime: Record<string, string> = {
-			png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-			gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
-			mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
-			txt: 'text/plain', json: 'application/json'
+			png: 'image/png',
+			jpg: 'image/jpeg',
+			jpeg: 'image/jpeg',
+			gif: 'image/gif',
+			webp: 'image/webp',
+			bmp: 'image/bmp',
+			mp4: 'video/mp4',
+			mov: 'video/quicktime',
+			webm: 'video/webm',
+			txt: 'text/plain',
+			json: 'application/json'
 		}
 		const fallbackMime = ext ? (extToMime[ext] ?? '') : ''
 		let lastError: unknown = null
@@ -397,7 +406,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				})
 				if (!resp.ok) {
 					console.warn(`[ComfyUI][Resource] fetch HTTP ${resp.status} (attempt ${attempt})`, {
-						url: url.slice(0, 120), resourceId: (resource as any).id
+						url: url.slice(0, 120),
+						resourceId: (resource as any).id
 					})
 					lastError = new Error(`HTTP ${resp.status}`)
 					if (attempt < 2) await new Promise((r) => setTimeout(r, 200))
@@ -406,11 +416,14 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				const blob = await resp.blob()
 				const mime = blob.type || fallbackMime
 				const finalBlob = mime && mime !== blob.type ? new Blob([blob], { type: mime }) : blob
-				return new File([finalBlob], fileName, { type: finalBlob.type || 'application/octet-stream' })
+				return new File([finalBlob], fileName, {
+					type: finalBlob.type || 'application/octet-stream'
+				})
 			} catch (err) {
 				lastError = err
 				console.warn(`[ComfyUI][Resource] fetch failed (attempt ${attempt})`, {
-					url: url.slice(0, 120), resourceId: (resource as any).id,
+					url: url.slice(0, 120),
+					resourceId: (resource as any).id,
 					error: err instanceof Error ? err.message : String(err),
 					isDwebProtocol: url.startsWith('dweb:')
 				})
@@ -418,7 +431,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			}
 		}
 		console.error('[ComfyUI][Resource] Unable to convert resource to File after retries', {
-			resourceId: (resource as any).id, resourceKind: resource.kind,
+			resourceId: (resource as any).id,
+			resourceKind: resource.kind,
 			url: url.slice(0, 120),
 			error: lastError instanceof Error ? lastError.message : String(lastError)
 		})
@@ -429,17 +443,27 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	const COMFY_INPUT_ANCHOR_PATTERN = /^in(-(text|image|video|audio|model3d|resource|[0-9]+))?$/
 
 	let lastCollectDiag: {
-		totalEdges: number; matchedEdges: number;
-		skippedMissingResourceId: number; skippedMissingResource: number;
-		skippedFileConversion: number; collectedImages: number; collectedVideos: number; collectedTexts: number
+		totalEdges: number
+		matchedEdges: number
+		skippedMissingResourceId: number
+		skippedMissingResource: number
+		skippedFileConversion: number
+		collectedImages: number
+		collectedVideos: number
+		collectedTexts: number
 	} | null = null
 
 	const collectComfyUIInputResources = async (nodeId: string): Promise<CollectedResources> => {
 		const result: CollectedResources = { images: [], videos: [], texts: [] }
 		const diag = {
-			totalEdges: 0, matchedEdges: 0,
-			skippedMissingResourceId: 0, skippedMissingResource: 0,
-			skippedFileConversion: 0, collectedImages: 0, collectedVideos: 0, collectedTexts: 0
+			totalEdges: 0,
+			matchedEdges: 0,
+			skippedMissingResourceId: 0,
+			skippedMissingResource: 0,
+			skippedFileConversion: 0,
+			collectedImages: 0,
+			collectedVideos: 0,
+			collectedTexts: 0
 		}
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
@@ -450,9 +474,9 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			.filter((e): e is ComfyEdge =>
 				Boolean(
 					e &&
-						e.toNodeId === nodeId &&
-						COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
-						e.fromNodeId
+					e.toNodeId === nodeId &&
+					COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
+					e.fromNodeId
 				)
 			)
 
@@ -474,14 +498,23 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			}
 
 			const rid = String(fromNode.resourceId ?? '').trim()
-			if (!rid) { diag.skippedMissingResourceId++; continue }
+			if (!rid) {
+				diag.skippedMissingResourceId++
+				continue
+			}
 			const resourceRecord = payload.store.state.resourcesById[rid]
 			const resource = resourceRecord as ComfyResource | undefined
-			if (!resource) { diag.skippedMissingResource++; continue }
+			if (!resource) {
+				diag.skippedMissingResource++
+				continue
+			}
 			const kind = String(resource.kind ?? '').toLowerCase()
 			const name = String(resource.name ?? `input_${i}`)
 			const file = await resourceToFile(resource, name)
-			if (!file) { diag.skippedFileConversion++; continue }
+			if (!file) {
+				diag.skippedFileConversion++
+				continue
+			}
 			if (fromType === 'image' || kind === 'image' || file.type.startsWith('image/')) {
 				result.images.push(file)
 				diag.collectedImages++
@@ -492,7 +525,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		}
 
 		console.debug('[ComfyUI][CollectResources] Diagnostics:', {
-			nodeId, ...diag,
+			nodeId,
+			...diag,
 			expected: {
 				images: (node.comfyuiSettings as any)?.imageInputCount,
 				videos: (node.comfyuiSettings as any)?.videoInputCount
@@ -509,9 +543,9 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			.filter((e): e is ComfyEdge =>
 				Boolean(
 					e &&
-						e.toNodeId === nodeId &&
-						COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
-						e.fromNodeId
+					e.toNodeId === nodeId &&
+					COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
+					e.fromNodeId
 				)
 			)
 

@@ -142,51 +142,51 @@
 				</div>
 
 				<div v-if="showWorkflowsSection" class="wf-comfy-workflows">
-				<div class="wf-comfy-workflows-header">
-					<div class="wf-comfy-label">{{ t('nodes.comfyui.availableWorkflows') }}</div>
-					<button
-						class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost wf-comfy-manage-btn"
-						type="button"
-						:title="t('nodes.comfyui.manageLocalWorkflows')"
-						@click.stop="onManageLocalWorkflows"
+					<div class="wf-comfy-workflows-header">
+						<div class="wf-comfy-label">{{ t('nodes.comfyui.availableWorkflows') }}</div>
+						<button
+							class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost wf-comfy-manage-btn"
+							type="button"
+							:title="t('nodes.comfyui.manageLocalWorkflows')"
+							@click.stop="onManageLocalWorkflows"
+						>
+							{{ t('nodes.comfyui.manageLocalWorkflows') }}
+						</button>
+					</div>
+					<div v-if="status !== 'connected' && hasLocalWorkflows" class="wf-comfy-offline-hint">
+						{{ t('nodes.comfyui.offlineLocalOnly') }}
+					</div>
+					<select
+						class="wf-comfy-select"
+						:value="workflowPath"
+						:disabled="!workflows.length"
+						@change="onWorkflowChange"
 					>
-						{{ t('nodes.comfyui.manageLocalWorkflows') }}
-					</button>
-				</div>
-				<div v-if="status !== 'connected' && hasLocalWorkflows" class="wf-comfy-offline-hint">
-					{{ t('nodes.comfyui.offlineLocalOnly') }}
-				</div>
-				<select
-					class="wf-comfy-select"
-					:value="workflowPath"
-					:disabled="!workflows.length"
-					@change="onWorkflowChange"
-				>
-					<option value="" disabled>
-						{{
-							workflows.length
-								? t('nodes.comfyui.selectWorkflow')
-								: t('nodes.comfyui.noWorkflowsFound')
-						}}
-					</option>
-					<optgroup
-						v-if="localWorkflowItems.length"
-						:label="t('nodes.comfyui.localTemplateGroup')"
-					>
-						<option v-for="wf in localWorkflowItems" :key="wf.path" :value="wf.path">
-							{{ wf.name || wf.path }}
+						<option value="" disabled>
+							{{
+								workflows.length
+									? t('nodes.comfyui.selectWorkflow')
+									: t('nodes.comfyui.noWorkflowsFound')
+							}}
 						</option>
-					</optgroup>
-					<optgroup
-						v-if="remoteWorkflowItems.length"
-						:label="t('nodes.comfyui.remoteTemplateGroup')"
-					>
-						<option v-for="wf in remoteWorkflowItems" :key="wf.path" :value="wf.path">
-							{{ wf.name || wf.path }}
-						</option>
-					</optgroup>
-				</select>
-			</div>
+						<optgroup
+							v-if="localWorkflowItems.length"
+							:label="t('nodes.comfyui.localTemplateGroup')"
+						>
+							<option v-for="wf in localWorkflowItems" :key="wf.path" :value="wf.path">
+								{{ wf.name || wf.path }}
+							</option>
+						</optgroup>
+						<optgroup
+							v-if="remoteWorkflowItems.length"
+							:label="t('nodes.comfyui.remoteTemplateGroup')"
+						>
+							<option v-for="wf in remoteWorkflowItems" :key="wf.path" :value="wf.path">
+								{{ wf.name || wf.path }}
+							</option>
+						</optgroup>
+					</select>
+				</div>
 
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-history">
 					<div v-if="!historyChecked" class="wf-comfy-history-status checking">
@@ -903,17 +903,11 @@ const message = computed(() => String(props.comfyuiSettings?.message ?? ''))
 const workflows = computed(() =>
 	Array.isArray(props.comfyuiSettings?.workflows) ? props.comfyuiSettings!.workflows! : []
 )
-const localWorkflowItems = computed(() =>
-	workflows.value.filter((w) => w.source === 'local')
-)
-const remoteWorkflowItems = computed(() =>
-	workflows.value.filter((w) => w.source !== 'local')
-)
+const localWorkflowItems = computed(() => workflows.value.filter((w) => w.source === 'local'))
+const remoteWorkflowItems = computed(() => workflows.value.filter((w) => w.source !== 'local'))
 const hasLocalWorkflows = computed(() => localWorkflowItems.value.length > 0)
 // 离线场景下也展示工作流区域（仅本地模板可浏览/选择）
-const showWorkflowsSection = computed(
-	() => status.value === 'connected' || hasLocalWorkflows.value
-)
+const showWorkflowsSection = computed(() => status.value === 'connected' || hasLocalWorkflows.value)
 const workflowPath = computed(() => String(props.comfyuiSettings?.workflowPath ?? ''))
 const positivePrompt = computed(() => String(props.comfyuiSettings?.positivePrompt ?? ''))
 const negativePrompt = computed(() => String(props.comfyuiSettings?.negativePrompt ?? ''))
