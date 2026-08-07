@@ -829,6 +829,7 @@ import {
 	useAIWorkflow404Fallback,
 	type PendingMissingAsset
 } from './assets/useAIWorkflow404Fallback'
+import { isAutoRecoverPersistEnabled } from './assets/useAIWorkflowResourceUrlClassifier'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -10248,6 +10249,22 @@ const {
 	},
 	onAfterCancel: (_payload) => {
 		// 当前暂不处理；未来可扩展日志或埋点
+	},
+	/* ============= O1：批量自动恢复后触发一次项目保存 ============= */
+	onRecoveredBatch: (batch) => {
+		if (!isAutoRecoverPersistEnabled() || !batch || batch.length === 0) return
+		try {
+			const name = String(currentProjectName.value || '').trim()
+			if (!name) return
+			// 尽力而为（fire-and-forget）的静默保存；失败吞掉不影响用户体验
+			void Promise.resolve().then(() =>
+				_saveProjectToBackendFn(name, { silent: true }).catch(() => {
+					/* silent fallback：下次用户 Ctrl+S 或自动保存会一并提交 */
+				})
+			)
+		} catch {
+			/* ignore */
+		}
 	}
 })
 

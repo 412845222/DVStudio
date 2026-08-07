@@ -1,5 +1,6 @@
 {
 	"aiworkflow.toast.resourceRecovered": "资源已自动恢复：{name}",
+	"aiworkflow.toast.resourceRecoveredBatch": "已自动恢复 {count} 个资源：{top} 等",
 	"aiworkflow.toast.projectRootRecovered": "项目根已重新注册，资源已自动恢复：{name}",
 	"aiworkflow.toast.resourceMissing": "资源缺失：{name}",
 	"aiworkflow.toast.referenceRemoved": "已移除失效资源引用：{name}（可撤销）",

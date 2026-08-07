@@ -16,7 +16,12 @@ import {
 	extractAssetIdFromUrl,
 	isStrictMissingSourceBindingEnabled,
 	isNodeSelectionDebounceEnabled,
-	isUnknownCleanupEnabled
+	isUnknownCleanupEnabled,
+	isAutoRecoverPersistEnabled,
+	isAutoRecoverNoopSuppressEnabled,
+	isResourceManagerThumbSkipGlobalEnabled,
+	isRecoverToastBatchEnabled,
+	isRecoveredPersistEnabled
 } from './useAIWorkflowResourceUrlClassifier'
 import {
 	loadPersistedIgnoreList,
@@ -24,6 +29,11 @@ import {
 	markUrlRemoved,
 	isUrlIgnoredBySnapshot
 } from './useAIWorkflowResourceIgnoreList'
+import {
+	loadPersistedRecoveredUrls,
+	markUrlRecovered,
+	isUrlRecovered
+} from './useAIWorkflowResourceRecoveredList'
 
 /**
  * 404 错误回退处理结果
@@ -162,6 +172,10 @@ export interface AIWorkflow404FallbackOptions {
 		undoAvailable: boolean
 		skippedDestructiveOps: boolean
 	}) => void
+	/** O4：批量自动恢复完成回调（一次批的聚合，替代多次 onRecovered，可用于批量持久化） */
+	onRecoveredBatch?: (
+		batch: Array<{ url: string; newUrl: string; assetName: string; newAsset?: unknown }>
+	) => void
 	/** 用户点击"暂不处理"完成后的回调（通常不需要特殊操作，留作扩展） */
 	onAfterCancel?: (payload: { pendingId: string; url: string; assetName: string }) => void
 	/** Toast 通知函数 */
@@ -177,6 +191,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		getStore,
 		findBindingSources,
 		onRecovered,
+		onRecoveredBatch,
 		onMissingAsset,
 		onAfterConfirmRemove,
 		onAfterCancel,
@@ -203,6 +218,51 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	 * 命中后直接 early return ignored（不再触发任何弹窗/诊断），避免同一 URL 在节点反复选中/切换时重复弹窗。
 	 */
 	const sessionResolvedUrls = new Set<string>()
+
+	/* ============== O4：Toast 批聚合 + onRecoveredBatch ============== */
+	const RECOVER_TOAST_BATCH_WINDOW_MS = 1500
+	const RECOVER_TOAST_MAX_INDIVIDUAL = 3
+	type RecoverBatchItem = { url: string; newUrl: string; assetName: string; newAsset?: unknown }
+	let recoverBatch: RecoverBatchItem[] = []
+	let recoverBatchTimer: number | null = null
+
+	const flushRecoverBatch = () => {
+		recoverBatchTimer = null
+		const items = recoverBatch
+		recoverBatch = []
+		if (items.length === 0) return
+
+		// O4：聚合 Toast
+		if (isRecoverToastBatchEnabled() && items.length > RECOVER_TOAST_MAX_INDIVIDUAL) {
+			const top = items
+				.slice(0, RECOVER_TOAST_MAX_INDIVIDUAL)
+				.map((i) => i.assetName)
+				.join('、')
+			notify(
+				t('aiworkflow.toast.resourceRecoveredBatch', { count: items.length, top }) as string,
+				'info'
+			)
+		} else {
+			for (const it of items) {
+				notify(t('aiworkflow.toast.resourceRecovered', { name: it.assetName }), 'info')
+			}
+		}
+
+		// O4：批量回调（供 AIWorkflowPage 做一次 saveProject）
+		if (typeof onRecoveredBatch === 'function') {
+			try {
+				onRecoveredBatch(items)
+			} catch (err) {
+				console.warn('[404-fallback] onRecoveredBatch hook error:', err)
+			}
+		}
+	}
+
+	const enqueueRecoverBatch = (item: RecoverBatchItem) => {
+		recoverBatch.push(item)
+		if (recoverBatchTimer !== null) window.clearTimeout(recoverBatchTimer)
+		recoverBatchTimer = window.setTimeout(flushRecoverBatch, RECOVER_TOAST_BATCH_WINDOW_MS)
+	}
 
 	/** O2.2：onMissingAsset 调用防抖（短时间内同一个 pending 不重复调 callback） */
 	let lastMissingAssetEmitAtByNormUrl = new Map<string, number>()
@@ -254,6 +314,18 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		}
 		if (autoRecoveredUrls.has(trimmed)) {
 			return { kind: 'ignored' as const, url: trimmed, reason: 'session:auto-recovered' }
+		}
+
+		/* ============== O5：跨会话 recovered 持久化 early return ==============
+		 * 即使项目保存失败 / 用户手动改回旧 URL，跨会话也不再重复弹恢复通知。
+		 * 与内存 autoRecoveredUrls 形成双保险。
+		 * ============== */
+		if (isRecoveredPersistEnabled()) {
+			const pid = getCurrentProjectId?.() ?? null
+			const snap = loadPersistedRecoveredUrls(pid, trimmed)
+			if (snap.size > 0 && isUrlRecovered(snap, trimmed)) {
+				return { kind: 'ignored' as const, url: trimmed, reason: 'persisted:recovered' }
+			}
 		}
 
 		/* ================= 整改方案 O1.2 + O2.3：URL 分类 + 忽略表 early return =================
@@ -331,6 +403,25 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 
 				// Step 3a: 文件确实存在 → 已被诊断逻辑解析出 repairedAsset，触发自动恢复
 				if (diag?.fileExists && diag?.repairedAsset) {
+					// ===== O2：伪恢复抑制 =====
+					if (isAutoRecoverNoopSuppressEnabled()) {
+						const noop = isRepairNoop(trimmed, diag.repairedAsset as any, getStore?.())
+						if (noop) {
+							autoRecoveredUrls.add(trimmed)
+							if (normUrl !== '') sessionFailedOnceUrls.add(normUrl)
+							if (isRecoveredPersistEnabled()) {
+								const pidO5 = getCurrentProjectId?.() ?? null
+								try {
+									markUrlRecovered(pidO5, trimmed, trimmed)
+								} catch {
+									/* ignore */
+								}
+							}
+							recovering.value = false
+							return { kind: 'ignored' as const, url: trimmed, reason: 'autorecover:noop' }
+						}
+					}
+
 					autoRecoveredUrls.add(trimmed)
 					const newAsset = diag.repairedAsset
 					const newUrl = newAsset.url
@@ -339,12 +430,22 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 						to: newUrl,
 						name: newAsset.name
 					})
-					notify(t('aiworkflow.toast.resourceRecovered', { name: newAsset.name }), 'info')
+					// O4：批量聚合 Toast（替代直接 notify）
+					enqueueRecoverBatch({ url: trimmed, newUrl, assetName: newAsset.name, newAsset })
 					if (typeof onRecovered === 'function') {
 						try {
 							onRecovered({ url: trimmed, newUrl, assetName: newAsset.name, newAsset })
 						} catch (err) {
 							console.warn('[404-fallback] onRecovered hook error:', err)
+						}
+					}
+					// O5：跨会话持久化 recovered URL
+					if (isRecoveredPersistEnabled()) {
+						const pidO5 = getCurrentProjectId?.() ?? null
+						try {
+							markUrlRecovered(pidO5, trimmed, trimmed)
+						} catch {
+							/* ignore */
 						}
 					}
 					recovering.value = false
@@ -371,11 +472,33 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 								// 重注册成功后再次诊断
 								const diag2 = await diagnoseDwebAsset({ url: trimmed })
 								if (diag2?.fileExists && diag2?.repairedAsset) {
+									// ===== O2：伪恢复抑制 =====
+									if (isAutoRecoverNoopSuppressEnabled()) {
+										const noop = isRepairNoop(trimmed, diag2.repairedAsset as any, getStore?.())
+										if (noop) {
+											autoRecoveredUrls.add(trimmed)
+											if (normUrl !== '') sessionFailedOnceUrls.add(normUrl)
+											if (isRecoveredPersistEnabled()) {
+												const pidO5b = getCurrentProjectId?.() ?? null
+												try {
+													markUrlRecovered(pidO5b, trimmed, trimmed)
+												} catch {
+													/* ignore */
+												}
+											}
+											recovering.value = false
+											return { kind: 'ignored' as const, url: trimmed, reason: 'autorecover:noop' }
+										}
+									}
+
 									autoRecoveredUrls.add(trimmed)
-									notify(
-										t('aiworkflow.toast.projectRootRecovered', { name: diag2.repairedAsset.name }),
-										'info'
-									)
+									// O4：批量聚合 Toast（替代直接 notify）
+									enqueueRecoverBatch({
+										url: trimmed,
+										newUrl: diag2.repairedAsset.url,
+										assetName: diag2.repairedAsset.name,
+										newAsset: diag2.repairedAsset
+									})
 									if (typeof onRecovered === 'function') {
 										try {
 											onRecovered({
@@ -386,6 +509,15 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 											})
 										} catch (err) {
 											console.warn('[404-fallback] onRecovered hook error:', err)
+										}
+									}
+									// O5：跨会话持久化 recovered URL
+									if (isRecoveredPersistEnabled()) {
+										const pidO5b = getCurrentProjectId?.() ?? null
+										try {
+											markUrlRecovered(pidO5b, trimmed, trimmed)
+										} catch {
+											/* ignore */
 										}
 									}
 									recovering.value = false
@@ -568,13 +700,26 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		if (!store?.state) return true
 		const strict = isStrictMissingSourceBindingEnabled()
 		const norm = normalizeForBindingMatch(url)
-		const match = (a: string | null | undefined) => _urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
-		const { resourcesById = {}, nodesById = {} } = store.state as { resourcesById?: Record<string, any>; nodesById?: Record<string, any> }
+		const match = (a: string | null | undefined) =>
+			_urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
+		const { resourcesById = {}, nodesById = {} } = store.state as {
+			resourcesById?: Record<string, any>
+			nodesById?: Record<string, any>
+		}
 		for (const res of Object.values(resourcesById)) {
 			if (!res) continue
 			if (match(res.url) || match(res.previewUrl) || match(res.posterUrl)) return false
 		}
-		const FIELD_LIST = ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url', 'posterUrl', 'previewUrl']
+		const FIELD_LIST = [
+			'imageUrl',
+			'videoUrl',
+			'modelUrl',
+			'thumbnailUrl',
+			'src',
+			'url',
+			'posterUrl',
+			'previewUrl'
+		]
 		for (const node of Object.values(nodesById)) {
 			if (!node) continue
 			for (const f of FIELD_LIST) if (match((node as any)[f])) return false
@@ -598,8 +743,12 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	): string[] {
 		const strict = isStrictMissingSourceBindingEnabled()
 		const norm = normalizeForBindingMatch(url)
-		const match = (a: string | null | undefined) => _urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
-		const { resourcesById = {}, nodesById = {} } = store.state as { resourcesById?: Record<string, any>; nodesById?: Record<string, any> }
+		const match = (a: string | null | undefined) =>
+			_urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
+		const { resourcesById = {}, nodesById = {} } = store.state as {
+			resourcesById?: Record<string, any>
+			nodesById?: Record<string, any>
+		}
 		// Step 1: 收集所有 node.resourceId 引用的 resourceId 集合
 		const nodeReferencedResourceIds = new Set<string>()
 		for (const node of Object.values(nodesById)) {
@@ -669,7 +818,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 			try {
 				markUrlRemoved(projectIdForIgnore, pending.url, {
 					assetName: pending.assetName,
-					sources,
+					sources
 				})
 			} catch {
 				/* ignore */
@@ -816,7 +965,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		try {
 			markUrlRemoved(projectIdForIgnore, pending.url, {
 				assetName: pending.assetName,
-				sources,
+				sources
 			})
 		} catch {
 			/* ignore */
@@ -916,7 +1065,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const projectIdForIgnore = getCurrentProjectId?.() ?? null
 		try {
 			markUrlCancelled(projectIdForIgnore, pending.url, {
-				assetName: pending.assetName,
+				assetName: pending.assetName
 			})
 		} catch {
 			/* ignore */
@@ -926,7 +1075,7 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 				onAfterCancel({
 					pendingId,
 					url: pending.url,
-					assetName: pending.assetName,
+					assetName: pending.assetName
 				})
 			} catch {
 				/* ignore */
@@ -939,6 +1088,30 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const errorHandler = (event: ErrorEvent) => {
 			const target = event.target as HTMLElement | null
 			if (!target) return
+
+			// ====== O3：资源管理器面板缩略图直接跳过 diagnose ======
+			// 缩略图失败只需面板自身降级显示占位符，不应触发全局资源恢复流程。
+			if (isResourceManagerThumbSkipGlobalEnabled()) {
+				try {
+					let el: HTMLElement | null = target as HTMLElement
+					while (el) {
+						if (
+							el.dataset &&
+							(el.dataset.rmThumb === '1' || el.dataset.resourceManagerThumb === '1')
+						) {
+							return
+						}
+						el = el.parentElement
+					}
+					// 兼容独立窗口：整份 document.body 被标记为 RM 窗口
+					if (typeof document !== 'undefined' && document.body?.dataset?.rmWindow === '1') {
+						return
+					}
+				} catch {
+					/* ignore */
+				}
+			}
+
 			const tag = String(target.tagName || '').toUpperCase()
 			let srcUrl = ''
 			if (tag === 'IMG') srcUrl = (target as HTMLImageElement).src || ''
@@ -1017,6 +1190,11 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 
 	onBeforeUnmount(() => {
 		if (batchTimer != null) window.clearTimeout(batchTimer)
+		if (recoverBatchTimer != null) {
+			window.clearTimeout(recoverBatchTimer)
+			recoverBatchTimer = null
+		}
+		recoverBatch = []
 		pendingBatch.clear()
 		inflightUrls.clear()
 	})
@@ -1039,11 +1217,75 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 /**
  * URL 匹配辅助：严格模式下使用 normalizeForBindingMatch 比较，否则严格等值。
  */
-function _urlsMatch(a: string | null | undefined, b: string | null | undefined, strict: boolean): boolean {
+function _urlsMatch(
+	a: string | null | undefined,
+	b: string | null | undefined,
+	strict: boolean
+): boolean {
 	if (a === b) return true
 	if (!a || !b) return false
 	if (!strict) return false
-	return normalizeForBindingMatch(a) === normalizeForBindingMatch(b) && normalizeForBindingMatch(a) !== ''
+	return (
+		normalizeForBindingMatch(a) === normalizeForBindingMatch(b) &&
+		normalizeForBindingMatch(a) !== ''
+	)
+}
+
+/**
+ * O2：判定自动恢复是否"伪恢复"（noop）。
+ *
+ * 情况 A：新旧 URL 规格化后完全相等 → 可能是 noop。
+ *   但如果修复同时补全了之前缺失的 projectRelativePath / sourcePath 等元信息，
+ *   仍视为"有效修复"，返回 false。
+ *
+ * 情况 B：新旧 URL 规格化不相等 → 绝不是 noop，返回 false。
+ *
+ * 无法规格化时保守返回 false（走正常恢复）。
+ */
+function isRepairNoop(
+	oldUrl: string,
+	repairedAsset:
+		| {
+				url?: string
+				absolutePath?: string
+				relativePath?: string
+				projectRelativePath?: string
+				sourcePath?: string
+		  }
+		| null
+		| undefined,
+	store: Store<WorkflowState> | null | undefined
+): boolean {
+	if (!repairedAsset) return true
+	const newUrl = String(repairedAsset.url || '').trim()
+	const normOld = normalizeForBindingMatch(oldUrl)
+	const normNew = normalizeForBindingMatch(newUrl)
+	if (!normOld || !normNew) return false
+	// URL 规格化不等 → 确实变了，不是 noop
+	if (normOld !== normNew) return false
+
+	// URL 规格化相等 → 检查是否有元信息补全
+	if (store?.state) {
+		const resourcesById = (store.state as any).resourcesById || {}
+		const norm = normOld
+		for (const res of Object.values(resourcesById) as any[]) {
+			if (!res) continue
+			const matchesUrl =
+				normalizeForBindingMatch(res.url) === norm ||
+				normalizeForBindingMatch(res.previewUrl) === norm ||
+				normalizeForBindingMatch(res.posterUrl) === norm
+			if (!matchesUrl) continue
+			const hadMeta = Boolean(res.projectRelativePath || res.sourcePath || res.absolutePath)
+			const willHaveMeta = Boolean(
+				repairedAsset.projectRelativePath || repairedAsset.sourcePath || repairedAsset.absolutePath
+			)
+			// 原来没有元信息、修复后会补 → 有效修复，非 noop
+			if (!hadMeta && willHaveMeta) return false
+			break
+		}
+	}
+	// 规格化相等 + 没有补全新元信息 → noop
+	return true
 }
 
 /**
@@ -1117,7 +1359,16 @@ function defaultFindBindingSources(
 	>) {
 		if (!node) continue
 		const nodeType = String(node.type || node.nodeType || '')
-		for (const field of ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url', 'posterUrl', 'previewUrl']) {
+		for (const field of [
+			'imageUrl',
+			'videoUrl',
+			'modelUrl',
+			'thumbnailUrl',
+			'src',
+			'url',
+			'posterUrl',
+			'previewUrl'
+		]) {
 			if (_urlsMatch(node?.[field] as string | null | undefined, url, strictBinding)) {
 				pushSource({ type: 'node_param', nodeId: nid, nodeType, field, detail: `node.${field}` })
 			}

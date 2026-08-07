@@ -12,7 +12,10 @@
  */
 
 import { isLegacyScreenshotWarmupEnabled } from './index'
-import type { ScreenshotCacheEntry, ScreenshotPriority } from '../node-screenshot/useNodeScreenshotPool'
+import type {
+	ScreenshotCacheEntry,
+	ScreenshotPriority
+} from '../node-screenshot/useNodeScreenshotPool'
 
 export type PoolMode = 'full' | 'noop'
 

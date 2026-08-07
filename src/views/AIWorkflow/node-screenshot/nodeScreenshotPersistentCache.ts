@@ -81,7 +81,15 @@ export const saveScreenshotToDisk = async (
 	height: number
 ): Promise<void> => {
 	if (!isLegacyScreenshotWarmupEnabled()) return Promise.resolve()
-	return _legacy_saveScreenshotToDisk(projectId, blueprintId, nodeId, version, dataUrl, width, height)
+	return _legacy_saveScreenshotToDisk(
+		projectId,
+		blueprintId,
+		nodeId,
+		version,
+		dataUrl,
+		width,
+		height
+	)
 }
 
 const _legacy_saveScreenshotToDisk = async (

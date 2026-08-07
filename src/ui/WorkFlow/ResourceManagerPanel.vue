@@ -312,7 +312,8 @@
 								:alt="r.name"
 								loading="lazy"
 								draggable="false"
-								@error="onThumbError(String(r.id))"
+								data-rm-thumb="1"
+								@error.prevent.stop="onThumbErrorWithEvent($event, String(r.id))"
 							/>
 							<div v-else class="wf-resource-thumb-placeholder">
 								<svg
@@ -528,7 +529,8 @@
 								:alt="r.name"
 								loading="lazy"
 								draggable="false"
-								@error="onThumbError(String(r.id))"
+								data-rm-thumb="1"
+								@error.prevent.stop="onThumbErrorWithEvent($event, String(r.id))"
 							/>
 							<div v-else class="wf-resource-list__thumb-placeholder">
 								<svg
@@ -1057,6 +1059,29 @@ const onThumbError = (resourceId: string) => {
 	const next = new Set(failedThumbIds.value)
 	next.add(id)
 	failedThumbIds.value = next
+}
+
+/* ============ O3：缩略图 onerror 事件阻断 ============
+ * 阻止事件继续传播，避免全局 window error handler 捕获后当作"资源丢失"处理。
+ * 缩略图失败只需 failedThumbIds 标记 + 显示占位符即可（降级表现已足够）。
+ */
+const onThumbErrorWithEvent = (event: Event, resourceId: string) => {
+	try {
+		event.stopPropagation?.()
+	} catch {
+		/* ignore */
+	}
+	try {
+		event.stopImmediatePropagation?.()
+	} catch {
+		/* ignore */
+	}
+	try {
+		event.preventDefault?.()
+	} catch {
+		/* ignore */
+	}
+	onThumbError(resourceId)
 }
 
 const onTileDragStart = (event: DragEvent, r: WorkflowResource) => {

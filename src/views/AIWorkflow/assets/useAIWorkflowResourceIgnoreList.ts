@@ -1,7 +1,7 @@
 import type { ResourceBindingSource } from './useAIWorkflow404Fallback'
 import {
 	normalizeForBindingMatch,
-	extractAssetIdFromUrl,
+	extractAssetIdFromUrl
 } from './useAIWorkflowResourceUrlClassifier'
 
 /**
@@ -10,8 +10,13 @@ import {
 type RemovedIgnoreEntry = {
 	at: number
 	assetName?: string
-	sources?: Array<{ type: ResourceBindingSource['type']; resourceId?: string; nodeId?: string; field?: string }>
-	normUrl?: string        // 新增（v1 兼容，可选）：规格化 URL
+	sources?: Array<{
+		type: ResourceBindingSource['type']
+		resourceId?: string
+		nodeId?: string
+		field?: string
+	}>
+	normUrl?: string // 新增（v1 兼容，可选）：规格化 URL
 	assetId?: string | null // 新增（v1 兼容，可选）：稳定资产 ID
 }
 
@@ -23,7 +28,7 @@ type CancelledIgnoreEntry = {
 	/** 过期时间戳（ms since epoch）。到达后自动从集合中剔除，允许再次触发检查。默认点击"暂不处理"后 30 天。 */
 	expireAt: number
 	assetName?: string
-	normUrl?: string        // 新增
+	normUrl?: string // 新增
 	assetId?: string | null // 新增
 }
 
@@ -75,7 +80,7 @@ const _emptyMeta = (): PersistedIgnoreList => ({
 	normRemoved: Object.create(null) as Record<string, RemovedIgnoreEntry>,
 	normCancelled: Object.create(null) as Record<string, CancelledIgnoreEntry>,
 	assetIdRemoved: Object.create(null) as Record<string, RemovedIgnoreEntry>,
-	assetIdCancelled: Object.create(null) as Record<string, CancelledIgnoreEntry>,
+	assetIdCancelled: Object.create(null) as Record<string, CancelledIgnoreEntry>
 })
 
 const _sessionStore = new Map<string, PersistedIgnoreList>()
@@ -165,7 +170,7 @@ function _safeParse(raw: string | null): PersistedIgnoreList {
 			normRemoved: pickObj(obj.normRemoved, Object.create(null)),
 			normCancelled: pickObj(obj.normCancelled, Object.create(null)),
 			assetIdRemoved: pickObj(obj.assetIdRemoved, Object.create(null)),
-			assetIdCancelled: pickObj(obj.assetIdCancelled, Object.create(null)),
+			assetIdCancelled: pickObj(obj.assetIdCancelled, Object.create(null))
 		}
 	} catch {
 		return _emptyMeta()
@@ -230,12 +235,18 @@ function _mergeMetas(metas: PersistedIgnoreList[]): PersistedIgnoreList {
 	if (metas.length === 0) return _emptyMeta()
 	if (metas.length === 1) return metas[0]
 	const merged = _emptyMeta()
-	const copyRemoved = (from: Record<string, RemovedIgnoreEntry>, to: Record<string, RemovedIgnoreEntry>) => {
+	const copyRemoved = (
+		from: Record<string, RemovedIgnoreEntry>,
+		to: Record<string, RemovedIgnoreEntry>
+	) => {
 		for (const k of Object.keys(from)) {
 			if (!(k in to)) to[k] = from[k]
 		}
 	}
-	const copyCancelled = (from: Record<string, CancelledIgnoreEntry>, to: Record<string, CancelledIgnoreEntry>) => {
+	const copyCancelled = (
+		from: Record<string, CancelledIgnoreEntry>,
+		to: Record<string, CancelledIgnoreEntry>
+	) => {
 		for (const k of Object.keys(from)) {
 			if (!(k in to)) to[k] = from[k]
 		}
@@ -262,7 +273,9 @@ function _toSnapshot(
 	const normRemoved = new Set<string>(Object.keys(meta.normRemoved || Object.create(null)))
 	const normCancelled = new Set<string>(Object.keys(meta.normCancelled || Object.create(null)))
 	const assetIdRemoved = new Set<string>(Object.keys(meta.assetIdRemoved || Object.create(null)))
-	const assetIdCancelled = new Set<string>(Object.keys(meta.assetIdCancelled || Object.create(null)))
+	const assetIdCancelled = new Set<string>(
+		Object.keys(meta.assetIdCancelled || Object.create(null))
+	)
 	return {
 		projectId,
 		removed,
@@ -272,7 +285,7 @@ function _toSnapshot(
 		assetIdRemoved,
 		assetIdCancelled,
 		meta,
-		sessionOnly,
+		sessionOnly
 	}
 }
 
@@ -364,15 +377,18 @@ export function loadPersistedIgnoreList(
 	}
 
 	const merged = _mergeMetas(metas)
-	const primaryId =
-		primaryBucket === GLOBAL_BUCKET_ID ? null : primaryBucket
+	const primaryId = primaryBucket === GLOBAL_BUCKET_ID ? null : primaryBucket
 	return _toSnapshot(primaryId, merged, sessionOnly)
 }
 
 /**
  * 写回内存中的 meta 变更到持久化层（多桶同时写入）。
  */
-function _persistBuckets(bucketIds: string[], meta: PersistedIgnoreList, sessionOnly: boolean): boolean {
+function _persistBuckets(
+	bucketIds: string[],
+	meta: PersistedIgnoreList,
+	sessionOnly: boolean
+): boolean {
 	let ok = false
 	for (const bucket of bucketIds) {
 		if (sessionOnly || bucket === GLOBAL_BUCKET_ID) {
@@ -392,11 +408,7 @@ function _persistBuckets(bucketIds: string[], meta: PersistedIgnoreList, session
  * 向一个 PersistedIgnoreList 写入 removed（精确 + 规格化 + assetId 三套）。
  * 写之前自动生成 norm / assetId 并写对应的子 Record。
  */
-function _applyRemoved(
-	meta: PersistedIgnoreList,
-	url: string,
-	entry: RemovedIgnoreEntry
-): void {
+function _applyRemoved(meta: PersistedIgnoreList, url: string, entry: RemovedIgnoreEntry): void {
 	const norm = normalizeForBindingMatch(url)
 	const aid = extractAssetIdFromUrl(url)
 	const entryEx: RemovedIgnoreEntry = { ...entry, normUrl: norm, assetId: aid }
@@ -460,12 +472,12 @@ export function markUrlRemoved(
 		type: s.type,
 		resourceId: s.resourceId,
 		nodeId: s.nodeId,
-		field: s.field,
+		field: s.field
 	}))
 	const baseEntry: RemovedIgnoreEntry = {
 		at: Date.now(),
 		assetName: info?.assetName,
-		sources: sourcesLite,
+		sources: sourcesLite
 	}
 
 	// 对每个 bucket 读取 → apply → 写回（逐一），保证多桶同时更新
@@ -473,10 +485,12 @@ export function markUrlRemoved(
 	for (const bucket of buckets) {
 		let meta: PersistedIgnoreList
 		if (sessionOnly) {
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		} else {
 			// 先从 sessionStore 拿镜像（未加载过时从 localStorage 读）
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		}
 		_applyRemoved(meta, String(url || ''), baseEntry)
 		_persistBuckets([bucket], meta, sessionOnly)
@@ -506,16 +520,18 @@ export function markUrlCancelled(
 	const baseEntry: CancelledIgnoreEntry = {
 		at: Date.now(),
 		expireAt,
-		assetName: info?.assetName,
+		assetName: info?.assetName
 	}
 
 	const metas: PersistedIgnoreList[] = []
 	for (const bucket of buckets) {
 		let meta: PersistedIgnoreList
 		if (sessionOnly) {
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		} else {
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		}
 		_applyCancelled(meta, String(url || ''), baseEntry)
 		_persistBuckets([bucket], meta, sessionOnly)
@@ -542,9 +558,11 @@ export function unignoreUrl(
 	for (const bucket of buckets) {
 		let meta: PersistedIgnoreList
 		if (sessionOnly) {
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		} else {
-			meta = _sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
+			meta =
+				_sessionStore.get(bucket) || _readPersisted(_projectKeyForBucket(bucket)) || _emptyMeta()
 		}
 		_clearOne(meta, String(url || ''))
 		_persistBuckets([bucket], meta, sessionOnly)

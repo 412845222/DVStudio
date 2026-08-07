@@ -483,6 +483,13 @@ const onMainWindowData = (payload: RmDataPayload) => {
 onMounted(async () => {
 	const dweb = window.dweb
 
+	// O3：标记整个独立窗口为资源管理器窗口，全局 404 errorHandler 跳过此窗口内所有 img onerror
+	try {
+		document.body?.setAttribute?.('data-rm-window', '1')
+	} catch {
+		/* ignore */
+	}
+
 	// Step 0: 注册监听主窗口通知（push 模型）
 	if (dweb?.aiworkflow && typeof dweb.aiworkflow.onResourceManagerNotify === 'function') {
 		mainWindowNotifyListenerId = dweb.aiworkflow.onResourceManagerNotify(onMainWindowNotify)
@@ -588,6 +595,12 @@ onBeforeUnmount(() => {
 	if (toastTimer !== null) {
 		clearTimeout(toastTimer)
 		toastTimer = null
+	}
+	// O3：清理 RM 窗口标记
+	try {
+		document.body?.removeAttribute?.('data-rm-window')
+	} catch {
+		/* ignore */
 	}
 	const dweb = window.dweb
 	if (mainWindowNotifyListenerId !== null && dweb?.aiworkflow?.offResourceManagerNotify) {

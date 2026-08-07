@@ -62,7 +62,7 @@ const WARMUP_DIRNAME_PATTERNS: ReadonlyArray<RegExp> = [
 	// 非隐藏但明确是缓存的目录名
 	/(^|\/)_screenshots[_-]?(\/|$)/i,
 	/(^|\/)_warmup[_-]?(\/|$)/i,
-	/(^|\/)__dvs_warmup[_-]?(\/|$)/i,
+	/(^|\/)__dvs_warmup[_-]?(\/|$)/i
 ]
 
 const WARMUP_FILENAME_PATTERNS: ReadonlyArray<RegExp> = [
@@ -73,7 +73,7 @@ const WARMUP_FILENAME_PATTERNS: ReadonlyArray<RegExp> = [
 	/-screenshot-[^\/]+\.[a-z0-9]{2,6}$/i,
 	/_screenshot_[^\/]+\.[a-z0-9]{2,6}$/i,
 	/-thumb-[^\/]+\.[a-z0-9]{2,6}$/i,
-	/_thumbnail_[^\/]+\.[a-z0-9]{2,6}$/i,
+	/_thumbnail_[^\/]+\.[a-z0-9]{2,6}$/i
 ]
 
 function isWarmupArtifactRelPath(relPath: string): boolean {
@@ -99,11 +99,13 @@ const STATIC_ASSET_ROOT_PREFIXES: ReadonlyArray<string> = [
 	'content/assets/',
 	'content/models/',
 	'content/audio/',
-	'content/documents/',
+	'content/documents/'
 ]
 
 function isStaticAssetRelPath(relPath: string): boolean {
-	const p = String(relPath || '').replace(/\\/g, '/').toLowerCase()
+	const p = String(relPath || '')
+		.replace(/\\/g, '/')
+		.toLowerCase()
 	return STATIC_ASSET_ROOT_PREFIXES.some((prefix) => p.startsWith(prefix))
 }
 
@@ -181,6 +183,12 @@ const STRICT_SOURCES_FLAG = 'DVS_MISSING_ASSET_STRICT_SOURCES'
 const NODE_DEBOUNCE_FLAG = 'DVS_MISSING_ASSET_NODE_SELECTION_DEBOUNCE'
 const UNKNOWN_CLEANUP_FLAG = 'DVS_MISSING_ASSET_UNKNOWN_CLEANUP'
 
+const AUTORECOVER_PERSIST_FLAG = 'DVS_MISSING_ASSET_AUTORECOVER_PERSIST'
+const AUTORECOVER_NOOP_SUPPRESS_FLAG = 'DVS_MISSING_ASSET_AUTORECOVER_NOOP_SUPPRESS'
+const RM_THUMB_SKIP_GLOBAL_FLAG = 'DVS_MISSING_ASSET_RM_THUMB_SKIP_GLOBAL'
+const RECOVER_TOAST_BATCH_FLAG = 'DVS_MISSING_ASSET_RECOVER_TOAST_BATCH'
+const RECOVERED_PERSIST_FLAG = 'DVS_MISSING_ASSET_RECOVERED_PERSIST'
+
 function readBooleanFlag(key: string, defaultOn = true): boolean {
 	if (typeof localStorage === 'undefined') return defaultOn
 	try {
@@ -216,6 +224,46 @@ export function isNodeSelectionDebounceEnabled(): boolean {
  */
 export function isUnknownCleanupEnabled(): boolean {
 	return readBooleanFlag(UNKNOWN_CLEANUP_FLAG, true)
+}
+
+/**
+ * O1：自动恢复产生非空 patch 时触发项目保存持久化。
+ * 关闭后退回"只改内存不改盘"的旧行为。
+ */
+export function isAutoRecoverPersistEnabled(): boolean {
+	return readBooleanFlag(AUTORECOVER_PERSIST_FLAG, true)
+}
+
+/**
+ * O2：规格化比较后若新旧 URL 完全等价且无元信息补全，则静默吞掉整个恢复（不通知、不 patch、不触发回调）。
+ * 关闭后所有 diagnose 成功都走恢复。
+ */
+export function isAutoRecoverNoopSuppressEnabled(): boolean {
+	return readBooleanFlag(AUTORECOVER_NOOP_SUPPRESS_FLAG, true)
+}
+
+/**
+ * O3：全局 404 错误处理器遇到"资源管理器面板缩略图"（元素或祖先带 data-rm-thumb="1"）的 onerror 时，直接 early return 不走 diagnose。
+ * 关闭后退回到现有耦合行为。
+ */
+export function isResourceManagerThumbSkipGlobalEnabled(): boolean {
+	return readBooleanFlag(RM_THUMB_SKIP_GLOBAL_FLAG, true)
+}
+
+/**
+ * O4：同一批自动恢复（窗口 1500ms）聚合为 1~3 条 Toast 提示。
+ * 关闭后退回每条恢复各弹 1 条。
+ */
+export function isRecoverToastBatchEnabled(): boolean {
+	return readBooleanFlag(RECOVER_TOAST_BATCH_FLAG, true)
+}
+
+/**
+ * O5：将"已自动恢复的规格化 URL 集合"持久化到 localStorage（项目级），跨会话命中 early return。
+ * 关闭后退回内存 Set（会话级去重）。
+ */
+export function isRecoveredPersistEnabled(): boolean {
+	return readBooleanFlag(RECOVERED_PERSIST_FLAG, true)
 }
 
 /**

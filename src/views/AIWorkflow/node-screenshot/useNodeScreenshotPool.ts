@@ -526,7 +526,9 @@ export const createNodeScreenshotPool = () => {
 	// Feature Flag: 默认禁用旧截图预热系统（走 noop 实现）
 	// 如需紧急回退：localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
 	if (!isLegacyScreenshotWarmupEnabled()) {
-		return createNoopNodeScreenshotPool() as unknown as ReturnType<typeof _createFullNodeScreenshotPool>
+		return createNoopNodeScreenshotPool() as unknown as ReturnType<
+			typeof _createFullNodeScreenshotPool
+		>
 	}
 	return _createFullNodeScreenshotPool()
 }
