@@ -30,7 +30,7 @@
 		:anchorCompatibility="anchorCompatibility"
 		:isLinking="isLinking"
 		:sizeCustomized="sizeCustomized"
-		:autoHeight="autoHeight"
+		:autoHeight="!sizeCustomized"
 		@update:world-x="(v) => emit('update:worldX', v)"
 		@update:world-y="(v) => emit('update:worldY', v)"
 		@update:world-position="(p) => emit('update:worldPosition', p)"
@@ -46,7 +46,13 @@
 		@auto-resize="(h) => emit('auto-resize', h)"
 	>
 		<template #body>
-			<div class="wf-blender-body" @pointerdown.stop>
+			<div
+				class="wf-blender-body"
+				@pointerdown.stop
+				@click.stop
+				@wheel.stop
+				data-wf-node-drag-ignore="true"
+			>
 				<!-- MCP 连接状态指示器 -->
 				<div class="wf-blender-status-bar" @click.stop="onStatusClick" :title="hintText || ''">
 					<span class="wf-blender-status-dot" :class="statusClass"></span>
@@ -120,7 +126,13 @@
 				</div>
 
 				<!-- 节点内对话记录面板 -->
-				<div class="wf-blender-chat-panel" ref="chatPanelRef" @pointerdown.stop>
+				<div
+					class="wf-blender-chat-panel"
+					ref="chatPanelRef"
+					@pointerdown.stop.capture
+					@wheel.stop.capture
+					@scroll="onChatPanelScroll"
+				>
 					<div v-if="!chatMessages.length" class="wf-blender-chat-empty">
 						<div class="wf-blender-chat-empty-title">🤖 Blender AI 助手</div>
 						<div class="wf-blender-chat-empty-desc">
@@ -157,12 +169,9 @@
 									'is-running': msg.status === 'running',
 									'is-error': msg.status === 'error'
 								}"
+								@click.stop.capture="onToggleToolMsg(msg)"
 							>
-								<div
-									class="wf-blender-tool-header"
-									style="cursor: pointer"
-									@click.stop="onToggleToolMsg(msg)"
-								>
+								<div class="wf-blender-tool-header" style="cursor: pointer">
 									<span class="wf-blender-tool-status-icon">
 										<span v-if="msg.status === 'running'" class="wf-blender-tool-spinner"></span>
 										<span v-else-if="msg.status === 'error'">❌</span>
@@ -418,8 +427,8 @@ const { t } = useI18n()
 const collapsedMap = ref<Map<string, boolean>>(new Map())
 const thinkingCollapsedMap = ref<Map<string, boolean>>(new Map())
 
-const INITIAL_VISIBLE_COUNT = 50
-const LOAD_MORE_COUNT = 50
+const INITIAL_VISIBLE_COUNT = 30
+const LOAD_MORE_COUNT = 30
 const WARMUP_VISIBLE_COUNT = 8
 const visibleMessagesCount = ref(INITIAL_VISIBLE_COUNT)
 
@@ -584,11 +593,36 @@ const hasMoreMessages = computed(() => {
 	return chatMessages.value.length > visibleMessagesCount.value
 })
 
+const isLoadingMore = ref(false)
 const onLoadMoreMessages = () => {
+	if (isLoadingMore.value || !hasMoreMessages.value) return
+	isLoadingMore.value = true
+	// 记录加载前的scrollHeight，用于加载后保持滚动位置（避免视觉跳动）
+	const prevScrollHeight = chatPanelRef.value?.scrollHeight ?? 0
 	visibleMessagesCount.value = Math.min(
 		visibleMessagesCount.value + LOAD_MORE_COUNT,
 		chatMessages.value.length
 	)
+	// 等待DOM更新后，将滚动位置调整到原顶部消息处
+	nextTick(() => {
+		if (chatPanelRef.value) {
+			const newScrollHeight = chatPanelRef.value.scrollHeight
+			chatPanelRef.value.scrollTop = newScrollHeight - prevScrollHeight
+		}
+		isLoadingMore.value = false
+	})
+}
+
+// 滚轮向上翻查：滚到顶部时自动加载更早消息
+const onChatPanelScroll = () => {
+	if (!chatPanelRef.value) return
+	const { scrollTop, scrollHeight, clientHeight } = chatPanelRef.value
+	// 距底部小于 30px 视为仍在阅读最新区
+	userScrolledUp.value = scrollHeight - clientHeight - scrollTop > 30
+	// 距离顶部小于阈值时触发加载
+	if (scrollTop < 20) {
+		onLoadMoreMessages()
+	}
 }
 
 const chatContextUsage = computed(() => props.blenderSettings?.chatContextUsage ?? null)
@@ -634,6 +668,9 @@ onMounted(() => {
 			isWorkspaceInitializing.value = false
 		}, 5000)
 	}
+	// 挂载后立即滚动到底部，优先显示最新消息
+	nextTick(() => scrollToBottom())
+	setTimeout(() => scrollToBottom(), 30)
 })
 
 const isConnected = computed(() => mcpStatus.value === 'connected')
@@ -833,9 +870,13 @@ const formatToolResult = (result: unknown): string => {
 	}
 }
 
+const userScrolledUp = ref(false)
+
 const scrollToBottom = () => {
 	nextTick(() => {
-		if (chatPanelRef.value) {
+		if (!chatPanelRef.value) return
+		// 只有用户未手动向上翻查时才自动置底
+		if (!userScrolledUp.value) {
 			chatPanelRef.value.scrollTop = chatPanelRef.value.scrollHeight
 		}
 	})
@@ -872,10 +913,13 @@ watch(
 	}
 )
 
-// 新消息到达时自动滚动到底部
+// 新消息到达时自动滚动到底部（新对话到达 → 复位 userScrolledUp → 强制跟进最新）
 watch(
 	() => chatMessages.value.length,
-	() => {
+	(newLen, oldLen) => {
+		if (newLen !== oldLen) {
+			userScrolledUp.value = false
+		}
 		scrollToBottom()
 	}
 )
@@ -901,6 +945,15 @@ watch(
 	}
 )
 
+// 兜底：visibleMessages（切片后）数组变化时同样置底（即便 chatMessages.length 未变）
+watch(
+	() => visibleMessages.value.length,
+	() => {
+		nextTick(() => scrollToBottom())
+	},
+	{ flush: 'post' }
+)
+
 // 新架构：截图预热已停用，isWarmupRender 永远为 false，不再需要 watch。
 // 保留 prop 定义避免父组件传参报错。
 </script>
@@ -912,8 +965,11 @@ watch(
 	gap: 6px;
 	padding: 6px 8px;
 	width: 100%;
-	flex: 1;
-	min-height: 0;
+	flex: 1 1 auto;
+	min-height: 360px;
+	/* 关键：当父节点有固定高度时，body必须完全填充 */
+	height: 100%;
+	max-height: 100%;
 	align-self: stretch;
 	box-sizing: border-box;
 	overflow: hidden;
@@ -1139,8 +1195,9 @@ watch(
 }
 
 .wf-blender-chat-panel {
-	flex: 1;
-	min-height: 0;
+	flex: 1 1 auto;
+	min-height: 160px;
+	max-height: 100%;
 	width: 100%;
 	min-width: 0;
 	overflow-y: auto;
@@ -1152,6 +1209,17 @@ watch(
 	border: 1px solid color-mix(in srgb, #e87d0d 20%, transparent);
 	border-radius: 0;
 	box-sizing: border-box;
+	touch-action: pan-y;
+	overscroll-behavior: contain;
+}
+
+/* 卡片内部所有交互元素显式声明高 z-index 保证命中 */
+.wf-blender-chat-panel .wf-blender-tool-card,
+.wf-blender-chat-panel .wf-blender-chat-msg-bubble,
+.wf-blender-chat-panel .wf-blender-thinking-header {
+	position: relative;
+	z-index: 2;
+	pointer-events: auto;
 }
 
 .wf-blender-chat-empty {

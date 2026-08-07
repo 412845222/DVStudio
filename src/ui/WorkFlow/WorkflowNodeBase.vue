@@ -21,7 +21,7 @@
 			{ 'is-auto-height': autoHeight !== false },
 			`wf-node-${nodeType}`
 		]"
-		:style="style"
+		:style="computedNodeStyle"
 		@click.stop="onSelect"
 	>
 		<div v-if="selected && isPrimarySelectedResolved" class="wf-node-toolbar" @pointerdown.stop>
@@ -188,6 +188,7 @@
 
 		<NodeChatDialog
 			v-show="nodeChatVisibleResolved"
+			ref="chatDialogRef"
 			class="wf-node-inline-chat"
 			:visible="nodeChatVisibleResolved"
 			:node-id="nodeId"
@@ -392,6 +393,22 @@ const emit = defineEmits<{
 }>()
 
 const slots = useSlots()
+
+// 显式绑定width/height到根元素style — 仅限 blender 节点，避免污染其他节点高度
+// 只有 blender 节点需要强制把画布尺寸写死到 .wf-node 根元素上，
+// 以确保其内部面板（.wf-blender-body { height:100% }）有明确的百分比参考。
+// 其他节点类型保持原样：要么透传 userStyle，要么交给 autoHeight / flex父容器100% 填充。
+const computedNodeStyle = computed(() => {
+	const userStyle = props.style ?? {}
+	if (props.nodeType === 'blender') {
+		const baseSize: Record<string, string> = {
+			width: `${props.width}px`,
+			height: `${props.height}px`
+		}
+		return { ...userStyle, ...baseSize }
+	}
+	return userStyle
+})
 
 // 稳定种子：从 nodeId 派生 — 每个节点有自己的粒子布局
 function hashNodeIdToNumber(id: string): number {
@@ -607,6 +624,7 @@ const anchorTypeAttr = (a: AnchorSpec) => {
 }
 
 const nodeElRef = ref<HTMLElement | null>(null)
+const chatDialogRef = ref<HTMLElement | null>(null)
 
 const MIN_AUTO_HEIGHT = 120
 const MAX_AUTO_HEIGHT = 10000
@@ -620,16 +638,52 @@ let userResized = false
 const measureNaturalHeight = (): number => {
 	const el = nodeElRef.value
 	if (!el) return props.height
-	const prevHeight = el.style.height
-	const prevFlexBasis = el.style.flexBasis
-	el.style.height = 'auto'
-	el.style.flexBasis = 'auto'
-	const natural = el.getBoundingClientRect().height
-	el.style.height = prevHeight
-	if (prevFlexBasis !== undefined) {
-		el.style.flexBasis = prevFlexBasis
+	const prevHeight = el.style.getPropertyValue('height')
+	const prevHeightPriority = el.style.getPropertyPriority('height')
+	const prevFlexBasis = el.style.getPropertyValue('flex-basis')
+	const prevFlexBasisPriority = el.style.getPropertyPriority('flex-basis')
+	el.style.setProperty('height', 'auto', 'important')
+	el.style.setProperty('flex-basis', 'auto', 'important')
+	let natural = el.getBoundingClientRect().height
+
+	// 对话框可见时，将其高度计入节点总高度
+	// NodeChatDialog 使用 position:absolute，不参与父元素文档流，需手动累加
+	if (nodeChatVisibleResolved.value) {
+		const dialogComp = chatDialogRef.value as any
+		const dialogEl = dialogComp?.$el as HTMLElement | undefined
+		if (dialogEl) {
+			// 优先用 offsetHeight（不受transform影响），其次 getBoundingClientRect
+			let dialogHeight = dialogEl.offsetHeight
+			if (!dialogHeight || dialogHeight <= 0) {
+				dialogHeight = dialogEl.getBoundingClientRect().height
+			}
+			// 如果仍为0，递归找内部可见容器
+			if (!dialogHeight || dialogHeight <= 0) {
+				const inner = dialogEl.querySelector<HTMLElement>(
+					'.bp-node-chat-surface, .bp-node-chat-dialog-inner'
+				)
+				if (inner) {
+					dialogHeight = inner.offsetHeight || inner.getBoundingClientRect().height
+				}
+			}
+			if (dialogHeight > 0) {
+				natural += dialogHeight + 16 // 16px = margin-top
+			} else {
+				// 终极兜底：按节点宽度估算输入框最小高度
+				natural += 160 + 16
+			}
+		}
+	}
+
+	if (prevHeight) {
+		el.style.setProperty('height', prevHeight, prevHeightPriority)
 	} else {
-		el.style.flexBasis = ''
+		el.style.removeProperty('height')
+	}
+	if (prevFlexBasis) {
+		el.style.setProperty('flex-basis', prevFlexBasis, prevFlexBasisPriority)
+	} else {
+		el.style.removeProperty('flex-basis')
 	}
 	const zoom = Math.max(1e-6, props.zoom || 1)
 	const worldHeight = natural / zoom
@@ -641,13 +695,55 @@ const requestAutoResize = () => {
 	if (rafId) return
 	rafId = requestAnimationFrame(() => {
 		rafId = 0
-		if (userResized) return
-		if (props.autoHeight === false) return
+
+		// ===== 全局早返回守卫（必须放在任何副作用之前；对应 CI tests/engine/image-node-height-invariant.test.ts §2）=====
+		// 当 autoHeight === false 时：
+		//   - 非 Blender 节点：必须在此处无条件 early-return（正则守卫：props.autoHeight === false) return），
+		//     防止 image/rotate-image 等 sizeCustomized=true（即锁尺寸）节点因"ResizeObserver → autoResize
+		//     → 改 height → 再触发 ResizeObserver"形成死循环而无限增高（历史回归守卫）。
+		//   - Blender 节点：仅在底部对话框实际可见时允许叠加高度（否则也应 return），
+		//     避免在用户已锁定基础画布高度的场景下抖动或越界。
+		if (props.autoHeight === false) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
+		}
+		// 用户已手动拖拽缩放：同样只允许 Blender 对话框展开场景叠加
+		if (userResized) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
+		}
+		// sizeCustomized=true（画布尺寸定制模式）：同上
+		if (props.sizeCustomized) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
+		}
+
+		const isBlender = props.nodeType === 'blender'
 		const nextHeight = measureNaturalHeight()
-		if (Math.abs(nextHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
-		if (Math.abs(nextHeight - props.height) < HEIGHT_CHANGE_THRESHOLD) return
-		lastEmittedHeight = nextHeight
-		emit('auto-resize', nextHeight)
+		// 对于sizeCustomized的Blender，取 max(画布高度, 内容自然高度+对话框高度)
+		// 这样既保留用户锁定的基础高度下限，又在对话框展开时叠加出足够的显示区域
+		const finalHeight =
+			isBlender && props.sizeCustomized ? Math.max(props.height, nextHeight) : nextHeight
+		if (Math.abs(finalHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
+		if (
+			Math.abs(finalHeight - props.height) < HEIGHT_CHANGE_THRESHOLD &&
+			!nodeChatVisibleResolved.value
+		)
+			return
+		lastEmittedHeight = finalHeight
+		const el = nodeElRef.value
+		if (el) {
+			el.style.setProperty('height', `${finalHeight}px`, 'important')
+			let parent = el.parentElement
+			while (parent) {
+				if (parent.classList?.contains('dom-node-wrapper')) {
+					parent.style.setProperty('height', `${finalHeight}px`, 'important')
+					break
+				}
+				parent = parent.parentElement
+			}
+		}
+		emit('auto-resize', finalHeight)
 	})
 }
 
@@ -656,6 +752,8 @@ const setupResizeObserver = () => {
 	const el = nodeElRef.value
 	if (!el) return
 	resizeObserver = new ResizeObserver(() => {
+		// sizeCustomized=true时，ResizeObserver仅用于对话框变化时兜底
+		if (props.sizeCustomized && !nodeChatVisibleResolved.value) return
 		requestAutoResize()
 	})
 	resizeObserver.observe(el, { box: 'content-box' })
@@ -835,6 +933,25 @@ watch(
 				requestAutoResize()
 			})
 		}
+	}
+)
+
+watch(
+	() => nodeChatVisibleResolved.value,
+	(visible) => {
+		// 只有 blender 需要多轮"等对话框渲染"的兜底重算；
+		// 其他节点保持原有门控（若autoHeight=false/sizeCustomized则直接跳过）
+		if (props.nodeType !== 'blender') {
+			if (props.autoHeight === false || props.sizeCustomized) return
+		}
+		nextTick(() => {
+			requestAutoResize()
+			setTimeout(requestAutoResize, 50)
+			if (props.nodeType === 'blender') {
+				// blender专属：多轮兜底，等待NodeChatDialog内部动画完成
+				setTimeout(requestAutoResize, 300)
+			}
+		})
 	}
 )
 
@@ -1402,7 +1519,11 @@ defineExpose({
 	align-items: stretch;
 	justify-content: flex-start;
 	overflow: hidden;
-	flex: 1;
+	/* 关键：blender 激活DOM时需要 body 严格占满节点可用空间，保证子面板 height:100% 有参考 */
+	height: 100%;
+	max-height: 100%;
+	flex: 1 1 100%;
+	box-sizing: border-box;
 	min-height: 0;
 }
 
@@ -1414,14 +1535,14 @@ defineExpose({
 
 .wf-node.wf-node-blender .wf-blender-body {
 	flex: 1;
-	min-height: 0;
+	min-height: 360px;
 	height: 100%;
 	overflow: hidden;
 }
 
 .wf-node.wf-node-blender .wf-blender-chat-panel {
 	flex: 1;
-	min-height: 0;
+	min-height: 160px;
 	overflow-y: auto;
 }
 

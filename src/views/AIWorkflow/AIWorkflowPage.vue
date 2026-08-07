@@ -120,6 +120,16 @@
 				@node-clear-history-cache="(id: string) => onClearHistoryCache(id)"
 				@node-update-comfyui-settings="(p: any) => onComfyUISettingsUpdate(p.nodeId, p.patch)"
 				@node-manage-local-workflows="(id: string) => openComfyLocalWorkflowManager(id)"
+				@node-blender-connect="(p: any) => onBlenderConnect(p.nodeId, p)"
+				@node-blender-disconnect="(p: any) => onBlenderDisconnect(p.nodeId)"
+				@node-blender-import="(p: any) => onBlenderImport(p.nodeId)"
+				@node-blender-mount-tools="(p: any) => onBlenderMountTools(p.nodeId)"
+				@node-blender-status-click="(p: any) => onBlenderStatusCheck(p.nodeId, p)"
+				@node-blender-clear-chat="(p: any) => onBlenderClearChat(p.nodeId)"
+				@node-blender-open-workspace="(p: any) => onBlenderOpenWorkspace(p.nodeId)"
+				@node-blender-init-workspace="(p: any) => onBlenderInitWorkspace(p.nodeId)"
+				@node-update-blender-settings="(p: any) => onBlenderSettingsUpdate(p.nodeId, p.patch)"
+				@node-blender-compress-context="(p: any) => onBlenderCompressContext(p.nodeId)"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -4695,6 +4705,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	// 取消Blender MCP状态监听订阅
+	if (typeof unsubscribeBlenderMcpStatus === 'function') {
+		unsubscribeBlenderMcpStatus()
+	}
 	// ========== 兜底保存：页面卸载前强制保存当前节点聊天对话框的草稿/参数/引用 ==========
 	const dialogState = store.state.nodeChatDialog
 	const curNodeId: string | null = (dialogState as any).nodeId ?? null
@@ -6743,6 +6757,41 @@ const onBlenderImport = async (nodeId: string) => {
 		error: null
 	})
 
+	const pushDiagnosticChatMessage = (
+		text: string,
+		options?: { warn?: boolean; error?: boolean }
+	) => {
+		const toneKind = options?.error ? 'system-error' : options?.warn ? 'system-warn' : 'system-info'
+		store.commit('appendBlenderChatMessage', {
+			nodeId,
+			message: {
+				id: `blender-import-diag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+				role: 'system',
+				tone: toneKind as any,
+				text,
+				createdAt: Date.now()
+			} as any
+		})
+	}
+
+	const checkFileExists = async (absolutePath: string): Promise<boolean> => {
+		if (!absolutePath) return false
+		const dwebFs = (window as any)?.dweb?.fs
+		if (typeof dwebFs?.stat === 'function') {
+			try {
+				const r = await dwebFs.stat(absolutePath)
+				if (r && typeof r === 'object' && typeof (r as any).exists === 'boolean') {
+					return Boolean((r as any).exists)
+				}
+				return true
+			} catch {
+				return false
+			}
+		}
+		// 无 dweb fs 能力：放行（不阻断）
+		return true
+	}
+
 	try {
 		const { collectBlenderUpstreamInputs } =
 			await import('./node-business/blender/useBlenderUpstreamInputs')
@@ -6759,7 +6808,42 @@ const onBlenderImport = async (nodeId: string) => {
 			)
 		}
 
-		const filePaths = upstream.models.map((m) => m.filePath)
+		// ===== 2026-08 新增：存在性校验 + 诊断信息（方案 M2 §4.4）=====
+		const existenceFlags = await Promise.all(
+			upstream.models.map((m) => checkFileExists(m.filePath))
+		)
+		const validModels = upstream.models.filter((_, i) => existenceFlags[i])
+		const missingModels = upstream.models.filter((_, i) => !existenceFlags[i])
+
+		// 诊断系统消息：告知每个上游解析到的路径 + 是否存在
+		const diagLines: string[] = []
+		diagLines.push(`[导入诊断] 共解析到 ${upstream.models.length} 个上游 3D 模型：`)
+		upstream.models.forEach((m, i) => {
+			const ok = existenceFlags[i]
+			const srcNode = store.state.nodesById[m.sourceNodeId]
+			const title = srcNode
+				? String(srcNode.title || srcNode.alias || srcNode.type || '').trim()
+				: m.sourceAlias
+			const rid = (srcNode as any)?.resourceId ? String((srcNode as any).resourceId).trim() : '-'
+			diagLines.push(
+				`${i + 1}. 节点「${title || m.sourceAlias}」(${m.sourceNodeId}) → resourceId:${rid} → 路径: ${m.filePath} (存在: ${ok ? '✓' : '✗'})`
+			)
+		})
+		if (missingModels.length > 0) {
+			diagLines.push(`缺失文件 ${missingModels.length} 个，将跳过导入。`)
+		}
+		pushDiagnosticChatMessage(diagLines.join('\n'), { warn: missingModels.length > 0 })
+
+		if (!validModels.length) {
+			const details = missingModels
+				.map((m) => `- 节点「${m.sourceAlias}」(${m.sourceNodeId})：${m.filePath}`)
+				.join('\n')
+			throw new Error(
+				`上游 ${missingModels.length} 个 3D 模型文件均不存在，请检查或重新上传/生成资产：\n${details}`
+			)
+		}
+
+		const filePaths = validModels.map((m) => m.filePath)
 		const blenderExePath = (node as any).blenderSettings?.blenderPath || null
 
 		store.commit('setBlenderImportStatus', {
@@ -6792,6 +6876,10 @@ const onBlenderImport = async (nodeId: string) => {
 				? `已成功导入 ${okCount}/${totalCount} 个模型（${errCount} 个失败）`
 				: `成功导入 ${okCount} 个模型`
 
+		pushDiagnosticChatMessage(
+			`[导入结果] ${statusMsg}\n导入文件：\n${filePaths.map((p) => `- ${p}`).join('\n')}`
+		)
+
 		store.commit('setBlenderImportStatus', {
 			nodeId,
 			status: 'completed',
@@ -6803,11 +6891,13 @@ const onBlenderImport = async (nodeId: string) => {
 			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
 		}, 2500)
 	} catch (err: any) {
+		const msg = err?.message || String(err)
+		pushDiagnosticChatMessage(`[导入错误] ${msg}`, { error: true })
 		store.commit('setBlenderImportStatus', {
 			nodeId,
 			status: 'error',
 			progress: 0,
-			error: err?.message || String(err)
+			error: msg
 		})
 		setTimeout(() => {
 			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
@@ -7320,6 +7410,47 @@ const syncModel3DNodeToEngine = async (nodeId: string): Promise<void> => {
 		}
 	}
 }
+
+/**
+ * 将Store中blender节点的最新blenderSettings同步到Engine BlueprintNode.data
+ * 必须在每次setBlenderMcpStatus commit之后调用，确保Ctrl+S和DOM重挂载时连接状态不丢失
+ * 参考：syncModel3DNodeToEngine (坑1/坑7修复)
+ */
+const syncBlenderNodeToEngine = (nodeId: string): void => {
+	if (!nodeId) return
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'blender') return
+	if (engineApi?.updateNodeData) {
+		engineApi.updateNodeData(
+			nodeId,
+			{ blenderSettings: { ...(node.blenderSettings as any) } },
+			{ silent: true }
+		)
+	}
+}
+
+// 监听所有修改blenderSettings的mutation，自动同步到引擎
+// 避免Ctrl+S时引擎旧数据覆盖store中的连接状态/对话历史/导入状态等
+const BLENDER_ENGINE_SYNC_MUTATIONS = new Set([
+	'setBlenderMcpStatus',
+	'setBlenderResponding',
+	'setBlenderChatContextUsage',
+	'setBlenderLastOutputs',
+	'appendBlenderChatMessage',
+	'clearBlenderChatMessages',
+	'compressBlenderChatContext',
+	'setBlenderImportStatus'
+])
+const unsubscribeBlenderMcpStatus = store.subscribe((mutation) => {
+	if (!BLENDER_ENGINE_SYNC_MUTATIONS.has(mutation.type)) return
+	const payload = mutation.payload as { nodeId?: string } | undefined
+	const nodeId = payload?.nodeId
+	if (!nodeId) return
+	// 延迟到microtask执行，确保Vuex mutation响应式更新完成后再同步到引擎
+	queueMicrotask(() => {
+		syncBlenderNodeToEngine(nodeId)
+	})
+})
 
 const syncModel3DInputFromUpstream = async (
 	nodeId: string,

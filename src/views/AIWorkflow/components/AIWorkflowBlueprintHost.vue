@@ -111,6 +111,16 @@ const emit = defineEmits<{
 	'node-clear-history-cache': [nodeId: string]
 	'node-update-comfyui-settings': [payload: { nodeId: string; patch: Record<string, any> }]
 	'node-manage-local-workflows': [nodeId: string]
+	'node-blender-connect': [payload: { nodeId: string; host: string; port: number }]
+	'node-blender-disconnect': [payload: { nodeId: string }]
+	'node-blender-import': [payload: { nodeId: string }]
+	'node-blender-mount-tools': [payload: { nodeId: string }]
+	'node-blender-status-click': [payload: { nodeId: string; host: string; port: number }]
+	'node-blender-clear-chat': [payload: { nodeId: string }]
+	'node-blender-open-workspace': [payload: { nodeId: string }]
+	'node-blender-init-workspace': [payload: { nodeId: string }]
+	'node-update-blender-settings': [payload: { nodeId: string; patch: Record<string, any> }]
+	'node-blender-compress-context': [payload: { nodeId: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -487,6 +497,16 @@ watch(
 			@node-clear-history-cache="(id: string) => emit('node-clear-history-cache', id)"
 			@node-update-comfyui-settings="(p: any) => emit('node-update-comfyui-settings', p)"
 			@node-manage-local-workflows="(id: string) => emit('node-manage-local-workflows', id)"
+			@node-blender-connect="(p: any) => emit('node-blender-connect', p)"
+			@node-blender-disconnect="(p: any) => emit('node-blender-disconnect', p)"
+			@node-blender-import="(p: any) => emit('node-blender-import', p)"
+			@node-blender-mount-tools="(p: any) => emit('node-blender-mount-tools', p)"
+			@node-blender-status-click="(p: any) => emit('node-blender-status-click', p)"
+			@node-blender-clear-chat="(p: any) => emit('node-blender-clear-chat', p)"
+			@node-blender-open-workspace="(p: any) => emit('node-blender-open-workspace', p)"
+			@node-blender-init-workspace="(p: any) => emit('node-blender-init-workspace', p)"
+			@node-update-blender-settings="(p: any) => emit('node-update-blender-settings', p)"
+			@node-blender-compress-context="(p: any) => emit('node-blender-compress-context', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />
