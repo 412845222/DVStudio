@@ -4,8 +4,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { URL } from 'node:url'
+import { createRequire } from 'node:module'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { UpstreamError, ValidationError } from './errors.mjs'
+
+// ESM 模块中 require 并非全局函数，需通过 createRequire 创建，
+// 否则打包后 require('electron') 会抛 ReferenceError 被 try/catch 静默吞掉，
+// 导致 getClientRootDir / getElectronNet 失效，进而使 meshy 等网络请求在打包 exe 后无法访问。
+const require = createRequire(import.meta.url)
 
 const DEFAULT_TIMEOUT = 30000
 
