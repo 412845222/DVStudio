@@ -32,7 +32,9 @@ const makeMeshyNode = (overrides: Record<string, unknown> = {}): WorkflowNode =>
  */
 const makeMockOptions = (overrides: Record<string, unknown> = {}) => ({
 	connectedMeshyPrompt: vi.fn(() => 'a cute cat'),
-	connectedMeshyImageInputs: vi.fn(() => [] as { edge: WorkflowEdge; fromNode: WorkflowNode; fromAnchorId: string; url: string }[]),
+	connectedMeshyImageInputs: vi.fn(
+		() => [] as { edge: WorkflowEdge; fromNode: WorkflowNode; fromAnchorId: string; url: string }[]
+	),
 	connectedMeshyModelInput: vi.fn(async () => null),
 	buildMeshyImageInputFromNode: vi.fn(async () => ''),
 	normalizeMeshyImageInputValue: vi.fn(async (raw: string) => raw),

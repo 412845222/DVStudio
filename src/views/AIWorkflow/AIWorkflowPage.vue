@@ -3997,7 +3997,8 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
-					const urlOk = !!base.url && isStrictLocalRenderableUrl(base.url) && isWorkflowLocalAssetUrl(base.url)
+					const urlOk =
+						!!base.url && isStrictLocalRenderableUrl(base.url) && isWorkflowLocalAssetUrl(base.url)
 					console.log('[MeshyPoll#bindImageResultToNode] dweb path validation', {
 						nodeId,
 						finalUrl: base.url ? base.url.slice(0, 120) : '(empty)',
@@ -8116,12 +8117,7 @@ const autoCreateImageNodesForMultiView = async (
 
 			// 建立连线：源节点 out-image-{viewIndex} → 新节点 in-0
 			try {
-				engineApi.connectPorts(
-					fromNodeId,
-					`out-image-${viewIndex}`,
-					newNodeId,
-					'in-0'
-				)
+				engineApi.connectPorts(fromNodeId, `out-image-${viewIndex}`, newNodeId, 'in-0')
 			} catch (err) {
 				console.warn(
 					`[MultiViewAutoCreate] 建立连线失败 from=${fromNodeId}:out-image-${viewIndex} to=${newNodeId}:in-0`,
@@ -8165,9 +8161,7 @@ const autoCreateImageNodesForMultiView = async (
 	const validNodes = pendingNodes.filter((p) => {
 		const exists = Boolean(store.state.nodesById[p.nodeId])
 		if (!exists) {
-			console.warn(
-				`[MultiViewAutoCreate] 节点 ${p.nodeId} 未同步到 store，跳过资源绑定`
-			)
+			console.warn(`[MultiViewAutoCreate] 节点 ${p.nodeId} 未同步到 store，跳过资源绑定`)
 		}
 		return exists
 	})

@@ -1084,10 +1084,7 @@ const handleMeshySuccess = async (
 				elapsed: Date.now() - waitStart
 			})
 			if (!inStore) {
-				console.warn(
-					'[Meshy Poll] 新节点未能在超时内同步到 Vuex store，跳过资源绑定',
-					bindNodeId
-				)
+				console.warn('[Meshy Poll] 新节点未能在超时内同步到 Vuex store，跳过资源绑定', bindNodeId)
 				continue
 			}
 		}
