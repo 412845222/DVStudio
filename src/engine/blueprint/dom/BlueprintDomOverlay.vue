@@ -85,6 +85,16 @@
 						@disconnect-unreal="onBusinessDisconnectUnreal"
 						@set-asset-root-path="onBusinessSetAssetRootPath"
 						@update-poster="onBusinessUpdatePoster"
+						@blender-connect="onBusinessBlenderConnect"
+						@blender-disconnect="onBusinessBlenderDisconnect"
+						@blender-import="onBusinessBlenderImport"
+						@blender-mount-tools="onBusinessBlenderMountTools"
+						@blender-status-click="onBusinessBlenderStatusClick"
+						@blender-clear-chat="onBusinessBlenderClearChat"
+						@blender-open-workspace="onBusinessBlenderOpenWorkspace"
+						@blender-init-workspace="onBusinessBlenderInitWorkspace"
+						@update-blender-settings="onBusinessUpdateBlenderSettings"
+						@blender-compress-context="onBusinessBlenderCompressContext"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -224,6 +234,16 @@ const emit = defineEmits<{
 	(e: 'node-disconnect-unreal', nodeId: string): void
 	(e: 'node-set-asset-root-path', payload: { nodeId: string; path: string }): void
 	(e: 'node-update-poster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'node-blender-connect', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'node-blender-disconnect', payload: { nodeId: string }): void
+	(e: 'node-blender-import', payload: { nodeId: string }): void
+	(e: 'node-blender-mount-tools', payload: { nodeId: string }): void
+	(e: 'node-blender-status-click', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'node-blender-clear-chat', payload: { nodeId: string }): void
+	(e: 'node-blender-open-workspace', payload: { nodeId: string }): void
+	(e: 'node-blender-init-workspace', payload: { nodeId: string }): void
+	(e: 'node-update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'node-blender-compress-context', payload: { nodeId: string }): void
 }>()
 
 const props = defineProps<{
@@ -320,11 +340,21 @@ function onBusinessAutoResize(payload: { nodeId: string; height: number }) {
 	if (!props.scene) return
 	const node = prevDomMap.get(payload.nodeId)
 	if (!node) return
-	if (node.data.sizeCustomized) return
 	const s = props.scene
 	const newHeight = payload.height
-	if (Math.abs(newHeight - node.data.height) < 2) return
-	node.updateSize(node.data.width, newHeight)
+	// 宽容逻辑（sizeCustomized下仍允许对话框增量）仅对 blender 节点生效
+	const isBlender = node.data.type === 'blender'
+	let finalHeight = newHeight
+	if (isBlender) {
+		if (node.data.sizeCustomized) {
+			finalHeight = Math.max(node.data.height, newHeight)
+		}
+	} else {
+		// 非 blender：原有严格门控 — sizeCustomized 直接跳过 autoResize
+		if (node.data.sizeCustomized) return
+	}
+	if (Math.abs(finalHeight - node.data.height) < 2) return
+	node.updateSize(node.data.width, finalHeight)
 	s.updateAllConnectionEndpoints()
 	s.requestRedraw()
 }
@@ -620,6 +650,37 @@ function onBusinessDisconnectUnreal(nodeId: string) {
 
 function onBusinessSetAssetRootPath(payload: { nodeId: string; path: string }) {
 	emit('node-set-asset-root-path', payload)
+}
+
+function onBusinessBlenderConnect(payload: { nodeId: string; host: string; port: number }) {
+	emit('node-blender-connect', payload)
+}
+function onBusinessBlenderDisconnect(payload: { nodeId: string }) {
+	emit('node-blender-disconnect', payload)
+}
+function onBusinessBlenderImport(payload: { nodeId: string }) {
+	emit('node-blender-import', payload)
+}
+function onBusinessBlenderMountTools(payload: { nodeId: string }) {
+	emit('node-blender-mount-tools', payload)
+}
+function onBusinessBlenderStatusClick(payload: { nodeId: string; host: string; port: number }) {
+	emit('node-blender-status-click', payload)
+}
+function onBusinessBlenderClearChat(payload: { nodeId: string }) {
+	emit('node-blender-clear-chat', payload)
+}
+function onBusinessBlenderOpenWorkspace(payload: { nodeId: string }) {
+	emit('node-blender-open-workspace', payload)
+}
+function onBusinessBlenderInitWorkspace(payload: { nodeId: string }) {
+	emit('node-blender-init-workspace', payload)
+}
+function onBusinessUpdateBlenderSettings(payload: { nodeId: string; patch: Record<string, any> }) {
+	emit('node-update-blender-settings', payload)
+}
+function onBusinessBlenderCompressContext(payload: { nodeId: string }) {
+	emit('node-blender-compress-context', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })

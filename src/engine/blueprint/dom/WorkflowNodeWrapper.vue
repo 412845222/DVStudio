@@ -55,6 +55,16 @@
 			@disconnect-unreal="onNodeDisconnectUnreal"
 			@set-asset-root-path="onNodeSetUnrealAssetRootPath"
 			@update-poster="onUpdatePoster"
+			@blender-connect="onBlenderConnect"
+			@blender-disconnect="onBlenderDisconnect"
+			@blender-import="onBlenderImport"
+			@blender-mount-tools="onBlenderMountTools"
+			@blender-status-click="onBlenderStatusClick"
+			@blender-clear-chat="onBlenderClearChat"
+			@blender-open-workspace="onBlenderOpenWorkspace"
+			@blender-init-workspace="onBlenderInitWorkspace"
+			@update-blender-settings="onUpdateBlenderSettings"
+			@blender-compress-context="onBlenderCompressContext"
 		/>
 	</div>
 </template>
@@ -149,6 +159,16 @@ const emit = defineEmits<{
 	(e: 'disconnect-unreal', nodeId: string): void
 	(e: 'set-asset-root-path', payload: { nodeId: string; path: string }): void
 	(e: 'update-poster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'blender-connect', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'blender-disconnect', payload: { nodeId: string }): void
+	(e: 'blender-import', payload: { nodeId: string }): void
+	(e: 'blender-mount-tools', payload: { nodeId: string }): void
+	(e: 'blender-status-click', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'blender-clear-chat', payload: { nodeId: string }): void
+	(e: 'blender-open-workspace', payload: { nodeId: string }): void
+	(e: 'blender-init-workspace', payload: { nodeId: string }): void
+	(e: 'update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'blender-compress-context', payload: { nodeId: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -524,6 +544,37 @@ const onNodeSetUnrealAssetRootPath = (path: string) => {
 		path
 	)
 	emit('set-asset-root-path', { nodeId: props.node.id, path })
+}
+
+const onBlenderConnect = (payload: { host: string; port: number }) => {
+	emit('blender-connect', { nodeId: props.node.id, ...payload })
+}
+const onBlenderDisconnect = () => {
+	emit('blender-disconnect', { nodeId: props.node.id })
+}
+const onBlenderImport = () => {
+	emit('blender-import', { nodeId: props.node.id })
+}
+const onBlenderMountTools = () => {
+	emit('blender-mount-tools', { nodeId: props.node.id })
+}
+const onBlenderStatusClick = (payload: { host: string; port: number }) => {
+	emit('blender-status-click', { nodeId: props.node.id, ...payload })
+}
+const onBlenderClearChat = () => {
+	emit('blender-clear-chat', { nodeId: props.node.id })
+}
+const onBlenderOpenWorkspace = () => {
+	emit('blender-open-workspace', { nodeId: props.node.id })
+}
+const onBlenderInitWorkspace = () => {
+	emit('blender-init-workspace', { nodeId: props.node.id })
+}
+const onUpdateBlenderSettings = (patch: Record<string, any>) => {
+	emit('update-blender-settings', { nodeId: props.node.id, patch })
+}
+const onBlenderCompressContext = () => {
+	emit('blender-compress-context', { nodeId: props.node.id })
 }
 </script>
 

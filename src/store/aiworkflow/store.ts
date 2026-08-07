@@ -1728,6 +1728,10 @@ const normalizeModel3DSettings = (
 ): WorkflowModel3DNodeSettings | undefined => {
 	if (!rawSettings || !isRecord(rawSettings)) return undefined
 	const raw = rawSettings
+	// ===== 2026-08 字段语义约束（方案 P2-A）：
+	// modelSourceName / lastInputSourceName 仅用于文案显示（内部 mesh 对象名 / 上游节点标题），
+	// 不得参与资产路径拼接。所有路径用途必须以 resourcesById[node.resourceId] 的
+	// absolutePath/sourcePath/projectRelativePath/url 为准，settings 中路径字段仅作 fallback。
 	const genSource = String(raw.modelGenerationSource ?? '').trim()
 	const modelGenerationSource: WorkflowModel3DNodeSettings['modelGenerationSource'] =
 		genSource === 'upload' ||
