@@ -374,20 +374,97 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		fallbackName: string
 	): Promise<File | null> => {
 		const url = String(resource.url ?? '').trim()
-		if (!url) return null
-		try {
-			const resp = await fetch(url)
-			if (!resp.ok) return null
-			const blob = await resp.blob()
-			const name = String(resource.name ?? fallbackName) || fallbackName
-			return new File([blob], name, { type: blob.type || 'application/octet-stream' })
-		} catch {
+		if (!url) {
+			console.warn('[ComfyUI][Resource] resource.url is empty', {
+				resourceId: (resource as any).id
+			})
 			return null
 		}
+		const fileName = String(resource.name ?? fallbackName) || fallbackName
+		// 根据扩展名推断 MIME type（兜底方案）
+		const ext = fileName.split('.').pop()?.toLowerCase()
+		const extToMime: Record<string, string> = {
+			png: 'image/png',
+			jpg: 'image/jpeg',
+			jpeg: 'image/jpeg',
+			gif: 'image/gif',
+			webp: 'image/webp',
+			bmp: 'image/bmp',
+			mp4: 'video/mp4',
+			mov: 'video/quicktime',
+			webm: 'video/webm',
+			txt: 'text/plain',
+			json: 'application/json'
+		}
+		const fallbackMime = ext ? (extToMime[ext] ?? '') : ''
+		let lastError: unknown = null
+		// 重试策略：2 次尝试（间隔 200ms），针对文件尚未落盘的竞态
+		for (let attempt = 1; attempt <= 2; attempt++) {
+			try {
+				const resp = await fetch(url, {
+					credentials: url.startsWith('http') ? 'same-origin' : 'omit'
+				})
+				if (!resp.ok) {
+					console.warn(`[ComfyUI][Resource] fetch HTTP ${resp.status} (attempt ${attempt})`, {
+						url: url.slice(0, 120),
+						resourceId: (resource as any).id
+					})
+					lastError = new Error(`HTTP ${resp.status}`)
+					if (attempt < 2) await new Promise((r) => setTimeout(r, 200))
+					continue
+				}
+				const blob = await resp.blob()
+				const mime = blob.type || fallbackMime
+				const finalBlob = mime && mime !== blob.type ? new Blob([blob], { type: mime }) : blob
+				return new File([finalBlob], fileName, {
+					type: finalBlob.type || 'application/octet-stream'
+				})
+			} catch (err) {
+				lastError = err
+				console.warn(`[ComfyUI][Resource] fetch failed (attempt ${attempt})`, {
+					url: url.slice(0, 120),
+					resourceId: (resource as any).id,
+					error: err instanceof Error ? err.message : String(err),
+					isDwebProtocol: url.startsWith('dweb:')
+				})
+				if (attempt < 2) await new Promise((r) => setTimeout(r, 200))
+			}
+		}
+		console.error('[ComfyUI][Resource] Unable to convert resource to File after retries', {
+			resourceId: (resource as any).id,
+			resourceKind: resource.kind,
+			url: url.slice(0, 120),
+			error: lastError instanceof Error ? lastError.message : String(lastError)
+		})
+		return null
 	}
+
+	// FX5: 扩展正则，兼容 'in'(原始)、'in-0'(数字)、'in-image'/'in-text'/'in-video' 等语义化锚点
+	const COMFY_INPUT_ANCHOR_PATTERN = /^in(-(text|image|video|audio|model3d|resource|[0-9]+))?$/
+
+	let lastCollectDiag: {
+		totalEdges: number
+		matchedEdges: number
+		skippedMissingResourceId: number
+		skippedMissingResource: number
+		skippedFileConversion: number
+		collectedImages: number
+		collectedVideos: number
+		collectedTexts: number
+	} | null = null
 
 	const collectComfyUIInputResources = async (nodeId: string): Promise<CollectedResources> => {
 		const result: CollectedResources = { images: [], videos: [], texts: [] }
+		const diag = {
+			totalEdges: 0,
+			matchedEdges: 0,
+			skippedMissingResourceId: 0,
+			skippedMissingResource: 0,
+			skippedFileConversion: 0,
+			collectedImages: 0,
+			collectedVideos: 0,
+			collectedTexts: 0
+		}
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
 		if (!node || node.type !== 'comfyui') return result
@@ -395,8 +472,16 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const edges = payload.store.state.edgeOrder
 			.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
 			.filter((e): e is ComfyEdge =>
-				Boolean(e && e.toNodeId === nodeId && e.toAnchorId === 'in' && e.fromNodeId)
+				Boolean(
+					e &&
+					e.toNodeId === nodeId &&
+					COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
+					e.fromNodeId
+				)
 			)
+
+		diag.totalEdges = payload.store.state.edgeOrder.length
+		diag.matchedEdges = edges.length
 
 		for (let i = 0; i < edges.length; i++) {
 			const edge = edges[i]
@@ -408,30 +493,47 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			if (fromType === 'text') {
 				const textVal = String(fromNode.textValue ?? fromNode.prompt ?? '').trim()
 				if (textVal) result.texts.push(textVal)
+				diag.collectedTexts++
 				continue
 			}
 
 			const rid = String(fromNode.resourceId ?? '').trim()
-			if (!rid) continue
+			if (!rid) {
+				diag.skippedMissingResourceId++
+				continue
+			}
 			const resourceRecord = payload.store.state.resourcesById[rid]
 			const resource = resourceRecord as ComfyResource | undefined
-			if (!resource) continue
+			if (!resource) {
+				diag.skippedMissingResource++
+				continue
+			}
 			const kind = String(resource.kind ?? '').toLowerCase()
 			const name = String(resource.name ?? `input_${i}`)
 			const file = await resourceToFile(resource, name)
-			if (!file) continue
-			if (fromType === 'image' || kind === 'image') {
+			if (!file) {
+				diag.skippedFileConversion++
+				continue
+			}
+			if (fromType === 'image' || kind === 'image' || file.type.startsWith('image/')) {
 				result.images.push(file)
-			} else if (fromType === 'video' || kind === 'video') {
+				diag.collectedImages++
+			} else if (fromType === 'video' || kind === 'video' || file.type.startsWith('video/')) {
 				result.videos.push(file)
-			} else {
-				if (file.type.startsWith('image/')) {
-					result.images.push(file)
-				} else if (file.type.startsWith('video/')) {
-					result.videos.push(file)
-				}
+				diag.collectedVideos++
 			}
 		}
+
+		console.debug('[ComfyUI][CollectResources] Diagnostics:', {
+			nodeId,
+			...diag,
+			expected: {
+				images: (node.comfyuiSettings as any)?.imageInputCount,
+				videos: (node.comfyuiSettings as any)?.videoInputCount
+			}
+		})
+		lastCollectDiag = diag
+
 		return result
 	}
 
@@ -439,7 +541,12 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const edges = payload.store.state.edgeOrder
 			.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
 			.filter((e): e is ComfyEdge =>
-				Boolean(e && e.toNodeId === nodeId && e.toAnchorId === 'in' && e.fromNodeId)
+				Boolean(
+					e &&
+					e.toNodeId === nodeId &&
+					COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
+					e.fromNodeId
+				)
 			)
 
 		for (const edge of edges) {
@@ -560,8 +667,20 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				expectedImages > 0 &&
 				resources.images.length < expectedImages
 			) {
+				// F7: 增强错误信息，帮助用户定位问题
+				const d = lastCollectDiag
+				let reason = ''
+				if (d && d.matchedEdges === 0) {
+					reason = '（未检测到上游节点连线，请检查输入锚点是否已连接）'
+				} else if (d && d.skippedMissingResourceId > 0) {
+					reason = `（${d.skippedMissingResourceId} 个上游节点未关联资源文件）`
+				} else if (d && d.skippedMissingResource > 0) {
+					reason = `（${d.skippedMissingResource} 个资源在资源池中找不到）`
+				} else if (d && d.skippedFileConversion > 0) {
+					reason = `（${d.skippedFileConversion} 个资源文件加载失败）`
+				}
 				validationErrors.push(
-					`工作流需要 ${expectedImages} 张图片输入，当前连接了 ${resources.images.length} 张`
+					`工作流需要 ${expectedImages} 张图片输入，当前连接了 ${resources.images.length} 张${reason}`
 				)
 			}
 			if (
@@ -606,6 +725,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				if (inputReqs.positivePrompt?.required && !finalPositivePrompt) {
 					validationErrors.push('工作流需要正向提示词输入，请连接文本节点或在设置中填写提示词')
 				}
+			}
+
+			// 校验工作流输入映射是否存在（确保输入资源能被正确注入 ComfyUI 工作流的对应节点）
+			if (validationErrors.length === 0 && !settings.historyInputMappings) {
+				validationErrors.push(
+					'未解析工作流输入/输出定义，请先在节点设置中点击"解析工作流"以确保输入资源能正确注入'
+				)
 			}
 
 			if (validationErrors.length > 0) {

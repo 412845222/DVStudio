@@ -103,6 +103,24 @@ const emit = defineEmits<{
 	'node-disconnect-unreal': [nodeId: string]
 	'node-set-asset-root-path': [payload: { nodeId: string; path: string }]
 	'node-update-poster': [payload: { nodeId: string; posterDataUrl: string }]
+	'node-connect-comfyui': [payload: { nodeId: string; baseUrl: string }]
+	'node-select-workflow': [payload: { nodeId: string; workflowPath: string }]
+	'node-run-comfyui': [nodeId: string]
+	'node-cancel-comfyui': [nodeId: string]
+	'node-refresh-history-check': [nodeId: string]
+	'node-clear-history-cache': [nodeId: string]
+	'node-update-comfyui-settings': [payload: { nodeId: string; patch: Record<string, any> }]
+	'node-manage-local-workflows': [nodeId: string]
+	'node-blender-connect': [payload: { nodeId: string; host: string; port: number }]
+	'node-blender-disconnect': [payload: { nodeId: string }]
+	'node-blender-import': [payload: { nodeId: string }]
+	'node-blender-mount-tools': [payload: { nodeId: string }]
+	'node-blender-status-click': [payload: { nodeId: string; host: string; port: number }]
+	'node-blender-clear-chat': [payload: { nodeId: string }]
+	'node-blender-open-workspace': [payload: { nodeId: string }]
+	'node-blender-init-workspace': [payload: { nodeId: string }]
+	'node-update-blender-settings': [payload: { nodeId: string; patch: Record<string, any> }]
+	'node-blender-compress-context': [payload: { nodeId: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -471,6 +489,24 @@ watch(
 			@node-disconnect-unreal="(id: string) => emit('node-disconnect-unreal', id)"
 			@node-set-asset-root-path="(p: any) => emit('node-set-asset-root-path', p)"
 			@node-update-poster="(p: any) => emit('node-update-poster', p)"
+			@node-connect-comfyui="(p: any) => emit('node-connect-comfyui', p)"
+			@node-select-workflow="(p: any) => emit('node-select-workflow', p)"
+			@node-run-comfyui="(id: string) => emit('node-run-comfyui', id)"
+			@node-cancel-comfyui="(id: string) => emit('node-cancel-comfyui', id)"
+			@node-refresh-history-check="(id: string) => emit('node-refresh-history-check', id)"
+			@node-clear-history-cache="(id: string) => emit('node-clear-history-cache', id)"
+			@node-update-comfyui-settings="(p: any) => emit('node-update-comfyui-settings', p)"
+			@node-manage-local-workflows="(id: string) => emit('node-manage-local-workflows', id)"
+			@node-blender-connect="(p: any) => emit('node-blender-connect', p)"
+			@node-blender-disconnect="(p: any) => emit('node-blender-disconnect', p)"
+			@node-blender-import="(p: any) => emit('node-blender-import', p)"
+			@node-blender-mount-tools="(p: any) => emit('node-blender-mount-tools', p)"
+			@node-blender-status-click="(p: any) => emit('node-blender-status-click', p)"
+			@node-blender-clear-chat="(p: any) => emit('node-blender-clear-chat', p)"
+			@node-blender-open-workspace="(p: any) => emit('node-blender-open-workspace', p)"
+			@node-blender-init-workspace="(p: any) => emit('node-blender-init-workspace', p)"
+			@node-update-blender-settings="(p: any) => emit('node-update-blender-settings', p)"
+			@node-blender-compress-context="(p: any) => emit('node-blender-compress-context', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

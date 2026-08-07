@@ -153,6 +153,21 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 			}
 
 			if (!localizedFromElectron && payload.isElectron()) {
+				// Electron 下载失败时，兜底使用远程 URL 直接绑定，避免 AutoWire 创建空节点
+				if (selectedUrl.startsWith('http') || selectedUrl.startsWith('dweb://')) {
+					localizedOutput = {
+						kind: inferredMediaType,
+						url: selectedUrl,
+						filename: desiredName,
+						anchorId,
+						nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
+						subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
+						type: String(selectedMedia.type || '').trim() || undefined
+					}
+					importedByMediaKey.set(key, localizedOutput)
+					alerts.add(t('nodes.comfyui.downloadFailed', { anchor: anchorLabel }))
+					return localizedOutput
+				}
 				alerts.add(t('nodes.comfyui.downloadFailed', { anchor: anchorLabel }))
 				return null
 			}
@@ -175,6 +190,20 @@ export const useAIWorkflowComfyOutputRouter = (payload: {
 				})
 
 				if (!imported.ok) {
+					// importAsset 失败时兜底使用远程 URL
+					if (selectedUrl.startsWith('http') || selectedUrl.startsWith('dweb://')) {
+						localizedOutput = {
+							kind: inferredMediaType,
+							url: selectedUrl,
+							filename: desiredName,
+							anchorId,
+							nodeId: String(selectedMedia.nodeId ?? '').trim() || undefined,
+							subfolder: String(selectedMedia.subfolder || '').trim() || undefined,
+							type: String(selectedMedia.type || '').trim() || undefined
+						}
+						importedByMediaKey.set(key, localizedOutput)
+						return localizedOutput
+					}
 					alerts.add(
 						t('nodes.comfyui.importFailed', {
 							anchor: anchorLabel,

@@ -128,8 +128,13 @@ export const useAIWorkflowMeshyRequest = (options: {
 		const parentTaskId = String(settings.meshyParentTaskId ?? '').trim()
 		const manualPreviewTaskId = String(settings.meshyPreviewTaskId ?? '').trim()
 		const outputCount = options.meshyImageOutputCount(node.meshySettings)
+		const generateMultiView = settings.meshyGenerateMultiView === true
 
-		if (!options.hasConnectedMeshyConsumer(node)) {
+		// 多视图模式（image target + generateMultiView）允许无连线提交，
+		// 任务完成后会自动在右侧新建图片节点接收剩余图片资源
+		const isMultiViewImageTarget = target === 'image' && generateMultiView
+
+		if (!isMultiViewImageTarget && !options.hasConnectedMeshyConsumer(node)) {
 			return {
 				ok: false,
 				error:
@@ -138,7 +143,7 @@ export const useAIWorkflowMeshyRequest = (options: {
 						: t('tasks.meshy.connectModelOutputFirst')
 			}
 		}
-		if (target === 'image') {
+		if (target === 'image' && !isMultiViewImageTarget) {
 			const missing = options.missingMeshyImageOutputAnchors(node)
 			if (missing.length) {
 				return {
@@ -230,7 +235,6 @@ export const useAIWorkflowMeshyRequest = (options: {
 			}
 		}
 		const imageUrls = linkedImages.length ? linkedImages : resolvedManualImageUrls
-		const generateMultiView = settings.meshyGenerateMultiView === true
 		const aspectRatio = generateMultiView ? '' : String(settings.meshyAspectRatio ?? '').trim()
 		const poseMode = String(settings.meshyPoseMode ?? '').trim()
 		const autoSize = settings.meshyAutoSize === true

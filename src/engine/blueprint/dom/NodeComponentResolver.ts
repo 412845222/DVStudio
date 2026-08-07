@@ -134,6 +134,13 @@ export class NodeComponentResolver {
 
 		const props: ResourceRelatedProps = {}
 
+		// ===== 2026-08 字段优先级约定（方案 P1/P2/P3 共享）=====
+		// 消费端（3D 模型面板、右键打开、Blender 导入）应以如下顺序选择"真实资产路径"：
+		//   1. resourceAbsolutePath（本机绝对路径，最直接）
+		//   2. resourceSourcePath（本机绝对路径，广泛存在）
+		//   3. projectRoot + resourceProjectRelativePath（跨机器可移植）
+		//   4. resourceUrl → 反解 dweb/file 路径（兜底）
+		// settings.modelSourcePath/modelAssetPath 等字段仅作兼容 fallback，不得绕过 resourcesById。
 		if (res.url) props.resourceUrl = resolveWorkflowResourceUrl(res.url)
 		if (res.sourcePath) props.resourceSourcePath = res.sourcePath
 		// ===== 2026-08-03 修复：3D模型节点需要拿到 projectRelativePath 和 absolutePath

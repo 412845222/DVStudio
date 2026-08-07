@@ -186,11 +186,12 @@ export const canLinkAnchors = (
 			return true
 		}
 		// Known multi-modal input anchors that accept all media types
+		// FX6: 修复 ComfyUI 锚点 ID 'in'（不是 'in-0'）的 fallback 匹配
 		const isKnownMultiModalInput =
 			(toType === 'image' && toAnchorId === 'in-0') ||
 			(toType === 'blender' && toAnchorId === 'in-0') ||
 			(toType === 'text' && toAnchorId === 'in-0') ||
-			(toType === 'comfyui' && toAnchorId === 'in-0')
+			(toType === 'comfyui' && (toAnchorId === 'in' || toAnchorId === 'in-0'))
 		if (isKnownMultiModalInput) {
 			return true
 		}

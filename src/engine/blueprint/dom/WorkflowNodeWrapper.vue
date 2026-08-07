@@ -55,6 +55,24 @@
 			@disconnect-unreal="onNodeDisconnectUnreal"
 			@set-asset-root-path="onNodeSetUnrealAssetRootPath"
 			@update-poster="onUpdatePoster"
+			@connect-comfyui="onConnectComfyUI"
+			@select-workflow="onSelectWorkflow"
+			@run-comfyui="onRunComfyUI"
+			@cancel-comfyui="onCancelComfyUI"
+			@refresh-history-check="onRefreshHistoryCheck"
+			@clear-history-cache="onClearHistoryCache"
+			@update-comfyui-settings="onUpdateComfyUISettings"
+			@manage-local-workflows="onManageLocalWorkflows"
+			@blender-connect="onBlenderConnect"
+			@blender-disconnect="onBlenderDisconnect"
+			@blender-import="onBlenderImport"
+			@blender-mount-tools="onBlenderMountTools"
+			@blender-status-click="onBlenderStatusClick"
+			@blender-clear-chat="onBlenderClearChat"
+			@blender-open-workspace="onBlenderOpenWorkspace"
+			@blender-init-workspace="onBlenderInitWorkspace"
+			@update-blender-settings="onUpdateBlenderSettings"
+			@blender-compress-context="onBlenderCompressContext"
 		/>
 	</div>
 </template>
@@ -149,6 +167,24 @@ const emit = defineEmits<{
 	(e: 'disconnect-unreal', nodeId: string): void
 	(e: 'set-asset-root-path', payload: { nodeId: string; path: string }): void
 	(e: 'update-poster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'connect-comfyui', payload: { nodeId: string; baseUrl: string }): void
+	(e: 'select-workflow', payload: { nodeId: string; workflowPath: string }): void
+	(e: 'run-comfyui', nodeId: string): void
+	(e: 'cancel-comfyui', nodeId: string): void
+	(e: 'refresh-history-check', nodeId: string): void
+	(e: 'clear-history-cache', nodeId: string): void
+	(e: 'update-comfyui-settings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'manage-local-workflows', nodeId: string): void
+	(e: 'blender-connect', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'blender-disconnect', payload: { nodeId: string }): void
+	(e: 'blender-import', payload: { nodeId: string }): void
+	(e: 'blender-mount-tools', payload: { nodeId: string }): void
+	(e: 'blender-status-click', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'blender-clear-chat', payload: { nodeId: string }): void
+	(e: 'blender-open-workspace', payload: { nodeId: string }): void
+	(e: 'blender-init-workspace', payload: { nodeId: string }): void
+	(e: 'update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'blender-compress-context', payload: { nodeId: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -524,6 +560,69 @@ const onNodeSetUnrealAssetRootPath = (path: string) => {
 		path
 	)
 	emit('set-asset-root-path', { nodeId: props.node.id, path })
+}
+
+const onConnectComfyUI = (payload: { baseUrl: string }) => {
+	emit('connect-comfyui', { nodeId: props.node.id, baseUrl: payload.baseUrl })
+}
+
+const onSelectWorkflow = (payload: { workflowPath: string }) => {
+	emit('select-workflow', { nodeId: props.node.id, workflowPath: payload.workflowPath })
+}
+
+const onRunComfyUI = () => {
+	emit('run-comfyui', props.node.id)
+}
+
+const onCancelComfyUI = () => {
+	emit('cancel-comfyui', props.node.id)
+}
+
+const onRefreshHistoryCheck = () => {
+	emit('refresh-history-check', props.node.id)
+}
+
+const onClearHistoryCache = () => {
+	emit('clear-history-cache', props.node.id)
+}
+
+const onUpdateComfyUISettings = (patch: Record<string, any>) => {
+	emit('update-comfyui-settings', { nodeId: props.node.id, patch })
+}
+
+const onManageLocalWorkflows = () => {
+	emit('manage-local-workflows', props.node.id)
+}
+
+const onBlenderConnect = (payload: { host: string; port: number }) => {
+	emit('blender-connect', { nodeId: props.node.id, ...payload })
+}
+const onBlenderDisconnect = () => {
+	emit('blender-disconnect', { nodeId: props.node.id })
+}
+const onBlenderImport = () => {
+	emit('blender-import', { nodeId: props.node.id })
+}
+const onBlenderMountTools = () => {
+	emit('blender-mount-tools', { nodeId: props.node.id })
+}
+const onBlenderStatusClick = (payload: { host: string; port: number }) => {
+	emit('blender-status-click', { nodeId: props.node.id, ...payload })
+}
+const onBlenderClearChat = () => {
+	emit('blender-clear-chat', { nodeId: props.node.id })
+}
+const onBlenderOpenWorkspace = () => {
+	emit('blender-open-workspace', { nodeId: props.node.id })
+}
+const onBlenderInitWorkspace = () => {
+	emit('blender-init-workspace', { nodeId: props.node.id })
+}
+const onUpdateBlenderSettings = (patch: Record<string, any>) => {
+	emit('update-blender-settings', { nodeId: props.node.id, patch })
+}
+const onBlenderCompressContext = () => {
+	emit('blender-compress-context', { nodeId: props.node.id })
 }
 </script>
 

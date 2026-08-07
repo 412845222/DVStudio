@@ -652,11 +652,17 @@ export type WorkflowComfyUINodeSettings = {
 	/** epoch ms */
 	lastCheckedAt?: number
 	/** available workflow files under user workflows dir or history */
-	workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+	workflows?: {
+		path: string
+		name: string
+		source?: 'userdata' | 'history' | 'local'
+		localId?: string
+		updatedAt?: number
+	}[]
 	/** selected workflow file path, e.g. workflows/xxx.json or history://xxx */
 	workflowPath?: string
 	/** source of selected workflow */
-	workflowSource?: 'userdata' | 'history'
+	workflowSource?: 'userdata' | 'history' | 'local'
 	/** optional override text for positive CLIP prompt nodes */
 	positivePrompt?: string
 	/** optional override text for negative CLIP prompt nodes */
@@ -769,6 +775,9 @@ export type WorkflowComfyUINodeSettings = {
 	hasImageOutput?: boolean
 	hasVideoOutput?: boolean
 	hasModel3dOutput?: boolean
+
+	/** LocalDB workflow templates cached on this node (for offline listing in dropdown) */
+	localWorkflows?: unknown[]
 }
 
 export type WorkflowMeshyModelSettings = {

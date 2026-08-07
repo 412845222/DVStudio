@@ -110,6 +110,26 @@
 				@node-disconnect-unreal="onNodeDisconnect"
 				@node-set-asset-root-path="(p: any) => onNodeSetAssetRootPath(p.nodeId, p.path)"
 				@node-update-poster="onNodeUpdatePoster"
+				@node-connect-comfyui="(p: any) => onComfyUIConnect(p.nodeId, { baseUrl: p.baseUrl })"
+				@node-select-workflow="
+					(p: any) => onComfyUISelectWorkflow(p.nodeId, { workflowPath: p.workflowPath })
+				"
+				@node-run-comfyui="(id: string) => onComfyUIRun(id)"
+				@node-cancel-comfyui="(id: string) => onComfyUICancel(id)"
+				@node-refresh-history-check="(id: string) => onRefreshHistoryCheck(id)"
+				@node-clear-history-cache="(id: string) => onClearHistoryCache(id)"
+				@node-update-comfyui-settings="(p: any) => onComfyUISettingsUpdate(p.nodeId, p.patch)"
+				@node-manage-local-workflows="(id: string) => openComfyLocalWorkflowManager(id)"
+				@node-blender-connect="(p: any) => onBlenderConnect(p.nodeId, p)"
+				@node-blender-disconnect="(p: any) => onBlenderDisconnect(p.nodeId)"
+				@node-blender-import="(p: any) => onBlenderImport(p.nodeId)"
+				@node-blender-mount-tools="(p: any) => onBlenderMountTools(p.nodeId)"
+				@node-blender-status-click="(p: any) => onBlenderStatusCheck(p.nodeId, p)"
+				@node-blender-clear-chat="(p: any) => onBlenderClearChat(p.nodeId)"
+				@node-blender-open-workspace="(p: any) => onBlenderOpenWorkspace(p.nodeId)"
+				@node-blender-init-workspace="(p: any) => onBlenderInitWorkspace(p.nodeId)"
+				@node-update-blender-settings="(p: any) => onBlenderSettingsUpdate(p.nodeId, p.patch)"
+				@node-blender-compress-context="(p: any) => onBlenderCompressContext(p.nodeId)"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -132,6 +152,15 @@
 				/>
 			</AIWorkflowBlueprintHost>
 		</div>
+
+		<ComfyLocalWorkflowManager
+			:visible="comfyLocalWorkflowManagerVisible"
+			:comfy-service="comfyService"
+			:current-workflow-data="comfyLocalWorkflowManagerData"
+			:current-workflow-name="comfyLocalWorkflowManagerName"
+			@close="comfyLocalWorkflowManagerVisible = false"
+			@changed="onComfyLocalWorkflowManagerChanged"
+		/>
 
 		<!-- UI按钮容器 -->
 		<div class="aiwf-ui-container">
@@ -667,7 +696,8 @@ import {
 	provide,
 	ref,
 	shallowRef,
-	watch
+	watch,
+	watchEffect
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
@@ -776,10 +806,11 @@ import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { ThemeKey } from '../../store/theme'
 import type { ThemeMode } from '../../store/theme'
-import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { createDefaultAIWorkflowState, setEngineSyncHooks } from '../../store/aiworkflow/store'
 import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
 import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
+import ComfyLocalWorkflowManager from '../../ui/WorkFlow/WorlFlowNodes/comfy/ComfyLocalWorkflowManager.vue'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
 import {
 	BlueprintProjectService,
@@ -1674,6 +1705,32 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
 		return
 	}
 	const snapshot = legacyBlueprintToWorkflowState(data, store.state.nodesById)
+	// 保留引擎快照中缺失的 ComfyUI 输入边，防止双轨同步时丢失已建立的资源连接
+	const comfyInputAnchorPattern = /^in(-.*)?$/
+	if (snapshot.edgesById && snapshot.edgeOrder) {
+		const existingEdges = store.state.edgesById
+		let preservedCount = 0
+		for (const [eid, edge] of Object.entries(existingEdges)) {
+			if (snapshot.edgesById[eid]) continue
+			const toNode = store.state.nodesById[edge.toNodeId]
+			if (
+				toNode?.type === 'comfyui' &&
+				comfyInputAnchorPattern.test(String(edge.toAnchorId ?? ''))
+			) {
+				snapshot.edgesById[eid] = edge
+				if (!snapshot.edgeOrder.includes(eid)) {
+					snapshot.edgeOrder = [...snapshot.edgeOrder, eid]
+				}
+				preservedCount++
+			}
+		}
+		if (preservedCount > 0) {
+			console.log(
+				'[DraftFlow#AIWorkflowPage onBlueprintEditorChange] PRESERVE(comfy-edges): kept edges missing from engine snapshot',
+				{ preservedCount }
+			)
+		}
+	}
 	isUpdatingFromStore = true
 	store.commit('hydrateDraft', { snapshot })
 	resetIsUpdatingFromStore()
@@ -1860,6 +1917,40 @@ function patchBlueprintNodeData(nodeId: string) {
 	}
 	scene.requestRedraw?.()
 }
+
+// F1.4 + FX2: 注入 Store→Engine 同步钩子
+// 当 blueprintHostRef 就绪后，将 patchBlueprintNodeData 注册到 store 的同步钩子中
+// 使得 setNodeComfyUISettings / setNodeResource mutation 自动触发引擎同步
+// FX2: 同时注册边同步钩子，使得 addEdge/removeEdge mutation 自动同步到 Engine
+watchEffect(() => {
+	const editor = blueprintHostRef.value?.getInstance?.()
+	if (!editor) return
+	setEngineSyncHooks({
+		syncComfyUISettings: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		syncNodeResource: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		// FX2: 边同步 — 将 Vuex 中的边操作同步到 BlueprintEngine
+		syncAddEdge: (edge) => {
+			if (typeof (editor as any).addEdge === 'function') {
+				const ok = (editor as any).addEdge({
+					id: edge.id,
+					fromNodeId: edge.fromNodeId,
+					fromAnchorId: edge.fromAnchorId,
+					toNodeId: edge.toNodeId,
+					toAnchorId: edge.toAnchorId,
+					createdAt: edge.createdAt
+				})
+				if (!ok) {
+					console.warn('[EdgeSync][Vuex→Engine] addEdge returned false', { id: edge.id })
+				}
+			}
+		},
+		syncRemoveEdge: (edgeId: string) => {
+			if (typeof (editor as any).removeEdge === 'function') {
+				;(editor as any).removeEdge(edgeId)
+			}
+		}
+	})
+})
 
 let viewportSyncFrameId: number | null = null
 let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null
@@ -3958,7 +4049,19 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			bindImageResultToNode: async (nodeId: string, url: string) => {
 				const node = store.state.nodesById[nodeId]
-				if (!node) return false
+				console.log('[MeshyPoll#bindImageResultToNode] ENTER', {
+					nodeId,
+					url: url ? url.slice(0, 120) : '(empty)',
+					nodeExistsInStore: !!node,
+					nodeType: (node as any)?.type
+				})
+				if (!node) {
+					console.warn(
+						'[MeshyPoll#bindImageResultToNode] 节点不在 Vuex store 中，资源绑定被跳过',
+						nodeId
+					)
+					return false
+				}
 				const resourceId = `gen-img-${nodeId}-${Date.now()}`
 				const resourceName = `gen_image_${resourceId.slice(-6)}`
 				const base: GeneratedResourceBase = {
@@ -3985,11 +4088,16 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					finalizeGeneratedResourceLocalUrl(base, pid)
 					base.url = String(base.url || '').trim()
-					if (
-						!base.url ||
-						!isStrictLocalRenderableUrl(base.url) ||
-						!isWorkflowLocalAssetUrl(base.url)
-					) {
+					const urlOk =
+						!!base.url && isStrictLocalRenderableUrl(base.url) && isWorkflowLocalAssetUrl(base.url)
+					console.log('[MeshyPoll#bindImageResultToNode] dweb path validation', {
+						nodeId,
+						finalUrl: base.url ? base.url.slice(0, 120) : '(empty)',
+						isStrictLocalRenderable: !!base.url && isStrictLocalRenderableUrl(base.url),
+						isWorkflowLocalAsset: !!base.url && isWorkflowLocalAssetUrl(base.url),
+						urlOk
+					})
+					if (!urlOk) {
 						pushToast(
 							t('aiworkflow.page.media.importFailedNoLocalUrl', {
 								mediaType: t('aiworkflow.page.mediaType.image')
@@ -4001,6 +4109,11 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
 					patchBlueprintNodeData(nodeId)
+					console.log('[MeshyPoll#bindImageResultToNode] SUCCESS', {
+						nodeId,
+						resourceId,
+						url: base.url.slice(0, 120)
+					})
 					return base.url
 				}
 
@@ -4592,6 +4705,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+	// 取消Blender MCP状态监听订阅
+	if (typeof unsubscribeBlenderMcpStatus === 'function') {
+		unsubscribeBlenderMcpStatus()
+	}
 	// ========== 兜底保存：页面卸载前强制保存当前节点聊天对话框的草稿/参数/引用 ==========
 	const dialogState = store.state.nodeChatDialog
 	const curNodeId: string | null = (dialogState as any).nodeId ?? null
@@ -6640,6 +6757,41 @@ const onBlenderImport = async (nodeId: string) => {
 		error: null
 	})
 
+	const pushDiagnosticChatMessage = (
+		text: string,
+		options?: { warn?: boolean; error?: boolean }
+	) => {
+		const toneKind = options?.error ? 'system-error' : options?.warn ? 'system-warn' : 'system-info'
+		store.commit('appendBlenderChatMessage', {
+			nodeId,
+			message: {
+				id: `blender-import-diag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+				role: 'system',
+				tone: toneKind as any,
+				text,
+				createdAt: Date.now()
+			} as any
+		})
+	}
+
+	const checkFileExists = async (absolutePath: string): Promise<boolean> => {
+		if (!absolutePath) return false
+		const dwebFs = (window as any)?.dweb?.fs
+		if (typeof dwebFs?.stat === 'function') {
+			try {
+				const r = await dwebFs.stat(absolutePath)
+				if (r && typeof r === 'object' && typeof (r as any).exists === 'boolean') {
+					return Boolean((r as any).exists)
+				}
+				return true
+			} catch {
+				return false
+			}
+		}
+		// 无 dweb fs 能力：放行（不阻断）
+		return true
+	}
+
 	try {
 		const { collectBlenderUpstreamInputs } =
 			await import('./node-business/blender/useBlenderUpstreamInputs')
@@ -6656,7 +6808,42 @@ const onBlenderImport = async (nodeId: string) => {
 			)
 		}
 
-		const filePaths = upstream.models.map((m) => m.filePath)
+		// ===== 2026-08 新增：存在性校验 + 诊断信息（方案 M2 §4.4）=====
+		const existenceFlags = await Promise.all(
+			upstream.models.map((m) => checkFileExists(m.filePath))
+		)
+		const validModels = upstream.models.filter((_, i) => existenceFlags[i])
+		const missingModels = upstream.models.filter((_, i) => !existenceFlags[i])
+
+		// 诊断系统消息：告知每个上游解析到的路径 + 是否存在
+		const diagLines: string[] = []
+		diagLines.push(`[导入诊断] 共解析到 ${upstream.models.length} 个上游 3D 模型：`)
+		upstream.models.forEach((m, i) => {
+			const ok = existenceFlags[i]
+			const srcNode = store.state.nodesById[m.sourceNodeId]
+			const title = srcNode
+				? String(srcNode.title || srcNode.alias || srcNode.type || '').trim()
+				: m.sourceAlias
+			const rid = (srcNode as any)?.resourceId ? String((srcNode as any).resourceId).trim() : '-'
+			diagLines.push(
+				`${i + 1}. 节点「${title || m.sourceAlias}」(${m.sourceNodeId}) → resourceId:${rid} → 路径: ${m.filePath} (存在: ${ok ? '✓' : '✗'})`
+			)
+		})
+		if (missingModels.length > 0) {
+			diagLines.push(`缺失文件 ${missingModels.length} 个，将跳过导入。`)
+		}
+		pushDiagnosticChatMessage(diagLines.join('\n'), { warn: missingModels.length > 0 })
+
+		if (!validModels.length) {
+			const details = missingModels
+				.map((m) => `- 节点「${m.sourceAlias}」(${m.sourceNodeId})：${m.filePath}`)
+				.join('\n')
+			throw new Error(
+				`上游 ${missingModels.length} 个 3D 模型文件均不存在，请检查或重新上传/生成资产：\n${details}`
+			)
+		}
+
+		const filePaths = validModels.map((m) => m.filePath)
 		const blenderExePath = (node as any).blenderSettings?.blenderPath || null
 
 		store.commit('setBlenderImportStatus', {
@@ -6689,6 +6876,10 @@ const onBlenderImport = async (nodeId: string) => {
 				? `已成功导入 ${okCount}/${totalCount} 个模型（${errCount} 个失败）`
 				: `成功导入 ${okCount} 个模型`
 
+		pushDiagnosticChatMessage(
+			`[导入结果] ${statusMsg}\n导入文件：\n${filePaths.map((p) => `- ${p}`).join('\n')}`
+		)
+
 		store.commit('setBlenderImportStatus', {
 			nodeId,
 			status: 'completed',
@@ -6700,11 +6891,13 @@ const onBlenderImport = async (nodeId: string) => {
 			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
 		}, 2500)
 	} catch (err: any) {
+		const msg = err?.message || String(err)
+		pushDiagnosticChatMessage(`[导入错误] ${msg}`, { error: true })
 		store.commit('setBlenderImportStatus', {
 			nodeId,
 			status: 'error',
 			progress: 0,
-			error: err?.message || String(err)
+			error: msg
 		})
 		setTimeout(() => {
 			store.commit('setBlenderImportStatus', { nodeId, status: 'idle', progress: 0, error: null })
@@ -7217,6 +7410,47 @@ const syncModel3DNodeToEngine = async (nodeId: string): Promise<void> => {
 		}
 	}
 }
+
+/**
+ * 将Store中blender节点的最新blenderSettings同步到Engine BlueprintNode.data
+ * 必须在每次setBlenderMcpStatus commit之后调用，确保Ctrl+S和DOM重挂载时连接状态不丢失
+ * 参考：syncModel3DNodeToEngine (坑1/坑7修复)
+ */
+const syncBlenderNodeToEngine = (nodeId: string): void => {
+	if (!nodeId) return
+	const node = store.state.nodesById[nodeId]
+	if (!node || node.type !== 'blender') return
+	if (engineApi?.updateNodeData) {
+		engineApi.updateNodeData(
+			nodeId,
+			{ blenderSettings: { ...(node.blenderSettings as any) } },
+			{ silent: true }
+		)
+	}
+}
+
+// 监听所有修改blenderSettings的mutation，自动同步到引擎
+// 避免Ctrl+S时引擎旧数据覆盖store中的连接状态/对话历史/导入状态等
+const BLENDER_ENGINE_SYNC_MUTATIONS = new Set([
+	'setBlenderMcpStatus',
+	'setBlenderResponding',
+	'setBlenderChatContextUsage',
+	'setBlenderLastOutputs',
+	'appendBlenderChatMessage',
+	'clearBlenderChatMessages',
+	'compressBlenderChatContext',
+	'setBlenderImportStatus'
+])
+const unsubscribeBlenderMcpStatus = store.subscribe((mutation) => {
+	if (!BLENDER_ENGINE_SYNC_MUTATIONS.has(mutation.type)) return
+	const payload = mutation.payload as { nodeId?: string } | undefined
+	const nodeId = payload?.nodeId
+	if (!nodeId) return
+	// 延迟到microtask执行，确保Vuex mutation响应式更新完成后再同步到引擎
+	queueMicrotask(() => {
+		syncBlenderNodeToEngine(nodeId)
+	})
+})
 
 const syncModel3DInputFromUpstream = async (
 	nodeId: string,
@@ -7966,7 +8200,11 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 			(toAnchorId === 'in-0' || toAnchorId === 'in-image' || toAnchorId === 'in-resource')
 		)
 	})
-	if (!outputEdges.length) return false
+	// 多视图无连线时，自动在源节点右侧新建图片节点接收剩余图片
+	if (!outputEdges.length) {
+		if (imageUrls.length <= 1) return false
+		return await autoCreateImageNodesForMultiView(fromNodeId, imageUrls, settings)
+	}
 
 	const resolveOutputUrlByAnchor = (fromAnchorId: string) => {
 		const m = /^out-image-(\d+)$/.exec(String(fromAnchorId))
@@ -8030,6 +8268,173 @@ const syncConnectedImageTargetsFromMeshy = async (fromNodeId: string) => {
 		onNodeUploadResource(targetNodeId, cloned, 'image', { autoDistribute: false })
 	}
 	return true
+}
+
+/**
+ * 多视图任务完成且无下游连线时，在源节点右侧自动新建图片节点接收剩余图片。
+ * 源节点（imageUrls[0]）由 applyMeshyTaskResult 绑定到自身，此处为 imageUrls[1..N] 新建节点。
+ * 新建节点在源节点右侧按纵向堆叠排列，建立 out-image-{i+1} → in-0 连线，保持数据流可追溯。
+ */
+const autoCreateImageNodesForMultiView = async (
+	fromNodeId: string,
+	imageUrls: string[],
+	settings: Record<string, unknown>
+): Promise<boolean> => {
+	const fromNode = store.state.nodesById[fromNodeId]
+	if (!fromNode) return false
+
+	// 输出数量上限 4（与多视图 output_image_count 对齐）
+	const outputCount = Math.min(4, Math.max(1, imageUrls.length))
+	if (outputCount <= 1) return false
+
+	const baseTitle = String(
+		fromNode.alias?.toString() || fromNode.title?.toString() || 'Meshy Image'
+	).trim()
+	const taskId = String(
+		settings.taskId ||
+			settings.meshyTaskId ||
+			((settings.outputSummary as Record<string, unknown>)?.rootTaskId as string) ||
+			fromNodeId
+	).trim()
+
+	// 阶段 1：bulk 内只做同步结构变更（addNode + connectPorts），收集节点信息供阶段 3 使用
+	type PendingNode = {
+		nodeId: string
+		imageUrl: string
+		viewIndex: number
+		fileName: string
+		fileNameBase: string
+	}
+	const pendingNodes: PendingNode[] = []
+
+	try {
+		engineApi.beginBulkUpdate()
+
+		// 为 imageUrls[1..outputCount-1] 创建图片节点
+		// imageUrls[0] 已绑定到源节点，从第 2 张（索引 1）开始
+		for (let i = 1; i < outputCount; i++) {
+			const imageUrl = String(imageUrls[i] || '').trim()
+			if (!imageUrl) continue
+
+			// 位置：源节点右侧 + 纵向堆叠偏移
+			const basePos = findNextNodePositionFromSource(fromNodeId, store.state)
+			const worldX = basePos.worldX
+			const worldY = basePos.worldY + (i - 1) * 200 // NODE_SPACING_Y = 200
+
+			const viewIndex = i + 1
+			const newNodeId = engineApi.addNode('image', worldX, worldY, {
+				title: `${baseTitle}_view_${viewIndex}`
+			})
+			if (!newNodeId) continue
+
+			// 建立连线：源节点 out-image-{viewIndex} → 新节点 in-0
+			try {
+				engineApi.connectPorts(fromNodeId, `out-image-${viewIndex}`, newNodeId, 'in-0')
+			} catch (err) {
+				console.warn(
+					`[MultiViewAutoCreate] 建立连线失败 from=${fromNodeId}:out-image-${viewIndex} to=${newNodeId}:in-0`,
+					err
+				)
+			}
+
+			const ext = fileExtensionFromUrl(imageUrl, '.png')
+			const anchorSuffix = `out-image-${viewIndex}`
+			const fileName = `meshy_${taskId}_${anchorSuffix}_${newNodeId}${ext}`
+			const fileNameBase = fileName.replace(ext, '')
+
+			pendingNodes.push({ nodeId: newNodeId, imageUrl, viewIndex, fileName, fileNameBase })
+		}
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] 阶段 1 建节点失败:', err)
+		try {
+			engineApi.endBulkUpdate()
+		} catch {
+			/* ignore */
+		}
+		return false
+	}
+
+	// 阶段 2：结束 bulk 并强制同步引擎 → Vuex store，确保 nodesById 包含新节点
+	// 修复根因 A：缺少 forceSyncToStore，导致 nodesById[newNodeId] 不存在，
+	//             bindMediaResourceToNode / onNodeUploadResource 内部守卫静默 return
+	try {
+		engineApi.endBulkUpdate()
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] endBulkUpdate 失败:', err)
+	}
+
+	try {
+		await engineApi.forceSyncToStore()
+	} catch (err) {
+		console.error('[MultiViewAutoCreate] forceSyncToStore 失败:', err)
+	}
+
+	// 验证新节点是否已同步到 Vuex store
+	const validNodes = pendingNodes.filter((p) => {
+		const exists = Boolean(store.state.nodesById[p.nodeId])
+		if (!exists) {
+			console.warn(`[MultiViewAutoCreate] 节点 ${p.nodeId} 未同步到 store，跳过资源绑定`)
+		}
+		return exists
+	})
+
+	if (validNodes.length === 0) {
+		console.error('[MultiViewAutoCreate] 所有新节点均未同步到 store')
+		return false
+	}
+
+	// 阶段 3：bulk 外逐个下载并绑定资源（节点已在 store 中，bindMediaResourceToNode 守卫可通过）
+	// 修复根因 B：异步 I/O 不再包裹在 beginBulkUpdate 内
+	for (const pending of validNodes) {
+		const { nodeId, imageUrl, fileName, fileNameBase } = pending
+
+		let cloned: File | null = null
+		try {
+			cloned = await fileFromUrl(imageUrl, fileNameBase)
+		} catch {
+			cloned = null
+		}
+
+		if (cloned) {
+			await onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
+			// 修复根因 C：资源绑定后显式同步引擎
+			patchBlueprintNodeData(nodeId)
+			continue
+		}
+
+		// 兜底：持久化到项目本地后绑定
+		// 注意：不传 sourcePath，因为 settings.outputSummary.assetPath 对应的是第一张图，
+		// 对当前图片（第 2/3/4 张）无效，会导致持久化到同一文件
+		const persisted = (await persistExternalAssetToProject({
+			kind: 'image',
+			name: fileName,
+			sourceUrl: imageUrl
+		})) as PersistedAsset | null
+		const outputUrl = String(persisted?.url || imageUrl).trim()
+		const outputPath = String(persisted?.absolutePath || '').trim()
+		if (!outputUrl) continue
+
+		try {
+			cloned = await fileFromUrl(outputUrl, fileNameBase)
+		} catch {
+			cloned = null
+		}
+
+		if (cloned) {
+			await onNodeUploadResource(nodeId, cloned, 'image', { autoDistribute: false })
+		} else {
+			bindMediaResourceToNode(nodeId, 'image', outputUrl, fileName, {
+				sourcePath: outputPath || undefined,
+				projectRelativePath: String(persisted?.projectRelativePath || '').trim() || undefined
+			})
+			autoSizeMediaNode(nodeId, outputUrl, 'image')
+		}
+
+		// 修复根因 C：资源绑定后显式同步引擎
+		patchBlueprintNodeData(nodeId)
+	}
+
+	return validNodes.length > 0
 }
 
 const mediaReadyDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -9665,7 +10070,8 @@ const {
 	onComfyUIConnect,
 	onComfyUISelectWorkflow,
 	onRefreshHistoryCheck,
-	onClearHistoryCache
+	onClearHistoryCache,
+	reloadLocalWorkflows: reloadComfyLocalWorkflows
 } = useAIWorkflowComfyConnection({
 	store,
 	comfyService,
@@ -9675,6 +10081,56 @@ const {
 		refreshCanvasNodeLayer()
 	}
 })
+
+// ComfyUI 本地工作流模板管理面板
+const comfyLocalWorkflowManagerVisible = ref(false)
+const comfyLocalWorkflowManagerNodeId = ref<string>('')
+const comfyLocalWorkflowManagerData = ref<unknown>(null)
+const comfyLocalWorkflowManagerName = ref<string>('')
+
+const openComfyLocalWorkflowManager = async (nodeId: string) => {
+	comfyLocalWorkflowManagerNodeId.value = nodeId
+	comfyLocalWorkflowManagerVisible.value = true
+	// 尝试拉取当前节点已选工作流的完整数据，供「另存为本地模板」使用
+	comfyLocalWorkflowManagerData.value = null
+	comfyLocalWorkflowManagerName.value = ''
+	try {
+		const nodeRecord = store.state.nodesById[nodeId]
+		const node = nodeRecord as
+			| {
+					comfyuiSettings?: {
+						baseUrl?: string
+						workflowPath?: string
+						workflowSource?: string
+						workflows?: Array<{ path: string; name: string; source?: string }>
+					}
+			  }
+			| undefined
+		const settings = node?.comfyuiSettings
+		const workflowPath = settings?.workflowPath || ''
+		const baseUrl = settings?.baseUrl || ''
+		if (!workflowPath) return
+		const matched = (settings?.workflows || []).find((w) => w.path === workflowPath)
+		comfyLocalWorkflowManagerName.value = matched?.name || workflowPath
+		if (workflowPath.startsWith('local://')) {
+			const localId = workflowPath.slice('local://'.length)
+			const res = await comfyService.getLocalWorkflow(localId)
+			if (res.ok) comfyLocalWorkflowManagerData.value = res.workflow.data
+		} else if (baseUrl) {
+			const res = await comfyService.getWorkflow(baseUrl, workflowPath)
+			if (res.ok) comfyLocalWorkflowManagerData.value = res.workflow
+		}
+	} catch {
+		// 拉取失败时仅不启用「另存为」，不影响面板其它功能
+	}
+}
+
+const onComfyLocalWorkflowManagerChanged = async () => {
+	const nodeId = comfyLocalWorkflowManagerNodeId.value
+	if (nodeId) {
+		await reloadComfyLocalWorkflows(nodeId)
+	}
+}
 
 const {
 	onNodeSceneLayoutLightingPreviewUpdate,

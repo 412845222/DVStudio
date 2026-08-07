@@ -105,21 +105,25 @@
 			v-if="selected"
 			class="dnw-resize-handle dnw-resize-nw"
 			@pointerdown.stop.prevent="onResizePointerDown('nw', $event)"
+			@wheel.stop.prevent
 		></div>
 		<div
 			v-if="selected"
 			class="dnw-resize-handle dnw-resize-ne"
 			@pointerdown.stop.prevent="onResizePointerDown('ne', $event)"
+			@wheel.stop.prevent
 		></div>
 		<div
 			v-if="selected"
 			class="dnw-resize-handle dnw-resize-sw"
 			@pointerdown.stop.prevent="onResizePointerDown('sw', $event)"
+			@wheel.stop.prevent
 		></div>
 		<div
 			v-if="selected"
 			class="dnw-resize-se"
 			@pointerdown.stop.prevent="onResizePointerDown('se', $event)"
+			@wheel.stop.prevent
 		></div>
 	</div>
 </template>
@@ -246,6 +250,12 @@ function onNodePointerDown(e: PointerEvent) {
 				tgt.closest('.wf-video-controller') ||
 				tgt.closest('[data-wf-three-preview]') ||
 				tgt.closest('[data-wf-node-drag-ignore="true"]') ||
+				tgt.closest('.wf-blender-chat-panel') ||
+				tgt.closest('.wf-blender-tool-card') ||
+				tgt.closest('.wf-blender-tool-header') ||
+				tgt.closest('.wf-blender-tool-detail') ||
+				tgt.closest('.wf-blender-chat-msg-bubble') ||
+				tgt.closest('.wf-blender-thinking-header') ||
 				(tgt.tagName === 'CANVAS' &&
 					tgt.closest(
 						'.wf-scene-layout, .wf-model3d, .wf-three-preview, .vc-timeline, .wf-timeline-canvas'
@@ -412,6 +422,12 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 
 .dom-node-wrapper.dnw-business-mode .dnw-business-content {
 	pointer-events: auto;
+	/* 关键：确保business-content完全占满父容器高度 */
+	height: 100%;
+	width: 100%;
+	box-sizing: border-box;
+	position: relative;
+	z-index: 5;
 }
 
 .dom-node-wrapper.dnw-business-mode .dnw-drag-handle {
@@ -439,6 +455,21 @@ function getPortStyle(port: PortRenderData, isInput: boolean, portIndex: number)
 .dom-node-wrapper.dnw-business-mode .dnw-header,
 .dom-node-wrapper.dnw-business-mode .dnw-content {
 	display: none;
+}
+
+/* 选中 business-mode 下的所有装饰层不得拦截事件，业务内容层是事件第一响应者 */
+.dom-node-wrapper.dnw-business-mode.selected .dnw-hit-area,
+.dom-node-wrapper.dnw-business-mode.selected .dnw-border-base,
+.dom-node-wrapper.dnw-business-mode.selected .dnw-border-glow,
+.dom-node-wrapper.dnw-business-mode.selected .dnw-border-scan,
+.dom-node-wrapper.dnw-business-mode.selected .dnw-header {
+	pointer-events: none !important;
+}
+
+.dom-node-wrapper.dnw-business-mode.selected .dnw-business-content {
+	pointer-events: auto;
+	position: relative;
+	z-index: 5;
 }
 
 .dnw-drag-handle {
