@@ -3,9 +3,15 @@ import fs from 'node:fs'
 import https from 'node:https'
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
 import { protocol, net } from 'electron'
 import { HttpsProxyAgent } from 'https-proxy-agent'
 import { getTempDir } from './modules/subtitle-recognition/paths.mjs'
+
+// ESM 模块中 require 并非全局函数，需通过 createRequire 创建，
+// 否则打包后 require('electron').nativeImage 会抛 ReferenceError，
+// 导致 dweb://project-assets 缩略图生成（meshy 任务面板等）失败。
+const require = createRequire(import.meta.url)
 
 const DWEB_PROJECT_ASSET_HOST = 'project-assets'
 const DWEB_SUBTITLE_TEMP_HOST = 'subtitle-temp'

@@ -1074,8 +1074,27 @@ const handleMeshySuccess = async (
 			}
 		}
 
+		// 等待新节点同步到 Vuex store（engineApi.addNode 只写引擎，Vuex 通过 emitChange 异步同步）
+		if (isNewNode && bindNodeId) {
+			const waitStart = Date.now()
+			const inStore = await waitForNodeInStore(state.nodesById, bindNodeId)
+			console.log('[Meshy Poll] 新节点 store 同步等待结果:', {
+				nodeId: bindNodeId,
+				inStore,
+				elapsed: Date.now() - waitStart
+			})
+			if (!inStore) {
+				console.warn('[Meshy Poll] 新节点未能在超时内同步到 Vuex store，跳过资源绑定', bindNodeId)
+				continue
+			}
+		}
+
 		if (bindNodeId && typeof deps.bindImageResultToNode === 'function') {
 			const bindRet = await deps.bindImageResultToNode(bindNodeId, finalUrl)
+			console.log('[Meshy Poll] bindImageResultToNode 返回:', {
+				nodeId: bindNodeId,
+				bindRet: bindRet === false ? 'false' : bindRet ? '(url)' : '(falsy)'
+			})
 			const bound = bindRet !== false
 			if (bound) {
 				appendResult(deps, generationTaskId, {
@@ -1379,6 +1398,31 @@ export type NodeGenerationResult = {
 	taskType?: 'meshy-3d' | 'meshy-image' | 'other'
 	mode?: string
 	error?: string
+}
+
+/**
+ * 等待新创建的节点同步到 Vuex store。
+ * engineApi.addNode() 只写入引擎内部，Vuex store 通过 emitChange 异步同步。
+ * 若不等待直接调用 bindImageResultToNode，节点守卫 `if (!node) return` 会静默失败。
+ *
+ * @param nodesById Vuex store 中的 nodesById 引用
+ * @param nodeId 新创建的节点 ID
+ * @param timeoutMs 超时毫秒数，默认 2000
+ * @param pollIntervalMs 轮询间隔毫秒数，默认 50
+ * @returns 节点是否在超时前出现在 store 中
+ */
+export const waitForNodeInStore = async (
+	nodesById: Record<string, unknown>,
+	nodeId: string,
+	timeoutMs = 2000,
+	pollIntervalMs = 50
+): Promise<boolean> => {
+	const start = Date.now()
+	while (Date.now() - start < timeoutMs) {
+		if (nodesById[nodeId]) return true
+		await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
+	}
+	return Boolean(nodesById[nodeId])
 }
 
 export const runNodeGenerationTask = async (
