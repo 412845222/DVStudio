@@ -2,9 +2,13 @@
  * Warmup Prompt Manager - 管理未预热节点提示逻辑
  *
  * 检测蓝图中未预热的节点，在打开蓝图时提示用户是否需要预热
+ *
+ * @deprecated 新架构不再使用截图预热系统。默认走 noop 实现（不显示对话框）。
+ *             仅当 DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP='1' 时恢复旧逻辑。
  */
 
 import { ref } from 'vue'
+import { isLegacyScreenshotWarmupEnabled } from '../deprecation'
 
 export interface WarmupPromptState {
 	visible: boolean
@@ -32,6 +36,9 @@ export const useWarmupPrompt = () => {
 		nodeIds: string[],
 		hasCachedScreenshot: (nodeId: string) => boolean
 	): string[] => {
+		// 新架构：永远返回空数组（无未预热节点）
+		if (!isLegacyScreenshotWarmupEnabled()) return []
+
 		const blueprintKey = `${projectId}::${blueprintId}`
 		if (dismissedBlueprints.has(blueprintKey)) {
 			return []
@@ -48,6 +55,8 @@ export const useWarmupPrompt = () => {
 		totalNodeCount: number,
 		onWarmup: (nodeIds: string[]) => void
 	) => {
+		// 新架构：直接跳过，不显示对话框
+		if (!isLegacyScreenshotWarmupEnabled()) return
 		if (unwarmedNodeIds.length === 0) return
 
 		currentWarmupHandler = onWarmup

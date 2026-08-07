@@ -1,5 +1,6 @@
 {
 	"aiworkflow.toast.resourceRecovered": "Resource auto-recovered: {name}",
+	"aiworkflow.toast.resourceRecoveredBatch": "Auto-recovered {count} resources: {top} and more",
 	"aiworkflow.toast.projectRootRecovered": "Project root re-registered, resource recovered: {name}",
 	"aiworkflow.toast.resourceMissing": "Resource missing: {name}",
 	"aiworkflow.toast.referenceRemoved": "Removed invalid resource reference: {name} (undoable)",

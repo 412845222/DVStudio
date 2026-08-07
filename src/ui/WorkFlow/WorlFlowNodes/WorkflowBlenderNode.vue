@@ -567,7 +567,7 @@ const chatMessages = computed<WorkflowBlenderChatMessage[]>(
 )
 
 const effectiveVisibleCount = computed(() => {
-	if (props.isWarmupRender) return WARMUP_VISIBLE_COUNT
+	// 新架构：isWarmupRender 永远为 false，不再限制可见消息数量
 	return visibleMessagesCount.value
 })
 
@@ -580,7 +580,7 @@ const visibleMessages = computed(() => {
 })
 
 const hasMoreMessages = computed(() => {
-	if (props.isWarmupRender) return false
+	// 新架构：isWarmupRender 永远为 false，直接按正常逻辑判断
 	return chatMessages.value.length > visibleMessagesCount.value
 })
 
@@ -901,15 +901,8 @@ watch(
 	}
 )
 
-// 进入预热截图模式时，滚动到底部确保截图展示最新消息
-watch(
-	() => props.isWarmupRender,
-	(val) => {
-		if (val) {
-			scrollToBottom()
-		}
-	}
-)
+// 新架构：截图预热已停用，isWarmupRender 永远为 false，不再需要 watch。
+// 保留 prop 定义避免父组件传参报错。
 </script>
 
 <style scoped>

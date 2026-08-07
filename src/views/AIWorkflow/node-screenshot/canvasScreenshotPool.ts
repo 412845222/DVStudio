@@ -15,6 +15,7 @@
  */
 
 import type { ScreenshotCacheEntry } from './useNodeScreenshotPool'
+import { isLegacyScreenshotWarmupEnabled } from '../deprecation'
 
 export interface CanvasScreenshotEntry {
 	nodeId: string
@@ -80,6 +81,8 @@ export class CanvasScreenshotPool {
 	 * 从截图缓存异步加载ImageBitmap
 	 */
 	async loadFromCache(entry: ScreenshotCacheEntry): Promise<CanvasScreenshotEntry | null> {
+		// 新架构：不使用截图纹理缓存，直接返回 null
+		if (!isLegacyScreenshotWarmupEnabled()) return null
 		if (this.disposed) return null
 
 		const theme = entry.theme || extractThemeFromVersion(entry.version)
@@ -316,6 +319,8 @@ export class CanvasScreenshotPool {
 	 * 检查是否有Bitmap（当前主题）
 	 */
 	hasBitmap(nodeId: string, theme?: 'dark' | 'light'): boolean {
+		// 新架构：不使用截图纹理缓存，永远返回 false
+		if (!isLegacyScreenshotWarmupEnabled()) return false
 		const targetTheme = theme ?? this.activeTheme
 		const entry = this.entries.get(this.getKey(nodeId, targetTheme))
 		return entry?.status === 'ready' || entry?.status === 'loading'
@@ -325,6 +330,8 @@ export class CanvasScreenshotPool {
 	 * 检查指定主题是否有Bitmap
 	 */
 	hasBitmapForTheme(nodeId: string, theme: 'dark' | 'light'): boolean {
+		// 新架构：不使用截图纹理缓存，永远返回 false
+		if (!isLegacyScreenshotWarmupEnabled()) return false
 		const key = this.getKey(nodeId, theme)
 		const entry = this.entries.get(key)
 		return entry?.status === 'ready' || entry?.status === 'loading'

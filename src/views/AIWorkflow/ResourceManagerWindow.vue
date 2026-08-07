@@ -100,6 +100,7 @@ import type { WorkflowState, WorkflowResource, WorkflowNode } from '../../aiwork
 import { BlueprintProjectService } from '../../network/BlueprintProjectService'
 import { openFolderForPath, registerProjectRoot } from '../../electronBridge'
 import { useAIWorkflowResourceRecordCleanup } from './assets/useAIWorkflowResourceRecordCleanup'
+import { isStaticAssetResource } from './assets/useAIWorkflowResourceUrlClassifier'
 
 type RmDataPayload = {
 	resources?: unknown[]
@@ -134,14 +135,23 @@ const routeParams = (() => {
 
 // ============ 3. 资源列表（优先从本地缓存读取，回退到store） ============
 const resources = computed(() => {
+	let list: Array<WorkflowResource> = []
 	if (dataReceived.value) {
 		// 已从主窗口接收到数据，直接使用（即使是空数组）
-		return localResources.value
+		list = (localResources.value as Array<WorkflowResource>) || []
+	} else {
+		const byId = store.state.resourcesById
+		const order = store.state.resourceOrder
+		if (Array.isArray(order)) {
+			list = order.map((id) => byId[id]).filter(Boolean) as Array<WorkflowResource>
+		}
 	}
-	const byId = store.state.resourcesById
-	const order = store.state.resourceOrder
-	if (!Array.isArray(order)) return []
-	return order.map((id) => byId[id]).filter(Boolean)
+	/* ============ 整改方案 O3.1：资源管理器面板只展示真正的静态资产。
+	 * 预热截图缓存、临时资源占位符等不展示；
+	 * 从源头就不会渲染出"幽灵资源"，也就不会触发缩略图加载失败 → refreshMissing → 删除。
+	 * （ResourceManagerPanel.vue sortedResources computed 中做了同样的防御性过滤）
+	 */
+	return list.filter((r) => isStaticAssetResource(r))
 })
 
 // ============ 3b. 节点数据（优先从本地缓存读取，回退到store） ============
@@ -473,6 +483,13 @@ const onMainWindowData = (payload: RmDataPayload) => {
 onMounted(async () => {
 	const dweb = window.dweb
 
+	// O3：标记整个独立窗口为资源管理器窗口，全局 404 errorHandler 跳过此窗口内所有 img onerror
+	try {
+		document.body?.setAttribute?.('data-rm-window', '1')
+	} catch {
+		/* ignore */
+	}
+
 	// Step 0: 注册监听主窗口通知（push 模型）
 	if (dweb?.aiworkflow && typeof dweb.aiworkflow.onResourceManagerNotify === 'function') {
 		mainWindowNotifyListenerId = dweb.aiworkflow.onResourceManagerNotify(onMainWindowNotify)
@@ -578,6 +595,12 @@ onBeforeUnmount(() => {
 	if (toastTimer !== null) {
 		clearTimeout(toastTimer)
 		toastTimer = null
+	}
+	// O3：清理 RM 窗口标记
+	try {
+		document.body?.removeAttribute?.('data-rm-window')
+	} catch {
+		/* ignore */
 	}
 	const dweb = window.dweb
 	if (mainWindowNotifyListenerId !== null && dweb?.aiworkflow?.offResourceManagerNotify) {
