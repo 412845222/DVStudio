@@ -8191,21 +8191,15 @@ const autoCreateImageNodesForMultiView = async (
 		}
 
 		// 兜底：持久化到项目本地后绑定
+		// 注意：不传 sourcePath，因为 settings.outputSummary.assetPath 对应的是第一张图，
+		// 对当前图片（第 2/3/4 张）无效，会导致持久化到同一文件
 		const persisted = (await persistExternalAssetToProject({
 			kind: 'image',
 			name: fileName,
-			sourceUrl: imageUrl,
-			sourcePath:
-				String((settings.outputSummary as Record<string, unknown>)?.assetPath || '').trim() ||
-				String(settings.outputAssetPath || '').trim() ||
-				undefined
+			sourceUrl: imageUrl
 		})) as PersistedAsset | null
 		const outputUrl = String(persisted?.url || imageUrl).trim()
-		const outputPath = String(
-			persisted?.absolutePath ||
-				((settings.outputSummary as Record<string, unknown>)?.assetPath as string) ||
-				''
-		).trim()
+		const outputPath = String(persisted?.absolutePath || '').trim()
 		if (!outputUrl) continue
 
 		try {
