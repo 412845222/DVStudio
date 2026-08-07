@@ -18,6 +18,30 @@ import {
 
 const COMFY_AUTO_WIRE_NODE_DELAY_MS = 180
 
+const waitForNodeInStore = (
+	store: { state: { nodesById: Record<string, unknown> } },
+	nodeId: string,
+	timeoutMs = 2000
+): Promise<boolean> => {
+	if (store.state.nodesById[nodeId]) return Promise.resolve(true)
+	const start = Date.now()
+	return new Promise((resolve) => {
+		const check = () => {
+			if (store.state.nodesById[nodeId]) {
+				resolve(true)
+				return
+			}
+			if (Date.now() - start >= timeoutMs) {
+				console.warn('[ComfyUI AutoWire] waitForNodeInStore timed out', { nodeId, timeoutMs })
+				resolve(false)
+				return
+			}
+			requestAnimationFrame(check)
+		}
+		check()
+	})
+}
+
 type UseAIWorkflowComfyAutoWireOptions = {
 	store: {
 		state: WorkflowState
@@ -336,6 +360,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 						toNodeId: targetNodeId,
 						toAnchorId: targetAnchorId
 					})
+
+					// 等待节点从引擎同步到 Store（engineApi.addNode 触发 onBlueprintEditorChange → hydrateDraft 是异步的）
+					await waitForNodeInStore(options.store, targetNodeId, 2000)
 
 					const url = String(primaryOutput.url ?? '').trim()
 					const name = String(primaryOutput.filename ?? '').trim() || `comfyui_${Date.now()}`

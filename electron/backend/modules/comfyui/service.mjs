@@ -2601,42 +2601,88 @@ function extractHistoryWorkflows(historyData, maxItems) {
 	return entries
 }
 
+// 从 LocalDB comfyui_workflows 表读取本地模板，映射为列表项
+function listLocalWorkflowItems(ctx) {
+	try {
+		const repo = ctx.localdb?.comfyuiWorkflows
+		if (!repo) return []
+		return repo.list().map((w) => ({
+			path: `local://${w.id}`,
+			name: w.name || '未命名工作流',
+			source: 'local',
+			localId: w.id,
+			updatedAt: Number(w.updatedAt) || 0
+		}))
+	} catch (err) {
+		console.warn('[ComfyUI] listLocalWorkflowItems failed:', err?.message || err)
+		return []
+	}
+}
+
+// 从 LocalDB 读取单个本地模板，返回其 data（期望为 prompt graph API 格式）
+function getLocalWorkflowData(ctx, id) {
+	const wid = String(id || '').trim()
+	if (!wid) return null
+	try {
+		const repo = ctx.localdb?.comfyuiWorkflows
+		if (!repo) return null
+		const wf = repo.get(wid)
+		if (!wf) return null
+		return wf
+	} catch (err) {
+		console.warn('[ComfyUI] getLocalWorkflowData failed:', err?.message || err)
+		return null
+	}
+}
+
 export async function runtimeListWorkflowFiles(ctx, payload) {
 	const client = ctx.httpClient
 	const p = payload || {}
 	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
 	if (baseErr) return { ok: false, error: baseErr }
 
-	const params = new URLSearchParams({ dir: 'workflows', recurse: 'true' })
-	const userdataUrl = `${base}/userdata?${params.toString()}`
-	const userdataResult = await comfyJsonGet(client, userdataUrl, 10000)
+	// 本地模板始终置顶，无论 ComfyUI 服务是否在线
+	const localWorkflows = listLocalWorkflowItems(ctx)
 
-	let workflows = []
+	let remoteWorkflows = []
 	let source = 'userdata'
 	let userdataError = null
 	let apiFailed = false
 
-	if (!userdataResult.error && Array.isArray(userdataResult.data)) {
-		workflows = filterWorkflowFiles(userdataResult.data)
-	} else {
-		userdataError = userdataResult.error
-		apiFailed = !!userdataError
-	}
+	try {
+		const params = new URLSearchParams({ dir: 'workflows', recurse: 'true' })
+		const userdataUrl = `${base}/userdata?${params.toString()}`
+		const userdataResult = await comfyJsonGet(client, userdataUrl, 10000)
 
-	if (workflows.length === 0) {
-		const maxHistory = Number(p.maxHistory) || 20
-		const histUrl = `${base}/history?max_items=${maxHistory}`
-		const histResult = await comfyJsonGet(client, histUrl, 10000)
-		if (!histResult.error && isRecord(histResult.data)) {
-			const historyWorkflows = extractHistoryWorkflows(histResult.data, maxHistory)
-			if (historyWorkflows.length > 0) {
-				workflows = historyWorkflows
-				source = 'history'
+		if (!userdataResult.error && Array.isArray(userdataResult.data)) {
+			remoteWorkflows = filterWorkflowFiles(userdataResult.data)
+		} else {
+			userdataError = userdataResult.error
+			apiFailed = !!userdataError
+		}
+
+		if (remoteWorkflows.length === 0) {
+			const maxHistory = Number(p.maxHistory) || 20
+			const histUrl = `${base}/history?max_items=${maxHistory}`
+			const histResult = await comfyJsonGet(client, histUrl, 10000)
+			if (!histResult.error && isRecord(histResult.data)) {
+				const historyWorkflows = extractHistoryWorkflows(histResult.data, maxHistory)
+				if (historyWorkflows.length > 0) {
+					remoteWorkflows = historyWorkflows
+					source = 'history'
+				}
 			}
 		}
+	} catch (err) {
+		// 服务不可达时不阻断本地模板返回
+		userdataError = String(err?.message || err)
+		apiFailed = true
 	}
 
-	if (workflows.length === 0 && apiFailed) {
+	// 合并：本地模板置顶 + 远程结果
+	const workflows = [...localWorkflows, ...remoteWorkflows]
+
+	if (remoteWorkflows.length === 0 && apiFailed && localWorkflows.length === 0) {
 		return {
 			ok: false,
 			error: `无法获取工作流列表（/userdata错误: ${userdataError}）`,
@@ -2836,6 +2882,55 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 			error: 'NO_HISTORY',
 			message: '历史记录已不存在，请重新在ComfyUI中运行该工作流'
 		}
+	}
+
+	// 本地模板：直接从 LocalDB 取 data 作为 prompt graph，无需 ComfyUI /history 在线
+	if (workflowPath.startsWith('local://')) {
+		const localId = workflowPath.slice('local://'.length)
+		const wf = getLocalWorkflowData(ctx, localId)
+		if (!wf) {
+			return {
+				ok: false,
+				error: 'NO_LOCAL',
+				message: '本地工作流模板不存在: ' + localId,
+				baseUrl: base
+			}
+		}
+		const data = wf.data
+		if (!isRecord(data) || !isPromptGraphJson(data)) {
+			return {
+				ok: false,
+				error: 'INVALID_LOCAL_FORMAT',
+				message:
+					'本地模板数据格式无效：仅支持 ComfyUI API 格式（prompt graph）。请在 ComfyUI 中使用"保存(API格式)"后重新导入。',
+				baseUrl: base
+			}
+		}
+		const inputInfo = analyzeInputNodes(data)
+		const resp = {
+			ok: true,
+			baseUrl: base,
+			hasHistory: true,
+			promptGraph: data,
+			promptId: `local://${wf.id}`,
+			timestamp: Number(wf.updatedAt) || 0,
+			matchType: 'direct',
+			nodeCount: inputInfo.nodeCount,
+			imageInputs: inputInfo.images,
+			videoInputs: inputInfo.videos,
+			textNodes: inputInfo.textNodes,
+			seedNodes: inputInfo.seedNodes,
+			outputs: inputInfo.outputs,
+			hasImageInput: inputInfo.hasImageInput,
+			hasVideoInput: inputInfo.hasVideoInput,
+			hasTextPrompt: inputInfo.hasTextPrompt,
+			hasImageOutput: inputInfo.hasImageOutput,
+			hasVideoOutput: inputInfo.hasVideoOutput,
+			hasModel3dOutput: inputInfo.hasModel3dOutput,
+			source: 'local-direct',
+			fromCache: false
+		}
+		return resp
 	}
 
 	const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
@@ -3371,6 +3466,22 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 		return runtimeGetHistoryWorkflow(ctx, { baseUrl: base, promptId })
 	}
 
+	// 本地模板：从 LocalDB 读取，data 应为 prompt graph API 格式或 UI JSON
+	if (workflowPath.startsWith('local://')) {
+		const localId = workflowPath.slice('local://'.length)
+		const wf = getLocalWorkflowData(ctx, localId)
+		if (!wf) return { ok: false, error: '本地工作流模板不存在: ' + localId }
+		return {
+			ok: true,
+			baseUrl: base,
+			workflowPath,
+			workflow: wf.data || {},
+			source: 'local',
+			localId: wf.id,
+			localName: wf.name
+		}
+	}
+
 	if (workflowPath.startsWith('/')) workflowPath = workflowPath.slice(1)
 
 	const quoted = encodeURIComponent(workflowPath)
@@ -3535,6 +3646,34 @@ export async function runtimeRunWorkflow(ctx, payload) {
 						seedNodes: cached.seedNodes || []
 					}
 				}
+			}
+		}
+	}
+
+	// 本地模板：直接从 LocalDB 取 data 作为 prompt graph，无需 ComfyUI /history 在线
+	if (workflowPath.startsWith('local://') && !isRecord(promptGraph)) {
+		const localId = workflowPath.slice('local://'.length)
+		const wf = getLocalWorkflowData(ctx, localId)
+		if (!wf) {
+			return {
+				ok: false,
+				error: 'NO_LOCAL',
+				message: '本地工作流模板不存在: ' + localId,
+				baseUrl: base
+			}
+		}
+		const data = wf.data
+		if (isRecord(data) && isPromptGraphJson(data)) {
+			promptGraph = data
+			matchType = 'direct'
+			promptSource = 'local-direct'
+		} else {
+			return {
+				ok: false,
+				error: 'INVALID_LOCAL_FORMAT',
+				message:
+					'本地模板数据格式无效：仅支持 ComfyUI API 格式（prompt graph）。请在 ComfyUI 中使用"保存(API格式)"后重新导入。',
+				baseUrl: base
 			}
 		}
 	}

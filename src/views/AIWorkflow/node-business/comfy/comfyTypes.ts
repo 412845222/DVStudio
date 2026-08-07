@@ -1,7 +1,7 @@
-import type { ComfyWorkflow } from '../../../../network/ComfyUIBridgeService'
+import type { ComfyWorkflow, LocalComfyWorkflow } from '../../../../network/ComfyUIBridgeService'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 
-export type { ComfyBridgeMedia, ComfyLocalizedOutput }
+export type { ComfyBridgeMedia, ComfyLocalizedOutput, LocalComfyWorkflow }
 
 export type ComfyUIPingResponse =
 	| {
@@ -16,11 +16,19 @@ export type ComfyUIPingResponse =
 			baseUrl?: string
 	  }
 
+export type ComfyWorkflowListItem = {
+	path: string
+	name: string
+	source?: 'local' | 'userdata' | 'history'
+	localId?: string
+	updatedAt?: number
+}
+
 export type ComfyUIWorkflowsListResponse =
 	| {
 			ok: true
 			baseUrl: string
-			workflows: { path: string; name: string }[]
+			workflows: ComfyWorkflowListItem[]
 	  }
 	| {
 			ok: false
@@ -121,6 +129,29 @@ export type ComfyService = {
 	ping: (baseUrl: string) => Promise<ComfyUIPingResponse>
 	listWorkflows: (baseUrl: string) => Promise<ComfyUIWorkflowsListResponse>
 	getWorkflow: (baseUrl: string, workflowPath: string) => Promise<ComfyUIGetWorkflowResponse>
+	// 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）
+	listLocalWorkflows: () => Promise<
+		| { ok: true; items: LocalComfyWorkflow[] }
+		| { ok: false; error: string }
+	>
+	getLocalWorkflow: (
+		id: string
+	) => Promise<
+		| { ok: true; workflow: LocalComfyWorkflow }
+		| { ok: false; error: string }
+	>
+	saveLocalWorkflow: (input: {
+		id?: string
+		name: string
+		data: unknown
+	}) => Promise<
+		| { ok: true; workflow: LocalComfyWorkflow }
+		| { ok: false; error: string }
+	>
+	deleteLocalWorkflow: (id: string) => Promise<
+		| { ok: true; id: string }
+		| { ok: false; error: string }
+	>
 }
 
 export type ComfyNodeState = {

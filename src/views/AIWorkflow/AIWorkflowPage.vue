@@ -109,8 +109,16 @@
 				@node-export-unreal-lighting="onNodeExportUnrealLighting"
 				@node-disconnect-unreal="onNodeDisconnect"
 				@node-set-asset-root-path="(p: any) => onNodeSetAssetRootPath(p.nodeId, p.path)"
-				@node-update-poster="onNodeUpdatePoster"
-			>
+			@node-update-poster="onNodeUpdatePoster"
+			@node-connect-comfyui="(p: any) => onComfyUIConnect(p.nodeId, { baseUrl: p.baseUrl })"
+			@node-select-workflow="(p: any) => onComfyUISelectWorkflow(p.nodeId, { workflowPath: p.workflowPath })"
+			@node-run-comfyui="(id: string) => onComfyUIRun(id)"
+			@node-cancel-comfyui="(id: string) => onComfyUICancel(id)"
+			@node-refresh-history-check="(id: string) => onRefreshHistoryCheck(id)"
+			@node-clear-history-cache="(id: string) => onClearHistoryCache(id)"
+			@node-update-comfyui-settings="(p: any) => onComfyUISettingsUpdate(p.nodeId, p.patch)"
+			@node-manage-local-workflows="(id: string) => openComfyLocalWorkflowManager(id)"
+		>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
 					:visible="contextMenu.open"
@@ -132,6 +140,15 @@
 				/>
 			</AIWorkflowBlueprintHost>
 		</div>
+
+		<ComfyLocalWorkflowManager
+			:visible="comfyLocalWorkflowManagerVisible"
+			:comfy-service="comfyService"
+			:current-workflow-data="comfyLocalWorkflowManagerData"
+			:current-workflow-name="comfyLocalWorkflowManagerName"
+			@close="comfyLocalWorkflowManagerVisible = false"
+			@changed="onComfyLocalWorkflowManagerChanged"
+		/>
 
 		<!-- UI按钮容器 -->
 		<div class="aiwf-ui-container">
@@ -667,7 +684,8 @@ import {
 	provide,
 	ref,
 	shallowRef,
-	watch
+	watch,
+	watchEffect
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
@@ -776,10 +794,11 @@ import type { AnchorKind } from '../../aiworkflow/domain/link/anchorKinds'
 import { AIWorkflowKey } from '../../store/aiworkflow'
 import { ThemeKey } from '../../store/theme'
 import type { ThemeMode } from '../../store/theme'
-import { createDefaultAIWorkflowState } from '../../store/aiworkflow/store'
+import { createDefaultAIWorkflowState, setEngineSyncHooks } from '../../store/aiworkflow/store'
 import { aiWorkflowHistory, ensureAIWorkflowHistory } from '../../adapters/aiWorkflowPersistence'
 import { ComfyUIBridgeService } from '../../network/ComfyUIBridgeService'
 import type { SeedanceTaskMirrorItem } from '../../network/ComfyUIBridgeService'
+import ComfyLocalWorkflowManager from '../../ui/WorkFlow/WorlFlowNodes/comfy/ComfyLocalWorkflowManager.vue'
 import { createLocalExecChatService } from '../../network/LocalExecChatService'
 import {
 	BlueprintProjectService,
@@ -1674,6 +1693,32 @@ function onBlueprintEditorChange(data: LegacyBlueprintData) {
 		return
 	}
 	const snapshot = legacyBlueprintToWorkflowState(data, store.state.nodesById)
+	// 保留引擎快照中缺失的 ComfyUI 输入边，防止双轨同步时丢失已建立的资源连接
+	const comfyInputAnchorPattern = /^in(-.*)?$/
+	if (snapshot.edgesById && snapshot.edgeOrder) {
+		const existingEdges = store.state.edgesById
+		let preservedCount = 0
+		for (const [eid, edge] of Object.entries(existingEdges)) {
+			if (snapshot.edgesById[eid]) continue
+			const toNode = store.state.nodesById[edge.toNodeId]
+			if (
+				toNode?.type === 'comfyui' &&
+				comfyInputAnchorPattern.test(String(edge.toAnchorId ?? ''))
+			) {
+				snapshot.edgesById[eid] = edge
+				if (!snapshot.edgeOrder.includes(eid)) {
+					snapshot.edgeOrder = [...snapshot.edgeOrder, eid]
+				}
+				preservedCount++
+			}
+		}
+		if (preservedCount > 0) {
+			console.log(
+				'[DraftFlow#AIWorkflowPage onBlueprintEditorChange] PRESERVE(comfy-edges): kept edges missing from engine snapshot',
+				{ preservedCount }
+			)
+		}
+	}
 	isUpdatingFromStore = true
 	store.commit('hydrateDraft', { snapshot })
 	resetIsUpdatingFromStore()
@@ -1860,6 +1905,40 @@ function patchBlueprintNodeData(nodeId: string) {
 	}
 	scene.requestRedraw?.()
 }
+
+// F1.4 + FX2: 注入 Store→Engine 同步钩子
+// 当 blueprintHostRef 就绪后，将 patchBlueprintNodeData 注册到 store 的同步钩子中
+// 使得 setNodeComfyUISettings / setNodeResource mutation 自动触发引擎同步
+// FX2: 同时注册边同步钩子，使得 addEdge/removeEdge mutation 自动同步到 Engine
+watchEffect(() => {
+	const editor = blueprintHostRef.value?.getInstance?.()
+	if (!editor) return
+	setEngineSyncHooks({
+		syncComfyUISettings: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		syncNodeResource: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		// FX2: 边同步 — 将 Vuex 中的边操作同步到 BlueprintEngine
+		syncAddEdge: (edge) => {
+			if (typeof (editor as any).addEdge === 'function') {
+				const ok = (editor as any).addEdge({
+					id: edge.id,
+					fromNodeId: edge.fromNodeId,
+					fromAnchorId: edge.fromAnchorId,
+					toNodeId: edge.toNodeId,
+					toAnchorId: edge.toAnchorId,
+					createdAt: edge.createdAt
+				})
+				if (!ok) {
+					console.warn('[EdgeSync][Vuex→Engine] addEdge returned false', { id: edge.id })
+				}
+			}
+		},
+		syncRemoveEdge: (edgeId: string) => {
+			if (typeof (editor as any).removeEdge === 'function') {
+				(editor as any).removeEdge(edgeId)
+			}
+		}
+	})
+})
 
 let viewportSyncFrameId: number | null = null
 let pendingViewportSync: { zoom: number; panX: number; panY: number } | null = null
@@ -9858,7 +9937,8 @@ const {
 	onComfyUIConnect,
 	onComfyUISelectWorkflow,
 	onRefreshHistoryCheck,
-	onClearHistoryCache
+	onClearHistoryCache,
+	reloadLocalWorkflows: reloadComfyLocalWorkflows
 } = useAIWorkflowComfyConnection({
 	store,
 	comfyService,
@@ -9868,6 +9948,56 @@ const {
 		refreshCanvasNodeLayer()
 	}
 })
+
+// ComfyUI 本地工作流模板管理面板
+const comfyLocalWorkflowManagerVisible = ref(false)
+const comfyLocalWorkflowManagerNodeId = ref<string>('')
+const comfyLocalWorkflowManagerData = ref<unknown>(null)
+const comfyLocalWorkflowManagerName = ref<string>('')
+
+const openComfyLocalWorkflowManager = async (nodeId: string) => {
+	comfyLocalWorkflowManagerNodeId.value = nodeId
+	comfyLocalWorkflowManagerVisible.value = true
+	// 尝试拉取当前节点已选工作流的完整数据，供「另存为本地模板」使用
+	comfyLocalWorkflowManagerData.value = null
+	comfyLocalWorkflowManagerName.value = ''
+	try {
+		const nodeRecord = store.state.nodesById[nodeId]
+		const node = nodeRecord as
+			| {
+					comfyuiSettings?: {
+						baseUrl?: string
+						workflowPath?: string
+						workflowSource?: string
+						workflows?: Array<{ path: string; name: string; source?: string }>
+					}
+			  }
+			| undefined
+		const settings = node?.comfyuiSettings
+		const workflowPath = settings?.workflowPath || ''
+		const baseUrl = settings?.baseUrl || ''
+		if (!workflowPath) return
+		const matched = (settings?.workflows || []).find((w) => w.path === workflowPath)
+		comfyLocalWorkflowManagerName.value = matched?.name || workflowPath
+		if (workflowPath.startsWith('local://')) {
+			const localId = workflowPath.slice('local://'.length)
+			const res = await comfyService.getLocalWorkflow(localId)
+			if (res.ok) comfyLocalWorkflowManagerData.value = res.workflow.data
+		} else if (baseUrl) {
+			const res = await comfyService.getWorkflow(baseUrl, workflowPath)
+			if (res.ok) comfyLocalWorkflowManagerData.value = res.workflow
+		}
+	} catch {
+		// 拉取失败时仅不启用「另存为」，不影响面板其它功能
+	}
+}
+
+const onComfyLocalWorkflowManagerChanged = async () => {
+	const nodeId = comfyLocalWorkflowManagerNodeId.value
+	if (nodeId) {
+		await reloadComfyLocalWorkflows(nodeId)
+	}
+}
 
 const {
 	onNodeSceneLayoutLightingPreviewUpdate,

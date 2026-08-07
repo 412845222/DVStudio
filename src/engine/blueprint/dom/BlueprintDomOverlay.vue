@@ -81,11 +81,19 @@
 						@upload-scene-layout-model-file="onBusinessUploadSceneLayoutModelFile"
 						@update-model-bindings="onBusinessUpdateModelBindings"
 						@export-unreal-scene="onBusinessExportUnrealScene"
-						@export-unreal-lighting="onBusinessExportUnrealLighting"
-						@disconnect-unreal="onBusinessDisconnectUnreal"
-						@set-asset-root-path="onBusinessSetAssetRootPath"
-						@update-poster="onBusinessUpdatePoster"
-					/>
+					@export-unreal-lighting="onBusinessExportUnrealLighting"
+					@disconnect-unreal="onBusinessDisconnectUnreal"
+					@set-asset-root-path="onBusinessSetAssetRootPath"
+					@update-poster="onBusinessUpdatePoster"
+					@connect-comfyui="onBusinessConnectComfyUI"
+					@select-workflow="onBusinessSelectWorkflow"
+					@run-comfyui="onBusinessRunComfyUI"
+					@cancel-comfyui="onBusinessCancelComfyUI"
+					@refresh-history-check="onBusinessRefreshHistoryCheck"
+					@clear-history-cache="onBusinessClearHistoryCache"
+					@update-comfyui-settings="onBusinessUpdateComfyUISettings"
+					@manage-local-workflows="onBusinessManageLocalWorkflows"
+				/>
 				</DomNodeWrapper>
 			</TransitionGroup>
 		</div>
@@ -224,6 +232,17 @@ const emit = defineEmits<{
 	(e: 'node-disconnect-unreal', nodeId: string): void
 	(e: 'node-set-asset-root-path', payload: { nodeId: string; path: string }): void
 	(e: 'node-update-poster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'node-connect-comfyui', payload: { nodeId: string; baseUrl: string }): void
+	(e: 'node-select-workflow', payload: { nodeId: string; workflowPath: string }): void
+	(e: 'node-run-comfyui', nodeId: string): void
+	(e: 'node-cancel-comfyui', nodeId: string): void
+	(e: 'node-refresh-history-check', nodeId: string): void
+	(e: 'node-clear-history-cache', nodeId: string): void
+	(
+		e: 'node-update-comfyui-settings',
+		payload: { nodeId: string; patch: Record<string, any> }
+	): void
+	(e: 'node-manage-local-workflows', nodeId: string): void
 }>()
 
 const props = defineProps<{
@@ -620,6 +639,41 @@ function onBusinessDisconnectUnreal(nodeId: string) {
 
 function onBusinessSetAssetRootPath(payload: { nodeId: string; path: string }) {
 	emit('node-set-asset-root-path', payload)
+}
+
+function onBusinessConnectComfyUI(payload: { nodeId: string; baseUrl: string }) {
+	emit('node-connect-comfyui', payload)
+}
+
+function onBusinessSelectWorkflow(payload: { nodeId: string; workflowPath: string }) {
+	emit('node-select-workflow', payload)
+}
+
+function onBusinessRunComfyUI(nodeId: string) {
+	emit('node-run-comfyui', nodeId)
+}
+
+function onBusinessCancelComfyUI(nodeId: string) {
+	emit('node-cancel-comfyui', nodeId)
+}
+
+function onBusinessRefreshHistoryCheck(nodeId: string) {
+	emit('node-refresh-history-check', nodeId)
+}
+
+function onBusinessClearHistoryCache(nodeId: string) {
+	emit('node-clear-history-cache', nodeId)
+}
+
+function onBusinessUpdateComfyUISettings(payload: {
+	nodeId: string
+	patch: Record<string, any>
+}) {
+	emit('node-update-comfyui-settings', payload)
+}
+
+function onBusinessManageLocalWorkflows(nodeId: string) {
+	emit('node-manage-local-workflows', nodeId)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })

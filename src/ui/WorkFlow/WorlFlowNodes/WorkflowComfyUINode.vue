@@ -141,26 +141,52 @@
 					</div>
 				</div>
 
-				<div v-if="status === 'connected'" class="wf-comfy-workflows">
+				<div v-if="showWorkflowsSection" class="wf-comfy-workflows">
+				<div class="wf-comfy-workflows-header">
 					<div class="wf-comfy-label">{{ t('nodes.comfyui.availableWorkflows') }}</div>
-					<select
-						class="wf-comfy-select"
-						:value="workflowPath"
-						:disabled="!workflows.length"
-						@change="onWorkflowChange"
+					<button
+						class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost wf-comfy-manage-btn"
+						type="button"
+						:title="t('nodes.comfyui.manageLocalWorkflows')"
+						@click.stop="onManageLocalWorkflows"
 					>
-						<option value="" disabled>
-							{{
-								workflows.length
-									? t('nodes.comfyui.selectWorkflow')
-									: t('nodes.comfyui.noWorkflowsFound')
-							}}
-						</option>
-						<option v-for="wf in workflows" :key="wf.path" :value="wf.path">
+						{{ t('nodes.comfyui.manageLocalWorkflows') }}
+					</button>
+				</div>
+				<div v-if="status !== 'connected' && hasLocalWorkflows" class="wf-comfy-offline-hint">
+					{{ t('nodes.comfyui.offlineLocalOnly') }}
+				</div>
+				<select
+					class="wf-comfy-select"
+					:value="workflowPath"
+					:disabled="!workflows.length"
+					@change="onWorkflowChange"
+				>
+					<option value="" disabled>
+						{{
+							workflows.length
+								? t('nodes.comfyui.selectWorkflow')
+								: t('nodes.comfyui.noWorkflowsFound')
+						}}
+					</option>
+					<optgroup
+						v-if="localWorkflowItems.length"
+						:label="t('nodes.comfyui.localTemplateGroup')"
+					>
+						<option v-for="wf in localWorkflowItems" :key="wf.path" :value="wf.path">
 							{{ wf.name || wf.path }}
 						</option>
-					</select>
-				</div>
+					</optgroup>
+					<optgroup
+						v-if="remoteWorkflowItems.length"
+						:label="t('nodes.comfyui.remoteTemplateGroup')"
+					>
+						<option v-for="wf in remoteWorkflowItems" :key="wf.path" :value="wf.path">
+							{{ wf.name || wf.path }}
+						</option>
+					</optgroup>
+				</select>
+			</div>
 
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-history">
 					<div v-if="!historyChecked" class="wf-comfy-history-status checking">
@@ -354,6 +380,7 @@ import { computed, onMounted, onBeforeUnmount, ref, nextTick, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
 import { openComfySetup } from '../../../electronBridge'
+import { COMFYUI_DEFAULT_BASE_URL } from '../../../store/aiworkflow/store'
 
 const { t } = useI18n()
 
@@ -698,9 +725,14 @@ const props = defineProps<{
 		status?: 'idle' | 'connecting' | 'connected' | 'error'
 		message?: string
 		lastCheckedAt?: number
-		workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+		workflows?: { path: string; name: string; source?: 'local' | 'userdata' | 'history' }[]
 		workflowPath?: string
-		workflowSource?: 'userdata' | 'history'
+		workflowSource?: 'local' | 'userdata' | 'history'
+		localWorkflows?: Array<{
+			id: string
+			name: string
+			updatedAt?: number
+		}>
 		positivePrompt?: string
 		negativePrompt?: string
 		objectInfo?: Record<string, unknown>
@@ -858,6 +890,7 @@ const emit = defineEmits<{
 	(e: 'cancel-comfyui'): void
 	(e: 'refresh-history-check'): void
 	(e: 'clear-history-cache'): void
+	(e: 'manage-local-workflows'): void
 }>()
 
 const baseUrl = computed(() => String(props.comfyuiSettings?.baseUrl ?? ''))
@@ -869,6 +902,17 @@ const message = computed(() => String(props.comfyuiSettings?.message ?? ''))
 
 const workflows = computed(() =>
 	Array.isArray(props.comfyuiSettings?.workflows) ? props.comfyuiSettings!.workflows! : []
+)
+const localWorkflowItems = computed(() =>
+	workflows.value.filter((w) => w.source === 'local')
+)
+const remoteWorkflowItems = computed(() =>
+	workflows.value.filter((w) => w.source !== 'local')
+)
+const hasLocalWorkflows = computed(() => localWorkflowItems.value.length > 0)
+// 离线场景下也展示工作流区域（仅本地模板可浏览/选择）
+const showWorkflowsSection = computed(
+	() => status.value === 'connected' || hasLocalWorkflows.value
 )
 const workflowPath = computed(() => String(props.comfyuiSettings?.workflowPath ?? ''))
 const positivePrompt = computed(() => String(props.comfyuiSettings?.positivePrompt ?? ''))
@@ -1000,6 +1044,10 @@ function onClearHistoryCache() {
 	emit('clear-history-cache')
 }
 
+function onManageLocalWorkflows() {
+	emit('manage-local-workflows')
+}
+
 const cancelDisabled = computed(() => {
 	if (status.value !== 'connected') return true
 	if (runStatus.value !== 'running' && runStatus.value !== 'canceling') return true
@@ -1033,18 +1081,23 @@ const checkpoints = computed(() => {
 })
 
 const connectedStatusText = computed(() => {
-	if (!baseUrlTrimmed.value) return t('nodes.comfyui.connNoAddress')
+	// 先看状态：connecting/connected/error 都属于"已经配置过"的语义
+	// 地址空只在 idle 兜底时提示，避免与"未连接"状态混淆
+	const noAddress = !baseUrlTrimmed.value
 	if (status.value === 'connecting') return t('nodes.comfyui.connConnecting')
 	if (status.value === 'connected') {
 		return comfyUIVersion.value
 			? t('nodes.comfyui.connectedInfo', { version: comfyUIVersion.value })
 			: t('nodes.comfyui.connConnected')
 	}
-	if (status.value === 'error')
+	if (status.value === 'error') {
+		if (noAddress) return t('nodes.comfyui.connNoAddress')
 		return message.value
 			? t('nodes.comfyui.connFailed', { message: message.value })
 			: t('nodes.comfyui.connFailed', { message: '' })
-	return t('nodes.comfyui.connNotConnected')
+	}
+	// idle：地址空才提示"未填写地址"，否则显示"未连接"
+	return noAddress ? t('nodes.comfyui.connNoAddress') : t('nodes.comfyui.connNotConnected')
 })
 
 const svcUptime = computed(() => {
@@ -1395,6 +1448,26 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	gap: 6px;
 	flex-shrink: 0;
+}
+
+.wf-comfy-workflows-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.wf-comfy-manage-btn {
+	white-space: nowrap;
+}
+
+.wf-comfy-offline-hint {
+	font-size: 11px;
+	color: var(--vscode-editorWarning-foreground, #ffc107);
+	opacity: 0.9;
+	padding: 4px 6px;
+	border-left: 2px solid var(--vscode-inputValidation-warningBorder, #ffc107);
+	background: rgba(255, 193, 7, 0.08);
 }
 
 .wf-comfy-select {
