@@ -55,6 +55,14 @@
 			@disconnect-unreal="onNodeDisconnectUnreal"
 			@set-asset-root-path="onNodeSetUnrealAssetRootPath"
 			@update-poster="onUpdatePoster"
+			@connect-comfyui="onConnectComfyUI"
+			@select-workflow="onSelectWorkflow"
+			@run-comfyui="onRunComfyUI"
+			@cancel-comfyui="onCancelComfyUI"
+			@refresh-history-check="onRefreshHistoryCheck"
+			@clear-history-cache="onClearHistoryCache"
+			@update-comfyui-settings="onUpdateComfyUISettings"
+			@manage-local-workflows="onManageLocalWorkflows"
 			@blender-connect="onBlenderConnect"
 			@blender-disconnect="onBlenderDisconnect"
 			@blender-import="onBlenderImport"
@@ -159,6 +167,14 @@ const emit = defineEmits<{
 	(e: 'disconnect-unreal', nodeId: string): void
 	(e: 'set-asset-root-path', payload: { nodeId: string; path: string }): void
 	(e: 'update-poster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'connect-comfyui', payload: { nodeId: string; baseUrl: string }): void
+	(e: 'select-workflow', payload: { nodeId: string; workflowPath: string }): void
+	(e: 'run-comfyui', nodeId: string): void
+	(e: 'cancel-comfyui', nodeId: string): void
+	(e: 'refresh-history-check', nodeId: string): void
+	(e: 'clear-history-cache', nodeId: string): void
+	(e: 'update-comfyui-settings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'manage-local-workflows', nodeId: string): void
 	(e: 'blender-connect', payload: { nodeId: string; host: string; port: number }): void
 	(e: 'blender-disconnect', payload: { nodeId: string }): void
 	(e: 'blender-import', payload: { nodeId: string }): void
@@ -544,6 +560,38 @@ const onNodeSetUnrealAssetRootPath = (path: string) => {
 		path
 	)
 	emit('set-asset-root-path', { nodeId: props.node.id, path })
+}
+
+const onConnectComfyUI = (payload: { baseUrl: string }) => {
+	emit('connect-comfyui', { nodeId: props.node.id, baseUrl: payload.baseUrl })
+}
+
+const onSelectWorkflow = (payload: { workflowPath: string }) => {
+	emit('select-workflow', { nodeId: props.node.id, workflowPath: payload.workflowPath })
+}
+
+const onRunComfyUI = () => {
+	emit('run-comfyui', props.node.id)
+}
+
+const onCancelComfyUI = () => {
+	emit('cancel-comfyui', props.node.id)
+}
+
+const onRefreshHistoryCheck = () => {
+	emit('refresh-history-check', props.node.id)
+}
+
+const onClearHistoryCache = () => {
+	emit('clear-history-cache', props.node.id)
+}
+
+const onUpdateComfyUISettings = (patch: Record<string, any>) => {
+	emit('update-comfyui-settings', { nodeId: props.node.id, patch })
+}
+
+const onManageLocalWorkflows = () => {
+	emit('manage-local-workflows', props.node.id)
 }
 
 const onBlenderConnect = (payload: { host: string; port: number }) => {

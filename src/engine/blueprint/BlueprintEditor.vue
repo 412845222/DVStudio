@@ -96,6 +96,14 @@
 				@node-disconnect-unreal="(id: string) => emit('nodeDisconnectUnreal', id)"
 				@node-set-asset-root-path="(p: any) => emit('nodeSetAssetRootPath', p)"
 				@node-update-poster="(p: any) => emit('nodeUpdatePoster', p)"
+				@node-connect-comfyui="(p: any) => emit('nodeConnectComfyui', p)"
+				@node-select-workflow="(p: any) => emit('nodeSelectWorkflow', p)"
+				@node-run-comfyui="(id: string) => emit('nodeRunComfyui', id)"
+				@node-cancel-comfyui="(id: string) => emit('nodeCancelComfyui', id)"
+				@node-refresh-history-check="(id: string) => emit('nodeRefreshHistoryCheck', id)"
+				@node-clear-history-cache="(id: string) => emit('nodeClearHistoryCache', id)"
+				@node-update-comfyui-settings="(p: any) => emit('nodeUpdateComfyuiSettings', p)"
+				@node-manage-local-workflows="(id: string) => emit('nodeManageLocalWorkflows', id)"
 				@node-blender-connect="(p: any) => emit('nodeBlenderConnect', p)"
 				@node-blender-disconnect="(p: any) => emit('nodeBlenderDisconnect', p)"
 				@node-blender-import="(p: any) => emit('nodeBlenderImport', p)"
@@ -261,6 +269,14 @@ interface Emits {
 	(e: 'nodeDisconnectUnreal', nodeId: string): void
 	(e: 'nodeSetAssetRootPath', payload: { nodeId: string; path: string }): void
 	(e: 'nodeUpdatePoster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'nodeConnectComfyui', payload: { nodeId: string; baseUrl: string }): void
+	(e: 'nodeSelectWorkflow', payload: { nodeId: string; workflowPath: string }): void
+	(e: 'nodeRunComfyui', nodeId: string): void
+	(e: 'nodeCancelComfyui', nodeId: string): void
+	(e: 'nodeRefreshHistoryCheck', nodeId: string): void
+	(e: 'nodeClearHistoryCache', nodeId: string): void
+	(e: 'nodeUpdateComfyuiSettings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'nodeManageLocalWorkflows', nodeId: string): void
 	(e: 'nodeBlenderConnect', payload: { nodeId: string; host: string; port: number }): void
 	(e: 'nodeBlenderDisconnect', payload: { nodeId: string }): void
 	(e: 'nodeBlenderImport', payload: { nodeId: string }): void
@@ -1683,6 +1699,34 @@ defineExpose({
 		scene.value.updateAllConnectionEndpoints()
 		scene.value.requestRedraw()
 		return true
+	},
+
+	// FX2: Vuex→Engine 边同步 — 添加连接到引擎场景
+	addEdge(edge: {
+		id: string
+		fromNodeId: string
+		fromAnchorId: string
+		toNodeId: string
+		toAnchorId: string
+		createdAt?: number
+	}): boolean {
+		if (!scene.value || props.readonly) return false
+		// 幂等检查：如果连接已存在则跳过
+		if (scene.value.getConnection(edge.id)) return true
+		const conn = scene.value.addConnection({
+			id: edge.id,
+			fromNodeId: edge.fromNodeId,
+			fromAnchorId: edge.fromAnchorId,
+			toNodeId: edge.toNodeId,
+			toAnchorId: edge.toAnchorId,
+			createdAt: edge.createdAt ?? Date.now()
+		})
+		if (conn) {
+			scene.value.updateAllConnectionEndpoints()
+			scene.value.requestRedraw()
+			return true
+		}
+		return false
 	},
 
 	setNodeSize(nodeId: string, width?: number, height?: number): boolean {

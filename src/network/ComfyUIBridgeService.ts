@@ -86,7 +86,13 @@ type WorkflowsListResponse =
 	| {
 			ok: true
 			baseUrl: string
-			workflows: { path: string; name: string; source?: 'userdata' | 'history' }[]
+			workflows: {
+				path: string
+				name: string
+				source?: 'local' | 'userdata' | 'history'
+				localId?: string
+				updatedAt?: number
+			}[]
 			source?: 'userdata' | 'history'
 	  }
 	| {
@@ -94,8 +100,36 @@ type WorkflowsListResponse =
 			error: string
 			status?: number
 			baseUrl?: string
-			workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+			workflows?: {
+				path: string
+				name: string
+				source?: 'local' | 'userdata' | 'history'
+				localId?: string
+				updatedAt?: number
+			}[]
 	  }
+
+export type LocalComfyWorkflow = {
+	id: string
+	name: string
+	data: Record<string, unknown>
+	createdAt: number
+	updatedAt: number
+}
+
+type LocalWorkflowsListResponse =
+	| { ok: true; items: LocalComfyWorkflow[] }
+	| { ok: false; error: string }
+
+type LocalWorkflowGetResponse =
+	| { ok: true; workflow: LocalComfyWorkflow }
+	| { ok: false; error: string }
+
+type LocalWorkflowSaveResponse =
+	| { ok: true; workflow: LocalComfyWorkflow }
+	| { ok: false; error: string }
+
+type LocalWorkflowDeleteResponse = { ok: true; id: string } | { ok: false; error: string }
 
 type WorkflowGetResponse =
 	| {
@@ -704,6 +738,12 @@ function isThirdPartyIpcAvailable(): boolean {
 function isComfyRuntimeIpcAvailable(): boolean {
 	return (
 		!!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.runtime
+	)
+}
+
+function isComfyLocalWorkflowsIpcAvailable(): boolean {
+	return (
+		!!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.comfyui?.workflows
 	)
 }
 
@@ -3810,6 +3850,96 @@ export class ComfyUIBridgeService {
 			} catch (err: unknown) {
 				console.warn('[ComfyUIBridge] clearCache IPC failed:', err)
 				return { ok: false, error: getErrorMessage(err) || 'clearCache failed via IPC' }
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
+	}
+
+	// ===== 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）=====
+
+	async listLocalWorkflows(): Promise<LocalWorkflowsListResponse> {
+		if (isComfyLocalWorkflowsIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.workflows.list()
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'workflows/list failed via IPC' }
+					}
+					return { ok: true, items: Array.isArray(ipcResult.items) ? ipcResult.items : [] }
+				}
+				return { ok: false, error: 'Invalid IPC response' }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] local workflows/list IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/list failed via IPC' }
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
+	}
+
+	async getLocalWorkflow(id: string): Promise<LocalWorkflowGetResponse> {
+		const wid = String(id || '').trim()
+		if (!wid) return { ok: false, error: 'id is required' }
+		if (isComfyLocalWorkflowsIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.workflows.get({ id: wid })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'workflows/get failed via IPC' }
+					}
+					return { ok: true, workflow: ipcResult.workflow }
+				}
+				return { ok: false, error: 'Invalid IPC response' }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] local workflows/get IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/get failed via IPC' }
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
+	}
+
+	async saveLocalWorkflow(input: {
+		id?: string
+		name: string
+		data: unknown
+	}): Promise<LocalWorkflowSaveResponse> {
+		if (isComfyLocalWorkflowsIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.workflows.save({
+					id: input.id,
+					name: input.name,
+					data: input.data
+				})
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'workflows/save failed via IPC' }
+					}
+					return { ok: true, workflow: ipcResult.workflow }
+				}
+				return { ok: false, error: 'Invalid IPC response' }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] local workflows/save IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/save failed via IPC' }
+			}
+		}
+		return { ok: false, error: 'IPC not available' }
+	}
+
+	async deleteLocalWorkflow(id: string): Promise<LocalWorkflowDeleteResponse> {
+		const wid = String(id || '').trim()
+		if (!wid) return { ok: false, error: 'id is required' }
+		if (isComfyLocalWorkflowsIpcAvailable()) {
+			try {
+				const ipcResult = await (window as any).dweb.comfyui.workflows.delete({ id: wid })
+				if (ipcResult && typeof ipcResult === 'object') {
+					if (ipcResult.ok === false) {
+						return { ok: false, error: ipcResult.error || 'workflows/delete failed via IPC' }
+					}
+					return { ok: true, id: ipcResult.id || wid }
+				}
+				return { ok: false, error: 'Invalid IPC response' }
+			} catch (err: unknown) {
+				console.warn('[ComfyUIBridge] local workflows/delete IPC failed:', err)
+				return { ok: false, error: getErrorMessage(err) || 'workflows/delete failed via IPC' }
 			}
 		}
 		return { ok: false, error: 'IPC not available' }

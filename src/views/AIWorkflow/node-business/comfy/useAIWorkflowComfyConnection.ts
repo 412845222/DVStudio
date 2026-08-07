@@ -2,7 +2,20 @@ import { extractCheckpointsFromObjectInfo } from '../../../../aiworkflow/domain/
 import { getErrorMessage } from '../../../../types/utils'
 import { t } from '../../../../i18n'
 import type { ComfyObjectInfo } from '../../../../aiworkflow/domain/comfyui/objectInfoTypes'
-import type { ResolveHistoryResponse } from '../../../../network/ComfyUIBridgeService'
+import type {
+	LocalComfyWorkflow,
+	ResolveHistoryResponse
+} from '../../../../network/ComfyUIBridgeService'
+
+type ComfyWorkflowSource = 'local' | 'userdata' | 'history'
+
+type ComfyWorkflowListItemLite = {
+	path: string
+	name: string
+	source?: ComfyWorkflowSource
+	localId?: string
+	updatedAt?: number
+}
 
 export const useAIWorkflowComfyConnection = (payload: {
 	store: {
@@ -28,7 +41,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 		listWorkflows: (baseUrl: string) => Promise<{
 			ok: boolean
 			error?: string
-			workflows?: { path: string; name: string; source?: 'userdata' | 'history' }[]
+			workflows?: ComfyWorkflowListItemLite[]
 			[key: string]: unknown
 		}>
 		getWorkflow: (
@@ -52,10 +65,78 @@ export const useAIWorkflowComfyConnection = (payload: {
 			baseUrl: string,
 			workflowPath: string
 		) => Promise<{ ok: boolean; error?: string }>
+		listLocalWorkflows: () => Promise<
+			{ ok: true; items: LocalComfyWorkflow[] } | { ok: false; error: string }
+		>
 	}
 	pushToast: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	onWorkflowChanged?: (nodeId: string, workflowPath: string) => void
 }) => {
+	// 将本地模板列表映射为下拉项
+	const mapLocalWorkflowsToListItems = (
+		items: LocalComfyWorkflow[]
+	): ComfyWorkflowListItemLite[] => {
+		return (items || []).map((w) => ({
+			path: `local://${w.id}`,
+			name: w.name || '未命名工作流',
+			source: 'local',
+			localId: w.id,
+			updatedAt: Number(w.updatedAt) || 0
+		}))
+	}
+
+	// 从 store 节点状态读取已缓存的本地模板列表项
+	const readCachedLocalWorkflowItems = (nodeId: string): ComfyWorkflowListItemLite[] => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as
+			| { comfyuiSettings?: { localWorkflows?: LocalComfyWorkflow[] } }
+			| undefined
+		const localItems = node?.comfyuiSettings?.localWorkflows
+		return localItems ? mapLocalWorkflowsToListItems(localItems) : []
+	}
+
+	// 节点是否已存在非空的 workflows 列表（含 userdata/history/任意远程项）
+	// 用于失败路径下判断是否需要"用本地模板兜底覆盖"，避免把已成功获取的远程列表清空
+	const hasExistingWorkflows = (nodeId: string): boolean => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as { comfyuiSettings?: { workflows?: unknown[] } } | undefined
+		const workflows = node?.comfyuiSettings?.workflows
+		return Array.isArray(workflows) && workflows.length > 0
+	}
+
+	// 失败兜底：仅在节点 workflows 列表原本为空时，才用本地模板列表填充；
+	// 已有 userdata/history 等远程列表项时保留原值不动，只让上层 pushToast 提示错误
+	const applyLocalWorkflowsFallbackIfEmpty = (nodeId: string) => {
+		if (hasExistingWorkflows(nodeId)) return
+		payload.store.commit('setNodeComfyUISettings', {
+			nodeId,
+			comfyuiSettings: { workflows: readCachedLocalWorkflowItems(nodeId) }
+		})
+	}
+
+	// 预加载本地模板：在 ping 前填充下拉框，确保离线可浏览
+	const preloadLocalWorkflows = async (nodeId: string) => {
+		try {
+			const localWf = await payload.comfyService.listLocalWorkflows()
+			if (localWf.ok) {
+				const items = localWf.items || []
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: { localWorkflows: items }
+				})
+				// 同步把合并列表（仅本地）写入 workflows，避免下拉框为空
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: { workflows: mapLocalWorkflowsToListItems(items) }
+				})
+			}
+		} catch (err: unknown) {
+			payload.pushToast(
+				t('nodes.comfyui.listLocalWorkflowsFailed', { error: getErrorMessage(err) }),
+				'warn'
+			)
+		}
+	}
 	const onComfyUISettingsUpdate = (
 		nodeId: string,
 		input: {
@@ -75,6 +156,8 @@ export const useAIWorkflowComfyConnection = (payload: {
 			nodeId,
 			comfyuiSettings: { status: 'connecting', message: '', baseUrl, lastCheckedAt: Date.now() }
 		})
+		// 预加载本地模板：即便 ComfyUI 服务不可达，下拉框仍能展示本地模板（离线可浏览）
+		await preloadLocalWorkflows(nodeId)
 		try {
 			const res = await payload.comfyService.ping(baseUrl)
 			if (res.ok) {
@@ -129,26 +212,29 @@ export const useAIWorkflowComfyConnection = (payload: {
 				try {
 					const wf = await payload.comfyService.listWorkflows(baseUrl)
 					if (wf.ok) {
+						// 后端 runtimeListWorkflowFiles 已合并本地模板置顶；这里保留前端兜底：
+						// 若远程结果未携带本地项，则用已缓存的本地模板补齐，保证本地模板始终可见
+						const remoteItems = (wf.workflows || []) as ComfyWorkflowListItemLite[]
+						const hasLocalInRemote = remoteItems.some((w) => w.source === 'local')
+						const merged = hasLocalInRemote
+							? remoteItems
+							: [...readCachedLocalWorkflowItems(nodeId), ...remoteItems]
 						payload.store.commit('setNodeComfyUISettings', {
 							nodeId,
-							comfyuiSettings: { workflows: wf.workflows || [] }
+							comfyuiSettings: { workflows: merged }
 						})
 					} else if (wf.error) {
 						payload.pushToast(t('nodes.comfyui.listWorkflowsFailed', { error: wf.error }), 'warn')
-						payload.store.commit('setNodeComfyUISettings', {
-							nodeId,
-							comfyuiSettings: { workflows: [] }
-						})
+						// 失败兜底：仅当 workflows 原本为空时才用本地模板填充，
+						// 已有 userdata/history 列表时保留不动，避免把远程工作流清空
+						applyLocalWorkflowsFallbackIfEmpty(nodeId)
 					}
 				} catch (err: unknown) {
 					payload.pushToast(
 						t('nodes.comfyui.listWorkflowsFailed', { error: getErrorMessage(err) }),
 						'warn'
 					)
-					payload.store.commit('setNodeComfyUISettings', {
-						nodeId,
-						comfyuiSettings: { workflows: [] }
-					})
+					applyLocalWorkflowsFallbackIfEmpty(nodeId)
 				}
 			} else {
 				payload.store.commit('setNodeComfyUISettings', {
@@ -176,7 +262,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 		nodeId: string,
 		baseUrl: string,
 		workflowPath: string,
-		workflowSource: 'userdata' | 'history'
+		workflowSource: ComfyWorkflowSource
 	) => {
 		payload.store.commit('setNodeComfyUISettings', {
 			nodeId,
@@ -336,9 +422,12 @@ export const useAIWorkflowComfyConnection = (payload: {
 		const baseUrl = String(node?.comfyuiSettings?.baseUrl ?? '').trim()
 		if (!node || node.type !== 'comfyui' || !baseUrl) return
 
-		const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://')
-			? 'history'
-			: 'userdata'
+		// local:// 本地模板 / history:// 历史记录 / 其它为 userdata
+		const workflowSource: ComfyWorkflowSource = workflowPath.startsWith('local://')
+			? 'local'
+			: workflowPath.startsWith('history://')
+				? 'history'
+				: 'userdata'
 
 		await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
 
@@ -357,7 +446,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 					comfyuiSettings?: {
 						baseUrl?: string
 						workflowPath?: string
-						workflowSource?: 'userdata' | 'history'
+						workflowSource?: ComfyWorkflowSource
 					}
 			  }
 			| undefined
@@ -365,9 +454,11 @@ export const useAIWorkflowComfyConnection = (payload: {
 		const workflowPath = String(node?.comfyuiSettings?.workflowPath ?? '').trim()
 		if (!node || node.type !== 'comfyui' || !baseUrl || !workflowPath) return
 
-		const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://')
-			? 'history'
-			: 'userdata'
+		const workflowSource: ComfyWorkflowSource = workflowPath.startsWith('local://')
+			? 'local'
+			: workflowPath.startsWith('history://')
+				? 'history'
+				: 'userdata'
 		const ok = await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
 		if (ok) {
 			payload.pushToast(t('nodes.comfyui.historyFound'), 'info')
@@ -415,9 +506,11 @@ export const useAIWorkflowComfyConnection = (payload: {
 						workflowWarnings: undefined
 					}
 				})
-				const workflowSource: 'userdata' | 'history' = workflowPath.startsWith('history://')
-					? 'history'
-					: 'userdata'
+				const workflowSource: ComfyWorkflowSource = workflowPath.startsWith('local://')
+					? 'local'
+					: workflowPath.startsWith('history://')
+						? 'history'
+						: 'userdata'
 				await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
 				payload.pushToast(t('nodes.comfyui.historyCacheCleared'), 'info')
 			} else {
@@ -428,11 +521,29 @@ export const useAIWorkflowComfyConnection = (payload: {
 		}
 	}
 
+	// 重新加载本地模板并刷新下拉框：供本地模板管理面板在 CRUD 后调用
+	const reloadLocalWorkflows = async (nodeId: string) => {
+		await preloadLocalWorkflows(nodeId)
+		// 若已存在远程列表，则将本地模板与远程合并后写入
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as
+			| { comfyuiSettings?: { workflows?: ComfyWorkflowListItemLite[] } }
+			| undefined
+		const existing = node?.comfyuiSettings?.workflows || []
+		const remoteItems = existing.filter((w) => w.source !== 'local')
+		const localItems = readCachedLocalWorkflowItems(nodeId)
+		payload.store.commit('setNodeComfyUISettings', {
+			nodeId,
+			comfyuiSettings: { workflows: [...localItems, ...remoteItems] }
+		})
+	}
+
 	return {
 		onComfyUISettingsUpdate,
 		onComfyUIConnect,
 		onComfyUISelectWorkflow,
 		onRefreshHistoryCheck,
-		onClearHistoryCache
+		onClearHistoryCache,
+		reloadLocalWorkflows
 	}
 }

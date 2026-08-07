@@ -40,6 +40,37 @@ import { areParamsEqual, areSelectedRefsEqual } from '../../ui/BluePrint/node-di
 
 export type AIWorkflowState = WorkflowState
 
+// ============================================================
+// Store→Engine 同步钩子（模块级，非响应式）
+// 用于在 mutation 内部触发引擎数据同步，防止 Ctrl+S 时
+// 引擎快照缺少最新业务数据导致 Vuex 被旧值覆盖
+// ============================================================
+let _syncComfyUISettingsFn: ((nodeId: string) => void) | null = null
+let _syncNodeResourceFn: ((nodeId: string) => void) | null = null
+// FX1: 边同步钩子 — 防止 Engine 蓝图中边数据缺失导致 saveBlueprint 返回空边
+let _syncAddEdgeFn: ((edge: WorkflowEdge) => void) | null = null
+let _syncRemoveEdgeFn: ((edgeId: string) => void) | null = null
+
+export const setEngineSyncHooks = (hooks: {
+	syncComfyUISettings?: (nodeId: string) => void
+	syncNodeResource?: (nodeId: string) => void
+	syncAddEdge?: (edge: WorkflowEdge) => void
+	syncRemoveEdge?: (edgeId: string) => void
+}) => {
+	if (typeof hooks.syncComfyUISettings === 'function') {
+		_syncComfyUISettingsFn = hooks.syncComfyUISettings
+	}
+	if (typeof hooks.syncNodeResource === 'function') {
+		_syncNodeResourceFn = hooks.syncNodeResource
+	}
+	if (typeof hooks.syncAddEdge === 'function') {
+		_syncAddEdgeFn = hooks.syncAddEdge
+	}
+	if (typeof hooks.syncRemoveEdge === 'function') {
+		_syncRemoveEdgeFn = hooks.syncRemoveEdge
+	}
+}
+
 const clamp = (v: unknown, min: number, max: number) => {
 	const n = Number(v)
 	if (!Number.isFinite(n)) return min
@@ -485,6 +516,9 @@ const syncStoryAnchors = (node: WorkflowNode) => {
 }
 
 const COMFY_INPUT_ANCHOR_ID = 'in'
+
+/** ComfyUI 默认服务地址（官方默认端口 8188，host 用 127.0.0.1 避免 localhost 解析 IPv6 延迟） */
+export const COMFYUI_DEFAULT_BASE_URL = 'http://127.0.0.1:8188'
 
 const comfyInputAnchors = (): WorkflowAnchorSpec[] => {
 	return [
@@ -2199,6 +2233,91 @@ const normalizeTextMergeItems = (raw: unknown): Array<{ id: string }> | undefine
 	return items.length ? items : undefined
 }
 
+const normalizeComfyHistoryInputMappings = (
+	raw: unknown
+): WorkflowComfyUINodeSettings['historyInputMappings'] => {
+	if (!isRecord(raw)) return undefined
+	const im = raw as Record<string, unknown>
+	const mapInputEntry = (x: unknown) => {
+		if (!isRecord(x)) return undefined
+		return {
+			nodeId: isString(x.nodeId) ? x.nodeId : undefined,
+			classType: isString(x.classType) ? x.classType : undefined,
+			inputKey: isString(x.inputKey) ? x.inputKey : undefined,
+			originalValue: 'originalValue' in x ? x.originalValue : undefined,
+			displayName: isString(x.displayName) ? x.displayName : undefined
+		}
+	}
+	const imageInputs = isArray(im.imageInputs)
+		? (im.imageInputs.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['imageInputs']
+			>)
+		: []
+	const videoInputs = isArray(im.videoInputs)
+		? (im.videoInputs.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['videoInputs']
+			>)
+		: []
+	const seedNodes = isArray(im.seedNodes)
+		? (im.seedNodes.map(mapInputEntry).filter(Boolean) as NonNullable<
+				NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['seedNodes']
+			>)
+		: []
+	const rawTextNodes = isRecord(im.textNodes) ? im.textNodes : undefined
+	const mapTextNode = (x: unknown) => {
+		if (!isRecord(x)) return undefined
+		return {
+			nodeId: isString(x.nodeId) ? x.nodeId : undefined,
+			classType: isString(x.classType) ? x.classType : undefined,
+			originalText: isString(x.originalText) ? x.originalText : undefined,
+			inputKey: isString(x.inputKey) ? x.inputKey : undefined,
+			allTextKeys: isArray(x.allTextKeys) ? x.allTextKeys.filter(isString) : undefined
+		}
+	}
+	const textNodes = rawTextNodes
+		? {
+				positive: isArray(rawTextNodes.positive)
+					? (rawTextNodes.positive.map(mapTextNode).filter(Boolean) as NonNullable<
+							NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']
+						>['positive'])
+					: [],
+				negative: isArray(rawTextNodes.negative)
+					? (rawTextNodes.negative.map(mapTextNode).filter(Boolean) as NonNullable<
+							NonNullable<WorkflowComfyUINodeSettings['historyInputMappings']>['textNodes']
+						>['negative'])
+					: []
+			}
+		: undefined
+	if (!imageInputs.length && !videoInputs.length && !seedNodes.length && !textNodes) {
+		return undefined
+	}
+	return {
+		imageInputs,
+		videoInputs,
+		textNodes: textNodes ?? { positive: [], negative: [] },
+		seedNodes
+	}
+}
+
+const normalizeComfyHistoryOutputNodes = (
+	raw: unknown
+): WorkflowComfyUINodeSettings['historyOutputNodes'] => {
+	if (!isArray(raw)) return undefined
+	const result: NonNullable<WorkflowComfyUINodeSettings['historyOutputNodes']> = []
+	for (const o of raw) {
+		if (!isRecord(o)) continue
+		const mk = o.mediaKind
+		const mediaKind = mk === 'image' || mk === 'video' || mk === 'model3d' ? mk : ('image' as const)
+		result.push({
+			nodeId: String(o.nodeId ?? ''),
+			classType: String(o.classType ?? ''),
+			mediaKind,
+			displayName: isString(o.displayName) ? o.displayName : undefined
+		})
+	}
+	return result.length ? result : undefined
+}
+
 const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | undefined => {
 	if (!raw || !isRecord(raw)) return undefined
 	const workflows = isArray(raw.workflows)
@@ -2207,7 +2326,13 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 					isRecord(w)
 						? {
 								path: String(w.path ?? ''),
-								name: String(w.name ?? '')
+								name: String(w.name ?? ''),
+								source:
+									w.source === 'local' || w.source === 'userdata' || w.source === 'history'
+										? (w.source as 'local' | 'userdata' | 'history')
+										: undefined,
+								localId: isString(w.localId) ? w.localId : undefined,
+								updatedAt: Number.isFinite(Number(w.updatedAt)) ? Number(w.updatedAt) : undefined
 							}
 						: { path: '', name: '' }
 				)
@@ -2232,6 +2357,23 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 				.filter((o: { url: string }) => o.url)
 		: undefined
 	const status = raw.status
+	const rawWorkflowSource = raw.workflowSource
+	const workflowSource =
+		rawWorkflowSource === 'userdata' ||
+		rawWorkflowSource === 'history' ||
+		rawWorkflowSource === 'local'
+			? (rawWorkflowSource as WorkflowComfyUINodeSettings['workflowSource'])
+			: undefined
+	const rawRunStatus = raw.runStatus
+	const runStatus =
+		rawRunStatus === 'running' ||
+		rawRunStatus === 'canceling' ||
+		rawRunStatus === 'completed' ||
+		rawRunStatus === 'failed' ||
+		rawRunStatus === 'cancelled' ||
+		rawRunStatus === 'idle'
+			? rawRunStatus
+			: 'idle'
 	return {
 		baseUrl: isString(raw.baseUrl) ? raw.baseUrl : undefined,
 		status:
@@ -2242,14 +2384,66 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 			: undefined,
 		workflows,
 		workflowPath: isString(raw.workflowPath) ? raw.workflowPath : undefined,
+		workflowSource,
 		positivePrompt: isString(raw.positivePrompt) ? raw.positivePrompt : undefined,
 		negativePrompt: isString(raw.negativePrompt) ? raw.negativePrompt : undefined,
-		runStatus: raw.runStatus as WorkflowComfyUINodeSettings['runStatus'],
+		// 补齐此前丢失的字段：保证 save→reload 后状态不丢失
+		objectInfo:
+			isRecord(raw.objectInfo) && Object.keys(raw.objectInfo).length > 0
+				? (raw.objectInfo as WorkflowComfyUINodeSettings['objectInfo'])
+				: undefined,
+		checkpoints: isArray(raw.checkpoints)
+			? (raw.checkpoints.filter((x: unknown) => isString(x)) as string[])
+			: undefined,
+		systemInfo: isRecord(raw.systemInfo)
+			? (raw.systemInfo as WorkflowComfyUINodeSettings['systemInfo'])
+			: undefined,
+		autoWireEnabled: isBoolean(raw.autoWireEnabled) ? raw.autoWireEnabled : undefined,
+		inputRequirements: isRecord(raw.inputRequirements)
+			? (raw.inputRequirements as WorkflowComfyUINodeSettings['inputRequirements'])
+			: undefined,
+		workflowWarnings: isArray(raw.workflowWarnings)
+			? (raw.workflowWarnings.filter((x: unknown) => isString(x)) as string[])
+			: undefined,
+		previewStale: isBoolean(raw.previewStale) ? raw.previewStale : undefined,
+		runStatus,
 		promptId: isString(raw.promptId) ? raw.promptId : undefined,
 		progress: Number.isFinite(Number(raw.progress)) ? Number(raw.progress) : undefined,
 		statusText: isString(raw.statusText) ? raw.statusText : undefined,
 		outputs,
-		lastUpdateAt: Number.isFinite(Number(raw.lastUpdateAt)) ? Number(raw.lastUpdateAt) : undefined
+		lastUpdateAt: Number.isFinite(Number(raw.lastUpdateAt)) ? Number(raw.lastUpdateAt) : undefined,
+		hasHistory: isBoolean(raw.hasHistory) ? raw.hasHistory : undefined,
+		historyChecked: isBoolean(raw.historyChecked) ? raw.historyChecked : undefined,
+		historyError: isString(raw.historyError) ? raw.historyError : undefined,
+		historyGuideMessage: isString(raw.historyGuideMessage) ? raw.historyGuideMessage : undefined,
+		historyGuideBaseUrl: isString(raw.historyGuideBaseUrl) ? raw.historyGuideBaseUrl : undefined,
+		historyPromptId: isString(raw.historyPromptId) ? raw.historyPromptId : undefined,
+		historyTimestamp: Number.isFinite(Number(raw.historyTimestamp))
+			? Number(raw.historyTimestamp)
+			: undefined,
+		historyMatchType:
+			raw.historyMatchType === 'exact' ||
+			raw.historyMatchType === 'fuzzy' ||
+			raw.historyMatchType === 'direct'
+				? raw.historyMatchType
+				: undefined,
+		imageInputCount: Number.isFinite(Number(raw.imageInputCount))
+			? Number(raw.imageInputCount)
+			: undefined,
+		videoInputCount: Number.isFinite(Number(raw.videoInputCount))
+			? Number(raw.videoInputCount)
+			: undefined,
+		hasTextPromptInput: isBoolean(raw.hasTextPromptInput) ? raw.hasTextPromptInput : undefined,
+		historyNodeCount: Number.isFinite(Number(raw.historyNodeCount))
+			? Number(raw.historyNodeCount)
+			: undefined,
+		historyInputMappings: normalizeComfyHistoryInputMappings(raw.historyInputMappings),
+		historyOutputNodes: normalizeComfyHistoryOutputNodes(raw.historyOutputNodes),
+		hasImageOutput: isBoolean(raw.hasImageOutput) ? raw.hasImageOutput : undefined,
+		hasVideoOutput: isBoolean(raw.hasVideoOutput) ? raw.hasVideoOutput : undefined,
+		hasModel3dOutput: isBoolean(raw.hasModel3dOutput) ? raw.hasModel3dOutput : undefined,
+		// 本地模板缓存（任务一新增字段）：原样保留，便于 reload 后离线展示
+		localWorkflows: isArray(raw.localWorkflows) ? raw.localWorkflows : undefined
 	}
 }
 
@@ -2741,6 +2935,80 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					syncSceneDecomposeAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'meshy') syncMeshyAnchors(nextNodesById[nodeId])
 				enforceSingleIOAnchors(nextNodesById[nodeId])
+				if (nextNodesById[nodeId].type === 'comfyui') {
+					const comfyNode = nextNodesById[nodeId]
+					const hasInAnchor =
+						Array.isArray(comfyNode.inputs) &&
+						comfyNode.inputs.some((a) => a.id === COMFY_INPUT_ANCHOR_ID)
+					if (!hasInAnchor) {
+						comfyNode.inputs = [...comfyInputAnchors()]
+					}
+					// F2: PROTECT(comfyui) — 防止 Ctrl+S 时 Engine 旧快照覆盖 Store 中的用户输入
+					// 对照 scene-layout 的 PROTECT 模式，保留 Store 中已更新的业务数据
+					const prevComfySettings = (prevNode as any)?.comfyuiSettings
+					const incomingComfySettings = comfyNode.comfyuiSettings as any
+					if (prevComfySettings && typeof prevComfySettings === 'object') {
+						const shouldProtectWorkflowPath =
+							Boolean(prevComfySettings.workflowPath) &&
+							!Boolean(incomingComfySettings?.workflowPath)
+						const shouldProtectPrompts =
+							(Boolean(prevComfySettings.positivePrompt) &&
+								!Boolean(incomingComfySettings?.positivePrompt)) ||
+							(Boolean(prevComfySettings.negativePrompt) &&
+								!Boolean(incomingComfySettings?.negativePrompt))
+						const shouldProtectHistory =
+							prevComfySettings.historyChecked === true &&
+							incomingComfySettings?.historyChecked !== true
+						const shouldProtectInputCounts =
+							(typeof prevComfySettings.imageInputCount === 'number' &&
+								prevComfySettings.imageInputCount > 0 &&
+								!incomingComfySettings?.imageInputCount) ||
+							(typeof prevComfySettings.videoInputCount === 'number' &&
+								prevComfySettings.videoInputCount > 0 &&
+								!incomingComfySettings?.videoInputCount)
+						if (
+							shouldProtectWorkflowPath ||
+							shouldProtectPrompts ||
+							shouldProtectHistory ||
+							shouldProtectInputCounts
+						) {
+							comfyNode.comfyuiSettings = {
+								...(incomingComfySettings ?? {}),
+								...prevComfySettings,
+								workflowPath: prevComfySettings.workflowPath ?? incomingComfySettings?.workflowPath,
+								positivePrompt:
+									prevComfySettings.positivePrompt ?? incomingComfySettings?.positivePrompt,
+								negativePrompt:
+									prevComfySettings.negativePrompt ?? incomingComfySettings?.negativePrompt,
+								historyChecked:
+									prevComfySettings.historyChecked ?? incomingComfySettings?.historyChecked,
+								hasHistory: prevComfySettings.hasHistory ?? incomingComfySettings?.hasHistory,
+								historyPromptId:
+									prevComfySettings.historyPromptId ?? incomingComfySettings?.historyPromptId,
+								historyTimestamp:
+									prevComfySettings.historyTimestamp ?? incomingComfySettings?.historyTimestamp,
+								imageInputCount:
+									prevComfySettings.imageInputCount ?? incomingComfySettings?.imageInputCount,
+								videoInputCount:
+									prevComfySettings.videoInputCount ?? incomingComfySettings?.videoInputCount,
+								hasTextPromptInput:
+									prevComfySettings.hasTextPromptInput ?? incomingComfySettings?.hasTextPromptInput,
+								historyInputMappings:
+									prevComfySettings.historyInputMappings ??
+									incomingComfySettings?.historyInputMappings,
+								historyOutputNodes:
+									prevComfySettings.historyOutputNodes ?? incomingComfySettings?.historyOutputNodes
+							} as any
+							console.log('[DraftFlow#hydrateDraft] PROTECT(comfyui): keeping Store settings', {
+								nodeId,
+								workflowPath: shouldProtectWorkflowPath,
+								prompts: shouldProtectPrompts,
+								history: shouldProtectHistory,
+								inputCounts: shouldProtectInputCounts
+							})
+						}
+					}
+				}
 				if (nextNodesById[nodeId].type === 'blender') syncBlenderAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text') syncTextAnchors(nextNodesById[nodeId])
 			}
@@ -2956,13 +3224,40 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.resourcesById = nextResourcesById
 			state.resourceOrder = uniq(nextResourceOrder)
 
+			// F5: 资源引用完整性检查 — 修复 nextNodesById 中 resourceId 指向的资源不在 nextResourcesById 中的情况
+			for (const nid of Object.keys(nextNodesById)) {
+				const nn = nextNodesById[nid] as any
+				if (!nn?.resourceId) continue
+				if (!nextResourcesById[nn.resourceId]) {
+					// 尝试从当前 state.resourcesById 迁移
+					const existing = state.resourcesById[nn.resourceId]
+					if (existing) {
+						nextResourcesById[nn.resourceId] = existing
+						if (!nextResourceOrder.includes(nn.resourceId)) {
+							nextResourceOrder.push(nn.resourceId)
+						}
+						console.debug('[DraftFlow#hydrateDraft] F5: Migrated missing resource from Store', {
+							resourceId: nn.resourceId,
+							nodeId: nid
+						})
+					} else {
+						console.warn('[DraftFlow#hydrateDraft] F5: Orphan resource reference', {
+							nodeId: nid,
+							resourceId: nn.resourceId
+						})
+					}
+				}
+			}
+			state.resourceOrder = uniq(nextResourceOrder)
+
 			// edges
 			const nextEdgesById: Record<string, WorkflowEdge> = {}
 			const rawEdgesById = isRecord(s.edgesById) ? s.edgesById : {}
 			for (const [edgeIdRaw, raw] of Object.entries(rawEdgesById)) {
 				const edgeId = String(edgeIdRaw ?? '').trim()
 				if (!edgeId) continue
-				const normalized = normalizeEdge(raw, edgeId, state.nodesById)
+				// FX3: 使用 nextNodesById（本次快照新构造的节点）而非 state.nodesById（旧节点）
+				const normalized = normalizeEdge(raw, edgeId, nextNodesById)
 				if (normalized) {
 					nextEdgesById[edgeId] = normalized
 				}
@@ -2974,23 +3269,40 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!edgeOrder.length) edgeOrder = Object.keys(nextEdgesById)
 
 			// Remove edges with missing anchors or kind mismatch.
+			// FX3: 使用 nextNodesById 而非 state.nodesById，确保基于快照新节点校验
+			let _droppedEdges = 0
 			for (const edgeId of edgeOrder.slice()) {
 				const e = nextEdgesById[edgeId]
 				if (!e) continue
-				const fromNode = state.nodesById[e.fromNodeId]
-				const toNode = state.nodesById[e.toNodeId]
+				const fromNode = nextNodesById[e.fromNodeId]
+				const toNode = nextNodesById[e.toNodeId]
 				if (!fromNode || !toNode) {
+					_droppedEdges++
 					delete nextEdgesById[edgeId]
 					continue
 				}
 				if (!hasAnchor(fromNode, 'out', e.fromAnchorId) || !hasAnchor(toNode, 'in', e.toAnchorId)) {
+					_droppedEdges++
 					delete nextEdgesById[edgeId]
 					continue
 				}
 				if (
-					!canLinkAnchors(state.nodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)
-				)
+					!canLinkAnchors(nextNodesById, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId)
+				) {
+					_droppedEdges++
 					delete nextEdgesById[edgeId]
+				}
+			}
+			// FX7: 边完整性诊断日志
+			const _totalEdgesIn = rawEdgeOrder.length
+			const _totalEdgesOut = edgeOrder.filter((id: string) => !!nextEdgesById[id]).length
+			if (_droppedEdges > 0 || (_totalEdgesIn === 0 && Object.keys(nextNodesById).length > 1)) {
+				console.info('[DraftFlow#hydrateDraft] FX7: edges summary', {
+					inputEdgeCount: _totalEdgesIn,
+					keptEdgeCount: _totalEdgesOut,
+					droppedCount: _droppedEdges,
+					nodeCount: Object.keys(nextNodesById).length
+				})
 			}
 			state.edgesById = nextEdgesById
 			state.edgeOrder = edgeOrder.filter((id: string) => !!state.edgesById[id])
@@ -3351,13 +3663,14 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				n.comfyuiSettings =
 					n.comfyuiSettings ??
 					({
-						baseUrl: '',
+						baseUrl: COMFYUI_DEFAULT_BASE_URL,
 						status: 'idle',
 						message: '',
 						workflows: [],
 						workflowPath: '',
 						positivePrompt: '',
 						negativePrompt: '',
+						autoWireEnabled: true,
 						runStatus: 'idle',
 						promptId: '',
 						progress: 0,
@@ -3705,6 +4018,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				...(n.comfyuiSettings ?? {}),
 				...next
 			} as WorkflowComfyUINodeSettings
+			// F1: Store→Engine 同步 — 防止 Ctrl+S 时引擎快照缺少最新业务数据
+			if (_syncComfyUISettingsFn) {
+				const fn = _syncComfyUISettingsFn
+				queueMicrotask(() => {
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[ComfyUI][Sync] post-commit sync failed:', e)
+					}
+				})
+			}
 		},
 		setNodeComfyUIWorkflowIO(
 			state: WorkflowState,
@@ -3743,6 +4067,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				inputRequirements: payload?.inputRequirements,
 				workflowWarnings: Array.isArray(payload?.warnings) ? payload.warnings : [],
 				previewStale: true
+			}
+			const hasInAnchorAfterReset =
+				Array.isArray(n.inputs) && n.inputs.some((a) => a.id === COMFY_INPUT_ANCHOR_ID)
+			if (!hasInAnchorAfterReset) {
+				n.inputs = [...n.inputs, ...comfyInputAnchors()]
 			}
 		},
 		setNodeComfyUIPreviewReady(state: WorkflowState, payload: { nodeId: string }) {
@@ -4406,6 +4735,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			const rid = payload?.resourceId
 			n.resourceId = rid ? String(rid) : null
 			if (!n.resourceId) n.resourcePath = undefined
+			// F4: Store→Engine 双写同步 — 防止 Ctrl+S 后 resourceId 丢失
+			if (_syncNodeResourceFn) {
+				const fn = _syncNodeResourceFn
+				queueMicrotask(() => {
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[NodeResource][Sync] post-commit sync failed:', e)
+					}
+				})
+			}
 		},
 		setNodeResourcePath(state, payload: { nodeId: string; resourcePath?: string | null }) {
 			const id = String(payload?.nodeId ?? '').trim()
@@ -4799,6 +5139,18 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			state.selectedEdgeId = id
 			state.selectedNodeId = null
 			state.selectedNodeIds = []
+			// FX1: Store→Engine 边同步 — 防止 saveBlueprint 返回空边
+			if (_syncAddEdgeFn) {
+				const fn = _syncAddEdgeFn
+				const addedEdge = edge
+				queueMicrotask(() => {
+					try {
+						fn(addedEdge)
+					} catch (e) {
+						console.error('[EdgeSync][add] failed:', e)
+					}
+				})
+			}
 		},
 		removeEdge(state, payload: { edgeId: string }) {
 			const id = String(payload?.edgeId ?? '').trim()
@@ -4806,6 +5158,17 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			delete state.edgesById[id]
 			state.edgeOrder = state.edgeOrder.filter((x) => x !== id)
 			if (state.selectedEdgeId === id) state.selectedEdgeId = null
+			// FX1: Store→Engine 边同步
+			if (_syncRemoveEdgeFn) {
+				const fn = _syncRemoveEdgeFn
+				queueMicrotask(() => {
+					try {
+						fn(id)
+					} catch (e) {
+						console.error('[EdgeSync][remove] failed:', e)
+					}
+				})
+			}
 		},
 		removeEdgesFromAnchor(state, payload: { nodeId: string; anchorId: string }) {
 			const nodeId = String(payload?.nodeId ?? '').trim()

@@ -697,6 +697,13 @@ contextBridge.exposeInMainWorld('dweb', {
 	},
 	// ===== ComfyUI =====
 	comfyui: {
+		// 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）
+		workflows: {
+			list: () => invoke('dweb:comfyui:workflows:list'),
+			get: (payload) => invoke('dweb:comfyui:workflows:get', payload || {}),
+			save: (payload) => invoke('dweb:comfyui:workflows:save', payload || {}),
+			delete: (payload) => invoke('dweb:comfyui:workflows:delete', payload || {})
+		},
 		runtime: {
 			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
 			objectInfo: (payload) => invoke('dweb:comfyui:runtime:object_info', payload || {}),
