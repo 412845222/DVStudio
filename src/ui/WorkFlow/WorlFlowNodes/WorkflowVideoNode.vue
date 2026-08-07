@@ -47,8 +47,9 @@
 					:style="previewWrapStyle"
 					@contextmenu.stop.prevent="onPreviewContextMenu"
 				>
+					<!-- 新架构：截图预热已停用，isWarmupRender 不再为 true。保留 prop 定义避免父组件传参报错。 -->
 					<img
-						v-if="isWarmupRender || !selected"
+						v-if="!selected"
 						class="wf-media-poster-img"
 						:src="localPosterUrl || props.posterUrl || undefined"
 						alt=""
@@ -1200,8 +1201,7 @@ watch(
 watch(
 	() => props.videoSettings?.currentTime,
 	(newTime) => {
-		// 预热渲染模式下不处理 seek
-		if (props.isWarmupRender) return
+		// 新架构：isWarmupRender 永远为 false，不再跳过 seek 处理
 		if (newTime == null || !Number.isFinite(newTime) || newTime <= 0) return
 		const v = videoEl.value
 		if (!v) {
@@ -1374,12 +1374,9 @@ onMounted(() => {
 		tlRo.observe(timelineCanvas.value)
 	}
 
-	if (props.isWarmupRender || !props.selected) {
-		if (props.isWarmupRender) {
-			console.log('[WorkflowVideoNode] onMounted: warmup mode, skip video initialization')
-		} else if (!props.selected) {
-			console.log('[WorkflowVideoNode] onMounted: non-selected mode, skip video initialization')
-		}
+	// 新架构：isWarmupRender 永远为 false，只保留非 selected 的跳过逻辑
+	if (!props.selected) {
+		console.log('[WorkflowVideoNode] onMounted: non-selected mode, skip video initialization')
 		return
 	}
 

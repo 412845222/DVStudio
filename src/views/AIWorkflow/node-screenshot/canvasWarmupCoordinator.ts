@@ -11,6 +11,7 @@
 
 import type { CanvasScreenshotPool } from './canvasScreenshotPool'
 import type { ScreenshotCacheEntry } from './useNodeScreenshotPool'
+import { isLegacyScreenshotWarmupEnabled } from '../deprecation'
 import { t } from '../../../i18n'
 
 export interface WarmupOptions {
@@ -291,6 +292,13 @@ export class CanvasWarmupCoordinator {
 	 * 开始预热（滑动窗口并发，一个完成立即启动下一个）
 	 */
 	async warmup(): Promise<void> {
+		// 新架构：默认禁用预热，立即完成
+		if (!isLegacyScreenshotWarmupEnabled()) {
+			this.phase = 'complete'
+			this.options.onProgress?.(1, '')
+			this.options.onComplete?.()
+			return Promise.resolve()
+		}
 		if (this.disposed) return
 
 		const pendingTasks = Array.from(this.tasks.values()).filter((task) => task.status === 'pending')

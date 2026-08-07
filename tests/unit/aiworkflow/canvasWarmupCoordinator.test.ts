@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
 	CanvasWarmupCoordinator,
 	calculateWarmupProgress,
@@ -6,6 +6,10 @@ import {
 } from '@/views/AIWorkflow/node-screenshot/canvasWarmupCoordinator'
 import type { ScreenshotCacheEntry } from '@/views/AIWorkflow/node-screenshot/useNodeScreenshotPool'
 import type { CanvasScreenshotPool } from '@/views/AIWorkflow/node-screenshot/canvasScreenshotPool'
+import {
+	FLAG_ENABLE_LEGACY_SCREENSHOT_WARMUP,
+	_resetDeprecationFlagsCache
+} from '@/views/AIWorkflow/deprecation'
 
 const createMockEntry = (
 	nodeId: string,
@@ -70,6 +74,14 @@ describe('CanvasWarmupCoordinator', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		mockPool = createMockCanvasPool()
+		// 启用旧截图预热系统，使 warmup() 走完整实现而非 noop 分支
+		localStorage.setItem(FLAG_ENABLE_LEGACY_SCREENSHOT_WARMUP, '1')
+		_resetDeprecationFlagsCache()
+	})
+
+	afterEach(() => {
+		localStorage.removeItem(FLAG_ENABLE_LEGACY_SCREENSHOT_WARMUP)
+		_resetDeprecationFlagsCache()
 	})
 
 	describe('constructor', () => {

@@ -527,7 +527,9 @@
 				:cancellable="false"
 			/>
 
+			<!-- 新架构：截图预热已停用，v-if="false" 强制隐藏。保留组件定义避免删除导致未知引用。 -->
 			<ThemeWarmupProgress
+				v-if="false"
 				:visible="themeWarmupOpen"
 				:title="t('aiworkflow.page.themeWarmup.title', { theme: themeWarmupThemeLabel })"
 				:detail="themeWarmupDetail"
@@ -636,7 +638,8 @@
 			{{ t('aiworkflow.page.undoRemove') }}
 		</button>
 
-		<WarmupPromptDialog />
+		<!-- 新架构：截图预热已停用，v-if="false" 强制隐藏。保留组件定义避免删除导致未知引用。 -->
+		<WarmupPromptDialog v-if="false" />
 	</div>
 </template>
 
@@ -826,6 +829,7 @@ import {
 	useAIWorkflow404Fallback,
 	type PendingMissingAsset
 } from './assets/useAIWorkflow404Fallback'
+import { isAutoRecoverPersistEnabled } from './assets/useAIWorkflowResourceUrlClassifier'
 import { getRuntimePlatform } from '../../network/runtimePlatform'
 import AIWorkflowDebugPanel from './ui/AIWorkflowDebugPanel.vue'
 import BlueprintLogPanel from '../../ui/WorkFlow/BlueprintLogPanel.vue'
@@ -2254,6 +2258,10 @@ const screenshotPool = createNodeScreenshotPool()
 const { checkUnwarmedNodes, showPrompt } = useWarmupPrompt()
 
 const checkAndShowWarmupPrompt = () => {
+	// 新架构：截图预热系统已停用，不再需要对话框提示。
+	// 如需紧急回退：localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
+	return
+	/* eslint-disable no-unreachable */
 	const projectId = String(currentProjectId.value || '').trim()
 	const blueprintId = String(currentProjectName.value || '').trim()
 	if (!projectId || !blueprintId) return
@@ -3177,19 +3185,23 @@ watch(
 
 		if (fromTheme === toTheme) return
 
-		screenshotPool.setActiveTheme(toTheme)
+		// 新架构：不再触发截图预热，仅设置CSS变量+Canvas过渡动画
 		setCanvasActiveTheme(toTheme)
 
 		nextTick(() => {
 			nodeCanvasLayerRef.value?.setTheme(toTheme)
 			refreshCanvasNodeLayer()
-			void startThemeWarmup(toTheme, fromTheme)
+			// ❌ 已移除：startThemeWarmup(toTheme, fromTheme)
 		})
 	},
 	{ flush: 'post' }
 )
 
 const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 'light') => {
+	// 新架构：截图预热系统已停用。如需紧急回退，请设置：
+	// localStorage.setItem('DVS_ENABLE_LEGACY_SCREENSHOT_WARMUP', '1')
+	return
+	/* eslint-disable no-unreachable */
 	const allNodes = nodes.value.filter((n) => {
 		const nid = String(n?.id ?? '').trim()
 		return nid && !selectedNodeIds.value.includes(nid)
@@ -3212,11 +3224,11 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 			const nid = String(node.id)
 			const cachedEntry = screenshotPool.getCachedScreenshot(nid, versionMap.get(nid) || '')
 			if (cachedEntry) {
-				newMap.set(nid, cachedEntry)
+				newMap.set(nid, cachedEntry!)
 			}
 			if (!hasBitmap(nid, toTheme) && cachedEntry) {
 				try {
-					await loadScreenshotToCanvas(cachedEntry)
+					await loadScreenshotToCanvas(cachedEntry!)
 				} catch {}
 			}
 		}
@@ -3227,7 +3239,7 @@ const startThemeWarmup = async (toTheme: 'dark' | 'light', _fromTheme: 'dark' | 
 	}
 
 	themeWarmupAbortController = new AbortController()
-	const signal = themeWarmupAbortController.signal
+	const signal = themeWarmupAbortController!.signal
 
 	themeWarmupTargetTheme.value = toTheme
 	themeWarmupOpen.value = true
@@ -10214,6 +10226,44 @@ const {
 		if (!missingAssetDialogOpen.value) {
 			missingAssetDialogPending.value = pending
 			missingAssetDialogOpen.value = true
+		}
+	},
+	/* ============= O2.3 / O2.4 双写持久化 + 项目保存回调 ============= */
+	onAfterConfirmRemove: (payload) => {
+		// 只有在实际修改了 store 数据的情况下（undoAvailable=true），才尝试触发项目保存
+		// 若 skippedDestructiveOps=true（只有 unknown 来源 / 无 store），忽略表已生效，
+		// 不需要保存后端（因为没改动任何持久化数据）。
+		if (!payload.undoAvailable || payload.skippedDestructiveOps) return
+		try {
+			const name = String(currentProjectName.value || '').trim()
+			if (!name) return
+			// 尽力而为（fire-and-forget）的静默保存；失败吞掉不影响用户体验
+			void Promise.resolve().then(() =>
+				_saveProjectToBackendFn(name, { silent: true }).catch(() => {
+					/* silent fallback：下次用户 Ctrl+S 或自动保存会一并提交 */
+				})
+			)
+		} catch {
+			/* ignore */
+		}
+	},
+	onAfterCancel: (_payload) => {
+		// 当前暂不处理；未来可扩展日志或埋点
+	},
+	/* ============= O1：批量自动恢复后触发一次项目保存 ============= */
+	onRecoveredBatch: (batch) => {
+		if (!isAutoRecoverPersistEnabled() || !batch || batch.length === 0) return
+		try {
+			const name = String(currentProjectName.value || '').trim()
+			if (!name) return
+			// 尽力而为（fire-and-forget）的静默保存；失败吞掉不影响用户体验
+			void Promise.resolve().then(() =>
+				_saveProjectToBackendFn(name, { silent: true }).catch(() => {
+					/* silent fallback：下次用户 Ctrl+S 或自动保存会一并提交 */
+				})
+			)
+		} catch {
+			/* ignore */
 		}
 	}
 })
