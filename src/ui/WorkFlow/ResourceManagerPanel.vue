@@ -638,6 +638,10 @@ import {
 } from '../../aiworkflow/resource/usage'
 import { useI18n } from '../../i18n'
 import CloudFileList from '../../views/CloudStorage/CloudFileList.vue'
+import {
+	isStaticAssetResource,
+	isThumbUrlWarmupArtifact
+} from '../../views/AIWorkflow/assets/useAIWorkflowResourceUrlClassifier'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -946,6 +950,12 @@ const compareCreatedAt = (a: WorkflowResource, b: WorkflowResource) => {
 const sortedResources = computed(() => {
 	let list = Array.isArray(props.resources) ? props.resources.slice() : []
 
+	/* ============ 整改方案 O3.1：面板源头只渲染真实静态资产（图片/视频/3D模型/文档），
+	 * 旧预热截图缓存混在 resourcesById 中的记录不再出现在列表里。
+	 * （defense-in-depth：ResourceManagerWindow.vue resources computed 也做了同样过滤，双保险。）
+	 */
+	list = list.filter((r) => isStaticAssetResource(r))
+
 	// 筛选：使用状态
 	if (filterMode.value === 'used') {
 		list = list.filter((r) => isResourceUsed(String(r.id ?? '')))
@@ -1020,12 +1030,21 @@ const thumbSrc = (r: WorkflowResource) => {
 const resourceMissingThumb = (r: WorkflowResource) => {
 	const rid = String(r?.id ?? '').trim()
 	if (!rid) return false
+	const thumb = String(thumbSrc(r) || '').trim()
+	/* ============ 整改方案 O3.2：缩略图本身指向预热缓存的不算"缺失"。
+	 * 这些 URL 是旧架构残留，失败是预期行为，不应导致"清理无缩略图资源"删除有效资产。
+	 */
+	if (isThumbUrlWarmupArtifact(thumb)) return false
 	if (failedThumbIds.value.has(rid)) return true
-	return !String(thumbSrc(r) || '').trim()
+	return !thumb
 }
 
 const emitRefreshMissing = () => {
 	const ids = sortedResources.value
+		/* ============ 整改方案 O3.2：只对静态资产（kind = image/video/model3d）执行缩略图缺失清理。
+		 * 其他类型（包括混入的缓存占位记录）一律不参与，避免误删。
+		 */
+		.filter((r) => isStaticAssetResource(r))
 		.filter((r) => resourceMissingThumb(r))
 		.map((r) => String(r?.id ?? '').trim())
 		.filter((id) => !!id)

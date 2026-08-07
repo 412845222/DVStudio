@@ -9,6 +9,21 @@ import {
 } from '../../../electronBridge'
 import type { WorkflowResource } from '../../../aiworkflow/resource/types'
 import type { WorkflowState } from '../../../aiworkflow/types'
+import {
+	classifyResourceUrl,
+	isStrictResourceMissingFilterEnabled,
+	normalizeForBindingMatch,
+	extractAssetIdFromUrl,
+	isStrictMissingSourceBindingEnabled,
+	isNodeSelectionDebounceEnabled,
+	isUnknownCleanupEnabled
+} from './useAIWorkflowResourceUrlClassifier'
+import {
+	loadPersistedIgnoreList,
+	markUrlCancelled,
+	markUrlRemoved,
+	isUrlIgnoredBySnapshot
+} from './useAIWorkflowResourceIgnoreList'
 
 /**
  * 404 错误回退处理结果
@@ -139,6 +154,16 @@ export interface AIWorkflow404FallbackOptions {
 	}) => void
 	/** 找到缺失资产（文件确实不存在）回调，通常用于弹确认框 */
 	onMissingAsset?: (pending: PendingMissingAsset) => void
+	/** 用户确认"移除失效引用"完成后的回调（用于触发项目保存、写外部日志等） */
+	onAfterConfirmRemove?: (payload: {
+		pendingId: string
+		url: string
+		assetName: string
+		undoAvailable: boolean
+		skippedDestructiveOps: boolean
+	}) => void
+	/** 用户点击"暂不处理"完成后的回调（通常不需要特殊操作，留作扩展） */
+	onAfterCancel?: (payload: { pendingId: string; url: string; assetName: string }) => void
 	/** Toast 通知函数 */
 	pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
 	/** 批量窗口（ms）：同一批 404 错误在窗口内合并处理，避免抖动 */
@@ -153,6 +178,8 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		findBindingSources,
 		onRecovered,
 		onMissingAsset,
+		onAfterConfirmRemove,
+		onAfterCancel,
 		pushToast
 	} = options
 	const batchWindowMs = Math.max(50, Number(options?.batchWindowMs) || 400)
@@ -164,6 +191,22 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	/** 延迟批处理队列 */
 	const pendingBatch = new Set<string>()
 	let batchTimer: number | null = null
+
+	/**
+	 * O2.1：sessionFailedOnceUrls —— 当前会话中至少失败过一次的"规格化 URL"集合。
+	 * 命中后直接进入 pending 流程（不再重新诊断磁盘），避免 img onerror 反复触发诊断。
+	 * （关闭 isNodeSelectionDebounceEnabled 时此集合不生效）
+	 */
+	const sessionFailedOnceUrls = new Set<string>()
+	/**
+	 * O5.2：sessionResolvedUrls —— 当前会话中用户已通过 confirm/cancel 明确处理过的"规格化 URL"集合。
+	 * 命中后直接 early return ignored（不再触发任何弹窗/诊断），避免同一 URL 在节点反复选中/切换时重复弹窗。
+	 */
+	const sessionResolvedUrls = new Set<string>()
+
+	/** O2.2：onMissingAsset 调用防抖（短时间内同一个 pending 不重复调 callback） */
+	let lastMissingAssetEmitAtByNormUrl = new Map<string, number>()
+	const MISSING_ASSET_EMIT_MIN_INTERVAL_MS = 800
 
 	/** 缺失资产确认队列（待用户确认） */
 	const pendingMissingAssets = ref<PendingMissingAsset[]>([])
@@ -196,6 +239,57 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const trimmed = String(url || '').trim()
 		if (!trimmed) return { kind: 'ignored' as const, url: trimmed, reason: 'empty' }
 		if (!isDwebProjectAssetUrl(trimmed)) return { kind: 'non_dweb' as const, url: trimmed }
+
+		// 预计算规格化 URL（后续 session / ignore / pending 合并都复用）
+		const normUrl = normalizeForBindingMatch(trimmed)
+		const debounceOn = isNodeSelectionDebounceEnabled()
+
+		/* ============== O5.2 / O2.1：最高优先级 session 级 early return ==============
+		 * 任何情况下（即使 strict filter 全关），只要：
+		 *   1) sessionResolvedUrls 命中规格化 URL → 用户本次会话已明确 confirm/cancel，直接忽略
+		 *   2) autoRecoveredUrls 命中 raw URL → 已被自动恢复过，避免死循环
+		 * ============== */
+		if (debounceOn && normUrl !== '' && sessionResolvedUrls.has(normUrl)) {
+			return { kind: 'ignored' as const, url: trimmed, reason: 'session:resolved' }
+		}
+		if (autoRecoveredUrls.has(trimmed)) {
+			return { kind: 'ignored' as const, url: trimmed, reason: 'session:auto-recovered' }
+		}
+
+		/* ================= 整改方案 O1.2 + O2.3：URL 分类 + 忽略表 early return =================
+		 *
+		 * 严格过滤器开启时（默认开）：
+		 *   1) 对 transient_blob (blob:/data:) 直接忽略（不诊断、不弹窗）
+		 *   2) 对 warmup_artifact (预热截图/缩略图缓存 URL) 直接忽略
+		 *   3) 命中"用户已移除/暂不处理"持久化忽略表（三级：精确/规格化/assetId）的 URL 直接忽略
+		 *
+		 * 关闭 Feature Flag (DVS_RESOURCE_MISSING_STRICT_FILTER='0') 时：
+		 *   跳过本节，走 100% 旧诊断行为。
+		 */
+		const strictFilterOn = isStrictResourceMissingFilterEnabled()
+		if (strictFilterOn) {
+			const category = classifyResourceUrl(trimmed)
+			if (category === 'transient_blob') {
+				return { kind: 'ignored' as const, url: trimmed, reason: 'category:transient_blob' }
+			}
+			if (category === 'warmup_artifact') {
+				return { kind: 'ignored' as const, url: trimmed, reason: 'category:warmup_artifact' }
+			}
+			const pid = getCurrentProjectId?.() ?? null
+			try {
+				// O3.2：使用 loadPersistedIgnoreList(双源 projectId + 全局桶) + isUrlIgnoredBySnapshot(三级命中)
+				const ignore = loadPersistedIgnoreList(pid, trimmed)
+				if (isUrlIgnoredBySnapshot(ignore, trimmed, 'removed')) {
+					return { kind: 'ignored' as const, url: trimmed, reason: 'ignore:removed' }
+				}
+				if (isUrlIgnoredBySnapshot(ignore, trimmed, 'cancelled')) {
+					return { kind: 'ignored' as const, url: trimmed, reason: 'ignore:cancelled' }
+				}
+			} catch {
+				/* 任何解析异常都不阻塞主流程 */
+			}
+		}
+		/* ============ END O1.2 + O2.3 ============ */
 
 		// 防止对同一个 URL 重复触发诊断
 		const inflight = inflightUrls.get(trimmed)
@@ -311,10 +405,33 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 				}
 
 				// Step 3c: 文件确实不存在 → 定位来源，添加到待确认队列
-				const parsed = parseDwebProjectAssetUrl(trimmed)
-				const relPath = diag?.requestedPath || parsed?.relPath || ''
-				const sources =
-					findBindingSources?.(trimmed) || defaultFindBindingSources(trimmed, getStore?.())
+				//
+				// O2.1 快速路径：如果 debounce 开启且 normUrl 已存在于 sessionFailedOnceUrls，
+				// 则直接走"入 pending 队列"逻辑，不再重复诊断/定位来源（来源用上次结果）。
+				let sources: ResourceBindingSource[]
+				let relPath: string
+				let usedDiag: DwebAssetDiagnoseResult | null | undefined = diag
+				if (
+					debounceOn &&
+					normUrl !== '' &&
+					sessionFailedOnceUrls.has(normUrl) &&
+					!findBindingSources
+				) {
+					// 已失败过 → 来源用 defaultFindBindingSources 快速定位（磁盘诊断已做过）
+					const parsed = parseDwebProjectAssetUrl(trimmed)
+					relPath = parsed?.relPath || ''
+					sources = defaultFindBindingSources(trimmed, getStore?.())
+					usedDiag = undefined
+				} else {
+					const parsed = parseDwebProjectAssetUrl(trimmed)
+					relPath = diag?.requestedPath || parsed?.relPath || ''
+					sources =
+						findBindingSources?.(trimmed) || defaultFindBindingSources(trimmed, getStore?.())
+					// 首次失败：写入 sessionFailedOnceUrls，下次相同 normUrl 跳过磁盘诊断
+					if (debounceOn && normUrl !== '') {
+						sessionFailedOnceUrls.add(normUrl)
+					}
+				}
 				if (source) sources.unshift(source)
 
 				const pendingId = `pending-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -324,24 +441,46 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 					assetName,
 					requestedPath: relPath,
 					absolutePath:
-						diag?.resolvedTo ||
-						(diag?.root && relPath
-							? diag.root.replace(/\\/g, '/') + '/' + relPath.replace(/^\/+/, '')
+						usedDiag?.resolvedTo ||
+						(usedDiag?.root && relPath
+							? usedDiag.root.replace(/\\/g, '/') + '/' + relPath.replace(/^\/+/, '')
 							: undefined),
 					sources,
-					similarFiles: diag?.similarFiles,
-					diagnostics: diag || undefined
+					similarFiles: usedDiag?.similarFiles,
+					diagnostics: usedDiag || undefined
 				}
 
 				// 检查队列中是否已存在同一 URL（合并 sources 而不是重复添加）
-				const existing = pendingMissingAssets.value.find((p) => p.url === trimmed)
+				// O1.1：优先用规格化 URL 比较，兜底 raw URL 等值比较
+				const existing = pendingMissingAssets.value.find((p) => {
+					if (p.url === trimmed) return true
+					if (normUrl !== '') {
+						const pNorm = normalizeForBindingMatch(p.url)
+						if (pNorm !== '' && pNorm === normUrl) return true
+					}
+					return false
+				})
 				if (!existing) {
 					pendingMissingAssets.value = [...pendingMissingAssets.value, pending]
+					// O2.2：onMissingAsset 防抖 —— 同一 normUrl 在 MISSING_ASSET_EMIT_MIN_INTERVAL_MS 内
+					// 最多只 emit 一次，避免 img 反复 onerror 导致弹窗闪烁
 					if (typeof onMissingAsset === 'function') {
-						try {
-							onMissingAsset(pending)
-						} catch (err) {
-							console.warn('[404-fallback] onMissingAsset hook error:', err)
+						let shouldEmit = true
+						if (debounceOn && normUrl !== '') {
+							const now = Date.now()
+							const last = lastMissingAssetEmitAtByNormUrl.get(normUrl) || 0
+							if (now - last < MISSING_ASSET_EMIT_MIN_INTERVAL_MS) {
+								shouldEmit = false
+							} else {
+								lastMissingAssetEmitAtByNormUrl.set(normUrl, now)
+							}
+						}
+						if (shouldEmit) {
+							try {
+								onMissingAsset(pending)
+							} catch (err) {
+								console.warn('[404-fallback] onMissingAsset hook error:', err)
+							}
 						}
 					}
 				} else {
@@ -354,6 +493,12 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 					for (const s of sources) {
 						const key = `${s.type}:${s.resourceId || ''}:${s.nodeId || ''}:${s.field || ''}`
 						if (!existingSourceKeys.has(key)) existing.sources.push(s)
+					}
+					// 补齐 diagnostics / absolutePath（首次失败时可能没走诊断）
+					if (!existing.diagnostics && pending.diagnostics) {
+						existing.diagnostics = pending.diagnostics
+						existing.absolutePath = pending.absolutePath
+						existing.similarFiles = pending.similarFiles
 					}
 				}
 
@@ -386,12 +531,20 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	/**
 	 * 批量处理：在短时间窗口内收集到的多个 404 URL 一起处理。
 	 * 适用于 <img>/<video> onerror 批量触发场景。
+	 *
+	 * O2.1 + O5.2：入队前做 session 级规格化过滤（sessionResolvedUrls / sessionFailedOnceUrls），
+	 * 避免 img 反复 onerror 导致诊断队列无限膨胀。
 	 */
 	function handle404Batch(urls: string[]) {
+		const debounceOn = isNodeSelectionDebounceEnabled()
 		for (const u of urls) {
-			if (u && isDwebProjectAssetUrl(u) && !autoRecoveredUrls.has(u)) {
-				pendingBatch.add(u)
+			if (!u || !isDwebProjectAssetUrl(u)) continue
+			if (autoRecoveredUrls.has(u)) continue
+			if (debounceOn) {
+				const norm = normalizeForBindingMatch(u)
+				if (norm !== '' && sessionResolvedUrls.has(norm)) continue
 			}
+			pendingBatch.add(u)
 		}
 		if (batchTimer != null) window.clearTimeout(batchTimer)
 		batchTimer = window.setTimeout(() => {
@@ -405,19 +558,175 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	}
 
 	/**
+	 * 辅助：用规格化 URL 再重新验证一次 sources 中是否真的"没有任何可定位来源"。
+	 * 解决 URL 路径格式微小差异导致假 unknown 的问题。
+	 */
+	function _verifyNoBindingExistsInStore(
+		url: string,
+		store: Store<WorkflowState> | null | undefined
+	): boolean {
+		if (!store?.state) return true
+		const strict = isStrictMissingSourceBindingEnabled()
+		const norm = normalizeForBindingMatch(url)
+		const match = (a: string | null | undefined) => _urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
+		const { resourcesById = {}, nodesById = {} } = store.state as { resourcesById?: Record<string, any>; nodesById?: Record<string, any> }
+		for (const res of Object.values(resourcesById)) {
+			if (!res) continue
+			if (match(res.url) || match(res.previewUrl) || match(res.posterUrl)) return false
+		}
+		const FIELD_LIST = ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url', 'posterUrl', 'previewUrl']
+		for (const node of Object.values(nodesById)) {
+			if (!node) continue
+			for (const f of FIELD_LIST) if (match((node as any)[f])) return false
+			for (const v of Object.values((node as any).inputs || {})) if (match(v as any)) return false
+			for (const v of Object.values((node as any).outputs || {})) if (match(v as any)) return false
+		}
+		return true
+	}
+
+	/**
+	 * 辅助：O4.2 orphan resources 清理。
+	 * 从 resourcesById 中删除：
+	 *   A. 其 url/previewUrl/posterUrl 规格化匹配目标 URL；并且
+	 *   B. 未被任何 node.resourceId 引用的"幽灵资源"。
+	 * 返回删除的 resourceId 列表（供 undo 用）。
+	 */
+	function _cleanupOrphanResourcesByUrl(
+		url: string,
+		store: Store<WorkflowState>,
+		undoSnapshot: NonNullable<PendingMissingAsset['undoSnapshot']>
+	): string[] {
+		const strict = isStrictMissingSourceBindingEnabled()
+		const norm = normalizeForBindingMatch(url)
+		const match = (a: string | null | undefined) => _urlsMatch(a, url, strict) || (norm !== '' && normalizeForBindingMatch(a) === norm)
+		const { resourcesById = {}, nodesById = {} } = store.state as { resourcesById?: Record<string, any>; nodesById?: Record<string, any> }
+		// Step 1: 收集所有 node.resourceId 引用的 resourceId 集合
+		const nodeReferencedResourceIds = new Set<string>()
+		for (const node of Object.values(nodesById)) {
+			const rid = (node as any)?.resourceId
+			if (rid != null) nodeReferencedResourceIds.add(String(rid))
+		}
+		// Step 2: 扫描 resourcesById，命中 match 且未被节点引用的 → 幽灵资源
+		const removedRids: string[] = []
+		for (const [rid, res] of Object.entries(resourcesById)) {
+			if (!res) continue
+			const touches = match(res.url) || match(res.previewUrl) || match(res.posterUrl)
+			if (!touches) continue
+			if (nodeReferencedResourceIds.has(rid)) continue
+			undoSnapshot.resourcesByIdPatch![rid] = { ...res }
+			try {
+				store.commit('removeResource', { resourceId: rid })
+				removedRids.push(rid)
+			} catch (err) {
+				console.warn('[404-fallback] orphan cleanup removeResource failed:', rid, err)
+			}
+		}
+		return removedRids
+	}
+
+	/**
 	 * 用户确认移除缺失资产调用：从 store 中清理错误引用。
 	 * 执行前会记录 undo 快照，以便撤销。
+	 *
+	 * 整改方案 O4：如果 sources 中只有 {type:'unknown'}（即未能定位到具体引用位置），
+	 *              则跳过 store.commit 破坏性操作（定位不到也删不了），只记录忽略 +
+	 *              发 Toast 引导用户通过资源管理器重新导入/右键清除。
+	 *
+	 * M4 升级：
+	 *   a) O4.1：unknownOnly 判定收紧 —— 即使 sources 列表里只有 unknown，
+	 *      仍然用 _verifyNoBindingExistsInStore 规格化重新验证一次，避免误杀。
+	 *      若验证发现实际上有 binding，则纠正 onlyUnknownSources=false，走正常清理分支。
+	 *   b) O4.2：unknown 兜底分支在 isUnknownCleanupEnabled() 开启时也执行
+	 *      _cleanupOrphanResourcesByUrl 清"幽灵资源"（仅删未被 node.resourceId 引用的）。
+	 *   c) O5.2：无论哪个分支结束，都写入 sessionResolvedUrls（规格化 URL）。
 	 */
 	function confirmRemoveMissingAsset(pendingId: string): { ok: boolean; undoAvailable: boolean } {
 		const pending = pendingMissingAssets.value.find((p) => p.id === pendingId)
 		if (!pending) return { ok: false, undoAvailable: false }
 
+		const sources = Array.isArray(pending.sources) ? pending.sources : []
+		let onlyUnknownSources =
+			sources.length > 0 &&
+			sources.every((s) => s && String(s.type || '').toLowerCase() === 'unknown')
+
 		const store = getStore?.()
-		if (!store) {
+		// O4.1 收紧：验证真的没有任何 store 级绑定（规格化再扫一遍）
+		if (onlyUnknownSources && store) {
+			const reallyNone = _verifyNoBindingExistsInStore(pending.url, store)
+			if (!reallyNone) onlyUnknownSources = false
+		}
+		const unknownCleanupOn = isUnknownCleanupEnabled()
+		const debounceOn = isNodeSelectionDebounceEnabled()
+
+		/* ============ O4 兜底：未知来源不做破坏性 commit ============ */
+		if (!store || onlyUnknownSources) {
 			pending.resolved = true
 			pending.resolution = 'removed'
 			pendingMissingAssets.value = pendingMissingAssets.value.filter((p) => p.id !== pendingId)
-			return { ok: true, undoAvailable: false }
+
+			// 仍然记录 removed 忽略表（核心：下次不重复弹）
+			const projectIdForIgnore = getCurrentProjectId?.() ?? null
+			try {
+				markUrlRemoved(projectIdForIgnore, pending.url, {
+					assetName: pending.assetName,
+					sources,
+				})
+			} catch {
+				/* ignore */
+			}
+
+			let skippedDestructiveOps = true
+			let undoAvailableLocal = false
+
+			// O4.2：unknown 兜底 + flag 开 → 清幽灵 orphan resources
+			if (onlyUnknownSources && store && unknownCleanupOn) {
+				const orphanUndo: NonNullable<PendingMissingAsset['undoSnapshot']> = {
+					resourcesByIdPatch: {},
+					nodePatches: []
+				}
+				const removedRids = _cleanupOrphanResourcesByUrl(pending.url, store, orphanUndo)
+				const hadOrphans = removedRids.length > 0
+				if (hadOrphans) {
+					pending.undoSnapshot = orphanUndo
+					removedAssetsHistory.push(pending)
+					skippedDestructiveOps = false
+					undoAvailableLocal = true
+				}
+			}
+
+			// O5.2：双写 session resolved（规格化 URL）
+			if (debounceOn) {
+				const norm = normalizeForBindingMatch(pending.url)
+				if (norm !== '') sessionResolvedUrls.add(norm)
+			}
+
+			if (onlyUnknownSources) {
+				notify(
+					t('aiworkflow.toast.referenceUnknownLocationIgnored', {
+						default:
+							'未定位到具体引用位置，已记录忽略；请通过资源管理器重新导入或右键清理该资源以彻底移除。'
+					}) as string,
+					'warn'
+				)
+			} else if (!store) {
+				notify(t('aiworkflow.toast.referenceRemoved', { name: pending.assetName }), 'info')
+			}
+
+			const result = { ok: true, undoAvailable: undoAvailableLocal }
+			if (typeof onAfterConfirmRemove === 'function') {
+				try {
+					onAfterConfirmRemove({
+						pendingId,
+						url: pending.url,
+						assetName: pending.assetName,
+						undoAvailable: undoAvailableLocal,
+						skippedDestructiveOps
+					})
+				} catch {
+					/* ignore */
+				}
+			}
+			return result
 		}
 
 		// 构造撤销快照
@@ -429,13 +738,17 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		const url = pending.url
 		const resourcesById = store.state.resourcesById || {}
 		const nodesById = store.state.nodesById || {}
+		const strictBinding = isStrictMissingSourceBindingEnabled()
+		const norm = normalizeForBindingMatch(url)
+		const urlMatch = (a: string | null | undefined) =>
+			_urlsMatch(a, url, strictBinding) || (norm !== '' && normalizeForBindingMatch(a) === norm)
 
 		// 1) 清理 resourcesById 中对该 url 的直接引用（备份后删除）
 		for (const [rid, res] of Object.entries(resourcesById) as Array<
 			[string, WorkflowResource | undefined]
 		>) {
 			if (!res) continue
-			const touchesUrl = res.url === url || res.previewUrl === url || res.posterUrl === url
+			const touchesUrl = urlMatch(res.url) || urlMatch(res.previewUrl) || urlMatch(res.posterUrl)
 			if (touchesUrl) {
 				undoSnapshot.resourcesByIdPatch![rid] = { ...res }
 				// 将资源从 store 中移除
@@ -460,18 +773,18 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 				'posterUrl',
 				'previewUrl'
 			]) {
-				if (node?.[field] === url) fieldsToClean.push(field)
+				if (urlMatch(node?.[field] as string | null | undefined)) fieldsToClean.push(field)
 			}
 			// 检查 inputs 对象
 			if (node?.inputs && typeof node.inputs === 'object') {
 				for (const [key, val] of Object.entries(node.inputs as Record<string, unknown>)) {
-					if (val === url) fieldsToClean.push(`inputs.${key}`)
+					if (typeof val === 'string' && urlMatch(val)) fieldsToClean.push(`inputs.${key}`)
 				}
 			}
 			// 检查 outputs 对象
 			if (node?.outputs && typeof node.outputs === 'object') {
 				for (const [key, val] of Object.entries(node.outputs as Record<string, unknown>)) {
-					if (val === url) fieldsToClean.push(`outputs.${key}`)
+					if (typeof val === 'string' && urlMatch(val)) fieldsToClean.push(`outputs.${key}`)
 				}
 			}
 			for (const field of fieldsToClean) {
@@ -487,11 +800,44 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		removedAssetsHistory.push(pending)
 		pendingMissingAssets.value = pendingMissingAssets.value.filter((p) => p.id !== pendingId)
 		notify(t('aiworkflow.toast.referenceRemoved', { name: pending.assetName }), 'info')
+
+		const undoAvailable =
+			Object.keys(undoSnapshot.resourcesByIdPatch || {}).length > 0 ||
+			(undoSnapshot.nodePatches?.length || 0) > 0
+
+		// O5.2：双写 session resolved（规格化 URL）
+		if (debounceOn) {
+			const normP = normalizeForBindingMatch(pending.url)
+			if (normP !== '') sessionResolvedUrls.add(normP)
+		}
+
+		/* ============ O2.3：removed 忽略表 + 回调 ============ */
+		const projectIdForIgnore = getCurrentProjectId?.() ?? null
+		try {
+			markUrlRemoved(projectIdForIgnore, pending.url, {
+				assetName: pending.assetName,
+				sources,
+			})
+		} catch {
+			/* ignore */
+		}
+		if (typeof onAfterConfirmRemove === 'function') {
+			try {
+				onAfterConfirmRemove({
+					pendingId,
+					url: pending.url,
+					assetName: pending.assetName,
+					undoAvailable,
+					skippedDestructiveOps: false
+				})
+			} catch {
+				/* ignore */
+			}
+		}
+
 		return {
 			ok: true,
-			undoAvailable:
-				Object.keys(undoSnapshot.resourcesByIdPatch || {}).length > 0 ||
-				(undoSnapshot.nodePatches?.length || 0) > 0
+			undoAvailable
 		}
 	}
 
@@ -546,7 +892,11 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 	}
 
 	/**
-	 * 用户取消处理（不做任何修改）
+	 * 用户取消处理（不做任何修改）。
+	 * 整改方案 O2.3：写入 cancelled 忽略表，当前会话/30 天内不再重复弹窗同 URL。
+	 *
+	 * M4 升级：
+	 *   O5.2：结束前写入 sessionResolvedUrls（规格化 URL），保证当前会话内不再触发。
 	 */
 	function cancelMissingAsset(pendingId: string) {
 		const pending = pendingMissingAssets.value.find((p) => p.id === pendingId)
@@ -554,6 +904,34 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 		pending.resolved = true
 		pending.resolution = 'cancelled'
 		pendingMissingAssets.value = pendingMissingAssets.value.filter((p) => p.id !== pendingId)
+
+		// O5.2：双写 session resolved（规格化 URL）
+		const debounceOn = isNodeSelectionDebounceEnabled()
+		if (debounceOn) {
+			const norm = normalizeForBindingMatch(pending.url)
+			if (norm !== '') sessionResolvedUrls.add(norm)
+		}
+
+		/* ============ O2.3：cancelled 忽略表 + 回调 ============ */
+		const projectIdForIgnore = getCurrentProjectId?.() ?? null
+		try {
+			markUrlCancelled(projectIdForIgnore, pending.url, {
+				assetName: pending.assetName,
+			})
+		} catch {
+			/* ignore */
+		}
+		if (typeof onAfterCancel === 'function') {
+			try {
+				onAfterCancel({
+					pendingId,
+					url: pending.url,
+					assetName: pending.assetName,
+				})
+			} catch {
+				/* ignore */
+			}
+		}
 	}
 
 	/** 安装全局错误拦截器，自动捕获 dweb 资源 404 */
@@ -571,9 +949,25 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 			} else if (tag === 'SCRIPT') {
 				srcUrl = (target as HTMLScriptElement).src || ''
 			}
-			if (srcUrl && isDwebProjectAssetUrl(srcUrl)) {
-				void handle404Error(srcUrl)
+			if (!srcUrl || !isDwebProjectAssetUrl(srcUrl)) return
+
+			// M5: 节点元素级 failedOnce —— 同一个 DOM 元素对同一个规格化 URL 只触发一次 404 处理。
+			// 解决节点选中/取消选中导致 img 重新挂载时，同一元素反复 onerror 触发网络请求的问题。
+			const debounceOn = isNodeSelectionDebounceEnabled()
+			if (debounceOn) {
+				const norm = normalizeForBindingMatch(srcUrl)
+				if (norm !== '') {
+					// dataset: dvsFailedUrls 是 "|" 分隔的规格化 URL 集合
+					const ds = (target as HTMLElement).dataset
+					const existing = ds.dvsFailedUrls || ''
+					const tagKey = `|${norm}|`
+					if (existing.includes(tagKey)) {
+						return
+					}
+					ds.dvsFailedUrls = `${existing}${tagKey}`
+				}
 			}
+			void handle404Error(srcUrl)
 		}
 
 		// 资源加载错误（img/video/script/link 等）
@@ -643,7 +1037,26 @@ export function useAIWorkflow404Fallback(options: AIWorkflow404FallbackOptions) 
 }
 
 /**
- * 默认来源定位：从 Vuex store 中查找引用了该 URL 的资源和节点
+ * URL 匹配辅助：严格模式下使用 normalizeForBindingMatch 比较，否则严格等值。
+ */
+function _urlsMatch(a: string | null | undefined, b: string | null | undefined, strict: boolean): boolean {
+	if (a === b) return true
+	if (!a || !b) return false
+	if (!strict) return false
+	return normalizeForBindingMatch(a) === normalizeForBindingMatch(b) && normalizeForBindingMatch(a) !== ''
+}
+
+/**
+ * 默认来源定位：从 Vuex store 中查找引用了该 URL 的资源和节点。
+ *
+ * M1 整改：
+ *   1. O1.3：isStrictMissingSourceBindingEnabled() 开启（默认开）时，
+ *      URL 比较改为 normalizeForBindingMatch 规格化后比较，避免大小写/
+ *      分隔符/百分号编码差异导致的 false miss（进而走到 unknown 分支）。
+ *   2. O1.4：node.resourceId 两跳关联——先在 resourcesById 中找到所有
+ *      url/previewUrl/posterUrl 命中的资源，再反向扫描 nodesById 中
+ *      resourceId 等于该资源 id 的节点，标记来源为 node_resource_binding。
+ *      这解决了"节点通过 resourceId 间接绑定资产却判为 unknown location"的问题。
  */
 function defaultFindBindingSources(
 	url: string,
@@ -652,48 +1065,67 @@ function defaultFindBindingSources(
 	const sources: ResourceBindingSource[] = []
 	if (!store || !store.state) return sources
 	const state = store.state
+	const strictBinding = isStrictMissingSourceBindingEnabled()
+	const seenKeys = new Set<string>()
+
+	const pushSource = (s: ResourceBindingSource) => {
+		const key = `${s.type}:${s.resourceId || ''}:${s.nodeId || ''}:${s.field || ''}`
+		if (seenKeys.has(key)) return
+		seenKeys.add(key)
+		sources.push(s)
+	}
 
 	const resourcesById = state.resourcesById || {}
+	// Step 1: 扫描 resourcesById 中直接引用该 URL 的资源（同时收集命中的 resourceId 集合，供 Step 3 反向匹配）
+	const hitResourceIds = new Set<string>()
 	for (const [rid, res] of Object.entries(resourcesById) as Array<
 		[string, WorkflowResource | undefined]
 	>) {
 		if (!res) continue
-		if (res.url === url) {
-			sources.push({
+		let hit = false
+		if (_urlsMatch(res.url, url, strictBinding)) {
+			pushSource({
 				type: 'resource',
 				resourceId: rid,
 				detail: `resource.url => ${res.name || rid}`
 			})
-		} else if (res.previewUrl === url) {
-			sources.push({
+			hit = true
+		}
+		if (_urlsMatch(res.previewUrl, url, strictBinding)) {
+			pushSource({
 				type: 'preview',
 				resourceId: rid,
 				detail: `resource.previewUrl => ${res.name || rid}`
 			})
-		} else if (res.posterUrl === url) {
-			sources.push({
+			hit = true
+		}
+		if (_urlsMatch(res.posterUrl, url, strictBinding)) {
+			pushSource({
 				type: 'poster',
 				resourceId: rid,
 				detail: `resource.posterUrl => ${res.name || rid}`
 			})
+			hit = true
 		}
+		if (hit) hitResourceIds.add(rid)
 	}
 
 	const nodesById = state.nodesById || {}
+	// Step 2: 扫描 nodesById 中字段直接等于该 URL 的情况（inputs / outputs / 直接字段）
 	for (const [nid, node] of Object.entries(nodesById) as Array<
 		[string, WorkflowNodeLike | undefined]
 	>) {
 		if (!node) continue
 		const nodeType = String(node.type || node.nodeType || '')
-		for (const field of ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url']) {
-			if (node?.[field] === url) {
-				sources.push({ type: 'node_param', nodeId: nid, nodeType, field, detail: `node.${field}` })
+		for (const field of ['imageUrl', 'videoUrl', 'modelUrl', 'thumbnailUrl', 'src', 'url', 'posterUrl', 'previewUrl']) {
+			if (_urlsMatch(node?.[field] as string | null | undefined, url, strictBinding)) {
+				pushSource({ type: 'node_param', nodeId: nid, nodeType, field, detail: `node.${field}` })
 			}
 		}
 		if (node?.inputs && typeof node.inputs === 'object') {
 			for (const [key, val] of Object.entries(node.inputs as Record<string, unknown>)) {
-				if (val === url) {
-					sources.push({
+				if (typeof val === 'string' && _urlsMatch(val, url, strictBinding)) {
+					pushSource({
 						type: 'node_input',
 						nodeId: nid,
 						nodeType,
@@ -705,8 +1137,8 @@ function defaultFindBindingSources(
 		}
 		if (node?.outputs && typeof node.outputs === 'object') {
 			for (const [key, val] of Object.entries(node.outputs as Record<string, unknown>)) {
-				if (val === url) {
-					sources.push({
+				if (typeof val === 'string' && _urlsMatch(val, url, strictBinding)) {
+					pushSource({
 						type: 'node_output',
 						nodeId: nid,
 						nodeType,
@@ -718,8 +1150,30 @@ function defaultFindBindingSources(
 		}
 	}
 
+	// Step 3: O1.4 —— node.resourceId 两跳反向关联
+	if (hitResourceIds.size > 0) {
+		for (const [nid, node] of Object.entries(nodesById) as Array<
+			[string, WorkflowNodeLike | undefined]
+		>) {
+			if (!node) continue
+			const nodeType = String(node.type || node.nodeType || '')
+			const nodeResourceId = (node as any).resourceId
+			if (nodeResourceId != null && hitResourceIds.has(String(nodeResourceId))) {
+				const res = resourcesById[String(nodeResourceId)]
+				pushSource({
+					type: 'preview',
+					resourceId: String(nodeResourceId),
+					nodeId: nid,
+					nodeType,
+					field: 'resourceId',
+					detail: `node.resourceId => resource(${res?.name || nodeResourceId}) indirect binding`
+				})
+			}
+		}
+	}
+
 	if (sources.length === 0) {
-		sources.push({ type: 'unknown', detail: t('aiworkflow.toast.unknownLocation') })
+		pushSource({ type: 'unknown', detail: t('aiworkflow.toast.unknownLocation') })
 	}
 	return sources
 }
