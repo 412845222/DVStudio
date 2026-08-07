@@ -695,22 +695,33 @@ const requestAutoResize = () => {
 	if (rafId) return
 	rafId = requestAnimationFrame(() => {
 		rafId = 0
-		// 对话框高度增量叠加逻辑：仅 blender 节点需要（其他节点保持原有高度计算不变）
-		const isBlender = props.nodeType === 'blender'
-		if (isBlender) {
-			// sizeCustomized=true时也允许对话框增量叠加（不允许内容自由撑高）
-			// 如果是sizeCustomized模式，只在对话框可见时调整高度；否则按原逻辑
-			if (props.sizeCustomized && !nodeChatVisibleResolved.value) return
-			if (userResized && !nodeChatVisibleResolved.value) return
-			if (props.autoHeight === false && !nodeChatVisibleResolved.value) return
-		} else {
-			// 非 blender 节点：原有严格门控
-			if (userResized) return
-			if (props.autoHeight === false) return
-			if (props.sizeCustomized) return
+
+		// ===== 全局早返回守卫（必须放在任何副作用之前；对应 CI tests/engine/image-node-height-invariant.test.ts §2）=====
+		// 当 autoHeight === false 时：
+		//   - 非 Blender 节点：必须在此处无条件 early-return（正则守卫：props.autoHeight === false) return），
+		//     防止 image/rotate-image 等 sizeCustomized=true（即锁尺寸）节点因"ResizeObserver → autoResize
+		//     → 改 height → 再触发 ResizeObserver"形成死循环而无限增高（历史回归守卫）。
+		//   - Blender 节点：仅在底部对话框实际可见时允许叠加高度（否则也应 return），
+		//     避免在用户已锁定基础画布高度的场景下抖动或越界。
+		if (props.autoHeight === false) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
 		}
+		// 用户已手动拖拽缩放：同样只允许 Blender 对话框展开场景叠加
+		if (userResized) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
+		}
+		// sizeCustomized=true（画布尺寸定制模式）：同上
+		if (props.sizeCustomized) {
+			if (props.nodeType !== 'blender') return
+			if (!nodeChatVisibleResolved.value) return
+		}
+
+		const isBlender = props.nodeType === 'blender'
 		const nextHeight = measureNaturalHeight()
-		// 对于sizeCustomized，取 max(画布高度, 内容自然高度+对话框高度)
+		// 对于sizeCustomized的Blender，取 max(画布高度, 内容自然高度+对话框高度)
+		// 这样既保留用户锁定的基础高度下限，又在对话框展开时叠加出足够的显示区域
 		const finalHeight =
 			isBlender && props.sizeCustomized ? Math.max(props.height, nextHeight) : nextHeight
 		if (Math.abs(finalHeight - lastEmittedHeight) < HEIGHT_CHANGE_THRESHOLD) return
