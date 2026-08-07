@@ -152,14 +152,68 @@ const resolveDwebToLocalPath = (url: string, projectRoot: string | undefined): s
 	return ''
 }
 
+/** 从 resourcesById[resourceId] 以最高优先级解析 3D 模型绝对路径（方案 P1 + P3 修复）。
+ *
+ *  优先级：
+ *  1. resource.absolutePath        ← 2026-08 新增字段，最直接
+ *  2. resource.sourcePath          ← 本机绝对路径，广泛存在
+ *  3. projectRoot + resource.projectRelativePath
+ *  4. resource.url → dweb:// / file:// 反解
+ *
+ *  注意：settings 分支被下调至 fallback（见下方 resolveUpstreamModelPath）。
+ */
+const resolveUpstreamModelPathFromResource = (
+	state: WorkflowState,
+	resourceRid: string,
+	resolveCandidate: (raw: string) => string
+): string => {
+	const resource = (state.resourcesById as any)[resourceRid]
+	if (!resource) return ''
+
+	const projectRoot = (state as { projectRootPath?: string }).projectRootPath
+
+	const absPath = String((resource as { absolutePath?: unknown }).absolutePath ?? '').trim()
+	if (absPath) {
+		const r = resolveCandidate(absPath)
+		if (r) return r
+	}
+	const sourcePath = String((resource as { sourcePath?: unknown }).sourcePath ?? '').trim()
+	if (sourcePath) {
+		const r = resolveCandidate(sourcePath)
+		if (r) return r
+	}
+	const rel = String(
+		(resource as { projectRelativePath?: unknown }).projectRelativePath ?? ''
+	).trim()
+	if (rel) {
+		const normalizedRoot = String(projectRoot ?? '').replace(/[/\\]+$/, '')
+		const normalizedRel = rel.replace(/^[/\\]+/, '')
+		const joined = normalizedRoot ? `${normalizedRoot}/${normalizedRel}` : rel
+		const r = resolveCandidate(joined)
+		if (r) return r
+	}
+	const resUrl = String((resource as { url?: unknown }).url ?? '').trim()
+	if (resUrl) {
+		const r = resolveCandidate(resUrl)
+		if (r) return r
+	}
+	return ''
+}
+
 /** 从上游节点解析 3D 模型产物路径。
+ *
+ *  2026-08 重排优先级（方案 P1 + P3）：
+ *  ① resource 分支（resourcesById[resourceId]）→ 命中即返回
+ *  ② 内嵌 meshyModelSettings / tripo3dModelSettings 子 settings → 其自身 resourceId 递归处理（若有）
+ *  ③ settings 字段候选（兼容旧蓝图 / 无 resourceId 节点）
+ *
  *  候选字段仅限真正的模型输出路径；输入图片路径（lastInputSourcePath/localPath等）
  *  会被排除，最终通过扩展名校验确认文件为 3D 模型格式。 */
 const resolveUpstreamModelPath = (store: Store<WorkflowState>, node: WorkflowNode): string => {
 	const state = store.state
-	const projectRoot = (state as { projectRootPath?: string }).projectRootPath
 
 	const resolveCandidate = (raw: string): string => {
+		const projectRoot = (state as { projectRootPath?: string }).projectRootPath
 		const c = String(raw ?? '').trim()
 		if (!c) return ''
 		if (/^https?:\/\//i.test(c)) return ''
@@ -211,34 +265,35 @@ const resolveUpstreamModelPath = (store: Store<WorkflowState>, node: WorkflowNod
 					? ((node as { tripo3dSettings?: Record<string, unknown> }).tripo3dSettings ?? undefined)
 					: undefined
 
-	let candidate = trySettingsCandidates(settings)
-	if (!candidate && node.type === 'model3d' && settings) {
-		const m3d = settings as any
-		candidate =
-			trySettingsCandidates(m3d.meshyModelSettings) ||
-			trySettingsCandidates(m3d.tripo3dModelSettings)
-	}
-	if (candidate) return candidate
-
+	// ===== ①：resource 分支最高优先级（强制对齐 3D 模型节点面板显示链路）=====
 	const resourceRid = String((node as { resourceId?: string }).resourceId ?? '').trim()
 	if (resourceRid) {
-		const resource = state.resourcesById[resourceRid]
-		if (resource) {
-			const resCandidates: (string | null | undefined)[] = [
-				(resource as { sourcePath?: string }).sourcePath
-			]
-			const rel = String(
-				(resource as { projectRelativePath?: string }).projectRelativePath ?? ''
-			).trim()
-			if (rel) resCandidates.push(resolveProjectPath(store, rel))
-			const resUrl = String((resource as { url?: string }).url ?? '').trim()
-			if (resUrl) resCandidates.push(resolveDwebToLocalPath(resUrl, projectRoot))
-			for (const raw of resCandidates) {
-				const resolved = resolveCandidate(String(raw ?? ''))
-				if (resolved) return resolved
-			}
-		}
+		const resourceHit = resolveUpstreamModelPathFromResource(state, resourceRid, resolveCandidate)
+		if (resourceHit) return resourceHit
 	}
+
+	// ===== ②：model3d 内嵌 meshy/tripo 子 settings（各自独立 resourceId 走同一递归）=====
+	if (node.type === 'model3d' && settings) {
+		const m3d = settings as any
+		const trySub = (subSettings: any, subKey: 'meshyModelSettings' | 'tripo3dModelSettings') => {
+			if (!subSettings || typeof subSettings !== 'object') return ''
+			// 子节点自身可能也带独立 resourceId（历史场景），优先走 resource 分支
+			const subRid = String((subSettings as { resourceId?: string }).resourceId ?? '').trim()
+			if (subRid) {
+				const r = resolveUpstreamModelPathFromResource(state, subRid, resolveCandidate)
+				if (r) return r
+			}
+			return trySettingsCandidates(subSettings as Record<string, unknown>)
+		}
+		const subHit = trySub(m3d.meshyModelSettings, 'meshyModelSettings')
+		if (subHit) return subHit
+		const subHit2 = trySub(m3d.tripo3dModelSettings, 'tripo3dModelSettings')
+		if (subHit2) return subHit2
+	}
+
+	// ===== ③：settings fallback（兼容无 resourceId 旧蓝图）=====
+	const settingsCandidate = trySettingsCandidates(settings)
+	if (settingsCandidate) return settingsCandidate
 	return ''
 }
 

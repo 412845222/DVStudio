@@ -254,6 +254,44 @@
 							<span class="wf-model3d-label">{{ t('nodes.model3d.projectAsset') }}</span>
 							<span class="wf-model3d-info-value">{{ assetStatusDisplay }}</span>
 						</div>
+						<!-- ===== 2026-08 新增（方案 P2）：真实资产文件名 + 路径（强制 resource 优先，与右键打开/Blender 导入同源）===== -->
+						<div class="wf-model3d-info-row">
+							<span class="wf-model3d-label">
+								{{ t('nodes.model3d.assetFileName') || '资产文件名' }}
+							</span>
+							<span
+								class="wf-model3d-info-value wf-model3d-truncate"
+								:class="{
+									'wf-model3d-missing': trueAssetPathExists === false,
+									'wf-model3d-checking': trueAssetPathExists === null
+								}"
+								:title="trueAssetFileName"
+							>
+								<span v-if="trueAssetPathExists === false" class="wf-model3d-warn-badge">⚠</span>
+								{{ trueAssetFileName }}
+							</span>
+						</div>
+						<div v-if="trueAssetDisplayPath" class="wf-model3d-info-row">
+							<span class="wf-model3d-label">
+								{{ t('nodes.model3d.assetFilePath') || '资产路径' }}
+							</span>
+							<span
+								class="wf-model3d-info-value wf-model3d-truncate"
+								:class="{
+									'wf-model3d-missing': trueAssetPathExists === false,
+									'wf-model3d-checking': trueAssetPathExists === null
+								}"
+								:title="trueAssetDisplayPath"
+							>
+								{{ trueAssetDisplayPath }}
+							</span>
+						</div>
+						<div
+							v-if="trueAssetPathExists === false"
+							class="wf-model3d-info-row wf-model3d-info-warn"
+						>
+							文件不存在，请重新上传/生成或绑定资产。
+						</div>
 						<div class="wf-model3d-info-row">
 							<span class="wf-model3d-label">{{ t('nodes.model3d.upstreamInput') }}</span>
 							<span class="wf-model3d-info-value">{{ upstreamStatusDisplay }}</span>
@@ -354,6 +392,11 @@ import {
 	isTripo3DRemoteUrl
 } from '../../../views/AIWorkflow/node-business/tripo3d/useAIWorkflowTripo3DAssets'
 import { getProjectRootById } from '../../../electronBridge'
+import {
+	checkAssetExists,
+	resolveModel3dNodeAssetFileName,
+	resolveModel3dNodeTrueAssetPath
+} from '../../../views/AIWorkflow/node-business/model3d/resolveModel3dNodeTrueAssetPath'
 
 const { t } = useI18n()
 const { open: open3DEditor } = useModel3DEditor()
@@ -1461,6 +1504,72 @@ const assetStatusDisplay = computed(() => {
 	if (assetPath) return t('nodes.model3d.writtenToAssets')
 	return t('nodes.model3d.notPersisted')
 })
+
+// ===== 2026-08 新增（方案 P2-A + P2-B）：
+// 真实资产文件名 + 路径显示行，强制以 props.resourceName / props.resourceAbsolutePath / props.resourceSourcePath
+// / props.resourceProjectRelativePath 为最高优先级；settings 字段仅 fallback。
+// 同时配合 checkAssetExists 异步判断文件是否真的存在（缺失时红色警告）。
+const trueAssetFileName = computed(() => {
+	if (props.resourceName) return String(props.resourceName).trim()
+	const absPath =
+		String(props.resourceAbsolutePath ?? '').trim() || String(props.resourceSourcePath ?? '').trim()
+	if (absPath) {
+		const norm = absPath.replace(/\\/g, '/')
+		const i = norm.lastIndexOf('/')
+		return i >= 0 ? norm.slice(i + 1) : norm
+	}
+	const prp = String(props.resourceProjectRelativePath ?? '').trim()
+	if (prp) {
+		const norm = prp.replace(/\\/g, '/')
+		const i = norm.lastIndexOf('/')
+		return i >= 0 ? norm.slice(i + 1) : norm
+	}
+	if (effectiveModelAssetPath.value) {
+		const norm = String(effectiveModelAssetPath.value).replace(/\\/g, '/')
+		const i = norm.lastIndexOf('/')
+		return i >= 0 ? norm.slice(i + 1) : norm
+	}
+	const sourceName = String(settings.value?.modelSourceName ?? '').trim()
+	if (sourceName) return sourceName
+	return t('nodes.model3d.notPersisted')
+})
+
+const trueAssetDisplayPath = computed(() => {
+	const abs =
+		String(props.resourceAbsolutePath ?? '').trim() || String(props.resourceSourcePath ?? '').trim()
+	if (abs) return abs
+	const prp = String(props.resourceProjectRelativePath ?? '').trim()
+	if (prp) return prp
+	return effectiveModelAssetPath.value || ''
+})
+
+const trueAssetPathExists = ref<boolean | null>(null)
+let assetExistsCheckId = 0
+const refreshAssetExists = async () => {
+	const p = String(trueAssetDisplayPath.value || '').trim()
+	if (!p) {
+		trueAssetPathExists.value = null
+		return
+	}
+	const reqId = ++assetExistsCheckId
+	try {
+		const ok = await checkAssetExists(p)
+		if (reqId !== assetExistsCheckId) return
+		trueAssetPathExists.value = ok
+	} catch {
+		if (reqId !== assetExistsCheckId) return
+		trueAssetPathExists.value = false
+	}
+}
+watch(
+	[trueAssetDisplayPath, () => props.resourceAbsolutePath, () => props.resourceSourcePath],
+	() => {
+		trueAssetPathExists.value = null
+		void refreshAssetExists()
+	},
+	{ immediate: true }
+)
+
 const upstreamStatusDisplay = computed(() => {
 	const source = String(settings.value?.lastInputSourceName ?? '').trim()
 	if (source) return source
@@ -2787,6 +2896,38 @@ onBeforeUnmount(() => {
 	color: var(--vscode-fg);
 	word-break: break-all;
 	text-align: right;
+}
+
+.wf-model3d-truncate {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 60%;
+	flex-shrink: 1;
+}
+
+.wf-model3d-missing {
+	color: #ff6b6b !important;
+	font-weight: 600;
+}
+
+.wf-model3d-checking {
+	opacity: 0.7;
+}
+
+.wf-model3d-warn-badge {
+	display: inline-block;
+	margin-right: 4px;
+	color: #ffb703;
+}
+
+.wf-model3d-info-warn {
+	justify-content: flex-end;
+	color: #ff6b6b;
+	font-size: 11px;
+	line-height: 1.4;
+	padding-top: 2px;
+	border-top: 1px dashed rgb(from #ff6b6b r g b / 0.4);
 }
 
 @media (max-width: 720px) {

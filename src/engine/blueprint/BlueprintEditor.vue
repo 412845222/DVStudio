@@ -96,6 +96,16 @@
 				@node-disconnect-unreal="(id: string) => emit('nodeDisconnectUnreal', id)"
 				@node-set-asset-root-path="(p: any) => emit('nodeSetAssetRootPath', p)"
 				@node-update-poster="(p: any) => emit('nodeUpdatePoster', p)"
+				@node-blender-connect="(p: any) => emit('nodeBlenderConnect', p)"
+				@node-blender-disconnect="(p: any) => emit('nodeBlenderDisconnect', p)"
+				@node-blender-import="(p: any) => emit('nodeBlenderImport', p)"
+				@node-blender-mount-tools="(p: any) => emit('nodeBlenderMountTools', p)"
+				@node-blender-status-click="(p: any) => emit('nodeBlenderStatusClick', p)"
+				@node-blender-clear-chat="(p: any) => emit('nodeBlenderClearChat', p)"
+				@node-blender-open-workspace="(p: any) => emit('nodeBlenderOpenWorkspace', p)"
+				@node-blender-init-workspace="(p: any) => emit('nodeBlenderInitWorkspace', p)"
+				@node-update-blender-settings="(p: any) => emit('nodeUpdateBlenderSettings', p)"
+				@node-blender-compress-context="(p: any) => emit('nodeBlenderCompressContext', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -251,6 +261,16 @@ interface Emits {
 	(e: 'nodeDisconnectUnreal', nodeId: string): void
 	(e: 'nodeSetAssetRootPath', payload: { nodeId: string; path: string }): void
 	(e: 'nodeUpdatePoster', payload: { nodeId: string; posterDataUrl: string }): void
+	(e: 'nodeBlenderConnect', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'nodeBlenderDisconnect', payload: { nodeId: string }): void
+	(e: 'nodeBlenderImport', payload: { nodeId: string }): void
+	(e: 'nodeBlenderMountTools', payload: { nodeId: string }): void
+	(e: 'nodeBlenderStatusClick', payload: { nodeId: string; host: string; port: number }): void
+	(e: 'nodeBlenderClearChat', payload: { nodeId: string }): void
+	(e: 'nodeBlenderOpenWorkspace', payload: { nodeId: string }): void
+	(e: 'nodeBlenderInitWorkspace', payload: { nodeId: string }): void
+	(e: 'nodeUpdateBlenderSettings', payload: { nodeId: string; patch: Record<string, any> }): void
+	(e: 'nodeBlenderCompressContext', payload: { nodeId: string }): void
 }
 
 const emit = defineEmits<Emits>()
