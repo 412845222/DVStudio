@@ -178,7 +178,17 @@ describe('comfyui setup-service: ensureTritonWindowsNoneGuard (方案A 备援 pa
 	const targetFile = path.join(fakeSitePackages, 'triton', 'windows_utils.py')
 	const backupFile = targetFile + '.dvs-bak'
 
+	let originalPlatform: NodeJS.Platform
+
 	beforeEach(async () => {
+		originalPlatform = process.platform
+		// Force win32 so the platform guard does not short-circuit on Linux CI
+		Object.defineProperty(process, 'platform', {
+			value: 'win32',
+			writable: true,
+			configurable: true
+		})
+
 		vi.resetModules()
 		mockConfig = {}
 		mockFsState = { files: new Map(), dirs: new Set() }
@@ -192,6 +202,27 @@ describe('comfyui setup-service: ensureTritonWindowsNoneGuard (方案A 备援 pa
 
 		const mod = await import('../../../electron/backend/modules/comfyui/setup-service.mjs')
 		ensureTritonWindowsNoneGuard = mod.ensureTritonWindowsNoneGuard
+	})
+
+	afterEach(() => {
+		Object.defineProperty(process, 'platform', {
+			value: originalPlatform,
+			writable: true,
+			configurable: true
+		})
+	})
+
+	it('returns skip when not on Windows (process.platform !== win32)', () => {
+		// Temporarily restore non-windows platform to exercise the guard path
+		Object.defineProperty(process, 'platform', {
+			value: 'linux',
+			writable: true,
+			configurable: true
+		})
+		const result = ensureTritonWindowsNoneGuard(fakeVenvPython)
+		expect(result.skipped).toBe(true)
+		expect(result.reason).toBe('not_windows')
+		expect(result.ok).toBe(true)
 	})
 
 	it('returns skip when venv python path does not exist', () => {
