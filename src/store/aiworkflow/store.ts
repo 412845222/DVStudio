@@ -4014,10 +4014,57 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!n || n.type !== 'comfyui') return
 			const next = payload?.comfyuiSettings
 			if (!next || typeof next !== 'object') return
-			n.comfyuiSettings = {
-				...(n.comfyuiSettings ?? {}),
-				...next
-			} as WorkflowComfyUINodeSettings
+
+			// F8-C2：规范化 — 如果传入的 comfyuiSettings 修改了 workflowPath（和当前值不同），
+			//   说明用户切换了工作流。此时强制清除旧工作流残留的：
+			//   ① 所有历史记录相关字段（防「ready 显示但按钮禁用」的交叉污染）
+			//   ② 所有运行时字段（runStatus / progress / promptId / outputs 等）
+			//      —— 防止上一工作流卡壳状态（runStatus='running'/'canceling'）残留，
+			//         因为修改后 runDisabled 只判断 status/workflowPath/running 三条件，
+			//         运行中残留会直接导致按钮一直禁用。
+			//   如果调用方同时显式设置了这些字段，则以传入值为准（...next 覆盖 reset）。
+			const existing = (n.comfyuiSettings ?? {}) as Partial<WorkflowComfyUINodeSettings>
+			const workflowPathChanged =
+				Object.prototype.hasOwnProperty.call(next, 'workflowPath') &&
+				String(next.workflowPath ?? '') !== String(existing.workflowPath ?? '')
+			const merged: Partial<WorkflowComfyUINodeSettings> = workflowPathChanged
+				? {
+						...existing,
+						workflowPath: next.workflowPath,
+						// workflowSource 若调用方没传则保留，若传了由 ...next 覆盖
+						...(Object.prototype.hasOwnProperty.call(next, 'workflowSource')
+							? {}
+							: { workflowSource: existing.workflowSource }),
+						// === ② 运行时状态：必重置 ===
+						runStatus: 'idle',
+						progress: 0,
+						promptId: undefined,
+						outputs: [],
+						// === ① 历史记录相关状态：必重置 ===
+						historyChecked: false,
+						hasHistory: undefined,
+						historyError: undefined,
+						historyGuideMessage: undefined,
+						historyGuideBaseUrl: undefined,
+						historyPromptId: undefined,
+						historyTimestamp: undefined,
+						historyMatchType: undefined,
+						imageInputCount: undefined,
+						videoInputCount: undefined,
+						hasTextPromptInput: undefined,
+						historyNodeCount: undefined,
+						historyInputMappings: undefined,
+						historyOutputNodes: undefined,
+						hasImageOutput: undefined,
+						hasVideoOutput: undefined,
+						hasModel3dOutput: undefined,
+						// 以传入值为最终覆盖（调用方也显式赋值了 reset 值的话保持不变；
+						// 若调用方还赋值了 hasHistory=true 则在 reset 后会被正确保留）
+						...next
+					}
+				: { ...existing, ...next }
+
+			n.comfyuiSettings = merged as WorkflowComfyUINodeSettings
 			// F1: Store→Engine 同步 — 防止 Ctrl+S 时引擎快照缺少最新业务数据
 			if (_syncComfyUISettingsFn) {
 				const fn = _syncComfyUISettingsFn

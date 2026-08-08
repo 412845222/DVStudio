@@ -623,19 +623,15 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			return
 		}
 
+		// F8-A2：无成功运行历史不再硬阻断，改为 WARN 提示后继续执行
+		//   ComfyUI 本身不要求"先成功运行一次"才能提交任务。历史记录仅用于
+		//   自动匹配输入节点、输出锚点与回填参数，不是运行的前置条件。
 		if (settings.historyChecked && settings.hasHistory === false) {
 			const errMsg = settings.historyGuideMessage || t('nodes.comfyui.noHistoryRecord')
-			payload.pushToast(errMsg, 'warn')
-			payload.store.commit('setNodeComfyUISettings', {
-				nodeId,
-				comfyuiSettings: {
-					runStatus: 'idle',
-					progress: 0,
-					statusText: t('nodes.comfyui.needRunInComfyFirst'),
-					lastUpdateAt: Date.now()
-				}
-			})
-			return
+			payload.pushToast(
+				errMsg + '，将以工作流默认值直接提交给 ComfyUI 执行（输入/输出锚点可能不完全匹配）',
+				'warn'
+			)
 		}
 
 		stopComfyUIPoll(nodeId)
@@ -727,11 +723,21 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				}
 			}
 
-			// 校验工作流输入映射是否存在（确保输入资源能被正确注入 ComfyUI 工作流的对应节点）
+			// F8-A2：无 historyInputMappings 不再阻断运行，降级为 WARN 提示
+			//   允许用户直接运行（inputMappings 传 undefined 给后端，
+			//   后端 comfyService.run 会走默认填充逻辑或直接把文件上传到 ComfyUI
+			//   再由工作流解析）。仅当 historyInputMappings 缺失且有输入资源时提示。
 			if (validationErrors.length === 0 && !settings.historyInputMappings) {
-				validationErrors.push(
-					'未解析工作流输入/输出定义，请先在节点设置中点击"解析工作流"以确保输入资源能正确注入'
-				)
+				const hasInputs =
+					resources.images.length > 0 ||
+					resources.videos.length > 0 ||
+					finalPositivePrompt.length > 0
+				if (hasInputs) {
+					payload.pushToast(
+						'未解析到工作流输入定义，已将资源/提示词按顺序提交，ComfyUI 可能无法正确注入参数。建议先在 ComfyUI 中成功运行一次工作流以建立历史记录。',
+						'warn'
+					)
+				}
 			}
 
 			if (validationErrors.length > 0) {

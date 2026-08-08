@@ -970,7 +970,6 @@ const runStatusText = computed(() => String(props.comfyuiSettings?.statusText ??
 const runDisabled = computed(() => {
 	if (status.value !== 'connected') return true
 	if (!workflowPath.value) return true
-	if (historyChecked.value && hasHistory.value === false) return true
 	return runStatus.value === 'running' || runStatus.value === 'canceling'
 })
 

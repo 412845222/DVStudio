@@ -429,6 +429,44 @@ export const useAIWorkflowComfyConnection = (payload: {
 				? 'history'
 				: 'userdata'
 
+		// F8-C1：在异步 resolveHistory 之前，立刻把 workflowPath/workflowSource 写入 store，
+		// 并重置历史相关状态 & 运行时状态。避免 IPC 耗时期间用户点击运行时，store 中仍残留
+		// 旧 workflow 的 workflowPath + hasHistory + runStatus='running'，造成按钮错误禁用。
+		// （resolveHistoryForWorkflow 内部也会再次重置历史字段；但 runStatus 等运行时字段必须这里重置。）
+		payload.store.commit('setNodeComfyUISettings', {
+			nodeId,
+			comfyuiSettings: {
+				workflowPath,
+				workflowSource,
+				// 运行时状态：切换工作流必须重置，防止上一工作流的 running / canceling 残留
+				// 导致 runDisabled 仍为 true（修改后按钮禁用只剩 status!='connected'/无workflow/运行中 三条件）
+				runStatus: 'idle',
+				progress: 0,
+				promptId: undefined,
+				outputs: [],
+				statusText: '正在解析工作流历史记录...',
+				lastUpdateAt: Date.now(),
+				// 历史记录相关状态：清空所有旧值
+				historyChecked: false,
+				hasHistory: undefined,
+				historyError: undefined,
+				historyGuideMessage: undefined,
+				historyGuideBaseUrl: undefined,
+				historyPromptId: undefined,
+				historyTimestamp: undefined,
+				historyMatchType: undefined,
+				imageInputCount: undefined,
+				videoInputCount: undefined,
+				hasTextPromptInput: undefined,
+				historyNodeCount: undefined,
+				historyInputMappings: undefined,
+				historyOutputNodes: undefined,
+				hasImageOutput: undefined,
+				hasVideoOutput: undefined,
+				hasModel3dOutput: undefined
+			}
+		})
+
 		await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
 
 		if (payload.onWorkflowChanged) {
