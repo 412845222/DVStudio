@@ -60,6 +60,8 @@ export const routes = [
 	{ channel: 'dweb:comfyui:setup:service-logs', handler: handlers.setupGetServiceLogs },
 	{ channel: 'dweb:comfyui:setup:clear-logs', handler: handlers.setupClearServiceLogs },
 	{ channel: 'dweb:comfyui:setup:restart-service', handler: handlers.setupRestartService },
+	{ channel: 'dweb:comfyui:setup:scan-foreign-comfy', handler: handlers.setupScanForeignComfyProcesses },
+	{ channel: 'dweb:comfyui:setup:kill-foreign-comfy', handler: handlers.setupKillForeignComfyProcesses },
 	{
 		channel: 'dweb:comfyui:setup:clone-comfyui:stream',
 		handler: handlers.setupCloneComfyUI,
@@ -75,5 +77,17 @@ export const routes = [
 		handler: handlers.setupAutoInstallTorch,
 		stream: true
 	},
-	{ channel: 'dweb:comfyui:setup:clear-venv', handler: handlers.setupClearVenv }
+	{ channel: 'dweb:comfyui:setup:clear-venv', handler: handlers.setupClearVenv },
+	// Terminal toolkit routes
+	{ channel: 'dweb:comfyui:setup:terminal:presets', handler: handlers.setupTerminalListPresets },
+	{ channel: 'dweb:comfyui:setup:terminal:run-preset:stream', handler: handlers.setupTerminalRunPreset, stream: true },
+	{ channel: 'dweb:comfyui:setup:terminal:run-custom:stream', handler: handlers.setupTerminalRunCustom, stream: true },
+	{ channel: 'dweb:comfyui:setup:terminal:check-mode', handler: handlers.setupTerminalCheckMode },
+	// Launch args panel routes
+	{ channel: 'dweb:comfyui:setup:launch-args:core-tags', handler: handlers.setupLaunchArgsGetCoreTags },
+	{ channel: 'dweb:comfyui:setup:launch-args:reference-args', handler: handlers.setupLaunchArgsGetReferenceArgs },
+	{ channel: 'dweb:comfyui:setup:launch-args:get-current', handler: handlers.setupLaunchArgsGetCurrentText },
+	{ channel: 'dweb:comfyui:setup:launch-args:save', handler: handlers.setupLaunchArgsParseAndSave },
+	// Active Python info
+	{ channel: 'dweb:comfyui:setup:active-python', handler: handlers.setupGetActivePython }
 ]

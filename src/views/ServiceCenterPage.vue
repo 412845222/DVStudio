@@ -66,131 +66,153 @@
 				</aside>
 
 				<section class="sc-main">
-					<div class="sc-panel sc-panel-head">
-						<div class="sc-panel-frame" aria-hidden="true">
-							<span class="corner tl"></span>
-							<span class="corner tr"></span>
-							<span class="corner bl"></span>
-							<span class="corner br"></span>
-						</div>
-						<div class="sc-head-row">
-							<div class="sc-head-info">
-								<div class="sc-head-name">{{ selected.name }}</div>
-								<div class="sc-head-desc">{{ selected.description }}</div>
-							</div>
-							<div class="sc-head-actions">
-								<button
-									class="sc-btn sc-btn-primary"
-									:disabled="
-										pendingOp !== null ||
-										selected.status === 'running' ||
-										selected.status === 'starting'
-									"
-									@click="startService"
-								>
-									<span class="sc-btn-icon">▶</span>
-									启动
-								</button>
-								<button
-									class="sc-btn sc-btn-warn"
-									:disabled="pendingOp !== null || selected.status !== 'running'"
-									@click="restartService"
-								>
-									<span class="sc-btn-icon">↻</span>
-									重启
-								</button>
-								<button
-									class="sc-btn sc-btn-danger"
-									:disabled="
-										pendingOp !== null ||
-										selected.status === 'stopped' ||
-										selected.status === 'stopping'
-									"
-									@click="stopService"
-								>
-									<span class="sc-btn-icon">■</span>
-									停止
-								</button>
-								<button class="sc-btn sc-btn-ghost" @click="onOpenConfig">
-									<span class="sc-btn-icon">⚙</span>
-									配置
-								</button>
-								<button
-									class="sc-btn sc-btn-ghost"
-									@click="clearLogs"
-									:disabled="logs.length === 0"
-								>
-									清空日志
-								</button>
-							</div>
-						</div>
-
-						<div v-if="lastError" class="sc-error-banner">
-							<span class="sc-error-icon">!</span>
-							<span>{{ lastError }}</span>
-						</div>
-
-						<div class="sc-stats-row">
-							<div class="sc-stat">
-								<span class="sc-stat-label">状态</span>
-								<span class="sc-stat-value" :class="selected.status">
-									{{ statusLabel(selected.status) }}
-								</span>
-							</div>
-							<div class="sc-stat">
-								<span class="sc-stat-label">PID</span>
-								<span class="sc-stat-value">{{ selected.pid || '-' }}</span>
-							</div>
-							<div class="sc-stat">
-								<span class="sc-stat-label">端口</span>
-								<span class="sc-stat-value">{{ selected.port || '-' }}</span>
-							</div>
-							<div class="sc-stat">
-								<span class="sc-stat-label">运行时长</span>
-								<span class="sc-stat-value">{{ uptimeText }}</span>
-							</div>
-							<div class="sc-stat sc-stat-log-count">
-								<span class="sc-stat-label">日志行数</span>
-								<span class="sc-stat-value">{{ logs.length }}</span>
-							</div>
-						</div>
-					</div>
-
-					<div class="sc-panel sc-panel-log">
-						<div class="sc-panel-frame" aria-hidden="true">
-							<span class="corner tl"></span>
-							<span class="corner tr"></span>
-							<span class="corner bl"></span>
-							<span class="corner br"></span>
-						</div>
-						<div class="sc-log-header">
-							<span class="sc-log-title">
-								<span class="sc-log-dot"></span>
-								进程输出日志
-							</span>
-							<label class="sc-log-autoscroll">
-								<input type="checkbox" v-model="logAutoScroll" />
-								<span>自动滚动</span>
-							</label>
-						</div>
-						<div
-							class="svc-log-terminal sc-log-terminal"
-							ref="terminalEl"
-							@scroll="onTerminalScroll"
+					<div class="sc-tabs-bar">
+						<button
+							v-for="tab in tabs"
+							:key="tab.key"
+							class="sc-tab-btn"
+							:class="{ active: activeTab === tab.key }"
+							@click="activeTab = tab.key"
 						>
-							<div v-if="loadingInitial" class="sc-log-empty">正在加载历史日志…</div>
-							<div v-else-if="logs.length === 0" class="sc-log-empty">
-								服务未启动，暂无日志输出。点击「启动」开始运行 ComfyUI。
-							</div>
-							<pre
-								v-for="(line, idx) in logs"
-								:key="idx"
-								class="sc-log-line"
-								:class="`log-${line.stream}`"
-								>{{ line.message }}</pre
-							>
-						</div>
+							<span class="sc-tab-indicator" v-if="activeTab === tab.key"></span>
+							{{ tab.label }}
+						</button>
 					</div>
+
+					<template v-if="activeTab === 'logs'">
+						<div class="sc-panel sc-panel-head">
+							<div class="sc-panel-frame" aria-hidden="true">
+								<span class="corner tl"></span>
+								<span class="corner tr"></span>
+								<span class="corner bl"></span>
+								<span class="corner br"></span>
+							</div>
+							<div class="sc-head-row">
+								<div class="sc-head-info">
+									<div class="sc-head-name">{{ selected.name }}</div>
+									<div class="sc-head-desc">{{ selected.description }}</div>
+								</div>
+								<div class="sc-head-actions">
+									<button
+										class="sc-btn sc-btn-primary"
+										:disabled="
+											pendingOp !== null ||
+											selected.status === 'running' ||
+											selected.status === 'starting'
+										"
+										@click="startService"
+									>
+										<span class="sc-btn-icon">▶</span>
+										启动
+									</button>
+									<button
+										class="sc-btn sc-btn-warn"
+										:disabled="pendingOp !== null || selected.status !== 'running'"
+										@click="restartService"
+									>
+										<span class="sc-btn-icon">↻</span>
+										重启
+									</button>
+									<button
+										class="sc-btn sc-btn-danger"
+										:disabled="
+											pendingOp !== null ||
+											selected.status === 'stopped' ||
+											selected.status === 'stopping'
+										"
+										@click="stopService"
+									>
+										<span class="sc-btn-icon">■</span>
+										停止
+									</button>
+									<button class="sc-btn sc-btn-ghost" @click="onOpenConfig">
+										<span class="sc-btn-icon">⚙</span>
+										配置
+									</button>
+									<button
+										class="sc-btn sc-btn-ghost"
+										@click="clearLogs"
+										:disabled="logs.length === 0"
+									>
+										清空日志
+									</button>
+								</div>
+							</div>
+
+							<div v-if="lastError" class="sc-error-banner">
+								<span class="sc-error-icon">!</span>
+								<span>{{ lastError }}</span>
+							</div>
+
+							<div class="sc-stats-row">
+								<div class="sc-stat">
+									<span class="sc-stat-label">状态</span>
+									<span class="sc-stat-value" :class="selected.status">
+										{{ statusLabel(selected.status) }}
+									</span>
+								</div>
+								<div class="sc-stat">
+									<span class="sc-stat-label">PID</span>
+									<span class="sc-stat-value">{{ selected.pid || '-' }}</span>
+								</div>
+								<div class="sc-stat">
+									<span class="sc-stat-label">端口</span>
+									<span class="sc-stat-value">{{ selected.port || '-' }}</span>
+								</div>
+								<div class="sc-stat">
+									<span class="sc-stat-label">运行时长</span>
+									<span class="sc-stat-value">{{ uptimeText }}</span>
+								</div>
+								<div class="sc-stat sc-stat-log-count">
+									<span class="sc-stat-label">日志行数</span>
+									<span class="sc-stat-value">{{ logs.length }}</span>
+								</div>
+							</div>
+						</div>
+
+						<div class="sc-panel sc-panel-log">
+							<div class="sc-panel-frame" aria-hidden="true">
+								<span class="corner tl"></span>
+								<span class="corner tr"></span>
+								<span class="corner bl"></span>
+								<span class="corner br"></span>
+							</div>
+							<div class="sc-log-header">
+								<span class="sc-log-title">
+									<span class="sc-log-dot"></span>
+									进程输出日志
+								</span>
+								<label class="sc-log-autoscroll">
+									<input type="checkbox" v-model="logAutoScroll" />
+									<span>自动滚动</span>
+								</label>
+							</div>
+							<div
+								class="svc-log-terminal sc-log-terminal"
+								ref="terminalEl"
+								@scroll="onTerminalScroll"
+							>
+								<div v-if="loadingInitial" class="sc-log-empty">正在加载历史日志…</div>
+								<div v-else-if="logs.length === 0" class="sc-log-empty">
+									服务未启动，暂无日志输出。点击「启动」开始运行 ComfyUI。
+								</div>
+								<pre
+									v-for="(line, idx) in logs"
+									:key="idx"
+									class="sc-log-line"
+									:class="`log-${line.stream}`"
+								>{{ line.message }}</pre>
+							</div>
+						</div>
+					</template>
+
+					<template v-else-if="activeTab === 'terminal'">
+						<ComfyUITerminalPanel />
+					</template>
+
+					<template v-else-if="activeTab === 'launch-args'">
+						<ComfyUILaunchArgsPanel />
+					</template>
 				</section>
 			</div>
 		</div>
@@ -202,6 +224,8 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useComfyServiceManager } from '../composables/useComfyServiceManager'
 import { openComfySetup } from '../electronBridge'
 import type { ComfyServiceLifecycle } from '../electronBridge/types'
+import ComfyUITerminalPanel from './ComfyUITerminalPanel.vue'
+import ComfyUILaunchArgsPanel from './ComfyUILaunchArgsPanel.vue'
 
 const {
 	services,
@@ -220,6 +244,14 @@ const {
 } = useComfyServiceManager()
 
 const terminalEl = ref<HTMLElement | null>(null)
+
+type ServiceTabKey = 'logs' | 'terminal' | 'launch-args'
+const tabs: { key: ServiceTabKey; label: string }[] = [
+	{ key: 'logs', label: '运行日志' },
+	{ key: 'terminal', label: '终端' },
+	{ key: 'launch-args', label: '启动参数' }
+]
+const activeTab = ref<ServiceTabKey>('logs')
 
 const anyRunning = computed(() => services.value.some((s) => s.status === 'running'))
 
@@ -672,9 +704,51 @@ watch(logs, () => {
 .sc-main {
 	display: flex;
 	flex-direction: column;
-	gap: 18px;
+	gap: 14px;
 	min-height: 0;
 	overflow: hidden;
+}
+
+.sc-tabs-bar {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+	padding: 4px;
+	background: color-mix(in srgb, var(--pl-bg-1) 80%, transparent);
+	border: 1px solid var(--pl-card-border);
+	border-radius: 2px;
+}
+.sc-tab-btn {
+	position: relative;
+	padding: 8px 20px;
+	font-size: 12px;
+	letter-spacing: 0.04em;
+	cursor: pointer;
+	border: none;
+	background: transparent;
+	color: var(--pl-fg-soft);
+	transition: all 200ms ease;
+	border-radius: 2px;
+}
+.sc-tab-btn:hover {
+	color: var(--pl-fg);
+	background: color-mix(in srgb, var(--pl-fg) 4%, transparent);
+}
+.sc-tab-btn.active {
+	color: var(--pl-fg);
+	background: color-mix(in srgb, var(--pl-accent) 12%, transparent);
+	text-shadow: 0 0 8px color-mix(in srgb, var(--pl-accent) 40%, transparent);
+}
+.sc-tab-indicator {
+	position: absolute;
+	bottom: 4px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 20px;
+	height: 2px;
+	background: var(--pl-accent);
+	box-shadow: 0 0 8px var(--pl-accent);
+	border-radius: 1px;
 }
 
 .sc-panel {

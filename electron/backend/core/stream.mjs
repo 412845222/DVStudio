@@ -31,13 +31,20 @@ export function createIpcStream(mainWindow, baseChannel, requestId) {
 	}
 }
 
-export async function pipeAsyncGeneratorToIpc(generator, ipcStream) {
+export async function pipeAsyncGeneratorToIpc(generator, ipcStream, debugTag = 'stream') {
 	try {
+		let chunkCount = 0
 		for await (const chunk of generator) {
+			chunkCount++
+			if (chunk?.type === 'error') {
+				console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] YIELD error chunk #${chunkCount}:`, chunk?.message)
+			}
 			ipcStream.send(chunk)
 		}
+		console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] Iterator ended normally. Total chunks yielded: ${chunkCount}`)
 		ipcStream.end()
 	} catch (err) {
+		console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] PIPE EXPLOSION (caught by pipeAsyncGeneratorToIpc)`, err?.stack || err)
 		ipcStream.error(err)
 		throw err
 	}
@@ -48,15 +55,24 @@ export function createStreamHandler(channel, handlerFactory) {
 		const requestId = payload?.requestId || Date.now().toString(36)
 		const streamChannel = channel || event?.channel || 'dweb:unknown:stream'
 		const baseChannel = streamChannel.replace(/:stream$/, '')
+		const debugTag = baseChannel + '#' + requestId
+
+		if (baseChannel.includes('update-comfyui')) {
+			console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler INVOKED (channel=${streamChannel})`)
+		}
 
 		const mainWindow = event?.sender?.getOwnerBrowserWindow?.()
 		const ipcStream = createIpcStream(mainWindow, baseChannel, requestId)
 
 		try {
 			const generator = await handlerFactory(event, payload)
-			await pipeAsyncGeneratorToIpc(generator, ipcStream)
+			if (baseChannel.includes('update-comfyui')) {
+				console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] generator created: typeof=`, typeof generator, 'next?', typeof generator?.next)
+			}
+			await pipeAsyncGeneratorToIpc(generator, ipcStream, debugTag)
 			return { ok: true, requestId }
 		} catch (err) {
+			console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler CATCH (outer try-catch):`, err?.stack || err)
 			ipcStream.error(err)
 			return { ok: false, error: err?.message || String(err), requestId }
 		}

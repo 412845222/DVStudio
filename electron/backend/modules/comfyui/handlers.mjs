@@ -200,7 +200,15 @@ export async function* setupCloneComfyUI(ctx, payload) {
 }
 
 export async function* setupUpdateComfyUI(ctx, payload) {
-	yield* setup.setupUpdateComfyUI(ctx, payload)
+	console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI ENTER, yield* forwarding...')
+	try {
+		const gen = setup.setupUpdateComfyUI(ctx, payload)
+		console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI gen created, typeof next =', typeof gen?.next)
+		yield* gen
+	} catch (err) {
+		console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI SYNC/ASYNC EXPLOSION:', err?.stack || err)
+		yield { type: 'error', message: (err?.message || String(err)) + '' }
+	}
 }
 
 export async function* setupAutoInstallTorch(ctx, payload) {
@@ -209,4 +217,55 @@ export async function* setupAutoInstallTorch(ctx, payload) {
 
 export function setupClearVenv(ctx, payload) {
 	return setup.setupClearVenv(ctx, payload)
+}
+
+// ===== Terminal toolkit handlers =====
+
+export function setupTerminalListPresets() {
+	return setup.setupTerminalListPresets()
+}
+
+export async function* setupTerminalRunPreset(ctx, payload) {
+	yield* setup.setupTerminalRunPreset(ctx, payload)
+}
+
+export async function* setupTerminalRunCustom(ctx, payload) {
+	yield* setup.setupTerminalRunCustom(ctx, payload)
+}
+
+export function setupTerminalCheckMode() {
+	return setup.setupTerminalCheckMode()
+}
+
+// ===== Launch args panel handlers =====
+
+export function setupLaunchArgsGetCoreTags() {
+	return setup.setupLaunchArgsGetCoreTags()
+}
+
+export function setupLaunchArgsGetReferenceArgs() {
+	return setup.setupLaunchArgsGetReferenceArgs()
+}
+
+export function setupLaunchArgsGetCurrentText() {
+	return setup.setupLaunchArgsGetCurrentText()
+}
+
+export function setupLaunchArgsParseAndSave(ctx, payload) {
+	return setup.setupLaunchArgsParseAndSave(ctx, payload)
+}
+
+// ===== Active Python info =====
+
+export async function setupGetActivePython(ctx, payload) {
+	return setup.setupGetActivePython(ctx, payload)
+}
+
+// ===== Foreign ComfyUI process scan & kill =====
+
+export async function setupScanForeignComfyProcesses(ctx, payload) {
+	return setup.setupScanForeignComfyProcesses(ctx, payload)
+}
+export async function setupKillForeignComfyProcesses(ctx, payload) {
+	return setup.setupKillForeignComfyProcesses(ctx, payload)
 }

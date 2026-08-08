@@ -33,6 +33,10 @@ function createIpcStreamGenerator(baseChannel, payload) {
 	const endChannel = baseChannel + ':end'
 	const errorChannel = baseChannel + ':error'
 	const streamPayload = Object.assign({}, payload || {}, { requestId })
+	const isDebugUpdate = baseChannel.includes('update-comfyui')
+	if (isDebugUpdate) {
+		console.error('[DEBUG UPDATE COMFYUI] [preload] createIpcStreamGenerator, baseChannel=', baseChannel, 'requestId=', requestId)
+	}
 
 	let done = false
 	let error = null
@@ -41,8 +45,12 @@ function createIpcStreamGenerator(baseChannel, payload) {
 	let resolvePull = null
 
 	const onData = (_event, rid, chunk) => {
-		if (rid !== requestId) return
+		if (rid !== requestId) {
+			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onData RID MISMATCH, expected', requestId, 'got', rid)
+			return
+		}
 		if (done) return
+		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onData received:', chunk?.type, chunk?.message || '')
 		queue.push({ value: chunk, done: false })
 		if (resolvePull) {
 			const r = resolvePull
@@ -52,8 +60,12 @@ function createIpcStreamGenerator(baseChannel, payload) {
 	}
 
 	const onEnd = (_event, rid) => {
-		if (rid !== requestId) return
+		if (rid !== requestId) {
+			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onEnd RID MISMATCH, expected', requestId, 'got', rid)
+			return
+		}
 		if (done) return
+		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onEnd received (normal finish)')
 		done = true
 		queue.push({ value: undefined, done: true })
 		cleanup()
@@ -65,8 +77,12 @@ function createIpcStreamGenerator(baseChannel, payload) {
 	}
 
 	const onError = (_event, rid, err) => {
-		if (rid !== requestId) return
+		if (rid !== requestId) {
+			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onError RID MISMATCH, expected', requestId, 'got', rid)
+			return
+		}
 		if (done) return
+		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onError received:', err)
 		done = true
 		error = err
 		queue.push({ value: undefined, done: true, error: err })
@@ -82,25 +98,32 @@ function createIpcStreamGenerator(baseChannel, payload) {
 		ipcRenderer.removeListener(dataChannel, onData)
 		ipcRenderer.removeListener(endChannel, onEnd)
 		ipcRenderer.removeListener(errorChannel, onError)
+		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] cleanup listeners removed')
 	}
 
 	ipcRenderer.on(dataChannel, onData)
 	ipcRenderer.on(endChannel, onEnd)
 	ipcRenderer.on(errorChannel, onError)
 
-	const startInvoke = invoke(baseChannel + ':stream', streamPayload).catch((err) => {
-		if (!done) {
-			done = true
-			error = err
-			queue.push({ value: undefined, done: true, error: err })
-			cleanup()
-			if (resolvePull) {
-				const r = resolvePull
-				resolvePull = null
-				r()
+	const startInvoke = invoke(baseChannel + ':stream', streamPayload)
+		.then((r) => {
+			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] invoke resolved:', r)
+			return r
+		})
+		.catch((err) => {
+			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] invoke() CATCH (top-level IPC invoke failed):', err?.stack || err)
+			if (!done) {
+				done = true
+				error = err
+				queue.push({ value: undefined, done: true, error: err })
+				cleanup()
+				if (resolvePull) {
+					const r = resolvePull
+					resolvePull = null
+					r()
+				}
 			}
-		}
-	})
+		})
 
 	return {
 		[Symbol.asyncIterator]() {
@@ -753,6 +776,8 @@ contextBridge.exposeInMainWorld('dweb', {
 			getServiceLogs: () => invoke('dweb:comfyui:setup:service-logs'),
 			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
 			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
+			scanForeignComfyProcesses: () => invoke('dweb:comfyui:setup:scan-foreign-comfy'),
+			killForeignComfyProcesses: (payload) => invoke('dweb:comfyui:setup:kill-foreign-comfy', payload || {}),
 			cloneComfyUI: (payload) =>
 				createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
 			updateComfyUI: (payload) =>
@@ -806,7 +831,25 @@ contextBridge.exposeInMainWorld('dweb', {
 				}
 				ipcRenderer.on(ch, handler)
 				return () => ipcRenderer.removeListener(ch, handler)
-			}
+			},
+			autoInstallTorch: (payload) =>
+				createIpcStreamGenerator('dweb:comfyui:setup:auto-install-torch', payload || {}),
+			clearVenv: (payload) => invoke('dweb:comfyui:setup:clear-venv', payload || {}),
+			terminal: {
+				listPresets: () => invoke('dweb:comfyui:setup:terminal:presets'),
+				runPreset: (payload) =>
+					createIpcStreamGenerator('dweb:comfyui:setup:terminal:run-preset', payload || {}),
+				runCustom: (payload) =>
+					createIpcStreamGenerator('dweb:comfyui:setup:terminal:run-custom', payload || {}),
+				checkMode: () => invoke('dweb:comfyui:setup:terminal:check-mode')
+			},
+			launchArgs: {
+				getCoreTags: () => invoke('dweb:comfyui:setup:launch-args:core-tags'),
+				getReferenceArgs: () => invoke('dweb:comfyui:setup:launch-args:reference-args'),
+				getCurrent: () => invoke('dweb:comfyui:setup:launch-args:get-current'),
+				save: (payload) => invoke('dweb:comfyui:setup:launch-args:save', payload || {})
+			},
+			getActivePython: (payload) => invoke('dweb:comfyui:setup:active-python', payload || {})
 		}
 	},
 	// ===== Codex 编程助手 =====
