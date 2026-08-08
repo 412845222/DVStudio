@@ -35,7 +35,12 @@ function createIpcStreamGenerator(baseChannel, payload) {
 	const streamPayload = Object.assign({}, payload || {}, { requestId })
 	const isDebugUpdate = baseChannel.includes('update-comfyui')
 	if (isDebugUpdate) {
-		console.error('[DEBUG UPDATE COMFYUI] [preload] createIpcStreamGenerator, baseChannel=', baseChannel, 'requestId=', requestId)
+		console.error(
+			'[DEBUG UPDATE COMFYUI] [preload] createIpcStreamGenerator, baseChannel=',
+			baseChannel,
+			'requestId=',
+			requestId
+		)
 	}
 
 	let done = false
@@ -46,11 +51,22 @@ function createIpcStreamGenerator(baseChannel, payload) {
 
 	const onData = (_event, rid, chunk) => {
 		if (rid !== requestId) {
-			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onData RID MISMATCH, expected', requestId, 'got', rid)
+			if (isDebugUpdate)
+				console.error(
+					'[DEBUG UPDATE COMFYUI] [preload] onData RID MISMATCH, expected',
+					requestId,
+					'got',
+					rid
+				)
 			return
 		}
 		if (done) return
-		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onData received:', chunk?.type, chunk?.message || '')
+		if (isDebugUpdate)
+			console.error(
+				'[DEBUG UPDATE COMFYUI] [preload] onData received:',
+				chunk?.type,
+				chunk?.message || ''
+			)
 		queue.push({ value: chunk, done: false })
 		if (resolvePull) {
 			const r = resolvePull
@@ -61,11 +77,18 @@ function createIpcStreamGenerator(baseChannel, payload) {
 
 	const onEnd = (_event, rid) => {
 		if (rid !== requestId) {
-			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onEnd RID MISMATCH, expected', requestId, 'got', rid)
+			if (isDebugUpdate)
+				console.error(
+					'[DEBUG UPDATE COMFYUI] [preload] onEnd RID MISMATCH, expected',
+					requestId,
+					'got',
+					rid
+				)
 			return
 		}
 		if (done) return
-		if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onEnd received (normal finish)')
+		if (isDebugUpdate)
+			console.error('[DEBUG UPDATE COMFYUI] [preload] onEnd received (normal finish)')
 		done = true
 		queue.push({ value: undefined, done: true })
 		cleanup()
@@ -78,7 +101,13 @@ function createIpcStreamGenerator(baseChannel, payload) {
 
 	const onError = (_event, rid, err) => {
 		if (rid !== requestId) {
-			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] onError RID MISMATCH, expected', requestId, 'got', rid)
+			if (isDebugUpdate)
+				console.error(
+					'[DEBUG UPDATE COMFYUI] [preload] onError RID MISMATCH, expected',
+					requestId,
+					'got',
+					rid
+				)
 			return
 		}
 		if (done) return
@@ -111,7 +140,11 @@ function createIpcStreamGenerator(baseChannel, payload) {
 			return r
 		})
 		.catch((err) => {
-			if (isDebugUpdate) console.error('[DEBUG UPDATE COMFYUI] [preload] invoke() CATCH (top-level IPC invoke failed):', err?.stack || err)
+			if (isDebugUpdate)
+				console.error(
+					'[DEBUG UPDATE COMFYUI] [preload] invoke() CATCH (top-level IPC invoke failed):',
+					err?.stack || err
+				)
 			if (!done) {
 				done = true
 				error = err
@@ -777,7 +810,8 @@ contextBridge.exposeInMainWorld('dweb', {
 			clearServiceLogs: () => invoke('dweb:comfyui:setup:clear-logs'),
 			restartService: (payload) => invoke('dweb:comfyui:setup:restart-service', payload || {}),
 			scanForeignComfyProcesses: () => invoke('dweb:comfyui:setup:scan-foreign-comfy'),
-			killForeignComfyProcesses: (payload) => invoke('dweb:comfyui:setup:kill-foreign-comfy', payload || {}),
+			killForeignComfyProcesses: (payload) =>
+				invoke('dweb:comfyui:setup:kill-foreign-comfy', payload || {}),
 			cloneComfyUI: (payload) =>
 				createIpcStreamGenerator('dweb:comfyui:setup:clone-comfyui', payload || {}),
 			updateComfyUI: (payload) =>

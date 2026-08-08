@@ -203,10 +203,16 @@ export async function* setupUpdateComfyUI(ctx, payload) {
 	console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI ENTER, yield* forwarding...')
 	try {
 		const gen = setup.setupUpdateComfyUI(ctx, payload)
-		console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI gen created, typeof next =', typeof gen?.next)
+		console.error(
+			'[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI gen created, typeof next =',
+			typeof gen?.next
+		)
 		yield* gen
 	} catch (err) {
-		console.error('[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI SYNC/ASYNC EXPLOSION:', err?.stack || err)
+		console.error(
+			'[DEBUG UPDATE COMFYUI] handlers.setupUpdateComfyUI SYNC/ASYNC EXPLOSION:',
+			err?.stack || err
+		)
 		yield { type: 'error', message: (err?.message || String(err)) + '' }
 	}
 }

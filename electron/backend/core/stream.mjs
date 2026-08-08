@@ -37,14 +37,22 @@ export async function pipeAsyncGeneratorToIpc(generator, ipcStream, debugTag = '
 		for await (const chunk of generator) {
 			chunkCount++
 			if (chunk?.type === 'error') {
-				console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] YIELD error chunk #${chunkCount}:`, chunk?.message)
+				console.error(
+					`[DEBUG UPDATE COMFYUI] [${debugTag}] YIELD error chunk #${chunkCount}:`,
+					chunk?.message
+				)
 			}
 			ipcStream.send(chunk)
 		}
-		console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] Iterator ended normally. Total chunks yielded: ${chunkCount}`)
+		console.error(
+			`[DEBUG UPDATE COMFYUI] [${debugTag}] Iterator ended normally. Total chunks yielded: ${chunkCount}`
+		)
 		ipcStream.end()
 	} catch (err) {
-		console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] PIPE EXPLOSION (caught by pipeAsyncGeneratorToIpc)`, err?.stack || err)
+		console.error(
+			`[DEBUG UPDATE COMFYUI] [${debugTag}] PIPE EXPLOSION (caught by pipeAsyncGeneratorToIpc)`,
+			err?.stack || err
+		)
 		ipcStream.error(err)
 		throw err
 	}
@@ -58,7 +66,9 @@ export function createStreamHandler(channel, handlerFactory) {
 		const debugTag = baseChannel + '#' + requestId
 
 		if (baseChannel.includes('update-comfyui')) {
-			console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler INVOKED (channel=${streamChannel})`)
+			console.error(
+				`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler INVOKED (channel=${streamChannel})`
+			)
 		}
 
 		const mainWindow = event?.sender?.getOwnerBrowserWindow?.()
@@ -67,12 +77,20 @@ export function createStreamHandler(channel, handlerFactory) {
 		try {
 			const generator = await handlerFactory(event, payload)
 			if (baseChannel.includes('update-comfyui')) {
-				console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] generator created: typeof=`, typeof generator, 'next?', typeof generator?.next)
+				console.error(
+					`[DEBUG UPDATE COMFYUI] [${debugTag}] generator created: typeof=`,
+					typeof generator,
+					'next?',
+					typeof generator?.next
+				)
 			}
 			await pipeAsyncGeneratorToIpc(generator, ipcStream, debugTag)
 			return { ok: true, requestId }
 		} catch (err) {
-			console.error(`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler CATCH (outer try-catch):`, err?.stack || err)
+			console.error(
+				`[DEBUG UPDATE COMFYUI] [${debugTag}] createStreamHandler CATCH (outer try-catch):`,
+				err?.stack || err
+			)
 			ipcStream.error(err)
 			return { ok: false, error: err?.message || String(err), requestId }
 		}

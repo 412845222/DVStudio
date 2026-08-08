@@ -12,7 +12,9 @@
 				<span class="clp-title-dot"></span>
 				启动参数
 			</div>
-			<p class="clp-desc">配置 ComfyUI 启动时的命令行参数。点击快捷标签可快速添加常用参数，也可手动输入任意参数。</p>
+			<p class="clp-desc">
+				配置 ComfyUI 启动时的命令行参数。点击快捷标签可快速添加常用参数，也可手动输入任意参数。
+			</p>
 		</div>
 
 		<div class="clp-content">
@@ -55,11 +57,7 @@
 					<span v-else-if="saveStatus === 'error'">✗ 保存失败</span>
 					<span v-else>{{ parsedArgs.length }} 个参数</span>
 				</div>
-				<button
-					class="sc-btn sc-btn-primary"
-					:disabled="isSaving || !dirty"
-					@click="saveArgs"
-				>
+				<button class="sc-btn sc-btn-primary" :disabled="isSaving || !dirty" @click="saveArgs">
 					<span v-if="!isSaving">保存配置</span>
 					<span v-else>保存中…</span>
 				</button>
@@ -68,20 +66,26 @@
 			<div v-if="parsedArgs.length > 0" class="clp-preview">
 				<div class="clp-section-label">当前生效参数</div>
 				<div class="clp-preview-chips">
-					<span
-						v-for="(arg, idx) in parsedArgs"
-						:key="idx"
-						class="clp-chip"
-					>{{ arg }}</span>
+					<span v-for="(arg, idx) in parsedArgs" :key="idx" class="clp-chip">{{ arg }}</span>
 				</div>
 			</div>
 
 			<div class="clp-tips">
 				<div class="clp-tip-title">💡 提示</div>
 				<ul class="clp-tip-list">
-					<li><code>--enable-manager</code>：启用 ComfyUI-Manager 菜单（需先在「终端」标签页按向导安装 Manager 扩展）</li>
-					<li><code>--disable-cuda-malloc</code>：禁用 CUDA 显存分配策略（DVStudio 默认启用，解决部分显存问题）</li>
-					<li>添加 <code>--enable-manager</code> 前请先在终端面板完成 Manager 扩展安装</li>
+					<li>
+						<code>--enable-manager</code>
+						：启用 ComfyUI-Manager 菜单（需先在「终端」标签页按向导安装 Manager 扩展）
+					</li>
+					<li>
+						<code>--disable-cuda-malloc</code>
+						：禁用 CUDA 显存分配策略（DVStudio 默认启用，解决部分显存问题）
+					</li>
+					<li>
+						添加
+						<code>--enable-manager</code>
+						前请先在终端面板完成 Manager 扩展安装
+					</li>
 					<li>修改参数后需重启 ComfyUI 服务生效</li>
 				</ul>
 			</div>

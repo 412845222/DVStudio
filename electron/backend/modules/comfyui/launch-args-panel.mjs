@@ -55,7 +55,7 @@ export function parseArgsText(text) {
 	if (typeof text !== 'string') {
 		return { ok: false, error: '参数文本必须是字符串', extraArgs: [], warnings }
 	}
-	const rawTokens = text.split(/[\s,]+/).filter(t => t && t.trim())
+	const rawTokens = text.split(/[\s,]+/).filter((t) => t && t.trim())
 	const seen = new Set()
 	const extraArgs = []
 	for (const token of rawTokens) {

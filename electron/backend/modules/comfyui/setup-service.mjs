@@ -126,7 +126,13 @@ function getDvsProxyEnvVars() {
 			let httpProxy = String((settings && settings.httpProxy) || '').trim()
 			if (httpProxy) {
 				if (!/^https?:\/\//i.test(httpProxy)) httpProxy = 'http://' + httpProxy
-				const host = (() => { try { return new URL(httpProxy).hostname } catch { return '' } })()
+				const host = (() => {
+					try {
+						return new URL(httpProxy).hostname
+					} catch {
+						return ''
+					}
+				})()
 				return {
 					HTTP_PROXY: httpProxy,
 					HTTPS_PROXY: httpProxy,
@@ -138,7 +144,10 @@ function getDvsProxyEnvVars() {
 			}
 		}
 	} catch (err) {
-		console.warn('[setup-service] 读取代理配置失败（将直连）:', err && err.message ? err.message : err)
+		console.warn(
+			'[setup-service] 读取代理配置失败（将直连）:',
+			err && err.message ? err.message : err
+		)
 	}
 	return {}
 }
@@ -152,7 +161,7 @@ function getDvsProxyEnvVars() {
  *
  * 详见 AIPlan/comfyui-triton-tcc-msvc-bug-solution.md 方案B。
  */
-function buildComfySpawnEnv() {
+export function buildComfySpawnEnv() {
 	const env = { ...process.env, PYTHONIOENCODING: 'utf-8' }
 	if (process.platform === 'win32') {
 		const hadVcInstall = Boolean(env.VCINSTALLDIR)
@@ -179,7 +188,7 @@ function buildComfySpawnEnv() {
  * 此函数幂等：已 patch 过则跳过；找不到目标文件或目标不在 Windows 则跳过。
  * 详见 AIPlan/comfyui-triton-tcc-msvc-bug-solution.md 方案A。
  */
-function ensureTritonWindowsNoneGuard(venvPython) {
+export function ensureTritonWindowsNoneGuard(venvPython) {
 	if (process.platform !== 'win32') return { ok: true, skipped: true, reason: 'not_windows' }
 	if (!venvPython || !fs.existsSync(venvPython)) {
 		return { ok: false, skipped: true, reason: 'venv_python_not_found' }
@@ -188,16 +197,29 @@ function ensureTritonWindowsNoneGuard(venvPython) {
 	// 通过 python -c 解析 site-packages 路径，避免硬编码
 	let sitePackages = null
 	try {
-		const r = spawnSync(venvPython, ['-c', 'import sysconfig,os;print(sysconfig.get_paths()["platlib"])'], {
-			windowsHide: true,
-			encoding: 'utf-8',
-			timeout: 15000
-		})
+		const r = spawnSync(
+			venvPython,
+			['-c', 'import sysconfig,os;print(sysconfig.get_paths()["platlib"])'],
+			{
+				windowsHide: true,
+				encoding: 'utf-8',
+				timeout: 15000
+			}
+		)
 		if (r.status === 0) {
-			sitePackages = String(r.stdout || '').trim().split(/\r?\n/).pop().trim()
+			sitePackages = String(r.stdout || '')
+				.trim()
+				.split(/\r?\n/)
+				.pop()
+				.trim()
 		}
 	} catch (err) {
-		return { ok: false, skipped: true, reason: 'site_packages_resolve_failed', error: String(err?.message || err) }
+		return {
+			ok: false,
+			skipped: true,
+			reason: 'site_packages_resolve_failed',
+			error: String(err?.message || err)
+		}
 	}
 	if (!sitePackages) {
 		return { ok: false, skipped: true, reason: 'site_packages_empty' }
@@ -224,11 +246,14 @@ function ensureTritonWindowsNoneGuard(venvPython) {
 
 	// 目标函数：def check_msvc(msvc_base_path: Path, version: str) -> bool:
 	// 在函数体首行插入 None 守卫。同时加固 find_msvc_env 对 version is None 的处理。
-	const checkMsvcNeedle = 'def check_msvc(msvc_base_path: Path, version: str) -> bool:\n    return all('
+	const checkMsvcNeedle =
+		'def check_msvc(msvc_base_path: Path, version: str) -> bool:\n    return all('
 	const checkMsvcReplacement = `def check_msvc(msvc_base_path: Path, version: str) -> bool:\n    ${PATCH_MARKER}\n    if version is None:\n        return False\n    return all(`
 
-	const findMsvcEnvNeedle = '    version = os.getenv("VCToolsVersion")\n    if not check_msvc(msvc_base_path, version):'
-	const findMsvcEnvReplacement = '    version = os.getenv("VCToolsVersion")\n    if version is None or not check_msvc(msvc_base_path, version):'
+	const findMsvcEnvNeedle =
+		'    version = os.getenv("VCToolsVersion")\n    if not check_msvc(msvc_base_path, version):'
+	const findMsvcEnvReplacement =
+		'    version = os.getenv("VCToolsVersion")\n    if version is None or not check_msvc(msvc_base_path, version):'
 
 	let patched = original
 	let appliedChecks = 0
@@ -630,10 +655,13 @@ function parseCsvLine(line) {
 	for (let i = 0; i < line.length; i++) {
 		const ch = line[i]
 		if (ch === '"') {
-			if (inQ && line[i + 1] === '"') { cur += '"'; i++ }
-			else inQ = !inQ
+			if (inQ && line[i + 1] === '"') {
+				cur += '"'
+				i++
+			} else inQ = !inQ
 		} else if (ch === ',' && !inQ) {
-			out.push(cur); cur = ''
+			out.push(cur)
+			cur = ''
 		} else cur += ch
 	}
 	out.push(cur)
@@ -657,9 +685,10 @@ function looksLikeComfyUIProcess(exe, cmdline) {
 	// 3) main.py 的路径中包含 comfy/comfyui 字样，且前面不是 "not"（排除明显的反例 notComfy）
 	const mainPathMatch = text.match(/[^\s"';&|]*main\.py/i)
 	const mainPathHasComfy = mainPathMatch
-		? (/comfy/i.test(mainPathMatch[0]) && !/notcomfy/i.test(mainPathMatch[0]))
+		? /comfy/i.test(mainPathMatch[0]) && !/notcomfy/i.test(mainPathMatch[0])
 		: false
-	if (/\bmain\.py\b/i.test(lower) && (hasComfyUISegment || hasComfySegment || mainPathHasComfy)) return true
+	if (/\bmain\.py\b/i.test(lower) && (hasComfyUISegment || hasComfySegment || mainPathHasComfy))
+		return true
 	if (hasComfyUISegment && lower.includes('--listen')) return true
 	return false
 }
@@ -721,15 +750,20 @@ async function scanForeignComfyProcesses() {
 			const { stdout } = await new Promise((resolve, reject) => {
 				const chunks = []
 				const errChunks = []
-				const c = spawn('ps', ['-eo', 'pid=,args='], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+				const c = spawn('ps', ['-eo', 'pid=,args='], {
+					windowsHide: true,
+					stdio: ['ignore', 'pipe', 'pipe']
+				})
 				c.stdout.on('data', (d) => chunks.push(d))
 				c.stderr.on('data', (d) => errChunks.push(d))
 				c.on('error', reject)
-				c.on('close', (code) => resolve({
-					code,
-					stdout: Buffer.concat(chunks).toString('utf8'),
-					stderr: Buffer.concat(errChunks).toString('utf8')
-				}))
+				c.on('close', (code) =>
+					resolve({
+						code,
+						stdout: Buffer.concat(chunks).toString('utf8'),
+						stderr: Buffer.concat(errChunks).toString('utf8')
+					})
+				)
 			})
 			for (const line of stdout.split(/\r?\n/)) {
 				const m = line.match(/^\s*(\d+)\s+(.*)$/)
@@ -762,25 +796,39 @@ async function killForeignComfyProcesses(processes) {
 		}
 		args.push('/T', '/F')
 		const batchR = await new Promise((resolve) => {
-			const so = []; const se = []
+			const so = []
+			const se = []
 			const c = spawn('taskkill', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
 			c.stdout.on('data', (d) => so.push(d))
 			c.stderr.on('data', (d) => se.push(d))
 			c.on('error', (e) => resolve({ code: -1, stderr: e.message }))
-			c.on('close', (code) => resolve({
-				code,
-				stdout: Buffer.concat(so).toString(),
-				stderr: Buffer.concat(se).toString()
-			}))
+			c.on('close', (code) =>
+				resolve({
+					code,
+					stdout: Buffer.concat(so).toString(),
+					stderr: Buffer.concat(se).toString()
+				})
+			)
 		})
 		if (batchR.code === 0) {
 			for (const p of targets) killed.push(p)
 		} else {
 			for (const p of targets) {
 				try {
-					const single = spawnSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], { windowsHide: true })
+					const single = spawnSync('taskkill', ['/pid', String(p.pid), '/T', '/F'], {
+						windowsHide: true
+					})
 					if (single.status === 0) killed.push(p)
-					else failed.push({ pid: p.pid, reason: (Buffer.isBuffer(single.stderr) ? single.stderr.toString() : String(single.stderr || single.stdout || '')).trim().slice(0, 200) })
+					else
+						failed.push({
+							pid: p.pid,
+							reason: (Buffer.isBuffer(single.stderr)
+								? single.stderr.toString()
+								: String(single.stderr || single.stdout || '')
+							)
+								.trim()
+								.slice(0, 200)
+						})
 				} catch (e) {
 					failed.push({ pid: p.pid, reason: e?.message || String(e) })
 				}
@@ -788,7 +836,9 @@ async function killForeignComfyProcesses(processes) {
 		}
 	} else {
 		for (const p of targets) {
-			try { process.kill(p.pid, 'SIGTERM') } catch (e) {
+			try {
+				process.kill(p.pid, 'SIGTERM')
+			} catch (e) {
 				failed.push({ pid: p.pid, reason: `TERM failed: ${e.message}` })
 			}
 		}
@@ -808,9 +858,7 @@ async function killForeignComfyProcesses(processes) {
 	let remaining = []
 	const check = await scanForeignComfyProcesses()
 	if (check.ok) {
-		remaining = check.processes.filter((p) =>
-			targets.some((t) => t.pid === p.pid)
-		)
+		remaining = check.processes.filter((p) => targets.some((t) => t.pid === p.pid))
 	}
 	return {
 		ok: remaining.length === 0,
@@ -852,7 +900,8 @@ function loadConfig() {
 				customMirrorUrl: parsed.customMirrorUrl,
 				pythonPath: parsed.pythonPath,
 				extraArgs,
-				launchArgsText: typeof parsed.launchArgsText === 'string' ? parsed.launchArgsText : undefined,
+				launchArgsText:
+					typeof parsed.launchArgsText === 'string' ? parsed.launchArgsText : undefined,
 				proxy: parsed.proxy,
 				customModelPaths: Array.isArray(parsed.customModelPaths)
 					? parsed.customModelPaths.filter((p) => typeof p === 'string' && p)
@@ -1468,7 +1517,8 @@ async function findWorkingPython(comfyDir, installType) {
 								: path.join(asFile, 'bin', 'python')
 						const embedPy = path.join(asFile, 'python.exe')
 						for (const sub of [scriptPy, embedPy]) {
-							if (fs.existsSync(sub)) explicitCandidates.push({ cmd: sub, args: [], type: 'config_venv', path: sub })
+							if (fs.existsSync(sub))
+								explicitCandidates.push({ cmd: sub, args: [], type: 'config_venv', path: sub })
 						}
 					}
 				}
@@ -1663,7 +1713,8 @@ async function findWorkingPython(comfyDir, installType) {
 					info.canStartComfy = true
 					// 版本不匹配只保留记录（作为非阻断信息，后续启动预检会修）
 					if (versionMismatches.length > 0) {
-						info.versionMismatchNote = '依赖版本不匹配（启动前将自动升级）: ' + versionMismatches.join(', ')
+						info.versionMismatchNote =
+							'依赖版本不匹配（启动前将自动升级）: ' + versionMismatches.join(', ')
 					}
 				} else {
 					info.canStartComfy = false
@@ -1694,9 +1745,7 @@ async function findWorkingPython(comfyDir, installType) {
 	// 改动 Task2.a：每个候选结果补 pyTorch26Pep585Compat 诊断（PyTorch 2.6.x + comfy-kitchen 0.2.28 是否命中不兼容）
 	for (const info of results) {
 		const torchOk = Boolean(info.hasTorch && info.torchVersion)
-		const torchVer = info.torchVersion
-			? normalizePkgVersion(info.torchVersion)
-			: ''
+		const torchVer = info.torchVersion ? normalizePkgVersion(info.torchVersion) : ''
 		const kitchenStatus = info.keyPackageStatus
 			? info.keyPackageStatus['comfy-kitchen'] || null
 			: null
@@ -3280,13 +3329,20 @@ async function probeExistingInstall(installPath, options) {
 					s.installed ? `${p} ${s.installed}→${s.required}` : `${p} 未安装 (需要${s.required})`
 				)
 				.join('；')
-			warnings.push(`核心包版本低于 requirements.txt：${outList}（启动前将自动升级到精确版本，无需手动处理）`)
+			warnings.push(
+				`核心包版本低于 requirements.txt：${outList}（启动前将自动升级到精确版本，无需手动处理）`
+			)
 		}
 
 		// 改动B：根据 needsFix（致命阻断）计算 launchStatus/canStart
 		if (needsFix.length > 0) {
 			launchStatus = 'none'
-		} else if (bestPy?.hasTorch && bestPy?.canImportComfy && bestPy?.canStartComfy !== false && warnings.length === 0) {
+		} else if (
+			bestPy?.hasTorch &&
+			bestPy?.canImportComfy &&
+			bestPy?.canStartComfy !== false &&
+			warnings.length === 0
+		) {
 			launchStatus = 'full'
 		} else if (bestPy?.hasTorch && bestPy?.canImportComfy) {
 			launchStatus = 'partial' // 有 warnings（通常是关键包自动升级）但仍可启动
@@ -3308,7 +3364,9 @@ async function probeExistingInstall(installPath, options) {
 		// quickHotfixAvailable 判定：canStart=false 但失败原因里如果有 comfy 主模块 importError（包含 infer_schema/unsupported type 之类 PEP585 线索）且 pepCompat.needsPatch=true
 		const pepHotfixAvailable =
 			Boolean(pepCompat?.needsPatch) &&
-			needsFix.some((r) => /comfy 主模块|comfy模块|import comfy|infer_schema|unsupported type/i.test(String(r) || ''))
+			needsFix.some((r) =>
+				/comfy 主模块|comfy模块|import comfy|infer_schema|unsupported type/i.test(String(r) || '')
+			)
 
 		result.launchCompatibility = {
 			status: launchStatus,
@@ -3713,7 +3771,10 @@ async function startService(installPath, port, extraArgs) {
 	}
 
 	// ===== 启动前置：扫描与清理外部 ComfyUI 进程 =====
-	appendServiceLog('system', `[启动预检] 扫描系统中其他 ComfyUI 进程（端口 ${p} / GPU 显存 冲突防护）`)
+	appendServiceLog(
+		'system',
+		`[启动预检] 扫描系统中其他 ComfyUI 进程（端口 ${p} / GPU 显存 冲突防护）`
+	)
 	const scanR = await scanForeignComfyProcesses()
 	if (!scanR.ok) {
 		appendServiceLog('stderr', `[启动预检] 扫描失败（非致命，继续）: ${scanR.error}`)
@@ -3723,13 +3784,17 @@ async function startService(installPath, port, extraArgs) {
 			`[启动预检] 检测到 ${scanR.processes.length} 个外部 ComfyUI 进程，将自动清理：`
 		)
 		for (const proc of scanR.processes) {
-			appendServiceLog('stdout', `  · pid=${proc.pid}  ${(proc.commandLine || proc.exe || '').slice(0, 180)}`)
+			appendServiceLog(
+				'stdout',
+				`  · pid=${proc.pid}  ${(proc.commandLine || proc.exe || '').slice(0, 180)}`
+			)
 		}
 		const killR = await killForeignComfyProcesses(scanR.processes)
 		if (!killR.ok) {
-			const remainMsg = Array.isArray(killR.remaining) && killR.remaining.length
-				? `，仍残留 ${killR.remaining.length} 个: ${killR.remaining.map((x) => x.pid).join(',')}`
-				: ''
+			const remainMsg =
+				Array.isArray(killR.remaining) && killR.remaining.length
+					? `，仍残留 ${killR.remaining.length} 个: ${killR.remaining.map((x) => x.pid).join(',')}`
+					: ''
 			appendServiceLog('stderr', `[启动预检] 清理外部进程未完全成功${remainMsg}`)
 		} else {
 			appendServiceLog(
@@ -3784,7 +3849,9 @@ async function startService(installPath, port, extraArgs) {
 						appendServiceLog(
 							'stdout',
 							'[核心包升级] 关键包升级结果: ' +
-								(evt.summary && typeof evt.summary === 'string' ? evt.summary : JSON.stringify(evt.summary || ''))
+								(evt.summary && typeof evt.summary === 'string'
+									? evt.summary
+									: JSON.stringify(evt.summary || ''))
 						)
 					} else {
 						lastErrMsg = evt.message || '升级失败'
@@ -3840,7 +3907,9 @@ async function startService(installPath, port, extraArgs) {
 						appendServiceLog(
 							'stdout',
 							'[PEP585热修复] 结果: ' +
-								(evt.summary && typeof evt.summary === 'string' ? evt.summary : JSON.stringify(evt.summary || ''))
+								(evt.summary && typeof evt.summary === 'string'
+									? evt.summary
+									: JSON.stringify(evt.summary || ''))
 						)
 					} else {
 						appendServiceLog('stderr', `[PEP585热修复] ✗ 失败: ${evt.message || ''}`)
@@ -3987,12 +4056,18 @@ async function startService(installPath, port, extraArgs) {
 						`[启动预检] 已应用 triton-windows None-guard patch（${patchR.appliedChecks} 处修改），文件: ${patchR.targetFile}`
 					)
 				} else {
-					appendServiceLog('stderr', `[启动预检] triton-windows None-guard patch 失败: ${patchR.reason || ''} ${patchR.error || ''}`)
+					appendServiceLog(
+						'stderr',
+						`[启动预检] triton-windows None-guard patch 失败: ${patchR.reason || ''} ${patchR.error || ''}`
+					)
 				}
 			}
 		} catch (err) {
 			// patch 失败不阻塞 ComfyUI 启动（方案B 仍可独立生效）
-			appendServiceLog('stderr', `[启动预检] triton-windows None-guard patch 异常（非致命）: ${err?.message || err}`)
+			appendServiceLog(
+				'stderr',
+				`[启动预检] triton-windows None-guard patch 异常（非致命）: ${err?.message || err}`
+			)
 		}
 	}
 
@@ -4283,7 +4358,10 @@ function readComfyUIVersion(installPath) {
 			const lines = c.split(/\r?\n/)
 			let inProject = false
 			for (const line of lines) {
-				if (/^\s*\[project\]\s*$/.test(line)) { inProject = true; continue }
+				if (/^\s*\[project\]\s*$/.test(line)) {
+					inProject = true
+					continue
+				}
 				if (/^\s*\[/.test(line)) inProject = false
 				if (inProject) {
 					const vm = line.match(/^\s*version\s*=\s*['"]([^'"]+)['"]\s*$/)
@@ -4341,7 +4419,10 @@ function writeComfyUIVersion(installPath, version) {
 			let changed = false
 			for (let i = 0; i < lines.length; i++) {
 				const line = lines[i]
-				if (/^\s*\[project\]\s*$/.test(line)) { inProject = true; continue }
+				if (/^\s*\[project\]\s*$/.test(line)) {
+					inProject = true
+					continue
+				}
 				if (/^\s*\[/.test(line)) inProject = false
 				if (inProject && /^\s*version\s*=\s*['"][^'"]+['"]\s*$/.test(line)) {
 					lines[i] = line.replace(/version\s*=\s*['"][^'"]+['"]/, `version = "${cleanVer}"`)
@@ -4386,7 +4467,9 @@ async function fetchLatestRelease(timeout = 10000) {
 			return {
 				tag: info.tag_name,
 				version: info.tag_name.replace(/^v/, ''),
-				url: info.html_url || `https://github.com/comfyanonymous/ComfyUI/releases/tag/${info.tag_name}`,
+				url:
+					info.html_url ||
+					`https://github.com/comfyanonymous/ComfyUI/releases/tag/${info.tag_name}`,
 				publishedAt: info.published_at || null,
 				name: info.name || info.tag_name
 			}
@@ -4403,7 +4486,10 @@ async function getLatestGitTag(installPath) {
 			{ timeout: 10000 }
 		)
 		if (result.ok && result.stdout) {
-			const tags = result.stdout.split('\n').map((t) => t.trim()).filter(Boolean)
+			const tags = result.stdout
+				.split('\n')
+				.map((t) => t.trim())
+				.filter(Boolean)
 			if (tags.length > 0) {
 				let latest = tags[0]
 				let latestParsed = parseSemver(latest)
@@ -4501,7 +4587,10 @@ export async function setupCheckVersionUpdate(_ctx, payload) {
 				for (const line of lines) {
 					if (!line.startsWith('ref:') && /[0-9a-f]{40}/.test(line)) {
 						const m = line.match(/([0-9a-f]{40})/)
-						if (m) { upstreamFullHash = m[1]; break }
+						if (m) {
+							upstreamFullHash = m[1]
+							break
+						}
 					}
 				}
 			}
@@ -4531,7 +4620,13 @@ export async function setupCheckVersionUpdate(_ctx, payload) {
 			updateAvailable = currentVersion.replace(/^v/, '') !== latestVersion.replace(/^v/, '')
 		}
 		// 二次确认：如果 cmp < 0 但 hash 已经与远程 HEAD 相等 → 仍算最新
-		if (updateAvailable && isGitRepo && currentCommit && upstreamFullHash && currentCommit === upstreamFullHash) {
+		if (
+			updateAvailable &&
+			isGitRepo &&
+			currentCommit &&
+			upstreamFullHash &&
+			currentCommit === upstreamFullHash
+		) {
 			updateAvailable = false
 		}
 	} else if (latestTag) {
@@ -5235,7 +5330,11 @@ async function snapshotCheckpoint(installPath, { detectPythonFn = resolvePythonF
 	// (b) python snapshot
 	const py = await detectPythonFn(installPath)
 	try {
-		fs.writeFileSync(path.join(cpRoot, 'python_snapshot.json'), JSON.stringify(py, null, 2), 'utf-8')
+		fs.writeFileSync(
+			path.join(cpRoot, 'python_snapshot.json'),
+			JSON.stringify(py, null, 2),
+			'utf-8'
+		)
 	} catch {}
 
 	// (c) pip freeze
@@ -5293,7 +5392,8 @@ async function* runPipUpgradeRequirements(pyObj, requirementsPath) {
 		return { ok: false, error: `requirements.txt 不存在: ${requirementsPath}` }
 	}
 
-	const label = path.relative(path.dirname(requirementsPath) || '.', requirementsPath) || 'requirements.txt'
+	const label =
+		path.relative(path.dirname(requirementsPath) || '.', requirementsPath) || 'requirements.txt'
 	const proxyEnv = getDvsProxyEnvVars()
 	if (proxyEnv.HTTP_PROXY) {
 		yield {
@@ -5310,7 +5410,11 @@ async function* runPipUpgradeRequirements(pyObj, requirementsPath) {
 		PIP_MIRRORS.find((m) => m.key === 'pip-aliyun')
 	].filter(Boolean)
 	function urlToHost(urlStr) {
-		try { return new URL(urlStr).hostname } catch { return '' }
+		try {
+			return new URL(urlStr).hostname
+		} catch {
+			return ''
+		}
 	}
 
 	for (let i = 0; i < phase2Mirrors.length; i++) {
@@ -5379,7 +5483,9 @@ async function* runPipUpgradeRequirements(pyObj, requirementsPath) {
 		let shouldBreakMirrorEarly = false
 		if (hitNoMatching && !isOfficial) {
 			// 尝试匹配 "No matching distribution found for pkgname==x.y.z"
-			const targetMatch = errText.match(/No matching distribution found for\s+([a-zA-Z0-9_.-]+)\s*==\s*([0-9][a-zA-Z0-9.\-+]*)/i)
+			const targetMatch = errText.match(
+				/No matching distribution found for\s+([a-zA-Z0-9_.-]+)\s*==\s*([0-9][a-zA-Z0-9.\-+]*)/i
+			)
 			if (targetMatch && targetMatch[2]) {
 				const targetVer = targetMatch[2]
 				const analysis = analyzePipAvailableVersions(errText, targetVer)
@@ -5413,7 +5519,10 @@ async function* runPipUpgradeRequirements(pyObj, requirementsPath) {
 			// 跳出当前镜像 for 循环（i 递增继续下一个），不做任何 retry
 		}
 	}
-	return { ok: false, error: '所有镜像源均安装失败，请检查网络或手动安装: pip install -r requirements.txt --upgrade' }
+	return {
+		ok: false,
+		error: '所有镜像源均安装失败，请检查网络或手动安装: pip install -r requirements.txt --upgrade'
+	}
 }
 
 /**
@@ -5437,7 +5546,11 @@ async function* runPipUpgradeRequirements(pyObj, requirementsPath) {
  * @param {string|object} arg2 签名 ① 时 = installPath(string)；签名 ② 时 = opts(object)
  */
 async function* runPipUpgradeKeyPackages(pyObj, arg2) {
-	yield { type: 'step', step: 'critical_pkg_upgrade_start', message: '开始对齐 requirements.txt 的 5 个核心包精确版本' }
+	yield {
+		type: 'step',
+		step: 'critical_pkg_upgrade_start',
+		message: '开始对齐 requirements.txt 的 5 个核心包精确版本'
+	}
 
 	// ---- 改动E：签名归一化（支持 startService/setupPythonEnv 直接传 installPath string） ----
 	let installPath = null
@@ -5487,10 +5600,14 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 			command: pyObj.command || pyObj.path || null,
 			argsPrefix: pyObj.argsPrefix || pyObj.args || []
 		}
-		installPath = typeof arg2 === 'string' ? arg2 : arg2 && arg2.installPath ? arg2.installPath : null
+		installPath =
+			typeof arg2 === 'string' ? arg2 : arg2 && arg2.installPath ? arg2.installPath : null
 	}
 	if (!py || !py.command) {
-		yield { type: 'error', message: '[关键包升级] 未找到可用 Python 解释器，请先设置 venv 或点击一键配置' }
+		yield {
+			type: 'error',
+			message: '[关键包升级] 未找到可用 Python 解释器，请先设置 venv 或点击一键配置'
+		}
 		yield {
 			type: 'result',
 			ok: false,
@@ -5533,10 +5650,14 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 		if (torchVersion) {
 			const tLower = String(torchVersion).toLowerCase()
 			if (tLower.includes('cu128')) torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu128'
-			else if (tLower.includes('cu126')) torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu126'
-			else if (tLower.includes('cu124')) torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu124'
-			else if (tLower.includes('cu121')) torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu121'
-			else if (tLower.includes('cu118')) torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu118'
+			else if (tLower.includes('cu126'))
+				torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu126'
+			else if (tLower.includes('cu124'))
+				torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu124'
+			else if (tLower.includes('cu121'))
+				torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu121'
+			else if (tLower.includes('cu118'))
+				torchExtraIndexUrl = 'https://download.pytorch.org/whl/cu118'
 			else torchExtraIndexUrl = 'https://download.pytorch.org/whl/cpu'
 			yield {
 				type: 'log',
@@ -5596,7 +5717,11 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 		PIP_MIRRORS.find((m) => m.key === 'pip-aliyun')
 	].filter(Boolean)
 	function urlToHost(urlStr) {
-		try { return new URL(urlStr).hostname } catch { return '' }
+		try {
+			return new URL(urlStr).hostname
+		} catch {
+			return ''
+		}
 	}
 
 	// 每个包单独记录状态，确保某包失败不会阻断其他包继续尝试
@@ -5631,7 +5756,11 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 			mirrorAnyAttempt = true
 			// 每个包先试 primary（精确 ==），再试 fallback（>=）
 			const attempts = [
-				{ spec: plan.primarySpec, label: plan.mode === 'exact' ? '精确 pin ==' + plan.exactVersion : '范围 >=' + plan.minVersion },
+				{
+					spec: plan.primarySpec,
+					label:
+						plan.mode === 'exact' ? '精确 pin ==' + plan.exactVersion : '范围 >=' + plan.minVersion
+				},
 				{ spec: plan.fallbackSpec, label: 'fallback 范围 >=' + plan.minVersion }
 			]
 			// 如果 primary 和 fallback 相同（本来就是 range），只试一次
@@ -5695,7 +5824,8 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 					const errText = r.stderr || r.error || 'pip 非 0 退出码'
 					const errSnippet = errText.slice(0, 200)
 					const hitNoMatching = /No matching distribution found/i.test(errText)
-					const hitTimeout = /timeout/i.test(r.error || '') || (r.code === null && /timeout/i.test(errText))
+					const hitTimeout =
+						/timeout/i.test(r.error || '') || (r.code === null && /timeout/i.test(errText))
 					// 修复B：分析 from versions 列表，判断国内镜像是否有该包的目标版本
 					let versionHint = ''
 					let skipMirrorForPackage = false // true: 该包在本镜像立即终止（不再 fallback），跳到下一镜像
@@ -5727,7 +5857,7 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 						}
 					}
 					yield {
-						type: (hitTimeout || hitNoMatching) ? 'warn' : 'error',
+						type: hitTimeout || hitNoMatching ? 'warn' : 'error',
 						stream: 'stderr',
 						message:
 							`[关键包升级] ✗ ${plan.name} ${att.label} @ ${mirror.name} 失败: ${errSnippet}` +
@@ -5819,7 +5949,11 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 					const pipMgr = getPipManager(py)
 					const r2 = await runCommand(
 						py.command,
-						[...(py.argsPrefix || []), '-c', 'import comfy_kitchen; import sys; print(getattr(comfy_kitchen,"__version__",""),end="")'],
+						[
+							...(py.argsPrefix || []),
+							'-c',
+							'import comfy_kitchen; import sys; print(getattr(comfy_kitchen,"__version__",""),end="")'
+						],
 						{ timeout: 10000 }
 					)
 					const v = (r2.stdout || '').trim() || null
@@ -5893,7 +6027,11 @@ async function* runPipUpgradeKeyPackages(pyObj, arg2) {
 		summary: `失败 ${failedList.length}/${totalCount} 个核心包：${failedNames.join(', ')}`,
 		failed: failedNames
 	}
-	yield { type: 'done', ok: false, message: `核心包升级未完成（仍有 ${failedList.length} 个包失败）` }
+	yield {
+		type: 'done',
+		ok: false,
+		message: `核心包升级未完成（仍有 ${failedList.length} 个包失败）`
+	}
 	return
 }
 
@@ -5991,7 +6129,12 @@ async function* runComfyKitchenPep585Hotfix(pyObj, kitchenRootHint) {
 			type: 'warn',
 			message: `[PEP585] 不满足执行条件，跳过：${versions?.where || 'unknown'} — ${versions?.err || ''}`
 		}
-		yield { type: 'result', ok: true, skipped: true, reason: versions ? `${versions.where}:${versions.err}` : 'no_versions' }
+		yield {
+			type: 'result',
+			ok: true,
+			skipped: true,
+			reason: versions ? `${versions.where}:${versions.err}` : 'no_versions'
+		}
 		yield { type: 'done', ok: true, skipped: true, message: '无需热修复（条件不命中）' }
 		return
 	}
@@ -6194,12 +6337,20 @@ async function* upgradeAllCustomNodesRequirements(pyObj, installPath) {
 		if (fs.existsSync(req)) reqFiles.push({ req, nodeName: e.name })
 	}
 	if (reqFiles.length === 0) {
-		yield { type: 'log', stream: 'stdout', message: '[扩展] 未检测到 custom_nodes 子目录的 requirements.txt，跳过扩展依赖升级' }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: '[扩展] 未检测到 custom_nodes 子目录的 requirements.txt，跳过扩展依赖升级'
+		}
 		return { ok: true, skipped: '无 requirements.txt' }
 	}
 	let successCount = 0
 	for (const { req, nodeName } of reqFiles) {
-		yield { type: 'step', step: 'custom_nodes_pip', message: `升级 custom_nodes/${nodeName} 依赖...` }
+		yield {
+			type: 'step',
+			step: 'custom_nodes_pip',
+			message: `升级 custom_nodes/${nodeName} 依赖...`
+		}
 		const iter = runPipUpgradeRequirements(pyObj, req)
 		let last = null
 		while (true) {
@@ -6304,7 +6455,11 @@ async function waitForServiceHealthy(port, timeoutMs = 30000) {
  *   R5. 启服务 + health probe
  */
 async function* runRollback(installPath, { checkpoint, userDataBackup, defaultBranch }) {
-	yield { type: 'step', step: 'rollback_start', message: '升级未完成，正在回滚到升级前的稳定版本...' }
+	yield {
+		type: 'step',
+		step: 'rollback_start',
+		message: '升级未完成，正在回滚到升级前的稳定版本...'
+	}
 
 	// R1 停服务
 	try {
@@ -6317,7 +6472,11 @@ async function* runRollback(installPath, { checkpoint, userDataBackup, defaultBr
 
 	// R2 恢复 pip freeze（只要 checkpoint 里 py 对象可用）
 	if (checkpoint?.py?.command && checkpoint?.freezePath && fs.existsSync(checkpoint.freezePath)) {
-		yield { type: 'log', stream: 'stdout', message: '[Rollback R2] 正在恢复旧版本 Python 依赖包...' }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: '[Rollback R2] 正在恢复旧版本 Python 依赖包...'
+		}
 		const args = [
 			...(checkpoint.py.argsPrefix || []),
 			'-m',
@@ -6344,7 +6503,11 @@ async function* runRollback(installPath, { checkpoint, userDataBackup, defaultBr
 
 	// R3 恢复 git HEAD
 	if (checkpoint?.commitBefore) {
-		yield { type: 'log', stream: 'stdout', message: `[Rollback R3] 正在恢复 git 代码快照 ${checkpoint.commitBefore.slice(0, 8)}...` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `[Rollback R3] 正在恢复 git 代码快照 ${checkpoint.commitBefore.slice(0, 8)}...`
+		}
 		const r = await runCommand(
 			'git',
 			['-C', installPath, 'reset', '--hard', checkpoint.commitBefore],
@@ -6396,7 +6559,12 @@ async function* runRollback(installPath, { checkpoint, userDataBackup, defaultBr
 			yield { type: 'log', stream: 'stdout', message: '[Rollback R5] 服务启动请求已发送' }
 			if (config.port) {
 				const healthy = await waitForServiceHealthy(config.port, 30000)
-				if (healthy) yield { type: 'log', stream: 'stdout', message: '[Rollback R5] 回滚完成，服务健康探测通过 ✓' }
+				if (healthy)
+					yield {
+						type: 'log',
+						stream: 'stdout',
+						message: '[Rollback R5] 回滚完成，服务健康探测通过 ✓'
+					}
 				else
 					yield {
 						type: 'log',
@@ -6412,16 +6580,28 @@ async function* runRollback(installPath, { checkpoint, userDataBackup, defaultBr
 			}
 		}
 	} catch (err) {
-		yield { type: 'log', stream: 'stderr', message: `[Rollback R5] 启动回滚服务异常: ${err.message}` }
+		yield {
+			type: 'log',
+			stream: 'stderr',
+			message: `[Rollback R5] 启动回滚服务异常: ${err.message}`
+		}
 	}
 
 	yield { type: 'step', step: 'rollback_done', message: '回滚完成' }
 }
 
 export async function* setupUpdateComfyUI(_ctx, payload) {
-	console.error('[DEBUG UPDATE COMFYUI] setupUpdateComfyUI ENTER. payload keys:', Object.keys(payload || {}))
+	console.error(
+		'[DEBUG UPDATE COMFYUI] setupUpdateComfyUI ENTER. payload keys:',
+		Object.keys(payload || {})
+	)
 	const installPath = payload?.installPath || loadConfig().installPath
-	console.error('[DEBUG UPDATE COMFYUI] installPath resolved:', installPath, 'exists?', fs.existsSync(installPath))
+	console.error(
+		'[DEBUG UPDATE COMFYUI] installPath resolved:',
+		installPath,
+		'exists?',
+		fs.existsSync(installPath)
+	)
 	if (!installPath || !fs.existsSync(installPath)) {
 		console.error('[DEBUG UPDATE COMFYUI] Guard: invalid installPath. Yield error + return.')
 		yield { type: 'error', message: '无效的 ComfyUI 安装目录' }
@@ -6456,7 +6636,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		checkpoint = await snapshotCheckpoint(installPath)
 		if (checkpoint?.ok) {
 			pyObj = checkpoint.py
-			yield { type: 'log', stream: 'stdout', message: `[快照] 已记录升级前状态 -> ${path.relative(installPath, checkpoint.checkpointDir)}` }
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: `[快照] 已记录升级前状态 -> ${path.relative(installPath, checkpoint.checkpointDir)}`
+			}
 			if (checkpoint.commitBefore) {
 				yield {
 					type: 'log',
@@ -6589,9 +6773,17 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 	} catch {}
 
 	if (currentVersion) {
-		yield { type: 'log', stream: 'stdout', message: `当前版本: v${currentVersion} (${(currentCommit || '').slice(0, 7) || 'unknown'})` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `当前版本: v${currentVersion} (${(currentCommit || '').slice(0, 7) || 'unknown'})`
+		}
 	} else {
-		yield { type: 'log', stream: 'stdout', message: `当前版本提交: ${(currentCommit || '').slice(0, 7) || 'unknown'}` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `当前版本提交: ${(currentCommit || '').slice(0, 7) || 'unknown'}`
+		}
 	}
 	if (latestReleaseInfo?.version) {
 		yield {
@@ -6674,17 +6866,19 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 
 	if (nonGitInitialized) {
 		yield { type: 'step', step: 'updating', message: '正在更新到最新版本...' }
-		yield { type: 'log', stream: 'stdout', message: `执行 git checkout 更新到 origin/${defaultBranch}...` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `执行 git checkout 更新到 origin/${defaultBranch}...`
+		}
 
 		let resetOk = false
 		let resetErr = null
 		try {
 			const ref = `origin/${defaultBranch}`
-			const refCheck = await runCommand(
-				'git',
-				['-C', installPath, 'rev-parse', '--verify', ref],
-				{ timeout: 10000 }
-			)
+			const refCheck = await runCommand('git', ['-C', installPath, 'rev-parse', '--verify', ref], {
+				timeout: 10000
+			})
 			if (refCheck.ok) {
 				upstreamCommit = refCheck.stdout.trim().slice(0, 7)
 				const resetR = await runCommand('git', ['-C', installPath, 'checkout', ref, '--', '.'], {
@@ -6695,7 +6889,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 					yield { type: 'log', stream: 'stdout', message: `已更新到 ${defaultBranch} 分支最新版本` }
 				} else {
 					resetErr = resetR.stderr || resetR.error
-					yield { type: 'log', stream: 'stderr', message: `checkout ${defaultBranch}失败: ${resetErr}` }
+					yield {
+						type: 'log',
+						stream: 'stderr',
+						message: `checkout ${defaultBranch}失败: ${resetErr}`
+					}
 				}
 			} else {
 				resetErr = `远程分支 ${defaultBranch} 不存在`
@@ -6711,9 +6909,26 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		}
 
 		try {
-			await runCommand('git', ['-C', installPath, 'checkout', '-B', defaultBranch], { timeout: 10000 })
-			await runCommand('git', ['-C', installPath, 'branch', '--set-upstream-to', `origin/${defaultBranch}`, defaultBranch], { timeout: 10000 })
-			yield { type: 'log', stream: 'stdout', message: `已设置本地分支 ${defaultBranch} 跟踪远程分支` }
+			await runCommand('git', ['-C', installPath, 'checkout', '-B', defaultBranch], {
+				timeout: 10000
+			})
+			await runCommand(
+				'git',
+				[
+					'-C',
+					installPath,
+					'branch',
+					'--set-upstream-to',
+					`origin/${defaultBranch}`,
+					defaultBranch
+				],
+				{ timeout: 10000 }
+			)
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: `已设置本地分支 ${defaultBranch} 跟踪远程分支`
+			}
 		} catch {}
 
 		yield { type: 'log', stream: 'stdout', message: '恢复用户数据...' }
@@ -6738,11 +6953,9 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 
 		try {
 			const remoteRef = `origin/${defaultBranch}`
-			const upR = await runCommand(
-				'git',
-				['-C', installPath, 'rev-parse', '--short', remoteRef],
-				{ timeout: 10000 }
-			)
+			const upR = await runCommand('git', ['-C', installPath, 'rev-parse', '--short', remoteRef], {
+				timeout: 10000
+			})
 			if (upR.ok && upR.stdout) upstreamCommit = upR.stdout.trim()
 		} catch {}
 
@@ -6769,7 +6982,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 			}
 		}
 
-		yield { type: 'log', stream: 'stdout', message: `远程最新提交: ${upstreamCommit || 'unknown'} (${defaultBranch})` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `远程最新提交: ${upstreamCommit || 'unknown'} (${defaultBranch})`
+		}
 
 		// ---- 第 1 步：用户数据独立备份（不依赖 git stash） ----
 		yield { type: 'step', step: 'backing_user_data', message: '备份用户数据...' }
@@ -6836,13 +7053,15 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		// 这一步保证工作区/暂存区绝对干净，后续无论是 pull --ff-only 还是
 		// reset --hard origin/<branch> 都不会触发 "...would be overwritten by merge"。
 		if (hasLocalChanges) {
-			yield { type: 'step', step: 'discarding_changes', message: '丢弃本地源码改动（强制覆盖模式）...' }
+			yield {
+				type: 'step',
+				step: 'discarding_changes',
+				message: '丢弃本地源码改动（强制覆盖模式）...'
+			}
 			try {
-				const reset1R = await runCommand(
-					'git',
-					['-C', installPath, 'reset', '--hard', 'HEAD'],
-					{ timeout: 60000 }
-				)
+				const reset1R = await runCommand('git', ['-C', installPath, 'reset', '--hard', 'HEAD'], {
+					timeout: 60000
+				})
 				if (reset1R.ok) {
 					yield {
 						type: 'log',
@@ -6871,18 +7090,20 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		// 这是最"强硬"的同步方式：用户的代码 100% 与 GitHub 最新 origin/master 一致。
 		yield { type: 'step', step: 'pulling', message: '正在强制对齐远程最新代码...' }
 		const targetRef = `origin/${defaultBranch}`
-		yield { type: 'log', stream: 'stdout', message: `执行 git reset --hard ${targetRef} (强制覆盖，不保留源码改动)...` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `执行 git reset --hard ${targetRef} (强制覆盖，不保留源码改动)...`
+		}
 
 		let pullOk = false
 		let pullErr = null
 		let pullOutput = ''
 
 		try {
-			const resetR = await runCommand(
-				'git',
-				['-C', installPath, 'reset', '--hard', targetRef],
-				{ timeout: 120000 }
-			)
+			const resetR = await runCommand('git', ['-C', installPath, 'reset', '--hard', targetRef], {
+				timeout: 120000
+			})
 			pullOutput = (resetR.stdout || '') + (resetR.stderr || '')
 			if (resetR.ok) {
 				pullOk = true
@@ -7003,7 +7224,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		// Phase 2 (e) 关键包版本校验（无论 reqs 成功与否都必须做）
 		yield { type: 'step', step: 'pkg_verify', message: '校验关键包版本...' }
 		let keyReport = await verifyKeyPackageVersions(pyObj)
-		yield { type: 'log', stream: 'stdout', message: '[关键包校验] 最低版本要求（与 requirements.txt 对齐）：' }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: '[关键包校验] 最低版本要求（与 requirements.txt 对齐）：'
+		}
 		for (const line of formatKeyPackageReportLines(keyReport.report)) {
 			yield { type: 'log', stream: 'stdout', message: line }
 		}
@@ -7014,8 +7239,7 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 			yield {
 				type: 'log',
 				stream: 'stderr',
-				message:
-					'[关键包校验] ⚠ 关键包未达最低版本。按官方推荐逐个精确 pin 安装兜底...'
+				message: '[关键包校验] ⚠ 关键包未达最低版本。按官方推荐逐个精确 pin 安装兜底...'
 			}
 			const keyIter = runPipUpgradeKeyPackages(pyObj, installPath)
 			let keyLast = null
@@ -7047,7 +7271,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 				}
 				// 不自动回滚，继续后续流程（用户要求）。phase2Ok 保持 false，最终日志提示。
 			} else {
-				yield { type: 'log', stream: 'stdout', message: '[关键包校验] 兜底升级后全部达标 ✓（核心安装包安装成功）' }
+				yield {
+					type: 'log',
+					stream: 'stdout',
+					message: '[关键包校验] 兜底升级后全部达标 ✓（核心安装包安装成功）'
+				}
 			}
 		} else {
 			yield { type: 'log', stream: 'stdout', message: '[关键包校验] 全部达标 ✓' }
@@ -7150,7 +7378,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 				}
 			}
 			// P4-d 启服务
-			yield { type: 'log', stream: 'stdout', message: '[服务] 启动新进程（加载新代码镜像 + 新依赖）...' }
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: '[服务] 启动新进程（加载新代码镜像 + 新依赖）...'
+			}
 			const startR = await startService(installPath, config.port, config.extraArgs)
 			if (!startR?.ok) {
 				yield {
@@ -7195,7 +7427,8 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 			yield {
 				type: 'log',
 				stream: 'stdout',
-				message: '[服务] 升级前服务未启动，跳过 Phase 4 自动重启。请手动点击「启动服务」加载新版本。'
+				message:
+					'[服务] 升级前服务未启动，跳过 Phase 4 自动重启。请手动点击「启动服务」加载新版本。'
 			}
 			phase4Exit = true
 			phase4Healthy = true // 服务不启动不算失败
@@ -7292,7 +7525,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		verifyStructureOk = false
 		yield { type: 'log', stream: 'stderr', message: '  ✗  核心文件 main.py / nodes.py 缺失' }
 	} else {
-		yield { type: 'log', stream: 'stdout', message: '  ✓  核心文件 main.py/nodes.py/server.py 存在' }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: '  ✓  核心文件 main.py/nodes.py/server.py 存在'
+		}
 	}
 	if (newVersion) {
 		yield {
@@ -7356,14 +7593,19 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		yield {
 			type: 'log',
 			stream: 'stdout',
-			message:
-				'  ① Git 源码  ② 关键包  ③ Frontend/Templates  ④ 服务健康  ⑤ 结构版本'
+			message: '  ① Git 源码  ② 关键包  ③ Frontend/Templates  ④ 服务健康  ⑤ 结构版本'
 		}
 	} else {
 		yield { type: 'log', stream: 'stderr', message: '⚠ 更新未完全通过五维校验：' }
 		if (!verifyGitOk) yield { type: 'log', stream: 'stderr', message: '  ✗  ① Git 源码' }
-		if (!verifyPkgOk) yield { type: 'log', stream: 'stderr', message: '  ✗  ② 关键包（Minimax H3/Templates 可能直接报错）' }
-		if (!verifyFrontendOk) yield { type: 'log', stream: 'stderr', message: '  ✗  ③ Frontend/Templates 版本过低' }
+		if (!verifyPkgOk)
+			yield {
+				type: 'log',
+				stream: 'stderr',
+				message: '  ✗  ② 关键包（Minimax H3/Templates 可能直接报错）'
+			}
+		if (!verifyFrontendOk)
+			yield { type: 'log', stream: 'stderr', message: '  ✗  ③ Frontend/Templates 版本过低' }
 		if (!verifyHealthOk) yield { type: 'log', stream: 'stderr', message: '  ✗  ④ 服务健康' }
 		if (!verifyStructureOk) yield { type: 'log', stream: 'stderr', message: '  ✗  ⑤ 结构版本' }
 	}
@@ -7371,7 +7613,11 @@ export async function* setupUpdateComfyUI(_ctx, payload) {
 		yield { type: 'log', stream: 'stdout', message: `  commit ${currentCommit} → ${newCommit}` }
 	}
 	if (newVersion) {
-		yield { type: 'log', stream: 'stdout', message: `  version v${currentVersion || '?'} → v${newVersion}` }
+		yield {
+			type: 'log',
+			stream: 'stdout',
+			message: `  version v${currentVersion || '?'} → v${newVersion}`
+		}
 	}
 	yield { type: 'log', stream: 'stdout', message: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' }
 	yield { type: 'log', stream: 'stdout', message: '' }
@@ -7812,7 +8058,13 @@ function resolvePythonForTerminal(installPath) {
 		try {
 			const portablePy = path.join(targetInstallPath, 'python_embeded', 'python.exe')
 			if (fs.existsSync(portablePy)) {
-				return { ok: true, pythonPath: portablePy, type: 'portable', typeLabel: '便携版Python', venvRoot: null }
+				return {
+					ok: true,
+					pythonPath: portablePy,
+					type: 'portable',
+					typeLabel: '便携版Python',
+					venvRoot: null
+				}
 			}
 		} catch {}
 	}
@@ -7820,11 +8072,18 @@ function resolvePythonForTerminal(installPath) {
 	// 3. 项目内venv
 	if (targetInstallPath) {
 		try {
-			const venvPy = process.platform === 'win32'
-				? path.join(targetInstallPath, 'venv', 'Scripts', 'python.exe')
-				: path.join(targetInstallPath, 'venv', 'bin', 'python')
+			const venvPy =
+				process.platform === 'win32'
+					? path.join(targetInstallPath, 'venv', 'Scripts', 'python.exe')
+					: path.join(targetInstallPath, 'venv', 'bin', 'python')
 			if (fs.existsSync(venvPy)) {
-				return { ok: true, pythonPath: venvPy, type: 'venv', typeLabel: '项目内虚拟环境', venvRoot: path.join(targetInstallPath, 'venv') }
+				return {
+					ok: true,
+					pythonPath: venvPy,
+					type: 'venv',
+					typeLabel: '项目内虚拟环境',
+					venvRoot: path.join(targetInstallPath, 'venv')
+				}
 			}
 		} catch {}
 	}
@@ -7832,7 +8091,8 @@ function resolvePythonForTerminal(installPath) {
 	// 4. 找不到，返回错误，不回退系统Python
 	return {
 		ok: false,
-		error: '未找到可用的Python虚拟环境。请先在ComfyUI配置中完成环境配置，或确保ComfyUI目录下存在venv/python_embeded。'
+		error:
+			'未找到可用的Python虚拟环境。请先在ComfyUI配置中完成环境配置，或确保ComfyUI目录下存在venv/python_embeded。'
 	}
 }
 

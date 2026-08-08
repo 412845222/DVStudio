@@ -124,9 +124,7 @@ export function useComfyServiceManager() {
 				pushLocalSystemLog('[启动前扫描] 未检测到外部 ComfyUI 进程 ✓')
 				return
 			}
-			pushLocalSystemLog(
-				`[启动前扫描] 检测到 ${procs.length} 个外部 ComfyUI 进程，前端主动清理：`
-			)
+			pushLocalSystemLog(`[启动前扫描] 检测到 ${procs.length} 个外部 ComfyUI 进程，前端主动清理：`)
 			for (const p of procs) {
 				pushLocalSystemLog(`  · pid=${p.pid}  ${(p.commandLine || p.exe || '').slice(0, 160)}`)
 			}
@@ -148,10 +146,7 @@ export function useComfyServiceManager() {
 				await new Promise((r) => setTimeout(r, 800))
 			}
 		} catch (e: any) {
-			pushLocalSystemLog(
-				`[启动前扫描] 异常（不影响启动）：${e?.message || String(e)}`,
-				'stderr'
-			)
+			pushLocalSystemLog(`[启动前扫描] 异常（不影响启动）：${e?.message || String(e)}`, 'stderr')
 		}
 	}
 

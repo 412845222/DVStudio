@@ -201,7 +201,8 @@
 									:key="idx"
 									class="sc-log-line"
 									:class="`log-${line.stream}`"
-								>{{ line.message }}</pre>
+									>{{ line.message }}</pre
+								>
 							</div>
 						</div>
 					</template>

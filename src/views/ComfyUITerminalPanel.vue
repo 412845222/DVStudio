@@ -8,162 +8,185 @@
 		</div>
 
 		<div class="ctp-upper-sections">
-		<div class="ctp-header">
-			<div class="ctp-title-row">
-				<span class="ctp-title">
-					<span class="ctp-title-dot"></span>
-					ComfyUI 终端
-				</span>
-				<span class="ctp-mode-badge" :class="terminalMode">
-					{{ modeLabel }}
-				</span>
-				<button class="ctp-refresh-btn" @click="refreshEnv" :disabled="isLoadingEnv">
-					{{ isLoadingEnv ? '检测中…' : '↻ 刷新环境' }}
-				</button>
-			</div>
-			<p class="ctp-desc">执行诊断命令、更新 ComfyUI 源码或手动安装 ComfyUI-Manager 扩展。所有 pip/python 命令将自动使用配置的虚拟环境。</p>
-		</div>
-
-		<!-- Python 环境信息栏 -->
-		<div class="ctp-env-bar" :class="{ error: !activePython?.ok }">
-			<template v-if="activePython?.ok">
-				<span class="ctp-env-icon">🐍</span>
-				<div class="ctp-env-info">
-					<span class="ctp-env-type">{{ activePython.typeLabel }}</span>
-					<span class="ctp-env-version" v-if="activePython.version">Python {{ activePython.version }}</span>
-				</div>
-				<div class="ctp-env-path" :title="activePython.pythonPath">
-					{{ activePython.pythonPath }}
-				</div>
-			</template>
-			<template v-else-if="isLoadingEnv">
-				<span class="ctp-env-icon">⏳</span>
-				<span class="ctp-env-loading">正在检测 Python 环境…</span>
-			</template>
-			<template v-else>
-				<span class="ctp-env-icon">⚠️</span>
-				<span class="ctp-env-error">{{ activePython?.error || '未找到可用的 Python 环境，请先在 ComfyUI 配置中完成环境设置。' }}</span>
-			</template>
-		</div>
-
-		<!-- ComfyUI 源码更新区域 -->
-		<div class="ctp-update-section">
-			<div class="ctp-section-title">
-				<span>▸ ComfyUI 源码更新</span>
-			</div>
-			<div class="ctp-update-bar">
-				<div class="ctp-update-info" v-if="!isCheckingVersion && !isUpdating">
-					<template v-if="versionInfo">
-						<span class="ctp-version-badge" :class="{ update: versionInfo.updateAvailable }">
-							{{ versionInfo.updateAvailable ? '🔄 有新版本' : '✓ 已是最新' }}
-						</span>
-						<span class="ctp-version-detail" v-if="versionInfo.currentVersion || versionInfo.currentCommit">
-							当前: v{{ versionInfo.currentVersion || versionInfo.currentCommit?.slice(0, 7) }}
-						</span>
-						<span class="ctp-version-detail" v-if="versionInfo.latestVersion || versionInfo.latestTag">
-							最新: {{ versionInfo.latestTag || ('v' + versionInfo.latestVersion) }}
-						</span>
-						<span class="ctp-version-detail ctp-git-status" v-if="!versionInfo.isGitRepo">
-							（非 Git 安装，更新将自动初始化 Git）
-						</span>
-					</template>
-					<template v-else-if="versionCheckError">
-						<span class="ctp-version-error">⚠️ {{ versionCheckError }}</span>
-					</template>
-					<template v-else>
-						<span class="ctp-version-hint">点击「检查更新」查看 ComfyUI 版本状态</span>
-					</template>
-				</div>
-
-				<div class="ctp-update-progress" v-if="isCheckingVersion || isUpdating">
-					<span class="ctp-update-spinner"></span>
-					<span class="ctp-update-status-text">{{ currentUpdateStep || (isCheckingVersion ? '正在检查版本…' : '正在更新…') }}</span>
-				</div>
-
-				<div class="ctp-update-actions">
-					<button
-						class="ctp-action-btn"
-						:disabled="isRunning || isCheckingVersion || isUpdating"
-						@click="checkVersion"
-					>
-						{{ versionInfo ? '↻ 重新检查' : '检查更新' }}
-					</button>
-					<button
-						class="ctp-action-btn ctp-action-btn-primary"
-						:disabled="isRunning || isCheckingVersion || isUpdating"
-						@click="updateComfyUI"
-					>
-						更新源码
+			<div class="ctp-header">
+				<div class="ctp-title-row">
+					<span class="ctp-title">
+						<span class="ctp-title-dot"></span>
+						ComfyUI 终端
+					</span>
+					<span class="ctp-mode-badge" :class="terminalMode">
+						{{ modeLabel }}
+					</span>
+					<button class="ctp-refresh-btn" @click="refreshEnv" :disabled="isLoadingEnv">
+						{{ isLoadingEnv ? '检测中…' : '↻ 刷新环境' }}
 					</button>
 				</div>
+				<p class="ctp-desc">
+					执行诊断命令、更新 ComfyUI 源码或手动安装 ComfyUI-Manager 扩展。所有 pip/python
+					命令将自动使用配置的虚拟环境。
+				</p>
 			</div>
-		</div>
 
-		<div class="ctp-presets-section">
-			<div class="ctp-section-title ctp-collapsible-title" @click="managerExpanded = !managerExpanded">
-				<span class="ctp-collapse-arrow" :class="{ expanded: managerExpanded }">▸</span>
-				<span>Manager 安装向导</span>
+			<!-- Python 环境信息栏 -->
+			<div class="ctp-env-bar" :class="{ error: !activePython?.ok }">
+				<template v-if="activePython?.ok">
+					<span class="ctp-env-icon">🐍</span>
+					<div class="ctp-env-info">
+						<span class="ctp-env-type">{{ activePython.typeLabel }}</span>
+						<span class="ctp-env-version" v-if="activePython.version">
+							Python {{ activePython.version }}
+						</span>
+					</div>
+					<div class="ctp-env-path" :title="activePython.pythonPath">
+						{{ activePython.pythonPath }}
+					</div>
+				</template>
+				<template v-else-if="isLoadingEnv">
+					<span class="ctp-env-icon">⏳</span>
+					<span class="ctp-env-loading">正在检测 Python 环境…</span>
+				</template>
+				<template v-else>
+					<span class="ctp-env-icon">⚠️</span>
+					<span class="ctp-env-error">
+						{{
+							activePython?.error || '未找到可用的 Python 环境，请先在 ComfyUI 配置中完成环境设置。'
+						}}
+					</span>
+				</template>
 			</div>
-			<div class="ctp-wizard-steps" v-show="managerExpanded">
+
+			<!-- ComfyUI 源码更新区域 -->
+			<div class="ctp-update-section">
+				<div class="ctp-section-title">
+					<span>▸ ComfyUI 源码更新</span>
+				</div>
+				<div class="ctp-update-bar">
+					<div class="ctp-update-info" v-if="!isCheckingVersion && !isUpdating">
+						<template v-if="versionInfo">
+							<span class="ctp-version-badge" :class="{ update: versionInfo.updateAvailable }">
+								{{ versionInfo.updateAvailable ? '🔄 有新版本' : '✓ 已是最新' }}
+							</span>
+							<span
+								class="ctp-version-detail"
+								v-if="versionInfo.currentVersion || versionInfo.currentCommit"
+							>
+								当前: v{{ versionInfo.currentVersion || versionInfo.currentCommit?.slice(0, 7) }}
+							</span>
+							<span
+								class="ctp-version-detail"
+								v-if="versionInfo.latestVersion || versionInfo.latestTag"
+							>
+								最新: {{ versionInfo.latestTag || 'v' + versionInfo.latestVersion }}
+							</span>
+							<span class="ctp-version-detail ctp-git-status" v-if="!versionInfo.isGitRepo">
+								（非 Git 安装，更新将自动初始化 Git）
+							</span>
+						</template>
+						<template v-else-if="versionCheckError">
+							<span class="ctp-version-error">⚠️ {{ versionCheckError }}</span>
+						</template>
+						<template v-else>
+							<span class="ctp-version-hint">点击「检查更新」查看 ComfyUI 版本状态</span>
+						</template>
+					</div>
+
+					<div class="ctp-update-progress" v-if="isCheckingVersion || isUpdating">
+						<span class="ctp-update-spinner"></span>
+						<span class="ctp-update-status-text">
+							{{ currentUpdateStep || (isCheckingVersion ? '正在检查版本…' : '正在更新…') }}
+						</span>
+					</div>
+
+					<div class="ctp-update-actions">
+						<button
+							class="ctp-action-btn"
+							:disabled="isRunning || isCheckingVersion || isUpdating"
+							@click="checkVersion"
+						>
+							{{ versionInfo ? '↻ 重新检查' : '检查更新' }}
+						</button>
+						<button
+							class="ctp-action-btn ctp-action-btn-primary"
+							:disabled="isRunning || isCheckingVersion || isUpdating"
+							@click="updateComfyUI"
+						>
+							更新源码
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<div class="ctp-presets-section">
 				<div
-					v-for="(preset, idx) in wizardPresets"
-					:key="preset.id"
-					class="ctp-wizard-step"
+					class="ctp-section-title ctp-collapsible-title"
+					@click="managerExpanded = !managerExpanded"
 				>
+					<span class="ctp-collapse-arrow" :class="{ expanded: managerExpanded }">▸</span>
+					<span>Manager 安装向导</span>
+				</div>
+				<div class="ctp-wizard-steps" v-show="managerExpanded">
+					<div v-for="(preset, idx) in wizardPresets" :key="preset.id" class="ctp-wizard-step">
+						<button
+							class="ctp-step-btn"
+							:disabled="isRunning || isUpdating"
+							@click="runPreset(preset.id)"
+						>
+							<span class="ctp-step-num">{{ idx + 1 }}</span>
+							<span class="ctp-step-label">{{ preset.label }}</span>
+							<span class="ctp-step-arrow">▶</span>
+						</button>
+					</div>
+				</div>
+
+				<div
+					class="ctp-section-title ctp-mt ctp-collapsible-title"
+					@click="generalExpanded = !generalExpanded"
+				>
+					<span class="ctp-collapse-arrow" :class="{ expanded: generalExpanded }">▸</span>
+					<span>通用诊断命令</span>
+				</div>
+				<div class="ctp-presets-grid" v-show="generalExpanded">
 					<button
-						class="ctp-step-btn"
+						v-for="preset in generalPresets"
+						:key="preset.id"
+						class="ctp-preset-btn"
 						:disabled="isRunning || isUpdating"
 						@click="runPreset(preset.id)"
 					>
-						<span class="ctp-step-num">{{ idx + 1 }}</span>
-						<span class="ctp-step-label">{{ preset.label }}</span>
-						<span class="ctp-step-arrow">▶</span>
+						{{ preset.label }}
 					</button>
 				</div>
 			</div>
 
-			<div class="ctp-section-title ctp-mt ctp-collapsible-title" @click="generalExpanded = !generalExpanded">
-				<span class="ctp-collapse-arrow" :class="{ expanded: generalExpanded }">▸</span>
-				<span>通用诊断命令</span>
-			</div>
-			<div class="ctp-presets-grid" v-show="generalExpanded">
-				<button
-					v-for="preset in generalPresets"
-					:key="preset.id"
-					class="ctp-preset-btn"
-					:disabled="isRunning || isUpdating"
-					@click="runPreset(preset.id)"
+			<div class="ctp-custom-section">
+				<div
+					class="ctp-section-title ctp-collapsible-title"
+					@click="customExpanded = !customExpanded"
 				>
-					{{ preset.label }}
-				</button>
+					<span class="ctp-collapse-arrow" :class="{ expanded: customExpanded }">▸</span>
+					<span>自定义命令</span>
+				</div>
+				<div class="ctp-custom-input-row" v-show="customExpanded">
+					<input
+						v-model="customCmd"
+						type="text"
+						class="ctp-cmd-input"
+						placeholder="输入命令（如 dir、pip list 等）"
+						@keydown.enter="runCustomCommand"
+						:disabled="isRunning || isUpdating"
+					/>
+					<button
+						class="sc-btn sc-btn-primary ctp-run-btn"
+						:disabled="isRunning || isUpdating || !customCmd.trim()"
+						@click="runCustomCommand"
+					>
+						<span v-if="!isRunning && !isUpdating">执行</span>
+						<span v-else>运行中…</span>
+					</button>
+				</div>
 			</div>
 		</div>
-
-		<div class="ctp-custom-section">
-			<div class="ctp-section-title ctp-collapsible-title" @click="customExpanded = !customExpanded">
-				<span class="ctp-collapse-arrow" :class="{ expanded: customExpanded }">▸</span>
-				<span>自定义命令</span>
-			</div>
-			<div class="ctp-custom-input-row" v-show="customExpanded">
-				<input
-					v-model="customCmd"
-					type="text"
-					class="ctp-cmd-input"
-					placeholder="输入命令（如 dir、pip list 等）"
-					@keydown.enter="runCustomCommand"
-					:disabled="isRunning || isUpdating"
-				/>
-				<button
-					class="sc-btn sc-btn-primary ctp-run-btn"
-					:disabled="isRunning || isUpdating || !customCmd.trim()"
-					@click="runCustomCommand"
-				>
-					<span v-if="!isRunning && !isUpdating">执行</span>
-					<span v-else>运行中…</span>
-				</button>
-			</div>
-		</div>
-		</div><!-- /.ctp-upper-sections -->
+		<!-- /.ctp-upper-sections -->
 
 		<div class="ctp-output-section">
 			<div class="ctp-output-header">
@@ -171,27 +194,25 @@
 					<span class="ctp-output-dot" :class="{ running: isRunning || isUpdating }"></span>
 					{{ isUpdating ? '更新日志' : '命令输出' }}
 				</span>
-				<button
-					class="ctp-clear-btn"
-					:disabled="outputLines.length === 0"
-					@click="clearOutput"
-				>
+				<button class="ctp-clear-btn" :disabled="outputLines.length === 0" @click="clearOutput">
 					清空
 				</button>
 			</div>
-			<div
-				class="ctp-terminal sc-log-terminal"
-				ref="terminalEl"
-			>
+			<div class="ctp-terminal sc-log-terminal" ref="terminalEl">
 				<div v-if="outputLines.length === 0" class="sc-log-empty">
-					{{ isUpdating ? '正在更新 ComfyUI 源码...' : '选择预设命令、检查更新或输入自定义命令开始执行。' }}
+					{{
+						isUpdating
+							? '正在更新 ComfyUI 源码...'
+							: '选择预设命令、检查更新或输入自定义命令开始执行。'
+					}}
 				</div>
 				<pre
 					v-for="(line, idx) in outputLines"
 					:key="idx"
 					class="ctp-log-line"
 					:class="`log-${line.type}`"
-				>{{ line.text }}</pre>
+					>{{ line.text }}</pre
+				>
 			</div>
 		</div>
 	</div>
@@ -235,13 +256,11 @@ const versionCheckError = ref<string | null>(null)
 const currentUpdateStep = ref<string | null>(null)
 
 // 折叠状态
-const managerExpanded = ref(false)   // Manager 安装向导默认折叠
-const generalExpanded = ref(true)    // 通用诊断命令默认展开
-const customExpanded = ref(true)     // 自定义命令默认展开
+const managerExpanded = ref(false) // Manager 安装向导默认折叠
+const generalExpanded = ref(true) // 通用诊断命令默认展开
+const customExpanded = ref(true) // 自定义命令默认展开
 
-const wizardPresets = computed(() =>
-	allPresets.value.filter((p) => p.category === 'manager-guide')
-)
+const wizardPresets = computed(() => allPresets.value.filter((p) => p.category === 'manager-guide'))
 const generalPresets = computed(() =>
 	allPresets.value.filter((p) => p.category !== 'manager-guide')
 )
@@ -381,7 +400,7 @@ async function checkVersion() {
 	if (isCheckingVersion.value || isUpdating.value) return
 	isCheckingVersion.value = true
 	versionCheckError.value = null
-	
+
 	try {
 		const config = await comfySetup?.getConfig?.()
 		const installPath = config?.installPath
@@ -407,7 +426,12 @@ async function checkVersion() {
 }
 
 async function updateComfyUI() {
-	console.error('[DEBUG UPDATE COMFYUI] [Vue] updateComfyUI function ENTERED. Guards: isRunning=', isRunning.value, 'isUpdating=', isUpdating.value)
+	console.error(
+		'[DEBUG UPDATE COMFYUI] [Vue] updateComfyUI function ENTERED. Guards: isRunning=',
+		isRunning.value,
+		'isUpdating=',
+		isUpdating.value
+	)
 	if (isRunning.value || isUpdating.value) {
 		console.error('[DEBUG UPDATE COMFYUI] [Vue] Guard blocked (already running/updating)')
 		pushToast('ComfyUI 正在运行或更新中，请稍候再试', 'warn')
@@ -440,24 +464,42 @@ async function updateComfyUI() {
 	try {
 		console.error('[DEBUG UPDATE COMFYUI] [Vue] calling comfySetup.getConfig()...')
 		const config = await comfySetup?.getConfig?.()
-		console.error('[DEBUG UPDATE COMFYUI] [Vue] getConfig() returned =', JSON.stringify(config).slice(0, 500))
+		console.error(
+			'[DEBUG UPDATE COMFYUI] [Vue] getConfig() returned =',
+			JSON.stringify(config).slice(0, 500)
+		)
 		const installPath = config?.installPath
 		if (!installPath) {
-			console.error('[DEBUG UPDATE COMFYUI] [Vue] No installPath in config. Appending error + return.')
+			console.error(
+				'[DEBUG UPDATE COMFYUI] [Vue] No installPath in config. Appending error + return.'
+			)
 			appendLine('error', '[错误] 未配置 ComfyUI 安装目录')
 			pushToast('未配置 ComfyUI 安装目录', 'error')
 			return
 		}
 
-		console.error('[DEBUG UPDATE COMFYUI] [Vue] Creating stream via comfySetup.updateComfyUI(). typeof =', typeof comfySetup?.updateComfyUI)
+		console.error(
+			'[DEBUG UPDATE COMFYUI] [Vue] Creating stream via comfySetup.updateComfyUI(). typeof =',
+			typeof comfySetup?.updateComfyUI
+		)
 		const stream = comfySetup.updateComfyUI({ installPath })
-		console.error('[DEBUG UPDATE COMFYUI] [Vue] Stream object created. Symbol.asyncIterator? =', typeof stream?.[Symbol.asyncIterator])
+		console.error(
+			'[DEBUG UPDATE COMFYUI] [Vue] Stream object created. Symbol.asyncIterator? =',
+			typeof stream?.[Symbol.asyncIterator]
+		)
 		let hasError = false
 		let isDone = false
 		let chunkIndex = 0
 		for await (const chunk of stream) {
 			chunkIndex++
-			console.error(`[DEBUG UPDATE COMFYUI] [Vue] Chunk #${chunkIndex}: type=`, chunk?.type, 'message?', !!chunk?.message, 'stream?', chunk?.stream)
+			console.error(
+				`[DEBUG UPDATE COMFYUI] [Vue] Chunk #${chunkIndex}: type=`,
+				chunk?.type,
+				'message?',
+				!!chunk?.message,
+				'stream?',
+				chunk?.stream
+			)
 			if (chunk?.type === 'step') {
 				currentUpdateStep.value = chunk.message || chunk.step
 				appendLine('system', `[步骤] ${chunk.message || chunk.step}`)
@@ -473,7 +515,9 @@ async function updateComfyUI() {
 				appendLine('system', chunk.message)
 			}
 		}
-		console.error(`[DEBUG UPDATE COMFYUI] [Vue] for-await ended. Total chunks: ${chunkIndex}, hasError=${hasError}, isDone=${isDone}`)
+		console.error(
+			`[DEBUG UPDATE COMFYUI] [Vue] for-await ended. Total chunks: ${chunkIndex}, hasError=${hasError}, isDone=${isDone}`
+		)
 		if (!hasError && isDone) {
 			appendLine('system', '[系统] ComfyUI 源码更新完成！建议重启服务后使用。')
 			pushToast('ComfyUI 源码更新成功', 'success')
@@ -484,7 +528,10 @@ async function updateComfyUI() {
 			appendLine('stderr', '[提示] 更新流程未返回完成状态，可能需要手动确认。')
 		}
 	} catch (err) {
-		console.error('[DEBUG UPDATE COMFYUI] [Vue] CATCH BLOCK (for-await level):', (err as any)?.stack || err)
+		console.error(
+			'[DEBUG UPDATE COMFYUI] [Vue] CATCH BLOCK (for-await level):',
+			(err as any)?.stack || err
+		)
 		const msg = (err as any)?.message || String(err)
 		appendLine('error', `[错误] 更新失败: ${msg}`)
 		pushToast('更新失败：' + msg, 'error')
@@ -783,7 +830,9 @@ onMounted(() => {
 	flex-shrink: 0;
 }
 @keyframes spin {
-	to { transform: rotate(360deg); }
+	to {
+		transform: rotate(360deg);
+	}
 }
 .ctp-update-status-text {
 	font-size: 12px;
@@ -1049,8 +1098,13 @@ onMounted(() => {
 	animation: pulse-dot 1s ease-in-out infinite;
 }
 @keyframes pulse-dot {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
 }
 .ctp-clear-btn {
 	font-size: 11px;

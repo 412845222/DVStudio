@@ -4,12 +4,33 @@ import { spawn } from 'node:child_process'
 import { shell, app } from 'electron'
 
 const COMMAND_BLACKLIST = new Set([
-	'cmd.exe', 'cmd', 'powershell.exe', 'powershell', 'pwsh', 'pwsh.exe',
-	'bash', 'sh', 'zsh', 'fish',
-	'reg', 'reg.exe', 'regedit', 'regedt32',
-	'format', 'format.com', 'deltree', 'rd', 'rmdir',
-	'rundll32', 'rundll32.exe', 'mshta', 'mshta.exe',
-	'wscript', 'wscript.exe', 'cscript', 'cscript.exe'
+	'cmd.exe',
+	'cmd',
+	'powershell.exe',
+	'powershell',
+	'pwsh',
+	'pwsh.exe',
+	'bash',
+	'sh',
+	'zsh',
+	'fish',
+	'reg',
+	'reg.exe',
+	'regedit',
+	'regedt32',
+	'format',
+	'format.com',
+	'deltree',
+	'rd',
+	'rmdir',
+	'rundll32',
+	'rundll32.exe',
+	'mshta',
+	'mshta.exe',
+	'wscript',
+	'wscript.exe',
+	'cscript',
+	'cscript.exe'
 ])
 
 const MAX_OUTPUT_LINES = 2000
@@ -77,7 +98,9 @@ function runCommandStream(cmd, args, options = {}) {
 	}
 	const timer = setTimeout(() => {
 		timedOut = true
-		try { child.kill() } catch {}
+		try {
+			child.kill()
+		} catch {}
 		queue.push({ type: 'log', stream: 'stderr', message: '命令执行超时（5分钟），已自动终止' })
 	}, timeout)
 	const processLine = (stream, data) => {
@@ -100,7 +123,11 @@ function runCommandStream(cmd, args, options = {}) {
 		}
 		clearTimeout(timer)
 		if (lineCount > MAX_OUTPUT_LINES) {
-			queue.push({ type: 'log', stream: 'stderr', message: `输出已截断（超过${MAX_OUTPUT_LINES}行），如需查看完整输出请将结果重定向到文件` })
+			queue.push({
+				type: 'log',
+				stream: 'stderr',
+				message: `输出已截断（超过${MAX_OUTPUT_LINES}行），如需查看完整输出请将结果重定向到文件`
+			})
 		}
 		if (code !== 0 && code !== -1) {
 			queue.push({ type: 'log', stream: 'stderr', message: `命令退出码: ${code}` })
@@ -139,7 +166,8 @@ function resolvePythonForCommand(installPath) {
 		if (config.venvPath) {
 			const normalized = path.resolve(config.venvPath)
 			const normalizedInstall = targetInstallPath ? path.resolve(targetInstallPath) : null
-			const isVenvInsideInstall = normalizedInstall &&
+			const isVenvInsideInstall =
+				normalizedInstall &&
 				(normalized.toLowerCase().startsWith(normalizedInstall.toLowerCase() + path.sep) ||
 					normalized.toLowerCase() === normalizedInstall.toLowerCase())
 			if (isVenvInsideInstall) {
@@ -150,9 +178,10 @@ function resolvePythonForCommand(installPath) {
 		} else {
 			venvRoot = path.join(app.getPath('userData'), MANAGED_VENV_DIRNAME)
 		}
-		const managedPy = process.platform === 'win32'
-			? path.join(venvRoot, 'venv', 'Scripts', 'python.exe')
-			: path.join(venvRoot, 'venv', 'bin', 'python')
+		const managedPy =
+			process.platform === 'win32'
+				? path.join(venvRoot, 'venv', 'Scripts', 'python.exe')
+				: path.join(venvRoot, 'venv', 'bin', 'python')
 		if (fs.existsSync(managedPy)) {
 			return {
 				ok: true,
@@ -169,7 +198,13 @@ function resolvePythonForCommand(installPath) {
 		try {
 			const portablePy = path.join(targetInstallPath, 'python_embeded', 'python.exe')
 			if (fs.existsSync(portablePy)) {
-				return { ok: true, pythonPath: portablePy, type: 'portable', typeLabel: '便携版Python', venvRoot: null }
+				return {
+					ok: true,
+					pythonPath: portablePy,
+					type: 'portable',
+					typeLabel: '便携版Python',
+					venvRoot: null
+				}
 			}
 		} catch {}
 	}
@@ -177,11 +212,18 @@ function resolvePythonForCommand(installPath) {
 	// 3. 项目内venv
 	if (targetInstallPath) {
 		try {
-			const venvPy = process.platform === 'win32'
-				? path.join(targetInstallPath, 'venv', 'Scripts', 'python.exe')
-				: path.join(targetInstallPath, 'venv', 'bin', 'python')
+			const venvPy =
+				process.platform === 'win32'
+					? path.join(targetInstallPath, 'venv', 'Scripts', 'python.exe')
+					: path.join(targetInstallPath, 'venv', 'bin', 'python')
 			if (fs.existsSync(venvPy)) {
-				return { ok: true, pythonPath: venvPy, type: 'venv', typeLabel: '项目内虚拟环境', venvRoot: path.join(targetInstallPath, 'venv') }
+				return {
+					ok: true,
+					pythonPath: venvPy,
+					type: 'venv',
+					typeLabel: '项目内虚拟环境',
+					venvRoot: path.join(targetInstallPath, 'venv')
+				}
 			}
 		} catch {}
 	}
@@ -189,25 +231,150 @@ function resolvePythonForCommand(installPath) {
 	// 4. 找不到，返回错误，不回退系统Python
 	return {
 		ok: false,
-		error: '未找到可用的Python虚拟环境。\n请先在ComfyUI配置中完成环境配置（一键配置或手动选择虚拟环境位置），\n或确保ComfyUI源码目录下存在venv或python_embeded目录。'
+		error:
+			'未找到可用的Python虚拟环境。\n请先在ComfyUI配置中完成环境配置（一键配置或手动选择虚拟环境位置），\n或确保ComfyUI源码目录下存在venv或python_embeded目录。'
 	}
 }
 
 export function listPresetCommands() {
 	return [
-		{ id: 'step1-open-customnodes-dir', category: 'manager-guide', label: '步骤1: 打开 custom_nodes 目录', description: '在文件管理器中打开 custom_nodes 目录，确认位置', dangerous: false, icon: 'folder', requiresGit: false, requiresPython: false, step: 1 },
-		{ id: 'step2-install-manager-github', category: 'manager-guide', label: '步骤2: 克隆 Manager (GitHub官方)', description: '从 GitHub 官方源克隆 ComfyUI-Manager 到 custom_nodes 目录', dangerous: false, icon: 'download', requiresGit: true, requiresPython: false, step: 2 },
-		{ id: 'step2-install-manager-gitee', category: 'manager-guide', label: '步骤2备选: 克隆 Manager (Gitee镜像)', description: 'GitHub 访问慢时使用国内 Gitee 镜像源', dangerous: false, icon: 'download', requiresGit: true, requiresPython: false, step: 2 },
-		{ id: 'step2-install-manager-ghproxy', category: 'manager-guide', label: '步骤2备选: 克隆 Manager (代理加速)', description: 'GitHub 官方源通过代理加速克隆', dangerous: false, icon: 'download', requiresGit: true, requiresPython: false, step: 2 },
-		{ id: 'step3-install-manager-deps', category: 'manager-guide', label: '步骤3: 安装 Manager Python 依赖', description: '执行 pip install -r requirements.txt 安装 Manager 所需依赖', dangerous: false, icon: 'package', requiresGit: false, requiresPython: true, step: 3 },
-		{ id: 'step3.5-upgrade-manager-pip', category: 'manager-guide', label: '步骤3.5: 升级 comfyui-manager 包', description: '执行 pip install -U comfyui-manager 升级到最新版本（解决版本过低报错）', dangerous: false, icon: 'package-up', requiresGit: false, requiresPython: true, step: 3.5 },
-		{ id: 'step4-check-manager-installed', category: 'manager-guide', label: '步骤4: 验证安装完成', description: '检查 ComfyUI-Manager 目录是否存在，确认安装成功', dangerous: false, icon: 'check', requiresGit: false, requiresPython: false, step: 4 },
-		{ id: 'diagnose-env', category: 'diagnose', label: '诊断: Python/PyTorch 环境速查', description: '输出 Python 版本、PyTorch 版本、CUDA 可用性信息', dangerous: false, icon: 'info', requiresGit: false, requiresPython: true },
-		{ id: 'check-custom-nodes-list', category: 'diagnose', label: '诊断: 列出已安装自定义节点', description: '列出 custom_nodes 目录下所有已安装的自定义节点', dangerous: false, icon: 'list', requiresGit: false, requiresPython: false },
-		{ id: 'pip-install-missing', category: 'dependency', label: '修复: 补装缺失依赖包', description: '升级 pip 工具', dangerous: false, icon: 'wrench', requiresGit: false, requiresPython: true },
-		{ id: 'git-status', category: 'git', label: 'Git: 查看本地修改状态', description: '执行 git status 查看 ComfyUI 源码本地修改情况', dangerous: false, icon: 'git', requiresGit: true, requiresPython: false },
-		{ id: 'git-log-10', category: 'git', label: 'Git: 查看最近10次提交', description: '执行 git log --oneline -10 查看最近提交记录', dangerous: false, icon: 'git', requiresGit: true, requiresPython: false },
-		{ id: 'git-remote-v', category: 'git', label: 'Git: 查看远程仓库地址', description: '执行 git remote -v 查看当前配置的远程仓库 URL', dangerous: false, icon: 'git', requiresGit: true, requiresPython: false }
+		{
+			id: 'step1-open-customnodes-dir',
+			category: 'manager-guide',
+			label: '步骤1: 打开 custom_nodes 目录',
+			description: '在文件管理器中打开 custom_nodes 目录，确认位置',
+			dangerous: false,
+			icon: 'folder',
+			requiresGit: false,
+			requiresPython: false,
+			step: 1
+		},
+		{
+			id: 'step2-install-manager-github',
+			category: 'manager-guide',
+			label: '步骤2: 克隆 Manager (GitHub官方)',
+			description: '从 GitHub 官方源克隆 ComfyUI-Manager 到 custom_nodes 目录',
+			dangerous: false,
+			icon: 'download',
+			requiresGit: true,
+			requiresPython: false,
+			step: 2
+		},
+		{
+			id: 'step2-install-manager-gitee',
+			category: 'manager-guide',
+			label: '步骤2备选: 克隆 Manager (Gitee镜像)',
+			description: 'GitHub 访问慢时使用国内 Gitee 镜像源',
+			dangerous: false,
+			icon: 'download',
+			requiresGit: true,
+			requiresPython: false,
+			step: 2
+		},
+		{
+			id: 'step2-install-manager-ghproxy',
+			category: 'manager-guide',
+			label: '步骤2备选: 克隆 Manager (代理加速)',
+			description: 'GitHub 官方源通过代理加速克隆',
+			dangerous: false,
+			icon: 'download',
+			requiresGit: true,
+			requiresPython: false,
+			step: 2
+		},
+		{
+			id: 'step3-install-manager-deps',
+			category: 'manager-guide',
+			label: '步骤3: 安装 Manager Python 依赖',
+			description: '执行 pip install -r requirements.txt 安装 Manager 所需依赖',
+			dangerous: false,
+			icon: 'package',
+			requiresGit: false,
+			requiresPython: true,
+			step: 3
+		},
+		{
+			id: 'step3.5-upgrade-manager-pip',
+			category: 'manager-guide',
+			label: '步骤3.5: 升级 comfyui-manager 包',
+			description: '执行 pip install -U comfyui-manager 升级到最新版本（解决版本过低报错）',
+			dangerous: false,
+			icon: 'package-up',
+			requiresGit: false,
+			requiresPython: true,
+			step: 3.5
+		},
+		{
+			id: 'step4-check-manager-installed',
+			category: 'manager-guide',
+			label: '步骤4: 验证安装完成',
+			description: '检查 ComfyUI-Manager 目录是否存在，确认安装成功',
+			dangerous: false,
+			icon: 'check',
+			requiresGit: false,
+			requiresPython: false,
+			step: 4
+		},
+		{
+			id: 'diagnose-env',
+			category: 'diagnose',
+			label: '诊断: Python/PyTorch 环境速查',
+			description: '输出 Python 版本、PyTorch 版本、CUDA 可用性信息',
+			dangerous: false,
+			icon: 'info',
+			requiresGit: false,
+			requiresPython: true
+		},
+		{
+			id: 'check-custom-nodes-list',
+			category: 'diagnose',
+			label: '诊断: 列出已安装自定义节点',
+			description: '列出 custom_nodes 目录下所有已安装的自定义节点',
+			dangerous: false,
+			icon: 'list',
+			requiresGit: false,
+			requiresPython: false
+		},
+		{
+			id: 'pip-install-missing',
+			category: 'dependency',
+			label: '修复: 补装缺失依赖包',
+			description: '升级 pip 工具',
+			dangerous: false,
+			icon: 'wrench',
+			requiresGit: false,
+			requiresPython: true
+		},
+		{
+			id: 'git-status',
+			category: 'git',
+			label: 'Git: 查看本地修改状态',
+			description: '执行 git status 查看 ComfyUI 源码本地修改情况',
+			dangerous: false,
+			icon: 'git',
+			requiresGit: true,
+			requiresPython: false
+		},
+		{
+			id: 'git-log-10',
+			category: 'git',
+			label: 'Git: 查看最近10次提交',
+			description: '执行 git log --oneline -10 查看最近提交记录',
+			dangerous: false,
+			icon: 'git',
+			requiresGit: true,
+			requiresPython: false
+		},
+		{
+			id: 'git-remote-v',
+			category: 'git',
+			label: 'Git: 查看远程仓库地址',
+			description: '执行 git remote -v 查看当前配置的远程仓库 URL',
+			dangerous: false,
+			icon: 'git',
+			requiresGit: true,
+			requiresPython: false
+		}
 	]
 }
 
@@ -328,7 +495,7 @@ export async function* runPresetCommand(_ctx, payload) {
 
 	// 对于需要Python的命令，先解析Python环境并输出环境信息
 	let pyResult = null
-	const preset = listPresetCommands().find(p => p.id === presetId)
+	const preset = listPresetCommands().find((p) => p.id === presetId)
 	if (preset?.requiresPython) {
 		pyResult = resolvePythonForCommand(installPath)
 		if (!pyResult.ok) {
@@ -338,7 +505,11 @@ export async function* runPresetCommand(_ctx, payload) {
 		yield { type: 'log', stream: 'system', message: `[环境] Python 解释器: ${pyResult.pythonPath}` }
 		yield { type: 'log', stream: 'system', message: `[环境] 环境类型: ${pyResult.typeLabel}` }
 		if (pyResult.venvRoot) {
-			yield { type: 'log', stream: 'system', message: `[环境] 虚拟环境根目录: ${pyResult.venvRoot}` }
+			yield {
+				type: 'log',
+				stream: 'system',
+				message: `[环境] 虚拟环境根目录: ${pyResult.venvRoot}`
+			}
 		}
 	}
 
@@ -351,7 +522,10 @@ export async function* runPresetCommand(_ctx, payload) {
 				}
 				await shell.openPath(customNodesDir)
 				yield { type: 'log', stream: 'stdout', message: `已在文件管理器中打开: ${customNodesDir}` }
-				yield { type: 'done', message: '步骤1完成: 已打开 custom_nodes 目录，请继续步骤2克隆 Manager' }
+				yield {
+					type: 'done',
+					message: '步骤1完成: 已打开 custom_nodes 目录，请继续步骤2克隆 Manager'
+				}
 			} catch (err) {
 				yield { type: 'error', message: `打开目录失败: ${err.message || err}` }
 			}
@@ -362,7 +536,11 @@ export async function* runPresetCommand(_ctx, payload) {
 		case 'step2-install-manager-ghproxy': {
 			const managerDir = path.join(customNodesDir, 'ComfyUI-Manager')
 			if (fs.existsSync(managerDir) && fs.existsSync(path.join(managerDir, '__init__.py'))) {
-				yield { type: 'log', stream: 'stdout', message: '检测到 ComfyUI-Manager 已安装，无需重复克隆' }
+				yield {
+					type: 'log',
+					stream: 'stdout',
+					message: '检测到 ComfyUI-Manager 已安装，无需重复克隆'
+				}
 				yield { type: 'done', message: 'Manager 已存在，请继续步骤3安装依赖' }
 				return
 			}
@@ -381,7 +559,11 @@ export async function* runPresetCommand(_ctx, payload) {
 			if (fs.existsSync(path.join(managerDir, '__init__.py'))) {
 				yield { type: 'done', message: '步骤2完成: Manager 源码克隆成功，请继续步骤3安装依赖' }
 			} else {
-				yield { type: 'log', stream: 'stderr', message: '警告: 未检测到 ComfyUI-Manager 目录，请检查 clone 输出是否有错误' }
+				yield {
+					type: 'log',
+					stream: 'stderr',
+					message: '警告: 未检测到 ComfyUI-Manager 目录，请检查 clone 输出是否有错误'
+				}
 			}
 			return
 		}
@@ -393,20 +575,43 @@ export async function* runPresetCommand(_ctx, payload) {
 				return
 			}
 			if (!fs.existsSync(reqFile)) {
-				yield { type: 'log', stream: 'stdout', message: '未找到 requirements.txt，跳过依赖安装（可能无需额外依赖）' }
+				yield {
+					type: 'log',
+					stream: 'stdout',
+					message: '未找到 requirements.txt，跳过依赖安装（可能无需额外依赖）'
+				}
 				yield { type: 'done', message: '步骤3完成' }
 				return
 			}
-			const pipArgs = ['-m', 'pip', 'install', '-r', 'requirements.txt', ...getPipMirrorArgs(config)]
-			yield { type: 'log', stream: 'stdout', message: `执行: "${pyResult.pythonPath}" ${pipArgs.join(' ')}` }
+			const pipArgs = [
+				'-m',
+				'pip',
+				'install',
+				'-r',
+				'requirements.txt',
+				...getPipMirrorArgs(config)
+			]
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: `执行: "${pyResult.pythonPath}" ${pipArgs.join(' ')}`
+			}
 			yield* runCommandStream(pyResult.pythonPath, pipArgs, { cwd: managerDir })
-			yield { type: 'log', stream: 'system', message: '依赖安装命令执行完成，请检查上方输出确认成功' }
+			yield {
+				type: 'log',
+				stream: 'system',
+				message: '依赖安装命令执行完成，请检查上方输出确认成功'
+			}
 			yield { type: 'done', message: '步骤3完成: 依赖安装完成，请继续步骤3.5升级comfyui-manager包' }
 			return
 		}
 		case 'step3.5-upgrade-manager-pip': {
 			const pipArgs = ['-m', 'pip', 'install', '-U', 'comfyui-manager', ...getPipMirrorArgs(config)]
-			yield { type: 'log', stream: 'stdout', message: `执行: "${pyResult.pythonPath}" ${pipArgs.join(' ')}` }
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: `执行: "${pyResult.pythonPath}" ${pipArgs.join(' ')}`
+			}
 			yield { type: 'log', stream: 'stdout', message: '正在升级 comfyui-manager 到最新版本...' }
 			yield* runCommandStream(pyResult.pythonPath, pipArgs, { cwd: installPath, timeout: 300000 })
 			yield { type: 'log', stream: 'system', message: '升级命令执行完成，请检查上方输出确认成功' }
@@ -418,7 +623,12 @@ export async function* runPresetCommand(_ctx, payload) {
 			const initPy = path.join(managerDir, '__init__.py')
 			if (fs.existsSync(initPy)) {
 				yield { type: 'log', stream: 'stdout', message: '✅ ComfyUI-Manager 安装成功！' }
-				yield { type: 'log', stream: 'system', message: '重要提示: 请前往「启动参数」Tab，点击左侧【☆ 启用 Manager 菜单 (--enable-manager)】快捷标签添加参数，然后重启 ComfyUI 服务即可生效。' }
+				yield {
+					type: 'log',
+					stream: 'system',
+					message:
+						'重要提示: 请前往「启动参数」Tab，点击左侧【☆ 启用 Manager 菜单 (--enable-manager)】快捷标签添加参数，然后重启 ComfyUI 服务即可生效。'
+				}
 				yield { type: 'done', message: '步骤4完成: Manager 安装验证通过' }
 			} else {
 				yield { type: 'error', message: '❌ 未检测到 ComfyUI-Manager，请重新执行步骤2和步骤3' }
@@ -426,7 +636,8 @@ export async function* runPresetCommand(_ctx, payload) {
 			return
 		}
 		case 'diagnose-env': {
-			const code = 'import sys; print(f"Python版本: {sys.version}"); import torch; print(f"PyTorch版本: {torch.__version__}"); print(f"CUDA可用: {torch.cuda.is_available()}"); print(f"CUDA版本: {torch.version.cuda if torch.cuda.is_available() else \\"N/A\\"}")'
+			const code =
+				'import sys; print(f"Python版本: {sys.version}"); import torch; print(f"PyTorch版本: {torch.__version__}"); print(f"CUDA可用: {torch.cuda.is_available()}"); print(f"CUDA版本: {torch.version.cuda if torch.cuda.is_available() else \\"N/A\\"}")'
 			yield* runCommandStream(pyResult.pythonPath, ['-c', code], { cwd: installPath })
 			yield { type: 'done', message: '环境诊断完成' }
 			return
@@ -438,12 +649,18 @@ export async function* runPresetCommand(_ctx, payload) {
 				return
 			}
 			const entries = fs.readdirSync(customNodesDir, { withFileTypes: true })
-			const dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== '__pycache__')
+			const dirs = entries.filter(
+				(e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== '__pycache__'
+			)
 			yield { type: 'log', stream: 'stdout', message: `已安装 ${dirs.length} 个自定义节点:` }
 			for (const dir of dirs) {
 				const hasReq = fs.existsSync(path.join(customNodesDir, dir.name, 'requirements.txt'))
 				const hasInit = fs.existsSync(path.join(customNodesDir, dir.name, '__init__.py'))
-				yield { type: 'log', stream: 'stdout', message: `  - ${dir.name} ${hasInit ? '✅' : '❓'} ${hasReq ? '(有requirements.txt)' : ''}` }
+				yield {
+					type: 'log',
+					stream: 'stdout',
+					message: `  - ${dir.name} ${hasInit ? '✅' : '❓'} ${hasReq ? '(有requirements.txt)' : ''}`
+				}
 			}
 			yield { type: 'done', message: '节点列表检查完成' }
 			return
@@ -452,7 +669,11 @@ export async function* runPresetCommand(_ctx, payload) {
 			const pipArgs = ['-m', 'pip', 'install', '--upgrade', 'pip', ...getPipMirrorArgs(config)]
 			yield { type: 'log', stream: 'stdout', message: '尝试升级 pip...' }
 			yield* runCommandStream(pyResult.pythonPath, pipArgs, { cwd: installPath })
-			yield { type: 'log', stream: 'stdout', message: 'pip 升级完成，如需安装特定缺失包，请在自定义命令中手动执行 pip install <包名>' }
+			yield {
+				type: 'log',
+				stream: 'stdout',
+				message: 'pip 升级完成，如需安装特定缺失包，请在自定义命令中手动执行 pip install <包名>'
+			}
 			yield { type: 'done', message: '修复命令执行完成' }
 			return
 		}
@@ -504,7 +725,11 @@ export async function* runCustomCommand(_ctx, payload) {
 		pyResult = resolvePythonForCommand(installPath)
 		if (!pyResult.ok) {
 			yield { type: 'error', message: pyResult.error }
-			yield { type: 'log', stream: 'stderr', message: '提示: pip/python命令必须使用配置的虚拟环境执行，以避免污染系统环境。' }
+			yield {
+				type: 'log',
+				stream: 'stderr',
+				message: '提示: pip/python命令必须使用配置的虚拟环境执行，以避免污染系统环境。'
+			}
 			return
 		}
 		yield { type: 'log', stream: 'system', message: `[环境] Python 解释器: ${pyResult.pythonPath}` }
@@ -523,7 +748,11 @@ export async function* runCustomCommand(_ctx, payload) {
 		yield { type: 'error', message: `安全限制: 禁止执行命令 "${cmd}"，该命令可能带来系统风险` }
 		return
 	}
-	yield { type: 'log', stream: 'system', message: `[自定义命令] 在 ${targetCwd} 执行: ${finalCommand}` }
+	yield {
+		type: 'log',
+		stream: 'system',
+		message: `[自定义命令] 在 ${targetCwd} 执行: ${finalCommand}`
+	}
 	yield* runCommandStream(tokens[0], tokens.slice(1), { cwd: targetCwd })
 	yield { type: 'done', message: '自定义命令执行完成' }
 }
@@ -533,7 +762,8 @@ export function checkTerminalMode() {
 		ok: true,
 		customCommandEnabled: true,
 		maxOutputLines: MAX_OUTPUT_LINES,
-		warning: '自定义命令执行受目录限制（仅允许 ComfyUI 安装目录及其子目录），pip命令将自动使用配置的虚拟环境执行'
+		warning:
+			'自定义命令执行受目录限制（仅允许 ComfyUI 安装目录及其子目录），pip命令将自动使用配置的虚拟环境执行'
 	}
 }
 
