@@ -779,6 +779,9 @@ const props = defineProps<{
 		imageInputCount?: number
 		videoInputCount?: number
 		hasTextPromptInput?: boolean
+		textNodeCount?: number
+		positiveTextCount?: number
+		negativeTextCount?: number
 		historyNodeCount?: number
 	} | null
 	width: number
@@ -970,7 +973,6 @@ const runStatusText = computed(() => String(props.comfyuiSettings?.statusText ??
 const runDisabled = computed(() => {
 	if (status.value !== 'connected') return true
 	if (!workflowPath.value) return true
-	if (historyChecked.value && hasHistory.value === false) return true
 	return runStatus.value === 'running' || runStatus.value === 'canceling'
 })
 
@@ -993,6 +995,18 @@ const videoInputCount = computed(() => {
 	return Number.isFinite(n) ? n : 0
 })
 const hasTextPromptInput = computed(() => props.comfyuiSettings?.hasTextPromptInput === true)
+const textNodeCount = computed(() => {
+	const n = Number(props.comfyuiSettings?.textNodeCount)
+	return Number.isFinite(n) ? n : 0
+})
+const positiveTextCount = computed(() => {
+	const n = Number(props.comfyuiSettings?.positiveTextCount)
+	return Number.isFinite(n) ? n : 0
+})
+const negativeTextCount = computed(() => {
+	const n = Number(props.comfyuiSettings?.negativeTextCount)
+	return Number.isFinite(n) ? n : 0
+})
 
 const historyStatusText = computed(() => {
 	if (!historyChecked.value) return t('nodes.comfyui.historyChecking')
@@ -1014,7 +1028,17 @@ const historyInputSummary = computed(() => {
 		parts.push(t('nodes.comfyui.imageInputCount', { count: imageInputCount.value }))
 	if (videoInputCount.value > 0)
 		parts.push(t('nodes.comfyui.videoInputCount', { count: videoInputCount.value }))
-	if (hasTextPromptInput.value) parts.push(t('nodes.comfyui.promptInputRequired'))
+	const pos = positiveTextCount.value
+	const neg = negativeTextCount.value
+	const total = textNodeCount.value
+	if (pos > 0 && neg > 0) {
+		parts.push(t('nodes.comfyui.positiveTextCount', { count: pos }))
+		parts.push(t('nodes.comfyui.negativeTextCount', { count: neg }))
+	} else if (total > 0) {
+		parts.push(t('nodes.comfyui.textInputCount', { count: total }))
+	} else if (hasTextPromptInput.value) {
+		parts.push(t('nodes.comfyui.promptInputRequired'))
+	}
 	return parts.join(' · ')
 })
 

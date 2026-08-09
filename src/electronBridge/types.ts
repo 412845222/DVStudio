@@ -658,6 +658,7 @@ export interface ComfySetupConfig {
 	customMirrorUrl?: string
 	pythonPath?: string
 	extraArgs: string[]
+	launchArgsText?: string
 	proxy?: string
 	customModelPaths?: string[]
 	pypiMirror?: string
@@ -767,6 +768,33 @@ export interface OpenComfySetupResult {
 	focused?: boolean
 }
 
+// ===== 外部 ComfyUI 进程扫描 & 清理 =====
+
+export interface ForeignComfyProcess {
+	pid: number
+	exe: string
+	commandLine: string
+}
+
+export interface ComfyForeignScanResult {
+	ok: boolean
+	error?: string
+	processes?: ForeignComfyProcess[]
+}
+
+export interface ComfyForeignKillPayload {
+	processes?: ForeignComfyProcess[]
+}
+
+export interface ComfyForeignKillResult {
+	ok: boolean
+	error?: string
+	killed: ForeignComfyProcess[]
+	failed: Array<{ pid: number; reason?: string }>
+	remaining?: ForeignComfyProcess[]
+	skipped?: number
+}
+
 export type ComfyServiceLogStream = 'stdout' | 'stderr' | 'system'
 
 export interface ComfyServiceLogEntry {
@@ -796,4 +824,77 @@ export interface ComfyServiceInfo {
 	startTime?: number | null
 	exitCode?: number | string | null
 	errorMsg?: string
+}
+
+export interface ActivePythonInfo {
+	ok: boolean
+	pythonPath?: string
+	type?: 'managed_venv' | 'portable' | 'venv'
+	typeLabel?: string
+	version?: string
+	venvRoot?: string | null
+	installPath?: string
+	error?: string
+}
+
+export interface TerminalPreset {
+	id: string
+	name: string
+	description: string
+	command: string
+	args?: string[]
+	category: 'diagnostic' | 'install' | 'update' | 'utility'
+	requiresPython?: boolean
+}
+
+export interface TerminalCheckModeResult {
+	ok: boolean
+	customCommandEnabled: boolean
+	error?: string
+}
+
+export interface LaunchArgsCoreTag {
+	tag: string
+	description: string
+}
+
+export interface LaunchArgsReferenceArg {
+	arg: string
+	description: string
+}
+
+export interface ComfyVersionCheckResult {
+	ok: boolean
+	currentVersion?: string | null
+	currentCommit?: string | null
+	latestTag?: string | null
+	latestVersion?: string | null
+	updateAvailable: boolean
+	isGitRepo: boolean
+	error?: string | null
+	releaseUrl?: string | null
+	publishedAt?: string | null
+	releaseName?: string | null
+}
+
+export type ComfyUpdateStep =
+	| 'preparing'
+	| 'initializing'
+	| 'checking'
+	| 'fetching'
+	| 'checking_changes'
+	| 'stashing'
+	| 'pulling'
+	| 'updating'
+	| 'installing_deps'
+	| 'done'
+	| 'error'
+
+export interface ComfyUpdateEvent {
+	type: 'step' | 'log' | 'done' | 'error' | 'progress'
+	step?: ComfyUpdateStep
+	message?: string
+	stream?: 'stdout' | 'stderr' | 'system'
+	progress?: number
+	error?: string
 }

@@ -10257,6 +10257,7 @@ const { onComfyUIRun, onComfyUICancel, recoverComfyUIRunStates, disposeComfyRunt
 		routeComfyOutputsToConnectedNodes,
 		clearComfyRouteCache,
 		getIncomingTextValue,
+		getTextOutputForNode,
 		autoWireComfyOutputs
 	})
 
