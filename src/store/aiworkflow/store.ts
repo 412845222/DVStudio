@@ -2434,6 +2434,15 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 			? Number(raw.videoInputCount)
 			: undefined,
 		hasTextPromptInput: isBoolean(raw.hasTextPromptInput) ? raw.hasTextPromptInput : undefined,
+		textNodeCount: Number.isFinite(Number(raw.textNodeCount))
+			? Number(raw.textNodeCount)
+			: undefined,
+		positiveTextCount: Number.isFinite(Number(raw.positiveTextCount))
+			? Number(raw.positiveTextCount)
+			: undefined,
+		negativeTextCount: Number.isFinite(Number(raw.negativeTextCount))
+			? Number(raw.negativeTextCount)
+			: undefined,
 		historyNodeCount: Number.isFinite(Number(raw.historyNodeCount))
 			? Number(raw.historyNodeCount)
 			: undefined,
@@ -2993,6 +3002,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 									prevComfySettings.videoInputCount ?? incomingComfySettings?.videoInputCount,
 								hasTextPromptInput:
 									prevComfySettings.hasTextPromptInput ?? incomingComfySettings?.hasTextPromptInput,
+								textNodeCount:
+									prevComfySettings.textNodeCount ?? incomingComfySettings?.textNodeCount,
+								positiveTextCount:
+									prevComfySettings.positiveTextCount ?? incomingComfySettings?.positiveTextCount,
+								negativeTextCount:
+									prevComfySettings.negativeTextCount ?? incomingComfySettings?.negativeTextCount,
 								historyInputMappings:
 									prevComfySettings.historyInputMappings ??
 									incomingComfySettings?.historyInputMappings,
@@ -4052,6 +4067,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						imageInputCount: undefined,
 						videoInputCount: undefined,
 						hasTextPromptInput: undefined,
+						textNodeCount: undefined,
+						positiveTextCount: undefined,
+						negativeTextCount: undefined,
 						historyNodeCount: undefined,
 						historyInputMappings: undefined,
 						historyOutputNodes: undefined,

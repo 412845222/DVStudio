@@ -278,6 +278,9 @@ export const useAIWorkflowComfyConnection = (payload: {
 				imageInputCount: undefined,
 				videoInputCount: undefined,
 				hasTextPromptInput: undefined,
+				textNodeCount: undefined,
+				positiveTextCount: undefined,
+				negativeTextCount: undefined,
 				historyNodeCount: undefined,
 				historyInputMappings: undefined,
 				historyOutputNodes: undefined,
@@ -347,6 +350,14 @@ export const useAIWorkflowComfyConnection = (payload: {
 						imageInputCount: histRes.imageInputs.length,
 						videoInputCount: histRes.videoInputs.length,
 						hasTextPromptInput: histRes.hasTextPrompt,
+						textNodeCount:
+							histRes.textNodeCount ??
+							(histRes.textNodes?.positive?.length ?? 0) +
+								(histRes.textNodes?.negative?.length ?? 0),
+						positiveTextCount:
+							histRes.positiveTextCount ?? histRes.textNodes?.positive?.length ?? 0,
+						negativeTextCount:
+							histRes.negativeTextCount ?? histRes.textNodes?.negative?.length ?? 0,
 						historyNodeCount: histRes.nodeCount,
 						historyInputMappings: inputMappings,
 						historyOutputNodes: resolvedOutputs,
@@ -385,6 +396,9 @@ export const useAIWorkflowComfyConnection = (payload: {
 						imageInputCount: 0,
 						videoInputCount: 0,
 						hasTextPromptInput: false,
+						textNodeCount: 0,
+						positiveTextCount: 0,
+						negativeTextCount: 0,
 						historyNodeCount: 0,
 						historyInputMappings: undefined,
 						historyOutputNodes: undefined,
@@ -458,6 +472,9 @@ export const useAIWorkflowComfyConnection = (payload: {
 				imageInputCount: undefined,
 				videoInputCount: undefined,
 				hasTextPromptInput: undefined,
+				textNodeCount: undefined,
+				positiveTextCount: undefined,
+				negativeTextCount: undefined,
 				historyNodeCount: undefined,
 				historyInputMappings: undefined,
 				historyOutputNodes: undefined,
