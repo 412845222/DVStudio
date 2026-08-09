@@ -68,6 +68,73 @@ function clearHistoryCache(baseUrl, workflowPath) {
 	}
 }
 
+/**
+ * Enrich/rebuild a cached resolveHistory response from its stored promptGraph.
+ *
+ * Scenario this solves: schema upgrades (e.g. new text-node recognizers, new
+ * output fields like textNodeCount/positiveTextCount/negativeTextCount) were
+ * introduced after the cache file was written. The stale cache contained e.g.
+ * hasTextPrompt=false + textNodes.positive=[] even though promptGraph actually
+ * contains PrimitiveStringMultiline nodes → front-end would show "图片×1" only,
+ * no text prompt indicator.
+ *
+ * Strategy (cheap & safe):
+ *  - Always re-run analyzeInputNodes(cached.promptGraph) synchronously (it's
+ *    just object iteration over ~20 nodes) — cost is negligible.
+ *  - If any of the text-/input-/output-related top-level fields differ from
+ *    cache, write back the updated response to heal the cache.
+ */
+function rebuildCachedHistoryResponse(baseUrl, workflowPath, cached, sourceLabel) {
+	if (!cached || !cached.promptGraph || typeof cached.promptGraph !== 'object') {
+		return cached
+	}
+	const inputInfo = analyzeInputNodes(cached.promptGraph)
+	const nodeCount =
+		typeof cached.nodeCount === 'number' ? cached.nodeCount : Object.keys(cached.promptGraph).length
+	const rebuilt = {
+		...cached,
+		nodeCount,
+		imageInputs: inputInfo.images,
+		videoInputs: inputInfo.videos,
+		textNodes: inputInfo.textNodes,
+		seedNodes: inputInfo.seedNodes,
+		outputs: inputInfo.outputs,
+		hasImageInput: inputInfo.hasImageInput,
+		hasVideoInput: inputInfo.hasVideoInput,
+		hasTextPrompt: inputInfo.hasTextPrompt,
+		textNodeCount: inputInfo.textNodeCount,
+		positiveTextCount: inputInfo.positiveTextCount,
+		negativeTextCount: inputInfo.negativeTextCount,
+		hasImageOutput: inputInfo.hasImageOutput,
+		hasVideoOutput: inputInfo.hasVideoOutput,
+		hasModel3dOutput: inputInfo.hasModel3dOutput,
+		fromCache: true,
+		source: sourceLabel || cached.source || 'cache-healed'
+	}
+	// Cache self-heal: if the enriched version differs materially from what was
+	// stored, persist it so subsequent reads don't pay even the tiny rebuild cost
+	// and so callers that don't go through this path still see fresh data.
+	const stale =
+		cached.textNodeCount !== rebuilt.textNodeCount ||
+		cached.positiveTextCount !== rebuilt.positiveTextCount ||
+		cached.negativeTextCount !== rebuilt.negativeTextCount ||
+		cached.hasTextPrompt !== rebuilt.hasTextPrompt ||
+		lenText(cached.textNodes?.positive) !== lenText(rebuilt.textNodes?.positive) ||
+		lenText(cached.textNodes?.negative) !== lenText(rebuilt.textNodes?.negative)
+	if (stale) {
+		writeHistoryCache(baseUrl, workflowPath, {
+			...rebuilt,
+			fromCache: false,
+			source: cached.source || sourceLabel || 'cache-matched'
+		})
+	}
+	return rebuilt
+}
+
+function lenText(arr) {
+	return Array.isArray(arr) ? arr.length : 0
+}
+
 export async function runtimeClearHistoryCache(ctx, payload) {
 	const p = payload || {}
 	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
@@ -143,6 +210,188 @@ function isPromptGraphJson(v) {
 		if (saw >= 2) return true
 	}
 	return saw >= 1
+}
+
+// Phase 1 新增：判定是否为 ComfyUI 保存的工作流 UI JSON（含 nodes/links 数组 + 至少 1 个 node 有 type/widgets_values）
+function isWorkflowUiJson(v) {
+	if (!isRecord(v)) return false
+	if (!Array.isArray(v.nodes) || !Array.isArray(v.links)) return false
+	for (const n of v.nodes) {
+		if (isRecord(n) && typeof n.type === 'string' && Array.isArray(n.widgets_values)) return true
+	}
+	return false
+}
+
+// Phase 1 新增：把工作流 UI JSON 转换成 ComfyUI API 格式的 prompt graph
+//   规则：
+//   - class_type = node.type
+//   - widget 类型 input（link === null 且有 widget.name）：从 widgets_values[widget_index] 取值；widget_index 是该 node 中 widget 声明的顺序下标
+//   - socket 类型 input（link !== null）：从 links[linkId] 取 src 端，写成 [srcNodeId, srcSlotIdx]
+//   - links 格式兼容两种：
+//       6项: [linkId, srcId, srcSlot, tgtId, tgtSlot, type]
+//       5项: [srcId, srcSlot, tgtId, tgtSlot, type]
+function convertWorkflowUiJsonToPromptGraph(wf) {
+	if (!isWorkflowUiJson(wf)) return null
+	const result = {}
+	const linkRows = Array.isArray(wf.links) ? wf.links : []
+	// 先构造 linkMap: string(linkId) -> [srcId, srcSlot]
+	// 注意：links 的元素可能是数组下标作为 linkId（扁平数组，外层对象是 key=linkId, value=row），但 ComfyUI 常见是 links 为扁平数组，row[0] 就是 linkId（若 length===6）或无 linkId（length===5）
+	const linkMap = new Map()
+	// 先处理 links 为扁平数组的常见情况（每个元素都是 row）
+	for (const row of linkRows) {
+		if (!Array.isArray(row)) continue
+		if (row.length === 6) {
+			const [linkId, srcId, srcSlot] = row
+			linkMap.set(String(linkId), [String(srcId), Number(srcSlot)])
+		} else if (row.length === 5) {
+			// 无 linkId：以整行转字符串或下标为 key；但 node.inputs 的 link 字段拿什么去匹配？
+			// 实际上如果 links 是扁平数组且 row.length === 5，ComfyUI 在 node.inputs[i].link 里会存 "row 在 links 中的下标"。我们用顺序匹配。
+			linkMap.set(String(linkMap.size), [String(row[0]), Number(row[1])])
+		}
+	}
+	// 处理 links 为对象的情况（少见，但兼容）：Object.keys(wf.links) 就是 linkId
+	if (!Array.isArray(wf.links) && isRecord(wf.links)) {
+		for (const [linkId, row] of Object.entries(wf.links)) {
+			if (!Array.isArray(row)) continue
+			if (row.length >= 2) linkMap.set(String(linkId), [String(row[0]), Number(row[1])])
+		}
+	}
+
+	for (const node of wf.nodes) {
+		if (!isRecord(node) || typeof node.type !== 'string') continue
+		const nid = String(node.id)
+		const classType = node.type
+		const inputs = {}
+		const widgetsValues = Array.isArray(node.widgets_values) ? node.widgets_values : []
+		let widgetCursor = 0
+		const nodeInputs = Array.isArray(node.inputs) ? node.inputs : []
+		for (const inp of nodeInputs) {
+			if (!isRecord(inp)) continue
+			const name = String(inp.name || '')
+			if (!name) continue
+			const link = inp.link
+			const widget = isRecord(inp.widget) ? inp.widget : null
+			if (link !== null && link !== undefined) {
+				// socket 输入
+				const key = String(link)
+				const socket =
+					linkMap.get(key) ||
+					(Array.isArray(link) && link.length >= 2 ? [String(link[0]), Number(link[1])] : null)
+				if (socket) {
+					inputs[name] = [socket[0], socket[1]]
+				}
+				continue
+			}
+			// widget 输入
+			if (widget && typeof widget.name === 'string') {
+				const idx =
+					typeof widget.cursor === 'number'
+						? widget.cursor
+						: Number.isInteger(widgetCursor)
+							? widgetCursor
+							: 0
+				const val = idx < widgetsValues.length ? widgetsValues[idx] : undefined
+				// widget 声明顺序对应 widgets_values 递增 cursor
+				if (typeof widget.cursor !== 'number') widgetCursor += 1
+				inputs[widget.name] = val === undefined ? '' : val
+			}
+		}
+		result[nid] = {
+			class_type: classType,
+			inputs
+		}
+	}
+	return result
+}
+
+// Phase 1 新增：fileBaseline 作为主基线的情况下，把 history 中存在但 fileBaseline 缺失的非文本字段补过来（如 MODEL/VAE 加载节点的复杂配置）
+//   严格限制：文本源节点的 TEXT_SOURCE_KEYS（value/text/string/body/content/prompt）永远从 fileBaseline 拿，不从 history 覆盖
+//   返回：{ merged, mergedFromHistoryCount }
+function mergeBaselineAndHistoryNodes(fileBaseline, historyPromptGraph) {
+	const TEXT_KEYS_MERGE_PROTECT = new Set([
+		'value',
+		'text',
+		'string',
+		'body',
+		'content',
+		'prompt',
+		'negative',
+		'text_g',
+		'text_l',
+		'prompt_text',
+		'guidance',
+		'guidance_text',
+		'positive_prompt',
+		'negative_prompt'
+	])
+	if (!isRecord(fileBaseline))
+		return { merged: {}, mergedFromHistoryCount: 0, whitelistFiltered: 0 }
+	// —— Phase E2：白名单裁剪策略 ——
+	// 以 historyPromptGraph 的 id 集合为强白名单（cache 20 个节点是自包含的，anyOutside=0）。
+	// 仅保留这些 id，避免把 mode=4(muted/routing) UI-only 节点（rgthree bypass、MarkdownNote 等 59 个）传到 ComfyUI 执行端导致 missing_node_type。
+	const merged = {}
+	let mergedFromHistoryCount = 0
+	let whitelistFiltered = 0
+	let classTypeFromHistory = 0
+	if (!isRecord(historyPromptGraph)) {
+		// 兜底：没有 history 参考时，仅过滤 mode=4 节点 + UI-only 显示类节点（无法保证，返回 fileBaseline 原样）
+		return {
+			merged: JSON.parse(JSON.stringify(fileBaseline)),
+			mergedFromHistoryCount: 0,
+			whitelistFiltered: 0
+		}
+	}
+	const keepIds = new Set(Object.keys(historyPromptGraph))
+	for (const [nid, fNode] of Object.entries(fileBaseline)) {
+		if (!keepIds.has(nid)) {
+			whitelistFiltered += 1
+			continue
+		}
+		const hNode = historyPromptGraph[nid]
+		if (!isRecord(fNode) || !isRecord(hNode)) {
+			if (isRecord(hNode)) {
+				merged[nid] = JSON.parse(JSON.stringify(hNode))
+				mergedFromHistoryCount += 1
+			}
+			continue
+		}
+		// class_type：优先用 history 的注册名（UI JSON 中的 type 可能是显示名，与 Python 类实际注册名不一致）
+		let finalClassType = fNode.class_type
+		if (
+			typeof hNode.class_type === 'string' &&
+			hNode.class_type.length > 0 &&
+			String(fNode.class_type || '') !== String(hNode.class_type || '')
+		) {
+			finalClassType = hNode.class_type
+			classTypeFromHistory += 1
+		}
+		// inputs：默认从 history 拿（包含正确的模型路径、seed、socket 引用），但 TEXT_KEYS_MERGE_PROTECT 中的字符串类型字段从 fileBaseline 覆盖（保证 UI 中最新保存的文本/清空值生效）
+		const inputs = isRecord(hNode.inputs) ? JSON.parse(JSON.stringify(hNode.inputs)) : {}
+		if (isRecord(fNode.inputs)) {
+			for (const [k, fVal] of Object.entries(fNode.inputs)) {
+				// Phase E2-B 修正：仅当 history 中该项也是字符串（不是 socket 数组）时才覆盖
+				//   如果 history 中是 [id, slot] socket（说明用户有连线），保留连线，绝不把 convert 时残留的 widget 字符串覆盖到连线值上
+				if (TEXT_KEYS_MERGE_PROTECT.has(k) && typeof fVal === 'string') {
+					const hVal = inputs[k]
+					if (typeof hVal === 'string') {
+						inputs[k] = fVal
+					}
+				}
+			}
+		}
+		merged[nid] = {
+			class_type: finalClassType,
+			inputs
+		}
+	}
+	// history 中存在但 fileBaseline 完全缺失的 id：补回，保证白名单完整性
+	for (const [nid, hNode] of Object.entries(historyPromptGraph)) {
+		if (nid in merged) continue
+		if (!isRecord(hNode) || !('class_type' in hNode)) continue
+		merged[nid] = JSON.parse(JSON.stringify(hNode))
+		mergedFromHistoryCount += 1
+	}
+	return { merged, mergedFromHistoryCount, whitelistFiltered, classTypeFromHistory }
 }
 
 function buildProxyViewUrl(base, filename, subfolder, folderType) {
@@ -1970,12 +2219,35 @@ function workflowToPrompt(workflow, objectInfo, knownNodeTypes) {
 function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 	const pp = String(positivePrompt || '').trim()
 	const np = String(negativePrompt || '').trim()
-	if (!pp && !np) return
+	const diagnostics = { positive: 0, negative: 0 }
+	if (!pp && !np) return diagnostics
+
+	const TEXT_SOURCE_NODE_TYPES = new Set([
+		'PrimitiveStringMultiline',
+		'PrimitiveString',
+		'Primitive',
+		'String',
+		'StringMultiline',
+		'InputText',
+		'TextInput',
+		'PromptInput',
+		'LoadText',
+		'LoadTextFile',
+		'ReadTextFile',
+		'Note',
+		'MarkdownNote',
+		'ShowText',
+		'TextShow'
+	])
+	const TEXT_SOURCE_KEYS = ['value', 'text', 'string', 'body', 'content', 'prompt']
+	const BLACKLIST_TEXT_INFER_CLASS_RE =
+		/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_|CLIPLoader|VAELoader|CheckpointLoader|ControlNet|LoraLoader|UNETLoader|GligenLoader|KSampler|SamplerCustom|BasicScheduler|BasicGuider|Denoise|Sampler/i
 
 	const textNodes = []
 	const TEXT_ENCODE_TYPE_RE =
-		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning|MiniMax|H3|Guidance|PromptCfg|ConditioningText|FluxText|PromptOnly|AudioConditioning|Conditioning|Hunyuan|CogVideo|Wan/i
 	const TEXT_INPUT_KEYS = [
+		'value',
 		'text',
 		'text_g',
 		'text_l',
@@ -1984,7 +2256,22 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 		'negative',
 		'caption',
 		'description',
-		'instruction'
+		'instruction',
+		'text_positive',
+		'text_negative',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'pos_prompt',
+		'neg_prompt',
+		'user_prompt',
+		'positive_prompt',
+		'negative_prompt',
+		't5_prompt',
+		'llm_prompt',
+		'flux_prompt',
+		'positive_caption',
+		'negative_caption'
 	]
 	for (const [k, v] of Object.entries(promptGraph)) {
 		if (!isRecord(v)) continue
@@ -1995,15 +2282,35 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 		if (
 			ct === 'CLIPTextEncode' ||
 			ct === 'BNK_CLIPTextEncodeAdvanced' ||
+			TEXT_SOURCE_NODE_TYPES.has(ct) ||
 			TEXT_ENCODE_TYPE_RE.test(ct)
 		) {
 			isTextNode = true
-		} else {
+			if (TEXT_SOURCE_NODE_TYPES.has(ct)) primaryKey = 'value'
+		} else if (!BLACKLIST_TEXT_INFER_CLASS_RE.test(ct)) {
 			for (const tk of TEXT_INPUT_KEYS) {
 				if (tk in inputs && typeof inputs[tk] === 'string' && !isSocketValue(inputs[tk])) {
-					if (!/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_/i.test(ct)) {
+					isTextNode = true
+					primaryKey = tk
+					break
+				}
+			}
+			if (!isTextNode) {
+				for (const [key, val] of Object.entries(inputs)) {
+					if (isSocketValue(val)) continue
+					if (typeof val !== 'string') continue
+					const kl = key.toLowerCase()
+					if (
+						kl.includes('text') ||
+						kl === 'prompt' ||
+						kl.includes('prompt') ||
+						kl.includes('guidance') ||
+						kl.includes('caption') ||
+						kl.includes('description') ||
+						kl.includes('instruction')
+					) {
 						isTextNode = true
-						primaryKey = tk
+						primaryKey = key
 						break
 					}
 				}
@@ -2018,12 +2325,20 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 					textKeys.push(tk)
 				}
 			}
+			// 对 TEXT_SOURCE_NODE_TYPES 额外扫描 TEXT_SOURCE_KEYS（允许空字符串命中）
+			if (TEXT_SOURCE_NODE_TYPES.has(ct) && textKeys.length === 0) {
+				for (const k of TEXT_SOURCE_KEYS) {
+					if (k in inputs && (typeof inputs[k] === 'string' || inputs[k] == null)) {
+						textKeys.push(k)
+					}
+				}
+			}
 			if (textKeys.length === 0) textKeys.push(primaryKey)
 			textNodes.push({ nodeId: k, node: v, title, textKeys, primaryKey })
 		}
 	}
 
-	if (textNodes.length === 0) return
+	if (textNodes.length === 0) return diagnostics
 
 	const negativeIdxs = []
 	const positiveIdxs = []
@@ -2053,23 +2368,31 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 
 	function writeText(idx, val) {
 		const tn = textNodes[idx]
-		if (!tn || !isRecord(tn.node.inputs)) return
+		if (!tn || !isRecord(tn.node.inputs)) return false
 		let written = false
 		for (const key of tn.textKeys) {
-			if (key in tn.node.inputs && typeof tn.node.inputs[key] === 'string') {
-				tn.node.inputs[key] = val
+			if (key in tn.node.inputs && isSocketValue(tn.node.inputs[key])) continue
+			tn.node.inputs[key] = val
+			written = true
+		}
+		if (!written) {
+			const pk = tn.primaryKey || 'text'
+			if (!(pk in tn.node.inputs) || !isSocketValue(tn.node.inputs[pk])) {
+				tn.node.inputs[pk] = val
 				written = true
 			}
 		}
 		if (!written) {
-			tn.node.inputs[tn.primaryKey || 'text'] = val
+			tn.node.inputs.text = val
+			written = true
 		}
+		return written
 	}
 
 	if (pp) {
 		const targets = positiveIdxs.length > 0 ? positiveIdxs : [0]
 		for (const i of targets) {
-			writeText(i, pp)
+			if (writeText(i, pp)) diagnostics.positive += 1
 		}
 	}
 	if (np) {
@@ -2078,9 +2401,10 @@ function applyTextOverrides(promptGraph, positivePrompt, negativePrompt) {
 		else if (textNodes.length >= 2) targets = [1]
 		else targets = [0]
 		for (const i of targets) {
-			writeText(i, np)
+			if (writeText(i, np)) diagnostics.negative += 1
 		}
 	}
+	return diagnostics
 }
 
 function normalizePromptGraphForRuntime(promptGraph, objectInfo) {
@@ -2862,6 +3186,9 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 						hasImageInput: directInputInfo.hasImageInput,
 						hasVideoInput: directInputInfo.hasVideoInput,
 						hasTextPrompt: directInputInfo.hasTextPrompt,
+						textNodeCount: directInputInfo.textNodeCount,
+						positiveTextCount: directInputInfo.positiveTextCount,
+						negativeTextCount: directInputInfo.negativeTextCount,
 						hasImageOutput: directInputInfo.hasImageOutput,
 						hasVideoOutput: directInputInfo.hasVideoOutput,
 						hasModel3dOutput: directInputInfo.hasModel3dOutput,
@@ -2875,7 +3202,7 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 		}
 		const cached = readHistoryCache(base, workflowPath)
 		if (cached) {
-			return { ...cached, fromCache: true, source: 'cache-direct' }
+			return rebuildCachedHistoryResponse(base, workflowPath, cached, 'cache-direct')
 		}
 		return {
 			ok: false,
@@ -2924,6 +3251,9 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 			hasImageInput: inputInfo.hasImageInput,
 			hasVideoInput: inputInfo.hasVideoInput,
 			hasTextPrompt: inputInfo.hasTextPrompt,
+			textNodeCount: inputInfo.textNodeCount,
+			positiveTextCount: inputInfo.positiveTextCount,
+			negativeTextCount: inputInfo.negativeTextCount,
 			hasImageOutput: inputInfo.hasImageOutput,
 			hasVideoOutput: inputInfo.hasVideoOutput,
 			hasModel3dOutput: inputInfo.hasModel3dOutput,
@@ -2948,7 +3278,7 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 	if (historyResult.error || !isRecord(historyResult.promptGraph)) {
 		const cached = readHistoryCache(base, workflowPath)
 		if (cached) {
-			return { ...cached, fromCache: true, source: 'cache-matched' }
+			return rebuildCachedHistoryResponse(base, workflowPath, cached, 'cache-matched')
 		}
 		return {
 			ok: false,
@@ -2978,6 +3308,9 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 		hasImageInput: inputNodeInfo.hasImageInput,
 		hasVideoInput: inputNodeInfo.hasVideoInput,
 		hasTextPrompt: inputNodeInfo.hasTextPrompt,
+		textNodeCount: inputNodeInfo.textNodeCount,
+		positiveTextCount: inputNodeInfo.positiveTextCount,
+		negativeTextCount: inputNodeInfo.negativeTextCount,
 		hasImageOutput: inputNodeInfo.hasImageOutput,
 		hasVideoOutput: inputNodeInfo.hasVideoOutput,
 		hasModel3dOutput: inputNodeInfo.hasModel3dOutput,
@@ -3003,12 +3336,34 @@ function analyzeInputNodes(promptGraph) {
 		'LoadImageMasked'
 	])
 	const VIDEO_LOADER_TYPES = new Set(['LoadVideo', 'Load Video', 'VHS_LoadVideo', 'VideoLoader'])
+	// 文本源头节点（本次已实证命中：PrimitiveStringMultiline = Input Text (Prompt)）
+	const TEXT_SOURCE_NODE_TYPES = new Set([
+		'PrimitiveStringMultiline',
+		'PrimitiveString',
+		'Primitive',
+		'String',
+		'StringMultiline',
+		'InputText',
+		'TextInput',
+		'PromptInput',
+		'LoadText',
+		'LoadTextFile',
+		'ReadTextFile',
+		'Note',
+		'MarkdownNote',
+		'ShowText',
+		'TextShow'
+	])
+	const TEXT_SOURCE_KEYS = new Set(['value', 'text', 'string', 'body', 'content', 'prompt'])
 	const TEXT_ENCODE_TYPE_RE =
-		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning/i
+		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning|MiniMax|H3|Guidance|PromptCfg|ConditioningText|FluxText|PromptOnly|AudioConditioning|Conditioning|Hunyuan|CogVideo|Wan/i
+	const BLACKLIST_TEXT_INFER_CLASS_RE =
+		/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_|CLIPLoader|VAELoader|CheckpointLoader|ControlNet|LoraLoader|UNETLoader|GligenLoader|KSampler|SamplerCustom|BasicScheduler|BasicGuider|Denoise|Sampler/i
 	const SAMPLER_TYPE_RE =
 		/sampler|KSampler|KSamplerSelect|BasicScheduler|FlowSampler|CausalVideoSampler|WanSampler|WanImageToVideo|WanI2V|WanTextToVideo|WanT2V|HunyuanVideoSampler|CogVideoSampler|VideoSampler|LTXVSampler|MochiSampler|SVD_img2vid/i
 	const SEED_KEYS = ['noise_seed', 'seed', 'seed_num', 'rand_seed']
 	const TEXT_INPUT_KEYS = [
+		'value',
 		'text',
 		'text_g',
 		'text_l',
@@ -3019,7 +3374,20 @@ function analyzeInputNodes(promptGraph) {
 		'description',
 		'instruction',
 		'text_positive',
-		'text_negative'
+		'text_negative',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'pos_prompt',
+		'neg_prompt',
+		'user_prompt',
+		'positive_prompt',
+		'negative_prompt',
+		't5_prompt',
+		'llm_prompt',
+		'flux_prompt',
+		'positive_caption',
+		'negative_caption'
 	]
 
 	function detectFileKind(classType, key, val) {
@@ -3054,7 +3422,16 @@ function analyzeInputNodes(promptGraph) {
 		for (const [key, val] of Object.entries(inputs)) {
 			if (isSocketValue(val)) continue
 			if (typeof val !== 'string') continue
-			if (key.toLowerCase().includes('text') || key.toLowerCase() === 'prompt') {
+			const kl = key.toLowerCase()
+			if (
+				kl.includes('text') ||
+				kl === 'prompt' ||
+				kl.includes('prompt') ||
+				kl.includes('guidance') ||
+				kl.includes('caption') ||
+				kl.includes('description') ||
+				kl.includes('instruction')
+			) {
 				found.push(key)
 			}
 		}
@@ -3064,13 +3441,12 @@ function analyzeInputNodes(promptGraph) {
 	function isTextEncoderNode(ct, inputs) {
 		if (ct === 'CLIPTextEncode') return true
 		if (ct === 'BNK_CLIPTextEncodeAdvanced') return true
+		if (TEXT_SOURCE_NODE_TYPES.has(ct)) return true
 		if (TEXT_ENCODE_TYPE_RE.test(ct)) return true
-		if (isRecord(inputs)) {
+		if (isRecord(inputs) && !BLACKLIST_TEXT_INFER_CLASS_RE.test(ct)) {
 			for (const key of TEXT_INPUT_KEYS) {
 				if (key in inputs && typeof inputs[key] === 'string' && !isSocketValue(inputs[key])) {
-					if (!/LoadImage|LoadVideo|SaveImage|SaveVideo|VHS_/i.test(ct)) {
-						return true
-					}
+					return true
 				}
 			}
 		}
@@ -3085,7 +3461,16 @@ function analyzeInputNodes(promptGraph) {
 		const title = String(meta.title || '')
 
 		if (isTextEncoderNode(ct, inputs)) {
-			const textKeys = detectTextInputKeys(node, inputs)
+			let textKeys = detectTextInputKeys(node, inputs)
+			// Primitive/String 家族节点的 key 优先从 TEXT_SOURCE_KEYS 枚举匹配，
+			// 允许 inputs[key] 为空字符串或字符串（即使 detect 因空串被跳过）
+			if (TEXT_SOURCE_NODE_TYPES.has(ct) && textKeys.length === 0) {
+				for (const k of TEXT_SOURCE_KEYS) {
+					if (k in inputs && (typeof inputs[k] === 'string' || inputs[k] == null)) {
+						textKeys.push(k)
+					}
+				}
+			}
 			if (textKeys.length > 0) {
 				const primaryKey = textKeys[0]
 				const textVal = typeof inputs[primaryKey] === 'string' ? inputs[primaryKey] : ''
@@ -3126,6 +3511,112 @@ function analyzeInputNodes(promptGraph) {
 					inputKey: key,
 					originalValue: String(val),
 					displayName: `${ct}.${key}`
+				})
+			}
+		}
+	}
+
+	// ── STRING socket 反向追踪专项 Pass ────────────────────────────────────
+	// 命中本次实证场景：PrimitiveStringMultiline.value ──STRING──► MiniMaxH3AudioConditioningT8.prompt
+	// 若文本消费节点的 prompt/text input 是 socket（而非直接字符串），反向追溯到文本源头节点，
+	// 并确保它被加入 allTextNodes（写入源头即自然经 socket 传递到下游）。
+	{
+		const PROMPT_SOCKET_KEY_RE = /prompt|guidance|text|caption|description|instruction/i
+		// 已记录的文本源 nodeId，避免重复
+		const knownTextNodeIds = new Set(allTextNodes.map((t) => String(t.nodeId)))
+		// 记录 Primitive→Consumer 的链路（用于 diagnostic downstream 字段）
+		const downstreamBySource = new Map()
+		// 收集 socket 值指向的上游源，以及下游 consumer 为文本类时的补全
+		const directConsumerCandidates = [] // 当没有 Primitive 上游时，尝试直接把 consumer.prompt 作为写入口
+
+		for (const [nid, node] of Object.entries(promptGraph)) {
+			if (!isRecord(node)) continue
+			const ct = String(node.class_type || '')
+			const inputs = isRecord(node.inputs) ? node.inputs : {}
+			const isConsumer =
+				TEXT_ENCODE_TYPE_RE.test(ct) || TEXT_SOURCE_NODE_TYPES.has(ct)
+					? false
+					: TEXT_ENCODE_TYPE_RE.test(ct)
+			for (const [key, val] of Object.entries(inputs)) {
+				if (!PROMPT_SOCKET_KEY_RE.test(key)) continue
+				if (!isSocketValue(val)) continue
+				const [sourceId] = val
+				const sourceNid = String(sourceId)
+				const sourceNode = promptGraph[sourceNid]
+				if (!isRecord(sourceNode)) continue
+				const sct = String(sourceNode.class_type || '')
+				const inputsHavePromptLikeKey = PROMPT_SOCKET_KEY_RE.test(key)
+
+				const consumerLooksLikeTextSink = TEXT_ENCODE_TYPE_RE.test(ct) || inputsHavePromptLikeKey
+				if (!consumerLooksLikeTextSink) continue
+
+				// 优先：上游是 TEXT_SOURCE_NODE_TYPES（Primitive* / String / Note 等）
+				if (TEXT_SOURCE_NODE_TYPES.has(sct)) {
+					// 记录 downstream
+					if (!downstreamBySource.has(sourceNid)) downstreamBySource.set(sourceNid, [])
+					downstreamBySource.get(sourceNid).push({ nodeId: String(nid), key })
+					if (knownTextNodeIds.has(sourceNid)) continue
+					// 推导 sourceNode 的文本 key
+					const sInputs = isRecord(sourceNode.inputs) ? sourceNode.inputs : {}
+					let primaryKey = null
+					const allTextKeys = []
+					for (const k of TEXT_SOURCE_KEYS) {
+						if (k in sInputs && (typeof sInputs[k] === 'string' || sInputs[k] == null)) {
+							allTextKeys.push(k)
+						}
+					}
+					if (allTextKeys.length === 0) allTextKeys.push('value')
+					primaryKey = allTextKeys[0]
+					const sMeta = isRecord(sourceNode._meta) ? sourceNode._meta : {}
+					const title = String(sMeta.title || '')
+					const originalText = typeof sInputs[primaryKey] === 'string' ? sInputs[primaryKey] : ''
+					allTextNodes.push({
+						nodeId: sourceNid,
+						classType: sct,
+						inputKey: primaryKey,
+						allTextKeys,
+						originalText,
+						title,
+						writeTargetKind: 'source'
+					})
+					knownTextNodeIds.add(sourceNid)
+				} else {
+					// 非 Primitive 上游：记为 direct consumer 候选（若上游非文本源但该 socket 本应承载字符串 prompt）
+					directConsumerCandidates.push({ nodeId: String(nid), classType: ct, key })
+				}
+			}
+		}
+
+		// 把 downstream 注入 allTextNodes 对应项（便于诊断日志观察）
+		for (const tn of allTextNodes) {
+			const dn = downstreamBySource.get(String(tn.nodeId))
+			if (dn && dn.length) tn.downstream = dn
+		}
+
+		// 若仍没有任何 allTextNodes，兜底：把 directConsumerCandidates（prompt 为 socket 但上游非 Primitive 的）
+		// 中满足 key ∈ TEXT_INPUT_KEYS / 上游节点 inputs.value 是字符串的做一层判断，
+		// 或直接将这些 consumer 的 key 视作文本写入口（提示词在部分历史中也可能直接填在消费节点）
+		if (allTextNodes.length === 0) {
+			const seen = new Set()
+			for (const c of directConsumerCandidates) {
+				const k = `${c.nodeId}:${c.key}`
+				if (seen.has(k)) continue
+				seen.add(k)
+				const node = promptGraph[c.nodeId]
+				if (!isRecord(node)) continue
+				const inputs = isRecord(node.inputs) ? node.inputs : {}
+				// 如果实际输入是 socket，跳过（我们无法安全写入 socket）；仅当该 key 也可存在为字符串时兜底
+				const val = inputs[c.key]
+				if (isSocketValue(val)) continue
+				const meta = isRecord(node._meta) ? node._meta : {}
+				allTextNodes.push({
+					nodeId: c.nodeId,
+					classType: c.classType,
+					inputKey: c.key,
+					allTextKeys: [c.key],
+					originalText: typeof val === 'string' ? val : '',
+					title: String(meta.title || ''),
+					writeTargetKind: 'direct'
 				})
 			}
 		}
@@ -3303,7 +3794,11 @@ function analyzeInputNodes(promptGraph) {
 		nodeCount,
 		hasImageInput: images.length > 0,
 		hasVideoInput: videos.length > 0,
-		hasTextPrompt: classifiedPositive.length > 0 || classifiedNegative.length > 0,
+		hasTextPrompt:
+			allTextNodes.length > 0 || classifiedPositive.length > 0 || classifiedNegative.length > 0,
+		textNodeCount: allTextNodes.length,
+		positiveTextCount: classifiedPositive.length,
+		negativeTextCount: classifiedNegative.length,
 		hasImageOutput,
 		hasVideoOutput,
 		hasModel3dOutput
@@ -3344,33 +3839,63 @@ function applyTextOverridesWithMappings(promptGraph, mappings, positivePrompt, n
 	const posNodes = Array.isArray(textNodeMappings.positive) ? textNodeMappings.positive : []
 	const negNodes = Array.isArray(textNodeMappings.negative) ? textNodeMappings.negative : []
 
+	const EXTENDED_COMMON_NEG_KEYS = [
+		'text',
+		'text_l',
+		'negative',
+		'caption',
+		'description',
+		'text_negative',
+		'value',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'neg_prompt',
+		'negative_prompt',
+		'negative_caption'
+	]
+	const EXTENDED_COMMON_POS_KEYS = [
+		'text',
+		'text_g',
+		'text_l',
+		'prompt',
+		'positive',
+		'caption',
+		'description',
+		'instruction',
+		'text_positive',
+		'value',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'pos_prompt',
+		'user_prompt',
+		'positive_prompt',
+		't5_prompt',
+		'llm_prompt',
+		'flux_prompt',
+		'positive_caption'
+	]
+
+	const writtenDetails = { positive: [], negative: [] }
+
 	function writeTextToNode(node, mapping, textValue, isNegative) {
-		if (!node || !isRecord(node.inputs)) return
+		if (!node || !isRecord(node.inputs)) return { ok: false, writtenKey: null }
 		const keys =
 			mapping && Array.isArray(mapping.allTextKeys) && mapping.allTextKeys.length > 0
 				? mapping.allTextKeys
 				: mapping && mapping.inputKey
 					? [mapping.inputKey]
-					: ['text']
-		const commonKeys = isNegative
-			? ['text', 'text_l', 'negative', 'caption', 'description', 'text_negative']
-			: [
-					'text',
-					'text_g',
-					'text_l',
-					'prompt',
-					'positive',
-					'caption',
-					'description',
-					'instruction',
-					'text_positive'
-				]
+					: []
+		const commonKeys = isNegative ? EXTENDED_COMMON_NEG_KEYS : EXTENDED_COMMON_POS_KEYS
 		let written = false
+		let lastKey = null
 		for (const key of [...new Set([...keys, ...commonKeys])]) {
-			if (key in node.inputs && typeof node.inputs[key] === 'string') {
-				node.inputs[key] = textValue
-				written = true
-			}
+			if (typeof key !== 'string') continue
+			if (key in node.inputs && isSocketValue(node.inputs[key])) continue
+			node.inputs[key] = textValue
+			written = true
+			lastKey = key
 		}
 		if (!written) {
 			const skipKeys = new Set([
@@ -3412,30 +3937,88 @@ function applyTextOverridesWithMappings(promptGraph, mappings, positivePrompt, n
 				) {
 					node.inputs[key] = textValue
 					written = true
+					lastKey = key
 					break
 				}
 			}
 		}
 		if (!written) {
 			node.inputs.text = textValue
+			written = true
+			lastKey = 'text'
 		}
+		return { ok: written, writtenKey: lastKey }
 	}
+
+	let posWrites = 0
+	let negWrites = 0
+	let posAttempts = 0
+	let negAttempts = 0
 
 	if (pp) {
 		for (const m of posNodes) {
+			posAttempts += 1
 			const node = promptGraph[m.nodeId]
-			writeTextToNode(node, m, pp, false)
+			const result = writeTextToNode(node, m, pp, false)
+			if (result.ok) {
+				posWrites += 1
+				writtenDetails.positive.push({
+					nodeId: m.nodeId,
+					classType: m.classType,
+					key: result.writtenKey,
+					valuePreview: pp.slice(0, 80)
+				})
+			}
 		}
 	}
 	if (np) {
 		for (const m of negNodes) {
+			negAttempts += 1
 			const node = promptGraph[m.nodeId]
-			writeTextToNode(node, m, np, true)
+			const result = writeTextToNode(node, m, np, true)
+			if (result.ok) {
+				negWrites += 1
+				writtenDetails.negative.push({
+					nodeId: m.nodeId,
+					classType: m.classType,
+					key: result.writtenKey,
+					valuePreview: np.slice(0, 80)
+				})
+			}
 		}
 	}
 
-	if ((posNodes.length === 0 || negNodes.length === 0) && (pp || np)) {
-		applyTextOverrides(promptGraph, pp, np)
+	// —— 自检 + 兜底必触发 ——
+	const needsFallback =
+		(pp || np) &&
+		((posNodes.length === 0 && negNodes.length === 0) ||
+			(pp && posAttempts > 0 && posWrites === 0) ||
+			(np && negAttempts > 0 && negWrites === 0) ||
+			(pp && posNodes.length === 0) ||
+			(np && negNodes.length === 0))
+	let fallbackRan = false
+	let fallbackWrites = { positive: 0, negative: 0 }
+	if (needsFallback) {
+		console.warn(
+			`[ComfyUI] Text override fallback triggered: pos(${posNodes.length}/${posWrites} written) neg(${negNodes.length}/${negWrites} written). Running full-graph applyTextOverrides.`
+		)
+		fallbackWrites = applyTextOverrides(promptGraph, pp, np)
+		fallbackRan = true
+	}
+
+	return {
+		mappingsUsed: posNodes.length > 0 || negNodes.length > 0,
+		positivePromptProvided: Boolean(pp),
+		negativePromptProvided: Boolean(np),
+		positiveMappingCount: posNodes.length,
+		negativeMappingCount: negNodes.length,
+		positiveWriteCount: posWrites,
+		negativeWriteCount: negWrites,
+		positiveAttemptCount: posAttempts,
+		negativeAttemptCount: negAttempts,
+		fallbackRan,
+		fallbackWrites,
+		writtenDetails
 	}
 }
 
@@ -3535,6 +4118,12 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	const inputMappings = isRecord(p.inputMappings) ? p.inputMappings : null
 	const historyPromptId = String(p.historyPromptId || '').trim()
 
+	const workflowMergeStats = {
+		whitelistFiltered: 0,
+		classTypeFromHistory: 0,
+		mergedFromHistoryCount: 0
+	}
+
 	// Upload input files first (classified by mediaType)
 	const uploadedImages = []
 	const uploadedVideos = []
@@ -3580,10 +4169,35 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	}
 
 	let promptGraph = null
-	let promptSource = 'history'
+	let promptSource = 'none'
 	let resolvedWorkflow = null
 	let matchType = 'none'
 	let effectiveMappings = inputMappings
+
+	// —— 修复 B：将各来源 promptGraph 存储为独立变量，不再提前赋给最终 promptGraph 造成 Phase 2 路径死锁 ——
+	// 之前的 bug：一旦 historyPromptId 命中，promptGraph 会被直接赋值成旧剧情，
+	// 导致 L4245 `if (!isRecord(promptGraph))` 为 false，Phase 2 工作流文件基线永远走不到。
+	let historyByIdPromptGraph = null // source 1: historyPromptId 精准匹配 (L4152)
+	let historyByIdMatchType = null
+
+	let historyByPathPromptGraph = null // source 2: workflowPath === 'history://xxx' (L4184)
+	let historyByPathMatchType = null
+
+	let localPromptGraph = null // source 3: workflowPath === 'local://xxx' (L4217)
+	let localMatchType = null
+
+	const baselineDiag = {
+		used: false,
+		from: 'none', // 'file' | 'historyById' | 'historyByPath' | 'local' | 'none'
+		historyPromptIdMatch: false,
+		historyByPathMatch: false,
+		localMatch: false,
+		fileBaselineNodes: 0,
+		historyReferenceNodes: 0,
+		whitelistFiltered: 0,
+		mergedFromHistoryCount: 0,
+		phase2Reason: ''
+	}
 
 	if (historyPromptId) {
 		const histUrl = `${base}/history/${encodeURIComponent(historyPromptId)}`
@@ -3593,18 +4207,18 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			if (isRecord(entry)) {
 				const pa = entry.prompt
 				if (Array.isArray(pa) && pa.length >= 3 && isRecord(pa[2])) {
-					promptGraph = pa[2]
-					matchType = 'direct'
-					promptSource = 'history-direct-by-id'
+					historyByIdPromptGraph = pa[2]
+					historyByIdMatchType = 'direct'
+					baselineDiag.historyPromptIdMatch = true
 				}
 			}
 		}
-		if (!isRecord(promptGraph)) {
+		if (!isRecord(historyByIdPromptGraph)) {
 			const cached = readHistoryCache(base, `history://${historyPromptId}`)
 			if (cached && isRecord(cached.promptGraph)) {
-				promptGraph = cached.promptGraph
-				matchType = cached.matchType || 'direct'
-				promptSource = 'cache-direct-by-id'
+				historyByIdPromptGraph = cached.promptGraph
+				historyByIdMatchType = cached.matchType || 'direct'
+				baselineDiag.historyPromptIdMatch = true
 				if (!effectiveMappings) {
 					effectiveMappings = {
 						imageInputs: cached.imageInputs || [],
@@ -3617,7 +4231,7 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 	}
 
-	if (workflowPath.startsWith('history://') && !isRecord(promptGraph)) {
+	if (workflowPath.startsWith('history://')) {
 		const promptId = workflowPath.slice('history://'.length)
 		const histUrl = `${base}/history/${encodeURIComponent(promptId)}`
 		const histResult = await comfyJsonGet(client, histUrl, 10000)
@@ -3626,18 +4240,18 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			if (isRecord(entry)) {
 				const pa = entry.prompt
 				if (Array.isArray(pa) && pa.length >= 3 && isRecord(pa[2])) {
-					promptGraph = pa[2]
-					matchType = 'direct'
-					promptSource = 'history-direct'
+					historyByPathPromptGraph = pa[2]
+					historyByPathMatchType = 'direct'
+					baselineDiag.historyByPathMatch = true
 				}
 			}
 		}
-		if (!isRecord(promptGraph)) {
+		if (!isRecord(historyByPathPromptGraph)) {
 			const cached = readHistoryCache(base, workflowPath)
 			if (cached && isRecord(cached.promptGraph)) {
-				promptGraph = cached.promptGraph
-				matchType = cached.matchType || 'direct'
-				promptSource = 'cache-direct'
+				historyByPathPromptGraph = cached.promptGraph
+				historyByPathMatchType = cached.matchType || 'direct'
+				baselineDiag.historyByPathMatch = true
 				if (!effectiveMappings) {
 					effectiveMappings = {
 						imageInputs: cached.imageInputs || [],
@@ -3651,7 +4265,7 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	}
 
 	// 本地模板：直接从 LocalDB 取 data 作为 prompt graph，无需 ComfyUI /history 在线
-	if (workflowPath.startsWith('local://') && !isRecord(promptGraph)) {
+	if (workflowPath.startsWith('local://')) {
 		const localId = workflowPath.slice('local://'.length)
 		const wf = getLocalWorkflowData(ctx, localId)
 		if (!wf) {
@@ -3664,9 +4278,9 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 		const data = wf.data
 		if (isRecord(data) && isPromptGraphJson(data)) {
-			promptGraph = data
-			matchType = 'direct'
-			promptSource = 'local-direct'
+			localPromptGraph = data
+			localMatchType = 'direct'
+			baselineDiag.localMatch = true
 		} else {
 			return {
 				ok: false,
@@ -3678,22 +4292,129 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		}
 	}
 
-	if (!isRecord(promptGraph)) {
+	// —— 修复 B：强制触发 Phase 2（workflow-file baseline）——
+	// 当 workflowPath 是文件系统路径时（非 history:// 非 local://），不管是否命中了 historyPromptId 缓存，
+	// 都先读取用户最新保存的工作流 UI JSON 作为主基线，只把 history 作为结构补全参考，彻底杜绝旧缓存泄漏。
+	const isFileSystemWorkflowPath =
+		workflowPath && !workflowPath.startsWith('history://') && !workflowPath.startsWith('local://')
+
+	if (isFileSystemWorkflowPath) {
+		baselineDiag.phase2Reason = 'filesystem-path-forced'
+	} else {
+		baselineDiag.phase2Reason = 'no-fs-path-skip'
+	}
+
+	if (isFileSystemWorkflowPath || !isRecord(promptGraph)) {
 		const wfResult = await runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
 		if (!wfResult.ok) return { ok: false, error: `读取工作流失败：${wfResult.error}` }
 		resolvedWorkflow = wfResult.workflow
+
+		// —— Phase 2 (P0 Fix)：以最新保存的工作流文件为 prompt graph 主基线 ——
+		// 之前的 bug：resolvedWorkflow 只用于拿 workflowId 去匹配 history，实际 promptGraph 直接从
+		// history 或 cache 取，所以用户删除 InputText 值并保存后仍然泄漏旧的环绕镜头提示词。
+		// 修复思路：
+		//   1. 把 resolvedWorkflow 转成 fileBaseline（API JSON 直接用；UI JSON 用 convertWorkflowUiJsonToPromptGraph 转换）
+		//   2. history/cache 不再覆盖作为主基线，只用于补充缺失的非文本节点字段
+		//   3. 如果 fileBaseline 完全不可用（转换失败或结构严重失真），再 fallback 旧逻辑（history → cache → NO_HISTORY）
+		let fileBaseline = null
+		let baselineConversionFailedReason = null
+		if (isPromptGraphJson(resolvedWorkflow)) {
+			fileBaseline = resolvedWorkflow
+		} else if (isWorkflowUiJson(resolvedWorkflow)) {
+			try {
+				fileBaseline = convertWorkflowUiJsonToPromptGraph(resolvedWorkflow)
+			} catch (e) {
+				baselineConversionFailedReason = e?.message || String(e)
+				fileBaseline = null
+			}
+		}
+		// 结构合理性校验：转换后的 fileBaseline 节点数至少为 3 且有 class_type/inputs；否则认为转换失败
+		if (isRecord(fileBaseline)) {
+			const nids = Object.keys(fileBaseline)
+			let valid = 0
+			for (const nid of nids) {
+				const nd = fileBaseline[nid]
+				if (isRecord(nd) && typeof nd.class_type === 'string' && isRecord(nd.inputs)) valid++
+			}
+			if (nids.length < 3 || valid < Math.max(2, Math.floor(nids.length * 0.5))) {
+				baselineConversionFailedReason = `structural validation: validNodes=${valid} totalNodes=${nids.length}`
+				fileBaseline = null
+			}
+		}
+
 		const workflowId = isRecord(resolvedWorkflow) ? String(resolvedWorkflow.id || '').trim() : ''
 		const workflowFingerprint = buildWorkflowFingerprintFromWorkflowJson(resolvedWorkflow)
-		const histResult = await findLatestSuccessfulPromptByWorkflowId(
-			client,
-			base,
-			workflowId,
-			workflowFingerprint || null
-		)
-		if (isRecord(histResult.promptGraph)) {
-			promptGraph = histResult.promptGraph
-			matchType = histResult.matchType || 'exact'
-			promptSource = `history-${matchType}`
+		// 仍然获取 history/cache 的 promptGraph 用于"结构补全"（但不再作为主基线）
+		// 修复 B：优先复用 historyPromptId 分支已经拉过的 historyByIdPromptGraph，避免重复 HTTP 调用
+		let historyPromptGraph = null
+		let historyMatchType = null
+		if (isRecord(historyByIdPromptGraph)) {
+			historyPromptGraph = historyByIdPromptGraph
+			historyMatchType = historyByIdMatchType || 'direct'
+		} else {
+			const histResult = await findLatestSuccessfulPromptByWorkflowId(
+				client,
+				base,
+				workflowId,
+				workflowFingerprint || null
+			)
+			if (isRecord(histResult.promptGraph)) {
+				historyPromptGraph = histResult.promptGraph
+				historyMatchType = histResult.matchType || 'exact'
+				if (!effectiveMappings && !fileBaseline) {
+					const analyzed = analyzeInputNodes(historyPromptGraph)
+					effectiveMappings = {
+						imageInputs: analyzed.images,
+						videoInputs: analyzed.videos,
+						textNodes: analyzed.textNodes,
+						seedNodes: analyzed.seedNodes
+					}
+				}
+			}
+		}
+		let cachePromptGraph = null
+		let cacheMatchType = null
+		let cacheMappings = null
+		if (!historyPromptGraph) {
+			const cached = readHistoryCache(base, workflowPath)
+			if (cached && isRecord(cached.promptGraph)) {
+				cachePromptGraph = cached.promptGraph
+				cacheMatchType = cached.matchType || 'exact'
+				cacheMappings = {
+					imageInputs: cached.imageInputs || [],
+					videoInputs: cached.videoInputs || [],
+					textNodes: cached.textNodes || { positive: [], negative: [] },
+					seedNodes: cached.seedNodes || []
+				}
+				if (!effectiveMappings && !fileBaseline) {
+					effectiveMappings = cacheMappings
+				}
+			}
+		}
+		const referencePromptGraph = historyPromptGraph || cachePromptGraph
+		const referenceMatchType = historyMatchType || cacheMatchType || null
+
+		if (isRecord(fileBaseline)) {
+			baselineDiag.used = true
+			baselineDiag.from = 'file'
+			baselineDiag.fileBaselineNodes = Object.keys(fileBaseline).length
+			// 主基线走 workflow-file 路径
+			if (isRecord(referencePromptGraph)) {
+				baselineDiag.historyReferenceNodes = Object.keys(referencePromptGraph).length
+				const m = mergeBaselineAndHistoryNodes(fileBaseline, referencePromptGraph)
+				promptGraph = m.merged
+				matchType = referenceMatchType || 'merged'
+				promptSource = m.mergedFromHistoryCount > 0 ? 'workflow-file-merged' : 'workflow-file'
+				workflowMergeStats.whitelistFiltered = m.whitelistFiltered || 0
+				workflowMergeStats.classTypeFromHistory = m.classTypeFromHistory || 0
+				workflowMergeStats.mergedFromHistoryCount = m.mergedFromHistoryCount || 0
+				baselineDiag.whitelistFiltered = workflowMergeStats.whitelistFiltered
+				baselineDiag.mergedFromHistoryCount = workflowMergeStats.mergedFromHistoryCount
+			} else {
+				promptGraph = fileBaseline
+				matchType = 'workflow-file'
+				promptSource = 'workflow-file'
+			}
 			if (!effectiveMappings) {
 				const analyzed = analyzeInputNodes(promptGraph)
 				effectiveMappings = {
@@ -3703,21 +4424,60 @@ export async function runtimeRunWorkflow(ctx, payload) {
 					seedNodes: analyzed.seedNodes
 				}
 			}
-		}
-		if (!isRecord(promptGraph)) {
-			const cached = readHistoryCache(base, workflowPath)
-			if (cached && isRecord(cached.promptGraph)) {
-				promptGraph = cached.promptGraph
-				matchType = cached.matchType || 'exact'
-				promptSource = 'cache-matched'
-				if (!effectiveMappings) {
-					effectiveMappings = {
-						imageInputs: cached.imageInputs || [],
-						videoInputs: cached.videoInputs || [],
-						textNodes: cached.textNodes || { positive: [], negative: [] },
-						seedNodes: cached.seedNodes || []
-					}
-				}
+			console.log(
+				`[ComfyUI] Phase 2 success: baseline from workflow file (source=${promptSource}), fileNodes=${
+					Object.keys(fileBaseline).length
+				}, refNodes=${isRecord(referencePromptGraph) ? Object.keys(referencePromptGraph).length : 0}, mergedNodes=${
+					workflowMergeStats.mergedFromHistoryCount
+				}, whitelistFiltered=${workflowMergeStats.whitelistFiltered}, classTypeFromHistory=${
+					workflowMergeStats.classTypeFromHistory
+				}, historyPromptIdMatch=${baselineDiag.historyPromptIdMatch}, phase2Reason=${baselineDiag.phase2Reason}`
+			)
+		} else {
+			// Fallback：workflow 文件不可用或结构失真，退回 history/cache 路径（旧行为）
+			baselineDiag.used = false
+			baselineDiag.phase2Reason = baselineConversionFailedReason || 'unknown'
+			console.warn(
+				`[ComfyUI] Phase 2 fallback: workflow-file baseline unavailable (reason=${
+					baselineConversionFailedReason || 'unknown'
+				}), using ordered fallback: historyById → historyByPath → local → historyPromptGraph → cachePromptGraph.`
+			)
+			// 修复 B：按优先级回退（workflowPath 指定来源优先）
+			if (workflowPath.startsWith('history://') && isRecord(historyByPathPromptGraph)) {
+				promptGraph = historyByPathPromptGraph
+				matchType = historyByPathMatchType || 'direct'
+				promptSource = 'fallback-history-path'
+				baselineDiag.from = 'historyByPath'
+			} else if (workflowPath.startsWith('local://') && isRecord(localPromptGraph)) {
+				promptGraph = localPromptGraph
+				matchType = localMatchType || 'direct'
+				promptSource = 'fallback-local'
+				baselineDiag.from = 'local'
+			} else if (isRecord(historyByIdPromptGraph)) {
+				promptGraph = historyByIdPromptGraph
+				matchType = historyByIdMatchType || 'direct'
+				promptSource = 'fallback-history-by-id'
+				baselineDiag.from = 'historyById'
+			} else if (isRecord(historyByPathPromptGraph)) {
+				promptGraph = historyByPathPromptGraph
+				matchType = historyByPathMatchType || 'direct'
+				promptSource = 'fallback-history-path'
+				baselineDiag.from = 'historyByPath'
+			} else if (isRecord(localPromptGraph)) {
+				promptGraph = localPromptGraph
+				matchType = localMatchType || 'direct'
+				promptSource = 'fallback-local'
+				baselineDiag.from = 'local'
+			} else if (isRecord(historyPromptGraph)) {
+				promptGraph = historyPromptGraph
+				matchType = historyMatchType
+				promptSource = `fallback-history-${matchType}`
+				baselineDiag.from = 'historyPromptGraph'
+			} else if (isRecord(cachePromptGraph)) {
+				promptGraph = cachePromptGraph
+				matchType = cacheMatchType
+				promptSource = 'fallback-cache-matched'
+				baselineDiag.from = 'cachePromptGraph'
 			}
 		}
 	}
@@ -3726,7 +4486,7 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		return {
 			ok: false,
 			error: 'NO_HISTORY',
-			message: `该工作流暂无成功运行记录。请先打开ComfyUI界面（${base}），加载"${workflowPath}"工作流并成功运行一次，然后回到DVStudio重试。`,
+			message: `该工作流暂无成功运行记录且工作流文件无法转换为可执行格式。请先打开ComfyUI界面（${base}），加载"${workflowPath}"工作流并成功运行一次，然后回到DVStudio重试。`,
 			baseUrl: base,
 			requiresHistorySetup: true
 		}
@@ -3740,14 +4500,91 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			textNodes: analyzed.textNodes,
 			seedNodes: analyzed.seedNodes
 		}
+	} else {
+		// —— s4b: 陈旧 mappings 检测与强制重跑 ——
+		// 场景：缓存读取的 effectiveMappings.textNodes 为旧版本数据（positive/negative 均为空数组），
+		// 但用户实际上通过前端传入了 positivePrompt/negativePrompt。若不重跑 analyzeInputNodes，
+		// applyTextOverridesWithMappings 会立即进入 needsFallback 路径，虽然兜底扫描能工作，
+		// 但无法保证"按 mappings 精准写入 PrimitiveStringMultiline.value"这一关键链路。
+		const posCount = Array.isArray(effectiveMappings.textNodes?.positive)
+			? effectiveMappings.textNodes.positive.length
+			: 0
+		const negCount = Array.isArray(effectiveMappings.textNodes?.negative)
+			? effectiveMappings.textNodes.negative.length
+			: 0
+		const hasPrompt = Boolean(positivePrompt || negativePrompt)
+		const hasEmptyTextMappings = posCount === 0 && negCount === 0
+		// 额外：analyzeInputNodes 最新版本返回 hasTextPrompt/textNodeCount，如果当前 mappings 没有这些字段
+		// 或它们不一致（例如旧缓存 hasTextPrompt=false 但新分析=true），也要重跑。
+		const analyzedSnapshot = analyzeInputNodes(promptGraph)
+		const freshHasTextPrompt = analyzedSnapshot.hasTextPrompt === true
+		const staleByFlag =
+			freshHasTextPrompt &&
+			(effectiveMappings.hasTextPrompt === false || effectiveMappings.hasTextPrompt == null)
+		if ((hasPrompt && hasEmptyTextMappings) || staleByFlag) {
+			console.warn(
+				`[ComfyUI] Stale text mappings detected: pos=${posCount} neg=${negCount} hasPrompt=${hasPrompt} staleByFlag=${staleByFlag}. Re-running analyzeInputNodes to refresh mappings.`
+			)
+			effectiveMappings = {
+				imageInputs: analyzedSnapshot.images,
+				videoInputs: analyzedSnapshot.videos,
+				textNodes: analyzedSnapshot.textNodes,
+				seedNodes: analyzedSnapshot.seedNodes
+			}
+		}
 	}
 
 	try {
 		promptGraph = JSON.parse(JSON.stringify(promptGraph))
 	} catch {}
 
+	// —— 修复 B：提交前审计 ① baseline 决策 ——
 	console.log(
-		`[ComfyUI] Using history prompt (source=${promptSource}, match=${matchType}), nodes:`,
+		`[ComfyUI] Baseline diag: used=${baselineDiag.used} from=${baselineDiag.from} phase2Reason=${baselineDiag.phase2Reason} ` +
+			`historyPromptIdMatch=${baselineDiag.historyPromptIdMatch} historyByPathMatch=${baselineDiag.historyByPathMatch} localMatch=${baselineDiag.localMatch} ` +
+			`fileBaselineNodes=${baselineDiag.fileBaselineNodes} historyReferenceNodes=${baselineDiag.historyReferenceNodes} ` +
+			`whitelistFiltered=${baselineDiag.whitelistFiltered} mergedFromHistoryCount=${baselineDiag.mergedFromHistoryCount}`
+	)
+	// —— 修复 B：提交前审计 ② 关键文本节点快照（提交前/Mappings&Defense前）——
+	//    针对 MiniMax H3 全能参考工作流（nodeId=312 源；nodeId=333 消费），防止再次出现 "缓存泄漏环绕镜头"
+	const auditNodeIds = new Set(['312', '333'])
+	// 兜底：如果 mappings 里有文本节点，也加到审计集合里
+	for (const n of effectiveMappings?.textNodes?.positive || []) {
+		if (n.nodeId) auditNodeIds.add(String(n.nodeId))
+	}
+	for (const n of effectiveMappings?.textNodes?.negative || []) {
+		if (n.nodeId) auditNodeIds.add(String(n.nodeId))
+	}
+	const audit = {}
+	for (const nid of auditNodeIds) {
+		const nd = promptGraph[nid]
+		if (isRecord(nd)) {
+			const snippet = {}
+			for (const key of Object.keys(nd.inputs || {})) {
+				const v = nd.inputs[key]
+				if (typeof v === 'string')
+					snippet[key] = v.length > 200 ? v.slice(0, 200) + '…(len=' + v.length + ')' : v
+				else if (Array.isArray(v)) snippet[key] = '[SOCKET REF] ' + JSON.stringify(v)
+				else snippet[key] = v
+			}
+			audit[nid] = { class_type: nd.class_type, inputs: snippet }
+		}
+	}
+	console.log(
+		'[ComfyUI] Pre-submit node audit (before applyTextOverrides + Defense):',
+		JSON.stringify(audit, null, 2)
+	)
+	// —— 修复 B：提交前审计 ③ 如果 positivePrompt === 空但前端传过来的 historyPromptId 有匹配，WARN——
+	if (!positivePrompt && !negativePrompt) {
+		console.warn(
+			`[ComfyUI] ⚠️ positivePrompt & negativePrompt BOTH EMPTY! Defense-Clear / Defense-Downstream will be SKIPPED! ` +
+				`historyPromptId=${historyPromptId ? 'HAS (match=' + baselineDiag.historyPromptIdMatch + ')' : 'none'}. ` +
+				`If frontend upstream text node is connected, this indicates text extraction bug on DVStudio (collectComfyInputTexts).`
+		)
+	}
+
+	console.log(
+		`[ComfyUI] Using prompt graph (source=${promptSource}, match=${matchType}), nodes:`,
 		Object.keys(promptGraph).length
 	)
 	console.log(
@@ -3773,9 +4610,310 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		return { ok: false, error: mappingErr.message || 'Input mapping failed' }
 	}
 
-	applyTextOverridesWithMappings(promptGraph, effectiveMappings, positivePrompt, negativePrompt)
+	const textWriteDiagnostics = applyTextOverridesWithMappings(
+		promptGraph,
+		effectiveMappings,
+		positivePrompt,
+		negativePrompt
+	)
+
+	// —— Phase 3 (Pre-Submit Defense Pass)：三道防线阻止旧文本泄漏 ——
+	//
+	//   ① Defense-Clear：清空所有 TEXT_SOURCE_NODE_TYPES 节点的文本值槽位。
+	//     如果 mappings 路径和 fallback 扫描路径都因为节点错位/重排而漏写，
+	//     至少 promptGraph 中不会再携带上一次成功的旧环绕镜头提示词；
+	//     最坏情况 ComfyUI 收到空字符串报错，而不是悄无声息生成错视频。
+	//
+	//   ② Defense-Downstream：对下游 TEXT_CONSUMER_CLASS_RE 命中的文本消费节点
+	//     （MiniMaxH3AudioConditioningT8 / CLIPTextEncode / H3Guidance 等）做 socket 覆盖双写：
+	//     就算上游 PrimitiveStringMultiline 的 socket 指向错了，消费端 prompt/guidance 槽位
+	//     也会被直接写成传入的 positivePrompt / negativePrompt 字符串。
+	//
+	// 注意：本 Defense 是"最后的护城河"，不替代正常的 mappings 写入链路；
+	// mappings/fallback 成功写入的节点会被我们跳过（避免重复写入同一 key 多次），
+	// 只对"写漏了/仍是 socket 引用"的槽位做兜底。
+	const DEFENSE_TEXT_SOURCE_NODE_TYPES = new Set([
+		'PrimitiveStringMultiline',
+		'PrimitiveString',
+		'Primitive',
+		'String',
+		'StringMultiline',
+		'InputText',
+		'TextInput',
+		'PromptInput',
+		'LoadText',
+		'LoadTextFile',
+		'ReadTextFile',
+		'Note',
+		'MarkdownNote',
+		'ShowText',
+		'TextShow'
+	])
+	const DEFENSE_TEXT_SOURCE_KEYS = new Set([
+		'value',
+		'text',
+		'string',
+		'body',
+		'content',
+		'prompt',
+		'text_g',
+		'text_l',
+		'caption',
+		'description',
+		'instruction',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'positive',
+		'positive_prompt',
+		'neg_prompt',
+		'negative',
+		'negative_prompt'
+	])
+	const DEFENSE_TEXT_CONSUMER_CLASS_RE =
+		/TextEncode|CLIPText|text.*encode|prompt.*encode|TextPrompt|PromptText|T5Text|UMT5|LLMText|GemmaText|QwenText|text_to_conditioning|MiniMaxH3AudioConditioning|MiniMax.*H3|H3Audio|H3Guidance|Guidance.*Audio|GuidanceText|PromptCfg|ConditioningText|FluxText|PromptOnly|AudioConditioning|ConditioningCombine|ConditioningConcat|Hunyuan.*Text|CogVideo.*Text|Wan.*Text/i
+	const DEFENSE_COMMON_POS_KEYS = [
+		'text',
+		'text_g',
+		'text_l',
+		'prompt',
+		'positive',
+		'caption',
+		'description',
+		'instruction',
+		'text_positive',
+		'value',
+		'guidance',
+		'guidance_text',
+		'prompt_text',
+		'pos_prompt',
+		'user_prompt',
+		'positive_prompt',
+		't5_prompt',
+		'llm_prompt',
+		'flux_prompt',
+		'positive_caption'
+	]
+	const DEFENSE_COMMON_NEG_KEYS = [
+		'text_neg',
+		'negative',
+		'neg_prompt',
+		'negative_prompt',
+		'negative_caption',
+		'neg',
+		'nagative_prompt'
+	]
+	let preClearCount = 0
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node) || !isRecord(node.inputs)) continue
+		const ct = String(node.class_type || '')
+		if (!DEFENSE_TEXT_SOURCE_NODE_TYPES.has(ct)) continue
+		for (const [key, val] of Object.entries(node.inputs)) {
+			if (!DEFENSE_TEXT_SOURCE_KEYS.has(key)) continue
+			if (typeof val === 'string' && val.length > 0) {
+				node.inputs[key] = ''
+				preClearCount += 1
+			}
+		}
+	}
+	// 清空完 Defense-Clear，再 re-run 一次 applyTextOverridesWithMappings（这次不会被旧字符串干扰）
+	let reapplyInfo = null
+	if ((positivePrompt || negativePrompt) && preClearCount > 0) {
+		reapplyInfo = applyTextOverridesWithMappings(
+			promptGraph,
+			effectiveMappings,
+			positivePrompt,
+			negativePrompt
+		)
+		// 以 reapply 结果覆盖统计值（但保留 fallbackRan 等复合字段的 OR 关系）
+		textWriteDiagnostics.positiveWriteCount = reapplyInfo.positiveWriteCount
+		textWriteDiagnostics.negativeWriteCount = reapplyInfo.negativeWriteCount
+		textWriteDiagnostics.positiveAttemptCount = reapplyInfo.positiveAttemptCount
+		textWriteDiagnostics.negativeAttemptCount = reapplyInfo.negativeAttemptCount
+		if (reapplyInfo.fallbackRan) textWriteDiagnostics.fallbackRan = true
+		if (reapplyInfo.writtenDetails?.positive?.length) {
+			textWriteDiagnostics.writtenDetails = textWriteDiagnostics.writtenDetails || {
+				positive: [],
+				negative: []
+			}
+			textWriteDiagnostics.writtenDetails.positive = reapplyInfo.writtenDetails.positive
+		}
+		if (reapplyInfo.writtenDetails?.negative?.length) {
+			textWriteDiagnostics.writtenDetails = textWriteDiagnostics.writtenDetails || {
+				positive: [],
+				negative: []
+			}
+			textWriteDiagnostics.writtenDetails.negative = reapplyInfo.writtenDetails.negative
+		}
+	}
+	// Defense-Downstream：下游文本消费节点 socket 覆盖双写
+	const downstreamWrites = { positive: 0, negative: 0 }
+	const alreadyDownstreamPos = new Set()
+	const alreadyDownstreamNeg = new Set()
+	if (positivePrompt || negativePrompt) {
+		for (const [nid, node] of Object.entries(promptGraph)) {
+			if (!isRecord(node) || !isRecord(node.inputs)) continue
+			const ct = String(node.class_type || '')
+			if (!DEFENSE_TEXT_CONSUMER_CLASS_RE.test(ct)) continue
+			// 跳过 TEXT_SOURCE_NODE_TYPES（上游源节点不应作为 consumer 双写目标；它们会被 Clear+reapply 处理）
+			if (DEFENSE_TEXT_SOURCE_NODE_TYPES.has(ct)) continue
+			if (positivePrompt) {
+				for (const key of DEFENSE_COMMON_POS_KEYS) {
+					const token = `${nid}:${key}`
+					if (alreadyDownstreamPos.has(token)) continue
+					if (!(key in node.inputs)) continue
+					const cur = node.inputs[key]
+					const alreadyCorrectString =
+						typeof cur === 'string' && cur.length > 0 && cur === positivePrompt
+					if (alreadyCorrectString) {
+						alreadyDownstreamPos.add(token)
+						downstreamWrites.positive += 0
+						continue
+					}
+					// 不管原来是 socket 引用还是旧字符串，都覆盖成 positivePrompt 字符串
+					node.inputs[key] = positivePrompt
+					alreadyDownstreamPos.add(token)
+					downstreamWrites.positive += 1
+				}
+			}
+			if (negativePrompt) {
+				for (const key of DEFENSE_COMMON_NEG_KEYS) {
+					const token = `${nid}:${key}`
+					if (alreadyDownstreamNeg.has(token)) continue
+					if (!(key in node.inputs)) continue
+					const cur = node.inputs[key]
+					const alreadyCorrectString =
+						typeof cur === 'string' && cur.length > 0 && cur === negativePrompt
+					if (alreadyCorrectString) {
+						alreadyDownstreamNeg.add(token)
+						continue
+					}
+					node.inputs[key] = negativePrompt
+					alreadyDownstreamNeg.add(token)
+					downstreamWrites.negative += 1
+				}
+			}
+		}
+	}
+	// 把 Phase 3 新增统计 + baselineSource 写入 diagnostic 输出对象
+	textWriteDiagnostics.baselineSource = String(promptSource || '')
+	textWriteDiagnostics.preClearCount = preClearCount
+	textWriteDiagnostics.downstreamWrites = downstreamWrites
+	textWriteDiagnostics.whitelistFiltered = workflowMergeStats.whitelistFiltered || 0
+	textWriteDiagnostics.classTypeFromHistory = workflowMergeStats.classTypeFromHistory || 0
+	textWriteDiagnostics.mergedFromHistoryCount = workflowMergeStats.mergedFromHistoryCount || 0
 
 	randomizeSeedFromMappings(promptGraph, effectiveMappings)
+
+	// —— s4d: 提交前 diagnostic 快照 ——
+	// 扫描 promptGraph 中所有 TEXT_SOURCE_NODE_TYPES/文本编码节点的实际 value，
+	// 用于前端 rr 结果确认"文本真的被写入了 promptGraph"。
+	const textNodeSnapshot = {}
+	const DIAG_TEXT_CLASS_RE =
+		/PrimitiveStringMultiline|PrimitiveString|InputText|TextInput|CLIPTextEncode|TextEncode|MiniMax|H3|Guidance|ConditioningText|FluxText|PromptOnly|AudioConditioning/i
+	for (const [nid, node] of Object.entries(promptGraph)) {
+		if (!isRecord(node)) continue
+		const ct = String(node.class_type || '')
+		if (!DIAG_TEXT_CLASS_RE.test(ct)) continue
+		const inputs = isRecord(node.inputs) ? node.inputs : {}
+		const snapshot = {}
+		for (const [k, v] of Object.entries(inputs)) {
+			if (isSocketValue(v)) continue
+			if (typeof v === 'string') {
+				snapshot[k] = v.length > 120 ? `${v.slice(0, 120)}...` : v
+			}
+		}
+		if (Object.keys(snapshot).length > 0) {
+			textNodeSnapshot[nid] = { classType: ct, inputs: snapshot }
+		}
+	}
+	textWriteDiagnostics.snapshot = textNodeSnapshot
+
+	console.log(
+		'[ComfyUI] Text write diagnostics:',
+		JSON.stringify({
+			baselineSource: textWriteDiagnostics.baselineSource,
+			preClearCount: textWriteDiagnostics.preClearCount,
+			downstreamWrites: textWriteDiagnostics.downstreamWrites,
+			mappingsUsed: textWriteDiagnostics.mappingsUsed,
+			posMap: textWriteDiagnostics.positiveMappingCount,
+			negMap: textWriteDiagnostics.negativeMappingCount,
+			posWrite: textWriteDiagnostics.positiveWriteCount,
+			negWrite: textWriteDiagnostics.negativeWriteCount,
+			fallbackRan: textWriteDiagnostics.fallbackRan,
+			fallbackWrites: textWriteDiagnostics.fallbackWrites,
+			snapshotKeys: Object.keys(textNodeSnapshot)
+		})
+	)
+	for (const [nid, info] of Object.entries(textNodeSnapshot)) {
+		console.log(`  [TextNode ${nid}] ${info.classType}:`, JSON.stringify(info.inputs))
+	}
+	if (
+		textWriteDiagnostics.downstreamWrites &&
+		(textWriteDiagnostics.downstreamWrites.positive > 0 ||
+			textWriteDiagnostics.downstreamWrites.negative > 0)
+	) {
+		console.log(
+			`[ComfyUI] Phase 3 Defense downstream double-writes summary: pos=${textWriteDiagnostics.downstreamWrites.positive} neg=${textWriteDiagnostics.downstreamWrites.negative} nodes=${[
+				...alreadyDownstreamPos,
+				...alreadyDownstreamNeg
+			]
+				.map((t) => t.split(':')[0])
+				.filter((v, i, a) => a.indexOf(v) === i)
+				.join(',')}`
+		)
+	}
+
+	// —— 修复 B：提交前审计 ④ 关键节点 POST-Defense 快照——
+	//    对比 ① 的 Pre-Defense 快照：确认 node 312.value 被重新写入，node 333.prompt 从 [SOCKET REF] 被双写成纯字符串
+	const auditPost = {}
+	for (const nid of auditNodeIds) {
+		const nd = promptGraph[nid]
+		if (isRecord(nd)) {
+			const snippet = {}
+			for (const key of Object.keys(nd.inputs || {})) {
+				const v = nd.inputs[key]
+				if (typeof v === 'string')
+					snippet[key] = v.length > 200 ? v.slice(0, 200) + '…(len=' + v.length + ')' : v
+				else if (Array.isArray(v)) snippet[key] = '[SOCKET REF] ' + JSON.stringify(v)
+				else snippet[key] = v
+			}
+			auditPost[nid] = { class_type: nd.class_type, inputs: snippet }
+		}
+	}
+	console.log(
+		'[ComfyUI] Post-Defense node audit (FINAL before submit):',
+		JSON.stringify(auditPost, null, 2)
+	)
+	// 关键断言：MiniMax 消费节点 prompt 字段如果原来是 socket 引用（["312", 0]），Defense-Downstream 触发 positivePrompt 后
+	// 必须变成纯字符串；如果 positivePrompt 为空（前端遗漏），这里 WARN，提示用户先看修复 A。
+	const auditConsumerKeys = DEFENSE_COMMON_POS_KEYS.concat(DEFENSE_COMMON_NEG_KEYS)
+	for (const nid of auditNodeIds) {
+		const nd = promptGraph[nid]
+		const ct = String(nd?.class_type || '')
+		if (!ct || !DEFENSE_TEXT_CONSUMER_CLASS_RE.test(ct) || !isRecord(nd?.inputs)) continue
+		for (const key of auditConsumerKeys) {
+			const v = nd.inputs[key]
+			if (Array.isArray(v) && positivePrompt) {
+				console.warn(
+					`[ComfyUI] ⚠️ DEFENSE LEAK SUSPECTED! Consumer node ${nid}(${ct}).inputs.${key} = [SOCKET REF] ${JSON.stringify(v)}, ` +
+						`but positivePrompt.length=${positivePrompt.length} (non-empty). Defense-Downstream should have overwritten it to string. ` +
+						`Check DEFENSE_TEXT_CONSUMER_CLASS_RE matches the class and key is in POS/NEG keys list.`
+				)
+			}
+			// 旧剧情泄漏检测：任何字符串字段包含 "360°" 或 "全景环绕" 且与传入 positivePrompt 不同，WARN
+			if (typeof v === 'string' && positivePrompt && v !== positivePrompt && v.length > 100) {
+				const leakSignals = ['全景环绕', '360°', '环绕镜头', '360度环绕']
+				if (leakSignals.some((s) => v.includes(s)) && !positivePrompt.includes(v.slice(0, 30))) {
+					console.warn(
+						`[ComfyUI] ⚠️ OLD CACHE LEAK SUSPECTED! Node ${nid}(${ct}).inputs.${key} contains old cache prompt signal tokens. ` +
+							`Snippet (first 200 chars):`,
+						v.slice(0, 200)
+					)
+				}
+			}
+		}
+	}
 
 	const workflowForSubmit = isRecord(resolvedWorkflow) ? resolvedWorkflow : {}
 	const clientId = crypto.randomBytes(16).toString('hex')
@@ -3836,7 +4974,8 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			ok: false,
 			error: `ComfyUI /prompt failed: ${submitResult.error}`,
 			comfyuiError: comfyError,
-			status: submitResult.status || 502
+			status: submitResult.status || 502,
+			textWriteDiagnostics
 		}
 	}
 
@@ -3846,7 +4985,8 @@ export async function runtimeRunWorkflow(ctx, payload) {
 		baseUrl: base,
 		promptId,
 		promptSource,
-		result: submitResult.data
+		result: submitResult.data,
+		textWriteDiagnostics
 	}
 }
 

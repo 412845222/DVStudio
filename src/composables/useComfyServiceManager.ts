@@ -1,9 +1,12 @@
 import { onBeforeUnmount, ref, computed, nextTick } from 'vue'
 import type {
+	ComfyForeignKillResult,
+	ComfyForeignScanResult,
 	ComfyServiceInfo,
 	ComfyServiceLogEntry,
 	ComfyServiceLifecycle,
-	ComfyServiceRuntimeStatus
+	ComfyServiceRuntimeStatus,
+	ForeignComfyProcess
 } from '../electronBridge/types'
 
 const dweb = (window as any).dweb
@@ -100,6 +103,53 @@ export function useComfyServiceManager() {
 		})
 	}
 
+	function pushLocalSystemLog(message: string, stream: ComfyServiceLogEntry['stream'] = 'system') {
+		applyLogEntry({ ts: Date.now(), stream, message })
+	}
+
+	async function preflightClearForeignComfy(): Promise<void> {
+		try {
+			const setup = dweb?.comfyui?.setup
+			const scanFn = setup?.scanForeignComfyProcesses
+			const killFn = setup?.killForeignComfyProcesses
+			if (typeof scanFn !== 'function') return
+			pushLocalSystemLog('[启动前扫描] 扫描系统中其他 ComfyUI 进程…')
+			const scanR = (await scanFn()) as ComfyForeignScanResult
+			if (!scanR?.ok) {
+				pushLocalSystemLog(`[启动前扫描] 扫描失败（不影响启动）：${scanR?.error || ''}`, 'stderr')
+				return
+			}
+			const procs: ForeignComfyProcess[] = scanR.processes || []
+			if (procs.length === 0) {
+				pushLocalSystemLog('[启动前扫描] 未检测到外部 ComfyUI 进程 ✓')
+				return
+			}
+			pushLocalSystemLog(`[启动前扫描] 检测到 ${procs.length} 个外部 ComfyUI 进程，前端主动清理：`)
+			for (const p of procs) {
+				pushLocalSystemLog(`  · pid=${p.pid}  ${(p.commandLine || p.exe || '').slice(0, 160)}`)
+			}
+			if (typeof killFn !== 'function') {
+				pushLocalSystemLog('[启动前扫描] 当前版本未暴露清理接口，交由后端启动流程兜底。', 'stderr')
+				return
+			}
+			const killR = (await killFn({ processes: procs })) as ComfyForeignKillResult
+			if (!killR?.ok) {
+				const remain = Array.isArray(killR?.remaining) ? killR.remaining.length : 0
+				pushLocalSystemLog(
+					`[启动前扫描] 清理未完全成功（仍残留 ${remain}），交由后端启动流程兜底。`,
+					'stderr'
+				)
+			} else {
+				pushLocalSystemLog(
+					`[启动前扫描] 清理完成：成功 ${killR.killed?.length ?? 0} 个，失败 ${killR.failed?.length ?? 0} 个`
+				)
+				await new Promise((r) => setTimeout(r, 800))
+			}
+		} catch (e: any) {
+			pushLocalSystemLog(`[启动前扫描] 异常（不影响启动）：${e?.message || String(e)}`, 'stderr')
+		}
+	}
+
 	async function refreshConfig() {
 		try {
 			const setup = dweb?.comfyui?.setup
@@ -153,6 +203,7 @@ export function useComfyServiceManager() {
 		lastError.value = ''
 		try {
 			await refreshConfig()
+			await preflightClearForeignComfy()
 			const setup = dweb?.comfyui?.setup
 			const cfg = config.value || {}
 			const r = await setup.startService(
@@ -190,6 +241,7 @@ export function useComfyServiceManager() {
 		lastError.value = ''
 		try {
 			await refreshConfig()
+			await preflightClearForeignComfy()
 			const setup = dweb?.comfyui?.setup
 			const cfg = config.value || {}
 			const r = await setup.restartService(

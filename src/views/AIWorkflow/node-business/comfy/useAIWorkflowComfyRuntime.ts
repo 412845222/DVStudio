@@ -2,7 +2,11 @@ import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
 import { t } from '../../../../i18n'
-import type { ComfyInputMappings } from '../../../../network/ComfyUIBridgeService'
+import type {
+	ComfyInputMappings,
+	TextWriteDiagnostics,
+	TextWrittenDetail
+} from '../../../../network/ComfyUIBridgeService'
 
 type RunState = {
 	runStatus: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
@@ -106,6 +110,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	) => Promise<{ alerts: string[]; outputs: ComfyLocalizedOutput[] }>
 	clearComfyRouteCache: (nodeId: string) => void
 	getIncomingTextValue: (toNodeId: string, toAnchorId: string) => string
+	getTextOutputForNode?: (nodeId: string, visited?: Set<string>, fromAnchorId?: string) => string
 	autoWireComfyOutputs?: (
 		comfyNodeId: string,
 		outputs: ComfyLocalizedOutput[]
@@ -259,9 +264,30 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				let localizedOutputsForAutoWire: ComfyLocalizedOutput[] = []
 				if (next.runStatus === 'running' || next.runStatus === 'completed') {
 					try {
+						if (typeof console !== 'undefined') {
+							console.log(
+								`%c[ComfyUI][Poll] 📥 comfyService.outputs(baseUrl, promptId) 发起 → promptId=${promptId} runStatus=${next.runStatus}`,
+								'color:#0369a1;font-weight:bold'
+							)
+						}
 						const or = await payload.comfyService.outputs(baseUrl, promptId)
 						if (or.ok) {
 							const media = Array.isArray(or.media) ? or.media : []
+							if (typeof console !== 'undefined') {
+								console.log('%c[ComfyUI][Poll] 📥 outputs 返回 media 明细：', 'color:#0369a1', {
+									promptId,
+									mediaCnt: media.length,
+									media: media.map((m, idx) => ({
+										idx,
+										kind: (m as any).kind,
+										nodeId: (m as any).nodeId,
+										filename: (m as any).filename,
+										subfolder: (m as any).subfolder,
+										type: (m as any).type,
+										url: String((m as any).url ?? '').slice(0, 180)
+									}))
+								})
+							}
 							const dispatchRes = await payload.routeComfyOutputsToConnectedNodes(nodeId, media, {
 								notifyWarnings: next.runStatus !== 'running'
 							})
@@ -269,6 +295,24 @@ export const useAIWorkflowComfyRuntime = (payload: {
 								? dispatchRes.outputs
 								: []
 							localizedOutputsForAutoWire = localizedOutputs
+							if (typeof console !== 'undefined') {
+								console.log(
+									'%c[ComfyUI][Poll] 💾 将 outputs 写入 comfyuiSettings.outputs：',
+									'color:#0369a1;font-weight:bold',
+									{
+										promptId,
+										localizedCnt: localizedOutputs.length,
+										localizedOutputs: localizedOutputs.map((o, idx) => ({
+											idx,
+											anchorId: o.anchorId,
+											kind: o.kind,
+											filename: o.filename,
+											sourcePath: o.sourcePath,
+											url: String(o.url ?? '').slice(0, 200)
+										}))
+									}
+								)
+							}
 							const runningText = t('nodes.comfyui.importProgress', {
 								status: next.text,
 								imported: String(localizedOutputs.length),
@@ -537,31 +581,214 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		return result
 	}
 
+	interface CollectedTexts {
+		positive: string[]
+		negative: string[]
+		inOrder: Array<{ value: string; classified: 'positive' | 'negative' }>
+		/** 当前 comfyui 节点声明了多少个 mediaType==='text' 的输入锚点（设计上只允许接收文本节点） */
+		textAnchorsSeen: number
+		/** 其中实际上游有连接且解析出非空文本的数量 */
+		textAnchorsFilled: number
+	}
 	const collectComfyInputText = (nodeId: string): string => {
-		const edges = payload.store.state.edgeOrder
-			.map((id) => payload.store.state.edgesById[id] as ComfyEdge | undefined)
-			.filter((e): e is ComfyEdge =>
-				Boolean(
-					e &&
-					e.toNodeId === nodeId &&
-					COMFY_INPUT_ANCHOR_PATTERN.test(String(e.toAnchorId ?? '')) &&
-					e.fromNodeId
-				)
-			)
+		const texts = collectComfyInputTexts(nodeId)
+		return texts.positive.join('\n\n')
+	}
+	const collectComfyInputTexts = (nodeId: string): CollectedTexts => {
+		const nodeRecord = payload.store.state.nodesById[nodeId]
+		const node = nodeRecord as ComfyNode | undefined
+		const result: CollectedTexts = {
+			positive: [],
+			negative: [],
+			inOrder: [],
+			textAnchorsSeen: 0,
+			textAnchorsFilled: 0
+		}
 
-		for (const edge of edges) {
-			const fromNodeRecord = payload.store.state.nodesById[edge.fromNodeId ?? '']
-			const fromNode = fromNodeRecord as ComfyNode | undefined
-			if (!fromNode) continue
-			const fromType = String(fromNode.type ?? '').toLowerCase()
-			if (fromType === 'text') {
-				return String(fromNode.textValue ?? fromNode.prompt ?? '').trim()
+		const anchors = Array.isArray(node?.inputs)
+			? (node!.inputs as Array<Record<string, unknown>>)
+			: []
+		if (!anchors.length) return result
+
+		const NEGATIVE_ANCHOR_RE = /negative|neg_prompt|negprompt|反向|负面|负向/i
+
+		// 从 state 中预取全部入边（toNodeId === nodeId），用于聚合锚点的逐条边解析
+		const incomingEdges = payload.store.state.edgeOrder
+			.map((eid) => payload.store.state.edgesById[eid] as ComfyEdge | undefined)
+			.filter((e): e is ComfyEdge => Boolean(e && e.toNodeId === nodeId && e.fromNodeId))
+
+		if (typeof console !== 'undefined') {
+			console.log(
+				`%c[ComfyUI][CollectTexts] STEP-A 初始化: nodeId=${nodeId}, nodeType=${node?.type ?? 'unknown'}, ` +
+					`anchors=${anchors.length}, incomingEdges=${incomingEdges.length}, ` +
+					`getTextOutputForNode=${typeof payload.getTextOutputForNode === 'function'}, ` +
+					`getIncomingTextValue=${typeof payload.getIncomingTextValue === 'function'}`,
+				'color:#b45309;font-weight:bold'
+			)
+			for (const a of anchors) {
+				const mediaType = String((a as any)?.mediaType ?? '').toLowerCase()
+				const accepted = Array.isArray((a as any)?.acceptedMediaTypes)
+					? ((a as any).acceptedMediaTypes as unknown[]).map((v) => String(v ?? ''))
+					: []
+				console.log(
+					`[ComfyUI][CollectTexts]   锚点: id=${(a as any).id}, mediaType=${mediaType}, ` +
+						`acceptedMediaTypes=[${accepted.join(',')}], multiInput=${Boolean((a as any)?.multiInput)}`
+				)
+			}
+			for (const e of incomingEdges) {
+				const fromNode = payload.store.state.nodesById[String(e.fromNodeId ?? '')] as unknown as
+					| Record<string, unknown>
+					| undefined
+				console.log(
+					`[ComfyUI][CollectTexts]   入边: ${String(e.fromNodeId ?? '')}[type=${String(
+						fromNode?.type ?? '?'
+					)}]::${String(e.fromAnchorId ?? '')}  →  ${String(e.toAnchorId ?? '')}`
+				)
 			}
 		}
-		return ''
+
+		// 官方文本解析器：优先走 payload.getTextOutputForNode（完整解析器，支持 text-merge /
+		// scene-understanding 等高级节点），不可用时按节点类型关键字段兜底（仅支持常见
+		// 类型；但此时至少能拿到 text / rotate-image 节点的直接文本，不会完全跳过）。
+		const resolveUpstreamText = (fromNodeId: string, fromAnchorId?: string): string => {
+			if (typeof payload.getTextOutputForNode === 'function') {
+				const val = String(
+					payload.getTextOutputForNode(fromNodeId, undefined, fromAnchorId) ?? ''
+				).trim()
+				if (typeof console !== 'undefined') {
+					console.log(
+						`[ComfyUI][CollectTexts] resolveUpstreamText fromNodeId=${fromNodeId} via getTextOutputForNode → ` +
+							`len=${val.length}, preview=${val.slice(0, 80).replace(/\n/g, '\\n')}`
+					)
+				}
+				return val
+			}
+			const fromNode = payload.store.state.nodesById[fromNodeId] as ComfyNode | undefined
+			if (!fromNode) return ''
+			const t = String(fromNode.type ?? '').toLowerCase()
+			let val = ''
+			if (t === 'text')
+				val = String(fromNode.textValue ?? fromNode.prompt ?? fromNode.value ?? '').trim()
+			else if (t === 'rotate-image') val = String(fromNode.rotatePromptText ?? '').trim()
+			else if (t === 'text-merge')
+				val = String(fromNode.mergedText ?? fromNode.textValue ?? '').trim()
+			else if (t === 'scene-understanding')
+				val = String((fromNode.sceneUnderstandingSettings as any)?.outputJson ?? '').trim()
+			if (typeof console !== 'undefined') {
+				console.log(
+					`[ComfyUI][CollectTexts] resolveUpstreamText fromNodeId=${fromNodeId} via FALLBACK (nodeType=${t}) → ` +
+						`len=${val.length}, preview=${val.slice(0, 80).replace(/\n/g, '\\n')}`
+				)
+			}
+			return val
+		}
+
+		for (const anchor of anchors) {
+			const mediaType = String(anchor?.mediaType ?? '').toLowerCase()
+			const acceptedRaw = (anchor as any)?.acceptedMediaTypes
+			const acceptedList = Array.isArray(acceptedRaw)
+				? (acceptedRaw as Array<unknown>).map((v) => String(v ?? '').toLowerCase())
+				: []
+			const multiInput = Boolean((anchor as any)?.multiInput)
+			const acceptsText = mediaType === 'text' || acceptedList.includes('text')
+
+			// —— 两种情况参与文本收集：
+			//    1) mediaType==='text' 的普通文本输入锚点（按设计规则，只允许连内置 text 节点）；
+			//    2) mediaType==='generic' + acceptedMediaTypes 包含 'text' 的多输入聚合锚点
+			//       （典型：ComfyUI / Blender 节点的 "in" 锚点，同时接收 text/image/video/model3d）。
+			//    对 image / video / model3d / unknown mediaType，一律跳过不参与提示词拼接。
+			if (!acceptsText) continue
+			const toAnchorId = String(anchor?.id ?? '').trim()
+			if (!toAnchorId) continue
+			result.textAnchorsSeen++
+
+			const anchorName = String(anchor?.name ?? anchor?.label ?? '').toLowerCase()
+			const classified: 'positive' | 'negative' = NEGATIVE_ANCHOR_RE.test(
+				`${toAnchorId} ${anchorName}`
+			)
+				? 'negative'
+				: 'positive'
+
+			// —— 聚合锚点分支（generic + multiInput）：同一个 "in" 下可能连了 text / image /
+			//    video 等多条入边，必须逐条遍历 edges 判断上游节点类型，解析文本（若上游
+			//    是 image/video 型节点，resolveUpstreamText 返回空字符串，自然被跳过）。
+			if (mediaType === 'generic' && multiInput) {
+				const anchoredEdges = incomingEdges.filter((e) => String(e.toAnchorId ?? '') === toAnchorId)
+				if (typeof console !== 'undefined') {
+					console.log(
+						`[ComfyUI][CollectTexts] STEP-B anchor=${toAnchorId} classified=${classified} ` +
+							`(generic 聚合锚点) → matched edges=${anchoredEdges.length}`
+					)
+				}
+				for (const e of anchoredEdges) {
+					const fromNodeId = String(e.fromNodeId ?? '')
+					if (!fromNodeId) continue
+					const fromAnchorId = String(e.fromAnchorId ?? '') || undefined
+					const text = resolveUpstreamText(fromNodeId, fromAnchorId)
+					if (!text) continue
+					result.textAnchorsFilled++
+					if (classified === 'negative') result.negative.push(text)
+					else result.positive.push(text)
+					result.inOrder.push({ value: text, classified })
+				}
+				continue
+			}
+
+			// —— 普通单文本锚点分支（mediaType==='text'）：走官方 getIncomingTextValue 解析器
+			//    （单锚点单连接；若用户仍需额外支持 multiInput 的 text 锚点，已由上层兜底。）
+			if (typeof console !== 'undefined') {
+				console.log(
+					`[ComfyUI][CollectTexts] STEP-B anchor=${toAnchorId} classified=${classified} ` +
+						`(普通文本锚点) → via getIncomingTextValue`
+				)
+			}
+			const text =
+				typeof payload.getIncomingTextValue === 'function'
+					? String(payload.getIncomingTextValue(nodeId, toAnchorId) ?? '').trim()
+					: ''
+			if (typeof console !== 'undefined') {
+				console.log(
+					`[ComfyUI][CollectTexts] STEP-C anchor=${toAnchorId} getIncomingTextValue 结果: ` +
+						`len=${text.length}, preview=${text.slice(0, 80).replace(/\n/g, '\\n')}`
+				)
+			}
+			if (!text) continue
+			result.textAnchorsFilled++
+			if (classified === 'negative') result.negative.push(text)
+			else result.positive.push(text)
+			result.inOrder.push({ value: text, classified })
+		}
+
+		if (typeof console !== 'undefined') {
+			console.log(
+				`%c[ComfyUI][CollectTexts] STEP-D 汇总: ` +
+					`textAnchorsSeen=${result.textAnchorsSeen}, textAnchorsFilled=${result.textAnchorsFilled}, ` +
+					`positive=${result.positive.length}段(${result.positive.reduce((a, s) => a + s.length, 0)}字), ` +
+					`negative=${result.negative.length}段(${result.negative.reduce((a, s) => a + s.length, 0)}字)`,
+				'color:#0369a1;font-weight:bold'
+			)
+			if (result.positive.length > 0) {
+				console.log(
+					'[ComfyUI][CollectTexts] positive[0] 完整前200字:\n' + result.positive[0].slice(0, 200)
+				)
+			}
+			if (result.negative.length > 0) {
+				console.log(
+					'[ComfyUI][CollectTexts] negative[0] 完整前200字:\n' + result.negative[0].slice(0, 200)
+				)
+			}
+		}
+		return result
 	}
 
 	const onComfyUIRun = async (nodeId: string) => {
+		if (typeof console !== 'undefined') {
+			console.log(
+				`%c[ComfyUI][RUN] 🚀 onComfyUIRun STARTED nodeId=${nodeId}. ` +
+					`(If this line MISSING in your console → 运行按钮没真正触发 / 代码还没被打包到你当前运行的版本)`,
+				'color:#059669;font-weight:bold;font-size:13px'
+			)
+		}
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
 		const settings = (node?.comfyuiSettings ?? {}) as {
@@ -609,9 +836,65 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const workflowPath = String(settings.workflowPath ?? '').trim()
 		const configuredPositivePrompt = String(settings.positivePrompt ?? '')
 		const configuredNegativePrompt = String(settings.negativePrompt ?? '')
-		const incomingText = collectComfyInputText(nodeId)
-		const finalPositivePrompt = [incomingText, configuredPositivePrompt].filter(Boolean).join(', ')
-		const finalNegativePrompt = configuredNegativePrompt
+		const incomingTexts = collectComfyInputTexts(nodeId)
+		const anchorPositiveParts = incomingTexts.positive
+		const anchorNegativeParts = incomingTexts.negative
+		const positiveCandidateParts = [...anchorPositiveParts, configuredPositivePrompt]
+		const negativeCandidateParts = [...anchorNegativeParts, configuredNegativePrompt]
+		const finalPositivePrompt = positiveCandidateParts.filter(Boolean).join('\n\n')
+		const finalNegativePrompt = negativeCandidateParts.filter(Boolean).join('\n\n')
+
+		// 防御性 WARN：节点声明了 text 类型输入锚点（根据规则：这些锚点只允许连内置 text 节点），
+		// 但最终上游连接的文本全部为空（官方解析器没解析出内容），提示用户可能未连线或文本节点未运行
+		if (
+			incomingTexts.textAnchorsSeen > 0 &&
+			incomingTexts.textAnchorsFilled === 0 &&
+			finalPositivePrompt.length === 0 &&
+			finalNegativePrompt.length === 0 &&
+			typeof console !== 'undefined'
+		) {
+			console.warn(
+				`[ComfyUI][CollectTexts] ⚠️ 当前 comfyui 节点声明了 ${incomingTexts.textAnchorsSeen} 个 text 类型输入锚点，` +
+					`但没有任何一个锚点解析到非空上游文本（上游只允许连 DVStudio 内置 text / rotate-image / ` +
+					`text-merge / scene 节点，不允许连另一个 comfyui 节点）。` +
+					`textAnchorsSeen=${incomingTexts.textAnchorsSeen}, textAnchorsFilled=${incomingTexts.textAnchorsFilled}`
+			)
+		}
+		// 提交前打印 payload 中的 positivePrompt 信息（便于审计）
+		if (typeof console !== 'undefined') {
+			console.log('%c[ComfyUI][RUN] 📝 prompt summary', 'color:#7c3aed;font-weight:bold', {
+				finalPositivePromptLen: finalPositivePrompt.length,
+				finalNegativePromptLen: finalNegativePrompt.length,
+				configuredPromptLen: configuredPositivePrompt.length,
+				anchorPositiveParts: anchorPositiveParts.length,
+				anchorNegativeParts: incomingTexts.negative.length,
+				textAnchorsSeen: incomingTexts.textAnchorsSeen,
+				textAnchorsFilled: incomingTexts.textAnchorsFilled,
+				hasHistoryPromptId: Boolean(settings.historyPromptId),
+				workflowPath
+			})
+			if (finalPositivePrompt.length > 0) {
+				console.log(
+					'%c[ComfyUI][RUN] ✅ finalPositivePrompt (前300字):\n' +
+						finalPositivePrompt.slice(0, 300),
+					'color:#7c3aed'
+				)
+			} else {
+				console.warn(
+					'%c[ComfyUI][RUN] ❌ finalPositivePrompt 是空字符串！anchorPositiveParts=' +
+						`${anchorPositiveParts.length}, configuredPositivePrompt.len=${configuredPositivePrompt.length}` +
+						`\n  若上游确实连接了文本节点 → 请检查 collectComfyInputTexts STEP-A~D 日志`,
+					'color:#b91c1c;font-weight:bold'
+				)
+			}
+			if (finalNegativePrompt.length > 0) {
+				console.log(
+					'%c[ComfyUI][RUN] ➖ finalNegativePrompt (前200字):\n' +
+						finalNegativePrompt.slice(0, 200),
+					'color:#475569'
+				)
+			}
+		}
 
 		if (!node || node.type !== 'comfyui') return
 		if (!baseUrl) {
@@ -623,19 +906,15 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			return
 		}
 
+		// F8-A2：无成功运行历史不再硬阻断，改为 WARN 提示后继续执行
+		//   ComfyUI 本身不要求"先成功运行一次"才能提交任务。历史记录仅用于
+		//   自动匹配输入节点、输出锚点与回填参数，不是运行的前置条件。
 		if (settings.historyChecked && settings.hasHistory === false) {
 			const errMsg = settings.historyGuideMessage || t('nodes.comfyui.noHistoryRecord')
-			payload.pushToast(errMsg, 'warn')
-			payload.store.commit('setNodeComfyUISettings', {
-				nodeId,
-				comfyuiSettings: {
-					runStatus: 'idle',
-					progress: 0,
-					statusText: t('nodes.comfyui.needRunInComfyFirst'),
-					lastUpdateAt: Date.now()
-				}
-			})
-			return
+			payload.pushToast(
+				errMsg + '，将以工作流默认值直接提交给 ComfyUI 执行（输入/输出锚点可能不完全匹配）',
+				'warn'
+			)
 		}
 
 		stopComfyUIPoll(nodeId)
@@ -727,11 +1006,21 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				}
 			}
 
-			// 校验工作流输入映射是否存在（确保输入资源能被正确注入 ComfyUI 工作流的对应节点）
+			// F8-A2：无 historyInputMappings 不再阻断运行，降级为 WARN 提示
+			//   允许用户直接运行（inputMappings 传 undefined 给后端，
+			//   后端 comfyService.run 会走默认填充逻辑或直接把文件上传到 ComfyUI
+			//   再由工作流解析）。仅当 historyInputMappings 缺失且有输入资源时提示。
 			if (validationErrors.length === 0 && !settings.historyInputMappings) {
-				validationErrors.push(
-					'未解析工作流输入/输出定义，请先在节点设置中点击"解析工作流"以确保输入资源能正确注入'
-				)
+				const hasInputs =
+					resources.images.length > 0 ||
+					resources.videos.length > 0 ||
+					finalPositivePrompt.length > 0
+				if (hasInputs) {
+					payload.pushToast(
+						'未解析到工作流输入定义，已将资源/提示词按顺序提交，ComfyUI 可能无法正确注入参数。建议先在 ComfyUI 中成功运行一次工作流以建立历史记录。',
+						'warn'
+					)
+				}
 			}
 
 			if (validationErrors.length > 0) {
@@ -755,12 +1044,50 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				...resources.images.map((f) => ({ file: f, mediaType: 'image' as const })),
 				...resources.videos.map((f) => ({ file: f, mediaType: 'video' as const }))
 			]
-			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, {
+			const runParams = {
 				positivePrompt: finalPositivePrompt,
 				negativePrompt: finalNegativePrompt,
 				historyPromptId: settings.historyPromptId,
 				inputMappings: settings.historyInputMappings
-			})
+			}
+			if (typeof console !== 'undefined') {
+				console.log(
+					`%c[ComfyUI][RUN] 📤 comfyService.run 即将发起调用: baseUrl=${baseUrl} ` +
+						`| workflowPath=${workflowPath} | images=${resources.images.length} videos=${resources.videos.length} ` +
+						`| positivePrompt.len=${runParams.positivePrompt.length} | negativePrompt.len=${runParams.negativePrompt.length}`,
+					'color:#0ea5e9;font-weight:bold'
+				)
+				if (runParams.positivePrompt) {
+					console.log(
+						'[ComfyUI][RUN] 📤 positivePrompt 完整前400字:\n' +
+							runParams.positivePrompt.slice(0, 400)
+					)
+				}
+				console.log(
+					'[ComfyUI][RUN] 📤 runParams JSON:',
+					JSON.stringify(
+						{
+							...runParams,
+							inputMappings: runParams.inputMappings
+								? {
+										imageInputs: (runParams.inputMappings as any).imageInputs?.length ?? 0,
+										videoInputs: (runParams.inputMappings as any).videoInputs?.length ?? 0,
+										textNodes_positive:
+											((runParams.inputMappings as any).textNodes?.positive as unknown[])?.length ??
+											0,
+										textNodes_negative:
+											((runParams.inputMappings as any).textNodes?.negative as unknown[])?.length ??
+											0,
+										seedNodes: (runParams.inputMappings as any).seedNodes?.length ?? 0
+									}
+								: undefined
+						},
+						null,
+						2
+					)
+				)
+			}
+			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, runParams)
 			if (!rr.ok) {
 				if (rr.requiresHistorySetup) {
 					payload.store.commit('setNodeComfyUISettings', {
@@ -828,6 +1155,101 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					lastUpdateAt: Date.now()
 				}
 			})
+
+			// —— Phase 4 前端诊断增强：打印 textWriteDiagnostics 结构化表格 + 异常情况 toast ——
+			const d = rr.textWriteDiagnostics as TextWriteDiagnostics | undefined
+			if (d) {
+				const rows: Record<string, unknown>[] = []
+				rows.push({
+					metric: 'baselineSource',
+					value: d.baselineSource ?? rr.promptSource ?? 'unknown'
+				})
+				rows.push({
+					metric: 'whitelistFiltered (drop UI-only nodes)',
+					value: d.whitelistFiltered ?? '—'
+				})
+				rows.push({ metric: 'classTypeFromHistory', value: d.classTypeFromHistory ?? 0 })
+				rows.push({ metric: 'mergedFromHistoryCount', value: d.mergedFromHistoryCount ?? 0 })
+				rows.push({ metric: 'positivePromptProvided', value: d.positivePromptProvided })
+				rows.push({ metric: 'negativePromptProvided', value: d.negativePromptProvided })
+				rows.push({ metric: 'preClearCount (Defense-Clear)', value: d.preClearCount ?? '—' })
+				rows.push({
+					metric: 'downstreamWrites (Defense-Downstream)',
+					value: `pos=${d.downstreamWrites?.positive ?? 0} / neg=${d.downstreamWrites?.negative ?? 0}`
+				})
+				rows.push({
+					metric: 'mappings write',
+					value: `pos=${d.positiveWriteCount}/${d.positiveMappingCount}   neg=${d.negativeWriteCount}/${d.negativeMappingCount}`
+				})
+				rows.push({
+					metric: 'fallback fullGraph write',
+					value: d.fallbackRan
+						? `ran  pos=${d.fallbackWrites?.positive ?? 0} / neg=${d.fallbackWrites?.negative ?? 0}`
+						: 'not triggered'
+				})
+				rows.push({
+					metric: 'snapshot nodes',
+					value: Object.keys(d.snapshot ?? {}).join(', ') || 'none'
+				})
+				// eslint-disable-next-line no-console
+				console.groupCollapsed(
+					`[ComfyUI] Text write diagnostics (node=${nodeId} pid=${pid || '—'})`
+				)
+				// eslint-disable-next-line no-console
+				console.table(rows)
+				if (d.writtenDetails && Array.isArray(d.writtenDetails.positive)) {
+					// eslint-disable-next-line no-console
+					console.log(
+						'positive written details:',
+						d.writtenDetails.positive.map(
+							(x: TextWrittenDetail) => `${x.nodeId}(${x.classType}).${x.key} = "${x.valuePreview}"`
+						)
+					)
+				}
+				if (d.writtenDetails && Array.isArray(d.writtenDetails.negative)) {
+					// eslint-disable-next-line no-console
+					console.log(
+						'negative written details:',
+						d.writtenDetails.negative.map(
+							(x: TextWrittenDetail) => `${x.nodeId}(${x.classType}).${x.key} = "${x.valuePreview}"`
+						)
+					)
+				}
+				// eslint-disable-next-line no-console
+				console.groupEnd()
+
+				const totalPosWrites =
+					Number(d.positiveWriteCount || 0) +
+					Number(d.downstreamWrites?.positive || 0) +
+					Number(d.fallbackWrites?.positive || 0)
+				const totalNegWrites =
+					Number(d.negativeWriteCount || 0) +
+					Number(d.downstreamWrites?.negative || 0) +
+					Number(d.fallbackWrites?.negative || 0)
+				const anyPosLeakSuspicious =
+					d.positivePromptProvided === true &&
+					totalPosWrites === 0 &&
+					finalPositivePrompt &&
+					finalPositivePrompt.length > 0
+				const anyNegLeakSuspicious =
+					d.negativePromptProvided === true &&
+					totalNegWrites === 0 &&
+					finalNegativePrompt &&
+					finalNegativePrompt.length > 0
+				if (anyPosLeakSuspicious || anyNegLeakSuspicious) {
+					const part1 = anyPosLeakSuspicious
+						? `⚠️ 正向提示词未写入任何ComfyUI节点（提供了${finalPositivePrompt.length}字符）。`
+						: ''
+					const part2 = anyNegLeakSuspicious
+						? `⚠️ 负向提示词未写入任何ComfyUI节点（提供了${finalNegativePrompt.length}字符）。`
+						: ''
+					payload.pushToast(
+						`${part1}${part2}视频可能会使用ComfyUI工作流中嵌入的旧默认值。请联系开发人员排查节点映射或在ComfyUI中再运行一次。`,
+						'error'
+					)
+				}
+			}
+
 			if (pid) startComfyUIPoll(nodeId, baseUrl, pid)
 		} catch (err: unknown) {
 			console.error('[ComfyUI] 运行异常', {

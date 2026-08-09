@@ -389,17 +389,9 @@ export const useAIWorkflowComfyAutoWire = (options: UseAIWorkflowComfyAutoWireOp
 				}
 			}
 
-			if (result.createdNodeIds.length > 0) {
-				options.store.commit('patchNodeSettings', {
-					nodeId: comfyNodeId,
-					settings: {
-						autoWireMeta: {
-							lastRunCreatedNodeIds: result.createdNodeIds,
-							lastRunAt: Date.now()
-						}
-					}
-				})
-			}
+			// NOTE：移除 "patchNodeSettings" 提交 — 该 mutation 在 store.ts 中不存在，
+			//   之前执行会抛 [vuex] unknown mutation type: patchNodeSettings（见 comfyUIError.log L901）。
+			//   且 autoWireMeta 在整个代码库中仅有此处写入、从未被读取，属于废弃字段。
 		} finally {
 			options.onAutoWireEnd?.()
 		}
