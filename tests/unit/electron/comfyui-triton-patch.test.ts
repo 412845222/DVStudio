@@ -102,7 +102,22 @@ vi.mock('../../../backend/modules/comfyui/log-line-parser.mjs', () => ({
 describe('comfyui setup-service: buildComfySpawnEnv (方案B 环境清理)', () => {
 	let buildComfySpawnEnv: () => Record<string, string | undefined>
 
+	let originalPlatform: NodeJS.Platform
+
 	beforeEach(async () => {
+		// 与方案A describe 的 beforeEach 保持完全一致：强制 win32 才能让 buildComfySpawnEnv
+		// 内部 `if (process.platform === 'win32')` 分支在 Linux CI runner 下也真实执行，
+		// 否则 L166 的 guard 直接跳过，VCINSTALLDIR / VCToolsVersion 不完整检测的 delete 逻辑
+		// 永远不跑，导致 PR #254 Frontend Tests (All) Ubuntu runner 抛：
+		//   expected 'C:\Program Files\Microsoft Visual Studio' / '14.42.34433' to be undefined
+		// （本地 Windows 环境因为 platform 本身是 win32，所以 2239 tests 全过，看不到该 bug）
+		originalPlatform = process.platform
+		Object.defineProperty(process, 'platform', {
+			value: 'win32',
+			writable: true,
+			configurable: true
+		})
+
 		vi.resetModules()
 		mockConfig = {}
 		mockFsState = { files: new Map(), dirs: new Set() }
@@ -114,6 +129,11 @@ describe('comfyui setup-service: buildComfySpawnEnv (方案B 环境清理)', () 
 	afterEach(() => {
 		delete process.env.VCINSTALLDIR
 		delete process.env.VCToolsVersion
+		Object.defineProperty(process, 'platform', {
+			value: originalPlatform,
+			writable: true,
+			configurable: true
+		})
 	})
 
 	it('always sets PYTHONIOENCODING to utf-8', () => {
