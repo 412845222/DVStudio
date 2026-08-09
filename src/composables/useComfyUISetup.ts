@@ -126,11 +126,13 @@ export function useComfyUISetup() {
 		currentVersion?: string
 		currentCommit?: string
 		latestTag?: string
-		upstreamCommit?: string
+		latestVersion?: string
 		updateAvailable: boolean
 		isGitRepo: boolean
 		error?: string
 		releaseUrl?: string
+		publishedAt?: string
+		releaseName?: string
 	} | null>(null)
 
 	const freshInstallMode = ref(false)

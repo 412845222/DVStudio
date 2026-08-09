@@ -145,6 +145,35 @@ type WorkflowGetResponse =
 			baseUrl?: string
 	  }
 
+export type TextWrittenDetail = {
+	nodeId: string
+	classType: string
+	key: string
+	valuePreview: string
+}
+
+export type TextWriteDiagnostics = {
+	mappingsUsed: boolean
+	positivePromptProvided: boolean
+	negativePromptProvided: boolean
+	positiveMappingCount: number
+	negativeMappingCount: number
+	positiveWriteCount: number
+	negativeWriteCount: number
+	positiveAttemptCount: number
+	negativeAttemptCount: number
+	fallbackRan: boolean
+	fallbackWrites: { positive: number; negative: number }
+	writtenDetails: { positive: TextWrittenDetail[]; negative: TextWrittenDetail[] }
+	snapshot: Record<string, { classType: string; inputs: Record<string, string> }>
+	baselineSource?: string
+	preClearCount?: number
+	downstreamWrites?: { positive: number; negative: number }
+	whitelistFiltered?: number
+	classTypeFromHistory?: number
+	mergedFromHistoryCount?: number
+}
+
 type RunResponse =
 	| {
 			ok: true
@@ -153,6 +182,7 @@ type RunResponse =
 			promptSource?: string
 			result: Record<string, unknown>
 			snapshot?: Record<string, unknown>
+			textWriteDiagnostics?: TextWriteDiagnostics
 	  }
 	| {
 			ok: false
@@ -628,6 +658,9 @@ export type ResolveHistoryResponse =
 			hasImageInput?: boolean
 			hasVideoInput?: boolean
 			hasTextPrompt: boolean
+			textNodeCount?: number
+			positiveTextCount?: number
+			negativeTextCount?: number
 			hasImageOutput?: boolean
 			hasVideoOutput?: boolean
 			hasModel3dOutput?: boolean

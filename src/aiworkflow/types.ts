@@ -728,6 +728,12 @@ export type WorkflowComfyUINodeSettings = {
 	videoInputCount?: number
 	/** whether there are text prompt inputs (CLIPTextEncode) */
 	hasTextPromptInput?: boolean
+	/** total number of text nodes detected (raw), including both positive & negative classifications */
+	textNodeCount?: number
+	/** number of text nodes classified as positive prompt */
+	positiveTextCount?: number
+	/** number of text nodes classified as negative prompt */
+	negativeTextCount?: number
 	/** number of nodes in the prompt graph */
 	historyNodeCount?: number
 	/** exact input node mappings resolved from history, used for precise parameter replacement at runtime */
