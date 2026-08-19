@@ -634,6 +634,69 @@ declare global {
 			gemini?: {
 				chat?(payload: any): Promise<any>
 			}
+			/**
+			 * CLI 跨进程控制服务器命名空间（dweb:cli-control:* IPC）
+			 */
+			cliControlServer: {
+				getStatus(): Promise<{
+					ok: boolean
+					running: boolean
+					port?: number
+					host?: string
+					error?: string
+					app?: { name: string; version: string; currentProject?: { id: number; name: string } | null }
+					agent?: { ready: boolean; runtime: string }
+					mcp?: { builtinToolsCount: number }
+				}>
+				getTask(payload: { taskId: string }): Promise<{
+					ok: boolean
+					task?: {
+						taskId: string
+						command: string
+						status: string
+						payload?: Record<string, unknown>
+						source?: string
+						createdAt: number
+						updatedAt?: number
+						completedAt?: number
+						nodeId?: string
+						outputFiles?: string[]
+						exportedFiles?: string[]
+						error?: string | { code: string; message: string }
+						progress?: { percent: number; phase?: string }
+					}
+					error?: string
+				}>
+				listTasks(payload?: {
+					limit?: number
+					offset?: number
+					status?: string
+					filterSource?: string
+				}): Promise<{
+					ok: boolean
+					tasks: Array<{
+						taskId: string
+						command: string
+						status: string
+						source?: string
+						createdAt: number
+						updatedAt?: number
+					}>
+					total: number
+					limit?: number
+					offset?: number
+					error?: string
+				}>
+				markTaskCompleted(payload: {
+					taskId: string
+					outputFiles?: string[]
+					exportedFiles?: string[]
+				}): Promise<{ ok: boolean; error?: string }>
+				markTaskFailed(payload: {
+					taskId: string
+					error?: string | { code?: string; message: string }
+				}): Promise<{ ok: boolean; error?: string }>
+			}
 		}
 	}
 }

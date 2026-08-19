@@ -1224,5 +1224,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			backendRuntimeListenerMap.delete(id)
 			return { ok: true }
 		}
+	},
+	cliControlServer: {
+		getStatus: () => invoke('dweb:cli-control:status'),
+		getTask: (payload) => invoke('dweb:cli-control:task:get', payload || {}),
+		listTasks: (payload) => invoke('dweb:cli-control:task:list', payload || {}),
+		markTaskCompleted: (payload) => invoke('dweb:cli-control:task:mark-completed', payload || {}),
+		markTaskFailed: (payload) => invoke('dweb:cli-control:task:mark-failed', payload || {})
 	}
 })

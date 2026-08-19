@@ -6,6 +6,154 @@
 
 import { getToolExecutor } from './toolExecutor.mjs'
 import logger from '../../core/logger.mjs'
+import fs from 'node:fs'
+import path from 'node:path'
+
+/**
+ * P3: 生成图片的复合 MCP 工具（generate_image）
+ *
+ * 流程：create_node(image-generation) → execute_node → 轮询完成 → get_node_info → fs copy 到 outputPath(可选)
+ * 返回：{ nodeId, outputFiles, exportedFiles }，该结构会被 Agent Runtime 写入 assistant message，
+ * 前端 useCLIAgentTrigger 的 JSON 解析器可直接识别并写回 CLI Control Server 的 completed 状态
+ */
+async function generateImageHandler(args, { requestId }) {
+	const executor = getToolExecutor()
+	const prompt = String(args?.prompt || '').trim()
+	if (!prompt) throw new Error('prompt is required (non-empty string)')
+
+	const width = typeof args?.width === 'number' ? Math.max(64, Math.floor(args.width)) : undefined
+	const height = typeof args?.height === 'number' ? Math.max(64, Math.floor(args.height)) : undefined
+	const aspectRatio = typeof args?.aspectRatio === 'string' ? args.aspectRatio : undefined
+	const negativePrompt = typeof args?.negativePrompt === 'string' ? args.negativePrompt : undefined
+	const model = typeof args?.model === 'string' ? args.model : undefined
+	const imageCount = typeof args?.imageCount === 'number' ? Math.max(1, Math.min(16, Math.floor(args.imageCount))) : 1
+	const seed = typeof args?.seed === 'number' ? Math.floor(args.seed) : undefined
+	const outputPath = typeof args?.outputPath === 'string' ? args.outputPath || '' : ''
+	const autoExport = args?.autoExport !== false
+	const references = Array.isArray(args?.references) ? args.references.filter((x) => typeof x === 'string' && x) : undefined
+
+	// 1. 构造 image-generation 节点配置（兼容多种配置字段名，未被识别的会被节点内部忽略，不影响主流程）
+	const nodeConfig = {
+		prompt,
+		...(negativePrompt ? { negativePrompt, negative_prompt: negativePrompt } : {}),
+		...(typeof width === 'number' ? { width } : {}),
+		...(typeof height === 'number' ? { height } : {}),
+		...(aspectRatio ? { aspectRatio, aspect_ratio: aspectRatio } : {}),
+		...(model ? { model, modelKey: model } : {}),
+		...(typeof imageCount === 'number' ? { imageCount, count: imageCount, numImages: imageCount } : {}),
+		...(typeof seed === 'number' ? { seed } : {}),
+		...(Array.isArray(references) && references.length ? { references, referenceImages: references } : {})
+	}
+
+	// 2. create_node
+	const title = `CLI图片 ${prompt.slice(0, 18)}${prompt.length > 18 ? '…' : ''}`
+	const createRes = await executor.callTool('create_node', {
+		type: 'image-generation',
+		title,
+		config: nodeConfig
+	}, { skipFrontend: false })
+	const nodeId = String(createRes?.nodeId || createRes?.id || '')
+	if (!nodeId) {
+		throw new Error(`create_node did not return nodeId. createRes=${JSON.stringify(createRes).slice(0, 400)}`)
+	}
+	logger.info(`[generate_image][${requestId}] created node=${nodeId}`)
+
+	// 3. execute_node（超时 5 分钟，图片生成可能需要较长时间）
+	const IPC_TIMEOUT_5MIN = 5 * 60 * 1000
+	const execRes = await executor.callTool('execute_node', { nodeId }, { skipFrontend: false, timeoutMs: IPC_TIMEOUT_5MIN })
+	logger.info(`[generate_image][${requestId}] execute_node submitted. node=${nodeId}`, execRes ? `submitted=${JSON.stringify(execRes).slice(0,200)}` : '')
+
+	// 4. 轮询 list_node_tasks，等待该节点有 completed / failed 状态的任务
+	const WAIT_START = Date.now()
+	const WAIT_TIMEOUT_MS = 10 * 60 * 1000 // 10 分钟
+	const POLL_MS = 2500
+	const POLL_IPC_TIMEOUT = 30 * 1000 // list_node_tasks 查询超时 30s
+	let finalTask = null
+	while (Date.now() - WAIT_START < WAIT_TIMEOUT_MS) {
+		const tasksRes = await executor.callTool('list_node_tasks', { nodeId }, { skipFrontend: false, timeoutMs: POLL_IPC_TIMEOUT })
+		const tasks = Array.isArray(tasksRes?.tasks) ? tasksRes.tasks : (Array.isArray(tasksRes) ? tasksRes : [])
+		const sorted = tasks
+			.filter((t) => t && (t.nodeId === nodeId || !nodeId))
+			.sort((a, b) => (Number(b.createdAt || b.created_at || 0) - Number(a.createdAt || a.created_at || 0)))
+		// 取该节点最新的一个任务
+		const latest = sorted[0]
+		if (latest) {
+			const st = String(latest.status || '').toLowerCase()
+			if (st === 'completed') { finalTask = latest; break }
+			if (st === 'failed' || st === 'canceled') { finalTask = latest; break }
+		}
+		await new Promise((r) => setTimeout(r, POLL_MS))
+	}
+	if (!finalTask) {
+		throw new Error(`execute_node timed out (>${WAIT_TIMEOUT_MS}ms) waiting for node ${nodeId}`)
+	}
+	const finalStatus = String(finalTask.status || '').toLowerCase()
+	if (finalStatus === 'failed') {
+		const msg = finalTask.error?.message || finalTask.error || finalTask.errMsg || '生成失败'
+		throw new Error(`image generation failed for node ${nodeId}: ${String(msg)}`)
+	}
+	if (finalStatus === 'canceled') {
+		throw new Error(`image generation canceled for node ${nodeId}`)
+	}
+
+	// 5. get_node_info 获取输出文件
+	let outputFiles = Array.isArray(finalTask?.outputFiles)
+		? finalTask.outputFiles.filter(Boolean)
+		: []
+	if (outputFiles.length === 0) {
+		const info = await executor.callTool('get_node_info', { nodeId }, { skipFrontend: false, timeoutMs: 30 * 1000 })
+		const maybe = info?.outputFiles || info?.outputs || info?.output || info?.result
+		if (Array.isArray(maybe)) outputFiles = maybe.filter((x) => typeof x === 'string' && x)
+		else if (typeof maybe === 'string' && maybe) outputFiles = [maybe]
+	}
+	// 若最终仍没有文件，返回空（P2解析逻辑视为成功但stub）
+	const exportedFiles = []
+
+	// 6. 如果指定了 outputPath 且 autoExport=true，尝试复制
+	if (autoExport && outputPath && outputFiles.length > 0) {
+		try {
+			const outParsed = path.parse(outputPath)
+			const stat = fs.existsSync(outputPath) ? fs.statSync(outputPath) : null
+			const destIsDir = stat ? stat.isDirectory() : !outParsed.ext
+			const destDir = destIsDir ? outputPath : outParsed.dir
+			if (destDir && !fs.existsSync(destDir)) {
+				fs.mkdirSync(destDir, { recursive: true })
+			}
+			for (let i = 0; i < outputFiles.length; i++) {
+				const src = outputFiles[i]
+				if (!fs.existsSync(src)) continue
+				let dest
+				if (destIsDir) {
+					const srcName = path.basename(src)
+					dest = path.join(outputPath, srcName)
+				} else if (outputFiles.length === 1) {
+					dest = outputPath
+				} else {
+					const ext = outParsed.ext || path.extname(src) || '.png'
+					const base = outParsed.name || `image-${i}`
+					dest = path.join(destDir || '.', `${base}_${i + 1}${ext}`)
+				}
+				fs.copyFileSync(src, dest)
+				exportedFiles.push(dest)
+				logger.debug(`[generate_image][${requestId}] copied output ${src} → ${dest}`)
+			}
+		} catch (copyErr) {
+			// 复制失败不视为整体失败（因为图已经生成在节点output里了），但会记录警告
+			logger.warn(`[generate_image][${requestId}] autoExport copy failed (non-fatal): ${copyErr?.message || copyErr}`)
+		}
+	}
+
+	logger.info(`[generate_image][${requestId}] done. node=${nodeId} outputs=${outputFiles.length} exported=${exportedFiles.length}`)
+	return {
+		ok: true,
+		nodeId,
+		taskStatus: finalTask?.status || 'completed',
+		outputFiles,
+		exportedFiles,
+		// 给 useCLIAgentTrigger JSON 解析器一个明确的结构，防止被嵌套 JSON 漏掉
+		_jsonBridge: JSON.stringify({ nodeId, outputFiles, exportedFiles })
+	}
+}
 
 /**
  * 注册 DVStudio 内置工具到统一工具执行器
@@ -247,6 +395,68 @@ export function registerBuiltinTools() {
 			}
 		}
 	})
+
+	// ========== generate_image (P3 新增：复合MCP工具) ==========
+	executor.registerTool(
+		'generate_image',
+		'创建一个图片生成节点，配置参数后自动执行生成，等待完成后返回输出文件列表。这是一个高便捷的复合工具，等同于依次调用 create_node(type=image-generation) → update_node_config(可选) → execute_node → 轮询 list_node_tasks → get_node_info → (可选) 复制输出文件到 outputPath。当用户的请求包含提示词、参考图、尺寸、输出路径等参数时，优先使用该工具。',
+		{
+			type: 'object',
+			required: ['prompt'],
+			properties: {
+				prompt: {
+					type: 'string',
+					description: '图片生成提示词（必填）'
+				},
+				references: {
+					type: 'array',
+					description: '参考图本地路径列表（可选），用于图生图、IP适配器、参考风格等',
+					items: { type: 'string' }
+				},
+				width: {
+					type: 'number',
+					description: '图片宽度（像素，推荐 512/768/1024 等标准值，可选）'
+				},
+				height: {
+					type: 'number',
+					description: '图片高度（像素，可选）'
+				},
+				aspectRatio: {
+					type: 'string',
+					description: '宽高比，如 1:1、16:9、9:16、3:4、4:3（可选，如果指定了width/height则以实际像素为准）'
+				},
+				negativePrompt: {
+					type: 'string',
+					description: '负向提示词（可选）'
+				},
+				model: {
+					type: 'string',
+					description: '使用的生成模型名称或ID（可选，不指定使用当前节点默认）'
+				},
+				imageCount: {
+					type: 'number',
+					description: '生成图片数量（1-16，默认 1）'
+				},
+				seed: {
+					type: 'number',
+					description: '随机种子（可选，不传则随机）'
+				},
+				outputPath: {
+					type: 'string',
+					description: '生成完成后自动复制到的目标路径。当为目录时将输出逐个复制到目录下；当为文件路径且 imageCount=1 时复制为指定文件名；多个图时按 outputPath 命名规则加后缀（可选）'
+				},
+				autoExport: {
+					type: 'boolean',
+					description: '是否在生成完成后自动复制输出文件到 outputPath（默认 true）'
+				},
+				projectId: {
+					type: 'number',
+					description: '项目ID（可选，当前未使用，保留）'
+				}
+			}
+		},
+		generateImageHandler
+	)
 
 	executor.registerIPCBridge()
 	logger.info('DVStudio builtin tools registered via ToolExecutor')

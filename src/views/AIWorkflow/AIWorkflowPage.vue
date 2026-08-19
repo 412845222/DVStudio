@@ -1011,6 +1011,8 @@ import { useWarmupPrompt } from './node-screenshot/warmupPromptManager'
 import BlueprintStartupOverlay from '../../ui/UIComponent/BlueprintStartupOverlay.vue'
 import { useBlueprintStartupProgress } from './startup/useBlueprintStartupProgress'
 import { createBlueprintStartupLoader } from './startup/useBlueprintStartupLoader'
+// CLI 跨进程控制集成（P0 stub，独立 try/catch 保证非侵入）
+import { useCLIAgentTrigger } from './node-business/chat/useCLIAgentTrigger'
 
 interface GeneratedResourceBase {
 	id: string
@@ -12038,6 +12040,30 @@ const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupA
 		canvasViewportSize: computed(() => canvasViewportSize.value),
 		focusNode: (nodeId) => onFocusNode(nodeId)
 	})
+
+// ========== CLI 跨进程控制触发器集成（P2 Agent 对话桥接闭环） ==========
+// 🔑 non-intrusive：独立 try/catch，任何失败绝不影响 useAgentToolBridge 及后续
+try {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const _cliTrigger = useCLIAgentTrigger({
+		getProjectInfo: () => ({
+			id: currentProjectId.value,
+			name: currentProjectName.value
+		}),
+		pushToast,
+		// P2: 将 Agent 对话的 drafts / 发送状态 / onSend() 注入给 CLI Trigger，
+		// 实现：CLI 任务 → 写 chatDraft → 触发 onSend → 等态完成 → markTaskCompleted/Failed 回写
+		chatDraft,
+		chatSending,
+		chatMessages,
+		onSend
+	})
+} catch (cliInitErr: unknown) {
+	console.warn(
+		'[AIWorkflowPage][CLI-trigger] init error (non-fatal, page continues normally):',
+		cliInitErr
+	)
+}
 
 const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuilder({
 	store,
