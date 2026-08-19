@@ -1,7 +1,7 @@
 {
 	"name": "dweb-video-studio",
 	"private": true,
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"main": "electron/main.mjs",
 	"description": "DVStudio - Vite + Vue 3 + TypeScript + WebGL2 视频动画模板/编辑器，支持时间轴关键帧与 AI 对话辅助生成/修改场景。",
 	"license": "MPL-2.0",
@@ -34,6 +34,9 @@
 	],
 	"engines": {
 		"node": ">=16"
+	},
+	"bin": {
+		"dvs-cli": "./build/bin/dvs-cli.cmd"
 	},
 	"type": "module",
 	"scripts": {
@@ -102,7 +105,10 @@
 		"format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
 		"quality": "npm run typecheck && npm run test:architecture && npm run test",
 		"quality:full": "npm run typecheck && npm run lint && npm run test:architecture && npm run test",
-		"release": "node scripts/release.mjs"
+		"release": "node scripts/release.mjs",
+		"cli": "node electron/backend/modules/cli-control-server/cli.mjs",
+		"cli:help": "node electron/backend/modules/cli-control-server/cli.mjs help",
+		"cli:status": "node electron/backend/modules/cli-control-server/cli.mjs status"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.29.0",
@@ -186,6 +192,14 @@
 				"to": "runtime",
 				"filter": [
 					"**/*"
+				]
+			},
+			{
+				"from": "build/bin",
+				"to": "bin",
+				"filter": [
+					"**/*.cmd",
+					"**/*.ps1"
 				]
 			}
 		],

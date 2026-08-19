@@ -13,7 +13,7 @@ export const APP_ID = (() => {
 	return 'club.dweb.dvstudio'
 })()
 
-export const APP_VERSION = '0.2.3'
+export const APP_VERSION = '0.2.4'
 export const APP_COPYRIGHT = 'Copyright (c) 2026 DwebStudio'
 export const APP_LICENSE = 'MPL-2.0'
 export const APP_HOMEPAGE = 'https://www.dweb.club/'

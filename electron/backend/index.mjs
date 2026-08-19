@@ -18,6 +18,11 @@ import { routes as agentSkillsRoutes } from './modules/agent-skills/routes.mjs'
 import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
 import { routes as agentRoutes } from './modules/agent/routes.mjs'
 import { routes as cliAdapterRoutes } from './modules/cli-adapters/routes.mjs'
+import { routes as cliControlRoutes } from './modules/cli-control-server/routes.mjs'
+import {
+	initCliControlService,
+	shutdownCliControlService
+} from './modules/cli-control-server/service.mjs'
 import { routes as subtitleRoutes } from './modules/subtitle/routes.mjs'
 import { routes as subtitleRecognitionRoutes } from './modules/subtitle-recognition/routes.mjs'
 import { routes as cloudTemplatesRoutes } from './modules/cloud-templates/routes.mjs'
@@ -98,7 +103,8 @@ export function initBackend(mainWindow, deps = {}) {
 		...workshopTemplatesRoutes,
 		...blenderRoutes,
 		...cloudfsRoutes,
-		...taskQueueRoutes
+		...taskQueueRoutes,
+		...cliControlRoutes
 	]
 
 	_router = createRouter({
@@ -111,7 +117,9 @@ export function initBackend(mainWindow, deps = {}) {
 
 	restoreProjectRoots()
 
-	registerBuiltinTools()
+	// 将 ctx 传入 builtinTools，使 generate_image 等 MCP 工具可以直接调用后端服务（如 seedream）
+	const _builtinCtx = createContext(mainWindow, deps)
+	registerBuiltinTools(_builtinCtx)
 	initMCPModule()
 
 	initTaskQueue(mainWindow)
@@ -123,6 +131,37 @@ export function initBackend(mainWindow, deps = {}) {
 			logger.warn(`Failed to start Unreal HTTP server: ${result.error}`)
 		}
 	})
+
+	// ===== CLI Control Server (独立 try/catch 隔离) =====
+	try {
+		const appVersion = process.env.npm_package_version || '0.2.4'
+		const builtinCtxForCLI = (() => {
+			try {
+				return createContext(mainWindow, deps)
+			} catch {
+				return null
+			}
+		})()
+		initCliControlService({
+			appVersion,
+			_ctxRef: () => builtinCtxForCLI,
+			ctx: builtinCtxForCLI
+		})
+			.then((cliResult) => {
+				if (cliResult.ok) {
+					logger.info(`CLI control server listening on port ${cliResult.port}`)
+				} else if (cliResult.disabled) {
+					logger.info('CLI control server disabled via feature flag')
+				} else {
+					logger.warn(`Failed to start CLI control server: ${cliResult.error || 'unknown'}`)
+				}
+			})
+			.catch((cliErr) => {
+				logger.warn(`CLI control server start error (non-fatal): ${cliErr.message}`)
+			})
+	} catch (cliInitErr) {
+		logger.warn(`CLI control server init error (non-fatal): ${cliInitErr.message}`)
+	}
 
 	logger.info(`New backend initialized with ${allRoutes.length} routes`)
 	return _router
@@ -137,6 +176,9 @@ export function shutdownBackend() {
 		_router.unregister()
 		_router = null
 		stopUnrealHttpServer()
+		try {
+			shutdownCliControlService()
+		} catch (_) {}
 		logger.info('Backend shut down')
 	}
 }
