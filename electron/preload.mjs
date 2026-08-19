@@ -1230,6 +1230,9 @@ contextBridge.exposeInMainWorld('dweb', {
 		getTask: (payload) => invoke('dweb:cli-control:task:get', payload || {}),
 		listTasks: (payload) => invoke('dweb:cli-control:task:list', payload || {}),
 		markTaskCompleted: (payload) => invoke('dweb:cli-control:task:mark-completed', payload || {}),
-		markTaskFailed: (payload) => invoke('dweb:cli-control:task:mark-failed', payload || {})
+		markTaskFailed: (payload) => invoke('dweb:cli-control:task:mark-failed', payload || {}),
+		acknowledgeTaskMeta: (payload) =>
+			invoke('dweb:cli-control:task:acknowledge-meta', payload || {}),
+		cancelTask: (payload) => invoke('dweb:cli-control:task:cancel', payload || {})
 	}
 })

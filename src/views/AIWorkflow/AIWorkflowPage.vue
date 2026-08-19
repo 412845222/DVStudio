@@ -3877,13 +3877,164 @@ const createImageNodeAtCenter = (
 		mode?: string
 		imageGenerationSource?: string
 		imageUrls?: string[]
+		/** 本地绝对路径（蓝图项目目录内或外均可），若提供会：
+		 *  1) 若路径在当前蓝图项目根目录外，则先通过 copyFileToProjectRoot IPC 复制到 Content/Media
+		 *  2) 创建 WorkflowResource（kind=image，含 sourcePath/projectRelativePath/url=dweb://...）
+		 *  3) commit('addResource') + commit('setNodeResource') 绑定
+		 *  这样「右键菜单 → 文件夹打开」可以正确解析到本地绝对路径，
+		 *  图片渲染走 dweb://project-assets 协议（Electron 注册的方案），避免 file:// 的安全限制。 */
+		sourceLocalPath?: string
+		/** sourceLocalPath 对应的文件大小（可选） */
+		sourceFileSize?: number
 	}
 ): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
 		const imageSource = opts?.imageGenerationSource || 'gemini'
+
+		// ===== 若提供 sourceLocalPath：创建绑定 WorkflowResource（优先） =====
+		let finalImageUrl = url
+		let resourceId: string | null = null
+		const rawSource = String(opts?.sourceLocalPath || '').trim()
+		if (rawSource && isElectron()) {
+			try {
+				const pidRaw = currentProjectId.value
+				const pid = Number(pidRaw)
+				const rootPath = String(currentProjectRootPath.value || '').trim()
+				const normalizedSource = rawSource.replace(/\\/g, '/').replace(/\/+$/, '')
+				const normalizedRoot = rootPath ? rootPath.replace(/\\/g, '/').replace(/\/+$/, '') : ''
+
+				let projectRelativePath = ''
+				let absolutePath = normalizedSource
+				let resolvedDwebUrl = ''
+
+				// A) sourceLocalPath 已经在蓝图项目根目录下 → 直接计算 relativePath
+				if (normalizedRoot && normalizedSource.startsWith(normalizedRoot + '/')) {
+					projectRelativePath = normalizedSource.slice(normalizedRoot.length + 1)
+					resolvedDwebUrl =
+						Number.isFinite(pid) && pid > 0 && projectRelativePath
+							? `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(projectRelativePath)}`
+							: ''
+				} else if (normalizedRoot && Number.isFinite(pid) && pid > 0) {
+					// B) source 不在项目目录下 → 通过 IPC copyFileToProjectRoot 复制到 Content/Media
+					//    （这里先记下来，同步创建节点后再异步执行；蓝图先以 dweb 形式等待资源落盘）
+					const desiredName = String(name || 'cli-gen-image').slice(0, 80) || 'seedream'
+					const copyPromise = Promise.resolve()
+						.then(() =>
+							window?.dweb?.aiworkflow?.copyFileToProjectRoot?.({
+								projectId: pid,
+								sourcePath: rawSource,
+								desiredFilename: desiredName
+							})
+						)
+						.then((res: any) => {
+							if (!res?.ok) return null
+							const rel = String(res.relativePath || '').trim()
+							const abs = String(res.absolutePath || '').trim()
+							if (!rel || !abs) return null
+							return { rel, abs }
+						})
+						.catch(() => null)
+					// 同步不等待 IPC；先创建节点 + 临时 resource；copy 成功后 patchResource
+					const tmpResourceId =
+						'cliimg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+					const tmpName =
+						String(
+							name ||
+								String(rawSource || '')
+									.replace(/\\/g, '/')
+									.split('/')
+									.pop() ||
+								'' ||
+								'cli-gen-image'
+						).slice(0, 120) || 'seedream'
+					const tmpResource: any = {
+						id: tmpResourceId,
+						kind: 'image',
+						name: tmpName,
+						url: '',
+						sourcePath: absolutePath,
+						sourceName:
+							String(rawSource || '')
+								.replace(/\\/g, '/')
+								.split('/')
+								.pop() || tmpName,
+						sourceSize: typeof opts?.sourceFileSize === 'number' ? opts.sourceFileSize : undefined,
+						createdAt: Date.now()
+					}
+					store.commit('addResource', tmpResource)
+					resourceId = tmpResourceId
+
+					// 异步 copy 完成后，再更新 resource 的 relativePath / dweb url，
+					// 并且 setNodeResource（若节点已创建）。
+					void copyPromise.then((r: any) => {
+						if (!r?.rel || !r?.abs) return
+						const newUrl = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(r.rel)}`
+						try {
+							store.commit('patchResource', {
+								resourceId: tmpResourceId,
+								patch: {
+									projectRelativePath: r.rel,
+									url: newUrl,
+									sourcePath: r.abs,
+									sourceSize: r.size
+								}
+							})
+						} catch {
+							/* ignore */
+						}
+						// 更新 imageSettings.imageUrl 为最终 dweb URL
+						try {
+							const current = store.state.nodesById[tmpNodeIdSync]
+							if (current?.imageSettings) {
+								store.commit('updateNodeData', {
+									nodeId: tmpNodeIdSync,
+									patch: {
+										imageSettings: { ...(current.imageSettings as any), imageUrl: newUrl }
+									}
+								})
+								patchBlueprintNodeData?.(tmpNodeIdSync)
+							}
+						} catch {
+							/* ignore */
+						}
+					})
+				}
+
+				// 情况 A：sourcePath 已经在项目目录，同步创建 resource + dweb url
+				if (projectRelativePath && resolvedDwebUrl) {
+					const rid =
+						'cliimg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+					const rName =
+						String(name || (normalizedSource.split('/').pop() as string) || 'cli-gen-image').slice(
+							0,
+							120
+						) || 'seedream'
+					const resource: any = {
+						id: rid,
+						kind: 'image',
+						name: rName,
+						url: resolvedDwebUrl,
+						projectRelativePath,
+						sourcePath: absolutePath,
+						sourceName: (normalizedSource.split('/').pop() as string) || rName,
+						sourceSize: typeof opts?.sourceFileSize === 'number' ? opts.sourceFileSize : undefined,
+						createdAt: Date.now()
+					}
+					store.commit('addResource', resource)
+					resourceId = rid
+					finalImageUrl = resolvedDwebUrl
+				}
+			} catch (resourceErr) {
+				console.warn(
+					'[createImageNodeAtCenter] 创建 image resource 失败（回退仅写入 imageSettings）：',
+					resourceErr
+				)
+			}
+		}
+
 		const imageSettings: Record<string, unknown> = {
-			imageUrl: url,
+			imageUrl: finalImageUrl,
 			imageGenerationSource: imageSource
 		}
 		if (imageSource === 'tripo3d' && opts?.taskId) {
@@ -3897,10 +4048,24 @@ const createImageNodeAtCenter = (
 					opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : url ? [url] : []
 			}
 		}
+		// 用于 copyFileToProjectRoot 的异步 patch 引用（避免闭包变量污染多次调用）
+		let tmpNodeIdSync = ''
 		const newNodeId = engineApi.addNode('image', worldX, worldY, {
 			title: name || t('aiworkflow.page.defaultImageNodeTitle'),
-			...(url ? { imageSettings } : {})
+			...(finalImageUrl || resourceId ? { imageSettings } : {})
 		})
+		tmpNodeIdSync = newNodeId || ''
+		if (newNodeId && resourceId) {
+			try {
+				store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+				patchBlueprintNodeData?.(newNodeId)
+			} catch (bindErr) {
+				console.warn(
+					'[createImageNodeAtCenter] setNodeResource 绑定失败（节点创建已完成）：',
+					bindErr
+				)
+			}
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -12050,13 +12215,27 @@ try {
 			id: currentProjectId.value,
 			name: currentProjectName.value
 		}),
-		pushToast,
+		pushToast: (msg, kind) => {
+			// useCLIAgentTrigger accepts wider tone including 'success'
+			pushToast(msg, kind === 'success' ? 'info' : (kind as 'info' | 'warn' | 'error' | undefined))
+		},
 		// P2: 将 Agent 对话的 drafts / 发送状态 / onSend() 注入给 CLI Trigger，
 		// 实现：CLI 任务 → 写 chatDraft → 触发 onSend → 等态完成 → markTaskCompleted/Failed 回写
 		chatDraft,
 		chatSending,
 		chatMessages,
-		onSend
+		onSend,
+		// 蓝图预览节点创建：P3 直连完成后，轮询消费 task.meta.createImageNodeRequests 时调用
+		createImagePreviewNode: {
+			createImageNodeAtCenter: (url, name, opts) => createImageNodeAtCenter(url, name, opts)
+		},
+		// 对话框聊天图片预览：P3 直连完成后，轮询消费 task.meta.chatPreviewBlocks
+		chatPreview: {
+			chatMessages,
+			appendAssistantMessage: (message: any) => {
+				chatMessages.value = [...(chatMessages.value || []), message]
+			}
+		}
 	})
 } catch (cliInitErr: unknown) {
 	console.warn(

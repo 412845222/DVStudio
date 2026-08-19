@@ -155,9 +155,9 @@ class ToolExecutor {
 			}
 
 			timeout = setTimeout(() => {
-			cleanup()
-			reject(new Error(`Tool ${toolName} timed out after ${effectiveTimeout}ms`))
-		}, effectiveTimeout)
+				cleanup()
+				reject(new Error(`Tool ${toolName} timed out after ${effectiveTimeout}ms`))
+			}, effectiveTimeout)
 
 			const handler = (_event, response) => {
 				cleanup()
