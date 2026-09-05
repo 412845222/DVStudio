@@ -44,11 +44,7 @@
 						:disabled="running || !canRun"
 						@click.stop="emit('run-scene-understanding')"
 					>
-						{{
-							running
-								? t('nodes.sceneUnderstanding.analyzing')
-								: t('nodes.sceneUnderstanding.generateJson')
-						}}
+						{{ runButtonText }}
 					</button>
 					<button
 						v-if="running"
@@ -68,7 +64,7 @@
 						<span>{{ statusText }}</span>
 						<span>{{ progressValue }}%</span>
 					</div>
-					<div v-if="reasoningText" ref="reasoningEl" class="wf-scene-understand-reasoning">
+					<div class="wf-scene-understand-reasoning" v-if="reasoningText" ref="reasoningEl">
 						<div class="wf-scene-understand-reasoning-title">
 							{{ t('nodes.sceneUnderstanding.modelThinking') }}
 						</div>
@@ -76,19 +72,117 @@
 					</div>
 				</div>
 
+				<!-- 导演工作台：房间识别流水线（户型壳完成后显示） -->
+				<div
+					v-if="isDirectorMode && directorShellCompleted"
+					class="wf-director-pipeline"
+					@pointerdown.stop
+				>
+					<div class="wf-director-pipeline-header">
+						<span class="wf-director-pipeline-title">
+							{{ t('nodes.sceneUnderstanding.directorPipelineTitle') }}
+						</span>
+						<span class="wf-director-pipeline-progress">
+							{{
+								t('nodes.sceneUnderstanding.directorPipelineProgress', {
+									done: directorDoneRoomCount,
+									total: directorRoomList.length
+								})
+							}}
+						</span>
+					</div>
+					<div class="wf-director-pipeline-rows">
+						<div
+							v-for="room in directorRoomList"
+							:key="room.roomId"
+							class="wf-director-pipeline-row"
+							:class="`is-${room.state}`"
+						>
+							<span class="wf-director-pipeline-icon">
+								<template v-if="room.state === 'done'">✅</template>
+								<template v-else-if="room.state === 'running'">⏳</template>
+								<template v-else-if="room.state === 'error'">⚠️</template>
+								<template v-else>⬜</template>
+							</span>
+							<span class="wf-director-pipeline-label">
+								{{ room.label }}
+								<span class="wf-director-pipeline-sub">
+									{{
+										t('nodes.sceneUnderstanding.directorRoomScene', {
+											scene: room.sourceSceneIndex
+										})
+									}}
+									<template v-if="room.state === 'done' && room.objectCount != null">
+										· {{ room.objectCount }} {{ t('nodes.sceneUnderstanding.directorObjectsUnit') }}
+									</template>
+								</span>
+							</span>
+							<button
+								class="wf-director-pipeline-btn"
+								type="button"
+								:disabled="running"
+								@click.stop="onRunDirectorRoom(room.roomId)"
+							>
+								{{
+									room.state === 'done'
+										? t('nodes.sceneUnderstanding.directorReidentify')
+										: room.state === 'running'
+											? t('nodes.sceneUnderstanding.directorRunning')
+											: t('nodes.sceneUnderstanding.directorIdentify')
+								}}
+							</button>
+						</div>
+					</div>
+					<div v-if="directorWorkspaceDir" class="wf-scene-understand-persist-path">
+						<span class="wf-scene-understand-persist-path-icon">📂</span>
+						<span class="wf-scene-understand-persist-path-text" :title="directorWorkspaceDir">
+							{{ directorWorkspaceDir }}
+						</span>
+						<button
+							class="wf-scene-understand-persist-path-btn"
+							type="button"
+							@click.stop="onOpenWorkspace"
+						>
+							{{ t('nodes.sceneUnderstanding.persistOpenFolder') }}
+						</button>
+					</div>
+				</div>
+
 				<div class="wf-scene-understand-grid">
 					<div class="wf-scene-understand-card">
 						<div class="wf-scene-understand-card-title">
-							{{ t('nodes.sceneUnderstanding.inputImage') }}
-						</div>
-						<div class="wf-scene-understand-card-value">
 							{{
-								linkedImageCount > 0
-									? t('nodes.sceneUnderstanding.connectedCount', { count: linkedImageCount })
-									: t('nodes.sceneUnderstanding.notConnected')
+								isDirectorMode
+									? t('nodes.sceneUnderstanding.directorScenesInput')
+									: t('nodes.sceneUnderstanding.inputImage')
 							}}
 						</div>
-						<div class="wf-scene-understand-card-copy">{{ linkedImageHint }}</div>
+						<div class="wf-scene-understand-card-value">
+							<template v-if="isDirectorMode">
+								{{
+									directorScenes.length > 0
+										? t('nodes.sceneUnderstanding.directorScenesConnected', {
+												scenes: directorScenes.length,
+												images: directorImageCount
+											})
+										: t('nodes.sceneUnderstanding.notConnected')
+								}}
+							</template>
+							<template v-else>
+								{{
+									linkedImageCount > 0
+										? t('nodes.sceneUnderstanding.connectedCount', {
+												count: linkedImageCount
+											})
+										: t('nodes.sceneUnderstanding.notConnected')
+								}}
+							</template>
+						</div>
+						<div class="wf-scene-understand-card-copy">
+							{{
+								isDirectorMode ? t('nodes.sceneUnderstanding.directorScenesHint') : linkedImageHint
+							}}
+						</div>
 					</div>
 					<div class="wf-scene-understand-card">
 						<div class="wf-scene-understand-card-title">{{ secondaryInputTitle }}</div>
@@ -113,6 +207,27 @@
 							}}
 						</div>
 						<div class="wf-scene-understand-card-copy">{{ linkedPromptPreview }}</div>
+					</div>
+				</div>
+
+				<div v-if="isDirectorMode" class="wf-scene-understand-director-scenes">
+					<div
+						v-for="s in directorScenes"
+						:key="s.anchorId"
+						class="wf-scene-understand-director-scene"
+					>
+						<span class="wf-scene-understand-director-scene-name">
+							{{ t('nodes.sceneUnderstanding.directorSceneN', { n: s.sceneIndex }) }}
+						</span>
+						<span class="wf-scene-understand-director-scene-count">
+							{{ t('nodes.sceneUnderstanding.connectedCount', { count: s.imageCount }) }}
+						</span>
+					</div>
+					<div v-if="!directorScenes.length" class="wf-scene-understand-card-copy">
+						{{ t('nodes.sceneUnderstanding.directorScenesEmpty') }}
+					</div>
+					<div v-else-if="directorScenes.length < 2" class="wf-scene-understand-card-copy">
+						{{ t('nodes.sceneUnderstanding.directorScenesNeedTwo') }}
 					</div>
 				</div>
 
@@ -148,8 +263,14 @@
 						<option value="auto">{{ t('nodes.sceneUnderstanding.sceneTypeAuto') }}</option>
 						<option value="indoor">{{ t('nodes.sceneUnderstanding.sceneTypeIndoor') }}</option>
 						<option value="outdoor">{{ t('nodes.sceneUnderstanding.sceneTypeOutdoor') }}</option>
+						<option value="director-multi-scene">
+							{{ t('nodes.sceneUnderstanding.sceneTypeDirectorWorkbench') }}
+						</option>
 					</select>
-					<div v-if="detectedSceneTypeLabel" class="wf-scene-understand-card-copy">
+					<div
+						v-if="detectedSceneTypeLabel && !isDirectorMode"
+						class="wf-scene-understand-card-copy"
+					>
 						{{ detectedSceneTypeLabel }}
 					</div>
 				</label>
@@ -208,6 +329,39 @@
 						readonly
 						:placeholder="outputPlaceholder"
 					/>
+					<!-- 硬存盘路径指示器（默认开启，固定显示；导演模式改用工作区栏，这里隐藏） -->
+					<div v-if="!isDirectorMode" class="wf-scene-understand-persist-path" @pointerdown.stop>
+						<span class="wf-scene-understand-persist-path-icon">💾</span>
+						<span class="wf-scene-understand-persist-status">
+							{{ t('nodes.sceneUnderstanding.persistEnabled') }}
+						</span>
+						<span class="wf-scene-understand-persist-path-text" :title="persistFilePath || ''">
+							{{ persistFilePath || t('nodes.sceneUnderstanding.persistPathPending') }}
+						</span>
+						<button
+							v-if="persistFilePath"
+							class="wf-scene-understand-persist-path-btn"
+							type="button"
+							@click.stop="onOpenPersistFolder"
+						>
+							{{ t('nodes.sceneUnderstanding.persistOpenFolder') }}
+						</button>
+						<button
+							v-if="persistFilePath"
+							class="wf-scene-understand-persist-path-btn"
+							type="button"
+							@click.stop="onCopyPersistPath"
+						>
+							{{ t('nodes.sceneUnderstanding.persistCopyPath') }}
+						</button>
+						<button
+							class="wf-scene-understand-persist-path-btn wf-scene-understand-clear-btn"
+							type="button"
+							@click.stop="onClearPersistFile"
+						>
+							{{ t('nodes.sceneUnderstanding.persistClear') }}
+						</button>
+					</div>
 				</div>
 			</div>
 		</template>
@@ -230,6 +384,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
+import { openFolderForPath } from '../../../electronBridge'
 import type {
 	WorkflowSceneUnderstandModelOption,
 	WorkflowSceneUnderstandingNodeSettings
@@ -256,6 +411,12 @@ const props = defineProps<{
 	linkedImageUrls?: string[] | null
 	linkedPromptText?: string | null
 	linkedLayoutJsonText?: string | null
+	linkedDirectorScenes?: Array<{
+		sceneIndex: number
+		anchorId: string
+		label?: string
+		imageCount: number
+	}> | null
 	width: number
 	height: number
 	zoom: number
@@ -367,6 +528,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'request-scene-models'): void
 	(e: 'run-scene-understanding'): void
+	(e: 'run-director-room', payload: { roomId: string }): void
 	(e: 'cancel-scene-understanding'): void
 }>()
 
@@ -374,10 +536,17 @@ const settings = computed(() => props.sceneUnderstandingSettings ?? null)
 const currentMode = computed(() =>
 	settings.value?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
 )
-const currentSceneType = computed<'auto' | 'indoor' | 'outdoor'>(() => {
+const currentSceneType = computed<'auto' | 'indoor' | 'outdoor' | 'director-multi-scene'>(() => {
 	const st = settings.value?.sceneType
-	return st === 'indoor' || st === 'outdoor' ? st : 'auto'
+	return st === 'indoor' || st === 'outdoor' || st === 'director-multi-scene' ? st : 'auto'
 })
+const isDirectorMode = computed(() => settings.value?.sceneType === 'director-multi-scene')
+const directorScenes = computed(() =>
+	Array.isArray(props.linkedDirectorScenes) ? props.linkedDirectorScenes : []
+)
+const directorImageCount = computed(() =>
+	directorScenes.value.reduce((sum, s) => sum + (Number(s.imageCount) || 0), 0)
+)
 const detectedSceneType = computed(() => {
 	const st = settings.value?.detectedSceneType
 	return st === 'indoor' || st === 'outdoor' || st === 'semi-outdoor' ? st : null
@@ -406,6 +575,35 @@ const status = computed(() => String(settings.value?.status ?? 'idle'))
 const running = computed(() => status.value === 'running')
 const loadingModels = computed(() => status.value === 'loading-models')
 const outputJson = computed(() => String(settings.value?.outputJson ?? ''))
+const onClearPersistFile = () => {
+	emit('update-scene-understanding-settings', {
+		_persistClear: true
+	})
+}
+const persistFilePath = computed(() => {
+	const path = settings.value?.persistedFilePath
+	return typeof path === 'string' && path ? path : ''
+})
+const onOpenPersistFolder = async () => {
+	const path = persistFilePath.value
+	if (!path) return
+	// 截取目录部分（去掉文件名）
+	const dir = path.replace(/[\\/][^\\/]+$/, '')
+	try {
+		await openFolderForPath(dir)
+	} catch (e) {
+		console.warn('[SceneUnderstandingNode] openFolderForPath failed', e)
+	}
+}
+const onCopyPersistPath = async () => {
+	const path = persistFilePath.value
+	if (!path) return
+	try {
+		await navigator.clipboard.writeText(path)
+	} catch (e) {
+		console.warn('[SceneUnderstandingNode] copy path failed', e)
+	}
+}
 const messageText = computed(() =>
 	String(
 		settings.value?.message ??
@@ -440,10 +638,57 @@ const selfOutputJson = computed(() => String(settings.value?.outputJson ?? '').t
 const effectiveLayoutJson = computed(() => linkedLayoutJson.value || selfOutputJson.value)
 const canRun = computed(() => {
 	if (running.value) return false
+	if (isDirectorMode.value) return directorScenes.value.length >= 2 && !!selectedModel.value
 	if (!linkedImageCount.value || !selectedModel.value) return false
 	if (currentMode.value === 'scene-lighting') return !!effectiveLayoutJson.value
 	return true
 })
+
+// 导演工作台：工作区分步流水线
+const directorShellCompleted = computed(() => settings.value?.directorShellCompleted === true)
+const directorRoomList = computed(() => {
+	const statusMap = settings.value?.directorRoomStatus
+	if (!statusMap || typeof statusMap !== 'object') return []
+	return Object.values(
+		statusMap as Record<
+			string,
+			{
+				roomId: string
+				label: string
+				sourceSceneIndex: number
+				state: string
+				objectCount?: number
+			}
+		>
+	)
+		.filter((r) => r && r.roomId)
+		.sort((a, b) => (a.sourceSceneIndex ?? 0) - (b.sourceSceneIndex ?? 0))
+})
+const directorDoneRoomCount = computed(
+	() => directorRoomList.value.filter((r) => r.state === 'done').length
+)
+const runButtonText = computed(() => {
+	if (running.value) return t('nodes.sceneUnderstanding.analyzing')
+	if (isDirectorMode.value && directorShellCompleted.value)
+		return t('nodes.sceneUnderstanding.directorRunRemaining')
+	return t('nodes.sceneUnderstanding.generateJson')
+})
+const onRunDirectorRoom = (roomId: string) => {
+	emit('run-director-room', { roomId })
+}
+const directorWorkspaceDir = computed(() => {
+	const p = settings.value?.directorWorkspacePath
+	return typeof p === 'string' && p ? p : ''
+})
+const onOpenWorkspace = async () => {
+	const dir = directorWorkspaceDir.value
+	if (!dir) return
+	try {
+		await openFolderForPath(dir)
+	} catch (e) {
+		console.warn('[SceneUnderstandingNode] openFolderForPath failed', e)
+	}
+}
 
 const linkedPromptPreview = computed(() => {
 	const text = String(props.linkedPromptText ?? '').trim()
@@ -538,7 +783,10 @@ const onModeChange = (e: Event) => {
 
 const onSceneTypeChange = (e: Event) => {
 	const value = String((e.target as HTMLSelectElement).value ?? '').trim()
-	const sceneType = value === 'indoor' || value === 'outdoor' ? value : 'auto'
+	const sceneType =
+		value === 'indoor' || value === 'outdoor' || value === 'director-multi-scene'
+			? (value as 'indoor' | 'outdoor' | 'director-multi-scene')
+			: 'auto'
 	console.log('[SceneUnderstanding:Component] onSceneTypeChange', {
 		nodeId: props.nodeId,
 		sceneType
@@ -549,7 +797,13 @@ const onSceneTypeChange = (e: Event) => {
 		sceneTypeConfidence: undefined,
 		outputJson: '',
 		rawOutput: '',
-		resultSummary: ''
+		resultSummary: '',
+		directorRooms: undefined,
+		directorConnections: undefined,
+		message:
+			sceneType === 'director-multi-scene'
+				? t('nodes.sceneUnderstanding.modeDirectorMessage')
+				: t('nodes.sceneUnderstanding.modeLayoutMessage')
 	})
 }
 
@@ -675,6 +929,38 @@ watch(
 	gap: 8px;
 }
 
+.wf-scene-understand-director-scenes {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	border: 1px solid var(--vscode-border);
+	background: var(--dweb-defualt);
+	padding: 8px 10px;
+}
+
+.wf-scene-understand-director-scene {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 12px;
+	padding: 3px 0;
+	border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
+}
+
+.wf-scene-understand-director-scene:last-child {
+	border-bottom: none;
+}
+
+.wf-scene-understand-director-scene-name {
+	font-weight: 600;
+	color: #cfe0ff;
+}
+
+.wf-scene-understand-director-scene-count {
+	opacity: 0.78;
+}
+
 .wf-scene-understand-progress-shell {
 	display: flex;
 	flex-direction: column;
@@ -751,6 +1037,165 @@ watch(
 	font-size: 12px;
 	opacity: 0.75;
 	line-height: 1.45;
+}
+
+.wf-scene-understand-head-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.wf-scene-understand-persist-toggle {
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 10px;
+	border: 1px solid var(--vscode-border);
+	background: transparent;
+	color: var(--vscode-foreground);
+	opacity: 0.7;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	white-space: nowrap;
+}
+
+.wf-scene-understand-persist-toggle:hover {
+	opacity: 1;
+}
+
+.wf-scene-understand-persist-toggle.active {
+	background: rgba(115, 186, 38, 0.2);
+	border-color: #73ba26;
+	color: #73ba26;
+	opacity: 1;
+}
+
+.wf-director-pipeline {
+	margin-top: 8px;
+	padding: 8px;
+	background: rgba(96, 165, 250, 0.06);
+	border: 1px solid rgba(96, 165, 250, 0.28);
+	border-radius: 6px;
+}
+.wf-director-pipeline-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+	font-size: 12px;
+}
+.wf-director-pipeline-title {
+	font-weight: 600;
+	color: #9ec3ff;
+}
+.wf-director-pipeline-progress {
+	color: rgba(255, 255, 255, 0.55);
+	font-size: 11px;
+}
+.wf-director-pipeline-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.wf-director-pipeline-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px;
+	background: rgba(255, 255, 255, 0.03);
+	border-radius: 4px;
+}
+.wf-director-pipeline-row.is-done {
+	background: rgba(115, 186, 38, 0.08);
+}
+.wf-director-pipeline-row.is-running {
+	background: rgba(240, 180, 60, 0.1);
+}
+.wf-director-pipeline-icon {
+	flex-shrink: 0;
+	width: 18px;
+	text-align: center;
+}
+.wf-director-pipeline-label {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	color: rgba(255, 255, 255, 0.85);
+}
+.wf-director-pipeline-sub {
+	margin-left: 6px;
+	color: rgba(255, 255, 255, 0.45);
+	font-size: 11px;
+}
+.wf-director-pipeline-btn {
+	flex-shrink: 0;
+	padding: 3px 8px;
+	font-size: 11px;
+	border-radius: 4px;
+	border: 1px solid rgba(96, 165, 250, 0.4);
+	background: rgba(96, 165, 250, 0.12);
+	color: #9ec3ff;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.wf-director-pipeline-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.wf-scene-understand-persist-path {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	padding: 6px 8px;
+	background: rgba(115, 186, 38, 0.08);
+	border: 1px solid rgba(115, 186, 38, 0.3);
+	border-radius: 6px;
+	font-size: 11px;
+}
+
+.wf-scene-understand-persist-path-icon {
+	flex-shrink: 0;
+}
+
+.wf-scene-understand-persist-path-text {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	opacity: 0.85;
+	font-family: Consolas, Monaco, monospace;
+}
+
+.wf-scene-understand-persist-path-btn {
+	flex-shrink: 0;
+	font-size: 10px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-border);
+	background: var(--vscode-button-background, transparent);
+	color: var(--vscode-button-foreground, var(--vscode-foreground));
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.wf-scene-understand-persist-path-btn:hover {
+	opacity: 0.85;
+}
+
+.wf-scene-understand-persist-status {
+	flex-shrink: 0;
+	color: #73ba26;
+	font-weight: 600;
+}
+
+.wf-scene-understand-clear-btn {
+	border-color: rgba(204, 102, 51, 0.5);
+	color: #cc6600;
+}
+
+.wf-scene-understand-clear-btn:hover {
+	background: rgba(204, 102, 51, 0.15);
 }
 
 .wf-scene-understand-field {

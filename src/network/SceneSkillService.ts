@@ -49,6 +49,13 @@ export type SceneUnderstandImageInput = {
 	height?: number
 }
 
+/** 导演多场景工作台：按场景（房间）分组的图片输入 */
+export type SceneDirectorInput = {
+	sceneIndex: number
+	label?: string
+	images: SceneUnderstandImageInput[]
+}
+
 export type SceneUnderstandStreamEvent =
 	| { type: 'msg'; message: AgentToUiMessage }
 	| { type: 'error'; error: { message: string; details?: unknown } }
@@ -89,6 +96,9 @@ export type SceneLayoutRunResponse =
 				target?: { x: number; y: number; z: number }
 			}
 			message?: string
+			workbenchType?: string
+			rooms?: unknown[]
+			connections?: unknown[]
 	  }
 	| { ok: false; error: string; status?: number }
 
@@ -210,7 +220,8 @@ export class SceneSkillService {
 		imageUrl?: string
 		imageDataUrl?: string
 		imageInputs?: SceneUnderstandImageInput[]
-		sceneType?: 'auto' | 'indoor' | 'outdoor'
+		sceneType?: 'auto' | 'indoor' | 'outdoor' | 'director-multi-scene'
+		sceneInputs?: SceneDirectorInput[]
 	}): Promise<SceneUnderstandRunResponse> {
 		if (isAgentSkillsIpcAvailable()) {
 			try {
@@ -397,7 +408,18 @@ export class SceneSkillService {
 			imageUrl?: string
 			imageDataUrl?: string
 			imageInputs?: SceneUnderstandImageInput[]
-			sceneType?: 'auto' | 'indoor' | 'outdoor'
+			sceneType?: 'auto' | 'indoor' | 'outdoor' | 'director-multi-scene'
+			sceneInputs?: SceneDirectorInput[]
+			/** 导演两阶段流程：'shell'（户型壳）| 'room-detail'（单房间物体） */
+			directorPhase?: 'shell' | 'room-detail'
+			/** room-detail 阶段：该房间的固定信息（壳/门洞），约束模型只识别物体 */
+			roomContext?: {
+				roomId: string
+				label: string
+				sourceSceneIndex: number
+				roomShell: Record<string, unknown>
+				openings: unknown[]
+			}
 		},
 		signal?: AbortSignal
 	): AsyncGenerator<SceneUnderstandStreamEvent, void, void> {

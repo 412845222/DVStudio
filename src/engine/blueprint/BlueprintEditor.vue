@@ -69,6 +69,7 @@
 				"
 				@node-request-scene-models="(id: string) => emit('nodeRequestSceneModels', id)"
 				@node-run-scene-understanding="(id: string) => emit('nodeRunSceneUnderstanding', id)"
+				@node-run-director-room="(p: any) => emit('nodeRunDirectorRoom', p)"
 				@node-cancel-scene-understanding="(id: string) => emit('nodeCancelSceneUnderstanding', id)"
 				@node-run-scene-decompose="(id: string) => emit('nodeRunSceneDecompose', id)"
 				@node-run-scene-layout="(id: string) => emit('nodeRunSceneLayout', id)"
@@ -237,6 +238,7 @@ interface Emits {
 	): void
 	(e: 'nodeRequestSceneModels', nodeId: string): void
 	(e: 'nodeRunSceneUnderstanding', nodeId: string): void
+	(e: 'nodeRunDirectorRoom', payload: { nodeId: string; roomId: string }): void
 	(e: 'nodeCancelSceneUnderstanding', nodeId: string): void
 	(e: 'nodeRunSceneDecompose', nodeId: string): void
 	(e: 'nodeRunSceneLayout', nodeId: string): void

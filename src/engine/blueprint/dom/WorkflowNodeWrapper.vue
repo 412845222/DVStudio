@@ -32,6 +32,7 @@
 			@update-scene-understanding-settings="onUpdateSceneUnderstandingSettings"
 			@request-scene-models="onRequestSceneModels"
 			@run-scene-understanding="onRunSceneUnderstanding"
+			@run-director-room="onRunDirectorRoom"
 			@cancel-scene-understanding="onCancelSceneUnderstanding"
 			@run-scene-decompose="onRunSceneDecompose"
 			@run-scene-layout="onRunSceneLayout"
@@ -138,6 +139,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'request-scene-models', nodeId: string): void
 	(e: 'run-scene-understanding', nodeId: string): void
+	(e: 'run-director-room', nodeId: string, roomId: string): void
 	(e: 'cancel-scene-understanding', nodeId: string): void
 	(e: 'run-scene-decompose', nodeId: string): void
 	(e: 'run-scene-layout', nodeId: string): void
@@ -455,6 +457,10 @@ const onRequestSceneModels = () => {
 
 const onRunSceneUnderstanding = () => {
 	emit('run-scene-understanding', props.node.id)
+}
+
+const onRunDirectorRoom = (payload: { roomId: string }) => {
+	emit('run-director-room', props.node.id, payload?.roomId)
 }
 
 const onCancelSceneUnderstanding = () => {

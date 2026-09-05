@@ -169,7 +169,68 @@ export type WorkflowSceneUnderstandModelOption = {
 	vendor?: string
 }
 
-export type WorkflowSceneType = 'auto' | 'indoor' | 'outdoor'
+export type WorkflowSceneType = 'auto' | 'indoor' | 'outdoor' | 'director-multi-scene'
+
+/** 导演多场景工作台：单个场景（房间）分组的图片输入 */
+export type WorkflowDirectorSceneInput = {
+	sceneIndex: number
+	anchorId: string
+	label?: string
+	images: Array<{ url: string; width?: number; height?: number }>
+}
+
+/** 导演多场景工作台：节点面板展示用的场景连接摘要 */
+export type WorkflowDirectorSceneSummary = {
+	sceneIndex: number
+	anchorId: string
+	label?: string
+	imageCount: number
+}
+
+/** 导演多场景工作台：房间壳体 */
+export type WorkflowDirectorRoomShell = {
+	width?: number
+	depth?: number
+	height?: number
+	wallThickness?: number
+	centerX?: number
+	centerZ?: number
+	openWallRole?: string
+	confidence?: number
+}
+
+/** 导演多场景工作台：房间门洞/开口 */
+export type WorkflowDirectorOpening = {
+	id: string
+	wallRole?: string
+	connectsToRoomId?: string
+	width?: number
+	height?: number
+	positionAlongWall?: number
+	openingType?: string
+}
+
+/** 导演多场景工作台：单个房间（归一化后） */
+export type WorkflowDirectorRoom = {
+	roomId: string
+	label?: string
+	sourceSceneIndex?: number
+	roomShell?: WorkflowDirectorRoomShell
+	origin?: { x?: number; y?: number; z?: number }
+	rotationYaw?: number
+	camera?: Record<string, unknown>
+	openings?: WorkflowDirectorOpening[]
+	objects?: unknown[]
+}
+
+/** 导演多场景工作台：房间连接关系 */
+export type WorkflowDirectorConnection = {
+	id?: string
+	fromRoomId: string
+	toRoomId: string
+	fromOpeningId?: string
+	toOpeningId?: string
+}
 
 export type WorkflowSceneUnderstandingNodeSettings = {
 	mode?: 'scene-layout' | 'scene-lighting'
@@ -197,6 +258,33 @@ export type WorkflowSceneUnderstandingNodeSettings = {
 	rewriteUsed?: boolean
 	rewriteAttempts?: number
 	mock?: boolean
+	directorScenes?: WorkflowDirectorSceneSummary[]
+	directorRooms?: WorkflowDirectorRoom[]
+	directorConnections?: WorkflowDirectorConnection[]
+	/** 是否将识别结果实时硬存盘到项目目录 */
+	persistJsonToDisk?: boolean
+	/** 当前任务 ID（task_{timestamp}），用于定位磁盘文件 */
+	persistedTaskId?: string
+	/** 当前任务文件的绝对路径（用于 UI 显示和打开文件夹） */
+	persistedFilePath?: string
+	/** 导演工作台：户型壳阶段是否已完成 */
+	directorShellCompleted?: boolean
+	/** 导演工作台：逐房间识别状态（key 为 roomId） */
+	directorRoomStatus?: Record<string, WorkflowDirectorRoomTaskState>
+	/** 导演工作台：工作区文件夹绝对路径 */
+	directorWorkspacePath?: string
+	/** 瞬态控制信号：清空已持久化的识别结果文件 */
+	_persistClear?: boolean
+}
+
+/** 导演工作台单个房间的流水线识别状态 */
+export type WorkflowDirectorRoomTaskState = {
+	roomId: string
+	label: string
+	sourceSceneIndex: number
+	state: 'pending' | 'running' | 'done' | 'error'
+	objectCount?: number
+	updatedAt?: number
 }
 
 export type WorkflowSceneLightConfig = {
@@ -325,6 +413,12 @@ export type WorkflowSceneLayoutItem = {
 	observedImageIndices?: number[]
 	imageRect?: WorkflowImageCrop
 	imageRectPixels?: WorkflowPixelRect
+	/** 导演多场景工作台：所属房间 id / 房间名 / 场景序号 */
+	roomId?: string
+	roomLabel?: string
+	sourceSceneIndex?: number
+	/** 导演多场景工作台：是否为自动生成的房间壳体占位体 */
+	isRoomShell?: boolean
 	position: { x: number; y: number; z: number }
 	size: { width: number; height: number; depth: number }
 	rotation?: { yaw?: number; pitch?: number; roll?: number }
@@ -358,6 +452,10 @@ export type WorkflowSceneLayoutNodeSettings = {
 		position?: { x: number; y: number; z: number }
 		target?: { x: number; y: number; z: number }
 	}
+	/** 导演多场景工作台：多房间元数据 / 连接关系 / 工作台类型标记 */
+	workbenchType?: string
+	rooms?: WorkflowDirectorRoom[]
+	connections?: WorkflowDirectorConnection[]
 }
 
 export type WorkflowResolvedVector3 = {

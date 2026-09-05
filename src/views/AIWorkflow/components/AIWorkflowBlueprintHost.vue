@@ -78,6 +78,7 @@ const emit = defineEmits<{
 	]
 	'node-request-scene-models': [nodeId: string]
 	'node-run-scene-understanding': [nodeId: string]
+	'node-run-director-room': [payload: { nodeId: string; roomId: string }]
 	'node-cancel-scene-understanding': [nodeId: string]
 	'node-run-scene-decompose': [nodeId: string]
 	'node-run-scene-layout': [nodeId: string]
@@ -458,6 +459,7 @@ watch(
 			"
 			@node-request-scene-models="(id: string) => emit('node-request-scene-models', id)"
 			@node-run-scene-understanding="(id: string) => emit('node-run-scene-understanding', id)"
+			@node-run-director-room="(p: any) => emit('node-run-director-room', p)"
 			@node-cancel-scene-understanding="(id: string) => emit('node-cancel-scene-understanding', id)"
 			@node-run-scene-decompose="(id: string) => emit('node-run-scene-decompose', id)"
 			@node-run-scene-layout="(id: string) => emit('node-run-scene-layout', id)"
