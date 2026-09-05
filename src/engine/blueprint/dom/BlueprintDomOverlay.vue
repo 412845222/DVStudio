@@ -62,6 +62,7 @@
 						@update-scene-understanding-settings="onBusinessUpdateSceneUnderstandingSettings"
 						@request-scene-models="onBusinessRequestSceneModels"
 						@run-scene-understanding="onBusinessRunSceneUnderstanding"
+						@run-director-room="onBusinessRunDirectorRoom"
 						@cancel-scene-understanding="onBusinessCancelSceneUnderstanding"
 						@run-scene-decompose="onBusinessRunSceneDecompose"
 						@run-scene-layout="onBusinessRunSceneLayout"
@@ -210,6 +211,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'node-request-scene-models', nodeId: string): void
 	(e: 'node-run-scene-understanding', nodeId: string): void
+	(e: 'node-run-director-room', payload: { nodeId: string; roomId: string }): void
 	(e: 'node-cancel-scene-understanding', nodeId: string): void
 	(e: 'node-run-scene-decompose', nodeId: string): void
 	(e: 'node-run-scene-layout', nodeId: string): void
@@ -559,6 +561,10 @@ function onBusinessRequestSceneModels(nodeId: string) {
 
 function onBusinessRunSceneUnderstanding(nodeId: string) {
 	emit('node-run-scene-understanding', nodeId)
+}
+
+function onBusinessRunDirectorRoom(nodeId: string, roomId: string) {
+	emit('node-run-director-room', { nodeId, roomId })
 }
 
 function onBusinessCancelSceneUnderstanding(nodeId: string) {

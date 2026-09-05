@@ -64,6 +64,7 @@
 				"
 				@node-request-scene-models="onNodeRequestSceneModels"
 				@node-run-scene-understanding="onNodeRunSceneUnderstanding"
+				@node-run-director-room="(p: any) => onNodeRunDirectorRoom(p.nodeId, p.roomId)"
 				@node-cancel-scene-understanding="onNodeCancelSceneUnderstanding"
 				@node-run-scene-decompose="onNodeRunSceneDecompose"
 				@node-run-scene-layout="onNodeRunSceneLayout"
@@ -1004,6 +1005,7 @@ import { useAIWorkflowSceneLayoutMetadata } from './node-business/scene/useAIWor
 import { useAIWorkflowSceneLayoutController } from './node-business/scene/useAIWorkflowSceneLayoutController'
 import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWorkflowSceneLayoutSettings'
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
+import { useAIWorkflowDirectorWorkbenchInputs } from './node-business/scene/director/useAIWorkflowDirectorWorkbenchInputs'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import WarmupPromptDialog from '../../ui/BluePrint/WarmupPromptDialog.vue'
@@ -1474,71 +1476,78 @@ const engineApi = {
 			return Promise.resolve(false)
 		}
 
-		// 清除editor上pending的change定时器（双重保险）
-		if (editor && typeof (editor as any).clearPendingChanges === 'function') {
-			;(editor as any).clearPendingChanges()
-		}
+		// P1-2：序列化前等待 Vue 响应式 flush，确保 legacyResourcesForDom / initialData
+		// 两条 prop 链对引擎的回灌（watch props.legacyResources → scene._legacyResources、
+		// watch initialData → loadBlueprint）已完成，避免序列化到空资源表导致资源被误清空
+		return nextTick()
+			.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+			.then(() => {
+				// 清除editor上pending的change定时器（双重保险）
+				if (editor && typeof (editor as any).clearPendingChanges === 'function') {
+					;(editor as any).clearPendingChanges()
+				}
 
-		const latest = editor.saveBlueprint()
-		if (!latest) {
-			return Promise.resolve(false)
-		}
+				const latest = editor.saveBlueprint()
+				if (!latest) {
+					return Promise.resolve(false)
+				}
 
-		const nodeCount = latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
-		const edgeCount = latest.edgeOrder?.length ?? Object.keys(latest.edgesById || {}).length
-		console.log(
-			'[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
-			nodeCount,
-			'edges:',
-			edgeCount,
-			'edgeIds:',
-			latest.edgeOrder
-		)
+				const nodeCount = latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
+				const edgeCount = latest.edgeOrder?.length ?? Object.keys(latest.edgesById || {}).length
+				console.log(
+					'[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
+					nodeCount,
+					'edges:',
+					edgeCount,
+					'edgeIds:',
+					latest.edgeOrder
+				)
 
-		const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
+				const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
 
-		// 验证快照中确实包含edges
-		const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
-		console.log(
-			'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
-			snapshotEdgeCount
-		)
+				// 验证快照中确实包含edges
+				const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
+				console.log(
+					'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
+					snapshotEdgeCount
+				)
 
-		isUpdatingFromStore = true
-		store.commit('hydrateDraft', { snapshot })
+				isUpdatingFromStore = true
+				store.commit('hydrateDraft', { snapshot })
 
-		return new Promise<boolean>((resolve) => {
-			// 等待Vue渲染完成+额外时间确保isUpdatingFromStore保护覆盖endBulkUpdate触发的emitChange
-			// endBulkUpdate会调度一个setTimeout(0)的emitChange，我们需要等它执行完再释放isUpdatingFromStore
-			nextTick(() => {
-				requestAnimationFrame(() => {
-					setTimeout(() => {
-						// 再一次确认store中的edges存在
-						const storeEdges = store.state.edgesById || {}
-						const storeEdgeCount = Object.keys(storeEdges).length
-						console.log(
-							'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
-							storeEdgeCount
-						)
+				return new Promise<boolean>((resolve) => {
+					// 等待Vue渲染完成+额外时间确保isUpdatingFromStore保护覆盖endBulkUpdate触发的emitChange
+					// endBulkUpdate会调度一个setTimeout(0)的emitChange，我们需要等它执行完再释放isUpdatingFromStore
+					nextTick(() => {
+						requestAnimationFrame(() => {
+							setTimeout(() => {
+								// 再一次确认store中的edges存在
+								const storeEdges = store.state.edgesById || {}
+								const storeEdgeCount = Object.keys(storeEdges).length
+								console.log(
+									'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
+									storeEdgeCount
+								)
 
-						// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
-						if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
-							console.warn(
-								'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
-							)
-							store.commit('hydrateDraft', { snapshot })
-						}
+								// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
+								if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
+									console.warn(
+										'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
+									)
+									store.commit('hydrateDraft', { snapshot })
+								}
 
-						// 释放isUpdatingFromStore保护
-						// 使用setTimeout确保在endBulkUpdate触发的emitChange setTimeout(0)之后执行
-						setTimeout(() => {
-							isUpdatingFromStore = false
-							resolve(true)
-						}, 50)
-					}, 0)
+								// 释放isUpdatingFromStore保护
+								// 使用setTimeout确保在endBulkUpdate触发的emitChange setTimeout(0)之后执行
+								setTimeout(() => {
+									isUpdatingFromStore = false
+									resolve(true)
+								}, 50)
+							}, 0)
+						})
+					})
 				})
 			})
-		})
 	},
 	// 将客户端屏幕坐标转换为蓝图世界坐标
 	screenToWorld: (clientX: number, clientY: number) => {
@@ -8854,6 +8863,15 @@ const {
 	connectedImageInputSource
 })
 
+// 导演多场景工作台：按场景（房间）分组收集图片
+const { connectedDirectorSceneInputs, connectedDirectorSceneSummaries } =
+	useAIWorkflowDirectorWorkbenchInputs({
+		store,
+		getIncomingEdges,
+		resolveEdgeImageUrl: (fromNode, fromAnchorId) =>
+			connectedImageOutputUrl(fromNode, String(fromAnchorId ?? ''))
+	})
+
 const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings, validateModelBindings } =
 	useAIWorkflowSceneLayoutModelBindings({
 		store,
@@ -8901,6 +8919,7 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
 	nodeResourceName,
 	rotateImagePreviewUrl,
 	connectedSceneUnderstandImageInputs,
+	connectedDirectorSceneSummaries,
 	connectedImageInputUrl,
 	connectedImageInputSource,
 	connectedSceneDecomposeImageInputs,
@@ -11024,16 +11043,23 @@ const {
 	onNodeSceneUnderstandingSettingsUpdate,
 	onNodeRequestSceneModels,
 	onNodeRunSceneUnderstanding,
+	onNodeRunDirectorRoom,
 	cleanupSceneUnderstandingRuntime
 } = useAIWorkflowSceneUnderstandingController({
 	store,
 	sceneSkillService,
 	connectedSceneUnderstandImageInputs,
+	connectedDirectorSceneInputs,
 	connectedImageInputUrl,
 	connectedTextInputValue,
 	normalizeMeshyImageInputValue,
 	pushToast,
-	updateNodeData: engineApi.updateNodeData
+	updateNodeData: engineApi.updateNodeData,
+	getProjectId: () => {
+		const pid = currentProjectId.value
+		return pid ? Number(pid) : undefined
+	},
+	uploadProjectAsset
 })
 
 const { onNodeRunSceneDecompose } = useAIWorkflowSceneDecomposeController({
@@ -11090,6 +11116,11 @@ const { uploadNodeResource, bindMediaResourceToNode, uploadNodeModel3DFile } =
 		isDjangoManagedResource,
 		// P2-1：注入引擎同步回调（SSOT 反向写入，修复空白新建 3D 模型节点上传后仍不渲染的根因）
 		patchBlueprintNodeData: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		// P1-1：资源写穿 —— Vuex resourcesById 变更后立即同步引擎 scene._legacyResources，
+		// 保证 forceSyncToStore/serializeLegacy 任意时刻序列化都带资源，避免 hydrateDraft 误清空
+		setLegacyResource: (resourceId: string, resourceData: Record<string, unknown>) => {
+			engineApi.setLegacyResource(resourceId, resourceData)
+		},
 		// ===== 2026-08-05 修复：接入与拖拽导入相同的文件持久化能力（copyFileToProjectRoot / uploadProjectAsset），
 		// 使上传按钮走与拖拽完全相同的 IPC 原生拷贝 + ArrayBuffer 上传兜底链路，
 		// 而非仅依赖 blueprintProjectService.uploadAsset（该链路在 Electron 中可能因 coerce 字段缺失而失败）。

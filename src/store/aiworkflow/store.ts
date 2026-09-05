@@ -31,12 +31,22 @@ import type {
 	SavedSelectionFrame,
 	WorkflowModel3DNodeSettings,
 	WorkflowBlenderNodeSettings,
-	WorkflowBlenderChatMessage
+	WorkflowBlenderChatMessage,
+	WorkflowDirectorSceneSummary,
+	WorkflowDirectorRoom,
+	WorkflowDirectorConnection
 } from '../../aiworkflow/types'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
 import { isString, isNumber, isBoolean, isRecord, isArray } from '../../types/utils'
 import { areParamsEqual, areSelectedRefsEqual } from '../../ui/BluePrint/node-dialog/chatStateUtils'
+// 导演多场景工作台锚点约定（单一真值来源：前端共享模块）
+import {
+	DIRECTOR_SCENE_ANCHOR_COUNT,
+	directorSceneAnchorId
+} from '../../views/AIWorkflow/node-business/scene/director/directorWorkbenchShared'
+
+export { isDirectorSceneAnchorId } from '../../views/AIWorkflow/node-business/scene/director/directorWorkbenchShared'
 
 export type AIWorkflowState = WorkflowState
 
@@ -545,7 +555,8 @@ const normalizeSceneUnderstandingSettings = (
 			sceneType: 'auto',
 			status: 'idle',
 			availableModels: [],
-			selectedModel: ''
+			selectedModel: '',
+			persistJsonToDisk: true
 		}
 	}
 	const raw = rawSettings
@@ -568,7 +579,12 @@ const normalizeSceneUnderstandingSettings = (
 		: undefined
 	return {
 		mode: raw.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout',
-		sceneType: raw.sceneType === 'indoor' || raw.sceneType === 'outdoor' ? raw.sceneType : 'auto',
+		sceneType:
+			raw.sceneType === 'indoor' ||
+			raw.sceneType === 'outdoor' ||
+			raw.sceneType === 'director-multi-scene'
+				? raw.sceneType
+				: 'auto',
 		detectedSceneType:
 			raw.detectedSceneType === 'indoor' ||
 			raw.detectedSceneType === 'outdoor' ||
@@ -614,7 +630,36 @@ const normalizeSceneUnderstandingSettings = (
 		rewriteAttempts: Number.isFinite(Number(raw.rewriteAttempts))
 			? Number(raw.rewriteAttempts)
 			: undefined,
-		mock: isBoolean(raw.mock) ? raw.mock : undefined
+		mock: isBoolean(raw.mock) ? raw.mock : undefined,
+		directorScenes: isArray(raw.directorScenes)
+			? (raw.directorScenes
+					.map((s: unknown) => {
+						const o = isRecord(s) ? s : {}
+						return {
+							sceneIndex: Number.isFinite(Number(o.sceneIndex)) ? Number(o.sceneIndex) : 0,
+							anchorId: String(o.anchorId ?? '').trim(),
+							label: isString(o.label) ? o.label : undefined,
+							imageCount: Number.isFinite(Number(o.imageCount)) ? Number(o.imageCount) : 0
+						}
+					})
+					.filter((s: { anchorId: string }) => !!s.anchorId) as WorkflowDirectorSceneSummary[])
+			: undefined,
+		directorRooms: isArray(raw.directorRooms)
+			? (raw.directorRooms as WorkflowDirectorRoom[])
+			: undefined,
+		directorConnections: isArray(raw.directorConnections)
+			? (raw.directorConnections as WorkflowDirectorConnection[])
+			: undefined,
+		persistJsonToDisk: raw.persistJsonToDisk !== false ? true : undefined,
+		persistedTaskId: isString(raw.persistedTaskId) ? raw.persistedTaskId : undefined,
+		persistedFilePath: isString(raw.persistedFilePath) ? raw.persistedFilePath : undefined,
+		directorShellCompleted: raw.directorShellCompleted === true ? true : undefined,
+		directorWorkspacePath: isString(raw.directorWorkspacePath)
+			? raw.directorWorkspacePath
+			: undefined,
+		directorRoomStatus: isRecord(raw.directorRoomStatus)
+			? (raw.directorRoomStatus as WorkflowSceneUnderstandingNodeSettings['directorRoomStatus'])
+			: undefined
 	}
 }
 
@@ -1449,8 +1494,24 @@ const syncTextAnchors = (node: WorkflowNode) => {
 }
 
 export const syncSceneUnderstandAnchors = (node: WorkflowNode) => {
-	const mode =
-		node.sceneUnderstandingSettings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+	const settings = node.sceneUnderstandingSettings
+	const mode = settings?.mode === 'scene-lighting' ? 'scene-lighting' : 'scene-layout'
+	// 导演多场景工作台：每个场景（房间）一个 multiInput 图片锚点
+	const isDirectorWorkbench =
+		mode === 'scene-layout' && settings?.sceneType === 'director-multi-scene'
+	if (isDirectorWorkbench) {
+		node.inputs = [
+			...Array.from({ length: DIRECTOR_SCENE_ANCHOR_COUNT }, (_, i) => ({
+				id: directorSceneAnchorId(i + 1),
+				label: `场景 ${i + 1}（房间）`,
+				mediaType: 'image' as const,
+				multiInput: true
+			})),
+			{ id: 'in-text', label: '导演补充说明', mediaType: 'text' as const }
+		]
+		node.outputs = [{ id: 'out-0', label: '多场景JSON', mediaType: 'text' as const }]
+		return
+	}
 	node.inputs = [
 		{ id: 'in-image', label: '参考图 1', mediaType: 'image' },
 		{ id: 'in-image-2', label: '参考图 2', mediaType: 'image' },
@@ -2886,8 +2947,52 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				}
 				if (nextNodesById[nodeId].type === 'story') syncStoryAnchors(nextNodesById[nodeId])
 				if (nextNodesById[nodeId].type === 'text-merge') syncTextMergeAnchors(nextNodesById[nodeId])
-				if (nextNodesById[nodeId].type === 'scene-understanding')
+				if (nextNodesById[nodeId].type === 'scene-understanding') {
+					// DEFEND(scene-understanding): 保留 Store 中的 persist 相关字段，
+					// 防止 hydrateDraft 的 normalize 丢弃 persistJsonToDisk / persistedTaskId / persistedFilePath
+					const prevSettings = (prevNode as any)?.sceneUnderstandingSettings
+					const incomingSettings = (nextNodesById[nodeId] as any).sceneUnderstandingSettings
+					if (prevSettings && incomingSettings) {
+						// DEFEND：导演工作区与识别结果为运行时态，引擎快照可能滞后/缺失，
+						// 当 incoming 缺该字段时保留 Store 中的值，避免选中节点/Ctrl+S 重置流水线状态
+						const pickPrevIfEmpty = (key: string) => {
+							const prevVal = prevSettings[key]
+							const incomingVal = incomingSettings[key]
+							const prevEmpty =
+								prevVal === undefined ||
+								prevVal === null ||
+								(Array.isArray(prevVal) && prevVal.length === 0)
+							const incomingEmpty =
+								incomingVal === undefined ||
+								incomingVal === null ||
+								(Array.isArray(incomingVal) && incomingVal.length === 0)
+							// incoming 有有效数据用 incoming；否则回退 prev
+							return incomingEmpty ? (prevEmpty ? incomingVal : prevVal) : incomingVal
+						}
+						;(nextNodesById[nodeId] as any).sceneUnderstandingSettings = {
+							...incomingSettings,
+							persistJsonToDisk:
+								prevSettings.persistJsonToDisk === true
+									? true
+									: incomingSettings?.persistJsonToDisk,
+							persistedTaskId: prevSettings.persistedTaskId ?? incomingSettings?.persistedTaskId,
+							persistedFilePath:
+								prevSettings.persistedFilePath ?? incomingSettings?.persistedFilePath,
+							directorShellCompleted:
+								prevSettings.directorShellCompleted === true
+									? true
+									: incomingSettings?.directorShellCompleted,
+							directorWorkspacePath:
+								prevSettings.directorWorkspacePath ?? incomingSettings?.directorWorkspacePath,
+							directorRoomStatus: pickPrevIfEmpty('directorRoomStatus'),
+							outputJson: pickPrevIfEmpty('outputJson'),
+							rawOutput: pickPrevIfEmpty('rawOutput'),
+							directorRooms: pickPrevIfEmpty('directorRooms'),
+							directorConnections: pickPrevIfEmpty('directorConnections')
+						}
+					}
 					syncSceneUnderstandAnchors(nextNodesById[nodeId])
+				}
 				// DEFEND(scene-layout): Store中的layoutItems长度大于incoming时，保留Store中的正确布局
 				// 防止Ctrl+S时Engine端未同步的旧数据回滚覆盖新生成的布局
 				if (nextNodesById[nodeId].type === 'scene-layout') {
@@ -3178,11 +3283,13 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			// 但只保留近期添加的资源（5秒内，窗口比节点稍长因为资源绑定可能有延迟）
 			// 使用createdAt时间戳（addResource时设置）判断，避免阻止删除同步
 			// 重要：如果snapshot本身没有资源（清空画布操作），则不保留任何资源
+			// P2-1：hydrate 覆盖前先保存旧资源表，供 F5 迁移与空快照引用判据读取
+			const prevResourcesById = state.resourcesById
 			const snapshotHasResources = Object.keys(rawResourcesById).length > 0
 			const preservedResourceIds: string[] = []
 			const NEW_RESOURCE_PRESERVE_WINDOW_MS = 5000
 			if (snapshotHasResources) {
-				for (const [existingRid, existingRes] of Object.entries(state.resourcesById)) {
+				for (const [existingRid, existingRes] of Object.entries(prevResourcesById)) {
 					if (!nextResourcesById[existingRid] && existingRes) {
 						const createdAt = Number((existingRes as any).createdAt ?? 0)
 						const isRecentNew = createdAt > 0 && now - createdAt < NEW_RESOURCE_PRESERVE_WINDOW_MS
@@ -3226,9 +3333,33 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					}
 				}
 			} else {
-				console.log(
-					'[DraftFlow#store hydrateDraft] CLEAR(resources): snapshot has no resources, clearing all resources (full reset)'
-				)
+				// P2-2：引擎快照无资源表时，不再一律判定为「清空画布」。
+				// 新拖拽/新建节点场景下引擎可能尚未回传资源表（时序窗口），但快照节点仍带 resourceId，
+				// 此时从 Vuex 旧资源表迁移被引用资源，避免全量 CLEAR 导致资源与渲染永久丢失。
+				const referencedRids = new Set<string>()
+				for (const n of Object.values(nextNodesById)) {
+					const rid = String((n as any)?.resourceId ?? '').trim()
+					if (rid) referencedRids.add(rid)
+				}
+				let keptCount = 0
+				for (const rid of referencedRids) {
+					const prevRes = prevResourcesById[rid]
+					if (prevRes && !nextResourcesById[rid]) {
+						nextResourcesById[rid] = prevRes
+						if (!nextResourceOrder.includes(rid)) nextResourceOrder.push(rid)
+						keptCount++
+					}
+				}
+				if (keptCount > 0) {
+					console.log(
+						'[DraftFlow#store hydrateDraft] KEEP(resources): snapshot has no resources table but nodes reference existing Vuex resources, preserved',
+						{ keptCount, referencedCount: referencedRids.size }
+					)
+				} else {
+					console.log(
+						'[DraftFlow#store hydrateDraft] CLEAR(resources): snapshot has no resources, clearing all resources (full reset)'
+					)
+				}
 			}
 			// 将保留的新资源添加到resourceOrder末尾
 			for (const rid of preservedResourceIds) {
@@ -3244,8 +3375,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				const nn = nextNodesById[nid] as any
 				if (!nn?.resourceId) continue
 				if (!nextResourcesById[nn.resourceId]) {
-					// 尝试从当前 state.resourcesById 迁移
-					const existing = state.resourcesById[nn.resourceId]
+					// P2-1：从 hydrate 覆盖前的旧资源表迁移（state.resourcesById 此刻已指向新表，旧表为 prevResourcesById）
+					const existing = prevResourcesById[nn.resourceId]
 					if (existing) {
 						nextResourcesById[nn.resourceId] = existing
 						if (!nextResourceOrder.includes(nn.resourceId)) {
@@ -3408,10 +3539,19 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 		) {
 			const id = String(payload?.resourceId ?? '').trim()
 			if (!id) return
-			const r = state.resourcesById[id]
-			if (!r) return
 			const patch = (payload?.patch ?? {}) as Partial<WorkflowResource>
-			state.resourcesById[id] = { ...r, ...patch, id }
+			const r = state.resourcesById[id]
+			// P2-3 upsert：记录缺失时兜底创建（异步 URL 回补可能早于 addResource 被异常清空），
+			// 避免 patchResource 静默 no-op 导致资源 URL 永远写不回
+			state.resourcesById[id] = r
+				? { ...r, ...patch, id }
+				: ({
+						...patch,
+						id,
+						kind: patch.kind ?? 'image',
+						createdAt: Number((patch as any).createdAt) || Date.now()
+					} as WorkflowResource)
+			if (!state.resourceOrder.includes(id)) state.resourceOrder = [...state.resourceOrder, id]
 		},
 		patchResourcesBatch(
 			state: WorkflowState,
@@ -3422,10 +3562,20 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			for (const item of list) {
 				const id = String(item?.resourceId ?? '').trim()
 				if (!id) continue
-				const r = state.resourcesById[id]
-				if (!r) continue
 				const patch = (item?.patch ?? {}) as Partial<WorkflowResource>
-				state.resourcesById[id] = { ...r, ...patch, id }
+				const r = state.resourcesById[id]
+				// P2-3 upsert：同上，缺失时兜底创建
+				state.resourcesById[id] = r
+					? { ...r, ...patch, id }
+					: ({
+							...patch,
+							id,
+							kind: patch.kind ?? 'image',
+							createdAt: Number((patch as any).createdAt) || Date.now()
+						} as WorkflowResource)
+				if (!state.resourceOrder.includes(id)) {
+					state.resourceOrder = [...state.resourceOrder, id]
+				}
 			}
 		},
 		removeResource(state, payload: { resourceId: string }) {
@@ -5089,6 +5239,65 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (next.type === 'scene-decompose') syncSceneDecomposeAnchors(next)
 			enforceSingleIOAnchors(next)
 			if (!state.nodeOrder.includes(id)) state.nodeOrder = [...state.nodeOrder, id]
+		},
+		// 兜底 mutation：添加或更新单个节点（用于 forceSyncToStore 失败时手动同步引擎节点到 store）
+		// 不创建新 nodeId，而是用传入的 node 数据直接 upsert
+		upsertWorkflowNode(state, payload: { node: Record<string, any> }) {
+			const n = payload?.node
+			if (!n || typeof n !== 'object') return
+			const id = String(n.id ?? '').trim()
+			if (!id) return
+			const existing = state.nodesById[id]
+			if (existing) {
+				// 合并：保留已有的 chat 数据，更新传入的字段
+				const merged = { ...existing, ...n }
+				// 不覆盖已有的 createdAt（除非没有）
+				if (!merged.createdAt) merged.createdAt = existing.createdAt || Date.now()
+				state.nodesById[id] = merged
+			} else {
+				const type = String(n.type ?? 'base')
+				const node: WorkflowNode = {
+					id,
+					type,
+					title: String(n.title ?? ''),
+					alias: String(n.alias ?? defaultAliasForType(type)),
+					subtitle: n.subtitle ?? undefined,
+					worldX: Number(n.worldX ?? n.x ?? 0) || 0,
+					worldY: Number(n.worldY ?? n.y ?? 0) || 0,
+					width: Number(n.width ?? 240) || 240,
+					height: Number(n.height ?? 160) || 160,
+					sizeCustomized: Boolean(n.sizeCustomized),
+					resourceId: n.resourceId ?? null,
+					inputs: Array.isArray(n.inputs) ? n.inputs : [],
+					outputs: Array.isArray(n.outputs) ? n.outputs : [],
+					createdAt: Number(n.createdAt ?? Date.now())
+				} as WorkflowNode
+				// 复制额外的设置字段
+				for (const key of [
+					'imageSettings',
+					'videoSettings',
+					'model3dSettings',
+					'meshySettings',
+					'tripo3dSettings',
+					'blenderSettings',
+					'storySettings',
+					'sceneUnderstandingSettings',
+					'sceneLayoutSettings',
+					'sceneDecomposeSettings',
+					'unrealExportSettings',
+					'comfyuiSettings',
+					'nodeChatDraft',
+					'nodeChatParams',
+					'nodeChatSelectedRefs',
+					'nodeChatVisible',
+					'status',
+					'resourcePath'
+				]) {
+					if (n[key] !== undefined) (node as any)[key] = n[key]
+				}
+				state.nodesById[id] = node
+				if (!state.nodeOrder.includes(id)) state.nodeOrder = [...state.nodeOrder, id]
+			}
 		},
 		addNodeAt(state, payload: { worldX: number; worldY: number; title?: string }) {
 			const id = makeId('wf-node')
