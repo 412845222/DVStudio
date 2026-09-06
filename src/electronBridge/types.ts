@@ -1,4 +1,4 @@
-export type BackendPingResult = { ok: boolean; status?: number; error?: string }
+﻿export type BackendPingResult = { ok: boolean; status?: number; error?: string }
 
 export type BackendStartResult = { ok: boolean; baseUrl?: string; port?: number; error?: string }
 
@@ -358,6 +358,52 @@ export type Open3DEditorResult = {
 	ok: boolean
 	error?: string
 	focused?: boolean
+}
+// ===== 导演控制台窗口 =====
+export type OpenDirectorConsolePayload = {
+	nodeId: string
+	projectId?: number
+	title?: string
+}
+
+export type OpenDirectorConsoleResult = {
+	ok: boolean
+	error?: string
+	focused?: boolean
+}
+
+export type DirectorConsoleModelBinding = {
+	objectId: string
+	objectName?: string
+	modelUrl?: string
+	modelProjectRelativePath?: string
+	modelAbsolutePath?: string
+}
+
+export type DirectorConsoleScenePayload = {
+	nodeId: string
+	projectId?: number
+	projectRoot?: string
+	layoutItems: unknown[]
+	camera?: {
+		position?: { x: number; y: number; z: number }
+		target?: { x: number; y: number; z: number }
+	}
+	modelBindings?: DirectorConsoleModelBinding[]
+	cameraTracks?: unknown[]
+	activeCameraTrackId?: string
+	lightRig?: unknown
+	directorDataVersion?: number
+}
+
+export type DirectorConsoleSavePayload = {
+	nodeId: string
+	patch: {
+		cameraTracks?: unknown[]
+		activeCameraTrackId?: string
+		lightRig?: unknown
+		directorDataVersion?: number
+	}
 }
 
 export type OpenVideoEditorPayload = {

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+﻿import { contextBridge, ipcRenderer } from 'electron'
 import {
 	APP_NAME,
 	APP_ID,
@@ -245,6 +245,66 @@ ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
 	}
 })
 
+// ===== 导演控制台窗口：预注册监听器 + 数据缓存 =====
+// 关键：在 preload 脚本加载时（早于 Vue 挂载）就注册 IPC 监听器
+// 避免主窗口推送数据时 Vue 组件尚未挂载导致消息丢失
+const DIRECTOR_CONSOLE_DATA_CHANNEL = 'dweb:director-console:data'
+const DIRECTOR_CONSOLE_SAVE_CHANNEL = 'dweb:director-console:save'
+const DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL = 'dweb:director-console:data-request'
+
+let directorConsoleLatestData = null
+const directorConsoleDataHandlers = new Map()
+let directorConsoleDataListenerSeed = 0
+
+const directorConsoleSaveHandlers = new Map()
+let directorConsoleSaveListenerSeed = 0
+
+const directorConsoleDataRequestHandlers = new Map()
+let directorConsoleDataRequestListenerSeed = 0
+
+ipcRenderer.on(DIRECTOR_CONSOLE_DATA_CHANNEL, (_event, payload) => {
+	try {
+		directorConsoleLatestData = payload
+		for (const handler of directorConsoleDataHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] data handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process data:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_SAVE_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleSaveHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] save handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process save:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleDataRequestHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] data-request handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process data-request:', err)
+	}
+})
+
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
 // 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
@@ -353,7 +413,57 @@ contextBridge.exposeInMainWorld('dweb', {
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 		openVideoEditor: (payload) => invoke('dweb:video-editor:open', payload || {}),
-		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {})
+		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
+		// ===== 导演控制台原生窗口 =====
+		openDirectorConsole: (payload) => invoke('dweb:director-console:open', payload || {}),
+		directorConsoleRequestData: (payload) =>
+			invoke('dweb:director-console:request-data', payload || {}),
+		directorConsolePushData: (payload) =>
+			ipcRenderer.send('dweb:director-console:data-push', payload || {}),
+		directorConsoleSave: (payload) =>
+			ipcRenderer.send('dweb:director-console:save-relay', payload || {}),
+		getDirectorConsoleData: () => directorConsoleLatestData,
+		onDirectorConsoleData: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleDataListenerSeed
+			directorConsoleDataHandlers.set(id, handler)
+			// 如果已有缓存数据，立即回调
+			if (directorConsoleLatestData) {
+				try {
+					handler(directorConsoleLatestData)
+				} catch {
+					/* ignore */
+				}
+			}
+			return id
+		},
+		offDirectorConsoleData: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleDataHandlers.delete(id)
+			return { ok: true }
+		},
+		onDirectorConsoleSave: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleSaveListenerSeed
+			directorConsoleSaveHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleSave: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleSaveHandlers.delete(id)
+			return { ok: true }
+		},
+		onDirectorConsoleDataRequest: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleDataRequestListenerSeed
+			directorConsoleDataRequestHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleDataRequest: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleDataRequestHandlers.delete(id)
+			return { ok: true }
+		}
 	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
@@ -1224,5 +1334,15 @@ contextBridge.exposeInMainWorld('dweb', {
 			backendRuntimeListenerMap.delete(id)
 			return { ok: true }
 		}
+	},
+	cliControlServer: {
+		getStatus: () => invoke('dweb:cli-control:status'),
+		getTask: (payload) => invoke('dweb:cli-control:task:get', payload || {}),
+		listTasks: (payload) => invoke('dweb:cli-control:task:list', payload || {}),
+		markTaskCompleted: (payload) => invoke('dweb:cli-control:task:mark-completed', payload || {}),
+		markTaskFailed: (payload) => invoke('dweb:cli-control:task:mark-failed', payload || {}),
+		acknowledgeTaskMeta: (payload) =>
+			invoke('dweb:cli-control:task:acknowledge-meta', payload || {}),
+		cancelTask: (payload) => invoke('dweb:cli-control:task:cancel', payload || {})
 	}
 })

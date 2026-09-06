@@ -1,4 +1,4 @@
-{
+﻿{
 	"aiworkflow.canvas.inputAnchors": "入口锚点",
 	"aiworkflow.canvas.outputAnchors": "出口锚点",
 	"aiworkflow.canvas.inputAnchor": "入口",
@@ -30,6 +30,7 @@
 	"aiworkflow.canvas.nodeTypes.sceneUnderstanding": "场景理解",
 	"aiworkflow.canvas.nodeTypes.sceneLayout": "场景布局",
 	"aiworkflow.canvas.nodeTypes.sceneDecompose": "场景拆解",
+	"aiworkflow.canvas.nodeTypes.directorConsole": "导演控制台",
 	"aiworkflow.canvas.nodeTypes.story": "故事",
 	"aiworkflow.canvas.nodeTypes.textMerge": "文本合并",
 	"aiworkflow.canvas.nodeTitles.text": "文本节点",
@@ -44,6 +45,7 @@
 	"aiworkflow.canvas.nodeTitles.sceneUnderstanding": "场景理解节点",
 	"aiworkflow.canvas.nodeTitles.sceneLayout": "场景布局节点",
 	"aiworkflow.canvas.nodeTitles.sceneDecompose": "场景拆解节点",
+	"aiworkflow.canvas.nodeTitles.directorConsole": "导演控制台节点",
 	"aiworkflow.canvas.nodeTitles.story": "剧情节点",
 	"aiworkflow.canvas.nodeTitles.textMerge": "文本合并节点",
 	"aiworkflow.canvas.nodeTitles.base": "工作流节点",
@@ -57,6 +59,7 @@
 	"aiworkflow.canvas.ports.referenceVideoInput": "参考视频输入",
 	"aiworkflow.canvas.ports.videoOutput": "视频输出",
 	"aiworkflow.canvas.ports.modelInput": "模型输入",
+	"aiworkflow.canvas.ports.layoutJson": "布局JSON",
 	"aiworkflow.canvas.ports.prompt": "提示词",
 	"aiworkflow.canvas.ports.referenceImage1": "参考图 1",
 	"aiworkflow.canvas.ports.referenceImage2": "参考图 2",

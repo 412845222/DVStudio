@@ -64,8 +64,14 @@
 				"
 				@node-request-scene-models="onNodeRequestSceneModels"
 				@node-run-scene-understanding="onNodeRunSceneUnderstanding"
+				@node-run-director-room="(p: any) => onNodeRunDirectorRoom(p.nodeId, p.roomId)"
 				@node-cancel-scene-understanding="onNodeCancelSceneUnderstanding"
 				@node-run-scene-decompose="onNodeRunSceneDecompose"
+				@node-open-director-console="
+					(p: any) => {
+						onNodeOpenDirectorConsole(p.nodeId)
+					}
+				"
 				@node-run-scene-layout="onNodeRunSceneLayout"
 				@node-update-preview-mode="
 					(p: any) => onNodeSceneLayoutPreviewModeUpdate(p.nodeId, p.previewMode)
@@ -997,6 +1003,7 @@ import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflow
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
+import { useAIWorkflowDirectorConsoleController } from './node-business/director/useAIWorkflowDirectorConsoleController'
 import { useAIWorkflowSceneImageInputs } from './node-business/scene/useAIWorkflowSceneImageInputs'
 import { slugSceneLayoutPlaceholderModelName } from './node-business/scene/sceneLayoutPlaceholderModelUtils'
 import { useAIWorkflowSceneLayoutModelBindings } from './node-business/scene/useAIWorkflowSceneLayoutModelBindings'
@@ -1004,6 +1011,7 @@ import { useAIWorkflowSceneLayoutMetadata } from './node-business/scene/useAIWor
 import { useAIWorkflowSceneLayoutController } from './node-business/scene/useAIWorkflowSceneLayoutController'
 import { useAIWorkflowSceneLayoutSettings } from './node-business/scene/useAIWorkflowSceneLayoutSettings'
 import { useAIWorkflowSceneUnderstandingController } from './node-business/scene/useAIWorkflowSceneUnderstandingController'
+import { useAIWorkflowDirectorWorkbenchInputs } from './node-business/scene/director/useAIWorkflowDirectorWorkbenchInputs'
 import type { WorkflowThreePreviewProgressPayload } from '../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { useStartupProgress } from '../../composables/useStartupProgress'
 import WarmupPromptDialog from '../../ui/BluePrint/WarmupPromptDialog.vue'
@@ -1011,6 +1019,8 @@ import { useWarmupPrompt } from './node-screenshot/warmupPromptManager'
 import BlueprintStartupOverlay from '../../ui/UIComponent/BlueprintStartupOverlay.vue'
 import { useBlueprintStartupProgress } from './startup/useBlueprintStartupProgress'
 import { createBlueprintStartupLoader } from './startup/useBlueprintStartupLoader'
+// CLI 跨进程控制集成（P0 stub，独立 try/catch 保证非侵入）
+import { useCLIAgentTrigger } from './node-business/chat/useCLIAgentTrigger'
 
 interface GeneratedResourceBase {
 	id: string
@@ -1472,71 +1482,78 @@ const engineApi = {
 			return Promise.resolve(false)
 		}
 
-		// 清除editor上pending的change定时器（双重保险）
-		if (editor && typeof (editor as any).clearPendingChanges === 'function') {
-			;(editor as any).clearPendingChanges()
-		}
+		// P1-2：序列化前等待 Vue 响应式 flush，确保 legacyResourcesForDom / initialData
+		// 两条 prop 链对引擎的回灌（watch props.legacyResources → scene._legacyResources、
+		// watch initialData → loadBlueprint）已完成，避免序列化到空资源表导致资源被误清空
+		return nextTick()
+			.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+			.then(() => {
+				// 清除editor上pending的change定时器（双重保险）
+				if (editor && typeof (editor as any).clearPendingChanges === 'function') {
+					;(editor as any).clearPendingChanges()
+				}
 
-		const latest = editor.saveBlueprint()
-		if (!latest) {
-			return Promise.resolve(false)
-		}
+				const latest = editor.saveBlueprint()
+				if (!latest) {
+					return Promise.resolve(false)
+				}
 
-		const nodeCount = latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
-		const edgeCount = latest.edgeOrder?.length ?? Object.keys(latest.edgesById || {}).length
-		console.log(
-			'[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
-			nodeCount,
-			'edges:',
-			edgeCount,
-			'edgeIds:',
-			latest.edgeOrder
-		)
+				const nodeCount = latest.nodeOrder?.length ?? Object.keys(latest.nodesById || {}).length
+				const edgeCount = latest.edgeOrder?.length ?? Object.keys(latest.edgesById || {}).length
+				console.log(
+					'[AIWorkflow:MediaImport] forceSyncToStore: syncing from engine, nodes:',
+					nodeCount,
+					'edges:',
+					edgeCount,
+					'edgeIds:',
+					latest.edgeOrder
+				)
 
-		const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
+				const snapshot = legacyBlueprintToWorkflowState(latest, store.state.nodesById)
 
-		// 验证快照中确实包含edges
-		const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
-		console.log(
-			'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
-			snapshotEdgeCount
-		)
+				// 验证快照中确实包含edges
+				const snapshotEdgeCount = Object.keys(snapshot.edgesById || {}).length
+				console.log(
+					'[AIWorkflow:MediaImport] forceSyncToStore: snapshot edge count:',
+					snapshotEdgeCount
+				)
 
-		isUpdatingFromStore = true
-		store.commit('hydrateDraft', { snapshot })
+				isUpdatingFromStore = true
+				store.commit('hydrateDraft', { snapshot })
 
-		return new Promise<boolean>((resolve) => {
-			// 等待Vue渲染完成+额外时间确保isUpdatingFromStore保护覆盖endBulkUpdate触发的emitChange
-			// endBulkUpdate会调度一个setTimeout(0)的emitChange，我们需要等它执行完再释放isUpdatingFromStore
-			nextTick(() => {
-				requestAnimationFrame(() => {
-					setTimeout(() => {
-						// 再一次确认store中的edges存在
-						const storeEdges = store.state.edgesById || {}
-						const storeEdgeCount = Object.keys(storeEdges).length
-						console.log(
-							'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
-							storeEdgeCount
-						)
+				return new Promise<boolean>((resolve) => {
+					// 等待Vue渲染完成+额外时间确保isUpdatingFromStore保护覆盖endBulkUpdate触发的emitChange
+					// endBulkUpdate会调度一个setTimeout(0)的emitChange，我们需要等它执行完再释放isUpdatingFromStore
+					nextTick(() => {
+						requestAnimationFrame(() => {
+							setTimeout(() => {
+								// 再一次确认store中的edges存在
+								const storeEdges = store.state.edgesById || {}
+								const storeEdgeCount = Object.keys(storeEdges).length
+								console.log(
+									'[AIWorkflow:MediaImport] forceSyncToStore: after sync, store edges:',
+									storeEdgeCount
+								)
 
-						// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
-						if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
-							console.warn(
-								'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
-							)
-							store.commit('hydrateDraft', { snapshot })
-						}
+								// 如果快照中有edges但store中没有，重新同步一次（异常恢复）
+								if (snapshotEdgeCount > 0 && storeEdgeCount === 0) {
+									console.warn(
+										'[AIWorkflow:MediaImport] forceSyncToStore: edges missing after sync, re-syncing...'
+									)
+									store.commit('hydrateDraft', { snapshot })
+								}
 
-						// 释放isUpdatingFromStore保护
-						// 使用setTimeout确保在endBulkUpdate触发的emitChange setTimeout(0)之后执行
-						setTimeout(() => {
-							isUpdatingFromStore = false
-							resolve(true)
-						}, 50)
-					}, 0)
+								// 释放isUpdatingFromStore保护
+								// 使用setTimeout确保在endBulkUpdate触发的emitChange setTimeout(0)之后执行
+								setTimeout(() => {
+									isUpdatingFromStore = false
+									resolve(true)
+								}, 50)
+							}, 0)
+						})
+					})
 				})
 			})
-		})
 	},
 	// 将客户端屏幕坐标转换为蓝图世界坐标
 	screenToWorld: (clientX: number, clientY: number) => {
@@ -3875,13 +3892,164 @@ const createImageNodeAtCenter = (
 		mode?: string
 		imageGenerationSource?: string
 		imageUrls?: string[]
+		/** 本地绝对路径（蓝图项目目录内或外均可），若提供会：
+		 *  1) 若路径在当前蓝图项目根目录外，则先通过 copyFileToProjectRoot IPC 复制到 Content/Media
+		 *  2) 创建 WorkflowResource（kind=image，含 sourcePath/projectRelativePath/url=dweb://...）
+		 *  3) commit('addResource') + commit('setNodeResource') 绑定
+		 *  这样「右键菜单 → 文件夹打开」可以正确解析到本地绝对路径，
+		 *  图片渲染走 dweb://project-assets 协议（Electron 注册的方案），避免 file:// 的安全限制。 */
+		sourceLocalPath?: string
+		/** sourceLocalPath 对应的文件大小（可选） */
+		sourceFileSize?: number
 	}
 ): string | null => {
 	try {
 		const { worldX, worldY } = getCanvasCenterWorld()
 		const imageSource = opts?.imageGenerationSource || 'gemini'
+
+		// ===== 若提供 sourceLocalPath：创建绑定 WorkflowResource（优先） =====
+		let finalImageUrl = url
+		let resourceId: string | null = null
+		const rawSource = String(opts?.sourceLocalPath || '').trim()
+		if (rawSource && isElectron()) {
+			try {
+				const pidRaw = currentProjectId.value
+				const pid = Number(pidRaw)
+				const rootPath = String(currentProjectRootPath.value || '').trim()
+				const normalizedSource = rawSource.replace(/\\/g, '/').replace(/\/+$/, '')
+				const normalizedRoot = rootPath ? rootPath.replace(/\\/g, '/').replace(/\/+$/, '') : ''
+
+				let projectRelativePath = ''
+				let absolutePath = normalizedSource
+				let resolvedDwebUrl = ''
+
+				// A) sourceLocalPath 已经在蓝图项目根目录下 → 直接计算 relativePath
+				if (normalizedRoot && normalizedSource.startsWith(normalizedRoot + '/')) {
+					projectRelativePath = normalizedSource.slice(normalizedRoot.length + 1)
+					resolvedDwebUrl =
+						Number.isFinite(pid) && pid > 0 && projectRelativePath
+							? `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(projectRelativePath)}`
+							: ''
+				} else if (normalizedRoot && Number.isFinite(pid) && pid > 0) {
+					// B) source 不在项目目录下 → 通过 IPC copyFileToProjectRoot 复制到 Content/Media
+					//    （这里先记下来，同步创建节点后再异步执行；蓝图先以 dweb 形式等待资源落盘）
+					const desiredName = String(name || 'cli-gen-image').slice(0, 80) || 'seedream'
+					const copyPromise = Promise.resolve()
+						.then(() =>
+							window?.dweb?.aiworkflow?.copyFileToProjectRoot?.({
+								projectId: pid,
+								sourcePath: rawSource,
+								desiredFilename: desiredName
+							})
+						)
+						.then((res: any) => {
+							if (!res?.ok) return null
+							const rel = String(res.relativePath || '').trim()
+							const abs = String(res.absolutePath || '').trim()
+							if (!rel || !abs) return null
+							return { rel, abs }
+						})
+						.catch(() => null)
+					// 同步不等待 IPC；先创建节点 + 临时 resource；copy 成功后 patchResource
+					const tmpResourceId =
+						'cliimg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+					const tmpName =
+						String(
+							name ||
+								String(rawSource || '')
+									.replace(/\\/g, '/')
+									.split('/')
+									.pop() ||
+								'' ||
+								'cli-gen-image'
+						).slice(0, 120) || 'seedream'
+					const tmpResource: any = {
+						id: tmpResourceId,
+						kind: 'image',
+						name: tmpName,
+						url: '',
+						sourcePath: absolutePath,
+						sourceName:
+							String(rawSource || '')
+								.replace(/\\/g, '/')
+								.split('/')
+								.pop() || tmpName,
+						sourceSize: typeof opts?.sourceFileSize === 'number' ? opts.sourceFileSize : undefined,
+						createdAt: Date.now()
+					}
+					store.commit('addResource', tmpResource)
+					resourceId = tmpResourceId
+
+					// 异步 copy 完成后，再更新 resource 的 relativePath / dweb url，
+					// 并且 setNodeResource（若节点已创建）。
+					void copyPromise.then((r: any) => {
+						if (!r?.rel || !r?.abs) return
+						const newUrl = `dweb://project-assets?projectId=${pid}&path=${encodeURIComponent(r.rel)}`
+						try {
+							store.commit('patchResource', {
+								resourceId: tmpResourceId,
+								patch: {
+									projectRelativePath: r.rel,
+									url: newUrl,
+									sourcePath: r.abs,
+									sourceSize: r.size
+								}
+							})
+						} catch {
+							/* ignore */
+						}
+						// 更新 imageSettings.imageUrl 为最终 dweb URL
+						try {
+							const current = store.state.nodesById[tmpNodeIdSync]
+							if (current?.imageSettings) {
+								store.commit('updateNodeData', {
+									nodeId: tmpNodeIdSync,
+									patch: {
+										imageSettings: { ...(current.imageSettings as any), imageUrl: newUrl }
+									}
+								})
+								patchBlueprintNodeData?.(tmpNodeIdSync)
+							}
+						} catch {
+							/* ignore */
+						}
+					})
+				}
+
+				// 情况 A：sourcePath 已经在项目目录，同步创建 resource + dweb url
+				if (projectRelativePath && resolvedDwebUrl) {
+					const rid =
+						'cliimg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+					const rName =
+						String(name || (normalizedSource.split('/').pop() as string) || 'cli-gen-image').slice(
+							0,
+							120
+						) || 'seedream'
+					const resource: any = {
+						id: rid,
+						kind: 'image',
+						name: rName,
+						url: resolvedDwebUrl,
+						projectRelativePath,
+						sourcePath: absolutePath,
+						sourceName: (normalizedSource.split('/').pop() as string) || rName,
+						sourceSize: typeof opts?.sourceFileSize === 'number' ? opts.sourceFileSize : undefined,
+						createdAt: Date.now()
+					}
+					store.commit('addResource', resource)
+					resourceId = rid
+					finalImageUrl = resolvedDwebUrl
+				}
+			} catch (resourceErr) {
+				console.warn(
+					'[createImageNodeAtCenter] 创建 image resource 失败（回退仅写入 imageSettings）：',
+					resourceErr
+				)
+			}
+		}
+
 		const imageSettings: Record<string, unknown> = {
-			imageUrl: url,
+			imageUrl: finalImageUrl,
 			imageGenerationSource: imageSource
 		}
 		if (imageSource === 'tripo3d' && opts?.taskId) {
@@ -3895,10 +4063,24 @@ const createImageNodeAtCenter = (
 					opts.imageUrls && opts.imageUrls.length > 0 ? opts.imageUrls : url ? [url] : []
 			}
 		}
+		// 用于 copyFileToProjectRoot 的异步 patch 引用（避免闭包变量污染多次调用）
+		let tmpNodeIdSync = ''
 		const newNodeId = engineApi.addNode('image', worldX, worldY, {
 			title: name || t('aiworkflow.page.defaultImageNodeTitle'),
-			...(url ? { imageSettings } : {})
+			...(finalImageUrl || resourceId ? { imageSettings } : {})
 		})
+		tmpNodeIdSync = newNodeId || ''
+		if (newNodeId && resourceId) {
+			try {
+				store.commit('setNodeResource', { nodeId: newNodeId, resourceId })
+				patchBlueprintNodeData?.(newNodeId)
+			} catch (bindErr) {
+				console.warn(
+					'[createImageNodeAtCenter] setNodeResource 绑定失败（节点创建已完成）：',
+					bindErr
+				)
+			}
+		}
 		return newNodeId
 	} catch (e) {
 		console.error('[createImageNodeAtCenter] 创建节点失败:', e)
@@ -6063,14 +6245,26 @@ let videoMetadataQueue: VideoMetadataReadQueue | null = new VideoMetadataReadQue
 
 const autoSizeVideoNodeFromDims = (nodeId: string, w: number, h: number) => {
 	const node = store.state.nodesById[nodeId]
-	if (!node || node.sizeCustomized) return
+	if (!node || node.sizeCustomized) {
+		// eslint-disable-next-line no-console
+		console.info(
+			`[WFSize][videoMeta] skip id=${nodeId} exists=${!!node} sizeCustomized=${!!node?.sizeCustomized}`
+		)
+		return
+	}
 	const width = Math.max(1, Math.floor(Number(w) || 1))
 	const height = Math.max(1, Math.floor(Number(h) || 1))
 	const targetWidth = 450
-	const chromeHeight = 140
+	// 视频节点 chrome（header + 控制条/时间轴/分辨率输入 footer + 内外边距）约 200px
+	const chromeHeight = 200
 	const aspect = width && height ? width / height : 1
 	const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
-	const nextH = Math.max(220, previewHeight + chromeHeight)
+	// 高度夹取：真实视频元数据只做一次适度调整（下限保证内容完整，上限禁止细长矩形）
+	const nextH = Math.min(560, Math.max(420, previewHeight + chromeHeight))
+	// eslint-disable-next-line no-console
+	console.info(
+		`[WFSize][videoMeta] id=${nodeId} natural=${width}x${height} targetW=${targetWidth} previewH=${previewHeight} nextH=${nextH}`
+	)
 	store.commit('setNodeSize', { nodeId, width: targetWidth, height: nextH, customized: false })
 }
 
@@ -8687,6 +8881,15 @@ const {
 	connectedImageInputSource
 })
 
+// 导演多场景工作台：按场景（房间）分组收集图片
+const { connectedDirectorSceneInputs, connectedDirectorSceneSummaries } =
+	useAIWorkflowDirectorWorkbenchInputs({
+		store,
+		getIncomingEdges,
+		resolveEdgeImageUrl: (fromNode, fromAnchorId) =>
+			connectedImageOutputUrl(fromNode, String(fromAnchorId ?? ''))
+	})
+
 const { sceneLayoutModelInputAnchorId, connectedSceneLayoutModelBindings, validateModelBindings } =
 	useAIWorkflowSceneLayoutModelBindings({
 		store,
@@ -8734,6 +8937,7 @@ const { nodeExtraProps } = useAIWorkflowNodeExtraProps({
 	nodeResourceName,
 	rotateImagePreviewUrl,
 	connectedSceneUnderstandImageInputs,
+	connectedDirectorSceneSummaries,
 	connectedImageInputUrl,
 	connectedImageInputSource,
 	connectedSceneDecomposeImageInputs,
@@ -10857,16 +11061,23 @@ const {
 	onNodeSceneUnderstandingSettingsUpdate,
 	onNodeRequestSceneModels,
 	onNodeRunSceneUnderstanding,
+	onNodeRunDirectorRoom,
 	cleanupSceneUnderstandingRuntime
 } = useAIWorkflowSceneUnderstandingController({
 	store,
 	sceneSkillService,
 	connectedSceneUnderstandImageInputs,
+	connectedDirectorSceneInputs,
 	connectedImageInputUrl,
 	connectedTextInputValue,
 	normalizeMeshyImageInputValue,
 	pushToast,
-	updateNodeData: engineApi.updateNodeData
+	updateNodeData: engineApi.updateNodeData,
+	getProjectId: () => {
+		const pid = currentProjectId.value
+		return pid ? Number(pid) : undefined
+	},
+	uploadProjectAsset
 })
 
 const { onNodeRunSceneDecompose } = useAIWorkflowSceneDecomposeController({
@@ -10880,6 +11091,19 @@ const { onNodeRunSceneDecompose } = useAIWorkflowSceneDecomposeController({
 	pushToast,
 	onAutoWireStart: (sourceNodeId) => onAutoWireStart(sourceNodeId),
 	onAutoWireEnd: () => onAutoWireEnd()
+})
+
+const {
+	openDirectorConsole: onNodeOpenDirectorConsole,
+	startSubscriptions: startDirectorConsoleSubscriptions,
+	stopSubscriptions: stopDirectorConsoleSubscriptions
+} = useAIWorkflowDirectorConsoleController({
+	store,
+	connectedTextInputValue,
+	getFirstIncomingEdge,
+	engineApi,
+	currentProjectId: currentProjectId.value ?? undefined,
+	pushToast
 })
 
 const {
@@ -10923,6 +11147,11 @@ const { uploadNodeResource, bindMediaResourceToNode, uploadNodeModel3DFile } =
 		isDjangoManagedResource,
 		// P2-1：注入引擎同步回调（SSOT 反向写入，修复空白新建 3D 模型节点上传后仍不渲染的根因）
 		patchBlueprintNodeData: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		// P1-1：资源写穿 —— Vuex resourcesById 变更后立即同步引擎 scene._legacyResources，
+		// 保证 forceSyncToStore/serializeLegacy 任意时刻序列化都带资源，避免 hydrateDraft 误清空
+		setLegacyResource: (resourceId: string, resourceData: Record<string, unknown>) => {
+			engineApi.setLegacyResource(resourceId, resourceData)
+		},
 		// ===== 2026-08-05 修复：接入与拖拽导入相同的文件持久化能力（copyFileToProjectRoot / uploadProjectAsset），
 		// 使上传按钮走与拖拽完全相同的 IPC 原生拷贝 + ArrayBuffer 上传兜底链路，
 		// 而非仅依赖 blueprintProjectService.uploadAsset（该链路在 Electron 中可能因 coerce 字段缺失而失败）。
@@ -12038,6 +12267,44 @@ const { setupToolListener: setupAgentToolListener, cleanupToolListener: cleanupA
 		canvasViewportSize: computed(() => canvasViewportSize.value),
 		focusNode: (nodeId) => onFocusNode(nodeId)
 	})
+
+// ========== CLI 跨进程控制触发器集成（P2 Agent 对话桥接闭环） ==========
+// 🔑 non-intrusive：独立 try/catch，任何失败绝不影响 useAgentToolBridge 及后续
+try {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const _cliTrigger = useCLIAgentTrigger({
+		getProjectInfo: () => ({
+			id: currentProjectId.value,
+			name: currentProjectName.value
+		}),
+		pushToast: (msg, kind) => {
+			// useCLIAgentTrigger accepts wider tone including 'success'
+			pushToast(msg, kind === 'success' ? 'info' : (kind as 'info' | 'warn' | 'error' | undefined))
+		},
+		// P2: 将 Agent 对话的 drafts / 发送状态 / onSend() 注入给 CLI Trigger，
+		// 实现：CLI 任务 → 写 chatDraft → 触发 onSend → 等态完成 → markTaskCompleted/Failed 回写
+		chatDraft,
+		chatSending,
+		chatMessages,
+		onSend,
+		// 蓝图预览节点创建：P3 直连完成后，轮询消费 task.meta.createImageNodeRequests 时调用
+		createImagePreviewNode: {
+			createImageNodeAtCenter: (url, name, opts) => createImageNodeAtCenter(url, name, opts)
+		},
+		// 对话框聊天图片预览：P3 直连完成后，轮询消费 task.meta.chatPreviewBlocks
+		chatPreview: {
+			chatMessages,
+			appendAssistantMessage: (message: any) => {
+				chatMessages.value = [...(chatMessages.value || []), message]
+			}
+		}
+	})
+} catch (cliInitErr: unknown) {
+	console.warn(
+		'[AIWorkflowPage][CLI-trigger] init error (non-fatal, page continues normally):',
+		cliInitErr
+	)
+}
 
 const { buildPersistableSnapshotWithOptions } = useAIWorkflowProjectSnapshotBuilder({
 	store,
@@ -14806,6 +15073,7 @@ onBeforeUnmount(() => {
 	cleanupSceneUnderstandingRuntime()
 	clearMeshyRuntime()
 	stopUnrealExportPolling()
+	stopDirectorConsoleSubscriptions()
 	if (posterAutoSaveTimer) {
 		window.clearTimeout(posterAutoSaveTimer)
 		posterAutoSaveTimer = null
@@ -14856,6 +15124,7 @@ onMounted(() => {
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
 	registerTemplateCenterEventListener()
+	startDirectorConsoleSubscriptions()
 	void refreshProjectList()
 	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',

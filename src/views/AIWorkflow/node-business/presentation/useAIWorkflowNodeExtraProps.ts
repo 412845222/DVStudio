@@ -1,4 +1,4 @@
-import type { WorkflowNode } from '../../../../aiworkflow/types'
+import type { WorkflowNode, WorkflowDirectorSceneSummary } from '../../../../aiworkflow/types'
 import type { WorkflowThreePreviewState } from '../../../../ui/WorkFlow/WorlFlowNodes/three-preview/types'
 import { sanitizeMeshyPreviewUrl } from '../meshy/useAIWorkflowMeshyAssets'
 import {
@@ -42,6 +42,7 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 	connectedSceneUnderstandImageInputs: (
 		nodeId: string
 	) => Array<{ url: string; width?: number; height?: number }>
+	connectedDirectorSceneSummaries: (nodeId: string) => WorkflowDirectorSceneSummary[]
 	connectedImageInputUrl: (nodeId: string, inputId: string) => string | null
 	connectedImageInputSource: (
 		nodeId: string,
@@ -294,7 +295,8 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 					? []
 					: linkedImages.map((item) => sanitizeWorkflowMediaUrl(item.url)).filter(Boolean),
 				linkedLayoutJsonText: payload.connectedTextInputValue(node.id, 'in-layout-json'),
-				linkedPromptText: payload.connectedTextInputValue(node.id, 'in-text')
+				linkedPromptText: payload.connectedTextInputValue(node.id, 'in-text'),
+				linkedDirectorScenes: payload.connectedDirectorSceneSummaries(node.id)
 			}
 		}
 		if (node.type === 'scene-decompose') {
@@ -714,6 +716,16 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 			return {
 				blenderSettings: (storeNode?.blenderSettings ?? null) as Record<string, unknown> | null,
 				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
+			}
+		}
+		if (node.type === 'director-console') {
+			const linkedJsonText = payload.connectedTextInputValue(node.id, 'in-json')
+			return {
+				directorConsoleSettings: (storeNode?.directorConsoleSettings ?? null) as Record<
+					string,
+					unknown
+				> | null,
+				linkedJsonReady: !!String(linkedJsonText ?? '').trim()
 			}
 		}
 		return {}

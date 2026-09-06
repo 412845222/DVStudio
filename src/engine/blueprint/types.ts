@@ -1,4 +1,4 @@
-export type MediaType =
+﻿export type MediaType =
 	| 'generic'
 	| 'image'
 	| 'video'
@@ -194,7 +194,7 @@ export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number 
 	'text-merge': { width: 420, height: 360 },
 	image: { width: 380, height: 520 },
 	'rotate-image': { width: 380, height: 520 },
-	video: { width: 520, height: 680 },
+	video: { width: 380, height: 520 },
 	story: { width: 480, height: 360 },
 	'scene-understanding': { width: 520, height: 680 },
 	'scene-layout': { width: 520, height: 720 },
@@ -203,7 +203,8 @@ export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number 
 	model3d: { width: 420, height: 560 },
 	meshy: { width: 480, height: 500 },
 	'unreal-export': { width: 480, height: 340 },
-	blender: { width: 500, height: 520 }
+	blender: { width: 500, height: 520 },
+	'director-console': { width: 420, height: 260 }
 }
 
 export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: PortSpec[] }> = {
@@ -344,6 +345,10 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 			{ id: 'out-image', label: '截图输出', mediaType: 'image' },
 			{ id: 'out-text', label: '结果输出', mediaType: 'text' }
 		]
+	},
+	'director-console': {
+		inputs: [{ id: 'in-json', label: '布局JSON', mediaType: 'text' }],
+		outputs: []
 	}
 }
 
@@ -356,6 +361,10 @@ export function getDefaultNodeData(
 ): BlueprintNodeData {
 	const defaultSize = DEFAULT_NODE_SIZES[type] ||
 		DEFAULT_NODE_SIZES.base || { width: 240, height: 160 }
+	// eslint-disable-next-line no-console
+	console.info(
+		`[WFSize][create] type=${type} id=${id} w=${defaultSize.width} h=${defaultSize.height}`
+	)
 	const defaultPorts = DEFAULT_NODE_PORTS[type] ||
 		DEFAULT_NODE_PORTS.base || {
 			inputs: [{ id: 'in-0', label: '入口' }],

@@ -4,6 +4,11 @@ import {
 	makeSyncSceneLayoutNodeToEngine,
 	type SceneLayoutEngineApiLike
 } from './useAIWorkflowSceneLayoutSync'
+import {
+	annotateDirectorObjects,
+	buildDirectorRoomShellItems,
+	isDirectorWorkbenchJson
+} from './director/directorWorkbenchShared'
 
 // 判断单个item是否携带合法的3D position/size字段（都存在且是有限数）
 const hasValid3DFields = (item: unknown): boolean => {
@@ -147,6 +152,15 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			}
 
 			const parsedObj = parsedInput as Record<string, unknown>
+			// 导演多场景工作台：多房间 JSON（含 rooms 数组）
+			const isDirector = isDirectorWorkbenchJson(parsedInput)
+			const directorExtra = isDirector
+				? {
+						workbenchType: 'director-multi-scene',
+						rooms: Array.isArray(parsedObj?.rooms) ? parsedObj.rooms : [],
+						connections: Array.isArray(parsedObj?.connections) ? parsedObj.connections : []
+					}
+				: {}
 			const directInputItems = options.extractSceneLayoutSourceItems(parsedInput)
 			// directHasLayout：输入项已有完整layoutItems数组，或者objects/items中每个item都携带合法的3D position/size
 			const directItemsAllHave3D =
@@ -183,8 +197,15 @@ export const useAIWorkflowSceneLayoutController = (options: {
 			)
 			if (directHasLayout) {
 				console.info('【SCENE-LAYOUT-CHAIN】③ Branch: DIRECT LAYOUT (no API call), merging...')
+				// 导演多场景：顶层全局 objects 补房间分组字段 + 依据 rooms 合成房间壳体占位体
+				const directLayoutItems = isDirector
+					? [
+							...annotateDirectorObjects(parsedInput),
+							...buildDirectorRoomShellItems(parsedObj?.rooms)
+						]
+					: directInputItems
 				const mergedLayoutItems = normalizeLayoutItemsForPreview(
-					options.mergeSceneLayoutItemsWithMetadata(directInputItems, [directInputItems])
+					options.mergeSceneLayoutItemsWithMetadata(directLayoutItems, [directInputItems])
 				)
 				console.info('【SCENE-LAYOUT-CHAIN】③ mergedLayoutItems.length:', mergedLayoutItems.length)
 				// eslint-disable-next-line no-console
@@ -205,6 +226,7 @@ export const useAIWorkflowSceneLayoutController = (options: {
 						inputJson,
 						layoutItems: mergedLayoutItems,
 						camera: directHasCamera ? parsedObj.camera : nodeSettings?.camera,
+						...directorExtra,
 						lastRunAt: Date.now()
 					}
 				})
@@ -274,6 +296,13 @@ export const useAIWorkflowSceneLayoutController = (options: {
 					inputJson,
 					layoutItems: mergedLayoutItems,
 					camera: res.camera,
+					...(res.workbenchType
+						? {
+								workbenchType: String(res.workbenchType),
+								rooms: Array.isArray(res.rooms) ? res.rooms : [],
+								connections: Array.isArray(res.connections) ? res.connections : []
+							}
+						: {}),
 					lastRunAt: Date.now()
 				}
 			})

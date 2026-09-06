@@ -6,6 +6,7 @@ import path from 'node:path'
 import { internalError, invalidParamsError, upstreamError } from '../../core/errors.mjs'
 import { getHttpClient } from '../../core/http-client.mjs'
 import logger from '../../core/logger.mjs'
+import * as directorWorkbench from './director/index.mjs'
 
 function generateMsgId() {
 	return `m-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`
@@ -536,13 +537,90 @@ ${multiViewText}
 用户补充要求：${extra}`
 }
 
-function getSceneUnderstandSystemPrompt(sceneType) {
+function getSceneUnderstandSystemPrompt(sceneType, directorPhase) {
 	const st = String(sceneType || 'auto')
 		.trim()
 		.toLowerCase()
+	// 导演两阶段：根据 phase 选择 system prompt
+	if (st === directorWorkbench.DIRECTOR_WORKBENCH_TYPE) {
+		if (String(directorPhase || '').trim() === 'shell') {
+			return directorWorkbench.DIRECTOR_SHELL_SYSTEM_PROMPT
+		}
+		if (String(directorPhase || '').trim() === 'room-detail') {
+			return directorWorkbench.DIRECTOR_ROOM_DETAIL_SYSTEM_PROMPT
+		}
+		return directorWorkbench.DIRECTOR_MULTI_SCENE_SYSTEM_PROMPT
+	}
 	if (st === 'indoor') return INDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
 	if (st === 'outdoor') return OUTDOOR_SCENE_UNDERSTAND_SYSTEM_PROMPT
 	return AUTO_SCENE_UNDERSTAND_SYSTEM_PROMPT
+}
+
+/**
+ * 构造导演多场景工作台的多模态 userContent：
+ * 文本指令 + 每个场景（分隔文本块 + 该场景图片块）
+ * 返回 null 表示非导演模式，调用方走原有单场景逻辑
+ * @param {string} directorPhase 'shell' | 'room-detail' | undefined（兼容旧单阶段）
+ * @param {object} roomContext room-detail 阶段的房间固定信息
+ */
+function buildDirectorUserContent(sceneInputs, promptText, directorPhase, roomContext) {
+	const phase = String(directorPhase || '').trim()
+	const groups = Array.isArray(sceneInputs)
+		? sceneInputs
+				.map((g) => {
+					const images = Array.isArray(g?.images) ? g.images : []
+					return {
+						sceneIndex: Math.max(1, Math.floor(Number(g?.sceneIndex) || 0)),
+						label: String(g?.label || '').trim(),
+						images
+					}
+				})
+				.filter((g) => g.sceneIndex > 0 && g.images.length > 0)
+		: []
+	if (groups.length === 0) return null
+	groups.sort((a, b) => a.sceneIndex - b.sceneIndex)
+	const summaries = []
+	const content = []
+	let globalIndex = 1
+	for (const g of groups) {
+		const startIndex = globalIndex
+		content.push({
+			type: 'text',
+			text: directorWorkbench.buildDirectorSceneSeparator(
+				g.sceneIndex,
+				g.label,
+				g.images.length,
+				startIndex
+			)
+		})
+		content.push(...buildImageContent(g.images))
+		summaries.push({ sceneIndex: g.sceneIndex, label: g.label, imageCount: g.images.length })
+		globalIndex += g.images.length
+	}
+	const totalImages = globalIndex - 1
+
+	let headerText
+	if (phase === 'shell') {
+		// 阶段一：户型壳，只输出房间骨架
+		headerText = directorWorkbench.buildDirectorShellUserPrompt(summaries)
+	} else if (phase === 'room-detail') {
+		// 阶段二：单房间物体详情，只输出该房间 objects
+		const singleGroup = groups[0]
+		headerText = directorWorkbench.buildDirectorRoomDetailUserPrompt(
+			roomContext && typeof roomContext === 'object' ? roomContext : {},
+			singleGroup.images.length,
+			promptText
+		)
+	} else {
+		headerText = buildSceneUnderstandUserPrompt(
+			promptText,
+			totalImages,
+			'director-multi-scene',
+			summaries
+		)
+	}
+	content.unshift({ type: 'text', text: headerText })
+	return { content, sceneSummaries: summaries, totalImages }
 }
 
 const SCENE_LIGHTING_SYSTEM_PROMPT = `你是一个面向室内设计与 Unreal 场景搭建的场景灯光分析技能。你的任务是基于场景理解的 JSON 结果和参考图像，分析场景光照条件并输出灯光布置建议的严格 JSON。
@@ -828,28 +906,41 @@ export async function sceneUnderstandRun(ctx, payload) {
 	const imageUrl = String(p.imageUrl || '').trim()
 	const imageDataUrl = String(p.imageDataUrl || '').trim()
 	const imageInputs = p.imageInputs
+	const sceneInputs = p.sceneInputs
 	const sceneType = String(p.sceneType || 'auto').trim()
+	const directorPhase = String(p.directorPhase || '').trim()
+	const roomContext = p.roomContext && typeof p.roomContext === 'object' ? p.roomContext : null
 
 	const apiKey = resolveArkApiKey(ctx)
 	if (!apiKey) throw invalidParamsError('ByteDance Ark API key is not configured')
 
 	const client = getHttpClient()
-	const messages = [{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }]
-
-	const imageCount = Array.isArray(imageInputs)
-		? imageInputs.length
-		: imageUrl || imageDataUrl
-			? 1
-			: 0
-	const userContent = [
-		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
+	const messages = [
+		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType, directorPhase) }
 	]
-	if (Array.isArray(imageInputs) && imageInputs.length > 0) {
-		userContent.push(...buildImageContent(imageInputs))
-	} else if (imageDataUrl && imageDataUrl.startsWith('data:')) {
-		userContent.push({ type: 'image_url', image_url: { url: imageDataUrl } })
-	} else if (imageUrl) {
-		userContent.push({ type: 'image_url', image_url: { url: imageUrl } })
+
+	const directorContent =
+		sceneType === directorWorkbench.DIRECTOR_WORKBENCH_TYPE
+			? buildDirectorUserContent(sceneInputs, promptText, directorPhase, roomContext)
+			: null
+	const imageCount = directorContent
+		? directorContent.totalImages
+		: Array.isArray(imageInputs)
+			? imageInputs.length
+			: imageUrl || imageDataUrl
+				? 1
+				: 0
+	const userContent = directorContent
+		? directorContent.content
+		: [{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }]
+	if (!directorContent) {
+		if (Array.isArray(imageInputs) && imageInputs.length > 0) {
+			userContent.push(...buildImageContent(imageInputs))
+		} else if (imageDataUrl && imageDataUrl.startsWith('data:')) {
+			userContent.push({ type: 'image_url', image_url: { url: imageDataUrl } })
+		} else if (imageUrl) {
+			userContent.push({ type: 'image_url', image_url: { url: imageUrl } })
+		}
 	}
 	messages.push({ role: 'user', content: userContent })
 
@@ -889,7 +980,10 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 	const imageUrl = String(p.imageUrl || '').trim()
 	const imageDataUrl = String(p.imageDataUrl || '').trim()
 	const imageInputs = p.imageInputs
+	const sceneInputs = p.sceneInputs
 	const sceneType = String(p.sceneType || 'auto').trim()
+	const directorPhase = String(p.directorPhase || '').trim()
+	const roomContext = p.roomContext && typeof p.roomContext === 'object' ? p.roomContext : null
 
 	const apiKey = resolveArkApiKey(ctx)
 	if (!apiKey) {
@@ -900,22 +994,32 @@ export async function* sceneUnderstandRunStream(ctx, payload) {
 	yield wrapTaskStatusMsg('任务已启动，正在准备输入图片...', 'start')
 
 	const client = getHttpClient()
-	let messages = [{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType) }]
-
-	const imageCount = Array.isArray(imageInputs)
-		? imageInputs.length
-		: imageUrl || imageDataUrl
-			? 1
-			: 0
-	const userContent = [
-		{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }
+	let messages = [
+		{ role: 'system', content: getSceneUnderstandSystemPrompt(sceneType, directorPhase) }
 	]
-	if (Array.isArray(imageInputs) && imageInputs.length > 0) {
-		userContent.push(...buildImageContent(imageInputs))
-	} else if (imageDataUrl && imageDataUrl.startsWith('data:')) {
-		userContent.push({ type: 'image_url', image_url: { url: imageDataUrl } })
-	} else if (imageUrl) {
-		userContent.push({ type: 'image_url', image_url: { url: imageUrl } })
+
+	const directorContent =
+		sceneType === directorWorkbench.DIRECTOR_WORKBENCH_TYPE
+			? buildDirectorUserContent(sceneInputs, promptText, directorPhase, roomContext)
+			: null
+	const imageCount = directorContent
+		? directorContent.totalImages
+		: Array.isArray(imageInputs)
+			? imageInputs.length
+			: imageUrl || imageDataUrl
+				? 1
+				: 0
+	const userContent = directorContent
+		? directorContent.content
+		: [{ type: 'text', text: buildSceneUnderstandUserPrompt(promptText, imageCount, sceneType) }]
+	if (!directorContent) {
+		if (Array.isArray(imageInputs) && imageInputs.length > 0) {
+			userContent.push(...buildImageContent(imageInputs))
+		} else if (imageDataUrl && imageDataUrl.startsWith('data:')) {
+			userContent.push({ type: 'image_url', image_url: { url: imageDataUrl } })
+		} else if (imageUrl) {
+			userContent.push({ type: 'image_url', image_url: { url: imageUrl } })
+		}
 	}
 	messages.push({ role: 'user', content: userContent })
 
@@ -1615,6 +1719,23 @@ export function sceneLayoutRun(ctx, payload) {
 		parsed = JSON.parse(inputJson)
 	} catch (err) {
 		return { ok: false, error: `inputJson is not valid JSON: ${err.message}` }
+	}
+
+	// 导演多场景工作台：多房间 JSON → 全局坐标占位体（含房间壳体）
+	if (directorWorkbench.isDirectorWorkbenchJson(parsed)) {
+		const director = directorWorkbench.flattenDirectorWorkbench(parsed)
+		return {
+			ok: true,
+			layoutItems: director.layoutItems,
+			rooms: director.rooms,
+			connections: director.connections,
+			workbenchType: director.workbenchType,
+			roomShell: asDict(director.rooms?.[0]?.roomShell),
+			camera: director.camera || {},
+			keyElements: [],
+			sceneSummary: director.sceneSummary || String(parsed?.sceneSummary || ''),
+			message: director.message
+		}
 	}
 
 	const rawItems = Array.isArray(parsed?.objects) ? parsed.objects : []

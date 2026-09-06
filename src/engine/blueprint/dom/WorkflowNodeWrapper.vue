@@ -32,6 +32,7 @@
 			@update-scene-understanding-settings="onUpdateSceneUnderstandingSettings"
 			@request-scene-models="onRequestSceneModels"
 			@run-scene-understanding="onRunSceneUnderstanding"
+			@run-director-room="onRunDirectorRoom"
 			@cancel-scene-understanding="onCancelSceneUnderstanding"
 			@run-scene-decompose="onRunSceneDecompose"
 			@run-scene-layout="onRunSceneLayout"
@@ -73,6 +74,7 @@
 			@blender-init-workspace="onBlenderInitWorkspace"
 			@update-blender-settings="onUpdateBlenderSettings"
 			@blender-compress-context="onBlenderCompressContext"
+			@open-director-console="onOpenDirectorConsole"
 		/>
 	</div>
 </template>
@@ -90,6 +92,8 @@ const props = defineProps<{
 	zoom: number
 	width: number
 	height: number
+	/** 响应式尺寸定制状态：由 overlay 每帧从 node.data 同步，业务组件据此感知首拖 resize */
+	sizeCustomized: boolean
 	status: NodeStatus
 	selected: boolean
 	accentColor: string
@@ -138,6 +142,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'request-scene-models', nodeId: string): void
 	(e: 'run-scene-understanding', nodeId: string): void
+	(e: 'run-director-room', nodeId: string, roomId: string): void
 	(e: 'cancel-scene-understanding', nodeId: string): void
 	(e: 'run-scene-decompose', nodeId: string): void
 	(e: 'run-scene-layout', nodeId: string): void
@@ -185,6 +190,7 @@ const emit = defineEmits<{
 	(e: 'blender-init-workspace', payload: { nodeId: string }): void
 	(e: 'update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'blender-compress-context', payload: { nodeId: string }): void
+	(e: 'open-director-console', payload: { nodeId: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -300,7 +306,26 @@ const resolvedProps = computed(() => {
 			console.error('[WorkflowNodeWrapper] extraPropsResolver error:', err)
 		}
 	}
-	return { ...baseProps, ...extraResolved }
+	// 关键修复：width/height/sizeCustomized/autoHeight 必须以响应式 props 为准。
+	// node.data 是普通（非响应式）对象，resize 期间的 updateSize/sizeCustomized 变更
+	// 不会触发 resolvedProps 重算，导致业务组件持有挂载时刻的尺寸快照（首拖不生效的根因）。
+	// 视频节点固定尺寸模式：创建/导入后高度只由 store（默认值、手动拖拽、导入元数据夹取）决定，
+	// 内容 auto-height 一律关闭，杜绝"创建后高度自动膨胀成细长矩形"的反馈链路
+	const isVideoNode = (props.node as any).nodeType === 'video'
+	if (isVideoNode) {
+		// eslint-disable-next-line no-console
+		console.info(
+			`[WFSize][wrapper] id=${props.node.id} w=${props.width} h=${props.height} sizeCustomized=${props.sizeCustomized} autoHeight=false`
+		)
+	}
+	return {
+		...baseProps,
+		...extraResolved,
+		width: props.width,
+		height: props.height,
+		sizeCustomized: props.sizeCustomized === true,
+		autoHeight: props.sizeCustomized !== true && !isVideoNode
+	}
 })
 
 const wrapperStyle = computed(() => ({
@@ -455,6 +480,10 @@ const onRequestSceneModels = () => {
 
 const onRunSceneUnderstanding = () => {
 	emit('run-scene-understanding', props.node.id)
+}
+
+const onRunDirectorRoom = (payload: { roomId: string }) => {
+	emit('run-director-room', props.node.id, payload?.roomId)
 }
 
 const onCancelSceneUnderstanding = () => {
@@ -623,6 +652,9 @@ const onUpdateBlenderSettings = (patch: Record<string, any>) => {
 }
 const onBlenderCompressContext = () => {
 	emit('blender-compress-context', { nodeId: props.node.id })
+}
+const onOpenDirectorConsole = (payload: { nodeId: string }) => {
+	emit('open-director-console', payload)
 }
 </script>
 

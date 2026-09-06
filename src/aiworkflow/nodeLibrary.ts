@@ -201,6 +201,15 @@ const NEWUI2_NODE_CATALOG_META: Record<DwebCanvasMenuNodeActionId, Newui2NodeCat
 		'将场景布局和灯光设置导出到 Unreal Engine 项目中。',
 		['Unreal', 'UE', '导出', 'unreal']
 	),
+	'director-console': catalogMetadata(
+		'scene',
+		'model3d',
+		[],
+		'作为场景布局的下游节点，打开导演控制台弹窗进行运镜与布光。',
+		['导演控制台', 'director', '运镜', '布光'],
+		undefined,
+		'indoor-scene'
+	),
 	blender: catalogMetadata(
 		'model3d',
 		'model3d',
@@ -290,6 +299,14 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		inputKinds: ['text', 'text'],
 		outputKinds: [],
 		order: 70
+	},
+	{
+		actionId: 'director-console',
+		nodeType: 'director-console',
+		label: '导演控制台节点',
+		inputKinds: ['text'],
+		outputKinds: [],
+		order: 39
 	},
 	{
 		actionId: 'blender',

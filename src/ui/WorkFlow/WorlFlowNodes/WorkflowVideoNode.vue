@@ -477,6 +477,8 @@ const outputHeight = computed(() => {
 })
 
 const previewWrapStyle = computed(() => {
+	// 固定尺寸模式：预览区随节点可用空间填充（flex 拉伸），视频以 object-fit: contain 按比例显示；
+	// 不再用 aspect-ratio 锁定预览高度——竖屏视频曾借此把节点撑成细长矩形
 	return {}
 })
 
@@ -694,6 +696,10 @@ const onLoadedMetadata = () => {
 		}
 	}
 	drawTimeline()
+	// eslint-disable-next-line no-console
+	console.info(
+		`[WFSize][videoLoaded] id=${props.nodeId} natural=${naturalWidth.value ?? '?'}x${naturalHeight.value ?? '?'}`
+	)
 	nextTick(() => baseRef.value?.requestAutoResize())
 	scheduleInvalidateScreenshot()
 }
@@ -1594,15 +1600,18 @@ onBeforeUnmount(() => {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	flex-shrink: 0;
+	/* 固定尺寸模式：填充节点 body 剩余高度，高度不参与内容反馈 */
+	flex: 1 1 auto;
+	min-height: 0;
 	align-self: stretch;
 }
 
 .wf-media-preview {
 	width: 100%;
+	/* 固定尺寸模式：填充可用空间，视频 object-fit: contain 按比例显示；
+	 禁止任何随内容/节点高度相互反馈的 sizing（历史细长矩形根因） */
 	flex: 1 1 auto;
-	min-height: 200px;
-	max-height: 60%;
+	min-height: 0;
 	border-radius: 6px;
 	overflow: hidden;
 	border: 1px solid var(--vscode-border);
@@ -1626,6 +1635,7 @@ onBeforeUnmount(() => {
 
 .wf-media-empty {
 	width: 100%;
+	/* 空态作为填充式投放区：占满可用高度，仅保留 min-height 下限 */
 	flex: 1 1 auto;
 	min-height: 200px;
 	border: 1px dashed var(--vscode-border);

@@ -393,7 +393,7 @@ function convertLegacyNodeToWorkflow(
 	return node
 }
 
-function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceData {
+export function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceData {
 	return {
 		id: res.id,
 		kind: res.kind,
@@ -401,6 +401,8 @@ function convertWorkflowResourceToLegacy(res: WorkflowResource): LegacyResourceD
 		url: res.url,
 		projectRelativePath: res.projectRelativePath,
 		previewUrl: res.previewUrl,
+		previewUrl320: (res as any).previewUrl320 || res.previewUrl,
+		previewUrl640: (res as any).previewUrl640 || res.previewUrl,
 		previewProjectRelativePath: res.previewProjectRelativePath,
 		previewVersion: res.previewVersion,
 		posterUrl: res.posterUrl,
