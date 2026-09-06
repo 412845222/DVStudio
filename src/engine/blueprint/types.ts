@@ -357,7 +357,9 @@ export function getDefaultNodeData(
 	const defaultSize = DEFAULT_NODE_SIZES[type] ||
 		DEFAULT_NODE_SIZES.base || { width: 240, height: 160 }
 	// eslint-disable-next-line no-console
-	console.info(`[WFSize][create] type=${type} id=${id} w=${defaultSize.width} h=${defaultSize.height}`)
+	console.info(
+		`[WFSize][create] type=${type} id=${id} w=${defaultSize.width} h=${defaultSize.height}`
+	)
 	const defaultPorts = DEFAULT_NODE_PORTS[type] ||
 		DEFAULT_NODE_PORTS.base || {
 			inputs: [{ id: 'in-0', label: '入口' }],

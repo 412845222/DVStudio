@@ -54,9 +54,9 @@ describe('🔵 Node first-drag resize sync (新节点首拖缩放尺寸实时同
 	describe('overlay layer: syncDomNodes 必须每帧下发 sizeCustomized', () => {
 		it('DomNodeRenderData interface declares sizeCustomized: boolean', () => {
 			const content = readFileSync(OVERLAY_PATH, 'utf-8')
-			expect(/interface\s+DomNodeRenderData\s*\{[\s\S]*?sizeCustomized:\s*boolean/.test(content)).toBe(
-				true
-			)
+			expect(
+				/interface\s+DomNodeRenderData\s*\{[\s\S]*?sizeCustomized:\s*boolean/.test(content)
+			).toBe(true)
 		})
 
 		it('newRenders.push fills sizeCustomized from node.data every frame', () => {
@@ -66,9 +66,9 @@ describe('🔵 Node first-drag resize sync (新节点首拖缩放尺寸实时同
 
 		it('template passes :size-customized to WorkflowNodeWrapper', () => {
 			const content = readFileSync(OVERLAY_PATH, 'utf-8')
-			expect(/<WorkflowNodeWrapper[\s\S]*?:size-customized="node\.sizeCustomized"/.test(content)).toBe(
-				true
-			)
+			expect(
+				/<WorkflowNodeWrapper[\s\S]*?:size-customized="node\.sizeCustomized"/.test(content)
+			).toBe(true)
 		})
 	})
 
