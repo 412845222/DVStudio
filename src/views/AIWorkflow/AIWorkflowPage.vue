@@ -6245,14 +6245,26 @@ let videoMetadataQueue: VideoMetadataReadQueue | null = new VideoMetadataReadQue
 
 const autoSizeVideoNodeFromDims = (nodeId: string, w: number, h: number) => {
 	const node = store.state.nodesById[nodeId]
-	if (!node || node.sizeCustomized) return
+	if (!node || node.sizeCustomized) {
+		// eslint-disable-next-line no-console
+		console.info(
+			`[WFSize][videoMeta] skip id=${nodeId} exists=${!!node} sizeCustomized=${!!node?.sizeCustomized}`
+		)
+		return
+	}
 	const width = Math.max(1, Math.floor(Number(w) || 1))
 	const height = Math.max(1, Math.floor(Number(h) || 1))
 	const targetWidth = 450
-	const chromeHeight = 140
+	// 视频节点 chrome（header + 控制条/时间轴/分辨率输入 footer + 内外边距）约 200px
+	const chromeHeight = 200
 	const aspect = width && height ? width / height : 1
 	const previewHeight = Math.round(targetWidth / Math.max(0.1, aspect))
-	const nextH = Math.max(220, previewHeight + chromeHeight)
+	// 高度夹取：真实视频元数据只做一次适度调整（下限保证内容完整，上限禁止细长矩形）
+	const nextH = Math.min(560, Math.max(420, previewHeight + chromeHeight))
+	// eslint-disable-next-line no-console
+	console.info(
+		`[WFSize][videoMeta] id=${nodeId} natural=${width}x${height} targetW=${targetWidth} previewH=${previewHeight} nextH=${nextH}`
+	)
 	store.commit('setNodeSize', { nodeId, width: targetWidth, height: nextH, customized: false })
 }
 

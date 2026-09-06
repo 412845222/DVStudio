@@ -92,6 +92,8 @@ const props = defineProps<{
 	zoom: number
 	width: number
 	height: number
+	/** 响应式尺寸定制状态：由 overlay 每帧从 node.data 同步，业务组件据此感知首拖 resize */
+	sizeCustomized: boolean
 	status: NodeStatus
 	selected: boolean
 	accentColor: string
@@ -304,7 +306,26 @@ const resolvedProps = computed(() => {
 			console.error('[WorkflowNodeWrapper] extraPropsResolver error:', err)
 		}
 	}
-	return { ...baseProps, ...extraResolved }
+	// 关键修复：width/height/sizeCustomized/autoHeight 必须以响应式 props 为准。
+	// node.data 是普通（非响应式）对象，resize 期间的 updateSize/sizeCustomized 变更
+	// 不会触发 resolvedProps 重算，导致业务组件持有挂载时刻的尺寸快照（首拖不生效的根因）。
+	// 视频节点固定尺寸模式：创建/导入后高度只由 store（默认值、手动拖拽、导入元数据夹取）决定，
+	// 内容 auto-height 一律关闭，杜绝"创建后高度自动膨胀成细长矩形"的反馈链路
+	const isVideoNode = (props.node as any).nodeType === 'video'
+	if (isVideoNode) {
+		// eslint-disable-next-line no-console
+		console.info(
+			`[WFSize][wrapper] id=${props.node.id} w=${props.width} h=${props.height} sizeCustomized=${props.sizeCustomized} autoHeight=false`
+		)
+	}
+	return {
+		...baseProps,
+		...extraResolved,
+		width: props.width,
+		height: props.height,
+		sizeCustomized: props.sizeCustomized === true,
+		autoHeight: props.sizeCustomized !== true && !isVideoNode
+	}
 })
 
 const wrapperStyle = computed(() => ({
