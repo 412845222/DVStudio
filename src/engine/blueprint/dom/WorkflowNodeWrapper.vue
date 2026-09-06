@@ -74,6 +74,7 @@
 			@blender-init-workspace="onBlenderInitWorkspace"
 			@update-blender-settings="onUpdateBlenderSettings"
 			@blender-compress-context="onBlenderCompressContext"
+			@open-director-console="onOpenDirectorConsole"
 		/>
 	</div>
 </template>
@@ -189,6 +190,7 @@ const emit = defineEmits<{
 	(e: 'blender-init-workspace', payload: { nodeId: string }): void
 	(e: 'update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'blender-compress-context', payload: { nodeId: string }): void
+	(e: 'open-director-console', payload: { nodeId: string }): void
 }>()
 
 const businessComponent = computed(() => {
@@ -650,6 +652,9 @@ const onUpdateBlenderSettings = (patch: Record<string, any>) => {
 }
 const onBlenderCompressContext = () => {
 	emit('blender-compress-context', { nodeId: props.node.id })
+}
+const onOpenDirectorConsole = (payload: { nodeId: string }) => {
+	emit('open-director-console', payload)
 }
 </script>
 

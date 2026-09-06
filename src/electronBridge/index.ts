@@ -17,6 +17,11 @@ import type {
 	UploadedProjectAsset,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
+	DirectorConsoleModelBinding,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult,
 	OpenComfySetupPayload,
@@ -571,6 +576,104 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
+export async function openDirectorConsole(
+	payload: OpenDirectorConsolePayload
+): Promise<OpenDirectorConsoleResult> {
+	if (!window?.dweb?.window?.openDirectorConsole) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openDirectorConsole(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleRequestData(payload: {
+	nodeId: string
+}): Promise<{ ok: boolean; data?: DirectorConsoleScenePayload; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleRequestData) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.directorConsoleRequestData(payload || {})
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export function directorConsolePushData(payload: DirectorConsoleScenePayload): void {
+	try {
+		window?.dweb?.window?.directorConsolePushData?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function directorConsoleSave(payload: DirectorConsoleSavePayload): void {
+	try {
+		window?.dweb?.window?.directorConsoleSave?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleData(cb: (payload: DirectorConsoleScenePayload) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleData) return -1
+	try {
+		return dweb.window.onDirectorConsoleData(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleData(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleData?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleSave(cb: (payload: DirectorConsoleSavePayload) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleSave) return -1
+	try {
+		return dweb.window.onDirectorConsoleSave(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleSave(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleSave?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleDataRequest(cb: (payload: { nodeId: string }) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleDataRequest) return -1
+	try {
+		return dweb.window.onDirectorConsoleDataRequest(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleDataRequest(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleDataRequest?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
 export async function openVideoEditor(
 	payload: OpenVideoEditorPayload
 ): Promise<OpenVideoEditorResult> {
@@ -717,6 +820,11 @@ export async function getWorkshopTemplatesInstallInfo(payload: {
 export type {
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
+	DirectorConsoleModelBinding,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult
 }

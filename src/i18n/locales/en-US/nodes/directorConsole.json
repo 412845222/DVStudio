@@ -1,0 +1,22 @@
+﻿{
+	"nodes.directorConsole.title": "Director Console",
+	"nodes.directorConsole.inputLayoutJson": "Layout JSON Input",
+	"nodes.directorConsole.connected": "Connected",
+	"nodes.directorConsole.notConnected": "Not Connected",
+	"nodes.directorConsole.openConsole": "Open Director Console",
+	"nodes.directorConsole.statusIdle": "Idle",
+	"nodes.directorConsole.statusReady": "Ready",
+	"nodes.directorConsole.statusError": "Error",
+	"nodes.directorConsole.cameraTrackTitle": "Camera Track",
+	"nodes.directorConsole.cameraTrackEmpty": "Connect scene layout data to create camera shots",
+	"nodes.directorConsole.lightRigTitle": "Light Rig",
+	"nodes.directorConsole.lightRigEmpty": "Light rig components to be enabled",
+	"nodes.directorConsole.viewportEmpty": "Connect scene layout node to load scene",
+	"nodes.directorConsole.viewportLoading": "Loading scene...",
+	"nodes.directorConsole.viewportLoadFailed": "Scene load failed",
+	"nodes.directorConsole.timelinePlaceholder": "Timeline (P1)",
+	"nodes.directorConsole.errorMissingNodeId": "Missing node ID",
+	"nodes.directorConsole.webOnlyHint": "Desktop app only",
+	"nodes.directorConsole.statusHint": "Connect a scene layout node and open the console to edit",
+	"nodes.directorConsole.lastOpened": "Last opened: {time}"
+}

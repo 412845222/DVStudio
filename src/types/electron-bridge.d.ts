@@ -1,4 +1,4 @@
-export type SubtitleRecogModelSize = 'tiny' | 'base' | 'small'
+﻿export type SubtitleRecogModelSize = 'tiny' | 'base' | 'small'
 
 export interface SubtitleRecogCue {
 	startTime: number
@@ -136,6 +136,10 @@ import type {
 	OpenVideoEditorResult,
 	OpenComfySetupPayload,
 	OpenComfySetupResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -297,6 +301,17 @@ declare global {
 				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
 				openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult>
 				openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult>
+				openDirectorConsole(payload: OpenDirectorConsolePayload): Promise<OpenDirectorConsoleResult>
+				directorConsoleRequestData(payload: { nodeId: string }): Promise<{ ok: boolean; data?: DirectorConsoleScenePayload; error?: string }>
+				directorConsolePushData(payload: DirectorConsoleScenePayload): void
+				directorConsoleSave(payload: DirectorConsoleSavePayload): void
+				getDirectorConsoleData(): DirectorConsoleScenePayload | null
+				onDirectorConsoleData(handler: (payload: DirectorConsoleScenePayload) => void): number
+				offDirectorConsoleData(listenerId: number): void
+				onDirectorConsoleSave(handler: (payload: DirectorConsoleSavePayload) => void): number
+				offDirectorConsoleSave(listenerId: number): void
+				onDirectorConsoleDataRequest(handler: (payload: { nodeId: string }) => void): number
+				offDirectorConsoleDataRequest(listenerId: number): void
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>

@@ -1,0 +1,22 @@
+﻿{
+	"nodes.directorConsole.title": "导演控制台",
+	"nodes.directorConsole.inputLayoutJson": "布局 JSON 输入",
+	"nodes.directorConsole.connected": "已连接",
+	"nodes.directorConsole.notConnected": "未连接",
+	"nodes.directorConsole.openConsole": "打开导演控制台",
+	"nodes.directorConsole.statusIdle": "待执行",
+	"nodes.directorConsole.statusReady": "就绪",
+	"nodes.directorConsole.statusError": "错误",
+	"nodes.directorConsole.cameraTrackTitle": "摄像机轨道",
+	"nodes.directorConsole.cameraTrackEmpty": "连接场景布局数据后可创建镜头",
+	"nodes.directorConsole.lightRigTitle": "灯光方案",
+	"nodes.directorConsole.lightRigEmpty": "灯光组件待启用",
+	"nodes.directorConsole.viewportEmpty": "请连接场景布局节点以加载场景",
+	"nodes.directorConsole.viewportLoading": "正在加载场景…",
+	"nodes.directorConsole.viewportLoadFailed": "场景加载失败",
+	"nodes.directorConsole.timelinePlaceholder": "时间轴（P1 启用）",
+	"nodes.directorConsole.errorMissingNodeId": "缺少节点 ID",
+	"nodes.directorConsole.webOnlyHint": "仅客户端可用",
+	"nodes.directorConsole.statusHint": "请连接场景布局节点并打开控制台进行编辑",
+	"nodes.directorConsole.lastOpened": "上次打开: {time}"
+}

@@ -115,6 +115,7 @@
 				@node-blender-init-workspace="(p: any) => emit('nodeBlenderInitWorkspace', p)"
 				@node-update-blender-settings="(p: any) => emit('nodeUpdateBlenderSettings', p)"
 				@node-blender-compress-context="(p: any) => emit('nodeBlenderCompressContext', p)"
+				@node-open-director-console="(p: any) => emit('nodeOpenDirectorConsole', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -289,6 +290,7 @@ interface Emits {
 	(e: 'nodeBlenderInitWorkspace', payload: { nodeId: string }): void
 	(e: 'nodeUpdateBlenderSettings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'nodeBlenderCompressContext', payload: { nodeId: string }): void
+	(e: 'nodeOpenDirectorConsole', payload: { nodeId: string }): void
 }
 
 const emit = defineEmits<Emits>()

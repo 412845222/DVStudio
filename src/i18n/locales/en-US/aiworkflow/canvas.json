@@ -1,4 +1,4 @@
-{
+﻿{
 	"aiworkflow.canvas.inputAnchors": "Input Anchors",
 	"aiworkflow.canvas.outputAnchors": "Output Anchors",
 	"aiworkflow.canvas.inputAnchor": "Input",
@@ -30,6 +30,7 @@
 	"aiworkflow.canvas.nodeTypes.sceneUnderstanding": "Scene Understanding",
 	"aiworkflow.canvas.nodeTypes.sceneLayout": "Scene Layout",
 	"aiworkflow.canvas.nodeTypes.sceneDecompose": "Scene Decompose",
+	"aiworkflow.canvas.nodeTypes.directorConsole": "Director Console",
 	"aiworkflow.canvas.nodeTypes.story": "Story",
 	"aiworkflow.canvas.nodeTypes.textMerge": "Text Merge",
 	"aiworkflow.canvas.nodeTitles.text": "Text Node",
@@ -44,6 +45,7 @@
 	"aiworkflow.canvas.nodeTitles.sceneUnderstanding": "Scene Understanding Node",
 	"aiworkflow.canvas.nodeTitles.sceneLayout": "Scene Layout Node",
 	"aiworkflow.canvas.nodeTitles.sceneDecompose": "Scene Decompose Node",
+	"aiworkflow.canvas.nodeTitles.directorConsole": "Director Console Node",
 	"aiworkflow.canvas.nodeTitles.story": "Story Node",
 	"aiworkflow.canvas.nodeTitles.textMerge": "Text Merge Node",
 	"aiworkflow.canvas.nodeTitles.base": "Workflow Node",
@@ -57,6 +59,7 @@
 	"aiworkflow.canvas.ports.referenceVideoInput": "Reference Video Input",
 	"aiworkflow.canvas.ports.videoOutput": "Video Output",
 	"aiworkflow.canvas.ports.modelInput": "Model Input",
+	"aiworkflow.canvas.ports.layoutJson": "Layout JSON",
 	"aiworkflow.canvas.ports.prompt": "Prompt",
 	"aiworkflow.canvas.ports.referenceImage1": "Reference 1",
 	"aiworkflow.canvas.ports.referenceImage2": "Reference 2",

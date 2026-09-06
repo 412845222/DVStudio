@@ -96,8 +96,14 @@ describe('nodeLibrary', () => {
 	})
 
 	describe('Basic分类节点', () => {
-		it('总共应该有11个节点', () => {
-			expect(NEWUI2_NODE_CATALOG).toHaveLength(11)
+		it('总共应该有12个节点', () => {
+			expect(NEWUI2_NODE_CATALOG).toHaveLength(12)
+		})
+
+		it('导演控制台节点应该存在', () => {
+			const dcNode = NEWUI2_NODE_CATALOG.find((n) => n.nodeType === 'director-console')
+			expect(dcNode).toBeDefined()
+			expect(dcNode!.actionId).toBe('director-console')
 		})
 
 		it('文本节点应该存在', () => {
