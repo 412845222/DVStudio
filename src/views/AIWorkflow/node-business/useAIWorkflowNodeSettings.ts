@@ -51,6 +51,8 @@ export const useAIWorkflowNodeSettings = (payload: {
 		if (!nextHeight || !Number.isFinite(nextHeight)) return
 		const prevHeight = Number(node.height) || 0
 		if (Math.abs(nextHeight - prevHeight) < 2) return
+		// eslint-disable-next-line no-console
+		console.info(`[WFSize][autoResizeCommit] id=${nodeId} ${prevHeight} -> ${nextHeight}`)
 		payload.store.commit('setNodeSize', {
 			nodeId,
 			width: node.width,
