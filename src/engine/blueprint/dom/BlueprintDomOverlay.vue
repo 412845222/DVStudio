@@ -29,6 +29,7 @@
 						:zoom="cameraState.zoom"
 						:width="node.width"
 						:height="node.height"
+						:size-customized="node.sizeCustomized"
 						:status="node.status"
 						:selected="node.selected"
 						:accent-color="node.accentColor"
@@ -161,6 +162,8 @@ interface DomNodeRenderData {
 	width: number
 	height: number
 	selected: boolean
+	/** 每帧从 node.data.sizeCustomized 同步，保证业务组件能响应式感知尺寸定制状态 */
+	sizeCustomized: boolean
 	accentColor: string
 	status: NodeStatus
 	inputPorts: PortRenderData[]
@@ -1461,6 +1464,7 @@ function syncDomNodes() {
 			height: wb.height,
 			// 关键修复：根据实际选中状态设置，而不是全部设为true
 			selected: selectedNodeIds.has(node.id),
+			sizeCustomized: !!node.data.sizeCustomized,
 			accentColor: getNodeAccentColor(node),
 			status: getNodeStatus(node),
 			inputPorts: extractPortData(node.inputPorts, wb.x, wb.y),
