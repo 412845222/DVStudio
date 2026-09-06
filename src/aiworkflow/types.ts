@@ -740,6 +740,59 @@ export type WorkflowSceneDecomposeNodeSettings = {
 	lastExpandedCount?: number
 }
 
+/** 瀵兼紨鎺у埗鍙?鈥斺€?鎽勫儚鏈哄叧閿抚锛堥鐣欐帴鍙ｏ紝P1 瀹炶锛?*/
+export type WorkflowDirectorCameraKeyframe = {
+	id: string
+	time: number
+	position: { x: number; y: number; z: number }
+	target: { x: number; y: number; z: number }
+	fov?: number
+	roll?: number
+	easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+}
+
+/** 瀵兼紨鎺у埗鍙?鈥斺€?鎽勫儚鏈鸿建閬?*/
+export type WorkflowDirectorCameraTrack = {
+	id: string
+	name: string
+	duration: number
+	loop?: boolean
+	keyframes: WorkflowDirectorCameraKeyframe[]
+}
+
+/** 瀵兼紨鎺у埗鍙?鈥斺€?鐏厜缁勪欢锛堥鐣欐帴鍙ｏ紝P2 瀹炶锛涘瓧娈典笌 EditorViewer/EnvironmentPresets 瀵归綈锛?*/
+export type WorkflowDirectorLight = {
+	id: string
+	name: string
+	enabled: boolean
+	type: 'ambient' | 'hemisphere' | 'directional' | 'point' | 'spot' | 'rectarea'
+	color: string
+	intensity: number
+	position?: { x: number; y: number; z: number }
+	target?: { x: number; y: number; z: number }
+	castShadow?: boolean
+	azimuth?: number
+	elevation?: number
+}
+
+export type WorkflowDirectorLightRig = {
+	preset?: string
+	exposure?: number
+	lights: WorkflowDirectorLight[]
+}
+
+/** 瀵兼紨鎺у埗鍙拌妭鐐?settings */
+export type WorkflowDirectorConsoleNodeSettings = {
+	status?: 'idle' | 'ready' | 'error'
+	message?: string
+	inputJson?: string
+	lastOpenedAt?: number
+	directorDataVersion?: number
+	cameraTracks?: WorkflowDirectorCameraTrack[]
+	activeCameraTrackId?: string
+	lightRig?: WorkflowDirectorLightRig
+}
+
 export type WorkflowComfyUINodeSettings = {
 	/** ComfyUI base URL, e.g. http://127.0.0.1:8188 */
 	baseUrl?: string
@@ -1352,6 +1405,7 @@ export type WorkflowNode = {
 	sceneLayoutSettings?: WorkflowSceneLayoutNodeSettings
 	unrealExportSettings?: WorkflowUnrealExportNodeSettings
 	sceneDecomposeSettings?: WorkflowSceneDecomposeNodeSettings
+	directorConsoleSettings?: WorkflowDirectorConsoleNodeSettings
 	storySettings?: WorkflowStoryNodeSettings
 	comfyuiSettings?: WorkflowComfyUINodeSettings
 	model3dSettings?: WorkflowModel3DNodeSettings

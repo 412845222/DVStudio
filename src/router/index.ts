@@ -1,4 +1,4 @@
-import {
+﻿import {
 	createRouter,
 	createWebHashHistory,
 	createWebHistory,
@@ -46,6 +46,11 @@ const routes: RouteRecordRaw[] = [
 		path: '/3d-editor',
 		name: 'Model3DEditor',
 		component: () => import('../views/Model3DEditorPage.vue')
+	},
+	{
+		path: '/director-console',
+		name: 'DirectorConsole',
+		component: () => import('../views/DirectorConsolePage.vue')
 	},
 	{
 		path: '/video-editor',

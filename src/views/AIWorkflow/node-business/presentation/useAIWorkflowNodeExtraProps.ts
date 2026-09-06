@@ -718,6 +718,16 @@ export const useAIWorkflowNodeExtraProps = (payload: {
 				inputParamPreviewRefs: payload.getInputParamPreviewRefs(node.id)
 			}
 		}
+		if (node.type === 'director-console') {
+			const linkedJsonText = payload.connectedTextInputValue(node.id, 'in-json')
+			return {
+				directorConsoleSettings: (storeNode?.directorConsoleSettings ?? null) as Record<
+					string,
+					unknown
+				> | null,
+				linkedJsonReady: !!String(linkedJsonText ?? '').trim()
+			}
+		}
 		return {}
 	}
 

@@ -67,6 +67,11 @@
 				@node-run-director-room="(p: any) => onNodeRunDirectorRoom(p.nodeId, p.roomId)"
 				@node-cancel-scene-understanding="onNodeCancelSceneUnderstanding"
 				@node-run-scene-decompose="onNodeRunSceneDecompose"
+				@node-open-director-console="
+					(p: any) => {
+						onNodeOpenDirectorConsole(p.nodeId)
+					}
+				"
 				@node-run-scene-layout="onNodeRunSceneLayout"
 				@node-update-preview-mode="
 					(p: any) => onNodeSceneLayoutPreviewModeUpdate(p.nodeId, p.previewMode)
@@ -998,6 +1003,7 @@ import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflow
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
 import { useAIWorkflowSceneDecomposeAutoExpand } from './node-business/scene/useAIWorkflowSceneDecomposeAutoExpand'
 import { useAIWorkflowSceneDecomposeController } from './node-business/scene/useAIWorkflowSceneDecomposeController'
+import { useAIWorkflowDirectorConsoleController } from './node-business/director/useAIWorkflowDirectorConsoleController'
 import { useAIWorkflowSceneImageInputs } from './node-business/scene/useAIWorkflowSceneImageInputs'
 import { slugSceneLayoutPlaceholderModelName } from './node-business/scene/sceneLayoutPlaceholderModelUtils'
 import { useAIWorkflowSceneLayoutModelBindings } from './node-business/scene/useAIWorkflowSceneLayoutModelBindings'
@@ -11076,6 +11082,19 @@ const { onNodeRunSceneDecompose } = useAIWorkflowSceneDecomposeController({
 })
 
 const {
+	openDirectorConsole: onNodeOpenDirectorConsole,
+	startSubscriptions: startDirectorConsoleSubscriptions,
+	stopSubscriptions: stopDirectorConsoleSubscriptions
+} = useAIWorkflowDirectorConsoleController({
+	store,
+	connectedTextInputValue,
+	getFirstIncomingEdge,
+	engineApi,
+	currentProjectId: currentProjectId.value ?? undefined,
+	pushToast
+})
+
+const {
 	importOverlayOpen,
 	importOverlayTitle,
 	importOverlayDetail,
@@ -15042,6 +15061,7 @@ onBeforeUnmount(() => {
 	cleanupSceneUnderstandingRuntime()
 	clearMeshyRuntime()
 	stopUnrealExportPolling()
+	stopDirectorConsoleSubscriptions()
 	if (posterAutoSaveTimer) {
 		window.clearTimeout(posterAutoSaveTimer)
 		posterAutoSaveTimer = null
@@ -15092,6 +15112,7 @@ onMounted(() => {
 	startUnrealExportPolling()
 	registerResourceManagerEventListener()
 	registerTemplateCenterEventListener()
+	startDirectorConsoleSubscriptions()
 	void refreshProjectList()
 	blueprintLog.append(t('aiworkflow.page.blueprintLog.pageReady'), {
 		category: 'system',

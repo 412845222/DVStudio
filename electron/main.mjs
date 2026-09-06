@@ -1,4 +1,4 @@
-import path from 'node:path'
+﻿import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import https from 'node:https'
@@ -2150,6 +2150,156 @@ function registerIpc() {
 		} catch (err) {
 			console.error('[main][model3d-editor] open failed', err)
 			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// ===== 导演控制台窗口 =====
+	let directorConsoleWindow = null
+	let directorConsoleLatestData = null
+
+	ipcMain.handle('dweb:director-console:open', async (_e, payload) => {
+		console.log('[main] dweb:director-console:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const title = String(payload?.title || '导演控制台').slice(0, 200)
+			const projectId = payload?.projectId
+
+			if (!nodeId) {
+				return { ok: false, error: 'missing nodeId' }
+			}
+
+			if (directorConsoleWindow && !directorConsoleWindow.isDestroyed()) {
+				directorConsoleWindow.focus()
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
+
+			const queryParts = []
+			queryParts.push('nodeId=' + encodeURIComponent(nodeId))
+			if (projectId != null) {
+				queryParts.push('projectId=' + encodeURIComponent(String(projectId)))
+			}
+			queryParts.push('title=' + encodeURIComponent(title))
+			const queryStr = queryParts.length > 0 ? '?' + queryParts.join('&') : ''
+
+			const targetUrl = isDev
+				? devUrl + '/#/director-console' + queryStr
+				: 'file://' +
+					path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/') +
+					'#/director-console' +
+					queryStr
+
+			console.log('[main][director-console] targetUrl:', targetUrl)
+
+			directorConsoleWindow = new BrowserWindow({
+				width: 1600,
+				height: 950,
+				minWidth: 1200,
+				minHeight: 760,
+				title: APP_NAME + ' · ' + title,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true
+				}
+			})
+
+			try {
+				directorConsoleWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				directorConsoleWindow.removeMenu()
+			} catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				directorConsoleWindow.setPosition(mainX + 80, mainY + 80)
+			}
+
+			directorConsoleWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(
+						'[director-console:' + level + '] ' + message + ' (' + sourceId + ':' + line + ')'
+					)
+				}
+			)
+			directorConsoleWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						'[director-console:fail-load] code=' +
+							errorCode +
+							' desc=' +
+							errorDescription +
+							' url=' +
+							validatedURL
+					)
+				}
+			)
+			directorConsoleWindow.on('closed', () => {
+				directorConsoleWindow = null
+			})
+
+			await directorConsoleWindow.loadURL(targetUrl)
+			console.log(
+				'[main][director-console] loadURL done, URL:',
+				directorConsoleWindow.webContents.getURL()
+			)
+			if (isDev) {
+				directorConsoleWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][director-console] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:request-data', async (_e, payload) => {
+		try {
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				mainWindow.webContents.send('dweb:director-console:data-request', payload || {})
+			}
+			return { ok: true, data: directorConsoleLatestData }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.on('dweb:director-console:data-push', (_e, payload) => {
+		directorConsoleLatestData = payload
+		if (!directorConsoleWindow || directorConsoleWindow.isDestroyed()) {
+			return
+		}
+		try {
+			directorConsoleWindow.webContents.send('dweb:director-console:data', payload)
+		} catch (err) {
+			console.warn('[main][director-console] data-push relay failed:', err)
+		}
+	})
+
+	ipcMain.on('dweb:director-console:save-relay', (_e, payload) => {
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			return
+		}
+		try {
+			mainWindow.webContents.send('dweb:director-console:save', payload)
+		} catch (err) {
+			console.warn('[main][director-console] save relay failed:', err)
 		}
 	})
 

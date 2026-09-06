@@ -1,4 +1,4 @@
-export type MediaType =
+﻿export type MediaType =
 	| 'generic'
 	| 'image'
 	| 'video'
@@ -203,7 +203,8 @@ export const DEFAULT_NODE_SIZES: Record<string, { width: number; height: number 
 	model3d: { width: 420, height: 560 },
 	meshy: { width: 480, height: 500 },
 	'unreal-export': { width: 480, height: 340 },
-	blender: { width: 500, height: 520 }
+	blender: { width: 500, height: 520 },
+	'director-console': { width: 420, height: 260 }
 }
 
 export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: PortSpec[] }> = {
@@ -344,6 +345,10 @@ export const DEFAULT_NODE_PORTS: Record<string, { inputs: PortSpec[]; outputs: P
 			{ id: 'out-image', label: '截图输出', mediaType: 'image' },
 			{ id: 'out-text', label: '结果输出', mediaType: 'text' }
 		]
+	},
+	'director-console': {
+		inputs: [{ id: 'in-json', label: '布局JSON', mediaType: 'text' }],
+		outputs: []
 	}
 }
 

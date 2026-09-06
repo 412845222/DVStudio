@@ -1,4 +1,4 @@
-import { createStore, type Store } from 'vuex'
+﻿import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 import type {
 	WorkflowEdge,
@@ -34,7 +34,10 @@ import type {
 	WorkflowBlenderChatMessage,
 	WorkflowDirectorSceneSummary,
 	WorkflowDirectorRoom,
-	WorkflowDirectorConnection
+	WorkflowDirectorConnection,
+	WorkflowDirectorConsoleNodeSettings,
+	WorkflowDirectorCameraTrack,
+	WorkflowDirectorLightRig
 } from '../../aiworkflow/types'
 import type { WorkflowResource } from '../../aiworkflow/resource/types'
 import { canLinkAnchors, normalizeAnchorMediaType } from '../../aiworkflow/domain/link/anchorKinds'
@@ -1334,6 +1337,30 @@ const normalizeSceneDecomposeSettings = (
 		lastExpandedCount: Number.isFinite(Number(raw.lastExpandedCount))
 			? Math.max(0, Math.floor(Number(raw.lastExpandedCount)))
 			: undefined
+	}
+}
+
+const normalizeDirectorConsoleSettings = (
+	rawSettings: unknown
+): WorkflowDirectorConsoleNodeSettings | undefined => {
+	if (!rawSettings || !isRecord(rawSettings)) return undefined
+	const raw = rawSettings
+	return {
+		status: raw.status === 'ready' || raw.status === 'error' ? raw.status : 'idle',
+		message: isString(raw.message) ? raw.message : undefined,
+		inputJson: isString(raw.inputJson) ? raw.inputJson : undefined,
+		lastOpenedAt: Number.isFinite(Number(raw.lastOpenedAt)) ? Number(raw.lastOpenedAt) : undefined,
+		directorDataVersion: Number.isFinite(Number(raw.directorDataVersion))
+			? Math.max(0, Math.floor(Number(raw.directorDataVersion)))
+			: undefined,
+		cameraTracks: isArray(raw.cameraTracks)
+			? (raw.cameraTracks as WorkflowDirectorCameraTrack[])
+			: [],
+		activeCameraTrackId: isString(raw.activeCameraTrackId) ? raw.activeCameraTrackId : '',
+		lightRig:
+			raw.lightRig && isRecord(raw.lightRig)
+				? (raw.lightRig as unknown as WorkflowDirectorLightRig)
+				: undefined
 	}
 }
 
@@ -3654,6 +3681,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					| 'model3d'
 					| 'meshy'
 					| 'blender'
+					| 'director-console'
 			}
 		) {
 			const id = String(payload?.nodeId ?? '').trim()
@@ -3675,7 +3703,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				payload.type !== 'comfyui' &&
 				payload.type !== 'model3d' &&
 				payload.type !== 'meshy' &&
-				payload.type !== 'blender'
+				payload.type !== 'blender' &&
+				payload.type !== 'director-console'
 			)
 				return
 			const prevType = String(n.type ?? 'base')
@@ -3692,6 +3721,7 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (payload.type !== 'model3d') n.model3dSettings = undefined
 			if (payload.type !== 'meshy') n.meshySettings = undefined
 			if (payload.type !== 'blender') n.blenderSettings = undefined
+			if (payload.type !== 'director-console') n.directorConsoleSettings = undefined
 			if (payload.type !== 'rotate-image') n.rotatePromptText = undefined
 			if (payload.type !== 'text') n.textValue = undefined
 			if (payload.type !== 'text-merge') n.textMergeItems = undefined
@@ -3707,7 +3737,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				payload.type === 'unreal-export' ||
 				payload.type === 'model3d' ||
 				payload.type === 'meshy' ||
-				payload.type === 'blender'
+				payload.type === 'blender' ||
+				payload.type === 'director-console'
 			)
 				n.resourceId = null
 			if (payload.type !== 'story') n.branches = undefined
@@ -3806,6 +3837,16 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					outputs: []
 				}
 				syncSceneDecomposeAnchors(n)
+			}
+			if (payload.type === 'director-console') {
+				n.directorConsoleSettings = n.directorConsoleSettings ?? {
+					status: 'idle',
+					message: '',
+					inputJson: '',
+					directorDataVersion: 0,
+					cameraTracks: [],
+					activeCameraTrackId: ''
+				}
 			}
 			if (payload.type === 'image') {
 				n.imageSettings = n.imageSettings ?? { outputWidth: 1920, outputHeight: 1080 }

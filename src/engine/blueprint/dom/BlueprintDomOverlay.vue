@@ -104,6 +104,7 @@
 						@blender-init-workspace="onBusinessBlenderInitWorkspace"
 						@update-blender-settings="onBusinessUpdateBlenderSettings"
 						@blender-compress-context="onBusinessBlenderCompressContext"
+						@open-director-console="onBusinessOpenDirectorConsole"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -262,6 +263,7 @@ const emit = defineEmits<{
 	(e: 'node-blender-init-workspace', payload: { nodeId: string }): void
 	(e: 'node-update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'node-blender-compress-context', payload: { nodeId: string }): void
+	(e: 'node-open-director-console', payload: { nodeId: string }): void
 }>()
 
 const props = defineProps<{
@@ -735,6 +737,9 @@ function onBusinessUpdateBlenderSettings(payload: { nodeId: string; patch: Recor
 }
 function onBusinessBlenderCompressContext(payload: { nodeId: string }) {
 	emit('node-blender-compress-context', payload)
+}
+function onBusinessOpenDirectorConsole(payload: { nodeId: string }) {
+	emit('node-open-director-console', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })
