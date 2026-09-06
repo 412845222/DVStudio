@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { useAIWorkflowDirectorConsoleInputs } from '@/views/AIWorkflow/node-business/director/useAIWorkflowDirectorConsoleInputs'
 import type { WorkflowNode } from '@/aiworkflow/types'
 
-const makeDeps = (overrides: Partial<Parameters<typeof useAIWorkflowDirectorConsoleInputs>[0]> = {}) => {
+const makeDeps = (
+	overrides: Partial<Parameters<typeof useAIWorkflowDirectorConsoleInputs>[0]> = {}
+) => {
 	const base = {
 		store: { state: { nodesById: {} as Record<string, WorkflowNode>, resourcesById: {} } },
 		connectedTextInputValue: () => '',
@@ -142,7 +144,10 @@ describe('useAIWorkflowDirectorConsoleInputs', () => {
 
 	describe('buildScenePayload', () => {
 		it('should build payload from connected JSON and settings', () => {
-			const json = JSON.stringify({ layoutItems: [{ id: 'a' }], camera: { position: { x: 1, y: 1, z: 1 } } })
+			const json = JSON.stringify({
+				layoutItems: [{ id: 'a' }],
+				camera: { position: { x: 1, y: 1, z: 1 } }
+			})
 			const upstream = {
 				id: 'up',
 				type: 'scene-layout',

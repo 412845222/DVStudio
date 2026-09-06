@@ -43,11 +43,7 @@ describe('directorConsoleShared', () => {
 		})
 
 		it('should accept custom time, position and target', () => {
-			const kf = createDefaultCameraKeyframe(
-				2.5,
-				{ x: 1, y: 3, z: 7 },
-				{ x: 4, y: 1, z: 0 }
-			)
+			const kf = createDefaultCameraKeyframe(2.5, { x: 1, y: 3, z: 7 }, { x: 4, y: 1, z: 0 })
 			expect(kf.time).toBe(2.5)
 			expect(kf.position).toEqual({ x: 1, y: 3, z: 7 })
 			expect(kf.target).toEqual({ x: 4, y: 1, z: 0 })
