@@ -93,6 +93,13 @@
       - 数据流向标准流程（按钮执行、自动布线、Ctrl+S保存）
       - 7个关键坑点避坑指南（保存重置、节点消失、锚点异步、bbox兼容、图像穿透、DOM溢出、资源绑定）
       - 节点开发标准流程Checklist、调试日志关键字速查
+17. [16_DEEPSEEK_HARNESS_GUIDE.md](16_DEEPSEEK_HARNESS_GUIDE.md)
+    - **🆕 DeepSeek-Harness (DSH) 集成（2026-09-08 新增）**：
+      - 服务管理：子进程启停、端口自动释放、启动参数动态探测
+      - DSHAgent 流式对话：DshStreamClient 事件映射、session/follow WebSocket mux 协议
+      - IPC 代理：CORS 绕过、主进程 ws 包导入、assistantStream: true 关键参数
+      - 前端集成：Agent 对话框 dshagent 选项、输入框清空修复
+      - 常见问题排查与开发 Checklist
 
 ## 快速查找指南
 
@@ -114,6 +121,7 @@
 | 新增云存储适配器 / 修改 CloudFS | **[13_CLOUD_MODULES_GUIDE.md](13_CLOUD_MODULES_GUIDE.md)** 🆕 |
 | 修改 Steam 工坊模板 / WorkShop 集成 | **[13_CLOUD_MODULES_GUIDE.md](13_CLOUD_MODULES_GUIDE.md)** 🆕 |
 | 修改 ComfyUI 本地安装/配置/服务管理 | **[13_CLOUD_MODULES_GUIDE.md](13_CLOUD_MODULES_GUIDE.md)** 🆕 |
+| **DeepSeek-Harness 服务管理 / DSHAgent 流式对话 / session/follow 协议 / IPC 代理** | **[16_DEEPSEEK_HARNESS_GUIDE.md](16_DEEPSEEK_HARNESS_GUIDE.md)** 🆕 |
 | 编写测试 / 了解测试结构 | [12_TESTING_GUIDE.md](12_TESTING_GUIDE.md) |
 | 不确定修改边界在哪 | [07_DEVELOPMENT_BOUNDARIES.md](07_DEVELOPMENT_BOUNDARIES.md)（⚠️ 必读） |
 
