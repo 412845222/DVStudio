@@ -1575,6 +1575,9 @@ export class SceneLayoutPreviewViewer {
 	 */
 	setTransformMode(mode: 'translate' | 'rotate' | 'scale'): void {
 		this.transformControls.setMode(mode)
+		// 旋转模式使用 local 空间，让 XYZ 圆环跟随对象本地朝向；
+		// 移动/缩放保持 world 空间，便于绝对定位。
+		this.transformControls.setSpace(mode === 'rotate' ? 'local' : 'world')
 		this.requestRender()
 	}
 
