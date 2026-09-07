@@ -17,7 +17,8 @@ import type {
 	WorkflowUnrealResolvedLayoutSlot,
 	WorkflowUnrealResolvedParentReference,
 	WorkflowUnrealResolvedSurfaceSemantics,
-	WorkflowSceneLightingPreviewConfig
+	WorkflowSceneLightingPreviewConfig,
+	WorkflowDirectorCameraTrack
 } from '../../../../aiworkflow/types'
 
 type AnchorPoint = { center: Vector3Like; base: Vector3Like; top: Vector3Like }
@@ -240,6 +241,15 @@ type TransformControlsLike = Object3Dlike & {
 type RaycasterLike = {
 	setFromCamera(coords: Vector2Like, camera: CameraLike): void
 	intersectObjects(objects: Object3Dlike[], recursive?: boolean): Array<{ object: Object3Dlike }>
+	// [v2.0] 单体拾取(用于 gizmo 命中避让与摄像头放置)
+	intersectObject(object: Object3Dlike, recursive?: boolean): Array<{ object: Object3Dlike }>
+	// [v2.0] 射线与平面求交(用于屏幕坐标→地面世界坐标)
+	ray: {
+		intersectPlane(
+			plane: { normal: Vector3Like; constant: number },
+			target: Vector3Like
+		): Vector3Like | null
+	}
 }
 type GLTFResult = {
 	scene: Object3Dlike & { clone(recursive?: boolean): Object3Dlike }
@@ -262,6 +272,10 @@ type ViewerOptions = {
 	onModelLoadError?: (url: string, itemId: string) => void
 	onCameraInteractionStart?: () => void
 	onCameraInteractionEnd?: () => void
+	/** [v3.0] 摄像头 track 拖拽结束回调，用于通知上层持久化新的 position/target */
+	onCameraTrackChange?: (track: WorkflowDirectorCameraTrack | null) => void
+	/** [v1.0] 摄像头 Actor 缩放变更回调（scale 模式，仅视觉） */
+	onCameraScaleChange?: (scale: { x: number; y: number; z: number }) => void
 	/**
 	 * 【BUGFIX 2026-07】节流视角状态变更通知（每 ~120ms 最多一次）。
 	 * - 相比之前只在 onCameraInteractionEnd（用户松开鼠标/滚轮停止）时才通知，
@@ -938,6 +952,26 @@ export class SceneLayoutPreviewViewer {
 	private dragBaseline: DragTransformBaseline | null = null
 	private transparent = true
 	private interactiveActive = false
+	private cameraInteractive = false
+	private lightingEnabled = false
+	private wireframeEnabled = false
+	private readonly directorLights = new Map<string, LightLike>()
+	private directorLightSeq = 0
+	// [v2.0] 摄像头 3D 表示 Group（独立于 meshesById，避免污染占位体射线检测）
+	private cameraActorGroup: GroupLike | null = null
+	// [v3.0] 摄像头 target 标记 Group（独立定位到 target 世界坐标，不跟随摄像头旋转）
+	private cameraTargetGroup: GroupLike | null = null
+	// [v3.0] position→target 独立连线（不跟随 group 旋转，便于动态更新端点）
+	private cameraTargetLine: LineLike | null = null
+	// [v3.0] 摄像头到 target 的原始距离，供 rotate 模式重新计算 target 使用
+	private cameraDistance = 0
+	// [v3.0] 当前摄像头 track 缓存，供右下角预览渲染使用
+	private currentCameraTrack: WorkflowDirectorCameraTrack | null = null
+	// [v3.0] 摄像头选择专用 ID（与占位体 selectedId 区分）
+	private static readonly CAMERA_SELECTION_ID = '__camera_actor__'
+	// [v3.0] 右下角镜头预览 renderer / camera
+	private previewRenderer: WebGLRendererLike | null = null
+	private previewCamera: PerspectiveCameraLike | null = null
 	private orbiting = false
 	private transforming = false
 	private previewModeActive = false
@@ -1025,16 +1059,30 @@ export class SceneLayoutPreviewViewer {
 			typeof this.transformControls.getHelper === 'function'
 				? this.transformControls.getHelper()
 				: this.transformControls
+		// [v3.0 修复] transformHelper 是实际加入 scene 渲染的对象,需同步 visible
+		this.transformHelper.visible = false
 		this.transformControls.addEventListener('dragging-changed', (event?: unknown) => {
 			const dragEvent = event as TransformControlsDragEvent
 			this.transforming = dragEvent.value === true
 			this.controls.enabled = this.interactiveActive && !this.transforming
 			if (dragEvent.value) {
-				this.dragBaseline = this.captureSelectedDragBaseline()
+				// [v3.0] 摄像头拖拽不需要 baseline（不涉及占位体恢复逻辑）
+				if (this.selectedId !== SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+					this.dragBaseline = this.captureSelectedDragBaseline()
+				}
 				this.dragDirty = false
 			} else {
-				if (!this.dragDirty) this.restoreFromDragBaseline()
-				if (this.dragDirty) this.emitLayoutChange()
+				if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+					// [v3.0] 摄像头拖拽结束：通知上层持久化新的 position/target
+					if (this.dragDirty) {
+						this.options.onCameraTrackChange?.(this.currentCameraTrack)
+					}
+					this.dragDirty = false
+				} else {
+					if (!this.dragDirty) this.restoreFromDragBaseline()
+					if (this.dragDirty) this.emitLayoutChange()
+					this.dragBaseline = null
+				}
 				this.dragDirty = false
 				this.dragBaseline = null
 			}
@@ -1042,6 +1090,22 @@ export class SceneLayoutPreviewViewer {
 		})
 		this.transformControls.addEventListener('objectChange', () => {
 			if (!this.transforming) return
+			// [v3.0] 摄像头拖拽：同步 position/target 到 track 并更新可视化元素
+			if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+				this.syncCameraActorTransform()
+				// [v1.0] scale 模式下同步缩放值到 UI（不写入 track）
+				const s = this.cameraActorGroup?.scale
+				if (s) {
+					this.options.onCameraScaleChange?.({
+						x: Number(s.x) || 1,
+						y: Number(s.y) || 1,
+						z: Number(s.z) || 1
+					})
+				}
+				this.dragDirty = true
+				this.requestRender()
+				return
+			}
 			this.syncSelectedObjectToItem()
 			if (!this.dragDirty) this.dragDirty = this.hasMeaningfulDragDelta()
 			this.requestRender()
@@ -1098,11 +1162,15 @@ export class SceneLayoutPreviewViewer {
 			this.requestRender()
 		}
 		this.handlePointerMove = () => {
-			if (!this.interactiveActive || (!this.orbiting && !this.transforming)) return
+			if (
+				(!this.interactiveActive && !this.cameraInteractive) ||
+				(!this.orbiting && !this.transforming)
+			)
+				return
 			this.requestRender()
 		}
 		this.handleWheel = () => {
-			if (!this.interactiveActive) return
+			if (!this.interactiveActive && !this.cameraInteractive) return
 			this.requestRender()
 		}
 		this.handleKeyDown = (event: KeyboardEvent) => {
@@ -1235,7 +1303,9 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	private handleControlsChange = () => {
-		if (!this.interactiveActive) return
+		// interactiveActive: 完整交互(含 TransformControls 拖拽)
+		// cameraInteractive: 仅镜头交互(导演控制台等只读场景,TransformControls 禁用)
+		if (!this.interactiveActive && !this.cameraInteractive) return
 		this.requestRender()
 		// 【BUGFIX 2026-07】用户任何镜头交互（旋转、平移、缩放）过程中都节流保存视角，
 		// 保证"生成布局 / 重新渲染"后仍能恢复到用户刚调整的位置
@@ -1277,6 +1347,16 @@ export class SceneLayoutPreviewViewer {
 		if (!this.isObjectInSceneGraph(attached)) {
 			this.transformControls.detach()
 			this.transformControls.visible = false
+			this.transformHelper.visible = false // [v3.0 修复] 同步
+			return
+		}
+		// [v3.0] 摄像头选择：attached 应为 cameraActorGroup，不参与 meshesById 校验
+		if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+			if (attached !== (this.cameraActorGroup as unknown as Object3Dlike | null)) {
+				this.transformControls.detach()
+				this.transformControls.visible = false
+				this.transformHelper.visible = false
+			}
 			return
 		}
 		if (this.selectedId) {
@@ -1284,6 +1364,7 @@ export class SceneLayoutPreviewViewer {
 			if (selectedMesh !== attached) {
 				this.transformControls.detach()
 				this.transformControls.visible = false
+				this.transformHelper.visible = false // [v3.0 修复] 同步
 			}
 		}
 	}
@@ -1312,6 +1393,8 @@ export class SceneLayoutPreviewViewer {
 		this.perfRenderMsLast = renderCost
 		this.perfRenderMsEma =
 			this.perfRenderMsEma > 0 ? this.perfRenderMsEma * 0.82 + renderCost * 0.18 : renderCost
+		// [v3.0] 主渲染完成后,渲染右下角镜头预览
+		this.renderPreview()
 		if (this.controls.autoRotate === true && this.interactiveActive) {
 			if (!this.raf) this.raf = window.requestAnimationFrame(() => this.renderFrame())
 		}
@@ -1359,9 +1442,846 @@ export class SceneLayoutPreviewViewer {
 		this.controls.enabled = this.interactiveActive && !this.transforming
 		this.transformControls.enabled = this.interactiveActive
 		this.transformControls.visible = this.interactiveActive && !!this.selectedId
+		// [v3.0 修复] 同步 transformHelper.visible,与 selectItem 保持一致
+		this.transformHelper.visible = this.interactiveActive && !!this.selectedId
 		if (!this.interactiveActive) this.orbiting = false
 		this.requestRender()
 		this.updateIdleLoop()
+	}
+
+	/**
+	 * 仅切换镜头(OrbitControls)交互,不影响 TransformControls 拖拽状态。
+	 * 用于导演控制台等"镜头可旋转/平移/缩放,但占位体不可拖拽"的只读场景。
+	 */
+	setCameraInteractive(active: boolean) {
+		const next = active === true
+		if (this.cameraInteractive === next) return
+		this.cameraInteractive = next
+		this.controls.enabled = next && !this.transforming
+		if (!next) this.orbiting = false
+		this.requestRender()
+		this.updateIdleLoop()
+	}
+
+	// ===== 导演控制台: 灯光 / 线框 / 透明 工具条 API =====
+
+	/**
+	 * 灯光总开关。
+	 * - false: 清空额外灯光,套用明亮的浏览基础光照(白模观感)
+	 * - true: 套用预览基础光照,可通过 addDirectorLight 添加各类灯光
+	 */
+	setLightingEnabled(enabled: boolean): boolean {
+		const next = enabled === true
+		if (this.lightingEnabled === next) return this.lightingEnabled
+		this.lightingEnabled = next
+		// 清空 lightsGroup 中所有额外灯光(含 director lights 及其 target)
+		this.clearLightingPreview()
+		this.directorLights.clear()
+		if (next) {
+			this.applyPreviewBaseLights()
+		} else {
+			this.applyBrowseBaseLights()
+		}
+		this.requestRender()
+		return this.lightingEnabled
+	}
+
+	getLightingEnabled(): boolean {
+		return this.lightingEnabled
+	}
+
+	/**
+	 * 添加一盏导演灯光。仅在 lightingEnabled=true 时有意义。
+	 * 返回灯光 id,可用于后续移除(暂未暴露移除,关灯时统一清空)。
+	 */
+	addDirectorLight(
+		type: 'point' | 'directional' | 'spot' | 'hemisphere',
+		options?: { color?: string; intensity?: number; position?: { x: number; y: number; z: number } }
+	): string {
+		const id = 'dl-' + ++this.directorLightSeq
+		const color = options?.color ?? '#ffffff'
+		const intensity = Math.max(0, Number(options?.intensity ?? 1.2))
+		const pos = options?.position ?? { x: 0, y: 120, z: 80 }
+		const scale = this.getSceneScaleHint()
+		let light: LightLike
+		switch (type) {
+			case 'point': {
+				const pl = new THREE.PointLight(color, intensity, 0, 1.6)
+				pl.position.set(pos.x * scale, pos.y * scale, pos.z * scale)
+				light = pl as unknown as LightLike
+				break
+			}
+			case 'directional': {
+				const dl = new THREE.DirectionalLight(color, intensity)
+				dl.position.set(pos.x * scale, pos.y * scale, pos.z * scale)
+				const target = new THREE.Object3D()
+				target.position.set(0, scale * 0.2, 0)
+				this.lightsGroup.add(target as unknown as Object3Dlike)
+				dl.target = target as unknown as Object3Dlike
+				light = dl as unknown as LightLike
+				break
+			}
+			case 'spot': {
+				const sl = new THREE.SpotLight(color, intensity, 0, Math.PI / 6, 0.4, 1.2)
+				sl.position.set(pos.x * scale, pos.y * scale, pos.z * scale)
+				const target = new THREE.Object3D()
+				target.position.set(0, scale * 0.2, 0)
+				this.lightsGroup.add(target as unknown as Object3Dlike)
+				sl.target = target as unknown as Object3Dlike
+				light = sl as unknown as LightLike
+				break
+			}
+			case 'hemisphere':
+			default: {
+				const hl = new THREE.HemisphereLight(color, '#2d3748', intensity)
+				light = hl as unknown as LightLike
+				break
+			}
+		}
+		this.lightsGroup.add(light)
+		this.directorLights.set(id, light)
+		this.requestRender()
+		return id
+	}
+
+	/**
+	 * 线框开关。遍历场景中所有占位体/模型 mesh,切换材质 wireframe。
+	 */
+	setWireframeEnabled(enabled: boolean): boolean {
+		const next = enabled === true
+		if (this.wireframeEnabled === next) return this.wireframeEnabled
+		this.wireframeEnabled = next
+		for (const mesh of this.meshesById.values()) {
+			const mat = mesh.material as unknown as { wireframe?: boolean } | { wireframe?: boolean }[]
+			if (Array.isArray(mat)) {
+				for (const m of mat) {
+					if (m && typeof m.wireframe === 'boolean') m.wireframe = next
+				}
+			} else if (mat && typeof mat.wireframe === 'boolean') {
+				mat.wireframe = next
+			}
+		}
+		this.requestRender()
+		return this.wireframeEnabled
+	}
+
+	getWireframeEnabled(): boolean {
+		return this.wireframeEnabled
+	}
+
+	/**
+	 * [v3.0] 切换 TransformControls 模式（translate/rotate/scale）。
+	 * 参考 Three.js TransformControls.setMode。
+	 */
+	setTransformMode(mode: 'translate' | 'rotate' | 'scale'): void {
+		this.transformControls.setMode(mode)
+		this.requestRender()
+	}
+
+	// ===== 导演控制台 v2.0: 摄像头 3D 表示 API =====
+
+	/**
+	 * [v3.0] 在 3D 场景中渲染摄像头 mesh + FOV 锥形 + target 标记 + 连线。
+	 * 位置取自 keyframes[0].position（clampCameraY 钳制不低于地面），
+	 * 朝向 keyframes[0].target。
+	 * 摄像头 Group 独立于 meshesById，不参与占位体射线检测，天然避免穿透。
+	 */
+	setCameraActor(track: WorkflowDirectorCameraTrack): void {
+		// [v1.0] 记录摄像头是否被选中，clearCameraActor 会重置 selectedId
+		const wasCameraSelected = this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+		this.clearCameraActor()
+		if (this.disposed) return
+		const kf = track?.keyframes?.[0]
+		if (!kf) return
+		// [v3.0] 缓存 track 供右下角预览渲染使用
+		this.currentCameraTrack = track
+		const px = Number(kf.position?.x) || 0
+		const py = this.clampCameraY(Number(kf.position?.y) || 0) // [v3.0] 钳制高度
+		const pz = Number(kf.position?.z) || 0
+		const tx = Number(kf.target?.x) || 0
+		const ty = Number(kf.target?.y) || 0
+		const tz = Number(kf.target?.z) || 0
+		const fov = Number(kf.fov) || 50
+		const wallHeight = this.getTypicalWallHeight()
+		// [v4.1] 摄像头尺寸基于墙壁高度：机身宽约墙高的 12%，视锥长约墙高的 1.5 倍
+		// 真实摄像头约 20~30cm，墙高约 2.8m → 比例约 0.07~0.11，取 0.12 保证可选中
+		const unit = Math.max(0.3, wallHeight * 0.12)
+		// 视锥长度：墙高的 1.5 倍（能看到拍摄方向，但不会覆盖整个房间）
+		const camToTargetDist = Math.max(
+			0.001,
+			Math.sqrt((tx - px) ** 2 + (ty - py) ** 2 + (tz - pz) ** 2)
+		)
+		const farDistance = wallHeight * 1.5
+		const group = new THREE.Group() as unknown as GroupLike
+
+		// 1. [v4.0] 摄像头机身：金字塔切顶造型 + 镜头圆环 + 顶部提手
+		// 参考 Blender 摄像头造型，机身前端（镜头端）在 group 局部原点，朝 +Z 方向
+		const cameraBody = this.buildCameraBodyMesh(unit)
+
+		// 2. [v3.1] FOV 视锥：半透明面 + 边缘线框，参考专业 3D 编辑器摄像头表现
+		const frustum = this.buildCameraFrustumMesh(fov, farDistance)
+		const frustumEdges = this.buildCameraFrustumEdges(fov, farDistance)
+
+		// 3. [v3.1] 不可见选择热区：包裹机身+视锥根部的 Box，便于点击选中摄像头
+		// 参考 Three.js TransformControls 的拾取策略：使用不可见的 picker mesh 扩大命中范围
+		const hitGeo = new THREE.BoxGeometry(unit * 2.2, unit * 2.0, unit * 3.5)
+		const hitMat = new THREE.MeshBasicMaterial({
+			visible: false, // 不渲染，但参与 raycast
+			depthWrite: false
+		})
+		const hitArea = new THREE.Mesh(hitGeo, hitMat)
+		hitArea.position.set(0, unit * 0.1, -unit * 0.3)
+		hitArea.userData = { isCameraHitArea: true }
+
+		group.add(cameraBody as unknown as Object3Dlike)
+		group.add(frustum)
+		group.add(frustumEdges)
+		group.add(hitArea)
+		// [v4.1] 禁用视锥剔除，确保摄像头机身/视锥在任何视角下都可见
+		// Three.js 默认会对视锥外的对象做 frustum culling，即使 depthTest=false 也不会渲染
+		cameraBody.traverse((obj: Object3Dlike) => {
+			;(obj as unknown as { frustumCulled?: boolean }).frustumCulled = false
+		})
+		;(frustum as unknown as { frustumCulled?: boolean }).frustumCulled = false
+		;(frustumEdges as unknown as { frustumCulled?: boolean }).frustumCulled = false
+		group.position.set(px, py, pz)
+		// 朝向 target —— 普通 Object3D 的 lookAt 已让 +Z 朝向 target（与 Camera 不同）
+		// 摄像头机身/视锥均沿 +Z 构建，因此无需额外旋转
+		const targetVec3 = new THREE.Vector3(tx, ty, tz)
+		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+			targetVec3
+		)
+		const userDataRef = (group as unknown as { userData?: Record<string, unknown> }).userData
+		if (userDataRef) {
+			userDataRef.isCameraActor = true
+			userDataRef.trackId = track.id
+		}
+		this.cameraActorGroup = group
+		// [v4.1 调试] 添加到 this.group（已确认在场景中正常渲染），并强制设置 visible
+		this.group.add(group as unknown as Object3Dlike)
+		group.visible = true
+		group.traverse((obj: Object3Dlike) => {
+			obj.visible = true
+		})
+		console.log('[Camera] setCameraActor created: unit=%s, farDistance=%s', unit, farDistance)
+
+		// [v4.1] 移除 target 圆环标记和连线，采用 Blender 风格：仅摄像头机身 + FOV 视锥
+		this.cameraDistance = camToTargetDist
+		this.cameraTargetLine = null
+		this.cameraTargetGroup = null
+
+		// [v1.0] 若摄像头此前处于选中状态，重新挂载 TransformControls（FOV 变更等重建场景）
+		if (wasCameraSelected) {
+			this.selectedId = SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+			this.transformControls.attach(group as unknown as Object3Dlike)
+			this.transformControls.visible = this.interactiveActive
+			this.transformHelper.visible = this.interactiveActive
+		}
+
+		this.requestRender()
+	}
+
+	/**
+	 * [v3.1] 构建 FOV 视锥 mesh（半透明蓝色，仅侧面 4 三角形，无底面）。
+	 * 顶点在原点(0,0,0)，底面在 +Z 方向 farDistance 处。
+	 * 参考 Three.js CameraHelper 的视锥渲染：半透明面 + 边缘线框。
+	 */
+	private buildCameraFrustumMesh(fovDeg: number, farDistance: number): Object3Dlike {
+		const halfFov = THREE.MathUtils.degToRad(fovDeg) / 2
+		const top = Math.tan(halfFov) * farDistance
+		const aspect = 16 / 9
+		const right = top * aspect
+		// 5 个顶点：顶点 + 底面 4 角
+		const vertices = new Float32Array([
+			0,
+			0,
+			0, // 0: 顶点（摄像头位置）
+			-right,
+			-top,
+			farDistance, // 1: 底面左下
+			right,
+			-top,
+			farDistance, // 2: 底面右下
+			right,
+			top,
+			farDistance, // 3: 底面右上
+			-right,
+			top,
+			farDistance // 4: 底面左上
+		])
+		// 4 个三角形面（仅侧面，无底面）
+		const indices = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1]
+		const geo = new THREE.BufferGeometry()
+		geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
+		geo.setIndex(indices)
+		const mat = new THREE.MeshBasicMaterial({
+			color: '#38bdf8',
+			transparent: true,
+			opacity: 0.22,
+			side: THREE.DoubleSide,
+			depthTest: false,
+			depthWrite: false,
+			blending: THREE.AdditiveBlending
+		})
+		const mesh = new THREE.Mesh(geo, mat)
+		mesh.renderOrder = 998
+		return mesh as unknown as Object3Dlike
+	}
+
+	/**
+	 * [v3.1] 构建 FOV 视锥边缘线框（8 条棱 + 底面 4 边）。
+	 * 参考 Three.js CameraHelper：用 LineSegments 绘制视锥轮廓，确保在任何角度都清晰可见。
+	 */
+	private buildCameraFrustumEdges(fovDeg: number, farDistance: number): Object3Dlike {
+		const halfFov = THREE.MathUtils.degToRad(fovDeg) / 2
+		const top = Math.tan(halfFov) * farDistance
+		const aspect = 16 / 9
+		const right = top * aspect
+		// 8 条线段：4 条棱(顶点→底面四角) + 4 条底边(底面四边)
+		const edgeVertices = new Float32Array([
+			// 棱：顶点(0,0,0) → 底面四角
+			0,
+			0,
+			0,
+			-right,
+			-top,
+			farDistance,
+			0,
+			0,
+			0,
+			right,
+			-top,
+			farDistance,
+			0,
+			0,
+			0,
+			right,
+			top,
+			farDistance,
+			0,
+			0,
+			0,
+			-right,
+			top,
+			farDistance,
+			// 底边：底面四角连接
+			-right,
+			-top,
+			farDistance,
+			right,
+			-top,
+			farDistance,
+			right,
+			-top,
+			farDistance,
+			right,
+			top,
+			farDistance,
+			right,
+			top,
+			farDistance,
+			-right,
+			top,
+			farDistance,
+			-right,
+			top,
+			farDistance,
+			-right,
+			-top,
+			farDistance
+		])
+		const geo = new THREE.BufferGeometry()
+		geo.setAttribute('position', new THREE.BufferAttribute(edgeVertices, 3))
+		const mat = new THREE.LineBasicMaterial({
+			color: '#7dd3fc',
+			transparent: true,
+			opacity: 0.85,
+			depthTest: false,
+			depthWrite: false
+		})
+		const lines = new THREE.LineSegments(geo, mat)
+		lines.renderOrder = 999
+		return lines as unknown as Object3Dlike
+	}
+
+	/**
+	 * [v4.0] 构建摄像头机身 Group：金字塔切顶造型 + 镜头圆环 + 顶部提手。
+	 * 参考 Blender 摄像头造型：
+	 *   - 机身是金字塔切顶（truncated pyramid），尾部小、镜头端大；
+	 *   - 镜头端在 +Z 方向（group 局部坐标原点），与 FOV 视锥同向；
+	 *   - 机身向 -Z 方向延伸，尾部收窄。
+	 * 所有子 mesh 使用 MeshBasicMaterial + depthTest=false，确保不受光照影响且不被遮挡。
+	 *
+	 * @param unit 场景缩放基准单位
+	 * @returns Group 包含 bodyMesh(机身) + lensRing(镜头圆环) + topHandle(提手)
+	 */
+	private buildCameraBodyMesh(unit: number): GroupLike {
+		const group = new THREE.Group()
+
+		// 1. 金字塔切顶机身
+		// 后端面（尾部，小）：z = -unit*1.2，半边长 = unit*0.5
+		// 前端面（镜头端，大）：z = 0，半边长 = unit*0.9
+		// 深度（Z 方向）：unit*1.2
+		const backHalf = unit * 0.5
+		const frontHalf = unit * 0.9
+		const backZ = -unit * 1.2
+		const frontZ = 0
+		// 8 个顶点：后端面 4 个 + 前端面 4 个
+		const vertices = new Float32Array([
+			// 后端面（z = backZ）
+			-backHalf,
+			-backHalf,
+			backZ, // 0: 后左下
+			backHalf,
+			-backHalf,
+			backZ, // 1: 后右下
+			backHalf,
+			backHalf,
+			backZ, // 2: 后右上
+			-backHalf,
+			backHalf,
+			backZ, // 3: 后左上
+			// 前端面（z = frontZ）
+			-frontHalf,
+			-frontHalf,
+			frontZ, // 4: 前左下
+			frontHalf,
+			-frontHalf,
+			frontZ, // 5: 前右下
+			frontHalf,
+			frontHalf,
+			frontZ, // 6: 前右上
+			-frontHalf,
+			frontHalf,
+			frontZ // 7: 前左上
+		])
+		// 6 个面（每个面 2 个三角形，共 12 个三角形）：
+		// 后端面(0,1,2,3)、前端面(4,5,6,7)、4 个侧面
+		const indices = [
+			// 后端面
+			0, 2, 1, 0, 3, 2,
+			// 前端面
+			4, 5, 6, 4, 6, 7,
+			// 底面（下侧面）
+			0, 1, 5, 0, 5, 4,
+			// 顶面（上侧面）
+			3, 7, 6, 3, 6, 2,
+			// 左侧面
+			0, 4, 7, 0, 7, 3,
+			// 右侧面
+			1, 2, 6, 1, 6, 5
+		]
+		const bodyGeo = new THREE.BufferGeometry()
+		bodyGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
+		bodyGeo.setIndex(indices)
+		bodyGeo.computeVertexNormals()
+		const bodyMat = new THREE.MeshBasicMaterial({
+			color: '#22d3ee',
+			depthTest: false,
+			depthWrite: false,
+			side: THREE.DoubleSide
+		})
+		const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat)
+		bodyMesh.castShadow = false
+		bodyMesh.receiveShadow = false
+		bodyMesh.renderOrder = 999
+
+		// 2. 镜头圆环（位于前端面 z=0，朝向 +Z）
+		const lensRingGeo = new THREE.RingGeometry(unit * 0.3, unit * 0.5, 32)
+		const lensRingMat = new THREE.MeshBasicMaterial({
+			color: '#f0abfc',
+			depthTest: false,
+			depthWrite: false,
+			side: THREE.DoubleSide
+		})
+		const lensRing = new THREE.Mesh(lensRingGeo, lensRingMat)
+		// RingGeometry 默认在 XY 平面，无需旋转即朝向 +Z
+		lensRing.position.set(0, 0, frontZ + 0.01) // 略微前移避免 z-fighting
+		lensRing.renderOrder = 999
+
+		// 3. 顶部提手（小方块，装饰）
+		const handleGeo = new THREE.BoxGeometry(unit * 0.5, unit * 0.22, unit * 0.5)
+		const handleMat = new THREE.MeshBasicMaterial({
+			color: '#a78bfa',
+			depthTest: false,
+			depthWrite: false
+		})
+		const handle = new THREE.Mesh(handleGeo, handleMat)
+		handle.position.set(0, frontHalf + unit * 0.15, -unit * 0.3)
+		handle.renderOrder = 999
+
+		group.add(bodyMesh)
+		group.add(lensRing)
+		group.add(handle)
+
+		return group as unknown as GroupLike
+	}
+
+	/**
+	 * [v3.0] 构建 target 标记 Group（青绿色圆环 + 十字线，圆环平行地面）。
+	 */
+	private buildTargetMarker(unit: number): GroupLike {
+		const group = new THREE.Group()
+		// 圆环（TorusGeometry，平行于地面）
+		const ringGeo = new THREE.TorusGeometry(unit * 1.2, unit * 0.08, 8, 24)
+		const ringMat = new THREE.MeshBasicMaterial({
+			color: '#27b99c',
+			transparent: true,
+			opacity: 0.9,
+			depthTest: false,
+			depthWrite: false
+		})
+		const ring = new THREE.Mesh(ringGeo, ringMat)
+		ring.rotation.x = Math.PI / 2 // 平行于地面
+		ring.renderOrder = 999
+		// 十字线（两条交叉 LineSegments）
+		const crossLen = unit * 1.5
+		const crossPoints = [
+			new THREE.Vector3(-crossLen, 0, 0),
+			new THREE.Vector3(crossLen, 0, 0),
+			new THREE.Vector3(0, 0, -crossLen),
+			new THREE.Vector3(0, 0, crossLen)
+		]
+		const crossGeo = new THREE.BufferGeometry().setFromPoints(crossPoints)
+		const crossMat = new THREE.LineBasicMaterial({
+			color: '#27b99c',
+			transparent: true,
+			opacity: 0.8,
+			depthTest: false,
+			depthWrite: false
+		})
+		const cross = new THREE.LineSegments(crossGeo, crossMat)
+		cross.renderOrder = 999
+		group.add(ring)
+		group.add(cross)
+		return group as unknown as GroupLike
+	}
+
+	/**
+	 * [v3.0] 构建 position → target 虚线（世界坐标端点，独立于 group 旋转）。
+	 * 拖拽时通过 updateCameraTargetLine 动态更新端点。
+	 */
+	private buildWorldTargetLine(start: Vector3Like, end: Vector3Like): LineLike {
+		const points = [
+			new THREE.Vector3(start.x, start.y, start.z),
+			new THREE.Vector3(end.x, end.y, end.z)
+		]
+		const geo = new THREE.BufferGeometry().setFromPoints(points)
+		const mat = new THREE.LineDashedMaterial({
+			color: '#27b99c',
+			transparent: true,
+			opacity: 0.5,
+			dashSize: 0.3,
+			gapSize: 0.15,
+			depthTest: false,
+			depthWrite: false
+		})
+		const line = new THREE.Line(geo, mat)
+		line.computeLineDistances()
+		line.renderOrder = 998
+		return line as unknown as LineLike
+	}
+
+	/**
+	 * [v3.0] 更新 position→target 连线端点（拖拽时调用）。
+	 */
+	private updateCameraTargetLine(start: Vector3Like, end: Vector3Like): void {
+		const line = this.cameraTargetLine
+		if (!line) return
+		// 释放旧 geometry
+		const oldGeo = line.geometry as unknown as { dispose?: () => void }
+		oldGeo?.dispose?.()
+		// 用新端点重建 geometry
+		line.geometry = new THREE.BufferGeometry().setFromPoints([
+			new THREE.Vector3(start.x, start.y, start.z),
+			new THREE.Vector3(end.x, end.y, end.z)
+		]) as unknown as LineLike['geometry']
+		line.computeLineDistances()
+	}
+
+	/**
+	 * [v3.0] 同步摄像头拖拽结果到 track 与可视化元素。
+	 * translate: 移动 position,target 跟随移动相同 delta(保持朝向不变)。
+	 * rotate: 旋转 group 朝向,重新计算 target = position + forward * distance。
+	 */
+	private syncCameraActorTransform(): void {
+		const group = this.cameraActorGroup
+		const track = this.currentCameraTrack
+		const kf = track?.keyframes?.[0]
+		if (!group || !track || !kf) return
+		const pos = group.position
+		const quat = group.quaternion
+		// group 的 +Z 朝向 target（setCameraActor 中 lookAt 已让 +Z 朝向 target）
+		// 从 QuaternionLike 构造 THREE.Quaternion 实例以调用 applyQuaternion
+		const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w)
+		const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
+		const distance = this.cameraDistance > 0 ? this.cameraDistance : 5
+		const newTarget = new THREE.Vector3(
+			pos.x + forward.x * distance,
+			pos.y + forward.y * distance,
+			pos.z + forward.z * distance
+		)
+		// 钳制 position y 不低于地面
+		const clampedY = this.clampCameraY(pos.y)
+		if (clampedY !== pos.y) {
+			pos.y = clampedY
+		}
+		// 更新 track 数据
+		kf.position = { x: pos.x, y: clampedY, z: pos.z }
+		kf.target = { x: newTarget.x, y: newTarget.y, z: newTarget.z }
+		// 更新 target marker 位置
+		const targetGroup = this.cameraTargetGroup
+		if (targetGroup) {
+			targetGroup.position.set(newTarget.x, newTarget.y, newTarget.z)
+		}
+		// 更新连线端点
+		this.updateCameraTargetLine(new THREE.Vector3(pos.x, clampedY, pos.z), newTarget)
+	}
+
+	/**
+	 * [v3.0] 钳制摄像头 y 坐标，确保不低于地面以上最小净空高度。
+	 */
+	clampCameraY(y: number): number {
+		const scaleHint = this.getSceneScaleHint()
+		const minClearance = Math.max(0.5, scaleHint * 0.05)
+		return Math.max(minClearance, Number(y) || 0)
+	}
+
+	/**
+	 * [v3.0] 通用递归释放 Object3D 的 geometry/material。
+	 */
+	private disposeObject3D(obj: Object3Dlike): void {
+		const traverseTarget = obj as unknown as {
+			traverse?: (cb: (child: unknown) => void) => void
+		}
+		traverseTarget.traverse?.((child: unknown) => {
+			const node = child as {
+				geometry?: { dispose?: () => void }
+				material?: { dispose?: () => void } | { dispose?: () => void }[]
+			}
+			if (!node) return
+			node.geometry?.dispose?.()
+			if (Array.isArray(node.material)) {
+				node.material.forEach((m) => m?.dispose?.())
+			} else {
+				node.material?.dispose?.()
+			}
+		})
+	}
+
+	/**
+	 * 移除摄像头 3D 表示 Group + target 标记 Group + 连线并释放资源。
+	 * 若当前选中的是摄像头，同时取消选择并 detach TransformControls。
+	 */
+	clearCameraActor(): void {
+		// 若选中的是摄像头，先取消选择（detach TransformControls）
+		if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+			this.transformControls.detach()
+			this.transformControls.visible = false
+			this.transformHelper.visible = false
+			this.selectedId = ''
+		}
+		const group = this.cameraActorGroup
+		const targetGroup = this.cameraTargetGroup
+		const targetLine = this.cameraTargetLine
+		if (group) {
+			const parent = (group as unknown as { parent?: Object3Dlike }).parent
+			if (parent) {
+				;(parent as unknown as { remove?: (o: Object3Dlike) => void }).remove?.(
+					group as unknown as Object3Dlike
+				)
+			}
+			this.disposeObject3D(group as unknown as Object3Dlike)
+		}
+		if (targetGroup) {
+			this.scene.remove(targetGroup)
+			this.disposeObject3D(targetGroup as unknown as Object3Dlike)
+		}
+		if (targetLine) {
+			this.scene.remove(targetLine as unknown as Object3Dlike)
+			const lineGeo = targetLine.geometry as unknown as { dispose?: () => void }
+			lineGeo?.dispose?.()
+			const lineMat = targetLine.material as unknown as { dispose?: () => void }
+			lineMat?.dispose?.()
+		}
+		this.cameraActorGroup = null
+		this.cameraTargetGroup = null
+		this.cameraTargetLine = null
+		this.cameraDistance = 0
+		this.currentCameraTrack = null
+		this.requestRender()
+	}
+
+	/**
+	 * [v3.0] 设置右下角预览 canvas。
+	 * 复用主场景的 scene 与 meshes,仅新增独立 camera + renderer。
+	 */
+	setPreviewCanvas(canvas: HTMLCanvasElement): void {
+		// 若已存在先清理
+		this.clearPreviewCanvas()
+		if (this.disposed) return
+		try {
+			const renderer = new THREE.WebGLRenderer({
+				canvas,
+				antialias: true,
+				alpha: false,
+				powerPreference: 'low-power'
+			})
+			renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+			renderer.setSize(240, 160, false)
+			renderer.setClearColor('#484848', 1)
+			this.previewRenderer = renderer as unknown as WebGLRendererLike
+			this.previewCamera = new THREE.PerspectiveCamera(
+				50,
+				240 / 160,
+				0.1,
+				5000
+			) as unknown as PerspectiveCameraLike
+		} catch {
+			this.previewRenderer = null
+			this.previewCamera = null
+		}
+		this.requestRender()
+	}
+
+	/**
+	 * [v3.0] 清理预览 renderer/camera。
+	 */
+	clearPreviewCanvas(): void {
+		if (this.previewRenderer) {
+			this.previewRenderer.dispose()
+			this.previewRenderer = null
+		}
+		this.previewCamera = null
+	}
+
+	/**
+	 * [v3.0] 渲染右下角预览:从摄像头 position 朝 target 渲染同一场景。
+	 * 在主 renderFrame 末尾调用。预览前临时隐藏 cameraActorGroup 避免看到摄像头自身。
+	 */
+	private renderPreview(): void {
+		if (!this.previewRenderer || !this.previewCamera) return
+		const track = this.currentCameraTrack
+		const kf = track?.keyframes?.[0]
+		if (!kf || !this.previewCamera) return
+		const px = Number(kf.position?.x) || 0
+		const py = this.clampCameraY(Number(kf.position?.y) || 0)
+		const pz = Number(kf.position?.z) || 0
+		const tx = Number(kf.target?.x) || 0
+		const ty = Number(kf.target?.y) || 0
+		const tz = Number(kf.target?.z) || 0
+		const fov = Number(kf.fov) || 50
+		this.previewCamera.position.set(px, py, pz)
+		this.previewCamera.lookAt(tx, ty, tz)
+		this.previewCamera.fov = fov
+		this.previewCamera.updateProjectionMatrix()
+		// [v4.1 调试] 暂时不隐藏摄像头，排查不可见问题
+		try {
+			this.previewRenderer.render(this.scene, this.previewCamera)
+		} catch (e) {
+			console.error('[Camera] renderPreview error:', e)
+		}
+	}
+
+	/**
+	 * 屏幕坐标 → 与地面 y=0 平面的世界坐标交点。
+	 * 用于拖拽放置摄像头时计算放置位置。
+	 * [v3.0] y 坐标使用 clampCameraY 钳制，确保不低于地面。
+	 */
+	screenToGroundWorld(
+		screenX: number,
+		screenY: number
+	): {
+		x: number
+		y: number
+		z: number
+	} {
+		const rect = this.canvas.getBoundingClientRect()
+		const px = ((Number(screenX) - rect.left) / rect.width) * 2 - 1
+		const py = -((Number(screenY) - rect.top) / rect.height) * 2 + 1
+		const pointer = new THREE.Vector2(px, py) as unknown as Vector2Like
+		this.raycaster.setFromCamera(pointer, this.camera)
+		const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0) // y=0 地面
+		const hit = new THREE.Vector3()
+		this.raycaster.ray.intersectPlane(plane, hit)
+		// [v3.0] 使用 clampCameraY 钳制高度
+		const groundY = this.clampCameraY(0)
+		return { x: hit.x, y: groundY, z: hit.z }
+	}
+
+	/**
+	 * 当前 OrbitControls 的 target（用于摄像头 target）。
+	 */
+	getControlsTarget(): { x: number; y: number; z: number } {
+		const t = this.controls?.target
+		return { x: Number(t?.x) || 0, y: Number(t?.y) || 0, z: Number(t?.z) || 0 }
+	}
+
+	/**
+	 * [v1.0] 轻量更新摄像头 Actor 的 position / 朝向（不重建 mesh）。
+	 * 用于输入框拖拽时的实时同步，避免每帧重建导致卡顿。
+	 */
+	updateCameraActorTransformFromTrack(track: WorkflowDirectorCameraTrack): void {
+		const group = this.cameraActorGroup
+		const kf = track?.keyframes?.[0]
+		if (!group || !kf) return
+		const px = Number(kf.position?.x) || 0
+		const py = Number(kf.position?.y) || 0
+		const pz = Number(kf.position?.z) || 0
+		const tx = Number(kf.target?.x) || 0
+		const ty = Number(kf.target?.y) || 0
+		const tz = Number(kf.target?.z) || 0
+		group.position.set(px, py, pz)
+		// 与 setCameraActor 一致：普通 Object3D 的 lookAt 让 +Z 朝向 target
+		const targetVec3 = new THREE.Vector3(tx, ty, tz)
+		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+			targetVec3
+		)
+		// 更新 target marker + 连线
+		const targetGroup = this.cameraTargetGroup
+		if (targetGroup) {
+			targetGroup.position.set(tx, ty, tz)
+		}
+		this.updateCameraTargetLine(new THREE.Vector3(px, py, pz), new THREE.Vector3(tx, ty, tz))
+		this.requestRender()
+	}
+
+	/**
+	 * 当前摄像机位置（用于点击按钮添加时取默认 position）。
+	 */
+	getCameraPosition(): { x: number; y: number; z: number } {
+		const p = this.camera?.position
+		return { x: Number(p?.x) || 0, y: Number(p?.y) || 0, z: Number(p?.z) || 0 }
+	}
+
+	/**
+	 * 当前主相机的 FOV（用于点击按钮添加摄像头时保持视角一致）。
+	 */
+	getCameraFov(): number {
+		const cam = this.camera as unknown as { fov?: number }
+		return Number(cam?.fov) || 50
+	}
+
+	/**
+	 * [v1.0] 获取摄像头 Actor 的当前缩放（scale 模式输入框）。
+	 */
+	getCameraActorScale(): { x: number; y: number; z: number } {
+		const s = this.cameraActorGroup?.scale
+		return {
+			x: Number(s?.x) || 1,
+			y: Number(s?.y) || 1,
+			z: Number(s?.z) || 1
+		}
+	}
+
+	/**
+	 * [v1.0] 设置摄像头 Actor 的缩放（scale 模式输入框，仅视觉，不写入 track）。
+	 */
+	setCameraActorScale(axis: 'x' | 'y' | 'z', value: number): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		group.scale[axis] = Math.max(0.01, value)
+		this.requestRender()
 	}
 
 	requestStaticFrames() {
@@ -1444,6 +2364,7 @@ export class SceneLayoutPreviewViewer {
 			if (this.hidePlaceholderCubes) {
 				this.transformControls.detach()
 				this.transformControls.visible = false
+				this.transformHelper.visible = false // [v3.0 修复] 同步
 				this.selectedId = ''
 			}
 		}
@@ -2202,6 +3123,22 @@ export class SceneLayoutPreviewViewer {
 		}
 		const span = Math.max(maxX - minX, maxY - minY, maxZ - minZ)
 		return Math.max(2.5, Math.min(12, span))
+	}
+
+	/**
+	 * [v1.0] 获取场景中典型墙壁高度（所有布局项高度的中位数）。
+	 * 用于按真实比例缩放摄像头 Actor，避免摄像头比房间还大。
+	 */
+	private getTypicalWallHeight(): number {
+		if (!this.currentItems.length) return 2.8
+		const heights: number[] = []
+		for (const item of this.currentItems) {
+			const h = safeNumber(item.size?.height, 0) * Math.max(0.01, safeNumber(item.scale?.y ?? 1, 1))
+			if (h > 0.1) heights.push(h)
+		}
+		if (!heights.length) return 2.8
+		heights.sort((a, b) => a - b)
+		return heights[Math.floor(heights.length / 2)]
 	}
 
 	private applyRoleIntensityBias(type: string, role: unknown, intensity: number) {
@@ -4880,22 +5817,69 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	private pickObject(event: PointerEvent) {
-		if (this.hidePlaceholderCubes) return
 		const rect = this.canvas.getBoundingClientRect()
 		if (rect.width <= 0 || rect.height <= 0) return
+		// [v3.0 修复] gizmo 拾取避让：只检测当前模式的 picker 组，不检测整个 helper。
+		// 旧实现 intersectObject(transformHelper, true) 会检测所有模式(translate/rotate/scale)
+		// 的 picker mesh,这些 picker 组 visible=false 但子 mesh visible=true 且尺寸较大,
+		// 导致射线总是命中 picker,挡住背后 mesh,无法切换选择。
+		// 参考 Three.js TransformControls.pointerDown 的实现:
+		//   intersectObjectWithRay(this._gizmo.picker[this.mode], _raycaster)
+		// 即只检测当前模式的 picker。
+		if (this.transformHelper.visible && this.transformControls.object) {
+			this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+			this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+			this.raycaster.setFromCamera(this.pointer, this.camera)
+			const currentPicker = this.getCurrentModePicker()
+			if (currentPicker) {
+				const pickerIntersects = this.raycaster.intersectObject(currentPicker, true)
+				if (pickerIntersects.length > 0) {
+					// 命中 gizmo picker：保持当前选中状态，由 TransformControls 接管拖拽
+					return
+				}
+			}
+		}
 		const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		const cache = this.rightClickPickCache
 		if (event.button === 0 && cache) {
 			const dx = event.clientX - cache.x
 			const dy = event.clientY - cache.y
 			if (dx * dx + dy * dy <= 16 * 16 && now - cache.ts <= 140) {
-				this.selectItem(cache.itemId)
+				const cachedId = cache.itemId
+				if (cachedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+					this.selectCameraActor()
+				} else {
+					this.selectItem(cachedId)
+				}
 				return
 			}
 		}
 		this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
 		this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
 		this.raycaster.setFromCamera(this.pointer, this.camera)
+		// [v3.0] 优先检测摄像头 Actor Group（独立于占位体 pickTargets）
+		const cameraGroup = this.cameraActorGroup
+		if (cameraGroup && cameraGroup.visible !== false) {
+			const cameraIntersects = this.raycaster.intersectObject(
+				cameraGroup as unknown as Object3Dlike,
+				true
+			)
+			if (cameraIntersects.length > 0) {
+				this.rightClickPickCache = {
+					ts: now,
+					x: event.clientX,
+					y: event.clientY,
+					itemId: SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+				}
+				this.selectCameraActor()
+				return
+			}
+		}
+		// [v3.1] hidePlaceholderCubes 时跳过占位体选择，但仍允许摄像头选择和空白处取消选择
+		if (this.hidePlaceholderCubes) {
+			if (this.selectedId) this.selectItem('')
+			return
+		}
 		const pickTargets = Array.from(this.meshesById.values()).filter(
 			(mesh: MeshLike) => mesh?.visible !== false
 		)
@@ -4915,6 +5899,58 @@ export class SceneLayoutPreviewViewer {
 		} else {
 			this.selectItem(nextId)
 		}
+	}
+
+	/**
+	 * [v3.0] 获取 TransformControls 当前模式的 picker 组。
+	 * TransformControls 的 _root(getHelper 返回值) 结构:
+	 *   _root.children[0] = _gizmo (TransformControlsGizmo)
+	 *     .picker[mode] = 当前模式的 picker 组(不可见但参与 raycast)
+	 *   _root.children[1] = _plane
+	 * 参考 TransformControls.pointerDown:
+	 *   intersectObjectWithRay(this._gizmo.picker[this.mode], _raycaster)
+	 */
+	private getCurrentModePicker(): Object3Dlike | null {
+		const root = this.transformHelper
+		const mode = (this.transformControls as unknown as { mode?: string }).mode || 'translate'
+		const gizmo = root.children?.[0] as unknown as
+			| { picker?: Record<string, Object3Dlike> }
+			| undefined
+		return gizmo?.picker?.[mode] ?? null
+	}
+
+	/**
+	 * [v3.0] 选中摄像头 Actor，attach TransformControls 到 cameraActorGroup。
+	 * 支持 translate(移动 position) 和 rotate(旋转朝向) 两种模式。
+	 */
+	selectCameraActor(): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		// 若已选中摄像头，不重复触发 selectionChange（避免重置变换模式）
+		const alreadySelected = this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+		// 若选中的是其他占位体，先取消高亮
+		if (this.selectedId && this.selectedId !== SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+			const prevMesh = this.meshesById.get(this.selectedId)
+			if (prevMesh) {
+				const material = Array.isArray(prevMesh.material) ? prevMesh.material[0] : prevMesh.material
+				if (material && 'emissive' in material && material.emissive) {
+					material.emissive.set('#000000')
+					if ('emissiveIntensity' in material) material.emissiveIntensity = 0
+				}
+			}
+			const prevEdge = this.edgesById.get(this.selectedId)
+			if (prevEdge && 'opacity' in prevEdge.material) {
+				prevEdge.material.opacity = 0.55
+			}
+		}
+		this.selectedId = SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+		if (!alreadySelected) {
+			this.options.onSelectionChange?.(this.selectedId)
+		}
+		this.transformControls.attach(group as unknown as Object3Dlike)
+		this.transformControls.visible = this.interactiveActive
+		this.transformHelper.visible = this.interactiveActive
+		this.requestRender()
 	}
 
 	setSelectedItem(itemId: string) {
@@ -4964,10 +6000,15 @@ export class SceneLayoutPreviewViewer {
 		const mesh = this.selectedId ? this.meshesById.get(this.selectedId) : null
 		if (mesh && mesh.visible !== false && this.isObjectInSceneGraph(mesh)) {
 			this.transformControls.attach(mesh)
+			// [v3.0 修复] 同步 transformHelper.visible,否则 three.js r152+ 中
+			// 实际渲染的是 getHelper() 返回的 transformHelper,只设 transformControls.visible
+			// 会导致 detach 后 gizmo 视觉不消失,用户以为"无法取消选择"
 			this.transformControls.visible = this.interactiveActive
+			this.transformHelper.visible = this.interactiveActive
 		} else {
 			this.transformControls.detach()
 			this.transformControls.visible = false
+			this.transformHelper.visible = false
 		}
 		this.requestRender()
 	}
@@ -5111,6 +6152,7 @@ export class SceneLayoutPreviewViewer {
 		this.transforming = false
 		this.transformControls.detach()
 		this.transformControls.visible = false
+		this.transformHelper.visible = false // [v3.0 修复] 同步
 		this.selectedId = ''
 		this.meshesById.clear()
 		this.edgesById.clear()
@@ -5240,6 +6282,7 @@ export class SceneLayoutPreviewViewer {
 		this.holePunchToolId = ''
 		this.transformControls.detach()
 		this.transformControls.visible = false
+		this.transformHelper.visible = false // [v3.0 修复] 同步
 		this.clearHolePunchHighlights()
 		this.emitHolePunchStateChange()
 		this.requestRender()
@@ -5257,6 +6300,7 @@ export class SceneLayoutPreviewViewer {
 			if (mesh && mesh.visible !== false && this.isObjectInSceneGraph(mesh)) {
 				this.transformControls.attach(mesh)
 				this.transformControls.visible = this.interactiveActive
+				this.transformHelper.visible = this.interactiveActive // [v3.0 修复] 同步
 			}
 		}
 		this.emitHolePunchStateChange()
@@ -6339,6 +7383,10 @@ export class SceneLayoutPreviewViewer {
 		}
 		this.holedGeometryCache.clear()
 		this.clearLayout()
+		// [v2.0] dispose 时清理摄像头 3D 表示 Group
+		this.clearCameraActor()
+		// [v3.0] dispose 时清理预览 renderer/camera
+		this.clearPreviewCanvas()
 		this.controls.removeEventListener('change', this.handleControlsChange)
 		this.controls.removeEventListener('start', this.handleControlsStart)
 		this.controls.removeEventListener('end', this.handleControlsEnd)
