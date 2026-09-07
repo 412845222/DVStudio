@@ -52,7 +52,7 @@ import {
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
-import { initBackend, shutdownBackend } from './backend/index.mjs'
+import { initBackend, shutdownBackend, disposeDeepSeekHarness } from './backend/index.mjs'
 import { getPythonBridge } from './backend/python-bridge/index.mjs'
 import {
 	platformPreflight,
@@ -1231,6 +1231,7 @@ function registerIpc() {
 	ipcMain.handle('dweb:backend:restart', async () => {
 		return withBackendOpLock(async () => {
 			try {
+				await disposeDeepSeekHarness()
 				shutdownBackend()
 				const setupResult = await runSetupWorkflow({ reason: 'manual-restart' })
 				if (!setupResult.ok) {
@@ -2813,6 +2814,11 @@ function registerIpc() {
 }
 
 async function stopBackend() {
+	try {
+		await disposeDeepSeekHarness()
+	} catch (error) {
+		appendRuntimeLog(`[app] Harness cleanup error: ${String(error?.message || error)}`)
+	}
 	shutdownBackend()
 	try {
 		const pythonBridge = getPythonBridge()
@@ -3119,9 +3125,30 @@ app.on('window-all-closed', () => {
 	app.quit()
 })
 
-app.on('before-quit', async () => {
-	platformShutdown()
-	await stopBackend()
+let quitCleanupStarted = false
+let quitCleanupFinished = false
+app.on('before-quit', (event) => {
+	if (quitCleanupFinished) return
+	event.preventDefault()
+	if (quitCleanupStarted) return
+	quitCleanupStarted = true
+	const timeout = setTimeout(() => {
+		appendRuntimeLog('[app] shutdown cleanup timed out')
+		quitCleanupFinished = true
+		app.quit()
+	}, 15000)
+	void (async () => {
+		try {
+			platformShutdown()
+			await stopBackend()
+		} catch (error) {
+			appendRuntimeLog(`[app] shutdown cleanup error: ${String(error?.message || error)}`)
+		} finally {
+			clearTimeout(timeout)
+			quitCleanupFinished = true
+			app.quit()
+		}
+	})()
 })
 
 if (platformPreflight()) {

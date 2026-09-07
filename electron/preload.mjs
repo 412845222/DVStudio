@@ -15,6 +15,14 @@ function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
 }
 
+function onHarnessEvent(action, listener) {
+	if (typeof listener !== 'function') return () => {}
+	const channel = 'dweb:deepseek-harness:setup:' + action
+	const wrapped = (_event, payload) => listener(payload)
+	ipcRenderer.on(channel, wrapped)
+	return () => ipcRenderer.removeListener(channel, wrapped)
+}
+
 const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
@@ -905,6 +913,37 @@ contextBridge.exposeInMainWorld('dweb', {
 		recordTask: (payload) => invoke('dweb.ark.recordTask', payload || {})
 	},
 	// ===== ComfyUI =====
+	deepseekHarness: {
+		setup: {
+			listProfiles: () => invoke('dweb:deepseek-harness:setup:list-profiles'),
+			saveProfile: (payload) => invoke('dweb:deepseek-harness:setup:save-profile', payload),
+			removeProfile: (payload) => invoke('dweb:deepseek-harness:setup:remove-profile', payload),
+			activateProfile: (payload) => invoke('dweb:deepseek-harness:setup:activate-profile', payload),
+			selectPath: () => invoke('dweb:deepseek-harness:setup:select-path'),
+			probe: (payload) => invoke('dweb:deepseek-harness:setup:probe', payload),
+			diagnose: (payload) => invoke('dweb:deepseek-harness:setup:diagnose', payload),
+			getServiceStatus: () => invoke('dweb:deepseek-harness:setup:service-status'),
+			getServiceLogs: () => invoke('dweb:deepseek-harness:setup:service-logs'),
+			clearServiceLogs: () => invoke('dweb:deepseek-harness:setup:clear-logs'),
+			startService: (payload) => invoke('dweb:deepseek-harness:setup:start-service', payload),
+			stopService: (payload) => invoke('dweb:deepseek-harness:setup:stop-service', payload),
+			restartService: (payload) => invoke('dweb:deepseek-harness:setup:restart-service', payload),
+			prepare: (payload) =>
+				createIpcStreamGenerator('dweb:deepseek-harness:setup:prepare', payload),
+			autoSetup: (payload) =>
+				createIpcStreamGenerator('dweb:deepseek-harness:setup:auto-setup', payload),
+			cancelPrepare: (payload) => invoke('dweb:deepseek-harness:setup:cancel-prepare', payload),
+			openUi: (payload) => invoke('dweb:deepseek-harness:setup:open-ui', payload),
+			getOpenUrl: (payload) => invoke('dweb:deepseek-harness:setup:get-open-url', payload),
+			proxyCall: (payload) => invoke('dweb:deepseek-harness:setup:proxy-call', payload),
+			dshAgentStream: (payload) => createIpcStreamGenerator('dweb:deepseek-harness:agent', payload),
+			onServiceLog: (listener) => onHarnessEvent('service-log', listener),
+			onServiceStatusChange: (listener) => onHarnessEvent('service-status', listener),
+			onServiceExit: (listener) => onHarnessEvent('service-exit', listener),
+			onServiceLogsCleared: (listener) => onHarnessEvent('service-clear', listener),
+			onConfigChange: (listener) => onHarnessEvent('config-changed', listener)
+		}
+	},
 	comfyui: {
 		// 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）
 		workflows: {

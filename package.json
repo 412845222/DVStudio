@@ -124,7 +124,8 @@
 		"three-bvh-csg": "^0.0.18",
 		"vue": "^3.2.41",
 		"vue-router": "^4.5.0",
-		"vuex": "^4.1.0"
+		"vuex": "^4.1.0",
+		"ws": "^8.21.0"
 	},
 	"devDependencies": {
 		"@electron/rebuild": "^3.6.2",

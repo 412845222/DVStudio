@@ -13,6 +13,8 @@ import { routes as editorRoutes } from './modules/editor/routes.mjs'
 import { routes as chatRoutes } from './modules/chat/routes.mjs'
 import { routes as exportRoutes } from './modules/export/routes.mjs'
 import { routes as comfyuiRoutes } from './modules/comfyui/routes.mjs'
+import { routes as deepseekHarnessRoutes } from './modules/deepseek-harness/routes.mjs'
+export { disposeDeepSeekHarness } from './modules/deepseek-harness/service.mjs'
 import { routes as thirdPartyRoutes } from './modules/third-party/routes.mjs'
 import { routes as agentSkillsRoutes } from './modules/agent-skills/routes.mjs'
 import { routes as mcpRoutes } from './modules/mcp/routes.mjs'
@@ -92,6 +94,7 @@ export function initBackend(mainWindow, deps = {}) {
 		...chatRoutes,
 		...exportRoutes,
 		...comfyuiRoutes,
+		...deepseekHarnessRoutes,
 		...thirdPartyRoutes,
 		...agentSkillsRoutes,
 		...mcpRoutes,

@@ -258,6 +258,7 @@ declare global {
 		__DWEB_LOCAL_EXEC_STREAM_MODE?: string
 		process?: { versions?: { electron?: string } }
 		dweb?: {
+			deepseekHarness?: { setup: HarnessSetupApi }
 			common: {
 				getAppInfo?(): DwebAppInfo
 				checkForUpdate?(): Promise<DwebUpdateCheckResult>
@@ -748,3 +749,4 @@ declare global {
 		}
 	}
 }
+import type { HarnessSetupApi } from '../electronBridge/deepseekHarnessTypes'

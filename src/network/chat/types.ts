@@ -1,4 +1,4 @@
-export type AgentBackendType = 'dvsagent' | 'copilot' | 'codex'
+export type AgentBackendType = 'dvsagent' | 'copilot' | 'codex' | 'dshagent'
 
 export interface ChatSession {
 	id: string
