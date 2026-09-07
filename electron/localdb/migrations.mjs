@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 15
+const TARGET_VERSION = 16
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -555,6 +555,20 @@ function runV15(db) {
 	)
 }
 
+export function runV16(db) {
+	db.exec(`
+		CREATE TABLE IF NOT EXISTS deepseek_harness_profiles (
+			id TEXT PRIMARY KEY, canonical_path TEXT NOT NULL UNIQUE,
+			data TEXT NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS deepseek_harness_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1), active_profile_id TEXT,
+			revision INTEGER NOT NULL DEFAULT 0
+		);
+		INSERT OR IGNORE INTO deepseek_harness_settings (id, revision) VALUES (1, 0);
+	`)
+}
+
 const MIGRATIONS = [
 	runV1,
 	runV2,
@@ -570,7 +584,8 @@ const MIGRATIONS = [
 	runV12,
 	runV13,
 	runV14,
-	runV15
+	runV15,
+	runV16
 ]
 
 export function ensureSchema(db) {

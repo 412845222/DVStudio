@@ -17,7 +17,7 @@
 						{{ anyRunning ? '运行中' : '空闲' }}
 					</span>
 				</div>
-				<p class="sc-sub">管理本地 AI 后端进程（ComfyUI 等），实时查看日志与状态。</p>
+				<p class="sc-sub">管理 ComfyUI 与 DeepSeek-Harness，查看运行日志、配置源码与环境。</p>
 			</div>
 
 			<div class="sc-layout">
@@ -30,6 +30,10 @@
 							class="sc-service-item"
 							:class="{ active: svc.key === selectedKey, [svc.status]: true }"
 							@click="selectService(svc.key)"
+							role="button"
+							tabindex="0"
+							@keydown.enter="selectService(svc.key)"
+							@keydown.space.prevent="selectService(svc.key)"
 						>
 							<div class="sc-service-item-frame" aria-hidden="true">
 								<span class="corner tl"></span>
@@ -97,6 +101,7 @@
 										class="sc-btn sc-btn-primary"
 										:disabled="
 											pendingOp !== null ||
+											harnessStartDisabled ||
 											selected.status === 'running' ||
 											selected.status === 'starting'
 										"
@@ -118,6 +123,7 @@
 										:disabled="
 											pendingOp !== null ||
 											selected.status === 'stopped' ||
+											selected.status === 'unconfigured' ||
 											selected.status === 'stopping'
 										"
 										@click="stopService"
@@ -128,6 +134,14 @@
 									<button class="sc-btn sc-btn-ghost" @click="onOpenConfig">
 										<span class="sc-btn-icon">⚙</span>
 										配置
+									</button>
+									<button
+										v-if="selectedKey === 'deepseek-harness'"
+										class="sc-btn sc-btn-ghost"
+										:disabled="!harness.status.value.ready"
+										@click="harness.openUi"
+									>
+										打开 Harness
 									</button>
 									<button
 										class="sc-btn sc-btn-ghost"
@@ -194,7 +208,7 @@
 							>
 								<div v-if="loadingInitial" class="sc-log-empty">正在加载历史日志…</div>
 								<div v-else-if="logs.length === 0" class="sc-log-empty">
-									服务未启动，暂无日志输出。点击「启动」开始运行 ComfyUI。
+									暂无日志输出。配置完成后点击「启动」运行 {{ selected.name }}。
 								</div>
 								<pre
 									v-for="(line, idx) in logs"
@@ -207,11 +221,15 @@
 						</div>
 					</template>
 
-					<template v-else-if="activeTab === 'terminal'">
+					<DeepSeekHarnessConfigPanel
+						v-else-if="activeTab === 'config' && selectedKey === 'deepseek-harness'"
+						:manager="harness"
+					/>
+					<template v-else-if="activeTab === 'terminal' && selectedKey === 'comfyui'">
 						<ComfyUITerminalPanel />
 					</template>
 
-					<template v-else-if="activeTab === 'launch-args'">
+					<template v-else-if="activeTab === 'launch-args' && selectedKey === 'comfyui'">
 						<ComfyUILaunchArgsPanel />
 					</template>
 				</section>
@@ -222,13 +240,15 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useComfyServiceManager } from '../composables/useComfyServiceManager'
+import { useServiceCenterManager } from '../composables/useServiceCenterManager'
+import { useRoute } from 'vue-router'
+import DeepSeekHarnessConfigPanel from './DeepSeekHarness/DeepSeekHarnessConfigPanel.vue'
 import { openComfySetup } from '../electronBridge'
-import type { ComfyServiceLifecycle } from '../electronBridge/types'
 import ComfyUITerminalPanel from './ComfyUITerminalPanel.vue'
 import ComfyUILaunchArgsPanel from './ComfyUILaunchArgsPanel.vue'
 
 const {
+	harness,
 	services,
 	selectedKey,
 	selected,
@@ -242,17 +262,44 @@ const {
 	stopService,
 	restartService,
 	clearLogs
-} = useComfyServiceManager()
+} = useServiceCenterManager()
 
 const terminalEl = ref<HTMLElement | null>(null)
 
-type ServiceTabKey = 'logs' | 'terminal' | 'launch-args'
-const tabs: { key: ServiceTabKey; label: string }[] = [
-	{ key: 'logs', label: '运行日志' },
-	{ key: 'terminal', label: '终端' },
-	{ key: 'launch-args', label: '启动参数' }
-]
+type ServiceTabKey = 'logs' | 'terminal' | 'launch-args' | 'config'
+const tabs = computed<{ key: ServiceTabKey; label: string }[]>(() =>
+	selectedKey.value === 'deepseek-harness'
+		? [
+				{ key: 'logs', label: '运行日志' },
+				{ key: 'config', label: '配置' }
+			]
+		: [
+				{ key: 'logs', label: '运行日志' },
+				{ key: 'terminal', label: '终端' },
+				{ key: 'launch-args', label: '启动参数' }
+			]
+)
 const activeTab = ref<ServiceTabKey>('logs')
+const route = useRoute()
+watch(selectedKey, () => {
+	activeTab.value = 'logs'
+})
+watch(
+	() => [route.query.service, route.query.tab],
+	() => {
+		selectService(String(route.query.service || 'comfyui'))
+		nextTick(() => {
+			if (selectedKey.value === 'deepseek-harness' && route.query.tab === 'config')
+				activeTab.value = 'config'
+		})
+	},
+	{ immediate: true }
+)
+const harnessStartDisabled = computed(
+	() =>
+		selectedKey.value === 'deepseek-harness' &&
+		(!harness.available.value || !harness.activeProfile.value || harness.locked.value)
+)
 
 const anyRunning = computed(() => services.value.some((s) => s.status === 'running'))
 
@@ -278,7 +325,7 @@ function formatTime(t: number | null | undefined) {
 	return `${padTwo(d.getHours())}:${padTwo(d.getMinutes())}:${padTwo(d.getSeconds())}`
 }
 
-function statusLabel(s: ComfyServiceLifecycle) {
+function statusLabel(s: string) {
 	switch (s) {
 		case 'running':
 			return '运行中'
@@ -288,12 +335,20 @@ function statusLabel(s: ComfyServiceLifecycle) {
 			return '停止中'
 		case 'stopped':
 			return '已停止'
+		case 'unconfigured':
+			return '未配置'
+		case 'error':
+			return '异常'
 		default:
 			return s
 	}
 }
 
 function onOpenConfig() {
+	if (selectedKey.value === 'deepseek-harness') {
+		activeTab.value = 'config'
+		return
+	}
 	openComfySetup({ source: 'service-center' })
 }
 
@@ -310,14 +365,17 @@ onMounted(() => {
 	}
 })
 
-watch(logs, () => {
-	if (!logAutoScroll.value || !terminalEl.value) return
-	nextTick(() => {
-		if (terminalEl.value) {
-			terminalEl.value.scrollTop = terminalEl.value.scrollHeight
-		}
-	})
-})
+watch(
+	() => [logs.value.length, logs.value[logs.value.length - 1], selectedKey.value],
+	() => {
+		if (!logAutoScroll.value || !terminalEl.value) return
+		nextTick(() => {
+			if (terminalEl.value) {
+				terminalEl.value.scrollTop = terminalEl.value.scrollHeight
+			}
+		})
+	}
+)
 </script>
 
 <style scoped>

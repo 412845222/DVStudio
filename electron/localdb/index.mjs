@@ -7,6 +7,7 @@ import {
 } from './db.mjs'
 import { ensureLocalDbSchema } from './migrations.mjs'
 import { createProjectsRepo } from './repos/projects.mjs'
+import { createDeepSeekHarnessProfilesRepo } from './repos/deepseekHarnessProfiles.mjs'
 import { createMeshyTasksRepo } from './repos/meshyTasks.mjs'
 import { createVideoTasksRepo } from './repos/videoTasks.mjs'
 import { createArkTasksRepo } from './repos/arkTasks.mjs'
@@ -73,6 +74,7 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 			appSecret: appSecret || baseDir || 'localdb'
 		})
 		reposSnapshot = {
+			deepseekHarnessProfiles: createDeepSeekHarnessProfilesRepo(),
 			projects,
 			meshyTasks,
 			videoTasks,
