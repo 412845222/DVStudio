@@ -2174,15 +2174,46 @@ export class SceneLayoutPreviewViewer {
 		const ty = Number(kf.target?.y) || 0
 		const tz = Number(kf.target?.z) || 0
 		const fov = Number(kf.fov) || 50
+		const roll = Number(kf.roll) || 0
 		this.previewCamera.position.set(px, py, pz)
 		this.previewCamera.lookAt(tx, ty, tz)
+		// 应用 roll：绕相机自身前向轴旋转 up 向量
+		const camUp = (
+			this.previewCamera as unknown as {
+				up: {
+					x: number
+					y: number
+					z: number
+					copy(v: { x: number; y: number; z: number }): void
+					set(x: number, y: number, z: number): void
+				}
+			}
+		).up
+		if (roll !== 0) {
+			const rollRad = (roll * Math.PI) / 180
+			const up = new THREE.Vector3(0, 1, 0)
+			const forward = new THREE.Vector3(tx - px, ty - py, tz - pz).normalize()
+			up.applyAxisAngle(forward, rollRad)
+			camUp.copy(up)
+			this.previewCamera.lookAt(tx, ty, tz)
+		} else {
+			camUp.set(0, 1, 0)
+		}
 		this.previewCamera.fov = fov
 		this.previewCamera.updateProjectionMatrix()
-		// [v4.1 调试] 暂时不隐藏摄像头，排查不可见问题
+		// 预览时隐藏摄像头 Actor 和 TransformControls，避免画面中出现自身
+		const camGroup = this.cameraActorGroup
+		const helperVisible = this.transformHelper.visible
+		if (camGroup) camGroup.visible = false
+		this.transformHelper.visible = false
 		try {
 			this.previewRenderer.render(this.scene, this.previewCamera)
 		} catch (e) {
 			console.error('[Camera] renderPreview error:', e)
+		} finally {
+			// 恢复可见性
+			if (camGroup) camGroup.visible = true
+			this.transformHelper.visible = helperVisible
 		}
 	}
 
