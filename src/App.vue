@@ -112,6 +112,7 @@ const isPreviewWindow = computed(() => {
 		path.startsWith('/image-markup-preview') ||
 		path.startsWith('/resource-manager') ||
 		path.startsWith('/3d-editor') ||
+		path.startsWith('/director-console') ||
 		path.startsWith('/video-editor') ||
 		path.startsWith('/template-center') ||
 		path.startsWith('/comfyui-setup') ||
@@ -135,6 +136,10 @@ const is3DEditorWindow = computed(() => {
 	return String(route.path || '').startsWith('/3d-editor')
 })
 
+const isDirectorConsoleWindow = computed(() => {
+	return String(route.path || '').startsWith('/director-console')
+})
+
 const isVideoEditorWindow = computed(() => {
 	return String(route.path || '').startsWith('/video-editor')
 })
@@ -153,6 +158,9 @@ const dialogTitle = computed(() => {
 	}
 	if (is3DEditorWindow.value) {
 		return String(query.title || '3D 模型编辑器')
+	}
+	if (isDirectorConsoleWindow.value) {
+		return String(query.title || '导演控制台')
 	}
 	if (isVideoEditorWindow.value) {
 		return String(query.title || '视频编辑器')
