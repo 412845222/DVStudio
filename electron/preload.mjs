@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import {
 	APP_NAME,
 	APP_ID,
@@ -251,6 +251,7 @@ ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
 const DIRECTOR_CONSOLE_DATA_CHANNEL = 'dweb:director-console:data'
 const DIRECTOR_CONSOLE_SAVE_CHANNEL = 'dweb:director-console:save'
 const DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL = 'dweb:director-console:data-request'
+const DIRECTOR_CONSOLE_EXPORT_DONE_CHANNEL = 'dweb:director-console:export-done'
 
 let directorConsoleLatestData = null
 const directorConsoleDataHandlers = new Map()
@@ -261,6 +262,9 @@ let directorConsoleSaveListenerSeed = 0
 
 const directorConsoleDataRequestHandlers = new Map()
 let directorConsoleDataRequestListenerSeed = 0
+
+const directorConsoleExportDoneHandlers = new Map()
+let directorConsoleExportDoneListenerSeed = 0
 
 ipcRenderer.on(DIRECTOR_CONSOLE_DATA_CHANNEL, (_event, payload) => {
 	try {
@@ -302,6 +306,20 @@ ipcRenderer.on(DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL, (_event, payload) => {
 		}
 	} catch (err) {
 		console.warn('[preload:director-console] failed to process data-request:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_EXPORT_DONE_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleExportDoneHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] export-done handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process export-done:', err)
 	}
 })
 
@@ -463,6 +481,27 @@ contextBridge.exposeInMainWorld('dweb', {
 			const id = Number(listenerId || 0)
 			directorConsoleDataRequestHandlers.delete(id)
 			return { ok: true }
+		},
+		// [v5.0] 导出视频
+		directorConsoleCreateTempDir: () => invoke('dweb:director-console:create-temp-dir'),
+		directorConsoleWriteFrame: (payload) =>
+			invoke('dweb:director-console:write-frame', payload || {}),
+		directorConsoleExportVideo: (payload) =>
+			invoke('dweb:director-console:export-video', payload || {}),
+		directorConsoleCleanupTempDir: (payload) =>
+			invoke('dweb:director-console:cleanup-temp-dir', payload || {}),
+		directorConsoleNotifyExportDone: (payload) =>
+			ipcRenderer.send('dweb:director-console:export-done-relay', payload || {}),
+		onDirectorConsoleExportDone: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleExportDoneListenerSeed
+			directorConsoleExportDoneHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleExportDone: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleExportDoneHandlers.delete(id)
+			return { ok: true }
 		}
 	},
 	projects: {
@@ -491,6 +530,10 @@ contextBridge.exposeInMainWorld('dweb', {
 		importProjectAsset: (payload) => invoke('dweb:aiworkflow:importProjectAsset', payload || {}),
 		deleteProjectAsset: (payload) => invoke('dweb:aiworkflow:deleteProjectAsset', payload || {}),
 		resolveProjectAsset: (payload) => invoke('dweb:aiworkflow:resolveProjectAsset', payload || {}),
+		readProjectAssetText: (payload) =>
+			invoke('dweb:aiworkflow:readProjectAssetText', payload || {}),
+		writeProjectAssetText: (payload) =>
+			invoke('dweb:aiworkflow:writeProjectAssetText', payload || {}),
 		repairProjectAsset: (payload) => invoke('dweb:aiworkflow:repairProjectAsset', payload || {}),
 		diagnoseAsset: (payload) => invoke('dweb:aiworkflow:diagnoseAsset', payload || {}),
 		validateProjectRoot: (payload) => invoke('dweb:aiworkflow:validateProjectRoot', payload || {}),

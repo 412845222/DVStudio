@@ -143,7 +143,7 @@ describe('useAIWorkflowDirectorConsoleInputs', () => {
 	})
 
 	describe('buildScenePayload', () => {
-		it('should build payload from connected JSON and settings', () => {
+		it('should build payload from connected JSON and settings', async () => {
 			const json = JSON.stringify({
 				layoutItems: [{ id: 'a' }],
 				camera: { position: { x: 1, y: 1, z: 1 } }
@@ -171,7 +171,7 @@ describe('useAIWorkflowDirectorConsoleInputs', () => {
 				} as any
 			})
 			const { buildScenePayload } = useAIWorkflowDirectorConsoleInputs(deps)
-			const payload = buildScenePayload('n1', settings)
+			const payload = await buildScenePayload('n1', settings)
 			expect(payload.nodeId).toBe('n1')
 			expect(payload.layoutItems).toHaveLength(1)
 			expect(payload.camera?.position).toEqual({ x: 1, y: 1, z: 1 })
@@ -182,13 +182,13 @@ describe('useAIWorkflowDirectorConsoleInputs', () => {
 			expect(payload.directorDataVersion).toBe(3)
 		})
 
-		it('should handle missing settings gracefully', () => {
+		it('should handle missing settings gracefully', async () => {
 			const deps = makeDeps({
 				connectedTextInputValue: () => '',
 				getFirstIncomingEdge: () => null
 			})
 			const { buildScenePayload } = useAIWorkflowDirectorConsoleInputs(deps)
-			const payload = buildScenePayload('n1')
+			const payload = await buildScenePayload('n1')
 			expect(payload.layoutItems).toEqual([])
 			expect(payload.modelBindings).toEqual([])
 			expect(payload.cameraTracks).toBeUndefined()

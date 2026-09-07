@@ -1,4 +1,4 @@
-﻿import path from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import https from 'node:https'
@@ -38,7 +38,8 @@ import {
 	diagnoseDwebAsset,
 	getAccessLogs,
 	getProjectCacheStats,
-	clearProjectCache
+	clearProjectCache,
+	writeProjectAssetText
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -46,6 +47,7 @@ import {
 	importFileProjectAsset,
 	deleteStaticProjectAsset,
 	resolveStaticProjectAsset,
+	readStaticProjectAssetText,
 	repairAllProjectAssets
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
@@ -1508,6 +1510,22 @@ function registerIpc() {
 		}
 	})
 
+	ipcMain.handle('dweb:aiworkflow:readProjectAssetText', async (_e, payload) => {
+		try {
+			return readStaticProjectAssetText(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:writeProjectAssetText', async (_e, payload) => {
+		try {
+			return writeProjectAssetText(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
 	ipcMain.handle('dweb:aiworkflow:repairProjectAsset', async (_e, payload) => {
 		try {
 			return repairProjectAsset(payload || {})
@@ -2300,6 +2318,110 @@ function registerIpc() {
 			mainWindow.webContents.send('dweb:director-console:save', payload)
 		} catch (err) {
 			console.warn('[main][director-console] save relay failed:', err)
+		}
+	})
+
+	// ===== [v5.0] 导演控制台导出视频 =====
+	// 管理导出用的临时目录（按 jobId 隔离）
+	const directorExportTempDirs = new Map()
+
+	ipcMain.handle('dweb:director-console:create-temp-dir', async () => {
+		try {
+			const jobId = 'dc-export-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+			const tmpRoot = path.join(os.tmpdir(), 'dvstudio-director-export')
+			await fs.promises.mkdir(tmpRoot, { recursive: true })
+			const dir = path.join(tmpRoot, jobId)
+			await fs.promises.mkdir(dir, { recursive: true })
+			directorExportTempDirs.set(jobId, dir)
+			return { ok: true, jobId, dir }
+		} catch (err) {
+			console.error('[main][director-console] create-temp-dir failed:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:write-frame', async (_e, payload) => {
+		try {
+			const { jobId, frameIndex, data } = payload || {}
+			const dir = directorExportTempDirs.get(String(jobId || ''))
+			if (!dir) return { ok: false, error: 'invalid jobId' }
+			// data 为 base64 字符串
+			const buf = Buffer.from(String(data || ''), 'base64')
+			const fname = 'frame_' + String(frameIndex).padStart(6, '0') + '.png'
+			await fs.promises.writeFile(path.join(dir, fname), buf)
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][director-console] write-frame failed:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:export-video', async (_e, payload) => {
+		const { jobId, fps, outputName } = payload || {}
+		const dir = directorExportTempDirs.get(String(jobId || ''))
+		if (!dir) return { ok: false, error: 'invalid jobId' }
+		const hasFfmpeg = await checkFfmpegAvailable()
+		if (!hasFfmpeg) return { ok: false, error: 'ffmpeg not available' }
+		const outputPath = path.join(dir, String(outputName || 'output.mp4'))
+		const inputPattern = path.join(dir, 'frame_%06d.png')
+		return new Promise((resolve) => {
+			const args = [
+				'-y',
+				'-framerate',
+				String(Math.max(1, Math.floor(Number(fps) || 30))),
+				'-i',
+				inputPattern,
+				'-c:v',
+				'libx264',
+				'-preset',
+				'medium',
+				'-crf',
+				'23',
+				'-pix_fmt',
+				'yuv420p',
+				'-movflags',
+				'+faststart',
+				outputPath
+			]
+			console.log('[main][director-console] ffmpeg args:', JSON.stringify(args))
+			const proc = spawn('ffmpeg', args, { windowsHide: true })
+			let stderr = ''
+			proc.stderr?.on('data', (chunk) => {
+				stderr += String(chunk)
+			})
+			proc.on('error', (err) => {
+				resolve({ ok: false, error: String(err?.message || err) })
+			})
+			proc.on('close', (code) => {
+				if (code === 0) {
+					resolve({ ok: true, outputPath })
+				} else {
+					console.error('[main][director-console] ffmpeg failed:', stderr.slice(-500))
+					resolve({ ok: false, error: 'ffmpeg exited with code ' + code })
+				}
+			})
+		})
+	})
+
+	ipcMain.handle('dweb:director-console:cleanup-temp-dir', async (_e, payload) => {
+		const { jobId } = payload || {}
+		const dir = directorExportTempDirs.get(String(jobId || ''))
+		if (!dir) return { ok: true }
+		try {
+			await fs.promises.rm(dir, { recursive: true, force: true })
+		} catch (err) {
+			console.warn('[main][director-console] cleanup-temp-dir failed:', err)
+		}
+		directorExportTempDirs.delete(String(jobId || ''))
+		return { ok: true }
+	})
+
+	ipcMain.on('dweb:director-console:export-done-relay', (_e, payload) => {
+		if (!mainWindow || mainWindow.isDestroyed()) return
+		try {
+			mainWindow.webContents.send('dweb:director-console:export-done', payload)
+		} catch (err) {
+			console.warn('[main][director-console] export-done relay failed:', err)
 		}
 	})
 

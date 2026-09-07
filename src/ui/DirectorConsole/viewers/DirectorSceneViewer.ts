@@ -10,10 +10,12 @@ import type {
 import type {
 	WorkflowDirectorCameraTrack,
 	WorkflowDirectorCameraKeyframe,
+	WorkflowDirectorCharacterKeyframe,
 	WorkflowDirectorLightRig,
 	WorkflowDirectorCharacter
 } from '../../../aiworkflow/types'
 import type { DirectorConsoleScenePayload } from '../../../electronBridge'
+import type { DirectorConsoleSnapshot } from '../../../composables/useDirectorConsoleHistory'
 
 export interface DirectorSceneViewerCallbacks {
 	onCameraViewChange?: (view: {
@@ -29,6 +31,10 @@ export interface DirectorSceneViewerCallbacks {
 	onSelectionChange?: (itemId: string) => void
 	/** [v1.0] 角色列表变更回调（增删改 / 层级变化 / 拖拽结束） */
 	onCharactersChange?: (characters: WorkflowDirectorCharacter[]) => void
+	/** [P1] 播放期间帧变化回调 */
+	onFrameChange?: (frame: number) => void
+	/** [P1] 播放/暂停状态变化回调 */
+	onPlayingChange?: (playing: boolean) => void
 	onReady?: () => void
 	onError?: (msg: string) => void
 }
@@ -51,6 +57,16 @@ export class DirectorSceneViewer {
 	private currentTransparent = true
 	private currentLightingEnabled = false
 	private characters: WorkflowDirectorCharacter[] = []
+	private currentWhiteMode = false
+	private cameraParentId: string | null = null
+	/** [P1] 时间轴帧率 */
+	private fps = 30
+	/** [P1] 时间轴总帧数 */
+	private totalFrames = 150
+	/** [P1] 当前帧 */
+	private currentFrame = 0
+	/** [P1] 角色关键帧缓存：characterId -> keyframes */
+	private characterKeyframes: Record<string, WorkflowDirectorCharacterKeyframe[]> = {}
 
 	constructor(canvas: HTMLCanvasElement, callbacks: DirectorSceneViewerCallbacks = {}) {
 		this.canvas = canvas
@@ -104,6 +120,12 @@ export class DirectorSceneViewer {
 		payload: DirectorConsoleScenePayload,
 		opts?: { transparent?: boolean }
 	): Promise<void> {
+		console.log('[DirectorSceneViewer:loadScene] start', {
+			layoutItemsCount: Array.isArray(payload?.layoutItems) ? payload.layoutItems.length : 0,
+			charactersCount: Array.isArray(payload?.characters) ? payload.characters.length : 0,
+			cameraTracksCount: Array.isArray(payload?.cameraTracks) ? payload.cameraTracks.length : 0,
+			hasLightRig: !!payload?.lightRig
+		})
 		if (!this.previewViewer) {
 			this.callbacks.onError?.('Viewer not initialized')
 			return
@@ -118,13 +140,22 @@ export class DirectorSceneViewer {
 			this.currentCamera = cameraCfg
 			this.currentModelBindings = modelBindings
 			this.currentTransparent = transparent
+			// [v1.0] 白模模式：从持久化数据恢复
+			if (payload.cameraParentId !== undefined) {
+				this.cameraParentId = payload.cameraParentId as string | null
+			}
+			// [P1] 时间轴设置恢复
+			if (typeof payload.fps === 'number') this.fps = Math.max(1, payload.fps)
+			if (typeof payload.totalFrames === 'number')
+				this.totalFrames = Math.max(1, payload.totalFrames)
 
 			this.previewViewer.setLayout(items, cameraCfg, {
 				previewMode: true,
 				modelBindings,
 				hidePlaceholderCubes: modelBindings.length > 0,
 				transparent,
-				lightingPreviewEnabled: this.currentLightingEnabled
+				lightingPreviewEnabled: this.currentLightingEnabled,
+				whiteMode: this.currentWhiteMode
 			})
 
 			// Restore saved director data if available
@@ -142,6 +173,8 @@ export class DirectorSceneViewer {
 
 			// [v1.0] 加载角色
 			if (Array.isArray(payload.characters)) {
+				// 先清空旧角色，避免 reopen/loadScene 叠加多余角色
+				this.previewViewer?.clearCharacters()
 				this.characters = (payload.characters as WorkflowDirectorCharacter[]).map((c) => ({
 					...c,
 					position: {
@@ -150,11 +183,21 @@ export class DirectorSceneViewer {
 						z: Number(c.position?.z) || 0
 					},
 					rotation: c.rotation ? { ...c.rotation } : {},
-					scale: c.scale ? { ...c.scale } : undefined
+					scale: c.scale ? { ...c.scale } : undefined,
+					keyframes: Array.isArray(c.keyframes) ? [...c.keyframes] : undefined
 				}))
+				this.characterKeyframes = {}
 				for (const c of this.characters) {
 					this.previewViewer?.addCharacter(c)
+					if (Array.isArray(c.keyframes) && c.keyframes.length > 0) {
+						this.characterKeyframes[c.id] = [...c.keyframes].sort((a, b) => a.frame - b.frame)
+					}
 				}
+			}
+
+			// [v1.0] 摄像头父级恢复：必须在角色加载之后、摄像头 setCameraTrack 之后
+			if (this.cameraParentId) {
+				this.previewViewer?.setCameraParent(this.cameraParentId)
 			}
 
 			this.callbacks.onReady?.()
@@ -176,8 +219,22 @@ export class DirectorSceneViewer {
 			modelBindings: this.currentModelBindings,
 			hidePlaceholderCubes: false,
 			transparent,
-			lightingPreviewEnabled: this.currentLightingEnabled
+			lightingPreviewEnabled: this.currentLightingEnabled,
+			whiteMode: this.currentWhiteMode
 		})
+	}
+
+	/**
+	 * 白模模式：所有占位立方体统一为白色，避免与角色颜色撞色。
+	 */
+	setWhiteMode(enabled: boolean): boolean {
+		if (!this.previewViewer) return this.currentWhiteMode
+		this.currentWhiteMode = this.previewViewer.setWhiteMode(enabled)
+		return this.currentWhiteMode
+	}
+
+	getWhiteMode(): boolean {
+		return this.currentWhiteMode
 	}
 
 	// ===== 灯光 / 线框 工具条封装 =====
@@ -223,6 +280,11 @@ export class DirectorSceneViewer {
 		if (!this.previewViewer) return
 		if (track) {
 			this.previewViewer.setCameraActor(track)
+			// setCameraActor 内部会 clearCameraActor，导致摄像头脱离父级角色；
+			// 这里恢复父级挂载关系，保持场景层级一致。
+			if (this.cameraParentId) {
+				this.previewViewer.setCameraParent(this.cameraParentId)
+			}
 		} else {
 			this.previewViewer.clearCameraActor()
 		}
@@ -273,6 +335,8 @@ export class DirectorSceneViewer {
 	 */
 	async removeCamera(): Promise<boolean> {
 		if (!this.currentTrack) return false
+		// 清除摄像头父级关系，避免后续新建摄像头时被默认挂到旧角色下
+		this.cameraParentId = null
 		this.setCameraTrack(null)
 		this.emitCameraTrackChange()
 		return true
@@ -280,6 +344,7 @@ export class DirectorSceneViewer {
 
 	/**
 	 * [v1.0] 按当前编辑器视角摆放摄像头：position/target/fov 与主相机一致，roll 归零。
+	 * 注意：重建 Actor 后必须恢复摄像头的父级挂载关系，否则摄像头会从父级角色上脱落。
 	 */
 	alignCameraToView(): void {
 		if (!this.previewViewer || !this.currentTrack?.keyframes?.[0]) return
@@ -293,6 +358,10 @@ export class DirectorSceneViewer {
 		kf.roll = 0
 		// 重建 Actor 以应用新的 fov 与变换
 		this.setCameraTrack(this.currentTrack)
+		// 恢复摄像头父级挂载关系（setCameraTrack 内部会 clearCameraActor 导致脱离父级）
+		if (this.cameraParentId) {
+			this.previewViewer?.setCameraParent(this.cameraParentId)
+		}
 		this.emitCameraTrackChange()
 	}
 
@@ -325,9 +394,22 @@ export class DirectorSceneViewer {
 	removeCharacter(id: string): void {
 		const idx = this.characters.findIndex((c) => c.id === id)
 		if (idx < 0) return
-		this.previewViewer?.removeCharacter(id)
-		// 级联删除：移除该角色及其所有后代
+		// [v1.0] 删除角色前，若摄像头挂在该角色下，先解挂到场景根，避免被级联销毁
+		if (this.cameraParentId === id) {
+			this.cameraParentId = null
+			this.previewViewer?.setCameraParent(null)
+			this.emitCameraTrackChange()
+		}
+		// 级联删除：移除该角色及其所有后代；若摄像头挂在后代角色下也需先解挂
 		const descendants = this.collectDescendantIds(id)
+		for (const descId of [id, ...descendants]) {
+			if (descId !== id && this.cameraParentId === descId) {
+				this.cameraParentId = null
+				this.previewViewer?.setCameraParent(null)
+				this.emitCameraTrackChange()
+			}
+		}
+		this.previewViewer?.removeCharacter(id)
 		const removeSet = new Set<string>([id, ...descendants])
 		this.characters = this.characters.filter((c) => !removeSet.has(c.id))
 		this.emitCharactersChange()
@@ -340,6 +422,70 @@ export class DirectorSceneViewer {
 		if (parentId && this.isDescendant(parentId, childId)) return
 		this.previewViewer?.setCharacterParent(childId, parentId)
 		child.parentId = parentId ?? undefined
+		this.emitCharactersChange()
+	}
+
+	/**
+	 * 重设摄像头父级。parentId 为角色 ID 时挂到该角色 Group 下；为 null 时挂回场景根。
+	 * 摄像头会跟随父级角色移动，用于"摄像机跟随角色"场景。
+	 */
+	setCameraParent(parentId: string | null): void {
+		this.cameraParentId = parentId
+		this.previewViewer?.setCameraParent(parentId)
+		this.emitCameraTrackChange()
+	}
+
+	getCameraParentId(): string | null {
+		return this.cameraParentId
+	}
+
+	/** [v4.2] 弹簧臂开关：摄像头挂在角色子级时避免穿墙 */
+	setSpringArmEnabled(enabled: boolean): void {
+		this.previewViewer?.setSpringArmEnabled(enabled)
+	}
+
+	isSpringArmEnabled(): boolean {
+		return this.previewViewer?.isSpringArmEnabled() ?? true
+	}
+
+	/**
+	 * [v4.2] 更新指定角色的单个变换分量（位置/旋转/缩放），同步到 3D 视图与数据层。
+	 * 供右侧边栏变换输入框调用。
+	 */
+	updateCharacterTransform(
+		characterId: string,
+		kind: 'position' | 'rotation' | 'scale',
+		axis: 'x' | 'y' | 'z',
+		value: number
+	): void {
+		const character = this.characters.find((c) => c.id === characterId)
+		if (!character || !this.previewViewer) return
+		if (kind === 'position') {
+			character.position = { ...character.position, [axis]: value }
+			this.previewViewer.updateCharacterTransform(
+				characterId,
+				character.position,
+				character.rotation,
+				character.scale
+			)
+		} else if (kind === 'rotation') {
+			character.rotation = { ...(character.rotation ?? {}), [axis]: value }
+			this.previewViewer.updateCharacterTransform(
+				characterId,
+				character.position,
+				character.rotation,
+				character.scale
+			)
+		} else if (kind === 'scale') {
+			const v = Math.max(0.01, value)
+			character.scale = { ...(character.scale ?? { x: 1, y: 1, z: 1 }), [axis]: v }
+			this.previewViewer.updateCharacterTransform(
+				characterId,
+				character.position,
+				character.rotation,
+				character.scale
+			)
+		}
 		this.emitCharactersChange()
 	}
 
@@ -408,6 +554,30 @@ export class DirectorSceneViewer {
 	}
 
 	/**
+	 * [v5.0] 捕获当前预览画面为 PNG Blob（用于视频导出）。
+	 */
+	capturePreviewFrame(): Promise<Blob | null> {
+		if (!this.previewViewer) return Promise.resolve(null)
+		return this.previewViewer.capturePreviewFrame()
+	}
+
+	/**
+	 * [v5.0] 获取预览画布实际渲染尺寸。
+	 */
+	getPreviewSize(): { width: number; height: number } {
+		if (!this.previewViewer) return { width: 240, height: 160 }
+		return this.previewViewer.getPreviewSize()
+	}
+
+	/**
+	 * [v3.0] 调整预览画布分辨率（放大/缩小时调用）。
+	 */
+	setPreviewSize(width: number, height: number): void {
+		if (!this.previewViewer) return
+		this.previewViewer.setPreviewSize(width, height)
+	}
+
+	/**
 	 * [v3.0] 切换 TransformControls 模式（translate/rotate/scale）。
 	 * 用于摄像头或占位体的移动/旋转切换。
 	 */
@@ -443,8 +613,8 @@ export class DirectorSceneViewer {
 		const delta = value - kf.position[axis]
 		kf.position[axis] = value
 		kf.target[axis] += delta
-		// 轻量更新 Actor 变换，不重建 mesh
-		this.previewViewer?.updateCameraActorTransformFromTrack(this.currentTrack)
+		// 轻量更新 Actor 变换，不重建 mesh；位置更新不重新 lookAt，避免朝向被锁定
+		this.previewViewer?.updateCameraActorTransformFromTrack(this.currentTrack, false)
 		this.emitCameraTrackChange()
 	}
 
@@ -561,67 +731,362 @@ export class DirectorSceneViewer {
 		}
 	}
 
-	play(opts?: { fromTime?: number }): void {
-		if (!this.currentTrack || this.isPlaying) return
+	play(opts?: { fromFrame?: number }): void {
+		if (this.isPlaying) return
 		this.isPlaying = true
 		this.playStartTime = performance.now()
-		const fromTime = opts?.fromTime ?? 0
-		const duration = this.currentTrack.duration || 10
+		const fromFrame = opts?.fromFrame ?? this.currentFrame
+		this.currentFrame = fromFrame
+		const fps = this.fps
+		const total = this.totalFrames
+		const loop = this.currentTrack?.loop === true
+		this.callbacks.onPlayingChange?.(true)
 		const tick = () => {
 			if (!this.isPlaying) return
-			const elapsed = (performance.now() - this.playStartTime) / 1000
-			const t = fromTime + elapsed
-			if (t >= duration) {
-				if (this.currentTrack?.loop) {
+			const elapsedMs = performance.now() - this.playStartTime
+			const elapsedFrames = Math.floor((elapsedMs * fps) / 1000)
+			let next = fromFrame + elapsedFrames
+			if (next >= total) {
+				if (loop) {
 					this.playStartTime = performance.now()
+					next = next % total
 				} else {
+					this.currentFrame = total - 1
+					this.seek(this.frameToTime(this.currentFrame))
 					this.pause()
 					return
 				}
 			}
-			this.seek(t)
+			this.currentFrame = next
+			this.seek(this.frameToTime(next))
+			this.callbacks.onFrameChange?.(next)
 			this.animationFrameId = requestAnimationFrame(tick)
 		}
 		this.animationFrameId = requestAnimationFrame(tick)
 	}
 
 	pause(): void {
+		if (!this.isPlaying) return
 		this.isPlaying = false
 		if (this.animationFrameId != null) {
 			cancelAnimationFrame(this.animationFrameId)
 			this.animationFrameId = null
 		}
+		this.callbacks.onPlayingChange?.(false)
+	}
+
+	stop(): void {
+		this.pause()
+		this.currentFrame = 0
+		this.seek(0)
+		this.callbacks.onFrameChange?.(0)
+	}
+
+	/** [P1] 帧跳转：设置当前帧并 seek 到对应时间 */
+	setCurrentFrame(frame: number): void {
+		this.currentFrame = Math.max(0, Math.min(this.totalFrames - 1, Math.floor(frame)))
+		const time = this.frameToTime(this.currentFrame)
+		this.seek(time)
+		this.callbacks.onFrameChange?.(this.currentFrame)
+	}
+
+	getCurrentFrame(): number {
+		return this.currentFrame
+	}
+
+	getIsPlaying(): boolean {
+		return this.isPlaying
 	}
 
 	seek(time: number): void {
-		if (!this.currentTrack || !this.previewViewer) return
-		const kfs = this.currentTrack.keyframes || []
-		if (kfs.length === 0) return
-		// Find surrounding keyframes
-		let prev = kfs[0]
-		let next = kfs[kfs.length - 1]
-		for (let i = 0; i < kfs.length; i++) {
-			if (kfs[i].time <= time) prev = kfs[i]
-			if (kfs[i].time >= time) {
-				next = kfs[i]
+		if (!this.previewViewer) return
+		// 先更新角色（摄像头可能挂在角色下，必须先移动父级，再换算摄像头局部坐标）
+		// 按层级排序：父级必须在子级之前更新，否则子级的局部坐标换算会基于父级旧位置
+		const sorted = [...this.characters].sort((a, b) => {
+			const da = this.getCharacterDepth(a.id)
+			const db = this.getCharacterDepth(b.id)
+			return da - db
+		})
+		for (const c of sorted) {
+			const ch = this.interpolateCharacter(c.id, time)
+			if (ch) {
+				this.previewViewer.updateCharacterTransform(c.id, ch.position, ch.rotation, ch.scale)
+			}
+		}
+		// 刷新所有角色 matrixWorld，确保父级移动后子级（含摄像头）的世界→局部换算正确
+		this.previewViewer.updateCharacterWorldMatrices()
+		// 再更新摄像头：此时父级角色 matrixWorld 已是最新，世界→局部换算才正确
+		const cam = this.interpolateCamera(time)
+		if (cam) {
+			this.previewViewer.updateCameraActorTransform(cam.position, cam.target, cam.fov, cam.roll)
+		}
+	}
+
+	/** 计算角色在层级树中的深度（根角色深度为 0），用于 seek 时按父→子顺序更新 */
+	private getCharacterDepth(characterId: string): number {
+		let depth = 0
+		let current = this.characters.find((c) => c.id === characterId)
+		const visited = new Set<string>()
+		while (current?.parentId && !visited.has(current.id)) {
+			visited.add(current.id)
+			depth++
+			current = this.characters.find((c) => c.id === current!.parentId)
+		}
+		return depth
+	}
+
+	private interpolateCamera(time: number): {
+		position: { x: number; y: number; z: number }
+		target: { x: number; y: number; z: number }
+		fov: number
+		roll: number
+	} | null {
+		const track = this.currentTrack
+		if (!track) return null
+		const kfs = track.keyframes || []
+		if (kfs.length === 0) return null
+		if (kfs.length === 1) {
+			const k = kfs[0]
+			return {
+				position: { ...k.position },
+				target: { ...k.target },
+				fov: k.fov ?? 50,
+				roll: k.roll ?? 0
+			}
+		}
+		const sorted = [...kfs].sort((a, b) => a.time - b.time)
+		let prev = sorted[0]
+		let next = sorted[sorted.length - 1]
+		for (let i = 0; i < sorted.length; i++) {
+			if (sorted[i].time <= time) prev = sorted[i]
+			if (sorted[i].time >= time) {
+				next = sorted[i]
 				break
 			}
 		}
-		// Linear interpolation (P1: add easing)
 		const range = next.time - prev.time
 		const t = range > 0 ? (time - prev.time) / range : 0
-		const position = {
-			x: prev.position.x + (next.position.x - prev.position.x) * t,
-			y: prev.position.y + (next.position.y - prev.position.y) * t,
-			z: prev.position.z + (next.position.z - prev.position.z) * t
+		const eased = applyEasing(t, next.easing ?? 'linear')
+		return {
+			position: lerpVec(prev.position, next.position, eased),
+			target: lerpVec(prev.target, next.target, eased),
+			fov: lerpNum(prev.fov ?? 50, next.fov ?? 50, eased),
+			roll: lerpNum(prev.roll ?? 0, next.roll ?? 0, eased)
 		}
-		const target = {
-			x: prev.target.x + (next.target.x - prev.target.x) * t,
-			y: prev.target.y + (next.target.y - prev.target.y) * t,
-			z: prev.target.z + (next.target.z - prev.target.z) * t
+	}
+
+	private interpolateCharacter(
+		characterId: string,
+		time: number
+	): {
+		position: { x: number; y: number; z: number }
+		rotation: { yaw: number; pitch: number; roll: number }
+		scale: { x: number; y: number; z: number }
+	} | null {
+		const kfs = this.characterKeyframes[characterId]
+		if (!kfs || kfs.length === 0) return null
+		if (kfs.length === 1) {
+			const k = kfs[0]
+			return {
+				position: { ...k.position },
+				rotation: {
+					yaw: k.rotation?.yaw ?? 0,
+					pitch: k.rotation?.pitch ?? 0,
+					roll: k.rotation?.roll ?? 0
+				},
+				scale: {
+					x: k.scale?.x ?? 1,
+					y: k.scale?.y ?? 1,
+					z: k.scale?.z ?? 1
+				}
+			}
 		}
-		// Apply camera via setLayout's camera config
-		this.previewViewer.setLayout([], { position, target }, { previewMode: true })
+		// frame -> time 转换后插值
+		const sorted = [...kfs].sort((a, b) => a.frame - b.frame)
+		const sortedT = sorted.map((k) => ({ k, t: this.frameToTime(k.frame) }))
+		let prev = sortedT[0]
+		let next = sortedT[sortedT.length - 1]
+		for (let i = 0; i < sortedT.length; i++) {
+			if (sortedT[i].t <= time) prev = sortedT[i]
+			if (sortedT[i].t >= time) {
+				next = sortedT[i]
+				break
+			}
+		}
+		const range = next.t - prev.t
+		const t = range > 0 ? (time - prev.t) / range : 0
+		const eased = applyEasing(t, (next.k.easing ?? prev.k.easing ?? 'linear') as string)
+		const pk = prev.k
+		const nk = next.k
+		return {
+			position: lerpVec(pk.position, nk.position, eased),
+			rotation: {
+				yaw: lerpNum(pk.rotation?.yaw ?? 0, nk.rotation?.yaw ?? 0, eased),
+				pitch: lerpNum(pk.rotation?.pitch ?? 0, nk.rotation?.pitch ?? 0, eased),
+				roll: lerpNum(pk.rotation?.roll ?? 0, nk.rotation?.roll ?? 0, eased)
+			},
+			scale: {
+				x: lerpNum(pk.scale?.x ?? 1, nk.scale?.x ?? 1, eased),
+				y: lerpNum(pk.scale?.y ?? 1, nk.scale?.y ?? 1, eased),
+				z: lerpNum(pk.scale?.z ?? 1, nk.scale?.z ?? 1, eased)
+			}
+		}
+	}
+
+	// ===== [P1] 时间轴设置 =====
+	getFps(): number {
+		return this.fps
+	}
+	setFps(fps: number): void {
+		this.fps = Math.max(1, Math.min(240, Math.floor(fps)))
+	}
+	getTotalFrames(): number {
+		return this.totalFrames
+	}
+	setTotalFrames(n: number): void {
+		this.totalFrames = Math.max(1, Math.floor(n))
+		if (this.currentFrame >= this.totalFrames) {
+			this.currentFrame = this.totalFrames - 1
+		}
+	}
+	private frameToTime(frame: number): number {
+		return frame / this.fps
+	}
+	private timeToFrame(time: number): number {
+		return Math.round(time * this.fps)
+	}
+
+	// ===== [P1] 关键帧 CRUD =====
+
+	/** 添加摄像头关键帧：记录当前摄像头 Actor 的世界变换到指定帧 */
+	addCameraKeyframe(frame: number): WorkflowDirectorCameraKeyframe | null {
+		if (!this.currentTrack || !this.previewViewer) return null
+		const time = this.frameToTime(frame)
+		const actorTransform = this.previewViewer.getCameraActorTransform()
+		const position = actorTransform?.position ?? { x: 0, y: 0, z: 5 }
+		const target = actorTransform?.target ?? { x: 0, y: 0, z: 0 }
+		const kf: WorkflowDirectorCameraKeyframe = {
+			id: 'kf-cam-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+			time,
+			frame,
+			position: { ...position },
+			target: { ...target },
+			fov: this.currentTrack.keyframes?.[0]?.fov ?? 50,
+			roll: this.currentTrack.keyframes?.[0]?.roll ?? 0,
+			easing: 'ease-in-out'
+		}
+		// 如果已有同帧关键帧则替换
+		const existing = [...(this.currentTrack.keyframes || [])]
+		const filtered = existing.filter((k) => {
+			const kFrame = k.frame ?? this.timeToFrame(k.time)
+			return kFrame !== frame
+		})
+		filtered.push(kf)
+		filtered.sort((a, b) => {
+			const fa = a.frame ?? this.timeToFrame(a.time)
+			const fb = b.frame ?? this.timeToFrame(b.time)
+			return fa - fb
+		})
+		this.currentTrack.keyframes = filtered
+		this.emitCameraTrackChange()
+		return kf
+	}
+
+	/**
+	 * 获取指定角色的所有后代角色 ID（递归遍历 parentId 链）。
+	 * 用于添加关键帧时级联到子级对象。
+	 */
+	private getDescendantCharacterIds(characterId: string): string[] {
+		const result: string[] = []
+		const stack = [characterId]
+		while (stack.length > 0) {
+			const pid = stack.pop()!
+			for (const c of this.characters) {
+				if (c.parentId === pid) {
+					result.push(c.id)
+					stack.push(c.id)
+				}
+			}
+		}
+		return result
+	}
+
+	/** 为单个角色在指定帧添加关键帧（内部方法，不级联） */
+	private addCharacterKeyframeAt(
+		characterId: string,
+		frame: number
+	): WorkflowDirectorCharacterKeyframe | null {
+		const ch = this.characters.find((c) => c.id === characterId)
+		if (!ch || !this.previewViewer) return null
+		const transform = this.previewViewer.getCharacterTransform(characterId)
+		if (!transform) return null
+		const kf: WorkflowDirectorCharacterKeyframe = {
+			id: 'kf-char-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+			frame,
+			position: { ...transform.position },
+			rotation: { ...transform.rotation },
+			scale: { ...transform.scale },
+			easing: 'ease-in-out'
+		}
+		const list = [...(this.characterKeyframes[characterId] || [])].filter((k) => k.frame !== frame)
+		list.push(kf)
+		list.sort((a, b) => a.frame - b.frame)
+		this.characterKeyframes[characterId] = list
+		ch.keyframes = list
+		return kf
+	}
+
+	/**
+	 * 添加角色关键帧：记录当前角色 Group 的变换到指定帧。
+	 * 同时级联为所有子级角色和挂在其下的摄像头添加关键帧，
+	 * 确保播放时父子变换同步，避免子级摄像头抖动。
+	 */
+	addCharacterKeyframe(
+		characterId: string,
+		frame: number
+	): WorkflowDirectorCharacterKeyframe | null {
+		const kf = this.addCharacterKeyframeAt(characterId, frame)
+		if (!kf) return null
+		// 级联：为所有后代角色添加关键帧
+		const descendants = this.getDescendantCharacterIds(characterId)
+		for (const descId of descendants) {
+			this.addCharacterKeyframeAt(descId, frame)
+		}
+		// 级联：若摄像头挂在该角色或其后代下，也为摄像头添加关键帧
+		const allIds = [characterId, ...descendants]
+		if (this.cameraParentId && allIds.includes(this.cameraParentId)) {
+			this.addCameraKeyframe(frame)
+		}
+		this.emitCharactersChange()
+		return kf
+	}
+
+	removeKeyframe(target: { type: 'camera' | 'character'; id?: string; keyframeId: string }): void {
+		if (target.type === 'camera') {
+			if (!this.currentTrack) return
+			this.currentTrack.keyframes = (this.currentTrack.keyframes || []).filter(
+				(k) => k.id !== target.keyframeId
+			)
+			this.emitCameraTrackChange()
+		} else if (target.id) {
+			const list = (this.characterKeyframes[target.id] || []).filter(
+				(k) => k.id !== target.keyframeId
+			)
+			this.characterKeyframes[target.id] = list
+			const ch = this.characters.find((c) => c.id === target.id)
+			if (ch) {
+				ch.keyframes = list
+				this.emitCharactersChange()
+			}
+		}
+	}
+
+	getCameraKeyframes(): WorkflowDirectorCameraKeyframe[] {
+		return this.currentTrack?.keyframes ?? []
+	}
+
+	getCharacterKeyframes(characterId: string): WorkflowDirectorCharacterKeyframe[] {
+		return this.characterKeyframes[characterId] ?? []
 	}
 
 	// ===== Light rig (P2 stubs) =====
@@ -638,6 +1103,97 @@ export class DirectorSceneViewer {
 	resetCamera(): void {
 		if (!this.previewViewer) return
 		this.previewViewer.setLayout([], null, { previewMode: true })
+	}
+
+	/** 捕获当前导演控制台状态快照（撤销/重做用） */
+	captureState(): DirectorConsoleSnapshot {
+		const snapshot: DirectorConsoleSnapshot = {
+			cameraTracks: this.currentTrack ? [this.cloneTrack(this.currentTrack)] : undefined,
+			activeCameraTrackId: this.currentTrack?.id,
+			lightRig: this.currentLightRig
+				? {
+						preset: this.currentLightRig.preset,
+						exposure: this.currentLightRig.exposure,
+						lights: this.currentLightRig.lights.map((l) => ({ ...l }))
+					}
+				: undefined,
+			characters: this.characters.map((c) => ({
+				...c,
+				position: { ...c.position },
+				rotation: c.rotation ? { ...c.rotation } : undefined,
+				scale: c.scale ? { ...c.scale } : undefined,
+				keyframes: c.keyframes
+					? c.keyframes.map((k) => ({ ...k, position: { ...k.position } }))
+					: undefined
+			})),
+			cameraParentId: this.cameraParentId,
+			fps: this.fps,
+			totalFrames: this.totalFrames
+		}
+		return snapshot
+	}
+
+	/** 应用快照到当前状态（撤销/重做用） */
+	applyState(snap: DirectorConsoleSnapshot): void {
+		if (snap.cameraTracks !== undefined) {
+			const track = snap.cameraTracks.length > 0 ? this.cloneTrack(snap.cameraTracks[0]) : null
+			this.setCameraTrack(track)
+		}
+		if (snap.lightRig !== undefined) {
+			this.applyLightRig(snap.lightRig)
+		}
+		if (Array.isArray(snap.characters)) {
+			this.characters = snap.characters.map((c) => ({
+				...c,
+				position: { ...c.position },
+				rotation: c.rotation ? { ...c.rotation } : undefined,
+				scale: c.scale ? { ...c.scale } : undefined,
+				keyframes: c.keyframes
+					? c.keyframes.map((k) => ({ ...k, position: { ...k.position } }))
+					: undefined
+			}))
+			this.characterKeyframes = {}
+			for (const c of this.characters) {
+				if (Array.isArray(c.keyframes) && c.keyframes.length > 0) {
+					this.characterKeyframes[c.id] = [...c.keyframes].sort((a, b) => a.frame - b.frame)
+				}
+			}
+			this.refreshCharacterMeshes()
+			this.callbacks.onCharactersChange?.(this.characters)
+		}
+		if (snap.cameraParentId !== undefined) {
+			this.cameraParentId = snap.cameraParentId
+			this.previewViewer?.setCameraParent(snap.cameraParentId)
+		}
+		if (typeof snap.fps === 'number') this.fps = snap.fps
+		if (typeof snap.totalFrames === 'number') this.totalFrames = snap.totalFrames
+	}
+
+	/** 深拷贝轨道 */
+	private cloneTrack(track: WorkflowDirectorCameraTrack): WorkflowDirectorCameraTrack {
+		return {
+			...track,
+			keyframes: track.keyframes
+				? track.keyframes.map((k) => ({
+						...k,
+						position: { ...k.position },
+						target: { ...k.target }
+					}))
+				: []
+		}
+	}
+
+	/** 刷新角色 mesh（撤销/重做后重建） */
+	private refreshCharacterMeshes(): void {
+		if (!this.previewViewer) return
+		for (const c of this.characters) {
+			this.previewViewer.updateCharacterTransform(c.id, c.position, c.rotation, c.scale)
+		}
+	}
+
+	/** 获取当前摄像头轨道（供 UI 同步用） */
+	getCameraTrack(): WorkflowDirectorCameraTrack | null {
+		return this.currentTrack ? this.cloneTrack(this.currentTrack) : null
 	}
 
 	setRenderSuspended(suspended: boolean): void {
@@ -662,4 +1218,35 @@ export class DirectorSceneViewer {
 		this.previewViewer?.dispose()
 		this.previewViewer = null
 	}
+}
+
+// ===== [P1] 插值辅助函数 =====
+
+function applyEasing(t: number, easing: string): number {
+	switch (easing) {
+		case 'ease-in':
+			return t * t
+		case 'ease-out':
+			return 1 - (1 - t) * (1 - t)
+		case 'ease-in-out':
+			return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+		default:
+			return t
+	}
+}
+
+function lerpVec(
+	a: { x: number; y: number; z: number },
+	b: { x: number; y: number; z: number },
+	t: number
+): { x: number; y: number; z: number } {
+	return {
+		x: a.x + (b.x - a.x) * t,
+		y: a.y + (b.y - a.y) * t,
+		z: a.z + (b.z - a.z) * t
+	}
+}
+
+function lerpNum(a: number, b: number, t: number): number {
+	return a + (b - a) * t
 }

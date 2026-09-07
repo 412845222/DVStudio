@@ -395,6 +395,11 @@ export type DirectorConsoleScenePayload = {
 	lightRig?: unknown
 	characters?: unknown
 	directorDataVersion?: number
+	cameraParentId?: string | null
+	/** [P1] 时间轴帧率 */
+	fps?: number
+	/** [P1] 时间轴总帧数 */
+	totalFrames?: number
 }
 
 export type DirectorConsoleSavePayload = {
@@ -405,7 +410,19 @@ export type DirectorConsoleSavePayload = {
 		lightRig?: unknown
 		characters?: unknown
 		directorDataVersion?: number
+		cameraParentId?: string | null
+		/** [P1] 时间轴帧率 */
+		fps?: number
+		/** [P1] 时间轴总帧数 */
+		totalFrames?: number
 	}
+}
+
+/** [v5.0] 导演控制台导出视频完成通知 */
+export type DirectorConsoleExportDonePayload = {
+	nodeId: string
+	assetUrl?: string
+	assetName?: string
 }
 
 export type OpenVideoEditorPayload = {

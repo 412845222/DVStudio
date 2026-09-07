@@ -9,9 +9,9 @@ export type HistoryTimers = {
 	clearTimeout: (id: TimeoutId) => void
 }
 
-export const createEditorHistoryCore = (args: {
-	captureSnapshot: () => EditorSnapshot
-	applySnapshot: (snap: EditorSnapshot) => void
+export const createEditorHistoryCore = <Snapshot = EditorSnapshot>(args: {
+	captureSnapshot: () => Snapshot
+	applySnapshot: (snap: Snapshot) => void
 	onStateRestored?: (reason: 'replace' | 'undo' | 'redo') => void
 	onSaved?: (payload: EditorSavePayload) => void
 	onChanged?: () => void
@@ -28,9 +28,9 @@ export const createEditorHistoryCore = (args: {
 		clearTimeout: (id) => clearTimeout(id)
 	}
 
-	const past: EditorSnapshot[] = []
-	const future: EditorSnapshot[] = []
-	let current: EditorSnapshot = args.captureSnapshot()
+	const past: Snapshot[] = []
+	const future: Snapshot[] = []
+	let current: Snapshot = args.captureSnapshot()
 
 	let isRestoring = false
 	let captureTimer: TimeoutId | null = null
@@ -67,7 +67,7 @@ export const createEditorHistoryCore = (args: {
 		commitCaptureNow()
 	}
 
-	const applyAndNotify = (snap: EditorSnapshot, reason: 'replace' | 'undo' | 'redo') => {
+	const applyAndNotify = (snap: Snapshot, reason: 'replace' | 'undo' | 'redo') => {
 		args.applySnapshot(snap)
 		args.onStateRestored?.(reason)
 	}
@@ -109,9 +109,9 @@ export const createEditorHistoryCore = (args: {
 		const json = JSON.stringify(snapshot)
 		const payload: EditorSavePayload = {
 			savedAt,
-			snapshot,
+			snapshot: snapshot as EditorSnapshot,
 			json,
-			projectPackageJson: exportSnapshotToProjectPackageV1String(snapshot)
+			projectPackageJson: exportSnapshotToProjectPackageV1String(snapshot as EditorSnapshot)
 		}
 
 		args.onSaved?.(payload)
@@ -124,7 +124,7 @@ export const createEditorHistoryCore = (args: {
 		saveHandler = handler
 	}
 
-	const replaceCurrent = (next: EditorSnapshot) => {
+	const replaceCurrent = (next: Snapshot) => {
 		isRestoring = true
 		try {
 			current = next

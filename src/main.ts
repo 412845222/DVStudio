@@ -55,6 +55,11 @@ window.addEventListener(
 
 		// Ctrl+S / Cmd+S: 阻止浏览器“保存网页”
 		if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+			const routeName = router.currentRoute.value.name
+			// DirectorConsole 路由：PASS THROUGH - 导演控制台窗口自行处理保存
+			if (routeName === 'DirectorConsole') {
+				return
+			}
 			e.preventDefault()
 			e.stopPropagation()
 			// Allow dialogs to override save behavior (e.g., apply changes)
@@ -64,7 +69,7 @@ window.addEventListener(
 		}
 
 		// Ctrl+Z/Ctrl+Y/Ctrl+Shift+Z: 撤销/重做（输入框内交给浏览器原生文本撤销）
-		// AIWorkflow/BlueprintTest: PASS THROUGH - engine handles undo/redo via InputManager, do NOT intercept here
+		// AIWorkflow/BlueprintTest/DirectorConsole: PASS THROUGH - 各自窗口自行处理撤销/重做
 		if (
 			!isEditable &&
 			(e.ctrlKey || e.metaKey) &&
@@ -72,7 +77,11 @@ window.addEventListener(
 		) {
 			const isRedo = e.shiftKey || e.key === 'y' || e.key === 'Y'
 			const routeName = router.currentRoute.value.name
-			if (routeName === 'AIWorkflow' || routeName === 'BlueprintTest') {
+			if (
+				routeName === 'AIWorkflow' ||
+				routeName === 'BlueprintTest' ||
+				routeName === 'DirectorConsole'
+			) {
 				return
 			}
 			e.preventDefault()

@@ -1,4 +1,4 @@
-﻿export type SubtitleRecogModelSize = 'tiny' | 'base' | 'small'
+export type SubtitleRecogModelSize = 'tiny' | 'base' | 'small'
 
 export interface SubtitleRecogCue {
 	startTime: number
@@ -312,6 +312,14 @@ declare global {
 				offDirectorConsoleSave(listenerId: number): void
 				onDirectorConsoleDataRequest(handler: (payload: { nodeId: string }) => void): number
 				offDirectorConsoleDataRequest(listenerId: number): void
+				// [v5.0] 导出视频
+				directorConsoleCreateTempDir(): Promise<{ ok: boolean; jobId?: string; dir?: string; error?: string }>
+				directorConsoleWriteFrame(payload: { jobId: string; frameIndex: number; data: string }): Promise<{ ok: boolean; error?: string }>
+				directorConsoleExportVideo(payload: { jobId: string; fps: number; outputName?: string }): Promise<{ ok: boolean; outputPath?: string; error?: string }>
+				directorConsoleCleanupTempDir(payload: { jobId: string }): Promise<{ ok: boolean }>
+				directorConsoleNotifyExportDone(payload: { nodeId: string; assetUrl?: string; assetName?: string }): void
+				onDirectorConsoleExportDone(handler: (payload: { nodeId: string; assetUrl?: string; assetName?: string }) => void): number
+				offDirectorConsoleExportDone(listenerId: number): void
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -364,6 +372,31 @@ declare global {
 					bucket?: string
 					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
+				readProjectAssetText(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					projectRelativePath?: string
+				}): Promise<{
+					ok: boolean
+					resolved?: boolean
+					text?: string
+					absolutePath?: string
+					projectRelativePath?: string
+					reason?: string
+					error?: string
+				}>
+				writeProjectAssetText(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					text: string
+				}): Promise<{
+					ok: boolean
+					absolutePath?: string
+					projectRelativePath?: string
+					error?: string
+				}>
 				importProjectAsset(payload: {
 					projectId: number
 					kind?: string

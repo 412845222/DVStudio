@@ -859,7 +859,9 @@ import {
 	registerProjectRoot,
 	repairAllProjectAssets,
 	uploadProjectAsset,
-	importProjectAsset
+	importProjectAsset,
+	readProjectAssetText,
+	writeProjectAssetText
 } from '../../electronBridge'
 import ModalDialog from '../../ui/UIComponent/ModalDialog.vue'
 import {
@@ -3871,6 +3873,12 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 		}
 	} catch {
 		// ignore and keep current in-memory rootPath
+	}
+
+	// 同步项目 ID 和根路径到 vuex store，供节点组件（如导演控制台节点）读取工作区目录
+	store.commit('setProjectId', { projectId: pid })
+	if (rootPath) {
+		store.commit('setProjectRootPath', { projectRootPath: rootPath })
 	}
 
 	if (isElectron() && rootPath) {
@@ -10185,6 +10193,23 @@ const projectList = ref<BlueprintProjectListItem[]>([])
 const currentProjectId = ref<number | null>(null)
 const currentProjectName = ref('')
 const currentProjectRootPath = ref('')
+
+// 同步项目 ID 和根路径到 vuex store，供节点组件（如导演控制台节点）读取工作区目录
+watch(
+	currentProjectId,
+	(id) => {
+		store.commit('setProjectId', { projectId: id })
+	},
+	{ immediate: true }
+)
+watch(
+	currentProjectRootPath,
+	(rootPath) => {
+		store.commit('setProjectRootPath', { projectRootPath: rootPath })
+	},
+	{ immediate: true }
+)
+
 const noProjectSelected = ref(false)
 const agentWorkingDirectory = computed(() => {
 	const rootPath = String(currentProjectRootPath.value || '').trim()
@@ -11103,7 +11128,14 @@ const {
 	getFirstIncomingEdge,
 	engineApi,
 	currentProjectId: currentProjectId.value ?? undefined,
-	pushToast
+	pushToast,
+	getProjectId: () => {
+		const pid = currentProjectId.value
+		return pid ? Number(pid) : undefined
+	},
+	uploadProjectAsset,
+	readProjectAssetText,
+	writeProjectAssetText
 })
 
 const {

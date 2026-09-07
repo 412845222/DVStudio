@@ -286,6 +286,53 @@ export async function uploadProjectAsset(payload: {
 	return result
 }
 
+export async function readProjectAssetText(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	projectRelativePath?: string
+}): Promise<{
+	ok: boolean
+	resolved?: boolean
+	text?: string
+	absolutePath?: string
+	projectRelativePath?: string
+	reason?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.readProjectAssetText) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.readProjectAssetText({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		projectRelativePath: payload?.projectRelativePath
+	})
+}
+
+export async function writeProjectAssetText(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	text: string
+}): Promise<{
+	ok: boolean
+	absolutePath?: string
+	projectRelativePath?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.writeProjectAssetText) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.writeProjectAssetText({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		text: payload?.text
+	})
+}
+
 export async function importProjectAsset(payload: {
 	projectId: number
 	kind?: string
@@ -669,6 +716,102 @@ export function onDirectorConsoleDataRequest(cb: (payload: { nodeId: string }) =
 export function offDirectorConsoleDataRequest(listenerId: number): void {
 	try {
 		window?.dweb?.window?.offDirectorConsoleDataRequest?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+// ===== [v5.0] 导演控制台导出视频 =====
+export async function directorConsoleCreateTempDir(): Promise<{
+	ok: boolean
+	jobId?: string
+	dir?: string
+	error?: string
+}> {
+	if (!window?.dweb?.window?.directorConsoleCreateTempDir) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleCreateTempDir()
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleWriteFrame(payload: {
+	jobId: string
+	frameIndex: number
+	data: string
+}): Promise<{ ok: boolean; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleWriteFrame) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleWriteFrame(payload)
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleExportVideo(payload: {
+	jobId: string
+	fps: number
+	outputName?: string
+}): Promise<{ ok: boolean; outputPath?: string; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleExportVideo) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleExportVideo(payload)
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleCleanupTempDir(payload: {
+	jobId: string
+}): Promise<{ ok: boolean }> {
+	if (!window?.dweb?.window?.directorConsoleCleanupTempDir) {
+		return { ok: false }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleCleanupTempDir(payload)
+		return r || { ok: true }
+	} catch {
+		return { ok: false }
+	}
+}
+
+export function directorConsoleNotifyExportDone(payload: {
+	nodeId: string
+	assetUrl?: string
+	assetName?: string
+}): void {
+	try {
+		window?.dweb?.window?.directorConsoleNotifyExportDone?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleExportDone(
+	cb: (payload: { nodeId: string; assetUrl?: string; assetName?: string }) => void
+): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleExportDone) return -1
+	try {
+		return dweb.window.onDirectorConsoleExportDone(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleExportDone(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleExportDone?.(listenerId)
 	} catch {
 		/* ignore */
 	}

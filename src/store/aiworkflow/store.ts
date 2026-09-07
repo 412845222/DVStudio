@@ -1,4 +1,4 @@
-﻿import { createStore, type Store } from 'vuex'
+import { createStore, type Store } from 'vuex'
 import type { InjectionKey } from 'vue'
 import type {
 	WorkflowEdge,
@@ -2579,6 +2579,12 @@ export const AIWorkflowKey: InjectionKey<Store<WorkflowState>> = Symbol('AIWorkf
 export const AIWorkflowStore = createStore<WorkflowState>({
 	state: createDefaultAIWorkflowState,
 	mutations: {
+		setProjectRootPath(state: WorkflowState, payload: { projectRootPath: string }) {
+			state.projectRootPath = String(payload?.projectRootPath || '')
+		},
+		setProjectId(state: WorkflowState, payload: { projectId: number | null }) {
+			state.projectId = payload?.projectId ?? null
+		},
 		hydrateDraft(state: WorkflowState, payload: { snapshot: unknown }) {
 			const s = payload?.snapshot
 			if (!s || !isRecord(s)) return
@@ -3847,6 +3853,9 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 					cameraTracks: [],
 					activeCameraTrackId: ''
 				}
+				// [v5.0] 导出视频：输出视频锚点，供下游视频节点连接
+				n.inputs = [{ id: 'in-0', label: '入口', mediaType: 'text' }]
+				n.outputs = [{ id: 'out-video', label: '导出视频', mediaType: 'video' }]
 			}
 			if (payload.type === 'image') {
 				n.imageSettings = n.imageSettings ?? { outputWidth: 1920, outputHeight: 1080 }
