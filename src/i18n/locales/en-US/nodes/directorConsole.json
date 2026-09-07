@@ -11,6 +11,7 @@
 	"nodes.directorConsole.cameraTrackEmpty": "Drag to place camera",
 	"nodes.directorConsole.dragToAddCamera": "Drag to place camera",
 	"nodes.directorConsole.removeCamera": "Remove camera",
+	"nodes.directorConsole.alignToView": "Align to View",
 	"nodes.directorConsole.cameraNameLabel": "Name",
 	"nodes.directorConsole.cameraAlreadyExists": "Camera already exists in scene",
 	"nodes.directorConsole.cameraPreviewTitle": "Camera Preview",

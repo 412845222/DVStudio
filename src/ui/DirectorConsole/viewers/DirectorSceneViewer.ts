@@ -254,6 +254,24 @@ export class DirectorSceneViewer {
 		return true
 	}
 
+	/**
+	 * [v1.0] 按当前编辑器视角摆放摄像头：position/target/fov 与主相机一致，roll 归零。
+	 */
+	alignCameraToView(): void {
+		if (!this.previewViewer || !this.currentTrack?.keyframes?.[0]) return
+		const position = this.previewViewer.getCameraPosition()
+		const target = this.previewViewer.getControlsTarget()
+		const fov = this.previewViewer.getCameraFov()
+		const kf = this.currentTrack.keyframes[0]
+		kf.position = { ...position }
+		kf.target = { ...target }
+		kf.fov = fov
+		kf.roll = 0
+		// 重建 Actor 以应用新的 fov 与变换
+		this.setCameraTrack(this.currentTrack)
+		this.emitCameraTrackChange()
+	}
+
 	hasCamera(): boolean {
 		return this.currentTrack !== null
 	}
@@ -346,7 +364,6 @@ export class DirectorSceneViewer {
 		}
 		if (axis === 'z') {
 			kf.roll = degrees
-			console.log('[DirectorSceneViewer] updateCameraRotation z =', degrees, 'kf.roll =', kf.roll)
 		}
 		// 轻量更新 Actor 变换，不重建 mesh
 		this.previewViewer?.updateCameraActorTransformFromTrack(this.currentTrack)
@@ -404,8 +421,6 @@ export class DirectorSceneViewer {
 
 	private emitCameraTrackChange(): void {
 		if (!this.callbacks.onCameraTrackChange) return
-		const roll = this.currentTrack?.keyframes?.[0]?.roll
-		console.log('[DirectorSceneViewer] emitCameraTrackChange roll =', roll)
 		this.callbacks.onCameraTrackChange(this.currentTrack ? [this.currentTrack] : [])
 	}
 

@@ -30,18 +30,25 @@
 						</svg>
 						<span>{{ t('nodes.directorConsole.dragToAddCamera') }}</span>
 					</button>
-					<button
-						v-else
-						type="button"
-						class="dc-camera-btn dc-camera-remove"
-						@click="onRemoveCamera"
-					>
+					<button class="dc-camera-btn dc-camera-remove" @click="onRemoveCamera">
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
 							<path
 								d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
 							/>
 						</svg>
 						<span>{{ t('nodes.directorConsole.removeCamera') }}</span>
+					</button>
+					<!-- [v1.0] 按视图摆放：将摄像头对齐到当前编辑器视角 -->
+					<button
+						v-if="hasCamera"
+						class="dc-camera-btn dc-camera-align-view"
+						@click="onAlignCameraToView"
+					>
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+							<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+							<circle cx="12" cy="12" r="3" />
+						</svg>
+						<span>{{ t('nodes.directorConsole.alignToView') }}</span>
 					</button>
 					<div v-if="hasCamera" class="dc-camera-info">
 						<span class="dc-camera-info-label">
@@ -503,12 +510,6 @@ function syncCameraStateFromTracks(tracks: WorkflowDirectorCameraTrack[]) {
 			currentCameraTarget.value = { ...kf.target }
 			currentCameraRoll.value = Number(kf.roll) || 0
 		}
-		console.log(
-			'[DirectorConsoleWindow] syncCameraStateFromTracks roll =',
-			kf?.roll,
-			'track ref same?',
-			currentCameraTrack.value === tracks[0]
-		)
 	} else {
 		currentCameraTrack.value = null
 		hasCamera.value = false
@@ -528,6 +529,7 @@ type DragAxis = 'x' | 'y' | 'z'
 type DragKind = 'position' | 'rotation' | 'scale' | 'fov'
 const dragState = {
 	active: false,
+	dragging: false,
 	kind: '' as DragKind | '',
 	axis: '' as DragAxis | '',
 	startX: 0,
@@ -548,14 +550,14 @@ function getDragStep(kind: DragKind): number {
 }
 
 function onTransformDragStart(event: MouseEvent, kind: DragKind, axis: DragAxis) {
-	event.preventDefault()
+	// 不调用 preventDefault，让输入框可以获得焦点进行手动输入
 	dragState.active = true
+	dragState.dragging = false
 	dragState.kind = kind
 	dragState.axis = axis
 	dragState.startX = event.clientX
 	if (kind === 'position') dragState.startValue = currentCameraPos.value[axis]
 	else if (kind === 'rotation') {
-		// 旋转：startValue 取当前绝对角度
 		dragState.startValue = getCameraRotationDeg()[axis]
 	} else if (kind === 'scale') dragState.startValue = cameraScale.value[axis]
 	else if (kind === 'fov') dragState.startValue = currentCameraFov.value
@@ -563,9 +565,18 @@ function onTransformDragStart(event: MouseEvent, kind: DragKind, axis: DragAxis)
 	window.addEventListener('mouseup', onTransformDragEnd)
 }
 
+const DRAG_THRESHOLD = 3
+
 function onTransformDragMove(event: MouseEvent) {
 	if (!dragState.active) return
 	const delta = event.clientX - dragState.startX
+	// 移动超过阈值才进入拖拽模式，避免误触
+	if (!dragState.dragging && Math.abs(delta) < DRAG_THRESHOLD) return
+	if (!dragState.dragging) {
+		dragState.dragging = true
+		// 进入拖拽后阻止文本选中
+		event.preventDefault()
+	}
 	const step = getDragStep(dragState.kind as DragKind)
 	const newValue = dragState.startValue + delta * step
 	const axis = dragState.axis as DragAxis
@@ -573,10 +584,7 @@ function onTransformDragMove(event: MouseEvent) {
 		currentCameraPos.value[axis] = parseFloat(newValue.toFixed(3))
 		sceneViewer?.updateCameraPosition(axis, currentCameraPos.value[axis])
 	} else if (dragState.kind === 'rotation') {
-		// 旋转：直接用增量值
-		const v = parseFloat(newValue.toFixed(2))
-		console.log('[DirectorConsoleWindow] onTransformDragMove rotation axis =', axis, 'value =', v)
-		sceneViewer?.updateCameraRotation(axis, v)
+		sceneViewer?.updateCameraRotation(axis, parseFloat(newValue.toFixed(2)))
 	} else if (dragState.kind === 'scale') {
 		const v = Math.max(0.01, parseFloat(newValue.toFixed(3)))
 		cameraScale.value[axis] = v
@@ -590,6 +598,7 @@ function onTransformDragMove(event: MouseEvent) {
 
 function onTransformDragEnd() {
 	dragState.active = false
+	dragState.dragging = false
 	dragState.kind = ''
 	dragState.axis = ''
 	window.removeEventListener('mousemove', onTransformDragMove)
@@ -673,6 +682,11 @@ async function onAddCameraClick() {
 async function onRemoveCamera() {
 	if (!sceneViewer || !hasCamera.value) return
 	await sceneViewer.removeCamera()
+}
+
+function onAlignCameraToView() {
+	if (!sceneViewer || !hasCamera.value) return
+	sceneViewer.alignCameraToView()
 }
 
 function onViewportDragOver(event: DragEvent) {
@@ -911,6 +925,21 @@ defineExpose({
 	background: color-mix(in srgb, #ff6b6b 10%, transparent);
 	border-color: color-mix(in srgb, #ff6b6b 60%, transparent);
 	box-shadow: inset 0 0 12px color-mix(in srgb, #ff6b6b 18%, transparent);
+}
+
+.dc-camera-align-view {
+	border-color: color-mix(in srgb, #4ecdc4 40%, var(--wf-border-subtle, transparent));
+	color: var(--wf-text, #c5d4e3);
+}
+
+.dc-camera-align-view svg {
+	color: #4ecdc4;
+}
+
+.dc-camera-align-view:hover {
+	background: color-mix(in srgb, #4ecdc4 10%, transparent);
+	border-color: color-mix(in srgb, #4ecdc4 60%, transparent);
+	box-shadow: inset 0 0 12px color-mix(in srgb, #4ecdc4 18%, transparent);
 }
 
 .dc-camera-info {

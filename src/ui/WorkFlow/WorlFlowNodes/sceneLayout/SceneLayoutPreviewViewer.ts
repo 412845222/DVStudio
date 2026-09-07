@@ -2045,7 +2045,6 @@ export class SceneLayoutPreviewViewer {
 			const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ')
 			kf.roll = +((euler.z * 180) / Math.PI).toFixed(2)
 		}
-		console.log('[syncCameraActorTransform] extracted roll =', kf.roll)
 		// 更新 track 数据
 		kf.position = { x: pos.x, y: clampedY, z: pos.z }
 		kf.target = { x: newTarget.x, y: newTarget.y, z: newTarget.z }
@@ -2192,9 +2191,6 @@ export class SceneLayoutPreviewViewer {
 		const tz = Number(kf.target?.z) || 0
 		const fov = Number(kf.fov) || 50
 		const roll = Number(kf.roll) || 0
-		if (Math.abs(roll) > 0.01) {
-			console.log('[renderPreview] applying roll =', roll)
-		}
 		this.previewCamera.position.set(px, py, pz)
 		// 应用 roll：先设置 up 向量（绕前向轴旋转），再 lookAt
 		if (roll !== 0) {
@@ -2202,9 +2198,6 @@ export class SceneLayoutPreviewViewer {
 			const forward = new THREE.Vector3(tx - px, ty - py, tz - pz).normalize()
 			const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(forward, rollRad)
 			this.previewCamera.up.copy(up)
-			if (Math.abs(roll) > 0.01) {
-				console.log('[renderPreview] up =', up.x, up.y, up.z, 'fov =', fov)
-			}
 		} else {
 			this.previewCamera.up.set(0, 1, 0)
 		}

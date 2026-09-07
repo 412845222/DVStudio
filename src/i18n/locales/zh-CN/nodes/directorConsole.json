@@ -11,6 +11,7 @@
 	"nodes.directorConsole.cameraTrackEmpty": "拖拽放置摄像头",
 	"nodes.directorConsole.dragToAddCamera": "拖拽放置摄像头",
 	"nodes.directorConsole.removeCamera": "删除摄像头",
+	"nodes.directorConsole.alignToView": "按视图摆放",
 	"nodes.directorConsole.cameraNameLabel": "名称",
 	"nodes.directorConsole.cameraAlreadyExists": "场景中已存在摄像头",
 	"nodes.directorConsole.cameraPreviewTitle": "镜头预览",
