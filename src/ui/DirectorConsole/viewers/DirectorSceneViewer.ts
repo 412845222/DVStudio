@@ -320,7 +320,10 @@ export class DirectorSceneViewer {
 	updateCameraPosition(axis: 'x' | 'y' | 'z', value: number): void {
 		if (!this.currentTrack?.keyframes?.[0]) return
 		const kf = this.currentTrack.keyframes[0]
+		// 移动 position 时，target 同步移动相同 delta，保持朝向不变
+		const delta = value - kf.position[axis]
 		kf.position[axis] = value
+		kf.target[axis] += delta
 		// 轻量更新 Actor 变换，不重建 mesh
 		this.previewViewer?.updateCameraActorTransformFromTrack(this.currentTrack)
 		this.emitCameraTrackChange()
