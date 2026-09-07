@@ -18,7 +18,8 @@ import type {
 	WorkflowUnrealResolvedParentReference,
 	WorkflowUnrealResolvedSurfaceSemantics,
 	WorkflowSceneLightingPreviewConfig,
-	WorkflowDirectorCameraTrack
+	WorkflowDirectorCameraTrack,
+	WorkflowDirectorCharacter
 } from '../../../../aiworkflow/types'
 
 type AnchorPoint = { center: Vector3Like; base: Vector3Like; top: Vector3Like }
@@ -277,6 +278,8 @@ type ViewerOptions = {
 	onCameraTrackChange?: (track: WorkflowDirectorCameraTrack | null) => void
 	/** [v1.0] 摄像头 Actor 缩放变更回调（scale 模式，仅视觉） */
 	onCameraScaleChange?: (scale: { x: number; y: number; z: number }) => void
+	/** [v1.0] 角色变换拖拽结束回调，通知上层同步角色 position/rotation/scale */
+	onCharacterTransformChange?: (characterId: string) => void
 	/**
 	 * 【BUGFIX 2026-07】节流视角状态变更通知（每 ~120ms 最多一次）。
 	 * - 相比之前只在 onCameraInteractionEnd（用户松开鼠标/滚轮停止）时才通知，
@@ -927,6 +930,7 @@ export class SceneLayoutPreviewViewer {
 	private readonly pointer: Vector2Like
 	private readonly meshesById = new Map<string, MeshLike>()
 	private readonly edgesById = new Map<string, LineLike>()
+	private readonly characterMeshesById = new Map<string, GroupLike>()
 	private readonly boundModelsById = new Map<string, GroupLike>()
 	private readonly bindingById = new Map<string, WorkflowSceneLayoutModelBinding>()
 	private readonly relationLines: RelationLine[] = []
@@ -962,6 +966,8 @@ export class SceneLayoutPreviewViewer {
 	private cameraActorGroup: GroupLike | null = null
 	// [v3.0] 摄像头 target 标记 Group（独立定位到 target 世界坐标，不跟随摄像头旋转）
 	private cameraTargetGroup: GroupLike | null = null
+	// [v1.0] 角色 Group 容器（圆柱体身体 + 圆球头部），独立于占位体 group
+	private readonly characterGroup: GroupLike
 	// [v3.0] position→target 独立连线（不跟随 group 旋转，便于动态更新端点）
 	private cameraTargetLine: LineLike | null = null
 	// [v3.0] 摄像头到 target 的原始距离，供 rotate 模式重新计算 target 使用
@@ -969,7 +975,7 @@ export class SceneLayoutPreviewViewer {
 	// [v3.0] 当前摄像头 track 缓存，供右下角预览渲染使用
 	private currentCameraTrack: WorkflowDirectorCameraTrack | null = null
 	// [v3.0] 摄像头选择专用 ID（与占位体 selectedId 区分）
-	private static readonly CAMERA_SELECTION_ID = '__camera_actor__'
+	public static readonly CAMERA_SELECTION_ID = '__camera_actor__'
 	// [v3.0] 右下角镜头预览 renderer / camera
 	private previewRenderer: WebGLRendererLike | null = null
 	private previewCamera: PerspectiveCameraLike | null = null
@@ -1066,19 +1072,28 @@ export class SceneLayoutPreviewViewer {
 			const dragEvent = event as TransformControlsDragEvent
 			this.transforming = dragEvent.value === true
 			this.controls.enabled = this.interactiveActive && !this.transforming
+			const isCamera = this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+			const isCharacter = !isCamera && this.characterMeshesById.has(this.selectedId)
 			if (dragEvent.value) {
 				// [v3.0] 摄像头拖拽不需要 baseline（不涉及占位体恢复逻辑）
-				if (this.selectedId !== SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+				if (!isCamera) {
 					this.dragBaseline = this.captureSelectedDragBaseline()
 				}
 				this.dragDirty = false
 			} else {
-				if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+				if (isCamera) {
 					// [v3.0] 摄像头拖拽结束：通知上层持久化新的 position/target
 					if (this.dragDirty) {
 						this.options.onCameraTrackChange?.(this.currentCameraTrack)
 					}
 					this.dragDirty = false
+				} else if (isCharacter) {
+					// [v1.0] 角色拖拽结束：通知上层同步变换
+					if (this.dragDirty) {
+						this.options.onCharacterTransformChange?.(this.selectedId)
+					}
+					this.dragDirty = false
+					this.dragBaseline = null
 				} else {
 					if (!this.dragDirty) this.restoreFromDragBaseline()
 					if (this.dragDirty) this.emitLayoutChange()
@@ -1103,6 +1118,12 @@ export class SceneLayoutPreviewViewer {
 						z: Number(s.z) || 1
 					})
 				}
+				this.dragDirty = true
+				this.requestRender()
+				return
+			}
+			// [v1.0] 角色拖拽：标记 dirty，实际同步在拖拽结束时触发
+			if (this.characterMeshesById.has(this.selectedId)) {
 				this.dragDirty = true
 				this.requestRender()
 				return
@@ -1140,6 +1161,8 @@ export class SceneLayoutPreviewViewer {
 		this.scene.add(this.group)
 		this.lightsGroup = new THREE.Group() as unknown as GroupLike
 		this.scene.add(this.lightsGroup)
+		this.characterGroup = new THREE.Group() as unknown as GroupLike
+		this.scene.add(this.characterGroup)
 		this.raycaster = new THREE.Raycaster() as unknown as RaycasterLike
 		this.pointer = new THREE.Vector2() as unknown as Vector2Like
 		this.loader = new GLTFLoader() as unknown as GLTFLoaderLike
@@ -2325,6 +2348,190 @@ export class SceneLayoutPreviewViewer {
 		if (!group) return
 		group.scale[axis] = Math.max(0.01, value)
 		this.requestRender()
+	}
+
+	// ===== [v1.0] 角色管理 =====
+
+	/**
+	 * 添加角色到场景（圆柱体身体 + 圆球头部）。
+	 * 角色 Group 注册到 characterMeshesById 与 meshesById，复用 selectItem / pickObject。
+	 */
+	addCharacter(character: WorkflowDirectorCharacter): void {
+		const group = new THREE.Group() as unknown as GroupLike
+		group.userData = { characterId: character.id, isCharacter: true }
+
+		const bodyRadius = 0.4
+		const bodyHeight = 1.4
+		const headRadius = 0.32
+
+		const body = new THREE.Mesh(
+			new THREE.CylinderGeometry(bodyRadius, bodyRadius, bodyHeight, 16),
+			new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.6, metalness: 0.1 })
+		)
+		body.position.y = bodyHeight / 2
+		body.castShadow = true
+
+		const head = new THREE.Mesh(
+			new THREE.SphereGeometry(headRadius, 16, 16),
+			new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.5, metalness: 0.1 })
+		)
+		head.position.y = bodyHeight + headRadius * 0.7
+		head.castShadow = true
+
+		group.add(body as unknown as Object3Dlike)
+		group.add(head as unknown as Object3Dlike)
+
+		const pos = character.position
+		group.position.set(Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0)
+		group.rotation.set(
+			((character.rotation?.pitch ?? 0) * Math.PI) / 180,
+			((character.rotation?.yaw ?? 0) * Math.PI) / 180,
+			((character.rotation?.roll ?? 0) * Math.PI) / 180
+		)
+		if (character.scale) {
+			group.scale.set(
+				Math.max(0.01, Number(character.scale.x) || 1),
+				Math.max(0.01, Number(character.scale.y) || 1),
+				Math.max(0.01, Number(character.scale.z) || 1)
+			)
+		}
+
+		const parent = character.parentId ? this.characterMeshesById.get(character.parentId) : null
+		if (parent) {
+			parent.add(group)
+		} else {
+			this.characterGroup.add(group)
+		}
+
+		this.characterMeshesById.set(character.id, group)
+		this.meshesById.set(character.id, group as unknown as MeshLike)
+		this.requestRender()
+	}
+
+	/**
+	 * 移除角色（含所有后代）。
+	 */
+	removeCharacter(characterId: string): void {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return
+		const descendants = this.collectCharacterDescendantIds(group)
+		group.parent?.remove(group)
+		this.disposeObject3D(group)
+		this.characterMeshesById.delete(characterId)
+		this.meshesById.delete(characterId)
+		for (const descId of descendants) {
+			this.characterMeshesById.delete(descId)
+			this.meshesById.delete(descId)
+		}
+		if (this.selectedId === characterId) this.selectItem('')
+		this.requestRender()
+	}
+
+	/**
+	 * 重设角色父级。newParentId 为 null 时挂到根容器。
+	 * 保持世界坐标不变（reparent 前后做世界→局部换算）。
+	 */
+	setCharacterParent(characterId: string, newParentId: string | null): void {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return
+
+		// 防止循环引用
+		if (newParentId && this.isCharacterDescendant(newParentId, characterId)) return
+
+		const obj = group as unknown as Object3Dlike
+		const worldPos = new THREE.Vector3()
+		const worldQuat = new THREE.Quaternion()
+		const worldScale = new THREE.Vector3()
+		obj.getWorldPosition(worldPos as unknown as Vector3Like)
+		obj.getWorldQuaternion(worldQuat as unknown as QuaternionLike)
+		obj.getWorldScale(worldScale as unknown as Vector3Like)
+
+		group.parent?.remove(group)
+
+		const newParent = newParentId ? this.characterMeshesById.get(newParentId) : null
+		const parentObj = (newParent ?? this.characterGroup) as unknown as Object3Dlike
+		parentObj.add(group as unknown as Object3Dlike)
+
+		// 将世界坐标换算为新父级下的局部坐标（用 matrixWorld 求逆）
+		const invMatrix = new THREE.Matrix4() as unknown as Matrix4Like
+		invMatrix.copy(parentObj.matrixWorld)
+		invMatrix.invert()
+		const localPos = worldPos.clone()
+		// applyMatrix4: localPos = invMatrix * worldPos
+		const m = invMatrix as unknown as {
+			elements: number[]
+		}
+		const e = m.elements
+		const x = localPos.x,
+			y = localPos.y,
+			z = localPos.z
+		localPos.x = e[0] * x + e[4] * y + e[8] * z + e[12]
+		localPos.y = e[1] * x + e[5] * y + e[9] * z + e[13]
+		localPos.z = e[2] * x + e[6] * y + e[10] * z + e[14]
+		group.position.copy(localPos as unknown as Vector3Like)
+
+		const parentWorldQuat = new THREE.Quaternion()
+		parentObj.getWorldQuaternion(parentWorldQuat as unknown as QuaternionLike)
+		const localQuat = parentWorldQuat.invert().multiply(worldQuat)
+		group.quaternion.copy(localQuat as unknown as QuaternionLike)
+
+		const parentWorldScale = new THREE.Vector3()
+		parentObj.getWorldScale(parentWorldScale as unknown as Vector3Like)
+		group.scale.set(
+			worldScale.x / parentWorldScale.x,
+			worldScale.y / parentWorldScale.y,
+			worldScale.z / parentWorldScale.z
+		)
+
+		this.requestRender()
+	}
+
+	/**
+	 * 获取角色当前局部变换（供 DirectorSceneViewer 同步到数据层）。
+	 */
+	getCharacterTransform(characterId: string): {
+		position: { x: number; y: number; z: number }
+		rotation: { yaw: number; pitch: number; roll: number }
+		scale: { x: number; y: number; z: number }
+	} | null {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return null
+		const euler = new THREE.Euler().setFromQuaternion(
+			group.quaternion as unknown as QuaternionLike,
+			'YXZ'
+		)
+		return {
+			position: { x: group.position.x, y: group.position.y, z: group.position.z },
+			rotation: {
+				yaw: (euler.y * 180) / Math.PI,
+				pitch: (euler.x * 180) / Math.PI,
+				roll: (euler.z * 180) / Math.PI
+			},
+			scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z }
+		}
+	}
+
+	private collectCharacterDescendantIds(group: GroupLike): string[] {
+		const ids: string[] = []
+		const stack = [...(group.children as unknown as Object3Dlike[])]
+		while (stack.length > 0) {
+			const child = stack.pop()!
+			const id = child?.userData?.characterId as string | undefined
+			if (id && this.characterMeshesById.has(id)) ids.push(id)
+			if (child?.children) stack.push(...(child.children as unknown as Object3Dlike[]))
+		}
+		return ids
+	}
+
+	private isCharacterDescendant(candidateId: string, ancestorId: string): boolean {
+		if (candidateId === ancestorId) return true
+		let group = this.characterMeshesById.get(candidateId)
+		while (group) {
+			const parentId = group.parent?.userData?.characterId as string | undefined
+			if (parentId === ancestorId) return true
+			group = parentId ? this.characterMeshesById.get(parentId) : undefined
+		}
+		return false
 	}
 
 	requestStaticFrames() {
@@ -5926,14 +6133,22 @@ export class SceneLayoutPreviewViewer {
 		const pickTargets = Array.from(this.meshesById.values()).filter(
 			(mesh: MeshLike) => mesh?.visible !== false
 		)
-		const intersects = this.raycaster.intersectObjects(pickTargets, false)
+		// [v1.0] recursive=true 以兼容角色 Group（子 mesh 参与射线检测）
+		const intersects = this.raycaster.intersectObjects(pickTargets, true)
 		let hit = intersects[0]?.object as Object3Dlike | undefined
 		let nextId = ''
 		while (hit && !nextId) {
-			if ((hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).isPlaceholder === true)
-				nextId = String(
-					(hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).itemId ?? ''
-				).trim()
+			const ud = hit.userData as {
+				isPlaceholder?: boolean
+				itemId?: unknown
+				isCharacter?: boolean
+				characterId?: unknown
+			}
+			if (ud.isPlaceholder === true) {
+				nextId = String(ud.itemId ?? '').trim()
+			} else if (ud.isCharacter === true) {
+				nextId = String(ud.characterId ?? '').trim()
+			}
 			hit = hit.parent as Object3Dlike | undefined
 		}
 		this.rightClickPickCache = { ts: now, x: event.clientX, y: event.clientY, itemId: nextId }
@@ -6000,8 +6215,31 @@ export class SceneLayoutPreviewViewer {
 		this.selectItem(itemId)
 	}
 
+	/**
+	 * 设置对象（Mesh 或 Group）的自发光颜色，兼容角色 Group（遍历子 mesh）。
+	 */
+	private setObjectEmissive(obj: MeshLike | GroupLike, color: string, intensity: number): void {
+		const applyTo = (o: Object3Dlike) => {
+			const mat = (o as { material?: unknown }).material
+			const material = Array.isArray(mat) ? mat[0] : mat
+			if (material && 'emissive' in material && material.emissive) {
+				material.emissive.set(color)
+				if ('emissiveIntensity' in material) material.emissiveIntensity = intensity
+			}
+		}
+		applyTo(obj as unknown as Object3Dlike)
+		const children = (obj as unknown as { children?: Object3Dlike[] }).children
+		if (children) {
+			for (const child of children) applyTo(child)
+		}
+	}
+
 	private selectItem(itemId: string) {
-		const nextSelectedId = this.hidePlaceholderCubes ? '' : String(itemId ?? '').trim()
+		const rawId = String(itemId ?? '').trim()
+		// [v1.0] 角色和摄像头在占位体隐藏时仍可选中
+		const isCharacterOrCamera =
+			rawId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID || this.characterMeshesById.has(rawId)
+		const nextSelectedId = this.hidePlaceholderCubes && !isCharacterOrCamera ? '' : rawId
 		const selectionChanged = nextSelectedId !== this.selectedId
 		if (!selectionChanged) {
 			this.ensureTransformAttachmentValid()
@@ -6015,11 +6253,7 @@ export class SceneLayoutPreviewViewer {
 		if (prevSelectedId) {
 			const prevMesh = this.meshesById.get(prevSelectedId)
 			if (prevMesh) {
-				const material = Array.isArray(prevMesh.material) ? prevMesh.material[0] : prevMesh.material
-				if (material && 'emissive' in material && material.emissive) {
-					material.emissive.set('#000000')
-					if ('emissiveIntensity' in material) material.emissiveIntensity = 0
-				}
+				this.setObjectEmissive(prevMesh, '#000000', 0)
 			}
 			const prevEdge = this.edgesById.get(prevSelectedId)
 			if (prevEdge && 'opacity' in prevEdge.material) {
@@ -6029,11 +6263,7 @@ export class SceneLayoutPreviewViewer {
 		if (this.selectedId) {
 			const nextMesh = this.meshesById.get(this.selectedId)
 			if (nextMesh) {
-				const material = Array.isArray(nextMesh.material) ? nextMesh.material[0] : nextMesh.material
-				if (material && 'emissive' in material && material.emissive) {
-					material.emissive.set('#60a5fa')
-					if ('emissiveIntensity' in material) material.emissiveIntensity = 0.35
-				}
+				this.setObjectEmissive(nextMesh, '#60a5fa', 0.35)
 			}
 			const nextEdge = this.edgesById.get(this.selectedId)
 			if (nextEdge && 'opacity' in nextEdge.material) {

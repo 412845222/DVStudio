@@ -10,7 +10,8 @@ import type {
 import type {
 	WorkflowDirectorCameraTrack,
 	WorkflowDirectorCameraKeyframe,
-	WorkflowDirectorLightRig
+	WorkflowDirectorLightRig,
+	WorkflowDirectorCharacter
 } from '../../../aiworkflow/types'
 import type { DirectorConsoleScenePayload } from '../../../electronBridge'
 
@@ -26,6 +27,8 @@ export interface DirectorSceneViewerCallbacks {
 	onCameraScaleChange?: (scale: { x: number; y: number; z: number }) => void
 	/** [v1.0] 选中对象变更回调（摄像头或占位体被选中时触发） */
 	onSelectionChange?: (itemId: string) => void
+	/** [v1.0] 角色列表变更回调（增删改 / 层级变化 / 拖拽结束） */
+	onCharactersChange?: (characters: WorkflowDirectorCharacter[]) => void
 	onReady?: () => void
 	onError?: (msg: string) => void
 }
@@ -47,6 +50,7 @@ export class DirectorSceneViewer {
 	private currentModelBindings: WorkflowSceneLayoutModelBinding[] = []
 	private currentTransparent = true
 	private currentLightingEnabled = false
+	private characters: WorkflowDirectorCharacter[] = []
 
 	constructor(canvas: HTMLCanvasElement, callbacks: DirectorSceneViewerCallbacks = {}) {
 		this.canvas = canvas
@@ -75,6 +79,9 @@ export class DirectorSceneViewer {
 			},
 			onCameraScaleChange: (scale) => {
 				this.callbacks.onCameraScaleChange?.(scale)
+			},
+			onCharacterTransformChange: (characterId) => {
+				this.syncCharacterTransformFromViewer(characterId)
 			}
 		})
 		// [v2.0] 启用完整交互(含 TransformControls 拖拽),配合 SceneLayoutPreviewViewer
@@ -131,6 +138,23 @@ export class DirectorSceneViewer {
 			}
 			if (payload.lightRig) {
 				this.applyLightRig(payload.lightRig as WorkflowDirectorLightRig)
+			}
+
+			// [v1.0] 加载角色
+			if (Array.isArray(payload.characters)) {
+				this.characters = (payload.characters as WorkflowDirectorCharacter[]).map((c) => ({
+					...c,
+					position: {
+						x: Number(c.position?.x) || 0,
+						y: Number(c.position?.y) || 0,
+						z: Number(c.position?.z) || 0
+					},
+					rotation: c.rotation ? { ...c.rotation } : {},
+					scale: c.scale ? { ...c.scale } : undefined
+				}))
+				for (const c of this.characters) {
+					this.previewViewer?.addCharacter(c)
+				}
 			}
 
 			this.callbacks.onReady?.()
@@ -270,6 +294,101 @@ export class DirectorSceneViewer {
 		// 重建 Actor 以应用新的 fov 与变换
 		this.setCameraTrack(this.currentTrack)
 		this.emitCameraTrackChange()
+	}
+
+	// ===== [v1.0] 角色管理 =====
+
+	getCharacters(): WorkflowDirectorCharacter[] {
+		return this.characters
+	}
+
+	/**
+	 * 添加角色。position 缺省时使用当前相机 target。
+	 */
+	addCharacter(color: string, position?: { x: number; y: number; z: number }): string {
+		const id = 'char-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
+		const pos = position ?? this.previewViewer?.getControlsTarget() ?? { x: 0, y: 0, z: 0 }
+		const character: WorkflowDirectorCharacter = {
+			id,
+			name: '角色' + (this.characters.length + 1),
+			color,
+			position: { x: pos.x, y: pos.y, z: pos.z },
+			rotation: {},
+			scale: { x: 1, y: 1, z: 1 }
+		}
+		this.characters.push(character)
+		this.previewViewer?.addCharacter(character)
+		this.emitCharactersChange()
+		return id
+	}
+
+	removeCharacter(id: string): void {
+		const idx = this.characters.findIndex((c) => c.id === id)
+		if (idx < 0) return
+		this.previewViewer?.removeCharacter(id)
+		// 级联删除：移除该角色及其所有后代
+		const descendants = this.collectDescendantIds(id)
+		const removeSet = new Set<string>([id, ...descendants])
+		this.characters = this.characters.filter((c) => !removeSet.has(c.id))
+		this.emitCharactersChange()
+	}
+
+	setCharacterParent(childId: string, parentId: string | null): void {
+		const child = this.characters.find((c) => c.id === childId)
+		if (!child) return
+		// 防止循环引用
+		if (parentId && this.isDescendant(parentId, childId)) return
+		this.previewViewer?.setCharacterParent(childId, parentId)
+		child.parentId = parentId ?? undefined
+		this.emitCharactersChange()
+	}
+
+	/**
+	 * 从 3D 查看器同步角色的局部变换到数据层（gizmo 拖拽结束后调用）。
+	 */
+	private syncCharacterTransformFromViewer(characterId: string): void {
+		const character = this.characters.find((c) => c.id === characterId)
+		if (!character || !this.previewViewer) return
+		const transform = this.previewViewer.getCharacterTransform(characterId)
+		if (!transform) return
+		character.position = { ...transform.position }
+		character.rotation = { ...transform.rotation }
+		character.scale = { ...transform.scale }
+		this.emitCharactersChange()
+	}
+
+	selectObject(id: string): void {
+		if (id === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+			this.previewViewer?.selectCameraActor()
+		} else {
+			this.previewViewer?.setSelectedItem(id)
+		}
+	}
+
+	private collectDescendantIds(parentId: string): string[] {
+		const result: string[] = []
+		const stack = [parentId]
+		while (stack.length > 0) {
+			const current = stack.pop()!
+			for (const c of this.characters) {
+				if (c.parentId === current) {
+					result.push(c.id)
+					stack.push(c.id)
+				}
+			}
+		}
+		return result
+	}
+
+	private isDescendant(candidateId: string, ancestorId: string): boolean {
+		if (candidateId === ancestorId) return true
+		const candidate = this.characters.find((c) => c.id === candidateId)
+		if (!candidate?.parentId) return false
+		return this.isDescendant(candidate.parentId, ancestorId)
+	}
+
+	private emitCharactersChange(): void {
+		this.callbacks.onCharactersChange?.(this.characters)
 	}
 
 	hasCamera(): boolean {

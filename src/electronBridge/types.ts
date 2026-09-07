@@ -1,4 +1,4 @@
-﻿export type BackendPingResult = { ok: boolean; status?: number; error?: string }
+export type BackendPingResult = { ok: boolean; status?: number; error?: string }
 
 export type BackendStartResult = { ok: boolean; baseUrl?: string; port?: number; error?: string }
 
@@ -393,6 +393,7 @@ export type DirectorConsoleScenePayload = {
 	cameraTracks?: unknown[]
 	activeCameraTrackId?: string
 	lightRig?: unknown
+	characters?: unknown
 	directorDataVersion?: number
 }
 
@@ -402,6 +403,7 @@ export type DirectorConsoleSavePayload = {
 		cameraTracks?: unknown[]
 		activeCameraTrackId?: string
 		lightRig?: unknown
+		characters?: unknown
 		directorDataVersion?: number
 	}
 }

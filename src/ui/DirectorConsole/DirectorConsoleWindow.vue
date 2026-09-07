@@ -1,5 +1,47 @@
 <template>
 	<div class="dc-window">
+		<!-- [v1.0] 顶部工具条 -->
+		<div class="dc-topbar">
+			<div class="dc-topbar-title">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+					<path d="M12 2L2 7l10 5 10-5-10-5Z" />
+					<path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+				</svg>
+				<span>导演控制台</span>
+			</div>
+			<div class="dc-topbar-actions">
+				<button class="dc-topbar-btn" @click="colorPickerOpen = !colorPickerOpen">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+						<circle cx="12" cy="12" r="9" />
+						<path d="M12 8v8M8 12h8" />
+					</svg>
+					<span>{{ t('nodes.directorConsole.addCharacter') }}</span>
+				</button>
+				<!-- 颜色选择弹层 -->
+				<div v-if="colorPickerOpen" class="dc-color-picker">
+					<div class="dc-color-picker-header">
+						<span>{{ t('nodes.directorConsole.selectCharacterColor') }}</span>
+						<button class="dc-color-picker-close" @click="colorPickerOpen = false">×</button>
+					</div>
+					<div class="dc-color-picker-presets">
+						<button
+							v-for="c in characterColorPresets"
+							:key="c"
+							class="dc-color-swatch"
+							:class="{ active: newCharacterColor === c }"
+							:style="{ background: c }"
+							@click="newCharacterColor = c"
+						/>
+					</div>
+					<div class="dc-color-picker-custom">
+						<input type="color" v-model="newCharacterColor" />
+					</div>
+					<button class="dc-color-picker-confirm" @click="confirmAddCharacter">
+						{{ t('nodes.directorConsole.confirm') }}
+					</button>
+				</div>
+			</div>
+		</div>
 		<div class="dc-window-body">
 			<aside class="dc-sidebar">
 				<div class="sq-container dc-sidebar-particles">
@@ -346,6 +388,35 @@
 					<div class="dc-empty-text">{{ t('nodes.directorConsole.viewportEmpty') }}</div>
 				</div>
 			</div>
+			<!-- [v1.0] 右侧层级树 -->
+			<aside class="dc-tree-panel">
+				<div class="dc-tree-header">
+					<span>{{ t('nodes.directorConsole.sceneObjects') }}</span>
+					<span class="dc-tree-count">{{ treeNodes.length }}</span>
+				</div>
+				<div class="dc-tree-body" @dragover.prevent @drop="onTreeDropToRoot($event)">
+					<div
+						v-for="node in treeNodes"
+						:key="node.id"
+						class="dc-tree-node"
+						:class="{ active: selectedObjectId === node.id, 'is-camera': node.isCamera }"
+						:style="{ paddingLeft: node.depth * 16 + 8 + 'px' }"
+						draggable="true"
+						@click="onSelectTreeNode(node.id)"
+						@dragstart="onTreeNodeDragStart(node.id, $event)"
+						@dragover.prevent.stop="onTreeNodeDragOver(node.id, $event)"
+						@drop.stop="onTreeNodeDrop(node.id, $event)"
+					>
+						<span class="dc-tree-icon" :style="{ color: node.isCamera ? '#60a5fa' : node.color }">
+							{{ node.isCamera ? '📷' : '●' }}
+						</span>
+						<span class="dc-tree-name">{{ node.name }}</span>
+					</div>
+					<div v-if="treeNodes.length === 0" class="dc-tree-empty">
+						{{ t('nodes.directorConsole.sceneObjectsEmpty') }}
+					</div>
+				</div>
+			</aside>
 		</div>
 		<footer class="dc-timeline-bar">
 			<div class="dc-timeline-corner dc-timeline-corner-tl" />
@@ -358,13 +429,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useI18n } from '../../i18n'
 import { useSquareParticles } from '../../composables/useSquareParticles'
 import { DirectorSceneViewer } from './viewers/DirectorSceneViewer'
 import { directorConsoleSave } from '../../electronBridge'
 import type { DirectorConsoleScenePayload } from '../../electronBridge'
-import type { WorkflowDirectorCameraTrack } from '../../aiworkflow/types'
+import type { WorkflowDirectorCameraTrack, WorkflowDirectorCharacter } from '../../aiworkflow/types'
+import { SceneLayoutPreviewViewer } from '../WorkFlow/WorlFlowNodes/sceneLayout/SceneLayoutPreviewViewer'
 
 defineProps<{
 	title: string
@@ -399,6 +471,21 @@ const cameraScale = ref({ x: 1, y: 1, z: 1 })
 // [v3.0] TransformControls 模式（translate=移动 / rotate=旋转 / scale=缩放）
 const transformMode = ref<'translate' | 'rotate' | 'scale'>('translate')
 const CAMERA_DRAG_MIME = 'application/x-director-camera'
+// [v1.0] 角色状态
+const characters = ref<WorkflowDirectorCharacter[]>([])
+const selectedObjectId = ref('')
+const colorPickerOpen = ref(false)
+const newCharacterColor = ref('#ff6b6b')
+const characterColorPresets = [
+	'#ff6b6b',
+	'#4ecdc4',
+	'#ffe66d',
+	'#a8e6cf',
+	'#c7a8ff',
+	'#ffa8a8',
+	'#74c0fc',
+	'#8ce99a'
+]
 const lightTypes: ('point' | 'directional' | 'spot' | 'hemisphere')[] = [
 	'point',
 	'directional',
@@ -447,13 +534,18 @@ onMounted(() => {
 				syncCameraStateFromTracks(tracks)
 				emitCameraTrackSave(tracks)
 			},
-			onSelectionChange: () => {
+			onSelectionChange: (itemId) => {
 				// 选中对象后默认进入「移动」模式
 				transformMode.value = 'translate'
 				sceneViewer?.setTransformMode('translate')
+				selectedObjectId.value = itemId
 			},
 			onCameraScaleChange: (scale) => {
 				cameraScale.value = { ...scale }
+			},
+			onCharactersChange: (list) => {
+				characters.value = [...list]
+				emitCharactersSave(list)
 			}
 		})
 	}
@@ -476,6 +568,10 @@ function applyScenePayload(payload: DirectorConsoleScenePayload) {
 		? (payload.cameraTracks as WorkflowDirectorCameraTrack[])
 		: []
 	syncCameraStateFromTracks(tracks)
+	// [v1.0] 同步角色列表
+	if (Array.isArray(payload?.characters)) {
+		characters.value = [...(payload.characters as WorkflowDirectorCharacter[])]
+	}
 	const layoutCount = Array.isArray(payload?.layoutItems) ? payload.layoutItems.length : 0
 	if (layoutCount === 0) {
 		loading.value = false
@@ -657,6 +753,82 @@ function emitCameraTrackSave(tracks: WorkflowDirectorCameraTrack[]) {
 	})
 }
 
+// ===== [v1.0] 角色与层级树 =====
+
+const treeNodes = computed(() => {
+	type TreeNode = { id: string; name: string; color: string; depth: number; isCamera: boolean }
+	const nodes: TreeNode[] = []
+	const byParent = new Map<string | null, WorkflowDirectorCharacter[]>()
+	for (const c of characters.value) {
+		const key = c.parentId || null
+		if (!byParent.has(key)) byParent.set(key, [])
+		byParent.get(key)!.push(c)
+	}
+	const walk = (parentId: string | null, depth: number) => {
+		const children = byParent.get(parentId) || []
+		for (const c of children) {
+			nodes.push({ id: c.id, name: c.name, color: c.color, depth, isCamera: false })
+			walk(c.id, depth + 1)
+		}
+	}
+	walk(null, 0)
+	// 摄像头作为独立根节点（v1.0 不支持拖拽为子级）
+	if (hasCamera.value) {
+		nodes.push({
+			id: SceneLayoutPreviewViewer.CAMERA_SELECTION_ID,
+			name: t('nodes.directorConsole.cameraTrackTitle'),
+			color: '#60a5fa',
+			depth: 0,
+			isCamera: true
+		})
+	}
+	return nodes
+})
+
+function emitCharactersSave(list: WorkflowDirectorCharacter[]) {
+	if (!currentPayload?.nodeId) return
+	directorConsoleSave({
+		nodeId: currentPayload.nodeId,
+		patch: { characters: list }
+	})
+}
+
+function confirmAddCharacter() {
+	if (!sceneViewer) return
+	sceneViewer.addCharacter(newCharacterColor.value)
+	colorPickerOpen.value = false
+}
+
+function onSelectTreeNode(id: string) {
+	sceneViewer?.selectObject(id)
+}
+
+let draggingNodeId = ''
+function onTreeNodeDragStart(id: string, event: DragEvent) {
+	draggingNodeId = id
+	if (event.dataTransfer) {
+		event.dataTransfer.effectAllowed = 'move'
+		event.dataTransfer.setData('text/plain', id)
+	}
+}
+function onTreeNodeDragOver(_id: string, _event: DragEvent) {
+	/* prevent 已在模板中处理 */
+}
+function onTreeNodeDrop(targetId: string, _event: DragEvent) {
+	if (!draggingNodeId || draggingNodeId === targetId) return
+	// 摄像头不可作为子级（v1.0 限制）
+	if (targetId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) return
+	if (draggingNodeId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) return
+	sceneViewer?.setCharacterParent(draggingNodeId, targetId)
+	draggingNodeId = ''
+}
+function onTreeDropToRoot(_event: DragEvent) {
+	if (!draggingNodeId) return
+	if (draggingNodeId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) return
+	sceneViewer?.setCharacterParent(draggingNodeId, null)
+	draggingNodeId = ''
+}
+
 /** [v2.0] 拖拽开始：设置自定义 MIME，供 viewport drop 时识别 */
 function onCameraDragStart(event: DragEvent) {
 	if (!event.dataTransfer) return
@@ -791,6 +963,198 @@ defineExpose({
 	display: flex;
 	overflow: hidden;
 	min-height: 0;
+}
+
+/* ===== [v1.0] 顶部工具条 ===== */
+.dc-topbar {
+	height: 48px;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	border-bottom: 1px solid
+		color-mix(in srgb, var(--wf-primary, #27b99c) 22%, var(--wf-border-subtle, transparent));
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 5%, var(--wf-page-bg, #0a0f14));
+}
+.dc-topbar-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--wf-text, #c5d4e3);
+}
+.dc-topbar-title svg {
+	width: 18px;
+	height: 18px;
+	color: var(--wf-primary, #27b99c);
+}
+.dc-topbar-actions {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.dc-topbar-btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #27b99c) 40%, transparent);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 10%, transparent);
+	color: var(--wf-text, #c5d4e3);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+.dc-topbar-btn svg {
+	width: 14px;
+	height: 14px;
+	color: var(--wf-primary, #27b99c);
+}
+.dc-topbar-btn:hover {
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 20%, transparent);
+}
+.dc-color-picker {
+	position: absolute;
+	top: 42px;
+	right: 0;
+	z-index: 100;
+	width: 220px;
+	padding: 12px;
+	border: 1px solid color-mix(in srgb, var(--wf-primary, #27b99c) 30%, transparent);
+	border-radius: 8px;
+	background: var(--wf-page-bg, #0a0f14);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.dc-color-picker-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
+	font-size: 12px;
+	color: var(--wf-text, #c5d4e3);
+}
+.dc-color-picker-close {
+	background: none;
+	border: none;
+	color: var(--wf-text, #c5d4e3);
+	font-size: 18px;
+	cursor: pointer;
+	line-height: 1;
+}
+.dc-color-picker-presets {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 6px;
+	margin-bottom: 10px;
+}
+.dc-color-swatch {
+	width: 100%;
+	aspect-ratio: 1;
+	border: 2px solid transparent;
+	border-radius: 4px;
+	cursor: pointer;
+	padding: 0;
+}
+.dc-color-swatch.active {
+	border-color: #fff;
+	box-shadow: 0 0 0 1px var(--wf-primary, #27b99c);
+}
+.dc-color-picker-custom {
+	display: flex;
+	justify-content: center;
+	margin-bottom: 10px;
+}
+.dc-color-picker-custom input[type='color'] {
+	width: 100%;
+	height: 32px;
+	border: none;
+	border-radius: 4px;
+	cursor: pointer;
+	background: transparent;
+}
+.dc-color-picker-confirm {
+	width: 100%;
+	padding: 6px;
+	border: none;
+	border-radius: 4px;
+	background: var(--wf-primary, #27b99c);
+	color: #fff;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+/* ===== [v1.0] 右侧层级树 ===== */
+.dc-tree-panel {
+	width: 200px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	border-left: 1px solid
+		color-mix(in srgb, var(--wf-primary, #27b99c) 22%, var(--wf-border-subtle, transparent));
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 4%, var(--wf-page-bg, #0a0f14));
+}
+.dc-tree-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 12px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--wf-text, #c5d4e3);
+	border-bottom: 1px solid
+		color-mix(in srgb, var(--wf-primary, #27b99c) 15%, var(--wf-border-subtle, transparent));
+}
+.dc-tree-count {
+	font-size: 11px;
+	color: var(--wf-text-muted, #64748b);
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 15%, transparent);
+	padding: 1px 6px;
+	border-radius: 8px;
+}
+.dc-tree-body {
+	flex: 1;
+	overflow-y: auto;
+	padding: 4px 0;
+}
+.dc-tree-node {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	cursor: pointer;
+	font-size: 12px;
+	color: var(--wf-text, #c5d4e3);
+	border-left: 2px solid transparent;
+	transition: background 0.12s;
+}
+.dc-tree-node:hover {
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 8%, transparent);
+}
+.dc-tree-node.active {
+	background: color-mix(in srgb, var(--wf-primary, #27b99c) 15%, transparent);
+	border-left-color: var(--wf-primary, #27b99c);
+}
+.dc-tree-node.is-camera {
+	color: #60a5fa;
+}
+.dc-tree-icon {
+	font-size: 10px;
+	flex-shrink: 0;
+}
+.dc-tree-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.dc-tree-empty {
+	padding: 16px 12px;
+	font-size: 11px;
+	color: var(--wf-text-muted, #64748b);
+	text-align: center;
 }
 
 .dc-sidebar {

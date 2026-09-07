@@ -760,6 +760,17 @@ export type WorkflowDirectorCameraTrack = {
 	keyframes: WorkflowDirectorCameraKeyframe[]
 }
 
+/** 导演控制台 —— 角色（圆柱体身体 + 圆球头部的占位体） */
+export type WorkflowDirectorCharacter = {
+	id: string
+	name: string
+	color: string
+	position: { x: number; y: number; z: number }
+	rotation?: { yaw?: number; pitch?: number; roll?: number }
+	scale?: { x?: number; y?: number; z?: number }
+	parentId?: string
+}
+
 /** 瀵兼紨鎺у埗鍙?鈥斺€?鐏厜缁勪欢锛堥鐣欐帴鍙ｏ紝P2 瀹炶锛涘瓧娈典笌 EditorViewer/EnvironmentPresets 瀵归綈锛?*/
 export type WorkflowDirectorLight = {
 	id: string
@@ -791,6 +802,7 @@ export type WorkflowDirectorConsoleNodeSettings = {
 	cameraTracks?: WorkflowDirectorCameraTrack[]
 	activeCameraTrackId?: string
 	lightRig?: WorkflowDirectorLightRig
+	characters?: WorkflowDirectorCharacter[]
 }
 
 export type WorkflowComfyUINodeSettings = {
