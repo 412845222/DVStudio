@@ -10211,6 +10211,12 @@ watch(
 			void loadDVSAgentSessions()
 		} else if (v === 'codex') {
 			void loadCodexSessions()
+		} else if (v === 'dshagent') {
+			// DSHAgent sessions are owned by the Harness server and loaded lazily
+			// on first send; reset local caches so the next send creates a fresh
+			// session against the running Harness instance.
+			codexSessions.value = []
+			codexActiveSessionId.value = ''
 		}
 	}
 )

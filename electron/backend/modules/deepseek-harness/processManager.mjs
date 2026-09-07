@@ -1,8 +1,10 @@
 import net from 'node:net'
 import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { commandEnv, spawnManaged } from './commands.mjs'
-import { launchArgs, announcedUrl } from './runtimeAdapter.mjs'
+import { announcedUrl } from './runtimeAdapter.mjs'
 import { probeSource } from './sourceManager.mjs'
+import { probeSupportedFlags, buildLaunchArgs } from './startupProbe.mjs'
 import { redact } from './serviceEvents.mjs'
 
 export const portIsOpen = (port) =>
@@ -16,6 +18,82 @@ export const portIsOpen = (port) =>
 		socket.once('connect', () => finish(true))
 		socket.once('error', () => finish(false))
 	})
+
+/**
+ * 查找监听指定端口的进程 PID。
+ * Windows: `netstat -ano | findstr LISTENING` 解析
+ * macOS/Linux: `lsof -ti:<port>`
+ * 返回 PID 数组（可能多个），失败返回空数组。
+ */
+function findPidsOnPort(port) {
+	const pids = new Set()
+	try {
+		if (process.platform === 'win32') {
+			const netstat = execFileSync('netstat.exe', ['-ano'], { windowsHide: true, encoding: 'utf8' })
+			for (const line of netstat.split(/\r?\n/)) {
+				// 匹配 LISTENING 行，取最后一列 PID
+				// 形如: TCP    127.0.0.1:3080    0.0.0.0:0    LISTENING    12345
+				if (!/\bLISTENING\b/i.test(line)) continue
+				const m = line.match(/:(\d+)\s+.*?LISTENING\s+(\d+)$/i)
+				if (m && Number(m[1]) === port) pids.add(Number(m[2]))
+			}
+		} else {
+			const out = execFileSync('lsof', ['-ti', `:${port}`], { encoding: 'utf8' })
+			for (const p of out.trim().split(/\s+/)) {
+				const n = Number(p)
+				if (n) pids.add(n)
+			}
+		}
+	} catch {
+		/* 无监听进程或命令不可用 */
+	}
+	return [...pids]
+}
+
+/**
+ * 强制释放指定端口：杀掉占用该端口的进程，并等待端口真正空闲。
+ * @param port 端口号
+ * @param events 事件发射器，用于记录日志
+ * @param runId 当前运行实例 ID
+ * @returns 最终端口是否空闲
+ */
+async function freePort(port, events, runId) {
+	const MAX_RETRIES = 3
+	for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+		const pids = findPidsOnPort(port)
+		if (pids.length === 0) return true
+		events?.log(
+			'system',
+			`[端口清空] 检测到端口 ${port} 被占用，PIDs=${pids.join(',')}，尝试终止...`,
+			runId
+		)
+		for (const pid of pids) {
+			try {
+				if (process.platform === 'win32') {
+					execFileSync('taskkill.exe', ['/F', '/PID', String(pid), '/T'], {
+						windowsHide: true,
+						stdio: 'ignore'
+					})
+				} else {
+					process.kill(pid, 'SIGKILL')
+				}
+			} catch {
+				/* 进程可能已退出 */
+			}
+		}
+		// 等待端口释放，最多等 3 秒
+		for (let i = 0; i < 15; i++) {
+			await new Promise((r) => setTimeout(r, 200))
+			const stillOpen = await portIsOpen(port)
+			if (!stillOpen) {
+				events?.log('system', `[端口清空] 端口 ${port} 已释放`, runId)
+				return true
+			}
+		}
+		events?.log('system', `[端口清空] 第 ${attempt} 次尝试后端口 ${port} 仍被占用`, runId)
+	}
+	return !(await portIsOpen(port))
+}
 
 export function createProcessManager(events, deps = {}) {
 	const probe = deps.probe || probeSource
@@ -102,11 +180,19 @@ export function createProcessManager(events, deps = {}) {
 			launchTask = (async () => {
 				try {
 					const report = await probe(profile, signal)
-					if (!report.built) throw new Error('缺少构建产物，请先准备环境')
+					// Allow dev-mode launch (tsx) when build artifacts are missing.
+					if (!report.built && !report.devMode)
+						throw new Error('缺少构建产物且不支持开发模式，请先准备环境')
+					// 启动前先清空占用端口的进程，避免 PORT_IN_USE 错误
+					const freed = await freePort(profile.port, events, runId)
+					if (!freed)
+						throw new Error(`端口 ${profile.port} 已被占用，且无法自动释放（PORT_IN_USE）`)
 					if (await portOpen(profile.port))
 						throw new Error(`端口 ${profile.port} 已被占用（PORT_IN_USE），未停止任何外部进程`)
 					signal.throwIfAborted()
-					const owned = spawn(report.nodePath, launchArgs(profile), {
+					const supported = await probeSupportedFlags(report.nodePath, report, { signal })
+					const launchArgs = buildLaunchArgs(profile, report, supported)
+					const owned = spawn(report.nodePath, launchArgs, {
 						cwd: profile.localPath,
 						env: commandEnv(report.nodePath),
 						onLine: (stream, line) => {

@@ -90,7 +90,15 @@ export async function probeSource(profile, signal) {
 	} catch (error) {
 		pnpmError = error.message
 	}
-	return { ...report, nodePath, nodeVersion, pnpmVersion, pnpmError, validatedAt: Date.now() }
+	return {
+		...report,
+		localPath: profile.localPath,
+		nodePath,
+		nodeVersion,
+		pnpmVersion,
+		pnpmError,
+		validatedAt: Date.now()
+	}
 }
 
 export async function prepareSource(profile, { signal, onLine, onPhase }) {
@@ -138,12 +146,14 @@ export async function prepareSource(profile, { signal, onLine, onPhase }) {
 		}
 	}
 	const report = await probeSource(profile, signal)
+	// Resolve pnpm using the same fallback logic as diagnostics (handles corepack shims).
+	const pnpm = await resolvePnpm(profile.pnpmPath, report.nodePath)
+	// Verify pnpm version matches packageManager requirement.
 	const requiredPnpm = /^pnpm@(\d+\.\d+\.\d+)/.exec(report.packageManager || '')?.[1]
-	if (!requiredPnpm || report.pnpmVersion !== requiredPnpm)
+	if (requiredPnpm && report.pnpmVersion && report.pnpmVersion !== requiredPnpm)
 		throw new Error(
 			`请安装源码要求的 ${report.packageManager}；当前 ${report.pnpmVersion || report.pnpmError}`
 		)
-	const pnpm = await resolvePnpm(profile.pnpmPath, report.nodePath)
 	const env = commandEnv(report.nodePath)
 	onPhase('install', '正在安装 Harness 依赖')
 	await runCommand(pnpm.command, [...pnpm.prefix, 'install', '--frozen-lockfile'], { ...opts, env })

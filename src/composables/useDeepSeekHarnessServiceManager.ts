@@ -6,7 +6,9 @@ import type {
 	HarnessSnapshot,
 	HarnessStatus,
 	HarnessLog,
-	HarnessReport
+	HarnessReport,
+	HarnessDiagnosticResult,
+	HarnessAutoSetupProgress
 } from '../electronBridge/deepseekHarnessTypes'
 
 export function useDeepSeekHarnessServiceManager() {
@@ -31,6 +33,7 @@ export function useDeepSeekHarnessServiceManager() {
 	const loadingInitial = ref(true)
 	const preparing = ref<HarnessSnapshot['preparing']>(null)
 	const progress = ref('')
+	const diagnostics = ref<HarnessDiagnosticResult | null>(null)
 	const activeProfile = computed(() =>
 		profiles.value.records.find((p) => p.id === profiles.value.activeProfileId)
 	)
@@ -165,6 +168,7 @@ export function useDeepSeekHarnessServiceManager() {
 		perform('starting', () => bridge.restart({ ...currentPayload(), runId: status.value.runId }))
 	const clearLogs = () => perform('clear', () => bridge.clearLogs())
 	const openUi = () => perform('open', () => bridge.openUi({ runId: status.value.runId }))
+	const getOpenUrl = () => bridge.getOpenUrl({ runId: status.value.runId })
 	const saveProfile = (profile: HarnessProfile) =>
 		perform('save', () =>
 			bridge.saveProfile({
@@ -185,6 +189,43 @@ export function useDeepSeekHarnessServiceManager() {
 		perform('probe', () =>
 			bridge.probe({ profile: JSON.parse(JSON.stringify(profile)) as HarnessProfile })
 		)
+	const diagnose = (profile: HarnessProfile): Promise<HarnessDiagnosticResult | undefined> =>
+		perform('diagnose', async () => {
+			const result = await bridge.diagnose({
+				profile: JSON.parse(JSON.stringify(profile)) as HarnessProfile
+			})
+			diagnostics.value = result
+			return result
+		})
+	async function autoSetup(profile: HarnessProfile) {
+		return perform('auto-setup', async () => {
+			const operationId = crypto.randomUUID()
+			preparing.value = { operationId, profileId: profile.id! }
+			const iterable = bridge.autoSetup({
+				profileId: profile.id!,
+				expectedRevision: profile.revision || 0,
+				operationId
+			})
+			const stream = iterable[Symbol.asyncIterator]()
+			const detached = new Promise<IteratorResult<HarnessAutoSetupProgress>>((resolve) => {
+				releasePrepare = () => {
+					void stream.return?.()
+					resolve({ done: true, value: undefined })
+				}
+			})
+			try {
+				while (!disposed) {
+					const item = await Promise.race([stream.next(), detached])
+					if (item.done) break
+					if (item.value.message) progress.value = item.value.message
+					if (item.value.diagnostics) diagnostics.value = item.value.diagnostics
+				}
+			} finally {
+				releasePrepare?.()
+				releasePrepare = undefined
+			}
+		})
+	}
 	async function prepare(profile: HarnessProfile) {
 		return perform('prepare', async () => {
 			const operationId = crypto.randomUUID()
@@ -245,17 +286,21 @@ export function useDeepSeekHarnessServiceManager() {
 		locked,
 		preparing,
 		progress,
+		diagnostics,
 		refresh,
 		startService,
 		stopService,
 		restartService,
 		clearLogs,
 		openUi,
+		getOpenUrl,
 		saveProfile,
 		activateProfile,
 		removeProfile,
 		selectPath,
 		probe,
+		diagnose,
+		autoSetup,
 		prepare,
 		cancelPrepare
 	}

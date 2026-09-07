@@ -32,6 +32,7 @@ describe('Harness preload and backend route agreement', () => {
 			'activateProfile',
 			'selectPath',
 			'probe',
+			'diagnose',
 			'getServiceStatus',
 			'getServiceLogs',
 			'clearServiceLogs',

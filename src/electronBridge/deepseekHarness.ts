@@ -26,6 +26,8 @@ export const deepseekHarness = {
 		ipcCall(() => api().activateProfile(payload)),
 	selectPath: () => ipcCall(() => api().selectPath()),
 	probe: (payload: Parameters<HarnessSetupApi['probe']>[0]) => ipcCall(() => api().probe(payload)),
+	diagnose: (payload: Parameters<HarnessSetupApi['diagnose']>[0]) =>
+		ipcCall(() => api().diagnose(payload)),
 	snapshot: () => ipcCall(() => api().getServiceLogs()),
 	clearLogs: () => ipcCall(() => api().clearServiceLogs()),
 	start: (payload: Parameters<HarnessSetupApi['startService']>[0]) =>
@@ -35,10 +37,17 @@ export const deepseekHarness = {
 	restart: (payload: Parameters<HarnessSetupApi['restartService']>[0]) =>
 		ipcCall(() => api().restartService(payload)),
 	prepare: (payload: Parameters<HarnessSetupApi['prepare']>[0]) => api().prepare(payload),
+	autoSetup: (payload: Parameters<HarnessSetupApi['autoSetup']>[0]) => api().autoSetup(payload),
 	cancelPrepare: (payload: Parameters<HarnessSetupApi['cancelPrepare']>[0]) =>
 		ipcCall(() => api().cancelPrepare(payload)),
 	openUi: (payload: Parameters<HarnessSetupApi['openUi']>[0]) =>
 		ipcCall(() => api().openUi(payload)),
+	getOpenUrl: (payload: Parameters<HarnessSetupApi['getOpenUrl']>[0]) =>
+		ipcCall(() => api().getOpenUrl(payload)),
+	proxyCall: (payload: Parameters<HarnessSetupApi['proxyCall']>[0]) =>
+		ipcCall(() => api().proxyCall(payload)),
+	dshAgentStream: (payload: Parameters<HarnessSetupApi['dshAgentStream']>[0]) =>
+		api().dshAgentStream(payload),
 	subscribe: (listeners: {
 		logs: Parameters<HarnessSetupApi['onServiceLog']>[0]
 		changed: Parameters<HarnessSetupApi['onServiceStatusChange']>[0]

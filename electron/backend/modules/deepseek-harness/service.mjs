@@ -2,6 +2,8 @@ import { BrowserWindow } from 'electron'
 import { createServiceEvents, redact } from './serviceEvents.mjs'
 import { createProcessManager } from './processManager.mjs'
 import { normalizeProfile, probeSource, prepareSource } from './sourceManager.mjs'
+import { diagnoseSource } from './diagnostics.mjs'
+import { autoSetupSource } from './autoSetup.mjs'
 import { hasCommandProcesses, stopCommandProcesses } from './commands.mjs'
 
 const prefix = 'dweb:deepseek-harness:setup:'
@@ -65,6 +67,13 @@ export const probe = async (ctx, payload) => {
 	if (!profile) throw new Error('源码记录不存在')
 	return probeSource(profile)
 }
+export const diagnose = async (ctx, payload) => {
+	const profile = payload.profileId
+		? repo(ctx).get(payload.profileId)
+		: await normalizeProfile(payload.profile)
+	if (!profile) throw new Error('源码记录不存在')
+	return diagnoseSource(profile)
+}
 export const saveProfile = (ctx, payload) =>
 	exclusive(async () => {
 		assertIdle()
@@ -116,6 +125,13 @@ export function getOpenUrl(runId) {
 	if (!runId || runId !== runtime.snapshot().runId || !runtime.url())
 		throw new Error('服务尚未就绪或实例已变化')
 	return runtime.url()
+}
+
+/** 供内部代理使用：直接返回当前运行实例的 URL，若未就绪则抛错。 */
+export function getCurrentUrl() {
+	const url = runtime.url()
+	if (!url) throw new Error('服务尚未就绪')
+	return url
 }
 
 export async function* prepare(ctx, payload) {
@@ -185,6 +201,41 @@ export const cancelPrepare = (_ctx, payload) => {
 	if (preparing && preparing.id !== payload.operationId) throw new Error('准备操作已变化')
 	preparing?.controller.abort()
 	return { cancelled: true }
+}
+export async function* autoSetup(ctx, payload) {
+	if (busy || disposing) throw new Error('正在操作（BUSY）')
+	assertIdle()
+	const profile = profileAt(ctx, payload)
+	if (typeof payload.operationId !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(payload.operationId))
+		throw new Error('无效操作 ID')
+	const controller = new AbortController()
+	const op = { id: payload.operationId, profileId: profile.id, controller, task: null }
+	preparing = op
+	let resolveTask
+	op.task = new Promise((resolve) => {
+		resolveTask = resolve
+	})
+	changed()
+	try {
+		yield { operationId: op.id, phase: 'started', message: '开始一键配置' }
+		const gen = autoSetupSource(profile, {
+			signal: controller.signal,
+			onLine: (stream, line) => events.log(stream, line)
+		})
+		for await (const event of gen) {
+			if (event.phase === 'diagnose' || event.phase === 'recheck')
+				events.log('system', event.message)
+			yield { operationId: op.id, ...event }
+		}
+	} catch (error) {
+		if (controller.signal.aborted) throw new Error('一键配置已取消')
+		throw new Error(redact(error.message || String(error)))
+	} finally {
+		controller.abort()
+		resolveTask()
+		if (preparing === op) preparing = null
+		changed()
+	}
 }
 export function disposeDeepSeekHarness() {
 	if (disposing) return disposing

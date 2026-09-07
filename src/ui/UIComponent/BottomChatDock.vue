@@ -343,11 +343,15 @@
 								@change="onAgentBackendChange"
 							>
 								<option value="dvsagent">DVSAgent</option>
+								<option value="dshagent">DSHAgent</option>
 								<option value="codex">Codex</option>
 								<option value="copilot">Copilot</option>
 							</select>
 						</div>
-						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-model">
+						<div
+							class="chat-dock-toolbar-item chat-dock-toolbar-item-model"
+							v-if="agentBackend !== 'dshagent'"
+						>
 							<div class="chat-dock-toolbar-label">{{ t('aichat.dock.labelModel') }}</div>
 							<select
 								class="chat-dock-toolbar-select"
@@ -376,7 +380,10 @@
 								</template>
 							</select>
 						</div>
-						<div class="chat-dock-toolbar-item chat-dock-toolbar-item-thinking">
+						<div
+							class="chat-dock-toolbar-item chat-dock-toolbar-item-thinking"
+							v-if="agentBackend !== 'dshagent'"
+						>
 							<div class="chat-dock-toolbar-label">{{ t('aichat.dock.labelThinking') }}</div>
 							<select
 								class="chat-dock-toolbar-select thinking-select"
@@ -492,9 +499,9 @@ export type NanoBananaRefAnchor = {
 	connectedFrom?: string
 }
 
-export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent' | 'codex-cli'
+export type LocalExecSource = 'copilot-cli' | 'legacy-codex' | 'dvsagent' | 'codex-cli' | 'dshagent'
 
-export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot'
+export type AgentBackendType = 'dvsagent' | 'codex' | 'copilot' | 'dshagent'
 export type AgentConversationMode = 'agent' | 'ask' | 'plan'
 
 export type LocalExecSessionItem = {
@@ -781,7 +788,12 @@ const agentBackend = computed<AgentBackendType>(() => {
 	const backend = String(props.agentBackend || '')
 		.trim()
 		.toLowerCase()
-	if (backend === 'dvsagent' || backend === 'codex' || backend === 'copilot') {
+	if (
+		backend === 'dvsagent' ||
+		backend === 'codex' ||
+		backend === 'copilot' ||
+		backend === 'dshagent'
+	) {
 		return backend as AgentBackendType
 	}
 	return 'dvsagent'
@@ -1271,9 +1283,10 @@ watch(
 watch(
 	() => props.modelValue,
 	(v) => {
-		if (!v && editorChips.value.length > 0) {
+		if (!v) {
+			// 当外部将 modelValue 置空时，清空 contenteditable 编辑器内容
 			editor.clear()
-			editorChips.value = []
+			if (editorChips.value.length > 0) editorChips.value = []
 		}
 	}
 )
@@ -1376,7 +1389,7 @@ const onAgentBackendChange = (e: Event) => {
 		.trim()
 		.toLowerCase()
 	let backend: AgentBackendType = 'dvsagent'
-	if (value === 'dvsagent' || value === 'codex' || value === 'copilot') {
+	if (value === 'dvsagent' || value === 'codex' || value === 'copilot' || value === 'dshagent') {
 		backend = value as AgentBackendType
 	}
 	emit('update:agentBackend', backend)

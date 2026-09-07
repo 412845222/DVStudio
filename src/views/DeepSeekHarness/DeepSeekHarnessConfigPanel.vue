@@ -61,9 +61,30 @@
 				<div class="actions">
 					<button type="submit">保存记录</button>
 					<button type="button" @click="inspect">检测环境</button>
+					<button type="button" :disabled="!draft.localPath" @click="runDiagnose">一键检测</button>
 				</div>
 			</fieldset>
 		</form>
+		<div v-if="manager.diagnostics.value" class="diagnostic-section">
+			<h3>环境检测结果</h3>
+			<DeepSeekHarnessDiagnosticList :result="manager.diagnostics.value" />
+			<div class="actions">
+				<button
+					v-if="manager.diagnostics.value.overall !== 'ready'"
+					:disabled="manager.locked.value"
+					@click="runAutoSetup"
+				>
+					一键配置（保存并安装依赖/构建）
+				</button>
+				<button
+					v-if="manager.diagnostics.value.overall === 'ready' && draft.id"
+					:disabled="manager.locked.value"
+					@click="manager.activateProfile(draft.id!)"
+				>
+					设为当前源码并启动
+				</button>
+			</div>
+		</div>
 		<p v-if="dirty && draft.id">有未保存的修改，请先保存再准备或切换。</p>
 		<div class="actions">
 			<button
@@ -102,6 +123,7 @@ import { computed, ref } from 'vue'
 import type { HarnessServiceManager } from '../../composables/useDeepSeekHarnessServiceManager'
 import type { HarnessProfile, HarnessReport } from '../../electronBridge/deepseekHarnessTypes'
 import DeepSeekHarnessSourceSelector from './DeepSeekHarnessSourceSelector.vue'
+import DeepSeekHarnessDiagnosticList from './DeepSeekHarnessDiagnosticList.vue'
 const props = defineProps<{ manager: HarnessServiceManager }>()
 const fresh = (): HarnessProfile => ({
 	name: '',
@@ -141,6 +163,25 @@ async function save() {
 }
 async function inspect() {
 	report.value = await props.manager.probe(draft.value)
+}
+async function runDiagnose() {
+	if (!draft.value.localPath) return
+	if (!draft.value.name) {
+		// Auto-name from directory so normalizeProfile passes.
+		draft.value.name = draft.value.localPath.split(/[\\/]/).filter(Boolean).pop() || 'Harness'
+	}
+	await props.manager.diagnose(draft.value)
+}
+async function runAutoSetup() {
+	// Save first (autoSetup requires a stored profile id), then run orchestration.
+	if (!draft.value.id || dirty.value) {
+		const saved = await props.manager.saveProfile(draft.value)
+		if (saved) {
+			draft.value = saved
+			baseline.value = JSON.stringify(saved)
+		} else return
+	}
+	await props.manager.autoSetup(draft.value)
 }
 async function prepare() {
 	confirmPrepare.value = false
@@ -215,6 +256,15 @@ fieldset:disabled {
 .notice {
 	padding: 12px;
 	border: 1px solid var(--pl-accent);
+}
+.diagnostic-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.diagnostic-section h3 {
+	margin: 0;
+	font-size: 14px;
 }
 .error {
 	color: #ff8b8b;

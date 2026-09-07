@@ -9,9 +9,11 @@ export const stopCommandProcesses = () =>
 	Promise.all([...commandProcesses].map((proc) => proc.stop()))
 
 export function commandEnv(nodePath) {
-	const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', CI: '1', NO_COLOR: '1' }
+	const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', CI: '1' }
 	delete env.ELECTRON_RUN_AS_NODE
 	delete env.NODE_OPTIONS
+	delete env.NO_COLOR
+	delete env.FORCE_COLOR
 	if (nodePath) {
 		const key = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH'
 		env[key] = path.dirname(nodePath) + path.delimiter + (env[key] || '')
@@ -42,6 +44,45 @@ export async function resolveExecutable(value, fallback) {
 	throw new Error(`未找到 ${fallback}，请先安装或指定绝对路径（ENV_UNAVAILABLE）`)
 }
 
+// Best-effort pnpm resolution for corepack shims and npm global installs.
+// Searches common locations for pnpm.cjs/pnpm.js when the PATH-resolved
+// pnpm is a .CMD shim that resolvePnpm cannot parse directly.
+async function tryPnpmFallback(nodePath) {
+	const candidates = []
+	const nodeDir = path.dirname(nodePath)
+	candidates.push(path.join(nodeDir, 'node_modules', 'corepack', 'dist', 'pnpm.js'))
+	candidates.push(path.join(nodeDir, 'node_modules', 'pnpm', 'bin', 'pnpm.cjs'))
+	candidates.push(path.join(nodeDir, 'node_modules', 'pnpm', 'bin', 'pnpm.js'))
+	const npmGlobal = path.join(
+		process.env.APPDATA || '',
+		'npm',
+		'node_modules',
+		'pnpm',
+		'bin',
+		'pnpm.cjs'
+	)
+	candidates.push(npmGlobal)
+	const npmGlobalJs = path.join(
+		process.env.APPDATA || '',
+		'npm',
+		'node_modules',
+		'pnpm',
+		'bin',
+		'pnpm.js'
+	)
+	candidates.push(npmGlobalJs)
+	for (const script of candidates) {
+		if (
+			await fs
+				.stat(script)
+				.then((s) => s.isFile())
+				.catch(() => false)
+		)
+			return { command: nodePath, prefix: [script] }
+	}
+	return null
+}
+
 export async function resolvePnpm(value, nodePath) {
 	const candidate = await resolveExecutable(value, 'pnpm')
 	if (candidate.replace(/\\/g, '/').includes('/corepack/'))
@@ -51,7 +92,9 @@ export async function resolvePnpm(value, nodePath) {
 	const dir = path.dirname(candidate)
 	for (const relative of [
 		'node_modules/pnpm/bin/pnpm.cjs',
-		'../lib/node_modules/pnpm/bin/pnpm.cjs'
+		'node_modules/pnpm/bin/pnpm.js',
+		'../lib/node_modules/pnpm/bin/pnpm.cjs',
+		'../lib/node_modules/pnpm/bin/pnpm.js'
 	]) {
 		const script = path.resolve(dir, relative)
 		if (
@@ -62,6 +105,10 @@ export async function resolvePnpm(value, nodePath) {
 		)
 			return { command: nodePath, prefix: [script] }
 	}
+	// Last-resort: scan well-known global locations for pnpm.cjs/pnpm.js.
+	// This handles corepack shims whose .CMD points at corepack's own dist.
+	const fallback = await tryPnpmFallback(nodePath)
+	if (fallback) return fallback
 	if (process.platform !== 'win32') return { command: candidate, prefix: [] }
 	throw new Error('无法解析 pnpm 启动脚本，请指定 pnpm.cjs 的绝对路径')
 }
@@ -185,6 +232,7 @@ export async function runCommand(command, args, options = {}) {
 	let output = ''
 	const proc = spawnManaged(command, args, {
 		...options,
+		env: options.env || commandEnv(),
 		onLine: (stream, line) => {
 			output = (output + line + '\n').slice(-32768)
 			options.onLine?.(stream, line)
