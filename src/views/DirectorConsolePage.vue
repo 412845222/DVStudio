@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<div class="director-console-page">
 		<DirectorConsoleWindow ref="windowRef" :title="pageTitle" @data-loaded="onDataLoaded" />
 	</div>
@@ -101,8 +101,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .director-console-page {
-	width: 100vw;
-	height: 100vh;
+	width: 100%;
+	height: 100%;
 	overflow: hidden;
+	position: absolute;
+	inset: 0;
 }
 </style>
