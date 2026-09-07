@@ -395,6 +395,7 @@ export class DirectorSceneViewer {
 					position: { ...position },
 					target: { ...target },
 					fov: fov ?? 50,
+					roll: 0,
 					easing: 'linear'
 				}
 			]

@@ -2019,6 +2019,7 @@ export class SceneLayoutPreviewViewer {
 		// 从 QuaternionLike 构造 THREE.Quaternion 实例以调用 applyQuaternion
 		const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w)
 		const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
+		const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(q)
 		const distance = this.cameraDistance > 0 ? this.cameraDistance : 5
 		const newTarget = new THREE.Vector3(
 			pos.x + forward.x * distance,
@@ -2030,6 +2031,21 @@ export class SceneLayoutPreviewViewer {
 		if (clampedY !== pos.y) {
 			pos.y = clampedY
 		}
+		// 从 quaternion 提取 roll（绕前向轴的旋转角度）
+		// 将世界 up 投影到垂直于 forward 的平面，计算与 camUp 的夹角
+		const worldUp = new THREE.Vector3(0, 1, 0)
+		const worldUpProj = worldUp.clone().sub(forward.clone().multiplyScalar(worldUp.dot(forward)))
+		if (worldUpProj.lengthSq() > 1e-6) {
+			worldUpProj.normalize()
+			const right = new THREE.Vector3().crossVectors(forward, camUp).normalize()
+			const rollRad = Math.atan2(right.dot(worldUpProj), camUp.dot(worldUpProj))
+			kf.roll = +((rollRad * 180) / Math.PI).toFixed(2)
+		} else {
+			// forward 接近垂直（仰视/俯视），roll 无法从世界 up 推导，用欧拉角 Z 分量
+			const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ')
+			kf.roll = +((euler.z * 180) / Math.PI).toFixed(2)
+		}
+		console.log('[syncCameraActorTransform] extracted roll =', kf.roll)
 		// 更新 track 数据
 		kf.position = { x: pos.x, y: clampedY, z: pos.z }
 		kf.target = { x: newTarget.x, y: newTarget.y, z: newTarget.z }
@@ -2253,24 +2269,24 @@ export class SceneLayoutPreviewViewer {
 		const group = this.cameraActorGroup
 		const kf = track?.keyframes?.[0]
 		if (!group || !kf) return
-		console.log(
-			'[updateCameraActorTransformFromTrack] roll =',
-			kf.roll,
-			'sameRef =',
-			track === this.currentCameraTrack
-		)
 		const px = Number(kf.position?.x) || 0
 		const py = Number(kf.position?.y) || 0
 		const pz = Number(kf.position?.z) || 0
 		const tx = Number(kf.target?.x) || 0
 		const ty = Number(kf.target?.y) || 0
 		const tz = Number(kf.target?.z) || 0
+		const roll = Number(kf.roll) || 0
 		group.position.set(px, py, pz)
 		// 与 setCameraActor 一致：普通 Object3D 的 lookAt 让 +Z 朝向 target
 		const targetVec3 = new THREE.Vector3(tx, ty, tz)
 		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
 			targetVec3
 		)
+		// 应用 roll：绕本地 +Z 轴（前向）旋转
+		if (roll !== 0) {
+			const rollRad = (roll * Math.PI) / 180
+			;(group as unknown as { rotateZ?: (rad: number) => void }).rotateZ?.(rollRad)
+		}
 		// 更新 target marker + 连线
 		const targetGroup = this.cameraTargetGroup
 		if (targetGroup) {
