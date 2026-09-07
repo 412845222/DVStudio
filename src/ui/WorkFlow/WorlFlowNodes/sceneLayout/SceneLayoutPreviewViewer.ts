@@ -183,6 +183,7 @@ type CameraLike = Object3Dlike & {
 }
 type PerspectiveCameraLike = CameraLike & {
 	fov: number
+	up: Vector3Like
 }
 type SceneLike = Object3Dlike & {
 	background: unknown
@@ -2175,30 +2176,23 @@ export class SceneLayoutPreviewViewer {
 		const tz = Number(kf.target?.z) || 0
 		const fov = Number(kf.fov) || 50
 		const roll = Number(kf.roll) || 0
+		if (Math.abs(roll) > 0.01) {
+			console.log('[renderPreview] applying roll =', roll)
+		}
 		this.previewCamera.position.set(px, py, pz)
-		this.previewCamera.lookAt(tx, ty, tz)
-		// 应用 roll：绕相机自身前向轴旋转 up 向量
-		const camUp = (
-			this.previewCamera as unknown as {
-				up: {
-					x: number
-					y: number
-					z: number
-					copy(v: { x: number; y: number; z: number }): void
-					set(x: number, y: number, z: number): void
-				}
-			}
-		).up
+		// 应用 roll：先设置 up 向量（绕前向轴旋转），再 lookAt
 		if (roll !== 0) {
 			const rollRad = (roll * Math.PI) / 180
-			const up = new THREE.Vector3(0, 1, 0)
 			const forward = new THREE.Vector3(tx - px, ty - py, tz - pz).normalize()
-			up.applyAxisAngle(forward, rollRad)
-			camUp.copy(up)
-			this.previewCamera.lookAt(tx, ty, tz)
+			const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(forward, rollRad)
+			this.previewCamera.up.copy(up)
+			if (Math.abs(roll) > 0.01) {
+				console.log('[renderPreview] up =', up.x, up.y, up.z, 'fov =', fov)
+			}
 		} else {
-			camUp.set(0, 1, 0)
+			this.previewCamera.up.set(0, 1, 0)
 		}
+		this.previewCamera.lookAt(tx, ty, tz)
 		this.previewCamera.fov = fov
 		this.previewCamera.updateProjectionMatrix()
 		// 预览时隐藏摄像头 Actor 和 TransformControls，避免画面中出现自身
@@ -2259,6 +2253,12 @@ export class SceneLayoutPreviewViewer {
 		const group = this.cameraActorGroup
 		const kf = track?.keyframes?.[0]
 		if (!group || !kf) return
+		console.log(
+			'[updateCameraActorTransformFromTrack] roll =',
+			kf.roll,
+			'sameRef =',
+			track === this.currentCameraTrack
+		)
 		const px = Number(kf.position?.x) || 0
 		const py = Number(kf.position?.y) || 0
 		const pz = Number(kf.position?.z) || 0

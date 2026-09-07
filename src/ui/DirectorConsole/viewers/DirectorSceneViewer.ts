@@ -346,6 +346,7 @@ export class DirectorSceneViewer {
 		}
 		if (axis === 'z') {
 			kf.roll = degrees
+			console.log('[DirectorSceneViewer] updateCameraRotation z =', degrees, 'kf.roll =', kf.roll)
 		}
 		// 轻量更新 Actor 变换，不重建 mesh
 		this.previewViewer?.updateCameraActorTransformFromTrack(this.currentTrack)
@@ -402,6 +403,8 @@ export class DirectorSceneViewer {
 
 	private emitCameraTrackChange(): void {
 		if (!this.callbacks.onCameraTrackChange) return
+		const roll = this.currentTrack?.keyframes?.[0]?.roll
+		console.log('[DirectorSceneViewer] emitCameraTrackChange roll =', roll)
 		this.callbacks.onCameraTrackChange(this.currentTrack ? [this.currentTrack] : [])
 	}
 

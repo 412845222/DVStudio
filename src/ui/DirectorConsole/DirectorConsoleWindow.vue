@@ -386,6 +386,7 @@ const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const currentCameraFov = ref(50)
 const currentCameraPos = ref({ x: 0, y: 0, z: 0 })
 const currentCameraTarget = ref({ x: 0, y: 0, z: 0 })
+const currentCameraRoll = ref(0)
 // [v1.0] 变换输入框状态（与右侧工具条模式联动）
 const cameraScale = ref({ x: 1, y: 1, z: 1 })
 // [v3.0] TransformControls 模式（translate=移动 / rotate=旋转 / scale=缩放）
@@ -500,11 +501,19 @@ function syncCameraStateFromTracks(tracks: WorkflowDirectorCameraTrack[]) {
 			currentCameraFov.value = Number(kf.fov) || 50
 			currentCameraPos.value = { ...kf.position }
 			currentCameraTarget.value = { ...kf.target }
+			currentCameraRoll.value = Number(kf.roll) || 0
 		}
+		console.log(
+			'[DirectorConsoleWindow] syncCameraStateFromTracks roll =',
+			kf?.roll,
+			'track ref same?',
+			currentCameraTrack.value === tracks[0]
+		)
 	} else {
 		currentCameraTrack.value = null
 		hasCamera.value = false
 		currentCameraName.value = ''
+		currentCameraRoll.value = 0
 	}
 }
 
@@ -565,7 +574,9 @@ function onTransformDragMove(event: MouseEvent) {
 		sceneViewer?.updateCameraPosition(axis, currentCameraPos.value[axis])
 	} else if (dragState.kind === 'rotation') {
 		// 旋转：直接用增量值
-		sceneViewer?.updateCameraRotation(axis, parseFloat(newValue.toFixed(2)))
+		const v = parseFloat(newValue.toFixed(2))
+		console.log('[DirectorConsoleWindow] onTransformDragMove rotation axis =', axis, 'value =', v)
+		sceneViewer?.updateCameraRotation(axis, v)
 	} else if (dragState.kind === 'scale') {
 		const v = Math.max(0.01, parseFloat(newValue.toFixed(3)))
 		cameraScale.value[axis] = v
@@ -620,7 +631,7 @@ function getCameraRotationDeg(): { x: number; y: number; z: number } {
 	const yaw = (Math.atan2(dx / dist, dz / dist) * 180) / Math.PI
 	const pitch =
 		(Math.atan2(dy / dist, Math.sqrt((dx / dist) ** 2 + (dz / dist) ** 2)) * 180) / Math.PI
-	const roll = Number(currentCameraTrack.value?.keyframes?.[0]?.roll) || 0
+	const roll = currentCameraRoll.value
 	return { x: pitch, y: yaw, z: roll }
 }
 
