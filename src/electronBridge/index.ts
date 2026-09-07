@@ -828,3 +828,4 @@ export type {
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult
 }
+export { deepseekHarness, hasDeepSeekHarness } from './deepseekHarness'
