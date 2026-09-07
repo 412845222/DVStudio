@@ -7,6 +7,7 @@ const actions = {
 	'activate-profile': handlers.activateProfile,
 	'select-path': handlers.selectPath,
 	probe: handlers.probe,
+	diagnose: handlers.diagnose,
 	'service-status': handlers.getSnapshot,
 	'service-logs': handlers.getSnapshot,
 	'clear-logs': handlers.clearLogs,
@@ -14,12 +15,24 @@ const actions = {
 	'stop-service': handlers.stopService,
 	'restart-service': handlers.restartService,
 	'cancel-prepare': handlers.cancelPrepare,
-	'open-ui': handlers.openUi
+	'open-ui': handlers.openUi,
+	'get-open-url': handlers.getOpenUrl,
+	'proxy-call': handlers.proxyCall
 }
 export const routes = [
 	...Object.entries(actions).map(([action, handler]) => ({
 		channel: `dweb:deepseek-harness:setup:${action}`,
 		handler
 	})),
-	{ channel: 'dweb:deepseek-harness:setup:prepare:stream', handler: handlers.prepare, stream: true }
+	{
+		channel: 'dweb:deepseek-harness:setup:prepare:stream',
+		handler: handlers.prepare,
+		stream: true
+	},
+	{
+		channel: 'dweb:deepseek-harness:setup:auto-setup:stream',
+		handler: handlers.autoSetup,
+		stream: true
+	},
+	{ channel: 'dweb:deepseek-harness:agent:stream', handler: handlers.dshAgentStream, stream: true }
 ]

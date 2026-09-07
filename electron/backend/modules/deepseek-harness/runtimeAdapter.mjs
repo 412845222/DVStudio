@@ -2,9 +2,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 // Verified against upstream d347e703908d0406b7a7ef80e3a0e594d86b2215.
-// Invoke the built CLI with the selected Node, never a shell package script.
-export const ADAPTER_VERSION = 'dsh-built-cli-v1'
+// Supports both built CLI (apps/cli/lib/bin.js) and dev mode (pnpm dsh / tsx).
+export const ADAPTER_VERSION = 'dsh-adaptive-v2'
 export const CLI_ENTRY = 'apps/cli/lib/bin.js'
+export const DEV_ENTRY = 'apps/cli/src/bin.ts'
 
 export function satisfiesNode(version, range) {
 	const parse = (v) => /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number)
@@ -32,25 +33,30 @@ export async function inspectSource(localPath) {
 		cli.bin?.dsh !== 'lib/bin.js'
 	)
 		throw new Error('不支持的 Harness 源码结构（UNSUPPORTED_VERSION）')
-	const startup = await fs.readFile(
-		path.join(localPath, 'packages/bundle/web-app/src/startup.ts'),
-		'utf8'
-	)
-	if (!['--no-open', '--port', '--host'].every((flag) => startup.includes(flag)))
-		throw new Error('该源码不支持所需启动参数（UNSUPPORTED_VERSION）')
 	const built = await fs
 		.stat(path.join(localPath, CLI_ENTRY))
 		.then((s) => s.isFile())
 		.catch(() => false)
+	// Detect dev-mode support: root scripts.dsh typically runs tsx against the source entry.
+	const devScript = root.scripts?.dsh || ''
+	const hasDevEntry = await fs
+		.stat(path.join(localPath, DEV_ENTRY))
+		.then((s) => s.isFile())
+		.catch(() => false)
+	const devMode = Boolean(hasDevEntry && devScript.includes('--import tsx'))
 	return {
 		adapterVersion: ADAPTER_VERSION,
 		version: cli.version,
 		nodeRange: root.engines?.node,
 		packageManager: root.packageManager,
-		built
+		built,
+		devMode,
+		devScript
 	}
 }
 
+// Legacy launch args without --no-open (use buildLaunchArgs from startupProbe.mjs
+// when dynamic flag detection is needed).
 export function launchArgs(profile) {
 	return [
 		path.join(profile.localPath, CLI_ENTRY),
@@ -58,8 +64,7 @@ export function launchArgs(profile) {
 		'--host',
 		'127.0.0.1',
 		'--port',
-		String(profile.port),
-		'--no-open'
+		String(profile.port)
 	]
 }
 

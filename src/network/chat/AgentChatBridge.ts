@@ -10,6 +10,7 @@ import type {
 import { DVSAgentChatService } from './DVSAgentChatService'
 import { CopilotChatService } from './CopilotChatService'
 import { CodexChatService } from './CodexChatService'
+import { DSHAgentChatService } from './DSHAgentChatService'
 
 export class AgentChatBridge {
 	private services: Map<AgentBackendType, IChatService>
@@ -19,6 +20,7 @@ export class AgentChatBridge {
 		this.services.set('dvsagent', new DVSAgentChatService())
 		this.services.set('copilot', new CopilotChatService())
 		this.services.set('codex', new CodexChatService())
+		this.services.set('dshagent', new DSHAgentChatService())
 	}
 
 	getService(backend: AgentBackendType): IChatService {

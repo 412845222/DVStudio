@@ -69,6 +69,32 @@ export interface HarnessProgress {
 	message: string
 	report?: HarnessReport
 }
+export interface HarnessDiagnosticAction {
+	label: string
+	kind: 'link' | 'command' | 'manual'
+	value?: string
+}
+export interface HarnessDiagnosticItem {
+	key: string
+	status: 'pass' | 'warn' | 'fail'
+	title: string
+	detail: string
+	actions: HarnessDiagnosticAction[]
+}
+export interface HarnessDiagnosticResult {
+	profile: HarnessProfile
+	info: HarnessReport | null
+	items: HarnessDiagnosticItem[]
+	overall: 'ready' | 'auto-fixable' | 'needs-action'
+	validatedAt: number
+}
+export interface HarnessAutoSetupProgress {
+	operationId: string
+	phase: string
+	message?: string
+	diagnostics?: HarnessDiagnosticResult
+	report?: HarnessReport
+}
 export type HarnessEvent = { seq: number; epoch: number } & Partial<HarnessStatus>
 export type HarnessResult<T> = { ok: true; value: T } | { ok: false; error: string }
 export interface HarnessSetupApi {
@@ -87,6 +113,7 @@ export interface HarnessSetupApi {
 	}): Promise<HarnessResult<HarnessProfiles>>
 	selectPath(): Promise<HarnessResult<{ cancelled: boolean; path: string }>>
 	probe(payload: { profile: HarnessProfile }): Promise<HarnessResult<HarnessReport>>
+	diagnose(payload: { profile: HarnessProfile }): Promise<HarnessResult<HarnessDiagnosticResult>>
 	getServiceStatus(): Promise<HarnessResult<HarnessSnapshot>>
 	getServiceLogs(): Promise<HarnessResult<HarnessSnapshot>>
 	clearServiceLogs(): Promise<HarnessResult<HarnessSnapshot>>
@@ -105,8 +132,19 @@ export interface HarnessSetupApi {
 		expectedRevision: number
 		operationId: string
 	}): AsyncIterable<HarnessProgress>
+	autoSetup(payload: {
+		profileId: string
+		expectedRevision: number
+		operationId: string
+	}): AsyncIterable<HarnessAutoSetupProgress>
 	cancelPrepare(payload: { operationId: string }): Promise<HarnessResult<{ cancelled: boolean }>>
 	openUi(payload: { runId: string | null }): Promise<HarnessResult<boolean>>
+	getOpenUrl(payload: { runId: string | null }): Promise<HarnessResult<string>>
+	proxyCall(payload: { method: string; payload: unknown }): Promise<HarnessResult<unknown>>
+	dshAgentStream(payload: {
+		sessionId: string
+		content: string | Array<{ type: string; text?: string; [key: string]: unknown }>
+	}): AsyncIterable<unknown>
 	onServiceLog(listener: (entries: HarnessLog[]) => void): () => void
 	onServiceStatusChange(listener: (event: HarnessEvent) => void): () => void
 	onServiceExit(listener: (event: HarnessEvent) => void): () => void

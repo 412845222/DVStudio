@@ -46,7 +46,8 @@ try {
 	)
 	await fs.writeFile(
 		path.join(root, 'apps/cli/lib/bin.js'),
-		'console.log("dsh web: http://127.0.0.1:49381/#token=smoke-secret"); setInterval(() => {}, 1000)'
+		`if (process.argv.includes('--help')) { console.log('Options: --host --port'); process.exit(0); }
+console.log("dsh web: http://127.0.0.1:49381/#token=smoke-secret"); setInterval(() => {}, 1000)`
 	)
 	manager.start({
 		id: 'smoke',

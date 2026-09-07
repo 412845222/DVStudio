@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import {
 	APP_NAME,
 	APP_ID,
@@ -878,6 +878,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			activateProfile: (payload) => invoke('dweb:deepseek-harness:setup:activate-profile', payload),
 			selectPath: () => invoke('dweb:deepseek-harness:setup:select-path'),
 			probe: (payload) => invoke('dweb:deepseek-harness:setup:probe', payload),
+			diagnose: (payload) => invoke('dweb:deepseek-harness:setup:diagnose', payload),
 			getServiceStatus: () => invoke('dweb:deepseek-harness:setup:service-status'),
 			getServiceLogs: () => invoke('dweb:deepseek-harness:setup:service-logs'),
 			clearServiceLogs: () => invoke('dweb:deepseek-harness:setup:clear-logs'),
@@ -886,8 +887,13 @@ contextBridge.exposeInMainWorld('dweb', {
 			restartService: (payload) => invoke('dweb:deepseek-harness:setup:restart-service', payload),
 			prepare: (payload) =>
 				createIpcStreamGenerator('dweb:deepseek-harness:setup:prepare', payload),
+			autoSetup: (payload) =>
+				createIpcStreamGenerator('dweb:deepseek-harness:setup:auto-setup', payload),
 			cancelPrepare: (payload) => invoke('dweb:deepseek-harness:setup:cancel-prepare', payload),
 			openUi: (payload) => invoke('dweb:deepseek-harness:setup:open-ui', payload),
+			getOpenUrl: (payload) => invoke('dweb:deepseek-harness:setup:get-open-url', payload),
+			proxyCall: (payload) => invoke('dweb:deepseek-harness:setup:proxy-call', payload),
+			dshAgentStream: (payload) => createIpcStreamGenerator('dweb:deepseek-harness:agent', payload),
 			onServiceLog: (listener) => onHarnessEvent('service-log', listener),
 			onServiceStatusChange: (listener) => onHarnessEvent('service-status', listener),
 			onServiceExit: (listener) => onHarnessEvent('service-exit', listener),
