@@ -179,7 +179,11 @@
 			{
 				"from": "dsh-plugins",
 				"to": "dsh-plugins",
-				"filter": ["**/*", "!**/node_modules/**", "!**/dist/**"]
+				"filter": [
+					"**/*",
+					"!**/node_modules/**",
+					"!**/dist/**"
+				]
 			},
 			{
 				"from": "electron/backend/python-bridge/scripts",
