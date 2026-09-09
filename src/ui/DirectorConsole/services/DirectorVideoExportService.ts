@@ -71,8 +71,10 @@ export class DirectorVideoExportService {
 			}
 			jobId = tmp.jobId
 
-			// 1.5 提升预览渲染分辨率至至少 360P（高度 >= 360），保持原始宽高比
-			const MIN_HEIGHT = 360
+			// 1.5 提升预览渲染分辨率至至少 720P（高度 >= 720），保持原始宽高比
+			// Seedance R2V 要求视频像素数 >= 407696（约 720x566 或 854x478），
+			// 使用 720 高度可确保所有常见宽高比都满足像素数要求（如 3:2 → 1080x720=777600px）。
+			const MIN_HEIGHT = 720
 			const origW = originalPreviewSize.width || 240
 			const origH = originalPreviewSize.height || 160
 			const scale = Math.max(1, MIN_HEIGHT / origH)

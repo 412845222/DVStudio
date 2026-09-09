@@ -222,14 +222,8 @@
 					</div>
 				</div>
 				<div class="dc-sidebar-divider" />
-				<div class="dc-sidebar-section">
-					<div class="dc-section-header">
-						<span class="dc-section-title">{{ t('nodes.directorConsole.lightRigTitle') }}</span>
-						<span class="dc-section-scanline" />
-					</div>
-					<div class="dc-sidebar-empty">
-						{{ t('nodes.directorConsole.lightRigEmpty') }}
-					</div>
+				<div class="dc-sidebar-section dc-chat-section">
+					<DirectorConsoleChatPanel />
 				</div>
 			</aside>
 			<div
@@ -642,6 +636,8 @@ import type { WorkflowDirectorCameraTrack, WorkflowDirectorCharacter } from '../
 import { SceneLayoutPreviewViewer } from '../WorkFlow/WorlFlowNodes/sceneLayout/SceneLayoutPreviewViewer'
 import DirectorTimeline from './DirectorTimeline.vue'
 import { DirectorVideoExportService } from './services/DirectorVideoExportService'
+import { DirectorConsoleToolHandler } from './services/DirectorConsoleToolHandler'
+import DirectorConsoleChatPanel from './chat/DirectorConsoleChatPanel.vue'
 
 defineProps<{
 	title: string
@@ -784,6 +780,7 @@ const exportVisible = ref(false)
 const exportPercent = ref(0)
 const exportMessage = ref('')
 let exportService: DirectorVideoExportService | null = null
+let toolHandler: DirectorConsoleToolHandler | null = null
 function showToast(msg: string) {
 	toastMessage.value = msg
 	if (toastTimer) clearTimeout(toastTimer)
@@ -811,7 +808,7 @@ function onRedo() {
 	showToast(t('nodes.directorConsole.redo'))
 }
 
-/** 保存按钮：flush 历史 + 提交完整状态 */
+/** 保存按钮：flush 历史 + 提交完整状态（摄像头、角色、时间轴全量保存） */
 function onSaveButton() {
 	history?.flushPendingCapture()
 	console.log('[DirectorConsole:onSaveButton] clicked', {
@@ -825,17 +822,35 @@ function onSaveButton() {
 		return
 	}
 	const state = sceneViewer.captureState()
+	// 完整性校验日志：确认所有字段都已捕获
+	const charKeyframesCount =
+		state.characters?.reduce((sum, c) => sum + (c.keyframes?.length ?? 0), 0) ?? 0
+	const camKeyframesCount = state.cameraTracks?.[0]?.keyframes?.length ?? 0
 	console.log('[DirectorConsole:onSaveButton] captured state', {
 		charactersCount: state.characters?.length ?? 0,
-		hasCameraTracks: Array.isArray(state.cameraTracks) && state.cameraTracks.length > 0
+		charKeyframesCount,
+		hasCameraTracks: Array.isArray(state.cameraTracks) && state.cameraTracks.length > 0,
+		camKeyframesCount,
+		activeCameraTrackId: state.activeCameraTrackId,
+		cameraParentId: state.cameraParentId,
+		fps: state.fps,
+		totalFrames: state.totalFrames,
+		hasLightRig: !!state.lightRig,
+		lightCount: state.lightRig?.lights?.length ?? 0
 	})
+	if (!state.characters?.length && !state.cameraTracks?.length) {
+		console.warn('[DirectorConsole:onSaveButton] state is empty (no characters, no camera tracks)')
+	}
 	setSaveStatus('saving')
 	try {
 		directorConsoleSave({
 			nodeId: currentPayload.nodeId,
 			patch: state
 		})
-		console.log('[DirectorConsole:onSaveButton] directorConsoleSave IPC sent')
+		console.log('[DirectorConsole:onSaveButton] directorConsoleSave IPC sent', {
+			nodeId: currentPayload.nodeId,
+			patchKeys: Object.keys(state)
+		})
 		// directorConsoleSave 为 fire-and-forget IPC，落盘由主窗口异步完成；
 		// 这里给出即时反馈，让用户感知保存已触发。
 		setSaveStatus('saved')
@@ -970,6 +985,14 @@ onMounted(() => {
 		})
 		// 初始化历史栈
 		setupHistory()
+		// [Agent Tools] 初始化导演控制台工具处理器，接收 DSH Agent 工具调用
+		toolHandler = new DirectorConsoleToolHandler(
+			sceneViewer,
+			() => currentPayload?.layoutItems ?? [],
+			() => currentPayload?.projectId,
+			() => currentPayload?.nodeId
+		)
+		toolHandler.setup()
 	}
 	// [v3.0] hasCamera 变为 true 时,等待 DOM 渲染后设置预览 canvas 并定位到视口右下角
 	// 使用 immediate 确保已存在摄像头时也能正确定位
@@ -1866,6 +1889,8 @@ onBeforeUnmount(() => {
 	}
 	sceneViewer?.dispose()
 	sceneViewer = null
+	toolHandler?.cleanup()
+	toolHandler = null
 	currentPayload = null
 	currentCameraTrack.value = null
 	hasCamera.value = false
@@ -2269,6 +2294,15 @@ defineExpose({
 	padding: 14px 12px;
 	position: relative;
 	z-index: 1;
+}
+
+.dc-chat-section {
+	flex: 1;
+	min-height: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
 }
 
 .dc-sidebar-divider {

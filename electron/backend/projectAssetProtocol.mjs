@@ -2484,6 +2484,53 @@ export function writeProjectAssetText({ projectId, name, subPath, text }) {
 	}
 }
 
+/**
+ * 直接写入二进制数据到项目资产文件（覆盖写）。
+ * 与 writeProjectAssetText 类似，但接受 Buffer/Uint8Array，
+ * 用于导演控制台截图等二进制资源。
+ */
+export function writeProjectAssetBinary({ projectId, name, subPath, data }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	const safeName = sanitizeFilename(String(name || 'file'))
+	const safeSubPath = String(subPath || '')
+		.trim()
+		.split(/[\\/]+/)
+		.filter(Boolean)
+		.map((seg) => sanitizeFilename(seg))
+		.join(path.sep)
+
+	const targetDir = safeSubPath
+		? path.resolve(root, 'Content', 'Media', safeSubPath)
+		: path.resolve(root, 'Content', 'Media')
+	try {
+		fs.mkdirSync(targetDir, { recursive: true })
+	} catch (err) {
+		return { ok: false, error: 'mkdir failed: ' + String(err?.message || err) }
+	}
+
+	const targetPath = path.resolve(targetDir, safeName)
+	try {
+		const buf = Buffer.isBuffer(data)
+			? data
+			: data instanceof Uint8Array
+				? Buffer.from(data)
+				: Buffer.from(String(data ?? ''), 'utf-8')
+		fs.writeFileSync(targetPath, buf)
+		return {
+			ok: true,
+			absolutePath: targetPath,
+			projectRelativePath: path.relative(root, targetPath).split(path.sep).join('/')
+		}
+	} catch (err) {
+		return { ok: false, error: 'write file failed: ' + String(err?.message || err) }
+	}
+}
+
 export function repairProjectAsset({ projectId, kind, name, projectRelativePath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }

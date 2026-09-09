@@ -2605,6 +2605,37 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	/**
+	 * [Agent Tools] 设置摄像头 Actor 的位置与朝向目标。
+	 * 供 dc_set_camera_transform 工具调用，设置后 addCameraKeyframe 会记录此变换。
+	 */
+	setCameraActorTransform(
+		position: { x: number; y: number; z: number },
+		target: { x: number; y: number; z: number }
+	): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		const px = Number(position.x) || 0
+		const py = this.clampCameraY(Number(position.y) || 0)
+		const pz = Number(position.z) || 0
+		const tx = Number(target.x) || 0
+		const ty = Number(target.y) || 0
+		const tz = Number(target.z) || 0
+		group.position.set(px, py, pz)
+		this.cameraBaseLocalPosition.set(px, py, pz)
+		const targetVec3 = new THREE.Vector3(tx, ty, tz)
+		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+			targetVec3
+		)
+		this.cameraDistance = Math.max(
+			0.001,
+			Math.sqrt((tx - px) ** 2 + (ty - py) ** 2 + (tz - pz) ** 2)
+		)
+		;(group as unknown as { updateMatrixWorld?: (force?: boolean) => void }).updateMatrixWorld?.(
+			true
+		)
+	}
+
+	/**
 	 * 当前主相机的 FOV（用于点击按钮添加摄像头时保持视角一致）。
 	 */
 	getCameraFov(): number {

@@ -333,6 +333,32 @@ export async function writeProjectAssetText(payload: {
 	})
 }
 
+/**
+ * 写入二进制数据到项目资产文件（覆盖写）。
+ * 用于导演控制台截图等二进制资源。
+ */
+export async function writeProjectAssetBinary(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	data: Uint8Array | ArrayBuffer | string
+}): Promise<{
+	ok: boolean
+	absolutePath?: string
+	projectRelativePath?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.writeProjectAssetBinary) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.writeProjectAssetBinary({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		data: payload?.data
+	})
+}
+
 export async function importProjectAsset(payload: {
 	projectId: number
 	kind?: string

@@ -1,0 +1,6 @@
+# dvstudio-director bundle patch
+- insert:
+    - id: dvstudio-director-plugin
+      name: '@dvstudio/director-plugin'
+      config:
+        harnessApiBase: 'http://127.0.0.1:3080'

@@ -54,3 +54,17 @@ export function getBundledScriptPath(relativePath) {
 export function getNodeExecutablePath() {
 	return process.execPath
 }
+
+export function getBundledPluginPath() {
+	if (!isPackagedAsar()) {
+		// __dirname = electron/backend/core/
+		// 上溯三级到项目根目录
+		return path.resolve(__dirname, '..', '..', '..', 'dsh-plugins', 'dvstudio-director')
+	}
+	return path.join(process.resourcesPath, 'dsh-plugins', 'dvstudio-director')
+}
+
+export function getBundledSyncScriptPath() {
+	const pluginParent = path.dirname(getBundledPluginPath())
+	return path.join(pluginParent, 'sync.mjs')
+}

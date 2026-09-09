@@ -171,7 +171,7 @@ export class DirectorSceneViewer {
 				this.applyLightRig(payload.lightRig as WorkflowDirectorLightRig)
 			}
 
-			// [v1.0] 加载角色
+			// [v1.0] 加载角色（完整深拷贝，避免引用共享导致的数据丢失）
 			if (Array.isArray(payload.characters)) {
 				// 先清空旧角色，避免 reopen/loadScene 叠加多余角色
 				this.previewViewer?.clearCharacters()
@@ -182,15 +182,51 @@ export class DirectorSceneViewer {
 						y: Number(c.position?.y) || 0,
 						z: Number(c.position?.z) || 0
 					},
-					rotation: c.rotation ? { ...c.rotation } : {},
-					scale: c.scale ? { ...c.scale } : undefined,
-					keyframes: Array.isArray(c.keyframes) ? [...c.keyframes] : undefined
+					rotation: c.rotation
+						? {
+								yaw: c.rotation.yaw,
+								pitch: c.rotation.pitch,
+								roll: c.rotation.roll
+							}
+						: undefined,
+					scale: c.scale ? { x: c.scale.x, y: c.scale.y, z: c.scale.z } : undefined,
+					keyframes: Array.isArray(c.keyframes)
+						? c.keyframes.map((k) => ({
+								...k,
+								position: {
+									x: Number(k.position?.x) || 0,
+									y: Number(k.position?.y) || 0,
+									z: Number(k.position?.z) || 0
+								},
+								rotation: k.rotation
+									? {
+											yaw: k.rotation.yaw,
+											pitch: k.rotation.pitch,
+											roll: k.rotation.roll
+										}
+									: undefined,
+								scale: k.scale ? { x: k.scale.x, y: k.scale.y, z: k.scale.z } : undefined
+							}))
+						: undefined
 				}))
 				this.characterKeyframes = {}
 				for (const c of this.characters) {
 					this.previewViewer?.addCharacter(c)
 					if (Array.isArray(c.keyframes) && c.keyframes.length > 0) {
-						this.characterKeyframes[c.id] = [...c.keyframes].sort((a, b) => a.frame - b.frame)
+						this.characterKeyframes[c.id] = c.keyframes
+							.map((k) => ({
+								...k,
+								position: { x: k.position.x, y: k.position.y, z: k.position.z },
+								rotation: k.rotation
+									? {
+											yaw: k.rotation.yaw,
+											pitch: k.rotation.pitch,
+											roll: k.rotation.roll
+										}
+									: undefined,
+								scale: k.scale ? { x: k.scale.x, y: k.scale.y, z: k.scale.z } : undefined
+							}))
+							.sort((a, b) => a.frame - b.frame)
 					}
 				}
 			}
@@ -687,6 +723,41 @@ export class DirectorSceneViewer {
 		this.previewViewer?.setCameraActorScale(axis, value)
 	}
 
+	/**
+	 * [Agent Tools] 设置摄像头 Actor 的位置与朝向目标。
+	 * 供 dc_set_camera_transform 工具调用。
+	 * 必须同步更新 currentTrack.keyframes[0]，否则保存后重新打开会回档到旧位置。
+	 */
+	setCameraActorTransform(
+		position: { x: number; y: number; z: number },
+		target: { x: number; y: number; z: number }
+	): void {
+		this.previewViewer?.setCameraActorTransform(position, target)
+		// 同步更新 track 中第一个关键帧的 position 和 target
+		if (this.currentTrack?.keyframes?.[0]) {
+			this.currentTrack.keyframes[0].position = {
+				x: position.x,
+				y: position.y,
+				z: position.z
+			}
+			this.currentTrack.keyframes[0].target = {
+				x: target.x,
+				y: target.y,
+				z: target.z
+			}
+		}
+	}
+
+	/**
+	 * [Agent Tools] 获取摄像头 Actor 当前的位置与朝向目标。
+	 */
+	getCameraActorTransform(): {
+		position: { x: number; y: number; z: number }
+		target: { x: number; y: number; z: number }
+	} | null {
+		return this.previewViewer?.getCameraActorTransform() ?? null
+	}
+
 	private buildCameraTrack(
 		position: { x: number; y: number; z: number },
 		target: { x: number; y: number; z: number },
@@ -1105,7 +1176,7 @@ export class DirectorSceneViewer {
 		this.previewViewer.setLayout([], null, { previewMode: true })
 	}
 
-	/** 捕获当前导演控制台状态快照（撤销/重做用） */
+	/** 捕获当前导演控制台状态快照（撤销/重做/保存用，必须完整深拷贝） */
 	captureState(): DirectorConsoleSnapshot {
 		const snapshot: DirectorConsoleSnapshot = {
 			cameraTracks: this.currentTrack ? [this.cloneTrack(this.currentTrack)] : undefined,
@@ -1114,16 +1185,29 @@ export class DirectorSceneViewer {
 				? {
 						preset: this.currentLightRig.preset,
 						exposure: this.currentLightRig.exposure,
-						lights: this.currentLightRig.lights.map((l) => ({ ...l }))
+						lights: this.currentLightRig.lights.map((l) => ({
+							...l,
+							position: l.position ? { ...l.position } : undefined,
+							target: l.target ? { ...l.target } : undefined
+						}))
 					}
 				: undefined,
 			characters: this.characters.map((c) => ({
 				...c,
-				position: { ...c.position },
-				rotation: c.rotation ? { ...c.rotation } : undefined,
-				scale: c.scale ? { ...c.scale } : undefined,
+				position: { x: c.position.x, y: c.position.y, z: c.position.z },
+				rotation: c.rotation
+					? { yaw: c.rotation.yaw, pitch: c.rotation.pitch, roll: c.rotation.roll }
+					: undefined,
+				scale: c.scale ? { x: c.scale.x, y: c.scale.y, z: c.scale.z } : undefined,
 				keyframes: c.keyframes
-					? c.keyframes.map((k) => ({ ...k, position: { ...k.position } }))
+					? c.keyframes.map((k) => ({
+							...k,
+							position: { x: k.position.x, y: k.position.y, z: k.position.z },
+							rotation: k.rotation
+								? { yaw: k.rotation.yaw, pitch: k.rotation.pitch, roll: k.rotation.roll }
+								: undefined,
+							scale: k.scale ? { x: k.scale.x, y: k.scale.y, z: k.scale.z } : undefined
+						}))
 					: undefined
 			})),
 			cameraParentId: this.cameraParentId,
@@ -1133,7 +1217,7 @@ export class DirectorSceneViewer {
 		return snapshot
 	}
 
-	/** 应用快照到当前状态（撤销/重做用） */
+	/** 应用快照到当前状态（撤销/做用，必须完整深拷贝） */
 	applyState(snap: DirectorConsoleSnapshot): void {
 		if (snap.cameraTracks !== undefined) {
 			const track = snap.cameraTracks.length > 0 ? this.cloneTrack(snap.cameraTracks[0]) : null
@@ -1145,17 +1229,35 @@ export class DirectorSceneViewer {
 		if (Array.isArray(snap.characters)) {
 			this.characters = snap.characters.map((c) => ({
 				...c,
-				position: { ...c.position },
-				rotation: c.rotation ? { ...c.rotation } : undefined,
-				scale: c.scale ? { ...c.scale } : undefined,
+				position: { x: c.position.x, y: c.position.y, z: c.position.z },
+				rotation: c.rotation
+					? { yaw: c.rotation.yaw, pitch: c.rotation.pitch, roll: c.rotation.roll }
+					: undefined,
+				scale: c.scale ? { x: c.scale.x, y: c.scale.y, z: c.scale.z } : undefined,
 				keyframes: c.keyframes
-					? c.keyframes.map((k) => ({ ...k, position: { ...k.position } }))
+					? c.keyframes.map((k) => ({
+							...k,
+							position: { x: k.position.x, y: k.position.y, z: k.position.z },
+							rotation: k.rotation
+								? { yaw: k.rotation.yaw, pitch: k.rotation.pitch, roll: k.rotation.roll }
+								: undefined,
+							scale: k.scale ? { x: k.scale.x, y: k.scale.y, z: k.scale.z } : undefined
+						}))
 					: undefined
 			}))
 			this.characterKeyframes = {}
 			for (const c of this.characters) {
 				if (Array.isArray(c.keyframes) && c.keyframes.length > 0) {
-					this.characterKeyframes[c.id] = [...c.keyframes].sort((a, b) => a.frame - b.frame)
+					this.characterKeyframes[c.id] = c.keyframes
+						.map((k) => ({
+							...k,
+							position: { x: k.position.x, y: k.position.y, z: k.position.z },
+							rotation: k.rotation
+								? { yaw: k.rotation.yaw, pitch: k.rotation.pitch, roll: k.rotation.roll }
+								: undefined,
+							scale: k.scale ? { x: k.scale.x, y: k.scale.y, z: k.scale.z } : undefined
+						}))
+						.sort((a, b) => a.frame - b.frame)
 				}
 			}
 			this.refreshCharacterMeshes()

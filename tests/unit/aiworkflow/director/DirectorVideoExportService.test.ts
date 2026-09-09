@@ -57,8 +57,8 @@ describe('DirectorVideoExportService', () => {
 		vi.restoreAllMocks()
 	})
 
-	describe('resolution scaling (360p minimum)', () => {
-		it('should upscale preview to height >= 360 while keeping aspect ratio', async () => {
+	describe('resolution scaling (720p minimum)', () => {
+		it('should upscale preview to height >= 720 while keeping aspect ratio', async () => {
 			const viewer = new FakeSceneViewer()
 			;(window as any).dweb = makeDweb()
 			const service = new DirectorVideoExportService(viewer as any)
@@ -75,12 +75,12 @@ describe('DirectorVideoExportService', () => {
 				projectId: 1
 			})
 
-			// 240x160 → scale = 360/160 = 2.25 → 540x360
+			// 240x160 → scale = 720/160 = 4.5 → 1080x720
 			const resizeCall = viewer.calls.find((c) => c.startsWith('setPreviewSize:'))
-			expect(resizeCall).toBe('setPreviewSize:540x360')
+			expect(resizeCall).toBe('setPreviewSize:1080x720')
 		})
 
-		it('should not upscale when preview already taller than 360', async () => {
+		it('should not upscale when preview already taller than 720', async () => {
 			const viewer = new FakeSceneViewer()
 			viewer.previewSize = { width: 1280, height: 720 }
 			;(window as any).dweb = makeDweb()
@@ -93,7 +93,7 @@ describe('DirectorVideoExportService', () => {
 			await service.exportVideo({ fps: 24, totalFrames: 1, nodeId: 'n1', projectId: 1 })
 
 			const resizeCall = viewer.calls.find((c) => c.startsWith('setPreviewSize:'))
-			// scale = max(1, 360/720) = 1 → 1280x720
+			// scale = max(1, 720/720) = 1 → 1280x720
 			expect(resizeCall).toBe('setPreviewSize:1280x720')
 		})
 	})

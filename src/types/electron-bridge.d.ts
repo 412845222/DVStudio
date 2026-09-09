@@ -321,6 +321,21 @@ declare global {
 				directorConsoleNotifyExportDone(payload: { nodeId: string; assetUrl?: string; assetName?: string }): void
 				onDirectorConsoleExportDone(handler: (payload: { nodeId: string; assetUrl?: string; assetName?: string }) => void): number
 				offDirectorConsoleExportDone(listenerId: number): void
+				// [v6.0] 模型多模态检查
+				directorConsoleCheckModelVision(): Promise<{
+					ok: boolean
+					totalModels?: number
+					missingVision?: Array<{ id: string; hasImageInput: boolean; adapter?: string }>
+					allHaveVision?: boolean
+					error?: string
+				}>
+				directorConsoleFixModelVision(): Promise<{
+					ok: boolean
+					action?: 'noop' | 'fixed'
+					fixedCount?: number
+					message?: string
+					error?: string
+				}>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -392,6 +407,17 @@ declare global {
 					name?: string
 					subPath?: string
 					text: string
+				}): Promise<{
+					ok: boolean
+					absolutePath?: string
+					projectRelativePath?: string
+					error?: string
+				}>
+				writeProjectAssetBinary(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					data: Uint8Array | ArrayBuffer | string
 				}): Promise<{
 					ok: boolean
 					absolutePath?: string
