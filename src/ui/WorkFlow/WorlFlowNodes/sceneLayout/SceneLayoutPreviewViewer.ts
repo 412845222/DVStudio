@@ -18,7 +18,8 @@ import type {
 	WorkflowUnrealResolvedParentReference,
 	WorkflowUnrealResolvedSurfaceSemantics,
 	WorkflowSceneLightingPreviewConfig,
-	WorkflowDirectorCameraTrack
+	WorkflowDirectorCameraTrack,
+	WorkflowDirectorCharacter
 } from '../../../../aiworkflow/types'
 
 type AnchorPoint = { center: Vector3Like; base: Vector3Like; top: Vector3Like }
@@ -183,6 +184,7 @@ type CameraLike = Object3Dlike & {
 }
 type PerspectiveCameraLike = CameraLike & {
 	fov: number
+	up: Vector3Like
 }
 type SceneLike = Object3Dlike & {
 	background: unknown
@@ -276,6 +278,8 @@ type ViewerOptions = {
 	onCameraTrackChange?: (track: WorkflowDirectorCameraTrack | null) => void
 	/** [v1.0] 摄像头 Actor 缩放变更回调（scale 模式，仅视觉） */
 	onCameraScaleChange?: (scale: { x: number; y: number; z: number }) => void
+	/** [v1.0] 角色变换拖拽结束回调，通知上层同步角色 position/rotation/scale */
+	onCharacterTransformChange?: (characterId: string) => void
 	/**
 	 * 【BUGFIX 2026-07】节流视角状态变更通知（每 ~120ms 最多一次）。
 	 * - 相比之前只在 onCameraInteractionEnd（用户松开鼠标/滚轮停止）时才通知，
@@ -295,6 +299,8 @@ type SceneLayoutRenderOptions = {
 	lightingDebugEnabled?: boolean
 	lightingJson?: string
 	lightingControls?: WorkflowSceneLayoutLightingControls
+	/** 白模模式：所有占位立方体统一为白色，避免与角色颜色撞色 */
+	whiteMode?: boolean
 }
 
 export type SceneLayoutPreviewPerfSnapshot = {
@@ -926,6 +932,7 @@ export class SceneLayoutPreviewViewer {
 	private readonly pointer: Vector2Like
 	private readonly meshesById = new Map<string, MeshLike>()
 	private readonly edgesById = new Map<string, LineLike>()
+	private readonly characterMeshesById = new Map<string, GroupLike>()
 	private readonly boundModelsById = new Map<string, GroupLike>()
 	private readonly bindingById = new Map<string, WorkflowSceneLayoutModelBinding>()
 	private readonly relationLines: RelationLine[] = []
@@ -961,6 +968,8 @@ export class SceneLayoutPreviewViewer {
 	private cameraActorGroup: GroupLike | null = null
 	// [v3.0] 摄像头 target 标记 Group（独立定位到 target 世界坐标，不跟随摄像头旋转）
 	private cameraTargetGroup: GroupLike | null = null
+	// [v1.0] 角色 Group 容器（圆柱体身体 + 圆球头部），独立于占位体 group
+	private readonly characterGroup: GroupLike
 	// [v3.0] position→target 独立连线（不跟随 group 旋转，便于动态更新端点）
 	private cameraTargetLine: LineLike | null = null
 	// [v3.0] 摄像头到 target 的原始距离，供 rotate 模式重新计算 target 使用
@@ -968,16 +977,24 @@ export class SceneLayoutPreviewViewer {
 	// [v3.0] 当前摄像头 track 缓存，供右下角预览渲染使用
 	private currentCameraTrack: WorkflowDirectorCameraTrack | null = null
 	// [v3.0] 摄像头选择专用 ID（与占位体 selectedId 区分）
-	private static readonly CAMERA_SELECTION_ID = '__camera_actor__'
+	public static readonly CAMERA_SELECTION_ID = '__camera_actor__'
+	// [v4.2] 弹簧臂：摄像头挂在角色子级时，射线检测碰撞避免穿墙
+	private springArmEnabled = false
+	// 摄像头原始局部位置（弹簧臂压缩前），用于回弹到正常距离
+	private cameraBaseLocalPosition = new THREE.Vector3() as unknown as Vector3Like
 	// [v3.0] 右下角镜头预览 renderer / camera
 	private previewRenderer: WebGLRendererLike | null = null
 	private previewCamera: PerspectiveCameraLike | null = null
+	/** [v3.0] 播放时插值得到的当前 FOV，供 renderPreview 使用（避免只读 keyframes[0]） */
+	private currentPreviewFov = 50
 	private orbiting = false
 	private transforming = false
 	private previewModeActive = false
 	private renderSuspended = false
 	private cameraDirty = false
 	private hidePlaceholderCubes = false
+	/** 白模模式：占位立方体统一白色 */
+	private whiteModeEnabled = false
 	private lightingDebugEnabled = false
 	private pendingBindingSync: Promise<void> | null = null
 	private pendingBindingRevision = 0
@@ -1065,19 +1082,28 @@ export class SceneLayoutPreviewViewer {
 			const dragEvent = event as TransformControlsDragEvent
 			this.transforming = dragEvent.value === true
 			this.controls.enabled = this.interactiveActive && !this.transforming
+			const isCamera = this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID
+			const isCharacter = !isCamera && this.characterMeshesById.has(this.selectedId)
 			if (dragEvent.value) {
 				// [v3.0] 摄像头拖拽不需要 baseline（不涉及占位体恢复逻辑）
-				if (this.selectedId !== SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+				if (!isCamera) {
 					this.dragBaseline = this.captureSelectedDragBaseline()
 				}
 				this.dragDirty = false
 			} else {
-				if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID) {
+				if (isCamera) {
 					// [v3.0] 摄像头拖拽结束：通知上层持久化新的 position/target
 					if (this.dragDirty) {
 						this.options.onCameraTrackChange?.(this.currentCameraTrack)
 					}
 					this.dragDirty = false
+				} else if (isCharacter) {
+					// [v1.0] 角色拖拽结束：通知上层同步变换
+					if (this.dragDirty) {
+						this.options.onCharacterTransformChange?.(this.selectedId)
+					}
+					this.dragDirty = false
+					this.dragBaseline = null
 				} else {
 					if (!this.dragDirty) this.restoreFromDragBaseline()
 					if (this.dragDirty) this.emitLayoutChange()
@@ -1102,6 +1128,12 @@ export class SceneLayoutPreviewViewer {
 						z: Number(s.z) || 1
 					})
 				}
+				this.dragDirty = true
+				this.requestRender()
+				return
+			}
+			// [v1.0] 角色拖拽：标记 dirty，实际同步在拖拽结束时触发
+			if (this.characterMeshesById.has(this.selectedId)) {
 				this.dragDirty = true
 				this.requestRender()
 				return
@@ -1139,6 +1171,8 @@ export class SceneLayoutPreviewViewer {
 		this.scene.add(this.group)
 		this.lightsGroup = new THREE.Group() as unknown as GroupLike
 		this.scene.add(this.lightsGroup)
+		this.characterGroup = new THREE.Group() as unknown as GroupLike
+		this.scene.add(this.characterGroup)
 		this.raycaster = new THREE.Raycaster() as unknown as RaycasterLike
 		this.pointer = new THREE.Vector2() as unknown as Vector2Like
 		this.loader = new GLTFLoader() as unknown as GLTFLoaderLike
@@ -1328,7 +1362,11 @@ export class SceneLayoutPreviewViewer {
 
 	private requestRender() {
 		if (this.disposed || this.renderSuspended) return
-		if (this.raf) return
+		// 取消已挂起的渲染任务，确保始终以最新状态重绘（播放时关键）
+		if (this.raf) {
+			cancelAnimationFrame(this.raf)
+			this.raf = 0
+		}
 		this.raf = window.requestAnimationFrame(() => this.renderFrame())
 	}
 
@@ -1386,6 +1424,8 @@ export class SceneLayoutPreviewViewer {
 		this.lastRenderTs = now
 		this.ensureTransformAttachmentValid()
 		this.controls.update()
+		// [v4.2] 弹簧臂碰撞检测：摄像头挂在角色下时避免穿墙
+		this.applySpringArmCollision()
 		const renderStart = typeof performance !== 'undefined' ? performance.now() : Date.now()
 		this.renderer.render(this.scene, this.camera)
 		const renderEnd = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -1575,6 +1615,9 @@ export class SceneLayoutPreviewViewer {
 	 */
 	setTransformMode(mode: 'translate' | 'rotate' | 'scale'): void {
 		this.transformControls.setMode(mode)
+		// 旋转模式使用 local 空间，让 XYZ 圆环跟随对象本地朝向；
+		// 移动/缩放保持 world 空间，便于绝对定位。
+		this.transformControls.setSpace(mode === 'rotate' ? 'local' : 'world')
 		this.requestRender()
 	}
 
@@ -1595,6 +1638,7 @@ export class SceneLayoutPreviewViewer {
 		if (!kf) return
 		// [v3.0] 缓存 track 供右下角预览渲染使用
 		this.currentCameraTrack = track
+		this.currentPreviewFov = Number(kf.fov) || 50
 		const px = Number(kf.position?.x) || 0
 		const py = this.clampCameraY(Number(kf.position?.y) || 0) // [v3.0] 钳制高度
 		const pz = Number(kf.position?.z) || 0
@@ -1645,6 +1689,8 @@ export class SceneLayoutPreviewViewer {
 		;(frustum as unknown as { frustumCulled?: boolean }).frustumCulled = false
 		;(frustumEdges as unknown as { frustumCulled?: boolean }).frustumCulled = false
 		group.position.set(px, py, pz)
+		// [v4.2] 记录弹簧臂原始局部位置
+		this.cameraBaseLocalPosition.set(px, py, pz)
 		// 朝向 target —— 普通 Object3D 的 lookAt 已让 +Z 朝向 target（与 Camera 不同）
 		// 摄像头机身/视锥均沿 +Z 构建，因此无需额外旋转
 		const targetVec3 = new THREE.Vector3(tx, ty, tz)
@@ -2009,12 +2055,16 @@ export class SceneLayoutPreviewViewer {
 		const track = this.currentCameraTrack
 		const kf = track?.keyframes?.[0]
 		if (!group || !track || !kf) return
-		const pos = group.position
-		const quat = group.quaternion
-		// group 的 +Z 朝向 target（setCameraActor 中 lookAt 已让 +Z 朝向 target）
-		// 从 QuaternionLike 构造 THREE.Quaternion 实例以调用 applyQuaternion
-		const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w)
+		// group.position 是局部坐标；若摄像头挂在角色下，需转回世界坐标再写入 keyframe
+		const localPos = group.position
+		const worldPos = this.cameraLocalToWorld(localPos.x, localPos.y, localPos.z)
+		const pos = { x: worldPos.x, y: worldPos.y, z: worldPos.z }
+		// 使用世界四元数计算朝向：挂在角色下时 local quaternion 需叠加父级旋转才是世界朝向
+		const worldQuat = new THREE.Quaternion()
+		group.getWorldQuaternion(worldQuat as unknown as QuaternionLike)
+		const q = worldQuat
 		const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
+		const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(q)
 		const distance = this.cameraDistance > 0 ? this.cameraDistance : 5
 		const newTarget = new THREE.Vector3(
 			pos.x + forward.x * distance,
@@ -2025,6 +2075,20 @@ export class SceneLayoutPreviewViewer {
 		const clampedY = this.clampCameraY(pos.y)
 		if (clampedY !== pos.y) {
 			pos.y = clampedY
+		}
+		// 从 quaternion 提取 roll（绕前向轴的旋转角度）
+		// 将世界 up 投影到垂直于 forward 的平面，计算与 camUp 的夹角
+		const worldUp = new THREE.Vector3(0, 1, 0)
+		const worldUpProj = worldUp.clone().sub(forward.clone().multiplyScalar(worldUp.dot(forward)))
+		if (worldUpProj.lengthSq() > 1e-6) {
+			worldUpProj.normalize()
+			const right = new THREE.Vector3().crossVectors(forward, camUp).normalize()
+			const rollRad = Math.atan2(right.dot(worldUpProj), camUp.dot(worldUpProj))
+			kf.roll = +((rollRad * 180) / Math.PI).toFixed(2)
+		} else {
+			// forward 接近垂直（仰视/俯视），roll 无法从世界 up 推导，用欧拉角 Z 分量
+			const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ')
+			kf.roll = +((euler.z * 180) / Math.PI).toFixed(2)
 		}
 		// 更新 track 数据
 		kf.position = { x: pos.x, y: clampedY, z: pos.z }
@@ -2125,6 +2189,7 @@ export class SceneLayoutPreviewViewer {
 				canvas,
 				antialias: true,
 				alpha: false,
+				preserveDrawingBuffer: true,
 				powerPreference: 'low-power'
 			})
 			renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -2145,6 +2210,26 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	/**
+	 * [v3.0] 调整预览画布分辨率（放大/缩小时调用，避免拉伸模糊）。
+	 * 直接调用 renderPreview 确保缩放后立即重绘，避免出现灰屏。
+	 */
+	setPreviewSize(width: number, height: number): void {
+		if (!this.previewRenderer || !this.previewCamera) return
+		const w = Math.max(64, Math.floor(width))
+		const h = Math.max(64, Math.floor(height))
+		this.previewRenderer.setSize(w, h, false)
+		const cam = this.previewCamera as unknown as {
+			aspect: number
+			updateProjectionMatrix: () => void
+		}
+		cam.aspect = w / h
+		cam.updateProjectionMatrix()
+		// 立即重绘预览，避免 setSize 清屏后出现灰屏
+		this.renderPreview()
+		this.requestRender()
+	}
+
+	/**
 	 * [v3.0] 清理预览 renderer/camera。
 	 */
 	clearPreviewCanvas(): void {
@@ -2158,28 +2243,98 @@ export class SceneLayoutPreviewViewer {
 	/**
 	 * [v3.0] 渲染右下角预览:从摄像头 position 朝 target 渲染同一场景。
 	 * 在主 renderFrame 末尾调用。预览前临时隐藏 cameraActorGroup 避免看到摄像头自身。
+	 * [v1.0] 优先使用 cameraActorGroup 的世界变换，保证摄像头父级移动时预览同步更新。
 	 */
 	private renderPreview(): void {
 		if (!this.previewRenderer || !this.previewCamera) return
 		const track = this.currentCameraTrack
 		const kf = track?.keyframes?.[0]
 		if (!kf || !this.previewCamera) return
-		const px = Number(kf.position?.x) || 0
-		const py = this.clampCameraY(Number(kf.position?.y) || 0)
-		const pz = Number(kf.position?.z) || 0
-		const tx = Number(kf.target?.x) || 0
-		const ty = Number(kf.target?.y) || 0
-		const tz = Number(kf.target?.z) || 0
-		const fov = Number(kf.fov) || 50
+		// 优先使用播放时插值的当前 FOV，回退到首关键帧 FOV
+		const fov = this.currentPreviewFov || Number(kf.fov) || 50
+		const roll = Number(kf.roll) || 0
+		// 优先使用 cameraActorGroup 的世界坐标（含父级角色移动/旋转后的实时位置）
+		const camGroup = this.cameraActorGroup
+		let px: number
+		let py: number
+		let pz: number
+		let tx: number
+		let ty: number
+		let tz: number
+		if (camGroup) {
+			// 强制刷新世界矩阵（主渲染已完成，但显式调用以确保 latest）
+			const obj = camGroup as unknown as {
+				updateWorldMatrix?: (a: boolean, b: boolean) => void
+				getWorldPosition?: (v: { x: number; y: number; z: number }) => void
+				getWorldQuaternion?: (v: { x: number; y: number; z: number; w: number }) => void
+			}
+			obj.updateWorldMatrix?.(true, false)
+			const worldPos = new THREE.Vector3()
+			const worldQuat = new THREE.Quaternion()
+			obj.getWorldPosition?.(worldPos as unknown as Vector3Like)
+			obj.getWorldQuaternion?.(worldQuat as unknown as QuaternionLike)
+			// group 的 +Z 朝向 target（setCameraActor 用 lookAt 设置）
+			const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat)
+			// group 的 +Y 为 up 基向量
+			const baseUp = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat)
+			// 距离：从 keyframe 推导，保持视锥一致性
+			const kfx = Number(kf.position?.x) || 0
+			const kfy = Number(kf.position?.y) || 0
+			const kfz = Number(kf.position?.z) || 0
+			const kftx = Number(kf.target?.x) || 0
+			const kfty = Number(kf.target?.y) || 0
+			const kftz = Number(kf.target?.z) || 0
+			const dist = Math.max(
+				0.001,
+				Math.sqrt((kftx - kfx) ** 2 + (kfty - kfy) ** 2 + (kftz - kfz) ** 2)
+			)
+			px = worldPos.x
+			py = this.clampCameraY(worldPos.y)
+			pz = worldPos.z
+			tx = px + forward.x * dist
+			ty = py + forward.y * dist
+			tz = pz + forward.z * dist
+			// 应用 roll：绕前向轴旋转 up 向量
+			if (roll !== 0) {
+				const rollRad = (roll * Math.PI) / 180
+				const rolled = baseUp.clone().applyAxisAngle(forward, rollRad)
+				this.previewCamera.up.copy(rolled as unknown as Vector3Like)
+			} else {
+				this.previewCamera.up.copy(baseUp as unknown as Vector3Like)
+			}
+		} else {
+			// 无 cameraActorGroup 时回退到 keyframe 直接取值
+			px = Number(kf.position?.x) || 0
+			py = this.clampCameraY(Number(kf.position?.y) || 0)
+			pz = Number(kf.position?.z) || 0
+			tx = Number(kf.target?.x) || 0
+			ty = Number(kf.target?.y) || 0
+			tz = Number(kf.target?.z) || 0
+			if (roll !== 0) {
+				const rollRad = (roll * Math.PI) / 180
+				const fwd = new THREE.Vector3(tx - px, ty - py, tz - pz).normalize()
+				const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(fwd, rollRad)
+				this.previewCamera.up.copy(up as unknown as Vector3Like)
+			} else {
+				this.previewCamera.up.set(0, 1, 0)
+			}
+		}
 		this.previewCamera.position.set(px, py, pz)
 		this.previewCamera.lookAt(tx, ty, tz)
 		this.previewCamera.fov = fov
 		this.previewCamera.updateProjectionMatrix()
-		// [v4.1 调试] 暂时不隐藏摄像头，排查不可见问题
+		// 预览时隐藏摄像头 Actor 和 TransformControls，避免画面中出现自身
+		const helperVisible = this.transformHelper.visible
+		if (camGroup) camGroup.visible = false
+		this.transformHelper.visible = false
 		try {
 			this.previewRenderer.render(this.scene, this.previewCamera)
 		} catch (e) {
 			console.error('[Camera] renderPreview error:', e)
+		} finally {
+			// 恢复可见性
+			if (camGroup) camGroup.visible = true
+			this.transformHelper.visible = helperVisible
 		}
 	}
 
@@ -2221,7 +2376,10 @@ export class SceneLayoutPreviewViewer {
 	 * [v1.0] 轻量更新摄像头 Actor 的 position / 朝向（不重建 mesh）。
 	 * 用于输入框拖拽时的实时同步，避免每帧重建导致卡顿。
 	 */
-	updateCameraActorTransformFromTrack(track: WorkflowDirectorCameraTrack): void {
+	updateCameraActorTransformFromTrack(
+		track: WorkflowDirectorCameraTrack,
+		applyLookAt = true
+	): void {
 		const group = this.cameraActorGroup
 		const kf = track?.keyframes?.[0]
 		if (!group || !kf) return
@@ -2231,12 +2389,25 @@ export class SceneLayoutPreviewViewer {
 		const tx = Number(kf.target?.x) || 0
 		const ty = Number(kf.target?.y) || 0
 		const tz = Number(kf.target?.z) || 0
-		group.position.set(px, py, pz)
-		// 与 setCameraActor 一致：普通 Object3D 的 lookAt 让 +Z 朝向 target
-		const targetVec3 = new THREE.Vector3(tx, ty, tz)
-		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
-			targetVec3
-		)
+		const roll = Number(kf.roll) || 0
+		// keyframe.position 存的是世界坐标；若摄像头挂在角色下，需转换为父级局部坐标
+		const localPos = this.worldToCameraLocal(px, py, pz)
+		group.position.set(localPos.x, localPos.y, localPos.z)
+		// 仅在旋转更新时重新计算朝向；位置更新时保留当前 local quaternion，
+		// 避免拖拽位移过程中摄像头朝向被 lookAt 重新锁定而改变角度。
+		if (applyLookAt) {
+			// 与 setCameraActor 一致：普通 Object3D 的 lookAt 让 +Z 朝向 target
+			// lookAt 内部按世界坐标计算朝向，因此直接传入世界 target 即可正确处理父子层级
+			const targetVec3 = new THREE.Vector3(tx, ty, tz)
+			;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+				targetVec3
+			)
+			// 应用 roll：绕本地 +Z 轴（前向）旋转
+			if (roll !== 0) {
+				const rollRad = (roll * Math.PI) / 180
+				;(group as unknown as { rotateZ?: (rad: number) => void }).rotateZ?.(rollRad)
+			}
+		}
 		// 更新 target marker + 连线
 		const targetGroup = this.cameraTargetGroup
 		if (targetGroup) {
@@ -2247,11 +2418,221 @@ export class SceneLayoutPreviewViewer {
 	}
 
 	/**
+	 * 将世界坐标转换为摄像头父级的局部坐标。
+	 * 摄像头挂在角色下时，group.position 是局部坐标，而 keyframe.position 存的是世界坐标，
+	 * 直接 set 会导致摄像头位置错乱。使用父级 worldMatrix 的逆矩阵做变换。
+	 */
+	private worldToCameraLocal(
+		wx: number,
+		wy: number,
+		wz: number
+	): {
+		x: number
+		y: number
+		z: number
+	} {
+		const group = this.cameraActorGroup
+		if (!group) return { x: wx, y: wy, z: wz }
+		const parent = (group as unknown as Object3Dlike).parent
+		// 无父级或父级是场景根（matrixWorld 为单位阵）时，世界坐标即局部坐标
+		if (!parent || parent === this.group) return { x: wx, y: wy, z: wz }
+		const invMatrix = new THREE.Matrix4() as unknown as Matrix4Like
+		invMatrix.copy(parent.matrixWorld as unknown as Matrix4Like)
+		invMatrix.invert()
+		const e = (invMatrix as unknown as { elements: number[] }).elements
+		return {
+			x: e[0] * wx + e[4] * wy + e[8] * wz + e[12],
+			y: e[1] * wx + e[5] * wy + e[9] * wz + e[13],
+			z: e[2] * wx + e[6] * wy + e[10] * wz + e[14]
+		}
+	}
+
+	/**
+	 * 将摄像头局部坐标转换为世界坐标（worldToCameraLocal 的逆运算）。
+	 * 用于 gizmo 拖拽后将 group.position（局部）写回 keyframe.position（世界）。
+	 */
+	private cameraLocalToWorld(
+		lx: number,
+		ly: number,
+		lz: number
+	): {
+		x: number
+		y: number
+		z: number
+	} {
+		const group = this.cameraActorGroup
+		if (!group) return { x: lx, y: ly, z: lz }
+		const parent = (group as unknown as Object3Dlike).parent
+		if (!parent || parent === this.group) return { x: lx, y: ly, z: lz }
+		const e = (parent.matrixWorld as unknown as { elements: number[] }).elements
+		return {
+			x: e[0] * lx + e[4] * ly + e[8] * lz + e[12],
+			y: e[1] * lx + e[5] * ly + e[9] * lz + e[13],
+			z: e[2] * lx + e[6] * ly + e[10] * lz + e[14]
+		}
+	}
+
+	/**
+	 * [P1] 直接通过插值后的 position/target/fov/roll 更新摄像头 Actor 变换。
+	 * 用于播放/seek 期间的实时更新，不重建 mesh。
+	 * 同时就地更新缓存的 currentCameraTrack.keyframes[0]，让 renderPreview 自动同步预览画面。
+	 */
+	updateCameraActorTransform(
+		position: { x: number; y: number; z: number },
+		target: { x: number; y: number; z: number },
+		fov?: number,
+		roll?: number
+	): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		const px = Number(position.x) || 0
+		const py = this.clampCameraY(Number(position.y) || 0)
+		const pz = Number(position.z) || 0
+		const tx = Number(target.x) || 0
+		const ty = Number(target.y) || 0
+		const tz = Number(target.z) || 0
+		const r = Number(roll) || 0
+		// 记录当前插值 FOV，供 renderPreview 使用（播放时 FOV 也需同步）
+		if (fov != null && Number.isFinite(fov)) {
+			this.currentPreviewFov = fov
+		}
+		// keyframe.position 存的是世界坐标；若摄像头挂在角色下，需转换为父级局部坐标
+		const localPos = this.worldToCameraLocal(px, py, pz)
+		group.position.set(localPos.x, localPos.y, localPos.z)
+		// [v4.2] 记录弹簧臂原始局部位置，碰撞压缩后可回弹至此
+		this.cameraBaseLocalPosition.set(localPos.x, localPos.y, localPos.z)
+		// 与 setCameraActor 一致：普通 Object3D 的 lookAt 让 +Z 朝向 target
+		const targetVec3 = new THREE.Vector3(tx, ty, tz)
+		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+			targetVec3
+		)
+		// 应用 roll：绕本地 +Z 轴（前向）旋转
+		if (r !== 0) {
+			const rollRad = (r * Math.PI) / 180
+			;(group as unknown as { rotateZ?: (rad: number) => void }).rotateZ?.(rollRad)
+		}
+		// 更新 target marker + 连线
+		const targetGroup = this.cameraTargetGroup
+		if (targetGroup) {
+			targetGroup.position.set(tx, ty, tz)
+		}
+		this.updateCameraTargetLine(new THREE.Vector3(px, py, pz), new THREE.Vector3(tx, ty, tz))
+		// renderPreview 已直接从 cameraActorGroup 世界变换读取，无需修改 keyframes[0]
+		this.requestRender()
+	}
+
+	/**
+	 * [P1] 直接通过插值后的变换更新角色 Group（用于播放/seek）。
+	 * 不修改 character 数据层，只更新 3D 视图。
+	 */
+	updateCharacterTransform(
+		characterId: string,
+		position: { x: number; y: number; z: number },
+		rotation?: { yaw?: number; pitch?: number; roll?: number },
+		scale?: { x?: number; y?: number; z?: number }
+	): void {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return
+		group.position.set(Number(position.x) || 0, Number(position.y) || 0, Number(position.z) || 0)
+		const yaw = ((rotation?.yaw ?? 0) * Math.PI) / 180
+		const pitch = ((rotation?.pitch ?? 0) * Math.PI) / 180
+		const roll = ((rotation?.roll ?? 0) * Math.PI) / 180
+		group.rotation.set(pitch, yaw, roll)
+		if (scale) {
+			group.scale.set(
+				Math.max(0.01, Number(scale.x) || 1),
+				Math.max(0.01, Number(scale.y) || 1),
+				Math.max(0.01, Number(scale.z) || 1)
+			)
+		}
+		this.requestRender()
+	}
+
+	/**
+	 * 强制刷新所有角色的 matrixWorld。
+	 * seek 时批量更新角色后、更新摄像头前调用，确保摄像头世界→局部换算基于最新父级矩阵。
+	 */
+	updateCharacterWorldMatrices(): void {
+		;(
+			this.characterGroup as unknown as {
+				updateMatrixWorld?: (force?: boolean) => void
+			}
+		).updateMatrixWorld?.(true)
+	}
+
+	/**
 	 * 当前摄像机位置（用于点击按钮添加时取默认 position）。
 	 */
 	getCameraPosition(): { x: number; y: number; z: number } {
 		const p = this.camera?.position
 		return { x: Number(p?.x) || 0, y: Number(p?.y) || 0, z: Number(p?.z) || 0 }
+	}
+
+	/**
+	 * [P1] 获取摄像头 Actor 的当前世界变换（position + target）。
+	 * 用于添加关键帧时记录摄像头 Actor 的真实位置，而非编辑器视角。
+	 * 注意：必须返回世界坐标，因为 updateCameraActorTransform 会将 keyframe.position
+	 * 当作世界坐标再换算为局部坐标（摄像头可能挂在角色子级下）。
+	 */
+	getCameraActorTransform(): {
+		position: { x: number; y: number; z: number }
+		target: { x: number; y: number; z: number }
+	} | null {
+		const group = this.cameraActorGroup
+		if (!group)
+			return null
+			// 确保世界矩阵最新（拖拽/父级移动后 matrixWorld 可能滞后）
+		;(group as unknown as { updateMatrixWorld?: (force?: boolean) => void }).updateMatrixWorld?.(
+			true
+		)
+		// 读取世界坐标
+		const worldPos = new THREE.Vector3()
+		group.getWorldPosition(worldPos as unknown as Vector3Like)
+		// 用世界四元数计算 forward，推导 target = position + forward * distance
+		const worldQuat = new THREE.Quaternion()
+		group.getWorldQuaternion(worldQuat as unknown as QuaternionLike)
+		const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat)
+		const distance = this.cameraDistance > 0 ? this.cameraDistance : 5
+		const target = {
+			x: worldPos.x + forward.x * distance,
+			y: worldPos.y + forward.y * distance,
+			z: worldPos.z + forward.z * distance
+		}
+		return {
+			position: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+			target
+		}
+	}
+
+	/**
+	 * [Agent Tools] 设置摄像头 Actor 的位置与朝向目标。
+	 * 供 dc_set_camera_transform 工具调用，设置后 addCameraKeyframe 会记录此变换。
+	 */
+	setCameraActorTransform(
+		position: { x: number; y: number; z: number },
+		target: { x: number; y: number; z: number }
+	): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		const px = Number(position.x) || 0
+		const py = this.clampCameraY(Number(position.y) || 0)
+		const pz = Number(position.z) || 0
+		const tx = Number(target.x) || 0
+		const ty = Number(target.y) || 0
+		const tz = Number(target.z) || 0
+		group.position.set(px, py, pz)
+		this.cameraBaseLocalPosition.set(px, py, pz)
+		const targetVec3 = new THREE.Vector3(tx, ty, tz)
+		;(group as unknown as { lookAt?: (v: { x: number; y: number; z: number }) => void }).lookAt?.(
+			targetVec3
+		)
+		this.cameraDistance = Math.max(
+			0.001,
+			Math.sqrt((tx - px) ** 2 + (ty - py) ** 2 + (tz - pz) ** 2)
+		)
+		;(group as unknown as { updateMatrixWorld?: (force?: boolean) => void }).updateMatrixWorld?.(
+			true
+		)
 	}
 
 	/**
@@ -2282,6 +2663,381 @@ export class SceneLayoutPreviewViewer {
 		if (!group) return
 		group.scale[axis] = Math.max(0.01, value)
 		this.requestRender()
+	}
+
+	// ===== [v1.0] 角色管理 =====
+
+	/**
+	 * 添加角色到场景（圆柱体身体 + 圆球头部）。
+	 * 角色 Group 注册到 characterMeshesById 与 meshesById，复用 selectItem / pickObject。
+	 */
+	addCharacter(character: WorkflowDirectorCharacter): void {
+		const group = new THREE.Group() as unknown as GroupLike
+		group.userData = { characterId: character.id, isCharacter: true }
+
+		const bodyRadius = 0.4
+		const bodyHeight = 1.4
+		const headRadius = 0.32
+
+		const body = new THREE.Mesh(
+			new THREE.CylinderGeometry(bodyRadius, bodyRadius, bodyHeight, 16),
+			new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.6, metalness: 0.1 })
+		)
+		body.position.y = bodyHeight / 2
+		body.castShadow = true
+
+		const head = new THREE.Mesh(
+			new THREE.SphereGeometry(headRadius, 16, 16),
+			new THREE.MeshStandardMaterial({ color: character.color, roughness: 0.5, metalness: 0.1 })
+		)
+		head.position.y = bodyHeight + headRadius * 0.7
+		head.castShadow = true
+
+		group.add(body as unknown as Object3Dlike)
+		group.add(head as unknown as Object3Dlike)
+
+		const pos = character.position
+		group.position.set(Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0)
+		group.rotation.set(
+			((character.rotation?.pitch ?? 0) * Math.PI) / 180,
+			((character.rotation?.yaw ?? 0) * Math.PI) / 180,
+			((character.rotation?.roll ?? 0) * Math.PI) / 180
+		)
+		if (character.scale) {
+			group.scale.set(
+				Math.max(0.01, Number(character.scale.x) || 1),
+				Math.max(0.01, Number(character.scale.y) || 1),
+				Math.max(0.01, Number(character.scale.z) || 1)
+			)
+		}
+
+		const parent = character.parentId ? this.characterMeshesById.get(character.parentId) : null
+		if (parent) {
+			parent.add(group)
+		} else {
+			this.characterGroup.add(group)
+		}
+
+		this.characterMeshesById.set(character.id, group)
+		this.meshesById.set(character.id, group as unknown as MeshLike)
+		this.requestRender()
+	}
+
+	/**
+	 * 移除角色（含所有后代）。
+	 */
+	removeCharacter(characterId: string): void {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return
+		const descendants = this.collectCharacterDescendantIds(group)
+		group.parent?.remove(group)
+		this.disposeObject3D(group)
+		this.characterMeshesById.delete(characterId)
+		this.meshesById.delete(characterId)
+		for (const descId of descendants) {
+			this.characterMeshesById.delete(descId)
+			this.meshesById.delete(descId)
+		}
+		if (this.selectedId === characterId) this.selectItem('')
+		this.requestRender()
+	}
+
+	/**
+	 * 清空所有角色。用于 loadScene 重新加载数据时，避免场景中叠加多余角色。
+	 * 若摄像头挂在角色下，会先将摄像头摘回 this.group。
+	 */
+	clearCharacters(): void {
+		const camGroup = this.cameraActorGroup
+		if (camGroup) {
+			const camParent = (camGroup as unknown as Object3Dlike).parent
+			if (camParent && camParent !== this.group) {
+				camParent.remove(camGroup as unknown as Object3Dlike)
+				this.group.add(camGroup as unknown as Object3Dlike)
+			}
+		}
+		while (this.characterGroup.children.length) {
+			const child = this.characterGroup.children.pop() as Object3Dlike | undefined
+			if (child) this.disposeObject3D(child)
+		}
+		this.characterMeshesById.clear()
+		this.cameraBaseLocalPosition.set(0, 0, 0)
+	}
+
+	/**
+	 * 重设角色父级。newParentId 为 null 时挂到根容器。
+	 * 保持世界坐标不变（reparent 前后做世界→局部换算）。
+	 */
+	setCharacterParent(characterId: string, newParentId: string | null): void {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return
+
+		// 防止循环引用
+		if (newParentId && this.isCharacterDescendant(newParentId, characterId)) return
+
+		const obj = group as unknown as Object3Dlike
+		const worldPos = new THREE.Vector3()
+		const worldQuat = new THREE.Quaternion()
+		const worldScale = new THREE.Vector3()
+		obj.getWorldPosition(worldPos as unknown as Vector3Like)
+		obj.getWorldQuaternion(worldQuat as unknown as QuaternionLike)
+		obj.getWorldScale(worldScale as unknown as Vector3Like)
+
+		group.parent?.remove(group)
+
+		const newParent = newParentId ? this.characterMeshesById.get(newParentId) : null
+		const parentObj = (newParent ?? this.characterGroup) as unknown as Object3Dlike
+		parentObj.add(group as unknown as Object3Dlike)
+
+		// 将世界坐标换算为新父级下的局部坐标（用 matrixWorld 求逆）
+		const invMatrix = new THREE.Matrix4() as unknown as Matrix4Like
+		invMatrix.copy(parentObj.matrixWorld)
+		invMatrix.invert()
+		const localPos = worldPos.clone()
+		// applyMatrix4: localPos = invMatrix * worldPos
+		const m = invMatrix as unknown as {
+			elements: number[]
+		}
+		const e = m.elements
+		const x = localPos.x,
+			y = localPos.y,
+			z = localPos.z
+		localPos.x = e[0] * x + e[4] * y + e[8] * z + e[12]
+		localPos.y = e[1] * x + e[5] * y + e[9] * z + e[13]
+		localPos.z = e[2] * x + e[6] * y + e[10] * z + e[14]
+		group.position.copy(localPos as unknown as Vector3Like)
+
+		const parentWorldQuat = new THREE.Quaternion()
+		parentObj.getWorldQuaternion(parentWorldQuat as unknown as QuaternionLike)
+		const localQuat = parentWorldQuat.invert().multiply(worldQuat)
+		group.quaternion.copy(localQuat as unknown as QuaternionLike)
+
+		const parentWorldScale = new THREE.Vector3()
+		parentObj.getWorldScale(parentWorldScale as unknown as Vector3Like)
+		group.scale.set(
+			worldScale.x / parentWorldScale.x,
+			worldScale.y / parentWorldScale.y,
+			worldScale.z / parentWorldScale.z
+		)
+
+		this.requestRender()
+	}
+
+	/**
+	 * 获取角色当前局部变换（供 DirectorSceneViewer 同步到数据层）。
+	 */
+	getCharacterTransform(characterId: string): {
+		position: { x: number; y: number; z: number }
+		rotation: { yaw: number; pitch: number; roll: number }
+		scale: { x: number; y: number; z: number }
+	} | null {
+		const group = this.characterMeshesById.get(characterId)
+		if (!group) return null
+		const euler = new THREE.Euler().setFromQuaternion(
+			group.quaternion as unknown as QuaternionLike,
+			'YXZ'
+		)
+		return {
+			position: { x: group.position.x, y: group.position.y, z: group.position.z },
+			rotation: {
+				yaw: (euler.y * 180) / Math.PI,
+				pitch: (euler.x * 180) / Math.PI,
+				roll: (euler.z * 180) / Math.PI
+			},
+			scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z }
+		}
+	}
+
+	private collectCharacterDescendantIds(group: GroupLike): string[] {
+		const ids: string[] = []
+		const stack = [...(group.children as unknown as Object3Dlike[])]
+		while (stack.length > 0) {
+			const child = stack.pop()!
+			const id = child?.userData?.characterId as string | undefined
+			if (id && this.characterMeshesById.has(id)) ids.push(id)
+			if (child?.children) stack.push(...(child.children as unknown as Object3Dlike[]))
+		}
+		return ids
+	}
+
+	/**
+	 * 重设摄像头父级。newParentId 为角色 ID 时挂到该角色 Group 下；为 null 时挂回场景根 this.group。
+	 * 保持世界坐标不变（reparent 前后做世界→局部换算），让摄像头跟随父级角色移动。
+	 */
+	setCameraParent(newParentId: string | null): void {
+		const group = this.cameraActorGroup
+		if (!group) return
+		// 防止循环：摄像头没有 characterId，不会成为角色父级，无需额外校验
+		const obj = group as unknown as Object3Dlike
+		const worldPos = new THREE.Vector3()
+		const worldQuat = new THREE.Quaternion()
+		const worldScale = new THREE.Vector3()
+		// 先确保当前世界矩阵最新，再读取世界坐标
+		obj.updateMatrixWorld(true)
+		obj.getWorldPosition(worldPos as unknown as Vector3Like)
+		obj.getWorldQuaternion(worldQuat as unknown as QuaternionLike)
+		obj.getWorldScale(worldScale as unknown as Vector3Like)
+
+		group.parent?.remove(group)
+
+		const newParent = newParentId ? this.characterMeshesById.get(newParentId) : null
+		const parentObj = (newParent ?? this.group) as unknown as Object3Dlike
+		parentObj.add(group as unknown as Object3Dlike)
+
+		// 关键：确保新父级的 matrixWorld 是最新的，否则世界→局部换算会出错，
+		// 导致摄像头世界坐标跳变（贴近父级）、gizmo 位置错误无法点击。
+		parentObj.updateMatrixWorld(true)
+
+		// 世界坐标→新父级局部坐标
+		const invMatrix = new THREE.Matrix4() as unknown as Matrix4Like
+		invMatrix.copy(parentObj.matrixWorld as unknown as Matrix4Like)
+		invMatrix.invert()
+		const m = invMatrix as unknown as { elements: number[] }
+		const e = m.elements
+		const x = worldPos.x,
+			y = worldPos.y,
+			z = worldPos.z
+		worldPos.x = e[0] * x + e[4] * y + e[8] * z + e[12]
+		worldPos.y = e[1] * x + e[5] * y + e[9] * z + e[13]
+		worldPos.z = e[2] * x + e[6] * y + e[10] * z + e[14]
+		group.position.copy(worldPos as unknown as Vector3Like)
+		// [v4.2] 记录成为子级那一刻的局部位置作为弹簧臂自然长度，
+		// 碰撞压缩后可回弹至此，避免摄像头紧贴父级。
+		this.cameraBaseLocalPosition.copy(worldPos as unknown as Vector3Like)
+
+		// 仅继承父级位置与旋转：局部旋转 = 父级世界旋转的逆 × 摄像头世界旋转
+		const parentWorldQuat = new THREE.Quaternion()
+		parentObj.getWorldQuaternion(parentWorldQuat as unknown as QuaternionLike)
+		const localQuat = parentWorldQuat.invert().multiply(worldQuat)
+		group.quaternion.copy(localQuat as unknown as QuaternionLike)
+
+		// 不继承父级缩放：将摄像头局部缩放设为父级世界缩放的倒数，
+		// 使摄像头世界缩放恒为 (1,1,1)，避免角色缩放影响摄像头视锥/机身尺寸与视口。
+		const parentWorldScale = new THREE.Vector3()
+		parentObj.getWorldScale(parentWorldScale as unknown as Vector3Like)
+		group.scale.set(
+			worldScale.x / (parentWorldScale.x || 1),
+			worldScale.y / (parentWorldScale.y || 1),
+			worldScale.z / (parentWorldScale.z || 1)
+		)
+
+		// 立即更新摄像头世界矩阵，保证 TransformControls gizmo 位置正确、可点击
+		group.updateMatrixWorld(true)
+
+		this.requestRender()
+	}
+
+	// ===== [v4.2] 弹簧臂碰撞（摄像头挂在角色子级时避免穿墙） =====
+	setSpringArmEnabled(enabled: boolean): void {
+		this.springArmEnabled = enabled
+		// 关闭弹簧臂时，立即恢复摄像头到原始局部位置
+		if (!enabled) {
+			const group = this.cameraActorGroup
+			if (group) {
+				group.position.copy(this.cameraBaseLocalPosition as unknown as Vector3Like)
+			}
+		}
+		this.requestRender()
+	}
+
+	isSpringArmEnabled(): boolean {
+		return this.springArmEnabled
+	}
+
+	/**
+	 * 弹簧臂碰撞检测：从父级角色世界位置向摄像头世界位置发射射线，
+	 * 若命中场景中的墙体/模型，则将摄像头沿射线方向拉近到碰撞点前方，
+	 * 避免摄像头穿墙。仅在摄像头挂在角色子级且 springArmEnabled 时生效。
+	 */
+	private applySpringArmCollision(): void {
+		if (!this.springArmEnabled) return
+		const cameraGroup = this.cameraActorGroup
+		if (!cameraGroup) return
+		// 仅在摄像头有父级角色时生效
+		const parent = (cameraGroup as unknown as Object3Dlike).parent
+		if (!parent || parent === this.group) return
+		// 正在进行 gizmo 拖拽或摄像头被选中时跳过弹簧臂，
+		// 避免每帧覆盖位置 / 调用 updateMatrixWorld 干扰 TransformControls，
+		// 防止 gizmo 点击穿透丢选与拖拽失效。
+		if (this.transforming) return
+		if (this.selectedId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID)
+			return // 确保父级世界矩阵最新（角色位置/旋转可能刚被更新）
+		;(parent as unknown as { updateMatrixWorld?: (force?: boolean) => void }).updateMatrixWorld?.(
+			true
+		)
+
+		const origin = new THREE.Vector3()
+		const camWorld = new THREE.Vector3()
+		parent.getWorldPosition(origin as unknown as Vector3Like)
+		cameraGroup.getWorldPosition(camWorld as unknown as Vector3Like)
+
+		const dir = new THREE.Vector3().subVectors(camWorld, origin)
+		const distance = dir.length()
+		if (distance < 0.001) return
+		dir.normalize()
+
+		// 弹簧臂自然长度（成为子级那一刻的距离），用于设定最小压缩距离，
+		// 避免摄像头被拉到紧贴角色。
+		const baseLocal = this.cameraBaseLocalPosition as unknown as Vector3Like
+		const naturalLength = Math.sqrt(baseLocal.x ** 2 + baseLocal.y ** 2 + baseLocal.z ** 2)
+		// 最小允许距离：自然长度的 15%，至少 0.5 单位，防止摄像头穿入角色体内
+		const minDistance = Math.max(0.5, naturalLength * 0.15)
+
+		// 通过 ray 属性设置射线（three.js Raycaster 的 set 内部也是设置 ray.origin/ray.direction）
+		const raycaster = this.raycaster as unknown as {
+			ray: { origin: Vector3Like; direction: Vector3Like }
+			far: number
+			near: number
+			intersectObjects(
+				objects: Object3Dlike[],
+				recursive?: boolean
+			): Array<{ object: Object3Dlike; distance: number }>
+		}
+		// 保存原始 raycaster 状态，弹簧臂只临时使用，用完必须恢复，
+		// 否则 far 会被污染导致 pickObject 的 gizmo picker 射线检测失效（点击穿透）。
+		const savedFar = raycaster.far
+		const savedNear = raycaster.near
+		raycaster.ray.origin.copy(origin as unknown as Vector3Like)
+		raycaster.ray.direction.copy(dir as unknown as Vector3Like)
+		raycaster.far = distance
+		// 只与场景占位体/模型（this.group）检测碰撞，排除角色与摄像头自身
+		const intersects = raycaster.intersectObjects(
+			this.group.children as unknown as Object3Dlike[],
+			true
+		)
+		// 恢复 raycaster 的 far/near，避免污染后续 pickObject 拾取
+		raycaster.far = savedFar
+		raycaster.near = savedNear
+
+		// 计算目标距离：无碰撞则用自然长度；有碰撞则取碰撞点距离（但不小于 minDistance）
+		let targetDistance: number
+		if (intersects.length === 0) {
+			targetDistance = naturalLength
+		} else {
+			const rawHit = intersects[0].distance - 0.1
+			targetDistance = Math.max(minDistance, Math.min(rawHit, naturalLength))
+		}
+
+		// 当前距离 → 目标距离做平滑插值，避免瞬移/抖动
+		const currentDistance = distance
+		const newDistance = currentDistance + (targetDistance - currentDistance) * 0.2
+		// 沿射线方向缩放摄像头位置（在父级局部坐标下，方向 = 当前局部位置方向）
+		const pos = cameraGroup.position as unknown as Vector3Like
+		const posLen = Math.sqrt(pos.x ** 2 + pos.y ** 2 + pos.z ** 2)
+		if (posLen > 0.0001) {
+			const scale = newDistance / posLen
+			pos.set(pos.x * scale, pos.y * scale, pos.z * scale)
+		}
+	}
+
+	private isCharacterDescendant(candidateId: string, ancestorId: string): boolean {
+		if (candidateId === ancestorId) return true
+		let group = this.characterMeshesById.get(candidateId)
+		while (group) {
+			const parentId = group.parent?.userData?.characterId as string | undefined
+			if (parentId === ancestorId) return true
+			group = parentId ? this.characterMeshesById.get(parentId) : undefined
+		}
+		return false
 	}
 
 	requestStaticFrames() {
@@ -2348,10 +3104,12 @@ export class SceneLayoutPreviewViewer {
 		const prevHideCubes = this.hidePlaceholderCubes
 		const prevTransparent = this.transparent
 		const prevLightingDebug = this.lightingDebugEnabled
+		const prevWhiteMode = this.whiteModeEnabled
 
 		this.transparent = renderOptions?.transparent !== false
 		this.hidePlaceholderCubes = renderOptions?.hidePlaceholderCubes === true
 		this.lightingDebugEnabled = renderOptions?.lightingDebugEnabled === true
+		this.whiteModeEnabled = renderOptions?.whiteMode === true
 
 		const previewMode = renderOptions?.previewMode === true
 		const previewModeChanged = this.previewModeActive !== previewMode
@@ -2379,10 +3137,54 @@ export class SceneLayoutPreviewViewer {
 			}
 		}
 
+		// 白模模式切换：仅影响占位立方体（userData.isPlaceholder === true）
+		if (prevWhiteMode !== this.whiteModeEnabled) {
+			this.applyWhiteModeToPlaceholders()
+		}
+
 		const lightingEnabled = renderOptions?.lightingPreviewEnabled === true
 		const lightingJson = String(renderOptions?.lightingJson ?? '')
 		const lightingControls = renderOptions?.lightingControls
 		this.applyLightingPreview(lightingEnabled, lightingJson, lightingControls)
+	}
+
+	/**
+	 * 白模模式：遍历所有占位立方体，设置/恢复颜色。
+	 * 开启时统一为白色 #f5f5f5；关闭时恢复原始颜色（缓存在 userData.originalColor）。
+	 */
+	private applyWhiteModeToPlaceholders(): void {
+		const whiteColor = new THREE.Color('#f5f5f5')
+		for (const mesh of this.meshesById.values()) {
+			// 跳过非占位体（角色 Group 等）
+			const ud = mesh.userData as Record<string, unknown> | undefined
+			if (ud?.isPlaceholder !== true) continue
+			const mat = mesh.material as
+				| (typeof THREE.MeshStandardMaterial.prototype & {
+						color?: { set: (c: { r: number; g: number; b: number }) => void }
+				  })
+				| undefined
+			if (!mat?.color) continue
+			if (this.whiteModeEnabled) {
+				mat.color.set(whiteColor as unknown as { r: number; g: number; b: number })
+			} else {
+				const original = (ud?.originalColor as string) || '#60a5fa'
+				mat.color.set(new THREE.Color(original) as unknown as { r: number; g: number; b: number })
+			}
+		}
+		this.requestRender()
+	}
+
+	/**
+	 * 运行时切换白模模式（无需重建场景）。
+	 */
+	setWhiteMode(enabled: boolean): boolean {
+		this.whiteModeEnabled = enabled === true
+		this.applyWhiteModeToPlaceholders()
+		return this.whiteModeEnabled
+	}
+
+	getWhiteMode(): boolean {
+		return this.whiteModeEnabled
 	}
 
 	setLayout(
@@ -2492,8 +3294,9 @@ export class SceneLayoutPreviewViewer {
 				edgeGeometry = new THREE.EdgesGeometry(geometry as unknown)
 			}
 			const inferred = item.inferred === true
+			const originalColor = inferred ? '#cbd5e1' : resolvePlaceholderColor(item)
 			const material = new THREE.MeshStandardMaterial({
-				color: inferred ? '#cbd5e1' : resolvePlaceholderColor(item),
+				color: this.whiteModeEnabled ? '#f5f5f5' : originalColor,
 				transparent: useTransparent,
 				opacity: useTransparent
 					? hasBoundModel
@@ -2525,6 +3328,7 @@ export class SceneLayoutPreviewViewer {
 			mesh.userData.itemId = item.id
 			mesh.userData.label = item.name || item.id
 			mesh.userData.isPlaceholder = true
+			;(mesh.userData as Record<string, unknown>).originalColor = originalColor
 			const edge = new THREE.LineSegments(
 				edgeGeometry as unknown,
 				new THREE.LineBasicMaterial({
@@ -5883,14 +6687,22 @@ export class SceneLayoutPreviewViewer {
 		const pickTargets = Array.from(this.meshesById.values()).filter(
 			(mesh: MeshLike) => mesh?.visible !== false
 		)
-		const intersects = this.raycaster.intersectObjects(pickTargets, false)
+		// [v1.0] recursive=true 以兼容角色 Group（子 mesh 参与射线检测）
+		const intersects = this.raycaster.intersectObjects(pickTargets, true)
 		let hit = intersects[0]?.object as Object3Dlike | undefined
 		let nextId = ''
 		while (hit && !nextId) {
-			if ((hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).isPlaceholder === true)
-				nextId = String(
-					(hit.userData as { isPlaceholder?: boolean; itemId?: unknown }).itemId ?? ''
-				).trim()
+			const ud = hit.userData as {
+				isPlaceholder?: boolean
+				itemId?: unknown
+				isCharacter?: boolean
+				characterId?: unknown
+			}
+			if (ud.isPlaceholder === true) {
+				nextId = String(ud.itemId ?? '').trim()
+			} else if (ud.isCharacter === true) {
+				nextId = String(ud.characterId ?? '').trim()
+			}
 			hit = hit.parent as Object3Dlike | undefined
 		}
 		this.rightClickPickCache = { ts: now, x: event.clientX, y: event.clientY, itemId: nextId }
@@ -5957,8 +6769,31 @@ export class SceneLayoutPreviewViewer {
 		this.selectItem(itemId)
 	}
 
+	/**
+	 * 设置对象（Mesh 或 Group）的自发光颜色，兼容角色 Group（遍历子 mesh）。
+	 */
+	private setObjectEmissive(obj: MeshLike | GroupLike, color: string, intensity: number): void {
+		const applyTo = (o: Object3Dlike) => {
+			const mat = (o as { material?: unknown }).material
+			const material = Array.isArray(mat) ? mat[0] : mat
+			if (material && 'emissive' in material && material.emissive) {
+				material.emissive.set(color)
+				if ('emissiveIntensity' in material) material.emissiveIntensity = intensity
+			}
+		}
+		applyTo(obj as unknown as Object3Dlike)
+		const children = (obj as unknown as { children?: Object3Dlike[] }).children
+		if (children) {
+			for (const child of children) applyTo(child)
+		}
+	}
+
 	private selectItem(itemId: string) {
-		const nextSelectedId = this.hidePlaceholderCubes ? '' : String(itemId ?? '').trim()
+		const rawId = String(itemId ?? '').trim()
+		// [v1.0] 角色和摄像头在占位体隐藏时仍可选中
+		const isCharacterOrCamera =
+			rawId === SceneLayoutPreviewViewer.CAMERA_SELECTION_ID || this.characterMeshesById.has(rawId)
+		const nextSelectedId = this.hidePlaceholderCubes && !isCharacterOrCamera ? '' : rawId
 		const selectionChanged = nextSelectedId !== this.selectedId
 		if (!selectionChanged) {
 			this.ensureTransformAttachmentValid()
@@ -5972,11 +6807,7 @@ export class SceneLayoutPreviewViewer {
 		if (prevSelectedId) {
 			const prevMesh = this.meshesById.get(prevSelectedId)
 			if (prevMesh) {
-				const material = Array.isArray(prevMesh.material) ? prevMesh.material[0] : prevMesh.material
-				if (material && 'emissive' in material && material.emissive) {
-					material.emissive.set('#000000')
-					if ('emissiveIntensity' in material) material.emissiveIntensity = 0
-				}
+				this.setObjectEmissive(prevMesh, '#000000', 0)
 			}
 			const prevEdge = this.edgesById.get(prevSelectedId)
 			if (prevEdge && 'opacity' in prevEdge.material) {
@@ -5986,11 +6817,7 @@ export class SceneLayoutPreviewViewer {
 		if (this.selectedId) {
 			const nextMesh = this.meshesById.get(this.selectedId)
 			if (nextMesh) {
-				const material = Array.isArray(nextMesh.material) ? nextMesh.material[0] : nextMesh.material
-				if (material && 'emissive' in material && material.emissive) {
-					material.emissive.set('#60a5fa')
-					if ('emissiveIntensity' in material) material.emissiveIntensity = 0.35
-				}
+				this.setObjectEmissive(nextMesh, '#60a5fa', 0.35)
 			}
 			const nextEdge = this.edgesById.get(this.selectedId)
 			if (nextEdge && 'opacity' in nextEdge.material) {
@@ -6156,6 +6983,23 @@ export class SceneLayoutPreviewViewer {
 		this.selectedId = ''
 		this.meshesById.clear()
 		this.edgesById.clear()
+		// [v1.0] 清理角色：clearLayout 在重新 setLayout 时调用，必须同步清空角色，
+		// 否则 reopen/loadScene 会在场景中叠加多余角色（数据错乱）。
+		// 若摄像头挂在某个角色下，先把摄像头摘回 this.group，避免角色被销毁后摄像头丢失。
+		const camGroup = this.cameraActorGroup
+		if (camGroup) {
+			const camParent = (camGroup as unknown as Object3Dlike).parent
+			if (camParent && camParent !== this.group) {
+				camParent.remove(camGroup as unknown as Object3Dlike)
+				this.group.add(camGroup as unknown as Object3Dlike)
+			}
+		}
+		while (this.characterGroup.children.length) {
+			const child = this.characterGroup.children.pop() as Object3Dlike | undefined
+			if (child) this.disposeObject3D(child)
+		}
+		this.characterMeshesById.clear()
+		this.cameraBaseLocalPosition.set(0, 0, 0)
 		for (const model of this.boundModelsById.values()) {
 			this.group.remove(model)
 			model.traverse((entry: Object3Dlike) => {
@@ -6221,6 +7065,39 @@ export class SceneLayoutPreviewViewer {
 			return snapshotCanvas.toDataURL('image/png')
 		} catch {
 			return ''
+		}
+	}
+
+	/**
+	 * [v5.0] 捕获摄像头预览面板的当前帧为 PNG Blob。
+	 * 用于导演控制台「导出视频」功能：逐帧 seek 后调用本方法获得画面。
+	 * 依赖 previewRenderer 的 preserveDrawingBuffer=true。
+	 */
+	capturePreviewFrame(): Promise<Blob | null> {
+		return new Promise((resolve) => {
+			try {
+				const renderer = this.previewRenderer
+				if (!renderer) return resolve(null)
+				const canvas = renderer.domElement
+				if (!canvas) return resolve(null)
+				// 强制重绘一次确保 buffer 中有最新内容
+				this.renderPreview()
+				canvas.toBlob((b) => resolve(b), 'image/png')
+			} catch {
+				resolve(null)
+			}
+		})
+	}
+
+	/** [v5.0] 获取预览 canvas 的实际渲染尺寸（CSS 像素） */
+	getPreviewSize(): { width: number; height: number } {
+		const renderer = this.previewRenderer
+		if (!renderer) return { width: 240, height: 160 }
+		const canvas = renderer.domElement
+		const pr = (renderer as unknown as { getPixelRatio?: () => number }).getPixelRatio?.() ?? 1
+		return {
+			width: Math.max(1, Math.floor(canvas.width / pr)),
+			height: Math.max(1, Math.floor(canvas.height / pr))
 		}
 	}
 

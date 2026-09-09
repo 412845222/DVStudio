@@ -305,7 +305,7 @@ const RAW_NEWUI2_NODE_CATALOG: Newui2NodeCatalogItem[] = [
 		nodeType: 'director-console',
 		label: '导演控制台节点',
 		inputKinds: ['text'],
-		outputKinds: [],
+		outputKinds: ['video'],
 		order: 39
 	},
 	{

@@ -20,13 +20,17 @@ export class MCPBridgeServer {
 	constructor() {
 		this.server = null
 		this.isRunning = false
+		this.isStarting = false
 		this.toolRequestCounter = 0
 	}
 
 	start() {
-		if (this.isRunning) {
+		// 已启动或正在启动中，避免重复 listen 导致 EADDRINUSE
+		if (this.isRunning || this.isStarting) {
 			return
 		}
+
+		this.isStarting = true
 
 		try {
 			this.server = net.createServer((socket) => {
@@ -56,15 +60,35 @@ export class MCPBridgeServer {
 			})
 
 			this.server.on('error', (err) => {
+				// EADDRINUSE 表示管道已被占用，说明已有实例在运行
+				if (err.code === 'EADDRINUSE') {
+					logger.warn(
+						`[MCP Bridge] Pipe already in use (${SOCKET_PATH}), assuming bridge is already running`
+					)
+					// 管道已被占用，视为已在运行
+					this.isRunning = true
+					this.isStarting = false
+					// 清理当前 server 实例（无法复用已占用的管道）
+					try {
+						this.server.close()
+					} catch {
+						/* 忽略关闭错误 */
+					}
+					this.server = null
+					return
+				}
 				logger.error(`[MCP Bridge] Server error: ${err.message}`)
+				this.isStarting = false
 			})
 
 			this.server.listen(SOCKET_PATH, () => {
 				this.isRunning = true
+				this.isStarting = false
 				logger.info(`[MCP Bridge] Server listening on: ${SOCKET_PATH}`)
 			})
 		} catch (err) {
 			logger.error(`[MCP Bridge] Failed to start: ${err.message}`)
+			this.isStarting = false
 		}
 	}
 
@@ -74,8 +98,18 @@ export class MCPBridgeServer {
 			const request = JSON.parse(line)
 			const { requestId, action, toolName, args } = request
 
+			if (action === 'ping') {
+				socket.write(JSON.stringify({ requestId, result: { pong: true } }) + '\n')
+				return
+			}
+
 			if (action === 'tools/list') {
 				const tools = executor.getMCPTools()
+				logger.info(
+					`[MCP Bridge] tools/list requested, returning ${tools.length} tools: ${tools
+						.map((t) => t.name)
+						.join(', ')}`
+				)
 				const response = JSON.stringify({
 					requestId,
 					result: tools
@@ -109,7 +143,7 @@ export class MCPBridgeServer {
 	}
 
 	stop() {
-		if (!this.isRunning) {
+		if (!this.isRunning && !this.isStarting) {
 			return
 		}
 
@@ -122,6 +156,7 @@ export class MCPBridgeServer {
 		}
 
 		this.isRunning = false
+		this.isStarting = false
 		this.server = null
 		logger.info('[MCP Bridge] Server stopped')
 	}

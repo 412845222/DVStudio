@@ -108,7 +108,12 @@ export class DSHAgentChatService implements IChatService {
 		const client = this.assertClient()
 
 		// DSHAgent 的模型在 Harness WebUI 中配置，这里忽略 options.model。
-		for await (const ev of client.streamPrompt(sessionId, options.content, signal)) {
+		// 把 systemPrompt 和 history 传给 streamPrompt，避免每次把 system prompt
+		// 当作用户输入拼到 content 里导致模型重复输出介绍文本。
+		for await (const ev of client.streamPrompt(sessionId, options.content, signal, {
+			history: options.history,
+			systemPrompt: options.systemPrompt
+		})) {
 			yield mapStreamEvent(ev)
 		}
 	}

@@ -458,7 +458,7 @@ Blender工具以blender_为前缀。使用前用户需要先在Blender节点面�
 - blender_jump_to_*工具导航切换工作区/聚焦对象
 - blender_import_model导入模型文件`
 
-function sendToElectron(requestData) {
+function sendToElectronOnce(requestData) {
 	return new Promise((resolve, reject) => {
 		const client = net.createConnection(SOCKET_PATH, () => {
 			const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
@@ -505,26 +505,76 @@ function sendToElectron(requestData) {
 	})
 }
 
+/**
+ * 向 Electron 主进程的 socketBridge 发送请求，支持重试。
+ * 如果 socketBridge 尚未启动（ECONNREFUSED / ENOENT），等待后重试，
+ * 避免 stdioBridge 启动早于 socketBridge 时工具列表回退到 fallback。
+ */
+async function sendToElectron(requestData, retries = 5) {
+	let lastErr = null
+	for (let i = 0; i < retries; i++) {
+		try {
+			if (i > 0) {
+				process.stderr.write(
+					`[DVStudio MCP Bridge] Retrying socket request (attempt ${i + 1}/${retries})...\n`
+				)
+				await new Promise((r) => setTimeout(r, 500))
+			}
+			const result = await sendToElectronOnce(requestData)
+			return result
+		} catch (err) {
+			lastErr = err
+			const msg = err.message || ''
+			// socket 未启动或连接拒绝，可重试
+			if (
+				msg.includes('ECONNREFUSED') ||
+				msg.includes('ENOENT') ||
+				msg.includes('Cannot connect')
+			) {
+				process.stderr.write(`[DVStudio MCP Bridge] Socket not ready (attempt ${i + 1}): ${msg}\n`)
+				continue
+			}
+			// 超时或其他错误不再重试
+			throw err
+		}
+	}
+	throw lastErr || new Error('Socket bridge not available after retries')
+}
+
 let cachedTools = null
 let cacheTimestamp = 0
-const TOOLS_CACHE_TTL = 5000
+const TOOLS_CACHE_TTL = 30000 // 成功获取后缓存30秒
+const FALLBACK_CACHE_TTL = 1000 // fallback 只缓存1秒，快速重试
 
 async function getDynamicToolsList() {
 	const now = Date.now()
-	if (cachedTools && now - cacheTimestamp < TOOLS_CACHE_TTL) {
+	// 如果缓存的是 fallback 工具（不含 dc_），快速过期以便重试
+	const isFallback = cachedTools && !cachedTools.some((t) => t?.name?.startsWith('dc_'))
+	const cacheTtl = isFallback ? FALLBACK_CACHE_TTL : TOOLS_CACHE_TTL
+	if (cachedTools && now - cacheTimestamp < cacheTtl) {
 		return cachedTools
 	}
 
+	process.stderr.write('[DVStudio MCP Bridge] Requesting tools from socket bridge...\n')
 	try {
 		const tools = await sendToElectron({ action: 'tools/list' })
 		const result = Array.isArray(tools) ? tools : []
 		cachedTools = result
 		cacheTimestamp = now
+		process.stderr.write(`[DVStudio MCP Bridge] Got ${result.length} tools from socket bridge\n`)
+		// 打印工具名帮助诊断
+		if (result.length > 0) {
+			const names = result.map((t) => t?.name).filter(Boolean)
+			process.stderr.write(`[DVStudio MCP Bridge] All tools: ${names.join(', ')}\n`)
+		}
 		return result
 	} catch (err) {
 		process.stderr.write(
-			`[DVStudio MCP Bridge] Failed to get dynamic tools: ${err.message}, using fallback\n`
+			`[DVStudio MCP Bridge] Failed to get dynamic tools: ${err.message}, using fallback (no dc_ tools will be available). Will retry in ${FALLBACK_CACHE_TTL}ms.\n`
 		)
+		// fallback 结果缓存极短时间，下次请求会重新尝试连接 socketBridge
+		cachedTools = TOOLS
+		cacheTimestamp = now
 		return TOOLS
 	}
 }
@@ -729,3 +779,30 @@ process.stderr.write(`[DVStudio MCP Bridge] Server started with ${TOOLS.length} 
 process.stderr.write(
 	`[DVStudio MCP Bridge] Node.js version: ${process.version}, Executable: ${process.execPath}\n`
 )
+
+// 启动时主动等待 socketBridge 就绪，避免第一次 tools/list 走 fallback
+// 最多等待 15 秒，每 500ms 重试一次
+;(async function waitForSocketBridge() {
+	process.stderr.write('[DVStudio MCP Bridge] Waiting for DVStudio socket bridge to be ready...\n')
+	for (let i = 0; i < 30; i++) {
+		try {
+			await sendToElectron({ action: 'ping' }, 1)
+			process.stderr.write('[DVStudio MCP Bridge] Socket bridge is ready\n')
+			// 预取工具列表并缓存
+			try {
+				await getDynamicToolsList()
+			} catch (e) {
+				process.stderr.write(`[DVStudio MCP Bridge] Pre-fetch tools failed: ${e.message}\n`)
+			}
+			return
+		} catch (err) {
+			process.stderr.write(
+				`[DVStudio MCP Bridge] Socket bridge not ready (attempt ${i + 1}/30): ${err.message}\n`
+			)
+			await new Promise((r) => setTimeout(r, 500))
+		}
+	}
+	process.stderr.write(
+		'[DVStudio MCP Bridge] WARNING: Socket bridge not ready after 15s, will use fallback tools until bridge comes online\n'
+	)
+})()

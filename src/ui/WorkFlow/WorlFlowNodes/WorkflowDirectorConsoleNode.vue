@@ -48,6 +48,39 @@
 					</div>
 				</div>
 
+				<!-- 工作区落盘路径：随时可打开文件夹确认数据是否落盘 -->
+				<div class="wf-director-console-card wf-director-console-workspace" @pointerdown.stop>
+					<div class="wf-director-console-card-title">
+						{{ t('nodes.directorConsole.workspacePath') }}
+					</div>
+					<div class="wf-director-console-workspace-path" :title="workspacePath || ''">
+						{{ workspacePath || t('nodes.directorConsole.workspacePathPending') }}
+					</div>
+					<div class="wf-director-console-workspace-actions">
+						<button
+							v-if="workspacePath"
+							class="wf-director-console-workspace-btn"
+							type="button"
+							:disabled="creatingWorkspace"
+							@click.stop="onCreateWorkspace"
+						>
+							{{
+								creatingWorkspace
+									? t('nodes.directorConsole.creating')
+									: t('nodes.directorConsole.createWorkspace')
+							}}
+						</button>
+						<button
+							v-if="workspacePath"
+							class="wf-director-console-workspace-btn"
+							type="button"
+							@click.stop="onOpenWorkspaceFolder"
+						>
+							{{ t('nodes.directorConsole.openFolder') }}
+						</button>
+					</div>
+				</div>
+
 				<div class="wf-director-console-actions">
 					<button
 						class="wf-director-console-btn primary"
@@ -64,10 +97,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
 import { useI18n } from '../../../i18n'
-import { isElectron } from '../../../electronBridge'
+import { isElectron, openFolderForPath, writeProjectAssetText } from '../../../electronBridge'
+import { AIWorkflowStore } from '../../../store/aiworkflow/store'
 import type { WorkflowDirectorConsoleNodeSettings } from '../../../aiworkflow/types'
 
 const { t } = useI18n()
@@ -157,6 +191,66 @@ const onResize = (payload: { width: number; height: number; worldX: number; worl
 const settings = computed(() => props.directorConsoleSettings ?? null)
 const inElectron = computed(() => isElectron())
 const canOpen = computed(() => inElectron.value)
+
+/** 该节点的工作区落盘目录：{projectRoot}/Content/Media/director-console/{nodeId} */
+const workspacePath = computed(() => {
+	const root = String(AIWorkflowStore.state.projectRootPath || '').trim()
+	if (!root) return ''
+	const sep = root.includes('\\') ? '\\' : '/'
+	return `${root}${sep}Content${sep}Media${sep}director-console${sep}${props.nodeId}`
+})
+
+const projectId = computed(() => {
+	const pid = AIWorkflowStore.state.projectId
+	return typeof pid === 'number' && pid > 0 ? pid : undefined
+})
+
+const creatingWorkspace = ref(false)
+
+const onOpenWorkspaceFolder = async () => {
+	const dir = workspacePath.value
+	if (!dir) return
+	try {
+		await openFolderForPath(dir)
+	} catch (e) {
+		console.warn('[DirectorConsoleNode] openFolderForPath failed', e)
+	}
+}
+
+/** 创建工作区目录并写入初始 director-state.json */
+const onCreateWorkspace = async () => {
+	const pid = projectId.value
+	if (!pid || creatingWorkspace.value) return
+	creatingWorkspace.value = true
+	try {
+		const initialData = {
+			nodeId: props.nodeId,
+			savedAt: Date.now(),
+			directorDataVersion: 1,
+			cameraTracks: [],
+			activeCameraTrackId: null,
+			lightRig: null,
+			characters: [],
+			cameraParentId: null,
+			fps: 30,
+			totalFrames: 150
+		}
+		const result = await writeProjectAssetText({
+			projectId: pid,
+			name: 'director-state.json',
+			subPath: `director-console/${props.nodeId}`,
+			text: JSON.stringify(initialData, null, 2)
+		})
+		console.log('[DirectorConsoleNode] onCreateWorkspace result', result)
+		if (result?.ok) {
+			console.log('[DirectorConsoleNode] workspace created at:', workspacePath.value)
+		}
+	} catch (e) {
+		console.warn('[DirectorConsoleNode] onCreateWorkspace failed', e)
+	} finally {
+		creatingWorkspace.value = false
+	}
+}
 
 const statusTone = computed<'idle' | 'ready' | 'error'>(() => {
 	const s = settings.value?.status
@@ -276,5 +370,46 @@ const onOpenConsole = () => {
 	cursor: not-allowed;
 	border-color: var(--wf-color-border, #3a4a40);
 	color: var(--wf-color-text-dim, #666);
+}
+
+.wf-director-console-workspace {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 6px;
+}
+
+.wf-director-console-workspace-path {
+	font-size: 10px;
+	color: var(--wf-color-text-dim, #888);
+	word-break: break-all;
+	line-height: 1.4;
+	font-family: 'Courier New', monospace;
+}
+
+.wf-director-console-workspace-btn {
+	align-self: flex-start;
+	border: 1px solid var(--wf-color-border, #3a4a40);
+	background: transparent;
+	color: var(--wf-color-text, #e0e0e0);
+	padding: 4px 12px;
+	font-size: 11px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.wf-director-console-workspace-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wf-director-console-workspace-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.wf-director-console-workspace-btn:hover:not(:disabled) {
+	border-color: var(--wf-color-accent, #1f9d84);
+	color: var(--wf-color-accent, #1f9d84);
 }
 </style>

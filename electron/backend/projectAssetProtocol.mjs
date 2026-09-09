@@ -2391,6 +2391,146 @@ export function resolveProjectAsset({ projectId, kind, name, projectRelativePath
 	return { ok: true, resolved: false, reason: 'not_found' }
 }
 
+/**
+ * 读取项目资产文件文本内容
+ * 支持通过 projectRelativePath 或 subPath + name 定位文件
+ */
+export function readProjectAssetText({ projectId, name, projectRelativePath, subPath }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	let targetPath = ''
+
+	// 优先用 projectRelativePath 解析
+	const rel = String(projectRelativePath || '').trim()
+	if (rel) {
+		const result = safeResolveProjectFile(root, rel)
+		if (
+			result?.resolved &&
+			fs.existsSync(result.resolved) &&
+			fs.statSync(result.resolved).isFile()
+		) {
+			targetPath = result.resolved
+		}
+	}
+
+	// 退化用 subPath + name 拼接（Content/Media/{subPath}/{name}）
+	if (!targetPath && subPath && name) {
+		const candidate = path.join(root, 'Content', 'Media', subPath, String(name))
+		if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+			targetPath = candidate
+		}
+	}
+
+	if (!targetPath) return { ok: true, resolved: false, reason: 'not_found' }
+
+	try {
+		const text = fs.readFileSync(targetPath, 'utf-8')
+		return {
+			ok: true,
+			resolved: true,
+			text,
+			absolutePath: targetPath,
+			projectRelativePath: path.relative(root, targetPath).split(path.sep).join('/')
+		}
+	} catch (err) {
+		return { ok: false, error: String(err?.message || err) }
+	}
+}
+
+/**
+ * 直接写入文本到项目资产文件（覆盖写）。
+ * 与 uploadProjectAsset 不同，此函数不会生成唯一文件名，而是覆盖已存在的同名文件，
+ * 适用于 director-state.json 这类需要反复覆盖保存的场景。
+ * 支持通过 subPath + name 定位文件（Content/Media/{subPath}/{name}）。
+ */
+export function writeProjectAssetText({ projectId, name, subPath, text }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	const safeName = sanitizeFilename(String(name || 'file'))
+	const safeSubPath = String(subPath || '')
+		.trim()
+		.split(/[\\/]+/)
+		.filter(Boolean)
+		.map((seg) => sanitizeFilename(seg))
+		.join(path.sep)
+
+	const targetDir = safeSubPath
+		? path.resolve(root, 'Content', 'Media', safeSubPath)
+		: path.resolve(root, 'Content', 'Media')
+	try {
+		fs.mkdirSync(targetDir, { recursive: true })
+	} catch (err) {
+		return { ok: false, error: 'mkdir failed: ' + String(err?.message || err) }
+	}
+
+	const targetPath = path.resolve(targetDir, safeName)
+	try {
+		fs.writeFileSync(targetPath, String(text ?? ''), 'utf-8')
+		return {
+			ok: true,
+			absolutePath: targetPath,
+			projectRelativePath: path.relative(root, targetPath).split(path.sep).join('/')
+		}
+	} catch (err) {
+		return { ok: false, error: 'write file failed: ' + String(err?.message || err) }
+	}
+}
+
+/**
+ * 直接写入二进制数据到项目资产文件（覆盖写）。
+ * 与 writeProjectAssetText 类似，但接受 Buffer/Uint8Array，
+ * 用于导演控制台截图等二进制资源。
+ */
+export function writeProjectAssetBinary({ projectId, name, subPath, data }) {
+	const id = Number(projectId)
+	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }
+
+	const root = projectRootById.get(id)
+	if (!root) return { ok: false, error: 'project root not registered' }
+
+	const safeName = sanitizeFilename(String(name || 'file'))
+	const safeSubPath = String(subPath || '')
+		.trim()
+		.split(/[\\/]+/)
+		.filter(Boolean)
+		.map((seg) => sanitizeFilename(seg))
+		.join(path.sep)
+
+	const targetDir = safeSubPath
+		? path.resolve(root, 'Content', 'Media', safeSubPath)
+		: path.resolve(root, 'Content', 'Media')
+	try {
+		fs.mkdirSync(targetDir, { recursive: true })
+	} catch (err) {
+		return { ok: false, error: 'mkdir failed: ' + String(err?.message || err) }
+	}
+
+	const targetPath = path.resolve(targetDir, safeName)
+	try {
+		const buf = Buffer.isBuffer(data)
+			? data
+			: data instanceof Uint8Array
+				? Buffer.from(data)
+				: Buffer.from(String(data ?? ''), 'utf-8')
+		fs.writeFileSync(targetPath, buf)
+		return {
+			ok: true,
+			absolutePath: targetPath,
+			projectRelativePath: path.relative(root, targetPath).split(path.sep).join('/')
+		}
+	} catch (err) {
+		return { ok: false, error: 'write file failed: ' + String(err?.message || err) }
+	}
+}
+
 export function repairProjectAsset({ projectId, kind, name, projectRelativePath }) {
 	const id = Number(projectId)
 	if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'projectId is invalid' }

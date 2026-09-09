@@ -9,7 +9,8 @@ import {
 	resolveProjectAsset,
 	uploadProjectAsset,
 	deleteProjectAsset,
-	repairProjectAsset
+	repairProjectAsset,
+	readProjectAssetText
 } from '../projectAssetProtocol.mjs'
 import { upsertAssetManifestEntry } from './manifest.mjs'
 import {
@@ -316,4 +317,8 @@ export function resolveStaticProjectAsset(payload) {
 
 export function deleteStaticProjectAsset(payload) {
 	return deleteProjectAsset(payload || {})
+}
+
+export function readStaticProjectAssetText(payload) {
+	return readProjectAssetText(payload || {})
 }

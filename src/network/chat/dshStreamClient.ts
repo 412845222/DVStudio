@@ -141,15 +141,58 @@ export class DshStreamClient {
 	 * @param sessionId  会话 ID
 	 * @param content    用户文本（也可扩展为多模态内容数组）
 	 * @param signal     外部 AbortSignal，取消时会调用 session.cancel
+	 * @param options    可选参数：
+	 *   - systemPrompt: 系统指令文本，会作为独立的 text part 拼到 content 前面，
+	 *     用清晰的 [系统指令] 标记与用户输入区分，避免模型把 system prompt 当作用户输入重复回复。
+	 *   - history: 多轮对话历史（DSH session 自身会维护历史，此字段仅在 session 复用失败时作为兜底）。
 	 */
 	async *streamPrompt(
 		sessionId: string,
 		content: string | DshPromptContentPart[],
-		signal?: AbortSignal
+		signal?: AbortSignal,
+		options?: {
+			history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+			systemPrompt?: string
+		}
 	): AsyncGenerator<DshStreamEvent> {
-		const parts: DshPromptContentPart[] =
+		// 组装最终发给 DSH 的 content parts
+		const userParts: DshPromptContentPart[] =
 			typeof content === 'string' ? [{ type: 'text', text: content }] : content
-		log('streamPrompt sessionId=', sessionId, 'parts=', parts.length)
+
+		// 把 systemPrompt 和 history 作为前置 text part 拼入，用清晰标记区分
+		const finalParts: DshPromptContentPart[] = []
+
+		// systemPrompt 作为独立的 text part，用 [系统指令] 标记让模型识别角色
+		if (options?.systemPrompt) {
+			finalParts.push({ type: 'text', text: `[系统指令]\n${options.systemPrompt}` })
+		}
+
+		// history 兜底（DSH session 自身维护历史，这里只在 session 复用时有用）
+		if (options?.history && options.history.length > 0) {
+			const historyText = options.history
+				.map((h) => `[${h.role === 'user' ? '用户' : '助手'}] ${h.content}`)
+				.join('\n\n')
+			finalParts.push({ type: 'text', text: `[对话历史]\n${historyText}` })
+		}
+
+		// 本次用户输入，用 [用户输入] 标记
+		if (userParts.length === 1 && userParts[0].type === 'text') {
+			finalParts.push({ type: 'text', text: `[用户输入]\n${userParts[0].text}` })
+		} else {
+			// 多模态内容（图片等）直接追加
+			finalParts.push(...userParts)
+		}
+
+		log(
+			'streamPrompt sessionId=',
+			sessionId,
+			'parts=',
+			finalParts.length,
+			'hasSystem=',
+			!!options?.systemPrompt,
+			'historyLen=',
+			options?.history?.length || 0
+		)
 
 		const abortController = new AbortController()
 		const onExternalAbort = () => {
@@ -164,7 +207,7 @@ export class DshStreamClient {
 			let eventCount = 0
 			for await (const event of this.transport.streamTurn(
 				sessionId,
-				parts,
+				finalParts,
 				abortController.signal
 			)) {
 				if (signal?.aborted) {
@@ -173,7 +216,17 @@ export class DshStreamClient {
 					return
 				}
 				eventCount++
-				if (eventCount === 1) log('streamPrompt first event type=', event.type)
+				// 前5个事件打印类型，便于诊断流式是否正常
+				if (eventCount <= 5) {
+					log(
+						'streamPrompt event #',
+						eventCount,
+						'type=',
+						event.type,
+						'dataKeys=',
+						event.data ? Object.keys(event.data) : []
+					)
+				}
 
 				const evType = String(event.type)
 
@@ -237,17 +290,38 @@ export class DshStreamClient {
 						input: data?.arguments || ''
 					}
 				} else if (evType === 'tool/result' || evType === 'tool_result') {
-					const callId = String((data as { callId?: string })?.callId || '')
-					if (data?.error) {
+					// DSH tool/result 事件结构：
+					// data.message.source.callId  — 工具调用 ID
+					// data.message.content[0]     — { type: 'tool-result', toolCallId, content: [{ type: 'text', text }], isError }
+					// data.error                  — 错误对象 { name, code, message }（失败场景）
+					const msg = (data as { message?: any })?.message
+					const dataError = (data as { error?: any })?.error
+					const callId = String(
+						msg?.source?.callId ||
+							msg?.content?.[0]?.toolCallId ||
+							(data as { callId?: string })?.callId ||
+							''
+					)
+					const toolResultBlock = msg?.content?.find((c: any) => c?.type === 'tool-result')
+					const isError = toolResultBlock?.isError === true || !!dataError
+					const outputText =
+						toolResultBlock?.content?.map((c: any) => c?.text || '').join('') ||
+						msg?.content?.[0]?.text ||
+						''
+					if (isError) {
+						const errorName =
+							(typeof dataError === 'object' && dataError?.name) ||
+							(typeof dataError === 'string' && dataError) ||
+							outputText ||
+							'工具执行失败'
 						yield {
 							type: 'tool_call_error',
 							toolCallId: callId,
 							tool: '',
-							error: data.error.name || data.error.code
+							error: errorName
 						}
 					} else {
-						const text = data?.message?.content?.[0]?.text || ''
-						yield { type: 'tool_call_end', toolCallId: callId, tool: '', output: text }
+						yield { type: 'tool_call_end', toolCallId: callId, tool: '', output: outputText }
 					}
 				} else if (evType === 'turn/end') {
 					turnEnded = true

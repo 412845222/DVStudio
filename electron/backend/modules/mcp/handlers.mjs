@@ -7,7 +7,7 @@ import os from 'os'
 import { fileURLToPath } from 'url'
 import { mcpServerManager } from './client.mjs'
 import { getToolExecutor } from './toolExecutor.mjs'
-import { getMCPBridgeServer } from './server/socketBridge.mjs'
+import { getDirectorPipeServer } from './server/directorPipeServer.mjs'
 import { getDVStudioMCPServer } from './server/DVStudioMCPServer.mjs'
 import { invalidParamsError, internalError } from '../../core/errors.mjs'
 import logger from '../../core/logger.mjs'
@@ -17,13 +17,13 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export function initMCPModule() {
-	const bridge = getMCPBridgeServer()
-	bridge.start()
-	logger.info('[MCP] Module initialized, bridge server started')
+	const bridge = getDirectorPipeServer()
+	bridge.start(0)
+	logger.info('[MCP] Module initialized, director pipe server started')
 }
 
 export async function mcpGetBridgeStatus() {
-	const bridge = getMCPBridgeServer()
+	const bridge = getDirectorPipeServer()
 	const server = getDVStudioMCPServer()
 	return {
 		bridge: bridge.getStatus(),
@@ -32,15 +32,11 @@ export async function mcpGetBridgeStatus() {
 }
 
 export async function mcpGetBridgeScriptPath() {
-	const scriptPath = getBundledScriptPath('modules/mcp/server/stdioBridge.mjs')
-	const socketPath =
-		process.platform === 'win32'
-			? '\\\\.\\pipe\\dvstudio-mcp-bridge'
-			: path.join(os.tmpdir(), 'dvstudio-mcp-bridge.sock')
+	// stdioBridge 已移除，返回空值避免 preload 调用报错
 	return {
-		scriptPath,
+		scriptPath: '',
 		nodePath: getNodeExecutablePath(),
-		socketPath
+		socketPath: ''
 	}
 }
 

@@ -744,6 +744,8 @@ export type WorkflowSceneDecomposeNodeSettings = {
 export type WorkflowDirectorCameraKeyframe = {
 	id: string
 	time: number
+	/** [P1] 帧号，优先于 time 使用（time = frame / fps） */
+	frame?: number
 	position: { x: number; y: number; z: number }
 	target: { x: number; y: number; z: number }
 	fov?: number
@@ -758,6 +760,30 @@ export type WorkflowDirectorCameraTrack = {
 	duration: number
 	loop?: boolean
 	keyframes: WorkflowDirectorCameraKeyframe[]
+}
+
+/** 导演控制台 —— 角色关键帧（按 frame 升序） */
+export type WorkflowDirectorCharacterKeyframe = {
+	id: string
+	/** 帧号（time = frame / fps） */
+	frame: number
+	position: { x: number; y: number; z: number }
+	rotation?: { yaw?: number; pitch?: number; roll?: number }
+	scale?: { x?: number; y?: number; z?: number }
+	easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+}
+
+/** 导演控制台 —— 角色（圆柱体身体 + 圆球头部的占位体） */
+export type WorkflowDirectorCharacter = {
+	id: string
+	name: string
+	color: string
+	position: { x: number; y: number; z: number }
+	rotation?: { yaw?: number; pitch?: number; roll?: number }
+	scale?: { x?: number; y?: number; z?: number }
+	parentId?: string
+	/** [P1] 角色关键帧轨道（按 frame 升序） */
+	keyframes?: WorkflowDirectorCharacterKeyframe[]
 }
 
 /** 瀵兼紨鎺у埗鍙?鈥斺€?鐏厜缁勪欢锛堥鐣欐帴鍙ｏ紝P2 瀹炶锛涘瓧娈典笌 EditorViewer/EnvironmentPresets 瀵归綈锛?*/
@@ -791,6 +817,13 @@ export type WorkflowDirectorConsoleNodeSettings = {
 	cameraTracks?: WorkflowDirectorCameraTrack[]
 	activeCameraTrackId?: string
 	lightRig?: WorkflowDirectorLightRig
+	characters?: WorkflowDirectorCharacter[]
+	/** 摄像头父级角色 ID（null/undefined 表示挂到场景根） */
+	cameraParentId?: string | null
+	/** [P1] 时间轴帧率，默认 30 */
+	fps?: number
+	/** [P1] 时间轴总帧数，默认 150 */
+	totalFrames?: number
 }
 
 export type WorkflowComfyUINodeSettings = {
