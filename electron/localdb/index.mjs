@@ -17,6 +17,7 @@ import { createChatConversationsRepo } from './repos/chatConversations.mjs'
 import { createExportJobsRepo } from './repos/exportJobs.mjs'
 import { createEditorComponentsRepo } from './repos/editorComponents.mjs'
 import { createComfyuiWorkflowsRepo } from './repos/comfyuiWorkflows.mjs'
+import { createComfyuiHistorySnapshotsRepo } from './repos/comfyuiHistorySnapshots.mjs'
 import { createComfyuiJobsRepo } from './repos/comfyuiJobs.mjs'
 import { createRefImageCacheRepo } from './repos/refImageCache.mjs'
 import { createAiworkflowTemplatesRepo } from './repos/aiworkflowTemplates.mjs'
@@ -87,6 +88,7 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 			exportJobs,
 			editorComponents,
 			comfyuiWorkflows,
+			comfyuiHistorySnapshots: createComfyuiHistorySnapshotsRepo(),
 			comfyuiJobs,
 			refImageCache,
 			aiworkflowTemplates,

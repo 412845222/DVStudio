@@ -2535,6 +2535,17 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 			? Number(raw.historyNodeCount)
 			: undefined,
 		historyInputMappings: normalizeComfyHistoryInputMappings(raw.historyInputMappings),
+		templateResolution:
+			isRecord(raw.templateResolution) && isString(raw.templateResolution.contentHash)
+				? (raw.templateResolution as WorkflowComfyUINodeSettings['templateResolution'])
+				: undefined,
+		inputBindings: isRecord(raw.inputBindings)
+			? (Object.fromEntries(
+					Object.entries(raw.inputBindings).filter(([, v]) => typeof v === 'string')
+				) as Record<string, string>)
+			: undefined,
+		positivePromptEdited: raw.positivePromptEdited === true,
+		negativePromptEdited: raw.negativePromptEdited === true,
 		historyOutputNodes: normalizeComfyHistoryOutputNodes(raw.historyOutputNodes),
 		hasImageOutput: isBoolean(raw.hasImageOutput) ? raw.hasImageOutput : undefined,
 		hasVideoOutput: isBoolean(raw.hasVideoOutput) ? raw.hasVideoOutput : undefined,
@@ -4256,6 +4267,8 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						promptId: undefined,
 						outputs: [],
 						// === ① 历史记录相关状态：必重置 ===
+						templateResolution: undefined,
+						inputBindings: undefined,
 						historyChecked: false,
 						hasHistory: undefined,
 						historyError: undefined,

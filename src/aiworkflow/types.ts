@@ -826,7 +826,20 @@ export type WorkflowDirectorConsoleNodeSettings = {
 	totalFrames?: number
 }
 
+export type ComfyTemplateResolution = {
+	contentHash: string
+	workflowHash: string
+	snapshotId: string
+	source: string
+	schemaVersion: number
+}
+
 export type WorkflowComfyUINodeSettings = {
+	templateResolution?: ComfyTemplateResolution
+	inputBindings?: Record<string, string>
+	positivePromptEdited?: boolean
+	negativePromptEdited?: boolean
+
 	/** ComfyUI base URL, e.g. http://127.0.0.1:8188 */
 	baseUrl?: string
 	/** UI status for connection check */

@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 16
+const TARGET_VERSION = 17
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -569,6 +569,14 @@ export function runV16(db) {
 	`)
 }
 
+export function runV17(db) {
+	db.exec(`CREATE TABLE IF NOT EXISTS comfyui_history_snapshots (
+		source_key TEXT NOT NULL, prompt_id TEXT NOT NULL, content_hash TEXT NOT NULL,
+		completed_at INTEGER NOT NULL, data TEXT NOT NULL,
+		PRIMARY KEY (source_key, prompt_id)
+	);`)
+}
+
 const MIGRATIONS = [
 	runV1,
 	runV2,
@@ -585,7 +593,8 @@ const MIGRATIONS = [
 	runV13,
 	runV14,
 	runV15,
-	runV16
+	runV16,
+	runV17
 ]
 
 export function ensureSchema(db) {

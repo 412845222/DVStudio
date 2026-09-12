@@ -998,3 +998,4 @@ export type {
 	OpenVideoEditorResult
 }
 export { deepseekHarness, hasDeepSeekHarness } from './deepseekHarness'
+export { callComfyRuntime } from './comfyuiRuntime'
